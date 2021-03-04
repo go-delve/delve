@@ -12,7 +12,6 @@ const (
 	// values below are inspired the original vscode-go debug adaptor.
 	FailedToLaunch             = 3000
 	FailedToAttach             = 3001
-	FailedToInitialize         = 3002
 	UnableToSetBreakpoints     = 2002
 	UnableToDisplayThreads     = 2003
 	UnableToProduceStackTrace  = 2004

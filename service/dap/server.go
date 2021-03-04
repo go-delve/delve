@@ -712,7 +712,8 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	// TODO(polina): support these requests in addition to vscode-go feature parity
 	response.Body.SupportsTerminateRequest = false
 	response.Body.SupportsRestartRequest = false
-	response.Body.SupportsStepBack = false
+	// TODO(lggomez): research nehalem and zen processors detection for rr as they are the only supported platforms
+	response.Body.SupportsStepBack = runtime.GOOS == "linux"
 	response.Body.SupportsSetExpression = false
 	response.Body.SupportsLoadedSourcesRequest = false
 	response.Body.SupportsReadMemoryRequest = false
@@ -771,7 +772,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			return
 		}
 
-		// Replay only works on rr trace directories
+		// Record only works on rr trace directories
 		if backend != "rr" {
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to launch",
@@ -852,6 +853,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			return
 		}
 
+<<<<<<< HEAD
 		// Validate trace file
 		traceProgram, ok := request.Arguments["traceProgram"].(string)
 		if !ok || traceProgram == "" {
@@ -866,6 +868,11 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 				"The traceProgram attribute points to a file that does not exist.")
 			return
 		}
+=======
+		s.config.Debugger.CoreFile = traceDirectory
+		s.config.Debugger.Backend = backend
+	}
+>>>>>>> WIP: Implement onReverseContinue and partial onStepBackRequest
 
 	if mode == "debug" || mode == "test" {
 		output, ok := request.Arguments["output"].(string)
@@ -2518,13 +2525,23 @@ func (s *Server) onRestartRequest(request *dap.RestartRequest) {
 // onStepBackRequest sends a not-yet-implemented error response.
 // Capability 'supportsStepBack' is not set 'initialize' response.
 func (s *Server) onStepBackRequest(request *dap.StepBackRequest) {
+	isRecording, _ := s.debugger.Recorded()
+	if !isRecording {
+		s.sendErrorResponse(request.Request, UnableToContinue, "Unsupported command",
+			fmt.Sprintf("cannot process '%s' request, target is not a recording", request.Command))
+	}
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
 // onReverseContinueRequest performs a rewind command call upt to the previous
 // breakpoint or exiting the program, as defined per the rewind() spec
 func (s *Server) onReverseContinueRequest(request *dap.ReverseContinueRequest) {
-	state, _ := s.debugger.State(true)
+	isRecording, path := s.debugger.Recorded()
+	if !isRecording {
+		s.sendErrorResponse(request.Request, UnableToContinue, "Unsupported command",
+			fmt.Sprintf("cannot process '%s' request, target '%s' is not a recording", request.Command, path))
+	}
+	state, _ := s.debugger.State(/*nowait*/ true)
 	s.debugger.Command(&api.DebuggerCommand{
 		Name:                 api.Rewind,
 		ThreadID:             state.CurrentThread.ID,
