@@ -74,6 +74,7 @@ func (xsave *AMD64Xstate) Decode() []proc.Register {
 const (
 	_XSTATE_MAX_KNOWN_SIZE = 2969
 
+	_XSAVE_XMM_REGION_START        = 160
 	_XSAVE_HEADER_START            = 512
 	_XSAVE_HEADER_LEN              = 64
 	_XSAVE_EXTENDED_REGION_START   = 576
@@ -127,5 +128,63 @@ func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate) er
 	// contains ZMM16 through ZMM31, those aren't just the higher 256bits, it's
 	// the full register so each is 64 bytes (512bits)
 
+	return nil
+}
+
+func (xstate *AMD64Xstate) SetXmmRegister(n int, value []byte) error {
+	if n >= 16 {
+		return fmt.Errorf("setting register XMM%d not supported", n)
+	}
+	if len(value) > 64 {
+		return fmt.Errorf("value of register XMM%d too large (%d bytes)", n, len(value))
+	}
+
+	// Copy least significant 16 bytes to Xsave area
+
+	xmmval := value
+	if len(xmmval) > 16 {
+		xmmval = xmmval[:16]
+	}
+	rest := value[len(xmmval):]
+
+	xmmpos := _XSAVE_XMM_REGION_START + (n * 16)
+	if xmmpos >= len(xstate.Xsave) {
+		return fmt.Errorf("could not set XMM%d: not in XSAVE area", n)
+	}
+
+	copy(xstate.Xsave[xmmpos:], xmmval)
+
+	if len(rest) == 0 {
+		return nil
+	}
+
+	// Copy bytes [16, 32) to Xsave area
+
+	ymmval := rest
+	if len(ymmval) > 16 {
+		ymmval = ymmval[:16]
+	}
+	rest = rest[len(ymmval):]
+
+	ymmpos := _XSAVE_EXTENDED_REGION_START + (n * 16)
+	if ymmpos >= len(xstate.Xsave) {
+		return fmt.Errorf("could not set XMM%d: bytes 16..%d not in XSAVE area", n, 16+len(ymmval))
+	}
+
+	copy(xstate.Xsave[ymmpos:], ymmval)
+
+	if len(rest) == 0 {
+		return nil
+	}
+
+	// Copy bytes [32, 64) to Xsave area
+
+	zmmval := rest
+	zmmpos := _XSAVE_AVX512_ZMM_REGION_START + (n * 32)
+	if zmmpos >= len(xstate.Xsave) {
+		return fmt.Errorf("could not set XMM%d: bytes 32..%d not in XSAVE area", n, 32+len(zmmval))
+	}
+
+	copy(xstate.Xsave[zmmpos:], zmmval)
 	return nil
 }
