@@ -1659,9 +1659,10 @@ func TestSetBreakpoint(t *testing.T) {
 // working directory is the one used to run the program.
 func TestWorkingDir(t *testing.T) {
 	runTest(t, "workdir", func(client *daptest.Client, fixture protest.Fixture) {
-		fixtureWorkingDir, err := filepath.Abs(filepath.Join(protest.FindFixturesDir(), "buildtest"))
-		if err != nil {
-			t.Fatalf("failed to get working directory: %e", err)
+		wd := os.TempDir()
+		// For Darwin `os.TempDir()` returns `/tmp` which is symlink to `/private/tmp`.
+		if runtime.GOOS == "darwin" {
+			wd = "/private/tmp"
 		}
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
@@ -1670,7 +1671,7 @@ func TestWorkingDir(t *testing.T) {
 					"mode":        "exec",
 					"program":     fixture.Path,
 					"stopOnEntry": false,
-					"cwd":         fixtureWorkingDir,
+					"cwd":         wd,
 				})
 			},
 			// Set breakpoints
@@ -1681,13 +1682,20 @@ func TestWorkingDir(t *testing.T) {
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)
 					expectChildren(t, locals, "Locals", 2)
-					expectVarExact(t, locals, 0, "pwd", "pwd", fmt.Sprintf(`"%s"`, fixtureWorkingDir), noChildren)
+					expectVarExact(t, locals, 0, "pwd", "pwd", formatStringToVariable(wd), noChildren)
 					expectVarExact(t, locals, 1, "err", "err", "nil <error>", noChildren)
 
 				},
 				disconnect: false,
 			}})
 	})
+}
+
+// formatStringToVariable is a helper to format a string to the format it will
+// be in a variable. The entire string is in quotes and all backslashes need to be
+// escaped.
+func formatStringToVariable(str string) string {
+	return fmt.Sprintf(`"%s"`, strings.ReplaceAll(str, "\\", "\\\\"))
 }
 
 // expectEval is a helper for verifying the values within an EvaluateResponse.
