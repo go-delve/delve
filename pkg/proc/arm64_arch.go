@@ -89,6 +89,23 @@ func arm64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Binary
 		}
 	}
 
+	if a.crosscall2fn == nil {
+		a.crosscall2fn = bi.LookupFunc["crosscall2"]
+	}
+
+	if a.crosscall2fn != nil && pc >= a.crosscall2fn.Entry && pc < a.crosscall2fn.End {
+		rule := fctxt.CFA
+		if rule.Offset == crosscall2SPOffsetBad {
+			switch bi.GOOS {
+			case "windows":
+				rule.Offset += crosscall2SPOffsetWindows
+			default:
+				rule.Offset += crosscall2SPOffsetNonWindows
+			}
+		}
+		fctxt.CFA = rule
+	}
+
 	// We assume that RBP is the frame pointer and we want to keep it updated,
 	// so that we can use it to unwind the stack even when we encounter frames
 	// without descriptor entries.

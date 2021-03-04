@@ -3159,8 +3159,8 @@ func logStacktrace(t *testing.T, bi *proc.BinaryInfo, frames []proc.Stackframe) 
 			name = fmt.Sprintf("%s inlined in %s", frames[j].Call.Fn.Name, frames[j].Current.Fn.Name)
 		}
 
-		t.Logf("\tCallPC=%#x FrameOffset=%#x FramePointerOffset=%#x %s at %s:%d\n",
-			frames[j].Call.PC, frames[j].FrameOffset(), frames[j].FramePointerOffset(), name,
+		t.Logf("\tCFA=%#v CallPC=%#x FrameOffset=%#x FramePointerOffset=%#x %s at %s:%d\n",
+			frames[j].Regs.CFA, frames[j].Call.PC, frames[j].FrameOffset(), frames[j].FramePointerOffset(), name,
 			filepath.Base(frames[j].Call.File), frames[j].Call.Line)
 
 		if frames[j].TopmostDefer != nil {
@@ -3267,11 +3267,11 @@ func TestCgoStacktrace(t *testing.T) {
 	// frame than those listed here but all the frames listed must appear in
 	// the specified order.
 	testCases := [][]string{
-		[]string{"main.main"},
-		[]string{"C.helloworld_pt2", "C.helloworld", "main.main"},
-		[]string{"main.helloWorldS", "main.helloWorld", "C.helloworld_pt2", "C.helloworld", "main.main"},
-		[]string{"C.helloworld_pt4", "C.helloworld_pt3", "main.helloWorldS", "main.helloWorld", "C.helloworld_pt2", "C.helloworld", "main.main"},
-		[]string{"main.helloWorld2", "C.helloworld_pt4", "C.helloworld_pt3", "main.helloWorldS", "main.helloWorld", "C.helloworld_pt2", "C.helloworld", "main.main"}}
+		{"main.main"},
+		{"C.helloworld_pt2", "C.helloworld", "main.main"},
+		{"main.helloWorldS", "main.helloWorld", "C.helloworld_pt2", "C.helloworld", "main.main"},
+		{"C.helloworld_pt4", "C.helloworld_pt3", "main.helloWorldS", "main.helloWorld", "C.helloworld_pt2", "C.helloworld", "main.main"},
+		{"main.helloWorld2", "C.helloworld_pt4", "C.helloworld_pt3", "main.helloWorldS", "main.helloWorld", "C.helloworld_pt2", "C.helloworld", "main.main"}}
 
 	var gid int
 
