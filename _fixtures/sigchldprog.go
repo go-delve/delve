@@ -4,7 +4,8 @@ import (
 	"bufio"
 	"fmt"
 	"log"
-	"os/exec"
+
+	exec "golang.org/x/sys/execabs"
 )
 
 func main() {

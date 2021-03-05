@@ -9,7 +9,6 @@ import (
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -20,6 +19,7 @@ import (
 
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service/debugger"
+	exec "golang.org/x/sys/execabs"
 
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"

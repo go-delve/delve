@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -15,6 +14,7 @@ import (
 	"github.com/go-delve/delve/pkg/gobuild"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service/api"
+	exec "golang.org/x/sys/execabs"
 )
 
 func TestDebugger_LaunchNoExecutablePerm(t *testing.T) {

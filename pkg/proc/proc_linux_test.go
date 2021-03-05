@@ -2,12 +2,12 @@ package proc_test
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/go-delve/delve/pkg/proc/native"
 	protest "github.com/go-delve/delve/pkg/proc/test"
+	exec "golang.org/x/sys/execabs"
 )
 
 func TestLoadingExternalDebugInfo(t *testing.T) {

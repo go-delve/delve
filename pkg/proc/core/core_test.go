@@ -7,7 +7,6 @@ import (
 	"go/constant"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"reflect"
@@ -18,6 +17,7 @@ import (
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/test"
+	exec "golang.org/x/sys/execabs"
 )
 
 var buildMode string

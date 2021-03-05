@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -23,6 +22,7 @@ import (
 	"github.com/go-delve/delve/service/dap/daptest"
 	"github.com/go-delve/delve/service/debugger"
 	"github.com/google/go-dap"
+	exec "golang.org/x/sys/execabs"
 )
 
 const stopOnEntry bool = true

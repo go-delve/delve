@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
@@ -28,6 +27,7 @@ import (
 	"github.com/go-delve/delve/service/rpccommon"
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
+	exec "golang.org/x/sys/execabs"
 )
 
 var (

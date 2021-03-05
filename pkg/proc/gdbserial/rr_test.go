@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -13,6 +12,7 @@ import (
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/gdbserial"
 	protest "github.com/go-delve/delve/pkg/proc/test"
+	exec "golang.org/x/sys/execabs"
 )
 
 func TestMain(m *testing.M) {

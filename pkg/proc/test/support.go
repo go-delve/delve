@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -15,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/go-delve/delve/pkg/goversion"
+	exec "golang.org/x/sys/execabs"
 )
 
 // EnableRace allows to configure whether the race detector is enabled on target process.

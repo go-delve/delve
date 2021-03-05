@@ -13,7 +13,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -33,6 +32,7 @@ import (
 	"github.com/go-delve/delve/pkg/proc/native"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service/api"
+	exec "golang.org/x/sys/execabs"
 )
 
 var normalLoadConfig = proc.LoadConfig{true, 1, 64, 64, -1, 0}

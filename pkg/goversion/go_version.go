@@ -1,9 +1,10 @@
 package goversion
 
 import (
-	"os/exec"
 	"strconv"
 	"strings"
+
+	exec "golang.org/x/sys/execabs"
 )
 
 // GoVersion represents the Go version of

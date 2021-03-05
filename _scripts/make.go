@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/spf13/cobra"
+	exec "golang.org/x/sys/execabs"
 )
 
 const DelveMainPackagePath = "github.com/go-delve/delve/cmd/dlv"

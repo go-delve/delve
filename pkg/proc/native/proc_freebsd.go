@@ -6,12 +6,12 @@ package native
 import "C"
 import (
 	"fmt"
-	"os/exec"
 	"os/signal"
 	"strings"
 	"syscall"
 	"unsafe"
 
+	exec "golang.org/x/sys/execabs"
 	sys "golang.org/x/sys/unix"
 
 	"github.com/go-delve/delve/pkg/proc"

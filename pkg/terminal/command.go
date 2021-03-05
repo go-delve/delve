@@ -12,7 +12,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -28,6 +27,7 @@ import (
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
+	exec "golang.org/x/sys/execabs"
 )
 
 const optimizedFunctionWarning = "Warning: debugging optimized function"

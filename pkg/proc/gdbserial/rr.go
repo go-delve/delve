@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/go-delve/delve/pkg/proc"
+	exec "golang.org/x/sys/execabs"
 )
 
 // RecordAsync configures rr to record the execution of the specified

@@ -4,10 +4,10 @@ import (
 	"debug/pe"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 
 	"github.com/go-delve/delve/service/api"
+	exec "golang.org/x/sys/execabs"
 )
 
 func attachErrorMessage(pid int, err error) error {

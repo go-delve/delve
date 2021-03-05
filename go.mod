@@ -17,7 +17,7 @@ require (
 	github.com/spf13/pflag v0.0.0-20170417173400-9e4c21054fa1 // indirect
 	go.starlark.net v0.0.0-20200821142938-949cc6f4b097
 	golang.org/x/arch v0.0.0-20190927153633-4e8777c89be4
-	golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae
+	golang.org/x/sys v0.0.0-20210305034016-7844c3c200c3
 	golang.org/x/tools v0.0.0-20191127201027-ecd32218bd7f
 	gopkg.in/yaml.v2 v2.2.1
 )

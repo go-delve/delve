@@ -11,7 +11,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -23,6 +22,7 @@ import (
 	"github.com/go-delve/delve/pkg/terminal"
 	"github.com/go-delve/delve/service/dap/daptest"
 	"github.com/go-delve/delve/service/rpc2"
+	exec "golang.org/x/sys/execabs"
 	"golang.org/x/tools/go/packages"
 )
 

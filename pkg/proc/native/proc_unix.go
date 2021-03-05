@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 package native
@@ -5,9 +6,9 @@ package native
 import (
 	"fmt"
 	"os"
-	"os/exec"
 
 	isatty "github.com/mattn/go-isatty"
+	exec "golang.org/x/sys/execabs"
 )
 
 func attachProcessToTTY(process *exec.Cmd, tty string) (*os.File, error) {

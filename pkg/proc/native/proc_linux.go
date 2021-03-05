@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"regexp"
@@ -16,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	exec "golang.org/x/sys/execabs"
 	sys "golang.org/x/sys/unix"
 
 	"github.com/go-delve/delve/pkg/proc"

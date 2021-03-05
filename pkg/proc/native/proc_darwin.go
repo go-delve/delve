@@ -1,4 +1,5 @@
-//+build darwin,macnative
+//go:build darwin && macnative
+// +build darwin,macnative
 
 package native
 
@@ -11,10 +12,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"unsafe"
 
+	exec "golang.org/x/sys/execabs"
 	sys "golang.org/x/sys/unix"
 
 	"github.com/go-delve/delve/pkg/proc"
