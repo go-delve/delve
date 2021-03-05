@@ -15,6 +15,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/goversion"
@@ -25,7 +27,6 @@ import (
 	"github.com/go-delve/delve/pkg/proc/gdbserial"
 	"github.com/go-delve/delve/pkg/proc/native"
 	"github.com/go-delve/delve/service/api"
-	"github.com/sirupsen/logrus"
 )
 
 var (

@@ -15,6 +15,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/sirupsen/logrus"
+
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/version"
 	"github.com/go-delve/delve/service"
@@ -22,7 +24,6 @@ import (
 	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/rpc1"
 	"github.com/go-delve/delve/service/rpc2"
-	"github.com/sirupsen/logrus"
 )
 
 // ServerImpl implements a JSON-RPC server that can switch between two

@@ -8,9 +8,10 @@ import (
 	"runtime"
 	"time"
 
+	exec "golang.org/x/sys/execabs"
+
 	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/goversion"
-	exec "golang.org/x/sys/execabs"
 )
 
 // Remove the file at path and issue a warning to stderr if this fails.

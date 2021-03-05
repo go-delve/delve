@@ -6,8 +6,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/go-delve/delve/service/api"
 	exec "golang.org/x/sys/execabs"
+
+	"github.com/go-delve/delve/service/api"
 )
 
 func attachErrorMessage(pid int, err error) error {

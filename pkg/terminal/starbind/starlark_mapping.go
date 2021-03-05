@@ -4,9 +4,11 @@ package starbind
 
 import (
 	"fmt"
+
+	"go.starlark.net/starlark"
+
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
-	"go.starlark.net/starlark"
 )
 
 func (env *Env) starlarkPredeclare() starlark.StringDict {

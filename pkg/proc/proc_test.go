@@ -22,6 +22,8 @@ import (
 	"testing"
 	"time"
 
+	exec "golang.org/x/sys/execabs"
+
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/goversion"
@@ -32,7 +34,6 @@ import (
 	"github.com/go-delve/delve/pkg/proc/native"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service/api"
-	exec "golang.org/x/sys/execabs"
 )
 
 var normalLoadConfig = proc.LoadConfig{true, 1, 64, 64, -1, 0}

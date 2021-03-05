@@ -13,8 +13,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/go-delve/delve/pkg/goversion"
 	exec "golang.org/x/sys/execabs"
+
+	"github.com/go-delve/delve/pkg/goversion"
 )
 
 // EnableRace allows to configure whether the race detector is enabled on target process.

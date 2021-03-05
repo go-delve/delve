@@ -21,14 +21,15 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/google/go-dap"
+	"github.com/sirupsen/logrus"
+
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
-	"github.com/google/go-dap"
-	"github.com/sirupsen/logrus"
 )
 
 // Server implements a DAP server that can accept a single client for

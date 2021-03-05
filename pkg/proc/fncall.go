@@ -13,12 +13,13 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/arch/x86/x86asm"
+
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
-	"golang.org/x/arch/x86/x86asm"
 )
 
 // This file implements the function call injection introduced in go1.11.

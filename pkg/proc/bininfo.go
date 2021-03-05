@@ -21,6 +21,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hashicorp/golang-lru/simplelru"
+	"github.com/sirupsen/logrus"
+
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/line"
@@ -30,8 +33,6 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/util"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
-	"github.com/hashicorp/golang-lru/simplelru"
-	"github.com/sirupsen/logrus"
 )
 
 const (

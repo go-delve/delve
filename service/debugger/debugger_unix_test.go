@@ -11,10 +11,11 @@ import (
 	"testing"
 
 	"github.com/creack/pty"
+	exec "golang.org/x/sys/execabs"
+
 	"github.com/go-delve/delve/pkg/gobuild"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service/api"
-	exec "golang.org/x/sys/execabs"
 )
 
 func TestDebugger_LaunchNoExecutablePerm(t *testing.T) {

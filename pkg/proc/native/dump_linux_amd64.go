@@ -8,9 +8,10 @@ import (
 	"io/ioutil"
 	"path/filepath"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/go-delve/delve/pkg/elfwriter"
 	"github.com/go-delve/delve/pkg/proc/linutil"
-	"golang.org/x/sys/unix"
 )
 
 const _NT_AUXV elf.NType = 0x6

@@ -13,6 +13,10 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/mattn/go-isatty"
+	"github.com/spf13/cobra"
+	exec "golang.org/x/sys/execabs"
+
 	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/goversion"
@@ -25,9 +29,6 @@ import (
 	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/rpc2"
 	"github.com/go-delve/delve/service/rpccommon"
-	"github.com/mattn/go-isatty"
-	"github.com/spf13/cobra"
-	exec "golang.org/x/sys/execabs"
 )
 
 var (

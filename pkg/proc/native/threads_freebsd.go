@@ -4,9 +4,10 @@ package native
 import "C"
 import (
 	"fmt"
-	"github.com/go-delve/delve/pkg/proc/fbsdutil"
 	"syscall"
 	"unsafe"
+
+	"github.com/go-delve/delve/pkg/proc/fbsdutil"
 
 	sys "golang.org/x/sys/unix"
 

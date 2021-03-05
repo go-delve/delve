@@ -16,9 +16,10 @@ import (
 	"time"
 	"unsafe"
 
+	exec "golang.org/x/sys/execabs"
+
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/goversion"
-	exec "golang.org/x/sys/execabs"
 )
 
 var userTestFile string

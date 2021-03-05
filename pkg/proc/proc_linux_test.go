@@ -5,9 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	exec "golang.org/x/sys/execabs"
+
 	"github.com/go-delve/delve/pkg/proc/native"
 	protest "github.com/go-delve/delve/pkg/proc/test"
-	exec "golang.org/x/sys/execabs"
 )
 
 func TestLoadingExternalDebugInfo(t *testing.T) {

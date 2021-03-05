@@ -80,12 +80,13 @@ import (
 	"golang.org/x/arch/x86/x86asm"
 	exec "golang.org/x/sys/execabs"
 
+	isatty "github.com/mattn/go-isatty"
+
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/elfwriter"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/linutil"
-	isatty "github.com/mattn/go-isatty"
 )
 
 const (

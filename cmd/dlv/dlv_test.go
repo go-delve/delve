@@ -18,12 +18,13 @@ import (
 	"testing"
 	"time"
 
+	exec "golang.org/x/sys/execabs"
+	"golang.org/x/tools/go/packages"
+
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/pkg/terminal"
 	"github.com/go-delve/delve/service/dap/daptest"
 	"github.com/go-delve/delve/service/rpc2"
-	exec "golang.org/x/sys/execabs"
-	"golang.org/x/tools/go/packages"
 )
 
 var testBackend string

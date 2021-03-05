@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/go-delve/delve/pkg/elfwriter"
 	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/elfwriter"
 	"github.com/go-delve/delve/pkg/proc"
 )
 

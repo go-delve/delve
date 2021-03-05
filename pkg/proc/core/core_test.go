@@ -14,10 +14,11 @@ import (
 	"strings"
 	"testing"
 
+	exec "golang.org/x/sys/execabs"
+
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/test"
-	exec "golang.org/x/sys/execabs"
 )
 
 var buildMode string

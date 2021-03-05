@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"strings"
 
+	"golang.org/x/arch/arm64/arm64asm"
+
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/regnum"
-	"golang.org/x/arch/arm64/arm64asm"
 )
 
 var arm64BreakInstruction = []byte{0x0, 0x0, 0x20, 0xd4}

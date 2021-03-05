@@ -15,14 +15,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-dap"
+	exec "golang.org/x/sys/execabs"
+
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/dap/daptest"
 	"github.com/go-delve/delve/service/debugger"
-	"github.com/google/go-dap"
-	exec "golang.org/x/sys/execabs"
 )
 
 const stopOnEntry bool = true

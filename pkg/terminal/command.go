@@ -22,12 +22,13 @@ import (
 	"time"
 
 	"github.com/cosiner/argv"
+	exec "golang.org/x/sys/execabs"
+
 	"github.com/go-delve/delve/pkg/locspec"
 	"github.com/go-delve/delve/pkg/terminal/colorize"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
-	exec "golang.org/x/sys/execabs"
 )
 
 const optimizedFunctionWarning = "Warning: debugging optimized function"
