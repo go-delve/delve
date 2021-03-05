@@ -166,8 +166,8 @@ var typeOfError = reflect.TypeOf((*error)(nil)).Elem()
 
 // Is this an exported - upper case - name?
 func isExported(name string) bool {
-	rune, _ := utf8.DecodeRuneInString(name)
-	return unicode.IsUpper(rune)
+	ch, _ := utf8.DecodeRuneInString(name)
+	return unicode.IsUpper(ch)
 }
 
 // Is this type exported or a builtin?
@@ -239,12 +239,10 @@ func suitableMethods(rcvr interface{}, methods map[string]*methodType, log *logr
 				log.Warn("method", mname, "returns", returnType.String(), "not error")
 				continue
 			}
-		} else {
+		} else if mtype.NumOut() != 0 {
 			// Method needs zero outs.
-			if mtype.NumOut() != 0 {
-				log.Warn("method", mname, "has wrong number of outs:", mtype.NumOut())
-				continue
-			}
+			log.Warn("method", mname, "has wrong number of outs:", mtype.NumOut())
+			continue
 		}
 		methods[sname+"."+mname] = &methodType{method: method, ArgType: argType, ReplyType: replyType, Synchronous: synchronous, Rcvr: rcvrv}
 	}
