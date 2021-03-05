@@ -432,19 +432,25 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 const debugBinary string = "./__debug_bin"
 
 func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
-	// TODO(polina): Respond with an error if debug session is in progress?
+	// Validate launch request mode
+	mode, ok := request.Arguments["mode"]
+	if !ok || mode == "" {
+		mode = "debug"
+	}
+	if !isValidLaunchMode(mode) {
+		s.sendErrorResponse(request.Request,
+			FailedToLaunch, "Failed to launch",
+			fmt.Sprintf("Unsupported 'mode' value %q in debug configuration.", mode))
+		return
+	}
 
+	// TODO(polina): Respond with an error if debug session is in progress?
 	program, ok := request.Arguments["program"].(string)
 	if !ok || program == "" {
 		s.sendErrorResponse(request.Request,
 			FailedToLaunch, "Failed to launch",
 			"The program attribute is missing in debug configuration.")
 		return
-	}
-
-	mode, ok := request.Arguments["mode"]
-	if !ok || mode == "" {
-		mode = "debug"
 	}
 
 	if mode == "debug" || mode == "test" {
@@ -486,14 +492,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.binaryToRemove = debugname
 	}
 
-	// TODO(polina): support "remote" mode
-	if mode != "exec" && mode != "debug" && mode != "test" {
-		s.sendErrorResponse(request.Request,
-			FailedToLaunch, "Failed to launch",
-			fmt.Sprintf("Unsupported 'mode' value %q in debug configuration.", mode))
-		return
-	}
-
 	s.setLaunchAttachArgs(request)
 
 	var targetArgs []string
@@ -533,6 +531,16 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	// will end the configuration sequence with 'configurationDone'.
 	s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
 	s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
+}
+
+// TODO(polina): support "remote" mode
+func isValidLaunchMode(launchMode interface{}) bool {
+	switch launchMode {
+	case "exec", "debug", "test":
+		return true
+	}
+
+	return false
 }
 
 // onDisconnectRequest handles the DisconnectRequest. Per the DAP spec,

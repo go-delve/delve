@@ -2559,6 +2559,10 @@ func TestBadLaunchRequests(t *testing.T) {
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "123"})
 		expectFailedToLaunch(client.ExpectErrorResponse(t)) // Build error
 
+		client.LaunchRequest("", fixture.Path, stopOnEntry)
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: Build error: exit status 1")
+
 		// We failed to launch the program. Make sure shutdown still works.
 		client.DisconnectRequest()
 		dresp := client.ExpectDisconnectResponse(t)
