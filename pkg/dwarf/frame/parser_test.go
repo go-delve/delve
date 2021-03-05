@@ -14,6 +14,7 @@ func TestParseCIE(t *testing.T) {
 		common: &CommonInformationEntry{Length: 12},
 		length: 12,
 	}
+	ctx.totalLen = ctx.buf.Len()
 	_ = parseCIE(ctx)
 
 	common := ctx.common
@@ -53,6 +54,6 @@ func BenchmarkParse(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		Parse(data, binary.BigEndian, 0, ptrSizeByRuntimeArch())
+		Parse(data, binary.BigEndian, 0, ptrSizeByRuntimeArch(), 0)
 	}
 }

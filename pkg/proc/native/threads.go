@@ -122,7 +122,7 @@ func (t *nativeThread) SetCurrentBreakpoint(adjustPC bool) error {
 
 	if bp, ok := t.dbp.FindBreakpoint(pc, adjustPC); ok {
 		if adjustPC {
-			if err = t.SetPC(bp.Addr); err != nil {
+			if err = t.setPC(bp.Addr); err != nil {
 				return err
 			}
 		}

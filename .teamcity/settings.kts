@@ -49,7 +49,10 @@ val targets = arrayOf(
         "windows/amd64/tip",
 
         "mac/amd64/1.16",
-        "mac/amd64/tip"
+        "mac/amd64/tip",
+
+        "mac/arm64/1.16",
+        "mac/arm64/tip"
 )
 
 project {
@@ -92,7 +95,7 @@ class AggregatorBuild(tests: Collection<BuildType>) : BuildType({
             vcsRootExtId = "${DslContext.settingsRoot.id}"
             provider = github {
                 authType = token {
-                    token = "credentialsJSON:5dc93081-e0b2-41e2-b8f0-dea3c96e6426"
+                    token = "credentialsJSON:a7e7526c-7195-4790-bbb6-9fb4692f92d0"
                 }
                 filterAuthorRole = PullRequests.GitHubRoleFilter.EVERYBODY
             }
@@ -102,7 +105,7 @@ class AggregatorBuild(tests: Collection<BuildType>) : BuildType({
             publisher = github {
                 githubUrl = "https://api.github.com"
                 authType = personalToken {
-                    token = "credentialsJSON:48af6e38-536d-4acb-ae2d-2fba57b6f3db"
+                    token = "credentialsJSON:a7e7526c-7195-4790-bbb6-9fb4692f92d0"
                 }
             }
             param("github_oauth_user", "")
@@ -231,7 +234,7 @@ class TestBuild(val os: String, val arch: String, version: String, buildId: Abso
             vcsRootExtId = "${DslContext.settingsRoot.id}"
             provider = github {
                 authType = token {
-                    token = "credentialsJSON:5dc93081-e0b2-41e2-b8f0-dea3c96e6426"
+                    token = "credentialsJSON:a7e7526c-7195-4790-bbb6-9fb4692f92d0"
                 }
                 filterAuthorRole = PullRequests.GitHubRoleFilter.EVERYBODY
             }

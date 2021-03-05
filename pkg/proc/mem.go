@@ -89,27 +89,28 @@ const fakeAddress = 0xbeef0000
 // memory.
 type compositeMemory struct {
 	realmem MemoryReadWriter
+	arch    *Arch
 	regs    op.DwarfRegisters
 	pieces  []op.Piece
 	data    []byte
 }
 
-func newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters, pieces []op.Piece) (*compositeMemory, error) {
-	cmem := &compositeMemory{realmem: mem, regs: regs, pieces: pieces, data: []byte{}}
-	for _, piece := range pieces {
+func newCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters, pieces []op.Piece) (*compositeMemory, error) {
+	cmem := &compositeMemory{realmem: mem, arch: arch, regs: regs, pieces: pieces, data: []byte{}}
+	for i := range pieces {
+		piece := &pieces[i]
 		if piece.IsRegister {
 			reg := regs.Bytes(piece.RegNum)
-			sz := piece.Size
-			if sz == 0 && len(pieces) == 1 {
-				sz = len(reg)
+			if piece.Size == 0 && len(pieces) == 1 {
+				piece.Size = len(reg)
 			}
-			if sz > len(reg) {
+			if piece.Size > len(reg) {
 				if regs.FloatLoadError != nil {
-					return nil, fmt.Errorf("could not read %d bytes from register %d (size: %d), also error loading floating point registers: %v", sz, piece.RegNum, len(reg), regs.FloatLoadError)
+					return nil, fmt.Errorf("could not read %d bytes from register %d (size: %d), also error loading floating point registers: %v", piece.Size, piece.RegNum, len(reg), regs.FloatLoadError)
 				}
-				return nil, fmt.Errorf("could not read %d bytes from register %d (size: %d)", sz, piece.RegNum, len(reg))
+				return nil, fmt.Errorf("could not read %d bytes from register %d (size: %d)", piece.Size, piece.RegNum, len(reg))
 			}
-			cmem.data = append(cmem.data, reg[:sz]...)
+			cmem.data = append(cmem.data, reg[:piece.Size]...)
 		} else {
 			buf := make([]byte, piece.Size)
 			mem.ReadMemory(buf, uint64(piece.Addr))
@@ -129,8 +130,41 @@ func (mem *compositeMemory) ReadMemory(data []byte, addr uint64) (int, error) {
 }
 
 func (mem *compositeMemory) WriteMemory(addr uint64, data []byte) (int, error) {
-	//TODO(aarzilli): implement
-	return 0, errors.New("can't write composite memory")
+	addr -= fakeAddress
+	if addr >= uint64(len(mem.data)) || addr+uint64(len(data)) > uint64(len(mem.data)) {
+		return 0, errors.New("write out of bounds")
+	}
+	if mem.regs.ChangeFunc == nil {
+		return 0, errors.New("can not write registers")
+	}
+
+	copy(mem.data[addr:], data)
+
+	curAddr := uint64(0)
+	donesz := 0
+	for _, piece := range mem.pieces {
+		if curAddr < (addr+uint64(len(data))) && addr < (curAddr+uint64(piece.Size)) {
+			// changed memory interval overlaps current piece
+			pieceMem := mem.data[curAddr : curAddr+uint64(piece.Size)]
+
+			if piece.IsRegister {
+				err := mem.regs.ChangeFunc(piece.RegNum, op.DwarfRegisterFromBytes(pieceMem))
+				if err != nil {
+					return donesz, err
+				}
+			} else {
+				n, err := mem.realmem.WriteMemory(uint64(piece.Addr), pieceMem)
+				if err != nil {
+					return donesz + n, err
+				}
+
+			}
+			donesz += piece.Size
+		}
+		curAddr += uint64(piece.Size)
+	}
+
+	return len(data), nil
 }
 
 // DereferenceMemory returns a MemoryReadWriter that can read and write the

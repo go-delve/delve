@@ -809,7 +809,7 @@ func (bi *BinaryInfo) LoadImageFromData(dwdata *dwarf.Data, debugFrameBytes, deb
 	image.dwarfTreeCache, _ = simplelru.NewLRU(dwarfTreeCacheSize, nil)
 
 	if debugFrameBytes != nil {
-		bi.frameEntries = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugFrameBytes), 0, bi.Arch.PtrSize())
+		bi.frameEntries, _ = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugFrameBytes), 0, bi.Arch.PtrSize(), 0)
 	}
 
 	image.loclist2 = loclist.NewDwarf2Reader(debugLocBytes, bi.Arch.PtrSize())
@@ -1007,6 +1007,38 @@ func (bi *BinaryInfo) funcToImage(fn *Function) *Image {
 		return bi.Images[0]
 	}
 	return fn.cu.image
+}
+
+// parseDebugFrameGeneral parses a debug_frame and a eh_frame section.
+// At least one of the two must be present and parsed correctly, if
+// debug_frame is present it must be parsable correctly.
+func (bi *BinaryInfo) parseDebugFrameGeneral(image *Image, debugFrameBytes []byte, debugFrameName string, debugFrameErr error, ehFrameBytes []byte, ehFrameAddr uint64, ehFrameName string, byteOrder binary.ByteOrder) {
+	if debugFrameBytes == nil && ehFrameBytes == nil {
+		image.setLoadError("could not get %s section: %v", debugFrameName, debugFrameErr)
+		return
+	}
+
+	if debugFrameBytes != nil {
+		fe, err := frame.Parse(debugFrameBytes, byteOrder, image.StaticBase, bi.Arch.PtrSize(), 0)
+		if err != nil {
+			image.setLoadError("could not parse %s section: %v", debugFrameName, err)
+			return
+		}
+		bi.frameEntries = bi.frameEntries.Append(fe)
+	}
+
+	if ehFrameBytes != nil && ehFrameAddr > 0 {
+		fe, err := frame.Parse(ehFrameBytes, byteOrder, image.StaticBase, bi.Arch.PtrSize(), ehFrameAddr)
+		if err != nil {
+			if debugFrameBytes == nil {
+				image.setLoadError("could not parse %s section: %v", ehFrameName, err)
+				return
+			}
+			bi.logger.Warnf("could not parse %s section: %v", ehFrameName, err)
+			return
+		}
+		bi.frameEntries = bi.frameEntries.Append(fe)
+	}
 }
 
 // ELF ///////////////////////////////////////////////////////////////
@@ -1207,13 +1239,16 @@ func (bi *BinaryInfo) loadSymbolName(image *Image, file *elf.File, wg *sync.Wait
 func (bi *BinaryInfo) parseDebugFrameElf(image *Image, exe *elf.File, debugInfoBytes []byte, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	debugFrameData, err := godwarf.GetDebugSectionElf(exe, "frame")
-	if err != nil {
-		image.setLoadError("could not get .debug_frame section: %v", err)
-		return
+	debugFrameData, debugFrameErr := godwarf.GetDebugSectionElf(exe, "frame")
+	ehFrameSection := exe.Section(".eh_frame")
+	var ehFrameData []byte
+	var ehFrameAddr uint64
+	if ehFrameSection != nil {
+		ehFrameAddr = ehFrameSection.Addr
+		ehFrameData, _ = ehFrameSection.Data()
 	}
 
-	bi.frameEntries = bi.frameEntries.Append(frame.Parse(debugFrameData, frame.DwarfEndian(debugInfoBytes), image.StaticBase, bi.Arch.PtrSize()))
+	bi.parseDebugFrameGeneral(image, debugFrameData, ".debug_frame", debugFrameErr, ehFrameData, ehFrameAddr, ".eh_frame", frame.DwarfEndian(debugInfoBytes))
 }
 
 func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.WaitGroup) {
@@ -1363,12 +1398,7 @@ func (bi *BinaryInfo) parseDebugFramePE(image *Image, exe *pe.File, debugInfoByt
 	defer wg.Done()
 
 	debugFrameBytes, err := godwarf.GetDebugSectionPE(exe, "frame")
-	if err != nil {
-		image.setLoadError("could not get .debug_frame section: %v", err)
-		return
-	}
-
-	bi.frameEntries = bi.frameEntries.Append(frame.Parse(debugFrameBytes, frame.DwarfEndian(debugInfoBytes), image.StaticBase, bi.Arch.PtrSize()))
+	bi.parseDebugFrameGeneral(image, debugFrameBytes, ".debug_frame", err, nil, 0, "", frame.DwarfEndian(debugInfoBytes))
 }
 
 // Borrowed from https://golang.org/src/cmd/internal/objfile/pe.go
@@ -1453,13 +1483,16 @@ func (bi *BinaryInfo) setGStructOffsetMacho() {
 func (bi *BinaryInfo) parseDebugFrameMacho(image *Image, exe *macho.File, debugInfoBytes []byte, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	debugFrameBytes, err := godwarf.GetDebugSectionMacho(exe, "frame")
-	if err != nil {
-		image.setLoadError("could not get __debug_frame section: %v", err)
-		return
+	debugFrameBytes, debugFrameErr := godwarf.GetDebugSectionMacho(exe, "frame")
+	ehFrameSection := exe.Section("__eh_frame")
+	var ehFrameBytes []byte
+	var ehFrameAddr uint64
+	if ehFrameSection != nil {
+		ehFrameAddr = ehFrameSection.Addr
+		ehFrameBytes, _ = ehFrameSection.Data()
 	}
 
-	bi.frameEntries = bi.frameEntries.Append(frame.Parse(debugFrameBytes, frame.DwarfEndian(debugInfoBytes), image.StaticBase, bi.Arch.PtrSize()))
+	bi.parseDebugFrameGeneral(image, debugFrameBytes, "__debug_frame", debugFrameErr, ehFrameBytes, ehFrameAddr, "__eh_frame", frame.DwarfEndian(debugInfoBytes))
 }
 
 // Do not call this function directly it isn't able to deal correctly with package paths

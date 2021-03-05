@@ -80,6 +80,7 @@ import (
 	"golang.org/x/arch/arm64/arm64asm"
 	"golang.org/x/arch/x86/x86asm"
 
+	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/elfwriter"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
@@ -1744,7 +1745,7 @@ func (t *gdbThread) SetCurrentBreakpoint(adjustPC bool) error {
 	pc := regs.PC()
 	if bp, ok := t.p.FindBreakpoint(pc); ok {
 		if t.regs.PC() != bp.Addr {
-			if err := t.SetPC(bp.Addr); err != nil {
+			if err := t.setPC(bp.Addr); err != nil {
 				return err
 			}
 		}
@@ -1769,13 +1770,6 @@ func (regs *gdbRegisters) setPC(value uint64) {
 
 func (regs *gdbRegisters) SP() uint64 {
 	return binary.LittleEndian.Uint64(regs.regs[regnameSP].value)
-}
-func (regs *gdbRegisters) setSP(value uint64) {
-	binary.LittleEndian.PutUint64(regs.regs[regnameSP].value, value)
-}
-
-func (regs *gdbRegisters) setDX(value uint64) {
-	binary.LittleEndian.PutUint64(regs.regs[regnameDX].value, value)
 }
 
 func (regs *gdbRegisters) BP() uint64 {
@@ -2180,7 +2174,7 @@ func (r *gdbRegisters) FloatLoadError() error {
 }
 
 // SetPC will set the value of the PC register to the given value.
-func (t *gdbThread) SetPC(pc uint64) error {
+func (t *gdbThread) setPC(pc uint64) error {
 	_, _ = t.Registers() // Registes must be loaded first
 	t.regs.setPC(pc)
 	if t.p.gcmdok {
@@ -2190,30 +2184,26 @@ func (t *gdbThread) SetPC(pc uint64) error {
 	return t.p.conn.writeRegister(t.strID, reg.regnum, reg.value)
 }
 
-// SetSP will set the value of the SP register to the given value.
-func (t *gdbThread) SetSP(sp uint64) error {
-	_, _ = t.Registers() // Registes must be loaded first
-	t.regs.setSP(sp)
-	if t.p.gcmdok {
-		return t.p.conn.writeRegisters(t.strID, t.regs.buf)
+// SetReg will change the value of a list of registers
+func (t *gdbThread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
+	regName, _, _ := t.p.bi.Arch.DwarfRegisterToString(int(regNum), nil)
+	regName = strings.ToLower(regName)
+	_, _ = t.Registers() // Registers must be loaded first
+	gdbreg, ok := t.regs.regs[regName]
+	if !ok && strings.HasPrefix(regName, "xmm") {
+		// XMMn and YMMn are the same amd64 register (in different sizes), if we
+		// don't find XMMn try YMMn instead.
+		gdbreg, ok = t.regs.regs["y"+regName[1:]]
 	}
-	reg := t.regs.regs[regnameSP]
-	return t.p.conn.writeRegister(t.strID, reg.regnum, reg.value)
-}
-
-// SetDX will set the value of the DX register to the given value.
-func (t *gdbThread) SetDX(dx uint64) error {
-	if t.p.bi.Arch.Name == "arm64" {
-		return fmt.Errorf("not supported")
+	if !ok {
+		return fmt.Errorf("could not set register %s: not found", regName)
 	}
-
-	_, _ = t.Registers() // Registes must be loaded first
-	t.regs.setDX(dx)
-	if t.p.gcmdok {
-		return t.p.conn.writeRegisters(t.strID, t.regs.buf)
+	reg.FillBytes()
+	if len(reg.Bytes) != len(gdbreg.value) {
+		return fmt.Errorf("could not set register %s: wrong size, expected %d got %d", regName, len(gdbreg.value), len(reg.Bytes))
 	}
-	reg := t.regs.regs[regnameDX]
-	return t.p.conn.writeRegister(t.strID, reg.regnum, reg.value)
+	copy(gdbreg.value, reg.Bytes)
+	return t.p.conn.writeRegister(t.strID, gdbreg.regnum, gdbreg.value)
 }
 
 func (regs *gdbRegisters) Slice(floatingPoint bool) ([]proc.Register, error) {

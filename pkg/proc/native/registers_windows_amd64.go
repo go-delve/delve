@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"unsafe"
 
+	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/regnum"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/winutil"
 )
 
 // SetPC sets the RIP register to the value specified by `pc`.
-func (thread *nativeThread) SetPC(pc uint64) error {
+func (thread *nativeThread) setPC(pc uint64) error {
 	context := winutil.NewCONTEXT()
 	context.ContextFlags = _CONTEXT_ALL
 
@@ -23,8 +25,8 @@ func (thread *nativeThread) SetPC(pc uint64) error {
 	return _SetThreadContext(thread.os.hThread, context)
 }
 
-// SetSP sets the RSP register to the value specified by `sp`.
-func (thread *nativeThread) SetSP(sp uint64) error {
+// SetReg changes the value of the specified register.
+func (thread *nativeThread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
 	context := winutil.NewCONTEXT()
 	context.ContextFlags = _CONTEXT_ALL
 
@@ -33,21 +35,60 @@ func (thread *nativeThread) SetSP(sp uint64) error {
 		return err
 	}
 
-	context.Rsp = sp
+	var p *uint64
 
-	return _SetThreadContext(thread.os.hThread, context)
-}
-
-func (thread *nativeThread) SetDX(dx uint64) error {
-	context := winutil.NewCONTEXT()
-	context.ContextFlags = _CONTEXT_ALL
-
-	err := _GetThreadContext(thread.os.hThread, context)
-	if err != nil {
-		return err
+	switch regNum {
+	case regnum.AMD64_Rax:
+		p = &context.Rax
+	case regnum.AMD64_Rbx:
+		p = &context.Rbx
+	case regnum.AMD64_Rcx:
+		p = &context.Rcx
+	case regnum.AMD64_Rdx:
+		p = &context.Rdx
+	case regnum.AMD64_Rsi:
+		p = &context.Rsi
+	case regnum.AMD64_Rdi:
+		p = &context.Rdi
+	case regnum.AMD64_Rbp:
+		p = &context.Rbp
+	case regnum.AMD64_Rsp:
+		p = &context.Rsp
+	case regnum.AMD64_R8:
+		p = &context.R8
+	case regnum.AMD64_R9:
+		p = &context.R9
+	case regnum.AMD64_R10:
+		p = &context.R10
+	case regnum.AMD64_R11:
+		p = &context.R11
+	case regnum.AMD64_R12:
+		p = &context.R12
+	case regnum.AMD64_R13:
+		p = &context.R13
+	case regnum.AMD64_R14:
+		p = &context.R14
+	case regnum.AMD64_R15:
+		p = &context.R15
+	case regnum.AMD64_Rip:
+		p = &context.Rip
 	}
 
-	context.Rdx = dx
+	if p != nil {
+		if reg.Bytes != nil && len(reg.Bytes) != 8 {
+			return fmt.Errorf("wrong number of bytes for register %s (%d)", regnum.AMD64ToName(regNum), len(reg.Bytes))
+		}
+		*p = reg.Uint64Val
+	} else {
+		if regNum < regnum.AMD64_XMM0 || regNum > regnum.AMD64_XMM0+15 {
+			return fmt.Errorf("can not set register %s", regnum.AMD64ToName(regNum))
+		}
+		reg.FillBytes()
+		if len(reg.Bytes) > 16 {
+			return fmt.Errorf("too many bytes when setting register %s", regnum.AMD64ToName(regNum))
+		}
+		copy(context.FltSave.XmmRegisters[(regNum-regnum.AMD64_XMM0)*16:], reg.Bytes)
+	}
 
 	return _SetThreadContext(thread.os.hThread, context)
 }
