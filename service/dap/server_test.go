@@ -2584,20 +2584,19 @@ func TestBadLaunchRequests(t *testing.T) {
 
 		// Skip detailed message checks for potentially different OS-specific errors.
 		client.LaunchRequest("exec", fixture.Path+"_does_not_exist", stopOnEntry)
-		expectFailedToLaunch(client.ExpectErrorResponse(t))
+		expectFailedToLaunch(client.ExpectErrorResponse(t)) // No such file or directory
 
 		client.LaunchRequest("debug", fixture.Path+"_does_not_exist", stopOnEntry)
-		expectFailedToLaunch(client.ExpectErrorResponse(t)) // Build error
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t), "Failed to launch: Build error: exit status 1")
+
+		client.LaunchRequest("" /*debug by default*/, fixture.Path+"_does_not_exist", stopOnEntry)
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t), "Failed to launch: Build error: exit status 1")
 
 		client.LaunchRequest("exec", fixture.Source, stopOnEntry)
 		expectFailedToLaunch(client.ExpectErrorResponse(t)) // Not an executable
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "bad flags"})
-		expectFailedToLaunch(client.ExpectErrorResponse(t)) // Build error
-
-		client.LaunchRequest("", fixture.Path, stopOnEntry)
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
-			"Failed to launch: Build error: exit status 1")
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t), "Failed to launch: Build error: exit status 1")
 
 		// We failed to launch the program. Make sure shutdown still works.
 		client.DisconnectRequest()
