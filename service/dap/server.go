@@ -2522,34 +2522,29 @@ func (s *Server) onRestartRequest(request *dap.RestartRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onStepBackRequest sends a not-yet-implemented error response.
-// Capability 'supportsStepBack' is not set 'initialize' response.
+// onStepBackRequest performs a ReverseNext command call, returning a NextResponse.
 func (s *Server) onStepBackRequest(request *dap.StepBackRequest) {
 	isRecording, _ := s.debugger.Recorded()
 	if !isRecording {
 		s.sendErrorResponse(request.Request, UnableToContinue, "Unsupported command",
 			fmt.Sprintf("cannot process '%s' request, target is not a recording", request.Command))
 	}
-	s.sendNotYetImplementedErrorResponse(request.Request)
+	s.send(&dap.NextResponse{Response: *newResponse(request.Request)})
+	s.doCommand(api.ReverseNext)
 }
 
-// onReverseContinueRequest performs a rewind command call upt to the previous
-// breakpoint or exiting the program, as defined per the rewind() spec
+// onReverseContinueRequest performs a rewind command call up to the previous
+// breakpoint or the frame zero of the program, (dependant on Rewind/rr implementation)
 func (s *Server) onReverseContinueRequest(request *dap.ReverseContinueRequest) {
 	isRecording, path := s.debugger.Recorded()
 	if !isRecording {
 		s.sendErrorResponse(request.Request, UnableToContinue, "Unsupported command",
 			fmt.Sprintf("cannot process '%s' request, target '%s' is not a recording", request.Command, path))
 	}
-	state, _ := s.debugger.State(/*nowait*/ true)
-	s.debugger.Command(&api.DebuggerCommand{
-		Name:                 api.Rewind,
-		ThreadID:             state.CurrentThread.ID,
-		GoroutineID:          request.Arguments.ThreadId,
-		ReturnInfoLoadConfig: nil,
-		Expr:                 "",
-		UnsafeCall:           false,
-	})
+	s.send(&dap.ContinueResponse{
+		Response: *newResponse(request.Request),
+		Body:     dap.ContinueResponseBody{AllThreadsContinued: true}})
+	s.doCommand(api.Rewind)
 }
 
 // computeEvaluateName finds the named child, and computes its evaluate name.
