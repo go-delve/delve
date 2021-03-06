@@ -704,6 +704,7 @@ func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
 	if err != nil {
 		bi.Images[len(bi.Images)-1].loadErr = err
 	}
+	bi.macOSDebugFrameBugWorkaround()
 	return err
 }
 
@@ -1493,6 +1494,84 @@ func (bi *BinaryInfo) parseDebugFrameMacho(image *Image, exe *macho.File, debugI
 	}
 
 	bi.parseDebugFrameGeneral(image, debugFrameBytes, "__debug_frame", debugFrameErr, ehFrameBytes, ehFrameAddr, "__eh_frame", frame.DwarfEndian(debugInfoBytes))
+}
+
+// macOSDebugFrameBugWorkaround applies a workaround for:
+//  https://github.com/golang/go/issues/25841
+// It finds the Go function with the lowest entry point and the first
+// debug_frame FDE, calculates the difference between the start of the
+// function and the start of the FDE and sums it to all debug_frame FDEs.
+// A number of additional checks are performed to make sure we don't ruin
+// executables unaffected by this bug.
+func (bi *BinaryInfo) macOSDebugFrameBugWorkaround() {
+	//TODO: log extensively because of bugs in the field
+	if bi.GOOS != "darwin" || bi.Arch.Name != "arm64" {
+		return
+	}
+	if len(bi.Images) > 1 {
+		// Only do this for the first executable, but it might work for plugins as
+		// well if we had a way to distinguish where entries in bi.frameEntries
+		// come from
+		return
+	}
+	exe, ok := bi.Images[0].closer.(*macho.File)
+	if !ok {
+		return
+	}
+	if exe.Flags&macho.FlagPIE == 0 {
+		bi.logger.Infof("debug_frame workaround not needed: not a PIE (%#x)", exe.Flags)
+		return
+	}
+
+	// Find first Go function (first = lowest entry point)
+	var fn *Function
+	for i := range bi.Functions {
+		if bi.Functions[i].cu.isgo && bi.Functions[i].Entry > 0 {
+			fn = &bi.Functions[i]
+			break
+		}
+	}
+	if fn == nil {
+		bi.logger.Warn("debug_frame workaround not applied: could not find a Go function")
+		return
+	}
+
+	if fde, _ := bi.frameEntries.FDEForPC(fn.Entry); fde != nil {
+		// Function is covered, no need to apply workaround
+		bi.logger.Warnf("debug_frame workaround not applied: function %s (at %#x) covered by %#x-%#x", fn.Name, fn.Entry, fde.Begin(), fde.End())
+		return
+	}
+
+	// Find lowest FDE in debug_frame
+	var fde *frame.FrameDescriptionEntry
+	for i := range bi.frameEntries {
+		if bi.frameEntries[i].CIE.CIE_id == ^uint32(0) {
+			fde = bi.frameEntries[i]
+			break
+		}
+	}
+
+	if fde == nil {
+		bi.logger.Warnf("debug_frame workaround not applied because there are no debug_frame entries (%d)", len(bi.frameEntries))
+		return
+	}
+
+	fnsize := fn.End - fn.Entry
+
+	if fde.End()-fde.Begin() != fnsize || fde.Begin() > fn.Entry {
+		bi.logger.Warnf("debug_frame workaround not applied: function %s (at %#x-%#x) has a different size than the first FDE (%#x-%#x) (or the FDE starts after the function)", fn.Name, fn.Entry, fn.End, fde.Begin(), fde.End())
+		return
+	}
+
+	delta := fn.Entry - fde.Begin()
+
+	bi.logger.Infof("applying debug_frame workaround +%#x: function %s (at %#x-%#x) and FDE %#x-%#x", delta, fn.Name, fn.Entry, fn.End, fde.Begin(), fde.End())
+
+	for i := range bi.frameEntries {
+		if bi.frameEntries[i].CIE.CIE_id == ^uint32(0) {
+			bi.frameEntries[i].Translate(delta)
+		}
+	}
 }
 
 // Do not call this function directly it isn't able to deal correctly with package paths
