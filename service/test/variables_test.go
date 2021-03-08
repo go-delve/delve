@@ -446,6 +446,7 @@ func TestLocalVariables(t *testing.T) {
 				{"mp", true, "map[int]interface {} [1: 42, 2: 43, ]", "", "map[int]interface {}", nil},
 				{"ms", true, "main.Nest {Level: 0, Nest: *main.Nest {Level: 1, Nest: *(*main.Nest)…", "", "main.Nest", nil},
 				{"neg", true, "-1", "", "int", nil},
+				{"ni", true, "[]interface {} len: 1, cap: 1, [[]interface {} len: 1, cap: 1, [*(*interface {})…", "", "[]interface {}", nil},
 				{"u16", true, "65535", "", "uint16", nil},
 				{"u32", true, "4294967295", "", "uint32", nil},
 				{"u64", true, "18446744073709551615", "", "uint64", nil},
