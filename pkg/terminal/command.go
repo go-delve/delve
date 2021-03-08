@@ -152,12 +152,17 @@ A list of file redirections can be specified after the new argument list to over
 	2>error.txt	redirects the standard error of the target process to error.txt
 `},
 		{aliases: []string{"rebuild"}, group: runCmds, cmdFn: c.rebuild, allowedPrefixes: revPrefix, helpMsg: "Rebuild the target executable and restarts it. It does not work if the executable was not built by delve."},
-		{aliases: []string{"continue", "c"}, group: runCmds, cmdFn: c.cont, allowedPrefixes: revPrefix, helpMsg: "Run until breakpoint or program termination."},
+		{aliases: []string{"continue", "c"}, group: runCmds, cmdFn: c.cont, allowedPrefixes: revPrefix, helpMsg: `Run until breakpoint or program termination.
+
+	continue [<linespec>]
+
+Optional linespec argument allows you to set a temporary breakpoint.
+`},
 		{aliases: []string{"step", "s"}, group: runCmds, cmdFn: c.step, allowedPrefixes: revPrefix, helpMsg: "Single step through program."},
 		{aliases: []string{"step-instruction", "si"}, group: runCmds, allowedPrefixes: revPrefix, cmdFn: c.stepInstruction, helpMsg: "Single step a single cpu instruction."},
 		{aliases: []string{"next", "n"}, group: runCmds, cmdFn: c.next, allowedPrefixes: revPrefix, helpMsg: `Step over to next source line.
 
-	 next [count]
+	next [count]
 
 Optional [count] argument allows you to skip multiple lines.
 `},
@@ -1191,6 +1196,19 @@ func (c *Commands) rebuild(t *Term, ctx callContext, args string) error {
 }
 
 func (c *Commands) cont(t *Term, ctx callContext, args string) error {
+	if args != "" {
+		tmp, err := setBreakpoint(t, ctx, false, args)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			for _, bp := range tmp {
+				if _, err := t.client.ClearBreakpoint(bp.ID); err != nil {
+					fmt.Printf("failed to clear temporary breakpoint: %d", bp.ID)
+				}
+			}
+		}()
+	}
 	if ctx.Prefix == revPrefix {
 		return c.rewind(t, ctx, args)
 	}
@@ -1497,7 +1515,7 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
-func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) error {
+func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]*api.Breakpoint, error) {
 	args := split2PartsBySpace(argstr)
 
 	requestedBp := &api.Breakpoint{}
@@ -1513,23 +1531,24 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) err
 			spec = argstr
 		}
 	default:
-		return fmt.Errorf("address required")
+		return nil, fmt.Errorf("address required")
 	}
 
 	requestedBp.Tracepoint = tracepoint
 	locs, err := t.client.FindLocation(ctx.Scope, spec, true, t.substitutePathRules())
 	if err != nil {
 		if requestedBp.Name == "" {
-			return err
+			return nil, err
 		}
 		requestedBp.Name = ""
 		spec = argstr
 		var err2 error
 		locs, err2 = t.client.FindLocation(ctx.Scope, spec, true, t.substitutePathRules())
 		if err2 != nil {
-			return err
+			return nil, err
 		}
 	}
+	created := []*api.Breakpoint{}
 	for _, loc := range locs {
 		requestedBp.Addr = loc.PC
 		requestedBp.Addrs = loc.PCs
@@ -1539,8 +1558,9 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) err
 
 		bp, err := t.client.CreateBreakpoint(requestedBp)
 		if err != nil {
-			return err
+			return nil, err
 		}
+		created = append(created, bp)
 
 		fmt.Printf("%s set at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
 	}
@@ -1548,7 +1568,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) err
 	var shouldSetReturnBreakpoints bool
 	loc, err := locspec.Parse(spec)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	switch t := loc.(type) {
 	case *locspec.NormalLocationSpec:
@@ -1563,7 +1583,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) err
 			}
 			addrs, err := t.client.(*rpc2.RPCClient).FunctionReturnLocations(locs[0].Function.Name())
 			if err != nil {
-				return err
+				return nil, err
 			}
 			for j := range addrs {
 				_, err = t.client.CreateBreakpoint(&api.Breakpoint{
@@ -1573,20 +1593,22 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) err
 					LoadArgs:    &ShortLoadConfig,
 				})
 				if err != nil {
-					return err
+					return nil, err
 				}
 			}
 		}
 	}
-	return nil
+	return created, nil
 }
 
 func breakpoint(t *Term, ctx callContext, args string) error {
-	return setBreakpoint(t, ctx, false, args)
+	_, err := setBreakpoint(t, ctx, false, args)
+	return err
 }
 
 func tracepoint(t *Term, ctx callContext, args string) error {
-	return setBreakpoint(t, ctx, true, args)
+	_, err := setBreakpoint(t, ctx, true, args)
+	return err
 }
 
 func edit(t *Term, ctx callContext, args string) error {

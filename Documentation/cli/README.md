@@ -206,6 +206,11 @@ Defines <alias> as an alias to <command> or removes an alias.
 ## continue
 Run until breakpoint or program termination.
 
+	continue [<linespec>]
+
+Optional linespec argument allows you to set a temporary breakpoint.
+
+
 Aliases: c
 
 ## deferred
@@ -380,7 +385,7 @@ If regex is specified only local variables with a name matching it will be retur
 ## next
 Step over to next source line.
 
-	 next [count]
+	next [count]
 
 Optional [count] argument allows you to skip multiple lines.
 
