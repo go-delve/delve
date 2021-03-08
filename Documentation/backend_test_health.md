@@ -7,6 +7,8 @@ Tests skipped by each supported backend:
 	* 2 broken
 	* 1 broken - cgo stacktraces
 	* 1 broken - global variable symbolication
+* darwin/arm64 skipped = 0.68% (1/148)
+	* 1 broken - cgo stacktraces
 * darwin/lldb skipped = 0.68% (1/148)
 	* 1 upstream issue
 * freebsd skipped = 8.1% (12/148)

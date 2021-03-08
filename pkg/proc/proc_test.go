@@ -837,6 +837,8 @@ func TestCGONext(t *testing.T) {
 	}
 	protest.MustHaveCgo(t)
 
+	skipOn(t, "broken - cgo stacktraces", "darwin", "arm64")
+
 	protest.AllowRecording(t)
 	withTestProcess("cgotest", t, func(p *proc.Target, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
@@ -943,6 +945,8 @@ func stackMatch(stack []loc, locations []proc.Stackframe, skipRuntime bool) bool
 }
 
 func TestStacktraceGoroutine(t *testing.T) {
+	skipOn(t, "broken - cgo stacktraces", "darwin", "arm64")
+
 	mainStack := []loc{{14, "main.stacktraceme"}, {29, "main.main"}}
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
 		mainStack[0].line = 15

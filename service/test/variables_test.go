@@ -1564,6 +1564,10 @@ func TestCgoEval(t *testing.T) {
 		{"v_align_check[90]", false, "align_check {a: 90, b: 90}", "align_check {a: 90, b: 90}", "align_check", nil},
 	}
 
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
+		t.Skip("cgo doesn't work on darwin/arm64")
+	}
+
 	protest.AllowRecording(t)
 	withTestProcess("testvariablescgo/", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue() returned an error")
