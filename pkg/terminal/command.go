@@ -156,7 +156,12 @@ A list of file redirections can be specified after the new argument list to over
 
 	continue [<linespec>]
 
-Optional linespec argument allows you to set a temporary breakpoint.
+Optional linespec argument allows you to continue until a specific location is reached. The program will halt if a breakpoint is hit before reaching the specified location.
+
+For example:
+
+	continue main.main
+	continue encoding/json.Marshal
 `},
 		{aliases: []string{"step", "s"}, group: runCmds, cmdFn: c.step, allowedPrefixes: revPrefix, helpMsg: "Single step through program."},
 		{aliases: []string{"step-instruction", "si"}, group: runCmds, allowedPrefixes: revPrefix, cmdFn: c.stepInstruction, helpMsg: "Single step a single cpu instruction."},

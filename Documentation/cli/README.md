@@ -208,7 +208,12 @@ Run until breakpoint or program termination.
 
 	continue [<linespec>]
 
-Optional linespec argument allows you to set a temporary breakpoint.
+Optional linespec argument allows you to continue until a specific location is reached. The program will halt if a breakpoint is hit before reaching the specified location.
+
+For example:
+
+	continue main.main
+	continue encoding/json.Marshal
 
 
 Aliases: c
