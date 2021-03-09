@@ -322,7 +322,9 @@ func setAsyncPreemptOff(p *Target, v int64) {
 	p.asyncPreemptOff, _ = constant.Int64Val(asyncpreemptoffv.Value)
 
 	err = scope.setValue(asyncpreemptoffv, newConstant(constant.MakeInt64(v), scope.Mem), "")
-	logger.Warnf("could not set asyncpreemptoff %v", err)
+	if err != nil {
+		logger.Warnf("could not set asyncpreemptoff %v", err)
+	}
 }
 
 // createUnrecoveredPanicBreakpoint creates the unrecoverable-panic breakpoint.

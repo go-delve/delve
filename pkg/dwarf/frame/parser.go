@@ -84,7 +84,7 @@ func parselength(ctx *parseContext) parsefunc {
 	ctx.length -= 4 // take off the length of the CIE id / CIE pointer.
 
 	if ctx.cieEntry(cieid) {
-		ctx.common = &CommonInformationEntry{Length: ctx.length, staticBase: ctx.staticBase}
+		ctx.common = &CommonInformationEntry{Length: ctx.length, staticBase: ctx.staticBase, CIE_id: cieid}
 		ctx.ciemap[start] = ctx.common
 		return parseCIE
 	}

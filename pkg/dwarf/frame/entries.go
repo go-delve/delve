@@ -49,6 +49,11 @@ func (fde *FrameDescriptionEntry) End() uint64 {
 	return fde.begin + fde.size
 }
 
+// Translate moves the beginning of fde forward by delta.
+func (fde *FrameDescriptionEntry) Translate(delta uint64) {
+	fde.begin += delta
+}
+
 // EstablishFrame set up frame for the given PC.
 func (fde *FrameDescriptionEntry) EstablishFrame(pc uint64) *FrameContext {
 	return executeDwarfProgramUntilPC(fde, pc)
