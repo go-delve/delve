@@ -1660,6 +1660,9 @@ func TestSetBreakpoint(t *testing.T) {
 func TestLaunchSubstitutePath(t *testing.T) {
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		localDirPath := filepath.Join(string(filepath.Separator), "path", "that", "does", "not", "exist")
+		if runtime.GOOS == "windows" {
+			localDirPath = "C:" + localDirPath
+		}
 		localFilePath := filepath.Join(localDirPath, "loopprog.go")
 		debuggerDirPath := filepath.Dir(fixture.Source)
 
@@ -1692,6 +1695,9 @@ func TestAttachSubstitutePath(t *testing.T) {
 	}
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		localDirPath := filepath.Join(string(filepath.Separator), "path", "that", "does", "not", "exist")
+		if runtime.GOOS == "windows" {
+			localDirPath = "C:" + localDirPath
+		}
 		localFilePath := filepath.Join(localDirPath, "loopprog.go")
 		debuggerDirPath := filepath.Dir(fixture.Source)
 
