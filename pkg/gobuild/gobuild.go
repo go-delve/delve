@@ -16,12 +16,15 @@ import (
 // Remove the file at path and issue a warning to stderr if this fails.
 // This can be used to remove the temporary binary generated for the session.
 func Remove(path string) {
-	err := os.Remove(path)
-	// Open files can be removed on Unix, but not on Windows, where there also appears
-	// to be a delay in releasing the binary when the process exits. So we try again.
-	if err != nil && runtime.GOOS == "windows" {
-		time.Sleep(100 * time.Microsecond)
+	var err error
+	for i := 0; i < 20; i++ {
 		err = os.Remove(path)
+		// Open files can be removed on Unix, but not on Windows, where there also appears
+		// to be a delay in releasing the binary when the process exits. So we try again.
+		if err == nil || runtime.GOOS != "windows" {
+			break
+		}
+		time.Sleep(1 * time.Millisecond)
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not remove %v: %v\n", path, err)

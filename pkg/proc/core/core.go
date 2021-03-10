@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/go-delve/delve/pkg/elfwriter"
+	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/proc"
 )
 
@@ -369,6 +370,12 @@ func (t *thread) SetSP(uint64) error {
 // SetDX will always return an error, you cannot
 // change register values when debugging core files.
 func (t *thread) SetDX(uint64) error {
+	return ErrChangeRegisterCore
+}
+
+// ChangeRegs will always return an error, you cannot
+// change register values when debugging core files.
+func (t *thread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
 	return ErrChangeRegisterCore
 }
 

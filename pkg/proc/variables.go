@@ -1147,7 +1147,7 @@ func extractVarInfoFromEntry(bi *BinaryInfo, image *Image, regs op.DwarfRegister
 	if pieces != nil {
 		addr = fakeAddress
 		var cmem *compositeMemory
-		cmem, err = newCompositeMemory(mem, regs, pieces)
+		cmem, err = newCompositeMemory(mem, bi.Arch, regs, pieces)
 		if cmem != nil {
 			mem = cmem
 		}

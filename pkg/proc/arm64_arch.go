@@ -8,14 +8,8 @@ import (
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/regnum"
 	"golang.org/x/arch/arm64/arm64asm"
-)
-
-const (
-	arm64DwarfIPRegNum uint64 = 32
-	arm64DwarfSPRegNum uint64 = 31
-	arm64DwarfLRRegNum uint64 = 30
-	arm64DwarfBPRegNum uint64 = 29
 )
 
 var arm64BreakInstruction = []byte{0x0, 0x0, 0x20, 0xd4}
@@ -40,6 +34,8 @@ func ARM64Arch(goos string) *Arch {
 		inhibitStepInto:                  func(*BinaryInfo, uint64) bool { return false },
 		asmDecode:                        arm64AsmDecode,
 		usesLR:                           true,
+		PCRegNum:                         regnum.ARM64_PC,
+		SPRegNum:                         regnum.ARM64_SP,
 	}
 }
 
@@ -69,24 +65,24 @@ func arm64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Binary
 		// here).
 
 		return &frame.FrameContext{
-			RetAddrReg: arm64DwarfIPRegNum,
+			RetAddrReg: regnum.ARM64_PC,
 			Regs: map[uint64]frame.DWRule{
-				arm64DwarfIPRegNum: frame.DWRule{
+				regnum.ARM64_PC: frame.DWRule{
 					Rule:   frame.RuleOffset,
 					Offset: int64(-a.PtrSize()),
 				},
-				arm64DwarfBPRegNum: frame.DWRule{
+				regnum.ARM64_BP: frame.DWRule{
 					Rule:   frame.RuleOffset,
 					Offset: int64(-2 * a.PtrSize()),
 				},
-				arm64DwarfSPRegNum: frame.DWRule{
+				regnum.ARM64_SP: frame.DWRule{
 					Rule:   frame.RuleValOffset,
 					Offset: 0,
 				},
 			},
 			CFA: frame.DWRule{
 				Rule:   frame.RuleCFA,
-				Reg:    arm64DwarfBPRegNum,
+				Reg:    regnum.ARM64_BP,
 				Offset: int64(2 * a.PtrSize()),
 			},
 		}
@@ -113,17 +109,17 @@ func arm64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Binary
 	// so that we can use it to unwind the stack even when we encounter frames
 	// without descriptor entries.
 	// If there isn't a rule already we emit one.
-	if fctxt.Regs[arm64DwarfBPRegNum].Rule == frame.RuleUndefined {
-		fctxt.Regs[arm64DwarfBPRegNum] = frame.DWRule{
+	if fctxt.Regs[regnum.ARM64_BP].Rule == frame.RuleUndefined {
+		fctxt.Regs[regnum.ARM64_BP] = frame.DWRule{
 			Rule:   frame.RuleFramePointer,
-			Reg:    arm64DwarfBPRegNum,
+			Reg:    regnum.ARM64_BP,
 			Offset: 0,
 		}
 	}
-	if fctxt.Regs[arm64DwarfLRRegNum].Rule == frame.RuleUndefined {
-		fctxt.Regs[arm64DwarfLRRegNum] = frame.DWRule{
+	if fctxt.Regs[regnum.ARM64_LR].Rule == frame.RuleUndefined {
+		fctxt.Regs[regnum.ARM64_LR] = frame.DWRule{
 			Rule:   frame.RuleFramePointer,
-			Reg:    arm64DwarfLRRegNum,
+			Reg:    regnum.ARM64_LR,
 			Offset: 0,
 		}
 	}
@@ -317,8 +313,8 @@ var arm64NameToDwarf = func() map[string]int {
 	for i := 0; i <= 30; i++ {
 		r[fmt.Sprintf("x%d", i)] = i
 	}
-	r["pc"] = int(arm64DwarfIPRegNum)
-	r["lr"] = int(arm64DwarfLRRegNum)
+	r["pc"] = int(regnum.ARM64_PC)
+	r["lr"] = int(regnum.ARM64_LR)
 	r["sp"] = 31
 	for i := 0; i <= 31; i++ {
 		r[fmt.Sprintf("v%d", i)] = i + 64
@@ -327,7 +323,7 @@ var arm64NameToDwarf = func() map[string]int {
 }()
 
 func maxArm64DwarfRegister() int {
-	max := int(arm64DwarfIPRegNum)
+	max := int(regnum.ARM64_PC)
 	for i := range arm64DwarfToHardware {
 		if i > max {
 			max = i
@@ -339,11 +335,11 @@ func maxArm64DwarfRegister() int {
 func arm64RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.DwarfRegisters {
 	dregs := make([]*op.DwarfRegister, maxArm64DwarfRegister()+1)
 
-	dregs[arm64DwarfIPRegNum] = op.DwarfRegisterFromUint64(regs.PC())
-	dregs[arm64DwarfSPRegNum] = op.DwarfRegisterFromUint64(regs.SP())
-	dregs[arm64DwarfBPRegNum] = op.DwarfRegisterFromUint64(regs.BP())
+	dregs[regnum.ARM64_PC] = op.DwarfRegisterFromUint64(regs.PC())
+	dregs[regnum.ARM64_SP] = op.DwarfRegisterFromUint64(regs.SP())
+	dregs[regnum.ARM64_BP] = op.DwarfRegisterFromUint64(regs.BP())
 	if lr, err := regs.Get(int(arm64asm.X30)); err != nil {
-		dregs[arm64DwarfLRRegNum] = op.DwarfRegisterFromUint64(lr)
+		dregs[regnum.ARM64_LR] = op.DwarfRegisterFromUint64(lr)
 	}
 
 	for dwarfReg, asmReg := range arm64DwarfToHardware {
@@ -353,34 +349,26 @@ func arm64RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.DwarfR
 		}
 	}
 
-	dr := op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, arm64DwarfIPRegNum, arm64DwarfSPRegNum, arm64DwarfBPRegNum, arm64DwarfLRRegNum)
+	dr := op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, regnum.ARM64_PC, regnum.ARM64_SP, regnum.ARM64_BP, regnum.ARM64_LR)
 	dr.SetLoadMoreCallback(loadMoreDwarfRegistersFromSliceFunc(dr, regs, arm64NameToDwarf))
 	return *dr
 }
 
 func arm64AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op.DwarfRegisters {
-	dregs := make([]*op.DwarfRegister, arm64DwarfIPRegNum+1)
-	dregs[arm64DwarfIPRegNum] = op.DwarfRegisterFromUint64(pc)
-	dregs[arm64DwarfSPRegNum] = op.DwarfRegisterFromUint64(sp)
-	dregs[arm64DwarfBPRegNum] = op.DwarfRegisterFromUint64(bp)
-	dregs[arm64DwarfLRRegNum] = op.DwarfRegisterFromUint64(lr)
+	dregs := make([]*op.DwarfRegister, regnum.ARM64_PC+1)
+	dregs[regnum.ARM64_PC] = op.DwarfRegisterFromUint64(pc)
+	dregs[regnum.ARM64_SP] = op.DwarfRegisterFromUint64(sp)
+	dregs[regnum.ARM64_BP] = op.DwarfRegisterFromUint64(bp)
+	dregs[regnum.ARM64_LR] = op.DwarfRegisterFromUint64(lr)
 
-	return *op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, arm64DwarfIPRegNum, arm64DwarfSPRegNum, arm64DwarfBPRegNum, arm64DwarfLRRegNum)
+	return *op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, regnum.ARM64_PC, regnum.ARM64_SP, regnum.ARM64_BP, regnum.ARM64_LR)
 }
 
 func arm64DwarfRegisterToString(i int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
-	// see arm64DwarfToHardware table for explanation
-	switch {
-	case i <= 30:
-		name = fmt.Sprintf("X%d", i)
-	case i == 31:
-		name = "SP"
-	case i == 32:
-		name = "PC"
-	case i >= 64 && i <= 95:
-		name = fmt.Sprintf("V%d", i-64)
-	default:
-		name = fmt.Sprintf("unknown%d", i)
+	name = regnum.ARM64ToName(uint64(i))
+
+	if reg == nil {
+		return name, false, ""
 	}
 
 	if reg.Bytes != nil && name[0] == 'V' {

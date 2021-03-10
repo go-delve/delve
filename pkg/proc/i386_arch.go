@@ -3,15 +3,11 @@ package proc
 import (
 	"encoding/binary"
 	"fmt"
+	"strings"
+
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
-	"strings"
-)
-
-const (
-	i386DwarfIPRegNum uint64 = 8
-	i386DwarfSPRegNum uint64 = 4
-	i386DwarfBPRegNum uint64 = 5
+	"github.com/go-delve/delve/pkg/dwarf/regnum"
 )
 
 var i386BreakInstruction = []byte{0xCC}
@@ -36,6 +32,8 @@ func I386Arch(goos string) *Arch {
 		DwarfRegisterToString:            i386DwarfRegisterToString,
 		inhibitStepInto:                  i386InhibitStepInto,
 		asmDecode:                        i386AsmDecode,
+		PCRegNum:                         regnum.I386_Eip,
+		SPRegNum:                         regnum.I386_Esp,
 	}
 }
 
@@ -65,24 +63,24 @@ func i386FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryI
 		// here).
 
 		return &frame.FrameContext{
-			RetAddrReg: i386DwarfIPRegNum,
+			RetAddrReg: regnum.I386_Eip,
 			Regs: map[uint64]frame.DWRule{
-				i386DwarfIPRegNum: frame.DWRule{
+				regnum.I386_Eip: frame.DWRule{
 					Rule:   frame.RuleOffset,
 					Offset: int64(-i.PtrSize()),
 				},
-				i386DwarfBPRegNum: frame.DWRule{
+				regnum.I386_Ebp: frame.DWRule{
 					Rule:   frame.RuleOffset,
 					Offset: int64(-2 * i.PtrSize()),
 				},
-				i386DwarfSPRegNum: frame.DWRule{
+				regnum.I386_Esp: frame.DWRule{
 					Rule:   frame.RuleValOffset,
 					Offset: 0,
 				},
 			},
 			CFA: frame.DWRule{
 				Rule:   frame.RuleCFA,
-				Reg:    i386DwarfBPRegNum,
+				Reg:    regnum.I386_Ebp,
 				Offset: int64(2 * i.PtrSize()),
 			},
 		}
@@ -103,10 +101,10 @@ func i386FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryI
 	// so that we can use it to unwind the stack even when we encounter frames
 	// without descriptor entries.
 	// If there isn't i rule already we emit one.
-	if fctxt.Regs[i386DwarfBPRegNum].Rule == frame.RuleUndefined {
-		fctxt.Regs[i386DwarfBPRegNum] = frame.DWRule{
+	if fctxt.Regs[regnum.I386_Ebp].Rule == frame.RuleUndefined {
+		fctxt.Regs[regnum.I386_Ebp] = frame.DWRule{
 			Rule:   frame.RuleFramePointer,
-			Reg:    i386DwarfBPRegNum,
+			Reg:    regnum.I386_Ebp,
 			Offset: 0,
 		}
 	}
@@ -186,94 +184,28 @@ func i386RegSize(regnum uint64) int {
 	return 4
 }
 
-// The mapping between hardware registers and DWARF registers is specified
-// in the System V ABI Intel386 Architecture Processor Supplement page 25,
-// table 2.14
-// https://www.uclibc.org/docs/psABI-i386.pdf
-
-var i386DwarfToName = map[int]string{
-	0:  "Eax",
-	1:  "Ecx",
-	2:  "Edx",
-	3:  "Ebx",
-	4:  "Esp",
-	5:  "Ebp",
-	6:  "Esi",
-	7:  "Edi",
-	8:  "Eip",
-	9:  "Eflags",
-	11: "ST(0)",
-	12: "ST(1)",
-	13: "ST(2)",
-	14: "ST(3)",
-	15: "ST(4)",
-	16: "ST(5)",
-	17: "ST(6)",
-	18: "ST(7)",
-	21: "XMM0",
-	22: "XMM1",
-	23: "XMM2",
-	24: "XMM3",
-	25: "XMM4",
-	26: "XMM5",
-	27: "XMM6",
-	28: "XMM7",
-	40: "Es",
-	41: "Cs",
-	42: "Ss",
-	43: "Ds",
-	44: "Fs",
-	45: "Gs",
-}
-
-var i386NameToDwarf = func() map[string]int {
-	r := make(map[string]int)
-	for regNum, regName := range i386DwarfToName {
-		r[strings.ToLower(regName)] = regNum
-	}
-	r["eflags"] = 9
-	r["st0"] = 11
-	r["st1"] = 12
-	r["st2"] = 13
-	r["st3"] = 14
-	r["st4"] = 15
-	r["st5"] = 16
-	r["st6"] = 17
-	r["st7"] = 18
-	return r
-}()
-
-func maxI386DwarfRegister() int {
-	max := int(i386DwarfIPRegNum)
-	for i := range i386DwarfToName {
-		if i > max {
-			max = i
-		}
-	}
-	return max
-}
-
 func i386RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.DwarfRegisters {
-	dregs := initDwarfRegistersFromSlice(maxI386DwarfRegister(), regs, i386NameToDwarf)
-	dr := op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, i386DwarfIPRegNum, i386DwarfSPRegNum, i386DwarfBPRegNum, 0)
-	dr.SetLoadMoreCallback(loadMoreDwarfRegistersFromSliceFunc(dr, regs, i386NameToDwarf))
+	dregs := initDwarfRegistersFromSlice(regnum.I386MaxRegNum(), regs, regnum.I386NameToDwarf)
+	dr := op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, regnum.I386_Eip, regnum.I386_Esp, regnum.I386_Ebp, 0)
+	dr.SetLoadMoreCallback(loadMoreDwarfRegistersFromSliceFunc(dr, regs, regnum.I386NameToDwarf))
 
 	return *dr
 }
 
 func i386AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op.DwarfRegisters {
-	dregs := make([]*op.DwarfRegister, i386DwarfIPRegNum+1)
-	dregs[i386DwarfIPRegNum] = op.DwarfRegisterFromUint64(pc)
-	dregs[i386DwarfSPRegNum] = op.DwarfRegisterFromUint64(sp)
-	dregs[i386DwarfBPRegNum] = op.DwarfRegisterFromUint64(bp)
+	dregs := make([]*op.DwarfRegister, regnum.I386_Eip+1)
+	dregs[regnum.I386_Eip] = op.DwarfRegisterFromUint64(pc)
+	dregs[regnum.I386_Esp] = op.DwarfRegisterFromUint64(sp)
+	dregs[regnum.I386_Ebp] = op.DwarfRegisterFromUint64(bp)
 
-	return *op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, i386DwarfIPRegNum, i386DwarfSPRegNum, i386DwarfBPRegNum, 0)
+	return *op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, regnum.I386_Eip, regnum.I386_Esp, regnum.I386_Ebp, 0)
 }
 
 func i386DwarfRegisterToString(j int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
-	name, ok := i386DwarfToName[j]
-	if !ok {
-		name = fmt.Sprintf("unknown%d", j)
+	name = regnum.I386ToName(j)
+
+	if reg == nil {
+		return name, false, ""
 	}
 
 	switch n := strings.ToLower(name); n {

@@ -14,11 +14,12 @@ type DwarfRegisters struct {
 	ObjBase   int64
 	regs      []*DwarfRegister
 
-	ByteOrder binary.ByteOrder
-	PCRegNum  uint64
-	SPRegNum  uint64
-	BPRegNum  uint64
-	LRRegNum  uint64
+	ByteOrder  binary.ByteOrder
+	PCRegNum   uint64
+	SPRegNum   uint64
+	BPRegNum   uint64
+	LRRegNum   uint64
+	ChangeFunc RegisterChangeFunc
 
 	FloatLoadError   error // error produced when loading floating point registers
 	loadMoreCallback func()
@@ -28,6 +29,8 @@ type DwarfRegister struct {
 	Uint64Val uint64
 	Bytes     []byte
 }
+
+type RegisterChangeFunc func(regNum uint64, reg *DwarfRegister) error
 
 // NewDwarfRegisters returns a new DwarfRegisters object.
 func NewDwarfRegisters(staticBase uint64, regs []*DwarfRegister, byteOrder binary.ByteOrder, pcRegNum, spRegNum, bpRegNum, lrRegNum uint64) *DwarfRegisters {
@@ -151,4 +154,13 @@ func DwarfRegisterFromBytes(bytes []byte) *DwarfRegister {
 		}
 	}
 	return &DwarfRegister{Uint64Val: v, Bytes: bytes}
+}
+
+// FillBytes fills the Bytes slice of reg using Uint64Val.
+func (reg *DwarfRegister) FillBytes() {
+	if reg.Bytes != nil {
+		return
+	}
+	reg.Bytes = make([]byte, 8)
+	binary.LittleEndian.PutUint64(reg.Bytes, reg.Uint64Val)
 }

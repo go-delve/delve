@@ -2,16 +2,19 @@ package native
 
 import (
 	"fmt"
+	"syscall"
+	"unsafe"
 
 	sys "golang.org/x/sys/unix"
 
+	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/amd64util"
 	"github.com/go-delve/delve/pkg/proc/linutil"
 )
 
 // SetPC sets RIP to the value specified by 'pc'.
-func (thread *nativeThread) SetPC(pc uint64) error {
+func (thread *nativeThread) setPC(pc uint64) error {
 	ir, err := registers(thread)
 	if err != nil {
 		return err
@@ -22,29 +25,31 @@ func (thread *nativeThread) SetPC(pc uint64) error {
 	return err
 }
 
-// SetSP sets RSP to the value specified by 'sp'
-func (thread *nativeThread) SetSP(sp uint64) (err error) {
-	var ir proc.Registers
-	ir, err = registers(thread)
+// SetReg changes the value of the specified register.
+func (thread *nativeThread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
+	ir, err := registers(thread)
 	if err != nil {
 		return err
 	}
 	r := ir.(*linutil.AMD64Registers)
-	r.Regs.Rsp = sp
-	thread.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(thread.ID, (*sys.PtraceRegs)(r.Regs)) })
-	return
-}
-
-func (thread *nativeThread) SetDX(dx uint64) (err error) {
-	var ir proc.Registers
-	ir, err = registers(thread)
+	fpchanged, err := r.SetReg(regNum, reg)
 	if err != nil {
 		return err
 	}
-	r := ir.(*linutil.AMD64Registers)
-	r.Regs.Rdx = dx
-	thread.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(thread.ID, (*sys.PtraceRegs)(r.Regs)) })
-	return
+	thread.dbp.execPtraceFunc(func() {
+		err = sys.PtraceSetRegs(thread.ID, (*sys.PtraceRegs)(r.Regs))
+		if err != nil {
+			return
+		}
+		if fpchanged && r.Fpregset != nil && r.Fpregset.Xsave != nil {
+			iov := sys.Iovec{Base: &r.Fpregset.Xsave[0], Len: uint64(len(r.Fpregset.Xsave))}
+			_, _, err = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_SETREGSET, uintptr(thread.ID), _NT_X86_XSTATE, uintptr(unsafe.Pointer(&iov)), 0, 0)
+			if err == syscall.Errno(0) {
+				err = nil
+			}
+		}
+	})
+	return err
 }
 
 func registers(thread *nativeThread) (proc.Registers, error) {

@@ -8,12 +8,20 @@ import (
 	"io"
 )
 
+// ByteReaderWithLen is a io.ByteReader with a Len method. This interface is
+// satisified by both bytes.Buffer and bytes.Reader.
+type ByteReaderWithLen interface {
+	io.ByteReader
+	io.Reader
+	Len() int
+}
+
 // The Little Endian Base 128 format is defined in the DWARF v4 standard,
 // section 7.6, page 161 and following.
 
 // DecodeULEB128 decodes an unsigned Little Endian Base 128
 // represented number.
-func DecodeULEB128(buf *bytes.Buffer) (uint64, uint32) {
+func DecodeULEB128(buf ByteReaderWithLen) (uint64, uint32) {
 	var (
 		result uint64
 		shift  uint64
@@ -46,7 +54,7 @@ func DecodeULEB128(buf *bytes.Buffer) (uint64, uint32) {
 
 // DecodeSLEB128 decodes a signed Little Endian Base 128
 // represented number.
-func DecodeSLEB128(buf *bytes.Buffer) (int64, uint32) {
+func DecodeSLEB128(buf ByteReaderWithLen) (int64, uint32) {
 	var (
 		b      byte
 		err    error

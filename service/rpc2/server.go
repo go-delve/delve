@@ -92,6 +92,7 @@ type RestartOut struct {
 
 // Restart restarts program.
 func (s *RPCServer) Restart(arg RestartIn, cb service.RPCCallback) {
+	close(cb.SetupDoneChan())
 	if s.config.Debugger.AttachPid != 0 {
 		cb.Return(nil, errors.New("cannot restart process Delve did not create"))
 		return
@@ -113,6 +114,7 @@ type StateOut struct {
 
 // State returns the current debugger state.
 func (s *RPCServer) State(arg StateIn, cb service.RPCCallback) {
+	close(cb.SetupDoneChan())
 	var out StateOut
 	st, err := s.debugger.State(arg.NonBlocking)
 	if err != nil {
@@ -129,7 +131,7 @@ type CommandOut struct {
 
 // Command interrupts, continues and steps through the program.
 func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback) {
-	st, err := s.debugger.Command(&command)
+	st, err := s.debugger.Command(&command, cb.SetupDoneChan())
 	if err != nil {
 		cb.Return(nil, err)
 		return
@@ -856,6 +858,7 @@ type StopRecordingOut struct {
 }
 
 func (s *RPCServer) StopRecording(arg StopRecordingIn, cb service.RPCCallback) {
+	close(cb.SetupDoneChan())
 	var out StopRecordingOut
 	err := s.debugger.StopRecording()
 	if err != nil {

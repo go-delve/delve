@@ -467,19 +467,25 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 const debugBinary string = "./__debug_bin"
 
 func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
-	// TODO(polina): Respond with an error if debug session is in progress?
+	// Validate launch request mode
+	mode, ok := request.Arguments["mode"]
+	if !ok || mode == "" {
+		mode = "debug"
+	}
+	if !isValidLaunchMode(mode) {
+		s.sendErrorResponse(request.Request,
+			FailedToLaunch, "Failed to launch",
+			fmt.Sprintf("Unsupported 'mode' value %q in debug configuration.", mode))
+		return
+	}
 
+	// TODO(polina): Respond with an error if debug session is in progress?
 	program, ok := request.Arguments["program"].(string)
 	if !ok || program == "" {
 		s.sendErrorResponse(request.Request,
 			FailedToLaunch, "Failed to launch",
 			"The program attribute is missing in debug configuration.")
 		return
-	}
-
-	mode, ok := request.Arguments["mode"]
-	if !ok || mode == "" {
-		mode = "debug"
 	}
 
 	if mode == "debug" || mode == "test" {
@@ -575,13 +581,23 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
 }
 
+// TODO(polina): support "remote" mode
+func isValidLaunchMode(launchMode interface{}) bool {
+	switch launchMode {
+	case "exec", "debug", "test":
+		return true
+	}
+
+	return false
+}
+
 // onDisconnectRequest handles the DisconnectRequest. Per the DAP spec,
 // it disconnects the debuggee and signals that the debug adaptor
 // (in our case this TCP server) can be terminated.
 func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
 	s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 	if s.debugger != nil {
-		_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt})
+		_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 		if err != nil {
 			s.log.Error(err)
 		}
@@ -1191,11 +1207,21 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		} else if len(v.Children) == 0 || v.Children[0].Kind == reflect.Invalid && v.Children[0].Addr == 0 {
 			value = "nil <" + typeName + ">"
 		} else {
+			value = "<" + typeName + "(" + v.Children[0].TypeString() + ")" + ">"
 			if v.Children[0].OnlyAddr { // Not fully loaded
-				value = "<" + typeName + "(" + v.Children[0].TypeString() + ")" + ">" + " (data not loaded)"
-				// Since child is not fully loaded, don't provide a reference to view it.
-			} else {
-				value = "<" + typeName + "(" + v.Children[0].TypeString() + ")" + ">"
+				loadExpr := fmt.Sprintf("*(*%q)(%#x)", typeName, v.Addr)
+				// We might be loading variables from the frame that's not topmost, so use
+				// frame-independent address-based expression.
+				s.log.Debugf("loading %s (type %s) with %s", qualifiedNameOrExpr, typeName, loadExpr)
+				vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, loadExpr, DefaultLoadConfig)
+				if err != nil {
+					value += fmt.Sprintf(" - FAILED TO LOAD: %s", err)
+				} else {
+					v.Children = vLoaded.Children
+				}
+			}
+			// Provide a reference to the child only if it fully loaded
+			if !v.Children[0].OnlyAddr {
 				// TODO(polina): should we remove one level of indirection and skip "data"?
 				// Then we will have:
 				//   Before:
@@ -1296,7 +1322,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			Expr:                 strings.Replace(request.Arguments.Expression, "call ", "", 1),
 			UnsafeCall:           false,
 			GoroutineID:          goid,
-		})
+		}, nil)
 		if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
 			e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
 			s.send(e)
@@ -1518,7 +1544,7 @@ func (s *Server) doCommand(command string) {
 		return
 	}
 
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command})
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, nil)
 	if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
 		s.send(e)

@@ -594,7 +594,7 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 				}
 				if !isHardcodedBreakpoint {
 					// phantom breakpoint hit
-					_ = th.SetPC(pc - uint64(len(dbp.BinInfo().Arch.BreakpointInstruction())))
+					_ = th.setPC(pc - uint64(len(dbp.BinInfo().Arch.BreakpointInstruction())))
 					th.os.setbp = false
 					if trapthread.ThreadID() == th.ThreadID() {
 						// Will switch to a different thread for trapthread because we don't
