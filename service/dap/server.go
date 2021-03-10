@@ -81,7 +81,7 @@ type launchAttachArgs struct {
 	showGlobalVariables bool
 	// substitutePathLocalToDebugger indicates rules for converting file paths between client and debugger.
 	substitutePathLocalToDebugger [][2]string
-	// substitutePathLocalToDebugger indicates rules for converting file paths between client and debugger.
+	// substitutePathDebuggerToLocal indicates rules for converting file paths between debugger and client.
 	substitutePathDebuggerToLocal [][2]string
 }
 
@@ -525,14 +525,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		}
 		program = debugname
 		s.binaryToRemove = debugname
-	}
-
-	// TODO(polina): support "remote" mode
-	if mode != "exec" && mode != "debug" && mode != "test" {
-		s.sendErrorResponse(request.Request,
-			FailedToLaunch, "Failed to launch",
-			fmt.Sprintf("Unsupported 'mode' value %q in debug configuration.", mode))
-		return
 	}
 
 	err := s.setLaunchAttachArgs(request)
