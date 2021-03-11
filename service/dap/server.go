@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/go-delve/delve/pkg/proc/gdbserial"
 	"go/constant"
 	"go/parser"
 	"io"
@@ -811,51 +812,29 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		if !ok || output == "" {
 			output = debugBinary
 		}
+
 		debugname, err := filepath.Abs(output)
 		err = gobuild.GoBuild(debugname, []string{program}, buildFlags)
-
 		if err != nil {
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to build recording target",
 				fmt.Sprintf("Build error: %s", err.Error()))
 			return
 		}
-	}
 
-	if mode == "coredump" {
-		backend, ok := request.Arguments["backend"].(string)
-		if !ok || backend == "" {
+		traceDir, err := gdbserial.Record([]string{program}, filepath.Dir(program), true, s.config.Debugger.Redirects)
+		if err != nil {
 			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				"The backend attribute is missing debug configuration.")
+				FailedToLaunch, "Failed to record trace from target",
+				fmt.Sprintf("Recording error: %s", err.Error()))
 			return
 		}
-
-		// Validate backend for mode
-		if backend != "coredump" {
+		if traceDir == "" {
 			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("Unsupported 'backend' value %q in debug configuration.", backend))
+				FailedToLaunch, "Failed to record trace from target",
+				"No trace result found")
 			return
 		}
-
-		// Coredump only works on core dump files
-		coreDumpFile, ok := request.Arguments["coreDumpPath"].(string)
-		if !ok || coreDumpFile == "" {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				"The coreDumpPath attribute is missing in debug configuration.")
-			return
-		}
-		if _, err := os.Stat(coreDumpFile); os.IsNotExist(err) {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				"The coreDumpPath attribute points to an directory that does not exist.")
-			return
-		}
-
-		s.config.Debugger.CoreFile = coreDumpFile
-		s.config.Debugger.Backend = backend
 	}
 
 	if mode == "replay" {
@@ -863,32 +842,33 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		if !ok || backend == "" {
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to launch",
-				"The backend attribute is missing debug configuration.")
+				"The backend attribute is missing in debug configuration.")
 			return
 		}
 
-		// Replay only works on rr trace directories
-		if backend != "rr" {
+		// Validate backend for this mode
+		if (backend != "rr") && (backend != "core") {
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("Unsupported 'backend' value %q in debug configuration.", backend))
+				fmt.Sprintf("Unsupported 'backend' value %q in replay configuration.", backend))
 			return
 		}
 
-		// Validate trace directory
-		traceDirectory, ok := request.Arguments["traceDirectory"].(string)
-		if !ok || traceDirectory == "" {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				"The traceDirectory attribute is missing in debug configuration.")
-			return
-		}
-		if _, err := os.Stat(traceDirectory); os.IsNotExist(err) {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				"The traceDirectory attribute points to an directory that does not exist.")
-			return
-		}
+		if backend == "rr" {
+			// Validate trace directory
+			traceDirectory, ok := request.Arguments["traceDirectory"].(string)
+			if !ok || traceDirectory == "" {
+				s.sendErrorResponse(request.Request,
+					FailedToLaunch, "Failed to launch",
+					"The traceDirectory attribute is missing in debug configuration.")
+				return
+			}
+			if _, err := os.Stat(traceDirectory); os.IsNotExist(err) {
+				s.sendErrorResponse(request.Request,
+					FailedToLaunch, "Failed to launch",
+					"The traceDirectory attribute points to an directory that does not exist.")
+				return
+			}
 
 <<<<<<< HEAD
 		// Validate trace file
@@ -906,7 +886,28 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			return
 		}
 =======
-		s.config.Debugger.CoreFile = traceDirectory
+			s.config.Debugger.CoreFile = traceDirectory
+		}
+
+		if backend == "core" {
+			// Coredump only works on core dump files
+			coreDumpFile, ok := request.Arguments["coreDumpPath"].(string)
+			if !ok || coreDumpFile == "" {
+				s.sendErrorResponse(request.Request,
+					FailedToLaunch, "Failed to launch",
+					"The coreDumpPath attribute is missing in debug configuration.")
+				return
+			}
+			if _, err := os.Stat(coreDumpFile); os.IsNotExist(err) {
+				s.sendErrorResponse(request.Request,
+					FailedToLaunch, "Failed to launch",
+					"The coreDumpPath attribute points to an directory that does not exist.")
+				return
+			}
+
+			s.config.Debugger.CoreFile = coreDumpFile
+		}
+
 		s.config.Debugger.Backend = backend
 	}
 >>>>>>> WIP: Implement onReverseContinue and partial onStepBackRequest
