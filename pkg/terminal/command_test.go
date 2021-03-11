@@ -1140,3 +1140,10 @@ func TestParseNewArgv(t *testing.T) {
 		}
 	}
 }
+
+func TestContinueUntil(t *testing.T) {
+	withTestTerminal("continuetestprog", t, func(term *FakeTerminal) {
+		listIsAt(t, term, "continue main.main", 16, -1, -1)
+		listIsAt(t, term, "continue main.sayhi", 12, -1, -1)
+	})
+}
