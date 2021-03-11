@@ -1103,9 +1103,13 @@ func (s *Server) stopNoDebugProcess() {
 }
 
 // Launch debug sessions support the following modes:
+// TODO(polina): document behavior for remaining modes
+// replay: skips program build and sets the Debugger.CoreFile property based on the launch properties (rr or core dump)
 // -- [DEFAULT] "debug" - builds and launches debugger for specified program (similar to 'dlv debug')
 //      Required args: program
-	case "exec", "debug", "test", "record", "replay", "coredump":
+// record: builds the program and additionally calls gdbserial.Record() to generate an rr trace
+
+	case "exec", "debug", "test", "record", "replay":
 //      Optional args with default: output, cwd, noDebug
 //      Optional args: buildFlags, args
 // -- "test" - builds and launches debugger for specified test (similar to 'dlv test')
@@ -1651,6 +1655,7 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
 			return
 		}
+
 
 	}
 	// Notify the client that the debugger is ready to start accepting
@@ -2753,6 +2758,7 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 			body.ExceptionId = "fatal error"
 			body.Description, err = s.throwReason(goroutineID)
 
+
 			if err != nil {
 				body.Description = fmt.Sprintf("Error getting throw reason: %s", err.Error())
 				// This is not currently working for Go 1.16.
@@ -2762,11 +2768,13 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 				}
 			}
 
+
 		case proc.UnrecoveredPanic:
 			body.ExceptionId = "panic"
 			// Attempt to get the value of the panic message.
 			body.Description, err = s.panicReason(goroutineID)
 			if err != nil {
+
 
 				body.Description = fmt.Sprintf("Error getting panic message: %s", err.Error())
 			}
