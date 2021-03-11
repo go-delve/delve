@@ -765,6 +765,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 
 	if mode == "record" {
+		// Validate backend for mode
 		backend, ok := request.Arguments["backend"].(string)
 		if !ok || backend == "" {
 			s.sendErrorResponse(request.Request,
@@ -773,11 +774,17 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			return
 		}
 
-		// Validate backend for mode
 		if backend != "rr" {
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to launch",
 				fmt.Sprintf("Unsupported 'backend' value %q in debug configuration.", backend))
+			return
+		}
+
+		if err := gdbserial.CheckRRAvailable(); err != nil {
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch",
+				fmt.Sprintf("Unsupported 'backend' value %q in debug configuration: %s", backend, err.Error()))
 			return
 		}
 
@@ -855,6 +862,13 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		}
 
 		if backend == "rr" {
+			if err := gdbserial.CheckRRAvailable(); err != nil {
+				s.sendErrorResponse(request.Request,
+					FailedToLaunch, "Failed to launch",
+					fmt.Sprintf("Unsupported 'backend' value %q in debug configuration: %s", backend, err.Error()))
+				return
+			}
+			
 			// Validate trace directory
 			traceDirectory, ok := request.Arguments["traceDirectory"].(string)
 			if !ok || traceDirectory == "" {
@@ -896,12 +910,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 				s.sendErrorResponse(request.Request,
 					FailedToLaunch, "Failed to launch",
 					"The coreDumpPath attribute is missing in debug configuration.")
-				return
-			}
-			if _, err := os.Stat(coreDumpFile); os.IsNotExist(err) {
-				s.sendErrorResponse(request.Request,
-					FailedToLaunch, "Failed to launch",
-					"The coreDumpPath attribute points to an directory that does not exist.")
 				return
 			}
 
