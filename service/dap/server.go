@@ -139,14 +139,14 @@ func (s *Server) setLaunchAttachArgs(request dap.LaunchAttachRequest) {
 // process if it was launched by it. This method mustn't be called more than
 // once.
 func (s *Server) Stop() {
-	s.listener.Close()
+	_ = s.listener.Close()
 	close(s.stopChan)
 	if s.conn != nil {
 		// Unless Stop() was called after serveDAPCodec()
 		// returned, this will result in closed connection error
 		// on next read, breaking out of the read loop and
 		// allowing the run goroutine to exit.
-		s.conn.Close()
+		_ = s.conn.Close()
 	}
 	if s.debugger != nil {
 		kill := s.config.Debugger.AttachPid == 0
@@ -403,7 +403,7 @@ func (s *Server) handleRequest(request dap.Message) {
 func (s *Server) send(message dap.Message) {
 	jsonmsg, _ := json.Marshal(message)
 	s.log.Debug("[-> to client]", string(jsonmsg))
-	dap.WriteProtocolMessage(s.conn, message)
+	_ = dap.WriteProtocolMessage(s.conn, message)
 }
 
 func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
