@@ -134,7 +134,7 @@ See also: "help on", "help cond" and "help clear"`},
 
 For recorded targets the command takes the following forms:
 
-	restart					resets ot the start of the recording
+	restart					resets to the start of the recording
 	restart [checkpoint]			resets the recording to the given checkpoint
 	restart -r [newargv...]	[redirects...]	re-records the target process
 	
