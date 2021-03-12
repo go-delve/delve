@@ -712,6 +712,7 @@ func isBreakpointExistsErr(err error) bool {
 }
 
 // AmendBreakpoint will update the breakpoint with the matching ID.
+// It also enables or disables the breakpoint.
 func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
@@ -733,7 +734,7 @@ func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
 		delete(d.disabledBreakpoints, amend.ID)
 	}
 	if amend.Disabled && !disabled { // disable the breakpoint
-		if _, err := d.ClearBreakpoint(amend); err != nil {
+		if _, err := d.clearBreakpoint(amend); err != nil {
 			return err
 		}
 		d.disabledBreakpoints[amend.ID] = amend
@@ -775,7 +776,11 @@ func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err err
 func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
+	return d.clearBreakpoint(requestedBp)
+}
 
+// clearBreakpoint clears a breakpoint, we can consume this function to avoid locking a goroutine
+func (d *Debugger) clearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
 	if bp, ok := d.disabledBreakpoints[requestedBp.ID]; ok {
 		delete(d.disabledBreakpoints, bp.ID)
 		return bp, nil
@@ -826,29 +831,6 @@ func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 	}
 	d.log.Infof("cleared breakpoint: %#v", clearedBp)
 	return clearedBp[0], nil
-}
-
-// ToggleBreakpoint toggles on or off a breakpoint.
-func (d *Debugger) ToggleBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
-	if dbp, ok := d.disabledBreakpoints[requestedBp.ID]; ok {
-		bp, err := d.target.SetBreakpointWithID(dbp.ID, dbp.Addr)
-		if err != nil {
-			return nil, err
-		}
-		requestedBp.Disabled = false
-		copyBreakpointInfo(bp, requestedBp)
-		delete(d.disabledBreakpoints, requestedBp.ID)
-		return api.ConvertBreakpoint(bp), nil
-	}
-
-	_, err := d.ClearBreakpoint(requestedBp)
-	if err != nil {
-		return nil, err
-	}
-	requestedBp.Disabled = true
-	d.disabledBreakpoints[requestedBp.ID] = requestedBp
-	d.log.Infof("toggled breakpoint: %#v", requestedBp)
-	return d.FindBreakpoint(requestedBp.ID), nil
 }
 
 // Breakpoints returns the list of current breakpoints.

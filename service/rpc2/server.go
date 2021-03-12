@@ -318,11 +318,11 @@ func (s *RPCServer) ToggleBreakpoint(arg ToggleBreakpointIn, out *ToggleBreakpoi
 			return fmt.Errorf("no breakpoint with id %d", arg.Id)
 		}
 	}
-	toggled, err := s.debugger.ToggleBreakpoint(bp)
-	if err != nil {
+	bp.Disabled = !bp.Disabled
+	if err := s.debugger.AmendBreakpoint(bp); err != nil {
 		return err
 	}
-	out.Breakpoint = toggled
+	out.Breakpoint = bp
 	return nil
 }
 
