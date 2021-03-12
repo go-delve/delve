@@ -1273,12 +1273,12 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					expectVarRegex(t, locals, -1, "up1", "up1", `unsafe\.Pointer\(0x[0-9a-f]+\)`, noChildren)
 
 					// Test unreadable variable
-					ref = expectVarRegex(t, locals, -1, "unread", "unread", `\*\(unreadable protocol error.+\)`, hasChildren)
+					ref = expectVarRegex(t, locals, -1, "unread", "unread", `\*\(unreadable .+\)`, hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						val := client.ExpectVariablesResponse(t)
 						expectChildren(t, val, "*unread", 1)
-						expectVarRegex(t, val, 0, "^$", `\(\*unread\)`, `\(unreadable protocol error.+\)`, noChildren)
+						expectVarRegex(t, val, 0, "^$", `\(\*unread\)`, `\(unreadable .+\)`, noChildren)
 						validateEvaluateName(t, client, val, 0)
 					}
 				},
