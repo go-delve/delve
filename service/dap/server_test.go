@@ -1098,7 +1098,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						ch1 := client.ExpectVariablesResponse(t)
 						expectChildren(t, ch1, "ch1", 11)
 						expectVarExact(t, ch1, 0, "qcount", "ch1.qcount", "4", noChildren)
-						expectVarExact(t, ch1, 10, "lock", "ch1.lock", "runtime.mutex {key: 0}", hasChildren)
+						expectVarRegex(t, ch1, 10, "lock", "ch1.lock", `runtime\.mutex {.*key: 0.*}`, hasChildren)
 						validateEvaluateName(t, client, ch1, 0)
 						validateEvaluateName(t, client, ch1, 10)
 					}
