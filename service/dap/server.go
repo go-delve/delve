@@ -946,7 +946,6 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 				if key := constant.StringVal(keyv.Value); keyv.Len == int64(len(key)) { // fully loaded
 					valexpr = fmt.Sprintf("%s[%q]", v.fullyQualifiedNameOrExpr, key)
 				}
-				// TODO(polina): use nil for nil keys of different types
 			}
 			key, keyref := s.convertVariable(keyv, keyexpr)
 			val, valref := s.convertVariable(valv, valexpr)
@@ -1056,8 +1055,8 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		}
 		return s.variableHandles.create(&fullyQualifiedVariable{v, qualifiedNameOrExpr, false /*not a scope*/})
 	}
+	value = api.ConvertVar(v).SinglelineString()
 	if v.Unreadable != nil {
-		value = fmt.Sprintf("unreadable <%v>", v.Unreadable)
 		return
 	}
 	typeName := api.PrettyTypeName(v.DwarfType)
@@ -1068,125 +1067,54 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 
 	switch v.Kind {
 	case reflect.UnsafePointer:
-		if len(v.Children) == 0 {
-			value = "unsafe.Pointer(nil)"
-		} else {
-			value = fmt.Sprintf("unsafe.Pointer(%#x)", v.Children[0].Addr)
-		}
+		// Skip child reference
 	case reflect.Ptr:
-		if v.DwarfType == nil || len(v.Children) == 0 {
-			value = "nil"
-		} else if v.Children[0].Addr == 0 {
-			value = "nil <" + typeName + ">"
-		} else if v.Children[0].Kind == reflect.Invalid {
-			value = "void"
-		} else {
-			value = fmt.Sprintf("<%s>(%#x)", typeName, v.Children[0].Addr)
-			if v.Children[0].OnlyAddr { // Not fully loaded
-				value += " (value not loaded)"
-				// Since child is not fully loaded, don't provide a reference to view it.
+		if v.DwarfType != nil && len(v.Children) > 0 && v.Children[0].Addr != 0 && v.Children[0].Kind != reflect.Invalid {
+			if v.Children[0].OnlyAddr {
+				value = "(not loaded) " + value
 			} else {
-				value = fmt.Sprintf("<%s>(%#x)", typeName, v.Children[0].Addr)
 				variablesReference = maybeCreateVariableHandle(v)
 			}
 		}
-	case reflect.Array:
+	case reflect.Slice, reflect.Array:
 		if v.Len > int64(len(v.Children)) { // Not fully loaded
-			value = fmt.Sprintf("<%s> (length: %d, loaded: %d)", typeName, v.Len, len(v.Children))
-		} else {
-			value = fmt.Sprintf("<%s>", typeName)
+			value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children), v.Len) + value
 		}
-		if len(v.Children) > 0 {
+		if v.Base != 0 && len(v.Children) > 0 {
 			variablesReference = maybeCreateVariableHandle(v)
-		}
-	case reflect.Slice:
-		if v.Base == 0 {
-			value = "nil <" + typeName + ">"
-		} else {
-			if v.Len > int64(len(v.Children)) { // Not fully loaded
-				value = fmt.Sprintf("<%s> (length: %d, cap: %d, loaded: %d)", typeName, v.Len, v.Cap, len(v.Children))
-			} else {
-				value = fmt.Sprintf("<%s> (length: %d, cap: %d)", typeName, v.Len, v.Cap)
-			}
-			if len(v.Children) > 0 {
-				variablesReference = maybeCreateVariableHandle(v)
-			}
 		}
 	case reflect.Map:
-		if v.Base == 0 {
-			value = "nil <" + typeName + ">"
-		} else {
-			if v.Len > int64(len(v.Children)/2) { // Not fully loaded
-				value = fmt.Sprintf("<%s> (length: %d, loaded: %d)", typeName, v.Len, len(v.Children)/2)
-			} else {
-				value = fmt.Sprintf("<%s> (length: %d)", typeName, v.Len)
-			}
-			if len(v.Children) > 0 {
-				variablesReference = maybeCreateVariableHandle(v)
-			}
+		if v.Len > int64(len(v.Children)/2) { // Not fully loaded
+			value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children)/2, v.Len) + value
 		}
-	case reflect.String:
-		vvalue := constant.StringVal(v.Value)
-		lenNotLoaded := v.Len - int64(len(vvalue))
-		if lenNotLoaded > 0 { // Not fully loaded
-			vvalue += fmt.Sprintf("...+%d more", lenNotLoaded)
-		}
-		value = fmt.Sprintf("%q", vvalue)
-	case reflect.Chan:
-		if len(v.Children) == 0 {
-			value = "nil <" + typeName + ">"
-		} else {
-			value = "<" + typeName + ">"
+		if v.Base != 0 && len(v.Children) > 0 {
 			variablesReference = maybeCreateVariableHandle(v)
 		}
+	case reflect.String:
+		// TODO(polina): implement auto-loading here
 	case reflect.Interface:
-		if v.Addr == 0 {
-			// An escaped interface variable that points to nil: this shouldn't
-			// happen in normal code but can happen if the variable is out of scope,
-			// such as if an interface variable has been captured by a
-			// closure and replaced by a pointer to interface, and the pointer
-			// happens to contain 0.
-			value = "nil"
-		} else if len(v.Children) == 0 || v.Children[0].Kind == reflect.Invalid && v.Children[0].Addr == 0 {
-			value = "nil <" + typeName + ">"
-		} else {
-			value = "<" + typeName + "(" + v.Children[0].TypeString() + ")" + ">"
+		if v.Addr != 0 && len(v.Children) > 0 && v.Children[0].Kind != reflect.Invalid && v.Children[0].Addr != 0 {
 			if v.Children[0].OnlyAddr { // Not fully loaded
-				loadExpr := fmt.Sprintf("*(*%q)(%#x)", typeName, v.Addr)
 				// We might be loading variables from the frame that's not topmost, so use
-				// frame-independent address-based expression.
+				// frame-independent address-based expression, not fully-qualified name.
+				loadExpr := fmt.Sprintf("*(*%q)(%#x)", typeName, v.Addr)
 				s.log.Debugf("loading %s (type %s) with %s", qualifiedNameOrExpr, typeName, loadExpr)
 				vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, loadExpr, DefaultLoadConfig)
 				if err != nil {
 					value += fmt.Sprintf(" - FAILED TO LOAD: %s", err)
 				} else {
 					v.Children = vLoaded.Children
+					value = api.ConvertVar(v).SinglelineString()
 				}
 			}
 			// Provide a reference to the child only if it fully loaded
 			if !v.Children[0].OnlyAddr {
-				// TODO(polina): should we remove one level of indirection and skip "data"?
-				// Then we will have:
-				//   Before:
-				//     i: <interface{}(int)>
-				//        data: 123
-				//   After:
-				//     i: <interface{}(int)> 123
-				//   Before:
-				//     i: <interface{}(main.MyStruct)>
-				//        data: <main.MyStruct>
-				//           field1: ...
-				//   After:
-				//     i: <interface{}(main.MyStruct)>
-				//        field1: ...
 				variablesReference = maybeCreateVariableHandle(v)
 			}
 		}
 	case reflect.Struct:
 		if v.Len > int64(len(v.Children)) { // Not fully loaded
-			value = fmt.Sprintf("<%s> (fields: %d, loaded: %d)", typeName, v.Len, len(v.Children))
-		} else {
-			value = fmt.Sprintf("<%s>", typeName)
+			value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children), v.Len) + value
 		}
 		if len(v.Children) > 0 {
 			variablesReference = maybeCreateVariableHandle(v)
@@ -1205,13 +1133,7 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 			v.Children[1].Kind = reflect.Float64
 		}
 		fallthrough
-	default: // complex, scalar
-		vvalue := api.VariableValueAsString(v)
-		if vvalue != "" {
-			value = vvalue
-		} else {
-			value = "<" + typeName + ">"
-		}
+	default: // Complex, Scalar, Chan, Func
 		if len(v.Children) > 0 {
 			variablesReference = maybeCreateVariableHandle(v)
 		}
