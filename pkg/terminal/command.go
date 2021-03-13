@@ -1625,6 +1625,7 @@ func examineMemoryCmd(t *Term, ctx callContext, args string) error {
 	count := 1
 	size := 1
 
+loop:
 	for i := 0; i < len(v); i++ {
 		switch v[i] {
 		case "-fmt":
@@ -1667,14 +1668,16 @@ func examineMemoryCmd(t *Term, ctx callContext, args string) error {
 				return fmt.Errorf("size must be a positive integer (<=8)")
 			}
 		default:
-			if i != len(v)-1 {
-				return fmt.Errorf("unknown option %q", v[i])
+			expr := strings.Join(v[i:], " ")
+			val, err := t.client.EvalVariable(ctx.Scope, expr, t.loadConfig())
+			if err != nil {
+				return err
 			}
-			// TODO, maybe we can support expression.
-			address, err = strconv.ParseUint(v[len(v)-1], 0, 64)
+			address, err = strconv.ParseUint(val.Value, 0, 64)
 			if err != nil {
 				return fmt.Errorf("convert address into uintptr type failed, %s", err)
 			}
+			break loop
 		}
 	}
 
