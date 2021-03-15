@@ -471,8 +471,8 @@ type EvalOut struct {
 
 // EvalVariable returns a variable in the specified context.
 //
-// See https://github.com/go-delve/delve/wiki/Expressions for
-// a description of acceptable values of arg.Expr.
+// See https://github.com/go-delve/delve/blob/master/Documentation/cli/expr.md
+// for a description of acceptable values of arg.Expr.
 func (s *RPCServer) Eval(arg EvalIn, out *EvalOut) error {
 	cfg := arg.Cfg
 	if cfg == nil {
