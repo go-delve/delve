@@ -127,7 +127,7 @@ func (dbp *Target) Continue() error {
 				// In linux-arm64, PtraceSingleStep seems cannot step over BRK instruction
 				// (linux-arm64 feature or kernel bug maybe).
 				if !arch.BreakInstrMovesPC() {
-					curthread.SetPC(loc.PC + uint64(arch.BreakpointSize()))
+					setPC(curthread, loc.PC+uint64(arch.BreakpointSize()))
 				}
 				// Single-step current thread until we exit runtime.breakpoint and
 				// runtime.Breakpoint.
@@ -145,7 +145,7 @@ func (dbp *Target) Continue() error {
 					bp := make([]byte, bpsize)
 					_, err = dbp.Memory().ReadMemory(bp, loc.PC)
 					if bytes.Equal(bp, arch.BreakpointInstruction()) {
-						curthread.SetPC(loc.PC + uint64(bpsize))
+						setPC(curthread, loc.PC+uint64(bpsize))
 					}
 				}
 				return conditionErrors(threads)

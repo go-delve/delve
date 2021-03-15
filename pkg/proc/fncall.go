@@ -421,13 +421,13 @@ func callOP(bi *BinaryInfo, thread Thread, regs Registers, callAddr uint64) erro
 	sp := regs.SP()
 	// push PC on the stack
 	sp -= uint64(bi.Arch.PtrSize())
-	if err := thread.SetSP(sp); err != nil {
+	if err := setSP(thread, sp); err != nil {
 		return err
 	}
 	if err := writePointer(bi, thread.ProcessMemory(), sp, regs.PC()); err != nil {
 		return err
 	}
-	return thread.SetPC(callAddr)
+	return setPC(thread, callAddr)
 }
 
 // funcCallEvalFuncExpr evaluates expr.Fun and returns the function that we're trying to call.
@@ -761,7 +761,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		if fncall.closureAddr != 0 {
 			// When calling a function pointer we must set the DX register to the
 			// address of the function pointer itself.
-			thread.SetDX(fncall.closureAddr)
+			setClosureReg(thread, fncall.closureAddr)
 		}
 		cfa := regs.SP()
 		oldpc := regs.PC()
@@ -770,8 +770,8 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		err := funcCallEvalArgs(callScope, fncall, cfa)
 		if err != nil {
 			// rolling back the call, note: this works because we called regs.Copy() above
-			thread.SetSP(cfa)
-			thread.SetPC(oldpc)
+			setSP(thread, cfa)
+			setPC(thread, oldpc)
 			fncall.err = err
 			fncall.lateCallFailure = true
 			break
@@ -784,10 +784,10 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		if err := thread.RestoreRegisters(fncall.savedRegs); err != nil {
 			fncall.err = fmt.Errorf("could not restore registers: %v", err)
 		}
-		if err := thread.SetPC(pc); err != nil {
+		if err := setPC(thread, pc); err != nil {
 			fncall.err = fmt.Errorf("could not restore PC: %v", err)
 		}
-		if err := thread.SetSP(sp); err != nil {
+		if err := setSP(thread, sp); err != nil {
 			fncall.err = fmt.Errorf("could not restore SP: %v", err)
 		}
 		if err := stepInstructionOut(p, thread, debugCallFunctionName, debugCallFunctionName); err != nil {

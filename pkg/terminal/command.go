@@ -2640,6 +2640,9 @@ func display(t *Term, ctx callContext, args string) error {
 }
 
 func dump(t *Term, ctx callContext, args string) error {
+	if args == "" {
+		return fmt.Errorf("not enough arguments")
+	}
 	dumpState, err := t.client.CoreDumpStart(args)
 	if err != nil {
 		return err

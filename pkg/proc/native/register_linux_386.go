@@ -5,13 +5,15 @@ import (
 
 	sys "golang.org/x/sys/unix"
 
+	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/regnum"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/amd64util"
 	"github.com/go-delve/delve/pkg/proc/linutil"
 )
 
-// SetPC sets EIP to the value specified by 'pc'.
-func (thread *nativeThread) SetPC(pc uint64) error {
+// setPC sets EIP to the value specified by 'pc'.
+func (thread *nativeThread) setPC(pc uint64) error {
 	ir, err := registers(thread)
 	if err != nil {
 		return err
@@ -22,29 +24,26 @@ func (thread *nativeThread) SetPC(pc uint64) error {
 	return err
 }
 
-// SetSP sets ESP to the value specified by 'sp'
-func (thread *nativeThread) SetSP(sp uint64) (err error) {
-	var ir proc.Registers
-	ir, err = registers(thread)
+func (thread *nativeThread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
+	ir, err := registers(thread)
 	if err != nil {
 		return err
 	}
 	r := ir.(*linutil.I386Registers)
-	r.Regs.Esp = int32(sp)
-	thread.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(thread.ID, (*sys.PtraceRegs)(r.Regs)) })
-	return
-}
-
-func (thread *nativeThread) SetDX(dx uint64) (err error) {
-	var ir proc.Registers
-	ir, err = registers(thread)
-	if err != nil {
-		return err
+	switch regNum {
+	case regnum.I386_Eip:
+		r.Regs.Eip = int32(reg.Uint64Val)
+	case regnum.I386_Esp:
+		r.Regs.Esp = int32(reg.Uint64Val)
+	case regnum.I386_Edx:
+		r.Regs.Edx = int32(reg.Uint64Val)
+	default:
+		//TODO(aarzilli): when the register calling convention is adopted by Go on
+		// i386 this should be implemented.
+		return fmt.Errorf("changing register %d not implemented", regNum)
 	}
-	r := ir.(*linutil.I386Registers)
-	r.Regs.Edx = int32(dx)
 	thread.dbp.execPtraceFunc(func() { err = sys.PtraceSetRegs(thread.ID, (*sys.PtraceRegs)(r.Regs)) })
-	return
+	return err
 }
 
 func registers(thread *nativeThread) (proc.Registers, error) {

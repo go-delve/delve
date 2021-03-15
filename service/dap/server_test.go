@@ -752,7 +752,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
 
-					startLineno := 65
+					startLineno := 66
 					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
 						// Go1.15 on windows inserts a NOP after the call to
 						// runtime.Breakpoint and marks it same line as the
@@ -795,7 +795,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 
 					client.VariablesRequest(1001)
 					locals := client.ExpectVariablesResponse(t)
-					expectChildren(t, locals, "Locals", 30)
+					expectChildren(t, locals, "Locals", 31)
 
 					// reflect.Kind == Bool
 					expectVarExact(t, locals, -1, "b1", "b1", "true", noChildren)
@@ -1398,42 +1398,17 @@ func TestVariablesLoading(t *testing.T) {
 						ref = expectVarExact(t, tm, 0, "v", "tm.v", "<[]map[string]main.astruct> (length: 1, cap: 1)", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
-							tm_v := client.ExpectVariablesResponse(t)
-							expectChildren(t, tm_v, "tm.v", 1)
+							tmV := client.ExpectVariablesResponse(t)
+							expectChildren(t, tmV, "tm.v", 1)
 							// TODO(polina): there should be children here once we support auto loading - test for "tm.v[0]["gutters"]"
-							expectVarExact(t, tm_v, 0, "[0]", "tm.v[0]", "<map[string]main.astruct> (length: 66, loaded: 0)", noChildren)
+							expectVarExact(t, tmV, 0, "[0]", "tm.v[0]", "<map[string]main.astruct> (length: 66, loaded: 0)", noChildren)
 						}
 					}
-
-					// Interface fully missing due to hitting LoadConfig.MaxVariableRecurse
-					ref = expectVarRegex(t, locals, -1, "ptrinf", "ptrinf", `<\*interface {}>\(0x[0-9a-f]+\)`, hasChildren)
-					if ref > 0 {
-						client.VariablesRequest(ref)
-						ptrinf := client.ExpectVariablesResponse(t)
-						ref = expectVarExact(t, ptrinf, 0, "", "(*ptrinf)", "<interface {}(**interface {})>", hasChildren)
-						if ref > 0 {
-							client.VariablesRequest(ref)
-							ptrinfVal := client.ExpectVariablesResponse(t)
-							ref = expectVarRegex(t, ptrinfVal, 0, "", `\(\*ptrinf\)\.\(data\)`, `<\*\*interface {}>\(0x[0-9a-f]+\)`, hasChildren)
-							if ref > 0 {
-								client.VariablesRequest(ref)
-								ptrinfValData := client.ExpectVariablesResponse(t)
-								ref = expectVarRegex(t, ptrinfValData, 0, "", `\(\*\(\*ptrinf\)\.\(data\)\)`, `<\*interface {}>\(0x[0-9a-f]+\)`, hasChildren)
-								if ref > 0 {
-									client.VariablesRequest(ref)
-									iface6dataValVal := client.ExpectVariablesResponse(t)
-									expectVarExact(t, iface6dataValVal, 0, "", "(*(*(*ptrinf).(data)))", "<interface {}(**interface {})> (data not loaded)", noChildren)
-								}
-							}
-						}
-					}
-
-					// Pointer fully missing - see below
 				},
 				disconnect: true,
 			}})
 	})
-	runTest(t, "testvariables2", func(client *daptest.Client, fixture protest.Fixture) {
+	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
 			func() {
@@ -1449,14 +1424,54 @@ func TestVariablesLoading(t *testing.T) {
 					client.StackTraceRequest(1, 0, 0)
 					client.ExpectStackTraceResponse(t)
 
-					client.ScopesRequest(1000)
-					client.ExpectScopesResponse(t)
+					var loadvars = func(frame int) {
+						client.ScopesRequest(frame)
+						scopes := client.ExpectScopesResponse(t)
+						localsRef := 0
+						for _, s := range scopes.Body.Scopes {
+							if s.Name == "Locals" {
+								localsRef = s.VariablesReference
+							}
+						}
 
-					client.VariablesRequest(1001) // Locals
-					locals := client.ExpectVariablesResponse(t)
+						client.VariablesRequest(localsRef)
+						locals := client.ExpectVariablesResponse(t)
 
-					// Pointer value not loaded
-					expectVarRegex(t, locals, -1, "ptrinf", "ptrinf", `<\*interface {}>\(0x[0-9a-f]+\) \(value not loaded\)`, noChildren)
+						// Interface auto-loaded when hitting LoadConfig.MaxVariableRecurse=1
+
+						ref := expectVarExact(t, locals, -1, "ni", "ni", "<[]interface {}> (length: 1, cap: 1)", hasChildren)
+						if ref > 0 {
+							client.VariablesRequest(ref)
+							ni := client.ExpectVariablesResponse(t)
+							ref = expectVarExact(t, ni, 0, "[0]", "ni[0]", "<interface {}([]interface {})>", hasChildren)
+							if ref > 0 {
+								client.VariablesRequest(ref)
+								niI1 := client.ExpectVariablesResponse(t)
+								ref = expectVarExact(t, niI1, 0, "data", "ni[0].(data)", "<[]interface {}> (length: 1, cap: 1)", hasChildren)
+								if ref > 0 {
+									// Auto-loading happens here
+									client.VariablesRequest(ref)
+									niI1Data := client.ExpectVariablesResponse(t)
+									ref = expectVarExact(t, niI1Data, 0, "[0]", "ni[0].(data)[0]", "<interface {}(int)>", hasChildren)
+									if ref > 0 {
+										client.VariablesRequest(ref)
+										niI1DataI2 := client.ExpectVariablesResponse(t)
+										expectVarExact(t, niI1DataI2, 0, "data", "ni[0].(data)[0].(data)", "123", noChildren)
+									}
+								}
+							}
+						}
+
+						// Pointer value not loaded with LoadConfig.FollowPointers=false
+						expectVarRegex(t, locals, -1, "a7", "a7", `<\*main.FooBar>\(0x[0-9a-f]+\) \(value not loaded\)`, noChildren)
+					}
+					loadvars(1000 /*first topmost frame*/)
+					// step into another function
+					client.StepInRequest(1)
+					client.ExpectStepInResponse(t)
+					client.ExpectStoppedEvent(t)
+					handleStop(t, client, 1, "main.barfoo", 24)
+					loadvars(1001 /*second frame here is same as topmost above*/)
 				},
 				disconnect: true,
 			}})
@@ -1713,7 +1728,7 @@ func TestEvaluateRequest(t *testing.T) {
 			fixture.Source, []int{}, // Breakpoint set in the program
 			[]onBreakpoint{{ // Stop at first breakpoint
 				execute: func() {
-					handleStop(t, client, 1, "main.foobar", 65)
+					handleStop(t, client, 1, "main.foobar", 66)
 
 					// Variable lookup
 					client.EvaluateRequest("a2", 1000, "this context will be ignored")
@@ -2286,7 +2301,6 @@ func TestLaunchDebugRequest(t *testing.T) {
 		// We reuse the harness that builds, but ignore the built binary,
 		// only relying on the source to be built in response to LaunchRequest.
 		runDebugSession(t, client, "launch", func() {
-			// Use the default output directory.
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "debug", "program": fixture.Source, "output": "__mydir"})
 		}, fixture.Source)
@@ -2309,6 +2323,31 @@ func TestLaunchDebugRequest(t *testing.T) {
 		// If this test becomes flaky, see if the delay needs adjusting.
 		t.Fatalf("Binary removal failure:\n%s\n", rmErr)
 	}
+}
+
+// TestLaunchRequestDefaults tests defaults for launch attribute that are explicit in other tests.
+func TestLaunchRequestDefaults(t *testing.T) {
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSession(t, client, "launch", func() {
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"mode": "" /*"debug" by default*/, "program": fixture.Source, "output": "__mydir"})
+		}, fixture.Source)
+	})
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSession(t, client, "launch", func() {
+			// Use the default output directory.
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				/*"mode":"debug" by default*/ "program": fixture.Source, "output": "__mydir"})
+		}, fixture.Source)
+	})
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSession(t, client, "launch", func() {
+			// Use the default output directory.
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"mode": "debug", "program": fixture.Source})
+			// writes to default output dir __debug_bin
+		}, fixture.Source)
+	})
 }
 
 func TestLaunchTestRequest(t *testing.T) {
@@ -2348,9 +2387,8 @@ func TestLaunchRequestWithBuildFlags(t *testing.T) {
 			// We reuse the harness that builds, but ignore the built binary,
 			// only relying on the source to be built in response to LaunchRequest.
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "debug", "program": fixture.Source,
+				"mode": "debug", "program": fixture.Source, "output": "__mydir",
 				"buildFlags": "-ldflags '-X main.Hello=World'"})
-			// will write to default output dir __debug_bin
 		}, fixture.Source)
 	})
 }
@@ -2375,7 +2413,8 @@ func TestAttachRequest(t *testing.T) {
 		runDebugSessionWithBPs(t, client, "attach",
 			// Attach
 			func() {
-				client.AttachRequest(map[string]interface{}{"mode": "local", "processId": cmd.Process.Pid, "stopOnEntry": false})
+				client.AttachRequest(map[string]interface{}{
+					/*"mode": "local" by default*/ "processId": cmd.Process.Pid, "stopOnEntry": false})
 			},
 			// Set breakpoints
 			fixture.Source, []int{8},
@@ -2543,18 +2582,20 @@ func TestBadLaunchRequests(t *testing.T) {
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
-		client.LaunchRequestWithArgs(map[string]interface{}{"program": 12345})
+		// Bad "program"
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": 12345})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
-		client.LaunchRequestWithArgs(map[string]interface{}{"program": nil})
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": nil})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
-		client.LaunchRequestWithArgs(map[string]interface{}{})
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug"})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
+		// Bad "mode"
 		client.LaunchRequest("remote", fixture.Path, stopOnEntry)
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: Unsupported 'mode' value \"remote\" in debug configuration.")
@@ -2567,6 +2608,15 @@ func TestBadLaunchRequests(t *testing.T) {
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: Unsupported 'mode' value %!q(float64=12345) in debug configuration.")
 
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": ""}) // empty mode defaults to "debug" (not an error)
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: The program attribute is missing in debug configuration.")
+
+		client.LaunchRequestWithArgs(map[string]interface{}{}) // missing mode defaults to "debug" (not an error)
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: The program attribute is missing in debug configuration.")
+
+		// Bad "args"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "exec", "program": fixture.Path, "args": nil})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: 'args' attribute '<nil>' in debug configuration is not an array.")
@@ -2579,6 +2629,7 @@ func TestBadLaunchRequests(t *testing.T) {
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: value '1' in 'args' attribute in debug configuration is not a string.")
 
+		// Bad "buildFlags"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": 123})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: 'buildFlags' attribute '123' in debug configuration is not a string.")
@@ -2589,16 +2640,19 @@ func TestBadLaunchRequests(t *testing.T) {
 
 		// Skip detailed message checks for potentially different OS-specific errors.
 		client.LaunchRequest("exec", fixture.Path+"_does_not_exist", stopOnEntry)
-		expectFailedToLaunch(client.ExpectErrorResponse(t))
+		expectFailedToLaunch(client.ExpectErrorResponse(t)) // No such file or directory
 
 		client.LaunchRequest("debug", fixture.Path+"_does_not_exist", stopOnEntry)
-		expectFailedToLaunch(client.ExpectErrorResponse(t)) // Build error
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t), "Failed to launch: Build error: exit status 1")
+
+		client.LaunchRequest("" /*debug by default*/, fixture.Path+"_does_not_exist", stopOnEntry)
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t), "Failed to launch: Build error: exit status 1")
 
 		client.LaunchRequest("exec", fixture.Source, stopOnEntry)
 		expectFailedToLaunch(client.ExpectErrorResponse(t)) // Not an executable
 
-		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "123"})
-		expectFailedToLaunch(client.ExpectErrorResponse(t)) // Build error
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "bad flags"})
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t), "Failed to launch: Build error: exit status 1")
 
 		// We failed to launch the program. Make sure shutdown still works.
 		client.DisconnectRequest()
@@ -2637,6 +2691,7 @@ func TestBadAttachRequest(t *testing.T) {
 			}
 		}
 
+		// Bad "mode"
 		client.AttachRequest(map[string]interface{}{"mode": "remote"})
 		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
 			"Failed to attach: Unsupported 'mode' value \"remote\" in debug configuration")
@@ -2649,28 +2704,37 @@ func TestBadAttachRequest(t *testing.T) {
 		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
 			"Failed to attach: Unsupported 'mode' value %!q(float64=123) in debug configuration")
 
-		client.AttachRequest(map[string]interface{}{"mode": ""}) // defaults to "local"
+		client.AttachRequest(map[string]interface{}{"mode": ""}) // empty mode defaults to "local" (not an error)
 		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
-		client.AttachRequest(map[string]interface{}{}) // defaults to "local"
+		client.AttachRequest(map[string]interface{}{}) // no mode defaults to "local" (not an error)
 		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
-		client.AttachRequest(map[string]interface{}{"processId": 0}) // defaults to "local"
+		// Bad "processId"
+		client.AttachRequest(map[string]interface{}{"mode": "local"})
 		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
-		client.AttachRequest(map[string]interface{}{"processId": "1"}) // defaults to "local"
+		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": nil})
 		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
-		client.AttachRequest(map[string]interface{}{"processId": 1}) // defaults to "local"
+		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 0})
+		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
+			"Failed to attach: The 'processId' attribute is missing in debug configuration")
+
+		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": "1"})
+		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
+			"Failed to attach: The 'processId' attribute is missing in debug configuration")
+
+		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 1})
 		// The exact message varies on different systems, so skip that check
 		expectFailedToAttach(client.ExpectErrorResponse(t)) // could not attach to pid 1
 
 		// This will make debugger.(*Debugger) panic, which we will catch as an internal error.
-		client.AttachRequest(map[string]interface{}{"processId": -1}) // defaults to "local"
+		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": -1})
 		er := client.ExpectErrorResponse(t)
 		if er.RequestSeq != seqCnt {
 			t.Errorf("RequestSeq got %d, want %d", seqCnt, er.RequestSeq)

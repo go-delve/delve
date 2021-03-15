@@ -446,6 +446,7 @@ func TestLocalVariables(t *testing.T) {
 				{"mp", true, "map[int]interface {} [1: 42, 2: 43, ]", "", "map[int]interface {}", nil},
 				{"ms", true, "main.Nest {Level: 0, Nest: *main.Nest {Level: 1, Nest: *(*main.Nest)…", "", "main.Nest", nil},
 				{"neg", true, "-1", "", "int", nil},
+				{"ni", true, "[]interface {} len: 1, cap: 1, [[]interface {} len: 1, cap: 1, [*(*interface {})…", "", "[]interface {}", nil},
 				{"u16", true, "65535", "", "uint16", nil},
 				{"u32", true, "4294967295", "", "uint32", nil},
 				{"u64", true, "18446744073709551615", "", "uint64", nil},
@@ -1550,10 +1551,6 @@ func TestPluginVariables(t *testing.T) {
 func TestCgoEval(t *testing.T) {
 	protest.MustHaveCgo(t)
 
-	if runtime.GOARCH == "arm64" {
-		t.Skip("cgo evaluation broken on arm64")
-	}
-
 	testcases := []varTest{
 		{"s", true, `"a string"`, `"a string"`, "*char", nil},
 		{"longstring", true, `"averylongstring0123456789a0123456789b0123456789c0123456789d01234...+1 more"`, `"averylongstring0123456789a0123456789b0123456789c0123456789d01234...+1 more"`, "*const char", nil},
@@ -1566,6 +1563,10 @@ func TestCgoEval(t *testing.T) {
 		{"v_align_check", true, "*align_check {a: 0, b: 0}", "(*struct align_check)(…", "*struct align_check", nil},
 		{"v_align_check[1]", false, "align_check {a: 1, b: 1}", "align_check {a: 1, b: 1}", "align_check", nil},
 		{"v_align_check[90]", false, "align_check {a: 90, b: 90}", "align_check {a: 90, b: 90}", "align_check", nil},
+	}
+
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
+		t.Skip("cgo doesn't work on darwin/arm64")
 	}
 
 	protest.AllowRecording(t)

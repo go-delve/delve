@@ -60,7 +60,7 @@ func (s *RPCServer) State(arg interface{}, state *api.DebuggerState) error {
 }
 
 func (s *RPCServer) Command(command *api.DebuggerCommand, cb service.RPCCallback) {
-	st, err := s.debugger.Command(command)
+	st, err := s.debugger.Command(command, cb.SetupDoneChan())
 	cb.Return(st, err)
 }
 
