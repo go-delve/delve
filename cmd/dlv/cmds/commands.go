@@ -422,7 +422,7 @@ func dapCmd(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(os.Stderr, "Warning: build flags ignored with dap; specify via launch/attach request instead\n")
 		}
 		if workingDir != "" {
-			fmt.Fprintf(os.Stderr, "Warning: working directory ignored with dap; launch requests must specify full program path\n")
+			fmt.Fprintf(os.Stderr, "Warning: working directory ignored with dap: specify via launch/attach request instead\n")
 		}
 		dlvArgs, targetArgs := splitArgs(cmd, args)
 		if len(dlvArgs) > 0 {
