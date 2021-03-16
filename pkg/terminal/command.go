@@ -1636,28 +1636,25 @@ func edit(t *Term, ctx callContext, args string) error {
 	return cmd.Run()
 }
 
-func examineMemoryCmd(t *Term, ctx callContext, args string) error {
-	v := strings.FieldsFunc(args, func(c rune) bool {
-		return c == ' '
-	})
-
+func examineMemoryCmd(t *Term, ctx callContext, argstr string) error {
 	var (
 		address uint64
 		err     error
 		ok      bool
+		args    = strings.Split(argstr, " ")
 	)
 
 	// Default value
 	priFmt := byte('x')
 	count := 1
 	size := 1
+	isExpr := false
 
 loop:
-	for i := 0; i < len(v); i++ {
-		switch v[i] {
+	for len(args) > 0 {
+		switch args[0] {
 		case "-fmt":
-			i++
-			if i >= len(v) {
+			if len(args) < 2 {
 				return fmt.Errorf("expected argument after -fmt")
 			}
 			fmtMapToPriFmt := map[string]byte{
@@ -1670,41 +1667,40 @@ loop:
 				"bin":         'b',
 				"binary":      'b',
 			}
-			priFmt, ok = fmtMapToPriFmt[v[i]]
+			priFmt, ok = fmtMapToPriFmt[args[1]]
 			if !ok {
-				return fmt.Errorf("%q is not a valid format", v[i])
+				return fmt.Errorf("%q is not a valid format", args[1])
 			}
+			args = args[2:]
 		case "-count", "-len":
-			i++
-			if i >= len(v) {
+			if len(args) < 2 {
 				return fmt.Errorf("expected argument after -count/-len")
 			}
 			var err error
-			count, err = strconv.Atoi(v[i])
+			count, err = strconv.Atoi(args[1])
 			if err != nil || count <= 0 {
 				return fmt.Errorf("count/len must be a positive integer")
 			}
+			args = args[2:]
 		case "-size":
-			i++
-			if i >= len(v) {
+			if len(args) < 2 {
 				return fmt.Errorf("expected argument after -size")
 			}
 			var err error
-			size, err = strconv.Atoi(v[i])
+			size, err = strconv.Atoi(args[1])
 			if err != nil || size <= 0 || size > 8 {
 				return fmt.Errorf("size must be a positive integer (<=8)")
 			}
+			args = args[2:]
+		case "-x":
+			isExpr = true
+			args = args[1:]
+			break loop // remaining args are going to be interpreted as expression
 		default:
-			expr := strings.Join(v[i:], " ")
-			val, err := t.client.EvalVariable(ctx.Scope, expr, t.loadConfig())
-			if err != nil {
-				return err
+			if len(args) > 1 {
+				return fmt.Errorf("unknown option %q", args[0])
 			}
-			address, err = strconv.ParseUint(val.Value, 0, 64)
-			if err != nil {
-				return fmt.Errorf("convert address into uintptr type failed, %s", err)
-			}
-			break loop
+			break loop // only one arg left to be evaluated as a uint
 		}
 	}
 
@@ -1713,8 +1709,36 @@ loop:
 		return fmt.Errorf("read memory range (count*size) must be less than or equal to 1000 bytes")
 	}
 
-	if address == 0 {
+	if len(args) == 0 {
 		return fmt.Errorf("no address specified")
+	}
+
+	if isExpr {
+		expr := strings.Join(args, " ")
+		val, err := t.client.EvalVariable(ctx.Scope, expr, t.loadConfig())
+		if err != nil {
+			return err
+		}
+
+		// handle three different kinds of expressions
+		if val.Addr != 0 {
+			// -x somevar
+			address = val.Addr
+		} else if len(val.Children) > 0 {
+			// -x &somevar
+			address = val.Children[0].Addr
+		} else {
+			// -x 0xc000079f20 + 8
+			address, err = strconv.ParseUint(val.Value, 0, 64)
+			if err != nil {
+				return fmt.Errorf("expression did not evaluate to uintptr, %s", err)
+			}
+		}
+	} else {
+		address, err = strconv.ParseUint(args[0], 0, 64)
+		if err != nil {
+			return fmt.Errorf("convert address into uintptr type failed, %s", err)
+		}
 	}
 
 	memArea, isLittleEndian, err := t.client.ExamineMemory(address, count*size)
