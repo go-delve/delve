@@ -103,6 +103,7 @@ func (ctxt *loadDebugInfoMapsContext) lookupAbstractOrigin(bi *BinaryInfo, off d
 	if !ok {
 		bi.Functions = append(bi.Functions, Function{})
 		r = len(bi.Functions) - 1
+		bi.Functions[r].offset = off
 		ctxt.abstractOriginTable[off] = r
 	}
 	return r
