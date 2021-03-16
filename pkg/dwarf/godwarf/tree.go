@@ -75,7 +75,7 @@ func LoadTree(off dwarf.Offset, dw *dwarf.Data, staticBase uint64) (*Tree, error
 	if err != nil {
 		return nil, err
 	}
-	r := EntryToTree(e)
+	r := entryToTreeInternal(e)
 	r.Children, err = loadTreeChildren(e, rdr)
 	if err != nil {
 		return nil, err
@@ -90,8 +90,16 @@ func LoadTree(off dwarf.Offset, dw *dwarf.Data, staticBase uint64) (*Tree, error
 	return r, nil
 }
 
-// EntryToTree converts a single entry, without children to a *Tree object
+// EntryToTree converts a single entry, without children, to a *Tree object.
 func EntryToTree(entry *dwarf.Entry) *Tree {
+	if entry.Children {
+		panic(fmt.Sprintf("EntryToTree called on entry with children; " +
+			"LoadTree should have been used instead. entry: %+v", entry))
+	}
+	return entryToTreeInternal(entry)
+}
+
+func entryToTreeInternal(entry *dwarf.Entry) *Tree {
 	return &Tree{Entry: entry, Offset: entry.Offset, Tag: entry.Tag}
 }
 
@@ -108,7 +116,7 @@ func loadTreeChildren(e *dwarf.Entry, rdr *dwarf.Reader) ([]*Tree, error) {
 		if e.Tag == 0 {
 			break
 		}
-		child := EntryToTree(e)
+		child := entryToTreeInternal(e)
 		child.Children, err = loadTreeChildren(e, rdr)
 		if err != nil {
 			return nil, err
