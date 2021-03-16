@@ -1072,6 +1072,38 @@ func TestExamineMemoryCmd(t *testing.T) {
 		if !strings.Contains(res, firstLine) {
 			t.Fatalf("expected first line: %s", firstLine)
 		}
+
+		// third examining memory: -x addr
+		res = term.MustExec("examinemem -x " + addressStr)
+		t.Logf("the third result of examining memory result \n%s", res)
+		firstLine = fmt.Sprintf("%#x:   0xff", address)
+		if !strings.Contains(res, firstLine) {
+			t.Fatalf("expected first line: %s", firstLine)
+		}
+
+		// fourth examining memory: -x addr + offset
+		res = term.MustExec("examinemem -x " + addressStr + " + 8")
+		t.Logf("the fourth result of examining memory result \n%s", res)
+		firstLine = fmt.Sprintf("%#x:   0x12", address+8)
+		if !strings.Contains(res, firstLine) {
+			t.Fatalf("expected first line: %s", firstLine)
+		}
+
+		// fifth examining memory: -x var
+		res = term.MustExec("examinemem -x bs[0]")
+		t.Logf("the fifth result of examining memory result \n%s", res)
+		firstLine = fmt.Sprintf("%#x:   0xff", address)
+		if !strings.Contains(res, firstLine) {
+			t.Fatalf("expected first line: %s", firstLine)
+		}
+
+		// sixth examining memory: -x &var
+		res = term.MustExec("examinemem -x &bs[0]")
+		t.Logf("the sixth result of examining memory result \n%s", res)
+		firstLine = fmt.Sprintf("%#x:   0xff", address)
+		if !strings.Contains(res, firstLine) {
+			t.Fatalf("expected first line: %s", firstLine)
+		}
 	})
 }
 
