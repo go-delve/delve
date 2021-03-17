@@ -759,28 +759,47 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 // onNextRequest handles 'next' request.
 // This is a mandatory request to support.
 func (s *Server) onNextRequest(request *dap.NextRequest) {
-	// This ignores threadId argument to match the original vscode-go implementation.
-	// TODO(polina): use SwitchGoroutine to change the current goroutine.
 	s.send(&dap.NextResponse{Response: *newResponse(request.Request)})
-	s.doCommand(api.Next)
+	s.doStepCommand(api.Next, request.Arguments.ThreadId)
 }
 
 // onStepInRequest handles 'stepIn' request
 // This is a mandatory request to support.
 func (s *Server) onStepInRequest(request *dap.StepInRequest) {
-	// This ignores threadId argument to match the original vscode-go implementation.
-	// TODO(polina): use SwitchGoroutine to change the current goroutine.
 	s.send(&dap.StepInResponse{Response: *newResponse(request.Request)})
-	s.doCommand(api.Step)
+	s.doStepCommand(api.Step, request.Arguments.ThreadId)
 }
 
 // onStepOutRequest handles 'stepOut' request
 // This is a mandatory request to support.
 func (s *Server) onStepOutRequest(request *dap.StepOutRequest) {
-	// This ignores threadId argument to match the original vscode-go implementation.
-	// TODO(polina): use SwitchGoroutine to change the current goroutine.
 	s.send(&dap.StepOutResponse{Response: *newResponse(request.Request)})
-	s.doCommand(api.StepOut)
+	s.doStepCommand(api.StepOut, request.Arguments.ThreadId)
+}
+
+func (s *Server) doStepCommand(command string, threadId int) {
+	// Use SwitchGoroutine to change the current goroutine.
+	state, err := s.debugger.State( /*nowait*/ true)
+	if err != nil {
+		s.log.Errorf("Error retrieving debugger state while stepping: %e", err)
+		stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
+		stopped.Body.AllThreadsStopped = true
+		s.send(stopped)
+		return
+	}
+	if state.SelectedGoroutine == nil || state.SelectedGoroutine.ID != threadId {
+		_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, ThreadID: threadId}, nil)
+		if err != nil {
+			s.log.Errorf("Error switching goroutines while stepping: %e", err)
+			// Send a stopped event since the debugger is not running.
+			stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
+			stopped.Body.AllThreadsStopped = true
+			stopped.Body.ThreadId = state.SelectedGoroutine.ID
+			s.send(stopped)
+			return
+		}
+	}
+	s.doCommand(command)
 }
 
 // onPauseRequest sends a not-yet-implemented error response.
