@@ -35,3 +35,19 @@ export PATH="$GOROOT/bin:$PATH"
 go version
 
 make test
+
+# Run staticcheck
+go install honnef.co/go/tools/cmd/staticcheck@latest
+go install github.com/aarzilli/newlint@latest
+AFTER=$(mktemp after.XXXXXX)
+BEFORE=$(mktemp before.XXXXXX)
+DIFF=$(mktemp diff.XXXXXX)
+C=all,-ST1003
+P=$(go list -m)/...
+$GOPATH/bin/staticcheck -checks $C $P > $AFTER || true
+git diff --no-color HEAD^ > $DIFF
+git stash
+git checkout HEAD^
+$GOPATH/bin/staticcheck -checks $C $P > $BEFORE || true
+$GOPATH/bin/newlint $BEFORE $AFTER $DIFF
+rm $BEFORE $AFTER $DIFF
