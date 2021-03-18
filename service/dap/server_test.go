@@ -1674,27 +1674,7 @@ func TestSetBreakpoint(t *testing.T) {
 // in the launch configuration to take care of the mapping.
 func TestLaunchSubstitutePath(t *testing.T) {
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
-		localDirPath := filepath.Join(string(filepath.Separator), "path", "that", "does", "not", "exist")
-		if runtime.GOOS == "windows" {
-			localDirPath = "C:" + localDirPath
-		}
-		localFilePath := filepath.Join(localDirPath, "loopprog.go")
-		debuggerDirPath := filepath.Dir(fixture.Source)
-
-		runDebugSessionWithBPs(t, client, "launch",
-			// Attach
-			func() {
-				client.LaunchRequestWithArgs(map[string]interface{}{"mode": "exec", "program": fixture.Path, "stopOnEntry": false, "substitutePath": []map[string]string{{"from": localDirPath, "to": debuggerDirPath}}})
-			},
-			// Set breakpoints
-			localFilePath, []int{8},
-			[]onBreakpoint{{
-				// Stop at line 8
-				execute: func() {
-					handleStop(t, client, 1, "main.loop", 8)
-				},
-				disconnect: true,
-			}})
+		substitutePathTestHelper(t, fixture, client, "launch", map[string]interface{}{"mode": "exec", "program": fixture.Path})
 	})
 }
 
@@ -1709,31 +1689,46 @@ func TestAttachSubstitutePath(t *testing.T) {
 		t.Skip("test skipped on windows, see https://delve.beta.teamcity.com/project/Delve_windows for details")
 	}
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
-		localDirPath := filepath.Join(string(filepath.Separator), "path", "that", "does", "not", "exist")
-		if runtime.GOOS == "windows" {
-			localDirPath = "C:" + localDirPath
-		}
-		localFilePath := filepath.Join(localDirPath, "loopprog.go")
-		debuggerDirPath := filepath.Dir(fixture.Source)
-
-		// Start the program to attach to
 		cmd := execFixture(t, fixture)
 
-		runDebugSessionWithBPs(t, client, "attach",
-			// Attach
-			func() {
-				client.AttachRequest(map[string]interface{}{"mode": "local", "processId": cmd.Process.Pid, "stopOnEntry": false, "substitutePath": []map[string]string{{"from": localDirPath, "to": debuggerDirPath}}})
-			},
-			// Set breakpoints
-			localFilePath, []int{8},
-			[]onBreakpoint{{
-				// Stop at line 8
-				execute: func() {
-					handleStop(t, client, 1, "main.loop", 8)
-				},
-				disconnect: true,
-			}})
+		substitutePathTestHelper(t, fixture, client, "attach", map[string]interface{}{"mode": "local", "processId": cmd.Process.Pid})
 	})
+}
+
+func substitutePathTestHelper(t *testing.T, fixture protest.Fixture, client *daptest.Client, request string, launchAttachConfig map[string]interface{}) {
+	t.Helper()
+	nonexistentDir := filepath.Join(string(filepath.Separator), "path", "that", "does", "not", "exist")
+	if runtime.GOOS == "windows" {
+		nonexistentDir = "C:" + nonexistentDir
+	}
+
+	launchAttachConfig["stopOnEntry"] = false
+	launchAttachConfig["substitutePath"] = []map[string]string{
+		{"from": nonexistentDir, "to": filepath.Dir(fixture.Source)},
+		{"from": filepath.Dir(fixture.Source), "to": filepath.Dir(fixture.Source)}, // Since the path mappings are ordered, this should never apply.
+		{"from": nonexistentDir, "to": nonexistentDir}, // Since the path mappings are ordered, this should never apply.
+	}
+
+	runDebugSessionWithBPs(t, client, request,
+		func() {
+			switch request {
+			case "attach":
+				client.AttachRequest(launchAttachConfig)
+			case "launch":
+				client.LaunchRequestWithArgs(launchAttachConfig)
+			default:
+				t.Fatalf("invalid request: %s", request)
+			}
+		},
+		// Set breakpoints
+		filepath.Join(nonexistentDir, "loopprog.go"), []int{8},
+		[]onBreakpoint{{
+
+			execute: func() {
+				handleStop(t, client, 1, "main.loop", 8)
+			},
+			disconnect: true,
+		}})
 }
 
 // execFixture runs the binary fixture.Path and hooks up stdout and stderr
@@ -2674,19 +2669,19 @@ func TestBadLaunchRequests(t *testing.T) {
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": 123})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
-			"Failed to launch: 'substitutePath' attribute '123' in debug configuration is not a []interface{}")
+			"Failed to launch: 'substitutePath' attribute '123' in debug configuration is not a []{'from': string, 'to': string}")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{123}})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
-			"Failed to launch: 'substitutePath' attribute array element 0 '123' in debug configuration is not a map[string]interface{}")
+			"Failed to launch: 'substitutePath' attribute '[123]' in debug configuration is not a []{'from': string, 'to': string}")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{map[string]interface{}{"to": "path2"}}})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
-			"Failed to launch: 'from' in array element 0 for 'substitutePath' '<nil>' in debug configuration is not a string")
+			"Failed to launch: 'substitutePath' attribute '[map[to:path2]]' in debug configuration is not a []{'from': string, 'to': string}")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{map[string]interface{}{"from": "path1", "to": 123}}})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
-			"Failed to launch: 'to' in array element 0 for 'substitutePath' '123' in debug configuration is not a string")
+			"Failed to launch: 'substitutePath' attribute '[map[from:path1 to:123]]' in debug configuration is not a []{'from': string, 'to': string}")
 
 		// Skip detailed message checks for potentially different OS-specific errors.
 		client.LaunchRequest("exec", fixture.Path+"_does_not_exist", stopOnEntry)

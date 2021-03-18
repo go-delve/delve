@@ -79,10 +79,10 @@ type launchAttachArgs struct {
 	stackTraceDepth int
 	// showGlobalVariables indicates if global package variables should be loaded.
 	showGlobalVariables bool
-	// substitutePathLocalToDebugger indicates rules for converting file paths between client and debugger.
-	substitutePathLocalToDebugger [][2]string
-	// substitutePathDebuggerToLocal indicates rules for converting file paths between debugger and client.
-	substitutePathDebuggerToLocal [][2]string
+	// substitutePathClientToServer indicates rules for converting file paths between client and debugger.
+	substitutePathClientToServer [][2]string
+	// substitutePathServerToClient indicates rules for converting file paths between debugger and client.
+	substitutePathServerToClient [][2]string
 }
 
 // defaultArgs borrows the defaults for the arguments from the original vscode-go adapter.
@@ -90,8 +90,8 @@ var defaultArgs = launchAttachArgs{
 	stopOnEntry:                   false,
 	stackTraceDepth:               50,
 	showGlobalVariables:           false,
-	substitutePathLocalToDebugger: [][2]string{},
-	substitutePathDebuggerToLocal: [][2]string{},
+	substitutePathClientToServer: [][2]string{},
+	substitutePathServerToClient: [][2]string{},
 }
 
 // DefaultLoadConfig controls how variables are loaded from the target's memory, borrowing the
@@ -139,32 +139,33 @@ func (s *Server) setLaunchAttachArgs(request dap.LaunchAttachRequest) error {
 	if ok {
 		s.args.showGlobalVariables = globals
 	}
-	rules, ok := request.GetArguments()["substitutePath"]
+	paths, ok := request.GetArguments()["substitutePath"]
 	if ok {
-		rulesParsed, ok := rules.([]interface{})
+		typeMismatchError := fmt.Errorf("'substitutePath' attribute '%v' in debug configuration is not a []{'from': string, 'to': string}", paths)
+		pathsParsed, ok := paths.([]interface{})
 		if !ok {
-			return fmt.Errorf("'substitutePath' attribute '%v' in debug configuration is not a []interface{}", rules)
+			return typeMismatchError
 		}
-		localToDebug := make([][2]string, 0, len(rulesParsed))
-		debugToLocal := make([][2]string, 0, len(rulesParsed))
-		for i, arg := range rulesParsed {
-			r, ok := arg.(map[string]interface{})
+		clientToServer := make([][2]string, 0, len(pathsParsed))
+		serverToClient := make([][2]string, 0, len(pathsParsed))
+		for _, arg := range pathsParsed {
+			pathMapping, ok := arg.(map[string]interface{})
 			if !ok {
-				return fmt.Errorf("'substitutePath' attribute array element %d '%v' in debug configuration is not a map[string]interface{}", i, arg)
+				return typeMismatchError
 			}
-			from, ok := r["from"].(string)
+			from, ok := pathMapping["from"].(string)
 			if !ok {
-				return fmt.Errorf("'from' in array element %d for 'substitutePath' '%v' in debug configuration is not a string", i, r["from"])
+				return typeMismatchError
 			}
-			to, ok := r["to"].(string)
+			to, ok := pathMapping["to"].(string)
 			if !ok {
-				return fmt.Errorf("'to' in array element %d for 'substitutePath' '%v' in debug configuration is not a string", i, r["to"])
+				return typeMismatchError
 			}
-			localToDebug = append(localToDebug, [2]string{from, to})
-			debugToLocal = append(debugToLocal, [2]string{to, from})
+			clientToServer = append(clientToServer, [2]string{from, to})
+			serverToClient = append(serverToClient, [2]string{to, from})
 		}
-		s.args.substitutePathLocalToDebugger = localToDebug
-		s.args.substitutePathDebuggerToLocal = debugToLocal
+		s.args.substitutePathClientToServer = clientToServer
+		s.args.substitutePathServerToClient = serverToClient
 	}
 	return nil
 }
@@ -618,8 +619,11 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 		return
 	}
 
-	localPath := request.Arguments.Source.Path
-	debuggerPath := s.toDebuggerPath(localPath)
+	clientPath := request.Arguments.Source.Path
+	serverPath := s.toServerPath(clientPath)
+	if serverPath != clientPath {
+		s.log.Debugf("client path=%s converted to server path=%s in set breakpoints request\n", clientPath, serverPath)
+	}
 
 	// According to the spec we should "set multiple breakpoints for a single source
 	// and clear all previous breakpoints in that source." The simplest way is
@@ -641,7 +645,7 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 		}
 		// Skip other source files.
 		// TODO(polina): should this be normalized because of different OSes?
-		if bp.File != debuggerPath {
+		if bp.File != serverPath {
 			continue
 		}
 		_, err := s.debugger.ClearBreakpoint(bp)
@@ -656,7 +660,7 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 	response.Body.Breakpoints = make([]dap.Breakpoint, len(request.Arguments.Breakpoints))
 	for i, want := range request.Arguments.Breakpoints {
 		got, err := s.debugger.CreateBreakpoint(
-			&api.Breakpoint{File: debuggerPath, Line: want.Line, Cond: want.Condition})
+			&api.Breakpoint{File: serverPath, Line: want.Line, Cond: want.Condition})
 		response.Body.Breakpoints[i].Verified = (err == nil)
 		if err != nil {
 			response.Body.Breakpoints[i].Line = want.Line
@@ -664,7 +668,7 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 		} else {
 			response.Body.Breakpoints[i].Id = got.ID
 			response.Body.Breakpoints[i].Line = got.Line
-			response.Body.Breakpoints[i].Source = dap.Source{Name: request.Arguments.Source.Name, Path: localPath}
+			response.Body.Breakpoints[i].Source = dap.Source{Name: request.Arguments.Source.Name, Path: clientPath}
 		}
 	}
 	s.send(response)
@@ -860,8 +864,11 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 		uniqueStackFrameID := s.stackFrameHandles.create(stackFrame{goroutineID, i})
 		stackFrames[i] = dap.StackFrame{Id: uniqueStackFrameID, Line: loc.Line, Name: fnName(loc)}
 		if loc.File != "<autogenerated>" {
-			localPath := s.toLocalPath((loc.File))
-			stackFrames[i].Source = dap.Source{Name: filepath.Base(localPath), Path: localPath}
+			clientPath := s.toClientPath((loc.File))
+			if clientPath != loc.File {
+				s.log.Debugf("server path=%s converted to client path=%s in stack trace request\n", loc.File, clientPath)
+			}
+			stackFrames[i].Source = dap.Source{Name: filepath.Base(clientPath), Path: clientPath}
 		}
 		stackFrames[i].Column = 0
 	}
@@ -1596,16 +1603,16 @@ func (s *Server) doCommand(command string) {
 	}
 }
 
-func (s *Server) toLocalPath(path string) string {
-	if len(s.args.substitutePathDebuggerToLocal) == 0 {
+func (s *Server) toClientPath(path string) string {
+	if len(s.args.substitutePathServerToClient) == 0 {
 		return path
 	}
-	return locspec.SubstitutePath(path, s.args.substitutePathDebuggerToLocal)
+	return locspec.SubstitutePath(path, s.args.substitutePathServerToClient)
 }
 
-func (s *Server) toDebuggerPath(path string) string {
-	if len(s.args.substitutePathLocalToDebugger) == 0 {
+func (s *Server) toServerPath(path string) string {
+	if len(s.args.substitutePathClientToServer) == 0 {
 		return path
 	}
-	return locspec.SubstitutePath(path, s.args.substitutePathLocalToDebugger)
+	return locspec.SubstitutePath(path, s.args.substitutePathClientToServer)
 }
