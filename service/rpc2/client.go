@@ -250,6 +250,18 @@ func (c *RPCClient) ClearBreakpointByName(name string) (*api.Breakpoint, error) 
 	return out.Breakpoint, err
 }
 
+func (c *RPCClient) ToggleBreakpoint(id int) (*api.Breakpoint, error) {
+	var out ToggleBreakpointOut
+	err := c.call("ToggleBreakpoint", ToggleBreakpointIn{id, ""}, &out)
+	return out.Breakpoint, err
+}
+
+func (c *RPCClient) ToggleBreakpointByName(name string) (*api.Breakpoint, error) {
+	var out ToggleBreakpointOut
+	err := c.call("ToggleBreakpoint", ToggleBreakpointIn{0, name}, &out)
+	return out.Breakpoint, err
+}
+
 func (c *RPCClient) AmendBreakpoint(bp *api.Breakpoint) error {
 	out := new(AmendBreakpointOut)
 	err := c.call("AmendBreakpoint", AmendBreakpointIn{*bp}, out)
