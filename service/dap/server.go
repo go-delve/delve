@@ -884,22 +884,15 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 				return
 			}
 
-<<<<<<< HEAD
-		// Validate trace file
-		traceProgram, ok := request.Arguments["traceProgram"].(string)
-		if !ok || traceProgram == "" {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				"The traceProgram attribute is missing in debug configuration.")
-			return
-		}
-		if _, err := os.Stat(traceProgram); os.IsNotExist(err) {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				"The traceProgram attribute points to a file that does not exist.")
-			return
-		}
-=======
+			// Validate trace file
+			traceProgram, ok := request.Arguments["traceProgram"].(string)
+			if !ok || traceProgram == "" {
+				s.sendErrorResponse(request.Request,
+					FailedToLaunch, "Failed to launch",
+					"The traceProgram attribute is missing in debug configuration.")
+				return
+			}
+
 			s.config.Debugger.CoreFile = traceDirectory
 		}
 
@@ -918,7 +911,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 		s.config.Debugger.Backend = backend
 	}
->>>>>>> WIP: Implement onReverseContinue and partial onStepBackRequest
 
 	if mode == "debug" || mode == "test" {
 		output, ok := request.Arguments["output"].(string)
