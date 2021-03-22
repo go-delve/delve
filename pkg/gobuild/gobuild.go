@@ -20,7 +20,8 @@ func Remove(path string) {
 	for i := 0; i < 20; i++ {
 		err = os.Remove(path)
 		// Open files can be removed on Unix, but not on Windows, where there also appears
-		// to be a delay in releasing the binary when the process exits. So we try again.
+		// to be a delay in releasing the binary when the process exits.
+		// Leaving temporary files behind can be annoying to users, so we try again.
 		if err == nil || runtime.GOOS != "windows" {
 			break
 		}

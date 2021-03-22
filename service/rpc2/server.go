@@ -294,6 +294,38 @@ func (s *RPCServer) ClearBreakpoint(arg ClearBreakpointIn, out *ClearBreakpointO
 	return nil
 }
 
+type ToggleBreakpointIn struct {
+	Id   int
+	Name string
+}
+
+type ToggleBreakpointOut struct {
+	Breakpoint *api.Breakpoint
+}
+
+// ToggleBreakpoint toggles on or off a breakpoint by Name (if Name is not an
+// empty string) or by ID.
+func (s *RPCServer) ToggleBreakpoint(arg ToggleBreakpointIn, out *ToggleBreakpointOut) error {
+	var bp *api.Breakpoint
+	if arg.Name != "" {
+		bp = s.debugger.FindBreakpointByName(arg.Name)
+		if bp == nil {
+			return fmt.Errorf("no breakpoint with name %s", arg.Name)
+		}
+	} else {
+		bp = s.debugger.FindBreakpoint(arg.Id)
+		if bp == nil {
+			return fmt.Errorf("no breakpoint with id %d", arg.Id)
+		}
+	}
+	bp.Disabled = !bp.Disabled
+	if err := s.debugger.AmendBreakpoint(bp); err != nil {
+		return err
+	}
+	out.Breakpoint = bp
+	return nil
+}
+
 type AmendBreakpointIn struct {
 	Breakpoint api.Breakpoint
 }
@@ -471,8 +503,8 @@ type EvalOut struct {
 
 // EvalVariable returns a variable in the specified context.
 //
-// See https://github.com/go-delve/delve/wiki/Expressions for
-// a description of acceptable values of arg.Expr.
+// See https://github.com/go-delve/delve/blob/master/Documentation/cli/expr.md
+// for a description of acceptable values of arg.Expr.
 func (s *RPCServer) Eval(arg EvalIn, out *EvalOut) error {
 	cfg := arg.Cfg
 	if cfg == nil {

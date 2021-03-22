@@ -172,10 +172,12 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 	if err == nil {
 		// Sometimes delve on Windows can't remove the built binary before
 		// exiting and gets an "Access is denied" error when trying.
-		// This used to make this test flaky. See: https://travis-ci.com/go-delve/delve/jobs/296325131)
-		// But we have now added a delay to gobuild.Remove. If this flakes again,
-		// adjust it. Leaving temporary files behind can be annoying to users.
-		t.Errorf("running %q: file %v was not deleted\nstdout is %q, stderr is %q", delveCmds, debugbin, stdout, stderr)
+		// See: https://travis-ci.com/go-delve/delve/jobs/296325131)
+		// We have added a delay to gobuild.Remove, but to avoid any test
+		// flakiness, we guard against this failure here as well.
+		if runtime.GOOS != "windows" || !strings.Contains(err.Error(), "Access is denied") {
+			t.Errorf("running %q: file %v was not deleted\nstdout is %q, stderr is %q", delveCmds, debugbin, stdout, stderr)
+		}
 		return
 	}
 	if !os.IsNotExist(err) {

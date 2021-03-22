@@ -32,6 +32,7 @@ Command | Description
 [clearall](#clearall) | Deletes multiple breakpoints.
 [condition](#condition) | Set breakpoint condition.
 [on](#on) | Executes a command when a breakpoint is hit.
+[toggle](#toggle) | Toggles on or off a breakpoint.
 [trace](#trace) | Set tracepoint.
 
 
@@ -205,6 +206,16 @@ Defines <alias> as an alias to <command> or removes an alias.
 
 ## continue
 Run until breakpoint or program termination.
+
+	continue [<linespec>]
+
+Optional linespec argument allows you to continue until a specific location is reached. The program will halt if a breakpoint is hit before reaching the specified location.
+
+For example:
+
+	continue main.main
+	continue encoding/json.Marshal
+
 
 Aliases: c
 
@@ -380,7 +391,7 @@ If regex is specified only local variables with a name matching it will be retur
 ## next
 Step over to next source line.
 
-	 next [count]
+	next [count]
 
 Optional [count] argument allows you to skip multiple lines.
 
@@ -421,7 +432,7 @@ Restart process.
 
 For recorded targets the command takes the following forms:
 
-	restart					resets ot the start of the recording
+	restart					resets to the start of the recording
 	restart [checkpoint]			resets the recording to the given checkpoint
 	restart -r [newargv...]	[redirects...]	re-records the target process
 	
@@ -519,6 +530,12 @@ Aliases: tr
 
 ## threads
 Print out info for every traced thread.
+
+
+## toggle
+Toggles on or off a breakpoint.
+
+toggle <breakpoint name or id>
 
 
 ## trace
