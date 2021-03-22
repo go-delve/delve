@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/go-delve/delve/pkg/proc/gdbserial"
 	"go/constant"
 	"go/parser"
 	"io"
@@ -38,7 +37,9 @@ import (
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/internal/sameuser"
+	"github.com/go-delve/delve/pkg/proc/gdbserial"
 	"github.com/google/go-dap"
+
 	"github.com/sirupsen/logrus"
 )
 
@@ -713,8 +714,11 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	// TODO(polina): support these requests in addition to vscode-go feature parity
 	response.Body.SupportsTerminateRequest = false
 	response.Body.SupportsRestartRequest = false
-	// TODO(lggomez): research nehalem and zen processors detection for rr as they are the only supported platforms
-	response.Body.SupportsStepBack = runtime.GOOS == "linux"
+
+	if err := gdbserial.CheckRRCompatible(); err == nil {
+		response.Body.SupportsStepBack = true
+	}
+
 	response.Body.SupportsSetExpression = false
 	response.Body.SupportsLoadedSourcesRequest = false
 	response.Body.SupportsReadMemoryRequest = false
@@ -765,26 +769,11 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 
 	if mode == "record" {
-		// Validate backend for mode
-		backend, ok := request.Arguments["backend"].(string)
-		if !ok || backend == "" {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				"The backend attribute is missing debug configuration.")
-			return
-		}
+		s.config.Debugger.Backend = "rr"
 
-		if backend != "rr" {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("Unsupported 'backend' value %q in debug configuration.", backend))
-			return
-		}
-
+		// Validate rr availability
 		if err := gdbserial.CheckRRAvailable(); err != nil {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("Unsupported 'backend' value %q in debug configuration: %s", backend, err.Error()))
+			s.sendErrorResponseWithURL(request.Request, FailedToInitialize, "Unable to find  rr in record configuration", err.Error(), "https://github.com/rr-debugger/rr/wiki/Building-And-Installing", "rr installation page")
 			return
 		}
 
@@ -793,13 +782,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		if !ok || traceDirectory == "" {
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to launch",
-				"The traceDirectory attribute is missing in debug configuration.")
-			return
-		}
-		if _, err := os.Stat(traceDirectory); os.IsNotExist(err) {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				"The traceDirectory attribute points to an directory that does not exist.")
+				"The traceDirectory attribute is missing in record configuration.")
 			return
 		}
 
@@ -810,7 +793,8 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			if !ok {
 				s.sendErrorResponse(request.Request,
 					FailedToLaunch, "Failed to launch",
-					fmt.Sprintf("'buildFlags' attribute '%v' in debug configuration is not a string.", buildFlagsArg))
+					fmt.Sprintf("'buildFlags' attribute " +
+						"%v' in record configuration is not a string.", buildFlagsArg))
 				return
 			}
 		}
@@ -845,68 +829,48 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 
 	if mode == "replay" {
-		backend, ok := request.Arguments["backend"].(string)
-		if !ok || backend == "" {
+		// Check against replay parameters and decide the backend based on which one was received
+		coreDumpPath, coreDumpPathOk := request.Arguments["coreDumpPath"].(string)
+		traceDirectory, traceDirectoryOk := request.Arguments["traceDirectory"].(string)
+
+		coreDumpPathExists := coreDumpPathOk && (coreDumpPath != "")
+		traceDirectoryExists := traceDirectoryOk && (traceDirectory != "")
+		if coreDumpPathExists && traceDirectoryExists {
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to launch",
-				"The backend attribute is missing in debug configuration.")
+				"The replay configuration must have either a coreDumpPath or a traceDirectory. Both attributes were found.")
 			return
 		}
 
-		// Validate backend for this mode
-		if (backend != "rr") && (backend != "core") {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("Unsupported 'backend' value %q in replay configuration.", backend))
-			return
+		//TODO(lgomez): define default backend to use for this scenario as 'core' itself is only an internal value in order to differentiate from rr
+		backend := "core"
+		if traceDirectoryExists {
+			backend = "rr"
+		}
+
+		if backend == "core" {
+			if coreDumpPathExists {
+				// Assign non-empty core file path to debugger configuration. This will
+				// trigger a native core file replay instead of an rr trace replay
+				s.config.Debugger.CoreFile = coreDumpPath
+			}
 		}
 
 		if backend == "rr" {
 			if err := gdbserial.CheckRRAvailable(); err != nil {
-				s.sendErrorResponse(request.Request,
-					FailedToLaunch, "Failed to launch",
-					fmt.Sprintf("Unsupported 'backend' value %q in debug configuration: %s", backend, err.Error()))
+				s.sendErrorResponseWithURL(request.Request, FailedToInitialize, "Unable to find  rr in record configuration", err.Error(), "https://github.com/rr-debugger/rr/wiki/Building-And-Installing", "rr installation page")
 				return
 			}
 			
 			// Validate trace directory
-			traceDirectory, ok := request.Arguments["traceDirectory"].(string)
-			if !ok || traceDirectory == "" {
+			if !traceDirectoryOk || traceDirectory == "" {
 				s.sendErrorResponse(request.Request,
 					FailedToLaunch, "Failed to launch",
 					"The traceDirectory attribute is missing in debug configuration.")
 				return
 			}
-			if _, err := os.Stat(traceDirectory); os.IsNotExist(err) {
-				s.sendErrorResponse(request.Request,
-					FailedToLaunch, "Failed to launch",
-					"The traceDirectory attribute points to an directory that does not exist.")
-				return
-			}
-
-			// Validate trace file
-			traceProgram, ok := request.Arguments["traceProgram"].(string)
-			if !ok || traceProgram == "" {
-				s.sendErrorResponse(request.Request,
-					FailedToLaunch, "Failed to launch",
-					"The traceProgram attribute is missing in debug configuration.")
-				return
-			}
 
 			s.config.Debugger.CoreFile = traceDirectory
-		}
-
-		if backend == "core" {
-			// Coredump only works on core dump files
-			coreDumpFile, ok := request.Arguments["coreDumpPath"].(string)
-			if !ok || coreDumpFile == "" {
-				s.sendErrorResponse(request.Request,
-					FailedToLaunch, "Failed to launch",
-					"The coreDumpPath attribute is missing in debug configuration.")
-				return
-			}
-
-			s.config.Debugger.CoreFile = coreDumpFile
 		}
 
 		s.config.Debugger.Backend = backend
@@ -2730,6 +2694,23 @@ func (s *Server) onDisassembleRequest(request *dap.DisassembleRequest) {
 // Capability 'supportsCancelRequest' is not set 'initialize' response.
 func (s *Server) onCancelRequest(request *dap.CancelRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
+}
+
+// sendErrorResponseWithURL sends and error response to be visible to the user with an error related URL.
+func (s *Server) sendErrorResponseWithURL(request dap.Request, id int, summary, details string, url string, urlLabel string) {
+	er := &dap.ErrorResponse{}
+	er.Type = "response"
+	er.Command = request.Command
+	er.RequestSeq = request.Seq
+	er.Success = false
+	er.Message = summary
+	er.Body.Error.Id = id
+	er.Body.Error.Format = fmt.Sprintf("%s: %s", summary, details)
+	er.Body.Error.ShowUser = true
+	er.Body.Error.Url = url
+	er.Body.Error.UrlLabel = urlLabel
+	s.log.Error(er.Body.Error.Format)
+	s.send(er)
 }
 
 // onExceptionInfoRequest handles 'exceptionInfo' requests.

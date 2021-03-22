@@ -23,6 +23,7 @@ const (
 	UnableToHalt               = 2010
 	UnableToGetExceptionInfo   = 2011
 	UnableToSetVariable        = 2012
+	FailedToInitialize         = 2999
 	// Add more codes as we support more requests
 	DebuggeeIsRunning = 4000
 	DisconnectError   = 5000
