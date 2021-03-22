@@ -1693,7 +1693,7 @@ func TestWorkingDir(t *testing.T) {
 					"mode":        "exec",
 					"program":     fixture.Path,
 					"stopOnEntry": false,
-					"cwd":         wd,
+					"wd":         wd,
 				})
 			},
 			// Set breakpoints
@@ -1705,7 +1705,7 @@ func TestWorkingDir(t *testing.T) {
 					locals := client.ExpectVariablesResponse(t)
 					expectChildren(t, locals, "Locals", 2)
 					expectVarExact(t, locals, 0, "pwd", "pwd", fmt.Sprintf("%q", wd), noChildren)
-					expectVarExact(t, locals, 1, "err", "err", "nil <error>", noChildren)
+					expectVarExact(t, locals, 1, "err", "err", "error nil", noChildren)
 
 				},
 				disconnect: false,
@@ -2650,9 +2650,9 @@ func TestBadLaunchRequests(t *testing.T) {
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: 'buildFlags' attribute '123' in debug configuration is not a string.")
 
-		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "cwd": 123})
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "wd": 123})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
-			"Failed to launch: 'cwd' attribute '123' in debug configuration is not a string.")
+			"Failed to launch: 'wd' attribute '123' in debug configuration is not a string.")
 
 		// Skip detailed message checks for potentially different OS-specific errors.
 		client.LaunchRequest("exec", fixture.Path+"_does_not_exist", stopOnEntry)
