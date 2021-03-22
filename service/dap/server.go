@@ -80,8 +80,10 @@ type launchAttachArgs struct {
 	// showGlobalVariables indicates if global package variables should be loaded.
 	showGlobalVariables bool
 	// substitutePathClientToServer indicates rules for converting file paths between client and debugger.
+	// These must be absolute directory paths.
 	substitutePathClientToServer [][2]string
 	// substitutePathServerToClient indicates rules for converting file paths between debugger and client.
+	// These must be absolute directory paths.
 	substitutePathServerToClient [][2]string
 }
 
