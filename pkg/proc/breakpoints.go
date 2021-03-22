@@ -299,8 +299,8 @@ func (t *Target) SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) 
 	return newBreakpoint, nil
 }
 
-// setBreakpointWithID creates a breakpoint at addr, with the specified logical ID.
-func (t *Target) setBreakpointWithID(id int, addr uint64) (*Breakpoint, error) {
+// SetBreakpointWithID creates a breakpoint at addr, with the specified logical ID.
+func (t *Target) SetBreakpointWithID(id int, addr uint64) (*Breakpoint, error) {
 	bpmap := t.Breakpoints()
 	bp, err := t.SetBreakpoint(addr, UserBreakpoint, nil)
 	if err == nil {

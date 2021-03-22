@@ -72,6 +72,10 @@ type Client interface {
 	ClearBreakpoint(id int) (*api.Breakpoint, error)
 	// ClearBreakpointByName deletes a breakpoint by name
 	ClearBreakpointByName(name string) (*api.Breakpoint, error)
+	// ToggleBreakpoint toggles on or off a breakpoint by ID.
+	ToggleBreakpoint(id int) (*api.Breakpoint, error)
+	// ToggleBreakpointByName toggles on or off a breakpoint by name.
+	ToggleBreakpointByName(name string) (*api.Breakpoint, error)
 	// Allows user to update an existing breakpoint for example to change the information
 	// retrieved when the breakpoint is hit or to change, add or remove the break condition
 	AmendBreakpoint(*api.Breakpoint) error
