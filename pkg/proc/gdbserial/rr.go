@@ -3,18 +3,21 @@ package gdbserial
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
 	"unicode"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/intel-go/cpuid"
 )
 
 // RecordAsync configures rr to record the execution of the specified
@@ -176,6 +179,29 @@ type ErrPerfEventParanoid struct {
 
 func (err ErrPerfEventParanoid) Error() string {
 	return fmt.Sprintf("rr needs /proc/sys/kernel/perf_event_paranoid <= 1, but it is %d", err.actual)
+}
+
+func CheckRRCompatible() error {
+	if runtime.GOOS != "linux" {
+		return errors.New("unsupported operative system for rr")
+	}
+
+	// Check for Intel Nehalem and posterior process model compatiblity
+	// per https://github.com/rr-debugger/rr#system-requirements
+	// This equals to CPU family 6, model 30 and up (see https://en.wikichip.org/wiki/intel/cpuid)
+	if (cpuid.DisplayModel > 30) && (cpuid.DisplayFamily == 6) {
+		return nil
+	}
+
+	// Check for AMD Zen model compatiblity
+	// per https://github.com/rr-debugger/rr/wiki/Zen
+	// This equals to CPU families 23 and 25 (see https://en.wikichip.org/wiki/amd/cpuid)
+	// TODO (lggomez): We won't be performing here a thorough model comparison here so by default all Zen models are allowed
+	if (cpuid.DisplayFamily == 23) || (cpuid.DisplayFamily == 25) {
+		return nil
+	}
+
+	return errors.New("unsupported cpu family and/or model for rr")
 }
 
 func CheckRRAvailable() error {
