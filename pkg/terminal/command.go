@@ -1650,11 +1650,28 @@ func examineMemoryCmd(t *Term, ctx callContext, argstr string) error {
 	size := 1
 	isExpr := false
 
+	// nextArg returns the next argument that is not an empty string, if any, and
+	// advances the args slice to the position after that.
+	nextArg := func() string {
+		for len(args) > 0 {
+			arg := args[0]
+			args = args[1:]
+			if arg != "" {
+				return arg
+			}
+		}
+		return ""
+	}
+
 loop:
-	for len(args) > 0 {
-		switch args[0] {
+	for {
+		switch cmd := nextArg(); cmd {
+		case "":
+			// no more arguments
+			break loop
 		case "-fmt":
-			if len(args) < 2 {
+			arg := nextArg()
+			if arg == "" {
 				return fmt.Errorf("expected argument after -fmt")
 			}
 			fmtMapToPriFmt := map[string]byte{
@@ -1667,39 +1684,38 @@ loop:
 				"bin":         'b',
 				"binary":      'b',
 			}
-			priFmt, ok = fmtMapToPriFmt[args[1]]
+			priFmt, ok = fmtMapToPriFmt[arg]
 			if !ok {
-				return fmt.Errorf("%q is not a valid format", args[1])
+				return fmt.Errorf("%q is not a valid format", arg)
 			}
-			args = args[2:]
 		case "-count", "-len":
-			if len(args) < 2 {
+			arg := nextArg()
+			if arg == "" {
 				return fmt.Errorf("expected argument after -count/-len")
 			}
 			var err error
-			count, err = strconv.Atoi(args[1])
+			count, err = strconv.Atoi(arg)
 			if err != nil || count <= 0 {
 				return fmt.Errorf("count/len must be a positive integer")
 			}
-			args = args[2:]
 		case "-size":
-			if len(args) < 2 {
+			arg := nextArg()
+			if arg == "" {
 				return fmt.Errorf("expected argument after -size")
 			}
 			var err error
-			size, err = strconv.Atoi(args[1])
+			size, err = strconv.Atoi(arg)
 			if err != nil || size <= 0 || size > 8 {
 				return fmt.Errorf("size must be a positive integer (<=8)")
 			}
-			args = args[2:]
 		case "-x":
 			isExpr = true
-			args = args[1:]
 			break loop // remaining args are going to be interpreted as expression
 		default:
-			if len(args) > 1 {
+			if len(args) > 0 {
 				return fmt.Errorf("unknown option %q", args[0])
 			}
+			args = []string{cmd}
 			break loop // only one arg left to be evaluated as a uint
 		}
 	}

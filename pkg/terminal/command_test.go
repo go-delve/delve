@@ -1104,6 +1104,14 @@ func TestExamineMemoryCmd(t *testing.T) {
 		if !strings.Contains(res, firstLine) {
 			t.Fatalf("expected first line: %s", firstLine)
 		}
+
+		// seventh examining memory: -fmt and double spaces
+		res = term.MustExec("examinemem -fmt  hex  -x &bs[0]")
+		t.Logf("the seventh result of examining memory result \n%s", res)
+		firstLine = fmt.Sprintf("%#x:   0xff", address)
+		if !strings.Contains(res, firstLine) {
+			t.Fatalf("expected first line: %s", firstLine)
+		}
 	})
 }
 
