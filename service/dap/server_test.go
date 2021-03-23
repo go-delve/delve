@@ -1693,7 +1693,7 @@ func TestWorkingDir(t *testing.T) {
 					"mode":        "exec",
 					"program":     fixture.Path,
 					"stopOnEntry": false,
-					"wd":         wd,
+					"wd":          wd,
 				})
 			},
 			// Set breakpoints
@@ -2364,6 +2364,48 @@ func TestLaunchRequestDefaults(t *testing.T) {
 			// writes to default output dir __debug_bin
 		}, fixture.Source)
 	})
+}
+
+func TestLaunchRequestDefaultsNoDebug(t *testing.T) {
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runNoDebugDebugSession(t, client, "launch", func() {
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"noDebug": true,
+				"mode":    "", /*"debug" by default*/
+				"program": fixture.Source,
+				"output":  cleanExeName("__mydir")})
+		}, fixture.Source)
+	})
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runNoDebugDebugSession(t, client, "launch", func() {
+			// Use the default output directory.
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"noDebug": true,
+				/*"mode":"debug" by default*/
+				"program": fixture.Source,
+				"output":  cleanExeName("__mydir")})
+		}, fixture.Source)
+	})
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runNoDebugDebugSession(t, client, "launch", func() {
+			// Use the default output directory.
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"noDebug": true,
+				"mode":    "debug",
+				"program": fixture.Source})
+			// writes to default output dir __debug_bin
+		}, fixture.Source)
+	})
+}
+
+func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmd string, cmdRequest func(), source string) {
+	client.InitializeRequest()
+	client.ExpectInitializeResponse(t)
+
+	cmdRequest()
+	// ! client.InitializedEvent.
+	// ! client.ExpectLaunchResponse
+	client.ExpectTerminatedEvent(t)
 }
 
 func TestLaunchTestRequest(t *testing.T) {
