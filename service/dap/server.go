@@ -881,16 +881,6 @@ func (s *Server) doStepCommand(command string, threadId int) {
 		sendErrorStoppedEvent(state.SelectedGoroutine.ID)
 		return
 	}
-	if state.NextInProgress {
-		s.log.Debug("NextInProgress when stepping")
-		err := s.debugger.CancelNext()
-		if err != nil {
-			s.log.Errorf("Error cancelling next: %e", err)
-			sendErrorStoppedEvent(state.SelectedGoroutine.ID)
-			return
-		}
-		s.log.Debug("Cancelled next")
-	}
 	// Use SwitchGoroutine to change the current goroutine.
 	if state.SelectedGoroutine == nil || state.SelectedGoroutine.ID != threadId {
 		state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
