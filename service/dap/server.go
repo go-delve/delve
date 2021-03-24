@@ -806,7 +806,7 @@ func (s *Server) doStepCommand(command string, threadId int) {
 	}
 	// Use SwitchGoroutine to change the current goroutine.
 	if state.SelectedGoroutine == nil || state.SelectedGoroutine.ID != threadId {
-		state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, ThreadID: threadId}, nil)
+		state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
 		if err != nil {
 			s.log.Errorf("Error switching goroutines while stepping: %e", err)
 			sendErrorStoppedEvent(state.SelectedGoroutine.ID)
