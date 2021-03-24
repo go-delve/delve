@@ -3,6 +3,7 @@ package dap
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net"
@@ -1759,6 +1760,42 @@ func execFixture(t *testing.T, fixture protest.Fixture) *exec.Cmd {
 	return cmd
 }
 
+// TestWorkingDir executes to a breakpoint and tests that the specified
+// working directory is the one used to run the program.
+func TestWorkingDir(t *testing.T) {
+	runTest(t, "workdir", func(client *daptest.Client, fixture protest.Fixture) {
+		wd := os.TempDir()
+		// For Darwin `os.TempDir()` returns `/tmp` which is symlink to `/private/tmp`.
+		if runtime.GOOS == "darwin" {
+			wd = "/private/tmp"
+		}
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode":        "exec",
+					"program":     fixture.Path,
+					"stopOnEntry": false,
+					"wd":          wd,
+				})
+			},
+			// Set breakpoints
+			fixture.Source, []int{10}, // b main.main
+			[]onBreakpoint{{
+				execute: func() {
+					handleStop(t, client, 1, "main.main", 10)
+					client.VariablesRequest(1001) // Locals
+					locals := client.ExpectVariablesResponse(t)
+					expectChildren(t, locals, "Locals", 2)
+					expectVarExact(t, locals, 0, "pwd", "pwd", fmt.Sprintf("%q", wd), noChildren)
+					expectVarExact(t, locals, 1, "err", "err", "error nil", noChildren)
+
+				},
+				disconnect: false,
+			}})
+	})
+}
+
 // expectEval is a helper for verifying the values within an EvaluateResponse.
 //     value - the value of the evaluated expression
 //     hasRef - true if the evaluated expression should have children and therefore a non-0 variable reference
@@ -2412,6 +2449,48 @@ func TestLaunchRequestDefaults(t *testing.T) {
 	})
 }
 
+func TestLaunchRequestDefaultsNoDebug(t *testing.T) {
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runNoDebugDebugSession(t, client, "launch", func() {
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"noDebug": true,
+				"mode":    "", /*"debug" by default*/
+				"program": fixture.Source,
+				"output":  cleanExeName("__mydir")})
+		}, fixture.Source)
+	})
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runNoDebugDebugSession(t, client, "launch", func() {
+			// Use the default output directory.
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"noDebug": true,
+				/*"mode":"debug" by default*/
+				"program": fixture.Source,
+				"output":  cleanExeName("__mydir")})
+		}, fixture.Source)
+	})
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runNoDebugDebugSession(t, client, "launch", func() {
+			// Use the default output directory.
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"noDebug": true,
+				"mode":    "debug",
+				"program": fixture.Source})
+			// writes to default output dir __debug_bin
+		}, fixture.Source)
+	})
+}
+
+func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmd string, cmdRequest func(), source string) {
+	client.InitializeRequest()
+	client.ExpectInitializeResponse(t)
+
+	cmdRequest()
+	// ! client.InitializedEvent.
+	// ! client.ExpectLaunchResponse
+	client.ExpectTerminatedEvent(t)
+}
+
 func TestLaunchTestRequest(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, "launch", func() {
@@ -2705,6 +2784,9 @@ func TestBadLaunchRequests(t *testing.T) {
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{map[string]interface{}{"from": "path1", "to": 123}}})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: 'substitutePath' attribute '[map[from:path1 to:123]]' in debug configuration is not a []{'from': string, 'to': string}")
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "wd": 123})
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: 'wd' attribute '123' in debug configuration is not a string.")
 
 		// Skip detailed message checks for potentially different OS-specific errors.
 		client.LaunchRequest("exec", fixture.Path+"_does_not_exist", stopOnEntry)
