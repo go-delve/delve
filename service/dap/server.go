@@ -89,9 +89,9 @@ type launchAttachArgs struct {
 
 // defaultArgs borrows the defaults for the arguments from the original vscode-go adapter.
 var defaultArgs = launchAttachArgs{
-	stopOnEntry:                   false,
-	stackTraceDepth:               50,
-	showGlobalVariables:           false,
+	stopOnEntry:                  false,
+	stackTraceDepth:              50,
+	showGlobalVariables:          false,
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
 }
@@ -1527,7 +1527,7 @@ func (s *Server) toClientPath(path string) string {
 	}
 	clientPath := locspec.SubstitutePath(path, s.args.substitutePathServerToClient)
 	if clientPath != path {
-		s.log.Debugf("server path=%s converted to client path=%s in stack trace request\n", path, clientPath)
+		s.log.Debugf("server path=%s converted to client path=%s\n", path, clientPath)
 	}
 	return clientPath
 }
@@ -1538,7 +1538,7 @@ func (s *Server) toServerPath(path string) string {
 	}
 	serverPath := locspec.SubstitutePath(path, s.args.substitutePathClientToServer)
 	if serverPath != path {
-		s.log.Debugf("client path=%s converted to server path=%s in set breakpoints request\n", path, serverPath)
+		s.log.Debugf("client path=%s converted to server path=%s\n", path, serverPath)
 	}
 	return serverPath
 }
