@@ -2315,8 +2315,9 @@ func TestLaunchDebugRequest(t *testing.T) {
 		// We reuse the harness that builds, but ignore the built binary,
 		// only relying on the source to be built in response to LaunchRequest.
 		runDebugSession(t, client, "launch", func() {
+			wd, _ := os.Getwd()
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "debug", "program": fixture.Source, "output": "__mybin"})
+				"mode": "debug", "program": fixture.Source, "output": filepath.Join(wd, "__mybin")})
 		}, fixture.Source)
 	})
 	// Wait for the test to finish to capture all stderr
