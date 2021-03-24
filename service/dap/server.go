@@ -436,8 +436,9 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	s.send(response)
 }
 
-// Output path for the compiled binary in debug or test modes.
-const debugBinary string = "./__debug_bin"
+// Default output file pathname for the compiled binary in debug or test modes,
+// relative to the current working directory of the server.
+const defaultDebugBinary string = "./__debug_bin"
 
 func cleanExeName(name string) string {
 	if runtime.GOOS == "windows" && filepath.Ext(name) != ".exe" {
@@ -471,9 +472,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	if mode == "debug" || mode == "test" {
 		output, ok := request.Arguments["output"].(string)
 		if !ok || output == "" {
-			output = cleanExeName(debugBinary)
+			output = cleanExeName(defaultDebugBinary)
 		}
-		debugname, err := filepath.Abs(output)
+		debugbinary, err := filepath.Abs(output)
 		if err != nil {
 			s.sendInternalErrorResponse(request.Seq, err.Error())
 			return
@@ -491,11 +492,12 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			}
 		}
 
+		s.log.Debugf("building binary at %s", debugbinary)
 		switch mode {
 		case "debug":
-			err = gobuild.GoBuild(debugname, []string{program}, buildFlags)
+			err = gobuild.GoBuild(debugbinary, []string{program}, buildFlags)
 		case "test":
-			err = gobuild.GoTestBuild(debugname, []string{program}, buildFlags)
+			err = gobuild.GoTestBuild(debugbinary, []string{program}, buildFlags)
 		}
 		if err != nil {
 			s.sendErrorResponse(request.Request,
@@ -503,8 +505,8 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 				fmt.Sprintf("Build error: %s", err.Error()))
 			return
 		}
-		program = debugname
-		s.binaryToRemove = debugname
+		program = debugbinary
+		s.binaryToRemove = debugbinary
 	}
 
 	s.setLaunchAttachArgs(request)

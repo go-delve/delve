@@ -2316,7 +2316,7 @@ func TestLaunchDebugRequest(t *testing.T) {
 		// only relying on the source to be built in response to LaunchRequest.
 		runDebugSession(t, client, "launch", func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "debug", "program": fixture.Source, "output": "__mydir"})
+				"mode": "debug", "program": fixture.Source, "output": "__mybin"})
 		}, fixture.Source)
 	})
 	// Wait for the test to finish to capture all stderr
@@ -2346,14 +2346,14 @@ func TestLaunchRequestDefaults(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, "launch", func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "" /*"debug" by default*/, "program": fixture.Source, "output": "__mydir"})
+				"mode": "" /*"debug" by default*/, "program": fixture.Source, "output": "__mybin"})
 		}, fixture.Source)
 	})
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, "launch", func() {
 			// Use the default output directory.
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				/*"mode":"debug" by default*/ "program": fixture.Source, "output": "__mydir"})
+				/*"mode":"debug" by default*/ "program": fixture.Source, "output": "__mybin"})
 		}, fixture.Source)
 	})
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
@@ -2373,7 +2373,7 @@ func TestLaunchRequestDefaultsNoDebug(t *testing.T) {
 				"noDebug": true,
 				"mode":    "", /*"debug" by default*/
 				"program": fixture.Source,
-				"output":  cleanExeName("__mydir")})
+				"output":  cleanExeName("__mybin")})
 		}, fixture.Source)
 	})
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
@@ -2383,7 +2383,7 @@ func TestLaunchRequestDefaultsNoDebug(t *testing.T) {
 				"noDebug": true,
 				/*"mode":"debug" by default*/
 				"program": fixture.Source,
-				"output":  cleanExeName("__mydir")})
+				"output":  cleanExeName("__mybin")})
 		}, fixture.Source)
 	})
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
@@ -2445,7 +2445,7 @@ func TestLaunchRequestWithBuildFlags(t *testing.T) {
 			// We reuse the harness that builds, but ignore the built binary,
 			// only relying on the source to be built in response to LaunchRequest.
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "debug", "program": fixture.Source, "output": "__mydir",
+				"mode": "debug", "program": fixture.Source, "output": "__mybin",
 				"buildFlags": "-ldflags '-X main.Hello=World'"})
 		}, fixture.Source)
 	})
