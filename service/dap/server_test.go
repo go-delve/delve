@@ -1711,17 +1711,23 @@ func substitutePathTestHelper(t *testing.T, fixture protest.Fixture, client *dap
 	}
 
 	launchAttachConfig["stopOnEntry"] = false
-	// All paths used in the 'substitutePath' attribute must be absolute directory paths.
+	// The rules in 'substitutePath' will be applied as follows:
+	// - mapping paths from client to server:
+	//		The first rule["from"] to match a prefix of 'path' will be applied:
+	//			strings.Replace(path, rule["from"], rule["to"], 1)
+	// - mapping paths from server to client:
+	//		The first rule["to"] to match a prefix of 'path' will be applied:
+	//			strings.Replace(path, rule["to"], rule["from"], 1)
 	launchAttachConfig["substitutePath"] = []map[string]string{
 		{"from": nonexistentDir, "to": filepath.Dir(fixture.Source)},
 		// Since the path mappings are ordered, when converting from client path to
 		// server path, this mapping will not apply, because nonexistentDir appears in
 		// an earlier rule.
-		{"from": nonexistentDir, "to": nonexistentDir},
+		{"from": nonexistentDir, "to": "this_is_a_bad_path"},
 		// Since the path mappings are ordered, when converting from server path to
 		// client path, this mapping will not apply, because filepath.Dir(fixture.Source)
 		// appears in an earlier rule.
-		{"from": filepath.Dir(fixture.Source), "to": filepath.Dir(fixture.Source)},
+		{"from": "this_is_a_bad_path", "to": filepath.Dir(fixture.Source)},
 	}
 
 	runDebugSessionWithBPs(t, client, request,
