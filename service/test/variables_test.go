@@ -390,7 +390,7 @@ func TestMultilineVariableEvaluation(t *testing.T) {
 		for _, tc := range testcases {
 			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
 			assertNoError(err, t, "EvalVariable() returned an error")
-			if ms := api.ConvertVar(variable).MultilineString(""); !matchStringOrPrefix(ms, tc.value) {
+			if ms := api.ConvertVar(variable).MultilineString("", ""); !matchStringOrPrefix(ms, tc.value) {
 				t.Fatalf("Expected %s got %s (variable %s)\n", tc.value, ms, variable.Name)
 			}
 		}
@@ -871,7 +871,6 @@ func TestEvalExpression(t *testing.T) {
 					t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
 				}
 			}
-
 		}
 	})
 }
@@ -910,7 +909,7 @@ func TestMapEvaluation(t *testing.T) {
 		m1v, err := evalVariable(p, "m1", pnormalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
 		m1 := api.ConvertVar(m1v)
-		t.Logf("m1 = %v", m1.MultilineString(""))
+		t.Logf("m1 = %v", m1.MultilineString("", ""))
 
 		if m1.Type != "map[string]main.astruct" {
 			t.Fatalf("Wrong type: %s", m1.Type)
