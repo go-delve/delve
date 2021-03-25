@@ -865,30 +865,20 @@ func (s *Server) onStepOutRequest(request *dap.StepOutRequest) {
 }
 
 func (s *Server) doStepCommand(command string, threadId int) {
-	// If we encounter an error, we will have to send a stopped event
-	// since we already sent the step response.
-	var sendErrorStoppedEvent = func(goroutineId int) {
+	// Use SwitchGoroutine to change the current goroutine.
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
+	if err != nil {
+		s.log.Errorf("Error switching goroutines while stepping: %e", err)
+		// If we encounter an error, we will have to send a stopped event
+		// since we already sent the step response.
 		stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
 		stopped.Body.AllThreadsStopped = true
-		stopped.Body.ThreadId = goroutineId
+		if state.SelectedGoroutine != nil {
+			stopped.Body.ThreadId = state.SelectedGoroutine.ID
+		}
 		stopped.Body.Reason = "error"
 		s.send(stopped)
-	}
-
-	state, err := s.debugger.State( /*nowait*/ true)
-	if err != nil {
-		s.log.Errorf("Error retrieving debugger state while stepping: %e", err)
-		sendErrorStoppedEvent(state.SelectedGoroutine.ID)
 		return
-	}
-	// Use SwitchGoroutine to change the current goroutine.
-	if state.SelectedGoroutine == nil || state.SelectedGoroutine.ID != threadId {
-		state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
-		if err != nil {
-			s.log.Errorf("Error switching goroutines while stepping: %e", err)
-			sendErrorStoppedEvent(state.SelectedGoroutine.ID)
-			return
-		}
 	}
 	s.doCommand(command)
 }

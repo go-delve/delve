@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"os"
 	"os/exec"
@@ -2118,35 +2119,6 @@ func TestStepInParked(t *testing.T) {
 	})
 }
 
-func TestStepOutParked(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
-		t.SkipNow()
-	}
-	runTest(t, "parallel_next", func(client *daptest.Client, fixture protest.Fixture) {
-		runDebugSessionWithBPs(t, client, "launch",
-			// Launch
-			func() {
-				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
-			},
-			// Set breakpoints
-			fixture.Source, []int{15},
-			[]onBreakpoint{{ // Stop at line 15
-				execute: func() {
-					goroutineId := testStepParkedHelper(t, client, fixture)
-
-					client.StepOutRequest(goroutineId)
-					client.ExpectStepOutResponse(t)
-
-					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != goroutineId {
-						t.Fatalf("StepOut did not continue on the selected goroutine, expected %d got %d", goroutineId, se.Body.ThreadId)
-					}
-				},
-				disconnect: false,
-			}})
-	})
-}
-
 func testStepParkedHelper(t *testing.T, client *daptest.Client, fixture protest.Fixture) int {
 	t.Helper()
 	// Set a breakpoint at main.sayHi
@@ -2194,6 +2166,74 @@ func testStepParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 	client.ExpectSetBreakpointsResponse(t)
 
 	return goroutineId
+}
+
+func TestStepOutPreservesGoroutine(t *testing.T) {
+	// Checks that StepOut preserves the currently selected goroutine.
+	if runtime.GOOS == "freebsd" {
+		t.SkipNow()
+	}
+	rand.Seed(time.Now().Unix())
+	runTest(t, "issue2113", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{25},
+			[]onBreakpoint{{ // Stop at line 25
+				execute: func() {
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					// The program contains runtime.Breakpoint()
+					se := client.ExpectStoppedEvent(t)
+
+					client.ThreadsRequest()
+					gs := client.ExpectThreadsResponse(t)
+
+					candg := []int{}
+					bestg := []int{}
+					for _, g := range gs.Body.Threads {
+						// We do not need to check the thread that the program
+						// is currently stopped on.
+						if g.Id == se.Body.ThreadId {
+							continue
+						}
+
+						client.StackTraceRequest(g.Id, 0, 20)
+						frames := client.ExpectStackTraceResponse(t)
+						for _, frame := range frames.Body.StackFrames {
+							if frame.Name == "main.coroutine" {
+								candg = append(candg, g.Id)
+								if strings.HasPrefix(frames.Body.StackFrames[0].Name, "runtime.") {
+									bestg = append(bestg, g.Id)
+								}
+								break
+							}
+						}
+					}
+					var goroutineId int
+					if len(bestg) > 0 {
+						goroutineId = bestg[rand.Intn(len(bestg))]
+						t.Logf("selected goroutine %d (best)\n", goroutineId)
+					} else {
+						goroutineId = candg[rand.Intn(len(candg))]
+						t.Logf("selected goroutine %d\n", goroutineId)
+
+					}
+					client.StepOutRequest(goroutineId)
+					client.ExpectStepOutResponse(t)
+
+					se = client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != goroutineId {
+						t.Fatalf("StepIn did not continue on the selected goroutine, expected %d got %d", goroutineId, se.Body.ThreadId)
+					}
+				},
+				disconnect: false,
+			}})
+	})
 }
 
 func TestBadAccess(t *testing.T) {
