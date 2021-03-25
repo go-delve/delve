@@ -1062,7 +1062,10 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 					Value:        val,
 				}
 				if keyref != 0 { // key is a type to be expanded
-					kvvar.Name = fmt.Sprintf("%s(%#x)", kvvar.Name, keyv.Addr) // Make the name unique
+					if len(key) > DefaultLoadConfig.MaxStringLen {
+						// Truncate and make unique
+						kvvar.Name = fmt.Sprintf("%s... @ %#x", key[0:DefaultLoadConfig.MaxStringLen], keyv.Addr)
+					}
 					kvvar.VariablesReference = keyref
 				} else if valref != 0 { // val is a type to be expanded
 					kvvar.VariablesReference = valref
