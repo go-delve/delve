@@ -875,8 +875,11 @@ func (s *Server) doStepCommand(command string, threadId int) {
 		stopped.Body.AllThreadsStopped = true
 		if state.SelectedGoroutine != nil {
 			stopped.Body.ThreadId = state.SelectedGoroutine.ID
+		} else if state.CurrentThread != nil {
+			stopped.Body.ThreadId = state.CurrentThread.GoroutineID
 		}
 		stopped.Body.Reason = "error"
+		stopped.Body.Text = err.Error()
 		s.send(stopped)
 		return
 	}
