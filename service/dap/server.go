@@ -49,7 +49,7 @@ type Server struct {
 	// listener is used to accept the client connection.
 	listener net.Listener
 	// conn is the accepted client connection.
-	conn net.Conn
+	conn io.ReadWriteCloser
 	// stopChan is closed when the server is Stop()-ed. This can be used to signal
 	// to goroutines run by the server that it's time to quit.
 	stopChan chan struct{}
@@ -110,9 +110,11 @@ var DefaultLoadConfig = proc.LoadConfig{
 // via config and assumes its ownership. config.disconnectChan has to be set;
 // it will be closed by the server when the client disconnects or requests
 // shutdown. Once disconnectChan is closed, Server.Stop() must be called.
-func NewServer(config *service.Config) *Server {
+func NewServer(config *service.Config, debugger *debugger.Debugger) *Server {
 	logger := logflags.DAPLogger()
-	logflags.WriteDAPListeningMessage(config.Listener.Addr().String())
+	if debugger == nil {
+		logflags.WriteDAPListeningMessage(config.Listener.Addr().String())
+	}
 	logger.Debug("DAP server pid = ", os.Getpid())
 	return &Server{
 		config:            config,
@@ -122,6 +124,7 @@ func NewServer(config *service.Config) *Server {
 		stackFrameHandles: newHandlesMap(),
 		variableHandles:   newVariablesHandlesMap(),
 		args:              defaultArgs,
+		debugger:          debugger,
 	}
 }
 
@@ -213,9 +216,13 @@ func (s *Server) Run() {
 			s.signalDisconnect()
 			return
 		}
-		s.conn = conn
-		s.serveDAPCodec()
+		s.ServeConnection(conn)
 	}()
+}
+
+func (s *Server) ServeConnection(c io.ReadWriteCloser) {
+	s.conn = c
+	s.serveDAPCodec()
 }
 
 // serveDAPCodec reads and decodes requests from the client
@@ -448,6 +455,14 @@ func cleanExeName(name string) string {
 }
 
 func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
+	if s.debugger != nil {
+		//TODO: should we check something here?
+		s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
+		s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
+		//TODO: should we send a status back here?
+		return
+	}
+
 	// Validate launch request mode
 	mode, ok := request.Arguments["mode"]
 	if !ok || mode == "" {
@@ -724,6 +739,7 @@ func (s *Server) onSetExceptionBreakpointsRequest(request *dap.SetExceptionBreak
 
 func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest) {
 	if s.args.stopOnEntry {
+		//TODO: execute a blocking state call here
 		e := &dap.StoppedEvent{
 			Event: *newEvent("stopped"),
 			Body:  dap.StoppedEventBody{Reason: "entry", ThreadId: 1, AllThreadsStopped: true},
@@ -732,6 +748,7 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 	}
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
 	if !s.args.stopOnEntry {
+		//TODO: it's probably a good idea to ignore this on a multiclient server
 		s.doCommand(api.Continue)
 	}
 }
@@ -811,6 +828,14 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 // onAttachRequest handles 'attach' request.
 // This is a mandatory request to support.
 func (s *Server) onAttachRequest(request *dap.AttachRequest) {
+	if s.debugger != nil {
+		//TODO: should we check something here?
+		s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
+		s.send(&dap.AttachResponse{Response: *newResponse(request.Request)})
+		//TODO: should we send a status back here?
+		return
+	}
+
 	mode, ok := request.Arguments["mode"]
 	if !ok || mode == "" {
 		mode = "local"

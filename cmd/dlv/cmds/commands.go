@@ -448,7 +448,7 @@ func dapCmd(cmd *cobra.Command, args []string) {
 				CheckGoVersion:       checkGoVersion,
 				TTY:                  tty,
 			},
-		})
+		}, nil)
 		defer server.Stop()
 
 		server.Run()

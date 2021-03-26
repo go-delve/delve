@@ -58,7 +58,7 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 		Debugger: debugger.Config{
 			Backend: "default",
 		},
-	})
+	}, nil)
 	server.Run()
 	// Give server time to start listening for clients
 	time.Sleep(100 * time.Millisecond)

@@ -1,6 +1,7 @@
 package rpccommon
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"github.com/go-delve/delve/pkg/version"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
+	"github.com/go-delve/delve/service/dap"
 	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/rpc1"
 	"github.com/go-delve/delve/service/rpc2"
@@ -40,6 +42,8 @@ type ServerImpl struct {
 	s1 *rpc1.RPCServer
 	// s2 is APIv2 server.
 	s2 *rpc2.RPCServer
+	// dap is the DAP server.
+	dap *dap.Server
 	// maps of served methods, one for each supported API.
 	methodMaps []map[string]*methodType
 	log        *logrus.Entry
@@ -118,6 +122,7 @@ func (s *ServerImpl) Run() error {
 
 	s.s1 = rpc1.NewServer(s.config, s.debugger)
 	s.s2 = rpc2.NewServer(s.config, s.debugger)
+	s.dap = dap.NewServer(s.config, s.debugger)
 
 	rpcServer := &RPCServer{s}
 
@@ -151,13 +156,36 @@ func (s *ServerImpl) Run() error {
 				}
 			}
 
-			go s.serveJSONCodec(c)
+			go s.protoDemux(c)
 			if !s.config.AcceptMulti {
 				break
 			}
 		}
 	}()
 	return nil
+}
+
+type bufferedReadWriteCloser struct {
+	*bufio.Reader
+	io.WriteCloser
+}
+
+func (s *ServerImpl) protoDemux(c io.ReadWriteCloser) {
+	brd := bufio.NewReader(c)
+	b, err := brd.ReadByte()
+	if err != nil {
+		s.log.Warnf("Error while demultiplexing protocols on new connection: %v", err)
+		return
+	}
+	brd.UnreadByte()
+	c2 := &bufferedReadWriteCloser{brd, c}
+	if b == 'C' { // C is for Content-Length
+		s.log.Debugf("Serving DAP on new connection")
+		s.dap.ServeConnection(c2)
+		return
+	}
+	s.log.Debugf("Serving JSON-RPC on new connection")
+	s.serveJSONCodec(c2)
 }
 
 // Precompute the reflect type for error.  Can't use error directly
