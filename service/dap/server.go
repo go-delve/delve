@@ -801,7 +801,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 		output, ok := request.Arguments["output"].(string)
 		if !ok || output == "" {
-			output = debugBinary
+			output = defaultDebugBinary
 		}
 
 		debugname, err := filepath.Abs(output)
