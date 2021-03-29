@@ -2536,7 +2536,7 @@ func (s *Server) onStepBackRequest(request *dap.StepBackRequest) {
 		s.sendErrorResponse(request.Request, UnableToContinue, "Unsupported command",
 			fmt.Sprintf("cannot process '%s' request, target is not a recording", request.Command))
 	}
-	s.send(&dap.NextResponse{Response: *newResponse(request.Request)})
+	s.send(&dap.StepBackResponse{Response: *newResponse(request.Request)})
 	s.doCommand(api.ReverseNext)
 }
 
@@ -2548,9 +2548,9 @@ func (s *Server) onReverseContinueRequest(request *dap.ReverseContinueRequest) {
 		s.sendErrorResponse(request.Request, UnableToContinue, "Unsupported command",
 			fmt.Sprintf("cannot process '%s' request, target '%s' is not a recording", request.Command, path))
 	}
-	s.send(&dap.ContinueResponse{
+	s.send(&dap.ReverseContinueResponse{
 		Response: *newResponse(request.Request),
-		Body:     dap.ContinueResponseBody{AllThreadsContinued: true}})
+	})
 	s.doCommand(api.Rewind)
 }
 
