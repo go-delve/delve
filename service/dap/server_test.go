@@ -2553,44 +2553,37 @@ func TestLaunchRequestDefaults(t *testing.T) {
 
 func TestLaunchRequestDefaultsNoDebug(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		runNoDebugDebugSession(t, client, "launch", func() {
+		runNoDebugDebugSession(t, client, func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"noDebug": true,
 				"mode":    "", /*"debug" by default*/
 				"program": fixture.Source,
 				"output":  cleanExeName("__mybin")})
-		}, fixture.Source)
-	})
-	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		runNoDebugDebugSession(t, client, "launch", func() {
-			// Use the default output directory.
-			client.LaunchRequestWithArgs(map[string]interface{}{
-				"noDebug": true,
-				/*"mode":"debug" by default*/
-				"program": fixture.Source,
-				"output":  cleanExeName("__mybin")})
-		}, fixture.Source)
-	})
-	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		runNoDebugDebugSession(t, client, "launch", func() {
-			// Use the default output directory.
-			client.LaunchRequestWithArgs(map[string]interface{}{
-				"noDebug": true,
-				"mode":    "debug",
-				"program": fixture.Source})
-			// writes to default output dir __debug_bin
-		}, fixture.Source)
+		}, fixture.Source, []int{8})
 	})
 }
 
-func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmd string, cmdRequest func(), source string) {
+// runNoDebugDebugSession tests the session started with noDebug=true runs uninterrupted
+// even when breakpoint is set.
+func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmdRequest func(), source string, breakpoints []int) {
 	client.InitializeRequest()
 	client.ExpectInitializeResponse(t)
 
 	cmdRequest()
-	// ! client.InitializedEvent.
-	// ! client.ExpectLaunchResponse
+	client.ExpectInitializedEvent(t)
+	// noDebug mode applies only to "launch" requests.
+	client.ExpectLaunchResponse(t)
+
+	// Breakpoints shouldn't be set.
+	client.SetBreakpointsRequest(source, breakpoints)
+	client.ExpectErrorResponse(t)
+
+	client.ConfigurationDoneRequest()
+	client.ExpectConfigurationDoneResponse(t)
+
 	client.ExpectTerminatedEvent(t)
+	client.DisconnectRequestWithKillOption(true)
+	client.ExpectDisconnectResponse(t)
 }
 
 func TestLaunchTestRequest(t *testing.T) {
