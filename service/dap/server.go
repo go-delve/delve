@@ -549,11 +549,9 @@ func (s *Server) handleRequest(request dap.Message) {
 		<-resumeRequestLoop
 	case *dap.StepBackRequest:
 		// Optional (capability ‘supportsStepBack’)
-		// TODO: implement this request in V1
 		s.onStepBackRequest(request)
 	case *dap.ReverseContinueRequest:
 		// Optional (capability ‘supportsStepBack’)
-		// TODO: implement this request in V1
 		s.onReverseContinueRequest(request)
 	//--- Synchronous requests ---
 	case *dap.InitializeRequest:
