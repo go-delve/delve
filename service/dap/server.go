@@ -848,12 +848,18 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			backend = "rr"
 		}
 
-		if backend == "core" {
-			if coreDumpPathExists {
-				// Assign non-empty core file path to debugger configuration. This will
-				// trigger a native core file replay instead of an rr trace replay
-				s.config.Debugger.CoreFile = coreDumpPath
+		if backend == "core" && coreDumpPathExists {
+			// Validate core dump path
+			if !coreDumpPathOk || coreDumpPath == "" {
+				s.sendErrorResponse(request.Request,
+					FailedToLaunch, "Failed to launch",
+					"The coreDumpPath attribute is missing in replay configuration.")
+				return
 			}
+
+			// Assign non-empty core file path to debugger configuration. This will
+			// trigger a native core file replay instead of an rr trace replay
+			s.config.Debugger.CoreFile = coreDumpPath
 		}
 
 		if backend == "rr" {
@@ -866,7 +872,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			if !traceDirectoryOk || traceDirectory == "" {
 				s.sendErrorResponse(request.Request,
 					FailedToLaunch, "Failed to launch",
-					"The traceDirectory attribute is missing in debug configuration.")
+					"The traceDirectory attribute is missing in replay configuration.")
 				return
 			}
 
