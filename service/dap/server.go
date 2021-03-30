@@ -712,11 +712,7 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	// TODO(polina): support these requests in addition to vscode-go feature parity
 	response.Body.SupportsTerminateRequest = false
 	response.Body.SupportsRestartRequest = false
-
-	if err := gdbserial.CheckRRCompatible(); err == nil {
-		response.Body.SupportsStepBack = true
-	}
-
+	response.Body.SupportsStepBack = false // Disabled by default, to be enabled by CapabilitiesEvent
 	response.Body.SupportsSetExpression = false
 	response.Body.SupportsLoadedSourcesRequest = false
 	response.Body.SupportsReadMemoryRequest = false
@@ -768,6 +764,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 	if mode == "record" {
 		s.config.Debugger.Backend = "rr"
+		s.send(&dap.CapabilitiesEvent{ Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{ SupportsStepBack: true }}})
 
 		// Validate rr availability
 		if err := gdbserial.CheckRRAvailable(); err != nil {
@@ -844,6 +841,8 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		backend := "core"
 		if traceDirectoryExists {
 			backend = "rr"
+			// Enable StepBack controls
+			s.send(&dap.CapabilitiesEvent{ Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{ SupportsStepBack: true }}})
 		}
 
 		if backend == "core" && coreDumpPathExists {
