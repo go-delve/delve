@@ -863,28 +863,44 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 // onNextRequest handles 'next' request.
 // This is a mandatory request to support.
 func (s *Server) onNextRequest(request *dap.NextRequest) {
-	// This ignores threadId argument to match the original vscode-go implementation.
-	// TODO(polina): use SwitchGoroutine to change the current goroutine.
 	s.send(&dap.NextResponse{Response: *newResponse(request.Request)})
-	s.doCommand(api.Next)
+	s.doStepCommand(api.Next, request.Arguments.ThreadId)
 }
 
 // onStepInRequest handles 'stepIn' request
 // This is a mandatory request to support.
 func (s *Server) onStepInRequest(request *dap.StepInRequest) {
-	// This ignores threadId argument to match the original vscode-go implementation.
-	// TODO(polina): use SwitchGoroutine to change the current goroutine.
 	s.send(&dap.StepInResponse{Response: *newResponse(request.Request)})
-	s.doCommand(api.Step)
+	s.doStepCommand(api.Step, request.Arguments.ThreadId)
 }
 
 // onStepOutRequest handles 'stepOut' request
 // This is a mandatory request to support.
 func (s *Server) onStepOutRequest(request *dap.StepOutRequest) {
-	// This ignores threadId argument to match the original vscode-go implementation.
-	// TODO(polina): use SwitchGoroutine to change the current goroutine.
 	s.send(&dap.StepOutResponse{Response: *newResponse(request.Request)})
-	s.doCommand(api.StepOut)
+	s.doStepCommand(api.StepOut, request.Arguments.ThreadId)
+}
+
+func (s *Server) doStepCommand(command string, threadId int) {
+	// Use SwitchGoroutine to change the current goroutine.
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
+	if err != nil {
+		s.log.Errorf("Error switching goroutines while stepping: %e", err)
+		// If we encounter an error, we will have to send a stopped event
+		// since we already sent the step response.
+		stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
+		stopped.Body.AllThreadsStopped = true
+		if state.SelectedGoroutine != nil {
+			stopped.Body.ThreadId = state.SelectedGoroutine.ID
+		} else if state.CurrentThread != nil {
+			stopped.Body.ThreadId = state.CurrentThread.GoroutineID
+		}
+		stopped.Body.Reason = "error"
+		stopped.Body.Text = err.Error()
+		s.send(stopped)
+		return
+	}
+	s.doCommand(command)
 }
 
 // onPauseRequest sends a not-yet-implemented error response.
