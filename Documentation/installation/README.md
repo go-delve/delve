@@ -38,6 +38,12 @@ If you didn't enable Developer Mode using Xcode you will be asked to authorize t
 sudo /usr/sbin/DevToolsSecurity -enable
 ```
 
+You might also need to add your user to the developer group:
+
+```
+sudo dscl . append /Groups/_developer GroupMembership $(whoami)
+```
+
 ## Compiling macOS native backend
 
 You do not need the macOS native backend and it [has known problems](https://github.com/go-delve/delve/issues/1112). If you still want to build it:
