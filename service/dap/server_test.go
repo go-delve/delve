@@ -2551,7 +2551,7 @@ func TestLaunchRequestDefaults(t *testing.T) {
 	})
 }
 
-func TestLaunchRequestDefaultsNoDebug(t *testing.T) {
+func TestLaunchRequestNoDebug(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runNoDebugDebugSession(t, client, func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
@@ -2570,16 +2570,9 @@ func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmdRequest fun
 	client.ExpectInitializeResponse(t)
 
 	cmdRequest()
-	client.ExpectInitializedEvent(t)
+	// no initialized event.
 	// noDebug mode applies only to "launch" requests.
 	client.ExpectLaunchResponse(t)
-
-	// Breakpoints shouldn't be set.
-	client.SetBreakpointsRequest(source, breakpoints)
-	client.ExpectErrorResponse(t)
-
-	client.ConfigurationDoneRequest()
-	client.ExpectConfigurationDoneResponse(t)
 
 	client.ExpectTerminatedEvent(t)
 	client.DisconnectRequestWithKillOption(true)
@@ -2889,6 +2882,14 @@ func TestBadLaunchRequests(t *testing.T) {
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "bad flags"})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t), "Failed to launch: Build error: exit status 1")
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "buildFlags": "bad flags"})
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t), "Failed to launch: Build error: exit status 1")
+
+		// Bad "wd".
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": false, "wd": "dir/invalid"})
+		expectFailedToLaunch(client.ExpectErrorResponse(t)) // invalid directory, the error message is system-dependent.
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "wd": "dir/invalid"})
+		expectFailedToLaunch(client.ExpectErrorResponse(t)) // invalid directory, the error message is system-dependent.
 
 		// We failed to launch the program. Make sure shutdown still works.
 		client.DisconnectRequest()

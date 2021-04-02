@@ -22,6 +22,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/logflags"
@@ -70,9 +71,10 @@ type Server struct {
 	// args tracks special settings for handling debug session requests.
 	args launchAttachArgs
 
+	mu sync.Mutex
+
 	// noDebugProcess is set for the noDebug launch process.
-	noDebugProcess           *exec.Cmd
-	noDebugProcessTerminated bool
+	noDebugProcess *exec.Cmd
 }
 
 // launchAttachArgs captures arguments from launch/attach request that
@@ -165,9 +167,7 @@ func (s *Server) Stop() {
 			}
 		}
 	}
-	if s.noDebugProcess != nil {
-		s.stopNoDebugProcess()
-	}
+	s.stopNoDebugProcess()
 }
 
 // signalDisconnect closes config.DisconnectChan if not nil, which
@@ -555,58 +555,66 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.config.Debugger.WorkingDir = wdParsed
 	}
 
-	noDebug := false
-	if noDebugArg, ok := request.Arguments["noDebug"]; ok {
-		if v, ok := noDebugArg.(bool); ok && v { // noDebug == true
-			noDebug = true
+	if noDebug, _ := request.Arguments["noDebug"].(bool); noDebug {
+		cmd, err := s.startNoDebugProcess(program, targetArgs, s.config.Debugger.WorkingDir)
+		if err != nil {
+			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
+			return
 		}
+		// Skip 'initialized' event.
+		s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
+
+		// Then, block until the program terminates or is stopped.
+		if err := cmd.Wait(); err != nil {
+			s.log.Errorf("program exited: %v", err)
+		}
+
+		stopped := false
+		s.mu.Lock()
+		stopped = s.noDebugProcess == nil // if it was stopped, this should be nil.
+		s.noDebugProcess = nil
+		s.mu.Unlock()
+
+		if !stopped {
+			s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
+		}
+		return
 	}
 
 	var err error
-	if noDebug {
-		if s.noDebugProcess, err = s.launchWithoutDebug(program, targetArgs, s.config.Debugger.WorkingDir); err != nil {
-			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
-			return
-		}
-	} else {
-		if s.debugger, err = debugger.New(&s.config.Debugger, s.config.ProcessArgs); err != nil {
-			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
-			return
-		}
+	if s.debugger, err = debugger.New(&s.config.Debugger, s.config.ProcessArgs); err != nil {
+		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
+		return
 	}
 	s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
 	s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
-	// TODO: if the client doesn't have supportConfigurationDone capability,
-	// start the debugging here.
 }
 
-func (s *Server) launchWithoutDebug(program string, targetArgs []string, wd string) (*exec.Cmd, error) {
-	s.log.Debugln("Running without debug: ", program)
-
+func (s *Server) startNoDebugProcess(program string, targetArgs []string, wd string) (*exec.Cmd, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.noDebugProcess != nil {
+		return nil, fmt.Errorf("another launch request is in progress")
+	}
 	cmd := exec.Command(program, targetArgs...)
-	// TODO: send stdin/out/err as OutputEvent messages
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
-	cmd.Dir = wd
+	cmd.Stdout, cmd.Stderr, cmd.Stdin, cmd.Dir = os.Stdout, os.Stderr, os.Stdin, wd
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	s.noDebugProcess = cmd
 	return cmd, nil
 }
 
-func (s *Server) runNoDebugProcess() error {
-	err := s.noDebugProcess.Run()
-	s.noDebugProcessTerminated = true
-	return err
-}
-
 func (s *Server) stopNoDebugProcess() {
-	if s.noDebugProcess == nil || s.noDebugProcessTerminated {
-		return
-	}
+	s.mu.Lock()
+	p := s.noDebugProcess
+	s.noDebugProcess = nil
+	defer s.mu.Unlock()
+
 	// TODO(hyangah): gracefully terminate the process and its children processes.
-	if err := s.noDebugProcess.Process.Kill(); err != nil {
-		s.log.Debugf("killing process (pid=%v) failed: %v", s.noDebugProcess.Process.Pid, err)
+	if p != nil && !p.ProcessState.Exited() {
+		p.Process.Kill() // Don't check error. Process killing and self-termination may race.
 	}
-	s.noDebugProcessTerminated = true
 }
 
 // TODO(polina): support "remote" mode
@@ -652,6 +660,8 @@ func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
 			}
 		}
 	}
+	s.stopNoDebugProcess()
+
 	// TODO(polina): make thread-safe when handlers become asynchronous.
 	s.signalDisconnect()
 }
@@ -734,11 +744,6 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
 	if s.debugger != nil && !s.args.stopOnEntry {
 		s.doCommand(api.Continue)
-	} else if s.noDebugProcess != nil {
-		if err := s.runNoDebugProcess(); err != nil { // block until program terminates.
-			s.log.Errorf("failed to start target: %v", err)
-		}
-		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 	}
 }
 
@@ -758,11 +763,7 @@ func fnName(loc *proc.Location) string {
 
 func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 	if s.debugger == nil {
-		msg := "debugger is nil"
-		if s.noDebugProcess != nil {
-			msg = "running in noDebug mode"
-		}
-		s.sendErrorResponse(request.Request, UnableToDisplayThreads, "Unable to display threads", msg)
+		s.sendErrorResponse(request.Request, UnableToDisplayThreads, "Unable to display threads", "debugger is nil")
 		return
 	}
 	gs, _, err := s.debugger.Goroutines(0, 0)
