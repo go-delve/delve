@@ -1300,8 +1300,7 @@ func (d *Debugger) ThreadRegisters(threadID int, floatingPoint bool) (*op.DwarfR
 	if err != nil {
 		return nil, err
 	}
-	dregs := d.target.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
-	return &dregs, nil
+	return d.target.BinInfo().Arch.RegistersToDwarfRegisters(0, regs), nil
 }
 
 // ScopeRegisters returns registers for the specified scope.

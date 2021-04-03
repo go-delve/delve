@@ -1,6 +1,8 @@
 package proc
 
 import (
+	"github.com/go-delve/delve/pkg/dwarf/op"
+
 	"golang.org/x/arch/x86/x86asm"
 )
 
@@ -8,7 +10,7 @@ type x86Inst x86asm.Inst
 
 // AsmDecode decodes the assembly instruction starting at mem[0:] into asmInst.
 // It assumes that the Loc and AtPC fields of asmInst have already been filled.
-func x86AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw MemoryReadWriter, bi *BinaryInfo, bit int) error {
+func x86AsmDecode(asmInst *AsmInstruction, mem []byte, regs *op.DwarfRegisters, memrw MemoryReadWriter, bi *BinaryInfo, bit int) error {
 	inst, err := x86asm.Decode(mem, bit)
 	if err != nil {
 		asmInst.Inst = (*x86Inst)(nil)
@@ -76,7 +78,7 @@ func (inst *x86Inst) OpcodeEquals(op uint64) bool {
 	return uint64(inst.Op) == op
 }
 
-func resolveCallArgX86(inst *x86asm.Inst, instAddr uint64, currentGoroutine bool, regs Registers, mem MemoryReadWriter, bininfo *BinaryInfo) *Location {
+func resolveCallArgX86(inst *x86asm.Inst, instAddr uint64, currentGoroutine bool, regs *op.DwarfRegisters, mem MemoryReadWriter, bininfo *BinaryInfo) *Location {
 	switch inst.Op {
 	case x86asm.CALL, x86asm.LCALL, x86asm.JMP, x86asm.LJMP:
 		// ok
@@ -94,7 +96,7 @@ func resolveCallArgX86(inst *x86asm.Inst, instAddr uint64, currentGoroutine bool
 		if !currentGoroutine || regs == nil {
 			return nil
 		}
-		pc, err = regs.Get(int(arg))
+		pc, err = bininfo.Arch.getAsmRegister(regs, int(arg))
 		if err != nil {
 			return nil
 		}
@@ -105,8 +107,8 @@ func resolveCallArgX86(inst *x86asm.Inst, instAddr uint64, currentGoroutine bool
 		if arg.Segment != 0 {
 			return nil
 		}
-		base, err1 := regs.Get(int(arg.Base))
-		index, err2 := regs.Get(int(arg.Index))
+		base, err1 := bininfo.Arch.getAsmRegister(regs, int(arg.Base))
+		index, err2 := bininfo.Arch.getAsmRegister(regs, int(arg.Index))
 		if err1 != nil || err2 != nil {
 			return nil
 		}

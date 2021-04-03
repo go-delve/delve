@@ -5039,7 +5039,7 @@ func TestDump(t *testing.T) {
 		assertNoError(err, t, fmt.Sprintf("Thread registers %d", thread.ThreadID()))
 		arch := thread.BinInfo().Arch
 		dregs := arch.RegistersToDwarfRegisters(0, regs)
-		return fmt.Sprintf("%08d %s", thread.ThreadID(), convertRegisters(arch, dregs))
+		return fmt.Sprintf("%08d %s", thread.ThreadID(), convertRegisters(arch, *dregs))
 	}
 
 	convertThreads := func(threads []proc.Thread) []string {
