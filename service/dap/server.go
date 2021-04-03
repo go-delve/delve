@@ -768,7 +768,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 		// Validate rr availability
 		if err := gdbserial.CheckRRAvailable(); err != nil {
-			s.sendErrorResponseWithURL(request.Request, FailedToInitialize, "Unable to find  rr in record configuration", err.Error(), "https://github.com/rr-debugger/rr/wiki/Building-And-Installing", "rr installation page")
+			s.sendErrorResponseWithURL(request.Request, FailedToInitialize, "Unable to find rr in record configuration", err.Error(), "https://github.com/rr-debugger/rr/wiki/Building-And-Installing", "rr installation page")
 			return
 		}
 
@@ -845,7 +845,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			s.send(&dap.CapabilitiesEvent{ Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{ SupportsStepBack: true }}})
 		}
 
-		if backend == "core" && coreDumpPathExists {
+		if backend == "core" {
 			// Validate core dump path
 			if !coreDumpPathOk || coreDumpPath == "" {
 				s.sendErrorResponse(request.Request,
@@ -879,7 +879,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.config.Debugger.Backend = backend
 	}
 
-	if mode == "debug" || mode == "test" {
+	if mode == "debug" || mode == "test" || mode == "replay" {
 		output, ok := request.Arguments["output"].(string)
 		if !ok || output == "" {
 			output = defaultDebugBinary
@@ -907,7 +907,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		var cmd string
 		var out []byte
 		switch mode {
-		case "debug":
+		case "debug", "replay":
 			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
 		case "test":
 			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
