@@ -271,17 +271,11 @@ func (s *Server) Stop() {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
 	if s.debugger != nil {
-		killProcess := s.config.Debugger.AttachPid == 0
-		s.stopDebugSession(killProcess)
-	} else {
-		s.stopNoDebugProcess()
-	}
-	// The binary is no longer in use by the debugger. It is safe to remove it.
-	if s.binaryToRemove != "" {
-		gobuild.Remove(s.binaryToRemove)
-	}
+		kill := s.config.Debugger.AttachPid == 0
+		if err := s.debugger.Detach(kill); err != nil {
+			s.log.Error(err)
+		}
 	// Close client connection last, so other shutdown stages
 	// can send client notifications
 	if s.conn != nil {
@@ -291,9 +285,7 @@ func (s *Server) Stop() {
 		// allowing the run goroutine to exit.
 		_ = s.conn.Close()
 	}
-	s.log.Debug("DAP server stopped")
 }
-
 // triggerServerStop closes config.DisconnectChan if not nil, which
 // signals that client sent a disconnect request or there was connection
 // failure or closure. Since the server currently services only one
@@ -764,12 +756,10 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 	if mode == "replay" {
 		// Check against replay parameters and decide the backend based on which one was received
-		coreDumpPath, coreDumpPathOk := request.Arguments["coreDumpPath"].(string)
-		traceDirectory, traceDirectoryOk := request.Arguments["traceDirectory"].(string)
+		coreDumpPath, _ := request.Arguments["coreDumpPath"].(string)
+		traceDirectory, _ := request.Arguments["traceDirectory"].(string)
 
-		coreDumpPathExists := coreDumpPathOk && (coreDumpPath != "")
-		traceDirectoryExists := traceDirectoryOk && (traceDirectory != "")
-		if coreDumpPathExists && traceDirectoryExists {
+		if (coreDumpPath != "") && (traceDirectory != "") {
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to launch",
 				"The replay configuration must have either a coreDumpPath or a traceDirectory. Both attributes were found.")
@@ -778,15 +768,13 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 		//TODO(lgomez): define default backend to use for this scenario as 'core' itself is only an internal value in order to differentiate from rr
 		backend := "core"
-		if traceDirectoryExists {
+		if traceDirectory != "" {
 			backend = "rr"
-			// Enable StepBack controls
-			s.send(&dap.CapabilitiesEvent{ Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{ SupportsStepBack: true }}})
 		}
 
 		if backend == "core" {
 			// Validate core dump path
-			if !coreDumpPathOk || coreDumpPath == "" {
+			if coreDumpPath == "" {
 				s.sendErrorResponse(request.Request,
 					FailedToLaunch, "Failed to launch",
 					"The coreDumpPath attribute is missing in replay configuration.")
@@ -799,13 +787,8 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		}
 
 		if backend == "rr" {
-			if err := gdbserial.CheckRRAvailable(); err != nil {
-				s.sendErrorResponseWithURL(request.Request, FailedToInitialize, "Unable to find  rr in record configuration", err.Error(), "https://github.com/rr-debugger/rr/wiki/Building-And-Installing", "rr installation page")
-				return
-			}
-			
 			// Validate trace directory
-			if !traceDirectoryOk || traceDirectory == "" {
+			if traceDirectory == "" {
 				s.sendErrorResponse(request.Request,
 					FailedToLaunch, "Failed to launch",
 					"The traceDirectory attribute is missing in replay configuration.")
@@ -958,7 +941,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		}
 
 		// Notify the client that the debugger finished initialization and send
-		// and exit response to signal the finalization of the trace recording
+		// an exit response to signal the finalization of the trace recording
 		s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
 		s.sendOutputResponse(request.Request, "console", "Trace recorded successfully")
 		s.send(&dap.ExitedEvent{
@@ -1009,10 +992,15 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 		return
 	}
+	// Enable StepBack controls on supported backends
+	if s.config.Debugger.Backend == "rr" {
+		s.send(&dap.CapabilitiesEvent{ Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{ SupportsStepBack: true }}})
+	}
 
 	// Notify the client that the debugger is ready to start accepting
 	// configuration requests for setting breakpoints, etc. The client
 	// will end the configuration sequence with 'configurationDone'.
+
 	s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
 	s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
 }
@@ -2573,11 +2561,6 @@ func (s *Server) onStepBackRequest(request *dap.StepBackRequest) {
 // onReverseContinueRequest performs a rewind command call up to the previous
 // breakpoint or the frame zero of the program, (dependant on Rewind/rr implementation)
 func (s *Server) onReverseContinueRequest(request *dap.ReverseContinueRequest) {
-	isRecording, path := s.debugger.Recorded()
-	if !isRecording {
-		s.sendErrorResponse(request.Request, UnableToContinue, "Unsupported command",
-			fmt.Sprintf("cannot process '%s' request, target '%s' is not a recording", request.Command, path))
-	}
 	s.send(&dap.ReverseContinueResponse{
 		Response: *newResponse(request.Request),
 	})
@@ -2727,7 +2710,7 @@ func (s *Server) onCancelRequest(request *dap.CancelRequest) {
 }
 
 // sendErrorResponseWithURL sends and error response to be visible to the user with an error related URL.
-func (s *Server) sendErrorResponseWithURL(request dap.Request, id int, summary, details string, url string, urlLabel string) {
+func (s *Server) sendErrorResponseWithURL(request dap.Request, id int, summary, details, url, urlLabel string) {
 	er := &dap.ErrorResponse{}
 	er.Type = "response"
 	er.Command = request.Command
