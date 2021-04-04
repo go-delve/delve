@@ -14,7 +14,6 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -64,21 +63,18 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 	// Give server time to start listening for clients
 	time.Sleep(100 * time.Millisecond)
 
-	var stopOnce sync.Once
 	// Run a goroutine that stops the server when disconnectChan is signaled.
 	// This helps us test that certain events cause the server to stop as
 	// expected.
 	go func() {
 		<-disconnectChan
-		stopOnce.Do(func() { server.Stop() })
+		server.Stop()
 	}()
 
 	client := daptest.NewClient(listener.Addr().String())
+	// This will close the client connectinon, which will cause a connection error
+	// on the server side and signal disconnect to unblock Stop() above.
 	defer client.Close()
-
-	defer func() {
-		stopOnce.Do(func() { server.Stop() })
-	}()
 
 	test(client, fixture)
 }
