@@ -138,8 +138,9 @@ var canUnmaskSignalsCached bool
 // gdbProcess implements proc.Process using a connection to a debugger stub
 // that understands Gdb Remote Serial Protocol.
 type gdbProcess struct {
-	bi   *proc.BinaryInfo
-	conn gdbConn
+	bi       *proc.BinaryInfo
+	regnames *gdbRegnames
+	conn     gdbConn
 
 	threads       map[int]*gdbThread
 	currentThread *gdbThread
@@ -156,6 +157,8 @@ type gdbProcess struct {
 	tracedir       string // if attached to rr the path to the trace directory
 
 	loadGInstrAddr uint64 // address of the g loading instruction, zero if we couldn't allocate it
+
+	breakpointKind int // breakpoint kind to pass to 'z' and 'Z' when creating software breakpoints
 
 	process  *os.Process
 	waitChan chan *os.ProcessState
@@ -196,11 +199,17 @@ type gdbRegisters struct {
 	hasgaddr bool
 	buf      []byte
 	arch     *proc.Arch
+	regnames *gdbRegnames
 }
 
 type gdbRegister struct {
 	value  []byte
 	regnum int
+}
+
+// gdbRegname records names of important CPU registers
+type gdbRegnames struct {
+	PC, SP, BP, CX, FsBase string
 }
 
 // newProcess creates a new Process instance.
@@ -218,10 +227,35 @@ func newProcess(process *os.Process) *gdbProcess {
 		},
 		threads:        make(map[int]*gdbThread),
 		bi:             proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
+		regnames:       new(gdbRegnames),
 		breakpoints:    proc.NewBreakpointMap(),
 		gcmdok:         true,
 		threadStopInfo: true,
 		process:        process,
+	}
+
+	switch p.bi.Arch.Name {
+	default:
+		fallthrough
+	case "amd64":
+		p.breakpointKind = 1
+	case "arm64":
+		p.breakpointKind = 4
+	}
+
+	p.regnames.PC = registerName(p.bi.Arch, p.bi.Arch.PCRegNum)
+	p.regnames.SP = registerName(p.bi.Arch, p.bi.Arch.SPRegNum)
+	p.regnames.BP = registerName(p.bi.Arch, p.bi.Arch.BPRegNum)
+
+	switch p.bi.Arch.Name {
+	case "arm64":
+		p.regnames.BP = "fp"
+		p.regnames.CX = "x0"
+	case "amd64":
+		p.regnames.CX = "rcx"
+		p.regnames.FsBase = "fs_base"
+	default:
+		panic("not implemented")
 	}
 
 	if process != nil {
@@ -282,7 +316,7 @@ func (p *gdbProcess) Dial(addr string, path string, pid int, debugInfoDirs []str
 func (p *gdbProcess) Connect(conn net.Conn, path string, pid int, debugInfoDirs []string, stopReason proc.StopReason) (*proc.Target, error) {
 	p.conn.conn = conn
 	p.conn.pid = pid
-	err := p.conn.handshake()
+	err := p.conn.handshake(p.regnames)
 	if err != nil {
 		conn.Close()
 		return nil, err
@@ -1038,7 +1072,7 @@ func (p *gdbProcess) Restart(pos string) (proc.Thread, error) {
 	p.clearThreadRegisters()
 
 	for addr := range p.breakpoints.M {
-		p.conn.setBreakpoint(addr)
+		p.conn.setBreakpoint(addr, p.breakpointKind)
 	}
 
 	return p.currentThread, p.setCurrentBreakpoints()
@@ -1175,11 +1209,11 @@ func (p *gdbProcess) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
 }
 
 func (p *gdbProcess) WriteBreakpoint(bp *proc.Breakpoint) error {
-	return p.conn.setBreakpoint(bp.Addr)
+	return p.conn.setBreakpoint(bp.Addr, p.breakpointKind)
 }
 
 func (p *gdbProcess) EraseBreakpoint(bp *proc.Breakpoint) error {
-	return p.conn.clearBreakpoint(bp.Addr)
+	return p.conn.clearBreakpoint(bp.Addr, p.breakpointKind)
 }
 
 type threadUpdater struct {
@@ -1350,7 +1384,7 @@ func (t *gdbThread) Location() (*proc.Location, error) {
 	if err != nil {
 		return nil, err
 	}
-	if pcreg, ok := regs.(*gdbRegisters).regs[regnamePC]; !ok {
+	if pcreg, ok := regs.(*gdbRegisters).regs[regs.(*gdbRegisters).regnames.PC]; !ok {
 		t.p.conn.log.Errorf("thread %d could not find RIP register", t.ID)
 	} else if len(pcreg.value) < t.p.bi.Arch.PtrSize() {
 		t.p.conn.log.Errorf("thread %d bad length for RIP register: %d", t.ID, len(pcreg.value))
@@ -1400,11 +1434,11 @@ func (t *gdbThread) Common() *proc.CommonThread {
 func (t *gdbThread) StepInstruction() error {
 	pc := t.regs.PC()
 	if _, atbp := t.p.breakpoints.M[pc]; atbp {
-		err := t.p.conn.clearBreakpoint(pc)
+		err := t.p.conn.clearBreakpoint(pc, t.p.breakpointKind)
 		if err != nil {
 			return err
 		}
-		defer t.p.conn.setBreakpoint(pc)
+		defer t.p.conn.setBreakpoint(pc, t.p.breakpointKind)
 	}
 	// Reset thread registers so the next call to
 	// Thread.Registers will not be cached.
@@ -1490,8 +1524,9 @@ func (p *gdbProcess) DumpProcessNotes(notes []elfwriter.Note, threadDone func())
 	return false, notes, nil
 }
 
-func (regs *gdbRegisters) init(regsInfo []gdbRegisterInfo, arch *proc.Arch) {
+func (regs *gdbRegisters) init(regsInfo []gdbRegisterInfo, arch *proc.Arch, regnames *gdbRegnames) {
 	regs.arch = arch
+	regs.regnames = regnames
 	regs.regs = make(map[string]gdbRegister)
 	regs.regsInfo = regsInfo
 
@@ -1513,7 +1548,7 @@ func (regs *gdbRegisters) init(regsInfo []gdbRegisterInfo, arch *proc.Arch) {
 // the stub can allocate memory, or reloadGAtPC, if the stub can't.
 func (t *gdbThread) reloadRegisters() error {
 	if t.regs.regs == nil {
-		t.regs.init(t.p.conn.regsInfo, t.p.bi.Arch)
+		t.regs.init(t.p.conn.regsInfo, t.p.bi.Arch, t.p.regnames)
 	}
 
 	if t.p.gcmdok {
@@ -1535,7 +1570,7 @@ func (t *gdbThread) reloadRegisters() error {
 
 	switch t.p.bi.GOOS {
 	case "linux":
-		if reg, hasFsBase := t.regs.regs[regnameFsBase]; hasFsBase {
+		if reg, hasFsBase := t.regs.regs[t.p.regnames.FsBase]; hasFsBase {
 			t.regs.gaddr = 0
 			t.regs.tls = binary.LittleEndian.Uint64(reg.value)
 			t.regs.hasgaddr = false
@@ -1622,11 +1657,11 @@ func (t *gdbThread) reloadGAtPC() error {
 	// Additionally all breakpoints in [pc, pc+len(movinstr)] need to be removed
 	for addr := range t.p.breakpoints.M {
 		if addr >= pc && addr <= pc+uint64(len(movinstr)) {
-			err := t.p.conn.clearBreakpoint(addr)
+			err := t.p.conn.clearBreakpoint(addr, t.p.breakpointKind)
 			if err != nil {
 				return err
 			}
-			defer t.p.conn.setBreakpoint(addr)
+			defer t.p.conn.setBreakpoint(addr, t.p.breakpointKind)
 		}
 	}
 
@@ -1648,7 +1683,7 @@ func (t *gdbThread) reloadGAtPC() error {
 		}
 		t.regs.setPC(pc)
 		t.regs.setCX(cx)
-		err1 := t.writeSomeRegisters(regnamePC, regnameCX)
+		err1 := t.writeSomeRegisters(t.p.regnames.PC, t.p.regnames.CX)
 		if err == nil {
 			err = err1
 		}
@@ -1665,7 +1700,7 @@ func (t *gdbThread) reloadGAtPC() error {
 		return err
 	}
 
-	if err := t.readSomeRegisters(regnamePC, regnameCX); err != nil {
+	if err := t.readSomeRegisters(t.p.regnames.PC, t.p.regnames.CX); err != nil {
 		return err
 	}
 
@@ -1692,7 +1727,7 @@ func (t *gdbThread) reloadGAlloc() error {
 	pc := t.regs.PC()
 
 	t.regs.setPC(t.p.loadGInstrAddr)
-	if err := t.writeSomeRegisters(regnamePC); err != nil {
+	if err := t.writeSomeRegisters(t.p.regnames.PC); err != nil {
 		return err
 	}
 
@@ -1701,7 +1736,7 @@ func (t *gdbThread) reloadGAlloc() error {
 	defer func() {
 		t.regs.setPC(pc)
 		t.regs.setCX(cx)
-		err1 := t.writeSomeRegisters(regnamePC, regnameCX)
+		err1 := t.writeSomeRegisters(t.p.regnames.PC, t.p.regnames.CX)
 		if err == nil {
 			err = err1
 		}
@@ -1718,7 +1753,7 @@ func (t *gdbThread) reloadGAlloc() error {
 		return err
 	}
 
-	if err := t.readSomeRegisters(regnameCX); err != nil {
+	if err := t.readSomeRegisters(t.p.regnames.CX); err != nil {
 		return err
 	}
 
@@ -1761,27 +1796,27 @@ func (t *gdbThread) SetCurrentBreakpoint(adjustPC bool) error {
 }
 
 func (regs *gdbRegisters) PC() uint64 {
-	return binary.LittleEndian.Uint64(regs.regs[regnamePC].value)
+	return binary.LittleEndian.Uint64(regs.regs[regs.regnames.PC].value)
 }
 
 func (regs *gdbRegisters) setPC(value uint64) {
-	binary.LittleEndian.PutUint64(regs.regs[regnamePC].value, value)
+	binary.LittleEndian.PutUint64(regs.regs[regs.regnames.PC].value, value)
 }
 
 func (regs *gdbRegisters) SP() uint64 {
-	return binary.LittleEndian.Uint64(regs.regs[regnameSP].value)
+	return binary.LittleEndian.Uint64(regs.regs[regs.regnames.SP].value)
 }
 
 func (regs *gdbRegisters) BP() uint64 {
-	return binary.LittleEndian.Uint64(regs.regs[regnameBP].value)
+	return binary.LittleEndian.Uint64(regs.regs[regs.regnames.BP].value)
 }
 
 func (regs *gdbRegisters) CX() uint64 {
-	return binary.LittleEndian.Uint64(regs.regs[regnameCX].value)
+	return binary.LittleEndian.Uint64(regs.regs[regs.regnames.CX].value)
 }
 
 func (regs *gdbRegisters) setCX(value uint64) {
-	binary.LittleEndian.PutUint64(regs.regs[regnameCX].value, value)
+	binary.LittleEndian.PutUint64(regs.regs[regs.regnames.CX].value, value)
 }
 
 func (regs *gdbRegisters) TLS() uint64 {
@@ -2180,14 +2215,13 @@ func (t *gdbThread) setPC(pc uint64) error {
 	if t.p.gcmdok {
 		return t.p.conn.writeRegisters(t.strID, t.regs.buf)
 	}
-	reg := t.regs.regs[regnamePC]
+	reg := t.regs.regs[t.regs.regnames.PC]
 	return t.p.conn.writeRegister(t.strID, reg.regnum, reg.value)
 }
 
 // SetReg will change the value of a list of registers
 func (t *gdbThread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
-	regName, _, _ := t.p.bi.Arch.DwarfRegisterToString(int(regNum), nil)
-	regName = strings.ToLower(regName)
+	regName := registerName(t.p.bi.Arch, regNum)
 	_, _ = t.Registers() // Registers must be loaded first
 	gdbreg, ok := t.regs.regs[regName]
 	if !ok && strings.HasPrefix(regName, "xmm") {
@@ -2261,7 +2295,12 @@ func (regs *gdbRegisters) Slice(floatingPoint bool) ([]proc.Register, error) {
 
 func (regs *gdbRegisters) Copy() (proc.Registers, error) {
 	savedRegs := &gdbRegisters{}
-	savedRegs.init(regs.regsInfo, regs.arch)
+	savedRegs.init(regs.regsInfo, regs.arch, regs.regnames)
 	copy(savedRegs.buf, regs.buf)
 	return savedRegs, nil
+}
+
+func registerName(arch *proc.Arch, regNum uint64) string {
+	regName, _, _ := arch.DwarfRegisterToString(int(regNum), nil)
+	return strings.ToLower(regName)
 }
