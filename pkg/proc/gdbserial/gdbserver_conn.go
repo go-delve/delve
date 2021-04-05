@@ -94,7 +94,7 @@ const (
 	qSupportedMultiprocess = "$qSupported:multiprocess+;swbreak+;hwbreak+;no-resumed+;xmlRegisters=i386"
 )
 
-func (conn *gdbConn) handshake() error {
+func (conn *gdbConn) handshake(regnames *gdbRegnames) error {
 	conn.ack = true
 	conn.packetSize = 256
 	conn.rdr = bufio.NewReader(conn.conn)
@@ -140,13 +140,27 @@ func (conn *gdbConn) handshake() error {
 
 	// Attempt to figure out the name of the processor register.
 	// We either need qXfer:features:read (gdbserver/rr) or qRegisterInfo (lldb)
-	if err := conn.readRegisterInfo(); err != nil {
+	regFound := map[string]bool{
+		regnames.PC: false,
+		regnames.SP: false,
+		regnames.BP: false,
+		regnames.CX: false,
+	}
+	if err := conn.readRegisterInfo(regFound); err != nil {
 		if isProtocolErrorUnsupported(err) {
-			if err := conn.readTargetXml(); err != nil {
+			if err := conn.readTargetXml(regFound); err != nil {
 				return err
 			}
 		} else {
 			return err
+		}
+	}
+	for n := range regFound {
+		if n == "" {
+			continue
+		}
+		if !regFound[n] {
+			return fmt.Errorf("could not find %s register", n)
 		}
 	}
 
@@ -226,17 +240,24 @@ type gdbRegisterInfo struct {
 	Group   string `xml:"group,attr"`
 }
 
+func setRegFound(regFound map[string]bool, name string) {
+	for n := range regFound {
+		if name == n {
+			regFound[n] = true
+		}
+	}
+}
+
 // readTargetXml reads target.xml file from stub using qXfer:features:read,
 // then parses it requesting any additional files.
 // The schema of target.xml is described by:
 //  https://github.com/bminor/binutils-gdb/blob/61baf725eca99af2569262d10aca03dcde2698f6/gdb/features/gdb-target.dtd
-func (conn *gdbConn) readTargetXml() (err error) {
+func (conn *gdbConn) readTargetXml(regFound map[string]bool) (err error) {
 	conn.regsInfo, err = conn.readAnnex("target.xml")
 	if err != nil {
 		return err
 	}
 	var offset int
-	var pcFound, cxFound, spFound bool
 	regnum := 0
 	for i := range conn.regsInfo {
 		if conn.regsInfo[i].Regnum == 0 {
@@ -246,25 +267,9 @@ func (conn *gdbConn) readTargetXml() (err error) {
 		}
 		conn.regsInfo[i].Offset = offset
 		offset += conn.regsInfo[i].Bitsize / 8
-		switch conn.regsInfo[i].Name {
-		case regnamePC:
-			pcFound = true
-		case regnameCX:
-			cxFound = true
-		case regnameSP:
-			spFound = true
-		}
-		regnum++
-	}
 
-	if !pcFound {
-		return errors.New("could not find RIP register")
-	}
-	if !spFound {
-		return errors.New("could not find RSP register")
-	}
-	if !cxFound {
-		return errors.New("could not find RCX register")
+		setRegFound(regFound, conn.regsInfo[i].Name)
+		regnum++
 	}
 
 	return nil
@@ -272,9 +277,8 @@ func (conn *gdbConn) readTargetXml() (err error) {
 
 // readRegisterInfo uses qRegisterInfo to read register information (used
 // when qXfer:feature:read is not supported).
-func (conn *gdbConn) readRegisterInfo() (err error) {
+func (conn *gdbConn) readRegisterInfo(regFound map[string]bool) (err error) {
 	regnum := 0
-	var pcFound, cxFound, spFound bool
 	for {
 		conn.outbuf.Reset()
 		fmt.Fprintf(&conn.outbuf, "$qRegisterInfo%x", regnum)
@@ -327,28 +331,11 @@ func (conn *gdbConn) readRegisterInfo() (err error) {
 			continue
 		}
 
-		switch regname {
-		case regnamePC:
-			pcFound = true
-		case regnameCX:
-			cxFound = true
-		case regnameSP:
-			spFound = true
-		}
+		setRegFound(regFound, regname)
 
 		conn.regsInfo = append(conn.regsInfo, gdbRegisterInfo{Regnum: regnum, Name: regname, Bitsize: bitsize, Offset: offset})
 
 		regnum++
-	}
-
-	if !pcFound {
-		return errors.New("could not find RIP register")
-	}
-	if !spFound {
-		return errors.New("could not find RSP register")
-	}
-	if !cxFound {
-		return errors.New("could not find RCX register")
 	}
 
 	return nil
@@ -410,17 +397,17 @@ func (conn *gdbConn) qXfer(kind, annex string, binary bool) ([]byte, error) {
 }
 
 // setBreakpoint executes a 'Z' (insert breakpoint) command of type '0' and kind '1' or '4'
-func (conn *gdbConn) setBreakpoint(addr uint64) error {
+func (conn *gdbConn) setBreakpoint(addr uint64, kind int) error {
 	conn.outbuf.Reset()
-	fmt.Fprintf(&conn.outbuf, "$Z0,%x,%d", addr, breakpointKind)
+	fmt.Fprintf(&conn.outbuf, "$Z0,%x,%d", addr, kind)
 	_, err := conn.exec(conn.outbuf.Bytes(), "set breakpoint")
 	return err
 }
 
 // clearBreakpoint executes a 'z' (remove breakpoint) command of type '0' and kind '1' or '4'
-func (conn *gdbConn) clearBreakpoint(addr uint64) error {
+func (conn *gdbConn) clearBreakpoint(addr uint64, kind int) error {
 	conn.outbuf.Reset()
-	fmt.Fprintf(&conn.outbuf, "$z0,%x,%d", addr, breakpointKind)
+	fmt.Fprintf(&conn.outbuf, "$z0,%x,%d", addr, kind)
 	_, err := conn.exec(conn.outbuf.Bytes(), "clear breakpoint")
 	return err
 }
