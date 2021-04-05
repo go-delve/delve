@@ -2549,48 +2549,42 @@ func TestLaunchRequestDefaults(t *testing.T) {
 			// writes to default output dir __debug_bin
 		}, fixture.Source)
 	})
+
+	// if noDebug is not a bool, behave as if it is the default value (false).
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSession(t, client, "launch", func() {
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"mode": "debug", "program": fixture.Source, "noDebug": "true"})
+		}, fixture.Source)
+	})
 }
 
-func TestLaunchRequestDefaultsNoDebug(t *testing.T) {
+func TestLaunchRequestNoDebug(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		runNoDebugDebugSession(t, client, "launch", func() {
+		runNoDebugDebugSession(t, client, func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"noDebug": true,
 				"mode":    "", /*"debug" by default*/
 				"program": fixture.Source,
 				"output":  cleanExeName("__mybin")})
-		}, fixture.Source)
-	})
-	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		runNoDebugDebugSession(t, client, "launch", func() {
-			// Use the default output directory.
-			client.LaunchRequestWithArgs(map[string]interface{}{
-				"noDebug": true,
-				/*"mode":"debug" by default*/
-				"program": fixture.Source,
-				"output":  cleanExeName("__mybin")})
-		}, fixture.Source)
-	})
-	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		runNoDebugDebugSession(t, client, "launch", func() {
-			// Use the default output directory.
-			client.LaunchRequestWithArgs(map[string]interface{}{
-				"noDebug": true,
-				"mode":    "debug",
-				"program": fixture.Source})
-			// writes to default output dir __debug_bin
-		}, fixture.Source)
+		}, fixture.Source, []int{8})
 	})
 }
 
-func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmd string, cmdRequest func(), source string) {
+// runNoDebugDebugSession tests the session started with noDebug=true runs uninterrupted
+// even when breakpoint is set.
+func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmdRequest func(), source string, breakpoints []int) {
 	client.InitializeRequest()
 	client.ExpectInitializeResponse(t)
 
 	cmdRequest()
-	// ! client.InitializedEvent.
-	// ! client.ExpectLaunchResponse
+	// no initialized event.
+	// noDebug mode applies only to "launch" requests.
+	client.ExpectLaunchResponse(t)
+
 	client.ExpectTerminatedEvent(t)
+	client.DisconnectRequestWithKillOption(true)
+	client.ExpectDisconnectResponse(t)
 }
 
 func TestLaunchTestRequest(t *testing.T) {
@@ -2896,6 +2890,14 @@ func TestBadLaunchRequests(t *testing.T) {
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "bad flags"})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t), "Failed to launch: Build error: exit status 1")
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "buildFlags": "bad flags"})
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t), "Failed to launch: Build error: exit status 1")
+
+		// Bad "wd".
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": false, "wd": "dir/invalid"})
+		expectFailedToLaunch(client.ExpectErrorResponse(t)) // invalid directory, the error message is system-dependent.
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "wd": "dir/invalid"})
+		expectFailedToLaunch(client.ExpectErrorResponse(t)) // invalid directory, the error message is system-dependent.
 
 		// We failed to launch the program. Make sure shutdown still works.
 		client.DisconnectRequest()
