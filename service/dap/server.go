@@ -64,15 +64,11 @@ type Server struct {
 	config *service.Config
 	// listener is used to accept the client connection.
 	listener net.Listener
-	// conn is the accepted client connection.
-	conn net.Conn
 	// stopTriggered is closed when the server is Stop()-ed. This can be used to signal
 	// to goroutines run by the server that it's time to quit.
 	stopTriggered chan struct{}
 	// reader is used to read requests from the connection.
 	reader *bufio.Reader
-	// debugger is the underlying debugger service.
-	debugger *debugger.Debugger
 	// log is used for structured logging.
 	log *logrus.Entry
 	// binaryToRemove is the compiled binary to be removed on disconnect.
@@ -91,6 +87,10 @@ type Server struct {
 	// and stopped on teardown (from main goroutine)
 	mu sync.Mutex
 
+	// conn is the accepted client connection.
+	conn net.Conn
+	// debugger is the underlying debugger service.
+	debugger *debugger.Debugger
 	// noDebugProcess is set for the noDebug launch process.
 	noDebugProcess *exec.Cmd
 }
@@ -170,6 +170,7 @@ func (s *Server) Stop() {
 	_ = s.listener.Close()
 
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.conn != nil {
 		// Unless Stop() was called after serveDAPCodec()
 		// returned, this will result in closed connection error
@@ -184,7 +185,6 @@ func (s *Server) Stop() {
 	} else {
 		s.stopNoDebugProcess()
 	}
-	s.mu.Unlock()
 }
 
 // triggerServerStop closes config.DisconnectChan if not nil, which
@@ -628,6 +628,8 @@ func (s *Server) startNoDebugProcess(program string, targetArgs []string, wd str
 	return cmd, nil
 }
 
+// stopNoDebugProcess is called from Stop() (main goroutine) and
+// onDisconnectRequest (run goroutine) and requires holding mu lock.
 func (s *Server) stopNoDebugProcess() {
 	p := s.noDebugProcess
 	s.noDebugProcess = nil
@@ -653,7 +655,9 @@ func isValidLaunchMode(launchMode interface{}) bool {
 // (in our case this TCP server) can be terminated.
 func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
 	s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
+	defer s.triggerServerStop()
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.debugger != nil {
 		// We always kill launched programs.
 		// In case of attach, we leave the program
@@ -664,18 +668,22 @@ func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
 	} else {
 		s.stopNoDebugProcess()
 	}
-	s.mu.Unlock()
-	s.triggerServerStop()
 }
 
+// stopDebugSession is called from Stop() (main goroutine) and
+// onDisconnectRequest (run goroutine) and requires holding mu lock.
 func (s *Server) stopDebugSession(killProcess bool) {
-	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
-	if err == proc.ErrProcessDetached {
-		s.log.Debug(err)
+	if s.debugger == nil {
 		return
-	} else if err == nil {
-		err = s.debugger.Detach(killProcess)
 	}
+	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+	if err != nil {
+		s.log.Debug(err)
+	}
+	if err == proc.ErrProcessDetached {
+		return
+	}
+	err = s.debugger.Detach(killProcess)
 	if err != nil {
 		switch err.(type) {
 		case *proc.ErrProcessExited:
@@ -857,6 +865,8 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 		s.config.Debugger.AttachPid = int(pid)
 		s.setLaunchAttachArgs(request)
 		var err error
+		s.mu.Lock()
+		defer s.mu.Unlock()
 		if s.debugger, err = debugger.New(&s.config.Debugger, nil); err != nil {
 			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
 			return
