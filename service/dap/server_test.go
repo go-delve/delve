@@ -2549,6 +2549,14 @@ func TestLaunchRequestDefaults(t *testing.T) {
 			// writes to default output dir __debug_bin
 		}, fixture.Source)
 	})
+
+	// if noDebug is not a bool, behave as if it is the default value (false).
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSession(t, client, "launch", func() {
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"mode": "debug", "program": fixture.Source, "noDebug": "true"})
+		}, fixture.Source)
+	})
 }
 
 func TestLaunchRequestNoDebug(t *testing.T) {

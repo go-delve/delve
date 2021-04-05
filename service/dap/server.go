@@ -166,8 +166,9 @@ func (s *Server) Stop() {
 				s.log.Error(err)
 			}
 		}
+	} else {
+		s.stopNoDebugProcess()
 	}
-	s.stopNoDebugProcess()
 }
 
 // signalDisconnect closes config.DisconnectChan if not nil, which
@@ -555,18 +556,19 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.config.Debugger.WorkingDir = wdParsed
 	}
 
-	if noDebug, _ := request.Arguments["noDebug"].(bool); noDebug {
+	if noDebug, ok := request.Arguments["noDebug"].(bool); ok && noDebug {
 		cmd, err := s.startNoDebugProcess(program, targetArgs, s.config.Debugger.WorkingDir)
 		if err != nil {
 			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 			return
 		}
-		// Skip 'initialized' event.
+		// Skip 'initialized' event, which will prevent the client from sending
+		// debug-related requests.
 		s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
 
 		// Then, block until the program terminates or is stopped.
 		if err := cmd.Wait(); err != nil {
-			s.log.Errorf("program exited: %v", err)
+			s.log.Debugf("program exited: %v", err)
 		}
 
 		stopped := false
@@ -659,8 +661,9 @@ func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
 				s.log.Error(err)
 			}
 		}
+	} else {
+		s.stopNoDebugProcess()
 	}
-	s.stopNoDebugProcess()
 
 	// TODO(polina): make thread-safe when handlers become asynchronous.
 	s.signalDisconnect()
