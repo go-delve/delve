@@ -1052,6 +1052,7 @@ func (s *Server) parseTargetArgs(request *dap.LaunchRequest, ok bool) ([]string,
 	return targetArgs, true
 }
 
+func (s *Server) startNoDebugProcess(program string, targetArgs []string, wd string) (*exec.Cmd, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 >>>>>>> dap: Fix and refactor record mode path. Refactor wd and args validations
