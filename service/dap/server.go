@@ -285,6 +285,16 @@ func (s *Server) Stop() {
 		// allowing the run goroutine to exit.
 		_ = s.conn.Close()
 	}
+			switch err.(type) {
+			case *proc.ErrProcessExited:
+				s.log.Debug(err)
+			default:
+				s.log.Error(err)
+			}
+		}
+	} else {
+		s.stopNoDebugProcess()
+	}
 }
 // triggerServerStop closes config.DisconnectChan if not nil, which
 // signals that client sent a disconnect request or there was connection
@@ -906,12 +916,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	if mode == "record" {
 		// Validate parameters and record an rr trace from the compiled binary
 		s.config.Debugger.Backend = "rr"
-
-		// Validate rr availability
-		if err := gdbserial.CheckRRAvailable(); err != nil {
-			s.sendErrorResponseWithURL(request.Request, FailedToInitialize, "Unable to find rr in record configuration", err.Error(), "https://github.com/rr-debugger/rr/wiki/Building-And-Installing", "rr installation page")
-			return
-		}
 
 		// Record only works on rr trace directories
 		traceDirectory, ok := request.Arguments["traceDirectory"].(string)
@@ -2550,11 +2554,6 @@ func (s *Server) onRestartRequest(request *dap.RestartRequest) {
 
 // onStepBackRequest performs a ReverseNext command call, returning a NextResponse.
 func (s *Server) onStepBackRequest(request *dap.StepBackRequest) {
-	isRecording, _ := s.debugger.Recorded()
-	if !isRecording {
-		s.sendErrorResponse(request.Request, UnableToContinue, "Unsupported command",
-			fmt.Sprintf("cannot process '%s' request, target is not a recording", request.Command))
-	}
 	s.send(&dap.StepBackResponse{Response: *newResponse(request.Request)})
 	s.doCommand(api.ReverseNext)
 }
