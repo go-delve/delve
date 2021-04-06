@@ -572,7 +572,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 
 	if noDebug, ok := request.Arguments["noDebug"].(bool); ok && noDebug {
+		s.mu.Lock()
 		cmd, err := s.startNoDebugProcess(program, targetArgs, s.config.Debugger.WorkingDir)
+		s.mu.Unlock()
 		if err != nil {
 			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 			return
@@ -600,8 +602,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 	var err error
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.debugger, err = debugger.New(&s.config.Debugger, s.config.ProcessArgs); err != nil {
+	s.debugger, err = debugger.New(&s.config.Debugger, s.config.ProcessArgs)
+	s.mu.Unlock()
+	if err != nil {
 		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 		return
 	}
@@ -613,9 +616,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
 }
 
+// startNoDebugProcess is called from onLaunchRequest (run goroutine) and
+// requires holding mu lock.
 func (s *Server) startNoDebugProcess(program string, targetArgs []string, wd string) (*exec.Cmd, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.noDebugProcess != nil {
 		return nil, fmt.Errorf("another launch request is in progress")
 	}
@@ -866,8 +869,9 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 		s.setLaunchAttachArgs(request)
 		var err error
 		s.mu.Lock()
-		defer s.mu.Unlock()
-		if s.debugger, err = debugger.New(&s.config.Debugger, nil); err != nil {
+		s.debugger, err = debugger.New(&s.config.Debugger, nil)
+		s.mu.Unlock()
+		if err != nil {
 			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
 			return
 		}
