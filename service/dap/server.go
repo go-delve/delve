@@ -634,13 +634,11 @@ func (s *Server) startNoDebugProcess(program string, targetArgs []string, wd str
 // stopNoDebugProcess is called from Stop (main goroutine) and
 // onDisconnectRequest (run goroutine) and requires holding mu lock.
 func (s *Server) stopNoDebugProcess() {
-	p := s.noDebugProcess
-	s.noDebugProcess = nil
-
 	// TODO(hyangah): gracefully terminate the process and its children processes.
-	if p != nil && !p.ProcessState.Exited() {
-		p.Process.Kill() // Don't check error. Process killing and self-termination may race.
+	if s.noDebugProcess != nil && !s.noDebugProcess.ProcessState.Exited() {
+		s.noDebugProcess.Process.Kill() // Don't check error. Process killing and self-termination may race.
 	}
+	s.noDebugProcess = nil
 }
 
 // TODO(polina): support "remote" mode
