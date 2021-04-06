@@ -59,8 +59,6 @@ type Server struct {
 	debugger *debugger.Debugger
 	// log is used for structured logging.
 	log *logrus.Entry
-	// binaryToRemove is the temp compiled binary to be removed on disconnect (if any).
-	binaryToRemove tempBinary
 	// stackFrameHandles maps frames of each goroutine to unique ids across all goroutines.
 	// Reset at every stop.
 	stackFrameHandles *handlesMap
@@ -72,7 +70,8 @@ type Server struct {
 	args launchAttachArgs
 
 	mu sync.Mutex
-
+	// binaryToRemove is the temp compiled binary to be removed on disconnect (if any).
+	binaryToRemove string
 	// noDebugProcess is set for the noDebug launch process.
 	noDebugProcess *exec.Cmd
 }
@@ -104,28 +103,6 @@ var DefaultLoadConfig = proc.LoadConfig{
 	MaxStringLen:       64,
 	MaxArrayValues:     64,
 	MaxStructFields:    -1,
-}
-
-// tempBinary offers a thread-safe abstraction for
-// managing a temp compiled binary (if any).
-type tempBinary struct {
-	mux      sync.Mutex
-	pathname string
-}
-
-func (b *tempBinary) set(pathname string) {
-	b.mux.Lock()
-	b.pathname = pathname
-	b.mux.Unlock()
-}
-
-func (b *tempBinary) remove() {
-	b.mux.Lock()
-	if b.pathname != "" {
-		gobuild.Remove(b.pathname)
-		b.pathname = ""
-	}
-	b.mux.Unlock()
 }
 
 // NewServer creates a new DAP Server. It takes an opened Listener
@@ -192,7 +169,12 @@ func (s *Server) Stop() {
 		s.stopNoDebugProcess()
 	}
 	// The binary is no longer in use by the debugger. It is safe to remove it.
-	s.binaryToRemove.remove()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.binaryToRemove != "" {
+		gobuild.Remove(s.binaryToRemove)
+		s.binaryToRemove = ""
+	}
 }
 
 // signalDisconnect closes config.DisconnectChan if not nil, which
@@ -536,7 +518,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			return
 		}
 		program = debugbinary
-		s.binaryToRemove.set(debugbinary)
+		s.mu.Lock()
+		s.binaryToRemove = debugbinary
+		s.mu.Unlock()
 	}
 
 	s.setLaunchAttachArgs(request)
