@@ -225,7 +225,7 @@ func (s *Server) triggerServerStop() {
 // so the editor needs to launch delve only once?
 func (s *Server) Run() {
 	go func() {
-		conn, err := s.listener.Accept()
+		conn, err := s.listener.Accept() // closed in Stop()
 		if err != nil {
 			select {
 			case <-s.stopTriggered:
@@ -236,7 +236,7 @@ func (s *Server) Run() {
 			return
 		}
 		s.mu.Lock()
-		s.conn = conn
+		s.conn = conn // closed in Stop()
 		s.mu.Unlock()
 		s.serveDAPCodec()
 	}()
@@ -631,7 +631,7 @@ func (s *Server) startNoDebugProcess(program string, targetArgs []string, wd str
 	return cmd, nil
 }
 
-// stopNoDebugProcess is called from Stop() (main goroutine) and
+// stopNoDebugProcess is called from Stop (main goroutine) and
 // onDisconnectRequest (run goroutine) and requires holding mu lock.
 func (s *Server) stopNoDebugProcess() {
 	p := s.noDebugProcess
@@ -673,7 +673,7 @@ func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
 	}
 }
 
-// stopDebugSession is called from Stop() (main goroutine) and
+// stopDebugSession is called from Stop (main goroutine) and
 // onDisconnectRequest (run goroutine) and requires holding mu lock.
 func (s *Server) stopDebugSession(killProcess bool) {
 	if s.debugger == nil {
