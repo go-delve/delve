@@ -961,6 +961,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			Event: *newEvent("exited"),
 			Body:  dap.ExitedEventBody{ExitCode: 0},
 		})
+		s.signalDisconnect()
 		return
 	}
 
