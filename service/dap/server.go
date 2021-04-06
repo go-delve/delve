@@ -927,10 +927,20 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			return
 		}
 
-		s.config.ProcessArgs = append([]string{program, traceDirectory}, targetArgs...)
+		// Check if trace output directory already exists, and return an user friendly error
+		// Otherwise, rr will abort with an EEXIST backtrace
+		if _, err := os.Stat(traceDirectory); !os.IsNotExist(err) {
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to record trace from target",
+				fmt.Sprintf("Trace output directory '%s' already exists", traceDirectory))
+			return
+		}
 
+		// Log and execute call to rr record
 		s.log.Debugf("preparing for trace recording - program: %v, traceDirectory: %v, cwd: %v, targetArgs: %v", program,traceDirectory, s.config.Debugger.WorkingDir, targetArgs)
-		traceDir, err := gdbserial.Record([]string{program}, s.config.Debugger.WorkingDir, false, s.config.Debugger.Redirects)
+		//command layout is rr record --output-trace-dir "output_directory" binary
+		rrParams := []string{"--output-trace-dir", fmt.Sprintf("%v", traceDirectory), program}
+		traceDir, err := gdbserial.Record(rrParams, s.config.Debugger.WorkingDir, false, s.config.Debugger.Redirects)
 		if err != nil {
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to record trace from target",
@@ -946,13 +956,10 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 		// Notify the client that the debugger finished initialization and send
 		// an exit response to signal the finalization of the trace recording
-		s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
-		s.sendOutputResponse(request.Request, "console", "Trace recorded successfully")
+		s.sendOutputResponse(request.Request, "console", fmt.Sprintf("Trace recorded successfully to '%s'", traceDir))
 		s.send(&dap.ExitedEvent{
-			Event: *newEvent("finished recording"),
-			Body:  dap.ExitedEventBody{
-				ExitCode: 0,
-			},
+			Event: *newEvent("exited"),
+			Body:  dap.ExitedEventBody{ExitCode: 0},
 		})
 		return
 	}
