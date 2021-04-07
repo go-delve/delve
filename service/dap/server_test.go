@@ -678,7 +678,6 @@ func validateEvaluateName(t *testing.T, client *daptest.Client, got *dap.Variabl
 func TestStackTraceRequest(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		var stResp *dap.StackTraceResponse
-		const StartHandle = 1000 // from handles.go
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
 			func() {
@@ -1297,7 +1296,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 	})
 }
 
-// TestVariablesLoading exposes test cases where variables might be partiall or
+// TestVariablesLoading exposes test cases where variables might be partial or
 // fully unloaded.
 func TestVariablesLoading(t *testing.T) {
 	runTest(t, "testvariables2", func(client *daptest.Client, fixture protest.Fixture) {
@@ -1756,96 +1755,109 @@ func TestEvaluateRequest(t *testing.T) {
 					handleStop(t, client, 1, "main.foobar", 66)
 
 					// Variable lookup
-					client.EvaluateRequest("a2", 1000, "this context will be ignored")
-					got := client.ExpectEvaluateResponse(t)
-					expectEval(t, got, "6", noChildren)
+					for _, evalContext := range []string{"", "watch", "repl", "variables", "somehtingelse"} {
+						t.Run("context="+evalContext, func(t *testing.T) {
 
-					client.EvaluateRequest("a5", 1000, "this context will be ignored")
-					got = client.ExpectEvaluateResponse(t)
-					ref := expectEval(t, got, "[]int len: 5, cap: 5, [1,2,3,4,5]", hasChildren)
-					if ref > 0 {
-						client.VariablesRequest(ref)
-						a5 := client.ExpectVariablesResponse(t)
-						expectChildren(t, a5, "a5", 5)
-						expectVarExact(t, a5, 0, "[0]", "(a5)[0]", "1", noChildren)
-						expectVarExact(t, a5, 4, "[4]", "(a5)[4]", "5", noChildren)
-						validateEvaluateName(t, client, a5, 0)
-						validateEvaluateName(t, client, a5, 4)
+							client.EvaluateRequest("a2", 1000, evalContext)
+							got := client.ExpectEvaluateResponse(t)
+							expectEval(t, got, "6", noChildren)
+
+							client.EvaluateRequest("a5", 1000, evalContext)
+							got = client.ExpectEvaluateResponse(t)
+							ref := expectEval(t, got, "[]int len: 5, cap: 5, [1,2,3,4,5]", hasChildren)
+							if ref > 0 {
+								client.VariablesRequest(ref)
+								a5 := client.ExpectVariablesResponse(t)
+								expectChildren(t, a5, "a5", 5)
+								expectVarExact(t, a5, 0, "[0]", "(a5)[0]", "1", noChildren)
+								expectVarExact(t, a5, 4, "[4]", "(a5)[4]", "5", noChildren)
+								validateEvaluateName(t, client, a5, 0)
+								validateEvaluateName(t, client, a5, 4)
+							}
+
+							// Variable lookup that's not fully loaded
+							client.EvaluateRequest("ba", 1000, evalContext)
+							got = client.ExpectEvaluateResponse(t)
+							want := "(loaded 64/200) []int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]"
+							if evalContext == "repl" || evalContext == "variables" { // larger load limit is applied.
+								want = "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]"
+							}
+							expectEval(t, got, want, hasChildren)
+
+							// All (binary and unary) on basic types except <-, ++ and --
+							client.EvaluateRequest("1+1", 1000, evalContext)
+							got = client.ExpectEvaluateResponse(t)
+							expectEval(t, got, "2", noChildren)
+
+							// Comparison operators on any type
+							client.EvaluateRequest("1<2", 1000, evalContext)
+							got = client.ExpectEvaluateResponse(t)
+							expectEval(t, got, "true", noChildren)
+
+							// Type casts between numeric types
+							client.EvaluateRequest("int(2.3)", 1000, evalContext)
+							got = client.ExpectEvaluateResponse(t)
+							expectEval(t, got, "2", noChildren)
+
+							// Type casts of integer constants into any pointer type and vice versa
+							client.EvaluateRequest("(*int)(2)", 1000, evalContext)
+							got = client.ExpectEvaluateResponse(t)
+							expectEval(t, got, "(not loaded) (*int)(0x2)", noChildren)
+
+							// Type casts between string, []byte and []rune
+							client.EvaluateRequest("[]byte(\"ABC€\")", 1000, evalContext)
+							got = client.ExpectEvaluateResponse(t)
+							expectEval(t, got, "[]uint8 len: 6, cap: 6, [65,66,67,226,130,172]", noChildren)
+
+							// Struct member access (i.e. somevar.memberfield)
+							client.EvaluateRequest("ms.Nest.Level", 1000, evalContext)
+							got = client.ExpectEvaluateResponse(t)
+							expectEval(t, got, "1", noChildren)
+
+							// Slicing and indexing operators on arrays, slices and strings
+							client.EvaluateRequest("a5[4]", 1000, evalContext)
+							got = client.ExpectEvaluateResponse(t)
+							expectEval(t, got, "5", noChildren)
+
+							// Map access
+							client.EvaluateRequest("mp[1]", 1000, evalContext)
+							got = client.ExpectEvaluateResponse(t)
+							ref = expectEval(t, got, "interface {}(int) 42", hasChildren)
+							if ref > 0 {
+								client.VariablesRequest(ref)
+								expr := client.ExpectVariablesResponse(t)
+								expectChildren(t, expr, "mp[1]", 1)
+								expectVarExact(t, expr, 0, "data", "(mp[1]).(data)", "42", noChildren)
+								validateEvaluateName(t, client, expr, 0)
+							}
+
+							// Pointer dereference
+							client.EvaluateRequest("*ms.Nest", 1000, evalContext)
+							got = client.ExpectEvaluateResponse(t)
+							want = `main\.Nest {Level: 1, Nest: \*main.Nest {Level: 2, Nest: \*\(\*main\.Nest\)\(0x[0-9a-f]+\)}}`
+							if evalContext == "repl" || evalContext == "variables" { // larger load limit is applied.
+								want = `main\.Nest {Level: 1, Nest: \*main.Nest {Level: 2, Nest: \*main.Nest {Level: 3, Nest: \*main.Nest {Level: 4, .*`
+							}
+							ref = expectEvalRegex(t, got, want, hasChildren)
+							if ref > 0 {
+								client.VariablesRequest(ref)
+								expr := client.ExpectVariablesResponse(t)
+								expectChildren(t, expr, "*ms.Nest", 2)
+								expectVarExact(t, expr, 0, "Level", "(*ms.Nest).Level", "1", noChildren)
+								validateEvaluateName(t, client, expr, 0)
+							}
+
+							// Calls to builtin functions: cap, len, complex, imag and real
+							client.EvaluateRequest("len(a5)", 1000, evalContext)
+							got = client.ExpectEvaluateResponse(t)
+							expectEval(t, got, "5", noChildren)
+
+							// Type assertion on interface variables (i.e. somevar.(concretetype))
+							client.EvaluateRequest("mp[1].(int)", 1000, evalContext)
+							got = client.ExpectEvaluateResponse(t)
+							expectEval(t, got, "42", noChildren)
+						})
 					}
-
-					// Variable lookup that's not fully loaded
-					client.EvaluateRequest("ba", 1000, "this context will be ignored")
-					got = client.ExpectEvaluateResponse(t)
-					expectEval(t, got, "(loaded 64/200) []int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", hasChildren)
-
-					// All (binary and unary) on basic types except <-, ++ and --
-					client.EvaluateRequest("1+1", 1000, "this context will be ignored")
-					got = client.ExpectEvaluateResponse(t)
-					expectEval(t, got, "2", noChildren)
-
-					// Comparison operators on any type
-					client.EvaluateRequest("1<2", 1000, "this context will be ignored")
-					got = client.ExpectEvaluateResponse(t)
-					expectEval(t, got, "true", noChildren)
-
-					// Type casts between numeric types
-					client.EvaluateRequest("int(2.3)", 1000, "this context will be ignored")
-					got = client.ExpectEvaluateResponse(t)
-					expectEval(t, got, "2", noChildren)
-
-					// Type casts of integer constants into any pointer type and vice versa
-					client.EvaluateRequest("(*int)(2)", 1000, "this context will be ignored")
-					got = client.ExpectEvaluateResponse(t)
-					expectEval(t, got, "(not loaded) (*int)(0x2)", noChildren)
-
-					// Type casts between string, []byte and []rune
-					client.EvaluateRequest("[]byte(\"ABC€\")", 1000, "this context will be ignored")
-					got = client.ExpectEvaluateResponse(t)
-					expectEval(t, got, "[]uint8 len: 6, cap: 6, [65,66,67,226,130,172]", noChildren)
-
-					// Struct member access (i.e. somevar.memberfield)
-					client.EvaluateRequest("ms.Nest.Level", 1000, "this context will be ignored")
-					got = client.ExpectEvaluateResponse(t)
-					expectEval(t, got, "1", noChildren)
-
-					// Slicing and indexing operators on arrays, slices and strings
-					client.EvaluateRequest("a5[4]", 1000, "this context will be ignored")
-					got = client.ExpectEvaluateResponse(t)
-					expectEval(t, got, "5", noChildren)
-
-					// Map access
-					client.EvaluateRequest("mp[1]", 1000, "this context will be ignored")
-					got = client.ExpectEvaluateResponse(t)
-					ref = expectEval(t, got, "interface {}(int) 42", hasChildren)
-					if ref > 0 {
-						client.VariablesRequest(ref)
-						expr := client.ExpectVariablesResponse(t)
-						expectChildren(t, expr, "mp[1]", 1)
-						expectVarExact(t, expr, 0, "data", "(mp[1]).(data)", "42", noChildren)
-						validateEvaluateName(t, client, expr, 0)
-					}
-
-					// Pointer dereference
-					client.EvaluateRequest("*ms.Nest", 1000, "this context will be ignored")
-					got = client.ExpectEvaluateResponse(t)
-					ref = expectEvalRegex(t, got, `main\.Nest {Level: 1, Nest: \*main.Nest {Level: 2, Nest: \*\(\*main\.Nest\)\(0x[0-9a-f]+\)}}`, hasChildren)
-					if ref > 0 {
-						client.VariablesRequest(ref)
-						expr := client.ExpectVariablesResponse(t)
-						expectChildren(t, expr, "*ms.Nest", 2)
-						expectVarExact(t, expr, 0, "Level", "(*ms.Nest).Level", "1", noChildren)
-						validateEvaluateName(t, client, expr, 0)
-					}
-
-					// Calls to builtin functions: cap, len, complex, imag and real
-					client.EvaluateRequest("len(a5)", 1000, "this context will be ignored")
-					got = client.ExpectEvaluateResponse(t)
-					expectEval(t, got, "5", noChildren)
-
-					// Type assertion on interface variables (i.e. somevar.(concretetype))
-					client.EvaluateRequest("mp[1].(int)", 1000, "this context will be ignored")
-					got = client.ExpectEvaluateResponse(t)
-					expectEval(t, got, "42", noChildren)
 				},
 				disconnect: false,
 			}, { // Stop at second breakpoint

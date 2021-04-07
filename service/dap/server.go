@@ -95,16 +95,28 @@ var defaultArgs = launchAttachArgs{
 	showGlobalVariables: false,
 }
 
-// DefaultLoadConfig controls how variables are loaded from the target's memory, borrowing the
-// default value from the original vscode-go debug adapter and rpc server.
+// DefaultLoadConfig controls how variables are loaded from the target's memory,
+// borrowing the default value from the original vscode-go debug adapter and rpc server.
+// For evaluate requests made in the context of 'repl' or 'variables', they are triggered
+// by explicit human action so we use InteractiveEvaluateLoadConfig to apply larger limits.
 // TODO(polina): Support setting config via launch/attach args or only rely on on-demand loading?
-var DefaultLoadConfig = proc.LoadConfig{
-	FollowPointers:     true,
-	MaxVariableRecurse: 1,
-	MaxStringLen:       64,
-	MaxArrayValues:     64,
-	MaxStructFields:    -1,
-}
+var (
+	DefaultLoadConfig = proc.LoadConfig{
+		FollowPointers:     true,
+		MaxVariableRecurse: 1,
+		MaxStringLen:       64,
+		MaxArrayValues:     64,
+		MaxStructFields:    -1,
+	}
+
+	InteractiveEvaluateLoadConfig = proc.LoadConfig{
+		FollowPointers:     true,
+		MaxVariableRecurse: 64,
+		MaxStringLen:       4096,
+		MaxArrayValues:     4096,
+		MaxStructFields:    -1,
+	}
+)
 
 // NewServer creates a new DAP Server. It takes an opened Listener
 // via config and assumes its ownership. config.disconnectChan has to be set;
@@ -1066,8 +1078,8 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 					valexpr = fmt.Sprintf("%s[%q]", v.fullyQualifiedNameOrExpr, key)
 				}
 			}
-			key, keyref := s.convertVariable(keyv, keyexpr)
-			val, valref := s.convertVariable(valv, valexpr)
+			key, keyref := s.convertVariable(keyv, keyexpr, DefaultLoadConfig)
+			val, valref := s.convertVariable(valv, valexpr, DefaultLoadConfig)
 			// If key or value or both are scalars, we can use
 			// a single variable to represet key:value format.
 			// Otherwise, we must return separate variables for both.
@@ -1107,7 +1119,7 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		children = make([]dap.Variable, len(v.Children))
 		for i := range v.Children {
 			cfqname := fmt.Sprintf("%s[%d]", v.fullyQualifiedNameOrExpr, i)
-			cvalue, cvarref := s.convertVariable(&v.Children[i], cfqname)
+			cvalue, cvarref := s.convertVariable(&v.Children[i], cfqname, DefaultLoadConfig)
 			children[i] = dap.Variable{
 				Name:               fmt.Sprintf("[%d]", i),
 				EvaluateName:       cfqname,
@@ -1134,7 +1146,7 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 			} else if v.Kind == reflect.Complex64 || v.Kind == reflect.Complex128 {
 				cfqname = "" // complex children are not struct fields and can't be accessed directly
 			}
-			cvalue, cvarref := s.convertVariable(c, cfqname)
+			cvalue, cvarref := s.convertVariable(c, cfqname, DefaultLoadConfig)
 			children[i] = dap.Variable{
 				Name:               c.Name,
 				EvaluateName:       cfqname,
@@ -1159,18 +1171,18 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 // variables request can be issued to get the elements of the compound variable. As a
 // custom, a zero reference, reminiscent of a zero pointer, is used to indicate that
 // a scalar variable cannot be "dereferenced" to get its elements (as there are none).
-func (s *Server) convertVariable(v *proc.Variable, qualifiedNameOrExpr string) (value string, variablesReference int) {
-	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, false)
+func (s *Server) convertVariable(v *proc.Variable, qualifiedNameOrExpr string, loadOption proc.LoadConfig) (value string, variablesReference int) {
+	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, false, loadOption)
 }
 
-func (s *Server) convertVariableToString(v *proc.Variable) string {
-	val, _ := s.convertVariableWithOpts(v, "", true)
+func (s *Server) convertVariableToString(v *proc.Variable, loadOption proc.LoadConfig) string {
+	val, _ := s.convertVariableWithOpts(v, "", true, loadOption)
 	return val
 }
 
 // convertVariableWithOpts allows to skip reference generation in case all we need is
 // a string representation of the variable.
-func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, skipRef bool) (value string, variablesReference int) {
+func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, skipRef bool, loadConfig proc.LoadConfig) (value string, variablesReference int) {
 	maybeCreateVariableHandle := func(v *proc.Variable) int {
 		if skipRef {
 			return 0
@@ -1221,7 +1233,7 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 				// frame-independent address-based expression, not fully-qualified name.
 				loadExpr := fmt.Sprintf("*(*%q)(%#x)", typeName, v.Addr)
 				s.log.Debugf("loading %s (type %s) with %s", qualifiedNameOrExpr, typeName, loadExpr)
-				vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, loadExpr, DefaultLoadConfig)
+				vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, loadExpr, loadConfig)
 				if err != nil {
 					value += fmt.Sprintf(" - FAILED TO LOAD: %s", err)
 				} else {
@@ -1284,7 +1296,11 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 		goid = sf.(stackFrame).goroutineID
 		frame = sf.(stackFrame).frameIndex
 	}
-
+	loadConfig := DefaultLoadConfig
+	// For requests triggered by human, apply larger load limits.
+	if request.Arguments.Context == "repl" || request.Arguments.Context == "variables" {
+		loadConfig = InteractiveEvaluateLoadConfig
+	}
 	response := &dap.EvaluateResponse{Response: *newResponse(request.Request)}
 	isCall, err := regexp.MatchString(`^\s*call\s+\S+`, request.Arguments.Expression)
 	if err == nil && isCall { // call {expression}
@@ -1305,7 +1321,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 		}
 		state, err := s.debugger.Command(&api.DebuggerCommand{
 			Name:                 api.Call,
-			ReturnInfoLoadConfig: api.LoadConfigFromProc(&DefaultLoadConfig),
+			ReturnInfoLoadConfig: api.LoadConfigFromProc(&loadConfig),
 			Expr:                 strings.Replace(request.Arguments.Expression, "call ", "", 1),
 			UnsafeCall:           false,
 			GoroutineID:          goid,
@@ -1328,7 +1344,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			if t.GoroutineID == stateBeforeCall.SelectedGoroutine.ID &&
 				t.Line == stateBeforeCall.SelectedGoroutine.CurrentLoc.Line && t.CallReturn {
 				// The call completed. Get the return values.
-				retVars, err = s.debugger.FindThreadReturnValues(t.ID, DefaultLoadConfig)
+				retVars, err = s.debugger.FindThreadReturnValues(t.ID, loadConfig)
 				if err != nil {
 					s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 					return
@@ -1360,7 +1376,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			// As a shortcut also express the return values as a single string.
 			retVarsAsStr := ""
 			for _, v := range retVars {
-				retVarsAsStr += s.convertVariableToString(v) + ", "
+				retVarsAsStr += s.convertVariableToString(v, loadConfig) + ", "
 			}
 			response.Body = dap.EvaluateResponseBody{
 				Result:             strings.TrimRight(retVarsAsStr, ", "),
@@ -1368,14 +1384,15 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			}
 		}
 	} else { // {expression}
-		exprVar, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, DefaultLoadConfig)
+		exprVar, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, loadConfig)
 		if err != nil {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 			return
 		}
+
 		// TODO(polina): as far as I can tell, evaluateName is ignored by vscode for expression variables.
 		// Should it be skipped alltogether for all levels?
-		exprVal, exprRef := s.convertVariable(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression))
+		exprVal, exprRef := s.convertVariable(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression), loadConfig)
 		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef}
 	}
 	s.send(response)
