@@ -229,9 +229,11 @@ Called with more arguments it will execute a command on the specified goroutine.
 		{aliases: []string{"breakpoints", "bp"}, group: breakCmds, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
 		{aliases: []string{"print", "p"}, group: dataCmds, allowedPrefixes: onPrefix | deferredPrefix, cmdFn: printVar, helpMsg: `Evaluate an expression.
 
-	[goroutine <n>] [frame <m>] print <expression>
+	[goroutine <n>] [frame <m>] print [%format] <expression>
 
-See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/expr.md for a description of supported expressions.`},
+See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/expr.md for a description of supported expressions.
+
+The optional format argument is a format specifier, like the ones used by the fmt package. For example "print %x v" will print v as an hexadecimal number.`},
 		{aliases: []string{"whatis"}, group: dataCmds, cmdFn: whatisCommand, helpMsg: `Prints type of an expression.
 
 	whatis <expression>`},
@@ -417,7 +419,7 @@ For example:
 
 		{aliases: []string{"display"}, group: dataCmds, cmdFn: display, helpMsg: `Print value of an expression every time the program stops.
 
-	display -a <expression>
+	display -a [%format] <expression>
 	display -d <number>
 
 The '-a' option adds an expression to the list of expression printed every time the program stops. The '-d' option removes the specified expression from the list.
@@ -1743,6 +1745,17 @@ func examineMemoryCmd(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
+func parseFormatArg(args string) (fmtstr, argsOut string) {
+	if len(args) < 1 || args[0] != '%' {
+		return "", args
+	}
+	v := strings.SplitN(args, " ", 2)
+	if len(v) == 1 {
+		return v[0], ""
+	}
+	return v[0], v[1]
+}
+
 func printVar(t *Term, ctx callContext, args string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("not enough arguments")
@@ -1751,12 +1764,13 @@ func printVar(t *Term, ctx callContext, args string) error {
 		ctx.Breakpoint.Variables = append(ctx.Breakpoint.Variables, args)
 		return nil
 	}
+	fmtstr, args := parseFormatArg(args)
 	val, err := t.client.EvalVariable(ctx.Scope, args, t.loadConfig())
 	if err != nil {
 		return err
 	}
 
-	fmt.Println(val.MultilineString(""))
+	fmt.Println(val.MultilineString("", fmtstr))
 	return nil
 }
 
@@ -1816,7 +1830,7 @@ func printFilteredVariables(varType string, vars []api.Variable, filter string, 
 			if cfg == ShortLoadConfig {
 				fmt.Printf("%s = %s\n", name, v.SinglelineString())
 			} else {
-				fmt.Printf("%s = %s\n", name, v.MultilineString(""))
+				fmt.Printf("%s = %s\n", name, v.MultilineString("", ""))
 			}
 		}
 	}
@@ -2326,7 +2340,7 @@ func printReturnValues(th *api.Thread) {
 	}
 	fmt.Println("Values returned:")
 	for _, v := range th.ReturnValues {
-		fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
+		fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t", ""))
 	}
 	fmt.Println()
 }
@@ -2426,13 +2440,13 @@ func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 
 	for _, v := range bpi.Variables {
 		tracepointnl()
-		fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
+		fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t", ""))
 	}
 
 	for _, v := range bpi.Locals {
 		tracepointnl()
 		if *bp.LoadLocals == longLoadConfig {
-			fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
+			fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t", ""))
 		} else {
 			fmt.Printf("\t%s: %s\n", v.Name, v.SinglelineString())
 		}
@@ -2441,7 +2455,7 @@ func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 	if bp.LoadArgs != nil && *bp.LoadArgs == longLoadConfig {
 		for _, v := range bpi.Arguments {
 			tracepointnl()
-			fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t"))
+			fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t", ""))
 		}
 	}
 
@@ -2667,10 +2681,11 @@ func display(t *Term, ctx callContext, args string) error {
 
 	case strings.HasPrefix(args, addOption):
 		args = strings.TrimSpace(args[len(addOption):])
+		fmtstr, args := parseFormatArg(args)
 		if args == "" {
 			return fmt.Errorf("not enough arguments")
 		}
-		t.addDisplay(args)
+		t.addDisplay(args, fmtstr)
 		t.printDisplay(len(t.displays) - 1)
 
 	case strings.HasPrefix(args, delOption):
