@@ -225,7 +225,7 @@ func (s *Server) triggerServerStop() {
 // so the editor needs to launch delve only once?
 func (s *Server) Run() {
 	go func() {
-		conn, err := s.listener.Accept() // closed in Stop()
+		conn, err := s.listener.Accept() // listener is closed in Stop()
 		if err != nil {
 			select {
 			case <-s.stopTriggered:
