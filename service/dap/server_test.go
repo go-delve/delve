@@ -1754,10 +1754,9 @@ func TestEvaluateRequest(t *testing.T) {
 				execute: func() {
 					handleStop(t, client, 1, "main.foobar", 66)
 
-					// Variable lookup
 					for _, evalContext := range []string{"", "watch", "repl", "variables", "somehtingelse"} {
-						t.Run("context="+evalContext, func(t *testing.T) {
-
+						t.Run(evalContext, func(t *testing.T) {
+							// Variable lookup
 							client.EvaluateRequest("a2", 1000, evalContext)
 							got := client.ExpectEvaluateResponse(t)
 							expectEval(t, got, "6", noChildren)
@@ -1778,11 +1777,7 @@ func TestEvaluateRequest(t *testing.T) {
 							// Variable lookup that's not fully loaded
 							client.EvaluateRequest("ba", 1000, evalContext)
 							got = client.ExpectEvaluateResponse(t)
-							want := "(loaded 64/200) []int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]"
-							if evalContext == "repl" || evalContext == "variables" { // larger load limit is applied.
-								want = "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]"
-							}
-							expectEval(t, got, want, hasChildren)
+							expectEval(t, got, "(loaded 64/200) []int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", hasChildren)
 
 							// All (binary and unary) on basic types except <-, ++ and --
 							client.EvaluateRequest("1+1", 1000, evalContext)
@@ -1834,11 +1829,7 @@ func TestEvaluateRequest(t *testing.T) {
 							// Pointer dereference
 							client.EvaluateRequest("*ms.Nest", 1000, evalContext)
 							got = client.ExpectEvaluateResponse(t)
-							want = `main\.Nest {Level: 1, Nest: \*main.Nest {Level: 2, Nest: \*\(\*main\.Nest\)\(0x[0-9a-f]+\)}}`
-							if evalContext == "repl" || evalContext == "variables" { // larger load limit is applied.
-								want = `main\.Nest {Level: 1, Nest: \*main.Nest {Level: 2, Nest: \*main.Nest {Level: 3, Nest: \*main.Nest {Level: 4, .*`
-							}
-							ref = expectEvalRegex(t, got, want, hasChildren)
+							ref = expectEvalRegex(t, got, `main\.Nest {Level: 1, Nest: \*main.Nest {Level: 2, Nest: \*\(\*main\.Nest\)\(0x[0-9a-f]+\)}}`, hasChildren)
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								expr := client.ExpectVariablesResponse(t)
@@ -1889,6 +1880,121 @@ func TestEvaluateRequest(t *testing.T) {
 					}
 				},
 				disconnect: false,
+			}})
+	})
+}
+
+func TestEvaluateRequestLongStr(t *testing.T) {
+	runTest(t, "largevariables", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Breakpoints are set within the program
+			fixture.Source, []int{},
+			[]onBreakpoint{{
+				execute: func() {
+					client.StackTraceRequest(1, 0, 20)
+					stack := client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stack, "main.f", -1, 1000, 4, 4)
+
+					testCases := []struct {
+						expr         string
+						wantShort    string
+						wantLong     string
+						wantChildren bool
+					}{
+						{
+							expr:      "str",
+							wantShort: fmt.Sprintf(`"%v"`, strings.Repeat("a", 33)),
+							wantLong:  fmt.Sprintf(`"%v"`, strings.Repeat("a", 33)),
+						},
+						{
+							expr:      "longStr",
+							wantShort: fmt.Sprintf(`"%v...+36 more"`, strings.Repeat("a", 64)),
+							wantLong:  fmt.Sprintf(`"%v"`, strings.Repeat("a", 100)),
+						},
+						{
+							expr:      "veryLongStr",
+							wantShort: fmt.Sprintf(`"%v...+961 more"`, strings.Repeat("a", 64)),
+							wantLong:  fmt.Sprintf(`"%v...+1 more"`, strings.Repeat("a", 1024)),
+						},
+						{
+							expr:      "localStr",
+							wantShort: fmt.Sprintf(`"%v"`, strings.Repeat("a", 33)),
+							wantLong:  fmt.Sprintf(`"%v"`, strings.Repeat("a", 33)),
+						},
+						{
+							expr:      "localLongStr",
+							wantShort: fmt.Sprintf(`"%v...+36 more"`, strings.Repeat("a", 64)),
+							wantLong:  fmt.Sprintf(`"%v"`, strings.Repeat("a", 100)),
+						},
+						{
+							expr:      "localVeryLongStr",
+							wantShort: fmt.Sprintf(`"%v...+961 more"`, strings.Repeat("a", 64)),
+							wantLong:  fmt.Sprintf(`"%v...+1 more"`, strings.Repeat("a", 1024)),
+						},
+						{
+							expr:      "localStr[1:]",
+							wantShort: fmt.Sprintf(`"%v"`, strings.Repeat("a", 32)),
+							wantLong:  fmt.Sprintf(`"%v"`, strings.Repeat("a", 32)),
+						},
+						{
+							expr:      "localLongStr[1:]",
+							wantShort: fmt.Sprintf(`"%v...+35 more"`, strings.Repeat("a", 64)),
+							wantLong:  fmt.Sprintf(`"%v"`, strings.Repeat("a", 99)),
+						},
+						{
+							expr:      "localVeryLongStr[1:]",
+							wantShort: fmt.Sprintf(`"%v...+960 more"`, strings.Repeat("a", 64)),
+							wantLong:  fmt.Sprintf(`"%v"`, strings.Repeat("a", 1024)),
+						},
+						{
+							expr:      "string(bytes)",
+							wantShort: fmt.Sprintf(`"%v"`, strings.Repeat("a", 33)),
+							wantLong:  fmt.Sprintf(`"%v"`, strings.Repeat("a", 33)),
+						},
+						// EvalVariableInScope doesn't seem to use load config when
+						// evaluating []byte to string conversion. Probably not critical
+						// but figure out why.
+						{
+							expr:      "string(longBytes)",
+							wantShort: fmt.Sprintf(`"%v"`, strings.Repeat("a", 64)),
+							wantLong:  fmt.Sprintf(`"%v"`, strings.Repeat("a", 64)),
+						},
+						{
+							expr:      "string(veryLongBytes)",
+							wantShort: fmt.Sprintf(`"%v"`, strings.Repeat("a", 64)),
+							wantLong:  fmt.Sprintf(`"%v"`, strings.Repeat("a", 64)),
+						},
+						{
+							// Call evaluation shouldn't be affected, at least for now.
+							// And, call result has children unconditionally.
+							expr:         "call veryLongStr[1:]",
+							wantShort:    fmt.Sprintf(`"%v...+960 more"`, strings.Repeat("a", 64)),
+							wantLong:     fmt.Sprintf(`"%v...+960 more"`, strings.Repeat("a", 64)),
+							wantChildren: true,
+						},
+					}
+					for _, tc := range testCases {
+						// reflect.Kind == String, load with longer load limit if evaluated in repl/variables context.
+						t.Run(fmt.Sprintf("expr=%v", tc.expr), func(t *testing.T) {
+							for _, evalContext := range []string{"", "watch", "repl", "variables", "somethingelse"} {
+								t.Run(evalContext, func(t *testing.T) {
+									client.EvaluateRequest(tc.expr, 0, evalContext)
+									got := client.ExpectEvaluateResponse(t)
+									want := tc.wantShort
+									if evalContext == "repl" || evalContext == "variables" {
+										want = tc.wantLong
+									}
+									expectEval(t, got, want, tc.wantChildren)
+								})
+							}
+						})
+					}
+				},
+				disconnect: true,
 			}})
 	})
 }
