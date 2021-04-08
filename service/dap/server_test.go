@@ -2172,6 +2172,8 @@ func testStepParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 	return goroutineId
 }
 
+// TestStepOutPreservesGoroutine is inspired by proc_test.TestStepOutPreservesGoroutine
+// and checks that StepOut preserves the currently selected goroutine.
 func TestStepOutPreservesGoroutine(t *testing.T) {
 	// Checks that StepOut preserves the currently selected goroutine.
 	if runtime.GOOS == "freebsd" {
@@ -2230,9 +2232,15 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 					client.StepOutRequest(goroutineId)
 					client.ExpectStepOutResponse(t)
 
-					se = client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != goroutineId {
-						t.Fatalf("StepIn did not continue on the selected goroutine, expected %d got %d", goroutineId, se.Body.ThreadId)
+					switch e := client.ExpectMessage(t).(type) {
+					case *dap.StoppedEvent:
+						if e.Body.ThreadId != goroutineId {
+							t.Fatalf("StepOut did not continue on the selected goroutine, expected %d got %d", goroutineId, e.Body.ThreadId)
+						}
+					case *dap.TerminatedEvent:
+						t.Logf("program terminated")
+					default:
+						t.Fatalf("Unexpected event type: expect stopped or terminated event, got %#v", e)
 					}
 				},
 				disconnect: false,
