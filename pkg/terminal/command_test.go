@@ -1191,3 +1191,13 @@ func TestContinueUntil(t *testing.T) {
 		listIsAt(t, term, "continue main.sayhi", 12, -1, -1)
 	})
 }
+
+func TestPrintFormat(t *testing.T) {
+	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
+		term.MustExec("continue")
+		out := term.MustExec("print %#x m2[1].B")
+		if !strings.Contains(out, "0xb\n") {
+			t.Fatalf("output did not contain '0xb': %q", out)
+		}
+	})
+}

@@ -1359,5 +1359,43 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 		}
 		return env.interfaceToStarlarkValue(rpcRet), nil
 	})
+	r["toggle_breakpoint"] = starlark.NewBuiltin("toggle_breakpoint", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		if err := isCancelled(thread); err != nil {
+			return starlark.None, decorateError(thread, err)
+		}
+		var rpcArgs rpc2.ToggleBreakpointIn
+		var rpcRet rpc2.ToggleBreakpointOut
+		if len(args) > 0 && args[0] != starlark.None {
+			err := unmarshalStarlarkValue(args[0], &rpcArgs.Id, "Id")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		if len(args) > 1 && args[1] != starlark.None {
+			err := unmarshalStarlarkValue(args[1], &rpcArgs.Name, "Name")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		for _, kv := range kwargs {
+			var err error
+			switch kv[0].(starlark.String) {
+			case "Id":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Id, "Id")
+			case "Name":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Name, "Name")
+			default:
+				err = fmt.Errorf("unknown argument %q", kv[0])
+			}
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		err := env.ctx.Client().CallAPI("ToggleBreakpoint", &rpcArgs, &rpcRet)
+		if err != nil {
+			return starlark.None, err
+		}
+		return env.interfaceToStarlarkValue(rpcRet), nil
+	})
 	return r
 }

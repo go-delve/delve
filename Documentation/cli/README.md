@@ -32,6 +32,7 @@ Command | Description
 [clearall](#clearall) | Deletes multiple breakpoints.
 [condition](#condition) | Set breakpoint condition.
 [on](#on) | Executes a command when a breakpoint is hit.
+[toggle](#toggle) | Toggles on or off a breakpoint.
 [trace](#trace) | Set tracepoint.
 
 
@@ -241,7 +242,7 @@ Aliases: disass
 ## display
 Print value of an expression every time the program stops.
 
-	display -a <expression>
+	display -a [%format] <expression>
 	display -d <number>
 
 The '-a' option adds an expression to the list of expression printed every time the program stops. The '-d' option removes the specified expression from the list.
@@ -408,9 +409,11 @@ Supported commands: print, stack and goroutine)
 ## print
 Evaluate an expression.
 
-	[goroutine <n>] [frame <m>] print <expression>
+	[goroutine <n>] [frame <m>] print [%format] <expression>
 
 See [Documentation/cli/expr.md](//github.com/go-delve/delve/tree/master/Documentation/cli/expr.md) for a description of supported expressions.
+
+The optional format argument is a format specifier, like the ones used by the fmt package. For example "print %x v" will print v as an hexadecimal number.
 
 Aliases: p
 
@@ -529,6 +532,12 @@ Aliases: tr
 
 ## threads
 Print out info for every traced thread.
+
+
+## toggle
+Toggles on or off a breakpoint.
+
+toggle <breakpoint name or id>
 
 
 ## trace

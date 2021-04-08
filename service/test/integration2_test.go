@@ -507,6 +507,113 @@ func TestClientServer_clearBreakpoint(t *testing.T) {
 	})
 }
 
+func TestClientServer_toggleBreakpoint(t *testing.T) {
+	withTestClient2("testtoggle", t, func(c service.Client) {
+		toggle := func(bp *api.Breakpoint) {
+			dbp, err := c.ToggleBreakpoint(bp.ID)
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+			if dbp.ID != bp.ID {
+				t.Fatalf("The IDs don't match")
+			}
+		}
+
+		// This one is toggled twice
+		bp1, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.lineOne", Tracepoint: true})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v\n", err)
+		}
+
+		toggle(bp1)
+		toggle(bp1)
+
+		// This one is toggled once
+		bp2, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.lineTwo", Tracepoint: true})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v\n", err)
+		}
+
+		toggle(bp2)
+
+		// This one is never toggled
+		bp3, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.lineThree", Tracepoint: true})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v\n", err)
+		}
+
+		if e, a := 3, countBreakpoints(t, c); e != a {
+			t.Fatalf("Expected breakpoint count %d, got %d", e, a)
+		}
+
+		enableCount := 0
+		disabledCount := 0
+
+		contChan := c.Continue()
+		for state := range contChan {
+			if state.CurrentThread != nil && state.CurrentThread.Breakpoint != nil {
+				switch state.CurrentThread.Breakpoint.ID {
+				case bp1.ID, bp3.ID:
+					enableCount++
+				case bp2.ID:
+					disabledCount++
+				}
+
+				t.Logf("%v", state)
+			}
+			if state.Exited {
+				continue
+			}
+			if state.Err != nil {
+				t.Fatalf("Unexpected error during continue: %v\n", state.Err)
+			}
+		}
+
+		if enableCount != 2 {
+			t.Fatalf("Wrong number of enabled hits: %d\n", enableCount)
+		}
+
+		if disabledCount != 0 {
+			t.Fatalf("A disabled breakpoint was hit: %d\n", disabledCount)
+		}
+	})
+}
+
+func TestClientServer_toggleAmendedBreakpoint(t *testing.T) {
+	withTestClient2("testtoggle", t, func(c service.Client) {
+		toggle := func(bp *api.Breakpoint) {
+			dbp, err := c.ToggleBreakpoint(bp.ID)
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+			if dbp.ID != bp.ID {
+				t.Fatalf("The IDs don't match")
+			}
+		}
+
+		// This one is toggled twice
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.lineOne", Tracepoint: true})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v\n", err)
+		}
+		bp.Cond = "n == 7"
+		assertNoError(c.AmendBreakpoint(bp), t, "AmendBreakpoint() 1")
+
+		// Toggle off.
+		toggle(bp)
+		// Toggle on.
+		toggle(bp)
+
+		amended, err := c.GetBreakpoint(bp.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if amended.Cond == "" {
+			t.Fatal("breakpoint amendedments not preserved after toggle")
+		}
+	})
+}
+
 func TestClientServer_switchThread(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestClient2("testnextprog", t, func(c service.Client) {
@@ -1334,7 +1441,7 @@ func TestIssue406(t *testing.T) {
 		assertNoError(state.Err, t, "Continue()")
 		v, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "cfgtree", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
-		vs := v.MultilineString("")
+		vs := v.MultilineString("", "")
 		t.Logf("cfgtree formats to: %s\n", vs)
 	})
 }

@@ -3,8 +3,10 @@ package dap
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	"io"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"os"
 	"os/exec"
@@ -1190,7 +1192,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						client.VariablesRequest(ref)
 						m3 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m3, "m3", 2) // each key-value represented by a single child
-						ref = expectVarRegex(t, m3, 0, `main\.astruct {A: 1, B: 1}\(0x[0-9a-f]+\)`, `m3\[\(\*\(\*"main.astruct"\)\(0x[0-9a-f]+\)\)\]`, "42", hasChildren)
+						ref = expectVarRegex(t, m3, 0, `main\.astruct {A: 1, B: 1}`, `m3\[\(\*\(\*"main.astruct"\)\(0x[0-9a-f]+\)\)\]`, "42", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m3kv0 := client.ExpectVariablesResponse(t)
@@ -1198,7 +1200,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 							expectVarRegex(t, m3kv0, 0, "A", `\(*\(*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.A`, "1", noChildren)
 							validateEvaluateName(t, client, m3kv0, 0)
 						}
-						ref = expectVarRegex(t, m3, 1, `main\.astruct {A: 2, B: 2}\(0x[0-9a-f]+\)`, `m3\[\(\*\(\*"main.astruct"\)\(0x[0-9a-f]+\)\)\]`, "43", hasChildren)
+						ref = expectVarRegex(t, m3, 1, `main\.astruct {A: 2, B: 2}`, `m3\[\(\*\(\*"main.astruct"\)\(0x[0-9a-f]+\)\)\]`, "43", hasChildren)
 						if ref > 0 { // inspect another key from another key-value child
 							client.VariablesRequest(ref)
 							m3kv1 := client.ExpectVariablesResponse(t)
@@ -1206,6 +1208,14 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 							expectVarRegex(t, m3kv1, 1, "B", `\(*\(*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.B`, "2", noChildren)
 							validateEvaluateName(t, client, m3kv1, 1)
 						}
+					}
+					// key - compound + truncated, value - scalar
+					ref = expectVarExact(t, locals, -1, "m5", "m5", `map[main.C]int [{s: "very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more"}: 1, ]`, hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						m5 := client.ExpectVariablesResponse(t)
+						expectChildren(t, m5, "m5", 1)
+						expectVarRegex(t, m5, 0, `main\.C {s: "very long string 0123456789a0123456789b0123456789c01\.\.\. @ 0x[0-9a-f]+`, `m5\[\(\*\(\*"main\.C"\)\(0x[0-9a-f]+\)\)\]`, "1", hasChildren)
 					}
 					// key - compound, value - compound
 					ref = expectVarExact(t, locals, -1, "m4", "m4", "map[main.astruct]main.astruct [{A: 1, B: 1}: {A: 11, B: 11}, {A: 2, B: 2}: {A: 22, B: 22}, ]", hasChildren)
@@ -1676,6 +1686,42 @@ func TestSetBreakpoint(t *testing.T) {
 	})
 }
 
+// TestWorkingDir executes to a breakpoint and tests that the specified
+// working directory is the one used to run the program.
+func TestWorkingDir(t *testing.T) {
+	runTest(t, "workdir", func(client *daptest.Client, fixture protest.Fixture) {
+		wd := os.TempDir()
+		// For Darwin `os.TempDir()` returns `/tmp` which is symlink to `/private/tmp`.
+		if runtime.GOOS == "darwin" {
+			wd = "/private/tmp"
+		}
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode":        "exec",
+					"program":     fixture.Path,
+					"stopOnEntry": false,
+					"wd":          wd,
+				})
+			},
+			// Set breakpoints
+			fixture.Source, []int{10}, // b main.main
+			[]onBreakpoint{{
+				execute: func() {
+					handleStop(t, client, 1, "main.main", 10)
+					client.VariablesRequest(1001) // Locals
+					locals := client.ExpectVariablesResponse(t)
+					expectChildren(t, locals, "Locals", 2)
+					expectVarExact(t, locals, 0, "pwd", "pwd", fmt.Sprintf("%q", wd), noChildren)
+					expectVarExact(t, locals, 1, "err", "err", "error nil", noChildren)
+
+				},
+				disconnect: false,
+			}})
+	})
+}
+
 // expectEval is a helper for verifying the values within an EvaluateResponse.
 //     value - the value of the evaluated expression
 //     hasRef - true if the evaluated expression should have children and therefore a non-0 variable reference
@@ -2023,6 +2069,194 @@ func TestNextAndStep(t *testing.T) {
 	})
 }
 
+func TestNextParked(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.SkipNow()
+	}
+	runTest(t, "parallel_next", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{15},
+			[]onBreakpoint{{ // Stop at line 15
+				execute: func() {
+					goroutineId := testStepParkedHelper(t, client, fixture)
+
+					client.NextRequest(goroutineId)
+					client.ExpectNextResponse(t)
+
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != goroutineId {
+						t.Fatalf("Next did not continue on the selected goroutine, expected %d got %d", goroutineId, se.Body.ThreadId)
+					}
+				},
+				disconnect: false,
+			}})
+	})
+}
+
+func TestStepInParked(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.SkipNow()
+	}
+	runTest(t, "parallel_next", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{15},
+			[]onBreakpoint{{ // Stop at line 15
+				execute: func() {
+					goroutineId := testStepParkedHelper(t, client, fixture)
+
+					client.StepInRequest(goroutineId)
+					client.ExpectStepInResponse(t)
+
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != goroutineId {
+						t.Fatalf("StepIn did not continue on the selected goroutine, expected %d got %d", goroutineId, se.Body.ThreadId)
+					}
+				},
+				disconnect: false,
+			}})
+	})
+}
+
+func testStepParkedHelper(t *testing.T, client *daptest.Client, fixture protest.Fixture) int {
+	t.Helper()
+	// Set a breakpoint at main.sayHi
+	client.SetBreakpointsRequest(fixture.Source, []int{8})
+	client.ExpectSetBreakpointsResponse(t)
+
+	var goroutineId = -1
+	for goroutineId < 0 {
+		client.ContinueRequest(1)
+		client.ExpectContinueResponse(t)
+
+		se := client.ExpectStoppedEvent(t)
+
+		client.ThreadsRequest()
+		threads := client.ExpectThreadsResponse(t)
+
+		// Search for a parked goroutine that we know for sure will have to be
+		// resumed before the program can exit. This is a parked goroutine that:
+		// 1. is executing main.sayhi
+		// 2. hasn't called wg.Done yet
+		// 3. is not the currently selected goroutine
+		for _, g := range threads.Body.Threads {
+			// We do not need to check the thread that the program
+			// is currently stopped on.
+			if g.Id == se.Body.ThreadId {
+				continue
+			}
+			client.StackTraceRequest(g.Id, 0, 5)
+			frames := client.ExpectStackTraceResponse(t)
+			for _, frame := range frames.Body.StackFrames {
+				// line 11 is the line where wg.Done is called
+				if frame.Name == "main.sayhi" && frame.Line < 11 {
+					goroutineId = g.Id
+					break
+				}
+			}
+			if goroutineId >= 0 {
+				break
+			}
+		}
+	}
+
+	// Clear all breakpoints.
+	client.SetBreakpointsRequest(fixture.Source, []int{})
+	client.ExpectSetBreakpointsResponse(t)
+
+	return goroutineId
+}
+
+// TestStepOutPreservesGoroutine is inspired by proc_test.TestStepOutPreservesGoroutine
+// and checks that StepOut preserves the currently selected goroutine.
+func TestStepOutPreservesGoroutine(t *testing.T) {
+	// Checks that StepOut preserves the currently selected goroutine.
+	if runtime.GOOS == "freebsd" {
+		t.SkipNow()
+	}
+	rand.Seed(time.Now().Unix())
+	runTest(t, "issue2113", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{25},
+			[]onBreakpoint{{ // Stop at line 25
+				execute: func() {
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					// The program contains runtime.Breakpoint()
+					se := client.ExpectStoppedEvent(t)
+
+					client.ThreadsRequest()
+					gs := client.ExpectThreadsResponse(t)
+
+					candg := []int{}
+					bestg := []int{}
+					for _, g := range gs.Body.Threads {
+						// We do not need to check the thread that the program
+						// is currently stopped on.
+						if g.Id == se.Body.ThreadId {
+							continue
+						}
+
+						client.StackTraceRequest(g.Id, 0, 20)
+						frames := client.ExpectStackTraceResponse(t)
+						for _, frame := range frames.Body.StackFrames {
+							if frame.Name == "main.coroutine" {
+								candg = append(candg, g.Id)
+								if strings.HasPrefix(frames.Body.StackFrames[0].Name, "runtime.") {
+									bestg = append(bestg, g.Id)
+								}
+								break
+							}
+						}
+					}
+					var goroutineId int
+					if len(bestg) > 0 {
+						goroutineId = bestg[rand.Intn(len(bestg))]
+						t.Logf("selected goroutine %d (best)\n", goroutineId)
+					} else {
+						goroutineId = candg[rand.Intn(len(candg))]
+						t.Logf("selected goroutine %d\n", goroutineId)
+
+					}
+					client.StepOutRequest(goroutineId)
+					client.ExpectStepOutResponse(t)
+
+					m, err := client.ReadMessage()
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					switch e := m.(type) {
+					case *dap.StoppedEvent:
+						if e.Body.ThreadId != goroutineId {
+							t.Fatalf("StepOut did not continue on the selected goroutine, expected %d got %d", goroutineId, e.Body.ThreadId)
+						}
+					case *dap.TerminatedEvent:
+						t.Logf("program terminated")
+					default:
+						t.Fatalf("Unexpected event type: expect stopped or terminated event, got %#v", e)
+					}
+				},
+				disconnect: false,
+			}})
+	})
+}
+
 func TestBadAccess(t *testing.T) {
 	if runtime.GOOS != "darwin" || testBackend != "lldb" {
 		t.Skip("not applicable")
@@ -2278,8 +2512,9 @@ func TestLaunchDebugRequest(t *testing.T) {
 		// We reuse the harness that builds, but ignore the built binary,
 		// only relying on the source to be built in response to LaunchRequest.
 		runDebugSession(t, client, "launch", func() {
+			wd, _ := os.Getwd()
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "debug", "program": fixture.Source, "output": "__mydir"})
+				"mode": "debug", "program": fixture.Source, "output": filepath.Join(wd, "__mybin")})
 		}, fixture.Source)
 	})
 	// Wait for the test to finish to capture all stderr
@@ -2309,14 +2544,14 @@ func TestLaunchRequestDefaults(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, "launch", func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "" /*"debug" by default*/, "program": fixture.Source, "output": "__mydir"})
+				"mode": "" /*"debug" by default*/, "program": fixture.Source, "output": "__mybin"})
 		}, fixture.Source)
 	})
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, "launch", func() {
 			// Use the default output directory.
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				/*"mode":"debug" by default*/ "program": fixture.Source, "output": "__mydir"})
+				/*"mode":"debug" by default*/ "program": fixture.Source, "output": "__mybin"})
 		}, fixture.Source)
 	})
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
@@ -2327,6 +2562,42 @@ func TestLaunchRequestDefaults(t *testing.T) {
 			// writes to default output dir __debug_bin
 		}, fixture.Source)
 	})
+
+	// if noDebug is not a bool, behave as if it is the default value (false).
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSession(t, client, "launch", func() {
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"mode": "debug", "program": fixture.Source, "noDebug": "true"})
+		}, fixture.Source)
+	})
+}
+
+func TestLaunchRequestNoDebug(t *testing.T) {
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runNoDebugDebugSession(t, client, func() {
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"noDebug": true,
+				"mode":    "", /*"debug" by default*/
+				"program": fixture.Source,
+				"output":  cleanExeName("__mybin")})
+		}, fixture.Source, []int{8})
+	})
+}
+
+// runNoDebugDebugSession tests the session started with noDebug=true runs uninterrupted
+// even when breakpoint is set.
+func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmdRequest func(), source string, breakpoints []int) {
+	client.InitializeRequest()
+	client.ExpectInitializeResponse(t)
+
+	cmdRequest()
+	// no initialized event.
+	// noDebug mode applies only to "launch" requests.
+	client.ExpectLaunchResponse(t)
+
+	client.ExpectTerminatedEvent(t)
+	client.DisconnectRequestWithKillOption(true)
+	client.ExpectDisconnectResponse(t)
 }
 
 func TestLaunchTestRequest(t *testing.T) {
@@ -2366,7 +2637,7 @@ func TestLaunchRequestWithBuildFlags(t *testing.T) {
 			// We reuse the harness that builds, but ignore the built binary,
 			// only relying on the source to be built in response to LaunchRequest.
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "debug", "program": fixture.Source, "output": "__mydir",
+				"mode": "debug", "program": fixture.Source, "output": "__mybin",
 				"buildFlags": "-ldflags '-X main.Hello=World'"})
 		}, fixture.Source)
 	})
@@ -2613,6 +2884,10 @@ func TestBadLaunchRequests(t *testing.T) {
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: 'buildFlags' attribute '123' in debug configuration is not a string.")
 
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "wd": 123})
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: 'wd' attribute '123' in debug configuration is not a string.")
+
 		// Skip detailed message checks for potentially different OS-specific errors.
 		client.LaunchRequest("exec", fixture.Path+"_does_not_exist", stopOnEntry)
 		expectFailedToLaunch(client.ExpectErrorResponse(t)) // No such file or directory
@@ -2628,6 +2903,14 @@ func TestBadLaunchRequests(t *testing.T) {
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "bad flags"})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t), "Failed to launch: Build error: exit status 1")
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "buildFlags": "bad flags"})
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t), "Failed to launch: Build error: exit status 1")
+
+		// Bad "wd".
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": false, "wd": "dir/invalid"})
+		expectFailedToLaunch(client.ExpectErrorResponse(t)) // invalid directory, the error message is system-dependent.
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "wd": "dir/invalid"})
+		expectFailedToLaunch(client.ExpectErrorResponse(t)) // invalid directory, the error message is system-dependent.
 
 		// We failed to launch the program. Make sure shutdown still works.
 		client.DisconnectRequest()
