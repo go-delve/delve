@@ -51,21 +51,39 @@ import (
 //
 // (2) Run goroutine started from Run() that serves as both
 // a listener and a client goroutine. It accepts a client connection,
-// reads, decodes and processes each request, issuing commands to the
-// underlying debugger and sending back events and responses.
-// This gorouitne sends a stop-server signal via config.DisconnecChan
-// when encounering a client connection error or responding to
-// a DAP disconnect request.
+// reads, decodes and dispatches each request from the client.
+// For synchronous requests, it issues commands to the
+// underlying debugger and sends back events and responses.
+// These requests block while the debuggee is running, so,
+// where applicable, the handlers need to check if debugging
+// state is running, so there is a need for a halt request or
+// a dummy/error response to avoid blocking.
+//
+// This is the only goroutine that sends a stop-server signal
+// via config.DisconnecChan when encountering a client connection
+// error or responding to a (synchronous) DAP disconnect request.
+// Once stop is triggered, the goroutine exits.
 //
 // TODO(polina): add another layer of per-client goroutines to support multiple clients
-// TODO(polina): make it asynchronous (i.e. launch goroutine per request)
+//
+// (3) Per-request goroutines are started for asynchronous
+// running requests. They issue commands to the underlying debugger
+// and send back events and responses. They take a setup-done channel
+// as an argument and temporarily block the request loop until setup
+// for asynchronous execution is complete. Once done, they unblock
+// processing of parallel requests unblocks (e.g. disconnecting while the program
+// is running).
+//
+// These per-request goroutines never send a stop-server signal.
+// They block on running debugger commands that are interrupted
+// when halt is issued while stopping. At that point these goroutines
+// wrap-up and exit.
 type Server struct {
 	// config is all the information necessary to start the debugger and server.
 	config *service.Config
 	// listener is used to accept the client connection.
 	listener net.Listener
-	// stopTriggered is closed when the server is Stop()-ed. This can be used to signal
-	// to goroutines run by the server that it's time to quit.
+	// stopTriggered is closed when the server is Stop()-ed.
 	stopTriggered chan struct{}
 	// reader is used to read requests from the connection.
 	reader *bufio.Reader
@@ -93,6 +111,10 @@ type Server struct {
 	debugger *debugger.Debugger
 	// noDebugProcess is set for the noDebug launch process.
 	noDebugProcess *exec.Cmd
+
+	// sending synchronizes writing to net.Conn
+	// to ensure that messages do not get interleaved
+	sending sync.Mutex
 }
 
 // launchAttachArgs captures arguments from launch/attach request that
@@ -166,6 +188,7 @@ func (s *Server) setLaunchAttachArgs(request dap.LaunchAttachRequest) {
 // process if it was launched by it or stops the noDebug process.
 // This method mustn't be called more than once.
 func (s *Server) Stop() {
+	s.log.Debug("DAP server stopping...")
 	close(s.stopTriggered)
 	_ = s.listener.Close()
 
@@ -185,6 +208,7 @@ func (s *Server) Stop() {
 	} else {
 		s.stopNoDebugProcess()
 	}
+	s.log.Debug("DAP server stopped")
 }
 
 // triggerServerStop closes config.DisconnectChan if not nil, which
@@ -194,8 +218,6 @@ func (s *Server) Stop() {
 // The function safeguards agaist closing the channel more
 // than once and can be called multiple times. It is not thread-safe
 // and is currently only called from the run goroutine.
-// TODO(polina): lock this when we add more goroutines that could call
-// this when we support asynchronous request-response communication.
 func (s *Server) triggerServerStop() {
 	// Avoid accidentally closing the channel twice and causing a panic, when
 	// this function is called more than once. For example, we could have the
@@ -283,6 +305,10 @@ func (s *Server) handleRequest(request dap.Message) {
 	jsonmsg, _ := json.Marshal(request)
 	s.log.Debug("[<- from client]", string(jsonmsg))
 
+	// Non-blocking request handlers will signal when they are ready
+	// setting up for async execution and more requests can be processed.
+	resumeRequestLoop := make(chan struct{})
+
 	switch request := request.(type) {
 	case *dap.InitializeRequest:
 		// Required
@@ -317,19 +343,24 @@ func (s *Server) handleRequest(request dap.Message) {
 	case *dap.ConfigurationDoneRequest:
 		// Optional (capability ‘supportsConfigurationDoneRequest’)
 		// Supported by vscode-go
-		s.onConfigurationDoneRequest(request)
+		go s.onConfigurationDoneRequest(request, resumeRequestLoop)
+		<-resumeRequestLoop
 	case *dap.ContinueRequest:
 		// Required
-		s.onContinueRequest(request)
+		go s.onContinueRequest(request, resumeRequestLoop)
+		<-resumeRequestLoop
 	case *dap.NextRequest:
 		// Required
-		s.onNextRequest(request)
+		s.onNextRequest(request, resumeRequestLoop)
+		<-resumeRequestLoop
 	case *dap.StepInRequest:
 		// Required
-		s.onStepInRequest(request)
+		s.onStepInRequest(request, resumeRequestLoop)
+		<-resumeRequestLoop
 	case *dap.StepOutRequest:
 		// Required
-		s.onStepOutRequest(request)
+		s.onStepOutRequest(request, resumeRequestLoop)
+		<-resumeRequestLoop
 	case *dap.StepBackRequest:
 		// Optional (capability ‘supportsStepBack’)
 		// TODO: implement this request in V1
@@ -433,7 +464,9 @@ func (s *Server) handleRequest(request dap.Message) {
 func (s *Server) send(message dap.Message) {
 	jsonmsg, _ := json.Marshal(message)
 	s.log.Debug("[-> to client]", string(jsonmsg))
+	s.sending.Lock()
 	_ = dap.WriteProtocolMessage(s.conn, message)
+	s.sending.Unlock()
 }
 
 func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
@@ -677,6 +710,8 @@ func (s *Server) stopDebugSession(killProcess bool) {
 	if s.debugger == nil {
 		return
 	}
+	// Halting will stop any debugger command that's pending on another
+	// per-request goroutine, hence unblocking that goroutine to wrap-up and exit.
 	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 	if err != nil {
 		s.log.Debug(err)
@@ -701,6 +736,15 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 		return
 	}
 	// TODO(polina): handle this while running by halting first.
+	state, err := s.debugger.State( /*nowait*/ true)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
+		return
+	}
+	if state.Running {
+		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", "debuggee is running")
+		return
+	}
 
 	if request.Arguments.Source.Path == "" {
 		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", "empty file path")
@@ -762,8 +806,12 @@ func (s *Server) onSetExceptionBreakpointsRequest(request *dap.SetExceptionBreak
 	s.send(&dap.SetExceptionBreakpointsResponse{Response: *newResponse(request.Request)})
 }
 
-func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest) {
-	if s.debugger != nil && s.args.stopOnEntry {
+// onConfigurationDoneRequest handles 'configurationDone' request.
+// This is an optional request enabled by capability ‘supportsConfigurationDoneRequest’.
+// It gets triggered after all the debug requests that followinitalized event,
+// so the s.debugger is guaranteed to be set.
+func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest, asyncSetupDone chan struct{}) {
+	if s.args.stopOnEntry {
 		e := &dap.StoppedEvent{
 			Event: *newEvent("stopped"),
 			Body:  dap.StoppedEventBody{Reason: "entry", ThreadId: 1, AllThreadsStopped: true},
@@ -771,16 +819,20 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 		s.send(e)
 	}
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
-	if s.debugger != nil && !s.args.stopOnEntry {
-		s.doCommand(api.Continue)
+	if !s.args.stopOnEntry {
+		s.doCommand(api.Continue, asyncSetupDone)
+	} else if asyncSetupDone != nil {
+		close(asyncSetupDone)
 	}
 }
 
-func (s *Server) onContinueRequest(request *dap.ContinueRequest) {
+// onContinueRequest handles 'continue' request.
+// This is a mandatory request to support.
+func (s *Server) onContinueRequest(request *dap.ContinueRequest, asyncSetupDone chan struct{}) {
 	s.send(&dap.ContinueResponse{
 		Response: *newResponse(request.Request),
 		Body:     dap.ContinueResponseBody{AllThreadsContinued: true}})
-	s.doCommand(api.Continue)
+	s.doCommand(api.Continue, asyncSetupDone)
 }
 
 func fnName(loc *proc.Location) string {
@@ -790,12 +842,37 @@ func fnName(loc *proc.Location) string {
 	return loc.Fn.Name
 }
 
+// onThreadsRequest handles 'threads' request.
+// This is a mandatory request to support.
+// It is sent in response to configurationDone response and stopped events.
 func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 	if s.debugger == nil {
 		s.sendErrorResponse(request.Request, UnableToDisplayThreads, "Unable to display threads", "debugger is nil")
 		return
 	}
-	gs, _, err := s.debugger.Goroutines(0, 0)
+	// This is a blocking operation that doesn't return while
+	// the debuggee is running. Even though DAP spec doesn't
+	// explicitly specify that the client can block on processing
+	// user requests while waiting for threads response, the de-facto
+	// source of DAP truth - vscode - shows that this is possible.
+	// In particular, when the program starts up as running on enttry,
+	// vscode sends a threads request and blocks processing
+	// of the pause request until a response is received. To avoid
+	// this, send a dummy response if the process is running.
+	state, err := s.debugger.State( /*nowait*/ true)
+	if err == nil && state.Running {
+		response := &dap.ThreadsResponse{
+			Response: *newResponse(request.Request),
+			Body:     dap.ThreadsResponseBody{Threads: []dap.Thread{{Id: 1, Name: "Dummy"}}},
+		}
+		s.send(response)
+		return
+	}
+
+	var gs []*proc.G
+	if err == nil {
+		gs, _, err = s.debugger.Goroutines(0, 0)
+	}
 	if err != nil {
 		switch err.(type) {
 		case *proc.ErrProcessExited:
@@ -889,29 +966,37 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 
 // onNextRequest handles 'next' request.
 // This is a mandatory request to support.
-func (s *Server) onNextRequest(request *dap.NextRequest) {
+func (s *Server) onNextRequest(request *dap.NextRequest, asyncSetupDone chan struct{}) {
 	s.send(&dap.NextResponse{Response: *newResponse(request.Request)})
-	s.doStepCommand(api.Next, request.Arguments.ThreadId)
+	s.doStepCommand(api.Next, request.Arguments.ThreadId, asyncSetupDone)
 }
 
 // onStepInRequest handles 'stepIn' request
 // This is a mandatory request to support.
-func (s *Server) onStepInRequest(request *dap.StepInRequest) {
+func (s *Server) onStepInRequest(request *dap.StepInRequest, asyncSetupDone chan struct{}) {
 	s.send(&dap.StepInResponse{Response: *newResponse(request.Request)})
-	s.doStepCommand(api.Step, request.Arguments.ThreadId)
+	s.doStepCommand(api.Step, request.Arguments.ThreadId, asyncSetupDone)
 }
 
 // onStepOutRequest handles 'stepOut' request
 // This is a mandatory request to support.
-func (s *Server) onStepOutRequest(request *dap.StepOutRequest) {
+func (s *Server) onStepOutRequest(request *dap.StepOutRequest, asyncSetupDone chan struct{}) {
 	s.send(&dap.StepOutResponse{Response: *newResponse(request.Request)})
-	s.doStepCommand(api.StepOut, request.Arguments.ThreadId)
+	s.doStepCommand(api.StepOut, request.Arguments.ThreadId, asyncSetupDone)
 }
 
-func (s *Server) doStepCommand(command string, threadId int) {
+// doStepCommand is a wrapper around doCommand that
+// first switches selected goroutine. asyncSetupDone is
+// a channel that will be closed to signal that an
+// asynchornous command has completed setup or was interrupted
+// due to an error, so the server is ready to receive new requests.
+func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan struct{}) {
 	// Use SwitchGoroutine to change the current goroutine.
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
 	if err != nil {
+		if asyncSetupDone != nil {
+			close(asyncSetupDone)
+		}
 		s.log.Errorf("Error switching goroutines while stepping: %e", err)
 		// If we encounter an error, we will have to send a stopped event
 		// since we already sent the step response.
@@ -927,7 +1012,7 @@ func (s *Server) doStepCommand(command string, threadId int) {
 		s.send(stopped)
 		return
 	}
-	s.doCommand(command)
+	s.doCommand(command, asyncSetupDone)
 }
 
 // onPauseRequest sends a not-yet-implemented error response.
@@ -945,7 +1030,23 @@ type stackFrame struct {
 
 // onStackTraceRequest handles ‘stackTrace’ requests.
 // This is a mandatory request to support.
+// As per DAP spec, this request only gets triggered as a follow-up
+// to a successful threads request as part of the "request waterfall".
 func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
+	// To avoid blocking, we send a dummy threads request when
+	// the program is running and that can trigger a corresponding
+	// stackTrace request. Don't block here either.
+	// By returning an error here, we prevent any addition blocking
+	// waterfall requests (scopes, variables).
+	state, err := s.debugger.State( /*nowait*/ true)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToProduceStackTrace, "Unable to produce stack trace", err.Error())
+		return
+	} else if state.Running {
+		s.sendErrorResponse(request.Request, UnableToProduceStackTrace, "Unable to produce stack trace", "debuggee is running")
+		return
+	}
+
 	goroutineID := request.Arguments.ThreadId
 	frames, err := s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
 	if err != nil {
@@ -1305,6 +1406,17 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 		s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", "debugger is nil", showErrorToUser)
 		return
 	}
+
+	state, err := s.debugger.State( /*nowait*/ true)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error())
+		return
+	}
+	if state.Running {
+		s.sendErrorResponse(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", "debuggee is running")
+		return
+	}
+
 	// Default to the topmost stack frame of the current goroutine in case
 	// no frame is specified (e.g. when stopped on entry or no call stack frame is expanded)
 	goid, frame := -1, 0
@@ -1553,13 +1665,23 @@ func (s *Server) resetHandlesForStoppedEvent() {
 
 // doCommand runs a debugger command until it stops on
 // termination, error, breakpoint, etc, when an appropriate
-// event needs to be sent to the client.
-func (s *Server) doCommand(command string) {
-	if s.debugger == nil {
-		return
-	}
+// event needs to be sent to the client. asyncSetupDone is
+// a channel that will be closed to signal that an
+// asynchornous command has completed setup or was interrupted
+// due to an error, so the server is ready to receive new requests.
+func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
+	defer func() {
+		if asyncSetupDone != nil {
+			select {
+			case <-asyncSetupDone:
+				// already closed
+			default:
+				close(asyncSetupDone)
+			}
+		}
+	}()
 
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, nil)
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
 	if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
 		s.send(e)
@@ -1575,9 +1697,15 @@ func (s *Server) doCommand(command string) {
 			stopped.Body.ThreadId = state.SelectedGoroutine.ID
 		}
 
-		switch s.debugger.StopReason() {
+		sr := s.debugger.StopReason()
+		s.log.Debugf("%q command stopped - reason %q", command, sr)
+		switch sr {
 		case proc.StopNextFinished:
 			stopped.Body.Reason = "step"
+		case proc.StopManual: // triggered by halt
+			stopped.Body.Reason = "pause"
+		case proc.StopUnknown: // can happen while stopping
+			stopped.Body.Reason = "unknown"
 		default:
 			stopped.Body.Reason = "breakpoint"
 		}

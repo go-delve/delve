@@ -331,18 +331,21 @@ func TestAttachStopOnEntry(t *testing.T) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Result=2", evResp)
 		}
 
-		// We cannot contiue here like in the launch case becase the program
-		// will never terminate. Since we won't receive a terminate event and
-		// there are no breakpoints to stop on, we just detach.
+		// 12 >> continue, << continue
+		client.ContinueRequest(1)
+		cResp := client.ExpectContinueResponse(t)
+		if cResp.Seq != 0 || cResp.RequestSeq != 12 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=12", cResp)
+		}
 
 		// TODO(polina): once https://github.com/go-delve/delve/issues/2259 is
 		// fixed, test with kill=false.
 
-		// 12 >> disconnect, << disconnect
+		// 13 >> disconnect, << disconnect
 		client.DisconnectRequestWithKillOption(true)
 		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.Seq != 0 || dResp.RequestSeq != 12 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=12", dResp)
+		if dResp.Seq != 0 || dResp.RequestSeq != 13 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13", dResp)
 		}
 	})
 }
@@ -370,33 +373,45 @@ func TestContinueOnEntry(t *testing.T) {
 		// 5 >> configurationDone, << configurationDone
 		client.ConfigurationDoneRequest()
 		client.ExpectConfigurationDoneResponse(t)
-		// "Continue" happens behind the scenes
-
-		// For now continue is blocking and runs until a stop or
-		// termination. But once we upgrade the server to be async,
-		// a simultaneous threads request can be made while continue
-		// is running. Note that vscode-go just keeps track of the
-		// continue state and would just return a dummy response
-		// without talking to debugger if continue was in progress.
-		// TODO(polina): test this once it is possible
-
-		client.ExpectTerminatedEvent(t)
-
-		// It is possible for the program to terminate before the initial
-		// threads request is processed.
+		// "Continue" happens behind the scenes on another goroutine
 
 		// 6 >> threads, << threads
 		client.ThreadsRequest()
-		tResp := client.ExpectThreadsResponse(t)
-		if tResp.Seq != 0 || tResp.RequestSeq != 6 || len(tResp.Body.Threads) != 0 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6 len(Threads)=0", tResp)
+		// Since we are in async mode while running, we might receive messages in either order.
+		for i := 0; i < 2; i++ {
+			msg := client.ExpectMessage(t)
+			switch m := msg.(type) {
+			case *dap.ThreadsResponse:
+				if m.Seq != 0 || m.RequestSeq != 6 {
+					t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6", m)
+				}
+				// Single dummy thread is sent when the program is running.
+				// DAP spec expects at least one thread.
+				// TODO(polina): accept empty already-terminated response here as well?
+				if len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != 1 || m.Body.Threads[0].Name != "Dummy" {
+					t.Errorf("\ngot  %#v\nwant Id=1, Name=\"Dummy\"", m.Body.Threads)
+				}
+			case *dap.TerminatedEvent:
+			default:
+				t.Fatalf("got %#v, want ThreadsResponse or TerminatedEvent", m)
+			}
 		}
 
-		// 7 >> disconnect, << disconnect
+		// It is possible for the program to terminate before the initial
+		// threads request is processed. And in that case, the
+		// response can be empty
+		// 7 >> threads, << threads
+		client.ThreadsRequest()
+		tResp := client.ExpectThreadsResponse(t)
+		if tResp.Seq != 0 || tResp.RequestSeq != 7 || len(tResp.Body.Threads) != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7 len(Threads)=0", tResp)
+		}
+
+		// 8 >> disconnect, << disconnect
 		client.DisconnectRequest()
 		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.Seq != 0 || dResp.RequestSeq != 7 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7", dResp)
+		if dResp.Seq != 0 || dResp.RequestSeq != 8 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8", dResp)
 		}
 	})
 }
@@ -427,19 +442,28 @@ func TestPreSetBreakpoint(t *testing.T) {
 
 		client.ConfigurationDoneRequest()
 		client.ExpectConfigurationDoneResponse(t)
-		// This triggers "continue"
+		// This triggers "continue" on a separate goroutine
 
-		// TODO(polina): add a no-op threads request
-		// with dummy response here once server becomes async
-		// to match what happens in VS Code.
-
-		stopEvent1 := client.ExpectStoppedEvent(t)
-		if stopEvent1.Body.Reason != "breakpoint" ||
-			stopEvent1.Body.ThreadId != 1 ||
-			!stopEvent1.Body.AllThreadsStopped {
-			t.Errorf("got %#v, want Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true}", stopEvent1)
+		client.ThreadsRequest()
+		// Since we are in async mode while running, we might receive messages in either order.
+		for i := 0; i < 2; i++ {
+			msg := client.ExpectMessage(t)
+			switch m := msg.(type) {
+			case *dap.ThreadsResponse:
+				if len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != 1 || m.Body.Threads[0].Name != "Dummy" {
+					t.Errorf("\ngot  %#v\nwant Id=1, Name=\"Dummy\"", m.Body.Threads)
+				}
+			case *dap.StoppedEvent:
+				if m.Body.Reason != "breakpoint" || m.Body.ThreadId != 1 || !m.Body.AllThreadsStopped {
+					t.Errorf("got %#v, want Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true}", m)
+				}
+			default:
+				t.Fatalf("got %#v, want ThreadsResponse or StoppedEvent", m)
+			}
 		}
 
+		// Threads-StackTrace-Scopes-Variables request waterfall is
+		// triggered on stop event.
 		client.ThreadsRequest()
 		tResp := client.ExpectThreadsResponse(t)
 		if len(tResp.Body.Threads) < 2 { // 1 main + runtime
@@ -2172,6 +2196,8 @@ func testStepParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 	return goroutineId
 }
 
+// TestStepOutPreservesGoroutine is inspired by proc_test.TestStepOutPreservesGoroutine
+// and checks that StepOut preserves the currently selected goroutine.
 func TestStepOutPreservesGoroutine(t *testing.T) {
 	// Checks that StepOut preserves the currently selected goroutine.
 	if runtime.GOOS == "freebsd" {
@@ -2230,9 +2256,20 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 					client.StepOutRequest(goroutineId)
 					client.ExpectStepOutResponse(t)
 
-					se = client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != goroutineId {
-						t.Fatalf("StepIn did not continue on the selected goroutine, expected %d got %d", goroutineId, se.Body.ThreadId)
+					m, err := client.ReadMessage()
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					switch e := m.(type) {
+					case *dap.StoppedEvent:
+						if e.Body.ThreadId != goroutineId {
+							t.Fatalf("StepOut did not continue on the selected goroutine, expected %d got %d", goroutineId, e.Body.ThreadId)
+						}
+					case *dap.TerminatedEvent:
+						t.Logf("program terminated")
+					default:
+						t.Fatalf("Unexpected event type: expect stopped or terminated event, got %#v", e)
 					}
 				},
 				disconnect: false,
