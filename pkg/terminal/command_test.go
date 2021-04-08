@@ -1113,6 +1113,49 @@ func TestExamineMemoryCmd(t *testing.T) {
 			t.Fatalf("expected first line: %s", firstLine)
 		}
 	})
+
+	withTestTerminal("examinememory_expr", t, func(term *FakeTerminal) {
+		tests := []struct {
+			Expr string
+			Want int
+		}{
+			{Expr: "myInt", Want: 23},
+			{Expr: "&myInt", Want: 23},
+			// TODO: this fails, probably beause it's printing the value of myIntPtr
+			// rather than the value of the addr it is pointing to.
+			{Expr: "myIntPtr", Want: 23},
+
+			{Expr: "myStr[1]", Want: 'e'},
+			{Expr: "&myStr[1]", Want: 'e'},
+
+			{Expr: "mySlice[1]", Want: 4},
+			{Expr: "&mySlice[1]", Want: 4},
+
+			{Expr: "myArray[1]", Want: 7},
+			{Expr: "&myArray[1]", Want: 7},
+
+			{Expr: "myStruct", Want: 9},
+			{Expr: "&myStruct", Want: 9},
+
+			{Expr: "myStruct.a", Want: 9},
+			{Expr: "&myStruct.a", Want: 9},
+
+			{Expr: "myStruct.b", Want: 10},
+			{Expr: "&myStruct.b", Want: 10},
+		}
+		term.MustExec("continue examinememory_expr.go:20")
+		for _, test := range tests {
+			res := term.MustExec("examinemem -fmt dec -x " + test.Expr)
+			// strip addr from output, e.g. "0xc0000160b8:   023" -> "023"
+			res = strings.TrimSpace(strings.Split(res, ":")[1])
+			got, err := strconv.Atoi(res)
+			if err != nil {
+				t.Fatalf("expr=%q err=%s", test.Expr, err)
+			} else if got != test.Want {
+				t.Errorf("expr=%q got=%d want=%d", test.Expr, got, test.Want)
+			}
+		}
+	})
 }
 
 func TestPrintOnTracepoint(t *testing.T) {
