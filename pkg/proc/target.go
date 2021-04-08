@@ -359,3 +359,8 @@ func (t *Target) createFatalThrowBreakpoint() {
 func (t *Target) CurrentThread() Thread {
 	return t.currentThread
 }
+
+// SetNextBreakpointID sets the breakpoint ID of the next breakpoint
+func (t *Target) SetNextBreakpointID(id int) {
+	t.Breakpoints().breakpointIDCounter = id
+}

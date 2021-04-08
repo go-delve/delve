@@ -511,9 +511,13 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 	discarded := []api.DiscardedBreakpoint{}
 	breakpoints := api.ConvertBreakpoints(d.breakpoints())
 	d.target = p
+	maxID := 0
 	for _, oldBp := range breakpoints {
 		if oldBp.ID < 0 {
 			continue
+		}
+		if oldBp.ID > maxID {
+			maxID = oldBp.ID
 		}
 		if len(oldBp.File) > 0 {
 			addrs, err := proc.FindFileLocation(p, oldBp.File, oldBp.Line)
@@ -521,13 +525,13 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 				discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: oldBp, Reason: err.Error()})
 				continue
 			}
-			createLogicalBreakpoint(d, addrs, oldBp)
+			createLogicalBreakpoint(d, addrs, oldBp, oldBp.ID)
 		} else {
 			// Avoid setting a breakpoint based on address when rebuilding
 			if rebuild {
 				continue
 			}
-			newBp, err := p.SetBreakpoint(oldBp.Addr, proc.UserBreakpoint, nil)
+			newBp, err := p.SetBreakpointWithID(oldBp.ID, oldBp.Addr)
 			if err != nil {
 				return nil, err
 			}
@@ -536,6 +540,12 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 			}
 		}
 	}
+	for _, bp := range d.disabledBreakpoints {
+		if bp.ID > maxID {
+			maxID = bp.ID
+		}
+	}
+	d.target.SetNextBreakpointID(maxID)
 	return discarded, nil
 }
 
@@ -654,7 +664,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 		return nil, err
 	}
 
-	createdBp, err := createLogicalBreakpoint(d, addrs, requestedBp)
+	createdBp, err := createLogicalBreakpoint(d, addrs, requestedBp, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -664,7 +674,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 
 // createLogicalBreakpoint creates one physical breakpoint for each address
 // in addrs and associates all of them with the same logical breakpoint.
-func createLogicalBreakpoint(d *Debugger, addrs []uint64, requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
+func createLogicalBreakpoint(d *Debugger, addrs []uint64, requestedBp *api.Breakpoint, id int) (*api.Breakpoint, error) {
 	p := d.target
 
 	if dbp, ok := d.disabledBreakpoints[requestedBp.ID]; ok {
@@ -674,7 +684,11 @@ func createLogicalBreakpoint(d *Debugger, addrs []uint64, requestedBp *api.Break
 	bps := make([]*proc.Breakpoint, len(addrs))
 	var err error
 	for i := range addrs {
-		bps[i], err = p.SetBreakpoint(addrs[i], proc.UserBreakpoint, nil)
+		if id > 0 {
+			bps[i], err = p.SetBreakpointWithID(id, addrs[i])
+		} else {
+			bps[i], err = p.SetBreakpoint(addrs[i], proc.UserBreakpoint, nil)
+		}
 		if err != nil {
 			break
 		}
@@ -873,7 +887,7 @@ func (d *Debugger) FindBreakpoint(id int) *api.Breakpoint {
 func (d *Debugger) findBreakpoint(id int) []*proc.Breakpoint {
 	var bps []*proc.Breakpoint
 	for _, bp := range d.target.Breakpoints().M {
-		if bp.LogicalID == id {
+		if bp.IsUser() && bp.LogicalID == id {
 			bps = append(bps, bp)
 		}
 	}
