@@ -317,7 +317,7 @@ func (c *Client) InitializeRequest() {
 }
 
 // LaunchRequest sends a 'launch' request with the specified args.
-func (c *Client) LaunchRequest(mode string, program string, stopOnEntry bool) {
+func (c *Client) LaunchRequest(mode, program string, stopOnEntry bool) {
 	request := &dap.LaunchRequest{Request: *c.newRequest("launch")}
 	request.Arguments = map[string]interface{}{
 		"request":     "launch",
