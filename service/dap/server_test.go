@@ -1562,6 +1562,43 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 	})
 }
 
+// TestShadowedVariables executes to a breakpoint and checks the shadowed
+// variable is named correctly.
+func TestShadowedVariables(t *testing.T) {
+	runTest(t, "testshadow", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+				})
+			},
+			// Breakpoints are set within the program
+			fixture.Source, []int{},
+			[]onBreakpoint{{
+				// Stop at line 13
+				execute: func() {
+					client.StackTraceRequest(1, 0, 20)
+					stack := client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stack, "main.main", 13, 1000, 3, 3)
+
+					client.ScopesRequest(1000)
+					scopes := client.ExpectScopesResponse(t)
+					expectScope(t, scopes, 0, "Arguments", 1000)
+					expectScope(t, scopes, 1, "Locals", 1001)
+					expectScope(t, scopes, 2, "Globals (package main)", 1002)
+
+					client.VariablesRequest(1001)
+					locals := client.ExpectVariablesResponse(t)
+
+					expectVarExact(t, locals, 0, "(a)", "a", "0", !hasChildren)
+					expectVarExact(t, locals, 1, "a", "a", "1", !hasChildren)
+				},
+				disconnect: false,
+			}})
+	})
+}
+
 // Tests that 'stackTraceDepth' from LaunchRequest is parsed and passed to
 // stacktrace requests handlers.
 func TestLaunchRequestWithStackTraceDepth(t *testing.T) {
