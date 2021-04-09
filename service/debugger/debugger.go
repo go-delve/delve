@@ -376,8 +376,6 @@ func (d *Debugger) LastModified() time.Time {
 	return d.target.BinInfo().LastModified()
 }
 
-const deferReturn = "runtime.deferreturn"
-
 // FunctionReturnLocations returns all return locations
 // for the given function, a list of addresses corresponding
 // to 'ret' or 'call runtime.deferreturn'.

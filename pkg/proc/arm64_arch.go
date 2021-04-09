@@ -129,7 +129,6 @@ func arm64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Binary
 
 const arm64cgocallSPOffsetSaveSlot = 0x8
 const prevG0schedSPOffsetSaveSlot = 0x10
-const spAlign = 16
 
 func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool {
 	if it.frame.Current.Fn != nil {

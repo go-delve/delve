@@ -266,19 +266,6 @@ func (env *Env) callMain(thread *starlark.Thread, globals starlark.StringDict, m
 	return starlark.Call(thread, mainfn, argtuple, nil)
 }
 
-type argument struct {
-	name         string
-	defaultValue defaultValue
-}
-
-type defaultValue uint8
-
-const (
-	defaultNone = iota
-	defaultScope
-	defaultLoadConfig
-)
-
 func isCancelled(thread *starlark.Thread) error {
 	if ctx, ok := thread.Local(dlvContextName).(context.Context); ok {
 		select {
