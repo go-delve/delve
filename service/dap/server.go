@@ -1278,7 +1278,7 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 // variables, so consider also adding the following:
 // -- print {expression} - return the result as a string like from dlv cli
 func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
-	showErrorToUser := request.Arguments.Context != "watch"
+	showErrorToUser := request.Arguments.Context != "watch" && request.Arguments.Context != "repl"
 	if s.debugger == nil {
 		s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", "debugger is nil", showErrorToUser)
 		return
