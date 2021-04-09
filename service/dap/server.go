@@ -1136,6 +1136,8 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 
 			// Annotate any shadowed variables to "(name)" in order
 			// to distinguish from non-shadowed variables.
+			// TODO(suzmue): should we support a special evaluateName syntax that
+			// can access shadowed variables?
 			name := c.Name
 			if c.Flags&proc.VariableShadowed == proc.VariableShadowed {
 				name = fmt.Sprintf("(%s)", name)
