@@ -1138,7 +1138,6 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 			// to distinguish from non-shadowed variables.
 			name := c.Name
 			if c.Flags&proc.VariableShadowed == proc.VariableShadowed {
-				// If the variable is shadowed, update the name with parens
 				name = fmt.Sprintf("(%s)", name)
 			}
 
