@@ -422,6 +422,22 @@ func (s *Server) send(message dap.Message) {
 }
 
 func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
+	if request.Arguments.PathFormat != "path" {
+		s.sendErrorResponse(request.Request, FailedToInitialize, "Failed to initialize",
+			fmt.Sprintf("Unsupported 'pathFormat' value '%v'.", request.Arguments.PathFormat))
+		return
+	}
+	if !request.Arguments.LinesStartAt1 {
+		s.sendErrorResponse(request.Request, FailedToInitialize, "Failed to initialize",
+			"Only 1-based line numbers are supported.")
+		return
+	}
+	if !request.Arguments.ColumnsStartAt1 {
+		s.sendErrorResponse(request.Request, FailedToInitialize, "Failed to initialize",
+			"Only 1-based column numbers are supported.")
+		return
+	}
+
 	// TODO(polina): Respond with an error if debug session is in progress?
 	response := &dap.InitializeResponse{Response: *newResponse(request.Request)}
 	response.Body.SupportsConfigurationDoneRequest = true
