@@ -147,6 +147,7 @@ func (s *Server) setLaunchAttachArgs(request dap.LaunchAttachRequest) {
 // process if it was launched by it. This method mustn't be called more than
 // once.
 func (s *Server) Stop() {
+	s.log.Debug("DAP server stopping...")
 	_ = s.listener.Close()
 	close(s.stopChan)
 	if s.conn != nil {
@@ -169,6 +170,7 @@ func (s *Server) Stop() {
 	} else {
 		s.stopNoDebugProcess()
 	}
+	s.log.Debug("DAP server stopped")
 }
 
 // signalDisconnect closes config.DisconnectChan if not nil, which
@@ -421,6 +423,15 @@ func (s *Server) send(message dap.Message) {
 	_ = dap.WriteProtocolMessage(s.conn, message)
 }
 
+func (s *Server) logToConsole(msg string) {
+	s.send(&dap.OutputEvent{
+		Event: *newEvent("output"),
+		Body: dap.OutputEventBody{
+			Output:   msg + "\n",
+			Category: "console",
+		}})
+}
+
 func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	// TODO(polina): Respond with an error if debug session is in progress?
 	response := &dap.InitializeResponse{Response: *newResponse(request.Request)}
@@ -568,9 +579,8 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 		// Then, block until the program terminates or is stopped.
 		if err := cmd.Wait(); err != nil {
-			s.log.Debugf("program exited: %v", err)
+			s.log.Debugf("program exited with error: %v", err)
 		}
-
 		stopped := false
 		s.mu.Lock()
 		stopped = s.noDebugProcess == nil // if it was stopped, this should be nil.
@@ -578,6 +588,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.mu.Unlock()
 
 		if !stopped {
+			s.logToConsole(proc.ErrProcessExited{Pid: cmd.ProcessState.Pid(), Status: cmd.ProcessState.ExitCode()}.Error())
 			s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		}
 		return
@@ -613,8 +624,16 @@ func (s *Server) stopNoDebugProcess() {
 	s.noDebugProcess = nil
 	defer s.mu.Unlock()
 
-	// TODO(hyangah): gracefully terminate the process and its children processes.
-	if p != nil && !p.ProcessState.Exited() {
+	if p == nil {
+		// We already handled termination or there was never a process
+		return
+	}
+
+	if p.ProcessState.Exited() {
+		s.logToConsole(proc.ErrProcessExited{Pid: p.ProcessState.Pid(), Status: p.ProcessState.ExitCode()}.Error())
+	} else {
+		// TODO(hyangah): gracefully terminate the process and its children processes.
+		s.logToConsole(fmt.Sprintf("Terminating process %d", p.Process.Pid))
 		p.Process.Kill() // Don't check error. Process killing and self-termination may race.
 	}
 }
@@ -633,36 +652,53 @@ func isValidLaunchMode(launchMode interface{}) bool {
 // it disconnects the debuggee and signals that the debug adaptor
 // (in our case this TCP server) can be terminated.
 func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
-	s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
+	var err error
+	var exited error
 	if s.debugger != nil {
-		_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+		state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 		if err != nil {
 			switch err.(type) {
 			case *proc.ErrProcessExited:
-				s.log.Debug(err)
+				exited = err
 			default:
 				s.log.Error(err)
 			}
+		} else if state.Exited {
+			exited = proc.ErrProcessExited{Pid: s.debugger.ProcessPid(), Status: state.ExitStatus}
 		}
 		// We always kill launched programs
 		kill := s.config.Debugger.AttachPid == 0
 		// In case of attach, we leave the program
-		// running but default, which can be
+		// running by default, which can be
 		// overridden by an explicit request to terminate.
 		if request.Arguments.TerminateDebuggee {
 			kill = true
+		}
+		if exited != nil {
+			s.logToConsole(exited.Error())
+			s.logToConsole("Detaching")
+		} else if kill {
+			s.logToConsole("Detaching and terminating target process")
+		} else {
+			s.logToConsole("Detaching without terminating target processs")
 		}
 		err = s.debugger.Detach(kill)
 		if err != nil {
 			switch err.(type) {
 			case *proc.ErrProcessExited:
-				s.log.Debug(err)
+				exited = err
+				s.logToConsole(exited.Error())
 			default:
 				s.log.Error(err)
 			}
 		}
 	} else {
 		s.stopNoDebugProcess()
+	}
+	if err != nil && exited == nil {
+		s.sendErrorResponse(request.Request, DisconnectError, "Error while disconnecting", err.Error())
+	} else {
+		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 	}
 
 	// TODO(polina): make thread-safe when handlers become asynchronous.
