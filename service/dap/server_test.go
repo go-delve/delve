@@ -1593,6 +1593,9 @@ func TestShadowedVariables(t *testing.T) {
 
 					expectVarExact(t, locals, 0, "(a)", "a", "0", !hasChildren)
 					expectVarExact(t, locals, 1, "a", "a", "1", !hasChildren)
+
+					// Check that the non-shadowed of "a" is returned from evaluate request.
+					validateEvaluateName(t, client, locals, 1)
 				},
 				disconnect: false,
 			}})
