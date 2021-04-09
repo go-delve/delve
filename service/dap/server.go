@@ -877,7 +877,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	targetArgs, ok := s.parseTargetArgs(request, ok)
+	targetArgs, ok := s.parseTargetArgs(request)
 	if !ok {
 		return
 	}
@@ -914,12 +914,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 
 	if mode == "record" {
-		// Validate parameters and record an rr trace from the compiled binary
-		s.config.Debugger.Backend = "rr"
-
 		// Record only works on rr trace directories
-		traceDirectory, ok := request.Arguments["traceDirectory"].(string)
-		if !ok || traceDirectory == "" {
+		traceDirectory, _ := request.Arguments["traceDirectory"].(string)
+		if traceDirectory == "" {
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to launch",
 				"The traceDirectory attribute is missing in record configuration.")
@@ -1037,7 +1034,7 @@ func (s *Server) setWorkingDir(request *dap.LaunchRequest) bool {
 	return true
 }
 
-func (s *Server) parseTargetArgs(request *dap.LaunchRequest, ok bool) ([]string, bool) {
+func (s *Server) parseTargetArgs(request *dap.LaunchRequest) ([]string, bool) {
 	var targetArgs []string
 	args, ok := request.Arguments["args"]
 
@@ -2715,23 +2712,6 @@ func (s *Server) onDisassembleRequest(request *dap.DisassembleRequest) {
 // Capability 'supportsCancelRequest' is not set 'initialize' response.
 func (s *Server) onCancelRequest(request *dap.CancelRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
-}
-
-// sendErrorResponseWithURL sends and error response to be visible to the user with an error related URL.
-func (s *Server) sendErrorResponseWithURL(request dap.Request, id int, summary, details, url, urlLabel string) {
-	er := &dap.ErrorResponse{}
-	er.Type = "response"
-	er.Command = request.Command
-	er.RequestSeq = request.Seq
-	er.Success = false
-	er.Message = summary
-	er.Body.Error.Id = id
-	er.Body.Error.Format = fmt.Sprintf("%s: %s", summary, details)
-	er.Body.Error.ShowUser = true
-	er.Body.Error.Url = url
-	er.Body.Error.UrlLabel = urlLabel
-	s.log.Error(er.Body.Error.Format)
-	s.send(er)
 }
 
 // onExceptionInfoRequest handles 'exceptionInfo' requests.

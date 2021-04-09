@@ -22,7 +22,7 @@ import (
 // stop function which will prematurely terminate the recording of the
 // program.
 func RecordAsync(cmd []string, wd string, quiet bool, redirects [3]string) (run func() (string, error), stop func() error, err error) {
-	if err := CheckRRAvailable(); err != nil {
+	if err := checkRRAvailable(); err != nil {
 		return nil, nil, err
 	}
 
@@ -126,7 +126,7 @@ func Record(cmd []string, wd string, quiet bool, redirects [3]string) (tracedir 
 // Replay starts an instance of rr in replay mode, with the specified trace
 // directory, and connects to it.
 func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string) (*proc.Target, error) {
-	if err := CheckRRAvailable(); err != nil {
+	if err := checkRRAvailable(); err != nil {
 		return nil, err
 	}
 
@@ -178,7 +178,7 @@ func (err ErrPerfEventParanoid) Error() string {
 	return fmt.Sprintf("rr needs /proc/sys/kernel/perf_event_paranoid <= 1, but it is %d", err.actual)
 }
 
-func CheckRRAvailable() error {
+func checkRRAvailable() error {
 	if _, err := exec.LookPath("rr"); err != nil {
 		return &ErrBackendUnavailable{}
 	}
