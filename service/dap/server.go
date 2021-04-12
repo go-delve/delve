@@ -916,6 +916,15 @@ func (s *Server) onStepOutRequest(request *dap.StepOutRequest) {
 	s.doStepCommand(api.StepOut, request.Arguments.ThreadId)
 }
 
+func stoppedGoroutineID(state *api.DebuggerState) (id int) {
+	if state.SelectedGoroutine != nil {
+		id = state.SelectedGoroutine.ID
+	} else if state.CurrentThread != nil {
+		id = state.CurrentThread.GoroutineID
+	}
+	return id
+}
+
 func (s *Server) doStepCommand(command string, threadId int) {
 	// Use SwitchGoroutine to change the current goroutine.
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
@@ -925,10 +934,8 @@ func (s *Server) doStepCommand(command string, threadId int) {
 		// since we already sent the step response.
 		stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
 		stopped.Body.AllThreadsStopped = true
-		if state.SelectedGoroutine != nil {
-			stopped.Body.ThreadId = state.SelectedGoroutine.ID
-		} else if state.CurrentThread != nil {
-			stopped.Body.ThreadId = state.CurrentThread.GoroutineID
+		if state != nil {
+			stopped.Body.ThreadId = stoppedGoroutineID(state)
 		}
 		stopped.Body.Reason = "error"
 		stopped.Body.Text = err.Error()
@@ -1378,9 +1385,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			s.resetHandlesForStop()
 			stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
 			stopped.Body.AllThreadsStopped = true
-			if state.SelectedGoroutine != nil {
-				stopped.Body.ThreadId = state.SelectedGoroutine.ID
-			}
+			stopped.Body.ThreadId = stoppedGoroutineID(state)
 			stopped.Body.Reason = s.debugger.StopReason().String()
 			s.send(stopped)
 			// TODO(polina): once this is asynchronous, we could wait to reply until the user
@@ -1579,9 +1584,7 @@ func (s *Server) doCommand(command string) {
 	stopped.Body.AllThreadsStopped = true
 
 	if err == nil {
-		if state.SelectedGoroutine != nil {
-			stopped.Body.ThreadId = state.SelectedGoroutine.ID
-		}
+		stopped.Body.ThreadId = stoppedGoroutineID(state)
 
 		switch s.debugger.StopReason() {
 		case proc.StopNextFinished:
@@ -1589,7 +1592,7 @@ func (s *Server) doCommand(command string) {
 		default:
 			stopped.Body.Reason = "breakpoint"
 		}
-		if state.CurrentThread.Breakpoint != nil {
+		if state.CurrentThread != nil && state.CurrentThread.Breakpoint != nil {
 			switch state.CurrentThread.Breakpoint.Name {
 			case proc.FatalThrow:
 				stopped.Body.Reason = "fatal error"
@@ -1608,7 +1611,7 @@ func (s *Server) doCommand(command string) {
 		}
 		state, err := s.debugger.State( /*nowait*/ true)
 		if err == nil {
-			stopped.Body.ThreadId = state.CurrentThread.GoroutineID
+			stopped.Body.ThreadId = stoppedGoroutineID(state)
 		}
 		s.send(stopped)
 
