@@ -197,7 +197,7 @@ func TestLaunchStopOnEntry(t *testing.T) {
 
 		// 10 >> evaluate, << error
 		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
-		erResp := client.ExpectVisibleErrorResponse(t)
+		erResp := client.ExpectErrorResponse(t)
 		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Id != 2009 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=2009", erResp)
 		}
@@ -323,7 +323,7 @@ func TestAttachStopOnEntry(t *testing.T) {
 
 		// 10 >> evaluate, << error
 		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
-		erResp := client.ExpectVisibleErrorResponse(t)
+		erResp := client.ExpectErrorResponse(t)
 		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Id != 2009 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=2009", erResp)
 		}
@@ -2236,12 +2236,7 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 					client.StepOutRequest(goroutineId)
 					client.ExpectStepOutResponse(t)
 
-					m, err := client.ReadMessage()
-					if err != nil {
-						t.Fatal(err)
-					}
-
-					switch e := m.(type) {
+					switch e := client.ExpectMessage(t).(type) {
 					case *dap.StoppedEvent:
 						if e.Body.ThreadId != goroutineId {
 							t.Fatalf("StepOut did not continue on the selected goroutine, expected %d got %d", goroutineId, e.Body.ThreadId)
