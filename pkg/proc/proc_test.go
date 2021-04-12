@@ -2464,8 +2464,6 @@ func TestStepOutDeferReturnAndDirectCall(t *testing.T) {
 		{contStepout, 28}})
 }
 
-var maxInstructionLength uint64
-
 func TestStepOnCallPtrInstr(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("teststepprog", t, func(p *proc.Target, fixture protest.Fixture) {

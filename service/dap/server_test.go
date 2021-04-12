@@ -696,7 +696,6 @@ func validateEvaluateName(t *testing.T, client *daptest.Client, got *dap.Variabl
 func TestStackTraceRequest(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		var stResp *dap.StackTraceResponse
-		const StartHandle = 1000 // from handles.go
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
 			func() {
