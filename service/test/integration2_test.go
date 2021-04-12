@@ -2277,3 +2277,34 @@ func TestDetachLeaveRunning(t *testing.T) {
 	defer server.Stop()
 	assertNoError(client.Detach(false), t, "Detach")
 }
+
+func assertNoDuplicateBreakpoints(t *testing.T, c service.Client) {
+	t.Helper()
+	bps, _ := c.ListBreakpoints()
+	seen := make(map[int]bool)
+	for _, bp := range bps {
+		t.Logf("%#v\n", bp)
+		if seen[bp.ID] {
+			t.Fatalf("duplicate breakpoint ID %d", bp.ID)
+		}
+		seen[bp.ID] = true
+	}
+}
+
+func TestToggleBreakpointRestart(t *testing.T) {
+	// Checks that breakpoints IDs do not overlap after Restart if there are disabled breakpoints.
+	withTestClient2("testtoggle", t, func(c service.Client) {
+		bp1, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1, Name: "firstbreakpoint"})
+		assertNoError(err, t, "CreateBreakpoint 1")
+		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 2, Name: "secondbreakpoint"})
+		assertNoError(err, t, "CreateBreakpoint 2")
+		_, err = c.ToggleBreakpoint(bp1.ID)
+		assertNoError(err, t, "ToggleBreakpoint")
+		_, err = c.Restart(false)
+		assertNoError(err, t, "Restart")
+		assertNoDuplicateBreakpoints(t, c)
+		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 3, Name: "thirdbreakpoint"})
+		assertNoError(err, t, "CreateBreakpoint 3")
+		assertNoDuplicateBreakpoints(t, c)
+	})
+}
