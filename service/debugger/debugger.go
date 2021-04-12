@@ -584,7 +584,7 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 
 	exited := false
 	if _, err := d.target.Valid(); err != nil {
-		_, exited = err.(*proc.ErrProcessExited)
+		_, exited = err.(proc.ErrProcessExited)
 	}
 
 	state = &api.DebuggerState{

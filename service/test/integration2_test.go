@@ -1095,6 +1095,16 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 	})
 }
 
+func assertErrorOrExited(s *api.DebuggerState, err error, t *testing.T, reason string) {
+	if err != nil {
+		return
+	}
+	if s != nil && s.Exited {
+		return
+	}
+	t.Fatalf("%s (no error and no exited status)", reason)
+}
+
 func TestIssue355(t *testing.T) {
 	// After the target process has terminated should return an error but not crash
 	protest.AllowRecording(t)
@@ -1116,18 +1126,18 @@ func TestIssue355(t *testing.T) {
 		state = <-ch
 		assertError(state.Err, t, "Continue()")
 
-		_, err = c.Next()
-		assertError(err, t, "Next()")
-		_, err = c.Step()
-		assertError(err, t, "Step()")
-		_, err = c.StepInstruction()
-		assertError(err, t, "StepInstruction()")
-		_, err = c.SwitchThread(tid)
-		assertError(err, t, "SwitchThread()")
-		_, err = c.SwitchGoroutine(gid)
-		assertError(err, t, "SwitchGoroutine()")
-		_, err = c.Halt()
-		assertError(err, t, "Halt()")
+		s, err := c.Next()
+		assertErrorOrExited(s, err, t, "Next()")
+		s, err = c.Step()
+		assertErrorOrExited(s, err, t, "Step()")
+		s, err = c.StepInstruction()
+		assertErrorOrExited(s, err, t, "StepInstruction()")
+		s, err = c.SwitchThread(tid)
+		assertErrorOrExited(s, err, t, "SwitchThread()")
+		s, err = c.SwitchGoroutine(gid)
+		assertErrorOrExited(s, err, t, "SwitchGoroutine()")
+		s, err = c.Halt()
+		assertErrorOrExited(s, err, t, "Halt()")
 		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: -1})
 		if testBackend != "rr" {
 			assertError(err, t, "CreateBreakpoint()")
