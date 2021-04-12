@@ -693,23 +693,7 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 	// -- doesn't exist and in request => SetBreakpoint
 
 	// Clear all existing breakpoints in the file.
-	existing := s.debugger.Breakpoints()
-	for _, bp := range existing {
-		// Skip special breakpoints such as for panic.
-		if bp.ID < 0 {
-			continue
-		}
-		// Skip other source files.
-		// TODO(polina): should this be normalized because of different OSes?
-		if bp.File != request.Arguments.Source.Path {
-			continue
-		}
-		_, err := s.debugger.ClearBreakpoint(bp)
-		if err != nil {
-			s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
-			return
-		}
-	}
+	s.clearMatchingBreakpoints(request.Request, func(bp *api.Breakpoint) bool { return bp.File == request.Arguments.Source.Path })
 
 	// Set all requested breakpoints.
 	response := &dap.SetBreakpointsResponse{Response: *newResponse(request.Request)}
@@ -1396,7 +1380,61 @@ func (s *Server) onRestartRequest(request *dap.RestartRequest) {
 // onSetFunctionBreakpointsRequest sends a not-yet-implemented error response.
 // Capability 'supportsFunctionBreakpoints' is not set 'initialize' response.
 func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpointsRequest) {
-	s.sendNotYetImplementedErrorResponse(request.Request)
+	if s.noDebugProcess != nil {
+		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", "running in noDebug mode")
+		return
+	}
+	// TODO(polina): handle this while running by halting first.
+
+	// According to the spec we should "Replaces all existing function
+	// breakpoints with new function breakpoints." The simplest way is
+	// to clear all and then set all.
+	//
+	// TODO(polina): should we optimize this as follows?
+	// See https://github.com/golang/vscode-go/issues/163 for details.
+	// If a breakpoint:
+	// -- exists and not in request => ClearBreakpoint
+	// -- exists and in request => AmendBreakpoint
+	// -- doesn't exist and in request => SetBreakpoint
+
+	// Clear all existing breakpoints in the file.
+	s.clearMatchingBreakpoints(request.Request, func(bp *api.Breakpoint) bool { return bp.FunctionName != "" })
+
+	// Set all requested breakpoints.
+	response := &dap.SetFunctionBreakpointsResponse{Response: *newResponse(request.Request)}
+	response.Body.Breakpoints = make([]dap.Breakpoint, len(request.Arguments.Breakpoints))
+	for i, want := range request.Arguments.Breakpoints {
+		got, err := s.debugger.CreateBreakpoint(
+			&api.Breakpoint{FunctionName: want.Name, Cond: want.Condition})
+		response.Body.Breakpoints[i].Verified = (err == nil)
+		if err != nil {
+			response.Body.Breakpoints[i].Message = err.Error()
+		} else {
+			response.Body.Breakpoints[i].Id = got.ID
+			response.Body.Breakpoints[i].Line = got.Line
+			response.Body.Breakpoints[i].Source = dap.Source{Name: filepath.Base(got.File), Path: got.File}
+		}
+	}
+	s.send(response)
+}
+
+func (s *Server) clearMatchingBreakpoints(request dap.Request, cond func(*api.Breakpoint) bool) {
+	existing := s.debugger.Breakpoints()
+	for _, bp := range existing {
+		// Skip special breakpoints such as for panic.
+		if bp.ID < 0 {
+			continue
+		}
+		// Skip non-function breakpoints
+		if !cond(bp) {
+			continue
+		}
+		_, err := s.debugger.ClearBreakpoint(bp)
+		if err != nil {
+			s.sendErrorResponse(request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
+			return
+		}
+	}
 }
 
 // onStepBackRequest sends a not-yet-implemented error response.
