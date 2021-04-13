@@ -2,15 +2,11 @@ package terminal
 
 import (
 	"fmt"
-	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestStarlarkExamples(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
-	}
 	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
 		term.MustExec("continue")
 		t.Run("goroutine_start_line", func(t *testing.T) { testStarlarkExampleGoroutineStartLine(t, term) })
