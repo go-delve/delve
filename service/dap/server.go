@@ -729,6 +729,7 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 		s.logToConsole("Detaching without terminating target processs")
 	}
 	err = s.debugger.Detach(killProcess)
+	s.debugger = nil
 	if err != nil {
 		switch err.(type) {
 		case proc.ErrProcessExited:
