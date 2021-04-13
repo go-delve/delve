@@ -3113,7 +3113,7 @@ func TestBadInitializeRequest(t *testing.T) {
 	runInitializeTest(dap.InitializeRequestArguments{
 		AdapterID:       "go",
 		PathFormat:      "path",
-		LinesStartAt1:   false,
+		LinesStartAt1:   false, // only 1-based line numbers are supported
 		ColumnsStartAt1: true,
 		Locale:          "en-us",
 	},
@@ -3125,7 +3125,7 @@ func TestBadInitializeRequest(t *testing.T) {
 		AdapterID:       "go",
 		PathFormat:      "path",
 		LinesStartAt1:   true,
-		ColumnsStartAt1: false,
+		ColumnsStartAt1: false, // only 1-based column numbers are supported
 		Locale:          "en-us",
 	},
 		"Failed to initialize: Only 1-based column numbers are supported.",
