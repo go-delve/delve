@@ -1532,6 +1532,40 @@ func (s *Server) doCommand(command string) {
 	}
 
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, nil)
+	for err == nil && !state.Exited && state.CurrentThread != nil && state.NextInProgress {
+		// If there is a NextInProgress, we want to notify the user that a breakpoint
+		// was hit and then continue.
+		if bp := state.CurrentThread.Breakpoint; bp != nil {
+			id := 0
+			if state.SelectedGoroutine != nil {
+				id = state.SelectedGoroutine.ID
+			}
+			s.log.Debugf("goroutine %d hit breakpoint (id: %d, loc: %s:%d) during %s, continuing...\n", id, bp.ID, bp.File, bp.Line, command)
+			s.send(&dap.OutputEvent{
+				Event: *newEvent("output"),
+				Body: dap.OutputEventBody{
+					Output:   fmt.Sprintf("goroutine %d hit breakpoint (id: %d, loc: %s:%d) during %s, continuing...\n", id, bp.ID, bp.File, bp.Line, command),
+					Category: "console",
+				}})
+			// Issue a continue request to continue with the step command.
+			state, err = s.debugger.Command(&api.DebuggerCommand{Name: api.Continue}, nil)
+			continue
+		}
+		// There was no breakpoint to skip, we should cancel next and process this stop.
+
+		if cancelNextErr := s.debugger.CancelNext(); cancelNextErr != nil {
+			s.log.Error(cancelNextErr)
+		} else {
+			s.log.Debug("next cancelled\n")
+			s.send(&dap.OutputEvent{
+				Event: *newEvent("output"),
+				Body: dap.OutputEventBody{
+					Output:   "next cancelled",
+					Category: "console",
+				}})
+		}
+		break
+	}
 	if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
 		s.send(e)

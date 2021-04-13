@@ -2069,6 +2069,79 @@ func TestNextAndStep(t *testing.T) {
 	})
 }
 
+func TestIssue387(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
+	// a breakpoint triggering during a 'next' operation will interrupt it
+	// Unlike the test for the terminal package, we cannot be certain
+	// of the number of breakpoints we expect to hit, since multiple
+	// breakpoints being hit at the same time is not supported in dap stopped
+	// events.
+	runTest(t, "issue387", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{15},
+			[]onBreakpoint{{ // Stop at line 15
+				execute: func() {
+					handleStop(t, client, 1, "main.main", 15)
+
+					client.SetBreakpointsRequest(fixture.Source, []int{8})
+					client.ExpectSetBreakpointsResponse(t)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					bpSe := client.ExpectStoppedEvent(t)
+					handleStop(t, client, bpSe.Body.ThreadId, "main.dostuff", 8)
+
+					outputString := `goroutine \d+ hit breakpoint \(id: 2, loc: .*issue387.go:8\) during next, continuing\.\.\.`
+					skipBreakpointRegExp, _ := regexp.Compile(outputString)
+					for pos := 9; pos < 11; pos++ {
+						client.NextRequest(bpSe.Body.ThreadId)
+						client.ExpectNextResponse(t)
+
+						stopped := false
+						for !stopped {
+							msg := client.ExpectMessage(t)
+							switch v := msg.(type) {
+							case *dap.StoppedEvent:
+								if v.Body.Reason != "step" || !v.Body.AllThreadsStopped {
+									t.Errorf("got %#v, want Reason=\"step\", ThreadId=1, AllThreadsStopped=true", v)
+								}
+								handleStop(t, client, bpSe.Body.ThreadId, "main.dostuff", pos)
+								stopped = true
+							case *dap.OutputEvent:
+								wantOutput := dap.OutputEvent{
+									Event: *newEvent("output"),
+									Body: dap.OutputEventBody{
+										Output:   "goroutine %d hit breakpoint (id: ..., loc: .../issue387.go:8) during next, continuing...\n",
+										Category: "console",
+									},
+								}
+								matched := skipBreakpointRegExp.MatchString(v.Body.Output)
+								if !matched || v.Body.Category != "console" {
+									t.Errorf("\ngot  %#v\nwant %#v", v, wantOutput)
+								}
+							default:
+								t.Errorf("got %t, want *dap.StoppedEvent or *dap.OutputEvent", msg)
+							}
+
+						}
+					}
+				},
+				disconnect: true,
+			}})
+	})
+}
+
 func TestNextParked(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.SkipNow()
