@@ -161,7 +161,7 @@ func (s *Server) Stop() {
 		kill := s.config.Debugger.AttachPid == 0
 		if err := s.debugger.Detach(kill); err != nil {
 			switch err.(type) {
-			case *proc.ErrProcessExited:
+			case proc.ErrProcessExited:
 				s.log.Debug(err)
 			default:
 				s.log.Error(err)
@@ -658,7 +658,7 @@ func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
 		state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 		if err != nil {
 			switch err.(type) {
-			case *proc.ErrProcessExited:
+			case proc.ErrProcessExited:
 				exited = err
 			default:
 				s.log.Error(err)
@@ -685,7 +685,7 @@ func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
 		err = s.debugger.Detach(kill)
 		if err != nil {
 			switch err.(type) {
-			case *proc.ErrProcessExited:
+			case proc.ErrProcessExited:
 				exited = err
 				s.logToConsole(exited.Error())
 			default:
@@ -808,7 +808,7 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 	gs, _, err := s.debugger.Goroutines(0, 0)
 	if err != nil {
 		switch err.(type) {
-		case *proc.ErrProcessExited:
+		case proc.ErrProcessExited:
 			// If the program exits very quickly, the initial threads request will complete after it has exited.
 			// A TerminatedEvent has already been sent. Ignore the err returned in this case.
 			s.send(&dap.ThreadsResponse{Response: *newResponse(request.Request)})
