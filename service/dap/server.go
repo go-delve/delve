@@ -147,6 +147,7 @@ func (s *Server) setLaunchAttachArgs(request dap.LaunchAttachRequest) {
 // process if it was launched by it. This method mustn't be called more than
 // once.
 func (s *Server) Stop() {
+	s.log.Debug("DAP server stopping...")
 	_ = s.listener.Close()
 	close(s.stopChan)
 	if s.conn != nil {
@@ -160,7 +161,7 @@ func (s *Server) Stop() {
 		kill := s.config.Debugger.AttachPid == 0
 		if err := s.debugger.Detach(kill); err != nil {
 			switch err.(type) {
-			case *proc.ErrProcessExited:
+			case proc.ErrProcessExited:
 				s.log.Debug(err)
 			default:
 				s.log.Error(err)
@@ -169,6 +170,7 @@ func (s *Server) Stop() {
 	} else {
 		s.stopNoDebugProcess()
 	}
+	s.log.Debug("DAP server stopped")
 }
 
 // signalDisconnect closes config.DisconnectChan if not nil, which
@@ -421,6 +423,15 @@ func (s *Server) send(message dap.Message) {
 	_ = dap.WriteProtocolMessage(s.conn, message)
 }
 
+func (s *Server) logToConsole(msg string) {
+	s.send(&dap.OutputEvent{
+		Event: *newEvent("output"),
+		Body: dap.OutputEventBody{
+			Output:   msg + "\n",
+			Category: "console",
+		}})
+}
+
 func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	if request.Arguments.PathFormat != "path" {
 		s.sendErrorResponse(request.Request, FailedToInitialize, "Failed to initialize",
@@ -584,9 +595,8 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 		// Then, block until the program terminates or is stopped.
 		if err := cmd.Wait(); err != nil {
-			s.log.Debugf("program exited: %v", err)
+			s.log.Debugf("program exited with error: %v", err)
 		}
-
 		stopped := false
 		s.mu.Lock()
 		stopped = s.noDebugProcess == nil // if it was stopped, this should be nil.
@@ -594,6 +604,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.mu.Unlock()
 
 		if !stopped {
+			s.logToConsole(proc.ErrProcessExited{Pid: cmd.ProcessState.Pid(), Status: cmd.ProcessState.ExitCode()}.Error())
 			s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		}
 		return
@@ -629,8 +640,16 @@ func (s *Server) stopNoDebugProcess() {
 	s.noDebugProcess = nil
 	defer s.mu.Unlock()
 
-	// TODO(hyangah): gracefully terminate the process and its children processes.
-	if p != nil && !p.ProcessState.Exited() {
+	if p == nil {
+		// We already handled termination or there was never a process
+		return
+	}
+
+	if p.ProcessState.Exited() {
+		s.logToConsole(proc.ErrProcessExited{Pid: p.ProcessState.Pid(), Status: p.ProcessState.ExitCode()}.Error())
+	} else {
+		// TODO(hyangah): gracefully terminate the process and its children processes.
+		s.logToConsole(fmt.Sprintf("Terminating process %d", p.Process.Pid))
 		p.Process.Kill() // Don't check error. Process killing and self-termination may race.
 	}
 }
@@ -649,36 +668,53 @@ func isValidLaunchMode(launchMode interface{}) bool {
 // it disconnects the debuggee and signals that the debug adaptor
 // (in our case this TCP server) can be terminated.
 func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
-	s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
+	var err error
+	var exited error
 	if s.debugger != nil {
-		_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+		state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 		if err != nil {
 			switch err.(type) {
-			case *proc.ErrProcessExited:
-				s.log.Debug(err)
+			case proc.ErrProcessExited:
+				exited = err
 			default:
 				s.log.Error(err)
 			}
+		} else if state.Exited {
+			exited = proc.ErrProcessExited{Pid: s.debugger.ProcessPid(), Status: state.ExitStatus}
 		}
 		// We always kill launched programs
 		kill := s.config.Debugger.AttachPid == 0
 		// In case of attach, we leave the program
-		// running but default, which can be
+		// running by default, which can be
 		// overridden by an explicit request to terminate.
 		if request.Arguments.TerminateDebuggee {
 			kill = true
 		}
+		if exited != nil {
+			s.logToConsole(exited.Error())
+			s.logToConsole("Detaching")
+		} else if kill {
+			s.logToConsole("Detaching and terminating target process")
+		} else {
+			s.logToConsole("Detaching without terminating target processs")
+		}
 		err = s.debugger.Detach(kill)
 		if err != nil {
 			switch err.(type) {
-			case *proc.ErrProcessExited:
-				s.log.Debug(err)
+			case proc.ErrProcessExited:
+				exited = err
+				s.logToConsole(exited.Error())
 			default:
 				s.log.Error(err)
 			}
 		}
 	} else {
 		s.stopNoDebugProcess()
+	}
+	if err != nil && exited == nil {
+		s.sendErrorResponse(request.Request, DisconnectError, "Error while disconnecting", err.Error())
+	} else {
+		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 	}
 
 	// TODO(polina): make thread-safe when handlers become asynchronous.
@@ -788,7 +824,7 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 	gs, _, err := s.debugger.Goroutines(0, 0)
 	if err != nil {
 		switch err.(type) {
-		case *proc.ErrProcessExited:
+		case proc.ErrProcessExited:
 			// If the program exits very quickly, the initial threads request will complete after it has exited.
 			// A TerminatedEvent has already been sent. Ignore the err returned in this case.
 			s.send(&dap.ThreadsResponse{Response: *newResponse(request.Request)})
@@ -896,6 +932,15 @@ func (s *Server) onStepOutRequest(request *dap.StepOutRequest) {
 	s.doStepCommand(api.StepOut, request.Arguments.ThreadId)
 }
 
+func stoppedGoroutineID(state *api.DebuggerState) (id int) {
+	if state.SelectedGoroutine != nil {
+		id = state.SelectedGoroutine.ID
+	} else if state.CurrentThread != nil {
+		id = state.CurrentThread.GoroutineID
+	}
+	return id
+}
+
 func (s *Server) doStepCommand(command string, threadId int) {
 	// Use SwitchGoroutine to change the current goroutine.
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
@@ -905,10 +950,8 @@ func (s *Server) doStepCommand(command string, threadId int) {
 		// since we already sent the step response.
 		stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
 		stopped.Body.AllThreadsStopped = true
-		if state.SelectedGoroutine != nil {
-			stopped.Body.ThreadId = state.SelectedGoroutine.ID
-		} else if state.CurrentThread != nil {
-			stopped.Body.ThreadId = state.CurrentThread.GoroutineID
+		if state != nil {
+			stopped.Body.ThreadId = stoppedGoroutineID(state)
 		}
 		stopped.Body.Reason = "error"
 		stopped.Body.Text = err.Error()
@@ -1288,7 +1331,7 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 // variables, so consider also adding the following:
 // -- print {expression} - return the result as a string like from dlv cli
 func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
-	showErrorToUser := request.Arguments.Context != "watch"
+	showErrorToUser := request.Arguments.Context != "watch" && request.Arguments.Context != "repl"
 	if s.debugger == nil {
 		s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", "debugger is nil", showErrorToUser)
 		return
@@ -1358,9 +1401,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			s.resetHandlesForStop()
 			stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
 			stopped.Body.AllThreadsStopped = true
-			if state.SelectedGoroutine != nil {
-				stopped.Body.ThreadId = state.SelectedGoroutine.ID
-			}
+			stopped.Body.ThreadId = stoppedGoroutineID(state)
 			stopped.Body.Reason = s.debugger.StopReason().String()
 			s.send(stopped)
 			// TODO(polina): once this is asynchronous, we could wait to reply until the user
@@ -1559,9 +1600,7 @@ func (s *Server) doCommand(command string) {
 	stopped.Body.AllThreadsStopped = true
 
 	if err == nil {
-		if state.SelectedGoroutine != nil {
-			stopped.Body.ThreadId = state.SelectedGoroutine.ID
-		}
+		stopped.Body.ThreadId = stoppedGoroutineID(state)
 
 		switch s.debugger.StopReason() {
 		case proc.StopNextFinished:
@@ -1569,7 +1608,7 @@ func (s *Server) doCommand(command string) {
 		default:
 			stopped.Body.Reason = "breakpoint"
 		}
-		if state.CurrentThread.Breakpoint != nil {
+		if state.CurrentThread != nil && state.CurrentThread.Breakpoint != nil {
 			switch state.CurrentThread.Breakpoint.Name {
 			case proc.FatalThrow:
 				stopped.Body.Reason = "fatal error"
@@ -1588,7 +1627,7 @@ func (s *Server) doCommand(command string) {
 		}
 		state, err := s.debugger.State( /*nowait*/ true)
 		if err == nil {
-			stopped.Body.ThreadId = state.CurrentThread.GoroutineID
+			stopped.Body.ThreadId = stoppedGoroutineID(state)
 		}
 		s.send(stopped)
 

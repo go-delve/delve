@@ -1084,13 +1084,3 @@ func zeroArray(t Type) {
 		t = at.Type
 	}
 }
-
-func resolveTypedef(typ Type) Type {
-	for {
-		if tt, ok := typ.(*TypedefType); ok {
-			typ = tt.Type
-		} else {
-			return typ
-		}
-	}
-}

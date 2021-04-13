@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/google/go-dap"
@@ -50,18 +51,18 @@ func (c *Client) ReadMessage() (dap.Message, error) {
 	return dap.ReadProtocolMessage(c.reader)
 }
 
-func (c *Client) expectReadProtocolMessage(t *testing.T) dap.Message {
+func (c *Client) ExpectMessage(t *testing.T) dap.Message {
 	t.Helper()
 	m, err := dap.ReadProtocolMessage(c.reader)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 	return m
 }
 
 func (c *Client) ExpectErrorResponse(t *testing.T) *dap.ErrorResponse {
 	t.Helper()
-	er := c.expectReadProtocolMessage(t).(*dap.ErrorResponse)
+	er := c.ExpectMessage(t).(*dap.ErrorResponse)
 	if er.Body.Error.ShowUser {
 		t.Errorf("\ngot %#v\nwant ShowUser=false", er)
 	}
@@ -70,7 +71,7 @@ func (c *Client) ExpectErrorResponse(t *testing.T) *dap.ErrorResponse {
 
 func (c *Client) ExpectVisibleErrorResponse(t *testing.T) *dap.ErrorResponse {
 	t.Helper()
-	er := c.expectReadProtocolMessage(t).(*dap.ErrorResponse)
+	er := c.ExpectMessage(t).(*dap.ErrorResponse)
 	if !er.Body.Error.ShowUser {
 		t.Errorf("\ngot %#v\nwant ShowUser=true", er)
 	}
@@ -79,7 +80,7 @@ func (c *Client) ExpectVisibleErrorResponse(t *testing.T) *dap.ErrorResponse {
 
 func (c *Client) expectErrorResponse(t *testing.T, id int, message string) *dap.ErrorResponse {
 	t.Helper()
-	er := c.expectReadProtocolMessage(t).(*dap.ErrorResponse)
+	er := c.ExpectMessage(t).(*dap.ErrorResponse)
 	if er.Body.Error.Id != id || er.Message != message {
 		t.Errorf("\ngot %#v\nwant Id=%d Message=%q", er, id, message)
 	}
@@ -98,37 +99,37 @@ func (c *Client) ExpectUnsupportedCommandErrorResponse(t *testing.T) *dap.ErrorR
 
 func (c *Client) ExpectDisconnectResponse(t *testing.T) *dap.DisconnectResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.DisconnectResponse)
+	return c.ExpectMessage(t).(*dap.DisconnectResponse)
 }
 
 func (c *Client) ExpectContinueResponse(t *testing.T) *dap.ContinueResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.ContinueResponse)
+	return c.ExpectMessage(t).(*dap.ContinueResponse)
 }
 
 func (c *Client) ExpectNextResponse(t *testing.T) *dap.NextResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.NextResponse)
+	return c.ExpectMessage(t).(*dap.NextResponse)
 }
 
 func (c *Client) ExpectStepInResponse(t *testing.T) *dap.StepInResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.StepInResponse)
+	return c.ExpectMessage(t).(*dap.StepInResponse)
 }
 
 func (c *Client) ExpectStepOutResponse(t *testing.T) *dap.StepOutResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.StepOutResponse)
+	return c.ExpectMessage(t).(*dap.StepOutResponse)
 }
 
 func (c *Client) ExpectTerminatedEvent(t *testing.T) *dap.TerminatedEvent {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.TerminatedEvent)
+	return c.ExpectMessage(t).(*dap.TerminatedEvent)
 }
 
 func (c *Client) ExpectInitializeResponse(t *testing.T) *dap.InitializeResponse {
 	t.Helper()
-	initResp := c.expectReadProtocolMessage(t).(*dap.InitializeResponse)
+	initResp := c.ExpectMessage(t).(*dap.InitializeResponse)
 	if !initResp.Body.SupportsConfigurationDoneRequest {
 		t.Errorf("got %#v, want SupportsConfigurationDoneRequest=true", initResp)
 	}
@@ -137,167 +138,196 @@ func (c *Client) ExpectInitializeResponse(t *testing.T) *dap.InitializeResponse 
 
 func (c *Client) ExpectInitializedEvent(t *testing.T) *dap.InitializedEvent {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.InitializedEvent)
+	return c.ExpectMessage(t).(*dap.InitializedEvent)
 }
 
 func (c *Client) ExpectLaunchResponse(t *testing.T) *dap.LaunchResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.LaunchResponse)
+	return c.ExpectMessage(t).(*dap.LaunchResponse)
 }
 
 func (c *Client) ExpectAttachResponse(t *testing.T) *dap.AttachResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.AttachResponse)
+	return c.ExpectMessage(t).(*dap.AttachResponse)
 }
 
 func (c *Client) ExpectSetExceptionBreakpointsResponse(t *testing.T) *dap.SetExceptionBreakpointsResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.SetExceptionBreakpointsResponse)
+	return c.ExpectMessage(t).(*dap.SetExceptionBreakpointsResponse)
 }
 
 func (c *Client) ExpectSetBreakpointsResponse(t *testing.T) *dap.SetBreakpointsResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.SetBreakpointsResponse)
+	return c.ExpectMessage(t).(*dap.SetBreakpointsResponse)
 }
 
 func (c *Client) ExpectStoppedEvent(t *testing.T) *dap.StoppedEvent {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.StoppedEvent)
+	return c.ExpectMessage(t).(*dap.StoppedEvent)
 }
 
 func (c *Client) ExpectOutputEvent(t *testing.T) *dap.OutputEvent {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.OutputEvent)
+	return c.ExpectMessage(t).(*dap.OutputEvent)
+}
+
+func (c *Client) ExpectOutputEventRegex(t *testing.T, want string) *dap.OutputEvent {
+	t.Helper()
+	e := c.ExpectMessage(t).(*dap.OutputEvent)
+	if matched, _ := regexp.MatchString(want, e.Body.Output); !matched {
+		t.Errorf("\ngot %#v\nwant Output=%q", e, want)
+	}
+	return e
+}
+
+func (c *Client) ExpectOutputEventProcessExited(t *testing.T, status int) *dap.OutputEvent {
+	t.Helper()
+	return c.ExpectOutputEventRegex(t, fmt.Sprintf(`Process [0-9]+ has exited with status %d\n`, status))
+}
+
+func (c *Client) ExpectOutputEventDetaching(t *testing.T) *dap.OutputEvent {
+	t.Helper()
+	return c.ExpectOutputEventRegex(t, `Detaching\n`)
+}
+
+func (c *Client) ExpectOutputEventDetachingKill(t *testing.T) *dap.OutputEvent {
+	t.Helper()
+	return c.ExpectOutputEventRegex(t, `Detaching and terminating target process\n`)
+}
+
+func (c *Client) ExpectOutputEventDetachingNoKill(t *testing.T) *dap.OutputEvent {
+	t.Helper()
+	return c.ExpectOutputEventRegex(t, `Detaching without terminating target process\n`)
 }
 
 func (c *Client) ExpectConfigurationDoneResponse(t *testing.T) *dap.ConfigurationDoneResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.ConfigurationDoneResponse)
+	return c.ExpectMessage(t).(*dap.ConfigurationDoneResponse)
 }
 
 func (c *Client) ExpectThreadsResponse(t *testing.T) *dap.ThreadsResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.ThreadsResponse)
+	return c.ExpectMessage(t).(*dap.ThreadsResponse)
 }
 
 func (c *Client) ExpectStackTraceResponse(t *testing.T) *dap.StackTraceResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.StackTraceResponse)
+	return c.ExpectMessage(t).(*dap.StackTraceResponse)
 }
 
 func (c *Client) ExpectScopesResponse(t *testing.T) *dap.ScopesResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.ScopesResponse)
+	return c.ExpectMessage(t).(*dap.ScopesResponse)
 }
 
 func (c *Client) ExpectVariablesResponse(t *testing.T) *dap.VariablesResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.VariablesResponse)
+	return c.ExpectMessage(t).(*dap.VariablesResponse)
 }
 
 func (c *Client) ExpectEvaluateResponse(t *testing.T) *dap.EvaluateResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.EvaluateResponse)
+	return c.ExpectMessage(t).(*dap.EvaluateResponse)
 }
 
 func (c *Client) ExpectTerminateResponse(t *testing.T) *dap.TerminateResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.TerminateResponse)
+	return c.ExpectMessage(t).(*dap.TerminateResponse)
 }
 
 func (c *Client) ExpectRestartResponse(t *testing.T) *dap.RestartResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.RestartResponse)
+	return c.ExpectMessage(t).(*dap.RestartResponse)
 }
 
 func (c *Client) ExpectSetFunctionBreakpointsResponse(t *testing.T) *dap.SetFunctionBreakpointsResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.SetFunctionBreakpointsResponse)
+	return c.ExpectMessage(t).(*dap.SetFunctionBreakpointsResponse)
 }
 
 func (c *Client) ExpectStepBackResponse(t *testing.T) *dap.StepBackResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.StepBackResponse)
+	return c.ExpectMessage(t).(*dap.StepBackResponse)
 }
 
 func (c *Client) ExpectReverseContinueResponse(t *testing.T) *dap.ReverseContinueResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.ReverseContinueResponse)
+	return c.ExpectMessage(t).(*dap.ReverseContinueResponse)
 }
 
 func (c *Client) ExpectRestartFrameResponse(t *testing.T) *dap.RestartFrameResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.RestartFrameResponse)
+	return c.ExpectMessage(t).(*dap.RestartFrameResponse)
 }
 
 func (c *Client) ExpectSetExpressionResponse(t *testing.T) *dap.SetExpressionResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.SetExpressionResponse)
+	return c.ExpectMessage(t).(*dap.SetExpressionResponse)
 }
 
 func (c *Client) ExpectTerminateThreadsResponse(t *testing.T) *dap.TerminateThreadsResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.TerminateThreadsResponse)
+	return c.ExpectMessage(t).(*dap.TerminateThreadsResponse)
 }
 
 func (c *Client) ExpectStepInTargetsResponse(t *testing.T) *dap.StepInTargetsResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.StepInTargetsResponse)
+	return c.ExpectMessage(t).(*dap.StepInTargetsResponse)
 }
 
 func (c *Client) ExpectGotoTargetsResponse(t *testing.T) *dap.GotoTargetsResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.GotoTargetsResponse)
+	return c.ExpectMessage(t).(*dap.GotoTargetsResponse)
 }
 
 func (c *Client) ExpectCompletionsResponse(t *testing.T) *dap.CompletionsResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.CompletionsResponse)
+	return c.ExpectMessage(t).(*dap.CompletionsResponse)
 }
 
 func (c *Client) ExpectExceptionInfoResponse(t *testing.T) *dap.ExceptionInfoResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.ExceptionInfoResponse)
+	return c.ExpectMessage(t).(*dap.ExceptionInfoResponse)
 }
 
 func (c *Client) ExpectLoadedSourcesResponse(t *testing.T) *dap.LoadedSourcesResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.LoadedSourcesResponse)
+	return c.ExpectMessage(t).(*dap.LoadedSourcesResponse)
 }
 
 func (c *Client) ExpectDataBreakpointInfoResponse(t *testing.T) *dap.DataBreakpointInfoResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.DataBreakpointInfoResponse)
+	return c.ExpectMessage(t).(*dap.DataBreakpointInfoResponse)
 }
 
 func (c *Client) ExpectSetDataBreakpointsResponse(t *testing.T) *dap.SetDataBreakpointsResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.SetDataBreakpointsResponse)
+	return c.ExpectMessage(t).(*dap.SetDataBreakpointsResponse)
 }
 
 func (c *Client) ExpectReadMemoryResponse(t *testing.T) *dap.ReadMemoryResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.ReadMemoryResponse)
+	return c.ExpectMessage(t).(*dap.ReadMemoryResponse)
 }
 
 func (c *Client) ExpectDisassembleResponse(t *testing.T) *dap.DisassembleResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.DisassembleResponse)
+	return c.ExpectMessage(t).(*dap.DisassembleResponse)
 }
 
 func (c *Client) ExpectCancelResponse(t *testing.T) *dap.CancelResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.CancelResponse)
+	return c.ExpectMessage(t).(*dap.CancelResponse)
 }
 
 func (c *Client) ExpectBreakpointLocationsResponse(t *testing.T) *dap.BreakpointLocationsResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.BreakpointLocationsResponse)
+	return c.ExpectMessage(t).(*dap.BreakpointLocationsResponse)
 }
 
 func (c *Client) ExpectModulesResponse(t *testing.T) *dap.ModulesResponse {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.ModulesResponse)
+	return c.ExpectMessage(t).(*dap.ModulesResponse)
 }
 
 // InitializeRequest sends an 'initialize' request.
@@ -324,7 +354,7 @@ func (c *Client) InitializeRequestWithArgs(args dap.InitializeRequestArguments) 
 }
 
 // LaunchRequest sends a 'launch' request with the specified args.
-func (c *Client) LaunchRequest(mode string, program string, stopOnEntry bool) {
+func (c *Client) LaunchRequest(mode, program string, stopOnEntry bool) {
 	request := &dap.LaunchRequest{Request: *c.newRequest("launch")}
 	request.Arguments = map[string]interface{}{
 		"request":     "launch",

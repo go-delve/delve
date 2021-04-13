@@ -120,6 +120,8 @@ func startDapServer(t *testing.T) (*daptest.Client, func()) {
 //                                 : 12 << continue
 // - Program runs to completion    :    << terminated event
 //                                 : 13 >> disconnect
+//                                 :    << output event (Process exited)
+//                                 :    << output event (Detaching)
 //                                 : 13 << disconnect
 // This test exhaustively tests Seq and RequestSeq on all messages from the
 // server. Other tests do not necessarily need to repeat all these checks.
@@ -204,7 +206,7 @@ func TestLaunchStopOnEntry(t *testing.T) {
 
 		// 10 >> evaluate, << error
 		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
-		erResp := client.ExpectVisibleErrorResponse(t)
+		erResp := client.ExpectErrorResponse(t)
 		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Id != 2009 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=2009", erResp)
 		}
@@ -229,6 +231,14 @@ func TestLaunchStopOnEntry(t *testing.T) {
 
 		// 13 >> disconnect, << disconnect
 		client.DisconnectRequest()
+		oep := client.ExpectOutputEventProcessExited(t, 0)
+		if oep.Seq != 0 || oep.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
+		}
+		oed := client.ExpectOutputEventDetaching(t)
+		if oed.Seq != 0 || oep.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+		}
 		dResp := client.ExpectDisconnectResponse(t)
 		if dResp.Seq != 0 || dResp.RequestSeq != 13 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13", dResp)
@@ -330,7 +340,7 @@ func TestAttachStopOnEntry(t *testing.T) {
 
 		// 10 >> evaluate, << error
 		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
-		erResp := client.ExpectVisibleErrorResponse(t)
+		erResp := client.ExpectErrorResponse(t)
 		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Id != 2009 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=2009", erResp)
 		}
@@ -351,6 +361,10 @@ func TestAttachStopOnEntry(t *testing.T) {
 
 		// 12 >> disconnect, << disconnect
 		client.DisconnectRequestWithKillOption(true)
+		oed := client.ExpectOutputEventDetachingKill(t)
+		if oed.Seq != 0 || oed.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+		}
 		dResp := client.ExpectDisconnectResponse(t)
 		if dResp.Seq != 0 || dResp.RequestSeq != 12 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=12", dResp)
@@ -405,6 +419,8 @@ func TestContinueOnEntry(t *testing.T) {
 
 		// 7 >> disconnect, << disconnect
 		client.DisconnectRequest()
+		client.ExpectOutputEventProcessExited(t, 0)
+		client.ExpectOutputEventDetaching(t)
 		dResp := client.ExpectDisconnectResponse(t)
 		if dResp.Seq != 0 || dResp.RequestSeq != 7 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7", dResp)
@@ -518,6 +534,8 @@ func TestPreSetBreakpoint(t *testing.T) {
 
 		client.ExpectTerminatedEvent(t)
 		client.DisconnectRequest()
+		client.ExpectOutputEventProcessExited(t, 0)
+		client.ExpectOutputEventDetaching(t)
 		client.ExpectDisconnectResponse(t)
 	})
 }
@@ -685,7 +703,6 @@ func validateEvaluateName(t *testing.T, client *daptest.Client, got *dap.Variabl
 func TestStackTraceRequest(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		var stResp *dap.StackTraceResponse
-		const StartHandle = 1000 // from handles.go
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
 			func() {
@@ -2026,8 +2043,8 @@ func TestEvaluateCallRequest(t *testing.T) {
 					}
 					// Call can exit
 					client.EvaluateRequest("call callexit()", 1000, "this context will be ignored")
-					client.ExpectTerminatedEvent(t)
 				},
+				terminated: true,
 				disconnect: true,
 			}})
 	})
@@ -2243,12 +2260,7 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 					client.StepOutRequest(goroutineId)
 					client.ExpectStepOutResponse(t)
 
-					m, err := client.ReadMessage()
-					if err != nil {
-						t.Fatal(err)
-					}
-
-					switch e := m.(type) {
+					switch e := client.ExpectMessage(t).(type) {
 					case *dap.StoppedEvent:
 						if e.Body.ThreadId != goroutineId {
 							t.Fatalf("StepOut did not continue on the selected goroutine, expected %d got %d", goroutineId, e.Body.ThreadId)
@@ -2440,9 +2452,12 @@ func handleStop(t *testing.T, client *daptest.Client, thread int, name string, l
 // disconnect is true, the test harness will abort the program
 // execution. Otherwise, a continue will be issued and the
 // program will continue to the next breakpoint or termination.
+// If terminated is true, we expect requests at this breakpoint
+// to result in termination.
 type onBreakpoint struct {
 	execute    func()
 	disconnect bool
+	terminated bool
 }
 
 // runDebugSessionWithBPs is a helper for executing the common init and shutdown
@@ -2487,7 +2502,16 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 		client.ExpectStoppedEvent(t)
 		onBP.execute()
 		if onBP.disconnect {
+			if onBP.terminated {
+				client.ExpectTerminatedEvent(t)
+			}
 			client.DisconnectRequestWithKillOption(true)
+			if onBP.terminated {
+				client.ExpectOutputEventProcessExited(t, 0)
+				client.ExpectOutputEventDetaching(t)
+			} else {
+				client.ExpectOutputEventDetachingKill(t)
+			}
 			client.ExpectDisconnectResponse(t)
 			return
 		}
@@ -2500,6 +2524,12 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 		client.ExpectTerminatedEvent(t)
 	}
 	client.DisconnectRequestWithKillOption(true)
+	if cmd == "launch" {
+		client.ExpectOutputEventProcessExited(t, 0)
+		client.ExpectOutputEventDetaching(t)
+	} else if cmd == "attach" {
+		client.ExpectOutputEventDetachingKill(t)
+	}
 	client.ExpectDisconnectResponse(t)
 }
 
@@ -2579,21 +2609,33 @@ func TestLaunchRequestDefaults(t *testing.T) {
 	})
 }
 
-func TestLaunchRequestNoDebug(t *testing.T) {
+func TestLaunchRequestNoDebug_GoodStatus(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runNoDebugDebugSession(t, client, func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"noDebug": true,
-				"mode":    "", /*"debug" by default*/
+				"mode":    "debug",
 				"program": fixture.Source,
 				"output":  cleanExeName("__mybin")})
-		}, fixture.Source, []int{8})
+		}, fixture.Source, []int{8}, 0)
+	})
+}
+
+func TestLaunchRequestNoDebug_BadStatus(t *testing.T) {
+	runTest(t, "issue1101", func(client *daptest.Client, fixture protest.Fixture) {
+		runNoDebugDebugSession(t, client, func() {
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"noDebug": true,
+				"mode":    "debug",
+				"program": fixture.Source,
+				"output":  cleanExeName("__mybin")})
+		}, fixture.Source, []int{8}, 2)
 	})
 }
 
 // runNoDebugDebugSession tests the session started with noDebug=true runs uninterrupted
 // even when breakpoint is set.
-func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmdRequest func(), source string, breakpoints []int) {
+func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmdRequest func(), source string, breakpoints []int, status int) {
 	client.InitializeRequest()
 	client.ExpectInitializeResponse(t)
 
@@ -2602,6 +2644,7 @@ func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmdRequest fun
 	// noDebug mode applies only to "launch" requests.
 	client.ExpectLaunchResponse(t)
 
+	client.ExpectOutputEventProcessExited(t, status)
 	client.ExpectTerminatedEvent(t)
 	client.DisconnectRequestWithKillOption(true)
 	client.ExpectDisconnectResponse(t)

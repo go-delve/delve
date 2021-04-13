@@ -49,14 +49,6 @@ type StateMachine struct {
 	ptrSize     int
 }
 
-type opcodeKind uint8
-
-const (
-	specialOpcode opcodeKind = iota
-	standardOpcode
-	extendedOpcode
-)
-
 type opcodefn func(*StateMachine, *bytes.Buffer)
 
 // Special opcodes
