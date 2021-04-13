@@ -934,14 +934,16 @@ func stoppedGoroutineID(state *api.DebuggerState) (id int) {
 
 func (s *Server) doStepCommand(command string, threadId int) {
 	// Use SwitchGoroutine to change the current goroutine.
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
+	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
 	if err != nil {
-		s.log.Errorf("Error switching goroutines while stepping: %e", err)
+		s.log.Errorf("Error switching goroutines while stepping: %v", err)
 		// If we encounter an error, we will have to send a stopped event
 		// since we already sent the step response.
 		stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
 		stopped.Body.AllThreadsStopped = true
-		if state != nil {
+		if state, err := s.debugger.State(false); err != nil {
+			s.log.Errorf("Error retrieving state: %e", err)
+		} else {
 			stopped.Body.ThreadId = stoppedGoroutineID(state)
 		}
 		stopped.Body.Reason = "error"

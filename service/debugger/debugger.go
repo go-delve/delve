@@ -1095,7 +1095,8 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 		withBreakpointInfo = false
 	case api.SwitchGoroutine:
 		d.log.Debugf("switching to goroutine %d", command.GoroutineID)
-		g, err := proc.FindGoroutine(d.target, command.GoroutineID)
+		var g *proc.G
+		g, err = proc.FindGoroutine(d.target, command.GoroutineID)
 		if err == nil {
 			err = d.target.SwitchGoroutine(g)
 		}

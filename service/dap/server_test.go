@@ -2077,9 +2077,12 @@ func TestNextAndStep(t *testing.T) {
 					client.ExpectStepInResponse(t)
 					expectStop("main.inlineThis", 5)
 
-					client.NextRequest(-10000 /*this is ignored*/)
+					client.NextRequest(-1000)
 					client.ExpectNextResponse(t)
-					expectStop("main.inlineThis", 6)
+					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "error" || se.Body.Text != "unknown goroutine -1000" {
+						t.Errorf("got %#v, want Reaspon=\"error\", Text=\"unknown goroutine -1000\"", se)
+					}
+					handleStop(t, client, 1, "main.inlineThis", 5)
 				},
 				disconnect: false,
 			}})
