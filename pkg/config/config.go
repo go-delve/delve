@@ -307,9 +307,12 @@ func hasOldConfig() (bool, error) {
 	if os.Getenv("XDG_CONFIG_HOME") == "" && runtime.GOOS != "linux" {
 		return false, nil
 	}
-
-	userHomeDir := getUserHomeDir()
-
+	var userHomeDir string
+	if os.Getenv("HOMEDIR") != "" {
+		userHomeDir = os.Getenv("HOMEDIR")
+	} else {
+		userHomeDir = getUserHomeDir()
+	}
 	o := path.Join(userHomeDir, configDirHidden, configFile)
 	_, err := os.Stat(o)
 	if err != nil {
