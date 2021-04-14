@@ -1493,6 +1493,131 @@ func (d *Debugger) Goroutines(start, count int) ([]*proc.G, int, error) {
 	return proc.GoroutinesInfo(d.target, start, count)
 }
 
+// FilterGoroutines returns the goroutines in gs that satisfy the specified filters.
+func (d *Debugger) FilterGoroutines(gs []*proc.G, filters []api.ListGoroutinesFilter) []*proc.G {
+	if len(filters) == 0 {
+		return gs
+	}
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+	r := []*proc.G{}
+	for _, g := range gs {
+		ok := true
+		for i := range filters {
+			if !matchGoroutineFilter(g, &filters[i]) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			r = append(r, g)
+		}
+	}
+	return r
+}
+
+func matchGoroutineFilter(g *proc.G, filter *api.ListGoroutinesFilter) bool {
+	var val bool
+	switch filter.Kind {
+	default:
+		fallthrough
+	case api.GoroutineFieldNone:
+		val = true
+	case api.GoroutineCurrentLoc:
+		val = matchGoroutineLocFilter(g.CurrentLoc, filter.Arg)
+	case api.GoroutineUserLoc:
+		val = matchGoroutineLocFilter(g.UserCurrent(), filter.Arg)
+	case api.GoroutineGoLoc:
+		val = matchGoroutineLocFilter(g.Go(), filter.Arg)
+	case api.GoroutineStartLoc:
+		val = matchGoroutineLocFilter(g.StartLoc(), filter.Arg)
+	case api.GoroutineLabel:
+		idx := strings.Index(filter.Arg, "=")
+		if idx >= 0 {
+			val = g.Labels()[filter.Arg[:idx]] == filter.Arg[idx+1:]
+		} else {
+			_, val = g.Labels()[filter.Arg]
+		}
+	case api.GoroutineRunning:
+		val = g.Thread != nil
+	case api.GoroutineSystem:
+		val = g.System()
+	}
+	if filter.Negated {
+		val = !val
+	}
+	return val
+}
+
+func matchGoroutineLocFilter(loc proc.Location, arg string) bool {
+	return strings.Contains(formatLoc(loc), arg)
+}
+
+func formatLoc(loc proc.Location) string {
+	fnname := "?"
+	if loc.Fn != nil {
+		fnname = loc.Fn.Name
+	}
+	return fmt.Sprintf("%s:%d in %s", loc.File, loc.Line, fnname)
+}
+
+// GroupGoroutines divides goroutines in gs into groups as specified by groupBy and groupByArg.
+// A maximum of maxGoroutinesPerGroup are saved in each group, but the total
+// number of goroutines in each group is recorded.
+func (d *Debugger) GroupGoroutines(gs []*proc.G, group *api.GoroutineGroupingOptions) ([]*proc.G, []api.GoroutineGroup, bool) {
+	if group.GroupBy == api.GoroutineFieldNone {
+		return gs, nil, false
+	}
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+
+	groupMembers := map[string][]*proc.G{}
+	totals := map[string]int{}
+
+	for _, g := range gs {
+		var key string
+		switch group.GroupBy {
+		case api.GoroutineCurrentLoc:
+			key = formatLoc(g.CurrentLoc)
+		case api.GoroutineUserLoc:
+			key = formatLoc(g.UserCurrent())
+		case api.GoroutineGoLoc:
+			key = formatLoc(g.Go())
+		case api.GoroutineStartLoc:
+			key = formatLoc(g.StartLoc())
+		case api.GoroutineLabel:
+			key = fmt.Sprintf("%s=%s", group.GroupByKey, g.Labels()[group.GroupByKey])
+		case api.GoroutineRunning:
+			key = fmt.Sprintf("running=%v", g.Thread != nil)
+		case api.GoroutineSystem:
+			key = fmt.Sprintf("system=%v", g.System())
+		}
+		if len(groupMembers[key]) < group.MaxGroupMembers {
+			groupMembers[key] = append(groupMembers[key], g)
+		}
+		totals[key]++
+	}
+
+	keys := make([]string, 0, len(groupMembers))
+	for key := range groupMembers {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	tooManyGroups := false
+	gsout := []*proc.G{}
+	groups := []api.GoroutineGroup{}
+	for _, key := range keys {
+		if group.MaxGroups > 0 && len(groups) >= group.MaxGroups {
+			tooManyGroups = true
+			break
+		}
+		groups = append(groups, api.GoroutineGroup{Name: key, Offset: len(gsout), Count: len(groupMembers[key]), Total: totals[key]})
+		gsout = append(gsout, groupMembers[key]...)
+	}
+	return gsout, groups, tooManyGroups
+}
+
 // Stacktrace returns a list of Stackframes for the given goroutine. The
 // length of the returned list will be min(stack_len, depth).
 // If 'full' is true, then local vars, function args, etc will be returned as well.

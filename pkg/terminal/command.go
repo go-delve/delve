@@ -220,18 +220,62 @@ If called with the linespec argument it will delete all the breakpoints matching
 toggle <breakpoint name or id>`},
 		{aliases: []string{"goroutines", "grs"}, group: goroutineCmds, cmdFn: goroutines, helpMsg: `List program goroutines.
 
-	goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location)|-s (start location)] [-t (stack trace)] [-l (labels)]
+	goroutines [-u|-r|-g|-s] [-t [depth]] [-l] [-with loc expr] [-without loc expr] [-group argument]
 
 Print out info for every goroutine. The flag controls what information is shown along with each goroutine:
 
-	-u	displays location of topmost stackframe in user code
+	-u	displays location of topmost stackframe in user code (default)
 	-r	displays location of topmost stackframe (including frames inside private runtime functions)
 	-g	displays location of go instruction that created the goroutine
 	-s	displays location of the start function
-	-t	displays goroutine's stacktrace
+	-t	displays goroutine's stacktrace (an optional depth value can be specified, default: 10)
 	-l	displays goroutine's labels
 
-If no flag is specified the default is -u.`},
+If no flag is specified the default is -u.
+
+FILTERING
+
+If -with or -without are specified only goroutines that match the given condition are returned.
+
+To only display goroutines where the specified location contains (or does not contain, for -without and -wo) expr as a substring, use:
+
+	goroutines -with (userloc|curloc|goloc|startloc) expr
+	goroutines -w (userloc|curloc|goloc|startloc) expr
+	goroutines -without (userloc|curloc|goloc|startloc) expr
+	goroutines -wo (userloc|curloc|goloc|startloc) expr
+	
+To only display goroutines that have (or do not have) the specified label key and value, use:
+	
+
+	goroutines -with label key=value
+	goroutines -without label key=value
+	
+To only display goroutines that have (or do not have) the specified label key, use:
+
+	goroutines -with label key
+	goroutines -without label key
+	
+To only display goroutines that are running (or are not running) on a OS thread, use:
+
+
+	goroutines -with running
+	goroutines -without running
+	
+To only display goroutines that are classified as system (or non-system), use:
+
+	goroutines -with system
+	goroutines -without system
+
+GROUPING
+
+	goroutines -group (userloc|curloc|goloc|startloc|running|system)
+
+Groups goroutines by the given location, running status or system classification, up to 5 goroutines per group will be displayed as well as the total number of goroutines in the group.
+
+	goroutines -group label key
+
+Groups goroutines by the value of the label with the specified key.
+`},
 		{aliases: []string{"goroutine", "gr"}, group: goroutineCmds, allowedPrefixes: onPrefix, cmdFn: c.goroutine, helpMsg: `Shows or changes current goroutine
 
 	goroutine
@@ -717,67 +761,116 @@ const (
 	printGoroutinesLabels
 )
 
-func printGoroutines(t *Term, gs []*api.Goroutine, fgl formatGoroutineLoc, flags printGoroutinesFlags, state *api.DebuggerState) error {
+func printGoroutines(t *Term, indent string, gs []*api.Goroutine, fgl formatGoroutineLoc, flags printGoroutinesFlags, depth int, state *api.DebuggerState) error {
 	for _, g := range gs {
-		prefix := "  "
+		prefix := indent + "  "
 		if state.SelectedGoroutine != nil && g.ID == state.SelectedGoroutine.ID {
-			prefix = "* "
+			prefix = indent + "* "
 		}
 		fmt.Printf("%sGoroutine %s\n", prefix, t.formatGoroutine(g, fgl))
 		if flags&printGoroutinesLabels != 0 {
-			writeGoroutineLabels(os.Stdout, g, "\t")
+			writeGoroutineLabels(os.Stdout, g, indent+"\t")
 		}
 		if flags&printGoroutinesStack != 0 {
-			stack, err := t.client.Stacktrace(g.ID, 10, 0, nil)
+			stack, err := t.client.Stacktrace(g.ID, depth, 0, nil)
 			if err != nil {
 				return err
 			}
-			printStack(t, os.Stdout, stack, "\t", false)
+			printStack(t, os.Stdout, stack, indent+"\t", false)
 		}
 	}
 	return nil
 }
 
+const (
+	maxGroupMembers    = 5
+	maxGoroutineGroups = 50
+)
+
 func goroutines(t *Term, ctx callContext, argstr string) error {
 	args := strings.Split(argstr, " ")
+	var filters []api.ListGoroutinesFilter
+	var group api.GoroutineGroupingOptions
 	var fgl = fglUserCurrent
 	var flags printGoroutinesFlags
+	var depth = 10
+	var batchSize = goroutineBatchSize
 
-	switch len(args) {
-	case 0:
-		// nothing to do
-	case 1, 2:
-		for _, arg := range args {
-			switch arg {
-			case "-u":
-				fgl = fglUserCurrent
-			case "-r":
-				fgl = fglRuntimeCurrent
-			case "-g":
-				fgl = fglGo
-			case "-s":
-				fgl = fglStart
-			case "-t":
-				flags |= printGoroutinesStack
-			case "-l":
-				flags |= printGoroutinesLabels
-			case "":
-				// nothing to do
-			default:
-				return fmt.Errorf("wrong argument: '%s'", arg)
+	group.MaxGroupMembers = maxGroupMembers
+	group.MaxGroups = maxGoroutineGroups
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "-u":
+			fgl = fglUserCurrent
+		case "-r":
+			fgl = fglRuntimeCurrent
+		case "-g":
+			fgl = fglGo
+		case "-s":
+			fgl = fglStart
+		case "-l":
+			flags |= printGoroutinesLabels
+		case "-t":
+			flags |= printGoroutinesStack
+			// optional depth argument
+			if i+1 < len(args) && len(args[i+1]) > 0 {
+				n, err := strconv.Atoi(args[i+1])
+				if err == nil {
+					depth = n
+					i++
+				}
 			}
+
+		case "-w", "-with":
+			filter, err := readGoroutinesFilter(args, &i)
+			if err != nil {
+				return err
+			}
+			filters = append(filters, *filter)
+
+		case "-wo", "-without":
+			filter, err := readGoroutinesFilter(args, &i)
+			if err != nil {
+				return err
+			}
+			filter.Negated = true
+			filters = append(filters, *filter)
+
+		case "-group":
+			var err error
+			group.GroupBy, err = readGoroutinesFilterKind(args, i+1)
+			if err != nil {
+				return err
+			}
+			i++
+			if group.GroupBy == api.GoroutineLabel {
+				if i+1 >= len(args) {
+					return errors.New("-group label must be followed by an argument")
+				}
+				group.GroupByKey = args[i+1]
+				i++
+			}
+			batchSize = 0 // grouping only works well if run on all goroutines
+
+		case "":
+			// nothing to do
+		default:
+			return fmt.Errorf("wrong argument: '%s'", arg)
 		}
-	default:
-		return fmt.Errorf("too many arguments")
 	}
+
 	state, err := t.client.GetState()
 	if err != nil {
 		return err
 	}
 	var (
-		start = 0
-		gslen = 0
-		gs    []*api.Goroutine
+		start         = 0
+		gslen         = 0
+		gs            []*api.Goroutine
+		groups        []api.GoroutineGroup
+		tooManyGroups bool
 	)
 	t.longCommandStart()
 	for start >= 0 {
@@ -785,19 +878,84 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 			fmt.Printf("interrupted\n")
 			return nil
 		}
-		gs, start, err = t.client.ListGoroutines(start, goroutineBatchSize)
+		gs, groups, start, tooManyGroups, err = t.client.ListGoroutinesWithFilter(start, batchSize, filters, &group)
 		if err != nil {
 			return err
 		}
-		sort.Sort(byGoroutineID(gs))
-		err = printGoroutines(t, gs, fgl, flags, state)
-		if err != nil {
-			return err
+		if len(groups) > 0 {
+			for i := range groups {
+				fmt.Printf("%s\n", groups[i].Name)
+				err = printGoroutines(t, "\t", gs[groups[i].Offset:][:groups[i].Count], fgl, flags, depth, state)
+				if err != nil {
+					return err
+				}
+				fmt.Printf("\tTotal: %d\n", groups[i].Total)
+				if i != len(groups)-1 {
+					fmt.Printf("\n")
+				}
+			}
+			if tooManyGroups {
+				fmt.Printf("Too many groups\n")
+			}
+		} else {
+			sort.Sort(byGoroutineID(gs))
+			err = printGoroutines(t, "", gs, fgl, flags, depth, state)
+			if err != nil {
+				return err
+			}
+			gslen += len(gs)
 		}
-		gslen += len(gs)
 	}
-	fmt.Printf("[%d goroutines]\n", gslen)
+	if gslen > 0 {
+		fmt.Printf("[%d goroutines]\n", gslen)
+	}
 	return nil
+}
+
+func readGoroutinesFilterKind(args []string, i int) (api.GoroutineField, error) {
+	if i >= len(args) {
+		return api.GoroutineFieldNone, fmt.Errorf("%s must be followed by an argument", args[i-1])
+	}
+
+	switch args[i] {
+	case "curloc":
+		return api.GoroutineCurrentLoc, nil
+	case "userloc":
+		return api.GoroutineUserLoc, nil
+	case "goloc":
+		return api.GoroutineGoLoc, nil
+	case "startloc":
+		return api.GoroutineStartLoc, nil
+	case "label":
+		return api.GoroutineLabel, nil
+	case "running":
+		return api.GoroutineRunning, nil
+	case "system":
+		return api.GoroutineSystem, nil
+	default:
+		return api.GoroutineFieldNone, fmt.Errorf("unrecognized argument to %s %s", args[i-1], args[i])
+	}
+}
+
+func readGoroutinesFilter(args []string, pi *int) (*api.ListGoroutinesFilter, error) {
+	r := new(api.ListGoroutinesFilter)
+	var err error
+	r.Kind, err = readGoroutinesFilterKind(args, *pi+1)
+	if err != nil {
+		return nil, err
+	}
+	*pi++
+	switch r.Kind {
+	case api.GoroutineRunning, api.GoroutineSystem:
+		return r, nil
+	}
+	if *pi+1 >= len(args) {
+		return nil, fmt.Errorf("%s %s needs to be followed by an expression", args[*pi-1], args[*pi])
+	}
+	r.Arg = args[*pi+1]
+	*pi++
+
+	return r, nil
 }
 
 func selectedGID(state *api.DebuggerState) int {

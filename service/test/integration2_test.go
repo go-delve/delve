@@ -2391,3 +2391,29 @@ func TestStopServerWithClosedListener(t *testing.T) {
 	listener.Close()
 	time.Sleep(1 * time.Second) // give time to server to panic
 }
+
+func TestGoroutinesGrouping(t *testing.T) {
+	// Tests the goroutine grouping and filtering feature
+	withTestClient2("goroutinegroup", t, func(c service.Client) {
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue")
+		_, ggrp, _, _, err := c.ListGoroutinesWithFilter(0, 0, nil, &api.GoroutineGroupingOptions{GroupBy: api.GoroutineLabel, GroupByKey: "name", MaxGroupMembers: 5, MaxGroups: 10})
+		assertNoError(err, t, "ListGoroutinesWithFilter (group by label)")
+		t.Logf("%#v\n", ggrp)
+		if len(ggrp) < 5 {
+			t.Errorf("not enough groups %d\n", len(ggrp))
+		}
+		var unnamedCount int
+		for i := range ggrp {
+			if ggrp[i].Name == "name=" {
+				unnamedCount = ggrp[i].Total
+				break
+			}
+		}
+		gs, _, _, _, err := c.ListGoroutinesWithFilter(0, 0, []api.ListGoroutinesFilter{{Kind: api.GoroutineLabel, Arg: "name="}}, nil)
+		assertNoError(err, t, "ListGoroutinesWithFilter (filter unnamed)")
+		if len(gs) != unnamedCount {
+			t.Errorf("wrong number of goroutines returned by filter: %d (expected %d)\n", len(gs), unnamedCount)
+		}
+	})
+}
