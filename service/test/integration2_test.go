@@ -1095,6 +1095,16 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 	})
 }
 
+func assertErrorOrExited(s *api.DebuggerState, err error, t *testing.T, reason string) {
+	if err != nil {
+		return
+	}
+	if s != nil && s.Exited {
+		return
+	}
+	t.Fatalf("%s (no error and no exited status)", reason)
+}
+
 func TestIssue355(t *testing.T) {
 	// After the target process has terminated should return an error but not crash
 	protest.AllowRecording(t)
@@ -1116,18 +1126,18 @@ func TestIssue355(t *testing.T) {
 		state = <-ch
 		assertError(state.Err, t, "Continue()")
 
-		_, err = c.Next()
-		assertError(err, t, "Next()")
-		_, err = c.Step()
-		assertError(err, t, "Step()")
-		_, err = c.StepInstruction()
-		assertError(err, t, "StepInstruction()")
-		_, err = c.SwitchThread(tid)
-		assertError(err, t, "SwitchThread()")
-		_, err = c.SwitchGoroutine(gid)
-		assertError(err, t, "SwitchGoroutine()")
-		_, err = c.Halt()
-		assertError(err, t, "Halt()")
+		s, err := c.Next()
+		assertErrorOrExited(s, err, t, "Next()")
+		s, err = c.Step()
+		assertErrorOrExited(s, err, t, "Step()")
+		s, err = c.StepInstruction()
+		assertErrorOrExited(s, err, t, "StepInstruction()")
+		s, err = c.SwitchThread(tid)
+		assertErrorOrExited(s, err, t, "SwitchThread()")
+		s, err = c.SwitchGoroutine(gid)
+		assertErrorOrExited(s, err, t, "SwitchGoroutine()")
+		s, err = c.Halt()
+		assertErrorOrExited(s, err, t, "Halt()")
 		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: -1})
 		if testBackend != "rr" {
 			assertError(err, t, "CreateBreakpoint()")
@@ -2276,4 +2286,35 @@ func TestDetachLeaveRunning(t *testing.T) {
 	client := rpc2.NewClientFromConn(clientConn)
 	defer server.Stop()
 	assertNoError(client.Detach(false), t, "Detach")
+}
+
+func assertNoDuplicateBreakpoints(t *testing.T, c service.Client) {
+	t.Helper()
+	bps, _ := c.ListBreakpoints()
+	seen := make(map[int]bool)
+	for _, bp := range bps {
+		t.Logf("%#v\n", bp)
+		if seen[bp.ID] {
+			t.Fatalf("duplicate breakpoint ID %d", bp.ID)
+		}
+		seen[bp.ID] = true
+	}
+}
+
+func TestToggleBreakpointRestart(t *testing.T) {
+	// Checks that breakpoints IDs do not overlap after Restart if there are disabled breakpoints.
+	withTestClient2("testtoggle", t, func(c service.Client) {
+		bp1, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1, Name: "firstbreakpoint"})
+		assertNoError(err, t, "CreateBreakpoint 1")
+		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 2, Name: "secondbreakpoint"})
+		assertNoError(err, t, "CreateBreakpoint 2")
+		_, err = c.ToggleBreakpoint(bp1.ID)
+		assertNoError(err, t, "ToggleBreakpoint")
+		_, err = c.Restart(false)
+		assertNoError(err, t, "Restart")
+		assertNoDuplicateBreakpoints(t, c)
+		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 3, Name: "thirdbreakpoint"})
+		assertNoError(err, t, "CreateBreakpoint 3")
+		assertNoDuplicateBreakpoints(t, c)
+	})
 }
