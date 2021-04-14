@@ -2538,13 +2538,14 @@ func TestLaunchDebugRequest(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stderr = w
 
+	tmpBin := "__tmpBin"
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		// We reuse the harness that builds, but ignore the built binary,
 		// only relying on the source to be built in response to LaunchRequest.
 		runDebugSession(t, client, "launch", func() {
 			wd, _ := os.Getwd()
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "debug", "program": fixture.Source, "output": filepath.Join(wd, "__mybin")})
+				"mode": "debug", "program": fixture.Source, "output": filepath.Join(wd, tmpBin)})
 		}, fixture.Source)
 	})
 	// Wait for the test to finish to capture all stderr
@@ -2565,6 +2566,12 @@ func TestLaunchDebugRequest(t *testing.T) {
 		// to avoid any test flakiness we guard against this failure here as well.
 		if runtime.GOOS != "windows" || !strings.Contains(rmErr, "Access is denied") {
 			t.Fatalf("Binary removal failure:\n%s\n", rmErr)
+		}
+	} else {
+		// We did not get a removal error, but did we even try to remove before exiting?
+		// Confirm that the binary did get removed.
+		if _, err := os.Stat(tmpBin); err == nil || os.IsExist(err) {
+			t.Fatal("Failed to remove temp binary", tmpBin)
 		}
 	}
 }
