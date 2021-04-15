@@ -71,8 +71,6 @@ type Server struct {
 	reader *bufio.Reader
 	// log is used for structured logging.
 	log *logrus.Entry
-	// binaryToRemove is the compiled binary to be removed on disconnect.
-	binaryToRemove string
 	// stackFrameHandles maps frames of each goroutine to unique ids across all goroutines.
 	// Reset at every stop.
 	stackFrameHandles *handlesMap
@@ -86,11 +84,12 @@ type Server struct {
 	// mu synchronizes access to objects set on start-up (from run goroutine)
 	// and stopped on teardown (from main goroutine)
 	mu sync.Mutex
-
 	// conn is the accepted client connection.
 	conn net.Conn
 	// debugger is the underlying debugger service.
 	debugger *debugger.Debugger
+	// binaryToRemove is the temp compiled binary to be removed on disconnect (if any).
+	binaryToRemove string
 	// noDebugProcess is set for the noDebug launch process.
 	noDebugProcess *exec.Cmd
 }
@@ -185,6 +184,11 @@ func (s *Server) Stop() {
 	} else {
 		s.stopNoDebugProcess()
 	}
+	// The binary is no longer in use by the debugger. It is safe to remove it.
+	if s.binaryToRemove != "" {
+		gobuild.Remove(s.binaryToRemove)
+		s.binaryToRemove = ""
+	}
 	s.log.Debug("DAP server stopped")
 }
 
@@ -211,10 +215,9 @@ func (s *Server) triggerServerStop() {
 		close(s.config.DisconnectChan)
 		s.config.DisconnectChan = nil
 	}
-	if s.binaryToRemove != "" {
-		gobuild.Remove(s.binaryToRemove)
-		s.binaryToRemove = ""
-	}
+	// There should be no logic here after the stop-server
+	// signal that might cause everything to shutdown before this
+	// logic gets executed.
 }
 
 // Run launches a new goroutine where it accepts a client connection
@@ -538,7 +541,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			return
 		}
 		program = debugbinary
+		s.mu.Lock()
 		s.binaryToRemove = debugbinary
+		s.mu.Unlock()
 	}
 
 	s.setLaunchAttachArgs(request)
