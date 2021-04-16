@@ -1666,7 +1666,7 @@ func (s *Server) doCommand(command string) {
 	} else {
 		s.log.Error("runtime error: ", err)
 		stopped.Body.Reason = "exception"
-		stopped.Body.Description = "Paused on error"
+		stopped.Body.Description = "Paused on runtime error"
 		stopped.Body.Text = err.Error()
 		// Special case in the spirit of https://github.com/microsoft/vscode-go/issues/1903
 		if stopped.Body.Text == "bad access" {
