@@ -499,7 +499,7 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsReadMemoryRequest = false
 	response.Body.SupportsDisassembleRequest = false
 	response.Body.SupportsCancelRequest = false
-	//
+	// These requests are not yet supported by vscode-go
 	response.Body.SupportsExceptionInfoRequest = true
 	s.send(response)
 }
@@ -1556,7 +1556,7 @@ func (s *Server) onCancelRequest(request *dap.CancelRequest) {
 }
 
 // onExceptionInfoRequest handles 'exceptionInfo' requests.
-// Capability 'supportsExceptionInfo' is set 'initialize' response.
+// Capability 'supportsExceptionInfoRequest' is set 'initialize' response.
 func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 	goroutineID := request.Arguments.ThreadId
 	body := s.exceptions[goroutineID]
