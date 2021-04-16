@@ -29,7 +29,6 @@ import (
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/terminal"
-	"github.com/go-delve/delve/pkg/terminal/colorize"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
@@ -865,17 +864,6 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 			threads[i].Name = fmt.Sprintf("%s[Go %d] %s%s", selected, g.ID, fnName(&loc), thread)
 			threads[i].Id = g.ID
 		}
-
-		// If there is no selectedGoRoutine, we also return the current thread
-		// since there is important information to be obtained from the stack
-		// trace. If there was a fatalthrow, this thread's stack trace will have
-		// the necessary info.
-		if state.SelectedGoroutine == nil {
-			threads = append(threads, dap.Thread{
-				Id:   state.CurrentThread.ID,
-				Name: fmt.Sprintf("* %s Thread %d", state.CurrentThread.Function.Name_, state.CurrentThread.ID),
-			})
-		}
 	}
 
 	response := &dap.ThreadsResponse{
@@ -989,18 +977,7 @@ type stackFrame struct {
 // This is a mandatory request to support.
 func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 	goroutineID := request.Arguments.ThreadId
-	state, err := s.debugger.State( /*nowait*/ true)
-	if err != nil {
-		s.sendErrorResponse(request.Request, UnableToDisplayThreads, "Unable to display threads", err.Error())
-		return
-	}
-
-	var frames []proc.Stackframe
-	if state.CurrentThread.ID == goroutineID {
-		frames, err = s.debugger.StacktraceThread(goroutineID, s.args.stackTraceDepth)
-	} else {
-		frames, err = s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
-	}
+	frames, err := s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToProduceStackTrace, "Unable to produce stack trace", err.Error())
 		return
@@ -1531,19 +1508,7 @@ func (s *Server) onCancelRequest(request *dap.CancelRequest) {
 func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) { // TODO V0
 	goroutineID := request.Arguments.ThreadId
 	body := s.exceptions[goroutineID]
-
-	state, err := s.debugger.State( /*nowait*/ true)
-	if err != nil {
-		s.sendErrorResponse(request.Request, UnableToDisplayThreads, "Unable to display threads", err.Error())
-		return
-	}
-
-	var frames []proc.Stackframe
-	if state.CurrentThread.ID == goroutineID {
-		frames, err = s.debugger.StacktraceThread(goroutineID, s.args.stackTraceDepth)
-	} else {
-		frames, err = s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
-	}
+	frames, err := s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
 	if err == nil && len(frames) > 0 {
 		apiFrames, err := s.debugger.ConvertStacktrace(frames, nil)
 		if err == nil {
@@ -1664,9 +1629,6 @@ func (s *Server) doCommand(command string) {
 		// add a thread, which is the currently selected thread.
 		stopped.Body.ThreadId = stoppedGoroutineID(state)
 
-		if stopped.Body.ThreadId == 0 {
-			stopped.Body.ThreadId = state.CurrentThread.ID
-		}
 		switch s.debugger.StopReason() {
 		case proc.StopNextFinished:
 			stopped.Body.Reason = "step"
@@ -1679,40 +1641,9 @@ func (s *Server) doCommand(command string) {
 				stopped.Body.Reason = "exception"
 				stopped.Body.Description = "Paused on fatal error"
 				if stopped.Body.ThreadId > 0 {
-					// TODO(suzmue): Fix this up to get the fatalthrow reason.
-					var frames []proc.Stackframe
-					if state.CurrentThread.ID == stopped.Body.ThreadId {
-						frames, err = s.debugger.StacktraceThread(stopped.Body.ThreadId, s.args.stackTraceDepth)
-					} else {
-						frames, err = s.debugger.Stacktrace(stopped.Body.ThreadId, s.args.stackTraceDepth, 0)
-					}
-					if err == nil && len(frames) > 0 {
-						stackFrames, err := s.debugger.ConvertStacktrace(frames, nil)
-						if err == nil {
-							frame := stackFrames[2]
-
-							filename := frame.File
-
-							file, _ := os.Open(filename)
-							// if err != nil {
-							// 	return err
-							// }
-							defer file.Close()
-
-							line := frame.Line
-							var buf bytes.Buffer
-
-							colorize.Print(&buf, filename, file, line, line+1, line, nil)
-
-							lineText := buf.String()
-							startIdx := strings.Index(lineText, "(")
-							endIdx := strings.Index(lineText, ")")
-
-							s.exceptions[stopped.Body.ThreadId] = dap.ExceptionInfoResponseBody{
-								ExceptionId: "fatal error",
-								Description: lineText[startIdx+2 : endIdx-1],
-							}
-						}
+					// TODO(suzmue): add the reason for fatalthrow.
+					s.exceptions[stopped.Body.ThreadId] = dap.ExceptionInfoResponseBody{
+						ExceptionId: "fatal error",
 					}
 				}
 			case proc.UnrecoveredPanic:

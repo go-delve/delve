@@ -1413,25 +1413,6 @@ func (d *Debugger) Stacktrace(goroutineID, depth int, opts api.StacktraceOptions
 	}
 }
 
-// StacktraceThread returns a list of Stackframes for the given goroutine. The
-// length of the returned list will be min(stack_len, depth).
-func (d *Debugger) StacktraceThread(threadID, depth int) ([]proc.Stackframe, error) {
-	d.targetMutex.Lock()
-	defer d.targetMutex.Unlock()
-
-	if _, err := d.target.Valid(); err != nil {
-		return nil, err
-	}
-
-	threads := d.target.ThreadList()
-	for _, thread := range threads {
-		if thread.ThreadID() == threadID {
-			return proc.ThreadStacktrace(thread, depth)
-		}
-	}
-	return nil, fmt.Errorf("unable to find thread id %d", threadID)
-}
-
 // Ancestors returns the stacktraces for the ancestors of a goroutine.
 func (d *Debugger) Ancestors(goroutineID, numAncestors, depth int) ([]api.Ancestor, error) {
 	d.targetMutex.Lock()
