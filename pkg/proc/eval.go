@@ -64,13 +64,9 @@ func ConvertEvalScope(dbp *Target, gid, frame, deferCall int) (*EvalScope, error
 		return nil, err
 	}
 	ct := dbp.CurrentThread()
-	var g *G
-	var err error
-	if gid != ct.ThreadID() {
-		g, err = FindGoroutine(dbp, gid)
-		if err != nil {
-			return nil, err
-		}
+	g, err := FindGoroutine(dbp, gid)
+	if err != nil {
+		return nil, err
 	}
 	if g == nil {
 		return ThreadScope(ct)
