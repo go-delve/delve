@@ -1699,6 +1699,95 @@ func TestSetBreakpoint(t *testing.T) {
 	})
 }
 
+// TestLaunchSubstitutePath sets a breakpoint using a path
+// that does not exist and expects the substitutePath attribute
+// in the launch configuration to take care of the mapping.
+func TestLaunchSubstitutePath(t *testing.T) {
+	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
+		substitutePathTestHelper(t, fixture, client, "launch", map[string]interface{}{"mode": "exec", "program": fixture.Path})
+	})
+}
+
+// TestAttachSubstitutePath sets a breakpoint using a path
+// that does not exist and expects the substitutePath attribute
+// in the launch configuration to take care of the mapping.
+func TestAttachSubstitutePath(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.SkipNow()
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("test skipped on windows, see https://delve.beta.teamcity.com/project/Delve_windows for details")
+	}
+	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
+		cmd := execFixture(t, fixture)
+
+		substitutePathTestHelper(t, fixture, client, "attach", map[string]interface{}{"mode": "local", "processId": cmd.Process.Pid})
+	})
+}
+
+func substitutePathTestHelper(t *testing.T, fixture protest.Fixture, client *daptest.Client, request string, launchAttachConfig map[string]interface{}) {
+	t.Helper()
+	nonexistentDir := filepath.Join(string(filepath.Separator), "path", "that", "does", "not", "exist")
+	if runtime.GOOS == "windows" {
+		nonexistentDir = "C:" + nonexistentDir
+	}
+
+	launchAttachConfig["stopOnEntry"] = false
+	// The rules in 'substitutePath' will be applied as follows:
+	// - mapping paths from client to server:
+	//		The first rule["from"] to match a prefix of 'path' will be applied:
+	//			strings.Replace(path, rule["from"], rule["to"], 1)
+	// - mapping paths from server to client:
+	//		The first rule["to"] to match a prefix of 'path' will be applied:
+	//			strings.Replace(path, rule["to"], rule["from"], 1)
+	launchAttachConfig["substitutePath"] = []map[string]string{
+		{"from": nonexistentDir, "to": filepath.Dir(fixture.Source)},
+		// Since the path mappings are ordered, when converting from client path to
+		// server path, this mapping will not apply, because nonexistentDir appears in
+		// an earlier rule.
+		{"from": nonexistentDir, "to": "this_is_a_bad_path"},
+		// Since the path mappings are ordered, when converting from server path to
+		// client path, this mapping will not apply, because filepath.Dir(fixture.Source)
+		// appears in an earlier rule.
+		{"from": "this_is_a_bad_path", "to": filepath.Dir(fixture.Source)},
+	}
+
+	runDebugSessionWithBPs(t, client, request,
+		func() {
+			switch request {
+			case "attach":
+				client.AttachRequest(launchAttachConfig)
+			case "launch":
+				client.LaunchRequestWithArgs(launchAttachConfig)
+			default:
+				t.Fatalf("invalid request: %s", request)
+			}
+		},
+		// Set breakpoints
+		filepath.Join(nonexistentDir, "loopprog.go"), []int{8},
+		[]onBreakpoint{{
+
+			execute: func() {
+				handleStop(t, client, 1, "main.loop", 8)
+			},
+			disconnect: true,
+		}})
+}
+
+// execFixture runs the binary fixture.Path and hooks up stdout and stderr
+// to os.Stdout and os.Stderr.
+func execFixture(t *testing.T, fixture protest.Fixture) *exec.Cmd {
+	t.Helper()
+	// TODO(polina): do I need to sanity check testBackend and runtime.GOOS?
+	cmd := exec.Command(fixture.Path)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	return cmd
+}
+
 // TestWorkingDir executes to a breakpoint and tests that the specified
 // working directory is the one used to run the program.
 func TestWorkingDir(t *testing.T) {
@@ -2698,13 +2787,7 @@ func TestAttachRequest(t *testing.T) {
 	}
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		// Start the program to attach to
-		// TODO(polina): do I need to sanity check testBackend and runtime.GOOS?
-		cmd := exec.Command(fixture.Path)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Start(); err != nil {
-			t.Fatal(err)
-		}
+		cmd := execFixture(t, fixture)
 
 		runDebugSessionWithBPs(t, client, "attach",
 			// Attach
@@ -2930,6 +3013,21 @@ func TestBadLaunchRequests(t *testing.T) {
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: 'buildFlags' attribute '123' in debug configuration is not a string.")
 
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": 123})
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: 'substitutePath' attribute '123' in debug configuration is not a []{'from': string, 'to': string}")
+
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{123}})
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: 'substitutePath' attribute '[123]' in debug configuration is not a []{'from': string, 'to': string}")
+
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{map[string]interface{}{"to": "path2"}}})
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: 'substitutePath' attribute '[map[to:path2]]' in debug configuration is not a []{'from': string, 'to': string}")
+
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{map[string]interface{}{"from": "path1", "to": 123}}})
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: 'substitutePath' attribute '[map[from:path1 to:123]]' in debug configuration is not a []{'from': string, 'to': string}")
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "wd": 123})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: 'wd' attribute '123' in debug configuration is not a string.")
