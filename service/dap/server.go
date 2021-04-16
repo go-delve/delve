@@ -71,7 +71,8 @@ type Server struct {
 	variableHandles *variablesHandlesMap
 	// args tracks special settings for handling debug session requests.
 	args launchAttachArgs
-	// error
+	// exceptions maps goroutineIds to info about the last exception that occured.
+	// Reset at every stop.
 	exceptions map[int]dap.ExceptionInfoResponseBody
 
 	mu sync.Mutex
@@ -426,7 +427,6 @@ func (s *Server) handleRequest(request dap.Message) {
 		s.sendUnsupportedErrorResponse(request.Request)
 	case *dap.ExceptionInfoRequest:
 		// Optional (capability ‘supportsExceptionInfoRequest’)
-		// TODO: does this request make sense for delve?
 		s.onExceptionInfoRequest(request)
 	case *dap.LoadedSourcesRequest:
 		// Optional (capability ‘supportsLoadedSourcesRequest’)
@@ -1555,9 +1555,9 @@ func (s *Server) onCancelRequest(request *dap.CancelRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onExceptionInfoRequest sends a not-yet-implemented error response.
-// Capability 'supportsSetVariable' is not set 'initialize' response.
-func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) { // TODO V0
+// onExceptionInfoRequest handles 'exceptionInfo' requests.
+// Capability 'supportsExceptionInfo' is set 'initialize' response.
+func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 	goroutineID := request.Arguments.ThreadId
 	body := s.exceptions[goroutineID]
 	frames, err := s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
