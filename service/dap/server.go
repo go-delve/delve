@@ -1601,6 +1601,7 @@ Unable to propagate EXC_BAD_ACCESS signal to target process and panic (see https
 func (s *Server) resetHandlesForStop() {
 	s.stackFrameHandles.reset()
 	s.variableHandles.reset()
+	s.exceptions = map[int]dap.ExceptionInfoResponseBody{}
 }
 
 // doCommand runs a debugger command until it stops on

@@ -571,8 +571,10 @@ func (c *Client) CompletionsRequest() {
 }
 
 // ExceptionInfoRequest sends a 'exceptionInfo' request.
-func (c *Client) ExceptionInfoRequest() {
-	c.send(&dap.ExceptionInfoRequest{Request: *c.newRequest("exceptionInfo")})
+func (c *Client) ExceptionInfoRequest(threadID int) {
+	request := &dap.ExceptionInfoRequest{Request: *c.newRequest("exceptionInfo")}
+	request.Arguments.ThreadId = threadID
+	c.send(request)
 }
 
 // LoadedSourcesRequest sends a 'loadedSources' request.
