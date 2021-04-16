@@ -1566,7 +1566,7 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 		if err == nil {
 			var buf bytes.Buffer
 			terminal.PrintStack(func(path string) string {
-				return path
+				return s.toClientPath(path)
 			}, &buf, apiFrames, "\t", false)
 
 			body.Details.StackTrace = "Stack:\n" + buf.String()
