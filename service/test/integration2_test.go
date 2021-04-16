@@ -2318,3 +2318,34 @@ func TestToggleBreakpointRestart(t *testing.T) {
 		assertNoDuplicateBreakpoints(t, c)
 	})
 }
+
+func TestStopServerWithClosedListener(t *testing.T) {
+	// Checks that the error erturned by listener.Accept() is ignored when we
+	// are trying to shutdown. See issue #1633.
+	if testBackend == "rr" || buildMode == "pie" {
+		t.Skip("N/A")
+	}
+	listener, err := net.Listen("tcp", "localhost:0")
+	assertNoError(err, t, "listener")
+	fixture := protest.BuildFixture("math", 0)
+	server := rpccommon.NewServer(&service.Config{
+		Listener:           listener,
+		AcceptMulti:        false,
+		APIVersion:         2,
+		CheckLocalConnUser: true,
+		DisconnectChan:     make(chan struct{}),
+		ProcessArgs:        []string{fixture.Path},
+		Debugger: debugger.Config{
+			WorkingDir:  ".",
+			Backend:     "default",
+			Foreground:  false,
+			BuildFlags:  "",
+			ExecuteKind: debugger.ExecutingGeneratedFile,
+		},
+	})
+	assertNoError(server.Run(), t, "blah")
+	time.Sleep(1 * time.Second) // let server start
+	server.Stop()
+	listener.Close()
+	time.Sleep(1 * time.Second) // give time to server to panic
+}

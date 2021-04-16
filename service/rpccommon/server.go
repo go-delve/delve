@@ -89,8 +89,8 @@ func NewServer(config *service.Config) *ServerImpl {
 
 // Stop stops the JSON-RPC server.
 func (s *ServerImpl) Stop() error {
+	close(s.stopChan)
 	if s.config.AcceptMulti {
-		close(s.stopChan)
 		s.listener.Close()
 	}
 	kill := s.config.Debugger.AttachPid == 0
