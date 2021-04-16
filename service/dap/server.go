@@ -10,6 +10,7 @@ package dap
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"go/constant"
@@ -27,6 +28,8 @@ import (
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/terminal"
+	"github.com/go-delve/delve/pkg/terminal/colorize"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
@@ -68,6 +71,8 @@ type Server struct {
 	variableHandles *variablesHandlesMap
 	// args tracks special settings for handling debug session requests.
 	args launchAttachArgs
+	// error
+	exceptions map[int]dap.ExceptionInfoResponseBody
 
 	mu sync.Mutex
 	// binaryToRemove is the temp compiled binary to be removed on disconnect (if any).
@@ -121,6 +126,7 @@ func NewServer(config *service.Config) *Server {
 		stackFrameHandles: newHandlesMap(),
 		variableHandles:   newVariablesHandlesMap(),
 		args:              defaultArgs,
+		exceptions:        map[int]dap.ExceptionInfoResponseBody{},
 	}
 }
 
@@ -384,7 +390,7 @@ func (s *Server) handleRequest(request dap.Message) {
 	case *dap.ExceptionInfoRequest:
 		// Optional (capability ‘supportsExceptionInfoRequest’)
 		// TODO: does this request make sense for delve?
-		s.sendUnsupportedErrorResponse(request.Request)
+		s.onExceptionInfoRequest(request)
 	case *dap.LoadedSourcesRequest:
 		// Optional (capability ‘supportsLoadedSourcesRequest’)
 		// TODO: implement this request in V1
@@ -456,6 +462,8 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsReadMemoryRequest = false
 	response.Body.SupportsDisassembleRequest = false
 	response.Body.SupportsCancelRequest = false
+	//
+	response.Body.SupportsExceptionInfoRequest = true
 	s.send(response)
 }
 
@@ -857,7 +865,19 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 			threads[i].Name = fmt.Sprintf("%s[Go %d] %s%s", selected, g.ID, fnName(&loc), thread)
 			threads[i].Id = g.ID
 		}
+
+		// If there is no selectedGoRoutine, we also return the current thread
+		// since there is important information to be obtained from the stack
+		// trace. If there was a fatalthrow, this thread's stack trace will have
+		// the necessary info.
+		if state.SelectedGoroutine == nil {
+			threads = append(threads, dap.Thread{
+				Id:   state.CurrentThread.ID,
+				Name: fmt.Sprintf("* %s Thread %d", state.CurrentThread.Function.Name_, state.CurrentThread.ID),
+			})
+		}
 	}
+
 	response := &dap.ThreadsResponse{
 		Response: *newResponse(request.Request),
 		Body:     dap.ThreadsResponseBody{Threads: threads},
@@ -969,7 +989,18 @@ type stackFrame struct {
 // This is a mandatory request to support.
 func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 	goroutineID := request.Arguments.ThreadId
-	frames, err := s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
+	state, err := s.debugger.State( /*nowait*/ true)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToDisplayThreads, "Unable to display threads", err.Error())
+		return
+	}
+
+	var frames []proc.Stackframe
+	if state.CurrentThread.ID == goroutineID {
+		frames, err = s.debugger.StacktraceThread(goroutineID, s.args.stackTraceDepth)
+	} else {
+		frames, err = s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
+	}
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToProduceStackTrace, "Unable to produce stack trace", err.Error())
 		return
@@ -1495,6 +1526,42 @@ func (s *Server) onCancelRequest(request *dap.CancelRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
+// onExceptionInfoRequest sends a not-yet-implemented error response.
+// Capability 'supportsSetVariable' is not set 'initialize' response.
+func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) { // TODO V0
+	goroutineID := request.Arguments.ThreadId
+	body := s.exceptions[goroutineID]
+
+	state, err := s.debugger.State( /*nowait*/ true)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToDisplayThreads, "Unable to display threads", err.Error())
+		return
+	}
+
+	var frames []proc.Stackframe
+	if state.CurrentThread.ID == goroutineID {
+		frames, err = s.debugger.StacktraceThread(goroutineID, s.args.stackTraceDepth)
+	} else {
+		frames, err = s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
+	}
+	if err == nil && len(frames) > 0 {
+		apiFrames, err := s.debugger.ConvertStacktrace(frames, nil)
+		if err == nil {
+			var buf bytes.Buffer
+			terminal.PrintStack(func(path string) string {
+				return path
+			}, &buf, apiFrames, "\t", false)
+
+			body.Details.StackTrace = "Stack:\n" + buf.String()
+		}
+	}
+	response := &dap.ExceptionInfoResponse{
+		Response: *newResponse(request.Request),
+		Body:     body,
+	}
+	s.send(response)
+}
+
 // sendErrorResponseWithOpts offers configuration options.
 //   showUser - if true, the error will be shown to the user (e.g. via a visible pop-up)
 func (s *Server) sendErrorResponseWithOpts(request dap.Request, id int, summary, details string, showUser bool) {
@@ -1591,8 +1658,15 @@ func (s *Server) doCommand(command string) {
 	stopped.Body.AllThreadsStopped = true
 
 	if err == nil {
+		// TODO(suzmue): If stopped.Body.ThreadId is not a valid goroutine
+		// then the stopped reason does not show up anywhere in the
+		// vscode ui. When there is no selected goroutine, we can instead
+		// add a thread, which is the currently selected thread.
 		stopped.Body.ThreadId = stoppedGoroutineID(state)
 
+		if stopped.Body.ThreadId == 0 {
+			stopped.Body.ThreadId = state.CurrentThread.ID
+		}
 		switch s.debugger.StopReason() {
 		case proc.StopNextFinished:
 			stopped.Body.Reason = "step"
@@ -1602,15 +1676,66 @@ func (s *Server) doCommand(command string) {
 		if state.CurrentThread != nil && state.CurrentThread.Breakpoint != nil {
 			switch state.CurrentThread.Breakpoint.Name {
 			case proc.FatalThrow:
-				stopped.Body.Reason = "fatal error"
+				stopped.Body.Reason = "exception"
+				stopped.Body.Description = "Paused on fatal error"
+				if stopped.Body.ThreadId > 0 {
+					// TODO(suzmue): Fix this up to get the fatalthrow reason.
+					var frames []proc.Stackframe
+					if state.CurrentThread.ID == stopped.Body.ThreadId {
+						frames, err = s.debugger.StacktraceThread(stopped.Body.ThreadId, s.args.stackTraceDepth)
+					} else {
+						frames, err = s.debugger.Stacktrace(stopped.Body.ThreadId, s.args.stackTraceDepth, 0)
+					}
+					if err == nil && len(frames) > 0 {
+						stackFrames, err := s.debugger.ConvertStacktrace(frames, nil)
+						if err == nil {
+							frame := stackFrames[2]
+
+							filename := frame.File
+
+							file, _ := os.Open(filename)
+							// if err != nil {
+							// 	return err
+							// }
+							defer file.Close()
+
+							line := frame.Line
+							var buf bytes.Buffer
+
+							colorize.Print(&buf, filename, file, line, line+1, line, nil)
+
+							lineText := buf.String()
+							startIdx := strings.Index(lineText, "(")
+							endIdx := strings.Index(lineText, ")")
+
+							s.exceptions[stopped.Body.ThreadId] = dap.ExceptionInfoResponseBody{
+								ExceptionId: "fatal error",
+								Description: lineText[startIdx+2 : endIdx-1],
+							}
+						}
+					}
+				}
 			case proc.UnrecoveredPanic:
-				stopped.Body.Reason = "panic"
+				stopped.Body.Reason = "exception"
+				stopped.Body.Description = "Paused on panic"
+				if stopped.Body.ThreadId > 0 {
+					body := dap.ExceptionInfoResponseBody{
+						ExceptionId: "panic",
+					}
+					// Attempt to get the value of the panic message.
+					exprVar, err := s.debugger.EvalVariableInScope(stopped.Body.ThreadId, 0, 0, "(*msgs).arg.(data)", DefaultLoadConfig)
+					if err == nil {
+						body.Description = exprVar.Value.String()
+					}
+					s.exceptions[stopped.Body.ThreadId] = body
+				}
 			}
 		}
 		s.send(stopped)
 	} else {
 		s.log.Error("runtime error: ", err)
-		stopped.Body.Reason = "runtime error"
+		stopped.Body.Reason = "exception"
+		stopped.Body.Description = "Paused on error"
 		stopped.Body.Text = err.Error()
 		// Special case in the spirit of https://github.com/microsoft/vscode-go/issues/1903
 		if stopped.Body.Text == "bad access" {
@@ -1619,6 +1744,10 @@ func (s *Server) doCommand(command string) {
 		state, err := s.debugger.State( /*nowait*/ true)
 		if err == nil {
 			stopped.Body.ThreadId = stoppedGoroutineID(state)
+			s.exceptions[stopped.Body.ThreadId] = dap.ExceptionInfoResponseBody{
+				ExceptionId: "runtime error",
+				Description: stopped.Body.Text,
+			}
 		}
 		s.send(stopped)
 
