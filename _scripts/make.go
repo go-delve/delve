@@ -232,7 +232,7 @@ func canMacnative() bool {
 	}
 
 	typesHeader := "/usr/include/sys/types.h"
-	if major > 10 || minor >= 15 {
+	if major >= 11 || (major == 10 && minor >= 15) {
 		typesHeader = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/sys/types.h"
 	}
 	_, err = os.Stat(typesHeader)
