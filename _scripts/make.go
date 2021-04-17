@@ -221,13 +221,18 @@ func canMacnative() bool {
 	}
 
 	macOSVersion := strings.Split(strings.TrimSpace(getoutput("/usr/bin/sw_vers", "-productVersion")), ".")
+
+	major, err := strconv.ParseInt(macOSVersion[0], 10, 64)
+	if err != nil {
+		return false
+	}
 	minor, err := strconv.ParseInt(macOSVersion[1], 10, 64)
 	if err != nil {
 		return false
 	}
 
 	typesHeader := "/usr/include/sys/types.h"
-	if minor >= 15 {
+	if major > 10 || minor >= 15 {
 		typesHeader = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/sys/types.h"
 	}
 	_, err = os.Stat(typesHeader)
