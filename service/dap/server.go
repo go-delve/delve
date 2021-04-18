@@ -11,8 +11,10 @@ package dap
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"go/constant"
+	"go/parser"
 	"io"
 	"net"
 	"os"
@@ -106,7 +108,6 @@ type Server struct {
 	// mu synchronizes access to objects set on start-up (from run goroutine)
 	// and stopped on teardown (from main goroutine)
 	mu sync.Mutex
-
 	// conn is the accepted client connection.
 	conn net.Conn
 	// debugger is the underlying debugger service.
@@ -630,8 +631,7 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsConditionalBreakpoints = true
 	response.Body.SupportsDelayedStackTraceLoading = true
 	response.Body.SupportTerminateDebuggee = true
-	// TODO(polina): support this to match vscode-go functionality
-	response.Body.SupportsSetVariable = false
+	response.Body.SupportsSetVariable = true
 	// TODO(polina): support these requests in addition to vscode-go feature parity
 	response.Body.SupportsTerminateRequest = false
 	response.Body.SupportsRestartRequest = false
@@ -1361,11 +1361,27 @@ func slicePtrVarToSliceVar(vars []*proc.Variable) []proc.Variable {
 // onVariablesRequest handles 'variables' requests.
 // This is a mandatory request to support.
 func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
-	v, ok := s.variableHandles.get(request.Arguments.VariablesReference)
+	ref := request.Arguments.VariablesReference
+	v, ok := s.variableHandles.get(ref)
 	if !ok {
-		s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", fmt.Sprintf("unknown reference %d", request.Arguments.VariablesReference))
+		s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", fmt.Sprintf("unknown reference %d", ref))
 		return
 	}
+
+	children, err := s.childrenOfVariables(v)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", err.Error())
+		return
+	}
+	response := &dap.VariablesResponse{
+		Response: *newResponse(request.Request),
+		Body:     dap.VariablesResponseBody{Variables: children},
+	}
+	s.send(response)
+}
+
+// childrenOfVariables returns the children of the referenced variable.
+func (s *Server) childrenOfVariables(v *fullyQualifiedVariable) ([]dap.Variable, error) {
 	children := make([]dap.Variable, 0)
 
 	switch v.Kind {
@@ -1475,11 +1491,7 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 			}
 		}
 	}
-	response := &dap.VariablesResponse{
-		Response: *newResponse(request.Request),
-		Body:     dap.VariablesResponseBody{Variables: children},
-	}
-	s.send(response)
+	return children, nil
 }
 
 // convertVariable converts proc.Variable to dap.Variable value and reference
@@ -1643,6 +1655,8 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 	return
 }
 
+var errTerminated = errors.New("terminated")
+
 // onEvaluateRequest handles 'evalute' requests.
 // This is a mandatory request to support.
 // Support the following expressions:
@@ -1669,69 +1683,15 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 	response := &dap.EvaluateResponse{Response: *newResponse(request.Request)}
 	isCall, err := regexp.MatchString(`^\s*call\s+\S+`, request.Arguments.Expression)
 	if err == nil && isCall { // call {expression}
-		// This call might be evaluated in the context of the frame that is not topmost
-		// if the editor is set to view the variables for one of the parent frames.
-		// If the call expression refers to any of these variables, unlike regular
-		// expressions, it will evaluate them in the context of the topmost frame,
-		// and the user will get an unexpected result or an unexpected symbol error.
-		// We prevent this but disallowing any frames other than topmost.
-		if frame > 0 {
-			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", "call is only supported with topmost stack frame", showErrorToUser)
-			return
-		}
-		stateBeforeCall, err := s.debugger.State( /*nowait*/ true)
-		if err != nil {
-			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
-			return
-		}
-		// TODO(polina): since call will resume execution of all goroutines,
-		// we should do this asynchronously and send a continued event to the
-		// editor, followed by a stop event when the call completes.
-		state, err := s.debugger.Command(&api.DebuggerCommand{
-			Name:                 api.Call,
-			ReturnInfoLoadConfig: api.LoadConfigFromProc(&DefaultLoadConfig),
-			Expr:                 strings.Replace(request.Arguments.Expression, "call ", "", 1),
-			UnsafeCall:           false,
-			GoroutineID:          goid,
-		}, nil)
-		if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
+		expr := strings.Replace(request.Arguments.Expression, "call ", "", 1)
+		retVars, err := s.doCall(goid, frame, expr)
+		if errors.Is(err, errTerminated) {
 			e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
 			s.send(e)
 			return
 		}
 		if err != nil {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
-			return
-		}
-		// After the call is done, the goroutine where we injected the call should
-		// return to the original stopped line with return values. However,
-		// it is not guaranteed to be selected due to the possibility of the
-		// of simultaenous breakpoints. Therefore, we check all threads.
-		var retVars []*proc.Variable
-		for _, t := range state.Threads {
-			if t.GoroutineID == stateBeforeCall.SelectedGoroutine.ID &&
-				t.Line == stateBeforeCall.SelectedGoroutine.CurrentLoc.Line && t.CallReturn {
-				// The call completed. Get the return values.
-				retVars, err = s.debugger.FindThreadReturnValues(t.ID, DefaultLoadConfig)
-				if err != nil {
-					s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
-					return
-				}
-				break
-			}
-		}
-		if retVars == nil {
-			// The call got interrupted by a stop (e.g. breakpoint in injected
-			// function call or in another goroutine)
-			s.resetHandlesForStoppedEvent()
-			stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
-			stopped.Body.AllThreadsStopped = true
-			stopped.Body.ThreadId = stoppedGoroutineID(state)
-			stopped.Body.Reason = s.debugger.StopReason().String()
-			s.send(stopped)
-			// TODO(polina): once this is asynchronous, we could wait to reply until the user
-			// continues, call ends, original stop point is hit and return values are available.
-			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", "call stopped", showErrorToUser)
 			return
 		}
 		// The call completed and we can reply with its return values (if any)
@@ -1751,6 +1711,10 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 		}
 	} else { // {expression}
 		exprVar, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, DefaultLoadConfig)
+		if errors.Is(err, errTerminated) {
+			e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
+			s.send(e)
+		}
 		if err != nil {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 			return
@@ -1761,6 +1725,85 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef}
 	}
 	s.send(response)
+}
+
+func (s *Server) doCall(goid, frame int, expr string) ([]*proc.Variable, error) {
+	// This call might be evaluated in the context of the frame that is not topmost
+	// if the editor is set to view the variables for one of the parent frames.
+	// If the call expression refers to any of these variables, unlike regular
+	// expressions, it will evaluate them in the context of the topmost frame,
+	// and the user will get an unexpected result or an unexpected symbol error.
+	// We prevent this but disallowing any frames other than topmost.
+	if frame > 0 {
+		return nil, fmt.Errorf("call is only supported with topmost stack frame")
+	}
+	stateBeforeCall, err := s.debugger.State( /*nowait*/ true)
+	if err != nil {
+		return nil, err
+	}
+	state, err := s.debugger.Command(&api.DebuggerCommand{
+		Name:                 api.Call,
+		ReturnInfoLoadConfig: api.LoadConfigFromProc(&DefaultLoadConfig),
+		Expr:                 expr,
+		UnsafeCall:           false,
+		GoroutineID:          goid,
+	}, nil)
+	if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
+		return nil, errTerminated
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Call commands used for variable assignments do not return a value.
+	// In go '=' is not an operator. Check if go/parser complains.
+	// If the above Call command passed but the expression is not a valid
+	// go expression, we just handled an assignment, and there is no
+	// return value for assignment.
+	if _, err := parser.ParseExpr(expr); err != nil {
+		s.resetHandlesForStoppedEvent()
+		s.sendStoppedEvent(state)
+		return nil, nil
+	}
+
+	// After the call is done, the goroutine where we injected the call should
+	// return to the original stopped line with return values. However,
+	// it is not guaranteed to be selected due to the possibility of the
+	// of simultaenous breakpoints. Therefore, we check all threads.
+	var retVars []*proc.Variable
+	for _, t := range state.Threads {
+		if t.GoroutineID == stateBeforeCall.SelectedGoroutine.ID &&
+			t.Line == stateBeforeCall.SelectedGoroutine.CurrentLoc.Line && t.CallReturn {
+			// The call completed. Get the return values.
+			retVars, err = s.debugger.FindThreadReturnValues(t.ID, DefaultLoadConfig)
+			if err != nil {
+				return nil, err
+			}
+			break
+		}
+	}
+	// TODO(hyangah): call resetHandlesForStop&sendStoppedEvent unconditionally.
+	// States like variable objects aren't guaranteed to survive a continue
+	// and may be updated.
+
+	if retVars == nil {
+		// The call got interrupted by a stop (e.g. breakpoint in injected
+		// function call or in another goroutine).
+		s.resetHandlesForStoppedEvent()
+		s.sendStoppedEvent(state)
+		// TODO(polina): once this is asynchronous, we could wait to reply until the user
+		// continues, call ends, original stop point is hit and return values are available.
+		return nil, errors.New("call stopped")
+	}
+	return retVars, nil
+}
+
+func (s *Server) sendStoppedEvent(state *api.DebuggerState) {
+	stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
+	stopped.Body.AllThreadsStopped = true
+	stopped.Body.ThreadId = stoppedGoroutineID(state)
+	stopped.Body.Reason = s.debugger.StopReason().String()
+	s.send(stopped)
 }
 
 // onTerminateRequest sends a not-yet-implemented error response.
@@ -1793,10 +1836,105 @@ func (s *Server) onReverseContinueRequest(request *dap.ReverseContinueRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onSetVariableRequest sends a not-yet-implemented error response.
-// Capability 'supportsSetVariable' is not set 'initialize' response.
-func (s *Server) onSetVariableRequest(request *dap.SetVariableRequest) { // TODO V0
-	s.sendNotYetImplementedErrorResponse(request.Request)
+func variableByName(v *proc.Variable, name string) (*proc.Variable, bool) {
+	if v == nil {
+		return nil, false
+	}
+	if v.Name == name {
+		return v, true
+	}
+
+	for _, child := range v.Children {
+		if child.Name == name {
+			return &child, true
+		}
+		// No need to look into the child's children - DAP clients are expected
+		// to provide the variable reference number, so the name is the name of
+		// the variable's direct child.
+	}
+	return nil, false
+}
+
+// nameToEvaluateName finds the variable of the specified name
+// from the given variable and its children, and returns its
+// evaluateName.
+func (s *Server) nameToEvaluateName(v *fullyQualifiedVariable, name string) (string, error) {
+	if v.Name == name && !v.isScope { // will this ever happen?
+		return v.fullyQualifiedNameOrExpr, nil
+	}
+	children, err := s.childrenOfVariables(v)
+	if err != nil {
+		return "", err
+	}
+	evaluateName := name
+	for _, c := range children {
+		if c.Name == name {
+			if c.EvaluateName != "" {
+				evaluateName = c.EvaluateName
+			}
+			break
+		}
+	}
+	return evaluateName, nil
+}
+
+// onSetVariableRequest handles 'setVariable' requests.
+func (s *Server) onSetVariableRequest(request *dap.SetVariableRequest) {
+	arg := request.Arguments
+
+	v, ok := s.variableHandles.get(arg.VariablesReference)
+	if !ok {
+		s.sendErrorResponse(request.Request, UnableToSetVariable, "Unable to lookup variable", fmt.Sprintf("unknown reference %d", request.Arguments.VariablesReference))
+		return
+	}
+	// We may need to translate the name to the evaluateName if the name
+	// refers to a field or element of a variable.
+	// https://github.com/microsoft/vscode/issues/120774
+	// Compute the evaluateName by running the same code the onVariablesRequest
+	// handler uses.
+	evaluateName, err := s.nameToEvaluateName(v, arg.Name)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToSetVariable, "Unable to set variable", err.Error())
+		return
+	}
+	named, ok := variableByName(v.Variable, arg.Name)
+	if !ok {
+		s.sendErrorResponse(request.Request, UnableToSetVariable, "Unable to lookup variable", fmt.Sprintf("unknown reference %d", request.Arguments.VariablesReference))
+		return
+	}
+	// Assume the top-most frame & the current goroutine.
+	// It is not clear if DAP allows SetVariable requests
+	// for variables or memory location not visible from the scode.
+	goid, frame := -1, 0
+
+	switch named.Kind {
+	case reflect.String:
+		if _, err := s.doCall(goid, frame, fmt.Sprintf("%v=%v", evaluateName, arg.Value)); err != nil {
+			s.sendErrorResponse(request.Request, UnableToSetVariable, "Unable to set variable", err.Error())
+			return
+		}
+	default:
+		if err := s.debugger.SetVariableInScope(goid, frame, 0, evaluateName, arg.Value); err != nil {
+			s.sendErrorResponse(request.Request, UnableToSetVariable, "Unable to set variable", err.Error())
+			return
+		}
+		// Send StoppedEvent so the client retrieve threads/scopes again.
+		// This is the easiest/safest way to update the cached variable
+		// in variablesHandle map but this can be expensive
+		// if there are many goroutines and variables in the scope.
+		// For the string case that was handled by s.doCall, s.doCall
+		// triggers StoppedEvent.
+		state, err := s.debugger.State(true)
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToSetVariable, "Unable to reset state after setting variable", err.Error())
+		}
+		s.resetHandlesForStoppedEvent()
+		s.sendStoppedEvent(state)
+	}
+	// update the variable stored in variableHandles
+	response := &dap.SetVariableResponse{Response: *newResponse(request.Request)}
+	response.Body.Value = arg.Value
+	s.send(response)
 }
 
 // onSetExpression sends a not-yet-implemented error response.

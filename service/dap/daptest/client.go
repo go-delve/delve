@@ -345,8 +345,12 @@ func (c *Client) ReverseContinueRequest() {
 }
 
 // SetVariableRequest sends a 'setVariable' request.
-func (c *Client) SetVariableRequest() {
-	c.send(&dap.ReverseContinueRequest{Request: *c.newRequest("setVariable")})
+func (c *Client) SetVariableRequest(variablesRef int, name, value string) {
+	request := &dap.SetVariableRequest{Request: *c.newRequest("setVariable")}
+	request.Arguments.VariablesReference = variablesRef
+	request.Arguments.Name = name
+	request.Arguments.Value = value
+	c.send(request)
 }
 
 // RestartFrameRequest sends a 'restartFrame' request.

@@ -2290,7 +2290,17 @@ func TestEvaluateCallRequest(t *testing.T) {
 					if erres.Body.Error.Format != "Unable to evaluate expression: not enough arguments" {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: not enough arguments\"", erres)
 					}
-					// Call can exit
+					// Assignment - expect a stopped event, but without an error.
+					client.EvaluateRequest("call one = two", 1000, "this context will be ignored")
+					stopped := client.ExpectStoppedEvent(t)
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "", noChildren)
+					handleStop(t, client, stopped.Body.ThreadId, "main.main", -1)
+					// Check one=two was applied.
+					client.EvaluateRequest("one", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "2", noChildren)
+					// Call can exit.
 					client.EvaluateRequest("call callexit()", 1000, "this context will be ignored")
 				},
 				terminated: true,
@@ -3036,6 +3046,117 @@ func TestUnupportedCommandResponses(t *testing.T) {
 	})
 }
 
+func TestSetVariable(t *testing.T) {
+	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+				})
+			},
+			// Stop at the breakpoints set within the program, and after returning from barfoo (67)
+			fixture.Source, []int{67},
+			[]onBreakpoint{{
+				execute: func() {
+					startLineno := 66
+					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
+						// Go1.15 on windows inserts a NOP after the call to
+						// runtime.Breakpoint and marks it same line as the
+						// runtime.Breakpoint call, making this flaky, so skip the line check.
+						startLineno = -1
+					}
+
+					handleStop(t, client, 1, "main.foobar", startLineno)
+
+					// We need 'args' to perform
+					//   VariableRequest -> SetVariableRequest -> VariableRequest.
+
+					client.VariablesRequest(1000)
+					args := client.ExpectVariablesResponse(t)
+
+					// Test: set string 'baz'
+					expectVarExact(t, args, 0, "baz", "baz", `"bazburzum"`, noChildren)
+					client.SetVariableRequest(1000, "baz", `"BazBurZum"`)
+
+					// After setting a variable, StoppedEvent must be sent
+					// so the client can request new stack trace, and scopes info.
+					client.ExpectStoppedEvent(t)
+
+					if got, want := client.ExpectSetVariableResponse(t), `"BazBurZum"`; got.Success != true || got.Body.Value != `"BazBurZum"` {
+						t.Errorf("got %#v, want {Success=true, Body.Value=%q}", got, want)
+					}
+
+					handleStop(t, client, 1, "main.foobar", startLineno)
+
+					// Check 'baz' was changed.
+					client.VariablesRequest(1000)
+					args2 := client.ExpectVariablesResponse(t)
+					expectVarExact(t, args2, 0, "baz", "baz", `"BazBurZum"`, noChildren)
+
+					// Test: try to set composite type 'bar'. That is not implemented.
+					expectVarExact(t, args2, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, hasChildren)
+					client.SetVariableRequest(1000, "bar", `main.FooBar {Baz: 42, Bur: "ipsum"}`)
+					if got, want := client.ExpectErrorResponse(t), "*ast.CompositeLit not implemented"; !strings.Contains(got.Body.Error.Format, want) {
+						t.Errorf("got %#v, want error string containing %q", got, want)
+					}
+
+					// Test: set integer 'a2'
+					client.VariablesRequest(1001)
+					locals := client.ExpectVariablesResponse(t)
+					expectVarExact(t, locals, -1, "a2", "a2", "6", noChildren)
+					client.SetVariableRequest(1001, "a2", "42")
+					client.ExpectStoppedEvent(t)
+
+					if got, want := client.ExpectSetVariableResponse(t), "42"; got.Success != true || got.Body.Value != "42" {
+						t.Errorf("got %#v, want {Success=true, Body.Value=%q}", got, want)
+					}
+
+					handleStop(t, client, 1, "main.foobar", startLineno)
+
+					client.VariablesRequest(1001)
+					locals2 := client.ExpectVariablesResponse(t)
+					expectVarExact(t, locals2, -1, "a2", "a2", "42", noChildren)
+
+					// Test: set integer 'a2' with an invalid value.
+					client.SetVariableRequest(1001, "a2", "false")
+					if got, want := client.ExpectErrorResponse(t), "can not convert false constant to int"; !strings.Contains(got.Body.Error.Format, want) {
+						t.Errorf("got %#v, want error string containing %q", got, want)
+					}
+				},
+			}, {
+				// Stop at second breakpoint.
+				execute: func() {
+					handleStop(t, client, 1, "main.barfoo", -1)
+					// Test: set string 'a1' in main.barfoo.
+					// This shouldn't affect 'a1' in main.foobar -
+					// we will check that in the next breakpoint.
+					client.VariablesRequest(1001)
+					locals := client.ExpectVariablesResponse(t)
+					expectVarExact(t, locals, -1, "a1", "a1", `"bur"`, noChildren)
+
+					client.SetVariableRequest(1001, "a1", `"burburbur"`)
+					client.ExpectStoppedEvent(t)
+					client.ExpectSetVariableResponse(t)
+					handleStop(t, client, 1, "main.barfoo", -1)
+					client.VariablesRequest(1001)
+					locals2 := client.ExpectVariablesResponse(t)
+					expectVarExact(t, locals2, -1, "a1", "a1", `"burburbur"`, noChildren)
+					// We will check a1 in main.foobar isn't affected from the next breakpoint.
+				},
+			}, {
+				// line 67 - after returning from main.barfoo.
+				execute: func() {
+					handleStop(t, client, 1, "main.foobar", -1)
+					client.VariablesRequest(1001)
+					locals := client.ExpectVariablesResponse(t)
+					// a1 of main.foobar was not affected.
+					expectVarExact(t, locals, -1, "a1", "a1", `"foofoofoofoofoofoo"`, noChildren)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
 func TestRequiredNotYetImplementedResponses(t *testing.T) {
 	var got *dap.ErrorResponse
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
@@ -3081,9 +3202,6 @@ func TestOptionalNotYetImplementedResponses(t *testing.T) {
 
 		client.ReverseContinueRequest()
 		expectNotYetImplemented("reverseContinue")
-
-		client.SetVariableRequest()
-		expectNotYetImplemented("setVariable")
 
 		client.SetExpressionRequest()
 		expectNotYetImplemented("setExpression")
