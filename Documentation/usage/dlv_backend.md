@@ -8,7 +8,7 @@ Help about the --backend flag.
 The --backend flag specifies which backend should be used, possible values
 are:
 
-	default		Uses lldb on macOS (amd64), native everywhere else.
+	default		Uses lldb on macOS, native everywhere else.
 	native		Native backend.
 	lldb		Uses lldb-server or debugserver.
 	rr		Uses mozilla rr (https://github.com/mozilla/rr).

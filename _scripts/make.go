@@ -216,7 +216,7 @@ func installedExecutablePath() string {
 // i.e. cgo enabled and the legacy SDK headers:
 // https://forums.developer.apple.com/thread/104296
 func canMacnative() bool {
-	if !(runtime.GOOS == "darwin" && runtime.GOARCH == "amd64") {
+	if !(runtime.GOOS == "darwin") {
 		return false
 	}
 	if strings.TrimSpace(getoutput("go", "env", "CGO_ENABLED")) != "1" {
