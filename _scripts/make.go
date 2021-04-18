@@ -342,11 +342,8 @@ func testStandard() {
 
 	testCmdIntl("all", "", "default", "normal")
 	if inpath("lldb-server") && !goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
-		// do not test lldb on darwin/arm64 for now
-		if !(runtime.GOOS == "darwin" && runtime.GOARCH == "arm64") {
-			fmt.Println("\nTesting LLDB backend")
-			testCmdIntl("basic", "", "lldb", "normal")
-		}
+		fmt.Println("\nTesting LLDB backend")
+		testCmdIntl("basic", "", "lldb", "normal")
 	}
 	if inpath("rr") {
 		fmt.Println("\nTesting RR backend")
@@ -424,7 +421,7 @@ func testSetToPackages(testSet string) []string {
 }
 
 func defaultBackend() string {
-	if runtime.GOOS == "darwin" && runtime.GOARCH == "amd64" {
+	if runtime.GOOS == "darwin" {
 		return "lldb"
 	}
 
