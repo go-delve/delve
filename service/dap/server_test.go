@@ -3046,7 +3046,102 @@ func TestUnupportedCommandResponses(t *testing.T) {
 	})
 }
 
+// TestSetVariable tests SetVariable functionality that doesn't involve function calls.
 func TestSetVariable(t *testing.T) {
+	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+				})
+			},
+			// Stop at the breakpoints set within the program, and after returning from barfoo (67)
+			fixture.Source, []int{67},
+			[]onBreakpoint{{
+				execute: func() {
+					startLineno := 66
+					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
+						// Go1.15 on windows inserts a NOP after the call to
+						// runtime.Breakpoint and marks it same line as the
+						// runtime.Breakpoint call, making this flaky, so skip the line check.
+						startLineno = -1
+					}
+
+					handleStop(t, client, 1, "main.foobar", startLineno)
+
+					// We need 'args' to perform
+					//   VariableRequest -> SetVariableRequest -> VariableRequest.
+
+					client.VariablesRequest(1000)
+					args := client.ExpectVariablesResponse(t)
+
+					// Test: try to set composite type 'bar'. That is not implemented.
+					expectVarExact(t, args, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, hasChildren)
+					client.SetVariableRequest(1000, "bar", `main.FooBar {Baz: 42, Bur: "ipsum"}`)
+					if got, want := client.ExpectErrorResponse(t), "*ast.CompositeLit not implemented"; !strings.Contains(got.Body.Error.Format, want) {
+						t.Errorf("got %#v, want error string containing %q", got, want)
+					}
+
+					// Test: try to set integer type of composite type var 'bar'. That is supported.
+					barRef := expectVarExact(t, args, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, hasChildren)
+					client.SetVariableRequest(barRef, "Baz", "42")
+					client.ExpectStoppedEvent(t)
+					if got, want := client.ExpectSetVariableResponse(t), "42"; got.Success != true || got.Body.Value != want {
+						t.Errorf("got %#v, want {Success=true, Body.Value=%q", got, want)
+					}
+					handleStop(t, client, 1, "main.foobar", startLineno)
+
+					client.VariablesRequest(1000)
+					args2 := client.ExpectVariablesResponse(t)
+					expectVarExact(t, args2, 1, "bar", "bar", `main.FooBar {Baz: 42, Bur: "lorem"}`, hasChildren)
+
+					// Test: set integer 'a2'
+					client.VariablesRequest(1001)
+					locals := client.ExpectVariablesResponse(t)
+					expectVarExact(t, locals, -1, "a2", "a2", "6", noChildren)
+					client.SetVariableRequest(1001, "a2", "42")
+					client.ExpectStoppedEvent(t)
+
+					if got, want := client.ExpectSetVariableResponse(t), "42"; got.Success != true || got.Body.Value != want {
+						t.Errorf("got %#v, want {Success=true, Body.Value=%q}", got, want)
+					}
+
+					handleStop(t, client, 1, "main.foobar", startLineno)
+
+					client.VariablesRequest(1001)
+					locals2 := client.ExpectVariablesResponse(t)
+					expectVarExact(t, locals2, -1, "a2", "a2", "42", noChildren)
+
+					// Test: set integer 'a2' with an invalid value.
+					client.SetVariableRequest(1001, "a2", "false")
+					if got, want := client.ExpectErrorResponse(t), "can not convert false constant to int"; !strings.Contains(got.Body.Error.Format, want) {
+						t.Errorf("got %#v, want error string containing %q", got, want)
+					}
+
+					// Test: set global integer 'p1'.
+					client.VariablesRequest(1002)
+					globals := client.ExpectVariablesResponse(t)
+					expectVarExact(t, globals, -1, "p1", "main.p1", "10", noChildren)
+					client.SetVariableRequest(1002, "p1", "-10")
+					client.ExpectStoppedEvent(t)
+					if got, want := client.ExpectSetVariableResponse(t), "-10"; got.Success != true || got.Body.Value != want {
+						t.Errorf("got %#v, want {Success=true, Body.Value=%q", got, want)
+					}
+
+					handleStop(t, client, 1, "main.foobar", startLineno)
+
+					client.VariablesRequest(1002)
+					globals2 := client.ExpectVariablesResponse(t)
+					expectVarExact(t, globals2, -1, "p1", "main.p1", "-10", noChildren)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+// TestSetVariableWithCall tests SetVariable functionality that may require function calls support.
+func TestSetVariableWithCall(t *testing.T) {
+	protest.MustSupportFunctionCalls(t, testBackend)
 	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			func() {
@@ -3082,7 +3177,7 @@ func TestSetVariable(t *testing.T) {
 					// so the client can request new stack trace, and scopes info.
 					client.ExpectStoppedEvent(t)
 
-					if got, want := client.ExpectSetVariableResponse(t), `"BazBurZum"`; got.Success != true || got.Body.Value != `"BazBurZum"` {
+					if got, want := client.ExpectSetVariableResponse(t), `"BazBurZum"`; got.Success != true || got.Body.Value != want {
 						t.Errorf("got %#v, want {Success=true, Body.Value=%q}", got, want)
 					}
 
@@ -3093,12 +3188,18 @@ func TestSetVariable(t *testing.T) {
 					args2 := client.ExpectVariablesResponse(t)
 					expectVarExact(t, args2, 0, "baz", "baz", `"BazBurZum"`, noChildren)
 
-					// Test: try to set composite type 'bar'. That is not implemented.
-					expectVarExact(t, args2, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, hasChildren)
-					client.SetVariableRequest(1000, "bar", `main.FooBar {Baz: 42, Bur: "ipsum"}`)
-					if got, want := client.ExpectErrorResponse(t), "*ast.CompositeLit not implemented"; !strings.Contains(got.Body.Error.Format, want) {
-						t.Errorf("got %#v, want error string containing %q", got, want)
+					// Test: try to set string type of composite type var 'bar'. That is supported.
+					barRef := expectVarExact(t, args, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, hasChildren)
+					client.SetVariableRequest(barRef, "Bur", `"ipsum"`)
+					client.ExpectStoppedEvent(t)
+					if got, want := client.ExpectSetVariableResponse(t), `"ipsum"`; got.Success != true || got.Body.Value != want {
+						t.Errorf("got %#v, want {Success=true, Body.Value=%q", got, want)
 					}
+					handleStop(t, client, 1, "main.foobar", startLineno)
+
+					client.VariablesRequest(1000)
+					args3 := client.ExpectVariablesResponse(t)
+					expectVarExact(t, args3, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "ipsum"}`, hasChildren)
 
 					// Test: set integer 'a2'
 					client.VariablesRequest(1001)
@@ -3107,7 +3208,7 @@ func TestSetVariable(t *testing.T) {
 					client.SetVariableRequest(1001, "a2", "42")
 					client.ExpectStoppedEvent(t)
 
-					if got, want := client.ExpectSetVariableResponse(t), "42"; got.Success != true || got.Body.Value != "42" {
+					if got, want := client.ExpectSetVariableResponse(t), "42"; got.Success != true || got.Body.Value != want {
 						t.Errorf("got %#v, want {Success=true, Body.Value=%q}", got, want)
 					}
 
@@ -3122,6 +3223,8 @@ func TestSetVariable(t *testing.T) {
 					if got, want := client.ExpectErrorResponse(t), "can not convert false constant to int"; !strings.Contains(got.Body.Error.Format, want) {
 						t.Errorf("got %#v, want error string containing %q", got, want)
 					}
+
+					// TODO(hyangah): test with an integer field of a global variable (struct type).
 				},
 			}, {
 				// Stop at second breakpoint.
