@@ -730,7 +730,7 @@ func (p *gdbProcess) Valid() (bool, error) {
 		return false, proc.ErrProcessDetached
 	}
 	if p.exited {
-		return false, &proc.ErrProcessExited{Pid: p.Pid()}
+		return false, proc.ErrProcessExited{Pid: p.Pid()}
 	}
 	return true, nil
 }
@@ -780,7 +780,7 @@ const (
 // a breakpoint is hit or signal is received.
 func (p *gdbProcess) ContinueOnce() (proc.Thread, proc.StopReason, error) {
 	if p.exited {
-		return nil, proc.StopExited, &proc.ErrProcessExited{Pid: p.conn.pid}
+		return nil, proc.StopExited, proc.ErrProcessExited{Pid: p.conn.pid}
 	}
 
 	if p.conn.direction == proc.Forward {
