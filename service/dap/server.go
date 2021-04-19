@@ -1083,8 +1083,6 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 	}
 	locScope := &fullyQualifiedVariable{&proc.Variable{Name: "Locals", Children: slicePtrVarToSliceVar(locals)}, "", true}
 
-	// TODO(polina): Annotate shadowed variables
-
 	scopeArgs := dap.Scope{Name: argScope.Name, VariablesReference: s.variableHandles.create(argScope)}
 	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
 	scopes := []dap.Scope{scopeArgs, scopeLocals}
@@ -1237,8 +1235,18 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 				cfqname = "" // complex children are not struct fields and can't be accessed directly
 			}
 			cvalue, cvarref := s.convertVariable(c, cfqname)
+
+			// Annotate any shadowed variables to "(name)" in order
+			// to distinguish from non-shadowed variables.
+			// TODO(suzmue): should we support a special evaluateName syntax that
+			// can access shadowed variables?
+			name := c.Name
+			if c.Flags&proc.VariableShadowed == proc.VariableShadowed {
+				name = fmt.Sprintf("(%s)", name)
+			}
+
 			children[i] = dap.Variable{
-				Name:               c.Name,
+				Name:               name,
 				EvaluateName:       cfqname,
 				Value:              cvalue,
 				VariablesReference: cvarref,
