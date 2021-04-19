@@ -3068,8 +3068,14 @@ func TestBadAttachRequest(t *testing.T) {
 }
 
 func TestBadInitializeRequest(t *testing.T) {
-	expectFailedToInitialize := func(response *dap.ErrorResponse) {
+	runInitializeTest := func(args dap.InitializeRequestArguments, err string) {
 		t.Helper()
+		// Only one initialize request is allowed, so use a new server
+		// for each test.
+		client, teardown := startDapServer(t)
+		defer teardown()
+		client.InitializeRequestWithArgs(args)
+		response := client.ExpectErrorResponse(t)
 		if response.Command != "initialize" {
 			t.Errorf("Command got %q, want \"launch\"", response.Command)
 		}
@@ -3079,23 +3085,9 @@ func TestBadInitializeRequest(t *testing.T) {
 		if response.Body.Error.Id != 3002 {
 			t.Errorf("Id got %d, want 3002", response.Body.Error.Id)
 		}
-	}
-
-	expectFailedToInitializeWithMessage := func(response *dap.ErrorResponse, errmsg string) {
-		t.Helper()
-		expectFailedToInitialize(response)
-		if response.Body.Error.Format != errmsg {
-			t.Errorf("\ngot  %q\nwant %q", response.Body.Error.Format, errmsg)
+		if response.Body.Error.Format != err {
+			t.Errorf("\ngot  %q\nwant %q", response.Body.Error.Format, err)
 		}
-	}
-
-	runInitializeTest := func(args dap.InitializeRequestArguments, err string) {
-		// Only one initialize request is allowed, so use a new server
-		// for each test.
-		client, teardown := startDapServer(t)
-		defer teardown()
-		client.InitializeRequestWithArgs(args)
-		expectFailedToInitializeWithMessage(client.ExpectErrorResponse(t), err)
 	}
 
 	// Bad path format.
