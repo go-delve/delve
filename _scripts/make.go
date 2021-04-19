@@ -213,7 +213,7 @@ func installedExecutablePath() string {
 // i.e. cgo enabled and the legacy SDK headers:
 // https://forums.developer.apple.com/thread/104296
 func canMacnative() bool {
-	if runtime.GOOS != "darwin" {
+	if !(runtime.GOOS == "darwin" && runtime.GOARCH == "amd64") {
 		return false
 	}
 	if strings.TrimSpace(getoutput("go", "env", "CGO_ENABLED")) != "1" {
@@ -221,13 +221,18 @@ func canMacnative() bool {
 	}
 
 	macOSVersion := strings.Split(strings.TrimSpace(getoutput("/usr/bin/sw_vers", "-productVersion")), ".")
+
+	major, err := strconv.ParseInt(macOSVersion[0], 10, 64)
+	if err != nil {
+		return false
+	}
 	minor, err := strconv.ParseInt(macOSVersion[1], 10, 64)
 	if err != nil {
 		return false
 	}
 
 	typesHeader := "/usr/include/sys/types.h"
-	if minor >= 15 {
+	if major >= 11 || (major == 10 && minor >= 15) {
 		typesHeader = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/sys/types.h"
 	}
 	_, err = os.Stat(typesHeader)
