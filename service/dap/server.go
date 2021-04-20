@@ -1646,6 +1646,26 @@ func (s *Server) doCommand(command string) {
 		return
 	}
 
+	if state == nil {
+		// We need the state to check if `NextInProgress` is set,
+		// so we should try again to get the state.
+		state, _ = s.debugger.State( /*nowait*/ true)
+	}
+	// We do not want to send a stopped event when `NextInProgress`
+	// is set because this will create a confusing experience for
+	// users since only `continue` is a valid command to resume
+	// execution. Instead we cancel next.
+	// TODO(suzmue): should we instead skip these breakpoints and
+	// notify the user?
+	if state != nil && state.NextInProgress {
+		if err := s.debugger.CancelNext(); err != nil {
+			// TODO(suzmue): how should we display that next was cancelled? Once
+			// we can set stopped reasons for multiple breakpoints, we may want to set
+			// the stopped reason to 'next cancelled' for that goroutine.
+			s.log.Error("cancel next error: ", err)
+		}
+	}
+
 	s.resetHandlesForStop()
 	stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
 	stopped.Body.AllThreadsStopped = true

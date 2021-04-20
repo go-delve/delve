@@ -2215,6 +2215,69 @@ func TestNextAndStep(t *testing.T) {
 	})
 }
 
+// TestCancelNext is inspired by command_test.TestIssue387 and tests
+// that when 'next' is interrupted by a 'breakpoint', calling 'next'
+// again will not fail.
+func TestIssue387(t *testing.T) {
+	if runtime.GOARCH == "arm64" {
+		t.Skip("test is not valid on ARM64")
+	}
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
+	// a breakpoint triggering during a 'next' operation will interrupt 'next''
+	// Unlike the test for the terminal package, we cannot be certain
+	// of the number of breakpoints we expect to hit, since multiple
+	// breakpoints being hit at the same time is not supported in dap stopped
+	// events.
+	runTest(t, "issue387", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{15},
+			[]onBreakpoint{{ // Stop at line 15
+				execute: func() {
+					handleStop(t, client, 1, "main.main", 15)
+
+					client.SetBreakpointsRequest(fixture.Source, []int{8})
+					client.ExpectSetBreakpointsResponse(t)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					bpSe := client.ExpectStoppedEvent(t)
+					threadID := bpSe.Body.ThreadId
+					handleStop(t, client, threadID, "main.dostuff", 8)
+
+					for pos := 9; pos < 11; pos++ {
+						client.NextRequest(threadID)
+						client.ExpectNextResponse(t)
+
+						se := client.ExpectStoppedEvent(t)
+						if se.Body.ThreadId == threadID {
+							if se.Body.Reason != "step" || !se.Body.AllThreadsStopped {
+								t.Errorf("got %#v, want Reason=\"step\", AllThreadsStopped=true", se)
+							}
+						} else {
+							// We will have encountered a breakpoint on a different thread.
+							// We should now be able to execute 'next' on this thread.
+							if se.Body.Reason != "breakpoint" || !se.Body.AllThreadsStopped {
+								t.Errorf("got %#v, want Reason=\"breakpoint\", AllThreadsStopped=true", se)
+							}
+							threadID = se.Body.ThreadId
+							pos = 8
+						}
+						handleStop(t, client, se.Body.ThreadId, "main.dostuff", pos)
+					}
+				},
+				disconnect: true,
+			}})
+	})
+}
+
 func TestNextParked(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.SkipNow()
@@ -2434,17 +2497,13 @@ func TestBadAccess(t *testing.T) {
 					client.ExpectNextResponse(t)
 					expectStoppedOnError("invalid memory address or nil pointer dereference")
 
-					client.NextRequest(1)
-					client.ExpectNextResponse(t)
-					expectStoppedOnError("next while nexting")
-
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
-					expectStoppedOnError("next while nexting")
+					expectStoppedOnError("invalid memory address or nil pointer dereference")
 
 					client.StepOutRequest(1)
 					client.ExpectStepOutResponse(t)
-					expectStoppedOnError("next while nexting")
+					expectStoppedOnError("invalid memory address or nil pointer dereference")
 				},
 				disconnect: true,
 			}})
