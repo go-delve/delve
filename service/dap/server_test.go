@@ -2218,7 +2218,7 @@ func TestNextAndStep(t *testing.T) {
 // TestCancelNext is inspired by command_test.TestIssue387 and tests
 // that when 'next' is interrupted by a 'breakpoint', calling 'next'
 // again will not fail.
-func TestIssue387(t *testing.T) {
+func TestCancelNext(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
 		t.Skip("test is not valid on ARM64")
 	}
