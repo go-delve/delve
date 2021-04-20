@@ -606,13 +606,13 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	s.config.Debugger.WorkingDir = filepath.Dir(program)
 
 	// Set the WorkingDir for this program to the one specified in the request arguments.
-	wd, ok := request.Arguments["wd"]
+	wd, ok := request.Arguments["cwd"]
 	if ok {
 		wdParsed, ok := wd.(string)
 		if !ok {
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("'wd' attribute '%v' in debug configuration is not a string.", wd))
+				fmt.Sprintf("'cwd' attribute '%v' in debug configuration is not a string.", wd))
 			return
 		}
 		s.config.Debugger.WorkingDir = wdParsed
