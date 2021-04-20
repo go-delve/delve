@@ -613,13 +613,13 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	s.config.Debugger.WorkingDir = filepath.Dir(program)
 
 	// Set the WorkingDir for this program to the one specified in the request arguments.
-	wd, ok := request.Arguments["wd"]
+	wd, ok := request.Arguments["cwd"]
 	if ok {
 		wdParsed, ok := wd.(string)
 		if !ok {
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("'wd' attribute '%v' in debug configuration is not a string.", wd))
+				fmt.Sprintf("'cwd' attribute '%v' in debug configuration is not a string.", wd))
 			return
 		}
 		s.config.Debugger.WorkingDir = wdParsed
@@ -1091,8 +1091,6 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 	}
 	locScope := &fullyQualifiedVariable{&proc.Variable{Name: "Locals", Children: slicePtrVarToSliceVar(locals)}, "", true}
 
-	// TODO(polina): Annotate shadowed variables
-
 	scopeArgs := dap.Scope{Name: argScope.Name, VariablesReference: s.variableHandles.create(argScope)}
 	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
 	scopes := []dap.Scope{scopeArgs, scopeLocals}
@@ -1245,8 +1243,18 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 				cfqname = "" // complex children are not struct fields and can't be accessed directly
 			}
 			cvalue, cvarref := s.convertVariable(c, cfqname)
+
+			// Annotate any shadowed variables to "(name)" in order
+			// to distinguish from non-shadowed variables.
+			// TODO(suzmue): should we support a special evaluateName syntax that
+			// can access shadowed variables?
+			name := c.Name
+			if c.Flags&proc.VariableShadowed == proc.VariableShadowed {
+				name = fmt.Sprintf("(%s)", name)
+			}
+
 			children[i] = dap.Variable{
-				Name:               c.Name,
+				Name:               name,
 				EvaluateName:       cfqname,
 				Value:              cvalue,
 				VariablesReference: cvarref,

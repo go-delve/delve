@@ -35,11 +35,7 @@ func (s *RPCServer) ProcessPid(arg1 interface{}, pid *int) error {
 }
 
 func (s *RPCServer) Detach(kill bool, ret *int) error {
-	err := s.debugger.Detach(kill)
-	if s.config.DisconnectChan != nil {
-		close(s.config.DisconnectChan)
-	}
-	return err
+	return s.debugger.Detach(kill)
 }
 
 func (s *RPCServer) Restart(arg1 interface{}, arg2 *int) error {
