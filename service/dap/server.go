@@ -1686,8 +1686,7 @@ func (s *Server) doCommand(command string) {
 	if err == nil {
 		// TODO(suzmue): If stopped.Body.ThreadId is not a valid goroutine
 		// then the stopped reason does not show up anywhere in the
-		// vscode ui. When there is no selected goroutine, we can instead
-		// add a thread, which is the currently selected thread.
+		// vscode ui.
 		stopped.Body.ThreadId = stoppedGoroutineID(state)
 
 		switch s.debugger.StopReason() {
@@ -1745,10 +1744,10 @@ func (s *Server) doCommand(command string) {
 
 		// TODO(polina): according to the spec, the extra 'text' is supposed to show up in the UI (e.g. on hover),
 		// but so far I am unable to get this to work in vscode - see https://github.com/microsoft/vscode/issues/104475.
-		// Options to explore:
-		//   - supporting ExceptionInfo request
-		//   - virtual variable scope for Exception that shows the message (details here: https://github.com/microsoft/vscode/issues/3101)
 		// In the meantime, provide the extra details by outputing an error message.
+		// TODO(suzmue): the ExceptionInfo request is now supported and displays the error message, however if there
+		// is no threadId set in the stopped event, then the ExceptionInfo response is not visible. We should be able
+		// to delete this output event, once we solve that issue.
 		s.send(&dap.OutputEvent{
 			Event: *newEvent("output"),
 			Body: dap.OutputEventBody{
