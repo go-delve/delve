@@ -2269,6 +2269,11 @@ func TestCancelNext(t *testing.T) {
 							}
 							threadID = se.Body.ThreadId
 							pos = 8
+
+							oe := client.ExpectOutputEvent(t)
+							if oe.Body.Category != "stderr" || oe.Body.Output != "next canceled: breakpoint\n" {
+								t.Errorf("got %#v, want Category=\"stderr\" Output=\"next canceled: breakpoint\n\"", oe)
+							}
 						}
 						handleStop(t, client, se.Body.ThreadId, "main.dostuff", pos)
 					}
@@ -2489,21 +2494,31 @@ func TestBadAccess(t *testing.T) {
 						}
 					}
 
+					expectStoppedOnErrorNextCanceled := func(command, errorPrefix string) {
+						t.Helper()
+						expectStoppedOnError(errorPrefix)
+						oe := client.ExpectOutputEvent(t)
+						want := fmt.Sprintf("%s canceled: runtime error\n", command)
+						if oe.Body.Category != "stderr" || oe.Body.Output != want {
+							t.Errorf("got %#v, want Category=\"stderr\" Output=%q", oe, want)
+						}
+					}
+
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					expectStoppedOnError("invalid memory address or nil pointer dereference")
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
-					expectStoppedOnError("invalid memory address or nil pointer dereference")
+					expectStoppedOnErrorNextCanceled("next", "invalid memory address or nil pointer dereference")
 
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
-					expectStoppedOnError("invalid memory address or nil pointer dereference")
+					expectStoppedOnErrorNextCanceled("step", "invalid memory address or nil pointer dereference")
 
 					client.StepOutRequest(1)
 					client.ExpectStepOutResponse(t)
-					expectStoppedOnError("invalid memory address or nil pointer dereference")
+					expectStoppedOnErrorNextCanceled("stepOut", "invalid memory address or nil pointer dereference")
 				},
 				disconnect: true,
 			}})
