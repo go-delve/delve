@@ -1573,11 +1573,9 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 		apiFrames, err := s.debugger.ConvertStacktrace(frames, nil)
 		if err == nil {
 			var buf bytes.Buffer
-			terminal.PrintStack(func(path string) string {
-				return s.toClientPath(path)
-			}, &buf, apiFrames, "\t", false)
-
-			body.Details.StackTrace = "Stack:\n" + buf.String()
+			fmt.Fprintln(&buf, "Stack:")
+			terminal.PrintStack(s.toClientPath, &buf, apiFrames, "\t", false)
+			body.Details.StackTrace = buf.String()
 		}
 	}
 	response := &dap.ExceptionInfoResponse{
