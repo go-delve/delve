@@ -414,7 +414,7 @@ func (dbp *nativeProcess) resume() error {
 // stop stops all running threads threads and sets breakpoints
 func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) {
 	if dbp.exited {
-		return nil, &proc.ErrProcessExited{Pid: dbp.Pid()}
+		return nil, proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 
 	dbp.os.running = false

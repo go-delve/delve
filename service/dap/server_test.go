@@ -14,7 +14,6 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -64,21 +63,18 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 	// Give server time to start listening for clients
 	time.Sleep(100 * time.Millisecond)
 
-	var stopOnce sync.Once
 	// Run a goroutine that stops the server when disconnectChan is signaled.
 	// This helps us test that certain events cause the server to stop as
 	// expected.
 	go func() {
 		<-disconnectChan
-		stopOnce.Do(func() { server.Stop() })
+		server.Stop()
 	}()
 
 	client := daptest.NewClient(listener.Addr().String())
+	// This will close the client connectinon, which will cause a connection error
+	// on the server side and signal disconnect to unblock Stop() above.
 	defer client.Close()
-
-	defer func() {
-		stopOnce.Do(func() { server.Stop() })
-	}()
 
 	test(client, fixture)
 }
@@ -113,6 +109,8 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 //                                 : 12 << continue
 // - Program runs to completion    :    << terminated event
 //                                 : 13 >> disconnect
+//                                 :    << output event (Process exited)
+//                                 :    << output event (Detaching)
 //                                 : 13 << disconnect
 // This test exhaustively tests Seq and RequestSeq on all messages from the
 // server. Other tests do not necessarily need to repeat all these checks.
@@ -197,7 +195,7 @@ func TestLaunchStopOnEntry(t *testing.T) {
 
 		// 10 >> evaluate, << error
 		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
-		erResp := client.ExpectVisibleErrorResponse(t)
+		erResp := client.ExpectErrorResponse(t)
 		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Id != 2009 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=2009", erResp)
 		}
@@ -222,6 +220,14 @@ func TestLaunchStopOnEntry(t *testing.T) {
 
 		// 13 >> disconnect, << disconnect
 		client.DisconnectRequest()
+		oep := client.ExpectOutputEventProcessExited(t, 0)
+		if oep.Seq != 0 || oep.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
+		}
+		oed := client.ExpectOutputEventDetaching(t)
+		if oed.Seq != 0 || oed.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+		}
 		dResp := client.ExpectDisconnectResponse(t)
 		if dResp.Seq != 0 || dResp.RequestSeq != 13 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13", dResp)
@@ -323,7 +329,7 @@ func TestAttachStopOnEntry(t *testing.T) {
 
 		// 10 >> evaluate, << error
 		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
-		erResp := client.ExpectVisibleErrorResponse(t)
+		erResp := client.ExpectErrorResponse(t)
 		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Id != 2009 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=2009", erResp)
 		}
@@ -344,6 +350,10 @@ func TestAttachStopOnEntry(t *testing.T) {
 
 		// 12 >> disconnect, << disconnect
 		client.DisconnectRequestWithKillOption(true)
+		oed := client.ExpectOutputEventDetachingKill(t)
+		if oed.Seq != 0 || oed.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+		}
 		dResp := client.ExpectDisconnectResponse(t)
 		if dResp.Seq != 0 || dResp.RequestSeq != 12 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=12", dResp)
@@ -398,6 +408,8 @@ func TestContinueOnEntry(t *testing.T) {
 
 		// 7 >> disconnect, << disconnect
 		client.DisconnectRequest()
+		client.ExpectOutputEventProcessExited(t, 0)
+		client.ExpectOutputEventDetaching(t)
 		dResp := client.ExpectDisconnectResponse(t)
 		if dResp.Seq != 0 || dResp.RequestSeq != 7 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7", dResp)
@@ -511,6 +523,8 @@ func TestPreSetBreakpoint(t *testing.T) {
 
 		client.ExpectTerminatedEvent(t)
 		client.DisconnectRequest()
+		client.ExpectOutputEventProcessExited(t, 0)
+		client.ExpectOutputEventDetaching(t)
 		client.ExpectDisconnectResponse(t)
 	})
 }
@@ -678,7 +692,6 @@ func validateEvaluateName(t *testing.T, client *daptest.Client, got *dap.Variabl
 func TestStackTraceRequest(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		var stResp *dap.StackTraceResponse
-		const StartHandle = 1000 // from handles.go
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
 			func() {
@@ -1562,6 +1575,46 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 	})
 }
 
+// TestShadowedVariables executes to a breakpoint and checks the shadowed
+// variable is named correctly.
+func TestShadowedVariables(t *testing.T) {
+	runTest(t, "testshadow", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+				})
+			},
+			// Breakpoints are set within the program
+			fixture.Source, []int{},
+			[]onBreakpoint{{
+				// Stop at line 13
+				execute: func() {
+					client.StackTraceRequest(1, 0, 20)
+					stack := client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stack, "main.main", 13, 1000, 3, 3)
+
+					client.ScopesRequest(1000)
+					scopes := client.ExpectScopesResponse(t)
+					expectScope(t, scopes, 0, "Arguments", 1000)
+					expectScope(t, scopes, 1, "Locals", 1001)
+					expectScope(t, scopes, 2, "Globals (package main)", 1002)
+
+					client.VariablesRequest(1001)
+					locals := client.ExpectVariablesResponse(t)
+
+					expectVarExact(t, locals, 0, "(a)", "a", "0", !hasChildren)
+					expectVarExact(t, locals, 1, "a", "a", "1", !hasChildren)
+
+					// Check that the non-shadowed of "a" is returned from evaluate request.
+					validateEvaluateName(t, client, locals, 1)
+				},
+				disconnect: false,
+			}})
+	})
+}
+
 // Tests that 'stackTraceDepth' from LaunchRequest is parsed and passed to
 // stacktrace requests handlers.
 func TestLaunchRequestWithStackTraceDepth(t *testing.T) {
@@ -1686,6 +1739,95 @@ func TestSetBreakpoint(t *testing.T) {
 	})
 }
 
+// TestLaunchSubstitutePath sets a breakpoint using a path
+// that does not exist and expects the substitutePath attribute
+// in the launch configuration to take care of the mapping.
+func TestLaunchSubstitutePath(t *testing.T) {
+	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
+		substitutePathTestHelper(t, fixture, client, "launch", map[string]interface{}{"mode": "exec", "program": fixture.Path})
+	})
+}
+
+// TestAttachSubstitutePath sets a breakpoint using a path
+// that does not exist and expects the substitutePath attribute
+// in the launch configuration to take care of the mapping.
+func TestAttachSubstitutePath(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.SkipNow()
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("test skipped on windows, see https://delve.beta.teamcity.com/project/Delve_windows for details")
+	}
+	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
+		cmd := execFixture(t, fixture)
+
+		substitutePathTestHelper(t, fixture, client, "attach", map[string]interface{}{"mode": "local", "processId": cmd.Process.Pid})
+	})
+}
+
+func substitutePathTestHelper(t *testing.T, fixture protest.Fixture, client *daptest.Client, request string, launchAttachConfig map[string]interface{}) {
+	t.Helper()
+	nonexistentDir := filepath.Join(string(filepath.Separator), "path", "that", "does", "not", "exist")
+	if runtime.GOOS == "windows" {
+		nonexistentDir = "C:" + nonexistentDir
+	}
+
+	launchAttachConfig["stopOnEntry"] = false
+	// The rules in 'substitutePath' will be applied as follows:
+	// - mapping paths from client to server:
+	//		The first rule["from"] to match a prefix of 'path' will be applied:
+	//			strings.Replace(path, rule["from"], rule["to"], 1)
+	// - mapping paths from server to client:
+	//		The first rule["to"] to match a prefix of 'path' will be applied:
+	//			strings.Replace(path, rule["to"], rule["from"], 1)
+	launchAttachConfig["substitutePath"] = []map[string]string{
+		{"from": nonexistentDir, "to": filepath.Dir(fixture.Source)},
+		// Since the path mappings are ordered, when converting from client path to
+		// server path, this mapping will not apply, because nonexistentDir appears in
+		// an earlier rule.
+		{"from": nonexistentDir, "to": "this_is_a_bad_path"},
+		// Since the path mappings are ordered, when converting from server path to
+		// client path, this mapping will not apply, because filepath.Dir(fixture.Source)
+		// appears in an earlier rule.
+		{"from": "this_is_a_bad_path", "to": filepath.Dir(fixture.Source)},
+	}
+
+	runDebugSessionWithBPs(t, client, request,
+		func() {
+			switch request {
+			case "attach":
+				client.AttachRequest(launchAttachConfig)
+			case "launch":
+				client.LaunchRequestWithArgs(launchAttachConfig)
+			default:
+				t.Fatalf("invalid request: %s", request)
+			}
+		},
+		// Set breakpoints
+		filepath.Join(nonexistentDir, "loopprog.go"), []int{8},
+		[]onBreakpoint{{
+
+			execute: func() {
+				handleStop(t, client, 1, "main.loop", 8)
+			},
+			disconnect: true,
+		}})
+}
+
+// execFixture runs the binary fixture.Path and hooks up stdout and stderr
+// to os.Stdout and os.Stderr.
+func execFixture(t *testing.T, fixture protest.Fixture) *exec.Cmd {
+	t.Helper()
+	// TODO(polina): do I need to sanity check testBackend and runtime.GOOS?
+	cmd := exec.Command(fixture.Path)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	return cmd
+}
+
 // TestWorkingDir executes to a breakpoint and tests that the specified
 // working directory is the one used to run the program.
 func TestWorkingDir(t *testing.T) {
@@ -1702,7 +1844,7 @@ func TestWorkingDir(t *testing.T) {
 					"mode":        "exec",
 					"program":     fixture.Path,
 					"stopOnEntry": false,
-					"wd":          wd,
+					"cwd":         wd,
 				})
 			},
 			// Set breakpoints
@@ -2019,8 +2161,8 @@ func TestEvaluateCallRequest(t *testing.T) {
 					}
 					// Call can exit
 					client.EvaluateRequest("call callexit()", 1000, "this context will be ignored")
-					client.ExpectTerminatedEvent(t)
 				},
+				terminated: true,
 				disconnect: true,
 			}})
 	})
@@ -2060,9 +2202,12 @@ func TestNextAndStep(t *testing.T) {
 					client.ExpectStepInResponse(t)
 					expectStop("main.inlineThis", 5)
 
-					client.NextRequest(-10000 /*this is ignored*/)
+					client.NextRequest(-1000)
 					client.ExpectNextResponse(t)
-					expectStop("main.inlineThis", 6)
+					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "error" || se.Body.Text != "unknown goroutine -1000" {
+						t.Errorf("got %#v, want Reaspon=\"error\", Text=\"unknown goroutine -1000\"", se)
+					}
+					handleStop(t, client, 1, "main.inlineThis", 5)
 				},
 				disconnect: false,
 			}})
@@ -2236,12 +2381,7 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 					client.StepOutRequest(goroutineId)
 					client.ExpectStepOutResponse(t)
 
-					m, err := client.ReadMessage()
-					if err != nil {
-						t.Fatal(err)
-					}
-
-					switch e := m.(type) {
+					switch e := client.ExpectMessage(t).(type) {
 					case *dap.StoppedEvent:
 						if e.Body.ThreadId != goroutineId {
 							t.Fatalf("StepOut did not continue on the selected goroutine, expected %d got %d", goroutineId, e.Body.ThreadId)
@@ -2433,9 +2573,12 @@ func handleStop(t *testing.T, client *daptest.Client, thread int, name string, l
 // disconnect is true, the test harness will abort the program
 // execution. Otherwise, a continue will be issued and the
 // program will continue to the next breakpoint or termination.
+// If terminated is true, we expect requests at this breakpoint
+// to result in termination.
 type onBreakpoint struct {
 	execute    func()
 	disconnect bool
+	terminated bool
 }
 
 // runDebugSessionWithBPs is a helper for executing the common init and shutdown
@@ -2480,7 +2623,16 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 		client.ExpectStoppedEvent(t)
 		onBP.execute()
 		if onBP.disconnect {
+			if onBP.terminated {
+				client.ExpectTerminatedEvent(t)
+			}
 			client.DisconnectRequestWithKillOption(true)
+			if onBP.terminated {
+				client.ExpectOutputEventProcessExited(t, 0)
+				client.ExpectOutputEventDetaching(t)
+			} else {
+				client.ExpectOutputEventDetachingKill(t)
+			}
 			client.ExpectDisconnectResponse(t)
 			return
 		}
@@ -2493,6 +2645,12 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 		client.ExpectTerminatedEvent(t)
 	}
 	client.DisconnectRequestWithKillOption(true)
+	if cmd == "launch" {
+		client.ExpectOutputEventProcessExited(t, 0)
+		client.ExpectOutputEventDetaching(t)
+	} else if cmd == "attach" {
+		client.ExpectOutputEventDetachingKill(t)
+	}
 	client.ExpectDisconnectResponse(t)
 }
 
@@ -2508,13 +2666,14 @@ func TestLaunchDebugRequest(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stderr = w
 
+	tmpBin := "__tmpBin"
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		// We reuse the harness that builds, but ignore the built binary,
 		// only relying on the source to be built in response to LaunchRequest.
 		runDebugSession(t, client, "launch", func() {
 			wd, _ := os.Getwd()
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "debug", "program": fixture.Source, "output": filepath.Join(wd, "__mybin")})
+				"mode": "debug", "program": fixture.Source, "output": filepath.Join(wd, tmpBin)})
 		}, fixture.Source)
 	})
 	// Wait for the test to finish to capture all stderr
@@ -2535,6 +2694,12 @@ func TestLaunchDebugRequest(t *testing.T) {
 		// to avoid any test flakiness we guard against this failure here as well.
 		if runtime.GOOS != "windows" || !strings.Contains(rmErr, "Access is denied") {
 			t.Fatalf("Binary removal failure:\n%s\n", rmErr)
+		}
+	} else {
+		// We did not get a removal error, but did we even try to remove before exiting?
+		// Confirm that the binary did get removed.
+		if _, err := os.Stat(tmpBin); err == nil || os.IsExist(err) {
+			t.Fatal("Failed to remove temp binary", tmpBin)
 		}
 	}
 }
@@ -2572,21 +2737,33 @@ func TestLaunchRequestDefaults(t *testing.T) {
 	})
 }
 
-func TestLaunchRequestNoDebug(t *testing.T) {
+func TestLaunchRequestNoDebug_GoodStatus(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runNoDebugDebugSession(t, client, func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"noDebug": true,
-				"mode":    "", /*"debug" by default*/
+				"mode":    "debug",
 				"program": fixture.Source,
 				"output":  cleanExeName("__mybin")})
-		}, fixture.Source, []int{8})
+		}, fixture.Source, []int{8}, 0)
+	})
+}
+
+func TestLaunchRequestNoDebug_BadStatus(t *testing.T) {
+	runTest(t, "issue1101", func(client *daptest.Client, fixture protest.Fixture) {
+		runNoDebugDebugSession(t, client, func() {
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"noDebug": true,
+				"mode":    "debug",
+				"program": fixture.Source,
+				"output":  cleanExeName("__mybin")})
+		}, fixture.Source, []int{8}, 2)
 	})
 }
 
 // runNoDebugDebugSession tests the session started with noDebug=true runs uninterrupted
 // even when breakpoint is set.
-func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmdRequest func(), source string, breakpoints []int) {
+func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmdRequest func(), source string, breakpoints []int, status int) {
 	client.InitializeRequest()
 	client.ExpectInitializeResponse(t)
 
@@ -2595,6 +2772,7 @@ func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmdRequest fun
 	// noDebug mode applies only to "launch" requests.
 	client.ExpectLaunchResponse(t)
 
+	client.ExpectOutputEventProcessExited(t, status)
 	client.ExpectTerminatedEvent(t)
 	client.DisconnectRequestWithKillOption(true)
 	client.ExpectDisconnectResponse(t)
@@ -2652,13 +2830,7 @@ func TestAttachRequest(t *testing.T) {
 	}
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		// Start the program to attach to
-		// TODO(polina): do I need to sanity check testBackend and runtime.GOOS?
-		cmd := exec.Command(fixture.Path)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Start(); err != nil {
-			t.Fatal(err)
-		}
+		cmd := execFixture(t, fixture)
 
 		runDebugSessionWithBPs(t, client, "attach",
 			// Attach
@@ -2884,9 +3056,24 @@ func TestBadLaunchRequests(t *testing.T) {
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: 'buildFlags' attribute '123' in debug configuration is not a string.")
 
-		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "wd": 123})
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": 123})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
-			"Failed to launch: 'wd' attribute '123' in debug configuration is not a string.")
+			"Failed to launch: 'substitutePath' attribute '123' in debug configuration is not a []{'from': string, 'to': string}")
+
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{123}})
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: 'substitutePath' attribute '[123]' in debug configuration is not a []{'from': string, 'to': string}")
+
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{map[string]interface{}{"to": "path2"}}})
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: 'substitutePath' attribute '[map[to:path2]]' in debug configuration is not a []{'from': string, 'to': string}")
+
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{map[string]interface{}{"from": "path1", "to": 123}}})
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: 'substitutePath' attribute '[map[from:path1 to:123]]' in debug configuration is not a []{'from': string, 'to': string}")
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "cwd": 123})
+		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+			"Failed to launch: 'cwd' attribute '123' in debug configuration is not a string.")
 
 		// Skip detailed message checks for potentially different OS-specific errors.
 		client.LaunchRequest("exec", fixture.Path+"_does_not_exist", stopOnEntry)
@@ -2907,9 +3094,9 @@ func TestBadLaunchRequests(t *testing.T) {
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t), "Failed to launch: Build error: exit status 1")
 
 		// Bad "wd".
-		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": false, "wd": "dir/invalid"})
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": false, "cwd": "dir/invalid"})
 		expectFailedToLaunch(client.ExpectErrorResponse(t)) // invalid directory, the error message is system-dependent.
-		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "wd": "dir/invalid"})
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "cwd": "dir/invalid"})
 		expectFailedToLaunch(client.ExpectErrorResponse(t)) // invalid directory, the error message is system-dependent.
 
 		// We failed to launch the program. Make sure shutdown still works.

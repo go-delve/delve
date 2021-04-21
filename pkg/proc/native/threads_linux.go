@@ -14,7 +14,6 @@ type waitStatus sys.WaitStatus
 // process details.
 type osSpecificDetails struct {
 	delayedSignal int
-	registers     sys.PtraceRegs
 	running       bool
 	setbp         bool
 }

@@ -53,14 +53,6 @@ func MakeBuf(d *dwarf.Data, format dataFormat, name string, off dwarf.Offset, da
 	return buf{d, format, name, off, data, nil}
 }
 
-func (b *buf) slice(length int) buf {
-	n := *b
-	data := b.data
-	b.skip(length) // Will validate length.
-	n.data = data[:length]
-	return n
-}
-
 func (b *buf) Uint8() uint8 {
 	if len(b.data) < 1 {
 		b.error("underflow")
@@ -70,34 +62,6 @@ func (b *buf) Uint8() uint8 {
 	b.data = b.data[1:]
 	b.off++
 	return val
-}
-
-func (b *buf) bytes(n int) []byte {
-	if len(b.data) < n {
-		b.error("underflow")
-		return nil
-	}
-	data := b.data[0:n]
-	b.data = b.data[n:]
-	b.off += dwarf.Offset(n)
-	return data
-}
-
-func (b *buf) skip(n int) { b.bytes(n) }
-
-// string returns the NUL-terminated (C-like) string at the start of the buffer.
-// The terminal NUL is discarded.
-func (b *buf) string() string {
-	for i := 0; i < len(b.data); i++ {
-		if b.data[i] == 0 {
-			s := string(b.data[0:i])
-			b.data = b.data[i+1:]
-			b.off += dwarf.Offset(i + 1)
-			return s
-		}
-	}
-	b.error("underflow")
-	return ""
 }
 
 // Read a varint, which is 7 bits per byte, little endian.

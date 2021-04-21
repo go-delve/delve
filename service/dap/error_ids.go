@@ -21,4 +21,5 @@ const (
 	UnableToLookupVariable     = 2008
 	UnableToEvaluateExpression = 2009
 	// Add more codes as we support more requests
+	DisconnectError = 5000
 )
