@@ -6,10 +6,12 @@ package daptest
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"testing"
 
@@ -87,6 +89,27 @@ func (c *Client) expectErrorResponse(t *testing.T, id int, message string) *dap.
 		t.Errorf("\ngot %#v\nwant Id=%d Message=%q", er, id, message)
 	}
 	return er
+}
+
+func (c *Client) ExpectInitializeResponseAndCapabilities(t *testing.T) *dap.InitializeResponse {
+	t.Helper()
+	initResp := c.ExpectInitializeResponse(t)
+	wantCapabilities := dap.Capabilities{
+		// the values set by dap.(*Server).onInitializeRequest.
+		SupportsConfigurationDoneRequest: true,
+		SupportsConditionalBreakpoints:   true,
+		SupportsDelayedStackTraceLoading: true,
+		SupportTerminateDebuggee:         true,
+	}
+	if !reflect.DeepEqual(initResp.Body, wantCapabilities) {
+		t.Errorf("capabilities in initializeResponse: got %+v, want %v", pretty(initResp.Body), pretty(wantCapabilities))
+	}
+	return initResp
+}
+
+func pretty(v interface{}) string {
+	s, _ := json.MarshalIndent(v, "", "\t")
+	return string(s)
 }
 
 func (c *Client) ExpectNotYetImplementedErrorResponse(t *testing.T) *dap.ErrorResponse {

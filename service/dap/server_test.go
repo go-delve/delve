@@ -122,7 +122,7 @@ func TestLaunchStopOnEntry(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		// 1 >> initialize, << initialize
 		client.InitializeRequest()
-		initResp := client.ExpectInitializeResponse(t)
+		initResp := client.ExpectInitializeResponseAndCapabilities(t)
 		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
 		}
@@ -266,7 +266,7 @@ func TestAttachStopOnEntry(t *testing.T) {
 
 		// 1 >> initialize, << initialize
 		client.InitializeRequest()
-		initResp := client.ExpectInitializeResponse(t)
+		initResp := client.ExpectInitializeResponseAndCapabilities(t)
 		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
 		}
@@ -399,7 +399,7 @@ func TestContinueOnEntry(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		// 1 >> initialize, << initialize
 		client.InitializeRequest()
-		client.ExpectInitializeResponse(t)
+		client.ExpectInitializeResponseAndCapabilities(t)
 
 		// 2 >> launch, << initialized, << launch
 		client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
@@ -467,7 +467,7 @@ func TestContinueOnEntry(t *testing.T) {
 func TestPreSetBreakpoint(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		client.InitializeRequest()
-		client.ExpectInitializeResponse(t)
+		client.ExpectInitializeResponseAndCapabilities(t)
 
 		client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
 		client.ExpectInitializedEvent(t)
@@ -2718,7 +2718,7 @@ type onBreakpoint struct {
 //     onBreakpoints - list of test sequences to execute at each of the set breakpoints.
 func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cmdRequest func(), source string, breakpoints []int, onBPs []onBreakpoint) {
 	client.InitializeRequest()
-	client.ExpectInitializeResponse(t)
+	client.ExpectInitializeResponseAndCapabilities(t)
 
 	cmdRequest()
 	client.ExpectInitializedEvent(t)
@@ -2890,7 +2890,7 @@ func TestLaunchRequestNoDebug_BadStatus(t *testing.T) {
 // even when breakpoint is set.
 func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmdRequest func(), source string, breakpoints []int, status int) {
 	client.InitializeRequest()
-	client.ExpectInitializeResponse(t)
+	client.ExpectInitializeResponseAndCapabilities(t)
 
 	cmdRequest()
 	// no initialized event.
