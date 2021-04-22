@@ -618,6 +618,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.config.Debugger.WorkingDir = wdParsed
 	}
 
+	s.log.Debugf("running program in %s\n", s.config.Debugger.WorkingDir)
 	if noDebug, ok := request.Arguments["noDebug"].(bool); ok && noDebug {
 		cmd, err := s.startNoDebugProcess(program, targetArgs, s.config.Debugger.WorkingDir)
 		if err != nil {
@@ -659,6 +660,7 @@ func (s *Server) startNoDebugProcess(program string, targetArgs []string, wd str
 	if s.noDebugProcess != nil {
 		return nil, fmt.Errorf("another launch request is in progress")
 	}
+
 	cmd := exec.Command(program, targetArgs...)
 	cmd.Stdout, cmd.Stderr, cmd.Stdin, cmd.Dir = os.Stdout, os.Stderr, os.Stdin, wd
 	if err := cmd.Start(); err != nil {
