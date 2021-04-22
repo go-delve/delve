@@ -494,12 +494,12 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsConditionalBreakpoints = true
 	response.Body.SupportsDelayedStackTraceLoading = true
 	response.Body.SupportTerminateDebuggee = true
+	response.Body.SupportsFunctionBreakpoints = true
 	// TODO(polina): support this to match vscode-go functionality
 	response.Body.SupportsSetVariable = false
 	// TODO(polina): support these requests in addition to vscode-go feature parity
 	response.Body.SupportsTerminateRequest = false
 	response.Body.SupportsRestartRequest = false
-	response.Body.SupportsFunctionBreakpoints = false
 	response.Body.SupportsStepBack = false
 	response.Body.SupportsSetExpression = false
 	response.Body.SupportsLoadedSourcesRequest = false
@@ -818,24 +818,7 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 	// -- doesn't exist and in request => SetBreakpoint
 
 	// Clear all existing breakpoints in the file.
-	s.clearMatchingBreakpoints(request.Request, func(bp *api.Breakpoint) bool { return bp.File == request.Arguments.Source.Path })
-	existing := s.debugger.Breakpoints()
-	for _, bp := range existing {
-		// Skip special breakpoints such as for panic.
-		if bp.ID < 0 {
-			continue
-		}
-		// Skip other source files.
-		// TODO(polina): should this be normalized because of different OSes?
-		if bp.File != serverPath {
-			continue
-		}
-		_, err := s.debugger.ClearBreakpoint(bp)
-		if err != nil {
-			s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
-			return
-		}
-	}
+	s.clearMatchingBreakpoints(request.Request, func(bp *api.Breakpoint) bool { return bp.File == serverPath && bp.Name == "" })
 
 	// Set all requested breakpoints.
 	response := &dap.SetBreakpointsResponse{Response: *newResponse(request.Request)}
@@ -1562,15 +1545,15 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 	// -- exists and in request => AmendBreakpoint
 	// -- doesn't exist and in request => SetBreakpoint
 
-	// Clear all existing breakpoints in the file.
-	s.clearMatchingBreakpoints(request.Request, func(bp *api.Breakpoint) bool { return bp.FunctionName != "" })
+	// Clear all existing function breakpoints in the file.
+	s.clearMatchingBreakpoints(request.Request, func(bp *api.Breakpoint) bool { return bp.Name != "" })
 
 	// Set all requested breakpoints.
 	response := &dap.SetFunctionBreakpointsResponse{Response: *newResponse(request.Request)}
 	response.Body.Breakpoints = make([]dap.Breakpoint, len(request.Arguments.Breakpoints))
 	for i, want := range request.Arguments.Breakpoints {
 		got, err := s.debugger.CreateBreakpoint(
-			&api.Breakpoint{FunctionName: want.Name, Cond: want.Condition})
+			&api.Breakpoint{Name: want.Name, FunctionName: want.Name, Cond: want.Condition})
 		response.Body.Breakpoints[i].Verified = (err == nil)
 		if err != nil {
 			response.Body.Breakpoints[i].Message = err.Error()
@@ -1590,7 +1573,7 @@ func (s *Server) clearMatchingBreakpoints(request dap.Request, cond func(*api.Br
 		if bp.ID < 0 {
 			continue
 		}
-		// Skip non-function breakpoints
+		// Skip breakpoints that do not meet the condition.
 		if !cond(bp) {
 			continue
 		}

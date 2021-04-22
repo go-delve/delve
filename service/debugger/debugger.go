@@ -651,7 +651,18 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 		}
 		addrs, err = proc.FindFileLocation(d.target, fileName, requestedBp.Line)
 	case len(requestedBp.FunctionName) > 0:
-		addrs, err = proc.FindFunctionLocation(d.target, requestedBp.FunctionName, requestedBp.Line)
+		s, _ := proc.ConvertEvalScope(d.target, -1, 0, 0)
+		loc, err := locspec.Parse(requestedBp.FunctionName)
+		if err != nil {
+			return nil, err
+		}
+		locs, err := loc.Find(d.target, d.processArgs, s, requestedBp.FunctionName, true, [][2]string{})
+		if err != nil {
+			return nil, err
+		}
+		for i := range locs {
+			addrs = append(addrs, locs[i].PCs...)
+		}
 	case len(requestedBp.Addrs) > 0:
 		addrs = requestedBp.Addrs
 	default:
