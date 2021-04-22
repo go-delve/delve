@@ -71,9 +71,6 @@ type Server struct {
 	variableHandles *variablesHandlesMap
 	// args tracks special settings for handling debug session requests.
 	args launchAttachArgs
-	// exceptions maps goroutineIds to info about the last exception that occured.
-	// Reset at every stop.
-	exceptions map[int]dap.ExceptionInfoResponseBody
 
 	mu sync.Mutex
 	// binaryToRemove is the temp compiled binary to be removed on disconnect (if any).
@@ -135,7 +132,6 @@ func NewServer(config *service.Config) *Server {
 		stackFrameHandles: newHandlesMap(),
 		variableHandles:   newVariablesHandlesMap(),
 		args:              defaultArgs,
-		exceptions:        map[int]dap.ExceptionInfoResponseBody{},
 	}
 }
 
@@ -1567,7 +1563,32 @@ func (s *Server) onCancelRequest(request *dap.CancelRequest) {
 // Capability 'supportsExceptionInfoRequest' is set 'initialize' response.
 func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 	goroutineID := request.Arguments.ThreadId
-	body := s.exceptions[goroutineID]
+	body := dap.ExceptionInfoResponseBody{}
+	// Get the thread for the goroutine and the current state.
+	thread, _ := s.debugger.FindGoroutine(goroutineID)
+	state, _ := s.debugger.State( /*nowait*/ true)
+	if thread != nil && thread.Breakpoint() != nil && thread.Breakpoint().Breakpoint != nil {
+		// Check if this goroutine ID is stopped at a breakpoint.
+		switch thread.Breakpoint().Breakpoint.Name {
+		case proc.FatalThrow:
+			// TODO(suzmue): add the fatal throw reason to body.Description.
+			body.ExceptionId = "fatal error"
+		case proc.UnrecoveredPanic:
+			body.ExceptionId = "panic"
+			// Attempt to get the value of the panic message.
+			exprVar, err := s.debugger.EvalVariableInScope(goroutineID, 0, 0, "(*msgs).arg.(data)", DefaultLoadConfig)
+			if err == nil {
+				body.Description = exprVar.Value.String()
+			}
+		}
+	} else if state != nil && state.Err != nil {
+		body.ExceptionId = "runtime error"
+		body.Description = state.Err.Error()
+		if body.Description == "bad access" {
+			body.Description = BetterBadAccessError
+		}
+	}
+
 	frames, err := s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
 	if err == nil && len(frames) > 0 {
 		apiFrames, err := s.debugger.ConvertStacktrace(frames, nil)
@@ -1659,7 +1680,6 @@ Unable to propagate EXC_BAD_ACCESS signal to target process and panic (see https
 func (s *Server) resetHandlesForStop() {
 	s.stackFrameHandles.reset()
 	s.variableHandles.reset()
-	s.exceptions = map[int]dap.ExceptionInfoResponseBody{}
 }
 
 // doCommand runs a debugger command until it stops on
@@ -1698,26 +1718,9 @@ func (s *Server) doCommand(command string) {
 			case proc.FatalThrow:
 				stopped.Body.Reason = "exception"
 				stopped.Body.Description = "Paused on fatal error"
-				if stopped.Body.ThreadId > 0 {
-					// TODO(suzmue): add the reason for fatalthrow.
-					s.exceptions[stopped.Body.ThreadId] = dap.ExceptionInfoResponseBody{
-						ExceptionId: "fatal error",
-					}
-				}
 			case proc.UnrecoveredPanic:
 				stopped.Body.Reason = "exception"
 				stopped.Body.Description = "Paused on panic"
-				if stopped.Body.ThreadId > 0 {
-					body := dap.ExceptionInfoResponseBody{
-						ExceptionId: "panic",
-					}
-					// Attempt to get the value of the panic message.
-					exprVar, err := s.debugger.EvalVariableInScope(stopped.Body.ThreadId, 0, 0, "(*msgs).arg.(data)", DefaultLoadConfig)
-					if err == nil {
-						body.Description = exprVar.Value.String()
-					}
-					s.exceptions[stopped.Body.ThreadId] = body
-				}
 			}
 		}
 		s.send(stopped)
@@ -1733,10 +1736,6 @@ func (s *Server) doCommand(command string) {
 		state, err := s.debugger.State( /*nowait*/ true)
 		if err == nil {
 			stopped.Body.ThreadId = stoppedGoroutineID(state)
-			s.exceptions[stopped.Body.ThreadId] = dap.ExceptionInfoResponseBody{
-				ExceptionId: "runtime error",
-				Description: stopped.Body.Text,
-			}
 		}
 		s.send(stopped)
 
