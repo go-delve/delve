@@ -14,7 +14,6 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -48,13 +47,15 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 	fixture := protest.BuildFixture(name, buildFlags)
 
 	// Start the DAP server.
-	client, teardown := startDapServer(t)
-	defer teardown()
+	client := startDapServer(t)
+	// client.Close will close the client connectinon, which will cause a connection error
+	// on the server side and signal disconnect to unblock Stop() above.
+	defer client.Close()
 
 	test(client, fixture)
 }
 
-func startDapServer(t *testing.T) (*daptest.Client, func()) {
+func startDapServer(t *testing.T) *daptest.Client {
 	// Start the DAP server.
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -72,22 +73,16 @@ func startDapServer(t *testing.T) (*daptest.Client, func()) {
 	// Give server time to start listening for clients
 	time.Sleep(100 * time.Millisecond)
 
-	var stopOnce sync.Once
 	// Run a goroutine that stops the server when disconnectChan is signaled.
 	// This helps us test that certain events cause the server to stop as
 	// expected.
 	go func() {
 		<-disconnectChan
-		stopOnce.Do(func() { server.Stop() })
+		server.Stop()
 	}()
 
 	client := daptest.NewClient(listener.Addr().String())
-
-	teardown := func() {
-		stopOnce.Do(func() { server.Stop() })
-		client.Close()
-	}
-	return client, teardown
+	return client
 }
 
 // TestLaunchStopOnEntry emulates the message exchange that can be observed with
@@ -236,7 +231,7 @@ func TestLaunchStopOnEntry(t *testing.T) {
 			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
 		}
 		oed := client.ExpectOutputEventDetaching(t)
-		if oed.Seq != 0 || oep.Body.Category != "console" {
+		if oed.Seq != 0 || oed.Body.Category != "console" {
 			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
 		}
 		dResp := client.ExpectDisconnectResponse(t)
@@ -1855,7 +1850,7 @@ func TestWorkingDir(t *testing.T) {
 					"mode":        "exec",
 					"program":     fixture.Path,
 					"stopOnEntry": false,
-					"wd":          wd,
+					"cwd":         wd,
 				})
 			},
 			// Set breakpoints
@@ -2213,9 +2208,12 @@ func TestNextAndStep(t *testing.T) {
 					client.ExpectStepInResponse(t)
 					expectStop("main.inlineThis", 5)
 
-					client.NextRequest(-10000 /*this is ignored*/)
+					client.NextRequest(-1000)
 					client.ExpectNextResponse(t)
-					expectStop("main.inlineThis", 6)
+					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "error" || se.Body.Text != "unknown goroutine -1000" {
+						t.Errorf("got %#v, want Reaspon=\"error\", Text=\"unknown goroutine -1000\"", se)
+					}
+					handleStop(t, client, 1, "main.inlineThis", 5)
 				},
 				disconnect: false,
 			}})
@@ -3079,9 +3077,9 @@ func TestBadLaunchRequests(t *testing.T) {
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{map[string]interface{}{"from": "path1", "to": 123}}})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: 'substitutePath' attribute '[map[from:path1 to:123]]' in debug configuration is not a []{'from': string, 'to': string}")
-		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "wd": 123})
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "cwd": 123})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
-			"Failed to launch: 'wd' attribute '123' in debug configuration is not a string.")
+			"Failed to launch: 'cwd' attribute '123' in debug configuration is not a string.")
 
 		// Skip detailed message checks for potentially different OS-specific errors.
 		client.LaunchRequest("exec", fixture.Path+"_does_not_exist", stopOnEntry)
@@ -3102,9 +3100,9 @@ func TestBadLaunchRequests(t *testing.T) {
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t), "Failed to launch: Build error: exit status 1")
 
 		// Bad "wd".
-		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": false, "wd": "dir/invalid"})
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": false, "cwd": "dir/invalid"})
 		expectFailedToLaunch(client.ExpectErrorResponse(t)) // invalid directory, the error message is system-dependent.
-		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "wd": "dir/invalid"})
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "cwd": "dir/invalid"})
 		expectFailedToLaunch(client.ExpectErrorResponse(t)) // invalid directory, the error message is system-dependent.
 
 		// We failed to launch the program. Make sure shutdown still works.
@@ -3217,8 +3215,11 @@ func TestBadInitializeRequest(t *testing.T) {
 		t.Helper()
 		// Only one initialize request is allowed, so use a new server
 		// for each test.
-		client, teardown := startDapServer(t)
-		defer teardown()
+		client := startDapServer(t)
+		// client.Close will close the client connectinon, which will cause a connection error
+		// on the server side and signal disconnect to unblock Stop() above.
+		defer client.Close()
+
 		client.InitializeRequestWithArgs(args)
 		response := client.ExpectErrorResponse(t)
 		if response.Command != "initialize" {
