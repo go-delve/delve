@@ -36,28 +36,40 @@ import (
 )
 
 // Server implements a DAP server that can accept a single client for
-// a single debug session. It does not support restarting.
-// The server operates via two goroutines:
+// a single debug session (for now). It does yet not support restarting.
+// That means that in addition to explicit shutdown requests,
+// program termination and failed or closed client connection
+// would also result in stopping this single-use server.
+//
+// The DAP server operates via the following goroutines:
+//
 // (1) Main goroutine where the server is created via NewServer(),
-// started via Run() and stopped via Stop().
-// (2) Run goroutine started from Run() that accepts a client connection,
+// started via Run() and stopped via Stop(). Once the server is
+// started, this goroutine blocks until it receives a stop-server
+// signal that can come from an OS interrupt (such as Ctrl-C) or
+// config.DisconnectChan (passed to NewServer()) as a result of
+// client connection failure or closure or a DAP disconnect request.
+//
+// (2) Run goroutine started from Run() that serves as both
+// a listener and a client goroutine. It accepts a client connection,
 // reads, decodes and processes each request, issuing commands to the
 // underlying debugger and sending back events and responses.
+// This gorouitne sends a stop-server signal via config.DisconnecChan
+// when encounering a client connection error or responding to
+// a DAP disconnect request.
+//
+// TODO(polina): add another layer of per-client goroutines to support multiple clients
 // TODO(polina): make it asynchronous (i.e. launch goroutine per request)
 type Server struct {
 	// config is all the information necessary to start the debugger and server.
 	config *service.Config
 	// listener is used to accept the client connection.
 	listener net.Listener
-	// conn is the accepted client connection.
-	conn net.Conn
-	// stopChan is closed when the server is Stop()-ed. This can be used to signal
+	// stopTriggered is closed when the server is Stop()-ed. This can be used to signal
 	// to goroutines run by the server that it's time to quit.
-	stopChan chan struct{}
+	stopTriggered chan struct{}
 	// reader is used to read requests from the connection.
 	reader *bufio.Reader
-	// debugger is the underlying debugger service.
-	debugger *debugger.Debugger
 	// log is used for structured logging.
 	log *logrus.Entry
 	// stackFrameHandles maps frames of each goroutine to unique ids across all goroutines.
@@ -70,7 +82,13 @@ type Server struct {
 	// args tracks special settings for handling debug session requests.
 	args launchAttachArgs
 
+	// mu synchronizes access to objects set on start-up (from run goroutine)
+	// and stopped on teardown (from main goroutine)
 	mu sync.Mutex
+	// conn is the accepted client connection.
+	conn net.Conn
+	// debugger is the underlying debugger service.
+	debugger *debugger.Debugger
 	// binaryToRemove is the temp compiled binary to be removed on disconnect (if any).
 	binaryToRemove string
 	// noDebugProcess is set for the noDebug launch process.
@@ -115,9 +133,10 @@ var DefaultLoadConfig = proc.LoadConfig{
 }
 
 // NewServer creates a new DAP Server. It takes an opened Listener
-// via config and assumes its ownership. config.disconnectChan has to be set;
-// it will be closed by the server when the client disconnects or requests
-// shutdown. Once disconnectChan is closed, Server.Stop() must be called.
+// via config and assumes its ownership. config.DisconnectChan has to be set;
+// it will be closed by the server when the client fails to connect,
+// disconnects or requests shutdown. Once config.DisconnectChan is closed,
+// Server.Stop() must be called to shutdown this single-user server.
 func NewServer(config *service.Config) *Server {
 	logger := logflags.DAPLogger()
 	logflags.WriteDAPListeningMessage(config.Listener.Addr().String())
@@ -125,7 +144,7 @@ func NewServer(config *service.Config) *Server {
 	return &Server{
 		config:            config,
 		listener:          config.Listener,
-		stopChan:          make(chan struct{}),
+		stopTriggered:     make(chan struct{}),
 		log:               logger,
 		stackFrameHandles: newHandlesMap(),
 		variableHandles:   newVariablesHandlesMap(),
@@ -181,12 +200,15 @@ func (s *Server) setLaunchAttachArgs(request dap.LaunchAttachRequest) error {
 
 // Stop stops the DAP debugger service, closes the listener and the client
 // connection. It shuts down the underlying debugger and kills the target
-// process if it was launched by it. This method mustn't be called more than
-// once.
+// process if it was launched by it or stops the noDebug process.
+// This method mustn't be called more than once.
 func (s *Server) Stop() {
 	s.log.Debug("DAP server stopping...")
+	close(s.stopTriggered)
 	_ = s.listener.Close()
-	close(s.stopChan)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.conn != nil {
 		// Unless Stop() was called after serveDAPCodec()
 		// returned, this will result in closed connection error
@@ -195,21 +217,12 @@ func (s *Server) Stop() {
 		_ = s.conn.Close()
 	}
 	if s.debugger != nil {
-		kill := s.config.Debugger.AttachPid == 0
-		if err := s.debugger.Detach(kill); err != nil {
-			switch err.(type) {
-			case proc.ErrProcessExited:
-				s.log.Debug(err)
-			default:
-				s.log.Error(err)
-			}
-		}
+		killProcess := s.config.Debugger.AttachPid == 0
+		s.stopDebugSession(killProcess)
 	} else {
 		s.stopNoDebugProcess()
 	}
 	// The binary is no longer in use by the debugger. It is safe to remove it.
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.binaryToRemove != "" {
 		gobuild.Remove(s.binaryToRemove)
 		s.binaryToRemove = ""
@@ -217,26 +230,25 @@ func (s *Server) Stop() {
 	s.log.Debug("DAP server stopped")
 }
 
-// signalDisconnect closes config.DisconnectChan if not nil, which
-// signals that the client disconnected or there was a client
-// connection failure. Since the server currently services only one
-// client, this can be used as a signal to the entire server via
-// Stop(). The function safeguards agaist closing the channel more
+// triggerServerStop closes config.DisconnectChan if not nil, which
+// signals that client sent a disconnect request or there was connection
+// failure or closure. Since the server currently services only one
+// client, this is used as a signal to stop the entire server.
+// The function safeguards agaist closing the channel more
 // than once and can be called multiple times. It is not thread-safe
 // and is currently only called from the run goroutine.
 // TODO(polina): lock this when we add more goroutines that could call
 // this when we support asynchronous request-response communication.
-func (s *Server) signalDisconnect() {
+func (s *Server) triggerServerStop() {
 	// Avoid accidentally closing the channel twice and causing a panic, when
 	// this function is called more than once. For example, we could have the
 	// following sequence of events:
 	// -- run goroutine: calls onDisconnectRequest()
-	// -- run goroutine: calls signalDisconnect()
+	// -- run goroutine: calls triggerServerStop()
 	// -- main goroutine: calls Stop()
-	// -- main goroutine: Stop() closes client connection
+	// -- main goroutine: Stop() closes client connection (or client closed it)
 	// -- run goroutine: serveDAPCodec() gets "closed network connection"
-	// -- run goroutine: serveDAPCodec() returns
-	// -- run goroutine: serveDAPCodec calls signalDisconnect()
+	// -- run goroutine: serveDAPCodec() returns and calls triggerServerStop()
 	if s.config.DisconnectChan != nil {
 		close(s.config.DisconnectChan)
 		s.config.DisconnectChan = nil
@@ -255,26 +267,27 @@ func (s *Server) signalDisconnect() {
 // so the editor needs to launch delve only once?
 func (s *Server) Run() {
 	go func() {
-		conn, err := s.listener.Accept()
+		conn, err := s.listener.Accept() // listener is closed in Stop()
 		if err != nil {
 			select {
-			case <-s.stopChan:
+			case <-s.stopTriggered:
 			default:
 				s.log.Errorf("Error accepting client connection: %s\n", err)
+				s.triggerServerStop()
 			}
-			s.signalDisconnect()
 			return
 		}
-		s.conn = conn
+		s.mu.Lock()
+		s.conn = conn // closed in Stop()
+		s.mu.Unlock()
 		s.serveDAPCodec()
 	}()
 }
 
 // serveDAPCodec reads and decodes requests from the client
 // until it encounters an error or EOF, when it sends
-// the disconnect signal and returns.
+// a disconnect signal and returns.
 func (s *Server) serveDAPCodec() {
-	defer s.signalDisconnect()
 	s.reader = bufio.NewReader(s.conn)
 	for {
 		request, err := dap.ReadProtocolMessage(s.reader)
@@ -286,14 +299,13 @@ func (s *Server) serveDAPCodec() {
 		// TODO(polina): to support this add Seq to
 		// dap.DecodeProtocolMessageFieldError.
 		if err != nil {
-			stopRequested := false
 			select {
-			case <-s.stopChan:
-				stopRequested = true
+			case <-s.stopTriggered:
 			default:
-			}
-			if err != io.EOF && !stopRequested {
-				s.log.Error("DAP error: ", err)
+				if err != io.EOF {
+					s.log.Error("DAP error: ", err)
+				}
+				s.triggerServerStop()
 			}
 			return
 		}
@@ -620,7 +632,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 
 	if noDebug, ok := request.Arguments["noDebug"].(bool); ok && noDebug {
+		s.mu.Lock()
 		cmd, err := s.startNoDebugProcess(program, targetArgs, s.config.Debugger.WorkingDir)
+		s.mu.Unlock()
 		if err != nil {
 			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 			return
@@ -646,17 +660,26 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	if s.debugger, err = debugger.New(&s.config.Debugger, s.config.ProcessArgs); err != nil {
+	func() {
+		s.mu.Lock()
+		defer s.mu.Unlock() // Make sure to unlock in case of panic that will become internal error
+		s.debugger, err = debugger.New(&s.config.Debugger, s.config.ProcessArgs)
+	}()
+	if err != nil {
 		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 		return
 	}
+
+	// Notify the client that the debugger is ready to start accepting
+	// configuration requests for setting breakpoints, etc. The client
+	// will end the configuration sequence with 'configurationDone'.
 	s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
 	s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
 }
 
+// startNoDebugProcess is called from onLaunchRequest (run goroutine) and
+// requires holding mu lock.
 func (s *Server) startNoDebugProcess(program string, targetArgs []string, wd string) (*exec.Cmd, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.noDebugProcess != nil {
 		return nil, fmt.Errorf("another launch request is in progress")
 	}
@@ -669,24 +692,21 @@ func (s *Server) startNoDebugProcess(program string, targetArgs []string, wd str
 	return cmd, nil
 }
 
+// stopNoDebugProcess is called from Stop (main goroutine) and
+// onDisconnectRequest (run goroutine) and requires holding mu lock.
 func (s *Server) stopNoDebugProcess() {
-	s.mu.Lock()
-	p := s.noDebugProcess
-	s.noDebugProcess = nil
-	defer s.mu.Unlock()
-
-	if p == nil {
+	if s.noDebugProcess == nil {
 		// We already handled termination or there was never a process
 		return
 	}
-
-	if p.ProcessState.Exited() {
-		s.logToConsole(proc.ErrProcessExited{Pid: p.ProcessState.Pid(), Status: p.ProcessState.ExitCode()}.Error())
+	if s.noDebugProcess.ProcessState.Exited() {
+		s.logToConsole(proc.ErrProcessExited{Pid: s.noDebugProcess.ProcessState.Pid(), Status: s.noDebugProcess.ProcessState.ExitCode()}.Error())
 	} else {
 		// TODO(hyangah): gracefully terminate the process and its children processes.
-		s.logToConsole(fmt.Sprintf("Terminating process %d", p.Process.Pid))
-		p.Process.Kill() // Don't check error. Process killing and self-termination may race.
+		s.logToConsole(fmt.Sprintf("Terminating process %d", s.noDebugProcess.Process.Pid))
+		s.noDebugProcess.Process.Kill() // Don't check error. Process killing and self-termination may race.
 	}
+	s.noDebugProcess = nil
 }
 
 // TODO(polina): support "remote" mode
@@ -703,57 +723,73 @@ func isValidLaunchMode(launchMode interface{}) bool {
 // it disconnects the debuggee and signals that the debug adaptor
 // (in our case this TCP server) can be terminated.
 func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
+	defer s.triggerServerStop()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	var err error
-	var exited error
 	if s.debugger != nil {
-		state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
-		if err != nil {
-			switch err.(type) {
-			case proc.ErrProcessExited:
-				exited = err
-			default:
-				s.log.Error(err)
-			}
-		} else if state.Exited {
-			exited = proc.ErrProcessExited{Pid: s.debugger.ProcessPid(), Status: state.ExitStatus}
-		}
-		// We always kill launched programs
-		kill := s.config.Debugger.AttachPid == 0
+		// We always kill launched programs.
 		// In case of attach, we leave the program
 		// running by default, which can be
 		// overridden by an explicit request to terminate.
-		if request.Arguments.TerminateDebuggee {
-			kill = true
-		}
-		if exited != nil {
-			s.logToConsole(exited.Error())
-			s.logToConsole("Detaching")
-		} else if kill {
-			s.logToConsole("Detaching and terminating target process")
-		} else {
-			s.logToConsole("Detaching without terminating target processs")
-		}
-		err = s.debugger.Detach(kill)
-		if err != nil {
-			switch err.(type) {
-			case proc.ErrProcessExited:
-				exited = err
-				s.logToConsole(exited.Error())
-			default:
-				s.log.Error(err)
-			}
-		}
+		killProcess := s.config.Debugger.AttachPid == 0 || request.Arguments.TerminateDebuggee
+		err = s.stopDebugSession(killProcess)
 	} else {
 		s.stopNoDebugProcess()
 	}
-	if err != nil && exited == nil {
+	if err != nil {
 		s.sendErrorResponse(request.Request, DisconnectError, "Error while disconnecting", err.Error())
 	} else {
 		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 	}
+}
 
-	// TODO(polina): make thread-safe when handlers become asynchronous.
-	s.signalDisconnect()
+// stopDebugSession is called from Stop (main goroutine) and
+// onDisconnectRequest (run goroutine) and requires holding mu lock.
+// Returns any detach error other than proc.ErrProcessExited.
+func (s *Server) stopDebugSession(killProcess bool) error {
+	if s.debugger == nil {
+		return nil
+	}
+	var err error
+	var exited error
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+	if err == proc.ErrProcessDetached {
+		s.log.Debug(err)
+		return nil
+	}
+	if err != nil {
+		switch err.(type) {
+		case proc.ErrProcessExited:
+			exited = err
+		default:
+			s.log.Error(err)
+		}
+	} else if state.Exited {
+		exited = proc.ErrProcessExited{Pid: s.debugger.ProcessPid(), Status: state.ExitStatus}
+	}
+	if exited != nil {
+		s.logToConsole(exited.Error())
+		s.logToConsole("Detaching")
+	} else if killProcess {
+		s.logToConsole("Detaching and terminating target process")
+	} else {
+		s.logToConsole("Detaching without terminating target processs")
+	}
+	err = s.debugger.Detach(killProcess)
+	s.debugger = nil
+	if err != nil {
+		switch err.(type) {
+		case proc.ErrProcessExited:
+			s.log.Debug(err)
+			s.logToConsole(exited.Error())
+			err = nil
+		default:
+			s.log.Error(err)
+		}
+	}
+	return err
 }
 
 func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
@@ -930,14 +966,16 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 		s.config.Debugger.AttachPid = int(pid)
 		err := s.setLaunchAttachArgs(request)
 		if err != nil {
-			s.sendErrorResponse(request.Request,
-				FailedToAttach, "Failed to attach",
-				err.Error())
+			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
 			return
 		}
-		if s.debugger, err = debugger.New(&s.config.Debugger, nil); err != nil {
-			s.sendErrorResponse(request.Request,
-				FailedToAttach, "Failed to attach", err.Error())
+		func() {
+			s.mu.Lock()
+			defer s.mu.Unlock() // Make sure to unlock in case of panic that will become internal error
+			s.debugger, err = debugger.New(&s.config.Debugger, nil)
+		}()
+		if err != nil {
+			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
 			return
 		}
 	} else {
@@ -986,14 +1024,16 @@ func stoppedGoroutineID(state *api.DebuggerState) (id int) {
 
 func (s *Server) doStepCommand(command string, threadId int) {
 	// Use SwitchGoroutine to change the current goroutine.
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
+	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
 	if err != nil {
-		s.log.Errorf("Error switching goroutines while stepping: %e", err)
+		s.log.Errorf("Error switching goroutines while stepping: %v", err)
 		// If we encounter an error, we will have to send a stopped event
 		// since we already sent the step response.
 		stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
 		stopped.Body.AllThreadsStopped = true
-		if state != nil {
+		if state, err := s.debugger.State(false); err != nil {
+			s.log.Errorf("Error retrieving state: %e", err)
+		} else {
 			stopped.Body.ThreadId = stoppedGoroutineID(state)
 		}
 		stopped.Body.Reason = "error"
@@ -1450,7 +1490,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 		if retVars == nil {
 			// The call got interrupted by a stop (e.g. breakpoint in injected
 			// function call or in another goroutine)
-			s.resetHandlesForStop()
+			s.resetHandlesForStoppedEvent()
 			stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
 			stopped.Body.AllThreadsStopped = true
 			stopped.Body.ThreadId = stoppedGoroutineID(state)
@@ -1627,7 +1667,7 @@ func newEvent(event string) *dap.Event {
 const BetterBadAccessError = `invalid memory address or nil pointer dereference [signal SIGSEGV: segmentation violation]
 Unable to propagate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)`
 
-func (s *Server) resetHandlesForStop() {
+func (s *Server) resetHandlesForStoppedEvent() {
 	s.stackFrameHandles.reset()
 	s.variableHandles.reset()
 }
@@ -1647,7 +1687,7 @@ func (s *Server) doCommand(command string) {
 		return
 	}
 
-	s.resetHandlesForStop()
+	s.resetHandlesForStoppedEvent()
 	stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
 	stopped.Body.AllThreadsStopped = true
 
