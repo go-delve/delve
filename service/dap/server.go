@@ -660,7 +660,6 @@ func (s *Server) startNoDebugProcess(program string, targetArgs []string, wd str
 	if s.noDebugProcess != nil {
 		return nil, fmt.Errorf("another launch request is in progress")
 	}
-
 	cmd := exec.Command(program, targetArgs...)
 	cmd.Stdout, cmd.Stderr, cmd.Stdin, cmd.Dir = os.Stdout, os.Stderr, os.Stdin, wd
 	if err := cmd.Start(); err != nil {
