@@ -383,7 +383,6 @@ func (s *Server) handleRequest(request dap.Message) {
 
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
-	fmt.Println("===========HandleRequest running=", s.running)
 
 	// Most requests cannot be processed while the debuggee is running.
 	// We have a couple of options for handling these without blocking
