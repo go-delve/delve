@@ -408,14 +408,19 @@ If locspec is omitted edit will open the current source file in the editor, othe
 		{aliases: []string{"examinemem", "x"}, group: dataCmds, cmdFn: examineMemoryCmd, helpMsg: `Examine memory:
 
 	examinemem [-fmt <format>] [-count|-len <count>] [-size <size>] <address>
+	examinemem [-fmt <format>] [-count|-len <count>] [-size <size>] -x <expression>
 
 Format represents the data format and the value is one of this list (default hex): bin(binary), oct(octal), dec(decimal), hex(hexadecimal), addr(address).
 Length is the number of bytes (default 1) and must be less than or equal to 1000.
 Address is the memory location of the target to examine. Please note '-len' is deprecated by '-count and -size'.
+Expression can be an integer expression or pointer value of the memory location to examine.
 
 For example:
 
-    x -fmt hex -count 20 -size 1 0xc00008af38`},
+    x -fmt hex -count 20 -size 1 0xc00008af38
+    x -fmt hex -count 20 -size 1 -x 0xc00008af38 + 8
+    x -fmt hex -count 20 -size 1 -x &myVar
+    x -fmt hex -count 20 -size 1 -x myPtrVar`},
 
 		{aliases: []string{"display"}, group: dataCmds, cmdFn: display, helpMsg: `Print value of an expression every time the program stops.
 
