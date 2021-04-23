@@ -1559,6 +1559,19 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 	response := &dap.SetFunctionBreakpointsResponse{Response: *newResponse(request.Request)}
 	response.Body.Breakpoints = make([]dap.Breakpoint, len(request.Arguments.Breakpoints))
 	for i, want := range request.Arguments.Breakpoints {
+		// Find the qualified function name before calling CreateBreakpoint.
+		locs, err := s.debugger.FindLocation(-1, 0, 0, want.Name, true, s.args.substitutePathClientToServer)
+		if err != nil {
+			response.Body.Breakpoints[i].Verified = false
+			response.Body.Breakpoints[i].Message = err.Error()
+			continue
+		}
+		// TODO(suzmue): what should we do if there is more than one location? Will they have
+		// the same name?
+		if len(locs) > 0 {
+			want.Name = locs[0].Function.Name()
+		}
+
 		got, err := s.debugger.CreateBreakpoint(
 			&api.Breakpoint{Name: fmt.Sprintf("functionBreakpoint%d", i), FunctionName: want.Name, Cond: want.Condition})
 		response.Body.Breakpoints[i].Verified = (err == nil)
