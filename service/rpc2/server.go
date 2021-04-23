@@ -58,12 +58,7 @@ type DetachOut struct {
 
 // Detach detaches the debugger, optionally killing the process.
 func (s *RPCServer) Detach(arg DetachIn, out *DetachOut) error {
-	err := s.debugger.Detach(arg.Kill)
-	if s.config.DisconnectChan != nil {
-		close(s.config.DisconnectChan)
-		s.config.DisconnectChan = nil
-	}
-	return err
+	return s.debugger.Detach(arg.Kill)
 }
 
 type RestartIn struct {

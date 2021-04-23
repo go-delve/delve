@@ -89,8 +89,8 @@ func NewServer(config *service.Config) *ServerImpl {
 
 // Stop stops the JSON-RPC server.
 func (s *ServerImpl) Stop() error {
+	close(s.stopChan)
 	if s.config.AcceptMulti {
-		close(s.stopChan)
 		s.listener.Close()
 	}
 	kill := s.config.Debugger.AttachPid == 0
@@ -323,6 +323,10 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 				s.log.Debugf("-> %T%s error: %q", replyv.Interface(), replyvbytes, errmsg)
 			}
 			s.sendResponse(sending, &req, &resp, replyv.Interface(), codec, errmsg)
+			if req.ServiceMethod == "RPCServer.Detach" && s.config.DisconnectChan != nil {
+				close(s.config.DisconnectChan)
+				s.config.DisconnectChan = nil
+			}
 		} else {
 			if logflags.RPC() {
 				argvbytes, _ := json.Marshal(argv.Interface())
