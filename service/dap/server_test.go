@@ -1807,6 +1807,12 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 					})
 					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
 
+					// Test line offsets
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "main.anotherFunction:1"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{27, filepath.Base(fixture.Source), true, ""}})
+
 					// Test function names in imported package.
 					// Issue #275
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
@@ -1840,6 +1846,24 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 					})
 					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "Location \"ReadFile\" ambiguous"}})
 
+					// Expect error for function that does not exist.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "fakeFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "location \"fakeFunction\" not found"}})
+
+					// Expect error for negative line number.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "main.anotherFunction:-1"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "line offset negative or not a number"}})
+
+					// Expect error when function name is regex.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: `/^.*String.*$/`},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "regex function names are not supported"}})
+
 					// Test multiple function breakpoints.
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
 						{Name: "SomeType.String"}, {Name: "anotherFunction"},
@@ -1852,7 +1876,7 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 					})
 					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}, {-1, "", false, "Breakpoint exists"}})
 
-					// Set two breakpoints at SomeType.String and SomeType.SomeFunction
+					// Set two breakpoints at SomeType.String and SomeType.SomeFunction.
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
 						{Name: "SomeType.String"}, {Name: "SomeType.SomeFunction"},
 					})

@@ -1559,21 +1559,44 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 	response := &dap.SetFunctionBreakpointsResponse{Response: *newResponse(request.Request)}
 	response.Body.Breakpoints = make([]dap.Breakpoint, len(request.Arguments.Breakpoints))
 	for i, want := range request.Arguments.Breakpoints {
-		// Find the qualified function name before calling CreateBreakpoint.
+		spec, err := locspec.Parse(want.Name)
+		if err != nil {
+			response.Body.Breakpoints[i].Verified = false
+			response.Body.Breakpoints[i].Message = err.Error()
+			continue
+		}
+		switch spec.(type) {
+		case *locspec.RegexLocationSpec:
+			// These are likely to resolve to multiple places, so it is unclear what the response
+			// body should be since there will be multiple breakpoints created.
+			response.Body.Breakpoints[i].Verified = false
+			response.Body.Breakpoints[i].Message = "regex function names are not supported"
+			continue
+		}
+
+		// Find the location of the function name. CreateBreakpoint requires the name to include the base
+		// (eg main.functionName is supported but not functionName).
+		// We first find the location of the function, and then set breakpoints for that location.
 		locs, err := s.debugger.FindLocation(-1, 0, 0, want.Name, true, s.args.substitutePathClientToServer)
 		if err != nil {
 			response.Body.Breakpoints[i].Verified = false
 			response.Body.Breakpoints[i].Message = err.Error()
 			continue
 		}
-		// TODO(suzmue): what should we do if there is more than one location? Will they have
-		// the same name?
+		if len(locs) == 0 {
+			response.Body.Breakpoints[i].Verified = false
+			response.Body.Breakpoints[i].Message = fmt.Sprintf("no location found for %q", want.Name)
+			continue
+		}
 		if len(locs) > 0 {
-			want.Name = locs[0].Function.Name()
+			// TODO(suzmue): what should we do if there is more than one location?
+			s.log.Debugf("multiple locations found for %s", want.Name)
 		}
 
+		// Set breakpoint using the PCs that were found.
+		loc := locs[0]
 		got, err := s.debugger.CreateBreakpoint(
-			&api.Breakpoint{Name: fmt.Sprintf("functionBreakpoint%d", i), FunctionName: want.Name, Cond: want.Condition})
+			&api.Breakpoint{Name: fmt.Sprintf("functionBreakpoint%d", i), Addr: loc.PC, Addrs: loc.PCs, Cond: want.Condition})
 		response.Body.Breakpoints[i].Verified = (err == nil)
 		if err != nil {
 			response.Body.Breakpoints[i].Message = err.Error()
