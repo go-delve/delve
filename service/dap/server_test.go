@@ -1738,6 +1738,194 @@ func TestSetBreakpoint(t *testing.T) {
 			}})
 	})
 }
+func TestSetFunctionBreakpoints(t *testing.T) {
+	runTest(t, "locationsprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{30}, // b main.main
+			[]onBreakpoint{{
+				execute: func() {
+					handleStop(t, client, 1, "main.main", 30)
+
+					type Breakpoint struct {
+						line       int
+						sourceName string
+						verified   bool
+						errMsg     string
+					}
+					expectSetFunctionBreakpointsResponse := func(bps []Breakpoint) {
+						t.Helper()
+						got := client.ExpectSetFunctionBreakpointsResponse(t)
+						if len(got.Body.Breakpoints) != len(bps) {
+							t.Errorf("got %#v,\nwant len(Breakpoints)=%d", got, len(bps))
+							return
+						}
+						for i, bp := range got.Body.Breakpoints {
+							if len(bps[i].errMsg) > 0 {
+								if bp.Verified != bps[i].verified || !strings.Contains(bp.Message, bps[i].errMsg) {
+									t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
+								}
+								continue
+							}
+							if (bps[i].line >= 0 && bp.Line != bps[i].line) || bp.Verified != bps[i].verified || bp.Source.Name != bps[i].sourceName {
+								t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
+							}
+						}
+					}
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "anotherFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{26, filepath.Base(fixture.Source), true, ""}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "main.anotherFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{26, filepath.Base(fixture.Source), true, ""}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "SomeType.String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "(*SomeType).String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "main.SomeType.String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "main.(*SomeType).String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
+
+					// Test function names in imported package.
+					// Issue #275
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "io/ioutil.ReadFile"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "ioutil.go", true, ""}})
+
+					// Issue #296
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "/io/ioutil.ReadFile"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "ioutil.go", true, ""}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "ioutil.ReadFile"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "ioutil.go", true, ""}})
+
+					// Expect error for ambiguous function name.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "Location \"String\" ambiguous"}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "main.String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "Location \"main.String\" ambiguous"}})
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "ReadFile"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "Location \"ReadFile\" ambiguous"}})
+
+					// Test multiple function breakpoints.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "SomeType.String"}, {Name: "anotherFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}, {26, filepath.Base(fixture.Source), true, ""}})
+
+					// Test multiple breakpoints to the same location.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "SomeType.String"}, {Name: "(*SomeType).String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}, {-1, "", false, "Breakpoint exists"}})
+
+					// Set two breakpoints at SomeType.String and SomeType.SomeFunction
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "SomeType.String"}, {Name: "SomeType.SomeFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}, {22, filepath.Base(fixture.Source), true, ""}})
+
+					// Clear SomeType.String, reset SomeType.SomeFunction (SomeType.String is called before SomeType.SomeFunction).
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "SomeType.SomeFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{22, filepath.Base(fixture.Source), true, ""}})
+
+					// Expect the next breakpoint to be at SomeType.SomeFunction.
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
+						t.Errorf("got %#v, want Reaspon=\"error\", ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.(*SomeType).SomeFunction", 22)
+
+					// Set a breakpoint at the next line in the program.
+					client.SetBreakpointsRequest(fixture.Source, []int{23})
+					got := client.ExpectSetBreakpointsResponse(t)
+					if len(got.Body.Breakpoints) != 1 {
+						t.Errorf("got %#v,\nwant len(Breakpoints)=%d", got, 1)
+						return
+					}
+					bp := got.Body.Breakpoints[0]
+					if bp.Line != 23 || bp.Verified != true || bp.Source.Path != fixture.Source {
+						t.Errorf("got breakpoints[0] = %#v, \nwant Line=23 Verified=true Source.Path=%q", bp, fixture.Source)
+					}
+
+					// Set a function breakpoint, this should not clear the breakpoint that was set in the previous setBreakpoints request.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "anotherFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{26, filepath.Base(fixture.Source), true, ""}})
+
+					// Expect the next breakpoint to be at line 23.
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
+						t.Errorf("got %#v, want Reaspon=\"error\", ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.(*SomeType).SomeFunction", 23)
+
+					// Set a breakpoint, this should not clear the breakpoint that was set in the previous setFunctionBreakpoints request.
+					client.SetBreakpointsRequest(fixture.Source, []int{37})
+					got = client.ExpectSetBreakpointsResponse(t)
+					if len(got.Body.Breakpoints) != 1 {
+						t.Errorf("got %#v,\nwant len(Breakpoints)=%d", got, 1)
+						return
+					}
+					bp = got.Body.Breakpoints[0]
+					if bp.Line != 37 || bp.Verified != true || bp.Source.Path != fixture.Source {
+						t.Errorf("got breakpoints[0] = %#v, \nwant Line=23 Verified=true Source.Path=%q", bp, fixture.Source)
+					}
+
+					// Expect the next breakpoint to be at line anotherFunction.
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
+						t.Errorf("got %#v, want Reaspon=\"error\", ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.anotherFunction", 26)
+
+				},
+				disconnect: true,
+			}})
+	})
+}
 
 // TestLaunchSubstitutePath sets a breakpoint using a path
 // that does not exist and expects the substitutePath attribute
@@ -2941,9 +3129,6 @@ func TestOptionalNotYetImplementedResponses(t *testing.T) {
 
 		client.RestartRequest()
 		expectNotYetImplemented("restart")
-
-		client.SetFunctionBreakpointsRequest()
-		expectNotYetImplemented("setFunctionBreakpoints")
 
 		client.StepBackRequest()
 		expectNotYetImplemented("stepBack")

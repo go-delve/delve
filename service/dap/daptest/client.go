@@ -502,8 +502,13 @@ func (c *Client) RestartRequest() {
 }
 
 // SetFunctionBreakpointsRequest sends a 'setFunctionBreakpoints' request.
-func (c *Client) SetFunctionBreakpointsRequest() {
-	c.send(&dap.SetFunctionBreakpointsRequest{Request: *c.newRequest("setFunctionBreakpoints")})
+func (c *Client) SetFunctionBreakpointsRequest(breakpoints []dap.FunctionBreakpoint) {
+	c.send(&dap.SetFunctionBreakpointsRequest{
+		Request: *c.newRequest("setFunctionBreakpoints"),
+		Arguments: dap.SetFunctionBreakpointsArguments{
+			Breakpoints: breakpoints,
+		},
+	})
 }
 
 // StepBackRequest sends a 'stepBack' request.
