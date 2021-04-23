@@ -1525,8 +1525,6 @@ func (s *Server) onRestartRequest(request *dap.RestartRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onSetFunctionBreakpointsRequest sends a not-yet-implemented error response.
-// Capability 'supportsFunctionBreakpoints' is not set 'initialize' response.
 func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpointsRequest) {
 	if s.noDebugProcess != nil {
 		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", "running in noDebug mode")
@@ -1546,6 +1544,9 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 	// -- doesn't exist and in request => SetBreakpoint
 
 	// Clear all existing function breakpoints in the file.
+	// Function breakpoints are set with the Name field set to be the
+	// function name. We cannot use FunctionName to determine this, because
+	// the debugger sets the function name for breakpoints.
 	s.clearMatchingBreakpoints(request.Request, func(bp *api.Breakpoint) bool { return bp.Name != "" })
 
 	// Set all requested breakpoints.
@@ -1553,7 +1554,7 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 	response.Body.Breakpoints = make([]dap.Breakpoint, len(request.Arguments.Breakpoints))
 	for i, want := range request.Arguments.Breakpoints {
 		got, err := s.debugger.CreateBreakpoint(
-			&api.Breakpoint{Name: want.Name, FunctionName: want.Name, Cond: want.Condition})
+			&api.Breakpoint{Name: fmt.Sprintf("functionBreakpoint%d", i), FunctionName: want.Name, Cond: want.Condition})
 		response.Body.Breakpoints[i].Verified = (err == nil)
 		if err != nil {
 			response.Body.Breakpoints[i].Message = err.Error()
