@@ -3,7 +3,7 @@ set -e
 set -x
 
 apt-get -qq update
-apt-get install -y dwz wget make git gcc curl jq
+apt-get install -y dwz wget make git gcc curl jq lsof
 dwz --version
 
 version=$1

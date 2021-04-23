@@ -321,9 +321,6 @@ func TestIssue1419(t *testing.T) {
 }
 
 func TestLocationCovers(t *testing.T) {
-	const before = 0x1234
-	const after = 0x4321
-
 	dwb := dwarfbuilder.New()
 
 	uint16off := dwb.AddBaseType("uint16", dwarfbuilder.DW_ATE_unsigned, 2)

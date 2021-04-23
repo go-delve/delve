@@ -140,7 +140,7 @@ func (dbp *nativeProcess) Valid() (bool, error) {
 		return false, proc.ErrProcessDetached
 	}
 	if dbp.exited {
-		return false, &proc.ErrProcessExited{Pid: dbp.Pid()}
+		return false, proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 	return true, nil
 }
@@ -185,7 +185,7 @@ func (dbp *nativeProcess) Breakpoints() *proc.BreakpointMap {
 // sends SIGSTOP to all threads.
 func (dbp *nativeProcess) RequestManualStop() error {
 	if dbp.exited {
-		return &proc.ErrProcessExited{Pid: dbp.Pid()}
+		return proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 	dbp.stopMu.Lock()
 	defer dbp.stopMu.Unlock()
@@ -222,7 +222,7 @@ func (dbp *nativeProcess) EraseBreakpoint(bp *proc.Breakpoint) error {
 // This could be the result of a breakpoint or signal.
 func (dbp *nativeProcess) ContinueOnce() (proc.Thread, proc.StopReason, error) {
 	if dbp.exited {
-		return nil, proc.StopExited, &proc.ErrProcessExited{Pid: dbp.Pid()}
+		return nil, proc.StopExited, proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 
 	for {
