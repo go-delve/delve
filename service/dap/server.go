@@ -817,8 +817,11 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 	// -- exists and in request => AmendBreakpoint
 	// -- doesn't exist and in request => SetBreakpoint
 
-	// Clear all existing breakpoints in the file.
-	s.clearMatchingBreakpoints(request.Request, func(bp *api.Breakpoint) bool { return bp.File == serverPath && bp.Name == "" })
+	// Clear all existing breakpoints in the file that are not function breakpoints.
+	if err := s.clearMatchingBreakpoints(func(bp *api.Breakpoint) bool { return bp.File == serverPath && bp.Name == "" }); err != nil {
+		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
+		return
+	}
 
 	// Set all requested breakpoints.
 	response := &dap.SetBreakpointsResponse{Response: *newResponse(request.Request)}
@@ -1547,7 +1550,10 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 	// Function breakpoints are set with the Name field set to be the
 	// function name. We cannot use FunctionName to determine this, because
 	// the debugger sets the function name for breakpoints.
-	s.clearMatchingBreakpoints(request.Request, func(bp *api.Breakpoint) bool { return bp.Name != "" })
+	if err := s.clearMatchingBreakpoints(func(bp *api.Breakpoint) bool { return bp.Name != "" }); err != nil {
+		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
+		return
+	}
 
 	// Set all requested breakpoints.
 	response := &dap.SetFunctionBreakpointsResponse{Response: *newResponse(request.Request)}
@@ -1567,7 +1573,7 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 	s.send(response)
 }
 
-func (s *Server) clearMatchingBreakpoints(request dap.Request, cond func(*api.Breakpoint) bool) {
+func (s *Server) clearMatchingBreakpoints(matchCondition func(*api.Breakpoint) bool) error {
 	existing := s.debugger.Breakpoints()
 	for _, bp := range existing {
 		// Skip special breakpoints such as for panic.
@@ -1575,15 +1581,15 @@ func (s *Server) clearMatchingBreakpoints(request dap.Request, cond func(*api.Br
 			continue
 		}
 		// Skip breakpoints that do not meet the condition.
-		if !cond(bp) {
+		if !matchCondition(bp) {
 			continue
 		}
 		_, err := s.debugger.ClearBreakpoint(bp)
 		if err != nil {
-			s.sendErrorResponse(request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
-			return
+			return err
 		}
 	}
+	return nil
 }
 
 // onStepBackRequest sends a not-yet-implemented error response.
