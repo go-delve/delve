@@ -1759,19 +1759,20 @@ loop:
 			return err
 		}
 
-		// handle three different kinds of expressions
-		if val.Addr != 0 {
-			// -x somevar
-			address = val.Addr
-		} else if len(val.Children) > 0 {
-			// -x &somevar
+		// "-x &myVar" or "-x myPtrVar"
+		if val.Kind == reflect.Ptr {
+			if len(val.Children) < 1 {
+				return fmt.Errorf("bug? invalid pointer: %#v", val)
+			}
 			address = val.Children[0].Addr
-		} else {
-			// -x 0xc000079f20 + 8
+			// "-x 0xc000079f20 + 8" or -x 824634220320 + 8
+		} else if val.Kind == reflect.Int && val.Value != "" {
 			address, err = strconv.ParseUint(val.Value, 0, 64)
 			if err != nil {
-				return fmt.Errorf("expression did not evaluate to uintptr, %s", err)
+				return fmt.Errorf("bad expression result: %q: %s", val.Value, err)
 			}
+		} else {
+			return fmt.Errorf("unsupported expression type: %s", val.Kind)
 		}
 	} else {
 		address, err = strconv.ParseUint(args[0], 0, 64)

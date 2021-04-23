@@ -1088,62 +1088,39 @@ func TestExamineMemoryCmd(t *testing.T) {
 		if !strings.Contains(res, firstLine) {
 			t.Fatalf("expected first line: %s", firstLine)
 		}
-
-		// fifth examining memory: -x var
-		res = term.MustExec("examinemem -x bs[0]")
+		// fifth examining memory: -x &var
+		res = term.MustExec("examinemem -x &bs[0]")
 		t.Logf("the fifth result of examining memory result \n%s", res)
 		firstLine = fmt.Sprintf("%#x:   0xff", address)
 		if !strings.Contains(res, firstLine) {
 			t.Fatalf("expected first line: %s", firstLine)
 		}
 
-		// sixth examining memory: -x &var
-		res = term.MustExec("examinemem -x &bs[0]")
-		t.Logf("the sixth result of examining memory result \n%s", res)
-		firstLine = fmt.Sprintf("%#x:   0xff", address)
-		if !strings.Contains(res, firstLine) {
-			t.Fatalf("expected first line: %s", firstLine)
-		}
-
-		// seventh examining memory: -fmt and double spaces
+		// sixth examining memory: -fmt and double spaces
 		res = term.MustExec("examinemem -fmt  hex  -x &bs[0]")
-		t.Logf("the seventh result of examining memory result \n%s", res)
+		t.Logf("the sixth result of examining memory result \n%s", res)
 		firstLine = fmt.Sprintf("%#x:   0xff", address)
 		if !strings.Contains(res, firstLine) {
 			t.Fatalf("expected first line: %s", firstLine)
 		}
 	})
 
-	withTestTerminal("examinememory_expr", t, func(term *FakeTerminal) {
+	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
 		tests := []struct {
 			Expr string
 			Want int
 		}{
-			{Expr: "myInt", Want: 23},
-			{Expr: "&myInt", Want: 23},
-			// TODO: this fails, probably beause it's printing the value of myIntPtr
-			// rather than the value of the addr it is pointing to.
-			{Expr: "myIntPtr", Want: 23},
-
-			{Expr: "myStr[1]", Want: 'e'},
-			{Expr: "&myStr[1]", Want: 'e'},
-
-			{Expr: "mySlice[1]", Want: 4},
-			{Expr: "&mySlice[1]", Want: 4},
-
-			{Expr: "myArray[1]", Want: 7},
-			{Expr: "&myArray[1]", Want: 7},
-
-			{Expr: "myStruct", Want: 9},
-			{Expr: "&myStruct", Want: 9},
-
-			{Expr: "myStruct.a", Want: 9},
-			{Expr: "&myStruct.a", Want: 9},
-
-			{Expr: "myStruct.b", Want: 10},
-			{Expr: "&myStruct.b", Want: 10},
+			{Expr: "&i1", Want: 1},
+			{Expr: "&i2", Want: 2},
+			{Expr: "p1", Want: 1},
+			{Expr: "*pp1", Want: 1},
+			{Expr: "&str1[1]", Want: '1'},
+			{Expr: "c1.pb", Want: 1},
+			{Expr: "&c1.pb.a", Want: 1},
+			{Expr: "&c1.pb.a.A", Want: 1},
+			{Expr: "&c1.pb.a.B", Want: 2},
 		}
-		term.MustExec("continue examinememory_expr.go:20")
+		term.MustExec("continue")
 		for _, test := range tests {
 			res := term.MustExec("examinemem -fmt dec -x " + test.Expr)
 			// strip addr from output, e.g. "0xc0000160b8:   023" -> "023"
