@@ -1565,8 +1565,7 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 			response.Body.Breakpoints[i].Message = err.Error()
 			continue
 		}
-		switch spec.(type) {
-		case *locspec.RegexLocationSpec:
+		if _, ok := spec.(*locspec.RegexLocationSpec); ok {
 			// These are likely to resolve to multiple places, so it is unclear what the response
 			// body should be since there will be multiple breakpoints created.
 			response.Body.Breakpoints[i].Verified = false
