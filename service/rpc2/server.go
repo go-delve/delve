@@ -636,7 +636,7 @@ func (s *RPCServer) ListGoroutines(arg ListGoroutinesIn, out *ListGoroutinesOut)
 	gs, out.Groups, out.TooManyGroups = s.debugger.GroupGoroutines(gs, &arg.GoroutineGroupingOptions)
 	s.debugger.LockTarget()
 	defer s.debugger.UnlockTarget()
-	out.Goroutines = api.ConvertGoroutines(gs)
+	out.Goroutines = api.ConvertGoroutines(s.debugger.Target(), gs)
 	out.Nextg = nextg
 	return nil
 }

@@ -288,7 +288,7 @@ func (s *RPCServer) ListGoroutines(arg interface{}, goroutines *[]*api.Goroutine
 	}
 	s.debugger.LockTarget()
 	s.debugger.UnlockTarget()
-	*goroutines = api.ConvertGoroutines(gs)
+	*goroutines = api.ConvertGoroutines(s.debugger.Target(), gs)
 	return nil
 }
 

@@ -423,7 +423,7 @@ func testseq(program string, contFunc contFunc, testcases []nextTest, initialLoc
 	testseq2(t, program, initialLocation, seqTestcases)
 }
 
-const traceTestseq2 = false
+const traceTestseq2 = true
 
 func testseq2(t *testing.T, program string, initialLocation string, testcases []seqTest) {
 	testseq2Args(".", []string{}, 0, t, program, initialLocation, testcases)
@@ -1284,7 +1284,7 @@ func TestFrameEvaluation(t *testing.T) {
 				continue
 			}
 			t.Logf("Goroutine %d %#v", g.ID, g.Thread)
-			logStacktrace(t, p.BinInfo(), frames)
+			logStacktrace(t, p, frames)
 			for i := range frames {
 				if frames[i].Call.Fn != nil && frames[i].Call.Fn.Name == "main.agoroutine" {
 					frame = i
@@ -3153,7 +3153,7 @@ func TestIssue844(t *testing.T) {
 	})
 }
 
-func logStacktrace(t *testing.T, bi *proc.BinaryInfo, frames []proc.Stackframe) {
+func logStacktrace(t *testing.T, p *proc.Target, frames []proc.Stackframe) {
 	for j := range frames {
 		name := "?"
 		if frames[j].Current.Fn != nil {
@@ -3165,20 +3165,20 @@ func logStacktrace(t *testing.T, bi *proc.BinaryInfo, frames []proc.Stackframe) 
 
 		t.Logf("\t%#x %#x %#x %s at %s:%d\n", frames[j].Call.PC, frames[j].FrameOffset(), frames[j].FramePointerOffset(), name, filepath.Base(frames[j].Call.File), frames[j].Call.Line)
 		if frames[j].TopmostDefer != nil {
-			f, l, fn := bi.PCToLine(frames[j].TopmostDefer.DeferredPC)
+			_, _, fn := frames[j].TopmostDefer.DeferredFunc(p)
 			fnname := ""
 			if fn != nil {
 				fnname = fn.Name
 			}
-			t.Logf("\t\ttopmost defer: %#x %s at %s:%d\n", frames[j].TopmostDefer.DeferredPC, fnname, f, l)
+			t.Logf("\t\ttopmost defer: %#x %s\n", frames[j].TopmostDefer.DwrapPC, fnname)
 		}
 		for deferIdx, _defer := range frames[j].Defers {
-			f, l, fn := bi.PCToLine(_defer.DeferredPC)
+			_, _, fn := _defer.DeferredFunc(p)
 			fnname := ""
 			if fn != nil {
 				fnname = fn.Name
 			}
-			t.Logf("\t\t%d defer: %#x %s at %s:%d\n", deferIdx, _defer.DeferredPC, fnname, f, l)
+			t.Logf("\t\t%d defer: %#x %s\n", deferIdx, _defer.DwrapPC, fnname)
 
 		}
 	}
@@ -3299,7 +3299,7 @@ func TestCgoStacktrace(t *testing.T) {
 			assertNoError(err, t, fmt.Sprintf("Stacktrace at iteration step %d", itidx))
 
 			t.Logf("iteration step %d", itidx)
-			logStacktrace(t, p.BinInfo(), frames)
+			logStacktrace(t, p, frames)
 
 			m := stacktraceCheck(t, tc, frames)
 			mismatch := (m == nil)
@@ -3336,7 +3336,7 @@ func TestCgoStacktrace(t *testing.T) {
 					if frames[j].Current.File != threadFrames[j].Current.File || frames[j].Current.Line != threadFrames[j].Current.Line {
 						t.Logf("stack mismatch between goroutine stacktrace and thread stacktrace")
 						t.Logf("thread stacktrace:")
-						logStacktrace(t, p.BinInfo(), threadFrames)
+						logStacktrace(t, p, threadFrames)
 						mismatch = true
 						break
 					}
@@ -3390,7 +3390,7 @@ func TestSystemstackStacktrace(t *testing.T) {
 		assertNoError(err, t, "GetG")
 		frames, err := g.Stacktrace(100, 0)
 		assertNoError(err, t, "stacktrace")
-		logStacktrace(t, p.BinInfo(), frames)
+		logStacktrace(t, p, frames)
 		m := stacktraceCheck(t, []string{"!runtime.startpanic_m", "runtime.gopanic", "main.main"}, frames)
 		if m == nil {
 			t.Fatal("see previous loglines")
@@ -3423,7 +3423,7 @@ func TestSystemstackOnRuntimeNewstack(t *testing.T) {
 		}
 		frames, err := g.Stacktrace(100, 0)
 		assertNoError(err, t, "stacktrace")
-		logStacktrace(t, p.BinInfo(), frames)
+		logStacktrace(t, p, frames)
 		m := stacktraceCheck(t, []string{"!runtime.newstack", "main.main"}, frames)
 		if m == nil {
 			t.Fatal("see previous loglines")
@@ -4047,7 +4047,7 @@ func TestReadDefer(t *testing.T) {
 		frames, err := p.SelectedGoroutine().Stacktrace(10, proc.StacktraceReadDefers)
 		assertNoError(err, t, "Stacktrace")
 
-		logStacktrace(t, p.BinInfo(), frames)
+		logStacktrace(t, p, frames)
 
 		examples := []struct {
 			frameIdx     int
@@ -4073,9 +4073,9 @@ func TestReadDefer(t *testing.T) {
 			if d.Unreadable != nil {
 				t.Fatalf("expected %q as %s of frame %d, got unreadable defer: %v", tgt, deferName, frameIdx, d.Unreadable)
 			}
-			dfn := p.BinInfo().PCToFunc(d.DeferredPC)
+			_, _, dfn := d.DeferredFunc(p)
 			if dfn == nil {
-				t.Fatalf("expected %q as %s of frame %d, got %#x", tgt, deferName, frameIdx, d.DeferredPC)
+				t.Fatalf("expected %q as %s of frame %d, got %#x", tgt, deferName, frameIdx, d.DwrapPC)
 			}
 			if dfn.Name != tgt {
 				t.Fatalf("expected %q as %s of frame %d, got %q", tgt, deferName, frameIdx, dfn.Name)
@@ -4113,6 +4113,15 @@ func TestNextUnknownInstr(t *testing.T) {
 }
 
 func TestReadDeferArgs(t *testing.T) {
+	// XXX Go 1.17 - fails because the wrappers prevent reading arguments XXX
+	//TODO:
+	// Figure out a way to fix the compiler so the autotmp variables inside
+	// the wrapper have the same name as the arguments they represent.
+	// The code that creates them is at
+	// $GOROOT/src/cmd/compile/internal/walk/order.go:1701 (search capName)
+	// but we probably want to actually resolve their name when generating
+	// DWARF.
+	// Revisit this when https://github.com/golang/go/issues/45720 is fixed.
 	var tests = []struct {
 		frame, deferCall int
 		a, b             int64
@@ -4128,8 +4137,12 @@ func TestReadDeferArgs(t *testing.T) {
 			scope, err := proc.ConvertEvalScope(p, -1, test.frame, test.deferCall)
 			assertNoError(err, t, fmt.Sprintf("ConvertEvalScope(-1, %d, %d)", test.frame, test.deferCall))
 
-			if scope.Fn.Name != "main.f2" {
-				t.Fatalf("expected function \"main.f2\" got %q", scope.Fn.Name)
+			if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) {
+				// In Go 1.17 deferred function calls can end up inside a wrapper, and
+				// the scope for this evaluation needs to be the wrapper.
+				if scope.Fn.Name != "main.f2" {
+					t.Fatalf("expected function \"main.f2\" got %q", scope.Fn.Name)
+				}
 			}
 
 			avar, err := scope.EvalVariable("a", normalLoadConfig)
@@ -4344,7 +4357,7 @@ func TestAncestors(t *testing.T) {
 			astack, err := a.Stack(100)
 			assertNoError(err, t, fmt.Sprintf("Ancestor %d stack", i))
 			t.Logf("ancestor %d\n", i)
-			logStacktrace(t, p.BinInfo(), astack)
+			logStacktrace(t, p, astack)
 			for _, frame := range astack {
 				if frame.Current.Fn != nil && frame.Current.Fn.Name == "main.main" {
 					mainFound = true
@@ -4480,7 +4493,7 @@ func TestCgoStacktrace2(t *testing.T) {
 		p.Continue()
 		frames, err := proc.ThreadStacktrace(p.CurrentThread(), 100)
 		assertNoError(err, t, "Stacktrace()")
-		logStacktrace(t, p.BinInfo(), frames)
+		logStacktrace(t, p, frames)
 		m := stacktraceCheck(t, []string{"C.sigsegv", "C.testfn", "main.main"}, frames)
 		if m == nil {
 			t.Fatal("see previous loglines")
@@ -4591,7 +4604,7 @@ func TestIssue1795(t *testing.T) {
 		assertNoError(p.Continue(), t, "Continue()")
 		frames, err := proc.ThreadStacktrace(p.CurrentThread(), 40)
 		assertNoError(err, t, "ThreadStacktrace()")
-		logStacktrace(t, p.BinInfo(), frames)
+		logStacktrace(t, p, frames)
 		if err := checkFrame(frames[0], "regexp.(*Regexp).doExecute", "", 0, false); err != nil {
 			t.Errorf("Wrong frame 0: %v", err)
 		}
@@ -5358,6 +5371,31 @@ func TestManualStopWhileStopped(t *testing.T) {
 			p.RequestManualStop()
 			p.RequestManualStop()
 			<-done
+		}
+	})
+}
+
+func TestDwrapStartLocation(t *testing.T) {
+	// Tests that the start location of a goroutine is unwrapped in Go 1.17 and later.
+	withTestProcess("goroutinestackprog", t, func(p *proc.Target, fixture protest.Fixture) {
+		setFunctionBreakpoint(p, t, "main.stacktraceme")
+		assertNoError(p.Continue(), t, "Continue()")
+		gs, _, err := proc.GoroutinesInfo(p, 0, 0)
+		assertNoError(err, t, "GoroutinesInfo")
+		found := false
+		for _, g := range gs {
+			startLoc := g.StartLoc(p)
+			if startLoc.Fn == nil {
+				continue
+			}
+			t.Logf("%#v\n", startLoc.Fn.Name)
+			if startLoc.Fn.Name == "main.agoroutine" {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("could not find any goroutine with a start location of main.agoroutine")
 		}
 	})
 }

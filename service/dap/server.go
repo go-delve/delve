@@ -1559,7 +1559,7 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 	// Determine if the goroutine is a system goroutine.
 	isSystemGoroutine := true
 	if g, _ := s.debugger.FindGoroutine(goroutineID); g != nil {
-		isSystemGoroutine = g.System()
+		isSystemGoroutine = g.System(s.debugger.Target())
 	}
 
 	stackFrames := make([]dap.StackFrame, len(frames))
