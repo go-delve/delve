@@ -630,6 +630,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.config.Debugger.WorkingDir = wdParsed
 	}
 
+	s.log.Debugf("running program in %s\n", s.config.Debugger.WorkingDir)
 	if noDebug, ok := request.Arguments["noDebug"].(bool); ok && noDebug {
 		s.mu.Lock()
 		cmd, err := s.startNoDebugProcess(program, targetArgs, s.config.Debugger.WorkingDir)
