@@ -2,6 +2,7 @@ package proc
 
 import (
 	"bytes"
+	"debug/dwarf"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -275,7 +276,22 @@ func stepInstructionOut(dbp *Target, curthread Thread, fnname1, fnname2 string) 
 			return err
 		}
 		loc, err := curthread.Location()
-		if err != nil || loc.Fn == nil || (loc.Fn.Name != fnname1 && loc.Fn.Name != fnname2) {
+		var locFnName string
+		if loc.Fn != nil {
+			locFnName = loc.Fn.Name
+			// Calls to runtime.Breakpoint are inlined in some versions of Go when
+			// inlining is enabled. Here we attempt to resolve any inlining.
+			dwarfTree, _ := loc.Fn.cu.image.getDwarfTree(loc.Fn.offset)
+			if dwarfTree != nil {
+				inlstack := reader.InlineStack(dwarfTree, loc.PC)
+				if len(inlstack) > 0 {
+					if locFnName2, ok := inlstack[0].Val(dwarf.AttrName).(string); ok {
+						locFnName = locFnName2
+					}
+				}
+			}
+		}
+		if err != nil || loc.Fn == nil || (locFnName != fnname1 && locFnName != fnname2) {
 			g, _ := GetG(curthread)
 			selg := dbp.SelectedGoroutine()
 			if g != nil && selg != nil && g.ID == selg.ID {
