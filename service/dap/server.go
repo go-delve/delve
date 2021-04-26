@@ -1564,17 +1564,17 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 			response.Body.Breakpoints[i].Message = err.Error()
 			continue
 		}
-		if _, ok := spec.(*locspec.RegexLocationSpec); ok {
+		if loc, ok := spec.(*locspec.NormalLocationSpec); !ok || loc.FuncBase == nil {
 			// These are likely to resolve to multiple places, so it is unclear what the response
 			// body should be since there will be multiple breakpoints created.
-			response.Body.Breakpoints[i].Message = "regex function names are not supported"
+			response.Body.Breakpoints[i].Message = fmt.Sprintf("breakpoint name %q could not be parsed as a function", want.Name)
 			continue
 		}
 
 		// Find the location of the function name. CreateBreakpoint requires the name to include the base
 		// (eg main.functionName is supported but not functionName).
 		// We first find the location of the function, and then set breakpoints for that location.
-		locs, err := s.debugger.FindLocation(-1, 0, 0, want.Name, true, s.args.substitutePathClientToServer)
+		locs, err := s.debugger.FindLocationSpec(-1, 0, 0, want.Name, spec, true, s.args.substitutePathClientToServer)
 		if err != nil {
 			response.Body.Breakpoints[i].Message = err.Error()
 			continue

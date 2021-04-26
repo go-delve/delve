@@ -1566,9 +1566,28 @@ func (d *Debugger) FindLocation(goid, frame, deferredCall int, locStr string, in
 		return nil, err
 	}
 
+	return d.findLocation(goid, frame, deferredCall, locStr, loc, includeNonExecutableLines, substitutePathRules)
+}
+
+// FindLocationSpec will find the location specified by 'locStr' and 'locSpec'.
+// 'locSpec' should be the result of calling 'locspec.Parse(locStr)'. 'locStr'
+// is also passed, because it made be used to broaden the search criteria, if
+// the parsed result did not find anything.
+func (d *Debugger) FindLocationSpec(goid, frame, deferredCall int, locStr string, locSpec locspec.LocationSpec, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+
+	if _, err := d.target.Valid(); err != nil {
+		return nil, err
+	}
+
+	return d.findLocation(goid, frame, deferredCall, locStr, locSpec, includeNonExecutableLines, substitutePathRules)
+}
+
+func (d *Debugger) findLocation(goid, frame, deferredCall int, locStr string, locSpec locspec.LocationSpec, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
 	s, _ := proc.ConvertEvalScope(d.target, goid, frame, deferredCall)
 
-	locs, err := loc.Find(d.target, d.processArgs, s, locStr, includeNonExecutableLines, substitutePathRules)
+	locs, err := locSpec.Find(d.target, d.processArgs, s, locStr, includeNonExecutableLines, substitutePathRules)
 	for i := range locs {
 		if locs[i].PC == 0 {
 			continue

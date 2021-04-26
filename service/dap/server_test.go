@@ -1831,6 +1831,14 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 					})
 					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "ioutil.go", true, ""}})
 
+					// Function Breakpoint name also accepts breakpoints that are specified as file:line.
+					// TODO(suzmue): We could return an error, but it probably is not necessary since breakpoints,
+					// and function breakpoints come in with different requests.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: fmt.Sprintf("%s:14", fixture.Source)},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
+
 					// Expect error for ambiguous function name.
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
 						{Name: "String"},
@@ -1858,7 +1866,25 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
 						{Name: `/^.*String.*$/`},
 					})
-					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "regex function names are not supported"}})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "breakpoint name \"/^.*String.*$/\" could not be parsed as a function"}})
+
+					// Expect error when function name is an offset.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "+1"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), false, "breakpoint name \"+1\" could not be parsed as a function"}})
+
+					// Expect error when function name is a line number.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "14"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), false, "breakpoint name \"14\" could not be parsed as a function"}})
+
+					// Expect error when function name is an address.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "*b"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), false, "breakpoint name \"*b\" could not be parsed as a function"}})
 
 					// Test multiple function breakpoints.
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
