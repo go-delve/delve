@@ -1083,9 +1083,27 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 	}
 	locScope := &fullyQualifiedVariable{&proc.Variable{Name: "Locals", Children: slicePtrVarToSliceVar(locals)}, "", true}
 
+	// Retrieve registers
+	regs, err := s.debugger.ScopeRegisters(goid, frame, 0, false)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToListRegisters, "Unable to list registers", err.Error())
+		return
+	}
+	outRegs := api.ConvertRegisters(regs, s.debugger.DwarfRegisterToString, false)
+	regsVar := make([]proc.Variable, len(outRegs))
+	for i, r := range outRegs {
+		regsVar[i] = proc.Variable{
+			Name:  r.Name,
+			Value: constant.MakeString(r.Value),
+			Kind:  reflect.Kind(proc.VariableConstant),
+		}
+	}
+	regsScope := &fullyQualifiedVariable{&proc.Variable{Name: "Registers", Children: regsVar}, "", true}
+
 	scopeArgs := dap.Scope{Name: argScope.Name, VariablesReference: s.variableHandles.create(argScope)}
 	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
-	scopes := []dap.Scope{scopeArgs, scopeLocals}
+	scopeRegs := dap.Scope{Name: regsScope.Name, VariablesReference: s.variableHandles.create(regsScope)}
+	scopes := []dap.Scope{scopeArgs, scopeLocals, scopeRegs}
 
 	if s.args.showGlobalVariables {
 		// Limit what global variables we will return to the current package only.

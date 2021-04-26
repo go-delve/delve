@@ -518,6 +518,9 @@ func TestPreSetBreakpoint(t *testing.T) {
 		locals := client.ExpectVariablesResponse(t)
 		expectChildren(t, locals, "Locals", 0)
 
+		client.VariablesRequest(1002) // Registers
+		client.ExpectVariablesResponse(t)
+
 		client.ContinueRequest(1)
 		ctResp := client.ExpectContinueResponse(t)
 		if !ctResp.Body.AllThreadsContinued {
