@@ -71,6 +71,8 @@ type Server struct {
 	variableHandles *variablesHandlesMap
 	// args tracks special settings for handling debug session requests.
 	args launchAttachArgs
+	// exceptionErr tracks the runtime error that last occurred.
+	exceptionErr error
 
 	mu sync.Mutex
 	// binaryToRemove is the temp compiled binary to be removed on disconnect (if any).
@@ -132,6 +134,7 @@ func NewServer(config *service.Config) *Server {
 		stackFrameHandles: newHandlesMap(),
 		variableHandles:   newVariablesHandlesMap(),
 		args:              defaultArgs,
+		exceptionErr:      nil,
 	}
 }
 
@@ -1581,9 +1584,16 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 				body.Description = exprVar.Value.String()
 			}
 		}
-	} else if state != nil && state.Err != nil {
+	} else {
+		// If this thread is not stopped on a breakpoint, then a runtime error must have occurred.
+		// If we do not have any error saved, or if this thread is not current thread,
+		// return an error.
+		if s.exceptionErr == nil || state.CurrentThread == nil || thread == nil || state.CurrentThread.ID != thread.ThreadID() {
+			s.sendErrorResponse(request.Request, UnableToGetExceptionInfo, "Unable to get exception info", fmt.Sprintf("no exception found for goroutine %d", goroutineID))
+			return
+		}
 		body.ExceptionId = "runtime error"
-		body.Description = state.Err.Error()
+		body.Description = s.exceptionErr.Error()
 		if body.Description == "bad access" {
 			body.Description = BetterBadAccessError
 		}
@@ -1680,6 +1690,7 @@ Unable to propagate EXC_BAD_ACCESS signal to target process and panic (see https
 func (s *Server) resetHandlesForStop() {
 	s.stackFrameHandles.reset()
 	s.variableHandles.reset()
+	s.exceptionErr = nil
 }
 
 // doCommand runs a debugger command until it stops on
@@ -1725,6 +1736,7 @@ func (s *Server) doCommand(command string) {
 		}
 		s.send(stopped)
 	} else {
+		s.exceptionErr = err
 		s.log.Error("runtime error: ", err)
 		stopped.Body.Reason = "exception"
 		stopped.Body.Description = "Paused on runtime error"
