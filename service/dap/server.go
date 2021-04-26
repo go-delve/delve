@@ -1561,14 +1561,12 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 	for i, want := range request.Arguments.Breakpoints {
 		spec, err := locspec.Parse(want.Name)
 		if err != nil {
-			response.Body.Breakpoints[i].Verified = false
 			response.Body.Breakpoints[i].Message = err.Error()
 			continue
 		}
 		if _, ok := spec.(*locspec.RegexLocationSpec); ok {
 			// These are likely to resolve to multiple places, so it is unclear what the response
 			// body should be since there will be multiple breakpoints created.
-			response.Body.Breakpoints[i].Verified = false
 			response.Body.Breakpoints[i].Message = "regex function names are not supported"
 			continue
 		}
@@ -1578,12 +1576,10 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 		// We first find the location of the function, and then set breakpoints for that location.
 		locs, err := s.debugger.FindLocation(-1, 0, 0, want.Name, true, s.args.substitutePathClientToServer)
 		if err != nil {
-			response.Body.Breakpoints[i].Verified = false
 			response.Body.Breakpoints[i].Message = err.Error()
 			continue
 		}
 		if len(locs) == 0 {
-			response.Body.Breakpoints[i].Verified = false
 			response.Body.Breakpoints[i].Message = fmt.Sprintf("no location found for %q", want.Name)
 			continue
 		}
