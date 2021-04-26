@@ -1841,10 +1841,6 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 						{Name: "main.String"},
 					})
 					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "Location \"main.String\" ambiguous"}})
-					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
-						{Name: "ReadFile"},
-					})
-					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "Location \"ReadFile\" ambiguous"}})
 
 					// Expect error for function that does not exist.
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
