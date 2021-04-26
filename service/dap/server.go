@@ -1114,7 +1114,11 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to list args", err.Error())
 		return
 	}
-	argScope := &fullyQualifiedVariable{&proc.Variable{Name: "Arguments", Children: slicePtrVarToSliceVar(args)}, "", true}
+	argScope := &fullyQualifiedVariable{
+		Variable: &proc.Variable{Name: "Arguments", Children: slicePtrVarToSliceVar(args)},
+		goid:     goid,
+		frame:    frame,
+		isScope:  true}
 
 	// Retrieve local variables
 	locals, err := s.debugger.LocalVariables(goid, frame, 0, DefaultLoadConfig)
@@ -1122,7 +1126,12 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list locals", err.Error())
 		return
 	}
-	locScope := &fullyQualifiedVariable{&proc.Variable{Name: "Locals", Children: slicePtrVarToSliceVar(locals)}, "", true}
+	locScope := &fullyQualifiedVariable{
+		Variable: &proc.Variable{Name: "Locals", Children: slicePtrVarToSliceVar(locals)},
+		goid:     goid,
+		frame:    frame,
+		isScope:  true,
+	}
 
 	scopeArgs := dap.Scope{Name: argScope.Name, VariablesReference: s.variableHandles.create(argScope)}
 	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
@@ -1155,10 +1164,15 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 			globals[i].Name = strings.TrimPrefix(g.Name, currPkg+".")
 		}
 
-		globScope := &fullyQualifiedVariable{&proc.Variable{
-			Name:     fmt.Sprintf("Globals (package %s)", currPkg),
-			Children: slicePtrVarToSliceVar(globals),
-		}, currPkg, true}
+		globScope := &fullyQualifiedVariable{
+			Variable: &proc.Variable{
+				Name:     fmt.Sprintf("Globals (package %s)", currPkg),
+				Children: slicePtrVarToSliceVar(globals)},
+			fullyQualifiedNameOrExpr: currPkg,
+			goid:                     goid,
+			frame:                    frame,
+			isScope:                  true,
+		}
 		scopeGlobals := dap.Scope{Name: globScope.Name, VariablesReference: s.variableHandles.create(globScope)}
 		scopes = append(scopes, scopeGlobals)
 	}
@@ -1186,6 +1200,24 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		return
 	}
 	children := make([]dap.Variable, 0)
+	goid, frame := v.goid, v.frame
+
+	// If the currently cached variable is partial, load using
+	// the expression and replace the cached variable.
+	if v.isPartial && v.fullyQualifiedNameOrExpr != "" {
+		exprVar, err := s.debugger.EvalVariableInScope(goid, frame, 0, v.fullyQualifiedNameOrExpr, DefaultLoadConfig)
+		if err != nil {
+			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), true)
+			return
+		}
+		x, ref := s.convertVariable(exprVar, goid, frame, v.fullyQualifiedNameOrExpr)
+
+		s.log.Debugf("Replace %d with %d: %v -> %v", request.Arguments.VariablesReference, ref, v.fullyQualifiedNameOrExpr, x)
+
+		if ok := s.variableHandles.m.replace(request.Arguments.VariablesReference, ref); ok {
+			v, _ = s.variableHandles.get(ref)
+		}
+	}
 
 	switch v.Kind {
 	case reflect.Map:
@@ -1207,8 +1239,8 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 					valexpr = fmt.Sprintf("%s[%q]", v.fullyQualifiedNameOrExpr, key)
 				}
 			}
-			key, keyref := s.convertVariable(keyv, keyexpr)
-			val, valref := s.convertVariable(valv, valexpr)
+			key, keyref := s.convertVariable(keyv, goid, frame, keyexpr)
+			val, valref := s.convertVariable(valv, goid, frame, valexpr)
 			// If key or value or both are scalars, we can use
 			// a single variable to represet key:value format.
 			// Otherwise, we must return separate variables for both.
@@ -1248,7 +1280,7 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		children = make([]dap.Variable, len(v.Children))
 		for i := range v.Children {
 			cfqname := fmt.Sprintf("%s[%d]", v.fullyQualifiedNameOrExpr, i)
-			cvalue, cvarref := s.convertVariable(&v.Children[i], cfqname)
+			cvalue, cvarref := s.convertVariable(&v.Children[i], goid, frame, cfqname)
 			children[i] = dap.Variable{
 				Name:               fmt.Sprintf("[%d]", i),
 				EvaluateName:       cfqname,
@@ -1275,7 +1307,7 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 			} else if v.Kind == reflect.Complex64 || v.Kind == reflect.Complex128 {
 				cfqname = "" // complex children are not struct fields and can't be accessed directly
 			}
-			cvalue, cvarref := s.convertVariable(c, cfqname)
+			cvalue, cvarref := s.convertVariable(c, goid, frame, cfqname)
 
 			// Annotate any shadowed variables to "(name)" in order
 			// to distinguish from non-shadowed variables.
@@ -1310,23 +1342,29 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 // variables request can be issued to get the elements of the compound variable. As a
 // custom, a zero reference, reminiscent of a zero pointer, is used to indicate that
 // a scalar variable cannot be "dereferenced" to get its elements (as there are none).
-func (s *Server) convertVariable(v *proc.Variable, qualifiedNameOrExpr string) (value string, variablesReference int) {
-	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, false)
+func (s *Server) convertVariable(v *proc.Variable, goid, frame int, qualifiedNameOrExpr string) (value string, variablesReference int) {
+	return s.convertVariableWithOpts(v, goid, frame, qualifiedNameOrExpr, false)
 }
 
-func (s *Server) convertVariableToString(v *proc.Variable) string {
-	val, _ := s.convertVariableWithOpts(v, "", true)
+func (s *Server) convertVariableToString(v *proc.Variable, goid, frame int) string {
+	val, _ := s.convertVariableWithOpts(v, goid, frame, "", true)
 	return val
 }
 
 // convertVariableWithOpts allows to skip reference generation in case all we need is
 // a string representation of the variable.
-func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, skipRef bool) (value string, variablesReference int) {
-	maybeCreateVariableHandle := func(v *proc.Variable) int {
+func (s *Server) convertVariableWithOpts(v *proc.Variable, goid, frame int, qualifiedNameOrExpr string, skipRef bool) (value string, variablesReference int) {
+	maybeCreateVariableHandle := func(v *proc.Variable, partial bool) int {
 		if skipRef {
 			return 0
 		}
-		return s.variableHandles.create(&fullyQualifiedVariable{v, qualifiedNameOrExpr, false /*not a scope*/})
+		return s.variableHandles.create(&fullyQualifiedVariable{
+			Variable:                 v,
+			fullyQualifiedNameOrExpr: qualifiedNameOrExpr,
+			goid:                     goid,
+			frame:                    frame,
+			isScope:                  false,
+			isPartial:                partial})
 	}
 	value = api.ConvertVar(v).SinglelineString()
 	if v.Unreadable != nil {
@@ -1344,30 +1382,35 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 	case reflect.Ptr:
 		if v.DwarfType != nil && len(v.Children) > 0 && v.Children[0].Addr != 0 && v.Children[0].Kind != reflect.Invalid {
 			if v.Children[0].OnlyAddr {
-				value = "(not loaded) " + value
+				variablesReference = maybeCreateVariableHandle(v, true)
 			} else {
-				variablesReference = maybeCreateVariableHandle(v)
+				variablesReference = maybeCreateVariableHandle(v, false)
 			}
 		}
 	case reflect.Slice, reflect.Array:
-		if v.Len > int64(len(v.Children)) { // Not fully loaded
-			value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children), v.Len) + value
+		// TODO: support variable pagenation by adding intermediate nodes.
+		// See github.com/microsoft/vscode/issues/9537.
+		partial := v.Len > int64(len(v.Children)) // Not fully loaded
+		if partial {
+			value = fmt.Sprintf("(loaded %d/%d) %s", len(v.Children), v.Len, value)
 		}
-		if v.Base != 0 && len(v.Children) > 0 {
-			variablesReference = maybeCreateVariableHandle(v)
+		if partial || v.Base != 0 && len(v.Children) > 0 {
+			variablesReference = maybeCreateVariableHandle(v, partial)
 		}
 	case reflect.Map:
-		if v.Len > int64(len(v.Children)/2) { // Not fully loaded
-			value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children)/2, v.Len) + value
+		partial := v.Len > int64(len(v.Children)/2) // Not fully loaded
+		if partial {
+			value = fmt.Sprintf("(loaded %d/%d) %s", len(v.Children)/2, v.Len, value)
 		}
 		if v.Base != 0 && len(v.Children) > 0 {
-			variablesReference = maybeCreateVariableHandle(v)
+			variablesReference = maybeCreateVariableHandle(v, partial)
 		}
 	case reflect.String:
 		// TODO(polina): implement auto-loading here
 	case reflect.Interface:
 		if v.Addr != 0 && len(v.Children) > 0 && v.Children[0].Kind != reflect.Invalid && v.Children[0].Addr != 0 {
-			if v.Children[0].OnlyAddr { // Not fully loaded
+			partial := v.Children[0].OnlyAddr // Not fully loaded
+			if partial {
 				// We might be loading variables from the frame that's not topmost, so use
 				// frame-independent address-based expression, not fully-qualified name.
 				loadExpr := fmt.Sprintf("*(*%q)(%#x)", typeName, v.Addr)
@@ -1380,17 +1423,12 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 					value = api.ConvertVar(v).SinglelineString()
 				}
 			}
-			// Provide a reference to the child only if it fully loaded
-			if !v.Children[0].OnlyAddr {
-				variablesReference = maybeCreateVariableHandle(v)
-			}
+			variablesReference = maybeCreateVariableHandle(v, partial)
 		}
 	case reflect.Struct:
-		if v.Len > int64(len(v.Children)) { // Not fully loaded
-			value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children), v.Len) + value
-		}
-		if len(v.Children) > 0 {
-			variablesReference = maybeCreateVariableHandle(v)
+		partial := v.Len > int64(len(v.Children)) // Not fully loaded
+		if partial || len(v.Children) > 0 {
+			variablesReference = maybeCreateVariableHandle(v, partial)
 		}
 	case reflect.Complex64, reflect.Complex128:
 		v.Children = make([]proc.Variable, 2)
@@ -1408,7 +1446,7 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		fallthrough
 	default: // Complex, Scalar, Chan, Func
 		if len(v.Children) > 0 {
-			variablesReference = maybeCreateVariableHandle(v)
+			variablesReference = maybeCreateVariableHandle(v, false)
 		}
 	}
 	return
@@ -1509,11 +1547,18 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			// As a shortcut also express the return values as a single string.
 			retVarsAsStr := ""
 			for _, v := range retVars {
-				retVarsAsStr += s.convertVariableToString(v) + ", "
+				retVarsAsStr += s.convertVariableToString(v, goid, frame) + ", "
 			}
 			response.Body = dap.EvaluateResponseBody{
-				Result:             strings.TrimRight(retVarsAsStr, ", "),
-				VariablesReference: s.variableHandles.create(&fullyQualifiedVariable{retVarsAsVar, "", false /*not a scope*/}),
+				Result: strings.TrimRight(retVarsAsStr, ", "),
+				VariablesReference: s.variableHandles.create(&fullyQualifiedVariable{
+					Variable:                 retVarsAsVar,
+					fullyQualifiedNameOrExpr: "",
+					goid:                     goid,
+					frame:                    frame,
+					isScope:                  false,
+					isPartial:                false, // TODO: this may not be partial, but also can't create a reference because the return value may be temporary.
+				}),
 			}
 		}
 	} else { // {expression}
@@ -1524,7 +1569,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 		}
 		// TODO(polina): as far as I can tell, evaluateName is ignored by vscode for expression variables.
 		// Should it be skipped alltogether for all levels?
-		exprVal, exprRef := s.convertVariable(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression))
+		exprVal, exprRef := s.convertVariable(exprVar, goid, frame, fmt.Sprintf("(%s)", request.Arguments.Expression))
 		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef}
 	}
 	s.send(response)

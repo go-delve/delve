@@ -24,6 +24,12 @@ type fullyQualifiedVariable struct {
 	fullyQualifiedNameOrExpr string
 	// True if this represents variable scope
 	isScope bool
+	// Goroutine
+	goid int
+	// Frame
+	frame int
+	// True if the current variable is partial.
+	isPartial bool
 }
 
 func newHandlesMap() *handlesMap {
@@ -45,6 +51,18 @@ func (hs *handlesMap) create(value interface{}) int {
 func (hs *handlesMap) get(handle int) (interface{}, bool) {
 	v, ok := hs.handleToVal[handle]
 	return v, ok
+}
+
+func (hs *handlesMap) replace(oldHandle, newHandle int) bool {
+	if _, ok := hs.get(oldHandle); !ok {
+		return false
+	}
+	newValue, ok := hs.get(newHandle)
+	if !ok {
+		return false
+	}
+	hs.handleToVal[oldHandle] = newValue
+	return true
 }
 
 type variablesHandlesMap struct {

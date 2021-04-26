@@ -1367,7 +1367,7 @@ func TestVariablesLoading(t *testing.T) {
 					}
 
 					// Struct partially missing based on LoadConfig.MaxStructFields
-					ref = expectVarExact(t, locals, -1, "sd", "sd", "(loaded 5/6) main.D {u1: 0, u2: 0, u3: 0, u4: 0, u5: 0,...+1 more}", hasChildren)
+					ref = expectVarExact(t, locals, -1, "sd", "sd", "main.D {u1: 0, u2: 0, u3: 0, u4: 0, u5: 0,...+1 more}", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						sd := client.ExpectVariablesResponse(t)
@@ -1390,8 +1390,7 @@ func TestVariablesLoading(t *testing.T) {
 								client.VariablesRequest(ref)
 								c1sa0 := client.ExpectVariablesResponse(t)
 								expectChildren(t, c1sa0, "c1.sa[0]", 1)
-								// TODO(polina): there should be children here once we support auto loading
-								expectVarRegex(t, c1sa0, 0, "", `\(\*c1\.sa\[0\]\)`, `\(loaded 0/2\) \(\*main\.astruct\)\(0x[0-9a-f]+\)`, noChildren)
+								expectVarRegex(t, c1sa0, 0, "", `\(\*c1\.sa\[0\]\)`, `\(\*main\.astruct\)\(0x[0-9a-f]+\)`, hasChildren)
 							}
 						}
 					}
@@ -1412,8 +1411,7 @@ func TestVariablesLoading(t *testing.T) {
 								client.VariablesRequest(ref)
 								aas0aas := client.ExpectVariablesResponse(t)
 								expectChildren(t, aas0aas, "aas[0].aas", 1)
-								// TODO(polina): there should be a child here once we support auto loading - test for "aas[0].aas[0].aas"
-								expectVarRegex(t, aas0aas, 0, "[0]", `aas\[0\]\.aas\[0\]`, `\(loaded 0/1\) \(\*main\.a\)\(0x[0-9a-f]+\)`, noChildren)
+								expectVarRegex(t, aas0aas, 0, "[0]", `aas\[0\]\.aas\[0\]`, `\(\*main\.a\)\(0x[0-9a-f]+\)`, hasChildren)
 							}
 						}
 					}
@@ -1491,8 +1489,7 @@ func TestVariablesLoading(t *testing.T) {
 							}
 						}
 
-						// Pointer value not loaded with LoadConfig.FollowPointers=false
-						expectVarRegex(t, locals, -1, "a7", "a7", `\(not loaded\) \(\*main\.FooBar\)\(0x[0-9a-f]+\)`, noChildren)
+						expectVarRegex(t, locals, -1, "a7", "a7", `\(\*main\.FooBar\)\(0x[0-9a-f]+\)`, hasChildren)
 					}
 					loadvars(1000 /*first topmost frame*/)
 					// step into another function
@@ -1938,7 +1935,12 @@ func TestEvaluateRequest(t *testing.T) {
 					// Type casts of integer constants into any pointer type and vice versa
 					client.EvaluateRequest("(*int)(2)", 1000, "this context will be ignored")
 					got = client.ExpectEvaluateResponse(t)
-					expectEval(t, got, "(not loaded) (*int)(0x2)", noChildren)
+					ref = expectEval(t, got, "(*int)(0x2)", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						expr := client.ExpectVariablesResponse(t)
+						expectVarExact(t, expr, 0, "", "(*((*int)(2)))", "(unknown int)", noChildren)
+					}
 
 					// Type casts between string, []byte and []rune
 					client.EvaluateRequest("[]byte(\"ABC€\")", 1000, "this context will be ignored")
