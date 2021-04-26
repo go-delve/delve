@@ -1550,7 +1550,7 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 	// Function breakpoints are set with the Name field set to be the
 	// function name. We cannot use FunctionName to determine this, because
 	// the debugger sets the function name for breakpoints.
-	if err := s.clearMatchingBreakpoints(func(bp *api.Breakpoint) bool { return bp.Name != "" }); err != nil {
+	if err := s.clearMatchingBreakpoints(func(bp *api.Breakpoint) bool { return strings.HasPrefix(bp.Name, "functionBreakpoint") }); err != nil {
 		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 		return
 	}
