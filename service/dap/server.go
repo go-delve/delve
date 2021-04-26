@@ -566,16 +566,17 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		}
 
 		s.log.Debugf("building binary at %s", debugbinary)
+		var out []byte
 		switch mode {
 		case "debug":
-			err = gobuild.GoBuild(debugbinary, []string{program}, buildFlags)
+			out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
 		case "test":
-			err = gobuild.GoTestBuild(debugbinary, []string{program}, buildFlags)
+			out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
 		}
 		if err != nil {
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("Build error: %s", err.Error()))
+				fmt.Sprintf("Build error: %s (%s)", strings.TrimSpace(string(out)), err.Error()))
 			return
 		}
 		program = debugbinary
@@ -630,6 +631,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.config.Debugger.WorkingDir = wdParsed
 	}
 
+	s.log.Debugf("running program in %s\n", s.config.Debugger.WorkingDir)
 	if noDebug, ok := request.Arguments["noDebug"].(bool); ok && noDebug {
 		s.mu.Lock()
 		cmd, err := s.startNoDebugProcess(program, targetArgs, s.config.Debugger.WorkingDir)
