@@ -1588,7 +1588,6 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 			continue
 		}
 		if len(locs) > 0 {
-			// TODO(suzmue): what should we do if there is more than one location?
 			s.log.Debugf("multiple locations found for %s", want.Name)
 		}
 
