@@ -1838,6 +1838,10 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 						{Name: fmt.Sprintf("%s:14", fixture.Source)},
 					})
 					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: fmt.Sprintf("%s:14", filepath.Base(fixture.Source))},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
 
 					// Expect error for ambiguous function name.
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
