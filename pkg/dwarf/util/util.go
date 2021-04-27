@@ -128,13 +128,13 @@ func EncodeSLEB128(out io.ByteWriter, x int64) {
 }
 
 // ParseString reads a null-terminated string from data.
-func ParseString(data *bytes.Buffer) (string, uint32) {
+func ParseString(data *bytes.Buffer) (string, error) {
 	str, err := data.ReadString(0x0)
 	if err != nil {
-		panic("Could not parse string")
+		return "", err
 	}
 
-	return str[:len(str)-1], uint32(len(str))
+	return str[:len(str)-1], nil
 }
 
 // ReadUintRaw reads an integer of ptrSize bytes, with the specified byte order, from reader.
