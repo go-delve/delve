@@ -33,8 +33,12 @@ const noChildren bool = false
 var testBackend string
 
 func TestMain(m *testing.M) {
+	logOutputVal := ""
+	if _, isTeamCityTest := os.LookupEnv("TEAMCITY_VERSION"); isTeamCityTest {
+		logOutputVal = "debugger,dap"
+	}
 	var logOutput string
-	flag.StringVar(&logOutput, "log-output", "", "configures log output")
+	flag.StringVar(&logOutput, "log-output", logOutputVal, "configures log output")
 	flag.Parse()
 	logflags.Setup(logOutput != "", logOutput, "")
 	protest.DefaultTestBackend(&testBackend)
@@ -1445,8 +1449,41 @@ func TestVariablesLoading(t *testing.T) {
 						}
 					}
 
+					// Auto-loading works with call return variables as well
+					protest.MustSupportFunctionCalls(t, testBackend)
+					client.EvaluateRequest("call rettm()", 1000, "repl")
+					got := client.ExpectEvaluateResponse(t)
+					ref = expectEval(t, got, "main.truncatedMap {v: []map[string]main.astruct len: 1, cap: 1, [[...]]}", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						rv := client.ExpectVariablesResponse(t)
+						expectChildren(t, rv, "rv", 1)
+						ref = expectVarExact(t, rv, 0, "~r0", "", "main.truncatedMap {v: []map[string]main.astruct len: 1, cap: 1, [[...]]}", hasChildren)
+						if ref > 0 {
+							client.VariablesRequest(ref)
+							tm := client.ExpectVariablesResponse(t)
+							expectChildren(t, tm, "tm", 1)
+							ref = expectVarExact(t, tm, 0, "v", "", "[]map[string]main.astruct len: 1, cap: 1, [[...]]", hasChildren)
+							if ref > 0 {
+								// Auto-loading of fully missing map chidlren happens here, but they get trancated at MaxArrayValuess
+								client.VariablesRequest(ref)
+								tmV := client.ExpectVariablesResponse(t)
+								expectChildren(t, tmV, "tm.v", 1)
+								// TODO(polina): this evaluate name is not usable - it should be empty
+								ref = expectVarRegex(t, tmV, 0, `\[0\]`, `\[0\]`, `map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, hasChildren)
+								if ref > 0 {
+									client.VariablesRequest(ref)
+									tmV0 := client.ExpectVariablesResponse(t)
+									expectChildren(t, tmV0, "tm.v[0]", 64)
+								}
+							}
+						}
+					}
+
 					// TODO(polina): need fully missing array/slice test case
-					// TODO(polina): test that 0 size slices, structs with no fields, etc are not treated as fully missing
+
+					// Zero slices, structs and maps are not treated as fully missing
+					// See zsvar, zsslice,, emptyslice, emptymap, a0
 				},
 				disconnect: true,
 			}})
@@ -1521,8 +1558,6 @@ func TestVariablesLoading(t *testing.T) {
 							a7 := client.ExpectVariablesResponse(t)
 							expectVarExact(t, a7, 0, "a7", "(*(&a7))", "*main.FooBar {Baz: 5, Bur: \"strum\"}", hasChildren)
 						}
-
-						// TODO(polina): add a test case for call result auto-loading
 					}
 
 					// Frame-independent loading expressions allow us to auto-load
