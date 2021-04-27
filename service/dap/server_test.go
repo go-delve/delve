@@ -403,11 +403,11 @@ func TestContinueOnEntry(t *testing.T) {
 				if m.Seq != 0 || m.RequestSeq != 6 {
 					t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6", m)
 				}
-				// Single dummy thread is sent when the program is running.
-				// DAP spec expects at least one thread.
+				// Single current thread is sent when the program is running
+				// because DAP spec expects at least one thread.
 				// TODO(polina): accept empty already-terminated response here as well?
-				if len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != 1 || m.Body.Threads[0].Name != "Dummy" {
-					t.Errorf("\ngot  %#v\nwant Id=1, Name=\"Dummy\"", m.Body.Threads)
+				if len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != -1 || m.Body.Threads[0].Name != "Current" {
+					t.Errorf("\ngot  %#v\nwant Id=-1, Name=\"Current\"", m.Body.Threads)
 				}
 			case *dap.TerminatedEvent:
 			default:
@@ -470,8 +470,8 @@ func TestPreSetBreakpoint(t *testing.T) {
 			msg := client.ExpectMessage(t)
 			switch m := msg.(type) {
 			case *dap.ThreadsResponse:
-				if len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != 1 || m.Body.Threads[0].Name != "Dummy" {
-					t.Errorf("\ngot  %#v\nwant Id=1, Name=\"Dummy\"", m.Body.Threads)
+				if len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != -1 || m.Body.Threads[0].Name != "Current" {
+					t.Errorf("\ngot  %#v\nwant Id=-1, Name=\"Current\"", m.Body.Threads)
 				}
 			case *dap.StoppedEvent:
 				if m.Body.Reason != "breakpoint" || m.Body.ThreadId != 1 || !m.Body.AllThreadsStopped {
@@ -2443,13 +2443,13 @@ func TestBadAccess(t *testing.T) {
 
 					expectStoppedOnError := func(errorPrefix string) {
 						t.Helper()
-						se := client.ExpectStoppedEvent(t)
-						if se.Body.ThreadId != 1 || se.Body.Reason != "runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
-							t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"runtime error\" Text=\"%s\"", se, errorPrefix)
-						}
 						oe := client.ExpectOutputEvent(t)
 						if oe.Body.Category != "stderr" || !strings.HasPrefix(oe.Body.Output, "ERROR: "+errorPrefix) {
 							t.Errorf("\ngot  %#v\nwant Category=\"stderr\" Output=\"%s ...\"", oe, errorPrefix)
+						}
+						se := client.ExpectStoppedEvent(t)
+						if se.Body.ThreadId != 1 || se.Body.Reason != "runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
+							t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"runtime error\" Text=\"%s\"", se, errorPrefix)
 						}
 					}
 

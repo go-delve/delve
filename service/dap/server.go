@@ -117,8 +117,9 @@ type Server struct {
 	// to ensure that messages do not get interleaved
 	sendingMu sync.Mutex
 
-	// running keeps track of whether the process is running
-	// This works for now without using Debugger.Sate because we
+	// running keeps track of whether we are running an asyncronous
+	// command that resumes execution.
+	// This works for now without using Debugger.State because we
 	// have only one client.
 	running   bool
 	runningMu sync.Mutex
@@ -397,7 +398,7 @@ func (s *Server) handleRequest(request dap.Message) {
 	// the stop, resuming execution right away. Other requests
 	// might not be relevant anymore when the stop is finally reached, and
 	// state changed from the previous snapshot. The user might want to
-	// resume execution before the backlog of buffered request is cleared,
+	// resume execution before the backlog of buffered requests is cleared,
 	// so we would have to either cancel them or delay processing until
 	// the next stop. In addition, the editor itself might block waiting
 	// for these requests to return. We are not aware of any requests
@@ -409,11 +410,11 @@ func (s *Server) handleRequest(request dap.Message) {
 			// right away as there are a number of DAP requests that require a thread id
 			// (pause, continue, stacktrace, etc). This can happen after the program
 			// continues on entry, preventing the client from handling any pause requests
-			// from the user. We remedy this by sending back a dummy thread id
-			// as the halt request stops everything anyway and any argument is irrelevant.
+			// from the user. We remedy this by sending back a placeholder thread id
+			// for the current goroutine.
 			response := &dap.ThreadsResponse{
 				Response: *newResponse(request.Request),
-				Body:     dap.ThreadsResponseBody{Threads: []dap.Thread{{Id: 1, Name: "Dummy"}}},
+				Body:     dap.ThreadsResponseBody{Threads: []dap.Thread{{Id: -1, Name: "Current"}}},
 			}
 			s.send(response)
 		default:
@@ -981,7 +982,10 @@ func (s *Server) onSetExceptionBreakpointsRequest(request *dap.SetExceptionBreak
 	s.send(&dap.SetExceptionBreakpointsResponse{Response: *newResponse(request.Request)})
 }
 
-func (s *Server) asyncCommandDone(asyncSetupDone chan struct{}) {
+func (s *Server) asyncCommandDone(asyncSetupDone chan struct{}, doneEvent dap.EventMessage) {
+	// Request loop waits for asyncSetupDone
+	// to release runningMu and start processing next request,
+	// we so we must release this first.
 	if asyncSetupDone != nil {
 		select {
 		case <-asyncSetupDone:
@@ -991,6 +995,12 @@ func (s *Server) asyncCommandDone(asyncSetupDone chan struct{}) {
 		}
 	}
 	s.runningMu.Lock()
+	// Send the done event inside of the lock, so we avoid sending it
+	// while another request is being handled as being issued while running.
+	// Otherwise is-running error might arrive after we update the UI as stopped.
+	if doneEvent != nil {
+		s.send(doneEvent)
+	}
 	s.running = false
 	s.runningMu.Unlock()
 }
@@ -1011,7 +1021,7 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 	if !s.args.stopOnEntry {
 		s.doCommand(api.Continue, asyncSetupDone)
 	} else {
-		s.asyncCommandDone(asyncSetupDone)
+		s.asyncCommandDone(asyncSetupDone, nil)
 	}
 }
 
@@ -1187,8 +1197,7 @@ func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan
 		}
 		stopped.Body.Reason = "error"
 		stopped.Body.Text = err.Error()
-		s.send(stopped)
-		s.asyncCommandDone(asyncSetupDone)
+		s.asyncCommandDone(asyncSetupDone, stopped)
 		return
 	}
 	s.doCommand(command, asyncSetupDone)
@@ -1610,6 +1619,9 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 			return
 		}
+		// TODO(polina): since call will resume execution of all goroutines,
+		// we should do this asynchronously and send a continued event to the
+		// editor, followed by a stop event when the call completes.
 		state, err := s.debugger.Command(&api.DebuggerCommand{
 			Name:                 api.Call,
 			ReturnInfoLoadConfig: api.LoadConfigFromProc(&DefaultLoadConfig),
@@ -1835,14 +1847,10 @@ func (s *Server) resetHandlesForStoppedEvent() {
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
 func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
-	defer func() {
-		s.asyncCommandDone(asyncSetupDone)
-	}()
-
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
 	if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
-		s.send(e)
+		s.asyncCommandDone(asyncSetupDone, e)
 		return
 	}
 
@@ -1873,7 +1881,6 @@ func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
 				stopped.Body.Reason = "panic"
 			}
 		}
-		s.send(stopped)
 	} else {
 		s.log.Error("runtime error: ", err)
 		stopped.Body.Reason = "runtime error"
@@ -1886,7 +1893,6 @@ func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
 		if err == nil {
 			stopped.Body.ThreadId = stoppedGoroutineID(state)
 		}
-		s.send(stopped)
 
 		// TODO(polina): according to the spec, the extra 'text' is supposed to show up in the UI (e.g. on hover),
 		// but so far I am unable to get this to work in vscode - see https://github.com/microsoft/vscode/issues/104475.
@@ -1901,6 +1907,10 @@ func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
 				Category: "stderr",
 			}})
 	}
+	// TODO(polina): it appears that debugger.Command doesn't close
+	// asyncSetupDone when having an error next while nexting.
+	// So we should always close it ourselves just in case.
+	s.asyncCommandDone(asyncSetupDone, stopped)
 }
 
 func (s *Server) toClientPath(path string) string {
