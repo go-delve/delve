@@ -1548,11 +1548,15 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 	// -- exists and in request => AmendBreakpoint
 	// -- doesn't exist and in request => SetBreakpoint
 
+	// functionBpPrefix is the prefix of bp.Name for every breakpoint bp set
+	// in this request.
+	functionBpPrefix := "functionBreakpoint"
+
 	// Clear all existing function breakpoints in the file.
 	// Function breakpoints are set with the Name field set to be the
 	// function name. We cannot use FunctionName to determine this, because
 	// the debugger sets the function name for breakpoints.
-	if err := s.clearMatchingBreakpoints(func(bp *api.Breakpoint) bool { return strings.HasPrefix(bp.Name, "functionBreakpoint") }); err != nil {
+	if err := s.clearMatchingBreakpoints(func(bp *api.Breakpoint) bool { return strings.HasPrefix(bp.Name, functionBpPrefix) }); err != nil {
 		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 		return
 	}
@@ -1592,7 +1596,7 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 		// Set breakpoint using the PCs that were found.
 		loc := locs[0]
 		got, err := s.debugger.CreateBreakpoint(
-			&api.Breakpoint{Name: fmt.Sprintf("functionBreakpoint%d", i), Addr: loc.PC, Addrs: loc.PCs, Cond: want.Condition})
+			&api.Breakpoint{Name: fmt.Sprintf("%s%d", functionBpPrefix, i), Addr: loc.PC, Addrs: loc.PCs, Cond: want.Condition})
 		response.Body.Breakpoints[i].Verified = (err == nil)
 		if err != nil {
 			response.Body.Breakpoints[i].Message = err.Error()
