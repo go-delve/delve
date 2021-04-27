@@ -353,13 +353,35 @@ func TestAttachStopOnEntry(t *testing.T) {
 
 		// 13 >> disconnect, << disconnect
 		client.DisconnectRequestWithKillOption(true)
-		se := client.ExpectStoppedEvent(t)
-		if se.Seq != 0 || se.Body.Reason != "pause" {
-			t.Errorf("\ngot %#v\nwant Seq=0 Reason='pause'", se)
-		}
-		oed := client.ExpectOutputEventDetachingKill(t)
-		if oed.Seq != 0 || oed.Body.Category != "console" {
-			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+
+		// Both of these scenarios are somehow possible.
+		// Even though the program has an infininte loop,
+		// it apears that a halt can cause it to terminate.
+		// Since we are in async mode while running, we might receive messages in either order.
+		msg := client.ExpectMessage(t)
+		switch m := msg.(type) {
+		case *dap.StoppedEvent:
+			if m.Seq != 0 || m.Body.Reason != "pause" { // continue is interrupted
+				t.Errorf("\ngot %#v\nwant Seq=0 Reason='pause'", m)
+			}
+			oed := client.ExpectOutputEventDetachingKill(t)
+			if oed.Seq != 0 || oed.Body.Category != "console" {
+				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+			}
+		case *dap.TerminatedEvent:
+			if m.Seq != 0 {
+				t.Errorf("\ngot %#v\nwant Seq=0'", m)
+			}
+			oep := client.ExpectOutputEventProcessExited(t, 0)
+			if oep.Seq != 0 || oep.Body.Category != "console" {
+				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
+			}
+			oed := client.ExpectOutputEventDetaching(t)
+			if oed.Seq != 0 || oed.Body.Category != "console" {
+				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+			}
+		default:
+			t.Fatalf("got %#v, want StoppedEvent or TerminatedEvent", m)
 		}
 		dResp := client.ExpectDisconnectResponse(t)
 		if dResp.Seq != 0 || dResp.RequestSeq != 13 {
