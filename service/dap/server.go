@@ -21,6 +21,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -318,6 +319,7 @@ func (s *Server) handleRequest(request dap.Message) {
 		// In case a handler panics, we catch the panic and send an error response
 		// back to the client.
 		if ierr := recover(); ierr != nil {
+			s.log.Debugf("stacktrace from recovered panic: \n" + string(debug.Stack()))
 			s.sendInternalErrorResponse(request.GetSeq(), fmt.Sprintf("%v", ierr))
 		}
 	}()
