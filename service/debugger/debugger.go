@@ -972,12 +972,7 @@ func (d *Debugger) FindGoroutine(id int) (*proc.G, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	g, err := proc.FindGoroutine(d.target, id)
-	if err != nil {
-		return nil, err
-	}
-
-	return g, nil
+	return proc.FindGoroutine(d.target, id)
 }
 
 func (d *Debugger) setRunning(running bool) {
