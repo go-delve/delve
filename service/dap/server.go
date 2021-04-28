@@ -1544,13 +1544,6 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 	// According to the spec we should "Replaces all existing function
 	// breakpoints with new function breakpoints." The simplest way is
 	// to clear all and then set all.
-	//
-	// TODO(polina): should we optimize this as follows?
-	// See https://github.com/golang/vscode-go/issues/163 for details.
-	// If a breakpoint:
-	// -- exists and not in request => ClearBreakpoint
-	// -- exists and in request => AmendBreakpoint
-	// -- doesn't exist and in request => SetBreakpoint
 
 	// Clear all existing function breakpoints in the file.
 	// Function breakpoints are set with the Name field set to be the
