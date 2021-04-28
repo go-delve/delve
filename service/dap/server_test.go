@@ -2420,11 +2420,6 @@ func TestBadAccess(t *testing.T) {
 						if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "Paused on runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
 							t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"Paused on runtime error\" Text=\"%s\"", se, errorPrefix)
 						}
-						oe := client.ExpectOutputEvent(t)
-						if oe.Body.Category != "stderr" || !strings.HasPrefix(oe.Body.Output, "ERROR: "+errorPrefix) {
-							t.Errorf("\ngot  %#v\nwant Category=\"stderr\" Output=\"%s ...\"", oe, errorPrefix)
-						}
-
 						client.ExceptionInfoRequest(1)
 						eInfo := client.ExpectExceptionInfoResponse(t)
 						if eInfo.Body.ExceptionId != "runtime error" || !strings.HasPrefix(eInfo.Body.Description, errorPrefix) {

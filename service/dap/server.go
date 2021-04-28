@@ -1569,18 +1569,19 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 	// Get the goroutine and the current state.
 	g, err := s.debugger.FindGoroutine(goroutineID)
 	if err != nil {
-		s.log.Debug("error finding goroutine: ", err)
+		s.sendErrorResponse(request.Request, UnableToGetExceptionInfo, "Unable to get exception info", err.Error())
+		return
 	}
-	state, _ := s.debugger.State( /*nowait*/ true)
-	if err != nil {
-		s.log.Debug("error retrieving state: ", err)
+	if g == nil {
+		s.sendErrorResponse(request.Request, UnableToGetExceptionInfo, "Unable to get exception info", fmt.Sprintf("could not find goroutine %d", goroutineID))
+		return
 	}
 	var bpState *proc.BreakpointState
-	if g != nil && g.Thread != nil {
-		// Check if this goroutine ID is stopped at a breakpoint.
+	if g.Thread != nil {
 		bpState = g.Thread.Breakpoint()
 	}
-	if bpState != nil && bpState.Breakpoint != nil {
+	// Check if this goroutine ID is stopped at a breakpoint.
+	if bpState != nil && bpState.Breakpoint != nil && (bpState.Breakpoint.Name == proc.FatalThrow || bpState.Breakpoint.Name == proc.UnrecoveredPanic) {
 		switch bpState.Breakpoint.Name {
 		case proc.FatalThrow:
 			// TODO(suzmue): add the fatal throw reason to body.Description.
@@ -1597,7 +1598,17 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 		// If this thread is not stopped on a breakpoint, then a runtime error must have occurred.
 		// If we do not have any error saved, or if this thread is not current thread,
 		// return an error.
-		if s.exceptionErr == nil || state == nil || state.CurrentThread == nil || g == nil || g.Thread == nil || state.CurrentThread.ID != g.Thread.ThreadID() {
+		if s.exceptionErr == nil {
+			s.sendErrorResponse(request.Request, UnableToGetExceptionInfo, "Unable to get exception info", "no runtime error found")
+			return
+		}
+
+		state, err := s.debugger.State( /*nowait*/ true)
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToGetExceptionInfo, "Unable to get exception info", err.Error())
+			return
+		}
+		if state == nil || state.CurrentThread == nil || g.Thread == nil || state.CurrentThread.ID != g.Thread.ThreadID() {
 			s.sendErrorResponse(request.Request, UnableToGetExceptionInfo, "Unable to get exception info", fmt.Sprintf("no exception found for goroutine %d", goroutineID))
 			return
 		}
