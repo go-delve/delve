@@ -1562,7 +1562,7 @@ func (s *Server) onCancelRequest(request *dap.CancelRequest) {
 }
 
 // onExceptionInfoRequest handles 'exceptionInfo' requests.
-// Capability 'supportsExceptionInfoRequest' is set 'initialize' response.
+// Capability 'supportsExceptionInfoRequest' is set in 'initialize' response.
 func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 	goroutineID := request.Arguments.ThreadId
 	var body dap.ExceptionInfoResponseBody
