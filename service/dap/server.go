@@ -486,6 +486,7 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsConditionalBreakpoints = true
 	response.Body.SupportsDelayedStackTraceLoading = true
 	response.Body.SupportTerminateDebuggee = true
+	response.Body.SupportsExceptionInfoRequest = true
 	// TODO(polina): support this to match vscode-go functionality
 	response.Body.SupportsSetVariable = false
 	// TODO(polina): support these requests in addition to vscode-go feature parity
@@ -498,8 +499,6 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsReadMemoryRequest = false
 	response.Body.SupportsDisassembleRequest = false
 	response.Body.SupportsCancelRequest = false
-	// These requests are not yet supported by vscode-go
-	response.Body.SupportsExceptionInfoRequest = true
 	s.send(response)
 }
 
@@ -1568,8 +1567,14 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 	goroutineID := request.Arguments.ThreadId
 	var body dap.ExceptionInfoResponseBody
 	// Get the goroutine and the current state.
-	g, _ := s.debugger.FindGoroutine(goroutineID)
+	g, err := s.debugger.FindGoroutine(goroutineID)
+	if err != nil {
+		s.log.Debug("error finding goroutine: ", err)
+	}
 	state, _ := s.debugger.State( /*nowait*/ true)
+	if err != nil {
+		s.log.Debug("error retrieving state: ", err)
+	}
 	var bpState *proc.BreakpointState
 	if g != nil && g.Thread != nil {
 		// Check if this goroutine ID is stopped at a breakpoint.
@@ -1592,7 +1597,7 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 		// If this thread is not stopped on a breakpoint, then a runtime error must have occurred.
 		// If we do not have any error saved, or if this thread is not current thread,
 		// return an error.
-		if s.exceptionErr == nil || state.CurrentThread == nil || g == nil || g.Thread == nil || state.CurrentThread.ID != g.Thread.ThreadID() {
+		if s.exceptionErr == nil || state == nil || state.CurrentThread == nil || g == nil || g.Thread == nil || state.CurrentThread.ID != g.Thread.ThreadID() {
 			s.sendErrorResponse(request.Request, UnableToGetExceptionInfo, "Unable to get exception info", fmt.Sprintf("no exception found for goroutine %d", goroutineID))
 			return
 		}
@@ -1754,19 +1759,6 @@ func (s *Server) doCommand(command string) {
 			stopped.Body.ThreadId = stoppedGoroutineID(state)
 		}
 		s.send(stopped)
-
-		// TODO(polina): according to the spec, the extra 'text' is supposed to show up in the UI (e.g. on hover),
-		// but so far I am unable to get this to work in vscode - see https://github.com/microsoft/vscode/issues/104475.
-		// In the meantime, provide the extra details by outputing an error message.
-		// TODO(suzmue): the ExceptionInfo request is now supported and displays the error message, however if there
-		// is no threadId set in the stopped event, then the ExceptionInfo response is not visible. We should be able
-		// to delete this output event, once we solve that issue.
-		s.send(&dap.OutputEvent{
-			Event: *newEvent("output"),
-			Body: dap.OutputEventBody{
-				Output:   fmt.Sprintf("ERROR: %s\n", stopped.Body.Text),
-				Category: "stderr",
-			}})
 	}
 }
 
