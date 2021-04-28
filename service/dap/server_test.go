@@ -1918,8 +1918,8 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 
-					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
-						t.Errorf("got %#v, want Reaspon=\"error\", ThreadId=1", se)
+					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "function breakpoint" || se.Body.ThreadId != 1 {
+						t.Errorf("got %#v, want Reason=\"function breakpoint\", ThreadId=1", se)
 					}
 					handleStop(t, client, 1, "main.(*SomeType).SomeFunction", 22)
 
@@ -1946,7 +1946,7 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 					client.ExpectContinueResponse(t)
 
 					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
-						t.Errorf("got %#v, want Reaspon=\"error\", ThreadId=1", se)
+						t.Errorf("got %#v, want Reason=\"breakpoint\", ThreadId=1", se)
 					}
 					handleStop(t, client, 1, "main.(*SomeType).SomeFunction", 23)
 
@@ -1966,8 +1966,8 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 
-					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
-						t.Errorf("got %#v, want Reaspon=\"error\", ThreadId=1", se)
+					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "function breakpoint" || se.Body.ThreadId != 1 {
+						t.Errorf("got %#v, want Reason=\"function breakpoint\", ThreadId=1", se)
 					}
 					handleStop(t, client, 1, "main.anotherFunction", 26)
 
@@ -2443,7 +2443,7 @@ func TestNextAndStep(t *testing.T) {
 					client.NextRequest(-1000)
 					client.ExpectNextResponse(t)
 					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "error" || se.Body.Text != "unknown goroutine -1000" {
-						t.Errorf("got %#v, want Reaspon=\"error\", Text=\"unknown goroutine -1000\"", se)
+						t.Errorf("got %#v, want Reason=\"error\", Text=\"unknown goroutine -1000\"", se)
 					}
 					handleStop(t, client, 1, "main.inlineThis", 5)
 				},

@@ -1530,6 +1530,10 @@ func (s *Server) onRestartRequest(request *dap.RestartRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
+// functionBpPrefix is the prefix of bp.Name for every breakpoint bp set
+// in this request.
+var functionBpPrefix = "functionBreakpoint"
+
 func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpointsRequest) {
 	if s.noDebugProcess != nil {
 		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", "running in noDebug mode")
@@ -1547,10 +1551,6 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 	// -- exists and not in request => ClearBreakpoint
 	// -- exists and in request => AmendBreakpoint
 	// -- doesn't exist and in request => SetBreakpoint
-
-	// functionBpPrefix is the prefix of bp.Name for every breakpoint bp set
-	// in this request.
-	functionBpPrefix := "functionBreakpoint"
 
 	// Clear all existing function breakpoints in the file.
 	// Function breakpoints are set with the Name field set to be the
@@ -1571,9 +1571,10 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 			continue
 		}
 		if loc, ok := spec.(*locspec.NormalLocationSpec); !ok || loc.FuncBase == nil {
-			// These are likely to resolve to multiple places, so it is unclear what the response
-			// body should be since there will be multiple breakpoints created.
-			response.Body.Breakpoints[i].Message = fmt.Sprintf("breakpoint name %q could not be parsed as a function", want.Name)
+			// Other locations do not make sense in the context of function breakpoints.
+			// Regex locations are likely to resolve to multiple places and offset locations
+			// are only meaningful at the time the breakpoint was created.
+			response.Body.Breakpoints[i].Message = fmt.Sprintf("breakpoint name %q could not be parsed as a function. name must be in the format 'funcName', 'funcName:line' or 'fileName:line'.", want.Name)
 			continue
 		}
 
@@ -1786,6 +1787,9 @@ func (s *Server) doCommand(command string) {
 				stopped.Body.Reason = "fatal error"
 			case proc.UnrecoveredPanic:
 				stopped.Body.Reason = "panic"
+			}
+			if strings.HasPrefix(state.CurrentThread.Breakpoint.Name, functionBpPrefix) {
+				stopped.Body.Reason = "function breakpoint"
 			}
 		}
 		s.send(stopped)
