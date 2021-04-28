@@ -1567,12 +1567,16 @@ func (s *Server) onCancelRequest(request *dap.CancelRequest) {
 func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 	goroutineID := request.Arguments.ThreadId
 	var body dap.ExceptionInfoResponseBody
-	// Get the thread for the goroutine and the current state.
+	// Get the goroutine and the current state.
 	g, _ := s.debugger.FindGoroutine(goroutineID)
 	state, _ := s.debugger.State( /*nowait*/ true)
-	if g != nil && g.Breakpoint() != nil && g.Breakpoint().Breakpoint != nil {
+	var bpState *proc.BreakpointState
+	if g != nil && g.Thread != nil {
 		// Check if this goroutine ID is stopped at a breakpoint.
-		switch g.Breakpoint().Breakpoint.Name {
+		bpState = g.Thread.Breakpoint()
+	}
+	if bpState != nil && bpState.Breakpoint != nil {
+		switch bpState.Breakpoint.Name {
 		case proc.FatalThrow:
 			// TODO(suzmue): add the fatal throw reason to body.Description.
 			body.ExceptionId = "fatal error"
@@ -1588,7 +1592,7 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 		// If this thread is not stopped on a breakpoint, then a runtime error must have occurred.
 		// If we do not have any error saved, or if this thread is not current thread,
 		// return an error.
-		if s.exceptionErr == nil || state.CurrentThread == nil || g == nil || state.CurrentThread.ID != g.ThreadID() {
+		if s.exceptionErr == nil || state.CurrentThread == nil || g == nil || g.Thread == nil || state.CurrentThread.ID != g.Thread.ThreadID() {
 			s.sendErrorResponse(request.Request, UnableToGetExceptionInfo, "Unable to get exception info", fmt.Sprintf("no exception found for goroutine %d", goroutineID))
 			return
 		}

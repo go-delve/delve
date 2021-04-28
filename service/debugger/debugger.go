@@ -968,7 +968,7 @@ func (d *Debugger) FindThread(id int) (proc.Thread, error) {
 }
 
 // FindGoroutine returns the goroutine for the given 'id'.
-func (d *Debugger) FindGoroutine(id int) (proc.Thread, error) {
+func (d *Debugger) FindGoroutine(id int) (*proc.G, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -977,7 +977,7 @@ func (d *Debugger) FindGoroutine(id int) (proc.Thread, error) {
 		return nil, err
 	}
 
-	return g.Thread, nil
+	return g, nil
 }
 
 func (d *Debugger) setRunning(running bool) {
