@@ -338,15 +338,18 @@ func (s *Server) serveDAPCodec() {
 	}
 }
 
+// In case a handler panics, we catch the panic to avoid crashing both
+// the server and the target. We send an error response back, but
+// in case its a dup and ignored by the client, we also log the error.
+func (s *Server) recoverPanic(request dap.Message) {
+	if ierr := recover(); ierr != nil {
+		s.log.Errorf("recovered panic: %s\n%s\n", ierr, debug.Stack())
+		s.sendInternalErrorResponse(request.GetSeq(), fmt.Sprintf("%v", ierr))
+	}
+}
+
 func (s *Server) handleRequest(request dap.Message) {
-	defer func() {
-		// In case a handler panics, we catch the panic and send an error response
-		// back to the client.
-		if ierr := recover(); ierr != nil {
-			s.log.Errorf("stacktrace from recovered panic:\n%s\n", debug.Stack())
-			s.sendInternalErrorResponse(request.GetSeq(), fmt.Sprintf("%v", ierr))
-		}
-	}()
+	defer s.recoverPanic(request)
 
 	jsonmsg, _ := json.Marshal(request)
 	s.log.Debug("[<- from client]", string(jsonmsg))
@@ -433,23 +436,38 @@ func (s *Server) handleRequest(request dap.Message) {
 	//--- Asynchronous requests ---
 	case *dap.ConfigurationDoneRequest:
 		// Optional (capability ‘supportsConfigurationDoneRequest’)
-		go s.onConfigurationDoneRequest(request, resumeRequestLoop)
+		go func() {
+			defer s.recoverPanic(request)
+			s.onConfigurationDoneRequest(request, resumeRequestLoop)
+		}()
 		<-resumeRequestLoop
 	case *dap.ContinueRequest:
 		// Required
-		go s.onContinueRequest(request, resumeRequestLoop)
+		go func() {
+			defer s.recoverPanic(request)
+			s.onContinueRequest(request, resumeRequestLoop)
+		}()
 		<-resumeRequestLoop
 	case *dap.NextRequest:
 		// Required
-		go s.onNextRequest(request, resumeRequestLoop)
+		go func() {
+			defer s.recoverPanic(request)
+			s.onNextRequest(request, resumeRequestLoop)
+		}()
 		<-resumeRequestLoop
 	case *dap.StepInRequest:
 		// Required
-		go s.onStepInRequest(request, resumeRequestLoop)
+		go func() {
+			defer s.recoverPanic(request)
+			s.onStepInRequest(request, resumeRequestLoop)
+		}()
 		<-resumeRequestLoop
 	case *dap.StepOutRequest:
 		// Required
-		go s.onStepOutRequest(request, resumeRequestLoop)
+		go func() {
+			defer s.recoverPanic(request)
+			s.onStepOutRequest(request, resumeRequestLoop)
+		}()
 		<-resumeRequestLoop
 	case *dap.StepBackRequest:
 		// Optional (capability ‘supportsStepBack’)
