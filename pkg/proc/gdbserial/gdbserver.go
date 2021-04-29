@@ -331,7 +331,9 @@ func (p *gdbProcess) Connect(conn net.Conn, path string, pid int, debugInfoDirs 
 				// Workaround for darwin arm64. Apple's debugserver seems to have a problem
 				// with not selecting the correct thread in the 'g' command and the returned
 				// registers are empty / an E74 error is thrown.
-				if v[len("version:"):] == "1200" && p.bi.Arch.Name == "arm64" {
+				version, err := strconv.ParseInt(v[len("version:"):], 10, 32)
+
+				if err == nil && version >= 1200 && p.bi.Arch.Name == "arm64" {
 					p.gcmdok = false
 				}
 			}
