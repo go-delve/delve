@@ -67,13 +67,15 @@ import (
 //
 // TODO(polina): add another layer of per-client goroutines to support multiple clients
 //
-// (3) Per-request goroutines are started for asynchronous
-// running requests. They issue commands to the underlying debugger
-// and send back events and responses. They take a setup-done channel
-// as an argument and temporarily block the request loop until setup
-// for asynchronous execution is complete. Once done, they unblock
-// processing of parallel requests unblocks (e.g. disconnecting while the
-// program is running).
+// (3) Per-request goroutine is started for each asynchronous request
+// that resumes execution. We check if target is running already, so
+// there should be no more than one pending asynchronous request at
+// a time. This goroutine issues commands to the underlying debugger
+// and sends back events and responses. It takes a setup-done channel
+// as an argument and temporarily blocks the request loop until setup
+// for asynchronous execution is complete and targe is running.
+// Once done, it unblocks processing of parallel requests unblocks
+// (e.g. disconnecting while the program is running).
 //
 // These per-request goroutines never send a stop-server signal.
 // They block on running debugger commands that are interrupted
@@ -116,13 +118,6 @@ type Server struct {
 	// sendingMu synchronizes writing to net.Conn
 	// to ensure that messages do not get interleaved
 	sendingMu sync.Mutex
-
-	// running keeps track of whether we are running an asyncronous
-	// command that resumes execution.
-	// This works for now without using Debugger.State because we
-	// have only one client.
-	running   bool
-	runningMu sync.Mutex
 }
 
 // launchAttachArgs captures arguments from launch/attach request that
@@ -382,9 +377,6 @@ func (s *Server) handleRequest(request dap.Message) {
 		return
 	}
 
-	s.runningMu.Lock()
-	defer s.runningMu.Unlock()
-
 	// Most requests cannot be processed while the debuggee is running.
 	// We have a couple of options for handling these without blocking
 	// the request loop indefinitely when we are in running state.
@@ -403,7 +395,7 @@ func (s *Server) handleRequest(request dap.Message) {
 	// the next stop. In addition, the editor itself might block waiting
 	// for these requests to return. We are not aware of any requests
 	// that would benefit from this approach at this time.
-	if s.running {
+	if s.debugger != nil && s.debugger.IsRunning() {
 		switch request := request.(type) {
 		case *dap.ThreadsRequest:
 			// On start-up, the client requests the baseline of currently existing threads
@@ -441,27 +433,22 @@ func (s *Server) handleRequest(request dap.Message) {
 		// Optional (capability ‘supportsConfigurationDoneRequest’)
 		go s.onConfigurationDoneRequest(request, resumeRequestLoop)
 		<-resumeRequestLoop
-		s.running = true
 	case *dap.ContinueRequest:
 		// Required
 		go s.onContinueRequest(request, resumeRequestLoop)
 		<-resumeRequestLoop
-		s.running = true
 	case *dap.NextRequest:
 		// Required
 		go s.onNextRequest(request, resumeRequestLoop)
 		<-resumeRequestLoop
-		s.running = true
 	case *dap.StepInRequest:
 		// Required
 		go s.onStepInRequest(request, resumeRequestLoop)
 		<-resumeRequestLoop
-		s.running = true
 	case *dap.StepOutRequest:
 		// Required
 		go s.onStepOutRequest(request, resumeRequestLoop)
 		<-resumeRequestLoop
-		s.running = true
 	case *dap.StepBackRequest:
 		// Optional (capability ‘supportsStepBack’)
 		// TODO: implement this request in V1
@@ -586,8 +573,8 @@ func (s *Server) send(message dap.Message) {
 	// goroutine that reads from that channel and sends over the connection.
 	// This will avoid blocking on slow network sends.
 	s.sendingMu.Lock()
+	defer s.sendingMu.Unlock()
 	_ = dap.WriteProtocolMessage(s.conn, message)
-	s.sendingMu.Unlock()
 }
 
 func (s *Server) logToConsole(msg string) {
@@ -885,7 +872,7 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 		}
 	} else if state.Exited {
 		exited = proc.ErrProcessExited{Pid: s.debugger.ProcessPid(), Status: state.ExitStatus}
-		s.log.Debug("halt returned state:", err)
+		s.log.Debug("halt returned state:", exited)
 	}
 	if exited != nil {
 		s.logToConsole(exited.Error())
@@ -910,15 +897,17 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 	return err
 }
 
+func (s *Server) isNoDebug() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.noDebugProcess != nil
+}
+
 func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
-	func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		if s.noDebugProcess != nil {
-			s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", "running in noDebug mode")
-			return
-		}
-	}()
+	if s.isNoDebug() {
+		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", "running in noDebug mode")
+		return
+	}
 
 	if request.Arguments.Source.Path == "" {
 		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", "empty file path")
@@ -983,10 +972,7 @@ func (s *Server) onSetExceptionBreakpointsRequest(request *dap.SetExceptionBreak
 	s.send(&dap.SetExceptionBreakpointsResponse{Response: *newResponse(request.Request)})
 }
 
-func (s *Server) asyncCommandDone(asyncSetupDone chan struct{}, doneEvent dap.EventMessage) {
-	// Request loop waits for asyncSetupDone
-	// to release runningMu and start processing next request,
-	// we so we must release this first.
+func (s *Server) asyncCommandDone(asyncSetupDone chan struct{}) {
 	if asyncSetupDone != nil {
 		select {
 		case <-asyncSetupDone:
@@ -995,15 +981,6 @@ func (s *Server) asyncCommandDone(asyncSetupDone chan struct{}, doneEvent dap.Ev
 			close(asyncSetupDone)
 		}
 	}
-	s.runningMu.Lock()
-	// Send the done event inside of the lock, so we avoid sending it
-	// while another request is being handled as being issued while running.
-	// Otherwise is-running error might arrive after we update the UI as stopped.
-	if doneEvent != nil {
-		s.send(doneEvent)
-	}
-	s.running = false
-	s.runningMu.Unlock()
 }
 
 // onConfigurationDoneRequest handles 'configurationDone' request.
@@ -1022,7 +999,7 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 	if !s.args.stopOnEntry {
 		s.doCommand(api.Continue, asyncSetupDone)
 	} else {
-		s.asyncCommandDone(asyncSetupDone, nil)
+		s.asyncCommandDone(asyncSetupDone)
 	}
 }
 
@@ -1198,7 +1175,8 @@ func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan
 		}
 		stopped.Body.Reason = "error"
 		stopped.Body.Text = err.Error()
-		s.asyncCommandDone(asyncSetupDone, stopped)
+		s.send(stopped)
+		s.asyncCommandDone(asyncSetupDone)
 		return
 	}
 	s.doCommand(command, asyncSetupDone)
@@ -1848,10 +1826,13 @@ func (s *Server) resetHandlesForStoppedEvent() {
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
 func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
+	// TODO(polina): it appears that debugger.Command doesn't close
+	// asyncSetupDone (e.g. when having an error next while nexting).
+	// So we should always close it ourselves just in case.
+	defer s.asyncCommandDone(asyncSetupDone)
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
 	if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
-		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
-		s.asyncCommandDone(asyncSetupDone, e)
+		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		return
 	}
 
@@ -1908,10 +1889,11 @@ func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
 				Category: "stderr",
 			}})
 	}
-	// TODO(polina): it appears that debugger.Command doesn't close
-	// asyncSetupDone when having an error next while nexting.
-	// So we should always close it ourselves just in case.
-	s.asyncCommandDone(asyncSetupDone, stopped)
+
+	// NOTE: If we happen to be responding to another request with an is-running
+	// error while this one completes, it is possible that the error response
+	// will arrive after this stopped event.
+	s.send(stopped)
 }
 
 func (s *Server) toClientPath(path string) string {

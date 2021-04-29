@@ -549,7 +549,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 
 // State returns the current state of the debugger.
 func (d *Debugger) State(nowait bool) (*api.DebuggerState, error) {
-	if d.isRunning() && nowait {
+	if d.IsRunning() && nowait {
 		return &api.DebuggerState{Running: true}, nil
 	}
 
@@ -973,7 +973,7 @@ func (d *Debugger) setRunning(running bool) {
 	d.runningMutex.Unlock()
 }
 
-func (d *Debugger) isRunning() bool {
+func (d *Debugger) IsRunning() bool {
 	d.runningMutex.Lock()
 	defer d.runningMutex.Unlock()
 	return d.running
@@ -1712,7 +1712,7 @@ func (d *Debugger) GetVersion(out *api.GetVersionOut) error {
 		}
 	}
 
-	if !d.isRecording() && !d.isRunning() {
+	if !d.isRecording() && !d.IsRunning() {
 		out.TargetGoVersion = d.target.BinInfo().Producer()
 	}
 
