@@ -1541,14 +1541,14 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 	}
 	// TODO(polina): handle this while running by halting first.
 
-	// According to the spec we should "Replaces all existing function
+	// According to the spec, setFunctionBreakpoints "replaces all existing function
 	// breakpoints with new function breakpoints." The simplest way is
 	// to clear all and then set all.
 
 	// Clear all existing function breakpoints in the file.
 	// Function breakpoints are set with the Name field set to be the
 	// function name. We cannot use FunctionName to determine this, because
-	// the debugger sets the function name for breakpoints.
+	// the debugger sets the function name for all breakpoints.
 	if err := s.clearMatchingBreakpoints(func(bp *api.Breakpoint) bool { return strings.HasPrefix(bp.Name, functionBpPrefix) }); err != nil {
 		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 		return
@@ -1572,7 +1572,7 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 		}
 
 		// Find the location of the function name. CreateBreakpoint requires the name to include the base
-		// (eg main.functionName is supported but not functionName).
+		// (e.g. main.functionName is supported but not functionName).
 		// We first find the location of the function, and then set breakpoints for that location.
 		locs, err := s.debugger.FindLocationSpec(-1, 0, 0, want.Name, spec, true, s.args.substitutePathClientToServer)
 		if err != nil {
@@ -1585,6 +1585,7 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 		}
 		if len(locs) > 0 {
 			s.log.Debugf("multiple locations found for %s", want.Name)
+			response.Body.Breakpoints[i].Message = fmt.Sprintf("multiple locations found for %s, function breakpoint is only set for the first location", want.Name)
 		}
 
 		// Set breakpoint using the PCs that were found.
