@@ -34,6 +34,7 @@ func I386Arch(goos string) *Arch {
 		asmDecode:                        i386AsmDecode,
 		PCRegNum:                         regnum.I386_Eip,
 		SPRegNum:                         regnum.I386_Esp,
+		asmRegisters:                     i386AsmRegisters,
 	}
 }
 
@@ -184,12 +185,12 @@ func i386RegSize(regnum uint64) int {
 	return 4
 }
 
-func i386RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.DwarfRegisters {
+func i386RegistersToDwarfRegisters(staticBase uint64, regs Registers) *op.DwarfRegisters {
 	dregs := initDwarfRegistersFromSlice(regnum.I386MaxRegNum(), regs, regnum.I386NameToDwarf)
 	dr := op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, regnum.I386_Eip, regnum.I386_Esp, regnum.I386_Ebp, 0)
 	dr.SetLoadMoreCallback(loadMoreDwarfRegistersFromSliceFunc(dr, regs, regnum.I386NameToDwarf))
 
-	return *dr
+	return dr
 }
 
 func i386AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op.DwarfRegisters {
