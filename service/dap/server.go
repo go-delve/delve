@@ -1342,6 +1342,8 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		// We might be loading variables from the frame that's not topmost, so use
 		// frame-independent address-based expression, not fully-qualified name as per
 		// https://github.com/go-delve/delve/blob/master/Documentation/api/ClientHowto.md#looking-into-variables.
+		// TODO(polina): Get *proc.Variable object from debugger instead. Export and set v.loaded to false
+		// and call v.loadValue gain. It's more efficient, and it's guaranteed to keep working with generics.
 		value = api.ConvertVar(v).SinglelineString()
 		typeName := api.PrettyTypeName(v.DwarfType)
 		loadExpr := fmt.Sprintf("*(*%q)(%#x)", typeName, v.Addr)
