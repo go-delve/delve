@@ -5169,9 +5169,9 @@ func TestCompositeMemoryWrite(t *testing.T) {
 		oldPc, oldRax, oldXmm1 := getregs()
 		t.Logf("PC %#x AX %#x XMM1 %#x", oldPc, oldRax, oldXmm1)
 
-		memRax, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, RegNum: 0, IsRegister: true}})
+		memRax, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, Val: 0, Kind: op.RegPiece}})
 		assertNoError(err, t, "NewCompositeMemory (rax)")
-		memXmm1, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, RegNum: 18, IsRegister: true}})
+		memXmm1, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, Val: 18, Kind: op.RegPiece}})
 		assertNoError(err, t, "NewCompositeMemory (xmm1)")
 
 		if memRax := getmem(memRax); memRax != oldRax {

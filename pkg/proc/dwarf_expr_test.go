@@ -152,9 +152,11 @@ func TestDwarfExprRegisters(t *testing.T) {
 
 func TestDwarfExprComposite(t *testing.T) {
 	testCases := map[string]uint16{
-		"pair.k": 0x8765,
-		"pair.v": 0x5678,
-		"n":      42,
+		"pair.k":  0x8765,
+		"pair.v":  0x5678,
+		"n":       42,
+		"pair2.k": 0x8765,
+		"pair2.v": 0,
 	}
 
 	const stringVal = "this is a string"
@@ -188,6 +190,9 @@ func TestDwarfExprComposite(t *testing.T) {
 		op.DW_OP_reg1, op.DW_OP_piece, uint(8),
 		op.DW_OP_reg0, op.DW_OP_piece, uint(8)))
 	dwb.AddVariable("n", intoff, dwarfbuilder.LocationBlock(op.DW_OP_reg3))
+	dwb.AddVariable("pair2", pairoff, dwarfbuilder.LocationBlock(
+		op.DW_OP_reg2, op.DW_OP_piece, uint(2),
+		op.DW_OP_piece, uint(2)))
 	dwb.TagClose()
 
 	bi, _ := fakeBinaryInfo(t, dwb)
