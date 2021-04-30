@@ -3,7 +3,6 @@ package proc
 import (
 	"bytes"
 	"debug/dwarf"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -905,17 +904,14 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 }
 
 func convertInt(n uint64, signed bool, size int64) uint64 {
-	buf := make([]byte, 64/8)
-	binary.BigEndian.PutUint64(buf, n)
-	m := 64/8 - int(size)
-	s := byte(0)
-	if signed && (buf[m]&0x80 > 0) {
-		s = 0xff
+	bits := uint64(size) * 8
+	mask := uint64((1 << bits) - 1)
+	r := n & mask
+	if signed && (r>>(bits-1)) != 0 {
+		// sign extension
+		r |= ^uint64(0) &^ mask
 	}
-	for i := 0; i < m; i++ {
-		buf[i] = s
-	}
-	return uint64(binary.BigEndian.Uint64(buf))
+	return r
 }
 
 func (scope *EvalScope) evalBuiltinCall(node *ast.CallExpr) (*Variable, error) {
@@ -1602,8 +1598,15 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 
 		r := xv.newVariable("", 0, typ, scope.Mem)
 		r.Value = rc
-		if r.Kind == reflect.String {
+		switch r.Kind {
+		case reflect.String:
 			r.Len = xv.Len + yv.Len
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			n, _ := constant.Int64Val(r.Value)
+			r.Value = constant.MakeInt64(int64(convertInt(uint64(n), true, typ.Size())))
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			n, _ := constant.Uint64Val(r.Value)
+			r.Value = constant.MakeUint64(convertInt(n, false, typ.Size()))
 		}
 		return r, nil
 	}

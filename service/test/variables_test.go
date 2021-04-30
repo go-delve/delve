@@ -836,6 +836,10 @@ func TestEvalExpression(t *testing.T) {
 		{`iface2map.(data)`, false, "…", "…", "map[string]interface {}", nil},
 
 		{"issue1578", false, "main.Block {cache: *main.Cache nil}", "main.Block {cache: *main.Cache nil}", "main.Block", nil},
+		{"ni8 << 2", false, "-20", "-20", "int8", nil},
+		{"ni8 << 8", false, "0", "0", "int8", nil},
+		{"ni8 >> 1", false, "-3", "-3", "int8", nil},
+		{"bytearray[0] * bytearray[0]", false, "144", "144", "uint8", nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())
