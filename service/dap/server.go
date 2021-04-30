@@ -1010,6 +1010,7 @@ func (s *Server) asyncCommandDone(asyncSetupDone chan struct{}) {
 // It gets triggered after all the debug requests that followinitalized event,
 // so the s.debugger is guaranteed to be set.
 func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest, asyncSetupDone chan struct{}) {
+	defer s.asyncCommandDone(asyncSetupDone)
 	if s.args.stopOnEntry {
 		e := &dap.StoppedEvent{
 			Event: *newEvent("stopped"),
@@ -1020,8 +1021,6 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
 	if !s.args.stopOnEntry {
 		s.doCommand(api.Continue, asyncSetupDone)
-	} else {
-		s.asyncCommandDone(asyncSetupDone)
 	}
 }
 
@@ -1183,6 +1182,7 @@ func stoppedGoroutineID(state *api.DebuggerState) (id int) {
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
 func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan struct{}) {
+	defer s.asyncCommandDone(asyncSetupDone)
 	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
 	if err != nil {
 		s.log.Errorf("Error switching goroutines while stepping: %v", err)
@@ -1198,7 +1198,6 @@ func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan
 		stopped.Body.Reason = "error"
 		stopped.Body.Text = err.Error()
 		s.send(stopped)
-		s.asyncCommandDone(asyncSetupDone)
 		return
 	}
 	s.doCommand(command, asyncSetupDone)
