@@ -103,6 +103,9 @@ type BinaryInfo struct {
 	// dwrapUnwrapCache caches unwrapping of defer wrapper functions (dwrap)
 	dwrapUnwrapCache map[uint64]*Function
 
+	// Go 1.17 register ABI is enabled.
+	regabi bool
+
 	logger *logrus.Entry
 }
 
@@ -659,7 +662,8 @@ type Image struct {
 
 	compileUnits []*compileUnit // compileUnits is sorted by increasing DWARF offset
 
-	dwarfTreeCache *simplelru.LRU
+	dwarfTreeCache      *simplelru.LRU
+	runtimeMallocgcTree *godwarf.Tree // patched version of runtime.mallocgc's DIE
 
 	// runtimeTypeToDIE maps between the offset of a runtime._type in
 	// runtime.moduledata.types and the offset of the DIE in debug_info. This
@@ -785,6 +789,9 @@ func (image *Image) LoadError() error {
 }
 
 func (image *Image) getDwarfTree(off dwarf.Offset) (*godwarf.Tree, error) {
+	if image.runtimeMallocgcTree != nil && off == image.runtimeMallocgcTree.Offset {
+		return image.runtimeMallocgcTree, nil
+	}
 	if r, ok := image.dwarfTreeCache.Get(off); ok {
 		return r.(*godwarf.Tree), nil
 	}
@@ -1741,6 +1748,13 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 					cu.optimized = goversion.ProducerAfterOrEqual(cu.producer, 1, 10)
 				} else {
 					cu.optimized = !strings.Contains(cu.producer[semicolon:], "-N") || !strings.Contains(cu.producer[semicolon:], "-l")
+					const regabi = " regabi"
+					if i := strings.Index(cu.producer[semicolon:], regabi); i > 0 {
+						i += semicolon
+						if i+len(regabi) >= len(cu.producer) || cu.producer[i+len(regabi)] == ' ' {
+							bi.regabi = true
+						}
+					}
 					cu.producer = cu.producer[:semicolon]
 				}
 			}
@@ -1780,6 +1794,22 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 	}
 	sort.Strings(bi.Sources)
 	bi.Sources = uniq(bi.Sources)
+
+	if bi.regabi {
+		// prepare patch for  runtime.mallocgc's DIE
+		fn := bi.LookupFunc["runtime.mallocgc"]
+		if fn != nil {
+			tree, err := image.getDwarfTree(fn.offset)
+			if err == nil {
+				tree.Children, err = regabiMallocgcWorkaround(bi)
+				if err != nil {
+					bi.logger.Errorf("could not patch runtime.mallogc: %v", err)
+				} else {
+					image.runtimeMallocgcTree = tree
+				}
+			}
+		}
+	}
 
 	if cont != nil {
 		cont()

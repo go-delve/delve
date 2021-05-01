@@ -3216,7 +3216,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 				disconnect: false,
 			}, { // Stop at runtime breakpoint
 				execute: func() {
-					checkStop(t, client, 1, "main.main", 197)
+					checkStop(t, client, 1, "main.main", -1)
 
 					// No return values
 					client.EvaluateRequest("call call0(1, 2)", 1000, "this context will be ignored")
@@ -4502,7 +4502,7 @@ func TestSetVariableWithCall(t *testing.T) {
 				execute: func() {
 					tester := &helperForSetVariable{t, client}
 
-					checkStop(t, client, 1, "main.main", 197)
+					checkStop(t, client, 1, "main.main", -1)
 
 					_ = tester.variables(1001)
 
@@ -4511,7 +4511,7 @@ func TestSetVariableWithCall(t *testing.T) {
 					tester.evaluateRegex("str", `.*in main.callstacktrace at.*`, noChildren)
 
 					tester.failSetVariableAndStop(1001, "str", `callpanic()`, `callpanic panicked`)
-					checkStop(t, client, 1, "main.main", 197)
+					checkStop(t, client, 1, "main.main", -1)
 
 					// breakpoint during a function call.
 					tester.failSetVariableAndStop(1001, "str", `callbreak()`, "call stopped")

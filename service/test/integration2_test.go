@@ -1891,17 +1891,9 @@ func TestAcceptMulticlient(t *testing.T) {
 	<-serverDone
 }
 
-func mustHaveDebugCalls(t *testing.T, c service.Client) {
-	locs, err := c.FindLocation(api.EvalScope{GoroutineID: -1}, "runtime.debugCallV1", false, nil)
-	if len(locs) == 0 || err != nil {
-		t.Skip("function calls not supported on this version of go")
-	}
-}
-
 func TestClientServerFunctionCall(t *testing.T) {
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
-		mustHaveDebugCalls(t, c)
 		c.SetReturnValuesLoadConfig(&normalLoadConfig)
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
@@ -1935,7 +1927,6 @@ func TestClientServerFunctionCallBadPos(t *testing.T) {
 		t.Skip("this is a safe point for Go 1.12")
 	}
 	withTestClient2("fncall", t, func(c service.Client) {
-		mustHaveDebugCalls(t, c)
 		loc, err := c.FindLocation(api.EvalScope{GoroutineID: -1}, "fmt/print.go:649", false, nil)
 		assertNoError(err, t, "could not find location")
 
@@ -1959,7 +1950,6 @@ func TestClientServerFunctionCallBadPos(t *testing.T) {
 func TestClientServerFunctionCallPanic(t *testing.T) {
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
-		mustHaveDebugCalls(t, c)
 		c.SetReturnValuesLoadConfig(&normalLoadConfig)
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
@@ -1988,7 +1978,6 @@ func TestClientServerFunctionCallStacktrace(t *testing.T) {
 	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
-		mustHaveDebugCalls(t, c)
 		c.SetReturnValuesLoadConfig(&api.LoadConfig{FollowPointers: false, MaxStringLen: 2048})
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
