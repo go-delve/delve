@@ -1738,6 +1738,8 @@ func TestSetBreakpoint(t *testing.T) {
 			}})
 	})
 }
+
+// TestSetFunctionBreakpoints is inspired by service/test.TestClientServer_FindLocations.
 func TestSetFunctionBreakpoints(t *testing.T) {
 	runTest(t, "locationsprog", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
@@ -1771,6 +1773,8 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 								}
 								continue
 							}
+							// Some function breakpoints may be in packages that have been imported and we do not control, so
+							// we do not always want to check breakpoints.
 							if (bps[i].line >= 0 && bp.Line != bps[i].line) || bp.Verified != bps[i].verified || bp.Source.Name != bps[i].sourceName {
 								t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
 							}
@@ -1825,7 +1829,6 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 						{Name: "/io/ioutil.ReadFile"},
 					})
 					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "ioutil.go", true, ""}})
-
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
 						{Name: "ioutil.ReadFile"},
 					})
