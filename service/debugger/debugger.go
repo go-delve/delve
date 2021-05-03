@@ -1095,7 +1095,8 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 		withBreakpointInfo = false
 	case api.SwitchGoroutine:
 		d.log.Debugf("switching to goroutine %d", command.GoroutineID)
-		g, err := proc.FindGoroutine(d.target, command.GoroutineID)
+		var g *proc.G
+		g, err = proc.FindGoroutine(d.target, command.GoroutineID)
 		if err == nil {
 			err = d.target.SwitchGoroutine(g)
 		}
@@ -1312,8 +1313,7 @@ func (d *Debugger) ThreadRegisters(threadID int, floatingPoint bool) (*op.DwarfR
 	if err != nil {
 		return nil, err
 	}
-	dregs := d.target.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
-	return &dregs, nil
+	return d.target.BinInfo().Arch.RegistersToDwarfRegisters(0, regs), nil
 }
 
 // ScopeRegisters returns registers for the specified scope.

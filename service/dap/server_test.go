@@ -14,7 +14,6 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -64,21 +63,18 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 	// Give server time to start listening for clients
 	time.Sleep(100 * time.Millisecond)
 
-	var stopOnce sync.Once
 	// Run a goroutine that stops the server when disconnectChan is signaled.
 	// This helps us test that certain events cause the server to stop as
 	// expected.
 	go func() {
 		<-disconnectChan
-		stopOnce.Do(func() { server.Stop() })
+		server.Stop()
 	}()
 
 	client := daptest.NewClient(listener.Addr().String())
+	// This will close the client connectinon, which will cause a connection error
+	// on the server side and signal disconnect to unblock Stop() above.
 	defer client.Close()
-
-	defer func() {
-		stopOnce.Do(func() { server.Stop() })
-	}()
 
 	test(client, fixture)
 }
@@ -229,7 +225,7 @@ func TestLaunchStopOnEntry(t *testing.T) {
 			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
 		}
 		oed := client.ExpectOutputEventDetaching(t)
-		if oed.Seq != 0 || oep.Body.Category != "console" {
+		if oed.Seq != 0 || oed.Body.Category != "console" {
 			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
 		}
 		dResp := client.ExpectDisconnectResponse(t)
@@ -2215,9 +2211,12 @@ func TestNextAndStep(t *testing.T) {
 					client.ExpectStepInResponse(t)
 					expectStop("main.inlineThis", 5)
 
-					client.NextRequest(-10000 /*this is ignored*/)
+					client.NextRequest(-1000)
 					client.ExpectNextResponse(t)
-					expectStop("main.inlineThis", 6)
+					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "error" || se.Body.Text != "unknown goroutine -1000" {
+						t.Errorf("got %#v, want Reaspon=\"error\", Text=\"unknown goroutine -1000\"", se)
+					}
+					handleStop(t, client, 1, "main.inlineThis", 5)
 				},
 				disconnect: false,
 			}})
@@ -3009,6 +3008,14 @@ func TestBadLaunchRequests(t *testing.T) {
 			}
 		}
 
+		expectFailedToLaunchWithMessageRegex := func(response *dap.ErrorResponse, errmsg string) {
+			t.Helper()
+			expectFailedToLaunch(response)
+			if matched, _ := regexp.MatchString(errmsg, response.Body.Error.Format); !matched {
+				t.Errorf("\ngot  %q\nwant %q", response.Body.Error.Format, errmsg)
+			}
+		}
+
 		// Test for the DAP-specific detailed error message.
 		client.LaunchRequest("exec", "", stopOnEntry)
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
@@ -3090,18 +3097,18 @@ func TestBadLaunchRequests(t *testing.T) {
 		expectFailedToLaunch(client.ExpectErrorResponse(t)) // No such file or directory
 
 		client.LaunchRequest("debug", fixture.Path+"_does_not_exist", stopOnEntry)
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t), "Failed to launch: Build error: exit status 1")
+		expectFailedToLaunch(client.ExpectErrorResponse(t))
 
 		client.LaunchRequest("" /*debug by default*/, fixture.Path+"_does_not_exist", stopOnEntry)
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t), "Failed to launch: Build error: exit status 1")
+		expectFailedToLaunch(client.ExpectErrorResponse(t))
 
 		client.LaunchRequest("exec", fixture.Source, stopOnEntry)
 		expectFailedToLaunch(client.ExpectErrorResponse(t)) // Not an executable
 
-		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "bad flags"})
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t), "Failed to launch: Build error: exit status 1")
-		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "buildFlags": "bad flags"})
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t), "Failed to launch: Build error: exit status 1")
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "-bad -flags"})
+		expectFailedToLaunchWithMessageRegex(client.ExpectErrorResponse(t), `Failed to launch: Build error: .*flag provided but not defined.*`)
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "buildFlags": "-bad -flags"})
+		expectFailedToLaunchWithMessageRegex(client.ExpectErrorResponse(t), `Failed to launch: Build error: .*flag provided but not defined.*`)
 
 		// Bad "wd".
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": false, "cwd": "dir/invalid"})

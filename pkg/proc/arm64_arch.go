@@ -9,7 +9,6 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/regnum"
-	"golang.org/x/arch/arm64/arm64asm"
 )
 
 var arm64BreakInstruction = []byte{0x0, 0x0, 0x20, 0xd4}
@@ -36,6 +35,7 @@ func ARM64Arch(goos string) *Arch {
 		usesLR:                           true,
 		PCRegNum:                         regnum.ARM64_PC,
 		SPRegNum:                         regnum.ARM64_SP,
+		asmRegisters:                     arm64AsmRegisters,
 	}
 }
 
@@ -235,78 +235,6 @@ func arm64RegSize(regnum uint64) int {
 	return 8 // general registers
 }
 
-// The mapping between hardware registers and DWARF registers is specified
-// in the DWARF for the ARM® Architecture page 7,
-// Table 1
-// http://infocenter.arm.com/help/topic/com.arm.doc.ihi0040b/IHI0040B_aadwarf.pdf
-var arm64DwarfToHardware = map[int]arm64asm.Reg{
-	0:  arm64asm.X0,
-	1:  arm64asm.X1,
-	2:  arm64asm.X2,
-	3:  arm64asm.X3,
-	4:  arm64asm.X4,
-	5:  arm64asm.X5,
-	6:  arm64asm.X6,
-	7:  arm64asm.X7,
-	8:  arm64asm.X8,
-	9:  arm64asm.X9,
-	10: arm64asm.X10,
-	11: arm64asm.X11,
-	12: arm64asm.X12,
-	13: arm64asm.X13,
-	14: arm64asm.X14,
-	15: arm64asm.X15,
-	16: arm64asm.X16,
-	17: arm64asm.X17,
-	18: arm64asm.X18,
-	19: arm64asm.X19,
-	20: arm64asm.X20,
-	21: arm64asm.X21,
-	22: arm64asm.X22,
-	23: arm64asm.X23,
-	24: arm64asm.X24,
-	25: arm64asm.X25,
-	26: arm64asm.X26,
-	27: arm64asm.X27,
-	28: arm64asm.X28,
-	29: arm64asm.X29,
-	30: arm64asm.X30,
-	31: arm64asm.SP,
-
-	64: arm64asm.V0,
-	65: arm64asm.V1,
-	66: arm64asm.V2,
-	67: arm64asm.V3,
-	68: arm64asm.V4,
-	69: arm64asm.V5,
-	70: arm64asm.V6,
-	71: arm64asm.V7,
-	72: arm64asm.V8,
-	73: arm64asm.V9,
-	74: arm64asm.V10,
-	75: arm64asm.V11,
-	76: arm64asm.V12,
-	77: arm64asm.V13,
-	78: arm64asm.V14,
-	79: arm64asm.V15,
-	80: arm64asm.V16,
-	81: arm64asm.V17,
-	82: arm64asm.V18,
-	83: arm64asm.V19,
-	84: arm64asm.V20,
-	85: arm64asm.V21,
-	86: arm64asm.V22,
-	87: arm64asm.V23,
-	88: arm64asm.V24,
-	89: arm64asm.V25,
-	90: arm64asm.V26,
-	91: arm64asm.V27,
-	92: arm64asm.V28,
-	93: arm64asm.V29,
-	94: arm64asm.V30,
-	95: arm64asm.V31,
-}
-
 var arm64NameToDwarf = func() map[string]int {
 	r := make(map[string]int)
 	for i := 0; i <= 30; i++ {
@@ -321,36 +249,11 @@ var arm64NameToDwarf = func() map[string]int {
 	return r
 }()
 
-func maxArm64DwarfRegister() int {
-	max := int(regnum.ARM64_PC)
-	for i := range arm64DwarfToHardware {
-		if i > max {
-			max = i
-		}
-	}
-	return max
-}
-
-func arm64RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.DwarfRegisters {
-	dregs := make([]*op.DwarfRegister, maxArm64DwarfRegister()+1)
-
-	dregs[regnum.ARM64_PC] = op.DwarfRegisterFromUint64(regs.PC())
-	dregs[regnum.ARM64_SP] = op.DwarfRegisterFromUint64(regs.SP())
-	dregs[regnum.ARM64_BP] = op.DwarfRegisterFromUint64(regs.BP())
-	if lr, err := regs.Get(int(arm64asm.X30)); err != nil {
-		dregs[regnum.ARM64_LR] = op.DwarfRegisterFromUint64(lr)
-	}
-
-	for dwarfReg, asmReg := range arm64DwarfToHardware {
-		v, err := regs.Get(int(asmReg))
-		if err == nil {
-			dregs[dwarfReg] = op.DwarfRegisterFromUint64(v)
-		}
-	}
-
+func arm64RegistersToDwarfRegisters(staticBase uint64, regs Registers) *op.DwarfRegisters {
+	dregs := initDwarfRegistersFromSlice(int(regnum.ARM64MaxRegNum()), regs, regnum.ARM64NameToDwarf)
 	dr := op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, regnum.ARM64_PC, regnum.ARM64_SP, regnum.ARM64_BP, regnum.ARM64_LR)
 	dr.SetLoadMoreCallback(loadMoreDwarfRegistersFromSliceFunc(dr, regs, arm64NameToDwarf))
-	return *dr
+	return dr
 }
 
 func arm64AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op.DwarfRegisters {

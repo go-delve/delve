@@ -100,7 +100,7 @@ func ThreadStacktrace(thread Thread, depth int) ([]Stackframe, error) {
 			return nil, err
 		}
 		so := thread.BinInfo().PCToImage(regs.PC())
-		dwarfRegs := thread.BinInfo().Arch.RegistersToDwarfRegisters(so.StaticBase, regs)
+		dwarfRegs := *(thread.BinInfo().Arch.RegistersToDwarfRegisters(so.StaticBase, regs))
 		dwarfRegs.ChangeFunc = thread.SetReg
 		it := newStackIterator(thread.BinInfo(), thread.ProcessMemory(), dwarfRegs, 0, nil, -1, nil, 0)
 		return it.stacktrace(depth)
@@ -121,7 +121,7 @@ func (g *G) stackIterator(opts StacktraceOptions) (*stackIterator, error) {
 			return nil, err
 		}
 		so := bi.PCToImage(regs.PC())
-		dwarfRegs := bi.Arch.RegistersToDwarfRegisters(so.StaticBase, regs)
+		dwarfRegs := *(bi.Arch.RegistersToDwarfRegisters(so.StaticBase, regs))
 		dwarfRegs.ChangeFunc = g.Thread.SetReg
 		return newStackIterator(
 			bi, g.variable.mem,
