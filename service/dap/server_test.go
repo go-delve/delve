@@ -511,8 +511,8 @@ func TestPreSetBreakpoint(t *testing.T) {
 		client.VariablesRequest(1000) // Arguments
 		args := client.ExpectVariablesResponse(t)
 		expectChildren(t, args, "Arguments", 2)
-		expectVarExact(t, args, 0, "y", "y", "0", noChildren)
-		expectVarExact(t, args, 1, "~r1", "", "0", noChildren)
+		expectVarExact(t, args, 0, "y", "y", "0", "uint", noChildren)
+		expectVarExact(t, args, 1, "~r1", "", "0", "uint", noChildren)
 
 		client.VariablesRequest(1001) // Locals
 		locals := client.ExpectVariablesResponse(t)
@@ -606,7 +606,7 @@ func expectChildren(t *testing.T, got *dap.VariablesResponse, parentName string,
 //     useExactMatch - true if name, evalName and value are to be compared to exactly, false if to be used as regex
 //     hasRef - true if the variable should have children and therefore a non-0 variable reference
 //     ref - reference to retrieve children of this variable (0 if none)
-func expectVar(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value string, useExactMatch, hasRef bool) (ref int) {
+func expectVar(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, useExactMatch, hasRef bool) (ref int) {
 	t.Helper()
 	if len(got.Body.Variables) <= i {
 		t.Errorf("\ngot  len=%d (children=%#v)\nwant len>%d", len(got.Body.Variables), got.Body.Variables, i)
@@ -653,19 +653,28 @@ func expectVar(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, 
 	if !matchedValue {
 		t.Errorf("\ngot  %s=%q\nwant %q", name, goti.Value, value)
 	}
+	matchedType := false
+	if useExactMatch {
+		matchedType = (goti.Type == typ)
+	} else {
+		matchedType, _ = regexp.MatchString(typ, goti.Type)
+	}
+	if !matchedType {
+		t.Errorf("\ngot  %s=%q\nwant %q", name, goti.Type, typ)
+	}
 	return goti.VariablesReference
 }
 
 // expectVarExact is a helper like expectVar that matches value exactly.
-func expectVarExact(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value string, hasRef bool) (ref int) {
+func expectVarExact(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, hasRef bool) (ref int) {
 	t.Helper()
-	return expectVar(t, got, i, name, evalName, value, true, hasRef)
+	return expectVar(t, got, i, name, evalName, value, typ, true, hasRef)
 }
 
 // expectVarRegex is a helper like expectVar that treats value, evalName or name as a regex.
-func expectVarRegex(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value string, hasRef bool) (ref int) {
+func expectVarRegex(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, hasRef bool) (ref int) {
 	t.Helper()
-	return expectVar(t, got, i, name, evalName, value, false, hasRef)
+	return expectVar(t, got, i, name, evalName, value, typ, false, hasRef)
 }
 
 // validateEvaluateName issues an evaluate request with evaluateName of a variable and
@@ -798,14 +807,14 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					client.VariablesRequest(1000)
 					args := client.ExpectVariablesResponse(t)
 					expectChildren(t, args, "Arguments", 2)
-					expectVarExact(t, args, 0, "baz", "baz", `"bazburzum"`, noChildren)
-					ref := expectVarExact(t, args, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, hasChildren)
+					expectVarExact(t, args, 0, "baz", "baz", `"bazburzum"`, "string", noChildren)
+					ref := expectVarExact(t, args, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						bar := client.ExpectVariablesResponse(t)
 						expectChildren(t, bar, "bar", 2)
-						expectVarExact(t, bar, 0, "Baz", "bar.Baz", "10", noChildren)
-						expectVarExact(t, bar, 1, "Bur", "bar.Bur", `"lorem"`, noChildren)
+						expectVarExact(t, bar, 0, "Baz", "bar.Baz", "10", "int", noChildren)
+						expectVarExact(t, bar, 1, "Bur", "bar.Bur", `"lorem"`, "string", noChildren)
 						validateEvaluateName(t, client, bar, 0)
 						validateEvaluateName(t, client, bar, 1)
 					}
@@ -814,7 +823,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 
 					client.VariablesRequest(1002)
 					globals := client.ExpectVariablesResponse(t)
-					expectVarExact(t, globals, 0, "p1", "main.p1", "10", noChildren)
+					expectVarExact(t, globals, 0, "p1", "main.p1", "10", "int", noChildren)
 
 					// Locals
 
@@ -823,75 +832,75 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					expectChildren(t, locals, "Locals", 31)
 
 					// reflect.Kind == Bool
-					expectVarExact(t, locals, -1, "b1", "b1", "true", noChildren)
-					expectVarExact(t, locals, -1, "b2", "b2", "false", noChildren)
+					expectVarExact(t, locals, -1, "b1", "b1", "true", "bool", noChildren)
+					expectVarExact(t, locals, -1, "b2", "b2", "false", "bool", noChildren)
 					// reflect.Kind == Int
-					expectVarExact(t, locals, -1, "a2", "a2", "6", noChildren)
-					expectVarExact(t, locals, -1, "neg", "neg", "-1", noChildren)
+					expectVarExact(t, locals, -1, "a2", "a2", "6", "int", noChildren)
+					expectVarExact(t, locals, -1, "neg", "neg", "-1", "int", noChildren)
 					// reflect.Kind == Int8
-					expectVarExact(t, locals, -1, "i8", "i8", "1", noChildren)
+					expectVarExact(t, locals, -1, "i8", "i8", "1", "int8", noChildren)
 					// reflect.Kind == Int16 - see testvariables2
 					// reflect.Kind == Int32 - see testvariables2
 					// reflect.Kind == Int64 - see testvariables2
 					// reflect.Kind == Uint
 					// reflect.Kind == Uint8
-					expectVarExact(t, locals, -1, "u8", "u8", "255", noChildren)
+					expectVarExact(t, locals, -1, "u8", "u8", "255", "uint8", noChildren)
 					// reflect.Kind == Uint16
-					expectVarExact(t, locals, -1, "u16", "u16", "65535", noChildren)
+					expectVarExact(t, locals, -1, "u16", "u16", "65535", "uint16", noChildren)
 					// reflect.Kind == Uint32
-					expectVarExact(t, locals, -1, "u32", "u32", "4294967295", noChildren)
+					expectVarExact(t, locals, -1, "u32", "u32", "4294967295", "uint32", noChildren)
 					// reflect.Kind == Uint64
-					expectVarExact(t, locals, -1, "u64", "u64", "18446744073709551615", noChildren)
+					expectVarExact(t, locals, -1, "u64", "u64", "18446744073709551615", "uint64", noChildren)
 					// reflect.Kind == Uintptr
-					expectVarExact(t, locals, -1, "up", "up", "5", noChildren)
+					expectVarExact(t, locals, -1, "up", "up", "5", "uintptr", noChildren)
 					// reflect.Kind == Float32
-					expectVarExact(t, locals, -1, "f32", "f32", "1.2", noChildren)
+					expectVarExact(t, locals, -1, "f32", "f32", "1.2", "float32", noChildren)
 					// reflect.Kind == Float64
-					expectVarExact(t, locals, -1, "a3", "a3", "7.23", noChildren)
+					expectVarExact(t, locals, -1, "a3", "a3", "7.23", "float64", noChildren)
 					// reflect.Kind == Complex64
-					ref = expectVarExact(t, locals, -1, "c64", "c64", "(1 + 2i)", hasChildren)
+					ref = expectVarExact(t, locals, -1, "c64", "c64", "(1 + 2i)", "complex64", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						c64 := client.ExpectVariablesResponse(t)
 						expectChildren(t, c64, "c64", 2)
-						expectVarExact(t, c64, 0, "real", "", "1", noChildren)
-						expectVarExact(t, c64, 1, "imaginary", "", "2", noChildren)
+						expectVarExact(t, c64, 0, "real", "", "1", "float32", noChildren)
+						expectVarExact(t, c64, 1, "imaginary", "", "2", "float32", noChildren)
 					}
 					// reflect.Kind == Complex128
-					ref = expectVarExact(t, locals, -1, "c128", "c128", "(2 + 3i)", hasChildren)
+					ref = expectVarExact(t, locals, -1, "c128", "c128", "(2 + 3i)", "complex128", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						c128 := client.ExpectVariablesResponse(t)
 						expectChildren(t, c128, "c128", 2)
-						expectVarExact(t, c128, 0, "real", "", "2", noChildren)
-						expectVarExact(t, c128, 1, "imaginary", "", "3", noChildren)
+						expectVarExact(t, c128, 0, "real", "", "2", "float64", noChildren)
+						expectVarExact(t, c128, 1, "imaginary", "", "3", "float64", noChildren)
 					}
 					// reflect.Kind == Array
-					ref = expectVarExact(t, locals, -1, "a4", "a4", "[2]int [1,2]", hasChildren)
+					ref = expectVarExact(t, locals, -1, "a4", "a4", "[2]int [1,2]", "[2]int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						a4 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a4, "a4", 2)
-						expectVarExact(t, a4, 0, "[0]", "a4[0]", "1", noChildren)
-						expectVarExact(t, a4, 1, "[1]", "a4[1]", "2", noChildren)
+						expectVarExact(t, a4, 0, "[0]", "a4[0]", "1", "int", noChildren)
+						expectVarExact(t, a4, 1, "[1]", "a4[1]", "2", "int", noChildren)
 					}
-					ref = expectVarExact(t, locals, -1, "a11", "a11", `[3]main.FooBar [{Baz: 1, Bur: "a"},{Baz: 2, Bur: "b"},{Baz: 3, Bur: "c"}]`, hasChildren)
+					ref = expectVarExact(t, locals, -1, "a11", "a11", `[3]main.FooBar [{Baz: 1, Bur: "a"},{Baz: 2, Bur: "b"},{Baz: 3, Bur: "c"}]`, "[3]main.FooBar", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						a11 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a11, "a11", 3)
-						expectVarExact(t, a11, 0, "[0]", "a11[0]", `main.FooBar {Baz: 1, Bur: "a"}`, hasChildren)
-						ref = expectVarExact(t, a11, 1, "[1]", "a11[1]", `main.FooBar {Baz: 2, Bur: "b"}`, hasChildren)
+						expectVarExact(t, a11, 0, "[0]", "a11[0]", `main.FooBar {Baz: 1, Bur: "a"}`, "main.FooBar", hasChildren)
+						ref = expectVarExact(t, a11, 1, "[1]", "a11[1]", `main.FooBar {Baz: 2, Bur: "b"}`, "main.FooBar", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							a11_1 := client.ExpectVariablesResponse(t)
 							expectChildren(t, a11_1, "a11[1]", 2)
-							expectVarExact(t, a11_1, 0, "Baz", "a11[1].Baz", "2", noChildren)
-							expectVarExact(t, a11_1, 1, "Bur", "a11[1].Bur", `"b"`, noChildren)
+							expectVarExact(t, a11_1, 0, "Baz", "a11[1].Baz", "2", "int", noChildren)
+							expectVarExact(t, a11_1, 1, "Bur", "a11[1].Bur", `"b"`, "string", noChildren)
 							validateEvaluateName(t, client, a11_1, 0)
 							validateEvaluateName(t, client, a11_1, 1)
 						}
-						expectVarExact(t, a11, 2, "[2]", "a11[2]", `main.FooBar {Baz: 3, Bur: "c"}`, hasChildren)
+						expectVarExact(t, a11, 2, "[2]", "a11[2]", `main.FooBar {Baz: 3, Bur: "c"}`, "main.FooBar", hasChildren)
 					}
 
 					// reflect.Kind == Chan - see testvariables2
@@ -899,96 +908,96 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					// reflect.Kind == Interface - see testvariables2
 					// reflect.Kind == Map - see testvariables2
 					// reflect.Kind == Ptr
-					ref = expectVarExact(t, locals, -1, "a7", "a7", `*main.FooBar {Baz: 5, Bur: "strum"}`, hasChildren)
+					ref = expectVarExact(t, locals, -1, "a7", "a7", `*main.FooBar {Baz: 5, Bur: "strum"}`, "*main.FooBar", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						a7 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a7, "a7", 1)
-						ref = expectVarExact(t, a7, 0, "", "(*a7)", `main.FooBar {Baz: 5, Bur: "strum"}`, hasChildren)
+						ref = expectVarExact(t, a7, 0, "", "(*a7)", `main.FooBar {Baz: 5, Bur: "strum"}`, "main.FooBar", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							a7val := client.ExpectVariablesResponse(t)
 							expectChildren(t, a7val, "*a7", 2)
-							expectVarExact(t, a7val, 0, "Baz", "(*a7).Baz", "5", noChildren)
-							expectVarExact(t, a7val, 1, "Bur", "(*a7).Bur", `"strum"`, noChildren)
+							expectVarExact(t, a7val, 0, "Baz", "(*a7).Baz", "5", "int", noChildren)
+							expectVarExact(t, a7val, 1, "Bur", "(*a7).Bur", `"strum"`, "string", noChildren)
 							validateEvaluateName(t, client, a7val, 0)
 							validateEvaluateName(t, client, a7val, 1)
 						}
 					}
 					// TODO(polina): how to test for "nil" (without type) and "void"?
-					expectVarExact(t, locals, -1, "a9", "a9", "*main.FooBar nil", noChildren)
+					expectVarExact(t, locals, -1, "a9", "a9", "*main.FooBar nil", "*main.FooBar", noChildren)
 					// reflect.Kind == Slice
-					ref = expectVarExact(t, locals, -1, "a5", "a5", "[]int len: 5, cap: 5, [1,2,3,4,5]", hasChildren)
+					ref = expectVarExact(t, locals, -1, "a5", "a5", "[]int len: 5, cap: 5, [1,2,3,4,5]", "[]int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						a5 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a5, "a5", 5)
-						expectVarExact(t, a5, 0, "[0]", "a5[0]", "1", noChildren)
-						expectVarExact(t, a5, 4, "[4]", "a5[4]", "5", noChildren)
+						expectVarExact(t, a5, 0, "[0]", "a5[0]", "1", "int", noChildren)
+						expectVarExact(t, a5, 4, "[4]", "a5[4]", "5", "int", noChildren)
 						validateEvaluateName(t, client, a5, 0)
 						validateEvaluateName(t, client, a5, 1)
 					}
-					ref = expectVarExact(t, locals, -1, "a12", "a12", `[]main.FooBar len: 2, cap: 2, [{Baz: 4, Bur: "d"},{Baz: 5, Bur: "e"}]`, hasChildren)
+					ref = expectVarExact(t, locals, -1, "a12", "a12", `[]main.FooBar len: 2, cap: 2, [{Baz: 4, Bur: "d"},{Baz: 5, Bur: "e"}]`, "[]main.FooBar", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						a12 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a12, "a12", 2)
-						expectVarExact(t, a12, 0, "[0]", "a12[0]", `main.FooBar {Baz: 4, Bur: "d"}`, hasChildren)
-						ref = expectVarExact(t, a12, 1, "[1]", "a12[1]", `main.FooBar {Baz: 5, Bur: "e"}`, hasChildren)
+						expectVarExact(t, a12, 0, "[0]", "a12[0]", `main.FooBar {Baz: 4, Bur: "d"}`, "main.FooBar", hasChildren)
+						ref = expectVarExact(t, a12, 1, "[1]", "a12[1]", `main.FooBar {Baz: 5, Bur: "e"}`, "main.FooBar", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							a12_1 := client.ExpectVariablesResponse(t)
 							expectChildren(t, a12_1, "a12[1]", 2)
-							expectVarExact(t, a12_1, 0, "Baz", "a12[1].Baz", "5", noChildren)
-							expectVarExact(t, a12_1, 1, "Bur", "a12[1].Bur", `"e"`, noChildren)
+							expectVarExact(t, a12_1, 0, "Baz", "a12[1].Baz", "5", "int", noChildren)
+							expectVarExact(t, a12_1, 1, "Bur", "a12[1].Bur", `"e"`, "string", noChildren)
 							validateEvaluateName(t, client, a12_1, 0)
 							validateEvaluateName(t, client, a12_1, 1)
 						}
 					}
-					ref = expectVarExact(t, locals, -1, "a13", "a13", `[]*main.FooBar len: 3, cap: 3, [*{Baz: 6, Bur: "f"},*{Baz: 7, Bur: "g"},*{Baz: 8, Bur: "h"}]`, hasChildren)
+					ref = expectVarExact(t, locals, -1, "a13", "a13", `[]*main.FooBar len: 3, cap: 3, [*{Baz: 6, Bur: "f"},*{Baz: 7, Bur: "g"},*{Baz: 8, Bur: "h"}]`, "[]*main.FooBar", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						a13 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a13, "a13", 3)
-						expectVarExact(t, a13, 0, "[0]", "a13[0]", `*main.FooBar {Baz: 6, Bur: "f"}`, hasChildren)
-						expectVarExact(t, a13, 1, "[1]", "a13[1]", `*main.FooBar {Baz: 7, Bur: "g"}`, hasChildren)
-						ref = expectVarExact(t, a13, 2, "[2]", "a13[2]", `*main.FooBar {Baz: 8, Bur: "h"}`, hasChildren)
+						expectVarExact(t, a13, 0, "[0]", "a13[0]", `*main.FooBar {Baz: 6, Bur: "f"}`, "*main.FooBar", hasChildren)
+						expectVarExact(t, a13, 1, "[1]", "a13[1]", `*main.FooBar {Baz: 7, Bur: "g"}`, "*main.FooBar", hasChildren)
+						ref = expectVarExact(t, a13, 2, "[2]", "a13[2]", `*main.FooBar {Baz: 8, Bur: "h"}`, "*main.FooBar", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							a13_2 := client.ExpectVariablesResponse(t)
 							expectChildren(t, a13_2, "a13[2]", 1)
-							ref = expectVarExact(t, a13_2, 0, "", "(*a13[2])", `main.FooBar {Baz: 8, Bur: "h"}`, hasChildren)
+							ref = expectVarExact(t, a13_2, 0, "", "(*a13[2])", `main.FooBar {Baz: 8, Bur: "h"}`, "main.FooBar", hasChildren)
 							validateEvaluateName(t, client, a13_2, 0)
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								val := client.ExpectVariablesResponse(t)
 								expectChildren(t, val, "*a13[2]", 2)
-								expectVarExact(t, val, 0, "Baz", "(*a13[2]).Baz", "8", noChildren)
-								expectVarExact(t, val, 1, "Bur", "(*a13[2]).Bur", `"h"`, noChildren)
+								expectVarExact(t, val, 0, "Baz", "(*a13[2]).Baz", "8", "int", noChildren)
+								expectVarExact(t, val, 1, "Bur", "(*a13[2]).Bur", `"h"`, "string", noChildren)
 								validateEvaluateName(t, client, val, 0)
 								validateEvaluateName(t, client, val, 1)
 							}
 						}
 					}
 					// reflect.Kind == String
-					expectVarExact(t, locals, -1, "a1", "a1", `"foofoofoofoofoofoo"`, noChildren)
-					expectVarExact(t, locals, -1, "a10", "a10", `"ofo"`, noChildren)
+					expectVarExact(t, locals, -1, "a1", "a1", `"foofoofoofoofoofoo"`, "string", noChildren)
+					expectVarExact(t, locals, -1, "a10", "a10", `"ofo"`, "string", noChildren)
 					// reflect.Kind == Struct
-					ref = expectVarExact(t, locals, -1, "a6", "a6", `main.FooBar {Baz: 8, Bur: "word"}`, hasChildren)
+					ref = expectVarExact(t, locals, -1, "a6", "a6", `main.FooBar {Baz: 8, Bur: "word"}`, "main.FooBar", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						a6 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a6, "a6", 2)
-						expectVarExact(t, a6, 0, "Baz", "a6.Baz", "8", noChildren)
-						expectVarExact(t, a6, 1, "Bur", "a6.Bur", `"word"`, noChildren)
+						expectVarExact(t, a6, 0, "Baz", "a6.Baz", "8", "int", noChildren)
+						expectVarExact(t, a6, 1, "Bur", "a6.Bur", `"word"`, "string", noChildren)
 					}
-					ref = expectVarExact(t, locals, -1, "a8", "a8", `main.FooBar2 {Bur: 10, Baz: "feh"}`, hasChildren)
+					ref = expectVarExact(t, locals, -1, "a8", "a8", `main.FooBar2 {Bur: 10, Baz: "feh"}`, "main.FooBar2", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						a8 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a8, "a8", 2)
-						expectVarExact(t, a8, 0, "Bur", "a8.Bur", "10", noChildren)
-						expectVarExact(t, a8, 1, "Baz", "a8.Baz", `"feh"`, noChildren)
+						expectVarExact(t, a8, 0, "Bur", "a8.Bur", "10", "int", noChildren)
+						expectVarExact(t, a8, 1, "Baz", "a8.Baz", `"feh"`, "string", noChildren)
 					}
 					// reflect.Kind == UnsafePointer - see testvariables2
 				},
@@ -1020,11 +1029,11 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)
 					expectChildren(t, locals, "Locals", 1)
-					expectVarExact(t, locals, -1, "a1", "a1", `"bur"`, noChildren)
+					expectVarExact(t, locals, -1, "a1", "a1", `"bur"`, "string", noChildren)
 
 					client.VariablesRequest(1002) // Globals
 					globals := client.ExpectVariablesResponse(t)
-					expectVarExact(t, globals, 0, "p1", "main.p1", "10", noChildren)
+					expectVarExact(t, globals, 0, "p1", "main.p1", "10", "int", noChildren)
 
 					client.VariablesRequest(7777)
 					erres = client.ExpectErrorResponse(t)
@@ -1088,13 +1097,13 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					// reflect.Kind == Bool - see testvariables
 					// reflect.Kind == Int - see testvariables
 					// reflect.Kind == Int8
-					expectVarExact(t, locals, -1, "ni8", "ni8", "-5", noChildren)
+					expectVarExact(t, locals, -1, "ni8", "ni8", "-5", "int8", noChildren)
 					// reflect.Kind == Int16
-					expectVarExact(t, locals, -1, "ni16", "ni16", "-5", noChildren)
+					expectVarExact(t, locals, -1, "ni16", "ni16", "-5", "int16", noChildren)
 					// reflect.Kind == Int32
-					expectVarExact(t, locals, -1, "ni32", "ni32", "-5", noChildren)
+					expectVarExact(t, locals, -1, "ni32", "ni32", "-5", "int32", noChildren)
 					// reflect.Kind == Int64
-					expectVarExact(t, locals, -1, "ni64", "ni64", "-5", noChildren)
+					expectVarExact(t, locals, -1, "ni64", "ni64", "-5", "int64", noChildren)
 					// reflect.Kind == Uint
 					// reflect.Kind == Uint8 - see testvariables
 					// reflect.Kind == Uint16 - see testvariables
@@ -1103,209 +1112,209 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					// reflect.Kind == Uintptr - see testvariables
 					// reflect.Kind == Float32 - see testvariables
 					// reflect.Kind == Float64
-					expectVarExact(t, locals, -1, "pinf", "pinf", "+Inf", noChildren)
-					expectVarExact(t, locals, -1, "ninf", "ninf", "-Inf", noChildren)
-					expectVarExact(t, locals, -1, "nan", "nan", "NaN", noChildren)
+					expectVarExact(t, locals, -1, "pinf", "pinf", "+Inf", "float64", noChildren)
+					expectVarExact(t, locals, -1, "ninf", "ninf", "-Inf", "float64", noChildren)
+					expectVarExact(t, locals, -1, "nan", "nan", "NaN", "float64", noChildren)
 					// reflect.Kind == Complex64 - see testvariables
 					// reflect.Kind == Complex128 - see testvariables
 					// reflect.Kind == Array
-					expectVarExact(t, locals, -1, "a0", "a0", "[0]int []", noChildren)
+					expectVarExact(t, locals, -1, "a0", "a0", "[0]int []", "[0]int", noChildren)
 					// reflect.Kind == Chan
-					ref := expectVarExact(t, locals, -1, "ch1", "ch1", "chan int 4/11", hasChildren)
+					ref := expectVarExact(t, locals, -1, "ch1", "ch1", "chan int 4/11", "chan int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						ch1 := client.ExpectVariablesResponse(t)
 						expectChildren(t, ch1, "ch1", 11)
-						expectVarExact(t, ch1, 0, "qcount", "ch1.qcount", "4", noChildren)
-						expectVarRegex(t, ch1, 10, "lock", "ch1.lock", `runtime\.mutex {.*key: 0.*}`, hasChildren)
+						expectVarExact(t, ch1, 0, "qcount", "ch1.qcount", "4", "uint", noChildren)
+						expectVarRegex(t, ch1, 10, "lock", "ch1.lock", `runtime\.mutex {.*key: 0.*}`, `runtime\.mutex`, hasChildren)
 						validateEvaluateName(t, client, ch1, 0)
 						validateEvaluateName(t, client, ch1, 10)
 					}
-					expectVarExact(t, locals, -1, "chnil", "chnil", "chan int nil", noChildren)
+					expectVarExact(t, locals, -1, "chnil", "chnil", "chan int nil", "chan int", noChildren)
 					// reflect.Kind == Func
-					expectVarExact(t, locals, -1, "fn1", "fn1", "main.afunc", noChildren)
-					expectVarExact(t, locals, -1, "fn2", "fn2", "nil", noChildren)
+					expectVarExact(t, locals, -1, "fn1", "fn1", "main.afunc", "main.functype", noChildren)
+					expectVarExact(t, locals, -1, "fn2", "fn2", "nil", "main.functype", noChildren)
 					// reflect.Kind == Interface
-					expectVarExact(t, locals, -1, "ifacenil", "ifacenil", "interface {} nil", noChildren)
-					ref = expectVarExact(t, locals, -1, "iface2", "iface2", "interface {}(string) \"test\"", hasChildren)
+					expectVarExact(t, locals, -1, "ifacenil", "ifacenil", "interface {} nil", "interface {}", noChildren)
+					ref = expectVarExact(t, locals, -1, "iface2", "iface2", "interface {}(string) \"test\"", "interface {}", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						iface2 := client.ExpectVariablesResponse(t)
 						expectChildren(t, iface2, "iface2", 1)
-						expectVarExact(t, iface2, 0, "data", "iface2.(data)", `"test"`, noChildren)
+						expectVarExact(t, iface2, 0, "data", "iface2.(data)", `"test"`, "string", noChildren)
 						validateEvaluateName(t, client, iface2, 0)
 					}
-					ref = expectVarExact(t, locals, -1, "iface4", "iface4", "interface {}([]go/constant.Value) [4]", hasChildren)
+					ref = expectVarExact(t, locals, -1, "iface4", "iface4", "interface {}([]go/constant.Value) [4]", "interface {}", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						iface4 := client.ExpectVariablesResponse(t)
 						expectChildren(t, iface4, "iface4", 1)
-						ref = expectVarExact(t, iface4, 0, "data", "iface4.(data)", "[]go/constant.Value len: 1, cap: 1, [4]", hasChildren)
+						ref = expectVarExact(t, iface4, 0, "data", "iface4.(data)", "[]go/constant.Value len: 1, cap: 1, [4]", "[]go/constant.Value", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							iface4data := client.ExpectVariablesResponse(t)
 							expectChildren(t, iface4data, "iface4.data", 1)
-							ref = expectVarExact(t, iface4data, 0, "[0]", "iface4.(data)[0]", "go/constant.Value(go/constant.int64Val) 4", hasChildren)
+							ref = expectVarExact(t, iface4data, 0, "[0]", "iface4.(data)[0]", "go/constant.Value(go/constant.int64Val) 4", "go/constant.Value", hasChildren)
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								iface4data0 := client.ExpectVariablesResponse(t)
 								expectChildren(t, iface4data0, "iface4.data[0]", 1)
-								expectVarExact(t, iface4data0, 0, "data", "iface4.(data)[0].(data)", "4", noChildren)
+								expectVarExact(t, iface4data0, 0, "data", "iface4.(data)[0].(data)", "4", "go/constant.int64Val", noChildren)
 								validateEvaluateName(t, client, iface4data0, 0)
 							}
 						}
 					}
-					expectVarExact(t, locals, -1, "errnil", "errnil", "error nil", noChildren)
-					ref = expectVarExact(t, locals, -1, "err1", "err1", "error(*main.astruct) *{A: 1, B: 2}", hasChildren)
+					expectVarExact(t, locals, -1, "errnil", "errnil", "error nil", "error", noChildren)
+					ref = expectVarExact(t, locals, -1, "err1", "err1", "error(*main.astruct) *{A: 1, B: 2}", "error", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						err1 := client.ExpectVariablesResponse(t)
 						expectChildren(t, err1, "err1", 1)
-						expectVarExact(t, err1, 0, "data", "err1.(data)", "*main.astruct {A: 1, B: 2}", hasChildren)
+						expectVarExact(t, err1, 0, "data", "err1.(data)", "*main.astruct {A: 1, B: 2}", "*main.astruct", hasChildren)
 						validateEvaluateName(t, client, err1, 0)
 					}
-					ref = expectVarExact(t, locals, -1, "ptrinf", "ptrinf", "*interface {}(**interface {}) **...", hasChildren)
+					ref = expectVarExact(t, locals, -1, "ptrinf", "ptrinf", "*interface {}(**interface {}) **...", "*interface {}", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						ptrinf_val := client.ExpectVariablesResponse(t)
 						expectChildren(t, ptrinf_val, "*ptrinf", 1)
-						ref = expectVarExact(t, ptrinf_val, 0, "", "(*ptrinf)", "interface {}(**interface {}) **...", hasChildren)
+						ref = expectVarExact(t, ptrinf_val, 0, "", "(*ptrinf)", "interface {}(**interface {}) **...", "interface {}", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							ptrinf_val_data := client.ExpectVariablesResponse(t)
 							expectChildren(t, ptrinf_val_data, "(*ptrinf).data", 1)
-							expectVarExact(t, ptrinf_val_data, 0, "data", "(*ptrinf).(data)", "**interface {}(**interface {}) ...", hasChildren)
+							expectVarExact(t, ptrinf_val_data, 0, "data", "(*ptrinf).(data)", "**interface {}(**interface {}) ...", "**interface {}", hasChildren)
 							validateEvaluateName(t, client, ptrinf_val_data, 0)
 						}
 					}
 					// reflect.Kind == Map
-					expectVarExact(t, locals, -1, "mnil", "mnil", "map[string]main.astruct nil", noChildren)
+					expectVarExact(t, locals, -1, "mnil", "mnil", "map[string]main.astruct nil", "map[string]main.astruct", noChildren)
 					// key - scalar, value - compound
-					ref = expectVarExact(t, locals, -1, "m2", "m2", "map[int]*main.astruct [1: *{A: 10, B: 11}, ]", hasChildren)
+					ref = expectVarExact(t, locals, -1, "m2", "m2", "map[int]*main.astruct [1: *{A: 10, B: 11}, ]", "map[int]*main.astruct", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m2 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m2, "m2", 1) // each key-value represented by a single child
-						ref = expectVarExact(t, m2, 0, "1", "m2[1]", "*main.astruct {A: 10, B: 11}", hasChildren)
+						ref = expectVarExact(t, m2, 0, "1", "m2[1]", "*main.astruct {A: 10, B: 11}", "*main.astruct", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m2kv1 := client.ExpectVariablesResponse(t)
 							expectChildren(t, m2kv1, "m2[1]", 1)
-							ref = expectVarExact(t, m2kv1, 0, "", "(*m2[1])", "main.astruct {A: 10, B: 11}", hasChildren)
+							ref = expectVarExact(t, m2kv1, 0, "", "(*m2[1])", "main.astruct {A: 10, B: 11}", "main.astruct", hasChildren)
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								m2kv1deref := client.ExpectVariablesResponse(t)
 								expectChildren(t, m2kv1deref, "*m2[1]", 2)
-								expectVarExact(t, m2kv1deref, 0, "A", "(*m2[1]).A", "10", noChildren)
-								expectVarExact(t, m2kv1deref, 1, "B", "(*m2[1]).B", "11", noChildren)
+								expectVarExact(t, m2kv1deref, 0, "A", "(*m2[1]).A", "10", "int", noChildren)
+								expectVarExact(t, m2kv1deref, 1, "B", "(*m2[1]).B", "11", "int", noChildren)
 								validateEvaluateName(t, client, m2kv1deref, 0)
 								validateEvaluateName(t, client, m2kv1deref, 1)
 							}
 						}
 					}
 					// key - compound, value - scalar
-					ref = expectVarExact(t, locals, -1, "m3", "m3", "map[main.astruct]int [{A: 1, B: 1}: 42, {A: 2, B: 2}: 43, ]", hasChildren)
+					ref = expectVarExact(t, locals, -1, "m3", "m3", "map[main.astruct]int [{A: 1, B: 1}: 42, {A: 2, B: 2}: 43, ]", "map[main.astruct]int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m3 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m3, "m3", 2) // each key-value represented by a single child
-						ref = expectVarRegex(t, m3, 0, `main\.astruct {A: 1, B: 1}`, `m3\[\(\*\(\*"main.astruct"\)\(0x[0-9a-f]+\)\)\]`, "42", hasChildren)
+						ref = expectVarRegex(t, m3, 0, `main\.astruct {A: 1, B: 1}`, `m3\[\(\*\(\*"main.astruct"\)\(0x[0-9a-f]+\)\)\]`, "42", "int", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m3kv0 := client.ExpectVariablesResponse(t)
 							expectChildren(t, m3kv0, "m3[0]", 2)
-							expectVarRegex(t, m3kv0, 0, "A", `\(*\(*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.A`, "1", noChildren)
+							expectVarRegex(t, m3kv0, 0, "A", `\(*\(*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.A`, "1", "int", noChildren)
 							validateEvaluateName(t, client, m3kv0, 0)
 						}
-						ref = expectVarRegex(t, m3, 1, `main\.astruct {A: 2, B: 2}`, `m3\[\(\*\(\*"main.astruct"\)\(0x[0-9a-f]+\)\)\]`, "43", hasChildren)
+						ref = expectVarRegex(t, m3, 1, `main\.astruct {A: 2, B: 2}`, `m3\[\(\*\(\*"main.astruct"\)\(0x[0-9a-f]+\)\)\]`, "43", "", hasChildren)
 						if ref > 0 { // inspect another key from another key-value child
 							client.VariablesRequest(ref)
 							m3kv1 := client.ExpectVariablesResponse(t)
 							expectChildren(t, m3kv1, "m3[1]", 2)
-							expectVarRegex(t, m3kv1, 1, "B", `\(*\(*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.B`, "2", noChildren)
+							expectVarRegex(t, m3kv1, 1, "B", `\(*\(*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.B`, "2", "int", noChildren)
 							validateEvaluateName(t, client, m3kv1, 1)
 						}
 					}
 					// key - compound + truncated, value - scalar
-					ref = expectVarExact(t, locals, -1, "m5", "m5", `map[main.C]int [{s: "very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more"}: 1, ]`, hasChildren)
+					ref = expectVarExact(t, locals, -1, "m5", "m5", `map[main.C]int [{s: "very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more"}: 1, ]`, "map[main.C]int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m5 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m5, "m5", 1)
-						expectVarRegex(t, m5, 0, `main\.C {s: "very long string 0123456789a0123456789b0123456789c01\.\.\. @ 0x[0-9a-f]+`, `m5\[\(\*\(\*"main\.C"\)\(0x[0-9a-f]+\)\)\]`, "1", hasChildren)
+						expectVarRegex(t, m5, 0, `main\.C {s: "very long string 0123456789a0123456789b0123456789c01\.\.\. @ 0x[0-9a-f]+`, `m5\[\(\*\(\*"main\.C"\)\(0x[0-9a-f]+\)\)\]`, "1", `int`, hasChildren)
 					}
 					// key - compound, value - compound
-					ref = expectVarExact(t, locals, -1, "m4", "m4", "map[main.astruct]main.astruct [{A: 1, B: 1}: {A: 11, B: 11}, {A: 2, B: 2}: {A: 22, B: 22}, ]", hasChildren)
+					ref = expectVarExact(t, locals, -1, "m4", "m4", "map[main.astruct]main.astruct [{A: 1, B: 1}: {A: 11, B: 11}, {A: 2, B: 2}: {A: 22, B: 22}, ]", "map[main.astruct]main.astruct", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m4 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m4, "m4", 4) // each key and value represented by a child, so double the key-value count
-						expectVarRegex(t, m4, 0, `\[key 0\]`, `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)`, `main\.astruct {A: 1, B: 1}`, hasChildren)
-						expectVarRegex(t, m4, 1, `\[val 0\]`, `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]`, `main\.astruct {A: 11, B: 11}`, hasChildren)
-						ref = expectVarRegex(t, m4, 2, `\[key 1\]`, `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)`, `main\.astruct {A: 2, B: 2}`, hasChildren)
+						expectVarRegex(t, m4, 0, `\[key 0\]`, `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)`, `main\.astruct {A: 1, B: 1}`, `main\.astruct`, hasChildren)
+						expectVarRegex(t, m4, 1, `\[val 0\]`, `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]`, `main\.astruct {A: 11, B: 11}`, `main\.astruct`, hasChildren)
+						ref = expectVarRegex(t, m4, 2, `\[key 1\]`, `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)`, `main\.astruct {A: 2, B: 2}`, `main\.astruct`, hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m4Key1 := client.ExpectVariablesResponse(t)
 							expectChildren(t, m4Key1, "m4Key1", 2)
-							expectVarRegex(t, m4Key1, 0, "A", `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.A`, "2", noChildren)
-							expectVarRegex(t, m4Key1, 1, "B", `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.B`, "2", noChildren)
+							expectVarRegex(t, m4Key1, 0, "A", `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.A`, "2", "int", noChildren)
+							expectVarRegex(t, m4Key1, 1, "B", `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.B`, "2", "int", noChildren)
 							validateEvaluateName(t, client, m4Key1, 0)
 							validateEvaluateName(t, client, m4Key1, 1)
 						}
-						ref = expectVarRegex(t, m4, 3, `\[val 1\]`, `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]`, `main\.astruct {A: 22, B: 22}`, hasChildren)
+						ref = expectVarRegex(t, m4, 3, `\[val 1\]`, `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]`, `main\.astruct {A: 22, B: 22}`, "main.astruct", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m4Val1 := client.ExpectVariablesResponse(t)
 							expectChildren(t, m4Val1, "m4Val1", 2)
-							expectVarRegex(t, m4Val1, 0, "A", `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]\.A`, "22", noChildren)
-							expectVarRegex(t, m4Val1, 1, "B", `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]\.B`, "22", noChildren)
+							expectVarRegex(t, m4Val1, 0, "A", `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]\.A`, "22", "int", noChildren)
+							expectVarRegex(t, m4Val1, 1, "B", `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]\.B`, "22", "int", noChildren)
 							validateEvaluateName(t, client, m4Val1, 0)
 							validateEvaluateName(t, client, m4Val1, 1)
 						}
 					}
-					expectVarExact(t, locals, -1, "emptymap", "emptymap", "map[string]string []", noChildren)
+					expectVarExact(t, locals, -1, "emptymap", "emptymap", "map[string]string []", "map[string]string", noChildren)
 					// reflect.Kind == Ptr
-					ref = expectVarExact(t, locals, -1, "pp1", "pp1", "**1", hasChildren)
+					ref = expectVarExact(t, locals, -1, "pp1", "pp1", "**1", "**int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						pp1val := client.ExpectVariablesResponse(t)
 						expectChildren(t, pp1val, "*pp1", 1)
-						ref = expectVarExact(t, pp1val, 0, "", "(*pp1)", "*1", hasChildren)
+						ref = expectVarExact(t, pp1val, 0, "", "(*pp1)", "*1", "*int", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							pp1valval := client.ExpectVariablesResponse(t)
 							expectChildren(t, pp1valval, "*(*pp1)", 1)
-							expectVarExact(t, pp1valval, 0, "", "(*(*pp1))", "1", noChildren)
+							expectVarExact(t, pp1valval, 0, "", "(*(*pp1))", "1", "int", noChildren)
 							validateEvaluateName(t, client, pp1valval, 0)
 						}
 					}
 					// reflect.Kind == Slice
-					ref = expectVarExact(t, locals, -1, "zsslice", "zsslice", "[]struct {} len: 3, cap: 3, [{},{},{}]", hasChildren)
+					ref = expectVarExact(t, locals, -1, "zsslice", "zsslice", "[]struct {} len: 3, cap: 3, [{},{},{}]", "[]struct {}", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						zsslice := client.ExpectVariablesResponse(t)
 						expectChildren(t, zsslice, "zsslice", 3)
-						expectVarExact(t, zsslice, 2, "[2]", "zsslice[2]", "struct {} {}", noChildren)
+						expectVarExact(t, zsslice, 2, "[2]", "zsslice[2]", "struct {} {}", "struct {}", noChildren)
 						validateEvaluateName(t, client, zsslice, 2)
 					}
-					expectVarExact(t, locals, -1, "emptyslice", "emptyslice", "[]string len: 0, cap: 0, []", noChildren)
-					expectVarExact(t, locals, -1, "nilslice", "nilslice", "[]int len: 0, cap: 0, nil", noChildren)
+					expectVarExact(t, locals, -1, "emptyslice", "emptyslice", "[]string len: 0, cap: 0, []", "[]string", noChildren)
+					expectVarExact(t, locals, -1, "nilslice", "nilslice", "[]int len: 0, cap: 0, nil", "[]int", noChildren)
 					// reflect.Kind == String
-					expectVarExact(t, locals, -1, "longstr", "longstr", "\"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more\"", noChildren)
+					expectVarExact(t, locals, -1, "longstr", "longstr", "\"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more\"", "string", noChildren)
 					// reflect.Kind == Struct
-					expectVarExact(t, locals, -1, "zsvar", "zsvar", "struct {} {}", noChildren)
+					expectVarExact(t, locals, -1, "zsvar", "zsvar", "struct {} {}", "struct {}", noChildren)
 					// reflect.Kind == UnsafePointer
 					// TODO(polina): how do I test for unsafe.Pointer(nil)?
-					expectVarRegex(t, locals, -1, "upnil", "upnil", `unsafe\.Pointer\(0x0\)`, noChildren)
-					expectVarRegex(t, locals, -1, "up1", "up1", `unsafe\.Pointer\(0x[0-9a-f]+\)`, noChildren)
+					expectVarRegex(t, locals, -1, "upnil", "upnil", `unsafe\.Pointer\(0x0\)`, "int", noChildren)
+					expectVarRegex(t, locals, -1, "up1", "up1", `unsafe\.Pointer\(0x[0-9a-f]+\)`, "int", noChildren)
 
 					// Test unreadable variable
-					ref = expectVarRegex(t, locals, -1, "unread", "unread", `\*\(unreadable .+\)`, hasChildren)
+					ref = expectVarRegex(t, locals, -1, "unread", "unread", `\*\(unreadable .+\)`, "int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						val := client.ExpectVariablesResponse(t)
 						expectChildren(t, val, "*unread", 1)
-						expectVarRegex(t, val, 0, "^$", `\(\*unread\)`, `\(unreadable .+\)`, noChildren)
+						expectVarRegex(t, val, 0, "^$", `\(\*unread\)`, `\(unreadable .+\)`, "int", noChildren)
 						validateEvaluateName(t, client, val, 0)
 					}
 				},
@@ -1344,10 +1353,10 @@ func TestVariablesLoading(t *testing.T) {
 					locals := client.ExpectVariablesResponse(t)
 
 					// String partially missing based on LoadConfig.MaxStringLen
-					expectVarExact(t, locals, -1, "longstr", "longstr", "\"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more\"", noChildren)
+					expectVarExact(t, locals, -1, "longstr", "longstr", "\"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more\"", "string", noChildren)
 
 					// Array partially missing based on LoadConfig.MaxArrayValues
-					ref := expectVarExact(t, locals, -1, "longarr", "longarr", "(loaded 64/100) [100]int [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", hasChildren)
+					ref := expectVarExact(t, locals, -1, "longarr", "longarr", "(loaded 64/100) [100]int [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", "[100]int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						longarr := client.ExpectVariablesResponse(t)
@@ -1355,7 +1364,7 @@ func TestVariablesLoading(t *testing.T) {
 					}
 
 					// Slice partially missing based on LoadConfig.MaxArrayValues
-					ref = expectVarExact(t, locals, -1, "longslice", "longslice", "(loaded 64/100) []int len: 100, cap: 100, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", hasChildren)
+					ref = expectVarExact(t, locals, -1, "longslice", "longslice", "(loaded 64/100) []int len: 100, cap: 100, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", "[]int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						longarr := client.ExpectVariablesResponse(t)
@@ -1363,7 +1372,7 @@ func TestVariablesLoading(t *testing.T) {
 					}
 
 					// Map partially missing based on LoadConfig.MaxArrayValues
-					ref = expectVarRegex(t, locals, -1, "m1", "m1", `\(loaded 64/66\) map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, hasChildren)
+					ref = expectVarRegex(t, locals, -1, "m1", "m1", `\(loaded 64/66\) map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, `map\[string\]main\.astruct`, hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m1 := client.ExpectVariablesResponse(t)
@@ -1371,7 +1380,7 @@ func TestVariablesLoading(t *testing.T) {
 					}
 
 					// Struct partially missing based on LoadConfig.MaxStructFields
-					ref = expectVarExact(t, locals, -1, "sd", "sd", "(loaded 5/6) main.D {u1: 0, u2: 0, u3: 0, u4: 0, u5: 0,...+1 more}", hasChildren)
+					ref = expectVarExact(t, locals, -1, "sd", "sd", "(loaded 5/6) main.D {u1: 0, u2: 0, u3: 0, u4: 0, u5: 0,...+1 more}", "main.D", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						sd := client.ExpectVariablesResponse(t)
@@ -1379,62 +1388,62 @@ func TestVariablesLoading(t *testing.T) {
 					}
 
 					// Struct fully missing due to hitting LoadConfig.MaxVariableRecurse (also tests evaluateName)
-					ref = expectVarRegex(t, locals, -1, "c1", "c1", `main\.cstruct {pb: \*main\.bstruct {a: \(\*main\.astruct\)\(0x[0-9a-f]+\)}, sa: []\*main\.astruct len: 3, cap: 3, [\*\(\*main\.astruct\)\(0x[0-9a-f]+\),\*\(\*main\.astruct\)\(0x[0-9a-f]+\),\*\(\*main.astruct\)\(0x[0-9a-f]+\)]}`, hasChildren)
+					ref = expectVarRegex(t, locals, -1, "c1", "c1", `main\.cstruct {pb: \*main\.bstruct {a: \(\*main\.astruct\)\(0x[0-9a-f]+\)}, sa: []\*main\.astruct len: 3, cap: 3, [\*\(\*main\.astruct\)\(0x[0-9a-f]+\),\*\(\*main\.astruct\)\(0x[0-9a-f]+\),\*\(\*main.astruct\)\(0x[0-9a-f]+\)]}`, `main\.cstruct`, hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						c1 := client.ExpectVariablesResponse(t)
 						expectChildren(t, c1, "c1", 2)
-						ref = expectVarRegex(t, c1, 1, "sa", `c1\.sa`, `\[\]\*main\.astruct len: 3, cap: 3, \[\*\(\*main\.astruct\)\(0x[0-9a-f]+\),\*\(\*main\.astruct\)\(0x[0-9a-f]+\),\*\(\*main\.astruct\)\(0x[0-9a-f]+\)\]`, hasChildren)
+						ref = expectVarRegex(t, c1, 1, "sa", `c1\.sa`, `\[\]\*main\.astruct len: 3, cap: 3, \[\*\(\*main\.astruct\)\(0x[0-9a-f]+\),\*\(\*main\.astruct\)\(0x[0-9a-f]+\),\*\(\*main\.astruct\)\(0x[0-9a-f]+\)\]`, `\[\]\*main\.astruct`, hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							c1sa := client.ExpectVariablesResponse(t)
 							expectChildren(t, c1sa, "c1.sa", 3)
-							ref = expectVarRegex(t, c1sa, 0, `\[0\]`, `c1\.sa\[0\]`, `\*\(\*main\.astruct\)\(0x[0-9a-f]+\)`, hasChildren)
+							ref = expectVarRegex(t, c1sa, 0, `\[0\]`, `c1\.sa\[0\]`, `\*\(\*main\.astruct\)\(0x[0-9a-f]+\)`, `\*main\.astruct`, hasChildren)
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								c1sa0 := client.ExpectVariablesResponse(t)
 								expectChildren(t, c1sa0, "c1.sa[0]", 1)
 								// TODO(polina): there should be children here once we support auto loading
-								expectVarRegex(t, c1sa0, 0, "", `\(\*c1\.sa\[0\]\)`, `\(loaded 0/2\) \(\*main\.astruct\)\(0x[0-9a-f]+\)`, noChildren)
+								expectVarRegex(t, c1sa0, 0, "", `\(\*c1\.sa\[0\]\)`, `\(loaded 0/2\) \(\*main\.astruct\)\(0x[0-9a-f]+\)`, `main\.astruct`, noChildren)
 							}
 						}
 					}
 
 					// Struct fully missing due to hitting LoadConfig.MaxVariableRecurse (also tests evaluteName)
-					ref = expectVarRegex(t, locals, -1, "aas", "aas", `\[\]main\.a len: 1, cap: 1, \[{aas: \[\]main\.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]}\]`, hasChildren)
+					ref = expectVarRegex(t, locals, -1, "aas", "aas", `\[\]main\.a len: 1, cap: 1, \[{aas: \[\]main\.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]}\]`, `\[\]main\.a`, hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						aas := client.ExpectVariablesResponse(t)
 						expectChildren(t, aas, "aas", 1)
-						ref = expectVarRegex(t, aas, 0, "[0]", `aas\[0\]`, `main\.a {aas: \[\]main.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]}`, hasChildren)
+						ref = expectVarRegex(t, aas, 0, "[0]", `aas\[0\]`, `main\.a {aas: \[\]main.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]}`, `main\.a`, hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							aas0 := client.ExpectVariablesResponse(t)
 							expectChildren(t, aas0, "aas[0]", 1)
-							ref = expectVarRegex(t, aas0, 0, "aas", `aas\[0\]\.aas`, `\[\]main\.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]`, hasChildren)
+							ref = expectVarRegex(t, aas0, 0, "aas", `aas\[0\]\.aas`, `\[\]main\.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]`, `\[\]main\.a`, hasChildren)
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								aas0aas := client.ExpectVariablesResponse(t)
 								expectChildren(t, aas0aas, "aas[0].aas", 1)
 								// TODO(polina): there should be a child here once we support auto loading - test for "aas[0].aas[0].aas"
-								expectVarRegex(t, aas0aas, 0, "[0]", `aas\[0\]\.aas\[0\]`, `\(loaded 0/1\) \(\*main\.a\)\(0x[0-9a-f]+\)`, noChildren)
+								expectVarRegex(t, aas0aas, 0, "[0]", `aas\[0\]\.aas\[0\]`, `\(loaded 0/1\) \(\*main\.a\)\(0x[0-9a-f]+\)`, "main.a", noChildren)
 							}
 						}
 					}
 
 					// Map fully missing due to hitting LoadConfig.MaxVariableRecurse (also tests evaluateName)
-					ref = expectVarExact(t, locals, -1, "tm", "tm", "main.truncatedMap {v: []map[string]main.astruct len: 1, cap: 1, [[...]]}", hasChildren)
+					ref = expectVarExact(t, locals, -1, "tm", "tm", "main.truncatedMap {v: []map[string]main.astruct len: 1, cap: 1, [[...]]}", "main.truncatedMap", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						tm := client.ExpectVariablesResponse(t)
 						expectChildren(t, tm, "tm", 1)
-						ref = expectVarExact(t, tm, 0, "v", "tm.v", "[]map[string]main.astruct len: 1, cap: 1, [[...]]", hasChildren)
+						ref = expectVarExact(t, tm, 0, "v", "tm.v", "[]map[string]main.astruct len: 1, cap: 1, [[...]]", "[]map[string]main.astruct", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							tmV := client.ExpectVariablesResponse(t)
 							expectChildren(t, tmV, "tm.v", 1)
 							// TODO(polina): there should be children here once we support auto loading - test for "tm.v[0]["gutters"]"
-							expectVarExact(t, tmV, 0, "[0]", "tm.v[0]", "(loaded 0/66) map[string]main.astruct [...]", noChildren)
+							expectVarExact(t, tmV, 0, "[0]", "tm.v[0]", "(loaded 0/66) map[string]main.astruct [...]", "map[string]main.astruct", noChildren)
 						}
 					}
 				},
@@ -1472,31 +1481,31 @@ func TestVariablesLoading(t *testing.T) {
 
 						// Interface auto-loaded when hitting LoadConfig.MaxVariableRecurse=1
 
-						ref := expectVarRegex(t, locals, -1, "ni", "ni", `\[\]interface {} len: 1, cap: 1, \[\[\]interface {} len: 1, cap: 1, \[\*\(\*interface {}\)\(0x[0-9a-f]+\)\]\]`, hasChildren)
+						ref := expectVarRegex(t, locals, -1, "ni", "ni", `\[\]interface {} len: 1, cap: 1, \[\[\]interface {} len: 1, cap: 1, \[\*\(\*interface {}\)\(0x[0-9a-f]+\)\]\]`, `\[\]interface {}`, hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							ni := client.ExpectVariablesResponse(t)
-							ref = expectVarRegex(t, ni, 0, `\[0\]`, `ni\[0\]`, `interface \{\}\(\[\]interface \{\}\) \[\*\(\*interface \{\}\)\(0x[0-9a-f]+\)\]`, hasChildren)
+							ref = expectVarRegex(t, ni, 0, `\[0\]`, `ni\[0\]`, `interface \{\}\(\[\]interface \{\}\) \[\*\(\*interface \{\}\)\(0x[0-9a-f]+\)\]`, "interface {}", hasChildren)
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								niI1 := client.ExpectVariablesResponse(t)
-								ref = expectVarRegex(t, niI1, 0, "data", `ni\[0\]\.\(data\)`, `\[\]interface {} len: 1, cap: 1, \[\*\(\*interface {}\)\(0x[0-9a-f]+\)`, hasChildren)
+								ref = expectVarRegex(t, niI1, 0, "data", `ni\[0\]\.\(data\)`, `\[\]interface {} len: 1, cap: 1, \[\*\(\*interface {}\)\(0x[0-9a-f]+\)`, `\[\]interface {}`, hasChildren)
 								if ref > 0 {
 									// Auto-loading happens here
 									client.VariablesRequest(ref)
 									niI1Data := client.ExpectVariablesResponse(t)
-									ref = expectVarExact(t, niI1Data, 0, "[0]", "ni[0].(data)[0]", "interface {}(int) 123", hasChildren)
+									ref = expectVarExact(t, niI1Data, 0, "[0]", "ni[0].(data)[0]", "interface {}(int) 123", "interface {}", hasChildren)
 									if ref > 0 {
 										client.VariablesRequest(ref)
 										niI1DataI2 := client.ExpectVariablesResponse(t)
-										expectVarExact(t, niI1DataI2, 0, "data", "ni[0].(data)[0].(data)", "123", noChildren)
+										expectVarExact(t, niI1DataI2, 0, "data", "ni[0].(data)[0].(data)", "123", "int", noChildren)
 									}
 								}
 							}
 						}
 
 						// Pointer value not loaded with LoadConfig.FollowPointers=false
-						expectVarRegex(t, locals, -1, "a7", "a7", `\(not loaded\) \(\*main\.FooBar\)\(0x[0-9a-f]+\)`, noChildren)
+						expectVarRegex(t, locals, -1, "a7", "a7", `\(not loaded\) \(\*main\.FooBar\)\(0x[0-9a-f]+\)`, `\*main\.FooBar`, noChildren)
 					}
 					loadvars(1000 /*first topmost frame*/)
 					// step into another function
@@ -1564,14 +1573,14 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 					client.VariablesRequest(1002)
 					globals := client.ExpectVariablesResponse(t)
 					expectChildren(t, globals, "Globals", 1)
-					ref := expectVarExact(t, globals, 0, "SomeVar", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeVar", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType {X: 0}", hasChildren)
+					ref := expectVarExact(t, globals, 0, "SomeVar", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeVar", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType {X: 0}", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType", hasChildren)
 
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						somevar := client.ExpectVariablesResponse(t)
 						expectChildren(t, somevar, "SomeVar", 1)
 						// TODO(polina): unlike main.p, this prefix won't work
-						expectVarExact(t, somevar, 0, "X", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeVar.X", "0", noChildren)
+						expectVarExact(t, somevar, 0, "X", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeVar.X", "0", "float64", noChildren)
 					}
 				},
 				disconnect: false,
@@ -1608,8 +1617,8 @@ func TestShadowedVariables(t *testing.T) {
 					client.VariablesRequest(1001)
 					locals := client.ExpectVariablesResponse(t)
 
-					expectVarExact(t, locals, 0, "(a)", "a", "0", !hasChildren)
-					expectVarExact(t, locals, 1, "a", "a", "1", !hasChildren)
+					expectVarExact(t, locals, 0, "(a)", "a", "0", "int", !hasChildren)
+					expectVarExact(t, locals, 1, "a", "a", "1", "int", !hasChildren)
 
 					// Check that the non-shadowed of "a" is returned from evaluate request.
 					validateEvaluateName(t, client, locals, 1)
@@ -1705,7 +1714,7 @@ func TestSetBreakpoint(t *testing.T) {
 					handleStop(t, client, 1, "main.loop", 8)
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)
-					expectVarExact(t, locals, 0, "i", "i", "0", noChildren) // i == 0
+					expectVarExact(t, locals, 0, "i", "i", "0", "int", noChildren) // i == 0
 
 					// Edit the breakpoint to add a condition
 					client.SetConditionalBreakpointsRequest(fixture.Source, []int{8}, map[int]string{8: "i == 3"})
@@ -1718,7 +1727,7 @@ func TestSetBreakpoint(t *testing.T) {
 					handleStop(t, client, 1, "main.loop", 8)
 					client.VariablesRequest(1001) // Locals
 					locals = client.ExpectVariablesResponse(t)
-					expectVarExact(t, locals, 0, "i", "i", "3", noChildren) // i == 3
+					expectVarExact(t, locals, 0, "i", "i", "3", "int", noChildren) // i == 3
 
 					// Edit the breakpoint to remove a condition
 					client.SetConditionalBreakpointsRequest(fixture.Source, []int{8}, map[int]string{8: ""})
@@ -1731,7 +1740,7 @@ func TestSetBreakpoint(t *testing.T) {
 					handleStop(t, client, 1, "main.loop", 8)
 					client.VariablesRequest(1001) // Locals
 					locals = client.ExpectVariablesResponse(t)
-					expectVarExact(t, locals, 0, "i", "i", "4", noChildren) // i == 4
+					expectVarExact(t, locals, 0, "i", "i", "4", "int", noChildren) // i == 4
 
 					// Set at a line without a statement
 					client.SetBreakpointsRequest(fixture.Source, []int{1000})
@@ -1859,8 +1868,8 @@ func TestWorkingDir(t *testing.T) {
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)
 					expectChildren(t, locals, "Locals", 2)
-					expectVarExact(t, locals, 0, "pwd", "pwd", fmt.Sprintf("%q", wd), noChildren)
-					expectVarExact(t, locals, 1, "err", "err", "error nil", noChildren)
+					expectVarExact(t, locals, 0, "pwd", "pwd", fmt.Sprintf("%q", wd), "string", noChildren)
+					expectVarExact(t, locals, 1, "err", "err", "error nil", "error", noChildren)
 
 				},
 				disconnect: false,
@@ -1913,8 +1922,8 @@ func TestEvaluateRequest(t *testing.T) {
 						client.VariablesRequest(ref)
 						a5 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a5, "a5", 5)
-						expectVarExact(t, a5, 0, "[0]", "(a5)[0]", "1", noChildren)
-						expectVarExact(t, a5, 4, "[4]", "(a5)[4]", "5", noChildren)
+						expectVarExact(t, a5, 0, "[0]", "(a5)[0]", "1", "int", noChildren)
+						expectVarExact(t, a5, 4, "[4]", "(a5)[4]", "5", "int", noChildren)
 						validateEvaluateName(t, client, a5, 0)
 						validateEvaluateName(t, client, a5, 4)
 					}
@@ -1967,7 +1976,7 @@ func TestEvaluateRequest(t *testing.T) {
 						client.VariablesRequest(ref)
 						expr := client.ExpectVariablesResponse(t)
 						expectChildren(t, expr, "mp[1]", 1)
-						expectVarExact(t, expr, 0, "data", "(mp[1]).(data)", "42", noChildren)
+						expectVarExact(t, expr, 0, "data", "(mp[1]).(data)", "42", "int", noChildren)
 						validateEvaluateName(t, client, expr, 0)
 					}
 
@@ -1979,7 +1988,7 @@ func TestEvaluateRequest(t *testing.T) {
 						client.VariablesRequest(ref)
 						expr := client.ExpectVariablesResponse(t)
 						expectChildren(t, expr, "*ms.Nest", 2)
-						expectVarExact(t, expr, 0, "Level", "(*ms.Nest).Level", "1", noChildren)
+						expectVarExact(t, expr, 0, "Level", "(*ms.Nest).Level", "1", "int", noChildren)
 						validateEvaluateName(t, client, expr, 0)
 					}
 
@@ -2115,7 +2124,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 						client.VariablesRequest(ref)
 						rv := client.ExpectVariablesResponse(t)
 						expectChildren(t, rv, "rv", 1)
-						expectVarExact(t, rv, 0, "~r2", "", "3", noChildren)
+						expectVarExact(t, rv, 0, "~r2", "", "3", "int", noChildren)
 					}
 					// One named return value
 					// Panic doesn't panic, but instead returns the error as a named return variable
@@ -2126,12 +2135,12 @@ func TestEvaluateCallRequest(t *testing.T) {
 						client.VariablesRequest(ref)
 						rv := client.ExpectVariablesResponse(t)
 						expectChildren(t, rv, "rv", 1)
-						ref = expectVarExact(t, rv, 0, "~panic", "", `interface {}(string) "callpanic panicked"`, hasChildren)
+						ref = expectVarExact(t, rv, 0, "~panic", "", `interface {}(string) "callpanic panicked"`, "interface {}", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							p := client.ExpectVariablesResponse(t)
 							expectChildren(t, p, "~panic", 1)
-							expectVarExact(t, p, 0, "data", "", "\"callpanic panicked\"", noChildren)
+							expectVarExact(t, p, 0, "data", "", "\"callpanic panicked\"", "string", noChildren)
 						}
 					}
 					// Multiple return values
@@ -2142,8 +2151,8 @@ func TestEvaluateCallRequest(t *testing.T) {
 						client.VariablesRequest(ref)
 						rvs := client.ExpectVariablesResponse(t)
 						expectChildren(t, rvs, "rvs", 2)
-						expectVarExact(t, rvs, 0, "~r2", "", "1", noChildren)
-						expectVarExact(t, rvs, 1, "~r3", "", "2", noChildren)
+						expectVarExact(t, rvs, 0, "~r2", "", "1", "int", noChildren)
+						expectVarExact(t, rvs, 1, "~r3", "", "2", "int", noChildren)
 					}
 					// No frame defaults to top-most frame
 					client.EvaluateRequest("call call1(one, two)", 0, "this context will be ignored")
@@ -2848,7 +2857,7 @@ func TestAttachRequest(t *testing.T) {
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)
 					expectChildren(t, locals, "Locals", 1)
-					expectVarRegex(t, locals, 0, "i", "i", "[0-9]+", noChildren)
+					expectVarRegex(t, locals, 0, "i", "i", "[0-9]+", "int", noChildren)
 				},
 				disconnect: true,
 			}})

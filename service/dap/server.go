@@ -69,6 +69,8 @@ type Server struct {
 	variableHandles *variablesHandlesMap
 	// args tracks special settings for handling debug session requests.
 	args launchAttachArgs
+	// clientCapabilities tracks special settings for handling debug session requests.
+	clientCapabilities dapClientCapabilites
 
 	mu sync.Mutex
 	// binaryToRemove is the temp compiled binary to be removed on disconnect (if any).
@@ -101,6 +103,16 @@ var defaultArgs = launchAttachArgs{
 	showGlobalVariables:          false,
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
+}
+
+// dapClientCapabilites captures arguments from intitialize request that
+// impact handling of subsequent requests.
+type dapClientCapabilites struct {
+	supportsVariableType         bool
+	supportsVariablePaging       bool
+	supportsRunInTerminalRequest bool
+	supportsMemoryReferences     bool
+	supportsProgressReporting    bool
 }
 
 // DefaultLoadConfig controls how variables are loaded from the target's memory, borrowing the
@@ -476,6 +488,7 @@ func (s *Server) logToConsole(msg string) {
 }
 
 func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
+	s.setInitializeArguments(request.Arguments)
 	// TODO(polina): Respond with an error if debug session is in progress?
 	response := &dap.InitializeResponse{Response: *newResponse(request.Request)}
 	response.Body.SupportsConfigurationDoneRequest = true
@@ -495,6 +508,14 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsDisassembleRequest = false
 	response.Body.SupportsCancelRequest = false
 	s.send(response)
+}
+
+func (s *Server) setInitializeArguments(args dap.InitializeRequestArguments) {
+	s.clientCapabilities.supportsMemoryReferences = args.SupportsMemoryReferences
+	s.clientCapabilities.supportsProgressReporting = args.SupportsProgressReporting
+	s.clientCapabilities.supportsRunInTerminalRequest = args.SupportsRunInTerminalRequest
+	s.clientCapabilities.supportsVariablePaging = args.SupportsVariablePaging
+	s.clientCapabilities.supportsVariableType = args.SupportsVariableType
 }
 
 // Default output file pathname for the compiled binary in debug or test modes,
@@ -1168,6 +1189,8 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 			}
 			key, keyref := s.convertVariable(keyv, keyexpr)
 			val, valref := s.convertVariable(valv, valexpr)
+			keyType := keyv.TypeString()
+			valType := valv.TypeString()
 			// If key or value or both are scalars, we can use
 			// a single variable to represet key:value format.
 			// Otherwise, we must return separate variables for both.
@@ -1175,12 +1198,14 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 				keyvar := dap.Variable{
 					Name:               fmt.Sprintf("[key %d]", kvIndex),
 					EvaluateName:       keyexpr,
+					Type:               keyType,
 					Value:              key,
 					VariablesReference: keyref,
 				}
 				valvar := dap.Variable{
 					Name:               fmt.Sprintf("[val %d]", kvIndex),
 					EvaluateName:       valexpr,
+					Type:               valType,
 					Value:              val,
 					VariablesReference: valref,
 				}
@@ -1189,6 +1214,7 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 				kvvar := dap.Variable{
 					Name:         key,
 					EvaluateName: valexpr,
+					Type:         valType,
 					Value:        val,
 				}
 				if keyref != 0 { // key is a type to be expanded
@@ -1208,9 +1234,11 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		for i := range v.Children {
 			cfqname := fmt.Sprintf("%s[%d]", v.fullyQualifiedNameOrExpr, i)
 			cvalue, cvarref := s.convertVariable(&v.Children[i], cfqname)
+			ctype := v.Children[i].TypeString()
 			children[i] = dap.Variable{
 				Name:               fmt.Sprintf("[%d]", i),
 				EvaluateName:       cfqname,
+				Type:               ctype,
 				Value:              cvalue,
 				VariablesReference: cvarref,
 			}
@@ -1245,12 +1273,21 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 				name = fmt.Sprintf("(%s)", name)
 			}
 
+			ctype := c.TypeString()
 			children[i] = dap.Variable{
 				Name:               name,
 				EvaluateName:       cfqname,
+				Type:               ctype,
 				Value:              cvalue,
 				VariablesReference: cvarref,
 			}
+		}
+	}
+	if !s.clientCapabilities.supportsVariableType {
+		// If the client does not support variable type
+		// we cannot set the Type field in the response.
+		for i := range children {
+			children[i].Type = ""
 		}
 	}
 	response := &dap.VariablesResponse{
