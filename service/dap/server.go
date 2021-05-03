@@ -502,7 +502,7 @@ func (s *Server) logToConsole(msg string) {
 }
 
 func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
-	s.setInitializeArguments(request.Arguments)
+	s.setClientCapabilities(request.Arguments)
 	// TODO(polina): Respond with an error if debug session is in progress?
 	response := &dap.InitializeResponse{Response: *newResponse(request.Request)}
 	response.Body.SupportsConfigurationDoneRequest = true
@@ -524,7 +524,7 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	s.send(response)
 }
 
-func (s *Server) setInitializeArguments(args dap.InitializeRequestArguments) {
+func (s *Server) setClientCapabilities(args dap.InitializeRequestArguments) {
 	s.clientCapabilities.supportsMemoryReferences = args.SupportsMemoryReferences
 	s.clientCapabilities.supportsProgressReporting = args.SupportsProgressReporting
 	s.clientCapabilities.supportsRunInTerminalRequest = args.SupportsRunInTerminalRequest
