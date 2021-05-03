@@ -1258,7 +1258,7 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 				kvvar := dap.Variable{
 					Name:         key,
 					EvaluateName: valexpr,
-					Type:         valType,
+					Type:         valType, // The type of a key/value pair is the value type.
 					Value:        val,
 				}
 				if keyref != 0 { // key is a type to be expanded
