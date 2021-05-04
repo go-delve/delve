@@ -149,6 +149,7 @@ var defaultArgs = launchAttachArgs{
 
 // DefaultLoadConfig controls how variables are loaded from the target's memory, borrowing the
 // default value from the original vscode-go debug adapter and rpc server.
+// With dlv-dap, users currently do not have a way to adjust these.
 // TODO(polina): Support setting config via launch/attach args or only rely on on-demand loading?
 var DefaultLoadConfig = proc.LoadConfig{
 	FollowPointers:     true,
@@ -1496,33 +1497,88 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 	if v.Unreadable != nil {
 		return
 	}
-	typeName := api.PrettyTypeName(v.DwarfType)
 
-	// As per https://github.com/go-delve/delve/blob/master/Documentation/api/ClientHowto.md#looking-into-variables,
-	// some of the types might be fully or partially not loaded based on LoadConfig. For now, clearly
-	// communicate when values are not fully loaded. TODO(polina): look into loading on demand.
+	// Some of the types might be fully or partially not loaded based on LoadConfig.
+	// Those that are fully missing (e.g. due to hitting MaxVariableRecurse), can be reloaded in place.
+	// Those that are partially missing (e.g. MaxArrayValues from a large array), need a more creative solution
+	// that is still to be determined. For now, clearly communicate when that happens with additional value labels.
+	// TODO(polina): look into layered/paged loading for truncated strings, arrays, maps and structs.
+	var reloadVariable = func(v *proc.Variable, qualifiedNameOrExpr string) (value string) {
+		// We might be loading variables from the frame that's not topmost, so use
+		// frame-independent address-based expression, not fully-qualified name as per
+		// https://github.com/go-delve/delve/blob/master/Documentation/api/ClientHowto.md#looking-into-variables.
+		// TODO(polina): Get *proc.Variable object from debugger instead. Export and set v.loaded to false
+		// and call v.loadValue gain. It's more efficient, and it's guaranteed to keep working with generics.
+		value = api.ConvertVar(v).SinglelineString()
+		typeName := api.PrettyTypeName(v.DwarfType)
+		loadExpr := fmt.Sprintf("*(*%q)(%#x)", typeName, v.Addr)
+		s.log.Debugf("loading %s (type %s) with %s", qualifiedNameOrExpr, typeName, loadExpr)
+		// Make sure we can load the pointers directly, not by updating just the child
+		// This is not really necessary now because users have no way of setting FollowPointers to false.
+		config := DefaultLoadConfig
+		config.FollowPointers = true
+		vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, loadExpr, config)
+		if err != nil {
+			value += fmt.Sprintf(" - FAILED TO LOAD: %s", err)
+		} else {
+			v.Children = vLoaded.Children
+			value = api.ConvertVar(v).SinglelineString()
+		}
+		return value
+	}
 
 	switch v.Kind {
 	case reflect.UnsafePointer:
 		// Skip child reference
 	case reflect.Ptr:
 		if v.DwarfType != nil && len(v.Children) > 0 && v.Children[0].Addr != 0 && v.Children[0].Kind != reflect.Invalid {
-			if v.Children[0].OnlyAddr {
-				value = "(not loaded) " + value
-			} else {
+			if v.Children[0].OnlyAddr { // Not loaded
+				if v.Addr == 0 {
+					// This is equvalent to the following with the cli:
+					//    (dlv) p &a7
+					//    (**main.FooBar)(0xc0000a3918)
+					//
+					// TODO(polina): what is more appropriate?
+					// Option 1: leave it unloaded because it is a special case
+					// Option 2: load it, but then we have to load the child, not the parent, unlike all others
+					// TODO(polina): see if reloadVariable can be reused here
+					cTypeName := api.PrettyTypeName(v.Children[0].DwarfType)
+					cLoadExpr := fmt.Sprintf("*(*%q)(%#x)", cTypeName, v.Children[0].Addr)
+					s.log.Debugf("loading *(%s) (type %s) with %s", qualifiedNameOrExpr, cTypeName, cLoadExpr)
+					cLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, cLoadExpr, DefaultLoadConfig)
+					if err != nil {
+						value += fmt.Sprintf(" - FAILED TO LOAD: %s", err)
+					} else {
+						cLoaded.Name = v.Children[0].Name // otherwise, this will be the pointer expression
+						v.Children = []proc.Variable{*cLoaded}
+						value = api.ConvertVar(v).SinglelineString()
+					}
+				} else {
+					value = reloadVariable(v, qualifiedNameOrExpr)
+				}
+			}
+			if !v.Children[0].OnlyAddr {
 				variablesReference = maybeCreateVariableHandle(v)
 			}
 		}
 	case reflect.Slice, reflect.Array:
 		if v.Len > int64(len(v.Children)) { // Not fully loaded
-			value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children), v.Len) + value
+			if v.Base != 0 && len(v.Children) == 0 { // Fully missing
+				value = reloadVariable(v, qualifiedNameOrExpr)
+			} else { // Partially missing (TODO)
+				value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children), v.Len) + value
+			}
 		}
 		if v.Base != 0 && len(v.Children) > 0 {
 			variablesReference = maybeCreateVariableHandle(v)
 		}
 	case reflect.Map:
 		if v.Len > int64(len(v.Children)/2) { // Not fully loaded
-			value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children)/2, v.Len) + value
+			if len(v.Children) == 0 { // Fully missing
+				value = reloadVariable(v, qualifiedNameOrExpr)
+			} else { // Partially missing (TODO)
+				value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children)/2, v.Len) + value
+			}
 		}
 		if v.Base != 0 && len(v.Children) > 0 {
 			variablesReference = maybeCreateVariableHandle(v)
@@ -1531,27 +1587,20 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		// TODO(polina): implement auto-loading here
 	case reflect.Interface:
 		if v.Addr != 0 && len(v.Children) > 0 && v.Children[0].Kind != reflect.Invalid && v.Children[0].Addr != 0 {
-			if v.Children[0].OnlyAddr { // Not fully loaded
-				// We might be loading variables from the frame that's not topmost, so use
-				// frame-independent address-based expression, not fully-qualified name.
-				loadExpr := fmt.Sprintf("*(*%q)(%#x)", typeName, v.Addr)
-				s.log.Debugf("loading %s (type %s) with %s", qualifiedNameOrExpr, typeName, loadExpr)
-				vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, loadExpr, DefaultLoadConfig)
-				if err != nil {
-					value += fmt.Sprintf(" - FAILED TO LOAD: %s", err)
-				} else {
-					v.Children = vLoaded.Children
-					value = api.ConvertVar(v).SinglelineString()
-				}
+			if v.Children[0].OnlyAddr { // Not loaded
+				value = reloadVariable(v, qualifiedNameOrExpr)
 			}
-			// Provide a reference to the child only if it fully loaded
 			if !v.Children[0].OnlyAddr {
 				variablesReference = maybeCreateVariableHandle(v)
 			}
 		}
 	case reflect.Struct:
 		if v.Len > int64(len(v.Children)) { // Not fully loaded
-			value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children), v.Len) + value
+			if len(v.Children) == 0 { // Fully missing
+				value = reloadVariable(v, qualifiedNameOrExpr)
+			} else { // Partially missing (TODO)
+				value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children), v.Len) + value
+			}
 		}
 		if len(v.Children) > 0 {
 			variablesReference = maybeCreateVariableHandle(v)

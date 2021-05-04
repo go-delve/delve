@@ -33,8 +33,12 @@ const noChildren bool = false
 var testBackend string
 
 func TestMain(m *testing.M) {
+	logOutputVal := ""
+	if _, isTeamCityTest := os.LookupEnv("TEAMCITY_VERSION"); isTeamCityTest {
+		logOutputVal = "debugger,dap"
+	}
 	var logOutput string
-	flag.StringVar(&logOutput, "log-output", "", "configures log output")
+	flag.StringVar(&logOutput, "log-output", logOutputVal, "configures log output")
 	flag.Parse()
 	logflags.Setup(logOutput != "", logOutput, "")
 	protest.DefaultTestBackend(&testBackend)
@@ -1424,7 +1428,7 @@ func TestVariablesLoading(t *testing.T) {
 						expectChildren(t, sd, "sd", 5)
 					}
 
-					// Struct fully missing due to hitting LoadConfig.MaxVariableRecurse (also tests evaluateName)
+					// Fully missing struct auto-loaded when reaching LoadConfig.MaxVariableRecurse (also tests evaluateName corner case)
 					ref = expectVarRegex(t, locals, -1, "c1", "c1", `main\.cstruct {pb: \*main\.bstruct {a: \(\*main\.astruct\)\(0x[0-9a-f]+\)}, sa: []\*main\.astruct len: 3, cap: 3, [\*\(\*main\.astruct\)\(0x[0-9a-f]+\),\*\(\*main\.astruct\)\(0x[0-9a-f]+\),\*\(\*main.astruct\)\(0x[0-9a-f]+\)]}`, hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
@@ -1437,16 +1441,16 @@ func TestVariablesLoading(t *testing.T) {
 							expectChildren(t, c1sa, "c1.sa", 3)
 							ref = expectVarRegex(t, c1sa, 0, `\[0\]`, `c1\.sa\[0\]`, `\*\(\*main\.astruct\)\(0x[0-9a-f]+\)`, hasChildren)
 							if ref > 0 {
+								// Auto-loading of fully missing struc children happens here
 								client.VariablesRequest(ref)
 								c1sa0 := client.ExpectVariablesResponse(t)
 								expectChildren(t, c1sa0, "c1.sa[0]", 1)
-								// TODO(polina): there should be children here once we support auto loading
-								expectVarRegex(t, c1sa0, 0, "", `\(\*c1\.sa\[0\]\)`, `\(loaded 0/2\) \(\*main\.astruct\)\(0x[0-9a-f]+\)`, noChildren)
+								expectVarExact(t, c1sa0, 0, "", "(*c1.sa[0])", "main.astruct {A: 1, B: 2}", hasChildren)
 							}
 						}
 					}
 
-					// Struct fully missing due to hitting LoadConfig.MaxVariableRecurse (also tests evaluteName)
+					// Fully missing struct auto-loaded when hitting LoadConfig.MaxVariableRecurse (also tests evaluteName corner case)
 					ref = expectVarRegex(t, locals, -1, "aas", "aas", `\[\]main\.a len: 1, cap: 1, \[{aas: \[\]main\.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]}\]`, hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
@@ -1459,16 +1463,22 @@ func TestVariablesLoading(t *testing.T) {
 							expectChildren(t, aas0, "aas[0]", 1)
 							ref = expectVarRegex(t, aas0, 0, "aas", `aas\[0\]\.aas`, `\[\]main\.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]`, hasChildren)
 							if ref > 0 {
+								// Auto-loading of fully missing struct children happens here
 								client.VariablesRequest(ref)
 								aas0aas := client.ExpectVariablesResponse(t)
 								expectChildren(t, aas0aas, "aas[0].aas", 1)
-								// TODO(polina): there should be a child here once we support auto loading - test for "aas[0].aas[0].aas"
-								expectVarRegex(t, aas0aas, 0, "[0]", `aas\[0\]\.aas\[0\]`, `\(loaded 0/1\) \(\*main\.a\)\(0x[0-9a-f]+\)`, noChildren)
+								ref = expectVarRegex(t, aas0aas, 0, "[0]", `aas\[0\]\.aas\[0\]`, `main\.a {aas: \[\]main\.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]}`, hasChildren)
+								if ref > 0 {
+									client.VariablesRequest(ref)
+									aas0aas0 := client.ExpectVariablesResponse(t)
+									expectChildren(t, aas0aas, "aas[0].aas[0]", 1)
+									expectVarRegex(t, aas0aas0, 0, "aas", `aas\[0\]\.aas\[0\]\.aas`, `\[\]main\.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]`, hasChildren)
+								}
 							}
 						}
 					}
 
-					// Map fully missing due to hitting LoadConfig.MaxVariableRecurse (also tests evaluateName)
+					// Fully missing map auto-loaded when hitting LoadConfig.MaxVariableRecurse (also tests evaluateName corner case)
 					ref = expectVarExact(t, locals, -1, "tm", "tm", "main.truncatedMap {v: []map[string]main.astruct len: 1, cap: 1, [[...]]}", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
@@ -1476,13 +1486,54 @@ func TestVariablesLoading(t *testing.T) {
 						expectChildren(t, tm, "tm", 1)
 						ref = expectVarExact(t, tm, 0, "v", "tm.v", "[]map[string]main.astruct len: 1, cap: 1, [[...]]", hasChildren)
 						if ref > 0 {
+							// Auto-loading of fully missing map chidlren happens here, but they get trancated at MaxArrayValuess
 							client.VariablesRequest(ref)
 							tmV := client.ExpectVariablesResponse(t)
 							expectChildren(t, tmV, "tm.v", 1)
-							// TODO(polina): there should be children here once we support auto loading - test for "tm.v[0]["gutters"]"
-							expectVarExact(t, tmV, 0, "[0]", "tm.v[0]", "(loaded 0/66) map[string]main.astruct [...]", noChildren)
+							ref = expectVarRegex(t, tmV, 0, `\[0\]`, `tm\.v\[0\]`, `map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, hasChildren)
+							if ref > 0 {
+								client.VariablesRequest(ref)
+								tmV0 := client.ExpectVariablesResponse(t)
+								expectChildren(t, tmV0, "tm.v[0]", 64)
+							}
 						}
 					}
+
+					// Auto-loading works with call return variables as well
+					protest.MustSupportFunctionCalls(t, testBackend)
+					client.EvaluateRequest("call rettm()", 1000, "repl")
+					got := client.ExpectEvaluateResponse(t)
+					ref = expectEval(t, got, "main.truncatedMap {v: []map[string]main.astruct len: 1, cap: 1, [[...]]}", hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						rv := client.ExpectVariablesResponse(t)
+						expectChildren(t, rv, "rv", 1)
+						ref = expectVarExact(t, rv, 0, "~r0", "", "main.truncatedMap {v: []map[string]main.astruct len: 1, cap: 1, [[...]]}", hasChildren)
+						if ref > 0 {
+							client.VariablesRequest(ref)
+							tm := client.ExpectVariablesResponse(t)
+							expectChildren(t, tm, "tm", 1)
+							ref = expectVarExact(t, tm, 0, "v", "", "[]map[string]main.astruct len: 1, cap: 1, [[...]]", hasChildren)
+							if ref > 0 {
+								// Auto-loading of fully missing map chidlren happens here, but they get trancated at MaxArrayValuess
+								client.VariablesRequest(ref)
+								tmV := client.ExpectVariablesResponse(t)
+								expectChildren(t, tmV, "tm.v", 1)
+								// TODO(polina): this evaluate name is not usable - it should be empty
+								ref = expectVarRegex(t, tmV, 0, `\[0\]`, `\[0\]`, `map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, hasChildren)
+								if ref > 0 {
+									client.VariablesRequest(ref)
+									tmV0 := client.ExpectVariablesResponse(t)
+									expectChildren(t, tmV0, "tm.v[0]", 64)
+								}
+							}
+						}
+					}
+
+					// TODO(polina): need fully missing array/slice test case
+
+					// Zero slices, structs and maps are not treated as fully missing
+					// See zsvar, zsslice,, emptyslice, emptymap, a0
 				},
 				disconnect: true,
 			}})
@@ -1541,9 +1592,26 @@ func TestVariablesLoading(t *testing.T) {
 							}
 						}
 
-						// Pointer value not loaded with LoadConfig.FollowPointers=false
-						expectVarRegex(t, locals, -1, "a7", "a7", `\(not loaded\) \(\*main\.FooBar\)\(0x[0-9a-f]+\)`, noChildren)
+						// Pointer values loaded even with LoadConfig.FollowPointers=false
+
+						expectVarExact(t, locals, -1, "a7", "a7", "*main.FooBar {Baz: 5, Bur: \"strum\"}", hasChildren)
+
+						// Auto-loading works on results of evaluate expressions as well
+						client.EvaluateRequest("a7", frame, "repl")
+						expectEval(t, client.ExpectEvaluateResponse(t), "*main.FooBar {Baz: 5, Bur: \"strum\"}", hasChildren)
+
+						client.EvaluateRequest("&a7", frame, "repl")
+						pa7 := client.ExpectEvaluateResponse(t)
+						ref = expectEvalRegex(t, pa7, `\*\(\*main\.FooBar\)\(0x[0-9a-f]+\)`, hasChildren)
+						if ref > 0 {
+							client.VariablesRequest(ref)
+							a7 := client.ExpectVariablesResponse(t)
+							expectVarExact(t, a7, 0, "a7", "(*(&a7))", "*main.FooBar {Baz: 5, Bur: \"strum\"}", hasChildren)
+						}
 					}
+
+					// Frame-independent loading expressions allow us to auto-load
+					// variables in any frame, not just topmost.
 					loadvars(1000 /*first topmost frame*/)
 					// step into another function
 					client.StepInRequest(1)
@@ -1988,7 +2056,14 @@ func TestEvaluateRequest(t *testing.T) {
 					// Type casts of integer constants into any pointer type and vice versa
 					client.EvaluateRequest("(*int)(2)", 1000, "this context will be ignored")
 					got = client.ExpectEvaluateResponse(t)
-					expectEval(t, got, "(not loaded) (*int)(0x2)", noChildren)
+					ref = expectEvalRegex(t, got, `\*\(unreadable .+\)`, hasChildren)
+					if ref > 0 {
+						client.VariablesRequest(ref)
+						val := client.ExpectVariablesResponse(t)
+						expectChildren(t, val, "*(*int)(2)", 1)
+						expectVarRegex(t, val, 0, "^$", `\(\*\(\(\*int\)\(2\)\)\)`, `\(unreadable .+\)`, noChildren)
+						validateEvaluateName(t, client, val, 0)
+					}
 
 					// Type casts between string, []byte and []rune
 					client.EvaluateRequest("[]byte(\"ABC€\")", 1000, "this context will be ignored")
