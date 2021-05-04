@@ -341,22 +341,51 @@ func TestAttachStopOnEntry(t *testing.T) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Result=2", evResp)
 		}
 
-		// We cannot contiue here like in the launch case becase the program
-		// will never terminate. Since we won't receive a terminate event and
-		// there are no breakpoints to stop on, we just detach.
+		// 12 >> continue, << continue
+		client.ContinueRequest(1)
+		cResp := client.ExpectContinueResponse(t)
+		if cResp.Seq != 0 || cResp.RequestSeq != 12 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=12", cResp)
+		}
 
 		// TODO(polina): once https://github.com/go-delve/delve/issues/2259 is
 		// fixed, test with kill=false.
 
-		// 12 >> disconnect, << disconnect
+		// 13 >> disconnect, << disconnect
 		client.DisconnectRequestWithKillOption(true)
-		oed := client.ExpectOutputEventDetachingKill(t)
-		if oed.Seq != 0 || oed.Body.Category != "console" {
-			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+
+		// Both of these scenarios are somehow possible.
+		// Even though the program has an infininte loop,
+		// it apears that a halt can cause it to terminate.
+		// Since we are in async mode while running, we might receive messages in either order.
+		msg := client.ExpectMessage(t)
+		switch m := msg.(type) {
+		case *dap.StoppedEvent:
+			if m.Seq != 0 || m.Body.Reason != "pause" { // continue is interrupted
+				t.Errorf("\ngot %#v\nwant Seq=0 Reason='pause'", m)
+			}
+			oed := client.ExpectOutputEventDetachingKill(t)
+			if oed.Seq != 0 || oed.Body.Category != "console" {
+				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+			}
+		case *dap.TerminatedEvent:
+			if m.Seq != 0 {
+				t.Errorf("\ngot %#v\nwant Seq=0'", m)
+			}
+			oep := client.ExpectOutputEventProcessExited(t, 0)
+			if oep.Seq != 0 || oep.Body.Category != "console" {
+				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
+			}
+			oed := client.ExpectOutputEventDetaching(t)
+			if oed.Seq != 0 || oed.Body.Category != "console" {
+				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+			}
+		default:
+			t.Fatalf("got %#v, want StoppedEvent or TerminatedEvent", m)
 		}
 		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.Seq != 0 || dResp.RequestSeq != 12 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=12", dResp)
+		if dResp.Seq != 0 || dResp.RequestSeq != 13 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13", dResp)
 		}
 	})
 }
@@ -384,35 +413,47 @@ func TestContinueOnEntry(t *testing.T) {
 		// 5 >> configurationDone, << configurationDone
 		client.ConfigurationDoneRequest()
 		client.ExpectConfigurationDoneResponse(t)
-		// "Continue" happens behind the scenes
-
-		// For now continue is blocking and runs until a stop or
-		// termination. But once we upgrade the server to be async,
-		// a simultaneous threads request can be made while continue
-		// is running. Note that vscode-go just keeps track of the
-		// continue state and would just return a dummy response
-		// without talking to debugger if continue was in progress.
-		// TODO(polina): test this once it is possible
-
-		client.ExpectTerminatedEvent(t)
-
-		// It is possible for the program to terminate before the initial
-		// threads request is processed.
+		// "Continue" happens behind the scenes on another goroutine
 
 		// 6 >> threads, << threads
 		client.ThreadsRequest()
-		tResp := client.ExpectThreadsResponse(t)
-		if tResp.Seq != 0 || tResp.RequestSeq != 6 || len(tResp.Body.Threads) != 0 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6 len(Threads)=0", tResp)
+		// Since we are in async mode while running, we might receive messages in either order.
+		for i := 0; i < 2; i++ {
+			msg := client.ExpectMessage(t)
+			switch m := msg.(type) {
+			case *dap.ThreadsResponse:
+				if m.Seq != 0 || m.RequestSeq != 6 {
+					t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6", m)
+				}
+				// Single current thread is sent when the program is running
+				// because DAP spec expects at least one thread.
+				// TODO(polina): accept empty already-terminated response here as well?
+				if len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != -1 || m.Body.Threads[0].Name != "Current" {
+					t.Errorf("\ngot  %#v\nwant Id=-1, Name=\"Current\"", m.Body.Threads)
+				}
+			case *dap.TerminatedEvent:
+			default:
+				t.Fatalf("got %#v, want ThreadsResponse or TerminatedEvent", m)
+			}
 		}
 
-		// 7 >> disconnect, << disconnect
+		// It is possible for the program to terminate before the initial
+		// threads request is processed. And in that case, the
+		// response can be empty
+		// 7 >> threads, << threads
+		client.ThreadsRequest()
+		tResp := client.ExpectThreadsResponse(t)
+		if tResp.Seq != 0 || tResp.RequestSeq != 7 || len(tResp.Body.Threads) != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7 len(Threads)=0", tResp)
+		}
+
+		// 8 >> disconnect, << disconnect
 		client.DisconnectRequest()
 		client.ExpectOutputEventProcessExited(t, 0)
 		client.ExpectOutputEventDetaching(t)
 		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.Seq != 0 || dResp.RequestSeq != 7 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7", dResp)
+		if dResp.Seq != 0 || dResp.RequestSeq != 8 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8", dResp)
 		}
 	})
 }
@@ -443,19 +484,28 @@ func TestPreSetBreakpoint(t *testing.T) {
 
 		client.ConfigurationDoneRequest()
 		client.ExpectConfigurationDoneResponse(t)
-		// This triggers "continue"
+		// This triggers "continue" on a separate goroutine
 
-		// TODO(polina): add a no-op threads request
-		// with dummy response here once server becomes async
-		// to match what happens in VS Code.
-
-		stopEvent1 := client.ExpectStoppedEvent(t)
-		if stopEvent1.Body.Reason != "breakpoint" ||
-			stopEvent1.Body.ThreadId != 1 ||
-			!stopEvent1.Body.AllThreadsStopped {
-			t.Errorf("got %#v, want Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true}", stopEvent1)
+		client.ThreadsRequest()
+		// Since we are in async mode while running, we might receive messages in either order.
+		for i := 0; i < 2; i++ {
+			msg := client.ExpectMessage(t)
+			switch m := msg.(type) {
+			case *dap.ThreadsResponse:
+				if len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != -1 || m.Body.Threads[0].Name != "Current" {
+					t.Errorf("\ngot  %#v\nwant Id=-1, Name=\"Current\"", m.Body.Threads)
+				}
+			case *dap.StoppedEvent:
+				if m.Body.Reason != "breakpoint" || m.Body.ThreadId != 1 || !m.Body.AllThreadsStopped {
+					t.Errorf("got %#v, want Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true}", m)
+				}
+			default:
+				t.Fatalf("got %#v, want ThreadsResponse or StoppedEvent", m)
+			}
 		}
 
+		// Threads-StackTrace-Scopes-Variables request waterfall is
+		// triggered on stop event.
 		client.ThreadsRequest()
 		tResp := client.ExpectThreadsResponse(t)
 		if len(tResp.Body.Threads) < 2 { // 1 main + runtime
@@ -2415,13 +2465,13 @@ func TestBadAccess(t *testing.T) {
 
 					expectStoppedOnError := func(errorPrefix string) {
 						t.Helper()
-						se := client.ExpectStoppedEvent(t)
-						if se.Body.ThreadId != 1 || se.Body.Reason != "runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
-							t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"runtime error\" Text=\"%s\"", se, errorPrefix)
-						}
 						oe := client.ExpectOutputEvent(t)
 						if oe.Body.Category != "stderr" || !strings.HasPrefix(oe.Body.Output, "ERROR: "+errorPrefix) {
 							t.Errorf("\ngot  %#v\nwant Category=\"stderr\" Output=\"%s ...\"", oe, errorPrefix)
+						}
+						se := client.ExpectStoppedEvent(t)
+						if se.Body.ThreadId != 1 || se.Body.Reason != "runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
+							t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"runtime error\" Text=\"%s\"", se, errorPrefix)
 						}
 					}
 
