@@ -1532,7 +1532,7 @@ func (s *Server) onRestartRequest(request *dap.RestartRequest) {
 
 // functionBpPrefix is the prefix of bp.Name for every breakpoint bp set
 // in this request.
-var functionBpPrefix = "functionBreakpoint"
+const functionBpPrefix = "functionBreakpoint"
 
 func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpointsRequest) {
 	if s.noDebugProcess != nil {
