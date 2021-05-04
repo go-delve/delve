@@ -2,6 +2,7 @@ package proc
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
@@ -45,7 +46,8 @@ type Arch struct {
 	// register name will be returned.
 	DwarfRegisterToString func(int, *op.DwarfRegister) (string, bool, string)
 	// inhibitStepInto returns whether StepBreakpoint can be set at pc.
-	inhibitStepInto func(bi *BinaryInfo, pc uint64) bool
+	inhibitStepInto     func(bi *BinaryInfo, pc uint64) bool
+	RegisterNameToDwarf func(s string) (int, bool)
 
 	// asmRegisters maps assembly register numbers to dwarf registers.
 	asmRegisters map[int]asmRegister
@@ -129,6 +131,13 @@ func (arch *Arch) getAsmRegister(regs *op.DwarfRegisters, asmreg int) (uint64, e
 		n = n & hwreg.mask
 	}
 	return n, nil
+}
+
+func nameToDwarfFunc(n2d map[string]int) func(string) (int, bool) {
+	return func(name string) (int, bool) {
+		r, ok := n2d[strings.ToLower(name)]
+		return r, ok
+	}
 }
 
 // crosscall2 is defined in $GOROOT/src/runtime/cgo/asm_amd64.s.

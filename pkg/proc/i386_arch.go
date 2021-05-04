@@ -35,6 +35,7 @@ func I386Arch(goos string) *Arch {
 		PCRegNum:                         regnum.I386_Eip,
 		SPRegNum:                         regnum.I386_Esp,
 		asmRegisters:                     i386AsmRegisters,
+		RegisterNameToDwarf:              nameToDwarfFunc(regnum.I386NameToDwarf),
 	}
 }
 
