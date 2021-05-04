@@ -253,7 +253,11 @@ or later, -gcflags="-N -l" on earlier versions of Go.`,
 The test command allows you to begin a new debug session in the context of your
 unit tests. By default Delve will debug the tests in the current directory.
 Alternatively you can specify a package name, and Delve will debug the tests in
-that package instead.`,
+that package instead. Double-dashes ` + "`--`" + ` can be used to pass arguments to the test program:
+
+dlv test [package] -- -test.v -other-argument
+
+See also: 'go help testflag'.`,
 		Run: testCmd,
 	}
 	testCommand.Flags().String("output", "debug.test", "Output path for the binary.")
