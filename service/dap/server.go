@@ -1274,7 +1274,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 	frame := sf.(stackFrame).frameIndex
 
 	// Check if the function is optimized.
-	fn, err := s.debugger.FunctionScope(goid, frame, 0, DefaultLoadConfig)
+	fn, err := s.debugger.Function(goid, frame, 0, DefaultLoadConfig)
 	if fn == nil || err != nil {
 		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to find enclosing function", err.Error())
 		return
