@@ -1918,8 +1918,8 @@ func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
 			state, err = s.debugger.Command(&api.DebuggerCommand{Name: api.Continue}, nil)
 			continue
 		}
-		// There was no breakpoint to skip, we should cancel next and process this stop.
 
+		// There was no breakpoint to skip, we should cancel next and process this stop.
 		if cancelNextErr := s.debugger.CancelNext(); cancelNextErr != nil {
 			s.log.Error(cancelNextErr)
 		} else {
