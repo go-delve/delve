@@ -42,8 +42,9 @@ import (
 const (
 	debugCallFunctionNamePrefix1 = "debugCall"
 	debugCallFunctionNamePrefix2 = "runtime.debugCall"
-	debugCallFunctionName        = "runtime.debugCallV1"
+	maxDebugCallVersion          = 2
 	maxArgFrameSize              = 65535
+	maxRegArgBytes               = 9*8 + 15*8 // TODO: Make this generic for other platforms.
 )
 
 var (
@@ -163,7 +164,7 @@ func EvalExpressionWithCalls(t *Target, g *G, expr string, retLoadCfg LoadConfig
 		return errFuncCallInProgress
 	}
 
-	dbgcallfn := bi.LookupFunc[debugCallFunctionName]
+	dbgcallfn, _ := debugCallFunction(bi)
 	if dbgcallfn == nil {
 		return errFuncCallUnsupported
 	}
@@ -272,7 +273,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 		return nil, errFuncCallUnsupportedBackend
 	}
 
-	dbgcallfn := bi.LookupFunc[debugCallFunctionName]
+	dbgcallfn, dbgcallversion := debugCallFunction(bi)
 	if dbgcallfn == nil {
 		return nil, errFuncCallUnsupported
 	}
@@ -289,7 +290,11 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	if regs.SP()-256 <= stacklo {
 		return nil, errNotEnoughStack
 	}
-	if bi.Arch.RegistersToDwarfRegisters(0, regs).Reg(regnum.AMD64_Rax) == nil { //TODO(aarzilli): make this generic when call injection is supported on other architectures
+	protocolReg, ok := debugCallProtocolReg(dbgcallversion)
+	if !ok {
+		return nil, errFuncCallUnsupported
+	}
+	if bi.Arch.RegistersToDwarfRegisters(0, regs).Reg(protocolReg) == nil {
 		return nil, errFuncCallUnsupportedBackend
 	}
 
@@ -347,7 +352,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 		scope.Regs.FrameBase = fboff + int64(scope.g.stack.hi)
 		scope.Regs.CFA = scope.frameOffset + int64(scope.g.stack.hi)
 
-		finished := funcCallStep(scope, &fncall, g.Thread)
+		finished := funcCallStep(scope, &fncall, g.Thread, protocolReg, dbgcallfn.Name)
 		if finished {
 			break
 		}
@@ -498,14 +503,15 @@ func funcCallEvalFuncExpr(scope *EvalScope, fncall *functionCallState, allowCall
 }
 
 type funcCallArg struct {
-	name  string
-	typ   godwarf.Type
-	off   int64
-	isret bool
+	name       string
+	typ        godwarf.Type
+	off        int64
+	dwarfEntry *godwarf.Tree // non-nil if Go 1.17+
+	isret      bool
 }
 
 // funcCallEvalArgs evaluates the arguments of the function call, copying
-// the into the argument frame starting at argFrameAddr.
+// them into the argument frame starting at argFrameAddr.
 func funcCallEvalArgs(scope *EvalScope, fncall *functionCallState, argFrameAddr uint64) error {
 	if scope.g == nil {
 		// this should never happen
@@ -554,7 +560,16 @@ func funcCallCopyOneArg(scope *EvalScope, fncall *functionCallState, actualArg *
 	//TODO(aarzilli): autmoatic wrapping in interfaces for cases not handled
 	// by convertToEface.
 
-	formalArgVar := newVariable(formalArg.name, uint64(formalArg.off+int64(argFrameAddr)), formalArg.typ, scope.BinInfo, scope.Mem)
+	var formalArgVar *Variable
+	if formalArg.dwarfEntry != nil {
+		var err error
+		formalArgVar, err = extractVarInfoFromEntry(scope.BinInfo, scope.image(), scope.Regs, scope.Mem, formalArg.dwarfEntry)
+		if err != nil {
+			return err
+		}
+	} else {
+		formalArgVar = newVariable(formalArg.name, uint64(formalArg.off+int64(argFrameAddr)), formalArg.typ, scope.BinInfo, scope.Mem)
+	}
 	if err := scope.setValue(formalArgVar, actualArg, actualArg.Name); err != nil {
 		return err
 	}
@@ -563,8 +578,6 @@ func funcCallCopyOneArg(scope *EvalScope, fncall *functionCallState, actualArg *
 }
 
 func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize int64, formalArgs []funcCallArg, err error) {
-	const CFA = 0x1000
-
 	dwarfTree, err := fn.cu.image.getDwarfTree(fn.offset)
 	if err != nil {
 		return 0, nil, fmt.Errorf("DWARF read error: %v", err)
@@ -572,7 +585,9 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 
 	varEntries := reader.Variables(dwarfTree, fn.Entry, int(^uint(0)>>1), reader.VariablesSkipInlinedSubroutines)
 
-	trustArgOrder := bi.Producer() != "" && goversion.ProducerAfterOrEqual(bi.Producer(), 1, 12)
+	producer := bi.Producer()
+	regabi := goversion.ProducerAfterOrEqual(producer, 1, 17) //TODO(aarzilli): actually check if GOEXPERIMENT=regabi was enabled when compiling this binary
+	trustArgOrder := producer != "" && goversion.ProducerAfterOrEqual(bi.Producer(), 1, 12)
 
 	// typechecks arguments, calculates argument frame size
 	for _, entry := range varEntries {
@@ -584,44 +599,36 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 			return 0, nil, err
 		}
 		typ = resolveTypedef(typ)
-		var off int64
+		var formalArg *funcCallArg
 
-		locprog, _, err := bi.locationExpr(entry, dwarf.AttrLocation, fn.Entry)
-		if err != nil {
-			err = fmt.Errorf("could not get argument location of %s: %v", argname, err)
+		if regabi {
+			formalArg, err = funcCallArgRegABI(fn, bi, entry, argname, typ, &argFrameSize)
 		} else {
-			var pieces []op.Piece
-			off, pieces, err = op.ExecuteStackProgram(op.DwarfRegisters{CFA: CFA, FrameBase: CFA}, locprog, bi.Arch.PtrSize())
-			if err != nil {
-				err = fmt.Errorf("unsupported location expression for argument %s: %v", argname, err)
-			}
-			if pieces != nil {
-				err = fmt.Errorf("unsupported location expression for argument %s (uses DW_OP_piece)", argname)
-			}
-			off -= CFA
+			formalArg, err = funcCallArgOldABI(fn, bi, entry, argname, typ, trustArgOrder, &argFrameSize)
 		}
 		if err != nil {
-			if !trustArgOrder {
-				return 0, nil, err
-			}
-
-			// With Go version 1.12 or later we can trust that the arguments appear
-			// in the same order as declared, which means we can calculate their
-			// address automatically.
-			// With this we can call optimized functions (which sometimes do not have
-			// an argument address, due to a compiler bug) as well as runtime
-			// functions (which are always optimized).
-			off = argFrameSize
-			off = alignAddr(off, typ.Align())
+			return 0, nil, err
 		}
-
-		if e := off + typ.Size(); e > argFrameSize {
-			argFrameSize = e
+		if !formalArg.isret || includeRet {
+			formalArgs = append(formalArgs, *formalArg)
 		}
+	}
 
-		if isret, _ := entry.Val(dwarf.AttrVarParam).(bool); !isret || includeRet {
-			formalArgs = append(formalArgs, funcCallArg{name: argname, typ: typ, off: off, isret: isret})
-		}
+	if regabi {
+		// The argument frame size is computed conservatively, assuming that
+		// there's space for each argument on the stack even if its passed in
+		// registers. Unfortunately this isn't quite enough because the register
+		// assignment algorithm Go uses can result in an almost-unbounded amount of
+		// additional space used due to alignment requirements (bounded by the
+		// number of argument registers). Because we currently don't have an easy
+		// way to obtain the frame size, let's be even more conservative.
+		// A safe lower-bound on the size of the argument frame includes space for
+		// each argument plus the total bytes of register arguments.
+		// This is derived from worst-case alignment padding of up to
+		// (pointer-word-bytes - 1) per argument passed in registers.
+		// TODO: Make this generic for other platforms.
+		argFrameSize = alignAddr(argFrameSize, 8)
+		argFrameSize += maxRegArgBytes
 	}
 
 	sort.Slice(formalArgs, func(i, j int) bool {
@@ -629,6 +636,56 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 	})
 
 	return argFrameSize, formalArgs, nil
+}
+
+func funcCallArgOldABI(fn *Function, bi *BinaryInfo, entry reader.Variable, argname string, typ godwarf.Type, trustArgOrder bool, pargFrameSize *int64) (*funcCallArg, error) {
+	const CFA = 0x1000
+	var off int64
+
+	locprog, _, err := bi.locationExpr(entry, dwarf.AttrLocation, fn.Entry)
+	if err != nil {
+		err = fmt.Errorf("could not get argument location of %s: %v", argname, err)
+	} else {
+		var pieces []op.Piece
+		off, pieces, err = op.ExecuteStackProgram(op.DwarfRegisters{CFA: CFA, FrameBase: CFA}, locprog, bi.Arch.PtrSize())
+		if err != nil {
+			err = fmt.Errorf("unsupported location expression for argument %s: %v", argname, err)
+		}
+		if pieces != nil {
+			err = fmt.Errorf("unsupported location expression for argument %s (uses DW_OP_piece)", argname)
+		}
+		off -= CFA
+	}
+	if err != nil {
+		if !trustArgOrder {
+			return nil, err
+		}
+
+		// With Go version 1.12 or later we can trust that the arguments appear
+		// in the same order as declared, which means we can calculate their
+		// address automatically.
+		// With this we can call optimized functions (which sometimes do not have
+		// an argument address, due to a compiler bug) as well as runtime
+		// functions (which are always optimized).
+		off = *pargFrameSize
+		off = alignAddr(off, typ.Align())
+	}
+
+	if e := off + typ.Size(); e > *pargFrameSize {
+		*pargFrameSize = e
+	}
+
+	isret, _ := entry.Val(dwarf.AttrVarParam).(bool)
+	return &funcCallArg{name: argname, typ: typ, off: off, isret: isret}, nil
+}
+
+func funcCallArgRegABI(fn *Function, bi *BinaryInfo, entry reader.Variable, argname string, typ godwarf.Type, pargFrameSize *int64) (*funcCallArg, error) {
+	// Conservatively calculate the full stack argument space for ABI0.
+	*pargFrameSize = alignAddr(*pargFrameSize, typ.Align())
+	*pargFrameSize += typ.Size()
+
+	isret, _ := entry.Val(dwarf.AttrVarParam).(bool)
+	return &funcCallArg{name: argname, dwarfEntry: entry.Tree, isret: isret}, nil
 }
 
 // alignAddr rounds up addr to a multiple of align. Align must be a power of 2.
@@ -686,15 +743,15 @@ func escapeCheckPointer(addr uint64, name string, stack stack) error {
 }
 
 const (
-	debugCallAXPrecheckFailed   = 8
-	debugCallAXCompleteCall     = 0
-	debugCallAXReadReturn       = 1
-	debugCallAXReadPanic        = 2
-	debugCallAXRestoreRegisters = 16
+	debugCallRegPrecheckFailed   = 8
+	debugCallRegCompleteCall     = 0
+	debugCallRegReadReturn       = 1
+	debugCallRegReadPanic        = 2
+	debugCallRegRestoreRegisters = 16
 )
 
 // funcCallStep executes one step of the function call injection protocol.
-func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread) bool {
+func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread, protocolReg uint64, debugCallName string) bool {
 	p := callScope.callCtx.p
 	bi := p.BinInfo()
 
@@ -704,7 +761,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		return true
 	}
 
-	rax := bi.Arch.RegistersToDwarfRegisters(0, regs).Uint64Val(regnum.AMD64_Rax) //TODO(aarzilli): make this generic when call injection is supported on other architectures
+	regval := bi.Arch.RegistersToDwarfRegisters(0, regs).Uint64Val(protocolReg)
 
 	if logflags.FnCall() {
 		loc, _ := thread.Location()
@@ -716,11 +773,11 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 				fnname = loc.Fn.Name
 			}
 		}
-		fncallLog("function call interrupt gid=%d (original) thread=%d rax=%#x (PC=%#x in %s)", callScope.g.ID, thread.ThreadID(), rax, pc, fnname)
+		fncallLog("function call interrupt gid=%d (original) thread=%d regval=%#x (PC=%#x in %s)", callScope.g.ID, thread.ThreadID(), regval, pc, fnname)
 	}
 
-	switch rax {
-	case debugCallAXPrecheckFailed:
+	switch regval {
+	case debugCallRegPrecheckFailed:
 		// get error from top of the stack and return it to user
 		errvar, err := readTopstackVariable(thread, regs, "string", loadFullValue)
 		if err != nil {
@@ -730,7 +787,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		errvar.Name = "err"
 		fncall.err = fmt.Errorf("%v", constant.StringVal(errvar.Value))
 
-	case debugCallAXCompleteCall:
+	case debugCallRegCompleteCall:
 		p.fncallForG[callScope.g.ID].startThreadID = 0
 		// evaluate arguments of the target function, copy them into its argument frame and call the function
 		if fncall.fn == nil || fncall.receiver != nil || fncall.closureAddr != 0 {
@@ -774,7 +831,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 			break
 		}
 
-	case debugCallAXRestoreRegisters:
+	case debugCallRegRestoreRegisters:
 		// runtime requests that we restore the registers (all except pc and sp),
 		// this is also the last step of the function call protocol.
 		pc, sp := regs.PC(), regs.SP()
@@ -787,12 +844,12 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		if err := setSP(thread, sp); err != nil {
 			fncall.err = fmt.Errorf("could not restore SP: %v", err)
 		}
-		if err := stepInstructionOut(p, thread, debugCallFunctionName, debugCallFunctionName); err != nil {
-			fncall.err = fmt.Errorf("could not step out of %s: %v", debugCallFunctionName, err)
+		if err := stepInstructionOut(p, thread, debugCallName, debugCallName); err != nil {
+			fncall.err = fmt.Errorf("could not step out of %s: %v", debugCallName, err)
 		}
 		return true
 
-	case debugCallAXReadReturn:
+	case debugCallRegReadReturn:
 		// read return arguments from stack
 		if fncall.panicvar != nil || fncall.lateCallFailure {
 			break
@@ -828,7 +885,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 			callScope.callCtx.stacks = append(callScope.callCtx.stacks, threadg.stack)
 		}
 
-	case debugCallAXReadPanic:
+	case debugCallRegReadPanic:
 		// read panic value from stack
 		fncall.panicvar, err = readTopstackVariable(thread, regs, "interface {}", callScope.callCtx.retLoadCfg)
 		if err != nil {
@@ -838,9 +895,9 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		fncall.panicvar.Name = "~panic"
 
 	default:
-		// Got an unknown AX value, this is probably bad but the safest thing
+		// Got an unknown protocol register value, this is probably bad but the safest thing
 		// possible is to ignore it and hope it didn't matter.
-		fncallLog("unknown value of AX %#x", rax)
+		fncallLog("unknown value of protocol register %#x", regval)
 	}
 
 	return false
@@ -877,6 +934,7 @@ func fakeFunctionEntryScope(scope *EvalScope, fn *Function, cfa int64, sp uint64
 
 	scope.Regs.CFA = cfa
 	scope.Regs.Reg(scope.Regs.SPRegNum).Uint64Val = sp
+	scope.Regs.Reg(scope.Regs.PCRegNum).Uint64Val = fn.Entry
 
 	fn.cu.image.dwarfReader.Seek(fn.offset)
 	e, err := fn.cu.image.dwarfReader.Next()
@@ -1015,4 +1073,36 @@ func findCallInjectionStateForThread(t *Target, thread Thread) (*G, *callInjecti
 	}
 
 	return nil, nil, notfound()
+}
+
+// debugCallFunction searches for the debug call function in the binary and
+// uses this search to detect the debug call version.
+// Returns the debug call function and its version as an integer (the lowest
+// valid version is 1) or nil and zero.
+func debugCallFunction(bi *BinaryInfo) (*Function, int) {
+	for version := maxDebugCallVersion; version >= 1; version-- {
+		name := debugCallFunctionNamePrefix2 + "V" + strconv.Itoa(version)
+		fn, ok := bi.LookupFunc[name]
+		if ok && fn != nil {
+			return fn, version
+		}
+	}
+	return nil, 0
+}
+
+// debugCallProtocolReg returns the register ID (as defined in pkg/dwarf/regnum)
+// of the register used in the debug call protocol, given the debug call version.
+// Also returns a bool indicating whether the version is supported.
+func debugCallProtocolReg(version int) (uint64, bool) {
+	// TODO(aarzilli): make this generic when call injection is supported on other architectures.
+	var protocolReg uint64
+	switch version {
+	case 1:
+		protocolReg = regnum.AMD64_Rax
+	case 2:
+		protocolReg = regnum.AMD64_R12
+	default:
+		return 0, false
+	}
+	return protocolReg, true
 }
