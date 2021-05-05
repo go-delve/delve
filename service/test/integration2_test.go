@@ -1095,6 +1095,16 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 	})
 }
 
+func assertErrorOrExited(s *api.DebuggerState, err error, t *testing.T, reason string) {
+	if err != nil {
+		return
+	}
+	if s != nil && s.Exited {
+		return
+	}
+	t.Fatalf("%s (no error and no exited status)", reason)
+}
+
 func TestIssue355(t *testing.T) {
 	// After the target process has terminated should return an error but not crash
 	protest.AllowRecording(t)
@@ -1116,18 +1126,18 @@ func TestIssue355(t *testing.T) {
 		state = <-ch
 		assertError(state.Err, t, "Continue()")
 
-		_, err = c.Next()
-		assertError(err, t, "Next()")
-		_, err = c.Step()
-		assertError(err, t, "Step()")
-		_, err = c.StepInstruction()
-		assertError(err, t, "StepInstruction()")
-		_, err = c.SwitchThread(tid)
-		assertError(err, t, "SwitchThread()")
-		_, err = c.SwitchGoroutine(gid)
-		assertError(err, t, "SwitchGoroutine()")
-		_, err = c.Halt()
-		assertError(err, t, "Halt()")
+		s, err := c.Next()
+		assertErrorOrExited(s, err, t, "Next()")
+		s, err = c.Step()
+		assertErrorOrExited(s, err, t, "Step()")
+		s, err = c.StepInstruction()
+		assertErrorOrExited(s, err, t, "StepInstruction()")
+		s, err = c.SwitchThread(tid)
+		assertErrorOrExited(s, err, t, "SwitchThread()")
+		s, err = c.SwitchGoroutine(gid)
+		assertErrorOrExited(s, err, t, "SwitchGoroutine()")
+		s, err = c.Halt()
+		assertErrorOrExited(s, err, t, "Halt()")
 		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: -1})
 		if testBackend != "rr" {
 			assertError(err, t, "CreateBreakpoint()")
@@ -1518,15 +1528,18 @@ func TestClientServer_FpRegisters(t *testing.T) {
 		{"XMM12", "…[ZMM12hh] 0x3ff66666666666663ff4cccccccccccd"},
 	}
 	protest.AllowRecording(t)
-	withTestClient2("fputest/", t, func(c service.Client) {
+	withTestClient2Extended("fputest/", t, 0, [3]string{}, func(c service.Client, fixture protest.Fixture) {
+		if testBackend == "rr" {
+			_, err := c.CreateBreakpoint(&api.Breakpoint{File: filepath.Join(fixture.BuildDir, "fputest.go"), Line: 27})
+			assertNoError(err, t, "CreateBreakpoint()")
+		}
+
 		state := <-c.Continue()
 		t.Logf("state after continue: %#v", state)
 
+		scope := api.EvalScope{GoroutineID: -1}
+
 		boolvar := func(name string) bool {
-			scope := api.EvalScope{GoroutineID: -1}
-			if testBackend == "rr" {
-				scope.Frame = 2
-			}
 			v, err := c.EvalVariable(scope, name, normalLoadConfig)
 			if err != nil {
 				t.Fatalf("could not read %s variable", name)
@@ -1546,8 +1559,6 @@ func TestClientServer_FpRegisters(t *testing.T) {
 
 		regs, err := c.ListThreadRegisters(0, true)
 		assertNoError(err, t, "ListThreadRegisters()")
-
-		t.Logf("%s", regs.String())
 
 		for _, regtest := range regtests {
 			if regtest.name == "XMM11" && !avx2 {
@@ -1573,6 +1584,28 @@ func TestClientServer_FpRegisters(t *testing.T) {
 			}
 			if !found {
 				t.Fatalf("register %s not found: %v", regtest.name, regs)
+			}
+		}
+
+		// Test register expressions
+
+		for _, tc := range []struct{ expr, tgt string }{
+			{"XMM1[:32]", `"cdccccccccccf43f666666666666f63f"`},
+			{"_XMM1[:32]", `"cdccccccccccf43f666666666666f63f"`},
+			{"__XMM1[:32]", `"cdccccccccccf43f666666666666f63f"`},
+			{"XMM1.int8[0]", `-51`},
+			{"XMM1.uint16[0]", `52429`},
+			{"XMM1.float32[0]", `-107374184`},
+			{"XMM1.float64[0]", `1.3`},
+		} {
+			v, err := c.EvalVariable(scope, tc.expr, normalLoadConfig)
+			if err != nil {
+				t.Fatalf("could not evalue expression %s: %v", tc.expr, err)
+			}
+			out := v.SinglelineString()
+
+			if out != tc.tgt {
+				t.Fatalf("for %q expected %q got %q\n", tc.expr, tc.tgt, out)
 			}
 		}
 	})
@@ -2276,4 +2309,66 @@ func TestDetachLeaveRunning(t *testing.T) {
 	client := rpc2.NewClientFromConn(clientConn)
 	defer server.Stop()
 	assertNoError(client.Detach(false), t, "Detach")
+}
+
+func assertNoDuplicateBreakpoints(t *testing.T, c service.Client) {
+	t.Helper()
+	bps, _ := c.ListBreakpoints()
+	seen := make(map[int]bool)
+	for _, bp := range bps {
+		t.Logf("%#v\n", bp)
+		if seen[bp.ID] {
+			t.Fatalf("duplicate breakpoint ID %d", bp.ID)
+		}
+		seen[bp.ID] = true
+	}
+}
+
+func TestToggleBreakpointRestart(t *testing.T) {
+	// Checks that breakpoints IDs do not overlap after Restart if there are disabled breakpoints.
+	withTestClient2("testtoggle", t, func(c service.Client) {
+		bp1, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1, Name: "firstbreakpoint"})
+		assertNoError(err, t, "CreateBreakpoint 1")
+		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 2, Name: "secondbreakpoint"})
+		assertNoError(err, t, "CreateBreakpoint 2")
+		_, err = c.ToggleBreakpoint(bp1.ID)
+		assertNoError(err, t, "ToggleBreakpoint")
+		_, err = c.Restart(false)
+		assertNoError(err, t, "Restart")
+		assertNoDuplicateBreakpoints(t, c)
+		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 3, Name: "thirdbreakpoint"})
+		assertNoError(err, t, "CreateBreakpoint 3")
+		assertNoDuplicateBreakpoints(t, c)
+	})
+}
+
+func TestStopServerWithClosedListener(t *testing.T) {
+	// Checks that the error erturned by listener.Accept() is ignored when we
+	// are trying to shutdown. See issue #1633.
+	if testBackend == "rr" || buildMode == "pie" {
+		t.Skip("N/A")
+	}
+	listener, err := net.Listen("tcp", "localhost:0")
+	assertNoError(err, t, "listener")
+	fixture := protest.BuildFixture("math", 0)
+	server := rpccommon.NewServer(&service.Config{
+		Listener:           listener,
+		AcceptMulti:        false,
+		APIVersion:         2,
+		CheckLocalConnUser: true,
+		DisconnectChan:     make(chan struct{}),
+		ProcessArgs:        []string{fixture.Path},
+		Debugger: debugger.Config{
+			WorkingDir:  ".",
+			Backend:     "default",
+			Foreground:  false,
+			BuildFlags:  "",
+			ExecuteKind: debugger.ExecutingGeneratedFile,
+		},
+	})
+	assertNoError(server.Run(), t, "blah")
+	time.Sleep(1 * time.Second) // let server start
+	server.Stop()
+	listener.Close()
+	time.Sleep(1 * time.Second) // give time to server to panic
 }

@@ -49,14 +49,6 @@ type StateMachine struct {
 	ptrSize     int
 }
 
-type opcodeKind uint8
-
-const (
-	specialOpcode opcodeKind = iota
-	standardOpcode
-	extendedOpcode
-)
-
 type opcodefn func(*StateMachine, *bytes.Buffer)
 
 // Special opcodes
@@ -560,8 +552,9 @@ func setdiscriminator(sm *StateMachine, buf *bytes.Buffer) {
 }
 
 func definefile(sm *StateMachine, buf *bytes.Buffer) {
-	entry := readFileEntry(sm.dbl, sm.buf, false)
-	sm.definedFiles = append(sm.definedFiles, entry)
+	if entry := readFileEntry(sm.dbl, sm.buf, false); entry != nil {
+		sm.definedFiles = append(sm.definedFiles, entry)
+	}
 }
 
 func prologueend(sm *StateMachine, buf *bytes.Buffer) {

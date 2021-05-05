@@ -280,14 +280,19 @@ Aliases: ed
 Examine memory:
 
 	examinemem [-fmt <format>] [-count|-len <count>] [-size <size>] <address>
+	examinemem [-fmt <format>] [-count|-len <count>] [-size <size>] -x <expression>
 
 Format represents the data format and the value is one of this list (default hex): bin(binary), oct(octal), dec(decimal), hex(hexadecimal), addr(address).
 Length is the number of bytes (default 1) and must be less than or equal to 1000.
 Address is the memory location of the target to examine. Please note '-len' is deprecated by '-count and -size'.
+Expression can be an integer expression or pointer value of the memory location to examine.
 
 For example:
 
     x -fmt hex -count 20 -size 1 0xc00008af38
+    x -fmt hex -count 20 -size 1 -x 0xc00008af38 + 8
+    x -fmt hex -count 20 -size 1 -x &myVar
+    x -fmt hex -count 20 -size 1 -x myPtrVar
 
 Aliases: x
 
@@ -426,7 +431,7 @@ Print contents of CPU registers.
 
 	regs [-a]
 
-Argument -a shows more registers.
+Argument -a shows more registers. Individual registers can also be displayed by 'print' and 'display'. See [Documentation/cli/expr.md.](//github.com/go-delve/delve/tree/master/Documentation/cli/expr.md.)
 
 
 ## restart

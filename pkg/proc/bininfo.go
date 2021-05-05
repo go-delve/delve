@@ -69,9 +69,6 @@ type BinaryInfo struct {
 
 	lastModified time.Time // Time the executable of this process was last modified
 
-	closer         io.Closer
-	sepDebugCloser io.Closer
-
 	// PackageMap maps package names to package paths, needed to lookup types inside DWARF info.
 	// On Go1.12 this mapping is determined by using the last element of a package path, for example:
 	//   github.com/go-delve/delve
@@ -1400,23 +1397,6 @@ func (bi *BinaryInfo) parseDebugFramePE(image *Image, exe *pe.File, debugInfoByt
 
 	debugFrameBytes, err := godwarf.GetDebugSectionPE(exe, "frame")
 	bi.parseDebugFrameGeneral(image, debugFrameBytes, ".debug_frame", err, nil, 0, "", frame.DwarfEndian(debugInfoBytes))
-}
-
-// Borrowed from https://golang.org/src/cmd/internal/objfile/pe.go
-func findPESymbol(f *pe.File, name string) (*pe.Symbol, error) {
-	for _, s := range f.Symbols {
-		if s.Name != name {
-			continue
-		}
-		if s.SectionNumber <= 0 {
-			return nil, fmt.Errorf("symbol %s: invalid section number %d", name, s.SectionNumber)
-		}
-		if len(f.Sections) < int(s.SectionNumber) {
-			return nil, fmt.Errorf("symbol %s: section number %d is larger than max %d", name, s.SectionNumber, len(f.Sections))
-		}
-		return s, nil
-	}
-	return nil, fmt.Errorf("no %s symbol found", name)
 }
 
 // MACH-O ////////////////////////////////////////////////////////////

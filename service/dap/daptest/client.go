@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/google/go-dap"
@@ -168,6 +169,35 @@ func (c *Client) ExpectStoppedEvent(t *testing.T) *dap.StoppedEvent {
 func (c *Client) ExpectOutputEvent(t *testing.T) *dap.OutputEvent {
 	t.Helper()
 	return c.ExpectMessage(t).(*dap.OutputEvent)
+}
+
+func (c *Client) ExpectOutputEventRegex(t *testing.T, want string) *dap.OutputEvent {
+	t.Helper()
+	e := c.ExpectMessage(t).(*dap.OutputEvent)
+	if matched, _ := regexp.MatchString(want, e.Body.Output); !matched {
+		t.Errorf("\ngot %#v\nwant Output=%q", e, want)
+	}
+	return e
+}
+
+func (c *Client) ExpectOutputEventProcessExited(t *testing.T, status int) *dap.OutputEvent {
+	t.Helper()
+	return c.ExpectOutputEventRegex(t, fmt.Sprintf(`Process [0-9]+ has exited with status %d\n`, status))
+}
+
+func (c *Client) ExpectOutputEventDetaching(t *testing.T) *dap.OutputEvent {
+	t.Helper()
+	return c.ExpectOutputEventRegex(t, `Detaching\n`)
+}
+
+func (c *Client) ExpectOutputEventDetachingKill(t *testing.T) *dap.OutputEvent {
+	t.Helper()
+	return c.ExpectOutputEventRegex(t, `Detaching and terminating target process\n`)
+}
+
+func (c *Client) ExpectOutputEventDetachingNoKill(t *testing.T) *dap.OutputEvent {
+	t.Helper()
+	return c.ExpectOutputEventRegex(t, `Detaching without terminating target process\n`)
 }
 
 func (c *Client) ExpectConfigurationDoneResponse(t *testing.T) *dap.ConfigurationDoneResponse {
