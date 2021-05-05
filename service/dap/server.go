@@ -1571,6 +1571,10 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 			continue
 		}
 
+		if want.Name[0] == '.' {
+			response.Body.Breakpoints[i].Message = "breakpoint names that are relative paths are not supported."
+			continue
+		}
 		// Find the location of the function name. CreateBreakpoint requires the name to include the base
 		// (e.g. main.functionName is supported but not functionName).
 		// We first find the location of the function, and then set breakpoints for that location.

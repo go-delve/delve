@@ -1774,7 +1774,7 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 								continue
 							}
 							// Some function breakpoints may be in packages that have been imported and we do not control, so
-							// we do not always want to check breakpoints.
+							// we do not always want to check breakpoint lines.
 							if (bps[i].line >= 0 && bp.Line != bps[i].line) || bp.Verified != bps[i].verified || bp.Source.Name != bps[i].sourceName {
 								t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
 							}
@@ -1892,6 +1892,16 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 						{Name: "*b"},
 					})
 					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), false, "breakpoint name \"*b\" could not be parsed as a function"}})
+
+					// Expect error when function name is a relative path.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: fmt.Sprintf(".%s%s:14", string(filepath.Separator), filepath.Base(fixture.Source))},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), false, "breakpoint names that are relative paths are not supported."}})
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: fmt.Sprintf("..%s%s:14", string(filepath.Separator), filepath.Base(fixture.Source))},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), false, "breakpoint names that are relative paths are not supported."}})
 
 					// Test multiple function breakpoints.
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
