@@ -2,7 +2,6 @@ package linutil
 
 import (
 	"fmt"
-	"golang.org/x/arch/arm64/arm64asm"
 
 	"github.com/go-delve/delve/pkg/proc"
 )
@@ -114,17 +113,6 @@ func (r *ARM64Registers) TLS() uint64 {
 // otherwise.
 func (r *ARM64Registers) GAddr() (uint64, bool) {
 	return r.Regs.Regs[28], !r.iscgo
-}
-
-// Get returns the value of the n-th register (in arm64asm order).
-func (r *ARM64Registers) Get(n int) (uint64, error) {
-	reg := arm64asm.Reg(n)
-
-	if reg >= arm64asm.X0 && reg <= arm64asm.X30 {
-		return r.Regs.Regs[reg-arm64asm.X0], nil
-	}
-
-	return 0, proc.ErrUnknownRegister
 }
 
 // Copy returns a copy of these registers that is guaranteed not to change.

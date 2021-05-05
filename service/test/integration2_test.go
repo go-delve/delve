@@ -1528,15 +1528,18 @@ func TestClientServer_FpRegisters(t *testing.T) {
 		{"XMM12", "…[ZMM12hh] 0x3ff66666666666663ff4cccccccccccd"},
 	}
 	protest.AllowRecording(t)
-	withTestClient2("fputest/", t, func(c service.Client) {
+	withTestClient2Extended("fputest/", t, 0, [3]string{}, func(c service.Client, fixture protest.Fixture) {
+		if testBackend == "rr" {
+			_, err := c.CreateBreakpoint(&api.Breakpoint{File: filepath.Join(fixture.BuildDir, "fputest.go"), Line: 27})
+			assertNoError(err, t, "CreateBreakpoint()")
+		}
+
 		state := <-c.Continue()
 		t.Logf("state after continue: %#v", state)
 
+		scope := api.EvalScope{GoroutineID: -1}
+
 		boolvar := func(name string) bool {
-			scope := api.EvalScope{GoroutineID: -1}
-			if testBackend == "rr" {
-				scope.Frame = 2
-			}
 			v, err := c.EvalVariable(scope, name, normalLoadConfig)
 			if err != nil {
 				t.Fatalf("could not read %s variable", name)
@@ -1556,8 +1559,6 @@ func TestClientServer_FpRegisters(t *testing.T) {
 
 		regs, err := c.ListThreadRegisters(0, true)
 		assertNoError(err, t, "ListThreadRegisters()")
-
-		t.Logf("%s", regs.String())
 
 		for _, regtest := range regtests {
 			if regtest.name == "XMM11" && !avx2 {
@@ -1583,6 +1584,28 @@ func TestClientServer_FpRegisters(t *testing.T) {
 			}
 			if !found {
 				t.Fatalf("register %s not found: %v", regtest.name, regs)
+			}
+		}
+
+		// Test register expressions
+
+		for _, tc := range []struct{ expr, tgt string }{
+			{"XMM1[:32]", `"cdccccccccccf43f666666666666f63f"`},
+			{"_XMM1[:32]", `"cdccccccccccf43f666666666666f63f"`},
+			{"__XMM1[:32]", `"cdccccccccccf43f666666666666f63f"`},
+			{"XMM1.int8[0]", `-51`},
+			{"XMM1.uint16[0]", `52429`},
+			{"XMM1.float32[0]", `-107374184`},
+			{"XMM1.float64[0]", `1.3`},
+		} {
+			v, err := c.EvalVariable(scope, tc.expr, normalLoadConfig)
+			if err != nil {
+				t.Fatalf("could not evalue expression %s: %v", tc.expr, err)
+			}
+			out := v.SinglelineString()
+
+			if out != tc.tgt {
+				t.Fatalf("for %q expected %q got %q\n", tc.expr, tc.tgt, out)
 			}
 		}
 	})
