@@ -249,6 +249,18 @@ func (c *Client) ExpectInitializedEvent(t *testing.T) *dap.InitializedEvent {
 	return r
 }
 
+// ExpectInvalidatedEvent reads a protocol message from the connection
+// and fails the test if the read message is not *InvalidatedEvent.
+func (c *Client) ExpectInvalidatedEvent(t *testing.T) *dap.InvalidatedEvent {
+	t.Helper()
+	m := c.ExpectMessage(t)
+	r, ok := m.(*dap.InvalidatedEvent)
+	if !ok {
+		t.Fatalf("got %q, want *dap.InvalidatedEvent", m)
+	}
+	return r
+}
+
 // ExpectLaunchResponse reads a protocol message from the connection
 // and fails the test if the read message is not *LaunchResponse.
 func (c *Client) ExpectLaunchResponse(t *testing.T) *dap.LaunchResponse {
