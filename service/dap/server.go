@@ -360,7 +360,7 @@ func (s *Server) handleRequest(request dap.Message) {
 		return
 	}
 
-	// These requests, can be handeled regardless of whether the targret is running
+	// These requests, can be handled regardless of whether the targret is running
 	switch request := request.(type) {
 	case *dap.DisconnectRequest:
 		// Required
@@ -368,7 +368,6 @@ func (s *Server) handleRequest(request dap.Message) {
 		return
 	case *dap.PauseRequest:
 		// Required
-		// TODO: implement this request in V0
 		s.onPauseRequest(request)
 		return
 	case *dap.TerminateRequest:
@@ -1204,10 +1203,20 @@ func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan
 	s.doCommand(command, asyncSetupDone)
 }
 
-// onPauseRequest sends a not-yet-implemented error response.
+// onPauseRequest handles 'pause' request.
 // This is a mandatory request to support.
-func (s *Server) onPauseRequest(request *dap.PauseRequest) { // TODO V0
-	s.sendNotYetImplementedErrorResponse(request.Request)
+func (s *Server) onPauseRequest(request *dap.PauseRequest) {
+	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToHalt, "Unable to halt execution", err.Error())
+		return
+	}
+	s.send(&dap.PauseResponse{Response: *newResponse(request.Request)})
+	// No need to send any event here.
+	// If we received this request while stopped, there already was an event for the stop.
+	// If we received this while running, then doCommand will unblock and trigger the right
+	// event, using debugger.StopReason because manual stop reason always wins even if we
+	// simultaneously receive a manual stop request and hit a breakpoint.
 }
 
 // stackFrame represents the index of a frame within
@@ -1896,7 +1905,7 @@ func (s *Server) resetHandlesForStoppedEvent() {
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
 func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
-	// TODO(polina): it appears that debugger.Command doesn't close
+	// TODO(polina): it appears that debugger.Command doesn't always close
 	// asyncSetupDone (e.g. when having an error next while nexting).
 	// So we should always close it ourselves just in case.
 	defer s.asyncCommandDone(asyncSetupDone)
@@ -1913,14 +1922,18 @@ func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
 	if err == nil {
 		stopped.Body.ThreadId = stoppedGoroutineID(state)
 
+		file, line := "?", -1
+		if state.CurrentThread != nil {
+			file, line = state.CurrentThread.File, state.CurrentThread.Line
+		}
 		sr := s.debugger.StopReason()
-		s.log.Debugf("%q command stopped - reason %q", command, sr)
+		s.log.Debugf("%q command stopped - reason %q, location %s:%d", command, sr, file, line)
 		switch sr {
 		case proc.StopNextFinished:
 			stopped.Body.Reason = "step"
 		case proc.StopManual: // triggered by halt
 			stopped.Body.Reason = "pause"
-		case proc.StopUnknown: // can happen while stopping
+		case proc.StopUnknown: // can happen while terminating
 			stopped.Body.Reason = "unknown"
 		default:
 			stopped.Body.Reason = "breakpoint"

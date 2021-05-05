@@ -107,6 +107,11 @@ func (c *Client) ExpectContinueResponse(t *testing.T) *dap.ContinueResponse {
 	return c.ExpectMessage(t).(*dap.ContinueResponse)
 }
 
+func (c *Client) ExpectPauseResponse(t *testing.T) *dap.PauseResponse {
+	t.Helper()
+	return c.ExpectMessage(t).(*dap.PauseResponse)
+}
+
 func (c *Client) ExpectNextResponse(t *testing.T) *dap.NextResponse {
 	t.Helper()
 	return c.ExpectMessage(t).(*dap.NextResponse)
@@ -456,9 +461,9 @@ func (c *Client) StepOutRequest(thread int) {
 }
 
 // PauseRequest sends a 'pause' request.
-func (c *Client) PauseRequest() {
-	request := &dap.NextRequest{Request: *c.newRequest("pause")}
-	// TODO(polina): arguments
+func (c *Client) PauseRequest(threadId int) {
+	request := &dap.PauseRequest{Request: *c.newRequest("pause")}
+	request.Arguments.ThreadId = threadId
 	c.send(request)
 }
 
