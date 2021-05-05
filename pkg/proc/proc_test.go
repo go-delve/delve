@@ -2830,12 +2830,16 @@ func TestAttachDetach(t *testing.T) {
 
 	assertNoError(p.Detach(false), t, "Detach")
 
-	resp, err := http.Get("http://127.0.0.1:9191/nobp")
-	assertNoError(err, t, "Page request after detach")
-	bs, err := ioutil.ReadAll(resp.Body)
-	assertNoError(err, t, "Reading /nobp page")
-	if out := string(bs); !strings.Contains(out, "hello, world!") {
-		t.Fatalf("/nobp page does not contain \"hello, world!\": %q", out)
+	if runtime.GOOS != "darwin" {
+		// Debugserver sometimes will leave a zombie process after detaching, this
+		// seems to be a bug with debugserver.
+		resp, err := http.Get("http://127.0.0.1:9191/nobp")
+		assertNoError(err, t, "Page request after detach")
+		bs, err := ioutil.ReadAll(resp.Body)
+		assertNoError(err, t, "Reading /nobp page")
+		if out := string(bs); !strings.Contains(out, "hello, world!") {
+			t.Fatalf("/nobp page does not contain \"hello, world!\": %q", out)
+		}
 	}
 
 	cmd.Process.Kill()
@@ -4990,7 +4994,7 @@ func TestDump(t *testing.T) {
 		assertNoError(err, t, fmt.Sprintf("Thread registers %d", thread.ThreadID()))
 		arch := thread.BinInfo().Arch
 		dregs := arch.RegistersToDwarfRegisters(0, regs)
-		return fmt.Sprintf("%08d %s", thread.ThreadID(), convertRegisters(arch, dregs))
+		return fmt.Sprintf("%08d %s", thread.ThreadID(), convertRegisters(arch, *dregs))
 	}
 
 	convertThreads := func(threads []proc.Thread) []string {

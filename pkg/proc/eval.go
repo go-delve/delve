@@ -1142,6 +1142,36 @@ func (scope *EvalScope) evalIdent(node *ast.Ident) (*Variable, error) {
 			return v, nil
 		}
 	}
+
+	// not a local variable, nor a global variable, try a CPU register
+	if s := validRegisterName(node.Name); s != "" {
+		if regnum, ok := scope.BinInfo.Arch.RegisterNameToDwarf(s); ok {
+			if reg := scope.Regs.Reg(uint64(regnum)); reg != nil {
+				reg.FillBytes()
+
+				var typ godwarf.Type
+				if len(reg.Bytes) <= 8 {
+					typ = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 8, Name: "uint64"}, BitSize: 64, BitOffset: 0}}
+				} else {
+					typ, err = scope.BinInfo.findType("string")
+					if err != nil {
+						return nil, err
+					}
+				}
+
+				v := newVariable(node.Name, 0, typ, scope.BinInfo, scope.Mem)
+				if v.Kind == reflect.String {
+					v.Len = int64(len(reg.Bytes) * 2)
+					v.Base = fakeAddress
+				}
+				v.Addr = fakeAddress
+				v.Flags = VariableCPURegister
+				v.reg = reg
+				return v, nil
+			}
+		}
+	}
+
 	return nil, fmt.Errorf("could not find symbol value for %s", node.Name)
 }
 
@@ -1159,6 +1189,10 @@ func (scope *EvalScope) evalStructSelector(node *ast.SelectorExpr) (*Variable, e
 	// Prevent abuse, attempting to call "\"fake\".member" directly.
 	if xv.Addr == 0 && xv.Name == "" && xv.DwarfType == nil && xv.RealType == nil {
 		return nil, fmt.Errorf("%s (type %s) is not a struct", xv.Value, xv.TypeString())
+	}
+	// Special type conversions for CPU register variables (REGNAME.int8, etc)
+	if xv.Flags&VariableCPURegister != 0 && !xv.loaded {
+		return xv.registerVariableTypeConv(node.Sel.Name)
 	}
 
 	rv, err := xv.findMethod(node.Sel.Name)
@@ -1869,6 +1903,9 @@ func (v *Variable) sliceAccess(idx int) (*Variable, error) {
 	if wrong {
 		return nil, fmt.Errorf("index out of bounds")
 	}
+	if v.loaded {
+		return &v.Children[idx], nil
+	}
 	mem := v.mem
 	if v.Kind != reflect.Array {
 		mem = DereferenceMemory(mem)
@@ -1949,6 +1986,8 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 	r.Base = base
 	r.stride = v.stride
 	r.fieldType = v.fieldType
+	r.Flags = v.Flags
+	r.reg = v.reg
 
 	return r, nil
 }
@@ -2153,4 +2192,16 @@ func (fn *Function) fakeType(bi *BinaryInfo, removeReceiver bool) (*godwarf.Func
 		// reads the subroutine entry because it needs to know the stack offsets).
 		// If we start using them they should be filled here.
 	}, nil
+}
+
+func validRegisterName(s string) string {
+	for len(s) > 0 && s[0] == '_' {
+		s = s[1:]
+	}
+	for i := range s {
+		if (s[i] < '0' || s[i] > '9') && (s[i] < 'A' || s[i] > 'Z') {
+			return ""
+		}
+	}
+	return s
 }

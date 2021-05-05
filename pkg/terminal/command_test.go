@@ -1029,6 +1029,66 @@ func TestExamineMemoryCmd(t *testing.T) {
 		if !strings.Contains(res, firstLine) {
 			t.Fatalf("expected first line: %s", firstLine)
 		}
+
+		// third examining memory: -x addr
+		res = term.MustExec("examinemem -x " + addressStr)
+		t.Logf("the third result of examining memory result \n%s", res)
+		firstLine = fmt.Sprintf("%#x:   0xff", address)
+		if !strings.Contains(res, firstLine) {
+			t.Fatalf("expected first line: %s", firstLine)
+		}
+
+		// fourth examining memory: -x addr + offset
+		res = term.MustExec("examinemem -x " + addressStr + " + 8")
+		t.Logf("the fourth result of examining memory result \n%s", res)
+		firstLine = fmt.Sprintf("%#x:   0x12", address+8)
+		if !strings.Contains(res, firstLine) {
+			t.Fatalf("expected first line: %s", firstLine)
+		}
+		// fifth examining memory: -x &var
+		res = term.MustExec("examinemem -x &bs[0]")
+		t.Logf("the fifth result of examining memory result \n%s", res)
+		firstLine = fmt.Sprintf("%#x:   0xff", address)
+		if !strings.Contains(res, firstLine) {
+			t.Fatalf("expected first line: %s", firstLine)
+		}
+
+		// sixth examining memory: -fmt and double spaces
+		res = term.MustExec("examinemem -fmt  hex  -x &bs[0]")
+		t.Logf("the sixth result of examining memory result \n%s", res)
+		firstLine = fmt.Sprintf("%#x:   0xff", address)
+		if !strings.Contains(res, firstLine) {
+			t.Fatalf("expected first line: %s", firstLine)
+		}
+	})
+
+	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
+		tests := []struct {
+			Expr string
+			Want int
+		}{
+			{Expr: "&i1", Want: 1},
+			{Expr: "&i2", Want: 2},
+			{Expr: "p1", Want: 1},
+			{Expr: "*pp1", Want: 1},
+			{Expr: "&str1[1]", Want: '1'},
+			{Expr: "c1.pb", Want: 1},
+			{Expr: "&c1.pb.a", Want: 1},
+			{Expr: "&c1.pb.a.A", Want: 1},
+			{Expr: "&c1.pb.a.B", Want: 2},
+		}
+		term.MustExec("continue")
+		for _, test := range tests {
+			res := term.MustExec("examinemem -fmt dec -x " + test.Expr)
+			// strip addr from output, e.g. "0xc0000160b8:   023" -> "023"
+			res = strings.TrimSpace(strings.Split(res, ":")[1])
+			got, err := strconv.Atoi(res)
+			if err != nil {
+				t.Fatalf("expr=%q err=%s", test.Expr, err)
+			} else if got != test.Want {
+				t.Errorf("expr=%q got=%d want=%d", test.Expr, got, test.Want)
+			}
+		}
 	})
 }
 

@@ -549,7 +549,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 
 // State returns the current state of the debugger.
 func (d *Debugger) State(nowait bool) (*api.DebuggerState, error) {
-	if d.isRunning() && nowait {
+	if d.IsRunning() && nowait {
 		return &api.DebuggerState{Running: true}, nil
 	}
 
@@ -973,7 +973,7 @@ func (d *Debugger) setRunning(running bool) {
 	d.runningMutex.Unlock()
 }
 
-func (d *Debugger) isRunning() bool {
+func (d *Debugger) IsRunning() bool {
 	d.runningMutex.Lock()
 	defer d.runningMutex.Unlock()
 	return d.running
@@ -1095,7 +1095,8 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 		withBreakpointInfo = false
 	case api.SwitchGoroutine:
 		d.log.Debugf("switching to goroutine %d", command.GoroutineID)
-		g, err := proc.FindGoroutine(d.target, command.GoroutineID)
+		var g *proc.G
+		g, err = proc.FindGoroutine(d.target, command.GoroutineID)
 		if err == nil {
 			err = d.target.SwitchGoroutine(g)
 		}
@@ -1312,8 +1313,7 @@ func (d *Debugger) ThreadRegisters(threadID int, floatingPoint bool) (*op.DwarfR
 	if err != nil {
 		return nil, err
 	}
-	dregs := d.target.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
-	return &dregs, nil
+	return d.target.BinInfo().Arch.RegistersToDwarfRegisters(0, regs), nil
 }
 
 // ScopeRegisters returns registers for the specified scope.
@@ -1723,7 +1723,7 @@ func (d *Debugger) GetVersion(out *api.GetVersionOut) error {
 		}
 	}
 
-	if !d.isRecording() && !d.isRunning() {
+	if !d.isRecording() && !d.IsRunning() {
 		out.TargetGoVersion = d.target.BinInfo().Producer()
 	}
 
