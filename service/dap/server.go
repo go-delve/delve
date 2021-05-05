@@ -1067,13 +1067,23 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 	goid := sf.(stackFrame).goroutineID
 	frame := sf.(stackFrame).frameIndex
 
+	// Check if the function is optimized.
+	fn, err := s.debugger.FunctionScope(goid, frame, 0, DefaultLoadConfig)
+	if fn == nil || err != nil {
+		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to find enclosing function", err.Error())
+		return
+	}
+	suffix := ""
+	if fn.Optimized() {
+		suffix = " (warning: debugging optimized function)"
+	}
 	// Retrieve arguments
 	args, err := s.debugger.FunctionArguments(goid, frame, 0, DefaultLoadConfig)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to list args", err.Error())
 		return
 	}
-	argScope := &fullyQualifiedVariable{&proc.Variable{Name: "Arguments", Children: slicePtrVarToSliceVar(args)}, "", true}
+	argScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Arguments%s", suffix), Children: slicePtrVarToSliceVar(args)}, "", true}
 
 	// Retrieve local variables
 	locals, err := s.debugger.LocalVariables(goid, frame, 0, DefaultLoadConfig)
@@ -1081,7 +1091,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list locals", err.Error())
 		return
 	}
-	locScope := &fullyQualifiedVariable{&proc.Variable{Name: "Locals", Children: slicePtrVarToSliceVar(locals)}, "", true}
+	locScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Locals%s", suffix), Children: slicePtrVarToSliceVar(locals)}, "", true}
 
 	scopeArgs := dap.Scope{Name: argScope.Name, VariablesReference: s.variableHandles.create(argScope)}
 	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
