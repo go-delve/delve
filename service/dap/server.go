@@ -33,11 +33,11 @@ import (
 	"github.com/go-delve/delve/pkg/locspec"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/gdbserial"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/internal/sameuser"
-	"github.com/go-delve/delve/pkg/proc/gdbserial"
 	"github.com/google/go-dap"
 
 	"github.com/sirupsen/logrus"
@@ -285,17 +285,19 @@ func (s *Server) Stop() {
 		// allowing the run goroutine to exit.
 		_ = s.conn.Close()
 	}
-			switch err.(type) {
-			case *proc.ErrProcessExited:
-				s.log.Debug(err)
-			default:
-				s.log.Error(err)
-			}
-		}
+		killProcess := s.config.Debugger.AttachPid == 0
+		s.stopDebugSession(killProcess)
 	} else {
 		s.stopNoDebugProcess()
 	}
+	// The binary is no longer in use by the debugger. It is safe to remove it.
+	if s.binaryToRemove != "" {
+		gobuild.Remove(s.binaryToRemove)
+		s.binaryToRemove = ""
+	}
+	s.log.Debug("DAP server stopped")
 }
+
 // triggerServerStop closes config.DisconnectChan if not nil, which
 // signals that client sent a disconnect request or there was connection
 // failure or closure. Since the server currently services only one
@@ -551,10 +553,16 @@ func (s *Server) handleRequest(request dap.Message) {
 		<-resumeRequestLoop
 	case *dap.StepBackRequest:
 		// Optional (capability ‘supportsStepBack’)
-		s.onStepBackRequest(request)
+		go func() {
+			defer s.recoverPanic(request)
+			s.onStepBackRequest(request, resumeRequestLoop)
+		}()
 	case *dap.ReverseContinueRequest:
 		// Optional (capability ‘supportsStepBack’)
-		s.onReverseContinueRequest(request)
+		go func() {
+			defer s.recoverPanic(request)
+			s.onReverseContinueRequest(request, resumeRequestLoop)
+		}()
 	//--- Synchronous requests ---
 	case *dap.InitializeRequest:
 		// Required
@@ -835,19 +843,12 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			}
 		}
 
-<<<<<<< HEAD
-		s.log.Debugf("building binary at %s", debugbinary)
 		var cmd string
 		var out []byte
-		switch mode {
-		case "debug", "replay":
-			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
-=======
 		s.log.Debugf("building binary '%s' from '%s' with flags '%v'", debugbinary, program, buildFlags)
 		switch mode {
 		case "debug", "replay", "record":
 			err = gobuild.GoBuild(debugbinary, []string{program}, buildFlags)
->>>>>>> dap: Fix and refactor record mode path. Refactor wd and args validations
 		case "test":
 			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
 		}
@@ -900,7 +901,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	s.config.Debugger.WorkingDir = filepath.Dir(program)
 
 	// Set the WorkingDir for this program to the one specified in the request arguments.
-<<<<<<< HEAD
 	wd, ok := request.Arguments["cwd"]
 	if ok {
 		wdParsed, ok := wd.(string)
@@ -908,9 +908,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to launch",
 				fmt.Sprintf("'cwd' attribute '%v' in debug configuration is not a string.", wd))
-=======
-	if !s.setWorkingDir(request) {
-		return
+			return
+		}
+		s.config.Debugger.WorkingDir = wdParsed
 	}
 
 	if mode == "record" {
@@ -920,7 +920,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to launch",
 				"The traceDirectory attribute is missing in record configuration.")
->>>>>>> dap: Fix and refactor record mode path. Refactor wd and args validations
 			return
 		}
 
@@ -958,7 +957,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			Event: *newEvent("exited"),
 			Body:  dap.ExitedEventBody{ExitCode: 0},
 		})
-		s.signalDisconnect()
+		s.Stop()
 		return
 	}
 
@@ -1014,26 +1013,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
 }
 
-<<<<<<< HEAD
-// startNoDebugProcess is called from onLaunchRequest (run goroutine) and
-// requires holding mu lock.
-func (s *Server) startNoDebugProcess(program string, targetArgs []string, wd string) (*exec.Cmd, error) {
-=======
-func (s *Server) setWorkingDir(request *dap.LaunchRequest) bool {
-	wd, ok := request.Arguments["wd"]
-	if ok {
-		wdParsed, ok := wd.(string)
-		if !ok {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("'wd' attribute '%v' in debug configuration is not a string.", wd))
-			return false
-		}
-		s.config.Debugger.WorkingDir = wdParsed
-	}
-	return true
-}
-
 func (s *Server) parseTargetArgs(request *dap.LaunchRequest) ([]string, bool) {
 	var targetArgs []string
 	args, ok := request.Arguments["args"]
@@ -1061,10 +1040,9 @@ func (s *Server) parseTargetArgs(request *dap.LaunchRequest) ([]string, bool) {
 	return targetArgs, true
 }
 
+// startNoDebugProcess is called from onLaunchRequest (run goroutine) and
+// requires holding mu lock.
 func (s *Server) startNoDebugProcess(program string, targetArgs []string, wd string) (*exec.Cmd, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
->>>>>>> dap: Fix and refactor record mode path. Refactor wd and args validations
 	if s.noDebugProcess != nil {
 		return nil, fmt.Errorf("another launch request is in progress")
 	}
@@ -2558,18 +2536,18 @@ func (s *Server) onRestartRequest(request *dap.RestartRequest) {
 }
 
 // onStepBackRequest performs a ReverseNext command call, returning a NextResponse.
-func (s *Server) onStepBackRequest(request *dap.StepBackRequest) {
+func (s *Server) onStepBackRequest(request *dap.StepBackRequest, asyncSetupDone chan struct{}) {
 	s.send(&dap.StepBackResponse{Response: *newResponse(request.Request)})
-	s.doCommand(api.ReverseNext)
+	s.doCommand(api.ReverseNext, asyncSetupDone)
 }
 
 // onReverseContinueRequest performs a rewind command call up to the previous
 // breakpoint or the frame zero of the program, (dependant on Rewind/rr implementation)
-func (s *Server) onReverseContinueRequest(request *dap.ReverseContinueRequest) {
+func (s *Server) onReverseContinueRequest(request *dap.ReverseContinueRequest, asyncSetupDone chan struct{}) {
 	s.send(&dap.ReverseContinueResponse{
 		Response: *newResponse(request.Request),
 	})
-	s.doCommand(api.Rewind)
+	s.doCommand(api.Rewind, asyncSetupDone)
 }
 
 // computeEvaluateName finds the named child, and computes its evaluate name.

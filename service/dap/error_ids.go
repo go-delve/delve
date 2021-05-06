@@ -24,7 +24,9 @@ const (
 	UnableToGetExceptionInfo   = 2011
 	UnableToSetVariable        = 2012
 	FailedToInitialize         = 2999
-	// Add more codes as we support more requests
+
 	DebuggeeIsRunning = 4000
 	DisconnectError   = 5000
+
+	// Add more codes as we support more requests
 )
