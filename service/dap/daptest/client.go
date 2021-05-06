@@ -351,6 +351,13 @@ func (c *Client) InitializeRequest() {
 	c.send(request)
 }
 
+// InitializeRequestWithArgs sends an 'initialize' request with specified arguments.
+func (c *Client) InitializeRequestWithArgs(args dap.InitializeRequestArguments) {
+	request := &dap.InitializeRequest{Request: *c.newRequest("initialize")}
+	request.Arguments = args
+	c.send(request)
+}
+
 // LaunchRequest sends a 'launch' request with the specified args.
 func (c *Client) LaunchRequest(mode, program string, stopOnEntry bool) {
 	request := &dap.LaunchRequest{Request: *c.newRequest("launch")}
