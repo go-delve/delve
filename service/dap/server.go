@@ -772,6 +772,8 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
+	// On replay mode, validate its required parameters to define the debugger
+	// Backend and CoreFile properties
 	if mode == "replay" {
 		// Check against replay parameters and decide the backend based on which one was received
 		coreDumpPath, _ := request.Arguments["coreDumpPath"].(string)
@@ -819,6 +821,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.config.Debugger.Backend = backend
 	}
 
+	// Prepare the debug executable filename, build flags and build it
 	if mode == "debug" || mode == "test" || mode == "replay" || mode == "record" {
 		output, ok := request.Arguments["output"].(string)
 		if !ok || output == "" {
@@ -1016,7 +1019,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 func (s *Server) parseTargetArgs(request *dap.LaunchRequest) ([]string, bool) {
 	var targetArgs []string
 	args, ok := request.Arguments["args"]
-
 	if ok {
 		argsParsed, ok := args.([]interface{})
 		if !ok {
