@@ -36,6 +36,7 @@ func ARM64Arch(goos string) *Arch {
 		PCRegNum:                         regnum.ARM64_PC,
 		SPRegNum:                         regnum.ARM64_SP,
 		asmRegisters:                     arm64AsmRegisters,
+		RegisterNameToDwarf:              nameToDwarfFunc(regnum.ARM64NameToDwarf),
 	}
 }
 

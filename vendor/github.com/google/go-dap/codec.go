@@ -24,13 +24,14 @@ import (
 // DecodeProtocolMessageFieldError describes which JSON attribute
 // has an unsupported value that the decoding cannot handle.
 type DecodeProtocolMessageFieldError struct {
+	Seq        int
 	SubType    string
 	FieldName  string
 	FieldValue string
 }
 
 func (e *DecodeProtocolMessageFieldError) Error() string {
-	return fmt.Sprintf("%s %s '%s' is not supported", e.SubType, e.FieldName, e.FieldValue)
+	return fmt.Sprintf("%s %s '%s' is not supported (seq: %d)", e.SubType, e.FieldName, e.FieldValue, e.Seq)
 }
 
 // DecodeProtocolMessage parses the JSON-encoded data and returns the result of
@@ -50,7 +51,7 @@ func DecodeProtocolMessage(data []byte) (Message, error) {
 	case "event":
 		return decodeEvent(data)
 	default:
-		return nil, &DecodeProtocolMessageFieldError{"ProtocolMessage", "type", protomsg.Type}
+		return nil, &DecodeProtocolMessageFieldError{protomsg.GetSeq(), "ProtocolMessage", "type", protomsg.Type}
 	}
 }
 
@@ -69,15 +70,24 @@ func decodeRequest(data []byte) (Message, error) {
 		err := json.Unmarshal(data, requestPtr)
 		return requestPtr, err
 	}
-	return nil, &DecodeProtocolMessageFieldError{"Request", "command", r.Command}
+	return nil, &DecodeProtocolMessageFieldError{r.GetSeq(), "Request", "command", r.Command}
 }
 
 // Mapping of request commands and corresponding struct constructors that
 // can be passed to json.Unmarshal.
 var requestCtor = map[string]messageCtor{
-	"cancel":                  func() Message { return &CancelRequest{} },
-	"runInTerminal":           func() Message { return &RunInTerminalRequest{} },
-	"initialize":              func() Message { return &InitializeRequest{} },
+	"cancel":        func() Message { return &CancelRequest{} },
+	"runInTerminal": func() Message { return &RunInTerminalRequest{} },
+	"initialize": func() Message {
+		return &InitializeRequest{
+			Arguments: InitializeRequestArguments{
+				// Set the default values specified here: https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Initialize.
+				LinesStartAt1:   true,
+				ColumnsStartAt1: true,
+				PathFormat:      "path",
+			},
+		}
+	},
 	"configurationDone":       func() Message { return &ConfigurationDoneRequest{} },
 	"launch":                  func() Message { return &LaunchRequest{} },
 	"attach":                  func() Message { return &AttachRequest{} },
@@ -136,7 +146,7 @@ func decodeResponse(data []byte) (Message, error) {
 		err := json.Unmarshal(data, responsePtr)
 		return responsePtr, err
 	}
-	return nil, &DecodeProtocolMessageFieldError{"Response", "command", r.Command}
+	return nil, &DecodeProtocolMessageFieldError{r.GetSeq(), "Response", "command", r.Command}
 }
 
 // Mapping of response commands and corresponding struct constructors that
@@ -198,7 +208,7 @@ func decodeEvent(data []byte) (Message, error) {
 		err := json.Unmarshal(data, eventPtr)
 		return eventPtr, err
 	}
-	return nil, &DecodeProtocolMessageFieldError{"Event", "event", e.Event}
+	return nil, &DecodeProtocolMessageFieldError{e.GetSeq(), "Event", "event", e.Event}
 }
 
 // Mapping of event ids and corresponding struct constructors that
