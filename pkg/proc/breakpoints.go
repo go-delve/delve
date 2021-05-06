@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
+	"go/parser"
 	"reflect"
 )
 
@@ -33,6 +34,9 @@ type Breakpoint struct {
 	OriginalData []byte // If software breakpoint, the data we replace with breakpoint instruction.
 	Name         string // User defined name of the breakpoint
 	LogicalID    int    // ID of the logical breakpoint that owns this physical breakpoint
+
+	WatchType    WatchType
+	HWBreakIndex uint8 // hardware breakpoint index
 
 	// Kind describes whether this is an internal breakpoint (for next'ing or
 	// stepping).
@@ -92,6 +96,36 @@ const (
 	// destination of CALL, delete this breakpoint and then continue again
 	StepBreakpoint
 )
+
+// WatchType is the watchpoint type
+type WatchType uint8
+
+const (
+	WatchRead WatchType = 1 << iota
+	WatchWrite
+)
+
+// Read returns true if the hardware breakpoint should trigger on memory reads.
+func (wtype WatchType) Read() bool {
+	return wtype&WatchRead != 0
+}
+
+// Write returns true if the hardware breakpoint should trigger on memory writes.
+func (wtype WatchType) Write() bool {
+	return wtype&WatchWrite != 0
+}
+
+// Size returns the size in bytes of the hardware breakpoint.
+func (wtype WatchType) Size() int {
+	return int(wtype >> 4)
+}
+
+// withSize returns a new HWBreakType with the size set to the specified value
+func (wtype WatchType) withSize(sz uint8) WatchType {
+	return WatchType((sz << 4) | uint8(wtype&0xf))
+}
+
+var ErrHWBreakUnsupported = errors.New("hardware breakpoints not implemented")
 
 func (bp *Breakpoint) String() string {
 	return fmt.Sprintf("Breakpoint %d at %#v %s:%d (%d)", bp.LogicalID, bp.Addr, bp.File, bp.Line, bp.TotalHitCount)
@@ -243,6 +277,49 @@ func NewBreakpointMap() BreakpointMap {
 // SetBreakpoint sets a breakpoint at addr, and stores it in the process wide
 // break point table.
 func (t *Target) SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error) {
+	return t.setBreakpointInternal(addr, kind, 0, cond)
+}
+
+// SetWatchpoint sets a data breakpoint at addr and stores it in the
+// process wide break point table.
+func (t *Target) SetWatchpoint(scope *EvalScope, expr string, wtype WatchType, cond ast.Expr) (*Breakpoint, error) {
+	if (wtype&WatchWrite == 0) && (wtype&WatchRead == 0) {
+		return nil, errors.New("at least one of read and write must be set for watchpoint")
+	}
+
+	n, err := parser.ParseExpr(expr)
+	if err != nil {
+		return nil, err
+	}
+	xv, err := scope.evalAST(n)
+	if err != nil {
+		return nil, err
+	}
+	if xv.Addr == 0 || xv.Flags&VariableFakeAddress != 0 || xv.DwarfType == nil {
+		return nil, fmt.Errorf("can not watch %q", expr)
+	}
+	if xv.Unreadable != nil {
+		return nil, fmt.Errorf("expression %q is unreadable: %v", expr, xv.Unreadable)
+	}
+	if xv.Kind == reflect.UnsafePointer || xv.Kind == reflect.Invalid {
+		return nil, fmt.Errorf("can not watch variable of type %s", xv.Kind.String())
+	}
+	sz := xv.DwarfType.Size()
+	if sz <= 0 || sz > int64(t.BinInfo().Arch.PtrSize()) {
+		//TODO(aarzilli): it is reasonable to expect to be able to watch string
+		//and interface variables and we could support it by watching certain
+		//member fields here.
+		return nil, fmt.Errorf("can not watch variable of type %s", xv.DwarfType.String())
+	}
+	if xv.Addr >= scope.g.stack.lo && xv.Addr < scope.g.stack.hi {
+		//TODO(aarzilli): support watching stack variables
+		return nil, errors.New("can not watch stack allocated variable")
+	}
+
+	return t.setBreakpointInternal(xv.Addr, UserBreakpoint, wtype.withSize(uint8(sz)), cond)
+}
+
+func (t *Target) setBreakpointInternal(addr uint64, kind BreakpointKind, wtype WatchType, cond ast.Expr) (*Breakpoint, error) {
 	if valid, err := t.Valid(); !valid {
 		return nil, err
 	}
@@ -270,8 +347,25 @@ func (t *Target) SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) 
 		fnName = fn.Name
 	}
 
+	hwidx := uint8(0)
+	if wtype != 0 {
+		m := make(map[uint8]bool)
+		for _, bp := range bpmap.M {
+			if bp.WatchType != 0 {
+				m[bp.HWBreakIndex] = true
+			}
+		}
+		for hwidx = 0; true; hwidx++ {
+			if !m[hwidx] {
+				break
+			}
+		}
+	}
+
 	newBreakpoint := &Breakpoint{
 		FunctionName: fnName,
+		WatchType:    wtype,
+		HWBreakIndex: hwidx,
 		File:         f,
 		Line:         l,
 		Addr:         addr,
@@ -366,6 +460,16 @@ func (t *Target) ClearInternalBreakpoints() error {
 func (bpmap *BreakpointMap) HasInternalBreakpoints() bool {
 	for _, bp := range bpmap.M {
 		if bp.IsInternal() {
+			return true
+		}
+	}
+	return false
+}
+
+// HasHWBreakpoints returns true if there are hardware breakpoints.
+func (bpmap *BreakpointMap) HasHWBreakpoints() bool {
+	for _, bp := range bpmap.M {
+		if bp.WatchType != 0 {
 			return true
 		}
 	}

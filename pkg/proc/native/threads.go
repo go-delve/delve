@@ -53,6 +53,17 @@ func (t *nativeThread) StepInstruction() (err error) {
 	defer func() {
 		t.singleStepping = false
 	}()
+
+	if bp := t.CurrentBreakpoint.Breakpoint; bp != nil && bp.WatchType != 0 && t.dbp.Breakpoints().M[bp.Addr] == bp {
+		err = t.clearHardwareBreakpoint(bp.Addr, bp.WatchType, bp.HWBreakIndex)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			err = t.writeHardwareBreakpoint(bp.Addr, bp.WatchType, bp.HWBreakIndex)
+		}()
+	}
+
 	pc, err := t.PC()
 	if err != nil {
 		return err
@@ -61,7 +72,7 @@ func (t *nativeThread) StepInstruction() (err error) {
 	bp, ok := t.dbp.FindBreakpoint(pc, false)
 	if ok {
 		// Clear the breakpoint so that we can continue execution.
-		err = t.ClearBreakpoint(bp)
+		err = t.clearSoftwareBreakpoint(bp)
 		if err != nil {
 			return err
 		}
@@ -109,23 +120,40 @@ func (t *nativeThread) Common() *proc.CommonThread {
 // thread is stopped at as CurrentBreakpoint on the thread struct.
 func (t *nativeThread) SetCurrentBreakpoint(adjustPC bool) error {
 	t.CurrentBreakpoint.Clear()
-	pc, err := t.PC()
-	if err != nil {
-		return err
+
+	var bp *proc.Breakpoint
+
+	if t.dbp.Breakpoints().HasHWBreakpoints() {
+		var err error
+		bp, err = t.findHardwareBreakpoint()
+		if err != nil {
+			return err
+		}
 	}
+	if bp == nil {
+		pc, err := t.PC()
+		if err != nil {
+			return err
+		}
 
-	// If the breakpoint instruction does not change the value
-	// of PC after being executed we should look for breakpoints
-	// with bp.Addr == PC and there is no need to call SetPC
-	// after finding one.
-	adjustPC = adjustPC && t.BinInfo().Arch.BreakInstrMovesPC()
+		// If the breakpoint instruction does not change the value
+		// of PC after being executed we should look for breakpoints
+		// with bp.Addr == PC and there is no need to call SetPC
+		// after finding one.
+		adjustPC = adjustPC && t.BinInfo().Arch.BreakInstrMovesPC()
 
-	if bp, ok := t.dbp.FindBreakpoint(pc, adjustPC); ok {
-		if adjustPC {
-			if err = t.setPC(bp.Addr); err != nil {
-				return err
+		var ok bool
+		bp, ok = t.dbp.FindBreakpoint(pc, adjustPC)
+		if ok {
+			if adjustPC {
+				if err = t.setPC(bp.Addr); err != nil {
+					return err
+				}
 			}
 		}
+	}
+
+	if bp != nil {
 		t.CurrentBreakpoint = bp.CheckCondition(t)
 		if t.CurrentBreakpoint.Breakpoint != nil && t.CurrentBreakpoint.Active {
 			if g, err := proc.GetG(t); err == nil {
@@ -148,8 +176,8 @@ func (t *nativeThread) ThreadID() int {
 	return t.ID
 }
 
-// ClearBreakpoint clears the specified breakpoint.
-func (t *nativeThread) ClearBreakpoint(bp *proc.Breakpoint) error {
+// clearSoftwareBreakpoint clears the specified breakpoint.
+func (t *nativeThread) clearSoftwareBreakpoint(bp *proc.Breakpoint) error {
 	if _, err := t.WriteMemory(bp.Addr, bp.OriginalData); err != nil {
 		return fmt.Errorf("could not clear breakpoint %s", err)
 	}
