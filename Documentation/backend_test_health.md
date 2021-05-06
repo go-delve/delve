@@ -4,9 +4,8 @@ Tests skipped by each supported backend:
 	* 1 broken
 	* 3 broken - cgo stacktraces
 	* 2 not implemented
-* arm64 skipped = 3.3% (5/150)
+* arm64 skipped = 2.7% (4/150)
 	* 1 broken
-	* 1 broken - cgo stacktraces
 	* 1 broken - global variable symbolication
 	* 2 not implemented
 * darwin skipped = 1.3% (2/150)
