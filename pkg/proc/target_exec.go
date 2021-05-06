@@ -201,6 +201,9 @@ func (dbp *Target) Continue() error {
 				dbp.ClearInternalBreakpoints()
 			}
 			dbp.StopReason = StopBreakpoint
+			if curbp.Breakpoint.WatchType != 0 {
+				dbp.StopReason = StopWatchpoint
+			}
 			return conditionErrors(threads)
 		default:
 			// not a manual stop, not on runtime.Breakpoint, not on a breakpoint, just repeat
@@ -413,11 +416,11 @@ func (dbp *Target) StepInstruction() (err error) {
 	if ok, err := dbp.Valid(); !ok {
 		return err
 	}
-	thread.Breakpoint().Clear()
 	err = thread.StepInstruction()
 	if err != nil {
 		return err
 	}
+	thread.Breakpoint().Clear()
 	err = thread.SetCurrentBreakpoint(true)
 	if err != nil {
 		return err

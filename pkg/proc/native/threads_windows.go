@@ -155,3 +155,15 @@ func (t *nativeThread) ReadMemory(buf []byte, addr uint64) (int, error) {
 func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 	return _SetThreadContext(t.os.hThread, savedRegs.(*winutil.AMD64Registers).Context)
 }
+
+func (t *nativeThread) writeHardwareBreakpoint(addr uint64, wtype proc.WatchType, idx uint8) error {
+	return proc.ErrHWBreakUnsupported
+}
+
+func (t *nativeThread) clearHardwareBreakpoint(addr uint64, wtype proc.WatchType, idx uint8) error {
+	return proc.ErrHWBreakUnsupported
+}
+
+func (t *nativeThread) findHardwareBreakpoint() (*proc.Breakpoint, error) {
+	return nil, nil
+}
