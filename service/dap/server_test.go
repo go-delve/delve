@@ -51,6 +51,16 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 	fixture := protest.BuildFixture(name, buildFlags)
 
 	// Start the DAP server.
+	client := startDapServer(t)
+	// client.Close will close the client connectinon, which will cause a connection error
+	// on the server side and signal disconnect to unblock Stop() above.
+	defer client.Close()
+
+	test(client, fixture)
+}
+
+func startDapServer(t *testing.T) *daptest.Client {
+	// Start the DAP server.
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatal(err)
@@ -76,11 +86,7 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 	}()
 
 	client := daptest.NewClient(listener.Addr().String())
-	// This will close the client connectinon, which will cause a connection error
-	// on the server side and signal disconnect to unblock Stop() above.
-	defer client.Close()
-
-	test(client, fixture)
+	return client
 }
 
 // TestLaunchStopOnEntry emulates the message exchange that can be observed with
@@ -3335,6 +3341,66 @@ func TestBadAttachRequest(t *testing.T) {
 			t.Errorf("got %#v, want RequestSeq=%d", dresp, seqCnt)
 		}
 	})
+}
+
+func TestBadInitializeRequest(t *testing.T) {
+	runInitializeTest := func(args dap.InitializeRequestArguments, err string) {
+		t.Helper()
+		// Only one initialize request is allowed, so use a new server
+		// for each test.
+		client := startDapServer(t)
+		// client.Close will close the client connectinon, which will cause a connection error
+		// on the server side and signal disconnect to unblock Stop() above.
+		defer client.Close()
+
+		client.InitializeRequestWithArgs(args)
+		response := client.ExpectErrorResponse(t)
+		if response.Command != "initialize" {
+			t.Errorf("Command got %q, want \"launch\"", response.Command)
+		}
+		if response.Message != "Failed to initialize" {
+			t.Errorf("Message got %q, want \"Failed to launch\"", response.Message)
+		}
+		if response.Body.Error.Id != 3002 {
+			t.Errorf("Id got %d, want 3002", response.Body.Error.Id)
+		}
+		if response.Body.Error.Format != err {
+			t.Errorf("\ngot  %q\nwant %q", response.Body.Error.Format, err)
+		}
+	}
+
+	// Bad path format.
+	runInitializeTest(dap.InitializeRequestArguments{
+		AdapterID:       "go",
+		PathFormat:      "url", // unsupported 'pathFormat'
+		LinesStartAt1:   true,
+		ColumnsStartAt1: true,
+		Locale:          "en-us",
+	},
+		"Failed to initialize: Unsupported 'pathFormat' value 'url'.",
+	)
+
+	// LinesStartAt1 must be true.
+	runInitializeTest(dap.InitializeRequestArguments{
+		AdapterID:       "go",
+		PathFormat:      "path",
+		LinesStartAt1:   false, // only 1-based line numbers are supported
+		ColumnsStartAt1: true,
+		Locale:          "en-us",
+	},
+		"Failed to initialize: Only 1-based line numbers are supported.",
+	)
+
+	// ColumnsStartAt1 must be true.
+	runInitializeTest(dap.InitializeRequestArguments{
+		AdapterID:       "go",
+		PathFormat:      "path",
+		LinesStartAt1:   true,
+		ColumnsStartAt1: false, // only 1-based column numbers are supported
+		Locale:          "en-us",
+	},
+		"Failed to initialize: Only 1-based column numbers are supported.",
+	)
 }
 
 func TestBadlyFormattedMessageToServer(t *testing.T) {
