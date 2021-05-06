@@ -1251,7 +1251,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						client.VariablesRequest(ref)
 						m2 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m2, "m2", 1) // each key-value represented by a single child
-						ref = expectVarExact(t, m2, 0, "1", "m2[1]", "*main.astruct {A: 10, B: 11}", "*main.astruct", hasChildren)
+						ref = expectVarExact(t, m2, 0, "1", "m2[1]", "*main.astruct {A: 10, B: 11}", "int: *main.astruct", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m2kv1 := client.ExpectVariablesResponse(t)

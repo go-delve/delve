@@ -1411,8 +1411,8 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 			}
 			key, keyref := s.convertVariable(keyv, keyexpr)
 			val, valref := s.convertVariable(valv, valexpr)
-			keyType := keyv.TypeString()
-			valType := valv.TypeString()
+			keyType := s.getTypeIfSupported(keyv)
+			valType := s.getTypeIfSupported(valv)
 			// If key or value or both are scalars, we can use
 			// a single variable to represet key:value format.
 			// Otherwise, we must return separate variables for both.
@@ -1433,10 +1433,14 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 				}
 				children = append(children, keyvar, valvar)
 			} else { // At least one is a scalar
+				keyValType := valType
+				if len(keyType) > 0 && len(valType) > 0 {
+					keyValType = fmt.Sprintf("%s: %s", keyType, valType)
+				}
 				kvvar := dap.Variable{
 					Name:         key,
 					EvaluateName: valexpr,
-					Type:         valType, // The type of a key/value pair is the value type.
+					Type:         keyValType,
 					Value:        val,
 				}
 				if keyref != 0 { // key is a type to be expanded
@@ -1456,11 +1460,10 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		for i := range v.Children {
 			cfqname := fmt.Sprintf("%s[%d]", v.fullyQualifiedNameOrExpr, i)
 			cvalue, cvarref := s.convertVariable(&v.Children[i], cfqname)
-			ctype := v.Children[i].TypeString()
 			children[i] = dap.Variable{
 				Name:               fmt.Sprintf("[%d]", i),
 				EvaluateName:       cfqname,
-				Type:               ctype,
+				Type:               s.getTypeIfSupported(&v.Children[i]),
 				Value:              cvalue,
 				VariablesReference: cvarref,
 			}
@@ -1495,11 +1498,10 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 				name = fmt.Sprintf("(%s)", name)
 			}
 
-			ctype := c.TypeString()
 			children[i] = dap.Variable{
 				Name:               name,
 				EvaluateName:       cfqname,
-				Type:               ctype,
+				Type:               s.getTypeIfSupported(c),
 				Value:              cvalue,
 				VariablesReference: cvarref,
 			}
@@ -1517,6 +1519,13 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		Body:     dap.VariablesResponseBody{Variables: children},
 	}
 	s.send(response)
+}
+
+func (s *Server) getTypeIfSupported(v *proc.Variable) string {
+	if !s.clientCapabilities.supportsVariableType {
+		return ""
+	}
+	return v.TypeString()
 }
 
 // convertVariable converts proc.Variable to dap.Variable value and reference
