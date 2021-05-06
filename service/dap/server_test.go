@@ -128,7 +128,7 @@ func TestLaunchStopOnEntry(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		// 1 >> initialize, << initialize
 		client.InitializeRequest()
-		initResp := client.ExpectInitializeResponse(t)
+		initResp := client.ExpectInitializeResponseAndCapabilities(t)
 		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
 		}
@@ -191,21 +191,21 @@ func TestLaunchStopOnEntry(t *testing.T) {
 
 		// 8 >> stackTrace, << error
 		client.StackTraceRequest(1, 0, 20)
-		stResp := client.ExpectErrorResponse(t)
+		stResp := client.ExpectInvisibleErrorResponse(t)
 		if stResp.Seq != 0 || stResp.RequestSeq != 8 || stResp.Body.Error.Format != "Unable to produce stack trace: unknown goroutine 1" {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8 Format=\"Unable to produce stack trace: unknown goroutine 1\"", stResp)
 		}
 
 		// 9 >> stackTrace, << error
 		client.StackTraceRequest(1, 0, 20)
-		stResp = client.ExpectErrorResponse(t)
+		stResp = client.ExpectInvisibleErrorResponse(t)
 		if stResp.Seq != 0 || stResp.RequestSeq != 9 || stResp.Body.Error.Id != 2004 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Id=2004", stResp)
 		}
 
 		// 10 >> evaluate, << error
 		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
-		erResp := client.ExpectErrorResponse(t)
+		erResp := client.ExpectInvisibleErrorResponse(t)
 		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Id != 2009 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=2009", erResp)
 		}
@@ -272,7 +272,7 @@ func TestAttachStopOnEntry(t *testing.T) {
 
 		// 1 >> initialize, << initialize
 		client.InitializeRequest()
-		initResp := client.ExpectInitializeResponse(t)
+		initResp := client.ExpectInitializeResponseAndCapabilities(t)
 		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
 		}
@@ -339,7 +339,7 @@ func TestAttachStopOnEntry(t *testing.T) {
 
 		// 10 >> evaluate, << error
 		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
-		erResp := client.ExpectErrorResponse(t)
+		erResp := client.ExpectInvisibleErrorResponse(t)
 		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Id != 2009 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=2009", erResp)
 		}
@@ -405,7 +405,7 @@ func TestContinueOnEntry(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		// 1 >> initialize, << initialize
 		client.InitializeRequest()
-		client.ExpectInitializeResponse(t)
+		client.ExpectInitializeResponseAndCapabilities(t)
 
 		// 2 >> launch, << initialized, << launch
 		client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
@@ -473,7 +473,7 @@ func TestContinueOnEntry(t *testing.T) {
 func TestPreSetBreakpoint(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		client.InitializeRequest()
-		client.ExpectInitializeResponse(t)
+		client.ExpectInitializeResponseAndCapabilities(t)
 
 		client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
 		client.ExpectInitializedEvent(t)
@@ -1064,7 +1064,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					expectScope(t, scopes, 2, "Globals (package main)", 1002)
 
 					client.ScopesRequest(1111)
-					erres := client.ExpectErrorResponse(t)
+					erres := client.ExpectInvisibleErrorResponse(t)
 					if erres.Body.Error.Format != "Unable to list locals: unknown frame id 1111" {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to list locals: unknown frame id 1111\"", erres)
 					}
@@ -1083,7 +1083,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					expectVarExact(t, globals, 0, "p1", "main.p1", "10", noChildren)
 
 					client.VariablesRequest(7777)
-					erres = client.ExpectErrorResponse(t)
+					erres = client.ExpectInvisibleErrorResponse(t)
 					if erres.Body.Error.Format != "Unable to lookup variable: unknown reference 7777" {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to lookup variable: unknown reference 7777\"", erres)
 					}
@@ -2144,7 +2144,7 @@ func TestEvaluateRequest(t *testing.T) {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
 					}
 					client.EvaluateRequest("a1", 1002, "watch")
-					erres = client.ExpectErrorResponse(t)
+					erres = client.ExpectInvisibleErrorResponse(t)
 					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
 					}
@@ -2286,7 +2286,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 					expectEval(t, got, "\"this is a variable named `call`\"", noChildren)
 					// Call error
 					client.EvaluateRequest("call call1(one)", 1000, "watch")
-					erres := client.ExpectErrorResponse(t)
+					erres := client.ExpectInvisibleErrorResponse(t)
 					if erres.Body.Error.Format != "Unable to evaluate expression: not enough arguments" {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: not enough arguments\"", erres)
 					}
@@ -2724,7 +2724,7 @@ type onBreakpoint struct {
 //     onBreakpoints - list of test sequences to execute at each of the set breakpoints.
 func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cmdRequest func(), source string, breakpoints []int, onBPs []onBreakpoint) {
 	client.InitializeRequest()
-	client.ExpectInitializeResponse(t)
+	client.ExpectInitializeResponseAndCapabilities(t)
 
 	cmdRequest()
 	client.ExpectInitializedEvent(t)
@@ -2896,7 +2896,7 @@ func TestLaunchRequestNoDebug_BadStatus(t *testing.T) {
 // even when breakpoint is set.
 func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmdRequest func(), source string, breakpoints []int, status int) {
 	client.InitializeRequest()
-	client.ExpectInitializeResponse(t)
+	client.ExpectInitializeResponseAndCapabilities(t)
 
 	cmdRequest()
 	// no initialized event.
@@ -3140,75 +3140,75 @@ func TestBadLaunchRequests(t *testing.T) {
 
 		// Test for the DAP-specific detailed error message.
 		client.LaunchRequest("exec", "", stopOnEntry)
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
 		// Bad "program"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": 12345})
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": nil})
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug"})
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
 		// Bad "mode"
 		client.LaunchRequest("remote", fixture.Path, stopOnEntry)
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: Unsupported 'mode' value \"remote\" in debug configuration.")
 
 		client.LaunchRequest("notamode", fixture.Path, stopOnEntry)
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: Unsupported 'mode' value \"notamode\" in debug configuration.")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": 12345, "program": fixture.Path})
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: Unsupported 'mode' value %!q(float64=12345) in debug configuration.")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": ""}) // empty mode defaults to "debug" (not an error)
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{}) // missing mode defaults to "debug" (not an error)
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
 		// Bad "args"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "exec", "program": fixture.Path, "args": nil})
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: 'args' attribute '<nil>' in debug configuration is not an array.")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "exec", "program": fixture.Path, "args": 12345})
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: 'args' attribute '12345' in debug configuration is not an array.")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "exec", "program": fixture.Path, "args": []int{1, 2}})
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: value '1' in 'args' attribute in debug configuration is not a string.")
 
 		// Bad "buildFlags"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": 123})
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: 'buildFlags' attribute '123' in debug configuration is not a string.")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": 123})
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: 'substitutePath' attribute '123' in debug configuration is not a []{'from': string, 'to': string}")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{123}})
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: 'substitutePath' attribute '[123]' in debug configuration is not a []{'from': string, 'to': string}")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{map[string]interface{}{"to": "path2"}}})
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: 'substitutePath' attribute '[map[to:path2]]' in debug configuration is not a []{'from': string, 'to': string}")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{map[string]interface{}{"from": "path1", "to": 123}}})
-		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: 'substitutePath' attribute '[map[from:path1 to:123]]' in debug configuration is not a []{'from': string, 'to': string}")
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "cwd": 123})
 		expectFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
@@ -3216,21 +3216,21 @@ func TestBadLaunchRequests(t *testing.T) {
 
 		// Skip detailed message checks for potentially different OS-specific errors.
 		client.LaunchRequest("exec", fixture.Path+"_does_not_exist", stopOnEntry)
-		expectFailedToLaunch(client.ExpectErrorResponse(t)) // No such file or directory
+		expectFailedToLaunch(client.ExpectInvisibleErrorResponse(t)) // No such file or directory
 
 		client.LaunchRequest("debug", fixture.Path+"_does_not_exist", stopOnEntry)
-		expectFailedToLaunch(client.ExpectErrorResponse(t))
+		expectFailedToLaunch(client.ExpectInvisibleErrorResponse(t))
 
 		client.LaunchRequest("" /*debug by default*/, fixture.Path+"_does_not_exist", stopOnEntry)
-		expectFailedToLaunch(client.ExpectErrorResponse(t))
+		expectFailedToLaunch(client.ExpectInvisibleErrorResponse(t))
 
 		client.LaunchRequest("exec", fixture.Source, stopOnEntry)
-		expectFailedToLaunch(client.ExpectErrorResponse(t)) // Not an executable
+		expectFailedToLaunch(client.ExpectInvisibleErrorResponse(t)) // Not an executable
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "-bad -flags"})
-		expectFailedToLaunchWithMessageRegex(client.ExpectErrorResponse(t), `Failed to launch: Build error: .*flag provided but not defined.*`)
+		expectFailedToLaunchWithMessageRegex(client.ExpectInvisibleErrorResponse(t), `Failed to launch: Build error: .*flag provided but not defined.*`)
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "buildFlags": "-bad -flags"})
-		expectFailedToLaunchWithMessageRegex(client.ExpectErrorResponse(t), `Failed to launch: Build error: .*flag provided but not defined.*`)
+		expectFailedToLaunchWithMessageRegex(client.ExpectInvisibleErrorResponse(t), `Failed to launch: Build error: .*flag provided but not defined.*`)
 
 		// Bad "wd".
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": false, "cwd": "dir/invalid"})
@@ -3277,49 +3277,49 @@ func TestBadAttachRequest(t *testing.T) {
 
 		// Bad "mode"
 		client.AttachRequest(map[string]interface{}{"mode": "remote"})
-		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to attach: Unsupported 'mode' value \"remote\" in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{"mode": "blah blah blah"})
-		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to attach: Unsupported 'mode' value \"blah blah blah\" in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{"mode": 123})
-		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to attach: Unsupported 'mode' value %!q(float64=123) in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{"mode": ""}) // empty mode defaults to "local" (not an error)
-		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{}) // no mode defaults to "local" (not an error)
-		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
 		// Bad "processId"
 		client.AttachRequest(map[string]interface{}{"mode": "local"})
-		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": nil})
-		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 0})
-		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": "1"})
-		expectFailedToAttachWithMessage(client.ExpectErrorResponse(t),
+		expectFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 1})
 		// The exact message varies on different systems, so skip that check
-		expectFailedToAttach(client.ExpectErrorResponse(t)) // could not attach to pid 1
+		expectFailedToAttach(client.ExpectInvisibleErrorResponse(t)) // could not attach to pid 1
 
 		// This will make debugger.(*Debugger) panic, which we will catch as an internal error.
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": -1})
-		er := client.ExpectErrorResponse(t)
+		er := client.ExpectInvisibleErrorResponse(t)
 		if er.RequestSeq != seqCnt {
 			t.Errorf("RequestSeq got %d, want %d", seqCnt, er.RequestSeq)
 		}
