@@ -3,14 +3,11 @@ param (
     [Parameter(Mandatory = $true)][string]$arch
 )
 
+# Install Chocolatey
+#Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+
 # Install MinGW.
-if (-Not(Test-Path "C:\mingw64"))
-{
-    $file = "x86_64-4.9.2-release-win32-seh-rt_v4-rev3.7z"
-    $url = "https://bintray.com/artifact/download/drewwells/generic/$file"
-    Invoke-WebRequest -UserAgent wget -Uri $url -OutFile $file
-    &7z x -oC:\ $file > $null
-}
+choco install -y mingw
 
 # Install Procdump
 if (-Not(Test-Path "C:\procdump"))
@@ -66,4 +63,4 @@ Write-Host $env:GOPATH
 
 go version
 go env
-mingw32-make test
+go run _scripts/make.go test

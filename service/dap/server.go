@@ -1984,6 +1984,8 @@ func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
 			stopped.Body.Reason = "pause"
 		case proc.StopUnknown: // can happen while stopping
 			stopped.Body.Reason = "unknown"
+		case proc.StopWatchpoint:
+			stopped.Body.Reason = "data breakpoint"
 		default:
 			stopped.Body.Reason = "breakpoint"
 		}
