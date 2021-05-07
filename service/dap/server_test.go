@@ -3018,38 +3018,25 @@ func TestPauseAndContinue(t *testing.T) {
 				execute: func() {
 					verifyStopLocation(t, client, 1, "main.loop", 6)
 
-					// Advance past the breakpoint line, so breakpoint and pause don't compete
-					// Even though StopReason "pause" is supposed to trump "breakpoint",
-					// sometimes that is not the case.
-					client.NextRequest(1)
-					client.ExpectNextResponse(t)
-					client.ExpectStoppedEvent(t)
-					verifyStopLocation(t, client, 1, "main.loop", 7)
+					// Continue resumes all goroutines, so thread id is ignored
+					client.ContinueRequest(12345)
+					client.ExpectContinueResponse(t)
 
-					// Pause will be a no-op at a breakpoint: there will be no additional stopped events
-					client.PauseRequest(1)
-					client.ExpectPauseResponse(t)
-					verifyStopLocation(t, client, 1, "main.loop", 7)
+					time.Sleep(time.Second)
 
-					for i := 0; i < 10; i++ {
-						// Continue resumes all goroutines, so thread id is ignored
-						client.ContinueRequest(-i)
-						client.ExpectContinueResponse(t)
-
-						// Halt pauses all goroutines, so thread id is ignored
-						client.PauseRequest(-i)
-						// Since we are in async mode while running, we might receive next two messages in either order.
-						for i := 0; i < 2; i++ {
-							msg := client.ExpectMessage(t)
-							switch m := msg.(type) {
-							case *dap.StoppedEvent:
-								if m.Body.Reason != "pause" || m.Body.ThreadId != 0 && m.Body.ThreadId != 1 {
-									t.Errorf("\ngot %#v\nwant ThreadId=0/1 Reason='pause'", m)
-								}
-							case *dap.PauseResponse:
-							default:
-								t.Fatalf("got %#v, want StoppedEvent or PauseResponse", m)
+					// Halt pauses all goroutines, so thread id is ignored
+					client.PauseRequest(56789)
+					// Since we are in async mode while running, we might receive next two messages in either order.
+					for i := 0; i < 2; i++ {
+						msg := client.ExpectMessage(t)
+						switch m := msg.(type) {
+						case *dap.StoppedEvent:
+							if m.Body.Reason != "pause" || m.Body.ThreadId != 0 && m.Body.ThreadId != 1 {
+								t.Errorf("\ngot %#v\nwant ThreadId=0/1 Reason='pause'", m)
 							}
+						case *dap.PauseResponse:
+						default:
+							t.Fatalf("got %#v, want StoppedEvent or PauseResponse", m)
 						}
 					}
 
