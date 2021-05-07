@@ -755,10 +755,20 @@ func (v *Variable) TypeString() string {
 	if v == nilVariable {
 		return "nil"
 	}
-	if v.DwarfType != nil {
+	if v.DwarfType == nil {
+		return v.Kind.String()
+	}
+	if v.DwarfType.Common().Name != "" {
 		return v.DwarfType.Common().Name
 	}
-	return v.Kind.String()
+	r := v.DwarfType.String()
+	if r == "*void" {
+		cu := v.bi.Images[v.DwarfType.Common().Index].findCompileUnitForOffset(v.DwarfType.Common().Offset)
+		if cu != nil && cu.isgo {
+			r = "unsafe.Pointer"
+		}
+	}
+	return r
 }
 
 func (v *Variable) toField(field *godwarf.StructField) (*Variable, error) {
