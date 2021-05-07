@@ -3,6 +3,7 @@ package line
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 
 	"github.com/go-delve/delve/pkg/dwarf/util"
 )
@@ -39,6 +40,8 @@ const (
 	_DW_LNCT_MD5
 )
 
+var ErrBufferUnderflow = errors.New("buffer underflow")
+
 type formReader struct {
 	logf         func(string, ...interface{})
 	contentTypes []uint64
@@ -51,11 +54,15 @@ type formReader struct {
 	u64   uint64
 	i64   int64
 	str   string
+	err   error
 
 	nexti int
 }
 
 func readEntryFormat(buf *bytes.Buffer, logf func(string, ...interface{})) *formReader {
+	if buf.Len() < 1 {
+		return nil
+	}
 	count := buf.Next(1)[0]
 	r := &formReader{
 		logf:         logf,
@@ -70,10 +77,14 @@ func readEntryFormat(buf *bytes.Buffer, logf func(string, ...interface{})) *form
 }
 
 func (rdr *formReader) reset() {
+	rdr.err = nil
 	rdr.nexti = 0
 }
 
 func (rdr *formReader) next(buf *bytes.Buffer) bool {
+	if rdr.err != nil {
+		return false
+	}
 	if rdr.nexti >= len(rdr.contentTypes) {
 		return false
 	}
@@ -87,24 +98,52 @@ func (rdr *formReader) next(buf *bytes.Buffer) bool {
 		rdr.readBlock(buf, n)
 
 	case _DW_FORM_block1:
+		if buf.Len() < 1 {
+			rdr.err = ErrBufferUnderflow
+			return false
+		}
 		rdr.readBlock(buf, uint64(buf.Next(1)[0]))
 
 	case _DW_FORM_block2:
+		if buf.Len() < 2 {
+			rdr.err = ErrBufferUnderflow
+			return false
+		}
 		rdr.readBlock(buf, uint64(binary.LittleEndian.Uint16(buf.Next(2))))
 
 	case _DW_FORM_block4:
+		if buf.Len() < 4 {
+			rdr.err = ErrBufferUnderflow
+			return false
+		}
 		rdr.readBlock(buf, uint64(binary.LittleEndian.Uint32(buf.Next(4))))
 
 	case _DW_FORM_data1, _DW_FORM_flag, _DW_FORM_strx1:
+		if buf.Len() < 1 {
+			rdr.err = ErrBufferUnderflow
+			return false
+		}
 		rdr.u64 = uint64(buf.Next(1)[0])
 
 	case _DW_FORM_data2, _DW_FORM_strx2:
+		if buf.Len() < 2 {
+			rdr.err = ErrBufferUnderflow
+			return false
+		}
 		rdr.u64 = uint64(binary.LittleEndian.Uint16(buf.Next(2)))
 
 	case _DW_FORM_data4, _DW_FORM_line_strp, _DW_FORM_sec_offset, _DW_FORM_strp, _DW_FORM_strx4:
+		if buf.Len() < 4 {
+			rdr.err = ErrBufferUnderflow
+			return false
+		}
 		rdr.u64 = uint64(binary.LittleEndian.Uint32(buf.Next(4)))
 
 	case _DW_FORM_data8:
+		if buf.Len() < 8 {
+			rdr.err = ErrBufferUnderflow
+			return false
+		}
 		rdr.u64 = binary.LittleEndian.Uint64(buf.Next(8))
 
 	case _DW_FORM_data16:
@@ -120,6 +159,10 @@ func (rdr *formReader) next(buf *bytes.Buffer) bool {
 		rdr.str, _ = util.ParseString(buf)
 
 	case _DW_FORM_strx3:
+		if buf.Len() < 3 {
+			rdr.err = ErrBufferUnderflow
+			return false
+		}
 		rdr.u64 = uint64(binary.LittleEndian.Uint32(append(buf.Next(3), 0x0)))
 
 	default:
@@ -136,6 +179,10 @@ func (rdr *formReader) next(buf *bytes.Buffer) bool {
 }
 
 func (rdr *formReader) readBlock(buf *bytes.Buffer, n uint64) {
+	if uint64(buf.Len()) < n {
+		rdr.err = ErrBufferUnderflow
+		return
+	}
 	if cap(rdr.block) < int(n) {
 		rdr.block = make([]byte, 0, n)
 	}

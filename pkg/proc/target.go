@@ -101,6 +101,8 @@ func (sr StopReason) String() string {
 		return "next finished"
 	case StopCallReturned:
 		return "call returned"
+	case StopWatchpoint:
+		return "watchpoint"
 	default:
 		return ""
 	}
@@ -116,6 +118,7 @@ const (
 	StopManual                         // A manual stop was requested
 	StopNextFinished                   // The next/step/stepout command terminated
 	StopCallReturned                   // An injected call completed
+	StopWatchpoint                     // The target process hit one or more watchpoints
 )
 
 // NewTargetConfig contains the configuration for a new Target object,
