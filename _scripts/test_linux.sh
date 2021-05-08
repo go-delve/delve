@@ -20,7 +20,7 @@ function getgo {
 }
 
 if [ "$version" = "gotip" ]; then
-	exit 0
+	#exit 0
 	echo Building Go from tip
 	getgo $(curl https://golang.org/VERSION?m=text)
 	export GOROOT_BOOTSTRAP=$GOROOT
