@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -52,9 +53,11 @@ func NewMakeCommands() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			tagFlag := prepareMacnative()
 			execute("go", "install", tagFlag, buildFlags(), DelveMainPackagePath)
+			dlvExecutablePath := installedExecutablePath()
 			if runtime.GOOS == "darwin" && os.Getenv("CERT") != "" && canMacnative() {
-				codesign(installedExecutablePath())
+				codesign(dlvExecutablePath)
 			}
+			copyDAPBinary(dlvExecutablePath)
 		},
 	})
 
@@ -108,6 +111,36 @@ This option can only be specified if testset is basic or a single package.`)
 	})
 
 	return RootCommand
+}
+
+// copyDAPBinary replicates the dlv installation into dlv-dap binary
+func copyDAPBinary(dlvExecutablePath string) {
+	srcFile, err := os.Open(dlvExecutablePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer srcFile.Close()
+
+	dlvDAPExecutablePath := fmt.Sprintf("%s-dap", dlvExecutablePath)
+
+	destFile, err := os.Create(dlvDAPExecutablePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, srcFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fi, _ := srcFile.Stat()
+	os.Chmod(dlvDAPExecutablePath, fi.Mode().Perm())
+
+	err = destFile.Sync()
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func checkCert() bool {
