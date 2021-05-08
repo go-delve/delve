@@ -1209,6 +1209,9 @@ func (p *gdbProcess) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
 }
 
 func (p *gdbProcess) WriteBreakpoint(bp *proc.Breakpoint) error {
+	if bp.WatchType != 0 {
+		return errors.New("hardware breakpoints not supported")
+	}
 	return p.conn.setBreakpoint(bp.Addr, p.breakpointKind)
 }
 
