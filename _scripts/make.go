@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -47,7 +46,8 @@ func NewMakeCommands() *cobra.Command {
 		},
 	})
 
-	RootCommand.AddCommand(&cobra.Command{
+	var dapInstall bool
+	installCommand := &cobra.Command{
 		Use:   "install",
 		Short: "Installs delve",
 		Run: func(cmd *cobra.Command, args []string) {
@@ -57,9 +57,13 @@ func NewMakeCommands() *cobra.Command {
 			if runtime.GOOS == "darwin" && os.Getenv("CERT") != "" && canMacnative() {
 				codesign(dlvExecutablePath)
 			}
-			copyDAPBinary(dlvExecutablePath)
+			if dapInstall {
+				updateDAPSymlink(dlvExecutablePath)
+			}
 		},
-	})
+	}
+	installCommand.Flags().BoolVarP(&dapInstall, "dap", "d", true, "If true, additionally installs dlv-dap as a dlv symlink")
+	RootCommand.AddCommand(installCommand)
 
 	RootCommand.AddCommand(&cobra.Command{
 		Use:   "uninstall",
@@ -113,33 +117,21 @@ This option can only be specified if testset is basic or a single package.`)
 	return RootCommand
 }
 
-// copyDAPBinary replicates the dlv installation into dlv-dap binary
-func copyDAPBinary(dlvExecutablePath string) {
-	srcFile, err := os.Open(dlvExecutablePath)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer srcFile.Close()
-
+// updateDAPSymlink replicates the dlv executable installation into a dlv-dap symlink
+func updateDAPSymlink(dlvExecutablePath string) {
 	dlvDAPExecutablePath := fmt.Sprintf("%s-dap", dlvExecutablePath)
 
-	destFile, err := os.Create(dlvDAPExecutablePath)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer destFile.Close()
-
-	_, err = io.Copy(destFile, srcFile)
-	if err != nil {
-		log.Fatal(err)
+	if _, err := os.Lstat(dlvDAPExecutablePath); err == nil {
+		if err := os.Remove(dlvDAPExecutablePath); err != nil {
+			log.Println(err.Error())
+		}
+	} else if !os.IsNotExist(err) {
+		log.Println(err.Error())
 	}
 
-	fi, _ := srcFile.Stat()
-	os.Chmod(dlvDAPExecutablePath, fi.Mode().Perm())
-
-	err = destFile.Sync()
+	err := os.Symlink(dlvExecutablePath, dlvDAPExecutablePath)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err.Error())
 	}
 }
 

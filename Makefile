@@ -7,7 +7,7 @@ build:
 	@go run _scripts/make.go build
 
 install:
-	@go run _scripts/make.go install
+	@go run _scripts/make.go install $(ARGS)
 
 uninstall:
 	@go run _scripts/make.go uninstall
