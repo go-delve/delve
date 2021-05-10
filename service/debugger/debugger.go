@@ -63,8 +63,9 @@ type Debugger struct {
 
 	log *logrus.Entry
 
-	running      bool
-	runningMutex sync.Mutex
+	running        bool
+	runningCommand string
+	runningMutex   sync.Mutex
 
 	stopRecording func() error
 	recordMutex   sync.Mutex
@@ -967,9 +968,10 @@ func (d *Debugger) FindThread(id int) (proc.Thread, error) {
 	return nil, nil
 }
 
-func (d *Debugger) setRunning(running bool) {
+func (d *Debugger) setRunning(running bool, command string) {
 	d.runningMutex.Lock()
 	d.running = running
+	d.runningCommand = command
 	d.runningMutex.Unlock()
 }
 
@@ -977,6 +979,12 @@ func (d *Debugger) IsRunning() bool {
 	d.runningMutex.Lock()
 	defer d.runningMutex.Unlock()
 	return d.running
+}
+
+func (d *Debugger) RunningCommand() string {
+	d.runningMutex.Lock()
+	defer d.runningMutex.Unlock()
+	return d.runningCommand
 }
 
 // Command handles commands which control the debugger lifecycle
@@ -1000,8 +1008,8 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	d.setRunning(true)
-	defer d.setRunning(false)
+	d.setRunning(true, command.Name)
+	defer d.setRunning(false, "")
 
 	if command.Name != api.SwitchGoroutine && command.Name != api.SwitchThread && command.Name != api.Halt {
 		d.target.ResumeNotify(resumeNotify)

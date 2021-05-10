@@ -89,6 +89,9 @@ type Server struct {
 	listener net.Listener
 	// stopTriggered is closed when the server is Stop()-ed.
 	stopTriggered chan struct{}
+	// overrideStopReason allows the run goroutine to communicate to the
+	// command goroutine how to process a stop
+	overrideStopReason chan string
 	// reader is used to read requests from the connection.
 	reader *bufio.Reader
 	// log is used for structured logging.
@@ -169,13 +172,14 @@ func NewServer(config *service.Config) *Server {
 	logflags.WriteDAPListeningMessage(config.Listener.Addr().String())
 	logger.Debug("DAP server pid = ", os.Getpid())
 	return &Server{
-		config:            config,
-		listener:          config.Listener,
-		stopTriggered:     make(chan struct{}),
-		log:               logger,
-		stackFrameHandles: newHandlesMap(),
-		variableHandles:   newVariablesHandlesMap(),
-		args:              defaultArgs,
+		config:             config,
+		listener:           config.Listener,
+		stopTriggered:      make(chan struct{}),
+		overrideStopReason: make(chan string, 1),
+		log:                logger,
+		stackFrameHandles:  newHandlesMap(),
+		variableHandles:    newVariablesHandlesMap(),
+		args:               defaultArgs,
 	}
 }
 
@@ -339,6 +343,8 @@ func (s *Server) serveDAPCodec() {
 	}
 }
 
+const skipStop = ""
+
 // In case a handler panics, we catch the panic to avoid crashing both
 // the server and the target. We send an error response back, but
 // in case its a dup and ignored by the client, we also log the error.
@@ -383,12 +389,15 @@ func (s *Server) handleRequest(request dap.Message) {
 		return
 	}
 
+	// Non-blocking request handlers will signal when they are ready
+	// setting up for async execution, so more requests can be processed.
+	resumeRequestLoop := make(chan struct{})
+
 	// Most requests cannot be processed while the debuggee is running.
 	// We have a couple of options for handling these without blocking
 	// the request loop indefinitely when we are in running state.
 	// --1-- Return a dummy response or an error right away.
 	// --2-- Halt execution, process the request, resume execution.
-	// TODO(polina): do this for setting breakpoints
 	// --3-- Handle such requests asynchronously and let them block until
 	// the process stops or terminates (e.g. using a channel and a single
 	// goroutine to preserve the order). This might not be appropriate
@@ -415,6 +424,37 @@ func (s *Server) handleRequest(request dap.Message) {
 				Body:     dap.ThreadsResponseBody{Threads: []dap.Thread{{Id: -1, Name: "Current"}}},
 			}
 			s.send(response)
+		case *dap.SetBreakpointsRequest:
+			// Halt running command
+			inProgress := s.debugger.RunningCommand()
+			if inProgress == api.Continue {
+				s.overrideStopReason <- skipStop
+			} else {
+				s.overrideStopReason <- fmt.Sprintf("cancelled %s", inProgress)
+			}
+			s.log.Debug("halting execution to set breakpoints")
+			_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+			if err != nil {
+				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
+			}
+			// Set breakpoints
+			s.onSetBreakpointsRequest(request)
+			// Resume or cancel command
+			if inProgress == api.Continue {
+				go func() {
+					defer s.recoverPanic(request)
+					s.log.Debug("resuming execution after setting breakpoints")
+					s.doCommand(api.Continue, resumeRequestLoop)
+				}()
+				<-resumeRequestLoop
+			} else {
+				s.send(&dap.OutputEvent{
+					Event: *newEvent("output"),
+					Body: dap.OutputEventBody{
+						Output:   fmt.Sprintf("WARNING: setting breakpoints halted execution and cancelled %q\n", inProgress),
+						Category: "stderr",
+					}})
+			}
 		default:
 			r := request.(dap.RequestMessage).GetRequest()
 			s.sendErrorResponse(*r, DebuggeeIsRunning, fmt.Sprintf("Unable to process `%s`", r.Command), "debuggee is running")
@@ -428,10 +468,6 @@ func (s *Server) handleRequest(request dap.Message) {
 	// to another goroutine. Please note that because of the running
 	// check above, there should be no more than one pending asynchronous
 	// request at a time.
-
-	// Non-blocking request handlers will signal when they are ready
-	// setting up for async execution, so more requests can be processed.
-	resumeRequestLoop := make(chan struct{})
 
 	switch request := request.(type) {
 	//--- Asynchronous requests ---
@@ -1912,7 +1948,7 @@ func (s *Server) resetHandlesForStoppedEvent() {
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
 func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
-	// TODO(polina): it appears that debugger.Command doesn't close
+	// TODO(polina): it appears that debugger.Command doesn't always close
 	// asyncSetupDone (e.g. when having an error next while nexting).
 	// So we should always close it ourselves just in case.
 	defer s.asyncCommandDone(asyncSetupDone)
@@ -1922,33 +1958,47 @@ func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
 		return
 	}
 
-	s.resetHandlesForStoppedEvent()
+	stopReason := s.debugger.StopReason()
+	s.log.Debugf("%q command stopped - reason %q", command, stopReason)
 	stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
+
+	select {
+	case sr := <-s.overrideStopReason:
+		switch sr {
+		case skipStop:
+			return
+		default:
+			stopped.Body.Reason = sr
+		}
+	default:
+	}
+
+	s.resetHandlesForStoppedEvent()
 	stopped.Body.AllThreadsStopped = true
 
 	if err == nil {
 		stopped.Body.ThreadId = stoppedGoroutineID(state)
 
-		sr := s.debugger.StopReason()
-		s.log.Debugf("%q command stopped - reason %q", command, sr)
-		switch sr {
-		case proc.StopNextFinished:
-			stopped.Body.Reason = "step"
-		case proc.StopManual: // triggered by halt
-			stopped.Body.Reason = "pause"
-		case proc.StopUnknown: // can happen while stopping
-			stopped.Body.Reason = "unknown"
-		case proc.StopWatchpoint:
-			stopped.Body.Reason = "data breakpoint"
-		default:
-			stopped.Body.Reason = "breakpoint"
-		}
-		if state.CurrentThread != nil && state.CurrentThread.Breakpoint != nil {
-			switch state.CurrentThread.Breakpoint.Name {
-			case proc.FatalThrow:
-				stopped.Body.Reason = "fatal error"
-			case proc.UnrecoveredPanic:
-				stopped.Body.Reason = "panic"
+		if stopped.Body.Reason == "" {
+			switch stopReason {
+			case proc.StopNextFinished:
+				stopped.Body.Reason = "step"
+			case proc.StopManual: // triggered by halt
+				stopped.Body.Reason = "pause"
+			case proc.StopUnknown: // can happen while stopping
+				stopped.Body.Reason = "unknown"
+			case proc.StopWatchpoint:
+				stopped.Body.Reason = "data breakpoint"
+			default:
+				stopped.Body.Reason = "breakpoint"
+			}
+			if state.CurrentThread != nil && state.CurrentThread.Breakpoint != nil {
+				switch state.CurrentThread.Breakpoint.Name {
+				case proc.FatalThrow:
+					stopped.Body.Reason = "fatal error"
+				case proc.UnrecoveredPanic:
+					stopped.Body.Reason = "panic"
+				}
 			}
 		}
 	} else {

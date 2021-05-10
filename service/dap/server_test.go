@@ -1764,6 +1764,28 @@ func TestLaunchRequestWithStackTraceDepth(t *testing.T) {
 	})
 }
 
+type Breakpoint struct {
+	line      int
+	path      string
+	verified  bool
+	msgPrefix string
+}
+
+func expectSetBreakpointsResponse(t *testing.T, client *daptest.Client, bps []Breakpoint) {
+	t.Helper()
+	got := client.ExpectSetBreakpointsResponse(t)
+	if len(got.Body.Breakpoints) != len(bps) {
+		t.Errorf("got %#v,\nwant len(Breakpoints)=%d", got, len(bps))
+		return
+	}
+	for i, bp := range got.Body.Breakpoints {
+		if bp.Line != bps[i].line || bp.Verified != bps[i].verified || bp.Source.Path != bps[i].path ||
+			!strings.HasPrefix(bp.Message, bps[i].msgPrefix) {
+			t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
+		}
+	}
+}
+
 // TestSetBreakpoint executes to a breakpoint and tests different
 // configurations of setBreakpoint requests.
 func TestSetBreakpoint(t *testing.T) {
@@ -1779,34 +1801,13 @@ func TestSetBreakpoint(t *testing.T) {
 				execute: func() {
 					handleStop(t, client, 1, "main.main", 16)
 
-					type Breakpoint struct {
-						line      int
-						path      string
-						verified  bool
-						msgPrefix string
-					}
-					expectSetBreakpointsResponse := func(bps []Breakpoint) {
-						t.Helper()
-						got := client.ExpectSetBreakpointsResponse(t)
-						if len(got.Body.Breakpoints) != len(bps) {
-							t.Errorf("got %#v,\nwant len(Breakpoints)=%d", got, len(bps))
-							return
-						}
-						for i, bp := range got.Body.Breakpoints {
-							if bp.Line != bps[i].line || bp.Verified != bps[i].verified || bp.Source.Path != bps[i].path ||
-								!strings.HasPrefix(bp.Message, bps[i].msgPrefix) {
-								t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
-							}
-						}
-					}
-
 					// Set two breakpoints at the next two lines in main
 					client.SetBreakpointsRequest(fixture.Source, []int{17, 18})
-					expectSetBreakpointsResponse([]Breakpoint{{17, fixture.Source, true, ""}, {18, fixture.Source, true, ""}})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{17, fixture.Source, true, ""}, {18, fixture.Source, true, ""}})
 
 					// Clear 17, reset 18
 					client.SetBreakpointsRequest(fixture.Source, []int{18})
-					expectSetBreakpointsResponse([]Breakpoint{{18, fixture.Source, true, ""}})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{18, fixture.Source, true, ""}})
 
 					// Skip 17, continue to 18
 					client.ContinueRequest(1)
@@ -1816,7 +1817,7 @@ func TestSetBreakpoint(t *testing.T) {
 
 					// Set another breakpoint inside the loop in loop(), twice to trigger error
 					client.SetBreakpointsRequest(fixture.Source, []int{8, 8})
-					expectSetBreakpointsResponse([]Breakpoint{{8, fixture.Source, true, ""}, {8, "", false, "Breakpoint exists"}})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}, {8, "", false, "Breakpoint exists"}})
 
 					// Continue into the loop
 					client.ContinueRequest(1)
@@ -1829,7 +1830,7 @@ func TestSetBreakpoint(t *testing.T) {
 
 					// Edit the breakpoint to add a condition
 					client.SetConditionalBreakpointsRequest(fixture.Source, []int{8}, map[int]string{8: "i == 3"})
-					expectSetBreakpointsResponse([]Breakpoint{{8, fixture.Source, true, ""}})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}})
 
 					// Continue until condition is hit
 					client.ContinueRequest(1)
@@ -1842,7 +1843,7 @@ func TestSetBreakpoint(t *testing.T) {
 
 					// Edit the breakpoint to remove a condition
 					client.SetConditionalBreakpointsRequest(fixture.Source, []int{8}, map[int]string{8: ""})
-					expectSetBreakpointsResponse([]Breakpoint{{8, fixture.Source, true, ""}})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}})
 
 					// Continue for one more loop iteration
 					client.ContinueRequest(1)
@@ -1855,9 +1856,74 @@ func TestSetBreakpoint(t *testing.T) {
 
 					// Set at a line without a statement
 					client.SetBreakpointsRequest(fixture.Source, []int{1000})
-					expectSetBreakpointsResponse([]Breakpoint{{1000, "", false, "could not find statement"}}) // all cleared, none set
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{1000, "", false, "could not find statement"}}) // all cleared, none set
 				},
 				// The program has an infinite loop, so we must kill it by disconnecting.
+				disconnect: true,
+			}})
+	})
+}
+
+func TestSetBreakpointWhileRunning(t *testing.T) {
+	runTest(t, "sleep", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{9},
+			[]onBreakpoint{{
+				execute: func() {
+					handleStop(t, client, 1, "main.f", 9)
+					client.NextRequest(1)
+					client.ExpectNextResponse(t)
+					client.ExpectStoppedEvent(t)
+					handleStop(t, client, 1, "main.f", 10)
+
+					// This will be a 10 second sleepy next, so we can reliably interrupt it
+					client.NextRequest(1)
+					client.ExpectNextResponse(t)
+
+					// Set breakpoint at line 11 right after sleep
+					client.SetBreakpointsRequest(fixture.Source, []int{11})
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "cancelled next" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='cancelled next' AllThreadsStopped=true ThreadId=0/1", se)
+					}
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{11, fixture.Source, true, ""}})
+					oe := client.ExpectOutputEvent(t)
+					warning := "WARNING: setting breakpoints halted execution and cancelled \"next\"\n"
+					if oe.Body.Category != "stderr" || oe.Body.Output != warning {
+						t.Errorf("\ngot  %#v\nwant Category='stderr' Output=%q", oe, warning)
+					}
+
+					// We must continue since next got cancelled
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					// Continue stops at line 11 (verifies that setting breakpoint during next worked)
+					se = client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "breakpoint" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.f", 11)
+
+					// We coninue and loop once more
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					// While its running, set breakpoint at line 10 and clear line 11
+					client.SetBreakpointsRequest(fixture.Source, []int{10})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{10, fixture.Source, true, ""}})
+
+					// Continue stops at line 10 (verifies that setting breakpoint during coninue worked)
+					se = client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "breakpoint" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.f", 10)
+				},
 				disconnect: true,
 			}})
 	})
