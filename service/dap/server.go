@@ -1692,7 +1692,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 		// TODO(polina): We don't need to single out errTerminated case, and sending error
 		// response after 'terminated' event is fine. But TestEvaluateCallRequest is sensitive
 		// and fails without this.
-		if errors.Is(err, errTerminated) {
+		if err == errTerminated {
 			return
 		}
 		if err != nil {
@@ -1790,6 +1790,19 @@ func (s *Server) doCall(goid, frame int, expr string) (*api.DebuggerState, []*pr
 	if _, err := parser.ParseExpr(expr); err != nil {
 		isAssignment = true
 	}
+
+	// note: as described in https://github.com/golang/go/issues/25578, function call injection
+	// causes to resume the entire Go process. Due to this limitation, there is no guarantee
+	// that the process is in the same state even after the injected call returns normally
+	// without any surprises such as breakpoints or panic. To handle this correctly we need
+	// to reset all the handles (both variables and stack frames).
+	//
+	// We considered sending a stopped event after each call unconditionally, but a stopped
+	// event can be expensive and can interact badly with the client-side optimization
+	// to refresh information. For example, VS Code reissues scopes/evaluate (for watch) after
+	// completing a setVariable or evaluate request for repl context. Thus, for now, we
+	// do not trigger a stopped event and hope editors to refetch the updated state as soon
+	// as the user resumes debugging.
 
 	if !found || !isAssignment && retVars == nil {
 		// The call got interrupted by a stop (e.g. breakpoint in injected
@@ -1935,20 +1948,17 @@ func (s *Server) onSetVariableRequest(request *dap.SetVariableRequest) {
 	// The variable handles may be in inconsistent state - for example,
 	// let's assume there are two aliased variables pointing to the same
 	// memory and both are already loaded and cached in the variable handle.
-	// If set variable updates the memory through one of them,
-	// the other variable is affected, but currently we are not actively
-	// invalidate the cache variable nor the info displayed on the editors.
-	// We considered resetting all variable handles + sending a stop event.
-	// But that is expensive, triggers pesky frame errors, and leads to
-	// unpleasant user experience. It is likely the user will continue
-	// debugging and the outdated entries will be loaded again. Thus,
-	// we decided not to take the path.
 	// VSCode tries to locally update the UI when the set variable
-	// request succeeds - change the value, and invalidate its children.
-	// It is not perfect but not too bad either. We can try to update
-	// the cached variable handles on the server side, but there is currently
-	// no clear path to tell the editors refresh only those updated
-	// variables or the scope through DAP.
+	// request succeeds, and may issue additional scopes or evaluate requests
+	// to update the variable/watch sections if necessary.
+	//
+	// More complicated situation is when the set variable involves call
+	// injection - after the injected call is completed, the debugee can
+	// be in a completely different state (see the note in doCall) due to
+	// how the call injection is implemented. Ideally, we need to also refresh
+	// the stack frames but that is complicated. For now we don't try to actively
+	// invalidate this state hoping that the editors will refetch the state
+	// as soon as the user resumes debugging.
 
 	response := &dap.SetVariableResponse{Response: *newResponse(request.Request)}
 	response.Body.Value = arg.Value

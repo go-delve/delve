@@ -3313,8 +3313,7 @@ func TestSetVariableWithCall(t *testing.T) {
 					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
 				})
 			},
-			// Stop at the breakpoints set within the program, and after returning from barfoo (67)
-			fixture.Source, []int{67},
+			fixture.Source, []int{66, 67},
 			[]onBreakpoint{{
 				execute: func() {
 					tester := &helperForSetVariable{t, client}
