@@ -47,7 +47,11 @@ func TestMain(m *testing.M) {
 
 // name is for _fixtures/<name>.go
 func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.Fixture)) {
-	var buildFlags protest.BuildFlags = protest.AllNonOptimized
+	runTestBuildFlags(t, name, test, protest.AllNonOptimized)
+}
+
+// name is for _fixtures/<name>.go
+func runTestBuildFlags(t *testing.T, name string, test func(c *daptest.Client, f protest.Fixture), buildFlags protest.BuildFlags) {
 	fixture := protest.BuildFixture(name, buildFlags)
 
 	// Start the DAP server.
@@ -1368,6 +1372,63 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 				disconnect: true,
 			}})
 	})
+}
+
+// TestScopesRequestsOptimized executes to a breakpoint and tests different
+// that the names of the "Locals" and "Arguments" scopes are correctly annotated with
+// a warning about debugging an optimized function.
+func TestScopesRequestsOptimized(t *testing.T) {
+	runTestBuildFlags(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+				})
+			},
+			// Breakpoints are set within the program
+			fixture.Source, []int{},
+			[]onBreakpoint{{
+				// Stop at first breakpoint
+				execute: func() {
+					client.StackTraceRequest(1, 0, 20)
+					stack := client.ExpectStackTraceResponse(t)
+
+					startLineno := 66
+					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
+						// Go1.15 on windows inserts a NOP after the call to
+						// runtime.Breakpoint and marks it same line as the
+						// runtime.Breakpoint call, making this flaky, so skip the line check.
+						startLineno = -1
+					}
+
+					expectStackFrames(t, stack, "main.foobar", startLineno, 1000, 4, 4)
+
+					client.ScopesRequest(1000)
+					scopes := client.ExpectScopesResponse(t)
+					expectScope(t, scopes, 0, "Arguments (warning: debugging optimized function)", 1000)
+					expectScope(t, scopes, 1, "Locals (warning: debugging optimized function)", 1001)
+					expectScope(t, scopes, 2, "Globals (package main)", 1002)
+				},
+				disconnect: false,
+			}, {
+				// Stop at second breakpoint
+				execute: func() {
+					// Frame ids get reset at each breakpoint.
+					client.StackTraceRequest(1, 0, 20)
+					stack := client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stack, "main.barfoo", 27, 1000, 5, 5)
+
+					client.ScopesRequest(1000)
+					scopes := client.ExpectScopesResponse(t)
+					expectScope(t, scopes, 0, "Arguments (warning: debugging optimized function)", 1000)
+					expectScope(t, scopes, 1, "Locals (warning: debugging optimized function)", 1001)
+					expectScope(t, scopes, 2, "Globals (package main)", 1002)
+				},
+				disconnect: false,
+			}})
+	},
+		protest.EnableOptimization)
 }
 
 // TestVariablesLoading exposes test cases where variables might be partiall or
