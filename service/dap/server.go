@@ -102,6 +102,8 @@ type Server struct {
 	variableHandles *variablesHandlesMap
 	// args tracks special settings for handling debug session requests.
 	args launchAttachArgs
+	// clientCapabilities tracks special settings for handling debug session requests.
+	clientCapabilities dapClientCapabilites
 
 	// mu synchronizes access to objects set on start-up (from run goroutine)
 	// and stopped on teardown (from main goroutine)
@@ -145,6 +147,16 @@ var defaultArgs = launchAttachArgs{
 	showGlobalVariables:          false,
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
+}
+
+// dapClientCapabilites captures arguments from intitialize request that
+// impact handling of subsequent requests.
+type dapClientCapabilites struct {
+	supportsVariableType         bool
+	supportsVariablePaging       bool
+	supportsRunInTerminalRequest bool
+	supportsMemoryReferences     bool
+	supportsProgressReporting    bool
 }
 
 // DefaultLoadConfig controls how variables are loaded from the target's memory, borrowing the
@@ -608,6 +620,7 @@ func (s *Server) logToConsole(msg string) {
 }
 
 func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
+	s.setClientCapabilities(request.Arguments)
 	if request.Arguments.PathFormat != "path" {
 		s.sendErrorResponse(request.Request, FailedToInitialize, "Failed to initialize",
 			fmt.Sprintf("Unsupported 'pathFormat' value '%s'.", request.Arguments.PathFormat))
@@ -643,6 +656,14 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsDisassembleRequest = false
 	response.Body.SupportsCancelRequest = false
 	s.send(response)
+}
+
+func (s *Server) setClientCapabilities(args dap.InitializeRequestArguments) {
+	s.clientCapabilities.supportsMemoryReferences = args.SupportsMemoryReferences
+	s.clientCapabilities.supportsProgressReporting = args.SupportsProgressReporting
+	s.clientCapabilities.supportsRunInTerminalRequest = args.SupportsRunInTerminalRequest
+	s.clientCapabilities.supportsVariablePaging = args.SupportsVariablePaging
+	s.clientCapabilities.supportsVariableType = args.SupportsVariableType
 }
 
 // Default output file pathname for the compiled binary in debug or test modes,
@@ -1390,6 +1411,8 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 			}
 			key, keyref := s.convertVariable(keyv, keyexpr)
 			val, valref := s.convertVariable(valv, valexpr)
+			keyType := s.getTypeIfSupported(keyv)
+			valType := s.getTypeIfSupported(valv)
 			// If key or value or both are scalars, we can use
 			// a single variable to represet key:value format.
 			// Otherwise, we must return separate variables for both.
@@ -1397,20 +1420,27 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 				keyvar := dap.Variable{
 					Name:               fmt.Sprintf("[key %d]", kvIndex),
 					EvaluateName:       keyexpr,
+					Type:               keyType,
 					Value:              key,
 					VariablesReference: keyref,
 				}
 				valvar := dap.Variable{
 					Name:               fmt.Sprintf("[val %d]", kvIndex),
 					EvaluateName:       valexpr,
+					Type:               valType,
 					Value:              val,
 					VariablesReference: valref,
 				}
 				children = append(children, keyvar, valvar)
 			} else { // At least one is a scalar
+				keyValType := valType
+				if len(keyType) > 0 && len(valType) > 0 {
+					keyValType = fmt.Sprintf("%s: %s", keyType, valType)
+				}
 				kvvar := dap.Variable{
 					Name:         key,
 					EvaluateName: valexpr,
+					Type:         keyValType,
 					Value:        val,
 				}
 				if keyref != 0 { // key is a type to be expanded
@@ -1433,6 +1463,7 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 			children[i] = dap.Variable{
 				Name:               fmt.Sprintf("[%d]", i),
 				EvaluateName:       cfqname,
+				Type:               s.getTypeIfSupported(&v.Children[i]),
 				Value:              cvalue,
 				VariablesReference: cvarref,
 			}
@@ -1470,9 +1501,17 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 			children[i] = dap.Variable{
 				Name:               name,
 				EvaluateName:       cfqname,
+				Type:               s.getTypeIfSupported(c),
 				Value:              cvalue,
 				VariablesReference: cvarref,
 			}
+		}
+	}
+	if !s.clientCapabilities.supportsVariableType {
+		// If the client does not support variable type
+		// we cannot set the Type field in the response.
+		for i := range children {
+			children[i].Type = ""
 		}
 	}
 	response := &dap.VariablesResponse{
@@ -1480,6 +1519,13 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		Body:     dap.VariablesResponseBody{Variables: children},
 	}
 	s.send(response)
+}
+
+func (s *Server) getTypeIfSupported(v *proc.Variable) string {
+	if !s.clientCapabilities.supportsVariableType {
+		return ""
+	}
+	return v.TypeString()
 }
 
 // convertVariable converts proc.Variable to dap.Variable value and reference
