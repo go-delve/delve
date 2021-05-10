@@ -1357,8 +1357,8 @@ func (d *Debugger) FunctionArguments(goid, frame, deferredCall int, cfg proc.Loa
 	return s.FunctionArguments(cfg)
 }
 
-// FunctionScope returns the current function.
-func (d *Debugger) FunctionScope(goid, frame, deferredCall int, cfg proc.LoadConfig) (*proc.Function, error) {
+// Function returns the current function.
+func (d *Debugger) Function(goid, frame, deferredCall int, cfg proc.LoadConfig) (*proc.Function, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 

@@ -1297,7 +1297,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 	}
 	suffix := ""
 	if fn.Optimized() {
-		suffix = " (warning: debugging optimized function)"
+		suffix = " (warning: optimized function)"
 	}
 	// Retrieve arguments
 	args, err := s.debugger.FunctionArguments(goid, frame, 0, DefaultLoadConfig)

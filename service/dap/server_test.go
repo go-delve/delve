@@ -1406,8 +1406,8 @@ func TestScopesRequestsOptimized(t *testing.T) {
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
-					expectScope(t, scopes, 0, "Arguments (warning: debugging optimized function)", 1000)
-					expectScope(t, scopes, 1, "Locals (warning: debugging optimized function)", 1001)
+					expectScope(t, scopes, 0, "Arguments (warning: optimized function)", 1000)
+					expectScope(t, scopes, 1, "Locals (warning: optimized function)", 1001)
 					expectScope(t, scopes, 2, "Globals (package main)", 1002)
 				},
 				disconnect: false,
@@ -1421,8 +1421,8 @@ func TestScopesRequestsOptimized(t *testing.T) {
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
-					expectScope(t, scopes, 0, "Arguments (warning: debugging optimized function)", 1000)
-					expectScope(t, scopes, 1, "Locals (warning: debugging optimized function)", 1001)
+					expectScope(t, scopes, 0, "Arguments (warning: optimized function)", 1000)
+					expectScope(t, scopes, 1, "Locals (warning: optimized function)", 1001)
 					expectScope(t, scopes, 2, "Globals (package main)", 1002)
 				},
 				disconnect: false,
