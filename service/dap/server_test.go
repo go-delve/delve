@@ -364,23 +364,28 @@ func TestAttachStopOnEntry(t *testing.T) {
 		// 13 >> disconnect, << disconnect
 		client.DisconnectRequestWithKillOption(true)
 
-		// Both of these scenarios are somehow possible.
-		// Even though the program has an infininte loop,
-		// it apears that a halt can cause it to terminate.
-		// Since we are in async mode while running, we might receive messages in either order.
+		// Disconnect consists of Halt + Detach.
+		// Several scenarios are somehow possible:
+		// even though the program has an infininte loop,
+		// it apears that a halt can cause the process to exit.
 		msg := client.ExpectMessage(t)
-		switch m := msg.(type) {
+		switch m := msg.(type) { // Halt will interrupt continue with a stop or exit
 		case *dap.StoppedEvent:
-			if m.Seq != 0 || m.Body.Reason != "pause" { // continue is interrupted
+			if m.Seq != 0 || m.Body.Reason != "pause" {
 				t.Errorf("\ngot %#v\nwant Seq=0 Reason='pause'", m)
 			}
 			oed := client.ExpectOutputEventDetachingKill(t)
 			if oed.Seq != 0 || oed.Body.Category != "console" {
 				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
 			}
-		case *dap.TerminatedEvent:
+		case *dap.OutputEvent:
+			matched, _ := regexp.MatchString(`Process \d+ has exited with status 0`, m.Body.Output)
+			if m.Seq != 0 || m.Body.Category != "console" || !matched {
+				t.Errorf("\ngot %#v\nwant Seq=0 Category = 'console' Output='Process ... has exited with status 0'", m)
+			}
+			client.ExpectTerminatedEvent(t)
 			if m.Seq != 0 {
-				t.Errorf("\ngot %#v\nwant Seq=0'", m)
+				t.Errorf("\ngot %#v\nwant Seq=0", m)
 			}
 			oep := client.ExpectOutputEventProcessExited(t, 0)
 			if oep.Seq != 0 || oep.Body.Category != "console" {
@@ -390,12 +395,38 @@ func TestAttachStopOnEntry(t *testing.T) {
 			if oed.Seq != 0 || oed.Body.Category != "console" {
 				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
 			}
+		case *dap.TerminatedEvent:
+			if m.Seq != 0 {
+				t.Errorf("\ngot %#v\nwant Seq=0", m)
+			}
+			oep := client.ExpectOutputEvent(t)
+			if oep.Seq != 0 || oep.Body.Category != "console" {
+				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
+			}
+			if !strings.Contains(oep.Body.Output, "no such process") && !strings.Contains(oep.Body.Output, "has exited with status") {
+				t.Errorf("\ngot %#v\nwant Output='no such process' or 'Process ... has exited with status'", oep)
+			}
+			oed := client.ExpectOutputEventDetaching(t)
+			if oed.Seq != 0 || oed.Body.Category != "console" {
+				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+			}
 		default:
-			t.Fatalf("got %#v, want StoppedEvent or TerminatedEvent", m)
+			t.Fatalf("got %#v, want StoppedEvent or TerminatedEvent or OutputEvent+TerminatedEvent", m)
 		}
-		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.Seq != 0 || dResp.RequestSeq != 13 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13", dResp)
+		msg = client.ExpectMessage(t)
+		switch m := msg.(type) { // Detach might encounter no running process
+		case *dap.ErrorResponse:
+			details := "Error while disconnecting: no such process"
+			if m.Seq != 0 || m.RequestSeq != 13 || m.Command != "disconnect" || m.Body.Error.Format != details {
+				t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13 Error=%q", m, details)
+			}
+		case *dap.DisconnectResponse:
+			if m.Seq != 0 || m.RequestSeq != 13 {
+				t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13", m)
+			}
+		default:
+			t.Fatalf("got %#v, want ErrorResponse or DisconnectResponse", m)
+
 		}
 	})
 }
