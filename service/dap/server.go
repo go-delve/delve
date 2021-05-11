@@ -431,7 +431,7 @@ func (s *Server) handleRequest(request dap.Message) {
 			if inProgress == api.Continue {
 				s.overrideStopReason <- skipStop
 			} else {
-				// This would one of the step commands, which get  cancelled by debugger.
+				// This would be one of the step commands, which get cancelled by debugger.
 				// We do not support any other running commands at this time, but if a new one
 				// gets added and this code doesn't get updated, the safest default behavior
 				// would be to declare the operation cancelled and let the user resume manually,

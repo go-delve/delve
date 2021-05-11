@@ -1920,7 +1920,7 @@ func TestSetBreakpointWhileRunning(t *testing.T) {
 					client.SetBreakpointsRequest(fixture.Source, []int{9})
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{9, fixture.Source, true, ""}})
 
-					// 9: Continue stops at line 9 (verifies that setting breakpoint during continue worked)
+					// 9: Continue loops and stops at line 9 (verifies that setting breakpoint during continue worked)
 					se = client.ExpectStoppedEvent(t)
 					if se.Body.Reason != "breakpoint" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 1 {
 						t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", se)
