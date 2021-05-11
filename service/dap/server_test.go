@@ -1865,64 +1865,67 @@ func TestSetBreakpoint(t *testing.T) {
 }
 
 func TestSetBreakpointWhileRunning(t *testing.T) {
-	runTest(t, "sleep", func(client *daptest.Client, fixture protest.Fixture) {
+	runTest(t, "integrationprog", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
 			func() {
 				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
 			},
 			// Set breakpoints
-			fixture.Source, []int{9},
+			fixture.Source, []int{14},
 			[]onBreakpoint{{
 				execute: func() {
-					handleStop(t, client, 1, "main.f", 9)
+					handleStop(t, client, 1, "main.main", 14) // Breakpoint outside of the loop body
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
 					client.ExpectStoppedEvent(t)
-					handleStop(t, client, 1, "main.f", 10)
+					client.NextRequest(1)
+					client.ExpectNextResponse(t)
+					client.ExpectStoppedEvent(t)
+					handleStop(t, client, 1, "main.main", 16) // Loop body line that sleeps
 
-					// This will be a 10 second sleepy next, so we can reliably interrupt it
+					// 16: This will be a 1-second sleepy next, so we can reliably interrupt it
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
 
-					// Set breakpoint at line 11 right after sleep
-					client.SetBreakpointsRequest(fixture.Source, []int{11})
+					// 16+: While sleeping, change breakpoints from [14,] => [15,]
+					client.SetBreakpointsRequest(fixture.Source, []int{15})
 					se := client.ExpectStoppedEvent(t)
 					if se.Body.Reason != "cancelled next" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
 						t.Errorf("\ngot  %#v\nwant Reason='cancelled next' AllThreadsStopped=true ThreadId=0/1", se)
 					}
-					expectSetBreakpointsResponse(t, client, []Breakpoint{{11, fixture.Source, true, ""}})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{15, fixture.Source, true, ""}})
 					oe := client.ExpectOutputEvent(t)
 					warning := "WARNING: setting breakpoints halted execution and cancelled \"next\"\n"
 					if oe.Body.Category != "stderr" || oe.Body.Output != warning {
 						t.Errorf("\ngot  %#v\nwant Category='stderr' Output=%q", oe, warning)
 					}
 
-					// We must continue since next got cancelled
+					// 16+: We continue manually since we are stopped where next was interrupted
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 
-					// Continue stops at line 11 (verifies that setting breakpoint during next worked)
+					// 15: Continue loops and stops at line 15 (verifies that setting breakpoint during next worked)
 					se = client.ExpectStoppedEvent(t)
 					if se.Body.Reason != "breakpoint" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 1 {
 						t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", se)
 					}
-					handleStop(t, client, 1, "main.f", 11)
+					handleStop(t, client, 1, "main.main", 15)
 
-					// We coninue and loop once more
+					// 16: We continue and loop once more to enter sleep on line 16
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 
-					// While its running, set breakpoint at line 10 and clear line 11
-					client.SetBreakpointsRequest(fixture.Source, []int{10})
-					expectSetBreakpointsResponse(t, client, []Breakpoint{{10, fixture.Source, true, ""}})
+					// 16+: While sleeping, change breakpoints from [15,] => [9,]
+					client.SetBreakpointsRequest(fixture.Source, []int{9})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{9, fixture.Source, true, ""}})
 
-					// Continue stops at line 10 (verifies that setting breakpoint during coninue worked)
+					// 9: Continue stops at line 9 (verifies that setting breakpoint during continue worked)
 					se = client.ExpectStoppedEvent(t)
 					if se.Body.Reason != "breakpoint" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 1 {
 						t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", se)
 					}
-					handleStop(t, client, 1, "main.f", 10)
+					handleStop(t, client, 1, "main.sayhi", 9)
 				},
 				disconnect: true,
 			}})
