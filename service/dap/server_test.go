@@ -364,39 +364,21 @@ func TestAttachStopOnEntry(t *testing.T) {
 		// 13 >> disconnect, << disconnect
 		client.DisconnectRequestWithKillOption(true)
 
-		// Both of these scenarios are somehow possible.
-		// Even though the program has an infininte loop,
-		// it apears that a halt can cause it to terminate.
-		// Since we are in async mode while running, we might receive messages in either order.
-		msg := client.ExpectMessage(t)
-		switch m := msg.(type) {
-		case *dap.StoppedEvent:
-			if m.Seq != 0 || m.Body.Reason != "pause" { // continue is interrupted
-				t.Errorf("\ngot %#v\nwant Seq=0 Reason='pause'", m)
-			}
-			oed := client.ExpectOutputEventDetachingKill(t)
-			if oed.Seq != 0 || oed.Body.Category != "console" {
-				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
-			}
-		case *dap.TerminatedEvent:
-			if m.Seq != 0 {
-				t.Errorf("\ngot %#v\nwant Seq=0'", m)
-			}
-			oep := client.ExpectOutputEventProcessExited(t, 0)
-			if oep.Seq != 0 || oep.Body.Category != "console" {
-				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
-			}
-			oed := client.ExpectOutputEventDetaching(t)
-			if oed.Seq != 0 || oed.Body.Category != "console" {
-				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
-			}
-		default:
-			t.Fatalf("got %#v, want StoppedEvent or TerminatedEvent", m)
+		msg := expectMessageFilterStopped(t, client)
+		if _, ok := msg.(*dap.OutputEvent); !ok {
+			// want detach kill output message
+			t.Errorf("got %#v, want *dap.OutputEvent", msg)
 		}
-		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.Seq != 0 || dResp.RequestSeq != 13 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13", dResp)
+		msg = expectMessageFilterStopped(t, client)
+		if _, ok := msg.(*dap.DisconnectResponse); !ok {
+			t.Errorf("got %#v, want *dap.DisconnectResponse", msg)
 		}
+		// If this call to KeepAlive isn't here there's a chance that stdout will
+		// be garbage collected (since it is no longer alive long before this
+		// point), when that happens, on unix-like OSes, the read end of the pipe
+		// will be closed by the finalizer and the target process will die by
+		// SIGPIPE, which the rest of this test does not expect.
+		runtime.KeepAlive(stdout)
 	})
 }
 
@@ -731,6 +713,14 @@ func expectVarExact(t *testing.T, got *dap.VariablesResponse, i int, name, evalN
 func expectVarRegex(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, hasRef bool) (ref int) {
 	t.Helper()
 	return expectVar(t, got, i, name, evalName, value, typ, false, hasRef)
+}
+
+func expectMessageFilterStopped(t *testing.T, client *daptest.Client) dap.Message {
+	msg := client.ExpectMessage(t)
+	if _, isStopped := msg.(*dap.StoppedEvent); isStopped {
+		msg = client.ExpectMessage(t)
+	}
+	return msg
 }
 
 // validateEvaluateName issues an evaluate request with evaluateName of a variable and
