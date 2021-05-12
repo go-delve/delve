@@ -427,6 +427,8 @@ func (s *Server) handleRequest(request dap.Message) {
 		case *dap.SetBreakpointsRequest:
 			// Halt running command
 			inProgress := s.debugger.RunningCommand()
+			// The channel is drained before running a command, but just in case drain again to avoid blocking
+			s.resetOverrideStopReason()
 			// TODO(polina): once api.Call is run asynchronously, treat it like api.Continue as well
 			if inProgress == api.Continue {
 				s.overrideStopReason <- skipStop
@@ -441,6 +443,7 @@ func (s *Server) handleRequest(request dap.Message) {
 			_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 			if err != nil {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
+				return
 			}
 			// Set breakpoints
 			s.onSetBreakpointsRequest(request)
@@ -449,7 +452,7 @@ func (s *Server) handleRequest(request dap.Message) {
 				go func() {
 					defer s.recoverPanic(request)
 					s.log.Debug("resuming execution after setting breakpoints")
-					s.doCommand(api.Continue, resumeRequestLoop)
+					s.doRunCommand(api.Continue, resumeRequestLoop)
 				}()
 				<-resumeRequestLoop
 			} else {
@@ -1078,7 +1081,7 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 	}
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
 	if !s.args.stopOnEntry {
-		s.doCommand(api.Continue, asyncSetupDone)
+		s.doRunCommand(api.Continue, asyncSetupDone)
 	}
 }
 
@@ -1088,7 +1091,7 @@ func (s *Server) onContinueRequest(request *dap.ContinueRequest, asyncSetupDone 
 	s.send(&dap.ContinueResponse{
 		Response: *newResponse(request.Request),
 		Body:     dap.ContinueResponseBody{AllThreadsContinued: true}})
-	s.doCommand(api.Continue, asyncSetupDone)
+	s.doRunCommand(api.Continue, asyncSetupDone)
 }
 
 func fnName(loc *proc.Location) string {
@@ -1234,7 +1237,7 @@ func stoppedGoroutineID(state *api.DebuggerState) (id int) {
 	return id
 }
 
-// doStepCommand is a wrapper around doCommand that
+// doStepCommand is a wrapper around doRunCommand that
 // first switches selected goroutine. asyncSetupDone is
 // a channel that will be closed to signal that an
 // asynchornous command has completed setup or was interrupted
@@ -1258,7 +1261,7 @@ func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan
 		s.send(stopped)
 		return
 	}
-	s.doCommand(command, asyncSetupDone)
+	s.doRunCommand(command, asyncSetupDone)
 }
 
 // onPauseRequest sends a not-yet-implemented error response.
@@ -1946,17 +1949,26 @@ func (s *Server) resetHandlesForStoppedEvent() {
 	s.variableHandles.reset()
 }
 
-// doCommand runs a debugger command until it stops on
+func (s *Server) resetOverrideStopReason() {
+	// Drain any stale stop reason from the buffered channel.
+	select {
+	case <-s.overrideStopReason:
+	default:
+	}
+}
+
+// doRunCommand runs a debugger command until it stops on
 // termination, error, breakpoint, etc, when an appropriate
 // event needs to be sent to the client. asyncSetupDone is
 // a channel that will be closed to signal that an
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
-func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
+func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 	// TODO(polina): it appears that debugger.Command doesn't always close
 	// asyncSetupDone (e.g. when having an error next while nexting).
 	// So we should always close it ourselves just in case.
 	defer s.asyncCommandDone(asyncSetupDone)
+	s.resetOverrideStopReason()
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
 	if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
@@ -1971,6 +1983,7 @@ func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
 	case sr := <-s.overrideStopReason:
 		switch sr {
 		case skipStop:
+			s.log.Debug("stop event skipped")
 			return
 		default:
 			stopped.Body.Reason = sr
