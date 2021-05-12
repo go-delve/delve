@@ -376,8 +376,6 @@ func (d *Debugger) LastModified() time.Time {
 	return d.target.BinInfo().LastModified()
 }
 
-const deferReturn = "runtime.deferreturn"
-
 // FunctionReturnLocations returns all return locations
 // for the given function, a list of addresses corresponding
 // to 'ret' or 'call runtime.deferreturn'.
@@ -511,9 +509,13 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 	discarded := []api.DiscardedBreakpoint{}
 	breakpoints := api.ConvertBreakpoints(d.breakpoints())
 	d.target = p
+	maxID := 0
 	for _, oldBp := range breakpoints {
 		if oldBp.ID < 0 {
 			continue
+		}
+		if oldBp.ID > maxID {
+			maxID = oldBp.ID
 		}
 		if len(oldBp.File) > 0 {
 			addrs, err := proc.FindFileLocation(p, oldBp.File, oldBp.Line)
@@ -521,13 +523,13 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 				discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: oldBp, Reason: err.Error()})
 				continue
 			}
-			createLogicalBreakpoint(d, addrs, oldBp)
+			createLogicalBreakpoint(d, addrs, oldBp, oldBp.ID)
 		} else {
 			// Avoid setting a breakpoint based on address when rebuilding
 			if rebuild {
 				continue
 			}
-			newBp, err := p.SetBreakpoint(oldBp.Addr, proc.UserBreakpoint, nil)
+			newBp, err := p.SetBreakpointWithID(oldBp.ID, oldBp.Addr)
 			if err != nil {
 				return nil, err
 			}
@@ -536,12 +538,18 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 			}
 		}
 	}
+	for _, bp := range d.disabledBreakpoints {
+		if bp.ID > maxID {
+			maxID = bp.ID
+		}
+	}
+	d.target.SetNextBreakpointID(maxID)
 	return discarded, nil
 }
 
 // State returns the current state of the debugger.
 func (d *Debugger) State(nowait bool) (*api.DebuggerState, error) {
-	if d.isRunning() && nowait {
+	if d.IsRunning() && nowait {
 		return &api.DebuggerState{Running: true}, nil
 	}
 
@@ -576,7 +584,7 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 
 	exited := false
 	if _, err := d.target.Valid(); err != nil {
-		_, exited = err.(*proc.ErrProcessExited)
+		_, exited = err.(proc.ErrProcessExited)
 	}
 
 	state = &api.DebuggerState{
@@ -654,7 +662,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 		return nil, err
 	}
 
-	createdBp, err := createLogicalBreakpoint(d, addrs, requestedBp)
+	createdBp, err := createLogicalBreakpoint(d, addrs, requestedBp, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -664,7 +672,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 
 // createLogicalBreakpoint creates one physical breakpoint for each address
 // in addrs and associates all of them with the same logical breakpoint.
-func createLogicalBreakpoint(d *Debugger, addrs []uint64, requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
+func createLogicalBreakpoint(d *Debugger, addrs []uint64, requestedBp *api.Breakpoint, id int) (*api.Breakpoint, error) {
 	p := d.target
 
 	if dbp, ok := d.disabledBreakpoints[requestedBp.ID]; ok {
@@ -674,7 +682,11 @@ func createLogicalBreakpoint(d *Debugger, addrs []uint64, requestedBp *api.Break
 	bps := make([]*proc.Breakpoint, len(addrs))
 	var err error
 	for i := range addrs {
-		bps[i], err = p.SetBreakpoint(addrs[i], proc.UserBreakpoint, nil)
+		if id > 0 {
+			bps[i], err = p.SetBreakpointWithID(id, addrs[i])
+		} else {
+			bps[i], err = p.SetBreakpoint(addrs[i], proc.UserBreakpoint, nil)
+		}
 		if err != nil {
 			break
 		}
@@ -873,7 +885,7 @@ func (d *Debugger) FindBreakpoint(id int) *api.Breakpoint {
 func (d *Debugger) findBreakpoint(id int) []*proc.Breakpoint {
 	var bps []*proc.Breakpoint
 	for _, bp := range d.target.Breakpoints().M {
-		if bp.LogicalID == id {
+		if bp.IsUser() && bp.LogicalID == id {
 			bps = append(bps, bp)
 		}
 	}
@@ -961,7 +973,7 @@ func (d *Debugger) setRunning(running bool) {
 	d.runningMutex.Unlock()
 }
 
-func (d *Debugger) isRunning() bool {
+func (d *Debugger) IsRunning() bool {
 	d.runningMutex.Lock()
 	defer d.runningMutex.Unlock()
 	return d.running
@@ -1083,7 +1095,8 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 		withBreakpointInfo = false
 	case api.SwitchGoroutine:
 		d.log.Debugf("switching to goroutine %d", command.GoroutineID)
-		g, err := proc.FindGoroutine(d.target, command.GoroutineID)
+		var g *proc.G
+		g, err = proc.FindGoroutine(d.target, command.GoroutineID)
 		if err == nil {
 			err = d.target.SwitchGoroutine(g)
 		}
@@ -1300,8 +1313,7 @@ func (d *Debugger) ThreadRegisters(threadID int, floatingPoint bool) (*op.DwarfR
 	if err != nil {
 		return nil, err
 	}
-	dregs := d.target.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
-	return &dregs, nil
+	return d.target.BinInfo().Arch.RegistersToDwarfRegisters(0, regs), nil
 }
 
 // ScopeRegisters returns registers for the specified scope.
@@ -1699,7 +1711,7 @@ func (d *Debugger) GetVersion(out *api.GetVersionOut) error {
 		}
 	}
 
-	if !d.isRecording() && !d.isRunning() {
+	if !d.isRecording() && !d.IsRunning() {
 		out.TargetGoVersion = d.target.BinInfo().Producer()
 	}
 

@@ -120,3 +120,15 @@ func (t *nativeThread) ReadMemory(data []byte, addr uint64) (n int, err error) {
 	t.dbp.execPtraceFunc(func() { n, err = ptraceReadData(t.ID, uintptr(addr), data) })
 	return n, err
 }
+
+func (t *nativeThread) writeHardwareBreakpoint(addr uint64, wtype proc.WatchType, idx uint8) error {
+	return proc.ErrHWBreakUnsupported
+}
+
+func (t *nativeThread) clearHardwareBreakpoint(addr uint64, wtype proc.WatchType, idx uint8) error {
+	return proc.ErrHWBreakUnsupported
+}
+
+func (t *nativeThread) findHardwareBreakpoint() (*proc.Breakpoint, error) {
+	return nil, nil
+}

@@ -140,7 +140,7 @@ func (dbp *nativeProcess) Valid() (bool, error) {
 		return false, proc.ErrProcessDetached
 	}
 	if dbp.exited {
-		return false, &proc.ErrProcessExited{Pid: dbp.Pid()}
+		return false, proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 	return true, nil
 }
@@ -185,7 +185,7 @@ func (dbp *nativeProcess) Breakpoints() *proc.BreakpointMap {
 // sends SIGSTOP to all threads.
 func (dbp *nativeProcess) RequestManualStop() error {
 	if dbp.exited {
-		return &proc.ErrProcessExited{Pid: dbp.Pid()}
+		return proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 	dbp.stopMu.Lock()
 	defer dbp.stopMu.Unlock()
@@ -206,6 +206,16 @@ func (dbp *nativeProcess) CheckAndClearManualStopRequest() bool {
 }
 
 func (dbp *nativeProcess) WriteBreakpoint(bp *proc.Breakpoint) error {
+	if bp.WatchType != 0 {
+		for _, thread := range dbp.threads {
+			err := thread.writeHardwareBreakpoint(bp.Addr, bp.WatchType, bp.HWBreakIndex)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
 	bp.OriginalData = make([]byte, dbp.bi.Arch.BreakpointSize())
 	_, err := dbp.memthread.ReadMemory(bp.OriginalData, bp.Addr)
 	if err != nil {
@@ -215,14 +225,24 @@ func (dbp *nativeProcess) WriteBreakpoint(bp *proc.Breakpoint) error {
 }
 
 func (dbp *nativeProcess) EraseBreakpoint(bp *proc.Breakpoint) error {
-	return dbp.memthread.ClearBreakpoint(bp)
+	if bp.WatchType != 0 {
+		for _, thread := range dbp.threads {
+			err := thread.clearHardwareBreakpoint(bp.Addr, bp.WatchType, bp.HWBreakIndex)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	return dbp.memthread.clearSoftwareBreakpoint(bp)
 }
 
 // ContinueOnce will continue the target until it stops.
 // This could be the result of a breakpoint or signal.
 func (dbp *nativeProcess) ContinueOnce() (proc.Thread, proc.StopReason, error) {
 	if dbp.exited {
-		return nil, proc.StopExited, &proc.ErrProcessExited{Pid: dbp.Pid()}
+		return nil, proc.StopExited, proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 
 	for {

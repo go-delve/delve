@@ -38,6 +38,8 @@ func AMD64Arch(goos string) *Arch {
 		SPRegNum:                         regnum.AMD64_Rsp,
 		BPRegNum:                         regnum.AMD64_Rbp,
 		ContextRegNum:                    regnum.AMD64_Rdx,
+		asmRegisters:                     amd64AsmRegisters,
+		RegisterNameToDwarf:              nameToDwarfFunc(regnum.AMD64NameToDwarf),
 	}
 }
 
@@ -255,11 +257,11 @@ func amd64RegSize(rn uint64) int {
 	return 8
 }
 
-func amd64RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.DwarfRegisters {
+func amd64RegistersToDwarfRegisters(staticBase uint64, regs Registers) *op.DwarfRegisters {
 	dregs := initDwarfRegistersFromSlice(int(regnum.AMD64MaxRegNum()), regs, regnum.AMD64NameToDwarf)
 	dr := op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, regnum.AMD64_Rip, regnum.AMD64_Rsp, regnum.AMD64_Rbp, 0)
 	dr.SetLoadMoreCallback(loadMoreDwarfRegistersFromSliceFunc(dr, regs, regnum.AMD64NameToDwarf))
-	return *dr
+	return dr
 }
 
 func initDwarfRegistersFromSlice(maxRegs int, regs Registers, nameToDwarf map[string]int) []*op.DwarfRegister {

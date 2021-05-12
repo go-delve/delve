@@ -5,10 +5,13 @@
 package proc
 
 import (
+	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/regnum"
+
 	"golang.org/x/arch/arm64/arm64asm"
 )
 
-func arm64AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw MemoryReadWriter, bi *BinaryInfo) error {
+func arm64AsmDecode(asmInst *AsmInstruction, mem []byte, regs *op.DwarfRegisters, memrw MemoryReadWriter, bi *BinaryInfo) error {
 	asmInst.Size = 4
 	asmInst.Bytes = mem[:asmInst.Size]
 
@@ -37,7 +40,7 @@ func arm64AsmDecode(asmInst *AsmInstruction, mem []byte, regs Registers, memrw M
 	return nil
 }
 
-func resolveCallArgARM64(inst *arm64asm.Inst, instAddr uint64, currentGoroutine bool, regs Registers, mem MemoryReadWriter, bininfo *BinaryInfo) *Location {
+func resolveCallArgARM64(inst *arm64asm.Inst, instAddr uint64, currentGoroutine bool, regs *op.DwarfRegisters, mem MemoryReadWriter, bininfo *BinaryInfo) *Location {
 	switch inst.Op {
 	case arm64asm.BL, arm64asm.BLR, arm64asm.B, arm64asm.BR:
 		//ok
@@ -55,7 +58,7 @@ func resolveCallArgARM64(inst *arm64asm.Inst, instAddr uint64, currentGoroutine 
 		if !currentGoroutine || regs == nil {
 			return nil
 		}
-		pc, err = regs.Get(int(arg))
+		pc, err = bininfo.Arch.getAsmRegister(regs, int(arg))
 		if err != nil {
 			return nil
 		}
@@ -118,3 +121,11 @@ func (inst *arm64ArchInst) OpcodeEquals(op uint64) bool {
 	}
 	return uint64(inst.Op) == op
 }
+
+var arm64AsmRegisters = func() map[int]asmRegister {
+	r := make(map[int]asmRegister)
+	for i := arm64asm.X0; i <= arm64asm.X30; i++ {
+		r[int(i)] = asmRegister{regnum.ARM64_X0 + uint64(i-arm64asm.X0), 0, 0}
+	}
+	return r
+}()

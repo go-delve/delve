@@ -84,7 +84,7 @@ type StopReason uint8
 func (sr StopReason) String() string {
 	switch sr {
 	case StopUnknown:
-		return "unkown"
+		return "unknown"
 	case StopLaunched:
 		return "launched"
 	case StopAttached:
@@ -101,6 +101,8 @@ func (sr StopReason) String() string {
 		return "next finished"
 	case StopCallReturned:
 		return "call returned"
+	case StopWatchpoint:
+		return "watchpoint"
 	default:
 		return ""
 	}
@@ -116,6 +118,7 @@ const (
 	StopManual                         // A manual stop was requested
 	StopNextFinished                   // The next/step/stepout command terminated
 	StopCallReturned                   // An injected call completed
+	StopWatchpoint                     // The target process hit one or more watchpoints
 )
 
 // NewTargetConfig contains the configuration for a new Target object,
@@ -358,4 +361,9 @@ func (t *Target) createFatalThrowBreakpoint() {
 // selected.
 func (t *Target) CurrentThread() Thread {
 	return t.currentThread
+}
+
+// SetNextBreakpointID sets the breakpoint ID of the next breakpoint
+func (t *Target) SetNextBreakpointID(id int) {
+	t.Breakpoints().breakpointIDCounter = id
 }

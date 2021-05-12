@@ -268,6 +268,14 @@ func (dbp *nativeProcess) addThread(tid int, attach bool) (*nativeThread, error)
 	if dbp.memthread == nil {
 		dbp.memthread = dbp.threads[tid]
 	}
+	for _, bp := range dbp.Breakpoints().M {
+		if bp.WatchType != 0 {
+			err := dbp.threads[tid].writeHardwareBreakpoint(bp.Addr, bp.WatchType, bp.HWBreakIndex)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 	return dbp.threads[tid], nil
 }
 
@@ -505,7 +513,7 @@ func (dbp *nativeProcess) resume() error {
 // stop stops all running threads and sets breakpoints
 func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) {
 	if dbp.exited {
-		return nil, &proc.ErrProcessExited{Pid: dbp.Pid()}
+		return nil, proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
 
 	for _, th := range dbp.threads {

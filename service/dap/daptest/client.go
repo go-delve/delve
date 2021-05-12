@@ -2,12 +2,17 @@
 // for DAP mode testing.
 package daptest
 
+//go:generate go run ./gen/main.go -o ./resp.go
+
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"testing"
 
 	"github.com/google/go-dap"
@@ -50,18 +55,18 @@ func (c *Client) ReadMessage() (dap.Message, error) {
 	return dap.ReadProtocolMessage(c.reader)
 }
 
-func (c *Client) expectReadProtocolMessage(t *testing.T) dap.Message {
+func (c *Client) ExpectMessage(t *testing.T) dap.Message {
 	t.Helper()
 	m, err := dap.ReadProtocolMessage(c.reader)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 	return m
 }
 
-func (c *Client) ExpectErrorResponse(t *testing.T) *dap.ErrorResponse {
+func (c *Client) ExpectInvisibleErrorResponse(t *testing.T) *dap.ErrorResponse {
 	t.Helper()
-	er := c.expectReadProtocolMessage(t).(*dap.ErrorResponse)
+	er := c.ExpectErrorResponse(t)
 	if er.Body.Error.ShowUser {
 		t.Errorf("\ngot %#v\nwant ShowUser=false", er)
 	}
@@ -70,7 +75,7 @@ func (c *Client) ExpectErrorResponse(t *testing.T) *dap.ErrorResponse {
 
 func (c *Client) ExpectVisibleErrorResponse(t *testing.T) *dap.ErrorResponse {
 	t.Helper()
-	er := c.expectReadProtocolMessage(t).(*dap.ErrorResponse)
+	er := c.ExpectErrorResponse(t)
 	if !er.Body.Error.ShowUser {
 		t.Errorf("\ngot %#v\nwant ShowUser=true", er)
 	}
@@ -79,11 +84,32 @@ func (c *Client) ExpectVisibleErrorResponse(t *testing.T) *dap.ErrorResponse {
 
 func (c *Client) expectErrorResponse(t *testing.T, id int, message string) *dap.ErrorResponse {
 	t.Helper()
-	er := c.expectReadProtocolMessage(t).(*dap.ErrorResponse)
+	er := c.ExpectErrorResponse(t)
 	if er.Body.Error.Id != id || er.Message != message {
 		t.Errorf("\ngot %#v\nwant Id=%d Message=%q", er, id, message)
 	}
 	return er
+}
+
+func (c *Client) ExpectInitializeResponseAndCapabilities(t *testing.T) *dap.InitializeResponse {
+	t.Helper()
+	initResp := c.ExpectInitializeResponse(t)
+	wantCapabilities := dap.Capabilities{
+		// the values set by dap.(*Server).onInitializeRequest.
+		SupportsConfigurationDoneRequest: true,
+		SupportsConditionalBreakpoints:   true,
+		SupportsDelayedStackTraceLoading: true,
+		SupportTerminateDebuggee:         true,
+	}
+	if !reflect.DeepEqual(initResp.Body, wantCapabilities) {
+		t.Errorf("capabilities in initializeResponse: got %+v, want %v", pretty(initResp.Body), pretty(wantCapabilities))
+	}
+	return initResp
+}
+
+func pretty(v interface{}) string {
+	s, _ := json.MarshalIndent(v, "", "\t")
+	return string(s)
 }
 
 func (c *Client) ExpectNotYetImplementedErrorResponse(t *testing.T) *dap.ErrorResponse {
@@ -96,208 +122,33 @@ func (c *Client) ExpectUnsupportedCommandErrorResponse(t *testing.T) *dap.ErrorR
 	return c.expectErrorResponse(t, 9999, "Unsupported command")
 }
 
-func (c *Client) ExpectDisconnectResponse(t *testing.T) *dap.DisconnectResponse {
+func (c *Client) ExpectOutputEventRegex(t *testing.T, want string) *dap.OutputEvent {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.DisconnectResponse)
-}
-
-func (c *Client) ExpectContinueResponse(t *testing.T) *dap.ContinueResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.ContinueResponse)
-}
-
-func (c *Client) ExpectNextResponse(t *testing.T) *dap.NextResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.NextResponse)
-}
-
-func (c *Client) ExpectStepInResponse(t *testing.T) *dap.StepInResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.StepInResponse)
-}
-
-func (c *Client) ExpectStepOutResponse(t *testing.T) *dap.StepOutResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.StepOutResponse)
-}
-
-func (c *Client) ExpectTerminatedEvent(t *testing.T) *dap.TerminatedEvent {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.TerminatedEvent)
-}
-
-func (c *Client) ExpectInitializeResponse(t *testing.T) *dap.InitializeResponse {
-	t.Helper()
-	initResp := c.expectReadProtocolMessage(t).(*dap.InitializeResponse)
-	if !initResp.Body.SupportsConfigurationDoneRequest {
-		t.Errorf("got %#v, want SupportsConfigurationDoneRequest=true", initResp)
+	e := c.ExpectOutputEvent(t)
+	if matched, _ := regexp.MatchString(want, e.Body.Output); !matched {
+		t.Errorf("\ngot %#v\nwant Output=%q", e, want)
 	}
-	return initResp
+	return e
 }
 
-func (c *Client) ExpectInitializedEvent(t *testing.T) *dap.InitializedEvent {
+func (c *Client) ExpectOutputEventProcessExited(t *testing.T, status int) *dap.OutputEvent {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.InitializedEvent)
+	return c.ExpectOutputEventRegex(t, fmt.Sprintf(`Process [0-9]+ has exited with status %d\n`, status))
 }
 
-func (c *Client) ExpectLaunchResponse(t *testing.T) *dap.LaunchResponse {
+func (c *Client) ExpectOutputEventDetaching(t *testing.T) *dap.OutputEvent {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.LaunchResponse)
+	return c.ExpectOutputEventRegex(t, `Detaching\n`)
 }
 
-func (c *Client) ExpectAttachResponse(t *testing.T) *dap.AttachResponse {
+func (c *Client) ExpectOutputEventDetachingKill(t *testing.T) *dap.OutputEvent {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.AttachResponse)
+	return c.ExpectOutputEventRegex(t, `Detaching and terminating target process\n`)
 }
 
-func (c *Client) ExpectSetExceptionBreakpointsResponse(t *testing.T) *dap.SetExceptionBreakpointsResponse {
+func (c *Client) ExpectOutputEventDetachingNoKill(t *testing.T) *dap.OutputEvent {
 	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.SetExceptionBreakpointsResponse)
-}
-
-func (c *Client) ExpectSetBreakpointsResponse(t *testing.T) *dap.SetBreakpointsResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.SetBreakpointsResponse)
-}
-
-func (c *Client) ExpectStoppedEvent(t *testing.T) *dap.StoppedEvent {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.StoppedEvent)
-}
-
-func (c *Client) ExpectOutputEvent(t *testing.T) *dap.OutputEvent {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.OutputEvent)
-}
-
-func (c *Client) ExpectConfigurationDoneResponse(t *testing.T) *dap.ConfigurationDoneResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.ConfigurationDoneResponse)
-}
-
-func (c *Client) ExpectThreadsResponse(t *testing.T) *dap.ThreadsResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.ThreadsResponse)
-}
-
-func (c *Client) ExpectStackTraceResponse(t *testing.T) *dap.StackTraceResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.StackTraceResponse)
-}
-
-func (c *Client) ExpectScopesResponse(t *testing.T) *dap.ScopesResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.ScopesResponse)
-}
-
-func (c *Client) ExpectVariablesResponse(t *testing.T) *dap.VariablesResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.VariablesResponse)
-}
-
-func (c *Client) ExpectEvaluateResponse(t *testing.T) *dap.EvaluateResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.EvaluateResponse)
-}
-
-func (c *Client) ExpectTerminateResponse(t *testing.T) *dap.TerminateResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.TerminateResponse)
-}
-
-func (c *Client) ExpectRestartResponse(t *testing.T) *dap.RestartResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.RestartResponse)
-}
-
-func (c *Client) ExpectSetFunctionBreakpointsResponse(t *testing.T) *dap.SetFunctionBreakpointsResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.SetFunctionBreakpointsResponse)
-}
-
-func (c *Client) ExpectStepBackResponse(t *testing.T) *dap.StepBackResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.StepBackResponse)
-}
-
-func (c *Client) ExpectReverseContinueResponse(t *testing.T) *dap.ReverseContinueResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.ReverseContinueResponse)
-}
-
-func (c *Client) ExpectRestartFrameResponse(t *testing.T) *dap.RestartFrameResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.RestartFrameResponse)
-}
-
-func (c *Client) ExpectSetExpressionResponse(t *testing.T) *dap.SetExpressionResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.SetExpressionResponse)
-}
-
-func (c *Client) ExpectTerminateThreadsResponse(t *testing.T) *dap.TerminateThreadsResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.TerminateThreadsResponse)
-}
-
-func (c *Client) ExpectStepInTargetsResponse(t *testing.T) *dap.StepInTargetsResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.StepInTargetsResponse)
-}
-
-func (c *Client) ExpectGotoTargetsResponse(t *testing.T) *dap.GotoTargetsResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.GotoTargetsResponse)
-}
-
-func (c *Client) ExpectCompletionsResponse(t *testing.T) *dap.CompletionsResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.CompletionsResponse)
-}
-
-func (c *Client) ExpectExceptionInfoResponse(t *testing.T) *dap.ExceptionInfoResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.ExceptionInfoResponse)
-}
-
-func (c *Client) ExpectLoadedSourcesResponse(t *testing.T) *dap.LoadedSourcesResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.LoadedSourcesResponse)
-}
-
-func (c *Client) ExpectDataBreakpointInfoResponse(t *testing.T) *dap.DataBreakpointInfoResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.DataBreakpointInfoResponse)
-}
-
-func (c *Client) ExpectSetDataBreakpointsResponse(t *testing.T) *dap.SetDataBreakpointsResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.SetDataBreakpointsResponse)
-}
-
-func (c *Client) ExpectReadMemoryResponse(t *testing.T) *dap.ReadMemoryResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.ReadMemoryResponse)
-}
-
-func (c *Client) ExpectDisassembleResponse(t *testing.T) *dap.DisassembleResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.DisassembleResponse)
-}
-
-func (c *Client) ExpectCancelResponse(t *testing.T) *dap.CancelResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.CancelResponse)
-}
-
-func (c *Client) ExpectBreakpointLocationsResponse(t *testing.T) *dap.BreakpointLocationsResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.BreakpointLocationsResponse)
-}
-
-func (c *Client) ExpectModulesResponse(t *testing.T) *dap.ModulesResponse {
-	t.Helper()
-	return c.expectReadProtocolMessage(t).(*dap.ModulesResponse)
+	return c.ExpectOutputEventRegex(t, `Detaching without terminating target process\n`)
 }
 
 // InitializeRequest sends an 'initialize' request.
@@ -316,8 +167,15 @@ func (c *Client) InitializeRequest() {
 	c.send(request)
 }
 
+// InitializeRequestWithArgs sends an 'initialize' request with specified arguments.
+func (c *Client) InitializeRequestWithArgs(args dap.InitializeRequestArguments) {
+	request := &dap.InitializeRequest{Request: *c.newRequest("initialize")}
+	request.Arguments = args
+	c.send(request)
+}
+
 // LaunchRequest sends a 'launch' request with the specified args.
-func (c *Client) LaunchRequest(mode string, program string, stopOnEntry bool) {
+func (c *Client) LaunchRequest(mode, program string, stopOnEntry bool) {
 	request := &dap.LaunchRequest{Request: *c.newRequest("launch")}
 	request.Arguments = map[string]interface{}{
 		"request":     "launch",

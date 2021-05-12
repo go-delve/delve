@@ -25,7 +25,7 @@ For example given this project layout:
 │       └── bar_test.go
 ```
 
-If you are in the directory `github.com/me/foo/cmd/foo` you can simple run `dlv debug`
+If you are in the directory `github.com/me/foo/cmd/foo` you can simply run `dlv debug`
 from the command line. From anywhere else, say the project root, you can simply
 provide the package: `dlv debug github.com/me/foo/cmd/foo`. To pass flags to your program 
 separate them with `--`: `dlv debug github.com/me/foo/cmd/foo -- -arg1 value`.
@@ -86,6 +86,6 @@ As you can see, we began debugging the test binary, found our test function via
 the `funcs` command which takes a regexp to filter the list of functions, set a
 breakpoint and then continued execution until we hit that breakpoint.
 
-For more information on subcommands you can use type `dlv help`, and once in a
+For more information on subcommands you can use, type `dlv help`, and once in a
 debug session you can see all of the commands available to you by typing `help`
 at any time.

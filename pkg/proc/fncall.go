@@ -16,9 +16,9 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
+	"github.com/go-delve/delve/pkg/dwarf/regnum"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
-	"golang.org/x/arch/x86/x86asm"
 )
 
 // This file implements the function call injection introduced in go1.11.
@@ -50,13 +50,11 @@ var (
 	errFuncCallUnsupported        = errors.New("function calls not supported by this version of Go")
 	errFuncCallUnsupportedBackend = errors.New("backend does not support function calls")
 	errFuncCallInProgress         = errors.New("cannot call function while another function call is already in progress")
-	errNotACallExpr               = errors.New("not a function call")
 	errNoGoroutine                = errors.New("no goroutine selected")
 	errGoroutineNotRunning        = errors.New("selected goroutine not running")
 	errNotEnoughStack             = errors.New("not enough stack space")
 	errTooManyArguments           = errors.New("too many arguments")
 	errNotEnoughArguments         = errors.New("not enough arguments")
-	errNoAddrUnsupported          = errors.New("arguments to a function call must have an address")
 	errNotAGoFunction             = errors.New("not a Go function")
 	errFuncCallNotAllowed         = errors.New("function calls not allowed without using 'call'")
 	errFuncCallNotAllowedStrAlloc = errors.New("literal string can not be allocated because function calls are not allowed without using 'call'")
@@ -291,8 +289,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	if regs.SP()-256 <= stacklo {
 		return nil, errNotEnoughStack
 	}
-	_, err = regs.Get(int(x86asm.RAX))
-	if err != nil {
+	if bi.Arch.RegistersToDwarfRegisters(0, regs).Reg(regnum.AMD64_Rax) == nil { //TODO(aarzilli): make this generic when call injection is supported on other architectures
 		return nil, errFuncCallUnsupportedBackend
 	}
 
@@ -389,7 +386,7 @@ type fncallPanicErr struct {
 }
 
 func (err fncallPanicErr) Error() string {
-	return fmt.Sprintf("panic calling a function")
+	return "panic calling a function"
 }
 
 func fncallLog(fmtstr string, args ...interface{}) {
@@ -707,7 +704,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		return true
 	}
 
-	rax, _ := regs.Get(int(x86asm.RAX))
+	rax := bi.Arch.RegistersToDwarfRegisters(0, regs).Uint64Val(regnum.AMD64_Rax) //TODO(aarzilli): make this generic when call injection is supported on other architectures
 
 	if logflags.FnCall() {
 		loc, _ := thread.Location()
@@ -888,13 +885,6 @@ func fakeFunctionEntryScope(scope *EvalScope, fn *Function, cfa int64, sp uint64
 	}
 	scope.Regs.FrameBase, _, _, _ = scope.BinInfo.Location(e, dwarf.AttrFrameBase, scope.PC, scope.Regs)
 	return nil
-}
-
-func (fncall *functionCallState) returnValues() []*Variable {
-	if fncall.panicvar != nil {
-		return []*Variable{fncall.panicvar}
-	}
-	return fncall.retvars
 }
 
 // allocString allocates spaces for the contents of v if it needs to be allocated
