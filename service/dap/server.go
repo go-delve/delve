@@ -1541,7 +1541,7 @@ func (s *Server) convertVariable(v *proc.Variable, qualifiedNameOrExpr string) (
 	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, false, "")
 }
 
-func (s *Server) convertVariableWithContext(v *proc.Variable, qualifiedNameOrExpr string, evalContext string) (value string, variablesReference int) {
+func (s *Server) convertVariableWithContext(v *proc.Variable, qualifiedNameOrExpr, evalContext string) (value string, variablesReference int) {
 	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, false, evalContext)
 }
 
