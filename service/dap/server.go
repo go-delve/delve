@@ -1538,24 +1538,17 @@ func (s *Server) getTypeIfSupported(v *proc.Variable) string {
 // custom, a zero reference, reminiscent of a zero pointer, is used to indicate that
 // a scalar variable cannot be "dereferenced" to get its elements (as there are none).
 func (s *Server) convertVariable(v *proc.Variable, qualifiedNameOrExpr string) (value string, variablesReference int) {
-	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, false, "")
+	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, false)
 }
 
-func (s *Server) convertVariableWithContext(v *proc.Variable, qualifiedNameOrExpr, evalContext string) (value string, variablesReference int) {
-	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, false, evalContext)
-}
-
-func (s *Server) convertVariableToStringWithContext(v *proc.Variable, evalContext string) string {
-	val, _ := s.convertVariableWithOpts(v, "", true, evalContext)
+func (s *Server) convertVariableToString(v *proc.Variable) string {
+	val, _ := s.convertVariableWithOpts(v, "", true)
 	return val
 }
 
 // convertVariableWithOpts allows to skip reference generation in case all we need is
 // a string representation of the variable.
-func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, skipRef bool, evalContext string) (value string, variablesReference int) {
-	// evaluate requests will set evaluation contexts such as 'repl', 'variables', 'watch', 'clipboard', 'hover',
-	// while variables requests will not set any context.
-
+func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, skipRef bool) (value string, variablesReference int) {
 	maybeCreateVariableHandle := func(v *proc.Variable) int {
 		if skipRef {
 			return 0
@@ -1586,18 +1579,9 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		// This is not really necessary now because users have no way of setting FollowPointers to false.
 		config := DefaultLoadConfig
 		config.FollowPointers = true
-		if v.Kind == reflect.String {
-			config.MaxStringLen = 4 << 10
-		}
-
 		vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, loadExpr, config)
 		if err != nil {
 			value += fmt.Sprintf(" - FAILED TO LOAD: %s", err)
-			return value
-		}
-
-		if v.Kind == reflect.String {
-			value = api.ConvertVar(vLoaded).SinglelineString()
 		} else {
 			v.Children = vLoaded.Children
 			value = api.ConvertVar(v).SinglelineString()
@@ -1662,16 +1646,7 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 			variablesReference = maybeCreateVariableHandle(v)
 		}
 	case reflect.String:
-		if evalContext == "repl" || evalContext == "variables" {
-			// TODO(hyangah): Copy Value from WATCH panel triggers an evaluate request in 'watch' mode,
-			// not in 'variables' mode. Either apply this in watch mode or after enabling the clipboard support,
-			// apply this in clipboard mode. When clipboard support is enabled, Copy Value from vscode VARIABLES
-			// panel also uses 'clipboard' mode. (Not sure where 'variables' mode will be used after then).
-			if strVal := constant.StringVal(v.Value); v.Len > int64(len(strVal)) {
-				value = reloadVariable(v, qualifiedNameOrExpr)
-			}
-		}
-		// TODO(polina): implement auto-loading here instead of the above hack that handles only 'evaluate' requests.
+		// TODO(polina): implement auto-loading here.
 	case reflect.Interface:
 		if v.Addr != 0 && len(v.Children) > 0 && v.Children[0].Kind != reflect.Invalid && v.Children[0].Addr != 0 {
 			if v.Children[0].OnlyAddr { // Not loaded
@@ -1756,12 +1731,22 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			return
 		}
 
+		// The return values of injected function calls are volatile.
+		// Load as much useful data as possible.
+		// - String: a common use case of call injection is to stringify complex
+		// data conveniently. That can easily exceed the default limit, 64.
+		// TODO: investigate whether we need to increase other limits. For example,
+		// the return value is a pointer to a temporary object, which can become
+		// invalid by other injected function calls. Do we care about such use cases?
+		loadCfg := DefaultLoadConfig
+		loadCfg.MaxStringLen = 1 << 10
+
 		// TODO(polina): since call will resume execution of all goroutines,
 		// we should do this asynchronously and send a continued event to the
 		// editor, followed by a stop event when the call completes.
 		state, err := s.debugger.Command(&api.DebuggerCommand{
 			Name:                 api.Call,
-			ReturnInfoLoadConfig: api.LoadConfigFromProc(&DefaultLoadConfig),
+			ReturnInfoLoadConfig: api.LoadConfigFromProc(&loadCfg),
 			Expr:                 strings.Replace(request.Arguments.Expression, "call ", "", 1),
 			UnsafeCall:           false,
 			GoroutineID:          goid,
@@ -1814,7 +1799,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			// As a shortcut also express the return values as a single string.
 			retVarsAsStr := ""
 			for _, v := range retVars {
-				retVarsAsStr += s.convertVariableToStringWithContext(v, request.Arguments.Context) + ", "
+				retVarsAsStr += s.convertVariableToString(v) + ", "
 			}
 			response.Body = dap.EvaluateResponseBody{
 				Result:             strings.TrimRight(retVarsAsStr, ", "),
@@ -1827,9 +1812,22 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 			return
 		}
+
+		if exprVar.Kind == reflect.String && (request.Arguments.Context == "repl" || request.Arguments.Context == "variables") {
+			if strVal := constant.StringVal(exprVar.Value); exprVar.Len > int64(len(strVal)) {
+				// reload string value with a bigger limit.
+				loadCfg := DefaultLoadConfig
+				loadCfg.MaxStringLen = 4 << 10
+				if v, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, loadCfg); err != nil {
+					s.log.Debugf("Failed to load more for %v: %v", request.Arguments.Expression, err)
+				} else {
+					exprVar = v
+				}
+			}
+		}
 		// TODO(polina): as far as I can tell, evaluateName is ignored by vscode for expression variables.
 		// Should it be skipped altogether for all levels?
-		exprVal, exprRef := s.convertVariableWithContext(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression), request.Arguments.Context)
+		exprVal, exprRef := s.convertVariable(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression))
 		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef}
 	}
 	s.send(response)

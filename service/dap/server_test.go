@@ -2339,9 +2339,9 @@ func TestEvaluateCallRequest(t *testing.T) {
 					client.EvaluateRequest(`call stringsJoin(longstrs, ",")`, 1000, "variables") // full string
 					got = client.ExpectEvaluateResponse(t)
 					expectEval(t, got, `"very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"`, hasChildren)
-					client.EvaluateRequest(`call stringsJoin(longstrs, ",")`, 1000, "") // truncated
+					client.EvaluateRequest(`call stringsJoin(longstrs, ",")`, 1000, "watch") // full string
 					got = client.ExpectEvaluateResponse(t)
-					expectEval(t, got, `"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more"`, hasChildren)
+					expectEval(t, got, `"very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"`, hasChildren)
 
 					// Call error
 					client.EvaluateRequest("call call1(one)", 1000, "watch")
