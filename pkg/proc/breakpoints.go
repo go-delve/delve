@@ -7,6 +7,8 @@ import (
 	"go/constant"
 	"go/parser"
 	"reflect"
+
+	"github.com/go-delve/delve/pkg/astutil"
 )
 
 const (
@@ -70,6 +72,9 @@ type Breakpoint struct {
 	Cond ast.Expr
 	// internalCond is the same as Cond but used for the condition of internal breakpoints
 	internalCond ast.Expr
+	// HitCond: if not nil the breakpoint will be triggered only if the total hit count is
+	// equal to the evaluated HitCond
+	HitCond *ast.BinaryExpr
 
 	// ReturnInfo describes how to collect return variables when this
 	// breakpoint is hit as a return breakpoint.
@@ -163,6 +168,22 @@ type returnBreakpointInfo struct {
 // CheckCondition evaluates bp's condition on thread.
 func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
 	bpstate := BreakpointState{Breakpoint: bp, Active: false, Internal: false, CondError: nil}
+	bpstate = bp.checkCond(bpstate, thread)
+	// Update the hit condition.
+	if bpstate.Breakpoint != nil && bpstate.Active {
+		if g, err := GetG(thread); err == nil {
+			bpstate.HitCount[g.ID]++
+		}
+		bpstate.TotalHitCount++
+	}
+	// Check the hit condition.
+	if bpstate.Active && !bpstate.Internal {
+		bpstate = bp.checkHitCond(bpstate, thread)
+	}
+	return bpstate
+}
+
+func (bp *Breakpoint) checkCond(bpstate BreakpointState, thread Thread) BreakpointState {
 	if bp.Cond == nil && bp.internalCond == nil {
 		bpstate.Active = true
 		bpstate.Internal = bp.IsInternal()
@@ -191,6 +212,16 @@ func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
 	if bp.IsUser() {
 		// Check normal condition if this is also a user breakpoint
 		bpstate.Active, bpstate.CondError = evalBreakpointCondition(thread, bp.Cond)
+	}
+	return bpstate
+}
+
+// checkHitCond evaluates bp's condition on thread.
+func (bp *Breakpoint) checkHitCond(bpstate BreakpointState, thread Thread) BreakpointState {
+	if bp.HitCond != nil {
+		// Check hit condition if this is a user breakpoint.
+		bp.HitCond.X = astutil.Int(int64(bp.TotalHitCount))
+		bpstate.Active, bpstate.HitCondError = evalBreakpointCondition(thread, bp.HitCond)
 	}
 	return bpstate
 }
@@ -487,6 +518,9 @@ type BreakpointState struct {
 	// CondError contains any error encountered while evaluating the
 	// breakpoint's condition.
 	CondError error
+	// HitCondError contains any error encountered while evaluating the
+	// breakpoint's hit condition.
+	HitCondError error
 }
 
 // Clear zeros the struct.

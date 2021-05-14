@@ -155,12 +155,6 @@ func (t *nativeThread) SetCurrentBreakpoint(adjustPC bool) error {
 
 	if bp != nil {
 		t.CurrentBreakpoint = bp.CheckCondition(t)
-		if t.CurrentBreakpoint.Breakpoint != nil && t.CurrentBreakpoint.Active {
-			if g, err := proc.GetG(t); err == nil {
-				t.CurrentBreakpoint.HitCount[g.ID]++
-			}
-			t.CurrentBreakpoint.TotalHitCount++
-		}
 	}
 	return nil
 }
