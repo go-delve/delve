@@ -1632,6 +1632,7 @@ func TestVariablesLoading(t *testing.T) {
 					// step into another function
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
+					client.ExpectContinuedEvent(t)
 					client.ExpectStoppedEvent(t)
 					handleStop(t, client, 1, "main.barfoo", 24)
 					loadvars(1001 /*second frame here is same as topmost above*/)
@@ -1679,6 +1680,7 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 					// Step into pkg.AnotherMethod()
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
+					client.ExpectContinuedEvent(t)
 					client.ExpectStoppedEvent(t)
 
 					client.StackTraceRequest(1, 0, 20)
@@ -2333,18 +2335,22 @@ func TestNextAndStep(t *testing.T) {
 
 					client.StepOutRequest(1)
 					client.ExpectStepOutResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStop("main.main", 18)
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStop("main.main", 19)
 
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStop("main.inlineThis", 5)
 
 					client.NextRequest(-1000)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "error" || se.Body.Text != "unknown goroutine -1000" {
 						t.Errorf("got %#v, want Reaspon=\"error\", Text=\"unknown goroutine -1000\"", se)
 					}
@@ -2373,6 +2379,7 @@ func TestNextParked(t *testing.T) {
 
 					client.NextRequest(goroutineId)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 
 					se := client.ExpectStoppedEvent(t)
 					if se.Body.ThreadId != goroutineId {
@@ -2402,6 +2409,7 @@ func TestStepInParked(t *testing.T) {
 
 					client.StepInRequest(goroutineId)
 					client.ExpectStepInResponse(t)
+					client.ExpectContinuedEvent(t)
 
 					se := client.ExpectStoppedEvent(t)
 					if se.Body.ThreadId != goroutineId {
@@ -2521,6 +2529,7 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 					}
 					client.StepOutRequest(goroutineId)
 					client.ExpectStepOutResponse(t)
+					client.ExpectContinuedEvent(t)
 
 					switch e := client.ExpectMessage(t).(type) {
 					case *dap.StoppedEvent:
@@ -2572,18 +2581,22 @@ func TestBadAccess(t *testing.T) {
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStoppedOnError("invalid memory address or nil pointer dereference")
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStoppedOnError("next while nexting")
 
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStoppedOnError("next while nexting")
 
 					client.StepOutRequest(1)
 					client.ExpectStepOutResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStoppedOnError("next while nexting")
 				},
 				disconnect: true,
@@ -2638,6 +2651,7 @@ func TestPanicBreakpointOnNext(t *testing.T) {
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 
 					se := client.ExpectStoppedEvent(t)
 
