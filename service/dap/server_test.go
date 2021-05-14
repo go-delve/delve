@@ -1872,60 +1872,47 @@ func TestSetBreakpointWhileRunning(t *testing.T) {
 				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
 			},
 			// Set breakpoints
-			fixture.Source, []int{14},
+			fixture.Source, []int{16},
 			[]onBreakpoint{{
 				execute: func() {
-					handleStop(t, client, 1, "main.main", 14) // Breakpoint outside of the loop body
-					client.NextRequest(1)
-					client.ExpectNextResponse(t)
-					client.ExpectStoppedEvent(t)
-					client.NextRequest(1)
-					client.ExpectNextResponse(t)
-					client.ExpectStoppedEvent(t)
-					handleStop(t, client, 1, "main.main", 16) // Loop body line that sleeps
+					// The program loops 3 times over lines 14-15-8-9-10-16
+					handleStop(t, client, 1, "main.main", 16) // Line that sleeps for 1 second
 
-					// 16: This will be a 1-second sleepy next, so we can reliably interrupt it
+					// We can set breakpoints while nexting
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
-
-					// 16+: While sleeping, change breakpoints from [14,] => [15,]
-					client.SetBreakpointsRequest(fixture.Source, []int{15})
+					client.SetBreakpointsRequest(fixture.Source, []int{15}) // [16,] => [15,]
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.Reason != "cancelled next" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
-						t.Errorf("\ngot  %#v\nwant Reason='cancelled next' AllThreadsStopped=true ThreadId=0/1", se)
+					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
 					}
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{15, fixture.Source, true, ""}})
-					oe := client.ExpectOutputEvent(t)
-					warning := "WARNING: setting breakpoints halted execution and cancelled \"next\"\n"
-					if oe.Body.Category != "stderr" || oe.Body.Output != warning {
-						t.Errorf("\ngot  %#v\nwant Category='stderr' Output=%q", oe, warning)
-					}
-
-					// 16+: We continue manually since we are stopped where next was interrupted
+					// Halt cancelled next, so if we continue we will not stop at line 14.
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
-
-					// 15: Continue loops and stops at line 15 (verifies that setting breakpoint during next worked)
 					se = client.ExpectStoppedEvent(t)
 					if se.Body.Reason != "breakpoint" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 1 {
 						t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", se)
 					}
 					handleStop(t, client, 1, "main.main", 15)
 
-					// 16: We continue and loop once more to enter sleep on line 16
+					// We can set breakpoints while continuing
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
-
-					// 16+: While sleeping, change breakpoints from [15,] => [9,]
-					client.SetBreakpointsRequest(fixture.Source, []int{9})
+					client.SetBreakpointsRequest(fixture.Source, []int{9}) // [15,] => [9,]
+					se = client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
+					}
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{9, fixture.Source, true, ""}})
-
-					// 9: Continue loops and stops at line 9 (verifies that setting breakpoint during continue worked)
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
 					se = client.ExpectStoppedEvent(t)
 					if se.Body.Reason != "breakpoint" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 1 {
 						t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", se)
 					}
 					handleStop(t, client, 1, "main.sayhi", 9)
+
 				},
 				disconnect: true,
 			}})
