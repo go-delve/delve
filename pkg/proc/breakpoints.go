@@ -72,8 +72,8 @@ type Breakpoint struct {
 	Cond ast.Expr
 	// internalCond is the same as Cond but used for the condition of internal breakpoints
 	internalCond ast.Expr
-	// HitCond: if not nil the breakpoint will be triggered only if the total hit count is
-	// equal to the evaluated HitCond
+	// HitCond: if not nil the breakpoint will be triggered only if the evaluated HitCond returns
+	// true with the TotalHitCount.
 	HitCond *ast.BinaryExpr
 
 	// ReturnInfo describes how to collect return variables when this
@@ -216,7 +216,7 @@ func (bp *Breakpoint) checkCond(bpstate BreakpointState, thread Thread) Breakpoi
 	return bpstate
 }
 
-// checkHitCond evaluates bp's condition on thread.
+// checkHitCond evaluates bp's hit condition on thread.
 func (bp *Breakpoint) checkHitCond(bpstate BreakpointState, thread Thread) BreakpointState {
 	if bp.HitCond != nil {
 		bp.HitCond.X = astutil.Int(int64(bp.TotalHitCount))
