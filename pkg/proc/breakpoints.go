@@ -169,7 +169,7 @@ type returnBreakpointInfo struct {
 func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
 	bpstate := BreakpointState{Breakpoint: bp, Active: false, Internal: false, CondError: nil}
 	bpstate = bp.checkCond(bpstate, thread)
-	// Update the hit condition.
+	// Update the breakpoint hit counts.
 	if bpstate.Breakpoint != nil && bpstate.Active {
 		if g, err := GetG(thread); err == nil {
 			bpstate.HitCount[g.ID]++
