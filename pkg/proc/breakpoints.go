@@ -176,7 +176,7 @@ func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
 		}
 		bpstate.TotalHitCount++
 	}
-	// Check the hit condition.
+	//Check hit condition if this is a user breakpoint.
 	if bpstate.Active && !bpstate.Internal {
 		bpstate = bp.checkHitCond(bpstate, thread)
 	}
@@ -219,7 +219,6 @@ func (bp *Breakpoint) checkCond(bpstate BreakpointState, thread Thread) Breakpoi
 // checkHitCond evaluates bp's condition on thread.
 func (bp *Breakpoint) checkHitCond(bpstate BreakpointState, thread Thread) BreakpointState {
 	if bp.HitCond != nil {
-		// Check hit condition if this is a user breakpoint.
 		bp.HitCond.X = astutil.Int(int64(bp.TotalHitCount))
 		bpstate.Active, bpstate.HitCondError = evalBreakpointCondition(thread, bp.HitCond)
 	}
