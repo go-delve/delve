@@ -723,17 +723,24 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		}
 
 		s.log.Debugf("building binary at %s", debugbinary)
+		var cmd string
 		var out []byte
 		switch mode {
 		case "debug":
-			out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
+			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
 		case "test":
-			out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
+			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
 		}
 		if err != nil {
+			s.send(&dap.OutputEvent{
+				Event: *newEvent("output"),
+				Body: dap.OutputEventBody{
+					Output:   fmt.Sprintf("Build Error: %s\n%s (%s)\n", cmd, strings.TrimSpace(string(out)), err.Error()),
+					Category: "stderr",
+				}})
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("Build error: %s (%s)", strings.TrimSpace(string(out)), err.Error()))
+				"Build error: Check the debug console for details.")
 			return
 		}
 		program = debugbinary

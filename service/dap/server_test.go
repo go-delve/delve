@@ -3140,14 +3140,6 @@ func TestBadLaunchRequests(t *testing.T) {
 			}
 		}
 
-		expectFailedToLaunchWithMessageRegex := func(response *dap.ErrorResponse, errmsg string) {
-			t.Helper()
-			expectFailedToLaunch(response)
-			if matched, _ := regexp.MatchString(errmsg, response.Body.Error.Format); !matched {
-				t.Errorf("\ngot  %q\nwant %q", response.Body.Error.Format, errmsg)
-			}
-		}
-
 		// Test for the DAP-specific detailed error message.
 		client.LaunchRequest("exec", "", stopOnEntry)
 		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
@@ -3229,18 +3221,34 @@ func TestBadLaunchRequests(t *testing.T) {
 		expectFailedToLaunch(client.ExpectInvisibleErrorResponse(t)) // No such file or directory
 
 		client.LaunchRequest("debug", fixture.Path+"_does_not_exist", stopOnEntry)
+		oe := client.ExpectOutputEvent(t)
+		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
+			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
+		}
 		expectFailedToLaunch(client.ExpectInvisibleErrorResponse(t))
 
 		client.LaunchRequest("" /*debug by default*/, fixture.Path+"_does_not_exist", stopOnEntry)
+		oe = client.ExpectOutputEvent(t)
+		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
+			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
+		}
 		expectFailedToLaunch(client.ExpectInvisibleErrorResponse(t))
 
 		client.LaunchRequest("exec", fixture.Source, stopOnEntry)
 		expectFailedToLaunch(client.ExpectInvisibleErrorResponse(t)) // Not an executable
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "-bad -flags"})
-		expectFailedToLaunchWithMessageRegex(client.ExpectInvisibleErrorResponse(t), `Failed to launch: Build error: .*flag provided but not defined.*`)
+		oe = client.ExpectOutputEvent(t)
+		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
+			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
+		}
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t), "Failed to launch: Build error: Check the debug console for details.")
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "buildFlags": "-bad -flags"})
-		expectFailedToLaunchWithMessageRegex(client.ExpectInvisibleErrorResponse(t), `Failed to launch: Build error: .*flag provided but not defined.*`)
+		oe = client.ExpectOutputEvent(t)
+		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
+			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
+		}
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t), "Failed to launch: Build error: Check the debug console for details.")
 
 		// Bad "wd".
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": false, "cwd": "dir/invalid"})
