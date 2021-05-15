@@ -502,8 +502,12 @@ func TestPreSetBreakpoint(t *testing.T) {
 			msg := client.ExpectMessage(t)
 			switch m := msg.(type) {
 			case *dap.ThreadsResponse:
-				if len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != -1 || m.Body.Threads[0].Name != "Current" {
-					t.Errorf("\ngot  %#v\nwant Id=-1, Name=\"Current\"", m.Body.Threads)
+				// If the thread request arrived while the program was running, we expect to get the dummy response
+				// with a single goroutine "Current".
+				// If the thread request arrived after the stop, we should get the goroutine stopped at main.Increment.
+				if (len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != -1 || m.Body.Threads[0].Name != "Current") &&
+					(len(m.Body.Threads) < 1 || m.Body.Threads[0].Id != 1 || !strings.HasPrefix(m.Body.Threads[0].Name, "* [Go 1] main.Increment")) {
+					t.Errorf("\ngot  %#v\nwant Id=-1, Name=\"Current\" or Id=1, Name=\"* [Go 1] main.Increment ...\"", m.Body.Threads)
 				}
 			case *dap.StoppedEvent:
 				if m.Body.Reason != "breakpoint" || m.Body.ThreadId != 1 || !m.Body.AllThreadsStopped {
