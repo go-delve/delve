@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"go/constant"
 	"os"
+	"sort"
 	"strings"
 
+	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/goversion"
 )
 
@@ -66,6 +68,12 @@ type Target struct {
 	// exitStatus is the exit status of the process we are debugging.
 	// Saved here to relay to any future commands.
 	exitStatus int
+
+	// fakeMemoryRegistry contains the list of all compositeMemory objects
+	// created since the last restart, it exists so that registerized variables
+	// can be given a unique address.
+	fakeMemoryRegistry    []*compositeMemory
+	fakeMemoryRegistryMap map[string]*compositeMemory
 }
 
 // ErrProcessExited indicates that the process has exited and contains both
@@ -181,6 +189,7 @@ func NewTarget(p Process, currentThread Thread, cfg NewTargetConfig) (*Target, e
 	t.createFatalThrowBreakpoint()
 
 	t.gcache.init(p.BinInfo())
+	t.fakeMemoryRegistryMap = make(map[string]*compositeMemory)
 
 	if cfg.DisableAsyncPreempt {
 		setAsyncPreemptOff(t, 1)
@@ -232,9 +241,10 @@ func (t *Target) SupportsFunctionCalls() bool {
 	return t.Process.BinInfo().Arch.Name == "amd64"
 }
 
-// ClearAllGCache clears the internal Goroutine cache.
+// ClearCaches clears internal caches that should not survive a restart.
 // This should be called anytime the target process executes instructions.
-func (t *Target) ClearAllGCache() {
+func (t *Target) ClearCaches() {
+	t.clearFakeMemory()
 	t.gcache.Clear()
 	for _, thread := range t.ThreadList() {
 		thread.Common().g = nil
@@ -245,7 +255,7 @@ func (t *Target) ClearAllGCache() {
 // This is only useful for recorded targets.
 // Restarting of a normal process happens at a higher level (debugger.Restart).
 func (t *Target) Restart(from string) error {
-	t.ClearAllGCache()
+	t.ClearCaches()
 	currentThread, err := t.proc.Restart(from)
 	if err != nil {
 		return err
@@ -384,4 +394,74 @@ func (t *Target) CurrentThread() Thread {
 // SetNextBreakpointID sets the breakpoint ID of the next breakpoint
 func (t *Target) SetNextBreakpointID(id int) {
 	t.Breakpoints().breakpointIDCounter = id
+}
+
+const (
+	fakeAddressBase     = 0xbeef000000000000
+	fakeAddressUnresolv = 0xbeed000000000000 // this address never resloves to memory
+)
+
+// newCompositeMemory creates a new compositeMemory object and registers it.
+// If the same composite memory has been created before it will return a
+// cached object.
+// This caching is primarily done so that registerized variables don't get a
+// different address every time they are evaluated, which would be confusing
+// and leak memory.
+func (t *Target) newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters, pieces []op.Piece, descr *locationExpr) (int64, *compositeMemory, error) {
+	var key string
+	if regs.CFA != 0 && len(pieces) > 0 {
+		// key is created by concatenating the location expression with the CFA,
+		// this combination is guaranteed to be unique between resumes.
+		buf := new(strings.Builder)
+		fmt.Fprintf(buf, "%#x ", regs.CFA)
+		op.PrettyPrint(buf, descr.instr)
+		key = buf.String()
+
+		if cmem := t.fakeMemoryRegistryMap[key]; cmem != nil {
+			return int64(cmem.base), cmem, nil
+		}
+	}
+
+	cmem, err := newCompositeMemory(mem, t.BinInfo().Arch, regs, pieces)
+	if err != nil {
+		return 0, cmem, err
+	}
+	t.registerFakeMemory(cmem)
+	if key != "" {
+		t.fakeMemoryRegistryMap[key] = cmem
+	}
+	return int64(cmem.base), cmem, nil
+}
+
+func (t *Target) registerFakeMemory(mem *compositeMemory) (addr uint64) {
+	t.fakeMemoryRegistry = append(t.fakeMemoryRegistry, mem)
+	addr = fakeAddressBase
+	if len(t.fakeMemoryRegistry) > 1 {
+		prevMem := t.fakeMemoryRegistry[len(t.fakeMemoryRegistry)-2]
+		addr = uint64(alignAddr(int64(prevMem.base+uint64(len(prevMem.data))), 0x100)) // the call to alignAddr just makes the address look nicer, it is not necessary
+	}
+	mem.base = addr
+	return addr
+}
+
+func (t *Target) findFakeMemory(addr uint64) *compositeMemory {
+	i := sort.Search(len(t.fakeMemoryRegistry), func(i int) bool {
+		mem := t.fakeMemoryRegistry[i]
+		return addr <= mem.base || (mem.base <= addr && addr < (mem.base+uint64(len(mem.data))))
+	})
+	if i != len(t.fakeMemoryRegistry) {
+		mem := t.fakeMemoryRegistry[i]
+		if mem.base <= addr && addr < (mem.base+uint64(len(mem.data))) {
+			return mem
+		}
+	}
+	return nil
+}
+
+func (t *Target) clearFakeMemory() {
+	for i := range t.fakeMemoryRegistry {
+		t.fakeMemoryRegistry[i] = nil
+	}
+	t.fakeMemoryRegistry = t.fakeMemoryRegistry[:0]
+	t.fakeMemoryRegistryMap = make(map[string]*compositeMemory)
 }

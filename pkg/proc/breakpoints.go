@@ -272,9 +272,9 @@ func evalBreakpointCondition(thread Thread, cond ast.Expr) (bool, error) {
 	if cond == nil {
 		return true, nil
 	}
-	scope, err := GoroutineScope(thread)
+	scope, err := GoroutineScope(nil, thread)
 	if err != nil {
-		scope, err = ThreadScope(thread)
+		scope, err = ThreadScope(nil, thread)
 		if err != nil {
 			return true, err
 		}
@@ -568,7 +568,7 @@ func configureReturnBreakpoint(bi *BinaryInfo, bp *Breakpoint, topframe *Stackfr
 	}
 }
 
-func (rbpi *returnBreakpointInfo) Collect(thread Thread) []*Variable {
+func (rbpi *returnBreakpointInfo) Collect(t *Target, thread Thread) []*Variable {
 	if rbpi == nil {
 		return nil
 	}
@@ -577,7 +577,7 @@ func (rbpi *returnBreakpointInfo) Collect(thread Thread) []*Variable {
 	if err != nil {
 		return returnInfoError("could not get g", err, thread.ProcessMemory())
 	}
-	scope, err := GoroutineScope(thread)
+	scope, err := GoroutineScope(t, thread)
 	if err != nil {
 		return returnInfoError("could not get scope", err, thread.ProcessMemory())
 	}

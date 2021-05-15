@@ -32,6 +32,7 @@ type EvalScope struct {
 	Mem     MemoryReadWriter // Target's memory
 	g       *G
 	BinInfo *BinaryInfo
+	target  *Target
 
 	frameOffset int64
 
@@ -68,7 +69,7 @@ func ConvertEvalScope(dbp *Target, gid, frame, deferCall int) (*EvalScope, error
 		return nil, err
 	}
 	if g == nil {
-		return ThreadScope(ct)
+		return ThreadScope(dbp, ct)
 	}
 
 	var opts StacktraceOptions
@@ -95,10 +96,10 @@ func ConvertEvalScope(dbp *Target, gid, frame, deferCall int) (*EvalScope, error
 			return nil, d.Unreadable
 		}
 
-		return d.EvalScope(ct)
+		return d.EvalScope(dbp, ct)
 	}
 
-	return FrameToScope(dbp.BinInfo(), dbp.Memory(), g, locs[frame:]...), nil
+	return FrameToScope(dbp, dbp.BinInfo(), dbp.Memory(), g, locs[frame:]...), nil
 }
 
 // FrameToScope returns a new EvalScope for frames[0].
@@ -106,7 +107,7 @@ func ConvertEvalScope(dbp *Target, gid, frame, deferCall int) (*EvalScope, error
 // frames[0].Regs.SP() and frames[1].Regs.CFA will be cached.
 // Otherwise all memory between frames[0].Regs.SP() and frames[0].Regs.CFA
 // will be cached.
-func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stackframe) *EvalScope {
+func FrameToScope(t *Target, bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stackframe) *EvalScope {
 	// Creates a cacheMem that will preload the entire stack frame the first
 	// time any local variable is read.
 	// Remember that the stack grows downward in memory.
@@ -121,13 +122,13 @@ func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stack
 		thread = cacheMemory(thread, minaddr, int(maxaddr-minaddr))
 	}
 
-	s := &EvalScope{Location: frames[0].Call, Regs: frames[0].Regs, Mem: thread, g: g, BinInfo: bi, frameOffset: frames[0].FrameOffset()}
+	s := &EvalScope{Location: frames[0].Call, Regs: frames[0].Regs, Mem: thread, g: g, BinInfo: bi, target: t, frameOffset: frames[0].FrameOffset()}
 	s.PC = frames[0].lastpc
 	return s
 }
 
 // ThreadScope returns an EvalScope for the given thread.
-func ThreadScope(thread Thread) (*EvalScope, error) {
+func ThreadScope(t *Target, thread Thread) (*EvalScope, error) {
 	locations, err := ThreadStacktrace(thread, 1)
 	if err != nil {
 		return nil, err
@@ -135,11 +136,11 @@ func ThreadScope(thread Thread) (*EvalScope, error) {
 	if len(locations) < 1 {
 		return nil, errors.New("could not decode first frame")
 	}
-	return FrameToScope(thread.BinInfo(), thread.ProcessMemory(), nil, locations...), nil
+	return FrameToScope(t, thread.BinInfo(), thread.ProcessMemory(), nil, locations...), nil
 }
 
 // GoroutineScope returns an EvalScope for the goroutine running on the given thread.
-func GoroutineScope(thread Thread) (*EvalScope, error) {
+func GoroutineScope(t *Target, thread Thread) (*EvalScope, error) {
 	locations, err := ThreadStacktrace(thread, 1)
 	if err != nil {
 		return nil, err
@@ -151,7 +152,7 @@ func GoroutineScope(thread Thread) (*EvalScope, error) {
 	if err != nil {
 		return nil, err
 	}
-	return FrameToScope(thread.BinInfo(), thread.ProcessMemory(), g, locations...), nil
+	return FrameToScope(t, thread.BinInfo(), thread.ProcessMemory(), g, locations...), nil
 }
 
 // EvalExpression returns the value of the given expression.
@@ -219,7 +220,7 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 	vars := make([]*Variable, 0, len(varEntries))
 	depths := make([]int, 0, len(varEntries))
 	for _, entry := range varEntries {
-		val, err := extractVarInfoFromEntry(scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry.Tree)
+		val, err := extractVarInfoFromEntry(scope.target, scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry.Tree)
 		if err != nil {
 			// skip variables that we can't parse yet
 			continue
@@ -472,7 +473,7 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 		}
 
 		// Ignore errors trying to extract values
-		val, err := extractVarInfoFromEntry(scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry))
+		val, err := extractVarInfoFromEntry(scope.target, scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry))
 		if val != nil && val.Kind == reflect.Invalid {
 			continue
 		}
@@ -509,7 +510,7 @@ func (scope *EvalScope) findGlobalInternal(name string) (*Variable, error) {
 			if err != nil {
 				return nil, err
 			}
-			return extractVarInfoFromEntry(scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry))
+			return extractVarInfoFromEntry(scope.target, scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry))
 		}
 	}
 	for _, fn := range scope.BinInfo.Functions {
@@ -720,7 +721,7 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 					if err != nil {
 						return nil, fmt.Errorf("blah: %v", err)
 					}
-					gvar := newVariable("curg", fakeAddress, typ, scope.BinInfo, scope.Mem)
+					gvar := newVariable("curg", fakeAddressUnresolv, typ, scope.BinInfo, scope.Mem)
 					gvar.loaded = true
 					gvar.Flags = VariableFakeAddress
 					gvar.Children = append(gvar.Children, *newConstant(constant.MakeInt64(0), scope.Mem))
@@ -841,7 +842,14 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 
 		n, _ := constant.Int64Val(argv.Value)
 
-		v.Children = []Variable{*(newVariable("", uint64(n), ttyp.Type, scope.BinInfo, scope.Mem))}
+		mem := scope.Mem
+		if scope.target != nil {
+			if mem2 := scope.target.findFakeMemory(uint64(n)); mem2 != nil {
+				mem = mem2
+			}
+		}
+
+		v.Children = []Variable{*(newVariable("", uint64(n), ttyp.Type, scope.BinInfo, mem))}
 		v.Children[0].OnlyAddr = true
 		return v, nil
 
@@ -1158,9 +1166,9 @@ func (scope *EvalScope) evalIdent(node *ast.Ident) (*Variable, error) {
 				v := newVariable(node.Name, 0, typ, scope.BinInfo, scope.Mem)
 				if v.Kind == reflect.String {
 					v.Len = int64(len(reg.Bytes) * 2)
-					v.Base = fakeAddress
+					v.Base = fakeAddressUnresolv
 				}
-				v.Addr = fakeAddress
+				v.Addr = fakeAddressUnresolv
 				v.Flags = VariableCPURegister
 				v.reg = reg
 				return v, nil

@@ -620,8 +620,8 @@ func (d *Defer) Next() *Defer {
 // EvalScope returns an EvalScope relative to the argument frame of this deferred call.
 // The argument frame of a deferred call is stored in memory immediately
 // after the deferred header.
-func (d *Defer) EvalScope(thread Thread) (*EvalScope, error) {
-	scope, err := GoroutineScope(thread)
+func (d *Defer) EvalScope(t *Target, thread Thread) (*EvalScope, error) {
+	scope, err := GoroutineScope(t, thread)
 	if err != nil {
 		return nil, fmt.Errorf("could not get scope: %v", err)
 	}

@@ -238,7 +238,7 @@ func (check *scopeCheck) Parse(descr string, t *testing.T) {
 }
 
 func (scopeCheck *scopeCheck) checkLocalsAndArgs(p *proc.Target, t *testing.T) (*proc.EvalScope, bool) {
-	scope, err := proc.GoroutineScope(p.CurrentThread())
+	scope, err := proc.GoroutineScope(p, p.CurrentThread())
 	assertNoError(err, t, "GoroutineScope()")
 
 	ok := true

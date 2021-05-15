@@ -1293,7 +1293,7 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 			continue
 		}
 
-		s, err := proc.GoroutineScope(thread)
+		s, err := proc.GoroutineScope(d.target, thread)
 		if err != nil {
 			return err
 		}
@@ -1398,7 +1398,7 @@ func (d *Debugger) PackageVariables(filter string, cfg proc.LoadConfig) ([]*proc
 		return nil, fmt.Errorf("invalid filter argument: %s", err.Error())
 	}
 
-	scope, err := proc.ThreadScope(d.target.CurrentThread())
+	scope, err := proc.ThreadScope(d.target, d.target.CurrentThread())
 	if err != nil {
 		return nil, err
 	}
@@ -1742,7 +1742,7 @@ func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadCo
 		}
 		if cfg != nil && rawlocs[i].Current.Fn != nil {
 			var err error
-			scope := proc.FrameToScope(d.target.BinInfo(), d.target.Memory(), nil, rawlocs[i:]...)
+			scope := proc.FrameToScope(d.target, d.target.BinInfo(), d.target.Memory(), nil, rawlocs[i:]...)
 			locals, err := scope.LocalVariables(*cfg)
 			if err != nil {
 				return nil, err

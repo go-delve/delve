@@ -68,7 +68,7 @@ func (dbp *Target) Continue() error {
 			dbp.ClearInternalBreakpoints()
 			return nil
 		}
-		dbp.ClearAllGCache()
+		dbp.ClearCaches()
 		trapthread, stopReason, err := dbp.proc.ContinueOnce()
 		dbp.StopReason = stopReason
 		if err != nil {
@@ -182,7 +182,7 @@ func (dbp *Target) Continue() error {
 					return dbp.StepInstruction()
 				}
 			default:
-				curthread.Common().returnValues = curbp.Breakpoint.returnInfo.Collect(curthread)
+				curthread.Common().returnValues = curbp.Breakpoint.returnInfo.Collect(dbp, curthread)
 				if err := dbp.ClearInternalBreakpoints(); err != nil {
 					return err
 				}
@@ -269,7 +269,7 @@ func disassembleCurrentInstruction(p Process, thread Thread, off int64) ([]AsmIn
 // This function is used to step out of runtime.Breakpoint as well as
 // runtime.debugCallV1.
 func stepInstructionOut(dbp *Target, curthread Thread, fnname1, fnname2 string) error {
-	defer dbp.ClearAllGCache()
+	defer dbp.ClearCaches()
 	for {
 		if err := curthread.StepInstruction(); err != nil {
 			return err
@@ -415,7 +415,7 @@ func (dbp *Target) StepInstruction() (err error) {
 		}
 		thread = g.Thread
 	}
-	dbp.ClearAllGCache()
+	dbp.ClearCaches()
 	if ok, err := dbp.Valid(); !ok {
 		return err
 	}
