@@ -21,7 +21,8 @@ const (
 	UnableToListGlobals        = 2007
 	UnableToLookupVariable     = 2008
 	UnableToEvaluateExpression = 2009
-
+	UnableToGetExceptionInfo   = 2010
+	// Add more codes as we support more requests
 	DebuggeeIsRunning = 4000
 	DisconnectError   = 5000
 )

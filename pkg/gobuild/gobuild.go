@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/go-delve/delve/pkg/config"
@@ -60,7 +61,7 @@ func GoBuild(debugname string, pkgs []string, buildflags string) error {
 
 // GoBuildCombinedOutput builds non-test files in 'pkgs' with the specified 'buildflags'
 // and writes the output at 'debugname'.
-func GoBuildCombinedOutput(debugname string, pkgs []string, buildflags string) ([]byte, error) {
+func GoBuildCombinedOutput(debugname string, pkgs []string, buildflags string) (string, []byte, error) {
 	args := goBuildArgs(debugname, pkgs, buildflags, false)
 	return gocommandCombinedOutput("build", args...)
 }
@@ -74,7 +75,7 @@ func GoTestBuild(debugname string, pkgs []string, buildflags string) error {
 
 // GoTestBuildCombinedOutput builds test files 'pkgs' with the specified 'buildflags'
 // and writes the output at 'debugname'.
-func GoTestBuildCombinedOutput(debugname string, pkgs []string, buildflags string) ([]byte, error) {
+func GoTestBuildCombinedOutput(debugname string, pkgs []string, buildflags string) (string, []byte, error) {
 	args := goBuildArgs(debugname, pkgs, buildflags, true)
 	return gocommandCombinedOutput("test", args...)
 }
@@ -93,19 +94,21 @@ func goBuildArgs(debugname string, pkgs []string, buildflags string, isTest bool
 }
 
 func gocommandRun(command string, args ...string) error {
-	goBuild := gocommandExecCmd(command, args...)
+	_, goBuild := gocommandExecCmd(command, args...)
 	goBuild.Stderr = os.Stdout
 	goBuild.Stdout = os.Stderr
 	return goBuild.Run()
 }
 
-func gocommandCombinedOutput(command string, args ...string) ([]byte, error) {
-	return gocommandExecCmd(command, args...).CombinedOutput()
+func gocommandCombinedOutput(command string, args ...string) (string, []byte, error) {
+	buildCmd, goBuild := gocommandExecCmd(command, args...)
+	out, err := goBuild.CombinedOutput()
+	return buildCmd, out, err
 }
 
-func gocommandExecCmd(command string, args ...string) *exec.Cmd {
+func gocommandExecCmd(command string, args ...string) (string, *exec.Cmd) {
 	allargs := []string{command}
 	allargs = append(allargs, args...)
 	goBuild := exec.Command("go", allargs...)
-	return goBuild
+	return strings.Join(append([]string{"go"}, allargs...), " "), goBuild
 }

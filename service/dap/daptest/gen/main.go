@@ -36,7 +36,7 @@ func (c *Client) Expect{{.}}(t *testing.T) *dap.{{.}} {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.{{.}})
 	if !ok {
-		t.Fatalf("got %q, want *dap.{{.}}", m)
+		t.Fatalf("got %#v, want *dap.{{.}}", m)
 	}
 	return r
 }{{end}}
