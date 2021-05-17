@@ -104,13 +104,10 @@ type Server struct {
 	variableHandles *variablesHandlesMap
 	// args tracks special settings for handling debug session requests.
 	args launchAttachArgs
-<<<<<<< HEAD
 	// exceptionErr tracks the runtime error that last occurred.
 	exceptionErr error
-=======
 	// clientCapabilities tracks special settings for handling debug session requests.
 	clientCapabilities dapClientCapabilites
->>>>>>> 1e9c5c3b07dc5f0f2b3b1fb17bde6444cbf7ca30
 
 	// mu synchronizes access to objects set on start-up (from run goroutine)
 	// and stopped on teardown (from main goroutine)
