@@ -572,6 +572,20 @@ func TestPreSetBreakpoint(t *testing.T) {
 		// "Continue" is triggered after the response is sent
 
 		client.ExpectTerminatedEvent(t)
+
+		// Pause request after termination should result in an error.
+		// But in certain cases this request actually succeeds.
+		client.PauseRequest(1)
+		switch r := client.ExpectMessage(t).(type) {
+		case *dap.ErrorResponse:
+			if r.Message != "Unable to halt execution" {
+				t.Errorf("\ngot  %#v\nwant Message='Unable to halt execution'", r)
+			}
+		case *dap.PauseResponse:
+		default:
+			t.Fatalf("Unexpected response type: expect error or pause, got %#v", r)
+		}
+
 		client.DisconnectRequest()
 		client.ExpectOutputEventProcessExited(t, 0)
 		client.ExpectOutputEventDetaching(t)
@@ -2821,15 +2835,8 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 	})
 }
 
-// handleStop covers the standard sequence of reqeusts issued by
-// a client at a breakpoint or another non-terminal stop event.
-// The details have been tested by other tests,
-// so this is just a sanity check.
-// Skips line check if line is -1.
-func handleStop(t *testing.T, client *daptest.Client, thread int, name string, line int) {
+func verifyStopLocation(t *testing.T, client *daptest.Client, thread int, name string, line int) {
 	t.Helper()
-	client.ThreadsRequest()
-	client.ExpectThreadsResponse(t)
 
 	client.StackTraceRequest(thread, 0, 20)
 	st := client.ExpectStackTraceResponse(t)
@@ -2843,6 +2850,19 @@ func handleStop(t *testing.T, client *daptest.Client, thread int, name string, l
 			t.Errorf("\ngot  %#v\nwant Name=%q", st, name)
 		}
 	}
+}
+
+// handleStop covers the standard sequence of requests issued by
+// a client at a breakpoint or another non-terminal stop event.
+// The details have been tested by other tests,
+// so this is just a sanity check.
+// Skips line check if line is -1.
+func handleStop(t *testing.T, client *daptest.Client, thread int, name string, line int) {
+	t.Helper()
+	client.ThreadsRequest()
+	client.ExpectThreadsResponse(t)
+
+	verifyStopLocation(t, client, thread, name, line)
 
 	client.ScopesRequest(1000)
 	client.ExpectScopesResponse(t)
@@ -3140,6 +3160,51 @@ func TestAttachRequest(t *testing.T) {
 	})
 }
 
+func TestPauseAndContinue(t *testing.T) {
+	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{6},
+			[]onBreakpoint{{
+				execute: func() {
+					verifyStopLocation(t, client, 1, "main.loop", 6)
+
+					// Continue resumes all goroutines, so thread id is ignored
+					client.ContinueRequest(12345)
+					client.ExpectContinueResponse(t)
+
+					time.Sleep(time.Second)
+
+					// Halt pauses all goroutines, so thread id is ignored
+					client.PauseRequest(56789)
+					// Since we are in async mode while running, we might receive next two messages in either order.
+					for i := 0; i < 2; i++ {
+						msg := client.ExpectMessage(t)
+						switch m := msg.(type) {
+						case *dap.StoppedEvent:
+							if m.Body.Reason != "pause" || m.Body.ThreadId != 0 && m.Body.ThreadId != 1 {
+								t.Errorf("\ngot %#v\nwant ThreadId=0/1 Reason='pause'", m)
+							}
+						case *dap.PauseResponse:
+						default:
+							t.Fatalf("got %#v, want StoppedEvent or PauseResponse", m)
+						}
+					}
+
+					// Pause will be a no-op at a pause: there will be no additional stopped events
+					client.PauseRequest(1)
+					client.ExpectPauseResponse(t)
+				},
+				// The program has an infinite loop, so we must kill it by disconnecting.
+				disconnect: true,
+			}})
+	})
+}
+
 func TestUnupportedCommandResponses(t *testing.T) {
 	var got *dap.ErrorResponse
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
@@ -3185,24 +3250,6 @@ func TestUnupportedCommandResponses(t *testing.T) {
 
 		client.ModulesRequest()
 		expectUnsupportedCommand("modules")
-	})
-}
-
-func TestRequiredNotYetImplementedResponses(t *testing.T) {
-	var got *dap.ErrorResponse
-	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		seqCnt := 1
-		expectNotYetImplemented := func(cmd string) {
-			t.Helper()
-			got = client.ExpectNotYetImplementedErrorResponse(t)
-			if got.RequestSeq != seqCnt || got.Command != cmd {
-				t.Errorf("\ngot  %#v\nwant RequestSeq=%d Command=%s", got, seqCnt, cmd)
-			}
-			seqCnt++
-		}
-
-		client.PauseRequest()
-		expectNotYetImplemented("pause")
 	})
 }
 

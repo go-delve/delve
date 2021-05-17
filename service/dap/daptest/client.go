@@ -285,9 +285,9 @@ func (c *Client) StepOutRequest(thread int) {
 }
 
 // PauseRequest sends a 'pause' request.
-func (c *Client) PauseRequest() {
-	request := &dap.NextRequest{Request: *c.newRequest("pause")}
-	// TODO(polina): arguments
+func (c *Client) PauseRequest(threadId int) {
+	request := &dap.PauseRequest{Request: *c.newRequest("pause")}
+	request.Arguments.ThreadId = threadId
 	c.send(request)
 }
 
