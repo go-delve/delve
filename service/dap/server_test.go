@@ -1969,6 +1969,7 @@ func TestSetBreakpointWhileRunning(t *testing.T) {
 					// We can set breakpoints while nexting
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 					client.SetBreakpointsRequest(fixture.Source, []int{15}) // [16,] => [15,]
 					se, br := expectSetBreakpointsResponseAndStoppedEvent(t, client)
 					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
