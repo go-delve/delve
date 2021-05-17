@@ -1357,6 +1357,18 @@ func (d *Debugger) FunctionArguments(goid, frame, deferredCall int, cfg proc.Loa
 	return s.FunctionArguments(cfg)
 }
 
+// Function returns the current function.
+func (d *Debugger) Function(goid, frame, deferredCall int, cfg proc.LoadConfig) (*proc.Function, error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+
+	s, err := proc.ConvertEvalScope(d.target, goid, frame, deferredCall)
+	if err != nil {
+		return nil, err
+	}
+	return s.Fn, nil
+}
+
 // EvalVariableInScope will attempt to evaluate the variable represented by 'symbol'
 // in the scope provided.
 func (d *Debugger) EvalVariableInScope(goid, frame, deferredCall int, symbol string, cfg proc.LoadConfig) (*proc.Variable, error) {
