@@ -437,9 +437,9 @@ func TestContinueOnEntry(t *testing.T) {
 				}
 				// Single current thread is sent when the program is running
 				// because DAP spec expects at least one thread.
-				// TODO(polina): accept empty already-terminated response here as well?
-				if len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != -1 || m.Body.Threads[0].Name != "Current" {
-					t.Errorf("\ngot  %#v\nwant Id=-1, Name=\"Current\"", m.Body.Threads)
+				// Also accept empty already-terminated response.
+				if len(m.Body.Threads) != 0 && (len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != -1 || m.Body.Threads[0].Name != "Current") {
+					t.Errorf("\ngot  %#v\nwant Id=-1, Name=\"Current\" or empty", m.Body.Threads)
 				}
 			case *dap.TerminatedEvent:
 			default:
