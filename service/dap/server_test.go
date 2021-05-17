@@ -1773,7 +1773,11 @@ type Breakpoint struct {
 
 func expectSetBreakpointsResponse(t *testing.T, client *daptest.Client, bps []Breakpoint) {
 	t.Helper()
-	got := client.ExpectSetBreakpointsResponse(t)
+	checkSetBreakpointsResponse(t, client, bps, client.ExpectSetBreakpointsResponse(t))
+}
+
+func checkSetBreakpointsResponse(t *testing.T, client *daptest.Client, bps []Breakpoint, got *dap.SetBreakpointsResponse) {
+	t.Helper()
 	if len(got.Body.Breakpoints) != len(bps) {
 		t.Errorf("got %#v,\nwant len(Breakpoints)=%d", got, len(bps))
 		return
@@ -1864,6 +1868,23 @@ func TestSetBreakpoint(t *testing.T) {
 	})
 }
 
+func expectSetBreakpointsResponseAndStoppedEvent(t *testing.T, client *daptest.Client) (se *dap.StoppedEvent, br *dap.SetBreakpointsResponse) {
+	for i := 0; i < 2; i++ {
+		switch m := client.ExpectMessage(t).(type) {
+		case *dap.StoppedEvent:
+			se = m
+		case *dap.SetBreakpointsResponse:
+			br = m
+		default:
+			t.Fatalf("Unexpected message type: expect StoppedEvent or SetBreakpointsResponse, got %#v", m)
+		}
+	}
+	if se == nil || br == nil {
+		t.Fatal("Expected StoppedEvent and SetBreakpointsResponse")
+	}
+	return se, br
+}
+
 func TestSetBreakpointWhileRunning(t *testing.T) {
 	runTest(t, "integrationprog", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
@@ -1882,11 +1903,11 @@ func TestSetBreakpointWhileRunning(t *testing.T) {
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
 					client.SetBreakpointsRequest(fixture.Source, []int{15}) // [16,] => [15,]
-					se := client.ExpectStoppedEvent(t)
+					se, br := expectSetBreakpointsResponseAndStoppedEvent(t, client)
 					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
 						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
 					}
-					expectSetBreakpointsResponse(t, client, []Breakpoint{{15, fixture.Source, true, ""}})
+					checkSetBreakpointsResponse(t, client, []Breakpoint{{15, fixture.Source, true, ""}}, br)
 					// Halt cancelled next, so if we continue we will not stop at line 14.
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
@@ -1900,11 +1921,11 @@ func TestSetBreakpointWhileRunning(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					client.SetBreakpointsRequest(fixture.Source, []int{9}) // [15,] => [9,]
-					se = client.ExpectStoppedEvent(t)
+					se, br = expectSetBreakpointsResponseAndStoppedEvent(t, client)
 					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
 						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
 					}
-					expectSetBreakpointsResponse(t, client, []Breakpoint{{9, fixture.Source, true, ""}})
+					checkSetBreakpointsResponse(t, client, []Breakpoint{{9, fixture.Source, true, ""}}, br)
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					se = client.ExpectStoppedEvent(t)
