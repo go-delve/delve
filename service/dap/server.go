@@ -399,8 +399,7 @@ func (s *Server) handleRequest(request dap.Message) {
 	// We have a couple of options for handling these without blocking
 	// the request loop indefinitely when we are in running state.
 	// --1-- Return a dummy response or an error right away.
-	// --2-- Halt execution, process the request, resume execution.
-	// TODO(polina): do this for setting breakpoints
+	// --2-- Halt execution, process the request, maybe resume execution.
 	// --3-- Handle such requests asynchronously and let them block until
 	// the process stops or terminates (e.g. using a channel and a single
 	// goroutine to preserve the order). This might not be appropriate
@@ -427,6 +426,28 @@ func (s *Server) handleRequest(request dap.Message) {
 				Body:     dap.ThreadsResponseBody{Threads: []dap.Thread{{Id: -1, Name: "Current"}}},
 			}
 			s.send(response)
+		case *dap.SetBreakpointsRequest:
+			s.log.Debug("halting execution to set breakpoints")
+			_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+			if err != nil {
+				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
+				return
+			}
+			s.onSetBreakpointsRequest(request)
+			// TODO(polina): consider resuming execution here automatically after suppressing
+			// a stop event when an operation in doRunCommand returns. In case that operation
+			// was already stopping for a different reason, we would need to examine the state
+			// that is returned to determine if this halt was the cause of the stop or not.
+			// We should stop with an event and not resume if one of the following is true:
+			// - StopReason is anything but manual
+			// - Any thread has a breakpoint or CallReturn set
+			// - NextInProgress is false and the last command sent by the user was: next,
+			//   step, stepOut, reverseNext, reverseStep or reverseStepOut
+			// Otherwise, we can skip the stop event and resume the temporarily
+			// interrupted process execution with api.DirectionCongruentContinue.
+			// For this to apply in cases other than api.Continue, we would also need to
+			// introduce a new version of halt that skips ClearInternalBreakpoints
+			// in proc.(*Target).Continue, leaving NextInProgress as true.
 		default:
 			r := request.(dap.RequestMessage).GetRequest()
 			s.sendErrorResponse(*r, DebuggeeIsRunning, fmt.Sprintf("Unable to process `%s`", r.Command), "debuggee is running")
@@ -1065,7 +1086,7 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 	}
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
 	if !s.args.stopOnEntry {
-		s.doCommand(api.Continue, asyncSetupDone)
+		s.doRunCommand(api.Continue, asyncSetupDone)
 	}
 }
 
@@ -1075,7 +1096,7 @@ func (s *Server) onContinueRequest(request *dap.ContinueRequest, asyncSetupDone 
 	s.send(&dap.ContinueResponse{
 		Response: *newResponse(request.Request),
 		Body:     dap.ContinueResponseBody{AllThreadsContinued: true}})
-	s.doCommand(api.Continue, asyncSetupDone)
+	s.doRunCommand(api.Continue, asyncSetupDone)
 }
 
 func fnName(loc *proc.Location) string {
@@ -1221,7 +1242,7 @@ func stoppedGoroutineID(state *api.DebuggerState) (id int) {
 	return id
 }
 
-// doStepCommand is a wrapper around doCommand that
+// doStepCommand is a wrapper around doRunCommand that
 // first switches selected goroutine. asyncSetupDone is
 // a channel that will be closed to signal that an
 // asynchornous command has completed setup or was interrupted
@@ -1245,7 +1266,7 @@ func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan
 		s.send(stopped)
 		return
 	}
-	s.doCommand(command, asyncSetupDone)
+	s.doRunCommand(command, asyncSetupDone)
 }
 
 // onPauseRequest sends a not-yet-implemented error response.
@@ -1958,14 +1979,14 @@ func (s *Server) resetHandlesForStoppedEvent() {
 	s.variableHandles.reset()
 }
 
-// doCommand runs a debugger command until it stops on
+// doRunCommand runs a debugger command until it stops on
 // termination, error, breakpoint, etc, when an appropriate
 // event needs to be sent to the client. asyncSetupDone is
 // a channel that will be closed to signal that an
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
-func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
-	// TODO(polina): it appears that debugger.Command doesn't close
+func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
+	// TODO(polina): it appears that debugger.Command doesn't always close
 	// asyncSetupDone (e.g. when having an error next while nexting).
 	// So we should always close it ourselves just in case.
 	defer s.asyncCommandDone(asyncSetupDone)
@@ -1975,6 +1996,9 @@ func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
 		return
 	}
 
+	stopReason := s.debugger.StopReason()
+	s.log.Debugf("%q command stopped - reason %q", command, stopReason)
+
 	s.resetHandlesForStoppedEvent()
 	stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
 	stopped.Body.AllThreadsStopped = true
@@ -1982,9 +2006,7 @@ func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
 	if err == nil {
 		stopped.Body.ThreadId = stoppedGoroutineID(state)
 
-		sr := s.debugger.StopReason()
-		s.log.Debugf("%q command stopped - reason %q", command, sr)
-		switch sr {
+		switch stopReason {
 		case proc.StopNextFinished:
 			stopped.Body.Reason = "step"
 		case proc.StopManual: // triggered by halt
