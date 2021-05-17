@@ -1714,7 +1714,50 @@ func TestHitCondBreakpointEQ(t *testing.T) {
 	})
 }
 
+func TestHitCondBreakpointError(t *testing.T) {
+	skipOn(t, "broken", "freebsd")
+	protest.AllowRecording(t)
+	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture.Source, 6)
+		bp.HitCond = &ast.BinaryExpr{
+			Op: token.EQL,
+			X:  &ast.Ident{Name: "placeholder"},
+			Y:  &ast.Ident{Name: "nonexistentvariable"},
+		}
+
+		err := p.Continue()
+		if err == nil {
+			t.Fatalf("No error on first Continue()")
+		}
+
+		if err.Error() != "error evaluating expression: could not find symbol value for nonexistentvariable" && err.Error() != "multiple errors evaluating conditions" {
+			t.Fatalf("Unexpected error on first Continue(): %v", err)
+		}
+
+		bp.HitCond = &ast.BinaryExpr{
+			Op: token.EQL,
+			X:  &ast.Ident{Name: "placeHolder"},
+			Y:  &ast.BasicLit{Kind: token.INT, Value: "3"},
+		}
+
+		err = p.Continue()
+		if err != nil {
+			if _, exited := err.(proc.ErrProcessExited); !exited {
+				t.Fatalf("Unexpected error on second Continue(): %v", err)
+			}
+		} else {
+			ivar := evalVariable(p, t, "i")
+
+			i, _ := constant.Int64Val(ivar.Value)
+			if i != 2 {
+				t.Fatalf("Stoppend on wrong hitcount %d\n", i)
+			}
+		}
+	})
+}
+
 func TestHitCondBreakpointGEQ(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 6)
 		bp.HitCond = &ast.BinaryExpr{
@@ -1745,6 +1788,7 @@ func TestHitCondBreakpointGEQ(t *testing.T) {
 }
 
 func TestHitCondBreakpointLEQ(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 6)
 		bp.HitCond = &ast.BinaryExpr{
