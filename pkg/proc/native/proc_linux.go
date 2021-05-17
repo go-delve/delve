@@ -342,6 +342,16 @@ func (dbp *nativeProcess) trapWaitInternal(pid int, options trapWaitOptions) (*n
 			delete(dbp.threads, wpid)
 			continue
 		}
+		if status.Signaled() {
+			// Signaled means the thread was terminated due to a signal.
+			if wpid == dbp.pid {
+				dbp.postExit()
+				return nil, proc.ErrProcessExited{Pid: wpid, Status: -int(status.Signal())}
+			}
+			// does this ever happen?
+			delete(dbp.threads, wpid)
+			continue
+		}
 		if status.StopSignal() == sys.SIGTRAP && status.TrapCause() == sys.PTRACE_EVENT_CLONE {
 			// A traced thread has cloned a new thread, grab the pid and
 			// add it to our list of traced threads.
