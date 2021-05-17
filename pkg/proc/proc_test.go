@@ -5307,3 +5307,51 @@ func TestWatchpointCounts(t *testing.T) {
 		}
 	})
 }
+
+func TestManualStopWhileStopped(t *testing.T) {
+	// Checks that RequestManualStop sent to a stopped thread does not cause the target process to die.
+	withTestProcess("loopprog", t, func(p *proc.Target, fixture protest.Fixture) {
+		asyncCont := func(done chan struct{}) {
+			defer close(done)
+			err := p.Continue()
+			t.Logf("%v\n", err)
+			if err != nil {
+				panic(err)
+			}
+			for _, th := range p.ThreadList() {
+				if th.Breakpoint().Breakpoint != nil {
+					t.Logf("unexpected stop at breakpoint: %v", th.Breakpoint().Breakpoint)
+					panic("unexpected stop at breakpoint")
+				}
+			}
+		}
+
+		const (
+			repeatsSlow = 3
+			repeatsFast = 5
+		)
+
+		for i := 0; i < repeatsSlow; i++ {
+			t.Logf("Continue %d (slow)", i)
+			done := make(chan struct{})
+			go asyncCont(done)
+			time.Sleep(1 * time.Second)
+			p.RequestManualStop()
+			time.Sleep(1 * time.Second)
+			p.RequestManualStop()
+			time.Sleep(1 * time.Second)
+			<-done
+		}
+		for i := 0; i < repeatsFast; i++ {
+			t.Logf("Continue %d (fast)", i)
+			rch := make(chan struct{})
+			done := make(chan struct{})
+			p.ResumeNotify(rch)
+			go asyncCont(done)
+			<-rch
+			p.RequestManualStop()
+			p.RequestManualStop()
+			<-done
+		}
+	})
+}
