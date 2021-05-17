@@ -10,7 +10,11 @@ Compiles a test binary with optimizations disabled and begins a new debug sessio
 The test command allows you to begin a new debug session in the context of your
 unit tests. By default Delve will debug the tests in the current directory.
 Alternatively you can specify a package name, and Delve will debug the tests in
-that package instead.
+that package instead. Double-dashes `--` can be used to pass arguments to the test program:
+
+dlv test [package] -- -test.v -other-argument
+
+See also: 'go help testflag'.
 
 ```
 dlv test [package]

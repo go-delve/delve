@@ -278,7 +278,7 @@ If regex is specified only package variables with a name matching it will be ret
 
 	regs [-a]
 
-Argument -a shows more registers.`},
+Argument -a shows more registers. Individual registers can also be displayed by 'print' and 'display'. See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/expr.md.`},
 		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: `Exit the debugger.
 		
 	exit [-c]
@@ -1831,6 +1831,10 @@ func whatisCommand(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
+	if val.Flags&api.VariableCPURegister != 0 {
+		fmt.Println("CPU Register")
+		return nil
+	}
 	if val.Type != "" {
 		fmt.Println(val.Type)
 	}
@@ -2275,6 +2279,10 @@ func digits(n int) int {
 const stacktraceTruncatedMessage = "(truncated)"
 
 func printStack(t *Term, out io.Writer, stack []api.Stackframe, ind string, offsets bool) {
+	PrintStack(t.formatPath, out, stack, ind, offsets)
+}
+
+func PrintStack(formatPath func(string) string, out io.Writer, stack []api.Stackframe, ind string, offsets bool) {
 	if len(stack) == 0 {
 		return
 	}
@@ -2297,7 +2305,7 @@ func printStack(t *Term, out io.Writer, stack []api.Stackframe, ind string, offs
 			continue
 		}
 		fmt.Fprintf(out, fmtstr, ind, i, stack[i].PC, stack[i].Function.Name())
-		fmt.Fprintf(out, "%sat %s:%d\n", s, t.formatPath(stack[i].File), stack[i].Line)
+		fmt.Fprintf(out, "%sat %s:%d\n", s, formatPath(stack[i].File), stack[i].Line)
 
 		if offsets {
 			fmt.Fprintf(out, "%sframe: %+#x frame pointer %+#x\n", s, stack[i].FrameOffset, stack[i].FramePointerOffset)
@@ -2311,8 +2319,8 @@ func printStack(t *Term, out io.Writer, stack []api.Stackframe, ind string, offs
 				continue
 			}
 			fmt.Fprintf(out, "%s%#016x in %s\n", deferHeader, d.DeferredLoc.PC, d.DeferredLoc.Function.Name())
-			fmt.Fprintf(out, "%sat %s:%d\n", s2, t.formatPath(d.DeferredLoc.File), d.DeferredLoc.Line)
-			fmt.Fprintf(out, "%sdeferred by %s at %s:%d\n", s2, d.DeferLoc.Function.Name(), t.formatPath(d.DeferLoc.File), d.DeferLoc.Line)
+			fmt.Fprintf(out, "%sat %s:%d\n", s2, formatPath(d.DeferredLoc.File), d.DeferredLoc.Line)
+			fmt.Fprintf(out, "%sdeferred by %s at %s:%d\n", s2, d.DeferLoc.Function.Name(), formatPath(d.DeferLoc.File), d.DeferLoc.Line)
 		}
 
 		for j := range stack[i].Arguments {

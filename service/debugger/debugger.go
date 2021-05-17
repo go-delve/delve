@@ -549,7 +549,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 
 // State returns the current state of the debugger.
 func (d *Debugger) State(nowait bool) (*api.DebuggerState, error) {
-	if d.isRunning() && nowait {
+	if d.IsRunning() && nowait {
 		return &api.DebuggerState{Running: true}, nil
 	}
 
@@ -967,13 +967,21 @@ func (d *Debugger) FindThread(id int) (proc.Thread, error) {
 	return nil, nil
 }
 
+// FindGoroutine returns the goroutine for the given 'id'.
+func (d *Debugger) FindGoroutine(id int) (*proc.G, error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+
+	return proc.FindGoroutine(d.target, id)
+}
+
 func (d *Debugger) setRunning(running bool) {
 	d.runningMutex.Lock()
 	d.running = running
 	d.runningMutex.Unlock()
 }
 
-func (d *Debugger) isRunning() bool {
+func (d *Debugger) IsRunning() bool {
 	d.runningMutex.Lock()
 	defer d.runningMutex.Unlock()
 	return d.running
@@ -1313,8 +1321,7 @@ func (d *Debugger) ThreadRegisters(threadID int, floatingPoint bool) (*op.DwarfR
 	if err != nil {
 		return nil, err
 	}
-	dregs := d.target.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
-	return &dregs, nil
+	return d.target.BinInfo().Arch.RegistersToDwarfRegisters(0, regs), nil
 }
 
 // ScopeRegisters returns registers for the specified scope.
@@ -1356,6 +1363,18 @@ func (d *Debugger) FunctionArguments(goid, frame, deferredCall int, cfg proc.Loa
 		return nil, err
 	}
 	return s.FunctionArguments(cfg)
+}
+
+// Function returns the current function.
+func (d *Debugger) Function(goid, frame, deferredCall int, cfg proc.LoadConfig) (*proc.Function, error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+
+	s, err := proc.ConvertEvalScope(d.target, goid, frame, deferredCall)
+	if err != nil {
+		return nil, err
+	}
+	return s.Fn, nil
 }
 
 // EvalVariableInScope will attempt to evaluate the variable represented by 'symbol'
@@ -1731,7 +1750,7 @@ func (d *Debugger) GetVersion(out *api.GetVersionOut) error {
 		}
 	}
 
-	if !d.isRecording() && !d.isRunning() {
+	if !d.isRecording() && !d.IsRunning() {
 		out.TargetGoVersion = d.target.BinInfo().Producer()
 	}
 
