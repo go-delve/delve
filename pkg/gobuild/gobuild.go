@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/go-delve/delve/pkg/config"
@@ -54,32 +55,60 @@ func optflags(args []string) []string {
 // GoBuild builds non-test files in 'pkgs' with the specified 'buildflags'
 // and writes the output at 'debugname'.
 func GoBuild(debugname string, pkgs []string, buildflags string) error {
-	args := []string{"-o", debugname}
-	args = optflags(args)
-	if buildflags != "" {
-		args = append(args, config.SplitQuotedFields(buildflags, '\'')...)
-	}
-	args = append(args, pkgs...)
-	return gocommand("build", args...)
+	args := goBuildArgs(debugname, pkgs, buildflags, false)
+	return gocommandRun("build", args...)
 }
 
-// GoBuild builds test files 'pkgs' with the specified 'buildflags'
+// GoBuildCombinedOutput builds non-test files in 'pkgs' with the specified 'buildflags'
+// and writes the output at 'debugname'.
+func GoBuildCombinedOutput(debugname string, pkgs []string, buildflags string) (string, []byte, error) {
+	args := goBuildArgs(debugname, pkgs, buildflags, false)
+	return gocommandCombinedOutput("build", args...)
+}
+
+// GoTestBuild builds test files 'pkgs' with the specified 'buildflags'
 // and writes the output at 'debugname'.
 func GoTestBuild(debugname string, pkgs []string, buildflags string) error {
-	args := []string{"-c", "-o", debugname}
+	args := goBuildArgs(debugname, pkgs, buildflags, true)
+	return gocommandRun("test", args...)
+}
+
+// GoTestBuildCombinedOutput builds test files 'pkgs' with the specified 'buildflags'
+// and writes the output at 'debugname'.
+func GoTestBuildCombinedOutput(debugname string, pkgs []string, buildflags string) (string, []byte, error) {
+	args := goBuildArgs(debugname, pkgs, buildflags, true)
+	return gocommandCombinedOutput("test", args...)
+}
+
+func goBuildArgs(debugname string, pkgs []string, buildflags string, isTest bool) []string {
+	args := []string{"-o", debugname}
+	if isTest {
+		args = append([]string{"-c"}, args...)
+	}
 	args = optflags(args)
 	if buildflags != "" {
 		args = append(args, config.SplitQuotedFields(buildflags, '\'')...)
 	}
 	args = append(args, pkgs...)
-	return gocommand("test", args...)
+	return args
 }
 
-func gocommand(command string, args ...string) error {
+func gocommandRun(command string, args ...string) error {
+	_, goBuild := gocommandExecCmd(command, args...)
+	goBuild.Stderr = os.Stdout
+	goBuild.Stdout = os.Stderr
+	return goBuild.Run()
+}
+
+func gocommandCombinedOutput(command string, args ...string) (string, []byte, error) {
+	buildCmd, goBuild := gocommandExecCmd(command, args...)
+	out, err := goBuild.CombinedOutput()
+	return buildCmd, out, err
+}
+
+func gocommandExecCmd(command string, args ...string) (string, *exec.Cmd) {
 	allargs := []string{command}
 	allargs = append(allargs, args...)
 	goBuild := exec.Command("go", allargs...)
-	goBuild.Stderr = os.Stderr
-	goBuild.Stdout = os.Stdout
-	return goBuild.Run()
+	return strings.Join(append([]string{"go"}, allargs...), " "), goBuild
 }

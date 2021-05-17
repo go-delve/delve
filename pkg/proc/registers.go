@@ -20,7 +20,6 @@ type Registers interface {
 	TLS() uint64
 	// GAddr returns the address of the G variable if it is known, 0 and false otherwise
 	GAddr() (uint64, bool)
-	Get(int) (uint64, error)
 	Slice(floatingPoint bool) ([]Register, error)
 	// Copy returns a copy of the registers that is guaranteed not to change
 	// when the registers of the associated thread change.

@@ -17,5 +17,5 @@ func NewCompositeMemory(p *Target, pieces []op.Piece) (*compositeMemory, error) 
 	dwarfregs := arch.RegistersToDwarfRegisters(0, regs)
 	dwarfregs.ChangeFunc = p.CurrentThread().SetReg
 
-	return newCompositeMemory(p.Memory(), arch, dwarfregs, pieces)
+	return newCompositeMemory(p.Memory(), arch, *dwarfregs, pieces)
 }

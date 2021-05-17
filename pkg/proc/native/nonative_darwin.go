@@ -114,6 +114,18 @@ func (t *nativeThread) restoreRegisters(sr proc.Registers) error {
 	panic(ErrNativeBackendDisabled)
 }
 
+func (t *nativeThread) findHardwareBreakpoint() (*proc.Breakpoint, error) {
+	panic(ErrNativeBackendDisabled)
+}
+
+func (t *nativeThread) writeHardwareBreakpoint(addr uint64, wtype proc.WatchType, idx uint8) error {
+	panic(ErrNativeBackendDisabled)
+}
+
+func (t *nativeThread) clearHardwareBreakpoint(addr uint64, wtype proc.WatchType, idx uint8) error {
+	panic(ErrNativeBackendDisabled)
+}
+
 // Stopped returns whether the thread is stopped at
 // the operating system level.
 func (t *nativeThread) Stopped() bool {

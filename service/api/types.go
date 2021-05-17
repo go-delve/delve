@@ -239,6 +239,12 @@ const (
 	// the variable is the return value of a function call and allocated on a
 	// frame that no longer exists)
 	VariableFakeAddress
+
+	// VariableCPrt means the variable is a C pointer
+	VariableCPtr
+
+	// VariableCPURegister means this variable is a CPU register.
+	VariableCPURegister
 )
 
 // Variable describes a variable.
@@ -408,6 +414,9 @@ const (
 	// SwitchGoroutine switches the debugger's current thread context to the thread running the specified goroutine
 	SwitchGoroutine = "switchGoroutine"
 	// Halt suspends the process.
+	// The effect of Halt while the target process is stopped, or in the
+	// process of stopping, is operating system and timing dependent. It will
+	// either have no effect or cause the following resume to stop immediately.
 	Halt = "halt"
 	// Call resumes process execution injecting a function call.
 	Call = "call"

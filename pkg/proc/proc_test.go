@@ -2830,12 +2830,16 @@ func TestAttachDetach(t *testing.T) {
 
 	assertNoError(p.Detach(false), t, "Detach")
 
-	resp, err := http.Get("http://127.0.0.1:9191/nobp")
-	assertNoError(err, t, "Page request after detach")
-	bs, err := ioutil.ReadAll(resp.Body)
-	assertNoError(err, t, "Reading /nobp page")
-	if out := string(bs); !strings.Contains(out, "hello, world!") {
-		t.Fatalf("/nobp page does not contain \"hello, world!\": %q", out)
+	if runtime.GOOS != "darwin" {
+		// Debugserver sometimes will leave a zombie process after detaching, this
+		// seems to be a bug with debugserver.
+		resp, err := http.Get("http://127.0.0.1:9191/nobp")
+		assertNoError(err, t, "Page request after detach")
+		bs, err := ioutil.ReadAll(resp.Body)
+		assertNoError(err, t, "Reading /nobp page")
+		if out := string(bs); !strings.Contains(out, "hello, world!") {
+			t.Fatalf("/nobp page does not contain \"hello, world!\": %q", out)
+		}
 	}
 
 	cmd.Process.Kill()
@@ -4990,7 +4994,7 @@ func TestDump(t *testing.T) {
 		assertNoError(err, t, fmt.Sprintf("Thread registers %d", thread.ThreadID()))
 		arch := thread.BinInfo().Arch
 		dregs := arch.RegistersToDwarfRegisters(0, regs)
-		return fmt.Sprintf("%08d %s", thread.ThreadID(), convertRegisters(arch, dregs))
+		return fmt.Sprintf("%08d %s", thread.ThreadID(), convertRegisters(arch, *dregs))
 	}
 
 	convertThreads := func(threads []proc.Thread) []string {
@@ -5165,9 +5169,9 @@ func TestCompositeMemoryWrite(t *testing.T) {
 		oldPc, oldRax, oldXmm1 := getregs()
 		t.Logf("PC %#x AX %#x XMM1 %#x", oldPc, oldRax, oldXmm1)
 
-		memRax, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, RegNum: 0, IsRegister: true}})
+		memRax, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, Val: 0, Kind: op.RegPiece}})
 		assertNoError(err, t, "NewCompositeMemory (rax)")
-		memXmm1, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, RegNum: 18, IsRegister: true}})
+		memXmm1, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, Val: 18, Kind: op.RegPiece}})
 		assertNoError(err, t, "NewCompositeMemory (xmm1)")
 
 		if memRax := getmem(memRax); memRax != oldRax {
@@ -5209,6 +5213,145 @@ func TestVariablesWithExternalLinking(t *testing.T) {
 		t.Logf("%#v", str1Var)
 		if constant.StringVal(str1Var.Value) != "01234567890" {
 			t.Fatalf("wrong value for str1: %v", str1Var.Value)
+		}
+	})
+}
+
+func TestWatchpointsBasic(t *testing.T) {
+	skipOn(t, "not implemented", "windows")
+	skipOn(t, "not implemented", "freebsd")
+	skipOn(t, "not implemented", "darwin")
+	skipOn(t, "not implemented", "386")
+	skipOn(t, "not implemented", "arm64")
+	skipOn(t, "not implemented", "rr")
+
+	withTestProcess("databpeasy", t, func(p *proc.Target, fixture protest.Fixture) {
+		setFunctionBreakpoint(p, t, "main.main")
+		assertNoError(p.Continue(), t, "Continue 0")
+		assertLineNumber(p, t, 11, "Continue 0") // Position 0
+
+		scope, err := proc.GoroutineScope(p.CurrentThread())
+		assertNoError(err, t, "GoroutineScope")
+
+		bp, err := p.SetWatchpoint(scope, "globalvar1", proc.WatchWrite, nil)
+		assertNoError(err, t, "SetDataBreakpoint(write-only)")
+
+		assertNoError(p.Continue(), t, "Continue 1")
+		assertLineNumber(p, t, 17, "Continue 1") // Position 1
+
+		p.ClearBreakpoint(bp.Addr)
+
+		assertNoError(p.Continue(), t, "Continue 2")
+		assertLineNumber(p, t, 19, "Continue 2") // Position 2
+
+		_, err = p.SetWatchpoint(scope, "globalvar1", proc.WatchWrite|proc.WatchRead, nil)
+		assertNoError(err, t, "SetDataBreakpoint(read-write)")
+
+		assertNoError(p.Continue(), t, "Continue 3")
+		assertLineNumber(p, t, 20, "Continue 3") // Position 3
+
+		p.ClearBreakpoint(bp.Addr)
+
+		assertNoError(p.Continue(), t, "Continue 4")
+		assertLineNumber(p, t, 25, "Continue 4") // Position 4
+
+		_, err = p.SetWatchpoint(scope, "globalvar1", proc.WatchWrite, nil)
+		assertNoError(err, t, "SetDataBreakpoint(write-only, again)")
+
+		assertNoError(p.Continue(), t, "Continue 5")
+		assertLineNumber(p, t, 33, "Continue 5") // Position 5
+	})
+}
+
+func TestWatchpointCounts(t *testing.T) {
+	skipOn(t, "not implemented", "windows")
+	skipOn(t, "not implemented", "freebsd")
+	skipOn(t, "not implemented", "darwin")
+	skipOn(t, "not implemented", "386")
+	skipOn(t, "not implemented", "arm64")
+	skipOn(t, "not implemented", "rr")
+
+	protest.AllowRecording(t)
+	withTestProcess("databpcountstest", t, func(p *proc.Target, fixture protest.Fixture) {
+		setFunctionBreakpoint(p, t, "main.main")
+		assertNoError(p.Continue(), t, "Continue 0")
+
+		scope, err := proc.GoroutineScope(p.CurrentThread())
+		assertNoError(err, t, "GoroutineScope")
+
+		bp, err := p.SetWatchpoint(scope, "globalvar1", proc.WatchWrite, nil)
+		assertNoError(err, t, "SetWatchpoint(write-only)")
+
+		for {
+			if err := p.Continue(); err != nil {
+				if _, exited := err.(proc.ErrProcessExited); exited {
+					break
+				}
+				assertNoError(err, t, "Continue()")
+			}
+		}
+
+		t.Logf("TotalHitCount: %d", bp.TotalHitCount)
+		if bp.TotalHitCount != 200 {
+			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d)", bp.TotalHitCount)
+		}
+
+		if len(bp.HitCount) != 2 {
+			t.Fatalf("Wrong number of goroutines for breakpoint (%d)", len(bp.HitCount))
+		}
+
+		for _, v := range bp.HitCount {
+			if v != 100 {
+				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.HitCount)
+			}
+		}
+	})
+}
+
+func TestManualStopWhileStopped(t *testing.T) {
+	// Checks that RequestManualStop sent to a stopped thread does not cause the target process to die.
+	withTestProcess("loopprog", t, func(p *proc.Target, fixture protest.Fixture) {
+		asyncCont := func(done chan struct{}) {
+			defer close(done)
+			err := p.Continue()
+			t.Logf("%v\n", err)
+			if err != nil {
+				panic(err)
+			}
+			for _, th := range p.ThreadList() {
+				if th.Breakpoint().Breakpoint != nil {
+					t.Logf("unexpected stop at breakpoint: %v", th.Breakpoint().Breakpoint)
+					panic("unexpected stop at breakpoint")
+				}
+			}
+		}
+
+		const (
+			repeatsSlow = 3
+			repeatsFast = 5
+		)
+
+		for i := 0; i < repeatsSlow; i++ {
+			t.Logf("Continue %d (slow)", i)
+			done := make(chan struct{})
+			go asyncCont(done)
+			time.Sleep(1 * time.Second)
+			p.RequestManualStop()
+			time.Sleep(1 * time.Second)
+			p.RequestManualStop()
+			time.Sleep(1 * time.Second)
+			<-done
+		}
+		for i := 0; i < repeatsFast; i++ {
+			t.Logf("Continue %d (fast)", i)
+			rch := make(chan struct{})
+			done := make(chan struct{})
+			p.ResumeNotify(rch)
+			go asyncCont(done)
+			<-rch
+			p.RequestManualStop()
+			p.RequestManualStop()
+			<-done
 		}
 	})
 }

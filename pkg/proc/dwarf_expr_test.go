@@ -102,8 +102,8 @@ func uintExprCheck(t *testing.T, scope *proc.EvalScope, expr string, tgt uint64)
 	}
 }
 
-func fakeScope(mem proc.MemoryReadWriter, regs op.DwarfRegisters, bi *proc.BinaryInfo, fn *proc.Function) *proc.EvalScope {
-	return &proc.EvalScope{Location: proc.Location{PC: 0x40100, Fn: fn}, Regs: regs, Mem: mem, BinInfo: bi}
+func fakeScope(mem proc.MemoryReadWriter, regs *op.DwarfRegisters, bi *proc.BinaryInfo, fn *proc.Function) *proc.EvalScope {
+	return &proc.EvalScope{Location: proc.Location{PC: 0x40100, Fn: fn}, Regs: *regs, Mem: mem, BinInfo: bi}
 }
 
 func dwarfExprCheck(t *testing.T, scope *proc.EvalScope, testCases map[string]uint16) {
@@ -112,7 +112,7 @@ func dwarfExprCheck(t *testing.T, scope *proc.EvalScope, testCases map[string]ui
 	}
 }
 
-func dwarfRegisters(bi *proc.BinaryInfo, regs *linutil.AMD64Registers) op.DwarfRegisters {
+func dwarfRegisters(bi *proc.BinaryInfo, regs *linutil.AMD64Registers) *op.DwarfRegisters {
 	a := proc.AMD64Arch("linux")
 	so := bi.PCToImage(regs.PC())
 	dwarfRegs := a.RegistersToDwarfRegisters(so.StaticBase, regs)
@@ -152,9 +152,11 @@ func TestDwarfExprRegisters(t *testing.T) {
 
 func TestDwarfExprComposite(t *testing.T) {
 	testCases := map[string]uint16{
-		"pair.k": 0x8765,
-		"pair.v": 0x5678,
-		"n":      42,
+		"pair.k":  0x8765,
+		"pair.v":  0x5678,
+		"n":       42,
+		"pair2.k": 0x8765,
+		"pair2.v": 0,
 	}
 
 	const stringVal = "this is a string"
@@ -188,6 +190,9 @@ func TestDwarfExprComposite(t *testing.T) {
 		op.DW_OP_reg1, op.DW_OP_piece, uint(8),
 		op.DW_OP_reg0, op.DW_OP_piece, uint(8)))
 	dwb.AddVariable("n", intoff, dwarfbuilder.LocationBlock(op.DW_OP_reg3))
+	dwb.AddVariable("pair2", pairoff, dwarfbuilder.LocationBlock(
+		op.DW_OP_reg2, op.DW_OP_piece, uint(2),
+		op.DW_OP_piece, uint(2)))
 	dwb.TagClose()
 
 	bi, _ := fakeBinaryInfo(t, dwb)
@@ -271,7 +276,7 @@ func TestDwarfExprLoclist(t *testing.T) {
 	const PC = 0x40100
 	regs := linutil.AMD64Registers{Regs: &linutil.AMD64PtraceRegs{Rip: PC}}
 
-	scope := &proc.EvalScope{Location: proc.Location{PC: PC, Fn: mainfn}, Regs: dwarfRegisters(bi, &regs), Mem: mem, BinInfo: bi}
+	scope := &proc.EvalScope{Location: proc.Location{PC: PC, Fn: mainfn}, Regs: *dwarfRegisters(bi, &regs), Mem: mem, BinInfo: bi}
 
 	uintExprCheck(t, scope, "a", before)
 	scope.PC = 0x40800

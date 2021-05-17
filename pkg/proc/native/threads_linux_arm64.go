@@ -42,3 +42,15 @@ func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 	}
 	return restoreRegistersErr
 }
+
+func (t *nativeThread) writeHardwareBreakpoint(addr uint64, wtype proc.WatchType, idx uint8) error {
+	return proc.ErrHWBreakUnsupported
+}
+
+func (t *nativeThread) clearHardwareBreakpoint(addr uint64, wtype proc.WatchType, idx uint8) error {
+	return proc.ErrHWBreakUnsupported
+}
+
+func (t *nativeThread) findHardwareBreakpoint() (*proc.Breakpoint, error) {
+	return nil, nil
+}
