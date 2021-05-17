@@ -125,6 +125,9 @@ type Server struct {
 	// sendingMu synchronizes writing to net.Conn
 	// to ensure that messages do not get interleaved
 	sendingMu sync.Mutex
+
+	// resumeMu synchronizes goroutines that are attempting to restart the process
+	resumeMu sync.Mutex
 }
 
 // launchAttachArgs captures arguments from launch/attach request that
@@ -368,6 +371,8 @@ func (s *Server) recoverPanic(request dap.Message) {
 
 func (s *Server) handleRequest(request dap.Message) {
 	defer s.recoverPanic(request)
+	s.resumeMu.Lock()
+	defer s.resumeMu.Unlock()
 
 	jsonmsg, _ := json.Marshal(request)
 	s.log.Debug("[<- from client]", string(jsonmsg))
@@ -2083,6 +2088,7 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 	// So we should always close it ourselves just in case.
 	defer s.asyncCommandDone(asyncSetupDone)
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
+
 	for err == nil && !state.Exited && state.CurrentThread != nil && state.NextInProgress {
 		// If there is a NextInProgress, we want to notify the user that a breakpoint
 		// was hit and then continue.
@@ -2099,7 +2105,18 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 					Category: "console",
 				}})
 			// Issue a continue request to continue with the step command.
-			state, err = s.debugger.Command(&api.DebuggerCommand{Name: api.Continue}, nil)
+			s.resumeMu.Lock()
+			resumeRequestLoop := make(chan struct{})
+			go func() {
+				<-resumeRequestLoop
+				s.resumeMu.Unlock()
+			}()
+			defer func() {
+				close(resumeRequestLoop)
+			}()
+			// Make sure that there was no manual halt that should stop the execution.
+
+			state, err = s.debugger.Command(&api.DebuggerCommand{Name: api.Continue}, resumeRequestLoop)
 			continue
 		}
 
