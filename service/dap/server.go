@@ -10,6 +10,7 @@ package dap
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"go/constant"
@@ -29,6 +30,7 @@ import (
 	"github.com/go-delve/delve/pkg/locspec"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/terminal"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
@@ -102,8 +104,13 @@ type Server struct {
 	variableHandles *variablesHandlesMap
 	// args tracks special settings for handling debug session requests.
 	args launchAttachArgs
+<<<<<<< HEAD
+	// exceptionErr tracks the runtime error that last occurred.
+	exceptionErr error
+=======
 	// clientCapabilities tracks special settings for handling debug session requests.
 	clientCapabilities dapClientCapabilites
+>>>>>>> 1e9c5c3b07dc5f0f2b3b1fb17bde6444cbf7ca30
 
 	// mu synchronizes access to objects set on start-up (from run goroutine)
 	// and stopped on teardown (from main goroutine)
@@ -188,6 +195,7 @@ func NewServer(config *service.Config) *Server {
 		stackFrameHandles: newHandlesMap(),
 		variableHandles:   newVariablesHandlesMap(),
 		args:              defaultArgs,
+		exceptionErr:      nil,
 	}
 }
 
@@ -571,6 +579,9 @@ func (s *Server) handleRequest(request dap.Message) {
 		// Optional (capability ‘supportsCancelRequest’)
 		// TODO: does this request make sense for delve?
 		s.onCancelRequest(request)
+	case *dap.ExceptionInfoRequest:
+		// Optional (capability ‘supportsExceptionInfoRequest’)
+		s.onExceptionInfoRequest(request)
 	//--- Requests that we do not plan to support ---
 	case *dap.RestartFrameRequest:
 		// Optional (capability ’supportsRestartFrame’)
@@ -594,10 +605,6 @@ func (s *Server) handleRequest(request dap.Message) {
 		s.sendUnsupportedErrorResponse(request.Request)
 	case *dap.CompletionsRequest:
 		// Optional (capability ‘supportsCompletionsRequest’)
-		s.sendUnsupportedErrorResponse(request.Request)
-	case *dap.ExceptionInfoRequest:
-		// Optional (capability ‘supportsExceptionInfoRequest’)
-		// TODO: does this request make sense for delve?
 		s.sendUnsupportedErrorResponse(request.Request)
 	case *dap.DataBreakpointInfoRequest:
 		// Optional (capability ‘supportsDataBreakpoints’)
@@ -664,6 +671,7 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsConditionalBreakpoints = true
 	response.Body.SupportsDelayedStackTraceLoading = true
 	response.Body.SupportTerminateDebuggee = true
+	response.Body.SupportsExceptionInfoRequest = true
 	// TODO(polina): support this to match vscode-go functionality
 	response.Body.SupportsSetVariable = false
 	// TODO(polina): support these requests in addition to vscode-go feature parity
@@ -1161,6 +1169,7 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 			threads[i].Id = g.ID
 		}
 	}
+
 	response := &dap.ThreadsResponse{
 		Response: *newResponse(request.Request),
 		Body:     dap.ThreadsResponseBody{Threads: threads},
@@ -1913,6 +1922,81 @@ func (s *Server) onCancelRequest(request *dap.CancelRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
+// onExceptionInfoRequest handles 'exceptionInfo' requests.
+// Capability 'supportsExceptionInfoRequest' is set in 'initialize' response.
+func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
+	goroutineID := request.Arguments.ThreadId
+	var body dap.ExceptionInfoResponseBody
+	// Get the goroutine and the current state.
+	g, err := s.debugger.FindGoroutine(goroutineID)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToGetExceptionInfo, "Unable to get exception info", err.Error())
+		return
+	}
+	if g == nil {
+		s.sendErrorResponse(request.Request, UnableToGetExceptionInfo, "Unable to get exception info", fmt.Sprintf("could not find goroutine %d", goroutineID))
+		return
+	}
+	var bpState *proc.BreakpointState
+	if g.Thread != nil {
+		bpState = g.Thread.Breakpoint()
+	}
+	// Check if this goroutine ID is stopped at a breakpoint.
+	if bpState != nil && bpState.Breakpoint != nil && (bpState.Breakpoint.Name == proc.FatalThrow || bpState.Breakpoint.Name == proc.UnrecoveredPanic) {
+		switch bpState.Breakpoint.Name {
+		case proc.FatalThrow:
+			// TODO(suzmue): add the fatal throw reason to body.Description.
+			body.ExceptionId = "fatal error"
+		case proc.UnrecoveredPanic:
+			body.ExceptionId = "panic"
+			// Attempt to get the value of the panic message.
+			exprVar, err := s.debugger.EvalVariableInScope(goroutineID, 0, 0, "(*msgs).arg.(data)", DefaultLoadConfig)
+			if err == nil {
+				body.Description = exprVar.Value.String()
+			}
+		}
+	} else {
+		// If this thread is not stopped on a breakpoint, then a runtime error must have occurred.
+		// If we do not have any error saved, or if this thread is not current thread,
+		// return an error.
+		if s.exceptionErr == nil {
+			s.sendErrorResponse(request.Request, UnableToGetExceptionInfo, "Unable to get exception info", "no runtime error found")
+			return
+		}
+
+		state, err := s.debugger.State( /*nowait*/ true)
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToGetExceptionInfo, "Unable to get exception info", err.Error())
+			return
+		}
+		if state == nil || state.CurrentThread == nil || g.Thread == nil || state.CurrentThread.ID != g.Thread.ThreadID() {
+			s.sendErrorResponse(request.Request, UnableToGetExceptionInfo, "Unable to get exception info", fmt.Sprintf("no exception found for goroutine %d", goroutineID))
+			return
+		}
+		body.ExceptionId = "runtime error"
+		body.Description = s.exceptionErr.Error()
+		if body.Description == "bad access" {
+			body.Description = BetterBadAccessError
+		}
+	}
+
+	frames, err := s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
+	if err == nil && len(frames) > 0 {
+		apiFrames, err := s.debugger.ConvertStacktrace(frames, nil)
+		if err == nil {
+			var buf bytes.Buffer
+			fmt.Fprintln(&buf, "Stack:")
+			terminal.PrintStack(s.toClientPath, &buf, apiFrames, "\t", false)
+			body.Details.StackTrace = buf.String()
+		}
+	}
+	response := &dap.ExceptionInfoResponse{
+		Response: *newResponse(request.Request),
+		Body:     body,
+	}
+	s.send(response)
+}
+
 // sendErrorResponseWithOpts offers configuration options.
 //   showUser - if true, the error will be shown to the user (e.g. via a visible pop-up)
 func (s *Server) sendErrorResponseWithOpts(request dap.Request, id int, summary, details string, showUser bool) {
@@ -1987,6 +2071,7 @@ Unable to propagate EXC_BAD_ACCESS signal to target process and panic (see https
 func (s *Server) resetHandlesForStoppedEvent() {
 	s.stackFrameHandles.reset()
 	s.variableHandles.reset()
+	s.exceptionErr = nil
 }
 
 // doRunCommand runs a debugger command until it stops on
@@ -2014,6 +2099,9 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 	stopped.Body.AllThreadsStopped = true
 
 	if err == nil {
+		// TODO(suzmue): If stopped.Body.ThreadId is not a valid goroutine
+		// then the stopped reason does not show up anywhere in the
+		// vscode ui.
 		stopped.Body.ThreadId = stoppedGoroutineID(state)
 
 		switch stopReason {
@@ -2031,14 +2119,18 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 		if state.CurrentThread != nil && state.CurrentThread.Breakpoint != nil {
 			switch state.CurrentThread.Breakpoint.Name {
 			case proc.FatalThrow:
-				stopped.Body.Reason = "fatal error"
+				stopped.Body.Reason = "exception"
+				stopped.Body.Description = "Paused on fatal error"
 			case proc.UnrecoveredPanic:
-				stopped.Body.Reason = "panic"
+				stopped.Body.Reason = "exception"
+				stopped.Body.Description = "Paused on panic"
 			}
 		}
 	} else {
+		s.exceptionErr = err
 		s.log.Error("runtime error: ", err)
-		stopped.Body.Reason = "runtime error"
+		stopped.Body.Reason = "exception"
+		stopped.Body.Description = "Paused on runtime error"
 		stopped.Body.Text = err.Error()
 		// Special case in the spirit of https://github.com/microsoft/vscode-go/issues/1903
 		if stopped.Body.Text == "bad access" {
@@ -2048,19 +2140,6 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 		if err == nil {
 			stopped.Body.ThreadId = stoppedGoroutineID(state)
 		}
-
-		// TODO(polina): according to the spec, the extra 'text' is supposed to show up in the UI (e.g. on hover),
-		// but so far I am unable to get this to work in vscode - see https://github.com/microsoft/vscode/issues/104475.
-		// Options to explore:
-		//   - supporting ExceptionInfo request
-		//   - virtual variable scope for Exception that shows the message (details here: https://github.com/microsoft/vscode/issues/3101)
-		// In the meantime, provide the extra details by outputing an error message.
-		s.send(&dap.OutputEvent{
-			Event: *newEvent("output"),
-			Body: dap.OutputEventBody{
-				Output:   fmt.Sprintf("ERROR: %s\n", stopped.Body.Text),
-				Category: "stderr",
-			}})
 	}
 
 	// NOTE: If we happen to be responding to another request with an is-running

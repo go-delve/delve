@@ -2698,14 +2698,16 @@ func TestBadAccess(t *testing.T) {
 
 					expectStoppedOnError := func(errorPrefix string) {
 						t.Helper()
-						oe := client.ExpectOutputEvent(t)
-						if oe.Body.Category != "stderr" || !strings.HasPrefix(oe.Body.Output, "ERROR: "+errorPrefix) {
-							t.Errorf("\ngot  %#v\nwant Category=\"stderr\" Output=\"%s ...\"", oe, errorPrefix)
-						}
 						se := client.ExpectStoppedEvent(t)
-						if se.Body.ThreadId != 1 || se.Body.Reason != "runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
-							t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"runtime error\" Text=\"%s\"", se, errorPrefix)
+						if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "Paused on runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
+							t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"Paused on runtime error\" Text=\"%s\"", se, errorPrefix)
 						}
+						client.ExceptionInfoRequest(1)
+						eInfo := client.ExpectExceptionInfoResponse(t)
+						if eInfo.Body.ExceptionId != "runtime error" || !strings.HasPrefix(eInfo.Body.Description, errorPrefix) {
+							t.Errorf("\ngot  %#v\nwant ExceptionId=\"runtime error\" Text=\"%s\"", eInfo, errorPrefix)
+						}
+
 					}
 
 					client.ContinueRequest(1)
@@ -2750,8 +2752,14 @@ func TestPanicBreakpointOnContinue(t *testing.T) {
 					client.ExpectContinueResponse(t)
 
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != 1 || se.Body.Reason != "panic" {
-						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"panic\"", se)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "Paused on panic" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"Paused on panic\"", se)
+					}
+
+					client.ExceptionInfoRequest(1)
+					eInfo := client.ExpectExceptionInfoResponse(t)
+					if eInfo.Body.ExceptionId != "panic" || eInfo.Body.Description != "\"BOOM!\"" {
+						t.Errorf("\ngot  %#v\nwant ExceptionId=\"panic\" Description=\"\"BOOM!\"\"", eInfo)
 					}
 				},
 				disconnect: true,
@@ -2782,9 +2790,14 @@ func TestPanicBreakpointOnNext(t *testing.T) {
 					client.ExpectNextResponse(t)
 
 					se := client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "Paused on panic" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"Paused on panic\"", se)
+					}
 
-					if se.Body.ThreadId != 1 || se.Body.Reason != "panic" {
-						t.Errorf("\ngot  %#v\nexpected ThreadId=1 Reason=\"panic\"", se)
+					client.ExceptionInfoRequest(1)
+					eInfo := client.ExpectExceptionInfoResponse(t)
+					if eInfo.Body.ExceptionId != "panic" || eInfo.Body.Description != "\"BOOM!\"" {
+						t.Errorf("\ngot  %#v\nwant ExceptionId=\"panic\" Description=\"\"BOOM!\"\"", eInfo)
 					}
 				},
 				disconnect: true,
@@ -2809,8 +2822,8 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 					client.ExpectContinueResponse(t)
 
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.Reason != "fatal error" {
-						t.Errorf("\ngot  %#v\nwant Reason=\"fatal error\"", se)
+					if se.Body.Reason != "exception" || se.Body.Description != "Paused on fatal error" {
+						t.Errorf("\ngot  %#v\nwant Reason=\"exception\" Description=\"Paused on fatal error\"", se)
 					}
 				},
 				disconnect: true,
@@ -3170,9 +3183,6 @@ func TestUnupportedCommandResponses(t *testing.T) {
 
 		client.CompletionsRequest()
 		expectUnsupportedCommand("completions")
-
-		client.ExceptionInfoRequest()
-		expectUnsupportedCommand("exceptionInfo")
 
 		client.DataBreakpointInfoRequest()
 		expectUnsupportedCommand("dataBreakpointInfo")
