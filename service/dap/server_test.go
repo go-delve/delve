@@ -1971,7 +1971,7 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 							return
 						}
 						for i, bp := range got.Body.Breakpoints {
-							if len(bps[i].errMsg) > 0 {
+							if bps[i].line < 0 {
 								if bp.Verified != bps[i].verified || !strings.Contains(bp.Message, bps[i].errMsg) {
 									t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
 								}
@@ -2083,19 +2083,19 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
 						{Name: "+1"},
 					})
-					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), false, "breakpoint name \"+1\" could not be parsed as a function"}})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, filepath.Base(fixture.Source), false, "breakpoint name \"+1\" could not be parsed as a function"}})
 
 					// Expect error when function name is a line number.
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
 						{Name: "14"},
 					})
-					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), false, "breakpoint name \"14\" could not be parsed as a function"}})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, filepath.Base(fixture.Source), false, "breakpoint name \"14\" could not be parsed as a function"}})
 
 					// Expect error when function name is an address.
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
 						{Name: "*b"},
 					})
-					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), false, "breakpoint name \"*b\" could not be parsed as a function"}})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, filepath.Base(fixture.Source), false, "breakpoint name \"*b\" could not be parsed as a function"}})
 
 					// Expect error when function name is a relative path.
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
