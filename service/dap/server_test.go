@@ -2101,11 +2101,13 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
 						{Name: fmt.Sprintf(".%s%s:14", string(filepath.Separator), filepath.Base(fixture.Source))},
 					})
-					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), false, "breakpoint names that are relative paths are not supported."}})
+					// This relative path could also be caught by the parser, so we should not match the error message.
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, filepath.Base(fixture.Source), false, ""}})
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
 						{Name: fmt.Sprintf("..%s%s:14", string(filepath.Separator), filepath.Base(fixture.Source))},
 					})
-					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), false, "breakpoint names that are relative paths are not supported."}})
+					// This relative path could also be caught by the parser, so we should not match the error message.
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, filepath.Base(fixture.Source), false, ""}})
 
 					// Test multiple function breakpoints.
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
