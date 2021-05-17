@@ -104,8 +104,13 @@ type Server struct {
 	variableHandles *variablesHandlesMap
 	// args tracks special settings for handling debug session requests.
 	args launchAttachArgs
+<<<<<<< HEAD
 	// exceptionErr tracks the runtime error that last occurred.
 	exceptionErr error
+=======
+	// clientCapabilities tracks special settings for handling debug session requests.
+	clientCapabilities dapClientCapabilites
+>>>>>>> 1e9c5c3b07dc5f0f2b3b1fb17bde6444cbf7ca30
 
 	// mu synchronizes access to objects set on start-up (from run goroutine)
 	// and stopped on teardown (from main goroutine)
@@ -149,6 +154,16 @@ var defaultArgs = launchAttachArgs{
 	showGlobalVariables:          false,
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
+}
+
+// dapClientCapabilites captures arguments from intitialize request that
+// impact handling of subsequent requests.
+type dapClientCapabilites struct {
+	supportsVariableType         bool
+	supportsVariablePaging       bool
+	supportsRunInTerminalRequest bool
+	supportsMemoryReferences     bool
+	supportsProgressReporting    bool
 }
 
 // DefaultLoadConfig controls how variables are loaded from the target's memory, borrowing the
@@ -392,8 +407,7 @@ func (s *Server) handleRequest(request dap.Message) {
 	// We have a couple of options for handling these without blocking
 	// the request loop indefinitely when we are in running state.
 	// --1-- Return a dummy response or an error right away.
-	// --2-- Halt execution, process the request, resume execution.
-	// TODO(polina): do this for setting breakpoints
+	// --2-- Halt execution, process the request, maybe resume execution.
 	// --3-- Handle such requests asynchronously and let them block until
 	// the process stops or terminates (e.g. using a channel and a single
 	// goroutine to preserve the order). This might not be appropriate
@@ -420,6 +434,28 @@ func (s *Server) handleRequest(request dap.Message) {
 				Body:     dap.ThreadsResponseBody{Threads: []dap.Thread{{Id: -1, Name: "Current"}}},
 			}
 			s.send(response)
+		case *dap.SetBreakpointsRequest:
+			s.log.Debug("halting execution to set breakpoints")
+			_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+			if err != nil {
+				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
+				return
+			}
+			s.onSetBreakpointsRequest(request)
+			// TODO(polina): consider resuming execution here automatically after suppressing
+			// a stop event when an operation in doRunCommand returns. In case that operation
+			// was already stopping for a different reason, we would need to examine the state
+			// that is returned to determine if this halt was the cause of the stop or not.
+			// We should stop with an event and not resume if one of the following is true:
+			// - StopReason is anything but manual
+			// - Any thread has a breakpoint or CallReturn set
+			// - NextInProgress is false and the last command sent by the user was: next,
+			//   step, stepOut, reverseNext, reverseStep or reverseStepOut
+			// Otherwise, we can skip the stop event and resume the temporarily
+			// interrupted process execution with api.DirectionCongruentContinue.
+			// For this to apply in cases other than api.Continue, we would also need to
+			// introduce a new version of halt that skips ClearInternalBreakpoints
+			// in proc.(*Target).Continue, leaving NextInProgress as true.
 		default:
 			r := request.(dap.RequestMessage).GetRequest()
 			s.sendErrorResponse(*r, DebuggeeIsRunning, fmt.Sprintf("Unable to process `%s`", r.Command), "debuggee is running")
@@ -612,6 +648,7 @@ func (s *Server) logToConsole(msg string) {
 }
 
 func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
+	s.setClientCapabilities(request.Arguments)
 	if request.Arguments.PathFormat != "path" {
 		s.sendErrorResponse(request.Request, FailedToInitialize, "Failed to initialize",
 			fmt.Sprintf("Unsupported 'pathFormat' value '%s'.", request.Arguments.PathFormat))
@@ -648,6 +685,14 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsDisassembleRequest = false
 	response.Body.SupportsCancelRequest = false
 	s.send(response)
+}
+
+func (s *Server) setClientCapabilities(args dap.InitializeRequestArguments) {
+	s.clientCapabilities.supportsMemoryReferences = args.SupportsMemoryReferences
+	s.clientCapabilities.supportsProgressReporting = args.SupportsProgressReporting
+	s.clientCapabilities.supportsRunInTerminalRequest = args.SupportsRunInTerminalRequest
+	s.clientCapabilities.supportsVariablePaging = args.SupportsVariablePaging
+	s.clientCapabilities.supportsVariableType = args.SupportsVariableType
 }
 
 // Default output file pathname for the compiled binary in debug or test modes,
@@ -707,17 +752,24 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		}
 
 		s.log.Debugf("building binary at %s", debugbinary)
+		var cmd string
 		var out []byte
 		switch mode {
 		case "debug":
-			out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
+			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
 		case "test":
-			out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
+			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
 		}
 		if err != nil {
+			s.send(&dap.OutputEvent{
+				Event: *newEvent("output"),
+				Body: dap.OutputEventBody{
+					Output:   fmt.Sprintf("Build Error: %s\n%s (%s)\n", cmd, strings.TrimSpace(string(out)), err.Error()),
+					Category: "stderr",
+				}})
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("Build error: %s (%s)", strings.TrimSpace(string(out)), err.Error()))
+				"Build error: Check the debug console for details.")
 			return
 		}
 		program = debugbinary
@@ -1042,7 +1094,7 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 	}
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
 	if !s.args.stopOnEntry {
-		s.doCommand(api.Continue, asyncSetupDone)
+		s.doRunCommand(api.Continue, asyncSetupDone)
 	}
 }
 
@@ -1052,7 +1104,7 @@ func (s *Server) onContinueRequest(request *dap.ContinueRequest, asyncSetupDone 
 	s.send(&dap.ContinueResponse{
 		Response: *newResponse(request.Request),
 		Body:     dap.ContinueResponseBody{AllThreadsContinued: true}})
-	s.doCommand(api.Continue, asyncSetupDone)
+	s.doRunCommand(api.Continue, asyncSetupDone)
 }
 
 func fnName(loc *proc.Location) string {
@@ -1199,7 +1251,7 @@ func stoppedGoroutineID(state *api.DebuggerState) (id int) {
 	return id
 }
 
-// doStepCommand is a wrapper around doCommand that
+// doStepCommand is a wrapper around doRunCommand that
 // first switches selected goroutine. asyncSetupDone is
 // a channel that will be closed to signal that an
 // asynchornous command has completed setup or was interrupted
@@ -1223,7 +1275,7 @@ func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan
 		s.send(stopped)
 		return
 	}
-	s.doCommand(command, asyncSetupDone)
+	s.doRunCommand(command, asyncSetupDone)
 }
 
 // onPauseRequest sends a not-yet-implemented error response.
@@ -1295,13 +1347,23 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 	goid := sf.(stackFrame).goroutineID
 	frame := sf.(stackFrame).frameIndex
 
+	// Check if the function is optimized.
+	fn, err := s.debugger.Function(goid, frame, 0, DefaultLoadConfig)
+	if fn == nil || err != nil {
+		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to find enclosing function", err.Error())
+		return
+	}
+	suffix := ""
+	if fn.Optimized() {
+		suffix = " (warning: optimized function)"
+	}
 	// Retrieve arguments
 	args, err := s.debugger.FunctionArguments(goid, frame, 0, DefaultLoadConfig)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to list args", err.Error())
 		return
 	}
-	argScope := &fullyQualifiedVariable{&proc.Variable{Name: "Arguments", Children: slicePtrVarToSliceVar(args)}, "", true}
+	argScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Arguments%s", suffix), Children: slicePtrVarToSliceVar(args)}, "", true}
 
 	// Retrieve local variables
 	locals, err := s.debugger.LocalVariables(goid, frame, 0, DefaultLoadConfig)
@@ -1309,7 +1371,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list locals", err.Error())
 		return
 	}
-	locScope := &fullyQualifiedVariable{&proc.Variable{Name: "Locals", Children: slicePtrVarToSliceVar(locals)}, "", true}
+	locScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Locals%s", suffix), Children: slicePtrVarToSliceVar(locals)}, "", true}
 
 	scopeArgs := dap.Scope{Name: argScope.Name, VariablesReference: s.variableHandles.create(argScope)}
 	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
@@ -1396,6 +1458,8 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 			}
 			key, keyref := s.convertVariable(keyv, keyexpr)
 			val, valref := s.convertVariable(valv, valexpr)
+			keyType := s.getTypeIfSupported(keyv)
+			valType := s.getTypeIfSupported(valv)
 			// If key or value or both are scalars, we can use
 			// a single variable to represet key:value format.
 			// Otherwise, we must return separate variables for both.
@@ -1403,20 +1467,27 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 				keyvar := dap.Variable{
 					Name:               fmt.Sprintf("[key %d]", kvIndex),
 					EvaluateName:       keyexpr,
+					Type:               keyType,
 					Value:              key,
 					VariablesReference: keyref,
 				}
 				valvar := dap.Variable{
 					Name:               fmt.Sprintf("[val %d]", kvIndex),
 					EvaluateName:       valexpr,
+					Type:               valType,
 					Value:              val,
 					VariablesReference: valref,
 				}
 				children = append(children, keyvar, valvar)
 			} else { // At least one is a scalar
+				keyValType := valType
+				if len(keyType) > 0 && len(valType) > 0 {
+					keyValType = fmt.Sprintf("%s: %s", keyType, valType)
+				}
 				kvvar := dap.Variable{
 					Name:         key,
 					EvaluateName: valexpr,
+					Type:         keyValType,
 					Value:        val,
 				}
 				if keyref != 0 { // key is a type to be expanded
@@ -1439,6 +1510,7 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 			children[i] = dap.Variable{
 				Name:               fmt.Sprintf("[%d]", i),
 				EvaluateName:       cfqname,
+				Type:               s.getTypeIfSupported(&v.Children[i]),
 				Value:              cvalue,
 				VariablesReference: cvarref,
 			}
@@ -1476,9 +1548,17 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 			children[i] = dap.Variable{
 				Name:               name,
 				EvaluateName:       cfqname,
+				Type:               s.getTypeIfSupported(c),
 				Value:              cvalue,
 				VariablesReference: cvarref,
 			}
+		}
+	}
+	if !s.clientCapabilities.supportsVariableType {
+		// If the client does not support variable type
+		// we cannot set the Type field in the response.
+		for i := range children {
+			children[i].Type = ""
 		}
 	}
 	response := &dap.VariablesResponse{
@@ -1486,6 +1566,13 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		Body:     dap.VariablesResponseBody{Variables: children},
 	}
 	s.send(response)
+}
+
+func (s *Server) getTypeIfSupported(v *proc.Variable) string {
+	if !s.clientCapabilities.supportsVariableType {
+		return ""
+	}
+	return v.TypeString()
 }
 
 // convertVariable converts proc.Variable to dap.Variable value and reference
@@ -1987,14 +2074,14 @@ func (s *Server) resetHandlesForStoppedEvent() {
 	s.exceptionErr = nil
 }
 
-// doCommand runs a debugger command until it stops on
+// doRunCommand runs a debugger command until it stops on
 // termination, error, breakpoint, etc, when an appropriate
 // event needs to be sent to the client. asyncSetupDone is
 // a channel that will be closed to signal that an
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
-func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
-	// TODO(polina): it appears that debugger.Command doesn't close
+func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
+	// TODO(polina): it appears that debugger.Command doesn't always close
 	// asyncSetupDone (e.g. when having an error next while nexting).
 	// So we should always close it ourselves just in case.
 	defer s.asyncCommandDone(asyncSetupDone)
@@ -2003,6 +2090,9 @@ func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		return
 	}
+
+	stopReason := s.debugger.StopReason()
+	s.log.Debugf("%q command stopped - reason %q", command, stopReason)
 
 	s.resetHandlesForStoppedEvent()
 	stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
@@ -2014,9 +2104,7 @@ func (s *Server) doCommand(command string, asyncSetupDone chan struct{}) {
 		// vscode ui.
 		stopped.Body.ThreadId = stoppedGoroutineID(state)
 
-		sr := s.debugger.StopReason()
-		s.log.Debugf("%q command stopped - reason %q", command, sr)
-		switch sr {
+		switch stopReason {
 		case proc.StopNextFinished:
 			stopped.Body.Reason = "step"
 		case proc.StopManual: // triggered by halt

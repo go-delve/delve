@@ -62,5 +62,5 @@ func (m _PEMachine) String() string {
 	if ok {
 		return str
 	}
-	return fmt.Sprintf("unkown image file machine code %d\n", uint16(m))
+	return fmt.Sprintf("unknown image file machine code %d\n", uint16(m))
 }
