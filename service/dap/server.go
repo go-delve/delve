@@ -1955,13 +1955,13 @@ func (s *Server) onReverseContinueRequest(request *dap.ReverseContinueRequest) {
 }
 
 // computeEvaluateName finds the named child, and computes its evaluate name.
-func (s *Server) computeEvaluateName(v *fullyQualifiedVariable, name string) (string, error) {
+func (s *Server) computeEvaluateName(v *fullyQualifiedVariable, cname string) (string, error) {
 	children, err := s.childrenToDAPVariables(v)
 	if err != nil {
 		return "", err
 	}
 	for _, c := range children {
-		if c.Name == name {
+		if c.Name == cname {
 			if c.EvaluateName != "" {
 				return c.EvaluateName, nil
 			}

@@ -3599,15 +3599,16 @@ func TestSetVariableWithCall(t *testing.T) {
 					tester.expectSetVariable(1001, "a1", `"fur"`)
 					tester.evaluate("a1", `"fur"`, noChildren)
 					// We will check a1 in main.foobar isn't affected from the next breakpoint.
-				},
-			}, {
-				// line 67 - after returning from main.barfoo.
-				execute: func() {
-					tester := &helperForSetVariable{t, client}
 
-					handleStop(t, client, 1, "main.foobar", -1)
-					tester.evaluate("a1", `"barbarbar"`, noChildren)
-					// a1 of main.foobar was not affected.
+					client.StackTraceRequest(1, 1, 20)
+					res := client.ExpectStackTraceResponse(t)
+					if len(res.Body.StackFrames) < 1 {
+						t.Fatalf("stack trace response = %#v, wanted at least one stack frame", res)
+					}
+					outerFrame := res.Body.StackFrames[0].Id
+					client.EvaluateRequest("a1", outerFrame, "whatever_context")
+					evalRes := client.ExpectEvaluateResponse(t)
+					expectEval(t, evalRes, `"barbarbar"`, noChildren)
 				},
 				disconnect: true,
 			}})
