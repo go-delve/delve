@@ -667,13 +667,13 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsConditionalBreakpoints = true
 	response.Body.SupportsDelayedStackTraceLoading = true
 	response.Body.SupportTerminateDebuggee = true
+	response.Body.SupportsFunctionBreakpoints = true
 	response.Body.SupportsExceptionInfoRequest = true
 	// TODO(polina): support this to match vscode-go functionality
 	response.Body.SupportsSetVariable = false
 	// TODO(polina): support these requests in addition to vscode-go feature parity
 	response.Body.SupportsTerminateRequest = false
 	response.Body.SupportsRestartRequest = false
-	response.Body.SupportsFunctionBreakpoints = false
 	response.Body.SupportsStepBack = false
 	response.Body.SupportsSetExpression = false
 	response.Body.SupportsLoadedSourcesRequest = false
@@ -1020,23 +1020,10 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 	// -- exists and in request => AmendBreakpoint
 	// -- doesn't exist and in request => SetBreakpoint
 
-	// Clear all existing breakpoints in the file.
-	existing := s.debugger.Breakpoints()
-	for _, bp := range existing {
-		// Skip special breakpoints such as for panic.
-		if bp.ID < 0 {
-			continue
-		}
-		// Skip other source files.
-		// TODO(polina): should this be normalized because of different OSes?
-		if bp.File != serverPath {
-			continue
-		}
-		_, err := s.debugger.ClearBreakpoint(bp)
-		if err != nil {
-			s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
-			return
-		}
+	// Clear all existing breakpoints in the file that are not function breakpoints.
+	if err := s.clearMatchingBreakpoints(func(bp *api.Breakpoint) bool { return bp.File == serverPath && bp.Name == "" }); err != nil {
+		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
+		return
 	}
 
 	// Set all requested breakpoints.
@@ -1883,10 +1870,101 @@ func (s *Server) onRestartRequest(request *dap.RestartRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onSetFunctionBreakpointsRequest sends a not-yet-implemented error response.
-// Capability 'supportsFunctionBreakpoints' is not set 'initialize' response.
+// functionBpPrefix is the prefix of bp.Name for every breakpoint bp set
+// in this request.
+const functionBpPrefix = "functionBreakpoint"
+
 func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpointsRequest) {
-	s.sendNotYetImplementedErrorResponse(request.Request)
+	if s.noDebugProcess != nil {
+		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", "running in noDebug mode")
+		return
+	}
+	// TODO(polina): handle this while running by halting first.
+
+	// According to the spec, setFunctionBreakpoints "replaces all existing function
+	// breakpoints with new function breakpoints." The simplest way is
+	// to clear all and then set all.
+
+	// Clear all existing function breakpoints in the file.
+	// Function breakpoints are set with the Name field set to be the
+	// function name. We cannot use FunctionName to determine this, because
+	// the debugger sets the function name for all breakpoints.
+	if err := s.clearMatchingBreakpoints(func(bp *api.Breakpoint) bool { return strings.HasPrefix(bp.Name, functionBpPrefix) }); err != nil {
+		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
+		return
+	}
+
+	// Set all requested breakpoints.
+	response := &dap.SetFunctionBreakpointsResponse{Response: *newResponse(request.Request)}
+	response.Body.Breakpoints = make([]dap.Breakpoint, len(request.Arguments.Breakpoints))
+	for i, want := range request.Arguments.Breakpoints {
+		spec, err := locspec.Parse(want.Name)
+		if err != nil {
+			response.Body.Breakpoints[i].Message = err.Error()
+			continue
+		}
+		if loc, ok := spec.(*locspec.NormalLocationSpec); !ok || loc.FuncBase == nil {
+			// Other locations do not make sense in the context of function breakpoints.
+			// Regex locations are likely to resolve to multiple places and offset locations
+			// are only meaningful at the time the breakpoint was created.
+			response.Body.Breakpoints[i].Message = fmt.Sprintf("breakpoint name %q could not be parsed as a function. name must be in the format 'funcName', 'funcName:line' or 'fileName:line'.", want.Name)
+			continue
+		}
+
+		if want.Name[0] == '.' {
+			response.Body.Breakpoints[i].Message = "breakpoint names that are relative paths are not supported."
+			continue
+		}
+		// Find the location of the function name. CreateBreakpoint requires the name to include the base
+		// (e.g. main.functionName is supported but not functionName).
+		// We first find the location of the function, and then set breakpoints for that location.
+		locs, err := s.debugger.FindLocationSpec(-1, 0, 0, want.Name, spec, true, s.args.substitutePathClientToServer)
+		if err != nil {
+			response.Body.Breakpoints[i].Message = err.Error()
+			continue
+		}
+		if len(locs) == 0 {
+			response.Body.Breakpoints[i].Message = fmt.Sprintf("no location found for %q", want.Name)
+			continue
+		}
+		if len(locs) > 0 {
+			s.log.Debugf("multiple locations found for %s", want.Name)
+			response.Body.Breakpoints[i].Message = fmt.Sprintf("multiple locations found for %s, function breakpoint is only set for the first location", want.Name)
+		}
+
+		// Set breakpoint using the PCs that were found.
+		loc := locs[0]
+		got, err := s.debugger.CreateBreakpoint(
+			&api.Breakpoint{Name: fmt.Sprintf("%s%d", functionBpPrefix, i), Addr: loc.PC, Addrs: loc.PCs, Cond: want.Condition})
+		response.Body.Breakpoints[i].Verified = (err == nil)
+		if err != nil {
+			response.Body.Breakpoints[i].Message = err.Error()
+		} else {
+			response.Body.Breakpoints[i].Id = got.ID
+			response.Body.Breakpoints[i].Line = got.Line
+			response.Body.Breakpoints[i].Source = dap.Source{Name: filepath.Base(got.File), Path: got.File}
+		}
+	}
+	s.send(response)
+}
+
+func (s *Server) clearMatchingBreakpoints(matchCondition func(*api.Breakpoint) bool) error {
+	existing := s.debugger.Breakpoints()
+	for _, bp := range existing {
+		// Skip special breakpoints such as for panic.
+		if bp.ID < 0 {
+			continue
+		}
+		// Skip breakpoints that do not meet the condition.
+		if !matchCondition(bp) {
+			continue
+		}
+		_, err := s.debugger.ClearBreakpoint(bp)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // onStepBackRequest sends a not-yet-implemented error response.
@@ -2143,6 +2221,9 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 			case proc.UnrecoveredPanic:
 				stopped.Body.Reason = "exception"
 				stopped.Body.Description = "Paused on panic"
+			}
+			if strings.HasPrefix(state.CurrentThread.Breakpoint.Name, functionBpPrefix) {
+				stopped.Body.Reason = "function breakpoint"
 			}
 		}
 	} else {
