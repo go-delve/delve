@@ -228,15 +228,6 @@ func conditionErrors(threads []Thread) error {
 			}
 		}
 	}
-	for _, th := range threads {
-		if bp := th.Breakpoint(); bp.Breakpoint != nil && bp.HitCondError != nil {
-			if condErr == nil {
-				condErr = bp.HitCondError
-			} else {
-				return fmt.Errorf("multiple errors evaluating conditions")
-			}
-		}
-	}
 	return condErr
 }
 

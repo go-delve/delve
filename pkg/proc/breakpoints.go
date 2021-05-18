@@ -168,7 +168,7 @@ type returnBreakpointInfo struct {
 // CheckCondition evaluates bp's condition on thread.
 func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
 	bpstate := BreakpointState{Breakpoint: bp, Active: false, Internal: false, CondError: nil}
-	bpstate = bp.checkCond(bpstate, thread)
+	bpstate.checkCond(thread)
 	// Update the breakpoint hit counts.
 	if bpstate.Breakpoint != nil && bpstate.Active {
 		if g, err := GetG(thread); err == nil {
@@ -176,53 +176,55 @@ func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
 		}
 		bpstate.TotalHitCount++
 	}
-	//Check hit condition if this is a user breakpoint.
-	if bpstate.Active && !bpstate.Internal {
-		bpstate = bp.checkHitCond(bpstate, thread)
-	}
+	bpstate.checkHitCond(thread)
 	return bpstate
 }
 
-func (bp *Breakpoint) checkCond(bpstate BreakpointState, thread Thread) BreakpointState {
-	if bp.Cond == nil && bp.internalCond == nil {
+func (bpstate *BreakpointState) checkCond(thread Thread) {
+	if bpstate.Cond == nil && bpstate.internalCond == nil {
 		bpstate.Active = true
-		bpstate.Internal = bp.IsInternal()
-		return bpstate
+		bpstate.Internal = bpstate.IsInternal()
+		return
 	}
 	nextDeferOk := true
-	if bp.Kind&NextDeferBreakpoint != 0 {
+	if bpstate.Kind&NextDeferBreakpoint != 0 {
 		var err error
 		frames, err := ThreadStacktrace(thread, 2)
 		if err == nil {
 			nextDeferOk = isPanicCall(frames)
 			if !nextDeferOk {
-				nextDeferOk, _ = isDeferReturnCall(frames, bp.DeferReturns)
+				nextDeferOk, _ = isDeferReturnCall(frames, bpstate.DeferReturns)
 			}
 		}
 	}
-	if bp.IsInternal() {
+	if bpstate.IsInternal() {
 		// Check internalCondition if this is also an internal breakpoint
-		bpstate.Active, bpstate.CondError = evalBreakpointCondition(thread, bp.internalCond)
+		bpstate.Active, bpstate.CondError = evalBreakpointCondition(thread, bpstate.internalCond)
 		bpstate.Active = bpstate.Active && nextDeferOk
 		if bpstate.Active || bpstate.CondError != nil {
 			bpstate.Internal = true
-			return bpstate
+			return
 		}
 	}
-	if bp.IsUser() {
+	if bpstate.IsUser() {
 		// Check normal condition if this is also a user breakpoint
-		bpstate.Active, bpstate.CondError = evalBreakpointCondition(thread, bp.Cond)
+		bpstate.Active, bpstate.CondError = evalBreakpointCondition(thread, bpstate.Cond)
 	}
-	return bpstate
 }
 
 // checkHitCond evaluates bp's hit condition on thread.
-func (bp *Breakpoint) checkHitCond(bpstate BreakpointState, thread Thread) BreakpointState {
-	if bp.HitCond != nil {
-		bp.HitCond.X = astutil.Int(int64(bp.TotalHitCount))
-		bpstate.Active, bpstate.HitCondError = evalBreakpointCondition(thread, bp.HitCond)
+func (bpstate *BreakpointState) checkHitCond(thread Thread) {
+	if bpstate.HitCond == nil || !bpstate.Active || bpstate.Internal {
+		return
 	}
-	return bpstate
+	bpstate.HitCond.X = astutil.Int(int64(bpstate.TotalHitCount))
+	// Evaluate the breakpoint condition and set CondError if it has not
+	// already been set.
+	var err error
+	bpstate.Active, err = evalBreakpointCondition(thread, bpstate.HitCond)
+	if bpstate.CondError == nil {
+		bpstate.CondError = err
+	}
 }
 
 func isPanicCall(frames []Stackframe) bool {
@@ -517,9 +519,6 @@ type BreakpointState struct {
 	// CondError contains any error encountered while evaluating the
 	// breakpoint's condition.
 	CondError error
-	// HitCondError contains any error encountered while evaluating the
-	// breakpoint's hit condition.
-	HitCondError error
 }
 
 // Clear zeros the struct.

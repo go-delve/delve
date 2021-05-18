@@ -1694,20 +1694,15 @@ func TestHitCondBreakpointEQ(t *testing.T) {
 			Y:  &ast.BasicLit{Kind: token.INT, Value: "3"},
 		}
 
-		err := p.Continue()
-		if err != nil {
-			if _, exited := err.(proc.ErrProcessExited); !exited {
-				t.Fatalf("Unexpected error on second Continue(): %v", err)
-			}
-		} else {
-			ivar := evalVariable(p, t, "i")
+		assertNoError(p.Continue(), t, "Continue()")
+		ivar := evalVariable(p, t, "i")
 
-			i, _ := constant.Int64Val(ivar.Value)
-			if i != 2 {
-				t.Fatalf("Stoppend on wrong hitcount %d\n", i)
-			}
+		i, _ := constant.Int64Val(ivar.Value)
+		if i != 2 {
+			t.Fatalf("Stoppend on wrong hitcount %d\n", i)
 		}
-		err = p.Continue()
+
+		err := p.Continue()
 		if _, exited := err.(proc.ErrProcessExited); !exited {
 			t.Fatalf("Unexpected error on Continue(): %v", err)
 		}
@@ -1740,18 +1735,12 @@ func TestHitCondBreakpointError(t *testing.T) {
 			Y:  &ast.BasicLit{Kind: token.INT, Value: "3"},
 		}
 
-		err = p.Continue()
-		if err != nil {
-			if _, exited := err.(proc.ErrProcessExited); !exited {
-				t.Fatalf("Unexpected error on second Continue(): %v", err)
-			}
-		} else {
-			ivar := evalVariable(p, t, "i")
+		assertNoError(p.Continue(), t, "Continue()")
+		ivar := evalVariable(p, t, "i")
 
-			i, _ := constant.Int64Val(ivar.Value)
-			if i != 2 {
-				t.Fatalf("Stoppend on wrong hitcount %d\n", i)
-			}
+		i, _ := constant.Int64Val(ivar.Value)
+		if i != 2 {
+			t.Fatalf("Stoppend on wrong hitcount %d\n", i)
 		}
 	})
 }
@@ -1766,24 +1755,17 @@ func TestHitCondBreakpointGEQ(t *testing.T) {
 			Y:  &ast.BasicLit{Kind: token.INT, Value: "3"},
 		}
 
-		for it := 2; it < 11; it++ {
-			err := p.Continue()
-			if err != nil {
-				t.Fatalf("Unexpected error on second Continue(): %v", err)
-			} else {
-				ivar := evalVariable(p, t, "i")
+		for it := 2; it < 10; it++ {
+			assertNoError(p.Continue(), t, "Continue()")
+			ivar := evalVariable(p, t, "i")
 
-				i, _ := constant.Int64Val(ivar.Value)
-				if int(i) != it {
-					t.Fatalf("Stoppend on wrong hitcount %d\n", i)
-				}
+			i, _ := constant.Int64Val(ivar.Value)
+			if int(i) != it {
+				t.Fatalf("Stoppend on wrong hitcount %d\n", i)
 			}
 		}
 
-		err := p.Continue()
-		if _, exited := err.(proc.ErrProcessExited); !exited {
-			t.Fatalf("Unexpected error on Continue(): %v", err)
-		}
+		assertNoError(p.Continue(), t, "Continue()")
 	})
 }
 
@@ -1797,19 +1779,13 @@ func TestHitCondBreakpointLEQ(t *testing.T) {
 			Y:  &ast.BasicLit{Kind: token.INT, Value: "3"},
 		}
 
-		for it := 0; it < 4; it++ {
-			err := p.Continue()
-			if err != nil {
-				if _, exited := err.(proc.ErrProcessExited); !exited {
-					t.Fatalf("Unexpected error on second Continue(): %v", err)
-				}
-			} else {
-				ivar := evalVariable(p, t, "i")
+		for it := 0; it < 3; it++ {
+			assertNoError(p.Continue(), t, "Continue()")
+			ivar := evalVariable(p, t, "i")
 
-				i, _ := constant.Int64Val(ivar.Value)
-				if int(i) != it {
-					t.Fatalf("Stoppend on wrong hitcount %d\n", i)
-				}
+			i, _ := constant.Int64Val(ivar.Value)
+			if int(i) != it {
+				t.Fatalf("Stoppend on wrong hitcount %d\n", i)
 			}
 		}
 
