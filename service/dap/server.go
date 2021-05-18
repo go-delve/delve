@@ -1254,6 +1254,15 @@ func stoppedGoroutineID(state *api.DebuggerState) (id int) {
 // due to an error, so the server is ready to receive new requests.
 func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan struct{}) {
 	defer s.asyncCommandDone(asyncSetupDone)
+	// All of the threads will be continued by this request, so we need to send
+	// a continued event so the UI can properly reflect the current state.
+	s.send(&dap.ContinuedEvent{
+		Event: *newEvent("continued"),
+		Body: dap.ContinuedEventBody{
+			ThreadId:            threadId,
+			AllThreadsContinued: true,
+		},
+	})
 	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
 	if err != nil {
 		s.log.Errorf("Error switching goroutines while stepping: %v", err)
