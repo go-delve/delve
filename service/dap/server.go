@@ -1767,8 +1767,6 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 	return
 }
 
-var errTerminated = errors.New("terminated")
-
 // onEvaluateRequest handles 'evalute' requests.
 // This is a mandatory request to support.
 // Support the following expressions:
@@ -1797,15 +1795,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 	if err == nil && isCall { // call {expression}
 		expr := strings.Replace(request.Arguments.Expression, "call ", "", 1)
 		_, retVars, err := s.doCall(goid, frame, expr)
-		// TODO(polina): We don't need to single out errTerminated case, and sending error
-		// response after 'terminated' event is fine. But TestEvaluateCallRequest is sensitive
-		// and fails without this.
-		if err == errTerminated {
-			return
-		}
 		if err != nil {
-			// TODO(polina): once this is asynchronous, we could wait to reply until the user
-			// continues, call ends, original stop point is hit and return values are available.
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 			return
 		}
@@ -1865,7 +1855,7 @@ func (s *Server) doCall(goid, frame int, expr string) (*api.DebuggerState, []*pr
 	if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
 		s.send(e)
-		return nil, nil, errTerminated
+		return nil, nil, errors.New("terminated")
 	}
 	if err != nil {
 		return nil, nil, err
@@ -1919,7 +1909,8 @@ func (s *Server) doCall(goid, frame int, expr string) (*api.DebuggerState, []*pr
 		s.sendStoppedEvent(state)
 
 		// TODO(polina): once this is asynchronous, we could wait to reply until the user
-		// continues, call ends, original stop point is hit and return values are available.
+		// continues, call ends, original stop point is hit and return values are available
+		// instead of returning an error 'call stopped' here.
 		return nil, nil, errors.New("call stopped")
 	}
 	return state, retVars, nil

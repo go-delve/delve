@@ -2461,6 +2461,10 @@ func TestEvaluateCallRequest(t *testing.T) {
 
 					// Call can exit.
 					client.EvaluateRequest("call callexit()", 1000, "this context will be ignored")
+					client.ExpectTerminatedEvent(t)
+					if res := client.ExpectVisibleErrorResponse(t); !strings.Contains(res.Body.Error.Format, "terminated") {
+						t.Errorf("\ngot %#v\nwant Format=.*terminated.*", res)
+					}
 				},
 				terminated: true,
 				disconnect: true,
@@ -2954,9 +2958,6 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 		client.ExpectStoppedEvent(t)
 		onBP.execute()
 		if onBP.disconnect {
-			if onBP.terminated {
-				client.ExpectTerminatedEvent(t)
-			}
 			client.DisconnectRequestWithKillOption(true)
 			if onBP.terminated {
 				client.ExpectOutputEventProcessExited(t, 0)
@@ -3513,7 +3514,7 @@ func TestSetVariable(t *testing.T) {
 					tester.evaluateRegex("m3", `.*\[\{A: 1, B: 1\}: 8888,.*`, hasChildren)
 
 					// map: struct -> struct
-					m4Ref := expectVarRegex(t, locals, -1, "m4", "m4", `map\[main\.astruct\]main\.astruct.*\[\{A: 1, B: 1\}: \{A: 11, B: 11\}.*`, `map\[main\.astruct\]main\.astruct`, hasChildren)
+					m4Ref := expectVarRegex(t, locals, -1, "m4", "m4", `map\[main\.astruct]main\.astruct.*\[\{A: 1, B: 1\}: \{A: 11, B: 11\}.*`, `map\[main\.astruct\]main\.astruct`, hasChildren)
 					m4 := tester.variables(m4Ref)
 					m4Val1Ref := expectVarRegex(t, m4, -1, "[val 0]", `.*0x[0-9a-f]+.*`, `main.astruct.*`, `main\.astruct`, hasChildren)
 					tester.expectSetVariable(m4Val1Ref, "A", "-9999")
