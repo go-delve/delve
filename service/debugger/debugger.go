@@ -967,6 +967,14 @@ func (d *Debugger) FindThread(id int) (proc.Thread, error) {
 	return nil, nil
 }
 
+// FindGoroutine returns the goroutine for the given 'id'.
+func (d *Debugger) FindGoroutine(id int) (*proc.G, error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+
+	return proc.FindGoroutine(d.target, id)
+}
+
 func (d *Debugger) setRunning(running bool) {
 	d.runningMutex.Lock()
 	d.running = running
@@ -1355,6 +1363,18 @@ func (d *Debugger) FunctionArguments(goid, frame, deferredCall int, cfg proc.Loa
 		return nil, err
 	}
 	return s.FunctionArguments(cfg)
+}
+
+// Function returns the current function.
+func (d *Debugger) Function(goid, frame, deferredCall int, cfg proc.LoadConfig) (*proc.Function, error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+
+	s, err := proc.ConvertEvalScope(d.target, goid, frame, deferredCall)
+	if err != nil {
+		return nil, err
+	}
+	return s.Fn, nil
 }
 
 // EvalVariableInScope will attempt to evaluate the variable represented by 'symbol'

@@ -342,6 +342,16 @@ func (dbp *nativeProcess) trapWaitInternal(pid int, options trapWaitOptions) (*n
 			delete(dbp.threads, wpid)
 			continue
 		}
+		if status.Signaled() {
+			// Signaled means the thread was terminated due to a signal.
+			if wpid == dbp.pid {
+				dbp.postExit()
+				return nil, proc.ErrProcessExited{Pid: wpid, Status: -int(status.Signal())}
+			}
+			// does this ever happen?
+			delete(dbp.threads, wpid)
+			continue
+		}
 		if status.StopSignal() == sys.SIGTRAP && status.TrapCause() == sys.PTRACE_EVENT_CLONE {
 			// A traced thread has cloned a new thread, grab the pid and
 			// add it to our list of traced threads.
@@ -566,12 +576,28 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 	switchTrapthread := false
 
 	// set breakpoints on SIGTRAP threads
+	var err1 error
 	for _, th := range dbp.threads {
-		if th.CurrentBreakpoint.Breakpoint == nil && th.os.setbp {
-			if err := th.SetCurrentBreakpoint(true); err != nil {
-				return nil, err
+		pc, _ := th.PC()
+
+		if !th.os.setbp && pc != th.os.phantomBreakpointPC {
+			// check if this could be a breakpoint hit anyway that the OS hasn't notified us about, yet.
+			if _, ok := dbp.FindBreakpoint(pc, dbp.BinInfo().Arch.BreakInstrMovesPC()); ok {
+				th.os.phantomBreakpointPC = pc
 			}
 		}
+
+		if pc != th.os.phantomBreakpointPC {
+			th.os.phantomBreakpointPC = 0
+		}
+
+		if th.CurrentBreakpoint.Breakpoint == nil && th.os.setbp {
+			if err := th.SetCurrentBreakpoint(true); err != nil {
+				err1 = err
+				continue
+			}
+		}
+
 		if th.CurrentBreakpoint.Breakpoint == nil && th.os.setbp && (th.Status != nil) && ((*sys.WaitStatus)(th.Status).StopSignal() == sys.SIGTRAP) && dbp.BinInfo().Arch.BreakInstrMovesPC() {
 			manualStop := false
 			if th.ThreadID() == trapthread.ThreadID() {
@@ -579,7 +605,7 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 				manualStop = dbp.manualStopRequested
 				dbp.stopMu.Unlock()
 			}
-			if !manualStop {
+			if !manualStop && th.os.phantomBreakpointPC == pc {
 				// Thread received a SIGTRAP but we don't have a breakpoint for it and
 				// it wasn't sent by a manual stop request. It's either a hardcoded
 				// breakpoint or a phantom breakpoint hit (a breakpoint that was hit but
@@ -613,6 +639,9 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 				}
 			}
 		}
+	}
+	if err1 != nil {
+		return nil, err1
 	}
 
 	if switchTrapthread {
