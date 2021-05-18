@@ -84,7 +84,7 @@ type StopReason uint8
 func (sr StopReason) String() string {
 	switch sr {
 	case StopUnknown:
-		return "unkown"
+		return "unknown"
 	case StopLaunched:
 		return "launched"
 	case StopAttached:

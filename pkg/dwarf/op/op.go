@@ -30,11 +30,19 @@ type context struct {
 
 // Piece is a piece of memory stored either at an address or in a register.
 type Piece struct {
-	Size       int
-	Addr       int64
-	RegNum     uint64
-	IsRegister bool
+	Size int
+	Kind PieceKind
+	Val  uint64
 }
+
+// PieceKind describes the kind of a piece.
+type PieceKind uint8
+
+const (
+	AddrPiece PieceKind = iota // The piece is stored in memory, Val is the address
+	RegPiece                   // The piece is stored in a register, Val is the register number
+	ImmPiece                   // The piece is an immediate value, Val is the value
+)
 
 // ExecuteStackProgram executes a DWARF location expression and returns
 // either an address (int64), or a slice of Pieces for location expressions
@@ -56,7 +64,7 @@ func ExecuteStackProgram(regs DwarfRegisters, instructions []byte, ptrSize int) 
 		if ctxt.reg && opcode != DW_OP_piece {
 			// last opcode was DW_OP_regN and next one isn't DW_OP_piece so convert
 			// the register piece into a stack value.
-			ctxt.stack = append(ctxt.stack, int64(regs.Uint64Val(ctxt.pieces[len(ctxt.pieces)-1].RegNum)))
+			ctxt.stack = append(ctxt.stack, int64(regs.Uint64Val(ctxt.pieces[len(ctxt.pieces)-1].Val)))
 			ctxt.pieces = ctxt.pieces[:len(ctxt.pieces)-1]
 			ctxt.reg = false
 		}
@@ -72,8 +80,8 @@ func ExecuteStackProgram(regs DwarfRegisters, instructions []byte, ptrSize int) 
 	}
 
 	if ctxt.pieces != nil {
-		if len(ctxt.pieces) == 1 && ctxt.pieces[0].IsRegister {
-			return int64(regs.Uint64Val(ctxt.pieces[0].RegNum)), ctxt.pieces, nil
+		if len(ctxt.pieces) == 1 && ctxt.pieces[0].Kind == RegPiece {
+			return int64(regs.Uint64Val(ctxt.pieces[0].Val)), ctxt.pieces, nil
 		}
 		return 0, ctxt.pieces, nil
 	}
@@ -187,9 +195,9 @@ func register(opcode Opcode, ctxt *context) error {
 	ctxt.reg = true
 	if opcode == DW_OP_regx {
 		n, _ := util.DecodeSLEB128(ctxt.buf)
-		ctxt.pieces = append(ctxt.pieces, Piece{IsRegister: true, RegNum: uint64(n)})
+		ctxt.pieces = append(ctxt.pieces, Piece{Kind: RegPiece, Val: uint64(n)})
 	} else {
-		ctxt.pieces = append(ctxt.pieces, Piece{IsRegister: true, RegNum: uint64(opcode - DW_OP_reg0)})
+		ctxt.pieces = append(ctxt.pieces, Piece{Kind: RegPiece, Val: uint64(opcode - DW_OP_reg0)})
 	}
 	return nil
 }
@@ -203,11 +211,14 @@ func piece(opcode Opcode, ctxt *context) error {
 	}
 
 	if len(ctxt.stack) == 0 {
-		return errors.New("empty OP stack")
+		// nothing on the stack means this piece is unavailable (padding,
+		// optimized away...), see DWARFv4 sec. 2.6.1.3 page 30.
+		ctxt.pieces = append(ctxt.pieces, Piece{Size: int(sz), Kind: ImmPiece, Val: 0})
+		return nil
 	}
 
 	addr := ctxt.stack[len(ctxt.stack)-1]
-	ctxt.pieces = append(ctxt.pieces, Piece{Size: int(sz), Addr: addr})
+	ctxt.pieces = append(ctxt.pieces, Piece{Size: int(sz), Kind: AddrPiece, Val: uint64(addr)})
 	ctxt.stack = ctxt.stack[:0]
 	return nil
 }

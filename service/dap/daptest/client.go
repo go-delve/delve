@@ -100,6 +100,7 @@ func (c *Client) ExpectInitializeResponseAndCapabilities(t *testing.T) *dap.Init
 		SupportsConditionalBreakpoints:   true,
 		SupportsDelayedStackTraceLoading: true,
 		SupportTerminateDebuggee:         true,
+		SupportsExceptionInfoRequest:     true,
 		SupportsSetVariable:              true,
 	}
 	if !reflect.DeepEqual(initResp.Body, wantCapabilities) {
@@ -285,9 +286,9 @@ func (c *Client) StepOutRequest(thread int) {
 }
 
 // PauseRequest sends a 'pause' request.
-func (c *Client) PauseRequest() {
-	request := &dap.NextRequest{Request: *c.newRequest("pause")}
-	// TODO(polina): arguments
+func (c *Client) PauseRequest(threadId int) {
+	request := &dap.PauseRequest{Request: *c.newRequest("pause")}
+	request.Arguments.ThreadId = threadId
 	c.send(request)
 }
 
@@ -404,8 +405,10 @@ func (c *Client) CompletionsRequest() {
 }
 
 // ExceptionInfoRequest sends a 'exceptionInfo' request.
-func (c *Client) ExceptionInfoRequest() {
-	c.send(&dap.ExceptionInfoRequest{Request: *c.newRequest("exceptionInfo")})
+func (c *Client) ExceptionInfoRequest(threadID int) {
+	request := &dap.ExceptionInfoRequest{Request: *c.newRequest("exceptionInfo")}
+	request.Arguments.ThreadId = threadID
+	c.send(request)
 }
 
 // LoadedSourcesRequest sends a 'loadedSources' request.

@@ -4,11 +4,17 @@ package proc_test
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
 	"syscall"
 	"testing"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/native"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 )
 
@@ -64,5 +70,33 @@ func TestIssue419(t *testing.T) {
 		if _, exited := err.(proc.ErrProcessExited); !exited {
 			t.Fatalf("Unexpected error after Continue(): %v\n", err)
 		}
+	}
+}
+
+func TestSignalDeath(t *testing.T) {
+	if testBackend != "native" || runtime.GOOS != "linux" {
+		t.Skip("skipped on non-linux non-native backends")
+	}
+	var buildFlags protest.BuildFlags
+	if buildMode == "pie" {
+		buildFlags |= protest.BuildModePIE
+	}
+	fixture := protest.BuildFixture("loopprog", buildFlags)
+	cmd := exec.Command(fixture.Path)
+	stdout, err := cmd.StdoutPipe()
+	assertNoError(err, t, "StdoutPipe")
+	cmd.Stderr = os.Stderr
+	assertNoError(cmd.Start(), t, "starting fixture")
+	p, err := native.Attach(cmd.Process.Pid, []string{})
+	assertNoError(err, t, "Attach")
+	stdout.Close() // target will receive SIGPIPE later on
+	err = p.Continue()
+	t.Logf("error is %v", err)
+	exitErr, isexited := err.(proc.ErrProcessExited)
+	if !isexited {
+		t.Fatal("did not exit")
+	}
+	if exitErr.Status != -int(unix.SIGPIPE) {
+		t.Fatalf("expected SIGPIPE got %d\n", exitErr.Status)
 	}
 }
