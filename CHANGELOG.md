@@ -3,6 +3,41 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.6.1] 2021-05-18
+
+### Added
+
+- Dump command: generate core dumps from within Delve (@aarzilli)
+- Toggle command: toggle breakpoints on or off (@alexsaezm)
+- DAP server improvements (@polinasok, @hyangah, @suzmue)
+- Delve now parses and uses the .eh_frame section when available (@aarzilli)
+- Add linespec argument to 'continue' command (@icholy)
+- Add optional format argument to 'print' and 'display' commands (@aarzilli)
+
+### Fixed
+
+- Fixed file reference handling with DWARF5 compilation units (@thanm)
+- Fix embedded field searching (@aarzilli)
+- Fix off by one error reading core files (@aarzilli)
+- Correctly read G address on linux/arm64
+- Avoid double removal of temp built binary (@polinasok)
+- Fix temp binary deletion race in DAP server (@polinasok)
+- Fix shutdown related bugs in RPC server (@aarzilli)
+- Fix crashes induced by RequestManualStop (@aarzilli)
+- Fix handling of DW_OP_piece (@aarzilli)
+- Correctly truncate the result of binary operations on integers (@aarzilli)
+
+### Changed
+
+- Dropped Go 1.13 support (@aarzilli)
+- Improved documentation (@ChrisHines, @aarzilli, @becheran, @hedenface, @andreimatei, @ehershey , @hyangah)
+- Allow examinememory to use an expression (@felixge)
+- Improve gdb server check on newer ARM based macs (@oxisto)
+- CPU registers can now be used in expressions (@aarzilli)
+- DAP: Add type information to variables (@suzmue)
+- DAP: Support setting breakpoints while target is running (@polinasok)
+- DAP: Implement function breakpoints (@suzmue)
+
 ## [1.6.0] 2021-01-28
 
 ### Added
