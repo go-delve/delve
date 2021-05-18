@@ -1831,7 +1831,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			if t.GoroutineID == stateBeforeCall.SelectedGoroutine.ID &&
 				t.Line == stateBeforeCall.SelectedGoroutine.CurrentLoc.Line && t.CallReturn {
 				// The call completed. Get the return values.
-				retVars, err = s.debugger.FindThreadReturnValues(t.ID, DefaultLoadConfig)
+				retVars, err = s.debugger.FindThreadReturnValues(t.ID, loadCfg)
 				if err != nil {
 					s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 					return

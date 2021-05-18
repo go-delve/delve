@@ -1448,7 +1448,7 @@ func TestScopesRequestsOptimized(t *testing.T) {
 		protest.EnableOptimization)
 }
 
-// TestVariablesLoading exposes test cases where variables might be partiall or
+// TestVariablesLoading exposes test cases where variables might be partially or
 // fully unloaded.
 func TestVariablesLoading(t *testing.T) {
 	runTest(t, "testvariables2", func(client *daptest.Client, fixture protest.Fixture) {
@@ -2329,6 +2329,10 @@ func TestEvaluateRequestLongStr(t *testing.T) {
 					longstrTruncated := `"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more"`
 
 					handleStop(t, client, 1, "main.main", -1)
+
+					client.VariablesRequest(1001) // Locals
+					locals := client.ExpectVariablesResponse(t)
+
 					// reflect.Kind == String, load with longer load limit if evaluated in repl/variables context.
 					for _, evalContext := range []string{"", "watch", "repl", "variables", "somethingelse"} {
 						t.Run(evalContext, func(t *testing.T) {
@@ -2345,6 +2349,10 @@ func TestEvaluateRequestLongStr(t *testing.T) {
 							client.EvaluateRequest("(m6).s", 0, evalContext)
 							got2 := client.ExpectEvaluateResponse(t)
 							expectEval(t, got2, want, false)
+
+							// variables are not affected.
+							expectVarExact(t, locals, -1, "longstr", "longstr", longstrTruncated, "string", noChildren)
+							expectVarExact(t, locals, -1, "m6", "m6", `main.C {s: `+longstrTruncated+`}`, "main.C", hasChildren)
 						})
 					}
 
