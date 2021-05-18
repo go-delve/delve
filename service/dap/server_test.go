@@ -2560,6 +2560,16 @@ func TestEvaluateRequest(t *testing.T) {
 					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
 					}
+					client.EvaluateRequest("a1", 1002, "repl")
+					erres = client.ExpectInvisibleErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
+					}
+					client.EvaluateRequest("a1", 1002, "hover")
+					erres = client.ExpectInvisibleErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
+					}
 				},
 				disconnect: false,
 			}})
