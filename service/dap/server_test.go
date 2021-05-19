@@ -1859,11 +1859,16 @@ func expectSetBreakpointsResponse(t *testing.T, client *daptest.Client, bps []Br
 
 func checkSetBreakpointsResponse(t *testing.T, client *daptest.Client, bps []Breakpoint, got *dap.SetBreakpointsResponse) {
 	t.Helper()
-	if len(got.Body.Breakpoints) != len(bps) {
-		t.Errorf("got %#v,\nwant len(Breakpoints)=%d", got, len(bps))
+	checkBreakpoints(t, client, bps, got.Body.Breakpoints)
+}
+
+func checkBreakpoints(t *testing.T, client *daptest.Client, bps []Breakpoint, breakpoints []dap.Breakpoint) {
+	t.Helper()
+	if len(breakpoints) != len(bps) {
+		t.Errorf("got %#v,\nwant len(Breakpoints)=%d", breakpoints, len(bps))
 		return
 	}
-	for i, bp := range got.Body.Breakpoints {
+	for i, bp := range breakpoints {
 		if bp.Line != bps[i].line || bp.Verified != bps[i].verified || bp.Source.Path != bps[i].path ||
 			!strings.HasPrefix(bp.Message, bps[i].msgPrefix) {
 			t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
@@ -2219,6 +2224,23 @@ func expectSetBreakpointsResponseAndStoppedEvent(t *testing.T, client *daptest.C
 	return se, br
 }
 
+func expectSetFunctionBreakpointsResponseAndStoppedEvent(t *testing.T, client *daptest.Client) (se *dap.StoppedEvent, br *dap.SetFunctionBreakpointsResponse) {
+	for i := 0; i < 2; i++ {
+		switch m := client.ExpectMessage(t).(type) {
+		case *dap.StoppedEvent:
+			se = m
+		case *dap.SetFunctionBreakpointsResponse:
+			br = m
+		default:
+			t.Fatalf("Unexpected message type: expect StoppedEvent or SetFunctionBreakpointsResponse, got %#v", m)
+		}
+	}
+	if se == nil || br == nil {
+		t.Fatal("Expected StoppedEvent and SetFunctionBreakpointsResponse")
+	}
+	return se, br
+}
+
 func TestSetBreakpointWhileRunning(t *testing.T) {
 	runTest(t, "integrationprog", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
@@ -2268,6 +2290,74 @@ func TestSetBreakpointWhileRunning(t *testing.T) {
 						t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", se)
 					}
 					handleStop(t, client, 1, "main.sayhi", 9)
+
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+func TestSetFunctionBreakpointWhileRunning(t *testing.T) {
+	runTest(t, "integrationprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{16},
+			[]onBreakpoint{{
+				execute: func() {
+					// The program loops 3 times over lines 14-15-8-9-10-16
+					handleStop(t, client, 1, "main.main", 16) // Line that sleeps for 1 second
+
+					// We can set breakpoints while nexting
+					client.NextRequest(1)
+					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{{Name: "main.sayhi"}}) // [16,] => [16, 8]
+					se, br := expectSetFunctionBreakpointsResponseAndStoppedEvent(t, client)
+					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
+					}
+					checkBreakpoints(t, client, []Breakpoint{{8, fixture.Source, true, ""}}, br.Body.Breakpoints)
+
+					client.SetBreakpointsRequest(fixture.Source, []int{}) // [16,8] => [8]
+					expectSetBreakpointsResponse(t, client, []Breakpoint{})
+
+					// Halt cancelled next, so if we continue we will not stop at line 14.
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se = client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "function breakpoint" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.sayhi", 8)
+
+					// We can set breakpoints while continuing
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{}) // [8,] => []
+					se, br = expectSetFunctionBreakpointsResponseAndStoppedEvent(t, client)
+					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
+					}
+					checkBreakpoints(t, client, []Breakpoint{}, br.Body.Breakpoints)
+					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
+					}
+					checkBreakpoints(t, client, []Breakpoint{}, br.Body.Breakpoints)
+
+					client.SetBreakpointsRequest(fixture.Source, []int{16}) // [] => [16]
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{16, fixture.Source, true, ""}})
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se = client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "breakpoint" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.main", 16)
 
 				},
 				disconnect: true,
