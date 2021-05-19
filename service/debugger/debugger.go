@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-delve/delve/pkg/astutil"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/goversion"
@@ -772,6 +773,7 @@ func (d *Debugger) CancelNext() error {
 
 func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err error) {
 	bp.Name = requested.Name
+	bp.RequestString = requested.RequestString
 	bp.Tracepoint = requested.Tracepoint
 	bp.TraceReturn = requested.TraceReturn
 	bp.Goroutine = requested.Goroutine
@@ -791,6 +793,7 @@ func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err err
 		hitCond, parseErr := parser.ParseExpr(requested.HitCond)
 		if parseErr == nil {
 			bp.HitCond = &ast.BinaryExpr{
+				X:  astutil.Int(0), // Add a placeholder for the hit count
 				Op: token.EQL,
 				Y:  hitCond,
 			}

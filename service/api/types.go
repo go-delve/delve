@@ -91,6 +91,9 @@ type Breakpoint struct {
 	TotalHitCount uint64 `json:"totalHitCount"`
 	// Disabled flag, signifying the state of the breakpoint
 	Disabled bool `json:"disabled"`
+
+	// ID for DAP
+	RequestString string
 }
 
 // ValidBreakpointName returns an error if

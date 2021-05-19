@@ -35,6 +35,7 @@ func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 		LoadLocals:    LoadConfigFromProc(bp.LoadLocals),
 		TotalHitCount: bp.TotalHitCount,
 		Addrs:         []uint64{bp.Addr},
+		RequestString: bp.RequestString,
 	}
 
 	b.HitCount = map[string]uint64{}
@@ -45,6 +46,14 @@ func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 	var buf bytes.Buffer
 	printer.Fprint(&buf, token.NewFileSet(), bp.Cond)
 	b.Cond = buf.String()
+	if bp.HitCond != nil {
+		buf.Reset()
+		printer.Fprint(&buf, token.NewFileSet(), bp.HitCond)
+		// The string of the hit condition should not include the first identifier,
+		// which is the hit count.
+		b.HitCond = buf.String()
+		b.HitCond = b.HitCond[strings.Index(b.HitCond, " ")+1:]
+	}
 
 	return b
 }
