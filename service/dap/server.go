@@ -34,6 +34,7 @@ import (
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
+	"github.com/go-delve/delve/service/internal/sameuser"
 	"github.com/google/go-dap"
 	"github.com/sirupsen/logrus"
 )
@@ -319,6 +320,13 @@ func (s *Server) Run() {
 				s.triggerServerStop()
 			}
 			return
+		}
+		if s.config.CheckLocalConnUser {
+			if !sameuser.CanAccept(s.listener.Addr(), conn.RemoteAddr()) {
+				s.log.Error("Error accepting client connection: Only connections from the same user that started this instance of Delve are allowed to connect. See --only-same-user.")
+				s.triggerServerStop()
+				return
+			}
 		}
 		s.mu.Lock()
 		s.conn = conn // closed in Stop()
