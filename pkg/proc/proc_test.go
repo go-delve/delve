@@ -1747,14 +1747,14 @@ func TestHitCondBreakpointError(t *testing.T) {
 func TestHitCondBreakpointGEQ(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
-		bp := setFileBreakpoint(p, t, fixture.Source, 6)
+		bp := setFileBreakpoint(p, t, fixture.Source, 7)
 		bp.HitCond = &ast.BinaryExpr{
 			Op: token.GEQ,
 			X:  &ast.Ident{Name: "placeHolder"},
 			Y:  &ast.BasicLit{Kind: token.INT, Value: "3"},
 		}
 
-		for it := 3; it < 11; it++ {
+		for it := 3; it <= 10; it++ {
 			assertNoError(p.Continue(), t, "Continue()")
 			ivar := evalVariable(p, t, "i")
 
@@ -1782,7 +1782,7 @@ func TestHitCondBreakpointREM(t *testing.T) {
 			Y:  &ast.BasicLit{Kind: token.INT, Value: "0"},
 		}
 
-		for it := 1; it < 11; it += 2 {
+		for it := 2; it <= 10; it += 2 {
 			assertNoError(p.Continue(), t, "Continue()")
 			ivar := evalVariable(p, t, "i")
 
