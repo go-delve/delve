@@ -5283,9 +5283,9 @@ func TestCompositeMemoryWrite(t *testing.T) {
 		oldPc, oldRax, oldXmm1 := getregs()
 		t.Logf("PC %#x AX %#x XMM1 %#x", oldPc, oldRax, oldXmm1)
 
-		memRax, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, RegNum: 0, IsRegister: true}})
+		memRax, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, Val: 0, Kind: op.RegPiece}})
 		assertNoError(err, t, "NewCompositeMemory (rax)")
-		memXmm1, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, RegNum: 18, IsRegister: true}})
+		memXmm1, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, Val: 18, Kind: op.RegPiece}})
 		assertNoError(err, t, "NewCompositeMemory (xmm1)")
 
 		if memRax := getmem(memRax); memRax != oldRax {
@@ -5418,6 +5418,54 @@ func TestWatchpointCounts(t *testing.T) {
 			if v != 100 {
 				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.HitCount)
 			}
+		}
+	})
+}
+
+func TestManualStopWhileStopped(t *testing.T) {
+	// Checks that RequestManualStop sent to a stopped thread does not cause the target process to die.
+	withTestProcess("loopprog", t, func(p *proc.Target, fixture protest.Fixture) {
+		asyncCont := func(done chan struct{}) {
+			defer close(done)
+			err := p.Continue()
+			t.Logf("%v\n", err)
+			if err != nil {
+				panic(err)
+			}
+			for _, th := range p.ThreadList() {
+				if th.Breakpoint().Breakpoint != nil {
+					t.Logf("unexpected stop at breakpoint: %v", th.Breakpoint().Breakpoint)
+					panic("unexpected stop at breakpoint")
+				}
+			}
+		}
+
+		const (
+			repeatsSlow = 3
+			repeatsFast = 5
+		)
+
+		for i := 0; i < repeatsSlow; i++ {
+			t.Logf("Continue %d (slow)", i)
+			done := make(chan struct{})
+			go asyncCont(done)
+			time.Sleep(1 * time.Second)
+			p.RequestManualStop()
+			time.Sleep(1 * time.Second)
+			p.RequestManualStop()
+			time.Sleep(1 * time.Second)
+			<-done
+		}
+		for i := 0; i < repeatsFast; i++ {
+			t.Logf("Continue %d (fast)", i)
+			rch := make(chan struct{})
+			done := make(chan struct{})
+			p.ResumeNotify(rch)
+			go asyncCont(done)
+			<-rch
+			p.RequestManualStop()
+			p.RequestManualStop()
+			<-done
 		}
 	})
 }

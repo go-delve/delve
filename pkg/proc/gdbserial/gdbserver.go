@@ -1556,7 +1556,8 @@ func (t *gdbThread) reloadRegisters() error {
 
 	if t.p.gcmdok {
 		if err := t.p.conn.readRegisters(t.strID, t.regs.buf); err != nil {
-			if isProtocolErrorUnsupported(err) {
+			gdberr, isProt := err.(*GdbProtocolError)
+			if isProtocolErrorUnsupported(err) || (t.p.conn.isDebugserver && isProt && gdberr.code == "E74") {
 				t.p.gcmdok = false
 			} else {
 				return err

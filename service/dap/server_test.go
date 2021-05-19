@@ -47,7 +47,11 @@ func TestMain(m *testing.M) {
 
 // name is for _fixtures/<name>.go
 func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.Fixture)) {
-	var buildFlags protest.BuildFlags = protest.AllNonOptimized
+	runTestBuildFlags(t, name, test, protest.AllNonOptimized)
+}
+
+// name is for _fixtures/<name>.go
+func runTestBuildFlags(t *testing.T, name string, test func(c *daptest.Client, f protest.Fixture), buildFlags protest.BuildFlags) {
 	fixture := protest.BuildFixture(name, buildFlags)
 
 	// Start the DAP server.
@@ -364,39 +368,21 @@ func TestAttachStopOnEntry(t *testing.T) {
 		// 13 >> disconnect, << disconnect
 		client.DisconnectRequestWithKillOption(true)
 
-		// Both of these scenarios are somehow possible.
-		// Even though the program has an infininte loop,
-		// it apears that a halt can cause it to terminate.
-		// Since we are in async mode while running, we might receive messages in either order.
-		msg := client.ExpectMessage(t)
-		switch m := msg.(type) {
-		case *dap.StoppedEvent:
-			if m.Seq != 0 || m.Body.Reason != "pause" { // continue is interrupted
-				t.Errorf("\ngot %#v\nwant Seq=0 Reason='pause'", m)
-			}
-			oed := client.ExpectOutputEventDetachingKill(t)
-			if oed.Seq != 0 || oed.Body.Category != "console" {
-				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
-			}
-		case *dap.TerminatedEvent:
-			if m.Seq != 0 {
-				t.Errorf("\ngot %#v\nwant Seq=0'", m)
-			}
-			oep := client.ExpectOutputEventProcessExited(t, 0)
-			if oep.Seq != 0 || oep.Body.Category != "console" {
-				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
-			}
-			oed := client.ExpectOutputEventDetaching(t)
-			if oed.Seq != 0 || oed.Body.Category != "console" {
-				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
-			}
-		default:
-			t.Fatalf("got %#v, want StoppedEvent or TerminatedEvent", m)
+		msg := expectMessageFilterStopped(t, client)
+		if _, ok := msg.(*dap.OutputEvent); !ok {
+			// want detach kill output message
+			t.Errorf("got %#v, want *dap.OutputEvent", msg)
 		}
-		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.Seq != 0 || dResp.RequestSeq != 13 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13", dResp)
+		msg = expectMessageFilterStopped(t, client)
+		if _, ok := msg.(*dap.DisconnectResponse); !ok {
+			t.Errorf("got %#v, want *dap.DisconnectResponse", msg)
 		}
+		// If this call to KeepAlive isn't here there's a chance that stdout will
+		// be garbage collected (since it is no longer alive long before this
+		// point), when that happens, on unix-like OSes, the read end of the pipe
+		// will be closed by the finalizer and the target process will die by
+		// SIGPIPE, which the rest of this test does not expect.
+		runtime.KeepAlive(stdout)
 	})
 }
 
@@ -437,9 +423,9 @@ func TestContinueOnEntry(t *testing.T) {
 				}
 				// Single current thread is sent when the program is running
 				// because DAP spec expects at least one thread.
-				// TODO(polina): accept empty already-terminated response here as well?
-				if len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != -1 || m.Body.Threads[0].Name != "Current" {
-					t.Errorf("\ngot  %#v\nwant Id=-1, Name=\"Current\"", m.Body.Threads)
+				// Also accept empty already-terminated response.
+				if len(m.Body.Threads) != 0 && (len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != -1 || m.Body.Threads[0].Name != "Current") {
+					t.Errorf("\ngot  %#v\nwant Id=-1, Name=\"Current\" or empty", m.Body.Threads)
 				}
 			case *dap.TerminatedEvent:
 			default:
@@ -502,8 +488,12 @@ func TestPreSetBreakpoint(t *testing.T) {
 			msg := client.ExpectMessage(t)
 			switch m := msg.(type) {
 			case *dap.ThreadsResponse:
-				if len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != -1 || m.Body.Threads[0].Name != "Current" {
-					t.Errorf("\ngot  %#v\nwant Id=-1, Name=\"Current\"", m.Body.Threads)
+				// If the thread request arrived while the program was running, we expect to get the dummy response
+				// with a single goroutine "Current".
+				// If the thread request arrived after the stop, we should get the goroutine stopped at main.Increment.
+				if (len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != -1 || m.Body.Threads[0].Name != "Current") &&
+					(len(m.Body.Threads) < 1 || m.Body.Threads[0].Id != 1 || !strings.HasPrefix(m.Body.Threads[0].Name, "* [Go 1] main.Increment")) {
+					t.Errorf("\ngot  %#v\nwant Id=-1, Name=\"Current\" or Id=1, Name=\"* [Go 1] main.Increment ...\"", m.Body.Threads)
 				}
 			case *dap.StoppedEvent:
 				if m.Body.Reason != "breakpoint" || m.Body.ThreadId != 1 || !m.Body.AllThreadsStopped {
@@ -582,6 +572,20 @@ func TestPreSetBreakpoint(t *testing.T) {
 		// "Continue" is triggered after the response is sent
 
 		client.ExpectTerminatedEvent(t)
+
+		// Pause request after termination should result in an error.
+		// But in certain cases this request actually succeeds.
+		client.PauseRequest(1)
+		switch r := client.ExpectMessage(t).(type) {
+		case *dap.ErrorResponse:
+			if r.Message != "Unable to halt execution" {
+				t.Errorf("\ngot  %#v\nwant Message='Unable to halt execution'", r)
+			}
+		case *dap.PauseResponse:
+		default:
+			t.Fatalf("Unexpected response type: expect error or pause, got %#v", r)
+		}
+
 		client.DisconnectRequest()
 		client.ExpectOutputEventProcessExited(t, 0)
 		client.ExpectOutputEventDetaching(t)
@@ -731,6 +735,14 @@ func expectVarExact(t *testing.T, got *dap.VariablesResponse, i int, name, evalN
 func expectVarRegex(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, hasRef bool) (ref int) {
 	t.Helper()
 	return expectVar(t, got, i, name, evalName, value, typ, false, hasRef)
+}
+
+func expectMessageFilterStopped(t *testing.T, client *daptest.Client) dap.Message {
+	msg := client.ExpectMessage(t)
+	if _, isStopped := msg.(*dap.StoppedEvent); isStopped {
+		msg = client.ExpectMessage(t)
+	}
+	return msg
 }
 
 // validateEvaluateName issues an evaluate request with evaluateName of a variable and
@@ -1379,6 +1391,63 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 	})
 }
 
+// TestScopesRequestsOptimized executes to a breakpoint and tests different
+// that the names of the "Locals" and "Arguments" scopes are correctly annotated with
+// a warning about debugging an optimized function.
+func TestScopesRequestsOptimized(t *testing.T) {
+	runTestBuildFlags(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+				})
+			},
+			// Breakpoints are set within the program
+			fixture.Source, []int{},
+			[]onBreakpoint{{
+				// Stop at first breakpoint
+				execute: func() {
+					client.StackTraceRequest(1, 0, 20)
+					stack := client.ExpectStackTraceResponse(t)
+
+					startLineno := 66
+					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
+						// Go1.15 on windows inserts a NOP after the call to
+						// runtime.Breakpoint and marks it same line as the
+						// runtime.Breakpoint call, making this flaky, so skip the line check.
+						startLineno = -1
+					}
+
+					expectStackFrames(t, stack, "main.foobar", startLineno, 1000, 4, 4)
+
+					client.ScopesRequest(1000)
+					scopes := client.ExpectScopesResponse(t)
+					expectScope(t, scopes, 0, "Arguments (warning: optimized function)", 1000)
+					expectScope(t, scopes, 1, "Locals (warning: optimized function)", 1001)
+					expectScope(t, scopes, 2, "Globals (package main)", 1002)
+				},
+				disconnect: false,
+			}, {
+				// Stop at second breakpoint
+				execute: func() {
+					// Frame ids get reset at each breakpoint.
+					client.StackTraceRequest(1, 0, 20)
+					stack := client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stack, "main.barfoo", 27, 1000, 5, 5)
+
+					client.ScopesRequest(1000)
+					scopes := client.ExpectScopesResponse(t)
+					expectScope(t, scopes, 0, "Arguments (warning: optimized function)", 1000)
+					expectScope(t, scopes, 1, "Locals (warning: optimized function)", 1001)
+					expectScope(t, scopes, 2, "Globals (package main)", 1002)
+				},
+				disconnect: false,
+			}})
+	},
+		protest.EnableOptimization)
+}
+
 // TestVariablesLoading exposes test cases where variables might be partiall or
 // fully unloaded.
 func TestVariablesLoading(t *testing.T) {
@@ -1632,6 +1701,7 @@ func TestVariablesLoading(t *testing.T) {
 					// step into another function
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
+					client.ExpectContinuedEvent(t)
 					client.ExpectStoppedEvent(t)
 					handleStop(t, client, 1, "main.barfoo", 24)
 					loadvars(1001 /*second frame here is same as topmost above*/)
@@ -1679,6 +1749,7 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 					// Step into pkg.AnotherMethod()
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
+					client.ExpectContinuedEvent(t)
 					client.ExpectStoppedEvent(t)
 
 					client.StackTraceRequest(1, 0, 20)
@@ -1783,7 +1854,11 @@ type Breakpoint struct {
 
 func expectSetBreakpointsResponse(t *testing.T, client *daptest.Client, bps []Breakpoint) {
 	t.Helper()
-	got := client.ExpectSetBreakpointsResponse(t)
+	checkSetBreakpointsResponse(t, client, bps, client.ExpectSetBreakpointsResponse(t))
+}
+
+func checkSetBreakpointsResponse(t *testing.T, client *daptest.Client, bps []Breakpoint, got *dap.SetBreakpointsResponse) {
+	t.Helper()
 	if len(got.Body.Breakpoints) != len(bps) {
 		t.Errorf("got %#v,\nwant len(Breakpoints)=%d", got, len(bps))
 		return
@@ -1869,6 +1944,332 @@ func TestSetBreakpoint(t *testing.T) {
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{1000, "", false, "could not find statement"}}) // all cleared, none set
 				},
 				// The program has an infinite loop, so we must kill it by disconnecting.
+				disconnect: true,
+			}})
+	})
+}
+
+// TestSetFunctionBreakpoints is inspired by service/test.TestClientServer_FindLocations.
+func TestSetFunctionBreakpoints(t *testing.T) {
+	runTest(t, "locationsprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{30}, // b main.main
+			[]onBreakpoint{{
+				execute: func() {
+					handleStop(t, client, 1, "main.main", 30)
+
+					type Breakpoint struct {
+						line       int
+						sourceName string
+						verified   bool
+						errMsg     string
+					}
+					expectSetFunctionBreakpointsResponse := func(bps []Breakpoint) {
+						t.Helper()
+						got := client.ExpectSetFunctionBreakpointsResponse(t)
+						if len(got.Body.Breakpoints) != len(bps) {
+							t.Errorf("got %#v,\nwant len(Breakpoints)=%d", got, len(bps))
+							return
+						}
+						for i, bp := range got.Body.Breakpoints {
+							if bps[i].line < 0 {
+								if bp.Verified != bps[i].verified || !strings.Contains(bp.Message, bps[i].errMsg) {
+									t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
+								}
+								continue
+							}
+							// Some function breakpoints may be in packages that have been imported and we do not control, so
+							// we do not always want to check breakpoint lines.
+							if (bps[i].line >= 0 && bp.Line != bps[i].line) || bp.Verified != bps[i].verified || bp.Source.Name != bps[i].sourceName {
+								t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
+							}
+						}
+					}
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "anotherFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{26, filepath.Base(fixture.Source), true, ""}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "main.anotherFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{26, filepath.Base(fixture.Source), true, ""}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "SomeType.String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "(*SomeType).String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "main.SomeType.String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "main.(*SomeType).String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
+
+					// Test line offsets
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "main.anotherFunction:1"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{27, filepath.Base(fixture.Source), true, ""}})
+
+					// Test function names in imported package.
+					// Issue #275
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "io/ioutil.ReadFile"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "ioutil.go", true, ""}})
+
+					// Issue #296
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "/io/ioutil.ReadFile"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "ioutil.go", true, ""}})
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "ioutil.ReadFile"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "ioutil.go", true, ""}})
+
+					// Function Breakpoint name also accepts breakpoints that are specified as file:line.
+					// TODO(suzmue): We could return an error, but it probably is not necessary since breakpoints,
+					// and function breakpoints come in with different requests.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: fmt.Sprintf("%s:14", fixture.Source)},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: fmt.Sprintf("%s:14", filepath.Base(fixture.Source))},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
+
+					// Expect error for ambiguous function name.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "Location \"String\" ambiguous"}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "main.String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "Location \"main.String\" ambiguous"}})
+
+					// Expect error for function that does not exist.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "fakeFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "location \"fakeFunction\" not found"}})
+
+					// Expect error for negative line number.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "main.anotherFunction:-1"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "line offset negative or not a number"}})
+
+					// Expect error when function name is regex.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: `/^.*String.*$/`},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "breakpoint name \"/^.*String.*$/\" could not be parsed as a function"}})
+
+					// Expect error when function name is an offset.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "+1"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, filepath.Base(fixture.Source), false, "breakpoint name \"+1\" could not be parsed as a function"}})
+
+					// Expect error when function name is a line number.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "14"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, filepath.Base(fixture.Source), false, "breakpoint name \"14\" could not be parsed as a function"}})
+
+					// Expect error when function name is an address.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "*b"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, filepath.Base(fixture.Source), false, "breakpoint name \"*b\" could not be parsed as a function"}})
+
+					// Expect error when function name is a relative path.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: fmt.Sprintf(".%s%s:14", string(filepath.Separator), filepath.Base(fixture.Source))},
+					})
+					// This relative path could also be caught by the parser, so we should not match the error message.
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, filepath.Base(fixture.Source), false, ""}})
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: fmt.Sprintf("..%s%s:14", string(filepath.Separator), filepath.Base(fixture.Source))},
+					})
+					// This relative path could also be caught by the parser, so we should not match the error message.
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, filepath.Base(fixture.Source), false, ""}})
+
+					// Test multiple function breakpoints.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "SomeType.String"}, {Name: "anotherFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}, {26, filepath.Base(fixture.Source), true, ""}})
+
+					// Test multiple breakpoints to the same location.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "SomeType.String"}, {Name: "(*SomeType).String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}, {-1, "", false, "Breakpoint exists"}})
+
+					// Set two breakpoints at SomeType.String and SomeType.SomeFunction.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "SomeType.String"}, {Name: "SomeType.SomeFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}, {22, filepath.Base(fixture.Source), true, ""}})
+
+					// Clear SomeType.String, reset SomeType.SomeFunction (SomeType.String is called before SomeType.SomeFunction).
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "SomeType.SomeFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{22, filepath.Base(fixture.Source), true, ""}})
+
+					// Expect the next breakpoint to be at SomeType.SomeFunction.
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "function breakpoint" || se.Body.ThreadId != 1 {
+						t.Errorf("got %#v, want Reason=\"function breakpoint\", ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.(*SomeType).SomeFunction", 22)
+
+					// Set a breakpoint at the next line in the program.
+					client.SetBreakpointsRequest(fixture.Source, []int{23})
+					got := client.ExpectSetBreakpointsResponse(t)
+					if len(got.Body.Breakpoints) != 1 {
+						t.Errorf("got %#v,\nwant len(Breakpoints)=%d", got, 1)
+						return
+					}
+					bp := got.Body.Breakpoints[0]
+					if bp.Line != 23 || bp.Verified != true || bp.Source.Path != fixture.Source {
+						t.Errorf("got breakpoints[0] = %#v, \nwant Line=23 Verified=true Source.Path=%q", bp, fixture.Source)
+					}
+
+					// Set a function breakpoint, this should not clear the breakpoint that was set in the previous setBreakpoints request.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "anotherFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{26, filepath.Base(fixture.Source), true, ""}})
+
+					// Expect the next breakpoint to be at line 23.
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
+						t.Errorf("got %#v, want Reason=\"breakpoint\", ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.(*SomeType).SomeFunction", 23)
+
+					// Set a breakpoint, this should not clear the breakpoint that was set in the previous setFunctionBreakpoints request.
+					client.SetBreakpointsRequest(fixture.Source, []int{37})
+					got = client.ExpectSetBreakpointsResponse(t)
+					if len(got.Body.Breakpoints) != 1 {
+						t.Errorf("got %#v,\nwant len(Breakpoints)=%d", got, 1)
+						return
+					}
+					bp = got.Body.Breakpoints[0]
+					if bp.Line != 37 || bp.Verified != true || bp.Source.Path != fixture.Source {
+						t.Errorf("got breakpoints[0] = %#v, \nwant Line=23 Verified=true Source.Path=%q", bp, fixture.Source)
+					}
+
+					// Expect the next breakpoint to be at line anotherFunction.
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "function breakpoint" || se.Body.ThreadId != 1 {
+						t.Errorf("got %#v, want Reason=\"function breakpoint\", ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.anotherFunction", 26)
+
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+func expectSetBreakpointsResponseAndStoppedEvent(t *testing.T, client *daptest.Client) (se *dap.StoppedEvent, br *dap.SetBreakpointsResponse) {
+	for i := 0; i < 2; i++ {
+		switch m := client.ExpectMessage(t).(type) {
+		case *dap.StoppedEvent:
+			se = m
+		case *dap.SetBreakpointsResponse:
+			br = m
+		default:
+			t.Fatalf("Unexpected message type: expect StoppedEvent or SetBreakpointsResponse, got %#v", m)
+		}
+	}
+	if se == nil || br == nil {
+		t.Fatal("Expected StoppedEvent and SetBreakpointsResponse")
+	}
+	return se, br
+}
+
+func TestSetBreakpointWhileRunning(t *testing.T) {
+	runTest(t, "integrationprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{16},
+			[]onBreakpoint{{
+				execute: func() {
+					// The program loops 3 times over lines 14-15-8-9-10-16
+					handleStop(t, client, 1, "main.main", 16) // Line that sleeps for 1 second
+
+					// We can set breakpoints while nexting
+					client.NextRequest(1)
+					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
+					client.SetBreakpointsRequest(fixture.Source, []int{15}) // [16,] => [15,]
+					se, br := expectSetBreakpointsResponseAndStoppedEvent(t, client)
+					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
+					}
+					checkSetBreakpointsResponse(t, client, []Breakpoint{{15, fixture.Source, true, ""}}, br)
+					// Halt cancelled next, so if we continue we will not stop at line 14.
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se = client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "breakpoint" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.main", 15)
+
+					// We can set breakpoints while continuing
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.SetBreakpointsRequest(fixture.Source, []int{9}) // [15,] => [9,]
+					se, br = expectSetBreakpointsResponseAndStoppedEvent(t, client)
+					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
+					}
+					checkSetBreakpointsResponse(t, client, []Breakpoint{{9, fixture.Source, true, ""}}, br)
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se = client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "breakpoint" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.sayhi", 9)
+
+				},
 				disconnect: true,
 			}})
 	})
@@ -2399,20 +2800,24 @@ func TestNextAndStep(t *testing.T) {
 
 					client.StepOutRequest(1)
 					client.ExpectStepOutResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStop("main.main", 18)
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStop("main.main", 19)
 
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStop("main.inlineThis", 5)
 
 					client.NextRequest(-1000)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "error" || se.Body.Text != "unknown goroutine -1000" {
-						t.Errorf("got %#v, want Reaspon=\"error\", Text=\"unknown goroutine -1000\"", se)
+						t.Errorf("got %#v, want Reason=\"error\", Text=\"unknown goroutine -1000\"", se)
 					}
 					handleStop(t, client, 1, "main.inlineThis", 5)
 				},
@@ -2439,6 +2844,7 @@ func TestNextParked(t *testing.T) {
 
 					client.NextRequest(goroutineId)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 
 					se := client.ExpectStoppedEvent(t)
 					if se.Body.ThreadId != goroutineId {
@@ -2468,6 +2874,7 @@ func TestStepInParked(t *testing.T) {
 
 					client.StepInRequest(goroutineId)
 					client.ExpectStepInResponse(t)
+					client.ExpectContinuedEvent(t)
 
 					se := client.ExpectStoppedEvent(t)
 					if se.Body.ThreadId != goroutineId {
@@ -2587,6 +2994,7 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 					}
 					client.StepOutRequest(goroutineId)
 					client.ExpectStepOutResponse(t)
+					client.ExpectContinuedEvent(t)
 
 					switch e := client.ExpectMessage(t).(type) {
 					case *dap.StoppedEvent:
@@ -2622,14 +3030,16 @@ func TestBadAccess(t *testing.T) {
 
 					expectStoppedOnError := func(errorPrefix string) {
 						t.Helper()
-						oe := client.ExpectOutputEvent(t)
-						if oe.Body.Category != "stderr" || !strings.HasPrefix(oe.Body.Output, "ERROR: "+errorPrefix) {
-							t.Errorf("\ngot  %#v\nwant Category=\"stderr\" Output=\"%s ...\"", oe, errorPrefix)
-						}
 						se := client.ExpectStoppedEvent(t)
-						if se.Body.ThreadId != 1 || se.Body.Reason != "runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
-							t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"runtime error\" Text=\"%s\"", se, errorPrefix)
+						if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "Paused on runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
+							t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"Paused on runtime error\" Text=\"%s\"", se, errorPrefix)
 						}
+						client.ExceptionInfoRequest(1)
+						eInfo := client.ExpectExceptionInfoResponse(t)
+						if eInfo.Body.ExceptionId != "runtime error" || !strings.HasPrefix(eInfo.Body.Description, errorPrefix) {
+							t.Errorf("\ngot  %#v\nwant ExceptionId=\"runtime error\" Text=\"%s\"", eInfo, errorPrefix)
+						}
+
 					}
 
 					client.ContinueRequest(1)
@@ -2638,18 +3048,22 @@ func TestBadAccess(t *testing.T) {
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStoppedOnError("invalid memory address or nil pointer dereference")
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStoppedOnError("next while nexting")
 
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStoppedOnError("next while nexting")
 
 					client.StepOutRequest(1)
 					client.ExpectStepOutResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStoppedOnError("next while nexting")
 				},
 				disconnect: true,
@@ -2674,8 +3088,14 @@ func TestPanicBreakpointOnContinue(t *testing.T) {
 					client.ExpectContinueResponse(t)
 
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != 1 || se.Body.Reason != "panic" {
-						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"panic\"", se)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "Paused on panic" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"Paused on panic\"", se)
+					}
+
+					client.ExceptionInfoRequest(1)
+					eInfo := client.ExpectExceptionInfoResponse(t)
+					if eInfo.Body.ExceptionId != "panic" || eInfo.Body.Description != "\"BOOM!\"" {
+						t.Errorf("\ngot  %#v\nwant ExceptionId=\"panic\" Description=\"\"BOOM!\"\"", eInfo)
 					}
 				},
 				disconnect: true,
@@ -2704,11 +3124,17 @@ func TestPanicBreakpointOnNext(t *testing.T) {
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 
 					se := client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "Paused on panic" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"Paused on panic\"", se)
+					}
 
-					if se.Body.ThreadId != 1 || se.Body.Reason != "panic" {
-						t.Errorf("\ngot  %#v\nexpected ThreadId=1 Reason=\"panic\"", se)
+					client.ExceptionInfoRequest(1)
+					eInfo := client.ExpectExceptionInfoResponse(t)
+					if eInfo.Body.ExceptionId != "panic" || eInfo.Body.Description != "\"BOOM!\"" {
+						t.Errorf("\ngot  %#v\nwant ExceptionId=\"panic\" Description=\"\"BOOM!\"\"", eInfo)
 					}
 				},
 				disconnect: true,
@@ -2733,8 +3159,8 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 					client.ExpectContinueResponse(t)
 
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.Reason != "fatal error" {
-						t.Errorf("\ngot  %#v\nwant Reason=\"fatal error\"", se)
+					if se.Body.Reason != "exception" || se.Body.Description != "Paused on fatal error" {
+						t.Errorf("\ngot  %#v\nwant Reason=\"exception\" Description=\"Paused on fatal error\"", se)
 					}
 				},
 				disconnect: true,
@@ -2742,15 +3168,8 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 	})
 }
 
-// handleStop covers the standard sequence of reqeusts issued by
-// a client at a breakpoint or another non-terminal stop event.
-// The details have been tested by other tests,
-// so this is just a sanity check.
-// Skips line check if line is -1.
-func handleStop(t *testing.T, client *daptest.Client, thread int, name string, line int) {
+func verifyStopLocation(t *testing.T, client *daptest.Client, thread int, name string, line int) {
 	t.Helper()
-	client.ThreadsRequest()
-	client.ExpectThreadsResponse(t)
 
 	client.StackTraceRequest(thread, 0, 20)
 	st := client.ExpectStackTraceResponse(t)
@@ -2764,6 +3183,19 @@ func handleStop(t *testing.T, client *daptest.Client, thread int, name string, l
 			t.Errorf("\ngot  %#v\nwant Name=%q", st, name)
 		}
 	}
+}
+
+// handleStop covers the standard sequence of requests issued by
+// a client at a breakpoint or another non-terminal stop event.
+// The details have been tested by other tests,
+// so this is just a sanity check.
+// Skips line check if line is -1.
+func handleStop(t *testing.T, client *daptest.Client, thread int, name string, line int) {
+	t.Helper()
+	client.ThreadsRequest()
+	client.ExpectThreadsResponse(t)
+
+	verifyStopLocation(t, client, thread, name, line)
 
 	client.ScopesRequest(1000)
 	client.ExpectScopesResponse(t)
@@ -3061,6 +3493,51 @@ func TestAttachRequest(t *testing.T) {
 	})
 }
 
+func TestPauseAndContinue(t *testing.T) {
+	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{6},
+			[]onBreakpoint{{
+				execute: func() {
+					verifyStopLocation(t, client, 1, "main.loop", 6)
+
+					// Continue resumes all goroutines, so thread id is ignored
+					client.ContinueRequest(12345)
+					client.ExpectContinueResponse(t)
+
+					time.Sleep(time.Second)
+
+					// Halt pauses all goroutines, so thread id is ignored
+					client.PauseRequest(56789)
+					// Since we are in async mode while running, we might receive next two messages in either order.
+					for i := 0; i < 2; i++ {
+						msg := client.ExpectMessage(t)
+						switch m := msg.(type) {
+						case *dap.StoppedEvent:
+							if m.Body.Reason != "pause" || m.Body.ThreadId != 0 && m.Body.ThreadId != 1 {
+								t.Errorf("\ngot %#v\nwant ThreadId=0/1 Reason='pause'", m)
+							}
+						case *dap.PauseResponse:
+						default:
+							t.Fatalf("got %#v, want StoppedEvent or PauseResponse", m)
+						}
+					}
+
+					// Pause will be a no-op at a pause: there will be no additional stopped events
+					client.PauseRequest(1)
+					client.ExpectPauseResponse(t)
+				},
+				// The program has an infinite loop, so we must kill it by disconnecting.
+				disconnect: true,
+			}})
+	})
+}
+
 func TestUnupportedCommandResponses(t *testing.T) {
 	var got *dap.ErrorResponse
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
@@ -3095,9 +3572,6 @@ func TestUnupportedCommandResponses(t *testing.T) {
 		client.CompletionsRequest()
 		expectUnsupportedCommand("completions")
 
-		client.ExceptionInfoRequest()
-		expectUnsupportedCommand("exceptionInfo")
-
 		client.DataBreakpointInfoRequest()
 		expectUnsupportedCommand("dataBreakpointInfo")
 
@@ -3109,24 +3583,6 @@ func TestUnupportedCommandResponses(t *testing.T) {
 
 		client.ModulesRequest()
 		expectUnsupportedCommand("modules")
-	})
-}
-
-func TestRequiredNotYetImplementedResponses(t *testing.T) {
-	var got *dap.ErrorResponse
-	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		seqCnt := 1
-		expectNotYetImplemented := func(cmd string) {
-			t.Helper()
-			got = client.ExpectNotYetImplementedErrorResponse(t)
-			if got.RequestSeq != seqCnt || got.Command != cmd {
-				t.Errorf("\ngot  %#v\nwant RequestSeq=%d Command=%s", got, seqCnt, cmd)
-			}
-			seqCnt++
-		}
-
-		client.PauseRequest()
-		expectNotYetImplemented("pause")
 	})
 }
 
@@ -3148,9 +3604,6 @@ func TestOptionalNotYetImplementedResponses(t *testing.T) {
 
 		client.RestartRequest()
 		expectNotYetImplemented("restart")
-
-		client.SetFunctionBreakpointsRequest()
-		expectNotYetImplemented("setFunctionBreakpoints")
 
 		client.StepBackRequest()
 		expectNotYetImplemented("stepBack")
@@ -3202,14 +3655,6 @@ func TestBadLaunchRequests(t *testing.T) {
 			t.Helper()
 			expectFailedToLaunch(response)
 			if response.Body.Error.Format != errmsg {
-				t.Errorf("\ngot  %q\nwant %q", response.Body.Error.Format, errmsg)
-			}
-		}
-
-		expectFailedToLaunchWithMessageRegex := func(response *dap.ErrorResponse, errmsg string) {
-			t.Helper()
-			expectFailedToLaunch(response)
-			if matched, _ := regexp.MatchString(errmsg, response.Body.Error.Format); !matched {
 				t.Errorf("\ngot  %q\nwant %q", response.Body.Error.Format, errmsg)
 			}
 		}
@@ -3295,18 +3740,34 @@ func TestBadLaunchRequests(t *testing.T) {
 		expectFailedToLaunch(client.ExpectInvisibleErrorResponse(t)) // No such file or directory
 
 		client.LaunchRequest("debug", fixture.Path+"_does_not_exist", stopOnEntry)
+		oe := client.ExpectOutputEvent(t)
+		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
+			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
+		}
 		expectFailedToLaunch(client.ExpectInvisibleErrorResponse(t))
 
 		client.LaunchRequest("" /*debug by default*/, fixture.Path+"_does_not_exist", stopOnEntry)
+		oe = client.ExpectOutputEvent(t)
+		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
+			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
+		}
 		expectFailedToLaunch(client.ExpectInvisibleErrorResponse(t))
 
 		client.LaunchRequest("exec", fixture.Source, stopOnEntry)
 		expectFailedToLaunch(client.ExpectInvisibleErrorResponse(t)) // Not an executable
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "-bad -flags"})
-		expectFailedToLaunchWithMessageRegex(client.ExpectInvisibleErrorResponse(t), `Failed to launch: Build error: .*flag provided but not defined.*`)
+		oe = client.ExpectOutputEvent(t)
+		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
+			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
+		}
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t), "Failed to launch: Build error: Check the debug console for details.")
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "buildFlags": "-bad -flags"})
-		expectFailedToLaunchWithMessageRegex(client.ExpectInvisibleErrorResponse(t), `Failed to launch: Build error: .*flag provided but not defined.*`)
+		oe = client.ExpectOutputEvent(t)
+		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
+			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
+		}
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t), "Failed to launch: Build error: Check the debug console for details.")
 
 		// Bad "wd".
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": false, "cwd": "dir/invalid"})
