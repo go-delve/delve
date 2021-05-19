@@ -238,6 +238,8 @@ type gdbRegisterInfo struct {
 	Offset  int
 	Regnum  int    `xml:"regnum,attr"`
 	Group   string `xml:"group,attr"`
+
+	ignoreOnWrite bool
 }
 
 func setRegFound(regFound map[string]bool, name string) {
@@ -294,6 +296,7 @@ func (conn *gdbConn) readRegisterInfo(regFound map[string]bool) (err error) {
 		var offset int
 		var bitsize int
 		var contained bool
+		var ignoreOnWrite bool
 
 		resp := string(respbytes)
 		for {
@@ -317,6 +320,11 @@ func (conn *gdbConn) readRegisterInfo(regFound map[string]bool) (err error) {
 					bitsize, _ = strconv.Atoi(value)
 				case "container-regs":
 					contained = true
+				case "set":
+					if value == "Exception State Registers" {
+						// debugserver doesn't like it if we try to write these
+						ignoreOnWrite = true
+					}
 				}
 			}
 
@@ -333,7 +341,7 @@ func (conn *gdbConn) readRegisterInfo(regFound map[string]bool) (err error) {
 
 		setRegFound(regFound, regname)
 
-		conn.regsInfo = append(conn.regsInfo, gdbRegisterInfo{Regnum: regnum, Name: regname, Bitsize: bitsize, Offset: offset})
+		conn.regsInfo = append(conn.regsInfo, gdbRegisterInfo{Regnum: regnum, Name: regname, Bitsize: bitsize, Offset: offset, ignoreOnWrite: ignoreOnWrite})
 
 		regnum++
 	}

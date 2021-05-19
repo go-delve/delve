@@ -67,6 +67,11 @@ TEXT ·fputestsetup(SB),$0-50
 	VSHUFF64X2 $0x44, Z11, Z11, Z12
 
 done:
+	CMPB dobreak+50(FP), $0x0
+	JE return
+	BYTE $0xcc // INT 3
+	
+return:
 	RET
 
 TEXT ·getCPUID70(SB),$0
