@@ -1012,7 +1012,7 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 	response.Body.Breakpoints = make([]dap.Breakpoint, len(request.Arguments.Breakpoints))
 	for i, want := range request.Arguments.Breakpoints {
 		got, err := s.debugger.CreateBreakpoint(
-			&api.Breakpoint{File: serverPath, Line: want.Line, Cond: want.Condition})
+			&api.Breakpoint{File: serverPath, Line: want.Line, Cond: want.Condition, HitCond: want.HitCondition})
 		response.Body.Breakpoints[i].Verified = (err == nil)
 		if err != nil {
 			response.Body.Breakpoints[i].Line = want.Line

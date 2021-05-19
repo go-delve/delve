@@ -217,7 +217,7 @@ func (bpstate *BreakpointState) checkHitCond(thread Thread) {
 	if bpstate.HitCond == nil || !bpstate.Active || bpstate.Internal {
 		return
 	}
-	bpstate.HitCond.X = astutil.Int(int64(bpstate.TotalHitCount))
+	bpstate.setHitCondTotalHitCount()
 	// Evaluate the breakpoint condition and set CondError if it has not
 	// already been set.
 	var err error
@@ -225,6 +225,19 @@ func (bpstate *BreakpointState) checkHitCond(thread Thread) {
 	if bpstate.CondError == nil {
 		bpstate.CondError = err
 	}
+}
+
+func (bpstate *BreakpointState) setHitCondTotalHitCount() {
+	parent := bpstate.HitCond
+	for {
+		n, ok := parent.X.(*ast.BinaryExpr)
+		if !ok {
+			// Found the left most node.
+			break
+		}
+		parent = n
+	}
+	parent.X = astutil.Int(int64(bpstate.TotalHitCount))
 }
 
 func isPanicCall(frames []Stackframe) bool {

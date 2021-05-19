@@ -67,6 +67,8 @@ type Breakpoint struct {
 
 	// Breakpoint condition
 	Cond string
+	// Breakpoint hit count condition
+	HitCond string
 
 	// Tracepoint flag, signifying this is a tracepoint.
 	Tracepoint bool `json:"continue"`

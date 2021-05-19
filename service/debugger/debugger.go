@@ -5,7 +5,9 @@ import (
 	"debug/dwarf"
 	"errors"
 	"fmt"
+	"go/ast"
 	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -780,6 +782,27 @@ func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err err
 	bp.Cond = nil
 	if requested.Cond != "" {
 		bp.Cond, err = parser.ParseExpr(requested.Cond)
+	}
+	bp.HitCond = nil
+	if requested.HitCond != "" {
+		// A hit condition can be in the following formats:
+		// - "expr"
+		// - "OP expr"
+		hitCond, parseErr := parser.ParseExpr(requested.HitCond)
+		if parseErr == nil {
+			bp.HitCond = &ast.BinaryExpr{
+				Op: token.EQL,
+				Y:  hitCond,
+			}
+		} else {
+			hitCond, err = parser.ParseExpr(fmt.Sprintf("%d %s", 0, requested.HitCond))
+			if binExpr, ok := hitCond.(*ast.BinaryExpr); ok {
+				bp.HitCond = binExpr
+			}
+		}
+		if bp.HitCond == nil && err == nil {
+			err = fmt.Errorf("unable to parse breakpoint hit condition: %q\nhit conditions should be of the form \"OP expr\" or \"expr\"", requested.HitCond)
+		}
 	}
 	return err
 }

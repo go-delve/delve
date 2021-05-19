@@ -1687,7 +1687,7 @@ func TestCondBreakpointError(t *testing.T) {
 
 func TestHitCondBreakpointEQ(t *testing.T) {
 	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
-		bp := setFileBreakpoint(p, t, fixture.Source, 6)
+		bp := setFileBreakpoint(p, t, fixture.Source, 7)
 		bp.HitCond = &ast.BinaryExpr{
 			Op: token.EQL,
 			X:  &ast.Ident{Name: "placeHolder"},
@@ -1698,7 +1698,7 @@ func TestHitCondBreakpointEQ(t *testing.T) {
 		ivar := evalVariable(p, t, "i")
 
 		i, _ := constant.Int64Val(ivar.Value)
-		if i != 2 {
+		if i != 3 {
 			t.Fatalf("Stoppend on wrong hitcount %d\n", i)
 		}
 
@@ -1710,10 +1710,9 @@ func TestHitCondBreakpointEQ(t *testing.T) {
 }
 
 func TestHitCondBreakpointError(t *testing.T) {
-	skipOn(t, "broken", "freebsd")
 	protest.AllowRecording(t)
 	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
-		bp := setFileBreakpoint(p, t, fixture.Source, 6)
+		bp := setFileBreakpoint(p, t, fixture.Source, 7)
 		bp.HitCond = &ast.BinaryExpr{
 			Op: token.EQL,
 			X:  &ast.Ident{Name: "placeholder"},
@@ -1739,7 +1738,7 @@ func TestHitCondBreakpointError(t *testing.T) {
 		ivar := evalVariable(p, t, "i")
 
 		i, _ := constant.Int64Val(ivar.Value)
-		if i != 2 {
+		if i != 3 {
 			t.Fatalf("Stoppend on wrong hitcount %d\n", i)
 		}
 	})
@@ -1755,7 +1754,7 @@ func TestHitCondBreakpointGEQ(t *testing.T) {
 			Y:  &ast.BasicLit{Kind: token.INT, Value: "3"},
 		}
 
-		for it := 2; it < 10; it++ {
+		for it := 3; it < 11; it++ {
 			assertNoError(p.Continue(), t, "Continue()")
 			ivar := evalVariable(p, t, "i")
 
@@ -1769,17 +1768,21 @@ func TestHitCondBreakpointGEQ(t *testing.T) {
 	})
 }
 
-func TestHitCondBreakpointLEQ(t *testing.T) {
+func TestHitCondBreakpointREM(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
-		bp := setFileBreakpoint(p, t, fixture.Source, 6)
+		bp := setFileBreakpoint(p, t, fixture.Source, 7)
 		bp.HitCond = &ast.BinaryExpr{
-			Op: token.LEQ,
-			X:  &ast.Ident{Name: "placeHolder"},
-			Y:  &ast.BasicLit{Kind: token.INT, Value: "3"},
+			X: &ast.BinaryExpr{
+				Op: token.REM,
+				X:  &ast.Ident{Name: "placeHolder"},
+				Y:  &ast.BasicLit{Kind: token.INT, Value: "2"},
+			},
+			Op: token.EQL,
+			Y:  &ast.BasicLit{Kind: token.INT, Value: "0"},
 		}
 
-		for it := 0; it < 3; it++ {
+		for it := 1; it < 11; it += 2 {
 			assertNoError(p.Continue(), t, "Continue()")
 			ivar := evalVariable(p, t, "i")
 

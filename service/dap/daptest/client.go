@@ -243,6 +243,27 @@ func (c *Client) SetConditionalBreakpointsRequest(file string, lines []int, cond
 	c.send(request)
 }
 
+// SetBreakpointsRequest sends a 'setBreakpoints' request with conditions.
+func (c *Client) SetHitConditionalBreakpointsRequest(file string, lines []int, conditions map[int]string) {
+	request := &dap.SetBreakpointsRequest{Request: *c.newRequest("setBreakpoints")}
+	request.Arguments = dap.SetBreakpointsArguments{
+		Source: dap.Source{
+			Name: filepath.Base(file),
+			Path: file,
+		},
+		Breakpoints: make([]dap.SourceBreakpoint, len(lines)),
+		//sourceModified: false,
+	}
+	for i, l := range lines {
+		request.Arguments.Breakpoints[i].Line = l
+		cond, ok := conditions[l]
+		if ok {
+			request.Arguments.Breakpoints[i].HitCondition = cond
+		}
+	}
+	c.send(request)
+}
+
 // SetExceptionBreakpointsRequest sends a 'setExceptionBreakpoints' request.
 func (c *Client) SetExceptionBreakpointsRequest() {
 	request := &dap.SetBreakpointsRequest{Request: *c.newRequest("setExceptionBreakpoints")}
