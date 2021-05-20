@@ -34,6 +34,7 @@ import (
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/gdbserial"
+	"github.com/go-delve/delve/pkg/terminal"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
@@ -2540,7 +2541,7 @@ func (s *Server) onRestartRequest(request *dap.RestartRequest) {
 // onStepBackRequest performs a ReverseNext command call, returning a NextResponse.
 func (s *Server) onStepBackRequest(request *dap.StepBackRequest, asyncSetupDone chan struct{}) {
 	s.send(&dap.StepBackResponse{Response: *newResponse(request.Request)})
-	s.doCommand(api.ReverseNext, asyncSetupDone)
+	s.doStepCommand(api.ReverseNext, request.Arguments.ThreadId, asyncSetupDone)
 }
 
 // onReverseContinueRequest performs a rewind command call up to the previous
@@ -2549,7 +2550,7 @@ func (s *Server) onReverseContinueRequest(request *dap.ReverseContinueRequest, a
 	s.send(&dap.ReverseContinueResponse{
 		Response: *newResponse(request.Request),
 	})
-	s.doCommand(api.Rewind, asyncSetupDone)
+	s.doRunCommand(api.Rewind, asyncSetupDone)
 }
 
 // computeEvaluateName finds the named child, and computes its evaluate name.
