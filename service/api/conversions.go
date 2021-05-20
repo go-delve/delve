@@ -37,7 +37,6 @@ func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 		WatchType:     WatchType(bp.WatchType),
 		TotalHitCount: bp.TotalHitCount,
 		Addrs:         []uint64{bp.Addr},
-		RequestString: bp.RequestString,
 	}
 
 	b.HitCount = map[string]uint64{}

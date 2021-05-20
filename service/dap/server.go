@@ -1038,7 +1038,7 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 	// -- doesn't exist and in request => SetBreakpoint
 
 	// Get all existing breakpoints that match for this source.
-	sourceRequestPrefix := fmt.Sprintf("sourceBp Path=%s", request.Arguments.Source.Path)
+	sourceRequestPrefix := fmt.Sprintf("sourceBp Path=%q ", request.Arguments.Source.Path)
 	existingBps := s.getMatchingBreakpoints(sourceRequestPrefix)
 	bpAdded := make(map[string]struct{}, len(existingBps))
 
@@ -1054,11 +1054,14 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 			// breakpoints to avoid conflicts.
 			continue
 		}
-
-		got.Cond = want.Condition
-		got.HitCond = want.HitCondition
-		err = s.debugger.AmendBreakpoint(got)
-		bpAdded[reqString] = struct{}{}
+		if _, ok := bpAdded[reqString]; ok {
+			err = fmt.Errorf("Breakpoint exists at %q, line: %d, column: %d", request.Arguments.Source.Path, want.Line, want.Column)
+		} else {
+			got.Cond = want.Condition
+			got.HitCond = want.HitCondition
+			err = s.debugger.AmendBreakpoint(got)
+			bpAdded[reqString] = struct{}{}
+		}
 
 		updateBreakpointsResponse(breakpoints, i, err, got, clientPath)
 	}
@@ -1075,9 +1078,17 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 		if _, ok := existingBps[reqString]; ok {
 			continue
 		}
-		// Create new breakpoints.
-		got, err := s.debugger.CreateBreakpoint(
-			&api.Breakpoint{File: serverPath, Line: want.Line, Cond: want.Condition, HitCond: want.HitCondition, RequestString: reqString})
+
+		var got *api.Breakpoint
+		var err error
+		if _, ok := bpAdded[reqString]; ok {
+			err = fmt.Errorf("Breakpoint exists at %q, line: %d, column: %d", request.Arguments.Source.Path, want.Line, want.Column)
+		} else {
+			// Create new breakpoints.
+			got, err = s.debugger.CreateBreakpoint(
+				&api.Breakpoint{File: serverPath, Line: want.Line, Cond: want.Condition, HitCond: want.HitCondition, Name: reqString})
+			bpAdded[reqString] = struct{}{}
+		}
 
 		updateBreakpointsResponse(breakpoints, i, err, got, clientPath)
 	}
@@ -1123,7 +1134,7 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 	existingBps := s.getMatchingBreakpoints(functionBpPrefix)
 	bpAdded := make(map[string]struct{}, len(existingBps))
 	for _, bp := range existingBps {
-		existingBps[bp.RequestString] = bp
+		existingBps[bp.Name] = bp
 	}
 
 	// Amend any existing breakpoints.
@@ -1138,11 +1149,14 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 			// breakpoints to avoid conflicts.
 			continue
 		}
-
-		got.Cond = want.Condition
-		got.HitCond = want.HitCondition
-		err = s.debugger.AmendBreakpoint(got)
-		bpAdded[reqString] = struct{}{}
+		if _, ok := bpAdded[reqString]; ok {
+			err = fmt.Errorf("Breakpoint exists at function %q", want.Name)
+		} else {
+			got.Cond = want.Condition
+			got.HitCond = want.HitCondition
+			err = s.debugger.AmendBreakpoint(got)
+			bpAdded[reqString] = struct{}{}
+		}
 
 		var clientPath string
 		if got != nil {
@@ -1204,7 +1218,7 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 
 		// Set breakpoint using the PCs that were found.
 		loc := locs[0]
-		got, err := s.debugger.CreateBreakpoint(&api.Breakpoint{Addr: loc.PC, Addrs: loc.PCs, Cond: want.Condition, RequestString: reqString})
+		got, err := s.debugger.CreateBreakpoint(&api.Breakpoint{Addr: loc.PC, Addrs: loc.PCs, Cond: want.Condition, Name: reqString})
 
 		var clientPath string
 		if got != nil {
@@ -1241,10 +1255,10 @@ func (s *Server) getMatchingBreakpoints(prefix string) map[string]*api.Breakpoin
 			continue
 		}
 		// Skip breakpoints that do not meet the condition.
-		if !strings.HasPrefix(bp.RequestString, prefix) {
+		if !strings.HasPrefix(bp.Name, prefix) {
 			continue
 		}
-		matchingBps[bp.RequestString] = bp
+		matchingBps[bp.Name] = bp
 	}
 	return matchingBps
 }
@@ -2487,7 +2501,7 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 				stopped.Body.Reason = "exception"
 				stopped.Body.Description = "Paused on panic"
 			}
-			if strings.HasPrefix(state.CurrentThread.Breakpoint.RequestString, functionBpPrefix) {
+			if strings.HasPrefix(state.CurrentThread.Breakpoint.Name, functionBpPrefix) {
 				stopped.Body.Reason = "function breakpoint"
 			}
 		}

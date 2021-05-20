@@ -631,9 +631,6 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 	)
 
 	if requestedBp.Name != "" {
-		if err = api.ValidBreakpointName(requestedBp.Name); err != nil {
-			return nil, err
-		}
 		if (d.findBreakpointByName(requestedBp.Name) != nil) || (d.findDisabledBreakpointByName(requestedBp.Name) != nil) {
 			return nil, errors.New("breakpoint name already exists")
 		}
@@ -744,9 +741,6 @@ func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
 	if originals == nil && !disabled {
 		return fmt.Errorf("no breakpoint with ID %d", amend.ID)
 	}
-	if err := api.ValidBreakpointName(amend.Name); err != nil {
-		return err
-	}
 	if !amend.Disabled && disabled { // enable the breakpoint
 		bp, err := d.target.SetBreakpointWithID(amend.ID, amend.Addr)
 		if err != nil {
@@ -780,7 +774,6 @@ func (d *Debugger) CancelNext() error {
 
 func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err error) {
 	bp.Name = requested.Name
-	bp.RequestString = requested.RequestString
 	bp.Tracepoint = requested.Tracepoint
 	bp.TraceReturn = requested.TraceReturn
 	bp.Goroutine = requested.Goroutine
@@ -1013,7 +1006,7 @@ func (d *Debugger) CreateWatchpoint(goid, frame, deferredCall int, expr string, 
 	if err != nil {
 		return nil, err
 	}
-	if api.ValidBreakpointName(expr) == nil && d.findBreakpointByName(expr) == nil {
+	if d.findBreakpointByName(expr) == nil {
 		bp.Name = expr
 	}
 	return api.ConvertBreakpoint(bp), nil

@@ -82,10 +82,6 @@ type Breakpoint struct {
 	// ReturnInfo describes how to collect return variables when this
 	// breakpoint is hit as a return breakpoint.
 	returnInfo *returnBreakpointInfo
-
-	// RequestString is a string used by the debug adapter to
-	// identify a breakpoint with a particular request.
-	RequestString string
 }
 
 // BreakpointKind determines the behavior of delve when the
