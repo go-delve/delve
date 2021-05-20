@@ -851,7 +851,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.log.Debugf("building binary '%s' from '%s' with flags '%v'", debugbinary, program, buildFlags)
 		switch mode {
 		case "debug", "replay", "record":
-			out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
+			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
 		case "test":
 			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
 		}
