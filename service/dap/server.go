@@ -1461,13 +1461,6 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", err.Error())
 		return
 	}
-	if !s.clientCapabilities.supportsVariableType {
-		// If the client does not support variable type
-		// we cannot set the Type field in the response.
-		for i := range children {
-			children[i].Type = ""
-		}
-	}
 	response := &dap.VariablesResponse{
 		Response: *newResponse(request.Request),
 		Body:     dap.VariablesResponseBody{Variables: children},
