@@ -174,7 +174,7 @@ var DefaultLoadConfig = proc.LoadConfig{
 	FollowPointers:     true,
 	MaxVariableRecurse: 1,
 	MaxStringLen:       64,
-	MaxArrayValues:     64,
+	MaxArrayValues:     100, // This is the default for paged index variable requests.
 	MaxStructFields:    -1,
 }
 
@@ -1598,6 +1598,10 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 				Value:              cvalue,
 				VariablesReference: cvarref,
 			}
+
+			if c.Kind == reflect.Array || c.Kind == reflect.Slice {
+				children[i].IndexedVariables = int(c.Len)
+			}
 		}
 	}
 	return children, nil
@@ -1710,7 +1714,9 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 			if v.Base != 0 && len(v.Children) == 0 { // Fully missing
 				value = reloadVariable(v, qualifiedNameOrExpr)
 			} else { // Partially missing (TODO)
-				value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children), v.Len) + value
+				if !s.clientCapabilities.supportsVariablePaging {
+					value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children), v.Len) + value
+				}
 			}
 		}
 		if v.Base != 0 && len(v.Children) > 0 {
