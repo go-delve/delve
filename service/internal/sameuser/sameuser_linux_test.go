@@ -1,6 +1,6 @@
 //+build linux
 
-package rpccommon
+package sameuser
 
 import (
 	"net"

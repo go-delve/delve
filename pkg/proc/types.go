@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
+	"github.com/go-delve/delve/pkg/goversion"
 )
 
 // The kind field in runtime._type is a reflect.Kind value plus
@@ -148,6 +149,15 @@ func runtimeTypeToDIE(_type *Variable, dataAddr uint64) (typ godwarf.Type, kind 
 	}
 
 	// go1.7 to go1.10 implementation: convert runtime._type structs to type names
+
+	if goversion.ProducerAfterOrEqual(_type.bi.Producer(), 1, 17) {
+		// Go 1.17 changed the encoding of names in runtime._type breaking the
+		// code below, but the codepath above, using runtimeTypeToDIE should be
+		// enough.
+		// The change happened in commit 287025925f66f90ad9b30aea2e533928026a8376
+		// reviewed in https://go-review.googlesource.com/c/go/+/318249
+		return nil, 0, fmt.Errorf("could not resolve interface type")
+	}
 
 	typename, kind, err := nameOfRuntimeType(mds, _type)
 	if err != nil {
