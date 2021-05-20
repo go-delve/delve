@@ -2802,8 +2802,22 @@ func TestEvaluateCallRequest(t *testing.T) {
 					if erres.Body.Error.Format != "Unable to evaluate expression: not enough arguments" {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: not enough arguments\"", erres)
 					}
-					// Call can exit
+
+					// Assignment - expect no error, but no return value.
+					client.EvaluateRequest("call one = two", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "", noChildren)
+					// Check one=two was applied.
+					client.EvaluateRequest("one", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "2", noChildren)
+
+					// Call can exit.
 					client.EvaluateRequest("call callexit()", 1000, "this context will be ignored")
+					client.ExpectTerminatedEvent(t)
+					if res := client.ExpectVisibleErrorResponse(t); !strings.Contains(res.Body.Error.Format, "terminated") {
+						t.Errorf("\ngot %#v\nwant Format=.*terminated.*", res)
+					}
 				},
 				terminated: true,
 				disconnect: true,
@@ -3297,9 +3311,6 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 		client.ExpectStoppedEvent(t)
 		onBP.execute()
 		if onBP.disconnect {
-			if onBP.terminated {
-				client.ExpectTerminatedEvent(t)
-			}
 			client.DisconnectRequestWithKillOption(true)
 			if onBP.terminated {
 				client.ExpectOutputEventProcessExited(t, 0)
@@ -3621,6 +3632,378 @@ func TestUnupportedCommandResponses(t *testing.T) {
 	})
 }
 
+type helperForSetVariable struct {
+	t *testing.T
+	c *daptest.Client
+}
+
+func (h *helperForSetVariable) expectSetVariableAndStop(ref int, name, value string) {
+	h.t.Helper()
+	h.expectSetVariable0(ref, name, value, true)
+}
+func (h *helperForSetVariable) expectSetVariable(ref int, name, value string) {
+	h.t.Helper()
+	h.expectSetVariable0(ref, name, value, false)
+}
+
+func (h *helperForSetVariable) failSetVariable(ref int, name, value, wantErrInfo string) {
+	h.t.Helper()
+	h.failSetVariable0(ref, name, value, wantErrInfo, false)
+}
+
+func (h *helperForSetVariable) failSetVariableAndStop(ref int, name, value, wantErrInfo string) {
+	h.t.Helper()
+	h.failSetVariable0(ref, name, value, wantErrInfo, true)
+}
+
+func (h *helperForSetVariable) evaluate(expr, want string, hasRef bool) {
+	h.t.Helper()
+	h.c.EvaluateRequest(expr, 1000, "whatever")
+	got := h.c.ExpectEvaluateResponse(h.t)
+	expectEval(h.t, got, want, hasRef)
+}
+
+func (h *helperForSetVariable) evaluateRegex(expr, want string, hasRef bool) {
+	h.t.Helper()
+	h.c.EvaluateRequest(expr, 1000, "whatever")
+	got := h.c.ExpectEvaluateResponse(h.t)
+	expectEvalRegex(h.t, got, want, hasRef)
+}
+
+func (h *helperForSetVariable) expectSetVariable0(ref int, name, value string, wantStop bool) {
+	h.t.Helper()
+
+	h.c.SetVariableRequest(ref, name, value)
+	if wantStop {
+		h.c.ExpectStoppedEvent(h.t)
+	}
+	if got, want := h.c.ExpectSetVariableResponse(h.t), value; got.Success != true || got.Body.Value != want {
+		h.t.Errorf("SetVariableRequest(%v, %v)=%#v, want {Success=true, Body.Value=%q", name, value, got, want)
+	}
+}
+
+func (h *helperForSetVariable) failSetVariable0(ref int, name, value, wantErrInfo string, wantStop bool) {
+	h.t.Helper()
+
+	h.c.SetVariableRequest(ref, name, value)
+	if wantStop {
+		h.c.ExpectStoppedEvent(h.t)
+	}
+	resp := h.c.ExpectErrorResponse(h.t)
+	if got := resp.Body.Error.Format; !strings.Contains(got, wantErrInfo) {
+		h.t.Errorf("got %#v, want error string containing %v", got, wantErrInfo)
+	}
+}
+
+func (h *helperForSetVariable) variables(ref int) *dap.VariablesResponse {
+	h.t.Helper()
+	h.c.VariablesRequest(ref)
+	return h.c.ExpectVariablesResponse(h.t)
+}
+
+// TestSetVariable tests SetVariable features that do not need function call support.
+func TestSetVariable(t *testing.T) {
+	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+				})
+			},
+			fixture.Source, []int{}, // breakpoints are set within the program.
+			[]onBreakpoint{{
+				execute: func() {
+					tester := &helperForSetVariable{t, client}
+
+					startLineno := 66 // after runtime.Breakpoint
+					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
+						// Go1.15 on windows inserts a NOP after the call to
+						// runtime.Breakpoint and marks it same line as the
+						// runtime.Breakpoint call, making this flaky, so skip the line check.
+						startLineno = -1
+					}
+
+					handleStop(t, client, 1, "main.foobar", startLineno)
+
+					// Args of foobar(baz string, bar FooBar)
+					args := tester.variables(1000)
+
+					expectVarExact(t, args, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
+					tester.failSetVariable(1000, "bar", `main.FooBar {Baz: 42, Bur: "ipsum"}`, "*ast.CompositeLit not implemented")
+
+					// Nested field.
+					barRef := expectVarExact(t, args, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
+					tester.expectSetVariable(barRef, "Baz", "42")
+					tester.evaluate("bar", `main.FooBar {Baz: 42, Bur: "lorem"}`, hasChildren)
+
+					tester.failSetVariable(barRef, "Baz", `"string"`, "can not convert")
+
+					// Local variables
+					locals := tester.variables(1001)
+
+					// int
+					expectVarExact(t, locals, -1, "a2", "a2", "6", "int", noChildren)
+					tester.expectSetVariable(1001, "a2", "42")
+					tester.evaluate("a2", "42", noChildren)
+
+					tester.failSetVariable(1001, "a2", "false", "can not convert")
+
+					// float
+					expectVarExact(t, locals, -1, "a3", "a3", "7.23", "float64", noChildren)
+					tester.expectSetVariable(1001, "a3", "-0.1")
+					tester.evaluate("a3", "-0.1", noChildren)
+
+					// array of int
+					a4Ref := expectVarExact(t, locals, -1, "a4", "a4", "[2]int [1,2]", "[2]int", hasChildren)
+					tester.expectSetVariable(a4Ref, "[1]", "-7")
+					tester.evaluate("a4", "[2]int [1,-7]", hasChildren)
+
+					tester.failSetVariable(1001, "a4", "[2]int{3, 4}", "not implemented")
+
+					// slice of int
+					a5Ref := expectVarExact(t, locals, -1, "a5", "a5", "[]int len: 5, cap: 5, [1,2,3,4,5]", "[]int", hasChildren)
+					tester.expectSetVariable(a5Ref, "[3]", "100")
+					tester.evaluate("a5", "[]int len: 5, cap: 5, [1,2,3,100,5]", hasChildren)
+
+					// composite literal and its nested fields.
+					a7Ref := expectVarExact(t, locals, -1, "a7", "a7", `*main.FooBar {Baz: 5, Bur: "strum"}`, "*main.FooBar", hasChildren)
+					a7Val := tester.variables(a7Ref)
+					a7ValRef := expectVarExact(t, a7Val, -1, "", "(*a7)", `main.FooBar {Baz: 5, Bur: "strum"}`, "main.FooBar", hasChildren)
+					tester.expectSetVariable(a7ValRef, "Baz", "7")
+					tester.evaluate("(*a7)", `main.FooBar {Baz: 7, Bur: "strum"}`, hasChildren)
+
+					// pointer
+					expectVarExact(t, locals, -1, "a9", "a9", `*main.FooBar nil`, "*main.FooBar", noChildren)
+					tester.expectSetVariable(1001, "a9", "&a6")
+					tester.evaluate("a9", `*main.FooBar {Baz: 8, Bur: "word"}`, hasChildren)
+
+					// slice of pointers
+					a13Ref := expectVarExact(t, locals, -1, "a13", "a13", `[]*main.FooBar len: 3, cap: 3, [*{Baz: 6, Bur: "f"},*{Baz: 7, Bur: "g"},*{Baz: 8, Bur: "h"}]`, "[]*main.FooBar", hasChildren)
+					a13 := tester.variables(a13Ref)
+					a13c0Ref := expectVarExact(t, a13, -1, "[0]", "a13[0]", `*main.FooBar {Baz: 6, Bur: "f"}`, "*main.FooBar", hasChildren)
+					a13c0 := tester.variables(a13c0Ref)
+					a13c0valRef := expectVarExact(t, a13c0, -1, "", "(*a13[0])", `main.FooBar {Baz: 6, Bur: "f"}`, "main.FooBar", hasChildren)
+					tester.expectSetVariable(a13c0valRef, "Baz", "777")
+					tester.evaluate("a13[0]", `*main.FooBar {Baz: 777, Bur: "f"}`, hasChildren)
+
+					// complex
+					tester.evaluate("c64", `(1 + 2i)`, hasChildren)
+					tester.expectSetVariable(1001, "c64", "(2 + 3i)")
+					tester.evaluate("c64", `(2 + 3i)`, hasChildren)
+					// note: complex's real, imaginary part can't be directly mutable.
+
+					//
+					// Global variables
+					//    p1 = 10
+					client.VariablesRequest(1002)
+					globals := client.ExpectVariablesResponse(t)
+
+					expectVarExact(t, globals, -1, "p1", "main.p1", "10", "int", noChildren)
+					tester.expectSetVariable(1002, "p1", "-10")
+					tester.evaluate("p1", "-10", noChildren)
+					tester.failSetVariable(1002, "p1", "0.1", "can not convert")
+				},
+				disconnect: true,
+			}})
+	})
+
+	runTest(t, "testvariables2", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+				})
+			},
+			fixture.Source, []int{}, // breakpoints are set within the program.
+			[]onBreakpoint{{
+				execute: func() {
+					tester := &helperForSetVariable{t, client}
+
+					startLineno := 358 // after runtime.Breakpoint
+					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
+						startLineno = -1
+					}
+
+					handleStop(t, client, 1, "main.main", startLineno)
+					locals := tester.variables(1001)
+
+					// channel
+					tester.evaluate("chnil", "chan int nil", noChildren)
+					tester.expectSetVariable(1001, "chnil", "ch1")
+					tester.evaluate("chnil", "chan int 4/11", hasChildren)
+
+					// func
+					tester.evaluate("fn2", "nil", noChildren)
+					tester.expectSetVariable(1001, "fn2", "fn1")
+					tester.evaluate("fn2", "main.afunc", noChildren)
+
+					// interface
+					tester.evaluate("ifacenil", "interface {} nil", noChildren)
+					tester.expectSetVariable(1001, "ifacenil", "iface1")
+					tester.evaluate("ifacenil", "interface {}(*main.astruct) *{A: 1, B: 2}", hasChildren)
+
+					// interface.(data)
+					iface1Ref := expectVarExact(t, locals, -1, "iface1", "iface1", "interface {}(*main.astruct) *{A: 1, B: 2}", "interface {}", hasChildren)
+					iface1 := tester.variables(iface1Ref)
+					iface1DataRef := expectVarExact(t, iface1, -1, "data", "iface1.(data)", "*main.astruct {A: 1, B: 2}", "*main.astruct", hasChildren)
+					iface1Data := tester.variables(iface1DataRef)
+					iface1DataValueRef := expectVarExact(t, iface1Data, -1, "", "(*iface1.(data))", "main.astruct {A: 1, B: 2}", "main.astruct", hasChildren)
+					tester.expectSetVariable(iface1DataValueRef, "A", "2021")
+					tester.evaluate("iface1", "interface {}(*main.astruct) *{A: 2021, B: 2}", hasChildren)
+
+					// map: string -> struct
+					tester.evaluate(`m1["Malone"]`, "main.astruct {A: 2, B: 3}", hasChildren)
+					m1Ref := expectVarRegex(t, locals, -1, "m1", "m1", `.*map\[string\]main\.astruct.*`, `map\[string\]main\.astruct`, hasChildren)
+					m1 := tester.variables(m1Ref)
+					elem1 := m1.Body.Variables[0]
+					tester.expectSetVariable(elem1.VariablesReference, "A", "-9999")
+					tester.expectSetVariable(elem1.VariablesReference, "B", "10000")
+					tester.evaluate(elem1.EvaluateName, "main.astruct {A: -9999, B: 10000}", hasChildren)
+
+					// map: struct -> int
+					m3Ref := expectVarExact(t, locals, -1, "m3", "m3", "map[main.astruct]int [{A: 1, B: 1}: 42, {A: 2, B: 2}: 43, ]", "map[main.astruct]int", hasChildren)
+					tester.expectSetVariable(m3Ref, "main.astruct {A: 1, B: 1}", "8888")
+					// note: updating keys is possible, but let's not promise anything.
+					tester.evaluateRegex("m3", `.*\[\{A: 1, B: 1\}: 8888,.*`, hasChildren)
+
+					// map: struct -> struct
+					m4Ref := expectVarRegex(t, locals, -1, "m4", "m4", `map\[main\.astruct]main\.astruct.*\[\{A: 1, B: 1\}: \{A: 11, B: 11\}.*`, `map\[main\.astruct\]main\.astruct`, hasChildren)
+					m4 := tester.variables(m4Ref)
+					m4Val1Ref := expectVarRegex(t, m4, -1, "[val 0]", `.*0x[0-9a-f]+.*`, `main.astruct.*`, `main\.astruct`, hasChildren)
+					tester.expectSetVariable(m4Val1Ref, "A", "-9999")
+					tester.evaluateRegex("m4", `.*A: -9999,.*`, hasChildren)
+
+					// unsigned pointer
+					expectVarRegex(t, locals, -1, "up1", "up1", `unsafe\.Pointer\(0x[0-9a-f]+\)`, "unsafe.Pointer", noChildren)
+					tester.expectSetVariable(1001, "up1", "unsafe.Pointer(0x0)")
+					tester.evaluate("up1", "unsafe.Pointer(0x0)", noChildren)
+
+					// val := A{val: 1}
+					valRef := expectVarExact(t, locals, -1, "val", "val", `main.A {val: 1}`, "main.A", hasChildren)
+					tester.expectSetVariable(valRef, "val", "3")
+					tester.evaluate("val", `main.A {val: 3}`, hasChildren)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+// TestSetVariableWithCall tests SetVariable features that do not depend on function calls support.
+func TestSetVariableWithCall(t *testing.T) {
+	protest.MustSupportFunctionCalls(t, testBackend)
+
+	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+				})
+			},
+			fixture.Source, []int{66, 67},
+			[]onBreakpoint{{
+				execute: func() {
+					tester := &helperForSetVariable{t, client}
+
+					startLineno := 66
+					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
+						// Go1.15 on windows inserts a NOP after the call to
+						// runtime.Breakpoint and marks it same line as the
+						// runtime.Breakpoint call, making this flaky, so skip the line check.
+						startLineno = -1
+					}
+
+					handleStop(t, client, 1, "main.foobar", startLineno)
+
+					// Args of foobar(baz string, bar FooBar)
+					args := tester.variables(1000)
+
+					expectVarExact(t, args, 0, "baz", "baz", `"bazburzum"`, "string", noChildren)
+					tester.expectSetVariable(1000, "baz", `"BazBurZum"`)
+					tester.evaluate("baz", `"BazBurZum"`, noChildren)
+
+					args = tester.variables(1000)
+					barRef := expectVarExact(t, args, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
+					tester.expectSetVariable(barRef, "Bur", `"ipsum"`)
+					tester.evaluate("bar", `main.FooBar {Baz: 10, Bur: "ipsum"}`, hasChildren)
+
+					// Local variables
+					locals := tester.variables(1001)
+
+					expectVarExact(t, locals, -1, "a1", "a1", `"foofoofoofoofoofoo"`, "string", noChildren)
+					tester.expectSetVariable(1001, "a1", `"barbarbar"`)
+					tester.evaluate("a1", `"barbarbar"`, noChildren)
+
+					a6Ref := expectVarExact(t, locals, -1, "a6", "a6", `main.FooBar {Baz: 8, Bur: "word"}`, "main.FooBar", hasChildren)
+					tester.failSetVariable(a6Ref, "Bur", "false", "can not convert")
+
+					tester.expectSetVariable(a6Ref, "Bur", `"sentence"`)
+					tester.evaluate("a6", `main.FooBar {Baz: 8, Bur: "sentence"}`, hasChildren)
+				},
+			}, {
+				// Stop at second breakpoint and set a1.
+				execute: func() {
+					tester := &helperForSetVariable{t, client}
+
+					handleStop(t, client, 1, "main.barfoo", -1)
+					// Test: set string 'a1' in main.barfoo.
+					// This shouldn't affect 'a1' in main.foobar - we will check that in the next breakpoint.
+					locals := tester.variables(1001)
+					expectVarExact(t, locals, -1, "a1", "a1", `"bur"`, "string", noChildren)
+					tester.expectSetVariable(1001, "a1", `"fur"`)
+					tester.evaluate("a1", `"fur"`, noChildren)
+					// We will check a1 in main.foobar isn't affected from the next breakpoint.
+
+					client.StackTraceRequest(1, 1, 20)
+					res := client.ExpectStackTraceResponse(t)
+					if len(res.Body.StackFrames) < 1 {
+						t.Fatalf("stack trace response = %#v, wanted at least one stack frame", res)
+					}
+					outerFrame := res.Body.StackFrames[0].Id
+					client.EvaluateRequest("a1", outerFrame, "whatever_context")
+					evalRes := client.ExpectEvaluateResponse(t)
+					expectEval(t, evalRes, `"barbarbar"`, noChildren)
+				},
+				disconnect: true,
+			}})
+	})
+
+	runTest(t, "fncall", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+				})
+			},
+			fixture.Source, []int{}, // breakpoints are set within the program.
+			[]onBreakpoint{{
+				// Stop at second breakpoint and set a1.
+				execute: func() {
+					tester := &helperForSetVariable{t, client}
+
+					handleStop(t, client, 1, "main.main", 197)
+
+					_ = tester.variables(1001)
+
+					// successful variable set using a function call.
+					tester.expectSetVariable(1001, "str", `callstacktrace()`)
+					tester.evaluateRegex("str", `.*in main.callstacktrace at.*`, noChildren)
+
+					tester.failSetVariableAndStop(1001, "str", `callpanic()`, `callpanic panicked`)
+					handleStop(t, client, 1, "main.main", 197)
+
+					// breakpoint during a function call.
+					tester.failSetVariableAndStop(1001, "str", `callbreak()`, "call stopped")
+
+					// TODO(hyangah): continue after this causes runtime error while resuming
+					// unfinished injected call.
+					//   runtime error: can not convert %!s(<nil>) constant to string
+					// This can be reproducible with dlv cli. (`call str = callbreak(); continue`)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
 func TestOptionalNotYetImplementedResponses(t *testing.T) {
 	var got *dap.ErrorResponse
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
@@ -3645,9 +4028,6 @@ func TestOptionalNotYetImplementedResponses(t *testing.T) {
 
 		client.ReverseContinueRequest()
 		expectNotYetImplemented("reverseContinue")
-
-		client.SetVariableRequest()
-		expectNotYetImplemented("setVariable")
 
 		client.SetExpressionRequest()
 		expectNotYetImplemented("setExpression")
