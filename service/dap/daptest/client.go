@@ -102,6 +102,8 @@ func (c *Client) ExpectInitializeResponseAndCapabilities(t *testing.T) *dap.Init
 		SupportTerminateDebuggee:         true,
 		SupportsExceptionInfoRequest:     true,
 		SupportsSetVariable:              true,
+		SupportsFunctionBreakpoints:      true,
+		SupportsEvaluateForHovers:        true,
 	}
 	if !reflect.DeepEqual(initResp.Body, wantCapabilities) {
 		t.Errorf("capabilities in initializeResponse: got %+v, want %v", pretty(initResp.Body), pretty(wantCapabilities))
@@ -332,8 +334,13 @@ func (c *Client) RestartRequest() {
 }
 
 // SetFunctionBreakpointsRequest sends a 'setFunctionBreakpoints' request.
-func (c *Client) SetFunctionBreakpointsRequest() {
-	c.send(&dap.SetFunctionBreakpointsRequest{Request: *c.newRequest("setFunctionBreakpoints")})
+func (c *Client) SetFunctionBreakpointsRequest(breakpoints []dap.FunctionBreakpoint) {
+	c.send(&dap.SetFunctionBreakpointsRequest{
+		Request: *c.newRequest("setFunctionBreakpoints"),
+		Arguments: dap.SetFunctionBreakpointsArguments{
+			Breakpoints: breakpoints,
+		},
+	})
 }
 
 // StepBackRequest sends a 'stepBack' request.
