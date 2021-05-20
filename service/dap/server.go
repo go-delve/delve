@@ -460,6 +460,14 @@ func (s *Server) handleRequest(request dap.Message) {
 			// For this to apply in cases other than api.Continue, we would also need to
 			// introduce a new version of halt that skips ClearInternalBreakpoints
 			// in proc.(*Target).Continue, leaving NextInProgress as true.
+		case *dap.SetFunctionBreakpointsRequest:
+			s.log.Debug("halting execution to set breakpoints")
+			_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+			if err != nil {
+				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
+				return
+			}
+			s.onSetFunctionBreakpointsRequest(request)
 		default:
 			r := request.(dap.RequestMessage).GetRequest()
 			s.sendErrorResponse(*r, DebuggeeIsRunning, fmt.Sprintf("Unable to process `%s`", r.Command), "debuggee is running")
@@ -1888,7 +1896,6 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", "running in noDebug mode")
 		return
 	}
-	// TODO(polina): handle this while running by halting first.
 
 	// According to the spec, setFunctionBreakpoints "replaces all existing function
 	// breakpoints with new function breakpoints." The simplest way is
