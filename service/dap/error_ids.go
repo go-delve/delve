@@ -23,6 +23,7 @@ const (
 	UnableToEvaluateExpression = 2009
 	UnableToHalt               = 2010
 	UnableToGetExceptionInfo   = 2011
+	UnableToSetVariable        = 2012
 	// Add more codes as we support more requests
 	DebuggeeIsRunning = 4000
 	DisconnectError   = 5000

@@ -101,7 +101,9 @@ func (c *Client) ExpectInitializeResponseAndCapabilities(t *testing.T) *dap.Init
 		SupportsDelayedStackTraceLoading: true,
 		SupportTerminateDebuggee:         true,
 		SupportsExceptionInfoRequest:     true,
+		SupportsSetVariable:              true,
 		SupportsFunctionBreakpoints:      true,
+		SupportsEvaluateForHovers:        true,
 	}
 	if !reflect.DeepEqual(initResp.Body, wantCapabilities) {
 		t.Errorf("capabilities in initializeResponse: got %+v, want %v", pretty(initResp.Body), pretty(wantCapabilities))
@@ -373,8 +375,12 @@ func (c *Client) ReverseContinueRequest() {
 }
 
 // SetVariableRequest sends a 'setVariable' request.
-func (c *Client) SetVariableRequest() {
-	c.send(&dap.ReverseContinueRequest{Request: *c.newRequest("setVariable")})
+func (c *Client) SetVariableRequest(variablesRef int, name, value string) {
+	request := &dap.SetVariableRequest{Request: *c.newRequest("setVariable")}
+	request.Arguments.VariablesReference = variablesRef
+	request.Arguments.Name = name
+	request.Arguments.Value = value
+	c.send(request)
 }
 
 // RestartFrameRequest sends a 'restartFrame' request.

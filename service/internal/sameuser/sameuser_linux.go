@@ -1,6 +1,6 @@
 //+build linux
 
-package rpccommon
+package sameuser
 
 import (
 	"bytes"
@@ -96,7 +96,7 @@ func sameUserForRemoteAddr(remoteAddr *net.TCPAddr) (bool, error) {
 	return sameUserForRemoteAddr4(remoteAddr)
 }
 
-func canAccept(listenAddr, remoteAddr net.Addr) bool {
+func CanAccept(listenAddr, remoteAddr net.Addr) bool {
 	laddr, ok := listenAddr.(*net.TCPAddr)
 	if !ok || !laddr.IP.IsLoopback() {
 		return true

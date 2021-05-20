@@ -37,6 +37,7 @@ type Breakpoint struct {
 	Name         string // User defined name of the breakpoint
 	LogicalID    int    // ID of the logical breakpoint that owns this physical breakpoint
 
+	WatchExpr    string
 	WatchType    WatchType
 	HWBreakIndex uint8 // hardware breakpoint index
 
@@ -365,7 +366,11 @@ func (t *Target) SetWatchpoint(scope *EvalScope, expr string, wtype WatchType, c
 		return nil, errors.New("can not watch stack allocated variable")
 	}
 
-	return t.setBreakpointInternal(xv.Addr, UserBreakpoint, wtype.withSize(uint8(sz)), cond)
+	bp, err := t.setBreakpointInternal(xv.Addr, UserBreakpoint, wtype.withSize(uint8(sz)), cond)
+	if bp != nil {
+		bp.WatchExpr = expr
+	}
+	return bp, err
 }
 
 func (t *Target) setBreakpointInternal(addr uint64, kind BreakpointKind, wtype WatchType, cond ast.Expr) (*Breakpoint, error) {
