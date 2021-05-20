@@ -1688,11 +1688,10 @@ func TestCondBreakpointError(t *testing.T) {
 func TestHitCondBreakpointEQ(t *testing.T) {
 	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 7)
-		bp.HitCond = &ast.BinaryExpr{
-			Op: token.EQL,
-			X:  &ast.Ident{Name: "placeHolder"},
-			Y:  &ast.BasicLit{Kind: token.INT, Value: "3"},
-		}
+		bp.HitCond = &struct {
+			Op  token.Token
+			Val int
+		}{token.EQL, 3}
 
 		assertNoError(p.Continue(), t, "Continue()")
 		ivar := evalVariable(p, t, "i")
@@ -1709,50 +1708,14 @@ func TestHitCondBreakpointEQ(t *testing.T) {
 	})
 }
 
-func TestHitCondBreakpointError(t *testing.T) {
-	protest.AllowRecording(t)
-	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
-		bp := setFileBreakpoint(p, t, fixture.Source, 7)
-		bp.HitCond = &ast.BinaryExpr{
-			Op: token.EQL,
-			X:  &ast.Ident{Name: "placeholder"},
-			Y:  &ast.Ident{Name: "nonexistentvariable"},
-		}
-
-		err := p.Continue()
-		if err == nil {
-			t.Fatalf("No error on first Continue()")
-		}
-
-		if err.Error() != "error evaluating expression: could not find symbol value for nonexistentvariable" && err.Error() != "multiple errors evaluating conditions" {
-			t.Fatalf("Unexpected error on first Continue(): %v", err)
-		}
-
-		bp.HitCond = &ast.BinaryExpr{
-			Op: token.EQL,
-			X:  &ast.Ident{Name: "placeHolder"},
-			Y:  &ast.BasicLit{Kind: token.INT, Value: "3"},
-		}
-
-		assertNoError(p.Continue(), t, "Continue()")
-		ivar := evalVariable(p, t, "i")
-
-		i, _ := constant.Int64Val(ivar.Value)
-		if i != 3 {
-			t.Fatalf("Stoppend on wrong hitcount %d\n", i)
-		}
-	})
-}
-
 func TestHitCondBreakpointGEQ(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 7)
-		bp.HitCond = &ast.BinaryExpr{
-			Op: token.GEQ,
-			X:  &ast.Ident{Name: "placeHolder"},
-			Y:  &ast.BasicLit{Kind: token.INT, Value: "3"},
-		}
+		bp.HitCond = &struct {
+			Op  token.Token
+			Val int
+		}{token.GEQ, 3}
 
 		for it := 3; it <= 10; it++ {
 			assertNoError(p.Continue(), t, "Continue()")
@@ -1772,15 +1735,10 @@ func TestHitCondBreakpointREM(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 7)
-		bp.HitCond = &ast.BinaryExpr{
-			X: &ast.BinaryExpr{
-				Op: token.REM,
-				X:  &ast.Ident{Name: "placeHolder"},
-				Y:  &ast.BasicLit{Kind: token.INT, Value: "2"},
-			},
-			Op: token.EQL,
-			Y:  &ast.BasicLit{Kind: token.INT, Value: "0"},
-		}
+		bp.HitCond = &struct {
+			Op  token.Token
+			Val int
+		}{token.REM, 2}
 
 		for it := 2; it <= 10; it += 2 {
 			assertNoError(p.Continue(), t, "Continue()")

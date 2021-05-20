@@ -6,9 +6,8 @@ import (
 	"go/ast"
 	"go/constant"
 	"go/parser"
+	"go/token"
 	"reflect"
-
-	"github.com/go-delve/delve/pkg/astutil"
 )
 
 const (
@@ -75,7 +74,10 @@ type Breakpoint struct {
 	internalCond ast.Expr
 	// HitCond: if not nil the breakpoint will be triggered only if the evaluated HitCond returns
 	// true with the TotalHitCount.
-	HitCond *ast.BinaryExpr
+	HitCond *struct {
+		Op  token.Token
+		Val int
+	}
 
 	// ReturnInfo describes how to collect return variables when this
 	// breakpoint is hit as a return breakpoint.
@@ -222,27 +224,23 @@ func (bpstate *BreakpointState) checkHitCond(thread Thread) {
 	if bpstate.HitCond == nil || !bpstate.Active || bpstate.Internal {
 		return
 	}
-	bpstate.setHitCondTotalHitCount()
-	// Evaluate the breakpoint condition and set CondError if it has not
-	// already been set.
-	var err error
-	bpstate.Active, err = evalBreakpointCondition(thread, bpstate.HitCond)
-	if bpstate.CondError == nil {
-		bpstate.CondError = err
+	// Evaluate the breakpoint condition.
+	switch bpstate.HitCond.Op {
+	case token.EQL:
+		bpstate.Active = int(bpstate.TotalHitCount) == bpstate.HitCond.Val
+	case token.NEQ:
+		bpstate.Active = int(bpstate.TotalHitCount) != bpstate.HitCond.Val
+	case token.GTR:
+		bpstate.Active = int(bpstate.TotalHitCount) > bpstate.HitCond.Val
+	case token.LSS:
+		bpstate.Active = int(bpstate.TotalHitCount) < bpstate.HitCond.Val
+	case token.GEQ:
+		bpstate.Active = int(bpstate.TotalHitCount) >= bpstate.HitCond.Val
+	case token.LEQ:
+		bpstate.Active = int(bpstate.TotalHitCount) <= bpstate.HitCond.Val
+	case token.REM:
+		bpstate.Active = int(bpstate.TotalHitCount)%bpstate.HitCond.Val == 0
 	}
-}
-
-func (bpstate *BreakpointState) setHitCondTotalHitCount() {
-	parent := bpstate.HitCond
-	for {
-		n, ok := parent.X.(*ast.BinaryExpr)
-		if !ok {
-			// Found the left most node.
-			break
-		}
-		parent = n
-	}
-	parent.X = astutil.Int(int64(bpstate.TotalHitCount))
 }
 
 func isPanicCall(frames []Stackframe) bool {

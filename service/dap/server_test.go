@@ -2382,7 +2382,7 @@ func TestHitConditionBreakpoints(t *testing.T) {
 			fixture.Source, []int{4},
 			[]onBreakpoint{{
 				execute: func() {
-					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "3"})
+					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "4"})
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{7, fixture.Source, true, ""}})
 
 					client.ContinueRequest(1)
@@ -2393,29 +2393,12 @@ func TestHitConditionBreakpoints(t *testing.T) {
 					// Check that we are stopped at the correct value of i.
 					client.VariablesRequest(1001)
 					locals := client.ExpectVariablesResponse(t)
-					expectVarExact(t, locals, 0, "i", "i", "3", "int", noChildren)
+					expectVarExact(t, locals, 0, "i", "i", "4", "int", noChildren)
 
 					// Change the hit condition.
-					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "% 2 != 0"})
+					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "% 2"})
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{7, fixture.Source, true, ""}})
 
-					client.ContinueRequest(1)
-					client.ExpectContinueResponse(t)
-					client.ExpectStoppedEvent(t)
-					handleStop(t, client, 1, "main.main", 7)
-
-					// Check that we are stopped at the correct value of i.
-					client.VariablesRequest(1001)
-					locals = client.ExpectVariablesResponse(t)
-					expectVarExact(t, locals, 0, "i", "i", "5", "int", noChildren)
-
-					// Expect an error if an assignment is passed.
-					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "= 2"})
-					expectSetBreakpointsResponse(t, client, []Breakpoint{{-1, "", false, ""}})
-
-					// Change the hit condition.
-					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "< 7"})
-					expectSetBreakpointsResponse(t, client, []Breakpoint{{7, fixture.Source, true, ""}})
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
@@ -2425,6 +2408,23 @@ func TestHitConditionBreakpoints(t *testing.T) {
 					client.VariablesRequest(1001)
 					locals = client.ExpectVariablesResponse(t)
 					expectVarExact(t, locals, 0, "i", "i", "6", "int", noChildren)
+
+					// Expect an error if an assignment is passed.
+					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "= 2"})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{-1, "", false, ""}})
+
+					// Change the hit condition.
+					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "< 8"})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{7, fixture.Source, true, ""}})
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					handleStop(t, client, 1, "main.main", 7)
+
+					// Check that we are stopped at the correct value of i.
+					client.VariablesRequest(1001)
+					locals = client.ExpectVariablesResponse(t)
+					expectVarExact(t, locals, 0, "i", "i", "7", "int", noChildren)
 
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)

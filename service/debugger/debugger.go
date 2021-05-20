@@ -5,7 +5,6 @@ import (
 	"debug/dwarf"
 	"errors"
 	"fmt"
-	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
@@ -13,11 +12,11 @@ import (
 	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/go-delve/delve/pkg/astutil"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/goversion"
@@ -795,27 +794,59 @@ func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err err
 	}
 	bp.HitCond = nil
 	if requested.HitCond != "" {
-		// A hit condition can be in the following formats:
-		// - "expr"
-		// - "OP expr"
-		hitCond, parseErr := parser.ParseExpr(requested.HitCond)
-		if parseErr == nil {
-			bp.HitCond = &ast.BinaryExpr{
-				X:  astutil.Int(0), // Add a placeholder for the hit count
-				Op: token.EQL,
-				Y:  hitCond,
-			}
-		} else {
-			hitCond, err = parser.ParseExpr(fmt.Sprintf("%d %s", 0, requested.HitCond))
-			if binExpr, ok := hitCond.(*ast.BinaryExpr); ok {
-				bp.HitCond = binExpr
-			}
+		opTok, val, parseErr := parseHitCondition(requested.HitCond)
+		if err == nil {
+			err = parseErr
 		}
-		if bp.HitCond == nil && err == nil {
-			err = fmt.Errorf("unable to parse breakpoint hit condition: %q\nhit conditions should be of the form \"OP expr\" or \"expr\"", requested.HitCond)
+		if parseErr == nil {
+			bp.HitCond = &struct {
+				Op  token.Token
+				Val int
+			}{opTok, val}
 		}
 	}
 	return err
+}
+
+func parseHitCondition(hitCond string) (token.Token, int, error) {
+	// A hit condition can be in the following formats:
+	// - "number"
+	// - "OP number"
+	hitConditionRegex := regexp.MustCompile(`((=|>|<|%|!)+|)( |)((\d|_)+)`)
+
+	match := hitConditionRegex.FindStringSubmatch(strings.TrimSpace(hitCond))
+	if match == nil || len(match) != 6 {
+		return 0, 0, fmt.Errorf("unable to parse breakpoint hit condition: %q\nhit conditions should be of the form \"number\" or \"OP number\"", hitCond)
+	}
+
+	opStr := match[1]
+	var opTok token.Token
+	switch opStr {
+	case "==", "":
+		opTok = token.EQL
+	case ">=":
+		opTok = token.GEQ
+	case "<=":
+		opTok = token.LEQ
+	case ">":
+		opTok = token.GTR
+	case "<":
+		opTok = token.LSS
+	case "%":
+		opTok = token.REM
+	case "!=":
+		opTok = token.NEQ
+	default:
+		return 0, 0, fmt.Errorf("unable to parse breakpoint hit condition: %q\ninvalid operator: %q", hitCond, opStr)
+	}
+
+	numStr := match[4]
+	val, parseErr := strconv.Atoi(numStr)
+	if parseErr != nil {
+		return 0, 0, fmt.Errorf("unable to parse breakpoint hit condition: %q\ninvalid number: %q", hitCond, numStr)
+	}
+
+	return opTok, val, nil
 }
 
 // ClearBreakpoint clears a breakpoint.
