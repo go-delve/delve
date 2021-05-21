@@ -442,7 +442,7 @@ func (s *Server) handleRequest(request dap.Message) {
 			s.send(response)
 		case *dap.SetBreakpointsRequest:
 			s.log.Debug("halting execution to set breakpoints")
-			_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+			_, err := s.debugCommand(&api.DebuggerCommand{Name: api.Halt}, nil)
 			if err != nil {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
@@ -464,7 +464,7 @@ func (s *Server) handleRequest(request dap.Message) {
 			// in proc.(*Target).Continue, leaving NextInProgress as true.
 		case *dap.SetFunctionBreakpointsRequest:
 			s.log.Debug("halting execution to set breakpoints")
-			_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+			_, err := s.debugCommand(&api.DebuggerCommand{Name: api.Halt}, nil)
 			if err != nil {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
@@ -968,7 +968,7 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 	// To avoid goroutine leaks, we can use a wait group or have the goroutine listen
 	// for a stop signal on a dedicated quit channel at suitable points (use context?).
 	// Additional clean-up might be especially critical when we support multiple clients.
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+	state, err := s.debugCommand(&api.DebuggerCommand{Name: api.Halt}, nil)
 	if err == proc.ErrProcessDetached {
 		s.log.Debug("halt returned error:", err)
 		return nil
@@ -1268,7 +1268,7 @@ func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan
 			AllThreadsContinued: true,
 		},
 	})
-	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
+	_, err := s.debugCommand(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
 	if err != nil {
 		s.log.Errorf("Error switching goroutines while stepping: %v", err)
 		// If we encounter an error, we will have to send a stopped event
@@ -1291,7 +1291,7 @@ func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan
 // onPauseRequest handles 'pause' request.
 // This is a mandatory request to support.
 func (s *Server) onPauseRequest(request *dap.PauseRequest) {
-	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+	_, err := s.debugCommand(&api.DebuggerCommand{Name: api.Halt}, nil)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToHalt, "Unable to halt execution", err.Error())
 		return
@@ -1299,7 +1299,7 @@ func (s *Server) onPauseRequest(request *dap.PauseRequest) {
 	s.send(&dap.PauseResponse{Response: *newResponse(request.Request)})
 	// No need to send any event here.
 	// If we received this request while stopped, there already was an event for the stop.
-	// If we received this while running, then doCommand will unblock and trigger the right
+	// If we received this while running, then doRunCommand will unblock and trigger the right
 	// event, using debugger.StopReason because manual stop reason always wins even if we
 	// simultaneously receive a manual stop request and hit a breakpoint.
 }
@@ -1842,7 +1842,7 @@ func (s *Server) doCall(goid, frame int, expr string) (*api.DebuggerState, []*pr
 	// TODO(polina): since call will resume execution of all goroutines,
 	// we should do this asynchronously and send a continued event to the
 	// editor, followed by a stop event when the call completes.
-	state, err := s.debugger.Command(&api.DebuggerCommand{
+	state, err := s.debugCommand(&api.DebuggerCommand{
 		Name:                 api.Call,
 		ReturnInfoLoadConfig: api.LoadConfigFromProc(&DefaultLoadConfig),
 		Expr:                 expr,
@@ -2326,6 +2326,11 @@ func newEvent(event string) *dap.Event {
 	}
 }
 
+func (s *Server) debugCommand(cmd *api.DebuggerCommand, asyncSetupDone chan struct{}) (*api.DebuggerState, error) {
+	s.log.Debugf("running debugger command: %#v", cmd)
+	return s.debugger.Command(cmd, asyncSetupDone)
+}
+
 const BetterBadAccessError = `invalid memory address or nil pointer dereference [signal SIGSEGV: segmentation violation]
 Unable to propagate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)`
 
@@ -2346,7 +2351,7 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 	// asyncSetupDone (e.g. when having an error next while nexting).
 	// So we should always close it ourselves just in case.
 	defer s.asyncCommandDone(asyncSetupDone)
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
+	state, err := s.debugCommand(&api.DebuggerCommand{Name: command}, asyncSetupDone)
 	if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		return
