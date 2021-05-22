@@ -4132,6 +4132,7 @@ func TestUnsupportedCommandResponses(t *testing.T) {
 	})
 }
 
+func TestUnupportedCommandResponses(t *testing.T) {
 	var got *dap.ErrorResponse
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		seqCnt := 1
