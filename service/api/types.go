@@ -67,7 +67,8 @@ type Breakpoint struct {
 
 	// Breakpoint condition
 	Cond string
-	// Breakpoint hit count condition
+	// Breakpoint hit count condition.
+	// Supported hit count conditions are "NUMBER" and "OP NUMBER".
 	HitCond string
 
 	// Tracepoint flag, signifying this is a tracepoint.
