@@ -1368,7 +1368,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					expectVarExact(t, locals, -1, "emptyslice", "emptyslice", "[]string len: 0, cap: 0, []", "[]string", noChildren)
 					expectVarExact(t, locals, -1, "nilslice", "nilslice", "[]int len: 0, cap: 0, nil", "[]int", noChildren)
 					// reflect.Kind == String
-					expectVarExact(t, locals, -1, "longstr", "longstr", "\"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more\"", "string", noChildren)
+					expectVarExact(t, locals, -1, "longstr", "longstr", `"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more"`, "string", noChildren)
 					// reflect.Kind == Struct
 					expectVarExact(t, locals, -1, "zsvar", "zsvar", "struct {} {}", "struct {}", noChildren)
 					// reflect.Kind == UnsafePointer
@@ -1448,7 +1448,7 @@ func TestScopesRequestsOptimized(t *testing.T) {
 		protest.EnableOptimization)
 }
 
-// TestVariablesLoading exposes test cases where variables might be partiall or
+// TestVariablesLoading exposes test cases where variables might be partially or
 // fully unloaded.
 func TestVariablesLoading(t *testing.T) {
 	runTest(t, "testvariables2", func(client *daptest.Client, fixture protest.Fixture) {
@@ -2666,6 +2666,55 @@ func TestEvaluateRequest(t *testing.T) {
 	})
 }
 
+func TestEvaluateRequestLongStr(t *testing.T) {
+	runTest(t, "testvariables2", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Breakpoints are set within the program
+			fixture.Source, []int{},
+			[]onBreakpoint{{
+				execute: func() {
+
+					longstr := `"very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"`
+					longstrTruncated := `"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more"`
+
+					handleStop(t, client, 1, "main.main", -1)
+
+					client.VariablesRequest(1001) // Locals
+					locals := client.ExpectVariablesResponse(t)
+
+					// reflect.Kind == String, load with longer load limit if evaluated in repl/variables context.
+					for _, evalContext := range []string{"", "watch", "repl", "variables", "somethingelse"} {
+						t.Run(evalContext, func(t *testing.T) {
+							// long string
+							client.EvaluateRequest("longstr", 0, evalContext)
+							got := client.ExpectEvaluateResponse(t)
+							want := longstrTruncated
+							if evalContext == "repl" || evalContext == "variables" {
+								want = longstr
+							}
+							expectEval(t, got, want, false)
+
+							// long string as a struct field
+							client.EvaluateRequest("(m6).s", 0, evalContext)
+							got2 := client.ExpectEvaluateResponse(t)
+							expectEval(t, got2, want, false)
+
+							// variables are not affected.
+							expectVarExact(t, locals, -1, "longstr", "longstr", longstrTruncated, "string", noChildren)
+							expectVarExact(t, locals, -1, "m6", "m6", `main.C {s: `+longstrTruncated+`}`, "main.C", hasChildren)
+						})
+					}
+
+				},
+				disconnect: true,
+			}})
+	})
+}
+
 func TestEvaluateCallRequest(t *testing.T) {
 	protest.MustSupportFunctionCalls(t, testBackend)
 	runTest(t, "fncall", func(client *daptest.Client, fixture protest.Fixture) {
@@ -2796,6 +2845,14 @@ func TestEvaluateCallRequest(t *testing.T) {
 					client.EvaluateRequest("call ", 1000, "watch")
 					got = client.ExpectEvaluateResponse(t)
 					expectEval(t, got, "\"this is a variable named `call`\"", noChildren)
+					// Long string as a return value
+					client.EvaluateRequest(`call stringsJoin(longstrs, ",")`, 1000, "variables") // full string
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, `"very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"`, hasChildren)
+					client.EvaluateRequest(`call stringsJoin(longstrs, ",")`, 1000, "watch") // full string
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, `"very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"`, hasChildren)
+
 					// Call error
 					client.EvaluateRequest("call call1(one)", 1000, "watch")
 					erres := client.ExpectInvisibleErrorResponse(t)
