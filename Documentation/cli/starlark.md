@@ -26,6 +26,7 @@ clear_breakpoint(Id, Name) | Equivalent to API call [ClearBreakpoint](https://go
 clear_checkpoint(ID) | Equivalent to API call [ClearCheckpoint](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ClearCheckpoint)
 raw_command(Name, ThreadID, GoroutineID, ReturnInfoLoadConfig, Expr, UnsafeCall) | Equivalent to API call [Command](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Command)
 create_breakpoint(Breakpoint) | Equivalent to API call [CreateBreakpoint](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.CreateBreakpoint)
+create_watchpoint(Scope, Expr, Type) | Equivalent to API call [CreateWatchpoint](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.CreateWatchpoint)
 detach(Kill) | Equivalent to API call [Detach](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Detach)
 disassemble(Scope, StartPC, EndPC, Flavour) | Equivalent to API call [Disassemble](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Disassemble)
 dump_cancel() | Equivalent to API call [DumpCancel](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.DumpCancel)

@@ -1278,7 +1278,7 @@ func TestFrameEvaluation(t *testing.T) {
 		found := make([]bool, 10)
 		for _, g := range gs {
 			frame := -1
-			frames, err := g.Stacktrace(10, 0)
+			frames, err := g.Stacktrace(40, 0)
 			if err != nil {
 				t.Logf("could not stacktrace goroutine %d: %v\n", g.ID, err)
 				continue
@@ -3251,7 +3251,7 @@ func TestCgoStacktrace(t *testing.T) {
 	}
 
 	skipOn(t, "broken - cgo stacktraces", "386")
-	skipOn(t, "broken - cgo stacktraces", "arm64")
+	skipOn(t, "broken - cgo stacktraces", "linux", "arm64")
 	protest.MustHaveCgo(t)
 
 	// Tests that:

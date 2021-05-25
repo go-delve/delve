@@ -939,3 +939,19 @@ type DumpCancelOut struct {
 func (s *RPCServer) DumpCancel(arg DumpCancelIn, out *DumpCancelOut) error {
 	return s.debugger.DumpCancel()
 }
+
+type CreateWatchpointIn struct {
+	Scope api.EvalScope
+	Expr  string
+	Type  api.WatchType
+}
+
+type CreateWatchpointOut struct {
+	*api.Breakpoint
+}
+
+func (s *RPCServer) CreateWatchpoint(arg CreateWatchpointIn, out *CreateWatchpointOut) error {
+	var err error
+	out.Breakpoint, err = s.debugger.CreateWatchpoint(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall, arg.Expr, arg.Type)
+	return err
+}
