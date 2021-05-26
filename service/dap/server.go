@@ -1333,6 +1333,10 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 			stackFrames[i].Source = dap.Source{Name: filepath.Base(clientPath), Path: clientPath}
 		}
 		stackFrames[i].Column = 0
+		if loc.Fn == nil || loc.Fn.PackageName() == "runtime" {
+			stackFrames[i].Source.PresentationHint = "deemphasize"
+			stackFrames[i].Source.Origin = "runtime stack frames"
+		}
 	}
 	// Since the backend doesn't support paging, we load all frames up to
 	// pre-configured depth every time and then slice them here per
