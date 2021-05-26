@@ -16,7 +16,7 @@ func (c *Client) ExpectAttachResponse(t *testing.T) *dap.AttachResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.AttachResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.AttachResponse", m)
+		t.Fatalf("got %#v, want *dap.AttachResponse", m)
 	}
 	return r
 }
@@ -28,7 +28,7 @@ func (c *Client) ExpectBreakpointEvent(t *testing.T) *dap.BreakpointEvent {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.BreakpointEvent)
 	if !ok {
-		t.Fatalf("got %q, want *dap.BreakpointEvent", m)
+		t.Fatalf("got %#v, want *dap.BreakpointEvent", m)
 	}
 	return r
 }
@@ -40,7 +40,7 @@ func (c *Client) ExpectBreakpointLocationsResponse(t *testing.T) *dap.Breakpoint
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.BreakpointLocationsResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.BreakpointLocationsResponse", m)
+		t.Fatalf("got %#v, want *dap.BreakpointLocationsResponse", m)
 	}
 	return r
 }
@@ -52,7 +52,7 @@ func (c *Client) ExpectCancelResponse(t *testing.T) *dap.CancelResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.CancelResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.CancelResponse", m)
+		t.Fatalf("got %#v, want *dap.CancelResponse", m)
 	}
 	return r
 }
@@ -64,7 +64,7 @@ func (c *Client) ExpectCapabilitiesEvent(t *testing.T) *dap.CapabilitiesEvent {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.CapabilitiesEvent)
 	if !ok {
-		t.Fatalf("got %q, want *dap.CapabilitiesEvent", m)
+		t.Fatalf("got %#v, want *dap.CapabilitiesEvent", m)
 	}
 	return r
 }
@@ -76,7 +76,7 @@ func (c *Client) ExpectCompletionsResponse(t *testing.T) *dap.CompletionsRespons
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.CompletionsResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.CompletionsResponse", m)
+		t.Fatalf("got %#v, want *dap.CompletionsResponse", m)
 	}
 	return r
 }
@@ -88,7 +88,7 @@ func (c *Client) ExpectConfigurationDoneResponse(t *testing.T) *dap.Configuratio
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.ConfigurationDoneResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.ConfigurationDoneResponse", m)
+		t.Fatalf("got %#v, want *dap.ConfigurationDoneResponse", m)
 	}
 	return r
 }
@@ -100,7 +100,7 @@ func (c *Client) ExpectContinueResponse(t *testing.T) *dap.ContinueResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.ContinueResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.ContinueResponse", m)
+		t.Fatalf("got %#v, want *dap.ContinueResponse", m)
 	}
 	return r
 }
@@ -112,7 +112,7 @@ func (c *Client) ExpectContinuedEvent(t *testing.T) *dap.ContinuedEvent {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.ContinuedEvent)
 	if !ok {
-		t.Fatalf("got %q, want *dap.ContinuedEvent", m)
+		t.Fatalf("got %#v, want *dap.ContinuedEvent", m)
 	}
 	return r
 }
@@ -124,7 +124,7 @@ func (c *Client) ExpectDataBreakpointInfoResponse(t *testing.T) *dap.DataBreakpo
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.DataBreakpointInfoResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.DataBreakpointInfoResponse", m)
+		t.Fatalf("got %#v, want *dap.DataBreakpointInfoResponse", m)
 	}
 	return r
 }
@@ -136,7 +136,7 @@ func (c *Client) ExpectDisassembleResponse(t *testing.T) *dap.DisassembleRespons
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.DisassembleResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.DisassembleResponse", m)
+		t.Fatalf("got %#v, want *dap.DisassembleResponse", m)
 	}
 	return r
 }
@@ -148,7 +148,7 @@ func (c *Client) ExpectDisconnectResponse(t *testing.T) *dap.DisconnectResponse 
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.DisconnectResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.DisconnectResponse", m)
+		t.Fatalf("got %#v, want *dap.DisconnectResponse", m)
 	}
 	return r
 }
@@ -160,7 +160,7 @@ func (c *Client) ExpectErrorResponse(t *testing.T) *dap.ErrorResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.ErrorResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.ErrorResponse", m)
+		t.Fatalf("got %#v, want *dap.ErrorResponse", m)
 	}
 	return r
 }
@@ -172,7 +172,7 @@ func (c *Client) ExpectEvaluateResponse(t *testing.T) *dap.EvaluateResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.EvaluateResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.EvaluateResponse", m)
+		t.Fatalf("got %#v, want *dap.EvaluateResponse", m)
 	}
 	return r
 }
@@ -184,7 +184,7 @@ func (c *Client) ExpectExceptionInfoResponse(t *testing.T) *dap.ExceptionInfoRes
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.ExceptionInfoResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.ExceptionInfoResponse", m)
+		t.Fatalf("got %#v, want *dap.ExceptionInfoResponse", m)
 	}
 	return r
 }
@@ -196,7 +196,7 @@ func (c *Client) ExpectExitedEvent(t *testing.T) *dap.ExitedEvent {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.ExitedEvent)
 	if !ok {
-		t.Fatalf("got %q, want *dap.ExitedEvent", m)
+		t.Fatalf("got %#v, want *dap.ExitedEvent", m)
 	}
 	return r
 }
@@ -208,7 +208,7 @@ func (c *Client) ExpectGotoResponse(t *testing.T) *dap.GotoResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.GotoResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.GotoResponse", m)
+		t.Fatalf("got %#v, want *dap.GotoResponse", m)
 	}
 	return r
 }
@@ -220,7 +220,7 @@ func (c *Client) ExpectGotoTargetsResponse(t *testing.T) *dap.GotoTargetsRespons
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.GotoTargetsResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.GotoTargetsResponse", m)
+		t.Fatalf("got %#v, want *dap.GotoTargetsResponse", m)
 	}
 	return r
 }
@@ -232,7 +232,7 @@ func (c *Client) ExpectInitializeResponse(t *testing.T) *dap.InitializeResponse 
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.InitializeResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.InitializeResponse", m)
+		t.Fatalf("got %#v, want *dap.InitializeResponse", m)
 	}
 	return r
 }
@@ -244,7 +244,7 @@ func (c *Client) ExpectInitializedEvent(t *testing.T) *dap.InitializedEvent {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.InitializedEvent)
 	if !ok {
-		t.Fatalf("got %q, want *dap.InitializedEvent", m)
+		t.Fatalf("got %#v, want *dap.InitializedEvent", m)
 	}
 	return r
 }
@@ -256,7 +256,7 @@ func (c *Client) ExpectInvalidatedEvent(t *testing.T) *dap.InvalidatedEvent {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.InvalidatedEvent)
 	if !ok {
-		t.Fatalf("got %q, want *dap.InvalidatedEvent", m)
+		t.Fatalf("got %#v, want *dap.InvalidatedEvent", m)
 	}
 	return r
 }
@@ -268,7 +268,7 @@ func (c *Client) ExpectLaunchResponse(t *testing.T) *dap.LaunchResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.LaunchResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.LaunchResponse", m)
+		t.Fatalf("got %#v, want *dap.LaunchResponse", m)
 	}
 	return r
 }
@@ -280,7 +280,7 @@ func (c *Client) ExpectLoadedSourceEvent(t *testing.T) *dap.LoadedSourceEvent {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.LoadedSourceEvent)
 	if !ok {
-		t.Fatalf("got %q, want *dap.LoadedSourceEvent", m)
+		t.Fatalf("got %#v, want *dap.LoadedSourceEvent", m)
 	}
 	return r
 }
@@ -292,7 +292,7 @@ func (c *Client) ExpectLoadedSourcesResponse(t *testing.T) *dap.LoadedSourcesRes
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.LoadedSourcesResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.LoadedSourcesResponse", m)
+		t.Fatalf("got %#v, want *dap.LoadedSourcesResponse", m)
 	}
 	return r
 }
@@ -304,7 +304,7 @@ func (c *Client) ExpectModuleEvent(t *testing.T) *dap.ModuleEvent {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.ModuleEvent)
 	if !ok {
-		t.Fatalf("got %q, want *dap.ModuleEvent", m)
+		t.Fatalf("got %#v, want *dap.ModuleEvent", m)
 	}
 	return r
 }
@@ -316,7 +316,7 @@ func (c *Client) ExpectModulesResponse(t *testing.T) *dap.ModulesResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.ModulesResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.ModulesResponse", m)
+		t.Fatalf("got %#v, want *dap.ModulesResponse", m)
 	}
 	return r
 }
@@ -328,7 +328,7 @@ func (c *Client) ExpectNextResponse(t *testing.T) *dap.NextResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.NextResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.NextResponse", m)
+		t.Fatalf("got %#v, want *dap.NextResponse", m)
 	}
 	return r
 }
@@ -340,7 +340,7 @@ func (c *Client) ExpectOutputEvent(t *testing.T) *dap.OutputEvent {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.OutputEvent)
 	if !ok {
-		t.Fatalf("got %q, want *dap.OutputEvent", m)
+		t.Fatalf("got %#v, want *dap.OutputEvent", m)
 	}
 	return r
 }
@@ -352,7 +352,7 @@ func (c *Client) ExpectPauseResponse(t *testing.T) *dap.PauseResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.PauseResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.PauseResponse", m)
+		t.Fatalf("got %#v, want *dap.PauseResponse", m)
 	}
 	return r
 }
@@ -364,7 +364,7 @@ func (c *Client) ExpectProcessEvent(t *testing.T) *dap.ProcessEvent {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.ProcessEvent)
 	if !ok {
-		t.Fatalf("got %q, want *dap.ProcessEvent", m)
+		t.Fatalf("got %#v, want *dap.ProcessEvent", m)
 	}
 	return r
 }
@@ -376,7 +376,7 @@ func (c *Client) ExpectProgressEndEvent(t *testing.T) *dap.ProgressEndEvent {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.ProgressEndEvent)
 	if !ok {
-		t.Fatalf("got %q, want *dap.ProgressEndEvent", m)
+		t.Fatalf("got %#v, want *dap.ProgressEndEvent", m)
 	}
 	return r
 }
@@ -388,7 +388,7 @@ func (c *Client) ExpectProgressStartEvent(t *testing.T) *dap.ProgressStartEvent 
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.ProgressStartEvent)
 	if !ok {
-		t.Fatalf("got %q, want *dap.ProgressStartEvent", m)
+		t.Fatalf("got %#v, want *dap.ProgressStartEvent", m)
 	}
 	return r
 }
@@ -400,7 +400,7 @@ func (c *Client) ExpectProgressUpdateEvent(t *testing.T) *dap.ProgressUpdateEven
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.ProgressUpdateEvent)
 	if !ok {
-		t.Fatalf("got %q, want *dap.ProgressUpdateEvent", m)
+		t.Fatalf("got %#v, want *dap.ProgressUpdateEvent", m)
 	}
 	return r
 }
@@ -412,7 +412,7 @@ func (c *Client) ExpectReadMemoryResponse(t *testing.T) *dap.ReadMemoryResponse 
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.ReadMemoryResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.ReadMemoryResponse", m)
+		t.Fatalf("got %#v, want *dap.ReadMemoryResponse", m)
 	}
 	return r
 }
@@ -424,7 +424,7 @@ func (c *Client) ExpectRestartFrameResponse(t *testing.T) *dap.RestartFrameRespo
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.RestartFrameResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.RestartFrameResponse", m)
+		t.Fatalf("got %#v, want *dap.RestartFrameResponse", m)
 	}
 	return r
 }
@@ -436,7 +436,7 @@ func (c *Client) ExpectRestartResponse(t *testing.T) *dap.RestartResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.RestartResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.RestartResponse", m)
+		t.Fatalf("got %#v, want *dap.RestartResponse", m)
 	}
 	return r
 }
@@ -448,7 +448,7 @@ func (c *Client) ExpectReverseContinueResponse(t *testing.T) *dap.ReverseContinu
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.ReverseContinueResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.ReverseContinueResponse", m)
+		t.Fatalf("got %#v, want *dap.ReverseContinueResponse", m)
 	}
 	return r
 }
@@ -460,7 +460,7 @@ func (c *Client) ExpectRunInTerminalResponse(t *testing.T) *dap.RunInTerminalRes
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.RunInTerminalResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.RunInTerminalResponse", m)
+		t.Fatalf("got %#v, want *dap.RunInTerminalResponse", m)
 	}
 	return r
 }
@@ -472,7 +472,7 @@ func (c *Client) ExpectScopesResponse(t *testing.T) *dap.ScopesResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.ScopesResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.ScopesResponse", m)
+		t.Fatalf("got %#v, want *dap.ScopesResponse", m)
 	}
 	return r
 }
@@ -484,7 +484,7 @@ func (c *Client) ExpectSetBreakpointsResponse(t *testing.T) *dap.SetBreakpointsR
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.SetBreakpointsResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.SetBreakpointsResponse", m)
+		t.Fatalf("got %#v, want *dap.SetBreakpointsResponse", m)
 	}
 	return r
 }
@@ -496,7 +496,7 @@ func (c *Client) ExpectSetDataBreakpointsResponse(t *testing.T) *dap.SetDataBrea
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.SetDataBreakpointsResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.SetDataBreakpointsResponse", m)
+		t.Fatalf("got %#v, want *dap.SetDataBreakpointsResponse", m)
 	}
 	return r
 }
@@ -508,7 +508,7 @@ func (c *Client) ExpectSetExceptionBreakpointsResponse(t *testing.T) *dap.SetExc
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.SetExceptionBreakpointsResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.SetExceptionBreakpointsResponse", m)
+		t.Fatalf("got %#v, want *dap.SetExceptionBreakpointsResponse", m)
 	}
 	return r
 }
@@ -520,7 +520,7 @@ func (c *Client) ExpectSetExpressionResponse(t *testing.T) *dap.SetExpressionRes
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.SetExpressionResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.SetExpressionResponse", m)
+		t.Fatalf("got %#v, want *dap.SetExpressionResponse", m)
 	}
 	return r
 }
@@ -532,7 +532,7 @@ func (c *Client) ExpectSetFunctionBreakpointsResponse(t *testing.T) *dap.SetFunc
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.SetFunctionBreakpointsResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.SetFunctionBreakpointsResponse", m)
+		t.Fatalf("got %#v, want *dap.SetFunctionBreakpointsResponse", m)
 	}
 	return r
 }
@@ -544,7 +544,7 @@ func (c *Client) ExpectSetInstructionBreakpointsResponse(t *testing.T) *dap.SetI
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.SetInstructionBreakpointsResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.SetInstructionBreakpointsResponse", m)
+		t.Fatalf("got %#v, want *dap.SetInstructionBreakpointsResponse", m)
 	}
 	return r
 }
@@ -556,7 +556,7 @@ func (c *Client) ExpectSetVariableResponse(t *testing.T) *dap.SetVariableRespons
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.SetVariableResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.SetVariableResponse", m)
+		t.Fatalf("got %#v, want *dap.SetVariableResponse", m)
 	}
 	return r
 }
@@ -568,7 +568,7 @@ func (c *Client) ExpectSourceResponse(t *testing.T) *dap.SourceResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.SourceResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.SourceResponse", m)
+		t.Fatalf("got %#v, want *dap.SourceResponse", m)
 	}
 	return r
 }
@@ -580,7 +580,7 @@ func (c *Client) ExpectStackTraceResponse(t *testing.T) *dap.StackTraceResponse 
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.StackTraceResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.StackTraceResponse", m)
+		t.Fatalf("got %#v, want *dap.StackTraceResponse", m)
 	}
 	return r
 }
@@ -592,7 +592,7 @@ func (c *Client) ExpectStepBackResponse(t *testing.T) *dap.StepBackResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.StepBackResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.StepBackResponse", m)
+		t.Fatalf("got %#v, want *dap.StepBackResponse", m)
 	}
 	return r
 }
@@ -604,7 +604,7 @@ func (c *Client) ExpectStepInResponse(t *testing.T) *dap.StepInResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.StepInResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.StepInResponse", m)
+		t.Fatalf("got %#v, want *dap.StepInResponse", m)
 	}
 	return r
 }
@@ -616,7 +616,7 @@ func (c *Client) ExpectStepInTargetsResponse(t *testing.T) *dap.StepInTargetsRes
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.StepInTargetsResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.StepInTargetsResponse", m)
+		t.Fatalf("got %#v, want *dap.StepInTargetsResponse", m)
 	}
 	return r
 }
@@ -628,7 +628,7 @@ func (c *Client) ExpectStepOutResponse(t *testing.T) *dap.StepOutResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.StepOutResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.StepOutResponse", m)
+		t.Fatalf("got %#v, want *dap.StepOutResponse", m)
 	}
 	return r
 }
@@ -640,7 +640,7 @@ func (c *Client) ExpectStoppedEvent(t *testing.T) *dap.StoppedEvent {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.StoppedEvent)
 	if !ok {
-		t.Fatalf("got %q, want *dap.StoppedEvent", m)
+		t.Fatalf("got %#v, want *dap.StoppedEvent", m)
 	}
 	return r
 }
@@ -652,7 +652,7 @@ func (c *Client) ExpectTerminateResponse(t *testing.T) *dap.TerminateResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.TerminateResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.TerminateResponse", m)
+		t.Fatalf("got %#v, want *dap.TerminateResponse", m)
 	}
 	return r
 }
@@ -664,7 +664,7 @@ func (c *Client) ExpectTerminateThreadsResponse(t *testing.T) *dap.TerminateThre
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.TerminateThreadsResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.TerminateThreadsResponse", m)
+		t.Fatalf("got %#v, want *dap.TerminateThreadsResponse", m)
 	}
 	return r
 }
@@ -676,7 +676,7 @@ func (c *Client) ExpectTerminatedEvent(t *testing.T) *dap.TerminatedEvent {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.TerminatedEvent)
 	if !ok {
-		t.Fatalf("got %q, want *dap.TerminatedEvent", m)
+		t.Fatalf("got %#v, want *dap.TerminatedEvent", m)
 	}
 	return r
 }
@@ -688,7 +688,7 @@ func (c *Client) ExpectThreadEvent(t *testing.T) *dap.ThreadEvent {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.ThreadEvent)
 	if !ok {
-		t.Fatalf("got %q, want *dap.ThreadEvent", m)
+		t.Fatalf("got %#v, want *dap.ThreadEvent", m)
 	}
 	return r
 }
@@ -700,7 +700,7 @@ func (c *Client) ExpectThreadsResponse(t *testing.T) *dap.ThreadsResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.ThreadsResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.ThreadsResponse", m)
+		t.Fatalf("got %#v, want *dap.ThreadsResponse", m)
 	}
 	return r
 }
@@ -712,7 +712,7 @@ func (c *Client) ExpectVariablesResponse(t *testing.T) *dap.VariablesResponse {
 	m := c.ExpectMessage(t)
 	r, ok := m.(*dap.VariablesResponse)
 	if !ok {
-		t.Fatalf("got %q, want *dap.VariablesResponse", m)
+		t.Fatalf("got %#v, want *dap.VariablesResponse", m)
 	}
 	return r
 }

@@ -83,6 +83,11 @@ type Breakpoint struct {
 	LoadArgs *LoadConfig
 	// LoadLocals requests loading function locals when the breakpoint is hit
 	LoadLocals *LoadConfig
+
+	// WatchExpr is the expression used to create this watchpoint
+	WatchExpr string
+	WatchType WatchType
+
 	// number of times a breakpoint has been reached in a certain goroutine
 	HitCount map[string]uint64 `json:"hitCount"`
 	// number of times a breakpoint has been reached
@@ -108,6 +113,14 @@ func ValidBreakpointName(name string) error {
 
 	return nil
 }
+
+// WatchType is the watchpoint type
+type WatchType uint8
+
+const (
+	WatchRead WatchType = 1 << iota
+	WatchWrite
+)
 
 // Thread is a thread within the debugged process.
 type Thread struct {
@@ -414,6 +427,9 @@ const (
 	// SwitchGoroutine switches the debugger's current thread context to the thread running the specified goroutine
 	SwitchGoroutine = "switchGoroutine"
 	// Halt suspends the process.
+	// The effect of Halt while the target process is stopped, or in the
+	// process of stopping, is operating system and timing dependent. It will
+	// either have no effect or cause the following resume to stop immediately.
 	Halt = "halt"
 	// Call resumes process execution injecting a function call.
 	Call = "call"

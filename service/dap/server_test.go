@@ -47,7 +47,11 @@ func TestMain(m *testing.M) {
 
 // name is for _fixtures/<name>.go
 func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.Fixture)) {
-	var buildFlags protest.BuildFlags = protest.AllNonOptimized
+	runTestBuildFlags(t, name, test, protest.AllNonOptimized)
+}
+
+// name is for _fixtures/<name>.go
+func runTestBuildFlags(t *testing.T, name string, test func(c *daptest.Client, f protest.Fixture), buildFlags protest.BuildFlags) {
 	fixture := protest.BuildFixture(name, buildFlags)
 
 	// Start the DAP server.
@@ -365,69 +369,25 @@ func TestAttachStopOnEntry(t *testing.T) {
 		client.DisconnectRequestWithKillOption(true)
 
 		// Disconnect consists of Halt + Detach.
-		// Several scenarios are somehow possible:
-		// even though the program has an infininte loop,
-		// it apears that a halt can cause the process to exit.
-		msg := client.ExpectMessage(t)
-		switch m := msg.(type) { // Halt will interrupt continue with a stop or exit
-		case *dap.StoppedEvent:
-			if m.Seq != 0 || m.Body.Reason != "pause" {
-				t.Errorf("\ngot %#v\nwant Seq=0 Reason='pause'", m)
-			}
-			oed := client.ExpectOutputEventDetachingKill(t)
-			if oed.Seq != 0 || oed.Body.Category != "console" {
-				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
-			}
-		case *dap.OutputEvent:
-			matched, _ := regexp.MatchString(`Process \d+ has exited with status 0`, m.Body.Output)
-			if m.Seq != 0 || m.Body.Category != "console" || !matched {
-				t.Errorf("\ngot %#v\nwant Seq=0 Category = 'console' Output='Process ... has exited with status 0'", m)
-			}
-			client.ExpectTerminatedEvent(t)
-			if m.Seq != 0 {
-				t.Errorf("\ngot %#v\nwant Seq=0", m)
-			}
-			oep := client.ExpectOutputEventProcessExited(t, 0)
-			if oep.Seq != 0 || oep.Body.Category != "console" {
-				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
-			}
-			oed := client.ExpectOutputEventDetaching(t)
-			if oed.Seq != 0 || oed.Body.Category != "console" {
-				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
-			}
-		case *dap.TerminatedEvent:
-			if m.Seq != 0 {
-				t.Errorf("\ngot %#v\nwant Seq=0", m)
-			}
-			oep := client.ExpectOutputEvent(t)
-			if oep.Seq != 0 || oep.Body.Category != "console" {
-				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
-			}
-			if !strings.Contains(oep.Body.Output, "no such process") && !strings.Contains(oep.Body.Output, "has exited with status") {
-				t.Errorf("\ngot %#v\nwant Output='no such process' or 'Process ... has exited with status'", oep)
-			}
-			oed := client.ExpectOutputEventDetaching(t)
-			if oed.Seq != 0 || oed.Body.Category != "console" {
-				t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
-			}
-		default:
-			t.Fatalf("got %#v, want StoppedEvent or TerminatedEvent or OutputEvent+TerminatedEvent", m)
+		// Halt interrupts command in progress, which triggers
+		// a stopped event in parallel with the disconnect
+		// sequence. It might arrive before or during the sequence
+		// or never if the server exits before it is sent.
+		msg := expectMessageFilterStopped(t, client)
+		if _, ok := msg.(*dap.OutputEvent); !ok {
+			// want detach kill output message
+			t.Errorf("got %#v, want *dap.OutputEvent", msg)
 		}
-		msg = client.ExpectMessage(t)
-		switch m := msg.(type) { // Detach might encounter no running process
-		case *dap.ErrorResponse:
-			details := "Error while disconnecting: no such process"
-			if m.Seq != 0 || m.RequestSeq != 13 || m.Command != "disconnect" || m.Body.Error.Format != details {
-				t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13 Error=%q", m, details)
-			}
-		case *dap.DisconnectResponse:
-			if m.Seq != 0 || m.RequestSeq != 13 {
-				t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13", m)
-			}
-		default:
-			t.Fatalf("got %#v, want ErrorResponse or DisconnectResponse", m)
-
+		msg = expectMessageFilterStopped(t, client)
+		if _, ok := msg.(*dap.DisconnectResponse); !ok {
+			t.Errorf("got %#v, want *dap.DisconnectResponse", msg)
 		}
+		// If this call to KeepAlive isn't here there's a chance that stdout will
+		// be garbage collected (since it is no longer alive long before this
+		// point), when that happens, on unix-like OSes, the read end of the pipe
+		// will be closed by the finalizer and the target process will die by
+		// SIGPIPE, which the rest of this test does not expect.
+		runtime.KeepAlive(stdout)
 	})
 }
 
@@ -468,9 +428,9 @@ func TestContinueOnEntry(t *testing.T) {
 				}
 				// Single current thread is sent when the program is running
 				// because DAP spec expects at least one thread.
-				// TODO(polina): accept empty already-terminated response here as well?
-				if len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != -1 || m.Body.Threads[0].Name != "Current" {
-					t.Errorf("\ngot  %#v\nwant Id=-1, Name=\"Current\"", m.Body.Threads)
+				// Also accept empty already-terminated response.
+				if len(m.Body.Threads) != 0 && (len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != -1 || m.Body.Threads[0].Name != "Current") {
+					t.Errorf("\ngot  %#v\nwant Id=-1, Name=\"Current\" or empty", m.Body.Threads)
 				}
 			case *dap.TerminatedEvent:
 			default:
@@ -533,8 +493,12 @@ func TestPreSetBreakpoint(t *testing.T) {
 			msg := client.ExpectMessage(t)
 			switch m := msg.(type) {
 			case *dap.ThreadsResponse:
-				if len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != -1 || m.Body.Threads[0].Name != "Current" {
-					t.Errorf("\ngot  %#v\nwant Id=-1, Name=\"Current\"", m.Body.Threads)
+				// If the thread request arrived while the program was running, we expect to get the dummy response
+				// with a single goroutine "Current".
+				// If the thread request arrived after the stop, we should get the goroutine stopped at main.Increment.
+				if (len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != -1 || m.Body.Threads[0].Name != "Current") &&
+					(len(m.Body.Threads) < 1 || m.Body.Threads[0].Id != 1 || !strings.HasPrefix(m.Body.Threads[0].Name, "* [Go 1] main.Increment")) {
+					t.Errorf("\ngot  %#v\nwant Id=-1, Name=\"Current\" or Id=1, Name=\"* [Go 1] main.Increment ...\"", m.Body.Threads)
 				}
 			case *dap.StoppedEvent:
 				if m.Body.Reason != "breakpoint" || m.Body.ThreadId != 1 || !m.Body.AllThreadsStopped {
@@ -598,8 +562,8 @@ func TestPreSetBreakpoint(t *testing.T) {
 		client.VariablesRequest(1000) // Arguments
 		args := client.ExpectVariablesResponse(t)
 		expectChildren(t, args, "Arguments", 2)
-		expectVarExact(t, args, 0, "y", "y", "0", noChildren)
-		expectVarExact(t, args, 1, "~r1", "", "0", noChildren)
+		expectVarExact(t, args, 0, "y", "y", "0", "uint", noChildren)
+		expectVarExact(t, args, 1, "~r1", "", "0", "uint", noChildren)
 
 		client.VariablesRequest(1001) // Locals
 		locals := client.ExpectVariablesResponse(t)
@@ -613,6 +577,20 @@ func TestPreSetBreakpoint(t *testing.T) {
 		// "Continue" is triggered after the response is sent
 
 		client.ExpectTerminatedEvent(t)
+
+		// Pause request after termination should result in an error.
+		// But in certain cases this request actually succeeds.
+		client.PauseRequest(1)
+		switch r := client.ExpectMessage(t).(type) {
+		case *dap.ErrorResponse:
+			if r.Message != "Unable to halt execution" {
+				t.Errorf("\ngot  %#v\nwant Message='Unable to halt execution'", r)
+			}
+		case *dap.PauseResponse:
+		default:
+			t.Fatalf("Unexpected response type: expect error or pause, got %#v", r)
+		}
+
 		client.DisconnectRequest()
 		client.ExpectOutputEventProcessExited(t, 0)
 		client.ExpectOutputEventDetaching(t)
@@ -693,7 +671,7 @@ func expectChildren(t *testing.T, got *dap.VariablesResponse, parentName string,
 //     useExactMatch - true if name, evalName and value are to be compared to exactly, false if to be used as regex
 //     hasRef - true if the variable should have children and therefore a non-0 variable reference
 //     ref - reference to retrieve children of this variable (0 if none)
-func expectVar(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value string, useExactMatch, hasRef bool) (ref int) {
+func expectVar(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, useExactMatch, hasRef bool) (ref int) {
 	t.Helper()
 	if len(got.Body.Variables) <= i {
 		t.Errorf("\ngot  len=%d (children=%#v)\nwant len>%d", len(got.Body.Variables), got.Body.Variables, i)
@@ -740,19 +718,36 @@ func expectVar(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, 
 	if !matchedValue {
 		t.Errorf("\ngot  %s=%q\nwant %q", name, goti.Value, value)
 	}
+	matchedType := false
+	if useExactMatch {
+		matchedType = (goti.Type == typ)
+	} else {
+		matchedType, _ = regexp.MatchString(typ, goti.Type)
+	}
+	if !matchedType {
+		t.Errorf("\ngot  %s=%q\nwant %q", name, goti.Type, typ)
+	}
 	return goti.VariablesReference
 }
 
 // expectVarExact is a helper like expectVar that matches value exactly.
-func expectVarExact(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value string, hasRef bool) (ref int) {
+func expectVarExact(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, hasRef bool) (ref int) {
 	t.Helper()
-	return expectVar(t, got, i, name, evalName, value, true, hasRef)
+	return expectVar(t, got, i, name, evalName, value, typ, true, hasRef)
 }
 
 // expectVarRegex is a helper like expectVar that treats value, evalName or name as a regex.
-func expectVarRegex(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value string, hasRef bool) (ref int) {
+func expectVarRegex(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, hasRef bool) (ref int) {
 	t.Helper()
-	return expectVar(t, got, i, name, evalName, value, false, hasRef)
+	return expectVar(t, got, i, name, evalName, value, typ, false, hasRef)
+}
+
+func expectMessageFilterStopped(t *testing.T, client *daptest.Client) dap.Message {
+	msg := client.ExpectMessage(t)
+	if _, isStopped := msg.(*dap.StoppedEvent); isStopped {
+		msg = client.ExpectMessage(t)
+	}
+	return msg
 }
 
 // validateEvaluateName issues an evaluate request with evaluateName of a variable and
@@ -885,14 +880,14 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					client.VariablesRequest(1000)
 					args := client.ExpectVariablesResponse(t)
 					expectChildren(t, args, "Arguments", 2)
-					expectVarExact(t, args, 0, "baz", "baz", `"bazburzum"`, noChildren)
-					ref := expectVarExact(t, args, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, hasChildren)
+					expectVarExact(t, args, 0, "baz", "baz", `"bazburzum"`, "string", noChildren)
+					ref := expectVarExact(t, args, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						bar := client.ExpectVariablesResponse(t)
 						expectChildren(t, bar, "bar", 2)
-						expectVarExact(t, bar, 0, "Baz", "bar.Baz", "10", noChildren)
-						expectVarExact(t, bar, 1, "Bur", "bar.Bur", `"lorem"`, noChildren)
+						expectVarExact(t, bar, 0, "Baz", "bar.Baz", "10", "int", noChildren)
+						expectVarExact(t, bar, 1, "Bur", "bar.Bur", `"lorem"`, "string", noChildren)
 						validateEvaluateName(t, client, bar, 0)
 						validateEvaluateName(t, client, bar, 1)
 					}
@@ -901,7 +896,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 
 					client.VariablesRequest(1002)
 					globals := client.ExpectVariablesResponse(t)
-					expectVarExact(t, globals, 0, "p1", "main.p1", "10", noChildren)
+					expectVarExact(t, globals, 0, "p1", "main.p1", "10", "int", noChildren)
 
 					// Locals
 
@@ -910,75 +905,75 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					expectChildren(t, locals, "Locals", 31)
 
 					// reflect.Kind == Bool
-					expectVarExact(t, locals, -1, "b1", "b1", "true", noChildren)
-					expectVarExact(t, locals, -1, "b2", "b2", "false", noChildren)
+					expectVarExact(t, locals, -1, "b1", "b1", "true", "bool", noChildren)
+					expectVarExact(t, locals, -1, "b2", "b2", "false", "bool", noChildren)
 					// reflect.Kind == Int
-					expectVarExact(t, locals, -1, "a2", "a2", "6", noChildren)
-					expectVarExact(t, locals, -1, "neg", "neg", "-1", noChildren)
+					expectVarExact(t, locals, -1, "a2", "a2", "6", "int", noChildren)
+					expectVarExact(t, locals, -1, "neg", "neg", "-1", "int", noChildren)
 					// reflect.Kind == Int8
-					expectVarExact(t, locals, -1, "i8", "i8", "1", noChildren)
+					expectVarExact(t, locals, -1, "i8", "i8", "1", "int8", noChildren)
 					// reflect.Kind == Int16 - see testvariables2
 					// reflect.Kind == Int32 - see testvariables2
 					// reflect.Kind == Int64 - see testvariables2
 					// reflect.Kind == Uint
 					// reflect.Kind == Uint8
-					expectVarExact(t, locals, -1, "u8", "u8", "255", noChildren)
+					expectVarExact(t, locals, -1, "u8", "u8", "255", "uint8", noChildren)
 					// reflect.Kind == Uint16
-					expectVarExact(t, locals, -1, "u16", "u16", "65535", noChildren)
+					expectVarExact(t, locals, -1, "u16", "u16", "65535", "uint16", noChildren)
 					// reflect.Kind == Uint32
-					expectVarExact(t, locals, -1, "u32", "u32", "4294967295", noChildren)
+					expectVarExact(t, locals, -1, "u32", "u32", "4294967295", "uint32", noChildren)
 					// reflect.Kind == Uint64
-					expectVarExact(t, locals, -1, "u64", "u64", "18446744073709551615", noChildren)
+					expectVarExact(t, locals, -1, "u64", "u64", "18446744073709551615", "uint64", noChildren)
 					// reflect.Kind == Uintptr
-					expectVarExact(t, locals, -1, "up", "up", "5", noChildren)
+					expectVarExact(t, locals, -1, "up", "up", "5", "uintptr", noChildren)
 					// reflect.Kind == Float32
-					expectVarExact(t, locals, -1, "f32", "f32", "1.2", noChildren)
+					expectVarExact(t, locals, -1, "f32", "f32", "1.2", "float32", noChildren)
 					// reflect.Kind == Float64
-					expectVarExact(t, locals, -1, "a3", "a3", "7.23", noChildren)
+					expectVarExact(t, locals, -1, "a3", "a3", "7.23", "float64", noChildren)
 					// reflect.Kind == Complex64
-					ref = expectVarExact(t, locals, -1, "c64", "c64", "(1 + 2i)", hasChildren)
+					ref = expectVarExact(t, locals, -1, "c64", "c64", "(1 + 2i)", "complex64", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						c64 := client.ExpectVariablesResponse(t)
 						expectChildren(t, c64, "c64", 2)
-						expectVarExact(t, c64, 0, "real", "", "1", noChildren)
-						expectVarExact(t, c64, 1, "imaginary", "", "2", noChildren)
+						expectVarExact(t, c64, 0, "real", "", "1", "float32", noChildren)
+						expectVarExact(t, c64, 1, "imaginary", "", "2", "float32", noChildren)
 					}
 					// reflect.Kind == Complex128
-					ref = expectVarExact(t, locals, -1, "c128", "c128", "(2 + 3i)", hasChildren)
+					ref = expectVarExact(t, locals, -1, "c128", "c128", "(2 + 3i)", "complex128", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						c128 := client.ExpectVariablesResponse(t)
 						expectChildren(t, c128, "c128", 2)
-						expectVarExact(t, c128, 0, "real", "", "2", noChildren)
-						expectVarExact(t, c128, 1, "imaginary", "", "3", noChildren)
+						expectVarExact(t, c128, 0, "real", "", "2", "float64", noChildren)
+						expectVarExact(t, c128, 1, "imaginary", "", "3", "float64", noChildren)
 					}
 					// reflect.Kind == Array
-					ref = expectVarExact(t, locals, -1, "a4", "a4", "[2]int [1,2]", hasChildren)
+					ref = expectVarExact(t, locals, -1, "a4", "a4", "[2]int [1,2]", "[2]int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						a4 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a4, "a4", 2)
-						expectVarExact(t, a4, 0, "[0]", "a4[0]", "1", noChildren)
-						expectVarExact(t, a4, 1, "[1]", "a4[1]", "2", noChildren)
+						expectVarExact(t, a4, 0, "[0]", "a4[0]", "1", "int", noChildren)
+						expectVarExact(t, a4, 1, "[1]", "a4[1]", "2", "int", noChildren)
 					}
-					ref = expectVarExact(t, locals, -1, "a11", "a11", `[3]main.FooBar [{Baz: 1, Bur: "a"},{Baz: 2, Bur: "b"},{Baz: 3, Bur: "c"}]`, hasChildren)
+					ref = expectVarExact(t, locals, -1, "a11", "a11", `[3]main.FooBar [{Baz: 1, Bur: "a"},{Baz: 2, Bur: "b"},{Baz: 3, Bur: "c"}]`, "[3]main.FooBar", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						a11 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a11, "a11", 3)
-						expectVarExact(t, a11, 0, "[0]", "a11[0]", `main.FooBar {Baz: 1, Bur: "a"}`, hasChildren)
-						ref = expectVarExact(t, a11, 1, "[1]", "a11[1]", `main.FooBar {Baz: 2, Bur: "b"}`, hasChildren)
+						expectVarExact(t, a11, 0, "[0]", "a11[0]", `main.FooBar {Baz: 1, Bur: "a"}`, "main.FooBar", hasChildren)
+						ref = expectVarExact(t, a11, 1, "[1]", "a11[1]", `main.FooBar {Baz: 2, Bur: "b"}`, "main.FooBar", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							a11_1 := client.ExpectVariablesResponse(t)
 							expectChildren(t, a11_1, "a11[1]", 2)
-							expectVarExact(t, a11_1, 0, "Baz", "a11[1].Baz", "2", noChildren)
-							expectVarExact(t, a11_1, 1, "Bur", "a11[1].Bur", `"b"`, noChildren)
+							expectVarExact(t, a11_1, 0, "Baz", "a11[1].Baz", "2", "int", noChildren)
+							expectVarExact(t, a11_1, 1, "Bur", "a11[1].Bur", `"b"`, "string", noChildren)
 							validateEvaluateName(t, client, a11_1, 0)
 							validateEvaluateName(t, client, a11_1, 1)
 						}
-						expectVarExact(t, a11, 2, "[2]", "a11[2]", `main.FooBar {Baz: 3, Bur: "c"}`, hasChildren)
+						expectVarExact(t, a11, 2, "[2]", "a11[2]", `main.FooBar {Baz: 3, Bur: "c"}`, "main.FooBar", hasChildren)
 					}
 
 					// reflect.Kind == Chan - see testvariables2
@@ -986,96 +981,96 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					// reflect.Kind == Interface - see testvariables2
 					// reflect.Kind == Map - see testvariables2
 					// reflect.Kind == Ptr
-					ref = expectVarExact(t, locals, -1, "a7", "a7", `*main.FooBar {Baz: 5, Bur: "strum"}`, hasChildren)
+					ref = expectVarExact(t, locals, -1, "a7", "a7", `*main.FooBar {Baz: 5, Bur: "strum"}`, "*main.FooBar", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						a7 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a7, "a7", 1)
-						ref = expectVarExact(t, a7, 0, "", "(*a7)", `main.FooBar {Baz: 5, Bur: "strum"}`, hasChildren)
+						ref = expectVarExact(t, a7, 0, "", "(*a7)", `main.FooBar {Baz: 5, Bur: "strum"}`, "main.FooBar", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							a7val := client.ExpectVariablesResponse(t)
 							expectChildren(t, a7val, "*a7", 2)
-							expectVarExact(t, a7val, 0, "Baz", "(*a7).Baz", "5", noChildren)
-							expectVarExact(t, a7val, 1, "Bur", "(*a7).Bur", `"strum"`, noChildren)
+							expectVarExact(t, a7val, 0, "Baz", "(*a7).Baz", "5", "int", noChildren)
+							expectVarExact(t, a7val, 1, "Bur", "(*a7).Bur", `"strum"`, "string", noChildren)
 							validateEvaluateName(t, client, a7val, 0)
 							validateEvaluateName(t, client, a7val, 1)
 						}
 					}
 					// TODO(polina): how to test for "nil" (without type) and "void"?
-					expectVarExact(t, locals, -1, "a9", "a9", "*main.FooBar nil", noChildren)
+					expectVarExact(t, locals, -1, "a9", "a9", "*main.FooBar nil", "*main.FooBar", noChildren)
 					// reflect.Kind == Slice
-					ref = expectVarExact(t, locals, -1, "a5", "a5", "[]int len: 5, cap: 5, [1,2,3,4,5]", hasChildren)
+					ref = expectVarExact(t, locals, -1, "a5", "a5", "[]int len: 5, cap: 5, [1,2,3,4,5]", "[]int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						a5 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a5, "a5", 5)
-						expectVarExact(t, a5, 0, "[0]", "a5[0]", "1", noChildren)
-						expectVarExact(t, a5, 4, "[4]", "a5[4]", "5", noChildren)
+						expectVarExact(t, a5, 0, "[0]", "a5[0]", "1", "int", noChildren)
+						expectVarExact(t, a5, 4, "[4]", "a5[4]", "5", "int", noChildren)
 						validateEvaluateName(t, client, a5, 0)
 						validateEvaluateName(t, client, a5, 1)
 					}
-					ref = expectVarExact(t, locals, -1, "a12", "a12", `[]main.FooBar len: 2, cap: 2, [{Baz: 4, Bur: "d"},{Baz: 5, Bur: "e"}]`, hasChildren)
+					ref = expectVarExact(t, locals, -1, "a12", "a12", `[]main.FooBar len: 2, cap: 2, [{Baz: 4, Bur: "d"},{Baz: 5, Bur: "e"}]`, "[]main.FooBar", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						a12 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a12, "a12", 2)
-						expectVarExact(t, a12, 0, "[0]", "a12[0]", `main.FooBar {Baz: 4, Bur: "d"}`, hasChildren)
-						ref = expectVarExact(t, a12, 1, "[1]", "a12[1]", `main.FooBar {Baz: 5, Bur: "e"}`, hasChildren)
+						expectVarExact(t, a12, 0, "[0]", "a12[0]", `main.FooBar {Baz: 4, Bur: "d"}`, "main.FooBar", hasChildren)
+						ref = expectVarExact(t, a12, 1, "[1]", "a12[1]", `main.FooBar {Baz: 5, Bur: "e"}`, "main.FooBar", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							a12_1 := client.ExpectVariablesResponse(t)
 							expectChildren(t, a12_1, "a12[1]", 2)
-							expectVarExact(t, a12_1, 0, "Baz", "a12[1].Baz", "5", noChildren)
-							expectVarExact(t, a12_1, 1, "Bur", "a12[1].Bur", `"e"`, noChildren)
+							expectVarExact(t, a12_1, 0, "Baz", "a12[1].Baz", "5", "int", noChildren)
+							expectVarExact(t, a12_1, 1, "Bur", "a12[1].Bur", `"e"`, "string", noChildren)
 							validateEvaluateName(t, client, a12_1, 0)
 							validateEvaluateName(t, client, a12_1, 1)
 						}
 					}
-					ref = expectVarExact(t, locals, -1, "a13", "a13", `[]*main.FooBar len: 3, cap: 3, [*{Baz: 6, Bur: "f"},*{Baz: 7, Bur: "g"},*{Baz: 8, Bur: "h"}]`, hasChildren)
+					ref = expectVarExact(t, locals, -1, "a13", "a13", `[]*main.FooBar len: 3, cap: 3, [*{Baz: 6, Bur: "f"},*{Baz: 7, Bur: "g"},*{Baz: 8, Bur: "h"}]`, "[]*main.FooBar", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						a13 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a13, "a13", 3)
-						expectVarExact(t, a13, 0, "[0]", "a13[0]", `*main.FooBar {Baz: 6, Bur: "f"}`, hasChildren)
-						expectVarExact(t, a13, 1, "[1]", "a13[1]", `*main.FooBar {Baz: 7, Bur: "g"}`, hasChildren)
-						ref = expectVarExact(t, a13, 2, "[2]", "a13[2]", `*main.FooBar {Baz: 8, Bur: "h"}`, hasChildren)
+						expectVarExact(t, a13, 0, "[0]", "a13[0]", `*main.FooBar {Baz: 6, Bur: "f"}`, "*main.FooBar", hasChildren)
+						expectVarExact(t, a13, 1, "[1]", "a13[1]", `*main.FooBar {Baz: 7, Bur: "g"}`, "*main.FooBar", hasChildren)
+						ref = expectVarExact(t, a13, 2, "[2]", "a13[2]", `*main.FooBar {Baz: 8, Bur: "h"}`, "*main.FooBar", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							a13_2 := client.ExpectVariablesResponse(t)
 							expectChildren(t, a13_2, "a13[2]", 1)
-							ref = expectVarExact(t, a13_2, 0, "", "(*a13[2])", `main.FooBar {Baz: 8, Bur: "h"}`, hasChildren)
+							ref = expectVarExact(t, a13_2, 0, "", "(*a13[2])", `main.FooBar {Baz: 8, Bur: "h"}`, "main.FooBar", hasChildren)
 							validateEvaluateName(t, client, a13_2, 0)
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								val := client.ExpectVariablesResponse(t)
 								expectChildren(t, val, "*a13[2]", 2)
-								expectVarExact(t, val, 0, "Baz", "(*a13[2]).Baz", "8", noChildren)
-								expectVarExact(t, val, 1, "Bur", "(*a13[2]).Bur", `"h"`, noChildren)
+								expectVarExact(t, val, 0, "Baz", "(*a13[2]).Baz", "8", "int", noChildren)
+								expectVarExact(t, val, 1, "Bur", "(*a13[2]).Bur", `"h"`, "string", noChildren)
 								validateEvaluateName(t, client, val, 0)
 								validateEvaluateName(t, client, val, 1)
 							}
 						}
 					}
 					// reflect.Kind == String
-					expectVarExact(t, locals, -1, "a1", "a1", `"foofoofoofoofoofoo"`, noChildren)
-					expectVarExact(t, locals, -1, "a10", "a10", `"ofo"`, noChildren)
+					expectVarExact(t, locals, -1, "a1", "a1", `"foofoofoofoofoofoo"`, "string", noChildren)
+					expectVarExact(t, locals, -1, "a10", "a10", `"ofo"`, "string", noChildren)
 					// reflect.Kind == Struct
-					ref = expectVarExact(t, locals, -1, "a6", "a6", `main.FooBar {Baz: 8, Bur: "word"}`, hasChildren)
+					ref = expectVarExact(t, locals, -1, "a6", "a6", `main.FooBar {Baz: 8, Bur: "word"}`, "main.FooBar", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						a6 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a6, "a6", 2)
-						expectVarExact(t, a6, 0, "Baz", "a6.Baz", "8", noChildren)
-						expectVarExact(t, a6, 1, "Bur", "a6.Bur", `"word"`, noChildren)
+						expectVarExact(t, a6, 0, "Baz", "a6.Baz", "8", "int", noChildren)
+						expectVarExact(t, a6, 1, "Bur", "a6.Bur", `"word"`, "string", noChildren)
 					}
-					ref = expectVarExact(t, locals, -1, "a8", "a8", `main.FooBar2 {Bur: 10, Baz: "feh"}`, hasChildren)
+					ref = expectVarExact(t, locals, -1, "a8", "a8", `main.FooBar2 {Bur: 10, Baz: "feh"}`, "main.FooBar2", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						a8 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a8, "a8", 2)
-						expectVarExact(t, a8, 0, "Bur", "a8.Bur", "10", noChildren)
-						expectVarExact(t, a8, 1, "Baz", "a8.Baz", `"feh"`, noChildren)
+						expectVarExact(t, a8, 0, "Bur", "a8.Bur", "10", "int", noChildren)
+						expectVarExact(t, a8, 1, "Baz", "a8.Baz", `"feh"`, "string", noChildren)
 					}
 					// reflect.Kind == UnsafePointer - see testvariables2
 				},
@@ -1107,11 +1102,11 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)
 					expectChildren(t, locals, "Locals", 1)
-					expectVarExact(t, locals, -1, "a1", "a1", `"bur"`, noChildren)
+					expectVarExact(t, locals, -1, "a1", "a1", `"bur"`, "string", noChildren)
 
 					client.VariablesRequest(1002) // Globals
 					globals := client.ExpectVariablesResponse(t)
-					expectVarExact(t, globals, 0, "p1", "main.p1", "10", noChildren)
+					expectVarExact(t, globals, 0, "p1", "main.p1", "10", "int", noChildren)
 
 					client.VariablesRequest(7777)
 					erres = client.ExpectInvisibleErrorResponse(t)
@@ -1175,13 +1170,13 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					// reflect.Kind == Bool - see testvariables
 					// reflect.Kind == Int - see testvariables
 					// reflect.Kind == Int8
-					expectVarExact(t, locals, -1, "ni8", "ni8", "-5", noChildren)
+					expectVarExact(t, locals, -1, "ni8", "ni8", "-5", "int8", noChildren)
 					// reflect.Kind == Int16
-					expectVarExact(t, locals, -1, "ni16", "ni16", "-5", noChildren)
+					expectVarExact(t, locals, -1, "ni16", "ni16", "-5", "int16", noChildren)
 					// reflect.Kind == Int32
-					expectVarExact(t, locals, -1, "ni32", "ni32", "-5", noChildren)
+					expectVarExact(t, locals, -1, "ni32", "ni32", "-5", "int32", noChildren)
 					// reflect.Kind == Int64
-					expectVarExact(t, locals, -1, "ni64", "ni64", "-5", noChildren)
+					expectVarExact(t, locals, -1, "ni64", "ni64", "-5", "int64", noChildren)
 					// reflect.Kind == Uint
 					// reflect.Kind == Uint8 - see testvariables
 					// reflect.Kind == Uint16 - see testvariables
@@ -1190,209 +1185,209 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					// reflect.Kind == Uintptr - see testvariables
 					// reflect.Kind == Float32 - see testvariables
 					// reflect.Kind == Float64
-					expectVarExact(t, locals, -1, "pinf", "pinf", "+Inf", noChildren)
-					expectVarExact(t, locals, -1, "ninf", "ninf", "-Inf", noChildren)
-					expectVarExact(t, locals, -1, "nan", "nan", "NaN", noChildren)
+					expectVarExact(t, locals, -1, "pinf", "pinf", "+Inf", "float64", noChildren)
+					expectVarExact(t, locals, -1, "ninf", "ninf", "-Inf", "float64", noChildren)
+					expectVarExact(t, locals, -1, "nan", "nan", "NaN", "float64", noChildren)
 					// reflect.Kind == Complex64 - see testvariables
 					// reflect.Kind == Complex128 - see testvariables
 					// reflect.Kind == Array
-					expectVarExact(t, locals, -1, "a0", "a0", "[0]int []", noChildren)
+					expectVarExact(t, locals, -1, "a0", "a0", "[0]int []", "[0]int", noChildren)
 					// reflect.Kind == Chan
-					ref := expectVarExact(t, locals, -1, "ch1", "ch1", "chan int 4/11", hasChildren)
+					ref := expectVarExact(t, locals, -1, "ch1", "ch1", "chan int 4/11", "chan int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						ch1 := client.ExpectVariablesResponse(t)
 						expectChildren(t, ch1, "ch1", 11)
-						expectVarExact(t, ch1, 0, "qcount", "ch1.qcount", "4", noChildren)
-						expectVarRegex(t, ch1, 10, "lock", "ch1.lock", `runtime\.mutex {.*key: 0.*}`, hasChildren)
+						expectVarExact(t, ch1, 0, "qcount", "ch1.qcount", "4", "uint", noChildren)
+						expectVarRegex(t, ch1, 10, "lock", "ch1.lock", `runtime\.mutex {.*key: 0.*}`, `runtime\.mutex`, hasChildren)
 						validateEvaluateName(t, client, ch1, 0)
 						validateEvaluateName(t, client, ch1, 10)
 					}
-					expectVarExact(t, locals, -1, "chnil", "chnil", "chan int nil", noChildren)
+					expectVarExact(t, locals, -1, "chnil", "chnil", "chan int nil", "chan int", noChildren)
 					// reflect.Kind == Func
-					expectVarExact(t, locals, -1, "fn1", "fn1", "main.afunc", noChildren)
-					expectVarExact(t, locals, -1, "fn2", "fn2", "nil", noChildren)
+					expectVarExact(t, locals, -1, "fn1", "fn1", "main.afunc", "main.functype", noChildren)
+					expectVarExact(t, locals, -1, "fn2", "fn2", "nil", "main.functype", noChildren)
 					// reflect.Kind == Interface
-					expectVarExact(t, locals, -1, "ifacenil", "ifacenil", "interface {} nil", noChildren)
-					ref = expectVarExact(t, locals, -1, "iface2", "iface2", "interface {}(string) \"test\"", hasChildren)
+					expectVarExact(t, locals, -1, "ifacenil", "ifacenil", "interface {} nil", "interface {}", noChildren)
+					ref = expectVarExact(t, locals, -1, "iface2", "iface2", "interface {}(string) \"test\"", "interface {}", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						iface2 := client.ExpectVariablesResponse(t)
 						expectChildren(t, iface2, "iface2", 1)
-						expectVarExact(t, iface2, 0, "data", "iface2.(data)", `"test"`, noChildren)
+						expectVarExact(t, iface2, 0, "data", "iface2.(data)", `"test"`, "string", noChildren)
 						validateEvaluateName(t, client, iface2, 0)
 					}
-					ref = expectVarExact(t, locals, -1, "iface4", "iface4", "interface {}([]go/constant.Value) [4]", hasChildren)
+					ref = expectVarExact(t, locals, -1, "iface4", "iface4", "interface {}([]go/constant.Value) [4]", "interface {}", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						iface4 := client.ExpectVariablesResponse(t)
 						expectChildren(t, iface4, "iface4", 1)
-						ref = expectVarExact(t, iface4, 0, "data", "iface4.(data)", "[]go/constant.Value len: 1, cap: 1, [4]", hasChildren)
+						ref = expectVarExact(t, iface4, 0, "data", "iface4.(data)", "[]go/constant.Value len: 1, cap: 1, [4]", "[]go/constant.Value", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							iface4data := client.ExpectVariablesResponse(t)
 							expectChildren(t, iface4data, "iface4.data", 1)
-							ref = expectVarExact(t, iface4data, 0, "[0]", "iface4.(data)[0]", "go/constant.Value(go/constant.int64Val) 4", hasChildren)
+							ref = expectVarExact(t, iface4data, 0, "[0]", "iface4.(data)[0]", "go/constant.Value(go/constant.int64Val) 4", "go/constant.Value", hasChildren)
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								iface4data0 := client.ExpectVariablesResponse(t)
 								expectChildren(t, iface4data0, "iface4.data[0]", 1)
-								expectVarExact(t, iface4data0, 0, "data", "iface4.(data)[0].(data)", "4", noChildren)
+								expectVarExact(t, iface4data0, 0, "data", "iface4.(data)[0].(data)", "4", "go/constant.int64Val", noChildren)
 								validateEvaluateName(t, client, iface4data0, 0)
 							}
 						}
 					}
-					expectVarExact(t, locals, -1, "errnil", "errnil", "error nil", noChildren)
-					ref = expectVarExact(t, locals, -1, "err1", "err1", "error(*main.astruct) *{A: 1, B: 2}", hasChildren)
+					expectVarExact(t, locals, -1, "errnil", "errnil", "error nil", "error", noChildren)
+					ref = expectVarExact(t, locals, -1, "err1", "err1", "error(*main.astruct) *{A: 1, B: 2}", "error", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						err1 := client.ExpectVariablesResponse(t)
 						expectChildren(t, err1, "err1", 1)
-						expectVarExact(t, err1, 0, "data", "err1.(data)", "*main.astruct {A: 1, B: 2}", hasChildren)
+						expectVarExact(t, err1, 0, "data", "err1.(data)", "*main.astruct {A: 1, B: 2}", "*main.astruct", hasChildren)
 						validateEvaluateName(t, client, err1, 0)
 					}
-					ref = expectVarExact(t, locals, -1, "ptrinf", "ptrinf", "*interface {}(**interface {}) **...", hasChildren)
+					ref = expectVarExact(t, locals, -1, "ptrinf", "ptrinf", "*interface {}(**interface {}) **...", "*interface {}", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						ptrinf_val := client.ExpectVariablesResponse(t)
 						expectChildren(t, ptrinf_val, "*ptrinf", 1)
-						ref = expectVarExact(t, ptrinf_val, 0, "", "(*ptrinf)", "interface {}(**interface {}) **...", hasChildren)
+						ref = expectVarExact(t, ptrinf_val, 0, "", "(*ptrinf)", "interface {}(**interface {}) **...", "interface {}", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							ptrinf_val_data := client.ExpectVariablesResponse(t)
 							expectChildren(t, ptrinf_val_data, "(*ptrinf).data", 1)
-							expectVarExact(t, ptrinf_val_data, 0, "data", "(*ptrinf).(data)", "**interface {}(**interface {}) ...", hasChildren)
+							expectVarExact(t, ptrinf_val_data, 0, "data", "(*ptrinf).(data)", "**interface {}(**interface {}) ...", "**interface {}", hasChildren)
 							validateEvaluateName(t, client, ptrinf_val_data, 0)
 						}
 					}
 					// reflect.Kind == Map
-					expectVarExact(t, locals, -1, "mnil", "mnil", "map[string]main.astruct nil", noChildren)
+					expectVarExact(t, locals, -1, "mnil", "mnil", "map[string]main.astruct nil", "map[string]main.astruct", noChildren)
 					// key - scalar, value - compound
-					ref = expectVarExact(t, locals, -1, "m2", "m2", "map[int]*main.astruct [1: *{A: 10, B: 11}, ]", hasChildren)
+					ref = expectVarExact(t, locals, -1, "m2", "m2", "map[int]*main.astruct [1: *{A: 10, B: 11}, ]", "map[int]*main.astruct", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m2 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m2, "m2", 1) // each key-value represented by a single child
-						ref = expectVarExact(t, m2, 0, "1", "m2[1]", "*main.astruct {A: 10, B: 11}", hasChildren)
+						ref = expectVarExact(t, m2, 0, "1", "m2[1]", "*main.astruct {A: 10, B: 11}", "int: *main.astruct", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m2kv1 := client.ExpectVariablesResponse(t)
 							expectChildren(t, m2kv1, "m2[1]", 1)
-							ref = expectVarExact(t, m2kv1, 0, "", "(*m2[1])", "main.astruct {A: 10, B: 11}", hasChildren)
+							ref = expectVarExact(t, m2kv1, 0, "", "(*m2[1])", "main.astruct {A: 10, B: 11}", "main.astruct", hasChildren)
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								m2kv1deref := client.ExpectVariablesResponse(t)
 								expectChildren(t, m2kv1deref, "*m2[1]", 2)
-								expectVarExact(t, m2kv1deref, 0, "A", "(*m2[1]).A", "10", noChildren)
-								expectVarExact(t, m2kv1deref, 1, "B", "(*m2[1]).B", "11", noChildren)
+								expectVarExact(t, m2kv1deref, 0, "A", "(*m2[1]).A", "10", "int", noChildren)
+								expectVarExact(t, m2kv1deref, 1, "B", "(*m2[1]).B", "11", "int", noChildren)
 								validateEvaluateName(t, client, m2kv1deref, 0)
 								validateEvaluateName(t, client, m2kv1deref, 1)
 							}
 						}
 					}
 					// key - compound, value - scalar
-					ref = expectVarExact(t, locals, -1, "m3", "m3", "map[main.astruct]int [{A: 1, B: 1}: 42, {A: 2, B: 2}: 43, ]", hasChildren)
+					ref = expectVarExact(t, locals, -1, "m3", "m3", "map[main.astruct]int [{A: 1, B: 1}: 42, {A: 2, B: 2}: 43, ]", "map[main.astruct]int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m3 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m3, "m3", 2) // each key-value represented by a single child
-						ref = expectVarRegex(t, m3, 0, `main\.astruct {A: 1, B: 1}`, `m3\[\(\*\(\*"main.astruct"\)\(0x[0-9a-f]+\)\)\]`, "42", hasChildren)
+						ref = expectVarRegex(t, m3, 0, `main\.astruct {A: 1, B: 1}`, `m3\[\(\*\(\*"main.astruct"\)\(0x[0-9a-f]+\)\)\]`, "42", "int", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m3kv0 := client.ExpectVariablesResponse(t)
 							expectChildren(t, m3kv0, "m3[0]", 2)
-							expectVarRegex(t, m3kv0, 0, "A", `\(*\(*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.A`, "1", noChildren)
+							expectVarRegex(t, m3kv0, 0, "A", `\(*\(*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.A`, "1", "int", noChildren)
 							validateEvaluateName(t, client, m3kv0, 0)
 						}
-						ref = expectVarRegex(t, m3, 1, `main\.astruct {A: 2, B: 2}`, `m3\[\(\*\(\*"main.astruct"\)\(0x[0-9a-f]+\)\)\]`, "43", hasChildren)
+						ref = expectVarRegex(t, m3, 1, `main\.astruct {A: 2, B: 2}`, `m3\[\(\*\(\*"main.astruct"\)\(0x[0-9a-f]+\)\)\]`, "43", "", hasChildren)
 						if ref > 0 { // inspect another key from another key-value child
 							client.VariablesRequest(ref)
 							m3kv1 := client.ExpectVariablesResponse(t)
 							expectChildren(t, m3kv1, "m3[1]", 2)
-							expectVarRegex(t, m3kv1, 1, "B", `\(*\(*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.B`, "2", noChildren)
+							expectVarRegex(t, m3kv1, 1, "B", `\(*\(*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.B`, "2", "int", noChildren)
 							validateEvaluateName(t, client, m3kv1, 1)
 						}
 					}
 					// key - compound + truncated, value - scalar
-					ref = expectVarExact(t, locals, -1, "m5", "m5", `map[main.C]int [{s: "very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more"}: 1, ]`, hasChildren)
+					ref = expectVarExact(t, locals, -1, "m5", "m5", `map[main.C]int [{s: "very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more"}: 1, ]`, "map[main.C]int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m5 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m5, "m5", 1)
-						expectVarRegex(t, m5, 0, `main\.C {s: "very long string 0123456789a0123456789b0123456789c01\.\.\. @ 0x[0-9a-f]+`, `m5\[\(\*\(\*"main\.C"\)\(0x[0-9a-f]+\)\)\]`, "1", hasChildren)
+						expectVarRegex(t, m5, 0, `main\.C {s: "very long string 0123456789a0123456789b0123456789c01\.\.\. @ 0x[0-9a-f]+`, `m5\[\(\*\(\*"main\.C"\)\(0x[0-9a-f]+\)\)\]`, "1", `int`, hasChildren)
 					}
 					// key - compound, value - compound
-					ref = expectVarExact(t, locals, -1, "m4", "m4", "map[main.astruct]main.astruct [{A: 1, B: 1}: {A: 11, B: 11}, {A: 2, B: 2}: {A: 22, B: 22}, ]", hasChildren)
+					ref = expectVarExact(t, locals, -1, "m4", "m4", "map[main.astruct]main.astruct [{A: 1, B: 1}: {A: 11, B: 11}, {A: 2, B: 2}: {A: 22, B: 22}, ]", "map[main.astruct]main.astruct", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m4 := client.ExpectVariablesResponse(t)
 						expectChildren(t, m4, "m4", 4) // each key and value represented by a child, so double the key-value count
-						expectVarRegex(t, m4, 0, `\[key 0\]`, `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)`, `main\.astruct {A: 1, B: 1}`, hasChildren)
-						expectVarRegex(t, m4, 1, `\[val 0\]`, `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]`, `main\.astruct {A: 11, B: 11}`, hasChildren)
-						ref = expectVarRegex(t, m4, 2, `\[key 1\]`, `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)`, `main\.astruct {A: 2, B: 2}`, hasChildren)
+						expectVarRegex(t, m4, 0, `\[key 0\]`, `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)`, `main\.astruct {A: 1, B: 1}`, `main\.astruct`, hasChildren)
+						expectVarRegex(t, m4, 1, `\[val 0\]`, `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]`, `main\.astruct {A: 11, B: 11}`, `main\.astruct`, hasChildren)
+						ref = expectVarRegex(t, m4, 2, `\[key 1\]`, `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)`, `main\.astruct {A: 2, B: 2}`, `main\.astruct`, hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m4Key1 := client.ExpectVariablesResponse(t)
 							expectChildren(t, m4Key1, "m4Key1", 2)
-							expectVarRegex(t, m4Key1, 0, "A", `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.A`, "2", noChildren)
-							expectVarRegex(t, m4Key1, 1, "B", `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.B`, "2", noChildren)
+							expectVarRegex(t, m4Key1, 0, "A", `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.A`, "2", "int", noChildren)
+							expectVarRegex(t, m4Key1, 1, "B", `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.B`, "2", "int", noChildren)
 							validateEvaluateName(t, client, m4Key1, 0)
 							validateEvaluateName(t, client, m4Key1, 1)
 						}
-						ref = expectVarRegex(t, m4, 3, `\[val 1\]`, `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]`, `main\.astruct {A: 22, B: 22}`, hasChildren)
+						ref = expectVarRegex(t, m4, 3, `\[val 1\]`, `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]`, `main\.astruct {A: 22, B: 22}`, "main.astruct", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m4Val1 := client.ExpectVariablesResponse(t)
 							expectChildren(t, m4Val1, "m4Val1", 2)
-							expectVarRegex(t, m4Val1, 0, "A", `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]\.A`, "22", noChildren)
-							expectVarRegex(t, m4Val1, 1, "B", `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]\.B`, "22", noChildren)
+							expectVarRegex(t, m4Val1, 0, "A", `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]\.A`, "22", "int", noChildren)
+							expectVarRegex(t, m4Val1, 1, "B", `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]\.B`, "22", "int", noChildren)
 							validateEvaluateName(t, client, m4Val1, 0)
 							validateEvaluateName(t, client, m4Val1, 1)
 						}
 					}
-					expectVarExact(t, locals, -1, "emptymap", "emptymap", "map[string]string []", noChildren)
+					expectVarExact(t, locals, -1, "emptymap", "emptymap", "map[string]string []", "map[string]string", noChildren)
 					// reflect.Kind == Ptr
-					ref = expectVarExact(t, locals, -1, "pp1", "pp1", "**1", hasChildren)
+					ref = expectVarExact(t, locals, -1, "pp1", "pp1", "**1", "**int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						pp1val := client.ExpectVariablesResponse(t)
 						expectChildren(t, pp1val, "*pp1", 1)
-						ref = expectVarExact(t, pp1val, 0, "", "(*pp1)", "*1", hasChildren)
+						ref = expectVarExact(t, pp1val, 0, "", "(*pp1)", "*1", "*int", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							pp1valval := client.ExpectVariablesResponse(t)
 							expectChildren(t, pp1valval, "*(*pp1)", 1)
-							expectVarExact(t, pp1valval, 0, "", "(*(*pp1))", "1", noChildren)
+							expectVarExact(t, pp1valval, 0, "", "(*(*pp1))", "1", "int", noChildren)
 							validateEvaluateName(t, client, pp1valval, 0)
 						}
 					}
 					// reflect.Kind == Slice
-					ref = expectVarExact(t, locals, -1, "zsslice", "zsslice", "[]struct {} len: 3, cap: 3, [{},{},{}]", hasChildren)
+					ref = expectVarExact(t, locals, -1, "zsslice", "zsslice", "[]struct {} len: 3, cap: 3, [{},{},{}]", "[]struct {}", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						zsslice := client.ExpectVariablesResponse(t)
 						expectChildren(t, zsslice, "zsslice", 3)
-						expectVarExact(t, zsslice, 2, "[2]", "zsslice[2]", "struct {} {}", noChildren)
+						expectVarExact(t, zsslice, 2, "[2]", "zsslice[2]", "struct {} {}", "struct {}", noChildren)
 						validateEvaluateName(t, client, zsslice, 2)
 					}
-					expectVarExact(t, locals, -1, "emptyslice", "emptyslice", "[]string len: 0, cap: 0, []", noChildren)
-					expectVarExact(t, locals, -1, "nilslice", "nilslice", "[]int len: 0, cap: 0, nil", noChildren)
+					expectVarExact(t, locals, -1, "emptyslice", "emptyslice", "[]string len: 0, cap: 0, []", "[]string", noChildren)
+					expectVarExact(t, locals, -1, "nilslice", "nilslice", "[]int len: 0, cap: 0, nil", "[]int", noChildren)
 					// reflect.Kind == String
-					expectVarExact(t, locals, -1, "longstr", "longstr", "\"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more\"", noChildren)
+					expectVarExact(t, locals, -1, "longstr", "longstr", `"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more"`, "string", noChildren)
 					// reflect.Kind == Struct
-					expectVarExact(t, locals, -1, "zsvar", "zsvar", "struct {} {}", noChildren)
+					expectVarExact(t, locals, -1, "zsvar", "zsvar", "struct {} {}", "struct {}", noChildren)
 					// reflect.Kind == UnsafePointer
 					// TODO(polina): how do I test for unsafe.Pointer(nil)?
-					expectVarRegex(t, locals, -1, "upnil", "upnil", `unsafe\.Pointer\(0x0\)`, noChildren)
-					expectVarRegex(t, locals, -1, "up1", "up1", `unsafe\.Pointer\(0x[0-9a-f]+\)`, noChildren)
+					expectVarRegex(t, locals, -1, "upnil", "upnil", `unsafe\.Pointer\(0x0\)`, "int", noChildren)
+					expectVarRegex(t, locals, -1, "up1", "up1", `unsafe\.Pointer\(0x[0-9a-f]+\)`, "int", noChildren)
 
 					// Test unreadable variable
-					ref = expectVarRegex(t, locals, -1, "unread", "unread", `\*\(unreadable .+\)`, hasChildren)
+					ref = expectVarRegex(t, locals, -1, "unread", "unread", `\*\(unreadable .+\)`, "int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						val := client.ExpectVariablesResponse(t)
 						expectChildren(t, val, "*unread", 1)
-						expectVarRegex(t, val, 0, "^$", `\(\*unread\)`, `\(unreadable .+\)`, noChildren)
+						expectVarRegex(t, val, 0, "^$", `\(\*unread\)`, `\(unreadable .+\)`, "int", noChildren)
 						validateEvaluateName(t, client, val, 0)
 					}
 				},
@@ -1401,7 +1396,64 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 	})
 }
 
-// TestVariablesLoading exposes test cases where variables might be partiall or
+// TestScopesRequestsOptimized executes to a breakpoint and tests different
+// that the names of the "Locals" and "Arguments" scopes are correctly annotated with
+// a warning about debugging an optimized function.
+func TestScopesRequestsOptimized(t *testing.T) {
+	runTestBuildFlags(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+				})
+			},
+			// Breakpoints are set within the program
+			fixture.Source, []int{},
+			[]onBreakpoint{{
+				// Stop at first breakpoint
+				execute: func() {
+					client.StackTraceRequest(1, 0, 20)
+					stack := client.ExpectStackTraceResponse(t)
+
+					startLineno := 66
+					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
+						// Go1.15 on windows inserts a NOP after the call to
+						// runtime.Breakpoint and marks it same line as the
+						// runtime.Breakpoint call, making this flaky, so skip the line check.
+						startLineno = -1
+					}
+
+					expectStackFrames(t, stack, "main.foobar", startLineno, 1000, 4, 4)
+
+					client.ScopesRequest(1000)
+					scopes := client.ExpectScopesResponse(t)
+					expectScope(t, scopes, 0, "Arguments (warning: optimized function)", 1000)
+					expectScope(t, scopes, 1, "Locals (warning: optimized function)", 1001)
+					expectScope(t, scopes, 2, "Globals (package main)", 1002)
+				},
+				disconnect: false,
+			}, {
+				// Stop at second breakpoint
+				execute: func() {
+					// Frame ids get reset at each breakpoint.
+					client.StackTraceRequest(1, 0, 20)
+					stack := client.ExpectStackTraceResponse(t)
+					expectStackFrames(t, stack, "main.barfoo", 27, 1000, 5, 5)
+
+					client.ScopesRequest(1000)
+					scopes := client.ExpectScopesResponse(t)
+					expectScope(t, scopes, 0, "Arguments (warning: optimized function)", 1000)
+					expectScope(t, scopes, 1, "Locals (warning: optimized function)", 1001)
+					expectScope(t, scopes, 2, "Globals (package main)", 1002)
+				},
+				disconnect: false,
+			}})
+	},
+		protest.EnableOptimization)
+}
+
+// TestVariablesLoading exposes test cases where variables might be partially or
 // fully unloaded.
 func TestVariablesLoading(t *testing.T) {
 	runTest(t, "testvariables2", func(client *daptest.Client, fixture protest.Fixture) {
@@ -1431,10 +1483,10 @@ func TestVariablesLoading(t *testing.T) {
 					locals := client.ExpectVariablesResponse(t)
 
 					// String partially missing based on LoadConfig.MaxStringLen
-					expectVarExact(t, locals, -1, "longstr", "longstr", "\"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more\"", noChildren)
+					expectVarExact(t, locals, -1, "longstr", "longstr", "\"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more\"", "string", noChildren)
 
 					// Array partially missing based on LoadConfig.MaxArrayValues
-					ref := expectVarExact(t, locals, -1, "longarr", "longarr", "(loaded 64/100) [100]int [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", hasChildren)
+					ref := expectVarExact(t, locals, -1, "longarr", "longarr", "(loaded 64/100) [100]int [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", "[100]int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						longarr := client.ExpectVariablesResponse(t)
@@ -1442,7 +1494,7 @@ func TestVariablesLoading(t *testing.T) {
 					}
 
 					// Slice partially missing based on LoadConfig.MaxArrayValues
-					ref = expectVarExact(t, locals, -1, "longslice", "longslice", "(loaded 64/100) []int len: 100, cap: 100, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", hasChildren)
+					ref = expectVarExact(t, locals, -1, "longslice", "longslice", "(loaded 64/100) []int len: 100, cap: 100, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", "[]int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						longarr := client.ExpectVariablesResponse(t)
@@ -1450,7 +1502,7 @@ func TestVariablesLoading(t *testing.T) {
 					}
 
 					// Map partially missing based on LoadConfig.MaxArrayValues
-					ref = expectVarRegex(t, locals, -1, "m1", "m1", `\(loaded 64/66\) map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, hasChildren)
+					ref = expectVarRegex(t, locals, -1, "m1", "m1", `\(loaded 64/66\) map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, `map\[string\]main\.astruct`, hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m1 := client.ExpectVariablesResponse(t)
@@ -1458,7 +1510,7 @@ func TestVariablesLoading(t *testing.T) {
 					}
 
 					// Struct partially missing based on LoadConfig.MaxStructFields
-					ref = expectVarExact(t, locals, -1, "sd", "sd", "(loaded 5/6) main.D {u1: 0, u2: 0, u3: 0, u4: 0, u5: 0,...+1 more}", hasChildren)
+					ref = expectVarExact(t, locals, -1, "sd", "sd", "(loaded 5/6) main.D {u1: 0, u2: 0, u3: 0, u4: 0, u5: 0,...+1 more}", "main.D", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						sd := client.ExpectVariablesResponse(t)
@@ -1466,68 +1518,70 @@ func TestVariablesLoading(t *testing.T) {
 					}
 
 					// Fully missing struct auto-loaded when reaching LoadConfig.MaxVariableRecurse (also tests evaluateName corner case)
-					ref = expectVarRegex(t, locals, -1, "c1", "c1", `main\.cstruct {pb: \*main\.bstruct {a: \(\*main\.astruct\)\(0x[0-9a-f]+\)}, sa: []\*main\.astruct len: 3, cap: 3, [\*\(\*main\.astruct\)\(0x[0-9a-f]+\),\*\(\*main\.astruct\)\(0x[0-9a-f]+\),\*\(\*main.astruct\)\(0x[0-9a-f]+\)]}`, hasChildren)
+					ref = expectVarRegex(t, locals, -1, "c1", "c1", `main\.cstruct {pb: \*main\.bstruct {a: \(\*main\.astruct\)\(0x[0-9a-f]+\)}, sa: []\*main\.astruct len: 3, cap: 3, [\*\(\*main\.astruct\)\(0x[0-9a-f]+\),\*\(\*main\.astruct\)\(0x[0-9a-f]+\),\*\(\*main.astruct\)\(0x[0-9a-f]+\)]}`, `main\.cstruct`, hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						c1 := client.ExpectVariablesResponse(t)
 						expectChildren(t, c1, "c1", 2)
-						ref = expectVarRegex(t, c1, 1, "sa", `c1\.sa`, `\[\]\*main\.astruct len: 3, cap: 3, \[\*\(\*main\.astruct\)\(0x[0-9a-f]+\),\*\(\*main\.astruct\)\(0x[0-9a-f]+\),\*\(\*main\.astruct\)\(0x[0-9a-f]+\)\]`, hasChildren)
+						ref = expectVarRegex(t, c1, 1, "sa", `c1\.sa`, `\[\]\*main\.astruct len: 3, cap: 3, \[\*\(\*main\.astruct\)\(0x[0-9a-f]+\),\*\(\*main\.astruct\)\(0x[0-9a-f]+\),\*\(\*main\.astruct\)\(0x[0-9a-f]+\)\]`, `\[\]\*main\.astruct`, hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							c1sa := client.ExpectVariablesResponse(t)
 							expectChildren(t, c1sa, "c1.sa", 3)
-							ref = expectVarRegex(t, c1sa, 0, `\[0\]`, `c1\.sa\[0\]`, `\*\(\*main\.astruct\)\(0x[0-9a-f]+\)`, hasChildren)
+							ref = expectVarRegex(t, c1sa, 0, `\[0\]`, `c1\.sa\[0\]`, `\*\(\*main\.astruct\)\(0x[0-9a-f]+\)`, `\*main\.astruct`, hasChildren)
 							if ref > 0 {
 								// Auto-loading of fully missing struc children happens here
 								client.VariablesRequest(ref)
 								c1sa0 := client.ExpectVariablesResponse(t)
 								expectChildren(t, c1sa0, "c1.sa[0]", 1)
-								expectVarExact(t, c1sa0, 0, "", "(*c1.sa[0])", "main.astruct {A: 1, B: 2}", hasChildren)
+								// TODO(polina): there should be children here once we support auto loading
+								expectVarExact(t, c1sa0, 0, "", "(*c1.sa[0])", "main.astruct {A: 1, B: 2}", "main.astruct", hasChildren)
 							}
 						}
 					}
 
 					// Fully missing struct auto-loaded when hitting LoadConfig.MaxVariableRecurse (also tests evaluteName corner case)
-					ref = expectVarRegex(t, locals, -1, "aas", "aas", `\[\]main\.a len: 1, cap: 1, \[{aas: \[\]main\.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]}\]`, hasChildren)
+					ref = expectVarRegex(t, locals, -1, "aas", "aas", `\[\]main\.a len: 1, cap: 1, \[{aas: \[\]main\.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]}\]`, `\[\]main\.a`, hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						aas := client.ExpectVariablesResponse(t)
 						expectChildren(t, aas, "aas", 1)
-						ref = expectVarRegex(t, aas, 0, "[0]", `aas\[0\]`, `main\.a {aas: \[\]main.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]}`, hasChildren)
+						ref = expectVarRegex(t, aas, 0, "[0]", `aas\[0\]`, `main\.a {aas: \[\]main.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]}`, `main\.a`, hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							aas0 := client.ExpectVariablesResponse(t)
 							expectChildren(t, aas0, "aas[0]", 1)
-							ref = expectVarRegex(t, aas0, 0, "aas", `aas\[0\]\.aas`, `\[\]main\.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]`, hasChildren)
+							ref = expectVarRegex(t, aas0, 0, "aas", `aas\[0\]\.aas`, `\[\]main\.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]`, `\[\]main\.a`, hasChildren)
 							if ref > 0 {
 								// Auto-loading of fully missing struct children happens here
 								client.VariablesRequest(ref)
 								aas0aas := client.ExpectVariablesResponse(t)
 								expectChildren(t, aas0aas, "aas[0].aas", 1)
-								ref = expectVarRegex(t, aas0aas, 0, "[0]", `aas\[0\]\.aas\[0\]`, `main\.a {aas: \[\]main\.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]}`, hasChildren)
+								// TODO(polina): there should be a child here once we support auto loading - test for "aas[0].aas[0].aas"
+								ref = expectVarRegex(t, aas0aas, 0, "[0]", `aas\[0\]\.aas\[0\]`, `main\.a {aas: \[\]main\.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]}`, "main.a", hasChildren)
 								if ref > 0 {
 									client.VariablesRequest(ref)
 									aas0aas0 := client.ExpectVariablesResponse(t)
 									expectChildren(t, aas0aas, "aas[0].aas[0]", 1)
-									expectVarRegex(t, aas0aas0, 0, "aas", `aas\[0\]\.aas\[0\]\.aas`, `\[\]main\.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]`, hasChildren)
+									expectVarRegex(t, aas0aas0, 0, "aas", `aas\[0\]\.aas\[0\]\.aas`, `\[\]main\.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]`, `\[\]main\.a`, hasChildren)
 								}
 							}
 						}
 					}
 
 					// Fully missing map auto-loaded when hitting LoadConfig.MaxVariableRecurse (also tests evaluateName corner case)
-					ref = expectVarExact(t, locals, -1, "tm", "tm", "main.truncatedMap {v: []map[string]main.astruct len: 1, cap: 1, [[...]]}", hasChildren)
+					ref = expectVarExact(t, locals, -1, "tm", "tm", "main.truncatedMap {v: []map[string]main.astruct len: 1, cap: 1, [[...]]}", "main.truncatedMap", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						tm := client.ExpectVariablesResponse(t)
 						expectChildren(t, tm, "tm", 1)
-						ref = expectVarExact(t, tm, 0, "v", "tm.v", "[]map[string]main.astruct len: 1, cap: 1, [[...]]", hasChildren)
+						ref = expectVarExact(t, tm, 0, "v", "tm.v", "[]map[string]main.astruct len: 1, cap: 1, [[...]]", "[]map[string]main.astruct", hasChildren)
 						if ref > 0 {
 							// Auto-loading of fully missing map chidlren happens here, but they get trancated at MaxArrayValuess
 							client.VariablesRequest(ref)
 							tmV := client.ExpectVariablesResponse(t)
 							expectChildren(t, tmV, "tm.v", 1)
-							ref = expectVarRegex(t, tmV, 0, `\[0\]`, `tm\.v\[0\]`, `map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, hasChildren)
+							ref = expectVarRegex(t, tmV, 0, `\[0\]`, `tm\.v\[0\]`, `map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, `map\[string\]main\.astruct`, hasChildren)
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								tmV0 := client.ExpectVariablesResponse(t)
@@ -1545,19 +1599,19 @@ func TestVariablesLoading(t *testing.T) {
 						client.VariablesRequest(ref)
 						rv := client.ExpectVariablesResponse(t)
 						expectChildren(t, rv, "rv", 1)
-						ref = expectVarExact(t, rv, 0, "~r0", "", "main.truncatedMap {v: []map[string]main.astruct len: 1, cap: 1, [[...]]}", hasChildren)
+						ref = expectVarExact(t, rv, 0, "~r0", "", "main.truncatedMap {v: []map[string]main.astruct len: 1, cap: 1, [[...]]}", "main.truncatedMap", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							tm := client.ExpectVariablesResponse(t)
 							expectChildren(t, tm, "tm", 1)
-							ref = expectVarExact(t, tm, 0, "v", "", "[]map[string]main.astruct len: 1, cap: 1, [[...]]", hasChildren)
+							ref = expectVarExact(t, tm, 0, "v", "", "[]map[string]main.astruct len: 1, cap: 1, [[...]]", "[]map[string]main.astruct", hasChildren)
 							if ref > 0 {
 								// Auto-loading of fully missing map chidlren happens here, but they get trancated at MaxArrayValuess
 								client.VariablesRequest(ref)
 								tmV := client.ExpectVariablesResponse(t)
 								expectChildren(t, tmV, "tm.v", 1)
 								// TODO(polina): this evaluate name is not usable - it should be empty
-								ref = expectVarRegex(t, tmV, 0, `\[0\]`, `\[0\]`, `map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, hasChildren)
+								ref = expectVarRegex(t, tmV, 0, `\[0\]`, `\[0\]`, `map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, `map\[string\]main\.astruct`, hasChildren)
 								if ref > 0 {
 									client.VariablesRequest(ref)
 									tmV0 := client.ExpectVariablesResponse(t)
@@ -1606,32 +1660,31 @@ func TestVariablesLoading(t *testing.T) {
 
 						// Interface auto-loaded when hitting LoadConfig.MaxVariableRecurse=1
 
-						ref := expectVarRegex(t, locals, -1, "ni", "ni", `\[\]interface {} len: 1, cap: 1, \[\[\]interface {} len: 1, cap: 1, \[\*\(\*interface {}\)\(0x[0-9a-f]+\)\]\]`, hasChildren)
+						ref := expectVarRegex(t, locals, -1, "ni", "ni", `\[\]interface {} len: 1, cap: 1, \[\[\]interface {} len: 1, cap: 1, \[\*\(\*interface {}\)\(0x[0-9a-f]+\)\]\]`, `\[\]interface {}`, hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							ni := client.ExpectVariablesResponse(t)
-							ref = expectVarRegex(t, ni, 0, `\[0\]`, `ni\[0\]`, `interface \{\}\(\[\]interface \{\}\) \[\*\(\*interface \{\}\)\(0x[0-9a-f]+\)\]`, hasChildren)
+							ref = expectVarRegex(t, ni, 0, `\[0\]`, `ni\[0\]`, `interface \{\}\(\[\]interface \{\}\) \[\*\(\*interface \{\}\)\(0x[0-9a-f]+\)\]`, "interface {}", hasChildren)
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								niI1 := client.ExpectVariablesResponse(t)
-								ref = expectVarRegex(t, niI1, 0, "data", `ni\[0\]\.\(data\)`, `\[\]interface {} len: 1, cap: 1, \[\*\(\*interface {}\)\(0x[0-9a-f]+\)`, hasChildren)
+								ref = expectVarRegex(t, niI1, 0, "data", `ni\[0\]\.\(data\)`, `\[\]interface {} len: 1, cap: 1, \[\*\(\*interface {}\)\(0x[0-9a-f]+\)`, `\[\]interface {}`, hasChildren)
 								if ref > 0 {
 									// Auto-loading happens here
 									client.VariablesRequest(ref)
 									niI1Data := client.ExpectVariablesResponse(t)
-									ref = expectVarExact(t, niI1Data, 0, "[0]", "ni[0].(data)[0]", "interface {}(int) 123", hasChildren)
+									ref = expectVarExact(t, niI1Data, 0, "[0]", "ni[0].(data)[0]", "interface {}(int) 123", "interface {}", hasChildren)
 									if ref > 0 {
 										client.VariablesRequest(ref)
 										niI1DataI2 := client.ExpectVariablesResponse(t)
-										expectVarExact(t, niI1DataI2, 0, "data", "ni[0].(data)[0].(data)", "123", noChildren)
+										expectVarExact(t, niI1DataI2, 0, "data", "ni[0].(data)[0].(data)", "123", "int", noChildren)
 									}
 								}
 							}
 						}
 
 						// Pointer values loaded even with LoadConfig.FollowPointers=false
-
-						expectVarExact(t, locals, -1, "a7", "a7", "*main.FooBar {Baz: 5, Bur: \"strum\"}", hasChildren)
+						expectVarExact(t, locals, -1, "a7", "a7", "*main.FooBar {Baz: 5, Bur: \"strum\"}", "*main.FooBar", hasChildren)
 
 						// Auto-loading works on results of evaluate expressions as well
 						client.EvaluateRequest("a7", frame, "repl")
@@ -1643,7 +1696,7 @@ func TestVariablesLoading(t *testing.T) {
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							a7 := client.ExpectVariablesResponse(t)
-							expectVarExact(t, a7, 0, "a7", "(*(&a7))", "*main.FooBar {Baz: 5, Bur: \"strum\"}", hasChildren)
+							expectVarExact(t, a7, 0, "a7", "(*(&a7))", "*main.FooBar {Baz: 5, Bur: \"strum\"}", "*main.FooBar", hasChildren)
 						}
 					}
 
@@ -1653,6 +1706,7 @@ func TestVariablesLoading(t *testing.T) {
 					// step into another function
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
+					client.ExpectContinuedEvent(t)
 					client.ExpectStoppedEvent(t)
 					handleStop(t, client, 1, "main.barfoo", 24)
 					loadvars(1001 /*second frame here is same as topmost above*/)
@@ -1700,6 +1754,7 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 					// Step into pkg.AnotherMethod()
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
+					client.ExpectContinuedEvent(t)
 					client.ExpectStoppedEvent(t)
 
 					client.StackTraceRequest(1, 0, 20)
@@ -1715,14 +1770,14 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 					client.VariablesRequest(1002)
 					globals := client.ExpectVariablesResponse(t)
 					expectChildren(t, globals, "Globals", 1)
-					ref := expectVarExact(t, globals, 0, "SomeVar", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeVar", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType {X: 0}", hasChildren)
+					ref := expectVarExact(t, globals, 0, "SomeVar", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeVar", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType {X: 0}", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType", hasChildren)
 
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						somevar := client.ExpectVariablesResponse(t)
 						expectChildren(t, somevar, "SomeVar", 1)
 						// TODO(polina): unlike main.p, this prefix won't work
-						expectVarExact(t, somevar, 0, "X", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeVar.X", "0", noChildren)
+						expectVarExact(t, somevar, 0, "X", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeVar.X", "0", "float64", noChildren)
 					}
 				},
 				disconnect: false,
@@ -1759,8 +1814,8 @@ func TestShadowedVariables(t *testing.T) {
 					client.VariablesRequest(1001)
 					locals := client.ExpectVariablesResponse(t)
 
-					expectVarExact(t, locals, 0, "(a)", "a", "0", !hasChildren)
-					expectVarExact(t, locals, 1, "a", "a", "1", !hasChildren)
+					expectVarExact(t, locals, 0, "(a)", "a", "0", "int", !hasChildren)
+					expectVarExact(t, locals, 1, "a", "a", "1", "int", !hasChildren)
 
 					// Check that the non-shadowed of "a" is returned from evaluate request.
 					validateEvaluateName(t, client, locals, 1)
@@ -1795,6 +1850,37 @@ func TestLaunchRequestWithStackTraceDepth(t *testing.T) {
 	})
 }
 
+type Breakpoint struct {
+	line      int
+	path      string
+	verified  bool
+	msgPrefix string
+}
+
+func expectSetBreakpointsResponse(t *testing.T, client *daptest.Client, bps []Breakpoint) {
+	t.Helper()
+	checkSetBreakpointsResponse(t, client, bps, client.ExpectSetBreakpointsResponse(t))
+}
+
+func checkSetBreakpointsResponse(t *testing.T, client *daptest.Client, bps []Breakpoint, got *dap.SetBreakpointsResponse) {
+	t.Helper()
+	checkBreakpoints(t, client, bps, got.Body.Breakpoints)
+}
+
+func checkBreakpoints(t *testing.T, client *daptest.Client, bps []Breakpoint, breakpoints []dap.Breakpoint) {
+	t.Helper()
+	if len(breakpoints) != len(bps) {
+		t.Errorf("got %#v,\nwant len(Breakpoints)=%d", breakpoints, len(bps))
+		return
+	}
+	for i, bp := range breakpoints {
+		if bp.Line != bps[i].line || bp.Verified != bps[i].verified || bp.Source.Path != bps[i].path ||
+			!strings.HasPrefix(bp.Message, bps[i].msgPrefix) {
+			t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
+		}
+	}
+}
+
 // TestSetBreakpoint executes to a breakpoint and tests different
 // configurations of setBreakpoint requests.
 func TestSetBreakpoint(t *testing.T) {
@@ -1810,34 +1896,13 @@ func TestSetBreakpoint(t *testing.T) {
 				execute: func() {
 					handleStop(t, client, 1, "main.main", 16)
 
-					type Breakpoint struct {
-						line      int
-						path      string
-						verified  bool
-						msgPrefix string
-					}
-					expectSetBreakpointsResponse := func(bps []Breakpoint) {
-						t.Helper()
-						got := client.ExpectSetBreakpointsResponse(t)
-						if len(got.Body.Breakpoints) != len(bps) {
-							t.Errorf("got %#v,\nwant len(Breakpoints)=%d", got, len(bps))
-							return
-						}
-						for i, bp := range got.Body.Breakpoints {
-							if bp.Line != bps[i].line || bp.Verified != bps[i].verified || bp.Source.Path != bps[i].path ||
-								!strings.HasPrefix(bp.Message, bps[i].msgPrefix) {
-								t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
-							}
-						}
-					}
-
 					// Set two breakpoints at the next two lines in main
 					client.SetBreakpointsRequest(fixture.Source, []int{17, 18})
-					expectSetBreakpointsResponse([]Breakpoint{{17, fixture.Source, true, ""}, {18, fixture.Source, true, ""}})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{17, fixture.Source, true, ""}, {18, fixture.Source, true, ""}})
 
 					// Clear 17, reset 18
 					client.SetBreakpointsRequest(fixture.Source, []int{18})
-					expectSetBreakpointsResponse([]Breakpoint{{18, fixture.Source, true, ""}})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{18, fixture.Source, true, ""}})
 
 					// Skip 17, continue to 18
 					client.ContinueRequest(1)
@@ -1847,7 +1912,7 @@ func TestSetBreakpoint(t *testing.T) {
 
 					// Set another breakpoint inside the loop in loop(), twice to trigger error
 					client.SetBreakpointsRequest(fixture.Source, []int{8, 8})
-					expectSetBreakpointsResponse([]Breakpoint{{8, fixture.Source, true, ""}, {8, "", false, "Breakpoint exists"}})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}, {8, "", false, "Breakpoint exists"}})
 
 					// Continue into the loop
 					client.ContinueRequest(1)
@@ -1856,11 +1921,11 @@ func TestSetBreakpoint(t *testing.T) {
 					handleStop(t, client, 1, "main.loop", 8)
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)
-					expectVarExact(t, locals, 0, "i", "i", "0", noChildren) // i == 0
+					expectVarExact(t, locals, 0, "i", "i", "0", "int", noChildren) // i == 0
 
 					// Edit the breakpoint to add a condition
 					client.SetConditionalBreakpointsRequest(fixture.Source, []int{8}, map[int]string{8: "i == 3"})
-					expectSetBreakpointsResponse([]Breakpoint{{8, fixture.Source, true, ""}})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}})
 
 					// Continue until condition is hit
 					client.ContinueRequest(1)
@@ -1869,11 +1934,11 @@ func TestSetBreakpoint(t *testing.T) {
 					handleStop(t, client, 1, "main.loop", 8)
 					client.VariablesRequest(1001) // Locals
 					locals = client.ExpectVariablesResponse(t)
-					expectVarExact(t, locals, 0, "i", "i", "3", noChildren) // i == 3
+					expectVarExact(t, locals, 0, "i", "i", "3", "int", noChildren) // i == 3
 
 					// Edit the breakpoint to remove a condition
 					client.SetConditionalBreakpointsRequest(fixture.Source, []int{8}, map[int]string{8: ""})
-					expectSetBreakpointsResponse([]Breakpoint{{8, fixture.Source, true, ""}})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}})
 
 					// Continue for one more loop iteration
 					client.ContinueRequest(1)
@@ -1882,13 +1947,424 @@ func TestSetBreakpoint(t *testing.T) {
 					handleStop(t, client, 1, "main.loop", 8)
 					client.VariablesRequest(1001) // Locals
 					locals = client.ExpectVariablesResponse(t)
-					expectVarExact(t, locals, 0, "i", "i", "4", noChildren) // i == 4
+					expectVarExact(t, locals, 0, "i", "i", "4", "int", noChildren) // i == 4
 
 					// Set at a line without a statement
 					client.SetBreakpointsRequest(fixture.Source, []int{1000})
-					expectSetBreakpointsResponse([]Breakpoint{{1000, "", false, "could not find statement"}}) // all cleared, none set
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{1000, "", false, "could not find statement"}}) // all cleared, none set
 				},
 				// The program has an infinite loop, so we must kill it by disconnecting.
+				disconnect: true,
+			}})
+	})
+}
+
+// TestSetFunctionBreakpoints is inspired by service/test.TestClientServer_FindLocations.
+func TestSetFunctionBreakpoints(t *testing.T) {
+	runTest(t, "locationsprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{30}, // b main.main
+			[]onBreakpoint{{
+				execute: func() {
+					handleStop(t, client, 1, "main.main", 30)
+
+					type Breakpoint struct {
+						line       int
+						sourceName string
+						verified   bool
+						errMsg     string
+					}
+					expectSetFunctionBreakpointsResponse := func(bps []Breakpoint) {
+						t.Helper()
+						got := client.ExpectSetFunctionBreakpointsResponse(t)
+						if len(got.Body.Breakpoints) != len(bps) {
+							t.Errorf("got %#v,\nwant len(Breakpoints)=%d", got, len(bps))
+							return
+						}
+						for i, bp := range got.Body.Breakpoints {
+							if bps[i].line < 0 {
+								if bp.Verified != bps[i].verified || !strings.Contains(bp.Message, bps[i].errMsg) {
+									t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
+								}
+								continue
+							}
+							// Some function breakpoints may be in packages that have been imported and we do not control, so
+							// we do not always want to check breakpoint lines.
+							if (bps[i].line >= 0 && bp.Line != bps[i].line) || bp.Verified != bps[i].verified || bp.Source.Name != bps[i].sourceName {
+								t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
+							}
+						}
+					}
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "anotherFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{26, filepath.Base(fixture.Source), true, ""}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "main.anotherFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{26, filepath.Base(fixture.Source), true, ""}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "SomeType.String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "(*SomeType).String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "main.SomeType.String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "main.(*SomeType).String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
+
+					// Test line offsets
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "main.anotherFunction:1"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{27, filepath.Base(fixture.Source), true, ""}})
+
+					// Test function names in imported package.
+					// Issue #275
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "io/ioutil.ReadFile"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "ioutil.go", true, ""}})
+
+					// Issue #296
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "/io/ioutil.ReadFile"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "ioutil.go", true, ""}})
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "ioutil.ReadFile"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "ioutil.go", true, ""}})
+
+					// Function Breakpoint name also accepts breakpoints that are specified as file:line.
+					// TODO(suzmue): We could return an error, but it probably is not necessary since breakpoints,
+					// and function breakpoints come in with different requests.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: fmt.Sprintf("%s:14", fixture.Source)},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: fmt.Sprintf("%s:14", filepath.Base(fixture.Source))},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}})
+
+					// Expect error for ambiguous function name.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "Location \"String\" ambiguous"}})
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "main.String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "Location \"main.String\" ambiguous"}})
+
+					// Expect error for function that does not exist.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "fakeFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "location \"fakeFunction\" not found"}})
+
+					// Expect error for negative line number.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "main.anotherFunction:-1"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "line offset negative or not a number"}})
+
+					// Expect error when function name is regex.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: `/^.*String.*$/`},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, "", false, "breakpoint name \"/^.*String.*$/\" could not be parsed as a function"}})
+
+					// Expect error when function name is an offset.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "+1"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, filepath.Base(fixture.Source), false, "breakpoint name \"+1\" could not be parsed as a function"}})
+
+					// Expect error when function name is a line number.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "14"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, filepath.Base(fixture.Source), false, "breakpoint name \"14\" could not be parsed as a function"}})
+
+					// Expect error when function name is an address.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "*b"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, filepath.Base(fixture.Source), false, "breakpoint name \"*b\" could not be parsed as a function"}})
+
+					// Expect error when function name is a relative path.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: fmt.Sprintf(".%s%s:14", string(filepath.Separator), filepath.Base(fixture.Source))},
+					})
+					// This relative path could also be caught by the parser, so we should not match the error message.
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, filepath.Base(fixture.Source), false, ""}})
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: fmt.Sprintf("..%s%s:14", string(filepath.Separator), filepath.Base(fixture.Source))},
+					})
+					// This relative path could also be caught by the parser, so we should not match the error message.
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{-1, filepath.Base(fixture.Source), false, ""}})
+
+					// Test multiple function breakpoints.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "SomeType.String"}, {Name: "anotherFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}, {26, filepath.Base(fixture.Source), true, ""}})
+
+					// Test multiple breakpoints to the same location.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "SomeType.String"}, {Name: "(*SomeType).String"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}, {-1, "", false, "Breakpoint exists"}})
+
+					// Set two breakpoints at SomeType.String and SomeType.SomeFunction.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "SomeType.String"}, {Name: "SomeType.SomeFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}, {22, filepath.Base(fixture.Source), true, ""}})
+
+					// Clear SomeType.String, reset SomeType.SomeFunction (SomeType.String is called before SomeType.SomeFunction).
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "SomeType.SomeFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{22, filepath.Base(fixture.Source), true, ""}})
+
+					// Expect the next breakpoint to be at SomeType.SomeFunction.
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "function breakpoint" || se.Body.ThreadId != 1 {
+						t.Errorf("got %#v, want Reason=\"function breakpoint\", ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.(*SomeType).SomeFunction", 22)
+
+					// Set a breakpoint at the next line in the program.
+					client.SetBreakpointsRequest(fixture.Source, []int{23})
+					got := client.ExpectSetBreakpointsResponse(t)
+					if len(got.Body.Breakpoints) != 1 {
+						t.Errorf("got %#v,\nwant len(Breakpoints)=%d", got, 1)
+						return
+					}
+					bp := got.Body.Breakpoints[0]
+					if bp.Line != 23 || bp.Verified != true || bp.Source.Path != fixture.Source {
+						t.Errorf("got breakpoints[0] = %#v, \nwant Line=23 Verified=true Source.Path=%q", bp, fixture.Source)
+					}
+
+					// Set a function breakpoint, this should not clear the breakpoint that was set in the previous setBreakpoints request.
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "anotherFunction"},
+					})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{26, filepath.Base(fixture.Source), true, ""}})
+
+					// Expect the next breakpoint to be at line 23.
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
+						t.Errorf("got %#v, want Reason=\"breakpoint\", ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.(*SomeType).SomeFunction", 23)
+
+					// Set a breakpoint, this should not clear the breakpoint that was set in the previous setFunctionBreakpoints request.
+					client.SetBreakpointsRequest(fixture.Source, []int{37})
+					got = client.ExpectSetBreakpointsResponse(t)
+					if len(got.Body.Breakpoints) != 1 {
+						t.Errorf("got %#v,\nwant len(Breakpoints)=%d", got, 1)
+						return
+					}
+					bp = got.Body.Breakpoints[0]
+					if bp.Line != 37 || bp.Verified != true || bp.Source.Path != fixture.Source {
+						t.Errorf("got breakpoints[0] = %#v, \nwant Line=23 Verified=true Source.Path=%q", bp, fixture.Source)
+					}
+
+					// Expect the next breakpoint to be at line anotherFunction.
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "function breakpoint" || se.Body.ThreadId != 1 {
+						t.Errorf("got %#v, want Reason=\"function breakpoint\", ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.anotherFunction", 26)
+
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+func expectSetBreakpointsResponseAndStoppedEvent(t *testing.T, client *daptest.Client) (se *dap.StoppedEvent, br *dap.SetBreakpointsResponse) {
+	for i := 0; i < 2; i++ {
+		switch m := client.ExpectMessage(t).(type) {
+		case *dap.StoppedEvent:
+			se = m
+		case *dap.SetBreakpointsResponse:
+			br = m
+		default:
+			t.Fatalf("Unexpected message type: expect StoppedEvent or SetBreakpointsResponse, got %#v", m)
+		}
+	}
+	if se == nil || br == nil {
+		t.Fatal("Expected StoppedEvent and SetBreakpointsResponse")
+	}
+	return se, br
+}
+
+func expectSetFunctionBreakpointsResponseAndStoppedEvent(t *testing.T, client *daptest.Client) (se *dap.StoppedEvent, br *dap.SetFunctionBreakpointsResponse) {
+	for i := 0; i < 2; i++ {
+		switch m := client.ExpectMessage(t).(type) {
+		case *dap.StoppedEvent:
+			se = m
+		case *dap.SetFunctionBreakpointsResponse:
+			br = m
+		default:
+			t.Fatalf("Unexpected message type: expect StoppedEvent or SetFunctionBreakpointsResponse, got %#v", m)
+		}
+	}
+	if se == nil || br == nil {
+		t.Fatal("Expected StoppedEvent and SetFunctionBreakpointsResponse")
+	}
+	return se, br
+}
+
+func TestSetBreakpointWhileRunning(t *testing.T) {
+	runTest(t, "integrationprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{16},
+			[]onBreakpoint{{
+				execute: func() {
+					// The program loops 3 times over lines 14-15-8-9-10-16
+					handleStop(t, client, 1, "main.main", 16) // Line that sleeps for 1 second
+
+					// We can set breakpoints while nexting
+					client.NextRequest(1)
+					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
+					client.SetBreakpointsRequest(fixture.Source, []int{15}) // [16,] => [15,]
+					se, br := expectSetBreakpointsResponseAndStoppedEvent(t, client)
+					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
+					}
+					checkSetBreakpointsResponse(t, client, []Breakpoint{{15, fixture.Source, true, ""}}, br)
+					// Halt cancelled next, so if we continue we will not stop at line 14.
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se = client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "breakpoint" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.main", 15)
+
+					// We can set breakpoints while continuing
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.SetBreakpointsRequest(fixture.Source, []int{9}) // [15,] => [9,]
+					se, br = expectSetBreakpointsResponseAndStoppedEvent(t, client)
+					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
+					}
+					checkSetBreakpointsResponse(t, client, []Breakpoint{{9, fixture.Source, true, ""}}, br)
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se = client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "breakpoint" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.sayhi", 9)
+
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+func TestSetFunctionBreakpointWhileRunning(t *testing.T) {
+	runTest(t, "integrationprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{16},
+			[]onBreakpoint{{
+				execute: func() {
+					// The program loops 3 times over lines 14-15-8-9-10-16
+					handleStop(t, client, 1, "main.main", 16) // Line that sleeps for 1 second
+
+					// We can set breakpoints while nexting
+					client.NextRequest(1)
+					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{{Name: "main.sayhi"}}) // [16,] => [16, 8]
+					se, br := expectSetFunctionBreakpointsResponseAndStoppedEvent(t, client)
+					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
+					}
+					checkBreakpoints(t, client, []Breakpoint{{8, fixture.Source, true, ""}}, br.Body.Breakpoints)
+
+					client.SetBreakpointsRequest(fixture.Source, []int{}) // [16,8] => [8]
+					expectSetBreakpointsResponse(t, client, []Breakpoint{})
+
+					// Halt cancelled next, so if we continue we will not stop at line 14.
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se = client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "function breakpoint" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.sayhi", 8)
+
+					// We can set breakpoints while continuing
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{}) // [8,] => []
+					se, br = expectSetFunctionBreakpointsResponseAndStoppedEvent(t, client)
+					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
+					}
+					checkBreakpoints(t, client, []Breakpoint{}, br.Body.Breakpoints)
+					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
+					}
+					checkBreakpoints(t, client, []Breakpoint{}, br.Body.Breakpoints)
+
+					client.SetBreakpointsRequest(fixture.Source, []int{16}) // [] => [16]
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{16, fixture.Source, true, ""}})
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se = client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "breakpoint" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 1 {
+						t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", se)
+					}
+					handleStop(t, client, 1, "main.main", 16)
+
+				},
 				disconnect: true,
 			}})
 	})
@@ -2010,8 +2486,8 @@ func TestWorkingDir(t *testing.T) {
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)
 					expectChildren(t, locals, "Locals", 2)
-					expectVarExact(t, locals, 0, "pwd", "pwd", fmt.Sprintf("%q", wd), noChildren)
-					expectVarExact(t, locals, 1, "err", "err", "error nil", noChildren)
+					expectVarExact(t, locals, 0, "pwd", "pwd", fmt.Sprintf("%q", wd), "string", noChildren)
+					expectVarExact(t, locals, 1, "err", "err", "error nil", "error", noChildren)
 
 				},
 				disconnect: false,
@@ -2064,8 +2540,8 @@ func TestEvaluateRequest(t *testing.T) {
 						client.VariablesRequest(ref)
 						a5 := client.ExpectVariablesResponse(t)
 						expectChildren(t, a5, "a5", 5)
-						expectVarExact(t, a5, 0, "[0]", "(a5)[0]", "1", noChildren)
-						expectVarExact(t, a5, 4, "[4]", "(a5)[4]", "5", noChildren)
+						expectVarExact(t, a5, 0, "[0]", "(a5)[0]", "1", "int", noChildren)
+						expectVarExact(t, a5, 4, "[4]", "(a5)[4]", "5", "int", noChildren)
 						validateEvaluateName(t, client, a5, 0)
 						validateEvaluateName(t, client, a5, 4)
 					}
@@ -2098,7 +2574,7 @@ func TestEvaluateRequest(t *testing.T) {
 						client.VariablesRequest(ref)
 						val := client.ExpectVariablesResponse(t)
 						expectChildren(t, val, "*(*int)(2)", 1)
-						expectVarRegex(t, val, 0, "^$", `\(\*\(\(\*int\)\(2\)\)\)`, `\(unreadable .+\)`, noChildren)
+						expectVarRegex(t, val, 0, "^$", `\(\*\(\(\*int\)\(2\)\)\)`, `\(unreadable .+\)`, "int", noChildren)
 						validateEvaluateName(t, client, val, 0)
 					}
 
@@ -2125,7 +2601,7 @@ func TestEvaluateRequest(t *testing.T) {
 						client.VariablesRequest(ref)
 						expr := client.ExpectVariablesResponse(t)
 						expectChildren(t, expr, "mp[1]", 1)
-						expectVarExact(t, expr, 0, "data", "(mp[1]).(data)", "42", noChildren)
+						expectVarExact(t, expr, 0, "data", "(mp[1]).(data)", "42", "int", noChildren)
 						validateEvaluateName(t, client, expr, 0)
 					}
 
@@ -2137,7 +2613,7 @@ func TestEvaluateRequest(t *testing.T) {
 						client.VariablesRequest(ref)
 						expr := client.ExpectVariablesResponse(t)
 						expectChildren(t, expr, "*ms.Nest", 2)
-						expectVarExact(t, expr, 0, "Level", "(*ms.Nest).Level", "1", noChildren)
+						expectVarExact(t, expr, 0, "Level", "(*ms.Nest).Level", "1", "int", noChildren)
 						validateEvaluateName(t, client, expr, 0)
 					}
 
@@ -2179,8 +2655,67 @@ func TestEvaluateRequest(t *testing.T) {
 					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
 					}
+					client.EvaluateRequest("a1", 1002, "repl")
+					erres = client.ExpectInvisibleErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
+					}
+					client.EvaluateRequest("a1", 1002, "hover")
+					erres = client.ExpectInvisibleErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
+					}
 				},
 				disconnect: false,
+			}})
+	})
+}
+
+func TestEvaluateRequestLongStr(t *testing.T) {
+	runTest(t, "testvariables2", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Breakpoints are set within the program
+			fixture.Source, []int{},
+			[]onBreakpoint{{
+				execute: func() {
+
+					longstr := `"very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"`
+					longstrTruncated := `"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more"`
+
+					handleStop(t, client, 1, "main.main", -1)
+
+					client.VariablesRequest(1001) // Locals
+					locals := client.ExpectVariablesResponse(t)
+
+					// reflect.Kind == String, load with longer load limit if evaluated in repl/variables context.
+					for _, evalContext := range []string{"", "watch", "repl", "variables", "somethingelse"} {
+						t.Run(evalContext, func(t *testing.T) {
+							// long string
+							client.EvaluateRequest("longstr", 0, evalContext)
+							got := client.ExpectEvaluateResponse(t)
+							want := longstrTruncated
+							if evalContext == "repl" || evalContext == "variables" {
+								want = longstr
+							}
+							expectEval(t, got, want, false)
+
+							// long string as a struct field
+							client.EvaluateRequest("(m6).s", 0, evalContext)
+							got2 := client.ExpectEvaluateResponse(t)
+							expectEval(t, got2, want, false)
+
+							// variables are not affected.
+							expectVarExact(t, locals, -1, "longstr", "longstr", longstrTruncated, "string", noChildren)
+							expectVarExact(t, locals, -1, "m6", "m6", `main.C {s: `+longstrTruncated+`}`, "main.C", hasChildren)
+						})
+					}
+
+				},
+				disconnect: true,
 			}})
 	})
 }
@@ -2273,7 +2808,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 						client.VariablesRequest(ref)
 						rv := client.ExpectVariablesResponse(t)
 						expectChildren(t, rv, "rv", 1)
-						expectVarExact(t, rv, 0, "~r2", "", "3", noChildren)
+						expectVarExact(t, rv, 0, "~r2", "", "3", "int", noChildren)
 					}
 					// One named return value
 					// Panic doesn't panic, but instead returns the error as a named return variable
@@ -2284,12 +2819,12 @@ func TestEvaluateCallRequest(t *testing.T) {
 						client.VariablesRequest(ref)
 						rv := client.ExpectVariablesResponse(t)
 						expectChildren(t, rv, "rv", 1)
-						ref = expectVarExact(t, rv, 0, "~panic", "", `interface {}(string) "callpanic panicked"`, hasChildren)
+						ref = expectVarExact(t, rv, 0, "~panic", "", `interface {}(string) "callpanic panicked"`, "interface {}", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							p := client.ExpectVariablesResponse(t)
 							expectChildren(t, p, "~panic", 1)
-							expectVarExact(t, p, 0, "data", "", "\"callpanic panicked\"", noChildren)
+							expectVarExact(t, p, 0, "data", "", "\"callpanic panicked\"", "string", noChildren)
 						}
 					}
 					// Multiple return values
@@ -2300,8 +2835,8 @@ func TestEvaluateCallRequest(t *testing.T) {
 						client.VariablesRequest(ref)
 						rvs := client.ExpectVariablesResponse(t)
 						expectChildren(t, rvs, "rvs", 2)
-						expectVarExact(t, rvs, 0, "~r2", "", "1", noChildren)
-						expectVarExact(t, rvs, 1, "~r3", "", "2", noChildren)
+						expectVarExact(t, rvs, 0, "~r2", "", "1", "int", noChildren)
+						expectVarExact(t, rvs, 1, "~r3", "", "2", "int", noChildren)
 					}
 					// No frame defaults to top-most frame
 					client.EvaluateRequest("call call1(one, two)", 0, "this context will be ignored")
@@ -2315,14 +2850,36 @@ func TestEvaluateCallRequest(t *testing.T) {
 					client.EvaluateRequest("call ", 1000, "watch")
 					got = client.ExpectEvaluateResponse(t)
 					expectEval(t, got, "\"this is a variable named `call`\"", noChildren)
+					// Long string as a return value
+					client.EvaluateRequest(`call stringsJoin(longstrs, ",")`, 1000, "variables") // full string
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, `"very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"`, hasChildren)
+					client.EvaluateRequest(`call stringsJoin(longstrs, ",")`, 1000, "watch") // full string
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, `"very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"`, hasChildren)
+
 					// Call error
 					client.EvaluateRequest("call call1(one)", 1000, "watch")
 					erres := client.ExpectInvisibleErrorResponse(t)
 					if erres.Body.Error.Format != "Unable to evaluate expression: not enough arguments" {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: not enough arguments\"", erres)
 					}
-					// Call can exit
+
+					// Assignment - expect no error, but no return value.
+					client.EvaluateRequest("call one = two", 1000, "this context will be ignored")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "", noChildren)
+					// Check one=two was applied.
+					client.EvaluateRequest("one", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					expectEval(t, got, "2", noChildren)
+
+					// Call can exit.
 					client.EvaluateRequest("call callexit()", 1000, "this context will be ignored")
+					client.ExpectTerminatedEvent(t)
+					if res := client.ExpectVisibleErrorResponse(t); !strings.Contains(res.Body.Error.Format, "terminated") {
+						t.Errorf("\ngot %#v\nwant Format=.*terminated.*", res)
+					}
 				},
 				terminated: true,
 				disconnect: true,
@@ -2354,20 +2911,24 @@ func TestNextAndStep(t *testing.T) {
 
 					client.StepOutRequest(1)
 					client.ExpectStepOutResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStop("main.main", 18)
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStop("main.main", 19)
 
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStop("main.inlineThis", 5)
 
 					client.NextRequest(-1000)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "error" || se.Body.Text != "unknown goroutine -1000" {
-						t.Errorf("got %#v, want Reaspon=\"error\", Text=\"unknown goroutine -1000\"", se)
+						t.Errorf("got %#v, want Reason=\"error\", Text=\"unknown goroutine -1000\"", se)
 					}
 					handleStop(t, client, 1, "main.inlineThis", 5)
 				},
@@ -2394,6 +2955,7 @@ func TestNextParked(t *testing.T) {
 
 					client.NextRequest(goroutineId)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 
 					se := client.ExpectStoppedEvent(t)
 					if se.Body.ThreadId != goroutineId {
@@ -2423,6 +2985,7 @@ func TestStepInParked(t *testing.T) {
 
 					client.StepInRequest(goroutineId)
 					client.ExpectStepInResponse(t)
+					client.ExpectContinuedEvent(t)
 
 					se := client.ExpectStoppedEvent(t)
 					if se.Body.ThreadId != goroutineId {
@@ -2542,6 +3105,7 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 					}
 					client.StepOutRequest(goroutineId)
 					client.ExpectStepOutResponse(t)
+					client.ExpectContinuedEvent(t)
 
 					switch e := client.ExpectMessage(t).(type) {
 					case *dap.StoppedEvent:
@@ -2577,14 +3141,16 @@ func TestBadAccess(t *testing.T) {
 
 					expectStoppedOnError := func(errorPrefix string) {
 						t.Helper()
-						oe := client.ExpectOutputEvent(t)
-						if oe.Body.Category != "stderr" || !strings.HasPrefix(oe.Body.Output, "ERROR: "+errorPrefix) {
-							t.Errorf("\ngot  %#v\nwant Category=\"stderr\" Output=\"%s ...\"", oe, errorPrefix)
-						}
 						se := client.ExpectStoppedEvent(t)
-						if se.Body.ThreadId != 1 || se.Body.Reason != "runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
-							t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"runtime error\" Text=\"%s\"", se, errorPrefix)
+						if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "Paused on runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
+							t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"Paused on runtime error\" Text=\"%s\"", se, errorPrefix)
 						}
+						client.ExceptionInfoRequest(1)
+						eInfo := client.ExpectExceptionInfoResponse(t)
+						if eInfo.Body.ExceptionId != "runtime error" || !strings.HasPrefix(eInfo.Body.Description, errorPrefix) {
+							t.Errorf("\ngot  %#v\nwant ExceptionId=\"runtime error\" Text=\"%s\"", eInfo, errorPrefix)
+						}
+
 					}
 
 					client.ContinueRequest(1)
@@ -2593,18 +3159,22 @@ func TestBadAccess(t *testing.T) {
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStoppedOnError("invalid memory address or nil pointer dereference")
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStoppedOnError("next while nexting")
 
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStoppedOnError("next while nexting")
 
 					client.StepOutRequest(1)
 					client.ExpectStepOutResponse(t)
+					client.ExpectContinuedEvent(t)
 					expectStoppedOnError("next while nexting")
 				},
 				disconnect: true,
@@ -2629,8 +3199,14 @@ func TestPanicBreakpointOnContinue(t *testing.T) {
 					client.ExpectContinueResponse(t)
 
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != 1 || se.Body.Reason != "panic" {
-						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"panic\"", se)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "Paused on panic" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"Paused on panic\"", se)
+					}
+
+					client.ExceptionInfoRequest(1)
+					eInfo := client.ExpectExceptionInfoResponse(t)
+					if eInfo.Body.ExceptionId != "panic" || eInfo.Body.Description != "\"BOOM!\"" {
+						t.Errorf("\ngot  %#v\nwant ExceptionId=\"panic\" Description=\"\"BOOM!\"\"", eInfo)
 					}
 				},
 				disconnect: true,
@@ -2659,11 +3235,17 @@ func TestPanicBreakpointOnNext(t *testing.T) {
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
+					client.ExpectContinuedEvent(t)
 
 					se := client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "Paused on panic" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"Paused on panic\"", se)
+					}
 
-					if se.Body.ThreadId != 1 || se.Body.Reason != "panic" {
-						t.Errorf("\ngot  %#v\nexpected ThreadId=1 Reason=\"panic\"", se)
+					client.ExceptionInfoRequest(1)
+					eInfo := client.ExpectExceptionInfoResponse(t)
+					if eInfo.Body.ExceptionId != "panic" || eInfo.Body.Description != "\"BOOM!\"" {
+						t.Errorf("\ngot  %#v\nwant ExceptionId=\"panic\" Description=\"\"BOOM!\"\"", eInfo)
 					}
 				},
 				disconnect: true,
@@ -2688,8 +3270,8 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 					client.ExpectContinueResponse(t)
 
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.Reason != "fatal error" {
-						t.Errorf("\ngot  %#v\nwant Reason=\"fatal error\"", se)
+					if se.Body.Reason != "exception" || se.Body.Description != "Paused on fatal error" {
+						t.Errorf("\ngot  %#v\nwant Reason=\"exception\" Description=\"Paused on fatal error\"", se)
 					}
 				},
 				disconnect: true,
@@ -2697,15 +3279,8 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 	})
 }
 
-// handleStop covers the standard sequence of reqeusts issued by
-// a client at a breakpoint or another non-terminal stop event.
-// The details have been tested by other tests,
-// so this is just a sanity check.
-// Skips line check if line is -1.
-func handleStop(t *testing.T, client *daptest.Client, thread int, name string, line int) {
+func verifyStopLocation(t *testing.T, client *daptest.Client, thread int, name string, line int) {
 	t.Helper()
-	client.ThreadsRequest()
-	client.ExpectThreadsResponse(t)
 
 	client.StackTraceRequest(thread, 0, 20)
 	st := client.ExpectStackTraceResponse(t)
@@ -2719,6 +3294,19 @@ func handleStop(t *testing.T, client *daptest.Client, thread int, name string, l
 			t.Errorf("\ngot  %#v\nwant Name=%q", st, name)
 		}
 	}
+}
+
+// handleStop covers the standard sequence of requests issued by
+// a client at a breakpoint or another non-terminal stop event.
+// The details have been tested by other tests,
+// so this is just a sanity check.
+// Skips line check if line is -1.
+func handleStop(t *testing.T, client *daptest.Client, thread int, name string, line int) {
+	t.Helper()
+	client.ThreadsRequest()
+	client.ExpectThreadsResponse(t)
+
+	verifyStopLocation(t, client, thread, name, line)
 
 	client.ScopesRequest(1000)
 	client.ExpectScopesResponse(t)
@@ -2785,9 +3373,6 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 		client.ExpectStoppedEvent(t)
 		onBP.execute()
 		if onBP.disconnect {
-			if onBP.terminated {
-				client.ExpectTerminatedEvent(t)
-			}
 			client.DisconnectRequestWithKillOption(true)
 			if onBP.terminated {
 				client.ExpectOutputEventProcessExited(t, 0)
@@ -3009,8 +3594,53 @@ func TestAttachRequest(t *testing.T) {
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)
 					expectChildren(t, locals, "Locals", 1)
-					expectVarRegex(t, locals, 0, "i", "i", "[0-9]+", noChildren)
+					expectVarRegex(t, locals, 0, "i", "i", "[0-9]+", "int", noChildren)
 				},
+				disconnect: true,
+			}})
+	})
+}
+
+func TestPauseAndContinue(t *testing.T) {
+	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{6},
+			[]onBreakpoint{{
+				execute: func() {
+					verifyStopLocation(t, client, 1, "main.loop", 6)
+
+					// Continue resumes all goroutines, so thread id is ignored
+					client.ContinueRequest(12345)
+					client.ExpectContinueResponse(t)
+
+					time.Sleep(time.Second)
+
+					// Halt pauses all goroutines, so thread id is ignored
+					client.PauseRequest(56789)
+					// Since we are in async mode while running, we might receive next two messages in either order.
+					for i := 0; i < 2; i++ {
+						msg := client.ExpectMessage(t)
+						switch m := msg.(type) {
+						case *dap.StoppedEvent:
+							if m.Body.Reason != "pause" || m.Body.ThreadId != 0 && m.Body.ThreadId != 1 {
+								t.Errorf("\ngot %#v\nwant ThreadId=0/1 Reason='pause'", m)
+							}
+						case *dap.PauseResponse:
+						default:
+							t.Fatalf("got %#v, want StoppedEvent or PauseResponse", m)
+						}
+					}
+
+					// Pause will be a no-op at a pause: there will be no additional stopped events
+					client.PauseRequest(1)
+					client.ExpectPauseResponse(t)
+				},
+				// The program has an infinite loop, so we must kill it by disconnecting.
 				disconnect: true,
 			}})
 	})
@@ -3050,9 +3680,6 @@ func TestUnupportedCommandResponses(t *testing.T) {
 		client.CompletionsRequest()
 		expectUnsupportedCommand("completions")
 
-		client.ExceptionInfoRequest()
-		expectUnsupportedCommand("exceptionInfo")
-
 		client.DataBreakpointInfoRequest()
 		expectUnsupportedCommand("dataBreakpointInfo")
 
@@ -3067,21 +3694,375 @@ func TestUnupportedCommandResponses(t *testing.T) {
 	})
 }
 
-func TestRequiredNotYetImplementedResponses(t *testing.T) {
-	var got *dap.ErrorResponse
-	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		seqCnt := 1
-		expectNotYetImplemented := func(cmd string) {
-			t.Helper()
-			got = client.ExpectNotYetImplementedErrorResponse(t)
-			if got.RequestSeq != seqCnt || got.Command != cmd {
-				t.Errorf("\ngot  %#v\nwant RequestSeq=%d Command=%s", got, seqCnt, cmd)
-			}
-			seqCnt++
-		}
+type helperForSetVariable struct {
+	t *testing.T
+	c *daptest.Client
+}
 
-		client.PauseRequest()
-		expectNotYetImplemented("pause")
+func (h *helperForSetVariable) expectSetVariableAndStop(ref int, name, value string) {
+	h.t.Helper()
+	h.expectSetVariable0(ref, name, value, true)
+}
+func (h *helperForSetVariable) expectSetVariable(ref int, name, value string) {
+	h.t.Helper()
+	h.expectSetVariable0(ref, name, value, false)
+}
+
+func (h *helperForSetVariable) failSetVariable(ref int, name, value, wantErrInfo string) {
+	h.t.Helper()
+	h.failSetVariable0(ref, name, value, wantErrInfo, false)
+}
+
+func (h *helperForSetVariable) failSetVariableAndStop(ref int, name, value, wantErrInfo string) {
+	h.t.Helper()
+	h.failSetVariable0(ref, name, value, wantErrInfo, true)
+}
+
+func (h *helperForSetVariable) evaluate(expr, want string, hasRef bool) {
+	h.t.Helper()
+	h.c.EvaluateRequest(expr, 1000, "whatever")
+	got := h.c.ExpectEvaluateResponse(h.t)
+	expectEval(h.t, got, want, hasRef)
+}
+
+func (h *helperForSetVariable) evaluateRegex(expr, want string, hasRef bool) {
+	h.t.Helper()
+	h.c.EvaluateRequest(expr, 1000, "whatever")
+	got := h.c.ExpectEvaluateResponse(h.t)
+	expectEvalRegex(h.t, got, want, hasRef)
+}
+
+func (h *helperForSetVariable) expectSetVariable0(ref int, name, value string, wantStop bool) {
+	h.t.Helper()
+
+	h.c.SetVariableRequest(ref, name, value)
+	if wantStop {
+		h.c.ExpectStoppedEvent(h.t)
+	}
+	if got, want := h.c.ExpectSetVariableResponse(h.t), value; got.Success != true || got.Body.Value != want {
+		h.t.Errorf("SetVariableRequest(%v, %v)=%#v, want {Success=true, Body.Value=%q", name, value, got, want)
+	}
+}
+
+func (h *helperForSetVariable) failSetVariable0(ref int, name, value, wantErrInfo string, wantStop bool) {
+	h.t.Helper()
+
+	h.c.SetVariableRequest(ref, name, value)
+	if wantStop {
+		h.c.ExpectStoppedEvent(h.t)
+	}
+	resp := h.c.ExpectErrorResponse(h.t)
+	if got := resp.Body.Error.Format; !strings.Contains(got, wantErrInfo) {
+		h.t.Errorf("got %#v, want error string containing %v", got, wantErrInfo)
+	}
+}
+
+func (h *helperForSetVariable) variables(ref int) *dap.VariablesResponse {
+	h.t.Helper()
+	h.c.VariablesRequest(ref)
+	return h.c.ExpectVariablesResponse(h.t)
+}
+
+// TestSetVariable tests SetVariable features that do not need function call support.
+func TestSetVariable(t *testing.T) {
+	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+				})
+			},
+			fixture.Source, []int{}, // breakpoints are set within the program.
+			[]onBreakpoint{{
+				execute: func() {
+					tester := &helperForSetVariable{t, client}
+
+					startLineno := 66 // after runtime.Breakpoint
+					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
+						// Go1.15 on windows inserts a NOP after the call to
+						// runtime.Breakpoint and marks it same line as the
+						// runtime.Breakpoint call, making this flaky, so skip the line check.
+						startLineno = -1
+					}
+
+					handleStop(t, client, 1, "main.foobar", startLineno)
+
+					// Args of foobar(baz string, bar FooBar)
+					args := tester.variables(1000)
+
+					expectVarExact(t, args, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
+					tester.failSetVariable(1000, "bar", `main.FooBar {Baz: 42, Bur: "ipsum"}`, "*ast.CompositeLit not implemented")
+
+					// Nested field.
+					barRef := expectVarExact(t, args, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
+					tester.expectSetVariable(barRef, "Baz", "42")
+					tester.evaluate("bar", `main.FooBar {Baz: 42, Bur: "lorem"}`, hasChildren)
+
+					tester.failSetVariable(barRef, "Baz", `"string"`, "can not convert")
+
+					// Local variables
+					locals := tester.variables(1001)
+
+					// int
+					expectVarExact(t, locals, -1, "a2", "a2", "6", "int", noChildren)
+					tester.expectSetVariable(1001, "a2", "42")
+					tester.evaluate("a2", "42", noChildren)
+
+					tester.failSetVariable(1001, "a2", "false", "can not convert")
+
+					// float
+					expectVarExact(t, locals, -1, "a3", "a3", "7.23", "float64", noChildren)
+					tester.expectSetVariable(1001, "a3", "-0.1")
+					tester.evaluate("a3", "-0.1", noChildren)
+
+					// array of int
+					a4Ref := expectVarExact(t, locals, -1, "a4", "a4", "[2]int [1,2]", "[2]int", hasChildren)
+					tester.expectSetVariable(a4Ref, "[1]", "-7")
+					tester.evaluate("a4", "[2]int [1,-7]", hasChildren)
+
+					tester.failSetVariable(1001, "a4", "[2]int{3, 4}", "not implemented")
+
+					// slice of int
+					a5Ref := expectVarExact(t, locals, -1, "a5", "a5", "[]int len: 5, cap: 5, [1,2,3,4,5]", "[]int", hasChildren)
+					tester.expectSetVariable(a5Ref, "[3]", "100")
+					tester.evaluate("a5", "[]int len: 5, cap: 5, [1,2,3,100,5]", hasChildren)
+
+					// composite literal and its nested fields.
+					a7Ref := expectVarExact(t, locals, -1, "a7", "a7", `*main.FooBar {Baz: 5, Bur: "strum"}`, "*main.FooBar", hasChildren)
+					a7Val := tester.variables(a7Ref)
+					a7ValRef := expectVarExact(t, a7Val, -1, "", "(*a7)", `main.FooBar {Baz: 5, Bur: "strum"}`, "main.FooBar", hasChildren)
+					tester.expectSetVariable(a7ValRef, "Baz", "7")
+					tester.evaluate("(*a7)", `main.FooBar {Baz: 7, Bur: "strum"}`, hasChildren)
+
+					// pointer
+					expectVarExact(t, locals, -1, "a9", "a9", `*main.FooBar nil`, "*main.FooBar", noChildren)
+					tester.expectSetVariable(1001, "a9", "&a6")
+					tester.evaluate("a9", `*main.FooBar {Baz: 8, Bur: "word"}`, hasChildren)
+
+					// slice of pointers
+					a13Ref := expectVarExact(t, locals, -1, "a13", "a13", `[]*main.FooBar len: 3, cap: 3, [*{Baz: 6, Bur: "f"},*{Baz: 7, Bur: "g"},*{Baz: 8, Bur: "h"}]`, "[]*main.FooBar", hasChildren)
+					a13 := tester.variables(a13Ref)
+					a13c0Ref := expectVarExact(t, a13, -1, "[0]", "a13[0]", `*main.FooBar {Baz: 6, Bur: "f"}`, "*main.FooBar", hasChildren)
+					a13c0 := tester.variables(a13c0Ref)
+					a13c0valRef := expectVarExact(t, a13c0, -1, "", "(*a13[0])", `main.FooBar {Baz: 6, Bur: "f"}`, "main.FooBar", hasChildren)
+					tester.expectSetVariable(a13c0valRef, "Baz", "777")
+					tester.evaluate("a13[0]", `*main.FooBar {Baz: 777, Bur: "f"}`, hasChildren)
+
+					// complex
+					tester.evaluate("c64", `(1 + 2i)`, hasChildren)
+					tester.expectSetVariable(1001, "c64", "(2 + 3i)")
+					tester.evaluate("c64", `(2 + 3i)`, hasChildren)
+					// note: complex's real, imaginary part can't be directly mutable.
+
+					//
+					// Global variables
+					//    p1 = 10
+					client.VariablesRequest(1002)
+					globals := client.ExpectVariablesResponse(t)
+
+					expectVarExact(t, globals, -1, "p1", "main.p1", "10", "int", noChildren)
+					tester.expectSetVariable(1002, "p1", "-10")
+					tester.evaluate("p1", "-10", noChildren)
+					tester.failSetVariable(1002, "p1", "0.1", "can not convert")
+				},
+				disconnect: true,
+			}})
+	})
+
+	runTest(t, "testvariables2", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+				})
+			},
+			fixture.Source, []int{}, // breakpoints are set within the program.
+			[]onBreakpoint{{
+				execute: func() {
+					tester := &helperForSetVariable{t, client}
+
+					startLineno := 358 // after runtime.Breakpoint
+					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
+						startLineno = -1
+					}
+
+					handleStop(t, client, 1, "main.main", startLineno)
+					locals := tester.variables(1001)
+
+					// channel
+					tester.evaluate("chnil", "chan int nil", noChildren)
+					tester.expectSetVariable(1001, "chnil", "ch1")
+					tester.evaluate("chnil", "chan int 4/11", hasChildren)
+
+					// func
+					tester.evaluate("fn2", "nil", noChildren)
+					tester.expectSetVariable(1001, "fn2", "fn1")
+					tester.evaluate("fn2", "main.afunc", noChildren)
+
+					// interface
+					tester.evaluate("ifacenil", "interface {} nil", noChildren)
+					tester.expectSetVariable(1001, "ifacenil", "iface1")
+					tester.evaluate("ifacenil", "interface {}(*main.astruct) *{A: 1, B: 2}", hasChildren)
+
+					// interface.(data)
+					iface1Ref := expectVarExact(t, locals, -1, "iface1", "iface1", "interface {}(*main.astruct) *{A: 1, B: 2}", "interface {}", hasChildren)
+					iface1 := tester.variables(iface1Ref)
+					iface1DataRef := expectVarExact(t, iface1, -1, "data", "iface1.(data)", "*main.astruct {A: 1, B: 2}", "*main.astruct", hasChildren)
+					iface1Data := tester.variables(iface1DataRef)
+					iface1DataValueRef := expectVarExact(t, iface1Data, -1, "", "(*iface1.(data))", "main.astruct {A: 1, B: 2}", "main.astruct", hasChildren)
+					tester.expectSetVariable(iface1DataValueRef, "A", "2021")
+					tester.evaluate("iface1", "interface {}(*main.astruct) *{A: 2021, B: 2}", hasChildren)
+
+					// map: string -> struct
+					tester.evaluate(`m1["Malone"]`, "main.astruct {A: 2, B: 3}", hasChildren)
+					m1Ref := expectVarRegex(t, locals, -1, "m1", "m1", `.*map\[string\]main\.astruct.*`, `map\[string\]main\.astruct`, hasChildren)
+					m1 := tester.variables(m1Ref)
+					elem1 := m1.Body.Variables[0]
+					tester.expectSetVariable(elem1.VariablesReference, "A", "-9999")
+					tester.expectSetVariable(elem1.VariablesReference, "B", "10000")
+					tester.evaluate(elem1.EvaluateName, "main.astruct {A: -9999, B: 10000}", hasChildren)
+
+					// map: struct -> int
+					m3Ref := expectVarExact(t, locals, -1, "m3", "m3", "map[main.astruct]int [{A: 1, B: 1}: 42, {A: 2, B: 2}: 43, ]", "map[main.astruct]int", hasChildren)
+					tester.expectSetVariable(m3Ref, "main.astruct {A: 1, B: 1}", "8888")
+					// note: updating keys is possible, but let's not promise anything.
+					tester.evaluateRegex("m3", `.*\[\{A: 1, B: 1\}: 8888,.*`, hasChildren)
+
+					// map: struct -> struct
+					m4Ref := expectVarRegex(t, locals, -1, "m4", "m4", `map\[main\.astruct]main\.astruct.*\[\{A: 1, B: 1\}: \{A: 11, B: 11\}.*`, `map\[main\.astruct\]main\.astruct`, hasChildren)
+					m4 := tester.variables(m4Ref)
+					m4Val1Ref := expectVarRegex(t, m4, -1, "[val 0]", `.*0x[0-9a-f]+.*`, `main.astruct.*`, `main\.astruct`, hasChildren)
+					tester.expectSetVariable(m4Val1Ref, "A", "-9999")
+					tester.evaluateRegex("m4", `.*A: -9999,.*`, hasChildren)
+
+					// unsigned pointer
+					expectVarRegex(t, locals, -1, "up1", "up1", `unsafe\.Pointer\(0x[0-9a-f]+\)`, "unsafe.Pointer", noChildren)
+					tester.expectSetVariable(1001, "up1", "unsafe.Pointer(0x0)")
+					tester.evaluate("up1", "unsafe.Pointer(0x0)", noChildren)
+
+					// val := A{val: 1}
+					valRef := expectVarExact(t, locals, -1, "val", "val", `main.A {val: 1}`, "main.A", hasChildren)
+					tester.expectSetVariable(valRef, "val", "3")
+					tester.evaluate("val", `main.A {val: 3}`, hasChildren)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+// TestSetVariableWithCall tests SetVariable features that do not depend on function calls support.
+func TestSetVariableWithCall(t *testing.T) {
+	protest.MustSupportFunctionCalls(t, testBackend)
+
+	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+				})
+			},
+			fixture.Source, []int{66, 67},
+			[]onBreakpoint{{
+				execute: func() {
+					tester := &helperForSetVariable{t, client}
+
+					startLineno := 66
+					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
+						// Go1.15 on windows inserts a NOP after the call to
+						// runtime.Breakpoint and marks it same line as the
+						// runtime.Breakpoint call, making this flaky, so skip the line check.
+						startLineno = -1
+					}
+
+					handleStop(t, client, 1, "main.foobar", startLineno)
+
+					// Args of foobar(baz string, bar FooBar)
+					args := tester.variables(1000)
+
+					expectVarExact(t, args, 0, "baz", "baz", `"bazburzum"`, "string", noChildren)
+					tester.expectSetVariable(1000, "baz", `"BazBurZum"`)
+					tester.evaluate("baz", `"BazBurZum"`, noChildren)
+
+					args = tester.variables(1000)
+					barRef := expectVarExact(t, args, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
+					tester.expectSetVariable(barRef, "Bur", `"ipsum"`)
+					tester.evaluate("bar", `main.FooBar {Baz: 10, Bur: "ipsum"}`, hasChildren)
+
+					// Local variables
+					locals := tester.variables(1001)
+
+					expectVarExact(t, locals, -1, "a1", "a1", `"foofoofoofoofoofoo"`, "string", noChildren)
+					tester.expectSetVariable(1001, "a1", `"barbarbar"`)
+					tester.evaluate("a1", `"barbarbar"`, noChildren)
+
+					a6Ref := expectVarExact(t, locals, -1, "a6", "a6", `main.FooBar {Baz: 8, Bur: "word"}`, "main.FooBar", hasChildren)
+					tester.failSetVariable(a6Ref, "Bur", "false", "can not convert")
+
+					tester.expectSetVariable(a6Ref, "Bur", `"sentence"`)
+					tester.evaluate("a6", `main.FooBar {Baz: 8, Bur: "sentence"}`, hasChildren)
+				},
+			}, {
+				// Stop at second breakpoint and set a1.
+				execute: func() {
+					tester := &helperForSetVariable{t, client}
+
+					handleStop(t, client, 1, "main.barfoo", -1)
+					// Test: set string 'a1' in main.barfoo.
+					// This shouldn't affect 'a1' in main.foobar - we will check that in the next breakpoint.
+					locals := tester.variables(1001)
+					expectVarExact(t, locals, -1, "a1", "a1", `"bur"`, "string", noChildren)
+					tester.expectSetVariable(1001, "a1", `"fur"`)
+					tester.evaluate("a1", `"fur"`, noChildren)
+					// We will check a1 in main.foobar isn't affected from the next breakpoint.
+
+					client.StackTraceRequest(1, 1, 20)
+					res := client.ExpectStackTraceResponse(t)
+					if len(res.Body.StackFrames) < 1 {
+						t.Fatalf("stack trace response = %#v, wanted at least one stack frame", res)
+					}
+					outerFrame := res.Body.StackFrames[0].Id
+					client.EvaluateRequest("a1", outerFrame, "whatever_context")
+					evalRes := client.ExpectEvaluateResponse(t)
+					expectEval(t, evalRes, `"barbarbar"`, noChildren)
+				},
+				disconnect: true,
+			}})
+	})
+
+	runTest(t, "fncall", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+				})
+			},
+			fixture.Source, []int{}, // breakpoints are set within the program.
+			[]onBreakpoint{{
+				// Stop at second breakpoint and set a1.
+				execute: func() {
+					tester := &helperForSetVariable{t, client}
+
+					handleStop(t, client, 1, "main.main", 197)
+
+					_ = tester.variables(1001)
+
+					// successful variable set using a function call.
+					tester.expectSetVariable(1001, "str", `callstacktrace()`)
+					tester.evaluateRegex("str", `.*in main.callstacktrace at.*`, noChildren)
+
+					tester.failSetVariableAndStop(1001, "str", `callpanic()`, `callpanic panicked`)
+					handleStop(t, client, 1, "main.main", 197)
+
+					// breakpoint during a function call.
+					tester.failSetVariableAndStop(1001, "str", `callbreak()`, "call stopped")
+
+					// TODO(hyangah): continue after this causes runtime error while resuming
+					// unfinished injected call.
+					//   runtime error: can not convert %!s(<nil>) constant to string
+					// This can be reproducible with dlv cli. (`call str = callbreak(); continue`)
+				},
+				disconnect: true,
+			}})
 	})
 }
 
@@ -3104,17 +4085,11 @@ func TestOptionalNotYetImplementedResponses(t *testing.T) {
 		client.RestartRequest()
 		expectNotYetImplemented("restart")
 
-		client.SetFunctionBreakpointsRequest()
-		expectNotYetImplemented("setFunctionBreakpoints")
-
 		client.StepBackRequest()
 		expectNotYetImplemented("stepBack")
 
 		client.ReverseContinueRequest()
 		expectNotYetImplemented("reverseContinue")
-
-		client.SetVariableRequest()
-		expectNotYetImplemented("setVariable")
 
 		client.SetExpressionRequest()
 		expectNotYetImplemented("setExpression")
@@ -3157,14 +4132,6 @@ func TestBadLaunchRequests(t *testing.T) {
 			t.Helper()
 			expectFailedToLaunch(response)
 			if response.Body.Error.Format != errmsg {
-				t.Errorf("\ngot  %q\nwant %q", response.Body.Error.Format, errmsg)
-			}
-		}
-
-		expectFailedToLaunchWithMessageRegex := func(response *dap.ErrorResponse, errmsg string) {
-			t.Helper()
-			expectFailedToLaunch(response)
-			if matched, _ := regexp.MatchString(errmsg, response.Body.Error.Format); !matched {
 				t.Errorf("\ngot  %q\nwant %q", response.Body.Error.Format, errmsg)
 			}
 		}
@@ -3250,18 +4217,34 @@ func TestBadLaunchRequests(t *testing.T) {
 		expectFailedToLaunch(client.ExpectInvisibleErrorResponse(t)) // No such file or directory
 
 		client.LaunchRequest("debug", fixture.Path+"_does_not_exist", stopOnEntry)
+		oe := client.ExpectOutputEvent(t)
+		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
+			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
+		}
 		expectFailedToLaunch(client.ExpectInvisibleErrorResponse(t))
 
 		client.LaunchRequest("" /*debug by default*/, fixture.Path+"_does_not_exist", stopOnEntry)
+		oe = client.ExpectOutputEvent(t)
+		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
+			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
+		}
 		expectFailedToLaunch(client.ExpectInvisibleErrorResponse(t))
 
 		client.LaunchRequest("exec", fixture.Source, stopOnEntry)
 		expectFailedToLaunch(client.ExpectInvisibleErrorResponse(t)) // Not an executable
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "-bad -flags"})
-		expectFailedToLaunchWithMessageRegex(client.ExpectInvisibleErrorResponse(t), `Failed to launch: Build error: .*flag provided but not defined.*`)
+		oe = client.ExpectOutputEvent(t)
+		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
+			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
+		}
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t), "Failed to launch: Build error: Check the debug console for details.")
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "buildFlags": "-bad -flags"})
-		expectFailedToLaunchWithMessageRegex(client.ExpectInvisibleErrorResponse(t), `Failed to launch: Build error: .*flag provided but not defined.*`)
+		oe = client.ExpectOutputEvent(t)
+		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
+			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
+		}
+		expectFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t), "Failed to launch: Build error: Check the debug console for details.")
 
 		// Bad "wd".
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": false, "cwd": "dir/invalid"})

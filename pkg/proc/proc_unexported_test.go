@@ -73,3 +73,26 @@ func TestAlignAddr(t *testing.T) {
 		c(example.align, example.in+0x10000, example.tgt+0x10000)
 	}
 }
+
+func TestConvertInt(t *testing.T) {
+	var testCases = []struct {
+		in     uint64
+		signed bool
+		size   int64
+		tgt    uint64
+	}{
+		{1, false, 1, 1},
+		{uint64(0xf0), true, 1, 0xfffffffffffffff0},
+		{uint64(0xf0), false, 1, 0xf0},
+		{uint64(0x70), true, 1, 0x70},
+		{uint64(0x90f0), true, 2, 0xffffffffffff90f0},
+		{uint64(0x90f0), false, 2, 0x90f0},
+	}
+	for _, tc := range testCases {
+		out := convertInt(tc.in, tc.signed, tc.size)
+		t.Logf("in=%#016x signed=%v size=%d -> %#016x\n", tc.in, tc.signed, tc.size, out)
+		if out != tc.tgt {
+			t.Errorf("expected=%#016x got=%#016x\n", tc.tgt, out)
+		}
+	}
+}

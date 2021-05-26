@@ -100,6 +100,10 @@ func (c *Client) ExpectInitializeResponseAndCapabilities(t *testing.T) *dap.Init
 		SupportsConditionalBreakpoints:   true,
 		SupportsDelayedStackTraceLoading: true,
 		SupportTerminateDebuggee:         true,
+		SupportsExceptionInfoRequest:     true,
+		SupportsSetVariable:              true,
+		SupportsFunctionBreakpoints:      true,
+		SupportsEvaluateForHovers:        true,
 	}
 	if !reflect.DeepEqual(initResp.Body, wantCapabilities) {
 		t.Errorf("capabilities in initializeResponse: got %+v, want %v", pretty(initResp.Body), pretty(wantCapabilities))
@@ -284,9 +288,9 @@ func (c *Client) StepOutRequest(thread int) {
 }
 
 // PauseRequest sends a 'pause' request.
-func (c *Client) PauseRequest() {
-	request := &dap.NextRequest{Request: *c.newRequest("pause")}
-	// TODO(polina): arguments
+func (c *Client) PauseRequest(threadId int) {
+	request := &dap.PauseRequest{Request: *c.newRequest("pause")}
+	request.Arguments.ThreadId = threadId
 	c.send(request)
 }
 
@@ -330,8 +334,13 @@ func (c *Client) RestartRequest() {
 }
 
 // SetFunctionBreakpointsRequest sends a 'setFunctionBreakpoints' request.
-func (c *Client) SetFunctionBreakpointsRequest() {
-	c.send(&dap.SetFunctionBreakpointsRequest{Request: *c.newRequest("setFunctionBreakpoints")})
+func (c *Client) SetFunctionBreakpointsRequest(breakpoints []dap.FunctionBreakpoint) {
+	c.send(&dap.SetFunctionBreakpointsRequest{
+		Request: *c.newRequest("setFunctionBreakpoints"),
+		Arguments: dap.SetFunctionBreakpointsArguments{
+			Breakpoints: breakpoints,
+		},
+	})
 }
 
 // StepBackRequest sends a 'stepBack' request.
@@ -345,8 +354,12 @@ func (c *Client) ReverseContinueRequest() {
 }
 
 // SetVariableRequest sends a 'setVariable' request.
-func (c *Client) SetVariableRequest() {
-	c.send(&dap.ReverseContinueRequest{Request: *c.newRequest("setVariable")})
+func (c *Client) SetVariableRequest(variablesRef int, name, value string) {
+	request := &dap.SetVariableRequest{Request: *c.newRequest("setVariable")}
+	request.Arguments.VariablesReference = variablesRef
+	request.Arguments.Name = name
+	request.Arguments.Value = value
+	c.send(request)
 }
 
 // RestartFrameRequest sends a 'restartFrame' request.
@@ -399,8 +412,10 @@ func (c *Client) CompletionsRequest() {
 }
 
 // ExceptionInfoRequest sends a 'exceptionInfo' request.
-func (c *Client) ExceptionInfoRequest() {
-	c.send(&dap.ExceptionInfoRequest{Request: *c.newRequest("exceptionInfo")})
+func (c *Client) ExceptionInfoRequest(threadID int) {
+	request := &dap.ExceptionInfoRequest{Request: *c.newRequest("exceptionInfo")}
+	request.Arguments.ThreadId = threadID
+	c.send(request)
 }
 
 // LoadedSourcesRequest sends a 'loadedSources' request.

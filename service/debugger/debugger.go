@@ -517,7 +517,9 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 		if oldBp.ID > maxID {
 			maxID = oldBp.ID
 		}
-		if len(oldBp.File) > 0 {
+		if oldBp.WatchExpr != "" {
+			discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: oldBp, Reason: "can not recreate watchpoints on restart"})
+		} else if len(oldBp.File) > 0 {
 			addrs, err := proc.FindFileLocation(p, oldBp.File, oldBp.Line)
 			if err != nil {
 				discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: oldBp, Reason: err.Error()})
@@ -527,6 +529,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 		} else {
 			// Avoid setting a breakpoint based on address when rebuilding
 			if rebuild {
+				discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: oldBp, Reason: "can not recreate address breakpoints on restart"})
 				continue
 			}
 			newBp, err := p.SetBreakpointWithID(oldBp.ID, oldBp.Addr)
@@ -730,6 +733,11 @@ func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
 	defer d.targetMutex.Unlock()
 
 	originals := d.findBreakpoint(amend.ID)
+
+	if len(originals) > 0 && originals[0].WatchExpr != "" && amend.Disabled {
+		return errors.New("can not disable watchpoints")
+	}
+
 	_, disabled := d.disabledBreakpoints[amend.ID]
 	if originals == nil && !disabled {
 		return fmt.Errorf("no breakpoint with ID %d", amend.ID)
@@ -938,6 +946,22 @@ func (d *Debugger) findDisabledBreakpointByName(name string) *api.Breakpoint {
 	return nil
 }
 
+// CreateWatchpoint creates a watchpoint on the specified expression.
+func (d *Debugger) CreateWatchpoint(goid, frame, deferredCall int, expr string, wtype api.WatchType) (*api.Breakpoint, error) {
+	s, err := proc.ConvertEvalScope(d.target, goid, frame, deferredCall)
+	if err != nil {
+		return nil, err
+	}
+	bp, err := d.target.SetWatchpoint(s, expr, proc.WatchType(wtype), nil)
+	if err != nil {
+		return nil, err
+	}
+	if api.ValidBreakpointName(expr) == nil && d.findBreakpointByName(expr) == nil {
+		bp.Name = expr
+	}
+	return api.ConvertBreakpoint(bp), nil
+}
+
 // Threads returns the threads of the target process.
 func (d *Debugger) Threads() ([]proc.Thread, error) {
 	d.targetMutex.Lock()
@@ -965,6 +989,14 @@ func (d *Debugger) FindThread(id int) (proc.Thread, error) {
 		}
 	}
 	return nil, nil
+}
+
+// FindGoroutine returns the goroutine for the given 'id'.
+func (d *Debugger) FindGoroutine(id int) (*proc.G, error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+
+	return proc.FindGoroutine(d.target, id)
 }
 
 func (d *Debugger) setRunning(running bool) {
@@ -1357,6 +1389,18 @@ func (d *Debugger) FunctionArguments(goid, frame, deferredCall int, cfg proc.Loa
 	return s.FunctionArguments(cfg)
 }
 
+// Function returns the current function.
+func (d *Debugger) Function(goid, frame, deferredCall int, cfg proc.LoadConfig) (*proc.Function, error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+
+	s, err := proc.ConvertEvalScope(d.target, goid, frame, deferredCall)
+	if err != nil {
+		return nil, err
+	}
+	return s.Fn, nil
+}
+
 // EvalVariableInScope will attempt to evaluate the variable represented by 'symbol'
 // in the scope provided.
 func (d *Debugger) EvalVariableInScope(goid, frame, deferredCall int, symbol string, cfg proc.LoadConfig) (*proc.Variable, error) {
@@ -1565,9 +1609,28 @@ func (d *Debugger) FindLocation(goid, frame, deferredCall int, locStr string, in
 		return nil, err
 	}
 
+	return d.findLocation(goid, frame, deferredCall, locStr, loc, includeNonExecutableLines, substitutePathRules)
+}
+
+// FindLocationSpec will find the location specified by 'locStr' and 'locSpec'.
+// 'locSpec' should be the result of calling 'locspec.Parse(locStr)'. 'locStr'
+// is also passed, because it made be used to broaden the search criteria, if
+// the parsed result did not find anything.
+func (d *Debugger) FindLocationSpec(goid, frame, deferredCall int, locStr string, locSpec locspec.LocationSpec, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+
+	if _, err := d.target.Valid(); err != nil {
+		return nil, err
+	}
+
+	return d.findLocation(goid, frame, deferredCall, locStr, locSpec, includeNonExecutableLines, substitutePathRules)
+}
+
+func (d *Debugger) findLocation(goid, frame, deferredCall int, locStr string, locSpec locspec.LocationSpec, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
 	s, _ := proc.ConvertEvalScope(d.target, goid, frame, deferredCall)
 
-	locs, err := loc.Find(d.target, d.processArgs, s, locStr, includeNonExecutableLines, substitutePathRules)
+	locs, err := locSpec.Find(d.target, d.processArgs, s, locStr, includeNonExecutableLines, substitutePathRules)
 	for i := range locs {
 		if locs[i].PC == 0 {
 			continue
@@ -1850,6 +1913,9 @@ func (v breakpointsByLogicalID) Swap(i, j int) { v[i], v[j] = v[j], v[i] }
 
 func (v breakpointsByLogicalID) Less(i, j int) bool {
 	if v[i].LogicalID == v[j].LogicalID {
+		if v[i].WatchType != v[j].WatchType {
+			return v[i].WatchType > v[j].WatchType // if a logical breakpoint contains a watchpoint let the watchpoint sort first
+		}
 		return v[i].Addr < v[j].Addr
 	}
 	return v[i].LogicalID < v[j].LogicalID
