@@ -1480,20 +1480,53 @@ func TestVariablesLoading(t *testing.T) {
 					// String partially missing based on LoadConfig.MaxStringLen
 					expectVarExact(t, locals, -1, "longstr", "longstr", "\"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more\"", "string", noChildren)
 
+					checkArrayChildren := func(t *testing.T, longarr *dap.VariablesResponse, parentName string, start int) {
+						t.Helper()
+						for i, child := range longarr.Body.Variables {
+							idx := i + start
+							if child.Name != fmt.Sprintf("[%d]", idx) || child.EvaluateName != fmt.Sprintf("%s[%d]", parentName, idx) {
+								t.Errorf("Expected %s[%d] to have Name=\"[%d]\" EvaluateName=\"%s[%d]\", got %#v", parentName, idx, idx, parentName, idx, child)
+							}
+						}
+					}
+
 					// Array partially missing based on LoadConfig.MaxArrayValues
-					ref := expectVarExact(t, locals, -1, "longarr", "longarr", "(loaded 64/100) [100]int [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", "[100]int", hasChildren)
+					ref := expectVarExact(t, locals, -1, "longarr", "longarr", "[100]int [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", "[100]int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						longarr := client.ExpectVariablesResponse(t)
 						expectChildren(t, longarr, "longarr", 64)
+						checkArrayChildren(t, longarr, "longarr", 0)
+
+						client.IndexedVariablesRequest(ref, 0, 100)
+						longarr = client.ExpectVariablesResponse(t)
+						expectChildren(t, longarr, "longarr", 100)
+						checkArrayChildren(t, longarr, "longarr", 0)
+
+						client.IndexedVariablesRequest(ref, 50, 50)
+						longarr = client.ExpectVariablesResponse(t)
+						expectChildren(t, longarr, "longarr", 50)
+						checkArrayChildren(t, longarr, "longarr", 50)
+
 					}
 
 					// Slice partially missing based on LoadConfig.MaxArrayValues
-					ref = expectVarExact(t, locals, -1, "longslice", "longslice", "(loaded 64/100) []int len: 100, cap: 100, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", "[]int", hasChildren)
+					ref = expectVarExact(t, locals, -1, "longslice", "longslice", "[]int len: 100, cap: 100, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", "[]int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						longarr := client.ExpectVariablesResponse(t)
 						expectChildren(t, longarr, "longslice", 64)
+						checkArrayChildren(t, longarr, "longslice", 0)
+
+						client.IndexedVariablesRequest(ref, 0, 100)
+						longarr = client.ExpectVariablesResponse(t)
+						expectChildren(t, longarr, "longslice", 100)
+						checkArrayChildren(t, longarr, "longslice", 0)
+
+						client.IndexedVariablesRequest(ref, 50, 50)
+						longarr = client.ExpectVariablesResponse(t)
+						expectChildren(t, longarr, "longslice", 50)
+						checkArrayChildren(t, longarr, "longslice", 50)
 					}
 
 					// Map partially missing based on LoadConfig.MaxArrayValues

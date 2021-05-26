@@ -533,7 +533,7 @@ func (g *G) Labels() map[string]string {
 			labelMapType, _ := g.variable.bi.findType("runtime/pprof.labelMap")
 			if labelMapType != nil {
 				labelMap := newVariable("", address.Addr, labelMapType, g.variable.bi, g.variable.mem)
-				labelMap.loadValue(loadFullValue)
+				labelMap.LoadValue(loadFullValue)
 				labels = map[string]string{}
 				for i := range labelMap.Children {
 					if i%2 == 0 {
@@ -917,7 +917,7 @@ func (v *Variable) loadFieldNamed(name string) *Variable {
 	if err != nil {
 		return nil
 	}
-	v.loadValue(loadFullValue)
+	v.LoadValue(loadFullValue)
 	if v.Unreadable != nil {
 		return nil
 	}
@@ -954,7 +954,7 @@ func Ancestors(p Process, g *G, n int) ([]Ancestor, error) {
 		return nil, err
 	}
 	av = av.maybeDereference()
-	av.loadValue(LoadConfig{MaxArrayValues: n, MaxVariableRecurse: 1, MaxStructFields: -1})
+	av.LoadValue(LoadConfig{MaxArrayValues: n, MaxVariableRecurse: 1, MaxStructFields: -1})
 	if av.Unreadable != nil {
 		return nil, err
 	}
@@ -994,7 +994,7 @@ func (a *Ancestor) Stack(n int) ([]Stackframe, error) {
 		return nil, a.Unreadable
 	}
 	pcsVar := a.pcsVar.clone()
-	pcsVar.loadValue(LoadConfig{MaxArrayValues: n})
+	pcsVar.LoadValue(LoadConfig{MaxArrayValues: n})
 	if pcsVar.Unreadable != nil {
 		return nil, pcsVar.Unreadable
 	}
@@ -1031,7 +1031,7 @@ func (g *G) stkbar() ([]savedLR, error) {
 	if g.stkbarVar == nil { // stack barriers were removed in Go 1.9
 		return nil, nil
 	}
-	g.stkbarVar.loadValue(LoadConfig{false, 1, 0, int(g.stkbarVar.Len), 3, 0})
+	g.stkbarVar.LoadValue(LoadConfig{false, 1, 0, int(g.stkbarVar.Len), 3, 0})
 	if g.stkbarVar.Unreadable != nil {
 		return nil, fmt.Errorf("unreadable stkbar: %v", g.stkbarVar.Unreadable)
 	}
@@ -1210,7 +1210,7 @@ func loadValues(vars []*Variable, cfg LoadConfig) {
 }
 
 // Extracts the value of the variable at the given address.
-func (v *Variable) loadValue(cfg LoadConfig) {
+func (v *Variable) LoadValue(cfg LoadConfig) {
 	v.loadValueInternal(0, cfg)
 }
 
@@ -1490,14 +1490,14 @@ func (v *Variable) loadSliceInfo(t *godwarf.SliceType) {
 			}
 		case sliceLenFieldName:
 			lstrAddr, _ := v.toField(f)
-			lstrAddr.loadValue(loadSingleValue)
+			lstrAddr.LoadValue(loadSingleValue)
 			err = lstrAddr.Unreadable
 			if err == nil {
 				v.Len, _ = constant.Int64Val(lstrAddr.Value)
 			}
 		case sliceCapFieldName:
 			cstrAddr, _ := v.toField(f)
-			cstrAddr.loadValue(loadSingleValue)
+			cstrAddr.LoadValue(loadSingleValue)
 			err = cstrAddr.Unreadable
 			if err == nil {
 				v.Cap, _ = constant.Int64Val(cstrAddr.Value)
@@ -1537,7 +1537,7 @@ func (v *Variable) loadChanInfo() {
 	}
 
 	lenAddr, _ := sv.toField(structType.Field[1])
-	lenAddr.loadValue(loadSingleValue)
+	lenAddr.LoadValue(loadSingleValue)
 	if lenAddr.Unreadable != nil {
 		v.Unreadable = fmt.Errorf("unreadable length: %v", lenAddr.Unreadable)
 		return
@@ -1623,8 +1623,8 @@ func (v *Variable) readComplex(size int64) {
 
 	realvar := v.newVariable("real", v.Addr, ftyp, v.mem)
 	imagvar := v.newVariable("imaginary", v.Addr+uint64(fs), ftyp, v.mem)
-	realvar.loadValue(loadSingleValue)
-	imagvar.loadValue(loadSingleValue)
+	realvar.LoadValue(loadSingleValue)
+	imagvar.LoadValue(loadSingleValue)
 	v.Value = constant.BinaryOp(realvar.Value, token.ADD, constant.MakeImag(imagvar.Value))
 }
 

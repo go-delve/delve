@@ -453,7 +453,7 @@ func funcCallEvalFuncExpr(scope *EvalScope, fncall *functionCallState, allowCall
 	if fnvar.Kind != reflect.Func {
 		return fmt.Errorf("expression %q is not a function", exprToString(fncall.expr.Fun))
 	}
-	fnvar.loadValue(LoadConfig{false, 0, 0, 0, 0, 0})
+	fnvar.LoadValue(LoadConfig{false, 0, 0, 0, 0, 0})
 	if fnvar.Unreadable != nil {
 		return fnvar.Unreadable
 	}
@@ -857,7 +857,7 @@ func readTopstackVariable(thread Thread, regs Registers, typename string, loadCf
 		return nil, err
 	}
 	v := newVariable("", regs.SP(), typ, scope.BinInfo, scope.Mem)
-	v.loadValue(loadCfg)
+	v.LoadValue(loadCfg)
 	if v.Unreadable != nil {
 		return nil, v.Unreadable
 	}

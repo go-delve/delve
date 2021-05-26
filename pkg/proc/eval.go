@@ -181,7 +181,7 @@ func (scope *EvalScope) EvalExpression(expr string, cfg LoadConfig) (*Variable, 
 		scope.callCtx.doReturn(nil, err)
 		return nil, err
 	}
-	ev.loadValue(cfg)
+	ev.LoadValue(cfg)
 	if ev.Name == "" {
 		ev.Name = expr
 	}
@@ -306,7 +306,7 @@ func afterLastArgAddr(vars []*Variable) uint64 {
 // * If srcv and dstv have the same type and are both addressable then the
 //   contents of srcv are copied byte-by-byte into dstv
 func (scope *EvalScope) setValue(dstv, srcv *Variable, srcExpr string) error {
-	srcv.loadValue(loadSingleValue)
+	srcv.LoadValue(loadSingleValue)
 
 	typerr := srcv.isType(dstv.RealType, dstv.Kind)
 	if _, isTypeConvErr := typerr.(*typeConvErr); isTypeConvErr {
@@ -479,7 +479,7 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 		if err != nil {
 			continue
 		}
-		val.loadValue(cfg)
+		val.LoadValue(cfg)
 		vars = append(vars, val)
 	}
 
@@ -597,7 +597,7 @@ func (scope *EvalScope) evalToplevelTypeCast(t ast.Expr, cfg LoadConfig) (*Varia
 	if err != nil {
 		return nil, err
 	}
-	argv.loadValue(cfg)
+	argv.LoadValue(cfg)
 	if argv.Unreadable != nil {
 		return nil, argv.Unreadable
 	}
@@ -807,7 +807,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	argv.loadValue(loadSingleValue)
+	argv.LoadValue(loadSingleValue)
 	if argv.Unreadable != nil {
 		return nil, argv.Unreadable
 	}
@@ -970,7 +970,7 @@ func capBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 	case reflect.Slice:
 		return newConstant(constant.MakeInt64(arg.Cap), arg.mem), nil
 	case reflect.Chan:
-		arg.loadValue(loadFullValue)
+		arg.LoadValue(loadFullValue)
 		if arg.Unreadable != nil {
 			return nil, arg.Unreadable
 		}
@@ -1003,7 +1003,7 @@ func lenBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 		}
 		return newConstant(constant.MakeInt64(arg.Len), arg.mem), nil
 	case reflect.Chan:
-		arg.loadValue(loadFullValue)
+		arg.LoadValue(loadFullValue)
 		if arg.Unreadable != nil {
 			return nil, arg.Unreadable
 		}
@@ -1033,8 +1033,8 @@ func complexBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 	realev := args[0]
 	imagev := args[1]
 
-	realev.loadValue(loadSingleValue)
-	imagev.loadValue(loadSingleValue)
+	realev.LoadValue(loadSingleValue)
+	imagev.LoadValue(loadSingleValue)
 
 	if realev.Unreadable != nil {
 		return nil, realev.Unreadable
@@ -1080,7 +1080,7 @@ func imagBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 	}
 
 	arg := args[0]
-	arg.loadValue(loadSingleValue)
+	arg.LoadValue(loadSingleValue)
 
 	if arg.Unreadable != nil {
 		return nil, arg.Unreadable
@@ -1099,7 +1099,7 @@ func realBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 	}
 
 	arg := args[0]
-	arg.loadValue(loadSingleValue)
+	arg.LoadValue(loadSingleValue)
 
 	if arg.Unreadable != nil {
 		return nil, arg.Unreadable
@@ -1286,7 +1286,7 @@ func (scope *EvalScope) evalIndex(node *ast.IndexExpr) (*Variable, error) {
 		return xev.sliceAccess(int(n))
 
 	case reflect.Map:
-		idxev.loadValue(loadFullValue)
+		idxev.LoadValue(loadFullValue)
 		if idxev.Unreadable != nil {
 			return nil, idxev.Unreadable
 		}
@@ -1338,7 +1338,7 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 		if xev.Base == 0 {
 			return nil, fmt.Errorf("can not slice \"%s\"", exprToString(node.X))
 		}
-		return xev.reslice(low, high)
+		return xev.Reslice(low, high)
 	case reflect.Map:
 		if node.High != nil {
 			return nil, fmt.Errorf("second slice argument must be empty for maps")
@@ -1351,7 +1351,7 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 		return xev, nil
 	case reflect.Ptr:
 		if xev.Flags&VariableCPtr != 0 {
-			return xev.reslice(low, high)
+			return xev.Reslice(low, high)
 		}
 		fallthrough
 	default:
@@ -1453,7 +1453,7 @@ func (scope *EvalScope) evalUnary(node *ast.UnaryExpr) (*Variable, error) {
 		return nil, err
 	}
 
-	xv.loadValue(loadSingleValue)
+	xv.LoadValue(loadSingleValue)
 	if xv.Unreadable != nil {
 		return nil, xv.Unreadable
 	}
@@ -1550,7 +1550,7 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 		return nil, err
 	}
 	if xv.Kind != reflect.String { // delay loading strings until we use them
-		xv.loadValue(loadFullValue)
+		xv.LoadValue(loadFullValue)
 	}
 	if xv.Unreadable != nil {
 		return nil, xv.Unreadable
@@ -1573,7 +1573,7 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 		return nil, err
 	}
 	if yv.Kind != reflect.String { // delay loading strings until we use them
-		yv.loadValue(loadFullValue)
+		yv.LoadValue(loadFullValue)
 	}
 	if yv.Unreadable != nil {
 		return nil, yv.Unreadable
@@ -1608,10 +1608,10 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 
 	default:
 		if xv.Kind == reflect.String {
-			xv.loadValue(loadFullValueLongerStrings)
+			xv.LoadValue(loadFullValueLongerStrings)
 		}
 		if yv.Kind == reflect.String {
-			yv.loadValue(loadFullValueLongerStrings)
+			yv.LoadValue(loadFullValueLongerStrings)
 		}
 		if xv.Value == nil {
 			return nil, fmt.Errorf("operator %s can not be applied to \"%s\"", node.Op.String(), exprToString(node.X))
@@ -1668,10 +1668,10 @@ func compareOp(op token.Token, xv *Variable, yv *Variable) (bool, error) {
 			}
 		}
 		if xv.Kind == reflect.String {
-			xv.loadValue(loadFullValueLongerStrings)
+			xv.LoadValue(loadFullValueLongerStrings)
 		}
 		if yv.Kind == reflect.String {
-			yv.loadValue(loadFullValueLongerStrings)
+			yv.LoadValue(loadFullValueLongerStrings)
 		}
 		if int64(len(constant.StringVal(xv.Value))) != xv.Len || int64(len(constant.StringVal(yv.Value))) != yv.Len {
 			return false, fmt.Errorf("string too long for comparison")
@@ -1771,7 +1771,7 @@ func (v *Variable) asInt() (int64, error) {
 			return 0, fmt.Errorf("can not convert constant %s to int", v.Value)
 		}
 	} else {
-		v.loadValue(loadSingleValue)
+		v.LoadValue(loadSingleValue)
 		if v.Unreadable != nil {
 			return 0, v.Unreadable
 		}
@@ -1789,7 +1789,7 @@ func (v *Variable) asUint() (uint64, error) {
 			return 0, fmt.Errorf("can not convert constant %s to uint", v.Value)
 		}
 	} else {
-		v.loadValue(loadSingleValue)
+		v.LoadValue(loadSingleValue)
 		if v.Unreadable != nil {
 			return 0, v.Unreadable
 		}
@@ -1925,7 +1925,7 @@ func (v *Variable) mapAccess(idx *Variable) (*Variable, error) {
 	first := true
 	for it.next() {
 		key := it.key()
-		key.loadValue(loadFullValue)
+		key.LoadValue(loadFullValue)
 		if key.Unreadable != nil {
 			return nil, fmt.Errorf("can not access unreadable map: %v", key.Unreadable)
 		}
@@ -1950,7 +1950,7 @@ func (v *Variable) mapAccess(idx *Variable) (*Variable, error) {
 	return nil, fmt.Errorf("key not found")
 }
 
-func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
+func (v *Variable) Reslice(low int64, high int64) (*Variable, error) {
 	wrong := false
 	cptrNeedsFakeSlice := false
 	if v.Flags&VariableCPtr == 0 {

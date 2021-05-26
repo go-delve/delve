@@ -24,6 +24,8 @@ type fullyQualifiedVariable struct {
 	fullyQualifiedNameOrExpr string
 	// True if this represents variable scope
 	isScope bool
+	// startIndex is the index of the first child for an array or slice.
+	startIndex int
 }
 
 func newHandlesMap() *handlesMap {

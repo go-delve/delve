@@ -174,7 +174,7 @@ var DefaultLoadConfig = proc.LoadConfig{
 	FollowPointers:     true,
 	MaxVariableRecurse: 1,
 	MaxStringLen:       64,
-	MaxArrayValues:     100, // This is the default for paged index variable requests.
+	MaxArrayValues:     64,
 	MaxStructFields:    -1,
 }
 
@@ -1383,7 +1383,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to list args", err.Error())
 		return
 	}
-	argScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Arguments%s", suffix), Children: slicePtrVarToSliceVar(args)}, "", true}
+	argScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Arguments%s", suffix), Children: slicePtrVarToSliceVar(args)}, "", true, 0}
 
 	// Retrieve local variables
 	locals, err := s.debugger.LocalVariables(goid, frame, 0, DefaultLoadConfig)
@@ -1391,7 +1391,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list locals", err.Error())
 		return
 	}
-	locScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Locals%s", suffix), Children: slicePtrVarToSliceVar(locals)}, "", true}
+	locScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Locals%s", suffix), Children: slicePtrVarToSliceVar(locals)}, "", true, 0}
 
 	scopeArgs := dap.Scope{Name: argScope.Name, VariablesReference: s.variableHandles.create(argScope)}
 	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
@@ -1427,7 +1427,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 		globScope := &fullyQualifiedVariable{&proc.Variable{
 			Name:     fmt.Sprintf("Globals (package %s)", currPkg),
 			Children: slicePtrVarToSliceVar(globals),
-		}, currPkg, true}
+		}, currPkg, true, 0}
 		scopeGlobals := dap.Scope{Name: globScope.Name, VariablesReference: s.variableHandles.create(globScope)}
 		scopes = append(scopes, scopeGlobals)
 	}
@@ -1456,17 +1456,23 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		return
 	}
 
+	if request.Arguments.Filter == "indexed" {
+		start, count := request.Arguments.Start, request.Arguments.Count
+		newV, err := v.Reslice(int64(start), int64(start+count))
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", fmt.Sprintf("unknown reference %d", ref))
+			return
+		}
+		indexedLoadConfig := DefaultLoadConfig
+		indexedLoadConfig.MaxArrayValues = count
+		newV.LoadValue(indexedLoadConfig)
+		v = &fullyQualifiedVariable{newV, v.fullyQualifiedNameOrExpr, false, start}
+	}
+
 	children, err := s.childrenToDAPVariables(v)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", err.Error())
 		return
-	}
-	if !s.clientCapabilities.supportsVariableType {
-		// If the client does not support variable type
-		// we cannot set the Type field in the response.
-		for i := range children {
-			children[i].Type = ""
-		}
 	}
 	response := &dap.VariablesResponse{
 		Response: *newResponse(request.Request),
@@ -1551,10 +1557,11 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 	case reflect.Slice, reflect.Array:
 		children = make([]dap.Variable, len(v.Children))
 		for i := range v.Children {
-			cfqname := fmt.Sprintf("%s[%d]", v.fullyQualifiedNameOrExpr, i)
+			idx := i + v.startIndex
+			cfqname := fmt.Sprintf("%s[%d]", v.fullyQualifiedNameOrExpr, idx)
 			cvalue, cvarref := s.convertVariable(&v.Children[i], cfqname)
 			children[i] = dap.Variable{
-				Name:               fmt.Sprintf("[%d]", i),
+				Name:               fmt.Sprintf("[%d]", idx),
 				EvaluateName:       cfqname,
 				Type:               s.getTypeIfSupported(&v.Children[i]),
 				Value:              cvalue,
@@ -1623,23 +1630,29 @@ func (s *Server) getTypeIfSupported(v *proc.Variable) string {
 // variables request can be issued to get the elements of the compound variable. As a
 // custom, a zero reference, reminiscent of a zero pointer, is used to indicate that
 // a scalar variable cannot be "dereferenced" to get its elements (as there are none).
+func (s *Server) convertVariableEvaluate(v *proc.Variable, qualifiedNameOrExpr string) (value string, variablesReference int) {
+	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, false, true)
+}
+
 func (s *Server) convertVariable(v *proc.Variable, qualifiedNameOrExpr string) (value string, variablesReference int) {
-	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, false)
+	// If the client supports paging, we expect them to request the variables in reasonable chunks, so we do
+	// not want to display the loaded information.
+	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, false, !s.clientCapabilities.supportsVariablePaging)
 }
 
 func (s *Server) convertVariableToString(v *proc.Variable) string {
-	val, _ := s.convertVariableWithOpts(v, "", true)
+	val, _ := s.convertVariableWithOpts(v, "", true, true)
 	return val
 }
 
 // convertVariableWithOpts allows to skip reference generation in case all we need is
 // a string representation of the variable.
-func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, skipRef bool) (value string, variablesReference int) {
+func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, skipRef, includeLoadedInfo bool) (value string, variablesReference int) {
 	maybeCreateVariableHandle := func(v *proc.Variable) int {
 		if skipRef {
 			return 0
 		}
-		return s.variableHandles.create(&fullyQualifiedVariable{v, qualifiedNameOrExpr, false /*not a scope*/})
+		return s.variableHandles.create(&fullyQualifiedVariable{v, qualifiedNameOrExpr, false /*not a scope*/, 0})
 	}
 	value = api.ConvertVar(v).SinglelineString()
 	if v.Unreadable != nil {
@@ -1713,8 +1726,8 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		if v.Len > int64(len(v.Children)) { // Not fully loaded
 			if v.Base != 0 && len(v.Children) == 0 { // Fully missing
 				value = reloadVariable(v, qualifiedNameOrExpr)
-			} else { // Partially missing (TODO)
-				if !s.clientCapabilities.supportsVariablePaging {
+			} else {
+				if includeLoadedInfo {
 					value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children), v.Len) + value
 				}
 			}
@@ -1821,7 +1834,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			}
 			response.Body = dap.EvaluateResponseBody{
 				Result:             strings.TrimRight(retVarsAsStr, ", "),
-				VariablesReference: s.variableHandles.create(&fullyQualifiedVariable{retVarsAsVar, "", false /*not a scope*/}),
+				VariablesReference: s.variableHandles.create(&fullyQualifiedVariable{retVarsAsVar, "", false /*not a scope*/, 0}),
 			}
 		}
 	} else { // {expression}
@@ -1832,7 +1845,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 		}
 		// TODO(polina): as far as I can tell, evaluateName is ignored by vscode for expression variables.
 		// Should it be skipped alltogether for all levels?
-		exprVal, exprRef := s.convertVariable(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression))
+		exprVal, exprRef := s.convertVariableEvaluate(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression))
 		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef}
 	}
 	s.send(response)
