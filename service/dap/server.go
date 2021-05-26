@@ -849,7 +849,10 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 		var cmd string
 		var out []byte
-		s.log.Debugf("building binary '%s' from '%s' with flags '%v'", debugbinary, program, buildFlags)
+		// Log debug binary build
+		if !((mode == "replay") && (s.config.Debugger.Backend == "core")) {
+			s.log.Debugf("building binary '%s' from '%s' with flags '%v'", debugbinary, program, buildFlags)
+		}
 		switch mode {
 		case "debug", "replay", "record":
 			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
@@ -2870,8 +2873,8 @@ func (s *Server) sendOutputResponse(request dap.Request, category, message strin
 	ev := &dap.OutputEvent{
 		Event: *newEvent("output"),
 		Body: dap.OutputEventBody{
-			Category:           c,
-			Output:             message,
+			Category:	c,
+			Output:		message,
 		},
 	}
 
