@@ -1832,7 +1832,7 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 	}
 	value = api.ConvertVar(v).SinglelineString()
 	if v.Unreadable != nil {
-		return
+		return value, variablesReference
 	}
 
 	// Some of the types might be fully or partially not loaded based on LoadConfig.
@@ -1921,7 +1921,7 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 			variablesReference = maybeCreateVariableHandle(v)
 		}
 	case reflect.String:
-		// TODO(polina): implement auto-loading here
+		// TODO(polina): implement auto-loading here.
 	case reflect.Interface:
 		if v.Addr != 0 && len(v.Children) > 0 && v.Children[0].Kind != reflect.Invalid && v.Children[0].Addr != 0 {
 			if v.Children[0].OnlyAddr { // Not loaded
@@ -1961,7 +1961,7 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 			variablesReference = maybeCreateVariableHandle(v)
 		}
 	}
-	return
+	return value, variablesReference
 }
 
 // onEvaluateRequest handles 'evalute' requests.
@@ -2017,8 +2017,21 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 			return
 		}
+
+		if exprVar.Kind == reflect.String && (request.Arguments.Context == "repl" || request.Arguments.Context == "variables") {
+			if strVal := constant.StringVal(exprVar.Value); exprVar.Len > int64(len(strVal)) {
+				// reload string value with a bigger limit.
+				loadCfg := DefaultLoadConfig
+				loadCfg.MaxStringLen = 4 << 10
+				if v, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, loadCfg); err != nil {
+					s.log.Debugf("Failed to load more for %v: %v", request.Arguments.Expression, err)
+				} else {
+					exprVar = v
+				}
+			}
+		}
 		// TODO(polina): as far as I can tell, evaluateName is ignored by vscode for expression variables.
-		// Should it be skipped alltogether for all levels?
+		// Should it be skipped altogether for all levels?
 		exprVal, exprRef := s.convertVariable(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression))
 		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef}
 	}
@@ -2039,12 +2052,22 @@ func (s *Server) doCall(goid, frame int, expr string) (*api.DebuggerState, []*pr
 	if err != nil {
 		return nil, nil, err
 	}
+	// The return values of injected function calls are volatile.
+	// Load as much useful data as possible.
+	// - String: a common use case of call injection is to stringify complex
+	// data conveniently. That can easily exceed the default limit, 64.
+	// TODO: investigate whether we need to increase other limits. For example,
+	// the return value is a pointer to a temporary object, which can become
+	// invalid by other injected function calls. Do we care about such use cases?
+	loadCfg := DefaultLoadConfig
+	loadCfg.MaxStringLen = 1 << 10
+
 	// TODO(polina): since call will resume execution of all goroutines,
 	// we should do this asynchronously and send a continued event to the
 	// editor, followed by a stop event when the call completes.
 	state, err := s.debugger.Command(&api.DebuggerCommand{
 		Name:                 api.Call,
-		ReturnInfoLoadConfig: api.LoadConfigFromProc(&DefaultLoadConfig),
+		ReturnInfoLoadConfig: api.LoadConfigFromProc(&loadCfg),
 		Expr:                 expr,
 		UnsafeCall:           false,
 		GoroutineID:          goid,
@@ -2069,7 +2092,7 @@ func (s *Server) doCall(goid, frame int, expr string) (*api.DebuggerState, []*pr
 			t.Line == stateBeforeCall.SelectedGoroutine.CurrentLoc.Line && t.CallReturn {
 			found = true
 			// The call completed. Get the return values.
-			retVars, err = s.debugger.FindThreadReturnValues(t.ID, DefaultLoadConfig)
+			retVars, err = s.debugger.FindThreadReturnValues(t.ID, loadCfg)
 			if err != nil {
 				return nil, nil, err
 			}
