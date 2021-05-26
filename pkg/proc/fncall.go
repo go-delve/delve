@@ -363,7 +363,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	switch len(fncall.retvars) {
 	case 0:
 		r := newVariable("", 0, nil, scope.BinInfo, nil)
-		r.loaded = true
+		r.Loaded = true
 		r.Unreadable = errors.New("no return values")
 		return r, nil
 	case 1:
@@ -371,7 +371,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	default:
 		// create a fake variable without address or type to return multiple values
 		r := newVariable("", 0, nil, scope.BinInfo, nil)
-		r.loaded = true
+		r.Loaded = true
 		r.Children = make([]Variable, len(fncall.retvars))
 		for i := range fncall.retvars {
 			r.Children[i] = *fncall.retvars[i]

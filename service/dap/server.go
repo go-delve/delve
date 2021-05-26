@@ -1458,15 +1458,23 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 
 	if request.Arguments.Filter == "indexed" {
 		start, count := request.Arguments.Start, request.Arguments.Count
-		newV, err := v.Reslice(int64(start), int64(start+count))
-		if err != nil {
-			s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", fmt.Sprintf("unknown reference %d", ref))
-			return
-		}
 		indexedLoadConfig := DefaultLoadConfig
 		indexedLoadConfig.MaxArrayValues = count
-		newV.LoadValue(indexedLoadConfig)
-		v = &fullyQualifiedVariable{newV, v.fullyQualifiedNameOrExpr, false, start}
+		if v.Kind == reflect.Array || v.Kind == reflect.Slice {
+			newV, err := v.Reslice(int64(start), int64(start+count))
+			if err != nil {
+				s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", fmt.Sprintf("unknown reference %d", ref))
+				return
+			}
+			v = &fullyQualifiedVariable{newV, v.fullyQualifiedNameOrExpr, false, start}
+		}
+		if v.Kind == reflect.Map {
+			v.Children = nil
+			v.MapSkip = start
+			v.Loaded = false
+			v.startIndex = start
+		}
+		v.LoadValue(indexedLoadConfig)
 	}
 
 	children, err := s.childrenToDAPVariables(v)
@@ -1517,14 +1525,14 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 			// Otherwise, we must return separate variables for both.
 			if keyref > 0 && valref > 0 { // Both are not scalars
 				keyvar := dap.Variable{
-					Name:               fmt.Sprintf("[key %d]", kvIndex),
+					Name:               fmt.Sprintf("[key %d]", kvIndex+v.startIndex),
 					EvaluateName:       keyexpr,
 					Type:               keyType,
 					Value:              key,
 					VariablesReference: keyref,
 				}
 				valvar := dap.Variable{
-					Name:               fmt.Sprintf("[val %d]", kvIndex),
+					Name:               fmt.Sprintf("[val %d]", kvIndex+v.startIndex),
 					EvaluateName:       valexpr,
 					Type:               valType,
 					Value:              val,
@@ -1606,8 +1614,15 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 				VariablesReference: cvarref,
 			}
 
-			if c.Kind == reflect.Array || c.Kind == reflect.Slice {
+			if c.Kind == reflect.Array || c.Kind == reflect.Slice || c.Kind == reflect.Map {
 				children[i].IndexedVariables = int(c.Len)
+			}
+
+			// TODO(suzmue): Paging named variables are not yet supported by the VS Code UI
+			// (See https://github.com/microsoft/vscode/issues/87718). Once named variables
+			// are supported in the UI, we can switch from IndexedVariables to NamedVariables.
+			if c.Kind == reflect.Map {
+				children[i].IndexedVariables = int(c.Len) / 2
 			}
 		}
 	}
@@ -1726,10 +1741,8 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		if v.Len > int64(len(v.Children)) { // Not fully loaded
 			if v.Base != 0 && len(v.Children) == 0 { // Fully missing
 				value = reloadVariable(v, qualifiedNameOrExpr)
-			} else {
-				if includeLoadedInfo {
-					value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children), v.Len) + value
-				}
+			} else if includeLoadedInfo {
+				value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children), v.Len) + value
 			}
 		}
 		if v.Base != 0 && len(v.Children) > 0 {
@@ -1739,7 +1752,7 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		if v.Len > int64(len(v.Children)/2) { // Not fully loaded
 			if len(v.Children) == 0 { // Fully missing
 				value = reloadVariable(v, qualifiedNameOrExpr)
-			} else { // Partially missing (TODO)
+			} else if includeLoadedInfo {
 				value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children)/2, v.Len) + value
 			}
 		}

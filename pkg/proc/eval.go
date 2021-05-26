@@ -518,7 +518,7 @@ func (scope *EvalScope) findGlobalInternal(name string) (*Variable, error) {
 			r := newVariable(fn.Name, fn.Entry, &godwarf.FuncType{}, scope.BinInfo, scope.Mem)
 			r.Value = constant.MakeString(fn.Name)
 			r.Base = fn.Entry
-			r.loaded = true
+			r.Loaded = true
 			if fn.Entry == 0 {
 				r.Unreadable = fmt.Errorf("function %s is inlined", fn.Name)
 			}
@@ -542,7 +542,7 @@ func (scope *EvalScope) findGlobalInternal(name string) (*Variable, error) {
 					return nil, fmt.Errorf("unsupported constant kind %v", v.Kind)
 				}
 				v.Flags |= VariableConstant
-				v.loaded = true
+				v.Loaded = true
 				return v, nil
 			}
 		}
@@ -603,7 +603,7 @@ func (scope *EvalScope) evalToplevelTypeCast(t ast.Expr, cfg LoadConfig) (*Varia
 	}
 
 	v := newVariable("", 0, targetType, scope.BinInfo, scope.Mem)
-	v.loaded = true
+	v.Loaded = true
 
 	converr := fmt.Errorf("can not convert %q to %s", exprToString(call.Args[0]), targetTypeStr)
 
@@ -614,7 +614,7 @@ func (scope *EvalScope) evalToplevelTypeCast(t ast.Expr, cfg LoadConfig) (*Varia
 		}
 		for i, ch := range []byte(constant.StringVal(argv.Value)) {
 			e := newVariable("", argv.Addr+uint64(i), targetType.(*godwarf.SliceType).ElemType, scope.BinInfo, argv.mem)
-			e.loaded = true
+			e.Loaded = true
 			e.Value = constant.MakeInt64(int64(ch))
 			v.Children = append(v.Children, *e)
 		}
@@ -628,7 +628,7 @@ func (scope *EvalScope) evalToplevelTypeCast(t ast.Expr, cfg LoadConfig) (*Varia
 		}
 		for i, ch := range constant.StringVal(argv.Value) {
 			e := newVariable("", argv.Addr+uint64(i), targetType.(*godwarf.SliceType).ElemType, scope.BinInfo, argv.mem)
-			e.loaded = true
+			e.Loaded = true
 			e.Value = constant.MakeInt64(int64(ch))
 			v.Children = append(v.Children, *e)
 		}
@@ -721,7 +721,7 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 						return nil, fmt.Errorf("blah: %v", err)
 					}
 					gvar := newVariable("curg", fakeAddress, typ, scope.BinInfo, scope.Mem)
-					gvar.loaded = true
+					gvar.Loaded = true
 					gvar.Flags = VariableFakeAddress
 					gvar.Children = append(gvar.Children, *newConstant(constant.MakeInt64(0), scope.Mem))
 					gvar.Children[0].Name = "goid"
@@ -826,7 +826,7 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 	converr := fmt.Errorf("can not convert %q to %s", exprToString(node.Args[0]), typ.String())
 
 	v := newVariable("", 0, styp, scope.BinInfo, scope.Mem)
-	v.loaded = true
+	v.Loaded = true
 
 	switch ttyp := typ.(type) {
 	case *godwarf.PtrType:
@@ -1187,7 +1187,7 @@ func (scope *EvalScope) evalStructSelector(node *ast.SelectorExpr) (*Variable, e
 		return nil, fmt.Errorf("%s (type %s) is not a struct", xv.Value, xv.TypeString())
 	}
 	// Special type conversions for CPU register variables (REGNAME.int8, etc)
-	if xv.Flags&VariableCPURegister != 0 && !xv.loaded {
+	if xv.Flags&VariableCPURegister != 0 && !xv.Loaded {
 		return xv.registerVariableTypeConv(node.Sel.Name)
 	}
 
@@ -1343,9 +1343,9 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 		if node.High != nil {
 			return nil, fmt.Errorf("second slice argument must be empty for maps")
 		}
-		xev.mapSkip += int(low)
+		xev.MapSkip += int(low)
 		xev.mapIterator() // reads map length
-		if int64(xev.mapSkip) >= xev.Len {
+		if int64(xev.MapSkip) >= xev.Len {
 			return nil, fmt.Errorf("map index out of bounds")
 		}
 		return xev, nil
@@ -1405,7 +1405,7 @@ func (v *Variable) pointerToVariable() *Variable {
 	typename := "*" + v.DwarfType.Common().Name
 	rv := v.newVariable("", 0, &godwarf.PtrType{CommonType: godwarf.CommonType{ByteSize: int64(v.bi.Arch.PtrSize()), Name: typename}, Type: v.DwarfType}, v.mem)
 	rv.Children = []Variable{*v}
-	rv.loaded = true
+	rv.Loaded = true
 
 	return rv
 }
@@ -1906,7 +1906,7 @@ func (v *Variable) sliceAccess(idx int) (*Variable, error) {
 	if wrong {
 		return nil, fmt.Errorf("index out of bounds")
 	}
-	if v.loaded {
+	if v.Loaded {
 		return &v.Children[idx], nil
 	}
 	mem := v.mem
@@ -2088,7 +2088,7 @@ func functionToVariable(fn *Function, bi *BinaryInfo, mem MemoryReadWriter) (*Va
 	}
 	v := newVariable(fn.Name, 0, typ, bi, mem)
 	v.Value = constant.MakeString(fn.Name)
-	v.loaded = true
+	v.Loaded = true
 	v.Base = fn.Entry
 	return v, nil
 }

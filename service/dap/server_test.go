@@ -1526,11 +1526,38 @@ func TestVariablesLoading(t *testing.T) {
 					}
 
 					// Map partially missing based on LoadConfig.MaxArrayValues
-					ref = checkVarRegex(t, locals, -1, "m1", "m1", `\(loaded 64/66\) map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, `map\[string\]main\.astruct`, hasChildren)
+					ref = checkVarRegex(t, locals, -1, "m1", "m1", `map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, `map\[string\]main\.astruct`, hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m1 := client.ExpectVariablesResponse(t)
 						checkChildren(t, m1, "m1", 64)
+
+						client.IndexedVariablesRequest(ref, 0, 66)
+						m1 = client.ExpectVariablesResponse(t)
+						checkChildren(t, m1, "m1", 66)
+
+						client.IndexedVariablesRequest(ref, 0, 33)
+						m1part1 := client.ExpectVariablesResponse(t)
+						checkChildren(t, m1part1, "m1", 33)
+
+						client.IndexedVariablesRequest(ref, 33, 33)
+						m1part2 := client.ExpectVariablesResponse(t)
+						checkChildren(t, m1part2, "m1", 33)
+
+						if len(m1part1.Body.Variables)+len(m1part2.Body.Variables) == len(m1.Body.Variables) {
+							for i, got := range m1part1.Body.Variables {
+								want := m1.Body.Variables[i]
+								if got.Name != want.Name || got.Value != want.Value {
+									t.Errorf("got %#v, want Name=%q Value=%q", got, want.Name, want.Value)
+								}
+							}
+							for i, got := range m1part2.Body.Variables {
+								want := m1.Body.Variables[i+len(m1part1.Body.Variables)]
+								if got.Name != want.Name || got.Value != want.Value {
+									t.Errorf("got %#v, want Name=%q Value=%q", got, want.Name, want.Value)
+								}
+							}
+						}
 					}
 
 					// Struct partially missing based on LoadConfig.MaxStructFields

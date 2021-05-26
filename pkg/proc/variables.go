@@ -116,11 +116,11 @@ type Variable struct {
 	closureAddr uint64
 
 	// number of elements to skip when loading a map
-	mapSkip int
+	MapSkip int
 
 	Children []Variable
 
-	loaded     bool
+	Loaded     bool
 	Unreadable error
 
 	LocationExpr *locationExpr // location expression
@@ -718,7 +718,7 @@ func resolveTypedef(typ godwarf.Type) godwarf.Type {
 }
 
 func newConstant(val constant.Value, mem MemoryReadWriter) *Variable {
-	v := &Variable{Value: val, mem: mem, loaded: true}
+	v := &Variable{Value: val, mem: mem, Loaded: true}
 	switch val.Kind() {
 	case constant.Int:
 		v.Kind = reflect.Int
@@ -925,7 +925,7 @@ func (v *Variable) loadFieldNamed(name string) *Variable {
 }
 
 func (v *Variable) fieldVariable(name string) *Variable {
-	if !v.loaded {
+	if !v.Loaded {
 		panic("fieldVariable called on a variable that wasn't loaded")
 	}
 	for i := range v.Children {
@@ -980,7 +980,7 @@ func Ancestors(p Process, g *G, n int) ([]Ancestor, error) {
 		if pcsVar.Unreadable != nil {
 			r[i].Unreadable = pcsVar.Unreadable
 		}
-		pcsVar.loaded = false
+		pcsVar.Loaded = false
 		pcsVar.Children = pcsVar.Children[:0]
 		r[i].pcsVar = pcsVar
 	}
@@ -1056,7 +1056,7 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 		return v.clone(), nil
 	}
 	vname := v.Name
-	if v.loaded && (v.Flags&VariableFakeAddress) != 0 {
+	if v.Loaded && (v.Flags&VariableFakeAddress) != 0 {
 		for i := range v.Children {
 			if v.Children[i].Name == memberName {
 				return &v.Children[i], nil
@@ -1187,7 +1187,7 @@ func (v *Variable) maybeDereference() *Variable {
 
 	switch t := v.RealType.(type) {
 	case *godwarf.PtrType:
-		if v.Addr == 0 && len(v.Children) == 1 && v.loaded {
+		if v.Addr == 0 && len(v.Children) == 1 && v.Loaded {
 			// fake pointer variable constructed by casting an integer to a pointer type
 			return &v.Children[0]
 		}
@@ -1215,11 +1215,11 @@ func (v *Variable) LoadValue(cfg LoadConfig) {
 }
 
 func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
-	if v.Unreadable != nil || v.loaded || (v.Addr == 0 && v.Base == 0) {
+	if v.Unreadable != nil || v.Loaded || (v.Addr == 0 && v.Base == 0) {
 		return
 	}
 
-	v.loaded = true
+	v.Loaded = true
 	switch v.Kind {
 	case reflect.Ptr, reflect.UnsafePointer:
 		v.Len = 1
@@ -1848,11 +1848,11 @@ func (v *Variable) loadMap(recurseLevel int, cfg LoadConfig) {
 	}
 	it.maxNumBuckets = uint64(cfg.MaxMapBuckets)
 
-	if v.Len == 0 || int64(v.mapSkip) >= v.Len || cfg.MaxArrayValues == 0 {
+	if v.Len == 0 || int64(v.MapSkip) >= v.Len || cfg.MaxArrayValues == 0 {
 		return
 	}
 
-	for skip := 0; skip < v.mapSkip; skip++ {
+	for skip := 0; skip < v.MapSkip; skip++ {
 		if ok := it.next(); !ok {
 			v.Unreadable = fmt.Errorf("map index out of bounds")
 			return
@@ -2315,7 +2315,7 @@ func (v *Variable) registerVariableTypeConv(newtyp string) (*Variable, error) {
 		v.Children = append(v.Children, *child)
 	}
 
-	v.loaded = true
+	v.Loaded = true
 	v.Kind = reflect.Array
 	v.Len = int64(len(v.Children))
 	v.DwarfType = fakeArrayType(uint64(len(v.Children)), &godwarf.VoidType{CommonType: godwarf.CommonType{ByteSize: int64(n)}})
