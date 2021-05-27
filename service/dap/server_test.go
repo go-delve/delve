@@ -3553,7 +3553,7 @@ func TestLaunchRequestNoDebug_GoodStatus(t *testing.T) {
 				"noDebug": true,
 				"mode":    "debug",
 				"program": fixture.Source,
-				"output":  cleanExeName("__mybin")})
+				"output":  "__mybin"})
 		}, fixture.Source, []int{8}, 0)
 	})
 }
@@ -3565,7 +3565,7 @@ func TestLaunchRequestNoDebug_BadStatus(t *testing.T) {
 				"noDebug": true,
 				"mode":    "debug",
 				"program": fixture.Source,
-				"output":  cleanExeName("__mybin")})
+				"output":  "__mybin"})
 		}, fixture.Source, []int{8}, 2)
 	})
 }
