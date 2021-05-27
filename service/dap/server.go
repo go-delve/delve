@@ -1614,7 +1614,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 				VariablesReference: cvarref,
 			}
 
-			if c.Kind == reflect.Array || c.Kind == reflect.Slice || c.Kind == reflect.Map {
+			if c.Kind == reflect.Array || c.Kind == reflect.Slice {
 				children[i].IndexedVariables = int(c.Len)
 			}
 
