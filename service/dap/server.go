@@ -1496,6 +1496,17 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 	// compute evaluate names when this is called from onSetVariableRequest.
 	var children []dap.Variable
 
+	getIndexedVariableCount := func(c *proc.Variable) int {
+		indexedVars := 0
+		switch c.Kind {
+		case reflect.Array, reflect.Slice:
+			indexedVars = int(c.Len)
+		case reflect.Map:
+			indexedVars = int(c.Len) / 2
+		}
+		return indexedVars
+	}
+
 	switch v.Kind {
 	case reflect.Map:
 		for i := 0; i < len(v.Children); i += 2 {
@@ -1530,6 +1541,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 					Type:               keyType,
 					Value:              key,
 					VariablesReference: keyref,
+					IndexedVariables:   getIndexedVariableCount(keyv),
 				}
 				valvar := dap.Variable{
 					Name:               fmt.Sprintf("[val %d]", kvIndex+v.startIndex),
@@ -1537,6 +1549,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 					Type:               valType,
 					Value:              val,
 					VariablesReference: valref,
+					IndexedVariables:   getIndexedVariableCount(valv),
 				}
 				children = append(children, keyvar, valvar)
 			} else { // At least one is a scalar
@@ -1556,8 +1569,10 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 						kvvar.Name = fmt.Sprintf("%s... @ %#x", key[0:DefaultLoadConfig.MaxStringLen], keyv.Addr)
 					}
 					kvvar.VariablesReference = keyref
+					kvvar.IndexedVariables = getIndexedVariableCount(keyv)
 				} else if valref != 0 { // val is a type to be expanded
 					kvvar.VariablesReference = valref
+					kvvar.IndexedVariables = getIndexedVariableCount(valv)
 				}
 				children = append(children, kvvar)
 			}
@@ -1574,6 +1589,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 				Type:               s.getTypeIfSupported(&v.Children[i]),
 				Value:              cvalue,
 				VariablesReference: cvarref,
+				IndexedVariables:   getIndexedVariableCount(&v.Children[i]),
 			}
 		}
 	default:
@@ -1612,17 +1628,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 				Type:               s.getTypeIfSupported(c),
 				Value:              cvalue,
 				VariablesReference: cvarref,
-			}
-
-			if c.Kind == reflect.Array || c.Kind == reflect.Slice {
-				children[i].IndexedVariables = int(c.Len)
-			}
-
-			// TODO(suzmue): Paging named variables are not yet supported by the VS Code UI
-			// (See https://github.com/microsoft/vscode/issues/87718). Once named variables
-			// are supported in the UI, we can switch from IndexedVariables to NamedVariables.
-			if c.Kind == reflect.Map {
-				children[i].IndexedVariables = int(c.Len) / 2
+				IndexedVariables:   getIndexedVariableCount(c),
 			}
 		}
 	}
