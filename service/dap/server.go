@@ -1456,6 +1456,10 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		return
 	}
 
+	// If there is a filter applied, we will need to create a new variable that included
+	// what values to actually load.
+	// TODO(suzmue): add optimization to not reload if the correct section is already
+	// loaded, or don't load by default until requested.
 	if request.Arguments.Filter == "indexed" {
 		start, count := request.Arguments.Start, request.Arguments.Count
 		indexedLoadConfig := DefaultLoadConfig
@@ -1463,7 +1467,7 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		if v.Kind == reflect.Array || v.Kind == reflect.Slice {
 			newV, err := v.Reslice(int64(start), int64(start+count))
 			if err != nil {
-				s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", fmt.Sprintf("unknown reference %d", ref))
+				s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", err.Error())
 				return
 			}
 			v = &fullyQualifiedVariable{newV, v.fullyQualifiedNameOrExpr, false, start}
@@ -1472,7 +1476,6 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 			v.Children = nil
 			v.MapSkip = start
 			v.Loaded = false
-			v.startIndex = start
 		}
 		v.LoadValue(indexedLoadConfig)
 	}
@@ -1489,23 +1492,23 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 	s.send(response)
 }
 
+func getIndexedVariableCount(c *proc.Variable) int {
+	indexedVars := 0
+	switch c.Kind {
+	case reflect.Array, reflect.Slice:
+		indexedVars = int(c.Len)
+	case reflect.Map:
+		indexedVars = int(c.Len) / 2
+	}
+	return indexedVars
+}
+
 // childrenToDAPVariables returns the DAP presentation of the referenced variable's children.
 func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variable, error) {
 	// TODO(polina): consider convertVariableToString instead of convertVariable
 	// and avoid unnecessary creation of variable handles when this is called to
 	// compute evaluate names when this is called from onSetVariableRequest.
 	var children []dap.Variable
-
-	getIndexedVariableCount := func(c *proc.Variable) int {
-		indexedVars := 0
-		switch c.Kind {
-		case reflect.Array, reflect.Slice:
-			indexedVars = int(c.Len)
-		case reflect.Map:
-			indexedVars = int(c.Len) / 2
-		}
-		return indexedVars
-	}
 
 	switch v.Kind {
 	case reflect.Map:
@@ -1536,7 +1539,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 			// Otherwise, we must return separate variables for both.
 			if keyref > 0 && valref > 0 { // Both are not scalars
 				keyvar := dap.Variable{
-					Name:               fmt.Sprintf("[key %d]", v.startIndex+kvIndex),
+					Name:               fmt.Sprintf("[key %d]", v.MapSkip+kvIndex),
 					EvaluateName:       keyexpr,
 					Type:               keyType,
 					Value:              key,
@@ -1544,7 +1547,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 					IndexedVariables:   getIndexedVariableCount(keyv),
 				}
 				valvar := dap.Variable{
-					Name:               fmt.Sprintf("[val %d]", v.startIndex+kvIndex),
+					Name:               fmt.Sprintf("[val %d]", v.MapSkip+kvIndex),
 					EvaluateName:       valexpr,
 					Type:               valType,
 					Value:              val,
@@ -1651,24 +1654,20 @@ func (s *Server) getTypeIfSupported(v *proc.Variable) string {
 // variables request can be issued to get the elements of the compound variable. As a
 // custom, a zero reference, reminiscent of a zero pointer, is used to indicate that
 // a scalar variable cannot be "dereferenced" to get its elements (as there are none).
-func (s *Server) convertVariableEvaluate(v *proc.Variable, qualifiedNameOrExpr string) (value string, variablesReference int) {
-	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, false, true)
-}
-
 func (s *Server) convertVariable(v *proc.Variable, qualifiedNameOrExpr string) (value string, variablesReference int) {
 	// If the client supports paging, we expect them to request the variables in reasonable chunks, so we do
 	// not want to display the loaded information.
-	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, false, !s.clientCapabilities.supportsVariablePaging)
+	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, false)
 }
 
 func (s *Server) convertVariableToString(v *proc.Variable) string {
-	val, _ := s.convertVariableWithOpts(v, "", true, true)
+	val, _ := s.convertVariableWithOpts(v, "", true)
 	return val
 }
 
 // convertVariableWithOpts allows to skip reference generation in case all we need is
 // a string representation of the variable.
-func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, skipRef, includeLoadedInfo bool) (value string, variablesReference int) {
+func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, skipRef bool) (value string, variablesReference int) {
 	maybeCreateVariableHandle := func(v *proc.Variable) int {
 		if skipRef {
 			return 0
@@ -1747,7 +1746,7 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		if v.Len > int64(len(v.Children)) { // Not fully loaded
 			if v.Base != 0 && len(v.Children) == 0 { // Fully missing
 				value = reloadVariable(v, qualifiedNameOrExpr)
-			} else if includeLoadedInfo {
+			} else if !s.clientCapabilities.supportsVariablePaging {
 				value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children), v.Len) + value
 			}
 		}
@@ -1758,7 +1757,7 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		if v.Len > int64(len(v.Children)/2) { // Not fully loaded
 			if len(v.Children) == 0 { // Fully missing
 				value = reloadVariable(v, qualifiedNameOrExpr)
-			} else if includeLoadedInfo {
+			} else if !s.clientCapabilities.supportsVariablePaging {
 				value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children)/2, v.Len) + value
 			}
 		}
@@ -1877,8 +1876,8 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 		}
 		// TODO(polina): as far as I can tell, evaluateName is ignored by vscode for expression variables.
 		// Should it be skipped altogether for all levels?
-		exprVal, exprRef := s.convertVariableEvaluate(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression))
-		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef}
+		exprVal, exprRef := s.convertVariable(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression))
+		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef, IndexedVariables: getIndexedVariableCount(exprVar)}
 	}
 	s.send(response)
 }

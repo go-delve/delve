@@ -1479,7 +1479,7 @@ func TestVariablesLoading(t *testing.T) {
 					checkArrayChildren := func(t *testing.T, longarr *dap.VariablesResponse, parentName string, start int) {
 						t.Helper()
 						for i, child := range longarr.Body.Variables {
-							idx := i + start
+							idx := start + i
 							if child.Name != fmt.Sprintf("[%d]", idx) || child.EvaluateName != fmt.Sprintf("%s[%d]", parentName, idx) {
 								t.Errorf("Expected %s[%d] to have Name=\"[%d]\" EvaluateName=\"%s[%d]\", got %#v", parentName, idx, idx, parentName, idx, child)
 							}
@@ -2600,7 +2600,7 @@ func TestEvaluateRequest(t *testing.T) {
 					// Variable lookup that's not fully loaded
 					client.EvaluateRequest("ba", 1000, "this context will be ignored")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, "(loaded 64/200) []int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", hasChildren)
+					checkEval(t, got, "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", hasChildren)
 
 					// All (binary and unary) on basic types except <-, ++ and --
 					client.EvaluateRequest("1+1", 1000, "this context will be ignored")
