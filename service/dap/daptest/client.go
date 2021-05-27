@@ -323,7 +323,7 @@ func (c *Client) VariablesRequest(variablesReference int) {
 }
 
 // IndexedVariablesRequest sends a 'variables' request.
-func (c *Client) IndexedVariablesRequest(variablesReference int, start, count int) {
+func (c *Client) IndexedVariablesRequest(variablesReference, start, count int) {
 	request := &dap.VariablesRequest{Request: *c.newRequest("variables")}
 	request.Arguments.VariablesReference = variablesReference
 	request.Arguments.Filter = "indexed"
