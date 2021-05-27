@@ -235,7 +235,6 @@ func (c *Client) SetConditionalBreakpointsRequest(file string, lines []int, cond
 			Path: file,
 		},
 		Breakpoints: make([]dap.SourceBreakpoint, len(lines)),
-		//sourceModified: false,
 	}
 	for i, l := range lines {
 		request.Arguments.Breakpoints[i].Line = l

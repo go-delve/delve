@@ -1536,7 +1536,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 			// Otherwise, we must return separate variables for both.
 			if keyref > 0 && valref > 0 { // Both are not scalars
 				keyvar := dap.Variable{
-					Name:               fmt.Sprintf("[key %d]", kvIndex+v.startIndex),
+					Name:               fmt.Sprintf("[key %d]", v.startIndex+kvIndex),
 					EvaluateName:       keyexpr,
 					Type:               keyType,
 					Value:              key,
@@ -1544,7 +1544,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 					IndexedVariables:   getIndexedVariableCount(keyv),
 				}
 				valvar := dap.Variable{
-					Name:               fmt.Sprintf("[val %d]", kvIndex+v.startIndex),
+					Name:               fmt.Sprintf("[val %d]", v.startIndex+kvIndex),
 					EvaluateName:       valexpr,
 					Type:               valType,
 					Value:              val,
@@ -1580,7 +1580,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 	case reflect.Slice, reflect.Array:
 		children = make([]dap.Variable, len(v.Children))
 		for i := range v.Children {
-			idx := i + v.startIndex
+			idx := v.startIndex + i
 			cfqname := fmt.Sprintf("%s[%d]", v.fullyQualifiedNameOrExpr, idx)
 			cvalue, cvarref := s.convertVariable(&v.Children[i], cfqname)
 			children[i] = dap.Variable{
@@ -1876,7 +1876,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			}
 		}
 		// TODO(polina): as far as I can tell, evaluateName is ignored by vscode for expression variables.
-		// Should it be skipped alltogether for all levels?
+		// Should it be skipped altogether for all levels?
 		exprVal, exprRef := s.convertVariableEvaluate(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression))
 		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef}
 	}
