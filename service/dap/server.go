@@ -1815,27 +1815,33 @@ func (s *Server) getTypeIfSupported(v *proc.Variable) string {
 // custom, a zero reference, reminiscent of a zero pointer, is used to indicate that
 // a scalar variable cannot be "dereferenced" to get its elements (as there are none).
 func (s *Server) convertVariable(v *proc.Variable, qualifiedNameOrExpr string) (value string, variablesReference int) {
-	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, false, false)
+	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, 0)
 }
 
 func (s *Server) convertVariableToString(v *proc.Variable) string {
-	val, _ := s.convertVariableWithOpts(v, "", true, false)
+	val, _ := s.convertVariableWithOpts(v, "", skipRef)
 	return val
 }
 
 // defaultMaxValueLen is the max length of a string representation of a compound or reference
 // type variable.
-const defaultMaxValueLen = 1 << 10 // 1K
+const defaultMaxValueLen = 1 << 8 // 256
+
+// Flags for convertVariableWithOpts option.
+const (
+	skipRef = 1 << iota
+	showFullValue
+)
 
 // convertVariableWithOpts allows to skip reference generation in case all we need is
 // a string representation of the variable. When the variable is a compound or reference
 // type variable and its full string representation can be larger than defaultMaxValueLen,
-// this returns a truncated value unless showFull is set.
-func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, skipRef, showFull bool) (value string, variablesReference int) {
+// this returns a truncated value unless showFull option flag is set.
+func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, opts int) (value string, variablesReference int) {
 	canHaveRef := false
 	maybeCreateVariableHandle := func(v *proc.Variable) int {
 		canHaveRef = true
-		if skipRef {
+		if opts&skipRef != 0 {
 			return 0
 		}
 		return s.variableHandles.create(&fullyQualifiedVariable{v, qualifiedNameOrExpr, false /*not a scope*/})
@@ -1971,7 +1977,8 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 			variablesReference = maybeCreateVariableHandle(v)
 		}
 	}
-	if len(value) > defaultMaxValueLen && !showFull && canHaveRef {
+	canTruncateValue := showFullValue&opts == 0
+	if len(value) > defaultMaxValueLen && canTruncateValue && canHaveRef {
 		value = value[:defaultMaxValueLen] + "..."
 	}
 	return value, variablesReference
@@ -2044,8 +2051,11 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 				}
 			}
 		}
-		wantFullValue := ctxt == "variables" || ctxt == "hover" || ctxt == "clipboard"
-		exprVal, exprRef := s.convertVariableWithOpts(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression), false, wantFullValue)
+		opts := 0
+		if ctxt == "variables" || ctxt == "hover" || ctxt == "clipboard" {
+			opts |= showFullValue
+		}
+		exprVal, exprRef := s.convertVariableWithOpts(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression), opts)
 		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef}
 	}
 	s.send(response)
