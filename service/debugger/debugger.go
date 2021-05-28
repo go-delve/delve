@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -629,9 +631,6 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 	)
 
 	if requestedBp.Name != "" {
-		if err = api.ValidBreakpointName(requestedBp.Name); err != nil {
-			return nil, err
-		}
 		if (d.findBreakpointByName(requestedBp.Name) != nil) || (d.findDisabledBreakpointByName(requestedBp.Name) != nil) {
 			return nil, errors.New("breakpoint name already exists")
 		}
@@ -742,9 +741,6 @@ func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
 	if originals == nil && !disabled {
 		return fmt.Errorf("no breakpoint with ID %d", amend.ID)
 	}
-	if err := api.ValidBreakpointName(amend.Name); err != nil {
-		return err
-	}
 	if !amend.Disabled && disabled { // enable the breakpoint
 		bp, err := d.target.SetBreakpointWithID(amend.ID, amend.Addr)
 		if err != nil {
@@ -789,7 +785,61 @@ func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err err
 	if requested.Cond != "" {
 		bp.Cond, err = parser.ParseExpr(requested.Cond)
 	}
+	bp.HitCond = nil
+	if requested.HitCond != "" {
+		opTok, val, parseErr := parseHitCondition(requested.HitCond)
+		if err == nil {
+			err = parseErr
+		}
+		if parseErr == nil {
+			bp.HitCond = &struct {
+				Op  token.Token
+				Val int
+			}{opTok, val}
+		}
+	}
 	return err
+}
+
+func parseHitCondition(hitCond string) (token.Token, int, error) {
+	// A hit condition can be in the following formats:
+	// - "number"
+	// - "OP number"
+	hitConditionRegex := regexp.MustCompile(`((=|>|<|%|!)+|)( |)((\d|_)+)`)
+
+	match := hitConditionRegex.FindStringSubmatch(strings.TrimSpace(hitCond))
+	if match == nil || len(match) != 6 {
+		return 0, 0, fmt.Errorf("unable to parse breakpoint hit condition: %q\nhit conditions should be of the form \"number\" or \"OP number\"", hitCond)
+	}
+
+	opStr := match[1]
+	var opTok token.Token
+	switch opStr {
+	case "==", "":
+		opTok = token.EQL
+	case ">=":
+		opTok = token.GEQ
+	case "<=":
+		opTok = token.LEQ
+	case ">":
+		opTok = token.GTR
+	case "<":
+		opTok = token.LSS
+	case "%":
+		opTok = token.REM
+	case "!=":
+		opTok = token.NEQ
+	default:
+		return 0, 0, fmt.Errorf("unable to parse breakpoint hit condition: %q\ninvalid operator: %q", hitCond, opStr)
+	}
+
+	numStr := match[4]
+	val, parseErr := strconv.Atoi(numStr)
+	if parseErr != nil {
+		return 0, 0, fmt.Errorf("unable to parse breakpoint hit condition: %q\ninvalid number: %q", hitCond, numStr)
+	}
+
+	return opTok, val, nil
 }
 
 // ClearBreakpoint clears a breakpoint.
@@ -956,7 +1006,7 @@ func (d *Debugger) CreateWatchpoint(goid, frame, deferredCall int, expr string, 
 	if err != nil {
 		return nil, err
 	}
-	if api.ValidBreakpointName(expr) == nil && d.findBreakpointByName(expr) == nil {
+	if d.findBreakpointByName(expr) == nil {
 		bp.Name = expr
 	}
 	return api.ConvertBreakpoint(bp), nil
