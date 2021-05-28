@@ -1414,17 +1414,12 @@ func (d *Debugger) EvalVariableInScope(goid, frame, deferredCall int, symbol str
 	return s.EvalVariable(symbol, cfg)
 }
 
-// Reslice will attempt to 'reslice' a map, array or slice so that the values
-// from [start:start+count] are loaded.
-func (d *Debugger) Reslice(v *proc.Variable, start, count int, cfg proc.LoadConfig) (*proc.Variable, error) {
+// LoadResliced will attempt to 'reslice' a map, array or slice so that the values
+// up to cfg.MaxArrayValues children are loaded starting from index start.
+func (d *Debugger) LoadResliced(v *proc.Variable, start int, cfg proc.LoadConfig) (*proc.Variable, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-
-	newV, err := v.Reslice(start, count, cfg)
-	if err != nil {
-		return nil, err
-	}
-	return newV, nil
+	return v.LoadResliced(start, cfg)
 }
 
 // SetVariableInScope will set the value of the variable represented by

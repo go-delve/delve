@@ -1950,21 +1950,26 @@ func (v *Variable) mapAccess(idx *Variable) (*Variable, error) {
 	return nil, fmt.Errorf("key not found")
 }
 
-// Reslice returns a new array, slice or map that starts at index start and contains
-// up to count children.
-func (v *Variable) Reslice(start, count int, cfg LoadConfig) (newV *Variable, err error) {
-	cfg.MaxArrayValues = count
+// LoadResliced returns a new array, slice or map that starts at index start and contains
+// up to cfg.MaxArrayValues children.
+func (v *Variable) LoadResliced(start int, cfg LoadConfig) (newV *Variable, err error) {
 	switch v.Kind {
 	case reflect.Array, reflect.Slice:
-		newV, err = v.reslice(int64(start), int64(start+count))
+		low, high := int64(start), int64(start+cfg.MaxArrayValues)
+		if high > v.Len {
+			high = v.Len
+		}
+		newV, err = v.reslice(low, high)
 		if err != nil {
 			return nil, err
 		}
 	case reflect.Map:
-		newV = v
+		newV = v.clone()
 		newV.Children = nil
 		newV.loaded = false
 		newV.mapSkip = start
+	default:
+		return nil, fmt.Errorf("variable to reslice is not an array, slice, or map")
 	}
 	newV.loadValue(cfg)
 	return newV, nil

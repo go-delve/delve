@@ -1463,7 +1463,9 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 	// loaded, or don't load by default until requested.
 	if request.Arguments.Filter == "indexed" {
 		start, count := request.Arguments.Start, request.Arguments.Count
-		newV, err := s.debugger.Reslice(v.Variable, start, count, DefaultLoadConfig)
+		indexedLoadConfig := DefaultLoadConfig
+		indexedLoadConfig.MaxArrayValues = count
+		newV, err := s.debugger.LoadResliced(v.Variable, start, indexedLoadConfig)
 		if err != nil {
 			s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", err.Error())
 			return
