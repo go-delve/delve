@@ -1414,8 +1414,8 @@ func (d *Debugger) EvalVariableInScope(goid, frame, deferredCall int, symbol str
 	return s.EvalVariable(symbol, cfg)
 }
 
-// Reslice will attempt to evaluate the variable represented by 'symbol'
-// in the scope provided.
+// Reslice will attempt to 'reslice' a map, array or slice so that the values
+// from [start:start+count] are loaded.
 func (d *Debugger) Reslice(v *proc.Variable, start, count int, cfg proc.LoadConfig) (*proc.Variable, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()

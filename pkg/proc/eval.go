@@ -1950,7 +1950,8 @@ func (v *Variable) mapAccess(idx *Variable) (*Variable, error) {
 	return nil, fmt.Errorf("key not found")
 }
 
-// Reslice returns a new array, slice or map that
+// Reslice returns a new array, slice or map that starts at index start and contains
+// up to count children.
 func (v *Variable) Reslice(start, count int, cfg LoadConfig) (newV *Variable, err error) {
 	cfg.MaxArrayValues = count
 	switch v.Kind {
