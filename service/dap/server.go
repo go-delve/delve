@@ -746,8 +746,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	if mode == "debug" || mode == "test" {
 		output, ok := request.Arguments["output"].(string)
 		if !ok || output == "" {
-			output = cleanExeName(defaultDebugBinary)
+			output = defaultDebugBinary
 		}
+		output = cleanExeName(output)
 		debugbinary, err := filepath.Abs(output)
 		if err != nil {
 			s.sendInternalErrorResponse(request.Seq, err.Error())
