@@ -1685,6 +1685,78 @@ func TestCondBreakpointError(t *testing.T) {
 	})
 }
 
+func TestHitCondBreakpointEQ(t *testing.T) {
+	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture.Source, 7)
+		bp.HitCond = &struct {
+			Op  token.Token
+			Val int
+		}{token.EQL, 3}
+
+		assertNoError(p.Continue(), t, "Continue()")
+		ivar := evalVariable(p, t, "i")
+
+		i, _ := constant.Int64Val(ivar.Value)
+		if i != 3 {
+			t.Fatalf("Stoppend on wrong hitcount %d\n", i)
+		}
+
+		err := p.Continue()
+		if _, exited := err.(proc.ErrProcessExited); !exited {
+			t.Fatalf("Unexpected error on Continue(): %v", err)
+		}
+	})
+}
+
+func TestHitCondBreakpointGEQ(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture.Source, 7)
+		bp.HitCond = &struct {
+			Op  token.Token
+			Val int
+		}{token.GEQ, 3}
+
+		for it := 3; it <= 10; it++ {
+			assertNoError(p.Continue(), t, "Continue()")
+			ivar := evalVariable(p, t, "i")
+
+			i, _ := constant.Int64Val(ivar.Value)
+			if int(i) != it {
+				t.Fatalf("Stoppend on wrong hitcount %d\n", i)
+			}
+		}
+
+		assertNoError(p.Continue(), t, "Continue()")
+	})
+}
+
+func TestHitCondBreakpointREM(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture.Source, 7)
+		bp.HitCond = &struct {
+			Op  token.Token
+			Val int
+		}{token.REM, 2}
+
+		for it := 2; it <= 10; it += 2 {
+			assertNoError(p.Continue(), t, "Continue()")
+			ivar := evalVariable(p, t, "i")
+
+			i, _ := constant.Int64Val(ivar.Value)
+			if int(i) != it {
+				t.Fatalf("Stoppend on wrong hitcount %d\n", i)
+			}
+		}
+
+		err := p.Continue()
+		if _, exited := err.(proc.ErrProcessExited); !exited {
+			t.Fatalf("Unexpected error on Continue(): %v", err)
+		}
+	})
+}
+
 func TestIssue356(t *testing.T) {
 	// slice with a typedef does not get printed correctly
 	protest.AllowRecording(t)
