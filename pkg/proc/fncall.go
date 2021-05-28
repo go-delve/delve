@@ -363,7 +363,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	switch len(fncall.retvars) {
 	case 0:
 		r := newVariable("", 0, nil, scope.BinInfo, nil)
-		r.Loaded = true
+		r.loaded = true
 		r.Unreadable = errors.New("no return values")
 		return r, nil
 	case 1:
@@ -371,7 +371,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	default:
 		// create a fake variable without address or type to return multiple values
 		r := newVariable("", 0, nil, scope.BinInfo, nil)
-		r.Loaded = true
+		r.loaded = true
 		r.Children = make([]Variable, len(fncall.retvars))
 		for i := range fncall.retvars {
 			r.Children[i] = *fncall.retvars[i]
@@ -453,7 +453,7 @@ func funcCallEvalFuncExpr(scope *EvalScope, fncall *functionCallState, allowCall
 	if fnvar.Kind != reflect.Func {
 		return fmt.Errorf("expression %q is not a function", exprToString(fncall.expr.Fun))
 	}
-	fnvar.LoadValue(LoadConfig{false, 0, 0, 0, 0, 0})
+	fnvar.loadValue(LoadConfig{false, 0, 0, 0, 0, 0})
 	if fnvar.Unreadable != nil {
 		return fnvar.Unreadable
 	}
@@ -857,7 +857,7 @@ func readTopstackVariable(thread Thread, regs Registers, typename string, loadCf
 		return nil, err
 	}
 	v := newVariable("", regs.SP(), typ, scope.BinInfo, scope.Mem)
-	v.LoadValue(loadCfg)
+	v.loadValue(loadCfg)
 	if v.Unreadable != nil {
 		return nil, v.Unreadable
 	}

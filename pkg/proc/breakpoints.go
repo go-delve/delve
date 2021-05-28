@@ -243,7 +243,7 @@ func evalBreakpointCondition(thread Thread, cond ast.Expr) (bool, error) {
 	if v.Kind != reflect.Bool {
 		return true, errors.New("condition expression not boolean")
 	}
-	v.LoadValue(loadFullValue)
+	v.loadValue(loadFullValue)
 	if v.Unreadable != nil {
 		return true, fmt.Errorf("condition expression unreadable: %v", v.Unreadable)
 	}

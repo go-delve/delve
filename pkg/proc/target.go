@@ -193,7 +193,7 @@ func (t *Target) IsCgo() bool {
 	scope := globalScope(t.BinInfo(), t.BinInfo().Images[0], t.Memory())
 	iscgov, err := scope.findGlobal("runtime", "iscgo")
 	if err == nil {
-		iscgov.LoadValue(loadFullValue)
+		iscgov.loadValue(loadFullValue)
 		if iscgov.Unreadable == nil {
 			t.iscgo = new(bool)
 			*t.iscgo = constant.BoolVal(iscgov.Value)
@@ -316,7 +316,7 @@ func setAsyncPreemptOff(p *Target, v int64) {
 		logger.Warnf("could not find asyncpreemptoff field: %v", err)
 		return
 	}
-	asyncpreemptoffv.LoadValue(loadFullValue)
+	asyncpreemptoffv.loadValue(loadFullValue)
 	if asyncpreemptoffv.Unreadable != nil {
 		logger.Warnf("asyncpreemptoff field unreadable: %v", asyncpreemptoffv.Unreadable)
 		return

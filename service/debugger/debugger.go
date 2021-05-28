@@ -1414,6 +1414,19 @@ func (d *Debugger) EvalVariableInScope(goid, frame, deferredCall int, symbol str
 	return s.EvalVariable(symbol, cfg)
 }
 
+// Reslice will attempt to evaluate the variable represented by 'symbol'
+// in the scope provided.
+func (d *Debugger) Reslice(v *proc.Variable, start, count int, cfg proc.LoadConfig) (*proc.Variable, error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+
+	newV, err := v.Reslice(start, count, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return newV, nil
+}
+
 // SetVariableInScope will set the value of the variable represented by
 // 'symbol' to the value given, in the given scope.
 func (d *Debugger) SetVariableInScope(goid, frame, deferredCall int, symbol, value string) error {

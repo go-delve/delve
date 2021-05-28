@@ -1462,22 +1462,12 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 	// loaded, or don't load by default until requested.
 	if request.Arguments.Filter == "indexed" {
 		start, count := request.Arguments.Start, request.Arguments.Count
-		indexedLoadConfig := DefaultLoadConfig
-		indexedLoadConfig.MaxArrayValues = count
-		if v.Kind == reflect.Array || v.Kind == reflect.Slice {
-			newV, err := v.Reslice(int64(start), int64(start+count))
-			if err != nil {
-				s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", err.Error())
-				return
-			}
-			v = &fullyQualifiedVariable{newV, v.fullyQualifiedNameOrExpr, false, start}
+		newV, err := s.debugger.Reslice(v.Variable, start, count, DefaultLoadConfig)
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", err.Error())
+			return
 		}
-		if v.Kind == reflect.Map {
-			v.Children = nil
-			v.MapSkip = start
-			v.Loaded = false
-		}
-		v.LoadValue(indexedLoadConfig)
+		v = &fullyQualifiedVariable{newV, v.fullyQualifiedNameOrExpr, false, start}
 	}
 
 	children, err := s.childrenToDAPVariables(v)
@@ -1539,7 +1529,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 			// Otherwise, we must return separate variables for both.
 			if keyref > 0 && valref > 0 { // Both are not scalars
 				keyvar := dap.Variable{
-					Name:               fmt.Sprintf("[key %d]", v.MapSkip+kvIndex),
+					Name:               fmt.Sprintf("[key %d]", v.startIndex+kvIndex),
 					EvaluateName:       keyexpr,
 					Type:               keyType,
 					Value:              key,
@@ -1547,7 +1537,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 					IndexedVariables:   getIndexedVariableCount(keyv),
 				}
 				valvar := dap.Variable{
-					Name:               fmt.Sprintf("[val %d]", v.MapSkip+kvIndex),
+					Name:               fmt.Sprintf("[val %d]", v.startIndex+kvIndex),
 					EvaluateName:       valexpr,
 					Type:               valType,
 					Value:              val,

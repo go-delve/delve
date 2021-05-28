@@ -116,11 +116,11 @@ type Variable struct {
 	closureAddr uint64
 
 	// number of elements to skip when loading a map
-	MapSkip int
+	mapSkip int
 
 	Children []Variable
 
-	Loaded     bool
+	loaded     bool
 	Unreadable error
 
 	LocationExpr *locationExpr // location expression
@@ -533,7 +533,7 @@ func (g *G) Labels() map[string]string {
 			labelMapType, _ := g.variable.bi.findType("runtime/pprof.labelMap")
 			if labelMapType != nil {
 				labelMap := newVariable("", address.Addr, labelMapType, g.variable.bi, g.variable.mem)
-				labelMap.LoadValue(loadFullValue)
+				labelMap.loadValue(loadFullValue)
 				labels = map[string]string{}
 				for i := range labelMap.Children {
 					if i%2 == 0 {
@@ -718,7 +718,7 @@ func resolveTypedef(typ godwarf.Type) godwarf.Type {
 }
 
 func newConstant(val constant.Value, mem MemoryReadWriter) *Variable {
-	v := &Variable{Value: val, mem: mem, Loaded: true}
+	v := &Variable{Value: val, mem: mem, loaded: true}
 	switch val.Kind() {
 	case constant.Int:
 		v.Kind = reflect.Int
@@ -917,7 +917,7 @@ func (v *Variable) loadFieldNamed(name string) *Variable {
 	if err != nil {
 		return nil
 	}
-	v.LoadValue(loadFullValue)
+	v.loadValue(loadFullValue)
 	if v.Unreadable != nil {
 		return nil
 	}
@@ -925,7 +925,7 @@ func (v *Variable) loadFieldNamed(name string) *Variable {
 }
 
 func (v *Variable) fieldVariable(name string) *Variable {
-	if !v.Loaded {
+	if !v.loaded {
 		panic("fieldVariable called on a variable that wasn't loaded")
 	}
 	for i := range v.Children {
@@ -954,7 +954,7 @@ func Ancestors(p Process, g *G, n int) ([]Ancestor, error) {
 		return nil, err
 	}
 	av = av.maybeDereference()
-	av.LoadValue(LoadConfig{MaxArrayValues: n, MaxVariableRecurse: 1, MaxStructFields: -1})
+	av.loadValue(LoadConfig{MaxArrayValues: n, MaxVariableRecurse: 1, MaxStructFields: -1})
 	if av.Unreadable != nil {
 		return nil, err
 	}
@@ -980,7 +980,7 @@ func Ancestors(p Process, g *G, n int) ([]Ancestor, error) {
 		if pcsVar.Unreadable != nil {
 			r[i].Unreadable = pcsVar.Unreadable
 		}
-		pcsVar.Loaded = false
+		pcsVar.loaded = false
 		pcsVar.Children = pcsVar.Children[:0]
 		r[i].pcsVar = pcsVar
 	}
@@ -994,7 +994,7 @@ func (a *Ancestor) Stack(n int) ([]Stackframe, error) {
 		return nil, a.Unreadable
 	}
 	pcsVar := a.pcsVar.clone()
-	pcsVar.LoadValue(LoadConfig{MaxArrayValues: n})
+	pcsVar.loadValue(LoadConfig{MaxArrayValues: n})
 	if pcsVar.Unreadable != nil {
 		return nil, pcsVar.Unreadable
 	}
@@ -1031,7 +1031,7 @@ func (g *G) stkbar() ([]savedLR, error) {
 	if g.stkbarVar == nil { // stack barriers were removed in Go 1.9
 		return nil, nil
 	}
-	g.stkbarVar.LoadValue(LoadConfig{false, 1, 0, int(g.stkbarVar.Len), 3, 0})
+	g.stkbarVar.loadValue(LoadConfig{false, 1, 0, int(g.stkbarVar.Len), 3, 0})
 	if g.stkbarVar.Unreadable != nil {
 		return nil, fmt.Errorf("unreadable stkbar: %v", g.stkbarVar.Unreadable)
 	}
@@ -1056,7 +1056,7 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 		return v.clone(), nil
 	}
 	vname := v.Name
-	if v.Loaded && (v.Flags&VariableFakeAddress) != 0 {
+	if v.loaded && (v.Flags&VariableFakeAddress) != 0 {
 		for i := range v.Children {
 			if v.Children[i].Name == memberName {
 				return &v.Children[i], nil
@@ -1187,7 +1187,7 @@ func (v *Variable) maybeDereference() *Variable {
 
 	switch t := v.RealType.(type) {
 	case *godwarf.PtrType:
-		if v.Addr == 0 && len(v.Children) == 1 && v.Loaded {
+		if v.Addr == 0 && len(v.Children) == 1 && v.loaded {
 			// fake pointer variable constructed by casting an integer to a pointer type
 			return &v.Children[0]
 		}
@@ -1210,16 +1210,16 @@ func loadValues(vars []*Variable, cfg LoadConfig) {
 }
 
 // Extracts the value of the variable at the given address.
-func (v *Variable) LoadValue(cfg LoadConfig) {
+func (v *Variable) loadValue(cfg LoadConfig) {
 	v.loadValueInternal(0, cfg)
 }
 
 func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
-	if v.Unreadable != nil || v.Loaded || (v.Addr == 0 && v.Base == 0) {
+	if v.Unreadable != nil || v.loaded || (v.Addr == 0 && v.Base == 0) {
 		return
 	}
 
-	v.Loaded = true
+	v.loaded = true
 	switch v.Kind {
 	case reflect.Ptr, reflect.UnsafePointer:
 		v.Len = 1
@@ -1490,14 +1490,14 @@ func (v *Variable) loadSliceInfo(t *godwarf.SliceType) {
 			}
 		case sliceLenFieldName:
 			lstrAddr, _ := v.toField(f)
-			lstrAddr.LoadValue(loadSingleValue)
+			lstrAddr.loadValue(loadSingleValue)
 			err = lstrAddr.Unreadable
 			if err == nil {
 				v.Len, _ = constant.Int64Val(lstrAddr.Value)
 			}
 		case sliceCapFieldName:
 			cstrAddr, _ := v.toField(f)
-			cstrAddr.LoadValue(loadSingleValue)
+			cstrAddr.loadValue(loadSingleValue)
 			err = cstrAddr.Unreadable
 			if err == nil {
 				v.Cap, _ = constant.Int64Val(cstrAddr.Value)
@@ -1537,7 +1537,7 @@ func (v *Variable) loadChanInfo() {
 	}
 
 	lenAddr, _ := sv.toField(structType.Field[1])
-	lenAddr.LoadValue(loadSingleValue)
+	lenAddr.loadValue(loadSingleValue)
 	if lenAddr.Unreadable != nil {
 		v.Unreadable = fmt.Errorf("unreadable length: %v", lenAddr.Unreadable)
 		return
@@ -1623,8 +1623,8 @@ func (v *Variable) readComplex(size int64) {
 
 	realvar := v.newVariable("real", v.Addr, ftyp, v.mem)
 	imagvar := v.newVariable("imaginary", v.Addr+uint64(fs), ftyp, v.mem)
-	realvar.LoadValue(loadSingleValue)
-	imagvar.LoadValue(loadSingleValue)
+	realvar.loadValue(loadSingleValue)
+	imagvar.loadValue(loadSingleValue)
 	v.Value = constant.BinaryOp(realvar.Value, token.ADD, constant.MakeImag(imagvar.Value))
 }
 
@@ -1848,11 +1848,11 @@ func (v *Variable) loadMap(recurseLevel int, cfg LoadConfig) {
 	}
 	it.maxNumBuckets = uint64(cfg.MaxMapBuckets)
 
-	if v.Len == 0 || int64(v.MapSkip) >= v.Len || cfg.MaxArrayValues == 0 {
+	if v.Len == 0 || int64(v.mapSkip) >= v.Len || cfg.MaxArrayValues == 0 {
 		return
 	}
 
-	for skip := 0; skip < v.MapSkip; skip++ {
+	for skip := 0; skip < v.mapSkip; skip++ {
 		if ok := it.next(); !ok {
 			v.Unreadable = fmt.Errorf("map index out of bounds")
 			return
@@ -2315,7 +2315,7 @@ func (v *Variable) registerVariableTypeConv(newtyp string) (*Variable, error) {
 		v.Children = append(v.Children, *child)
 	}
 
-	v.Loaded = true
+	v.loaded = true
 	v.Kind = reflect.Array
 	v.Len = int64(len(v.Children))
 	v.DwarfType = fakeArrayType(uint64(len(v.Children)), &godwarf.VoidType{CommonType: godwarf.CommonType{ByteSize: int64(n)}})
