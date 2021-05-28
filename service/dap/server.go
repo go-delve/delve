@@ -2364,6 +2364,22 @@ func (s *Server) resetHandlesForStoppedEvent() {
 	s.exceptionErr = nil
 }
 
+func (s *Server) runContinueCommand() (bool, *api.DebuggerState, error) {
+	s.resumeMu.Lock()
+	resumeRequestLoop := make(chan struct{})
+	go func() {
+		<-resumeRequestLoop
+		s.resumeMu.Unlock()
+	}()
+	defer func() {
+		close(resumeRequestLoop)
+	}()
+
+	// Check for a manual halt.
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Continue}, resumeRequestLoop)
+	return true, state, err
+}
+
 // doRunCommand runs a debugger command until it stops on
 // termination, error, breakpoint, etc, when an appropriate
 // event needs to be sent to the client. asyncSetupDone is
@@ -2385,27 +2401,18 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 			if state.SelectedGoroutine != nil {
 				id = state.SelectedGoroutine.ID
 			}
-			s.log.Debugf("goroutine %d hit breakpoint (id: %d, loc: %s:%d) during %s, continuing...\n", id, bp.ID, bp.File, bp.Line, command)
+			s.log.Debugf("goroutine %d hit breakpoint (id: %d, loc: %s:%d) during %s\n", id, bp.ID, bp.File, bp.Line, command)
 			s.send(&dap.OutputEvent{
 				Event: *newEvent("output"),
 				Body: dap.OutputEventBody{
-					Output:   fmt.Sprintf("goroutine %d hit breakpoint (id: %d, loc: %s:%d) during %s, continuing...\n", id, bp.ID, bp.File, bp.Line, command),
+					Output:   fmt.Sprintf("goroutine %d hit breakpoint (id: %d, loc: %s:%d) during %s\n", id, bp.ID, bp.File, bp.Line, command),
 					Category: "console",
 				}})
-			// Issue a continue request to continue with the step command.
-			s.resumeMu.Lock()
-			resumeRequestLoop := make(chan struct{})
-			go func() {
-				<-resumeRequestLoop
-				s.resumeMu.Unlock()
-			}()
-			defer func() {
-				close(resumeRequestLoop)
-			}()
-			// Make sure that there was no manual halt that should stop the execution.
-
-			state, err = s.debugger.Command(&api.DebuggerCommand{Name: api.Continue}, resumeRequestLoop)
-			continue
+			var continued bool
+			continued, state, err = s.runContinueCommand()
+			if continued {
+				continue
+			}
 		}
 
 		// There was no breakpoint to skip, we should cancel next and process this stop.
