@@ -82,8 +82,7 @@ func main() {
 		for _, v := range skipped[cond] {
 			tot += v
 		}
-		perc := float64(tot) / float64(ntests) * 100
-		fmt.Fprintf(fh, "* %s skipped = %0.02g%% (%d/%d)\n", cond, perc, tot, ntests)
+		fmt.Fprintf(fh, "* %s skipped = %d\n", cond, tot)
 		reasons := []string{}
 		for reason := range skipped[cond] {
 			reasons = append(reasons, reason)

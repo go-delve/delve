@@ -670,7 +670,7 @@ type Image struct {
 func (image *Image) registerRuntimeTypeToDIE(entry *dwarf.Entry, ardr *reader.Reader) {
 	if off, ok := entry.Val(godwarf.AttrGoRuntimeType).(uint64); ok {
 		if _, ok := image.runtimeTypeToDIE[off]; !ok {
-			image.runtimeTypeToDIE[off+image.StaticBase] = runtimeTypeDIE{entry.Offset, -1}
+			image.runtimeTypeToDIE[off] = runtimeTypeDIE{entry.Offset, -1}
 		}
 	}
 }

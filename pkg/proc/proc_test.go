@@ -1278,7 +1278,7 @@ func TestFrameEvaluation(t *testing.T) {
 		found := make([]bool, 10)
 		for _, g := range gs {
 			frame := -1
-			frames, err := g.Stacktrace(10, 0)
+			frames, err := g.Stacktrace(40, 0)
 			if err != nil {
 				t.Logf("could not stacktrace goroutine %d: %v\n", g.ID, err)
 				continue
@@ -3251,7 +3251,7 @@ func TestCgoStacktrace(t *testing.T) {
 	}
 
 	skipOn(t, "broken - cgo stacktraces", "386")
-	skipOn(t, "broken - cgo stacktraces", "arm64")
+	skipOn(t, "broken - cgo stacktraces", "linux", "arm64")
 	protest.MustHaveCgo(t)
 
 	// Tests that:
@@ -5169,9 +5169,9 @@ func TestCompositeMemoryWrite(t *testing.T) {
 		oldPc, oldRax, oldXmm1 := getregs()
 		t.Logf("PC %#x AX %#x XMM1 %#x", oldPc, oldRax, oldXmm1)
 
-		memRax, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, RegNum: 0, IsRegister: true}})
+		memRax, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, Val: 0, Kind: op.RegPiece}})
 		assertNoError(err, t, "NewCompositeMemory (rax)")
-		memXmm1, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, RegNum: 18, IsRegister: true}})
+		memXmm1, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, Val: 18, Kind: op.RegPiece}})
 		assertNoError(err, t, "NewCompositeMemory (xmm1)")
 
 		if memRax := getmem(memRax); memRax != oldRax {

@@ -66,6 +66,8 @@ type Client interface {
 	GetBreakpointByName(name string) (*api.Breakpoint, error)
 	// CreateBreakpoint creates a new breakpoint.
 	CreateBreakpoint(*api.Breakpoint) (*api.Breakpoint, error)
+	// CreateWatchpoint creates a new watchpoint.
+	CreateWatchpoint(api.EvalScope, string, api.WatchType) (*api.Breakpoint, error)
 	// ListBreakpoints gets all breakpoints.
 	ListBreakpoints() ([]*api.Breakpoint, error)
 	// ClearBreakpoint deletes a breakpoint by ID.

@@ -20,6 +20,7 @@ import (
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
+	"github.com/go-delve/delve/service/internal/sameuser"
 	"github.com/go-delve/delve/service/rpc1"
 	"github.com/go-delve/delve/service/rpc2"
 	"github.com/sirupsen/logrus"
@@ -145,7 +146,7 @@ func (s *ServerImpl) Run() error {
 			}
 
 			if s.config.CheckLocalConnUser {
-				if !canAccept(s.listener.Addr(), c.RemoteAddr()) {
+				if !sameuser.CanAccept(s.listener.Addr(), c.RemoteAddr()) {
 					c.Close()
 					continue
 				}

@@ -33,6 +33,8 @@ func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 		Variables:     bp.Variables,
 		LoadArgs:      LoadConfigFromProc(bp.LoadArgs),
 		LoadLocals:    LoadConfigFromProc(bp.LoadLocals),
+		WatchExpr:     bp.WatchExpr,
+		WatchType:     WatchType(bp.WatchType),
 		TotalHitCount: bp.TotalHitCount,
 		Addrs:         []uint64{bp.Addr},
 	}
