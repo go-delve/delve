@@ -1456,8 +1456,9 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		return
 	}
 
-	// If there is a filter applied, we will need to create a new variable that included
-	// what values to actually load.
+	// If there is a filter applied, we will need to create a new variable that includes
+	// the values actually needed to load. This cannot be done when loading the parent
+	// node, since it is unknown at that point which children will need to be loaded.
 	// TODO(suzmue): add optimization to not reload if the correct section is already
 	// loaded, or don't load by default until requested.
 	if request.Arguments.Filter == "indexed" {
