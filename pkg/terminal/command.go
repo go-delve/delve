@@ -387,8 +387,21 @@ Supported commands: print, stack and goroutine)`},
 		{aliases: []string{"condition", "cond"}, group: breakCmds, cmdFn: conditionCmd, helpMsg: `Set breakpoint condition.
 
 	condition <breakpoint name or id> <boolean expression>.
+	condition -hitcount <breakpoint name or id> <operator> <argument>
 
-Specifies that the breakpoint or tracepoint should break only if the boolean expression is true.`},
+Specifies that the breakpoint, tracepoint or watchpoint should break only if the boolean expression is true.
+
+With the -hitcount option a condition on the breakpoint hit count can be set, the following operators are supported
+
+	condition -hitcount bp > n
+	condition -hitcount bp >= n
+	condition -hitcount bp < n
+	condition -hitcount bp <= n
+	condition -hitcount bp == n
+	condition -hitcount bp != n
+	condition -hitcount bp % n
+	
+The '% n' form means we should stop at the breakpoint when the hitcount is a multiple of n.`},
 		{aliases: []string{"config"}, cmdFn: configureCmd, helpMsg: `Changes configuration parameters.
 
 	config -list
@@ -1533,6 +1546,9 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 		if bp.Cond != "" {
 			attrs = append(attrs, fmt.Sprintf("\tcond %s", bp.Cond))
 		}
+		if bp.HitCond != "" {
+			attrs = append(attrs, fmt.Sprintf("\tcond -hitcount %s", bp.HitCond))
+		}
 		if bp.Stacktrace > 0 {
 			attrs = append(attrs, fmt.Sprintf("\tstack %d", bp.Stacktrace))
 		}
@@ -2664,6 +2680,22 @@ func conditionCmd(t *Term, ctx callContext, argstr string) error {
 
 	if len(args) < 2 {
 		return fmt.Errorf("not enough arguments")
+	}
+
+	if args[0] == "-hitcount" {
+		// hitcount breakpoint
+		args = split2PartsBySpace(args[1])
+		if len(args) < 2 {
+			return fmt.Errorf("not enough arguments")
+		}
+		bp, err := getBreakpointByIDOrName(t, args[0])
+		if err != nil {
+			return err
+		}
+
+		bp.HitCond = args[1]
+
+		return t.client.AmendBreakpoint(bp)
 	}
 
 	bp, err := getBreakpointByIDOrName(t, args[0])
