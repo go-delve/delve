@@ -1828,8 +1828,10 @@ func (s *Server) convertVariableToString(v *proc.Variable) string {
 const defaultMaxValueLen = 1 << 8 // 256
 
 // Flags for convertVariableWithOpts option.
+type convertVariableFlags uint8
+
 const (
-	skipRef = 1 << iota
+	skipRef convertVariableFlags = 1 << iota
 	showFullValue
 )
 
@@ -1837,7 +1839,7 @@ const (
 // a string representation of the variable. When the variable is a compound or reference
 // type variable and its full string representation can be larger than defaultMaxValueLen,
 // this returns a truncated value unless showFull option flag is set.
-func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, opts int) (value string, variablesReference int) {
+func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, opts convertVariableFlags) (value string, variablesReference int) {
 	canHaveRef := false
 	maybeCreateVariableHandle := func(v *proc.Variable) int {
 		canHaveRef = true
@@ -2051,7 +2053,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 				}
 			}
 		}
-		opts := 0
+		var opts convertVariableFlags
 		if ctxt == "variables" || ctxt == "hover" || ctxt == "clipboard" {
 			opts |= showFullValue
 		}
