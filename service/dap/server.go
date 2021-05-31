@@ -558,12 +558,14 @@ func (s *Server) handleRequest(request dap.Message) {
 			defer s.recoverPanic(request)
 			s.onStepBackRequest(request, resumeRequestLoop)
 		}()
+		<-resumeRequestLoop
 	case *dap.ReverseContinueRequest:
 		// Optional (capability ‘supportsStepBack’)
 		go func() {
 			defer s.recoverPanic(request)
 			s.onReverseContinueRequest(request, resumeRequestLoop)
 		}()
+		<-resumeRequestLoop
 	//--- Synchronous requests ---
 	case *dap.InitializeRequest:
 		// Required
@@ -780,20 +782,20 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		coreDumpPath, _ := request.Arguments["coreDumpPath"].(string)
 		traceDirectory, _ := request.Arguments["traceDirectory"].(string)
 
-		if (coreDumpPath != "") && (traceDirectory != "") {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				"The replay configuration must have either a coreDumpPath or a traceDirectory. Both attributes were found.")
+		if (coreDumpPath != "" && traceDirectory != "") || (coreDumpPath == "" && traceDirectory == "") {
+			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", "The 'replay' mode must have either a coreDumpPath or a traceDirectory, but not both." )
 			return
 		}
 
-		//TODO(lgomez): define default backend to use for this scenario as 'core' itself is only an internal value in order to differentiate from rr
-		backend := "core"
-		if traceDirectory != "" {
-			backend = "rr"
+		if coreDumpPath != "" {
+			s.config.Debugger.CoreFile = coreDumpPath
+			s.config.Debugger.Backend = "core"
+		} else {
+			s.config.Debugger.CoreFile = traceDirectory
+			s.config.Debugger.Backend = "rr"
 		}
 
-		if backend == "core" {
+		if s.config.Debugger.Backend == "core" {
 			// Validate core dump path
 			if coreDumpPath == "" {
 				s.sendErrorResponse(request.Request,
@@ -807,7 +809,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			s.config.Debugger.CoreFile = coreDumpPath
 		}
 
-		if backend == "rr" {
+		if s.config.Debugger.Backend == "rr" {
 			// Validate trace directory
 			if traceDirectory == "" {
 				s.sendErrorResponse(request.Request,
@@ -818,8 +820,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 			s.config.Debugger.CoreFile = traceDirectory
 		}
-
-		s.config.Debugger.Backend = backend
 	}
 
 	// Prepare the debug executable filename, build flags and build it
