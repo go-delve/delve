@@ -39,6 +39,9 @@ type DebuggerState struct {
 	// While NextInProgress is set further requests for next or step may be rejected.
 	// Either execute continue until NextInProgress is false or call CancelNext
 	NextInProgress bool
+	// WatchOutOfScope contains the list of watchpoints that went out of scope
+	// during the last continue.
+	WatchOutOfScope []*Breakpoint
 	// Exited indicates whether the debugged process has exited.
 	Exited     bool `json:"exited"`
 	ExitStatus int  `json:"exitStatus"`

@@ -623,6 +623,11 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 		state.When, _ = d.target.When()
 	}
 
+	state.WatchOutOfScope = make([]*api.Breakpoint, 0, len(d.target.Breakpoints().WatchOutOfScope))
+	for _, bp := range d.target.Breakpoints().WatchOutOfScope {
+		state.WatchOutOfScope = append(state.WatchOutOfScope, api.ConvertBreakpoint(bp))
+	}
+
 	return state, nil
 }
 
