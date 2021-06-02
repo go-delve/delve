@@ -1529,10 +1529,8 @@ func TestClientServer_FpRegisters(t *testing.T) {
 	}
 	protest.AllowRecording(t)
 	withTestClient2Extended("fputest/", t, 0, [3]string{}, func(c service.Client, fixture protest.Fixture) {
-		if testBackend == "rr" {
-			_, err := c.CreateBreakpoint(&api.Breakpoint{File: filepath.Join(fixture.BuildDir, "fputest.go"), Line: 27})
-			assertNoError(err, t, "CreateBreakpoint()")
-		}
+		_, err := c.CreateBreakpoint(&api.Breakpoint{File: filepath.Join(fixture.BuildDir, "fputest.go"), Line: 25})
+		assertNoError(err, t, "CreateBreakpoint")
 
 		state := <-c.Continue()
 		t.Logf("state after continue: %#v", state)
@@ -1556,6 +1554,9 @@ func TestClientServer_FpRegisters(t *testing.T) {
 			avx2 = false
 			avx512 = false
 		}
+
+		state = <-c.Continue()
+		t.Logf("state after continue: %#v", state)
 
 		regs, err := c.ListThreadRegisters(0, true)
 		assertNoError(err, t, "ListThreadRegisters()")
@@ -1597,6 +1598,7 @@ func TestClientServer_FpRegisters(t *testing.T) {
 			{"XMM1.uint16[0]", `52429`},
 			{"XMM1.float32[0]", `-107374184`},
 			{"XMM1.float64[0]", `1.3`},
+			{"RAX.uint8[0]", "42"},
 		} {
 			v, err := c.EvalVariable(scope, tc.expr, normalLoadConfig)
 			if err != nil {
