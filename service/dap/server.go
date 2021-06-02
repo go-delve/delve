@@ -1459,18 +1459,13 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 	// If there is a filter applied, we will need to create a new variable that includes
 	// the values actually needed to load. This cannot be done when loading the parent
 	// node, since it is unknown at that point which children will need to be loaded.
-	// TODO(suzmue): add optimization to not reload if the correct section is already
-	// loaded, or don't load by default until requested.
 	if request.Arguments.Filter == "indexed" {
-		start, count := request.Arguments.Start, request.Arguments.Count
-		indexedLoadConfig := DefaultLoadConfig
-		indexedLoadConfig.MaxArrayValues = count
-		newV, err := s.debugger.LoadResliced(v.Variable, start, indexedLoadConfig)
+		var err error
+		v, err = s.maybeLoadResliced(v, request.Arguments.Start, request.Arguments.Count)
 		if err != nil {
 			s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", err.Error())
 			return
 		}
-		v = &fullyQualifiedVariable{newV, v.fullyQualifiedNameOrExpr, false, start}
 	}
 
 	children, err := s.childrenToDAPVariables(v)
@@ -1483,6 +1478,21 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		Body:     dap.VariablesResponseBody{Variables: children},
 	}
 	s.send(response)
+}
+
+func (s *Server) maybeLoadResliced(v *fullyQualifiedVariable, start, count int) (*fullyQualifiedVariable, error) {
+	if start == 0 && count == len(v.Children) {
+		// If we have already loaded the correct children,
+		// just return the variable.
+		return v, nil
+	}
+	indexedLoadConfig := DefaultLoadConfig
+	indexedLoadConfig.MaxArrayValues = count
+	newV, err := s.debugger.LoadResliced(v.Variable, start, indexedLoadConfig)
+	if err != nil {
+		return nil, err
+	}
+	return &fullyQualifiedVariable{newV, v.fullyQualifiedNameOrExpr, false, start}, nil
 }
 
 func getIndexedVariableCount(c *proc.Variable) int {
