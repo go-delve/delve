@@ -2318,6 +2318,7 @@ func (v *Variable) registerVariableTypeConv(newtyp string) (*Variable, error) {
 	v.loaded = true
 	v.Kind = reflect.Array
 	v.Len = int64(len(v.Children))
+	v.Base = fakeAddress
 	v.DwarfType = fakeArrayType(uint64(len(v.Children)), &godwarf.VoidType{CommonType: godwarf.CommonType{ByteSize: int64(n)}})
 	v.RealType = v.DwarfType
 	return v, nil
