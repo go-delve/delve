@@ -662,7 +662,7 @@ func checkChildren(t *testing.T, got *dap.VariablesResponse, parentName string, 
 //     useExactMatch - true if name, evalName and value are to be compared to exactly, false if to be used as regex
 //     hasRef - true if the variable should have children and therefore a non-0 variable reference
 //     ref - reference to retrieve children of this variable (0 if none)
-func checkVar(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, useExactMatch, hasRef bool) (ref int) {
+func checkVar(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, useExactMatch, hasRef bool, indexed, named int) (ref int) {
 	t.Helper()
 	if len(got.Body.Variables) <= i {
 		t.Errorf("\ngot  len=%d (children=%#v)\nwant len>%d", len(got.Body.Variables), got.Body.Variables, i)
@@ -718,19 +718,37 @@ func checkVar(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, v
 	if !matchedType {
 		t.Errorf("\ngot  %s=%q\nwant %q", name, goti.Type, typ)
 	}
+	if indexed >= 0 && goti.IndexedVariables != indexed {
+		t.Errorf("\ngot  %s=%d indexed\nwant %d indexed", name, goti.IndexedVariables, indexed)
+	}
+	if named >= 0 && goti.NamedVariables != named {
+		t.Errorf("\ngot  %s=%d named\nwant %d named", name, goti.NamedVariables, named)
+	}
 	return goti.VariablesReference
 }
 
 // checkVarExact is a helper like checkVar that matches value exactly.
 func checkVarExact(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, hasRef bool) (ref int) {
 	t.Helper()
-	return checkVar(t, got, i, name, evalName, value, typ, true, hasRef)
+	return checkVarExactIndexed(t, got, i, name, evalName, value, typ, hasRef, -1, -1)
+}
+
+// checkVarExact is a helper like checkVar that matches value exactly.
+func checkVarExactIndexed(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, hasRef bool, indexed, named int) (ref int) {
+	t.Helper()
+	return checkVar(t, got, i, name, evalName, value, typ, true, hasRef, indexed, named)
 }
 
 // checkVarRegex is a helper like checkVar that treats value, evalName or name as a regex.
 func checkVarRegex(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, hasRef bool) (ref int) {
 	t.Helper()
-	return checkVar(t, got, i, name, evalName, value, typ, false, hasRef)
+	return checkVarRegexIndexed(t, got, i, name, evalName, value, typ, hasRef, -1, -1)
+}
+
+// checkVarRegex is a helper like checkVar that treats value, evalName or name as a regex.
+func checkVarRegexIndexed(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, hasRef bool, indexed, named int) (ref int) {
+	t.Helper()
+	return checkVar(t, got, i, name, evalName, value, typ, false, hasRef, indexed, named)
 }
 
 func expectMessageFilterStopped(t *testing.T, client *daptest.Client) dap.Message {
@@ -1486,8 +1504,9 @@ func TestVariablesLoading(t *testing.T) {
 						}
 					}
 
-					// Array partially missing based on LoadConfig.MaxArrayValues
-					ref := checkVarExact(t, locals, -1, "longarr", "longarr", "[100]int [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", "[100]int", hasChildren)
+					// Array not fully loaded based on LoadConfig.MaxArrayValues.
+					// Expect to be able to load array by paging.
+					ref := checkVarExactIndexed(t, locals, -1, "longarr", "longarr", "[100]int [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", "[100]int", hasChildren, 100, 0)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						longarr := client.ExpectVariablesResponse(t)
@@ -1506,8 +1525,9 @@ func TestVariablesLoading(t *testing.T) {
 
 					}
 
-					// Slice partially missing based on LoadConfig.MaxArrayValues
-					ref = checkVarExact(t, locals, -1, "longslice", "longslice", "[]int len: 100, cap: 100, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", "[]int", hasChildren)
+					// Slice not fully loaded based on LoadConfig.MaxArrayValues.
+					// Expect to be able to load slice by paging.
+					ref = checkVarExactIndexed(t, locals, -1, "longslice", "longslice", "[]int len: 100, cap: 100, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", "[]int", hasChildren, 100, 0)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						longarr := client.ExpectVariablesResponse(t)
@@ -1525,8 +1545,9 @@ func TestVariablesLoading(t *testing.T) {
 						checkArrayChildren(t, longarr, "longslice", 50)
 					}
 
-					// Map partially missing based on LoadConfig.MaxArrayValues
-					ref = checkVarRegex(t, locals, -1, "m1", "m1", `map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, `map\[string\]main\.astruct`, hasChildren)
+					// Map not fully loaded based on LoadConfig.MaxArrayValues
+					// Expect to be able to load map by paging.
+					ref = checkVarRegexIndexed(t, locals, -1, "m1", "m1", `map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, `map\[string\]main\.astruct`, hasChildren, 66, 0)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m1 := client.ExpectVariablesResponse(t)

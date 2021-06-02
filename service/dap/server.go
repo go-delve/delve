@@ -1488,10 +1488,8 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 func getIndexedVariableCount(c *proc.Variable) int {
 	indexedVars := 0
 	switch c.Kind {
-	case reflect.Array, reflect.Slice:
+	case reflect.Array, reflect.Slice, reflect.Map:
 		indexedVars = int(c.Len)
-	case reflect.Map:
-		indexedVars = int(c.Len) / 2
 	}
 	return indexedVars
 }
