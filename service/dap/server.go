@@ -1115,6 +1115,14 @@ func fnName(loc *proc.Location) string {
 	return loc.Fn.Name
 }
 
+func fnPackageName(loc *proc.Location) string {
+	if loc.Fn == nil {
+		// attribute unknown functions to the runtime
+		return "runtime"
+	}
+	return loc.Fn.PackageName()
+}
+
 // onThreadsRequest handles 'threads' request.
 // This is a mandatory request to support.
 // It is sent in response to configurationDone response and stopped events.
@@ -1333,9 +1341,16 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 			stackFrames[i].Source = dap.Source{Name: filepath.Base(clientPath), Path: clientPath}
 		}
 		stackFrames[i].Column = 0
-		if loc.Fn == nil || loc.Fn.PackageName() == "runtime" {
-			stackFrames[i].Source.PresentationHint = "deemphasize"
-			stackFrames[i].Source.Origin = "runtime stack frames"
+
+		g, err := s.debugger.FindGoroutine(goroutineID)
+		if err == nil {
+			userLoc := g.UserCurrent()
+			userLocPackageName := fnPackageName(&userLoc)
+			packageName := fnPackageName(loc)
+			if userLocPackageName != "runtime" && packageName == "runtime" {
+				stackFrames[i].Source.PresentationHint = "deemphasize"
+				stackFrames[i].Source.Origin = fmt.Sprintf("%s stack frames", packageName)
+			}
 		}
 	}
 	// Since the backend doesn't support paging, we load all frames up to
@@ -2251,7 +2266,11 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 		if err == nil {
 			var buf bytes.Buffer
 			fmt.Fprintln(&buf, "Stack:")
-			terminal.PrintStack(s.toClientPath, &buf, apiFrames, "\t", false)
+			userLoc := g.UserCurrent()
+			userFuncPkg := fnPackageName(&userLoc)
+			terminal.PrintStack(s.toClientPath, &buf, apiFrames, "\t", false, func(s api.Stackframe) bool {
+				return userFuncPkg == "runtime" || !strings.HasPrefix(s.Location.Function.Name(), "runtime")
+			})
 			body.Details.StackTrace = buf.String()
 		}
 	}
