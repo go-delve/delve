@@ -1549,8 +1549,7 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 			userLocPackageName := fnPackageName(&userLoc)
 			packageName := fnPackageName(loc)
 			if userLocPackageName != "runtime" && packageName == "runtime" {
-				stackFrames[i].Source.PresentationHint = "deemphasize"
-				stackFrames[i].Source.Origin = fmt.Sprintf("%s stack frames", packageName)
+				stackFrames[i].PresentationHint = "deemphasize"
 			}
 		}
 	}
@@ -2397,6 +2396,8 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 			userLoc := g.UserCurrent()
 			userFuncPkg := fnPackageName(&userLoc)
 			terminal.PrintStack(s.toClientPath, &buf, apiFrames, "\t", false, func(s api.Stackframe) bool {
+				// Include all stack frames if the stack trace is for a system goroutine,
+				// otherwise, skip runtime stack frames.
 				return userFuncPkg == "runtime" || !strings.HasPrefix(s.Location.Function.Name(), "runtime")
 			})
 			body.Details.StackTrace = buf.String()

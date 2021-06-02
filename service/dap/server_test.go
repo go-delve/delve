@@ -3270,6 +3270,19 @@ func TestPanicBreakpointOnContinue(t *testing.T) {
 					if eInfo.Body.ExceptionId != "panic" || eInfo.Body.Description != "\"BOOM!\"" {
 						t.Errorf("\ngot  %#v\nwant ExceptionId=\"panic\" Description=\"\"BOOM!\"\"", eInfo)
 					}
+
+					client.StackTraceRequest(se.Body.ThreadId, 0, 20)
+					st := client.ExpectStackTraceResponse(t)
+					for i, frame := range st.Body.StackFrames {
+						if strings.HasPrefix(frame.Name, "runtime") {
+							if frame.PresentationHint != "deemphasize" {
+								t.Errorf("\ngot Body.StackFrames[%d]=%#v\nwant PresentationHint=\"deemphasize\"", i, frame)
+							}
+						} else if frame.PresentationHint != "" {
+							t.Errorf("\ngot Body.StackFrames[%d]=%#v\nwant PresentationHint=\"\"", i, frame)
+						}
+
+					}
 				},
 				disconnect: true,
 			}})
