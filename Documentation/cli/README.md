@@ -394,16 +394,16 @@ To only display goroutines that are running (or are not running) on a OS thread,
 	goroutines -with running
 	goroutines -without running
 	
-To only display goroutines that are classified as system (or non-system), use:
+To only display user (or runtime) goroutines, use:
 
-	goroutines -with system
-	goroutines -without system
+	goroutines -with user
+	goroutines -without user
 
 GROUPING
 
-	goroutines -group (userloc|curloc|goloc|startloc|running|system)
+	goroutines -group (userloc|curloc|goloc|startloc|running|user)
 
-Groups goroutines by the given location, running status or system classification, up to 5 goroutines per group will be displayed as well as the total number of goroutines in the group.
+Groups goroutines by the given location, running status or user classification, up to 5 goroutines per group will be displayed as well as the total number of goroutines in the group.
 
 	goroutines -group label key
 

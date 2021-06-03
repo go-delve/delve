@@ -1540,8 +1540,8 @@ func matchGoroutineFilter(g *proc.G, filter *api.ListGoroutinesFilter) bool {
 		}
 	case api.GoroutineRunning:
 		val = g.Thread != nil
-	case api.GoroutineSystem:
-		val = g.System()
+	case api.GoroutineUser:
+		val = !g.System()
 	}
 	if filter.Negated {
 		val = !val
@@ -1589,8 +1589,8 @@ func (d *Debugger) GroupGoroutines(gs []*proc.G, group *api.GoroutineGroupingOpt
 			key = fmt.Sprintf("%s=%s", group.GroupByKey, g.Labels()[group.GroupByKey])
 		case api.GoroutineRunning:
 			key = fmt.Sprintf("running=%v", g.Thread != nil)
-		case api.GoroutineSystem:
-			key = fmt.Sprintf("system=%v", g.System())
+		case api.GoroutineUser:
+			key = fmt.Sprintf("user=%v", !g.System())
 		}
 		if len(groupMembers[key]) < group.MaxGroupMembers {
 			groupMembers[key] = append(groupMembers[key], g)

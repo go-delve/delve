@@ -606,7 +606,7 @@ const (
 	GoroutineStartLoc                  // the goroutine's StartLoc
 	GoroutineLabel                     // the goroutine's label
 	GoroutineRunning                   // the goroutine is running
-	GoroutineSystem                    // the goroutine is a system goroutine
+	GoroutineUser                      // the goroutine is a user goroutine
 )
 
 // GoroutineGroup represents a group of goroutines in the return value of
