@@ -1549,7 +1549,7 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 			userLocPackageName := fnPackageName(&userLoc)
 			packageName := fnPackageName(loc)
 			if userLocPackageName != "runtime" && packageName == "runtime" {
-				stackFrames[i].PresentationHint = "deemphasize"
+				stackFrames[i].Source.PresentationHint = "deemphasize"
 			}
 		}
 	}
