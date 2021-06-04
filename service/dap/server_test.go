@@ -3213,8 +3213,8 @@ func TestBadAccess(t *testing.T) {
 					expectStoppedOnError := func(errorPrefix string) {
 						t.Helper()
 						se := client.ExpectStoppedEvent(t)
-						if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "Paused on runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
-							t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"Paused on runtime error\" Text=\"%s\"", se, errorPrefix)
+						if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
+							t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"runtime error\" Text=\"%s\"", se, errorPrefix)
 						}
 						client.ExceptionInfoRequest(1)
 						eInfo := client.ExpectExceptionInfoResponse(t)
@@ -3266,8 +3266,8 @@ func TestPanicBreakpointOnContinue(t *testing.T) {
 					client.ExpectContinueResponse(t)
 
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "Paused on panic" {
-						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"Paused on panic\"", se)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "panic" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"panic\"", se)
 					}
 
 					client.ExceptionInfoRequest(1)
@@ -3304,8 +3304,8 @@ func TestPanicBreakpointOnNext(t *testing.T) {
 					client.ExpectNextResponse(t)
 
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "Paused on panic" {
-						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"Paused on panic\"", se)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "panic" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"panic\"", se)
 					}
 
 					client.ExceptionInfoRequest(1)
@@ -3336,8 +3336,8 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 					client.ExpectContinueResponse(t)
 
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.Reason != "exception" || se.Body.Description != "Paused on fatal error" {
-						t.Errorf("\ngot  %#v\nwant Reason=\"exception\" Description=\"Paused on fatal error\"", se)
+					if se.Body.Reason != "exception" || se.Body.Description != "fatal error" {
+						t.Errorf("\ngot  %#v\nwant Reason=\"exception\" Description=\"fatal error\"", se)
 					}
 				},
 				disconnect: true,

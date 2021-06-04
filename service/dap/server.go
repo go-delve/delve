@@ -2540,10 +2540,10 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 			switch state.CurrentThread.Breakpoint.Name {
 			case proc.FatalThrow:
 				stopped.Body.Reason = "exception"
-				stopped.Body.Description = "Paused on fatal error"
+				stopped.Body.Description = "fatal error"
 			case proc.UnrecoveredPanic:
 				stopped.Body.Reason = "exception"
-				stopped.Body.Description = "Paused on panic"
+				stopped.Body.Description = "panic"
 			}
 			if strings.HasPrefix(state.CurrentThread.Breakpoint.Name, functionBpPrefix) {
 				stopped.Body.Reason = "function breakpoint"
@@ -2553,7 +2553,7 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 		s.exceptionErr = err
 		s.log.Error("runtime error: ", err)
 		stopped.Body.Reason = "exception"
-		stopped.Body.Description = "Paused on runtime error"
+		stopped.Body.Description = "runtime error"
 		stopped.Body.Text = err.Error()
 		// Special case in the spirit of https://github.com/microsoft/vscode-go/issues/1903
 		if stopped.Body.Text == "bad access" {
