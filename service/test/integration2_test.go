@@ -1598,6 +1598,7 @@ func TestClientServer_FpRegisters(t *testing.T) {
 			{"XMM1.uint16[0]", `52429`},
 			{"XMM1.float32[0]", `-107374184`},
 			{"XMM1.float64[0]", `1.3`},
+			{"RAX.uint8[0]", "42"},
 		} {
 			v, err := c.EvalVariable(scope, tc.expr, normalLoadConfig)
 			if err != nil {

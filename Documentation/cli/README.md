@@ -174,8 +174,21 @@ If called with the linespec argument it will delete all the breakpoints matching
 Set breakpoint condition.
 
 	condition <breakpoint name or id> <boolean expression>.
+	condition -hitcount <breakpoint name or id> <operator> <argument>
 
-Specifies that the breakpoint or tracepoint should break only if the boolean expression is true.
+Specifies that the breakpoint, tracepoint or watchpoint should break only if the boolean expression is true.
+
+With the -hitcount option a condition on the breakpoint hit count can be set, the following operators are supported
+
+	condition -hitcount bp > n
+	condition -hitcount bp >= n
+	condition -hitcount bp < n
+	condition -hitcount bp <= n
+	condition -hitcount bp == n
+	condition -hitcount bp != n
+	condition -hitcount bp % n
+	
+The '% n' form means we should stop at the breakpoint when the hitcount is a multiple of n.
 
 Aliases: cond
 
