@@ -2041,15 +2041,18 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 		}
 
 		ctxt := request.Arguments.Context
-		if exprVar.Kind == reflect.String && (ctxt == "repl" || ctxt == "variables" || ctxt == "hover" || ctxt == "clipboard") {
-			if strVal := constant.StringVal(exprVar.Value); exprVar.Len > int64(len(strVal)) {
-				// reload string value with a bigger limit.
-				loadCfg := DefaultLoadConfig
-				loadCfg.MaxStringLen = 4 << 10
-				if v, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, loadCfg); err != nil {
-					s.log.Debugf("Failed to load more for %v: %v", request.Arguments.Expression, err)
-				} else {
-					exprVar = v
+		switch ctxt {
+		case "repl", "variables", "hover", "clipboard":
+			if exprVar.Kind == reflect.String {
+				if strVal := constant.StringVal(exprVar.Value); exprVar.Len > int64(len(strVal)) {
+					// reload string value with a bigger limit.
+					loadCfg := DefaultLoadConfig
+					loadCfg.MaxStringLen = 4 << 10
+					if v, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, loadCfg); err != nil {
+						s.log.Debugf("Failed to load more for %v: %v", request.Arguments.Expression, err)
+					} else {
+						exprVar = v
+					}
 				}
 			}
 		}
