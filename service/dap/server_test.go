@@ -2950,7 +2950,7 @@ func TestIssue387(t *testing.T) {
 			fixture.Source, []int{15},
 			[]onBreakpoint{{ // Stop at line 15
 				execute: func() {
-					handleStop(t, client, 1, "main.main", 15)
+					checkStop(t, client, 1, "main.main", 15)
 
 					client.SetBreakpointsRequest(fixture.Source, []int{8})
 					client.ExpectSetBreakpointsResponse(t)
@@ -2959,9 +2959,9 @@ func TestIssue387(t *testing.T) {
 					client.ExpectContinueResponse(t)
 
 					bpSe := client.ExpectStoppedEvent(t)
-					handleStop(t, client, bpSe.Body.ThreadId, "main.dostuff", 8)
+					checkStop(t, client, bpSe.Body.ThreadId, "main.dostuff", 8)
 
-					outputString := `goroutine \d+ hit breakpoint \(id: 2, loc: .*issue387.go:8\) during next, continuing\.\.\.`
+					outputString := `goroutine \d+ hit breakpoint \(id: 2, loc: .*issue387.go:8\) during next\\n`
 					skipBreakpointRegExp, _ := regexp.Compile(outputString)
 					for pos := 9; pos < 11; pos++ {
 						client.NextRequest(bpSe.Body.ThreadId)
@@ -2975,13 +2975,13 @@ func TestIssue387(t *testing.T) {
 								if v.Body.Reason != "step" || !v.Body.AllThreadsStopped {
 									t.Errorf("got %#v, want Reason=\"step\", ThreadId=1, AllThreadsStopped=true", v)
 								}
-								handleStop(t, client, bpSe.Body.ThreadId, "main.dostuff", pos)
+								checkStop(t, client, bpSe.Body.ThreadId, "main.dostuff", pos)
 								stopped = true
 							case *dap.OutputEvent:
 								wantOutput := dap.OutputEvent{
 									Event: *newEvent("output"),
 									Body: dap.OutputEventBody{
-										Output:   "goroutine %d hit breakpoint (id: ..., loc: .../issue387.go:8) during next, continuing...\n",
+										Output:   "goroutine <id> hit breakpoint (id: ..., loc: .../issue387.go:8) during next, continuing...\n",
 										Category: "console",
 									},
 								}
