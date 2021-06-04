@@ -3339,6 +3339,9 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 					if se.Body.Reason != "exception" || se.Body.Description != "fatal error" {
 						t.Errorf("\ngot  %#v\nwant Reason=\"exception\" Description=\"fatal error\"", se)
 					}
+
+					// TODO(suzmue): Get the exception info for the thread and check the description
+					// includes "all goroutines are asleep - deadlock!".
 				},
 				disconnect: true,
 			}})
