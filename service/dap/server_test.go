@@ -1493,7 +1493,7 @@ func TestVariablesLoading(t *testing.T) {
 					}
 
 					// Map partially missing based on LoadConfig.MaxArrayValues
-					ref = checkVarRegex(t, locals, -1, "m1", "m1", `\(loaded 64/66\) map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, `map\[string\]main\.astruct`, hasChildren)
+					ref = checkVarRegex(t, locals, -1, "m1", "m1", `\(loaded 64/66\) map\[string\]main\.astruct \[.+\.\.\.`, `map\[string\]main\.astruct`, hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m1 := client.ExpectVariablesResponse(t)
@@ -1572,7 +1572,7 @@ func TestVariablesLoading(t *testing.T) {
 							client.VariablesRequest(ref)
 							tmV := client.ExpectVariablesResponse(t)
 							checkChildren(t, tmV, "tm.v", 1)
-							ref = checkVarRegex(t, tmV, 0, `\[0\]`, `tm\.v\[0\]`, `map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, `map\[string\]main\.astruct`, hasChildren)
+							ref = checkVarRegex(t, tmV, 0, `\[0\]`, `tm\.v\[0\]`, `map\[string\]main\.astruct \[.+\.\.\.`, `map\[string\]main\.astruct`, hasChildren)
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								tmV0 := client.ExpectVariablesResponse(t)
@@ -1602,7 +1602,7 @@ func TestVariablesLoading(t *testing.T) {
 								tmV := client.ExpectVariablesResponse(t)
 								checkChildren(t, tmV, "tm.v", 1)
 								// TODO(polina): this evaluate name is not usable - it should be empty
-								ref = checkVarRegex(t, tmV, 0, `\[0\]`, `\[0\]`, `map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, `map\[string\]main\.astruct`, hasChildren)
+								ref = checkVarRegex(t, tmV, 0, `\[0\]`, `\[0\]`, `map\[string\]main\.astruct \[.+\.\.\.`, `map\[string\]main\.astruct`, hasChildren)
 								if ref > 0 {
 									client.VariablesRequest(ref)
 									tmV0 := client.ExpectVariablesResponse(t)
@@ -1697,7 +1697,6 @@ func TestVariablesLoading(t *testing.T) {
 					// step into another function
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
-					client.ExpectContinuedEvent(t)
 					client.ExpectStoppedEvent(t)
 					checkStop(t, client, 1, "main.barfoo", 24)
 					loadvars(1001 /*second frame here is same as topmost above*/)
@@ -1745,7 +1744,6 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 					// Step into pkg.AnotherMethod()
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
-					client.ExpectContinuedEvent(t)
 					client.ExpectStoppedEvent(t)
 
 					client.StackTraceRequest(1, 0, 20)
@@ -1865,6 +1863,12 @@ func checkBreakpoints(t *testing.T, client *daptest.Client, bps []Breakpoint, br
 		return
 	}
 	for i, bp := range breakpoints {
+		if bps[i].line < 0 && !bps[i].verified {
+			if bp.Verified != bps[i].verified || !strings.Contains(bp.Message, bps[i].msgPrefix) {
+				t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
+			}
+			continue
+		}
 		if bp.Line != bps[i].line || bp.Verified != bps[i].verified || bp.Source.Path != bps[i].path ||
 			!strings.HasPrefix(bp.Message, bps[i].msgPrefix) {
 			t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
@@ -1903,7 +1907,7 @@ func TestSetBreakpoint(t *testing.T) {
 
 					// Set another breakpoint inside the loop in loop(), twice to trigger error
 					client.SetBreakpointsRequest(fixture.Source, []int{8, 8})
-					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}, {8, "", false, "Breakpoint exists"}})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}, {-1, "", false, "Breakpoint exists"}})
 
 					// Continue into the loop
 					client.ContinueRequest(1)
@@ -1942,7 +1946,7 @@ func TestSetBreakpoint(t *testing.T) {
 
 					// Set at a line without a statement
 					client.SetBreakpointsRequest(fixture.Source, []int{1000})
-					expectSetBreakpointsResponse(t, client, []Breakpoint{{1000, "", false, "could not find statement"}}) // all cleared, none set
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{-1, "", false, "could not find statement"}}) // all cleared, none set
 				},
 				// The program has an infinite loop, so we must kill it by disconnecting.
 				disconnect: true,
@@ -1978,7 +1982,7 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 							return
 						}
 						for i, bp := range got.Body.Breakpoints {
-							if bps[i].line < 0 {
+							if bps[i].line < 0 && !bps[i].verified {
 								if bp.Verified != bps[i].verified || !strings.Contains(bp.Message, bps[i].errMsg) {
 									t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
 								}
@@ -2254,7 +2258,6 @@ func TestSetBreakpointWhileRunning(t *testing.T) {
 					// We can set breakpoints while nexting
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
-					client.ExpectContinuedEvent(t)
 					client.SetBreakpointsRequest(fixture.Source, []int{15}) // [16,] => [15,]
 					se, br := expectSetBreakpointsResponseAndStoppedEvent(t, client)
 					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
@@ -2310,7 +2313,6 @@ func TestSetFunctionBreakpointWhileRunning(t *testing.T) {
 					// We can set breakpoints while nexting
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
-					client.ExpectContinuedEvent(t)
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{{Name: "main.sayhi"}}) // [16,] => [16, 8]
 					se, br := expectSetFunctionBreakpointsResponseAndStoppedEvent(t, client)
 					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
@@ -2357,6 +2359,71 @@ func TestSetFunctionBreakpointWhileRunning(t *testing.T) {
 
 				},
 				disconnect: true,
+			}})
+	})
+}
+
+func TestHitConditionBreakpoints(t *testing.T) {
+	runTest(t, "break", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{4},
+			[]onBreakpoint{{
+				execute: func() {
+					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "4"})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{7, fixture.Source, true, ""}})
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					checkStop(t, client, 1, "main.main", 7)
+
+					// Check that we are stopped at the correct value of i.
+					client.VariablesRequest(1001)
+					locals := client.ExpectVariablesResponse(t)
+					checkVarExact(t, locals, 0, "i", "i", "4", "int", noChildren)
+
+					// Change the hit condition.
+					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "% 2"})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{7, fixture.Source, true, ""}})
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					checkStop(t, client, 1, "main.main", 7)
+
+					// Check that we are stopped at the correct value of i.
+					client.VariablesRequest(1001)
+					locals = client.ExpectVariablesResponse(t)
+					checkVarExact(t, locals, 0, "i", "i", "6", "int", noChildren)
+
+					// Expect an error if an assignment is passed.
+					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "= 2"})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{-1, "", false, ""}})
+
+					// Change the hit condition.
+					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "< 8"})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{7, fixture.Source, true, ""}})
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					checkStop(t, client, 1, "main.main", 7)
+
+					// Check that we are stopped at the correct value of i.
+					client.VariablesRequest(1001)
+					locals = client.ExpectVariablesResponse(t)
+					checkVarExact(t, locals, 0, "i", "i", "7", "int", noChildren)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					client.ExpectTerminatedEvent(t)
+				},
+				disconnect: false,
 			}})
 	})
 }
@@ -2656,13 +2723,18 @@ func TestEvaluateRequest(t *testing.T) {
 					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
 					}
+					client.EvaluateRequest("a1", 1002, "clipboard")
+					erres = client.ExpectVisibleErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
+					}
 				},
 				disconnect: false,
 			}})
 	})
 }
 
-func TestEvaluateRequestLongStr(t *testing.T) {
+func TestEvaluateRequestLongStrLargeValue(t *testing.T) {
 	runTest(t, "testvariables2", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
@@ -2674,22 +2746,24 @@ func TestEvaluateRequestLongStr(t *testing.T) {
 			[]onBreakpoint{{
 				execute: func() {
 
-					longstr := `"very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"`
-					longstrTruncated := `"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more"`
-
 					checkStop(t, client, 1, "main.main", -1)
 
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)
 
 					// reflect.Kind == String, load with longer load limit if evaluated in repl/variables context.
-					for _, evalContext := range []string{"", "watch", "repl", "variables", "somethingelse"} {
+					for _, evalContext := range []string{"", "watch", "repl", "variables", "hover", "clipboard", "somethingelse"} {
 						t.Run(evalContext, func(t *testing.T) {
 							// long string
+
+							longstr := `"very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"`
+							longstrTruncated := `"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more"`
+
 							client.EvaluateRequest("longstr", 0, evalContext)
 							got := client.ExpectEvaluateResponse(t)
 							want := longstrTruncated
-							if evalContext == "repl" || evalContext == "variables" {
+							switch evalContext {
+							case "repl", "variables", "hover", "clipboard":
 								want = longstr
 							}
 							checkEval(t, got, want, false)
@@ -2702,9 +2776,22 @@ func TestEvaluateRequestLongStr(t *testing.T) {
 							// variables are not affected.
 							checkVarExact(t, locals, -1, "longstr", "longstr", longstrTruncated, "string", noChildren)
 							checkVarExact(t, locals, -1, "m6", "m6", `main.C {s: `+longstrTruncated+`}`, "main.C", hasChildren)
+
+							// large array
+							m1 := `\(loaded 64/66\) map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`
+							m1Truncated := `\(loaded 64/66\) map\[string\]main\.astruct \[.+\.\.\.`
+
+							client.EvaluateRequest("m1", 0, evalContext)
+							got3 := client.ExpectEvaluateResponse(t)
+							want3 := m1Truncated
+							switch evalContext {
+							case "variables", "hover", "clipboard":
+								want3 = m1
+							}
+							checkEvalRegex(t, got3, want3, true)
+							checkVarRegex(t, locals, -1, "m1", "m1", m1Truncated, `map\[string\]main\.astruct`, true)
 						})
 					}
-
 				},
 				disconnect: true,
 			}})
@@ -2902,22 +2989,18 @@ func TestNextAndStep(t *testing.T) {
 
 					client.StepOutRequest(1)
 					client.ExpectStepOutResponse(t)
-					client.ExpectContinuedEvent(t)
 					expectStop("main.main", 18)
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
-					client.ExpectContinuedEvent(t)
 					expectStop("main.main", 19)
 
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
-					client.ExpectContinuedEvent(t)
 					expectStop("main.inlineThis", 5)
 
 					client.NextRequest(-1000)
 					client.ExpectNextResponse(t)
-					client.ExpectContinuedEvent(t)
 					if se := client.ExpectStoppedEvent(t); se.Body.Reason != "error" || se.Body.Text != "unknown goroutine -1000" {
 						t.Errorf("got %#v, want Reason=\"error\", Text=\"unknown goroutine -1000\"", se)
 					}
@@ -2961,7 +3044,7 @@ func TestIssue387(t *testing.T) {
 					bpSe := client.ExpectStoppedEvent(t)
 					checkStop(t, client, bpSe.Body.ThreadId, "main.dostuff", 8)
 
-					outputString := `goroutine \d+ hit breakpoint \(id: 2, loc: .*issue387.go:8\) during next\\n`
+					outputString := `goroutine \d+ hit breakpoint \(id: 2, loc: .*issue387.go:8\) during next`
 					skipBreakpointRegExp, _ := regexp.Compile(outputString)
 					for pos := 9; pos < 11; pos++ {
 						client.NextRequest(bpSe.Body.ThreadId)
@@ -2981,7 +3064,7 @@ func TestIssue387(t *testing.T) {
 								wantOutput := dap.OutputEvent{
 									Event: *newEvent("output"),
 									Body: dap.OutputEventBody{
-										Output:   "goroutine <id> hit breakpoint (id: ..., loc: .../issue387.go:8) during next, continuing...\n",
+										Output:   "goroutine <id> hit breakpoint (id: ..., loc: .../issue387.go:8) during next\n",
 										Category: "console",
 									},
 								}
@@ -3019,7 +3102,6 @@ func TestNextParked(t *testing.T) {
 
 					client.NextRequest(goroutineId)
 					client.ExpectNextResponse(t)
-					client.ExpectContinuedEvent(t)
 
 					se := client.ExpectStoppedEvent(t)
 					if se.Body.ThreadId != goroutineId {
@@ -3049,7 +3131,6 @@ func TestStepInParked(t *testing.T) {
 
 					client.StepInRequest(goroutineId)
 					client.ExpectStepInResponse(t)
-					client.ExpectContinuedEvent(t)
 
 					se := client.ExpectStoppedEvent(t)
 					if se.Body.ThreadId != goroutineId {
@@ -3169,7 +3250,6 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 					}
 					client.StepOutRequest(goroutineId)
 					client.ExpectStepOutResponse(t)
-					client.ExpectContinuedEvent(t)
 
 					switch e := client.ExpectMessage(t).(type) {
 					case *dap.StoppedEvent:
@@ -3206,8 +3286,8 @@ func TestBadAccess(t *testing.T) {
 					expectStoppedOnError := func(errorPrefix string) {
 						t.Helper()
 						se := client.ExpectStoppedEvent(t)
-						if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "Paused on runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
-							t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"Paused on runtime error\" Text=\"%s\"", se, errorPrefix)
+						if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
+							t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"runtime error\" Text=\"%s\"", se, errorPrefix)
 						}
 						client.ExceptionInfoRequest(1)
 						eInfo := client.ExpectExceptionInfoResponse(t)
@@ -3223,22 +3303,18 @@ func TestBadAccess(t *testing.T) {
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
-					client.ExpectContinuedEvent(t)
 					expectStoppedOnError("invalid memory address or nil pointer dereference")
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
-					client.ExpectContinuedEvent(t)
 					expectStoppedOnError("next while nexting")
 
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
-					client.ExpectContinuedEvent(t)
 					expectStoppedOnError("next while nexting")
 
 					client.StepOutRequest(1)
 					client.ExpectStepOutResponse(t)
-					client.ExpectContinuedEvent(t)
 					expectStoppedOnError("next while nexting")
 				},
 				disconnect: true,
@@ -3263,8 +3339,8 @@ func TestPanicBreakpointOnContinue(t *testing.T) {
 					client.ExpectContinueResponse(t)
 
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "Paused on panic" {
-						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"Paused on panic\"", se)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "panic" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"panic\"", se)
 					}
 
 					client.ExceptionInfoRequest(1)
@@ -3299,11 +3375,10 @@ func TestPanicBreakpointOnNext(t *testing.T) {
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
-					client.ExpectContinuedEvent(t)
 
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "Paused on panic" {
-						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"Paused on panic\"", se)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "panic" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"panic\"", se)
 					}
 
 					client.ExceptionInfoRequest(1)
@@ -3334,8 +3409,8 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 					client.ExpectContinueResponse(t)
 
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.Reason != "exception" || se.Body.Description != "Paused on fatal error" {
-						t.Errorf("\ngot  %#v\nwant Reason=\"exception\" Description=\"Paused on fatal error\"", se)
+					if se.Body.Reason != "exception" || se.Body.Description != "fatal error" {
+						t.Errorf("\ngot  %#v\nwant Reason=\"exception\" Description=\"fatal error\"", se)
 					}
 				},
 				disconnect: true,

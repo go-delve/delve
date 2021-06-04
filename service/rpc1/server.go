@@ -103,6 +103,9 @@ func (s *RPCServer) ListBreakpoints(arg interface{}, breakpoints *[]*api.Breakpo
 }
 
 func (s *RPCServer) CreateBreakpoint(bp, newBreakpoint *api.Breakpoint) error {
+	if err := api.ValidBreakpointName(bp.Name); err != nil {
+		return err
+	}
 	createdbp, err := s.debugger.CreateBreakpoint(bp)
 	if err != nil {
 		return err
@@ -139,6 +142,9 @@ func (s *RPCServer) ClearBreakpointByName(name string, breakpoint *api.Breakpoin
 
 func (s *RPCServer) AmendBreakpoint(amend *api.Breakpoint, unused *int) error {
 	*unused = 0
+	if err := api.ValidBreakpointName(amend.Name); err != nil {
+		return err
+	}
 	return s.debugger.AmendBreakpoint(amend)
 }
 

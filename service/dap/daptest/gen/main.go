@@ -43,7 +43,12 @@ func (c *Client) Check{{.}}(t *testing.T, m dap.Message) *dap.{{.}} {
 	r, ok := m.(*dap.{{.}})
 	if !ok {
 		t.Fatalf("got %#v, want *dap.{{.}}", m)
-	}
+	}{{if or (or (eq . "StepInResponse") (eq . "StepOutResponse")) (eq . "NextResponse") }}
+	m = c.ExpectMessage(t)
+	_, ok = m.(*dap.ContinuedEvent)
+	if !ok {
+		t.Fatalf("got %#v, want *dap.ContinuedEvent", m)
+	}{{end}}
 	return r
 }{{end}}
 `))
