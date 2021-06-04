@@ -492,6 +492,11 @@ func (c *Client) CheckNextResponse(t *testing.T, m dap.Message) *dap.NextRespons
 	if !ok {
 		t.Fatalf("got %#v, want *dap.NextResponse", m)
 	}
+	m = c.ExpectMessage(t)
+	_, ok = m.(*dap.ContinuedEvent)
+	if !ok {
+		t.Fatalf("got %#v, want *dap.ContinuedEvent", m)
+	}
 	return r
 }
 
@@ -906,6 +911,11 @@ func (c *Client) CheckStepInResponse(t *testing.T, m dap.Message) *dap.StepInRes
 	if !ok {
 		t.Fatalf("got %#v, want *dap.StepInResponse", m)
 	}
+	m = c.ExpectMessage(t)
+	_, ok = m.(*dap.ContinuedEvent)
+	if !ok {
+		t.Fatalf("got %#v, want *dap.ContinuedEvent", m)
+	}
 	return r
 }
 
@@ -941,6 +951,11 @@ func (c *Client) CheckStepOutResponse(t *testing.T, m dap.Message) *dap.StepOutR
 	r, ok := m.(*dap.StepOutResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.StepOutResponse", m)
+	}
+	m = c.ExpectMessage(t)
+	_, ok = m.(*dap.ContinuedEvent)
+	if !ok {
+		t.Fatalf("got %#v, want *dap.ContinuedEvent", m)
 	}
 	return r
 }
