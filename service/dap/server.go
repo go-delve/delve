@@ -688,6 +688,7 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsExceptionInfoRequest = true
 	response.Body.SupportsSetVariable = true
 	response.Body.SupportsEvaluateForHovers = true
+	response.Body.SupportsClipboardContext = true
 	// TODO(polina): support these requests in addition to vscode-go feature parity
 	response.Body.SupportsTerminateRequest = false
 	response.Body.SupportsRestartRequest = false
@@ -1814,26 +1815,42 @@ func (s *Server) getTypeIfSupported(v *proc.Variable) string {
 // custom, a zero reference, reminiscent of a zero pointer, is used to indicate that
 // a scalar variable cannot be "dereferenced" to get its elements (as there are none).
 func (s *Server) convertVariable(v *proc.Variable, qualifiedNameOrExpr string) (value string, variablesReference int) {
-	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, false)
+	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, 0)
 }
 
 func (s *Server) convertVariableToString(v *proc.Variable) string {
-	val, _ := s.convertVariableWithOpts(v, "", true)
+	val, _ := s.convertVariableWithOpts(v, "", skipRef)
 	return val
 }
 
+// defaultMaxValueLen is the max length of a string representation of a compound or reference
+// type variable.
+const defaultMaxValueLen = 1 << 8 // 256
+
+// Flags for convertVariableWithOpts option.
+type convertVariableFlags uint8
+
+const (
+	skipRef convertVariableFlags = 1 << iota
+	showFullValue
+)
+
 // convertVariableWithOpts allows to skip reference generation in case all we need is
-// a string representation of the variable.
-func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, skipRef bool) (value string, variablesReference int) {
+// a string representation of the variable. When the variable is a compound or reference
+// type variable and its full string representation can be larger than defaultMaxValueLen,
+// this returns a truncated value unless showFull option flag is set.
+func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, opts convertVariableFlags) (value string, variablesReference int) {
+	canHaveRef := false
 	maybeCreateVariableHandle := func(v *proc.Variable) int {
-		if skipRef {
+		canHaveRef = true
+		if opts&skipRef != 0 {
 			return 0
 		}
 		return s.variableHandles.create(&fullyQualifiedVariable{v, qualifiedNameOrExpr, false /*not a scope*/})
 	}
 	value = api.ConvertVar(v).SinglelineString()
 	if v.Unreadable != nil {
-		return value, variablesReference
+		return value, 0
 	}
 
 	// Some of the types might be fully or partially not loaded based on LoadConfig.
@@ -1962,6 +1979,10 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 			variablesReference = maybeCreateVariableHandle(v)
 		}
 	}
+	canTruncateValue := showFullValue&opts == 0
+	if len(value) > defaultMaxValueLen && canTruncateValue && canHaveRef {
+		value = value[:defaultMaxValueLen] + "..."
+	}
 	return value, variablesReference
 }
 
@@ -2019,21 +2040,27 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			return
 		}
 
-		if exprVar.Kind == reflect.String && (request.Arguments.Context == "repl" || request.Arguments.Context == "variables") {
-			if strVal := constant.StringVal(exprVar.Value); exprVar.Len > int64(len(strVal)) {
-				// reload string value with a bigger limit.
-				loadCfg := DefaultLoadConfig
-				loadCfg.MaxStringLen = 4 << 10
-				if v, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, loadCfg); err != nil {
-					s.log.Debugf("Failed to load more for %v: %v", request.Arguments.Expression, err)
-				} else {
-					exprVar = v
+		ctxt := request.Arguments.Context
+		switch ctxt {
+		case "repl", "variables", "hover", "clipboard":
+			if exprVar.Kind == reflect.String {
+				if strVal := constant.StringVal(exprVar.Value); exprVar.Len > int64(len(strVal)) {
+					// reload string value with a bigger limit.
+					loadCfg := DefaultLoadConfig
+					loadCfg.MaxStringLen = 4 << 10
+					if v, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, loadCfg); err != nil {
+						s.log.Debugf("Failed to load more for %v: %v", request.Arguments.Expression, err)
+					} else {
+						exprVar = v
+					}
 				}
 			}
 		}
-		// TODO(polina): as far as I can tell, evaluateName is ignored by vscode for expression variables.
-		// Should it be skipped altogether for all levels?
-		exprVal, exprRef := s.convertVariable(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression))
+		var opts convertVariableFlags
+		if ctxt == "variables" || ctxt == "hover" || ctxt == "clipboard" {
+			opts |= showFullValue
+		}
+		exprVal, exprRef := s.convertVariableWithOpts(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression), opts)
 		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef}
 	}
 	s.send(response)

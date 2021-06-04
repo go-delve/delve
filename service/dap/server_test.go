@@ -1493,7 +1493,7 @@ func TestVariablesLoading(t *testing.T) {
 					}
 
 					// Map partially missing based on LoadConfig.MaxArrayValues
-					ref = checkVarRegex(t, locals, -1, "m1", "m1", `\(loaded 64/66\) map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, `map\[string\]main\.astruct`, hasChildren)
+					ref = checkVarRegex(t, locals, -1, "m1", "m1", `\(loaded 64/66\) map\[string\]main\.astruct \[.+\.\.\.`, `map\[string\]main\.astruct`, hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m1 := client.ExpectVariablesResponse(t)
@@ -1572,7 +1572,7 @@ func TestVariablesLoading(t *testing.T) {
 							client.VariablesRequest(ref)
 							tmV := client.ExpectVariablesResponse(t)
 							checkChildren(t, tmV, "tm.v", 1)
-							ref = checkVarRegex(t, tmV, 0, `\[0\]`, `tm\.v\[0\]`, `map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, `map\[string\]main\.astruct`, hasChildren)
+							ref = checkVarRegex(t, tmV, 0, `\[0\]`, `tm\.v\[0\]`, `map\[string\]main\.astruct \[.+\.\.\.`, `map\[string\]main\.astruct`, hasChildren)
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								tmV0 := client.ExpectVariablesResponse(t)
@@ -1602,7 +1602,7 @@ func TestVariablesLoading(t *testing.T) {
 								tmV := client.ExpectVariablesResponse(t)
 								checkChildren(t, tmV, "tm.v", 1)
 								// TODO(polina): this evaluate name is not usable - it should be empty
-								ref = checkVarRegex(t, tmV, 0, `\[0\]`, `\[0\]`, `map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`, `map\[string\]main\.astruct`, hasChildren)
+								ref = checkVarRegex(t, tmV, 0, `\[0\]`, `\[0\]`, `map\[string\]main\.astruct \[.+\.\.\.`, `map\[string\]main\.astruct`, hasChildren)
 								if ref > 0 {
 									client.VariablesRequest(ref)
 									tmV0 := client.ExpectVariablesResponse(t)
@@ -2723,13 +2723,18 @@ func TestEvaluateRequest(t *testing.T) {
 					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
 					}
+					client.EvaluateRequest("a1", 1002, "clipboard")
+					erres = client.ExpectVisibleErrorResponse(t)
+					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
+					}
 				},
 				disconnect: false,
 			}})
 	})
 }
 
-func TestEvaluateRequestLongStr(t *testing.T) {
+func TestEvaluateRequestLongStrLargeValue(t *testing.T) {
 	runTest(t, "testvariables2", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
@@ -2741,22 +2746,24 @@ func TestEvaluateRequestLongStr(t *testing.T) {
 			[]onBreakpoint{{
 				execute: func() {
 
-					longstr := `"very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"`
-					longstrTruncated := `"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more"`
-
 					checkStop(t, client, 1, "main.main", -1)
 
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)
 
 					// reflect.Kind == String, load with longer load limit if evaluated in repl/variables context.
-					for _, evalContext := range []string{"", "watch", "repl", "variables", "somethingelse"} {
+					for _, evalContext := range []string{"", "watch", "repl", "variables", "hover", "clipboard", "somethingelse"} {
 						t.Run(evalContext, func(t *testing.T) {
 							// long string
+
+							longstr := `"very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"`
+							longstrTruncated := `"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more"`
+
 							client.EvaluateRequest("longstr", 0, evalContext)
 							got := client.ExpectEvaluateResponse(t)
 							want := longstrTruncated
-							if evalContext == "repl" || evalContext == "variables" {
+							switch evalContext {
+							case "repl", "variables", "hover", "clipboard":
 								want = longstr
 							}
 							checkEval(t, got, want, false)
@@ -2769,9 +2776,22 @@ func TestEvaluateRequestLongStr(t *testing.T) {
 							// variables are not affected.
 							checkVarExact(t, locals, -1, "longstr", "longstr", longstrTruncated, "string", noChildren)
 							checkVarExact(t, locals, -1, "m6", "m6", `main.C {s: `+longstrTruncated+`}`, "main.C", hasChildren)
+
+							// large array
+							m1 := `\(loaded 64/66\) map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`
+							m1Truncated := `\(loaded 64/66\) map\[string\]main\.astruct \[.+\.\.\.`
+
+							client.EvaluateRequest("m1", 0, evalContext)
+							got3 := client.ExpectEvaluateResponse(t)
+							want3 := m1Truncated
+							switch evalContext {
+							case "variables", "hover", "clipboard":
+								want3 = m1
+							}
+							checkEvalRegex(t, got3, want3, true)
+							checkVarRegex(t, locals, -1, "m1", "m1", m1Truncated, `map\[string\]main\.astruct`, true)
 						})
 					}
-
 				},
 				disconnect: true,
 			}})
