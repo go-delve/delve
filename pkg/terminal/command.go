@@ -2337,7 +2337,7 @@ func printStack(t *Term, out io.Writer, stack []api.Stackframe, ind string, offs
 	PrintStack(t.formatPath, out, stack, ind, offsets, func(api.Stackframe) bool { return true })
 }
 
-func PrintStack(formatPath func(string) string, out io.Writer, stack []api.Stackframe, ind string, offsets bool, filter func(api.Stackframe) bool) {
+func PrintStack(formatPath func(string) string, out io.Writer, stack []api.Stackframe, ind string, offsets bool, include func(api.Stackframe) bool) {
 	if len(stack) == 0 {
 		return
 	}
@@ -2353,17 +2353,16 @@ func PrintStack(formatPath func(string) string, out io.Writer, stack []api.Stack
 	d := digits(len(stack) - 1)
 	fmtstr := "%s%" + strconv.Itoa(d) + "d  0x%016x in %s\n"
 	s := ind + strings.Repeat(" ", d+2+len(ind))
-	printed := 0
 
 	for i := range stack {
-		if !filter(stack[i]) {
+		if !include(stack[i]) {
 			continue
 		}
 		if stack[i].Err != "" {
 			fmt.Fprintf(out, "%serror: %s\n", s, stack[i].Err)
 			continue
 		}
-		fmt.Fprintf(out, fmtstr, ind, printed, stack[i].PC, stack[i].Function.Name())
+		fmt.Fprintf(out, fmtstr, ind, i, stack[i].PC, stack[i].Function.Name())
 		fmt.Fprintf(out, "%sat %s:%d\n", s, formatPath(stack[i].File), stack[i].Line)
 
 		if offsets {
@@ -2392,7 +2391,6 @@ func PrintStack(formatPath func(string) string, out io.Writer, stack []api.Stack
 		if extranl {
 			fmt.Fprintln(out)
 		}
-		printed++
 	}
 
 	if len(stack) > 0 && !stack[len(stack)-1].Bottom {

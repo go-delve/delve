@@ -1532,6 +1532,15 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 		return
 	}
 
+	// Determine if the goroutine is a system goroutine.
+	// TODO(suzmue): Use the System() method defined in: https://github.com/go-delve/delve/pull/2504
+	g, err := s.debugger.FindGoroutine(goroutineID)
+	var isSystemGoroutine bool
+	if err == nil {
+		userLoc := g.UserCurrent()
+		isSystemGoroutine = fnPackageName(&userLoc) == "runtime"
+	}
+
 	stackFrames := make([]dap.StackFrame, len(frames))
 	for i, frame := range frames {
 		loc := &frame.Call
@@ -1543,14 +1552,9 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 		}
 		stackFrames[i].Column = 0
 
-		g, err := s.debugger.FindGoroutine(goroutineID)
-		if err == nil {
-			userLoc := g.UserCurrent()
-			userLocPackageName := fnPackageName(&userLoc)
-			packageName := fnPackageName(loc)
-			if userLocPackageName != "runtime" && packageName == "runtime" {
-				stackFrames[i].Source.PresentationHint = "deemphasize"
-			}
+		packageName := fnPackageName(loc)
+		if !isSystemGoroutine && packageName == "runtime" {
+			stackFrames[i].Source.PresentationHint = "deemphasize"
 		}
 	}
 	// Since the backend doesn't support paging, we load all frames up to
@@ -2398,7 +2402,10 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 			terminal.PrintStack(s.toClientPath, &buf, apiFrames, "\t", false, func(s api.Stackframe) bool {
 				// Include all stack frames if the stack trace is for a system goroutine,
 				// otherwise, skip runtime stack frames.
-				return userFuncPkg == "runtime" || !strings.HasPrefix(s.Location.Function.Name(), "runtime")
+				if userFuncPkg == "runtime" {
+					return true
+				}
+				return s.Location.Function != nil && !strings.HasPrefix(s.Location.Function.Name(), "runtime.")
 			})
 			body.Details.StackTrace = buf.String()
 		}

@@ -511,7 +511,7 @@ func TestPreSetBreakpoint(t *testing.T) {
 		wantMain := dap.Thread{Id: 1, Name: "* [Go 1] main.Increment (Thread ...)"}
 		wantRuntime := dap.Thread{Id: 2, Name: "[Go 2] runtime.gopark"}
 		for _, got := range tResp.Body.Threads {
-			if got.Id != 1 && !reMain.MatchString(got.Name) && !strings.Contains(got.Name, "runtime") {
+			if got.Id != 1 && !reMain.MatchString(got.Name) && !strings.Contains(got.Name, "runtime.") {
 				t.Errorf("\ngot  %#v\nwant []dap.Thread{%#v, %#v, ...}", tResp.Body.Threads, wantMain, wantRuntime)
 			}
 		}
@@ -3274,7 +3274,7 @@ func TestPanicBreakpointOnContinue(t *testing.T) {
 					client.StackTraceRequest(se.Body.ThreadId, 0, 20)
 					st := client.ExpectStackTraceResponse(t)
 					for i, frame := range st.Body.StackFrames {
-						if strings.HasPrefix(frame.Name, "runtime") {
+						if strings.HasPrefix(frame.Name, "runtime.") {
 							if frame.Source.PresentationHint != "deemphasize" {
 								t.Errorf("\ngot Body.StackFrames[%d]=%#v\nwant Source.PresentationHint=\"deemphasize\"", i, frame)
 							}
