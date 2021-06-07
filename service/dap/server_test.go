@@ -2646,6 +2646,18 @@ func checkEval(t *testing.T, got *dap.EvaluateResponse, value string, hasRef boo
 	return got.Body.VariablesReference
 }
 
+// checkEvalIndexed is a helper for verifying the values within an EvaluateResponse.
+//     value - the value of the evaluated expression
+//     hasRef - true if the evaluated expression should have children and therefore a non-0 variable reference
+//     ref - reference to retrieve children of this evaluated expression (0 if none)
+func checkEvalIndexed(t *testing.T, got *dap.EvaluateResponse, value string, hasRef bool, indexed, named int) (ref int) {
+	t.Helper()
+	if got.Body.Result != value || (got.Body.VariablesReference > 0) != hasRef || got.Body.IndexedVariables != indexed || got.Body.NamedVariables != named {
+		t.Errorf("\ngot  %#v\nwant Result=%q hasRef=%t IndexedVariables=%d NamedVariables=%d", got, value, hasRef, indexed, named)
+	}
+	return got.Body.VariablesReference
+}
+
 func checkEvalRegex(t *testing.T, got *dap.EvaluateResponse, valueRegex string, hasRef bool) (ref int) {
 	t.Helper()
 	matched, _ := regexp.MatchString(valueRegex, got.Body.Result)
@@ -2688,7 +2700,7 @@ func TestEvaluateRequest(t *testing.T) {
 					// Variable lookup that's not fully loaded
 					client.EvaluateRequest("ba", 1000, "this context will be ignored")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", hasChildren)
+					checkEvalIndexed(t, got, "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", hasChildren, 200, 0)
 
 					// All (binary and unary) on basic types except <-, ++ and --
 					client.EvaluateRequest("1+1", 1000, "this context will be ignored")
@@ -2720,7 +2732,7 @@ func TestEvaluateRequest(t *testing.T) {
 					// Type casts between string, []byte and []rune
 					client.EvaluateRequest("[]byte(\"ABC€\")", 1000, "this context will be ignored")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, "[]uint8 len: 6, cap: 6, [65,66,67,226,130,172]", noChildren)
+					checkEvalIndexed(t, got, "[]uint8 len: 6, cap: 6, [65,66,67,226,130,172]", noChildren, 6, 0)
 
 					// Struct member access (i.e. somevar.memberfield)
 					client.EvaluateRequest("ms.Nest.Level", 1000, "this context will be ignored")
