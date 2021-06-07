@@ -1898,8 +1898,6 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 
 	// Some of the types might be fully or partially not loaded based on LoadConfig.
 	// Those that are fully missing (e.g. due to hitting MaxVariableRecurse), can be reloaded in place.
-	// Those that are partially missing (e.g. MaxArrayValues from a large array), need a more creative solution
-	// that is still to be determined. For now, clearly communicate when that happens with additional value labels.
 	var reloadVariable = func(v *proc.Variable, qualifiedNameOrExpr string) (value string) {
 		// We might be loading variables from the frame that's not topmost, so use
 		// frame-independent address-based expression, not fully-qualified name as per
