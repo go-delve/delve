@@ -548,7 +548,6 @@ func (s *Server) handleRequest(request dap.Message) {
 		s.onSetBreakpointsRequest(request)
 	case *dap.SetFunctionBreakpointsRequest:
 		// Optional (capability ‘supportsFunctionBreakpoints’)
-		// TODO: implement this request in V1
 		s.onSetFunctionBreakpointsRequest(request)
 	case *dap.SetExceptionBreakpointsRequest:
 		// Optional (capability ‘exceptionBreakpointFilters’)
@@ -689,6 +688,7 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsExceptionInfoRequest = true
 	response.Body.SupportsSetVariable = true
 	response.Body.SupportsEvaluateForHovers = true
+	response.Body.SupportsClipboardContext = true
 	// TODO(polina): support these requests in addition to vscode-go feature parity
 	response.Body.SupportsTerminateRequest = false
 	response.Body.SupportsRestartRequest = false
@@ -745,8 +745,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	if mode == "debug" || mode == "test" {
 		output, ok := request.Arguments["output"].(string)
 		if !ok || output == "" {
-			output = cleanExeName(defaultDebugBinary)
+			output = defaultDebugBinary
 		}
+		output = cleanExeName(output)
 		debugbinary, err := filepath.Abs(output)
 		if err != nil {
 			s.sendInternalErrorResponse(request.Seq, err.Error())
@@ -1032,38 +1033,239 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 
 	// According to the spec we should "set multiple breakpoints for a single source
 	// and clear all previous breakpoints in that source." The simplest way is
-	// to clear all and then set all.
+	// to clear all and then set all. To maintain state (for hit count conditions)
+	// we want to amend existing breakpoints.
 	//
-	// TODO(polina): should we optimize this as follows?
 	// See https://github.com/golang/vscode-go/issues/163 for details.
 	// If a breakpoint:
 	// -- exists and not in request => ClearBreakpoint
 	// -- exists and in request => AmendBreakpoint
 	// -- doesn't exist and in request => SetBreakpoint
 
-	// Clear all existing breakpoints in the file that are not function breakpoints.
-	if err := s.clearMatchingBreakpoints(func(bp *api.Breakpoint) bool { return bp.File == serverPath && bp.Name == "" }); err != nil {
+	// Get all existing breakpoints that match for this source.
+	sourceRequestPrefix := fmt.Sprintf("sourceBp Path=%q ", request.Arguments.Source.Path)
+	existingBps := s.getMatchingBreakpoints(sourceRequestPrefix)
+	bpAdded := make(map[string]struct{}, len(existingBps))
+
+	// Amend existing breakpoints.
+	breakpoints := make([]dap.Breakpoint, len(request.Arguments.Breakpoints))
+	for i, want := range request.Arguments.Breakpoints {
+		reqString := fmt.Sprintf("%s Line=%d Column=%d", sourceRequestPrefix, want.Line, want.Column)
+		var err error
+		got, ok := existingBps[reqString]
+		if !ok {
+			// Skip if the breakpoint does not already exist.
+			// These will be created after deleting existing
+			// breakpoints to avoid conflicts.
+			continue
+		}
+		if _, ok := bpAdded[reqString]; ok {
+			err = fmt.Errorf("Breakpoint exists at %q, line: %d, column: %d", request.Arguments.Source.Path, want.Line, want.Column)
+		} else {
+			got.Cond = want.Condition
+			got.HitCond = want.HitCondition
+			err = s.debugger.AmendBreakpoint(got)
+			bpAdded[reqString] = struct{}{}
+		}
+
+		updateBreakpointsResponse(breakpoints, i, err, got, clientPath)
+	}
+
+	// Clear existing breakpoints that were not added.
+	err := s.clearBreakpoints(existingBps, bpAdded)
+	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 		return
 	}
 
-	// Set all requested breakpoints.
-	response := &dap.SetBreakpointsResponse{Response: *newResponse(request.Request)}
-	response.Body.Breakpoints = make([]dap.Breakpoint, len(request.Arguments.Breakpoints))
 	for i, want := range request.Arguments.Breakpoints {
-		got, err := s.debugger.CreateBreakpoint(
-			&api.Breakpoint{File: serverPath, Line: want.Line, Cond: want.Condition})
-		response.Body.Breakpoints[i].Verified = (err == nil)
-		if err != nil {
-			response.Body.Breakpoints[i].Line = want.Line
-			response.Body.Breakpoints[i].Message = err.Error()
+		reqString := fmt.Sprintf("%s Line=%d Column=%d", sourceRequestPrefix, want.Line, want.Column)
+		if _, ok := existingBps[reqString]; ok {
+			continue
+		}
+
+		var got *api.Breakpoint
+		var err error
+		if _, ok := bpAdded[reqString]; ok {
+			err = fmt.Errorf("Breakpoint exists at %q, line: %d, column: %d", request.Arguments.Source.Path, want.Line, want.Column)
 		} else {
-			response.Body.Breakpoints[i].Id = got.ID
-			response.Body.Breakpoints[i].Line = got.Line
-			response.Body.Breakpoints[i].Source = dap.Source{Name: request.Arguments.Source.Name, Path: clientPath}
+			// Create new breakpoints.
+			got, err = s.debugger.CreateBreakpoint(
+				&api.Breakpoint{File: serverPath, Line: want.Line, Cond: want.Condition, HitCond: want.HitCondition, Name: reqString})
+			bpAdded[reqString] = struct{}{}
+		}
+
+		updateBreakpointsResponse(breakpoints, i, err, got, clientPath)
+	}
+	response := &dap.SetBreakpointsResponse{Response: *newResponse(request.Request)}
+	response.Body.Breakpoints = breakpoints
+
+	s.send(response)
+}
+
+func updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int, err error, got *api.Breakpoint, path string) {
+	breakpoints[i].Verified = (err == nil)
+	if err != nil {
+		breakpoints[i].Message = err.Error()
+	} else {
+		breakpoints[i].Id = got.ID
+		breakpoints[i].Line = got.Line
+		breakpoints[i].Source = dap.Source{Name: filepath.Base(path), Path: path}
+	}
+}
+
+// functionBpPrefix is the prefix of bp.Name for every breakpoint bp set
+// in this request.
+const functionBpPrefix = "functionBreakpoint"
+
+func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpointsRequest) {
+	if s.noDebugProcess != nil {
+		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", "running in noDebug mode")
+		return
+	}
+
+	// According to the spec, setFunctionBreakpoints "replaces all existing function
+	// breakpoints with new function breakpoints." The simplest way is
+	// to clear all and then set all. To maintain state (for hit count conditions)
+	// we want to amend existing breakpoints.
+	//
+	// See https://github.com/golang/vscode-go/issues/163 for details.
+	// If a breakpoint:
+	// -- exists and not in request => ClearBreakpoint
+	// -- exists and in request => AmendBreakpoint
+	// -- doesn't exist and in request => SetBreakpoint
+
+	// Get all existing function breakpoints.
+	existingBps := s.getMatchingBreakpoints(functionBpPrefix)
+	bpAdded := make(map[string]struct{}, len(existingBps))
+	for _, bp := range existingBps {
+		existingBps[bp.Name] = bp
+	}
+
+	// Amend any existing breakpoints.
+	breakpoints := make([]dap.Breakpoint, len(request.Arguments.Breakpoints))
+	for i, want := range request.Arguments.Breakpoints {
+		reqString := fmt.Sprintf("%s Name=%s", functionBpPrefix, want.Name)
+		var err error
+		got, ok := existingBps[reqString]
+		if !ok {
+			// Skip if the breakpoint does not already exist.
+			// These will be created after deleting existing
+			// breakpoints to avoid conflicts.
+			continue
+		}
+		if _, ok := bpAdded[reqString]; ok {
+			err = fmt.Errorf("Breakpoint exists at function %q", want.Name)
+		} else {
+			got.Cond = want.Condition
+			got.HitCond = want.HitCondition
+			err = s.debugger.AmendBreakpoint(got)
+			bpAdded[reqString] = struct{}{}
+		}
+
+		var clientPath string
+		if got != nil {
+			clientPath = s.toClientPath(got.File)
+		}
+		updateBreakpointsResponse(breakpoints, i, err, got, clientPath)
+	}
+
+	// Clear existing breakpoints that were not added.
+	err := s.clearBreakpoints(existingBps, bpAdded)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
+		return
+	}
+
+	// Create new breakpoints.
+	for i, want := range request.Arguments.Breakpoints {
+		reqString := fmt.Sprintf("%s Name=%s", functionBpPrefix, want.Name)
+		if _, ok := existingBps[reqString]; ok {
+			// Amend existing breakpoints.
+			continue
+		}
+
+		// Set the function breakpoint breakpoint
+		spec, err := locspec.Parse(want.Name)
+		if err != nil {
+			breakpoints[i].Message = err.Error()
+			continue
+		}
+		if loc, ok := spec.(*locspec.NormalLocationSpec); !ok || loc.FuncBase == nil {
+			// Other locations do not make sense in the context of function breakpoints.
+			// Regex locations are likely to resolve to multiple places and offset locations
+			// are only meaningful at the time the breakpoint was created.
+			breakpoints[i].Message = fmt.Sprintf("breakpoint name %q could not be parsed as a function. name must be in the format 'funcName', 'funcName:line' or 'fileName:line'.", want.Name)
+			continue
+		}
+
+		if want.Name[0] == '.' {
+			breakpoints[i].Message = "breakpoint names that are relative paths are not supported."
+			continue
+		}
+		// Find the location of the function name. CreateBreakpoint requires the name to include the base
+		// (e.g. main.functionName is supported but not functionName).
+		// We first find the location of the function, and then set breakpoints for that location.
+		var locs []api.Location
+		locs, err = s.debugger.FindLocationSpec(-1, 0, 0, want.Name, spec, true, s.args.substitutePathClientToServer)
+		if err != nil {
+			breakpoints[i].Message = err.Error()
+			continue
+		}
+		if len(locs) == 0 {
+			breakpoints[i].Message = fmt.Sprintf("no location found for %q", want.Name)
+			continue
+		}
+		if len(locs) > 0 {
+			s.log.Debugf("multiple locations found for %s", want.Name)
+			breakpoints[i].Message = fmt.Sprintf("multiple locations found for %s, function breakpoint is only set for the first location", want.Name)
+		}
+
+		// Set breakpoint using the PCs that were found.
+		loc := locs[0]
+		got, err := s.debugger.CreateBreakpoint(&api.Breakpoint{Addr: loc.PC, Addrs: loc.PCs, Cond: want.Condition, Name: reqString})
+
+		var clientPath string
+		if got != nil {
+			clientPath = s.toClientPath(got.File)
+		}
+		updateBreakpointsResponse(breakpoints, i, err, got, clientPath)
+	}
+
+	response := &dap.SetFunctionBreakpointsResponse{Response: *newResponse(request.Request)}
+	response.Body.Breakpoints = breakpoints
+
+	s.send(response)
+}
+
+func (s *Server) clearBreakpoints(existingBps map[string]*api.Breakpoint, bpAdded map[string]struct{}) error {
+	for req, bp := range existingBps {
+		if _, ok := bpAdded[req]; ok {
+			continue
+		}
+		_, err := s.debugger.ClearBreakpoint(bp)
+		if err != nil {
+			return err
 		}
 	}
-	s.send(response)
+	return nil
+}
+
+func (s *Server) getMatchingBreakpoints(prefix string) map[string]*api.Breakpoint {
+	existing := s.debugger.Breakpoints()
+	matchingBps := make(map[string]*api.Breakpoint, len(existing))
+	for _, bp := range existing {
+		// Skip special breakpoints such as for panic.
+		if bp.ID < 0 {
+			continue
+		}
+		// Skip breakpoints that do not meet the condition.
+		if !strings.HasPrefix(bp.Name, prefix) {
+			continue
+		}
+		matchingBps[bp.Name] = bp
+	}
+	return matchingBps
 }
 
 func (s *Server) onSetExceptionBreakpointsRequest(request *dap.SetExceptionBreakpointsRequest) {
@@ -1616,26 +1818,42 @@ func (s *Server) getTypeIfSupported(v *proc.Variable) string {
 // custom, a zero reference, reminiscent of a zero pointer, is used to indicate that
 // a scalar variable cannot be "dereferenced" to get its elements (as there are none).
 func (s *Server) convertVariable(v *proc.Variable, qualifiedNameOrExpr string) (value string, variablesReference int) {
-	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, false)
+	return s.convertVariableWithOpts(v, qualifiedNameOrExpr, 0)
 }
 
 func (s *Server) convertVariableToString(v *proc.Variable) string {
-	val, _ := s.convertVariableWithOpts(v, "", true)
+	val, _ := s.convertVariableWithOpts(v, "", skipRef)
 	return val
 }
 
+// defaultMaxValueLen is the max length of a string representation of a compound or reference
+// type variable.
+const defaultMaxValueLen = 1 << 8 // 256
+
+// Flags for convertVariableWithOpts option.
+type convertVariableFlags uint8
+
+const (
+	skipRef convertVariableFlags = 1 << iota
+	showFullValue
+)
+
 // convertVariableWithOpts allows to skip reference generation in case all we need is
-// a string representation of the variable.
-func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, skipRef bool) (value string, variablesReference int) {
+// a string representation of the variable. When the variable is a compound or reference
+// type variable and its full string representation can be larger than defaultMaxValueLen,
+// this returns a truncated value unless showFull option flag is set.
+func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr string, opts convertVariableFlags) (value string, variablesReference int) {
+	canHaveRef := false
 	maybeCreateVariableHandle := func(v *proc.Variable) int {
-		if skipRef {
+		canHaveRef = true
+		if opts&skipRef != 0 {
 			return 0
 		}
 		return s.variableHandles.create(&fullyQualifiedVariable{v, qualifiedNameOrExpr, false /*not a scope*/})
 	}
 	value = api.ConvertVar(v).SinglelineString()
 	if v.Unreadable != nil {
-		return value, variablesReference
+		return value, 0
 	}
 
 	// Some of the types might be fully or partially not loaded based on LoadConfig.
@@ -1764,6 +1982,10 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 			variablesReference = maybeCreateVariableHandle(v)
 		}
 	}
+	canTruncateValue := showFullValue&opts == 0
+	if len(value) > defaultMaxValueLen && canTruncateValue && canHaveRef {
+		value = value[:defaultMaxValueLen] + "..."
+	}
 	return value, variablesReference
 }
 
@@ -1821,21 +2043,27 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			return
 		}
 
-		if exprVar.Kind == reflect.String && (request.Arguments.Context == "repl" || request.Arguments.Context == "variables") {
-			if strVal := constant.StringVal(exprVar.Value); exprVar.Len > int64(len(strVal)) {
-				// reload string value with a bigger limit.
-				loadCfg := DefaultLoadConfig
-				loadCfg.MaxStringLen = 4 << 10
-				if v, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, loadCfg); err != nil {
-					s.log.Debugf("Failed to load more for %v: %v", request.Arguments.Expression, err)
-				} else {
-					exprVar = v
+		ctxt := request.Arguments.Context
+		switch ctxt {
+		case "repl", "variables", "hover", "clipboard":
+			if exprVar.Kind == reflect.String {
+				if strVal := constant.StringVal(exprVar.Value); exprVar.Len > int64(len(strVal)) {
+					// reload string value with a bigger limit.
+					loadCfg := DefaultLoadConfig
+					loadCfg.MaxStringLen = 4 << 10
+					if v, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, loadCfg); err != nil {
+						s.log.Debugf("Failed to load more for %v: %v", request.Arguments.Expression, err)
+					} else {
+						exprVar = v
+					}
 				}
 			}
 		}
-		// TODO(polina): as far as I can tell, evaluateName is ignored by vscode for expression variables.
-		// Should it be skipped altogether for all levels?
-		exprVal, exprRef := s.convertVariable(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression))
+		var opts convertVariableFlags
+		if ctxt == "variables" || ctxt == "hover" || ctxt == "clipboard" {
+			opts |= showFullValue
+		}
+		exprVal, exprRef := s.convertVariableWithOpts(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression), opts)
 		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef}
 	}
 	s.send(response)
@@ -1957,102 +2185,6 @@ func (s *Server) onTerminateRequest(request *dap.TerminateRequest) {
 // Capability 'supportsRestartRequest' is not set in 'initialize' response.
 func (s *Server) onRestartRequest(request *dap.RestartRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
-}
-
-// functionBpPrefix is the prefix of bp.Name for every breakpoint bp set
-// in this request.
-const functionBpPrefix = "functionBreakpoint"
-
-func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpointsRequest) {
-	if s.noDebugProcess != nil {
-		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", "running in noDebug mode")
-		return
-	}
-
-	// According to the spec, setFunctionBreakpoints "replaces all existing function
-	// breakpoints with new function breakpoints." The simplest way is
-	// to clear all and then set all.
-
-	// Clear all existing function breakpoints in the file.
-	// Function breakpoints are set with the Name field set to be the
-	// function name. We cannot use FunctionName to determine this, because
-	// the debugger sets the function name for all breakpoints.
-	if err := s.clearMatchingBreakpoints(func(bp *api.Breakpoint) bool { return strings.HasPrefix(bp.Name, functionBpPrefix) }); err != nil {
-		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
-		return
-	}
-
-	// Set all requested breakpoints.
-	response := &dap.SetFunctionBreakpointsResponse{Response: *newResponse(request.Request)}
-	response.Body.Breakpoints = make([]dap.Breakpoint, len(request.Arguments.Breakpoints))
-	for i, want := range request.Arguments.Breakpoints {
-		spec, err := locspec.Parse(want.Name)
-		if err != nil {
-			response.Body.Breakpoints[i].Message = err.Error()
-			continue
-		}
-		if loc, ok := spec.(*locspec.NormalLocationSpec); !ok || loc.FuncBase == nil {
-			// Other locations do not make sense in the context of function breakpoints.
-			// Regex locations are likely to resolve to multiple places and offset locations
-			// are only meaningful at the time the breakpoint was created.
-			response.Body.Breakpoints[i].Message = fmt.Sprintf("breakpoint name %q could not be parsed as a function. name must be in the format 'funcName', 'funcName:line' or 'fileName:line'.", want.Name)
-			continue
-		}
-
-		if want.Name[0] == '.' {
-			response.Body.Breakpoints[i].Message = "breakpoint names that are relative paths are not supported."
-			continue
-		}
-		// Find the location of the function name. CreateBreakpoint requires the name to include the base
-		// (e.g. main.functionName is supported but not functionName).
-		// We first find the location of the function, and then set breakpoints for that location.
-		locs, err := s.debugger.FindLocationSpec(-1, 0, 0, want.Name, spec, true, s.args.substitutePathClientToServer)
-		if err != nil {
-			response.Body.Breakpoints[i].Message = err.Error()
-			continue
-		}
-		if len(locs) == 0 {
-			response.Body.Breakpoints[i].Message = fmt.Sprintf("no location found for %q", want.Name)
-			continue
-		}
-		if len(locs) > 0 {
-			s.log.Debugf("multiple locations found for %s", want.Name)
-			response.Body.Breakpoints[i].Message = fmt.Sprintf("multiple locations found for %s, function breakpoint is only set for the first location", want.Name)
-		}
-
-		// Set breakpoint using the PCs that were found.
-		loc := locs[0]
-		got, err := s.debugger.CreateBreakpoint(
-			&api.Breakpoint{Name: fmt.Sprintf("%s%d", functionBpPrefix, i), Addr: loc.PC, Addrs: loc.PCs, Cond: want.Condition})
-		response.Body.Breakpoints[i].Verified = (err == nil)
-		if err != nil {
-			response.Body.Breakpoints[i].Message = err.Error()
-		} else {
-			response.Body.Breakpoints[i].Id = got.ID
-			response.Body.Breakpoints[i].Line = got.Line
-			response.Body.Breakpoints[i].Source = dap.Source{Name: filepath.Base(got.File), Path: got.File}
-		}
-	}
-	s.send(response)
-}
-
-func (s *Server) clearMatchingBreakpoints(matchCondition func(*api.Breakpoint) bool) error {
-	existing := s.debugger.Breakpoints()
-	for _, bp := range existing {
-		// Skip special breakpoints such as for panic.
-		if bp.ID < 0 {
-			continue
-		}
-		// Skip breakpoints that do not meet the condition.
-		if !matchCondition(bp) {
-			continue
-		}
-		_, err := s.debugger.ClearBreakpoint(bp)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // onStepBackRequest sends a not-yet-implemented error response.
@@ -2411,10 +2543,10 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 			switch state.CurrentThread.Breakpoint.Name {
 			case proc.FatalThrow:
 				stopped.Body.Reason = "exception"
-				stopped.Body.Description = "Paused on fatal error"
+				stopped.Body.Description = "fatal error"
 			case proc.UnrecoveredPanic:
 				stopped.Body.Reason = "exception"
-				stopped.Body.Description = "Paused on panic"
+				stopped.Body.Description = "panic"
 			}
 			if strings.HasPrefix(state.CurrentThread.Breakpoint.Name, functionBpPrefix) {
 				stopped.Body.Reason = "function breakpoint"
@@ -2424,7 +2556,7 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 		s.exceptionErr = err
 		s.log.Error("runtime error: ", err)
 		stopped.Body.Reason = "exception"
-		stopped.Body.Description = "Paused on runtime error"
+		stopped.Body.Description = "runtime error"
 		stopped.Body.Text = err.Error()
 		// Special case in the spirit of https://github.com/microsoft/vscode-go/issues/1903
 		if stopped.Body.Text == "bad access" {
