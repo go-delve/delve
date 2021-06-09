@@ -3340,19 +3340,20 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 					}
 
 					// TODO(suzmue): Enable this test for 1.17 when https://github.com/golang/go/issues/46425 is fixed.
-					if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
-						errorPrefix := "\"go of nil func value\""
-						client.ExceptionInfoRequest(1)
-						eInfo := client.ExpectExceptionInfoResponse(t)
-						if eInfo.Body.ExceptionId != "runtime error" || !strings.HasPrefix(eInfo.Body.Description, errorPrefix) {
-							t.Errorf("\ngot  %#v\nwant ExceptionId=\"runtime error\" Text=\"%s\"", eInfo, errorPrefix)
-						}
+					errorPrefix := "\"go of nil func value\""
+					if goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+						errorPrefix = "Throw reason unavailable, see https://github.com/golang/go/issues/46425"
 					}
+					client.ExceptionInfoRequest(1)
+					eInfo := client.ExpectExceptionInfoResponse(t)
+					if eInfo.Body.ExceptionId != "fatal error" || !strings.HasPrefix(eInfo.Body.Description, errorPrefix) {
+						t.Errorf("\ngot  %#v\nwant ExceptionId=\"runtime error\" Text=%s", eInfo, errorPrefix)
+					}
+
 				},
 				disconnect: true,
 			}})
 	})
-
 	runTest(t, "testdeadlock", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
