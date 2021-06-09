@@ -1832,10 +1832,7 @@ type convertVariableFlags uint8
 
 const (
 	skipRef convertVariableFlags = 1 << iota
-	// A variable is considered basic if it cannot be expanded to get additional
-	// values.
-	showFullValueBasic
-	showFullValueAll
+	showFullValue
 )
 
 // convertVariableWithOpts allows to skip reference generation in case all we need is
@@ -1982,7 +1979,10 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 			variablesReference = maybeCreateVariableHandle(v)
 		}
 	}
-	canTruncateValue := showFullValueAll&opts == 0 && (showFullValueBasic&opts == 0 || variablesReference != 0)
+
+	// By default, only values of variables that have children can be truncated.
+	// If showFullValue is set, then all value strings are not truncated.
+	canTruncateValue := showFullValue&opts == 0
 	if len(value) > defaultMaxValueLen && canTruncateValue && canHaveRef {
 		value = value[:defaultMaxValueLen] + "..."
 	}
@@ -2061,10 +2061,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 		}
 		var opts convertVariableFlags
 		if ctxt == "clipboard" || ctxt == "variables" {
-			opts |= showFullValueAll
-		}
-		if ctxt == "hover" {
-			opts |= showFullValueBasic
+			opts |= showFullValue
 		}
 		exprVal, exprRef := s.convertVariableWithOpts(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression), opts)
 		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef}
