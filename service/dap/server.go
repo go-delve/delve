@@ -128,12 +128,6 @@ type Server struct {
 	// sendingMu synchronizes writing to net.Conn
 	// to ensure that messages do not get interleaved
 	sendingMu sync.Mutex
-
-	// resumeMu synchronizes goroutines that are attempting to restart the process
-	resumeMu sync.Mutex
-	// overrideStopReason allows the run goroutine to communicate to the
-	// command goroutine how to process a stop
-	overrideStopReason chan string
 }
 
 // launchAttachArgs captures arguments from launch/attach request that
@@ -194,15 +188,14 @@ func NewServer(config *service.Config) *Server {
 	logflags.WriteDAPListeningMessage(config.Listener.Addr().String())
 	logger.Debug("DAP server pid = ", os.Getpid())
 	return &Server{
-		config:             config,
-		listener:           config.Listener,
-		stopTriggered:      make(chan struct{}),
-		overrideStopReason: make(chan string, 1),
-		log:                logger,
-		stackFrameHandles:  newHandlesMap(),
-		variableHandles:    newVariablesHandlesMap(),
-		args:               defaultArgs,
-		exceptionErr:       nil,
+		config:            config,
+		listener:          config.Listener,
+		stopTriggered:     make(chan struct{}),
+		log:               logger,
+		stackFrameHandles: newHandlesMap(),
+		variableHandles:   newVariablesHandlesMap(),
+		args:              defaultArgs,
+		exceptionErr:      nil,
 	}
 }
 
@@ -385,8 +378,6 @@ func (s *Server) recoverPanic(request dap.Message) {
 
 func (s *Server) handleRequest(request dap.Message) {
 	defer s.recoverPanic(request)
-	s.resumeMu.Lock()
-	defer s.resumeMu.Unlock()
 
 	jsonmsg, _ := json.Marshal(request)
 	s.log.Debug("[<- from client]", string(jsonmsg))
@@ -451,7 +442,7 @@ func (s *Server) handleRequest(request dap.Message) {
 			s.send(response)
 		case *dap.SetBreakpointsRequest:
 			s.log.Debug("halting execution to set breakpoints")
-			err := s.manualHalt()
+			_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 			if err != nil {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
@@ -473,7 +464,7 @@ func (s *Server) handleRequest(request dap.Message) {
 			// in proc.(*Target).Continue, leaving NextInProgress as true.
 		case *dap.SetFunctionBreakpointsRequest:
 			s.log.Debug("halting execution to set breakpoints")
-			err := s.manualHalt()
+			_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 			if err != nil {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
@@ -647,15 +638,6 @@ func (s *Server) handleRequest(request dap.Message) {
 		// to handle.
 		s.sendInternalErrorResponse(request.GetSeq(), fmt.Sprintf("Unable to process %#v\n", request))
 	}
-}
-
-func (s *Server) manualHalt() error {
-	select {
-	case s.overrideStopReason <- "manual halt":
-	default:
-	}
-	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
-	return err
 }
 
 func (s *Server) send(message dap.Message) {
@@ -1511,7 +1493,7 @@ func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan
 // onPauseRequest handles 'pause' request.
 // This is a mandatory request to support.
 func (s *Server) onPauseRequest(request *dap.PauseRequest) {
-	err := s.manualHalt()
+	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToHalt, "Unable to halt execution", err.Error())
 		return
@@ -2508,35 +2490,6 @@ func (s *Server) resetHandlesForStoppedEvent() {
 	s.exceptionErr = nil
 }
 
-func (s *Server) runContinueCommand() (bool, *api.DebuggerState, error) {
-	s.resumeMu.Lock()
-	resumeRequestLoop := make(chan struct{})
-	defer s.asyncCommandDone(resumeRequestLoop)
-
-	go func() {
-		defer s.resumeMu.Unlock()
-		<-resumeRequestLoop
-	}()
-
-	// Check for a manual halt.
-	select {
-	case <-s.overrideStopReason:
-		return false, nil, nil
-	default:
-	}
-
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Continue}, resumeRequestLoop)
-	return true, state, err
-}
-
-func (s *Server) resetOverrideStopReason() {
-	// Drain any stale stop reason from the buffered channel.
-	select {
-	case <-s.overrideStopReason:
-	default:
-	}
-}
-
 // doRunCommand runs a debugger command until it stops on
 // termination, error, breakpoint, etc, when an appropriate
 // event needs to be sent to the client. asyncSetupDone is
@@ -2548,13 +2501,7 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 	// asyncSetupDone (e.g. when having an error next while nexting).
 	// So we should always close it ourselves just in case.
 	defer s.asyncCommandDone(asyncSetupDone)
-	// Clear the manual halt check. handleRequest is blocked until asyncSetupDone
-	// is closed so this will make it empty when we start.
-	s.resetOverrideStopReason()
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
-	// Make sure that asyncSetupDone is closed, so that handleRequest
-	// will release resumeMu.
-	s.asyncCommandDone(asyncSetupDone)
 
 	var stopReason = proc.StopUnknown
 	for err == nil && !state.Exited && state.CurrentThread != nil && state.NextInProgress {
@@ -2572,13 +2519,8 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 					Output:   fmt.Sprintf("goroutine %d hit breakpoint (id: %d, loc: %s:%d) during %s\n", id, bp.ID, bp.File, bp.Line, command),
 					Category: "console",
 				}})
-			var continued bool
-			continued, state, err = s.runContinueCommand()
-			if continued {
-				continue
-			}
-			// Otherwise, a manual halt was attempted while the program was paused, so we should stop.
-			stopReason = proc.StopManual
+			state, err = s.debugger.Command(&api.DebuggerCommand{Name: api.Continue}, nil)
+			continue
 		}
 
 		// There was no breakpoint to skip, we should cancel next and process this stop.
