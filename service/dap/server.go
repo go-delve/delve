@@ -971,7 +971,7 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 	// Additional clean-up might be especially critical when we support multiple clients.
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 	if err == proc.ErrProcessDetached {
-		s.log.Debug("halt returned error:", err)
+		s.log.Debug("halt returned error: ", err)
 		return nil
 	}
 	if err != nil {
@@ -979,11 +979,14 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 		case proc.ErrProcessExited:
 			exited = err
 		default:
-			s.log.Error("halt returned error:", err)
+			s.log.Error("halt returned error: ", err)
+			if err.Error() == "no such process" {
+				exited = err
+			}
 		}
 	} else if state.Exited {
 		exited = proc.ErrProcessExited{Pid: s.debugger.ProcessPid(), Status: state.ExitStatus}
-		s.log.Debug("halt returned state:", exited)
+		s.log.Debug("halt returned state: ", exited)
 	}
 	if exited != nil {
 		s.logToConsole(exited.Error())

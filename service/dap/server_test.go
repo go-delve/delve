@@ -368,6 +368,11 @@ func TestAttachStopOnEntry(t *testing.T) {
 		// 13 >> disconnect, << disconnect
 		client.DisconnectRequestWithKillOption(true)
 
+		// Disconnect consists of Halt + Detach.
+		// Halt interrupts command in progress, which triggers
+		// a stopped event in parallel with the disconnect
+		// sequence. It might arrive before or during the sequence
+		// or never if the server exits before it is sent.
 		msg := expectMessageFilterStopped(t, client)
 		client.CheckOutputEvent(t, msg)
 		msg = expectMessageFilterStopped(t, client)
