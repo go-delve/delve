@@ -129,12 +129,11 @@ type Server struct {
 	// to ensure that messages do not get interleaved
 	sendingMu sync.Mutex
 
-	// runningMu synchronizes goroutines trying to restart the process.
-	// While holding runningMu, it is guaranteed that no other goroutine
+	// resumeMu synchronizes goroutines trying to restart the process.
+	// While holding resumeMu, it is guaranteed that no other goroutine
 	// will attempt to start / restart the process. This does not mean the program
-	// may not halt while runningMu is locked.
-	runningMu sync.Mutex
-	running   bool
+	// may not halt while resumeMu is locked.
+	resumeMu sync.Mutex
 }
 
 // launchAttachArgs captures arguments from launch/attach request that
@@ -385,8 +384,8 @@ func (s *Server) recoverPanic(request dap.Message) {
 
 func (s *Server) handleRequest(request dap.Message) {
 	defer s.recoverPanic(request)
-	s.runningMu.Lock()
-	defer s.runningMu.Unlock()
+	s.resumeMu.Lock()
+	defer s.resumeMu.Unlock()
 
 	jsonmsg, _ := json.Marshal(request)
 	s.log.Debug("[<- from client]", string(jsonmsg))
@@ -2503,10 +2502,10 @@ func (s *Server) runContinueCommand() (*api.DebuggerState, error) {
 	releaseRunningLock := make(chan struct{})
 	defer s.asyncCommandDone(releaseRunningLock)
 
-	s.runningMu.Lock()
+	s.resumeMu.Lock()
 	go func() {
 		<-releaseRunningLock
-		s.runningMu.Unlock()
+		s.resumeMu.Unlock()
 	}()
 
 	return s.debugger.Command(&api.DebuggerCommand{Name: api.Continue}, releaseRunningLock)
