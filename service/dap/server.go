@@ -129,11 +129,11 @@ type Server struct {
 	// to ensure that messages do not get interleaved
 	sendingMu sync.Mutex
 
-	// resumeMu synchronizes goroutines trying to restart the process.
-	// While holding resumeMu, it is guaranteed that no other goroutine
+	// continueMu synchronizes goroutines trying to restart the process.
+	// While holding continueMu, it is guaranteed that no other goroutine
 	// will attempt to start / restart the process. This does not mean the program
-	// may not halt while resumeMu is locked.
-	resumeMu sync.Mutex
+	// may not halt while continueMu is locked.
+	continueMu sync.Mutex
 }
 
 // launchAttachArgs captures arguments from launch/attach request that
@@ -384,8 +384,8 @@ func (s *Server) recoverPanic(request dap.Message) {
 
 func (s *Server) handleRequest(request dap.Message) {
 	defer s.recoverPanic(request)
-	s.resumeMu.Lock()
-	defer s.resumeMu.Unlock()
+	s.continueMu.Lock()
+	defer s.continueMu.Unlock()
 
 	jsonmsg, _ := json.Marshal(request)
 	s.log.Debug("[<- from client]", string(jsonmsg))
@@ -2502,10 +2502,10 @@ func (s *Server) runContinueCommand() (*api.DebuggerState, error) {
 	releaseRunningLock := make(chan struct{})
 	defer s.asyncCommandDone(releaseRunningLock)
 
-	s.resumeMu.Lock()
+	s.continueMu.Lock()
 	go func() {
 		<-releaseRunningLock
-		s.resumeMu.Unlock()
+		s.continueMu.Unlock()
 	}()
 
 	return s.debugger.Command(&api.DebuggerCommand{Name: api.Continue}, releaseRunningLock)
@@ -2525,7 +2525,7 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 	defer s.asyncCommandDone(asyncSetupDone)
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
 	// Make sure that asyncSetupDone is closed, so that handleRequest
-	// will release resumeMu.
+	// will release continueMu.
 	s.asyncCommandDone(asyncSetupDone)
 
 	var stopReason = proc.StopUnknown
@@ -2533,11 +2533,7 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 		// If there is a NextInProgress, we want to notify the user that a breakpoint
 		// was hit and then continue.
 		if bp := state.CurrentThread.Breakpoint; bp != nil {
-			id := 0
-			if state.SelectedGoroutine != nil {
-				id = state.SelectedGoroutine.ID
-			}
-			msg := fmt.Sprintf("goroutine %d hit breakpoint (id: %d, loc: %s:%d) during %s", id, bp.ID, bp.File, bp.Line, command)
+			msg := fmt.Sprintf("goroutine %d hit breakpoint (id: %d, loc: %s:%d) during %s", stoppedGoroutineID(state), bp.ID, bp.File, bp.Line, command)
 			s.log.Debugln(msg)
 			s.logToConsole(msg)
 			state, err = s.runContinueCommand()
