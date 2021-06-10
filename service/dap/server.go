@@ -1320,6 +1320,14 @@ func fnName(loc *proc.Location) string {
 	return loc.Fn.Name
 }
 
+func fnPackageName(loc *proc.Location) string {
+	if loc.Fn == nil {
+		// attribute unknown functions to the runtime
+		return "runtime"
+	}
+	return loc.Fn.PackageName()
+}
+
 // onThreadsRequest handles 'threads' request.
 // This is a mandatory request to support.
 // It is sent in response to configurationDone response and stopped events.
@@ -1528,6 +1536,15 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 		return
 	}
 
+	// Determine if the goroutine is a system goroutine.
+	// TODO(suzmue): Use the System() method defined in: https://github.com/go-delve/delve/pull/2504
+	g, err := s.debugger.FindGoroutine(goroutineID)
+	var isSystemGoroutine bool
+	if err == nil {
+		userLoc := g.UserCurrent()
+		isSystemGoroutine = fnPackageName(&userLoc) == "runtime"
+	}
+
 	stackFrames := make([]dap.StackFrame, len(frames))
 	for i, frame := range frames {
 		loc := &frame.Call
@@ -1538,6 +1555,11 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 			stackFrames[i].Source = dap.Source{Name: filepath.Base(clientPath), Path: clientPath}
 		}
 		stackFrames[i].Column = 0
+
+		packageName := fnPackageName(loc)
+		if !isSystemGoroutine && packageName == "runtime" {
+			stackFrames[i].Source.PresentationHint = "deemphasize"
+		}
 	}
 	// Since the backend doesn't support paging, we load all frames up to
 	// pre-configured depth every time and then slice them here per
@@ -2446,7 +2468,16 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 		if err == nil {
 			var buf bytes.Buffer
 			fmt.Fprintln(&buf, "Stack:")
-			terminal.PrintStack(s.toClientPath, &buf, apiFrames, "\t", false)
+			userLoc := g.UserCurrent()
+			userFuncPkg := fnPackageName(&userLoc)
+			terminal.PrintStack(s.toClientPath, &buf, apiFrames, "\t", false, func(s api.Stackframe) bool {
+				// Include all stack frames if the stack trace is for a system goroutine,
+				// otherwise, skip runtime stack frames.
+				if userFuncPkg == "runtime" {
+					return true
+				}
+				return s.Location.Function != nil && !strings.HasPrefix(s.Location.Function.Name(), "runtime.")
+			})
 			body.Details.StackTrace = buf.String()
 		}
 	}
