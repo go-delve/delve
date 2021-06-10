@@ -2369,11 +2369,12 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 			if err == nil {
 				if exprVar.Value != nil {
 					body.Description = exprVar.Value.String()
-				} else if goversion.VersionAfterOrEqual(s.debugger.TargetGoVersion(), 1, 16) {
-					body.Description = "Throw reason unavailable, see https://github.com/golang/go/issues/46425"
 				}
 			} else {
 				body.Description = fmt.Sprintf("Error getting throw reason: %s", err.Error())
+				if goversion.VersionAfterOrEqual(s.debugger.TargetGoVersion(), 1, 16) {
+					body.Description = "Throw reason unavailable, see https://github.com/golang/go/issues/46425"
+				}
 			}
 		case proc.UnrecoveredPanic:
 			body.ExceptionId = "panic"
