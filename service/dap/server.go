@@ -2367,9 +2367,11 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 			// This is not currently working for Go 1.16 or 1.17: https://github.com/golang/go/issues/46425.
 			exprVar, err := s.debugger.EvalVariableInScope(goroutineID, 1, 0, "s", DefaultLoadConfig)
 			if err == nil {
-				body.Description = exprVar.Value.String()
-			} else if goversion.VersionAfterOrEqual(s.debugger.TargetGoVersion(), 1, 16) {
-				body.Description = "Throw reason unavailable, see https://github.com/golang/go/issues/46425"
+				if exprVar.Value != nil {
+					body.Description = exprVar.Value.String()
+				} else if goversion.VersionAfterOrEqual(s.debugger.TargetGoVersion(), 1, 16) {
+					body.Description = "Throw reason unavailable, see https://github.com/golang/go/issues/46425"
+				}
 			} else {
 				body.Description = fmt.Sprintf("Error getting throw reason: %s", err.Error())
 			}
