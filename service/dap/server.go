@@ -128,6 +128,13 @@ type Server struct {
 	// sendingMu synchronizes writing to net.Conn
 	// to ensure that messages do not get interleaved
 	sendingMu sync.Mutex
+
+	// runningMu synchronizes goroutines trying to restart the process.
+	// While holding runningMu, it is guaranteed that no other goroutine
+	// will attempt to start / restart the process. This does not mean the program
+	// may not halt while runningMu is locked.
+	runningMu sync.Mutex
+	running   bool
 }
 
 // launchAttachArgs captures arguments from launch/attach request that
@@ -378,6 +385,8 @@ func (s *Server) recoverPanic(request dap.Message) {
 
 func (s *Server) handleRequest(request dap.Message) {
 	defer s.recoverPanic(request)
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
 
 	jsonmsg, _ := json.Marshal(request)
 	s.log.Debug("[<- from client]", string(jsonmsg))
@@ -2490,6 +2499,19 @@ func (s *Server) resetHandlesForStoppedEvent() {
 	s.exceptionErr = nil
 }
 
+func (s *Server) runContinueCommand() (*api.DebuggerState, error) {
+	releaseRunningLock := make(chan struct{})
+	defer s.asyncCommandDone(releaseRunningLock)
+
+	s.runningMu.Lock()
+	go func() {
+		<-releaseRunningLock
+		s.runningMu.Unlock()
+	}()
+
+	return s.debugger.Command(&api.DebuggerCommand{Name: api.Continue}, releaseRunningLock)
+}
+
 // doRunCommand runs a debugger command until it stops on
 // termination, error, breakpoint, etc, when an appropriate
 // event needs to be sent to the client. asyncSetupDone is
@@ -2499,9 +2521,13 @@ func (s *Server) resetHandlesForStoppedEvent() {
 func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 	// TODO(polina): it appears that debugger.Command doesn't always close
 	// asyncSetupDone (e.g. when having an error next while nexting).
-	// So we should always close it ourselves just in case.
+	// So we should always close it ourselves just in case. This should free up the
+	// handleRequest goroutine in case of panic.
 	defer s.asyncCommandDone(asyncSetupDone)
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
+	// Make sure that asyncSetupDone is closed, so that handleRequest
+	// will release resumeMu.
+	s.asyncCommandDone(asyncSetupDone)
 
 	var stopReason = proc.StopUnknown
 	for err == nil && !state.Exited && state.CurrentThread != nil && state.NextInProgress {
@@ -2512,14 +2538,10 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 			if state.SelectedGoroutine != nil {
 				id = state.SelectedGoroutine.ID
 			}
-			s.log.Debugf("goroutine %d hit breakpoint (id: %d, loc: %s:%d) during %s\n", id, bp.ID, bp.File, bp.Line, command)
-			s.send(&dap.OutputEvent{
-				Event: *newEvent("output"),
-				Body: dap.OutputEventBody{
-					Output:   fmt.Sprintf("goroutine %d hit breakpoint (id: %d, loc: %s:%d) during %s\n", id, bp.ID, bp.File, bp.Line, command),
-					Category: "console",
-				}})
-			state, err = s.debugger.Command(&api.DebuggerCommand{Name: api.Continue}, nil)
+			msg := fmt.Sprintf("goroutine %d hit breakpoint (id: %d, loc: %s:%d) during %s", id, bp.ID, bp.File, bp.Line, command)
+			s.log.Debugln(msg)
+			s.logToConsole(msg)
+			state, err = s.runContinueCommand()
 			continue
 		}
 
