@@ -2369,7 +2369,7 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 				if err != nil {
 					body.Description = fmt.Sprintf("Error getting throw reason: %s", err.Error())
 				}
-				if goversion.VersionAfterOrEqual(s.debugger.TargetGoVersion(), 1, 16) {
+				if goversion.ProducerAfterOrEqual(s.debugger.TargetGoVersion(), 1, 16) {
 					body.Description = "Throw reason unavailable, see https://github.com/golang/go/issues/46425"
 				}
 			}
