@@ -971,7 +971,7 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 	// Additional clean-up might be especially critical when we support multiple clients.
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 	if err == proc.ErrProcessDetached {
-		s.log.Debug("halt returned error:", err)
+		s.log.Debug("halt returned error: ", err)
 		return nil
 	}
 	if err != nil {
@@ -979,11 +979,14 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 		case proc.ErrProcessExited:
 			exited = err
 		default:
-			s.log.Error("halt returned error:", err)
+			s.log.Error("halt returned error: ", err)
+			if err.Error() == "no such process" {
+				exited = err
+			}
 		}
 	} else if state.Exited {
 		exited = proc.ErrProcessExited{Pid: s.debugger.ProcessPid(), Status: state.ExitStatus}
-		s.log.Debug("halt returned state:", exited)
+		s.log.Debug("halt returned state: ", exited)
 	}
 	if exited != nil {
 		s.logToConsole(exited.Error())
@@ -1317,6 +1320,14 @@ func fnName(loc *proc.Location) string {
 	return loc.Fn.Name
 }
 
+func fnPackageName(loc *proc.Location) string {
+	if loc.Fn == nil {
+		// attribute unknown functions to the runtime
+		return "runtime"
+	}
+	return loc.Fn.PackageName()
+}
+
 // onThreadsRequest handles 'threads' request.
 // This is a mandatory request to support.
 // It is sent in response to configurationDone response and stopped events.
@@ -1525,6 +1536,15 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 		return
 	}
 
+	// Determine if the goroutine is a system goroutine.
+	// TODO(suzmue): Use the System() method defined in: https://github.com/go-delve/delve/pull/2504
+	g, err := s.debugger.FindGoroutine(goroutineID)
+	var isSystemGoroutine bool
+	if err == nil {
+		userLoc := g.UserCurrent()
+		isSystemGoroutine = fnPackageName(&userLoc) == "runtime"
+	}
+
 	stackFrames := make([]dap.StackFrame, len(frames))
 	for i, frame := range frames {
 		loc := &frame.Call
@@ -1535,6 +1555,11 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 			stackFrames[i].Source = dap.Source{Name: filepath.Base(clientPath), Path: clientPath}
 		}
 		stackFrames[i].Column = 0
+
+		packageName := fnPackageName(loc)
+		if !isSystemGoroutine && packageName == "runtime" {
+			stackFrames[i].Source.PresentationHint = "deemphasize"
+		}
 	}
 	// Since the backend doesn't support paging, we load all frames up to
 	// pre-configured depth every time and then slice them here per
@@ -1585,7 +1610,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to list args", err.Error())
 		return
 	}
-	argScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Arguments%s", suffix), Children: slicePtrVarToSliceVar(args)}, "", true}
+	argScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Arguments%s", suffix), Children: slicePtrVarToSliceVar(args)}, "", true, 0}
 
 	// Retrieve local variables
 	locals, err := s.debugger.LocalVariables(goid, frame, 0, DefaultLoadConfig)
@@ -1593,7 +1618,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list locals", err.Error())
 		return
 	}
-	locScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Locals%s", suffix), Children: slicePtrVarToSliceVar(locals)}, "", true}
+	locScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Locals%s", suffix), Children: slicePtrVarToSliceVar(locals)}, "", true, 0}
 
 	scopeArgs := dap.Scope{Name: argScope.Name, VariablesReference: s.variableHandles.create(argScope)}
 	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
@@ -1629,7 +1654,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 		globScope := &fullyQualifiedVariable{&proc.Variable{
 			Name:     fmt.Sprintf("Globals (package %s)", currPkg),
 			Children: slicePtrVarToSliceVar(globals),
-		}, currPkg, true}
+		}, currPkg, true, 0}
 		scopeGlobals := dap.Scope{Name: globScope.Name, VariablesReference: s.variableHandles.create(globScope)}
 		scopes = append(scopes, scopeGlobals)
 	}
@@ -1658,6 +1683,18 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		return
 	}
 
+	// If there is a filter applied, we will need to create a new variable that includes
+	// the values actually needed to load. This cannot be done when loading the parent
+	// node, since it is unknown at that point which children will need to be loaded.
+	if request.Arguments.Filter == "indexed" {
+		var err error
+		v, err = s.maybeLoadResliced(v, request.Arguments.Start, request.Arguments.Count)
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", err.Error())
+			return
+		}
+	}
+
 	children, err := s.childrenToDAPVariables(v)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", err.Error())
@@ -1668,6 +1705,30 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		Body:     dap.VariablesResponseBody{Variables: children},
 	}
 	s.send(response)
+}
+
+func (s *Server) maybeLoadResliced(v *fullyQualifiedVariable, start, count int) (*fullyQualifiedVariable, error) {
+	if start == 0 && count == len(v.Children) {
+		// If we have already loaded the correct children,
+		// just return the variable.
+		return v, nil
+	}
+	indexedLoadConfig := DefaultLoadConfig
+	indexedLoadConfig.MaxArrayValues = count
+	newV, err := s.debugger.LoadResliced(v.Variable, start, indexedLoadConfig)
+	if err != nil {
+		return nil, err
+	}
+	return &fullyQualifiedVariable{newV, v.fullyQualifiedNameOrExpr, false, start}, nil
+}
+
+func getIndexedVariableCount(c *proc.Variable) int {
+	indexedVars := 0
+	switch c.Kind {
+	case reflect.Array, reflect.Slice, reflect.Map:
+		indexedVars = int(c.Len)
+	}
+	return indexedVars
 }
 
 // childrenToDAPVariables returns the DAP presentation of the referenced variable's children.
@@ -1706,18 +1767,20 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 			// Otherwise, we must return separate variables for both.
 			if keyref > 0 && valref > 0 { // Both are not scalars
 				keyvar := dap.Variable{
-					Name:               fmt.Sprintf("[key %d]", kvIndex),
+					Name:               fmt.Sprintf("[key %d]", v.startIndex+kvIndex),
 					EvaluateName:       keyexpr,
 					Type:               keyType,
 					Value:              key,
 					VariablesReference: keyref,
+					IndexedVariables:   getIndexedVariableCount(keyv),
 				}
 				valvar := dap.Variable{
-					Name:               fmt.Sprintf("[val %d]", kvIndex),
+					Name:               fmt.Sprintf("[val %d]", v.startIndex+kvIndex),
 					EvaluateName:       valexpr,
 					Type:               valType,
 					Value:              val,
 					VariablesReference: valref,
+					IndexedVariables:   getIndexedVariableCount(valv),
 				}
 				children = append(children, keyvar, valvar)
 			} else { // At least one is a scalar
@@ -1737,8 +1800,10 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 						kvvar.Name = fmt.Sprintf("%s... @ %#x", key[0:DefaultLoadConfig.MaxStringLen], keyv.Addr)
 					}
 					kvvar.VariablesReference = keyref
+					kvvar.IndexedVariables = getIndexedVariableCount(keyv)
 				} else if valref != 0 { // val is a type to be expanded
 					kvvar.VariablesReference = valref
+					kvvar.IndexedVariables = getIndexedVariableCount(valv)
 				}
 				children = append(children, kvvar)
 			}
@@ -1746,14 +1811,16 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 	case reflect.Slice, reflect.Array:
 		children = make([]dap.Variable, len(v.Children))
 		for i := range v.Children {
-			cfqname := fmt.Sprintf("%s[%d]", v.fullyQualifiedNameOrExpr, i)
+			idx := v.startIndex + i
+			cfqname := fmt.Sprintf("%s[%d]", v.fullyQualifiedNameOrExpr, idx)
 			cvalue, cvarref := s.convertVariable(&v.Children[i], cfqname)
 			children[i] = dap.Variable{
-				Name:               fmt.Sprintf("[%d]", i),
+				Name:               fmt.Sprintf("[%d]", idx),
 				EvaluateName:       cfqname,
 				Type:               s.getTypeIfSupported(&v.Children[i]),
 				Value:              cvalue,
 				VariablesReference: cvarref,
+				IndexedVariables:   getIndexedVariableCount(&v.Children[i]),
 			}
 		}
 	default:
@@ -1792,6 +1859,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 				Type:               s.getTypeIfSupported(c),
 				Value:              cvalue,
 				VariablesReference: cvarref,
+				IndexedVariables:   getIndexedVariableCount(c),
 			}
 		}
 	}
@@ -1846,7 +1914,7 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		if opts&skipRef != 0 {
 			return 0
 		}
-		return s.variableHandles.create(&fullyQualifiedVariable{v, qualifiedNameOrExpr, false /*not a scope*/})
+		return s.variableHandles.create(&fullyQualifiedVariable{v, qualifiedNameOrExpr, false /*not a scope*/, 0})
 	}
 	value = api.ConvertVar(v).SinglelineString()
 	if v.Unreadable != nil {
@@ -1855,15 +1923,13 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 
 	// Some of the types might be fully or partially not loaded based on LoadConfig.
 	// Those that are fully missing (e.g. due to hitting MaxVariableRecurse), can be reloaded in place.
-	// Those that are partially missing (e.g. MaxArrayValues from a large array), need a more creative solution
-	// that is still to be determined. For now, clearly communicate when that happens with additional value labels.
-	// TODO(polina): look into layered/paged loading for truncated strings, arrays, maps and structs.
 	var reloadVariable = func(v *proc.Variable, qualifiedNameOrExpr string) (value string) {
 		// We might be loading variables from the frame that's not topmost, so use
 		// frame-independent address-based expression, not fully-qualified name as per
 		// https://github.com/go-delve/delve/blob/master/Documentation/api/ClientHowto.md#looking-into-variables.
-		// TODO(polina): Get *proc.Variable object from debugger instead. Export and set v.loaded to false
-		// and call v.loadValue gain. It's more efficient, and it's guaranteed to keep working with generics.
+		// TODO(polina): Get *proc.Variable object from debugger instead. Export a function to set v.loaded to false
+		// and call v.loadValue gain with a different load config. It's more efficient, and it's guaranteed to keep
+		// working with generics.
 		value = api.ConvertVar(v).SinglelineString()
 		typeName := api.PrettyTypeName(v.DwarfType)
 		loadExpr := fmt.Sprintf("*(*%q)(%#x)", typeName, v.Addr)
@@ -1920,7 +1986,7 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		if v.Len > int64(len(v.Children)) { // Not fully loaded
 			if v.Base != 0 && len(v.Children) == 0 { // Fully missing
 				value = reloadVariable(v, qualifiedNameOrExpr)
-			} else { // Partially missing (TODO)
+			} else if !s.clientCapabilities.supportsVariablePaging {
 				value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children), v.Len) + value
 			}
 		}
@@ -1931,7 +1997,7 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 		if v.Len > int64(len(v.Children)/2) { // Not fully loaded
 			if len(v.Children) == 0 { // Fully missing
 				value = reloadVariable(v, qualifiedNameOrExpr)
-			} else { // Partially missing (TODO)
+			} else if !s.clientCapabilities.supportsVariablePaging {
 				value = fmt.Sprintf("(loaded %d/%d) ", len(v.Children)/2, v.Len) + value
 			}
 		}
@@ -2033,7 +2099,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			}
 			response.Body = dap.EvaluateResponseBody{
 				Result:             strings.TrimRight(retVarsAsStr, ", "),
-				VariablesReference: s.variableHandles.create(&fullyQualifiedVariable{retVarsAsVar, "", false /*not a scope*/}),
+				VariablesReference: s.variableHandles.create(&fullyQualifiedVariable{retVarsAsVar, "", false /*not a scope*/, 0}),
 			}
 		}
 	} else { // {expression}
@@ -2064,7 +2130,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			opts |= showFullValue
 		}
 		exprVal, exprRef := s.convertVariableWithOpts(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression), opts)
-		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef}
+		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef, IndexedVariables: getIndexedVariableCount(exprVar)}
 	}
 	s.send(response)
 }
@@ -2405,7 +2471,16 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 		if err == nil {
 			var buf bytes.Buffer
 			fmt.Fprintln(&buf, "Stack:")
-			terminal.PrintStack(s.toClientPath, &buf, apiFrames, "\t", false)
+			userLoc := g.UserCurrent()
+			userFuncPkg := fnPackageName(&userLoc)
+			terminal.PrintStack(s.toClientPath, &buf, apiFrames, "\t", false, func(s api.Stackframe) bool {
+				// Include all stack frames if the stack trace is for a system goroutine,
+				// otherwise, skip runtime stack frames.
+				if userFuncPkg == "runtime" {
+					return true
+				}
+				return s.Location.Function != nil && !strings.HasPrefix(s.Location.Function.Name(), "runtime.")
+			})
 			body.Details.StackTrace = buf.String()
 		}
 	}

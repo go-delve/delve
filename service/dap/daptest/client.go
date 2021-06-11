@@ -343,6 +343,16 @@ func (c *Client) VariablesRequest(variablesReference int) {
 	c.send(request)
 }
 
+// IndexedVariablesRequest sends a 'variables' request.
+func (c *Client) IndexedVariablesRequest(variablesReference, start, count int) {
+	request := &dap.VariablesRequest{Request: *c.newRequest("variables")}
+	request.Arguments.VariablesReference = variablesReference
+	request.Arguments.Filter = "indexed"
+	request.Arguments.Start = start
+	request.Arguments.Count = count
+	c.send(request)
+}
+
 // TeriminateRequest sends a 'terminate' request.
 func (c *Client) TerminateRequest() {
 	c.send(&dap.TerminateRequest{Request: *c.newRequest("terminate")})

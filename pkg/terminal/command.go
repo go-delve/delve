@@ -2334,10 +2334,10 @@ func digits(n int) int {
 const stacktraceTruncatedMessage = "(truncated)"
 
 func printStack(t *Term, out io.Writer, stack []api.Stackframe, ind string, offsets bool) {
-	PrintStack(t.formatPath, out, stack, ind, offsets)
+	PrintStack(t.formatPath, out, stack, ind, offsets, func(api.Stackframe) bool { return true })
 }
 
-func PrintStack(formatPath func(string) string, out io.Writer, stack []api.Stackframe, ind string, offsets bool) {
+func PrintStack(formatPath func(string) string, out io.Writer, stack []api.Stackframe, ind string, offsets bool, include func(api.Stackframe) bool) {
 	if len(stack) == 0 {
 		return
 	}
@@ -2355,6 +2355,9 @@ func PrintStack(formatPath func(string) string, out io.Writer, stack []api.Stack
 	s := ind + strings.Repeat(" ", d+2+len(ind))
 
 	for i := range stack {
+		if !include(stack[i]) {
+			continue
+		}
 		if stack[i].Err != "" {
 			fmt.Fprintf(out, "%serror: %s\n", s, stack[i].Err)
 			continue

@@ -368,6 +368,11 @@ func TestAttachStopOnEntry(t *testing.T) {
 		// 13 >> disconnect, << disconnect
 		client.DisconnectRequestWithKillOption(true)
 
+		// Disconnect consists of Halt + Detach.
+		// Halt interrupts command in progress, which triggers
+		// a stopped event in parallel with the disconnect
+		// sequence. It might arrive before or during the sequence
+		// or never if the server exits before it is sent.
 		msg := expectMessageFilterStopped(t, client)
 		client.CheckOutputEvent(t, msg)
 		msg = expectMessageFilterStopped(t, client)
@@ -511,7 +516,7 @@ func TestPreSetBreakpoint(t *testing.T) {
 		wantMain := dap.Thread{Id: 1, Name: "* [Go 1] main.Increment (Thread ...)"}
 		wantRuntime := dap.Thread{Id: 2, Name: "[Go 2] runtime.gopark"}
 		for _, got := range tResp.Body.Threads {
-			if got.Id != 1 && !reMain.MatchString(got.Name) && !strings.Contains(got.Name, "runtime") {
+			if got.Id != 1 && !reMain.MatchString(got.Name) && !strings.Contains(got.Name, "runtime.") {
 				t.Errorf("\ngot  %#v\nwant []dap.Thread{%#v, %#v, ...}", tResp.Body.Threads, wantMain, wantRuntime)
 			}
 		}
@@ -662,7 +667,7 @@ func checkChildren(t *testing.T, got *dap.VariablesResponse, parentName string, 
 //     useExactMatch - true if name, evalName and value are to be compared to exactly, false if to be used as regex
 //     hasRef - true if the variable should have children and therefore a non-0 variable reference
 //     ref - reference to retrieve children of this variable (0 if none)
-func checkVar(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, useExactMatch, hasRef bool) (ref int) {
+func checkVar(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, useExactMatch, hasRef bool, indexed, named int) (ref int) {
 	t.Helper()
 	if len(got.Body.Variables) <= i {
 		t.Errorf("\ngot  len=%d (children=%#v)\nwant len>%d", len(got.Body.Variables), got.Body.Variables, i)
@@ -718,19 +723,37 @@ func checkVar(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, v
 	if !matchedType {
 		t.Errorf("\ngot  %s=%q\nwant %q", name, goti.Type, typ)
 	}
+	if indexed >= 0 && goti.IndexedVariables != indexed {
+		t.Errorf("\ngot  %s=%d indexed\nwant %d indexed", name, goti.IndexedVariables, indexed)
+	}
+	if named >= 0 && goti.NamedVariables != named {
+		t.Errorf("\ngot  %s=%d named\nwant %d named", name, goti.NamedVariables, named)
+	}
 	return goti.VariablesReference
 }
 
 // checkVarExact is a helper like checkVar that matches value exactly.
 func checkVarExact(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, hasRef bool) (ref int) {
 	t.Helper()
-	return checkVar(t, got, i, name, evalName, value, typ, true, hasRef)
+	return checkVarExactIndexed(t, got, i, name, evalName, value, typ, hasRef, -1, -1)
+}
+
+// checkVarExact is a helper like checkVar that matches value exactly.
+func checkVarExactIndexed(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, hasRef bool, indexed, named int) (ref int) {
+	t.Helper()
+	return checkVar(t, got, i, name, evalName, value, typ, true, hasRef, indexed, named)
 }
 
 // checkVarRegex is a helper like checkVar that treats value, evalName or name as a regex.
 func checkVarRegex(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, hasRef bool) (ref int) {
 	t.Helper()
-	return checkVar(t, got, i, name, evalName, value, typ, false, hasRef)
+	return checkVarRegexIndexed(t, got, i, name, evalName, value, typ, hasRef, -1, -1)
+}
+
+// checkVarRegex is a helper like checkVar that treats value, evalName or name as a regex.
+func checkVarRegexIndexed(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, hasRef bool, indexed, named int) (ref int) {
+	t.Helper()
+	return checkVar(t, got, i, name, evalName, value, typ, false, hasRef, indexed, named)
 }
 
 func expectMessageFilterStopped(t *testing.T, client *daptest.Client) dap.Message {
@@ -1476,28 +1499,91 @@ func TestVariablesLoading(t *testing.T) {
 					// String partially missing based on LoadConfig.MaxStringLen
 					checkVarExact(t, locals, -1, "longstr", "longstr", "\"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more\"", "string", noChildren)
 
-					// Array partially missing based on LoadConfig.MaxArrayValues
-					ref := checkVarExact(t, locals, -1, "longarr", "longarr", "(loaded 64/100) [100]int [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", "[100]int", hasChildren)
+					checkArrayChildren := func(t *testing.T, longarr *dap.VariablesResponse, parentName string, start int) {
+						t.Helper()
+						for i, child := range longarr.Body.Variables {
+							idx := start + i
+							if child.Name != fmt.Sprintf("[%d]", idx) || child.EvaluateName != fmt.Sprintf("%s[%d]", parentName, idx) {
+								t.Errorf("Expected %s[%d] to have Name=\"[%d]\" EvaluateName=\"%s[%d]\", got %#v", parentName, idx, idx, parentName, idx, child)
+							}
+						}
+					}
+
+					// Array not fully loaded based on LoadConfig.MaxArrayValues.
+					// Expect to be able to load array by paging.
+					ref := checkVarExactIndexed(t, locals, -1, "longarr", "longarr", "[100]int [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", "[100]int", hasChildren, 100, 0)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						longarr := client.ExpectVariablesResponse(t)
 						checkChildren(t, longarr, "longarr", 64)
+						checkArrayChildren(t, longarr, "longarr", 0)
+
+						client.IndexedVariablesRequest(ref, 0, 100)
+						longarr = client.ExpectVariablesResponse(t)
+						checkChildren(t, longarr, "longarr", 100)
+						checkArrayChildren(t, longarr, "longarr", 0)
+
+						client.IndexedVariablesRequest(ref, 50, 50)
+						longarr = client.ExpectVariablesResponse(t)
+						checkChildren(t, longarr, "longarr", 50)
+						checkArrayChildren(t, longarr, "longarr", 50)
+
 					}
 
-					// Slice partially missing based on LoadConfig.MaxArrayValues
-					ref = checkVarExact(t, locals, -1, "longslice", "longslice", "(loaded 64/100) []int len: 100, cap: 100, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", "[]int", hasChildren)
+					// Slice not fully loaded based on LoadConfig.MaxArrayValues.
+					// Expect to be able to load slice by paging.
+					ref = checkVarExactIndexed(t, locals, -1, "longslice", "longslice", "[]int len: 100, cap: 100, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", "[]int", hasChildren, 100, 0)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						longarr := client.ExpectVariablesResponse(t)
 						checkChildren(t, longarr, "longslice", 64)
+						checkArrayChildren(t, longarr, "longslice", 0)
+
+						client.IndexedVariablesRequest(ref, 0, 100)
+						longarr = client.ExpectVariablesResponse(t)
+						checkChildren(t, longarr, "longslice", 100)
+						checkArrayChildren(t, longarr, "longslice", 0)
+
+						client.IndexedVariablesRequest(ref, 50, 50)
+						longarr = client.ExpectVariablesResponse(t)
+						checkChildren(t, longarr, "longslice", 50)
+						checkArrayChildren(t, longarr, "longslice", 50)
 					}
 
-					// Map partially missing based on LoadConfig.MaxArrayValues
-					ref = checkVarRegex(t, locals, -1, "m1", "m1", `\(loaded 64/66\) map\[string\]main\.astruct \[.+\.\.\.`, `map\[string\]main\.astruct`, hasChildren)
+					// Map not fully loaded based on LoadConfig.MaxArrayValues
+					// Expect to be able to load map by paging.
+					ref = checkVarRegexIndexed(t, locals, -1, "m1", "m1", `map\[string\]main\.astruct \[.+\.\.\.`, `map\[string\]main\.astruct`, hasChildren, 66, 0)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m1 := client.ExpectVariablesResponse(t)
 						checkChildren(t, m1, "m1", 64)
+
+						client.IndexedVariablesRequest(ref, 0, 66)
+						m1 = client.ExpectVariablesResponse(t)
+						checkChildren(t, m1, "m1", 66)
+
+						client.IndexedVariablesRequest(ref, 0, 33)
+						m1part1 := client.ExpectVariablesResponse(t)
+						checkChildren(t, m1part1, "m1", 33)
+
+						client.IndexedVariablesRequest(ref, 33, 33)
+						m1part2 := client.ExpectVariablesResponse(t)
+						checkChildren(t, m1part2, "m1", 33)
+
+						if len(m1part1.Body.Variables)+len(m1part2.Body.Variables) == len(m1.Body.Variables) {
+							for i, got := range m1part1.Body.Variables {
+								want := m1.Body.Variables[i]
+								if got.Name != want.Name || got.Value != want.Value {
+									t.Errorf("got %#v, want Name=%q Value=%q", got, want.Name, want.Value)
+								}
+							}
+							for i, got := range m1part2.Body.Variables {
+								want := m1.Body.Variables[i+len(m1part1.Body.Variables)]
+								if got.Name != want.Name || got.Value != want.Value {
+									t.Errorf("got %#v, want Name=%q Value=%q", got, want.Name, want.Value)
+								}
+							}
+						}
 					}
 
 					// Struct partially missing based on LoadConfig.MaxStructFields
@@ -2565,6 +2651,18 @@ func checkEval(t *testing.T, got *dap.EvaluateResponse, value string, hasRef boo
 	return got.Body.VariablesReference
 }
 
+// checkEvalIndexed is a helper for verifying the values within an EvaluateResponse.
+//     value - the value of the evaluated expression
+//     hasRef - true if the evaluated expression should have children and therefore a non-0 variable reference
+//     ref - reference to retrieve children of this evaluated expression (0 if none)
+func checkEvalIndexed(t *testing.T, got *dap.EvaluateResponse, value string, hasRef bool, indexed, named int) (ref int) {
+	t.Helper()
+	if got.Body.Result != value || (got.Body.VariablesReference > 0) != hasRef || got.Body.IndexedVariables != indexed || got.Body.NamedVariables != named {
+		t.Errorf("\ngot  %#v\nwant Result=%q hasRef=%t IndexedVariables=%d NamedVariables=%d", got, value, hasRef, indexed, named)
+	}
+	return got.Body.VariablesReference
+}
+
 func checkEvalRegex(t *testing.T, got *dap.EvaluateResponse, valueRegex string, hasRef bool) (ref int) {
 	t.Helper()
 	matched, _ := regexp.MatchString(valueRegex, got.Body.Result)
@@ -2607,7 +2705,7 @@ func TestEvaluateRequest(t *testing.T) {
 					// Variable lookup that's not fully loaded
 					client.EvaluateRequest("ba", 1000, "this context will be ignored")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, "(loaded 64/200) []int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", hasChildren)
+					checkEvalIndexed(t, got, "[]int len: 200, cap: 200, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+136 more]", hasChildren, 200, 0)
 
 					// All (binary and unary) on basic types except <-, ++ and --
 					client.EvaluateRequest("1+1", 1000, "this context will be ignored")
@@ -2639,7 +2737,7 @@ func TestEvaluateRequest(t *testing.T) {
 					// Type casts between string, []byte and []rune
 					client.EvaluateRequest("[]byte(\"ABC€\")", 1000, "this context will be ignored")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, "[]uint8 len: 6, cap: 6, [65,66,67,226,130,172]", noChildren)
+					checkEvalIndexed(t, got, "[]uint8 len: 6, cap: 6, [65,66,67,226,130,172]", noChildren, 6, 0)
 
 					// Struct member access (i.e. somevar.memberfield)
 					client.EvaluateRequest("ms.Nest.Level", 1000, "this context will be ignored")
@@ -2778,8 +2876,8 @@ func TestEvaluateRequestLongStrLargeValue(t *testing.T) {
 							checkVarExact(t, locals, -1, "m6", "m6", `main.C {s: `+longstrTruncated+`}`, "main.C", hasChildren)
 
 							// large array
-							m1 := `\(loaded 64/66\) map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`
-							m1Truncated := `\(loaded 64/66\) map\[string\]main\.astruct \[.+\.\.\.`
+							m1 := `map\[string\]main\.astruct \[.+\.\.\.\+2 more\]`
+							m1Truncated := `map\[string\]main\.astruct \[.+\.\.\.`
 
 							client.EvaluateRequest("m1", 0, evalContext)
 							got3 := client.ExpectEvaluateResponse(t)
@@ -3274,6 +3372,19 @@ func TestPanicBreakpointOnContinue(t *testing.T) {
 					eInfo := client.ExpectExceptionInfoResponse(t)
 					if eInfo.Body.ExceptionId != "panic" || eInfo.Body.Description != "\"BOOM!\"" {
 						t.Errorf("\ngot  %#v\nwant ExceptionId=\"panic\" Description=\"\"BOOM!\"\"", eInfo)
+					}
+
+					client.StackTraceRequest(se.Body.ThreadId, 0, 20)
+					st := client.ExpectStackTraceResponse(t)
+					for i, frame := range st.Body.StackFrames {
+						if strings.HasPrefix(frame.Name, "runtime.") {
+							if frame.Source.PresentationHint != "deemphasize" {
+								t.Errorf("\ngot Body.StackFrames[%d]=%#v\nwant Source.PresentationHint=\"deemphasize\"", i, frame)
+							}
+						} else if frame.Source.PresentationHint != "" {
+							t.Errorf("\ngot Body.StackFrames[%d]=%#v\nwant Source.PresentationHint=\"\"", i, frame)
+						}
+
 					}
 				},
 				disconnect: true,
