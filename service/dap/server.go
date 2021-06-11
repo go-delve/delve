@@ -2045,6 +2045,9 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 			variablesReference = maybeCreateVariableHandle(v)
 		}
 	}
+
+	// By default, only values of variables that have children can be truncated.
+	// If showFullValue is set, then all value strings are not truncated.
 	canTruncateValue := showFullValue&opts == 0
 	if len(value) > defaultMaxValueLen && canTruncateValue && canHaveRef {
 		value = value[:defaultMaxValueLen] + "..."
@@ -2123,7 +2126,9 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			}
 		}
 		var opts convertVariableFlags
-		if ctxt == "variables" || ctxt == "hover" || ctxt == "clipboard" {
+		// Send the full value when the context is "clipboard" or "variables" since
+		// these contexts are used to copy the value.
+		if ctxt == "clipboard" || ctxt == "variables" {
 			opts |= showFullValue
 		}
 		exprVal, exprRef := s.convertVariableWithOpts(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression), opts)

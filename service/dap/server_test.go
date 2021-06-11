@@ -2883,7 +2883,7 @@ func TestEvaluateRequestLongStrLargeValue(t *testing.T) {
 							got3 := client.ExpectEvaluateResponse(t)
 							want3 := m1Truncated
 							switch evalContext {
-							case "variables", "hover", "clipboard":
+							case "variables", "clipboard":
 								want3 = m1
 							}
 							checkEvalRegex(t, got3, want3, true)
