@@ -2366,7 +2366,9 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 			// Attempt to get the value of the throw reason.
 			// This is not currently working for Go 1.16 or 1.17: https://github.com/golang/go/issues/46425.
 			handleError := func(err error) {
-				body.Description = fmt.Sprintf("Error getting throw reason: %s", err.Error())
+				if err != nil {
+					body.Description = fmt.Sprintf("Error getting throw reason: %s", err.Error())
+				}
 				if goversion.VersionAfterOrEqual(s.debugger.TargetGoVersion(), 1, 16) {
 					body.Description = "Throw reason unavailable, see https://github.com/golang/go/issues/46425"
 				}
@@ -2376,7 +2378,7 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 			if err == nil {
 				if exprVar.Value != nil {
 					body.Description = exprVar.Value.String()
-				} else if exprVar.Unreadable != nil {
+				} else {
 					handleError(exprVar.Unreadable)
 				}
 			} else {
