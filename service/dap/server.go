@@ -2126,6 +2126,8 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			}
 		}
 		var opts convertVariableFlags
+		// Send the full value when the context is "clipboard" or "variables" since
+		// these contexts are used to copy the value.
 		if ctxt == "clipboard" || ctxt == "variables" {
 			opts |= showFullValue
 		}
