@@ -35,7 +35,6 @@ import (
 	"github.com/go-delve/delve/pkg/terminal"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
-	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/internal/sameuser"
 	"github.com/google/go-dap"
 	"github.com/sirupsen/logrus"
@@ -119,7 +118,7 @@ type Server struct {
 	// conn is the accepted client connection.
 	conn net.Conn
 	// debugger is the underlying debugger service.
-	debugger *debugger.Debugger
+	debugger *Debugger
 	// binaryToRemove is the temp compiled binary to be removed on disconnect (if any).
 	binaryToRemove string
 	// noDebugProcess is set for the noDebug launch process.
@@ -128,14 +127,6 @@ type Server struct {
 	// sendingMu synchronizes writing to net.Conn
 	// to ensure that messages do not get interleaved
 	sendingMu sync.Mutex
-
-	// runningMu synchronizes goroutines trying to restart the process.
-	// While holding runningMu, it is guaranteed that no other goroutine
-	// will attempt to start / restart the process. This does not mean the program
-	// may not halt while runningMu is locked.
-	runningMu   sync.Mutex
-	targetMutex sync.Mutex
-	running     bool
 }
 
 // launchAttachArgs captures arguments from launch/attach request that
@@ -386,6 +377,7 @@ func (s *Server) recoverPanic(request dap.Message) {
 
 func (s *Server) handleRequest(request dap.Message) {
 	defer s.recoverPanic(request)
+
 	jsonmsg, _ := json.Marshal(request)
 	s.log.Debug("[<- from client]", string(jsonmsg))
 
@@ -433,7 +425,7 @@ func (s *Server) handleRequest(request dap.Message) {
 	// the next stop. In addition, the editor itself might block waiting
 	// for these requests to return. We are not aware of any requests
 	// that would benefit from this approach at this time.
-	if s.debugger != nil && s.IsRunning() {
+	if s.debugger != nil && s.debugger.IsRunning() {
 		switch request := request.(type) {
 		case *dap.ThreadsRequest:
 			// On start-up, the client requests the baseline of currently existing threads
@@ -449,7 +441,7 @@ func (s *Server) handleRequest(request dap.Message) {
 			s.send(response)
 		case *dap.SetBreakpointsRequest:
 			s.log.Debug("halting execution to set breakpoints")
-			_, err := s.doHaltingCommand(&api.DebuggerCommand{Name: api.Halt})
+			_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 			if err != nil {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
@@ -471,7 +463,7 @@ func (s *Server) handleRequest(request dap.Message) {
 			// in proc.(*Target).Continue, leaving NextInProgress as true.
 		case *dap.SetFunctionBreakpointsRequest:
 			s.log.Debug("halting execution to set breakpoints")
-			_, err := s.doHaltingCommand(&api.DebuggerCommand{Name: api.Halt})
+			_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 			if err != nil {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
@@ -879,7 +871,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	func() {
 		s.mu.Lock()
 		defer s.mu.Unlock() // Make sure to unlock in case of panic that will become internal error
-		s.debugger, err = debugger.New(&s.config.Debugger, s.config.ProcessArgs)
+		s.debugger, err = NewDapDebugger(&s.config.Debugger, s.config.ProcessArgs, s.log, s.logToConsole)
 	}()
 	if err != nil {
 		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
@@ -976,7 +968,7 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 	// To avoid goroutine leaks, we can use a wait group or have the goroutine listen
 	// for a stop signal on a dedicated quit channel at suitable points (use context?).
 	// Additional clean-up might be especially critical when we support multiple clients.
-	state, err := s.doHaltingCommand(&api.DebuggerCommand{Name: api.Halt})
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 	if err == proc.ErrProcessDetached {
 		s.log.Debug("halt returned error: ", err)
 		return nil
@@ -1422,7 +1414,7 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 		func() {
 			s.mu.Lock()
 			defer s.mu.Unlock() // Make sure to unlock in case of panic that will become internal error
-			s.debugger, err = debugger.New(&s.config.Debugger, nil)
+			s.debugger, err = NewDapDebugger(&s.config.Debugger, nil, s.log, s.logToConsole)
 		}()
 		if err != nil {
 			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
@@ -1488,7 +1480,7 @@ func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan
 			AllThreadsContinued: true,
 		},
 	})
-	_, err := s.doHaltingCommand(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId})
+	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
 	if err != nil {
 		s.log.Errorf("Error switching goroutines while stepping: %v", err)
 		// If we encounter an error, we will have to send a stopped event
@@ -1511,7 +1503,7 @@ func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan
 // onPauseRequest handles 'pause' request.
 // This is a mandatory request to support.
 func (s *Server) onPauseRequest(request *dap.PauseRequest) {
-	_, err := s.doHaltingCommand(&api.DebuggerCommand{Name: api.Halt})
+	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToHalt, "Unable to halt execution", err.Error())
 		return
@@ -2577,64 +2569,6 @@ func (s *Server) resetHandlesForStoppedEvent() {
 	s.exceptionErr = nil
 }
 
-func (s *Server) setRunning(running bool) {
-	s.runningMu.Lock()
-	s.running = running
-	s.runningMu.Unlock()
-}
-
-func (s *Server) IsRunning() bool {
-	s.runningMu.Lock()
-	defer s.runningMu.Unlock()
-	return s.running
-}
-
-// doHaltingCommand handles commands that should halt execution or
-// operate on a command
-func (s *Server) doHaltingCommand(command *api.DebuggerCommand) (*api.DebuggerState, error) {
-	state, err := s.debugger.Command(command, nil)
-	s.targetMutex.Lock()
-	defer s.targetMutex.Unlock()
-	s.setRunning(false)
-	return state, err
-}
-
-func (s *Server) doRunContinueCommand(command string, asyncSetupDone chan struct{}) (string, *api.DebuggerState, error) {
-	s.targetMutex.Lock()
-	defer s.targetMutex.Unlock()
-	if !s.IsRunning() {
-		// Make sure to cancel next first.
-		if err := s.debugger.CancelNext(); err != nil {
-			s.log.Error(err)
-		} else {
-			s.log.Debug("next cancelled\n")
-			s.send(&dap.OutputEvent{
-				Event: *newEvent("output"),
-				Body: dap.OutputEventBody{
-					Output:   "next cancelled",
-					Category: "console",
-				}})
-		}
-		state, err := s.debugger.State(true)
-		return "pause", state, err
-	}
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
-	var reason string
-	switch s.debugger.StopReason() {
-	case proc.StopNextFinished:
-		reason = "step"
-	case proc.StopManual: // triggered by halt
-		reason = "pause"
-	case proc.StopUnknown: // can happen while terminating
-		reason = "unknown"
-	case proc.StopWatchpoint:
-		reason = "data breakpoint"
-	default:
-		reason = "breakpoint"
-	}
-	return reason, state, err
-}
-
 // doRunCommand runs a debugger command until it stops on
 // termination, error, breakpoint, etc, when an appropriate
 // event needs to be sent to the client. asyncSetupDone is
@@ -2642,36 +2576,17 @@ func (s *Server) doRunContinueCommand(command string, asyncSetupDone chan struct
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
 func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
-	s.setRunning(true)
-	defer s.setRunning(false)
-
 	// TODO(polina): it appears that debugger.Command doesn't always close
 	// asyncSetupDone (e.g. when having an error next while nexting).
-	// So we should always close it ourselves just in case. This should free up the
-	// handleRequest goroutine in case of panic.
+	// So we should always close it ourselves just in case.
 	defer s.asyncCommandDone(asyncSetupDone)
-
-	var stopReason string
-	stopReason, state, err := s.doRunContinueCommand(command, asyncSetupDone)
-	for {
-		if !(state != nil && state.NextInProgress) {
-			break
-		}
-		// If there is a NextInProgress, we want to notify the user that a breakpoint
-		// was hit and then continue.
-		if bp := state.CurrentThread.Breakpoint; bp != nil {
-			msg := fmt.Sprintf("goroutine %d hit breakpoint (id: %d, loc: %s:%d) during %s", stoppedGoroutineID(state), bp.ID, bp.File, bp.Line, command)
-			s.log.Debugln(msg)
-			s.logToConsole(msg)
-		}
-		stopReason, state, err = s.doRunContinueCommand(api.Continue, nil)
-	}
-
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
 	if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		return
 	}
 
+	stopReason := s.debugger.StopReason()
 	file, line := "?", -1
 	if state != nil && state.CurrentThread != nil {
 		file, line = state.CurrentThread.File, state.CurrentThread.Line
@@ -2687,7 +2602,19 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 		// then the stopped reason does not show up anywhere in the
 		// vscode ui.
 		stopped.Body.ThreadId = stoppedGoroutineID(state)
-		stopped.Body.Reason = stopReason
+
+		switch stopReason {
+		case proc.StopNextFinished:
+			stopped.Body.Reason = "step"
+		case proc.StopManual: // triggered by halt
+			stopped.Body.Reason = "pause"
+		case proc.StopUnknown: // can happen while terminating
+			stopped.Body.Reason = "unknown"
+		case proc.StopWatchpoint:
+			stopped.Body.Reason = "data breakpoint"
+		default:
+			stopped.Body.Reason = "breakpoint"
+		}
 		if state.CurrentThread != nil && state.CurrentThread.Breakpoint != nil {
 			switch state.CurrentThread.Breakpoint.Name {
 			case proc.FatalThrow:

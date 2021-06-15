@@ -3402,18 +3402,6 @@ func TestBadAccess(t *testing.T) {
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
 					expectStoppedOnError("invalid memory address or nil pointer dereference")
-
-					client.NextRequest(1)
-					client.ExpectNextResponse(t)
-					expectStoppedOnError("next while nexting")
-
-					client.StepInRequest(1)
-					client.ExpectStepInResponse(t)
-					expectStoppedOnError("next while nexting")
-
-					client.StepOutRequest(1)
-					client.ExpectStepOutResponse(t)
-					expectStoppedOnError("next while nexting")
 				},
 				disconnect: true,
 			}})
