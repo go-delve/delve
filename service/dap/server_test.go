@@ -3109,7 +3109,7 @@ func TestNextAndStep(t *testing.T) {
 	})
 }
 
-func TestIssue387(t *testing.T) {
+func TestNextWhileNexting(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
 		t.Skip("test is not valid on ARM64")
 	}

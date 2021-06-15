@@ -129,11 +129,13 @@ type Server struct {
 	// to ensure that messages do not get interleaved
 	sendingMu sync.Mutex
 
-	// continueMu synchronizes goroutines trying to restart the process.
-	// While holding continueMu, it is guaranteed that no other goroutine
+	// runningMu synchronizes goroutines trying to restart the process.
+	// While holding runningMu, it is guaranteed that no other goroutine
 	// will attempt to start / restart the process. This does not mean the program
-	// may not halt while continueMu is locked.
-	continueMu sync.Mutex
+	// may not halt while runningMu is locked.
+	runningMu   sync.Mutex
+	targetMutex sync.Mutex
+	running     bool
 }
 
 // launchAttachArgs captures arguments from launch/attach request that
@@ -384,9 +386,6 @@ func (s *Server) recoverPanic(request dap.Message) {
 
 func (s *Server) handleRequest(request dap.Message) {
 	defer s.recoverPanic(request)
-	s.continueMu.Lock()
-	defer s.continueMu.Unlock()
-
 	jsonmsg, _ := json.Marshal(request)
 	s.log.Debug("[<- from client]", string(jsonmsg))
 
@@ -434,7 +433,7 @@ func (s *Server) handleRequest(request dap.Message) {
 	// the next stop. In addition, the editor itself might block waiting
 	// for these requests to return. We are not aware of any requests
 	// that would benefit from this approach at this time.
-	if s.debugger != nil && s.debugger.IsRunning() {
+	if s.debugger != nil && s.IsRunning() {
 		switch request := request.(type) {
 		case *dap.ThreadsRequest:
 			// On start-up, the client requests the baseline of currently existing threads
@@ -450,7 +449,7 @@ func (s *Server) handleRequest(request dap.Message) {
 			s.send(response)
 		case *dap.SetBreakpointsRequest:
 			s.log.Debug("halting execution to set breakpoints")
-			_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+			_, err := s.doHaltingCommand(&api.DebuggerCommand{Name: api.Halt})
 			if err != nil {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
@@ -472,7 +471,7 @@ func (s *Server) handleRequest(request dap.Message) {
 			// in proc.(*Target).Continue, leaving NextInProgress as true.
 		case *dap.SetFunctionBreakpointsRequest:
 			s.log.Debug("halting execution to set breakpoints")
-			_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+			_, err := s.doHaltingCommand(&api.DebuggerCommand{Name: api.Halt})
 			if err != nil {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
@@ -977,7 +976,7 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 	// To avoid goroutine leaks, we can use a wait group or have the goroutine listen
 	// for a stop signal on a dedicated quit channel at suitable points (use context?).
 	// Additional clean-up might be especially critical when we support multiple clients.
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+	state, err := s.doHaltingCommand(&api.DebuggerCommand{Name: api.Halt})
 	if err == proc.ErrProcessDetached {
 		s.log.Debug("halt returned error: ", err)
 		return nil
@@ -1489,7 +1488,7 @@ func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan
 			AllThreadsContinued: true,
 		},
 	})
-	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
+	_, err := s.doHaltingCommand(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId})
 	if err != nil {
 		s.log.Errorf("Error switching goroutines while stepping: %v", err)
 		// If we encounter an error, we will have to send a stopped event
@@ -1512,7 +1511,7 @@ func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan
 // onPauseRequest handles 'pause' request.
 // This is a mandatory request to support.
 func (s *Server) onPauseRequest(request *dap.PauseRequest) {
-	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+	_, err := s.doHaltingCommand(&api.DebuggerCommand{Name: api.Halt})
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToHalt, "Unable to halt execution", err.Error())
 		return
@@ -2578,51 +2577,35 @@ func (s *Server) resetHandlesForStoppedEvent() {
 	s.exceptionErr = nil
 }
 
-func (s *Server) runContinueCommand() (*api.DebuggerState, error) {
-	releaseRunningLock := make(chan struct{})
-	defer s.asyncCommandDone(releaseRunningLock)
-
-	s.continueMu.Lock()
-	go func() {
-		<-releaseRunningLock
-		s.continueMu.Unlock()
-	}()
-
-	return s.debugger.Command(&api.DebuggerCommand{Name: api.Continue}, releaseRunningLock)
+func (s *Server) setRunning(running bool) {
+	s.runningMu.Lock()
+	s.running = running
+	s.runningMu.Unlock()
 }
 
-// doRunCommand runs a debugger command until it stops on
-// termination, error, breakpoint, etc, when an appropriate
-// event needs to be sent to the client. asyncSetupDone is
-// a channel that will be closed to signal that an
-// asynchornous command has completed setup or was interrupted
-// due to an error, so the server is ready to receive new requests.
-func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
-	// TODO(polina): it appears that debugger.Command doesn't always close
-	// asyncSetupDone (e.g. when having an error next while nexting).
-	// So we should always close it ourselves just in case. This should free up the
-	// handleRequest goroutine in case of panic.
-	defer s.asyncCommandDone(asyncSetupDone)
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
-	// Make sure that asyncSetupDone is closed, so that handleRequest
-	// will release continueMu.
-	s.asyncCommandDone(asyncSetupDone)
+func (s *Server) IsRunning() bool {
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
+	return s.running
+}
 
-	var stopReason = proc.StopUnknown
-	for err == nil && !state.Exited && state.CurrentThread != nil && state.NextInProgress {
-		// If there is a NextInProgress, we want to notify the user that a breakpoint
-		// was hit and then continue.
-		if bp := state.CurrentThread.Breakpoint; bp != nil {
-			msg := fmt.Sprintf("goroutine %d hit breakpoint (id: %d, loc: %s:%d) during %s", stoppedGoroutineID(state), bp.ID, bp.File, bp.Line, command)
-			s.log.Debugln(msg)
-			s.logToConsole(msg)
-			state, err = s.runContinueCommand()
-			continue
-		}
+// doHaltingCommand handles commands that should halt execution or
+// operate on a command
+func (s *Server) doHaltingCommand(command *api.DebuggerCommand) (*api.DebuggerState, error) {
+	state, err := s.debugger.Command(command, nil)
+	s.targetMutex.Lock()
+	defer s.targetMutex.Unlock()
+	s.setRunning(false)
+	return state, err
+}
 
-		// There was no breakpoint to skip, we should cancel next and process this stop.
-		if cancelNextErr := s.debugger.CancelNext(); cancelNextErr != nil {
-			s.log.Error(cancelNextErr)
+func (s *Server) doRunContinueCommand(command string, asyncSetupDone chan struct{}) (string, *api.DebuggerState, error) {
+	s.targetMutex.Lock()
+	defer s.targetMutex.Unlock()
+	if !s.IsRunning() {
+		// Make sure to cancel next first.
+		if err := s.debugger.CancelNext(); err != nil {
+			s.log.Error(err)
 		} else {
 			s.log.Debug("next cancelled\n")
 			s.send(&dap.OutputEvent{
@@ -2632,7 +2615,56 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 					Category: "console",
 				}})
 		}
-		break
+		state, err := s.debugger.State(true)
+		return "pause", state, err
+	}
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
+	var reason string
+	switch s.debugger.StopReason() {
+	case proc.StopNextFinished:
+		reason = "step"
+	case proc.StopManual: // triggered by halt
+		reason = "pause"
+	case proc.StopUnknown: // can happen while terminating
+		reason = "unknown"
+	case proc.StopWatchpoint:
+		reason = "data breakpoint"
+	default:
+		reason = "breakpoint"
+	}
+	return reason, state, err
+}
+
+// doRunCommand runs a debugger command until it stops on
+// termination, error, breakpoint, etc, when an appropriate
+// event needs to be sent to the client. asyncSetupDone is
+// a channel that will be closed to signal that an
+// asynchornous command has completed setup or was interrupted
+// due to an error, so the server is ready to receive new requests.
+func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
+	s.setRunning(true)
+	defer s.setRunning(false)
+
+	// TODO(polina): it appears that debugger.Command doesn't always close
+	// asyncSetupDone (e.g. when having an error next while nexting).
+	// So we should always close it ourselves just in case. This should free up the
+	// handleRequest goroutine in case of panic.
+	defer s.asyncCommandDone(asyncSetupDone)
+
+	var stopReason string
+	stopReason, state, err := s.doRunContinueCommand(command, asyncSetupDone)
+	for {
+		if !(state != nil && state.NextInProgress) {
+			break
+		}
+		// If there is a NextInProgress, we want to notify the user that a breakpoint
+		// was hit and then continue.
+		if bp := state.CurrentThread.Breakpoint; bp != nil {
+			msg := fmt.Sprintf("goroutine %d hit breakpoint (id: %d, loc: %s:%d) during %s", stoppedGoroutineID(state), bp.ID, bp.File, bp.Line, command)
+			s.log.Debugln(msg)
+			s.logToConsole(msg)
+		}
+		stopReason, state, err = s.doRunContinueCommand(api.Continue, nil)
 	}
 
 	if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
@@ -2640,9 +2672,6 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 		return
 	}
 
-	if stopReason == proc.StopUnknown {
-		stopReason = s.debugger.StopReason()
-	}
 	file, line := "?", -1
 	if state != nil && state.CurrentThread != nil {
 		file, line = state.CurrentThread.File, state.CurrentThread.Line
@@ -2658,19 +2687,7 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 		// then the stopped reason does not show up anywhere in the
 		// vscode ui.
 		stopped.Body.ThreadId = stoppedGoroutineID(state)
-
-		switch stopReason {
-		case proc.StopNextFinished:
-			stopped.Body.Reason = "step"
-		case proc.StopManual: // triggered by halt
-			stopped.Body.Reason = "pause"
-		case proc.StopUnknown: // can happen while terminating
-			stopped.Body.Reason = "unknown"
-		case proc.StopWatchpoint:
-			stopped.Body.Reason = "data breakpoint"
-		default:
-			stopped.Body.Reason = "breakpoint"
-		}
+		stopped.Body.Reason = stopReason
 		if state.CurrentThread != nil && state.CurrentThread.Breakpoint != nil {
 			switch state.CurrentThread.Breakpoint.Name {
 			case proc.FatalThrow:
