@@ -943,6 +943,7 @@ func TestOptimizationCheck(t *testing.T) {
 }
 
 func TestTruncateStacktrace(t *testing.T) {
+	const stacktraceTruncatedMessage = "(truncated)"
 	withTestTerminal("stacktraceprog", t, func(term *FakeTerminal) {
 		term.MustExec("break main.stacktraceme")
 		term.MustExec("continue")

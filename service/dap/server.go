@@ -32,7 +32,6 @@ import (
 	"github.com/go-delve/delve/pkg/locspec"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
-	"github.com/go-delve/delve/pkg/terminal"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
@@ -2475,7 +2474,7 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 			fmt.Fprintln(&buf, "Stack:")
 			userLoc := g.UserCurrent()
 			userFuncPkg := fnPackageName(&userLoc)
-			terminal.PrintStack(s.toClientPath, &buf, apiFrames, "\t", false, func(s api.Stackframe) bool {
+			api.PrintStack(s.toClientPath, &buf, apiFrames, "\t", false, func(s api.Stackframe) bool {
 				// Include all stack frames if the stack trace is for a system goroutine,
 				// otherwise, skip runtime stack frames.
 				if userFuncPkg == "runtime" {
