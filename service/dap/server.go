@@ -2638,7 +2638,7 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 			break
 		}
 		// If there is a NextInProgress, we want to notify the user that a breakpoint
-		// was hit and then continue.
+		// was hit and then continue execution.
 		if bp := state.CurrentThread.Breakpoint; bp != nil {
 			msg := fmt.Sprintf("goroutine %d hit breakpoint (id: %d, loc: %s:%d) during %s", stoppedGoroutineID(state), bp.ID, bp.File, bp.Line, command)
 			s.log.Debugln(msg)

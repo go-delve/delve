@@ -3109,7 +3109,7 @@ func TestNextAndStep(t *testing.T) {
 	})
 }
 
-func TestNextWhileNexting(t *testing.T) {
+func TestNextInterrupted(t *testing.T) {
 	if runtime.GOARCH == "arm64" {
 		t.Skip("test is not valid on ARM64")
 	}
@@ -3162,7 +3162,7 @@ func TestNextWhileNexting(t *testing.T) {
 								wantOutput := dap.OutputEvent{
 									Event: *newEvent("output"),
 									Body: dap.OutputEventBody{
-										Output:   "goroutine <id> hit breakpoint (id: ..., loc: .../issue387.go:8) during next\n",
+										Output:   "goroutine ... hit breakpoint (id: ..., loc: .../issue387.go:8) during next\n",
 										Category: "console",
 									},
 								}
