@@ -1867,7 +1867,7 @@ func (d *Debugger) StopRecording() error {
 func (d *Debugger) StopReason() proc.StopReason {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-	return d.target.StopReason
+	return d.target.StopReason()
 }
 
 // LockTarget acquires the target mutex.
