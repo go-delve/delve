@@ -1519,7 +1519,6 @@ func TestVariablesLoading(t *testing.T) {
 						longarr = client.ExpectVariablesResponse(t)
 						checkChildren(t, longarr, "longarr", 50)
 						checkArrayChildren(t, longarr, "longarr", 50)
-
 					}
 
 					// Slice not fully loaded based on LoadConfig.MaxArrayValues.
@@ -1658,6 +1657,30 @@ func TestVariablesLoading(t *testing.T) {
 							}
 						}
 					}
+
+					ref = checkVarExactIndexed(t, locals, -1, "byteslice", "byteslice", "[]uint8 len: 5, cap: 5, [116,195,168,115,116]", "[]uint8", true, 5, 1)
+					client.NamedVariablesRequest(ref)
+					named := client.ExpectVariablesResponse(t)
+					checkChildren(t, named, "byteslice", 1)
+					checkVarExact(t, named, 0, "string()", "", "\"tèst\"", "string", false)
+
+					ref = checkVarExactIndexed(t, locals, -1, "runeslice", "runeslice", "[]int32 len: 4, cap: 4, [116,232,115,116]", "[]int32", true, 4, 1)
+					client.NamedVariablesRequest(ref)
+					named = client.ExpectVariablesResponse(t)
+					checkChildren(t, named, "runeslice", 1)
+					checkVarExact(t, named, 0, "string()", "", "\"tèst\"", "string", false)
+
+					ref = checkVarExactIndexed(t, locals, -1, "bytearray", "bytearray", "[5]uint8 [116,195,168,115,116]", "[5]uint8", true, 5, 1)
+					client.NamedVariablesRequest(ref)
+					named = client.ExpectVariablesResponse(t)
+					checkChildren(t, named, "byetarray", 1)
+					checkVarExact(t, named, 0, "string()", "", "\"tèst\"", "string", false)
+
+					ref = checkVarExactIndexed(t, locals, -1, "runearray", "runearray", "[4]int32 [116,232,115,116]", "[4]int32", true, 4, 1)
+					client.NamedVariablesRequest(ref)
+					named = client.ExpectVariablesResponse(t)
+					checkChildren(t, named, "runearray", 1)
+					checkVarExact(t, named, 0, "string()", "", "\"tèst\"", "string", false)
 
 					// Auto-loading works with call return variables as well
 					protest.MustSupportFunctionCalls(t, testBackend)
