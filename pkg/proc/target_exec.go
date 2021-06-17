@@ -84,7 +84,7 @@ func (dbp *Target) Continue() error {
 				}
 			}
 			var pe ErrProcessExited
-			if dbp.StopReason == StopExited && errors.As(err, &pe) {
+			if errors.As(err, &pe) {
 				dbp.exitStatus = pe.Status
 			}
 			return err
