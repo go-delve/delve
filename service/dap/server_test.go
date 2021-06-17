@@ -3170,9 +3170,6 @@ func TestNextAndStep(t *testing.T) {
 }
 
 func TestNextInterrupted(t *testing.T) {
-	if runtime.GOARCH == "arm64" {
-		t.Skip("test is not valid on ARM64")
-	}
 	if runtime.GOOS == "freebsd" {
 		t.Skip("test is not valid on FreeBSD")
 	}

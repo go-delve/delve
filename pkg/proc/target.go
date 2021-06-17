@@ -36,10 +36,10 @@ type Target struct {
 
 	proc ProcessInternal
 
-	// stopReason describes the reason why the target process is stopped.
+	// StopReason describes the reason why the target process is stopped.
 	// A process could be stopped for multiple simultaneous reasons, in which
 	// case only one will be reported.
-	stopReason StopReason
+	StopReason StopReason
 
 	// CanDump is true if core dumping is supported.
 	CanDump bool
@@ -108,13 +108,6 @@ func (sr StopReason) String() string {
 	}
 }
 
-func (t *Target) StopReason() StopReason {
-	if msr := t.CheckAndClearManualStopRequest(); msr {
-		t.stopReason = StopManual
-	}
-	return t.stopReason
-}
-
 const (
 	StopUnknown             StopReason = iota
 	StopLaunched                       // The process was just launched
@@ -172,7 +165,7 @@ func NewTarget(p Process, currentThread Thread, cfg NewTargetConfig) (*Target, e
 		Process:       p,
 		proc:          p.(ProcessInternal),
 		fncallForG:    make(map[int]*callInjection),
-		stopReason:    cfg.StopReason,
+		StopReason:    cfg.StopReason,
 		currentThread: currentThread,
 		CanDump:       cfg.CanDump,
 	}
@@ -242,9 +235,9 @@ func (t *Target) Restart(from string) error {
 	t.currentThread = currentThread
 	t.selectedGoroutine, _ = GetG(t.CurrentThread())
 	if from != "" {
-		t.stopReason = StopManual
+		t.StopReason = StopManual
 	} else {
-		t.stopReason = StopLaunched
+		t.StopReason = StopLaunched
 	}
 	return nil
 }
@@ -300,7 +293,7 @@ func (t *Target) Detach(kill bool) error {
 			}
 		}
 	}
-	t.stopReason = StopUnknown
+	t.StopReason = StopUnknown
 	return t.proc.Detach(kill)
 }
 

@@ -128,10 +128,10 @@ type Server struct {
 	// to ensure that messages do not get interleaved
 	sendingMu sync.Mutex
 
-	runningMutex sync.Mutex
-	running      bool
+	runningMu sync.Mutex
+	running   bool
 
-	stopMutex sync.Mutex
+	haltMu sync.Mutex
 }
 
 // launchAttachArgs captures arguments from launch/attach request that
@@ -430,7 +430,7 @@ func (s *Server) handleRequest(request dap.Message) {
 	// the next stop. In addition, the editor itself might block waiting
 	// for these requests to return. We are not aware of any requests
 	// that would benefit from this approach at this time.
-	if s.debugger != nil && s.IsRunning() {
+	if s.debugger != nil && s.isRunning() {
 		switch request := request.(type) {
 		case *dap.ThreadsRequest:
 			// On start-up, the client requests the baseline of currently existing threads
@@ -2575,14 +2575,14 @@ func (s *Server) resetHandlesForStoppedEvent() {
 }
 
 func (s *Server) setRunning(running bool) {
-	s.runningMutex.Lock()
+	s.runningMu.Lock()
 	s.running = running
-	s.runningMutex.Unlock()
+	s.runningMu.Unlock()
 }
 
-func (s *Server) IsRunning() bool {
-	s.runningMutex.Lock()
-	defer s.runningMutex.Unlock()
+func (s *Server) isRunning() bool {
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
 	return s.running
 }
 
@@ -2593,26 +2593,25 @@ func (s *Server) IsRunning() bool {
 // synchronization is required between "resume" and "halt" to make sure this does
 // not happen.
 func (s *Server) halt() (*api.DebuggerState, error) {
-	s.stopMutex.Lock()
-	defer s.stopMutex.Unlock()
-	s.setRunning(false)
+	s.haltMu.Lock()
+	defer s.haltMu.Unlock()
 	return s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 }
 
 func (s *Server) resume() (*api.DebuggerState, error) {
 	resumeNotify := make(chan struct{}, 1)
-	s.stopMutex.Lock()
+	s.haltMu.Lock()
 	go func() {
 		<-resumeNotify
-		s.stopMutex.Unlock()
+		s.haltMu.Unlock()
 	}()
 
-	if !s.IsRunning() {
+	if s.debugger.CheckAndClearManualStopRequest() {
 		// A halt request came in so we need to CancelNext.
 		if err := s.debugger.CancelNext(); err != nil {
 			s.log.Error(err)
 		}
-		return s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, resumeNotify)
+		return s.debugger.State(false)
 	}
 	return s.debugger.Command(&api.DebuggerCommand{Name: api.Continue}, resumeNotify)
 }

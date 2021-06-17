@@ -58,19 +58,19 @@ func (dbp *Target) Continue() error {
 		// Make sure we clear internal breakpoints if we simultaneously receive a
 		// manual stop request and hit a breakpoint.
 		if dbp.CheckAndClearManualStopRequest() {
-			dbp.stopReason = StopManual
+			dbp.StopReason = StopManual
 			dbp.ClearInternalBreakpoints()
 		}
 	}()
 	for {
 		if dbp.CheckAndClearManualStopRequest() {
-			dbp.stopReason = StopManual
+			dbp.StopReason = StopManual
 			dbp.ClearInternalBreakpoints()
 			return nil
 		}
 		dbp.ClearAllGCache()
 		trapthread, stopReason, err := dbp.proc.ContinueOnce()
-		dbp.stopReason = stopReason
+		dbp.StopReason = stopReason
 		if err != nil {
 			// Attempt to refresh status of current thread/current goroutine, see
 			// Issue #2078.
@@ -85,7 +85,7 @@ func (dbp *Target) Continue() error {
 			}
 			return err
 		}
-		if dbp.stopReason == StopLaunched {
+		if dbp.StopReason == StopLaunched {
 			dbp.ClearInternalBreakpoints()
 		}
 
@@ -136,7 +136,7 @@ func (dbp *Target) Continue() error {
 				if err := stepInstructionOut(dbp, curthread, "runtime.breakpoint", "runtime.Breakpoint"); err != nil {
 					return err
 				}
-				dbp.stopReason = StopHardcodedBreakpoint
+				dbp.StopReason = StopHardcodedBreakpoint
 				return conditionErrors(threads)
 			case g == nil || dbp.fncallForG[g.ID] == nil:
 				// a hardcoded breakpoint somewhere else in the code (probably cgo), or manual stop in cgo
@@ -183,7 +183,7 @@ func (dbp *Target) Continue() error {
 				if err := dbp.ClearInternalBreakpoints(); err != nil {
 					return err
 				}
-				dbp.stopReason = StopNextFinished
+				dbp.StopReason = StopNextFinished
 				return conditionErrors(threads)
 			}
 		case curbp.Active:
@@ -200,9 +200,9 @@ func (dbp *Target) Continue() error {
 			if curbp.Name == UnrecoveredPanic {
 				dbp.ClearInternalBreakpoints()
 			}
-			dbp.stopReason = StopBreakpoint
+			dbp.StopReason = StopBreakpoint
 			if curbp.Breakpoint.WatchType != 0 {
-				dbp.stopReason = StopWatchpoint
+				dbp.StopReason = StopWatchpoint
 			}
 			return conditionErrors(threads)
 		default:
@@ -211,7 +211,7 @@ func (dbp *Target) Continue() error {
 		if callInjectionDone {
 			// a call injection was finished, don't let a breakpoint with a failed
 			// condition or a step breakpoint shadow this.
-			dbp.stopReason = StopCallReturned
+			dbp.StopReason = StopCallReturned
 			return conditionErrors(threads)
 		}
 	}
