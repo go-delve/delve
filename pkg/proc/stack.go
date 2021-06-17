@@ -195,11 +195,6 @@ type stackIterator struct {
 	opts StacktraceOptions
 }
 
-type savedLR struct {
-	ptr uint64
-	val uint64
-}
-
 func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, regs op.DwarfRegisters, stackhi uint64, g *G, opts StacktraceOptions) *stackIterator {
 	systemstack := true
 	if g != nil {
