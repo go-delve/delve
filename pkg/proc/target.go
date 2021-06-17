@@ -62,6 +62,10 @@ type Target struct {
 	// This must be cleared whenever the target is resumed.
 	gcache goroutineCache
 	iscgo  *bool
+
+	// exitStatus is the exit status of the process we are debugging.
+	// Saved here to relay to any future commands.
+	exitStatus int
 }
 
 // ErrProcessExited indicates that the process has exited and contains both
@@ -201,6 +205,21 @@ func (t *Target) IsCgo() bool {
 		}
 	}
 	return false
+}
+
+// Valid returns true if this Process can be used. When it returns false it
+// also returns an error describing why the Process is invalid (either
+// ErrProcessExited or ErrProcessDetached).
+func (t *Target) Valid() (bool, error) {
+	ok, err := t.proc.Valid()
+	if !ok && err != nil {
+		var pe ErrProcessExited
+		if errors.As(err, &pe) {
+			pe.Status = t.exitStatus
+			err = pe
+		}
+	}
+	return ok, err
 }
 
 // SupportsFunctionCalls returns whether or not the backend supports
