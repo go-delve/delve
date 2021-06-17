@@ -1278,7 +1278,7 @@ func TestFrameEvaluation(t *testing.T) {
 		found := make([]bool, 10)
 		for _, g := range gs {
 			frame := -1
-			frames, err := g.Stacktrace(10, 0)
+			frames, err := g.Stacktrace(40, 0)
 			if err != nil {
 				t.Logf("could not stacktrace goroutine %d: %v\n", g.ID, err)
 				continue
@@ -1681,6 +1681,78 @@ func TestCondBreakpointError(t *testing.T) {
 			if n != 7 {
 				t.Fatalf("Stoppend on wrong goroutine %d\n", n)
 			}
+		}
+	})
+}
+
+func TestHitCondBreakpointEQ(t *testing.T) {
+	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture.Source, 7)
+		bp.HitCond = &struct {
+			Op  token.Token
+			Val int
+		}{token.EQL, 3}
+
+		assertNoError(p.Continue(), t, "Continue()")
+		ivar := evalVariable(p, t, "i")
+
+		i, _ := constant.Int64Val(ivar.Value)
+		if i != 3 {
+			t.Fatalf("Stoppend on wrong hitcount %d\n", i)
+		}
+
+		err := p.Continue()
+		if _, exited := err.(proc.ErrProcessExited); !exited {
+			t.Fatalf("Unexpected error on Continue(): %v", err)
+		}
+	})
+}
+
+func TestHitCondBreakpointGEQ(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture.Source, 7)
+		bp.HitCond = &struct {
+			Op  token.Token
+			Val int
+		}{token.GEQ, 3}
+
+		for it := 3; it <= 10; it++ {
+			assertNoError(p.Continue(), t, "Continue()")
+			ivar := evalVariable(p, t, "i")
+
+			i, _ := constant.Int64Val(ivar.Value)
+			if int(i) != it {
+				t.Fatalf("Stoppend on wrong hitcount %d\n", i)
+			}
+		}
+
+		assertNoError(p.Continue(), t, "Continue()")
+	})
+}
+
+func TestHitCondBreakpointREM(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture.Source, 7)
+		bp.HitCond = &struct {
+			Op  token.Token
+			Val int
+		}{token.REM, 2}
+
+		for it := 2; it <= 10; it += 2 {
+			assertNoError(p.Continue(), t, "Continue()")
+			ivar := evalVariable(p, t, "i")
+
+			i, _ := constant.Int64Val(ivar.Value)
+			if int(i) != it {
+				t.Fatalf("Stoppend on wrong hitcount %d\n", i)
+			}
+		}
+
+		err := p.Continue()
+		if _, exited := err.(proc.ErrProcessExited); !exited {
+			t.Fatalf("Unexpected error on Continue(): %v", err)
 		}
 	})
 }
@@ -2670,104 +2742,6 @@ func getg(goid int, gs []*proc.G) *proc.G {
 	return nil
 }
 
-func TestStacktraceWithBarriers(t *testing.T) {
-	// Go's Garbage Collector will insert stack barriers into stacks.
-	// This stack barrier is inserted by overwriting the return address for the
-	// stack frame with the address of runtime.stackBarrier.
-	// The original return address is saved into the stkbar slice inside the G
-	// struct.
-
-	// In Go 1.9 stack barriers have been removed and this test must be disabled.
-	if ver, _ := goversion.Parse(runtime.Version()); ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
-		return
-	}
-
-	// In Go 1.8 stack barriers are not inserted by default, this enables them.
-	godebugOld := os.Getenv("GODEBUG")
-	defer os.Setenv("GODEBUG", godebugOld)
-	os.Setenv("GODEBUG", "gcrescanstacks=1")
-
-	withTestProcess("binarytrees", t, func(p *proc.Target, fixture protest.Fixture) {
-		// We want to get a user goroutine with a stack barrier, to get that we execute the program until runtime.gcInstallStackBarrier is executed AND the goroutine it was executed onto contains a call to main.bottomUpTree
-		setFunctionBreakpoint(p, t, "runtime.gcInstallStackBarrier")
-		stackBarrierGoids := []int{}
-		for len(stackBarrierGoids) == 0 {
-			err := p.Continue()
-			if _, exited := err.(proc.ErrProcessExited); exited {
-				t.Logf("Could not run test")
-				return
-			}
-			assertNoError(err, t, "Continue()")
-			gs, _, err := proc.GoroutinesInfo(p, 0, 0)
-			assertNoError(err, t, "GoroutinesInfo()")
-			for _, th := range p.ThreadList() {
-				if bp := th.Breakpoint(); bp.Breakpoint == nil {
-					continue
-				}
-
-				goidVar := evalVariable(p, t, "gp.goid")
-				goid, _ := constant.Int64Val(goidVar.Value)
-
-				if g := getg(int(goid), gs); g != nil {
-					stack, err := g.Stacktrace(50, 0)
-					assertNoError(err, t, fmt.Sprintf("Stacktrace(goroutine = %d)", goid))
-					for _, frame := range stack {
-						if frame.Current.Fn != nil && frame.Current.Fn.Name == "main.bottomUpTree" {
-							stackBarrierGoids = append(stackBarrierGoids, int(goid))
-							break
-						}
-					}
-				}
-			}
-		}
-
-		if len(stackBarrierGoids) == 0 {
-			t.Fatalf("Could not find a goroutine with stack barriers")
-		}
-
-		t.Logf("stack barrier goids: %v\n", stackBarrierGoids)
-
-		assertNoError(p.StepOut(), t, "StepOut()")
-
-		gs, _, err := proc.GoroutinesInfo(p, 0, 0)
-		assertNoError(err, t, "GoroutinesInfo()")
-
-		for _, goid := range stackBarrierGoids {
-			g := getg(goid, gs)
-
-			stack, err := g.Stacktrace(200, 0)
-			assertNoError(err, t, "Stacktrace()")
-
-			// Check that either main.main or main.main.func1 appear in the
-			// stacktrace of this goroutine, if we failed at resolving stack barriers
-			// correctly the stacktrace will be truncated and neither main.main or
-			// main.main.func1 will appear
-			found := false
-			for _, frame := range stack {
-				if frame.Current.Fn == nil {
-					continue
-				}
-				if name := frame.Current.Fn.Name; name == "main.main" || name == "main.main.func1" {
-					found = true
-				}
-			}
-
-			t.Logf("Stacktrace for %d:\n", goid)
-			for _, frame := range stack {
-				name := "<>"
-				if frame.Current.Fn != nil {
-					name = frame.Current.Fn.Name
-				}
-				t.Logf("\t%s [CFA: %x Ret: %x] at %s:%d", name, frame.Regs.CFA, frame.Ret, frame.Current.File, frame.Current.Line)
-			}
-
-			if !found {
-				t.Logf("Truncated stacktrace for %d\n", goid)
-			}
-		}
-	})
-}
-
 func TestAttachDetach(t *testing.T) {
 	if testBackend == "lldb" && runtime.GOOS == "linux" {
 		bs, _ := ioutil.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
@@ -3251,7 +3225,7 @@ func TestCgoStacktrace(t *testing.T) {
 	}
 
 	skipOn(t, "broken - cgo stacktraces", "386")
-	skipOn(t, "broken - cgo stacktraces", "arm64")
+	skipOn(t, "broken - cgo stacktraces", "linux", "arm64")
 	protest.MustHaveCgo(t)
 
 	// Tests that:

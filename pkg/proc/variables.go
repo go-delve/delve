@@ -190,17 +190,15 @@ const (
 // G represents a runtime G (goroutine) structure (at least the
 // fields that Delve is interested in).
 type G struct {
-	ID        int    // Goroutine ID
-	PC        uint64 // PC of goroutine when it was parked.
-	SP        uint64 // SP of goroutine when it was parked.
-	BP        uint64 // BP of goroutine when it was parked (go >= 1.7).
-	LR        uint64 // LR of goroutine when it was parked.
-	GoPC      uint64 // PC of 'go' statement that created this goroutine.
-	StartPC   uint64 // PC of the first function run on this goroutine.
-	Status    uint64
-	stkbarVar *Variable // stkbar field of g struct
-	stkbarPos int       // stkbarPos field of g struct
-	stack     stack     // value of stack
+	ID      int    // Goroutine ID
+	PC      uint64 // PC of goroutine when it was parked.
+	SP      uint64 // SP of goroutine when it was parked.
+	BP      uint64 // BP of goroutine when it was parked (go >= 1.7).
+	LR      uint64 // LR of goroutine when it was parked.
+	GoPC    uint64 // PC of 'go' statement that created this goroutine.
+	StartPC uint64 // PC of the first function run on this goroutine.
+	Status  uint64
+	stack   stack // value of stack
 
 	WaitSince  int64
 	WaitReason int64
@@ -875,13 +873,6 @@ func (v *Variable) parseG() (*G, error) {
 		}
 	}
 
-	stkbarVar := v.loadFieldNamed("stkbar")
-	stkbarVarPosFld := v.loadFieldNamed("stkbarPos")
-	var stkbarPos int64
-	if stkbarVarPosFld != nil { // stack barriers were removed in Go 1.9
-		stkbarPos, _ = constant.Int64Val(stkbarVarPosFld.Value)
-	}
-
 	status := loadInt64Maybe("atomicstatus")
 
 	if unreadable {
@@ -905,8 +896,6 @@ func (v *Variable) parseG() (*G, error) {
 		WaitReason: waitReason,
 		CurrentLoc: Location{PC: uint64(pc), File: f, Line: l, Fn: fn},
 		variable:   v,
-		stkbarVar:  stkbarVar,
-		stkbarPos:  int(stkbarPos),
 		stack:      stack{hi: stackhi, lo: stacklo},
 	}
 	return g, nil
@@ -1023,31 +1012,6 @@ func (a *Ancestor) Stack(n int) ([]Stackframe, error) {
 		r[i] = Stackframe{Current: loc, Call: loc}
 	}
 	r[len(r)-1].Bottom = pcsVar.Len == int64(len(pcsVar.Children))
-	return r, nil
-}
-
-// Returns the list of saved return addresses used by stack barriers
-func (g *G) stkbar() ([]savedLR, error) {
-	if g.stkbarVar == nil { // stack barriers were removed in Go 1.9
-		return nil, nil
-	}
-	g.stkbarVar.loadValue(LoadConfig{false, 1, 0, int(g.stkbarVar.Len), 3, 0})
-	if g.stkbarVar.Unreadable != nil {
-		return nil, fmt.Errorf("unreadable stkbar: %v", g.stkbarVar.Unreadable)
-	}
-	r := make([]savedLR, len(g.stkbarVar.Children))
-	for i, child := range g.stkbarVar.Children {
-		for _, field := range child.Children {
-			switch field.Name {
-			case "savedLRPtr":
-				ptr, _ := constant.Int64Val(field.Value)
-				r[i].ptr = uint64(ptr)
-			case "savedLRVal":
-				val, _ := constant.Int64Val(field.Value)
-				r[i].val = uint64(val)
-			}
-		}
-	}
 	return r, nil
 }
 
@@ -2318,6 +2282,7 @@ func (v *Variable) registerVariableTypeConv(newtyp string) (*Variable, error) {
 	v.loaded = true
 	v.Kind = reflect.Array
 	v.Len = int64(len(v.Children))
+	v.Base = fakeAddress
 	v.DwarfType = fakeArrayType(uint64(len(v.Children)), &godwarf.VoidType{CommonType: godwarf.CommonType{ByteSize: int64(n)}})
 	v.RealType = v.DwarfType
 	return v, nil

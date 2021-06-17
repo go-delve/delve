@@ -130,6 +130,21 @@ See also: "help on", "help cond" and "help clear"`},
 A tracepoint is a breakpoint that does not stop the execution of the program, instead when the tracepoint is hit a notification is displayed. See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/locspec.md for the syntax of linespec.
 
 See also: "help on", "help cond" and "help clear"`},
+		{aliases: []string{"watch"}, group: breakCmds, cmdFn: watchpoint, helpMsg: `Set watchpoint.
+	
+	watch [-r|-w|-rw] <expr>
+	
+	-r	stops when the memory location is read
+	-w	stops when the memory location is written
+	-rw	stops when the memory location is read or written
+
+The memory location is specified with the same expression language used by 'print', for example:
+
+	watch v
+
+will watch the address of variable 'v'.
+
+See also: "help print".`},
 		{aliases: []string{"restart", "r"}, group: runCmds, cmdFn: restart, helpMsg: `Restart process.
 
 For recorded targets the command takes the following forms:
@@ -372,8 +387,21 @@ Supported commands: print, stack and goroutine)`},
 		{aliases: []string{"condition", "cond"}, group: breakCmds, cmdFn: conditionCmd, helpMsg: `Set breakpoint condition.
 
 	condition <breakpoint name or id> <boolean expression>.
+	condition -hitcount <breakpoint name or id> <operator> <argument>
 
-Specifies that the breakpoint or tracepoint should break only if the boolean expression is true.`},
+Specifies that the breakpoint, tracepoint or watchpoint should break only if the boolean expression is true.
+
+With the -hitcount option a condition on the breakpoint hit count can be set, the following operators are supported
+
+	condition -hitcount bp > n
+	condition -hitcount bp >= n
+	condition -hitcount bp < n
+	condition -hitcount bp <= n
+	condition -hitcount bp == n
+	condition -hitcount bp != n
+	condition -hitcount bp % n
+	
+The '% n' form means we should stop at the breakpoint when the hitcount is a multiple of n.`},
 		{aliases: []string{"config"}, cmdFn: configureCmd, helpMsg: `Changes configuration parameters.
 
 	config -list
@@ -1518,6 +1546,9 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 		if bp.Cond != "" {
 			attrs = append(attrs, fmt.Sprintf("\tcond %s", bp.Cond))
 		}
+		if bp.HitCond != "" {
+			attrs = append(attrs, fmt.Sprintf("\tcond -hitcount %s", bp.HitCond))
+		}
 		if bp.Stacktrace > 0 {
 			attrs = append(attrs, fmt.Sprintf("\tstack %d", bp.Stacktrace))
 		}
@@ -1662,6 +1693,30 @@ func edit(t *Term, ctx callContext, args string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func watchpoint(t *Term, ctx callContext, args string) error {
+	v := strings.SplitN(args, " ", 2)
+	if len(v) != 2 {
+		return errors.New("wrong number of arguments: watch [-r|-w|-rw] <expr>")
+	}
+	var wtype api.WatchType
+	switch v[0] {
+	case "-r":
+		wtype = api.WatchRead
+	case "-w":
+		wtype = api.WatchWrite
+	case "-rw":
+		wtype = api.WatchRead | api.WatchWrite
+	default:
+		return fmt.Errorf("wrong argument %q to watch", v[0])
+	}
+	bp, err := t.client.CreateWatchpoint(ctx.Scope, v[1], wtype)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s set at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
+	return nil
 }
 
 func examineMemoryCmd(t *Term, ctx callContext, argstr string) error {
@@ -2276,68 +2331,8 @@ func digits(n int) int {
 	return int(math.Floor(math.Log10(float64(n)))) + 1
 }
 
-const stacktraceTruncatedMessage = "(truncated)"
-
 func printStack(t *Term, out io.Writer, stack []api.Stackframe, ind string, offsets bool) {
-	PrintStack(t.formatPath, out, stack, ind, offsets)
-}
-
-func PrintStack(formatPath func(string) string, out io.Writer, stack []api.Stackframe, ind string, offsets bool) {
-	if len(stack) == 0 {
-		return
-	}
-
-	extranl := offsets
-	for i := range stack {
-		if extranl {
-			break
-		}
-		extranl = extranl || (len(stack[i].Defers) > 0) || (len(stack[i].Arguments) > 0) || (len(stack[i].Locals) > 0)
-	}
-
-	d := digits(len(stack) - 1)
-	fmtstr := "%s%" + strconv.Itoa(d) + "d  0x%016x in %s\n"
-	s := ind + strings.Repeat(" ", d+2+len(ind))
-
-	for i := range stack {
-		if stack[i].Err != "" {
-			fmt.Fprintf(out, "%serror: %s\n", s, stack[i].Err)
-			continue
-		}
-		fmt.Fprintf(out, fmtstr, ind, i, stack[i].PC, stack[i].Function.Name())
-		fmt.Fprintf(out, "%sat %s:%d\n", s, formatPath(stack[i].File), stack[i].Line)
-
-		if offsets {
-			fmt.Fprintf(out, "%sframe: %+#x frame pointer %+#x\n", s, stack[i].FrameOffset, stack[i].FramePointerOffset)
-		}
-
-		for j, d := range stack[i].Defers {
-			deferHeader := fmt.Sprintf("%s    defer %d: ", s, j+1)
-			s2 := strings.Repeat(" ", len(deferHeader))
-			if d.Unreadable != "" {
-				fmt.Fprintf(out, "%s(unreadable defer: %s)\n", deferHeader, d.Unreadable)
-				continue
-			}
-			fmt.Fprintf(out, "%s%#016x in %s\n", deferHeader, d.DeferredLoc.PC, d.DeferredLoc.Function.Name())
-			fmt.Fprintf(out, "%sat %s:%d\n", s2, formatPath(d.DeferredLoc.File), d.DeferredLoc.Line)
-			fmt.Fprintf(out, "%sdeferred by %s at %s:%d\n", s2, d.DeferLoc.Function.Name(), formatPath(d.DeferLoc.File), d.DeferLoc.Line)
-		}
-
-		for j := range stack[i].Arguments {
-			fmt.Fprintf(out, "%s    %s = %s\n", s, stack[i].Arguments[j].Name, stack[i].Arguments[j].SinglelineString())
-		}
-		for j := range stack[i].Locals {
-			fmt.Fprintf(out, "%s    %s = %s\n", s, stack[i].Locals[j].Name, stack[i].Locals[j].SinglelineString())
-		}
-
-		if extranl {
-			fmt.Fprintln(out)
-		}
-	}
-
-	if len(stack) > 0 && !stack[len(stack)-1].Bottom {
-		fmt.Fprintf(out, "%s"+stacktraceTruncatedMessage+"\n", ind)
-	}
+	api.PrintStack(t.formatPath, out, stack, ind, offsets, func(api.Stackframe) bool { return true })
 }
 
 func printcontext(t *Term, state *api.DebuggerState) {
@@ -2432,7 +2427,9 @@ func printcontextThread(t *Term, th *api.Thread) {
 	}
 
 	bpname := ""
-	if th.Breakpoint.Name != "" {
+	if th.Breakpoint.WatchExpr != "" {
+		bpname = fmt.Sprintf("watchpoint on [%s] ", th.Breakpoint.WatchExpr)
+	} else if th.Breakpoint.Name != "" {
 		bpname = fmt.Sprintf("[%s] ", th.Breakpoint.Name)
 	}
 
@@ -2625,6 +2622,22 @@ func conditionCmd(t *Term, ctx callContext, argstr string) error {
 		return fmt.Errorf("not enough arguments")
 	}
 
+	if args[0] == "-hitcount" {
+		// hitcount breakpoint
+		args = split2PartsBySpace(args[1])
+		if len(args) < 2 {
+			return fmt.Errorf("not enough arguments")
+		}
+		bp, err := getBreakpointByIDOrName(t, args[0])
+		if err != nil {
+			return err
+		}
+
+		bp.HitCond = args[1]
+
+		return t.client.AmendBreakpoint(bp)
+	}
+
 	bp, err := getBreakpointByIDOrName(t, args[0])
 	if err != nil {
 		return err
@@ -2794,12 +2807,18 @@ func formatBreakpointName(bp *api.Breakpoint, upcase bool) string {
 	if bp.Tracepoint {
 		thing = "tracepoint"
 	}
+	if bp.WatchExpr != "" {
+		thing = "watchpoint"
+	}
 	if upcase {
 		thing = strings.Title(thing)
 	}
 	id := bp.Name
 	if id == "" {
 		id = strconv.Itoa(bp.ID)
+	}
+	if bp.WatchExpr != "" && bp.WatchExpr != bp.Name {
+		return fmt.Sprintf("%s %s on [%s]", thing, id, bp.WatchExpr)
 	}
 	state := "(enabled)"
 	if bp.Disabled {
@@ -2822,11 +2841,13 @@ func (t *Term) formatBreakpointLocation(bp *api.Breakpoint) string {
 		// In case we are connecting to an older version of delve that does not return the Addrs field.
 		fmt.Fprintf(&out, "%#x", bp.Addr)
 	}
-	fmt.Fprintf(&out, " for ")
-	p := t.formatPath(bp.File)
-	if bp.FunctionName != "" {
-		fmt.Fprintf(&out, "%s() ", bp.FunctionName)
+	if bp.WatchExpr == "" {
+		fmt.Fprintf(&out, " for ")
+		p := t.formatPath(bp.File)
+		if bp.FunctionName != "" {
+			fmt.Fprintf(&out, "%s() ", bp.FunctionName)
+		}
+		fmt.Fprintf(&out, "%s:%d", p, bp.Line)
 	}
-	fmt.Fprintf(&out, "%s:%d", p, bp.Line)
 	return out.String()
 }

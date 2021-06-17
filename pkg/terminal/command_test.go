@@ -943,6 +943,7 @@ func TestOptimizationCheck(t *testing.T) {
 }
 
 func TestTruncateStacktrace(t *testing.T) {
+	const stacktraceTruncatedMessage = "(truncated)"
 	withTestTerminal("stacktraceprog", t, func(term *FakeTerminal) {
 		term.MustExec("break main.stacktraceme")
 		term.MustExec("continue")
@@ -1175,6 +1176,19 @@ func TestPrintFormat(t *testing.T) {
 		out := term.MustExec("print %#x m2[1].B")
 		if !strings.Contains(out, "0xb\n") {
 			t.Fatalf("output did not contain '0xb': %q", out)
+		}
+	})
+}
+
+func TestHitCondBreakpoint(t *testing.T) {
+	withTestTerminal("break", t, func(term *FakeTerminal) {
+		term.MustExec("break bp1 main.main:4")
+		term.MustExec("condition -hitcount bp1 > 2")
+		listIsAt(t, term, "continue", 7, -1, -1)
+		out := term.MustExec("print i")
+		t.Logf("%q", out)
+		if !strings.Contains(out, "3\n") {
+			t.Fatalf("wrong value of i")
 		}
 	})
 }

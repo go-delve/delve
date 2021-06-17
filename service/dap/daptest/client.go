@@ -101,6 +101,10 @@ func (c *Client) ExpectInitializeResponseAndCapabilities(t *testing.T) *dap.Init
 		SupportsDelayedStackTraceLoading: true,
 		SupportTerminateDebuggee:         true,
 		SupportsExceptionInfoRequest:     true,
+		SupportsSetVariable:              true,
+		SupportsFunctionBreakpoints:      true,
+		SupportsEvaluateForHovers:        true,
+		SupportsClipboardContext:         true,
 	}
 	if !reflect.DeepEqual(initResp.Body, wantCapabilities) {
 		t.Errorf("capabilities in initializeResponse: got %+v, want %v", pretty(initResp.Body), pretty(wantCapabilities))
@@ -232,13 +236,32 @@ func (c *Client) SetConditionalBreakpointsRequest(file string, lines []int, cond
 			Path: file,
 		},
 		Breakpoints: make([]dap.SourceBreakpoint, len(lines)),
-		//sourceModified: false,
 	}
 	for i, l := range lines {
 		request.Arguments.Breakpoints[i].Line = l
 		cond, ok := conditions[l]
 		if ok {
 			request.Arguments.Breakpoints[i].Condition = cond
+		}
+	}
+	c.send(request)
+}
+
+// SetBreakpointsRequest sends a 'setBreakpoints' request with conditions.
+func (c *Client) SetHitConditionalBreakpointsRequest(file string, lines []int, conditions map[int]string) {
+	request := &dap.SetBreakpointsRequest{Request: *c.newRequest("setBreakpoints")}
+	request.Arguments = dap.SetBreakpointsArguments{
+		Source: dap.Source{
+			Name: filepath.Base(file),
+			Path: file,
+		},
+		Breakpoints: make([]dap.SourceBreakpoint, len(lines)),
+	}
+	for i, l := range lines {
+		request.Arguments.Breakpoints[i].Line = l
+		cond, ok := conditions[l]
+		if ok {
+			request.Arguments.Breakpoints[i].HitCondition = cond
 		}
 	}
 	c.send(request)
@@ -320,6 +343,16 @@ func (c *Client) VariablesRequest(variablesReference int) {
 	c.send(request)
 }
 
+// IndexedVariablesRequest sends a 'variables' request.
+func (c *Client) IndexedVariablesRequest(variablesReference, start, count int) {
+	request := &dap.VariablesRequest{Request: *c.newRequest("variables")}
+	request.Arguments.VariablesReference = variablesReference
+	request.Arguments.Filter = "indexed"
+	request.Arguments.Start = start
+	request.Arguments.Count = count
+	c.send(request)
+}
+
 // TeriminateRequest sends a 'terminate' request.
 func (c *Client) TerminateRequest() {
 	c.send(&dap.TerminateRequest{Request: *c.newRequest("terminate")})
@@ -331,8 +364,13 @@ func (c *Client) RestartRequest() {
 }
 
 // SetFunctionBreakpointsRequest sends a 'setFunctionBreakpoints' request.
-func (c *Client) SetFunctionBreakpointsRequest() {
-	c.send(&dap.SetFunctionBreakpointsRequest{Request: *c.newRequest("setFunctionBreakpoints")})
+func (c *Client) SetFunctionBreakpointsRequest(breakpoints []dap.FunctionBreakpoint) {
+	c.send(&dap.SetFunctionBreakpointsRequest{
+		Request: *c.newRequest("setFunctionBreakpoints"),
+		Arguments: dap.SetFunctionBreakpointsArguments{
+			Breakpoints: breakpoints,
+		},
+	})
 }
 
 // StepBackRequest sends a 'stepBack' request.
@@ -346,8 +384,12 @@ func (c *Client) ReverseContinueRequest() {
 }
 
 // SetVariableRequest sends a 'setVariable' request.
-func (c *Client) SetVariableRequest() {
-	c.send(&dap.ReverseContinueRequest{Request: *c.newRequest("setVariable")})
+func (c *Client) SetVariableRequest(variablesRef int, name, value string) {
+	request := &dap.SetVariableRequest{Request: *c.newRequest("setVariable")}
+	request.Arguments.VariablesReference = variablesRef
+	request.Arguments.Name = name
+	request.Arguments.Value = value
+	c.send(request)
 }
 
 // RestartFrameRequest sends a 'restartFrame' request.

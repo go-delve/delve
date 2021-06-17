@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -492,4 +493,74 @@ func byteArrayToUInt64(buf []byte, isLittleEndian bool) uint64 {
 		}
 	}
 	return n
+}
+
+const stacktraceTruncatedMessage = "(truncated)"
+
+func digits(n int) int {
+	if n <= 0 {
+		return 1
+	}
+	return int(math.Floor(math.Log10(float64(n)))) + 1
+}
+
+func PrintStack(formatPath func(string) string, out io.Writer, stack []Stackframe, ind string, offsets bool, include func(Stackframe) bool) {
+	if len(stack) == 0 {
+		return
+	}
+
+	extranl := offsets
+	for i := range stack {
+		if extranl {
+			break
+		}
+		extranl = extranl || (len(stack[i].Defers) > 0) || (len(stack[i].Arguments) > 0) || (len(stack[i].Locals) > 0)
+	}
+
+	d := digits(len(stack) - 1)
+	fmtstr := "%s%" + strconv.Itoa(d) + "d  0x%016x in %s\n"
+	s := ind + strings.Repeat(" ", d+2+len(ind))
+
+	for i := range stack {
+		if !include(stack[i]) {
+			continue
+		}
+		if stack[i].Err != "" {
+			fmt.Fprintf(out, "%serror: %s\n", s, stack[i].Err)
+			continue
+		}
+		fmt.Fprintf(out, fmtstr, ind, i, stack[i].PC, stack[i].Function.Name())
+		fmt.Fprintf(out, "%sat %s:%d\n", s, formatPath(stack[i].File), stack[i].Line)
+
+		if offsets {
+			fmt.Fprintf(out, "%sframe: %+#x frame pointer %+#x\n", s, stack[i].FrameOffset, stack[i].FramePointerOffset)
+		}
+
+		for j, d := range stack[i].Defers {
+			deferHeader := fmt.Sprintf("%s    defer %d: ", s, j+1)
+			s2 := strings.Repeat(" ", len(deferHeader))
+			if d.Unreadable != "" {
+				fmt.Fprintf(out, "%s(unreadable defer: %s)\n", deferHeader, d.Unreadable)
+				continue
+			}
+			fmt.Fprintf(out, "%s%#016x in %s\n", deferHeader, d.DeferredLoc.PC, d.DeferredLoc.Function.Name())
+			fmt.Fprintf(out, "%sat %s:%d\n", s2, formatPath(d.DeferredLoc.File), d.DeferredLoc.Line)
+			fmt.Fprintf(out, "%sdeferred by %s at %s:%d\n", s2, d.DeferLoc.Function.Name(), formatPath(d.DeferLoc.File), d.DeferLoc.Line)
+		}
+
+		for j := range stack[i].Arguments {
+			fmt.Fprintf(out, "%s    %s = %s\n", s, stack[i].Arguments[j].Name, stack[i].Arguments[j].SinglelineString())
+		}
+		for j := range stack[i].Locals {
+			fmt.Fprintf(out, "%s    %s = %s\n", s, stack[i].Locals[j].Name, stack[i].Locals[j].SinglelineString())
+		}
+
+		if extranl {
+			fmt.Fprintln(out)
+		}
+	}
+
+	if len(stack) > 0 && !stack[len(stack)-1].Bottom {
+		fmt.Fprintf(out, "%s"+stacktraceTruncatedMessage+"\n", ind)
+	}
 }

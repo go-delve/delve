@@ -14,6 +14,12 @@ import (
 func (c *Client) ExpectAttachResponse(t *testing.T) *dap.AttachResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckAttachResponse(t, m)
+}
+
+// CheckAttachResponse fails the test if m is not *AttachResponse.
+func (c *Client) CheckAttachResponse(t *testing.T, m dap.Message) *dap.AttachResponse {
+	t.Helper()
 	r, ok := m.(*dap.AttachResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.AttachResponse", m)
@@ -26,6 +32,12 @@ func (c *Client) ExpectAttachResponse(t *testing.T) *dap.AttachResponse {
 func (c *Client) ExpectBreakpointEvent(t *testing.T) *dap.BreakpointEvent {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckBreakpointEvent(t, m)
+}
+
+// CheckBreakpointEvent fails the test if m is not *BreakpointEvent.
+func (c *Client) CheckBreakpointEvent(t *testing.T, m dap.Message) *dap.BreakpointEvent {
+	t.Helper()
 	r, ok := m.(*dap.BreakpointEvent)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.BreakpointEvent", m)
@@ -38,6 +50,12 @@ func (c *Client) ExpectBreakpointEvent(t *testing.T) *dap.BreakpointEvent {
 func (c *Client) ExpectBreakpointLocationsResponse(t *testing.T) *dap.BreakpointLocationsResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckBreakpointLocationsResponse(t, m)
+}
+
+// CheckBreakpointLocationsResponse fails the test if m is not *BreakpointLocationsResponse.
+func (c *Client) CheckBreakpointLocationsResponse(t *testing.T, m dap.Message) *dap.BreakpointLocationsResponse {
+	t.Helper()
 	r, ok := m.(*dap.BreakpointLocationsResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.BreakpointLocationsResponse", m)
@@ -50,6 +68,12 @@ func (c *Client) ExpectBreakpointLocationsResponse(t *testing.T) *dap.Breakpoint
 func (c *Client) ExpectCancelResponse(t *testing.T) *dap.CancelResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckCancelResponse(t, m)
+}
+
+// CheckCancelResponse fails the test if m is not *CancelResponse.
+func (c *Client) CheckCancelResponse(t *testing.T, m dap.Message) *dap.CancelResponse {
+	t.Helper()
 	r, ok := m.(*dap.CancelResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.CancelResponse", m)
@@ -62,6 +86,12 @@ func (c *Client) ExpectCancelResponse(t *testing.T) *dap.CancelResponse {
 func (c *Client) ExpectCapabilitiesEvent(t *testing.T) *dap.CapabilitiesEvent {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckCapabilitiesEvent(t, m)
+}
+
+// CheckCapabilitiesEvent fails the test if m is not *CapabilitiesEvent.
+func (c *Client) CheckCapabilitiesEvent(t *testing.T, m dap.Message) *dap.CapabilitiesEvent {
+	t.Helper()
 	r, ok := m.(*dap.CapabilitiesEvent)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.CapabilitiesEvent", m)
@@ -74,6 +104,12 @@ func (c *Client) ExpectCapabilitiesEvent(t *testing.T) *dap.CapabilitiesEvent {
 func (c *Client) ExpectCompletionsResponse(t *testing.T) *dap.CompletionsResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckCompletionsResponse(t, m)
+}
+
+// CheckCompletionsResponse fails the test if m is not *CompletionsResponse.
+func (c *Client) CheckCompletionsResponse(t *testing.T, m dap.Message) *dap.CompletionsResponse {
+	t.Helper()
 	r, ok := m.(*dap.CompletionsResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.CompletionsResponse", m)
@@ -86,6 +122,12 @@ func (c *Client) ExpectCompletionsResponse(t *testing.T) *dap.CompletionsRespons
 func (c *Client) ExpectConfigurationDoneResponse(t *testing.T) *dap.ConfigurationDoneResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckConfigurationDoneResponse(t, m)
+}
+
+// CheckConfigurationDoneResponse fails the test if m is not *ConfigurationDoneResponse.
+func (c *Client) CheckConfigurationDoneResponse(t *testing.T, m dap.Message) *dap.ConfigurationDoneResponse {
+	t.Helper()
 	r, ok := m.(*dap.ConfigurationDoneResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ConfigurationDoneResponse", m)
@@ -98,6 +140,12 @@ func (c *Client) ExpectConfigurationDoneResponse(t *testing.T) *dap.Configuratio
 func (c *Client) ExpectContinueResponse(t *testing.T) *dap.ContinueResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckContinueResponse(t, m)
+}
+
+// CheckContinueResponse fails the test if m is not *ContinueResponse.
+func (c *Client) CheckContinueResponse(t *testing.T, m dap.Message) *dap.ContinueResponse {
+	t.Helper()
 	r, ok := m.(*dap.ContinueResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ContinueResponse", m)
@@ -110,6 +158,12 @@ func (c *Client) ExpectContinueResponse(t *testing.T) *dap.ContinueResponse {
 func (c *Client) ExpectContinuedEvent(t *testing.T) *dap.ContinuedEvent {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckContinuedEvent(t, m)
+}
+
+// CheckContinuedEvent fails the test if m is not *ContinuedEvent.
+func (c *Client) CheckContinuedEvent(t *testing.T, m dap.Message) *dap.ContinuedEvent {
+	t.Helper()
 	r, ok := m.(*dap.ContinuedEvent)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ContinuedEvent", m)
@@ -122,6 +176,12 @@ func (c *Client) ExpectContinuedEvent(t *testing.T) *dap.ContinuedEvent {
 func (c *Client) ExpectDataBreakpointInfoResponse(t *testing.T) *dap.DataBreakpointInfoResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckDataBreakpointInfoResponse(t, m)
+}
+
+// CheckDataBreakpointInfoResponse fails the test if m is not *DataBreakpointInfoResponse.
+func (c *Client) CheckDataBreakpointInfoResponse(t *testing.T, m dap.Message) *dap.DataBreakpointInfoResponse {
+	t.Helper()
 	r, ok := m.(*dap.DataBreakpointInfoResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.DataBreakpointInfoResponse", m)
@@ -134,6 +194,12 @@ func (c *Client) ExpectDataBreakpointInfoResponse(t *testing.T) *dap.DataBreakpo
 func (c *Client) ExpectDisassembleResponse(t *testing.T) *dap.DisassembleResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckDisassembleResponse(t, m)
+}
+
+// CheckDisassembleResponse fails the test if m is not *DisassembleResponse.
+func (c *Client) CheckDisassembleResponse(t *testing.T, m dap.Message) *dap.DisassembleResponse {
+	t.Helper()
 	r, ok := m.(*dap.DisassembleResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.DisassembleResponse", m)
@@ -146,6 +212,12 @@ func (c *Client) ExpectDisassembleResponse(t *testing.T) *dap.DisassembleRespons
 func (c *Client) ExpectDisconnectResponse(t *testing.T) *dap.DisconnectResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckDisconnectResponse(t, m)
+}
+
+// CheckDisconnectResponse fails the test if m is not *DisconnectResponse.
+func (c *Client) CheckDisconnectResponse(t *testing.T, m dap.Message) *dap.DisconnectResponse {
+	t.Helper()
 	r, ok := m.(*dap.DisconnectResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.DisconnectResponse", m)
@@ -158,6 +230,12 @@ func (c *Client) ExpectDisconnectResponse(t *testing.T) *dap.DisconnectResponse 
 func (c *Client) ExpectErrorResponse(t *testing.T) *dap.ErrorResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckErrorResponse(t, m)
+}
+
+// CheckErrorResponse fails the test if m is not *ErrorResponse.
+func (c *Client) CheckErrorResponse(t *testing.T, m dap.Message) *dap.ErrorResponse {
+	t.Helper()
 	r, ok := m.(*dap.ErrorResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ErrorResponse", m)
@@ -170,6 +248,12 @@ func (c *Client) ExpectErrorResponse(t *testing.T) *dap.ErrorResponse {
 func (c *Client) ExpectEvaluateResponse(t *testing.T) *dap.EvaluateResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckEvaluateResponse(t, m)
+}
+
+// CheckEvaluateResponse fails the test if m is not *EvaluateResponse.
+func (c *Client) CheckEvaluateResponse(t *testing.T, m dap.Message) *dap.EvaluateResponse {
+	t.Helper()
 	r, ok := m.(*dap.EvaluateResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.EvaluateResponse", m)
@@ -182,6 +266,12 @@ func (c *Client) ExpectEvaluateResponse(t *testing.T) *dap.EvaluateResponse {
 func (c *Client) ExpectExceptionInfoResponse(t *testing.T) *dap.ExceptionInfoResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckExceptionInfoResponse(t, m)
+}
+
+// CheckExceptionInfoResponse fails the test if m is not *ExceptionInfoResponse.
+func (c *Client) CheckExceptionInfoResponse(t *testing.T, m dap.Message) *dap.ExceptionInfoResponse {
+	t.Helper()
 	r, ok := m.(*dap.ExceptionInfoResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ExceptionInfoResponse", m)
@@ -194,6 +284,12 @@ func (c *Client) ExpectExceptionInfoResponse(t *testing.T) *dap.ExceptionInfoRes
 func (c *Client) ExpectExitedEvent(t *testing.T) *dap.ExitedEvent {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckExitedEvent(t, m)
+}
+
+// CheckExitedEvent fails the test if m is not *ExitedEvent.
+func (c *Client) CheckExitedEvent(t *testing.T, m dap.Message) *dap.ExitedEvent {
+	t.Helper()
 	r, ok := m.(*dap.ExitedEvent)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ExitedEvent", m)
@@ -206,6 +302,12 @@ func (c *Client) ExpectExitedEvent(t *testing.T) *dap.ExitedEvent {
 func (c *Client) ExpectGotoResponse(t *testing.T) *dap.GotoResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckGotoResponse(t, m)
+}
+
+// CheckGotoResponse fails the test if m is not *GotoResponse.
+func (c *Client) CheckGotoResponse(t *testing.T, m dap.Message) *dap.GotoResponse {
+	t.Helper()
 	r, ok := m.(*dap.GotoResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.GotoResponse", m)
@@ -218,6 +320,12 @@ func (c *Client) ExpectGotoResponse(t *testing.T) *dap.GotoResponse {
 func (c *Client) ExpectGotoTargetsResponse(t *testing.T) *dap.GotoTargetsResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckGotoTargetsResponse(t, m)
+}
+
+// CheckGotoTargetsResponse fails the test if m is not *GotoTargetsResponse.
+func (c *Client) CheckGotoTargetsResponse(t *testing.T, m dap.Message) *dap.GotoTargetsResponse {
+	t.Helper()
 	r, ok := m.(*dap.GotoTargetsResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.GotoTargetsResponse", m)
@@ -230,6 +338,12 @@ func (c *Client) ExpectGotoTargetsResponse(t *testing.T) *dap.GotoTargetsRespons
 func (c *Client) ExpectInitializeResponse(t *testing.T) *dap.InitializeResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckInitializeResponse(t, m)
+}
+
+// CheckInitializeResponse fails the test if m is not *InitializeResponse.
+func (c *Client) CheckInitializeResponse(t *testing.T, m dap.Message) *dap.InitializeResponse {
+	t.Helper()
 	r, ok := m.(*dap.InitializeResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.InitializeResponse", m)
@@ -242,6 +356,12 @@ func (c *Client) ExpectInitializeResponse(t *testing.T) *dap.InitializeResponse 
 func (c *Client) ExpectInitializedEvent(t *testing.T) *dap.InitializedEvent {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckInitializedEvent(t, m)
+}
+
+// CheckInitializedEvent fails the test if m is not *InitializedEvent.
+func (c *Client) CheckInitializedEvent(t *testing.T, m dap.Message) *dap.InitializedEvent {
+	t.Helper()
 	r, ok := m.(*dap.InitializedEvent)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.InitializedEvent", m)
@@ -254,6 +374,12 @@ func (c *Client) ExpectInitializedEvent(t *testing.T) *dap.InitializedEvent {
 func (c *Client) ExpectInvalidatedEvent(t *testing.T) *dap.InvalidatedEvent {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckInvalidatedEvent(t, m)
+}
+
+// CheckInvalidatedEvent fails the test if m is not *InvalidatedEvent.
+func (c *Client) CheckInvalidatedEvent(t *testing.T, m dap.Message) *dap.InvalidatedEvent {
+	t.Helper()
 	r, ok := m.(*dap.InvalidatedEvent)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.InvalidatedEvent", m)
@@ -266,6 +392,12 @@ func (c *Client) ExpectInvalidatedEvent(t *testing.T) *dap.InvalidatedEvent {
 func (c *Client) ExpectLaunchResponse(t *testing.T) *dap.LaunchResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckLaunchResponse(t, m)
+}
+
+// CheckLaunchResponse fails the test if m is not *LaunchResponse.
+func (c *Client) CheckLaunchResponse(t *testing.T, m dap.Message) *dap.LaunchResponse {
+	t.Helper()
 	r, ok := m.(*dap.LaunchResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.LaunchResponse", m)
@@ -278,6 +410,12 @@ func (c *Client) ExpectLaunchResponse(t *testing.T) *dap.LaunchResponse {
 func (c *Client) ExpectLoadedSourceEvent(t *testing.T) *dap.LoadedSourceEvent {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckLoadedSourceEvent(t, m)
+}
+
+// CheckLoadedSourceEvent fails the test if m is not *LoadedSourceEvent.
+func (c *Client) CheckLoadedSourceEvent(t *testing.T, m dap.Message) *dap.LoadedSourceEvent {
+	t.Helper()
 	r, ok := m.(*dap.LoadedSourceEvent)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.LoadedSourceEvent", m)
@@ -290,6 +428,12 @@ func (c *Client) ExpectLoadedSourceEvent(t *testing.T) *dap.LoadedSourceEvent {
 func (c *Client) ExpectLoadedSourcesResponse(t *testing.T) *dap.LoadedSourcesResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckLoadedSourcesResponse(t, m)
+}
+
+// CheckLoadedSourcesResponse fails the test if m is not *LoadedSourcesResponse.
+func (c *Client) CheckLoadedSourcesResponse(t *testing.T, m dap.Message) *dap.LoadedSourcesResponse {
+	t.Helper()
 	r, ok := m.(*dap.LoadedSourcesResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.LoadedSourcesResponse", m)
@@ -302,6 +446,12 @@ func (c *Client) ExpectLoadedSourcesResponse(t *testing.T) *dap.LoadedSourcesRes
 func (c *Client) ExpectModuleEvent(t *testing.T) *dap.ModuleEvent {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckModuleEvent(t, m)
+}
+
+// CheckModuleEvent fails the test if m is not *ModuleEvent.
+func (c *Client) CheckModuleEvent(t *testing.T, m dap.Message) *dap.ModuleEvent {
+	t.Helper()
 	r, ok := m.(*dap.ModuleEvent)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ModuleEvent", m)
@@ -314,6 +464,12 @@ func (c *Client) ExpectModuleEvent(t *testing.T) *dap.ModuleEvent {
 func (c *Client) ExpectModulesResponse(t *testing.T) *dap.ModulesResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckModulesResponse(t, m)
+}
+
+// CheckModulesResponse fails the test if m is not *ModulesResponse.
+func (c *Client) CheckModulesResponse(t *testing.T, m dap.Message) *dap.ModulesResponse {
+	t.Helper()
 	r, ok := m.(*dap.ModulesResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ModulesResponse", m)
@@ -326,9 +482,20 @@ func (c *Client) ExpectModulesResponse(t *testing.T) *dap.ModulesResponse {
 func (c *Client) ExpectNextResponse(t *testing.T) *dap.NextResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckNextResponse(t, m)
+}
+
+// CheckNextResponse fails the test if m is not *NextResponse.
+func (c *Client) CheckNextResponse(t *testing.T, m dap.Message) *dap.NextResponse {
+	t.Helper()
 	r, ok := m.(*dap.NextResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.NextResponse", m)
+	}
+	m = c.ExpectMessage(t)
+	_, ok = m.(*dap.ContinuedEvent)
+	if !ok {
+		t.Fatalf("got %#v, want *dap.ContinuedEvent", m)
 	}
 	return r
 }
@@ -338,6 +505,12 @@ func (c *Client) ExpectNextResponse(t *testing.T) *dap.NextResponse {
 func (c *Client) ExpectOutputEvent(t *testing.T) *dap.OutputEvent {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckOutputEvent(t, m)
+}
+
+// CheckOutputEvent fails the test if m is not *OutputEvent.
+func (c *Client) CheckOutputEvent(t *testing.T, m dap.Message) *dap.OutputEvent {
+	t.Helper()
 	r, ok := m.(*dap.OutputEvent)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.OutputEvent", m)
@@ -350,6 +523,12 @@ func (c *Client) ExpectOutputEvent(t *testing.T) *dap.OutputEvent {
 func (c *Client) ExpectPauseResponse(t *testing.T) *dap.PauseResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckPauseResponse(t, m)
+}
+
+// CheckPauseResponse fails the test if m is not *PauseResponse.
+func (c *Client) CheckPauseResponse(t *testing.T, m dap.Message) *dap.PauseResponse {
+	t.Helper()
 	r, ok := m.(*dap.PauseResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.PauseResponse", m)
@@ -362,6 +541,12 @@ func (c *Client) ExpectPauseResponse(t *testing.T) *dap.PauseResponse {
 func (c *Client) ExpectProcessEvent(t *testing.T) *dap.ProcessEvent {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckProcessEvent(t, m)
+}
+
+// CheckProcessEvent fails the test if m is not *ProcessEvent.
+func (c *Client) CheckProcessEvent(t *testing.T, m dap.Message) *dap.ProcessEvent {
+	t.Helper()
 	r, ok := m.(*dap.ProcessEvent)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ProcessEvent", m)
@@ -374,6 +559,12 @@ func (c *Client) ExpectProcessEvent(t *testing.T) *dap.ProcessEvent {
 func (c *Client) ExpectProgressEndEvent(t *testing.T) *dap.ProgressEndEvent {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckProgressEndEvent(t, m)
+}
+
+// CheckProgressEndEvent fails the test if m is not *ProgressEndEvent.
+func (c *Client) CheckProgressEndEvent(t *testing.T, m dap.Message) *dap.ProgressEndEvent {
+	t.Helper()
 	r, ok := m.(*dap.ProgressEndEvent)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ProgressEndEvent", m)
@@ -386,6 +577,12 @@ func (c *Client) ExpectProgressEndEvent(t *testing.T) *dap.ProgressEndEvent {
 func (c *Client) ExpectProgressStartEvent(t *testing.T) *dap.ProgressStartEvent {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckProgressStartEvent(t, m)
+}
+
+// CheckProgressStartEvent fails the test if m is not *ProgressStartEvent.
+func (c *Client) CheckProgressStartEvent(t *testing.T, m dap.Message) *dap.ProgressStartEvent {
+	t.Helper()
 	r, ok := m.(*dap.ProgressStartEvent)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ProgressStartEvent", m)
@@ -398,6 +595,12 @@ func (c *Client) ExpectProgressStartEvent(t *testing.T) *dap.ProgressStartEvent 
 func (c *Client) ExpectProgressUpdateEvent(t *testing.T) *dap.ProgressUpdateEvent {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckProgressUpdateEvent(t, m)
+}
+
+// CheckProgressUpdateEvent fails the test if m is not *ProgressUpdateEvent.
+func (c *Client) CheckProgressUpdateEvent(t *testing.T, m dap.Message) *dap.ProgressUpdateEvent {
+	t.Helper()
 	r, ok := m.(*dap.ProgressUpdateEvent)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ProgressUpdateEvent", m)
@@ -410,6 +613,12 @@ func (c *Client) ExpectProgressUpdateEvent(t *testing.T) *dap.ProgressUpdateEven
 func (c *Client) ExpectReadMemoryResponse(t *testing.T) *dap.ReadMemoryResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckReadMemoryResponse(t, m)
+}
+
+// CheckReadMemoryResponse fails the test if m is not *ReadMemoryResponse.
+func (c *Client) CheckReadMemoryResponse(t *testing.T, m dap.Message) *dap.ReadMemoryResponse {
+	t.Helper()
 	r, ok := m.(*dap.ReadMemoryResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ReadMemoryResponse", m)
@@ -422,6 +631,12 @@ func (c *Client) ExpectReadMemoryResponse(t *testing.T) *dap.ReadMemoryResponse 
 func (c *Client) ExpectRestartFrameResponse(t *testing.T) *dap.RestartFrameResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckRestartFrameResponse(t, m)
+}
+
+// CheckRestartFrameResponse fails the test if m is not *RestartFrameResponse.
+func (c *Client) CheckRestartFrameResponse(t *testing.T, m dap.Message) *dap.RestartFrameResponse {
+	t.Helper()
 	r, ok := m.(*dap.RestartFrameResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.RestartFrameResponse", m)
@@ -434,6 +649,12 @@ func (c *Client) ExpectRestartFrameResponse(t *testing.T) *dap.RestartFrameRespo
 func (c *Client) ExpectRestartResponse(t *testing.T) *dap.RestartResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckRestartResponse(t, m)
+}
+
+// CheckRestartResponse fails the test if m is not *RestartResponse.
+func (c *Client) CheckRestartResponse(t *testing.T, m dap.Message) *dap.RestartResponse {
+	t.Helper()
 	r, ok := m.(*dap.RestartResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.RestartResponse", m)
@@ -446,6 +667,12 @@ func (c *Client) ExpectRestartResponse(t *testing.T) *dap.RestartResponse {
 func (c *Client) ExpectReverseContinueResponse(t *testing.T) *dap.ReverseContinueResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckReverseContinueResponse(t, m)
+}
+
+// CheckReverseContinueResponse fails the test if m is not *ReverseContinueResponse.
+func (c *Client) CheckReverseContinueResponse(t *testing.T, m dap.Message) *dap.ReverseContinueResponse {
+	t.Helper()
 	r, ok := m.(*dap.ReverseContinueResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ReverseContinueResponse", m)
@@ -458,6 +685,12 @@ func (c *Client) ExpectReverseContinueResponse(t *testing.T) *dap.ReverseContinu
 func (c *Client) ExpectRunInTerminalResponse(t *testing.T) *dap.RunInTerminalResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckRunInTerminalResponse(t, m)
+}
+
+// CheckRunInTerminalResponse fails the test if m is not *RunInTerminalResponse.
+func (c *Client) CheckRunInTerminalResponse(t *testing.T, m dap.Message) *dap.RunInTerminalResponse {
+	t.Helper()
 	r, ok := m.(*dap.RunInTerminalResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.RunInTerminalResponse", m)
@@ -470,6 +703,12 @@ func (c *Client) ExpectRunInTerminalResponse(t *testing.T) *dap.RunInTerminalRes
 func (c *Client) ExpectScopesResponse(t *testing.T) *dap.ScopesResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckScopesResponse(t, m)
+}
+
+// CheckScopesResponse fails the test if m is not *ScopesResponse.
+func (c *Client) CheckScopesResponse(t *testing.T, m dap.Message) *dap.ScopesResponse {
+	t.Helper()
 	r, ok := m.(*dap.ScopesResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ScopesResponse", m)
@@ -482,6 +721,12 @@ func (c *Client) ExpectScopesResponse(t *testing.T) *dap.ScopesResponse {
 func (c *Client) ExpectSetBreakpointsResponse(t *testing.T) *dap.SetBreakpointsResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckSetBreakpointsResponse(t, m)
+}
+
+// CheckSetBreakpointsResponse fails the test if m is not *SetBreakpointsResponse.
+func (c *Client) CheckSetBreakpointsResponse(t *testing.T, m dap.Message) *dap.SetBreakpointsResponse {
+	t.Helper()
 	r, ok := m.(*dap.SetBreakpointsResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.SetBreakpointsResponse", m)
@@ -494,6 +739,12 @@ func (c *Client) ExpectSetBreakpointsResponse(t *testing.T) *dap.SetBreakpointsR
 func (c *Client) ExpectSetDataBreakpointsResponse(t *testing.T) *dap.SetDataBreakpointsResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckSetDataBreakpointsResponse(t, m)
+}
+
+// CheckSetDataBreakpointsResponse fails the test if m is not *SetDataBreakpointsResponse.
+func (c *Client) CheckSetDataBreakpointsResponse(t *testing.T, m dap.Message) *dap.SetDataBreakpointsResponse {
+	t.Helper()
 	r, ok := m.(*dap.SetDataBreakpointsResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.SetDataBreakpointsResponse", m)
@@ -506,6 +757,12 @@ func (c *Client) ExpectSetDataBreakpointsResponse(t *testing.T) *dap.SetDataBrea
 func (c *Client) ExpectSetExceptionBreakpointsResponse(t *testing.T) *dap.SetExceptionBreakpointsResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckSetExceptionBreakpointsResponse(t, m)
+}
+
+// CheckSetExceptionBreakpointsResponse fails the test if m is not *SetExceptionBreakpointsResponse.
+func (c *Client) CheckSetExceptionBreakpointsResponse(t *testing.T, m dap.Message) *dap.SetExceptionBreakpointsResponse {
+	t.Helper()
 	r, ok := m.(*dap.SetExceptionBreakpointsResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.SetExceptionBreakpointsResponse", m)
@@ -518,6 +775,12 @@ func (c *Client) ExpectSetExceptionBreakpointsResponse(t *testing.T) *dap.SetExc
 func (c *Client) ExpectSetExpressionResponse(t *testing.T) *dap.SetExpressionResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckSetExpressionResponse(t, m)
+}
+
+// CheckSetExpressionResponse fails the test if m is not *SetExpressionResponse.
+func (c *Client) CheckSetExpressionResponse(t *testing.T, m dap.Message) *dap.SetExpressionResponse {
+	t.Helper()
 	r, ok := m.(*dap.SetExpressionResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.SetExpressionResponse", m)
@@ -530,6 +793,12 @@ func (c *Client) ExpectSetExpressionResponse(t *testing.T) *dap.SetExpressionRes
 func (c *Client) ExpectSetFunctionBreakpointsResponse(t *testing.T) *dap.SetFunctionBreakpointsResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckSetFunctionBreakpointsResponse(t, m)
+}
+
+// CheckSetFunctionBreakpointsResponse fails the test if m is not *SetFunctionBreakpointsResponse.
+func (c *Client) CheckSetFunctionBreakpointsResponse(t *testing.T, m dap.Message) *dap.SetFunctionBreakpointsResponse {
+	t.Helper()
 	r, ok := m.(*dap.SetFunctionBreakpointsResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.SetFunctionBreakpointsResponse", m)
@@ -542,6 +811,12 @@ func (c *Client) ExpectSetFunctionBreakpointsResponse(t *testing.T) *dap.SetFunc
 func (c *Client) ExpectSetInstructionBreakpointsResponse(t *testing.T) *dap.SetInstructionBreakpointsResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckSetInstructionBreakpointsResponse(t, m)
+}
+
+// CheckSetInstructionBreakpointsResponse fails the test if m is not *SetInstructionBreakpointsResponse.
+func (c *Client) CheckSetInstructionBreakpointsResponse(t *testing.T, m dap.Message) *dap.SetInstructionBreakpointsResponse {
+	t.Helper()
 	r, ok := m.(*dap.SetInstructionBreakpointsResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.SetInstructionBreakpointsResponse", m)
@@ -554,6 +829,12 @@ func (c *Client) ExpectSetInstructionBreakpointsResponse(t *testing.T) *dap.SetI
 func (c *Client) ExpectSetVariableResponse(t *testing.T) *dap.SetVariableResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckSetVariableResponse(t, m)
+}
+
+// CheckSetVariableResponse fails the test if m is not *SetVariableResponse.
+func (c *Client) CheckSetVariableResponse(t *testing.T, m dap.Message) *dap.SetVariableResponse {
+	t.Helper()
 	r, ok := m.(*dap.SetVariableResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.SetVariableResponse", m)
@@ -566,6 +847,12 @@ func (c *Client) ExpectSetVariableResponse(t *testing.T) *dap.SetVariableRespons
 func (c *Client) ExpectSourceResponse(t *testing.T) *dap.SourceResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckSourceResponse(t, m)
+}
+
+// CheckSourceResponse fails the test if m is not *SourceResponse.
+func (c *Client) CheckSourceResponse(t *testing.T, m dap.Message) *dap.SourceResponse {
+	t.Helper()
 	r, ok := m.(*dap.SourceResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.SourceResponse", m)
@@ -578,6 +865,12 @@ func (c *Client) ExpectSourceResponse(t *testing.T) *dap.SourceResponse {
 func (c *Client) ExpectStackTraceResponse(t *testing.T) *dap.StackTraceResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckStackTraceResponse(t, m)
+}
+
+// CheckStackTraceResponse fails the test if m is not *StackTraceResponse.
+func (c *Client) CheckStackTraceResponse(t *testing.T, m dap.Message) *dap.StackTraceResponse {
+	t.Helper()
 	r, ok := m.(*dap.StackTraceResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.StackTraceResponse", m)
@@ -590,6 +883,12 @@ func (c *Client) ExpectStackTraceResponse(t *testing.T) *dap.StackTraceResponse 
 func (c *Client) ExpectStepBackResponse(t *testing.T) *dap.StepBackResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckStepBackResponse(t, m)
+}
+
+// CheckStepBackResponse fails the test if m is not *StepBackResponse.
+func (c *Client) CheckStepBackResponse(t *testing.T, m dap.Message) *dap.StepBackResponse {
+	t.Helper()
 	r, ok := m.(*dap.StepBackResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.StepBackResponse", m)
@@ -602,9 +901,20 @@ func (c *Client) ExpectStepBackResponse(t *testing.T) *dap.StepBackResponse {
 func (c *Client) ExpectStepInResponse(t *testing.T) *dap.StepInResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckStepInResponse(t, m)
+}
+
+// CheckStepInResponse fails the test if m is not *StepInResponse.
+func (c *Client) CheckStepInResponse(t *testing.T, m dap.Message) *dap.StepInResponse {
+	t.Helper()
 	r, ok := m.(*dap.StepInResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.StepInResponse", m)
+	}
+	m = c.ExpectMessage(t)
+	_, ok = m.(*dap.ContinuedEvent)
+	if !ok {
+		t.Fatalf("got %#v, want *dap.ContinuedEvent", m)
 	}
 	return r
 }
@@ -614,6 +924,12 @@ func (c *Client) ExpectStepInResponse(t *testing.T) *dap.StepInResponse {
 func (c *Client) ExpectStepInTargetsResponse(t *testing.T) *dap.StepInTargetsResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckStepInTargetsResponse(t, m)
+}
+
+// CheckStepInTargetsResponse fails the test if m is not *StepInTargetsResponse.
+func (c *Client) CheckStepInTargetsResponse(t *testing.T, m dap.Message) *dap.StepInTargetsResponse {
+	t.Helper()
 	r, ok := m.(*dap.StepInTargetsResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.StepInTargetsResponse", m)
@@ -626,9 +942,20 @@ func (c *Client) ExpectStepInTargetsResponse(t *testing.T) *dap.StepInTargetsRes
 func (c *Client) ExpectStepOutResponse(t *testing.T) *dap.StepOutResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckStepOutResponse(t, m)
+}
+
+// CheckStepOutResponse fails the test if m is not *StepOutResponse.
+func (c *Client) CheckStepOutResponse(t *testing.T, m dap.Message) *dap.StepOutResponse {
+	t.Helper()
 	r, ok := m.(*dap.StepOutResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.StepOutResponse", m)
+	}
+	m = c.ExpectMessage(t)
+	_, ok = m.(*dap.ContinuedEvent)
+	if !ok {
+		t.Fatalf("got %#v, want *dap.ContinuedEvent", m)
 	}
 	return r
 }
@@ -638,6 +965,12 @@ func (c *Client) ExpectStepOutResponse(t *testing.T) *dap.StepOutResponse {
 func (c *Client) ExpectStoppedEvent(t *testing.T) *dap.StoppedEvent {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckStoppedEvent(t, m)
+}
+
+// CheckStoppedEvent fails the test if m is not *StoppedEvent.
+func (c *Client) CheckStoppedEvent(t *testing.T, m dap.Message) *dap.StoppedEvent {
+	t.Helper()
 	r, ok := m.(*dap.StoppedEvent)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.StoppedEvent", m)
@@ -650,6 +983,12 @@ func (c *Client) ExpectStoppedEvent(t *testing.T) *dap.StoppedEvent {
 func (c *Client) ExpectTerminateResponse(t *testing.T) *dap.TerminateResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckTerminateResponse(t, m)
+}
+
+// CheckTerminateResponse fails the test if m is not *TerminateResponse.
+func (c *Client) CheckTerminateResponse(t *testing.T, m dap.Message) *dap.TerminateResponse {
+	t.Helper()
 	r, ok := m.(*dap.TerminateResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.TerminateResponse", m)
@@ -662,6 +1001,12 @@ func (c *Client) ExpectTerminateResponse(t *testing.T) *dap.TerminateResponse {
 func (c *Client) ExpectTerminateThreadsResponse(t *testing.T) *dap.TerminateThreadsResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckTerminateThreadsResponse(t, m)
+}
+
+// CheckTerminateThreadsResponse fails the test if m is not *TerminateThreadsResponse.
+func (c *Client) CheckTerminateThreadsResponse(t *testing.T, m dap.Message) *dap.TerminateThreadsResponse {
+	t.Helper()
 	r, ok := m.(*dap.TerminateThreadsResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.TerminateThreadsResponse", m)
@@ -674,6 +1019,12 @@ func (c *Client) ExpectTerminateThreadsResponse(t *testing.T) *dap.TerminateThre
 func (c *Client) ExpectTerminatedEvent(t *testing.T) *dap.TerminatedEvent {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckTerminatedEvent(t, m)
+}
+
+// CheckTerminatedEvent fails the test if m is not *TerminatedEvent.
+func (c *Client) CheckTerminatedEvent(t *testing.T, m dap.Message) *dap.TerminatedEvent {
+	t.Helper()
 	r, ok := m.(*dap.TerminatedEvent)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.TerminatedEvent", m)
@@ -686,6 +1037,12 @@ func (c *Client) ExpectTerminatedEvent(t *testing.T) *dap.TerminatedEvent {
 func (c *Client) ExpectThreadEvent(t *testing.T) *dap.ThreadEvent {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckThreadEvent(t, m)
+}
+
+// CheckThreadEvent fails the test if m is not *ThreadEvent.
+func (c *Client) CheckThreadEvent(t *testing.T, m dap.Message) *dap.ThreadEvent {
+	t.Helper()
 	r, ok := m.(*dap.ThreadEvent)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ThreadEvent", m)
@@ -698,6 +1055,12 @@ func (c *Client) ExpectThreadEvent(t *testing.T) *dap.ThreadEvent {
 func (c *Client) ExpectThreadsResponse(t *testing.T) *dap.ThreadsResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckThreadsResponse(t, m)
+}
+
+// CheckThreadsResponse fails the test if m is not *ThreadsResponse.
+func (c *Client) CheckThreadsResponse(t *testing.T, m dap.Message) *dap.ThreadsResponse {
+	t.Helper()
 	r, ok := m.(*dap.ThreadsResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ThreadsResponse", m)
@@ -710,6 +1073,12 @@ func (c *Client) ExpectThreadsResponse(t *testing.T) *dap.ThreadsResponse {
 func (c *Client) ExpectVariablesResponse(t *testing.T) *dap.VariablesResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.CheckVariablesResponse(t, m)
+}
+
+// CheckVariablesResponse fails the test if m is not *VariablesResponse.
+func (c *Client) CheckVariablesResponse(t *testing.T, m dap.Message) *dap.VariablesResponse {
+	t.Helper()
 	r, ok := m.(*dap.VariablesResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.VariablesResponse", m)

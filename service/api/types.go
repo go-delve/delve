@@ -67,6 +67,9 @@ type Breakpoint struct {
 
 	// Breakpoint condition
 	Cond string
+	// Breakpoint hit count condition.
+	// Supported hit count conditions are "NUMBER" and "OP NUMBER".
+	HitCond string
 
 	// Tracepoint flag, signifying this is a tracepoint.
 	Tracepoint bool `json:"continue"`
@@ -83,6 +86,11 @@ type Breakpoint struct {
 	LoadArgs *LoadConfig
 	// LoadLocals requests loading function locals when the breakpoint is hit
 	LoadLocals *LoadConfig
+
+	// WatchExpr is the expression used to create this watchpoint
+	WatchExpr string
+	WatchType WatchType
+
 	// number of times a breakpoint has been reached in a certain goroutine
 	HitCount map[string]uint64 `json:"hitCount"`
 	// number of times a breakpoint has been reached
@@ -108,6 +116,14 @@ func ValidBreakpointName(name string) error {
 
 	return nil
 }
+
+// WatchType is the watchpoint type
+type WatchType uint8
+
+const (
+	WatchRead WatchType = 1 << iota
+	WatchWrite
+)
 
 // Thread is a thread within the debugged process.
 type Thread struct {

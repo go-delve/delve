@@ -34,6 +34,7 @@ Command | Description
 [on](#on) | Executes a command when a breakpoint is hit.
 [toggle](#toggle) | Toggles on or off a breakpoint.
 [trace](#trace) | Set tracepoint.
+[watch](#watch) | Set watchpoint.
 
 
 ## Viewing program variables and memory
@@ -173,8 +174,21 @@ If called with the linespec argument it will delete all the breakpoints matching
 Set breakpoint condition.
 
 	condition <breakpoint name or id> <boolean expression>.
+	condition -hitcount <breakpoint name or id> <operator> <argument>
 
-Specifies that the breakpoint or tracepoint should break only if the boolean expression is true.
+Specifies that the breakpoint, tracepoint or watchpoint should break only if the boolean expression is true.
+
+With the -hitcount option a condition on the breakpoint hit count can be set, the following operators are supported
+
+	condition -hitcount bp > n
+	condition -hitcount bp >= n
+	condition -hitcount bp < n
+	condition -hitcount bp <= n
+	condition -hitcount bp == n
+	condition -hitcount bp != n
+	condition -hitcount bp % n
+	
+The '% n' form means we should stop at the breakpoint when the hitcount is a multiple of n.
 
 Aliases: cond
 
@@ -579,6 +593,24 @@ Print package variables.
 	vars [-v] [<regex>]
 
 If regex is specified only package variables with a name matching it will be returned. If -v is specified more information about each package variable will be shown.
+
+
+## watch
+Set watchpoint.
+	
+	watch [-r|-w|-rw] <expr>
+	
+	-r	stops when the memory location is read
+	-w	stops when the memory location is written
+	-rw	stops when the memory location is read or written
+
+The memory location is specified with the same expression language used by 'print', for example:
+
+	watch v
+
+will watch the address of variable 'v'.
+
+See also: "help print".
 
 
 ## whatis

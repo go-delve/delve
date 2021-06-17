@@ -34,10 +34,21 @@ import (
 func (c *Client) Expect{{.}}(t *testing.T) *dap.{{.}} {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	return c.Check{{.}}(t, m)
+}
+
+// Check{{.}} fails the test if m is not *{{.}}.
+func (c *Client) Check{{.}}(t *testing.T, m dap.Message) *dap.{{.}} {
+	t.Helper()
 	r, ok := m.(*dap.{{.}})
 	if !ok {
 		t.Fatalf("got %#v, want *dap.{{.}}", m)
-	}
+	}{{if or (or (eq . "StepInResponse") (eq . "StepOutResponse")) (eq . "NextResponse") }}
+	m = c.ExpectMessage(t)
+	_, ok = m.(*dap.ContinuedEvent)
+	if !ok {
+		t.Fatalf("got %#v, want *dap.ContinuedEvent", m)
+	}{{end}}
 	return r
 }{{end}}
 `))

@@ -1,6 +1,7 @@
-//+build linux
+//go:build linux
+// +build linux
 
-package rpccommon
+package sameuser
 
 import (
 	"bytes"
@@ -56,7 +57,11 @@ func sameUserForHexLocalAddr(filename, hexaddr string) (bool, error) {
 		if localAddr != hexaddr {
 			continue
 		}
-		return uid == int(remoteUID), nil
+		same := uid == int(remoteUID)
+		if !same && logflags.Any() {
+			log.Printf("connection from different user (remote: %d, local: %d) detected: %v", remoteUID, uid, line)
+		}
+		return same, nil
 	}
 	return false, &errConnectionNotFound{filename}
 }
@@ -96,7 +101,7 @@ func sameUserForRemoteAddr(remoteAddr *net.TCPAddr) (bool, error) {
 	return sameUserForRemoteAddr4(remoteAddr)
 }
 
-func canAccept(listenAddr, remoteAddr net.Addr) bool {
+func CanAccept(listenAddr, remoteAddr net.Addr) bool {
 	laddr, ok := listenAddr.(*net.TCPAddr)
 	if !ok || !laddr.IP.IsLoopback() {
 		return true
