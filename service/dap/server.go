@@ -1909,10 +1909,9 @@ func (s *Server) toNamedChildren(v *fullyQualifiedVariable) ([]dap.Variable, err
 			loadExpr := fmt.Sprintf("string(*(*%q)(%#x))", typeName, v.Addr)
 
 			s.log.Debugf("loading %s (type %s) with %s", v.fullyQualifiedNameOrExpr, typeName, loadExpr)
-			// We know that this is an array/slice of Uint8 or Int32, so we will load the full array.
-			// TODO(suzmue): should we cap this at or near MaxStringLen?
+			// We know that this is an array/slice of Uint8 or Int32, so we will load up to MaxStringLen.
 			config := DefaultLoadConfig
-			config.MaxArrayValues = int(v.Len)
+			config.MaxArrayValues = config.MaxStringLen
 			vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, loadExpr, config)
 			val, _ := s.convertVariable(vLoaded, loadExpr)
 			if err == nil {
