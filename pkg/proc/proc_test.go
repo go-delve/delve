@@ -3200,7 +3200,7 @@ func stacktraceCheck(t *testing.T, tc []string, frames []proc.Stackframe) []int 
 
 func frameInFile(frame proc.Stackframe, file string) bool {
 	for _, loc := range []proc.Location{frame.Current, frame.Call} {
-		if !strings.HasSuffix(loc.File, "/"+file) && !strings.HasSuffix(loc.File, "\\"+file) {
+		if !strings.HasSuffix(loc.File, file) && !strings.HasSuffix(loc.File, "/"+file) && !strings.HasSuffix(loc.File, "\\"+file) {
 			return false
 		}
 		if loc.Line <= 0 {
@@ -3338,7 +3338,7 @@ func TestCgoSources(t *testing.T) {
 		for _, needle := range []string{"main.go", "hello.c"} {
 			found := false
 			for _, k := range sources {
-				if strings.HasSuffix(k, "/"+needle) || strings.HasSuffix(k, "\\"+needle) {
+				if strings.HasSuffix(k, needle) || strings.HasSuffix(k, "/"+needle) || strings.HasSuffix(k, "\\"+needle) {
 					found = true
 					break
 				}

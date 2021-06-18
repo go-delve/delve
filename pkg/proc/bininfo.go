@@ -645,11 +645,12 @@ type Image struct {
 	closer         io.Closer
 	sepDebugCloser io.Closer
 
-	dwarf       *dwarf.Data
-	dwarfReader *dwarf.Reader
-	loclist2    *loclist.Dwarf2Reader
-	loclist5    *loclist.Dwarf5Reader
-	debugAddr   *godwarf.DebugAddrSection
+	dwarf        *dwarf.Data
+	dwarfReader  *dwarf.Reader
+	loclist2     *loclist.Dwarf2Reader
+	loclist5     *loclist.Dwarf5Reader
+	debugAddr    *godwarf.DebugAddrSection
+	debugLineStr []byte
 
 	typeCache map[dwarf.Offset]godwarf.Type
 
@@ -1202,6 +1203,8 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 	image.loclist5 = loclist.NewDwarf5Reader(debugLoclistBytes)
 	debugAddrBytes, _ := godwarf.GetDebugSectionElf(dwarfFile, "addr")
 	image.debugAddr = godwarf.ParseAddr(debugAddrBytes)
+	debugLineStrBytes, _ := godwarf.GetDebugSectionElf(dwarfFile, "line_str")
+	image.debugLineStr = debugLineStrBytes
 
 	wg.Add(3)
 	go bi.parseDebugFrameElf(image, dwarfFile, debugInfoBytes, wg)
@@ -1723,7 +1726,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 						logger.Printf(fmt, args)
 					}
 				}
-				cu.lineInfo = line.Parse(compdir, bytes.NewBuffer(debugLineBytes[lineInfoOffset:]), logfn, image.StaticBase, bi.GOOS == "windows", bi.Arch.PtrSize())
+				cu.lineInfo = line.Parse(compdir, bytes.NewBuffer(debugLineBytes[lineInfoOffset:]), image.debugLineStr, logfn, image.StaticBase, bi.GOOS == "windows", bi.Arch.PtrSize())
 			}
 			cu.producer, _ = entry.Val(dwarf.AttrProducer).(string)
 			if cu.isgo && cu.producer != "" {

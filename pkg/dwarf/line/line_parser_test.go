@@ -74,7 +74,7 @@ func ptrSizeByRuntimeArch() int {
 
 func testDebugLinePrologueParser(p string, t *testing.T) {
 	data := grabDebugLineSection(p, t)
-	debugLines := ParseAll(data, nil, 0, true, ptrSizeByRuntimeArch())
+	debugLines := ParseAll(data, nil, nil, 0, true, ptrSizeByRuntimeArch())
 	mainFileFound := false
 
 	for _, dbl := range debugLines {
@@ -181,7 +181,7 @@ func BenchmarkLineParser(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = ParseAll(data, nil, 0, true, ptrSizeByRuntimeArch())
+		_ = ParseAll(data, nil, nil, 0, true, ptrSizeByRuntimeArch())
 	}
 }
 
@@ -196,7 +196,7 @@ func loadBenchmarkData(tb testing.TB) DebugLines {
 		tb.Fatal("Could not read test data", err)
 	}
 
-	return ParseAll(data, nil, 0, true, ptrSizeByRuntimeArch())
+	return ParseAll(data, nil, nil, 0, true, ptrSizeByRuntimeArch())
 }
 
 func BenchmarkStateMachine(b *testing.B) {
@@ -316,7 +316,7 @@ func TestDebugLineC(t *testing.T) {
 		t.Fatal("Could not read test data", err)
 	}
 
-	parsed := ParseAll(data, nil, 0, true, ptrSizeByRuntimeArch())
+	parsed := ParseAll(data, nil, nil, 0, true, ptrSizeByRuntimeArch())
 
 	if len(parsed) == 0 {
 		t.Fatal("Parser result is empty")
@@ -365,7 +365,7 @@ func TestDebugLineDwarf4(t *testing.T) {
 		t.Fatal("Could not read test data", err)
 	}
 
-	debugLines := ParseAll(data, nil, 0, true, 8)
+	debugLines := ParseAll(data, nil, nil, 0, true, 8)
 
 	for _, dbl := range debugLines {
 		if dbl.Prologue.Version == 4 {
