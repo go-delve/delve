@@ -4087,7 +4087,7 @@ func TestAttachRequest(t *testing.T) {
 	})
 }
 
-func TestUnsupportedCommandResponses(t *testing.T) {
+func TestPauseAndContinue(t *testing.T) {
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch

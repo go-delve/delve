@@ -33,8 +33,7 @@ import (
 	"github.com/go-delve/delve/pkg/locspec"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
-	"github.com/go-delve/delve/pkg/proc/gdbserial"
-	"github.com/go-delve/delve/pkg/terminal"
+
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/debugger"
@@ -725,7 +724,7 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	// TODO(polina): support these requests in addition to vscode-go feature parity
 	response.Body.SupportsTerminateRequest = false
 	response.Body.SupportsRestartRequest = false
-	response.Body.SupportsStepBack = false // Disabled by default, to be enabled by CapabilitiesEvent
+	response.Body.SupportsStepBack = false // To be enabled by CapabilitiesEvent based on configuration
 	response.Body.SupportsSetExpression = false
 	response.Body.SupportsLoadedSourcesRequest = false
 	response.Body.SupportsReadMemoryRequest = false
@@ -775,55 +774,52 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	// On replay mode, validate its required parameters to define the debugger
-	// Backend and CoreFile properties
-	if mode == "replay" {
-		// Check against replay parameters and decide the backend based on which one was received
-		coreDumpPath, _ := request.Arguments["coreDumpPath"].(string)
-		traceDirectory, _ := request.Arguments["traceDirectory"].(string)
 
-		if (coreDumpPath != "" && traceDirectory != "") || (coreDumpPath == "" && traceDirectory == "") {
-			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", "The 'replay' mode must have either a coreDumpPath or a traceDirectory, but not both." )
+	if mode == "replay" {
+		traceDirPath, _ := request.Arguments["traceDirPath"].(string)
+
+
+		// Validate trace directory
+		if traceDirPath == "" {
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch",
+				"The traceDirPath attribute is missing in replay configuration.")
 			return
 		}
 
-		if coreDumpPath != "" {
-			s.config.Debugger.CoreFile = coreDumpPath
-			s.config.Debugger.Backend = "core"
-		} else {
-			s.config.Debugger.CoreFile = traceDirectory
-			s.config.Debugger.Backend = "rr"
+		s.config.Debugger.CoreFile = traceDirPath
+
+		s.config.Debugger.Backend = "rr"
+
+
+		// Assign the rr trace directory path to debugger configuration
+		s.config.Debugger.CoreFile = traceDirPath
+
+	}
+
+	if mode == "core" {
+		coreFilePath, _ := request.Arguments["coreFilePath"].(string)
+
+
+		// Validate core dump path
+		if coreFilePath == "" {
+
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch",
+				"The coreFilePath attribute is missing in replay configuration.")
+			return
 		}
 
-		if s.config.Debugger.Backend == "core" {
-			// Validate core dump path
-			if coreDumpPath == "" {
-				s.sendErrorResponse(request.Request,
-					FailedToLaunch, "Failed to launch",
-					"The coreDumpPath attribute is missing in replay configuration.")
-				return
-			}
+		s.config.Debugger.CoreFile = coreFilePath
+		s.config.Debugger.Backend = "core"
 
-			// Assign non-empty core file path to debugger configuration. This will
-			// trigger a native core file replay instead of an rr trace replay
-			s.config.Debugger.CoreFile = coreDumpPath
-		}
-
-		if s.config.Debugger.Backend == "rr" {
-			// Validate trace directory
-			if traceDirectory == "" {
-				s.sendErrorResponse(request.Request,
-					FailedToLaunch, "Failed to launch",
-					"The traceDirectory attribute is missing in replay configuration.")
-				return
-			}
-
-			s.config.Debugger.CoreFile = traceDirectory
-		}
+		// Assign the non-empty core file path to debugger configuration. This will
+		// trigger a native core file replay instead of an rr trace replay
+		s.config.Debugger.CoreFile = coreFilePath
 	}
 
 	// Prepare the debug executable filename, build flags and build it
-	if mode == "debug" || mode == "test" || mode == "replay" || mode == "record" {
+	if mode == "debug" || mode == "test" {
 		output, ok := request.Arguments["output"].(string)
 		if !ok || output == "" {
 			output = defaultDebugBinary
@@ -854,7 +850,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			s.log.Debugf("building binary '%s' from '%s' with flags '%v'", debugbinary, program, buildFlags)
 		}
 		switch mode {
-		case "debug", "replay", "record":
+		case "debug":
 			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
 		case "test":
 			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
@@ -885,9 +881,26 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	targetArgs, ok := s.parseTargetArgs(request)
-	if !ok {
-		return
+	var targetArgs []string
+	args, ok := request.Arguments["args"]
+	if ok {
+		argsParsed, ok := args.([]interface{})
+		if !ok {
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch",
+				fmt.Sprintf("'args' attribute '%v' in debug configuration is not an array.", args))
+			return
+		}
+		for _, arg := range argsParsed {
+			argParsed, ok := arg.(string)
+			if !ok {
+				s.sendErrorResponse(request.Request,
+					FailedToLaunch, "Failed to launch",
+					fmt.Sprintf("value '%v' in 'args' attribute in debug configuration is not a string.", arg))
+				return
+			}
+			targetArgs = append(targetArgs, argParsed)
+		}
 	}
 
 	backend, ok := request.Arguments["backend"]
@@ -920,53 +933,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.config.Debugger.WorkingDir = wdParsed
 	}
 
-	if mode == "record" {
-		// Record only works on rr trace directories
-		traceDirectory, _ := request.Arguments["traceDirectory"].(string)
-		if traceDirectory == "" {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				"The traceDirectory attribute is missing in record configuration.")
-			return
-		}
-
-		// Check if trace output directory already exists, and return an user friendly error
-		// Otherwise, rr will abort with an EEXIST backtrace
-		if _, err := os.Stat(traceDirectory); !os.IsNotExist(err) {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to record trace from target",
-				fmt.Sprintf("Trace output directory '%s' already exists", traceDirectory))
-			return
-		}
-
-		// Log and execute call to rr record
-		s.log.Debugf("preparing for trace recording - program: %v, traceDirectory: %v, cwd: %v, targetArgs: %v", program,traceDirectory, s.config.Debugger.WorkingDir, targetArgs)
-		//command layout is rr record --output-trace-dir "output_directory" binary
-		rrParams := []string{"--output-trace-dir", fmt.Sprintf("%v", traceDirectory), program}
-		traceDir, err := gdbserial.Record(rrParams, s.config.Debugger.WorkingDir, false, s.config.Debugger.Redirects)
-		if err != nil {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to record trace from target",
-				fmt.Sprintf("Recording error: %s", err.Error()))
-			return
-		}
-		if traceDir == "" {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to record trace from target",
-				"No trace result found")
-			return
-		}
-
-		// Notify the client that the debugger finished initialization and send
-		// an exit response to signal the finalization of the trace recording
-		s.sendOutputResponse(request.Request, "console", fmt.Sprintf("Trace recorded successfully to '%s'", traceDir))
-		s.send(&dap.ExitedEvent{
-			Event: *newEvent("exited"),
-			Body:  dap.ExitedEventBody{ExitCode: 0},
-		})
-		s.Stop()
-		return
-	}
 
 	s.log.Debugf("running program in %s\n", s.config.Debugger.WorkingDir)
 	if noDebug, ok := request.Arguments["noDebug"].(bool); ok && noDebug {
@@ -1020,31 +986,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
 }
 
-func (s *Server) parseTargetArgs(request *dap.LaunchRequest) ([]string, bool) {
-	var targetArgs []string
-	args, ok := request.Arguments["args"]
-	if ok {
-		argsParsed, ok := args.([]interface{})
-		if !ok {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("'args' attribute '%v' in debug configuration is not an array.", args))
-			return targetArgs, false
-		}
-		for _, arg := range argsParsed {
-			argParsed, ok := arg.(string)
-			if !ok {
-				s.sendErrorResponse(request.Request,
-					FailedToLaunch, "Failed to launch",
-					fmt.Sprintf("value '%v' in 'args' attribute in debug configuration is not a string.", arg))
-				return targetArgs, false
-			}
-			targetArgs = append(targetArgs, argParsed)
-		}
-	}
-
-	return targetArgs, true
-}
 
 // startNoDebugProcess is called from onLaunchRequest (run goroutine) and
 // requires holding mu lock.
@@ -1085,7 +1026,8 @@ func (s *Server) stopNoDebugProcess() {
 //      Required args: program
 // record: builds the program and additionally calls gdbserial.Record() to generate an rr trace
 
-	case "exec", "debug", "test", "record", "replay":
+
+	case "exec", "debug", "test", "replay":
 //      Optional args with default: output, cwd, noDebug
 //      Optional args: buildFlags, args
 // -- "test" - builds and launches debugger for specified test (similar to 'dlv test')
@@ -1631,6 +1573,7 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
 			return
 		}
+
 
 
 	}
@@ -2541,14 +2484,15 @@ func (s *Server) onRestartRequest(request *dap.RestartRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onStepBackRequest performs a ReverseNext command call, returning a NextResponse.
+// onStepBackRequest `handles 'stepBack' request.
+// This is an optional request enabled by capability ‘supportsStepBackRequest’.
 func (s *Server) onStepBackRequest(request *dap.StepBackRequest, asyncSetupDone chan struct{}) {
 	s.send(&dap.StepBackResponse{Response: *newResponse(request.Request)})
 	s.doStepCommand(api.ReverseNext, request.Arguments.ThreadId, asyncSetupDone)
 }
 
 // onReverseContinueRequest performs a rewind command call up to the previous
-// breakpoint or the frame zero of the program, (dependant on Rewind/rr implementation)
+// breakpoint or the start of the process
 func (s *Server) onReverseContinueRequest(request *dap.ReverseContinueRequest, asyncSetupDone chan struct{}) {
 	s.send(&dap.ReverseContinueResponse{
 		Response: *newResponse(request.Request),
@@ -2735,6 +2679,7 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 			}
 
 
+
 		case proc.UnrecoveredPanic:
 			body.ExceptionId = "panic"
 			// Attempt to get the value of the panic message.
@@ -2863,25 +2808,6 @@ func (s *Server) sendNotYetImplementedErrorResponse(request dap.Request) {
 		fmt.Sprintf("cannot process %q request", request.Command))
 }
 
-func (s *Server) sendOutputResponse(request dap.Request, category, message string) {
-	c := category
-	if category == "" {
-		c = "console"
-	}
-
-	// Send a basic output event with the desired message and category type
-	ev := &dap.OutputEvent{
-		Event: *newEvent("output"),
-		Body: dap.OutputEventBody{
-			Category:	c,
-			Output:		message,
-		},
-	}
-
-	ev.Seq = request.Seq
-	ev.Type = "event"
-	s.send(ev)
-}
 
 func newResponse(request dap.Request) *dap.Response {
 	return &dap.Response{
