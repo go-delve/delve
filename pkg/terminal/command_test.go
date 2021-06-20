@@ -581,47 +581,6 @@ func countOccurrences(s, needle string) int {
 	return count
 }
 
-func TestIssue387(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
-		t.Skip("test is not valid on FreeBSD")
-	}
-	// a breakpoint triggering during a 'next' operation will interrupt it
-	test.AllowRecording(t)
-	withTestTerminal("issue387", t, func(term *FakeTerminal) {
-		breakpointHitCount := 0
-		term.MustExec("break dostuff")
-		for {
-			outstr, err := term.Exec("continue")
-			breakpointHitCount += countOccurrences(outstr, "issue387.go:8")
-			t.Log(outstr)
-			if err != nil {
-				if !strings.Contains(err.Error(), "exited") {
-					t.Fatalf("Unexpected error executing 'continue': %v", err)
-				}
-				break
-			}
-
-			pos := 9
-
-			for {
-				outstr = term.MustExec("next")
-				breakpointHitCount += countOccurrences(outstr, "issue387.go:8")
-				t.Log(outstr)
-				if countOccurrences(outstr, fmt.Sprintf("issue387.go:%d", pos)) == 0 {
-					t.Fatalf("did not continue to expected position %d", pos)
-				}
-				pos++
-				if pos >= 11 {
-					break
-				}
-			}
-		}
-		if breakpointHitCount != 10 {
-			t.Fatalf("Breakpoint hit wrong number of times, expected 10 got %d", breakpointHitCount)
-		}
-	})
-}
-
 func listIsAt(t *testing.T, term *FakeTerminal, listcmd string, cur, start, end int) {
 	t.Helper()
 	outstr := term.MustExec(listcmd)
