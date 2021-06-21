@@ -81,6 +81,9 @@ func ParseAll(data []byte, debugLineStr []byte, logfn func(string, ...interface{
 func Parse(compdir string, buf *bytes.Buffer, debugLineStr []byte, logfn func(string, ...interface{}), staticBase uint64, normalizeBackslash bool, ptrSize int) *DebugLineInfo {
 	dbl := new(DebugLineInfo)
 	dbl.Logf = logfn
+	if logfn == nil {
+		dbl.Logf = func(string, ...interface{}) {}
+	}
 	dbl.staticBase = staticBase
 	dbl.ptrSize = ptrSize
 	dbl.Lookup = make(map[string]*FileEntry)
@@ -177,12 +180,15 @@ func parseIncludeDirs5(info *DebugLineInfo, buf *bytes.Buffer) bool {
 		for dirEntryFormReader.next(buf) {
 			switch dirEntryFormReader.contentType {
 			case _DW_LNCT_path:
-				if dirEntryFormReader.formCode == _DW_FORM_string {
+				switch dirEntryFormReader.formCode {
+				case _DW_FORM_string:
 					info.IncludeDirs = append(info.IncludeDirs, dirEntryFormReader.str)
-				} else {
+				case _DW_FORM_line_strp:
 					buf := bytes.NewBuffer(info.debugLineStr[dirEntryFormReader.u64:])
 					dir, _ := util.ParseString(buf)
 					info.IncludeDirs = append(info.IncludeDirs, dir)
+				default:
+					info.Logf("unsupported string form %#x", dirEntryFormReader.formCode)
 				}
 			case _DW_LNCT_directory_index:
 			case _DW_LNCT_timestamp:
@@ -281,11 +287,14 @@ func parseFileEntries5(info *DebugLineInfo, buf *bytes.Buffer) bool {
 
 			switch fileEntryFormReader.contentType {
 			case _DW_LNCT_path:
-				if fileEntryFormReader.formCode == _DW_FORM_string {
+				switch fileEntryFormReader.formCode {
+				case _DW_FORM_string:
 					p = fileEntryFormReader.str
-				} else {
+				case _DW_FORM_line_strp:
 					buf := bytes.NewBuffer(info.debugLineStr[fileEntryFormReader.u64:])
 					p, _ = util.ParseString(buf)
+				default:
+					info.Logf("unsupported string form %#x", fileEntryFormReader.formCode)
 				}
 			case _DW_LNCT_directory_index:
 				diridx = int(fileEntryFormReader.u64)
