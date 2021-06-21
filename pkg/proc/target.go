@@ -213,8 +213,7 @@ func (t *Target) IsCgo() bool {
 func (t *Target) Valid() (bool, error) {
 	ok, err := t.proc.Valid()
 	if !ok && err != nil {
-		var pe ErrProcessExited
-		if errors.As(err, &pe) {
+		if pe, ok := err.(ErrProcessExited); ok {
 			pe.Status = t.exitStatus
 			err = pe
 		}

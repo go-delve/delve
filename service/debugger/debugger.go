@@ -1189,8 +1189,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 	}
 
 	if err != nil {
-		var pe proc.ErrProcessExited
-		if errors.As(err, &pe) && command.Name != api.SwitchGoroutine && command.Name != api.SwitchThread {
+		if pe, ok := err.(proc.ErrProcessExited); ok && command.Name != api.SwitchGoroutine && command.Name != api.SwitchThread {
 			state := &api.DebuggerState{}
 			state.Pid = d.target.Pid()
 			state.Exited = true
