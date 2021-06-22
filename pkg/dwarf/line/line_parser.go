@@ -39,6 +39,9 @@ type DebugLineInfo struct {
 	// lastMachineCache[pc] is a state machine stopped at an address after pc
 	lastMachineCache map[uint64]*StateMachine
 
+	// debugLineStr is the contents of the .debug_line_str section.
+	debugLineStr []byte
+
 	// staticBase is the address at which the executable is loaded, 0 for non-PIEs
 	staticBase uint64
 
@@ -59,7 +62,7 @@ type FileEntry struct {
 type DebugLines []*DebugLineInfo
 
 // ParseAll parses all debug_line segments found in data
-func ParseAll(data []byte, logfn func(string, ...interface{}), staticBase uint64, normalizeBackslash bool, ptrSize int) DebugLines {
+func ParseAll(data []byte, debugLineStr []byte, logfn func(string, ...interface{}), staticBase uint64, normalizeBackslash bool, ptrSize int) DebugLines {
 	var (
 		lines = make(DebugLines, 0)
 		buf   = bytes.NewBuffer(data)
@@ -67,7 +70,7 @@ func ParseAll(data []byte, logfn func(string, ...interface{}), staticBase uint64
 
 	// We have to parse multiple file name tables here.
 	for buf.Len() > 0 {
-		lines = append(lines, Parse("", buf, logfn, staticBase, normalizeBackslash, ptrSize))
+		lines = append(lines, Parse("", buf, debugLineStr, logfn, staticBase, normalizeBackslash, ptrSize))
 	}
 
 	return lines
@@ -75,9 +78,12 @@ func ParseAll(data []byte, logfn func(string, ...interface{}), staticBase uint64
 
 // Parse parses a single debug_line segment from buf. Compdir is the
 // DW_AT_comp_dir attribute of the associated compile unit.
-func Parse(compdir string, buf *bytes.Buffer, logfn func(string, ...interface{}), staticBase uint64, normalizeBackslash bool, ptrSize int) *DebugLineInfo {
+func Parse(compdir string, buf *bytes.Buffer, debugLineStr []byte, logfn func(string, ...interface{}), staticBase uint64, normalizeBackslash bool, ptrSize int) *DebugLineInfo {
 	dbl := new(DebugLineInfo)
 	dbl.Logf = logfn
+	if logfn == nil {
+		dbl.Logf = func(string, ...interface{}) {}
+	}
 	dbl.staticBase = staticBase
 	dbl.ptrSize = ptrSize
 	dbl.Lookup = make(map[string]*FileEntry)
@@ -86,6 +92,7 @@ func Parse(compdir string, buf *bytes.Buffer, logfn func(string, ...interface{})
 	dbl.stateMachineCache = make(map[uint64]*StateMachine)
 	dbl.lastMachineCache = make(map[uint64]*StateMachine)
 	dbl.normalizeBackslash = normalizeBackslash
+	dbl.debugLineStr = debugLineStr
 
 	parseDebugLinePrologue(dbl, buf)
 	if dbl.Prologue.Version >= 5 {
@@ -123,10 +130,9 @@ func parseDebugLinePrologue(dbl *DebugLineInfo, buf *bytes.Buffer) {
 		dbl.ptrSize += int(buf.Next(1)[0]) // segment_selector_size
 	}
 
-	// Version 4 or earlier
 	p.Length = binary.LittleEndian.Uint32(buf.Next(4))
 	p.MinInstrLength = uint8(buf.Next(1)[0])
-	if p.Version == 4 {
+	if p.Version >= 4 {
 		p.MaxOpPerInstr = uint8(buf.Next(1)[0])
 	} else {
 		p.MaxOpPerInstr = 1
@@ -174,10 +180,14 @@ func parseIncludeDirs5(info *DebugLineInfo, buf *bytes.Buffer) bool {
 		for dirEntryFormReader.next(buf) {
 			switch dirEntryFormReader.contentType {
 			case _DW_LNCT_path:
-				if dirEntryFormReader.formCode != _DW_FORM_string {
+				switch dirEntryFormReader.formCode {
+				case _DW_FORM_string:
 					info.IncludeDirs = append(info.IncludeDirs, dirEntryFormReader.str)
-				} else {
-					//TODO(aarzilli): support debug_string, debug_line_str
+				case _DW_FORM_line_strp:
+					buf := bytes.NewBuffer(info.debugLineStr[dirEntryFormReader.u64:])
+					dir, _ := util.ParseString(buf)
+					info.IncludeDirs = append(info.IncludeDirs, dir)
+				default:
 					info.Logf("unsupported string form %#x", dirEntryFormReader.formCode)
 				}
 			case _DW_LNCT_directory_index:
@@ -277,10 +287,13 @@ func parseFileEntries5(info *DebugLineInfo, buf *bytes.Buffer) bool {
 
 			switch fileEntryFormReader.contentType {
 			case _DW_LNCT_path:
-				if fileEntryFormReader.formCode != _DW_FORM_string {
+				switch fileEntryFormReader.formCode {
+				case _DW_FORM_string:
 					p = fileEntryFormReader.str
-				} else {
-					//TODO(aarzilli): support debug_string, debug_line_str
+				case _DW_FORM_line_strp:
+					buf := bytes.NewBuffer(info.debugLineStr[fileEntryFormReader.u64:])
+					p, _ = util.ParseString(buf)
+				default:
 					info.Logf("unsupported string form %#x", fileEntryFormReader.formCode)
 				}
 			case _DW_LNCT_directory_index:

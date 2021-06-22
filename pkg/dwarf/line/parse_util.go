@@ -165,13 +165,14 @@ func (rdr *formReader) next(buf *bytes.Buffer) bool {
 		}
 		rdr.u64 = uint64(binary.LittleEndian.Uint32(append(buf.Next(3), 0x0)))
 
+	case ^uint64(0):
+		// do nothing
+
 	default:
 		if rdr.logf != nil {
 			rdr.logf("unknown form code %#x", rdr.formCode)
 		}
 		rdr.formCodes[rdr.nexti] = ^uint64(0) // only print error once
-	case ^uint64(0):
-		// do nothing
 	}
 
 	rdr.nexti++

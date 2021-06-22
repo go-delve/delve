@@ -103,9 +103,13 @@ func newStateMachine(dbl *DebugLineInfo, instructions []byte, ptrSize int) *Stat
 	for op := range standardopcodes {
 		opcodes[op] = standardopcodes[op]
 	}
+	var file string
+	if len(dbl.FileNames) > 0 {
+		file = dbl.FileNames[0].Path
+	}
 	sm := &StateMachine{
 		dbl:         dbl,
-		file:        dbl.FileNames[0].Path,
+		file:        file,
 		line:        1,
 		buf:         bytes.NewBuffer(instructions),
 		opcodes:     opcodes,
