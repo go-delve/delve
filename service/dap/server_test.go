@@ -682,7 +682,7 @@ func checkVar(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, v
 		}
 	}
 	if i < 0 {
-		t.Errorf("\ngot  %#v\nwant Variables[i].Name=%q", got, name)
+		t.Errorf("\ngot  %#v\nwant Variables[i].Name=%q (not found)", got, name)
 		return 0
 	}
 
@@ -1379,7 +1379,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					checkVarExact(t, locals, -1, "emptyslice", "emptyslice", "[]string len: 0, cap: 0, []", "[]string", noChildren)
 					checkVarExact(t, locals, -1, "nilslice", "nilslice", "[]int len: 0, cap: 0, nil", "[]int", noChildren)
 					// reflect.Kind == String
-					checkVarExact(t, locals, -1, "longstr", "longstr", `"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more"`, "string", noChildren)
+					checkVarExact(t, locals, -1, "longstr", "longstr", longstr, "string", noChildren)
 					// reflect.Kind == Struct
 					checkVarExact(t, locals, -1, "zsvar", "zsvar", "struct {} {}", "struct {}", noChildren)
 					// reflect.Kind == UnsafePointer
@@ -1476,8 +1476,12 @@ func TestVariablesLoading(t *testing.T) {
 			}, {
 				execute: func() {
 					// Change default config values to trigger certain unloaded corner cases
+					saveDefaultConfig := DefaultLoadConfig
 					DefaultLoadConfig.MaxStructFields = 5
-					defer func() { DefaultLoadConfig.MaxStructFields = -1 }()
+					DefaultLoadConfig.MaxStringLen = 64
+					defer func() {
+						DefaultLoadConfig = saveDefaultConfig
+					}()
 
 					client.StackTraceRequest(1, 0, 0)
 					client.ExpectStackTraceResponse(t)
@@ -1489,7 +1493,8 @@ func TestVariablesLoading(t *testing.T) {
 					locals := client.ExpectVariablesResponse(t)
 
 					// String partially missing based on LoadConfig.MaxStringLen
-					checkVarExact(t, locals, -1, "longstr", "longstr", "\"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more\"", "string", noChildren)
+					// See also TestVariableLoadingOfLongStrings
+					checkVarExact(t, locals, -1, "longstr", "longstr", longstrLoaded64, "string", noChildren)
 
 					checkArrayChildren := func(t *testing.T, longarr *dap.VariablesResponse, parentName string, start int) {
 						t.Helper()
@@ -2850,7 +2855,7 @@ func TestEvaluateRequest(t *testing.T) {
 // From testvariables2 fixture
 const (
 	// As defined in the code
-	longstrFull = `"very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"`
+	longstr = `"very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"`
 	// Loaded with MaxStringLen=64
 	longstrLoaded64   = `"very long string 0123456789a0123456789b0123456789c0123456789d012...+73 more"`
 	longstrLoaded64re = `\"very long string 0123456789a0123456789b0123456789c0123456789d012\.\.\.\+73 more\"`
@@ -2903,28 +2908,27 @@ func TestVariableValueTruncation(t *testing.T) {
 
 					// Compound map keys may be truncated even further
 					// As the keys are always inside of a map container,
-					// this applies to variable requests.
+					// this applies to variables requests only, not evalute requests.
 
 					// key - compound, value - scalar (inlined key:value display) => truncate key if too long
-					ref := checkVarExact(t, locals, -1, "m5", "m5", "map[main.C]int [{s: "+longstrLoaded64+"}: 1, ]", "map[main.C]int", hasChildren)
+					ref := checkVarExact(t, locals, -1, "m5", "m5", "map[main.C]int [{s: "+longstr+"}: 1, ]", "map[main.C]int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						// Key format: <truncated>... @<address>
 						checkVarRegex(t, client.ExpectVariablesResponse(t), 0, `main\.C {s: "very long string 0123456789.+\.\.\. @ 0x[0-9a-f]+`, `m5\[\(\*\(\*"main\.C"\)\(0x[0-9a-f]+\)\)\]`, "1", `int`, hasChildren)
 					}
-					// key - scalar, value - scalar (inlined key:value display) => not truncated
-					ref = checkVarExact(t, locals, -1, "m6", "m6", "map[string]int ["+longstrLoaded64+": 123, ]", "map[string]int", hasChildren)
+					// key - scalar, value - scalar (inlined key:value display) => key not truncated
+					ref = checkVarExact(t, locals, -1, "m6", "m6", "map[string]int ["+longstr+": 123, ]", "map[string]int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
-						checkVarRegex(t, client.ExpectVariablesResponse(t), 0, longstrLoaded64re, `m6[\(\*\(\*\"string\"\)\(0x[0-9a-f]+\)\)]`, "123", "string: int", noChildren)
+						checkVarExact(t, client.ExpectVariablesResponse(t), 0, longstr, `m6[`+longstr+`]`, "123", "string: int", noChildren)
 					}
-					// key - compound, value - compound (array-like display) => not truncated
-					ref = checkVarExact(t, locals, -1, "m7", "m7", "map[main.C]main.C [{s: "+longstrLoaded64+"}: {s: "+longstrLoaded64+"}, ]", "map[main.C]main.C", hasChildren)
+					// key - compound, value - compound (array-like display) => key not truncated
+					ref = checkVarExact(t, locals, -1, "m7", "m7", "map[main.C]main.C [{s: "+longstr+"}: {s: \"hello\"}, ]", "map[main.C]main.C", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m7 := client.ExpectVariablesResponse(t)
-						checkVarRegex(t, m7, 0, "[key 0]", `\(\*\(\*\"main\.C\"\)\(0x[0-9a-f]+\)\)`, `main\.C {s: `+longstrLoaded64re+`}`, `main\.C`, hasChildren)
-						checkVarRegex(t, m7, 1, "[val 0]", `\(\*\(\*\"main\.C\"\)\(0x[0-9a-f]+\)\)`, `main\.C {s: `+longstrLoaded64re+`}`, `main\.C`, hasChildren)
+						checkVarRegex(t, m7, 0, "[key 0]", `\(\*\(\*\"main\.C\"\)\(0x[0-9a-f]+\)\)`, `main\.C {s: `+longstr+`}`, `main\.C`, hasChildren)
 					}
 				},
 				disconnect: true,
@@ -2932,16 +2936,17 @@ func TestVariableValueTruncation(t *testing.T) {
 	})
 }
 
-// TestVariableLoadingOfLargeStrings tests that different string loading limits
+// TestVariableLoadingOfLongStrings tests that different string loading limits
 // apply that depending on the context.
-func TestVariableLoadingOfLargeStrings(t *testing.T) {
-	runTest(t, "testvariables2", func(client *daptest.Client, fixture protest.Fixture) {
+func TestVariableLoadingOfLongStrings(t *testing.T) {
+	protest.MustSupportFunctionCalls(t, testBackend)
+	runTest(t, "longstrings", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
 			func() {
 				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
 			},
-			// Breakpoints are set within the program
+			// Breakpoint set within the program
 			fixture.Source, []int{},
 			[]onBreakpoint{{
 				execute: func() {
@@ -2950,29 +2955,56 @@ func TestVariableLoadingOfLargeStrings(t *testing.T) {
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)
 
-					// Limits vary for evaluate requests
-					for _, evalContext := range []string{"", "watch", "repl", "variables", "hover", "clipboard", "somethingelse"} {
-						t.Run(evalContext, func(t *testing.T) {
-							// long string by itself (limits vary)
-							client.EvaluateRequest("longstr", 0, evalContext)
-							got := client.ExpectEvaluateResponse(t)
-							want := longstrLoaded64
-							switch evalContext {
-							case "repl", "variables", "hover", "clipboard":
-								want = longstrFull
-							}
-							checkEval(t, got, want, false)
+					// Limits vary for evaluate requests with different contexts
+					tests := []struct {
+						context string
+						limit   int
+					}{
+						{"", DefaultLoadConfig.MaxStringLen},
+						{"watch", DefaultLoadConfig.MaxStringLen},
+						{"repl", maxSingleStringLen},
+						{"hover", maxSingleStringLen},
+						{"variables", maxSingleStringLen},
+						{"clipboard", maxSingleStringLen},
+						{"somethingelse", DefaultLoadConfig.MaxStringLen},
+					}
+					for _, tc := range tests {
+						t.Run(tc.context, func(t *testing.T) {
+							// Long string by itself (limits vary)
+							client.EvaluateRequest("s4097", 0, tc.context)
+							want := fmt.Sprintf(`"x+\.\.\.\+%d more"`, 4097-tc.limit)
+							checkEvalRegex(t, client.ExpectEvaluateResponse(t), want, noChildren)
 
-							// long string as a child (same limits)
-							client.EvaluateRequest("(cl).s", 0, evalContext)
-							got2 := client.ExpectEvaluateResponse(t)
-							checkEval(t, got2, want, false)
+							// Evaluated container variables return values with minimally loaded
+							// strings, which are further truncated for displaying, so we
+							// can't test for loading limit except in contexts where an untruncated
+							// value is returned.
+							client.EvaluateRequest("&s4097", 0, tc.context)
+							switch tc.context {
+							case "variables", "clipboard":
+								want = fmt.Sprintf(`\*"x+\.\.\.\+%d more`, 4097-DefaultLoadConfig.MaxStringLen)
+							default:
+								want = fmt.Sprintf(`\*"x{%d}\.\.\.`, maxVarValueLen-2)
+							}
+							checkEvalRegex(t, client.ExpectEvaluateResponse(t), want, hasChildren)
 						})
 					}
 
-					// Variables requests are not affected.
-					checkVarExact(t, locals, -1, "longstr", "longstr", longstrLoaded64, "string", noChildren)
-					checkVarExact(t, locals, -1, "cl", "cl", `main.C {s: `+longstrLoaded64+`}`, "main.C", hasChildren)
+					// Long strings returned from calls are subject to a different limit,
+					// same limit regardless of context
+					for _, context := range []string{"", "watch", "repl", "variables", "hover", "clipboard", "somethingelse"} {
+						t.Run(context, func(t *testing.T) {
+							client.EvaluateRequest(`call buildString(4097)`, 1000, context)
+							want := fmt.Sprintf(`"x+\.\.\.\+%d more"`, 4097-maxStringLenInCallRetVars)
+							got := client.ExpectEvaluateResponse(t)
+							checkEvalRegex(t, got, want, hasChildren)
+						})
+					}
+
+					// Variables requests use the most conservative loading limit
+					checkVarRegex(t, locals, -1, "s513", "s513", `"x{512}\.\.\.\+1 more"`, "string", noChildren)
+					// Container variables are subject to additional stricter value truncation that drops +more part
+					checkVarRegex(t, locals, -1, "nested", "nested", `map\[int\]string \[513: \"x+\.\.\.`, "string", hasChildren)
 				},
 				disconnect: true,
 			}})
@@ -3109,13 +3141,6 @@ func TestEvaluateCallRequest(t *testing.T) {
 					client.EvaluateRequest("call ", 1000, "watch")
 					got = client.ExpectEvaluateResponse(t)
 					checkEval(t, got, "\"this is a variable named `call`\"", noChildren)
-					// Long string as a return value
-					client.EvaluateRequest(`call stringsJoin(longstrs, ",")`, 1000, "variables") // full string
-					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, `"very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"`, hasChildren)
-					client.EvaluateRequest(`call stringsJoin(longstrs, ",")`, 1000, "watch") // full string
-					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, `"very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"`, hasChildren)
 
 					// Call error
 					client.EvaluateRequest("call call1(one)", 1000, "watch")

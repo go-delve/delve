@@ -1308,7 +1308,7 @@ func scopePrefixSwitch(t *Term, ctx callContext) error {
 
 func exitedToError(state *api.DebuggerState, err error) (*api.DebuggerState, error) {
 	if err == nil && state.Exited {
-		return nil, fmt.Errorf("Process has exited with status %d", state.ExitStatus)
+		return nil, fmt.Errorf("Process %d has exited with status %d", state.Pid, state.ExitStatus)
 	}
 	return state, err
 }

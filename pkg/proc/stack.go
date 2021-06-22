@@ -102,18 +102,13 @@ func ThreadStacktrace(thread Thread, depth int) ([]Stackframe, error) {
 		so := thread.BinInfo().PCToImage(regs.PC())
 		dwarfRegs := *(thread.BinInfo().Arch.RegistersToDwarfRegisters(so.StaticBase, regs))
 		dwarfRegs.ChangeFunc = thread.SetReg
-		it := newStackIterator(thread.BinInfo(), thread.ProcessMemory(), dwarfRegs, 0, nil, -1, nil, 0)
+		it := newStackIterator(thread.BinInfo(), thread.ProcessMemory(), dwarfRegs, 0, nil, 0)
 		return it.stacktrace(depth)
 	}
 	return g.Stacktrace(depth, 0)
 }
 
 func (g *G) stackIterator(opts StacktraceOptions) (*stackIterator, error) {
-	stkbar, err := g.stkbar()
-	if err != nil {
-		return nil, err
-	}
-
 	bi := g.variable.bi
 	if g.Thread != nil {
 		regs, err := g.Thread.Registers()
@@ -126,13 +121,13 @@ func (g *G) stackIterator(opts StacktraceOptions) (*stackIterator, error) {
 		return newStackIterator(
 			bi, g.variable.mem,
 			dwarfRegs,
-			g.stack.hi, stkbar, g.stkbarPos, g, opts), nil
+			g.stack.hi, g, opts), nil
 	}
 	so := g.variable.bi.PCToImage(g.PC)
 	return newStackIterator(
 		bi, g.variable.mem,
 		bi.Arch.addrAndStackRegsToDwarfRegisters(so.StaticBase, g.PC, g.SP, g.BP, g.LR),
-		g.stack.hi, stkbar, g.stkbarPos, g, opts), nil
+		g.stack.hi, g, opts), nil
 }
 
 type StacktraceOptions uint16
@@ -187,10 +182,8 @@ type stackIterator struct {
 	mem   MemoryReadWriter
 	err   error
 
-	stackhi        uint64
-	systemstack    bool
-	stackBarrierPC uint64
-	stkbar         []savedLR
+	stackhi     uint64
+	systemstack bool
 
 	// regs is the register set for the current frame
 	regs op.DwarfRegisters
@@ -202,36 +195,12 @@ type stackIterator struct {
 	opts StacktraceOptions
 }
 
-type savedLR struct {
-	ptr uint64
-	val uint64
-}
-
-func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, regs op.DwarfRegisters, stackhi uint64, stkbar []savedLR, stkbarPos int, g *G, opts StacktraceOptions) *stackIterator {
-	stackBarrierFunc := bi.LookupFunc["runtime.stackBarrier"] // stack barriers were removed in Go 1.9
-	var stackBarrierPC uint64
-	if stackBarrierFunc != nil && stkbar != nil {
-		stackBarrierPC = stackBarrierFunc.Entry
-		fn := bi.PCToFunc(regs.PC())
-		if fn != nil && fn.Name == "runtime.stackBarrier" {
-			// We caught the goroutine as it's executing the stack barrier, we must
-			// determine whether or not g.stackPos has already been incremented or not.
-			if len(stkbar) > 0 && stkbar[stkbarPos].ptr < regs.SP() {
-				// runtime.stackBarrier has not incremented stkbarPos.
-			} else if stkbarPos > 0 && stkbar[stkbarPos-1].ptr < regs.SP() {
-				// runtime.stackBarrier has incremented stkbarPos.
-				stkbarPos--
-			} else {
-				return &stackIterator{err: fmt.Errorf("failed to unwind through stackBarrier at SP %x", regs.SP())}
-			}
-		}
-		stkbar = stkbar[stkbarPos:]
-	}
+func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, regs op.DwarfRegisters, stackhi uint64, g *G, opts StacktraceOptions) *stackIterator {
 	systemstack := true
 	if g != nil {
 		systemstack = g.SystemStack
 	}
-	return &stackIterator{pc: regs.PC(), regs: regs, top: true, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, stackBarrierPC: stackBarrierPC, stkbar: stkbar, systemstack: systemstack, g: g, opts: opts}
+	return &stackIterator{pc: regs.PC(), regs: regs, top: true, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, systemstack: systemstack, g: g, opts: opts}
 }
 
 // Next points the iterator to the next stack frame.
@@ -242,12 +211,6 @@ func (it *stackIterator) Next() bool {
 
 	callFrameRegs, ret, retaddr := it.advanceRegs()
 	it.frame = it.newStackframe(ret, retaddr)
-
-	if it.stkbar != nil && it.frame.Ret == it.stackBarrierPC && it.frame.addrret == it.stkbar[0].ptr {
-		// Skip stack barrier frames
-		it.frame.Ret = it.stkbar[0].val
-		it.stkbar = it.stkbar[1:]
-	}
 
 	if it.opts&StacktraceSimple == 0 {
 		if it.bi.Arch.switchStack(it, &callFrameRegs) {

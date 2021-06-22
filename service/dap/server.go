@@ -165,17 +165,30 @@ type dapClientCapabilites struct {
 	supportsProgressReporting    bool
 }
 
-// DefaultLoadConfig controls how variables are loaded from the target's memory, borrowing the
-// default value from the original vscode-go debug adapter and rpc server.
-// With dlv-dap, users currently do not have a way to adjust these.
-// TODO(polina): Support setting config via launch/attach args or only rely on on-demand loading?
+// DefaultLoadConfig controls how variables are loaded from the target's memory.
+// These limits are conservative to minimize performace overhead for bulk loading.
+// With dlv-dap, users do not have a way to adjust these.
+// Instead we are focusing in interacive loading with nested reloads, array/map
+// paging and context-specific string limits.
 var DefaultLoadConfig = proc.LoadConfig{
 	FollowPointers:     true,
 	MaxVariableRecurse: 1,
-	MaxStringLen:       64,
-	MaxArrayValues:     64,
-	MaxStructFields:    -1,
+	// TODO(polina): consider 1024 limit instead:
+	// - vscode+C appears to use 1024 as the load limit
+	// - vscode viewlet hover truncates at 1023 characters
+	MaxStringLen:    512,
+	MaxArrayValues:  64,
+	MaxStructFields: -1,
 }
+
+const (
+	// When a user examines a single string, we can relax the loading limit.
+	maxSingleStringLen = 4 << 10 // 4096
+	// Results of a call are single-use and transient. We need to maximize
+	// what is presented. A common use case of a call injection is to
+	// stringify complex data conveniently.
+	maxStringLenInCallRetVars = 1 << 10 // 1024
+)
 
 // NewServer creates a new DAP Server. It takes an opened Listener
 // via config and assumes its ownership. config.DisconnectChan has to be set;
@@ -1808,9 +1821,9 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 					Value:        val,
 				}
 				if keyref != 0 { // key is a type to be expanded
-					if len(key) > DefaultLoadConfig.MaxStringLen {
+					if len(key) > maxMapKeyValueLen {
 						// Truncate and make unique
-						kvvar.Name = fmt.Sprintf("%s... @ %#x", key[0:DefaultLoadConfig.MaxStringLen], keyv.Addr)
+						kvvar.Name = fmt.Sprintf("%s... @ %#x", key[0:maxMapKeyValueLen], keyv.Addr)
 					}
 					kvvar.VariablesReference = keyref
 					kvvar.IndexedVariables = getIndexedVariableCount(keyv)
@@ -1953,9 +1966,12 @@ func (s *Server) convertVariableToString(v *proc.Variable) string {
 	return val
 }
 
-// defaultMaxValueLen is the max length of a string representation of a compound or reference
-// type variable.
-const defaultMaxValueLen = 1 << 8 // 256
+const (
+	// Limit the length of a string representation of a compound or reference type variable.
+	maxVarValueLen = 1 << 8 // 256
+	// Limit the length of an inlined map key.
+	maxMapKeyValueLen = 64
+)
 
 // Flags for convertVariableWithOpts option.
 type convertVariableFlags uint8
@@ -2111,8 +2127,8 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 	// By default, only values of variables that have children can be truncated.
 	// If showFullValue is set, then all value strings are not truncated.
 	canTruncateValue := showFullValue&opts == 0
-	if len(value) > defaultMaxValueLen && canTruncateValue && canHaveRef {
-		value = value[:defaultMaxValueLen] + "..."
+	if len(value) > maxVarValueLen && canTruncateValue && canHaveRef {
+		value = value[:maxVarValueLen] + "..."
 	}
 	return value, variablesReference
 }
@@ -2176,9 +2192,9 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 		case "repl", "variables", "hover", "clipboard":
 			if exprVar.Kind == reflect.String {
 				if strVal := constant.StringVal(exprVar.Value); exprVar.Len > int64(len(strVal)) {
-					// reload string value with a bigger limit.
+					// Reload the string value with a bigger limit.
 					loadCfg := DefaultLoadConfig
-					loadCfg.MaxStringLen = 4 << 10
+					loadCfg.MaxStringLen = maxSingleStringLen
 					if v, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, loadCfg); err != nil {
 						s.log.Debugf("Failed to load more for %v: %v", request.Arguments.Expression, err)
 					} else {
@@ -2215,13 +2231,11 @@ func (s *Server) doCall(goid, frame int, expr string) (*api.DebuggerState, []*pr
 	}
 	// The return values of injected function calls are volatile.
 	// Load as much useful data as possible.
-	// - String: a common use case of call injection is to stringify complex
-	// data conveniently. That can easily exceed the default limit, 64.
 	// TODO: investigate whether we need to increase other limits. For example,
 	// the return value is a pointer to a temporary object, which can become
 	// invalid by other injected function calls. Do we care about such use cases?
 	loadCfg := DefaultLoadConfig
-	loadCfg.MaxStringLen = 1 << 10
+	loadCfg.MaxStringLen = maxStringLenInCallRetVars
 
 	// TODO(polina): since call will resume execution of all goroutines,
 	// we should do this asynchronously and send a continued event to the
