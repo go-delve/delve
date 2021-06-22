@@ -17,6 +17,8 @@ var ErrNotExecutable = errors.New("not an executable file")
 
 // DebuggerState represents the current context of the debugger.
 type DebuggerState struct {
+	// PID of the process we are debugging.
+	Pid int
 	// Running is true if the process is running and no other information can be collected.
 	Running bool
 	// Recording is true if the process is currently being recorded and no other

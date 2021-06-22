@@ -1773,6 +1773,23 @@ func TestClientServerConsistentExit(t *testing.T) {
 		if state.ExitStatus != 2 {
 			t.Fatalf("Process exit status is not 2, got: %v", state.ExitStatus)
 		}
+
+		// Ensure future commands also return the correct exit status.
+		// Previously there was a bug where the command which prompted the
+		// process to exit (continue, next, etc...) would return the corrent
+		// exit status but subsequent commands would return an incorrect exit
+		// status of 0. To test this we simply repeat the 'next' command and
+		// ensure we get the correct response again.
+		state, err = c.Next()
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if !state.Exited {
+			t.Fatal("Second process state is not exited")
+		}
+		if state.ExitStatus != 2 {
+			t.Fatalf("Second process exit status is not 2, got: %v", state.ExitStatus)
+		}
 	})
 }
 

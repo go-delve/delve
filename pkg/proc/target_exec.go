@@ -83,6 +83,9 @@ func (dbp *Target) Continue() error {
 					dbp.selectedGoroutine, _ = GetG(curth)
 				}
 			}
+			if pe, ok := err.(ErrProcessExited); ok {
+				dbp.exitStatus = pe.Status
+			}
 			return err
 		}
 		if dbp.StopReason == StopLaunched {

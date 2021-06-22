@@ -26,6 +26,10 @@ type Process interface {
 // the `proc` package.
 // This is temporary and in support of an ongoing refactor.
 type ProcessInternal interface {
+	// Valid returns true if this Process can be used. When it returns false it
+	// also returns an error describing why the Process is invalid (either
+	// ErrProcessExited or ErrProcessDetached).
+	Valid() (bool, error)
 	// Restart restarts the recording from the specified position, or from the
 	// last checkpoint if pos == "".
 	// If pos starts with 'c' it's a checkpoint ID, otherwise it's an event
@@ -87,10 +91,6 @@ type Info interface {
 	// ResumeNotify specifies a channel that will be closed the next time
 	// ContinueOnce finishes resuming the target.
 	ResumeNotify(chan<- struct{})
-	// Valid returns true if this Process can be used. When it returns false it
-	// also returns an error describing why the Process is invalid (either
-	// ErrProcessExited or ErrProcessDetached).
-	Valid() (bool, error)
 	BinInfo() *BinaryInfo
 	EntryPoint() (uint64, error)
 
