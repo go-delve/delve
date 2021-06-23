@@ -1990,7 +1990,7 @@ func TestSetBreakpoint(t *testing.T) {
 
 					// Set another breakpoint inside the loop in loop(), twice to trigger error
 					client.SetBreakpointsRequest(fixture.Source, []int{8, 8})
-					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}, {-1, "", false, "Breakpoint exists"}})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}, {-1, "", false, "breakpoint exists"}})
 
 					// Continue into the loop
 					client.ContinueRequest(1)
@@ -2213,7 +2213,7 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
 						{Name: "SomeType.String"}, {Name: "(*SomeType).String"},
 					})
-					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}, {-1, "", false, "Breakpoint exists"}})
+					expectSetFunctionBreakpointsResponse([]Breakpoint{{14, filepath.Base(fixture.Source), true, ""}, {-1, "", false, "breakpoint exists"}})
 
 					// Set two breakpoints at SomeType.String and SomeType.SomeFunction.
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{

@@ -1072,7 +1072,7 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 			continue
 		}
 		if _, ok := bpAdded[reqString]; ok {
-			err = fmt.Errorf("Breakpoint exists at %q, line: %d, column: %d", request.Arguments.Source.Path, want.Line, want.Column)
+			err = fmt.Errorf("breakpoint exists at %q, line: %d, column: %d", request.Arguments.Source.Path, want.Line, want.Column)
 		} else {
 			got.Cond = want.Condition
 			got.HitCond = want.HitCondition
@@ -1099,7 +1099,7 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 		var got *api.Breakpoint
 		var err error
 		if _, ok := bpAdded[reqString]; ok {
-			err = fmt.Errorf("Breakpoint exists at %q, line: %d, column: %d", request.Arguments.Source.Path, want.Line, want.Column)
+			err = fmt.Errorf("breakpoint exists at %q, line: %d, column: %d", request.Arguments.Source.Path, want.Line, want.Column)
 		} else {
 			// Create new breakpoints.
 			got, err = s.debugger.CreateBreakpoint(
@@ -1167,7 +1167,7 @@ func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpo
 			continue
 		}
 		if _, ok := bpAdded[reqString]; ok {
-			err = fmt.Errorf("Breakpoint exists at function %q", want.Name)
+			err = fmt.Errorf("breakpoint exists at function %q", want.Name)
 		} else {
 			got.Cond = want.Condition
 			got.HitCond = want.HitCondition
