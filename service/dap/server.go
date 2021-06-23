@@ -1707,10 +1707,22 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		}
 	}
 
-	children, err := s.childrenToDAPVariables(v)
-	if err != nil {
-		s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", err.Error())
-		return
+	var children []dap.Variable
+	if request.Arguments.Filter == "named" || request.Arguments.Filter == "" {
+		named, err := s.metadataToDAPVariables(v)
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", err.Error())
+			return
+		}
+		children = append(children, named...)
+	}
+	if request.Arguments.Filter == "indexed" || request.Arguments.Filter == "" {
+		indexed, err := s.childrenToDAPVariables(v)
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", err.Error())
+			return
+		}
+		children = append(children, indexed...)
 	}
 	response := &dap.VariablesResponse{
 		Response: *newResponse(request.Request),
@@ -1785,6 +1797,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 					Value:              key,
 					VariablesReference: keyref,
 					IndexedVariables:   getIndexedVariableCount(keyv),
+					NamedVariables:     getNamedVariableCount(keyv),
 				}
 				valvar := dap.Variable{
 					Name:               fmt.Sprintf("[val %d]", v.startIndex+kvIndex),
@@ -1793,6 +1806,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 					Value:              val,
 					VariablesReference: valref,
 					IndexedVariables:   getIndexedVariableCount(valv),
+					NamedVariables:     getNamedVariableCount(valv),
 				}
 				children = append(children, keyvar, valvar)
 			} else { // At least one is a scalar
@@ -1813,9 +1827,11 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 					}
 					kvvar.VariablesReference = keyref
 					kvvar.IndexedVariables = getIndexedVariableCount(keyv)
+					kvvar.NamedVariables = getNamedVariableCount(keyv)
 				} else if valref != 0 { // val is a type to be expanded
 					kvvar.VariablesReference = valref
 					kvvar.IndexedVariables = getIndexedVariableCount(valv)
+					kvvar.NamedVariables = getNamedVariableCount(valv)
 				}
 				children = append(children, kvvar)
 			}
@@ -1833,6 +1849,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 				Value:              cvalue,
 				VariablesReference: cvarref,
 				IndexedVariables:   getIndexedVariableCount(&v.Children[i]),
+				NamedVariables:     getNamedVariableCount(&v.Children[i]),
 			}
 		}
 	default:
@@ -1872,10 +1889,57 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 				Value:              cvalue,
 				VariablesReference: cvarref,
 				IndexedVariables:   getIndexedVariableCount(c),
+				NamedVariables:     getNamedVariableCount(c),
 			}
 		}
 	}
 	return children, nil
+}
+
+func getNamedVariableCount(v *proc.Variable) int {
+	namedVars := 0
+	if isListOfBytesOrRunes(v) {
+		// string value of array/slice of bytes and runes.
+		namedVars += 1
+	}
+	return namedVars
+}
+
+// metadataToDAPVariables returns the DAP presentation of the referenced variable's metadata.
+// These are included as named variables
+func (s *Server) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variable, error) {
+	var children []dap.Variable
+
+	if isListOfBytesOrRunes(v.Variable) {
+		// Return the string value of []byte or []rune.
+		typeName := api.PrettyTypeName(v.DwarfType)
+		loadExpr := fmt.Sprintf("string(*(*%q)(%#x))", typeName, v.Addr)
+
+		s.log.Debugf("loading %s (type %s) with %s", v.fullyQualifiedNameOrExpr, typeName, loadExpr)
+		// We know that this is an array/slice of Uint8 or Int32, so we will load up to MaxStringLen.
+		config := DefaultLoadConfig
+		config.MaxArrayValues = config.MaxStringLen
+		vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, loadExpr, config)
+		val := s.convertVariableToString(vLoaded)
+		if err == nil {
+			// TODO(suzmue): Add evaluate name. Using string(name) will not get the same result because the
+			// MaxArrayValues is not auto adjusted in evaluate requests like MaxStringLen is adjusted.
+			children = append(children, dap.Variable{
+				Name:  "string()",
+				Value: val,
+				Type:  "string",
+			})
+		}
+	}
+	return children, nil
+}
+
+func isListOfBytesOrRunes(v *proc.Variable) bool {
+	if len(v.Children) > 0 && (v.Kind == reflect.Array || v.Kind == reflect.Slice) {
+		childKind := v.Children[0].RealType.Common().ReflectKind
+		return childKind == reflect.Uint8 || childKind == reflect.Int32
+	}
+	return false
 }
 
 func (s *Server) getTypeIfSupported(v *proc.Variable) string {
@@ -2147,7 +2211,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			opts |= showFullValue
 		}
 		exprVal, exprRef := s.convertVariableWithOpts(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression), opts)
-		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef, IndexedVariables: getIndexedVariableCount(exprVar)}
+		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef, IndexedVariables: getIndexedVariableCount(exprVar), NamedVariables: getNamedVariableCount(exprVar)}
 	}
 	s.send(response)
 }

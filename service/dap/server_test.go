@@ -1524,7 +1524,6 @@ func TestVariablesLoading(t *testing.T) {
 						longarr = client.ExpectVariablesResponse(t)
 						checkChildren(t, longarr, "longarr", 50)
 						checkArrayChildren(t, longarr, "longarr", 50)
-
 					}
 
 					// Slice not fully loaded based on LoadConfig.MaxArrayValues.
@@ -1783,6 +1782,89 @@ func TestVariablesLoading(t *testing.T) {
 					client.ExpectStoppedEvent(t)
 					checkStop(t, client, 1, "main.barfoo", 24)
 					loadvars(1001 /*second frame here is same as topmost above*/)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+// TestVariablesMetadata exposes test cases where variables contain metadata that
+// can be accessed by requesting named variables.
+func TestVariablesMetadata(t *testing.T) {
+	runTest(t, "testvariables2", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Breakpoints are set within the program
+			fixture.Source, []int{},
+			[]onBreakpoint{{
+				execute:    func() {},
+				disconnect: false,
+			}, {
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 368)
+
+					client.VariablesRequest(1001) // Locals
+					locals := client.ExpectVariablesResponse(t)
+
+					checkNamedChildren := func(ref int, name, typeStr string, vals []string, evaluate bool) {
+						// byteslice, request named variables
+						client.NamedVariablesRequest(ref)
+						named := client.ExpectVariablesResponse(t)
+						checkChildren(t, named, name, 1)
+						checkVarExact(t, named, 0, "string()", "", "\"tèst\"", "string", false)
+
+						client.VariablesRequest(ref)
+						all := client.ExpectVariablesResponse(t)
+						checkChildren(t, all, name, len(vals)+1)
+						checkVarExact(t, all, 0, "string()", "", "\"tèst\"", "string", false)
+						for i, v := range vals {
+							idx := fmt.Sprintf("[%d]", i)
+							evalName := fmt.Sprintf("%s[%d]", name, i)
+							if evaluate {
+								evalName = fmt.Sprintf("(%s)[%d]", name, i)
+							}
+							checkVarExact(t, all, i+1, idx, evalName, v, typeStr, false)
+						}
+					}
+
+					// byteslice
+					ref := checkVarExactIndexed(t, locals, -1, "byteslice", "byteslice", "[]uint8 len: 5, cap: 5, [116,195,168,115,116]", "[]uint8", true, 5, 1)
+					checkNamedChildren(ref, "byteslice", "uint8", []string{"116", "195", "168", "115", "116"}, false)
+
+					client.EvaluateRequest("byteslice", 0, "")
+					got := client.ExpectEvaluateResponse(t)
+					ref = checkEvalIndexed(t, got, "[]uint8 len: 5, cap: 5, [116,195,168,115,116]", hasChildren, 5, 1)
+					checkNamedChildren(ref, "byteslice", "uint8", []string{"116", "195", "168", "115", "116"}, true)
+
+					// runeslice
+					ref = checkVarExactIndexed(t, locals, -1, "runeslice", "runeslice", "[]int32 len: 4, cap: 4, [116,232,115,116]", "[]int32", true, 4, 1)
+					checkNamedChildren(ref, "runeslice", "int32", []string{"116", "232", "115", "116"}, false)
+
+					client.EvaluateRequest("runeslice", 0, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					ref = checkEvalIndexed(t, got, "[]int32 len: 4, cap: 4, [116,232,115,116]", hasChildren, 4, 1)
+					checkNamedChildren(ref, "runeslice", "int32", []string{"116", "232", "115", "116"}, true)
+
+					// bytearray
+					ref = checkVarExactIndexed(t, locals, -1, "bytearray", "bytearray", "[5]uint8 [116,195,168,115,116]", "[5]uint8", true, 5, 1)
+					checkNamedChildren(ref, "bytearray", "uint8", []string{"116", "195", "168", "115", "116"}, false)
+
+					client.EvaluateRequest("bytearray", 0, "hover")
+					got = client.ExpectEvaluateResponse(t)
+					ref = checkEvalIndexed(t, got, "[5]uint8 [116,195,168,115,116]", hasChildren, 5, 1)
+					checkNamedChildren(ref, "bytearray", "uint8", []string{"116", "195", "168", "115", "116"}, true)
+
+					// runearray
+					ref = checkVarExactIndexed(t, locals, -1, "runearray", "runearray", "[4]int32 [116,232,115,116]", "[4]int32", true, 4, 1)
+					checkNamedChildren(ref, "runearray", "int32", []string{"116", "232", "115", "116"}, false)
+
+					client.EvaluateRequest("runearray", 0, "watch")
+					got = client.ExpectEvaluateResponse(t)
+					ref = checkEvalIndexed(t, got, "[4]int32 [116,232,115,116]", hasChildren, 4, 1)
+					checkNamedChildren(ref, "runearray", "int32", []string{"116", "232", "115", "116"}, true)
 				},
 				disconnect: true,
 			}})
