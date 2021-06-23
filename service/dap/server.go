@@ -1709,7 +1709,7 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 
 	var children []dap.Variable
 	if request.Arguments.Filter == "named" || request.Arguments.Filter == "" {
-		named, err := s.toNamedChildren(v)
+		named, err := s.metadataToDAPVariables(v)
 		if err != nil {
 			s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", err.Error())
 			return
@@ -1898,47 +1898,50 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 
 func getNamedVariableCount(v *proc.Variable) int {
 	namedVars := 0
-	if len(v.Children) > 0 && (v.Kind == reflect.Array || v.Kind == reflect.Slice) {
-		childKind := v.Children[0].RealType.Common().ReflectKind
-		if len(v.Children) > 0 && (childKind == reflect.Uint8 || childKind == reflect.Int32) {
-			// string value of array/slice of bytes and runes.
-			namedVars += 1
-		}
+	if canConvertToString(v) {
+		// string value of array/slice of bytes and runes.
+		namedVars += 1
 	}
 	return namedVars
 }
 
-// toNamedChildren returns the DAP presentation of the referenced variable's named children.
-// Named variables for this server are used to send additional information about a variable
-// that is separate from the indexed variables.
-func (s *Server) toNamedChildren(v *fullyQualifiedVariable) ([]dap.Variable, error) {
+// metadataToDAPVariables returns the DAP presentation of the referenced variable's metadata.
+// These are included as named variables
+func (s *Server) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variable, error) {
 	var children []dap.Variable
 
-	if len(v.Children) > 0 && (v.Kind == reflect.Array || v.Kind == reflect.Slice) {
-		childKind := v.Children[0].RealType.Common().ReflectKind
-		if len(v.Children) > 0 && (childKind == reflect.Uint8 || childKind == reflect.Int32) {
-			// Return the string value of []byte or []rune.
-			typeName := api.PrettyTypeName(v.DwarfType)
-			loadExpr := fmt.Sprintf("string(*(*%q)(%#x))", typeName, v.Addr)
+	if canConvertToString(v.Variable) {
+		// Return the string value of []byte or []rune.
+		typeName := api.PrettyTypeName(v.DwarfType)
+		loadExpr := fmt.Sprintf("string(*(*%q)(%#x))", typeName, v.Addr)
 
-			s.log.Debugf("loading %s (type %s) with %s", v.fullyQualifiedNameOrExpr, typeName, loadExpr)
-			// We know that this is an array/slice of Uint8 or Int32, so we will load up to MaxStringLen.
-			config := DefaultLoadConfig
-			config.MaxArrayValues = config.MaxStringLen
-			vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, loadExpr, config)
-			val, _ := s.convertVariable(vLoaded, loadExpr)
-			if err == nil {
-				// TODO(suzmue): Add evaluate name. Using string(name) will not get the same result because the
-				// MaxArrayValues is not auto adjusted in evaluate requests like MaxStringLen is adjusted.
-				children = append(children, dap.Variable{
-					Name:  "string()",
-					Value: val,
-					Type:  "string",
-				})
-			}
+		s.log.Debugf("loading %s (type %s) with %s", v.fullyQualifiedNameOrExpr, typeName, loadExpr)
+		// We know that this is an array/slice of Uint8 or Int32, so we will load up to MaxStringLen.
+		config := DefaultLoadConfig
+		config.MaxArrayValues = config.MaxStringLen
+		vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, loadExpr, config)
+		val := s.convertVariableToString(vLoaded)
+		if err == nil {
+			// TODO(suzmue): Add evaluate name. Using string(name) will not get the same result because the
+			// MaxArrayValues is not auto adjusted in evaluate requests like MaxStringLen is adjusted.
+			children = append(children, dap.Variable{
+				Name:  "string()",
+				Value: val,
+				Type:  "string",
+			})
 		}
 	}
 	return children, nil
+}
+
+func canConvertToString(v *proc.Variable) bool {
+	if len(v.Children) > 0 && (v.Kind == reflect.Array || v.Kind == reflect.Slice) {
+		childKind := v.Children[0].RealType.Common().ReflectKind
+		if childKind == reflect.Uint8 || childKind == reflect.Int32 {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) getTypeIfSupported(v *proc.Variable) string {
