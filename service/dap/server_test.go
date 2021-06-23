@@ -1804,11 +1804,7 @@ func TestVariablesMetadata(t *testing.T) {
 				disconnect: false,
 			}, {
 				execute: func() {
-					client.StackTraceRequest(1, 0, 0)
-					client.ExpectStackTraceResponse(t)
-
-					client.ScopesRequest(1000)
-					client.ExpectScopesResponse(t)
+					checkStop(t, client, 1, "main.main", 368)
 
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)

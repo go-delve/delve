@@ -1898,7 +1898,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 
 func getNamedVariableCount(v *proc.Variable) int {
 	namedVars := 0
-	if canConvertToString(v) {
+	if isListOfBytesOrRunes(v) {
 		// string value of array/slice of bytes and runes.
 		namedVars += 1
 	}
@@ -1910,7 +1910,7 @@ func getNamedVariableCount(v *proc.Variable) int {
 func (s *Server) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variable, error) {
 	var children []dap.Variable
 
-	if canConvertToString(v.Variable) {
+	if isListOfBytesOrRunes(v.Variable) {
 		// Return the string value of []byte or []rune.
 		typeName := api.PrettyTypeName(v.DwarfType)
 		loadExpr := fmt.Sprintf("string(*(*%q)(%#x))", typeName, v.Addr)
@@ -1934,12 +1934,10 @@ func (s *Server) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 	return children, nil
 }
 
-func canConvertToString(v *proc.Variable) bool {
+func isListOfBytesOrRunes(v *proc.Variable) bool {
 	if len(v.Children) > 0 && (v.Kind == reflect.Array || v.Kind == reflect.Slice) {
 		childKind := v.Children[0].RealType.Common().ReflectKind
-		if childKind == reflect.Uint8 || childKind == reflect.Int32 {
-			return true
-		}
+		return childKind == reflect.Uint8 || childKind == reflect.Int32
 	}
 	return false
 }
