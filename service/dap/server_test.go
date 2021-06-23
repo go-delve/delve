@@ -1947,7 +1947,7 @@ func checkBreakpoints(t *testing.T, client *daptest.Client, bps []Breakpoint, br
 	}
 	for i, bp := range breakpoints {
 		if bps[i].line < 0 && !bps[i].verified {
-			if bp.Verified != bps[i].verified || !strings.Contains(bp.Message, bps[i].msgPrefix) {
+			if bp.Verified != bps[i].verified || !stringContainsCaseInsensitive(bp.Message, bps[i].msgPrefix) {
 				t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
 			}
 			continue
@@ -2037,6 +2037,10 @@ func TestSetBreakpoint(t *testing.T) {
 	})
 }
 
+func stringContainsCaseInsensitive(got, want string) bool {
+	return strings.Contains(strings.ToLower(got), strings.ToLower(want))
+}
+
 // TestSetFunctionBreakpoints is inspired by service/test.TestClientServer_FindLocations.
 func TestSetFunctionBreakpoints(t *testing.T) {
 	runTest(t, "locationsprog", func(client *daptest.Client, fixture protest.Fixture) {
@@ -2066,7 +2070,7 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 						}
 						for i, bp := range got.Body.Breakpoints {
 							if bps[i].line < 0 && !bps[i].verified {
-								if bp.Verified != bps[i].verified || !strings.Contains(bp.Message, bps[i].errMsg) {
+								if bp.Verified != bps[i].verified || !stringContainsCaseInsensitive(bp.Message, bps[i].errMsg) {
 									t.Errorf("got breakpoints[%d] = %#v, \nwant %#v", i, bp, bps[i])
 								}
 								continue
@@ -3701,7 +3705,7 @@ func TestLaunchDebugRequest(t *testing.T) {
 		// BinaryInfo.Close(), but it appears that it is still in use (by Windows?)
 		// shortly after. gobuild.Remove has a delay to address this, but
 		// to avoid any test flakiness we guard against this failure here as well.
-		if runtime.GOOS != "windows" || !strings.Contains(rmErr, "Access is denied") {
+		if runtime.GOOS != "windows" || !stringContainsCaseInsensitive(rmErr, "Access is denied") {
 			t.Fatalf("Binary removal failure:\n%s\n", rmErr)
 		}
 	} else {
@@ -4014,7 +4018,7 @@ func (h *helperForSetVariable) failSetVariable0(ref int, name, value, wantErrInf
 		h.c.ExpectStoppedEvent(h.t)
 	}
 	resp := h.c.ExpectErrorResponse(h.t)
-	if got := resp.Body.Error.Format; !strings.Contains(got, wantErrInfo) {
+	if got := resp.Body.Error.Format; !stringContainsCaseInsensitive(got, wantErrInfo) {
 		h.t.Errorf("got %#v, want error string containing %v", got, wantErrInfo)
 	}
 }

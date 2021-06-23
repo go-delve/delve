@@ -727,8 +727,8 @@ func TestTraceBreakpointExists(t *testing.T) {
 	output, err := ioutil.ReadAll(rdr)
 	assertNoError(err, t, "ReadAll")
 
-	if bytes.Contains(output, []byte("breakpoint exists")) {
-		t.Fatal("breakpoint exists errors should be ignored")
+	if bytes.Contains(output, []byte("Breakpoint exists")) {
+		t.Fatal("Breakpoint exists errors should be ignored")
 	}
 }
 

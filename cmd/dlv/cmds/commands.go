@@ -614,7 +614,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 }
 
 func isBreakpointExistsErr(err error) bool {
-	return strings.Contains(err.Error(), "breakpoint exists")
+	return strings.Contains(err.Error(), "Breakpoint exists")
 }
 
 func testCmd(cmd *cobra.Command, args []string) {
