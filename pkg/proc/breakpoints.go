@@ -148,7 +148,7 @@ type BreakpointExistsError struct {
 }
 
 func (bpe BreakpointExistsError) Error() string {
-	return fmt.Sprintf("Breakpoint exists at %s:%d at %x", bpe.File, bpe.Line, bpe.Addr)
+	return fmt.Sprintf("breakpoint exists at %s:%d at %x", bpe.File, bpe.Line, bpe.Addr)
 }
 
 // InvalidAddressError represents the result of
