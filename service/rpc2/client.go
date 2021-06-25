@@ -226,6 +226,9 @@ func (c *RPCClient) GetBreakpointByName(name string) (*api.Breakpoint, error) {
 	return &out.Breakpoint, err
 }
 
+// CreateBreakpoint will request that the debugger set a breakpoint in the target process.
+// Please refer to the documentation for `Debugger.CreateBreakpoint` for a description of how
+// the requested breakpoint parameters are interpreted and used.
 func (c *RPCClient) CreateBreakpoint(breakPoint *api.Breakpoint) (*api.Breakpoint, error) {
 	var out CreateBreakpointOut
 	err := c.call("CreateBreakpoint", CreateBreakpointIn{*breakPoint}, &out)

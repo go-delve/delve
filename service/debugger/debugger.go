@@ -620,7 +620,17 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 	return state, nil
 }
 
-// CreateBreakpoint creates a breakpoint.
+// CreateBreakpoint creates a breakpoint using information from the provided `requestedBp`.
+// This function accepts several different ways of specifying where and how to create the
+// breakpoint that has been requested.
+//
+// 1. You may provide a file:line combination and the debugger will take care of associating that with
+// the correct address in which to place the breakpoint in the running program.
+// 2. You may provide the name of a function. In this case the debugger will resolve the function name
+// to the correct address and place a breakpoint at the entry point of the function after the function prologue.
+// 3. You may provide a memory address (or addresses) directly and the debugger will set a breakpoint directly
+// on the addresses provided. Note that if you are setting a breakpoint of type `TraceReturn` it is expected that
+// the `requestedBp` contains the list of addresses representing each location that a function may return.
 func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
