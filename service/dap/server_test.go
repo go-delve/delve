@@ -2058,7 +2058,7 @@ func TestHitBreakpointIds(t *testing.T) {
 				execute: func() {
 					checkStop(t, client, 1, "main.main", 30)
 
-					// Set two breakpoints at the next two lines in main
+					// Set two source breakpoints and two function breakpoints.
 					client.SetBreakpointsRequest(fixture.Source, []int{23, 33})
 					sourceBps := client.ExpectSetBreakpointsResponse(t).Body.Breakpoints
 					checkBreakpoints(t, client, []Breakpoint{{line: 23, path: fixture.Source, verified: true}, {line: 33, path: fixture.Source, verified: true}}, sourceBps)
@@ -2094,7 +2094,6 @@ func TestHitBreakpointIds(t *testing.T) {
 					checkHitBreakpointIds(t, se, "function breakpoint", functionBps[1].Id)
 					checkStop(t, client, 1, "main.anotherFunction", 27)
 				},
-				// The program has an infinite loop, so we must kill it by disconnecting.
 				disconnect: true,
 			}})
 	})
