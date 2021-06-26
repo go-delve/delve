@@ -364,7 +364,7 @@ Print out info for every goroutine. The flag controls what information is shown 
 	-t	displays goroutine's stacktrace (an optional depth value can be specified, default: 10)
 	-l	displays goroutine's labels
 
-If no flag is specified the default is -u.
+If no flag is specified the default is -u, i.e. the first frame within the first 30 frames that is not executing a runtime private function.
 
 FILTERING
 

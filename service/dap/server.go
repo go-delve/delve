@@ -1549,7 +1549,6 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 	}
 
 	// Determine if the goroutine is a system goroutine.
-	// TODO(suzmue): Use the System() method defined in: https://github.com/go-delve/delve/pull/2504
 	g, err := s.debugger.FindGoroutine(goroutineID)
 	isSystemGoroutine := g.System()
 
