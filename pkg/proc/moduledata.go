@@ -13,6 +13,10 @@ type moduleData struct {
 }
 
 func loadModuleData(bi *BinaryInfo, mem MemoryReadWriter) ([]moduleData, error) {
+	// +rtype -var firstmoduledata moduledata
+	// +rtype -field moduledata.text uintptr
+	// +rtype -field moduledata.types uintptr
+
 	scope := globalScope(nil, bi, bi.Images[0], mem)
 	var md *Variable
 	md, err := scope.findGlobal("runtime", "firstmoduledata")

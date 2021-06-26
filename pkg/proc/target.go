@@ -345,12 +345,13 @@ func setAsyncPreemptOff(p *Target, v int64) {
 	}
 	logger := p.BinInfo().logger
 	scope := globalScope(p, p.BinInfo(), p.BinInfo().Images[0], p.Memory())
+	// +rtype -var debug anytype
 	debugv, err := scope.findGlobal("runtime", "debug")
 	if err != nil || debugv.Unreadable != nil {
 		logger.Warnf("could not find runtime/debug variable (or unreadable): %v %v", err, debugv.Unreadable)
 		return
 	}
-	asyncpreemptoffv, err := debugv.structMember("asyncpreemptoff")
+	asyncpreemptoffv, err := debugv.structMember("asyncpreemptoff") // +rtype int32
 	if err != nil {
 		logger.Warnf("could not find asyncpreemptoff field: %v", err)
 		return

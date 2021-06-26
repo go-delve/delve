@@ -1,0 +1,78 @@
+var firstmoduledata moduledata
+
+var debug anytype
+
+type _defer struct {
+	fn anytype
+	pc uintptr
+	sp uintptr
+	siz int32 (optional)
+	link *_defer
+}
+
+type bmap struct {
+	tophash [8]uint8
+}
+
+type eface struct {
+	_type *_type
+	data unsafe.Pointer
+}
+
+type g struct {
+	sched gobuf
+	goid int64
+	gopc uintptr
+	startpc uintptr
+	waitsince int64
+	waitreason waitReason (optional)
+	stack stack
+	atomicstatus uint32
+}
+
+type gobuf struct {
+	pc uintptr
+	sp uintptr
+	bp uintptr (optional)
+	lr uintptr (optional)
+}
+
+type hmap struct {
+	count int
+	B uint8
+	buckets unsafe.Pointer
+	oldbuckets unsafe.Pointer
+}
+
+type iface struct {
+	tab *itab
+	data unsafe.Pointer
+}
+
+type itab struct {
+	_type *_type
+}
+
+type moduledata struct {
+	text uintptr
+	types uintptr
+}
+
+type stack struct {
+	hi uintptr
+	lo uintptr
+}
+
+const emptyOne = 1
+
+const emptyRest = 0
+
+const kindDirectIface = 32
+
+const kindGCProg = 64
+
+const kindMask = 31
+
+const minTopHash = 4
+or const minTopHash = 5
+
