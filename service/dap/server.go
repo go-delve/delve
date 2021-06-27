@@ -787,14 +787,13 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			return
 		}
 
-		s.config.Debugger.CoreFile = traceDirPath
 
-		s.config.Debugger.Backend = "rr"
+
 
 
 		// Assign the rr trace directory path to debugger configuration
 		s.config.Debugger.CoreFile = traceDirPath
-
+		s.config.Debugger.Backend = "rr"
 	}
 
 	if mode == "core" {
@@ -810,12 +809,11 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			return
 		}
 
-		s.config.Debugger.CoreFile = coreFilePath
-		s.config.Debugger.Backend = "core"
 
 		// Assign the non-empty core file path to debugger configuration. This will
 		// trigger a native core file replay instead of an rr trace replay
 		s.config.Debugger.CoreFile = coreFilePath
+		s.config.Debugger.Backend = "core"
 	}
 
 	// Prepare the debug executable filename, build flags and build it
@@ -1021,13 +1019,13 @@ func (s *Server) stopNoDebugProcess() {
 
 // Launch debug sessions support the following modes:
 // TODO(polina): document behavior for remaining modes
-// replay: skips program build and sets the Debugger.CoreFile property based on the launch properties (rr or core dump)
-// -- [DEFAULT] "debug" - builds and launches debugger for specified program (similar to 'dlv debug')
-//      Required args: program
-// record: builds the program and additionally calls gdbserial.Record() to generate an rr trace
+/* - replay: skips program build and sets the Debugger.CoreFile property based on the
+		coreFilePath launch property, using the default debug backend
+   - core: skips program build and sets the Debugger.CoreFile property based on the
+		traceDirPath launch property, setting the debug backend to rr */
 
 
-	case "exec", "debug", "test", "replay":
+	case "exec", "debug", "test", "replay", "core":
 //      Optional args with default: output, cwd, noDebug
 //      Optional args: buildFlags, args
 // -- "test" - builds and launches debugger for specified test (similar to 'dlv test')
@@ -1573,6 +1571,7 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
 			return
 		}
+
 
 
 
@@ -2484,7 +2483,7 @@ func (s *Server) onRestartRequest(request *dap.RestartRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onStepBackRequest `handles 'stepBack' request.
+// onStepBackRequest handles 'stepBack' request.
 // This is an optional request enabled by capability ‘supportsStepBackRequest’.
 func (s *Server) onStepBackRequest(request *dap.StepBackRequest, asyncSetupDone chan struct{}) {
 	s.send(&dap.StepBackResponse{Response: *newResponse(request.Request)})
@@ -2493,6 +2492,7 @@ func (s *Server) onStepBackRequest(request *dap.StepBackRequest, asyncSetupDone 
 
 // onReverseContinueRequest performs a rewind command call up to the previous
 // breakpoint or the start of the process
+// This is an optional request enabled by capability ‘supportsStepBackRequest’.
 func (s *Server) onReverseContinueRequest(request *dap.ReverseContinueRequest, asyncSetupDone chan struct{}) {
 	s.send(&dap.ReverseContinueResponse{
 		Response: *newResponse(request.Request),
@@ -2677,6 +2677,7 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 					body.Description = "Throw reason unavailable, see https://github.com/golang/go/issues/46425"
 				}
 			}
+
 
 
 
