@@ -768,10 +768,12 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	// TODO(polina): Respond with an error if debug session is in progress?
 	program, ok := request.Arguments["program"].(string)
 	if !ok || program == "" {
-		s.sendErrorResponse(request.Request,
-			FailedToLaunch, "Failed to launch",
-			"The program attribute is missing in debug configuration.")
-		return
+		if !(mode == "replay" || mode == "core") { // Only fail on modes requiring a program
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch",
+				"The program attribute is missing in debug configuration.")
+			return
+		}
 	}
 
 
@@ -783,7 +785,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		if traceDirPath == "" {
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to launch",
-				"The traceDirPath attribute is missing in replay configuration.")
+				"The 'traceDirPath' attribute is missing in debug configuration.")
 			return
 		}
 
@@ -805,7 +807,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 			s.sendErrorResponse(request.Request,
 				FailedToLaunch, "Failed to launch",
-				"The coreFilePath attribute is missing in replay configuration.")
+				"The 'coreFilePath' attribute is missing in debug configuration.")
 			return
 		}
 
@@ -816,6 +818,8 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.config.Debugger.Backend = "core"
 	}
 
+	s.log.Debugf("debug backend is '%s'", s.config.Debugger.Backend)
+	
 	// Prepare the debug executable filename, build flags and build it
 	if mode == "debug" || mode == "test" {
 		output, ok := request.Arguments["output"].(string)
@@ -844,9 +848,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		var cmd string
 		var out []byte
 		// Log debug binary build
-		if !((mode == "replay") && (s.config.Debugger.Backend == "core")) {
-			s.log.Debugf("building binary '%s' from '%s' with flags '%v'", debugbinary, program, buildFlags)
-		}
+		s.log.Debugf("building binary '%s' from '%s' with flags '%v'", debugbinary, program, buildFlags)
 		switch mode {
 		case "debug":
 			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)

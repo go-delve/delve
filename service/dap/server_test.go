@@ -4747,6 +4747,20 @@ func TestBadLaunchRequests(t *testing.T) {
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "cwd": "dir/invalid"})
 		checkFailedToLaunch(client.ExpectErrorResponse(t)) // invalid directory, the error message is system-dependent.
 
+		// Bad parameters on "replay" and "core" modes
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "replay", "traceDirPath": ""})
+		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+			"Failed to launch: The 'traceDirPath' attribute is missing in debug configuration.")
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "core", "coreFilePath": ""})
+		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+			"Failed to launch: The 'coreFilePath' attribute is missing in debug configuration.")
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "replay", "program": fixture.Source, "traceDirPath": ""})
+		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+			"Failed to launch: The 'traceDirPath' attribute is missing in debug configuration.")
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "core", "program": fixture.Source, "coreFilePath": ""})
+		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+			"Failed to launch: The 'coreFilePath' attribute is missing in debug configuration.")
+
 		// We failed to launch the program. Make sure shutdown still works.
 		client.DisconnectRequest()
 		dresp := client.ExpectDisconnectResponse(t)
