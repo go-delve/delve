@@ -1565,7 +1565,7 @@ func TestClientServer_FpRegisters(t *testing.T) {
 			if regtest.name == "XMM11" && !avx2 {
 				continue
 			}
-			if regtest.name == "XMM12" && !avx512 {
+			if regtest.name == "XMM12" && (!avx512 || testBackend == "rr") {
 				continue
 			}
 			found := false
