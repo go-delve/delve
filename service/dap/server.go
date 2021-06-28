@@ -29,6 +29,7 @@ import (
 	"sync"
 
 	"github.com/go-delve/delve/pkg/gobuild"
+	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/locspec"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
@@ -2509,14 +2510,36 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 	if bpState != nil && bpState.Breakpoint != nil && (bpState.Breakpoint.Name == proc.FatalThrow || bpState.Breakpoint.Name == proc.UnrecoveredPanic) {
 		switch bpState.Breakpoint.Name {
 		case proc.FatalThrow:
-			// TODO(suzmue): add the fatal throw reason to body.Description.
 			body.ExceptionId = "fatal error"
+			// Attempt to get the value of the throw reason.
+			// This is not currently working for Go 1.16 or 1.17: https://github.com/golang/go/issues/46425.
+			handleError := func(err error) {
+				if err != nil {
+					body.Description = fmt.Sprintf("Error getting throw reason: %s", err.Error())
+				}
+				if goversion.ProducerAfterOrEqual(s.debugger.TargetGoVersion(), 1, 16) {
+					body.Description = "Throw reason unavailable, see https://github.com/golang/go/issues/46425"
+				}
+			}
+
+			exprVar, err := s.debugger.EvalVariableInScope(goroutineID, 1, 0, "s", DefaultLoadConfig)
+			if err == nil {
+				if exprVar.Value != nil {
+					body.Description = exprVar.Value.String()
+				} else {
+					handleError(exprVar.Unreadable)
+				}
+			} else {
+				handleError(err)
+			}
 		case proc.UnrecoveredPanic:
 			body.ExceptionId = "panic"
 			// Attempt to get the value of the panic message.
 			exprVar, err := s.debugger.EvalVariableInScope(goroutineID, 0, 0, "(*msgs).arg.(data)", DefaultLoadConfig)
 			if err == nil {
 				body.Description = exprVar.Value.String()
+			} else {
+				body.Description = fmt.Sprintf("Error getting panic message: %s", err.Error())
 			}
 		}
 	} else {
@@ -2545,7 +2568,7 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 	}
 
 	frames, err := s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
-	if err == nil && len(frames) > 0 {
+	if err == nil {
 		apiFrames, err := s.debugger.ConvertStacktrace(frames, nil)
 		if err == nil {
 			var buf bytes.Buffer
@@ -2562,6 +2585,8 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 			})
 			body.Details.StackTrace = buf.String()
 		}
+	} else {
+		body.Details.StackTrace = fmt.Sprintf("Error getting stack trace: %s", err.Error())
 	}
 	response := &dap.ExceptionInfoResponse{
 		Response: *newResponse(request.Request),

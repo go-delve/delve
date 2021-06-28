@@ -237,6 +237,12 @@ func (d *Debugger) checkGoVersion() error {
 	return goversion.Compatible(producer)
 }
 
+func (d *Debugger) TargetGoVersion() string {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+	return d.target.BinInfo().Producer()
+}
+
 // Launch will start a process with the given args and working directory.
 func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error) {
 	if err := verifyBinaryFormat(processArgs[0]); err != nil {

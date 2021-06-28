@@ -3490,7 +3490,6 @@ func TestBadAccess(t *testing.T) {
 						if eInfo.Body.ExceptionId != "runtime error" || !strings.HasPrefix(eInfo.Body.Description, errorPrefix) {
 							t.Errorf("\ngot  %#v\nwant ExceptionId=\"runtime error\" Text=\"%s\"", eInfo, errorPrefix)
 						}
-
 					}
 
 					client.ContinueRequest(1)
@@ -3602,6 +3601,41 @@ func TestPanicBreakpointOnNext(t *testing.T) {
 }
 
 func TestFatalThrowBreakpoint(t *testing.T) {
+	runTest(t, "fatalerror", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{3},
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 3)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "fatal error" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"fatal error\"", se)
+					}
+
+					// TODO(suzmue): Enable this test for 1.17 when https://github.com/golang/go/issues/46425 is fixed.
+					errorPrefix := "\"go of nil func value\""
+					if goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+						errorPrefix = "Throw reason unavailable, see https://github.com/golang/go/issues/46425"
+					}
+					client.ExceptionInfoRequest(1)
+					eInfo := client.ExpectExceptionInfoResponse(t)
+					if eInfo.Body.ExceptionId != "fatal error" || !strings.HasPrefix(eInfo.Body.Description, errorPrefix) {
+						t.Errorf("\ngot  %#v\nwant ExceptionId=\"runtime error\" Text=%s", eInfo, errorPrefix)
+					}
+
+				},
+				disconnect: true,
+			}})
+	})
 	runTest(t, "testdeadlock", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
@@ -3621,6 +3655,10 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 					if se.Body.Reason != "exception" || se.Body.Description != "fatal error" {
 						t.Errorf("\ngot  %#v\nwant Reason=\"exception\" Description=\"fatal error\"", se)
 					}
+
+					// TODO(suzmue): Get the exception info for the thread and check the description
+					// includes "all goroutines are asleep - deadlock!".
+					// Stopped events with no selected goroutines need to be supported to test deadlock.
 				},
 				disconnect: true,
 			}})
