@@ -183,10 +183,9 @@ to be launched or process to be attached to. The following modes are supported:
 - launch + debug (builds and launches, like 'dlv debug')
 - launch + test (builds and tests, like 'dlv test')
 - attach + local (attaches to a running process, like 'dlv attach')
-The server does not yet support asynchronous request-response communication, so features
-like pausing or setting breakpoints while the program is running are not yet available.
-The server does not accept multiple client connections (--accept-multiclient),
-a feature that is often relied on to enable --continue with remote debugging.`,
+The server does not yet accept multiple client connections (--accept-multiclient).
+While --continue is not supported, stopOnEntry launch/attach attribute can be used to control if
+execution is resumed at the start of the debug session.`,
 		Run: dapCmd,
 	}
 	rootCommand.AddCommand(dapCommand)
