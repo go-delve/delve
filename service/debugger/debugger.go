@@ -626,7 +626,33 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 	return state, nil
 }
 
-// CreateBreakpoint creates a breakpoint.
+// CreateBreakpoint creates a breakpoint using information from the provided `requestedBp`.
+// This function accepts several different ways of specifying where and how to create the
+// breakpoint that has been requested. Any error encountered during the attempt to set the
+// breakpoint will be returned to the caller.
+//
+// The ways of specifying a breakpoint are listed below in the order they are considered by
+// this function:
+//
+// - If requestedBp.TraceReturn is true then it is expected that
+// requestedBp.Addrs will contain the list of return addresses
+// supplied by the caller.
+//
+// - If requestedBp.File is not an empty string the breakpoint
+// will be created on the specified file:line location
+//
+// - If requestedBp.FunctionName is not an empty string
+// the breakpoint will be created on the specified function:line
+// location.
+//
+// - If requestedBp.Addrs is filled it will create a logical breakpoint
+// corresponding to all specified addresses.
+//
+// - Otherwise the value specified by arg.Breakpoint.Addr will be used.
+//
+// Note that this method will use the first successful method in order to
+// create a breakpoint, so mixing different fields will not result is multiple
+// breakpoints being set.
 func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
