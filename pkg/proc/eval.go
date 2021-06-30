@@ -67,16 +67,18 @@ func ConvertEvalScope(dbp *Target, gid, frame, deferCall int) (*EvalScope, error
 	if err != nil {
 		return nil, err
 	}
-	if g == nil {
-		return ThreadScope(ct)
-	}
 
 	var opts StacktraceOptions
 	if deferCall > 0 {
 		opts = StacktraceReadDefers
 	}
 
-	locs, err := g.Stacktrace(frame+1, opts)
+	var locs []Stackframe
+	if g == nil {
+		locs, err = ThreadStacktrace(ct, frame+1)
+	} else {
+		locs, err = g.Stacktrace(frame+1, opts)
+	}
 	if err != nil {
 		return nil, err
 	}

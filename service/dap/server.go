@@ -2511,34 +2511,19 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 		switch bpState.Breakpoint.Name {
 		case proc.FatalThrow:
 			body.ExceptionId = "fatal error"
-			// Attempt to get the value of the throw reason.
-			// This is not currently working for Go 1.16 or 1.17: https://github.com/golang/go/issues/46425.
-			handleError := func(err error) {
-				if err != nil {
-					body.Description = fmt.Sprintf("Error getting throw reason: %s", err.Error())
-				}
+			body.Description, err = s.throwReason(goroutineID)
+			if err != nil {
+				body.Description = fmt.Sprintf("Error getting throw reason: %s", err.Error())
+				// This is not currently working for Go 1.16 or 1.17: https://github.com/golang/go/issues/46425.
 				if goversion.ProducerAfterOrEqual(s.debugger.TargetGoVersion(), 1, 16) {
 					body.Description = "Throw reason unavailable, see https://github.com/golang/go/issues/46425"
 				}
 			}
-
-			exprVar, err := s.debugger.EvalVariableInScope(goroutineID, 1, 0, "s", DefaultLoadConfig)
-			if err == nil {
-				if exprVar.Value != nil {
-					body.Description = exprVar.Value.String()
-				} else {
-					handleError(exprVar.Unreadable)
-				}
-			} else {
-				handleError(err)
-			}
 		case proc.UnrecoveredPanic:
 			body.ExceptionId = "panic"
 			// Attempt to get the value of the panic message.
-			exprVar, err := s.debugger.EvalVariableInScope(goroutineID, 0, 0, "(*msgs).arg.(data)", DefaultLoadConfig)
-			if err == nil {
-				body.Description = exprVar.Value.String()
-			} else {
+			body.Description, err = s.panicReason(goroutineID)
+			if err != nil {
 				body.Description = fmt.Sprintf("Error getting panic message: %s", err.Error())
 			}
 		}
@@ -2593,6 +2578,25 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 		Body:     body,
 	}
 	s.send(response)
+}
+
+func (s *Server) throwReason(goroutineID int) (string, error) {
+	return s.getExprString("s", goroutineID, 1)
+}
+
+func (s *Server) panicReason(goroutineID int) (string, error) {
+	return s.getExprString("(*msgs).arg.(data)", goroutineID, 0)
+}
+
+func (s *Server) getExprString(expr string, goroutineID, frame int) (string, error) {
+	exprVar, err := s.debugger.EvalVariableInScope(goroutineID, frame, 0, expr, DefaultLoadConfig)
+	if err != nil {
+		return "", err
+	}
+	if exprVar.Value == nil {
+		return "", exprVar.Unreadable
+	}
+	return exprVar.Value.String(), nil
 }
 
 // sendErrorResponseWithOpts offers configuration options.
@@ -2723,9 +2727,11 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 			case proc.FatalThrow:
 				stopped.Body.Reason = "exception"
 				stopped.Body.Description = "fatal error"
+				stopped.Body.Text, _ = s.throwReason(stopped.Body.ThreadId)
 			case proc.UnrecoveredPanic:
 				stopped.Body.Reason = "exception"
 				stopped.Body.Description = "panic"
+				stopped.Body.Text, _ = s.panicReason(stopped.Body.ThreadId)
 			}
 			if strings.HasPrefix(state.CurrentThread.Breakpoint.Name, functionBpPrefix) {
 				stopped.Body.Reason = "function breakpoint"
