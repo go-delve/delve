@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"math/rand"
 	"net"
@@ -4805,15 +4804,12 @@ func TestBadInitializeRequest(t *testing.T) {
 
 func TestBadlyFormattedMessageToServer(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		// Send a badly formatted message to the server, and expect it to close the
-		// connection.
+		// Send an unknown request message to the server, and expect it to send
+		// an error response.
 		client.UnknownRequest()
-		time.Sleep(100 * time.Millisecond)
-
-		_, err := client.ReadMessage()
-
-		if err != io.EOF {
-			t.Errorf("got err=%v, want io.EOF", err)
+		err := client.ExpectErrorResponse(t)
+		if err.Body.Error.Format != "DAP Error: Request command 'unknown' is not supported (seq: 1)" || err.Seq != 1 {
+			t.Errorf("got %v, want  Seq=1 Error=\"DAP Error: Request command 'unknown' is not supported (seq: 1)\"", err)
 		}
 	})
 }
