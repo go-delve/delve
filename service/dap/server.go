@@ -976,6 +976,7 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 	}
 	var err error
 	var exited error
+	terminated := killProcess
 	// Halting will stop any debugger command that's pending on another
 	// per-request goroutine, hence unblocking that goroutine to wrap-up and exit.
 	// TODO(polina): Per-request goroutine could still not be done when this one is.
@@ -991,6 +992,7 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 		switch err.(type) {
 		case proc.ErrProcessExited:
 			exited = err
+			terminated = true
 		default:
 			s.log.Error("halt returned error: ", err)
 			if err.Error() == "no such process" {
@@ -1000,6 +1002,7 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 	} else if state.Exited {
 		exited = proc.ErrProcessExited{Pid: s.debugger.ProcessPid(), Status: state.ExitStatus}
 		s.log.Debug("halt returned state: ", exited)
+		terminated = true
 	}
 	if exited != nil {
 		s.logToConsole(exited.Error())
@@ -1016,10 +1019,16 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 		case proc.ErrProcessExited:
 			s.log.Debug(err)
 			s.logToConsole(exited.Error())
+			terminated = true
 			err = nil
 		default:
 			s.log.Error(err)
 		}
+	}
+	if terminated {
+		s.send(&dap.TerminatedEvent{
+			Event: *newEvent("terminated"),
+		})
 	}
 	return err
 }
