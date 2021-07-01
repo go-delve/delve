@@ -585,11 +585,16 @@ func (s *RPCServer) ListTypes(arg ListTypesIn, out *ListTypesOut) error {
 type ListGoroutinesIn struct {
 	Start int
 	Count int
+
+	Filters []api.ListGoroutinesFilter
+	api.GoroutineGroupingOptions
 }
 
 type ListGoroutinesOut struct {
-	Goroutines []*api.Goroutine
-	Nextg      int
+	Goroutines    []*api.Goroutine
+	Nextg         int
+	Groups        []api.GoroutineGroup
+	TooManyGroups bool
 }
 
 // ListGoroutines lists all goroutines.
@@ -598,11 +603,37 @@ type ListGoroutinesOut struct {
 // parameter, to get more goroutines from ListGoroutines.
 // Passing a value of Start that wasn't returned by ListGoroutines will skip
 // an undefined number of goroutines.
+//
+// If arg.Filters are specified the list of returned goroutines is filtered
+// applying the specified filters.
+// For example:
+//    ListGoroutinesFilter{ Kind: ListGoroutinesFilterUserLoc, Negated: false, Arg: "afile.go" }
+// will only return goroutines whose UserLoc contains "afile.go" as a substring.
+// More specifically a goroutine matches a location filter if the specified
+// location, formatted like this:
+//    filename:lineno in function
+// contains Arg[0] as a substring.
+//
+// Filters can also be applied to goroutine labels:
+//    ListGoroutineFilter{ Kind: ListGoroutinesFilterLabel, Negated: false, Arg: "key=value" }
+// this filter will only return goroutines that have a key=value label.
+//
+// If arg.GroupBy is not GoroutineFieldNone then the goroutines will
+// be grouped with the specified criterion.
+// If the value of arg.GroupBy is GoroutineLabel goroutines will
+// be grouped by the value of the label with key GroupByKey.
+// For each group a maximum of MaxExamples example goroutines are
+// returned, as well as the total number of goroutines in the group.
 func (s *RPCServer) ListGoroutines(arg ListGoroutinesIn, out *ListGoroutinesOut) error {
+	//TODO(aarzilli): if arg contains a running goroutines filter (not negated)
+	// and start == 0 and count == 0 then we can optimize this by just looking
+	// at threads directly.
 	gs, nextg, err := s.debugger.Goroutines(arg.Start, arg.Count)
 	if err != nil {
 		return err
 	}
+	gs = s.debugger.FilterGoroutines(gs, arg.Filters)
+	gs, out.Groups, out.TooManyGroups = s.debugger.GroupGoroutines(gs, &arg.GoroutineGroupingOptions)
 	s.debugger.LockTarget()
 	defer s.debugger.UnlockTarget()
 	out.Goroutines = api.ConvertGoroutines(gs)

@@ -326,6 +326,8 @@ func TestRedirect(t *testing.T) {
 	cmd.Wait()
 }
 
+const checkAutogenDocLongOutput = false
+
 func checkAutogenDoc(t *testing.T, filename, gencommand string, generated []byte) {
 	saved := slurpFile(t, filepath.Join(projectRoot(), filename))
 
@@ -333,13 +335,17 @@ func checkAutogenDoc(t *testing.T, filename, gencommand string, generated []byte
 	generated = bytes.ReplaceAll(generated, []byte("\r\n"), []byte{'\n'})
 
 	if len(saved) != len(generated) {
-		t.Logf("generated %q saved %q\n", generated, saved)
+		if checkAutogenDocLongOutput {
+			t.Logf("generated %q saved %q\n", generated, saved)
+		}
 		t.Fatalf("%s: needs to be regenerated; run %s", filename, gencommand)
 	}
 
 	for i := range saved {
 		if saved[i] != generated[i] {
-			t.Logf("generated %q saved %q\n", generated, saved)
+			if checkAutogenDocLongOutput {
+				t.Logf("generated %q saved %q\n", generated, saved)
+			}
 			t.Fatalf("%s: needs to be regenerated; run %s", filename, gencommand)
 		}
 	}

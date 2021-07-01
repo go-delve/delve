@@ -45,7 +45,7 @@ checkpoints() | Equivalent to API call [ListCheckpoints](https://godoc.org/githu
 dynamic_libraries() | Equivalent to API call [ListDynamicLibraries](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListDynamicLibraries)
 function_args(Scope, Cfg) | Equivalent to API call [ListFunctionArgs](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListFunctionArgs)
 functions(Filter) | Equivalent to API call [ListFunctions](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListFunctions)
-goroutines(Start, Count) | Equivalent to API call [ListGoroutines](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListGoroutines)
+goroutines(Start, Count, Filters, GoroutineGroupingOptions) | Equivalent to API call [ListGoroutines](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListGoroutines)
 local_vars(Scope, Cfg) | Equivalent to API call [ListLocalVars](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListLocalVars)
 package_vars(Filter, Cfg) | Equivalent to API call [ListPackageVars](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListPackageVars)
 packages_build_info(IncludeFiles) | Equivalent to API call [ListPackagesBuildInfo](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListPackagesBuildInfo)
