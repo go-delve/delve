@@ -4811,5 +4811,9 @@ func TestBadlyFormattedMessageToServer(t *testing.T) {
 		if err.Body.Error.Format != "DAP Error: Request command 'unknown' is not supported (seq: 1)" || err.Seq != 1 {
 			t.Errorf("got %v, want  Seq=1 Error=\"DAP Error: Request command 'unknown' is not supported (seq: 1)\"", err)
 		}
+
+		// Make sure that the unknown request did not kill the server.
+		client.InitializeRequest()
+		client.ExpectInitializeResponse(t)
 	})
 }

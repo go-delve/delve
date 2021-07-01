@@ -357,7 +357,7 @@ func (s *Server) serveDAPCodec() {
 	s.reader = bufio.NewReader(s.conn)
 	for {
 		request, err := dap.ReadProtocolMessage(s.reader)
-		// Handle errors gracefully by responding with an ErrorResponse.
+		// Handle unknown command errors gracefully by responding with an ErrorResponse.
 		// -- "Request command 'foo' is not supported" means we
 		// potentially got some new DAP request that we do not yet have
 		// decoding support for, so we can respond with an ErrorResponse.
@@ -366,12 +366,12 @@ func (s *Server) serveDAPCodec() {
 			case <-s.stopTriggered:
 			default:
 				if err != io.EOF {
-					// Send an error response to the users if we were unable to process the message.
-					var seq int
 					if decodeErr, ok := err.(*dap.DecodeProtocolMessageFieldError); ok {
-						seq = decodeErr.Seq
+						// Send an error response to the users if we were unable to process the message.
+						s.sendDapErrorResponse(decodeErr.Seq, err.Error())
+						continue
 					}
-					s.sendDapErrorResponse(seq, err.Error())
+					s.log.Error("DAP error: ", err)
 				}
 				s.triggerServerStop()
 			}
