@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/rand"
 	"net"
@@ -4803,6 +4804,18 @@ func TestBadInitializeRequest(t *testing.T) {
 }
 
 func TestBadlyFormattedMessageToServer(t *testing.T) {
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		// Send a badly formatted message to the server, and expect it to close the
+		// connection.
+		client.BadRequest()
+		time.Sleep(100 * time.Millisecond)
+
+		_, err := client.ReadMessage()
+
+		if err != io.EOF {
+			t.Errorf("got err=%v, want io.EOF", err)
+		}
+	})
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		// Send an unknown request message to the server, and expect it to send
 		// an error response.
