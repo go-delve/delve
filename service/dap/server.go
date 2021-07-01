@@ -357,13 +357,10 @@ func (s *Server) serveDAPCodec() {
 	s.reader = bufio.NewReader(s.conn)
 	for {
 		request, err := dap.ReadProtocolMessage(s.reader)
-		// TODO(polina): Differentiate between errors and handle them
-		// gracefully. For example,
+		// Handle errors gracefully by responding with an ErrorResponse.
 		// -- "Request command 'foo' is not supported" means we
 		// potentially got some new DAP request that we do not yet have
 		// decoding support for, so we can respond with an ErrorResponse.
-		// TODO(polina): to support this add Seq to
-		// dap.DecodeProtocolMessageFieldError.
 		if err != nil {
 			select {
 			case <-s.stopTriggered:
