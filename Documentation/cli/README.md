@@ -353,18 +353,62 @@ Aliases: gr
 ## goroutines
 List program goroutines.
 
-	goroutines [-u (default: user location)|-r (runtime location)|-g (go statement location)|-s (start location)] [-t (stack trace)] [-l (labels)]
+	goroutines [-u|-r|-g|-s] [-t [depth]] [-l] [-with loc expr] [-without loc expr] [-group argument]
 
 Print out info for every goroutine. The flag controls what information is shown along with each goroutine:
 
-	-u	displays location of topmost stackframe in user code
+	-u	displays location of topmost stackframe in user code (default)
 	-r	displays location of topmost stackframe (including frames inside private runtime functions)
 	-g	displays location of go instruction that created the goroutine
 	-s	displays location of the start function
-	-t	displays goroutine's stacktrace
+	-t	displays goroutine's stacktrace (an optional depth value can be specified, default: 10)
 	-l	displays goroutine's labels
 
-If no flag is specified the default is -u.
+If no flag is specified the default is -u, i.e. the first frame within the first 30 frames that is not executing a runtime private function.
+
+FILTERING
+
+If -with or -without are specified only goroutines that match the given condition are returned.
+
+To only display goroutines where the specified location contains (or does not contain, for -without and -wo) expr as a substring, use:
+
+	goroutines -with (userloc|curloc|goloc|startloc) expr
+	goroutines -w (userloc|curloc|goloc|startloc) expr
+	goroutines -without (userloc|curloc|goloc|startloc) expr
+	goroutines -wo (userloc|curloc|goloc|startloc) expr
+	
+To only display goroutines that have (or do not have) the specified label key and value, use:
+	
+
+	goroutines -with label key=value
+	goroutines -without label key=value
+	
+To only display goroutines that have (or do not have) the specified label key, use:
+
+	goroutines -with label key
+	goroutines -without label key
+	
+To only display goroutines that are running (or are not running) on a OS thread, use:
+
+
+	goroutines -with running
+	goroutines -without running
+	
+To only display user (or runtime) goroutines, use:
+
+	goroutines -with user
+	goroutines -without user
+
+GROUPING
+
+	goroutines -group (userloc|curloc|goloc|startloc|running|user)
+
+Groups goroutines by the given location, running status or user classification, up to 5 goroutines per group will be displayed as well as the total number of goroutines in the group.
+
+	goroutines -group label key
+
+Groups goroutines by the value of the label with the specified key.
+
 
 Aliases: grs
 
