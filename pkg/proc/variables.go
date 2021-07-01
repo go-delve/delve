@@ -521,6 +521,20 @@ func (g *G) StartLoc() Location {
 	return Location{PC: g.StartPC, File: f, Line: l, Fn: fn}
 }
 
+// System returns true if g is a system goroutine. See isSystemGoroutine in
+// $GOROOT/src/runtime/traceback.go.
+func (g *G) System() bool {
+	loc := g.StartLoc()
+	if loc.Fn == nil {
+		return false
+	}
+	switch loc.Fn.Name {
+	case "runtime.main", "runtime.handleAsyncEvent", "runtime.runfinq":
+		return false
+	}
+	return strings.HasPrefix(loc.Fn.Name, "runtime.")
+}
+
 func (g *G) Labels() map[string]string {
 	if g.labels != nil {
 		return *g.labels
