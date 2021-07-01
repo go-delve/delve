@@ -1223,7 +1223,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					checkVarExact(t, locals, -1, "fn2", "fn2", "nil", "main.functype", noChildren)
 					// reflect.Kind == Interface
 					checkVarExact(t, locals, -1, "ifacenil", "ifacenil", "interface {} nil", "interface {}", noChildren)
-					ref = checkVarExact(t, locals, -1, "iface2", "iface2", "interface {}(string) \"test\"", "interface {}", hasChildren)
+					ref = checkVarExact(t, locals, -1, "iface2", "iface2", "interface {}(string) \"test\"", "interface {}(string)", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						iface2 := client.ExpectVariablesResponse(t)
@@ -1231,7 +1231,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						checkVarExact(t, iface2, 0, "data", "iface2.(data)", `"test"`, "string", noChildren)
 						validateEvaluateName(t, client, iface2, 0)
 					}
-					ref = checkVarExact(t, locals, -1, "iface4", "iface4", "interface {}([]go/constant.Value) [4]", "interface {}", hasChildren)
+					ref = checkVarExact(t, locals, -1, "iface4", "iface4", "interface {}([]go/constant.Value) [4]", "interface {}([]go/constant.Value)", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						iface4 := client.ExpectVariablesResponse(t)
@@ -1241,7 +1241,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 							client.VariablesRequest(ref)
 							iface4data := client.ExpectVariablesResponse(t)
 							checkChildren(t, iface4data, "iface4.data", 1)
-							ref = checkVarExact(t, iface4data, 0, "[0]", "iface4.(data)[0]", "go/constant.Value(go/constant.int64Val) 4", "go/constant.Value", hasChildren)
+							ref = checkVarExact(t, iface4data, 0, "[0]", "iface4.(data)[0]", "go/constant.Value(go/constant.int64Val) 4", "go/constant.Value(go/constant.int64Val)", hasChildren)
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								iface4data0 := client.ExpectVariablesResponse(t)
@@ -1252,7 +1252,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						}
 					}
 					checkVarExact(t, locals, -1, "errnil", "errnil", "error nil", "error", noChildren)
-					ref = checkVarExact(t, locals, -1, "err1", "err1", "error(*main.astruct) *{A: 1, B: 2}", "error", hasChildren)
+					ref = checkVarExact(t, locals, -1, "err1", "err1", "error(*main.astruct) *{A: 1, B: 2}", "error(*main.astruct)", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						err1 := client.ExpectVariablesResponse(t)
@@ -1260,17 +1260,17 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						checkVarExact(t, err1, 0, "data", "err1.(data)", "*main.astruct {A: 1, B: 2}", "*main.astruct", hasChildren)
 						validateEvaluateName(t, client, err1, 0)
 					}
-					ref = checkVarExact(t, locals, -1, "ptrinf", "ptrinf", "*interface {}(**interface {}) **...", "*interface {}", hasChildren)
+					ref = checkVarExact(t, locals, -1, "ptrinf", "ptrinf", "*interface {}(**interface {}) **...", "*interface {}(**interface {})", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						ptrinf_val := client.ExpectVariablesResponse(t)
 						checkChildren(t, ptrinf_val, "*ptrinf", 1)
-						ref = checkVarExact(t, ptrinf_val, 0, "", "(*ptrinf)", "interface {}(**interface {}) **...", "interface {}", hasChildren)
+						ref = checkVarExact(t, ptrinf_val, 0, "", "(*ptrinf)", "interface {}(**interface {}) **...", "interface {}(**interface {})", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							ptrinf_val_data := client.ExpectVariablesResponse(t)
 							checkChildren(t, ptrinf_val_data, "(*ptrinf).data", 1)
-							checkVarExact(t, ptrinf_val_data, 0, "data", "(*ptrinf).(data)", "**interface {}(**interface {}) ...", "**interface {}", hasChildren)
+							checkVarExact(t, ptrinf_val_data, 0, "data", "(*ptrinf).(data)", "**interface {}(**interface {}) ...", "**interface {}(**interface {})", hasChildren)
 							validateEvaluateName(t, client, ptrinf_val_data, 0)
 						}
 					}
@@ -1746,7 +1746,7 @@ func TestVariablesLoading(t *testing.T) {
 									// Auto-loading happens here
 									client.VariablesRequest(ref)
 									niI1Data := client.ExpectVariablesResponse(t)
-									ref = checkVarExact(t, niI1Data, 0, "[0]", "ni[0].(data)[0]", "interface {}(int) 123", "interface {}", hasChildren)
+									ref = checkVarExact(t, niI1Data, 0, "[0]", "ni[0].(data)[0]", "interface {}(int) 123", "interface {}(int)", hasChildren)
 									if ref > 0 {
 										client.VariablesRequest(ref)
 										niI1DataI2 := client.ExpectVariablesResponse(t)
@@ -3173,7 +3173,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 						client.VariablesRequest(ref)
 						rv := client.ExpectVariablesResponse(t)
 						checkChildren(t, rv, "rv", 1)
-						ref = checkVarExact(t, rv, 0, "~panic", "", `interface {}(string) "callpanic panicked"`, "interface {}", hasChildren)
+						ref = checkVarExact(t, rv, 0, "~panic", "", `interface {}(string) "callpanic panicked"`, "interface {}(string)", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							p := client.ExpectVariablesResponse(t)
@@ -4291,7 +4291,7 @@ func TestSetVariable(t *testing.T) {
 					tester.evaluate("ifacenil", "interface {}(*main.astruct) *{A: 1, B: 2}", hasChildren)
 
 					// interface.(data)
-					iface1Ref := checkVarExact(t, locals, -1, "iface1", "iface1", "interface {}(*main.astruct) *{A: 1, B: 2}", "interface {}", hasChildren)
+					iface1Ref := checkVarExact(t, locals, -1, "iface1", "iface1", "interface {}(*main.astruct) *{A: 1, B: 2}", "interface {}(*main.astruct)", hasChildren)
 					iface1 := tester.variables(iface1Ref)
 					iface1DataRef := checkVarExact(t, iface1, -1, "data", "iface1.(data)", "*main.astruct {A: 1, B: 2}", "*main.astruct", hasChildren)
 					iface1Data := tester.variables(iface1DataRef)

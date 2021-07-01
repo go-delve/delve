@@ -1947,7 +1947,7 @@ func (s *Server) getTypeIfSupported(v *proc.Variable) string {
 	if !s.clientCapabilities.supportsVariableType {
 		return ""
 	}
-	return v.TypeString()
+	return api.ConvertVar(v).TypeString()
 }
 
 // convertVariable converts proc.Variable to dap.Variable value and reference
