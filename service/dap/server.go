@@ -1944,7 +1944,10 @@ func (s *Server) getTypeIfSupported(v *proc.Variable) string {
 	if !s.clientCapabilities.supportsVariableType {
 		return ""
 	}
-	return api.ConvertVar(v).TypeString()
+	if v.Kind == reflect.Interface && len(v.Children) > 0 {
+		return fmt.Sprintf("%s(%s)", v.TypeString(), v.Children[0].TypeString())
+	}
+	return v.TypeString()
 }
 
 // convertVariable converts proc.Variable to dap.Variable value and reference

@@ -18,22 +18,6 @@ const (
 	indentString = "\t"
 )
 
-// TypeString returns a pretty printed representation of the type of v.
-func (v *Variable) TypeString() string {
-	switch v.Kind {
-	case reflect.Ptr:
-		return "*" + v.Children[0].TypeString()
-	case reflect.Interface:
-		if v.Children[0].Kind != reflect.Invalid {
-			return fmt.Sprintf("%s(%s)", v.Type, v.Children[0].Type)
-		}
-	}
-	if v.Type == "" {
-		return v.Kind.String()
-	}
-	return v.Type
-}
-
 // SinglelineString returns a representation of v on a single line.
 func (v *Variable) SinglelineString() string {
 	var buf bytes.Buffer
