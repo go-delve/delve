@@ -328,7 +328,7 @@ Set the current frame, or execute command on a different frame.
 The first form sets frame used by subsequent commands such as "print" or "set".
 The second form runs the command on the given frame.
 
-Note: `next/step/stepout` don't work if you are not on the topmost frame i.e., frame 0. Frames are numbered in the reverse order. The frame you started your debugging from would be your bottom most frame. Check [this](https://github.com/go-delve/delve/pull/1242) for more info.
+Note: `next/step/stepout` don't work if you are not on the topmost frame i.e., frame 0. Frames are numbered in the reverse order. The frame you started your debugging from would be your bottom most frame and your deepest frame would be your topmost frame. Check [this](https://github.com/go-delve/delve/pull/1242) for more info.
 
 
 ## funcs
