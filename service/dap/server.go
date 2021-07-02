@@ -767,13 +767,11 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 	// TODO(polina): Respond with an error if debug session is in progress?
 	program, ok := request.Arguments["program"].(string)
-	if !ok || program == "" {
-		if !(mode == "replay" || mode == "core") { // Only fail on modes requiring a program
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				"The program attribute is missing in debug configuration.")
-			return
-		}
+	if (!ok || program == "") && mode != "replay" { // Only fail on modes requiring a program
+		s.sendErrorResponse(request.Request,
+			FailedToLaunch, "Failed to launch",
+			"The program attribute is missing in debug configuration.")
+		return
 	}
 
 

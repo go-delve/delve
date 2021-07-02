@@ -4753,7 +4753,7 @@ func TestBadLaunchRequests(t *testing.T) {
 			"Failed to launch: The 'traceDirPath' attribute is missing in debug configuration.")
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "core", "coreFilePath": ""})
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to launch: The 'coreFilePath' attribute is missing in debug configuration.")
+			"Failed to launch: The program attribute is missing in debug configuration.")
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "replay", "program": fixture.Source, "traceDirPath": ""})
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: The 'traceDirPath' attribute is missing in debug configuration.")
