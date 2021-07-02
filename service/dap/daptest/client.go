@@ -539,3 +539,40 @@ func (c *Client) newRequest(command string) *dap.Request {
 	c.seq++
 	return request
 }
+
+func (c *Client) newResponse(command string, reqSeq int, err error) *dap.Response {
+	response := &dap.Response{}
+	response.Type = "response"
+	response.Command = command
+	response.RequestSeq = reqSeq
+	response.Success = err == nil
+	response.Message = err.Error()
+	return response
+}
+
+// ExpectRunInTerminalRequest reads a protocol message from the connection
+// and fails the test if the read message is not *RunInTerminalRequest.
+func (c *Client) ExpectRunInTerminalRequest(t *testing.T) *dap.RunInTerminalRequest {
+	t.Helper()
+	m := c.ExpectMessage(t)
+	return c.CheckRunInTerminalRequest(t, m)
+}
+
+// CheckRunInTerminalResponse fails the test if m is not *RunInTerminalResponse.
+func (c *Client) CheckRunInTerminalRequest(t *testing.T, m dap.Message) *dap.RunInTerminalRequest {
+	t.Helper()
+	r, ok := m.(*dap.RunInTerminalRequest)
+	if !ok {
+		t.Fatalf("got %#v, want *dap.RunInTerminalRequest", m)
+	}
+	return r
+}
+
+func (c *Client) RunInTerminalResponse(seq, processId int, err error) {
+	c.send(&dap.RunInTerminalResponse{
+		Response: *c.newResponse("runInTerminal", seq, err),
+		Body: dap.RunInTerminalResponseBody{
+			ProcessId: processId,
+		},
+	})
+}

@@ -11,6 +11,7 @@ package dap
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,6 +28,8 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/goversion"
@@ -125,9 +128,15 @@ type Server struct {
 	// noDebugProcess is set for the noDebug launch process.
 	noDebugProcess *exec.Cmd
 
-	// sendingMu synchronizes writing to net.Conn
+	// sendingMu synchronizes writing to net.Conn and pendingReverseReq
 	// to ensure that messages do not get interleaved
 	sendingMu sync.Mutex
+
+	// map sequence number to the pending reverse request notification channel
+	pendingReverseReq map[int]chan<- dap.ResponseMessage
+
+	// sequence number of the last sent request. Incremented atomically.
+	reverseReqSeq int32
 }
 
 // launchAttachArgs captures arguments from launch/attach request that
@@ -209,6 +218,7 @@ func NewServer(config *service.Config) *Server {
 		variableHandles:   newVariablesHandlesMap(),
 		args:              defaultArgs,
 		exceptionErr:      nil,
+		pendingReverseReq: make(map[int]chan<- dap.ResponseMessage),
 	}
 }
 
@@ -351,13 +361,49 @@ func (s *Server) Run() {
 	}()
 }
 
+func (s *Server) loopHandleRequests(requests <-chan dap.RequestMessage) {
+	for {
+		select {
+		case req, ok := <-requests:
+			if !ok {
+				return
+			}
+			s.handleRequest(req)
+		case <-s.stopTriggered:
+			return
+		}
+	}
+}
+
+func (s *Server) loopHandleResponses(responses <-chan dap.ResponseMessage) {
+	for {
+		select {
+		case res, ok := <-responses:
+			if !ok {
+				return
+			}
+			s.handleResponse(res)
+		case <-s.stopTriggered:
+			return
+		}
+	}
+}
+
 // serveDAPCodec reads and decodes requests from the client
 // until it encounters an error or EOF, when it sends
 // a disconnect signal and returns.
 func (s *Server) serveDAPCodec() {
+	requests := make(chan dap.RequestMessage, 10)
+	responses := make(chan dap.ResponseMessage, 10)
+	defer close(requests)
+	defer close(responses)
+
+	go s.loopHandleRequests(requests)
+	go s.loopHandleResponses(responses)
+
 	s.reader = bufio.NewReader(s.conn)
 	for {
-		request, err := dap.ReadProtocolMessage(s.reader)
+		message, err := dap.ReadProtocolMessage(s.reader)
 		// Handle dap.DecodeProtocolMessageFieldError errors gracefully by responding with an ErrorResponse.
 		// For example:
 		// -- "Request command 'foo' is not supported" means we
@@ -382,7 +428,20 @@ func (s *Server) serveDAPCodec() {
 			}
 			return
 		}
-		s.handleRequest(request)
+
+		jsonmsg, _ := json.Marshal(message)
+		s.log.Debug("[<- from client]", string(jsonmsg))
+
+		switch m := message.(type) {
+		case dap.RequestMessage:
+			requests <- m
+		case dap.ResponseMessage:
+			responses <- m
+		case dap.EventMessage:
+			s.sendInternalErrorResponse(message.GetSeq(), fmt.Sprintf("Unable to process event message %#v\n", m))
+		default:
+			s.sendInternalErrorResponse(message.GetSeq(), fmt.Sprintf("Unable to process message (type %T) %#v", m, m))
+		}
 	}
 }
 
@@ -396,16 +455,19 @@ func (s *Server) recoverPanic(request dap.Message) {
 	}
 }
 
-func (s *Server) handleRequest(request dap.Message) {
-	defer s.recoverPanic(request)
+func (s *Server) handleResponse(response dap.ResponseMessage) {
+	defer s.recoverPanic(response)
 
-	jsonmsg, _ := json.Marshal(request)
-	s.log.Debug("[<- from client]", string(jsonmsg))
-
-	if _, ok := request.(dap.RequestMessage); !ok {
-		s.sendInternalErrorResponse(request.GetSeq(), fmt.Sprintf("Unable to process non-request %#v\n", request))
+	resCh, ok := s.lookupPendingRequest(response)
+	if !ok {
+		s.log.Errorf("Dropping unexpected response message %#v\n", response)
 		return
 	}
+	resCh <- response
+}
+
+func (s *Server) handleRequest(request dap.RequestMessage) {
+	defer s.recoverPanic(request)
 
 	// These requests, can be handled regardless of whether the targret is running
 	switch request := request.(type) {
@@ -491,8 +553,8 @@ func (s *Server) handleRequest(request dap.Message) {
 			}
 			s.onSetFunctionBreakpointsRequest(request)
 		default:
-			r := request.(dap.RequestMessage).GetRequest()
-			s.sendErrorResponse(*r, DebuggeeIsRunning, fmt.Sprintf("Unable to process `%s`", r.Command), "debuggee is running")
+			r := request.GetRequest()
+			s.sendErrorResponse(*r, DebuggeeIsRunning, fmt.Sprintf("Unable to process %q", r.Command), "debuggee is running")
 		}
 		return
 	}
@@ -671,6 +733,34 @@ func (s *Server) send(message dap.Message) {
 	_ = dap.WriteProtocolMessage(s.conn, message)
 }
 
+// sendRequest sends a request to the client. The caller can wait on the
+// returned buffered channel for the response.
+func (s *Server) sendRequest(req dap.RequestMessage) <-chan dap.ResponseMessage {
+	res := make(chan dap.ResponseMessage, 1)
+	seq := int(atomic.AddInt32(&s.reverseReqSeq, 1))
+	req.GetRequest().Seq = seq
+
+	jsonmsg, _ := json.Marshal(req)
+	s.log.Debug("[-> to client]", string(jsonmsg))
+
+	s.sendingMu.Lock()
+	defer s.sendingMu.Unlock()
+	s.pendingReverseReq[seq] = res
+	_ = dap.WriteProtocolMessage(s.conn, req)
+	return res
+}
+
+func (s *Server) lookupPendingRequest(res dap.ResponseMessage) (chan<- dap.ResponseMessage, bool) {
+	seq := res.GetResponse().RequestSeq
+	s.sendingMu.Lock()
+	defer s.sendingMu.Unlock()
+	ch, ok := s.pendingReverseReq[seq]
+	if ok {
+		delete(s.pendingReverseReq, seq)
+	}
+	return ch, ok
+}
+
 func (s *Server) logToConsole(msg string) {
 	s.send(&dap.OutputEvent{
 		Event: *newEvent("output"),
@@ -740,7 +830,35 @@ func cleanExeName(name string) string {
 	return name
 }
 
+func (s *Server) runInTerminal(ctx context.Context, args dap.RunInTerminalRequestArguments) (*dap.RunInTerminalResponse, error) {
+	respCh := s.sendRequest(&dap.RunInTerminalRequest{
+		Request: dap.Request{
+			ProtocolMessage: dap.ProtocolMessage{Type: "request"},
+			Command:         "runInTerminal",
+		},
+		Arguments: args,
+	})
+	select {
+	case resp := <-respCh:
+		switch r := resp.(type) {
+		case *dap.RunInTerminalResponse: // Success == true
+			return r, nil
+		case *dap.ErrorResponse: // Success == false
+			return nil, fmt.Errorf("run in terminal command failed: %v (%v)", r.Message, r.Body.Error.Format)
+		default:
+			return nil, fmt.Errorf("got an unexpected response: %#v", resp)
+		}
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
 func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
+	name, ok := request.Arguments["name"].(string)
+	if !ok || name == "" {
+		name = "Go Debug"
+	}
+
 	// Validate launch request mode
 	mode, ok := request.Arguments["mode"]
 	if !ok || mode == "" {
@@ -751,6 +869,35 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			FailedToLaunch, "Failed to launch",
 			fmt.Sprintf("Unsupported 'mode' value %q in debug configuration.", mode))
 		return
+	}
+	// If 'console' is set to integrated or external, we will launch
+	// the debugger&debugee using RunInTerminal.
+	if console, ok := request.Arguments["console"].(string); ok && console != "" {
+		if console != "integrated" && console != "external" {
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch",
+				fmt.Sprintf("invalid value for console attribute: %q", console))
+			return
+		}
+		if !s.clientCapabilities.supportsRunInTerminalRequest {
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch",
+				fmt.Sprintf("client does not support RunInTerminal feature necessary for console=%q", console))
+			return
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+		defer cancel()
+		// TODO(hyangah): finish implementing the 'console' mode.
+		_, err := s.runInTerminal(ctx, dap.RunInTerminalRequestArguments{
+			Kind:  console,
+			Title: name,
+			Args:  []string{"console_attribute_is_not_supported"},
+		})
+		if err != nil {
+			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
+				fmt.Sprintf("could not set up debugging using 'console' attribute: %v", err))
+			return
+		}
 	}
 
 	// TODO(polina): Respond with an error if debug session is in progress?
