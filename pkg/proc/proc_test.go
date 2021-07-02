@@ -1149,10 +1149,10 @@ func evalVariableOrError(p *proc.Target, symbol string) (*proc.Variable, error) 
 		var frame proc.Stackframe
 		frame, err = findFirstNonRuntimeFrame(p)
 		if err == nil {
-			scope = proc.FrameToScope(p.BinInfo(), p.Memory(), nil, frame)
+			scope = proc.FrameToScope(p, p.BinInfo(), p.Memory(), nil, frame)
 		}
 	} else {
-		scope, err = proc.GoroutineScope(p.CurrentThread())
+		scope, err = proc.GoroutineScope(p, p.CurrentThread())
 	}
 
 	if err != nil {
@@ -1172,7 +1172,7 @@ func evalVariable(p *proc.Target, t testing.TB, symbol string) *proc.Variable {
 }
 
 func setVariable(p *proc.Target, symbol, value string) error {
-	scope, err := proc.GoroutineScope(p.CurrentThread())
+	scope, err := proc.GoroutineScope(p, p.CurrentThread())
 	if err != nil {
 		return err
 	}
@@ -1380,7 +1380,7 @@ func TestPointerSetting(t *testing.T) {
 		pval(1)
 
 		// change p1 to point to i2
-		scope, err := proc.GoroutineScope(p.CurrentThread())
+		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "Scope()")
 		i2addr, err := scope.EvalExpression("i2", normalLoadConfig)
 		assertNoError(err, t, "EvalExpression()")
@@ -1511,7 +1511,7 @@ func TestBreakpointCountsWithDetection(t *testing.T) {
 				if bp := th.Breakpoint(); bp.Breakpoint == nil {
 					continue
 				}
-				scope, err := proc.GoroutineScope(th)
+				scope, err := proc.GoroutineScope(p, th)
 				assertNoError(err, t, "Scope()")
 				v, err := scope.EvalVariable("i", normalLoadConfig)
 				assertNoError(err, t, "evalVariable")
@@ -1581,7 +1581,7 @@ func BenchmarkGoroutinesInfo(b *testing.B) {
 		assertNoError(p.Continue(), b, "Continue()")
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			p.ClearAllGCache()
+			p.ClearCaches()
 			_, _, err := proc.GoroutinesInfo(p, 0, 0)
 			assertNoError(err, b, "GoroutinesInfo")
 		}
@@ -1641,7 +1641,7 @@ func TestPointerLoops(t *testing.T) {
 func BenchmarkLocalVariables(b *testing.B) {
 	withTestProcess("testvariables", b, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(p.Continue(), b, "Continue() returned an error")
-		scope, err := proc.GoroutineScope(p.CurrentThread())
+		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, b, "Scope()")
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -1930,7 +1930,7 @@ func TestPackageVariables(t *testing.T) {
 	withTestProcess("testvariables", t, func(p *proc.Target, fixture protest.Fixture) {
 		err := p.Continue()
 		assertNoError(err, t, "Continue()")
-		scope, err := proc.GoroutineScope(p.CurrentThread())
+		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "Scope()")
 		vars, err := scope.PackageVariables(normalLoadConfig)
 		assertNoError(err, t, "PackageVariables()")
@@ -2728,7 +2728,7 @@ func BenchmarkTrace(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			assertNoError(p.Continue(), b, "Continue()")
-			s, err := proc.GoroutineScope(p.CurrentThread())
+			s, err := proc.GoroutineScope(p, p.CurrentThread())
 			assertNoError(err, b, "Scope()")
 			_, err = s.FunctionArguments(proc.LoadConfig{false, 0, 64, 0, 3, 0})
 			assertNoError(err, b, "FunctionArguments()")
@@ -2996,10 +2996,10 @@ func TestIssue871(t *testing.T) {
 			var frame proc.Stackframe
 			frame, err = findFirstNonRuntimeFrame(p)
 			if err == nil {
-				scope = proc.FrameToScope(p.BinInfo(), p.Memory(), nil, frame)
+				scope = proc.FrameToScope(p, p.BinInfo(), p.Memory(), nil, frame)
 			}
 		} else {
-			scope, err = proc.GoroutineScope(p.CurrentThread())
+			scope, err = proc.GoroutineScope(p, p.CurrentThread())
 		}
 		assertNoError(err, t, "scope")
 
@@ -3037,7 +3037,7 @@ func TestShadowedFlag(t *testing.T) {
 	}
 	withTestProcess("testshadow", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue")
-		scope, err := proc.GoroutineScope(p.CurrentThread())
+		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "GoroutineScope")
 		locals, err := scope.LocalVariables(normalLoadConfig)
 		assertNoError(err, t, "LocalVariables")
@@ -3442,7 +3442,7 @@ func TestIssue1034(t *testing.T) {
 		assertNoError(p.Continue(), t, "Continue()")
 		frames, err := p.SelectedGoroutine().Stacktrace(10, 0)
 		assertNoError(err, t, "Stacktrace")
-		scope := proc.FrameToScope(p.BinInfo(), p.Memory(), nil, frames[2:]...)
+		scope := proc.FrameToScope(p, p.BinInfo(), p.Memory(), nil, frames[2:]...)
 		args, _ := scope.FunctionArguments(normalLoadConfig)
 		assertNoError(err, t, "FunctionArguments()")
 		if len(args) > 0 {
@@ -3476,7 +3476,7 @@ func testDeclLineCount(t *testing.T, p *proc.Target, lineno int, tgtvars []strin
 	sort.Strings(tgtvars)
 
 	assertLineNumber(p, t, lineno, "Program did not continue to correct next location")
-	scope, err := proc.GoroutineScope(p.CurrentThread())
+	scope, err := proc.GoroutineScope(p, p.CurrentThread())
 	assertNoError(err, t, fmt.Sprintf("GoroutineScope (:%d)", lineno))
 	vars, err := scope.Locals()
 	assertNoError(err, t, fmt.Sprintf("Locals (:%d)", lineno))
@@ -3894,7 +3894,7 @@ func TestIssue951(t *testing.T) {
 
 	withTestProcess("issue951", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue()")
-		scope, err := proc.GoroutineScope(p.CurrentThread())
+		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "GoroutineScope")
 		args, err := scope.FunctionArguments(normalLoadConfig)
 		assertNoError(err, t, "FunctionArguments")
@@ -3940,7 +3940,7 @@ func TestMapLoadConfigWithReslice(t *testing.T) {
 	withTestProcess("testvariables2", t, func(p *proc.Target, fixture protest.Fixture) {
 		zolotovLoadCfg := proc.LoadConfig{FollowPointers: true, MaxStructFields: -1, MaxVariableRecurse: 3, MaxStringLen: 10, MaxArrayValues: 10}
 		assertNoError(p.Continue(), t, "First Continue()")
-		scope, err := proc.GoroutineScope(p.CurrentThread())
+		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "GoroutineScope")
 		m1, err := scope.EvalExpression("m1", zolotovLoadCfg)
 		assertNoError(err, t, "EvalVariable")
@@ -4182,7 +4182,7 @@ func TestIssue1432(t *testing.T) {
 		svar := evalVariable(p, t, "s")
 		t.Logf("%#x", svar.Addr)
 
-		scope, err := proc.GoroutineScope(p.CurrentThread())
+		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "GoroutineScope()")
 
 		err = scope.SetVariable(fmt.Sprintf("(*\"main.s\")(%#x).i", svar.Addr), "10")
@@ -5084,8 +5084,8 @@ func TestDump(t *testing.T) {
 					t.Errorf("Frame mismatch %d.%d\nlive:\t%s\ncore:\t%s", gos[i].ID, j, convertFrame(p.BinInfo().Arch, &frames[j]), convertFrame(p.BinInfo().Arch, &cframes[j]))
 				}
 				if frames[j].Call.Fn != nil && frames[j].Call.Fn.Name == "main.main" {
-					scope = proc.FrameToScope(p.BinInfo(), p.Memory(), gos[i], frames[j:]...)
-					cscope = proc.FrameToScope(c.BinInfo(), c.Memory(), cgos[i], cframes[j:]...)
+					scope = proc.FrameToScope(p, p.BinInfo(), p.Memory(), gos[i], frames[j:]...)
+					cscope = proc.FrameToScope(c, c.BinInfo(), c.Memory(), cgos[i], cframes[j:]...)
 				}
 			}
 		}
@@ -5162,9 +5162,11 @@ func TestCompositeMemoryWrite(t *testing.T) {
 			return regs.PC(), rax, xmm1
 		}
 
+		const fakeAddress = 0xbeef0000
+
 		getmem := func(mem proc.MemoryReader) uint64 {
 			buf := make([]byte, 8)
-			_, err := mem.ReadMemory(buf, 0xbeef0000)
+			_, err := mem.ReadMemory(buf, fakeAddress)
 			assertNoError(err, t, "ReadMemory")
 			return binary.LittleEndian.Uint64(buf)
 		}
@@ -5173,9 +5175,9 @@ func TestCompositeMemoryWrite(t *testing.T) {
 		oldPc, oldRax, oldXmm1 := getregs()
 		t.Logf("PC %#x AX %#x XMM1 %#x", oldPc, oldRax, oldXmm1)
 
-		memRax, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, Val: 0, Kind: op.RegPiece}})
+		memRax, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, Val: 0, Kind: op.RegPiece}}, fakeAddress)
 		assertNoError(err, t, "NewCompositeMemory (rax)")
-		memXmm1, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, Val: 18, Kind: op.RegPiece}})
+		memXmm1, err := proc.NewCompositeMemory(p, []op.Piece{{Size: 0, Val: 18, Kind: op.RegPiece}}, fakeAddress)
 		assertNoError(err, t, "NewCompositeMemory (xmm1)")
 
 		if memRax := getmem(memRax); memRax != oldRax {
@@ -5234,7 +5236,7 @@ func TestWatchpointsBasic(t *testing.T) {
 		assertNoError(p.Continue(), t, "Continue 0")
 		assertLineNumber(p, t, 11, "Continue 0") // Position 0
 
-		scope, err := proc.GoroutineScope(p.CurrentThread())
+		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "GoroutineScope")
 
 		bp, err := p.SetWatchpoint(scope, "globalvar1", proc.WatchWrite, nil)
@@ -5280,7 +5282,7 @@ func TestWatchpointCounts(t *testing.T) {
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(p.Continue(), t, "Continue 0")
 
-		scope, err := proc.GoroutineScope(p.CurrentThread())
+		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "GoroutineScope")
 
 		bp, err := p.SetWatchpoint(scope, "globalvar1", proc.WatchWrite, nil)
