@@ -271,20 +271,8 @@ func (s *Server) Stop() {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	if s.debugger != nil {
-		kill := s.config.Debugger.AttachPid == 0
-		if err := s.debugger.Detach(kill); err != nil {
-			s.log.Error(err)
-		}
-	// Close client connection last, so other shutdown stages
-	// can send client notifications
-	if s.conn != nil {
-		// Unless Stop() was called after serveDAPCodec()
-		// returned, this will result in closed connection error
-		// on next read, breaking out of the read loop and
-		// allowing the run goroutine to exit.
-		_ = s.conn.Close()
-	}
 		killProcess := s.config.Debugger.AttachPid == 0
 		s.stopDebugSession(killProcess)
 	} else {
@@ -293,7 +281,15 @@ func (s *Server) Stop() {
 	// The binary is no longer in use by the debugger. It is safe to remove it.
 	if s.binaryToRemove != "" {
 		gobuild.Remove(s.binaryToRemove)
-		s.binaryToRemove = ""
+	}
+	// Close client connection last, so other shutdown stages
+	// can send client notifications
+	if s.conn != nil {
+		// Unless Stop() was called after serveDAPCodec()
+		// returned, this will result in closed connection error
+		// on next read, breaking out of the read loop and
+		// allowing the run goroutine to exit.
+		_ = s.conn.Close()
 	}
 	s.log.Debug("DAP server stopped")
 }
