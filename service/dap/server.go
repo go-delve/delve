@@ -1944,14 +1944,14 @@ func (s *Server) getTypeIfSupported(v *proc.Variable) string {
 	if !s.clientCapabilities.supportsVariableType {
 		return ""
 	}
-	return s.prettyTypeString(v)
+	return prettyTypeString(v)
 }
 
-func (s *Server) prettyTypeString(v *proc.Variable) string {
+func prettyTypeString(v *proc.Variable) string {
 	switch v.Kind {
 	case reflect.Ptr:
 		if len(v.Children) > 0 {
-			return "*" + s.prettyTypeString(&v.Children[0])
+			return "*" + prettyTypeString(&v.Children[0])
 		}
 	case reflect.Interface:
 		if len(v.Children) > 0 && v.Children[0].Kind != reflect.Invalid {
