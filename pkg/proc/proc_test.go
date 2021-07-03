@@ -1335,6 +1335,36 @@ func TestFrameEvaluation(t *testing.T) {
 	})
 }
 
+func TestThreadFrameEvaluation(t *testing.T) {
+	skipOn(t, "upstream issue - https://github.com/golang/go/issues/29322", "pie")
+	deadlockBp := proc.FatalThrow
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
+		t.SkipNow()
+	}
+	withTestProcess("testdeadlock", t, func(p *proc.Target, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue()")
+
+		bp := p.CurrentThread().Breakpoint()
+		if bp.Breakpoint == nil || bp.Name != deadlockBp {
+			t.Fatalf("did not stop at deadlock breakpoint %v", bp)
+		}
+
+		// There is no selected goroutine during a deadlock, so the scope will
+		// be a thread scope.
+		scope, err := proc.ConvertEvalScope(p, 0, 0, 0)
+		assertNoError(err, t, "ConvertEvalScope() on frame 0")
+		_, err = scope.EvalVariable("s", normalLoadConfig)
+		if err == nil {
+			t.Errorf("expected error for EvalVariable(\"s\") on frame 0")
+		}
+
+		scope, err = proc.ConvertEvalScope(p, 0, 1, 0)
+		assertNoError(err, t, "ConvertEvalScope() on frame 1")
+		_, err = scope.EvalVariable("s", normalLoadConfig)
+		assertNoError(err, t, "EvalVariable(\"s\") on frame 1")
+	})
+}
+
 func TestPointerSetting(t *testing.T) {
 	withTestProcess("testvariables2", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue() returned an error")
