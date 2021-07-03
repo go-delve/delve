@@ -37,6 +37,10 @@ func NewClient(addr string) *Client {
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
+	return NewClientWithConn(conn)
+}
+
+func NewClientWithConn(conn net.Conn) *Client {
 	c := &Client{conn: conn, reader: bufio.NewReader(conn)}
 	c.seq = 1 // match VS Code numbering
 	return c

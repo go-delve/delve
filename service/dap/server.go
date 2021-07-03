@@ -47,7 +47,8 @@ import (
 // program termination and failed or closed client connection
 // would also result in stopping this single-use server.
 //
-// The DAP server operates via the following goroutines:
+// The DAP server initialized with NewServer
+// operates via the following goroutines:
 //
 // (1) Main goroutine where the server is created via NewServer(),
 // started via Run() and stopped via Stop(). Once the server is
@@ -87,6 +88,12 @@ import (
 // They block on running debugger commands that are interrupted
 // when halt is issued while stopping. At that point these goroutines
 // wrap-up and exit.
+//
+// The DAP server set up using NewReverseDAPServer is a special
+// DAP server, that is bound to a single net.Conn. Once the connection
+// is closed, the server is stopped. Its Run is never called, but
+// the NewReverseDAPServer immediately starts serveDAPCodec on the
+// net.Conn.
 type Server struct {
 	// config is all the information necessary to start the debugger and server.
 	config *service.Config
@@ -212,6 +219,33 @@ func NewServer(config *service.Config) *Server {
 	}
 }
 
+// NewReverseDAPServer returns a new DAP Server instance that is bound to
+// the given net.Conn.
+func NewReverseDAPServer(config *service.Config, conn net.Conn) *Server {
+	if config.Listener != nil {
+		panic("NewReverseDAPServer must be called without Listener")
+	}
+
+	// TODO(hyangah): separate Server (bound to a net.Listenr)
+	// and Session (bound to a net.Conn). NewReverseDAPServer
+	// is not actually a Server - it's not listening on a port,
+	// so the use of "Server" is not quite right.
+	logger := logflags.DAPLogger()
+	logger.Debug("Reverse DAP server pid = ", os.Getpid())
+	s := &Server{
+		conn:              conn,
+		config:            config,
+		stopTriggered:     make(chan struct{}),
+		log:               logger,
+		stackFrameHandles: newHandlesMap(),
+		variableHandles:   newVariablesHandlesMap(),
+		args:              defaultArgs,
+		exceptionErr:      nil,
+	}
+	go s.serveDAPCodec()
+	return s
+}
+
 // If user-specified options are provided via Launch/AttachRequest,
 // we override the defaults for optional args.
 func (s *Server) setLaunchAttachArgs(request dap.LaunchAttachRequest) error {
@@ -265,7 +299,10 @@ func (s *Server) setLaunchAttachArgs(request dap.LaunchAttachRequest) error {
 func (s *Server) Stop() {
 	s.log.Debug("DAP server stopping...")
 	close(s.stopTriggered)
-	_ = s.listener.Close()
+
+	if s.listener != nil {
+		_ = s.listener.Close()
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()

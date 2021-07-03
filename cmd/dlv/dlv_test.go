@@ -10,6 +10,7 @@ import (
 	"go/types"
 	"io"
 	"io/ioutil"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -642,6 +643,48 @@ func TestDap(t *testing.T) {
 	}
 	client.Close()
 	cmd.Wait()
+}
+
+// TestDapReverse verifies that a dap-reverse command can be started and shut down.
+func TestDapReverse(t *testing.T) {
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatalf("cannot setup listener required for testing: %v", err)
+	}
+	defer listener.Close()
+
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	cmd := exec.Command(dlvbin, "dap-reverse", "--log-output=dap", "--log", listener.Addr().String())
+	buf := &bytes.Buffer{}
+	cmd.Stdin = buf
+	cmd.Stdout = buf
+	assertNoError(cmd.Start(), t, "start dap-reverse instance")
+
+	// Wait for the connection.
+	conn, err := listener.Accept()
+	if err != nil {
+		cmd.Process.Kill() // release the port
+		t.Fatalf("Failed to get connection: %v", err)
+	}
+	t.Log("dlv-reverse dialed in successfully")
+
+	client := daptest.NewClientWithConn(conn)
+	client.InitializeRequest()
+	client.ExpectInitializeResponse(t)
+
+	// Close the connection.
+	if err := conn.Close(); err != nil {
+		cmd.Process.Kill()
+		t.Fatalf("Failed to get connection: %v", err)
+	}
+
+	// Connection close should trigger dlv-reverse command's normal exit.
+	if err := cmd.Wait(); err != nil {
+		cmd.Process.Kill()
+		t.Fatalf("command failed: %v\n%s\n%v", err, buf.Bytes(), cmd.Process.Pid)
+	}
 }
 
 func TestTrace(t *testing.T) {
