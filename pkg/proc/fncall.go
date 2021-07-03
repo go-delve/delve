@@ -587,6 +587,13 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 	trustArgOrder := producer != "" && goversion.ProducerAfterOrEqual(bi.Producer(), 1, 12)
 
 	if bi.regabi && fn.cu.optimized && fn.Name != "runtime.mallocgc" {
+		// Debug info for function arguments on optimized functions is currently
+		// too incomplete to attempt injecting calls to arbitrary optimized
+		// functions.
+		// Prior to regabi we could do this because the ABI was simple enough to
+		// manually encode it in Delve.
+		// Runtime.mallocgc is an exception, we specifically patch it's DIE to be
+		// correct for call injection purposes.
 		return 0, nil, fmt.Errorf("can not call optimized function %s when regabi is in use", fn.Name)
 	}
 
@@ -825,6 +832,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		callOP(bi, thread, regs, fncall.fn.Entry)
 		formalScope, err := GoroutineScope(callScope.target, thread)
 		if formalScope != nil && formalScope.Regs.CFA != int64(cfa) {
+			// This should never happen, checking just to avoid hard to figure out disasters.
 			err = fmt.Errorf("mismatch in CFA %#x (calculated) %#x (expected)", formalScope.Regs.CFA, int64(cfa))
 		}
 		if err == nil {

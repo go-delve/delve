@@ -2783,7 +2783,6 @@ func TestWorkingDir(t *testing.T) {
 							checkVarExact(t, locals, i, "err", "err", "error nil", "error", noChildren)
 						}
 					}
-
 				},
 				disconnect: false,
 			}})

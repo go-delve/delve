@@ -466,7 +466,7 @@ func (t *Target) clearFakeMemory() {
 	t.fakeMemoryRegistryMap = make(map[string]*compositeMemory)
 }
 
-// dwrapUnwrap checks if fn is a dwarp wrapper function and unwraps it if it is.
+// dwrapUnwrap checks if fn is a dwrap wrapper function and unwraps it if it is.
 func (t *Target) dwrapUnwrap(fn *Function) *Function {
 	if fn == nil {
 		return nil
