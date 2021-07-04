@@ -11,7 +11,7 @@
 // The protocol is specified at:
 //   https://sourceware.org/gdb/onlinedocs/gdb/Remote-Protocol.html
 // with additional documentation for lldb specific extensions described at:
-//   https://github.com/llvm-mirror/lldb/blob/master/docs/lldb-gdb-remote.txt
+//   https://github.com/llvm/llvm-project/blob/main/lldb/docs/lldb-gdb-remote.txt
 //
 // Terminology:
 //  * inferior: the program we are trying to debug
