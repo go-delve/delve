@@ -656,11 +656,11 @@ func TestDapReverse(t *testing.T) {
 	dlvbin, tmpdir := getDlvBin(t)
 	defer os.RemoveAll(tmpdir)
 
-	cmd := exec.Command(dlvbin, "dap-reverse", "--log-output=dap", "--log", listener.Addr().String())
+	cmd := exec.Command(dlvbin, "dap", "--log-output=dap", "--log", "--connect", listener.Addr().String())
 	buf := &bytes.Buffer{}
 	cmd.Stdin = buf
 	cmd.Stdout = buf
-	assertNoError(cmd.Start(), t, "start dap-reverse instance")
+	assertNoError(cmd.Start(), t, "start reverse dap instance")
 
 	// Wait for the connection.
 	conn, err := listener.Accept()

@@ -99,6 +99,9 @@ type Server struct {
 	config *service.Config
 	// listener is used to accept the client connection.
 	listener net.Listener
+	// inReverseMode is true if this server operates in reverse mode
+	// where listener is nil.
+	inReverseMode bool
 	// stopTriggered is closed when the server is Stop()-ed.
 	stopTriggered chan struct{}
 	// reader is used to read requests from the connection.
@@ -204,9 +207,25 @@ const (
 // disconnects or requests shutdown. Once config.DisconnectChan is closed,
 // Server.Stop() must be called to shutdown this single-user server.
 func NewServer(config *service.Config) *Server {
+	return newServer(config, nil, false)
+}
+
+// NewReverseServer creates a special DAP server that operates in reverse mode.
+// Reverse DAP server is not actually running a TCP server listening on a port,
+// but communicates with the provided net.Conn only for a single debug session.
+func NewReverseServer(config *service.Config, conn net.Conn) *Server {
+	return newServer(config, conn, true)
+}
+
+func newServer(config *service.Config, conn net.Conn, inReverseMode bool) *Server {
 	logger := logflags.DAPLogger()
-	logflags.WriteDAPListeningMessage(config.Listener.Addr().String())
-	logger.Debug("DAP server pid = ", os.Getpid())
+	if !inReverseMode {
+		logflags.WriteDAPListeningMessage(config.Listener.Addr().String())
+		logger.Debug("DAP server pid = ", os.Getpid())
+	} else {
+		logger.Debug("Reverse DAP server pid = ", os.Getpid())
+	}
+
 	return &Server{
 		config:            config,
 		listener:          config.Listener,
@@ -216,34 +235,9 @@ func NewServer(config *service.Config) *Server {
 		variableHandles:   newVariablesHandlesMap(),
 		args:              defaultArgs,
 		exceptionErr:      nil,
-	}
-}
-
-// NewReverseDAPServer returns a new DAP Server instance that is bound to
-// the given net.Conn.
-func NewReverseDAPServer(config *service.Config, conn net.Conn) *Server {
-	if config.Listener != nil {
-		panic("NewReverseDAPServer must be called without Listener")
-	}
-
-	// TODO(hyangah): separate Server (bound to a net.Listenr)
-	// and Session (bound to a net.Conn). NewReverseDAPServer
-	// is not actually a Server - it's not listening on a port,
-	// so the use of "Server" is not quite right.
-	logger := logflags.DAPLogger()
-	logger.Debug("Reverse DAP server pid = ", os.Getpid())
-	s := &Server{
+		inReverseMode:     inReverseMode,
 		conn:              conn,
-		config:            config,
-		stopTriggered:     make(chan struct{}),
-		log:               logger,
-		stackFrameHandles: newHandlesMap(),
-		variableHandles:   newVariablesHandlesMap(),
-		args:              defaultArgs,
-		exceptionErr:      nil,
 	}
-	go s.serveDAPCodec()
-	return s
 }
 
 // If user-specified options are provided via Launch/AttachRequest,
@@ -300,7 +294,7 @@ func (s *Server) Stop() {
 	s.log.Debug("DAP server stopping...")
 	close(s.stopTriggered)
 
-	if s.listener != nil {
+	if !s.inReverseMode {
 		_ = s.listener.Close()
 	}
 
@@ -363,6 +357,11 @@ func (s *Server) triggerServerStop() {
 // TODO(polina): allow new client connections for new debug sessions,
 // so the editor needs to launch delve only once?
 func (s *Server) Run() {
+	if s.inReverseMode {
+		go s.serveDAPCodec()
+		return
+	}
+
 	go func() {
 		conn, err := s.listener.Accept() // listener is closed in Stop()
 		if err != nil {

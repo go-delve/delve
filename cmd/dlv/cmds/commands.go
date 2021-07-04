@@ -61,6 +61,11 @@ var (
 	// disableASLR is used to disable ASLR
 	disableASLR bool
 
+	// dapConnect is dap subcommand's hidden flag that sets the rendezvous point address.
+	// If it is specified, the dap server operates in reverse mode and
+	// communicate only through the proxy dap server at the rendezvous point.
+	dapConnect string
+
 	// backend selection
 	backend string
 
@@ -188,24 +193,10 @@ While --continue is not supported, stopOnEntry launch/attach attribute can be us
 execution is resumed at the start of the debug session.`,
 		Run: dapCmd,
 	}
+	dapCommand.Flags().StringVar(&dapConnect, "connect", "", "host:port of the proxy DAP server. If set, the command starts a DAP server in reverse mode")
+	dapCommand.Flags().MarkHidden("connect")
+
 	rootCommand.AddCommand(dapCommand)
-
-	// 'dap-reverse' subcommand - this is for internal use only.
-	dapReverseCommand := &cobra.Command{
-		Use:   "dap-reverse [host]:port",
-		Short: "A helper command the dlv dap server uses to launch a debugger in integrated/external console.",
-		Long: `A helper command the dlv dap server uses to launch a debugger in integrated/external console.
-
-Given a launch request with the console attribute, the DAP server may need to start
-the debugger/debuggee in the integrated or external console rather than setting up
-an in-process debugger as usual. This command is a helper command that starts the 
-debugger process and connects to the provided host:port where the DAP server is
-waiting. Once the connection is established, the DAP server runs as a proxy between
-the editor and this external debugger process.`,
-		Run:    dapReverseCmd,
-		Hidden: true, // This is for internal only.
-	}
-	rootCommand.AddCommand(dapReverseCommand)
 
 	// 'debug' subcommand.
 	debugCommand := &cobra.Command{
@@ -452,62 +443,48 @@ func dapCmd(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(os.Stderr, "Warning: program flags ignored with dap; specify via launch/attach request instead\n")
 		}
 
-		listener, err := net.Listen("tcp", addr)
-		if err != nil {
-			fmt.Printf("couldn't start listener: %s\n", err)
-			return 1
-		}
+		var server *dap.Server
 		disconnectChan := make(chan struct{})
-		server := dap.NewServer(&service.Config{
-			Listener:       listener,
-			DisconnectChan: disconnectChan,
-			Debugger: debugger.Config{
-				Backend:              backend,
-				Foreground:           headless && tty == "",
-				DebugInfoDirectories: conf.DebugInfoDirectories,
-				CheckGoVersion:       checkGoVersion,
-				TTY:                  tty,
-			},
-			CheckLocalConnUser: checkLocalConnUser,
-		})
-		defer server.Stop()
 
+		if dapConnect == "" {
+			listener, err := net.Listen("tcp", addr)
+			if err != nil {
+				fmt.Printf("couldn't start listener: %s\n", err)
+				return 1
+			}
+			server = dap.NewServer(&service.Config{
+				Listener:       listener,
+				DisconnectChan: disconnectChan,
+				Debugger: debugger.Config{
+					Backend:              backend,
+					Foreground:           headless && tty == "",
+					DebugInfoDirectories: conf.DebugInfoDirectories,
+					CheckGoVersion:       checkGoVersion,
+					TTY:                  tty,
+				},
+				CheckLocalConnUser: checkLocalConnUser,
+			})
+		} else { // reverse mode
+			headless = true // TODO(github.com/go-delve/delve/issues/2552): consider the same for the normal mode.
+
+			conn, err := net.Dial("tcp", dapConnect)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to connect to the DAP proxy server: %v\n", err)
+				return 1
+			}
+			server = dap.NewReverseServer(&service.Config{
+				DisconnectChan: disconnectChan,
+				Debugger: debugger.Config{
+					Backend:              backend,
+					Foreground:           headless && tty == "",
+					DebugInfoDirectories: conf.DebugInfoDirectories,
+					CheckGoVersion:       checkGoVersion,
+					TTY:                  tty,
+				},
+			}, conn)
+		}
+		defer server.Stop()
 		server.Run()
-		waitForDisconnectSignal(disconnectChan)
-		return 0
-	}()
-	os.Exit(status)
-}
-
-func dapReverseCmd(cmd *cobra.Command, args []string) {
-	status := func() int {
-		if err := logflags.Setup(log, logOutput, logDest); err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			return 1
-		}
-		defer logflags.Close()
-
-		if len(args) != 1 {
-			fmt.Fprintf(os.Stderr, "dap-reverse command requires [host]:port as the argument")
-		}
-		hostPort := args[0] // host:port where the dap server in proxy mode is waiting.
-		conn, err := net.Dial("tcp", hostPort)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to connect to the DAP proxy server: %v\n", err)
-			return 1
-		}
-		disconnectChan := make(chan struct{})
-		server := dap.NewReverseDAPServer(&service.Config{
-			DisconnectChan: disconnectChan,
-			Debugger: debugger.Config{
-				Backend:              backend,
-				Foreground:           tty == "",
-				DebugInfoDirectories: conf.DebugInfoDirectories,
-				CheckGoVersion:       checkGoVersion,
-				TTY:                  tty,
-			},
-		}, conn)
-		defer server.Stop()
 		waitForDisconnectSignal(disconnectChan)
 		return 0
 	}()

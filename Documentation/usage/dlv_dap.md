@@ -21,6 +21,11 @@ execution is resumed at the start of the debug session.
 dlv dap
 ```
 
+### Options
+
+```
+```
+
 ### Options inherited from parent commands
 
 ```
