@@ -82,6 +82,7 @@ import (
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/linutil"
+	"github.com/go-delve/delve/pkg/proc/macutil"
 	isatty "github.com/mattn/go-isatty"
 )
 
@@ -431,6 +432,9 @@ func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs [
 	if runtime.GOOS == "windows" {
 		return nil, ErrUnsupportedOS
 	}
+	if err := macutil.CheckRosetta(); err != nil {
+		return nil, err
+	}
 
 	foreground := flags&proc.LaunchForeground != 0
 
@@ -547,6 +551,9 @@ func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs [
 func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, error) {
 	if runtime.GOOS == "windows" {
 		return nil, ErrUnsupportedOS
+	}
+	if err := macutil.CheckRosetta(); err != nil {
+		return nil, err
 	}
 
 	var (
