@@ -389,12 +389,35 @@ func (s *Server) loopHandleResponses(responses <-chan dap.ResponseMessage) {
 	}
 }
 
-// serveDAPCodec reads and decodes requests from the client
-// until it encounters an error or EOF, when it sends
-// a disconnect signal and returns.
+// serveDAPCodec reads and decodes requests/responses from the client
+// until it encounters an error or EOF, when it sends a disconnect
+// signal and returns.
 func (s *Server) serveDAPCodec() {
-	requests := make(chan dap.RequestMessage, 10)
-	responses := make(chan dap.ResponseMessage, 10)
+	// DAP is bidirectional - it is possible that a server can issue
+	// a reverse-request and wait for the response while handling
+	// a normal request from the client. We handle these bidirectional
+	// request streams with two goroutines (loopHandleRequests/loopHandleResponses).
+	// As soon as serveDAPCodec reads messages from the net.Conn and
+	// it passes the messages to the goroutines to handle sequentially.
+	// Currently we let serveDAPCodec and the two goroutines communicate
+	// through buffered channels and allow to queue at most these numbers
+	// of messages.
+	// If DAP becomes highly concurrent and a queue fill up,
+	// serveDAPCodec will stop reading more messages which can cause
+	// deadlock if the handler for the queue is blocked
+	// waiting for a response. For now, we use the reverse-request
+	// only during the initialize/launch phase where we know that the
+	// client wouldn't issue many requests.
+	//
+	// If that happens, either we need to increase the queue size, or
+	// implement a custom, infinitely growing queue.
+	const (
+		maxNumQueuedRequests  = 10
+		maxNumQueuedResponses = 10
+	)
+
+	requests := make(chan dap.RequestMessage, maxNumQueuedRequests)
+	responses := make(chan dap.ResponseMessage, maxNumQueuedResponses)
 	defer close(requests)
 	defer close(responses)
 
@@ -830,6 +853,9 @@ func cleanExeName(name string) string {
 	return name
 }
 
+// launchInTerminalTimeout defines the max allowed time to launch dlv dap with RunInTerminal.
+const launchInTerminalTimeout = 1 * time.Minute
+
 func (s *Server) runInTerminal(ctx context.Context, args dap.RunInTerminalRequestArguments) (*dap.RunInTerminalResponse, error) {
 	respCh := s.sendRequest(&dap.RunInTerminalRequest{
 		Request: dap.Request{
@@ -885,7 +911,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 				fmt.Sprintf("client does not support RunInTerminal feature necessary for console=%q", console))
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+		ctx, cancel := context.WithTimeout(context.Background(), launchInTerminalTimeout)
 		defer cancel()
 		// TODO(hyangah): finish implementing the 'console' mode.
 		_, err := s.runInTerminal(ctx, dap.RunInTerminalRequestArguments{
