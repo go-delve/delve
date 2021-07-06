@@ -17,6 +17,10 @@ The server does not yet accept multiple client connections (--accept-multiclient
 While --continue is not supported, stopOnEntry launch/attach attribute can be used to control if
 execution is resumed at the start of the debug session.
 
+The --connect flag is a special flag that makes the server operate in reverse mode.
+In this mode, Delve connects to a DAP client listening on host:port,
+instead of listening for connections.
+
 ```
 dlv dap
 ```
@@ -24,6 +28,7 @@ dlv dap
 ### Options
 
 ```
+      --connect string   host:port of the DAP client when running in reverse mode.
 ```
 
 ### Options inherited from parent commands

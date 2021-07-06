@@ -61,9 +61,9 @@ var (
 	// disableASLR is used to disable ASLR
 	disableASLR bool
 
-	// dapConnect is dap subcommand's hidden flag that sets the rendezvous point address.
+	// dapConnect is dap subcommand's flag that specifies the address of a DAP client.
 	// If it is specified, the dap server operates in reverse mode and
-	// communicate only through the proxy dap server at the rendezvous point.
+	// and dials into the client waiting there.
 	dapConnect string
 
 	// backend selection
@@ -190,11 +190,14 @@ to be launched or process to be attached to. The following modes are supported:
 - attach + local (attaches to a running process, like 'dlv attach')
 The server does not yet accept multiple client connections (--accept-multiclient).
 While --continue is not supported, stopOnEntry launch/attach attribute can be used to control if
-execution is resumed at the start of the debug session.`,
+execution is resumed at the start of the debug session.
+
+The --connect flag is a special flag that makes the server operate in reverse mode.
+In this mode, Delve connects to a DAP client listening on host:port,
+instead of listening for connections.`,
 		Run: dapCmd,
 	}
-	dapCommand.Flags().StringVar(&dapConnect, "connect", "", "host:port of the proxy DAP server. If set, the command starts a DAP server in reverse mode")
-	dapCommand.Flags().MarkHidden("connect")
+	dapCommand.Flags().StringVar(&dapConnect, "connect", "", "host:port of the DAP client when running in reverse mode.")
 
 	rootCommand.AddCommand(dapCommand)
 

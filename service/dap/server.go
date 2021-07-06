@@ -89,19 +89,15 @@ import (
 // when halt is issued while stopping. At that point these goroutines
 // wrap-up and exit.
 //
-// The DAP server set up using NewReverseDAPServer is a special
-// DAP server, that is bound to a single net.Conn. Once the connection
-// is closed, the server is stopped. Its Run is never called, but
-// the NewReverseDAPServer immediately starts serveDAPCodec on the
-// net.Conn.
+// The DAP server set up using NewReverseServer is a special DAP server,
+// that is bound to a single net.Conn. Once the connection is closed,
+// the server stops.
 type Server struct {
 	// config is all the information necessary to start the debugger and server.
 	config *service.Config
 	// listener is used to accept the client connection.
+	// In reverse mode, this is nil.
 	listener net.Listener
-	// inReverseMode is true if this server operates in reverse mode
-	// where listener is nil.
-	inReverseMode bool
 	// stopTriggered is closed when the server is Stop()-ed.
 	stopTriggered chan struct{}
 	// reader is used to read requests from the connection.
@@ -219,11 +215,13 @@ func NewReverseServer(config *service.Config, conn net.Conn) *Server {
 
 func newServer(config *service.Config, conn net.Conn, inReverseMode bool) *Server {
 	logger := logflags.DAPLogger()
-	if !inReverseMode {
+	if config.Listener != nil {
 		logflags.WriteDAPListeningMessage(config.Listener.Addr().String())
 		logger.Debug("DAP server pid = ", os.Getpid())
-	} else {
+	} else if conn != nil {
 		logger.Debug("Reverse DAP server pid = ", os.Getpid())
+	} else {
+		logger.Fatal("Cannot set up a DAP server without network configuration")
 	}
 
 	return &Server{
@@ -235,7 +233,6 @@ func newServer(config *service.Config, conn net.Conn, inReverseMode bool) *Serve
 		variableHandles:   newVariablesHandlesMap(),
 		args:              defaultArgs,
 		exceptionErr:      nil,
-		inReverseMode:     inReverseMode,
 		conn:              conn,
 	}
 }
@@ -294,7 +291,7 @@ func (s *Server) Stop() {
 	s.log.Debug("DAP server stopping...")
 	close(s.stopTriggered)
 
-	if !s.inReverseMode {
+	if s.listener != nil {
 		_ = s.listener.Close()
 	}
 
@@ -357,7 +354,7 @@ func (s *Server) triggerServerStop() {
 // TODO(polina): allow new client connections for new debug sessions,
 // so the editor needs to launch delve only once?
 func (s *Server) Run() {
-	if s.inReverseMode {
+	if s.listener == nil {
 		go s.serveDAPCodec()
 		return
 	}
