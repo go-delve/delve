@@ -402,15 +402,8 @@ func (s *Server) serveDAPCodec() {
 	// Currently we let serveDAPCodec and the two goroutines communicate
 	// through buffered channels and allow to queue at most these numbers
 	// of messages.
-	// If DAP becomes highly concurrent and a queue fill up,
-	// serveDAPCodec will stop reading more messages which can cause
-	// deadlock if the handler for the queue is blocked
-	// waiting for a response. For now, we use the reverse-request
-	// only during the initialize/launch phase where we know that the
-	// client wouldn't issue many requests.
-	//
-	// If that happens, either we need to increase the queue size, or
-	// implement a custom, infinitely growing queue.
+	// If DAP becomes highly concurrent and a queue fills up, we will drop
+	// the following messages and return internal error responses if possible.
 	const (
 		maxNumQueuedRequests  = 10
 		maxNumQueuedResponses = 10
@@ -457,13 +450,21 @@ func (s *Server) serveDAPCodec() {
 
 		switch m := message.(type) {
 		case dap.RequestMessage:
-			requests <- m
+			select {
+			case requests <- m:
+			default:
+				s.sendInternalErrorResponse(message.GetSeq(), fmt.Sprintf("unable to process request %#v: too many pending requests", m))
+			}
 		case dap.ResponseMessage:
-			responses <- m
+			select {
+			case responses <- m:
+			default:
+				s.log.Errorf("unable to process response message %#v: too many pending responses", m)
+			}
 		case dap.EventMessage:
-			s.sendInternalErrorResponse(message.GetSeq(), fmt.Sprintf("Unable to process event message %#v\n", m))
+			s.sendInternalErrorResponse(message.GetSeq(), fmt.Sprintf("unable to process event message %#v", m))
 		default:
-			s.sendInternalErrorResponse(message.GetSeq(), fmt.Sprintf("Unable to process message (type %T) %#v", m, m))
+			s.sendInternalErrorResponse(message.GetSeq(), fmt.Sprintf("unable to process message (type %T) %#v", m, m))
 		}
 	}
 }
