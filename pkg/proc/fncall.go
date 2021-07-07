@@ -168,7 +168,7 @@ func EvalExpressionWithCalls(t *Target, g *G, expr string, retLoadCfg LoadConfig
 		return errFuncCallUnsupported
 	}
 
-	scope, err := GoroutineScope(g.Thread)
+	scope, err := GoroutineScope(t, g.Thread)
 	if err != nil {
 		return err
 	}
@@ -722,7 +722,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 	switch rax {
 	case debugCallAXPrecheckFailed:
 		// get error from top of the stack and return it to user
-		errvar, err := readTopstackVariable(thread, regs, "string", loadFullValue)
+		errvar, err := readTopstackVariable(p, thread, regs, "string", loadFullValue)
 		if err != nil {
 			fncall.err = fmt.Errorf("could not get precheck error reason: %v", err)
 			break
@@ -797,7 +797,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		if fncall.panicvar != nil || fncall.lateCallFailure {
 			break
 		}
-		retScope, err := ThreadScope(thread)
+		retScope, err := ThreadScope(p, thread)
 		if err != nil {
 			fncall.err = fmt.Errorf("could not get return values: %v", err)
 			break
@@ -830,7 +830,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 
 	case debugCallAXReadPanic:
 		// read panic value from stack
-		fncall.panicvar, err = readTopstackVariable(thread, regs, "interface {}", callScope.callCtx.retLoadCfg)
+		fncall.panicvar, err = readTopstackVariable(p, thread, regs, "interface {}", callScope.callCtx.retLoadCfg)
 		if err != nil {
 			fncall.err = fmt.Errorf("could not get panic: %v", err)
 			break
@@ -846,9 +846,9 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 	return false
 }
 
-func readTopstackVariable(thread Thread, regs Registers, typename string, loadCfg LoadConfig) (*Variable, error) {
+func readTopstackVariable(t *Target, thread Thread, regs Registers, typename string, loadCfg LoadConfig) (*Variable, error) {
 	bi := thread.BinInfo()
-	scope, err := ThreadScope(thread)
+	scope, err := ThreadScope(t, thread)
 	if err != nil {
 		return nil, err
 	}

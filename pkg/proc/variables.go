@@ -521,6 +521,20 @@ func (g *G) StartLoc() Location {
 	return Location{PC: g.StartPC, File: f, Line: l, Fn: fn}
 }
 
+// System returns true if g is a system goroutine. See isSystemGoroutine in
+// $GOROOT/src/runtime/traceback.go.
+func (g *G) System() bool {
+	loc := g.StartLoc()
+	if loc.Fn == nil {
+		return false
+	}
+	switch loc.Fn.Name {
+	case "runtime.main", "runtime.handleAsyncEvent", "runtime.runfinq":
+		return false
+	}
+	return strings.HasPrefix(loc.Fn.Name, "runtime.")
+}
+
 func (g *G) Labels() map[string]string {
 	if g.labels != nil {
 		return *g.labels
@@ -1111,7 +1125,7 @@ func readVarEntry(entry *godwarf.Tree, image *Image) (name string, typ godwarf.T
 
 // Extracts the name and type of a variable from a dwarf entry
 // then executes the instructions given in the  DW_AT_location attribute to grab the variable's address
-func extractVarInfoFromEntry(bi *BinaryInfo, image *Image, regs op.DwarfRegisters, mem MemoryReadWriter, entry *godwarf.Tree) (*Variable, error) {
+func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.DwarfRegisters, mem MemoryReadWriter, entry *godwarf.Tree) (*Variable, error) {
 	if entry.Tag != dwarf.TagFormalParameter && entry.Tag != dwarf.TagVariable {
 		return nil, fmt.Errorf("invalid entry tag, only supports FormalParameter and Variable, got %s", entry.Tag.String())
 	}
@@ -1123,9 +1137,16 @@ func extractVarInfoFromEntry(bi *BinaryInfo, image *Image, regs op.DwarfRegister
 
 	addr, pieces, descr, err := bi.Location(entry, dwarf.AttrLocation, regs.PC(), regs)
 	if pieces != nil {
-		addr = fakeAddress
 		var cmem *compositeMemory
-		cmem, err = newCompositeMemory(mem, bi.Arch, regs, pieces)
+		if tgt != nil {
+			addr, cmem, err = tgt.newCompositeMemory(mem, regs, pieces, descr)
+		} else {
+			cmem, err = newCompositeMemory(mem, bi.Arch, regs, pieces)
+			if cmem != nil {
+				cmem.base = fakeAddressUnresolv
+				addr = int64(cmem.base)
+			}
+		}
 		if cmem != nil {
 			mem = cmem
 		}
@@ -1232,7 +1253,7 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 
 		case v.Flags&VariableCPURegister != 0:
 			val = fmt.Sprintf("%x", v.reg.Bytes)
-			s := v.Base - fakeAddress
+			s := v.Base - fakeAddressUnresolv
 			if s < uint64(len(val)) {
 				val = val[s:]
 				if v.Len >= 0 && v.Len < int64(len(val)) {
@@ -2282,7 +2303,7 @@ func (v *Variable) registerVariableTypeConv(newtyp string) (*Variable, error) {
 	v.loaded = true
 	v.Kind = reflect.Array
 	v.Len = int64(len(v.Children))
-	v.Base = fakeAddress
+	v.Base = fakeAddressUnresolv
 	v.DwarfType = fakeArrayType(uint64(len(v.Children)), &godwarf.VoidType{CommonType: godwarf.CommonType{ByteSize: int64(n)}})
 	v.RealType = v.DwarfType
 	return v, nil
