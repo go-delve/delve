@@ -21,6 +21,12 @@ execution is resumed at the start of the debug session.
 dlv dap
 ```
 
+### Options
+
+```
+      --foreground   Place process in the foreground and forward signals
+```
+
 ### Options inherited from parent commands
 
 ```
