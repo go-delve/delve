@@ -1944,21 +1944,32 @@ func (s *Server) getTypeIfSupported(v *proc.Variable) string {
 	if !s.clientCapabilities.supportsVariableType {
 		return ""
 	}
-	return prettyTypeString(v)
+	typ := maybeAddParens(underlyingTypeString(v))
+	if typ == maybeAddParens(v.TypeString()) {
+		return v.TypeString()
+	}
+	return fmt.Sprintf("%s %s", v.TypeString(), typ)
 }
 
-func prettyTypeString(v *proc.Variable) string {
+func underlyingTypeString(v *proc.Variable) string {
 	switch v.Kind {
 	case reflect.Ptr:
 		if len(v.Children) > 0 {
-			return "*" + prettyTypeString(&v.Children[0])
+			return "*" + underlyingTypeString(&v.Children[0])
 		}
 	case reflect.Interface:
 		if len(v.Children) > 0 && v.Children[0].Kind != reflect.Invalid {
-			return fmt.Sprintf("%s(%s)", v.TypeString(), v.Children[0].TypeString())
+			return maybeAddParens(v.Children[0].TypeString())
 		}
 	}
 	return v.TypeString()
+}
+
+func maybeAddParens(typ string) string {
+	if !strings.HasPrefix(typ, "(") {
+		typ = fmt.Sprintf("(%s)", typ)
+	}
+	return typ
 }
 
 // convertVariable converts proc.Variable to dap.Variable value and reference
