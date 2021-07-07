@@ -1019,7 +1019,7 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 			s.logToConsole(exited.Error())
 			err = nil
 		default:
-			s.log.Error(err)
+			s.log.Error("detach returned error: ", err)
 		}
 	}
 	return err
@@ -2247,7 +2247,7 @@ func (s *Server) doCall(goid, frame int, expr string) (*api.DebuggerState, []*pr
 		UnsafeCall:           false,
 		GoroutineID:          goid,
 	}, nil)
-	if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
+	if processExited(s.debugger.StopReason(), state, err) {
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
 		s.send(e)
 		return nil, nil, errors.New("terminated")
@@ -2670,6 +2670,11 @@ func (s *Server) resetHandlesForStoppedEvent() {
 	s.exceptionErr = nil
 }
 
+func processExited(stopReason proc.StopReason, state *api.DebuggerState, err error) bool {
+	_, isexited := err.(proc.ErrProcessExited)
+	return isexited || err == nil && state.Exited || stopReason == proc.StopExited
+}
+
 // doRunCommand runs a debugger command until it stops on
 // termination, error, breakpoint, etc, when an appropriate
 // event needs to be sent to the client. asyncSetupDone is
@@ -2682,12 +2687,12 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 	// So we should always close it ourselves just in case.
 	defer s.asyncCommandDone(asyncSetupDone)
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
-	if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
+	stopReason := s.debugger.StopReason()
+	if processExited(stopReason, state, err) {
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		return
 	}
 
-	stopReason := s.debugger.StopReason()
 	file, line := "?", -1
 	if state != nil && state.CurrentThread != nil {
 		file, line = state.CurrentThread.File, state.CurrentThread.Line
