@@ -7,7 +7,6 @@ const (
 	UnsupportedCommand int = 9999
 	InternalError      int = 8888
 	NotYetImplemented  int = 7777
-	DapError           int = 6666
 
 	// Where applicable and for consistency only,
 	// values below are inspired the original vscode-go debug adaptor.

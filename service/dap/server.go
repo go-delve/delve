@@ -372,7 +372,7 @@ func (s *Server) serveDAPCodec() {
 				if err != io.EOF {
 					if decodeErr, ok := err.(*dap.DecodeProtocolMessageFieldError); ok {
 						// Send an error response to the users if we were unable to process the message.
-						s.sendDapErrorResponse(decodeErr.Seq, err.Error())
+						s.sendInternalErrorResponse(decodeErr.Seq, err.Error())
 						continue
 					}
 					s.log.Error("DAP error: ", err)
@@ -2629,18 +2629,6 @@ func (s *Server) sendInternalErrorResponse(seq int, details string) {
 	er.Success = false
 	er.Message = "Internal Error"
 	er.Body.Error.Id = InternalError
-	er.Body.Error.Format = fmt.Sprintf("%s: %s", er.Message, details)
-	s.log.Debug(er.Body.Error.Format)
-	s.send(er)
-}
-
-func (s *Server) sendDapErrorResponse(seq int, details string) {
-	er := &dap.ErrorResponse{}
-	er.Type = "response"
-	er.Seq = seq
-	er.Success = false
-	er.Message = "DAP Error"
-	er.Body.Error.Id = DapError
 	er.Body.Error.Format = fmt.Sprintf("%s: %s", er.Message, details)
 	s.log.Debug(er.Body.Error.Format)
 	s.send(er)
