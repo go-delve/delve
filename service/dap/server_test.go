@@ -4869,7 +4869,7 @@ func TestBadlyFormattedMessageToServer(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		// Send a badly formatted message to the server, and expect it to close the
 		// connection.
-		client.UnknownRequest()
+		client.BadRequest()
 		time.Sleep(100 * time.Millisecond)
 
 		_, err := client.ReadMessage()
@@ -4877,5 +4877,18 @@ func TestBadlyFormattedMessageToServer(t *testing.T) {
 		if err != io.EOF {
 			t.Errorf("got err=%v, want io.EOF", err)
 		}
+	})
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		// Send an unknown request message to the server, and expect it to send
+		// an error response.
+		client.UnknownRequest()
+		err := client.ExpectErrorResponse(t)
+		if err.Body.Error.Format != "Internal Error: Request command 'unknown' is not supported (seq: 1)" || err.RequestSeq != 1 {
+			t.Errorf("got %v, want  RequestSeq=1 Error=\"Internal Error: Request command 'unknown' is not supported (seq: 1)\"", err)
+		}
+
+		// Make sure that the unknown request did not kill the server.
+		client.InitializeRequest()
+		client.ExpectInitializeResponse(t)
 	})
 }

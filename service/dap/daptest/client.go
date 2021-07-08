@@ -511,6 +511,15 @@ func (c *Client) UnknownEvent() {
 	c.send(event)
 }
 
+// BadRequest triggers an unmarshal error.
+func (c *Client) BadRequest() {
+	content := []byte("{malformedString}")
+	contentLengthHeaderFmt := "Content-Length: %d\r\n\r\n"
+	header := fmt.Sprintf(contentLengthHeaderFmt, len(content))
+	c.conn.Write([]byte(header))
+	c.conn.Write(content)
+}
+
 // KnownEvent passes decode checks, but delve has no 'case' to
 // handle it. This behaves the same way a new request type
 // added to go-dap, but not to delve.
