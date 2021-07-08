@@ -2119,6 +2119,68 @@ func TestSetBreakpoint(t *testing.T) {
 	})
 }
 
+func checkHitBreakpointIds(t *testing.T, se *dap.StoppedEvent, reason string, id int) {
+	if se.Body.ThreadId != 1 || se.Body.Reason != reason || len(se.Body.HitBreakpointIds) != 1 || se.Body.HitBreakpointIds[0] != id {
+		t.Errorf("got %#v, want Reason=%q, ThreadId=1, HitBreakpointIds=[]int{%d}", se, reason, id)
+	}
+}
+
+// TestHitBreakpointIds executes to a breakpoint and tests that
+// the breakpoint ids in the stopped event are correct.
+func TestHitBreakpointIds(t *testing.T) {
+	runTest(t, "locationsprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{30}, // b main.main
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 30)
+
+					// Set two source breakpoints and two function breakpoints.
+					client.SetBreakpointsRequest(fixture.Source, []int{23, 33})
+					sourceBps := client.ExpectSetBreakpointsResponse(t).Body.Breakpoints
+					checkBreakpoints(t, client, []Breakpoint{{line: 23, path: fixture.Source, verified: true}, {line: 33, path: fixture.Source, verified: true}}, sourceBps)
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "anotherFunction"},
+						{Name: "anotherFunction:1"},
+					})
+					functionBps := client.ExpectSetFunctionBreakpointsResponse(t).Body.Breakpoints
+					checkBreakpoints(t, client, []Breakpoint{{line: 26, path: fixture.Source, verified: true}, {line: 27, path: fixture.Source, verified: true}}, functionBps)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se := client.ExpectStoppedEvent(t)
+					checkHitBreakpointIds(t, se, "breakpoint", sourceBps[1].Id)
+					checkStop(t, client, 1, "main.main", 33)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se = client.ExpectStoppedEvent(t)
+					checkHitBreakpointIds(t, se, "breakpoint", sourceBps[0].Id)
+					checkStop(t, client, 1, "main.(*SomeType).SomeFunction", 23)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se = client.ExpectStoppedEvent(t)
+					checkHitBreakpointIds(t, se, "function breakpoint", functionBps[0].Id)
+					checkStop(t, client, 1, "main.anotherFunction", 26)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se = client.ExpectStoppedEvent(t)
+					checkHitBreakpointIds(t, se, "function breakpoint", functionBps[1].Id)
+					checkStop(t, client, 1, "main.anotherFunction", 27)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
 func stringContainsCaseInsensitive(got, want string) bool {
 	return strings.Contains(strings.ToLower(got), strings.ToLower(want))
 }

@@ -2728,6 +2728,7 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 			if strings.HasPrefix(state.CurrentThread.Breakpoint.Name, functionBpPrefix) {
 				stopped.Body.Reason = "function breakpoint"
 			}
+			stopped.Body.HitBreakpointIds = []int{state.CurrentThread.Breakpoint.ID}
 		}
 	} else {
 		s.exceptionErr = err
