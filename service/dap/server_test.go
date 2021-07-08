@@ -3618,9 +3618,10 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 
-					// TODO(suzmue): Enable this test for 1.17 when https://github.com/golang/go/issues/46425 is fixed.
 					var text string
-					if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+					// This does not work for Go 1.16.
+					ver, _ := goversion.Parse(runtime.Version())
+					if ver.Major != 1 || ver.Minor != 16 {
 						text = "\"go of nil func value\""
 					}
 
@@ -3629,7 +3630,7 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"fatal error\" Text=%q", se, text)
 					}
 
-					// TODO(suzmue): Enable this test for 1.17 when https://github.com/golang/go/issues/46425 is fixed.
+					// This does not work for Go 1.16.
 					errorPrefix := text
 					if errorPrefix == "" {
 						errorPrefix = "Throw reason unavailable, see https://github.com/golang/go/issues/46425"
