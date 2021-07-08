@@ -957,11 +957,7 @@ func isValidLaunchMode(mode interface{}) bool {
 //      Required args: processId
 // TODO(polina): support "remote" mode
 func isValidAttachMode(mode interface{}) bool {
-	switch mode {
-	case "local":
-		return true
-	}
-	return false
+	return mode == "local"
 }
 
 // onDisconnectRequest handles the DisconnectRequest. Per the DAP spec,
