@@ -465,3 +465,27 @@ func (t *Target) clearFakeMemory() {
 	t.fakeMemoryRegistry = t.fakeMemoryRegistry[:0]
 	t.fakeMemoryRegistryMap = make(map[string]*compositeMemory)
 }
+
+// dwrapUnwrap checks if fn is a dwrap wrapper function and unwraps it if it is.
+func (t *Target) dwrapUnwrap(fn *Function) *Function {
+	if fn == nil {
+		return nil
+	}
+	if !strings.Contains(fn.Name, "·dwrap·") {
+		return fn
+	}
+	if unwrap := t.BinInfo().dwrapUnwrapCache[fn.Entry]; unwrap != nil {
+		return unwrap
+	}
+	text, err := disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), fn.Entry, fn.End, false)
+	if err != nil {
+		return fn
+	}
+	for _, instr := range text {
+		if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil && !instr.DestLoc.Fn.privateRuntime() {
+			t.BinInfo().dwrapUnwrapCache[fn.Entry] = instr.DestLoc.Fn
+			return instr.DestLoc.Fn
+		}
+	}
+	return fn
+}

@@ -516,15 +516,20 @@ func (g *G) Go() Location {
 }
 
 // StartLoc returns the starting location of the goroutine.
-func (g *G) StartLoc() Location {
-	f, l, fn := g.variable.bi.PCToLine(g.StartPC)
-	return Location{PC: g.StartPC, File: f, Line: l, Fn: fn}
+func (g *G) StartLoc(tgt *Target) Location {
+	fn := g.variable.bi.PCToFunc(g.StartPC)
+	fn = tgt.dwrapUnwrap(fn)
+	if fn == nil {
+		return Location{PC: g.StartPC}
+	}
+	f, l := fn.cu.lineInfo.PCToLine(fn.Entry, fn.Entry)
+	return Location{PC: fn.Entry, File: f, Line: l, Fn: fn}
 }
 
 // System returns true if g is a system goroutine. See isSystemGoroutine in
 // $GOROOT/src/runtime/traceback.go.
-func (g *G) System() bool {
-	loc := g.StartLoc()
+func (g *G) System(tgt *Target) bool {
+	loc := g.StartLoc(tgt)
 	if loc.Fn == nil {
 		return false
 	}

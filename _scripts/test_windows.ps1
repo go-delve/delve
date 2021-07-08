@@ -32,7 +32,7 @@ function GetGo($version) {
 }
 
 if ($version -eq "gotip") {
-    Exit 0
+    #Exit 0
     $latest = Invoke-WebRequest -Uri https://golang.org/VERSION?m=text -UseBasicParsing | Select-Object -ExpandProperty Content
     GetGo $latest
     $env:GOROOT_BOOTSTRAP = $env:GOROOT

@@ -2775,9 +2775,14 @@ func TestWorkingDir(t *testing.T) {
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)
 					checkChildren(t, locals, "Locals", 2)
-					checkVarExact(t, locals, 0, "pwd", "pwd", fmt.Sprintf("%q", wd), "string", noChildren)
-					checkVarExact(t, locals, 1, "err", "err", "error nil", "error", noChildren)
-
+					for i := range locals.Body.Variables {
+						switch locals.Body.Variables[i].Name {
+						case "pwd":
+							checkVarExact(t, locals, i, "pwd", "pwd", fmt.Sprintf("%q", wd), "string", noChildren)
+						case "err":
+							checkVarExact(t, locals, i, "err", "err", "error nil", "error", noChildren)
+						}
+					}
 				},
 				disconnect: false,
 			}})
@@ -3210,7 +3215,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 				disconnect: false,
 			}, { // Stop at runtime breakpoint
 				execute: func() {
-					checkStop(t, client, 1, "main.main", 197)
+					checkStop(t, client, 1, "main.main", -1)
 
 					// No return values
 					client.EvaluateRequest("call call0(1, 2)", 1000, "this context will be ignored")
@@ -3501,13 +3506,19 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 					if len(bestg) > 0 {
 						goroutineId = bestg[rand.Intn(len(bestg))]
 						t.Logf("selected goroutine %d (best)\n", goroutineId)
-					} else {
+					} else if len(candg) > 0 {
 						goroutineId = candg[rand.Intn(len(candg))]
 						t.Logf("selected goroutine %d\n", goroutineId)
 
 					}
-					client.StepOutRequest(goroutineId)
-					client.ExpectStepOutResponse(t)
+
+					if goroutineId != 0 {
+						client.StepOutRequest(goroutineId)
+						client.ExpectStepOutResponse(t)
+					} else {
+						client.ContinueRequest(-1)
+						client.ExpectContinueResponse(t)
+					}
 
 					switch e := client.ExpectMessage(t).(type) {
 					case *dap.StoppedEvent:
@@ -4490,7 +4501,7 @@ func TestSetVariableWithCall(t *testing.T) {
 				execute: func() {
 					tester := &helperForSetVariable{t, client}
 
-					checkStop(t, client, 1, "main.main", 197)
+					checkStop(t, client, 1, "main.main", -1)
 
 					_ = tester.variables(1001)
 
@@ -4499,7 +4510,7 @@ func TestSetVariableWithCall(t *testing.T) {
 					tester.evaluateRegex("str", `.*in main.callstacktrace at.*`, noChildren)
 
 					tester.failSetVariableAndStop(1001, "str", `callpanic()`, `callpanic panicked`)
-					checkStop(t, client, 1, "main.main", 197)
+					checkStop(t, client, 1, "main.main", -1)
 
 					// breakpoint during a function call.
 					tester.failSetVariableAndStop(1001, "str", `callbreak()`, "call stopped")

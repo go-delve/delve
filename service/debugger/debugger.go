@@ -590,7 +590,7 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 	)
 
 	if d.target.SelectedGoroutine() != nil {
-		goroutine = api.ConvertGoroutine(d.target.SelectedGoroutine())
+		goroutine = api.ConvertGoroutine(d.target, d.target.SelectedGoroutine())
 	}
 
 	exited := false
@@ -1269,7 +1269,7 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 			if err != nil {
 				return err
 			}
-			bpi.Goroutine = api.ConvertGoroutine(g)
+			bpi.Goroutine = api.ConvertGoroutine(d.target, g)
 		}
 
 		if bp.Stacktrace > 0 {
@@ -1536,7 +1536,7 @@ func (d *Debugger) FilterGoroutines(gs []*proc.G, filters []api.ListGoroutinesFi
 	for _, g := range gs {
 		ok := true
 		for i := range filters {
-			if !matchGoroutineFilter(g, &filters[i]) {
+			if !matchGoroutineFilter(d.target, g, &filters[i]) {
 				ok = false
 				break
 			}
@@ -1548,7 +1548,7 @@ func (d *Debugger) FilterGoroutines(gs []*proc.G, filters []api.ListGoroutinesFi
 	return r
 }
 
-func matchGoroutineFilter(g *proc.G, filter *api.ListGoroutinesFilter) bool {
+func matchGoroutineFilter(tgt *proc.Target, g *proc.G, filter *api.ListGoroutinesFilter) bool {
 	var val bool
 	switch filter.Kind {
 	default:
@@ -1562,7 +1562,7 @@ func matchGoroutineFilter(g *proc.G, filter *api.ListGoroutinesFilter) bool {
 	case api.GoroutineGoLoc:
 		val = matchGoroutineLocFilter(g.Go(), filter.Arg)
 	case api.GoroutineStartLoc:
-		val = matchGoroutineLocFilter(g.StartLoc(), filter.Arg)
+		val = matchGoroutineLocFilter(g.StartLoc(tgt), filter.Arg)
 	case api.GoroutineLabel:
 		idx := strings.Index(filter.Arg, "=")
 		if idx >= 0 {
@@ -1573,7 +1573,7 @@ func matchGoroutineFilter(g *proc.G, filter *api.ListGoroutinesFilter) bool {
 	case api.GoroutineRunning:
 		val = g.Thread != nil
 	case api.GoroutineUser:
-		val = !g.System()
+		val = !g.System(tgt)
 	}
 	if filter.Negated {
 		val = !val
@@ -1616,13 +1616,13 @@ func (d *Debugger) GroupGoroutines(gs []*proc.G, group *api.GoroutineGroupingOpt
 		case api.GoroutineGoLoc:
 			key = formatLoc(g.Go())
 		case api.GoroutineStartLoc:
-			key = formatLoc(g.StartLoc())
+			key = formatLoc(g.StartLoc(d.target))
 		case api.GoroutineLabel:
 			key = fmt.Sprintf("%s=%s", group.GroupByKey, g.Labels()[group.GroupByKey])
 		case api.GoroutineRunning:
 			key = fmt.Sprintf("running=%v", g.Thread != nil)
 		case api.GoroutineUser:
-			key = fmt.Sprintf("user=%v", !g.System())
+			key = fmt.Sprintf("user=%v", !g.System(d.target))
 		}
 		if len(groupMembers[key]) < group.MaxGroupMembers {
 			groupMembers[key] = append(groupMembers[key], g)
@@ -1764,12 +1764,12 @@ func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadCo
 func (d *Debugger) convertDefers(defers []*proc.Defer) []api.Defer {
 	r := make([]api.Defer, len(defers))
 	for i := range defers {
-		ddf, ddl, ddfn := d.target.BinInfo().PCToLine(defers[i].DeferredPC)
+		ddf, ddl, ddfn := defers[i].DeferredFunc(d.target)
 		drf, drl, drfn := d.target.BinInfo().PCToLine(defers[i].DeferPC)
 
 		r[i] = api.Defer{
 			DeferredLoc: api.ConvertLocation(proc.Location{
-				PC:   defers[i].DeferredPC,
+				PC:   ddfn.Entry,
 				File: ddf,
 				Line: ddl,
 				Fn:   ddfn,
@@ -2107,6 +2107,10 @@ func (d *Debugger) DumpCancel() error {
 	d.dumpState.Canceled = true
 	d.dumpState.Mutex.Unlock()
 	return nil
+}
+
+func (d *Debugger) Target() *proc.Target {
+	return d.target
 }
 
 func go11DecodeErrorCheck(err error) error {
