@@ -44,7 +44,10 @@ const (
 	debugCallFunctionNamePrefix2 = "runtime.debugCall"
 	maxDebugCallVersion          = 2
 	maxArgFrameSize              = 65535
-	maxRegArgBytes               = 9*8 + 15*8 // TODO: Make this generic for other platforms.
+
+	// maxRegArgBytes is extra padding for ABI1 call injections, equivalent to
+	// the maximum space occupied by register arguments.
+	maxRegArgBytes = 9*8 + 15*8 // TODO: Make this generic for other platforms.
 )
 
 var (
@@ -628,14 +631,15 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 		// The argument frame size is computed conservatively, assuming that
 		// there's space for each argument on the stack even if its passed in
 		// registers. Unfortunately this isn't quite enough because the register
-		// assignment algorithm Go uses can result in an almost-unbounded amount of
-		// additional space used due to alignment requirements (bounded by the
-		// number of argument registers). Because we currently don't have an easy
-		// way to obtain the frame size, let's be even more conservative.
+		// assignment algorithm Go uses can result in an amount of additional
+		// space used due to alignment requirements, bounded by the number of argument registers.
+		// Because we currently don't have an easy way to obtain the frame size,
+		// let's be even more conservative.
 		// A safe lower-bound on the size of the argument frame includes space for
 		// each argument plus the total bytes of register arguments.
 		// This is derived from worst-case alignment padding of up to
 		// (pointer-word-bytes - 1) per argument passed in registers.
+		// See: https://github.com/go-delve/delve/pull/2451#discussion_r665761531
 		// TODO: Make this generic for other platforms.
 		argFrameSize = alignAddr(argFrameSize, 8)
 		argFrameSize += maxRegArgBytes
