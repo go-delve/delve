@@ -846,6 +846,8 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			return
 		}
 		s.config.Debugger.Backend = backendParsed
+	} else {
+		s.config.Debugger.Backend = "default"
 	}
 
 	s.config.ProcessArgs = append([]string{program}, targetArgs...)
@@ -1447,6 +1449,8 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 				return
 			}
 			s.config.Debugger.Backend = backendParsed
+		} else {
+			s.config.Debugger.Backend = "default"
 		}
 
 		func() {
