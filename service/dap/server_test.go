@@ -4151,10 +4151,6 @@ type helperForSetVariable struct {
 	c *daptest.Client
 }
 
-func (h *helperForSetVariable) expectSetVariableAndStop(ref int, name, value string) {
-	h.t.Helper()
-	h.expectSetVariable0(ref, name, value, true)
-}
 func (h *helperForSetVariable) expectSetVariable(ref int, name, value string) {
 	h.t.Helper()
 	h.expectSetVariable0(ref, name, value, false)
@@ -4609,15 +4605,15 @@ func TestBadLaunchRequests(t *testing.T) {
 		// Bad "mode"
 		client.LaunchRequest("remote", fixture.Path, stopOnEntry)
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to launch: Unsupported 'mode' value \"remote\" in debug configuration.")
+			"Failed to launch: invalid debug configuration - unsupported 'mode' value \"remote\"")
 
 		client.LaunchRequest("notamode", fixture.Path, stopOnEntry)
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to launch: Unsupported 'mode' value \"notamode\" in debug configuration.")
+			"Failed to launch: invalid debug configuration - unsupported 'mode' value \"notamode\"")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": 12345, "program": fixture.Path})
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to launch: invalid debug configuration - cannot unmarshal number into \"mode\" of type string")
+			"Failed to launch: invalid debug configuration - cannot unmarshal '12345' into 'mode' of type string")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": ""}) // empty mode defaults to "debug" (not an error)
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
@@ -4748,15 +4744,15 @@ func TestBadAttachRequest(t *testing.T) {
 		// Bad "mode"
 		client.AttachRequest(map[string]interface{}{"mode": "remote"})
 		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to attach: Unsupported 'mode' value \"remote\" in debug configuration")
+			"Failed to attach: invalid debug configuration - unsupported 'mode' value \"remote\"")
 
 		client.AttachRequest(map[string]interface{}{"mode": "blah blah blah"})
 		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to attach: Unsupported 'mode' value \"blah blah blah\" in debug configuration")
+			"Failed to attach: invalid debug configuration - unsupported 'mode' value \"blah blah blah\"")
 
 		client.AttachRequest(map[string]interface{}{"mode": 123})
 		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to attach: invalid debug configuration - cannot unmarshal number into \"mode\" of type string")
+			"Failed to attach: invalid debug configuration - cannot unmarshal '123' into 'mode' of type string")
 
 		client.AttachRequest(map[string]interface{}{"mode": ""}) // empty mode defaults to "local" (not an error)
 		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),

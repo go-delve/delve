@@ -717,21 +717,14 @@ func cleanExeName(name string) string {
 
 func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	var args LaunchConfig
-	if err := mapToStruct(request.Arguments, &args); err != nil {
+	if err := unmarshalLaunchAttachArgs(request.Arguments, &args); err != nil {
 		s.sendErrorResponse(request.Request,
 			FailedToLaunch, "Failed to launch", fmt.Sprintf("invalid debug configuration - %v", err))
 		return
 	}
-	// Validate launch request mode
-	mode := args.Mode
-	if mode == "" {
-		mode = "debug"
-	}
-	if !isValidLaunchMode(mode) {
-		s.sendErrorResponse(request.Request,
-			FailedToLaunch, "Failed to launch",
-			fmt.Sprintf("Unsupported 'mode' value %q in debug configuration.", mode))
-		return
+
+	if args.Mode == DefaultLaunchMode {
+		args.Mode = DebugLaunchMode
 	}
 
 	// TODO(polina): Respond with an error if debug session is in progress?
@@ -743,7 +736,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	if mode == "debug" || mode == "test" {
+	if mode := args.Mode; mode == DebugLaunchMode || mode == TestLaunchMode {
 		output := args.Output
 		if output == "" {
 			output = defaultDebugBinary
@@ -761,9 +754,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		var cmd string
 		var out []byte
 		switch mode {
-		case "debug":
+		case DebugLaunchMode:
 			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
-		case "test":
+		case TestLaunchMode:
 			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
 		}
 		if err != nil {
@@ -791,9 +784,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 	s.config.ProcessArgs = append([]string{program}, args.Args...)
 	s.config.Debugger.WorkingDir = filepath.Dir(program)
-
-	// Set the WorkingDir for this program to the one specified in the request arguments.
-	s.config.Debugger.WorkingDir = args.Cwd
+	if args.Cwd != "" {
+		s.config.Debugger.WorkingDir = args.Cwd
+	}
 
 	s.log.Debugf("running program in %s\n", s.config.Debugger.WorkingDir)
 	if args.NoDebug {
@@ -873,16 +866,6 @@ func (s *Server) stopNoDebugProcess() {
 		s.noDebugProcess.Process.Kill() // Don't check error. Process killing and self-termination may race.
 	}
 	s.noDebugProcess = nil
-}
-
-// TODO(polina): support "remote" mode
-func isValidLaunchMode(launchMode string) bool {
-	switch launchMode {
-	case "exec", "debug", "test":
-		return true
-	}
-
-	return false
 }
 
 // onDisconnectRequest handles the DisconnectRequest. Per the DAP spec,
@@ -1352,40 +1335,37 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 // This is a mandatory request to support.
 func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 	var args AttachConfig
-	if err := mapToStruct(request.Arguments, &args); err != nil {
+	if err := unmarshalLaunchAttachArgs(request.Arguments, &args); err != nil {
 		s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", fmt.Sprintf("invalid debug configuration - %v", err))
 		return
 	}
 
-	if mode := args.Mode; mode == "local" || mode == "" {
-		if args.ProcessID == 0 {
-			s.sendErrorResponse(request.Request,
-				FailedToAttach, "Failed to attach",
-				"The 'processId' attribute is missing in debug configuration")
-			return
-		}
-		s.config.Debugger.AttachPid = args.ProcessID
-		err := s.setLaunchAttachArgs(args.LaunchAttachCommonConfig)
-		if err != nil {
-			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
-			return
-		}
-		func() {
-			s.mu.Lock()
-			defer s.mu.Unlock() // Make sure to unlock in case of panic that will become internal error
-			s.debugger, err = debugger.New(&s.config.Debugger, nil)
-		}()
-		if err != nil {
-			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
-			return
-		}
-	} else {
-		// TODO(polina): support 'remote' mode with 'host' and 'port'
+	if args.Mode == DefaultAttachMode {
+		args.Mode = LocalAttachMode
+	}
+
+	if args.ProcessID == 0 {
 		s.sendErrorResponse(request.Request,
 			FailedToAttach, "Failed to attach",
-			fmt.Sprintf("Unsupported 'mode' value %q in debug configuration", mode))
+			"The 'processId' attribute is missing in debug configuration")
 		return
 	}
+	s.config.Debugger.AttachPid = args.ProcessID
+	err := s.setLaunchAttachArgs(args.LaunchAttachCommonConfig)
+	if err != nil {
+		s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
+		return
+	}
+	func() {
+		s.mu.Lock()
+		defer s.mu.Unlock() // Make sure to unlock in case of panic that will become internal error
+		s.debugger, err = debugger.New(&s.config.Debugger, nil)
+	}()
+	if err != nil {
+		s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
+		return
+	}
+
 	// Notify the client that the debugger is ready to start accepting
 	// configuration requests for setting breakpoints, etc. The client
 	// will end the configuration sequence with 'configurationDone'.
