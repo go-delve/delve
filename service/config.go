@@ -23,6 +23,10 @@ type Config struct {
 	// ProcessArgs are the arguments to launch a new process.
 	ProcessArgs []string
 
+	// Environ are additional environment variables for the new process,
+	// in the form "key=value".
+	Environ []string
+
 	// AcceptMulti configures the server to accept multiple connection.
 	// Note that the server API is not reentrant and clients will have to coordinate.
 	AcceptMulti bool

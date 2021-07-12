@@ -844,6 +844,30 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 
 	s.config.ProcessArgs = append([]string{program}, targetArgs...)
+
+	var environ []string
+	env, ok := request.Arguments["env"]
+	if ok {
+		sendError := func() {
+			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
+				fmt.Sprintf("'env' attribute '%v' in debug configuration is not a map[string]string", env))
+		}
+		envParsed, ok := env.(map[string]interface{})
+		if !ok {
+			sendError()
+			return
+		}
+		for key, value := range envParsed {
+			valueParsed, ok := value.(string)
+			if !ok {
+				sendError()
+				return
+			}
+			environ = append(environ, fmt.Sprintf("%s=%s", key, valueParsed))
+		}
+	}
+
+	s.config.Environ = environ
 	s.config.Debugger.WorkingDir = filepath.Dir(program)
 
 	// Set the WorkingDir for this program to the one specified in the request arguments.
@@ -892,7 +916,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	func() {
 		s.mu.Lock()
 		defer s.mu.Unlock() // Make sure to unlock in case of panic that will become internal error
-		s.debugger, err = debugger.New(&s.config.Debugger, s.config.ProcessArgs)
+		s.debugger, err = debugger.New(&s.config.Debugger, s.config.ProcessArgs, s.config.Environ)
 	}()
 	if err != nil {
 		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
@@ -1435,7 +1459,7 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 		func() {
 			s.mu.Lock()
 			defer s.mu.Unlock() // Make sure to unlock in case of panic that will become internal error
-			s.debugger, err = debugger.New(&s.config.Debugger, nil)
+			s.debugger, err = debugger.New(&s.config.Debugger, nil, nil)
 		}()
 		if err != nil {
 			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
