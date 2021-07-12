@@ -23,7 +23,7 @@ func TestDebugger_LaunchNoMain(t *testing.T) {
 	}
 
 	d := new(Debugger)
-	_, err := d.Launch([]string{exepath}, ".")
+	_, err := d.Launch([]string{exepath}, nil, ".")
 	if err == nil {
 		t.Fatalf("expected error but none was generated")
 	}
@@ -60,7 +60,7 @@ func TestDebugger_LaunchInvalidFormat(t *testing.T) {
 	defer os.Remove(exepath)
 
 	d := new(Debugger)
-	_, err := d.Launch([]string{exepath}, ".")
+	_, err := d.Launch([]string{exepath}, nil, ".")
 	if err == nil {
 		t.Fatalf("expected error but none was generated")
 	}

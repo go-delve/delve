@@ -113,7 +113,7 @@ func (s *ServerImpl) Run() error {
 
 	// Create and start the debugger
 	config := s.config.Debugger
-	if s.debugger, err = debugger.New(&config, s.config.ProcessArgs); err != nil {
+	if s.debugger, err = debugger.New(&config, s.config.ProcessArgs, s.config.Environ); err != nil {
 		return err
 	}
 

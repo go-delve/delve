@@ -60,6 +60,10 @@ type Debugger struct {
 	// arguments to launch a new process.
 	processArgs []string
 
+	// environ are additional environment variables for the new process,
+	// in the form "key=value".
+	environ []string
+
 	targetMutex sync.Mutex
 	target      *proc.Target
 
@@ -141,11 +145,12 @@ type Config struct {
 
 // New creates a new Debugger. ProcessArgs specify the commandline arguments for the
 // new process.
-func New(config *Config, processArgs []string) (*Debugger, error) {
+func New(config *Config, processArgs, environ []string) (*Debugger, error) {
 	logger := logflags.DebuggerLogger()
 	d := &Debugger{
 		config:      config,
 		processArgs: processArgs,
+		environ:     environ,
 		log:         logger,
 	}
 
@@ -187,7 +192,7 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 
 	default:
 		d.log.Infof("launching process with args: %v", d.processArgs)
-		p, err := d.Launch(d.processArgs, d.config.WorkingDir)
+		p, err := d.Launch(d.processArgs, d.environ, d.config.WorkingDir)
 		if err != nil {
 			if _, ok := err.(*proc.ErrUnsupportedArch); !ok {
 				err = go11DecodeErrorCheck(err)
@@ -244,7 +249,7 @@ func (d *Debugger) TargetGoVersion() string {
 }
 
 // Launch will start a process with the given args and working directory.
-func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error) {
+func (d *Debugger) Launch(processArgs, environ []string, wd string) (*proc.Target, error) {
 	if err := verifyBinaryFormat(processArgs[0]); err != nil {
 		return nil, err
 	}
@@ -259,16 +264,16 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 
 	switch d.config.Backend {
 	case "native":
-		return native.Launch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects)
+		return native.Launch(processArgs, environ, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects)
 	case "lldb":
-		return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects))
+		return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, environ, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects))
 	case "rr":
 		if d.target != nil {
 			// restart should not call us if the backend is 'rr'
 			panic("internal error: call to Launch with rr backend and target already exists")
 		}
 
-		run, stop, err := gdbserial.RecordAsync(processArgs, wd, false, d.config.Redirects)
+		run, stop, err := gdbserial.RecordAsync(processArgs, environ, wd, false, d.config.Redirects)
 		if err != nil {
 			return nil, err
 		}
@@ -303,9 +308,9 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 
 	case "default":
 		if runtime.GOOS == "darwin" {
-			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects))
+			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, environ, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects))
 		}
-		return native.Launch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects)
+		return native.Launch(processArgs, environ, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", d.config.Backend)
 	}
@@ -499,7 +504,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 	}
 
 	if recorded {
-		run, stop, err2 := gdbserial.RecordAsync(d.processArgs, d.config.WorkingDir, false, d.config.Redirects)
+		run, stop, err2 := gdbserial.RecordAsync(d.processArgs, d.environ, d.config.WorkingDir, false, d.config.Redirects)
 		if err2 != nil {
 			return nil, err2
 		}
@@ -508,7 +513,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 		p, err = d.recordingRun(run)
 		d.recordingDone()
 	} else {
-		p, err = d.Launch(d.processArgs, d.config.WorkingDir)
+		p, err = d.Launch(d.processArgs, d.environ, d.config.WorkingDir)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("could not launch process: %s", err)

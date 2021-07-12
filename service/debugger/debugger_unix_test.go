@@ -44,7 +44,7 @@ func TestDebugger_LaunchNoExecutablePerm(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := new(Debugger)
-	_, err := d.Launch([]string{exepath}, ".")
+	_, err := d.Launch([]string{exepath}, nil, ".")
 	if err == nil {
 		t.Fatalf("expected error but none was generated")
 	}
@@ -82,7 +82,7 @@ func TestDebugger_LaunchWithTTY(t *testing.T) {
 	protest.DefaultTestBackend(&backend)
 	conf := &Config{TTY: tty.Name(), Backend: backend}
 	pArgs := []string{exepath}
-	d, err := New(conf, pArgs)
+	d, err := New(conf, pArgs, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
