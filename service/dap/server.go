@@ -2672,7 +2672,7 @@ func (s *Server) resetHandlesForStoppedEvent() {
 
 func processExited(stopReason proc.StopReason, state *api.DebuggerState, err error) bool {
 	_, isexited := err.(proc.ErrProcessExited)
-	return isexited || err == nil && state.Exited || stopReason == proc.StopExited
+	return isexited || err == nil && state.Exited
 }
 
 // doRunCommand runs a debugger command until it stops on
