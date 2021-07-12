@@ -4011,6 +4011,20 @@ func TestLaunchRequestWithArgs(t *testing.T) {
 	})
 }
 
+// Tests that 'env' from LaunchRequest are parsed and passed to the target
+// program. The target program exits without an error on success, and
+// panics on error, causing an unexpected StoppedEvent instead of
+// Terminated Event.
+func TestLaunchRequestWithEnv(t *testing.T) {
+	runTest(t, "testenv_from_dap", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSession(t, client, "launch", func() {
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"mode": "exec", "program": fixture.Path,
+				"env": map[string]string{"VAR1": "foo", "VAR2": "bar"}})
+		}, fixture.Source)
+	})
+}
+
 // Tests that 'buildFlags' from LaunchRequest are parsed and passed to the
 // compiler. The target program exits without an error on success, and
 // panics on error, causing an unexpected StoppedEvent instead of
@@ -4670,6 +4684,13 @@ func TestBadLaunchRequests(t *testing.T) {
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "cwd": 123})
 		checkFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: 'cwd' attribute '123' in debug configuration is not a string.")
+
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "env": []interface{}{"VAR1=foo"} })
+		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+			"Failed to launch: 'env' attribute '[VAR1=foo]' in debug configuration is not a map[string]string")
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "env": map[string]interface{}{"VAR1": 1} })
+		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+			"Failed to launch: 'env' attribute 'map[VAR1:1]' in debug configuration is not a map[string]string")
 
 		// Skip detailed message checks for potentially different OS-specific errors.
 		client.LaunchRequest("exec", fixture.Path+"_does_not_exist", stopOnEntry)
