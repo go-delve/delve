@@ -3,8 +3,6 @@
 #include "exec_darwin.h"
 #include "stdio.h"
 
-extern char** environ;
-
 int
 close_exec_pipe(int fd[2]) {
 	if (pipe(fd) < 0) return -1;
@@ -14,7 +12,7 @@ close_exec_pipe(int fd[2]) {
 }
 
 int
-fork_exec(char *argv0, char **argv, int size,
+fork_exec(char *argv0, char **argv, char **environ, int size,
 		char *wd,
 		task_t *task,
 		mach_port_t *port_set,

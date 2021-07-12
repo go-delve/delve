@@ -52,7 +52,7 @@ type osProcessDetails struct {
 // to be supplied to that process. `wd` is working directory of the program.
 // If the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []string, tty string, redirects [3]string) (*proc.Target, error) {
+func Launch(cmd, environ []string, wd string, flags proc.LaunchFlags, debugInfoDirs []string, tty string, redirects [3]string) (*proc.Target, error) {
 	var (
 		process *exec.Cmd
 		err     error
@@ -89,6 +89,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []str
 
 		process = exec.Command(cmd[0])
 		process.Args = cmd
+		process.Env = proc.MergeInheritedEnviron(environ)
 		process.Stdin = stdin
 		process.Stdout = stdout
 		process.Stderr = stderr

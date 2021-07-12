@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/constant"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -144,14 +145,25 @@ type NewTargetConfig struct {
 
 // DisableAsyncPreemptEnv returns a process environment (like os.Environ)
 // where asyncpreemptoff is set to 1.
-func DisableAsyncPreemptEnv() []string {
-	env := os.Environ()
+func DisableAsyncPreemptEnv(env []string) {
 	for i := range env {
 		if strings.HasPrefix(env[i], "GODEBUG=") {
 			// Go 1.14 asynchronous preemption mechanism is incompatible with
 			// debuggers, see: https://github.com/golang/go/issues/36494
 			env[i] += ",asyncpreemptoff=1"
 		}
+	}
+}
+
+// MergeInheritedEnviron merges given environment variables with inherited ones,
+// in the form "key=value".
+func MergeInheritedEnviron(environ []string) []string {
+	env := os.Environ()
+	for _, e := range environ {
+		env = append(env, e)
+	}
+	if runtime.GOOS == "darwin" {
+		DisableAsyncPreemptEnv(env)
 	}
 	return env
 }

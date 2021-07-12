@@ -428,7 +428,7 @@ func getLdEnvVars() []string {
 // LLDBLaunch starts an instance of lldb-server and connects to it, asking
 // it to launch the specified target program with the specified arguments
 // (cmd) on the specified directory wd.
-func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []string, tty string, redirects [3]string) (*proc.Target, error) {
+func LLDBLaunch(cmd, environ []string, wd string, flags proc.LaunchFlags, debugInfoDirs []string, tty string, redirects [3]string) (*proc.Target, error) {
 	if runtime.GOOS == "windows" {
 		return nil, ErrUnsupportedOS
 	}
@@ -523,9 +523,7 @@ func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs [
 		process.SysProcAttr = sysProcAttr(foreground)
 	}
 
-	if runtime.GOOS == "darwin" {
-		process.Env = proc.DisableAsyncPreemptEnv()
-	}
+	process.Env = proc.MergeInheritedEnviron(environ)
 
 	if err = process.Start(); err != nil {
 		return nil, err

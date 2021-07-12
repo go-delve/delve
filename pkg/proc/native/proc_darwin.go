@@ -38,7 +38,7 @@ type osProcessDetails struct {
 // custom fork/exec process in order to take advantage of
 // PT_SIGEXC on Darwin which will turn Unix signals into
 // Mach exceptions.
-func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ string, _ [3]string) (*proc.Target, error) {
+func Launch(cmd, environ []string, wd string, flags proc.LaunchFlags, _ []string, _ string, _ [3]string) (*proc.Target, error) {
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err
@@ -64,6 +64,13 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 	// argv array must be null terminated.
 	argvSlice = append(argvSlice, nil)
 
+	envSlice := make([]*C.char, 0, len(environ)+1)
+	for _, e := range environ {
+		envSlice = append(envSlice, C.CString(e))
+	}
+	// env array must be null terminated.
+	envSlice = append(envSlice, nil)
+
 	dbp := newProcess(0)
 	defer func() {
 		if err != nil && dbp.pid != 0 {
@@ -72,7 +79,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 	}()
 	var pid int
 	dbp.execPtraceFunc(func() {
-		ret := C.fork_exec(argv0, &argvSlice[0], C.int(len(argvSlice)),
+		ret := C.fork_exec(argv0, &argvSlice[0], &envSlice[0], C.int(len(argvSlice)),
 			C.CString(wd),
 			&dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort,
 			&dbp.os.notificationPort)

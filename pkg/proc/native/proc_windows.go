@@ -21,13 +21,11 @@ type osProcessDetails struct {
 }
 
 // Launch creates and begins debugging a new process.
-func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ string, redirects [3]string) (*proc.Target, error) {
+func Launch(cmd, environ []string, wd string, flags proc.LaunchFlags, _ []string, _ string, redirects [3]string) (*proc.Target, error) {
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err
 	}
-
-	env := proc.DisableAsyncPreemptEnv()
 
 	stdin, stdout, stderr, closefn, err := openRedirects(redirects, true)
 	if err != nil {
@@ -43,7 +41,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 			Sys: &syscall.SysProcAttr{
 				CreationFlags: _DEBUG_ONLY_THIS_PROCESS,
 			},
-			Env: env,
+			Env: proc.MergeInheritedEnviron(environ),
 		}
 		p, err = os.StartProcess(argv0Go, cmd, attr)
 	})

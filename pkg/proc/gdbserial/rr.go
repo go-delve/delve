@@ -21,7 +21,7 @@ import (
 // program. Returns a run function which will actually record the program, a
 // stop function which will prematurely terminate the recording of the
 // program.
-func RecordAsync(cmd []string, wd string, quiet bool, redirects [3]string) (run func() (string, error), stop func() error, err error) {
+func RecordAsync(cmd, environ []string, wd string, quiet bool, redirects [3]string) (run func() (string, error), stop func() error, err error) {
 	if err := checkRRAvailabe(); err != nil {
 		return nil, nil, err
 	}
@@ -35,6 +35,7 @@ func RecordAsync(cmd []string, wd string, quiet bool, redirects [3]string) (run 
 	args = append(args, "record", "--print-trace-dir=3")
 	args = append(args, cmd...)
 	rrcmd := exec.Command("rr", args...)
+	rrcmd.Env = proc.MergeInheritedEnviron(environ)
 	var closefn func()
 	rrcmd.Stdin, rrcmd.Stdout, rrcmd.Stderr, closefn, err = openRedirects(redirects, quiet)
 	if err != nil {
@@ -113,8 +114,8 @@ func openRedirects(redirects [3]string, quiet bool) (stdin, stdout, stderr *os.F
 
 // Record uses rr to record the execution of the specified program and
 // returns the trace directory's path.
-func Record(cmd []string, wd string, quiet bool, redirects [3]string) (tracedir string, err error) {
-	run, _, err := RecordAsync(cmd, wd, quiet, redirects)
+func Record(cmd, environ []string, wd string, quiet bool, redirects [3]string) (tracedir string, err error) {
+	run, _, err := RecordAsync(cmd, environ, wd, quiet, redirects)
 	if err != nil {
 		return "", err
 	}
@@ -336,8 +337,8 @@ func splitQuotedFields(in string) []string {
 }
 
 // RecordAndReplay acts like calling Record and then Replay.
-func RecordAndReplay(cmd []string, wd string, quiet bool, debugInfoDirs []string, redirects [3]string) (*proc.Target, string, error) {
-	tracedir, err := Record(cmd, wd, quiet, redirects)
+func RecordAndReplay(cmd, environ []string, wd string, quiet bool, debugInfoDirs []string, redirects [3]string) (*proc.Target, string, error) {
+	tracedir, err := Record(cmd, environ, wd, quiet, redirects)
 	if tracedir == "" {
 		return nil, "", err
 	}
