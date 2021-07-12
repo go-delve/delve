@@ -90,7 +90,15 @@ func withTestProcess(name string, t testing.TB, fn func(p *proc.Target, fixture 
 	withTestProcessArgs(name, t, ".", []string{}, 0, fn)
 }
 
+func withTestProcessEnv(name string, t testing.TB, environ []string, fn func(p *proc.Target, fixture protest.Fixture)) {
+	withTestProcessArgsAndEnv(name, t, ".", []string{}, environ, 0, fn)
+}
+
 func withTestProcessArgs(name string, t testing.TB, wd string, args []string, buildFlags protest.BuildFlags, fn func(p *proc.Target, fixture protest.Fixture)) {
+	withTestProcessArgsAndEnv(name, t, wd, args, nil, buildFlags, fn)
+}
+
+func withTestProcessArgsAndEnv(name string, t testing.TB, wd string, args, environ []string, buildFlags protest.BuildFlags, fn func(p *proc.Target, fixture protest.Fixture)) {
 	if buildMode == "pie" {
 		buildFlags |= protest.BuildModePIE
 	}
@@ -101,13 +109,13 @@ func withTestProcessArgs(name string, t testing.TB, wd string, args []string, bu
 
 	switch testBackend {
 	case "native":
-		p, err = native.Launch(append([]string{fixture.Path}, args...), nil, wd, 0, []string{}, "", [3]string{})
+		p, err = native.Launch(append([]string{fixture.Path}, args...), environ, wd, 0, []string{}, "", [3]string{})
 	case "lldb":
-		p, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), nil, wd, 0, []string{}, "", [3]string{})
+		p, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), environ, wd, 0, []string{}, "", [3]string{})
 	case "rr":
 		protest.MustHaveRecordingAllowed(t)
 		t.Log("recording")
-		p, tracedir, err = gdbserial.RecordAndReplay(append([]string{fixture.Path}, args...), nil, wd, true, []string{}, [3]string{})
+		p, tracedir, err = gdbserial.RecordAndReplay(append([]string{fixture.Path}, args...), environ, wd, true, []string{}, [3]string{})
 		t.Logf("replaying %q", tracedir)
 	default:
 		t.Fatal("unknown backend")
@@ -2888,16 +2896,44 @@ func TestPackageWithPathVar(t *testing.T) {
 
 func TestEnvironment(t *testing.T) {
 	protest.AllowRecording(t)
-	os.Setenv("SOMEVAR", "bah")
-	withTestProcess("testenv", t, func(p *proc.Target, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue()")
-		v := evalVariable(p, t, "x")
-		vv := constant.StringVal(v.Value)
-		t.Logf("v = %q", vv)
-		if vv != "bah" {
-			t.Fatalf("value of v is %q (expected \"bah\")", vv)
+	assertEnvValue := func(envValues []string) func(p *proc.Target, fixture protest.Fixture) {
+		return func(p *proc.Target, fixture protest.Fixture) {
+			for _, value := range envValues {
+				assertNoError(p.Continue(), t, "Continue()")
+				v := evalVariable(p, t, "x")
+				vv := constant.StringVal(v.Value)
+				t.Logf("v = %q", vv)
+				if vv != value {
+					t.Fatalf("value of v is %q (expected \"%s\")", vv, value)
+				}
+			}
 		}
-	})
+	}
+
+	cases := []struct {
+		name     string
+		VAR1     string
+		environ  []string
+		expected []string
+	}{
+		{"one env var", "", []string{"VAR1=foo"}, []string{"foo"}},
+		{"two env vars", "", []string{"VAR1=foo", "VAR2=bar"}, []string{"foo", "bar"}},
+		{"two env with spaces", "", []string{"VAR1= foo ", "VAR2=bar with space"}, []string{" foo ", "bar with space"}},
+		{"one inherited env", "foo", nil, []string{"foo"}},
+		{"one inherited env and one from cmdline", "foo", []string{"VAR2=bar"}, []string{"foo", "bar"}},
+		{"override inheried env", "foo", []string{"VAR1=f00"}, []string{"f00"}},
+		{"override inheried env and one from cmdline", "foo", []string{"VAR1=f00", "VAR2=bar"}, []string{"f00", "bar"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.VAR1 != "" {
+				os.Setenv("VAR1", tc.VAR1)
+				defer os.Unsetenv("VAR1")
+			}
+			withTestProcessEnv("testenv", t, tc.environ, assertEnvValue(tc.expected))
+		})
+	}
 }
 
 func getFrameOff(p *proc.Target, t *testing.T) int64 {
