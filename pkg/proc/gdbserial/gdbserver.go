@@ -816,8 +816,9 @@ continueLoop:
 		if err != nil {
 			if _, exited := err.(proc.ErrProcessExited); exited {
 				p.exited = true
+				return nil, proc.StopExited, err
 			}
-			return nil, proc.StopExited, err
+			return nil, proc.StopUnknown, err
 		}
 
 		// For stubs that support qThreadStopInfo updateThreadList will
