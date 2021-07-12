@@ -58,6 +58,8 @@ var (
 	checkLocalConnUser bool
 	// tty is used to provide an alternate TTY for the program you wish to debug.
 	tty string
+	// foreground indicates if to place the target process in the foreground
+	foreground bool
 	// disableASLR is used to disable ASLR
 	disableASLR bool
 
@@ -188,6 +190,7 @@ While --continue is not supported, stopOnEntry launch/attach attribute can be us
 execution is resumed at the start of the debug session.`,
 		Run: dapCmd,
 	}
+	dapCommand.Flags().BoolVar(&foreground, "foreground", false, "Place process in the foreground and forward signals")
 	rootCommand.AddCommand(dapCommand)
 
 	// 'debug' subcommand.
@@ -446,10 +449,9 @@ func dapCmd(cmd *cobra.Command, args []string) {
 			DisconnectChan: disconnectChan,
 			Debugger: debugger.Config{
 				Backend:              backend,
-				Foreground:           headless && tty == "",
+				Foreground:           foreground,
 				DebugInfoDirectories: conf.DebugInfoDirectories,
 				CheckGoVersion:       checkGoVersion,
-				TTY:                  tty,
 			},
 			CheckLocalConnUser: checkLocalConnUser,
 		})
