@@ -1345,45 +1345,48 @@ func fnPackageName(loc *proc.Location) string {
 // onThreadsRequest handles 'threads' request.
 // This is a mandatory request to support.
 // It is sent in response to configurationDone response and stopped events.
+// Depending on the debug session stage, goroutines information
+// might not be available. However, the DAP spec states that
+// "even if a debug adapter does not support multiple threads,
+// it must implement the threads request and return a single
+// (dummy) thread". Therefore, this handler never returns
+// an error response. If the dummy thread is returned in its place,
+// the next waterfall request for its stackTrace will return the error.
 func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
-	if s.debugger == nil {
-		s.sendErrorResponse(request.Request, UnableToDisplayThreads, "Unable to display threads", "debugger is nil")
-		return
+	var err error
+	var gs []*proc.G
+	if s.debugger != nil {
+		gs, _, err = s.debugger.Goroutines(0, 0)
 	}
-
-	gs, _, err := s.debugger.Goroutines(0, 0)
+	threads := make([]dap.Thread, len(gs))
 	if err != nil {
 		switch err.(type) {
 		case proc.ErrProcessExited:
 			// If the program exits very quickly, the initial threads request will complete after it has exited.
 			// A TerminatedEvent has already been sent. Ignore the err returned in this case.
-			s.send(&dap.ThreadsResponse{Response: *newResponse(request.Request)})
+			s.log.Debug(err)
 		default:
-			s.sendErrorResponse(request.Request, UnableToDisplayThreads, "Unable to display threads", err.Error())
+			s.send(&dap.OutputEvent{
+				Event: *newEvent("output"),
+				Body: dap.OutputEventBody{
+					Output:   fmt.Sprintf("Unable to retrieve goroutines: %s\n", err.Error()),
+					Category: "stderr",
+				}})
 		}
-		return
-	}
-
-	threads := make([]dap.Thread, len(gs))
-	if len(threads) == 0 {
-		// Depending on the debug session stage, goroutines information
-		// might not be available. However, the DAP spec states that
-		// "even if a debug adapter does not support multiple threads,
-		// it must implement the threads request and return a single
-		// (dummy) thread".
+		threads = []dap.Thread{{Id: 1, Name: "Dummy"}}
+	} else if len(threads) == 0 {
 		threads = []dap.Thread{{Id: 1, Name: "Dummy"}}
 	} else {
 		state, err := s.debugger.State( /*nowait*/ true)
 		if err != nil {
-			s.sendErrorResponse(request.Request, UnableToDisplayThreads, "Unable to display threads", err.Error())
-			return
+			s.log.Debug("Unable to get debugger state: ", err)
 		}
 		s.debugger.LockTarget()
 		defer s.debugger.UnlockTarget()
 
 		for i, g := range gs {
 			selected := ""
-			if state.SelectedGoroutine != nil && g.ID == state.SelectedGoroutine.ID {
+			if state != nil && state.SelectedGoroutine != nil && g.ID == state.SelectedGoroutine.ID {
 				selected = "* "
 			}
 			thread := ""
@@ -1543,6 +1546,11 @@ type stackFrame struct {
 // As per DAP spec, this request only gets triggered as a follow-up
 // to a successful threads request as part of the "request waterfall".
 func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
+	if s.debugger == nil {
+		s.sendErrorResponse(request.Request, UnableToProduceStackTrace, "Unable to produce stack trace", "debugger is nil")
+		return
+	}
+
 	goroutineID := request.Arguments.ThreadId
 	frames, err := s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
 	if err != nil {
