@@ -2,6 +2,7 @@ package dap
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"strings"
@@ -4158,10 +4160,6 @@ type helperForSetVariable struct {
 	c *daptest.Client
 }
 
-func (h *helperForSetVariable) expectSetVariableAndStop(ref int, name, value string) {
-	h.t.Helper()
-	h.expectSetVariable0(ref, name, value, true)
-}
 func (h *helperForSetVariable) expectSetVariable(ref int, name, value string) {
 	h.t.Helper()
 	h.expectSetVariable0(ref, name, value, false)
@@ -4564,6 +4562,97 @@ func TestOptionalNotYetImplementedResponses(t *testing.T) {
 
 		client.CancelRequest()
 		expectNotYetImplemented("cancel")
+	})
+}
+
+func TestLaunchWithConsoleAttribute(t *testing.T) {
+	checkFailedToLaunch := func(response *dap.ErrorResponse, wantDetails string) {
+		t.Helper()
+		if response.Command != "launch" {
+			t.Errorf(`Command got %q, want "launch"`, response.Command)
+		}
+		if response.Message != "Failed to launch" {
+			t.Errorf(`Message got %q, want "Failed to launch"`, response.Message)
+		}
+		if response.Body.Error.Id != 3000 {
+			t.Errorf("Id got %d, want 3000", response.Body.Error.Id)
+		}
+		if !strings.Contains(response.Body.Error.Format, wantDetails) {
+			t.Errorf("Format got %s, want .*%s.*", response.Body.Error.Format, wantDetails)
+		}
+	}
+
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		client.InitializeRequest()
+		initResp := client.ExpectInitializeResponseAndCapabilities(t)
+		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
+		}
+
+		wantSeq := 0
+
+		// Launch requests to fail - Not implemented.
+		for _, console := range []string{"integrated", "external"} {
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"name":        "A Name",
+				"request":     "launch",
+				"mode":        "debug",
+				"program":     fixture.Path,
+				"stopOnEntry": true,
+				"console":     console})
+			ritReq := client.ExpectRunInTerminalRequest(t)
+			wantArgs := dap.RunInTerminalRequestArguments{
+				Kind:  console,
+				Title: "A Name",
+				Args:  []string{"console_attribute_is_not_supported"},
+			}
+			wantSeq++
+			if gotSeq, gotArgs := ritReq.Seq, ritReq.Arguments; gotSeq != wantSeq || !reflect.DeepEqual(gotArgs, wantArgs) {
+				t.Errorf("\ngot %#v\nwant Seq=1, Arguments= %#v", ritReq, wantArgs)
+			}
+			client.RunInTerminalResponse(ritReq.Seq, 0, errors.New("not implemented"))
+			checkFailedToLaunch(client.ExpectInvisibleErrorResponse(t), "not implemented")
+		}
+
+		// Launch requests to fail - Invalid console value.
+		for _, console := range []string{"foobar"} {
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"name":        "A Name",
+				"request":     "launch",
+				"mode":        "debug",
+				"program":     fixture.Path,
+				"stopOnEntry": true,
+				"console":     console})
+			checkFailedToLaunch(client.ExpectInvisibleErrorResponse(t), "invalid value for console")
+		}
+	})
+
+	// Integrated/external console modes require 'SupportsRunInTerminalRequest'.
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		client.InitializeRequestWithArgs(dap.InitializeRequestArguments{
+			AdapterID:                    "go",
+			PathFormat:                   "path",
+			LinesStartAt1:                true,
+			ColumnsStartAt1:              true,
+			SupportsRunInTerminalRequest: false, // RunInTerminal support missing
+		})
+
+		initResp := client.ExpectInitializeResponseAndCapabilities(t)
+		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
+		}
+
+		// Launch requests to fail - Not implemented.
+		for _, console := range []string{"integrated", "external"} {
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"name":        "A Name",
+				"request":     "launch",
+				"mode":        "debug",
+				"program":     fixture.Path,
+				"stopOnEntry": true,
+				"console":     console})
+			checkFailedToLaunch(client.ExpectInvisibleErrorResponse(t), "client does not support")
+		}
 	})
 }
 
