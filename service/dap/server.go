@@ -972,6 +972,10 @@ func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
 	} else {
 		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 	}
+	// The debugging session has ended, so we send a terminated event.
+	s.send(&dap.TerminatedEvent{
+		Event: *newEvent("terminated"),
+	})
 }
 
 // stopDebugSession is called from Stop (main goroutine) and
