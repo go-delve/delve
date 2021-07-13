@@ -838,7 +838,7 @@ func (s *RPCServer) ListDynamicLibraries(in ListDynamicLibrariesIn, out *ListDyn
 	imgs := s.debugger.ListDynamicLibraries()
 	out.List = make([]api.Image, 0, len(imgs))
 	for i := range imgs {
-		out.List[i] = api.ConvertImage(imgs[i])
+		out.List = append(out.List, api.ConvertImage(imgs[i]))
 	}
 	return nil
 }
