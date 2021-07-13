@@ -534,8 +534,19 @@ func (g *G) System(tgt *Target) bool {
 		return false
 	}
 	switch loc.Fn.Name {
-	case "runtime.main", "runtime.handleAsyncEvent", "runtime.runfinq":
+	case "runtime.main", "runtime.handleAsyncEvent":
 		return false
+	case "runtime.runfinq":
+		s, err := goroutineEvalScope(tgt, g, 0, 0)
+		if err != nil {
+			return true
+		}
+		v, err := s.EvalVariable("fingRunning", loadSingleValue)
+		if err != nil {
+			return true
+		}
+		fingRunning := constant.BoolVal(v.Value)
+		return !fingRunning
 	}
 	return strings.HasPrefix(loc.Fn.Name, "runtime.")
 }
