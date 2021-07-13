@@ -896,7 +896,7 @@ func (p *gdbProcess) findThreadByStrID(threadID string) *gdbThread {
 // and returns true if we should stop execution in response to one of the
 // signals and return control to the user.
 // Adjusts trapthread to a thread that we actually want to stop at.
-func (p *gdbProcess) handleThreadSignals(trapthread *gdbThread) (trapthreadOut *gdbThread, atstart bool, shouldStop bool) {
+func (p *gdbProcess) handleThreadSignals(trapthread *gdbThread) (trapthreadOut *gdbThread, atstart, shouldStop bool) {
 	var trapthreadCandidate *gdbThread
 
 	for _, th := range p.threads {
@@ -1574,8 +1574,7 @@ func (t *gdbThread) reloadRegisters() error {
 		}
 	}
 
-	switch t.p.bi.GOOS {
-	case "linux":
+	if t.p.bi.GOOS == "linux" {
 		if reg, hasFsBase := t.regs.regs[t.p.regnames.FsBase]; hasFsBase {
 			t.regs.gaddr = 0
 			t.regs.tls = binary.LittleEndian.Uint64(reg.value)
