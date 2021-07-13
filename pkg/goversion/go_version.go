@@ -174,17 +174,15 @@ const producerVersionPrefix = "Go cmd/compile "
 // ProducerAfterOrEqual checks that the DW_AT_producer version is
 // major.minor or a later version, or a development version.
 func ProducerAfterOrEqual(producer string, major, minor int) bool {
-	ver := parseProducer(producer)
+	ver := ParseProducer(producer)
 	if ver.IsDevel() {
 		return true
 	}
 	return ver.AfterOrEqual(GoVersion{major, minor, -1, 0, 0, ""})
 }
 
-func parseProducer(producer string) GoVersion {
-	if strings.HasPrefix(producer, producerVersionPrefix) {
-		producer = producer[len(producerVersionPrefix):]
-	}
+func ParseProducer(producer string) GoVersion {
+	producer = strings.TrimPrefix(producer, producerVersionPrefix)
 	ver, _ := Parse(producer)
 	return ver
 }

@@ -16,7 +16,7 @@ var (
 // Compatible checks that the version specified in the producer string is compatible with
 // this version of delve.
 func Compatible(producer string) error {
-	ver := parseProducer(producer)
+	ver := ParseProducer(producer)
 	if ver.IsDevel() {
 		return nil
 	}
