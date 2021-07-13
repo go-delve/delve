@@ -1,5 +1,6 @@
 # go-dap: Go implementation of the Debug Adapter Protocol
 
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/google/go-dap)](https://pkg.go.dev/github.com/google/go-dap)
 [![Build Status](https://travis-ci.org/google/go-dap.svg?branch=master)](https://travis-ci.org/google/go-dap)
 [![Go Report Card](https://goreportcard.com/badge/github.com/google/go-dap)](https://goreportcard.com/report/github.com/google/go-dap)
 
