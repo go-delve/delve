@@ -63,12 +63,18 @@ func ConvertEvalScope(dbp *Target, gid, frame, deferCall int) (*EvalScope, error
 	if _, err := dbp.Valid(); err != nil {
 		return nil, err
 	}
-	ct := dbp.CurrentThread()
 	g, err := FindGoroutine(dbp, gid)
 	if err != nil {
 		return nil, err
 	}
 
+	return goroutineEvalScope(dbp, g, frame, deferCall)
+}
+
+func goroutineEvalScope(dbp *Target, g *G, frame int, deferCall int) (*EvalScope, error) {
+	ct := dbp.CurrentThread()
+
+	var err error
 	var opts StacktraceOptions
 	if deferCall > 0 {
 		opts = StacktraceReadDefers
@@ -85,7 +91,7 @@ func ConvertEvalScope(dbp *Target, gid, frame, deferCall int) (*EvalScope, error
 	}
 
 	if frame >= len(locs) {
-		return nil, fmt.Errorf("Frame %d does not exist in goroutine %d", frame, gid)
+		return nil, fmt.Errorf("Frame %d does not exist in goroutine %d", frame, g.ID)
 	}
 
 	if deferCall > 0 {
