@@ -71,7 +71,7 @@ func ConvertEvalScope(dbp *Target, gid, frame, deferCall int) (*EvalScope, error
 	return goroutineEvalScope(dbp, g, frame, deferCall)
 }
 
-func goroutineEvalScope(dbp *Target, g *G, frame int, deferCall int) (*EvalScope, error) {
+func goroutineEvalScope(dbp *Target, g *G, frame, deferCall int) (*EvalScope, error) {
 	ct := dbp.CurrentThread()
 
 	var err error
