@@ -395,7 +395,7 @@ func getDebugServerAbsolutePath() string {
 
 func canUnmaskSignals(debugServerExecutable string) bool {
 	checkCanUnmaskSignalsOnce.Do(func() {
-		buf, _ := exec.Command(debugServerExecutable, "--unmask-singals").CombinedOutput()
+		buf, _ := exec.Command(debugServerExecutable, "--unmask-signals").CombinedOutput()
 		canUnmaskSignalsCached = !strings.Contains(string(buf), "unrecognized option")
 	})
 	return canUnmaskSignalsCached
