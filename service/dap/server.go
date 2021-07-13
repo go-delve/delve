@@ -214,43 +214,18 @@ func NewServer(config *service.Config) *Server {
 
 // If user-specified options are provided via Launch/AttachRequest,
 // we override the defaults for optional args.
-func (s *Server) setLaunchAttachArgs(request dap.LaunchAttachRequest) error {
-	stop, ok := request.GetArguments()["stopOnEntry"].(bool)
-	if ok {
-		s.args.stopOnEntry = stop
+func (s *Server) setLaunchAttachArgs(args LaunchAttachCommonConfig) error {
+	s.args.stopOnEntry = args.StopOnEntry
+	if depth := args.StackTraceDepth; depth > 0 {
+		s.args.stackTraceDepth = depth
 	}
-	depth, ok := request.GetArguments()["stackTraceDepth"].(float64)
-	if ok && depth > 0 {
-		s.args.stackTraceDepth = int(depth)
-	}
-	globals, ok := request.GetArguments()["showGlobalVariables"].(bool)
-	if ok {
-		s.args.showGlobalVariables = globals
-	}
-	paths, ok := request.GetArguments()["substitutePath"]
-	if ok {
-		typeMismatchError := fmt.Errorf("'substitutePath' attribute '%v' in debug configuration is not a []{'from': string, 'to': string}", paths)
-		pathsParsed, ok := paths.([]interface{})
-		if !ok {
-			return typeMismatchError
-		}
-		clientToServer := make([][2]string, 0, len(pathsParsed))
-		serverToClient := make([][2]string, 0, len(pathsParsed))
-		for _, arg := range pathsParsed {
-			pathMapping, ok := arg.(map[string]interface{})
-			if !ok {
-				return typeMismatchError
-			}
-			from, ok := pathMapping["from"].(string)
-			if !ok {
-				return typeMismatchError
-			}
-			to, ok := pathMapping["to"].(string)
-			if !ok {
-				return typeMismatchError
-			}
-			clientToServer = append(clientToServer, [2]string{from, to})
-			serverToClient = append(serverToClient, [2]string{to, from})
+	s.args.showGlobalVariables = args.ShowGlobalVariables
+	if paths := args.SubstitutePath; len(paths) > 0 {
+		clientToServer := make([][2]string, 0, len(paths))
+		serverToClient := make([][2]string, 0, len(paths))
+		for _, p := range paths {
+			clientToServer = append(clientToServer, [2]string{p.From, p.To})
+			serverToClient = append(serverToClient, [2]string{p.To, p.From})
 		}
 		s.args.substitutePathClientToServer = clientToServer
 		s.args.substitutePathServerToClient = serverToClient
@@ -741,30 +716,29 @@ func cleanExeName(name string) string {
 }
 
 func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
-	// Validate launch request mode
-	mode, ok := request.Arguments["mode"]
-	if !ok || mode == "" {
-		mode = "debug"
-	}
-	if !isValidLaunchMode(mode) {
+	var args LaunchConfig
+	if err := unmarshalLaunchAttachArgs(request.Arguments, &args); err != nil {
 		s.sendErrorResponse(request.Request,
-			FailedToLaunch, "Failed to launch",
-			fmt.Sprintf("Unsupported 'mode' value %q in debug configuration.", mode))
+			FailedToLaunch, "Failed to launch", fmt.Sprintf("invalid debug configuration - %v", err))
 		return
 	}
 
+	if args.Mode == DefaultLaunchMode {
+		args.Mode = DebugLaunchMode
+	}
+
 	// TODO(polina): Respond with an error if debug session is in progress?
-	program, ok := request.Arguments["program"].(string)
-	if !ok || program == "" {
+	program := args.Program
+	if program == "" {
 		s.sendErrorResponse(request.Request,
 			FailedToLaunch, "Failed to launch",
 			"The program attribute is missing in debug configuration.")
 		return
 	}
 
-	if mode == "debug" || mode == "test" {
-		output, ok := request.Arguments["output"].(string)
-		if !ok || output == "" {
+	if mode := args.Mode; mode == DebugLaunchMode || mode == TestLaunchMode {
+		output := args.Output
+		if output == "" {
 			output = defaultDebugBinary
 		}
 		output = cleanExeName(output)
@@ -774,25 +748,15 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			return
 		}
 
-		buildFlags := ""
-		buildFlagsArg, ok := request.Arguments["buildFlags"]
-		if ok {
-			buildFlags, ok = buildFlagsArg.(string)
-			if !ok {
-				s.sendErrorResponse(request.Request,
-					FailedToLaunch, "Failed to launch",
-					fmt.Sprintf("'buildFlags' attribute '%v' in debug configuration is not a string.", buildFlagsArg))
-				return
-			}
-		}
+		buildFlags := args.BuildFlags
 
 		s.log.Debugf("building binary at %s", debugbinary)
 		var cmd string
 		var out []byte
 		switch mode {
-		case "debug":
+		case DebugLaunchMode:
 			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
-		case "test":
+		case TestLaunchMode:
 			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
 		}
 		if err != nil {
@@ -813,56 +777,21 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.mu.Unlock()
 	}
 
-	err := s.setLaunchAttachArgs(request)
-	if err != nil {
-		s.sendErrorResponse(request.Request,
-			FailedToLaunch, "Failed to launch",
-			err.Error())
+	if err := s.setLaunchAttachArgs(args.LaunchAttachCommonConfig); err != nil {
+		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 		return
 	}
 
-	var targetArgs []string
-	args, ok := request.Arguments["args"]
-	if ok {
-		argsParsed, ok := args.([]interface{})
-		if !ok {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("'args' attribute '%v' in debug configuration is not an array.", args))
-			return
-		}
-		for _, arg := range argsParsed {
-			argParsed, ok := arg.(string)
-			if !ok {
-				s.sendErrorResponse(request.Request,
-					FailedToLaunch, "Failed to launch",
-					fmt.Sprintf("value '%v' in 'args' attribute in debug configuration is not a string.", arg))
-				return
-			}
-			targetArgs = append(targetArgs, argParsed)
-		}
-	}
-
-	s.config.ProcessArgs = append([]string{program}, targetArgs...)
+	s.config.ProcessArgs = append([]string{program}, args.Args...)
 	s.config.Debugger.WorkingDir = filepath.Dir(program)
-
-	// Set the WorkingDir for this program to the one specified in the request arguments.
-	wd, ok := request.Arguments["cwd"]
-	if ok {
-		wdParsed, ok := wd.(string)
-		if !ok {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("'cwd' attribute '%v' in debug configuration is not a string.", wd))
-			return
-		}
-		s.config.Debugger.WorkingDir = wdParsed
+	if args.Cwd != "" {
+		s.config.Debugger.WorkingDir = args.Cwd
 	}
 
 	s.log.Debugf("running program in %s\n", s.config.Debugger.WorkingDir)
-	if noDebug, ok := request.Arguments["noDebug"].(bool); ok && noDebug {
+	if args.NoDebug {
 		s.mu.Lock()
-		cmd, err := s.startNoDebugProcess(program, targetArgs, s.config.Debugger.WorkingDir)
+		cmd, err := s.startNoDebugProcess(program, args.Args, s.config.Debugger.WorkingDir)
 		s.mu.Unlock()
 		if err != nil {
 			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
@@ -889,6 +818,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
+	var err error
 	func() {
 		s.mu.Lock()
 		defer s.mu.Unlock() // Make sure to unlock in case of panic that will become internal error
@@ -936,16 +866,6 @@ func (s *Server) stopNoDebugProcess() {
 		s.noDebugProcess.Process.Kill() // Don't check error. Process killing and self-termination may race.
 	}
 	s.noDebugProcess = nil
-}
-
-// TODO(polina): support "remote" mode
-func isValidLaunchMode(launchMode interface{}) bool {
-	switch launchMode {
-	case "exec", "debug", "test":
-		return true
-	}
-
-	return false
 }
 
 // onDisconnectRequest handles the DisconnectRequest. Per the DAP spec,
@@ -1414,40 +1334,38 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 // onAttachRequest handles 'attach' request.
 // This is a mandatory request to support.
 func (s *Server) onAttachRequest(request *dap.AttachRequest) {
-	mode, ok := request.Arguments["mode"]
-	if !ok || mode == "" {
-		mode = "local"
-	}
-	if mode == "local" {
-		pid, ok := request.Arguments["processId"].(float64)
-		if !ok || pid == 0 {
-			s.sendErrorResponse(request.Request,
-				FailedToAttach, "Failed to attach",
-				"The 'processId' attribute is missing in debug configuration")
-			return
-		}
-		s.config.Debugger.AttachPid = int(pid)
-		err := s.setLaunchAttachArgs(request)
-		if err != nil {
-			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
-			return
-		}
-		func() {
-			s.mu.Lock()
-			defer s.mu.Unlock() // Make sure to unlock in case of panic that will become internal error
-			s.debugger, err = debugger.New(&s.config.Debugger, nil)
-		}()
-		if err != nil {
-			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
-			return
-		}
-	} else {
-		// TODO(polina): support 'remote' mode with 'host' and 'port'
-		s.sendErrorResponse(request.Request,
-			FailedToAttach, "Failed to attach",
-			fmt.Sprintf("Unsupported 'mode' value %q in debug configuration", mode))
+	var args AttachConfig
+	if err := unmarshalLaunchAttachArgs(request.Arguments, &args); err != nil {
+		s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", fmt.Sprintf("invalid debug configuration - %v", err))
 		return
 	}
+
+	if args.Mode == DefaultAttachMode {
+		args.Mode = LocalAttachMode
+	}
+
+	if args.ProcessID == 0 {
+		s.sendErrorResponse(request.Request,
+			FailedToAttach, "Failed to attach",
+			"The 'processId' attribute is missing in debug configuration")
+		return
+	}
+	s.config.Debugger.AttachPid = args.ProcessID
+	err := s.setLaunchAttachArgs(args.LaunchAttachCommonConfig)
+	if err != nil {
+		s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
+		return
+	}
+	func() {
+		s.mu.Lock()
+		defer s.mu.Unlock() // Make sure to unlock in case of panic that will become internal error
+		s.debugger, err = debugger.New(&s.config.Debugger, nil)
+	}()
+	if err != nil {
+		s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
+		return
+	}
+
 	// Notify the client that the debugger is ready to start accepting
 	// configuration requests for setting breakpoints, etc. The client
 	// will end the configuration sequence with 'configurationDone'.
