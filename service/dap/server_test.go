@@ -3606,15 +3606,16 @@ func TestPanicBreakpointOnContinue(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 
+					text := "\"BOOM!\""
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "panic" {
-						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"panic\"", se)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "panic" || se.Body.Text != text {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"panic\" Text=%q", se, text)
 					}
 
 					client.ExceptionInfoRequest(1)
 					eInfo := client.ExpectExceptionInfoResponse(t)
-					if eInfo.Body.ExceptionId != "panic" || eInfo.Body.Description != "\"BOOM!\"" {
-						t.Errorf("\ngot  %#v\nwant ExceptionId=\"panic\" Description=\"\"BOOM!\"\"", eInfo)
+					if eInfo.Body.ExceptionId != "panic" || eInfo.Body.Description != text {
+						t.Errorf("\ngot  %#v\nwant ExceptionId=\"panic\" Description=%q", eInfo, text)
 					}
 
 					client.StackTraceRequest(se.Body.ThreadId, 0, 20)
@@ -3657,15 +3658,16 @@ func TestPanicBreakpointOnNext(t *testing.T) {
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
 
+					text := "\"BOOM!\""
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "panic" {
-						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"panic\"", se)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "panic" || se.Body.Text != text {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"panic\" Text=%q", se, text)
 					}
 
 					client.ExceptionInfoRequest(1)
 					eInfo := client.ExpectExceptionInfoResponse(t)
-					if eInfo.Body.ExceptionId != "panic" || eInfo.Body.Description != "\"BOOM!\"" {
-						t.Errorf("\ngot  %#v\nwant ExceptionId=\"panic\" Description=\"\"BOOM!\"\"", eInfo)
+					if eInfo.Body.ExceptionId != "panic" || eInfo.Body.Description != text {
+						t.Errorf("\ngot  %#v\nwant ExceptionId=\"panic\" Description=%q", eInfo, text)
 					}
 				},
 				disconnect: true,
@@ -3689,14 +3691,21 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 
-					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "fatal error" {
-						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"fatal error\"", se)
+					var text string
+					// This does not work for Go 1.16.
+					ver, _ := goversion.Parse(runtime.Version())
+					if ver.Major != 1 || ver.Minor != 16 {
+						text = "\"go of nil func value\""
 					}
 
-					// TODO(suzmue): Enable this test for 1.17 when https://github.com/golang/go/issues/46425 is fixed.
-					errorPrefix := "\"go of nil func value\""
-					if goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "fatal error" || se.Body.Text != text {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"fatal error\" Text=%q", se, text)
+					}
+
+					// This does not work for Go 1.16.
+					errorPrefix := text
+					if errorPrefix == "" {
 						errorPrefix = "Throw reason unavailable, see https://github.com/golang/go/issues/46425"
 					}
 					client.ExceptionInfoRequest(1)
@@ -3724,9 +3733,14 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 
+					// TODO(suzmue): Enable this test for 1.17 when https://github.com/golang/go/issues/46425 is fixed.
+					var text string
+					if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+						text = "\"all goroutines are asleep - deadlock!\""
+					}
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.Reason != "exception" || se.Body.Description != "fatal error" {
-						t.Errorf("\ngot  %#v\nwant Reason=\"exception\" Description=\"fatal error\"", se)
+					if se.Body.Reason != "exception" || se.Body.Description != "fatal error" || se.Body.Text != text {
+						t.Errorf("\ngot  %#v\nwant Reason=\"exception\" Description=\"fatal error\" Text=%q", se, text)
 					}
 
 					// TODO(suzmue): Get the exception info for the thread and check the description
