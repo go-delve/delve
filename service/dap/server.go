@@ -1903,10 +1903,16 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 
 func getNamedVariableCount(v *proc.Variable) int {
 	namedVars := 0
+	switch v.Kind {
+	case reflect.Map:
+		// len
+		namedVars += 1
+	}
 	if isListOfBytesOrRunes(v) {
 		// string value of array/slice of bytes and runes.
 		namedVars += 1
 	}
+
 	return namedVars
 }
 
@@ -1914,6 +1920,16 @@ func getNamedVariableCount(v *proc.Variable) int {
 // These are included as named variables
 func (s *Server) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variable, error) {
 	var children []dap.Variable
+
+	switch v.Kind {
+	case reflect.Map:
+		children = append(children, dap.Variable{
+			Name:         "len()",
+			Value:        fmt.Sprintf("%d", v.Len),
+			Type:         "int",
+			EvaluateName: fmt.Sprintf("len(%s)", v.fullyQualifiedNameOrExpr),
+		})
+	}
 
 	if isListOfBytesOrRunes(v.Variable) {
 		// Return the string value of []byte or []rune.

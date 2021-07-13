@@ -1281,8 +1281,9 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m2 := client.ExpectVariablesResponse(t)
-						checkChildren(t, m2, "m2", 1) // each key-value represented by a single child
-						ref = checkVarExact(t, m2, 0, "1", "m2[1]", "*main.astruct {A: 10, B: 11}", "int: *main.astruct", hasChildren)
+						checkChildren(t, m2, "m2", 2) // each key-value represented by a single child
+						checkVarExact(t, m2, 0, "len()", "len(m2)", "1", "int", false)
+						ref = checkVarExact(t, m2, 1, "1", "m2[1]", "*main.astruct {A: 10, B: 11}", "int: *main.astruct", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m2kv1 := client.ExpectVariablesResponse(t)
@@ -1304,8 +1305,9 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m3 := client.ExpectVariablesResponse(t)
-						checkChildren(t, m3, "m3", 2) // each key-value represented by a single child
-						ref = checkVarRegex(t, m3, 0, `main\.astruct {A: 1, B: 1}`, `m3\[\(\*\(\*"main.astruct"\)\(0x[0-9a-f]+\)\)\]`, "42", "int", hasChildren)
+						checkChildren(t, m3, "m3", 3) // each key-value represented by a single child
+						checkVarExact(t, m3, 0, "len()", "len(m3)", "2", "int", false)
+						ref = checkVarRegex(t, m3, 1, `main\.astruct {A: 1, B: 1}`, `m3\[\(\*\(\*"main.astruct"\)\(0x[0-9a-f]+\)\)\]`, "42", "int", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m3kv0 := client.ExpectVariablesResponse(t)
@@ -1313,7 +1315,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 							checkVarRegex(t, m3kv0, 0, "A", `\(*\(*"main\.astruct"\)\(0x[0-9a-f]+\)\)\.A`, "1", "int", noChildren)
 							validateEvaluateName(t, client, m3kv0, 0)
 						}
-						ref = checkVarRegex(t, m3, 1, `main\.astruct {A: 2, B: 2}`, `m3\[\(\*\(\*"main.astruct"\)\(0x[0-9a-f]+\)\)\]`, "43", "", hasChildren)
+						ref = checkVarRegex(t, m3, 2, `main\.astruct {A: 2, B: 2}`, `m3\[\(\*\(\*"main.astruct"\)\(0x[0-9a-f]+\)\)\]`, "43", "", hasChildren)
 						if ref > 0 { // inspect another key from another key-value child
 							client.VariablesRequest(ref)
 							m3kv1 := client.ExpectVariablesResponse(t)
@@ -1327,10 +1329,11 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m4 := client.ExpectVariablesResponse(t)
-						checkChildren(t, m4, "m4", 4) // each key and value represented by a child, so double the key-value count
-						checkVarRegex(t, m4, 0, `\[key 0\]`, `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)`, `main\.astruct {A: 1, B: 1}`, `main\.astruct`, hasChildren)
-						checkVarRegex(t, m4, 1, `\[val 0\]`, `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]`, `main\.astruct {A: 11, B: 11}`, `main\.astruct`, hasChildren)
-						ref = checkVarRegex(t, m4, 2, `\[key 1\]`, `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)`, `main\.astruct {A: 2, B: 2}`, `main\.astruct`, hasChildren)
+						checkChildren(t, m4, "m4", 5) // each key and value represented by a child, so double the key-value count
+						checkVarExact(t, m4, 0, "len()", "len(m4)", "2", "int", false)
+						checkVarRegex(t, m4, 1, `\[key 0\]`, `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)`, `main\.astruct {A: 1, B: 1}`, `main\.astruct`, hasChildren)
+						checkVarRegex(t, m4, 2, `\[val 0\]`, `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]`, `main\.astruct {A: 11, B: 11}`, `main\.astruct`, hasChildren)
+						ref = checkVarRegex(t, m4, 3, `\[key 1\]`, `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)`, `main\.astruct {A: 2, B: 2}`, `main\.astruct`, hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m4Key1 := client.ExpectVariablesResponse(t)
@@ -1340,7 +1343,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 							validateEvaluateName(t, client, m4Key1, 0)
 							validateEvaluateName(t, client, m4Key1, 1)
 						}
-						ref = checkVarRegex(t, m4, 3, `\[val 1\]`, `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]`, `main\.astruct {A: 22, B: 22}`, "main.astruct", hasChildren)
+						ref = checkVarRegex(t, m4, 4, `\[val 1\]`, `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]`, `main\.astruct {A: 22, B: 22}`, "main.astruct", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
 							m4Val1 := client.ExpectVariablesResponse(t)
@@ -1548,11 +1551,11 @@ func TestVariablesLoading(t *testing.T) {
 
 					// Map not fully loaded based on LoadConfig.MaxArrayValues
 					// Expect to be able to load map by paging.
-					ref = checkVarRegexIndexed(t, locals, -1, "m1", "m1", `map\[string\]main\.astruct \[.+\.\.\.`, `map\[string\]main\.astruct`, hasChildren, 66, 0)
+					ref = checkVarRegexIndexed(t, locals, -1, "m1", "m1", `map\[string\]main\.astruct \[.+\.\.\.`, `map\[string\]main\.astruct`, hasChildren, 66, 1)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m1 := client.ExpectVariablesResponse(t)
-						checkChildren(t, m1, "m1", 64)
+						checkChildren(t, m1, "m1", 65)
 
 						client.IndexedVariablesRequest(ref, 0, 66)
 						m1 = client.ExpectVariablesResponse(t)
@@ -1580,6 +1583,10 @@ func TestVariablesLoading(t *testing.T) {
 								}
 							}
 						}
+						client.NamedVariablesRequest(ref)
+						named := client.ExpectVariablesResponse(t)
+						checkChildren(t, named, "m1", 1)
+						checkVarExact(t, named, 0, "len()", "len(m1)", "66", "int", false)
 					}
 
 					// Struct partially missing based on LoadConfig.MaxStructFields
@@ -1658,7 +1665,7 @@ func TestVariablesLoading(t *testing.T) {
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								tmV0 := client.ExpectVariablesResponse(t)
-								checkChildren(t, tmV0, "tm.v[0]", 64)
+								checkChildren(t, tmV0, "tm.v[0]", 65)
 							}
 						}
 					}
@@ -1688,7 +1695,7 @@ func TestVariablesLoading(t *testing.T) {
 								if ref > 0 {
 									client.VariablesRequest(ref)
 									tmV0 := client.ExpectVariablesResponse(t)
-									checkChildren(t, tmV0, "tm.v[0]", 64)
+									checkChildren(t, tmV0, "tm.v[0]", 65)
 								}
 							}
 						}
@@ -3045,20 +3052,20 @@ func TestVariableValueTruncation(t *testing.T) {
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						// Key format: <truncated>... @<address>
-						checkVarRegex(t, client.ExpectVariablesResponse(t), 0, `main\.C {s: "very long string 0123456789.+\.\.\. @ 0x[0-9a-f]+`, `m5\[\(\*\(\*"main\.C"\)\(0x[0-9a-f]+\)\)\]`, "1", `int`, hasChildren)
+						checkVarRegex(t, client.ExpectVariablesResponse(t), 1, `main\.C {s: "very long string 0123456789.+\.\.\. @ 0x[0-9a-f]+`, `m5\[\(\*\(\*"main\.C"\)\(0x[0-9a-f]+\)\)\]`, "1", `int`, hasChildren)
 					}
 					// key - scalar, value - scalar (inlined key:value display) => key not truncated
 					ref = checkVarExact(t, locals, -1, "m6", "m6", "map[string]int ["+longstr+": 123, ]", "map[string]int", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
-						checkVarExact(t, client.ExpectVariablesResponse(t), 0, longstr, `m6[`+longstr+`]`, "123", "string: int", noChildren)
+						checkVarExact(t, client.ExpectVariablesResponse(t), 1, longstr, `m6[`+longstr+`]`, "123", "string: int", noChildren)
 					}
 					// key - compound, value - compound (array-like display) => key not truncated
 					ref = checkVarExact(t, locals, -1, "m7", "m7", "map[main.C]main.C [{s: "+longstr+"}: {s: \"hello\"}, ]", "map[main.C]main.C", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m7 := client.ExpectVariablesResponse(t)
-						checkVarRegex(t, m7, 0, "[key 0]", `\(\*\(\*\"main\.C\"\)\(0x[0-9a-f]+\)\)`, `main\.C {s: `+longstr+`}`, `main\.C`, hasChildren)
+						checkVarRegex(t, m7, 1, "[key 0]", `\(\*\(\*\"main\.C\"\)\(0x[0-9a-f]+\)\)`, `main\.C {s: `+longstr+`}`, `main\.C`, hasChildren)
 					}
 				},
 				disconnect: true,
@@ -4390,7 +4397,7 @@ func TestSetVariable(t *testing.T) {
 					tester.evaluate(`m1["Malone"]`, "main.astruct {A: 2, B: 3}", hasChildren)
 					m1Ref := checkVarRegex(t, locals, -1, "m1", "m1", `.*map\[string\]main\.astruct.*`, `map\[string\]main\.astruct`, hasChildren)
 					m1 := tester.variables(m1Ref)
-					elem1 := m1.Body.Variables[0]
+					elem1 := m1.Body.Variables[1]
 					tester.expectSetVariable(elem1.VariablesReference, "A", "-9999")
 					tester.expectSetVariable(elem1.VariablesReference, "B", "10000")
 					tester.evaluate(elem1.EvaluateName, "main.astruct {A: -9999, B: 10000}", hasChildren)
