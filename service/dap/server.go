@@ -47,7 +47,8 @@ import (
 // program termination and failed or closed client connection
 // would also result in stopping this single-use server.
 //
-// The DAP server operates via the following goroutines:
+// The DAP server initialized with NewServer
+// operates via the following goroutines:
 //
 // (1) Main goroutine where the server is created via NewServer(),
 // started via Run() and stopped via Stop(). Once the server is
@@ -87,10 +88,15 @@ import (
 // They block on running debugger commands that are interrupted
 // when halt is issued while stopping. At that point these goroutines
 // wrap-up and exit.
+//
+// The DAP server set up using NewReverseServer is a special DAP server,
+// that is bound to a single net.Conn. Once the connection is closed,
+// the server stops.
 type Server struct {
 	// config is all the information necessary to start the debugger and server.
 	config *service.Config
 	// listener is used to accept the client connection.
+	// In reverse mode, this is nil.
 	listener net.Listener
 	// stopTriggered is closed when the server is Stop()-ed.
 	stopTriggered chan struct{}
@@ -197,9 +203,27 @@ const (
 // disconnects or requests shutdown. Once config.DisconnectChan is closed,
 // Server.Stop() must be called to shutdown this single-user server.
 func NewServer(config *service.Config) *Server {
+	return newServer(config, nil, false)
+}
+
+// NewReverseServer creates a special DAP server that operates in reverse mode.
+// Reverse DAP server is not actually running a TCP server listening on a port,
+// but communicates with the provided net.Conn only for a single debug session.
+func NewReverseServer(config *service.Config, conn net.Conn) *Server {
+	return newServer(config, conn, true)
+}
+
+func newServer(config *service.Config, conn net.Conn, inReverseMode bool) *Server {
 	logger := logflags.DAPLogger()
-	logflags.WriteDAPListeningMessage(config.Listener.Addr().String())
-	logger.Debug("DAP server pid = ", os.Getpid())
+	if config.Listener != nil {
+		logflags.WriteDAPListeningMessage(config.Listener.Addr().String())
+		logger.Debug("DAP server pid = ", os.Getpid())
+	} else if conn != nil {
+		logger.Debug("Reverse DAP server pid = ", os.Getpid())
+	} else {
+		logger.Fatal("Cannot set up a DAP server without network configuration")
+	}
+
 	return &Server{
 		config:            config,
 		listener:          config.Listener,
@@ -209,6 +233,7 @@ func NewServer(config *service.Config) *Server {
 		variableHandles:   newVariablesHandlesMap(),
 		args:              defaultArgs,
 		exceptionErr:      nil,
+		conn:              conn,
 	}
 }
 
@@ -265,7 +290,10 @@ func (s *Server) setLaunchAttachArgs(request dap.LaunchAttachRequest) error {
 func (s *Server) Stop() {
 	s.log.Debug("DAP server stopping...")
 	close(s.stopTriggered)
-	_ = s.listener.Close()
+
+	if s.listener != nil {
+		_ = s.listener.Close()
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -326,6 +354,11 @@ func (s *Server) triggerServerStop() {
 // TODO(polina): allow new client connections for new debug sessions,
 // so the editor needs to launch delve only once?
 func (s *Server) Run() {
+	if s.listener == nil {
+		go s.serveDAPCodec()
+		return
+	}
+
 	go func() {
 		conn, err := s.listener.Accept() // listener is closed in Stop()
 		if err != nil {
