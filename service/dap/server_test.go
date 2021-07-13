@@ -242,6 +242,7 @@ func TestLaunchStopOnEntry(t *testing.T) {
 		if oed.Seq != 0 || oed.Body.Category != "console" {
 			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
 		}
+		client.ExpectTerminatedEvent(t)
 		dResp := client.ExpectDisconnectResponse(t)
 		if dResp.Seq != 0 || dResp.RequestSeq != 13 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13", dResp)
@@ -375,6 +376,7 @@ func TestAttachStopOnEntry(t *testing.T) {
 		// or never if the server exits before it is sent.
 		msg := expectMessageFilterStopped(t, client)
 		client.CheckOutputEvent(t, msg)
+		client.ExpectTerminatedEvent(t)
 		msg = expectMessageFilterStopped(t, client)
 		client.CheckDisconnectResponse(t, msg)
 
@@ -448,6 +450,7 @@ func TestContinueOnEntry(t *testing.T) {
 		client.DisconnectRequest()
 		client.ExpectOutputEventProcessExited(t, 0)
 		client.ExpectOutputEventDetaching(t)
+		client.ExpectTerminatedEvent(t)
 		dResp := client.ExpectDisconnectResponse(t)
 		if dResp.Seq != 0 || dResp.RequestSeq != 8 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8", dResp)
@@ -590,6 +593,7 @@ func TestPreSetBreakpoint(t *testing.T) {
 		client.DisconnectRequest()
 		client.ExpectOutputEventProcessExited(t, 0)
 		client.ExpectOutputEventDetaching(t)
+		client.ExpectTerminatedEvent(t)
 		client.ExpectDisconnectResponse(t)
 	})
 }
@@ -3853,6 +3857,7 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 			} else {
 				client.ExpectOutputEventDetachingKill(t)
 			}
+			client.ExpectTerminatedEvent(t)
 			client.ExpectDisconnectResponse(t)
 			return
 		}
@@ -3868,6 +3873,7 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 	if cmd == "launch" {
 		client.ExpectOutputEventProcessExited(t, 0)
 		client.ExpectOutputEventDetaching(t)
+		client.ExpectTerminatedEvent(t)
 	} else if cmd == "attach" {
 		client.ExpectOutputEventDetachingKill(t)
 	}
