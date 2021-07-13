@@ -269,13 +269,6 @@ func (s *Server) Stop() {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.conn != nil {
-		// Unless Stop() was called after serveDAPCodec()
-		// returned, this will result in closed connection error
-		// on next read, breaking out of the read loop and
-		// allowing the run goroutine to exit.
-		_ = s.conn.Close()
-	}
 
 	if s.debugger != nil {
 		killProcess := s.config.Debugger.AttachPid == 0
@@ -286,7 +279,15 @@ func (s *Server) Stop() {
 	// The binary is no longer in use by the debugger. It is safe to remove it.
 	if s.binaryToRemove != "" {
 		gobuild.Remove(s.binaryToRemove)
-		s.binaryToRemove = ""
+	}
+	// Close client connection last, so other shutdown stages
+	// can send client notifications
+	if s.conn != nil {
+		// Unless Stop() was called after serveDAPCodec()
+		// returned, this will result in closed connection error
+		// on next read, breaking out of the read loop and
+		// allowing the run goroutine to exit.
+		_ = s.conn.Close()
 	}
 	s.log.Debug("DAP server stopped")
 }
@@ -357,18 +358,24 @@ func (s *Server) serveDAPCodec() {
 	s.reader = bufio.NewReader(s.conn)
 	for {
 		request, err := dap.ReadProtocolMessage(s.reader)
-		// TODO(polina): Differentiate between errors and handle them
-		// gracefully. For example,
+		// Handle dap.DecodeProtocolMessageFieldError errors gracefully by responding with an ErrorResponse.
+		// For example:
 		// -- "Request command 'foo' is not supported" means we
 		// potentially got some new DAP request that we do not yet have
 		// decoding support for, so we can respond with an ErrorResponse.
-		// TODO(polina): to support this add Seq to
-		// dap.DecodeProtocolMessageFieldError.
+		//
+		// Other errors, such as unmarshalling errors, will log the error and cause the server to trigger
+		// a stop.
 		if err != nil {
 			select {
 			case <-s.stopTriggered:
 			default:
 				if err != io.EOF {
+					if decodeErr, ok := err.(*dap.DecodeProtocolMessageFieldError); ok {
+						// Send an error response to the users if we were unable to process the message.
+						s.sendInternalErrorResponse(decodeErr.Seq, err.Error())
+						continue
+					}
 					s.log.Error("DAP error: ", err)
 				}
 				s.triggerServerStop()
@@ -1559,12 +1566,9 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 	}
 
 	// Determine if the goroutine is a system goroutine.
-	// TODO(suzmue): Use the System() method defined in: https://github.com/go-delve/delve/pull/2504
-	g, err := s.debugger.FindGoroutine(goroutineID)
-	var isSystemGoroutine bool
-	if err == nil {
-		userLoc := g.UserCurrent()
-		isSystemGoroutine = fnPackageName(&userLoc) == "runtime"
+	isSystemGoroutine := true
+	if g, _ := s.debugger.FindGoroutine(goroutineID); g != nil {
+		isSystemGoroutine = g.System(s.debugger.Target())
 	}
 
 	stackFrames := make([]dap.StackFrame, len(frames))
@@ -2520,34 +2524,20 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 		switch bpState.Breakpoint.Name {
 		case proc.FatalThrow:
 			body.ExceptionId = "fatal error"
-			// Attempt to get the value of the throw reason.
-			// This is not currently working for Go 1.16 or 1.17: https://github.com/golang/go/issues/46425.
-			handleError := func(err error) {
-				if err != nil {
-					body.Description = fmt.Sprintf("Error getting throw reason: %s", err.Error())
-				}
-				if goversion.ProducerAfterOrEqual(s.debugger.TargetGoVersion(), 1, 16) {
+			body.Description, err = s.throwReason(goroutineID)
+			if err != nil {
+				body.Description = fmt.Sprintf("Error getting throw reason: %s", err.Error())
+				// This is not currently working for Go 1.16.
+				ver := goversion.ParseProducer(s.debugger.TargetGoVersion())
+				if ver.Major == 1 && ver.Minor == 16 {
 					body.Description = "Throw reason unavailable, see https://github.com/golang/go/issues/46425"
 				}
-			}
-
-			exprVar, err := s.debugger.EvalVariableInScope(goroutineID, 1, 0, "s", DefaultLoadConfig)
-			if err == nil {
-				if exprVar.Value != nil {
-					body.Description = exprVar.Value.String()
-				} else {
-					handleError(exprVar.Unreadable)
-				}
-			} else {
-				handleError(err)
 			}
 		case proc.UnrecoveredPanic:
 			body.ExceptionId = "panic"
 			// Attempt to get the value of the panic message.
-			exprVar, err := s.debugger.EvalVariableInScope(goroutineID, 0, 0, "(*msgs).arg.(data)", DefaultLoadConfig)
-			if err == nil {
-				body.Description = exprVar.Value.String()
-			} else {
+			body.Description, err = s.panicReason(goroutineID)
+			if err != nil {
 				body.Description = fmt.Sprintf("Error getting panic message: %s", err.Error())
 			}
 		}
@@ -2602,6 +2592,25 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 		Body:     body,
 	}
 	s.send(response)
+}
+
+func (s *Server) throwReason(goroutineID int) (string, error) {
+	return s.getExprString("s", goroutineID, 1)
+}
+
+func (s *Server) panicReason(goroutineID int) (string, error) {
+	return s.getExprString("(*msgs).arg.(data)", goroutineID, 0)
+}
+
+func (s *Server) getExprString(expr string, goroutineID, frame int) (string, error) {
+	exprVar, err := s.debugger.EvalVariableInScope(goroutineID, frame, 0, expr, DefaultLoadConfig)
+	if err != nil {
+		return "", err
+	}
+	if exprVar.Value == nil {
+		return "", exprVar.Unreadable
+	}
+	return exprVar.Value.String(), nil
 }
 
 // sendErrorResponseWithOpts offers configuration options.
@@ -2732,13 +2741,16 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 			case proc.FatalThrow:
 				stopped.Body.Reason = "exception"
 				stopped.Body.Description = "fatal error"
+				stopped.Body.Text, _ = s.throwReason(stopped.Body.ThreadId)
 			case proc.UnrecoveredPanic:
 				stopped.Body.Reason = "exception"
 				stopped.Body.Description = "panic"
+				stopped.Body.Text, _ = s.panicReason(stopped.Body.ThreadId)
 			}
 			if strings.HasPrefix(state.CurrentThread.Breakpoint.Name, functionBpPrefix) {
 				stopped.Body.Reason = "function breakpoint"
 			}
+			stopped.Body.HitBreakpointIds = []int{state.CurrentThread.Breakpoint.ID}
 		}
 	} else {
 		s.exceptionErr = err

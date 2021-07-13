@@ -912,6 +912,18 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 				return starlark.None, decorateError(thread, err)
 			}
 		}
+		if len(args) > 2 && args[2] != starlark.None {
+			err := unmarshalStarlarkValue(args[2], &rpcArgs.Filters, "Filters")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		if len(args) > 3 && args[3] != starlark.None {
+			err := unmarshalStarlarkValue(args[3], &rpcArgs.GoroutineGroupingOptions, "GoroutineGroupingOptions")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
 		for _, kv := range kwargs {
 			var err error
 			switch kv[0].(starlark.String) {
@@ -919,6 +931,10 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Start, "Start")
 			case "Count":
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Count, "Count")
+			case "Filters":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Filters, "Filters")
+			case "GoroutineGroupingOptions":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.GoroutineGroupingOptions, "GoroutineGroupingOptions")
 			default:
 				err = fmt.Errorf("unknown argument %q", kv[0])
 			}

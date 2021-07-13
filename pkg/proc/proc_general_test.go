@@ -6,6 +6,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/go-delve/delve/pkg/goversion"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 )
 
@@ -116,5 +117,18 @@ func TestDwarfVersion(t *testing.T) {
 		if cu.Version != 4 {
 			t.Errorf("compile unit %q at %#x has bad version %d", cu.name, cu.entry.Offset, cu.Version)
 		}
+	}
+}
+
+func TestRegabiFlagSentinel(t *testing.T) {
+	// Detect if the regabi flag in the producer string gets removed
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) || runtime.GOARCH != "amd64" {
+		t.Skip("irrelevant before Go 1.17 or on non-amd64 architectures")
+	}
+	fixture := protest.BuildFixture("math", 0)
+	bi := NewBinaryInfo(runtime.GOOS, runtime.GOARCH)
+	assertNoError(bi.LoadBinaryInfo(fixture.Path, 0, nil), t, "LoadBinaryInfo")
+	if !bi.regabi {
+		t.Errorf("regabi flag not set")
 	}
 }

@@ -18,6 +18,7 @@ import (
 	sys "golang.org/x/sys/unix"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/macutil"
 )
 
 // osProcessDetails holds Darwin specific information.
@@ -49,6 +50,9 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 		}
 	}
 	if _, err := os.Stat(argv0Go); err != nil {
+		return nil, err
+	}
+	if err := macutil.CheckRosetta(); err != nil {
 		return nil, err
 	}
 
@@ -130,6 +134,9 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 
 // Attach to an existing process with the given PID.
 func Attach(pid int, _ []string) (*proc.Target, error) {
+	if err := macutil.CheckRosetta(); err != nil {
+		return nil, err
+	}
 	dbp := newProcess(pid)
 
 	kret := C.acquire_mach_task(C.int(pid),

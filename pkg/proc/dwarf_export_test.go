@@ -7,7 +7,7 @@ func (bi *BinaryInfo) PackageVars() []packageVar {
 	return bi.packageVars
 }
 
-func NewCompositeMemory(p *Target, pieces []op.Piece) (*compositeMemory, error) {
+func NewCompositeMemory(p *Target, pieces []op.Piece, base uint64) (*compositeMemory, error) {
 	regs, err := p.CurrentThread().Registers()
 	if err != nil {
 		return nil, err
@@ -17,5 +17,9 @@ func NewCompositeMemory(p *Target, pieces []op.Piece) (*compositeMemory, error) 
 	dwarfregs := arch.RegistersToDwarfRegisters(0, regs)
 	dwarfregs.ChangeFunc = p.CurrentThread().SetReg
 
-	return newCompositeMemory(p.Memory(), arch, *dwarfregs, pieces)
+	mem, err := newCompositeMemory(p.Memory(), arch, *dwarfregs, pieces)
+	if mem != nil {
+		mem.base = base
+	}
+	return mem, err
 }
