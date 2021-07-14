@@ -188,6 +188,7 @@ While --continue is not supported, stopOnEntry launch/attach attribute can be us
 execution is resumed at the start of the debug session.`,
 		Run: dapCmd,
 	}
+	// TODO(polina): support --tty when dlv dap allows to launch a program from command-line
 	rootCommand.AddCommand(dapCommand)
 
 	// 'debug' subcommand.
@@ -411,6 +412,8 @@ func dapCmd(cmd *cobra.Command, args []string) {
 
 		if headless {
 			fmt.Fprintf(os.Stderr, "Warning: dap mode is always headless\n")
+		} else {
+			headless = true
 		}
 		if acceptMulti {
 			fmt.Fprintf(os.Stderr, "Warning: accept-multiclient mode not supported with dap\n")
@@ -446,10 +449,9 @@ func dapCmd(cmd *cobra.Command, args []string) {
 			DisconnectChan: disconnectChan,
 			Debugger: debugger.Config{
 				Backend:              backend,
-				Foreground:           headless && tty == "",
+				Foreground:           headless,
 				DebugInfoDirectories: conf.DebugInfoDirectories,
 				CheckGoVersion:       checkGoVersion,
-				TTY:                  tty,
 			},
 			CheckLocalConnUser: checkLocalConnUser,
 		})
