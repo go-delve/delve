@@ -203,17 +203,17 @@ const (
 // disconnects or requests shutdown. Once config.DisconnectChan is closed,
 // Server.Stop() must be called to shutdown this single-user server.
 func NewServer(config *service.Config) *Server {
-	return newServer(config, nil, false)
+	return newServer(config, nil)
 }
 
 // NewReverseServer creates a special DAP server that operates in reverse mode.
 // Reverse DAP server is not actually running a TCP server listening on a port,
 // but communicates with the provided net.Conn only for a single debug session.
 func NewReverseServer(config *service.Config, conn net.Conn) *Server {
-	return newServer(config, conn, true)
+	return newServer(config, conn)
 }
 
-func newServer(config *service.Config, conn net.Conn, inReverseMode bool) *Server {
+func newServer(config *service.Config, conn net.Conn) *Server {
 	logger := logflags.DAPLogger()
 	if config.Listener != nil {
 		logflags.WriteDAPListeningMessage(config.Listener.Addr().String())

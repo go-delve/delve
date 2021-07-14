@@ -61,10 +61,10 @@ var (
 	// disableASLR is used to disable ASLR
 	disableASLR bool
 
-	// dapConnect is dap subcommand's flag that specifies the address of a DAP client.
-	// If it is specified, the dap server operates in reverse mode and
-	// and dials into the client waiting there.
-	dapConnect string
+	// dapClientAddr is dap subcommand's flag that specifies the address of a DAP client.
+	// If it is specified, the dap server starts a debug session by dialing to the client.
+	// The dap server will serve only for the debug session.
+	dapClientAddr string
 
 	// backend selection
 	backend string
@@ -192,12 +192,12 @@ The server does not yet accept multiple client connections (--accept-multiclient
 While --continue is not supported, stopOnEntry launch/attach attribute can be used to control if
 execution is resumed at the start of the debug session.
 
-The --connect flag is a special flag that makes the server operate in reverse mode.
-In this mode, Delve connects to a DAP client listening on host:port,
-instead of listening for connections.`,
+The --client-addr flag is a special flag that makes the server initiate a debug session
+by dialing in to the host:port where a DAP client is waiting. This server process
+will exit when the debug session ends.`,
 		Run: dapCmd,
 	}
-	dapCommand.Flags().StringVar(&dapConnect, "connect", "", "host:port of the DAP client when running in reverse mode.")
+	dapCommand.Flags().StringVar(&dapClientAddr, "client-addr", "", "host:port where the DAP client is waiting for the DAP server to dial in")
 
 	rootCommand.AddCommand(dapCommand)
 
@@ -449,7 +449,7 @@ func dapCmd(cmd *cobra.Command, args []string) {
 		var server *dap.Server
 		disconnectChan := make(chan struct{})
 
-		if dapConnect == "" {
+		if dapClientAddr == "" {
 			listener, err := net.Listen("tcp", addr)
 			if err != nil {
 				fmt.Printf("couldn't start listener: %s\n", err)
@@ -470,9 +470,9 @@ func dapCmd(cmd *cobra.Command, args []string) {
 		} else { // reverse mode
 			headless = true // TODO(github.com/go-delve/delve/issues/2552): consider the same for the normal mode.
 
-			conn, err := net.Dial("tcp", dapConnect)
+			conn, err := net.Dial("tcp", dapClientAddr)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to connect to the DAP proxy server: %v\n", err)
+				fmt.Fprintf(os.Stderr, "Failed to connect to the DAP client: %v\n", err)
 				return 1
 			}
 			server = dap.NewReverseServer(&service.Config{

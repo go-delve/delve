@@ -37,10 +37,12 @@ func NewClient(addr string) *Client {
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
-	return NewClientWithConn(conn)
+	return NewClientFromConn(conn)
 }
 
-func NewClientWithConn(conn net.Conn) *Client {
+// NewClientFromConn creates a new Client with the given TCP connection.
+// Call Close to close the connection.
+func NewClientFromConn(conn net.Conn) *Client {
 	c := &Client{conn: conn, reader: bufio.NewReader(conn)}
 	c.seq = 1 // match VS Code numbering
 	return c

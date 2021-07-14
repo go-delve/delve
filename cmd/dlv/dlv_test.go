@@ -656,7 +656,7 @@ func TestDapReverse(t *testing.T) {
 	dlvbin, tmpdir := getDlvBin(t)
 	defer os.RemoveAll(tmpdir)
 
-	cmd := exec.Command(dlvbin, "dap", "--log-output=dap", "--log", "--connect", listener.Addr().String())
+	cmd := exec.Command(dlvbin, "dap", "--log-output=dap", "--log", "--client-addr", listener.Addr().String())
 	buf := &bytes.Buffer{}
 	cmd.Stdin = buf
 	cmd.Stdout = buf
@@ -670,7 +670,7 @@ func TestDapReverse(t *testing.T) {
 	}
 	t.Log("dlv-reverse dialed in successfully")
 
-	client := daptest.NewClientWithConn(conn)
+	client := daptest.NewClientFromConn(conn)
 	client.InitializeRequest()
 	client.ExpectInitializeResponse(t)
 
