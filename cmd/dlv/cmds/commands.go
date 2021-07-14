@@ -410,7 +410,9 @@ func dapCmd(cmd *cobra.Command, args []string) {
 		}
 		defer logflags.Close()
 
-		headless = true
+		if cmd.Flag("headless").Changed {
+			fmt.Fprintf(os.Stderr, "Warning: dap mode is always headless\n")
+		}
 		if acceptMulti {
 			fmt.Fprintf(os.Stderr, "Warning: accept-multiclient mode not supported with dap\n")
 		}
@@ -445,7 +447,7 @@ func dapCmd(cmd *cobra.Command, args []string) {
 			DisconnectChan: disconnectChan,
 			Debugger: debugger.Config{
 				Backend:              backend,
-				Foreground:           headless,
+				Foreground:           true, // server always runs without terminal client
 				DebugInfoDirectories: conf.DebugInfoDirectories,
 				CheckGoVersion:       checkGoVersion,
 			},
