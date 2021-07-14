@@ -723,10 +723,10 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	if args.Mode == DefaultLaunchMode {
-		args.Mode = DebugLaunchMode
+	if !isValidLaunchMode(args.Mode) {
+		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", fmt.Sprintf("invalid debug configuration - unsupported 'mode' attribute %q", args.Mode))
+		return
 	}
-
 	// TODO(polina): Respond with an error if debug session is in progress?
 	program := args.Program
 	if program == "" {
@@ -736,7 +736,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	if mode := args.Mode; mode == DebugLaunchMode || mode == TestLaunchMode {
+	if mode := args.Mode; mode == "debug" || mode == "test" {
 		output := args.Output
 		if output == "" {
 			output = defaultDebugBinary
@@ -1340,8 +1340,10 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 		return
 	}
 
-	if args.Mode == DefaultAttachMode {
-		args.Mode = LocalAttachMode
+	if !isValidAttachMode(args.Mode) {
+		s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach",
+			fmt.Sprintf("invalid debug configuration - unsupported 'mode' attribute %q", args.Mode))
+		return
 	}
 
 	if args.ProcessID == 0 {

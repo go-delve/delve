@@ -3928,19 +3928,6 @@ func TestLaunchDebugRequest(t *testing.T) {
 func TestLaunchRequestDefaults(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, "launch", func() {
-			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "" /*"debug" by default*/, "program": fixture.Source, "output": "__mybin"})
-		}, fixture.Source)
-	})
-	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		runDebugSession(t, client, "launch", func() {
-			// Use the default output directory.
-			client.LaunchRequestWithArgs(map[string]interface{}{
-				/*"mode":"debug" by default*/ "program": fixture.Source, "output": "__mybin"})
-		}, fixture.Source)
-	})
-	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		runDebugSession(t, client, "launch", func() {
 			// Use the default output directory.
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "debug", "program": fixture.Source})
@@ -4049,7 +4036,7 @@ func TestAttachRequest(t *testing.T) {
 			// Attach
 			func() {
 				client.AttachRequest(map[string]interface{}{
-					/*"mode": "local" by default*/ "processId": cmd.Process.Pid, "stopOnEntry": false})
+					"mode": "local", "processId": cmd.Process.Pid, "stopOnEntry": false})
 			},
 			// Set breakpoints
 			fixture.Source, []int{8},
@@ -4619,23 +4606,23 @@ func TestBadLaunchRequests(t *testing.T) {
 		// Bad "mode"
 		client.LaunchRequest("remote", fixture.Path, stopOnEntry)
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to launch: invalid debug configuration - unsupported 'mode' value \"remote\"")
+			"Failed to launch: invalid debug configuration - unsupported 'mode' attribute \"remote\"")
 
 		client.LaunchRequest("notamode", fixture.Path, stopOnEntry)
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to launch: invalid debug configuration - unsupported 'mode' value \"notamode\"")
+			"Failed to launch: invalid debug configuration - unsupported 'mode' attribute \"notamode\"")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": 12345, "program": fixture.Path})
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to launch: invalid debug configuration - cannot unmarshal '12345' into 'mode' of type string")
+			"Failed to launch: invalid debug configuration - cannot unmarshal number into \"mode\" of type string")
 
-		client.LaunchRequestWithArgs(map[string]interface{}{"mode": ""}) // empty mode defaults to "debug" (not an error)
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": ""}) // invalid mode
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to launch: The program attribute is missing in debug configuration.")
+			"Failed to launch: invalid debug configuration - unsupported 'mode' attribute \"\"")
 
-		client.LaunchRequestWithArgs(map[string]interface{}{}) // missing mode defaults to "debug" (not an error)
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to launch: The program attribute is missing in debug configuration.")
+		client.LaunchRequestWithArgs(map[string]interface{}{})
+		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t), // missing mode
+			"Failed to launch: invalid debug configuration - unsupported 'mode' attribute \"\"")
 
 		// Bad "args"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "exec", "program": fixture.Path, "args": "foobar"})
@@ -4657,11 +4644,11 @@ func TestBadLaunchRequests(t *testing.T) {
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": 123})
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to launch: invalid debug configuration - cannot unmarshal number into \"substitutePath\" of type []dap.SubstitutePath")
+			"Failed to launch: invalid debug configuration - cannot unmarshal number into \"substitutePath\" of type {\"from\":string, \"to\":string}")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{123}})
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to launch: invalid debug configuration - cannot use 123 as 'substitutePath' of type {\"from\": string, \"to\": string}")
+			"Failed to launch: invalid debug configuration - cannot use 123 as 'substitutePath' of type {\"from\":string, \"to\":string}")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{map[string]interface{}{"to": "path2"}}})
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
@@ -4669,7 +4656,7 @@ func TestBadLaunchRequests(t *testing.T) {
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{map[string]interface{}{"from": "path1", "to": 123}}})
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to launch: invalid debug configuration - cannot use {\"from\":\"path1\",\"to\":123} as 'substitutePath' of type {\"from\": string, \"to\": string}")
+			"Failed to launch: invalid debug configuration - cannot use {\"from\":\"path1\",\"to\":123} as 'substitutePath' of type {\"from\":string, \"to\":string}")
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "cwd": 123})
 		checkFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: invalid debug configuration - cannot unmarshal number into \"cwd\" of type string")
@@ -4685,7 +4672,7 @@ func TestBadLaunchRequests(t *testing.T) {
 		}
 		checkFailedToLaunch(client.ExpectInvisibleErrorResponse(t))
 
-		client.LaunchRequest("" /*debug by default*/, fixture.Path+"_does_not_exist", stopOnEntry)
+		client.LaunchRequest("debug", fixture.Path+"_does_not_exist", stopOnEntry)
 		oe = client.ExpectOutputEvent(t)
 		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
 			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
@@ -4758,23 +4745,23 @@ func TestBadAttachRequest(t *testing.T) {
 		// Bad "mode"
 		client.AttachRequest(map[string]interface{}{"mode": "remote"})
 		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to attach: invalid debug configuration - unsupported 'mode' value \"remote\"")
+			"Failed to attach: invalid debug configuration - unsupported 'mode' attribute \"remote\"")
 
 		client.AttachRequest(map[string]interface{}{"mode": "blah blah blah"})
 		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to attach: invalid debug configuration - unsupported 'mode' value \"blah blah blah\"")
+			"Failed to attach: invalid debug configuration - unsupported 'mode' attribute \"blah blah blah\"")
 
 		client.AttachRequest(map[string]interface{}{"mode": 123})
 		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to attach: invalid debug configuration - cannot unmarshal '123' into 'mode' of type string")
+			"Failed to attach: invalid debug configuration - cannot unmarshal number into \"mode\" of type string")
 
-		client.AttachRequest(map[string]interface{}{"mode": ""}) // empty mode defaults to "local" (not an error)
+		client.AttachRequest(map[string]interface{}{"mode": ""})
 		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to attach: The 'processId' attribute is missing in debug configuration")
+			"Failed to attach: invalid debug configuration - unsupported 'mode' attribute \"\"")
 
 		client.AttachRequest(map[string]interface{}{}) // no mode defaults to "local" (not an error)
 		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to attach: The 'processId' attribute is missing in debug configuration")
+			"Failed to attach: invalid debug configuration - unsupported 'mode' attribute \"\"")
 
 		// Bad "processId"
 		client.AttachRequest(map[string]interface{}{"mode": "local"})

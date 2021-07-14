@@ -1,19 +1,15 @@
 package dap
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 )
 
 type LaunchMode string
 
 // LaunchMode is the type of a launch mode.
 const (
-	// This is the same as "debug" launch mode.
-	DefaultLaunchMode LaunchMode = ""
 	// "debug": compiles your program with optimizations disabled, starts and attaches to it. This is the default mode.
 	DebugLaunchMode LaunchMode = "debug"
 	// "test": compiles your unit test program with optizations disabled, starts and attaches to it.
@@ -22,26 +18,17 @@ const (
 	ExecLaunchMode LaunchMode = "exec"
 )
 
-func (m *LaunchMode) UnmarshalJSON(data []byte) error {
-	var mode string
-	if err := json.Unmarshal(data, &mode); err != nil {
-		if _, ok := err.(*json.UnmarshalTypeError); ok {
-			return fmt.Errorf(`cannot unmarshal '%s' into 'mode' of type string`, data)
-		}
-		return err
-	}
+func isValidLaunchMode(mode LaunchMode) bool {
 	switch mode {
-	case "", "debug", "test", "exec":
-		*m = LaunchMode(mode)
-	default:
-		return fmt.Errorf(`unsupported 'mode' value %q`, mode)
+	case "exec", "debug", "test":
+		return true
 	}
-	return nil
+	return false
 }
 
 // LaunchConfig is the collection of launch request attributes recognized by delve DAP implementation.
 type LaunchConfig struct {
-	// If empty, defaults to `debug`.
+	// Required.
 	Mode LaunchMode `json:"mode,omitempty"`
 
 	// Required when mode is `debug`, `test`, or `exec`.
@@ -55,18 +42,18 @@ type LaunchConfig struct {
 	// Command line arguments passed to the debugged program.
 	Args []string `json:"args,omitempty"`
 
-	// Build flags, to be passed to the Go compiler.
-	// For example, "-tags=integration -mod=vendor -cover -v".
-	BuildFlags string `json:"buildFlags,omitempty"`
-
 	// Absolute path to the working directory of the program being debugged
 	// if a non-empty value is specified. If not specified or empty,
 	// the working directory of the delve process will be used.
 	// This is similar to delve's `-wd` flag.
 	Cwd string `json:"cwd,omitempty"`
 
+	// Build flags, to be passed to the Go compiler.
+	// For example, "-tags=integration -mod=vendor -cover -v".
+	BuildFlags string `json:"buildFlags,omitempty"`
+
 	// Output path for the binary of the debugee.
-	// This is deleted after the debugsession ends.
+	// This is deleted after the debug session ends.
 	Output string `json:"output,omitempty"`
 
 	// NoDebug is used to run the program without debugging.
@@ -100,31 +87,29 @@ type LaunchAttachCommonConfig struct {
 }
 
 // SubstitutePath defines a mapping from a local path to the remote path.
-// Both 'from' and 'to' must be specified.
+// Both 'from' and 'to' must be specified and non-empty.
 type SubstitutePath struct {
 	// The local path to be replaced when passing paths to the debugger.
-	From string `json:"from"`
+	From string `json:"from,omitempty"`
 	// The remote path to be replaced when passing paths back to the client.
-	To string `json:"to"`
+	To string `json:"to,omitempty"`
 }
 
 func (m *SubstitutePath) UnmarshalJSON(data []byte) error {
 	// use custom unmarshal to check if both from/to are set.
-	var tmp struct {
-		From *string `json:"from"`
-		To   *string `json:"to"`
-	}
+	type tmpType SubstitutePath
+	var tmp tmpType
 
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		if _, ok := err.(*json.UnmarshalTypeError); ok {
-			return fmt.Errorf(`cannot use %s as 'substitutePath' of type {"from": string, "to": string}`, data)
+			return fmt.Errorf(`cannot use %s as 'substitutePath' of type {"from":string, "to":string}`, data)
 		}
 		return err
 	}
-	if tmp.From == nil || tmp.To == nil {
+	if tmp.From == "" || tmp.To == "" {
 		return errors.New("'substitutePath' requires both 'from' and 'to' entries")
 	}
-	m.From, m.To = *tmp.From, *tmp.To
+	*m = SubstitutePath(tmp)
 	return nil
 }
 
@@ -132,32 +117,21 @@ type AttachMode string
 
 // AttachMode is the type of an attach mode.
 const (
-	// "": same as LocalAttachMode
-	DefaultAttachMode AttachMode = ""
-	// "local": attaches to the local process with the given ProcessID. This is the default mode.
-	LocalAttachMode AttachMode = "string"
+	// "local": attaches to the local process with the given ProcessID.
+	LocalAttachMode AttachMode = "local"
 )
 
-func (m *AttachMode) UnmarshalJSON(data []byte) error {
-	var mode string
-	if err := json.Unmarshal(data, &mode); err != nil {
-		if _, ok := err.(*json.UnmarshalTypeError); ok {
-			return fmt.Errorf(`cannot unmarshal '%s' into 'mode' of type string`, data)
-		}
-		return err
-	}
+func isValidAttachMode(mode AttachMode) bool {
 	switch mode {
-	case "", "local":
-		*m = AttachMode(mode)
-	default:
-		return fmt.Errorf(`unsupported 'mode' value %q`, mode)
+	case "local":
+		return true
 	}
-	return nil
+	return false
 }
 
 // AttachConfig is the collection of attach request attributes recognized by delve DAP implementation.
 type AttachConfig struct {
-	// Attach mode.
+	// Required.
 	Mode AttachMode `json:"mode,omitempty"`
 
 	// The numeric ID of the process to be debugged. Required and must not be 0.
@@ -166,25 +140,25 @@ type AttachConfig struct {
 	LaunchAttachCommonConfig
 }
 
-func unmarshalLaunchAttachArgs(input map[string]interface{}, config interface{}) error {
-	// TODO(hyangah): after go-dap PR 57 is merged, update the dependency and change to use
-	// the new API.
-	//   func unmarshalLaunchAttachArgs(input json.RawMessage, config interface{}) error { ... }
-	buf := &bytes.Buffer{}
-	if err := json.NewEncoder(buf).Encode(input); err != nil {
-		return err
-	}
-	if err := json.Unmarshal(buf.Bytes(), config); err != nil {
+// unmarshalLaunchAttachArgs wraps unmarshalling of launch/attach request's
+// arguments attribute. Upon unmarshal failure, it returns an error massaged
+// to be suitable for end-users.
+func unmarshalLaunchAttachArgs(input json.RawMessage, config interface{}) error {
+	if err := json.Unmarshal(input, config); err != nil {
 		if uerr, ok := err.(*json.UnmarshalTypeError); ok {
 			// Format json.UnmarshalTypeError error string in our own way. E.g.,
 			//   "json: cannot unmarshal number into Go struct field LaunchArgs.substitutePath of type dap.SubstitutePath"
 			//   => "cannot unmarshal number into 'substitutePath' of type {from:string, to:string}"
 			//   "json: cannot unmarshal number into Go struct field LaunchArgs.program of type string" (go1.16)
 			//   => "cannot unmarshal number into 'program' of type string"
-			if strings.HasPrefix(uerr.Value, "substitutePath") {
-				return fmt.Errorf("cannot unmarshal %v into 'substitutePath' of type {from:string, to:string}", uerr.Value)
+			typ := uerr.Type.String()
+			switch uerr.Field {
+			case "substitutePath":
+				typ = `{"from":string, "to":string}`
+			case "mode":
+				typ = "string"
 			}
-			return fmt.Errorf("cannot unmarshal %v into %q of type %v", uerr.Value, uerr.Field, uerr.Type.String())
+			return fmt.Errorf("cannot unmarshal %v into %q of type %v", uerr.Value, uerr.Field, typ)
 		}
 		return err
 	}
