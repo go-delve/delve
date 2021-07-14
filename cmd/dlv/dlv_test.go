@@ -637,6 +637,7 @@ func TestDap(t *testing.T) {
 	client := daptest.NewClient(listenAddr)
 	client.DisconnectRequest()
 	client.ExpectDisconnectResponse(t)
+	client.ExpectTerminatedEvent(t)
 	if _, err := client.ReadMessage(); err != io.EOF {
 		t.Errorf("got %q, want \"EOF\"\n", err)
 	}
