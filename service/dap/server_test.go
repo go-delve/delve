@@ -246,6 +246,7 @@ func TestLaunchStopOnEntry(t *testing.T) {
 		if dResp.Seq != 0 || dResp.RequestSeq != 13 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13", dResp)
 		}
+		client.ExpectTerminatedEvent(t)
 	})
 }
 
@@ -377,6 +378,7 @@ func TestAttachStopOnEntry(t *testing.T) {
 		client.CheckOutputEvent(t, msg)
 		msg = expectMessageFilterStopped(t, client)
 		client.CheckDisconnectResponse(t, msg)
+		client.ExpectTerminatedEvent(t)
 
 		// If this call to KeepAlive isn't here there's a chance that stdout will
 		// be garbage collected (since it is no longer alive long before this
@@ -452,6 +454,7 @@ func TestContinueOnEntry(t *testing.T) {
 		if dResp.Seq != 0 || dResp.RequestSeq != 8 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8", dResp)
 		}
+		client.ExpectTerminatedEvent(t)
 	})
 }
 
@@ -591,6 +594,7 @@ func TestPreSetBreakpoint(t *testing.T) {
 		client.ExpectOutputEventProcessExited(t, 0)
 		client.ExpectOutputEventDetaching(t)
 		client.ExpectDisconnectResponse(t)
+		client.ExpectTerminatedEvent(t)
 	})
 }
 
@@ -3854,6 +3858,7 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 				client.ExpectOutputEventDetachingKill(t)
 			}
 			client.ExpectDisconnectResponse(t)
+			client.ExpectTerminatedEvent(t)
 			return
 		}
 		client.ContinueRequest(1)
@@ -3872,6 +3877,7 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 		client.ExpectOutputEventDetachingKill(t)
 	}
 	client.ExpectDisconnectResponse(t)
+	client.ExpectTerminatedEvent(t)
 }
 
 // runDebugSession is a helper for executing the standard init and shutdown
@@ -3983,6 +3989,7 @@ func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmdRequest fun
 	client.ExpectTerminatedEvent(t)
 	client.DisconnectRequestWithKillOption(true)
 	client.ExpectDisconnectResponse(t)
+	client.ExpectTerminatedEvent(t)
 }
 
 func TestLaunchTestRequest(t *testing.T) {
