@@ -6,19 +6,7 @@ import (
 	"fmt"
 )
 
-type LaunchMode string
-
-// LaunchMode is the type of a launch mode.
-const (
-	// "debug": compiles your program with optimizations disabled, starts and attaches to it. This is the default mode.
-	DebugLaunchMode LaunchMode = "debug"
-	// "test": compiles your unit test program with optizations disabled, starts and attaches to it.
-	TestLaunchMode LaunchMode = "test"
-	// "exec": executes a precompiled binary and begin a debug session.
-	ExecLaunchMode LaunchMode = "exec"
-)
-
-func isValidLaunchMode(mode LaunchMode) bool {
+func isValidLaunchMode(mode string) bool {
 	switch mode {
 	case "exec", "debug", "test":
 		return true
@@ -28,8 +16,11 @@ func isValidLaunchMode(mode LaunchMode) bool {
 
 // LaunchConfig is the collection of launch request attributes recognized by delve DAP implementation.
 type LaunchConfig struct {
-	// Required.
-	Mode LaunchMode `json:"mode,omitempty"`
+	// Required. Acceptable values are:
+	//   "debug": compiles your program with optimizations disabled, starts and attaches to it. This is the default mode.
+	//   "test": compiles your unit test program with optizations disabled, starts and attaches to it.
+	//   "exec": executes a precompiled binary and begin a debug session.
+	Mode string `json:"mode,omitempty"`
 
 	// Required when mode is `debug`, `test`, or `exec`.
 	// Path to the program folder (or any go file within that folder)
@@ -45,7 +36,7 @@ type LaunchConfig struct {
 	// Absolute path to the working directory of the program being debugged
 	// if a non-empty value is specified. If not specified or empty,
 	// the working directory of the delve process will be used.
-	// This is similar to delve's `-wd` flag.
+	// This is similar to delve's `--wd` flag.
 	Cwd string `json:"cwd,omitempty"`
 
 	// Build flags, to be passed to the Go compiler.
@@ -113,15 +104,7 @@ func (m *SubstitutePath) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-type AttachMode string
-
-// AttachMode is the type of an attach mode.
-const (
-	// "local": attaches to the local process with the given ProcessID.
-	LocalAttachMode AttachMode = "local"
-)
-
-func isValidAttachMode(mode AttachMode) bool {
+func isValidAttachMode(mode string) bool {
 	switch mode {
 	case "local":
 		return true
@@ -131,8 +114,9 @@ func isValidAttachMode(mode AttachMode) bool {
 
 // AttachConfig is the collection of attach request attributes recognized by delve DAP implementation.
 type AttachConfig struct {
-	// Required.
-	Mode AttachMode `json:"mode,omitempty"`
+	// Required. Acceptable values are:
+	//   "local": attaches to the local process with the given ProcessID.
+	Mode string `json:"mode,omitempty"`
 
 	// The numeric ID of the process to be debugged. Required and must not be 0.
 	ProcessID int `json:"processId,omitempty"`
@@ -152,11 +136,8 @@ func unmarshalLaunchAttachArgs(input json.RawMessage, config interface{}) error 
 			//   "json: cannot unmarshal number into Go struct field LaunchArgs.program of type string" (go1.16)
 			//   => "cannot unmarshal number into 'program' of type string"
 			typ := uerr.Type.String()
-			switch uerr.Field {
-			case "substitutePath":
+			if uerr.Field == "substitutePath" {
 				typ = `{"from":string, "to":string}`
-			case "mode":
-				typ = "string"
 			}
 			return fmt.Errorf("cannot unmarshal %v into %q of type %v", uerr.Value, uerr.Field, typ)
 		}

@@ -754,9 +754,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		var cmd string
 		var out []byte
 		switch mode {
-		case DebugLaunchMode:
+		case "debug":
 			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
-		case TestLaunchMode:
+		case "test":
 			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
 		}
 		if err != nil {
