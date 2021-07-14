@@ -1282,7 +1282,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						client.VariablesRequest(ref)
 						m2 := client.ExpectVariablesResponse(t)
 						checkChildren(t, m2, "m2", 2) // each key-value represented by a single child
-						checkVarExact(t, m2, 0, "len()", "len(m2)", "1", "int", false)
+						checkVarExact(t, m2, 0, "len()", "len(m2)", "1", "int", noChildren)
 						ref = checkVarExact(t, m2, 1, "1", "m2[1]", "*main.astruct {A: 10, B: 11}", "int: *main.astruct", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
@@ -1306,7 +1306,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						client.VariablesRequest(ref)
 						m3 := client.ExpectVariablesResponse(t)
 						checkChildren(t, m3, "m3", 3) // each key-value represented by a single child
-						checkVarExact(t, m3, 0, "len()", "len(m3)", "2", "int", false)
+						checkVarExact(t, m3, 0, "len()", "len(m3)", "2", "int", noChildren)
 						ref = checkVarRegex(t, m3, 1, `main\.astruct {A: 1, B: 1}`, `m3\[\(\*\(\*"main.astruct"\)\(0x[0-9a-f]+\)\)\]`, "42", "int", hasChildren)
 						if ref > 0 {
 							client.VariablesRequest(ref)
@@ -1330,7 +1330,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						client.VariablesRequest(ref)
 						m4 := client.ExpectVariablesResponse(t)
 						checkChildren(t, m4, "m4", 5) // each key and value represented by a child, so double the key-value count
-						checkVarExact(t, m4, 0, "len()", "len(m4)", "2", "int", false)
+						checkVarExact(t, m4, 0, "len()", "len(m4)", "2", "int", noChildren)
 						checkVarRegex(t, m4, 1, `\[key 0\]`, `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)`, `main\.astruct {A: 1, B: 1}`, `main\.astruct`, hasChildren)
 						checkVarRegex(t, m4, 2, `\[val 0\]`, `m4\[\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)\]`, `main\.astruct {A: 11, B: 11}`, `main\.astruct`, hasChildren)
 						ref = checkVarRegex(t, m4, 3, `\[key 1\]`, `\(\*\(\*"main\.astruct"\)\(0x[0-9a-f]+\)\)`, `main\.astruct {A: 2, B: 2}`, `main\.astruct`, hasChildren)
@@ -1586,7 +1586,7 @@ func TestVariablesLoading(t *testing.T) {
 						client.NamedVariablesRequest(ref)
 						named := client.ExpectVariablesResponse(t)
 						checkChildren(t, named, "m1", 1)
-						checkVarExact(t, named, 0, "len()", "len(m1)", "66", "int", false)
+						checkVarExact(t, named, 0, "len()", "len(m1)", "66", "int", noChildren)
 					}
 
 					// Struct partially missing based on LoadConfig.MaxStructFields

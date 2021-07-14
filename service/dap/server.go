@@ -1903,7 +1903,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 
 func getNamedVariableCount(v *proc.Variable) int {
 	namedVars := 0
-	if v.Kind == reflect.Map {
+	if v.Kind == reflect.Map && v.Len > 0 {
 		// len
 		namedVars += 1
 	}
@@ -1920,7 +1920,7 @@ func getNamedVariableCount(v *proc.Variable) int {
 func (s *Server) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variable, error) {
 	var children []dap.Variable
 
-	if v.Kind == reflect.Map {
+	if v.Kind == reflect.Map && v.Len > 0 {
 		children = append(children, dap.Variable{
 			Name:         "len()",
 			Value:        fmt.Sprintf("%d", v.Len),
