@@ -174,10 +174,10 @@ option to let the process continue or kill it.
 	// 'dap' subcommand.
 	dapCommand := &cobra.Command{
 		Use:   "dap",
-		Short: "[EXPERIMENTAL] Starts a TCP server communicating via Debug Adaptor Protocol (DAP).",
-		Long: `[EXPERIMENTAL] Starts a TCP server communicating via Debug Adaptor Protocol (DAP).
+		Short: "[EXPERIMENTAL] Starts a headless TCP server communicating via Debug Adaptor Protocol (DAP).",
+		Long: `[EXPERIMENTAL] Starts a headless TCP server communicating via Debug Adaptor Protocol (DAP).
 
-The server is headless and requires a DAP client like vscode to connect and request a binary
+The server is always headless and requires a DAP client like vscode to connect and request a binary
 to be launched or process to be attached to. The following modes are supported:
 - launch + exec (executes precompiled binary, like 'dlv exec')
 - launch + debug (builds and launches, like 'dlv debug')
@@ -410,11 +410,7 @@ func dapCmd(cmd *cobra.Command, args []string) {
 		}
 		defer logflags.Close()
 
-		if headless {
-			fmt.Fprintf(os.Stderr, "Warning: dap mode is always headless\n")
-		} else {
-			headless = true
-		}
+		headless = true
 		if acceptMulti {
 			fmt.Fprintf(os.Stderr, "Warning: accept-multiclient mode not supported with dap\n")
 		}

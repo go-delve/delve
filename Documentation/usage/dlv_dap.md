@@ -1,13 +1,13 @@
 ## dlv dap
 
-[EXPERIMENTAL] Starts a TCP server communicating via Debug Adaptor Protocol (DAP).
+[EXPERIMENTAL] Starts a headless TCP server communicating via Debug Adaptor Protocol (DAP).
 
 ### Synopsis
 
 
-[EXPERIMENTAL] Starts a TCP server communicating via Debug Adaptor Protocol (DAP).
+[EXPERIMENTAL] Starts a headless TCP server communicating via Debug Adaptor Protocol (DAP).
 
-The server is headless and requires a DAP client like vscode to connect and request a binary
+The server is always headless and requires a DAP client like vscode to connect and request a binary
 to be launched or process to be attached to. The following modes are supported:
 - launch + exec (executes precompiled binary, like 'dlv exec')
 - launch + debug (builds and launches, like 'dlv debug')
