@@ -14,13 +14,34 @@ func isValidLaunchMode(mode string) bool {
 	return false
 }
 
+// Default values for Launch/Attach configs.
+// Used to initialize configuration variables before decoding
+// arguments in launch/attach requests.
+var (
+	defaultLaunchAttachCommonConfig = LaunchAttachCommonConfig{
+		Backend:         "default",
+		StackTraceDepth: 50,
+	}
+	defaultLaunchConfig = LaunchConfig{
+		Mode:                     "debug",
+		Output:                   defaultDebugBinary,
+		LaunchAttachCommonConfig: defaultLaunchAttachCommonConfig,
+	}
+	defaultAttachConfig = AttachConfig{
+		Mode:                     "local",
+		LaunchAttachCommonConfig: defaultLaunchAttachCommonConfig,
+	}
+)
+
 // LaunchConfig is the collection of launch request attributes recognized by delve DAP implementation.
 type LaunchConfig struct {
-	// Required. Acceptable values are:
-	//   "debug": compiles your program with optimizations disabled, starts and attaches to it. This is the default mode.
+	// Acceptable values are:
+	//   "debug": compiles your program with optimizations disabled, starts and attaches to it.
 	//   "test": compiles your unit test program with optizations disabled, starts and attaches to it.
 	//   "exec": executes a precompiled binary and begin a debug session.
-	Mode string `json:"mode,omitempty"`
+	//
+	// Default is "debug".
+	Mode string `json:"mode"`
 
 	// Required when mode is `debug`, `test`, or `exec`.
 	// Path to the program folder (or any go file within that folder)
@@ -59,11 +80,11 @@ type LaunchAttachCommonConfig struct {
 	StopOnEntry bool `json:"stopOnEntry,omitempty"`
 
 	// Backend used by delve. See `dlv help backend` for allowed values.
-	// (Default: default)
+	// Default is "default".
 	Backend string `json:"backend,omitempty"`
 
 	// Maximum depth of stack trace collected from Delve.
-	// (Default: `50`)
+	// Default is 50.
 	StackTraceDepth int `json:"stackTraceDepth,omitempty"`
 
 	// Boolean value to indicate whether global package variables
@@ -105,18 +126,17 @@ func (m *SubstitutePath) UnmarshalJSON(data []byte) error {
 }
 
 func isValidAttachMode(mode string) bool {
-	switch mode {
-	case "local":
-		return true
-	}
-	return false
+	// Currently only "local" is acceptable.
+	return mode == "local"
 }
 
 // AttachConfig is the collection of attach request attributes recognized by delve DAP implementation.
 type AttachConfig struct {
-	// Required. Acceptable values are:
+	// Acceptable values are:
 	//   "local": attaches to the local process with the given ProcessID.
-	Mode string `json:"mode,omitempty"`
+	//
+	// Default is "local".
+	Mode string `json:"mode"`
 
 	// The numeric ID of the process to be debugged. Required and must not be 0.
 	ProcessID int `json:"processId,omitempty"`
