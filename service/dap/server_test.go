@@ -658,6 +658,9 @@ func checkScope(t *testing.T, got *dap.ScopesResponse, i int, name string, varRe
 //      numChildren - number of variables/fields/elements of this variable
 func checkChildren(t *testing.T, got *dap.VariablesResponse, parentName string, numChildren int) {
 	t.Helper()
+	if got.Body.Variables == nil {
+		t.Errorf("\ngot  %s children=%#v want []", parentName, got.Body.Variables)
+	}
 	if len(got.Body.Variables) != numChildren {
 		t.Errorf("\ngot  len(%s)=%d (children=%#v)\nwant len=%d", parentName, len(got.Body.Variables), got.Body.Variables, numChildren)
 	}
