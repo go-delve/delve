@@ -246,6 +246,7 @@ func TestLaunchStopOnEntry(t *testing.T) {
 		if dResp.Seq != 0 || dResp.RequestSeq != 13 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13", dResp)
 		}
+		client.ExpectTerminatedEvent(t)
 	})
 }
 
@@ -377,6 +378,7 @@ func TestAttachStopOnEntry(t *testing.T) {
 		client.CheckOutputEvent(t, msg)
 		msg = expectMessageFilterStopped(t, client)
 		client.CheckDisconnectResponse(t, msg)
+		client.ExpectTerminatedEvent(t)
 
 		// If this call to KeepAlive isn't here there's a chance that stdout will
 		// be garbage collected (since it is no longer alive long before this
@@ -455,6 +457,7 @@ func TestContinueOnEntry(t *testing.T) {
 		if dResp.Seq != 0 || dResp.RequestSeq != 8 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8", dResp)
 		}
+		client.ExpectTerminatedEvent(t)
 	})
 }
 
@@ -594,6 +597,7 @@ func TestPreSetBreakpoint(t *testing.T) {
 		client.ExpectOutputEventProcessExited(t, 0)
 		client.ExpectOutputEventDetaching(t)
 		client.ExpectDisconnectResponse(t)
+		client.ExpectTerminatedEvent(t)
 	})
 }
 
@@ -2122,6 +2126,68 @@ func TestSetBreakpoint(t *testing.T) {
 	})
 }
 
+func checkHitBreakpointIds(t *testing.T, se *dap.StoppedEvent, reason string, id int) {
+	if se.Body.ThreadId != 1 || se.Body.Reason != reason || len(se.Body.HitBreakpointIds) != 1 || se.Body.HitBreakpointIds[0] != id {
+		t.Errorf("got %#v, want Reason=%q, ThreadId=1, HitBreakpointIds=[]int{%d}", se, reason, id)
+	}
+}
+
+// TestHitBreakpointIds executes to a breakpoint and tests that
+// the breakpoint ids in the stopped event are correct.
+func TestHitBreakpointIds(t *testing.T) {
+	runTest(t, "locationsprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{30}, // b main.main
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 30)
+
+					// Set two source breakpoints and two function breakpoints.
+					client.SetBreakpointsRequest(fixture.Source, []int{23, 33})
+					sourceBps := client.ExpectSetBreakpointsResponse(t).Body.Breakpoints
+					checkBreakpoints(t, client, []Breakpoint{{line: 23, path: fixture.Source, verified: true}, {line: 33, path: fixture.Source, verified: true}}, sourceBps)
+
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
+						{Name: "anotherFunction"},
+						{Name: "anotherFunction:1"},
+					})
+					functionBps := client.ExpectSetFunctionBreakpointsResponse(t).Body.Breakpoints
+					checkBreakpoints(t, client, []Breakpoint{{line: 26, path: fixture.Source, verified: true}, {line: 27, path: fixture.Source, verified: true}}, functionBps)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se := client.ExpectStoppedEvent(t)
+					checkHitBreakpointIds(t, se, "breakpoint", sourceBps[1].Id)
+					checkStop(t, client, 1, "main.main", 33)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se = client.ExpectStoppedEvent(t)
+					checkHitBreakpointIds(t, se, "breakpoint", sourceBps[0].Id)
+					checkStop(t, client, 1, "main.(*SomeType).SomeFunction", 23)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se = client.ExpectStoppedEvent(t)
+					checkHitBreakpointIds(t, se, "function breakpoint", functionBps[0].Id)
+					checkStop(t, client, 1, "main.anotherFunction", 26)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se = client.ExpectStoppedEvent(t)
+					checkHitBreakpointIds(t, se, "function breakpoint", functionBps[1].Id)
+					checkStop(t, client, 1, "main.anotherFunction", 27)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
 func stringContainsCaseInsensitive(got, want string) bool {
 	return strings.Contains(strings.ToLower(got), strings.ToLower(want))
 }
@@ -2716,9 +2782,14 @@ func TestWorkingDir(t *testing.T) {
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)
 					checkChildren(t, locals, "Locals", 2)
-					checkVarExact(t, locals, 0, "pwd", "pwd", fmt.Sprintf("%q", wd), "string", noChildren)
-					checkVarExact(t, locals, 1, "err", "err", "error nil", "error", noChildren)
-
+					for i := range locals.Body.Variables {
+						switch locals.Body.Variables[i].Name {
+						case "pwd":
+							checkVarExact(t, locals, i, "pwd", "pwd", fmt.Sprintf("%q", wd), "string", noChildren)
+						case "err":
+							checkVarExact(t, locals, i, "err", "err", "error nil", "error", noChildren)
+						}
+					}
 				},
 				disconnect: false,
 			}})
@@ -3151,7 +3222,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 				disconnect: false,
 			}, { // Stop at runtime breakpoint
 				execute: func() {
-					checkStop(t, client, 1, "main.main", 197)
+					checkStop(t, client, 1, "main.main", -1)
 
 					// No return values
 					client.EvaluateRequest("call call0(1, 2)", 1000, "this context will be ignored")
@@ -3442,13 +3513,19 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 					if len(bestg) > 0 {
 						goroutineId = bestg[rand.Intn(len(bestg))]
 						t.Logf("selected goroutine %d (best)\n", goroutineId)
-					} else {
+					} else if len(candg) > 0 {
 						goroutineId = candg[rand.Intn(len(candg))]
 						t.Logf("selected goroutine %d\n", goroutineId)
 
 					}
-					client.StepOutRequest(goroutineId)
-					client.ExpectStepOutResponse(t)
+
+					if goroutineId != 0 {
+						client.StepOutRequest(goroutineId)
+						client.ExpectStepOutResponse(t)
+					} else {
+						client.ContinueRequest(-1)
+						client.ExpectContinueResponse(t)
+					}
 
 					switch e := client.ExpectMessage(t).(type) {
 					case *dap.StoppedEvent:
@@ -3536,15 +3613,16 @@ func TestPanicBreakpointOnContinue(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 
+					text := "\"BOOM!\""
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "panic" {
-						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"panic\"", se)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "panic" || se.Body.Text != text {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"panic\" Text=%q", se, text)
 					}
 
 					client.ExceptionInfoRequest(1)
 					eInfo := client.ExpectExceptionInfoResponse(t)
-					if eInfo.Body.ExceptionId != "panic" || eInfo.Body.Description != "\"BOOM!\"" {
-						t.Errorf("\ngot  %#v\nwant ExceptionId=\"panic\" Description=\"\"BOOM!\"\"", eInfo)
+					if eInfo.Body.ExceptionId != "panic" || eInfo.Body.Description != text {
+						t.Errorf("\ngot  %#v\nwant ExceptionId=\"panic\" Description=%q", eInfo, text)
 					}
 
 					client.StackTraceRequest(se.Body.ThreadId, 0, 20)
@@ -3587,15 +3665,16 @@ func TestPanicBreakpointOnNext(t *testing.T) {
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
 
+					text := "\"BOOM!\""
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "panic" {
-						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"panic\"", se)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "panic" || se.Body.Text != text {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"panic\" Text=%q", se, text)
 					}
 
 					client.ExceptionInfoRequest(1)
 					eInfo := client.ExpectExceptionInfoResponse(t)
-					if eInfo.Body.ExceptionId != "panic" || eInfo.Body.Description != "\"BOOM!\"" {
-						t.Errorf("\ngot  %#v\nwant ExceptionId=\"panic\" Description=\"\"BOOM!\"\"", eInfo)
+					if eInfo.Body.ExceptionId != "panic" || eInfo.Body.Description != text {
+						t.Errorf("\ngot  %#v\nwant ExceptionId=\"panic\" Description=%q", eInfo, text)
 					}
 				},
 				disconnect: true,
@@ -3619,14 +3698,21 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 
-					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "fatal error" {
-						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"fatal error\"", se)
+					var text string
+					// This does not work for Go 1.16.
+					ver, _ := goversion.Parse(runtime.Version())
+					if ver.Major != 1 || ver.Minor != 16 {
+						text = "\"go of nil func value\""
 					}
 
-					// TODO(suzmue): Enable this test for 1.17 when https://github.com/golang/go/issues/46425 is fixed.
-					errorPrefix := "\"go of nil func value\""
-					if goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "fatal error" || se.Body.Text != text {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"fatal error\" Text=%q", se, text)
+					}
+
+					// This does not work for Go 1.16.
+					errorPrefix := text
+					if errorPrefix == "" {
 						errorPrefix = "Throw reason unavailable, see https://github.com/golang/go/issues/46425"
 					}
 					client.ExceptionInfoRequest(1)
@@ -3654,9 +3740,14 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 
+					// TODO(suzmue): Enable this test for 1.17 when https://github.com/golang/go/issues/46425 is fixed.
+					var text string
+					if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+						text = "\"all goroutines are asleep - deadlock!\""
+					}
 					se := client.ExpectStoppedEvent(t)
-					if se.Body.Reason != "exception" || se.Body.Description != "fatal error" {
-						t.Errorf("\ngot  %#v\nwant Reason=\"exception\" Description=\"fatal error\"", se)
+					if se.Body.Reason != "exception" || se.Body.Description != "fatal error" || se.Body.Text != text {
+						t.Errorf("\ngot  %#v\nwant Reason=\"exception\" Description=\"fatal error\" Text=%q", se, text)
 					}
 
 					// TODO(suzmue): Get the exception info for the thread and check the description
@@ -3770,6 +3861,7 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 				client.ExpectOutputEventDetachingKill(t)
 			}
 			client.ExpectDisconnectResponse(t)
+			client.ExpectTerminatedEvent(t)
 			return
 		}
 		client.ContinueRequest(1)
@@ -3788,6 +3880,7 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 		client.ExpectOutputEventDetachingKill(t)
 	}
 	client.ExpectDisconnectResponse(t)
+	client.ExpectTerminatedEvent(t)
 }
 
 // runDebugSession is a helper for executing the standard init and shutdown
@@ -3912,6 +4005,7 @@ func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmdRequest fun
 	client.ExpectTerminatedEvent(t)
 	client.DisconnectRequestWithKillOption(true)
 	client.ExpectDisconnectResponse(t)
+	client.ExpectTerminatedEvent(t)
 }
 
 func TestLaunchTestRequest(t *testing.T) {
@@ -4431,7 +4525,7 @@ func TestSetVariableWithCall(t *testing.T) {
 				execute: func() {
 					tester := &helperForSetVariable{t, client}
 
-					checkStop(t, client, 1, "main.main", 197)
+					checkStop(t, client, 1, "main.main", -1)
 
 					_ = tester.variables(1001)
 
@@ -4440,7 +4534,7 @@ func TestSetVariableWithCall(t *testing.T) {
 					tester.evaluateRegex("str", `.*in main.callstacktrace at.*`, noChildren)
 
 					tester.failSetVariableAndStop(1001, "str", `callpanic()`, `callpanic panicked`)
-					checkStop(t, client, 1, "main.main", 197)
+					checkStop(t, client, 1, "main.main", -1)
 
 					// breakpoint during a function call.
 					tester.failSetVariableAndStop(1001, "str", `callbreak()`, "call stopped")
@@ -4810,7 +4904,7 @@ func TestBadlyFormattedMessageToServer(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		// Send a badly formatted message to the server, and expect it to close the
 		// connection.
-		client.UnknownRequest()
+		client.BadRequest()
 		time.Sleep(100 * time.Millisecond)
 
 		_, err := client.ReadMessage()
@@ -4818,5 +4912,18 @@ func TestBadlyFormattedMessageToServer(t *testing.T) {
 		if err != io.EOF {
 			t.Errorf("got err=%v, want io.EOF", err)
 		}
+	})
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		// Send an unknown request message to the server, and expect it to send
+		// an error response.
+		client.UnknownRequest()
+		err := client.ExpectErrorResponse(t)
+		if err.Body.Error.Format != "Internal Error: Request command 'unknown' is not supported (seq: 1)" || err.RequestSeq != 1 {
+			t.Errorf("got %v, want  RequestSeq=1 Error=\"Internal Error: Request command 'unknown' is not supported (seq: 1)\"", err)
+		}
+
+		// Make sure that the unknown request did not kill the server.
+		client.InitializeRequest()
+		client.ExpectInitializeResponse(t)
 	})
 }

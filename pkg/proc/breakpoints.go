@@ -194,7 +194,7 @@ func (bpstate *BreakpointState) checkCond(thread Thread) {
 		var err error
 		frames, err := ThreadStacktrace(thread, 2)
 		if err == nil {
-			nextDeferOk = isPanicCall(frames)
+			nextDeferOk, _ = isPanicCall(frames)
 			if !nextDeferOk {
 				nextDeferOk, _ = isDeferReturnCall(frames, bpstate.DeferReturns)
 			}
@@ -239,8 +239,25 @@ func (bpstate *BreakpointState) checkHitCond(thread Thread) {
 	}
 }
 
-func isPanicCall(frames []Stackframe) bool {
-	return len(frames) >= 3 && frames[2].Current.Fn != nil && frames[2].Current.Fn.Name == "runtime.gopanic"
+func isPanicCall(frames []Stackframe) (bool, int) {
+	// In Go prior to 1.17 the call stack for a panic is:
+	//  0. deferred function call
+	//  1. runtime.callN
+	//  2. runtime.gopanic
+	// in Go after 1.17 it is either:
+	//  0. deferred function call
+	//  1. deferred call wrapper
+	//  2. runtime.gopanic
+	// or:
+	//  0. deferred function call
+	//  1. runtime.gopanic
+	if len(frames) >= 3 && frames[2].Current.Fn != nil && frames[2].Current.Fn.Name == "runtime.gopanic" {
+		return true, 2
+	}
+	if len(frames) >= 2 && frames[1].Current.Fn != nil && frames[1].Current.Fn.Name == "runtime.gopanic" {
+		return true, 1
+	}
+	return false, 0
 }
 
 func isDeferReturnCall(frames []Stackframe, deferReturns []uint64) (bool, uint64) {
