@@ -1716,7 +1716,7 @@ func (s *Server) onVariablesRequest(request *dap.VariablesRequest) {
 		}
 	}
 
-	var children []dap.Variable
+	children := []dap.Variable{} // must return empty array, not null, if no children
 	if request.Arguments.Filter == "named" || request.Arguments.Filter == "" {
 		named, err := s.metadataToDAPVariables(v)
 		if err != nil {
@@ -1769,7 +1769,7 @@ func (s *Server) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 	// TODO(polina): consider convertVariableToString instead of convertVariable
 	// and avoid unnecessary creation of variable handles when this is called to
 	// compute evaluate names when this is called from onSetVariableRequest.
-	var children []dap.Variable
+	children := []dap.Variable{} // must return empty array, not null, if no children
 
 	switch v.Kind {
 	case reflect.Map:
@@ -1917,7 +1917,7 @@ func getNamedVariableCount(v *proc.Variable) int {
 // metadataToDAPVariables returns the DAP presentation of the referenced variable's metadata.
 // These are included as named variables
 func (s *Server) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variable, error) {
-	var children []dap.Variable
+	children := []dap.Variable{} // must return empty array, not null, if no children
 
 	if isListOfBytesOrRunes(v.Variable) {
 		// Return the string value of []byte or []rune.
