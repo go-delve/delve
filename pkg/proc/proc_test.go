@@ -2307,29 +2307,14 @@ func TestStepReturnAndPanic(t *testing.T) {
 func TestStepDeferReturn(t *testing.T) {
 	// Tests that Step works correctly when a deferred function is
 	// called during a return.
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
-		testseq("defercall", contStep, []nextTest{
-			{11, 6},
-			{6, 7},
-			{7, 12},
-			{12, 13},
-			{13, 6},
-			{6, 7},
-			{7, 13},
-			{13, 28}}, "", t)
-	} else {
-		testseq("defercall", contStep, []nextTest{
-			{11, 5},
-			{5, 6},
-			{6, 7},
-			{7, 12},
-			{12, 13},
-			{13, 5},
-			{5, 6},
-			{6, 7},
-			{7, 13},
-			{13, 28}}, "", t)
-	}
+	testseq("defercall", contStep, []nextTest{
+		{11, 6},
+		{6, 7},
+		{7, 12},
+		{12, 6},
+		{6, 7},
+		{7, 13},
+		{13, 28}}, "", t)
 }
 
 func TestStepIgnorePrivateRuntime(t *testing.T) {
@@ -3579,7 +3564,6 @@ func TestIssue1101(t *testing.T) {
 		setFunctionBreakpoint(p, t, "main.f")
 		assertNoError(p.Continue(), t, "Continue()")
 		assertNoError(p.Next(), t, "Next() 1")
-		assertNoError(p.Next(), t, "Next() 2")
 		lastCmd := "Next() 3"
 		exitErr := p.Next()
 		if exitErr == nil {
@@ -4796,11 +4780,9 @@ func TestStepIntoWrapperForEmbeddedPointer(t *testing.T) {
 	testseq2(t, "ifaceembcall", "", []seqTest{
 		{contContinue, 28}, // main.main, the line calling iface.PtrReceiver()
 		{contStep, 18},     // main.(*A).PtrReceiver
-		{contStep, 19},
 		{contStepout, 28},
 		{contContinueToBreakpoint, 29}, // main.main, the line calling iface.NonPtrReceiver()
 		{contStep, 22},                 // main.(A).NonPtrReceiver
-		{contStep, 23},
 		{contStepout, 29}})
 
 	// same test but with next instead of stepout
@@ -4810,22 +4792,18 @@ func TestStepIntoWrapperForEmbeddedPointer(t *testing.T) {
 			{contContinue, 28}, // main.main, the line calling iface.PtrReceiver()
 			{contStep, 18},     // main.(*A).PtrReceiver
 			{contNext, 19},
-			{contNext, 19},
 			{contNext, 28},
 			{contContinueToBreakpoint, 29}, // main.main, the line calling iface.NonPtrReceiver()
 			{contStep, 22},
-			{contNext, 23},
 			{contNext, 23},
 			{contNext, 29}})
 	} else {
 		testseq2(t, "ifaceembcall", "", []seqTest{
 			{contContinue, 28}, // main.main, the line calling iface.PtrReceiver()
 			{contStep, 18},     // main.(*A).PtrReceiver
-			{contNext, 19},
 			{contNext, 28},
 			{contContinueToBreakpoint, 29}, // main.main, the line calling iface.NonPtrReceiver()
 			{contStep, 22},
-			{contNext, 23},
 			{contNext, 29}})
 
 	}
