@@ -4450,7 +4450,6 @@ func TestPluginStepping(t *testing.T) {
 		{contStep, "plugin1.go:9"},
 		{contStep, "plugin1.go:10"},
 		{contStep, "plugin1.go:11"},
-		{contNext, "plugin1.go:12"},
 		{contNext, "plugintest2.go:41"},
 		{contNext, "plugintest2.go:42"},
 		{contStep, "plugin2.go:22"},
