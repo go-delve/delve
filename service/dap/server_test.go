@@ -806,10 +806,9 @@ func TestStackTraceRequest(t *testing.T) {
 					// repeated requests at the same breakpoint
 					// would assign next block of unique ids to them each time.
 					const NumFrames = 6
-					reqIndex := -1
-					frameID := func(frameIndex int) int {
-						reqIndex++
-						return startHandle + NumFrames*reqIndex + frameIndex
+					reqIndex := 0
+					frameID := func() int {
+						return startHandle + reqIndex
 					}
 
 					tests := map[string]struct {
@@ -837,7 +836,8 @@ func TestStackTraceRequest(t *testing.T) {
 						client.StackTraceRequest(1, tc.startFrame, tc.levels)
 						stResp = client.ExpectStackTraceResponse(t)
 						checkStackFramesNamed(name, t, stResp,
-							tc.wantStartName, tc.wantStartLine, frameID(tc.wantStartFrame), tc.wantFramesReturned, tc.wantFramesAvailable)
+							tc.wantStartName, tc.wantStartLine, frameID(), tc.wantFramesReturned, tc.wantFramesAvailable)
+						reqIndex += tc.wantFramesReturned
 					}
 				},
 				disconnect: false,
@@ -1997,7 +1997,7 @@ func TestLaunchRequestWithStackTraceDepth(t *testing.T) {
 				execute: func() {
 					client.StackTraceRequest(1, 0, 0)
 					stResp = client.ExpectStackTraceResponse(t)
-					checkStackFrames(t, stResp, "main.Increment", 8, 1000, 2 /*returned*/, 2 /*available*/)
+					checkStackFrames(t, stResp, "main.Increment", 8, 1000, 1 /*returned*/, 2 /*available*/)
 				},
 				disconnect: false,
 			}})
