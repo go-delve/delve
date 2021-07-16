@@ -1575,9 +1575,6 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 	var levels int
 	if request.Arguments.Levels > 0 {
 		levels = request.Arguments.Levels
-		if levels > s.args.stackTraceDepth {
-			levels = s.args.stackTraceDepth
-		}
 	} else {
 		levels = s.args.stackTraceDepth
 	}
@@ -1589,7 +1586,7 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 	}
 
 	if hasMore && request.Arguments.Levels > 0 {
-		totalFrames += 10
+		totalFrames += s.args.stackTraceDepth
 	}
 	response := &dap.StackTraceResponse{
 		Response: *newResponse(request.Request),
