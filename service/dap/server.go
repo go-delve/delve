@@ -1458,49 +1458,35 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 // onNextRequest handles 'next' request.
 // This is a mandatory request to support.
 func (s *Server) onNextRequest(request *dap.NextRequest, asyncSetupDone chan struct{}) {
-	// All of the threads will be continued by this request, so we need to send
-	// a continued event so the UI can properly reflect the current state.
-	s.send(&dap.ContinuedEvent{
-		Event: *newEvent("continued"),
-		Body: dap.ContinuedEventBody{
-			ThreadId:            request.Arguments.ThreadId,
-			AllThreadsContinued: true,
-		},
-	})
-	s.send(&dap.NextResponse{Response: *newResponse(request.Request)})
+	s.sendStepResponse(request.Arguments.ThreadId, &dap.NextResponse{Response: *newResponse(request.Request)})
 	s.doStepCommand(api.Next, request.Arguments.ThreadId, asyncSetupDone)
 }
 
 // onStepInRequest handles 'stepIn' request
 // This is a mandatory request to support.
 func (s *Server) onStepInRequest(request *dap.StepInRequest, asyncSetupDone chan struct{}) {
-	// All of the threads will be continued by this request, so we need to send
-	// a continued event so the UI can properly reflect the current state.
-	s.send(&dap.ContinuedEvent{
-		Event: *newEvent("continued"),
-		Body: dap.ContinuedEventBody{
-			ThreadId:            request.Arguments.ThreadId,
-			AllThreadsContinued: true,
-		},
-	})
-	s.send(&dap.StepInResponse{Response: *newResponse(request.Request)})
+	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepInResponse{Response: *newResponse(request.Request)})
 	s.doStepCommand(api.Step, request.Arguments.ThreadId, asyncSetupDone)
 }
 
 // onStepOutRequest handles 'stepOut' request
 // This is a mandatory request to support.
 func (s *Server) onStepOutRequest(request *dap.StepOutRequest, asyncSetupDone chan struct{}) {
+	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepOutResponse{Response: *newResponse(request.Request)})
+	s.doStepCommand(api.StepOut, request.Arguments.ThreadId, asyncSetupDone)
+}
+
+func (s *Server) sendStepResponse(threadId int, message dap.Message) {
 	// All of the threads will be continued by this request, so we need to send
 	// a continued event so the UI can properly reflect the current state.
 	s.send(&dap.ContinuedEvent{
 		Event: *newEvent("continued"),
 		Body: dap.ContinuedEventBody{
-			ThreadId:            request.Arguments.ThreadId,
+			ThreadId:            threadId,
 			AllThreadsContinued: true,
 		},
 	})
-	s.send(&dap.StepOutResponse{Response: *newResponse(request.Request)})
-	s.doStepCommand(api.StepOut, request.Arguments.ThreadId, asyncSetupDone)
+	s.send(message)
 }
 
 func stoppedGoroutineID(state *api.DebuggerState) (id int) {
