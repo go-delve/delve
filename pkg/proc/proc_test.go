@@ -679,22 +679,9 @@ func TestNextFunctionReturn(t *testing.T) {
 }
 
 func TestNextFunctionReturnDefer(t *testing.T) {
-	var testcases []nextTest
-
-	ver, _ := goversion.Parse(runtime.Version())
-
-	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
-		testcases = []nextTest{
-			{5, 6},
-			{6, 9},
-			{9, 10},
-		}
-	} else {
-		testcases = []nextTest{
-			{5, 8},
-			{8, 9},
-			{9, 10},
-		}
+	testcases := []nextTest{
+		{5, 6},
+		{6, 9},
 	}
 	protest.AllowRecording(t)
 	testseq("testnextdefer", contNext, testcases, "main.main", t)
@@ -2228,8 +2215,7 @@ func TestNextDeferReturnAndDirectCall(t *testing.T) {
 		{9, 10},
 		{10, 11},
 		{11, 12},
-		{12, 13},
-		{13, 28}}, "main.callAndDeferReturn", t)
+		{12, 28}}, "main.callAndDeferReturn", t)
 }
 
 func TestNextPanicAndDirectCall(t *testing.T) {
