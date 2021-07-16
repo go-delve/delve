@@ -1585,7 +1585,7 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 	s.send(response)
 }
 
-func (s *Server) loadFrames(goroutineID int, start, levels int) ([]dap.StackFrame, int, bool, error) {
+func (s *Server) loadFrames(goroutineID, start, levels int) ([]dap.StackFrame, int, bool, error) {
 	startFrameIndex := start
 	loadLevels := levels
 	var startLoad int
@@ -1626,7 +1626,7 @@ func (s *Server) loadFrames(goroutineID int, start, levels int) ([]dap.StackFram
 	return stackFrames, totalFrames, next >= 0, nil
 }
 
-func (s *Server) convertStackframeToDap(goroutineID int, start int, frames []proc.Stackframe) []dap.StackFrame {
+func (s *Server) convertStackframeToDap(goroutineID, start int, frames []proc.Stackframe) []dap.StackFrame {
 	// Determine if the goroutine is a system goroutine.
 	isSystemGoroutine := true
 	if g, _ := s.debugger.FindGoroutine(goroutineID); g != nil {
