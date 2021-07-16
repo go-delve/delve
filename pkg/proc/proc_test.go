@@ -723,7 +723,7 @@ func TestNextNetHTTP(t *testing.T) {
 
 // This test ensures that "next" breakpoints are
 // only set on instructions which the .debug_line section has
-// markes as is_stmt == 1.
+// marked as is_stmt == 1.
 func TestNextIsStmt(t *testing.T) {
 	testcases := []nextTest{
 		{5, 7},
