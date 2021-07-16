@@ -111,7 +111,7 @@ func ThreadStacktrace(thread Thread, depth int) ([]Stackframe, error) {
 
 // ThreadStacktrace returns the stack trace for thread.
 // Note the locations in the array are return addresses not call addresses.
-func ThreadStacktracePaged(thread Thread, start, depth int) ([]Stackframe, []int, bool, error) {
+func ThreadStacktraceSkip(thread Thread, start, depth int) ([]Stackframe, []int, bool, error) {
 	g, _ := GetG(thread)
 	if g == nil {
 		regs, err := thread.Registers()
@@ -124,7 +124,7 @@ func ThreadStacktracePaged(thread Thread, start, depth int) ([]Stackframe, []int
 		it := newStackIterator(thread.BinInfo(), thread.ProcessMemory(), dwarfRegs, 0, nil, 0)
 		return it.stacktrace(start, depth)
 	}
-	return g.StacktracePaged(start, depth, 0)
+	return g.StacktraceSkip(start, depth, 0)
 }
 
 func (g *G) stackIterator(opts StacktraceOptions) (*stackIterator, error) {
@@ -184,7 +184,7 @@ func (g *G) Stacktrace(depth int, opts StacktraceOptions) ([]Stackframe, error) 
 
 // Stacktrace returns the stack trace for a goroutine.
 // Note the locations in the array are return addresses not call addresses.
-func (g *G) StacktracePaged(start, depth int, opts StacktraceOptions) ([]Stackframe, []int, bool, error) {
+func (g *G) StacktraceSkip(start, depth int, opts StacktraceOptions) ([]Stackframe, []int, bool, error) {
 	it, err := g.stackIterator(opts)
 	if err != nil {
 		return nil, nil, false, err

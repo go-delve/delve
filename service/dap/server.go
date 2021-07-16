@@ -1582,7 +1582,7 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 		levels = s.args.stackTraceDepth
 	}
 
-	stackFrames, totalFrames, hasMore, err := s.loadRequestFrames(goroutineID, start, levels)
+	stackFrames, totalFrames, hasMore, err := s.loadFrames(goroutineID, start, levels)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToProduceStackTrace, "Unable to produce stack trace", err.Error())
 		return
@@ -1598,37 +1598,27 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 	s.send(response)
 }
 
-func (s *Server) loadRequestFrames(goroutineID int, start, levels int) ([]dap.StackFrame, int, bool, error) {
-	findMap := s.stackFrameIndex[goroutineID]
-	var skip, alreadyFound int
-	for i, total := range findMap {
-		if start < total {
-			break
-		}
-		skip, alreadyFound = i+1, total
-	}
+func (s *Server) loadFrames(goroutineID int, start, levels int) ([]dap.StackFrame, int, bool, error) {
+	skip, numSkipped := findStart(s.stackFrameIndex[goroutineID], start)
+	loadLevels := (start + levels) - numSkipped
 
-	loadLevels := start + levels - alreadyFound
-
-	frames, newSkip, hasMore, err := s.debugger.StacktracePaged(goroutineID, skip, loadLevels, 0)
+	frames, newSkip, hasMore, err := s.debugger.StacktraceSkip(goroutineID, skip, loadLevels, 0)
 	if err != nil {
 		return nil, 0, false, err
 	}
-	add := 0
-	if skip > 0 && len(s.stackFrameIndex[goroutineID]) > 0 {
-		add = s.stackFrameIndex[goroutineID][skip-1]
-	}
-	for i, t := range newSkip {
-		if skip+i < len(s.stackFrameIndex[goroutineID]) {
-			continue
-		}
-		s.stackFrameIndex[goroutineID] = append(s.stackFrameIndex[goroutineID], add+t)
-		s.stackHasMore[goroutineID] = hasMore
-	}
 
-	frames = frames[(start)-alreadyFound:]
+	// Convert frames to DAP stack frames.
+	frames = frames[(start)-numSkipped:]
 	frames = frames[:min(levels, len(frames))]
+	stackFrames := s.convertStackframeToDap(goroutineID, start, frames)
 
+	// Save the information gathered about skipping stack frames.
+	s.stackFrameIndex[goroutineID], s.stackHasMore[goroutineID] = mergeFrameLists(skip, s.stackFrameIndex[goroutineID], newSkip, s.stackHasMore[goroutineID], hasMore)
+	totalFrames := s.stackFrameIndex[goroutineID][len(s.stackFrameIndex[goroutineID])-1]
+	return stackFrames, totalFrames, s.stackHasMore[goroutineID], nil
+}
+
+func (s *Server) convertStackframeToDap(goroutineID int, start int, frames []proc.Stackframe) []dap.StackFrame {
 	isSystemGoroutine := true
 	if g, _ := s.debugger.FindGoroutine(goroutineID); g != nil {
 		isSystemGoroutine = g.System(s.debugger.Target())
@@ -1650,8 +1640,33 @@ func (s *Server) loadRequestFrames(goroutineID int, start, levels int) ([]dap.St
 			stackFrames[i].Source.PresentationHint = "deemphasize"
 		}
 	}
+	return stackFrames
+}
 
-	return stackFrames, s.stackFrameIndex[goroutineID][len(s.stackFrameIndex[goroutineID])-1], s.stackHasMore[goroutineID], nil
+func mergeFrameLists(skipped int, oldTotals, newTotals []int, hadMore, hasMore bool) ([]int, bool) {
+	var add int
+	if skipped > 0 && len(oldTotals) > 0 {
+		add = oldTotals[skipped-1]
+	}
+	for i, t := range newTotals {
+		if skipped+i < len(oldTotals) {
+			continue
+		}
+		oldTotals = append(oldTotals, add+t)
+		hadMore = hasMore
+	}
+	return oldTotals, hadMore
+}
+
+func findStart(framesPerStep []int, start int) (int, int) {
+	var skip, alreadyFound int
+	for i, total := range framesPerStep {
+		if start < total {
+			break
+		}
+		skip, alreadyFound = i+1, total
+	}
+	return skip, alreadyFound
 }
 
 // onScopesRequest handles 'scopes' requests.

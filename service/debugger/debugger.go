@@ -1673,10 +1673,12 @@ func (d *Debugger) Stacktrace(goroutineID, depth int, opts api.StacktraceOptions
 	}
 }
 
-// Stacktrace returns a list of Stackframes for the given goroutine. The
+// StacktraceSkip returns a list of Stackframes for the given goroutine. The
 // length of the returned list will be min(stack_len, depth).
-// If 'full' is true, then local vars, function args, etc will be returned as well.
-func (d *Debugger) StacktracePaged(goroutineID, start, depth int, opts api.StacktraceOptions) ([]proc.Stackframe, []int, bool, error) {
+// StacktraceSkip returns a slice of integers representing the number of frames
+// loaded at each step. Specifying "skip" in a subsequent call will start at frame
+// with index loaded[skip - 1] (or 0 if out of bounds).
+func (d *Debugger) StacktraceSkip(goroutineID, skip, depth int, opts api.StacktraceOptions) (frames []proc.Stackframe, loaded []int, hasMore bool, err error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1690,9 +1692,9 @@ func (d *Debugger) StacktracePaged(goroutineID, start, depth int, opts api.Stack
 	}
 
 	if g == nil {
-		return proc.ThreadStacktracePaged(d.target.CurrentThread(), start, depth)
+		return proc.ThreadStacktraceSkip(d.target.CurrentThread(), skip, depth)
 	} else {
-		return g.StacktracePaged(start, depth, proc.StacktraceOptions(opts))
+		return g.StacktraceSkip(skip, depth, proc.StacktraceOptions(opts))
 	}
 }
 
