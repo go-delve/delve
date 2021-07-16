@@ -734,6 +734,21 @@ func TestNextNetHTTP(t *testing.T) {
 	})
 }
 
+// This test ensures that "next" breakpoints are
+// only set on instructions which the .debug_line section has
+// markes as is_stmt == 1.
+func TestNextIsStmt(t *testing.T) {
+	testcases := []nextTest{
+		{5, 7},
+		{7, 8},
+		{8, 9},
+		{9, 7},
+		{7, 18},
+	}
+	protest.AllowRecording(t)
+	testseq("issue2593", contNext, testcases, "main.issue2593", t)
+}
+
 func TestRuntimeBreakpoint(t *testing.T) {
 	withTestProcess("testruntimebreakpoint", t, func(p *proc.Target, fixture protest.Fixture) {
 		err := p.Continue()

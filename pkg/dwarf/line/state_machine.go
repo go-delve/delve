@@ -179,6 +179,16 @@ func (lineInfo *DebugLineInfo) AllPCsBetween(begin, end uint64, excludeFile stri
 		if (sm.address > end) && (end >= sm.lastAddress) {
 			break
 		}
+		// If the next opcode is DW_LNS_negate_stmt then make sure we parse that first so
+		// that we don't return PCs that we should not set a breakpoint on.
+		if sm.isNextInstructionIsStmt() {
+			if err := sm.next(); err != nil {
+				if lineInfo.Logf != nil {
+					lineInfo.Logf("AllPCsBetween error: %v", err)
+				}
+				break
+			}
+		}
 		if sm.address >= begin && sm.address <= end && sm.address > lastaddr && sm.isStmt && !sm.endSeq && ((sm.file != excludeFile) || (sm.line != excludeLine)) {
 			lastaddr = sm.address
 			pcs = append(pcs, sm.address)
@@ -415,6 +425,20 @@ func (lineInfo *DebugLineInfo) FirstFile() string {
 			return ""
 		}
 	}
+}
+
+// isNextInstructionIsStmt returns true if the next opcode is
+// one which affects is_stmt.
+func (sm *StateMachine) isNextInstructionIsStmt() bool {
+	op, err := sm.buf.ReadByte()
+	defer sm.buf.UnreadByte()
+	if err != nil {
+		if sm.dbl.Logf != nil {
+			sm.dbl.Logf("isNextInstructionIsStmt error: %v", err)
+		}
+		return false
+	}
+	return op == DW_LNS_negate_stmt
 }
 
 func (sm *StateMachine) next() error {
