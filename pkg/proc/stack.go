@@ -93,30 +93,21 @@ func (frame *Stackframe) FramePointerOffset() int64 {
 // ThreadStacktrace returns the stack trace for thread.
 // Note the locations in the array are return addresses not call addresses.
 func ThreadStacktrace(thread Thread, depth int) ([]Stackframe, error) {
-	g, _ := GetG(thread)
-	if g == nil {
-		regs, err := thread.Registers()
-		if err != nil {
-			return nil, err
-		}
-		so := thread.BinInfo().PCToImage(regs.PC())
-		dwarfRegs := *(thread.BinInfo().Arch.RegistersToDwarfRegisters(so.StaticBase, regs))
-		dwarfRegs.ChangeFunc = thread.SetReg
-		it := newStackIterator(thread.BinInfo(), thread.ProcessMemory(), dwarfRegs, 0, nil, 0)
-		frames, _, _, err := it.stacktrace(0, depth)
-		return frames, err
-	}
-	return g.Stacktrace(depth, 0)
+	frames, _, err := ThreadStackframes(thread, 0, depth)
+	return frames, err
 }
 
-// ThreadStacktrace returns the stack trace for thread.
+// ThreadStackframes returns the stack trace for thread.
 // Note the locations in the array are return addresses not call addresses.
-func ThreadStacktraceSkip(thread Thread, start, depth int) ([]Stackframe, []int, bool, error) {
+// ThreadStackframes also returns the next index to be used as 'start' argument
+// while scanning for all available stack frames, or -1 if there was an error
+// or if the index already reached the last possible value.
+func ThreadStackframes(thread Thread, start, depth int) ([]Stackframe, int, error) {
 	g, _ := GetG(thread)
 	if g == nil {
 		regs, err := thread.Registers()
 		if err != nil {
-			return nil, nil, false, err
+			return nil, -1, err
 		}
 		so := thread.BinInfo().PCToImage(regs.PC())
 		dwarfRegs := *(thread.BinInfo().Arch.RegistersToDwarfRegisters(so.StaticBase, regs))
@@ -124,7 +115,7 @@ func ThreadStacktraceSkip(thread Thread, start, depth int) ([]Stackframe, []int,
 		it := newStackIterator(thread.BinInfo(), thread.ProcessMemory(), dwarfRegs, 0, nil, 0)
 		return it.stacktrace(start, depth)
 	}
-	return g.StacktraceSkip(start, depth, 0)
+	return g.Stackframes(start, depth, 0)
 }
 
 func (g *G) stackIterator(opts StacktraceOptions) (*stackIterator, error) {
@@ -168,35 +159,28 @@ const (
 // Stacktrace returns the stack trace for a goroutine.
 // Note the locations in the array are return addresses not call addresses.
 func (g *G) Stacktrace(depth int, opts StacktraceOptions) ([]Stackframe, error) {
-	it, err := g.stackIterator(opts)
-	if err != nil {
-		return nil, err
-	}
-	frames, _, _, err := it.stacktrace(0, depth)
-	if err != nil {
-		return nil, err
-	}
-	if opts&StacktraceReadDefers != 0 {
-		g.readDefers(frames)
-	}
-	return frames, nil
+	frames, _, err := g.Stackframes(0, depth, opts)
+	return frames, err
 }
 
-// Stacktrace returns the stack trace for a goroutine.
+// Stackframes returns the stack trace for a goroutine.
 // Note the locations in the array are return addresses not call addresses.
-func (g *G) StacktraceSkip(start, depth int, opts StacktraceOptions) ([]Stackframe, []int, bool, error) {
+// Stackframes also returns the next index to be used as 'start' argument
+// while scanning for all available stack frames, or -1 if there was an error
+// or if the index already reached the last possible value.
+func (g *G) Stackframes(start, depth int, opts StacktraceOptions) ([]Stackframe, int, error) {
 	it, err := g.stackIterator(opts)
 	if err != nil {
-		return nil, nil, false, err
+		return nil, -1, err
 	}
-	frames, skip, hasMore, err := it.stacktrace(start, depth)
+	frames, next, err := it.stacktrace(start, depth)
 	if err != nil {
-		return nil, nil, false, err
+		return nil, -1, err
 	}
 	if opts&StacktraceReadDefers != 0 {
 		g.readDefers(frames)
 	}
-	return frames, skip, hasMore, nil
+	return frames, next, nil
 }
 
 // NullAddrError is an error for a null address.
@@ -330,38 +314,38 @@ func (it *stackIterator) newStackframe(ret, retaddr uint64) Stackframe {
 	return r
 }
 
-func (it *stackIterator) stacktrace(start, depth int) ([]Stackframe, []int, bool, error) {
+func (it *stackIterator) stacktrace(start, depth int) ([]Stackframe, int, error) {
 	if depth < 0 {
-		return nil, nil, false, errors.New("negative maximum stack depth")
+		return nil, -1, errors.New("negative maximum stack depth")
 	}
 	if it.opts&StacktraceG != 0 && it.g != nil {
 		it.switchToGoroutineStack()
 		it.top = true
 	}
-	var skip []int
 
 	// Skip to the desired frame.
-	for ; start > 0; start-- {
+	var i int
+	for i = 0; i < start; i++ {
 		it.Next()
 	}
 
+	next := -1
 	frames := make([]Stackframe, 0, depth+1)
-	hasMore := false
 	for it.Next() {
-		frames = it.appendInlineCalls(frames, it.Frame())
-		skip = append(skip, len(frames))
 		if len(frames) >= depth+1 {
-			hasMore = it.Next()
+			next = i
 			break
 		}
+		frames = it.appendInlineCalls(frames, it.Frame())
+		i++
 	}
 	if err := it.Err(); err != nil {
 		if len(frames) == 0 {
-			return nil, nil, false, err
+			return nil, -1, err
 		}
 		frames = append(frames, Stackframe{Err: err})
 	}
-	return frames, skip, hasMore, nil
+	return frames, next, nil
 }
 
 func (it *stackIterator) appendInlineCalls(frames []Stackframe, frame Stackframe) []Stackframe {

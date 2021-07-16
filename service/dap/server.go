@@ -103,10 +103,7 @@ type Server struct {
 	stackFrameHandles *handlesMap
 	// stackFrameHandles maps frames of each goroutine to unique ids across all goroutines.
 	// Reset at every stop.
-	stackFrameIndex map[int][]int
-	// stackFrameHandles maps frames of each goroutine to unique ids across all goroutines.
-	// Reset at every stop.
-	stackHasMore map[int]bool
+	nextStackFrame map[int]map[int]int
 	// variableHandles maps compound variables to unique references within their stack frame.
 	// Reset at every stop.
 	// See also comment for convertVariable.
@@ -212,12 +209,10 @@ func NewServer(config *service.Config) *Server {
 		stopTriggered:     make(chan struct{}),
 		log:               logger,
 		stackFrameHandles: newHandlesMap(),
-		stackFrameIndex:   make(map[int][]int),
-		stackHasMore:      make(map[int]bool),
-
-		variableHandles: newVariablesHandlesMap(),
-		args:            defaultArgs,
-		exceptionErr:    nil,
+		nextStackFrame:    make(map[int]map[int]int),
+		variableHandles:   newVariablesHandlesMap(),
+		args:              defaultArgs,
+		exceptionErr:      nil,
 	}
 }
 
@@ -1580,8 +1575,8 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 		return
 	}
 
-	if hasMore && request.Arguments.Levels > 0 {
-		totalFrames += s.args.stackTraceDepth
+	if hasMore {
+		totalFrames += 20
 	}
 	response := &dap.StackTraceResponse{
 		Response: *newResponse(request.Request),
@@ -1591,26 +1586,48 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 }
 
 func (s *Server) loadFrames(goroutineID int, start, levels int) ([]dap.StackFrame, int, bool, error) {
-	skip, numSkipped := findStart(s.stackFrameIndex[goroutineID], start)
-	loadLevels := (start + levels) - numSkipped
+	startFrameIndex := start
+	loadLevels := levels
+	var startLoad int
+	var nextFound bool
+	if nMap, ok := s.nextStackFrame[goroutineID]; ok {
+		if st, ok := nMap[start]; ok {
+			nextFound = true
+			startLoad = st
+		}
+	} else {
+		s.nextStackFrame[goroutineID] = make(map[int]int)
+	}
 
-	frames, newSkip, hasMore, err := s.debugger.StacktraceSkip(goroutineID, skip, loadLevels, 0)
+	if !nextFound {
+		startFrameIndex = 0
+		loadLevels += start
+	}
+
+	frames, next, err := s.debugger.Stackframes(goroutineID, startLoad, loadLevels-1, 0)
 	if err != nil {
 		return nil, 0, false, err
 	}
 
-	// Convert frames to DAP stack frames.
-	frames = frames[(start)-numSkipped:]
-	frames = frames[:min(levels, len(frames))]
-	stackFrames := s.convertStackframeToDap(goroutineID, start, frames)
-
 	// Save the information gathered about skipping stack frames.
-	s.stackFrameIndex[goroutineID], s.stackHasMore[goroutineID] = mergeFrameLists(skip, s.stackFrameIndex[goroutineID], newSkip, s.stackHasMore[goroutineID], hasMore)
-	totalFrames := s.stackFrameIndex[goroutineID][len(s.stackFrameIndex[goroutineID])-1]
-	return stackFrames, totalFrames, s.stackHasMore[goroutineID], nil
+	totalFrames := startFrameIndex + len(frames)
+	if next >= 0 {
+		s.nextStackFrame[goroutineID][totalFrames] = next
+	}
+
+	if (start - startFrameIndex) < len(frames) {
+		frames = frames[(start - startFrameIndex):]
+	} else {
+		frames = frames[:0]
+	}
+
+	// Convert frames to DAP stack frames.
+	stackFrames := s.convertStackframeToDap(goroutineID, start, frames)
+	return stackFrames, totalFrames, next >= 0, nil
 }
 
 func (s *Server) convertStackframeToDap(goroutineID int, start int, frames []proc.Stackframe) []dap.StackFrame {
+	// Determine if the goroutine is a system goroutine.
 	isSystemGoroutine := true
 	if g, _ := s.debugger.FindGoroutine(goroutineID); g != nil {
 		isSystemGoroutine = g.System(s.debugger.Target())
@@ -1633,32 +1650,6 @@ func (s *Server) convertStackframeToDap(goroutineID int, start int, frames []pro
 		}
 	}
 	return stackFrames
-}
-
-func mergeFrameLists(skipped int, oldTotals, newTotals []int, hadMore, hasMore bool) ([]int, bool) {
-	var add int
-	if skipped > 0 && len(oldTotals) > 0 {
-		add = oldTotals[skipped-1]
-	}
-	for i, t := range newTotals {
-		if skipped+i < len(oldTotals) {
-			continue
-		}
-		oldTotals = append(oldTotals, add+t)
-		hadMore = hasMore
-	}
-	return oldTotals, hadMore
-}
-
-func findStart(framesPerStep []int, start int) (int, int) {
-	var skip, alreadyFound int
-	for i, total := range framesPerStep {
-		if start < total {
-			break
-		}
-		skip, alreadyFound = i+1, total
-	}
-	return skip, alreadyFound
 }
 
 // onScopesRequest handles 'scopes' requests.
@@ -2742,11 +2733,8 @@ Unable to propagate EXC_BAD_ACCESS signal to target process and panic (see https
 
 func (s *Server) resetHandlesForStoppedEvent() {
 	s.stackFrameHandles.reset()
-	for sf := range s.stackFrameIndex {
-		delete(s.stackFrameIndex, sf)
-	}
-	for k := range s.stackHasMore {
-		delete(s.stackHasMore, k)
+	for k := range s.nextStackFrame {
+		delete(s.nextStackFrame, k)
 	}
 	s.variableHandles.reset()
 	s.exceptionErr = nil
