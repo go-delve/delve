@@ -47,7 +47,7 @@ val targets = arrayOf(
         "linux/arm64/tip",
 
         "windows/amd64/1.16",
-        "windows/amd64/1.17"
+        "windows/amd64/1.17",
         "windows/amd64/tip",
 
         "mac/amd64/1.16",
