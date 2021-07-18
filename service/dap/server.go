@@ -952,14 +952,32 @@ func (s *Server) stopNoDebugProcess() {
 	s.noDebugProcess = nil
 }
 
-// TODO(polina): support "remote" mode
-func isValidLaunchMode(launchMode interface{}) bool {
-	switch launchMode {
+// Launch debug sessions support the following modes:
+// -- [DEFAULT] "debug" - builds and launches debugger for specified program (similar to 'dlv debug')
+//      Required args: program
+//      Optional args with default: output, cwd, noDebug
+//      Optional args: buildFlags, args
+// -- "test" - builds and launches debugger for specified test (similar to 'dlv test')
+//      same args as above
+// -- "exec" - launches debugger for precompiled binary (similar to 'dlv exec')
+//      Required args: program
+//      Optional args with default: cwd, noDebug
+//      Optional args: args
+// TODO(pull/2367): add "replay", "core"
+func isValidLaunchMode(mode interface{}) bool {
+	switch mode {
 	case "exec", "debug", "test":
 		return true
 	}
-
 	return false
+}
+
+// Attach debug sessions support the following modes:
+// -- [DEFAULT] "local" -- attaches debugger to a local running process
+//      Required args: processId
+// TODO(polina): support "remote" mode
+func isValidAttachMode(mode interface{}) bool {
+	return mode == "local"
 }
 
 // onDisconnectRequest handles the DisconnectRequest. Per the DAP spec,
@@ -1436,6 +1454,14 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 	if !ok || mode == "" {
 		mode = "local"
 	}
+	if !isValidAttachMode(mode) {
+		// TODO(polina): support 'remote' mode that expects a non-nil debugger
+		s.sendErrorResponse(request.Request,
+			FailedToAttach, "Failed to attach",
+			fmt.Sprintf("Unsupported 'mode' value %q in debug configuration", mode))
+		return
+	}
+
 	if mode == "local" {
 		pid, ok := request.Arguments["processId"].(float64)
 		if !ok || pid == 0 {
@@ -1473,12 +1499,6 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
 			return
 		}
-	} else {
-		// TODO(polina): support 'remote' mode with 'host' and 'port'
-		s.sendErrorResponse(request.Request,
-			FailedToAttach, "Failed to attach",
-			fmt.Sprintf("Unsupported 'mode' value %q in debug configuration", mode))
-		return
 	}
 	// Notify the client that the debugger is ready to start accepting
 	// configuration requests for setting breakpoints, etc. The client
