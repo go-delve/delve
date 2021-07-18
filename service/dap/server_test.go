@@ -22,7 +22,6 @@ import (
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/dap/daptest"
-	"github.com/go-delve/delve/service/debugger"
 	"github.com/google/go-dap"
 )
 
@@ -73,9 +72,6 @@ func startDapServer(t *testing.T) *daptest.Client {
 	server := NewServer(&service.Config{
 		Listener:       listener,
 		DisconnectChan: disconnectChan,
-		Debugger: debugger.Config{
-			Backend: "default",
-		},
 	})
 	server.Run()
 	// Give server time to start listening for clients
@@ -284,7 +280,7 @@ func TestAttachStopOnEntry(t *testing.T) {
 
 		// 2 >> attach, << initialized, << attach
 		client.AttachRequest(
-			map[string]interface{}{"mode": "local", "processId": cmd.Process.Pid, "stopOnEntry": true})
+			map[string]interface{}{"mode": "local", "processId": cmd.Process.Pid, "stopOnEntry": true, "backend": "default"})
 		initEvent := client.ExpectInitializedEvent(t)
 		if initEvent.Seq != 0 {
 			t.Errorf("\ngot %#v\nwant Seq=0", initEvent)
@@ -869,7 +865,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 			// Launch
 			func() {
 				client.LaunchRequestWithArgs(map[string]interface{}{
-					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true, "backend": "default",
 				})
 			},
 			// Breakpoints are set within the program
@@ -4683,6 +4679,18 @@ func TestBadLaunchRequests(t *testing.T) {
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: 'buildFlags' attribute '123' in debug configuration is not a string.")
 
+		// Bad "backend"
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "backend": 123})
+		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+			"Failed to launch: 'backend' attribute '123' in debug configuration is not a string.")
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "backend": "foo"})
+		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+			"Failed to launch: could not launch process: unknown backend \"foo\"")
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "backend": ""})
+		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+			"Failed to launch: could not launch process: unknown backend \"\"")
+
+		// Bad "substitutePath"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": 123})
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: 'substitutePath' attribute '123' in debug configuration is not a []{'from': string, 'to': string}")
@@ -4698,6 +4706,8 @@ func TestBadLaunchRequests(t *testing.T) {
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{map[string]interface{}{"from": "path1", "to": 123}}})
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: 'substitutePath' attribute '[map[from:path1 to:123]]' in debug configuration is not a []{'from': string, 'to': string}")
+
+		// Bad "cwd"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "cwd": 123})
 		checkFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
 			"Failed to launch: 'cwd' attribute '123' in debug configuration is not a string.")
@@ -4736,7 +4746,7 @@ func TestBadLaunchRequests(t *testing.T) {
 		}
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t), "Failed to launch: Build error: Check the debug console for details.")
 
-		// Bad "wd".
+		// Bad "cwd"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": false, "cwd": "dir/invalid"})
 		checkFailedToLaunch(client.ExpectErrorResponse(t)) // invalid directory, the error message is system-dependent.
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "cwd": "dir/invalid"})
@@ -4838,7 +4848,18 @@ func TestBadAttachRequest(t *testing.T) {
 			t.Errorf("Id got %d, want 8888", er.Body.Error.Id)
 		}
 
-		// We failed to launch the program. Make sure shutdown still works.
+		// Bad "backend"
+		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 1, "backend": 123})
+		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
+			"Failed to attach: 'backend' attribute '123' in debug configuration is not a string.")
+		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 1, "backend": "foo"})
+		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
+			"Failed to attach: could not attach to pid 1: unknown backend \"foo\"")
+		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 1, "backend": ""})
+		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
+			"Failed to attach: could not attach to pid 1: unknown backend \"\"")
+
+		// We failed to attach to the program. Make sure shutdown still works.
 		client.DisconnectRequest()
 		dresp := client.ExpectDisconnectResponse(t)
 		if dresp.RequestSeq != seqCnt {

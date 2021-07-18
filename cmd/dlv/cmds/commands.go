@@ -422,6 +422,9 @@ func dapCmd(cmd *cobra.Command, args []string) {
 		if continueOnStart {
 			fmt.Fprintf(os.Stderr, "Warning: continue ignored with dap; specify via launch/attach request instead\n")
 		}
+		if backend != "default" {
+			fmt.Fprintf(os.Stderr, "Warning: backend ignored with dap; specify via launch/attach request instead\n")
+		}
 		if buildFlags != "" {
 			fmt.Fprintf(os.Stderr, "Warning: build flags ignored with dap; specify via launch/attach request instead\n")
 		}
