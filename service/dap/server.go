@@ -1014,14 +1014,8 @@ func (s *Server) stopNoDebugProcess() {
 }
 
 // Launch debug sessions support the following modes:
-// TODO(polina): document behavior for remaining modes
-/* - replay: skips program build and sets the Debugger.CoreFile property based on the
-		coreFilePath launch property, using the default debug backend
-   - core: skips program build and sets the Debugger.CoreFile property based on the
-		traceDirPath launch property, setting the debug backend to rr */
-
-
-	case "exec", "debug", "test", "replay", "core":
+// -- [DEFAULT] "debug" - builds and launches debugger for specified program (similar to 'dlv debug')
+//      Required args: program
 //      Optional args with default: output, cwd, noDebug
 //      Optional args: buildFlags, args
 // -- "test" - builds and launches debugger for specified test (similar to 'dlv test')
@@ -1030,10 +1024,15 @@ func (s *Server) stopNoDebugProcess() {
 //      Required args: program
 //      Optional args with default: cwd, noDebug
 //      Optional args: args
-// TODO(pull/2367): add "replay", "core"
+// -- replay: skips program build and sets the Debugger.CoreFile property based on the
+//		Required args: coreFilePath
+//      Optional args: program, args
+// -- core: skips program build and sets the Debugger.CoreFile property based on the
+//      Required args: program, traceDirPath
+//      Optional args: args
 func isValidLaunchMode(mode interface{}) bool {
 	switch mode {
-
+	case "exec", "debug", "test", "replay", "core":
 		return true
 	}
 
@@ -1567,10 +1566,6 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
 			return
 		}
-
-
-
-
 	}
 	// Notify the client that the debugger is ready to start accepting
 	// configuration requests for setting breakpoints, etc. The client
@@ -2663,8 +2658,6 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 		case proc.FatalThrow:
 			body.ExceptionId = "fatal error"
 			body.Description, err = s.throwReason(goroutineID)
-
-
 			if err != nil {
 				body.Description = fmt.Sprintf("Error getting throw reason: %s", err.Error())
 				// This is not currently working for Go 1.16.
@@ -2673,17 +2666,11 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 					body.Description = "Throw reason unavailable, see https://github.com/golang/go/issues/46425"
 				}
 			}
-
-
-
-
 		case proc.UnrecoveredPanic:
 			body.ExceptionId = "panic"
 			// Attempt to get the value of the panic message.
 			body.Description, err = s.panicReason(goroutineID)
 			if err != nil {
-
-
 				body.Description = fmt.Sprintf("Error getting panic message: %s", err.Error())
 			}
 		}
@@ -2804,7 +2791,6 @@ func (s *Server) sendNotYetImplementedErrorResponse(request dap.Request) {
 	s.sendErrorResponse(request, NotYetImplemented, "Not yet implemented",
 		fmt.Sprintf("cannot process %q request", request.Command))
 }
-
 
 func newResponse(request dap.Request) *dap.Response {
 	return &dap.Response{
