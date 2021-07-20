@@ -81,13 +81,16 @@ func configureList(t *Term) error {
 			continue
 		}
 
-		if field.Kind() == reflect.Ptr {
+		switch field.Kind() {
+		case reflect.Ptr:
 			if !field.IsNil() {
 				fmt.Fprintf(w, "%s\t%v\n", fieldName, field.Elem())
 			} else {
 				fmt.Fprintf(w, "%s\t<not defined>\n", fieldName)
 			}
-		} else {
+		case reflect.String:
+			fmt.Fprintf(w, "%s\t%q\n", fieldName, field)
+		default:
 			fmt.Fprintf(w, "%s\t%v\n", fieldName, field)
 		}
 	}
