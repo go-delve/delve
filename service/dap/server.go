@@ -927,7 +927,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.config.Debugger.WorkingDir = wdParsed
 	}
 
-
 	s.log.Debugf("running program in %s\n", s.config.Debugger.WorkingDir)
 	if noDebug, ok := request.Arguments["noDebug"].(bool); ok && noDebug {
 		s.mu.Lock()
@@ -975,11 +974,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	// Notify the client that the debugger is ready to start accepting
 	// configuration requests for setting breakpoints, etc. The client
 	// will end the configuration sequence with 'configurationDone'.
-
 	s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
 	s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
 }
-
 
 // startNoDebugProcess is called from onLaunchRequest (run goroutine) and
 // requires holding mu lock.
@@ -1035,7 +1032,6 @@ func isValidLaunchMode(mode interface{}) bool {
 	case "exec", "debug", "test", "replay", "core":
 		return true
 	}
-
 	return false
 }
 
@@ -2477,7 +2473,7 @@ func (s *Server) onRestartRequest(request *dap.RestartRequest) {
 // onStepBackRequest handles 'stepBack' request.
 // This is an optional request enabled by capability ‘supportsStepBackRequest’.
 func (s *Server) onStepBackRequest(request *dap.StepBackRequest, asyncSetupDone chan struct{}) {
-	s.send(&dap.StepBackResponse{Response: *newResponse(request.Request)})
+	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepBackResponse{Response: *newResponse(request.Request)})
 	s.doStepCommand(api.ReverseNext, request.Arguments.ThreadId, asyncSetupDone)
 }
 
