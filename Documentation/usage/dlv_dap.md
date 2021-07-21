@@ -12,6 +12,8 @@ to be launched or process to be attached to. The following modes are supported:
 - launch + exec (executes precompiled binary, like 'dlv exec')
 - launch + debug (builds and launches, like 'dlv debug')
 - launch + test (builds and tests, like 'dlv test')
+- launch + replay (replays an rr trace, like 'dlv replay')
+- launch + core (replays a core dump file, like 'dlv core')
 - attach + local (attaches to a running process, like 'dlv attach')
 The server does not yet accept multiple client connections (--accept-multiclient).
 While --continue is not supported, stopOnEntry launch/attach attribute can be used to control if
