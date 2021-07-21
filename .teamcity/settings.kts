@@ -68,6 +68,9 @@ project {
         }))
     }
     buildType(AggregatorBuild(tests))
+    params {
+        param("teamcity.ui.settings.readOnly", "true")
+    }
 }
 
 class AggregatorBuild(tests: Collection<BuildType>) : BuildType({
