@@ -2265,7 +2265,7 @@ func (s *Server) doCall(goid, frame int, expr string) (*api.DebuggerState, []*pr
 		UnsafeCall:           false,
 		GoroutineID:          goid,
 	}, nil)
-	if processExited(s.debugger.StopReason(), state, err) {
+	if processExited(state, err) {
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
 		s.send(e)
 		return nil, nil, errors.New("terminated")
@@ -2693,7 +2693,7 @@ func (s *Server) resetHandlesForStoppedEvent() {
 	s.exceptionErr = nil
 }
 
-func processExited(stopReason proc.StopReason, state *api.DebuggerState, err error) bool {
+func processExited(state *api.DebuggerState, err error) bool {
 	_, isexited := err.(proc.ErrProcessExited)
 	return isexited || err == nil && state.Exited
 }
@@ -2710,12 +2710,12 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 	// So we should always close it ourselves just in case.
 	defer s.asyncCommandDone(asyncSetupDone)
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
-	stopReason := s.debugger.StopReason()
-	if processExited(stopReason, state, err) {
+	if processExited(state, err) {
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		return
 	}
 
+	stopReason := s.debugger.StopReason()
 	file, line := "?", -1
 	if state != nil && state.CurrentThread != nil {
 		file, line = state.CurrentThread.File, state.CurrentThread.Line
