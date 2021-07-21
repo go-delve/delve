@@ -191,6 +191,8 @@ const (
 	// what is presented. A common use case of a call injection is to
 	// stringify complex data conveniently.
 	maxStringLenInCallRetVars = 1 << 10 // 1024
+	// Max number of goroutines that we will return.
+	maxGoroutines = 1 << 10
 )
 
 // NewServer creates a new DAP Server. It takes an opened Listener
@@ -1456,7 +1458,7 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 		return
 	}
 
-	gs, _, err := s.debugger.Goroutines(0, 0)
+	gs, next, err := s.debugger.Goroutines(0, maxGoroutines)
 	if err != nil {
 		switch err.(type) {
 		case proc.ErrProcessExited:
@@ -1467,6 +1469,10 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 			s.sendErrorResponse(request.Request, UnableToDisplayThreads, "Unable to display threads", err.Error())
 		}
 		return
+	}
+
+	if next >= 0 {
+		s.logToConsole(fmt.Sprintf("too many goroutines, only loaded %d", len(gs)))
 	}
 
 	threads := make([]dap.Thread, len(gs))
