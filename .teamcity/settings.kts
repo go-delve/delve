@@ -98,7 +98,7 @@ class AggregatorBuild(tests: Collection<BuildType>) : BuildType({
             vcsRootExtId = "${DslContext.settingsRoot.id}"
             provider = github {
                 authType = token {
-                    token = "credentialsJSON:a7e7526c-7195-4790-bbb6-9fb4692f92d0"
+                    token = "credentialsJSON:1312c856-0e13-4b04-8c40-ac26d4a5f700"
                 }
                 filterAuthorRole = PullRequests.GitHubRoleFilter.EVERYBODY
             }
@@ -237,7 +237,7 @@ class TestBuild(val os: String, val arch: String, version: String, buildId: Abso
             vcsRootExtId = "${DslContext.settingsRoot.id}"
             provider = github {
                 authType = token {
-                    token = "credentialsJSON:a7e7526c-7195-4790-bbb6-9fb4692f92d0"
+                    token = "credentialsJSON:1312c856-0e13-4b04-8c40-ac26d4a5f700"
                 }
                 filterAuthorRole = PullRequests.GitHubRoleFilter.EVERYBODY
             }
