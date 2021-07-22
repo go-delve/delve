@@ -26,7 +26,7 @@ dlv dap
 ### Options
 
 ```
-      --foreground   Place process in the foreground and forward signals
+      --foreground   Place process in the foreground and forward signals (default true)
 ```
 
 ### Options inherited from parent commands
