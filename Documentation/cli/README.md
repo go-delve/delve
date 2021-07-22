@@ -475,7 +475,7 @@ To convert a breakpoint into a tracepoint use:
 
 The command 'on <bp> cond <cond-arguments>' is equivalent to 'cond <bp> <cond-arguments>'.
 
-The command 'on x -edit' can be used to edit the list of commands executes when the breakpoint is hit.
+The command 'on x -edit' can be used to edit the list of commands executed when the breakpoint is hit.
 
 
 ## print

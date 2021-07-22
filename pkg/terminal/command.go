@@ -437,7 +437,7 @@ To convert a breakpoint into a tracepoint use:
 
 The command 'on <bp> cond <cond-arguments>' is equivalent to 'cond <bp> <cond-arguments>'.
 
-The command 'on x -edit' can be used to edit the list of commands executes when the breakpoint is hit.`},
+The command 'on x -edit' can be used to edit the list of commands executed when the breakpoint is hit.`},
 		{aliases: []string{"condition", "cond"}, group: breakCmds, cmdFn: conditionCmd, allowedPrefixes: onPrefix, helpMsg: `Set breakpoint condition.
 
 	condition <breakpoint name or id> <boolean expression>.
@@ -1735,16 +1735,16 @@ func formatBreakpointAttrs(prefix string, bp *api.Breakpoint, includeTrace bool)
 	}
 	if bp.LoadArgs != nil {
 		if *(bp.LoadArgs) == longLoadConfig {
-			attrs = append(attrs, "%sargs -v", prefix)
+			attrs = append(attrs, fmt.Sprintf("%sargs -v", prefix))
 		} else {
-			attrs = append(attrs, "%sargs", prefix)
+			attrs = append(attrs, fmt.Sprintf("%sargs", prefix))
 		}
 	}
 	if bp.LoadLocals != nil {
 		if *(bp.LoadLocals) == longLoadConfig {
-			attrs = append(attrs, "%slocals -v", prefix)
+			attrs = append(attrs, fmt.Sprintf("%slocals -v", prefix))
 		} else {
-			attrs = append(attrs, "%slocals", prefix)
+			attrs = append(attrs, fmt.Sprintf("%slocals", prefix))
 		}
 	}
 	for i := range bp.Variables {
