@@ -510,6 +510,7 @@ func TestClientServer_clearBreakpoint(t *testing.T) {
 func TestClientServer_toggleBreakpoint(t *testing.T) {
 	withTestClient2("testtoggle", t, func(c service.Client) {
 		toggle := func(bp *api.Breakpoint) {
+			t.Helper()
 			dbp, err := c.ToggleBreakpoint(bp.ID)
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)
@@ -1891,17 +1892,9 @@ func TestAcceptMulticlient(t *testing.T) {
 	<-serverDone
 }
 
-func mustHaveDebugCalls(t *testing.T, c service.Client) {
-	locs, err := c.FindLocation(api.EvalScope{GoroutineID: -1}, "runtime.debugCallV1", false, nil)
-	if len(locs) == 0 || err != nil {
-		t.Skip("function calls not supported on this version of go")
-	}
-}
-
 func TestClientServerFunctionCall(t *testing.T) {
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
-		mustHaveDebugCalls(t, c)
 		c.SetReturnValuesLoadConfig(&normalLoadConfig)
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
@@ -1935,7 +1928,6 @@ func TestClientServerFunctionCallBadPos(t *testing.T) {
 		t.Skip("this is a safe point for Go 1.12")
 	}
 	withTestClient2("fncall", t, func(c service.Client) {
-		mustHaveDebugCalls(t, c)
 		loc, err := c.FindLocation(api.EvalScope{GoroutineID: -1}, "fmt/print.go:649", false, nil)
 		assertNoError(err, t, "could not find location")
 
@@ -1959,7 +1951,6 @@ func TestClientServerFunctionCallBadPos(t *testing.T) {
 func TestClientServerFunctionCallPanic(t *testing.T) {
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
-		mustHaveDebugCalls(t, c)
 		c.SetReturnValuesLoadConfig(&normalLoadConfig)
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
@@ -1988,7 +1979,6 @@ func TestClientServerFunctionCallStacktrace(t *testing.T) {
 	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
-		mustHaveDebugCalls(t, c)
 		c.SetReturnValuesLoadConfig(&api.LoadConfig{FollowPointers: false, MaxStringLen: 2048})
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
@@ -2414,6 +2404,41 @@ func TestGoroutinesGrouping(t *testing.T) {
 		assertNoError(err, t, "ListGoroutinesWithFilter (filter unnamed)")
 		if len(gs) != unnamedCount {
 			t.Errorf("wrong number of goroutines returned by filter: %d (expected %d)\n", len(gs), unnamedCount)
+		}
+	})
+}
+
+func TestLongStringArg(t *testing.T) {
+	// Test the ability to load more elements of a string argument, this could
+	// be broken if registerized variables are not handled correctly.
+	withTestClient2("morestringarg", t, func(c service.Client) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.f"})
+		assertNoError(err, t, "CreateBreakpoint")
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue")
+
+		test := func(name, val1, val2 string) uint64 {
+			var1, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, name, normalLoadConfig)
+			assertNoError(err, t, "EvalVariable")
+			t.Logf("%#v\n", var1)
+			if var1.Value != val1 {
+				t.Fatalf("wrong value for variable: %q", var1.Value)
+			}
+			var2, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, fmt.Sprintf("(*(*%q)(%#x))[64:]", var1.Type, var1.Addr), normalLoadConfig)
+			assertNoError(err, t, "EvalVariable")
+			t.Logf("%#v\n", var2)
+			if var2.Value != val2 {
+				t.Fatalf("wrong value for variable: %q", var2.Value)
+
+			}
+			return var1.Addr
+		}
+
+		saddr := test("s", "very long string 01234567890123456789012345678901234567890123456", "7890123456789012345678901234567890123456789X")
+		test("q", "very long string B 012345678901234567890123456789012345678901234", "567890123456789012345678901234567890123456789X2")
+		saddr2 := test("s", "very long string 01234567890123456789012345678901234567890123456", "7890123456789012345678901234567890123456789X")
+		if saddr != saddr2 {
+			t.Fatalf("address of s changed (%#x %#x)", saddr, saddr2)
 		}
 	})
 }

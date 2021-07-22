@@ -519,11 +519,11 @@ func (it *stackIterator) loadG0SchedSP() {
 
 // Defer represents one deferred call
 type Defer struct {
-	DeferredPC uint64 // Value of field _defer.fn.fn, the deferred function
-	DeferPC    uint64 // PC address of instruction that added this defer
-	SP         uint64 // Value of SP register when this function was deferred (this field gets adjusted when the stack is moved to match the new stack space)
-	link       *Defer // Next deferred function
-	argSz      int64
+	DwrapPC uint64 // Value of field _defer.fn.fn, the deferred function or a wrapper to it in Go 1.17 or later
+	DeferPC uint64 // PC address of instruction that added this defer
+	SP      uint64 // Value of SP register when this function was deferred (this field gets adjusted when the stack is moved to match the new stack space)
+	link    *Defer // Next deferred function
+	argSz   int64
 
 	variable   *Variable
 	Unreadable error
@@ -584,7 +584,7 @@ func (d *Defer) load() {
 	if fnvar.Addr != 0 {
 		fnvar = fnvar.loadFieldNamed("fn")
 		if fnvar.Unreadable == nil {
-			d.DeferredPC, _ = constant.Uint64Val(fnvar.Value)
+			d.DwrapPC, _ = constant.Uint64Val(fnvar.Value)
 		}
 	}
 
@@ -620,18 +620,18 @@ func (d *Defer) Next() *Defer {
 // EvalScope returns an EvalScope relative to the argument frame of this deferred call.
 // The argument frame of a deferred call is stored in memory immediately
 // after the deferred header.
-func (d *Defer) EvalScope(thread Thread) (*EvalScope, error) {
-	scope, err := GoroutineScope(thread)
+func (d *Defer) EvalScope(t *Target, thread Thread) (*EvalScope, error) {
+	scope, err := GoroutineScope(t, thread)
 	if err != nil {
 		return nil, fmt.Errorf("could not get scope: %v", err)
 	}
 
 	bi := thread.BinInfo()
-	scope.PC = d.DeferredPC
-	scope.File, scope.Line, scope.Fn = bi.PCToLine(d.DeferredPC)
+	scope.PC = d.DwrapPC
+	scope.File, scope.Line, scope.Fn = bi.PCToLine(d.DwrapPC)
 
 	if scope.Fn == nil {
-		return nil, fmt.Errorf("could not find function at %#x", d.DeferredPC)
+		return nil, fmt.Errorf("could not find function at %#x", d.DwrapPC)
 	}
 
 	// The arguments are stored immediately after the defer header struct, i.e.
@@ -663,4 +663,17 @@ func (d *Defer) EvalScope(thread Thread) (*EvalScope, error) {
 	scope.Mem = cacheMemory(scope.Mem, uint64(scope.Regs.CFA), int(d.argSz))
 
 	return scope, nil
+}
+
+// DeferredFunc returns the deferred function, on Go 1.17 and later unwraps
+// any defer wrapper.
+func (d *Defer) DeferredFunc(p *Target) (file string, line int, fn *Function) {
+	bi := p.BinInfo()
+	fn = bi.PCToFunc(d.DwrapPC)
+	fn = p.dwrapUnwrap(fn)
+	if fn == nil {
+		return "", 0, nil
+	}
+	file, line = fn.cu.lineInfo.PCToLine(fn.Entry, fn.Entry)
+	return file, line, fn
 }

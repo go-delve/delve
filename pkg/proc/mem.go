@@ -76,11 +76,6 @@ func cacheMemory(mem MemoryReadWriter, addr uint64, size int) MemoryReadWriter {
 	return &memCache{false, addr, make([]byte, size), mem}
 }
 
-// fakeAddress used by extractVarInfoFromEntry for variables that do not
-// have a memory address, we can't use 0 because a lot of code (likely
-// including client code) assumes that addr == 0 is nil
-const fakeAddress = 0xbeef0000
-
 // compositeMemory represents a chunk of memory that is stored in CPU
 // registers or non-contiguously.
 //
@@ -89,6 +84,7 @@ const fakeAddress = 0xbeef0000
 // with some fields stored into CPU registers and other fields stored in
 // memory.
 type compositeMemory struct {
+	base    uint64 // base address for this composite memory
 	realmem MemoryReadWriter
 	arch    *Arch
 	regs    op.DwarfRegisters
@@ -133,7 +129,7 @@ func newCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters
 }
 
 func (mem *compositeMemory) ReadMemory(data []byte, addr uint64) (int, error) {
-	addr -= fakeAddress
+	addr -= mem.base
 	if addr >= uint64(len(mem.data)) || addr+uint64(len(data)) > uint64(len(mem.data)) {
 		return 0, errors.New("read out of bounds")
 	}
@@ -142,7 +138,7 @@ func (mem *compositeMemory) ReadMemory(data []byte, addr uint64) (int, error) {
 }
 
 func (mem *compositeMemory) WriteMemory(addr uint64, data []byte) (int, error) {
-	addr -= fakeAddress
+	addr -= mem.base
 	if addr >= uint64(len(mem.data)) || addr+uint64(len(data)) > uint64(len(mem.data)) {
 		return 0, errors.New("write out of bounds")
 	}

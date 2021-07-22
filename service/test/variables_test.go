@@ -86,13 +86,13 @@ func findFirstNonRuntimeFrame(p *proc.Target) (proc.Stackframe, error) {
 
 func evalScope(p *proc.Target) (*proc.EvalScope, error) {
 	if testBackend != "rr" {
-		return proc.GoroutineScope(p.CurrentThread())
+		return proc.GoroutineScope(p, p.CurrentThread())
 	}
 	frame, err := findFirstNonRuntimeFrame(p)
 	if err != nil {
 		return nil, err
 	}
-	return proc.FrameToScope(p.BinInfo(), p.Memory(), nil, frame), nil
+	return proc.FrameToScope(p, p.BinInfo(), p.Memory(), nil, frame), nil
 }
 
 func evalVariable(p *proc.Target, symbol string, cfg proc.LoadConfig) (*proc.Variable, error) {
@@ -111,7 +111,7 @@ func (tc *varTest) alternateVarTest() varTest {
 }
 
 func setVariable(p *proc.Target, symbol, value string) error {
-	scope, err := proc.GoroutineScope(p.CurrentThread())
+	scope, err := proc.GoroutineScope(p, p.CurrentThread())
 	if err != nil {
 		return err
 	}
@@ -471,10 +471,10 @@ func TestLocalVariables(t *testing.T) {
 				var frame proc.Stackframe
 				frame, err = findFirstNonRuntimeFrame(p)
 				if err == nil {
-					scope = proc.FrameToScope(p.BinInfo(), p.Memory(), nil, frame)
+					scope = proc.FrameToScope(p, p.BinInfo(), p.Memory(), nil, frame)
 				}
 			} else {
-				scope, err = proc.GoroutineScope(p.CurrentThread())
+				scope, err = proc.GoroutineScope(p, p.CurrentThread())
 			}
 
 			assertNoError(err, t, "scope")
@@ -1152,7 +1152,7 @@ func TestIssue1075(t *testing.T) {
 		setFunctionBreakpoint(p, t, "net/http.(*Client).Do")
 		assertNoError(p.Continue(), t, "Continue()")
 		for i := 0; i < 10; i++ {
-			scope, err := proc.GoroutineScope(p.CurrentThread())
+			scope, err := proc.GoroutineScope(p, p.CurrentThread())
 			assertNoError(err, t, fmt.Sprintf("GoroutineScope (%d)", i))
 			vars, err := scope.LocalVariables(pnormalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("LocalVariables (%d)", i))
@@ -1283,12 +1283,12 @@ func TestCallFunction(t *testing.T) {
 		{`strings.Join(s1, comma)`, nil, errors.New(`error evaluating "s1" as argument elems in function strings.Join: could not find symbol value for s1`)},
 	}
 
-	withTestProcess("fncall", t, func(p *proc.Target, fixture protest.Fixture) {
-		_, err := proc.FindFunctionLocation(p, "runtime.debugCallV1", 0)
-		if err != nil {
-			t.Skip("function calls not supported on this version of go")
-		}
+	var testcases117 = []testCaseCallFunction{
+		{`regabistacktest("one", "two", "three", "four", "five", 4)`, []string{`:string:"onetwo"`, `:string:"twothree"`, `:string:"threefour"`, `:string:"fourfive"`, `:string:"fiveone"`, ":uint8:8"}, nil},
+		{`regabistacktest2(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)`, []string{":int:3", ":int:5", ":int:7", ":int:9", ":int:11", ":int:13", ":int:15", ":int:17", ":int:19", ":int:11"}, nil},
+	}
 
+	withTestProcessArgs("fncall", t, ".", nil, protest.AllNonOptimized, func(p *proc.Target, fixture protest.Fixture) {
 		testCallFunctionSetBreakpoint(t, p, fixture)
 
 		assertNoError(p.Continue(), t, "Continue()")
@@ -1315,6 +1315,12 @@ func TestCallFunction(t *testing.T) {
 
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
 			for _, tc := range testcases114 {
+				testCallFunction(t, p, tc)
+			}
+		}
+
+		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) {
+			for _, tc := range testcases117 {
 				testCallFunction(t, p, tc)
 			}
 		}
@@ -1377,7 +1383,7 @@ func testCallFunction(t *testing.T, p *proc.Target, tc testCaseCallFunction) {
 	}
 
 	if varExpr != "" {
-		scope, err := proc.GoroutineScope(p.CurrentThread())
+		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "GoroutineScope")
 		v, err := scope.EvalExpression(varExpr, pnormalLoadConfig)
 		assertNoError(err, t, fmt.Sprintf("EvalExpression(%s)", varExpr))

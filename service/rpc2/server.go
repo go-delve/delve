@@ -636,7 +636,7 @@ func (s *RPCServer) ListGoroutines(arg ListGoroutinesIn, out *ListGoroutinesOut)
 	gs, out.Groups, out.TooManyGroups = s.debugger.GroupGoroutines(gs, &arg.GoroutineGroupingOptions)
 	s.debugger.LockTarget()
 	defer s.debugger.UnlockTarget()
-	out.Goroutines = api.ConvertGoroutines(gs)
+	out.Goroutines = api.ConvertGoroutines(s.debugger.Target(), gs)
 	out.Nextg = nextg
 	return nil
 }
@@ -838,7 +838,7 @@ func (s *RPCServer) ListDynamicLibraries(in ListDynamicLibrariesIn, out *ListDyn
 	imgs := s.debugger.ListDynamicLibraries()
 	out.List = make([]api.Image, 0, len(imgs))
 	for i := range imgs {
-		out.List[i] = api.ConvertImage(imgs[i])
+		out.List = append(out.List, api.ConvertImage(imgs[i]))
 	}
 	return nil
 }
