@@ -1436,15 +1436,15 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string, sho
 		}
 		return nil
 	}
-	autoContinue := false
+	skipBreakpoints := false
 	for {
 		fmt.Printf("\tbreakpoint hit during %s", op)
-		if !autoContinue {
+		if !skipBreakpoints {
 			fmt.Printf("\n")
 			answer, err := promptAutoContinue(t, op)
 			switch answer {
 			case "f": // finish next
-				autoContinue = true
+				skipBreakpoints = true
 				fallthrough
 			case "c": // continue once
 				fmt.Printf("continuing...\n")
@@ -1476,7 +1476,7 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string, sho
 
 func promptAutoContinue(t *Term, op string) (string, error) {
 	for {
-		answer, err := t.line.Prompt(fmt.Sprintf("[c] continue [s] stop her and cancel %s, [f] finish %s skipping all breakpoints? ", op, op))
+		answer, err := t.line.Prompt(fmt.Sprintf("[c] continue [s] stop here and cancel %s, [f] finish %s skipping all breakpoints? ", op, op))
 		if err != nil {
 			return "", err
 		}
