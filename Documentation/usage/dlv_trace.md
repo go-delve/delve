@@ -4,7 +4,6 @@ Compile and begin tracing program.
 
 ### Synopsis
 
-
 Trace program execution.
 
 The trace sub command will set a tracepoint on every function matching the
@@ -16,13 +15,14 @@ The output of the trace sub command is printed to stderr, so if you would like t
 only see the output of the trace operations you can redirect stdout.
 
 ```
-dlv trace [package] regexp
+dlv trace [package] regexp [flags]
 ```
 
 ### Options
 
 ```
   -e, --exec string     Binary file to exec and trace.
+  -h, --help            help for trace
       --output string   Output path for the binary. (default "debug")
   -p, --pid int         Pid to attach to.
   -s, --stack int       Show stack trace with given depth.
@@ -51,5 +51,6 @@ dlv trace [package] regexp
 ```
 
 ### SEE ALSO
+
 * [dlv](dlv.md)	 - Delve is a debugger for the Go programming language.
 
