@@ -617,7 +617,7 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 		}
 	}
 
-	state.NextInProgress = d.target.Breakpoints().HasInternalBreakpoints()
+	state.NextInProgress = d.target.Breakpoints().HasSteppingBreakpoints()
 
 	if recorded, _ := d.target.Recorded(); recorded {
 		state.When, _ = d.target.When()
@@ -801,7 +801,7 @@ func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
 func (d *Debugger) CancelNext() error {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-	return d.target.ClearInternalBreakpoints()
+	return d.target.ClearSteppingBreakpoints()
 }
 
 func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err error) {
@@ -813,21 +813,24 @@ func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err err
 	bp.Variables = requested.Variables
 	bp.LoadArgs = api.LoadConfigToProc(requested.LoadArgs)
 	bp.LoadLocals = api.LoadConfigToProc(requested.LoadLocals)
-	bp.Cond = nil
-	if requested.Cond != "" {
-		bp.Cond, err = parser.ParseExpr(requested.Cond)
-	}
-	bp.HitCond = nil
-	if requested.HitCond != "" {
-		opTok, val, parseErr := parseHitCondition(requested.HitCond)
-		if err == nil {
-			err = parseErr
+	breaklet := bp.UserBreaklet()
+	if breaklet != nil {
+		breaklet.Cond = nil
+		if requested.Cond != "" {
+			breaklet.Cond, err = parser.ParseExpr(requested.Cond)
 		}
-		if parseErr == nil {
-			bp.HitCond = &struct {
-				Op  token.Token
-				Val int
-			}{opTok, val}
+		breaklet.HitCond = nil
+		if requested.HitCond != "" {
+			opTok, val, parseErr := parseHitCondition(requested.HitCond)
+			if err == nil {
+				err = parseErr
+			}
+			if parseErr == nil {
+				breaklet.HitCond = &struct {
+					Op  token.Token
+					Val int
+				}{opTok, val}
+			}
 		}
 	}
 	return err

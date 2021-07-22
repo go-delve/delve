@@ -1185,7 +1185,7 @@ func (p *gdbProcess) ChangeDirection(dir proc.Direction) error {
 	if p.conn.direction == dir {
 		return nil
 	}
-	if p.Breakpoints().HasInternalBreakpoints() {
+	if p.Breakpoints().HasSteppingBreakpoints() {
 		return ErrDirChange
 	}
 	p.conn.direction = dir

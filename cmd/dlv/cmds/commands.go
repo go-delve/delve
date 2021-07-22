@@ -174,20 +174,23 @@ option to let the process continue or kill it.
 	// 'dap' subcommand.
 	dapCommand := &cobra.Command{
 		Use:   "dap",
-		Short: "[EXPERIMENTAL] Starts a TCP server communicating via Debug Adaptor Protocol (DAP).",
-		Long: `[EXPERIMENTAL] Starts a TCP server communicating via Debug Adaptor Protocol (DAP).
+		Short: "[EXPERIMENTAL] Starts a headless TCP server communicating via Debug Adaptor Protocol (DAP).",
+		Long: `[EXPERIMENTAL] Starts a headless TCP server communicating via Debug Adaptor Protocol (DAP).
 
-The server is headless and requires a DAP client like vscode to connect and request a binary
+The server is always headless and requires a DAP client like vscode to connect and request a binary
 to be launched or process to be attached to. The following modes are supported:
 - launch + exec (executes precompiled binary, like 'dlv exec')
 - launch + debug (builds and launches, like 'dlv debug')
 - launch + test (builds and tests, like 'dlv test')
+- launch + replay (replays an rr trace, like 'dlv replay')
+- launch + core (replays a core dump file, like 'dlv core')
 - attach + local (attaches to a running process, like 'dlv attach')
 The server does not yet accept multiple client connections (--accept-multiclient).
 While --continue is not supported, stopOnEntry launch/attach attribute can be used to control if
 execution is resumed at the start of the debug session.`,
 		Run: dapCmd,
 	}
+	// TODO(polina): support --tty when dlv dap allows to launch a program from command-line
 	rootCommand.AddCommand(dapCommand)
 
 	// 'debug' subcommand.
@@ -409,7 +412,7 @@ func dapCmd(cmd *cobra.Command, args []string) {
 		}
 		defer logflags.Close()
 
-		if headless {
+		if cmd.Flag("headless").Changed {
 			fmt.Fprintf(os.Stderr, "Warning: dap mode is always headless\n")
 		}
 		if acceptMulti {
@@ -420,6 +423,9 @@ func dapCmd(cmd *cobra.Command, args []string) {
 		}
 		if continueOnStart {
 			fmt.Fprintf(os.Stderr, "Warning: continue ignored with dap; specify via launch/attach request instead\n")
+		}
+		if backend != "default" {
+			fmt.Fprintf(os.Stderr, "Warning: backend ignored with dap; specify via launch/attach request instead\n")
 		}
 		if buildFlags != "" {
 			fmt.Fprintf(os.Stderr, "Warning: build flags ignored with dap; specify via launch/attach request instead\n")
@@ -446,10 +452,9 @@ func dapCmd(cmd *cobra.Command, args []string) {
 			DisconnectChan: disconnectChan,
 			Debugger: debugger.Config{
 				Backend:              backend,
-				Foreground:           headless && tty == "",
+				Foreground:           true, // server always runs without terminal client
 				DebugInfoDirectories: conf.DebugInfoDirectories,
 				CheckGoVersion:       checkGoVersion,
-				TTY:                  tty,
 			},
 			CheckLocalConnUser: checkLocalConnUser,
 		})
@@ -685,14 +690,14 @@ func connectCmd(cmd *cobra.Command, args []string) {
 }
 
 // waitForDisconnectSignal is a blocking function that waits for either
-// a SIGINT (Ctrl-C) signal from the OS or for disconnectChan to be closed
-// by the server when the client disconnects.
+// a SIGINT (Ctrl-C) or SIGTERM (kill -15) OS signal or for disconnectChan
+// to be closed by the server when the client disconnects.
 // Note that in headless mode, the debugged process is foregrounded
 // (to have control of the tty for debugging interactive programs),
 // so SIGINT gets sent to the debuggee and not to delve.
 func waitForDisconnectSignal(disconnectChan chan struct{}) {
 	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGINT)
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	if runtime.GOOS == "windows" {
 		// On windows Ctrl-C sent to inferior process is delivered
 		// as SIGINT to delve. Ignore it instead of stopping the server
