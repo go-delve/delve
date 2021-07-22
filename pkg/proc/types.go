@@ -134,17 +134,19 @@ func runtimeTypeToDIE(_type *Variable, dataAddr uint64) (typ godwarf.Type, kind 
 	md := findModuleDataForType(bi, mds, _type.Addr, _type.mem)
 	if md != nil {
 		so := bi.moduleDataToImage(md)
-		if rtdie, ok := so.runtimeTypeToDIE[uint64(_type.Addr-md.types)]; ok {
-			typ, err := godwarf.ReadType(so.dwarf, so.index, rtdie.offset, so.typeCache)
-			if err != nil {
-				return nil, 0, fmt.Errorf("invalid interface type: %v", err)
-			}
-			if rtdie.kind == -1 {
-				if kindField := _type.loadFieldNamed("kind"); kindField != nil && kindField.Value != nil {
-					rtdie.kind, _ = constant.Int64Val(kindField.Value)
+		if so != nil {
+			if rtdie, ok := so.runtimeTypeToDIE[uint64(_type.Addr-md.types)]; ok {
+				typ, err := godwarf.ReadType(so.dwarf, so.index, rtdie.offset, so.typeCache)
+				if err != nil {
+					return nil, 0, fmt.Errorf("invalid interface type: %v", err)
 				}
+				if rtdie.kind == -1 {
+					if kindField := _type.loadFieldNamed("kind"); kindField != nil && kindField.Value != nil {
+						rtdie.kind, _ = constant.Int64Val(kindField.Value)
+					}
+				}
+				return typ, rtdie.kind, nil
 			}
-			return typ, rtdie.kind, nil
 		}
 	}
 
