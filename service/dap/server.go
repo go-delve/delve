@@ -772,10 +772,8 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-
 	if mode == "replay" {
 		traceDirPath, _ := request.Arguments["traceDirPath"].(string)
-
 
 		// Validate trace directory
 		if traceDirPath == "" {
@@ -785,10 +783,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			return
 		}
 
-
-
-
-
 		// Assign the rr trace directory path to debugger configuration
 		s.config.Debugger.CoreFile = traceDirPath
 		s.config.Debugger.Backend = "rr"
@@ -796,7 +790,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 	if mode == "core" {
 		coreFilePath, _ := request.Arguments["coreFilePath"].(string)
-
 
 		// Validate core dump path
 		if coreFilePath == "" {
@@ -807,7 +800,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			return
 		}
 
-
 		// Assign the non-empty core file path to debugger configuration. This will
 		// trigger a native core file replay instead of an rr trace replay
 		s.config.Debugger.CoreFile = coreFilePath
@@ -815,7 +807,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 
 	s.log.Debugf("debug backend is '%s'", s.config.Debugger.Backend)
-	
+
 	// Prepare the debug executable filename, build flags and build it
 	if mode == "debug" || mode == "test" {
 		output, ok := request.Arguments["output"].(string)
@@ -970,7 +962,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 	// Enable StepBack controls on supported backends
 	if s.config.Debugger.Backend == "rr" {
-		s.send(&dap.CapabilitiesEvent{ Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{ SupportsStepBack: true }}})
+		s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportsStepBack: true}}})
 	}
 
 	// Notify the client that the debugger is ready to start accepting
@@ -1126,7 +1118,7 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 			s.logToConsole(exited.Error())
 			err = nil
 		default:
-			s.log.Error(err)
+			s.log.Error("detach returned error: ", err)
 		}
 	}
 	return err
@@ -1452,49 +1444,53 @@ func fnPackageName(loc *proc.Location) string {
 // onThreadsRequest handles 'threads' request.
 // This is a mandatory request to support.
 // It is sent in response to configurationDone response and stopped events.
+// Depending on the debug session stage, goroutines information
+// might not be available. However, the DAP spec states that
+// "even if a debug adapter does not support multiple threads,
+// it must implement the threads request and return a single
+// (dummy) thread". Therefore, this handler never returns
+// an error response. If the dummy thread is returned in its place,
+// the next waterfall request for its stackTrace will return the error.
 func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
-	if s.debugger == nil {
-		s.sendErrorResponse(request.Request, UnableToDisplayThreads, "Unable to display threads", "debugger is nil")
-		return
+	var err error
+	var gs []*proc.G
+	var next int
+	if s.debugger != nil {
+		gs, next, err = s.debugger.Goroutines(0, maxGoroutines)
 	}
+	threads := make([]dap.Thread, len(gs))
 
-	gs, next, err := s.debugger.Goroutines(0, maxGoroutines)
 	if err != nil {
 		switch err.(type) {
 		case proc.ErrProcessExited:
 			// If the program exits very quickly, the initial threads request will complete after it has exited.
 			// A TerminatedEvent has already been sent. Ignore the err returned in this case.
-			s.send(&dap.ThreadsResponse{Response: *newResponse(request.Request)})
+			s.log.Debug(err)
 		default:
-			s.sendErrorResponse(request.Request, UnableToDisplayThreads, "Unable to display threads", err.Error())
+			s.send(&dap.OutputEvent{
+				Event: *newEvent("output"),
+				Body: dap.OutputEventBody{
+					Output:   fmt.Sprintf("Unable to retrieve goroutines: %s\n", err.Error()),
+					Category: "stderr",
+				}})
 		}
-		return
-	}
-
-	if next >= 0 {
-		s.logToConsole(fmt.Sprintf("too many goroutines, only loaded %d", len(gs)))
-	}
-
-	threads := make([]dap.Thread, len(gs))
-	if len(threads) == 0 {
-		// Depending on the debug session stage, goroutines information
-		// might not be available. However, the DAP spec states that
-		// "even if a debug adapter does not support multiple threads,
-		// it must implement the threads request and return a single
-		// (dummy) thread".
+		threads = []dap.Thread{{Id: 1, Name: "Dummy"}}
+	} else if len(threads) == 0 {
 		threads = []dap.Thread{{Id: 1, Name: "Dummy"}}
 	} else {
+		if next >= 0 {
+			s.logToConsole(fmt.Sprintf("too many goroutines, only loaded %d", len(gs)))
+		}
 		state, err := s.debugger.State( /*nowait*/ true)
 		if err != nil {
-			s.sendErrorResponse(request.Request, UnableToDisplayThreads, "Unable to display threads", err.Error())
-			return
+			s.log.Debug("Unable to get debugger state: ", err)
 		}
 		s.debugger.LockTarget()
 		defer s.debugger.UnlockTarget()
 
 		for i, g := range gs {
 			selected := ""
-			if state.SelectedGoroutine != nil && g.ID == state.SelectedGoroutine.ID {
+			if state != nil && state.SelectedGoroutine != nil && g.ID == state.SelectedGoroutine.ID {
 				selected = "* "
 			}
 			thread := ""
@@ -1674,6 +1670,11 @@ type stackFrame struct {
 // As per DAP spec, this request only gets triggered as a follow-up
 // to a successful threads request as part of the "request waterfall".
 func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
+	if s.debugger == nil {
+		s.sendErrorResponse(request.Request, UnableToProduceStackTrace, "Unable to produce stack trace", "debugger is nil")
+		return
+	}
+
 	goroutineID := request.Arguments.ThreadId
 	frames, err := s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
 	if err != nil {
@@ -2392,7 +2393,7 @@ func (s *Server) doCall(goid, frame int, expr string) (*api.DebuggerState, []*pr
 		UnsafeCall:           false,
 		GoroutineID:          goid,
 	}, nil)
-	if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
+	if processExited(state, err) {
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
 		s.send(e)
 		return nil, nil, errors.New("terminated")
@@ -2825,6 +2826,11 @@ func (s *Server) resetHandlesForStoppedEvent() {
 	s.exceptionErr = nil
 }
 
+func processExited(state *api.DebuggerState, err error) bool {
+	_, isexited := err.(proc.ErrProcessExited)
+	return isexited || err == nil && state.Exited
+}
+
 // doRunCommand runs a debugger command until it stops on
 // termination, error, breakpoint, etc, when an appropriate
 // event needs to be sent to the client. asyncSetupDone is
@@ -2837,7 +2843,7 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 	// So we should always close it ourselves just in case.
 	defer s.asyncCommandDone(asyncSetupDone)
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
-	if _, isexited := err.(proc.ErrProcessExited); isexited || err == nil && state.Exited {
+	if processExited(state, err) {
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		return
 	}
