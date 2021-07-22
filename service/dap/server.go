@@ -2663,9 +2663,8 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 			body.Description, err = s.throwReason(goroutineID)
 			if err != nil {
 				body.Description = fmt.Sprintf("Error getting throw reason: %s", err.Error())
-				// This is not currently working for Go 1.16.
-				ver := goversion.ParseProducer(s.debugger.TargetGoVersion())
-				if ver.Major == 1 && ver.Minor == 16 {
+				// This is not currently working for >= Go 1.16 see https://github.com/golang/go/issues/46425.
+				if goversion.ProducerAfterOrEqual(s.debugger.TargetGoVersion(), 1, 16) {
 					body.Description = "Throw reason unavailable, see https://github.com/golang/go/issues/46425"
 				}
 			}

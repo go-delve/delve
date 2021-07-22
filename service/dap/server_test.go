@@ -3705,9 +3705,8 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 					client.ExpectContinueResponse(t)
 
 					var text string
-					// This does not work for Go 1.16.
-					ver, _ := goversion.Parse(runtime.Version())
-					if ver.Major != 1 || ver.Minor != 16 {
+					// This is not currently working for >= Go 1.16 see https://github.com/golang/go/issues/46425.
+					if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
 						text = "\"go of nil func value\""
 					}
 
@@ -4573,7 +4572,6 @@ func TestOptionalNotYetImplementedResponses(t *testing.T) {
 
 		client.RestartRequest()
 		expectNotYetImplemented("restart")
-
 
 		client.SetExpressionRequest()
 		expectNotYetImplemented("setExpression")
