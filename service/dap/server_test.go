@@ -3689,6 +3689,10 @@ func TestPanicBreakpointOnNext(t *testing.T) {
 }
 
 func TestFatalThrowBreakpoint(t *testing.T) {
+	// This is not currently flaky for Go 1.17 see https://github.com/golang/go/issues/46425.
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) {
+		t.Skip()
+	}
 	runTest(t, "fatalerror", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
@@ -3705,8 +3709,9 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 					client.ExpectContinueResponse(t)
 
 					var text string
-					// This is not currently working for >= Go 1.16 see https://github.com/golang/go/issues/46425.
-					if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+					// This does not work for Go 1.16.
+					ver, _ := goversion.Parse(runtime.Version())
+					if ver.Major != 1 || ver.Minor != 16 {
 						text = "\"go of nil func value\""
 					}
 
