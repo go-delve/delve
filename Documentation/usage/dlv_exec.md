@@ -4,7 +4,6 @@ Execute a precompiled binary, and begin a debug session.
 
 ### Synopsis
 
-
 Execute a precompiled binary and begin a debug session.
 
 This command will cause Delve to exec the binary and immediately attach to it to
@@ -14,13 +13,14 @@ consider compiling debugging binaries with -gcflags="all=-N -l" on Go 1.10
 or later, -gcflags="-N -l" on earlier versions of Go.
 
 ```
-dlv exec <path/to/binary>
+dlv exec <path/to/binary> [flags]
 ```
 
 ### Options
 
 ```
       --continue     Continue the debugged process on start.
+  -h, --help         help for exec
       --tty string   TTY to use for the target program
 ```
 
@@ -46,5 +46,6 @@ dlv exec <path/to/binary>
 ```
 
 ### SEE ALSO
+
 * [dlv](dlv.md)	 - Delve is a debugger for the Go programming language.
 

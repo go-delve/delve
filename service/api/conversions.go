@@ -20,35 +20,38 @@ import (
 // an api.Breakpoint.
 func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 	b := &Breakpoint{
-		Name:          bp.Name,
-		ID:            bp.LogicalID,
-		FunctionName:  bp.FunctionName,
-		File:          bp.File,
-		Line:          bp.Line,
-		Addr:          bp.Addr,
-		Tracepoint:    bp.Tracepoint,
-		TraceReturn:   bp.TraceReturn,
-		Stacktrace:    bp.Stacktrace,
-		Goroutine:     bp.Goroutine,
-		Variables:     bp.Variables,
-		LoadArgs:      LoadConfigFromProc(bp.LoadArgs),
-		LoadLocals:    LoadConfigFromProc(bp.LoadLocals),
-		WatchExpr:     bp.WatchExpr,
-		WatchType:     WatchType(bp.WatchType),
-		TotalHitCount: bp.TotalHitCount,
-		Addrs:         []uint64{bp.Addr},
+		Name:         bp.Name,
+		ID:           bp.LogicalID,
+		FunctionName: bp.FunctionName,
+		File:         bp.File,
+		Line:         bp.Line,
+		Addr:         bp.Addr,
+		Tracepoint:   bp.Tracepoint,
+		TraceReturn:  bp.TraceReturn,
+		Stacktrace:   bp.Stacktrace,
+		Goroutine:    bp.Goroutine,
+		Variables:    bp.Variables,
+		LoadArgs:     LoadConfigFromProc(bp.LoadArgs),
+		LoadLocals:   LoadConfigFromProc(bp.LoadLocals),
+		WatchExpr:    bp.WatchExpr,
+		WatchType:    WatchType(bp.WatchType),
+		Addrs:        []uint64{bp.Addr},
 	}
 
-	b.HitCount = map[string]uint64{}
-	for idx := range bp.HitCount {
-		b.HitCount[strconv.Itoa(idx)] = bp.HitCount[idx]
-	}
+	breaklet := bp.UserBreaklet()
+	if breaklet != nil {
+		b.TotalHitCount = breaklet.TotalHitCount
+		b.HitCount = map[string]uint64{}
+		for idx := range breaklet.HitCount {
+			b.HitCount[strconv.Itoa(idx)] = breaklet.HitCount[idx]
+		}
 
-	var buf bytes.Buffer
-	printer.Fprint(&buf, token.NewFileSet(), bp.Cond)
-	b.Cond = buf.String()
-	if bp.HitCond != nil {
-		b.HitCond = fmt.Sprintf("%s %d", bp.HitCond.Op.String(), bp.HitCond.Val)
+		var buf bytes.Buffer
+		printer.Fprint(&buf, token.NewFileSet(), breaklet.Cond)
+		b.Cond = buf.String()
+		if breaklet.HitCond != nil {
+			b.HitCond = fmt.Sprintf("%s %d", breaklet.HitCond.Op.String(), breaklet.HitCond.Val)
+		}
 	}
 
 	return b

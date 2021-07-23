@@ -4,7 +4,6 @@ Help about file redirection.
 
 ### Synopsis
 
-
 The standard file descriptors of the target process can be controlled using the '-r' and '--tty' arguments. 
 
 The --tty argument allows redirecting all standard descriptors to a terminal, specified as an argument to --tty.
@@ -17,6 +16,12 @@ Where source is one of 'stdin', 'stdout' or 'stderr' and destination is the path
 
 File redirects can also be changed using the 'restart' command.
 
+
+### Options
+
+```
+  -h, --help   help for redirect
+```
 
 ### Options inherited from parent commands
 
@@ -40,5 +45,6 @@ File redirects can also be changed using the 'restart' command.
 ```
 
 ### SEE ALSO
+
 * [dlv](dlv.md)	 - Delve is a debugger for the Go programming language.
 
