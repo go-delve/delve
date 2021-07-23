@@ -4714,35 +4714,8 @@ func TestBadLaunchRequests(t *testing.T) {
 		client.LaunchRequest("exec", fixture.Path+"_does_not_exist", stopOnEntry)
 		checkFailedToLaunch(client.ExpectInvisibleErrorResponse(t)) // No such file or directory
 
-		client.LaunchRequest("debug", fixture.Path+"_does_not_exist", stopOnEntry)
-		oe := client.ExpectOutputEvent(t)
-		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
-			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
-		}
-		checkFailedToLaunch(client.ExpectInvisibleErrorResponse(t))
-
-		client.LaunchRequest("" /*debug by default*/, fixture.Path+"_does_not_exist", stopOnEntry)
-		oe = client.ExpectOutputEvent(t)
-		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
-			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
-		}
-		checkFailedToLaunch(client.ExpectInvisibleErrorResponse(t))
-
 		client.LaunchRequest("exec", fixture.Source, stopOnEntry)
 		checkFailedToLaunch(client.ExpectInvisibleErrorResponse(t)) // Not an executable
-
-		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "-bad -flags"})
-		oe = client.ExpectOutputEvent(t)
-		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
-			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
-		}
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t), "Failed to launch: Build error: Check the debug console for details.")
-		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "buildFlags": "-bad -flags"})
-		oe = client.ExpectOutputEvent(t)
-		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
-			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
-		}
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t), "Failed to launch: Build error: Check the debug console for details.")
 
 		// Bad "cwd"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": false, "cwd": "dir/invalid"})
@@ -4770,6 +4743,45 @@ func TestBadLaunchRequests(t *testing.T) {
 		if dresp.RequestSeq != seqCnt {
 			t.Errorf("got %#v, want RequestSeq=%d", dresp, seqCnt)
 		}
+	})
+}
+
+func TestBadLaunchRequestBuildError(t *testing.T) {
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		client.LaunchRequest("debug", fixture.Path+"_fails_to_build", stopOnEntry)
+		oe := client.ExpectOutputEvent(t)
+		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
+			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
+		}
+		client.ExpectTerminatedEvent(t)
+		client.ExpectLaunchResponse(t)
+
+		client.LaunchRequest("" /*debug by default*/, fixture.Path+"_does_not_exist", stopOnEntry)
+		oe = client.ExpectOutputEvent(t)
+		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
+			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
+		}
+		client.ExpectTerminatedEvent(t)
+		client.ExpectLaunchResponse(t)
+
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "-bad -flags"})
+		oe = client.ExpectOutputEvent(t)
+		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
+			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
+		}
+		client.ExpectTerminatedEvent(t)
+		client.ExpectLaunchResponse(t)
+
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "buildFlags": "-bad -flags"})
+		oe = client.ExpectOutputEvent(t)
+		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
+			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
+		}
+		client.ExpectTerminatedEvent(t)
+		client.ExpectLaunchResponse(t)
+
+		client.DisconnectRequest()
+		client.ExpectDisconnectResponse(t)
 	})
 }
 

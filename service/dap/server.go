@@ -850,9 +850,16 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 					Output:   fmt.Sprintf("Build Error: %s\n%s (%s)\n", cmd, strings.TrimSpace(string(out)), err.Error()),
 					Category: "stderr",
 				}})
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				"Build error: Check the debug console for details.")
+			// Vscode doesn't have a way to distinquish expected (frequent) problems like compiler errors
+			// from unexpected (rare) problems via launch error responses, so all error responses result
+			// in a modal dialogue intended for fundamental problems even with showUser off.
+			// https://github.com/microsoft/vscode/issues/128484
+			// In case of build errors, this dialogue just directs users to the Debug Console.
+			// Users complain about needing to close it every time they encounter a build error.
+			// While this is under discussion with the vscode devs, we can bypass the pop-up using
+			// launch success response and terminated event to terminate the debug session shutdown.
+			s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
+			s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
 			return
 		}
 		program = debugbinary
