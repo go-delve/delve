@@ -305,10 +305,10 @@ func (it *stackIterator) stacktrace(depth int) ([]Stackframe, error) {
 
 	frames := make([]Stackframe, 0, depth+1)
 	for it.Next() {
+		frames = it.appendInlineCalls(frames, it.Frame())
 		if len(frames) >= depth+1 {
 			break
 		}
-		frames = it.appendInlineCalls(frames, it.Frame())
 	}
 	if err := it.Err(); err != nil {
 		if len(frames) == 0 {
