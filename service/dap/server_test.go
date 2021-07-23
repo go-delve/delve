@@ -597,26 +597,30 @@ func TestPreSetBreakpoint(t *testing.T) {
 	})
 }
 
-// checkStackFrames is a helper for verifying the values within StackTraceResponse.
+// checkStackFramesExact is a helper for verifying the values within StackTraceResponse.
 //     wantStartName - name of the first returned frame (ignored if "")
 //     wantStartLine - file line of the first returned frame (ignored if <0).
 //     wantStartID - id of the first frame returned (ignored if wantFrames is 0).
 //     wantFrames - number of frames returned (length of StackTraceResponse.Body.StackFrames array).
 //     wantTotalFrames - total number of stack frames available (StackTraceResponse.Body.TotalFrames).
-func checkStackFrames(t *testing.T, got *dap.StackTraceResponse,
+func checkStackFramesExact(t *testing.T, got *dap.StackTraceResponse,
 	wantStartName string, wantStartLine, wantStartID, wantFrames, wantTotalFrames int) {
 	t.Helper()
-	checkStackFramesNamed("", t, got, wantStartName, wantStartLine, wantStartID, wantFrames, wantTotalFrames, wantTotalFrames)
+	checkStackFramesNamed("", t, got, wantStartName, wantStartLine, wantStartID, wantFrames, wantTotalFrames, true)
 }
 
-func checkStackFramesNamed(testName string, t *testing.T, got *dap.StackTraceResponse,
-	wantStartName string, wantStartLine, wantStartID, wantFrames, wantTotalFramesMin, wantTotalFramesMax int) {
+func checkStackFramesHasMore(t *testing.T, got *dap.StackTraceResponse,
+	wantStartName string, wantStartLine, wantStartID, wantFrames, wantTotalFrames int) {
 	t.Helper()
-	if got.Body.TotalFrames < wantTotalFramesMin {
-		t.Errorf("%s\ngot  %#v\nwant TotalFrames>=%d", testName, got.Body.TotalFrames, wantTotalFramesMin)
-	}
-	if got.Body.TotalFrames > wantTotalFramesMax {
-		t.Errorf("%s\ngot  %#v\nwant TotalFrames<=%d", testName, got.Body.TotalFrames, wantTotalFramesMax)
+	checkStackFramesNamed("", t, got, wantStartName, wantStartLine, wantStartID, wantFrames, wantTotalFrames, false)
+}
+func checkStackFramesNamed(testName string, t *testing.T, got *dap.StackTraceResponse,
+	wantStartName string, wantStartLine, wantStartID, wantFrames, wantTotalFrames int, totalExact bool) {
+	t.Helper()
+	if totalExact && got.Body.TotalFrames != wantTotalFrames {
+		t.Errorf("%s\ngot  %#v\nwant TotalFrames=%d", testName, got.Body.TotalFrames, wantTotalFrames)
+	} else if !totalExact && got.Body.TotalFrames < wantTotalFrames {
+		t.Errorf("%s\ngot  %#v\nwant TotalFrames>-%d", testName, got.Body.TotalFrames, wantTotalFrames)
 	}
 
 	if len(got.Body.StackFrames) != wantFrames {
@@ -822,32 +826,32 @@ func TestStackTraceRequest(t *testing.T) {
 					}
 
 					tests := map[string]struct {
-						startFrame             int
-						levels                 int
-						wantStartName          string
-						wantStartLine          int
-						wantStartFrame         int
-						wantFramesReturned     int
-						wantFramesAvailableMin int
-						wantFramesAvailableMax int
+						startFrame          int
+						levels              int
+						wantStartName       string
+						wantStartLine       int
+						wantStartFrame      int
+						wantFramesReturned  int
+						wantFramesAvailable int
+						exact               bool
 					}{
-						"all frame levels from 0 to NumFrames":    {0, NumFrames, "main.Increment", 8, 0, NumFrames, NumFrames, NumFrames},
-						"subset of frames from 1 to -1":           {1, NumFrames - 1, "main.Increment", 11, 1, NumFrames - 1, NumFrames, NumFrames},
-						"load stack in pages: first half":         {0, NumFrames / 2, "main.Increment", 8, 0, NumFrames / 2, NumFrames, NumFrames + defaultArgs.stackTraceDepth},
-						"load stack in pages: second half":        {NumFrames / 2, NumFrames, "main.main", 17, NumFrames / 2, NumFrames / 2, NumFrames, NumFrames},
-						"zero levels means all levels":            {0, 0, "main.Increment", 8, 0, NumFrames, NumFrames, NumFrames},
-						"zero levels means all remaining levels":  {NumFrames / 2, 0, "main.main", 17, NumFrames / 2, NumFrames / 2, NumFrames, NumFrames},
-						"negative levels treated as 0 (all)":      {0, -10, "main.Increment", 8, 0, NumFrames, NumFrames, NumFrames},
-						"OOB levels is capped at available len":   {0, NumFrames + 1, "main.Increment", 8, 0, NumFrames, NumFrames, NumFrames},
-						"OOB levels is capped at available len 1": {1, NumFrames + 1, "main.Increment", 11, 1, NumFrames - 1, NumFrames, NumFrames},
-						"negative startFrame treated as 0":        {-10, 0, "main.Increment", 8, 0, NumFrames, NumFrames, NumFrames},
-						"OOB startFrame returns empty trace":      {NumFrames, 0, "main.Increment", -1, -1, 0, NumFrames, NumFrames},
+						"all frame levels from 0 to NumFrames":    {0, NumFrames, "main.Increment", 8, 0, NumFrames, NumFrames, true},
+						"subset of frames from 1 to -1":           {1, NumFrames - 1, "main.Increment", 11, 1, NumFrames - 1, NumFrames, true},
+						"load stack in pages: first half":         {0, NumFrames / 2, "main.Increment", 8, 0, NumFrames / 2, NumFrames, false},
+						"load stack in pages: second half":        {NumFrames / 2, NumFrames, "main.main", 17, NumFrames / 2, NumFrames / 2, NumFrames, true},
+						"zero levels means all levels":            {0, 0, "main.Increment", 8, 0, NumFrames, NumFrames, true},
+						"zero levels means all remaining levels":  {NumFrames / 2, 0, "main.main", 17, NumFrames / 2, NumFrames / 2, NumFrames, true},
+						"negative levels treated as 0 (all)":      {0, -10, "main.Increment", 8, 0, NumFrames, NumFrames, true},
+						"OOB levels is capped at available len":   {0, NumFrames + 1, "main.Increment", 8, 0, NumFrames, NumFrames, true},
+						"OOB levels is capped at available len 1": {1, NumFrames + 1, "main.Increment", 11, 1, NumFrames - 1, NumFrames, true},
+						"negative startFrame treated as 0":        {-10, 0, "main.Increment", 8, 0, NumFrames, NumFrames, true},
+						"OOB startFrame returns empty trace":      {NumFrames, 0, "main.Increment", -1, -1, 0, NumFrames, true},
 					}
 					for name, tc := range tests {
 						client.StackTraceRequest(1, tc.startFrame, tc.levels)
 						stResp = client.ExpectStackTraceResponse(t)
 						checkStackFramesNamed(name, t, stResp,
-							tc.wantStartName, tc.wantStartLine, frameID(), tc.wantFramesReturned, tc.wantFramesAvailableMin, tc.wantFramesAvailableMax)
+							tc.wantStartName, tc.wantStartLine, frameID(), tc.wantFramesReturned, tc.wantFramesAvailable, tc.exact)
 						reqIndex += len(stResp.Body.StackFrames)
 					}
 				},
@@ -858,7 +862,7 @@ func TestStackTraceRequest(t *testing.T) {
 					// Frame ids get reset at each breakpoint.
 					client.StackTraceRequest(1, 0, 0)
 					stResp = client.ExpectStackTraceResponse(t)
-					checkStackFrames(t, stResp, "main.main", 18, startHandle, 3, 3)
+					checkStackFramesExact(t, stResp, "main.main", 18, startHandle, 3, 3)
 				},
 				disconnect: false,
 			}})
@@ -934,7 +938,7 @@ func TestStackTraceRequest(t *testing.T) {
 					// Frame ids get reset at each breakpoint.
 					client.StackTraceRequest(1, 0, 0)
 					stResp = client.ExpectStackTraceResponse(t)
-					checkStackFrames(t, stResp, "main.main", 18, startHandle, 3, 3)
+					checkStackFramesExact(t, stResp, "main.main", 18, startHandle, 3, 3)
 				},
 				disconnect: false,
 			}})
@@ -968,7 +972,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 						startLineno = -1
 					}
 
-					checkStackFrames(t, stack, "main.foobar", startLineno, 1000, 4, 4)
+					checkStackFramesExact(t, stack, "main.foobar", startLineno, 1000, 4, 4)
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
@@ -1182,7 +1186,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					// Frame ids get reset at each breakpoint.
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
-					checkStackFrames(t, stack, "main.barfoo", 27, 1000, 5, 5)
+					checkStackFramesExact(t, stack, "main.barfoo", 27, 1000, 5, 5)
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
@@ -1235,7 +1239,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 				execute: func() {
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
-					checkStackFrames(t, stack, "main.main", -1, 1000, 3, 3)
+					checkStackFramesExact(t, stack, "main.main", -1, 1000, 3, 3)
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
@@ -1247,7 +1251,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 				execute: func() {
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
-					checkStackFrames(t, stack, "main.main", -1, 1000, 3, 3)
+					checkStackFramesExact(t, stack, "main.main", -1, 1000, 3, 3)
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
@@ -1520,7 +1524,7 @@ func TestScopesRequestsOptimized(t *testing.T) {
 						startLineno = -1
 					}
 
-					checkStackFrames(t, stack, "main.foobar", startLineno, 1000, 4, 4)
+					checkStackFramesExact(t, stack, "main.foobar", startLineno, 1000, 4, 4)
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
@@ -1535,7 +1539,7 @@ func TestScopesRequestsOptimized(t *testing.T) {
 					// Frame ids get reset at each breakpoint.
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
-					checkStackFrames(t, stack, "main.barfoo", 27, 1000, 5, 5)
+					checkStackFramesExact(t, stack, "main.barfoo", 27, 1000, 5, 5)
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
@@ -1985,7 +1989,7 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 				execute: func() {
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
-					checkStackFrames(t, stack, "main.main", 36, 1000, 3, 3)
+					checkStackFramesExact(t, stack, "main.main", 36, 1000, 3, 3)
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
@@ -2007,7 +2011,7 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 
 					client.StackTraceRequest(1, 0, 20)
 					stack = client.ExpectStackTraceResponse(t)
-					checkStackFrames(t, stack, "", 13, 1000, 4, 4)
+					checkStackFramesExact(t, stack, "", 13, 1000, 4, 4)
 
 					client.ScopesRequest(1000)
 					scopes = client.ExpectScopesResponse(t)
@@ -2051,7 +2055,7 @@ func TestShadowedVariables(t *testing.T) {
 				execute: func() {
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
-					checkStackFrames(t, stack, "main.main", 13, 1000, 3, 3)
+					checkStackFramesExact(t, stack, "main.main", 13, 1000, 3, 3)
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
@@ -2091,7 +2095,7 @@ func TestLaunchRequestWithStackTraceDepth(t *testing.T) {
 				execute: func() {
 					client.StackTraceRequest(1, 0, 0)
 					stResp = client.ExpectStackTraceResponse(t)
-					checkStackFrames(t, stResp, "main.Increment", 8, 1000, 1 /*returned*/, 2 /*available*/)
+					checkStackFramesHasMore(t, stResp, "main.Increment", 8, 1000, 1 /*returned*/, 2 /*available*/)
 				},
 				disconnect: false,
 			}})
@@ -4654,7 +4658,6 @@ func TestOptionalNotYetImplementedResponses(t *testing.T) {
 
 		client.RestartRequest()
 		expectNotYetImplemented("restart")
-
 
 		client.SetExpressionRequest()
 		expectNotYetImplemented("setExpression")

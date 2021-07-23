@@ -1676,28 +1676,6 @@ func (d *Debugger) Stacktrace(goroutineID, depth int, opts api.StacktraceOptions
 	}
 }
 
-// Stackframes returns a list of Stackframes for the given goroutine. The
-// length of the returned list will be min(stack_len, depth).
-func (d *Debugger) Stackframes(goroutineID, start, depth int, opts api.StacktraceOptions) (frames []proc.Stackframe, next int, err error) {
-	d.targetMutex.Lock()
-	defer d.targetMutex.Unlock()
-
-	if _, err := d.target.Valid(); err != nil {
-		return nil, -1, err
-	}
-
-	g, err := proc.FindGoroutine(d.target, goroutineID)
-	if err != nil {
-		return nil, -1, err
-	}
-
-	if g == nil {
-		return proc.ThreadStackframes(d.target.CurrentThread(), start, depth)
-	} else {
-		return g.Stackframes(start, depth, proc.StacktraceOptions(opts))
-	}
-}
-
 // Ancestors returns the stacktraces for the ancestors of a goroutine.
 func (d *Debugger) Ancestors(goroutineID, numAncestors, depth int) ([]api.Ancestor, error) {
 	d.targetMutex.Lock()
