@@ -1680,11 +1680,9 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 	if start < 0 {
 		start = 0
 	}
-	var levels int
+	levels := s.args.stackTraceDepth + 1
 	if request.Arguments.Levels > 0 {
 		levels = request.Arguments.Levels
-	} else {
-		levels = s.args.stackTraceDepth
 	}
 
 	// Since the backend doesn't support paging, we load all frames up to
