@@ -2086,7 +2086,7 @@ func TestLaunchRequestWithStackTraceDepth(t *testing.T) {
 			// Launch
 			func() {
 				client.LaunchRequestWithArgs(map[string]interface{}{
-					"mode": "exec", "program": fixture.Path, "stackTraceDepth": 1,
+					"mode": "exec", "program": fixture.Path, "stackTraceDepth": 0,
 				})
 			},
 			// Set breakpoints
@@ -2095,7 +2095,7 @@ func TestLaunchRequestWithStackTraceDepth(t *testing.T) {
 				execute: func() {
 					client.StackTraceRequest(1, 0, 0)
 					stResp = client.ExpectStackTraceResponse(t)
-					checkStackFramesHasMore(t, stResp, "main.Increment", 8, 1000, 2 /*returned*/, 2 /*available*/)
+					checkStackFramesHasMore(t, stResp, "main.Increment", 8, 1000, 1 /*returned*/, 2 /*available*/)
 				},
 				disconnect: false,
 			}})
