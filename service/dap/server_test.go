@@ -3736,6 +3736,9 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 			}})
 	})
 	runTest(t, "testdeadlock", func(client *daptest.Client, fixture protest.Fixture) {
+		if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) {
+			t.Skip("broken: see https://github.com/golang/go/issues/46425")
+		}
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
 			func() {
@@ -3752,7 +3755,7 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 
 					// TODO(suzmue): Enable this test for 1.17 when https://github.com/golang/go/issues/46425 is fixed.
 					var text string
-					if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+					if goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) {
 						text = "\"all goroutines are asleep - deadlock!\""
 					}
 					se := client.ExpectStoppedEvent(t)
