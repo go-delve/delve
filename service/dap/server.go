@@ -1688,7 +1688,7 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 	// Since the backend doesn't support paging, we load all frames up to
 	// the requested depth and then slice them here per
 	// `supportsDelayedStackTraceLoading` capability.
-	frames, err := s.debugger.Stacktrace(goroutineID, start+levels, 0)
+	frames, err := s.debugger.Stacktrace(goroutineID, start+levels-1, 0)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToProduceStackTrace, "Unable to produce stack trace", err.Error())
 		return
