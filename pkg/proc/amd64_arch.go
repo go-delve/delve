@@ -219,7 +219,7 @@ func amd64SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 		return true
 
 	default:
-		if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.fatalthrow" {
+		if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.throw" {
 			// The runtime switches to the system stack in multiple places.
 			// This usually happens through a call to runtime.systemstack but there
 			// are functions that switch to the system stack manually (for example
@@ -228,7 +228,7 @@ func amd64SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 			// calls we switch directly to the goroutine stack if we detect that the
 			// function at the top of the stack is a runtime function.
 			//
-			// The function "runtime.fatalthrow" is deliberately excluded from this
+			// The function "runtime.throw" is deliberately excluded from this
 			// because it can end up in the stack during a cgo call and switching to
 			// the goroutine stack will exclude all the C functions from the stack
 			// trace.

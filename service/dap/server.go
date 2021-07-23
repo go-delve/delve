@@ -2731,7 +2731,7 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 }
 
 func (s *Server) throwReason(goroutineID int) (string, error) {
-	return s.getExprString("s", goroutineID, 1)
+	return s.getExprString("s", goroutineID, 0)
 }
 
 func (s *Server) panicReason(goroutineID int) (string, error) {
