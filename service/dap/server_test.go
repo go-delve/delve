@@ -3732,9 +3732,6 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 			}})
 	})
 	runTest(t, "testdeadlock", func(client *daptest.Client, fixture protest.Fixture) {
-		if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) {
-			t.Skip("broken: see https://github.com/golang/go/issues/46425")
-		}
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
 			func() {
