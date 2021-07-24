@@ -3746,9 +3746,9 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 
-					// TODO(suzmue): Enable this test for 1.17 when https://github.com/golang/go/issues/46425 is fixed.
+					// This does not work for Go 1.16 so skip by detecting versions before or after 1.16.
 					var text string
-					if goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) {
+					if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) || goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) {
 						text = "\"all goroutines are asleep - deadlock!\""
 					}
 					se := client.ExpectStoppedEvent(t)
