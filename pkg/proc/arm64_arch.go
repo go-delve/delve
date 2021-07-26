@@ -156,7 +156,7 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 			it.pc = newlr
 			return true
 		default:
-			if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.throw" {
+			if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.throw" && it.frame.Current.Fn.Name != "runtime.fatalthrow" {
 				// The runtime switches to the system stack in multiple places.
 				// This usually happens through a call to runtime.systemstack but there
 				// are functions that switch to the system stack manually (for example
