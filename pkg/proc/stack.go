@@ -302,7 +302,6 @@ func (it *stackIterator) stacktrace(depth int) ([]Stackframe, error) {
 		it.switchToGoroutineStack()
 		it.top = true
 	}
-
 	frames := make([]Stackframe, 0, depth+1)
 	for it.Next() {
 		frames = it.appendInlineCalls(frames, it.Frame())
