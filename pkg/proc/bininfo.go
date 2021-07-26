@@ -722,10 +722,10 @@ func (bi *BinaryInfo) moduleDataToImage(md *moduleData) *Image {
 	// Try searching for the image with the closest address preceding md.text
 	var so *Image
 	for i := range bi.Images {
-		if bi.Images[i].StaticBase > md.text {
+		if int64(bi.Images[i].StaticBase) > int64(md.text) {
 			continue
 		}
-		if so == nil || bi.Images[i].StaticBase > so.StaticBase {
+		if so == nil || int64(bi.Images[i].StaticBase) > int64(so.StaticBase) {
 			so = bi.Images[i]
 		}
 	}
