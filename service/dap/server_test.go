@@ -620,7 +620,7 @@ func checkStackFramesNamed(testName string, t *testing.T, got *dap.StackTraceRes
 	if totalExact && got.Body.TotalFrames != wantTotalFrames {
 		t.Errorf("%s\ngot  %#v\nwant TotalFrames=%d", testName, got.Body.TotalFrames, wantTotalFrames)
 	} else if !totalExact && got.Body.TotalFrames < wantTotalFrames {
-		t.Errorf("%s\ngot  %#v\nwant TotalFrames>-%d", testName, got.Body.TotalFrames, wantTotalFrames)
+		t.Errorf("%s\ngot  %#v\nwant TotalFrames>=%d", testName, got.Body.TotalFrames, wantTotalFrames)
 	}
 
 	if len(got.Body.StackFrames) != wantFrames {
@@ -2086,7 +2086,7 @@ func TestLaunchRequestWithStackTraceDepth(t *testing.T) {
 			// Launch
 			func() {
 				client.LaunchRequestWithArgs(map[string]interface{}{
-					"mode": "exec", "program": fixture.Path, "stackTraceDepth": 0,
+					"mode": "exec", "program": fixture.Path, "stackTraceDepth": 1,
 				})
 			},
 			// Set breakpoints

@@ -1680,7 +1680,7 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 	if start < 0 {
 		start = 0
 	}
-	levels := s.args.stackTraceDepth + 1
+	levels := s.args.stackTraceDepth
 	if request.Arguments.Levels > 0 {
 		levels = request.Arguments.Levels
 	}
