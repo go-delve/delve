@@ -2925,6 +2925,7 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 		if stopped.Body.Text == "next while nexting" {
 			stopped.Body.Description = "invalid command"
 			stopped.Body.Text = BetterNextWhileNextingError
+			s.logToConsole(fmt.Sprintf("%s: %s", stopped.Body.Description, stopped.Body.Text))
 		}
 
 		state, err := s.debugger.State( /*nowait*/ true)
