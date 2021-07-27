@@ -2,7 +2,7 @@
 .tags*
 tags
 .dbg_history
-cmd/dlv/dlv
+**/**/dlv
 .vagrant
 **/*.swp
 localtests

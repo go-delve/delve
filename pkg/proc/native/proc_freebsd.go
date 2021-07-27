@@ -37,6 +37,8 @@ type osProcessDetails struct {
 	tid  int
 }
 
+func (os *osProcessDetails) Close() {}
+
 // Launch creates and begins debugging a new process. First entry in
 // `cmd` is the program to run, and then rest are the arguments
 // to be supplied to that process. `wd` is working directory of the program.
@@ -372,6 +374,13 @@ func (dbp *nativeProcess) detach(kill bool) error {
 func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 	ep, err := C.get_entry_point(C.int(dbp.pid))
 	return uint64(ep), err
+}
+
+func (dbp *nativeProcess) SupportsBPF() bool {
+	return false
+}
+
+func (dbp *nativeProcess) SetUProbe(fnName string, args []proc.UProbeArgMap) {
 }
 
 // Usedy by Detach

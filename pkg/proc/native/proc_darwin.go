@@ -34,6 +34,8 @@ type osProcessDetails struct {
 	portSet C.mach_port_t
 }
 
+func (os *osProcessDetails) Close() {}
+
 // Launch creates and begins debugging a new process. Uses a
 // custom fork/exec process in order to take advantage of
 // PT_SIGEXC on Darwin which will turn Unix signals into
@@ -467,6 +469,13 @@ func (dbp *nativeProcess) detach(kill bool) error {
 func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 	//TODO(aarzilli): implement this
 	return 0, nil
+}
+
+func (dbp *nativeProcess) SupportsBPF() bool {
+	return false
+}
+
+func (dbp *nativeProcess) SetUProbe(fnName string, args []proc.UProbeArgMap) {
 }
 
 func initialize(dbp *nativeProcess) error { return nil }

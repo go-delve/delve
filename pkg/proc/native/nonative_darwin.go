@@ -32,6 +32,8 @@ type osSpecificDetails struct{}
 // osProcessDetails holds Darwin specific information.
 type osProcessDetails struct{}
 
+func (os *osProcessDetails) Close() {}
+
 func findExecutable(path string, pid int) string {
 	panic(ErrNativeBackendDisabled)
 }

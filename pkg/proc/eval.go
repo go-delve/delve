@@ -427,6 +427,8 @@ func (scope *EvalScope) LocalVariables(cfg LoadConfig) ([]*Variable, error) {
 }
 
 // FunctionArguments returns the name, value, and type of all current function arguments.
+// If the cfg LoadConfig parameter is nil the values of the function arguments will not
+// be loaded from the process memory.
 func (scope *EvalScope) FunctionArguments(cfg LoadConfig) ([]*Variable, error) {
 	vars, err := scope.Locals()
 	if err != nil {

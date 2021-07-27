@@ -15,10 +15,12 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unsafe"
 
 	sys "golang.org/x/sys/unix"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 	"github.com/go-delve/delve/pkg/proc/linutil"
 
 	isatty "github.com/mattn/go-isatty"
@@ -45,6 +47,14 @@ const (
 // process details.
 type osProcessDetails struct {
 	comm string
+
+	ctx *ebpf.EBPFContext
+}
+
+func (os *osProcessDetails) Close() {
+	if os.ctx != nil {
+		os.ctx.Close()
+	}
 }
 
 // Launch creates and begins debugging a new process. First entry in
@@ -183,7 +193,15 @@ func initialize(dbp *nativeProcess) error {
 		comm = match[1]
 	}
 	dbp.os.comm = strings.ReplaceAll(string(comm), "%", "%%")
+
 	return nil
+}
+
+func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
+	if dbp.os.ctx == nil {
+		return make([]ebpf.RawUProbeParams, 0)
+	}
+	return dbp.os.ctx.GetBufferedTracepoints()
 }
 
 // kill kills the target process.
@@ -213,7 +231,6 @@ func (dbp *nativeProcess) kill() error {
 			return err
 		}
 	}
-	return nil
 }
 
 func (dbp *nativeProcess) requestManualStop() (err error) {
@@ -687,6 +704,46 @@ func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 	}
 
 	return linutil.EntryPointFromAuxv(auxvbuf, dbp.bi.Arch.PtrSize()), nil
+}
+
+func (dbp *nativeProcess) SupportsBPF() bool {
+	return true
+}
+
+func (dbp *nativeProcess) SetUProbe(fnName string, args []ebpf.UProbeArgMap) {
+	// Lazily load and initialize the BPF program upon request to set a uprobe.
+	if dbp.os.ctx == nil {
+		dbp.os.ctx, _ = ebpf.LoadEBPFTracingProgram()
+	}
+
+	// We only allow up to 6 args for a BPF probe.
+	// Return early if we have more.
+	if len(args) > 6 {
+		return
+	}
+
+	debugname := dbp.bi.Images[0].Path
+	offset, err := ebpf.SymbolToOffset(debugname, fnName)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(-1)
+	}
+	err = dbp.os.ctx.AttachUprobe(dbp.Pid(), debugname, offset)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(-1)
+	}
+	fn, ok := dbp.bi.LookupFunc[fnName]
+	if !ok {
+		panic("could not find function")
+	}
+
+	params := ebpf.CreateFunctionParameterList(fn.Entry, args)
+	key := fn.Entry
+	if err := dbp.os.ctx.UpdateArgMap(unsafe.Pointer(&key), unsafe.Pointer(&params)); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(-1)
+	}
 }
 
 func killProcess(pid int) error {

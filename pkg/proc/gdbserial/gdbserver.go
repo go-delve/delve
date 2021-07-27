@@ -81,6 +81,7 @@ import (
 	"github.com/go-delve/delve/pkg/elfwriter"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 	"github.com/go-delve/delve/pkg/proc/linutil"
 	"github.com/go-delve/delve/pkg/proc/macutil"
 	isatty "github.com/mattn/go-isatty"
@@ -359,6 +360,17 @@ func (p *gdbProcess) Connect(conn net.Conn, path string, pid int, debugInfoDirs 
 	}
 
 	return tgt, nil
+}
+
+func (p *gdbProcess) SupportsBPF() bool {
+	return false
+}
+
+func (dbp *gdbProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
+	return nil
+}
+
+func (dbp *gdbProcess) SetUProbe(fnName string, args []ebpf.UProbeArgMap) {
 }
 
 // unusedPort returns an unused tcp port

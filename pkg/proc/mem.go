@@ -58,6 +58,10 @@ func (m *memCache) WriteMemory(addr uint64, data []byte) (written int, err error
 	return m.mem.WriteMemory(addr, data)
 }
 
+func CreateLoadedCachedMemory(data []byte) MemoryReadWriter {
+	return &memCache{loaded: true, cacheAddr: FakeAddressBase, cache: data, mem: nil}
+}
+
 func cacheMemory(mem MemoryReadWriter, addr uint64, size int) MemoryReadWriter {
 	if !cacheEnabled {
 		return mem
@@ -90,6 +94,18 @@ type compositeMemory struct {
 	regs    op.DwarfRegisters
 	pieces  []op.Piece
 	data    []byte
+}
+
+// CreateCompositeMemory created a new composite memory type using the provided MemoryReadWriter as the
+// underlying memory buffer.
+func CreateCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters, pieces []op.Piece) (*compositeMemory, error) {
+	// This is basically a small wrapper to avoid having to change all callers
+	// of newCompositeMemory since it existed first.
+	cm, err := newCompositeMemory(mem, arch, regs, pieces)
+	if cm != nil {
+		cm.base = FakeAddressBase
+	}
+	return cm, err
 }
 
 func newCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters, pieces []op.Piece) (*compositeMemory, error) {
