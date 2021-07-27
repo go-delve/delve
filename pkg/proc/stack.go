@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"go/constant"
+	"reflect"
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
@@ -519,7 +520,7 @@ func (it *stackIterator) loadG0SchedSP() {
 
 // Defer represents one deferred call
 type Defer struct {
-	DwrapPC uint64 // Value of field _defer.fn.fn, the deferred function or a wrapper to it in Go 1.17 or later
+	DwrapPC uint64 // PC of the deferred function or, in Go 1.17+ a wrapper to it
 	DeferPC uint64 // PC address of instruction that added this defer
 	SP      uint64 // Value of SP register when this function was deferred (this field gets adjusted when the stack is moved to match the new stack space)
 	link    *Defer // Next deferred function
@@ -580,8 +581,12 @@ func (d *Defer) load() {
 		return
 	}
 
-	fnvar := d.variable.fieldVariable("fn").maybeDereference()
-	if fnvar.Addr != 0 {
+	fnvar := d.variable.fieldVariable("fn")
+	if fnvar.Kind == reflect.Func {
+		// In Go 1.18, fn is a func().
+		d.DwrapPC = fnvar.Base
+	} else if val := fnvar.maybeDereference(); val.Addr != 0 {
+		// In Go <1.18, fn is a *funcval.
 		fnvar = fnvar.loadFieldNamed("fn")
 		if fnvar.Unreadable == nil {
 			d.DwrapPC, _ = constant.Uint64Val(fnvar.Value)
