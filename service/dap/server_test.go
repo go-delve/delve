@@ -609,6 +609,64 @@ func checkStackFrames(t *testing.T, got *dap.StackTraceResponse,
 	checkStackFramesNamed("", t, got, wantStartName, wantStartLine, wantStartID, wantFrames, wantTotalFrames)
 }
 
+func TestFilterGoroutines(t *testing.T) {
+	tt := []struct {
+		filter string
+		want   []string
+	}{
+		{
+			filter: "-with user",
+			want:   []string{"main.Increment", "runtime."},
+		},
+		{
+			filter: "-with user -without user",
+			want:   []string{"Dummy"},
+		},
+		{
+			filter: "-without user",
+			want:   []string{"runtime.", "runtime.", "runtime."},
+		},
+		{
+			filter: "-with userloc main.Increment",
+			want:   []string{"main.Increment"},
+		},
+	}
+	for _, tc := range tt {
+		runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+			runDebugSessionWithBPs(t, client, "launch",
+				// Launch
+				func() {
+					client.LaunchRequestWithArgs(map[string]interface{}{
+						"mode":          "exec",
+						"program":       fixture.Path,
+						"stopOnEntry":   !stopOnEntry,
+						"goroutineArgs": tc.filter})
+				},
+				// Set breakpoints
+				fixture.Source, []int{8},
+				[]onBreakpoint{{
+					// Stop at line 8
+					execute: func() {
+						client.ThreadsRequest()
+						tr := client.ExpectThreadsResponse(t)
+						want := tc.want
+						if len(tr.Body.Threads) != len(want) {
+							t.Errorf("got Threads=%#v, want len(Threads)=%d\n", tr.Body.Threads, len(want))
+						} else {
+							for i, fnName := range want {
+								frame := tr.Body.Threads[i]
+								if !strings.Contains(frame.Name, fnName) {
+									t.Errorf("got Threads[%d]=%#v, want Name=%s\n", i, frame, fnName)
+								}
+							}
+						}
+					},
+					disconnect: false,
+				}})
+		})
+	}
+}
+
 func checkStackFramesNamed(testName string, t *testing.T, got *dap.StackTraceResponse,
 	wantStartName string, wantStartLine, wantStartID, wantFrames, wantTotalFrames int) {
 	t.Helper()

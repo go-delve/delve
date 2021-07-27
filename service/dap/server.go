@@ -33,6 +33,7 @@ import (
 	"github.com/go-delve/delve/pkg/locspec"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/terminal"
 
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
@@ -141,6 +142,10 @@ type launchAttachArgs struct {
 	stackTraceDepth int
 	// showGlobalVariables indicates if global package variables should be loaded.
 	showGlobalVariables bool
+	// goroutineArgs are the filters used when loading goroutines.
+	// TODO(suzmue): add a custom request to configure this while the program
+	// is running.
+	goroutineArgs string
 	// substitutePathClientToServer indicates rules for converting file paths between client and debugger.
 	// These must be directory paths.
 	substitutePathClientToServer [][2]string
@@ -153,6 +158,7 @@ type launchAttachArgs struct {
 var defaultArgs = launchAttachArgs{
 	stopOnEntry:                  false,
 	stackTraceDepth:              50,
+	goroutineArgs:                "",
 	showGlobalVariables:          false,
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
@@ -222,6 +228,10 @@ func (s *Server) setLaunchAttachArgs(request dap.LaunchAttachRequest) error {
 	stop, ok := request.GetArguments()["stopOnEntry"].(bool)
 	if ok {
 		s.args.stopOnEntry = stop
+	}
+	goroutineArgs, ok := request.GetArguments()["goroutineArgs"].(string)
+	if ok {
+		s.args.goroutineArgs = goroutineArgs
 	}
 	depth, ok := request.GetArguments()["stackTraceDepth"].(float64)
 	if ok && depth > 0 {
@@ -1452,11 +1462,20 @@ func fnPackageName(loc *proc.Location) string {
 // an error response. If the dummy thread is returned in its place,
 // the next waterfall request for its stackTrace will return the error.
 func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
-	var err error
+	// Parse the goroutine arguments.
+	filters, _, _, _, _, _, err := terminal.ParseGoroutineArgs(s.args.goroutineArgs)
+	if err != nil {
+		s.log.Error(err)
+	}
+
 	var gs []*proc.G
 	var next int
 	if s.debugger != nil {
-		gs, next, err = s.debugger.Goroutines(0, maxGoroutines)
+		gs, next, err = s.debugger.Goroutines(next, maxGoroutines)
+		if next >= 0 {
+			s.logToConsole(fmt.Sprintf("too many goroutines, only loaded %d", len(gs)))
+		}
+		gs = s.debugger.FilterGoroutines(gs, filters)
 	}
 	threads := make([]dap.Thread, len(gs))
 
@@ -1478,9 +1497,6 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 	} else if len(threads) == 0 {
 		threads = []dap.Thread{{Id: 1, Name: "Dummy"}}
 	} else {
-		if next >= 0 {
-			s.logToConsole(fmt.Sprintf("too many goroutines, only loaded %d", len(gs)))
-		}
 		state, err := s.debugger.State( /*nowait*/ true)
 		if err != nil {
 			s.log.Debug("Unable to get debugger state: ", err)

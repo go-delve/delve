@@ -798,77 +798,9 @@ const (
 )
 
 func goroutines(t *Term, ctx callContext, argstr string) error {
-	args := strings.Split(argstr, " ")
-	var filters []api.ListGoroutinesFilter
-	var group api.GoroutineGroupingOptions
-	var fgl = fglUserCurrent
-	var flags printGoroutinesFlags
-	var depth = 10
-	var batchSize = goroutineBatchSize
-
-	group.MaxGroupMembers = maxGroupMembers
-	group.MaxGroups = maxGoroutineGroups
-
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch arg {
-		case "-u":
-			fgl = fglUserCurrent
-		case "-r":
-			fgl = fglRuntimeCurrent
-		case "-g":
-			fgl = fglGo
-		case "-s":
-			fgl = fglStart
-		case "-l":
-			flags |= printGoroutinesLabels
-		case "-t":
-			flags |= printGoroutinesStack
-			// optional depth argument
-			if i+1 < len(args) && len(args[i+1]) > 0 {
-				n, err := strconv.Atoi(args[i+1])
-				if err == nil {
-					depth = n
-					i++
-				}
-			}
-
-		case "-w", "-with":
-			filter, err := readGoroutinesFilter(args, &i)
-			if err != nil {
-				return err
-			}
-			filters = append(filters, *filter)
-
-		case "-wo", "-without":
-			filter, err := readGoroutinesFilter(args, &i)
-			if err != nil {
-				return err
-			}
-			filter.Negated = true
-			filters = append(filters, *filter)
-
-		case "-group":
-			var err error
-			group.GroupBy, err = readGoroutinesFilterKind(args, i+1)
-			if err != nil {
-				return err
-			}
-			i++
-			if group.GroupBy == api.GoroutineLabel {
-				if i+1 >= len(args) {
-					return errors.New("-group label must be followed by an argument")
-				}
-				group.GroupByKey = args[i+1]
-				i++
-			}
-			batchSize = 0 // grouping only works well if run on all goroutines
-
-		case "":
-			// nothing to do
-		default:
-			return fmt.Errorf("wrong argument: '%s'", arg)
-		}
+	filters, group, fgl, flags, depth, batchSize, err := ParseGoroutineArgs(argstr)
+	if err != nil {
+		return err
 	}
 
 	state, err := t.client.GetState()
@@ -920,6 +852,82 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 		fmt.Printf("[%d goroutines]\n", gslen)
 	}
 	return nil
+}
+
+func ParseGoroutineArgs(argstr string) ([]api.ListGoroutinesFilter, api.GoroutineGroupingOptions, formatGoroutineLoc, printGoroutinesFlags, int, int, error) {
+	args := strings.Split(argstr, " ")
+	var filters []api.ListGoroutinesFilter
+	var group api.GoroutineGroupingOptions
+	var fgl = fglUserCurrent
+	var flags printGoroutinesFlags
+	var depth = 10
+	var batchSize = goroutineBatchSize
+
+	group.MaxGroupMembers = maxGroupMembers
+	group.MaxGroups = maxGoroutineGroups
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch arg {
+		case "-u":
+			fgl = fglUserCurrent
+		case "-r":
+			fgl = fglRuntimeCurrent
+		case "-g":
+			fgl = fglGo
+		case "-s":
+			fgl = fglStart
+		case "-l":
+			flags |= printGoroutinesLabels
+		case "-t":
+			flags |= printGoroutinesStack
+			// optional depth argument
+			if i+1 < len(args) && len(args[i+1]) > 0 {
+				n, err := strconv.Atoi(args[i+1])
+				if err == nil {
+					depth = n
+					i++
+				}
+			}
+
+		case "-w", "-with":
+			filter, err := readGoroutinesFilter(args, &i)
+			if err != nil {
+				return nil, api.GoroutineGroupingOptions{}, 0, 0, 0, 0, fmt.Errorf("wrong argument: '%s'", arg)
+			}
+			filters = append(filters, *filter)
+
+		case "-wo", "-without":
+			filter, err := readGoroutinesFilter(args, &i)
+			if err != nil {
+				return nil, api.GoroutineGroupingOptions{}, 0, 0, 0, 0, fmt.Errorf("wrong argument: '%s'", arg)
+			}
+			filter.Negated = true
+			filters = append(filters, *filter)
+
+		case "-group":
+			var err error
+			group.GroupBy, err = readGoroutinesFilterKind(args, i+1)
+			if err != nil {
+				return nil, api.GoroutineGroupingOptions{}, 0, 0, 0, 0, fmt.Errorf("wrong argument: '%s'", arg)
+			}
+			i++
+			if group.GroupBy == api.GoroutineLabel {
+				if i+1 >= len(args) {
+					return nil, api.GoroutineGroupingOptions{}, 0, 0, 0, 0, fmt.Errorf("wrong argument: '%s'", arg)
+				}
+				group.GroupByKey = args[i+1]
+				i++
+			}
+			batchSize = 0 // grouping only works well if run on all goroutines
+
+		case "":
+			// nothing to do
+		default:
+			return nil, api.GoroutineGroupingOptions{}, 0, 0, 0, 0, fmt.Errorf("wrong argument: '%s'", arg)
+		}
+	}
+	return filters, group, fgl, flags, depth, batchSize, nil
 }
 
 func readGoroutinesFilterKind(args []string, i int) (api.GoroutineField, error) {
