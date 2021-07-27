@@ -523,7 +523,7 @@ type Defer struct {
 	DeferPC uint64 // PC address of instruction that added this defer
 	SP      uint64 // Value of SP register when this function was deferred (this field gets adjusted when the stack is moved to match the new stack space)
 	link    *Defer // Next deferred function
-	argSz   int64
+	argSz   int64  // Always 0 in Go >=1.17
 
 	variable   *Variable
 	Unreadable error
@@ -590,7 +590,14 @@ func (d *Defer) load() {
 
 	d.DeferPC, _ = constant.Uint64Val(d.variable.fieldVariable("pc").Value)
 	d.SP, _ = constant.Uint64Val(d.variable.fieldVariable("sp").Value)
-	d.argSz, _ = constant.Int64Val(d.variable.fieldVariable("siz").Value)
+	sizVar := d.variable.fieldVariable("siz")
+	if sizVar != nil {
+		// In Go <1.18, siz stores the number of bytes of
+		// defer arguments following the defer record. In Go
+		// 1.18, the defer record doesn't store arguments, so
+		// we leave this 0.
+		d.argSz, _ = constant.Int64Val(sizVar.Value)
+	}
 
 	linkvar := d.variable.fieldVariable("link").maybeDereference()
 	if linkvar.Addr != 0 {
