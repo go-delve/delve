@@ -1130,6 +1130,18 @@ func TestContinueUntil(t *testing.T) {
 	})
 }
 
+func TestContinueUntilExistingBreakpoint(t *testing.T) {
+	withTestTerminal("continuetestprog", t, func(term *FakeTerminal) {
+		term.MustExec("break main.main")
+		if runtime.GOARCH != "386" {
+			listIsAt(t, term, "continue main.main", 16, -1, -1)
+		} else {
+			listIsAt(t, term, "continue main.main", 17, -1, -1)
+		}
+		listIsAt(t, term, "continue main.sayhi", 12, -1, -1)
+	})
+}
+
 func TestPrintFormat(t *testing.T) {
 	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
 		term.MustExec("continue")

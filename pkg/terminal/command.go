@@ -1410,7 +1410,9 @@ func (c *Commands) cont(t *Term, ctx callContext, args string) error {
 	if args != "" {
 		tmp, err := setBreakpoint(t, ctx, false, args)
 		if err != nil {
-			return err
+			if !strings.Contains(err.Error(), "Breakpoint exists") {
+				return err
+			}
 		}
 		defer func() {
 			for _, bp := range tmp {
