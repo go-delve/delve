@@ -781,3 +781,18 @@ func TestDlvTestChdir(t *testing.T) {
 		t.Errorf("output did not contain expected string %q", tgt)
 	}
 }
+
+func TestVersion(t *testing.T) {
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	got, err := exec.Command(dlvbin, "version", "-v").CombinedOutput()
+	if err != nil {
+		t.Fatalf("error executing `dlv version`: %v\n%s\n", err, got)
+	}
+	want1 := []byte("mod\tgithub.com/go-delve/delve")
+	want2 := []byte("dep\tgithub.com/google/go-dap")
+	if !bytes.Contains(got, want1) || !bytes.Contains(got, want2) {
+		t.Errorf("got %s\nwant %v and %v in the output", got, want1, want2)
+	}
+}

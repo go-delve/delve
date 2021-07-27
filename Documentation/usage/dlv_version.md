@@ -9,7 +9,8 @@ dlv version [flags]
 ### Options
 
 ```
-  -h, --help   help for version
+  -h, --help      help for version
+  -v, --verbose   print verbose version info
 ```
 
 ### Options inherited from parent commands
