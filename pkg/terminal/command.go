@@ -487,7 +487,9 @@ Defines <alias> as an alias to <command> or removes an alias.`},
 If locspec is omitted edit will open the current source file in the editor, otherwise it will open the specified location.`},
 		{aliases: []string{"libraries"}, cmdFn: libraries, helpMsg: `List loaded dynamic libraries`},
 
-		{aliases: []string{"examinemem", "x"}, group: dataCmds, cmdFn: examineMemoryCmd, helpMsg: `Examine memory:
+		{aliases: []string{"examinemem", "x"}, group: dataCmds, cmdFn: examineMemoryCmd, helpMsg: `Examine raw memory at the given address.
+
+Examine memory:
 
 	examinemem [-fmt <format>] [-count|-len <count>] [-size <size>] <address>
 	examinemem [-fmt <format>] [-count|-len <count>] [-size <size>] -x <expression>
@@ -1410,7 +1412,9 @@ func (c *Commands) cont(t *Term, ctx callContext, args string) error {
 	if args != "" {
 		tmp, err := setBreakpoint(t, ctx, false, args)
 		if err != nil {
-			return err
+			if !strings.Contains(err.Error(), "Breakpoint exists") {
+				return err
+			}
 		}
 		defer func() {
 			for _, bp := range tmp {
@@ -1446,8 +1450,28 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string, sho
 		}
 		return nil
 	}
+	skipBreakpoints := false
 	for {
-		fmt.Printf("\tbreakpoint hit during %s, continuing...\n", op)
+		fmt.Printf("\tbreakpoint hit during %s", op)
+		if !skipBreakpoints {
+			fmt.Printf("\n")
+			answer, err := promptAutoContinue(t, op)
+			switch answer {
+			case "f": // finish next
+				skipBreakpoints = true
+				fallthrough
+			case "c": // continue once
+				fmt.Printf("continuing...\n")
+			case "s": // stop and cancel
+				fallthrough
+			default:
+				t.client.CancelNext()
+				printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+				return err
+			}
+		} else {
+			fmt.Printf(", continuing...\n")
+		}
 		stateChan := t.client.DirectionCongruentContinue()
 		var state *api.DebuggerState
 		for state = range stateChan {
@@ -1460,6 +1484,20 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string, sho
 		if !state.NextInProgress {
 			printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
 			return nil
+		}
+	}
+}
+
+func promptAutoContinue(t *Term, op string) (string, error) {
+	for {
+		answer, err := t.line.Prompt(fmt.Sprintf("[c] continue [s] stop here and cancel %s, [f] finish %s skipping all breakpoints? ", op, op))
+		if err != nil {
+			return "", err
+		}
+		answer = strings.ToLower(strings.TrimSpace(answer))
+		switch answer {
+		case "f", "c", "s":
+			return answer, nil
 		}
 	}
 }

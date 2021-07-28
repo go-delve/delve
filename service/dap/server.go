@@ -772,6 +772,20 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
+	backend, ok := request.Arguments["backend"]
+	if ok {
+		backendParsed, ok := backend.(string)
+		if !ok {
+			s.sendErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch",
+				fmt.Sprintf("'backend' attribute '%v' in debug configuration is not a string.", backend))
+			return
+		}
+		s.config.Debugger.Backend = backendParsed
+	} else {
+		s.config.Debugger.Backend = "default"
+	}
+
 	if mode == "replay" {
 		traceDirPath, _ := request.Arguments["traceDirPath"].(string)
 
@@ -889,20 +903,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			}
 			targetArgs = append(targetArgs, argParsed)
 		}
-	}
-
-	backend, ok := request.Arguments["backend"]
-	if ok {
-		backendParsed, ok := backend.(string)
-		if !ok {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("'backend' attribute '%v' in debug configuration is not a string.", backend))
-			return
-		}
-		s.config.Debugger.Backend = backendParsed
-	} else {
-		s.config.Debugger.Backend = "default"
 	}
 
 	s.config.ProcessArgs = append([]string{program}, targetArgs...)
@@ -2742,7 +2742,7 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 }
 
 func (s *Server) throwReason(goroutineID int) (string, error) {
-	return s.getExprString("s", goroutineID, 1)
+	return s.getExprString("s", goroutineID, 0)
 }
 
 func (s *Server) panicReason(goroutineID int) (string, error) {
