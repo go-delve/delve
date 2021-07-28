@@ -734,10 +734,7 @@ func (dbp *nativeProcess) SetUProbe(fnName string, args []ebpf.UProbeArgMap) err
 
 	params := ebpf.CreateFunctionParameterList(fn.Entry, args)
 	key := fn.Entry
-	if err := dbp.os.ebpf.UpdateArgMap(unsafe.Pointer(&key), unsafe.Pointer(&params)); err != nil {
-		return err
-	}
-	return nil
+	return dbp.os.ebpf.UpdateArgMap(unsafe.Pointer(&key), unsafe.Pointer(&params))
 }
 
 func killProcess(pid int) error {
