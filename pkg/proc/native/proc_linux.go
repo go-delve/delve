@@ -15,7 +15,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"unsafe"
 
 	sys "golang.org/x/sys/unix"
 
@@ -732,9 +731,8 @@ func (dbp *nativeProcess) SetUProbe(fnName string, args []ebpf.UProbeArgMap) err
 		return fmt.Errorf("could not find function: %s", fnName)
 	}
 
-	params := ebpf.CreateFunctionParameterList(fn.Entry, args)
 	key := fn.Entry
-	return dbp.os.ebpf.UpdateArgMap(unsafe.Pointer(&key), unsafe.Pointer(&params))
+	return dbp.os.ebpf.UpdateArgMap(key, args)
 }
 
 func killProcess(pid int) error {

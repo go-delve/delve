@@ -3,11 +3,8 @@
 
 package ebpf
 
-// #include "./trace_probe/function_vals.bpf.h"
-import "C"
 import (
 	"errors"
-	"unsafe"
 )
 
 type EBPFContext struct {
@@ -21,7 +18,7 @@ func (ctx *EBPFContext) AttachUprobe(pid int, name string, offset uint32) error 
 	return errors.New("eBPF is disabled")
 }
 
-func (ctx *EBPFContext) UpdateArgMap(key, params unsafe.Pointer) error {
+func (ctx *EBPFContext) UpdateArgMap(key uint64, args []UProbeArgMap) error {
 	return errors.New("eBPF is disabled")
 }
 
@@ -39,9 +36,4 @@ func LoadEBPFTracingProgram() (*EBPFContext, error) {
 
 func ParseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 	return RawUProbeParams{}
-}
-
-func CreateFunctionParameterList(entry uint64, args []UProbeArgMap) C.function_parameter_list_t {
-	var params C.function_parameter_list_t
-	return params
 }

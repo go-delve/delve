@@ -51,11 +51,12 @@ func (ctx *EBPFContext) AttachUprobe(pid int, name string, offset uint32) error 
 	return err
 }
 
-func (ctx *EBPFContext) UpdateArgMap(key, params unsafe.Pointer) error {
+func (ctx *EBPFContext) UpdateArgMap(key uint64, args []UProbeArgMap) error {
 	if ctx.bpfArgMap == nil {
 		return errors.New("eBPF map not loaded")
 	}
-	return ctx.bpfArgMap.Update(key, params)
+	params := createFunctionParameterList(key, args)
+	return ctx.bpfArgMap.Update(unsafe.Pointer(&key), unsafe.Pointer(&params))
 }
 
 func (ctx *EBPFContext) GetBufferedTracepoints() []RawUProbeParams {
@@ -165,7 +166,7 @@ func ParseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 	return rawParams
 }
 
-func CreateFunctionParameterList(entry uint64, args []UProbeArgMap) C.function_parameter_list_t {
+func createFunctionParameterList(entry uint64, args []UProbeArgMap) C.function_parameter_list_t {
 	var params C.function_parameter_list_t
 	params.n_parameters = C.uint(len(args))
 	params.fn_addr = C.uint(entry)
