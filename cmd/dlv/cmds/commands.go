@@ -629,36 +629,38 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		cmds := terminal.DebugCommands(client)
 		t := terminal.New(client, nil)
 		defer t.Close()
-		done := make(chan struct{})
-		go func() {
-			for {
-				select {
-				case <-done:
-					return
-				default:
-					tracepoints, err := client.GetBufferedTracepoints()
-					if err != nil {
-						panic(err)
-					}
-					for _, t := range tracepoints {
-						var params strings.Builder
-						for _, p := range t.InputParams {
-							if params.Len() > 0 {
-								params.WriteString(", ")
-							}
-							if p.Kind == reflect.String {
-								params.WriteString(fmt.Sprintf("%q", p.Value))
-							} else {
-								params.WriteString(p.Value)
-							}
+		if traceUseEBPF {
+			done := make(chan struct{})
+			defer close(done)
+			go func() {
+				for {
+					select {
+					case <-done:
+						return
+					default:
+						tracepoints, err := client.GetBufferedTracepoints()
+						if err != nil {
+							panic(err)
 						}
-						fmt.Printf("%s:%d %s(%s)\n", t.File, t.Line, t.FunctionName, params.String())
+						for _, t := range tracepoints {
+							var params strings.Builder
+							for _, p := range t.InputParams {
+								if params.Len() > 0 {
+									params.WriteString(", ")
+								}
+								if p.Kind == reflect.String {
+									params.WriteString(fmt.Sprintf("%q", p.Value))
+								} else {
+									params.WriteString(p.Value)
+								}
+							}
+							fmt.Printf("%s:%d %s(%s)\n", t.File, t.Line, t.FunctionName, params.String())
+						}
 					}
 				}
-			}
-		}()
+			}()
+		}
 		cmds.Call("continue", t)
-		close(done)
 		return 0
 	}()
 	os.Exit(status)
