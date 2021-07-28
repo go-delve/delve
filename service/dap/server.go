@@ -2749,7 +2749,7 @@ func (s *Server) stacktrace(goroutineID int, g *proc.G) (string, error) {
 }
 
 func (s *Server) throwReason(goroutineID int) (string, error) {
-	return s.getExprString("s", goroutineID, 1)
+	return s.getExprString("s", goroutineID, 0)
 }
 
 func (s *Server) panicReason(goroutineID int) (string, error) {
