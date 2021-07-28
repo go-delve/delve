@@ -2837,7 +2837,8 @@ func newEvent(event string) *dap.Event {
 
 const BetterBadAccessError = `invalid memory address or nil pointer dereference [signal SIGSEGV: segmentation violation]
 Unable to propagate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)`
-const BetterNextWhileNextingError = "Step was interrupted by a breakpoint, cannot issue another step request. Use `Continue` to resume the program."
+const BetterNextWhileNextingError = `Unable to step while the previous step is interrupted by a breakpoint.
+Use 'Continue' to resume the original step command.`
 
 func (s *Server) resetHandlesForStoppedEvent() {
 	s.stackFrameHandles.reset()
