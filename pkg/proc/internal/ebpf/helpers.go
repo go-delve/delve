@@ -24,7 +24,7 @@ import (
 //go:embed trace_probe/trace.o
 var TraceProbeBytes []byte
 
-const FakeAddressBase = 0xbeef000000000000
+const FakeAddressBase = 0xbeed000000000000
 
 type EBPFContext struct {
 	bpfModule  *bpf.Module

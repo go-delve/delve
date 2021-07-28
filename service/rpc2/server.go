@@ -272,7 +272,7 @@ type CreateTracepointOut struct {
 }
 
 func (s *RPCServer) CreateTracepoint(arg CreateTracepointIn, out *CreateTracepointOut) error {
-	return s.debugger.CreateTracepoint(arg.FunctionName)
+	return s.debugger.CreateEBPFTracepoint(arg.FunctionName)
 }
 
 type ClearBreakpointIn struct {

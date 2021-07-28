@@ -274,7 +274,8 @@ func (p *process) SupportsBPF() bool {
 	return false
 }
 
-func (dbp *process) SetUProbe(fnName string, args []ebpf.UProbeArgMap) {
+func (dbp *process) SetUProbe(fnName string, args []ebpf.UProbeArgMap) error {
+	panic("not implemented")
 }
 
 // ReadMemory will return memory from the core file at the specified location and put the

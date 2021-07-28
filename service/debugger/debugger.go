@@ -757,11 +757,11 @@ func isBreakpointExistsErr(err error) bool {
 	return r
 }
 
-func (d *Debugger) CreateTracepoint(fnName string) error {
+func (d *Debugger) CreateEBPFTracepoint(fnName string) error {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	return d.target.SetTracepoint(fnName)
+	return d.target.SetEBPFTracepoint(fnName)
 }
 
 // AmendBreakpoint will update the breakpoint with the matching ID.

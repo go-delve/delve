@@ -380,7 +380,12 @@ func (dbp *nativeProcess) SupportsBPF() bool {
 	return false
 }
 
-func (dbp *nativeProcess) SetUProbe(fnName string, args []proc.UProbeArgMap) {
+func (dbp *nativeProcess) SetUProbe(fnName string, args []proc.UProbeArgMap) error {
+	panic("not implemented")
+}
+
+func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
+	panic("not implemented")
 }
 
 // Usedy by Detach

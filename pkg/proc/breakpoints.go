@@ -390,7 +390,7 @@ func (t *Target) SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) 
 	return t.setBreakpointInternal(addr, kind, 0, cond)
 }
 
-func (t *Target) SetTracepoint(fnName string) error {
+func (t *Target) SetEBPFTracepoint(fnName string) error {
 	if !t.proc.SupportsBPF() {
 		return errors.New("eBPF is not supported")
 	}
@@ -409,14 +409,6 @@ func (t *Target) SetTracepoint(fnName string) error {
 	}
 	_, l, _ := t.BinInfo().PCToLine(fn.Entry)
 
-	regs, err := t.CurrentThread().Registers()
-	if err != nil {
-		return err
-	}
-	dregs := t.BinInfo().Arch.RegistersToDwarfRegisters(fn.cu.image.StaticBase, regs)
-	pcreg := dregs.Reg(t.BinInfo().Arch.PCRegNum)
-	pcreg.Uint64Val = fn.Entry
-
 	varEntries := reader.Variables(dwarfTree, fn.Entry, l, variablesFlags)
 	for _, entry := range varEntries {
 		isret, _ := entry.Val(dwarf.AttrVarParam).(bool)
@@ -427,7 +419,7 @@ func (t *Target) SetTracepoint(fnName string) error {
 		if err != nil {
 			return err
 		}
-		offset, pieces, _, err := t.BinInfo().Location(entry, dwarf.AttrLocation, fn.Entry, *dregs)
+		offset, pieces, _, err := t.BinInfo().Location(entry, dwarf.AttrLocation, fn.Entry, op.DwarfRegisters{})
 		if err != nil {
 			return err
 		}

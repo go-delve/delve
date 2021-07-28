@@ -734,11 +734,6 @@ func resolveTypedef(typ godwarf.Type) godwarf.Type {
 	}
 }
 
-// SetMemory sets the memory for the variable.
-func (v *Variable) SetMemory(mem MemoryReadWriter) {
-	v.mem = mem
-}
-
 func newConstant(val constant.Value, mem MemoryReadWriter) *Variable {
 	v := &Variable{Value: val, mem: mem, loaded: true}
 	switch val.Kind() {

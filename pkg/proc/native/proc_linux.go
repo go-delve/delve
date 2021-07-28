@@ -48,12 +48,12 @@ const (
 type osProcessDetails struct {
 	comm string
 
-	ctx *ebpf.EBPFContext
+	ebpf *ebpf.EBPFContext
 }
 
 func (os *osProcessDetails) Close() {
-	if os.ctx != nil {
-		os.ctx.Close()
+	if os.ebpf != nil {
+		os.ebpf.Close()
 	}
 }
 
@@ -198,10 +198,10 @@ func initialize(dbp *nativeProcess) error {
 }
 
 func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
-	if dbp.os.ctx == nil {
-		return make([]ebpf.RawUProbeParams, 0)
+	if dbp.os.ebpf == nil {
+		return nil
 	}
-	return dbp.os.ctx.GetBufferedTracepoints()
+	return dbp.os.ebpf.GetBufferedTracepoints()
 }
 
 // kill kills the target process.
@@ -706,44 +706,38 @@ func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 	return linutil.EntryPointFromAuxv(auxvbuf, dbp.bi.Arch.PtrSize()), nil
 }
 
-func (dbp *nativeProcess) SupportsBPF() bool {
-	return true
-}
-
-func (dbp *nativeProcess) SetUProbe(fnName string, args []ebpf.UProbeArgMap) {
+func (dbp *nativeProcess) SetUProbe(fnName string, args []ebpf.UProbeArgMap) error {
 	// Lazily load and initialize the BPF program upon request to set a uprobe.
-	if dbp.os.ctx == nil {
-		dbp.os.ctx, _ = ebpf.LoadEBPFTracingProgram()
+	if dbp.os.ebpf == nil {
+		dbp.os.ebpf, _ = ebpf.LoadEBPFTracingProgram()
 	}
 
 	// We only allow up to 6 args for a BPF probe.
 	// Return early if we have more.
 	if len(args) > 6 {
-		return
+		return errors.New("too many arguments in traced function, max is 6")
 	}
 
 	debugname := dbp.bi.Images[0].Path
 	offset, err := ebpf.SymbolToOffset(debugname, fnName)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(-1)
+		return err
 	}
-	err = dbp.os.ctx.AttachUprobe(dbp.Pid(), debugname, offset)
+	err = dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, offset)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(-1)
+		return err
 	}
 	fn, ok := dbp.bi.LookupFunc[fnName]
 	if !ok {
-		panic("could not find function")
+		return fmt.Errorf("could not find function: %s", fnName)
 	}
 
 	params := ebpf.CreateFunctionParameterList(fn.Entry, args)
 	key := fn.Entry
-	if err := dbp.os.ctx.UpdateArgMap(unsafe.Pointer(&key), unsafe.Pointer(&params)); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(-1)
+	if err := dbp.os.ebpf.UpdateArgMap(unsafe.Pointer(&key), unsafe.Pointer(&params)); err != nil {
+		return err
 	}
+	return nil
 }
 
 func killProcess(pid int) error {

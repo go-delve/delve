@@ -72,6 +72,24 @@ void get_value_from_register(struct pt_regs *ctx, void *dest, int reg_num) {
         case 9: // R9
             memcpy(dest, &ctx->r9, sizeof(ctx->r9));
             break;
+        case 10: // R10
+            memcpy(dest, &ctx->r10, sizeof(ctx->r10));
+            break;
+        case 11: // R11
+            memcpy(dest, &ctx->r11, sizeof(ctx->r11));
+            break;
+        case 12: // R12
+            memcpy(dest, &ctx->r12, sizeof(ctx->r12));
+            break;
+        case 13: // R13
+            memcpy(dest, &ctx->r13, sizeof(ctx->r13));
+            break;
+        case 14: // R14
+            memcpy(dest, &ctx->r14, sizeof(ctx->r14));
+            break;
+        case 15: // R15
+            memcpy(dest, &ctx->r15, sizeof(ctx->r15));
+            break;
     }
 }
 

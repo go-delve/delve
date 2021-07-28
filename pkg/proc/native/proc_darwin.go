@@ -1,4 +1,5 @@
-//+build darwin,macnative
+//go:build darwin && macnative
+// +build darwin,macnative
 
 package native
 
@@ -475,7 +476,12 @@ func (dbp *nativeProcess) SupportsBPF() bool {
 	return false
 }
 
-func (dbp *nativeProcess) SetUProbe(fnName string, args []proc.UProbeArgMap) {
+func (dbp *nativeProcess) SetUProbe(fnName string, args []proc.UProbeArgMap) error {
+	panic("not implemented")
+}
+
+func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
+	panic("not implemented")
 }
 
 func initialize(dbp *nativeProcess) error { return nil }

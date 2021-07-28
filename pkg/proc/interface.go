@@ -46,7 +46,7 @@ type ProcessInternal interface {
 	EraseBreakpoint(*Breakpoint) error
 
 	SupportsBPF() bool
-	SetUProbe(string, []ebpf.UProbeArgMap)
+	SetUProbe(string, []ebpf.UProbeArgMap) error
 
 	// DumpProcessNotes returns ELF core notes describing the process and its threads.
 	// Implementing this method is optional.

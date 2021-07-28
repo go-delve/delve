@@ -370,7 +370,8 @@ func (dbp *gdbProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
 	return nil
 }
 
-func (dbp *gdbProcess) SetUProbe(fnName string, args []ebpf.UProbeArgMap) {
+func (dbp *gdbProcess) SetUProbe(fnName string, args []ebpf.UProbeArgMap) error {
+	panic("not implemented")
 }
 
 // unusedPort returns an unused tcp port
