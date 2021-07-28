@@ -111,6 +111,8 @@ func processServerMethods(serverMethods []*types.Func) []binding {
 			name = "set_expr"
 		case "command":
 			name = "raw_command"
+		case "create_e_b_p_f_tracepoint":
+			name = "create_ebpf_tracepoint"
 		default:
 			// remove list_ prefix, it looks better
 			const listPrefix = "list_"

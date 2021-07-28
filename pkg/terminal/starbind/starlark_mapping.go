@@ -313,12 +313,12 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 		}
 		return env.interfaceToStarlarkValue(rpcRet), nil
 	})
-	r["create_tracepoint"] = starlark.NewBuiltin("create_tracepoint", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	r["create_ebpf_tracepoint"] = starlark.NewBuiltin("create_ebpf_tracepoint", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if err := isCancelled(thread); err != nil {
 			return starlark.None, decorateError(thread, err)
 		}
-		var rpcArgs rpc2.CreateTracepointIn
-		var rpcRet rpc2.CreateTracepointOut
+		var rpcArgs rpc2.CreateEBPFTracepointIn
+		var rpcRet rpc2.CreateEBPFTracepointOut
 		if len(args) > 0 && args[0] != starlark.None {
 			err := unmarshalStarlarkValue(args[0], &rpcArgs.FunctionName, "FunctionName")
 			if err != nil {
@@ -337,7 +337,7 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 				return starlark.None, decorateError(thread, err)
 			}
 		}
-		err := env.ctx.Client().CallAPI("CreateTracepoint", &rpcArgs, &rpcRet)
+		err := env.ctx.Client().CallAPI("CreateEBPFTracepoint", &rpcArgs, &rpcRet)
 		if err != nil {
 			return starlark.None, err
 		}

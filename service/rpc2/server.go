@@ -263,15 +263,15 @@ func (s *RPCServer) CreateBreakpoint(arg CreateBreakpointIn, out *CreateBreakpoi
 	return nil
 }
 
-type CreateTracepointIn struct {
+type CreateEBPFTracepointIn struct {
 	FunctionName string
 }
 
-type CreateTracepointOut struct {
+type CreateEBPFTracepointOut struct {
 	Breakpoint api.Breakpoint
 }
 
-func (s *RPCServer) CreateTracepoint(arg CreateTracepointIn, out *CreateTracepointOut) error {
+func (s *RPCServer) CreateEBPFTracepoint(arg CreateEBPFTracepointIn, out *CreateEBPFTracepointOut) error {
 	return s.debugger.CreateEBPFTracepoint(arg.FunctionName)
 }
 

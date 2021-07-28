@@ -588,7 +588,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		}
 		for i := range funcs {
 			if traceUseEBPF {
-				err := client.CreateTracepoint(funcs[i])
+				err := client.CreateEBPFTracepoint(funcs[i])
 				if err != nil {
 					fmt.Fprintln(os.Stderr, err)
 					return 1

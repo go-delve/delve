@@ -242,9 +242,9 @@ func (c *RPCClient) CreateBreakpoint(breakPoint *api.Breakpoint) (*api.Breakpoin
 	return &out.Breakpoint, err
 }
 
-func (c *RPCClient) CreateTracepoint(fnName string) error {
-	var out CreateTracepointOut
-	return c.call("CreateTracepoint", CreateTracepointIn{FunctionName: fnName}, &out)
+func (c *RPCClient) CreateEBPFTracepoint(fnName string) error {
+	var out CreateEBPFTracepointOut
+	return c.call("CreateEBPFTracepoint", CreateEBPFTracepointIn{FunctionName: fnName}, &out)
 }
 
 func (c *RPCClient) CreateWatchpoint(scope api.EvalScope, expr string, wtype api.WatchType) (*api.Breakpoint, error) {
