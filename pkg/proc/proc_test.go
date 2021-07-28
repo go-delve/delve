@@ -1354,14 +1354,7 @@ func TestThreadFrameEvaluation(t *testing.T) {
 		scope, err := proc.ConvertEvalScope(p, 0, 0, 0)
 		assertNoError(err, t, "ConvertEvalScope() on frame 0")
 		_, err = scope.EvalVariable("s", normalLoadConfig)
-		if err == nil {
-			t.Errorf("expected error for EvalVariable(\"s\") on frame 0")
-		}
-
-		scope, err = proc.ConvertEvalScope(p, 0, 1, 0)
-		assertNoError(err, t, "ConvertEvalScope() on frame 1")
-		_, err = scope.EvalVariable("s", normalLoadConfig)
-		assertNoError(err, t, "EvalVariable(\"s\") on frame 1")
+		assertNoError(err, t, "EvalVariable(\"s\") on frame 0")
 	})
 }
 
