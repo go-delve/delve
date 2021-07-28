@@ -1700,7 +1700,7 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 		isSystemGoroutine = g.System(s.debugger.Target())
 	}
 
-	var stackFrames []dap.StackFrame
+	stackFrames := []dap.StackFrame{} // initialize to empty, since nil is not an accepted response.
 	for i := 0; i < levels && i+start < len(frames); i++ {
 		frame := frames[start+i]
 		loc := &frame.Call
