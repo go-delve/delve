@@ -1,4 +1,5 @@
-//+build darwin,!macnative
+//go:build darwin && !macnative
+// +build darwin,!macnative
 
 package native
 
@@ -8,6 +9,7 @@ import (
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 )
 
 var ErrNativeBackendDisabled = errors.New("native backend disabled during compilation")
@@ -81,6 +83,18 @@ func (dbp *nativeProcess) detach(kill bool) error {
 // EntryPoint returns the entry point for the process,
 // useful for PIEs.
 func (dbp *nativeProcess) EntryPoint() (uint64, error) {
+	panic(ErrNativeBackendDisabled)
+}
+
+func (dbp *nativeProcess) SupportsBPF() bool {
+	panic(ErrNativeBackendDisabled)
+}
+
+func (dbp *nativeProcess) SetUProbe(fnName string, args []ebpf.UProbeArgMap) error {
+	panic(ErrNativeBackendDisabled)
+}
+
+func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
 	panic(ErrNativeBackendDisabled)
 }
 

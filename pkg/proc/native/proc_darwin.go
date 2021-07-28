@@ -19,6 +19,7 @@ import (
 	sys "golang.org/x/sys/unix"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 	"github.com/go-delve/delve/pkg/proc/macutil"
 )
 
@@ -476,7 +477,7 @@ func (dbp *nativeProcess) SupportsBPF() bool {
 	return false
 }
 
-func (dbp *nativeProcess) SetUProbe(fnName string, args []proc.UProbeArgMap) error {
+func (dbp *nativeProcess) SetUProbe(fnName string, args []ebpf.UProbeArgMap) error {
 	panic("not implemented")
 }
 
