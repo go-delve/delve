@@ -297,7 +297,7 @@ func TestCore(t *testing.T) {
 	if mainFrame == nil {
 		t.Fatalf("Couldn't find main in stack %v", panickingStack)
 	}
-	msg, err := proc.FrameToScope(p, p.BinInfo(), p.Memory(), nil, *mainFrame).EvalVariable("msg", proc.LoadConfig{MaxStringLen: 64})
+	msg, err := proc.FrameToScope(p, p.Memory(), nil, *mainFrame).EvalVariable("msg", proc.LoadConfig{MaxStringLen: 64})
 	if err != nil {
 		t.Fatalf("Couldn't EvalVariable(msg, ...): %v", err)
 	}
@@ -427,7 +427,7 @@ mainSearch:
 		t.Fatal("could not find main.main frame")
 	}
 
-	scope := proc.FrameToScope(p, p.BinInfo(), p.Memory(), nil, *mainFrame)
+	scope := proc.FrameToScope(p, p.Memory(), nil, *mainFrame)
 	loadConfig := proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
 	v1, err := scope.EvalVariable("t", loadConfig)
 	assertNoError(err, t, "EvalVariable(t)")

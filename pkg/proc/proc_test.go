@@ -1149,7 +1149,7 @@ func evalVariableOrError(p *proc.Target, symbol string) (*proc.Variable, error) 
 		var frame proc.Stackframe
 		frame, err = findFirstNonRuntimeFrame(p)
 		if err == nil {
-			scope = proc.FrameToScope(p, p.BinInfo(), p.Memory(), nil, frame)
+			scope = proc.FrameToScope(p, p.Memory(), nil, frame)
 		}
 	} else {
 		scope, err = proc.GoroutineScope(p, p.CurrentThread())
@@ -3036,7 +3036,7 @@ func TestIssue871(t *testing.T) {
 			var frame proc.Stackframe
 			frame, err = findFirstNonRuntimeFrame(p)
 			if err == nil {
-				scope = proc.FrameToScope(p, p.BinInfo(), p.Memory(), nil, frame)
+				scope = proc.FrameToScope(p, p.Memory(), nil, frame)
 			}
 		} else {
 			scope, err = proc.GoroutineScope(p, p.CurrentThread())
@@ -3482,7 +3482,7 @@ func TestIssue1034(t *testing.T) {
 		assertNoError(p.Continue(), t, "Continue()")
 		frames, err := p.SelectedGoroutine().Stacktrace(10, 0)
 		assertNoError(err, t, "Stacktrace")
-		scope := proc.FrameToScope(p, p.BinInfo(), p.Memory(), nil, frames[2:]...)
+		scope := proc.FrameToScope(p, p.Memory(), nil, frames[2:]...)
 		args, _ := scope.FunctionArguments(normalLoadConfig)
 		assertNoError(err, t, "FunctionArguments()")
 		if len(args) > 0 {
@@ -3613,9 +3613,13 @@ func TestIssue1101(t *testing.T) {
 			exitErr = p.Continue()
 		}
 		if pexit, exited := exitErr.(proc.ErrProcessExited); exited {
-			if pexit.Status != 2 && testBackend != "lldb" {
-				// looks like there's a bug with debugserver on macOS that sometimes
+			if pexit.Status != 2 && testBackend != "lldb" && (runtime.GOOS != "linux" || runtime.GOARCH != "386") {
+				// Looks like there's a bug with debugserver on macOS that sometimes
 				// will report exit status 0 instead of the proper exit status.
+				//
+				// Also it seems that sometimes on linux/386 we will not receive the
+				// exit status. This happens if the process exits at the same time as it
+				// receives a signal.
 				t.Fatalf("process exited status %d (expected 2)", pexit.Status)
 			}
 		} else {
@@ -5141,8 +5145,8 @@ func TestDump(t *testing.T) {
 					t.Errorf("Frame mismatch %d.%d\nlive:\t%s\ncore:\t%s", gos[i].ID, j, convertFrame(p.BinInfo().Arch, &frames[j]), convertFrame(p.BinInfo().Arch, &cframes[j]))
 				}
 				if frames[j].Call.Fn != nil && frames[j].Call.Fn.Name == "main.main" {
-					scope = proc.FrameToScope(p, p.BinInfo(), p.Memory(), gos[i], frames[j:]...)
-					cscope = proc.FrameToScope(c, c.BinInfo(), c.Memory(), cgos[i], cframes[j:]...)
+					scope = proc.FrameToScope(p, p.Memory(), gos[i], frames[j:]...)
+					cscope = proc.FrameToScope(c, c.Memory(), cgos[i], cframes[j:]...)
 				}
 			}
 		}
