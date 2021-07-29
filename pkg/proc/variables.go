@@ -542,7 +542,7 @@ func (g *G) System(tgt *Target) bool {
 			return true
 		}
 		v, err := s.EvalVariable("fingRunning", loadSingleValue)
-		if err != nil {
+		if err != nil || v.Unreadable != nil {
 			return true
 		}
 		fingRunning := constant.BoolVal(v.Value)
