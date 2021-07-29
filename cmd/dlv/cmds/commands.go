@@ -472,18 +472,30 @@ func dapCmd(cmd *cobra.Command, args []string) {
 	os.Exit(status)
 }
 
+func buildBinary(cmd *cobra.Command, args []string, isTest bool) string {
+	debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return ""
+	}
+
+	if isTest {
+		err = gobuild.GoTestBuild(debugname, args, buildFlags)
+	} else {
+		err = gobuild.GoBuild(debugname, args, buildFlags)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return ""
+	}
+	return debugname
+}
+
 func debugCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
-		debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			return 1
-		}
-
 		dlvArgs, targetArgs := splitArgs(cmd, args)
-		err = gobuild.GoBuild(debugname, dlvArgs, buildFlags)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
+		debugname := buildBinary(cmd, dlvArgs, false)
+		if debugname == "" {
 			return 1
 		}
 		defer gobuild.Remove(debugname)
@@ -530,21 +542,9 @@ func traceCmd(cmd *cobra.Command, args []string) {
 
 			debugname := traceExecFile
 			if traceExecFile == "" {
-				debugname, err = filepath.Abs(cmd.Flag("output").Value.String())
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "%v\n", err)
+				debugname = buildBinary(cmd, dlvArgs, traceTestBinary)
+				if debugname == "" {
 					return 1
-				}
-				if traceTestBinary {
-					if err := gobuild.GoTestBuild(debugname, dlvArgs, buildFlags); err != nil {
-						fmt.Fprintf(os.Stderr, "%v\n", err)
-						return 1
-					}
-				} else {
-					if err := gobuild.GoBuild(debugname, dlvArgs, buildFlags); err != nil {
-						fmt.Fprintf(os.Stderr, "%v\n", err)
-						return 1
-					}
 				}
 				defer gobuild.Remove(debugname)
 			}
@@ -628,16 +628,9 @@ func isBreakpointExistsErr(err error) bool {
 
 func testCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
-		debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			return 1
-		}
-
 		dlvArgs, targetArgs := splitArgs(cmd, args)
-		err = gobuild.GoTestBuild(debugname, dlvArgs, buildFlags)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
+		debugname := buildBinary(cmd, dlvArgs, false)
+		if debugname == "" {
 			return 1
 		}
 		defer gobuild.Remove(debugname)
