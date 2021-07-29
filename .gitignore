@@ -10,3 +10,4 @@ localtests
 *.iml
 .teamcity/target
 .vscode
+**/*.o
