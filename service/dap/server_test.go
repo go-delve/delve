@@ -3672,11 +3672,14 @@ func TestNextWhileNexting(t *testing.T) {
 								if !m.Body.AllThreadsStopped {
 									t.Errorf("got %#v, want Reason=\"breakpoint\", AllThreadsStopped=true", m)
 								}
-								checkStop(t, client, m.Body.ThreadId, "main.dostuff", 8)
 
 								if stepInProgress {
 									// We encountered a breakpoint on a different thread. We should have to resume execution
 									// using continue.
+									oe := client.ExpectOutputEvent(t)
+									if oe.Body.Category != "console" || !strings.Contains(oe.Body.Output, "Step interrupted by a breakpoint.") {
+										t.Errorf("\ngot  %#v\nwant Category=\"console\" Output=\"Step interrupted by a breakpoint.\"", oe)
+									}
 									client.NextRequest(m.Body.ThreadId)
 									client.ExpectNextResponse(t)
 									checkStopOnNextWhileNextingError(t, client, m.Body.ThreadId)
@@ -3684,6 +3687,7 @@ func TestNextWhileNexting(t *testing.T) {
 									client.ContinueRequest(threadID)
 									client.ExpectContinueResponse(t)
 								} else {
+									checkStop(t, client, m.Body.ThreadId, "main.dostuff", 8)
 									// Switch to stepping on this thread instead.
 									pos = 8
 									threadID = m.Body.ThreadId

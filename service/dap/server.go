@@ -2939,6 +2939,11 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 	// error while this one completes, it is possible that the error response
 	// will arrive after this stopped event.
 	s.send(stopped)
+
+	// Send an output event with more information if next is in progress.
+	if state != nil && state.NextInProgress {
+		s.logToConsole("Step interrupted by a breakpoint. Use 'Continue' to resume the original step command.")
+	}
 }
 
 func (s *Server) toClientPath(path string) string {
