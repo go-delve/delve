@@ -35,23 +35,23 @@ To debug in IntelliJ Idea, open the 'Maven Projects' tool window (View
 version = "2020.2"
 
 val targets = arrayOf(
-	"linux/amd64/1.14",
         "linux/amd64/1.15",
         "linux/amd64/1.16",
+        "linux/amd64/1.17",
         "linux/amd64/tip",
 
-        "linux/386/1.16",
+        "linux/386/1.17",
 
-        "linux/arm64/1.16",
+        "linux/arm64/1.17",
         "linux/arm64/tip",
 
-        "windows/amd64/1.16",
+        "windows/amd64/1.17",
         "windows/amd64/tip",
 
-        "mac/amd64/1.16",
+        "mac/amd64/1.17",
         "mac/amd64/tip",
 
-        "mac/arm64/1.16",
+        "mac/arm64/1.17",
         "mac/arm64/tip"
 )
 
@@ -68,6 +68,9 @@ project {
         }))
     }
     buildType(AggregatorBuild(tests))
+    params {
+        param("teamcity.ui.settings.readOnly", "true")
+    }
 }
 
 class AggregatorBuild(tests: Collection<BuildType>) : BuildType({
@@ -95,7 +98,7 @@ class AggregatorBuild(tests: Collection<BuildType>) : BuildType({
             vcsRootExtId = "${DslContext.settingsRoot.id}"
             provider = github {
                 authType = token {
-                    token = "credentialsJSON:a7e7526c-7195-4790-bbb6-9fb4692f92d0"
+                    token = "credentialsJSON:1312c856-0e13-4b04-8c40-ac26d4a5f700"
                 }
                 filterAuthorRole = PullRequests.GitHubRoleFilter.EVERYBODY
             }
@@ -105,7 +108,7 @@ class AggregatorBuild(tests: Collection<BuildType>) : BuildType({
             publisher = github {
                 githubUrl = "https://api.github.com"
                 authType = personalToken {
-                    token = "credentialsJSON:a7e7526c-7195-4790-bbb6-9fb4692f92d0"
+                    token = "credentialsJSON:1312c856-0e13-4b04-8c40-ac26d4a5f700"
                 }
             }
             param("github_oauth_user", "")
@@ -234,7 +237,7 @@ class TestBuild(val os: String, val arch: String, version: String, buildId: Abso
             vcsRootExtId = "${DslContext.settingsRoot.id}"
             provider = github {
                 authType = token {
-                    token = "credentialsJSON:a7e7526c-7195-4790-bbb6-9fb4692f92d0"
+                    token = "credentialsJSON:1312c856-0e13-4b04-8c40-ac26d4a5f700"
                 }
                 filterAuthorRole = PullRequests.GitHubRoleFilter.EVERYBODY
             }

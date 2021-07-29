@@ -375,7 +375,7 @@ func (t *Target) createUnrecoveredPanicBreakpoint() {
 
 // createFatalThrowBreakpoint creates the a breakpoint as runtime.fatalthrow.
 func (t *Target) createFatalThrowBreakpoint() {
-	fatalpcs, err := FindFunctionLocation(t.Process, "runtime.fatalthrow", 0)
+	fatalpcs, err := FindFunctionLocation(t.Process, "runtime.throw", 0)
 	if err == nil {
 		bp, err := t.SetBreakpointWithID(fatalThrowID, fatalpcs[0])
 		if err == nil {

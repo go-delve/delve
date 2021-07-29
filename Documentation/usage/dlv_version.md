@@ -2,13 +2,15 @@
 
 Prints version.
 
-### Synopsis
+```
+dlv version [flags]
+```
 
-
-Prints version.
+### Options
 
 ```
-dlv version
+  -h, --help      help for version
+  -v, --verbose   print verbose version info
 ```
 
 ### Options inherited from parent commands
@@ -33,5 +35,6 @@ dlv version
 ```
 
 ### SEE ALSO
+
 * [dlv](dlv.md)	 - Delve is a debugger for the Go programming language.
 

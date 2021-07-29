@@ -637,6 +637,7 @@ func TestDap(t *testing.T) {
 	client := daptest.NewClient(listenAddr)
 	client.DisconnectRequest()
 	client.ExpectDisconnectResponse(t)
+	client.ExpectTerminatedEvent(t)
 	if _, err := client.ReadMessage(); err != io.EOF {
 		t.Errorf("got %q, want \"EOF\"\n", err)
 	}
@@ -778,5 +779,20 @@ func TestDlvTestChdir(t *testing.T) {
 	tgt := "current directory: " + p
 	if !strings.Contains(string(out), tgt) {
 		t.Errorf("output did not contain expected string %q", tgt)
+	}
+}
+
+func TestVersion(t *testing.T) {
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	got, err := exec.Command(dlvbin, "version", "-v").CombinedOutput()
+	if err != nil {
+		t.Fatalf("error executing `dlv version`: %v\n%s\n", err, got)
+	}
+	want1 := []byte("mod\tgithub.com/go-delve/delve")
+	want2 := []byte("dep\tgithub.com/google/go-dap")
+	if !bytes.Contains(got, want1) || !bytes.Contains(got, want2) {
+		t.Errorf("got %s\nwant %v and %v in the output", got, want1, want2)
 	}
 }

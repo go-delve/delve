@@ -6,7 +6,7 @@ import (
 
 var (
 	MinSupportedVersionOfGoMajor = 1
-	MinSupportedVersionOfGoMinor = 14
+	MinSupportedVersionOfGoMinor = 15
 	MaxSupportedVersionOfGoMajor = 1
 	MaxSupportedVersionOfGoMinor = 17
 	goTooOldErr                  = fmt.Errorf("Version of Go is too old for this version of Delve (minimum supported version %d.%d, suppress this error with --check-go-version=false)", MinSupportedVersionOfGoMajor, MinSupportedVersionOfGoMinor)
@@ -16,7 +16,7 @@ var (
 // Compatible checks that the version specified in the producer string is compatible with
 // this version of delve.
 func Compatible(producer string) error {
-	ver := parseProducer(producer)
+	ver := ParseProducer(producer)
 	if ver.IsDevel() {
 		return nil
 	}

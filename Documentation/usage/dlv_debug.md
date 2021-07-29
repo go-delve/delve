@@ -4,7 +4,6 @@ Compile and begin debugging main package in current directory, or the package sp
 
 ### Synopsis
 
-
 Compiles your program with optimizations disabled, starts and attaches to it.
 
 By default, with no arguments, Delve will compile the 'main' package in the
@@ -13,13 +12,14 @@ package name and Delve will compile that package instead, and begin a new debug
 session.
 
 ```
-dlv debug [package]
+dlv debug [package] [flags]
 ```
 
 ### Options
 
 ```
       --continue        Continue the debugged process on start.
+  -h, --help            help for debug
       --output string   Output path for the binary. (default "./__debug_bin")
       --tty string      TTY to use for the target program
 ```
@@ -46,5 +46,6 @@ dlv debug [package]
 ```
 
 ### SEE ALSO
+
 * [dlv](dlv.md)	 - Delve is a debugger for the Go programming language.
 

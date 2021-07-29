@@ -715,14 +715,28 @@ func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
 
 // moduleDataToImage finds the image corresponding to the given module data object.
 func (bi *BinaryInfo) moduleDataToImage(md *moduleData) *Image {
-	return bi.funcToImage(bi.PCToFunc(uint64(md.text)))
+	fn := bi.PCToFunc(uint64(md.text))
+	if fn != nil {
+		return bi.funcToImage(fn)
+	}
+	// Try searching for the image with the closest address preceding md.text
+	var so *Image
+	for i := range bi.Images {
+		if int64(bi.Images[i].StaticBase) > int64(md.text) {
+			continue
+		}
+		if so == nil || int64(bi.Images[i].StaticBase) > int64(so.StaticBase) {
+			so = bi.Images[i]
+		}
+	}
+	return so
 }
 
 // imageToModuleData finds the module data in mds corresponding to the given image.
 func (bi *BinaryInfo) imageToModuleData(image *Image, mds []moduleData) *moduleData {
 	for _, md := range mds {
 		im2 := bi.moduleDataToImage(&md)
-		if im2.index == image.index {
+		if im2 != nil && im2.index == image.index {
 			return &md
 		}
 	}

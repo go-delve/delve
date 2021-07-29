@@ -8,7 +8,7 @@ ARCH=$2
 TMPDIR=$3
 
 if [ "$GOVERSION" = "gotip" ]; then
-    #exit 0
+    exit 0
     bootstrapver=$(curl https://golang.org/VERSION?m=text)
     cd $TMPDIR
     curl -sSL "https://storage.googleapis.com/golang/$bootstrapver.darwin-$ARCH.tar.gz" | tar -xz

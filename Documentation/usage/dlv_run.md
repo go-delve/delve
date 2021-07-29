@@ -2,13 +2,14 @@
 
 Deprecated command. Use 'debug' instead.
 
-### Synopsis
+```
+dlv run [flags]
+```
 
-
-Deprecated command. Use 'debug' instead.
+### Options
 
 ```
-dlv run
+  -h, --help   help for run
 ```
 
 ### Options inherited from parent commands
@@ -33,5 +34,6 @@ dlv run
 ```
 
 ### SEE ALSO
+
 * [dlv](dlv.md)	 - Delve is a debugger for the Go programming language.
 

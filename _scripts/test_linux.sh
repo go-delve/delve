@@ -20,7 +20,7 @@ function getgo {
 }
 
 if [ "$version" = "gotip" ]; then
-	#exit 0
+	exit 0
 	echo Building Go from tip
 	getgo $(curl https://golang.org/VERSION?m=text)
 	export GOROOT_BOOTSTRAP=$GOROOT
@@ -31,7 +31,7 @@ if [ "$version" = "gotip" ]; then
 	cd -
 else
 	echo Finding latest patch version for $version
-	version=$(curl 'https://golang.org/dl/?mode=json&include=all' | jq '.[].version' --raw-output | egrep ^$version'($|\.|beta|rc)' | head -1)
+	version=$(curl 'https://golang.org/dl/?mode=json&include=all' | jq '.[].version' --raw-output | egrep ^$version'($|\.|beta|rc)' | sort -rV | head -1)
 	echo "Go $version on $arch"
 	getgo $version
 fi
