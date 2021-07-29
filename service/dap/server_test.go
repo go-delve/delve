@@ -3548,6 +3548,22 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 			}})
 	})
 }
+func checkStopOnNextWhileNextingError(t *testing.T, client *daptest.Client, threadID int) {
+	t.Helper()
+	oe := client.ExpectOutputEvent(t)
+	if oe.Body.Category != "console" || oe.Body.Output != fmt.Sprintf("invalid command: %s\n", BetterNextWhileNextingError) {
+		t.Errorf("\ngot  %#v\nwant Category=\"console\" Output=\"invalid command: %s\\n\"", oe, BetterNextWhileNextingError)
+	}
+	se := client.ExpectStoppedEvent(t)
+	if se.Body.ThreadId != threadID || se.Body.Reason != "exception" || se.Body.Description != "invalid command" || se.Body.Text != BetterNextWhileNextingError {
+		t.Errorf("\ngot  %#v\nwant ThreadId=%d Reason=\"exception\" Description=\"invalid command\" Text=\"%s\"", se, threadID, BetterNextWhileNextingError)
+	}
+	client.ExceptionInfoRequest(1)
+	eInfo := client.ExpectExceptionInfoResponse(t)
+	if eInfo.Body.ExceptionId != "invalid command" || eInfo.Body.Description != BetterNextWhileNextingError {
+		t.Errorf("\ngot  %#v\nwant ExceptionId=\"invalid command\" Text=\"%s\"", eInfo, BetterNextWhileNextingError)
+	}
+}
 
 func TestBadAccess(t *testing.T) {
 	if runtime.GOOS != "darwin" || testBackend != "lldb" {
@@ -3588,15 +3604,99 @@ func TestBadAccess(t *testing.T) {
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
-					expectStoppedOnError("next while nexting")
+					checkStopOnNextWhileNextingError(t, client, 1)
 
 					client.StepInRequest(1)
 					client.ExpectStepInResponse(t)
-					expectStoppedOnError("next while nexting")
+					checkStopOnNextWhileNextingError(t, client, 1)
 
 					client.StepOutRequest(1)
 					client.ExpectStepOutResponse(t)
-					expectStoppedOnError("next while nexting")
+					checkStopOnNextWhileNextingError(t, client, 1)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+// TestNextWhileNexting is inspired by command_test.TestIssue387 and tests
+// that when 'next' is interrupted by a 'breakpoint', calling 'next'
+// again will produce an error with a helpful message, and 'continue'
+// will resume the program.
+func TestNextWhileNexting(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test is not valid on FreeBSD")
+	}
+	// a breakpoint triggering during a 'next' operation will interrupt 'next''
+	// Unlike the test for the terminal package, we cannot be certain
+	// of the number of breakpoints we expect to hit, since multiple
+	// breakpoints being hit at the same time is not supported in dap stopped
+	// events.
+	runTest(t, "issue387", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{15},
+			[]onBreakpoint{{ // Stop at line 15
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 15)
+
+					client.SetBreakpointsRequest(fixture.Source, []int{8})
+					client.ExpectSetBreakpointsResponse(t)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					bpSe := client.ExpectStoppedEvent(t)
+					threadID := bpSe.Body.ThreadId
+					checkStop(t, client, threadID, "main.dostuff", 8)
+
+					for pos := 9; pos < 11; pos++ {
+						client.NextRequest(threadID)
+						client.ExpectNextResponse(t)
+
+						stepInProgress := true
+						for stepInProgress {
+							m := client.ExpectStoppedEvent(t)
+							switch m.Body.Reason {
+							case "step":
+								if !m.Body.AllThreadsStopped {
+									t.Errorf("got %#v, want Reason=\"step\", AllThreadsStopped=true", m)
+								}
+								checkStop(t, client, m.Body.ThreadId, "main.dostuff", pos)
+								stepInProgress = false
+							case "breakpoint":
+								if !m.Body.AllThreadsStopped {
+									t.Errorf("got %#v, want Reason=\"breakpoint\", AllThreadsStopped=true", m)
+								}
+
+								if stepInProgress {
+									// We encountered a breakpoint on a different thread. We should have to resume execution
+									// using continue.
+									oe := client.ExpectOutputEvent(t)
+									if oe.Body.Category != "console" || !strings.Contains(oe.Body.Output, "Step interrupted by a breakpoint.") {
+										t.Errorf("\ngot  %#v\nwant Category=\"console\" Output=\"Step interrupted by a breakpoint.\"", oe)
+									}
+									client.NextRequest(m.Body.ThreadId)
+									client.ExpectNextResponse(t)
+									checkStopOnNextWhileNextingError(t, client, m.Body.ThreadId)
+									// Continue since we have not finished the step request.
+									client.ContinueRequest(threadID)
+									client.ExpectContinueResponse(t)
+								} else {
+									checkStop(t, client, m.Body.ThreadId, "main.dostuff", 8)
+									// Switch to stepping on this thread instead.
+									pos = 8
+									threadID = m.Body.ThreadId
+								}
+							default:
+								t.Fatalf("got %#v, want StoppedEvent on step or breakpoint", m)
+							}
+						}
+					}
 				},
 				disconnect: true,
 			}})

@@ -2656,6 +2656,7 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 		bpState = g.Thread.Breakpoint()
 	}
 	// Check if this goroutine ID is stopped at a breakpoint.
+	includeStackTrace := true
 	if bpState != nil && bpState.Breakpoint != nil && (bpState.Breakpoint.Name == proc.FatalThrow || bpState.Breakpoint.Name == proc.UnrecoveredPanic) {
 		switch bpState.Breakpoint.Name {
 		case proc.FatalThrow:
@@ -2691,7 +2692,7 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 			s.sendErrorResponse(request.Request, UnableToGetExceptionInfo, "Unable to get exception info", err.Error())
 			return
 		}
-		if state == nil || state.CurrentThread == nil || g.Thread == nil || state.CurrentThread.ID != g.Thread.ThreadID() {
+		if s.exceptionErr.Error() != "next while nexting" && (state == nil || state.CurrentThread == nil || g.Thread == nil || state.CurrentThread.ID != g.Thread.ThreadID()) {
 			s.sendErrorResponse(request.Request, UnableToGetExceptionInfo, "Unable to get exception info", fmt.Sprintf("no exception found for goroutine %d", goroutineID))
 			return
 		}
@@ -2700,34 +2701,51 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 		if body.Description == "bad access" {
 			body.Description = BetterBadAccessError
 		}
+		if body.Description == "next while nexting" {
+			body.ExceptionId = "invalid command"
+			body.Description = BetterNextWhileNextingError
+			includeStackTrace = false
+		}
 	}
 
-	frames, err := s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
-	if err == nil {
-		apiFrames, err := s.debugger.ConvertStacktrace(frames, nil)
-		if err == nil {
-			var buf bytes.Buffer
-			fmt.Fprintln(&buf, "Stack:")
-			userLoc := g.UserCurrent()
-			userFuncPkg := fnPackageName(&userLoc)
-			api.PrintStack(s.toClientPath, &buf, apiFrames, "\t", false, func(s api.Stackframe) bool {
-				// Include all stack frames if the stack trace is for a system goroutine,
-				// otherwise, skip runtime stack frames.
-				if userFuncPkg == "runtime" {
-					return true
-				}
-				return s.Location.Function != nil && !strings.HasPrefix(s.Location.Function.Name(), "runtime.")
-			})
-			body.Details.StackTrace = buf.String()
+	if includeStackTrace {
+		frames, err := s.stacktrace(goroutineID, g)
+		if err != nil {
+			body.Details.StackTrace = fmt.Sprintf("Error getting stack trace: %s", err.Error())
+		} else {
+			body.Details.StackTrace = frames
 		}
-	} else {
-		body.Details.StackTrace = fmt.Sprintf("Error getting stack trace: %s", err.Error())
 	}
 	response := &dap.ExceptionInfoResponse{
 		Response: *newResponse(request.Request),
 		Body:     body,
 	}
 	s.send(response)
+}
+
+func (s *Server) stacktrace(goroutineID int, g *proc.G) (string, error) {
+	frames, err := s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
+	if err != nil {
+		return "", err
+	}
+	apiFrames, err := s.debugger.ConvertStacktrace(frames, nil)
+	if err != nil {
+		return "", err
+	}
+
+	var buf bytes.Buffer
+	fmt.Fprintln(&buf, "Stack:")
+	userLoc := g.UserCurrent()
+	userFuncPkg := fnPackageName(&userLoc)
+	api.PrintStack(s.toClientPath, &buf, apiFrames, "\t", false, func(s api.Stackframe) bool {
+		// Include all stack frames if the stack trace is for a system goroutine,
+		// otherwise, skip runtime stack frames.
+		if userFuncPkg == "runtime" {
+			return true
+		}
+		return s.Location.Function != nil && !strings.HasPrefix(s.Location.Function.Name(), "runtime.")
+	})
+	return buf.String(), nil
 }
 
 func (s *Server) throwReason(goroutineID int) (string, error) {
@@ -2819,6 +2837,8 @@ func newEvent(event string) *dap.Event {
 
 const BetterBadAccessError = `invalid memory address or nil pointer dereference [signal SIGSEGV: segmentation violation]
 Unable to propagate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)`
+const BetterNextWhileNextingError = `Unable to step while the previous step is interrupted by a breakpoint.
+Use 'Continue' to resume the original step command.`
 
 func (s *Server) resetHandlesForStoppedEvent() {
 	s.stackFrameHandles.reset()
@@ -2903,6 +2923,12 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 		if stopped.Body.Text == "bad access" {
 			stopped.Body.Text = BetterBadAccessError
 		}
+		if stopped.Body.Text == "next while nexting" {
+			stopped.Body.Description = "invalid command"
+			stopped.Body.Text = BetterNextWhileNextingError
+			s.logToConsole(fmt.Sprintf("%s: %s", stopped.Body.Description, stopped.Body.Text))
+		}
+
 		state, err := s.debugger.State( /*nowait*/ true)
 		if err == nil {
 			stopped.Body.ThreadId = stoppedGoroutineID(state)
@@ -2913,6 +2939,11 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 	// error while this one completes, it is possible that the error response
 	// will arrive after this stopped event.
 	s.send(stopped)
+
+	// Send an output event with more information if next is in progress.
+	if state != nil && state.NextInProgress {
+		s.logToConsole("Step interrupted by a breakpoint. Use 'Continue' to resume the original step command.")
+	}
 }
 
 func (s *Server) toClientPath(path string) string {
