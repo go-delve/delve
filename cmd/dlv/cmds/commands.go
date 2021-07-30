@@ -472,11 +472,11 @@ func dapCmd(cmd *cobra.Command, args []string) {
 	os.Exit(status)
 }
 
-func buildBinary(cmd *cobra.Command, args []string, isTest bool) string {
+func buildBinary(cmd *cobra.Command, args []string, isTest bool) (string, bool) {
 	debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
-		return ""
+		return "", false
 	}
 
 	if isTest {
@@ -486,16 +486,16 @@ func buildBinary(cmd *cobra.Command, args []string, isTest bool) string {
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
-		return ""
+		return "", false
 	}
-	return debugname
+	return debugname, true
 }
 
 func debugCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
 		dlvArgs, targetArgs := splitArgs(cmd, args)
-		debugname := buildBinary(cmd, dlvArgs, false)
-		if debugname == "" {
+		debugname, ok := buildBinary(cmd, dlvArgs, false)
+		if !ok {
 			return 1
 		}
 		defer gobuild.Remove(debugname)
@@ -542,10 +542,11 @@ func traceCmd(cmd *cobra.Command, args []string) {
 
 			debugname := traceExecFile
 			if traceExecFile == "" {
-				debugname = buildBinary(cmd, dlvArgs, traceTestBinary)
-				if debugname == "" {
+				debugexe, ok := buildBinary(cmd, dlvArgs, traceTestBinary)
+				if !ok {
 					return 1
 				}
+				debugname = debugexe
 				defer gobuild.Remove(debugname)
 			}
 
@@ -629,8 +630,8 @@ func isBreakpointExistsErr(err error) bool {
 func testCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
 		dlvArgs, targetArgs := splitArgs(cmd, args)
-		debugname := buildBinary(cmd, dlvArgs, false)
-		if debugname == "" {
+		debugname, ok := buildBinary(cmd, dlvArgs, true)
+		if !ok {
 			return 1
 		}
 		defer gobuild.Remove(debugname)
