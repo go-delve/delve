@@ -10,6 +10,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/derekparker/trie"
 	"github.com/peterh/liner"
 
 	"github.com/go-delve/delve/pkg/config"
@@ -210,22 +211,36 @@ func (t *Term) Run() (int, error) {
 	signal.Notify(ch, syscall.SIGINT)
 	go t.sigintGuard(ch, multiClient)
 
+	fns := trie.New()
+	cmds := trie.New()
+	funcs, _ := t.client.ListFunctions("")
+	for _, fn := range funcs {
+		fns.Add(fn, nil)
+	}
+	for _, cmd := range t.cmds.cmds {
+		for _, alias := range cmd.aliases {
+			cmds.Add(alias, nil)
+		}
+	}
+
 	t.line.SetCompleter(func(line string) (c []string) {
+		prefix := ""
 		if strings.HasPrefix(line, "break ") || strings.HasPrefix(line, "b ") {
+			prefix = "break "
+		}
+		if strings.HasPrefix(line, "continue ") || strings.HasPrefix(line, "c ") {
+			prefix = "continue "
+		}
+		if prefix != "" {
 			filter := line[strings.Index(line, " ")+1:]
-			funcs, _ := t.client.ListFunctions(filter)
+			funcs := fns.FuzzySearch(filter)
 			for _, f := range funcs {
-				c = append(c, "break "+f)
+				c = append(c, prefix+f)
 			}
 			return
 		}
-		for _, cmd := range t.cmds.cmds {
-			for _, alias := range cmd.aliases {
-				if strings.HasPrefix(alias, strings.ToLower(line)) {
-					c = append(c, alias)
-				}
-			}
-		}
+		commands := cmds.FuzzySearch(strings.ToLower(line))
+		c = append(c, commands...)
 		return
 	})
 
