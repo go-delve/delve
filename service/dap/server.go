@@ -471,6 +471,7 @@ func (s *Server) handleRequest(request dap.Message) {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
 			}
+			s.logToConsole("Execution halted to set breakpoints - please resume execution manually")
 			s.onSetBreakpointsRequest(request)
 			// TODO(polina): consider resuming execution here automatically after suppressing
 			// a stop event when an operation in doRunCommand returns. In case that operation
@@ -493,6 +494,7 @@ func (s *Server) handleRequest(request dap.Message) {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
 			}
+			s.logToConsole("Execution halted to set breakpoints - please resume execution manually")
 			s.onSetFunctionBreakpointsRequest(request)
 		default:
 			r := request.(dap.RequestMessage).GetRequest()
@@ -1479,7 +1481,7 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 		threads = []dap.Thread{{Id: 1, Name: "Dummy"}}
 	} else {
 		if next >= 0 {
-			s.logToConsole(fmt.Sprintf("too many goroutines, only loaded %d", len(gs)))
+			s.logToConsole(fmt.Sprintf("Too many goroutines, only loaded %d", len(gs)))
 		}
 		state, err := s.debugger.State( /*nowait*/ true)
 		if err != nil {

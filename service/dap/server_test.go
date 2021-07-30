@@ -2452,35 +2452,48 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 }
 
 func expectSetBreakpointsResponseAndStoppedEvent(t *testing.T, client *daptest.Client) (se *dap.StoppedEvent, br *dap.SetBreakpointsResponse) {
-	for i := 0; i < 2; i++ {
+	t.Helper()
+	var oe *dap.OutputEvent
+	for i := 0; i < 3; i++ {
 		switch m := client.ExpectMessage(t).(type) {
+		case *dap.OutputEvent:
+			oe = m
 		case *dap.StoppedEvent:
 			se = m
 		case *dap.SetBreakpointsResponse:
 			br = m
 		default:
-			t.Fatalf("Unexpected message type: expect StoppedEvent or SetBreakpointsResponse, got %#v", m)
+			t.Fatalf("Unexpected message type: expect OutputEvent, StoppedEvent or SetBreakpointsResponse, got %#v", m)
 		}
 	}
-	if se == nil || br == nil {
-		t.Fatal("Expected StoppedEvent and SetBreakpointsResponse")
+	if se == nil || br == nil || oe == nil {
+		t.Fatal("Expected OutputEvent, StoppedEvent and SetBreakpointsResponse")
+	}
+	if !strings.HasPrefix(oe.Body.Output, "Execution halted to set breakpoints") || oe.Body.Category != "console" {
+		t.Errorf(`got %#v, want Category="console" Output="Execution halted to set breakpoints..."`, oe)
 	}
 	return se, br
 }
 
 func expectSetFunctionBreakpointsResponseAndStoppedEvent(t *testing.T, client *daptest.Client) (se *dap.StoppedEvent, br *dap.SetFunctionBreakpointsResponse) {
-	for i := 0; i < 2; i++ {
+	var oe *dap.OutputEvent
+	for i := 0; i < 3; i++ {
 		switch m := client.ExpectMessage(t).(type) {
+		case *dap.OutputEvent:
+			oe = m
 		case *dap.StoppedEvent:
 			se = m
 		case *dap.SetFunctionBreakpointsResponse:
 			br = m
 		default:
-			t.Fatalf("Unexpected message type: expect StoppedEvent or SetFunctionBreakpointsResponse, got %#v", m)
+			t.Fatalf("Unexpected message type: expect OutputEvent, StoppedEvent or SetFunctionBreakpointsResponse, got %#v", m)
 		}
 	}
-	if se == nil || br == nil {
-		t.Fatal("Expected StoppedEvent and SetFunctionBreakpointsResponse")
+	if se == nil || br == nil || oe == nil {
+		t.Fatal("Expected OutputEvent, StoppedEvent and SetFunctionBreakpointsResponse")
+	}
+	if !strings.HasPrefix(oe.Body.Output, "Execution halted to set breakpoints") || oe.Body.Category != "console" {
+		t.Errorf(`got %#v, want Category="console" Output="Execution halted to set breakpoints..."`, oe)
 	}
 	return se, br
 }
