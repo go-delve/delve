@@ -46,6 +46,10 @@ type Target struct {
 	// CanDump is true if core dumping is supported.
 	CanDump bool
 
+	// KeepsSteppingBreakpoints is true if the target will not clear
+	// stepping breakpoints unless the step was completed.
+	KeepsSteppingBreakpoints bool
+
 	// currentThread is the thread that will be used by next/step/stepout and to evaluate variables if no goroutine is selected.
 	currentThread Thread
 

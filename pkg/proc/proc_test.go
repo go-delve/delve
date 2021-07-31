@@ -3610,6 +3610,26 @@ func TestIssue1145(t *testing.T) {
 	})
 }
 
+func TestHaltKeepsSteppingBreakpoints(t *testing.T) {
+	withTestProcess("sleep", t, func(p *proc.Target, fixture protest.Fixture) {
+		p.KeepsSteppingBreakpoints = true
+		setFileBreakpoint(p, t, fixture.Source, 18)
+		assertNoError(p.Continue(), t, "Continue()")
+		resumeChan := make(chan struct{}, 1)
+		p.ResumeNotify(resumeChan)
+		go func() {
+			<-resumeChan
+			time.Sleep(100 * time.Millisecond)
+			p.RequestManualStop()
+		}()
+
+		assertNoError(p.Next(), t, "Next()")
+		if !p.Breakpoints().HasSteppingBreakpoints() {
+			t.Fatal("does not have internal breakpoints after manual stop request")
+		}
+	})
+}
+
 func TestDisassembleGlobalVars(t *testing.T) {
 	skipOn(t, "broken - global variable symbolication", "arm64") // On ARM64 symLookup can't look up variables due to how they are loaded, see issue #1778
 	// On 386 linux when pie, the genered code use __x86.get_pc_thunk to ensure position-independent.

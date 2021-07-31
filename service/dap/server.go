@@ -1411,6 +1411,12 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 		}
 		s.send(e)
 	}
+	func() {
+		s.debugger.LockTarget()
+		defer s.debugger.UnlockTarget()
+		s.debugger.Target().KeepsSteppingBreakpoints = true
+	}()
+
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
 	if !s.args.stopOnEntry {
 		s.doRunCommand(api.Continue, asyncSetupDone)
@@ -2891,6 +2897,13 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 	stopped.Body.AllThreadsStopped = true
 
 	if err == nil {
+		if stopReason == proc.StopManual || state.OnNextGoroutine {
+			if err := s.debugger.CancelNext(); err != nil {
+				s.log.Error(err)
+			} else {
+				state.NextInProgress = false
+			}
+		}
 		// TODO(suzmue): If stopped.Body.ThreadId is not a valid goroutine
 		// then the stopped reason does not show up anywhere in the
 		// vscode ui.
