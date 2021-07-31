@@ -105,6 +105,7 @@ func (c *Client) ExpectInitializeResponseAndCapabilities(t *testing.T) *dap.Init
 		SupportsFunctionBreakpoints:      true,
 		SupportsEvaluateForHovers:        true,
 		SupportsClipboardContext:         true,
+		SupportsLogPoints:                true,
 	}
 	if !reflect.DeepEqual(initResp.Body, wantCapabilities) {
 		t.Errorf("capabilities in initializeResponse: got %+v, want %v", pretty(initResp.Body), pretty(wantCapabilities))
@@ -262,6 +263,26 @@ func (c *Client) SetHitConditionalBreakpointsRequest(file string, lines []int, c
 		cond, ok := conditions[l]
 		if ok {
 			request.Arguments.Breakpoints[i].HitCondition = cond
+		}
+	}
+	c.send(request)
+}
+
+// SetLogpointsRequest sends a 'setBreakpoints' request with logMessages.
+func (c *Client) SetLogpointsRequest(file string, lines []int, logMessages map[int]string) {
+	request := &dap.SetBreakpointsRequest{Request: *c.newRequest("setBreakpoints")}
+	request.Arguments = dap.SetBreakpointsArguments{
+		Source: dap.Source{
+			Name: filepath.Base(file),
+			Path: file,
+		},
+		Breakpoints: make([]dap.SourceBreakpoint, len(lines)),
+	}
+	for i, l := range lines {
+		request.Arguments.Breakpoints[i].Line = l
+		msg, ok := logMessages[l]
+		if ok {
+			request.Arguments.Breakpoints[i].LogMessage = msg
 		}
 	}
 	c.send(request)

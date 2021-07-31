@@ -2031,6 +2031,14 @@ func (d *Debugger) StopReason() proc.StopReason {
 	return d.target.StopReason
 }
 
+// CheckAndClearManualStopRequest returns true the first time it's called
+// after a call to RequestManualStop.
+func (d *Debugger) CheckAndClearManualStopRequest() bool {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+	return d.target.CheckAndClearManualStopRequest()
+}
+
 // LockTarget acquires the target mutex.
 func (d *Debugger) LockTarget() {
 	d.targetMutex.Lock()

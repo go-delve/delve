@@ -113,6 +113,8 @@ type Server struct {
 	exceptionErr error
 	// clientCapabilities tracks special settings for handling debug session requests.
 	clientCapabilities dapClientCapabilites
+	// logMessages maps a breakpoint id to a log message
+	logMessages map[int]string
 
 	// mu synchronizes access to objects set on start-up (from run goroutine)
 	// and stopped on teardown (from main goroutine)
@@ -130,6 +132,19 @@ type Server struct {
 	// sendingMu synchronizes writing to net.Conn
 	// to ensure that messages do not get interleaved
 	sendingMu sync.Mutex
+
+	// running tracks the running state according to the server,
+	// which may not correspond to the actual running state of
+	// the process.
+	running   bool
+	runningMu sync.Mutex
+
+	// resumeMu must be held for a request to resume execution of the
+	// process.
+	// We use this to guarantee that no other request can unexpectedly
+	// change the state to running, when we expect the process to halted.
+	// Do not attempt to lock if already holding sendingMu or runningMu.
+	resumeMu sync.Mutex
 }
 
 // launchAttachArgs captures arguments from launch/attach request that
@@ -211,6 +226,7 @@ func NewServer(config *service.Config) *Server {
 		log:               logger,
 		stackFrameHandles: newHandlesMap(),
 		variableHandles:   newVariablesHandlesMap(),
+		logMessages:       make(map[int]string),
 		args:              defaultArgs,
 		exceptionErr:      nil,
 	}
@@ -402,6 +418,10 @@ func (s *Server) recoverPanic(request dap.Message) {
 
 func (s *Server) handleRequest(request dap.Message) {
 	defer s.recoverPanic(request)
+	// Lock resumeMu so that another goroutine cannot unexpectedly start
+	// the debuggee.
+	s.resumeMu.Lock()
+	defer s.resumeMu.Unlock()
 
 	jsonmsg, _ := json.Marshal(request)
 	s.log.Debug("[<- from client]", string(jsonmsg))
@@ -450,7 +470,7 @@ func (s *Server) handleRequest(request dap.Message) {
 	// the next stop. In addition, the editor itself might block waiting
 	// for these requests to return. We are not aware of any requests
 	// that would benefit from this approach at this time.
-	if s.debugger != nil && s.debugger.IsRunning() {
+	if s.debugger != nil && s.isRunning() {
 		switch request := request.(type) {
 		case *dap.ThreadsRequest:
 			// On start-up, the client requests the baseline of currently existing threads
@@ -719,6 +739,7 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsSetVariable = true
 	response.Body.SupportsEvaluateForHovers = true
 	response.Body.SupportsClipboardContext = true
+	response.Body.SupportsLogPoints = true
 	// TODO(polina): support these requests in addition to vscode-go feature parity
 	response.Body.SupportsTerminateRequest = false
 	response.Body.SupportsRestartRequest = false
@@ -1177,6 +1198,8 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 		} else {
 			got.Cond = want.Condition
 			got.HitCond = want.HitCondition
+			got.Tracepoint = want.LogMessage != ""
+			s.updateLogMessage(got.ID, want.LogMessage)
 			err = s.debugger.AmendBreakpoint(got)
 			bpAdded[reqString] = struct{}{}
 		}
@@ -1204,16 +1227,35 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 		} else {
 			// Create new breakpoints.
 			got, err = s.debugger.CreateBreakpoint(
-				&api.Breakpoint{File: serverPath, Line: want.Line, Cond: want.Condition, HitCond: want.HitCondition, Name: reqString})
+				&api.Breakpoint{
+					File:       serverPath,
+					Line:       want.Line,
+					Cond:       want.Condition,
+					HitCond:    want.HitCondition,
+					Name:       reqString,
+					Tracepoint: want.LogMessage != "",
+				})
+			if got != nil {
+				s.updateLogMessage(got.ID, want.LogMessage)
+			}
 			bpAdded[reqString] = struct{}{}
 		}
 
 		updateBreakpointsResponse(breakpoints, i, err, got, clientPath)
 	}
+
 	response := &dap.SetBreakpointsResponse{Response: *newResponse(request.Request)}
 	response.Body.Breakpoints = breakpoints
 
 	s.send(response)
+}
+
+func (s *Server) updateLogMessage(id int, msg string) {
+	if msg == "" {
+		delete(s.logMessages, id)
+		return
+	}
+	s.logMessages[id] = msg
 }
 
 func updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int, err error, got *api.Breakpoint, path string) {
@@ -1356,6 +1398,7 @@ func (s *Server) clearBreakpoints(existingBps map[string]*api.Breakpoint, bpAdde
 		if _, ok := bpAdded[req]; ok {
 			continue
 		}
+		s.updateLogMessage(bp.ID, "")
 		_, err := s.debugger.ClearBreakpoint(bp)
 		if err != nil {
 			return err
@@ -2850,6 +2893,46 @@ func processExited(state *api.DebuggerState, err error) bool {
 	_, isexited := err.(proc.ErrProcessExited)
 	return isexited || err == nil && state.Exited
 }
+func (s *Server) setRunning(running bool) {
+	s.runningMu.Lock()
+	s.running = running
+	s.runningMu.Unlock()
+}
+
+func (s *Server) isRunning() bool {
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
+	return s.running
+}
+
+// resume is a helper function to resume the execution
+// of the target when the program is halted, but no
+// stopped event has been sent.
+func (s *Server) resume() (*api.DebuggerState, error) {
+	// No other goroutines should be able to try to resume
+	// or halt execution while this goroutine is continuing
+	// the program.
+	// Hold onto resumeMu until the program is running.
+	resumeNotify := make(chan struct{}, 1)
+	defer s.asyncCommandDone(resumeNotify)
+	s.resumeMu.Lock()
+	go func() {
+		<-resumeNotify
+		s.resumeMu.Unlock()
+	}()
+
+	// There may have been a manual halt while the program was
+	// stopped. If this happened, do not continue exection of
+	// the program.
+	if s.debugger.CheckAndClearManualStopRequest() {
+		// A halt request came in so we need to CancelNext.
+		if err := s.debugger.CancelNext(); err != nil {
+			s.log.Error(err)
+		}
+		return s.debugger.State(false)
+	}
+	return s.debugger.Command(&api.DebuggerCommand{Name: api.Continue}, resumeNotify)
+}
 
 // doRunCommand runs a debugger command until it stops on
 // termination, error, breakpoint, etc, when an appropriate
@@ -2862,7 +2945,35 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 	// asyncSetupDone (e.g. when having an error next while nexting).
 	// So we should always close it ourselves just in case.
 	defer s.asyncCommandDone(asyncSetupDone)
+	s.setRunning(true)
+	defer s.setRunning(false)
+
+	runningStep := command != api.Continue
+	state, _ := s.debugger.State(true)
+	if state != nil {
+		// If state.NextInProgress, then we are in the middle of a step,
+		// regardless of the command.
+		runningStep = runningStep || state.NextInProgress
+	}
+
+	// The handleRequest loop will release resumeMu after asyncSetupDone is closed.
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
+	for state != nil && state.CurrentThread != nil && err == nil {
+		// If this is a log point, we want to log the message and continue execution.
+		if bp := state.CurrentThread.Breakpoint; bp != nil && bp.Tracepoint {
+			s.handleLogPoint(bp.ID)
+			// Only resume execution if continue was the command used to run the program.
+			// Otherwise, the program will go past the step, next, stepout requests.
+			// TODO(suzmue): have s.debugger.Command() not clear internal breakpoints when
+			// hitting another breakpoint.
+			if !runningStep || state.NextInProgress {
+				state, err = s.resume()
+				continue
+			}
+		}
+		break
+	}
+
 	if processExited(state, err) {
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		return
@@ -2943,6 +3054,19 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 	// Send an output event with more information if next is in progress.
 	if state != nil && state.NextInProgress {
 		s.logToConsole("Step interrupted by a breakpoint. Use 'Continue' to resume the original step command.")
+	}
+}
+
+func (s *Server) handleLogPoint(id int) {
+	// TODO(suzmue): allow evaluate expressions within log points.
+	if msg, ok := s.logMessages[id]; ok {
+		s.send(&dap.OutputEvent{
+			Event: *newEvent("output"),
+			Body: dap.OutputEventBody{
+				Category: "stdout",
+				Output:   msg + "\n",
+			},
+		})
 	}
 }
 
