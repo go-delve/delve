@@ -20,6 +20,8 @@ type osProcessDetails struct {
 	running     bool
 }
 
+func (os *osProcessDetails) Close() {}
+
 // Launch creates and begins debugging a new process.
 func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ string, redirects [3]string) (*proc.Target, error) {
 	argv0Go, err := filepath.Abs(cmd[0])
@@ -483,6 +485,13 @@ func (dbp *nativeProcess) detach(kill bool) error {
 
 func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 	return dbp.os.entryPoint, nil
+}
+
+func (dbp *nativeProcess) SupportsBPF() bool {
+	return true
+}
+
+func (dbp *nativeProcess) SetUProbe(fnName string, args []proc.UProbeArgMap) {
 }
 
 func killProcess(pid int) error {

@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/go-delve/delve/pkg/elfwriter"
 	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/elfwriter"
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 )
 
 // ErrNoThreads core file did not contain any threads.
@@ -269,6 +270,14 @@ func (p *process) Checkpoints() ([]proc.Checkpoint, error) { return nil, nil }
 // ClearCheckpoint clears a checkpoint, but will only return an error for core files.
 func (p *process) ClearCheckpoint(int) error { return errors.New("checkpoint not found") }
 
+func (p *process) SupportsBPF() bool {
+	return false
+}
+
+func (dbp *process) SetUProbe(fnName string, args []ebpf.UProbeArgMap) error {
+	panic("not implemented")
+}
+
 // ReadMemory will return memory from the core file at the specified location and put the
 // read memory into `data`, returning the length read, and returning an error if
 // the length read is shorter than the length of the `data` buffer.
@@ -470,4 +479,8 @@ func (p *process) MemoryMap() ([]proc.MemoryMapEntry, error) {
 
 func (p *process) DumpProcessNotes(notes []elfwriter.Note, threadDone func()) (threadsDone bool, out []elfwriter.Note, err error) {
 	return false, notes, nil
+}
+
+func (dbp *process) GetBufferedTracepoints() []ebpf.RawUProbeParams {
+	return nil
 }

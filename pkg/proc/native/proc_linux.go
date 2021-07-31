@@ -19,6 +19,7 @@ import (
 	sys "golang.org/x/sys/unix"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 	"github.com/go-delve/delve/pkg/proc/linutil"
 
 	isatty "github.com/mattn/go-isatty"
@@ -45,6 +46,14 @@ const (
 // process details.
 type osProcessDetails struct {
 	comm string
+
+	ebpf *ebpf.EBPFContext
+}
+
+func (os *osProcessDetails) Close() {
+	if os.ebpf != nil {
+		os.ebpf.Close()
+	}
 }
 
 // Launch creates and begins debugging a new process. First entry in
@@ -183,7 +192,15 @@ func initialize(dbp *nativeProcess) error {
 		comm = match[1]
 	}
 	dbp.os.comm = strings.ReplaceAll(string(comm), "%", "%%")
+
 	return nil
+}
+
+func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
+	if dbp.os.ebpf == nil {
+		return nil
+	}
+	return dbp.os.ebpf.GetBufferedTracepoints()
 }
 
 // kill kills the target process.
@@ -213,7 +230,6 @@ func (dbp *nativeProcess) kill() error {
 			return err
 		}
 	}
-	return nil
 }
 
 func (dbp *nativeProcess) requestManualStop() (err error) {
@@ -687,6 +703,36 @@ func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 	}
 
 	return linutil.EntryPointFromAuxv(auxvbuf, dbp.bi.Arch.PtrSize()), nil
+}
+
+func (dbp *nativeProcess) SetUProbe(fnName string, args []ebpf.UProbeArgMap) error {
+	// Lazily load and initialize the BPF program upon request to set a uprobe.
+	if dbp.os.ebpf == nil {
+		dbp.os.ebpf, _ = ebpf.LoadEBPFTracingProgram()
+	}
+
+	// We only allow up to 6 args for a BPF probe.
+	// Return early if we have more.
+	if len(args) > 6 {
+		return errors.New("too many arguments in traced function, max is 6")
+	}
+
+	debugname := dbp.bi.Images[0].Path
+	offset, err := ebpf.SymbolToOffset(debugname, fnName)
+	if err != nil {
+		return err
+	}
+	err = dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, offset)
+	if err != nil {
+		return err
+	}
+	fn, ok := dbp.bi.LookupFunc[fnName]
+	if !ok {
+		return fmt.Errorf("could not find function: %s", fnName)
+	}
+
+	key := fn.Entry
+	return dbp.os.ebpf.UpdateArgMap(key, args)
 }
 
 func killProcess(pid int) error {

@@ -21,6 +21,7 @@ var Verbose bool
 var NOTimeout bool
 var TestIncludePIE bool
 var TestSet, TestRegex, TestBackend, TestBuildMode string
+var Tags *[]string
 
 func NewMakeCommands() *cobra.Command {
 	RootCommand := &cobra.Command{
@@ -34,17 +35,27 @@ func NewMakeCommands() *cobra.Command {
 		Run:   checkCertCmd,
 	})
 
-	RootCommand.AddCommand(&cobra.Command{
+	buildCmd := &cobra.Command{
 		Use:   "build",
 		Short: "Build delve",
 		Run: func(cmd *cobra.Command, args []string) {
 			tagFlag := prepareMacnative()
-			execute("go", "build", tagFlag, buildFlags(), DelveMainPackagePath)
+			if len(*Tags) > 0 {
+				if len(tagFlag) == 0 {
+					tagFlag = "-tags="
+				} else {
+					tagFlag += ","
+				}
+				tagFlag += strings.Join(*Tags, ",")
+			}
+			execute("go", "build", "-ldflags", "-extldflags -static", tagFlag, buildFlags(), DelveMainPackagePath)
 			if runtime.GOOS == "darwin" && os.Getenv("CERT") != "" && canMacnative() {
 				codesign("./dlv")
 			}
 		},
-	})
+	}
+	Tags = buildCmd.PersistentFlags().StringArray("tags", []string{}, "Build tags")
+	RootCommand.AddCommand(buildCmd)
 
 	RootCommand.AddCommand(&cobra.Command{
 		Use:   "install",
