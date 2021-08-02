@@ -2941,38 +2941,7 @@ func (s *Server) resume() (*api.DebuggerState, error) {
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
 func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
-	// TODO(polina): it appears that debugger.Command doesn't always close
-	// asyncSetupDone (e.g. when having an error next while nexting).
-	// So we should always close it ourselves just in case.
-	defer s.asyncCommandDone(asyncSetupDone)
-	s.setRunning(true)
-	defer s.setRunning(false)
-
-	runningStep := command != api.Continue
-	state, _ := s.debugger.State(true)
-	if state != nil {
-		// If state.NextInProgress, then we are in the middle of a step,
-		// regardless of the command.
-		runningStep = runningStep || state.NextInProgress
-	}
-
-	// The handleRequest loop will release resumeMu after asyncSetupDone is closed.
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
-	for state != nil && state.CurrentThread != nil && err == nil {
-		// If this is a log point, we want to log the message and continue execution.
-		if bp := state.CurrentThread.Breakpoint; bp != nil && bp.Tracepoint {
-			s.handleLogPoint(bp.ID)
-			// Only resume execution if continue was the command used to run the program.
-			// Otherwise, the program will go past the step, next, stepout requests.
-			// TODO(suzmue): have s.debugger.Command() not clear internal breakpoints when
-			// hitting another breakpoint.
-			if !runningStep || state.NextInProgress {
-				state, err = s.resume()
-				continue
-			}
-		}
-		break
-	}
+	state, err := s.run(command, asyncSetupDone)
 
 	if processExited(state, err) {
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
@@ -3055,6 +3024,41 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 	if state != nil && state.NextInProgress {
 		s.logToConsole("Step interrupted by a breakpoint. Use 'Continue' to resume the original step command.")
 	}
+}
+
+func (s *Server) run(command string, asyncSetupDone chan struct{}) (*api.DebuggerState, error) {
+	// TODO(polina): it appears that debugger.Command doesn't always close
+	// asyncSetupDone (e.g. when having an error next while nexting).
+	// So we should always close it ourselves just in case.
+	defer s.asyncCommandDone(asyncSetupDone)
+	s.setRunning(true)
+	defer s.setRunning(false)
+
+	runningStep := command != api.Continue
+	state, _ := s.debugger.State(true)
+	if state != nil {
+		// If state.NextInProgress, then we are in the middle of a step,
+		// regardless of the command.
+		runningStep = runningStep || state.NextInProgress
+	}
+	// The handleRequest loop will release resumeMu after asyncSetupDone is closed.
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
+	for state != nil && state.CurrentThread != nil && err == nil {
+		if bp := state.CurrentThread.Breakpoint; bp != nil && bp.Tracepoint {
+			// If this is a log point, we want to log the message and continue execution.
+			s.handleLogPoint(bp.ID)
+			// Only resume execution if continue was the command used to run the program.
+			// Otherwise, the program will go past the step, next, stepout requests.
+			// TODO(suzmue): have s.debugger.Command() not clear internal breakpoints when
+			// hitting another breakpoint.
+			if !runningStep || state.NextInProgress {
+				state, err = s.resume()
+				continue
+			}
+		}
+		break
+	}
+	return state, err
 }
 
 func (s *Server) handleLogPoint(id int) {
