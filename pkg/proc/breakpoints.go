@@ -1,6 +1,7 @@
 package proc
 
 import (
+	"debug/dwarf"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -8,6 +9,11 @@ import (
 	"go/parser"
 	"go/token"
 	"reflect"
+
+	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/reader"
+	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 )
 
 const (
@@ -382,6 +388,52 @@ func NewBreakpointMap() BreakpointMap {
 // break point table.
 func (t *Target) SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error) {
 	return t.setBreakpointInternal(addr, kind, 0, cond)
+}
+
+func (t *Target) SetEBPFTracepoint(fnName string) error {
+	if !t.proc.SupportsBPF() {
+		return errors.New("eBPF is not supported")
+	}
+	var args []ebpf.UProbeArgMap
+	fn, ok := t.BinInfo().LookupFunc[fnName]
+	if !ok {
+		return fmt.Errorf("could not find function %s", fnName)
+	}
+	dwarfTree, err := fn.cu.image.getDwarfTree(fn.offset)
+	if err != nil {
+		return err
+	}
+	variablesFlags := reader.VariablesOnlyVisible
+	if t.BinInfo().Producer() != "" && goversion.ProducerAfterOrEqual(t.BinInfo().Producer(), 1, 15) {
+		variablesFlags |= reader.VariablesTrustDeclLine
+	}
+	_, l, _ := t.BinInfo().PCToLine(fn.Entry)
+
+	varEntries := reader.Variables(dwarfTree, fn.Entry, l, variablesFlags)
+	for _, entry := range varEntries {
+		isret, _ := entry.Val(dwarf.AttrVarParam).(bool)
+		if isret {
+			continue
+		}
+		_, dt, err := readVarEntry(entry.Tree, fn.cu.image)
+		if err != nil {
+			return err
+		}
+		offset, pieces, _, err := t.BinInfo().Location(entry, dwarf.AttrLocation, fn.Entry, op.DwarfRegisters{})
+		if err != nil {
+			return err
+		}
+		paramPieces := make([]int, 0, len(pieces))
+		for _, piece := range pieces {
+			if piece.Kind == op.RegPiece {
+				paramPieces = append(paramPieces, int(piece.Val))
+			}
+		}
+		offset += int64(t.BinInfo().Arch.PtrSize())
+		args = append(args, ebpf.UProbeArgMap{Offset: offset, Size: dt.Size(), Kind: dt.Common().ReflectKind, Pieces: paramPieces, InReg: len(pieces) > 0})
+	}
+	t.proc.SetUProbe(fnName, args)
+	return nil
 }
 
 // SetWatchpoint sets a data breakpoint at addr and stores it in the
