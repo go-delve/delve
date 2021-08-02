@@ -757,6 +757,13 @@ func isBreakpointExistsErr(err error) bool {
 	return r
 }
 
+func (d *Debugger) CreateEBPFTracepoint(fnName string) error {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+
+	return d.target.SetEBPFTracepoint(fnName)
+}
+
 // AmendBreakpoint will update the breakpoint with the matching ID.
 // It also enables or disables the breakpoint.
 func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
@@ -2122,6 +2129,29 @@ func (d *Debugger) DumpCancel() error {
 
 func (d *Debugger) Target() *proc.Target {
 	return d.target
+}
+
+func (d *Debugger) GetBufferedTracepoints() []api.TracepointResult {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+
+	traces := d.target.GetBufferedTracepoints()
+	if traces == nil {
+		return nil
+	}
+	results := make([]api.TracepointResult, len(traces))
+	for i, trace := range traces {
+		f, l, fn := d.target.BinInfo().PCToLine(uint64(trace.FnAddr))
+
+		results[i].FunctionName = fn.Name
+		results[i].Line = l
+		results[i].File = f
+
+		for _, p := range trace.InputParams {
+			results[i].InputParams = append(results[i].InputParams, *api.ConvertVar(p))
+		}
+	}
+	return results
 }
 
 func go11DecodeErrorCheck(err error) error {

@@ -343,6 +343,7 @@ func (dbp *nativeProcess) postExit() {
 	if dbp.ctty != nil {
 		dbp.ctty.Close()
 	}
+	dbp.os.Close()
 }
 
 func (dbp *nativeProcess) writeSoftwareBreakpoint(thread *nativeThread, addr uint64) error {

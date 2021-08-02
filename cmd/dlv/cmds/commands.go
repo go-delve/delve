@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -76,6 +77,7 @@ var (
 	traceExecFile   string
 	traceTestBinary bool
 	traceStackDepth int
+	traceUseEBPF    bool
 
 	// redirect specifications for target process
 	redirects []string
@@ -283,7 +285,8 @@ only see the output of the trace operations you can redirect stdout.`,
 	traceCommand.Flags().IntVarP(&traceAttachPid, "pid", "p", 0, "Pid to attach to.")
 	traceCommand.Flags().StringVarP(&traceExecFile, "exec", "e", "", "Binary file to exec and trace.")
 	traceCommand.Flags().BoolVarP(&traceTestBinary, "test", "t", false, "Trace a test binary.")
-	traceCommand.Flags().IntVarP(&traceStackDepth, "stack", "s", 0, "Show stack trace with given depth.")
+	traceCommand.Flags().BoolVarP(&traceUseEBPF, "ebpf", "", false, "Trace using eBPF (experimental).")
+	traceCommand.Flags().IntVarP(&traceStackDepth, "stack", "s", 0, "Show stack trace with given depth. (Ignored with -ebpf)")
 	traceCommand.Flags().String("output", "debug", "Output path for the binary.")
 	rootCommand.AddCommand(traceCommand)
 
@@ -522,13 +525,14 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			dlvArgs = dlvArgs[:dlvArgsLen-1]
 		}
 
+		var debugname string
 		if traceAttachPid == 0 {
 			if dlvArgsLen >= 2 && traceExecFile != "" {
 				fmt.Fprintln(os.Stderr, "Cannot specify package when using exec.")
 				return 1
 			}
 
-			debugname := traceExecFile
+			debugname = traceExecFile
 			if traceExecFile == "" {
 				debugname, err = filepath.Abs(cmd.Flag("output").Value.String())
 				if err != nil {
@@ -583,39 +587,79 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			return 1
 		}
 		for i := range funcs {
-			_, err = client.CreateBreakpoint(&api.Breakpoint{
-				FunctionName: funcs[i],
-				Tracepoint:   true,
-				Line:         -1,
-				Stacktrace:   traceStackDepth,
-				LoadArgs:     &terminal.ShortLoadConfig,
-			})
-			if err != nil && !isBreakpointExistsErr(err) {
-				fmt.Fprintln(os.Stderr, err)
-				return 1
-			}
-			addrs, err := client.FunctionReturnLocations(funcs[i])
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				return 1
-			}
-			for i := range addrs {
+			if traceUseEBPF {
+				err := client.CreateEBPFTracepoint(funcs[i])
+				if err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					return 1
+				}
+			} else {
+				// Fall back to breakpoint based tracing if we get an error.
 				_, err = client.CreateBreakpoint(&api.Breakpoint{
-					Addr:        addrs[i],
-					TraceReturn: true,
-					Stacktrace:  traceStackDepth,
-					Line:        -1,
-					LoadArgs:    &terminal.ShortLoadConfig,
+					FunctionName: funcs[i],
+					Tracepoint:   true,
+					Line:         -1,
+					Stacktrace:   traceStackDepth,
+					LoadArgs:     &terminal.ShortLoadConfig,
 				})
 				if err != nil && !isBreakpointExistsErr(err) {
 					fmt.Fprintln(os.Stderr, err)
 					return 1
+				}
+				addrs, err := client.FunctionReturnLocations(funcs[i])
+				if err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					return 1
+				}
+				for i := range addrs {
+					_, err = client.CreateBreakpoint(&api.Breakpoint{
+						Addr:        addrs[i],
+						TraceReturn: true,
+						Stacktrace:  traceStackDepth,
+						Line:        -1,
+						LoadArgs:    &terminal.ShortLoadConfig,
+					})
+					if err != nil && !isBreakpointExistsErr(err) {
+						fmt.Fprintln(os.Stderr, err)
+						return 1
+					}
 				}
 			}
 		}
 		cmds := terminal.DebugCommands(client)
 		t := terminal.New(client, nil)
 		defer t.Close()
+		if traceUseEBPF {
+			done := make(chan struct{})
+			defer close(done)
+			go func() {
+				for {
+					select {
+					case <-done:
+						return
+					default:
+						tracepoints, err := client.GetBufferedTracepoints()
+						if err != nil {
+							panic(err)
+						}
+						for _, t := range tracepoints {
+							var params strings.Builder
+							for _, p := range t.InputParams {
+								if params.Len() > 0 {
+									params.WriteString(", ")
+								}
+								if p.Kind == reflect.String {
+									params.WriteString(fmt.Sprintf("%q", p.Value))
+								} else {
+									params.WriteString(p.Value)
+								}
+							}
+							fmt.Printf("%s:%d %s(%s)\n", t.File, t.Line, t.FunctionName, params.String())
+						}
+					}
+				}
+			}()
+		}
 		cmds.Call("continue", t)
 		return 0
 	}()
