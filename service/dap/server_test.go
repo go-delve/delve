@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"strings"
@@ -5164,4 +5165,85 @@ func TestBadlyFormattedMessageToServer(t *testing.T) {
 		client.InitializeRequest()
 		client.ExpectInitializeResponse(t)
 	})
+}
+
+func TestParseLogPoint(t *testing.T) {
+	type args struct {
+		msg string
+	}
+	tests := []struct {
+		name       string
+		args       args
+		wantFormat string
+		wantArgs   []string
+		wantErr    bool
+	}{
+		{
+			name: "simple string",
+			args: args{
+				msg: "hello, world!",
+			},
+			wantFormat: "hello, world!",
+		},
+		{
+			name: "simple eval",
+			args: args{
+				msg: "{x}",
+			},
+			wantFormat: "%s",
+			wantArgs:   []string{"x"},
+		},
+		{
+			name: "type cast",
+			args: args{
+				msg: "hello {string(x)}",
+			},
+			wantFormat: "hello %s",
+			wantArgs:   []string{"string(x)"},
+		},
+		{
+			name: "multiple eval",
+			args: args{
+				msg: "{x} {y} {z}",
+			},
+			wantFormat: "%s %s %s",
+			wantArgs:   []string{"x", "y", "z"},
+		},
+		{
+			name: "empty string",
+			args: args{
+				msg: "",
+			},
+			wantErr: true,
+		},
+		{
+			name: "empty evaluation",
+			args: args{
+				msg: "{}",
+			},
+			wantErr: true,
+		},
+		{
+			name: "empty space evaluation",
+			args: args{
+				msg: "{   \n}",
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotFormat, gotArgs, err := parseLogPoint(tt.args.msg)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseLogPoint() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if gotFormat != tt.wantFormat {
+				t.Errorf("parseLogPoint() gotFormat = %v, want %v", gotFormat, tt.wantFormat)
+			}
+			if !reflect.DeepEqual(gotArgs, tt.wantArgs) {
+				t.Errorf("parseLogPoint() gotArgs = %v, want %v", gotArgs, tt.wantArgs)
+			}
+		})
+	}
 }

@@ -2978,3 +2978,45 @@ func (s *Server) toServerPath(path string) string {
 	}
 	return serverPath
 }
+
+func parseLogPoint(msg string) (format string, args []string, err error) {
+	var isArg bool
+	var formatSlice, argSlice []rune
+	braceCount := 0
+	for _, r := range msg {
+		if isArg {
+			switch r {
+			case '}':
+				if braceCount--; braceCount == 0 {
+					argStr := strings.TrimSpace(string(argSlice))
+					if len(argStr) == 0 {
+						return "", nil, fmt.Errorf("empty evaluation string")
+					}
+					args = append(args, argStr)
+					formatSlice = append(formatSlice, '%', 's')
+					isArg = false
+					continue
+				}
+			case '{':
+				braceCount += 1
+			}
+			argSlice = append(argSlice, r)
+			continue
+		}
+
+		if r == '{' {
+			if braceCount++; braceCount == 1 {
+				isArg, argSlice = true, []rune{}
+				continue
+			}
+		}
+		formatSlice = append(formatSlice, r)
+	}
+	if isArg {
+		return "", nil, fmt.Errorf("invalid log point format")
+	}
+	if len(formatSlice) == 0 {
+		return "", nil, fmt.Errorf("empty log message")
+	}
+	return string(formatSlice), args, nil
+}
