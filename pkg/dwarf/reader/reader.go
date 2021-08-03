@@ -43,7 +43,7 @@ func (reader *Reader) AddrFor(name string, staticBase uint64, ptrSize int) (uint
 	if !ok {
 		return 0, fmt.Errorf("type assertion failed")
 	}
-	addr, _, err := op.ExecuteStackProgram(op.DwarfRegisters{StaticBase: staticBase}, instructions, ptrSize)
+	addr, _, err := op.ExecuteStackProgram(op.DwarfRegisters{StaticBase: staticBase}, instructions, ptrSize, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -69,7 +69,7 @@ func (reader *Reader) AddrForMember(member string, initialInstructions []byte, p
 		if !ok {
 			continue
 		}
-		addr, _, err := op.ExecuteStackProgram(op.DwarfRegisters{}, append(initialInstructions, instructions...), ptrSize)
+		addr, _, err := op.ExecuteStackProgram(op.DwarfRegisters{}, append(initialInstructions, instructions...), ptrSize, nil)
 		return uint64(addr), err
 	}
 }
