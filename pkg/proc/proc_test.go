@@ -2545,6 +2545,40 @@ func TestStepConcurrentPtr(t *testing.T) {
 	})
 }
 
+func TestStepOutBreakpoint(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcess("testnextprog", t, func(p *proc.Target, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture.Source, 13)
+		assertNoError(p.Continue(), t, "Continue()")
+		p.ClearBreakpoint(bp.Addr)
+
+		// StepOut should be interrupted by a breakpoint on the same goroutine.
+		setFileBreakpoint(p, t, fixture.Source, 14)
+		assertNoError(p.StepOut(), t, "StepOut()")
+		assertLineNumber(p, t, 14, "wrong line number")
+		if p.Breakpoints().HasSteppingBreakpoints() {
+			t.Fatal("has internal breakpoints after hitting breakpoint on same goroutine")
+		}
+	})
+}
+
+func TestNextBreakpoint(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcess("testnextprog", t, func(p *proc.Target, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture.Source, 34)
+		assertNoError(p.Continue(), t, "Continue()")
+		p.ClearBreakpoint(bp.Addr)
+
+		// Next should be interrupted by a breakpoint on the same goroutine.
+		setFileBreakpoint(p, t, fixture.Source, 14)
+		assertNoError(p.Next(), t, "Next()")
+		assertLineNumber(p, t, 14, "wrong line number")
+		if p.Breakpoints().HasSteppingBreakpoints() {
+			t.Fatal("has internal breakpoints after hitting breakpoint on same goroutine")
+		}
+	})
+}
+
 func TestStepOutDefer(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testnextdefer", t, func(p *proc.Target, fixture protest.Fixture) {
