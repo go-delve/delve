@@ -10,6 +10,7 @@ import (
 	sys "golang.org/x/sys/windows"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 )
 
 // osProcessDetails holds Windows specific information.
@@ -488,10 +489,15 @@ func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 }
 
 func (dbp *nativeProcess) SupportsBPF() bool {
-	return true
+	return false
 }
 
-func (dbp *nativeProcess) SetUProbe(fnName string, args []proc.UProbeArgMap) {
+func (dbp *nativeProcess) SetUProbe(fnName string, args []ebpf.UProbeArgMap) error {
+	return nil
+}
+
+func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
+	return nil
 }
 
 func killProcess(pid int) error {
