@@ -2617,7 +2617,7 @@ func TestNextBreakpointKeepsSteppingBreakpoints(t *testing.T) {
 		assertNoError(p.Next(), t, "Next()")
 		assertLineNumber(p, t, 14, "wrong line number")
 		if !p.Breakpoints().HasSteppingBreakpoints() {
-			t.Fatal("has internal breakpoints after hitting breakpoint on same goroutine")
+			t.Fatal("does not have internal breakpoints after hitting breakpoint on same goroutine")
 		}
 
 		// Continue to complete next.
