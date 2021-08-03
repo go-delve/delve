@@ -661,7 +661,7 @@ func funcCallArgOldABI(fn *Function, bi *BinaryInfo, entry reader.Variable, argn
 		err = fmt.Errorf("could not get argument location of %s: %v", argname, err)
 	} else {
 		var pieces []op.Piece
-		off, pieces, err = op.ExecuteStackProgram(op.DwarfRegisters{CFA: CFA, FrameBase: CFA}, locprog, bi.Arch.PtrSize())
+		off, pieces, err = op.ExecuteStackProgram(op.DwarfRegisters{CFA: CFA, FrameBase: CFA}, locprog, bi.Arch.PtrSize(), nil)
 		if err != nil {
 			err = fmt.Errorf("unsupported location expression for argument %s: %v", argname, err)
 		}
@@ -962,7 +962,7 @@ func fakeFunctionEntryScope(scope *EvalScope, fn *Function, cfa int64, sp uint64
 	if err != nil {
 		return err
 	}
-	scope.Regs.FrameBase, _, _, _ = scope.BinInfo.Location(e, dwarf.AttrFrameBase, scope.PC, scope.Regs)
+	scope.Regs.FrameBase, _, _, _ = scope.BinInfo.Location(e, dwarf.AttrFrameBase, scope.PC, scope.Regs, nil)
 	return nil
 }
 
