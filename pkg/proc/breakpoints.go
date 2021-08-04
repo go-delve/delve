@@ -419,7 +419,7 @@ func (t *Target) SetEBPFTracepoint(fnName string) error {
 		if err != nil {
 			return err
 		}
-		offset, pieces, _, err := t.BinInfo().Location(entry, dwarf.AttrLocation, fn.Entry, op.DwarfRegisters{})
+		offset, pieces, _, err := t.BinInfo().Location(entry, dwarf.AttrLocation, fn.Entry, op.DwarfRegisters{}, nil)
 		if err != nil {
 			return err
 		}
