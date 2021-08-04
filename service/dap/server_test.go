@@ -410,48 +410,25 @@ func TestContinueOnEntry(t *testing.T) {
 		client.ExpectConfigurationDoneResponse(t)
 		// "Continue" happens behind the scenes on another goroutine
 
+		client.ExpectTerminatedEvent(t)
+
 		// 6 >> threads, << threads
 		client.ThreadsRequest()
-		// Since we are in async mode while running, we might receive messages in either order.
-		for i := 0; i < 2; i++ {
-			msg := client.ExpectMessage(t)
-			switch m := msg.(type) {
-			case *dap.ThreadsResponse:
-				if m.Seq != 0 || m.RequestSeq != 6 {
-					t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6", m)
-				}
-				// Single current thread is sent when the program is running
-				// because DAP spec expects at least one thread.
-				// Also accept empty already-terminated response.
-				if len(m.Body.Threads) != 0 && (len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != -1 || m.Body.Threads[0].Name != "Current") {
-					t.Errorf("\ngot  %#v\nwant Id=-1, Name=\"Current\" or empty", m.Body.Threads)
-				}
-			case *dap.TerminatedEvent:
-			default:
-				t.Fatalf("got %#v, want ThreadsResponse or TerminatedEvent", m)
-			}
-		}
-
-		// It is possible for the program to terminate before the initial
-		// threads request is processed. And in that case, the
-		// response can be empty
-		// 7 >> threads, << threads
-		client.ThreadsRequest()
 		tResp := client.ExpectThreadsResponse(t)
-		if tResp.Seq != 0 || tResp.RequestSeq != 7 || len(tResp.Body.Threads) != 1 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7 len(Threads)=1", tResp)
+		if tResp.Seq != 0 || tResp.RequestSeq != 6 || len(tResp.Body.Threads) != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6 len(Threads)=1", tResp)
 		}
 		if tResp.Body.Threads[0].Id != 1 || tResp.Body.Threads[0].Name != "Dummy" {
 			t.Errorf("\ngot %#v\nwant Id=1, Name=\"Dummy\"", tResp)
 		}
 
-		// 8 >> disconnect, << disconnect
+		// 7 >> disconnect, << disconnect
 		client.DisconnectRequest()
 		client.ExpectOutputEventProcessExited(t, 0)
 		client.ExpectOutputEventDetaching(t)
 		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.Seq != 0 || dResp.RequestSeq != 8 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8", dResp)
+		if dResp.Seq != 0 || dResp.RequestSeq != 7 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7", dResp)
 		}
 		client.ExpectTerminatedEvent(t)
 	})
