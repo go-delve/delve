@@ -1,9 +1,5 @@
 # Installation
 
-## Installing the latest stable version
-
-The latest stable version requires go 1.12 or a later version.
-
 With go version 1.16 or later:
 
 ```
@@ -12,12 +8,19 @@ $ go install github.com/go-delve/delve/cmd/dlv@latest
 
 With go version 1.15 or older:
 
-Change to any directory that is both outside of your `GOPATH`
-and outside of a module (e.g. a temp directory), and run:
+Clone the git repository and build:
 
 ```
-$ GO111MODULE=on go get github.com/go-delve/delve/cmd/dlv@latest
+$ git clone https://github.com/go-delve/delve
+$ cd delve
+$ go install github.com/go-delve/delve/cmd/dlv
 ```
+
+Note that the above instruction for go 1.15 or older will
+build `dlv` from the master branch and the produced binary
+will not contain complete build information.
+When you report an issue, make sure to check if the
+problem can be reproducible from the current master.
 
 See `go help install` for details on where the `dlv` executable is saved.
 
@@ -28,16 +31,6 @@ found packages native (proc.go) and your_operating_system_and_architecture_combi
 ```
 
 It means that your combination of operating system and CPU architecture is not supported, check the output of `go version`.
-
-## Installing dev version (unstable)
-
-Clone the git repository and build:
-
-```
-$ git clone https://github.com/go-delve/delve
-$ cd delve
-$ go install github.com/go-delve/delve/cmd/dlv
-```
 
 ## macOS considerations
 
