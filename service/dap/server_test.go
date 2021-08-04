@@ -3523,43 +3523,15 @@ func TestNextParked(t *testing.T) {
 			fixture.Source, []int{15},
 			[]onBreakpoint{{ // Stop at line 15
 				execute: func() {
-					goroutineId := testStepParkedHelper(t, client, fixture)
+					if goroutineId := testStepParkedHelper(t, client, fixture); goroutineId >= 0 {
 
-					client.NextRequest(goroutineId)
-					client.ExpectNextResponse(t)
+						client.NextRequest(goroutineId)
+						client.ExpectNextResponse(t)
 
-					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != goroutineId {
-						t.Fatalf("Next did not continue on the selected goroutine, expected %d got %d", goroutineId, se.Body.ThreadId)
-					}
-				},
-				disconnect: false,
-			}})
-	})
-}
-
-func TestStepInParked(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
-		t.SkipNow()
-	}
-	runTest(t, "parallel_next", func(client *daptest.Client, fixture protest.Fixture) {
-		runDebugSessionWithBPs(t, client, "launch",
-			// Launch
-			func() {
-				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
-			},
-			// Set breakpoints
-			fixture.Source, []int{15},
-			[]onBreakpoint{{ // Stop at line 15
-				execute: func() {
-					goroutineId := testStepParkedHelper(t, client, fixture)
-
-					client.StepInRequest(goroutineId)
-					client.ExpectStepInResponse(t)
-
-					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != goroutineId {
-						t.Fatalf("StepIn did not continue on the selected goroutine, expected %d got %d", goroutineId, se.Body.ThreadId)
+						se := client.ExpectStoppedEvent(t)
+						if se.Body.ThreadId != goroutineId {
+							t.Fatalf("Next did not continue on the selected goroutine, expected %d got %d", goroutineId, se.Body.ThreadId)
+						}
 					}
 				},
 				disconnect: false,
@@ -3576,7 +3548,13 @@ func testStepParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 	var goroutineId = -1
 	for goroutineId < 0 {
 		client.ContinueRequest(1)
-		client.ExpectContinueResponse(t)
+		contResp := client.ExpectMessage(t)
+		switch contResp.(type) {
+		case *dap.ContinueResponse:
+			// ok
+		case *dap.TerminatedEvent:
+			return -1
+		}
 
 		se := client.ExpectStoppedEvent(t)
 

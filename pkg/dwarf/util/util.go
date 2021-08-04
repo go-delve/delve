@@ -140,6 +140,12 @@ func ParseString(data *bytes.Buffer) (string, error) {
 // ReadUintRaw reads an integer of ptrSize bytes, with the specified byte order, from reader.
 func ReadUintRaw(reader io.Reader, order binary.ByteOrder, ptrSize int) (uint64, error) {
 	switch ptrSize {
+	case 2:
+		var n uint16
+		if err := binary.Read(reader, order, &n); err != nil {
+			return 0, err
+		}
+		return uint64(n), nil
 	case 4:
 		var n uint32
 		if err := binary.Read(reader, order, &n); err != nil {
@@ -153,7 +159,7 @@ func ReadUintRaw(reader io.Reader, order binary.ByteOrder, ptrSize int) (uint64,
 		}
 		return n, nil
 	}
-	return 0, fmt.Errorf("not supprted ptr size %d", ptrSize)
+	return 0, fmt.Errorf("pointer size %d not supported", ptrSize)
 }
 
 // WriteUint writes an integer of ptrSize bytes to writer, in the specified byte order.
@@ -164,7 +170,7 @@ func WriteUint(writer io.Writer, order binary.ByteOrder, ptrSize int, data uint6
 	case 8:
 		return binary.Write(writer, order, data)
 	}
-	return fmt.Errorf("not support prt size %d", ptrSize)
+	return fmt.Errorf("pointer size %d not supported", ptrSize)
 }
 
 // ReadDwarfLength reads a DWARF length field followed by a version field
