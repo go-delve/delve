@@ -342,7 +342,7 @@ func (s *Server) Run() {
 			return
 		}
 		if s.config.CheckLocalConnUser {
-			if !sameuser.CanAccept(s.listener.Addr(), conn.RemoteAddr()) {
+			if !sameuser.CanAccept(s.listener.Addr(), conn.LocalAddr(), conn.RemoteAddr()) {
 				s.log.Error("Error accepting client connection: Only connections from the same user that started this instance of Delve are allowed to connect. See --only-same-user.")
 				s.triggerServerStop()
 				return

@@ -146,7 +146,7 @@ func (s *ServerImpl) Run() error {
 			}
 
 			if s.config.CheckLocalConnUser {
-				if !sameuser.CanAccept(s.listener.Addr(), c.RemoteAddr()) {
+				if !sameuser.CanAccept(s.listener.Addr(), c.LocalAddr(), c.RemoteAddr()) {
 					c.Close()
 					continue
 				}
