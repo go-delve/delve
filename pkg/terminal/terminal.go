@@ -228,14 +228,19 @@ func (t *Term) Run() (int, error) {
 		if strings.HasPrefix(line, "break ") || strings.HasPrefix(line, "b ") {
 			prefix = "break "
 		}
+		if strings.HasPrefix(line, "trace ") {
+			prefix = "trace "
+		}
 		if strings.HasPrefix(line, "continue ") || strings.HasPrefix(line, "c ") {
 			prefix = "continue "
 		}
 		if prefix != "" {
-			filter := line[strings.Index(line, " ")+1:]
-			funcs := fns.FuzzySearch(filter)
-			for _, f := range funcs {
-				c = append(c, prefix+f)
+			if spc := strings.LastIndex(line, " "); spc > 0 {
+				prefix := line[:spc] + " "
+				funcs := fns.FuzzySearch(line[spc+1:])
+				for _, f := range funcs {
+					c = append(c, prefix+f)
+				}
 			}
 			return
 		}
