@@ -2562,31 +2562,6 @@ func TestStepOutBreakpoint(t *testing.T) {
 	})
 }
 
-func TestStepOutBreakpointKeepsSteppingBreakpoints(t *testing.T) {
-	protest.AllowRecording(t)
-	withTestProcess("testnextprog", t, func(p *proc.Target, fixture protest.Fixture) {
-		p.KeepsSteppingBreakpoints = true
-		bp := setFileBreakpoint(p, t, fixture.Source, 13)
-		assertNoError(p.Continue(), t, "Continue()")
-		p.ClearBreakpoint(bp.Addr)
-
-		// StepOut should be interrupted by a breakpoint on the same goroutine.
-		setFileBreakpoint(p, t, fixture.Source, 14)
-		assertNoError(p.StepOut(), t, "StepOut()")
-		assertLineNumber(p, t, 14, "wrong line number")
-		if !p.Breakpoints().HasSteppingBreakpoints() {
-			t.Fatal("does not have internal breakpoints after hitting breakpoint on same goroutine")
-		}
-
-		// Continue to complete step out.
-		assertNoError(p.Continue(), t, "Continue()")
-		assertLineNumber(p, t, 35, "wrong line number")
-		if p.Breakpoints().HasSteppingBreakpoints() {
-			t.Fatal("has internal breakpoints after completing step out")
-		}
-	})
-}
-
 func TestNextBreakpoint(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testnextprog", t, func(p *proc.Target, fixture protest.Fixture) {
@@ -2607,17 +2582,18 @@ func TestNextBreakpoint(t *testing.T) {
 func TestNextBreakpointKeepsSteppingBreakpoints(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testnextprog", t, func(p *proc.Target, fixture protest.Fixture) {
-		p.KeepsSteppingBreakpoints = true
+		p.HaltKeepSteppingBreakpoints = true
 		bp := setFileBreakpoint(p, t, fixture.Source, 34)
 		assertNoError(p.Continue(), t, "Continue()")
 		p.ClearBreakpoint(bp.Addr)
 
-		// Next should be interrupted by a breakpoint on the same goroutine.
-		setFileBreakpoint(p, t, fixture.Source, 14)
+		// Next should be interrupted by a tracepoint on the same goroutine.
+		bp = setFileBreakpoint(p, t, fixture.Source, 14)
+		bp.Tracepoint = true
 		assertNoError(p.Next(), t, "Next()")
 		assertLineNumber(p, t, 14, "wrong line number")
 		if !p.Breakpoints().HasSteppingBreakpoints() {
-			t.Fatal("does not have internal breakpoints after hitting breakpoint on same goroutine")
+			t.Fatal("does not have internal breakpoints after hitting tracepoint on same goroutine")
 		}
 
 		// Continue to complete next.
@@ -3696,7 +3672,7 @@ func TestIssue1145(t *testing.T) {
 
 func TestHaltKeepsSteppingBreakpoints(t *testing.T) {
 	withTestProcess("sleep", t, func(p *proc.Target, fixture protest.Fixture) {
-		p.KeepsSteppingBreakpoints = true
+		p.HaltKeepSteppingBreakpoints = true
 		setFileBreakpoint(p, t, fixture.Source, 18)
 		assertNoError(p.Continue(), t, "Continue()")
 		resumeChan := make(chan struct{}, 1)

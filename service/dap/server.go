@@ -1414,7 +1414,7 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 	func() {
 		s.debugger.LockTarget()
 		defer s.debugger.UnlockTarget()
-		s.debugger.Target().KeepsSteppingBreakpoints = true
+		s.debugger.Target().HaltKeepSteppingBreakpoints = true
 	}()
 
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
@@ -2897,7 +2897,7 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 	stopped.Body.AllThreadsStopped = true
 
 	if err == nil {
-		if stopReason == proc.StopManual || state.OnNextGoroutine {
+		if stopReason == proc.StopManual {
 			if err := s.debugger.CancelNext(); err != nil {
 				s.log.Error(err)
 			} else {

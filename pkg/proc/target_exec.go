@@ -60,7 +60,7 @@ func (dbp *Target) Continue() error {
 		// manual stop request and hit a breakpoint.
 		if dbp.CheckAndClearManualStopRequest() {
 			dbp.StopReason = StopManual
-			if !dbp.KeepsSteppingBreakpoints {
+			if !dbp.HaltKeepSteppingBreakpoints {
 				dbp.ClearSteppingBreakpoints()
 			}
 		}
@@ -68,7 +68,7 @@ func (dbp *Target) Continue() error {
 	for {
 		if dbp.CheckAndClearManualStopRequest() {
 			dbp.StopReason = StopManual
-			if !dbp.KeepsSteppingBreakpoints {
+			if !dbp.HaltKeepSteppingBreakpoints {
 				dbp.ClearSteppingBreakpoints()
 			}
 			return nil
@@ -93,7 +93,7 @@ func (dbp *Target) Continue() error {
 			}
 			return err
 		}
-		if dbp.StopReason == StopLaunched && !dbp.KeepsSteppingBreakpoints {
+		if dbp.StopReason == StopLaunched {
 			dbp.ClearSteppingBreakpoints()
 		}
 
@@ -194,11 +194,11 @@ func (dbp *Target) Continue() error {
 				return conditionErrors(threads)
 			}
 		case curbp.Active:
-			onNextGoroutine, err := OnNextGoroutine(curthread, dbp.Breakpoints())
+			onNextGoroutine, err := onNextGoroutine(curthread, dbp.Breakpoints())
 			if err != nil {
 				return err
 			}
-			if onNextGoroutine && !dbp.KeepsSteppingBreakpoints {
+			if onNextGoroutine && !(curbp.Tracepoint || curbp.TraceReturn) {
 				err := dbp.ClearSteppingBreakpoints()
 				if err != nil {
 					return err
@@ -1018,8 +1018,8 @@ func stepOutReverse(p *Target, topframe, retframe Stackframe, sameGCond ast.Expr
 	return err
 }
 
-// OnNextGoroutine returns true if this thread is on the goroutine requested by the current 'next' command
-func OnNextGoroutine(thread Thread, breakpoints *BreakpointMap) (bool, error) {
+// onNextGoroutine returns true if this thread is on the goroutine requested by the current 'next' command
+func onNextGoroutine(thread Thread, breakpoints *BreakpointMap) (bool, error) {
 	var breaklet *Breaklet
 breakletSearch:
 	for i := range breakpoints.M {

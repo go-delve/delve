@@ -618,7 +618,6 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 	}
 
 	state.NextInProgress = d.target.Breakpoints().HasSteppingBreakpoints()
-	state.OnNextGoroutine, _ = proc.OnNextGoroutine(d.target.CurrentThread(), d.target.Breakpoints())
 
 	if recorded, _ := d.target.Recorded(); recorded {
 		state.When, _ = d.target.When()

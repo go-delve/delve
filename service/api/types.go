@@ -39,10 +39,6 @@ type DebuggerState struct {
 	// While NextInProgress is set further requests for next or step may be rejected.
 	// Either execute continue until NextInProgress is false or call CancelNext
 	NextInProgress bool
-	// OnNextGoroutine indicates that the debugger is stopped on the goroutine
-	// that is being stepped on. This is only relevant if NextInProgress and
-	// target.KeepsSteppingBreakpoints are also true.
-	OnNextGoroutine bool
 	// Exited indicates whether the debugged process has exited.
 	Exited     bool `json:"exited"`
 	ExitStatus int  `json:"exitStatus"`
