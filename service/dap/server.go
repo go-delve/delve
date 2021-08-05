@@ -3056,26 +3056,41 @@ func (s *Server) run(command string, asyncSetupDone chan struct{}) (*api.Debugge
 			break
 		}
 
-		if bp := state.CurrentThread.Breakpoint; bp != nil && bp.Tracepoint {
-			// If this is a log point, we want to log the message and continue execution.
-			s.handleLogPoint(bp.ID)
-			// Only resume execution if continue was the command used to run the program.
-			// Otherwise, the program will go past the step, next, stepout requests.
-			// TODO(suzmue): have s.debugger.Command() not clear internal breakpoints when
-			// hitting another breakpoint.
-			if !runningStep || state.NextInProgress {
-				command = api.Continue
-				continue
-			}
+		istp, handleBpErr := s.handleLogPoints(state)
+		if handleBpErr != nil {
+			s.log.Error(handleBpErr)
+			break
+		}
+		// Only resume execution if continue was the command used to run the program.
+		// Otherwise, the program will go past the step, next, stepout requests.
+		// TODO(suzmue): have s.debugger.Command() not clear internal breakpoints when
+		// hitting another breakpoint.
+		if s.debugger.StopReason() == proc.StopBreakpoint && istp && (!runningStep || state.NextInProgress) {
+			command = api.Continue
+			continue
 		}
 		break
 	}
 	return state, err
 }
 
-func (s *Server) handleLogPoint(id int) {
+func (s *Server) handleLogPoints(state *api.DebuggerState) (bool, error) {
+	// istracepoint is true if all breakpoints that are encountered are
+	// tracepoints.
+	istracepoint := true
+	for _, th := range state.Threads {
+		if bp := th.Breakpoint; bp != nil {
+			// If this is a log point, we want to log the message and continue execution.
+			s.handleLogPoint(bp)
+			istracepoint = istracepoint && bp.Tracepoint
+		}
+	}
+	return istracepoint, nil
+}
+
+func (s *Server) handleLogPoint(bp *api.Breakpoint) {
 	// TODO(suzmue): allow evaluate expressions within log points.
-	if msg, ok := s.logMessages[id]; ok {
+	if msg, ok := s.logMessages[bp.ID]; ok {
 		s.send(&dap.OutputEvent{
 			Event: *newEvent("output"),
 			Body: dap.OutputEventBody{

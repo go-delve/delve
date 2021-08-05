@@ -2600,6 +2600,60 @@ func TestLogPoints(t *testing.T) {
 	})
 }
 
+// TestConcurrentBreakpointsLogPoints executes to a breakpoint and tests
+// logpoints and breakpoints that are hit concurrently are all processed.
+func TestConcurrentBreakpointsLogPoints(t *testing.T) {
+	runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{20},
+			[]onBreakpoint{{
+				// Stop at line 23
+				execute: func() {
+					bps := []int{8, 23}
+					logMessages := map[int]string{8: "hello"}
+					client.SetLogpointsRequest(fixture.Source, bps, logMessages)
+					client.ExpectSetBreakpointsResponse(t)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					// There may be up to 1 breakpoint and any number of log points that are
+					// hit concurrently. We should get a stopped event for every breakpoint,
+					// and an output event for every log point hit.
+					var oeCount, seCount int
+					for oeCount < 10 || seCount < 10 {
+						switch m := client.ExpectMessage(t).(type) {
+						case *dap.StoppedEvent:
+							if m.Body.Reason != "breakpoint" || !m.Body.AllThreadsStopped || m.Body.ThreadId != 1 {
+								t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", m)
+							}
+							checkStop(t, client, 1, "main.main", 23)
+							seCount++
+							client.ContinueRequest(1)
+						case *dap.OutputEvent:
+							if m.Body.Category != "stdout" || m.Body.Output != "hello\n" {
+								t.Errorf("\ngot  %#v\nwant Category=\"stdout\" Output=\"hello\"", m)
+							}
+							oeCount++
+						case *dap.ContinueResponse:
+						case *dap.TerminatedEvent:
+							t.Fatalf("\nexpected 10 output events and 10 stopped events, got %d output events and %d stopped events", oeCount, seCount)
+						default:
+							t.Fatalf("Unexpected message type: expect StoppedEvent, OutputEvent, or ContinueResponse, got %#v", m)
+						}
+					}
+					client.ExpectTerminatedEvent(t)
+				},
+				disconnect: false,
+			}})
+	})
+}
+
 func expectSetBreakpointsResponseAndStoppedEvent(t *testing.T, client *daptest.Client) (se *dap.StoppedEvent, br *dap.SetBreakpointsResponse) {
 	for i := 0; i < 2; i++ {
 		switch m := client.ExpectMessage(t).(type) {
