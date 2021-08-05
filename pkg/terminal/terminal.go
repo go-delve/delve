@@ -224,17 +224,9 @@ func (t *Term) Run() (int, error) {
 	}
 
 	t.line.SetCompleter(func(line string) (c []string) {
-		prefix := ""
-		if strings.HasPrefix(line, "break ") || strings.HasPrefix(line, "b ") {
-			prefix = "break "
-		}
-		if strings.HasPrefix(line, "trace ") {
-			prefix = "trace "
-		}
-		if strings.HasPrefix(line, "continue ") || strings.HasPrefix(line, "c ") {
-			prefix = "continue "
-		}
-		if prefix != "" {
+		cmd := t.cmds.Find(strings.Split(line, " ")[0], noPrefix)
+		switch cmd.aliases[0] {
+		case "break", "trace", "continue":
 			if spc := strings.LastIndex(line, " "); spc > 0 {
 				prefix := line[:spc] + " "
 				funcs := fns.FuzzySearch(line[spc+1:])
@@ -242,10 +234,10 @@ func (t *Term) Run() (int, error) {
 					c = append(c, prefix+f)
 				}
 			}
-			return
+		case "nullcmd", "nocmd":
+			commands := cmds.FuzzySearch(strings.ToLower(line))
+			c = append(c, commands...)
 		}
-		commands := cmds.FuzzySearch(strings.ToLower(line))
-		c = append(c, commands...)
 		return
 	})
 
