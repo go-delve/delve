@@ -590,10 +590,10 @@ func (c *Commands) Register(cmdstr string, cf cmdfunc, helpMsg string) {
 // Find will look up the command function for the given command input.
 // If it cannot find the command it will default to noCmdAvailable().
 // If the command is an empty string it will replay the last command.
-func (c *Commands) Find(cmdstr string, prefix cmdPrefix) cmdfunc {
+func (c *Commands) Find(cmdstr string, prefix cmdPrefix) command {
 	// If <enter> use last command, if there was one.
 	if cmdstr == "" {
-		return nullCommand
+		return command{aliases: []string{"nullcmd"}, cmdFn: nullCommand}
 	}
 
 	for _, v := range c.cmds {
@@ -601,11 +601,11 @@ func (c *Commands) Find(cmdstr string, prefix cmdPrefix) cmdfunc {
 			if prefix != noPrefix && v.allowedPrefixes&prefix == 0 {
 				continue
 			}
-			return v.cmdFn
+			return v
 		}
 	}
 
-	return noCmdAvailable
+	return command{aliases: []string{"nocmd"}, cmdFn: noCmdAvailable}
 }
 
 // CallWithContext takes a command and a context that command should be executed in.
@@ -616,7 +616,7 @@ func (c *Commands) CallWithContext(cmdstr string, t *Term, ctx callContext) erro
 	if len(vals) > 1 {
 		args = strings.TrimSpace(vals[1])
 	}
-	return c.Find(cmdname, ctx.Prefix)(t, ctx, args)
+	return c.Find(cmdname, ctx.Prefix).cmdFn(t, ctx, args)
 }
 
 // Call takes a command to execute.
