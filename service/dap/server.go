@@ -1645,6 +1645,17 @@ func stoppedGoroutineID(state *api.DebuggerState) (id int) {
 	return id
 }
 
+func stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (id int) {
+	for _, th := range state.Threads {
+		if bp := th.Breakpoint; bp != nil {
+			if !bp.Tracepoint {
+				return th.GoroutineID
+			}
+		}
+	}
+	return stoppedGoroutineID(state)
+}
+
 // doStepCommand is a wrapper around doRunCommand that
 // first switches selected goroutine. asyncSetupDone is
 // a channel that will be closed to signal that an
@@ -2975,6 +2986,7 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 			stopped.Body.Reason = "data breakpoint"
 		default:
 			stopped.Body.Reason = "breakpoint"
+			stopped.Body.ThreadId = stoppedOnBreakpointGoroutineID(state)
 		}
 		if state.CurrentThread != nil && state.CurrentThread.Breakpoint != nil {
 			switch state.CurrentThread.Breakpoint.Name {
@@ -3044,7 +3056,7 @@ func (s *Server) run(command string, asyncSetupDone chan struct{}) (*api.Debugge
 			break
 		}
 
-		th, istp := s.handleLogPoints(state)
+		istp := s.handleLogPoints(state)
 		// Only resume execution if continue was the command used to run the program.
 		// Otherwise, the program will go past the step, next, stepout requests.
 		// TODO(suzmue): have s.debugger.Command() not clear internal breakpoints when
@@ -3055,8 +3067,6 @@ func (s *Server) run(command string, asyncSetupDone chan struct{}) (*api.Debugge
 					command = api.Continue
 					continue
 				}
-			} else {
-				state.CurrentThread = th
 			}
 		}
 		break
@@ -3064,22 +3074,19 @@ func (s *Server) run(command string, asyncSetupDone chan struct{}) (*api.Debugge
 	return state, err
 }
 
-func (s *Server) handleLogPoints(state *api.DebuggerState) (*api.Thread, bool) {
-	// thread is the first thread that has a breakpoint that is not a tracepoint.
-	var thread *api.Thread
+func (s *Server) handleLogPoints(state *api.DebuggerState) bool {
 	// istracepoint is true if all breakpoints that are encountered are
 	// tracepoints.
 	istracepoint := true
 	for _, th := range state.Threads {
 		if bp := th.Breakpoint; bp != nil {
 			s.handleLogPoint(bp)
-			if thread == nil && !bp.Tracepoint {
-				thread = th
+			if !bp.Tracepoint {
 				istracepoint = false
 			}
 		}
 	}
-	return thread, istracepoint
+	return istracepoint
 }
 
 func (s *Server) handleLogPoint(bp *api.Breakpoint) {
