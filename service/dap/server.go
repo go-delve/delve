@@ -1430,7 +1430,7 @@ func (s *Server) onSetExceptionBreakpointsRequest(request *dap.SetExceptionBreak
 	s.send(&dap.SetExceptionBreakpointsResponse{Response: *newResponse(request.Request)})
 }
 
-func (s *Server) asyncCommandDone(asyncSetupDone chan struct{}) {
+func (s *Server) maybeCloseChan(asyncSetupDone chan struct{}) {
 	if asyncSetupDone != nil {
 		select {
 		case <-asyncSetupDone:
@@ -1446,7 +1446,7 @@ func (s *Server) asyncCommandDone(asyncSetupDone chan struct{}) {
 // It gets triggered after all the debug requests that followinitalized event,
 // so the s.debugger is guaranteed to be set.
 func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest, asyncSetupDone chan struct{}) {
-	defer s.asyncCommandDone(asyncSetupDone)
+	defer s.maybeCloseChan(asyncSetupDone)
 	if s.args.stopOnEntry {
 		e := &dap.StoppedEvent{
 			Event: *newEvent("stopped"),
@@ -1664,7 +1664,7 @@ func stoppedGoroutineID(state *api.DebuggerState) (id int) {
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
 func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan struct{}) {
-	defer s.asyncCommandDone(asyncSetupDone)
+	defer s.maybeCloseChan(asyncSetupDone)
 	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
 	if err != nil {
 		s.log.Errorf("Error switching goroutines while stepping: %v", err)
@@ -2925,7 +2925,7 @@ func (s *Server) resume() (*api.DebuggerState, error) {
 	// the program.
 	// Hold onto resumeMu until the program is running.
 	resumeNotify := make(chan struct{}, 1)
-	defer s.asyncCommandDone(resumeNotify)
+	defer s.maybeCloseChan(resumeNotify)
 	s.resumeMu.Lock()
 	go func() {
 		<-resumeNotify
@@ -3041,7 +3041,7 @@ func (s *Server) run(command string, asyncSetupDone chan struct{}) (*api.Debugge
 	// TODO(polina): it appears that debugger.Command doesn't always close
 	// asyncSetupDone (e.g. when having an error next while nexting).
 	// So we should always close it ourselves just in case.
-	defer s.asyncCommandDone(asyncSetupDone)
+	defer s.maybeCloseChan(asyncSetupDone)
 	s.setRunning(true)
 	defer s.setRunning(false)
 
