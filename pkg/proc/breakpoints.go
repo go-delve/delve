@@ -58,6 +58,7 @@ type Breakpoint struct {
 	Variables   []string // Variables to evaluate
 	LoadArgs    *LoadConfig
 	LoadLocals  *LoadConfig
+	UserData    interface{}
 
 	// ReturnInfo describes how to collect return variables when this
 	// breakpoint is hit as a return breakpoint.

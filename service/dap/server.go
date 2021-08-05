@@ -113,8 +113,6 @@ type Server struct {
 	exceptionErr error
 	// clientCapabilities tracks special settings for handling debug session requests.
 	clientCapabilities dapClientCapabilites
-	// logMessages maps a breakpoint id to a log message
-	logMessages map[int]string
 
 	// mu synchronizes access to objects set on start-up (from run goroutine)
 	// and stopped on teardown (from main goroutine)
@@ -226,7 +224,6 @@ func NewServer(config *service.Config) *Server {
 		log:               logger,
 		stackFrameHandles: newHandlesMap(),
 		variableHandles:   newVariablesHandlesMap(),
-		logMessages:       make(map[int]string),
 		args:              defaultArgs,
 		exceptionErr:      nil,
 	}
@@ -1198,7 +1195,7 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 			got.Cond = want.Condition
 			got.HitCond = want.HitCondition
 			got.Tracepoint = want.LogMessage != ""
-			s.updateLogMessage(got.ID, want.LogMessage)
+			got.UserData = want.LogMessage
 			err = s.debugger.AmendBreakpoint(got)
 			bpAdded[reqString] = struct{}{}
 		}
@@ -1233,10 +1230,8 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 					HitCond:    want.HitCondition,
 					Name:       reqString,
 					Tracepoint: want.LogMessage != "",
+					UserData:   want.LogMessage,
 				})
-			if got != nil {
-				s.updateLogMessage(got.ID, want.LogMessage)
-			}
 			bpAdded[reqString] = struct{}{}
 		}
 
@@ -1247,14 +1242,6 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 	response.Body.Breakpoints = breakpoints
 
 	s.send(response)
-}
-
-func (s *Server) updateLogMessage(id int, msg string) {
-	if msg == "" {
-		delete(s.logMessages, id)
-		return
-	}
-	s.logMessages[id] = msg
 }
 
 func updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int, err error, got *api.Breakpoint, path string) {
@@ -1397,7 +1384,6 @@ func (s *Server) clearBreakpoints(existingBps map[string]*api.Breakpoint, bpAdde
 		if _, ok := bpAdded[req]; ok {
 			continue
 		}
-		s.updateLogMessage(bp.ID, "")
 		_, err := s.debugger.ClearBreakpoint(bp)
 		if err != nil {
 			return err
@@ -3080,7 +3066,6 @@ func (s *Server) handleLogPoints(state *api.DebuggerState) (bool, error) {
 	istracepoint := true
 	for _, th := range state.Threads {
 		if bp := th.Breakpoint; bp != nil {
-			// If this is a log point, we want to log the message and continue execution.
 			s.handleLogPoint(bp)
 			istracepoint = istracepoint && bp.Tracepoint
 		}
@@ -3089,8 +3074,11 @@ func (s *Server) handleLogPoints(state *api.DebuggerState) (bool, error) {
 }
 
 func (s *Server) handleLogPoint(bp *api.Breakpoint) {
+	if !bp.Tracepoint {
+		return
+	}
 	// TODO(suzmue): allow evaluate expressions within log points.
-	if msg, ok := s.logMessages[bp.ID]; ok {
+	if msg, ok := bp.UserData.(string); ok {
 		s.send(&dap.OutputEvent{
 			Event: *newEvent("output"),
 			Body: dap.OutputEventBody{

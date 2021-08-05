@@ -818,6 +818,7 @@ func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err err
 	bp.Goroutine = requested.Goroutine
 	bp.Stacktrace = requested.Stacktrace
 	bp.Variables = requested.Variables
+	bp.UserData = requested.UserData
 	bp.LoadArgs = api.LoadConfigToProc(requested.LoadArgs)
 	bp.LoadLocals = api.LoadConfigToProc(requested.LoadLocals)
 	breaklet := bp.UserBreaklet()
