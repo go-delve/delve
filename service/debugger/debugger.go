@@ -2133,9 +2133,6 @@ func (d *Debugger) Target() *proc.Target {
 }
 
 func (d *Debugger) GetBufferedTracepoints() []api.TracepointResult {
-	d.targetMutex.Lock()
-	defer d.targetMutex.Unlock()
-
 	traces := d.target.GetBufferedTracepoints()
 	if traces == nil {
 		return nil

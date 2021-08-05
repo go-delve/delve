@@ -178,7 +178,7 @@ func withTestTerminalBuildFlags(name string, t testing.TB, buildFlags test.Build
 func TestCommandDefault(t *testing.T) {
 	var (
 		cmds = Commands{}
-		cmd  = cmds.Find("non-existant-command", noPrefix)
+		cmd  = cmds.Find("non-existant-command", noPrefix).cmdFn
 	)
 
 	err := cmd(nil, callContext{}, "")
@@ -194,7 +194,7 @@ func TestCommandDefault(t *testing.T) {
 func TestCommandReplayWithoutPreviousCommand(t *testing.T) {
 	var (
 		cmds = DebugCommands(nil)
-		cmd  = cmds.Find("", noPrefix)
+		cmd  = cmds.Find("", noPrefix).cmdFn
 		err  = cmd(nil, callContext{}, "")
 	)
 
@@ -206,7 +206,7 @@ func TestCommandReplayWithoutPreviousCommand(t *testing.T) {
 func TestCommandThread(t *testing.T) {
 	var (
 		cmds = DebugCommands(nil)
-		cmd  = cmds.Find("thread", noPrefix)
+		cmd  = cmds.Find("thread", noPrefix).cmdFn
 	)
 
 	err := cmd(nil, callContext{}, "")
