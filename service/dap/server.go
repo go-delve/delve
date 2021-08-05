@@ -3044,35 +3044,42 @@ func (s *Server) run(command string, asyncSetupDone chan struct{}) (*api.Debugge
 			break
 		}
 
-		istp, handleBpErr := s.handleLogPoints(state)
-		if handleBpErr != nil {
-			s.log.Error(handleBpErr)
-			break
-		}
+		th, istp := s.handleLogPoints(state)
 		// Only resume execution if continue was the command used to run the program.
 		// Otherwise, the program will go past the step, next, stepout requests.
 		// TODO(suzmue): have s.debugger.Command() not clear internal breakpoints when
 		// hitting another breakpoint.
-		if s.debugger.StopReason() == proc.StopBreakpoint && istp && (!runningStep || state.NextInProgress) {
-			command = api.Continue
-			continue
+		if s.debugger.StopReason() == proc.StopBreakpoint {
+			if istp {
+				if !runningStep || state.NextInProgress {
+					command = api.Continue
+					continue
+				}
+			} else {
+				state.CurrentThread = th
+			}
 		}
 		break
 	}
 	return state, err
 }
 
-func (s *Server) handleLogPoints(state *api.DebuggerState) (bool, error) {
+func (s *Server) handleLogPoints(state *api.DebuggerState) (*api.Thread, bool) {
+	// thread is the first thread that has a breakpoint that is not a tracepoint.
+	var thread *api.Thread
 	// istracepoint is true if all breakpoints that are encountered are
 	// tracepoints.
 	istracepoint := true
 	for _, th := range state.Threads {
 		if bp := th.Breakpoint; bp != nil {
 			s.handleLogPoint(bp)
-			istracepoint = istracepoint && bp.Tracepoint
+			if thread == nil && !bp.Tracepoint {
+				thread = th
+				istracepoint = false
+			}
 		}
 	}
-	return istracepoint, nil
+	return thread, istracepoint
 }
 
 func (s *Server) handleLogPoint(bp *api.Breakpoint) {
