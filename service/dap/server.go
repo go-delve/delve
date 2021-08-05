@@ -420,9 +420,6 @@ func (s *Server) handleRequest(request dap.Message) {
 	defer s.recoverPanic(request)
 	// Lock resumeMu so that another goroutine cannot unexpectedly start
 	// the debuggee.
-	s.resumeMu.Lock()
-	defer s.resumeMu.Unlock()
-
 	jsonmsg, _ := json.Marshal(request)
 	s.log.Debug("[<- from client]", string(jsonmsg))
 
@@ -471,6 +468,8 @@ func (s *Server) handleRequest(request dap.Message) {
 	// for these requests to return. We are not aware of any requests
 	// that would benefit from this approach at this time.
 	if s.debugger != nil && s.isRunning() {
+		s.resumeMu.Lock()
+		defer s.resumeMu.Unlock()
 		switch request := request.(type) {
 		case *dap.ThreadsRequest:
 			// On start-up, the client requests the baseline of currently existing threads
@@ -2919,7 +2918,7 @@ func (s *Server) isRunning() bool {
 // resume is a helper function to resume the execution
 // of the target when the program is halted, but no
 // stopped event has been sent.
-func (s *Server) resume() (*api.DebuggerState, error) {
+func (s *Server) resume(command string, waitChannel chan struct{}) (*api.DebuggerState, error) {
 	// No other goroutines should be able to try to resume
 	// or halt execution while this goroutine is continuing
 	// the program.
@@ -2929,6 +2928,7 @@ func (s *Server) resume() (*api.DebuggerState, error) {
 	s.resumeMu.Lock()
 	go func() {
 		<-resumeNotify
+		s.maybeCloseChan(waitChannel)
 		s.resumeMu.Unlock()
 	}()
 
@@ -2942,7 +2942,7 @@ func (s *Server) resume() (*api.DebuggerState, error) {
 		}
 		return s.debugger.State(false)
 	}
-	return s.debugger.Command(&api.DebuggerCommand{Name: api.Continue}, resumeNotify)
+	return s.debugger.Command(&api.DebuggerCommand{Name: command}, resumeNotify)
 }
 
 // doRunCommand runs a debugger command until it stops on
@@ -3038,23 +3038,24 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 }
 
 func (s *Server) run(command string, asyncSetupDone chan struct{}) (*api.DebuggerState, error) {
-	// TODO(polina): it appears that debugger.Command doesn't always close
-	// asyncSetupDone (e.g. when having an error next while nexting).
-	// So we should always close it ourselves just in case.
-	defer s.maybeCloseChan(asyncSetupDone)
 	s.setRunning(true)
 	defer s.setRunning(false)
 
 	runningStep := command != api.Continue
-	state, _ := s.debugger.State(true)
-	if state != nil {
+	if state, _ := s.debugger.State(true); state != nil {
 		// If state.NextInProgress, then we are in the middle of a step,
 		// regardless of the command.
 		runningStep = runningStep || state.NextInProgress
 	}
-	// The handleRequest loop will release resumeMu after asyncSetupDone is closed.
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
-	for state != nil && state.CurrentThread != nil && err == nil {
+
+	var state *api.DebuggerState
+	var err error
+	for {
+		state, err = s.resume(command, asyncSetupDone)
+		if state == nil || state.CurrentThread == nil || err != nil {
+			break
+		}
+
 		if bp := state.CurrentThread.Breakpoint; bp != nil && bp.Tracepoint {
 			// If this is a log point, we want to log the message and continue execution.
 			s.handleLogPoint(bp.ID)
@@ -3063,7 +3064,7 @@ func (s *Server) run(command string, asyncSetupDone chan struct{}) (*api.Debugge
 			// TODO(suzmue): have s.debugger.Command() not clear internal breakpoints when
 			// hitting another breakpoint.
 			if !runningStep || state.NextInProgress {
-				state, err = s.resume()
+				command = api.Continue
 				continue
 			}
 		}
