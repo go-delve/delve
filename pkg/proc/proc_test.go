@@ -5267,6 +5267,7 @@ func TestCompositeMemoryWrite(t *testing.T) {
 }
 
 func TestVariablesWithExternalLinking(t *testing.T) {
+	protest.MustHaveCgo(t)
 	// Tests that macOSDebugFrameBugWorkaround works.
 	// See:
 	//  https://github.com/golang/go/issues/25841
