@@ -11,6 +11,7 @@ github.com/cpuguy83/go-md2man/v2/md2man
 ## explicit
 github.com/creack/pty
 # github.com/derekparker/trie v0.0.0-20200317170641-1fdf38b7b0e9
+## explicit
 github.com/derekparker/trie
 # github.com/google/go-dap v0.5.0
 ## explicit

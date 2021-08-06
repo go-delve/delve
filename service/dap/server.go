@@ -108,7 +108,7 @@ type Server struct {
 	// See also comment for convertVariable.
 	variableHandles *variablesHandlesMap
 	// args tracks special settings for handling debug session requests.
-	args launchAttachArgs
+	args sessionArgs
 	// exceptionErr tracks the runtime error that last occurred.
 	exceptionErr error
 	// clientCapabilities tracks special settings for handling debug session requests.
@@ -132,9 +132,9 @@ type Server struct {
 	sendingMu sync.Mutex
 }
 
-// launchAttachArgs captures arguments from launch/attach request that
-// impact handling of subsequent requests.
-type launchAttachArgs struct {
+// sessionArgs captures arguments from launch/attach request that
+// impact handling of subsequent requests of the debug session.
+type sessionArgs struct {
 	// stopOnEntry is set to automatically stop the debugee after start.
 	stopOnEntry bool
 	// stackTraceDepth is the maximum length of the returned list of stack frames.
@@ -150,7 +150,7 @@ type launchAttachArgs struct {
 }
 
 // defaultArgs borrows the defaults for the arguments from the original vscode-go adapter.
-var defaultArgs = launchAttachArgs{
+var defaultArgs = sessionArgs{
 	stopOnEntry:                  false,
 	stackTraceDepth:              50,
 	showGlobalVariables:          false,
@@ -217,8 +217,8 @@ func NewServer(config *service.Config) *Server {
 }
 
 // If user-specified options are provided via Launch/AttachRequest,
-// we override the defaults for optional args.
-func (s *Server) setLaunchAttachArgs(request dap.LaunchAttachRequest) error {
+// we override the defaults for optional session args.
+func (s *Server) setSessionArgs(request dap.LaunchAttachRequest) error {
 	stop, ok := request.GetArguments()["stopOnEntry"].(bool)
 	if ok {
 		s.args.stopOnEntry = stop
@@ -326,10 +326,26 @@ func (s *Server) triggerServerStop() {
 // and starts processing requests from it. Use Stop() to close connection.
 // The server does not support multiple clients, serially or in parallel.
 // The server should be restarted for every new debug session.
-// The debugger won't be started until launch/attach request is received.
+// The debugger starts if the config has process info when Run is called.
+// Otherwise, the debugger won't be started until launch/attach request
+// is received with the complete configuration info.
 // TODO(polina): allow new client connections for new debug sessions,
 // so the editor needs to launch delve only once?
 func (s *Server) Run() {
+	// TODO(polina): support replay/core configuration as well?
+	if len(s.config.ProcessArgs) > 0 || s.config.Debugger.AttachPid > 0 {
+		debugger, err := debugger.New(&s.config.Debugger, s.config.ProcessArgs) // Process is halted on entry
+		// TODO(polina): support continue on entry
+		if err != nil {
+			s.log.Errorf("Error starting debugger: %s\n", err)
+			s.triggerServerStop()
+			return
+		}
+		s.mu.Lock()
+		s.debugger = debugger
+		s.mu.Unlock()
+	} // else wait for launch/attach request to start debugging
+
 	go func() {
 		conn, err := s.listener.Accept() // listener is closed in Stop()
 		if err != nil {
@@ -692,6 +708,18 @@ func (s *Server) logToConsole(msg string) {
 		}})
 }
 
+// Guard against logging to a nil client connection
+// as some of the shutdown/initialization code might
+// get executed ooutside of a client connection.
+// Caller must hold mu lock.
+func (s *Server) logToConsoleIfConn(msg string) {
+	if s.conn != nil {
+		s.logToConsole(msg)
+	} else {
+		s.log.Debug(msg)
+	}
+}
+
 func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	s.setClientCapabilities(request.Arguments)
 	if request.Arguments.PathFormat != "path" {
@@ -710,7 +738,6 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 		return
 	}
 
-	// TODO(polina): Respond with an error if debug session is in progress?
 	response := &dap.InitializeResponse{Response: *newResponse(request.Request)}
 	response.Body.SupportsConfigurationDoneRequest = true
 	response.Body.SupportsConditionalBreakpoints = true
@@ -753,6 +780,15 @@ func cleanExeName(name string) string {
 }
 
 func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
+	s.mu.Lock()
+	debugInProgress := s.debugger != nil
+	s.mu.Unlock()
+	if debugInProgress {
+		s.sendErrorResponse(request.Request, FailedToLaunch,
+			"Failed to launch", "debugger already running - use attach request to connect")
+		return
+	}
+
 	// Validate launch request mode
 	mode, ok := request.Arguments["mode"]
 	if !ok || mode == "" {
@@ -765,7 +801,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	// TODO(polina): Respond with an error if debug session is in progress?
 	program, ok := request.Arguments["program"].(string)
 	if (!ok || program == "") && mode != "replay" { // Only fail on modes requiring a program
 		s.sendErrorResponse(request.Request,
@@ -877,7 +912,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.mu.Unlock()
 	}
 
-	err := s.setLaunchAttachArgs(request)
+	err := s.setSessionArgs(request)
 	if err != nil {
 		s.sendErrorResponse(request.Request,
 			FailedToLaunch, "Failed to launch",
@@ -1034,9 +1069,10 @@ func isValidLaunchMode(mode interface{}) bool {
 // Attach debug sessions support the following modes:
 // -- [DEFAULT] "local" -- attaches debugger to a local running process
 //      Required args: processId
-// TODO(polina): support "remote" mode
+// -- "remote" - attaches client to a debugger already attached to a process
+//      Required args: none (host/port are used externally to connect)
 func isValidAttachMode(mode interface{}) bool {
-	return mode == "local"
+	return mode == "local" || mode == "remote"
 }
 
 // onDisconnectRequest handles the DisconnectRequest. Per the DAP spec,
@@ -1071,6 +1107,7 @@ func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
 
 // stopDebugSession is called from Stop (main goroutine) and
 // onDisconnectRequest (run goroutine) and requires holding mu lock.
+// It may therefore be called outside of a client connection.
 // Returns any detach error other than proc.ErrProcessExited.
 func (s *Server) stopDebugSession(killProcess bool) error {
 	if s.debugger == nil {
@@ -1104,12 +1141,11 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 		s.log.Debug("halt returned state: ", exited)
 	}
 	if exited != nil {
-		s.logToConsole(exited.Error())
-		s.logToConsole("Detaching")
+		s.logToConsoleIfConn(exited.Error() + "\nDetaching")
 	} else if killProcess {
-		s.logToConsole("Detaching and terminating target process")
+		s.logToConsoleIfConn("Detaching and terminating target process")
 	} else {
-		s.logToConsole("Detaching without terminating target processs")
+		s.logToConsoleIfConn("Detaching without terminating target processs")
 	}
 	err = s.debugger.Detach(killProcess)
 	s.debugger = nil
@@ -1117,7 +1153,7 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 		switch err.(type) {
 		case proc.ErrProcessExited:
 			s.log.Debug(err)
-			s.logToConsole(exited.Error())
+			s.logToConsoleIfConn(exited.Error())
 			err = nil
 		default:
 			s.log.Error("detach returned error: ", err)
@@ -1522,10 +1558,31 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 		mode = "local"
 	}
 	if !isValidAttachMode(mode) {
-		// TODO(polina): support 'remote' mode that expects a non-nil debugger
 		s.sendErrorResponse(request.Request,
 			FailedToAttach, "Failed to attach",
 			fmt.Sprintf("Unsupported 'mode' value %q in debug configuration", mode))
+		return
+	}
+
+	s.mu.Lock()
+	debugInProgress := s.debugger != nil
+	s.mu.Unlock()
+	if debugInProgress && mode != "remote" {
+		s.sendErrorResponse(
+			request.Request, FailedToAttach,
+			"Failed to attach", "debugger already running - use remote mode to connect")
+		return
+	}
+	if debugInProgress && mode == "remote" {
+		s.log.Debug("debugger already running")
+		err := s.setSessionArgs(request)
+		if err != nil {
+			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to attach", err.Error())
+		} else {
+			// TODO(polina): halt here when continue on entry is supported in Run()
+			s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
+			s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
+		}
 		return
 	}
 
@@ -1538,7 +1595,7 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 			return
 		}
 		s.config.Debugger.AttachPid = int(pid)
-		err := s.setLaunchAttachArgs(request)
+		err := s.setSessionArgs(request)
 		if err != nil {
 			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
 			return

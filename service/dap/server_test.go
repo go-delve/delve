@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/dap/daptest"
+	"github.com/go-delve/delve/service/debugger"
 	"github.com/google/go-dap"
 )
 
@@ -54,7 +56,7 @@ func runTestBuildFlags(t *testing.T, name string, test func(c *daptest.Client, f
 	fixture := protest.BuildFixture(name, buildFlags)
 
 	// Start the DAP server.
-	client := startDapServer(t)
+	client := startDapServerWithClient(t, &service.Config{})
 	// client.Close will close the client connectinon, which will cause a connection error
 	// on the server side and signal disconnect to unblock Stop() above.
 	defer client.Close()
@@ -62,21 +64,26 @@ func runTestBuildFlags(t *testing.T, name string, test func(c *daptest.Client, f
 	test(client, fixture)
 }
 
-func startDapServer(t *testing.T) *daptest.Client {
+func startDapServerWithClient(t *testing.T, config *service.Config) *daptest.Client {
+	listener := startDapServer(t, config)
+	// Give server time to start listening for clients
+	time.Sleep(100 * time.Millisecond)
+	client := daptest.NewClient(listener.Addr().String())
+	return client
+}
+
+func startDapServer(t *testing.T, config *service.Config) net.Listener {
 	// Start the DAP server.
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	disconnectChan := make(chan struct{})
-	server := NewServer(&service.Config{
-		Listener:       listener,
-		DisconnectChan: disconnectChan,
-	})
-	server.Run()
-	// Give server time to start listening for clients
-	time.Sleep(100 * time.Millisecond)
 
+	config.Listener = listener
+	config.DisconnectChan = disconnectChan
+	server := NewServer(config)
+	server.Run()
 	// Run a goroutine that stops the server when disconnectChan is signaled.
 	// This helps us test that certain events cause the server to stop as
 	// expected.
@@ -84,9 +91,7 @@ func startDapServer(t *testing.T) *daptest.Client {
 		<-disconnectChan
 		server.Stop()
 	}()
-
-	client := daptest.NewClient(listener.Addr().String())
-	return client
+	return listener
 }
 
 // TestLaunchStopOnEntry emulates the message exchange that can be observed with
@@ -230,13 +235,9 @@ func TestLaunchStopOnEntry(t *testing.T) {
 
 		// 13 >> disconnect, << disconnect
 		client.DisconnectRequest()
-		oep := client.ExpectOutputEventProcessExited(t, 0)
+		oep := client.ExpectOutputEventProcessExited(t, 0, "Detaching")
 		if oep.Seq != 0 || oep.Body.Category != "console" {
 			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
-		}
-		oed := client.ExpectOutputEventDetaching(t)
-		if oed.Seq != 0 || oed.Body.Category != "console" {
-			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
 		}
 		dResp := client.ExpectDisconnectResponse(t)
 		if dResp.Seq != 0 || dResp.RequestSeq != 13 {
@@ -424,8 +425,7 @@ func TestContinueOnEntry(t *testing.T) {
 
 		// 7 >> disconnect, << disconnect
 		client.DisconnectRequest()
-		client.ExpectOutputEventProcessExited(t, 0)
-		client.ExpectOutputEventDetaching(t)
+		client.ExpectOutputEventProcessExited(t, 0, "Detaching")
 		dResp := client.ExpectDisconnectResponse(t)
 		if dResp.Seq != 0 || dResp.RequestSeq != 7 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7", dResp)
@@ -567,8 +567,7 @@ func TestPreSetBreakpoint(t *testing.T) {
 		}
 
 		client.DisconnectRequest()
-		client.ExpectOutputEventProcessExited(t, 0)
-		client.ExpectOutputEventDetaching(t)
+		client.ExpectOutputEventProcessExited(t, 0, "Detaching")
 		client.ExpectDisconnectResponse(t)
 		client.ExpectTerminatedEvent(t)
 	})
@@ -4014,8 +4013,7 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 		if onBP.disconnect {
 			client.DisconnectRequestWithKillOption(true)
 			if onBP.terminated {
-				client.ExpectOutputEventProcessExited(t, 0)
-				client.ExpectOutputEventDetaching(t)
+				client.ExpectOutputEventProcessExited(t, 0, "Detaching")
 			} else {
 				client.ExpectOutputEventDetachingKill(t)
 			}
@@ -4033,8 +4031,7 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 	}
 	client.DisconnectRequestWithKillOption(true)
 	if cmd == "launch" {
-		client.ExpectOutputEventProcessExited(t, 0)
-		client.ExpectOutputEventDetaching(t)
+		client.ExpectOutputEventProcessExited(t, 0, "Detaching")
 	} else if cmd == "attach" {
 		client.ExpectOutputEventDetachingKill(t)
 	}
@@ -4160,7 +4157,7 @@ func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmdRequest fun
 	// noDebug mode applies only to "launch" requests.
 	client.ExpectLaunchResponse(t)
 
-	client.ExpectOutputEventProcessExited(t, status)
+	client.ExpectOutputEventProcessExited(t, status, "")
 	client.ExpectTerminatedEvent(t)
 	client.DisconnectRequestWithKillOption(true)
 	client.ExpectDisconnectResponse(t)
@@ -4968,10 +4965,6 @@ func TestBadAttachRequest(t *testing.T) {
 		}
 
 		// Bad "mode"
-		client.AttachRequest(map[string]interface{}{"mode": "remote"})
-		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to attach: Unsupported 'mode' value \"remote\" in debug configuration")
-
 		client.AttachRequest(map[string]interface{}{"mode": "blah blah blah"})
 		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to attach: Unsupported 'mode' value \"blah blah blah\" in debug configuration")
@@ -5046,12 +5039,128 @@ func TestBadAttachRequest(t *testing.T) {
 	})
 }
 
+func launchConfig() *service.Config {
+	fixture := protest.BuildFixture("increment", protest.AllNonOptimized)
+	config := service.Config{
+		ProcessArgs: []string{fixture.Path},
+		Debugger:    debugger.Config{Backend: "default"},
+	}
+	return &config
+}
+
+func attachConfig(t *testing.T) *service.Config {
+	fixture := protest.BuildFixture("loopprog", protest.AllNonOptimized)
+	cmd := exec.Command(fixture.Path)
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	config := service.Config{Debugger: debugger.Config{
+		Backend:   "default",
+		AttachPid: cmd.Process.Pid,
+	}}
+	return &config
+}
+
+func TestNoClient(t *testing.T) {
+	tests := map[string]*service.Config{
+		"none":   {},
+		"launch": launchConfig(),
+		"attach": attachConfig(t),
+	}
+	for name, config := range tests {
+		t.Run(name, func(t *testing.T) {
+			startDapServer(t, config)
+			close(config.DisconnectChan) // trigger server.Stop()
+			time.Sleep(time.Millisecond)
+			if name == "attach" {
+				t.Log("Killing process", config.Debugger.AttachPid)
+				err := syscall.Kill(config.Debugger.AttachPid, syscall.SIGINT)
+				if err != nil {
+					t.Errorf("Killing pid=%d resulted in error %q:", config.Debugger.AttachPid, err)
+				}
+			}
+		})
+	}
+}
+
+func TestAttachRemoteContinueOnEntry(t *testing.T) {
+	client := startDapServerWithClient(t, launchConfig())
+	defer client.Close()
+	client.InitializeRequest()
+	client.ExpectInitializeResponseAndCapabilities(t)
+	client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": false})
+	client.ExpectInitializedEvent(t)
+	client.ExpectAttachResponse(t)
+	client.ConfigurationDoneRequest()
+	client.ExpectConfigurationDoneResponse(t)
+	// Continuing
+	client.ExpectTerminatedEvent(t)
+	client.DisconnectRequest()
+	client.ExpectOutputEventProcessExited(t, 0, "Detaching")
+	client.ExpectDisconnectResponse(t)
+}
+
+func TestAttachRemoteStopOnEntry(t *testing.T) {
+	client := startDapServerWithClient(t, launchConfig())
+	defer client.Close()
+	client.InitializeRequest()
+	client.ExpectInitializeResponseAndCapabilities(t)
+	client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
+	client.ExpectInitializedEvent(t)
+	client.ExpectAttachResponse(t)
+	client.ConfigurationDoneRequest()
+	client.ExpectStoppedEvent(t)
+	client.ExpectConfigurationDoneResponse(t)
+	client.DisconnectRequest()
+	client.ExpectOutputEventDetachingKill(t)
+	client.ExpectDisconnectResponse(t)
+}
+
+func TestLaunchErrorWhenDebugInProgress(t *testing.T) {
+	config := launchConfig()
+	tests := []string{"", "exec", "debug", "test", "replay", "core", "blah"}
+	for _, tc := range tests {
+		t.Run(tc, func(t *testing.T) {
+			client := startDapServerWithClient(t, config)
+			defer client.Close()
+			client.InitializeRequest()
+			client.ExpectInitializeResponseAndCapabilities(t)
+			client.LaunchRequest(tc, "some/path", stopOnEntry)
+			er := client.ExpectErrorResponse(t)
+			msg := "Failed to launch: debugger already running - use attach request to connect"
+			if er.Body.Error.Id != 3000 || er.Body.Error.Format != msg {
+				t.Errorf("got %#v, want Id=3000 Format=%q", er, msg)
+			}
+			client.DisconnectRequest()
+			client.ExpectOutputEventDetachingKill(t)
+			client.ExpectDisconnectResponse(t)
+		})
+	}
+}
+
+func TestAttachErrorWhenDebugInProgress(t *testing.T) {
+	config := launchConfig()
+	client := startDapServerWithClient(t, config)
+	defer client.Close()
+	client.InitializeRequest()
+	client.ExpectInitializeResponseAndCapabilities(t)
+	client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 1})
+	er := client.ExpectErrorResponse(t)
+	msg := "Failed to attach: debugger already running - use remote mode to connect"
+	if er.Body.Error.Id != 3001 || er.Body.Error.Format != msg {
+		t.Errorf("got %#v, want Id=3001 Format=%q", er, msg)
+	}
+	client.DisconnectRequest()
+	client.ExpectOutputEventDetachingKill(t)
+	client.ExpectDisconnectResponse(t)
+}
+
 func TestBadInitializeRequest(t *testing.T) {
 	runInitializeTest := func(args dap.InitializeRequestArguments, err string) {
 		t.Helper()
 		// Only one initialize request is allowed, so use a new server
 		// for each test.
-		client := startDapServer(t)
+		client := startDapServerWithClient(t, &service.Config{})
 		// client.Close will close the client connectinon, which will cause a connection error
 		// on the server side and signal disconnect to unblock Stop() above.
 		defer client.Close()
