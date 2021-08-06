@@ -2582,7 +2582,7 @@ func TestNextBreakpoint(t *testing.T) {
 func TestNextBreakpointKeepsSteppingBreakpoints(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testnextprog", t, func(p *proc.Target, fixture protest.Fixture) {
-		p.HaltKeepSteppingBreakpoints = true
+		p.KeepSteppingBreakpoints = proc.TracepointKeepsSteppingBreakpoints
 		bp := setFileBreakpoint(p, t, fixture.Source, 34)
 		assertNoError(p.Continue(), t, "Continue()")
 		p.ClearBreakpoint(bp.Addr)
@@ -3672,7 +3672,7 @@ func TestIssue1145(t *testing.T) {
 
 func TestHaltKeepsSteppingBreakpoints(t *testing.T) {
 	withTestProcess("sleep", t, func(p *proc.Target, fixture protest.Fixture) {
-		p.HaltKeepSteppingBreakpoints = true
+		p.KeepSteppingBreakpoints = proc.HaltKeepsSteppingBreakpoints
 		setFileBreakpoint(p, t, fixture.Source, 18)
 		assertNoError(p.Continue(), t, "Continue()")
 		resumeChan := make(chan struct{}, 1)

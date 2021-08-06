@@ -60,7 +60,7 @@ func (dbp *Target) Continue() error {
 		// manual stop request and hit a breakpoint.
 		if dbp.CheckAndClearManualStopRequest() {
 			dbp.StopReason = StopManual
-			if !dbp.HaltKeepSteppingBreakpoints {
+			if dbp.KeepSteppingBreakpoints&HaltKeepsSteppingBreakpoints == 0 {
 				dbp.ClearSteppingBreakpoints()
 			}
 		}
@@ -68,7 +68,7 @@ func (dbp *Target) Continue() error {
 	for {
 		if dbp.CheckAndClearManualStopRequest() {
 			dbp.StopReason = StopManual
-			if !dbp.HaltKeepSteppingBreakpoints {
+			if dbp.KeepSteppingBreakpoints&HaltKeepsSteppingBreakpoints == 0 {
 				dbp.ClearSteppingBreakpoints()
 			}
 			return nil
@@ -198,7 +198,8 @@ func (dbp *Target) Continue() error {
 			if err != nil {
 				return err
 			}
-			if onNextGoroutine && !(curbp.Tracepoint || curbp.TraceReturn) {
+			if onNextGoroutine &&
+				((!curbp.Tracepoint && !curbp.TraceReturn) || dbp.KeepSteppingBreakpoints&TracepointKeepsSteppingBreakpoints == 0) {
 				err := dbp.ClearSteppingBreakpoints()
 				if err != nil {
 					return err
