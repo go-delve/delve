@@ -410,48 +410,25 @@ func TestContinueOnEntry(t *testing.T) {
 		client.ExpectConfigurationDoneResponse(t)
 		// "Continue" happens behind the scenes on another goroutine
 
+		client.ExpectTerminatedEvent(t)
+
 		// 6 >> threads, << threads
 		client.ThreadsRequest()
-		// Since we are in async mode while running, we might receive messages in either order.
-		for i := 0; i < 2; i++ {
-			msg := client.ExpectMessage(t)
-			switch m := msg.(type) {
-			case *dap.ThreadsResponse:
-				if m.Seq != 0 || m.RequestSeq != 6 {
-					t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6", m)
-				}
-				// Single current thread is sent when the program is running
-				// because DAP spec expects at least one thread.
-				// Also accept empty already-terminated response.
-				if len(m.Body.Threads) != 0 && (len(m.Body.Threads) != 1 || m.Body.Threads[0].Id != -1 || m.Body.Threads[0].Name != "Current") {
-					t.Errorf("\ngot  %#v\nwant Id=-1, Name=\"Current\" or empty", m.Body.Threads)
-				}
-			case *dap.TerminatedEvent:
-			default:
-				t.Fatalf("got %#v, want ThreadsResponse or TerminatedEvent", m)
-			}
-		}
-
-		// It is possible for the program to terminate before the initial
-		// threads request is processed. And in that case, the
-		// response can be empty
-		// 7 >> threads, << threads
-		client.ThreadsRequest()
 		tResp := client.ExpectThreadsResponse(t)
-		if tResp.Seq != 0 || tResp.RequestSeq != 7 || len(tResp.Body.Threads) != 1 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7 len(Threads)=1", tResp)
+		if tResp.Seq != 0 || tResp.RequestSeq != 6 || len(tResp.Body.Threads) != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6 len(Threads)=1", tResp)
 		}
 		if tResp.Body.Threads[0].Id != 1 || tResp.Body.Threads[0].Name != "Dummy" {
 			t.Errorf("\ngot %#v\nwant Id=1, Name=\"Dummy\"", tResp)
 		}
 
-		// 8 >> disconnect, << disconnect
+		// 7 >> disconnect, << disconnect
 		client.DisconnectRequest()
 		client.ExpectOutputEventProcessExited(t, 0)
 		client.ExpectOutputEventDetaching(t)
 		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.Seq != 0 || dResp.RequestSeq != 8 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8", dResp)
+		if dResp.Seq != 0 || dResp.RequestSeq != 7 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7", dResp)
 		}
 		client.ExpectTerminatedEvent(t)
 	})
@@ -2537,35 +2514,48 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 }
 
 func expectSetBreakpointsResponseAndStoppedEvent(t *testing.T, client *daptest.Client) (se *dap.StoppedEvent, br *dap.SetBreakpointsResponse) {
-	for i := 0; i < 2; i++ {
+	t.Helper()
+	var oe *dap.OutputEvent
+	for i := 0; i < 3; i++ {
 		switch m := client.ExpectMessage(t).(type) {
+		case *dap.OutputEvent:
+			oe = m
 		case *dap.StoppedEvent:
 			se = m
 		case *dap.SetBreakpointsResponse:
 			br = m
 		default:
-			t.Fatalf("Unexpected message type: expect StoppedEvent or SetBreakpointsResponse, got %#v", m)
+			t.Fatalf("Unexpected message type: expect OutputEvent, StoppedEvent or SetBreakpointsResponse, got %#v", m)
 		}
 	}
-	if se == nil || br == nil {
-		t.Fatal("Expected StoppedEvent and SetBreakpointsResponse")
+	if se == nil || br == nil || oe == nil {
+		t.Fatal("Expected OutputEvent, StoppedEvent and SetBreakpointsResponse")
+	}
+	if !strings.HasPrefix(oe.Body.Output, "Execution halted to set breakpoints") || oe.Body.Category != "console" {
+		t.Errorf(`got %#v, want Category="console" Output="Execution halted to set breakpoints..."`, oe)
 	}
 	return se, br
 }
 
 func expectSetFunctionBreakpointsResponseAndStoppedEvent(t *testing.T, client *daptest.Client) (se *dap.StoppedEvent, br *dap.SetFunctionBreakpointsResponse) {
-	for i := 0; i < 2; i++ {
+	var oe *dap.OutputEvent
+	for i := 0; i < 3; i++ {
 		switch m := client.ExpectMessage(t).(type) {
+		case *dap.OutputEvent:
+			oe = m
 		case *dap.StoppedEvent:
 			se = m
 		case *dap.SetFunctionBreakpointsResponse:
 			br = m
 		default:
-			t.Fatalf("Unexpected message type: expect StoppedEvent or SetFunctionBreakpointsResponse, got %#v", m)
+			t.Fatalf("Unexpected message type: expect OutputEvent, StoppedEvent or SetFunctionBreakpointsResponse, got %#v", m)
 		}
 	}
-	if se == nil || br == nil {
-		t.Fatal("Expected StoppedEvent and SetFunctionBreakpointsResponse")
+	if se == nil || br == nil || oe == nil {
+		t.Fatal("Expected OutputEvent, StoppedEvent and SetFunctionBreakpointsResponse")
+	}
+	if !strings.HasPrefix(oe.Body.Output, "Execution halted to set breakpoints") || oe.Body.Category != "console" {
+		t.Errorf(`got %#v, want Category="console" Output="Execution halted to set breakpoints..."`, oe)
 	}
 	return se, br
 }
@@ -3459,43 +3449,15 @@ func TestNextParked(t *testing.T) {
 			fixture.Source, []int{15},
 			[]onBreakpoint{{ // Stop at line 15
 				execute: func() {
-					goroutineId := testStepParkedHelper(t, client, fixture)
+					if goroutineId := testStepParkedHelper(t, client, fixture); goroutineId >= 0 {
 
-					client.NextRequest(goroutineId)
-					client.ExpectNextResponse(t)
+						client.NextRequest(goroutineId)
+						client.ExpectNextResponse(t)
 
-					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != goroutineId {
-						t.Fatalf("Next did not continue on the selected goroutine, expected %d got %d", goroutineId, se.Body.ThreadId)
-					}
-				},
-				disconnect: false,
-			}})
-	})
-}
-
-func TestStepInParked(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
-		t.SkipNow()
-	}
-	runTest(t, "parallel_next", func(client *daptest.Client, fixture protest.Fixture) {
-		runDebugSessionWithBPs(t, client, "launch",
-			// Launch
-			func() {
-				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
-			},
-			// Set breakpoints
-			fixture.Source, []int{15},
-			[]onBreakpoint{{ // Stop at line 15
-				execute: func() {
-					goroutineId := testStepParkedHelper(t, client, fixture)
-
-					client.StepInRequest(goroutineId)
-					client.ExpectStepInResponse(t)
-
-					se := client.ExpectStoppedEvent(t)
-					if se.Body.ThreadId != goroutineId {
-						t.Fatalf("StepIn did not continue on the selected goroutine, expected %d got %d", goroutineId, se.Body.ThreadId)
+						se := client.ExpectStoppedEvent(t)
+						if se.Body.ThreadId != goroutineId {
+							t.Fatalf("Next did not continue on the selected goroutine, expected %d got %d", goroutineId, se.Body.ThreadId)
+						}
 					}
 				},
 				disconnect: false,
@@ -3512,7 +3474,13 @@ func testStepParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 	var goroutineId = -1
 	for goroutineId < 0 {
 		client.ContinueRequest(1)
-		client.ExpectContinueResponse(t)
+		contResp := client.ExpectMessage(t)
+		switch contResp.(type) {
+		case *dap.ContinueResponse:
+			// ok
+		case *dap.TerminatedEvent:
+			return -1
+		}
 
 		se := client.ExpectStoppedEvent(t)
 
