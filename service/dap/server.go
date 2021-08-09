@@ -1413,11 +1413,7 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 		}
 		s.send(e)
 	}
-	func() {
-		s.debugger.LockTarget()
-		defer s.debugger.UnlockTarget()
-		s.debugger.Target().KeepSteppingBreakpoints = proc.HaltKeepsSteppingBreakpoints | proc.TracepointKeepsSteppingBreakpoints
-	}()
+	s.debugger.Target().KeepSteppingBreakpoints = proc.HaltKeepsSteppingBreakpoints | proc.TracepointKeepsSteppingBreakpoints
 
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
 	if !s.args.stopOnEntry {
