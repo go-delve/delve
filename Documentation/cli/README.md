@@ -114,6 +114,10 @@ Aliases: b
 
 ## breakpoints
 Print out info for active breakpoints.
+	
+	breakpoints [-a]
+
+Specifying -a prints all physical breakpoint, including internal breakpoints.
 
 Aliases: bp
 

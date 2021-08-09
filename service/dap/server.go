@@ -1367,7 +1367,7 @@ func (s *Server) clearBreakpoints(existingBps map[string]*api.Breakpoint, bpAdde
 }
 
 func (s *Server) getMatchingBreakpoints(prefix string) map[string]*api.Breakpoint {
-	existing := s.debugger.Breakpoints()
+	existing := s.debugger.Breakpoints(false)
 	matchingBps := make(map[string]*api.Breakpoint, len(existing))
 	for _, bp := range existing {
 		// Skip special breakpoints such as for panic.

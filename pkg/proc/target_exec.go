@@ -54,6 +54,7 @@ func (dbp *Target) Continue() error {
 		thread.Common().CallReturn = false
 		thread.Common().returnValues = nil
 	}
+	dbp.Breakpoints().WatchOutOfScope = nil
 	dbp.CheckAndClearManualStopRequest()
 	defer func() {
 		// Make sure we clear internal breakpoints if we simultaneously receive a
@@ -916,10 +917,12 @@ func setDeferBreakpoint(p *Target, text []AsmInstruction, topframe Stackframe, s
 	var deferpc uint64
 	if topframe.TopmostDefer != nil && topframe.TopmostDefer.DwrapPC != 0 {
 		_, _, deferfn := topframe.TopmostDefer.DeferredFunc(p)
-		var err error
-		deferpc, err = FirstPCAfterPrologue(p, deferfn, false)
-		if err != nil {
-			return 0, err
+		if deferfn != nil {
+			var err error
+			deferpc, err = FirstPCAfterPrologue(p, deferfn, false)
+			if err != nil {
+				return 0, err
+			}
 		}
 	}
 	if deferpc != 0 && deferpc != topframe.Current.PC {
