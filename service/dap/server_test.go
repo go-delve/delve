@@ -2578,6 +2578,9 @@ func TestLogPoints(t *testing.T) {
 // TestConcurrentBreakpointsLogPoints executes to a breakpoint and tests
 // logpoints and breakpoints that are hit concurrently are all processed.
 func TestConcurrentBreakpointsLogPoints(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.SkipNow()
+	}
 	runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch

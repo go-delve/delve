@@ -3054,7 +3054,7 @@ func (s *Server) run(command string, asyncSetupDone chan struct{}) (*api.Debugge
 	var err error
 	for {
 		state, err = s.resume(command, asyncSetupDone)
-		if state == nil || state.CurrentThread == nil || err != nil {
+		if state == nil || err != nil {
 			break
 		}
 
