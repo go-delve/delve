@@ -1806,7 +1806,7 @@ func (t *gdbThread) SetCurrentBreakpoint(adjustPC bool) error {
 				return err
 			}
 		}
-		t.CurrentBreakpoint = bp.CheckCondition(t)
+		t.CurrentBreakpoint.Breakpoint = bp
 	}
 	return nil
 }

@@ -581,8 +581,8 @@ func (err *IsNilErr) Error() string {
 	return fmt.Sprintf("%s is nil", err.name)
 }
 
-func globalScope(bi *BinaryInfo, image *Image, mem MemoryReadWriter) *EvalScope {
-	return &EvalScope{Location: Location{}, Regs: op.DwarfRegisters{StaticBase: image.StaticBase}, Mem: mem, g: nil, BinInfo: bi, frameOffset: 0}
+func globalScope(tgt *Target, bi *BinaryInfo, image *Image, mem MemoryReadWriter) *EvalScope {
+	return &EvalScope{Location: Location{}, Regs: op.DwarfRegisters{StaticBase: image.StaticBase}, Mem: mem, g: nil, BinInfo: bi, target: tgt, frameOffset: 0}
 }
 
 func newVariableFromThread(t Thread, name string, addr uint64, dwarfType godwarf.Type) *Variable {
@@ -947,8 +947,8 @@ func (v *Variable) fieldVariable(name string) *Variable {
 var errTracebackAncestorsDisabled = errors.New("tracebackancestors is disabled")
 
 // Ancestors returns the list of ancestors for g.
-func Ancestors(p Process, g *G, n int) ([]Ancestor, error) {
-	scope := globalScope(p.BinInfo(), p.BinInfo().Images[0], p.Memory())
+func Ancestors(p *Target, g *G, n int) ([]Ancestor, error) {
+	scope := globalScope(p, p.BinInfo(), p.BinInfo().Images[0], p.Memory())
 	tbav, err := scope.EvalExpression("runtime.debug.tracebackancestors", loadSingleValue)
 	if err == nil && tbav.Unreadable == nil && tbav.Kind == reflect.Int {
 		tba, _ := constant.Int64Val(tbav.Value)

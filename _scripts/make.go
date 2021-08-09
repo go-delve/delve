@@ -353,10 +353,30 @@ func testStandard() {
 		fmt.Println("\nTesting RR backend")
 		testCmdIntl("basic", "", "rr", "normal")
 	}
-	if TestIncludePIE && (runtime.GOOS == "linux" || (runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15))) {
-		fmt.Println("\nTesting PIE buildmode, default backend")
-		testCmdIntl("basic", "", "default", "pie")
-		testCmdIntl("core", "", "default", "pie")
+	if TestIncludePIE {
+		dopie := false
+		switch runtime.GOOS {
+		case "linux":
+			dopie = true
+		case "windows":
+			// only on Go 1.15 or later, with CGO_ENABLED and gcc found in path
+			if goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
+				out, err := exec.Command("go", "env", "CGO_ENABLED").CombinedOutput()
+				if err != nil {
+					panic(err)
+				}
+				if strings.TrimSpace(string(out)) == "1" {
+					if _, err = exec.LookPath("gcc"); err == nil {
+						dopie = true
+					}
+				}
+			}
+		}
+		if dopie {
+			fmt.Println("\nTesting PIE buildmode, default backend")
+			testCmdIntl("basic", "", "default", "pie")
+			testCmdIntl("core", "", "default", "pie")
+		}
 	}
 	if runtime.GOOS == "linux" && inpath("rr") {
 		fmt.Println("\nTesting PIE buildmode, RR backend")

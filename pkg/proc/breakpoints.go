@@ -183,19 +183,18 @@ type returnBreakpointInfo struct {
 }
 
 // CheckCondition evaluates bp's condition on thread.
-func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
-	bpstate := BreakpointState{Breakpoint: bp, Active: false, Stepping: false, SteppingInto: false, CondError: nil}
+func (bp *Breakpoint) checkCondition(tgt *Target, thread Thread, bpstate *BreakpointState) {
+	*bpstate = BreakpointState{Breakpoint: bp, Active: false, Stepping: false, SteppingInto: false, CondError: nil}
 	for _, breaklet := range bp.Breaklets {
-		bpstate.checkCond(breaklet, thread)
+		bpstate.checkCond(tgt, breaklet, thread)
 	}
-	return bpstate
 }
 
-func (bpstate *BreakpointState) checkCond(breaklet *Breaklet, thread Thread) {
+func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, thread Thread) {
 	var condErr error
 	active := true
 	if breaklet.Cond != nil {
-		active, condErr = evalBreakpointCondition(thread, breaklet.Cond)
+		active, condErr = evalBreakpointCondition(tgt, thread, breaklet.Cond)
 	}
 
 	if condErr != nil && bpstate.CondError == nil {
@@ -334,13 +333,13 @@ func (bp *Breakpoint) UserBreaklet() *Breaklet {
 	return nil
 }
 
-func evalBreakpointCondition(thread Thread, cond ast.Expr) (bool, error) {
+func evalBreakpointCondition(tgt *Target, thread Thread, cond ast.Expr) (bool, error) {
 	if cond == nil {
 		return true, nil
 	}
-	scope, err := GoroutineScope(nil, thread)
+	scope, err := GoroutineScope(tgt, thread)
 	if err != nil {
-		scope, err = ThreadScope(nil, thread)
+		scope, err = ThreadScope(tgt, thread)
 		if err != nil {
 			return true, err
 		}
