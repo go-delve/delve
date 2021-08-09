@@ -115,7 +115,7 @@ type Breakpoint struct {
 	// Disabled flag, signifying the state of the breakpoint
 	Disabled bool `json:"disabled"`
 
-	UserData interface{}
+	UserData interface{} `json:"-"`
 }
 
 // ValidBreakpointName returns an error if

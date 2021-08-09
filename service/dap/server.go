@@ -3061,15 +3061,10 @@ func (s *Server) run(command string, asyncSetupDone chan struct{}) (*api.Debugge
 		// Otherwise, the program will go past the step, next, stepout requests.
 		// TODO(suzmue): have s.debugger.Command() not clear internal breakpoints when
 		// hitting another breakpoint.
-		if s.debugger.StopReason() == proc.StopBreakpoint {
-			if istp {
-				if !runningStep || state.NextInProgress {
-					command = api.Continue
-					continue
-				}
-			}
+		if s.debugger.StopReason() != proc.StopBreakpoint || !istp || (runningStep && !state.NextInProgress) {
+			break
 		}
-		break
+		command = api.DirectionCongruentContinue
 	}
 	return state, err
 }
