@@ -42,9 +42,10 @@ type Breakpoint struct {
 	Name         string // User defined name of the breakpoint
 	LogicalID    int    // ID of the logical breakpoint that owns this physical breakpoint
 
-	WatchExpr    string
-	WatchType    WatchType
-	HWBreakIndex uint8 // hardware breakpoint index
+	WatchExpr     string
+	WatchType     WatchType
+	HWBreakIndex  uint8 // hardware breakpoint index
+	watchStackOff int64 // for watchpoints of stack variables, offset of the address from top of the stack
 
 	// Breaklets is the list of overlapping breakpoints on this physical breakpoint.
 	// There can be at most one UserBreakpoint in this list but multiple internal breakpoints are allowed.
@@ -95,6 +96,20 @@ type Breaklet struct {
 		Op  token.Token
 		Val int
 	}
+
+	// checkPanicCall checks that the breakpoint happened while the function was
+	// called by a panic. It is only checked for WatchOutOfScopeBreakpoint Kind.
+	checkPanicCall bool
+
+	// callback is called if every other condition for this breaklet is met,
+	// the return value will determine if the breaklet should be considered
+	// active.
+	// The callback can have side-effects.
+	callback func(th Thread) bool
+
+	// For WatchOutOfScopeBreakpoints and StackResizeBreakpoints the watchpoint
+	// field contains the watchpoint related to this out of scope sentinel.
+	watchpoint *Breakpoint
 }
 
 // BreakpointKind determines the behavior of delve when the
@@ -116,6 +131,14 @@ const (
 	// Continue will set a new breakpoint (of NextBreakpoint kind) on the
 	// destination of CALL, delete this breakpoint and then continue again
 	StepBreakpoint
+
+	// WatchOutOfScopeBreakpoint is a breakpoint used to detect when a watched
+	// stack variable goes out of scope.
+	WatchOutOfScopeBreakpoint
+
+	// StackResizeBreakpoint is a breakpoint used to detect stack resizes to
+	// adjust the watchpoint of stack variables.
+	StackResizeBreakpoint
 
 	steppingMask = NextBreakpoint | NextDeferBreakpoint | StepBreakpoint
 )
@@ -154,6 +177,38 @@ func (bp *Breakpoint) String() string {
 	return fmt.Sprintf("Breakpoint %d at %#v %s:%d", bp.LogicalID, bp.Addr, bp.File, bp.Line)
 }
 
+// VerboseDescr returns a string describing parts of the breakpoint struct
+// that aren't otherwise user visible, for debugging purposes.
+func (bp *Breakpoint) VerboseDescr() []string {
+	r := []string{}
+
+	r = append(r, fmt.Sprintf("OriginalData=%#x", bp.OriginalData))
+
+	if bp.WatchType != 0 {
+		r = append(r, fmt.Sprintf("HWBreakIndex=%#x watchStackOff=%#x", bp.HWBreakIndex, bp.watchStackOff))
+	}
+
+	for _, breaklet := range bp.Breaklets {
+		switch breaklet.Kind {
+		case UserBreakpoint:
+			r = append(r, fmt.Sprintf("User Cond=%q HitCond=%v", exprToString(breaklet.Cond), breaklet.HitCond))
+		case NextBreakpoint:
+			r = append(r, fmt.Sprintf("Next Cond=%q", exprToString(breaklet.Cond)))
+		case NextDeferBreakpoint:
+			r = append(r, fmt.Sprintf("NextDefer Cond=%q DeferReturns=%#x", exprToString(breaklet.Cond), breaklet.DeferReturns))
+		case StepBreakpoint:
+			r = append(r, fmt.Sprintf("Step Cond=%q", exprToString(breaklet.Cond)))
+		case WatchOutOfScopeBreakpoint:
+			r = append(r, fmt.Sprintf("WatchOutOfScope Cond=%q checkPanicCall=%v", exprToString(breaklet.Cond), breaklet.checkPanicCall))
+		case StackResizeBreakpoint:
+			r = append(r, fmt.Sprintf("StackResizeBreakpoint Cond=%q", exprToString(breaklet.Cond)))
+		default:
+			r = append(r, fmt.Sprintf("Unknown %d", breaklet.Kind))
+		}
+	}
+	return r
+}
+
 // BreakpointExistsError is returned when trying to set a breakpoint at
 // an address that already has a breakpoint set for it.
 type BreakpointExistsError struct {
@@ -184,19 +239,18 @@ type returnBreakpointInfo struct {
 }
 
 // CheckCondition evaluates bp's condition on thread.
-func (bp *Breakpoint) CheckCondition(thread Thread) BreakpointState {
-	bpstate := BreakpointState{Breakpoint: bp, Active: false, Stepping: false, SteppingInto: false, CondError: nil}
+func (bp *Breakpoint) checkCondition(tgt *Target, thread Thread, bpstate *BreakpointState) {
+	*bpstate = BreakpointState{Breakpoint: bp, Active: false, Stepping: false, SteppingInto: false, CondError: nil}
 	for _, breaklet := range bp.Breaklets {
-		bpstate.checkCond(breaklet, thread)
+		bpstate.checkCond(tgt, breaklet, thread)
 	}
-	return bpstate
 }
 
-func (bpstate *BreakpointState) checkCond(breaklet *Breaklet, thread Thread) {
+func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, thread Thread) {
 	var condErr error
 	active := true
 	if breaklet.Cond != nil {
-		active, condErr = evalBreakpointCondition(thread, breaklet.Cond)
+		active, condErr = evalBreakpointCondition(tgt, thread, breaklet.Cond)
 	}
 
 	if condErr != nil && bpstate.CondError == nil {
@@ -234,12 +288,27 @@ func (bpstate *BreakpointState) checkCond(breaklet *Breaklet, thread Thread) {
 			}
 		}
 
+	case WatchOutOfScopeBreakpoint:
+		if breaklet.checkPanicCall {
+			frames, err := ThreadStacktrace(thread, 2)
+			if err == nil {
+				ipc, _ := isPanicCall(frames)
+				active = active && ipc
+			}
+		}
+
+	case StackResizeBreakpoint:
+		// no further checks
+
 	default:
 		bpstate.CondError = fmt.Errorf("internal error unknown breakpoint kind %v", breaklet.Kind)
 	}
 
 	if active {
-		bpstate.Active = true
+		if breaklet.callback != nil {
+			active = breaklet.callback(thread)
+		}
+		bpstate.Active = active
 	}
 }
 
@@ -335,13 +404,13 @@ func (bp *Breakpoint) UserBreaklet() *Breaklet {
 	return nil
 }
 
-func evalBreakpointCondition(thread Thread, cond ast.Expr) (bool, error) {
+func evalBreakpointCondition(tgt *Target, thread Thread, cond ast.Expr) (bool, error) {
 	if cond == nil {
 		return true, nil
 	}
-	scope, err := GoroutineScope(nil, thread)
+	scope, err := GoroutineScope(tgt, thread)
 	if err != nil {
-		scope, err = ThreadScope(nil, thread)
+		scope, err = ThreadScope(tgt, thread)
 		if err != nil {
 			return true, err
 		}
@@ -373,6 +442,10 @@ func (nbp NoBreakpointError) Error() string {
 // BreakpointMap represents an (address, breakpoint) map.
 type BreakpointMap struct {
 	M map[uint64]*Breakpoint
+
+	// WatchOutOfScope is the list of watchpoints that went out of scope during
+	// the last resume operation
+	WatchOutOfScope []*Breakpoint
 
 	breakpointIDCounter         int
 	internalBreakpointIDCounter int
@@ -468,16 +541,31 @@ func (t *Target) SetWatchpoint(scope *EvalScope, expr string, wtype WatchType, c
 		//member fields here.
 		return nil, fmt.Errorf("can not watch variable of type %s", xv.DwarfType.String())
 	}
-	if xv.Addr >= scope.g.stack.lo && xv.Addr < scope.g.stack.hi {
-		//TODO(aarzilli): support watching stack variables
-		return nil, errors.New("can not watch stack allocated variable")
+
+	stackWatch := scope.g != nil && !scope.g.SystemStack && xv.Addr >= scope.g.stack.lo && xv.Addr < scope.g.stack.hi
+
+	if stackWatch && wtype&WatchRead != 0 {
+		// In theory this would work except for the fact that the runtime will
+		// read them randomly to resize stacks so it doesn't make sense to do
+		// this.
+		return nil, errors.New("can not watch stack allocated variable for reads")
 	}
 
 	bp, err := t.setBreakpointInternal(xv.Addr, UserBreakpoint, wtype.withSize(uint8(sz)), cond)
-	if bp != nil {
-		bp.WatchExpr = expr
+	if err != nil {
+		return bp, err
 	}
-	return bp, err
+	bp.WatchExpr = expr
+
+	if stackWatch {
+		bp.watchStackOff = int64(bp.Addr) - int64(scope.g.stack.hi)
+		err := t.setStackWatchBreakpoints(scope, bp)
+		if err != nil {
+			return bp, err
+		}
+	}
+
+	return bp, nil
 }
 
 func (t *Target) setBreakpointInternal(addr uint64, kind BreakpointKind, wtype WatchType, cond ast.Expr) (*Breakpoint, error) {
@@ -590,6 +678,15 @@ func (t *Target) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if bp.WatchExpr != "" && bp.watchStackOff != 0 {
+		// stack watchpoint, must remove all its WatchOutOfScopeBreakpoints/StackResizeBreakpoints
+		err := t.clearStackWatchBreakpoints(bp)
+		if err != nil {
+			return bp, err
+		}
+	}
+
 	return bp, nil
 }
 
