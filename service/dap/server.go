@@ -3050,13 +3050,6 @@ func (s *Server) run(command string, asyncSetupDone chan struct{}) (*api.Debugge
 	s.setRunning(true)
 	defer s.setRunning(false)
 
-	runningStep := command != api.Continue
-	if state, _ := s.debugger.State(true); state != nil {
-		// If state.NextInProgress, then we are in the middle of a step,
-		// regardless of the command.
-		runningStep = runningStep || state.NextInProgress
-	}
-
 	var state *api.DebuggerState
 	var err error
 	for {
@@ -3066,11 +3059,9 @@ func (s *Server) run(command string, asyncSetupDone chan struct{}) (*api.Debugge
 		}
 
 		istp := s.handleLogPoints(state)
-		// Only resume execution if continue was the command used to run the program.
-		// Otherwise, the program will go past the step, next, stepout requests.
-		// TODO(suzmue): have s.debugger.Command() not clear internal breakpoints when
-		// hitting another breakpoint.
-		if s.debugger.StopReason() != proc.StopBreakpoint || !istp || (runningStep && !state.NextInProgress) {
+		// Only resume execution if the stop reason was a breakpoint and
+		// all breakpoints were tracepoints.
+		if s.debugger.StopReason() != proc.StopBreakpoint || !istp {
 			break
 		}
 		command = api.DirectionCongruentContinue

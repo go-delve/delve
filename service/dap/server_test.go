@@ -2513,7 +2513,7 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 	})
 }
 
-// TestLogpoints executes to a breakpoint and tests logpoints
+// TestLogPoints executes to a breakpoint and tests log points
 // send OutputEvents and do not halt program execution.
 func TestLogPoints(t *testing.T) {
 	runTest(t, "callme", func(client *daptest.Client, fixture protest.Fixture) {
@@ -2564,13 +2564,11 @@ func TestLogPoints(t *testing.T) {
 						t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"in callme2!\n\"", oe)
 					}
 
-					// This logpoint interrupted a next request, so the program will have halted at
-					// the breakpoint line.
 					se = client.ExpectStoppedEvent(t)
-					if se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
+					if se.Body.Reason != "step" || se.Body.ThreadId != 1 {
 						t.Errorf("got stopped event = %#v, \nwant Reason=\"breakpoint\" ThreadId=1", se)
 					}
-					checkStop(t, client, 1, "main.callme2", 16)
+					checkStop(t, client, 1, "main.main", 28)
 				},
 				disconnect: true,
 			}})
