@@ -2579,6 +2579,32 @@ func TestNextBreakpoint(t *testing.T) {
 	})
 }
 
+func TestNextBreakpointKeepsSteppingBreakpoints(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcess("testnextprog", t, func(p *proc.Target, fixture protest.Fixture) {
+		p.KeepSteppingBreakpoints = proc.TracepointKeepsSteppingBreakpoints
+		bp := setFileBreakpoint(p, t, fixture.Source, 34)
+		assertNoError(p.Continue(), t, "Continue()")
+		p.ClearBreakpoint(bp.Addr)
+
+		// Next should be interrupted by a tracepoint on the same goroutine.
+		bp = setFileBreakpoint(p, t, fixture.Source, 14)
+		bp.Tracepoint = true
+		assertNoError(p.Next(), t, "Next()")
+		assertLineNumber(p, t, 14, "wrong line number")
+		if !p.Breakpoints().HasSteppingBreakpoints() {
+			t.Fatal("does not have internal breakpoints after hitting tracepoint on same goroutine")
+		}
+
+		// Continue to complete next.
+		assertNoError(p.Continue(), t, "Continue()")
+		assertLineNumber(p, t, 35, "wrong line number")
+		if p.Breakpoints().HasSteppingBreakpoints() {
+			t.Fatal("has internal breakpoints after completing next")
+		}
+	})
+}
+
 func TestStepOutDefer(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testnextdefer", t, func(p *proc.Target, fixture protest.Fixture) {
@@ -3644,6 +3670,26 @@ func TestIssue1145(t *testing.T) {
 		assertNoError(p.Next(), t, "Next()")
 		if p.Breakpoints().HasSteppingBreakpoints() {
 			t.Fatal("has internal breakpoints after manual stop request")
+		}
+	})
+}
+
+func TestHaltKeepsSteppingBreakpoints(t *testing.T) {
+	withTestProcess("sleep", t, func(p *proc.Target, fixture protest.Fixture) {
+		p.KeepSteppingBreakpoints = proc.HaltKeepsSteppingBreakpoints
+		setFileBreakpoint(p, t, fixture.Source, 18)
+		assertNoError(p.Continue(), t, "Continue()")
+		resumeChan := make(chan struct{}, 1)
+		p.ResumeNotify(resumeChan)
+		go func() {
+			<-resumeChan
+			time.Sleep(100 * time.Millisecond)
+			p.RequestManualStop()
+		}()
+
+		assertNoError(p.Next(), t, "Next()")
+		if !p.Breakpoints().HasSteppingBreakpoints() {
+			t.Fatal("does not have internal breakpoints after manual stop request")
 		}
 	})
 }
