@@ -736,7 +736,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 
 	mode := args.Mode
-
+	if mode == "" {
+		mode = "debug"
+	}
 	if !isValidLaunchMode(mode) {
 		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", fmt.Sprintf("invalid debug configuration - unsupported 'mode' attribute %q", mode))
 		return
@@ -789,7 +791,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	s.log.Debugf("debug backend is '%s'", s.config.Debugger.Backend)
 
 	// Prepare the debug executable filename, build flags and build it
-	if mode := args.Mode; mode == "debug" || mode == "test" {
+	if mode == "debug" || mode == "test" {
 		output := args.Output
 		if output == "" {
 			output = defaultDebugBinary

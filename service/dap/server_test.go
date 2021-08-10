@@ -4096,6 +4096,12 @@ func TestLaunchDebugRequest(t *testing.T) {
 func TestLaunchRequestDefaults(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, "launch", func() {
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"mode": "" /*"debug" by default*/, "program": fixture.Source, "output": "__mybin"})
+		}, fixture.Source)
+	})
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSession(t, client, "launch", func() {
 			// Use the default output directory.
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				/*"mode":"debug" by default*/ "program": fixture.Source, "output": "__mybin"})
@@ -4786,9 +4792,9 @@ func TestBadLaunchRequests(t *testing.T) {
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
 			"Failed to launch: invalid debug configuration - cannot unmarshal number into \"mode\" of type string")
 
-		client.LaunchRequestWithArgs(map[string]interface{}{"mode": ""}) // Empty string as "mode" is an error.
+		client.LaunchRequestWithArgs(map[string]interface{}{"mode": ""}) // empty mode defaults to "debug" (not an error)
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
-			"Failed to launch: invalid debug configuration - unsupported 'mode' attribute \"\"")
+			"Failed to launch: The program attribute is missing in debug configuration.")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{}) // missing mode defaults to "debug" (not an error)
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
