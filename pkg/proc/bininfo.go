@@ -715,14 +715,28 @@ func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
 
 // moduleDataToImage finds the image corresponding to the given module data object.
 func (bi *BinaryInfo) moduleDataToImage(md *moduleData) *Image {
-	return bi.funcToImage(bi.PCToFunc(uint64(md.text)))
+	fn := bi.PCToFunc(uint64(md.text))
+	if fn != nil {
+		return bi.funcToImage(fn)
+	}
+	// Try searching for the image with the closest address preceding md.text
+	var so *Image
+	for i := range bi.Images {
+		if int64(bi.Images[i].StaticBase) > int64(md.text) {
+			continue
+		}
+		if so == nil || int64(bi.Images[i].StaticBase) > int64(so.StaticBase) {
+			so = bi.Images[i]
+		}
+	}
+	return so
 }
 
 // imageToModuleData finds the module data in mds corresponding to the given image.
 func (bi *BinaryInfo) imageToModuleData(image *Image, mds []moduleData) *moduleData {
 	for _, md := range mds {
 		im2 := bi.moduleDataToImage(&md)
-		if im2.index == image.index {
+		if im2 != nil && im2.index == image.index {
 			return &md
 		}
 	}
@@ -922,12 +936,16 @@ func (bi *BinaryInfo) LocationCovers(entry *dwarf.Entry, attr dwarf.Attr) ([][2]
 // This will either be an int64 address or a slice of Pieces for locations
 // that don't correspond to a single memory address (registers, composite
 // locations).
-func (bi *BinaryInfo) Location(entry godwarf.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters) (int64, []op.Piece, *locationExpr, error) {
+func (bi *BinaryInfo) Location(entry godwarf.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters, mem MemoryReadWriter) (int64, []op.Piece, *locationExpr, error) {
 	instr, descr, err := bi.locationExpr(entry, attr, pc)
 	if err != nil {
 		return 0, nil, nil, err
 	}
-	addr, pieces, err := op.ExecuteStackProgram(regs, instr, bi.Arch.PtrSize())
+	readMemory := op.ReadMemoryFunc(nil)
+	if mem != nil {
+		readMemory = mem.ReadMemory
+	}
+	addr, pieces, err := op.ExecuteStackProgram(regs, instr, bi.Arch.PtrSize(), readMemory)
 	return addr, pieces, descr, err
 }
 

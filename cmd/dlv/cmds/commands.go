@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -76,6 +77,7 @@ var (
 	traceExecFile   string
 	traceTestBinary bool
 	traceStackDepth int
+	traceUseEBPF    bool
 
 	// redirect specifications for target process
 	redirects []string
@@ -174,20 +176,23 @@ option to let the process continue or kill it.
 	// 'dap' subcommand.
 	dapCommand := &cobra.Command{
 		Use:   "dap",
-		Short: "[EXPERIMENTAL] Starts a TCP server communicating via Debug Adaptor Protocol (DAP).",
-		Long: `[EXPERIMENTAL] Starts a TCP server communicating via Debug Adaptor Protocol (DAP).
+		Short: "[EXPERIMENTAL] Starts a headless TCP server communicating via Debug Adaptor Protocol (DAP).",
+		Long: `[EXPERIMENTAL] Starts a headless TCP server communicating via Debug Adaptor Protocol (DAP).
 
-The server is headless and requires a DAP client like vscode to connect and request a binary
+The server is always headless and requires a DAP client like vscode to connect and request a binary
 to be launched or process to be attached to. The following modes are supported:
 - launch + exec (executes precompiled binary, like 'dlv exec')
 - launch + debug (builds and launches, like 'dlv debug')
 - launch + test (builds and tests, like 'dlv test')
+- launch + replay (replays an rr trace, like 'dlv replay')
+- launch + core (replays a core dump file, like 'dlv core')
 - attach + local (attaches to a running process, like 'dlv attach')
 The server does not yet accept multiple client connections (--accept-multiclient).
 While --continue is not supported, stopOnEntry launch/attach attribute can be used to control if
 execution is resumed at the start of the debug session.`,
 		Run: dapCmd,
 	}
+	// TODO(polina): support --tty when dlv dap allows to launch a program from command-line
 	rootCommand.AddCommand(dapCommand)
 
 	// 'debug' subcommand.
@@ -280,7 +285,8 @@ only see the output of the trace operations you can redirect stdout.`,
 	traceCommand.Flags().IntVarP(&traceAttachPid, "pid", "p", 0, "Pid to attach to.")
 	traceCommand.Flags().StringVarP(&traceExecFile, "exec", "e", "", "Binary file to exec and trace.")
 	traceCommand.Flags().BoolVarP(&traceTestBinary, "test", "t", false, "Trace a test binary.")
-	traceCommand.Flags().IntVarP(&traceStackDepth, "stack", "s", 0, "Show stack trace with given depth.")
+	traceCommand.Flags().BoolVarP(&traceUseEBPF, "ebpf", "", false, "Trace using eBPF (experimental).")
+	traceCommand.Flags().IntVarP(&traceStackDepth, "stack", "s", 0, "Show stack trace with given depth. (Ignored with -ebpf)")
 	traceCommand.Flags().String("output", "debug", "Output path for the binary.")
 	rootCommand.AddCommand(traceCommand)
 
@@ -305,13 +311,18 @@ Currently supports linux/amd64 and linux/arm64 core files, windows/amd64 minidum
 	rootCommand.AddCommand(coreCommand)
 
 	// 'version' subcommand.
+	var versionVerbose = false
 	versionCommand := &cobra.Command{
 		Use:   "version",
 		Short: "Prints version.",
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Printf("Delve Debugger\n%s\n", version.DelveVersion)
+			if versionVerbose {
+				fmt.Printf("Build Details: %s\n", version.BuildInfo())
+			}
 		},
 	}
+	versionCommand.Flags().BoolVarP(&versionVerbose, "verbose", "v", false, "print verbose version info")
 	rootCommand.AddCommand(versionCommand)
 
 	if path, _ := exec.LookPath("rr"); path != "" || docCall {
@@ -409,7 +420,7 @@ func dapCmd(cmd *cobra.Command, args []string) {
 		}
 		defer logflags.Close()
 
-		if headless {
+		if cmd.Flag("headless").Changed {
 			fmt.Fprintf(os.Stderr, "Warning: dap mode is always headless\n")
 		}
 		if acceptMulti {
@@ -420,6 +431,9 @@ func dapCmd(cmd *cobra.Command, args []string) {
 		}
 		if continueOnStart {
 			fmt.Fprintf(os.Stderr, "Warning: continue ignored with dap; specify via launch/attach request instead\n")
+		}
+		if backend != "default" {
+			fmt.Fprintf(os.Stderr, "Warning: backend ignored with dap; specify via launch/attach request instead\n")
 		}
 		if buildFlags != "" {
 			fmt.Fprintf(os.Stderr, "Warning: build flags ignored with dap; specify via launch/attach request instead\n")
@@ -446,10 +460,9 @@ func dapCmd(cmd *cobra.Command, args []string) {
 			DisconnectChan: disconnectChan,
 			Debugger: debugger.Config{
 				Backend:              backend,
-				Foreground:           headless && tty == "",
+				Foreground:           true, // server always runs without terminal client
 				DebugInfoDirectories: conf.DebugInfoDirectories,
 				CheckGoVersion:       checkGoVersion,
-				TTY:                  tty,
 			},
 			CheckLocalConnUser: checkLocalConnUser,
 		})
@@ -462,18 +475,30 @@ func dapCmd(cmd *cobra.Command, args []string) {
 	os.Exit(status)
 }
 
+func buildBinary(cmd *cobra.Command, args []string, isTest bool) (string, bool) {
+	debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return "", false
+	}
+
+	if isTest {
+		err = gobuild.GoTestBuild(debugname, args, buildFlags)
+	} else {
+		err = gobuild.GoBuild(debugname, args, buildFlags)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return "", false
+	}
+	return debugname, true
+}
+
 func debugCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
-		debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			return 1
-		}
-
 		dlvArgs, targetArgs := splitArgs(cmd, args)
-		err = gobuild.GoBuild(debugname, dlvArgs, buildFlags)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
+		debugname, ok := buildBinary(cmd, dlvArgs, false)
+		if !ok {
 			return 1
 		}
 		defer gobuild.Remove(debugname)
@@ -512,30 +537,20 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			dlvArgs = dlvArgs[:dlvArgsLen-1]
 		}
 
+		var debugname string
 		if traceAttachPid == 0 {
 			if dlvArgsLen >= 2 && traceExecFile != "" {
 				fmt.Fprintln(os.Stderr, "Cannot specify package when using exec.")
 				return 1
 			}
 
-			debugname := traceExecFile
+			debugname = traceExecFile
 			if traceExecFile == "" {
-				debugname, err = filepath.Abs(cmd.Flag("output").Value.String())
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "%v\n", err)
+				debugexe, ok := buildBinary(cmd, dlvArgs, traceTestBinary)
+				if !ok {
 					return 1
 				}
-				if traceTestBinary {
-					if err := gobuild.GoTestBuild(debugname, dlvArgs, buildFlags); err != nil {
-						fmt.Fprintf(os.Stderr, "%v\n", err)
-						return 1
-					}
-				} else {
-					if err := gobuild.GoBuild(debugname, dlvArgs, buildFlags); err != nil {
-						fmt.Fprintf(os.Stderr, "%v\n", err)
-						return 1
-					}
-				}
+				debugname = debugexe
 				defer gobuild.Remove(debugname)
 			}
 
@@ -573,39 +588,79 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			return 1
 		}
 		for i := range funcs {
-			_, err = client.CreateBreakpoint(&api.Breakpoint{
-				FunctionName: funcs[i],
-				Tracepoint:   true,
-				Line:         -1,
-				Stacktrace:   traceStackDepth,
-				LoadArgs:     &terminal.ShortLoadConfig,
-			})
-			if err != nil && !isBreakpointExistsErr(err) {
-				fmt.Fprintln(os.Stderr, err)
-				return 1
-			}
-			addrs, err := client.FunctionReturnLocations(funcs[i])
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				return 1
-			}
-			for i := range addrs {
+			if traceUseEBPF {
+				err := client.CreateEBPFTracepoint(funcs[i])
+				if err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					return 1
+				}
+			} else {
+				// Fall back to breakpoint based tracing if we get an error.
 				_, err = client.CreateBreakpoint(&api.Breakpoint{
-					Addr:        addrs[i],
-					TraceReturn: true,
-					Stacktrace:  traceStackDepth,
-					Line:        -1,
-					LoadArgs:    &terminal.ShortLoadConfig,
+					FunctionName: funcs[i],
+					Tracepoint:   true,
+					Line:         -1,
+					Stacktrace:   traceStackDepth,
+					LoadArgs:     &terminal.ShortLoadConfig,
 				})
 				if err != nil && !isBreakpointExistsErr(err) {
 					fmt.Fprintln(os.Stderr, err)
 					return 1
+				}
+				addrs, err := client.FunctionReturnLocations(funcs[i])
+				if err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					return 1
+				}
+				for i := range addrs {
+					_, err = client.CreateBreakpoint(&api.Breakpoint{
+						Addr:        addrs[i],
+						TraceReturn: true,
+						Stacktrace:  traceStackDepth,
+						Line:        -1,
+						LoadArgs:    &terminal.ShortLoadConfig,
+					})
+					if err != nil && !isBreakpointExistsErr(err) {
+						fmt.Fprintln(os.Stderr, err)
+						return 1
+					}
 				}
 			}
 		}
 		cmds := terminal.DebugCommands(client)
 		t := terminal.New(client, nil)
 		defer t.Close()
+		if traceUseEBPF {
+			done := make(chan struct{})
+			defer close(done)
+			go func() {
+				for {
+					select {
+					case <-done:
+						return
+					default:
+						tracepoints, err := client.GetBufferedTracepoints()
+						if err != nil {
+							panic(err)
+						}
+						for _, t := range tracepoints {
+							var params strings.Builder
+							for _, p := range t.InputParams {
+								if params.Len() > 0 {
+									params.WriteString(", ")
+								}
+								if p.Kind == reflect.String {
+									params.WriteString(fmt.Sprintf("%q", p.Value))
+								} else {
+									params.WriteString(p.Value)
+								}
+							}
+							fmt.Printf("%s:%d %s(%s)\n", t.File, t.Line, t.FunctionName, params.String())
+						}
+					}
+				}
+			}()
+		}
 		cmds.Call("continue", t)
 		return 0
 	}()
@@ -618,16 +673,9 @@ func isBreakpointExistsErr(err error) bool {
 
 func testCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
-		debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			return 1
-		}
-
 		dlvArgs, targetArgs := splitArgs(cmd, args)
-		err = gobuild.GoTestBuild(debugname, dlvArgs, buildFlags)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
+		debugname, ok := buildBinary(cmd, dlvArgs, true)
+		if !ok {
 			return 1
 		}
 		defer gobuild.Remove(debugname)
@@ -685,14 +733,14 @@ func connectCmd(cmd *cobra.Command, args []string) {
 }
 
 // waitForDisconnectSignal is a blocking function that waits for either
-// a SIGINT (Ctrl-C) signal from the OS or for disconnectChan to be closed
-// by the server when the client disconnects.
+// a SIGINT (Ctrl-C) or SIGTERM (kill -15) OS signal or for disconnectChan
+// to be closed by the server when the client disconnects.
 // Note that in headless mode, the debugged process is foregrounded
 // (to have control of the tty for debugging interactive programs),
 // so SIGINT gets sent to the debuggee and not to delve.
 func waitForDisconnectSignal(disconnectChan chan struct{}) {
 	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGINT)
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 	if runtime.GOOS == "windows" {
 		// On windows Ctrl-C sent to inferior process is delivered
 		// as SIGINT to delve. Ignore it instead of stopping the server

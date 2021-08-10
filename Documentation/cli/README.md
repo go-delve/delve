@@ -43,7 +43,7 @@ Command | Description
 --------|------------
 [args](#args) | Print function arguments.
 [display](#display) | Print value of an expression every time the program stops.
-[examinemem](#examinemem) | Examine memory:
+[examinemem](#examinemem) | Examine raw memory at the given address.
 [locals](#locals) | Print local variables.
 [print](#print) | Evaluate an expression.
 [regs](#regs) | Print contents of CPU registers.
@@ -291,6 +291,8 @@ If locspec is omitted edit will open the current source file in the editor, othe
 Aliases: ed
 
 ## examinemem
+Examine raw memory at the given address.
+
 Examine memory:
 
 	examinemem [-fmt <format>] [-count|-len <count>] [-size <size>] <address>
@@ -464,9 +466,18 @@ Aliases: n
 ## on
 Executes a command when a breakpoint is hit.
 
-	on <breakpoint name or id> <command>.
+	on <breakpoint name or id> <command>
+	on <breakpoint name or id> -edit
+	
 
-Supported commands: print, stack and goroutine)
+Supported commands: print, stack, goroutine, trace and cond. 
+To convert a breakpoint into a tracepoint use:
+	
+	on <breakpoint name or id> trace
+
+The command 'on <bp> cond <cond-arguments>' is equivalent to 'cond <bp> <cond-arguments>'.
+
+The command 'on x -edit' can be used to edit the list of commands executed when the breakpoint is hit.
 
 
 ## print

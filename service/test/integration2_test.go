@@ -510,6 +510,7 @@ func TestClientServer_clearBreakpoint(t *testing.T) {
 func TestClientServer_toggleBreakpoint(t *testing.T) {
 	withTestClient2("testtoggle", t, func(c service.Client) {
 		toggle := func(bp *api.Breakpoint) {
+			t.Helper()
 			dbp, err := c.ToggleBreakpoint(bp.ID)
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)

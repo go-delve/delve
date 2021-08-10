@@ -4,7 +4,6 @@ Compile test binary and begin debugging program.
 
 ### Synopsis
 
-
 Compiles a test binary with optimizations disabled and begins a new debug session.
 
 The test command allows you to begin a new debug session in the context of your
@@ -17,12 +16,13 @@ dlv test [package] -- -test.v -other-argument
 See also: 'go help testflag'.
 
 ```
-dlv test [package]
+dlv test [package] [flags]
 ```
 
 ### Options
 
 ```
+  -h, --help            help for test
       --output string   Output path for the binary. (default "debug.test")
 ```
 
@@ -48,5 +48,6 @@ dlv test [package]
 ```
 
 ### SEE ALSO
+
 * [dlv](dlv.md)	 - Delve is a debugger for the Go programming language.
 

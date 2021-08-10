@@ -6,12 +6,37 @@ import (
 	"fmt"
 )
 
+// Launch debug sessions support the following modes:
+// -- [DEFAULT] "debug" - builds and launches debugger for specified program (similar to 'dlv debug')
+//      Required args: program
+//      Optional args with default: output, cwd, noDebug
+//      Optional args: buildFlags, args
+// -- "test" - builds and launches debugger for specified test (similar to 'dlv test')
+//      same args as above
+// -- "exec" - launches debugger for precompiled binary (similar to 'dlv exec')
+//      Required args: program
+//      Optional args with default: cwd, noDebug
+//      Optional args: args
+// -- replay: skips program build and sets the Debugger.CoreFile property based on the
+//		Required args: coreFilePath
+//      Optional args: program, args
+// -- core: skips program build and sets the Debugger.CoreFile property based on the
+//      Required args: program, traceDirPath
+//      Optional args: args
 func isValidLaunchMode(mode string) bool {
 	switch mode {
-	case "exec", "debug", "test":
+	case "exec", "debug", "test", "replay", "core":
 		return true
 	}
 	return false
+}
+
+// Attach debug sessions support the following modes:
+// -- [DEFAULT] "local" -- attaches debugger to a local running process
+//      Required args: processID
+// TODO(polina): support "remote" mode
+func isValidAttachMode(mode string) bool {
+	return mode == "local"
 }
 
 // Default values for Launch/Attach configs.
@@ -39,9 +64,10 @@ type LaunchConfig struct {
 	//   "debug": compiles your program with optimizations disabled, starts and attaches to it.
 	//   "test": compiles your unit test program with optizations disabled, starts and attaches to it.
 	//   "exec": executes a precompiled binary and begin a debug session.
+	//   "replay": replays
 	//
 	// Default is "debug".
-	Mode string `json:"mode"`
+	Mode string `json:"mode,omitempty"`
 
 	// Required when mode is `debug`, `test`, or `exec`.
 	// Path to the program folder (or any go file within that folder)
@@ -70,6 +96,14 @@ type LaunchConfig struct {
 
 	// NoDebug is used to run the program without debugging.
 	NoDebug bool `json:"noDebug,omitempty"`
+
+	// TraceDirPath is the trace directory path for replay mode.
+	// This is required for "replay" mode but unused in other modes.
+	TraceDirPath string `json:"traceDirPath,omitempty"`
+
+	// CoreFilePath is the core file path for core mode.
+	// This is required for "core" mode but unused in other modes.
+	CoreFilePath string `json:"coreFilePath,omitempty"`
 
 	LaunchAttachCommonConfig
 }
@@ -123,11 +157,6 @@ func (m *SubstitutePath) UnmarshalJSON(data []byte) error {
 	}
 	*m = SubstitutePath(tmp)
 	return nil
-}
-
-func isValidAttachMode(mode string) bool {
-	// Currently only "local" is acceptable.
-	return mode == "local"
 }
 
 // AttachConfig is the collection of attach request attributes recognized by delve DAP implementation.

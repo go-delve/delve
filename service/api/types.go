@@ -48,6 +48,21 @@ type DebuggerState struct {
 	Err error `json:"-"`
 }
 
+type TracepointResult struct {
+	// Addr is deprecated, use Addrs.
+	Addr uint64 `json:"addr"`
+	// File is the source file for the breakpoint.
+	File string `json:"file"`
+	// Line is a line in File for the breakpoint.
+	Line int `json:"line"`
+	// FunctionName is the name of the function at the current breakpoint, and
+	// may not always be available.
+	FunctionName string `json:"functionName,omitempty"`
+
+	InputParams  []Variable `json:"inputParams,omitempty"`
+	ReturnParams []Variable `json:"returnParams,omitempty"`
+}
+
 // Breakpoint addresses a set of locations at which process execution may be
 // suspended.
 type Breakpoint struct {

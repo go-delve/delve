@@ -86,8 +86,8 @@ fmt.Println("ip has value ", *ip)
 fmt.Println("flagvar has value ", flagvar)
 ```
 
-There are helpers function to get values later if you have the FlagSet but
-it was difficult to keep up with all of the flag pointers in your code.
+There are helper functions available to get the value stored in a Flag if you have a FlagSet but find
+it difficult to keep up with all of the pointers in your code.
 If you have a pflag.FlagSet with a flag called 'flagname' of type int you
 can use GetInt() to get the int value. But notice that 'flagname' must exist
 and it must be an int. GetString("flagname") will fail.
@@ -245,6 +245,25 @@ It is possible to mark a flag as hidden, meaning it will still function as norma
 // hide a flag by specifying its name
 flags.MarkHidden("secretFlag")
 ```
+
+## Disable sorting of flags
+`pflag` allows you to disable sorting of flags for help and usage message.
+
+**Example**:
+```go
+flags.BoolP("verbose", "v", false, "verbose output")
+flags.String("coolflag", "yeaah", "it's really cool flag")
+flags.Int("usefulflag", 777, "sometimes it's very useful")
+flags.SortFlags = false
+flags.PrintDefaults()
+```
+**Output**:
+```
+  -v, --verbose           verbose output
+      --coolflag string   it's really cool flag (default "yeaah")
+      --usefulflag int    sometimes it's very useful (default 777)
+```
+
 
 ## Supporting Go flags when using pflag
 In order to support flags defined using Go's `flag` package, they must be added to the `pflag` flagset. This is usually necessary

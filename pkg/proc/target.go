@@ -375,7 +375,7 @@ func (t *Target) createUnrecoveredPanicBreakpoint() {
 
 // createFatalThrowBreakpoint creates the a breakpoint as runtime.fatalthrow.
 func (t *Target) createFatalThrowBreakpoint() {
-	fatalpcs, err := FindFunctionLocation(t.Process, "runtime.fatalthrow", 0)
+	fatalpcs, err := FindFunctionLocation(t.Process, "runtime.throw", 0)
 	if err == nil {
 		bp, err := t.SetBreakpointWithID(fatalThrowID, fatalpcs[0])
 		if err == nil {
@@ -391,13 +391,46 @@ func (t *Target) CurrentThread() Thread {
 	return t.currentThread
 }
 
+type UProbeTraceResult struct {
+	FnAddr      int
+	InputParams []*Variable
+}
+
+func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
+	var results []*UProbeTraceResult
+	tracepoints := t.proc.GetBufferedTracepoints()
+	for _, tp := range tracepoints {
+		r := &UProbeTraceResult{}
+		r.FnAddr = tp.FnAddr
+		for _, ip := range tp.InputParams {
+			v := &Variable{}
+			v.RealType = ip.RealType
+			v.Len = ip.Len
+			v.Base = ip.Base
+			v.Addr = ip.Addr
+			v.Kind = ip.Kind
+
+			cachedMem := CreateLoadedCachedMemory(ip.Data)
+			compMem, _ := CreateCompositeMemory(cachedMem, t.BinInfo().Arch, op.DwarfRegisters{}, ip.Pieces)
+			v.mem = compMem
+
+			// Load the value here so that we don't have to export
+			// loadValue outside of proc.
+			v.loadValue(loadFullValue)
+			r.InputParams = append(r.InputParams, v)
+		}
+		results = append(results, r)
+	}
+	return results
+}
+
 // SetNextBreakpointID sets the breakpoint ID of the next breakpoint
 func (t *Target) SetNextBreakpointID(id int) {
 	t.Breakpoints().breakpointIDCounter = id
 }
 
 const (
-	fakeAddressBase     = 0xbeef000000000000
+	FakeAddressBase     = 0xbeef000000000000
 	fakeAddressUnresolv = 0xbeed000000000000 // this address never resloves to memory
 )
 
@@ -435,7 +468,7 @@ func (t *Target) newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters
 
 func (t *Target) registerFakeMemory(mem *compositeMemory) (addr uint64) {
 	t.fakeMemoryRegistry = append(t.fakeMemoryRegistry, mem)
-	addr = fakeAddressBase
+	addr = FakeAddressBase
 	if len(t.fakeMemoryRegistry) > 1 {
 		prevMem := t.fakeMemoryRegistry[len(t.fakeMemoryRegistry)-2]
 		addr = uint64(alignAddr(int64(prevMem.base+uint64(len(prevMem.data))), 0x100)) // the call to alignAddr just makes the address look nicer, it is not necessary

@@ -617,7 +617,7 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 		}
 	}
 
-	state.NextInProgress = d.target.Breakpoints().HasInternalBreakpoints()
+	state.NextInProgress = d.target.Breakpoints().HasSteppingBreakpoints()
 
 	if recorded, _ := d.target.Recorded(); recorded {
 		state.When, _ = d.target.When()
@@ -757,6 +757,13 @@ func isBreakpointExistsErr(err error) bool {
 	return r
 }
 
+func (d *Debugger) CreateEBPFTracepoint(fnName string) error {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+
+	return d.target.SetEBPFTracepoint(fnName)
+}
+
 // AmendBreakpoint will update the breakpoint with the matching ID.
 // It also enables or disables the breakpoint.
 func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
@@ -801,7 +808,7 @@ func (d *Debugger) AmendBreakpoint(amend *api.Breakpoint) error {
 func (d *Debugger) CancelNext() error {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-	return d.target.ClearInternalBreakpoints()
+	return d.target.ClearSteppingBreakpoints()
 }
 
 func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err error) {
@@ -813,21 +820,24 @@ func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err err
 	bp.Variables = requested.Variables
 	bp.LoadArgs = api.LoadConfigToProc(requested.LoadArgs)
 	bp.LoadLocals = api.LoadConfigToProc(requested.LoadLocals)
-	bp.Cond = nil
-	if requested.Cond != "" {
-		bp.Cond, err = parser.ParseExpr(requested.Cond)
-	}
-	bp.HitCond = nil
-	if requested.HitCond != "" {
-		opTok, val, parseErr := parseHitCondition(requested.HitCond)
-		if err == nil {
-			err = parseErr
+	breaklet := bp.UserBreaklet()
+	if breaklet != nil {
+		breaklet.Cond = nil
+		if requested.Cond != "" {
+			breaklet.Cond, err = parser.ParseExpr(requested.Cond)
 		}
-		if parseErr == nil {
-			bp.HitCond = &struct {
-				Op  token.Token
-				Val int
-			}{opTok, val}
+		breaklet.HitCond = nil
+		if requested.HitCond != "" {
+			opTok, val, parseErr := parseHitCondition(requested.HitCond)
+			if err == nil {
+				err = parseErr
+			}
+			if parseErr == nil {
+				breaklet.HitCond = &struct {
+					Op  token.Token
+					Val int
+				}{opTok, val}
+			}
 		}
 	}
 	return err
@@ -2111,6 +2121,26 @@ func (d *Debugger) DumpCancel() error {
 
 func (d *Debugger) Target() *proc.Target {
 	return d.target
+}
+
+func (d *Debugger) GetBufferedTracepoints() []api.TracepointResult {
+	traces := d.target.GetBufferedTracepoints()
+	if traces == nil {
+		return nil
+	}
+	results := make([]api.TracepointResult, len(traces))
+	for i, trace := range traces {
+		f, l, fn := d.target.BinInfo().PCToLine(uint64(trace.FnAddr))
+
+		results[i].FunctionName = fn.Name
+		results[i].Line = l
+		results[i].File = f
+
+		for _, p := range trace.InputParams {
+			results[i].InputParams = append(results[i].InputParams, *api.ConvertVar(p))
+		}
+	}
+	return results
 }
 
 func go11DecodeErrorCheck(err error) error {

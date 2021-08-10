@@ -411,11 +411,6 @@ func (w *Writer) Write(data []byte) (n int, err error) {
 	var bw [1]byte
 loop:
 	for {
-		r1, _, err := procGetConsoleScreenBufferInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&csbi)))
-		if r1 == 0 {
-			break loop
-		}
-
 		c1, err := er.ReadByte()
 		if err != nil {
 			break loop
@@ -460,6 +455,7 @@ loop:
 			if err != nil {
 				continue
 			}
+			procGetConsoleScreenBufferInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&csbi)))
 			csbi.cursorPosition.y -= short(n)
 			procSetConsoleCursorPosition.Call(uintptr(w.handle), *(*uintptr)(unsafe.Pointer(&csbi.cursorPosition)))
 		case 'B':
@@ -467,6 +463,7 @@ loop:
 			if err != nil {
 				continue
 			}
+			procGetConsoleScreenBufferInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&csbi)))
 			csbi.cursorPosition.y += short(n)
 			procSetConsoleCursorPosition.Call(uintptr(w.handle), *(*uintptr)(unsafe.Pointer(&csbi.cursorPosition)))
 		case 'C':
@@ -474,23 +471,23 @@ loop:
 			if err != nil {
 				continue
 			}
-			csbi.cursorPosition.x -= short(n)
+			procGetConsoleScreenBufferInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&csbi)))
+			csbi.cursorPosition.x += short(n)
 			procSetConsoleCursorPosition.Call(uintptr(w.handle), *(*uintptr)(unsafe.Pointer(&csbi.cursorPosition)))
 		case 'D':
 			n, err = strconv.Atoi(buf.String())
 			if err != nil {
 				continue
 			}
-			if n, err = strconv.Atoi(buf.String()); err == nil {
-				var csbi consoleScreenBufferInfo
-				csbi.cursorPosition.x += short(n)
-				procSetConsoleCursorPosition.Call(uintptr(w.handle), *(*uintptr)(unsafe.Pointer(&csbi.cursorPosition)))
-			}
+			procGetConsoleScreenBufferInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&csbi)))
+			csbi.cursorPosition.x -= short(n)
+			procSetConsoleCursorPosition.Call(uintptr(w.handle), *(*uintptr)(unsafe.Pointer(&csbi.cursorPosition)))
 		case 'E':
 			n, err = strconv.Atoi(buf.String())
 			if err != nil {
 				continue
 			}
+			procGetConsoleScreenBufferInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&csbi)))
 			csbi.cursorPosition.x = 0
 			csbi.cursorPosition.y += short(n)
 			procSetConsoleCursorPosition.Call(uintptr(w.handle), *(*uintptr)(unsafe.Pointer(&csbi.cursorPosition)))
@@ -499,6 +496,7 @@ loop:
 			if err != nil {
 				continue
 			}
+			procGetConsoleScreenBufferInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&csbi)))
 			csbi.cursorPosition.x = 0
 			csbi.cursorPosition.y -= short(n)
 			procSetConsoleCursorPosition.Call(uintptr(w.handle), *(*uintptr)(unsafe.Pointer(&csbi.cursorPosition)))
@@ -507,9 +505,11 @@ loop:
 			if err != nil {
 				continue
 			}
+			procGetConsoleScreenBufferInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&csbi)))
 			csbi.cursorPosition.x = short(n - 1)
 			procSetConsoleCursorPosition.Call(uintptr(w.handle), *(*uintptr)(unsafe.Pointer(&csbi.cursorPosition)))
-		case 'H':
+		case 'H', 'f':
+			procGetConsoleScreenBufferInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&csbi)))
 			if buf.Len() > 0 {
 				token := strings.Split(buf.String(), ";")
 				switch len(token) {
@@ -545,6 +545,7 @@ loop:
 			}
 			var count, written dword
 			var cursor coord
+			procGetConsoleScreenBufferInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&csbi)))
 			switch n {
 			case 0:
 				cursor = coord{x: csbi.cursorPosition.x, y: csbi.cursorPosition.y}
@@ -566,20 +567,24 @@ loop:
 					continue
 				}
 			}
+			procGetConsoleScreenBufferInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&csbi)))
 			var cursor coord
+			var count, written dword
 			switch n {
 			case 0:
-				cursor = coord{x: csbi.cursorPosition.x, y: csbi.cursorPosition.y}
+				cursor = coord{x: csbi.cursorPosition.x + 1, y: csbi.cursorPosition.y}
+				count = dword(csbi.size.x - csbi.cursorPosition.x - 1)
 			case 1:
 				cursor = coord{x: csbi.window.left, y: csbi.window.top + csbi.cursorPosition.y}
+				count = dword(csbi.size.x - csbi.cursorPosition.x)
 			case 2:
 				cursor = coord{x: csbi.window.left, y: csbi.window.top + csbi.cursorPosition.y}
+				count = dword(csbi.size.x)
 			}
-			var count, written dword
-			count = dword(csbi.size.x - csbi.cursorPosition.x)
 			procFillConsoleOutputCharacter.Call(uintptr(w.handle), uintptr(' '), uintptr(count), *(*uintptr)(unsafe.Pointer(&cursor)), uintptr(unsafe.Pointer(&written)))
 			procFillConsoleOutputAttribute.Call(uintptr(w.handle), uintptr(csbi.attributes), uintptr(count), *(*uintptr)(unsafe.Pointer(&cursor)), uintptr(unsafe.Pointer(&written)))
 		case 'm':
+			procGetConsoleScreenBufferInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&csbi)))
 			attr := csbi.attributes
 			cs := buf.String()
 			if cs == "" {
@@ -684,22 +689,31 @@ loop:
 				}
 			}
 		case 'h':
+			var ci consoleCursorInfo
 			cs := buf.String()
-			if cs == "?25" {
-				var ci consoleCursorInfo
+			if cs == "5>" {
+				procGetConsoleCursorInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&ci)))
+				ci.visible = 0
+				procSetConsoleCursorInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&ci)))
+			} else if cs == "?25" {
 				procGetConsoleCursorInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&ci)))
 				ci.visible = 1
 				procSetConsoleCursorInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&ci)))
 			}
 		case 'l':
+			var ci consoleCursorInfo
 			cs := buf.String()
-			if cs == "?25" {
-				var ci consoleCursorInfo
+			if cs == "5>" {
+				procGetConsoleCursorInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&ci)))
+				ci.visible = 1
+				procSetConsoleCursorInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&ci)))
+			} else if cs == "?25" {
 				procGetConsoleCursorInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&ci)))
 				ci.visible = 0
 				procSetConsoleCursorInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&ci)))
 			}
 		case 's':
+			procGetConsoleScreenBufferInfo.Call(uintptr(w.handle), uintptr(unsafe.Pointer(&csbi)))
 			w.oldpos = csbi.cursorPosition
 		case 'u':
 			procSetConsoleCursorPosition.Call(uintptr(w.handle), *(*uintptr)(unsafe.Pointer(&w.oldpos)))

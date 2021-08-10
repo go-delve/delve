@@ -1,6 +1,9 @@
 package version
 
-import "fmt"
+import (
+	"fmt"
+	"runtime"
+)
 
 // Version represents the current version of Delve.
 type Version struct {
@@ -14,7 +17,7 @@ type Version struct {
 var (
 	// DelveVersion is the current version of Delve.
 	DelveVersion = Version{
-		Major: "1", Minor: "6", Patch: "1", Metadata: "",
+		Major: "1", Minor: "7", Patch: "0", Metadata: "",
 		Build: "$Id$",
 	}
 )
@@ -25,4 +28,12 @@ func (v Version) String() string {
 		ver += "-" + v.Metadata
 	}
 	return fmt.Sprintf("%s\nBuild: %s", ver, v.Build)
+}
+
+var buildInfo = func() string {
+	return ""
+}
+
+func BuildInfo() string {
+	return fmt.Sprintf("%s\n%s", runtime.Version(), buildInfo())
 }

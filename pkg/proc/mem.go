@@ -58,6 +58,10 @@ func (m *memCache) WriteMemory(addr uint64, data []byte) (written int, err error
 	return m.mem.WriteMemory(addr, data)
 }
 
+func CreateLoadedCachedMemory(data []byte) MemoryReadWriter {
+	return &memCache{loaded: true, cacheAddr: fakeAddressUnresolv, cache: data, mem: nil}
+}
+
 func cacheMemory(mem MemoryReadWriter, addr uint64, size int) MemoryReadWriter {
 	if !cacheEnabled {
 		return mem
@@ -92,6 +96,18 @@ type compositeMemory struct {
 	data    []byte
 }
 
+// CreateCompositeMemory created a new composite memory type using the provided MemoryReadWriter as the
+// underlying memory buffer.
+func CreateCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters, pieces []op.Piece) (*compositeMemory, error) {
+	// This is basically a small wrapper to avoid having to change all callers
+	// of newCompositeMemory since it existed first.
+	cm, err := newCompositeMemory(mem, arch, regs, pieces)
+	if cm != nil {
+		cm.base = fakeAddressUnresolv
+	}
+	return cm, err
+}
+
 func newCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters, pieces []op.Piece) (*compositeMemory, error) {
 	cmem := &compositeMemory{realmem: mem, arch: arch, regs: regs, pieces: pieces, data: []byte{}}
 	for i := range pieces {
@@ -99,7 +115,7 @@ func newCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters
 		switch piece.Kind {
 		case op.RegPiece:
 			reg := regs.Bytes(piece.Val)
-			if piece.Size == 0 && len(pieces) == 1 {
+			if piece.Size == 0 && i == len(pieces)-1 {
 				piece.Size = len(reg)
 			}
 			if piece.Size > len(reg) {
@@ -114,12 +130,18 @@ func newCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters
 			mem.ReadMemory(buf, uint64(piece.Val))
 			cmem.data = append(cmem.data, buf...)
 		case op.ImmPiece:
-			sz := 8
-			if piece.Size > sz {
-				sz = piece.Size
+			buf := piece.Bytes
+			if buf == nil {
+				sz := 8
+				if piece.Size > sz {
+					sz = piece.Size
+				}
+				if piece.Size == 0 && i == len(pieces)-1 {
+					piece.Size = arch.PtrSize() // DWARF doesn't say what this should be
+				}
+				buf = make([]byte, sz)
+				binary.LittleEndian.PutUint64(buf, piece.Val)
 			}
-			buf := make([]byte, sz)
-			binary.LittleEndian.PutUint64(buf, piece.Val)
 			cmem.data = append(cmem.data, buf[:piece.Size]...)
 		default:
 			panic("unsupported piece kind")

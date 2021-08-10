@@ -10,6 +10,7 @@ import (
 	"go/parser"
 	"go/scanner"
 	"io"
+	"io/ioutil"
 	"math"
 	"os"
 	"os/exec"
@@ -123,7 +124,7 @@ Type "help" followed by the name of a command for more information about it.`},
 See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/locspec.md for the syntax of linespec.
 
 See also: "help on", "help cond" and "help clear"`},
-		{aliases: []string{"trace", "t"}, group: breakCmds, cmdFn: tracepoint, helpMsg: `Set tracepoint.
+		{aliases: []string{"trace", "t"}, group: breakCmds, cmdFn: tracepoint, allowedPrefixes: onPrefix, helpMsg: `Set tracepoint.
 
 	trace [name] <linespec>
 
@@ -425,10 +426,19 @@ If no argument is specified the function being executed in the selected stack fr
 	-l <locspec>		disassembles the specified function`},
 		{aliases: []string{"on"}, group: breakCmds, cmdFn: c.onCmd, helpMsg: `Executes a command when a breakpoint is hit.
 
-	on <breakpoint name or id> <command>.
+	on <breakpoint name or id> <command>
+	on <breakpoint name or id> -edit
+	
 
-Supported commands: print, stack and goroutine)`},
-		{aliases: []string{"condition", "cond"}, group: breakCmds, cmdFn: conditionCmd, helpMsg: `Set breakpoint condition.
+Supported commands: print, stack, goroutine, trace and cond. 
+To convert a breakpoint into a tracepoint use:
+	
+	on <breakpoint name or id> trace
+
+The command 'on <bp> cond <cond-arguments>' is equivalent to 'cond <bp> <cond-arguments>'.
+
+The command 'on x -edit' can be used to edit the list of commands executed when the breakpoint is hit.`},
+		{aliases: []string{"condition", "cond"}, group: breakCmds, cmdFn: conditionCmd, allowedPrefixes: onPrefix, helpMsg: `Set breakpoint condition.
 
 	condition <breakpoint name or id> <boolean expression>.
 	condition -hitcount <breakpoint name or id> <operator> <argument>
@@ -477,7 +487,9 @@ Defines <alias> as an alias to <command> or removes an alias.`},
 If locspec is omitted edit will open the current source file in the editor, otherwise it will open the specified location.`},
 		{aliases: []string{"libraries"}, cmdFn: libraries, helpMsg: `List loaded dynamic libraries`},
 
-		{aliases: []string{"examinemem", "x"}, group: dataCmds, cmdFn: examineMemoryCmd, helpMsg: `Examine memory:
+		{aliases: []string{"examinemem", "x"}, group: dataCmds, cmdFn: examineMemoryCmd, helpMsg: `Examine raw memory at the given address.
+
+Examine memory:
 
 	examinemem [-fmt <format>] [-count|-len <count>] [-size <size>] <address>
 	examinemem [-fmt <format>] [-count|-len <count>] [-size <size>] -x <expression>
@@ -578,10 +590,10 @@ func (c *Commands) Register(cmdstr string, cf cmdfunc, helpMsg string) {
 // Find will look up the command function for the given command input.
 // If it cannot find the command it will default to noCmdAvailable().
 // If the command is an empty string it will replay the last command.
-func (c *Commands) Find(cmdstr string, prefix cmdPrefix) cmdfunc {
+func (c *Commands) Find(cmdstr string, prefix cmdPrefix) command {
 	// If <enter> use last command, if there was one.
 	if cmdstr == "" {
-		return nullCommand
+		return command{aliases: []string{"nullcmd"}, cmdFn: nullCommand}
 	}
 
 	for _, v := range c.cmds {
@@ -589,11 +601,11 @@ func (c *Commands) Find(cmdstr string, prefix cmdPrefix) cmdfunc {
 			if prefix != noPrefix && v.allowedPrefixes&prefix == 0 {
 				continue
 			}
-			return v.cmdFn
+			return v
 		}
 	}
 
-	return noCmdAvailable
+	return command{aliases: []string{"nocmd"}, cmdFn: noCmdAvailable}
 }
 
 // CallWithContext takes a command and a context that command should be executed in.
@@ -604,7 +616,7 @@ func (c *Commands) CallWithContext(cmdstr string, t *Term, ctx callContext) erro
 	if len(vals) > 1 {
 		args = strings.TrimSpace(vals[1])
 	}
-	return c.Find(cmdname, ctx.Prefix)(t, ctx, args)
+	return c.Find(cmdname, ctx.Prefix).cmdFn(t, ctx, args)
 }
 
 // Call takes a command to execute.
@@ -1400,7 +1412,9 @@ func (c *Commands) cont(t *Term, ctx callContext, args string) error {
 	if args != "" {
 		tmp, err := setBreakpoint(t, ctx, false, args)
 		if err != nil {
-			return err
+			if !strings.Contains(err.Error(), "Breakpoint exists") {
+				return err
+			}
 		}
 		defer func() {
 			for _, bp := range tmp {
@@ -1436,8 +1450,28 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string, sho
 		}
 		return nil
 	}
+	skipBreakpoints := false
 	for {
-		fmt.Printf("\tbreakpoint hit during %s, continuing...\n", op)
+		fmt.Printf("\tbreakpoint hit during %s", op)
+		if !skipBreakpoints {
+			fmt.Printf("\n")
+			answer, err := promptAutoContinue(t, op)
+			switch answer {
+			case "f": // finish next
+				skipBreakpoints = true
+				fallthrough
+			case "c": // continue once
+				fmt.Printf("continuing...\n")
+			case "s": // stop and cancel
+				fallthrough
+			default:
+				t.client.CancelNext()
+				printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+				return err
+			}
+		} else {
+			fmt.Printf(", continuing...\n")
+		}
 		stateChan := t.client.DirectionCongruentContinue()
 		var state *api.DebuggerState
 		for state = range stateChan {
@@ -1450,6 +1484,20 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string, sho
 		if !state.NextInProgress {
 			printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
 			return nil
+		}
+	}
+}
+
+func promptAutoContinue(t *Term, op string) (string, error) {
+	for {
+		answer, err := t.line.Prompt(fmt.Sprintf("[c] continue [s] stop here and cancel %s, [f] finish %s skipping all breakpoints? ", op, op))
+		if err != nil {
+			return "", err
+		}
+		answer = strings.ToLower(strings.TrimSpace(answer))
+		switch answer {
+		case "f", "c", "s":
+			return answer, nil
 		}
 	}
 }
@@ -1700,41 +1748,50 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 	for _, bp := range breakPoints {
 		fmt.Printf("%s at %v (%d)\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp), bp.TotalHitCount)
 
-		var attrs []string
-		if bp.Cond != "" {
-			attrs = append(attrs, fmt.Sprintf("\tcond %s", bp.Cond))
-		}
-		if bp.HitCond != "" {
-			attrs = append(attrs, fmt.Sprintf("\tcond -hitcount %s", bp.HitCond))
-		}
-		if bp.Stacktrace > 0 {
-			attrs = append(attrs, fmt.Sprintf("\tstack %d", bp.Stacktrace))
-		}
-		if bp.Goroutine {
-			attrs = append(attrs, "\tgoroutine")
-		}
-		if bp.LoadArgs != nil {
-			if *(bp.LoadArgs) == longLoadConfig {
-				attrs = append(attrs, "\targs -v")
-			} else {
-				attrs = append(attrs, "\targs")
-			}
-		}
-		if bp.LoadLocals != nil {
-			if *(bp.LoadLocals) == longLoadConfig {
-				attrs = append(attrs, "\tlocals -v")
-			} else {
-				attrs = append(attrs, "\tlocals")
-			}
-		}
-		for i := range bp.Variables {
-			attrs = append(attrs, fmt.Sprintf("\tprint %s", bp.Variables[i]))
-		}
+		attrs := formatBreakpointAttrs("\t", bp, false)
+
 		if len(attrs) > 0 {
 			fmt.Printf("%s\n", strings.Join(attrs, "\n"))
 		}
 	}
 	return nil
+}
+
+func formatBreakpointAttrs(prefix string, bp *api.Breakpoint, includeTrace bool) []string {
+	var attrs []string
+	if bp.Cond != "" {
+		attrs = append(attrs, fmt.Sprintf("%scond %s", prefix, bp.Cond))
+	}
+	if bp.HitCond != "" {
+		attrs = append(attrs, fmt.Sprintf("%scond -hitcount %s", prefix, bp.HitCond))
+	}
+	if bp.Stacktrace > 0 {
+		attrs = append(attrs, fmt.Sprintf("%sstack %d", prefix, bp.Stacktrace))
+	}
+	if bp.Goroutine {
+		attrs = append(attrs, fmt.Sprintf("%sgoroutine", prefix))
+	}
+	if bp.LoadArgs != nil {
+		if *(bp.LoadArgs) == longLoadConfig {
+			attrs = append(attrs, fmt.Sprintf("%sargs -v", prefix))
+		} else {
+			attrs = append(attrs, fmt.Sprintf("%sargs", prefix))
+		}
+	}
+	if bp.LoadLocals != nil {
+		if *(bp.LoadLocals) == longLoadConfig {
+			attrs = append(attrs, fmt.Sprintf("%slocals -v", prefix))
+		} else {
+			attrs = append(attrs, fmt.Sprintf("%slocals", prefix))
+		}
+	}
+	for i := range bp.Variables {
+		attrs = append(attrs, fmt.Sprintf("%sprint %s", prefix, bp.Variables[i]))
+	}
+	if includeTrace && bp.Tracepoint {
+		attrs = append(attrs, fmt.Sprintf("%strace", prefix))
+	}
+	return attrs
 }
 
 func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]*api.Breakpoint, error) {
@@ -1829,16 +1886,18 @@ func breakpoint(t *Term, ctx callContext, args string) error {
 }
 
 func tracepoint(t *Term, ctx callContext, args string) error {
+	if ctx.Prefix == onPrefix {
+		if args != "" {
+			return errors.New("too many arguments to trace")
+		}
+		ctx.Breakpoint.Tracepoint = true
+		return nil
+	}
 	_, err := setBreakpoint(t, ctx, true, args)
 	return err
 }
 
-func edit(t *Term, ctx callContext, args string) error {
-	file, lineno, _, err := getLocation(t, ctx, args, false)
-	if err != nil {
-		return err
-	}
-
+func runEditor(args ...string) error {
 	var editor string
 	if editor = os.Getenv("DELVE_EDITOR"); editor == "" {
 		if editor = os.Getenv("EDITOR"); editor == "" {
@@ -1846,11 +1905,19 @@ func edit(t *Term, ctx callContext, args string) error {
 		}
 	}
 
-	cmd := exec.Command(editor, fmt.Sprintf("+%d", lineno), file)
+	cmd := exec.Command(editor, args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func edit(t *Term, ctx callContext, args string) error {
+	file, lineno, _, err := getLocation(t, ctx, args, false)
+	if err != nil {
+		return err
+	}
+	return runEditor(fmt.Sprintf("+%d", lineno), file)
 }
 
 func watchpoint(t *Term, ctx callContext, args string) error {
@@ -2766,11 +2833,67 @@ func (c *Commands) onCmd(t *Term, ctx callContext, argstr string) error {
 
 	ctx.Prefix = onPrefix
 	ctx.Breakpoint = bp
-	err = c.CallWithContext(args[1], t, ctx)
-	if err != nil {
-		return err
+
+	if args[1] == "-edit" {
+		f, err := ioutil.TempFile("", "dlv-on-cmd-")
+		if err != nil {
+			return err
+		}
+		defer func() {
+			_ = os.Remove(f.Name())
+		}()
+		attrs := formatBreakpointAttrs("", ctx.Breakpoint, true)
+		_, err = f.Write([]byte(strings.Join(attrs, "\n")))
+		if err != nil {
+			return err
+		}
+		err = f.Close()
+		if err != nil {
+			return err
+		}
+
+		err = runEditor(f.Name())
+		if err != nil {
+			return err
+		}
+
+		fin, err := os.Open(f.Name())
+		if err != nil {
+			return err
+		}
+		defer fin.Close()
+
+		err = c.parseBreakpointAttrs(t, ctx, fin)
+		if err != nil {
+			return err
+		}
+	} else {
+		err = c.CallWithContext(args[1], t, ctx)
+		if err != nil {
+			return err
+		}
 	}
 	return t.client.AmendBreakpoint(ctx.Breakpoint)
+}
+
+func (c *Commands) parseBreakpointAttrs(t *Term, ctx callContext, r io.Reader) error {
+	ctx.Breakpoint.Tracepoint = false
+	ctx.Breakpoint.Goroutine = false
+	ctx.Breakpoint.Stacktrace = 0
+	ctx.Breakpoint.Variables = ctx.Breakpoint.Variables[:0]
+	ctx.Breakpoint.Cond = ""
+	ctx.Breakpoint.HitCond = ""
+
+	scan := bufio.NewScanner(r)
+	lineno := 0
+	for scan.Scan() {
+		lineno++
+		err := c.CallWithContext(scan.Text(), t, ctx)
+		if err != nil {
+			fmt.Printf("%d: %s\n", lineno, err.Error())
+		}
+	}
+	return scan.Err()
 }
 
 func conditionCmd(t *Term, ctx callContext, argstr string) error {
@@ -2782,10 +2905,17 @@ func conditionCmd(t *Term, ctx callContext, argstr string) error {
 
 	if args[0] == "-hitcount" {
 		// hitcount breakpoint
+
+		if ctx.Prefix == onPrefix {
+			ctx.Breakpoint.HitCond = args[1]
+			return nil
+		}
+
 		args = split2PartsBySpace(args[1])
 		if len(args) < 2 {
 			return fmt.Errorf("not enough arguments")
 		}
+
 		bp, err := getBreakpointByIDOrName(t, args[0])
 		if err != nil {
 			return err
@@ -2794,6 +2924,11 @@ func conditionCmd(t *Term, ctx callContext, argstr string) error {
 		bp.HitCond = args[1]
 
 		return t.client.AmendBreakpoint(bp)
+	}
+
+	if ctx.Prefix == onPrefix {
+		ctx.Breakpoint.Cond = argstr
+		return nil
 	}
 
 	bp, err := getBreakpointByIDOrName(t, args[0])

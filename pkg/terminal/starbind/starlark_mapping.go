@@ -313,6 +313,36 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 		}
 		return env.interfaceToStarlarkValue(rpcRet), nil
 	})
+	r["create_ebpf_tracepoint"] = starlark.NewBuiltin("create_ebpf_tracepoint", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		if err := isCancelled(thread); err != nil {
+			return starlark.None, decorateError(thread, err)
+		}
+		var rpcArgs rpc2.CreateEBPFTracepointIn
+		var rpcRet rpc2.CreateEBPFTracepointOut
+		if len(args) > 0 && args[0] != starlark.None {
+			err := unmarshalStarlarkValue(args[0], &rpcArgs.FunctionName, "FunctionName")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		for _, kv := range kwargs {
+			var err error
+			switch kv[0].(starlark.String) {
+			case "FunctionName":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.FunctionName, "FunctionName")
+			default:
+				err = fmt.Errorf("unknown argument %q", kv[0])
+			}
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		err := env.ctx.Client().CallAPI("CreateEBPFTracepoint", &rpcArgs, &rpcRet)
+		if err != nil {
+			return starlark.None, err
+		}
+		return env.interfaceToStarlarkValue(rpcRet), nil
+	})
 	r["create_watchpoint"] = starlark.NewBuiltin("create_watchpoint", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if err := isCancelled(thread); err != nil {
 			return starlark.None, decorateError(thread, err)
@@ -727,6 +757,18 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 			}
 		}
 		err := env.ctx.Client().CallAPI("GetBreakpoint", &rpcArgs, &rpcRet)
+		if err != nil {
+			return starlark.None, err
+		}
+		return env.interfaceToStarlarkValue(rpcRet), nil
+	})
+	r["get_buffered_tracepoints"] = starlark.NewBuiltin("get_buffered_tracepoints", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		if err := isCancelled(thread); err != nil {
+			return starlark.None, decorateError(thread, err)
+		}
+		var rpcArgs rpc2.GetBufferedTracepointsIn
+		var rpcRet rpc2.GetBufferedTracepointsOut
+		err := env.ctx.Client().CallAPI("GetBufferedTracepoints", &rpcArgs, &rpcRet)
 		if err != nil {
 			return starlark.None, err
 		}
