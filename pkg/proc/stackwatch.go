@@ -137,7 +137,7 @@ func (t *Target) clearStackWatchBreakpoints(watchpoint *Breakpoint) error {
 // user is notified of the watchpoint going out of scope.
 func watchpointOutOfScope(t *Target, watchpoint *Breakpoint) {
 	t.Breakpoints().WatchOutOfScope = append(t.Breakpoints().WatchOutOfScope, watchpoint)
-	_, err := t.ClearBreakpoint(watchpoint.Addr)
+	err := t.ClearBreakpoint(watchpoint.Addr)
 	if err != nil {
 		log := logflags.DebuggerLogger()
 		log.Errorf("could not clear out-of-scope watchpoint: %v", err)

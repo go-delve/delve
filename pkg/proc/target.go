@@ -325,7 +325,7 @@ func (t *Target) Detach(kill bool) error {
 		}
 		for _, bp := range t.Breakpoints().M {
 			if bp != nil {
-				_, err := t.ClearBreakpoint(bp.Addr)
+				err := t.ClearBreakpoint(bp.Addr)
 				if err != nil {
 					return err
 				}
