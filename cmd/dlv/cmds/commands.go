@@ -746,15 +746,10 @@ func waitForDisconnectSignal(disconnectChan chan struct{}) {
 		// as SIGINT to delve. Ignore it instead of stopping the server
 		// in order to be able to debug signal handlers.
 		go func() {
-			for {
-				select {
-				case <-ch:
-				}
+			for range ch {
 			}
 		}()
-		select {
-		case <-disconnectChan:
-		}
+		<-disconnectChan
 	} else {
 		select {
 		case <-ch:

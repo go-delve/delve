@@ -92,7 +92,7 @@ func evalScope(p *proc.Target) (*proc.EvalScope, error) {
 	if err != nil {
 		return nil, err
 	}
-	return proc.FrameToScope(p, p.BinInfo(), p.Memory(), nil, frame), nil
+	return proc.FrameToScope(p, p.Memory(), nil, frame), nil
 }
 
 func evalVariable(p *proc.Target, symbol string, cfg proc.LoadConfig) (*proc.Variable, error) {
@@ -471,7 +471,7 @@ func TestLocalVariables(t *testing.T) {
 				var frame proc.Stackframe
 				frame, err = findFirstNonRuntimeFrame(p)
 				if err == nil {
-					scope = proc.FrameToScope(p, p.BinInfo(), p.Memory(), nil, frame)
+					scope = proc.FrameToScope(p, p.Memory(), nil, frame)
 				}
 			} else {
 				scope, err = proc.GoroutineScope(p, p.CurrentThread())

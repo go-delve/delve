@@ -18,6 +18,7 @@ type waitStatus sys.WaitStatus
 type osSpecificDetails struct {
 	hThread            syscall.Handle
 	dbgUiRemoteBreakIn bool // whether thread is an auxiliary DbgUiRemoteBreakIn thread created by Windows
+	delayErr           error
 }
 
 func (t *nativeThread) singleStep() error {
