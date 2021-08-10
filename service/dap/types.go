@@ -65,9 +65,10 @@ var (
 type LaunchConfig struct {
 	// Acceptable values are:
 	//   "debug": compiles your program with optimizations disabled, starts and attaches to it.
-	//   "test": compiles your unit test program with optizations disabled, starts and attaches to it.
-	//   "exec": executes a precompiled binary and begin a debug session.
-	//   "replay": replays
+	//   "test": compiles your unit test program with optimizations disabled, starts and attaches to it.
+	//   "exec": executes a precompiled binary and begins a debug session.
+	//   "replay": replays an rr trace.
+	//   "core": examines a core dump.
 	//
 	// Default is "debug".
 	Mode string `json:"mode,omitempty"`
@@ -85,12 +86,12 @@ type LaunchConfig struct {
 
 	// Absolute path to the working directory of the program being debugged
 	// if a non-empty value is specified. If not specified or empty,
-	// the working directory of the delve process will be used.
+	// the program or the program's directory will be used.
 	// This is similar to delve's `--wd` flag.
 	Cwd string `json:"cwd,omitempty"`
 
 	// Build flags, to be passed to the Go compiler.
-	// For example, "-tags=integration -mod=vendor -cover -v".
+	// For example, "-tags=integration -mod=vendor -cover -v" like delve's `--build-flags`.
 	BuildFlags string `json:"buildFlags,omitempty"`
 
 	// Output path for the binary of the debugee.
@@ -116,7 +117,7 @@ type LaunchAttachCommonConfig struct {
 	// Automatically stop program after launch or attach.
 	StopOnEntry bool `json:"stopOnEntry,omitempty"`
 
-	// Backend used by delve. See `dlv help backend` for allowed values.
+	// Backend used by delve. See `dlv backend` for allowed values.
 	// Default is "default".
 	Backend string `json:"backend,omitempty"`
 
