@@ -193,6 +193,8 @@ execution is resumed at the start of the debug session.`,
 		Run: dapCmd,
 	}
 	// TODO(polina): support --tty when dlv dap allows to launch a program from command-line
+	// TODO(polina): support --continue
+	dapCommand.Flags().String("output", dap.DefaultDebugBinary, "Output path for the binary.")
 	rootCommand.AddCommand(dapCommand)
 
 	// 'debug' subcommand.
@@ -429,24 +431,78 @@ func dapCmd(cmd *cobra.Command, args []string) {
 		if initFile != "" {
 			fmt.Fprint(os.Stderr, "Warning: init file ignored with dap\n")
 		}
-		if continueOnStart {
-			fmt.Fprintf(os.Stderr, "Warning: continue ignored with dap; specify via launch/attach request instead\n")
+
+		config := service.Config{
+			Debugger: debugger.Config{
+				Backend:              backend,
+				Foreground:           true, // server always runs without terminal client
+				DebugInfoDirectories: conf.DebugInfoDirectories,
+				CheckGoVersion:       checkGoVersion,
+			},
+			CheckLocalConnUser: checkLocalConnUser,
 		}
-		if backend != "default" {
-			fmt.Fprintf(os.Stderr, "Warning: backend ignored with dap; specify via launch/attach request instead\n")
-		}
-		if buildFlags != "" {
-			fmt.Fprintf(os.Stderr, "Warning: build flags ignored with dap; specify via launch/attach request instead\n")
-		}
-		if workingDir != "" {
-			fmt.Fprintf(os.Stderr, "Warning: working directory ignored with dap: specify via launch request instead\n")
-		}
-		dlvArgs, targetArgs := splitArgs(cmd, args)
-		if len(dlvArgs) > 0 {
-			fmt.Fprintf(os.Stderr, "Warning: debug arguments ignored with dap; specify via launch/attach request instead\n")
-		}
-		if len(targetArgs) > 0 {
-			fmt.Fprintf(os.Stderr, "Warning: program flags ignored with dap; specify via launch/attach request instead\n")
+
+		dlvArgs, targetArgs := splitArgs(cmd, args[0:])
+		if len(dlvArgs) > 0 { // Mode + args are specified via command-line
+			mode := dlvArgs[0]
+			dlvArgs = dlvArgs[1:]
+			debugexe := ""
+
+			switch mode {
+			case "debug", "test", "exec":
+				if len(dlvArgs) == 0 {
+					fmt.Fprintf(os.Stderr, "Error: missing program\n")
+					return 1
+				}
+				if mode == "exec" {
+					debugexe = dlvArgs[0]
+				} else {
+					bin, ok := buildBinary(cmd, dlvArgs, mode == "test")
+					if !ok {
+						return 1
+					}
+					debugexe = bin
+					defer gobuild.Remove(debugexe)
+				}
+				config.ProcessArgs = append([]string{debugexe}, targetArgs...)
+				config.Debugger.WorkingDir = filepath.Dir(debugexe)
+			case "attach":
+				if len(dlvArgs) == 0 {
+					fmt.Fprintf(os.Stderr, "Error: missing pid\n")
+					return 1
+				}
+				pid, err := strconv.Atoi(dlvArgs[0])
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error: invalid pid '%s'\n", dlvArgs[0])
+					return 1
+				}
+				config.Debugger.AttachPid = pid
+			default:
+				fmt.Fprintf(os.Stderr, "Error: unsupported mode '%s'\n", mode)
+				return 1
+			}
+		} else { // Mode + args will be specified via launch/attach request
+			if cmd.Flag("output").Changed {
+				fmt.Fprintf(os.Stderr, "Warning: output ignored; specify via launch config instead\n")
+			}
+			if continueOnStart {
+				fmt.Fprintf(os.Stderr, "Warning: continue ignored; specify via launch config instead\n")
+			}
+			if backend != "default" {
+				fmt.Fprintf(os.Stderr, "Warning: backend ignored; specify via launch config instead\n")
+			}
+			if buildFlags != "" {
+				fmt.Fprintf(os.Stderr, "Warning: build flags ignored; specify via launch config instead\n")
+			}
+			if workingDir != "" {
+				fmt.Fprintf(os.Stderr, "Warning: working directory ignored: specify via launch config instead\n")
+			}
+			if len(dlvArgs) > 0 {
+				fmt.Fprintf(os.Stderr, "Warning: debug arguments ignored; specify via launch config instead\n")
+			}
+			if len(targetArgs) > 0 {
+				fmt.Fprintf(os.Stderr, "Warning: program flags ignored; specify via launch config instead\n")
+			}
 		}
 
 		listener, err := net.Listen("tcp", addr)
@@ -455,17 +511,9 @@ func dapCmd(cmd *cobra.Command, args []string) {
 			return 1
 		}
 		disconnectChan := make(chan struct{})
-		server := dap.NewServer(&service.Config{
-			Listener:       listener,
-			DisconnectChan: disconnectChan,
-			Debugger: debugger.Config{
-				Backend:              backend,
-				Foreground:           true, // server always runs without terminal client
-				DebugInfoDirectories: conf.DebugInfoDirectories,
-				CheckGoVersion:       checkGoVersion,
-			},
-			CheckLocalConnUser: checkLocalConnUser,
-		})
+		config.Listener = listener
+		config.DisconnectChan = disconnectChan
+		server := dap.NewServer(&config)
 		defer server.Stop()
 
 		server.Run()

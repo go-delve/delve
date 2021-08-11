@@ -645,6 +645,98 @@ func TestDap(t *testing.T) {
 	cmd.Wait()
 }
 
+// TestDapPlus verifies that dap command can start the target from command line args,
+// as verified by a client that detects that the process must be terminated on disconnect.
+func TestDapPlus(t *testing.T) {
+	const listenAddr = "127.0.0.1:4075"
+
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
+	exe := protest.BuildFixture("increment", protest.AllNonOptimized)
+
+	tests := map[string]*exec.Cmd{
+		"exec":  exec.Command(dlvbin, "dap", "exec", exe.Path, "--log-output=dap,debugger", "--log", "--listen", listenAddr),
+		"debug": exec.Command(dlvbin, "dap", "debug", buildtestdir, "--log-output=dap,debugger", "--log", "--listen", listenAddr),
+		"test":  exec.Command(dlvbin, "dap", "test", buildtestdir, "--log-output=dap,debugger", "--log", "--listen", listenAddr),
+	}
+	for mode, cmd := range tests {
+		t.Run(mode, func(t *testing.T) {
+			stdout, err := cmd.StdoutPipe()
+			assertNoError(err, t, "stdout pipe")
+			defer stdout.Close()
+			stderr, err := cmd.StderrPipe()
+			assertNoError(err, t, "stderr pipe")
+			defer stderr.Close()
+
+			assertNoError(cmd.Start(), t, "dlv dap debug")
+
+			scanOut := bufio.NewScanner(stdout)
+			scanErr := bufio.NewScanner(stderr)
+			// Wait for the debug server to start
+			scanOut.Scan()
+			t.Log(scanOut.Text())
+			go func() {
+				for scanErr.Scan() {
+					t.Log(scanErr.Text())
+				}
+			}()
+
+			// Connect a client and request shutdown.
+			client := daptest.NewClient(listenAddr)
+			client.DisconnectRequest()
+			client.ExpectOutputEventDetachingKill(t) // detects running target
+			client.ExpectDisconnectResponse(t)
+			client.ExpectTerminatedEvent(t)
+			client.Close()
+			cmd.Wait()
+		})
+	}
+}
+
+// TestDapCmdErrors verify error handling that precedes server start-up.
+func TestDapCmdErrors(t *testing.T) {
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	//buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
+
+	tests := []struct {
+		name string
+		cmd  *exec.Cmd
+		want string
+	}{
+		{"exec", exec.Command(dlvbin, "dap", "exec"), "Error: missing program"},
+		{"debug", exec.Command(dlvbin, "dap", "debug"), "Error: missing program"},
+		{"debug X", exec.Command(dlvbin, "dap", "debug", "X"), "exit status 1"},
+		{"test", exec.Command(dlvbin, "dap", "test"), "Error: missing program"},
+		{"attach", exec.Command(dlvbin, "dap", "attach"), "Error: missing pid"},
+		{"attach X", exec.Command(dlvbin, "dap", "attach", "X"), "Error: invalid pid 'X'"},
+		{"core", exec.Command(dlvbin, "dap", "core"), "Error: unsupported mode 'core'"},
+		{"replay", exec.Command(dlvbin, "dap", "replay"), "Error: unsupported mode 'replay'"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fmt.Println(tc.cmd)
+
+			stderr, err := tc.cmd.StderrPipe()
+			assertNoError(err, t, "stderr pipe")
+			defer stderr.Close()
+
+			assertNoError(tc.cmd.Start(), t, "dlv dap debug")
+
+			scanErr := bufio.NewScanner(stderr)
+			scanErr.Scan()
+			if scanErr.Text() != tc.want {
+				tc.cmd.Process.Kill() // release the port
+				t.Fatalf("Unexpected error:\ngot  %q\nwant %q", scanErr.Text(), tc.want)
+			}
+			tc.cmd.Wait()
+		})
+	}
+}
+
 func TestTrace(t *testing.T) {
 	dlvbin, tmpdir := getDlvBin(t)
 	defer os.RemoveAll(tmpdir)

@@ -770,7 +770,7 @@ func (s *Server) setClientCapabilities(args dap.InitializeRequestArguments) {
 
 // Default output file pathname for the compiled binary in debug or test modes,
 // relative to the current working directory of the server.
-const defaultDebugBinary string = "./__debug_bin"
+const DefaultDebugBinary string = "./__debug_bin"
 
 func cleanExeName(name string) string {
 	if runtime.GOOS == "windows" && filepath.Ext(name) != ".exe" {
@@ -863,7 +863,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	if mode == "debug" || mode == "test" {
 		output, ok := request.Arguments["output"].(string)
 		if !ok || output == "" {
-			output = defaultDebugBinary
+			output = DefaultDebugBinary
 		}
 		output = cleanExeName(output)
 		debugbinary, err := filepath.Abs(output)
