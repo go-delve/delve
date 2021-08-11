@@ -5332,7 +5332,6 @@ func TestVariablesWithExternalLinking(t *testing.T) {
 }
 
 func TestWatchpointsBasic(t *testing.T) {
-	skipOn(t, "not implemented", "windows")
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "darwin")
 	skipOn(t, "not implemented", "386")
@@ -5378,7 +5377,6 @@ func TestWatchpointsBasic(t *testing.T) {
 }
 
 func TestWatchpointCounts(t *testing.T) {
-	skipOn(t, "not implemented", "windows")
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "darwin")
 	skipOn(t, "not implemented", "386")
@@ -5496,7 +5494,6 @@ func TestDwrapStartLocation(t *testing.T) {
 }
 
 func TestWatchpointStack(t *testing.T) {
-	skipOn(t, "not implemented", "windows")
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "darwin")
 	skipOn(t, "not implemented", "386")
