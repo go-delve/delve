@@ -4170,7 +4170,7 @@ func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmdRequest fun
 	client.ExpectTerminatedEvent(t)
 }
 
-func TestLaunchRequestWithRelativeProgramPath(t *testing.T) {
+func TestLaunchRequestWithRelativeBuildPath(t *testing.T) {
 	client := startDapServer(t)
 	defer client.Close() // will trigger Stop()
 
@@ -4186,6 +4186,21 @@ func TestLaunchRequestWithRelativeProgramPath(t *testing.T) {
 	runDebugSession(t, client, "launch", func() {
 		client.LaunchRequestWithArgs(map[string]interface{}{
 			"mode": "debug", "program": program, "cwd": filepath.Dir(dlvwd)})
+	})
+}
+
+func TestLaunchRequestWithRelativeExecPath(t *testing.T) {
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		symlink := "./__thisexe"
+		err := os.Symlink(fixture.Path, symlink)
+		defer os.Remove(symlink)
+		if err != nil {
+			t.Fatal("unable to create relative symlink:", err)
+		}
+		runDebugSession(t, client, "launch", func() {
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"mode": "exec", "program": symlink})
+		})
 	})
 }
 
