@@ -381,7 +381,7 @@ func (dbp *nativeProcess) SupportsBPF() bool {
 	return false
 }
 
-func (dbp *nativeProcess) SetUProbe(fnName string, args []ebpf.UProbeArgMap) error {
+func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProbeArgMap) error {
 	panic("not implemented")
 }
 

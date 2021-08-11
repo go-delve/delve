@@ -26,8 +26,11 @@ typedef struct function_parameter {
 } function_parameter_t;
 
 // function_parameter_list holds info about the function parameters and
-// stores information on up to 8 parameters.
+// stores information on up to 6 parameters.
 typedef struct function_parameter_list {
+      unsigned int goid_offset;
+      int goroutine_id;
+
       unsigned int fn_addr;
       unsigned int n_parameters;          // number of parameters.
       function_parameter_t params[6];     // list of parameters.

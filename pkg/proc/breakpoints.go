@@ -463,15 +463,51 @@ func (t *Target) SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) 
 	return t.setBreakpointInternal(addr, kind, 0, cond)
 }
 
+// SetEBPFTracepoint will attach a uprobe to the function
+// specified by 'fnName'.
 func (t *Target) SetEBPFTracepoint(fnName string) error {
+	// Not every OS/arch that we support has support for eBPF,
+	// so check early and return an error if this is called on an
+	// unsupported system.
 	if !t.proc.SupportsBPF() {
 		return errors.New("eBPF is not supported")
 	}
+	// Start putting together the argument map. This will tell the eBPF program
+	// all of the arguments we want to trace and how to find them.
 	var args []ebpf.UProbeArgMap
 	fn, ok := t.BinInfo().LookupFunc[fnName]
 	if !ok {
 		return fmt.Errorf("could not find function %s", fnName)
 	}
+
+	// Get information on the Goroutine so we can tell the
+	// eBPF program where to find it in order to get the
+	// goroutine ID.
+	rdr := t.BinInfo().Images[0].DwarfReader()
+	rdr.SeekToTypeNamed("runtime.g")
+	var goidOffset int64
+	for {
+		ent, err := rdr.Next()
+		if err != nil {
+			return err
+		}
+		name, ok := ent.Val(dwarf.AttrName).(string)
+		if !ok {
+			continue
+		}
+		if name == "goid" {
+			off, ok := ent.Val(dwarf.AttrDataMemberLoc).(int64)
+			if !ok {
+				return errors.New("invalid type case for member location offset")
+			}
+			goidOffset = off
+			break
+		}
+	}
+
+	// Start looping through each argument / return parameter for the function we
+	// are setting the uprobe on. Parse location information so that we can pass it
+	// along to the eBPF program.
 	dwarfTree, err := fn.cu.image.getDwarfTree(fn.offset)
 	if err != nil {
 		return err
@@ -505,7 +541,9 @@ func (t *Target) SetEBPFTracepoint(fnName string) error {
 		offset += int64(t.BinInfo().Arch.PtrSize())
 		args = append(args, ebpf.UProbeArgMap{Offset: offset, Size: dt.Size(), Kind: dt.Common().ReflectKind, Pieces: paramPieces, InReg: len(pieces) > 0})
 	}
-	t.proc.SetUProbe(fnName, args)
+
+	// Finally, set the uprobe on the function.
+	t.proc.SetUProbe(fnName, goidOffset, args)
 	return nil
 }
 

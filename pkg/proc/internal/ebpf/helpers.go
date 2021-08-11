@@ -51,11 +51,11 @@ func (ctx *EBPFContext) AttachUprobe(pid int, name string, offset uint32) error 
 	return err
 }
 
-func (ctx *EBPFContext) UpdateArgMap(key uint64, args []UProbeArgMap) error {
+func (ctx *EBPFContext) UpdateArgMap(key uint64, goidOffset int64, args []UProbeArgMap) error {
 	if ctx.bpfArgMap == nil {
 		return errors.New("eBPF map not loaded")
 	}
-	params := createFunctionParameterList(key, args)
+	params := createFunctionParameterList(key, goidOffset, args)
 	return ctx.bpfArgMap.Update(unsafe.Pointer(&key), unsafe.Pointer(&params))
 }
 
@@ -131,6 +131,7 @@ func ParseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 
 	var rawParams RawUProbeParams
 	rawParams.FnAddr = int(params.fn_addr)
+	rawParams.GoroutineID = int(params.goroutine_id)
 
 	for i := 0; i < int(params.n_parameters); i++ {
 		iparam := &RawUProbeParam{}
@@ -166,8 +167,9 @@ func ParseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 	return rawParams
 }
 
-func createFunctionParameterList(entry uint64, args []UProbeArgMap) C.function_parameter_list_t {
+func createFunctionParameterList(entry uint64, goidOffset int64, args []UProbeArgMap) C.function_parameter_list_t {
 	var params C.function_parameter_list_t
+	params.goid_offset = C.uint(goidOffset)
 	params.n_parameters = C.uint(len(args))
 	params.fn_addr = C.uint(entry)
 	for i, arg := range args {

@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-delve/delve/pkg/goversion"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/pkg/terminal"
 	"github.com/go-delve/delve/service/dap/daptest"
@@ -188,13 +190,30 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 }
 
 func getDlvBin(t *testing.T) (string, string) {
+	// In case this was set in the environment
+	// from getDlvBinEBPF lets clear it here so
+	// we can ensure we don't get build errors
+	// depending on the test ordering.
+	os.Setenv("CGO_LDFLAGS", "")
+	return getDlvBinInternal(t)
+}
+
+func getDlvBinEBPF(t *testing.T) (string, string) {
+	os.Setenv("CGO_LDFLAGS", "/usr/lib64/libbpf.a")
+	return getDlvBinInternal(t, "-tags", "ebpf")
+}
+
+func getDlvBinInternal(t *testing.T, goflags ...string) (string, string) {
 	tmpdir, err := ioutil.TempDir("", "TestDlv")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	dlvbin := filepath.Join(tmpdir, "dlv.exe")
-	out, err := exec.Command("go", "build", "-o", dlvbin, "github.com/go-delve/delve/cmd/dlv").CombinedOutput()
+	args := append([]string{"build", "-o", dlvbin}, goflags...)
+	args = append(args, "github.com/go-delve/delve/cmd/dlv")
+
+	out, err := exec.Command("go", args...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("go build -o %v github.com/go-delve/delve/cmd/dlv: %v\n%s", dlvbin, err, string(out))
 	}
@@ -763,6 +782,43 @@ func TestTracePrintStack(t *testing.T) {
 	if !bytes.Contains(output, []byte("Stack:")) && !bytes.Contains(output, []byte("main.main")) {
 		t.Fatal("stacktrace not printed")
 	}
+}
+
+func TestTraceEBPF(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("not implemented on non linux/amd64 systems")
+	}
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+		t.Skip("requires at least Go 1.16 to run test")
+	}
+	usr, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usr.Uid != "0" {
+		t.Skip("test must be run as root")
+	}
+
+	dlvbin, tmpdir := getDlvBinEBPF(t)
+	defer os.RemoveAll(tmpdir)
+
+	expected := []byte("> (1) main.foo(99, 9801)\n")
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(tmpdir, "__debug"), filepath.Join(fixtures, "issue573.go"), "foo")
+	rdr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	assertNoError(cmd.Start(), t, "running trace")
+
+	output, err := ioutil.ReadAll(rdr)
+	assertNoError(err, t, "ReadAll")
+
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
+	}
+	cmd.Wait()
 }
 
 func TestDlvTestChdir(t *testing.T) {

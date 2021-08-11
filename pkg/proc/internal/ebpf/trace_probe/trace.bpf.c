@@ -140,6 +140,42 @@ int parse_param(struct pt_regs *ctx, function_parameter_t *param) {
     return 0;
 }
 
+__always_inline
+int get_goroutine_id(function_parameter_list_t *parsed_args) {
+    // Since eBPF programs have such strict stack requirements
+    // me must implement our own heap using a ringbuffer.
+    // Reserve some memory in our "heap" for the task_struct.
+    struct task_struct *task;
+    task = bpf_ringbuf_reserve(&heap, sizeof(struct task_struct), 0); 
+    if (!task) {
+        return 0;
+    }
+
+    // Get the current task.
+    __u64 task_ptr = bpf_get_current_task();
+    if (!task_ptr)
+    {
+        bpf_ringbuf_discard(task, 0);
+        return 0;
+    }
+    // The bpf_get_current_task helper returns us the address of the task_struct in
+    // kernel memory. Use the bpf_probe_read_kernel helper to read the struct out of
+    // kernel memory.
+    bpf_probe_read_kernel(task, sizeof(struct task_struct), (void*)(task_ptr));
+
+    // Get the Goroutine ID which is stored in thread local storage.
+    __u64  goid;
+    size_t g_addr;
+    bpf_probe_read_user(&g_addr, sizeof(void *), (void*)(task->thread.fsbase-8));
+    bpf_probe_read_user(&goid, sizeof(void *), (void*)(g_addr+parsed_args->goid_offset));
+    parsed_args->goroutine_id = goid;
+
+    // Free back up the memory we reserved for the task_struct.
+    bpf_ringbuf_discard(task, 0);
+
+    return 1;
+}
+
 SEC("uprobe/dlv_trace")
 int uprobe__dlv_trace(struct pt_regs *ctx) {
     function_parameter_list_t *args;
@@ -157,6 +193,11 @@ int uprobe__dlv_trace(struct pt_regs *ctx) {
         return 1;
     }
     memcpy(parsed_args, args, sizeof(function_parameter_list_t));
+
+    if (!get_goroutine_id(parsed_args)) {
+        bpf_ringbuf_discard(parsed_args, 0);
+        return 1;
+    }
 
     // Since we cannot loop in eBPF programs let's take adavantage of the
     // fact that in C switch cases will pass through automatically.

@@ -90,7 +90,7 @@ func (dbp *nativeProcess) SupportsBPF() bool {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *nativeProcess) SetUProbe(fnName string, args []ebpf.UProbeArgMap) error {
+func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProbeArgMap) error {
 	panic(ErrNativeBackendDisabled)
 }
 
