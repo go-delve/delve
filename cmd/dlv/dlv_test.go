@@ -785,6 +785,9 @@ func TestTracePrintStack(t *testing.T) {
 }
 
 func TestTraceEBPF(t *testing.T) {
+	if os.Getenv("CI") == "true" {
+		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
+	}
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		t.Skip("not implemented on non linux/amd64 systems")
 	}

@@ -10,6 +10,14 @@ check-cert:
 build: $(GO_SRC)
 	@go run _scripts/make.go build
 
+docker-image-build:
+	@docker build -t ebpf-builder:latest -f ./pkg/proc/internal/ebpf/Dockerfile ./pkg/proc/internal/ebpf/
+
+docker-ebpf-obj-build: docker-image-build
+	@docker run -it --rm \
+	-v $(abspath .):/delve \
+	ebpf-builder:latest
+
 $(BPF_OBJ): $(BPF_SRC)
 	clang \
 		-I /usr/include \
@@ -45,4 +53,4 @@ test-integration-run:
 vendor:
 	@go run _scripts/make.go vendor
 
-.PHONY: vendor test-integration-run test-proc-run test check-cert install build vet build-bpf uninstall
+.PHONY: vendor test-integration-run test-proc-run test check-cert install build vet build-bpf uninstall docker-build
