@@ -2567,7 +2567,7 @@ func TestLogPoints(t *testing.T) {
 
 					se = client.ExpectStoppedEvent(t)
 					if se.Body.Reason != "step" || se.Body.ThreadId != 1 {
-						t.Errorf("got stopped event = %#v, \nwant Reason=\"breakpoint\" ThreadId=1", se)
+						t.Errorf("got stopped event = %#v, \nwant Reason=\"step\" ThreadId=1", se)
 					}
 					checkStop(t, client, 1, "main.main", 28)
 				},
