@@ -4083,6 +4083,7 @@ func TestLaunchDebugRequest(t *testing.T) {
 			t.Fatalf("Binary removal failure:\n%s\n", rmErr)
 		}
 	} else {
+		tmpBin = cleanExeName(tmpBin)
 		// We did not get a removal error, but did we even try to remove before exiting?
 		// Confirm that the binary did get removed.
 		if _, err := os.Stat(tmpBin); err == nil || os.IsExist(err) {
@@ -4127,14 +4128,14 @@ func TestLaunchRequestDefaults(t *testing.T) {
 // is mapped to server's, not taget's, working directory.
 func TestLaunchRequestOutputPath(t *testing.T) {
 	runTest(t, "testargs", func(client *daptest.Client, fixture protest.Fixture) {
-		outrel := "__somebin"
+		inrel := "__somebin"
 		wd, _ := os.Getwd()
-		outabs := filepath.Join(wd, outrel)
+		outabs := cleanExeName(filepath.Join(wd, inrel))
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
 			func() {
 				client.LaunchRequestWithArgs(map[string]interface{}{
-					"mode": "debug", "program": fixture.Source, "output": outrel,
+					"mode": "debug", "program": fixture.Source, "output": inrel,
 					"cwd": filepath.Dir(wd)})
 			},
 			// Set breakpoints
@@ -4143,9 +4144,7 @@ func TestLaunchRequestOutputPath(t *testing.T) {
 				execute: func() {
 					checkStop(t, client, 1, "main.main", 12)
 					client.EvaluateRequest("os.Args[0]", 1000, "repl")
-					res := client.ExpectEvaluateResponse(t)
-
-					checkEval(t, res, fmt.Sprintf("%q", outabs), noChildren)
+					checkEval(t, client.ExpectEvaluateResponse(t), fmt.Sprintf("%q", outabs), noChildren)
 				},
 				disconnect: true,
 			}})
