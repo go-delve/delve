@@ -2513,7 +2513,7 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 	})
 }
 
-// TestLogPoints executes to a breakpoint and tests log points
+// TestLogPoints executes to a breakpoint and tests that log points
 // send OutputEvents and do not halt program execution.
 func TestLogPoints(t *testing.T) {
 	runTest(t, "callme", func(client *daptest.Client, fixture protest.Fixture) {
@@ -2527,6 +2527,7 @@ func TestLogPoints(t *testing.T) {
 			[]onBreakpoint{{
 				// Stop at line 23
 				execute: func() {
+					checkStop(t, client, 1, "main.main", 23)
 					bps := []int{6, 25, 27, 16}
 					logMessages := map[int]string{6: "in callme!", 16: "in callme2!"}
 					client.SetLogpointsRequest(fixture.Source, bps, logMessages)
@@ -2576,7 +2577,7 @@ func TestLogPoints(t *testing.T) {
 }
 
 // TestConcurrentBreakpointsLogPoints executes to a breakpoint and tests
-// logpoints and breakpoints that are hit concurrently are all processed.
+// that logpoints and breakpoints that are hit concurrently are all processed.
 func TestConcurrentBreakpointsLogPoints(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.SkipNow()
@@ -2590,8 +2591,9 @@ func TestConcurrentBreakpointsLogPoints(t *testing.T) {
 			// Set breakpoints
 			fixture.Source, []int{20},
 			[]onBreakpoint{{
-				// Stop at line 23
+				// Stop at line 20
 				execute: func() {
+					checkStop(t, client, 1, "main.main", 20)
 					bps := []int{8, 23}
 					logMessages := map[int]string{8: "hello"}
 					client.SetLogpointsRequest(fixture.Source, bps, logMessages)
