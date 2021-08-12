@@ -2159,7 +2159,7 @@ func TestSetBreakpoint(t *testing.T) {
 					checkVarExact(t, locals, 0, "i", "i", "0", "int", noChildren) // i == 0
 
 					// Edit the breakpoint to add a condition
-					client.SetConditionalBreakpointsRequest(fixture.Source, []int{8}, map[int]string{8: "i == 3"})
+					client.SetBreakpointsRequestWithArgs(fixture.Source, []int{8}, map[int]string{8: "i == 3"}, nil, nil)
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}})
 
 					// Continue until condition is hit
@@ -2172,7 +2172,7 @@ func TestSetBreakpoint(t *testing.T) {
 					checkVarExact(t, locals, 0, "i", "i", "3", "int", noChildren) // i == 3
 
 					// Edit the breakpoint to remove a condition
-					client.SetConditionalBreakpointsRequest(fixture.Source, []int{8}, map[int]string{8: ""})
+					client.SetBreakpointsRequestWithArgs(fixture.Source, []int{8}, map[int]string{8: ""}, nil, nil)
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}})
 
 					// Continue for one more loop iteration
@@ -2530,7 +2530,7 @@ func TestLogPoints(t *testing.T) {
 					checkStop(t, client, 1, "main.main", 23)
 					bps := []int{6, 25, 27, 16}
 					logMessages := map[int]string{6: "in callme!", 16: "in callme2!"}
-					client.SetLogpointsRequest(fixture.Source, bps, logMessages)
+					client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
 					client.ExpectSetBreakpointsResponse(t)
 
 					client.ContinueRequest(1)
@@ -2598,7 +2598,7 @@ func TestConcurrentBreakpointsLogPoints(t *testing.T) {
 					checkStop(t, client, 1, "main.main", 20)
 					bps := []int{8, 23}
 					logMessages := map[int]string{8: "hello"}
-					client.SetLogpointsRequest(fixture.Source, bps, logMessages)
+					client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
 					client.ExpectSetBreakpointsResponse(t)
 
 					client.ContinueRequest(1)
@@ -2816,7 +2816,7 @@ func TestHitConditionBreakpoints(t *testing.T) {
 			fixture.Source, []int{4},
 			[]onBreakpoint{{
 				execute: func() {
-					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "4"})
+					client.SetBreakpointsRequestWithArgs(fixture.Source, []int{7}, nil, map[int]string{7: "4"}, nil)
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{7, fixture.Source, true, ""}})
 
 					client.ContinueRequest(1)
@@ -2830,7 +2830,7 @@ func TestHitConditionBreakpoints(t *testing.T) {
 					checkVarExact(t, locals, 0, "i", "i", "4", "int", noChildren)
 
 					// Change the hit condition.
-					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "% 2"})
+					client.SetBreakpointsRequestWithArgs(fixture.Source, []int{7}, nil, map[int]string{7: "% 2"}, nil)
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{7, fixture.Source, true, ""}})
 
 					client.ContinueRequest(1)
@@ -2844,11 +2844,11 @@ func TestHitConditionBreakpoints(t *testing.T) {
 					checkVarExact(t, locals, 0, "i", "i", "6", "int", noChildren)
 
 					// Expect an error if an assignment is passed.
-					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "= 2"})
+					client.SetBreakpointsRequestWithArgs(fixture.Source, []int{7}, nil, map[int]string{7: "= 2"}, nil)
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{-1, "", false, ""}})
 
 					// Change the hit condition.
-					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "< 8"})
+					client.SetBreakpointsRequestWithArgs(fixture.Source, []int{7}, nil, map[int]string{7: "< 8"}, nil)
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{7, fixture.Source, true, ""}})
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)

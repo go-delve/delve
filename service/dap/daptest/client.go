@@ -225,11 +225,11 @@ func (c *Client) DisconnectRequestWithKillOption(kill bool) {
 
 // SetBreakpointsRequest sends a 'setBreakpoints' request.
 func (c *Client) SetBreakpointsRequest(file string, lines []int) {
-	c.SetConditionalBreakpointsRequest(file, lines, nil)
+	c.SetBreakpointsRequestWithArgs(file, lines, nil, nil, nil)
 }
 
-// SetBreakpointsRequest sends a 'setBreakpoints' request with conditions.
-func (c *Client) SetConditionalBreakpointsRequest(file string, lines []int, conditions map[int]string) {
+// SetBreakpointsRequest sends a 'setBreakpoints' request.
+func (c *Client) SetBreakpointsRequestWithArgs(file string, lines []int, conditions, hitConditions, logMessages map[int]string) {
 	request := &dap.SetBreakpointsRequest{Request: *c.newRequest("setBreakpoints")}
 	request.Arguments = dap.SetBreakpointsArguments{
 		Source: dap.Source{
@@ -240,49 +240,14 @@ func (c *Client) SetConditionalBreakpointsRequest(file string, lines []int, cond
 	}
 	for i, l := range lines {
 		request.Arguments.Breakpoints[i].Line = l
-		cond, ok := conditions[l]
-		if ok {
+		if cond, ok := conditions[l]; ok {
 			request.Arguments.Breakpoints[i].Condition = cond
 		}
-	}
-	c.send(request)
-}
-
-// SetBreakpointsRequest sends a 'setBreakpoints' request with conditions.
-func (c *Client) SetHitConditionalBreakpointsRequest(file string, lines []int, conditions map[int]string) {
-	request := &dap.SetBreakpointsRequest{Request: *c.newRequest("setBreakpoints")}
-	request.Arguments = dap.SetBreakpointsArguments{
-		Source: dap.Source{
-			Name: filepath.Base(file),
-			Path: file,
-		},
-		Breakpoints: make([]dap.SourceBreakpoint, len(lines)),
-	}
-	for i, l := range lines {
-		request.Arguments.Breakpoints[i].Line = l
-		cond, ok := conditions[l]
-		if ok {
-			request.Arguments.Breakpoints[i].HitCondition = cond
+		if hitCond, ok := hitConditions[l]; ok {
+			request.Arguments.Breakpoints[i].HitCondition = hitCond
 		}
-	}
-	c.send(request)
-}
-
-// SetLogpointsRequest sends a 'setBreakpoints' request with logMessages.
-func (c *Client) SetLogpointsRequest(file string, lines []int, logMessages map[int]string) {
-	request := &dap.SetBreakpointsRequest{Request: *c.newRequest("setBreakpoints")}
-	request.Arguments = dap.SetBreakpointsArguments{
-		Source: dap.Source{
-			Name: filepath.Base(file),
-			Path: file,
-		},
-		Breakpoints: make([]dap.SourceBreakpoint, len(lines)),
-	}
-	for i, l := range lines {
-		request.Arguments.Breakpoints[i].Line = l
-		msg, ok := logMessages[l]
-		if ok {
-			request.Arguments.Breakpoints[i].LogMessage = msg
+		if logMessage, ok := logMessages[l]; ok {
+			request.Arguments.Breakpoints[i].LogMessage = logMessage
 		}
 	}
 	c.send(request)
