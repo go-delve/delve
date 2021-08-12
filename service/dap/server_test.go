@@ -4059,9 +4059,8 @@ func TestLaunchDebugRequest(t *testing.T) {
 		// We reuse the harness that builds, but ignore the built binary,
 		// only relying on the source to be built in response to LaunchRequest.
 		runDebugSession(t, client, "launch", func() {
-			wd, _ := os.Getwd()
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "debug", "program": fixture.Source, "output": filepath.Join(wd, tmpBin)})
+				"mode": "debug", "program": fixture.Source, "output": tmpBin})
 		}, fixture.Source)
 	})
 	// Wait for the test to finish to capture all stderr
@@ -4102,7 +4101,6 @@ func TestLaunchRequestDefaults(t *testing.T) {
 	})
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, "launch", func() {
-			// Use the default output directory.
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				/*"mode":"debug" by default*/ "program": fixture.Source, "output": "__mybin"})
 		}, fixture.Source)
@@ -4122,6 +4120,35 @@ func TestLaunchRequestDefaults(t *testing.T) {
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "debug", "program": fixture.Source, "noDebug": "true"})
 		}, fixture.Source)
+	})
+}
+
+// TestLaunchRequestOutputPath verifies that relative output binary path
+// is mapped to server's, not taget's, working directory.
+func TestLaunchRequestOutputPath(t *testing.T) {
+	runTest(t, "testargs", func(client *daptest.Client, fixture protest.Fixture) {
+		outrel := "__somebin"
+		wd, _ := os.Getwd()
+		outabs := filepath.Join(wd, outrel)
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "debug", "program": fixture.Source, "output": outrel,
+					"cwd": filepath.Dir(wd)})
+			},
+			// Set breakpoints
+			fixture.Source, []int{12},
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 12)
+					client.EvaluateRequest("os.Args[0]", 1000, "repl")
+					res := client.ExpectEvaluateResponse(t)
+
+					checkEval(t, res, fmt.Sprintf("%q", outabs), noChildren)
+				},
+				disconnect: true,
+			}})
 	})
 }
 
