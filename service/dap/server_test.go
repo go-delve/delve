@@ -2576,8 +2576,10 @@ func TestLogPoints(t *testing.T) {
 	})
 }
 
-// TestConcurrentBreakpointsLogPoints executes to a breakpoint and tests
-// that logpoints and breakpoints that are hit concurrently are all processed.
+// TestConcurrentBreakpointsLogPoints executes to a breakpoint and then tests
+// that a breakpoint set in the main goroutine is hit the correct number of times
+// and log points set in the children goroutines produce the correct number of
+// output events.
 func TestConcurrentBreakpointsLogPoints(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.SkipNow()
@@ -2603,8 +2605,8 @@ func TestConcurrentBreakpointsLogPoints(t *testing.T) {
 					client.ExpectContinueResponse(t)
 
 					// There may be up to 1 breakpoint and any number of log points that are
-					// hit concurrently. We should get a stopped event for every breakpoint,
-					// and an output event for every log point hit.
+					// hit concurrently. We should get a stopped event everytime the breakpoint
+					// is hit and an output event for each log point hit.
 					var oeCount, seCount int
 					for oeCount < 10 || seCount < 10 {
 						switch m := client.ExpectMessage(t).(type) {
