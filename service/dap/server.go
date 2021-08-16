@@ -150,6 +150,8 @@ type launchAttachArgs struct {
 }
 
 // defaultArgs borrows the defaults for the arguments from the original vscode-go adapter.
+// TODO(polinasok): clean up this and its reference (Server.args)
+// in favor of default*Config variables defined in types.go.
 var defaultArgs = launchAttachArgs{
 	stopOnEntry:                  false,
 	stackTraceDepth:              50,
