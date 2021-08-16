@@ -4125,46 +4125,72 @@ func TestLaunchRequestDefaults(t *testing.T) {
 	})
 }
 
-func TestLaunchRequestNoDebug_GoodStatus(t *testing.T) {
+func TestNoDebug_GoodExitStatus(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		runNoDebugDebugSession(t, client, func() {
+		runNoDebugSession(t, client, func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"noDebug": true,
-				"mode":    "debug",
-				"program": fixture.Source,
-				"output":  "__mybin"})
-		}, fixture.Source, []int{8}, 0)
+				"noDebug": true, "mode": "debug", "program": fixture.Source, "output": "__mybin"})
+		}, 0)
 	})
 }
 
-func TestLaunchRequestNoDebug_BadStatus(t *testing.T) {
+func TestNoDebug_BadExitStatus(t *testing.T) {
 	runTest(t, "issue1101", func(client *daptest.Client, fixture protest.Fixture) {
-		runNoDebugDebugSession(t, client, func() {
+		runNoDebugSession(t, client, func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"noDebug": true,
-				"mode":    "debug",
-				"program": fixture.Source,
-				"output":  "__mybin"})
-		}, fixture.Source, []int{8}, 2)
+				"noDebug": true, "mode": "exec", "program": fixture.Path})
+		}, 2)
 	})
 }
 
-// runNoDebugDebugSession tests the session started with noDebug=true runs uninterrupted
-// even when breakpoint is set.
-func runNoDebugDebugSession(t *testing.T, client *daptest.Client, cmdRequest func(), source string, breakpoints []int, status int) {
+// runNoDebugSession tests the session started with noDebug=true runs
+// to completion and logs termination status.
+func runNoDebugSession(t *testing.T, client *daptest.Client, launchRequest func(), exitStatus int) {
 	client.InitializeRequest()
 	client.ExpectInitializeResponseAndCapabilities(t)
 
-	cmdRequest()
+	launchRequest()
 	// no initialized event.
 	// noDebug mode applies only to "launch" requests.
 	client.ExpectLaunchResponse(t)
 
-	client.ExpectOutputEventProcessExited(t, status)
+	client.ExpectOutputEventProcessExited(t, exitStatus)
 	client.ExpectTerminatedEvent(t)
 	client.DisconnectRequestWithKillOption(true)
 	client.ExpectDisconnectResponse(t)
 	client.ExpectTerminatedEvent(t)
+}
+
+func TestNoDebug_AcceptNoRequestsButDisconnect(t *testing.T) {
+	runTest(t, "http_server", func(client *daptest.Client, fixture protest.Fixture) {
+		client.InitializeRequest()
+		client.ExpectInitializeResponseAndCapabilities(t)
+		client.LaunchRequestWithArgs(map[string]interface{}{
+			"noDebug": true, "mode": "exec", "program": fixture.Path})
+		client.ExpectLaunchResponse(t)
+
+		// Anything other than disconnect should get rejected
+		var ExpectNoDebugError = func(cmd string) {
+			er := client.ExpectErrorResponse(t)
+			if er.Body.Error.Format != fmt.Sprintf("noDebug mode: unable to process '%s' request", cmd) {
+				t.Errorf("\ngot %#v\nwant 'noDebug mode: unable to process '%s' request'", er, cmd)
+			}
+		}
+		client.SetBreakpointsRequest(fixture.Source, []int{8})
+		ExpectNoDebugError("setBreakpoints")
+		client.SetFunctionBreakpointsRequest(nil)
+		ExpectNoDebugError("setFunctionBreakpoints")
+		client.PauseRequest(1)
+		ExpectNoDebugError("pause")
+		client.RestartRequest()
+		client.ExpectUnsupportedCommandErrorResponse(t)
+
+		// Disconnect request is ok
+		client.DisconnectRequestWithKillOption(true)
+		client.ExpectOutputEventTerminating(t)
+		client.ExpectDisconnectResponse(t)
+		client.ExpectTerminatedEvent(t)
+	})
 }
 
 func TestLaunchTestRequest(t *testing.T) {
