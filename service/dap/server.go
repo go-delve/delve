@@ -411,6 +411,19 @@ func (s *Server) handleRequest(request dap.Message) {
 		return
 	}
 
+	if s.isNoDebug() {
+		switch request := request.(type) {
+		case *dap.DisconnectRequest:
+			s.onDisconnectRequest(request)
+		case *dap.RestartRequest:
+			s.sendUnsupportedErrorResponse(request.Request)
+		default:
+			r := request.(dap.RequestMessage).GetRequest()
+			s.sendErrorResponse(*r, NoDebugIsRunning, "noDebug mode", fmt.Sprintf("unable to process '%s' request", r.Command))
+		}
+		return
+	}
+
 	// These requests, can be handled regardless of whether the targret is running
 	switch request := request.(type) {
 	case *dap.DisconnectRequest:
@@ -926,7 +939,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	s.log.Debugf("running program in %s\n", s.config.Debugger.WorkingDir)
 	if noDebug, ok := request.Arguments["noDebug"].(bool); ok && noDebug {
 		s.mu.Lock()
-		cmd, err := s.startNoDebugProcess(program, targetArgs, s.config.Debugger.WorkingDir)
+		cmd, err := s.newNoDebugProcess(program, targetArgs, s.config.Debugger.WorkingDir)
 		s.mu.Unlock()
 		if err != nil {
 			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
@@ -936,20 +949,22 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		// debug-related requests.
 		s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
 
-		// Then, block until the program terminates or is stopped.
-		if err := cmd.Wait(); err != nil {
-			s.log.Debugf("program exited with error: %v", err)
-		}
-		stopped := false
-		s.mu.Lock()
-		stopped = s.noDebugProcess == nil // if it was stopped, this should be nil.
-		s.noDebugProcess = nil
-		s.mu.Unlock()
+		// Start the program on a different goroutine, so we can listen for disconnect request.
+		go func() {
+			if err := cmd.Wait(); err != nil {
+				s.log.Debugf("program exited with error: %v", err)
+			}
+			stopped := false
+			s.mu.Lock()
+			stopped = s.noDebugProcess == nil // if it was stopped, this should be nil
+			s.noDebugProcess = nil
+			s.mu.Unlock()
 
-		if !stopped {
-			s.logToConsole(proc.ErrProcessExited{Pid: cmd.ProcessState.Pid(), Status: cmd.ProcessState.ExitCode()}.Error())
-			s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
-		}
+			if !stopped { // process terminated on its own
+				s.logToConsole(proc.ErrProcessExited{Pid: cmd.ProcessState.Pid(), Status: cmd.ProcessState.ExitCode()}.Error())
+				s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
+			}
+		}()
 		return
 	}
 
@@ -974,9 +989,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
 }
 
-// startNoDebugProcess is called from onLaunchRequest (run goroutine) and
-// requires holding mu lock.
-func (s *Server) startNoDebugProcess(program string, targetArgs []string, wd string) (*exec.Cmd, error) {
+// newNoDebugProcess is called from onLaunchRequest (run goroutine) and
+// requires holding mu lock. It prepares process exec.Cmd to be started.
+func (s *Server) newNoDebugProcess(program string, targetArgs []string, wd string) (*exec.Cmd, error) {
 	if s.noDebugProcess != nil {
 		return nil, fmt.Errorf("another launch request is in progress")
 	}
@@ -996,7 +1011,7 @@ func (s *Server) stopNoDebugProcess() {
 		// We already handled termination or there was never a process
 		return
 	}
-	if s.noDebugProcess.ProcessState.Exited() {
+	if s.noDebugProcess.ProcessState != nil && s.noDebugProcess.ProcessState.Exited() {
 		s.logToConsole(proc.ErrProcessExited{Pid: s.noDebugProcess.ProcessState.Pid(), Status: s.noDebugProcess.ProcessState.ExitCode()}.Error())
 	} else {
 		// TODO(hyangah): gracefully terminate the process and its children processes.
@@ -1133,11 +1148,6 @@ func (s *Server) isNoDebug() bool {
 }
 
 func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
-	if s.isNoDebug() {
-		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", "running in noDebug mode")
-		return
-	}
-
 	if request.Arguments.Source.Path == "" {
 		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", "empty file path")
 		return
@@ -1234,11 +1244,6 @@ func updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int, err error, g
 const functionBpPrefix = "functionBreakpoint"
 
 func (s *Server) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpointsRequest) {
-	if s.noDebugProcess != nil {
-		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", "running in noDebug mode")
-		return
-	}
-
 	// According to the spec, setFunctionBreakpoints "replaces all existing function
 	// breakpoints with new function breakpoints." The simplest way is
 	// to clear all and then set all. To maintain state (for hit count conditions)
