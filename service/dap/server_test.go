@@ -4059,9 +4059,8 @@ func TestLaunchDebugRequest(t *testing.T) {
 		// We reuse the harness that builds, but ignore the built binary,
 		// only relying on the source to be built in response to LaunchRequest.
 		runDebugSession(t, client, "launch", func() {
-			wd, _ := os.Getwd()
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "debug", "program": fixture.Source, "output": filepath.Join(wd, tmpBin)})
+				"mode": "debug", "program": fixture.Source, "output": tmpBin})
 		}, fixture.Source)
 	})
 	// Wait for the test to finish to capture all stderr
@@ -4084,6 +4083,7 @@ func TestLaunchDebugRequest(t *testing.T) {
 			t.Fatalf("Binary removal failure:\n%s\n", rmErr)
 		}
 	} else {
+		tmpBin = cleanExeName(tmpBin)
 		// We did not get a removal error, but did we even try to remove before exiting?
 		// Confirm that the binary did get removed.
 		if _, err := os.Stat(tmpBin); err == nil || os.IsExist(err) {
@@ -4102,7 +4102,6 @@ func TestLaunchRequestDefaults(t *testing.T) {
 	})
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, "launch", func() {
-			// Use the default output directory.
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				/*"mode":"debug" by default*/ "program": fixture.Source, "output": "__mybin"})
 		}, fixture.Source)
@@ -4122,6 +4121,33 @@ func TestLaunchRequestDefaults(t *testing.T) {
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "debug", "program": fixture.Source, "noDebug": "true"})
 		}, fixture.Source)
+	})
+}
+
+// TestLaunchRequestOutputPath verifies that relative output binary path
+// is mapped to server's, not target's, working directory.
+func TestLaunchRequestOutputPath(t *testing.T) {
+	runTest(t, "testargs", func(client *daptest.Client, fixture protest.Fixture) {
+		inrel := "__somebin"
+		wd, _ := os.Getwd()
+		outabs := cleanExeName(filepath.Join(wd, inrel))
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "debug", "program": fixture.Source, "output": inrel,
+					"cwd": filepath.Dir(wd)})
+			},
+			// Set breakpoints
+			fixture.Source, []int{12},
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 12)
+					client.EvaluateRequest("os.Args[0]", 1000, "repl")
+					checkEval(t, client.ExpectEvaluateResponse(t), fmt.Sprintf("%q", outabs), noChildren)
+				},
+				disconnect: true,
+			}})
 	})
 }
 
