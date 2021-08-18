@@ -173,17 +173,11 @@ class TestBuild(val os: String, val arch: String, version: String, buildId: Abso
                         arch
                     }
                 }
-                val dockerImg = when (arch) {
-                    "386" -> "ubuntu:20.04"
-                    else -> {
-                        "ubuntu:21.04"
-                    }
-                }
                 dockerCommand {
                     name = "Pull Ubuntu"
                     commandType = other {
                         subCommand = "pull"
-                        commandArgs = "$dockerArch/$dockerImg"
+                        commandArgs = "$dockerArch/ubuntu:20.04"
                     }
                 }
                 dockerCommand {
@@ -195,7 +189,7 @@ class TestBuild(val os: String, val arch: String, version: String, buildId: Abso
                         --env TEAMCITY_VERSION=${'$'}TEAMCITY_VERSION
                         --env CI=true
                         --privileged
-                        $dockerArch/$dockerImg
+                        $dockerArch/ubuntu:20.04
                         /delve/_scripts/test_linux.sh ${"go$version"} $arch
                     """.trimIndent()
                     }
