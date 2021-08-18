@@ -41,7 +41,7 @@ export GOARCH="$ARCH"
 export PATH="$GOROOT/bin:$PATH"
 go version
 
-go build ./cmd/dlv
+go build -x ./cmd/dlv
 go test -v ./cmd/dlv/...
 
-make test
+make --debug=v test
