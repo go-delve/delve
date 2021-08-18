@@ -29,6 +29,11 @@ import (
 )
 
 var testBackend string
+var ldFlags string
+
+func init() {
+	ldFlags = os.Getenv("CGO_LDFLAGS")
+}
 
 func TestMain(m *testing.M) {
 	flag.StringVar(&testBackend, "backend", "", "selects backend")
@@ -194,7 +199,7 @@ func getDlvBin(t *testing.T) (string, string) {
 	// from getDlvBinEBPF lets clear it here so
 	// we can ensure we don't get build errors
 	// depending on the test ordering.
-	os.Setenv("CGO_LDFLAGS", "")
+	os.Setenv("CGO_LDFLAGS", ldFlags)
 	return getDlvBinInternal(t)
 }
 
