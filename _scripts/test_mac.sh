@@ -45,6 +45,7 @@ go version
 # go test -v ./cmd/dlv/...
 
 go run _scripts/make.go build || true
-dmesg
+go run _scripts/make.go test || true
+sudo dmesg
 
 make --debug=v test
