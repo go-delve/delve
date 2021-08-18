@@ -36,16 +36,11 @@ fi
 
 mkdir -p $TMPDIR/gopath
 
+go env
+
 export GOPATH="$TMPDIR/gopath"
 export GOARCH="$ARCH"
 export PATH="$GOROOT/bin:$PATH"
 go version
 
-# go build -x ./cmd/dlv
-# go test -v ./cmd/dlv/...
-
-go run _scripts/make.go build || true
-go run _scripts/make.go test || true
-sudo dmesg
-
-make --debug=v test
+make test
