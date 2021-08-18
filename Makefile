@@ -53,4 +53,4 @@ test-integration-run:
 vendor:
 	@go run _scripts/make.go vendor
 
-.PHONY: vendor test-integration-run test-proc-run test check-cert install build vet build-bpf uninstall docker-build docker-ebpf-obj-build
+.PHONY: vendor test-integration-run test-proc-run test check-cert install build vet build-bpf uninstall docker-image-build docker-ebpf-obj-build
