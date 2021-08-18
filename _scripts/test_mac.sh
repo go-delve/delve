@@ -46,5 +46,6 @@ go version
 
 go run _scripts/make.go build
 go run _scripts/make.go test
+dmesg
 
 make --debug=v test
