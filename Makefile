@@ -11,7 +11,7 @@ build: $(GO_SRC)
 	@go run _scripts/make.go build
 
 docker-image-build:
-	@docker build -t ebpf-builder:latest -f ./pkg/proc/internal/ebpf/Dockerfile ./pkg/proc/internal/ebpf/
+	@docker build -t ebpf-builder:latest -f ./pkg/proc/internal/ebpf/trace_probe/Dockerfile ./pkg/proc/internal/ebpf/
 
 docker-ebpf-obj-build: docker-image-build
 	@docker run -it --rm \
@@ -30,7 +30,7 @@ $(BPF_OBJ): $(BPF_SRC)
 		pkg/proc/internal/ebpf/trace_probe/trace.bpf.c
 
 build-bpf: $(BPF_OBJ) $(GO_SRC)
-	@env CGO_LDFLAGS="/usr/lib64/libbpf.a" go run _scripts/make.go build --tags=ebpf
+	@env CGO_LDFLAGS="/usr/lib/libbpf.a" go run _scripts/make.go build --tags=ebpf
 
 install: $(GO_SRC)
 	@go run _scripts/make.go install
@@ -53,4 +53,4 @@ test-integration-run:
 vendor:
 	@go run _scripts/make.go vendor
 
-.PHONY: vendor test-integration-run test-proc-run test check-cert install build vet build-bpf uninstall docker-build
+.PHONY: vendor test-integration-run test-proc-run test check-cert install build vet build-bpf uninstall docker-build docker-ebpf-obj-build

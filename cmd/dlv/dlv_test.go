@@ -199,7 +199,7 @@ func getDlvBin(t *testing.T) (string, string) {
 }
 
 func getDlvBinEBPF(t *testing.T) (string, string) {
-	os.Setenv("CGO_LDFLAGS", "/usr/lib64/libbpf.a")
+	os.Setenv("CGO_LDFLAGS", "/usr/lib/libbpf.a")
 	return getDlvBinInternal(t, "-tags", "ebpf")
 }
 
