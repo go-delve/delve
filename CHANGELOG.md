@@ -1,7 +1,40 @@
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
+
+## [1.7.1] 2021-08-18
+
+### Added
+
+- *EXPERIMENTAL* Added support for eBPF based trace backend (@derekparker)
+- Added fuzzy completion for the CLI for commands and breakpoint locations (@derekparker)
+- Added stack watchpoints (@aarzilli)
+- Added verbose version output (@hyangah)
+- DAP: Support for replay and core modes (@Iggomez)
+- DAP: Added ability to page stack frames (@suzmue)
+- DAP: Added len as metadata for maps (@suzmue)
+- DAP: Add 'backend' launch/attach attribute (@polinasok)
+
+### Fixed
+
+- Fix handling of runtime throws (@derekparker)
+- DAP: Handle unexpected debugger termination (@polinasok)
+
+### Changed
+
+- Added configuration for Target to not clear stepping breakpoints (@suzmue)
+- Ignore existing breakpoints for continue-until (@derekparker)
+- Improve help output for examinemem (@derekparker)
+- Clarify next-while-nexting error (@suzmue)
+- DWARF improvements for additional opcodes (@aarzilli)
+- Treat SIGTERM as server disconnect signal (@polinasok)
+- Update Cobra lib to v1.1.3 (@hyangah)
+- Improvements to 'on' command (@aarzilli)
+- Terminal will now prompt when breakpoint is hit during next/step/stepout (@aarzilli)
+- DAP: Ensure server is always headless and target foregrounded (@polinasok)
+- DAP: Set hit breakpoint IDs (@suzmue)
 
 ## [1.7.0] 2021-07-19
 
