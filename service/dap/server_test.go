@@ -747,7 +747,11 @@ func checkVar(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, v
 	goti := got.Body.Variables[i]
 	matchedName := false
 	if useExactMatch {
-		matchedName = (goti.Name == name)
+		if strings.HasPrefix(name, "~r") {
+			matchedName = strings.HasPrefix(goti.Name, "~r")
+		} else {
+			matchedName = (goti.Name == name)
+		}
 	} else {
 		matchedName, _ = regexp.MatchString(name, goti.Name)
 	}
