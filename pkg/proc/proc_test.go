@@ -517,7 +517,7 @@ func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *te
 			}
 			switch pos := tc.pos.(type) {
 			case int:
-				if ln != pos {
+				if pos >= 0 && ln != pos {
 					t.Fatalf("Program did not continue to correct next location expected %d was %s:%d (%#x) (testcase %d)", pos, filepath.Base(f), ln, pc, i)
 				}
 			case string:
@@ -4816,33 +4816,64 @@ func TestBackwardNextDeferPanic(t *testing.T) {
 	if testBackend != "rr" {
 		t.Skip("Reverse stepping test needs rr")
 	}
-	testseq2(t, "defercall", "", []seqTest{
-		{contContinue, 12},
-		{contReverseNext, 11},
-		{contReverseNext, 10},
-		{contReverseNext, 9},
-		{contReverseNext, 27},
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
+		testseq2(t, "defercall", "", []seqTest{
+			{contContinue, 12},
+			{contReverseNext, 11},
+			{contReverseNext, 10},
+			{contReverseNext, 9},
+			{contReverseNext, 27},
 
-		{contContinueToBreakpoint, 12}, // skip first call to sampleFunction
-		{contContinueToBreakpoint, 6},  // go to call to sampleFunction through deferreturn
-		{contReverseNext, 13},
-		{contReverseNext, 12},
-		{contReverseNext, 11},
-		{contReverseNext, 10},
-		{contReverseNext, 9},
-		{contReverseNext, 27},
+			{contContinueToBreakpoint, 12}, // skip first call to sampleFunction
+			{contContinueToBreakpoint, 6},  // go to call to sampleFunction through deferreturn
+			{contReverseNext, -1},          // runtime.deferreturn, maybe we should try to skip this
+			{contReverseStepout, 13},
+			{contReverseNext, 12},
+			{contReverseNext, 11},
+			{contReverseNext, 10},
+			{contReverseNext, 9},
+			{contReverseNext, 27},
 
-		{contContinueToBreakpoint, 18}, // go to panic call
-		{contNext, 6},                  // panic so the deferred call happens
-		{contReverseNext, 18},
-		{contReverseNext, 17},
-		{contReverseNext, 16},
-		{contReverseNext, 15},
-		{contReverseNext, 23},
-		{contReverseNext, 22},
-		{contReverseNext, 21},
-		{contReverseNext, 28},
-	})
+			{contContinueToBreakpoint, 18}, // go to panic call
+			{contNext, 6},                  // panic so the deferred call happens
+			{contReverseNext, 18},
+			{contReverseNext, 17},
+			{contReverseNext, 16},
+			{contReverseNext, 15},
+			{contReverseNext, 23},
+			{contReverseNext, 22},
+			{contReverseNext, 21},
+			{contReverseNext, 28},
+		})
+	} else {
+		testseq2(t, "defercall", "", []seqTest{
+			{contContinue, 12},
+			{contReverseNext, 11},
+			{contReverseNext, 10},
+			{contReverseNext, 9},
+			{contReverseNext, 27},
+
+			{contContinueToBreakpoint, 12}, // skip first call to sampleFunction
+			{contContinueToBreakpoint, 6},  // go to call to sampleFunction through deferreturn
+			{contReverseNext, 13},
+			{contReverseNext, 12},
+			{contReverseNext, 11},
+			{contReverseNext, 10},
+			{contReverseNext, 9},
+			{contReverseNext, 27},
+
+			{contContinueToBreakpoint, 18}, // go to panic call
+			{contNext, 6},                  // panic so the deferred call happens
+			{contReverseNext, 18},
+			{contReverseNext, 17},
+			{contReverseNext, 16},
+			{contReverseNext, 15},
+			{contReverseNext, 23},
+			{contReverseNext, 22},
+			{contReverseNext, 21},
+			{contReverseNext, 28},
+		})
+	}
 }
 
 func TestIssue1925(t *testing.T) {
