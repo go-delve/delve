@@ -575,13 +575,14 @@ func (g *G) readDefers(frames []Stackframe) {
 }
 
 func (d *Defer) load() {
-	d.variable.loadValue(LoadConfig{false, 1, 0, 0, -1, 0})
-	if d.variable.Unreadable != nil {
-		d.Unreadable = d.variable.Unreadable
+	v := d.variable // +rtype _defer
+	v.loadValue(LoadConfig{false, 1, 0, 0, -1, 0})
+	if v.Unreadable != nil {
+		d.Unreadable = v.Unreadable
 		return
 	}
 
-	fnvar := d.variable.fieldVariable("fn")
+	fnvar := v.fieldVariable("fn")
 	if fnvar.Kind == reflect.Func {
 		// In Go 1.18, fn is a func().
 		d.DwrapPC = fnvar.Base
@@ -593,9 +594,9 @@ func (d *Defer) load() {
 		}
 	}
 
-	d.DeferPC, _ = constant.Uint64Val(d.variable.fieldVariable("pc").Value)
-	d.SP, _ = constant.Uint64Val(d.variable.fieldVariable("sp").Value)
-	sizVar := d.variable.fieldVariable("siz")
+	d.DeferPC, _ = constant.Uint64Val(v.fieldVariable("pc").Value) // +rtype uintptr
+	d.SP, _ = constant.Uint64Val(v.fieldVariable("sp").Value)      // +rtype uintptr
+	sizVar := v.fieldVariable("siz")                               // +rtype -opt int32
 	if sizVar != nil {
 		// In Go <1.18, siz stores the number of bytes of
 		// defer arguments following the defer record. In Go
@@ -604,7 +605,7 @@ func (d *Defer) load() {
 		d.argSz, _ = constant.Int64Val(sizVar.Value)
 	}
 
-	linkvar := d.variable.fieldVariable("link").maybeDereference()
+	linkvar := v.fieldVariable("link").maybeDereference() // +rtype *_defer
 	if linkvar.Addr != 0 {
 		d.link = &Defer{variable: linkvar}
 	}

@@ -25,10 +25,14 @@ const (
 
 	maxArrayStridePrefetch = 1024 // Maximum size of array stride for which we will prefetch the array contents
 
-	hashTophashEmptyZero = 0 // used by map reading code, indicates an empty cell
-	hashTophashEmptyOne  = 1 // used by map reading code, indicates an empty cell in Go 1.12 and later
-	hashMinTopHashGo111  = 4 // used by map reading code, indicates minimum value of tophash that isn't empty or evacuated, in Go1.11
-	hashMinTopHashGo112  = 5 // used by map reading code, indicates minimum value of tophash that isn't empty or evacuated, in Go1.12
+	// hashTophashEmptyZero is used by map reading code, indicates an empty cell
+	hashTophashEmptyZero = 0 // +rtype emptyRest
+	// hashTophashEmptyOne is used by map reading code, indicates an empty cell in Go 1.12 and later
+	hashTophashEmptyOne = 1 // +rtype emptyOne
+	// hashMinTopHashGo111 used by map reading code, indicates minimum value of tophash that isn't empty or evacuated, in Go1.11
+	hashMinTopHashGo111 = 4 // +rtype minTopHash
+	// hashMinTopHashGo112 is used by map reading code, indicates minimum value of tophash that isn't empty or evacuated, in Go1.12
+	hashMinTopHashGo112 = 5 // +rtype minTopHash
 
 	maxFramePrefetchSize = 1 * 1024 * 1024 // Maximum prefetch size for a stack frame
 
@@ -843,22 +847,22 @@ func (v *Variable) parseG() (*G, error) {
 		if _, isptr := v.RealType.(*godwarf.PtrType); !isptr {
 			break
 		}
-		v = v.maybeDereference()
+		v = v.maybeDereference() // +rtype g
 	}
 
 	v.mem = cacheMemory(v.mem, v.Addr, int(v.RealType.Size()))
 
-	schedVar := v.loadFieldNamed("sched")
+	schedVar := v.loadFieldNamed("sched") // +rtype gobuf
 	if schedVar == nil {
 		return nil, ErrUnreadableG
 	}
-	pc, _ := constant.Int64Val(schedVar.fieldVariable("pc").Value)
-	sp, _ := constant.Int64Val(schedVar.fieldVariable("sp").Value)
+	pc, _ := constant.Int64Val(schedVar.fieldVariable("pc").Value) // +rtype uintptr
+	sp, _ := constant.Int64Val(schedVar.fieldVariable("sp").Value) // +rtype uintptr
 	var bp, lr int64
-	if bpvar := schedVar.fieldVariable("bp"); bpvar != nil && bpvar.Value != nil {
+	if bpvar := schedVar.fieldVariable("bp"); /* +rtype -opt uintptr */ bpvar != nil && bpvar.Value != nil {
 		bp, _ = constant.Int64Val(bpvar.Value)
 	}
-	if bpvar := schedVar.fieldVariable("lr"); bpvar != nil && bpvar.Value != nil {
+	if bpvar := schedVar.fieldVariable("lr"); /* +rtype -opt uintptr */ bpvar != nil && bpvar.Value != nil {
 		lr, _ = constant.Int64Val(bpvar.Value)
 	}
 
@@ -874,25 +878,25 @@ func (v *Variable) parseG() (*G, error) {
 		return n
 	}
 
-	id := loadInt64Maybe("goid")
-	gopc := loadInt64Maybe("gopc")
-	startpc := loadInt64Maybe("startpc")
-	waitSince := loadInt64Maybe("waitsince")
+	id := loadInt64Maybe("goid")             // +rtype int64
+	gopc := loadInt64Maybe("gopc")           // +rtype uintptr
+	startpc := loadInt64Maybe("startpc")     // +rtype uintptr
+	waitSince := loadInt64Maybe("waitsince") // +rtype int64
 	waitReason := int64(0)
 	if producer := v.bi.Producer(); producer != "" && goversion.ProducerAfterOrEqual(producer, 1, 11) {
-		waitReason = loadInt64Maybe("waitreason")
+		waitReason = loadInt64Maybe("waitreason") // +rtype -opt waitReason
 	}
 	var stackhi, stacklo uint64
-	if stackVar := v.loadFieldNamed("stack"); stackVar != nil {
-		if stackhiVar := stackVar.fieldVariable("hi"); stackhiVar != nil {
+	if stackVar := v.loadFieldNamed("stack"); /* +rtype stack */ stackVar != nil {
+		if stackhiVar := stackVar.fieldVariable("hi"); /* +rtype uintptr */ stackhiVar != nil {
 			stackhi, _ = constant.Uint64Val(stackhiVar.Value)
 		}
-		if stackloVar := stackVar.fieldVariable("lo"); stackloVar != nil {
+		if stackloVar := stackVar.fieldVariable("lo"); /* +rtype uintptr */ stackloVar != nil {
 			stacklo, _ = constant.Uint64Val(stackloVar.Value)
 		}
 	}
 
-	status := loadInt64Maybe("atomicstatus")
+	status := loadInt64Maybe("atomicstatus") // +rtype uint32
 
 	if unreadable {
 		return nil, ErrUnreadableG
@@ -1923,16 +1927,16 @@ func (v *Variable) mapIterator() *mapIterator {
 		var err error
 		field, _ := sv.toField(f)
 		switch f.Name {
-		case "count":
+		case "count": // +rtype -fieldof hmap int
 			v.Len, err = field.asInt()
-		case "B":
+		case "B": // +rtype -fieldof hmap uint8
 			var b uint64
 			b, err = field.asUint()
 			it.numbuckets = 1 << b
 			it.oldmask = (1 << (b - 1)) - 1
-		case "buckets":
+		case "buckets": // +rtype -fieldof hmap unsafe.Pointer
 			it.buckets = field.maybeDereference()
-		case "oldbuckets":
+		case "oldbuckets": // +rtype -fieldof hmap unsafe.Pointer
 			it.oldbuckets = field.maybeDereference()
 		}
 		if err != nil {
@@ -2034,7 +2038,7 @@ func (it *mapIterator) nextBucket() bool {
 		}
 
 		switch f.Name {
-		case "tophash":
+		case "tophash": // +rtype -fieldof bmap [8]uint8
 			it.tophashes = field
 		case "keys":
 			it.keys = field
@@ -2150,15 +2154,20 @@ func (v *Variable) readInterface() (_type, data *Variable, isnil bool) {
 
 	ityp := resolveTypedef(&v.RealType.(*godwarf.InterfaceType).TypedefType).(*godwarf.StructType)
 
+	// +rtype -field iface.tab *itab
+	// +rtype -field iface.data unsafe.Pointer
+	// +rtype -field eface._type *_type
+	// +rtype -field eface.data unsafe.Pointer
+
 	for _, f := range ityp.Field {
 		switch f.Name {
 		case "tab": // for runtime.iface
-			tab, _ := v.toField(f)
+			tab, _ := v.toField(f) // +rtype *itab
 			tab = tab.maybeDereference()
 			isnil = tab.Addr == 0
 			if !isnil {
 				var err error
-				_type, err = tab.structMember("_type")
+				_type, err = tab.structMember("_type") // +rtype *_type
 				if err != nil {
 					v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
 					return
