@@ -4826,97 +4826,97 @@ func TestBadLaunchRequests(t *testing.T) {
 
 		// Test for the DAP-specific detailed error message.
 		client.LaunchRequest("exec", "", stopOnEntry)
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
 		// Bad "program"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": 12345})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": nil})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug"})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
 		// Bad "mode"
 		client.LaunchRequest("remote", fixture.Path, stopOnEntry)
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: Unsupported 'mode' value \"remote\" in debug configuration.")
 
 		client.LaunchRequest("notamode", fixture.Path, stopOnEntry)
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: Unsupported 'mode' value \"notamode\" in debug configuration.")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": 12345, "program": fixture.Path})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: Unsupported 'mode' value %!q(float64=12345) in debug configuration.")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": ""}) // empty mode defaults to "debug" (not an error)
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{}) // missing mode defaults to "debug" (not an error)
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 
 		// Bad "args"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "exec", "program": fixture.Path, "args": nil})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: 'args' attribute '<nil>' in debug configuration is not an array.")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "exec", "program": fixture.Path, "args": 12345})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: 'args' attribute '12345' in debug configuration is not an array.")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "exec", "program": fixture.Path, "args": []int{1, 2}})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: value '1' in 'args' attribute in debug configuration is not a string.")
 
 		// Bad "buildFlags"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": 123})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: 'buildFlags' attribute '123' in debug configuration is not a string.")
 
 		// Bad "backend"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "backend": 123})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: 'backend' attribute '123' in debug configuration is not a string.")
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "backend": "foo"})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: could not launch process: unknown backend \"foo\"")
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "backend": ""})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: could not launch process: unknown backend \"\"")
 
 		// Bad "substitutePath"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": 123})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: 'substitutePath' attribute '123' in debug configuration is not a []{'from': string, 'to': string}")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{123}})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: 'substitutePath' attribute '[123]' in debug configuration is not a []{'from': string, 'to': string}")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{map[string]interface{}{"to": "path2"}}})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: 'substitutePath' attribute '[map[to:path2]]' in debug configuration is not a []{'from': string, 'to': string}")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{map[string]interface{}{"from": "path1", "to": 123}}})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: 'substitutePath' attribute '[map[from:path1 to:123]]' in debug configuration is not a []{'from': string, 'to': string}")
 
 		// Bad "cwd"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "cwd": 123})
-		checkFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: 'cwd' attribute '123' in debug configuration is not a string.")
 
 		// Skip detailed message checks for potentially different OS-specific errors.
 		client.LaunchRequest("exec", fixture.Path+"_does_not_exist", stopOnEntry)
-		checkFailedToLaunch(client.ExpectInvisibleErrorResponse(t)) // No such file or directory
+		checkFailedToLaunch(client.ExpectVisibleErrorResponse(t)) // No such file or directory
 
 		client.LaunchRequest("debug", fixture.Path+"_does_not_exist", stopOnEntry)
 		oe := client.ExpectOutputEvent(t)
@@ -4933,7 +4933,7 @@ func TestBadLaunchRequests(t *testing.T) {
 		checkFailedToLaunch(client.ExpectInvisibleErrorResponse(t))
 
 		client.LaunchRequest("exec", fixture.Source, stopOnEntry)
-		checkFailedToLaunch(client.ExpectInvisibleErrorResponse(t)) // Not an executable
+		checkFailedToLaunch(client.ExpectVisibleErrorResponse(t)) // Not an executable
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": "-bad -flags"})
 		oe = client.ExpectOutputEvent(t)
@@ -4950,36 +4950,36 @@ func TestBadLaunchRequests(t *testing.T) {
 
 		// Bad "cwd"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": false, "cwd": "dir/invalid"})
-		checkFailedToLaunch(client.ExpectErrorResponse(t)) // invalid directory, the error message is system-dependent.
+		checkFailedToLaunch(client.ExpectVisibleErrorResponse(t)) // invalid directory, the error message is system-dependent.
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "noDebug": true, "cwd": "dir/invalid"})
-		checkFailedToLaunch(client.ExpectErrorResponse(t)) // invalid directory, the error message is system-dependent.
+		checkFailedToLaunch(client.ExpectVisibleErrorResponse(t)) // invalid directory, the error message is system-dependent.
 
 		// Bad "replay" parameters
 		// These errors come from dap layer
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "replay", "traceDirPath": ""})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: The 'traceDirPath' attribute is missing in debug configuration.")
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "replay", "program": fixture.Source, "traceDirPath": ""})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: The 'traceDirPath' attribute is missing in debug configuration.")
 		// These errors come from debugger layer
 		if _, err := exec.LookPath("rr"); err != nil {
 			client.LaunchRequestWithArgs(map[string]interface{}{"mode": "replay", "backend": "ignored", "traceDirPath": ".."})
-			checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+			checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 				"Failed to launch: backend unavailable")
 		}
 
 		// Bad "core" parameters
 		// These errors come from dap layer
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "core", "coreFilePath": ""})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: The program attribute is missing in debug configuration.")
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "core", "program": fixture.Source, "coreFilePath": ""})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: The 'coreFilePath' attribute is missing in debug configuration.")
 		// These errors come from debugger layer
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "core", "backend": "ignored", "program": fixture.Source, "coreFilePath": fixture.Source})
-		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: unrecognized core format")
 
 		// We failed to launch the program. Make sure shutdown still works.
@@ -5021,45 +5021,45 @@ func TestBadAttachRequest(t *testing.T) {
 
 		// Bad "mode"
 		client.AttachRequest(map[string]interface{}{"mode": "remote"})
-		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to attach: Unsupported 'mode' value \"remote\" in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{"mode": "blah blah blah"})
-		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to attach: Unsupported 'mode' value \"blah blah blah\" in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{"mode": 123})
-		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to attach: Unsupported 'mode' value %!q(float64=123) in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{"mode": ""}) // empty mode defaults to "local" (not an error)
-		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{}) // no mode defaults to "local" (not an error)
-		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
 		// Bad "processId"
 		client.AttachRequest(map[string]interface{}{"mode": "local"})
-		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": nil})
-		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 0})
-		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": "1"})
-		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to attach: The 'processId' attribute is missing in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 1})
 		// The exact message varies on different systems, so skip that check
-		checkFailedToAttach(client.ExpectInvisibleErrorResponse(t)) // could not attach to pid 1
+		checkFailedToAttach(client.ExpectVisibleErrorResponse(t)) // could not attach to pid 1
 
 		// This will make debugger.(*Debugger) panic, which we will catch as an internal error.
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": -1})
@@ -5080,13 +5080,13 @@ func TestBadAttachRequest(t *testing.T) {
 
 		// Bad "backend"
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 1, "backend": 123})
-		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to attach: 'backend' attribute '123' in debug configuration is not a string.")
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 1, "backend": "foo"})
-		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to attach: could not attach to pid 1: unknown backend \"foo\"")
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 1, "backend": ""})
-		checkFailedToAttachWithMessage(client.ExpectInvisibleErrorResponse(t),
+		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to attach: could not attach to pid 1: unknown backend \"\"")
 
 		// We failed to attach to the program. Make sure shutdown still works.
