@@ -3544,7 +3544,7 @@ func testDeclLineCount(t *testing.T, p *proc.Target, lineno int, tgtvars []strin
 	assertLineNumber(p, t, lineno, "Program did not continue to correct next location")
 	scope, err := proc.GoroutineScope(p, p.CurrentThread())
 	assertNoError(err, t, fmt.Sprintf("GoroutineScope (:%d)", lineno))
-	vars, err := scope.Locals()
+	vars, err := scope.Locals(0)
 	assertNoError(err, t, fmt.Sprintf("Locals (:%d)", lineno))
 	if len(vars) != len(tgtvars) {
 		t.Fatalf("wrong number of variables %d (:%d)", len(vars), lineno)
