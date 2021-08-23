@@ -10,6 +10,7 @@ import (
 	"go/token"
 	"reflect"
 
+	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/goversion"
@@ -485,23 +486,18 @@ func (t *Target) SetEBPFTracepoint(fnName string) error {
 	// goroutine ID.
 	rdr := t.BinInfo().Images[0].DwarfReader()
 	rdr.SeekToTypeNamed("runtime.g")
+	typ, err := t.BinInfo().findType("runtime.g")
+	if err != nil {
+		return errors.New("could not find type for runtime.g")
+	}
 	var goidOffset int64
-	for {
-		ent, err := rdr.Next()
-		if err != nil {
-			return err
-		}
-		name, ok := ent.Val(dwarf.AttrName).(string)
-		if !ok {
-			continue
-		}
-		if name == "goid" {
-			off, ok := ent.Val(dwarf.AttrDataMemberLoc).(int64)
-			if !ok {
-				return errors.New("invalid type case for member location offset")
+	switch t := typ.(type) {
+	case *godwarf.StructType:
+		for _, field := range t.Field {
+			if field.Name == "goid" {
+				goidOffset = field.ByteOffset
+				break
 			}
-			goidOffset = off
-			break
 		}
 	}
 

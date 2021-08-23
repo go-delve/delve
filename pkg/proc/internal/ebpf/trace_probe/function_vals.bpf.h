@@ -28,7 +28,8 @@ typedef struct function_parameter {
 // function_parameter_list holds info about the function parameters and
 // stores information on up to 6 parameters.
 typedef struct function_parameter_list {
-      unsigned int goid_offset;
+      unsigned int goid_offset; // Offset of the `goid` struct member.
+      long long g_addr_offset;  // Offset of the Goroutine struct from the TLS segment.
       int goroutine_id;
 
       unsigned int fn_addr;

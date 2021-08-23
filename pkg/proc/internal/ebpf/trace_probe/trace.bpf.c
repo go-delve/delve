@@ -166,7 +166,7 @@ int get_goroutine_id(function_parameter_list_t *parsed_args) {
     // Get the Goroutine ID which is stored in thread local storage.
     __u64  goid;
     size_t g_addr;
-    bpf_probe_read_user(&g_addr, sizeof(void *), (void*)(task->thread.fsbase-8));
+    bpf_probe_read_user(&g_addr, sizeof(void *), (void*)(task->thread.fsbase+parsed_args->g_addr_offset));
     bpf_probe_read_user(&goid, sizeof(void *), (void*)(g_addr+parsed_args->goid_offset));
     parsed_args->goroutine_id = goid;
 

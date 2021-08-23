@@ -723,7 +723,7 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 	}
 
 	key := fn.Entry
-	err := dbp.os.ebpf.UpdateArgMap(key, goidOffset, args)
+	err := dbp.os.ebpf.UpdateArgMap(key, goidOffset, args, dbp.BinInfo().GStructOffset())
 	if err != nil {
 		return err
 	}

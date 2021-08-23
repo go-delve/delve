@@ -51,11 +51,12 @@ func (ctx *EBPFContext) AttachUprobe(pid int, name string, offset uint32) error 
 	return err
 }
 
-func (ctx *EBPFContext) UpdateArgMap(key uint64, goidOffset int64, args []UProbeArgMap) error {
+func (ctx *EBPFContext) UpdateArgMap(key uint64, goidOffset int64, args []UProbeArgMap, gAddrOffset uint64) error {
 	if ctx.bpfArgMap == nil {
 		return errors.New("eBPF map not loaded")
 	}
 	params := createFunctionParameterList(key, goidOffset, args)
+	params.g_addr_offset = C.longlong(gAddrOffset)
 	return ctx.bpfArgMap.Update(unsafe.Pointer(&key), unsafe.Pointer(&params))
 }
 
