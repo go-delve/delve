@@ -49,12 +49,20 @@ type EvalScope struct {
 	// The goroutine executing the expression evaluation shall signal that the
 	// evaluation is complete by closing the continueRequest channel.
 	callCtx *callContext
-
-	// If trustArgOrder is true function arguments that don't have an address
-	// will have one assigned by looking at their position in the argument
-	// list.
-	trustArgOrder bool
 }
+
+type localsFlags uint8
+
+const (
+	// If localsTrustArgOrder is set function arguments that don't have an
+	// address will have one assigned by looking at their position in the argument
+	// list.
+	localsTrustArgOrder localsFlags = 1 << iota
+
+	// If localsNoDeclLineCheck the declaration line isn't checked at
+	// all to determine if the variable is in scope.
+	localsNoDeclLineCheck
+)
 
 // ConvertEvalScope returns a new EvalScope in the context of the
 // specified goroutine ID and stack frame.
@@ -201,12 +209,12 @@ func isAssignment(err error) (int, bool) {
 }
 
 // Locals returns all variables in 'scope'.
-func (scope *EvalScope) Locals() ([]*Variable, error) {
+func (scope *EvalScope) Locals(flags localsFlags) ([]*Variable, error) {
 	if scope.Fn == nil {
 		return nil, errors.New("unable to find function context")
 	}
 
-	trustArgOrder := scope.trustArgOrder && scope.BinInfo.Producer() != "" && goversion.ProducerAfterOrEqual(scope.BinInfo.Producer(), 1, 12) && scope.Fn != nil && (scope.PC == scope.Fn.Entry)
+	trustArgOrder := (flags&localsTrustArgOrder != 0) && scope.BinInfo.Producer() != "" && goversion.ProducerAfterOrEqual(scope.BinInfo.Producer(), 1, 12) && scope.Fn != nil && (scope.PC == scope.Fn.Entry)
 
 	dwarfTree, err := scope.image().getDwarfTree(scope.Fn.offset)
 	if err != nil {
@@ -214,6 +222,9 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 	}
 
 	variablesFlags := reader.VariablesOnlyVisible
+	if flags&localsNoDeclLineCheck != 0 {
+		variablesFlags = reader.VariablesNoDeclLineCheck
+	}
 	if scope.BinInfo.Producer() != "" && goversion.ProducerAfterOrEqual(scope.BinInfo.Producer(), 1, 15) {
 		variablesFlags |= reader.VariablesTrustDeclLine
 	}
@@ -417,7 +428,7 @@ func (scope *EvalScope) SetVariable(name, value string) error {
 
 // LocalVariables returns all local variables from the current function scope.
 func (scope *EvalScope) LocalVariables(cfg LoadConfig) ([]*Variable, error) {
-	vars, err := scope.Locals()
+	vars, err := scope.Locals(0)
 	if err != nil {
 		return nil, err
 	}
@@ -431,7 +442,7 @@ func (scope *EvalScope) LocalVariables(cfg LoadConfig) ([]*Variable, error) {
 
 // FunctionArguments returns the name, value, and type of all current function arguments.
 func (scope *EvalScope) FunctionArguments(cfg LoadConfig) ([]*Variable, error) {
-	vars, err := scope.Locals()
+	vars, err := scope.Locals(0)
 	if err != nil {
 		return nil, err
 	}
@@ -1134,7 +1145,7 @@ func (scope *EvalScope) evalIdent(node *ast.Ident) (*Variable, error) {
 		return nilVariable, nil
 	}
 
-	vars, err := scope.Locals()
+	vars, err := scope.Locals(0)
 	if err != nil {
 		return nil, err
 	}
