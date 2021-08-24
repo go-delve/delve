@@ -133,15 +133,14 @@ type Server struct {
 
 	// running tracks the running state according to the server,
 	// which may not correspond to the actual running state of
-	// the process.
+	// the process (e.g. if a running command is temporarily interrupted).
 	running   bool
 	runningMu sync.Mutex
 
 	// changeStateMu must be held for a request to resume execution of the
 	// process.
 	// We use this to guarantee that no other request can unexpectedly
-	// change the state to running, when we expect the process to halted.
-	// Do not attempt to lock if already holding sendingMu or runningMu.
+	// change the state to running, when we expect the process to be halted.
 	changeStateMu sync.Mutex
 }
 
@@ -1658,6 +1657,8 @@ func stoppedGoroutineID(state *api.DebuggerState) (id int) {
 	return id
 }
 
+// stoppedOnBreakpointGoroutineID gets the goroutine id of the first goroutine
+// that is stopped on a real breakpoint.
 func stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (id int) {
 	// Some of the breakpoints may be log points, choose the goroutine
 	// that is not stopped on a tracepoint.
