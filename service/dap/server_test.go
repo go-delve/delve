@@ -4154,6 +4154,35 @@ func TestLaunchRequestOutputPath(t *testing.T) {
 	})
 }
 
+func TestExitNonZeroStatus(t *testing.T) {
+	runTest(t, "pr1055", func(client *daptest.Client, fixture protest.Fixture) {
+		client.InitializeRequest()
+		client.ExpectInitializeResponseAndCapabilities(t)
+
+		client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+		client.ExpectInitializedEvent(t)
+		client.ExpectLaunchResponse(t)
+
+		client.ConfigurationDoneRequest()
+		client.ExpectConfigurationDoneResponse(t)
+
+		client.ExpectTerminatedEvent(t)
+
+		client.DisconnectRequest()
+		// Check that the process exit status is 2.
+		oep := client.ExpectOutputEventProcessExited(t, 2)
+		if oep.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Category='console'", oep)
+		}
+		oed := client.ExpectOutputEventDetaching(t)
+		if oed.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Category='console'", oed)
+		}
+		client.ExpectDisconnectResponse(t)
+		client.ExpectTerminatedEvent(t)
+	})
+}
+
 func TestNoDebug_GoodExitStatus(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runNoDebugSession(t, client, func() {
