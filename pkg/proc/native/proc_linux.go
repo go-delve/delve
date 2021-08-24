@@ -705,7 +705,7 @@ func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 	return linutil.EntryPointFromAuxv(auxvbuf, dbp.bi.Arch.PtrSize()), nil
 }
 
-func (dbp *nativeProcess) SetUProbe(fnName string, args []ebpf.UProbeArgMap) error {
+func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProbeArgMap) error {
 	// Lazily load and initialize the BPF program upon request to set a uprobe.
 	if dbp.os.ebpf == nil {
 		dbp.os.ebpf, _ = ebpf.LoadEBPFTracingProgram()
@@ -717,22 +717,23 @@ func (dbp *nativeProcess) SetUProbe(fnName string, args []ebpf.UProbeArgMap) err
 		return errors.New("too many arguments in traced function, max is 6")
 	}
 
-	debugname := dbp.bi.Images[0].Path
-	offset, err := ebpf.SymbolToOffset(debugname, fnName)
-	if err != nil {
-		return err
-	}
-	err = dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, offset)
-	if err != nil {
-		return err
-	}
 	fn, ok := dbp.bi.LookupFunc[fnName]
 	if !ok {
 		return fmt.Errorf("could not find function: %s", fnName)
 	}
 
 	key := fn.Entry
-	return dbp.os.ebpf.UpdateArgMap(key, args)
+	err := dbp.os.ebpf.UpdateArgMap(key, goidOffset, args, dbp.BinInfo().GStructOffset())
+	if err != nil {
+		return err
+	}
+
+	debugname := dbp.bi.Images[0].Path
+	offset, err := ebpf.SymbolToOffset(debugname, fnName)
+	if err != nil {
+		return err
+	}
+	return dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, offset)
 }
 
 func killProcess(pid int) error {

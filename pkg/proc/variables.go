@@ -843,10 +843,11 @@ func (v *Variable) parseG() (*G, error) {
 		}
 		return nil, ErrNoGoroutine{tid: id}
 	}
-	for {
-		if _, isptr := v.RealType.(*godwarf.PtrType); !isptr {
-			break
-		}
+	isptr := func(t godwarf.Type) bool {
+		_, ok := t.(*godwarf.PtrType)
+		return ok
+	}
+	for isptr(v.RealType) {
 		v = v.maybeDereference() // +rtype g
 	}
 

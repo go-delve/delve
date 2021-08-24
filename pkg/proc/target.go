@@ -405,6 +405,7 @@ func (t *Target) CurrentThread() Thread {
 
 type UProbeTraceResult struct {
 	FnAddr      int
+	GoroutineID int
 	InputParams []*Variable
 }
 
@@ -414,6 +415,7 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 	for _, tp := range tracepoints {
 		r := &UProbeTraceResult{}
 		r.FnAddr = tp.FnAddr
+		r.GoroutineID = tp.GoroutineID
 		for _, ip := range tp.InputParams {
 			v := &Variable{}
 			v.RealType = ip.RealType

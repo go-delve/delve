@@ -274,7 +274,7 @@ func (p *process) SupportsBPF() bool {
 	return false
 }
 
-func (dbp *process) SetUProbe(fnName string, args []ebpf.UProbeArgMap) error {
+func (dbp *process) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProbeArgMap) error {
 	panic("not implemented")
 }
 
