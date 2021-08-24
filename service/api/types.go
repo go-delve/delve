@@ -52,7 +52,7 @@ type DebuggerState struct {
 }
 
 type TracepointResult struct {
-	// Addr is deprecated, use Addrs.
+	// Addr is the address of this tracepoint.
 	Addr uint64 `json:"addr"`
 	// File is the source file for the breakpoint.
 	File string `json:"file"`
@@ -61,6 +61,8 @@ type TracepointResult struct {
 	// FunctionName is the name of the function at the current breakpoint, and
 	// may not always be available.
 	FunctionName string `json:"functionName,omitempty"`
+
+	GoroutineID int `json:"goroutineID"`
 
 	InputParams  []Variable `json:"inputParams,omitempty"`
 	ReturnParams []Variable `json:"returnParams,omitempty"`

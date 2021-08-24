@@ -2159,6 +2159,7 @@ func (d *Debugger) GetBufferedTracepoints() []api.TracepointResult {
 		results[i].FunctionName = fn.Name
 		results[i].Line = l
 		results[i].File = f
+		results[i].GoroutineID = trace.GoroutineID
 
 		for _, p := range trace.InputParams {
 			results[i].InputParams = append(results[i].InputParams, *api.ConvertVar(p))

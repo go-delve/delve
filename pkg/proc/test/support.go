@@ -379,3 +379,13 @@ func MustHaveCgo(t *testing.T) {
 		t.Skip("Cgo not enabled")
 	}
 }
+
+func RegabiSupported() bool {
+	// Tracks regabiSupported variable in ParseGOEXPERIMENT internal/buildcfg/exp.go
+	switch {
+	case !goversion.VersionAfterOrEqual(runtime.Version(), 1, 17): // < 1.17
+		return false
+	default: // >= 1.17
+		return runtime.GOARCH == "amd64" && (runtime.GOOS == "android" || runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "windows")
+	}
+}

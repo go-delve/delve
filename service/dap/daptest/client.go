@@ -157,6 +157,11 @@ func (c *Client) ExpectOutputEventDetachingNoKill(t *testing.T) *dap.OutputEvent
 	return c.ExpectOutputEventRegex(t, `Detaching without terminating target process\n`)
 }
 
+func (c *Client) ExpectOutputEventTerminating(t *testing.T) *dap.OutputEvent {
+	t.Helper()
+	return c.ExpectOutputEventRegex(t, `Terminating process [0-9]+\n`)
+}
+
 // InitializeRequest sends an 'initialize' request.
 func (c *Client) InitializeRequest() {
 	request := &dap.InitializeRequest{Request: *c.newRequest("initialize")}
