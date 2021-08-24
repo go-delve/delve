@@ -1117,7 +1117,7 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 			cmd := exec.Command(debuginfodFind, "debuginfo", desc1+desc2)
 			out, err := cmd.CombinedOutput()
 			if err != nil {
-				return nil, nil, err
+				return nil, nil, ErrNoDebugInfoFound
 			}
 			debugFilePath = string(out)
 		} else {
