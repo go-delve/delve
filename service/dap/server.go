@@ -822,8 +822,8 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 		var cmd string
 		var out []byte
-		// Log debug binary build
-		s.log.Debugf("building binary '%s' from '%s' with flags '%v'", debugbinary, program, buildFlags)
+		wd, _ := os.Getwd()
+		s.log.Debugf("building program '%s' in '%s' with flags '%v'", program, wd, buildFlags)
 		switch mode {
 		case "debug":
 			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
@@ -859,7 +859,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.config.Debugger.WorkingDir = args.Cwd
 	}
 
-	s.log.Debugf("running program in %s\n", s.config.Debugger.WorkingDir)
+	s.log.Debugf("running binary '%s' in '%s'", program, s.config.Debugger.WorkingDir)
 	if args.NoDebug {
 		s.mu.Lock()
 		cmd, err := s.newNoDebugProcess(program, args.Args, s.config.Debugger.WorkingDir)

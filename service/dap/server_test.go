@@ -3978,8 +3978,9 @@ type onBreakpoint struct {
 //                     so the test author has full control of its arguments.
 //                     Note that he rest of the test sequence assumes that
 //                     stopOnEntry is false.
+//     source        - source file path, needed to set breakpoints, "" if none to be set.
 //     breakpoints   - list of lines, where breakpoints are to be set
-//     onBreakpoints - list of test sequences to execute at each of the set breakpoints.
+//     onBPs         - list of test sequences to execute at each of the set breakpoints.
 func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cmdRequest func(), source string, breakpoints []int, onBPs []onBreakpoint) {
 	client.InitializeRequest()
 	client.ExpectInitializeResponseAndCapabilities(t)
@@ -3994,8 +3995,10 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 		panic("expected launch or attach command")
 	}
 
-	client.SetBreakpointsRequest(source, breakpoints)
-	client.ExpectSetBreakpointsResponse(t)
+	if source != "" {
+		client.SetBreakpointsRequest(source, breakpoints)
+		client.ExpectSetBreakpointsResponse(t)
+	}
 
 	// Skip no-op setExceptionBreakpoints
 
@@ -4045,8 +4048,8 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 // runDebugSession is a helper for executing the standard init and shutdown
 // sequences for a program that does not stop on entry
 // while specifying unique launch criteria via parameters.
-func runDebugSession(t *testing.T, client *daptest.Client, cmd string, cmdRequest func(), source string) {
-	runDebugSessionWithBPs(t, client, cmd, cmdRequest, source, nil, nil)
+func runDebugSession(t *testing.T, client *daptest.Client, cmd string, cmdRequest func()) {
+	runDebugSessionWithBPs(t, client, cmd, cmdRequest, "", nil, nil)
 }
 
 func TestLaunchDebugRequest(t *testing.T) {
@@ -4059,10 +4062,9 @@ func TestLaunchDebugRequest(t *testing.T) {
 		// We reuse the harness that builds, but ignore the built binary,
 		// only relying on the source to be built in response to LaunchRequest.
 		runDebugSession(t, client, "launch", func() {
-			wd, _ := os.Getwd()
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "debug", "program": fixture.Source, "output": filepath.Join(wd, tmpBin)})
-		}, fixture.Source)
+				"mode": "debug", "program": fixture.Source, "output": tmpBin})
+		})
 	})
 	// Wait for the test to finish to capture all stderr
 	time.Sleep(100 * time.Millisecond)
@@ -4084,6 +4086,7 @@ func TestLaunchDebugRequest(t *testing.T) {
 			t.Fatalf("Binary removal failure:\n%s\n", rmErr)
 		}
 	} else {
+		tmpBin = cleanExeName(tmpBin)
 		// We did not get a removal error, but did we even try to remove before exiting?
 		// Confirm that the binary did get removed.
 		if _, err := os.Stat(tmpBin); err == nil || os.IsExist(err) {
@@ -4098,14 +4101,13 @@ func TestLaunchRequestDefaults(t *testing.T) {
 		runDebugSession(t, client, "launch", func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "" /*"debug" by default*/, "program": fixture.Source, "output": "__mybin"})
-		}, fixture.Source)
+		})
 	})
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, "launch", func() {
-			// Use the default output directory.
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				/*"mode":"debug" by default*/ "program": fixture.Source, "output": "__mybin"})
-		}, fixture.Source)
+		})
 	})
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, "launch", func() {
@@ -4113,9 +4115,35 @@ func TestLaunchRequestDefaults(t *testing.T) {
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "debug", "program": fixture.Source})
 			// writes to default output dir __debug_bin
-		}, fixture.Source)
+		})
 	})
+}
 
+// TestLaunchRequestOutputPath verifies that relative output binary path
+// is mapped to server's, not target's, working directory.
+func TestLaunchRequestOutputPath(t *testing.T) {
+	runTest(t, "testargs", func(client *daptest.Client, fixture protest.Fixture) {
+		inrel := "__somebin"
+		wd, _ := os.Getwd()
+		outabs := cleanExeName(filepath.Join(wd, inrel))
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "debug", "program": fixture.Source, "output": inrel,
+					"cwd": filepath.Dir(wd)})
+			},
+			// Set breakpoints
+			fixture.Source, []int{12},
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 12)
+					client.EvaluateRequest("os.Args[0]", 1000, "repl")
+					checkEval(t, client.ExpectEvaluateResponse(t), fmt.Sprintf("%q", outabs), noChildren)
+				},
+				disconnect: true,
+			}})
+	})
 }
 
 func TestNoDebug_GoodExitStatus(t *testing.T) {
@@ -4186,16 +4214,48 @@ func TestNoDebug_AcceptNoRequestsButDisconnect(t *testing.T) {
 	})
 }
 
-func TestLaunchTestRequest(t *testing.T) {
+func TestLaunchRequestWithRelativeBuildPath(t *testing.T) {
+	client := startDapServer(t)
+	defer client.Close() // will trigger Stop()
+
+	fixdir := protest.FindFixturesDir()
+	if filepath.IsAbs(fixdir) {
+		t.Fatal("this test requires relative program path")
+	}
+	program := filepath.Join(protest.FindFixturesDir(), "buildtest")
+
+	// Use different working dir for target than dlv.
+	// Program path will be interpreted relative to dlv's.
+	dlvwd, _ := os.Getwd()
+	runDebugSession(t, client, "launch", func() {
+		client.LaunchRequestWithArgs(map[string]interface{}{
+			"mode": "debug", "program": program, "cwd": filepath.Dir(dlvwd)})
+	})
+}
+
+func TestLaunchRequestWithRelativeExecPath(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		symlink := "./__thisexe"
+		err := os.Symlink(fixture.Path, symlink)
+		defer os.Remove(symlink)
+		if err != nil {
+			t.Fatal("unable to create relative symlink:", err)
+		}
 		runDebugSession(t, client, "launch", func() {
-			// We reuse the harness that builds, but ignore the built binary,
-			// only relying on the source to be built in response to LaunchRequest.
-			fixtures := protest.FindFixturesDir()
-			testdir, _ := filepath.Abs(filepath.Join(fixtures, "buildtest"))
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "test", "program": testdir, "output": "__mytestdir"})
-		}, fixture.Source)
+				"mode": "exec", "program": symlink})
+		})
+	})
+}
+
+func TestLaunchTestRequest(t *testing.T) {
+	client := startDapServer(t)
+	defer client.Close() // will trigger Stop()
+	runDebugSession(t, client, "launch", func() {
+		fixtures := protest.FindFixturesDir()
+		testdir, _ := filepath.Abs(filepath.Join(fixtures, "buildtest"))
+		client.LaunchRequestWithArgs(map[string]interface{}{
+			"mode": "test", "program": testdir, "output": "__mytestdir"})
 	})
 }
 
@@ -4209,7 +4269,7 @@ func TestLaunchRequestWithArgs(t *testing.T) {
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "exec", "program": fixture.Path,
 				"args": []string{"test", "pass flag"}})
-		}, fixture.Source)
+		})
 	})
 }
 
@@ -4225,7 +4285,7 @@ func TestLaunchRequestWithBuildFlags(t *testing.T) {
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "debug", "program": fixture.Source, "output": "__mybin",
 				"buildFlags": "-ldflags '-X main.Hello=World'"})
-		}, fixture.Source)
+		})
 	})
 }
 

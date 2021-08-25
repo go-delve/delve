@@ -27,5 +27,6 @@ type RawUProbeParam struct {
 
 type RawUProbeParams struct {
 	FnAddr      int
+	GoroutineID int
 	InputParams []*RawUProbeParam
 }

@@ -18,10 +18,10 @@ import (
 // some extra flags defined here.
 // See equivalent declaration in $GOROOT/src/reflect/type.go
 const (
-	kindDirectIface = 1 << 5
-	kindGCProg      = 1 << 6 // Type.gc points to GC program
+	kindDirectIface = 1 << 5 // +rtype kindDirectIface
+	kindGCProg      = 1 << 6 // +rtype kindGCProg
 	kindNoPointers  = 1 << 7
-	kindMask        = (1 << 5) - 1
+	kindMask        = (1 << 5) - 1 // +rtype kindMask
 )
 
 // Value of tflag field in runtime._type.

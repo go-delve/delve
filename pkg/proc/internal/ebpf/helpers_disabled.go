@@ -18,7 +18,7 @@ func (ctx *EBPFContext) AttachUprobe(pid int, name string, offset uint32) error 
 	return errors.New("eBPF is disabled")
 }
 
-func (ctx *EBPFContext) UpdateArgMap(key uint64, args []UProbeArgMap) error {
+func (ctx *EBPFContext) UpdateArgMap(key uint64, goidOffset int64, args []UProbeArgMap, gAddrOffset uint64) error {
 	return errors.New("eBPF is disabled")
 }
 

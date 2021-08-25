@@ -370,7 +370,7 @@ func (dbp *gdbProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
 	return nil
 }
 
-func (dbp *gdbProcess) SetUProbe(fnName string, args []ebpf.UProbeArgMap) error {
+func (dbp *gdbProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProbeArgMap) error {
 	panic("not implemented")
 }
 
