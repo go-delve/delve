@@ -2935,7 +2935,7 @@ func (s *Server) isRunning() bool {
 // resumeOnce is a helper function to resume the execution
 // of the target when the program is halted, but no
 // stopped event has been sent.
-func (s *Server) resumeOnce(command string, waitChannel chan struct{}) (*api.DebuggerState, error) {
+func (s *Server) resumeOnce(command string, waitChannel chan struct{}) (*api.DebuggerState, bool, error) {
 	// No other goroutines should be able to try to resume
 	// or halt execution while this goroutine is continuing
 	// the program.
@@ -2950,16 +2950,14 @@ func (s *Server) resumeOnce(command string, waitChannel chan struct{}) (*api.Deb
 	}()
 
 	// There may have been a manual halt while the program was
-	// stopped. If this happened, do not continue exection of
+	// stopped. If this happened, do not resume exection of
 	// the program.
 	if s.debugger.CheckAndClearManualStopRequest() {
-		// A halt request came in so we need to CancelNext.
-		if err := s.debugger.CancelNext(); err != nil {
-			s.log.Error(err)
-		}
-		return s.debugger.State(false)
+		state, err := s.debugger.State(false)
+		return state, true, err
 	}
-	return s.debugger.Command(&api.DebuggerCommand{Name: command}, resumeNotify)
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, resumeNotify)
+	return state, false, err
 }
 
 // runUntilStopAndNotify runs a debugger command until it stops on
@@ -2969,7 +2967,7 @@ func (s *Server) resumeOnce(command string, waitChannel chan struct{}) (*api.Deb
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
 func (s *Server) runUntilStopAndNotify(command string, asyncSetupDone chan struct{}) {
-	state, err := s.runUntilStop(command, asyncSetupDone)
+	state, manualHalt, err := s.runUntilStop(command, asyncSetupDone)
 
 	if processExited(state, err) {
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
@@ -2977,6 +2975,9 @@ func (s *Server) runUntilStopAndNotify(command string, asyncSetupDone chan struc
 	}
 
 	stopReason := s.debugger.StopReason()
+	if manualHalt {
+		stopReason = proc.StopManual
+	}
 	file, line := "?", -1
 	if state != nil && state.CurrentThread != nil {
 		file, line = state.CurrentThread.File, state.CurrentThread.Line
@@ -3075,7 +3076,7 @@ func (s *Server) getHitBreakpointNameAndId(stoppedGoroutineID int, state *api.De
 	return "", -1
 }
 
-func (s *Server) runUntilStop(command string, asyncSetupDone chan struct{}) (*api.DebuggerState, error) {
+func (s *Server) runUntilStop(command string, asyncSetupDone chan struct{}) (*api.DebuggerState, bool, error) {
 	s.setRunning(true)
 	defer s.setRunning(false)
 
@@ -3083,9 +3084,10 @@ func (s *Server) runUntilStop(command string, asyncSetupDone chan struct{}) (*ap
 	s.debugger.CheckAndClearManualStopRequest()
 	var state *api.DebuggerState
 	var err error
+	var manualHalt bool
 	for {
-		state, err = s.resumeOnce(command, asyncSetupDone)
-		if state == nil || err != nil {
+		state, manualHalt, err = s.resumeOnce(command, asyncSetupDone)
+		if manualHalt || state == nil || err != nil {
 			break
 		}
 
@@ -3097,7 +3099,7 @@ func (s *Server) runUntilStop(command string, asyncSetupDone chan struct{}) (*ap
 		}
 		command = api.DirectionCongruentContinue
 	}
-	return state, err
+	return state, manualHalt, err
 }
 
 func (s *Server) handleLogPoints(state *api.DebuggerState) bool {
