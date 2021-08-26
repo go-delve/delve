@@ -2941,12 +2941,12 @@ func (s *Server) resumeOnce(command string, waitChannel chan struct{}) (*api.Deb
 	// the program.
 	// Hold onto changeStateMu until the program is running.
 	resumeNotify := make(chan struct{}, 1)
-	defer s.closeIfOpen(resumeNotify)
+	defer closeIfOpen(resumeNotify)
 	s.changeStateMu.Lock()
 	go func() {
 		defer s.changeStateMu.Unlock()
+		defer closeIfOpen(waitChannel)
 		<-resumeNotify
-		closeIfOpen(waitChannel)
 	}()
 
 	// There may have been a manual halt while the program was
