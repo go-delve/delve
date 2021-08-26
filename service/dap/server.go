@@ -1427,7 +1427,7 @@ func (s *Server) onSetExceptionBreakpointsRequest(request *dap.SetExceptionBreak
 	s.send(&dap.SetExceptionBreakpointsResponse{Response: *newResponse(request.Request)})
 }
 
-func (s *Server) asyncCommandDone(asyncSetupDone chan struct{}) {
+func closeIfOpen(asyncSetupDone chan struct{}) {
 	if asyncSetupDone != nil {
 		select {
 		case <-asyncSetupDone:
@@ -1443,7 +1443,7 @@ func (s *Server) asyncCommandDone(asyncSetupDone chan struct{}) {
 // It gets triggered after all the debug requests that followinitalized event,
 // so the s.debugger is guaranteed to be set.
 func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest, asyncSetupDone chan struct{}) {
-	defer s.asyncCommandDone(asyncSetupDone)
+	defer closeIfOpen(asyncSetupDone)
 	if s.args.stopOnEntry {
 		e := &dap.StoppedEvent{
 			Event: *newEvent("stopped"),
@@ -1455,7 +1455,7 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
 	if !s.args.stopOnEntry {
-		s.doRunCommand(api.Continue, asyncSetupDone)
+		s.runUntilStopAndNotify(api.Continue, asyncSetupDone)
 	}
 }
 
@@ -1465,7 +1465,7 @@ func (s *Server) onContinueRequest(request *dap.ContinueRequest, asyncSetupDone 
 	s.send(&dap.ContinueResponse{
 		Response: *newResponse(request.Request),
 		Body:     dap.ContinueResponseBody{AllThreadsContinued: true}})
-	s.doRunCommand(api.Continue, asyncSetupDone)
+	s.runUntilStopAndNotify(api.Continue, asyncSetupDone)
 }
 
 func fnName(loc *proc.Location) string {
@@ -1618,21 +1618,21 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 // This is a mandatory request to support.
 func (s *Server) onNextRequest(request *dap.NextRequest, asyncSetupDone chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.NextResponse{Response: *newResponse(request.Request)})
-	s.doStepCommand(api.Next, request.Arguments.ThreadId, asyncSetupDone)
+	s.stepUntilStopAndNotify(api.Next, request.Arguments.ThreadId, asyncSetupDone)
 }
 
 // onStepInRequest handles 'stepIn' request
 // This is a mandatory request to support.
 func (s *Server) onStepInRequest(request *dap.StepInRequest, asyncSetupDone chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepInResponse{Response: *newResponse(request.Request)})
-	s.doStepCommand(api.Step, request.Arguments.ThreadId, asyncSetupDone)
+	s.stepUntilStopAndNotify(api.Step, request.Arguments.ThreadId, asyncSetupDone)
 }
 
 // onStepOutRequest handles 'stepOut' request
 // This is a mandatory request to support.
 func (s *Server) onStepOutRequest(request *dap.StepOutRequest, asyncSetupDone chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepOutResponse{Response: *newResponse(request.Request)})
-	s.doStepCommand(api.StepOut, request.Arguments.ThreadId, asyncSetupDone)
+	s.stepUntilStopAndNotify(api.StepOut, request.Arguments.ThreadId, asyncSetupDone)
 }
 
 func (s *Server) sendStepResponse(threadId int, message dap.Message) {
@@ -1672,13 +1672,13 @@ func stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (id int) {
 	return stoppedGoroutineID(state)
 }
 
-// doStepCommand is a wrapper around doRunCommand that
+// stepUntilStopAndNotify is a wrapper around doRunCommand that
 // first switches selected goroutine. asyncSetupDone is
 // a channel that will be closed to signal that an
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
-func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan struct{}) {
-	defer s.asyncCommandDone(asyncSetupDone)
+func (s *Server) stepUntilStopAndNotify(command string, threadId int, asyncSetupDone chan struct{}) {
+	defer closeIfOpen(asyncSetupDone)
 	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
 	if err != nil {
 		s.log.Errorf("Error switching goroutines while stepping: %v", err)
@@ -1696,7 +1696,7 @@ func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan
 		s.send(stopped)
 		return
 	}
-	s.doRunCommand(command, asyncSetupDone)
+	s.runUntilStopAndNotify(command, asyncSetupDone)
 }
 
 // onPauseRequest handles 'pause' request.
@@ -2551,7 +2551,7 @@ func (s *Server) onRestartRequest(request *dap.RestartRequest) {
 // This is an optional request enabled by capability ‘supportsStepBackRequest’.
 func (s *Server) onStepBackRequest(request *dap.StepBackRequest, asyncSetupDone chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepBackResponse{Response: *newResponse(request.Request)})
-	s.doStepCommand(api.ReverseNext, request.Arguments.ThreadId, asyncSetupDone)
+	s.stepUntilStopAndNotify(api.ReverseNext, request.Arguments.ThreadId, asyncSetupDone)
 }
 
 // onReverseContinueRequest performs a rewind command call up to the previous
@@ -2561,7 +2561,7 @@ func (s *Server) onReverseContinueRequest(request *dap.ReverseContinueRequest, a
 	s.send(&dap.ReverseContinueResponse{
 		Response: *newResponse(request.Request),
 	})
-	s.doRunCommand(api.Rewind, asyncSetupDone)
+	s.runUntilStopAndNotify(api.Rewind, asyncSetupDone)
 }
 
 // computeEvaluateName finds the named child, and computes its evaluate name.
@@ -2932,21 +2932,21 @@ func (s *Server) isRunning() bool {
 	return s.running
 }
 
-// resume is a helper function to resume the execution
+// resumeOnce is a helper function to resume the execution
 // of the target when the program is halted, but no
 // stopped event has been sent.
-func (s *Server) resume(command string, waitChannel chan struct{}) (*api.DebuggerState, error) {
+func (s *Server) resumeOnce(command string, waitChannel chan struct{}) (*api.DebuggerState, error) {
 	// No other goroutines should be able to try to resume
 	// or halt execution while this goroutine is continuing
 	// the program.
 	// Hold onto changeStateMu until the program is running.
 	resumeNotify := make(chan struct{}, 1)
-	defer s.asyncCommandDone(resumeNotify)
+	defer s.closeIfOpen(resumeNotify)
 	s.changeStateMu.Lock()
 	go func() {
 		defer s.changeStateMu.Unlock()
 		<-resumeNotify
-		s.asyncCommandDone(waitChannel)
+		closeIfOpen(waitChannel)
 	}()
 
 	// There may have been a manual halt while the program was
@@ -2962,14 +2962,14 @@ func (s *Server) resume(command string, waitChannel chan struct{}) (*api.Debugge
 	return s.debugger.Command(&api.DebuggerCommand{Name: command}, resumeNotify)
 }
 
-// doRunCommand runs a debugger command until it stops on
+// runUntilStopAndNotify runs a debugger command until it stops on
 // termination, error, breakpoint, etc, when an appropriate
 // event needs to be sent to the client. asyncSetupDone is
 // a channel that will be closed to signal that an
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
-func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
-	state, err := s.run(command, asyncSetupDone)
+func (s *Server) runUntilStopAndNotify(command string, asyncSetupDone chan struct{}) {
+	state, err := s.runUntilStop(command, asyncSetupDone)
 
 	if processExited(state, err) {
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
@@ -3075,7 +3075,7 @@ func (s *Server) getHitBreakpointNameAndId(stoppedGoroutineID int, state *api.De
 	return "", -1
 }
 
-func (s *Server) run(command string, asyncSetupDone chan struct{}) (*api.DebuggerState, error) {
+func (s *Server) runUntilStop(command string, asyncSetupDone chan struct{}) (*api.DebuggerState, error) {
 	s.setRunning(true)
 	defer s.setRunning(false)
 
@@ -3084,7 +3084,7 @@ func (s *Server) run(command string, asyncSetupDone chan struct{}) (*api.Debugge
 	var state *api.DebuggerState
 	var err error
 	for {
-		state, err = s.resume(command, asyncSetupDone)
+		state, err = s.resumeOnce(command, asyncSetupDone)
 		if state == nil || err != nil {
 			break
 		}
