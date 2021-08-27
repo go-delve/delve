@@ -1892,6 +1892,39 @@ func TestAcceptMulticlient(t *testing.T) {
 	<-serverDone
 }
 
+func TestForceStopWhileContinue(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("couldn't start listener: %s\n", err)
+	}
+	serverStopped := make(chan struct{})
+	disconnectChan := make(chan struct{})
+	go func() {
+		defer close(serverStopped)
+		defer listener.Close()
+		server := rpccommon.NewServer(&service.Config{
+			Listener:       listener,
+			ProcessArgs:    []string{protest.BuildFixture("http_server", protest.AllNonOptimized).Path},
+			AcceptMulti:    true,
+			DisconnectChan: disconnectChan,
+			Debugger: debugger.Config{
+				Backend: "default",
+			},
+		})
+		if err := server.Run(); err != nil {
+			panic(err)
+		}
+		<-disconnectChan
+		server.Stop()
+	}()
+
+	client := rpc2.NewClient(listener.Addr().String())
+	client.Disconnect(true /*continue*/)
+	time.Sleep(10 * time.Millisecond) // give server time to start running
+	close(disconnectChan)             // stop the server
+	<-serverStopped                   // Stop() didn't block on detach because we halted first
+}
+
 func TestClientServerFunctionCall(t *testing.T) {
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
