@@ -1392,6 +1392,9 @@ func TestSkipPrologue2(t *testing.T) {
 }
 
 func TestIssue419(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("temporarily disabled, gets stuck in CI")
+	}
 	// Calling service/rpc.(*Client).Halt could cause a crash because both Halt and Continue simultaneously
 	// try to read 'runtime.g' and debug/dwarf.Data.Type is not thread safe
 	finish := make(chan struct{})
