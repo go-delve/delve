@@ -4,6 +4,7 @@ set -x
 
 apt-get -qq update
 apt-get install -y dwz wget make git gcc curl jq lsof
+
 dwz --version
 
 version=$1
@@ -47,4 +48,5 @@ echo "$PATH"
 echo "$GOROOT"
 echo "$GOPATH"
 cd delve
+
 make test

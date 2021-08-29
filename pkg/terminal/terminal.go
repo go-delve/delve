@@ -111,10 +111,10 @@ func New(client service.Client, conf *config.Config) *Term {
 			return s
 		}
 		t.colorEscapes[colorize.KeywordStyle] = conf.SourceListKeywordColor
-		t.colorEscapes[colorize.StringStyle] = wd(conf.SourceListStringColor, ansiBrGreen)
+		t.colorEscapes[colorize.StringStyle] = wd(conf.SourceListStringColor, ansiGreen)
 		t.colorEscapes[colorize.NumberStyle] = conf.SourceListNumberColor
 		t.colorEscapes[colorize.CommentStyle] = wd(conf.SourceListCommentColor, ansiBrMagenta)
-		t.colorEscapes[colorize.ArrowStyle] = wd(conf.SourceListArrowColor, ansiBrYellow)
+		t.colorEscapes[colorize.ArrowStyle] = wd(conf.SourceListArrowColor, ansiYellow)
 		switch x := conf.SourceListLineColor.(type) {
 		case string:
 			t.colorEscapes[colorize.LineNoStyle] = x

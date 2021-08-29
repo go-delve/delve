@@ -18,6 +18,8 @@
 
 package dap
 
+import "encoding/json"
+
 // Message is an interface that all DAP message types implement with pointer
 // receivers. It's not part of the protocol but is used to enforce static
 // typing in Go code and provide some common accessors.
@@ -56,7 +58,7 @@ type EventMessage interface {
 type LaunchAttachRequest interface {
 	RequestMessage
 	// GetArguments provides access to the Arguments map.
-	GetArguments() map[string]interface{}
+	GetArguments() json.RawMessage
 }
 
 // ProtocolMessage: Base class of requests, responses, and events.
@@ -492,11 +494,11 @@ func (r *ConfigurationDoneResponse) GetResponse() *Response { return &r.Response
 type LaunchRequest struct {
 	Request
 
-	Arguments map[string]interface{} `json:"arguments"`
+	Arguments json.RawMessage `json:"arguments"`
 }
 
-func (r *LaunchRequest) GetRequest() *Request                 { return &r.Request }
-func (r *LaunchRequest) GetArguments() map[string]interface{} { return r.Arguments }
+func (r *LaunchRequest) GetRequest() *Request          { return &r.Request }
+func (r *LaunchRequest) GetArguments() json.RawMessage { return r.Arguments }
 
 // LaunchResponse: Response to 'launch' request. This is just an acknowledgement, so no body field is required.
 type LaunchResponse struct {
@@ -510,11 +512,11 @@ func (r *LaunchResponse) GetResponse() *Response { return &r.Response }
 type AttachRequest struct {
 	Request
 
-	Arguments map[string]interface{} `json:"arguments"`
+	Arguments json.RawMessage `json:"arguments"`
 }
 
-func (r *AttachRequest) GetRequest() *Request                 { return &r.Request }
-func (r *AttachRequest) GetArguments() map[string]interface{} { return r.Arguments }
+func (r *AttachRequest) GetRequest() *Request          { return &r.Request }
+func (r *AttachRequest) GetArguments() json.RawMessage { return r.Arguments }
 
 // AttachResponse: Response to 'attach' request. This is just an acknowledgement, so no body field is required.
 type AttachResponse struct {

@@ -345,12 +345,13 @@ func setAsyncPreemptOff(p *Target, v int64) {
 	}
 	logger := p.BinInfo().logger
 	scope := globalScope(p, p.BinInfo(), p.BinInfo().Images[0], p.Memory())
+	// +rtype -var debug anytype
 	debugv, err := scope.findGlobal("runtime", "debug")
 	if err != nil || debugv.Unreadable != nil {
 		logger.Warnf("could not find runtime/debug variable (or unreadable): %v %v", err, debugv.Unreadable)
 		return
 	}
-	asyncpreemptoffv, err := debugv.structMember("asyncpreemptoff")
+	asyncpreemptoffv, err := debugv.structMember("asyncpreemptoff") // +rtype int32
 	if err != nil {
 		logger.Warnf("could not find asyncpreemptoff field: %v", err)
 		return
@@ -404,6 +405,7 @@ func (t *Target) CurrentThread() Thread {
 
 type UProbeTraceResult struct {
 	FnAddr      int
+	GoroutineID int
 	InputParams []*Variable
 }
 
@@ -413,6 +415,7 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 	for _, tp := range tracepoints {
 		r := &UProbeTraceResult{}
 		r.FnAddr = tp.FnAddr
+		r.GoroutineID = tp.GoroutineID
 		for _, ip := range tp.InputParams {
 			v := &Variable{}
 			v.RealType = ip.RealType
