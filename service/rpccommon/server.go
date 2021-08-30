@@ -95,7 +95,9 @@ func (s *ServerImpl) Stop() error {
 	if s.config.AcceptMulti {
 		s.listener.Close()
 	}
-	s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+	if s.debugger.IsRunning() {
+		s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+	}
 	kill := s.config.Debugger.AttachPid == 0
 	return s.debugger.Detach(kill)
 }
