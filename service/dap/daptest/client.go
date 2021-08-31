@@ -185,15 +185,20 @@ func (c *Client) InitializeRequestWithArgs(args dap.InitializeRequestArguments) 
 	c.send(request)
 }
 
+func toRawMessage(in interface{}) json.RawMessage {
+	out, _ := json.Marshal(in)
+	return out
+}
+
 // LaunchRequest sends a 'launch' request with the specified args.
 func (c *Client) LaunchRequest(mode, program string, stopOnEntry bool) {
 	request := &dap.LaunchRequest{Request: *c.newRequest("launch")}
-	request.Arguments = map[string]interface{}{
+	request.Arguments = toRawMessage(map[string]interface{}{
 		"request":     "launch",
 		"mode":        mode,
 		"program":     program,
 		"stopOnEntry": stopOnEntry,
-	}
+	})
 	c.send(request)
 }
 
@@ -202,7 +207,7 @@ func (c *Client) LaunchRequest(mode, program string, stopOnEntry bool) {
 // test for values of unexpected types or unspecified values.
 func (c *Client) LaunchRequestWithArgs(arguments map[string]interface{}) {
 	request := &dap.LaunchRequest{Request: *c.newRequest("launch")}
-	request.Arguments = arguments
+	request.Arguments = toRawMessage(arguments)
 	c.send(request)
 }
 
@@ -210,7 +215,7 @@ func (c *Client) LaunchRequestWithArgs(arguments map[string]interface{}) {
 // arguments.
 func (c *Client) AttachRequest(arguments map[string]interface{}) {
 	request := &dap.AttachRequest{Request: *c.newRequest("attach")}
-	request.Arguments = arguments
+	request.Arguments = toRawMessage(arguments)
 	c.send(request)
 }
 
