@@ -53,9 +53,8 @@ type Config struct {
 	// expression for its argument.
 	ShowLocationExpr bool `yaml:"show-location-expr"`
 
-	// Source list line-number color (3/4 bit color codes as defined
-	// here: https://en.wikipedia.org/wiki/ANSI_escape_code#Colors),
-	// or a string containing a terminal escape sequence.
+	// Source list line-number color, as a terminal escape sequence.
+	// For historic reasons, this can also be an integer color code.
 	SourceListLineColor interface{} `yaml:"source-list-line-color"`
 
 	// Source list arrow color, as a terminal escape sequence.
@@ -228,11 +227,10 @@ func writeDefaultConfig(f *os.File) error {
 # This is the default configuration file. Available options are provided, but disabled.
 # Delete the leading hash mark to enable an item.
 
-# Uncomment the following line and set your preferred ANSI foreground color
-# for source line numbers in the (list) command (if unset, default is 34,
-# dark blue) See https://en.wikipedia.org/wiki/ANSI_escape_code#3/4_bit
-# Alternatively a string containing an escape sequence can also be used.
-# source-list-line-color: 34
+# Uncomment the following line and set your preferred ANSI color for source
+# line numbers in the (list) command. The default is 34 (dark blue). See
+# https://en.wikipedia.org/wiki/ANSI_escape_code#3/4_bit
+# source-list-line-color: "\x1b[34m"
 
 # Uncomment the following lines to change the colors used by syntax highlighting.
 # source-list-keyword-color: "\x1b[0m"
