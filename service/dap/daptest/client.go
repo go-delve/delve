@@ -238,7 +238,8 @@ func (c *Client) SetBreakpointsRequest(file string, lines []int) {
 	c.SetBreakpointsRequestWithArgs(file, lines, nil, nil, nil)
 }
 
-// SetBreakpointsRequest sends a 'setBreakpoints' request.
+// SetBreakpointsRequestWithArgs sends a 'setBreakpoints' request with an option to
+// specify conditions, hit conditions, and log messages.
 func (c *Client) SetBreakpointsRequestWithArgs(file string, lines []int, conditions, hitConditions, logMessages map[int]string) {
 	request := &dap.SetBreakpointsRequest{Request: *c.newRequest("setBreakpoints")}
 	request.Arguments = dap.SetBreakpointsArguments{
