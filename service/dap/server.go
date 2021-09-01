@@ -1545,7 +1545,7 @@ func (s *Server) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int, 
 	// since we would prefer to use that one.
 	goid := stoppedGoroutineID(state)
 	if g, _ := s.debugger.FindGoroutine(goid); g != nil && g.Thread != nil {
-		if bp := g.Thread.Breakpoint(); bp != nil && bp.Breakpoint != nil {
+		if bp := g.Thread.Breakpoint(); bp != nil && bp.Breakpoint != nil && !bp.Breakpoint.Tracepoint {
 			return goid, api.ConvertBreakpoint(bp.Breakpoint)
 		}
 	}
