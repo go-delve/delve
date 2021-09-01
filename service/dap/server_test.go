@@ -21,6 +21,7 @@ import (
 	"github.com/go-delve/delve/pkg/logflags"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service"
+	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/dap/daptest"
 	"github.com/google/go-dap"
 )
@@ -2570,6 +2571,87 @@ func TestLogPoints(t *testing.T) {
 						t.Errorf("got stopped event = %#v, \nwant Reason=\"step\" ThreadId=1", se)
 					}
 					checkStop(t, client, 1, "main.main", 28)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+func TestHaltBeforeResume(t *testing.T) {
+	runTest(t, "callme", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch", // Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{23},
+			[]onBreakpoint{{
+				execute: func() {
+					savedResumeOnce := resumeOnceAndHandleTempStop
+					defer func() {
+						resumeOnceAndHandleTempStop = savedResumeOnce
+					}()
+					checkStop(t, client, 1, "main.main", 23)
+					bps := []int{6, 25}
+					logMessages := map[int]string{6: "in callme!"}
+					client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
+					client.ExpectSetBreakpointsResponse(t)
+
+					for i := 0; i < 5; i++ {
+						// Reset the handler to the default behavior.
+						resumeOnceAndHandleTempStop = savedResumeOnce
+
+						// Expect a pause request while stopped not to interrupt continue.
+						client.PauseRequest(1)
+						client.ExpectPauseResponse(t)
+
+						client.ContinueRequest(1)
+						client.ExpectContinueResponse(t)
+						se := client.ExpectStoppedEvent(t)
+						if se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
+							t.Errorf("got stopped event = %#v, \nwant Reason=\"breakpoint\" ThreadId=1", se)
+						}
+						checkStop(t, client, 1, "main.main", 25)
+
+						// Send a halt request before the initial resume, this should keep the
+						// program from making progress.
+						resumeOnceAndHandleTempStop = func(s *Server, command string, allowNextStateChange chan struct{}) (bool, *api.DebuggerState, bool, error) {
+							s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+							return s.resumeOnceAndHandleTempStop(command, allowNextStateChange)
+						}
+
+						client.ContinueRequest(1)
+						client.ExpectContinueResponse(t)
+						se = client.ExpectStoppedEvent(t)
+						if se.Body.Reason != "pause" || se.Body.ThreadId != 1 {
+							t.Errorf("got stopped event = %#v, \nwant Reason=\"pause\" ThreadId=1", se)
+						}
+						checkStop(t, client, 1, "main.main", 25)
+
+						// Send a halt request when trying to resume the program after being
+						// interrupted. This should allow the log message to be processed,
+						// but keep the process from continuing beyond the line.
+						resumeOnceAndHandleTempStop = func(s *Server, command string, allowNextStateChange chan struct{}) (bool, *api.DebuggerState, bool, error) {
+							// This should trigger after the log message is sent, but before
+							// execution is resumed.
+							if command == api.DirectionCongruentContinue {
+								s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+							}
+							return s.resumeOnceAndHandleTempStop(command, allowNextStateChange)
+						}
+
+						client.ContinueRequest(1)
+						client.ExpectContinueResponse(t)
+						oe := client.ExpectOutputEvent(t)
+						if oe.Body.Category != "stdout" || oe.Body.Output != "in callme!\n" {
+							t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"in callme!\n\"", oe)
+						}
+						se = client.ExpectStoppedEvent(t)
+						if se.Body.Reason != "pause" {
+							t.Errorf("got stopped event = %#v, \nwant Reason=\"pause\"", se)
+						}
+						checkStop(t, client, 1, "main.callme", 6)
+					}
 				},
 				disconnect: true,
 			}})

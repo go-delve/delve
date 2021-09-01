@@ -2855,6 +2855,8 @@ func (s *Server) resumeOnce(command string, allowNextStateChange chan struct{}) 
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
 func (s *Server) runUntilStopAndNotify(command string, allowNextStateChange chan struct{}) {
+	// Clear any manual stop requests that came in before we started running.
+	s.debugger.CheckAndClearManualStopRequest()
 	state, manualHalt, err := s.runUntilStop(command, allowNextStateChange)
 
 	if processExited(state, err) {
@@ -2954,26 +2956,36 @@ func (s *Server) runUntilStop(command string, allowNextStateChange chan struct{}
 	s.setRunning(true)
 	defer s.setRunning(false)
 
-	// Clear any manual stop requests that came in before we started running.
-	s.debugger.CheckAndClearManualStopRequest()
 	var state *api.DebuggerState
 	var err error
 	var manualHalt bool
-	for {
-		state, manualHalt, err = s.resumeOnce(command, allowNextStateChange)
-		if manualHalt || state == nil || err != nil {
-			break
-		}
-
-		mustStop := s.handleLogPoints(state)
-		// Only resume execution if the stop reason was a breakpoint and
-		// all breakpoints were tracepoints.
-		if s.debugger.StopReason() != proc.StopBreakpoint || mustStop {
-			break
-		}
+	shouldContinue := true
+	for shouldContinue {
+		shouldContinue, state, manualHalt, err = resumeOnceAndHandleTempStop(s, command, allowNextStateChange)
 		command = api.DirectionCongruentContinue
 	}
 	return state, manualHalt, err
+}
+
+// Make this a var so it can be stubbed in testing.
+var resumeOnceAndHandleTempStop = func(s *Server, command string, allowNextStateChange chan struct{}) (bool, *api.DebuggerState, bool, error) {
+	return s.resumeOnceAndHandleTempStop(command, allowNextStateChange)
+}
+
+func (s *Server) resumeOnceAndHandleTempStop(command string, allowNextStateChange chan struct{}) (bool, *api.DebuggerState, bool, error) {
+	state, manualHalt, err := s.resumeOnce(command, allowNextStateChange)
+	if manualHalt || state == nil || err != nil {
+		return false, state, manualHalt, err
+	}
+
+	mustStop := s.handleLogPoints(state)
+
+	// Only resume execution if the stop reason was a breakpoint and
+	// all breakpoints were tracepoints.
+	if s.debugger.StopReason() != proc.StopBreakpoint || mustStop {
+		return false, state, manualHalt, err
+	}
+	return true, state, manualHalt, err
 }
 
 func (s *Server) handleLogPoints(state *api.DebuggerState) bool {
