@@ -82,6 +82,13 @@ func configureList(t *Term) error {
 		}
 
 		switch field.Kind() {
+		case reflect.Interface:
+			switch field := field.Interface().(type) {
+			case string:
+				fmt.Fprintf(w, "%s\t%q\n", fieldName, field)
+			default:
+				fmt.Fprintf(w, "%s\t%v\n", fieldName, field)
+			}
 		case reflect.Ptr:
 			if !field.IsNil() {
 				fmt.Fprintf(w, "%s\t%v\n", fieldName, field.Elem())
