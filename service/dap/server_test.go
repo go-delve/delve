@@ -55,21 +55,27 @@ func runTestBuildFlags(t *testing.T, name string, test func(c *daptest.Client, f
 	fixture := protest.BuildFixture(name, buildFlags)
 
 	// Start the DAP server.
-	client := startDapServer(t)
-	// client.Close will close the client connectinon, which will cause a connection error
-	// on the server side and signal disconnect to unblock Stop() above.
+	serverStopped := make(chan struct{})
+	client := startDapServerWithClient(t, serverStopped)
 	defer client.Close()
 
 	test(client, fixture)
+	<-serverStopped
 }
 
-func startDapServer(t *testing.T) *daptest.Client {
+func startDapServerWithClient(t *testing.T, serverStopped chan struct{}) *daptest.Client {
+	listener, _ := startDapServer(t, serverStopped)
+	client := daptest.NewClient(listener.Addr().String())
+	return client
+}
+
+func startDapServer(t *testing.T, serverStopped chan struct{}) (listener net.Listener, disconnectChan chan struct{}) {
 	// Start the DAP server.
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	disconnectChan := make(chan struct{})
+	disconnectChan = make(chan struct{})
 	server := NewServer(&service.Config{
 		Listener:       listener,
 		DisconnectChan: disconnectChan,
@@ -82,12 +88,51 @@ func startDapServer(t *testing.T) *daptest.Client {
 	// This helps us test that certain events cause the server to stop as
 	// expected.
 	go func() {
+		defer func() {
+			if serverStopped != nil {
+				close(serverStopped)
+			}
+		}()
 		<-disconnectChan
 		server.Stop()
 	}()
 
+	return listener, disconnectChan
+}
+
+func TestForceQuitNoClient(t *testing.T) {
+	serverStopped := make(chan struct{})
+	_, disconnectChan := startDapServer(t, serverStopped)
+	close(disconnectChan) // trigger server.Stop()
+	<-serverStopped
+}
+
+func TestForceQuitNoTarget(t *testing.T) {
+	serverStopped := make(chan struct{})
+	listener, disconnectChan := startDapServer(t, serverStopped)
 	client := daptest.NewClient(listener.Addr().String())
-	return client
+	defer client.Close()
+
+	client.InitializeRequest()
+	client.ExpectInitializeResponseAndCapabilities(t)
+	close(disconnectChan)
+	<-serverStopped
+}
+
+func TestForceQuitWithTarget(t *testing.T) {
+	serverStopped := make(chan struct{})
+	listener, disconnectChan := startDapServer(t, serverStopped)
+	client := daptest.NewClient(listener.Addr().String())
+	defer client.Close()
+
+	client.InitializeRequest()
+	client.ExpectInitializeResponseAndCapabilities(t)
+	fixture := protest.BuildFixture("increment", protest.AllNonOptimized)
+	client.LaunchRequest("exec", fixture.Path, stopOnEntry)
+	client.ExpectInitializedEvent(t)
+	client.ExpectLaunchResponse(t)
+	close(disconnectChan)
+	<-serverStopped
 }
 
 // TestLaunchStopOnEntry emulates the message exchange that can be observed with
@@ -920,6 +965,63 @@ func TestStackTraceRequest(t *testing.T) {
 				},
 				disconnect: false,
 			}})
+	})
+}
+
+func TestSelectedThreadsRequest(t *testing.T) {
+	runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{20},
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 20)
+
+					defaultMaxGoroutines := maxGoroutines
+					defer func() { maxGoroutines = defaultMaxGoroutines }()
+
+					maxGoroutines = 1
+					client.SetBreakpointsRequest(fixture.Source, []int{8})
+					client.ExpectSetBreakpointsResponse(t)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "breakpoint" || se.Body.ThreadId == 1 {
+						t.Errorf("got %#v, want Reason=%q, ThreadId!=1", se, "breakpoint")
+					}
+
+					client.ThreadsRequest()
+					oe := client.ExpectOutputEvent(t)
+					if !strings.HasPrefix(oe.Body.Output, "Too many goroutines") {
+						t.Errorf("got %#v, expected Output=\"Too many goroutines...\"\n", oe)
+
+					}
+					tr := client.ExpectThreadsResponse(t)
+
+					if len(tr.Body.Threads) != 2 {
+						t.Errorf("got %d threads, expected 2\n", len(tr.Body.Threads))
+					}
+
+					var selectedFound bool
+					for _, thread := range tr.Body.Threads {
+						if thread.Id == se.Body.ThreadId {
+							selectedFound = true
+							break
+						}
+					}
+					if !selectedFound {
+						t.Errorf("got %#v, want ThreadId=%d\n", tr.Body.Threads, se.Body.ThreadId)
+					}
+				},
+				disconnect: true,
+			}})
+
 	})
 }
 
@@ -4420,8 +4522,9 @@ func TestNoDebug_AcceptNoRequestsButDisconnect(t *testing.T) {
 }
 
 func TestLaunchRequestWithRelativeBuildPath(t *testing.T) {
-	client := startDapServer(t)
-	defer client.Close() // will trigger Stop()
+	serverStopped := make(chan struct{})
+	client := startDapServerWithClient(t, serverStopped)
+	defer client.Close()
 
 	fixdir := protest.FindFixturesDir()
 	if filepath.IsAbs(fixdir) {
@@ -4436,6 +4539,7 @@ func TestLaunchRequestWithRelativeBuildPath(t *testing.T) {
 		client.LaunchRequestWithArgs(map[string]interface{}{
 			"mode": "debug", "program": program, "cwd": filepath.Dir(dlvwd)})
 	})
+	<-serverStopped
 }
 
 func TestLaunchRequestWithRelativeExecPath(t *testing.T) {
@@ -4454,14 +4558,16 @@ func TestLaunchRequestWithRelativeExecPath(t *testing.T) {
 }
 
 func TestLaunchTestRequest(t *testing.T) {
-	client := startDapServer(t)
-	defer client.Close() // will trigger Stop()
+	serverStopped := make(chan struct{})
+	client := startDapServerWithClient(t, serverStopped)
+	defer client.Close()
 	runDebugSession(t, client, "launch", func() {
 		fixtures := protest.FindFixturesDir()
 		testdir, _ := filepath.Abs(filepath.Join(fixtures, "buildtest"))
 		client.LaunchRequestWithArgs(map[string]interface{}{
 			"mode": "test", "program": testdir, "output": "__mytestdir"})
 	})
+	<-serverStopped
 }
 
 // Tests that 'args' from LaunchRequest are parsed and passed to the target
@@ -4617,6 +4723,9 @@ func TestUnupportedCommandResponses(t *testing.T) {
 
 		client.ModulesRequest()
 		expectUnsupportedCommand("modules")
+
+		client.DisconnectRequest()
+		client.ExpectDisconnectResponse(t)
 	})
 }
 
@@ -5021,6 +5130,9 @@ func TestOptionalNotYetImplementedResponses(t *testing.T) {
 
 		client.CancelRequest()
 		expectNotYetImplemented("cancel")
+
+		client.DisconnectRequest()
+		client.ExpectDisconnectResponse(t)
 	})
 }
 
@@ -5332,9 +5444,8 @@ func TestBadInitializeRequest(t *testing.T) {
 		t.Helper()
 		// Only one initialize request is allowed, so use a new server
 		// for each test.
-		client := startDapServer(t)
-		// client.Close will close the client connectinon, which will cause a connection error
-		// on the server side and signal disconnect to unblock Stop() above.
+		serverStopped := make(chan struct{})
+		client := startDapServerWithClient(t, serverStopped)
 		defer client.Close()
 
 		client.InitializeRequestWithArgs(args)
@@ -5351,6 +5462,10 @@ func TestBadInitializeRequest(t *testing.T) {
 		if response.Body.Error.Format != err {
 			t.Errorf("\ngot  %q\nwant %q", response.Body.Error.Format, err)
 		}
+
+		client.DisconnectRequest()
+		client.ExpectDisconnectResponse(t)
+		<-serverStopped
 	}
 
 	// Bad path format.
@@ -5412,5 +5527,8 @@ func TestBadlyFormattedMessageToServer(t *testing.T) {
 		// Make sure that the unknown request did not kill the server.
 		client.InitializeRequest()
 		client.ExpectInitializeResponse(t)
+
+		client.DisconnectRequest()
+		client.ExpectDisconnectResponse(t)
 	})
 }

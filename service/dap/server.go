@@ -205,7 +205,11 @@ const (
 	// what is presented. A common use case of a call injection is to
 	// stringify complex data conveniently.
 	maxStringLenInCallRetVars = 1 << 10 // 1024
+)
+
+var (
 	// Max number of goroutines that we will return.
+	// This is a var for testing
 	maxGoroutines = 1 << 10
 )
 
@@ -1387,8 +1391,8 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 	if s.debugger != nil {
 		gs, next, err = s.debugger.Goroutines(0, maxGoroutines)
 	}
-	threads := make([]dap.Thread, len(gs))
 
+	var threads []dap.Thread
 	if err != nil {
 		switch err.(type) {
 		case proc.ErrProcessExited:
@@ -1404,16 +1408,41 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 				}})
 		}
 		threads = []dap.Thread{{Id: 1, Name: "Dummy"}}
-	} else if len(threads) == 0 {
+	} else if len(gs) == 0 {
 		threads = []dap.Thread{{Id: 1, Name: "Dummy"}}
 	} else {
-		if next >= 0 {
-			s.logToConsole(fmt.Sprintf("Too many goroutines, only loaded %d", len(gs)))
-		}
 		state, err := s.debugger.State( /*nowait*/ true)
 		if err != nil {
 			s.log.Debug("Unable to get debugger state: ", err)
 		}
+
+		if next >= 0 {
+			s.logToConsole(fmt.Sprintf("Too many goroutines, only loaded %d", len(gs)))
+
+			// Make sure the selected goroutine is included in the list of threads
+			// to return.
+			if state != nil && state.SelectedGoroutine != nil {
+				var selectedFound bool
+				for _, g := range gs {
+					if g.ID == state.SelectedGoroutine.ID {
+						selectedFound = true
+						break
+					}
+				}
+				if !selectedFound {
+					g, err := s.debugger.FindGoroutine(state.SelectedGoroutine.ID)
+					if err != nil {
+						s.log.Debug("Error getting selected goroutine: ", err)
+					} else {
+						// TODO(suzmue): Consider putting the selected goroutine at the top.
+						// To be consistent we may want to do this for all threads requests.
+						gs = append(gs, g)
+					}
+				}
+			}
+		}
+
+		threads = make([]dap.Thread, len(gs))
 		s.debugger.LockTarget()
 		defer s.debugger.UnlockTarget()
 
