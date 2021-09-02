@@ -2716,6 +2716,7 @@ func TestHaltBeforeResume(t *testing.T) {
 						checkStop(t, client, 1, "main.main", 25)
 
 						pauseDoneChan := make(chan struct{}, 1)
+						outputDoneChan := make(chan struct{}, 1)
 						// Send a halt request when trying to resume the program after being
 						// interrupted. This should allow the log message to be processed,
 						// but keep the process from continuing beyond the line.
@@ -2724,10 +2725,12 @@ func TestHaltBeforeResume(t *testing.T) {
 							// execution is resumed.
 							if command == api.DirectionCongruentContinue {
 								go func() {
+									<-outputDoneChan
 									defer close(pauseDoneChan)
 									client.PauseRequest(1)
 									client.ExpectPauseResponse(t)
 								}()
+								// Wait for the pause to be complete.
 								<-pauseDoneChan
 							}
 							return s.resumeOnceAndHandleTempStop(command, allowNextStateChange)
@@ -2739,7 +2742,9 @@ func TestHaltBeforeResume(t *testing.T) {
 						if oe.Body.Category != "stdout" || oe.Body.Output != "in callme!\n" {
 							t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"in callme!\n\"", oe)
 						}
-						// Wait for the pause to be issued.
+						// Signal that the output event has been received.
+						close(outputDoneChan)
+						// Wait for the pause to be complete.
 						<-pauseDoneChan
 						se = client.ExpectStoppedEvent(t)
 						if se.Body.Reason != "pause" {

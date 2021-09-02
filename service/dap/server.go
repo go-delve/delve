@@ -131,11 +131,16 @@ type Server struct {
 	// to ensure that messages do not get interleaved
 	sendingMu sync.Mutex
 
-	// runningCmd tracks tracks whether the server is running an asyncronous
+	// runningCmd tracks whether the server is running an asyncronous
 	// command that resumes execution, which may not correspond to the actual
 	// running state of the process (e.g. if a command is temporarily interrupted).
 	runningCmd bool
 	runningMu  sync.Mutex
+
+	// haltRequested tracks whether a halt of the program has been requested, which may
+	// not correspond to whether a Halt Request has been sent to the target.
+	haltRequested bool
+	haltMu        sync.Mutex
 
 	// changeStateMu must be held for a request to resume execution of the
 	// process.
@@ -473,7 +478,7 @@ func (s *Server) handleRequest(request dap.Message) {
 			s.changeStateMu.Lock()
 			defer s.changeStateMu.Unlock()
 			s.log.Debug("halting execution to set breakpoints")
-			_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+			_, err := s.halt()
 			if err != nil {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
@@ -498,7 +503,7 @@ func (s *Server) handleRequest(request dap.Message) {
 			s.changeStateMu.Lock()
 			defer s.changeStateMu.Unlock()
 			s.log.Debug("halting execution to set breakpoints")
-			_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+			_, err := s.halt()
 			if err != nil {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
@@ -1012,7 +1017,7 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 	// To avoid goroutine leaks, we can use a wait group or have the goroutine listen
 	// for a stop signal on a dedicated quit channel at suitable points (use context?).
 	// Additional clean-up might be especially critical when we support multiple clients.
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+	state, err := s.halt()
 	if err == proc.ErrProcessDetached {
 		s.log.Debug("halt returned error: ", err)
 		return nil
@@ -1052,6 +1057,17 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 		}
 	}
 	return err
+}
+
+// halt sends a halt request if the debuggee is running.
+// changeStateMu should be held when calling (*Server).halt.
+func (s *Server) halt() (*api.DebuggerState, error) {
+	s.setHaltRequested(true)
+	// Only send a halt request if the debuggee is running.
+	if s.debugger.IsRunning() {
+		return s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+	}
+	return s.debugger.State(false)
 }
 
 func (s *Server) isNoDebug() bool {
@@ -1623,7 +1639,7 @@ func (s *Server) stepUntilStopAndNotify(command string, threadId int, allowNextS
 func (s *Server) onPauseRequest(request *dap.PauseRequest) {
 	s.changeStateMu.Lock()
 	defer s.changeStateMu.Unlock()
-	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+	_, err := s.halt()
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToHalt, "Unable to halt execution", err.Error())
 		return
@@ -2841,14 +2857,28 @@ func processExited(state *api.DebuggerState, err error) bool {
 }
 func (s *Server) setRunning(running bool) {
 	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
 	s.runningCmd = running
-	s.runningMu.Unlock()
 }
 
 func (s *Server) isRunning() bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 	return s.runningCmd
+}
+
+func (s *Server) setHaltRequested(requested bool) {
+	s.haltMu.Lock()
+	defer s.haltMu.Unlock()
+	s.haltRequested = requested
+}
+
+func (s *Server) checkAndClearHaltRequested() bool {
+	s.haltMu.Lock()
+	defer s.haltMu.Unlock()
+	hr := s.haltRequested
+	s.haltRequested = false
+	return hr
 }
 
 // resumeOnce is a helper function to resume the execution
@@ -2869,7 +2899,7 @@ func (s *Server) resumeOnce(command string, allowNextStateChange chan struct{}) 
 	// There may have been a manual halt while the program was
 	// stopped. If this happened, do not resume exection of
 	// the program.
-	if s.debugger.CheckAndClearManualStopRequest() {
+	if s.checkAndClearHaltRequested() {
 		state, err := s.debugger.State(false)
 		return state, true, err
 	}
@@ -2885,7 +2915,7 @@ func (s *Server) resumeOnce(command string, allowNextStateChange chan struct{}) 
 // due to an error, so the server is ready to receive new requests.
 func (s *Server) runUntilStopAndNotify(command string, allowNextStateChange chan struct{}) {
 	// Clear any manual stop requests that came in before we started running.
-	s.debugger.CheckAndClearManualStopRequest()
+	s.checkAndClearHaltRequested()
 	state, manualHalt, err := s.runUntilStop(command, allowNextStateChange)
 
 	if processExited(state, err) {
