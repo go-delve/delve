@@ -36,10 +36,6 @@ type nativeProcess struct {
 	// signalled to stop as a result of a Halt API call. Used to disambiguate
 	// why a thread is found to have stopped.
 	manualStopRequested bool
-	// manualStopPending is set if there is a signal sent by a Halt API call
-	// pending. Used to process the signal if the signal was sent while the
-	// program was stopped on linux.
-	manualStopPending bool
 
 	// Controlling terminal file descriptor for
 	// this process.
@@ -194,16 +190,7 @@ func (dbp *nativeProcess) RequestManualStop() error {
 	dbp.stopMu.Lock()
 	defer dbp.stopMu.Unlock()
 	dbp.manualStopRequested = true
-	dbp.manualStopPending = true
 	return dbp.requestManualStop()
-}
-
-func (dbp *nativeProcess) checkAndClearPendingManualStop() (bool, bool) {
-	dbp.stopMu.Lock()
-	defer dbp.stopMu.Unlock()
-	msp := dbp.manualStopPending
-	dbp.manualStopPending = false
-	return dbp.manualStopRequested, msp
 }
 
 // CheckAndClearManualStopRequest checks if a manual stop has

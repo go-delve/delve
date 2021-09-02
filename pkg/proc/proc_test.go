@@ -289,41 +289,6 @@ func TestHalt(t *testing.T) {
 	})
 }
 
-func TestHaltWhileStopped(t *testing.T) {
-	withTestProcess("loopprog", t, func(p *proc.Target, fixture protest.Fixture) {
-		setFunctionBreakpoint(p, t, "main.main")
-		assertNoError(p.Continue(), t, "Continue")
-		setFileBreakpoint(p, t, fixture.Source, 6)
-		setFileBreakpoint(p, t, fixture.Source, 8)
-		assertNoError(p.Continue(), t, "Continue")
-		if f, ln := currentLineNumber(p, t); ln != 6 || f != fixture.Source {
-			t.Errorf("Program did not continue to correct location, want line=6 file=%s, got line=%d file=%s", fixture.Source, ln, f)
-		}
-
-		// Issue a manual stop request while stopped, and continue while on breakpoint.
-		assertNoError(p.RequestManualStop(), t, "RequestManualStop")
-		assertNoError(p.Continue(), t, "Continue")
-		if f, ln := currentLineNumber(p, t); ln != 8 || f != fixture.Source {
-			t.Errorf("Program did not continue to correct location, want line=8 file=%s, got line=%d file=%s", fixture.Source, ln, f)
-		}
-
-		// Issue a manual stop request while stopped, and next while on breakpoint.
-		assertNoError(p.RequestManualStop(), t, "RequestManualStop")
-		assertNoError(p.Next(), t, "Next")
-		if f, ln := currentLineNumber(p, t); ln != 9 || f != fixture.Source {
-			t.Errorf("Program did not continue to correct location, want line=9 file=%s, got line=%d file=%s", fixture.Source, ln, f)
-		}
-
-		// Issue a manual stop request while stopped, and continue.
-		assertNoError(p.RequestManualStop(), t, "RequestManualStop")
-		assertNoError(p.Continue(), t, "Continue")
-		if f, ln := currentLineNumber(p, t); ln != 8 || f != fixture.Source {
-			t.Errorf("Program did not continue to correct location, want line=8 file=%s, got line=%d file=%s", fixture.Source, ln, f)
-		}
-
-	})
-}
-
 func TestStep(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testprog", t, func(p *proc.Target, fixture protest.Fixture) {

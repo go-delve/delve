@@ -518,31 +518,15 @@ func (dbp *nativeProcess) exitGuard(err error) error {
 }
 
 func (dbp *nativeProcess) resume() error {
-	msr, msp := dbp.checkAndClearPendingManualStop()
-	// Make sure there are no stops that need to be processed that was cleared.
+	// all threads stopped over a breakpoint are made to step over it
 	for _, thread := range dbp.threads {
-		if !msr && msp {
-			// Should move it nowhere
+		if thread.CurrentBreakpoint.Breakpoint != nil {
 			if err := thread.StepInstruction(); err != nil {
 				return err
 			}
-			break
-		}
-		break
-	}
-
-	// all threads stopped over a breakpoint are made to step over it
-	if !msr {
-		for _, thread := range dbp.threads {
-			if thread.CurrentBreakpoint.Breakpoint != nil {
-				if err := thread.StepInstruction(); err != nil {
-					return err
-				}
-				thread.CurrentBreakpoint.Clear()
-			}
+			thread.CurrentBreakpoint.Clear()
 		}
 	}
-
 	// everything is resumed
 	for _, thread := range dbp.threads {
 		if err := thread.resume(); err != nil && err != sys.ESRCH {
@@ -557,8 +541,6 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 	if dbp.exited {
 		return nil, proc.ErrProcessExited{Pid: dbp.Pid()}
 	}
-
-	dbp.checkAndClearPendingManualStop()
 
 	for _, th := range dbp.threads {
 		th.os.setbp = false

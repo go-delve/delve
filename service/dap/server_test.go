@@ -2237,14 +2237,14 @@ func TestPauseAtStop(t *testing.T) {
 					client.ExpectStoppedEvent(t)
 					checkStop(t, client, 1, "main.loop", 9)
 
-					// client.PauseRequest(1)
-					// client.ExpectPauseResponse(t)
+					client.PauseRequest(1)
+					client.ExpectPauseResponse(t)
 
-					// client.ContinueRequest(1)
-					// client.ExpectContinueResponse(t)
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
 
-					// client.ExpectStoppedEvent(t)
-					// checkStop(t, client, 1, "main.loop", 8)
+					client.ExpectStoppedEvent(t)
+					checkStop(t, client, 1, "main.loop", 8)
 				},
 				// The program has an infinite loop, so we must kill it by disconnecting.
 				disconnect: true,
