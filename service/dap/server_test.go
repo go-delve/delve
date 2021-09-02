@@ -2715,21 +2715,7 @@ func TestHaltBeforeResume(t *testing.T) {
 						}
 						checkStop(t, client, 1, "main.main", 25)
 
-						// Send a halt request before the initial resume, this should keep the
-						// program from making progress.
-						resumeOnceAndHandleTempStop = func(s *Server, command string, allowNextStateChange chan struct{}) (bool, *api.DebuggerState, bool, error) {
-							s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
-							return s.resumeOnceAndHandleTempStop(command, allowNextStateChange)
-						}
-
-						client.ContinueRequest(1)
-						client.ExpectContinueResponse(t)
-						se = client.ExpectStoppedEvent(t)
-						if se.Body.Reason != "pause" || se.Body.ThreadId != 1 {
-							t.Errorf("got stopped event = %#v, \nwant Reason=\"pause\" ThreadId=1", se)
-						}
-						checkStop(t, client, 1, "main.main", 25)
-
+						pauseDoneChan := make(chan struct{}, 1)
 						// Send a halt request when trying to resume the program after being
 						// interrupted. This should allow the log message to be processed,
 						// but keep the process from continuing beyond the line.
@@ -2737,7 +2723,12 @@ func TestHaltBeforeResume(t *testing.T) {
 							// This should trigger after the log message is sent, but before
 							// execution is resumed.
 							if command == api.DirectionCongruentContinue {
-								s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+								go func() {
+									defer close(pauseDoneChan)
+									client.PauseRequest(1)
+									client.ExpectPauseResponse(t)
+								}()
+								<-pauseDoneChan
 							}
 							return s.resumeOnceAndHandleTempStop(command, allowNextStateChange)
 						}
@@ -2748,6 +2739,8 @@ func TestHaltBeforeResume(t *testing.T) {
 						if oe.Body.Category != "stdout" || oe.Body.Output != "in callme!\n" {
 							t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"in callme!\n\"", oe)
 						}
+						// Wait for the pause to be issued.
+						<-pauseDoneChan
 						se = client.ExpectStoppedEvent(t)
 						if se.Body.Reason != "pause" {
 							t.Errorf("got stopped event = %#v, \nwant Reason=\"pause\"", se)
