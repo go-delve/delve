@@ -1824,7 +1824,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 	if bi.regabi {
 		// prepare patch for runtime.mallocgc's DIE
 		fn := bi.LookupFunc["runtime.mallocgc"]
-		if fn != nil {
+		if fn != nil && fn.cu.image == image {
 			tree, err := image.getDwarfTree(fn.offset)
 			if err == nil {
 				tree.Children, err = regabiMallocgcWorkaround(bi)
