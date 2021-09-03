@@ -2881,7 +2881,7 @@ func (s *Server) checkHaltRequested() bool {
 
 // resumeOnce is a helper function to resume the execution
 // of the target when the program is halted.
-func (s *Server) resumeOnce(command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
+func (s *Server) resumeOnce(command string, allowNextStateChange chan struct{}) (bool, *api.DebuggerState, error) {
 	// No other goroutines should be able to try to resume
 	// or halt execution while this goroutine is resuming
 	// execution, so we do not miss those events.
@@ -2899,10 +2899,10 @@ func (s *Server) resumeOnce(command string, allowNextStateChange chan struct{}) 
 	// the program.
 	if s.checkHaltRequested() {
 		state, err := s.debugger.State(false)
-		return state, err
+		return false, state, err
 	}
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
-	return state, err
+	return true, state, err
 }
 
 // runUntilStopAndNotify runs a debugger command until it stops on
@@ -3028,8 +3028,10 @@ var resumeOnceAndCheckStop = func(s *Server, command string, allowNextStateChang
 }
 
 func (s *Server) resumeOnceAndCheckStop(command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
-	state, err := s.resumeOnce(command, allowNextStateChange)
-	if s.checkHaltRequested() || state == nil || err != nil {
+	resumed, state, err := s.resumeOnce(command, allowNextStateChange)
+	// We should not try to process the log points if the program was not
+	// resumed or there was an error.
+	if !resumed || state == nil || err != nil {
 		s.setRunningCmd(false)
 		return state, err
 	}
