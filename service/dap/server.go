@@ -811,28 +811,37 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 	// Prepare the debug executable filename, build flags and build it
 	if mode == "debug" || mode == "test" {
-		output := args.Output
-		if output == "" {
-			output = defaultDebugBinary
+		buildDir := args.BuildDir
+		if buildDir == "" || buildDir == "." {
+			buildDir, _ = os.Getwd()
 		}
-		output = cleanExeName(output)
-		debugbinary, err := filepath.Abs(output)
-		if err != nil {
-			s.sendInternalErrorResponse(request.Seq, err.Error())
-			return
+
+		debugbinary := args.Output
+		if debugbinary == "" {
+			debugbinary = defaultDebugBinary
 		}
+
+		if !filepath.IsAbs(debugbinary) {
+			o, err := filepath.Abs(filepath.Join(buildDir, debugbinary))
+			if err != nil {
+				s.sendInternalErrorResponse(request.Seq, err.Error())
+				return
+			}
+			debugbinary = o
+		}
+		debugbinary = cleanExeName(debugbinary)
 
 		buildFlags := args.BuildFlags
 
 		var cmd string
 		var out []byte
-		wd, _ := os.Getwd()
-		s.log.Debugf("building program '%s' in '%s' with flags '%v'", program, wd, buildFlags)
+		var err error
+		s.log.Debugf("building program %q in %q with flags '%v'", program, buildDir, buildFlags)
 		switch mode {
 		case "debug":
-			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
+			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags, buildDir)
 		case "test":
-			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
+			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, buildFlags, buildDir)
 		}
 		if err != nil {
 			s.send(&dap.OutputEvent{

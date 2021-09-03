@@ -4453,6 +4453,79 @@ func TestLaunchRequestWithBuildFlags(t *testing.T) {
 	})
 }
 
+func TestLaunchRequestWithBuildDir(t *testing.T) {
+	// Prepare the target source code in a temp directory as a separate module
+	// outside of the github.com/go-delve/delve module.
+	// Building it outside of the module won't work, so we use buildDir.
+	fixturesDir := protest.FindFixturesDir()
+	buildtestdir := filepath.Join(fixturesDir, "buildtest")
+
+	moduleDir, err := prepareModule("launchRequestWithBuildDir", buildtestdir)
+	if err != nil {
+		t.Fatalf("failed to set up test environment: %v", err)
+	}
+	defer os.RemoveAll(moduleDir)
+
+	for _, mode := range []string{"debug", "test"} {
+		t.Run(mode, func(t *testing.T) {
+			// Start the DAP server.
+			serverStopped := make(chan struct{})
+			client := startDapServerWithClient(t, serverStopped)
+			defer client.Close()
+			runDebugSession(t, client, "launch",
+				func() {
+					client.LaunchRequestWithArgs(map[string]interface{}{
+						"mode":        mode,
+						"program":     moduleDir,
+						"stopOnEntry": false,
+						"buildDir":    moduleDir,
+					})
+				})
+			<-serverStopped
+		})
+	}
+}
+
+// prepareModule copies all regular files in sourceDir into a separate
+// module in a temporary directory. Caller is responsible for clean up
+// the returned module source directory path.
+func prepareModule(moduleName, sourceDir string) (string, error) {
+	info, err := ioutil.ReadDir(sourceDir)
+	if err != nil {
+		return "", err
+	}
+	tmp := os.TempDir()
+	// For Darwin `os.TempDir()` returns `/tmp` which is symlink to `/private/tmp`.
+	if runtime.GOOS == "darwin" {
+		tmp = "/private/tmp"
+	}
+	workDir, err := ioutil.TempDir(tmp, moduleName)
+	if err != nil {
+		return "", err
+	}
+	for _, f := range info {
+		if !f.Mode().IsRegular() {
+			continue
+		}
+		source, err := ioutil.ReadFile(filepath.Join(sourceDir, f.Name()))
+		if err != nil {
+			os.RemoveAll(workDir)
+			return "", fmt.Errorf("failed to read: %v", err)
+		}
+		destFile := filepath.Join(workDir, f.Name())
+		if err := ioutil.WriteFile(destFile, source, 0644); err != nil {
+			os.RemoveAll(workDir)
+			return "", err
+		}
+	}
+
+	if err := ioutil.WriteFile(filepath.Join(workDir, "go.mod"), []byte("module "+moduleName), 0644); err != nil {
+		os.RemoveAll(workDir)
+		return "", err
+	}
+	return workDir, nil
+}
+
 func TestAttachRequest(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.SkipNow()

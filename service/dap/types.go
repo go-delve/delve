@@ -73,12 +73,12 @@ type LaunchConfig struct {
 	// Default is "debug".
 	Mode string `json:"mode,omitempty"`
 
-	// Required when mode is `debug`, `test`, or `exec`.
 	// Path to the program folder (or any go file within that folder)
 	// when in `debug` or `test` mode, and to the pre-built binary file
 	// to debug in `exec` mode.
 	// If it is not an absolute path, it will be interpreted as a path
 	// relative to the working directory of the delve process.
+	// Required when mode is `debug`, `test`, or `exec`.
 	Program string `json:"program,omitempty"`
 
 	// Command line arguments passed to the debugged program.
@@ -94,6 +94,12 @@ type LaunchConfig struct {
 	// This is similar to delve's `--wd` flag.
 	Cwd string `json:"cwd,omitempty"`
 
+	// Build directory from which the program to be debugged will be built.
+	// If a relative path is provided, it will be interpreted as
+	// a relative path to the delve's working directory.
+	// If unspecified or empty, the delve's working directory will be used.
+	BuildDir string `json:"buildDir,omitempty"`
+
 	// Build flags, to be passed to the Go compiler.
 	// It is like delve's `--build-flags`. For example,
 	//
@@ -102,7 +108,7 @@ type LaunchConfig struct {
 
 	// Output path for the binary of the debugee.
 	// Relative path is interpreted as the path relative to
-	// the delve process's working directory.
+	// `buildDir`.
 	// This is deleted after the debug session ends.
 	//
 	// FIXIT: the built program's directory is used as the default

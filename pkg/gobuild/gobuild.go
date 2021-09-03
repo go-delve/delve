@@ -61,9 +61,9 @@ func GoBuild(debugname string, pkgs []string, buildflags string) error {
 
 // GoBuildCombinedOutput builds non-test files in 'pkgs' with the specified 'buildflags'
 // and writes the output at 'debugname'.
-func GoBuildCombinedOutput(debugname string, pkgs []string, buildflags string) (string, []byte, error) {
+func GoBuildCombinedOutput(debugname string, pkgs []string, buildflags, buildDir string) (string, []byte, error) {
 	args := goBuildArgs(debugname, pkgs, buildflags, false)
-	return gocommandCombinedOutput("build", args...)
+	return gocommandCombinedOutput("build", buildDir, args...)
 }
 
 // GoTestBuild builds test files 'pkgs' with the specified 'buildflags'
@@ -75,9 +75,9 @@ func GoTestBuild(debugname string, pkgs []string, buildflags string) error {
 
 // GoTestBuildCombinedOutput builds test files 'pkgs' with the specified 'buildflags'
 // and writes the output at 'debugname'.
-func GoTestBuildCombinedOutput(debugname string, pkgs []string, buildflags string) (string, []byte, error) {
+func GoTestBuildCombinedOutput(debugname string, pkgs []string, buildflags, buildDir string) (string, []byte, error) {
 	args := goBuildArgs(debugname, pkgs, buildflags, true)
-	return gocommandCombinedOutput("test", args...)
+	return gocommandCombinedOutput("test", buildDir, args...)
 }
 
 func goBuildArgs(debugname string, pkgs []string, buildflags string, isTest bool) []string {
@@ -100,8 +100,11 @@ func gocommandRun(command string, args ...string) error {
 	return goBuild.Run()
 }
 
-func gocommandCombinedOutput(command string, args ...string) (string, []byte, error) {
+func gocommandCombinedOutput(command, buildDir string, args ...string) (string, []byte, error) {
 	buildCmd, goBuild := gocommandExecCmd(command, args...)
+	if buildDir != "" {
+		goBuild.Dir = buildDir
+	}
 	out, err := goBuild.CombinedOutput()
 	return buildCmd, out, err
 }
