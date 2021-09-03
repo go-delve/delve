@@ -10,8 +10,8 @@ var (
 	MinSupportedVersionOfGoMinor = 15
 	MaxSupportedVersionOfGoMajor = 1
 	MaxSupportedVersionOfGoMinor = 17
-	goTooOldErr                  = fmt.Errorf("Version of Go is too old for this version of Delve (minimum supported version %d.%d, suppress this error with --check-go-version=false)", MinSupportedVersionOfGoMajor, MinSupportedVersionOfGoMinor)
-	goTooOldWarn                 = fmt.Errorf("Warning: version of Go is too old for this version of Delve (minimum supported version %d.%d)", MinSupportedVersionOfGoMajor, MinSupportedVersionOfGoMinor)
+	goTooOldErr                  = fmt.Errorf("Version of Go may be too old to work with this version of Delve (minimum supported version %d.%d, suppress this error with --check-go-version=false)", MinSupportedVersionOfGoMajor, MinSupportedVersionOfGoMinor)
+	goTooOldWarn                 = fmt.Errorf("Warning: version of Go may be too old to work with this version of Delve (minimum supported version %d.%d)", MinSupportedVersionOfGoMajor, MinSupportedVersionOfGoMinor)
 	dlvTooOldErr                 = fmt.Errorf("Version of Delve is too old for this version of Go (maximum supported version %d.%d, suppress this error with --check-go-version=false)", MaxSupportedVersionOfGoMajor, MaxSupportedVersionOfGoMinor)
 	dlvTooOldWarn                = fmt.Errorf("Warning: version of Delve is too old for this version of Go (maximum supported version %d.%d)", MaxSupportedVersionOfGoMajor, MaxSupportedVersionOfGoMinor)
 )
