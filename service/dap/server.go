@@ -158,7 +158,7 @@ type launchAttachArgs struct {
 var defaultArgs = launchAttachArgs{
 	stopOnEntry:                  false,
 	stackTraceDepth:              50,
-	goroutineArgs:                "",
+	goroutineArgs:                "-with user",
 	showGlobalVariables:          false,
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
@@ -1476,6 +1476,13 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 			s.logToConsole(fmt.Sprintf("too many goroutines, only loaded %d", len(gs)))
 		}
 		gs = s.debugger.FilterGoroutines(gs, filters)
+		grouping := api.GoroutineGroupingOptions{
+			GroupBy:         api.GoroutineRunning,
+			MaxGroupMembers: len(gs),
+			MaxGroups:       len(gs),
+		}
+		gs, _, _ = s.debugger.GroupGoroutines(gs, &grouping)
+
 	}
 	threads := make([]dap.Thread, len(gs))
 
