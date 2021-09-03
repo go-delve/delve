@@ -2689,9 +2689,9 @@ func TestHaltBeforeResume(t *testing.T) {
 			fixture.Source, []int{23},
 			[]onBreakpoint{{
 				execute: func() {
-					savedResumeOnce := resumeOnceAndHandleTempStop
+					savedResumeOnce := resumeOnceAndCheckStop
 					defer func() {
-						resumeOnceAndHandleTempStop = savedResumeOnce
+						resumeOnceAndCheckStop = savedResumeOnce
 					}()
 					checkStop(t, client, 1, "main.main", 23)
 					bps := []int{6, 25}
@@ -2701,7 +2701,7 @@ func TestHaltBeforeResume(t *testing.T) {
 
 					for i := 0; i < 5; i++ {
 						// Reset the handler to the default behavior.
-						resumeOnceAndHandleTempStop = savedResumeOnce
+						resumeOnceAndCheckStop = savedResumeOnce
 
 						// Expect a pause request while stopped not to interrupt continue.
 						client.PauseRequest(1)
@@ -2720,7 +2720,7 @@ func TestHaltBeforeResume(t *testing.T) {
 						// Send a halt request when trying to resume the program after being
 						// interrupted. This should allow the log message to be processed,
 						// but keep the process from continuing beyond the line.
-						resumeOnceAndHandleTempStop = func(s *Server, command string, allowNextStateChange chan struct{}) (bool, *api.DebuggerState, bool, error) {
+						resumeOnceAndCheckStop = func(s *Server, command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
 							// This should trigger after the log message is sent, but before
 							// execution is resumed.
 							if command == api.DirectionCongruentContinue {
@@ -2733,7 +2733,7 @@ func TestHaltBeforeResume(t *testing.T) {
 								// Wait for the pause to be complete.
 								<-pauseDoneChan
 							}
-							return s.resumeOnceAndHandleTempStop(command, allowNextStateChange)
+							return s.resumeOnceAndCheckStop(command, allowNextStateChange)
 						}
 
 						client.ContinueRequest(1)

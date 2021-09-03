@@ -460,7 +460,7 @@ func (s *Server) handleRequest(request dap.Message) {
 	// the next stop. In addition, the editor itself might block waiting
 	// for these requests to return. We are not aware of any requests
 	// that would benefit from this approach at this time.
-	if s.debugger != nil && s.isRunning() {
+	if s.debugger != nil && s.isRunningCmd() {
 		switch request := request.(type) {
 		case *dap.ThreadsRequest:
 			// On start-up, the client requests the baseline of currently existing threads
@@ -486,7 +486,7 @@ func (s *Server) handleRequest(request dap.Message) {
 			s.logToConsole("Execution halted to set breakpoints - please resume execution manually")
 			s.onSetBreakpointsRequest(request)
 			// TODO(polina): consider resuming execution here automatically after suppressing
-			// a stop event when an operation in doRunCommand returns. In case that operation
+			// a stop event when an operation in runUntilStopAndNotify returns. In case that operation
 			// was already stopping for a different reason, we would need to examine the state
 			// that is returned to determine if this halt was the cause of the stop or not.
 			// We should stop with an event and not resume if one of the following is true:
@@ -1584,7 +1584,7 @@ func stoppedGoroutineID(state *api.DebuggerState) (id int) {
 }
 
 // stoppedOnBreakpointGoroutineID gets the goroutine id of the first goroutine
-// that is stopped on a real breakpoint.
+// that is stopped on a real breakpoint, starting with the selected goroutine.
 func (s *Server) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int, *api.Breakpoint) {
 	// Check if the selected goroutine is stopped on a real breakpoint
 	// since we would prefer to use that one.
@@ -1604,10 +1604,10 @@ func (s *Server) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int, 
 			}
 		}
 	}
-	return -1, nil
+	return 0, nil
 }
 
-// stepUntilStopAndNotify is a wrapper around doRunCommand that
+// stepUntilStopAndNotify is a wrapper around runUntilStopAndNotify that
 // first switches selected goroutine. allowNextStateChange is
 // a channel that will be closed to signal that an
 // asynchornous command has completed setup or was interrupted
@@ -2855,13 +2855,13 @@ func processExited(state *api.DebuggerState, err error) bool {
 	_, isexited := err.(proc.ErrProcessExited)
 	return isexited || err == nil && state.Exited
 }
-func (s *Server) setRunning(running bool) {
+func (s *Server) setRunningCmd(running bool) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 	s.runningCmd = running
 }
 
-func (s *Server) isRunning() bool {
+func (s *Server) isRunningCmd() bool {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
 	return s.runningCmd
@@ -2873,17 +2873,15 @@ func (s *Server) setHaltRequested(requested bool) {
 	s.haltRequested = requested
 }
 
-func (s *Server) checkAndClearHaltRequested() bool {
+func (s *Server) checkHaltRequested() bool {
 	s.haltMu.Lock()
 	defer s.haltMu.Unlock()
-	hr := s.haltRequested
-	s.haltRequested = false
-	return hr
+	return s.haltRequested
 }
 
 // resumeOnce is a helper function to resume the execution
 // of the target when the program is halted.
-func (s *Server) resumeOnce(command string, allowNextStateChange chan struct{}) (*api.DebuggerState, bool, error) {
+func (s *Server) resumeOnce(command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
 	// No other goroutines should be able to try to resume
 	// or halt execution while this goroutine is resuming
 	// execution, so we do not miss those events.
@@ -2899,12 +2897,12 @@ func (s *Server) resumeOnce(command string, allowNextStateChange chan struct{}) 
 	// There may have been a manual halt while the program was
 	// stopped. If this happened, do not resume exection of
 	// the program.
-	if s.checkAndClearHaltRequested() {
+	if s.checkHaltRequested() {
 		state, err := s.debugger.State(false)
-		return state, true, err
+		return state, err
 	}
 	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
-	return state, false, err
+	return state, err
 }
 
 // runUntilStopAndNotify runs a debugger command until it stops on
@@ -2915,8 +2913,8 @@ func (s *Server) resumeOnce(command string, allowNextStateChange chan struct{}) 
 // due to an error, so the server is ready to receive new requests.
 func (s *Server) runUntilStopAndNotify(command string, allowNextStateChange chan struct{}) {
 	// Clear any manual stop requests that came in before we started running.
-	s.checkAndClearHaltRequested()
-	state, manualHalt, err := s.runUntilStop(command, allowNextStateChange)
+	s.setHaltRequested(false)
+	state, err := s.runUntilStop(command, allowNextStateChange)
 
 	if processExited(state, err) {
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
@@ -2924,7 +2922,8 @@ func (s *Server) runUntilStopAndNotify(command string, allowNextStateChange chan
 	}
 
 	stopReason := s.debugger.StopReason()
-	if manualHalt {
+	// Override the stop reason if there was a manual stop request.
+	if s.checkHaltRequested() {
 		stopReason = proc.StopManual
 	}
 	file, line := "?", -1
@@ -2958,9 +2957,8 @@ func (s *Server) runUntilStopAndNotify(command string, allowNextStateChange chan
 			stopped.Body.Reason = "data breakpoint"
 		default:
 			stopped.Body.Reason = "breakpoint"
-			gId, bp := s.stoppedOnBreakpointGoroutineID(state)
-			if bp != nil {
-				stopped.Body.ThreadId = gId
+			var bp *api.Breakpoint
+			if stopped.Body.ThreadId, bp = s.stoppedOnBreakpointGoroutineID(state); bp != nil {
 				switch bp.Name {
 				case proc.FatalThrow:
 					stopped.Body.Reason = "exception"
@@ -3011,60 +3009,62 @@ func (s *Server) runUntilStopAndNotify(command string, allowNextStateChange chan
 	}
 }
 
-func (s *Server) runUntilStop(command string, allowNextStateChange chan struct{}) (*api.DebuggerState, bool, error) {
-	s.setRunning(true)
-	defer s.setRunning(false)
+func (s *Server) runUntilStop(command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
+	s.setRunningCmd(true)
+	defer s.setRunningCmd(false)
 
 	var state *api.DebuggerState
 	var err error
-	var manualHalt bool
-	shouldContinue := true
-	for shouldContinue {
-		shouldContinue, state, manualHalt, err = resumeOnceAndHandleTempStop(s, command, allowNextStateChange)
+	for s.isRunningCmd() {
+		state, err = resumeOnceAndCheckStop(s, command, allowNextStateChange)
 		command = api.DirectionCongruentContinue
 	}
-	return state, manualHalt, err
+	return state, err
 }
 
 // Make this a var so it can be stubbed in testing.
-var resumeOnceAndHandleTempStop = func(s *Server, command string, allowNextStateChange chan struct{}) (bool, *api.DebuggerState, bool, error) {
-	return s.resumeOnceAndHandleTempStop(command, allowNextStateChange)
+var resumeOnceAndCheckStop = func(s *Server, command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
+	return s.resumeOnceAndCheckStop(command, allowNextStateChange)
 }
 
-func (s *Server) resumeOnceAndHandleTempStop(command string, allowNextStateChange chan struct{}) (bool, *api.DebuggerState, bool, error) {
-	state, manualHalt, err := s.resumeOnce(command, allowNextStateChange)
-	if manualHalt || state == nil || err != nil {
-		return false, state, manualHalt, err
+func (s *Server) resumeOnceAndCheckStop(command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
+	state, err := s.resumeOnce(command, allowNextStateChange)
+	if s.checkHaltRequested() || state == nil || err != nil {
+		s.setRunningCmd(false)
+		return state, err
 	}
 
-	mustStop := s.handleLogPoints(state)
-
-	// Only resume execution if the stop reason was a breakpoint and
-	// all breakpoints were tracepoints.
-	if s.debugger.StopReason() != proc.StopBreakpoint || mustStop {
-		return false, state, manualHalt, err
+	if s.debugger.StopReason() != proc.StopBreakpoint {
+		s.setRunningCmd(false)
 	}
-	return true, state, manualHalt, err
+
+	foundRealBreakpoint := s.handleLogPoints(state)
+	if foundRealBreakpoint {
+		s.setRunningCmd(false)
+	}
+
+	return state, err
 }
 
 func (s *Server) handleLogPoints(state *api.DebuggerState) bool {
-	mustStop := false
+	foundRealBreakpoint := false
 	for _, th := range state.Threads {
 		if bp := th.Breakpoint; bp != nil {
 			logged := s.logBreakpointMessage(bp)
 			if !logged {
-				mustStop = true
+				foundRealBreakpoint = true
 			}
 		}
 	}
-	return mustStop
+	return foundRealBreakpoint
 }
 
 func (s *Server) logBreakpointMessage(bp *api.Breakpoint) bool {
 	if !bp.Tracepoint {
 		return false
 	}
-	// TODO(suzmue): allow evaluate expressions within log points.
+	// TODO(suzmue): allow evaluate expressions within log points and
+	// consider adding line and goid info to output.
 	if msg, ok := bp.UserData.(string); ok {
 		s.send(&dap.OutputEvent{
 			Event: *newEvent("output"),
