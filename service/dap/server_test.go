@@ -885,6 +885,7 @@ func TestStackTraceRequest(t *testing.T) {
 					client.StackTraceRequest(1, 0, 0)
 					stResp = client.ExpectStackTraceResponse(t)
 					checkStackFramesExact(t, stResp, "main.main", 18, startHandle, 3, 3)
+
 				},
 				disconnect: false,
 			}})
@@ -2350,7 +2351,16 @@ func TestHitBreakpointIds(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					se = client.ExpectStoppedEvent(t)
+					go func() {
+						x := 0
+						for {
+							x += 1
+							x -= 3
+							_ = x
+						}
+					}()
 					checkHitBreakpointIds(t, se, "function breakpoint", functionBps[1].Id)
+
 					checkStop(t, client, 1, "main.anotherFunction", 27)
 				},
 				disconnect: true,

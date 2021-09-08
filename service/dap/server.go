@@ -25,6 +25,7 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -2218,6 +2219,7 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 // Support the following expressions:
 // -- {expression} - evaluates the expression and returns the result as a variable
 // -- call {function} - injects a function call and returns the result as a variable
+// -- config {expression} - updates configuration paramaters
 // TODO(polina): users have complained about having to click to expand multi-level
 // variables, so consider also adding the following:
 // -- print {expression} - return the result as a string like from dlv cli
@@ -2237,9 +2239,20 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 	}
 
 	response := &dap.EvaluateResponse{Response: *newResponse(request.Request)}
-	isCall, err := regexp.MatchString(`^\s*call\s+\S+`, request.Arguments.Expression)
-	if err == nil && isCall { // call {expression}
-		expr := strings.Replace(request.Arguments.Expression, "call ", "", 1)
+	expr := request.Arguments.Expression
+
+	if isConfig, err := regexp.MatchString(`^\s*config\s+\S+`, expr); err == nil && isConfig { // config {expression}{
+		expr := strings.Replace(expr, "config ", "", 1)
+		result, err := s.evaluateConfig(expr)
+		if err != nil {
+			s.sendErrorResponseWithOpts(request.Request, UnableToUpdateConfig, "Unable to update config", err.Error(), showErrorToUser)
+			return
+		}
+		response.Body = dap.EvaluateResponseBody{
+			Result: result,
+		}
+	} else if isCall, err := regexp.MatchString(`^\s*call\s+\S+`, expr); err == nil && isCall { // call {expression}
+		expr := strings.Replace(expr, "call ", "", 1)
 		_, retVars, err := s.doCall(goid, frame, expr)
 		if err != nil {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
@@ -2261,7 +2274,7 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 			}
 		}
 	} else { // {expression}
-		exprVar, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, DefaultLoadConfig)
+		exprVar, err := s.debugger.EvalVariableInScope(goid, frame, 0, expr, DefaultLoadConfig)
 		if err != nil {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 			return
@@ -2275,8 +2288,8 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 					// Reload the string value with a bigger limit.
 					loadCfg := DefaultLoadConfig
 					loadCfg.MaxStringLen = maxSingleStringLen
-					if v, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, loadCfg); err != nil {
-						s.log.Debugf("Failed to load more for %v: %v", request.Arguments.Expression, err)
+					if v, err := s.debugger.EvalVariableInScope(goid, frame, 0, expr, loadCfg); err != nil {
+						s.log.Debugf("Failed to load more for %v: %v", expr, err)
 					} else {
 						exprVar = v
 					}
@@ -2293,6 +2306,65 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef, IndexedVariables: getIndexedVariableCount(exprVar), NamedVariables: getNamedVariableCount(exprVar)}
 	}
 	s.send(response)
+}
+
+func (s *Server) evaluateConfig(expr string) (string, error) {
+	// TODO(suzmue): reuse terminal package config parsing and handling.
+	argv := split2PartsBySpace(expr)
+	name := argv[0]
+	switch name {
+	case "get":
+		return listConfig([]config{{"showGlobalVariables", s.args.showGlobalVariables}, {"stackTraceDepth", s.args.stackTraceDepth}}), nil
+	case "showGlobalVariables":
+		if len(argv) != 2 {
+			return "", fmt.Errorf("expected 1 argument to config showGlobalVariables, got %d", len(argv)-1)
+		}
+		showGlobal, err := strconv.ParseBool(argv[1])
+		if err != nil {
+			return "", err
+		}
+		s.args.showGlobalVariables = showGlobal
+		s.send(&dap.InvalidatedEvent{
+			Event: *newEvent("invalidated"),
+			Body: dap.InvalidatedEventBody{
+				Areas: []dap.InvalidatedAreas{"variables"},
+			},
+		})
+	case "stackTraceDepth":
+		if len(argv) != 2 {
+			return "", fmt.Errorf("expected 1 argument to config stackTraceDepth, got %d", len(argv)-1)
+		}
+		stackDepth, err := strconv.ParseInt(argv[1], 0, 64)
+		if err != nil {
+			return "", err
+		}
+		s.args.stackTraceDepth = int(stackDepth)
+	default:
+		return "", fmt.Errorf("invalid config value %s", name)
+	}
+	return "Success", nil
+}
+
+type config struct {
+	name  string
+	value interface{}
+}
+
+func listConfig(configurations []config) string {
+	var val string
+	for _, cfg := range configurations {
+		val += fmt.Sprintf("%s:\t%v\n", cfg.name, cfg.value)
+	}
+	return val
+}
+
+// Taken from terminal.
+func split2PartsBySpace(s string) []string {
+	v := strings.SplitN(s, " ", 2)
+	for i, _ := range v {
+		v[i] = strings.TrimSpace(v[i])
+	}
+	return v
 }
 
 func (s *Server) doCall(goid, frame int, expr string) (*api.DebuggerState, []*proc.Variable, error) {

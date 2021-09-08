@@ -24,6 +24,7 @@ const (
 	UnableToHalt               = 2010
 	UnableToGetExceptionInfo   = 2011
 	UnableToSetVariable        = 2012
+	UnableToUpdateConfig       = 2013
 	// Add more codes as we support more requests
 	NoDebugIsRunning  = 3000
 	DebuggeeIsRunning = 4000
