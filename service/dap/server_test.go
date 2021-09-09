@@ -2008,7 +2008,7 @@ func TestVariablesMetadata(t *testing.T) {
 					}
 
 					bytes := []string{"116 = 0x74", "195 = 0xc3", "168 = 0xa8", "115 = 0x73", "116 = 0x74"}
-					runes := []string{"116 = 't' = U+0074", "232 = 'è' = U+00E8", "115 = 's' = U+0073", "116 = 't' = U+0074"}
+					runes := []string{"116", "232", "115", "116"}
 
 					// byteslice
 					ref := checkVarExactIndexed(t, locals, -1, "byteslice", "byteslice", "[]uint8 len: 5, cap: 5, [116,195,168,115,116]", "[]uint8", true, 5, 1)

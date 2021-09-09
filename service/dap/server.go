@@ -2016,20 +2016,10 @@ func (s *Server) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variab
 
 func isListOfBytesOrRunes(v *proc.Variable) bool {
 	if len(v.Children) > 0 && (v.Kind == reflect.Array || v.Kind == reflect.Slice) {
-		return isByte(&v.Children[0]) || isRune(&v.Children[0])
+		childKind := v.Children[0].RealType.Common().ReflectKind
+		return childKind == reflect.Uint8 || childKind == reflect.Int32
 	}
 	return false
-}
-
-func isByte(v *proc.Variable) bool {
-	return v.RealType.Common().ReflectKind == reflect.Uint8
-}
-
-func isRune(v *proc.Variable) bool {
-	if v.RealType == nil || v.RealType.Common() == nil {
-		return false
-	}
-	return v.RealType.Common().ReflectKind == reflect.Int32
 }
 
 func (s *Server) getTypeIfSupported(v *proc.Variable) string {
@@ -2115,14 +2105,6 @@ func (s *Server) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr s
 			value = api.ConvertVar(v).SinglelineString()
 		}
 		return value
-	}
-
-	if isRune(v) {
-		// Runes
-		n, _ := strconv.ParseInt(api.ConvertVar(v).Value, 10, 64)
-		if n >= 0 {
-			value = fmt.Sprintf("%s = '%c' = %U", value, n, n)
-		}
 	}
 
 	switch v.Kind {
