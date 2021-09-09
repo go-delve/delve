@@ -5668,3 +5668,18 @@ func TestWatchpointStackBackwardsOutOfScope(t *testing.T) {
 		}
 	})
 }
+
+func TestSetOnFunctions(t *testing.T) {
+	// The set command between function variables should fail with an error
+	// Issue #2691
+	withTestProcess("goroutinestackprog", t, func(p *proc.Target, fixture protest.Fixture) {
+		setFunctionBreakpoint(p, t, "main.main")
+		assertNoError(p.Continue(), t, "Continue()")
+		scope, err := proc.GoroutineScope(p, p.CurrentThread())
+		assertNoError(err, t, "GoroutineScope")
+		err = scope.SetVariable("main.func1", "main.func2")
+		if err == nil {
+			t.Fatal("expected error when assigning between function variables")
+		}
+	})
+}
