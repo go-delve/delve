@@ -54,25 +54,38 @@ func (dbp *Target) Continue() error {
 		thread.Common().CallReturn = false
 		thread.Common().returnValues = nil
 	}
+	dbp.Breakpoints().WatchOutOfScope = nil
 	dbp.CheckAndClearManualStopRequest()
 	defer func() {
 		// Make sure we clear internal breakpoints if we simultaneously receive a
 		// manual stop request and hit a breakpoint.
 		if dbp.CheckAndClearManualStopRequest() {
 			dbp.StopReason = StopManual
-			dbp.ClearSteppingBreakpoints()
+			if dbp.KeepSteppingBreakpoints&HaltKeepsSteppingBreakpoints == 0 {
+				dbp.ClearSteppingBreakpoints()
+			}
 		}
 	}()
 	for {
 		if dbp.CheckAndClearManualStopRequest() {
 			dbp.StopReason = StopManual
-			dbp.ClearSteppingBreakpoints()
+			if dbp.KeepSteppingBreakpoints&HaltKeepsSteppingBreakpoints == 0 {
+				dbp.ClearSteppingBreakpoints()
+			}
 			return nil
 		}
 		dbp.ClearCaches()
-		trapthread, stopReason, err := dbp.proc.ContinueOnce()
+		trapthread, stopReason, contOnceErr := dbp.proc.ContinueOnce()
 		dbp.StopReason = stopReason
-		if err != nil {
+
+		threads := dbp.ThreadList()
+		for _, thread := range threads {
+			if thread.Breakpoint().Breakpoint != nil {
+				thread.Breakpoint().Breakpoint.checkCondition(dbp, thread, thread.Breakpoint())
+			}
+		}
+
+		if contOnceErr != nil {
 			// Attempt to refresh status of current thread/current goroutine, see
 			// Issue #2078.
 			// Errors are ignored because depending on why ContinueOnce failed this
@@ -84,16 +97,14 @@ func (dbp *Target) Continue() error {
 					dbp.selectedGoroutine, _ = GetG(curth)
 				}
 			}
-			if pe, ok := err.(ErrProcessExited); ok {
+			if pe, ok := contOnceErr.(ErrProcessExited); ok {
 				dbp.exitStatus = pe.Status
 			}
-			return err
+			return contOnceErr
 		}
 		if dbp.StopReason == StopLaunched {
 			dbp.ClearSteppingBreakpoints()
 		}
-
-		threads := dbp.ThreadList()
 
 		callInjectionDone, callErr := callInjectionProtocol(dbp, threads)
 		// callErr check delayed until after pickCurrentThread, which must always
@@ -190,11 +201,12 @@ func (dbp *Target) Continue() error {
 				return conditionErrors(threads)
 			}
 		case curbp.Active:
-			onNextGoroutine, err := onNextGoroutine(curthread, dbp.Breakpoints())
+			onNextGoroutine, err := onNextGoroutine(dbp, curthread, dbp.Breakpoints())
 			if err != nil {
 				return err
 			}
-			if onNextGoroutine {
+			if onNextGoroutine &&
+				((!curbp.Tracepoint && !curbp.TraceReturn) || dbp.KeepSteppingBreakpoints&TracepointKeepsSteppingBreakpoints == 0) {
 				err := dbp.ClearSteppingBreakpoints()
 				if err != nil {
 					return err
@@ -910,10 +922,12 @@ func setDeferBreakpoint(p *Target, text []AsmInstruction, topframe Stackframe, s
 	var deferpc uint64
 	if topframe.TopmostDefer != nil && topframe.TopmostDefer.DwrapPC != 0 {
 		_, _, deferfn := topframe.TopmostDefer.DeferredFunc(p)
-		var err error
-		deferpc, err = FirstPCAfterPrologue(p, deferfn, false)
-		if err != nil {
-			return 0, err
+		if deferfn != nil {
+			var err error
+			deferpc, err = FirstPCAfterPrologue(p, deferfn, false)
+			if err != nil {
+				return 0, err
+			}
 		}
 	}
 	if deferpc != 0 && deferpc != topframe.Current.PC {
@@ -1015,7 +1029,7 @@ func stepOutReverse(p *Target, topframe, retframe Stackframe, sameGCond ast.Expr
 }
 
 // onNextGoroutine returns true if this thread is on the goroutine requested by the current 'next' command
-func onNextGoroutine(thread Thread, breakpoints *BreakpointMap) (bool, error) {
+func onNextGoroutine(tgt *Target, thread Thread, breakpoints *BreakpointMap) (bool, error) {
 	var breaklet *Breaklet
 breakletSearch:
 	for i := range breakpoints.M {
@@ -1038,12 +1052,13 @@ breakletSearch:
 	// function or by returning from the function:
 	//   runtime.curg.goid == X && (runtime.frameoff == Y || runtime.frameoff == Z)
 	// Here we are only interested in testing the runtime.curg.goid clause.
-	w := onNextGoroutineWalker{thread: thread}
+	w := onNextGoroutineWalker{tgt: tgt, thread: thread}
 	ast.Walk(&w, breaklet.Cond)
 	return w.ret, w.err
 }
 
 type onNextGoroutineWalker struct {
+	tgt    *Target
 	thread Thread
 	ret    bool
 	err    error
@@ -1051,7 +1066,7 @@ type onNextGoroutineWalker struct {
 
 func (w *onNextGoroutineWalker) Visit(n ast.Node) ast.Visitor {
 	if binx, isbin := n.(*ast.BinaryExpr); isbin && binx.Op == token.EQL && exprToString(binx.X) == "runtime.curg.goid" {
-		w.ret, w.err = evalBreakpointCondition(w.thread, n.(ast.Expr))
+		w.ret, w.err = evalBreakpointCondition(w.tgt, w.thread, n.(ast.Expr))
 		return nil
 	}
 	return w

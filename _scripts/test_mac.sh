@@ -36,6 +36,8 @@ fi
 
 mkdir -p $TMPDIR/gopath
 
+go env
+
 export GOPATH="$TMPDIR/gopath"
 export GOARCH="$ARCH"
 export PATH="$GOROOT/bin:$PATH"

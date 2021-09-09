@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-delve/delve/pkg/goversion"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/pkg/terminal"
 	"github.com/go-delve/delve/service/dap/daptest"
@@ -27,6 +29,11 @@ import (
 )
 
 var testBackend string
+var ldFlags string
+
+func init() {
+	ldFlags = os.Getenv("CGO_LDFLAGS")
+}
 
 func TestMain(m *testing.M) {
 	flag.StringVar(&testBackend, "backend", "", "selects backend")
@@ -188,13 +195,30 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 }
 
 func getDlvBin(t *testing.T) (string, string) {
+	// In case this was set in the environment
+	// from getDlvBinEBPF lets clear it here so
+	// we can ensure we don't get build errors
+	// depending on the test ordering.
+	os.Setenv("CGO_LDFLAGS", ldFlags)
+	return getDlvBinInternal(t)
+}
+
+func getDlvBinEBPF(t *testing.T) (string, string) {
+	os.Setenv("CGO_LDFLAGS", "/usr/lib/libbpf.a")
+	return getDlvBinInternal(t, "-tags", "ebpf")
+}
+
+func getDlvBinInternal(t *testing.T, goflags ...string) (string, string) {
 	tmpdir, err := ioutil.TempDir("", "TestDlv")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	dlvbin := filepath.Join(tmpdir, "dlv.exe")
-	out, err := exec.Command("go", "build", "-o", dlvbin, "github.com/go-delve/delve/cmd/dlv").CombinedOutput()
+	args := append([]string{"build", "-o", dlvbin}, goflags...)
+	args = append(args, "github.com/go-delve/delve/cmd/dlv")
+
+	out, err := exec.Command("go", args...).CombinedOutput()
 	if err != nil {
 		t.Fatalf("go build -o %v github.com/go-delve/delve/cmd/dlv: %v\n%s", dlvbin, err, string(out))
 	}
@@ -230,7 +254,7 @@ func TestContinue(t *testing.T) {
 	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--listen", listenAddr)
 	cmd.Dir = buildtestdir
 	stdout, err := cmd.StdoutPipe()
-	assertNoError(err, t, "stderr pipe")
+	assertNoError(err, t, "stdout pipe")
 	defer stdout.Close()
 
 	assertNoError(cmd.Start(), t, "start headless instance")
@@ -275,7 +299,7 @@ func TestChildProcessExitWhenNoDebugInfo(t *testing.T) {
 	// search the running process named fix.Name
 	cmd := exec.Command("ps", "-aux")
 	stdout, err := cmd.StdoutPipe()
-	assertNoError(err, t, "stderr pipe")
+	assertNoError(err, t, "stdout pipe")
 	defer stdout.Close()
 
 	assertNoError(cmd.Start(), t, "start `ps -aux`")
@@ -306,7 +330,7 @@ func TestRedirect(t *testing.T) {
 	catfixture := filepath.Join(protest.FindFixturesDir(), "cat.go")
 	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--listen", listenAddr, "-r", catfixture, catfixture)
 	stdout, err := cmd.StdoutPipe()
-	assertNoError(err, t, "stderr pipe")
+	assertNoError(err, t, "stdout pipe")
 	defer stdout.Close()
 
 	assertNoError(cmd.Start(), t, "start headless instance")
@@ -401,6 +425,9 @@ func TestGeneratedDoc(t *testing.T) {
 	checkAutogenDoc(t, "pkg/terminal/starbind/starlark_mapping.go", "'go generate' inside pkg/terminal/starbind", runScript("_scripts/gen-starlark-bindings.go", "go", "-"))
 	checkAutogenDoc(t, "Documentation/cli/starlark.md", "'go generate' inside pkg/terminal/starbind", runScript("_scripts/gen-starlark-bindings.go", "doc/dummy", "Documentation/cli/starlark.md"))
 	checkAutogenDoc(t, "Documentation/backend_test_health.md", "go run _scripts/gen-backend_test_health.go", runScript("_scripts/gen-backend_test_health.go", "-"))
+	checkAutogenDoc(t, "_scripts/rtype-out.txt", "go run _scripts/rtype.go report _scripts/rtype-out.txt", runScript("_scripts/rtype.go", "report"))
+
+	runScript("_scripts/rtype.go", "check")
 }
 
 func TestExitInInit(t *testing.T) {
@@ -760,6 +787,46 @@ func TestTracePrintStack(t *testing.T) {
 	if !bytes.Contains(output, []byte("Stack:")) && !bytes.Contains(output, []byte("main.main")) {
 		t.Fatal("stacktrace not printed")
 	}
+}
+
+func TestTraceEBPF(t *testing.T) {
+	if os.Getenv("CI") == "true" {
+		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
+	}
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("not implemented on non linux/amd64 systems")
+	}
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+		t.Skip("requires at least Go 1.16 to run test")
+	}
+	usr, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usr.Uid != "0" {
+		t.Skip("test must be run as root")
+	}
+
+	dlvbin, tmpdir := getDlvBinEBPF(t)
+	defer os.RemoveAll(tmpdir)
+
+	expected := []byte("> (1) main.foo(99, 9801)\n")
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(tmpdir, "__debug"), filepath.Join(fixtures, "issue573.go"), "foo")
+	rdr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	assertNoError(cmd.Start(), t, "running trace")
+
+	output, err := ioutil.ReadAll(rdr)
+	assertNoError(err, t, "ReadAll")
+
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
+	}
+	cmd.Wait()
 }
 
 func TestDlvTestChdir(t *testing.T) {

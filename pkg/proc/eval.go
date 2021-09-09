@@ -107,7 +107,7 @@ func goroutineEvalScope(dbp *Target, g *G, frame, deferCall int) (*EvalScope, er
 		return d.EvalScope(dbp, ct)
 	}
 
-	return FrameToScope(dbp, dbp.BinInfo(), dbp.Memory(), g, locs[frame:]...), nil
+	return FrameToScope(dbp, dbp.Memory(), g, locs[frame:]...), nil
 }
 
 // FrameToScope returns a new EvalScope for frames[0].
@@ -115,7 +115,7 @@ func goroutineEvalScope(dbp *Target, g *G, frame, deferCall int) (*EvalScope, er
 // frames[0].Regs.SP() and frames[1].Regs.CFA will be cached.
 // Otherwise all memory between frames[0].Regs.SP() and frames[0].Regs.CFA
 // will be cached.
-func FrameToScope(t *Target, bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stackframe) *EvalScope {
+func FrameToScope(t *Target, thread MemoryReadWriter, g *G, frames ...Stackframe) *EvalScope {
 	// Creates a cacheMem that will preload the entire stack frame the first
 	// time any local variable is read.
 	// Remember that the stack grows downward in memory.
@@ -130,7 +130,7 @@ func FrameToScope(t *Target, bi *BinaryInfo, thread MemoryReadWriter, g *G, fram
 		thread = cacheMemory(thread, minaddr, int(maxaddr-minaddr))
 	}
 
-	s := &EvalScope{Location: frames[0].Call, Regs: frames[0].Regs, Mem: thread, g: g, BinInfo: bi, target: t, frameOffset: frames[0].FrameOffset()}
+	s := &EvalScope{Location: frames[0].Call, Regs: frames[0].Regs, Mem: thread, g: g, BinInfo: t.BinInfo(), target: t, frameOffset: frames[0].FrameOffset()}
 	s.PC = frames[0].lastpc
 	return s
 }
@@ -144,7 +144,7 @@ func ThreadScope(t *Target, thread Thread) (*EvalScope, error) {
 	if len(locations) < 1 {
 		return nil, errors.New("could not decode first frame")
 	}
-	return FrameToScope(t, thread.BinInfo(), thread.ProcessMemory(), nil, locations...), nil
+	return FrameToScope(t, thread.ProcessMemory(), nil, locations...), nil
 }
 
 // GoroutineScope returns an EvalScope for the goroutine running on the given thread.
@@ -160,7 +160,7 @@ func GoroutineScope(t *Target, thread Thread) (*EvalScope, error) {
 	if err != nil {
 		return nil, err
 	}
-	return FrameToScope(t, thread.BinInfo(), thread.ProcessMemory(), g, locations...), nil
+	return FrameToScope(t, thread.ProcessMemory(), g, locations...), nil
 }
 
 // EvalExpression returns the value of the given expression.

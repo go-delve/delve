@@ -623,6 +623,11 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 		state.When, _ = d.target.When()
 	}
 
+	state.WatchOutOfScope = make([]*api.Breakpoint, 0, len(d.target.Breakpoints().WatchOutOfScope))
+	for _, bp := range d.target.Breakpoints().WatchOutOfScope {
+		state.WatchOutOfScope = append(state.WatchOutOfScope, api.ConvertBreakpoint(bp))
+	}
+
 	return state, nil
 }
 
@@ -755,6 +760,13 @@ func createLogicalBreakpoint(d *Debugger, addrs []uint64, requestedBp *api.Break
 func isBreakpointExistsErr(err error) bool {
 	_, r := err.(proc.BreakpointExistsError)
 	return r
+}
+
+func (d *Debugger) CreateEBPFTracepoint(fnName string) error {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+
+	return d.target.SetEBPFTracepoint(fnName)
 }
 
 // AmendBreakpoint will update the breakpoint with the matching ID.
@@ -939,11 +951,21 @@ func (d *Debugger) clearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 }
 
 // Breakpoints returns the list of current breakpoints.
-func (d *Debugger) Breakpoints() []*api.Breakpoint {
+func (d *Debugger) Breakpoints(all bool) []*api.Breakpoint {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	bps := api.ConvertBreakpoints(d.breakpoints())
+	var bps []*api.Breakpoint
+
+	if !all {
+		bps = api.ConvertBreakpoints(d.breakpoints())
+	} else {
+		for _, bp := range d.target.Breakpoints().M {
+			abp := api.ConvertBreakpoint(bp)
+			abp.VerboseDescr = bp.VerboseDescr()
+			bps = append(bps, abp)
+		}
+	}
 
 	for _, bp := range d.disabledBreakpoints {
 		bps = append(bps, bp)
@@ -1745,7 +1767,7 @@ func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadCo
 		}
 		if cfg != nil && rawlocs[i].Current.Fn != nil {
 			var err error
-			scope := proc.FrameToScope(d.target, d.target.BinInfo(), d.target.Memory(), nil, rawlocs[i:]...)
+			scope := proc.FrameToScope(d.target, d.target.Memory(), nil, rawlocs[i:]...)
 			locals, err := scope.LocalVariables(*cfg)
 			if err != nil {
 				return nil, err
@@ -2114,6 +2136,27 @@ func (d *Debugger) DumpCancel() error {
 
 func (d *Debugger) Target() *proc.Target {
 	return d.target
+}
+
+func (d *Debugger) GetBufferedTracepoints() []api.TracepointResult {
+	traces := d.target.GetBufferedTracepoints()
+	if traces == nil {
+		return nil
+	}
+	results := make([]api.TracepointResult, len(traces))
+	for i, trace := range traces {
+		f, l, fn := d.target.BinInfo().PCToLine(uint64(trace.FnAddr))
+
+		results[i].FunctionName = fn.Name
+		results[i].Line = l
+		results[i].File = f
+		results[i].GoroutineID = trace.GoroutineID
+
+		for _, p := range trace.InputParams {
+			results[i].InputParams = append(results[i].InputParams, *api.ConvertVar(p))
+		}
+	}
+	return results
 }
 
 func go11DecodeErrorCheck(err error) error {

@@ -71,3 +71,4 @@ Write-Host $env:GOPATH
 go version
 go env
 go run _scripts/make.go test
+Exit $LastExitCode

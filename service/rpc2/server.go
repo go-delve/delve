@@ -136,6 +136,18 @@ func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback)
 	cb.Return(out, nil)
 }
 
+type GetBufferedTracepointsIn struct {
+}
+
+type GetBufferedTracepointsOut struct {
+	TracepointResults []api.TracepointResult
+}
+
+func (s *RPCServer) GetBufferedTracepoints(arg GetBufferedTracepointsIn, out *GetBufferedTracepointsOut) error {
+	out.TracepointResults = s.debugger.GetBufferedTracepoints()
+	return nil
+}
+
 type GetBreakpointIn struct {
 	Id   int
 	Name string
@@ -215,6 +227,7 @@ func (s *RPCServer) Ancestors(arg AncestorsIn, out *AncestorsOut) error {
 }
 
 type ListBreakpointsIn struct {
+	All bool
 }
 
 type ListBreakpointsOut struct {
@@ -223,7 +236,7 @@ type ListBreakpointsOut struct {
 
 // ListBreakpoints gets all breakpoints.
 func (s *RPCServer) ListBreakpoints(arg ListBreakpointsIn, out *ListBreakpointsOut) error {
-	out.Breakpoints = s.debugger.Breakpoints()
+	out.Breakpoints = s.debugger.Breakpoints(arg.All)
 	return nil
 }
 
@@ -249,6 +262,18 @@ func (s *RPCServer) CreateBreakpoint(arg CreateBreakpointIn, out *CreateBreakpoi
 	}
 	out.Breakpoint = *createdbp
 	return nil
+}
+
+type CreateEBPFTracepointIn struct {
+	FunctionName string
+}
+
+type CreateEBPFTracepointOut struct {
+	Breakpoint api.Breakpoint
+}
+
+func (s *RPCServer) CreateEBPFTracepoint(arg CreateEBPFTracepointIn, out *CreateEBPFTracepointOut) error {
+	return s.debugger.CreateEBPFTracepoint(arg.FunctionName)
 }
 
 type ClearBreakpointIn struct {

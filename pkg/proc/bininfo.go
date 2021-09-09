@@ -14,6 +14,7 @@ import (
 	"go/token"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -936,12 +937,16 @@ func (bi *BinaryInfo) LocationCovers(entry *dwarf.Entry, attr dwarf.Attr) ([][2]
 // This will either be an int64 address or a slice of Pieces for locations
 // that don't correspond to a single memory address (registers, composite
 // locations).
-func (bi *BinaryInfo) Location(entry godwarf.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters) (int64, []op.Piece, *locationExpr, error) {
+func (bi *BinaryInfo) Location(entry godwarf.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters, mem MemoryReadWriter) (int64, []op.Piece, *locationExpr, error) {
 	instr, descr, err := bi.locationExpr(entry, attr, pc)
 	if err != nil {
 		return 0, nil, nil, err
 	}
-	addr, pieces, err := op.ExecuteStackProgram(regs, instr, bi.Arch.PtrSize())
+	readMemory := op.ReadMemoryFunc(nil)
+	if mem != nil {
+		readMemory = mem.ReadMemory
+	}
+	addr, pieces, err := op.ExecuteStackProgram(regs, instr, bi.Arch.PtrSize(), readMemory)
 	return addr, pieces, descr, err
 }
 
@@ -1085,13 +1090,10 @@ func (e *ErrNoBuildIDNote) Error() string {
 // will look in directories specified by the debug-info-directories config value.
 func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugInfoDirectories []string) (*os.File, *elf.File, error) {
 	var debugFilePath string
+	desc1, desc2, _ := parseBuildID(exe)
 	for _, dir := range debugInfoDirectories {
 		var potentialDebugFilePath string
 		if strings.Contains(dir, "build-id") {
-			desc1, desc2, err := parseBuildID(exe)
-			if err != nil {
-				continue
-			}
 			potentialDebugFilePath = fmt.Sprintf("%s/%s/%s.debug", dir, desc1, desc2)
 		} else if strings.HasPrefix(image.Path, "/proc") {
 			path, err := filepath.EvalSymlinks(image.Path)
@@ -1107,8 +1109,20 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 			break
 		}
 	}
+	// We cannot find the debug information locally on the system. Try and see if we're on a system that
+	// has debuginfod so that we can use that in order to find any relevant debug information.
 	if debugFilePath == "" {
-		return nil, nil, ErrNoDebugInfoFound
+		const debuginfodFind = "debuginfod-find"
+		if _, err := exec.LookPath(debuginfodFind); err == nil {
+			cmd := exec.Command(debuginfodFind, "debuginfo", desc1+desc2)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				return nil, nil, ErrNoDebugInfoFound
+			}
+			debugFilePath = string(out)
+		} else {
+			return nil, nil, ErrNoDebugInfoFound
+		}
 	}
 	sepFile, err := os.OpenFile(debugFilePath, 0, os.ModePerm)
 	if err != nil {
