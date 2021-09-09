@@ -1389,28 +1389,32 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 
 		if next >= 0 {
 			s.logToConsole(fmt.Sprintf("Too many goroutines, only loaded %d", len(gs)))
-
-			// Make sure the selected goroutine is included in the list of threads
-			// to return.
-			if state != nil && state.SelectedGoroutine != nil {
-				var selectedFound bool
-				for _, g := range gs {
-					if g.ID == state.SelectedGoroutine.ID {
-						selectedFound = true
-						break
-					}
-				}
-				if !selectedFound {
-					g, err := s.debugger.FindGoroutine(state.SelectedGoroutine.ID)
-					if err != nil {
-						s.log.Debug("Error getting selected goroutine: ", err)
-					} else {
-						// TODO(suzmue): Consider putting the selected goroutine at the top.
-						// To be consistent we may want to do this for all threads requests.
-						gs = append(gs, g)
-					}
+		}
+		// Make sure the selected goroutine is included in the list of threads
+		// to return.
+		selectedIdx := -1
+		if state != nil && state.SelectedGoroutine != nil {
+			for i, g := range gs {
+				if g.ID == state.SelectedGoroutine.ID {
+					selectedIdx = i
+					break
 				}
 			}
+			if selectedIdx < 0 {
+				g, err := s.debugger.FindGoroutine(state.SelectedGoroutine.ID)
+				if err != nil {
+					s.log.Debug("Error getting selected goroutine: ", err)
+				} else {
+					selectedIdx = 0
+					gs = append([]*proc.G{g}, gs...)
+				}
+			}
+		}
+
+		// Put the selected goroutine at the top of the list.
+		if selectedIdx > 0 {
+			g := gs[selectedIdx]
+			gs = append([]*proc.G{g}, append(gs[0:selectedIdx], gs[selectedIdx+1:]...)...)
 		}
 
 		threads = make([]dap.Thread, len(gs))

@@ -967,7 +967,14 @@ func TestStackTraceRequest(t *testing.T) {
 	})
 }
 
-func TestSelectedThreadsRequest(t *testing.T) {
+func TestSelectedGoroutine(t *testing.T) {
+	saved := os.Getenv("GOMAXPROCS")
+	defer func() {
+		os.Setenv("GOMAXPROCS", saved)
+	}()
+	if err := os.Setenv("GOMAXPROCS", "1"); err != nil {
+		t.Fatal(err)
+	}
 	runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
@@ -983,44 +990,54 @@ func TestSelectedThreadsRequest(t *testing.T) {
 					defaultMaxGoroutines := maxGoroutines
 					defer func() { maxGoroutines = defaultMaxGoroutines }()
 
-					maxGoroutines = 1
 					client.SetBreakpointsRequest(fixture.Source, []int{8})
 					client.ExpectSetBreakpointsResponse(t)
 
-					client.ContinueRequest(1)
-					client.ExpectContinueResponse(t)
+					// We can expect stopped events for each breakpoint hit since
+					// we have limited the number of threads using GOMAXPROCS=1.
+					for i := 0; i < 10; i++ {
+						maxGoroutines = defaultMaxGoroutines
+						client.ContinueRequest(1)
+						client.ExpectContinueResponse(t)
 
-					se := client.ExpectStoppedEvent(t)
-					if se.Body.Reason != "breakpoint" || se.Body.ThreadId == 1 {
-						t.Errorf("got %#v, want Reason=%q, ThreadId!=1", se, "breakpoint")
-					}
-
-					client.ThreadsRequest()
-					oe := client.ExpectOutputEvent(t)
-					if !strings.HasPrefix(oe.Body.Output, "Too many goroutines") {
-						t.Errorf("got %#v, expected Output=\"Too many goroutines...\"\n", oe)
-
-					}
-					tr := client.ExpectThreadsResponse(t)
-
-					if len(tr.Body.Threads) != 2 {
-						t.Errorf("got %d threads, expected 2\n", len(tr.Body.Threads))
-					}
-
-					var selectedFound bool
-					for _, thread := range tr.Body.Threads {
-						if thread.Id == se.Body.ThreadId {
-							selectedFound = true
-							break
+						se := client.ExpectStoppedEvent(t)
+						if se.Body.Reason != "breakpoint" || se.Body.ThreadId == 1 {
+							t.Errorf("got %#v, want Reason=%q, ThreadId!=1", se, "breakpoint")
 						}
-					}
-					if !selectedFound {
-						t.Errorf("got %#v, want ThreadId=%d\n", tr.Body.Threads, se.Body.ThreadId)
+
+						client.ThreadsRequest()
+						tr := client.ExpectThreadsResponse(t)
+						if len(tr.Body.Threads) == 0 {
+							t.Errorf("got %#v, expected len(Threads) > 0", tr)
+						}
+
+						first := tr.Body.Threads[0]
+						if first.Id != se.Body.ThreadId {
+							t.Errorf("got %#v, want Threads[0].Id=%d", tr, se.Body.ThreadId)
+						}
+
+						// Try with limited maxGoroutines
+						maxGoroutines = 1
+
+						client.ThreadsRequest()
+						oe := client.ExpectOutputEvent(t)
+						if !strings.HasPrefix(oe.Body.Output, "Too many goroutines") {
+							t.Errorf("got %#v, expected Output=\"Too many goroutines...\"\n", oe)
+
+						}
+						tr = client.ExpectThreadsResponse(t)
+
+						if len(tr.Body.Threads) != 2 {
+							t.Errorf("got %d threads, expected 2\n", len(tr.Body.Threads))
+						}
+
+						if tr.Body.Threads[0].Id != se.Body.ThreadId {
+							t.Errorf("got %#v, want ThreadId=%d\n", tr.Body.Threads, se.Body.ThreadId)
+						}
 					}
 				},
 				disconnect: true,
 			}})
-
 	})
 }
 
