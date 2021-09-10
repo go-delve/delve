@@ -17,6 +17,7 @@ import (
 	"go/constant"
 	"go/parser"
 	"io"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -735,9 +736,21 @@ func (s *Server) setClientCapabilities(args dap.InitializeRequestArguments) {
 	s.clientCapabilities.supportsVariableType = args.SupportsVariableType
 }
 
-// Default output file pathname for the compiled binary in debug or test modes,
-// relative to the current working directory of the server.
-const defaultDebugBinary string = "./__debug_bin"
+func tempDebugBinary() (string, error) {
+	binaryPattern := "__debug_bin"
+	if runtime.GOOS == "windows" {
+		binaryPattern = "__debug_bin*.exe"
+	}
+	f, err := ioutil.TempFile("", binaryPattern)
+	if err != nil {
+		return "", err
+	}
+	name := f.Name()
+	if err := f.Close(); err != nil {
+		return "", err
+	}
+	return name, nil
+}
 
 func cleanExeName(name string) string {
 	if runtime.GOOS == "windows" && filepath.Ext(name) != ".exe" {
@@ -811,18 +824,17 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 	// Prepare the debug executable filename, build flags and build it
 	if mode == "debug" || mode == "test" {
-		buildDir := args.BuildDir
-		if buildDir == "" || buildDir == "." {
-			buildDir, _ = os.Getwd()
-		}
-
 		debugbinary := args.Output
 		if debugbinary == "" {
-			debugbinary = defaultDebugBinary
+			var err error
+			if debugbinary, err = tempDebugBinary(); err != nil {
+				s.sendInternalErrorResponse(request.Seq, fmt.Sprintf("cannot determine debug binary location: %v", err))
+				return
+			}
 		}
 
 		if !filepath.IsAbs(debugbinary) {
-			o, err := filepath.Abs(filepath.Join(buildDir, debugbinary))
+			o, err := filepath.Abs(debugbinary)
 			if err != nil {
 				s.sendInternalErrorResponse(request.Seq, err.Error())
 				return
@@ -831,6 +843,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		}
 		debugbinary = cleanExeName(debugbinary)
 
+		buildDir := args.BuildDir
 		buildFlags := args.BuildFlags
 
 		var cmd string
@@ -867,10 +880,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 
 	s.config.ProcessArgs = append([]string{program}, args.Args...)
-	s.config.Debugger.WorkingDir = filepath.Dir(program)
-	if args.Cwd != "" {
-		s.config.Debugger.WorkingDir = args.Cwd
-	}
+	s.config.Debugger.WorkingDir = args.Cwd
 
 	s.log.Debugf("running binary '%s' in '%s'", program, s.config.Debugger.WorkingDir)
 	if args.NoDebug {

@@ -4271,10 +4271,9 @@ func TestLaunchRequestDefaults(t *testing.T) {
 	})
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, "launch", func() {
-			// Use the default output directory.
+			// Use the temporary output binary.
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "debug", "program": fixture.Source})
-			// writes to default output dir __debug_bin
 		})
 	})
 }

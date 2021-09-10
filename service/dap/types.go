@@ -52,7 +52,6 @@ var (
 	}
 	defaultLaunchConfig = LaunchConfig{
 		Mode:                     "debug",
-		Output:                   defaultDebugBinary,
 		LaunchAttachCommonConfig: defaultLaunchAttachCommonConfig,
 	}
 	defaultAttachConfig = AttachConfig{
@@ -90,8 +89,12 @@ type LaunchConfig struct {
 	// working directory.
 	//
 	// If not specified or empty, currently the built program's directory will
-	// be used.
-	// This is similar to delve's `--wd` flag.
+	// be used. This is similar to delve's `--wd` flag.
+	//
+	// The `go test` command runs the compiled test from
+	// the package's source directory, but delve runs the
+	// test binary from this directory. In order to mimic
+	// the `go test` behavior, set `cwd` accordingly.
 	Cwd string `json:"cwd,omitempty"`
 
 	// Build directory from which the program to be debugged will be built.
@@ -108,13 +111,8 @@ type LaunchConfig struct {
 
 	// Output path for the binary of the debugee.
 	// Relative path is interpreted as the path relative to
-	// `buildDir`.
+	// the delve's working directory.
 	// This is deleted after the debug session ends.
-	//
-	// FIXIT: the built program's directory is used as the default
-	// working directory of the debugged program, which means
-	// the directory of `output` is used as the default working
-	// directory. This is a bug and needs fix.
 	Output string `json:"output,omitempty"`
 
 	// NoDebug is used to run the program without debugging.
