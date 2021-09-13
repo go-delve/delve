@@ -254,7 +254,7 @@ func TestContinue(t *testing.T) {
 	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--listen", listenAddr)
 	cmd.Dir = buildtestdir
 	stdout, err := cmd.StdoutPipe()
-	assertNoError(err, t, "stderr pipe")
+	assertNoError(err, t, "stdout pipe")
 	defer stdout.Close()
 
 	assertNoError(cmd.Start(), t, "start headless instance")
@@ -299,7 +299,7 @@ func TestChildProcessExitWhenNoDebugInfo(t *testing.T) {
 	// search the running process named fix.Name
 	cmd := exec.Command("ps", "-aux")
 	stdout, err := cmd.StdoutPipe()
-	assertNoError(err, t, "stderr pipe")
+	assertNoError(err, t, "stdout pipe")
 	defer stdout.Close()
 
 	assertNoError(cmd.Start(), t, "start `ps -aux`")
@@ -330,7 +330,7 @@ func TestRedirect(t *testing.T) {
 	catfixture := filepath.Join(protest.FindFixturesDir(), "cat.go")
 	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--listen", listenAddr, "-r", catfixture, catfixture)
 	stdout, err := cmd.StdoutPipe()
-	assertNoError(err, t, "stderr pipe")
+	assertNoError(err, t, "stdout pipe")
 	defer stdout.Close()
 
 	assertNoError(cmd.Start(), t, "start headless instance")

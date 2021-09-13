@@ -1,3 +1,4 @@
+//go:build linux || darwin
 // +build linux darwin
 
 package proc_test
@@ -36,7 +37,6 @@ func TestIssue419(t *testing.T) {
 
 	// SIGINT directed at the inferior should be passed along not swallowed by delve
 	withTestProcess("issue419", t, func(p *proc.Target, fixture protest.Fixture) {
-		defer close(errChan)
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(p.Continue(), t, "Continue()")
 		resumeChan := make(chan struct{}, 1)

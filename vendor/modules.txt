@@ -13,7 +13,7 @@ github.com/creack/pty
 # github.com/derekparker/trie v0.0.0-20200317170641-1fdf38b7b0e9
 ## explicit
 github.com/derekparker/trie
-# github.com/google/go-dap v0.5.0
+# github.com/google/go-dap v0.5.1-0.20210713061233-c91b005e3987
 ## explicit
 github.com/google/go-dap
 # github.com/hashicorp/golang-lru v0.5.4
