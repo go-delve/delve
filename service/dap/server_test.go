@@ -2299,6 +2299,64 @@ func TestSetBreakpoint(t *testing.T) {
 	})
 }
 
+func TestPauseAtStop(t *testing.T) {
+	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{16},
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 16)
+
+					client.SetBreakpointsRequest(fixture.Source, []int{6, 8})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{6, fixture.Source, true, ""}, {8, fixture.Source, true, ""}})
+
+					// Send a pause request while stopped on a cleared breakpoint.
+					client.PauseRequest(1)
+					client.ExpectPauseResponse(t)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					checkStop(t, client, 1, "main.loop", 6)
+
+					// Send a pause request while stopped on a breakpoint.
+					client.PauseRequest(1)
+					client.ExpectPauseResponse(t)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "breakpoint" {
+						t.Errorf("got %#v, expected breakpoint", se)
+					}
+					checkStop(t, client, 1, "main.loop", 8)
+
+					// Send a pause request while stopped after stepping.
+					client.NextRequest(1)
+					client.ExpectNextResponse(t)
+					client.ExpectStoppedEvent(t)
+					checkStop(t, client, 1, "main.loop", 9)
+
+					client.PauseRequest(1)
+					client.ExpectPauseResponse(t)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					client.ExpectStoppedEvent(t)
+					checkStop(t, client, 1, "main.loop", 8)
+				},
+				// The program has an infinite loop, so we must kill it by disconnecting.
+				disconnect: true,
+			}})
+	})
+}
+
 func checkHitBreakpointIds(t *testing.T, se *dap.StoppedEvent, reason string, id int) {
 	if se.Body.ThreadId != 1 || se.Body.Reason != reason || len(se.Body.HitBreakpointIds) != 1 || se.Body.HitBreakpointIds[0] != id {
 		t.Errorf("got %#v, want Reason=%q, ThreadId=1, HitBreakpointIds=[]int{%d}", se, reason, id)

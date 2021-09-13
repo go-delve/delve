@@ -1569,10 +1569,12 @@ func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan
 // onPauseRequest handles 'pause' request.
 // This is a mandatory request to support.
 func (s *Server) onPauseRequest(request *dap.PauseRequest) {
-	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
-	if err != nil {
-		s.sendErrorResponse(request.Request, UnableToHalt, "Unable to halt execution", err.Error())
-		return
+	if s.debugger.IsRunning() {
+		_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToHalt, "Unable to halt execution", err.Error())
+			return
+		}
 	}
 	s.send(&dap.PauseResponse{Response: *newResponse(request.Request)})
 	// No need to send any event here.
