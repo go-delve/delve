@@ -1130,6 +1130,11 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 		d.recordMutex.Lock()
 		if d.stopRecording == nil {
 			err = d.target.RequestManualStop()
+			// The error returned from d.target.Valid will have more context
+			// about the exited process.
+			if _, valErr := d.target.Valid(); valErr != nil {
+				err = valErr
+			}
 		}
 		d.recordMutex.Unlock()
 	}
