@@ -76,25 +76,26 @@ type LaunchConfig struct {
 	// when in `debug` or `test` mode, and to the pre-built binary file
 	// to debug in `exec` mode.
 	// If it is not an absolute path, it will be interpreted as a path
-	// relative to the working directory of the delve process.
-	// Required when mode is `debug`, `test`, or `exec`.
+	// relative to the build directory in `debug` and `test` modes,
+	// a path relative to the working directory of the delve process
+	// in other modes.
+	// Required when mode is `debug`, `test`, `exec`, and `core`.
 	Program string `json:"program,omitempty"`
 
 	// Command line arguments passed to the debugged program.
 	Args []string `json:"args,omitempty"`
 
-	// Working directory of the program being debugged
-	// if a non-empty value is specified. If a relative path is provided,
-	// it will be interpreted as a relative path to the delve's
-	// working directory.
+	// Working directory of the program being debugged.
+	// If a relative path is provided, it will be interpreted as
+	// a relative path to the delve's working directory. This is
+	// similar to delve's `--wd` flag.
 	//
-	// If not specified or empty, currently the built program's directory will
-	// be used. This is similar to delve's `--wd` flag.
-	//
-	// The `go test` command runs the compiled test from
-	// the package's source directory, but delve runs the
-	// test binary from this directory. In order to mimic
-	// the `go test` behavior, set `cwd` accordingly.
+	// If not specified or empty, delve's working directory is
+	// used by default. But for `test` mode, delve tries to find
+	// the test's package source directory and run tests from there.
+	// This matches the behavior of `dlv test` and `go test`.
+	// If the package directory cannot be found, the build directory
+	// (`buildDir`) will be used.
 	Cwd string `json:"cwd,omitempty"`
 
 	// Build directory from which the program to be debugged will be built.

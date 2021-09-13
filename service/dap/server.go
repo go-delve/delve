@@ -736,20 +736,27 @@ func (s *Server) setClientCapabilities(args dap.InitializeRequestArguments) {
 	s.clientCapabilities.supportsVariableType = args.SupportsVariableType
 }
 
-func tempDebugBinary() (string, error) {
+// Default output file pathname for the compiled binary in debug or test modes
+// when temporary debug binary creation fails.
+// This is relative to the current working directory of the server.
+const defaultDebugBinary string = "./__debug_bin"
+
+func (s *Server) tempDebugBinary() string {
 	binaryPattern := "__debug_bin"
 	if runtime.GOOS == "windows" {
 		binaryPattern = "__debug_bin*.exe"
 	}
 	f, err := ioutil.TempFile("", binaryPattern)
 	if err != nil {
-		return "", err
+		s.log.Errorf("failed to create a temporary binary (%v), falling back to %q", err, defaultDebugBinary)
+		return defaultDebugBinary
 	}
 	name := f.Name()
 	if err := f.Close(); err != nil {
-		return "", err
+		s.log.Errorf("failed to create a temporary binary (%v), falling back to %q", err, defaultDebugBinary)
+		return defaultDebugBinary
 	}
-	return name, nil
+	return name
 }
 
 func cleanExeName(name string) string {
@@ -826,11 +833,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	if mode == "debug" || mode == "test" {
 		debugbinary := args.Output
 		if debugbinary == "" {
-			var err error
-			if debugbinary, err = tempDebugBinary(); err != nil {
-				s.sendInternalErrorResponse(request.Seq, fmt.Sprintf("cannot determine debug binary location: %v", err))
-				return
-			}
+			debugbinary = s.tempDebugBinary()
 		}
 
 		if !filepath.IsAbs(debugbinary) {
@@ -842,19 +845,20 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			debugbinary = o
 		}
 		debugbinary = cleanExeName(debugbinary)
-
 		buildDir := args.BuildDir
-		buildFlags := args.BuildFlags
+		if buildDir == "" {
+			buildDir = "."
+		}
 
 		var cmd string
 		var out []byte
 		var err error
-		s.log.Debugf("building program %q in %q with flags '%v'", program, buildDir, buildFlags)
+		s.log.Debugf("building program %q in %q with flags '%v'", program, args.BuildDir, args.BuildFlags)
 		switch mode {
 		case "debug":
-			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags, buildDir)
+			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, args.BuildFlags, buildDir)
 		case "test":
-			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, buildFlags, buildDir)
+			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, args.BuildFlags, buildDir)
 		}
 		if err != nil {
 			s.send(&dap.OutputEvent{
@@ -869,6 +873,12 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 			return
 		}
 		program = debugbinary
+
+		if mode == "test" && args.Cwd == "" {
+			// In test mode, run the test binary from the package directory
+			// like in `go test` and `dlv test` by default.
+			args.Cwd = getPackageDir(args.Program, buildDir)
+		}
 		s.mu.Lock()
 		s.binaryToRemove = debugbinary
 		s.mu.Unlock()
@@ -880,7 +890,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 
 	s.config.ProcessArgs = append([]string{program}, args.Args...)
-	s.config.Debugger.WorkingDir = args.Cwd
+	s.config.Debugger.WorkingDir = args.Cwd // cwd: "" == "."
 
 	s.log.Debugf("running binary '%s' in '%s'", program, s.config.Debugger.WorkingDir)
 	if args.NoDebug {
@@ -934,6 +944,18 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	// will end the configuration sequence with 'configurationDone'.
 	s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
 	s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
+}
+
+func getPackageDir(pkg, buildDir string) string {
+	cmd := exec.Command("go", "list", "-f", "{{.Dir}}", pkg)
+	if buildDir != "" {
+		cmd.Dir = buildDir
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return buildDir // fallback to the build directory.
+	}
+	return string(bytes.TrimSpace(out))
 }
 
 // newNoDebugProcess is called from onLaunchRequest (run goroutine) and

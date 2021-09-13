@@ -4085,13 +4085,9 @@ func verifyStopLocation(t *testing.T, client *daptest.Client, thread int, name s
 	st := client.ExpectStackTraceResponse(t)
 	if len(st.Body.StackFrames) < 1 {
 		t.Errorf("\ngot  %#v\nwant len(stackframes) => 1", st)
-	} else {
-		if line != -1 && st.Body.StackFrames[0].Line != line {
-			t.Errorf("\ngot  %#v\nwant Line=%d", st, line)
-		}
-		if st.Body.StackFrames[0].Name != name {
-			t.Errorf("\ngot  %#v\nwant Name=%q", st, name)
-		}
+	} else if frame := st.Body.StackFrames[0]; frame.Name != name || (line != -1 && frame.Line != line) {
+		t.Errorf("\ngot  %#v\nwant Line=%d, Name=%q", frame, line, name)
+		t.Logf("Full response: %#v", st)
 	}
 }
 
@@ -4410,16 +4406,93 @@ func TestLaunchRequestWithRelativeExecPath(t *testing.T) {
 }
 
 func TestLaunchTestRequest(t *testing.T) {
-	serverStopped := make(chan struct{})
-	client := startDapServerWithClient(t, serverStopped)
-	defer client.Close()
-	runDebugSession(t, client, "launch", func() {
-		fixtures := protest.FindFixturesDir()
-		testdir, _ := filepath.Abs(filepath.Join(fixtures, "buildtest"))
-		client.LaunchRequestWithArgs(map[string]interface{}{
-			"mode": "test", "program": testdir, "output": "__mytestdir"})
-	})
-	<-serverStopped
+	orgWD, _ := os.Getwd()
+	fixtures := protest.FindFixturesDir() // relative to current working directory.
+	fixturesDir, _ := filepath.Abs(fixtures)
+	pkgDir, _ := filepath.Abs(filepath.Join(fixtures, "buildtest"))
+	testFile := filepath.Join(pkgDir, "main_test.go")
+
+	for _, tc := range []struct {
+		name       string
+		dlvWD      string
+		launchArgs map[string]interface{}
+		wantWD     string
+	}{{
+		name: "default",
+		launchArgs: map[string]interface{}{
+			"mode": "test", "program": pkgDir,
+		},
+		wantWD: pkgDir,
+	}, {
+		name: "output",
+		launchArgs: map[string]interface{}{
+			"mode": "test", "program": pkgDir, "output": "test.out",
+		},
+		wantWD: pkgDir,
+	}, {
+		name: "buildDir",
+		launchArgs: map[string]interface{}{
+			"mode": "test", "program": pkgDir, "buildDir": ".",
+		},
+		wantWD: pkgDir,
+	}, {
+		name: "buildDir2",
+		launchArgs: map[string]interface{}{
+			"mode": "test", "program": ".", "buildDir": pkgDir,
+		},
+		wantWD: pkgDir,
+	}, {
+		name: "cwd",
+		launchArgs: map[string]interface{}{
+			"mode": "test", "program": pkgDir, "cwd": fixtures, // fixtures is relative to the current working directory.
+		},
+		wantWD: fixturesDir,
+	}, {
+		name:  "dlv runs outside of module",
+		dlvWD: os.TempDir(),
+		launchArgs: map[string]interface{}{
+			"mode": "test", "program": pkgDir, "buildDir": fixturesDir,
+		},
+		wantWD: pkgDir,
+	}, {
+		name:  "cwd",
+		dlvWD: fixtures,
+		launchArgs: map[string]interface{}{
+			"mode": "test", "program": pkgDir, "buildDir": pkgDir, "cwd": ".", // "." relative to dlvWD.
+		},
+		wantWD: fixturesDir,
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.dlvWD != "" {
+				os.Chdir(tc.dlvWD)
+				defer os.Chdir(orgWD)
+			}
+			serverStopped := make(chan struct{})
+			client := startDapServerWithClient(t, serverStopped)
+			defer client.Close()
+
+			runDebugSessionWithBPs(t, client, "launch",
+				func() { // Launch
+					client.LaunchRequestWithArgs(tc.launchArgs)
+				},
+				testFile, []int{14},
+				[]onBreakpoint{{
+					execute: func() {
+						checkStop(t, client, -1, "github.com/go-delve/delve/_fixtures/buildtest.TestCurrentDirectory", 14)
+						client.VariablesRequest(1001) // Locals
+						locals := client.ExpectVariablesResponse(t)
+						checkChildren(t, locals, "Locals", 1)
+						for i := range locals.Body.Variables {
+							switch locals.Body.Variables[i].Name {
+							case "wd": // The test's working directory is the package directory by default.
+								checkVarExact(t, locals, i, "wd", "wd", fmt.Sprintf("%q", tc.wantWD), "string", noChildren)
+							}
+						}
+					}}})
+
+			<-serverStopped
+		})
+	}
 }
 
 // Tests that 'args' from LaunchRequest are parsed and passed to the target
@@ -4453,33 +4526,81 @@ func TestLaunchRequestWithBuildFlags(t *testing.T) {
 }
 
 func TestLaunchRequestWithBuildDir(t *testing.T) {
-	// Prepare the target source code in a temp directory as a separate module
-	// outside of the github.com/go-delve/delve module.
-	// Building it outside of the module won't work, so we use buildDir.
-	fixturesDir := protest.FindFixturesDir()
-	buildtestdir := filepath.Join(fixturesDir, "buildtest")
+	origWD, _ := os.Getwd()
 
-	moduleDir, err := prepareModule("launchRequestWithBuildDir", buildtestdir)
+	fixtures := protest.FindFixturesDir() // relative to current working directory.
+	fixturesDir, _ := filepath.Abs(fixtures)
+	sourceFile := filepath.Join(fixturesDir, "workdir.go")
+
+	// Run delve DAP server from the github.com/go-delve/delve module
+	// and debug a target outside of it.
+	// In module mode, `go build` will complain e.g. directory * is outside available modules
+	// if program is a directory. By supplying BuildDir, we avoid the issue.
+	workDir, err := prepareModule(sourceFile)
 	if err != nil {
-		t.Fatalf("failed to set up test environment: %v", err)
+		t.Fatalf("failed to set up a module for testing: %v", err)
 	}
-	defer os.RemoveAll(moduleDir)
+	defer os.RemoveAll(workDir)
 
-	for _, mode := range []string{"debug", "test"} {
-		t.Run(mode, func(t *testing.T) {
-			// Start the DAP server.
+	for _, tc := range []struct {
+		name                   string
+		program, buildDir, cwd string
+		want                   string
+	}{{
+		name:     "buildDir",
+		program:  workDir,
+		buildDir: workDir,
+		want:     fmt.Sprintf("%q", origWD), // buildDir does not affect default cwd.
+	}, {
+		name:     "buildDir/cwd",
+		program:  workDir,
+		buildDir: workDir,
+		cwd:      workDir,
+		want:     fmt.Sprintf("%q", workDir), // buildDir does not affect cwd.
+
+	}, {
+		name:     "buildDir/cwd",
+		program:  ".", // program is relative to buildDir.
+		buildDir: workDir,
+		cwd:      fixtures,
+		want:     fmt.Sprintf("%q", fixturesDir), // cwd is relative to origWD.
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
 			serverStopped := make(chan struct{})
 			client := startDapServerWithClient(t, serverStopped)
 			defer client.Close()
-			runDebugSession(t, client, "launch",
+
+			runDebugSessionWithBPs(t, client, "launch",
+				// Launch
 				func() {
 					client.LaunchRequestWithArgs(map[string]interface{}{
-						"mode":        mode,
-						"program":     moduleDir,
-						"stopOnEntry": false,
-						"buildDir":    moduleDir,
+						"mode":     "debug",
+						"program":  tc.program,
+						"buildDir": tc.buildDir,
+						"cwd":      tc.cwd,
 					})
-				})
+				},
+				// Set breakpoints
+				filepath.Join(workDir, "workdir.go"), []int{10}, // b main.main
+				[]onBreakpoint{{
+					execute: func() {
+						checkStop(t, client, 1, "main.main", 10)
+						client.VariablesRequest(1001) // Locals
+						locals := client.ExpectVariablesResponse(t)
+						checkChildren(t, locals, "Locals", 2)
+						for i := range locals.Body.Variables {
+							switch locals.Body.Variables[i].Name {
+							case "pwd":
+								// buildDir does not affect the work directory.
+								checkVarExact(t, locals, i, "pwd", "pwd", tc.want, "string", noChildren)
+							case "err":
+								checkVarExact(t, locals, i, "err", "err", "error nil", "error", noChildren)
+							}
+						}
+					},
+					disconnect: false,
+				}})
+
 			<-serverStopped
 		})
 	}
@@ -4488,37 +4609,27 @@ func TestLaunchRequestWithBuildDir(t *testing.T) {
 // prepareModule copies all regular files in sourceDir into a separate
 // module in a temporary directory. Caller is responsible for clean up
 // the returned module source directory path.
-func prepareModule(moduleName, sourceDir string) (string, error) {
-	info, err := ioutil.ReadDir(sourceDir)
+func prepareModule(sourceFile string) (string, error) {
+	prog, err := ioutil.ReadFile(sourceFile)
 	if err != nil {
 		return "", err
 	}
-	tmp := os.TempDir()
+	basename := filepath.Base(sourceFile)
+
+	tmpDir := os.TempDir()
 	// For Darwin `os.TempDir()` returns `/tmp` which is symlink to `/private/tmp`.
 	if runtime.GOOS == "darwin" {
-		tmp = "/private/tmp"
+		tmpDir = "/private/tmp"
 	}
-	workDir, err := ioutil.TempDir(tmp, moduleName)
+	workDir, err := ioutil.TempDir(tmpDir, "dap_test")
 	if err != nil {
 		return "", err
 	}
-	for _, f := range info {
-		if !f.Mode().IsRegular() {
-			continue
-		}
-		source, err := ioutil.ReadFile(filepath.Join(sourceDir, f.Name()))
-		if err != nil {
-			os.RemoveAll(workDir)
-			return "", fmt.Errorf("failed to read: %v", err)
-		}
-		destFile := filepath.Join(workDir, f.Name())
-		if err := ioutil.WriteFile(destFile, source, 0644); err != nil {
-			os.RemoveAll(workDir)
-			return "", err
-		}
+	if err := ioutil.WriteFile(filepath.Join(workDir, "go.mod"), []byte("module example"), 0644); err != nil {
+		os.RemoveAll(workDir)
+		return "", err
 	}
-
-	if err := ioutil.WriteFile(filepath.Join(workDir, "go.mod"), []byte("module "+moduleName), 0644); err != nil {
+	if err := ioutil.WriteFile(filepath.Join(workDir, basename), prog, 0644); err != nil {
 		os.RemoveAll(workDir)
 		return "", err
 	}
