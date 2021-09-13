@@ -969,9 +969,7 @@ func TestStackTraceRequest(t *testing.T) {
 
 func TestSelectedGoroutine(t *testing.T) {
 	saved := os.Getenv("GOMAXPROCS")
-	defer func() {
-		os.Setenv("GOMAXPROCS", saved)
-	}()
+	defer os.Setenv("GOMAXPROCS", saved)
 	if err := os.Setenv("GOMAXPROCS", "1"); err != nil {
 		t.Fatal(err)
 	}
