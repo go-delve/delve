@@ -176,6 +176,17 @@ func regabistacktest2(n1, n2, n3, n4, n5, n6, n7, n8, n9, n10 int) (int, int, in
 	return n1 + n2, n2 + n3, n3 + n4, n4 + n5, n5 + n6, n6 + n7, n7 + n8, n8 + n9, n9 + n10, n10 + n1
 }
 
+type Issue2698 struct {
+	a uint32
+	b uint8
+	c uint8
+	d uintptr
+}
+
+func (i Issue2698) String() string {
+	return fmt.Sprintf("%d %d %d %d", i.a, i.b, i.c, i.d)
+}
+
 func main() {
 	one, two := 1, 2
 	intslice := []int{1, 2, 3}
@@ -192,6 +203,12 @@ func main() {
 	var pable_pa PRcvrable = pa
 	var x X = 2
 	var x2 X2 = 2
+	issue2698 := Issue2698{
+		a: 1,
+		b: 2,
+		c: 3,
+		d: 4,
+	}
 
 	fn2clos := makeclos(pa)
 	fn2glob := call1
@@ -208,5 +225,5 @@ func main() {
 	d.Method()
 	d.Base.Method()
 	x.CallMe()
-	fmt.Println(one, two, zero, call, call0, call2, callexit, callpanic, callbreak, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr, pa2, noreturncall, str, d, x, x2.CallMe(5), longstrs, regabistacktest, regabistacktest2)
+	fmt.Println(one, two, zero, call, call0, call2, callexit, callpanic, callbreak, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr, pa2, noreturncall, str, d, x, x2.CallMe(5), longstrs, regabistacktest, regabistacktest2, issue2698.String())
 }
