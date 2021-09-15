@@ -2,7 +2,8 @@ package goversion
 
 import (
 	"fmt"
-	"os"
+
+	"github.com/go-delve/delve/pkg/logflags"
 )
 
 var (
@@ -26,14 +27,14 @@ func Compatible(producer string, warnonly bool) error {
 	verstr := fmt.Sprintf("%d.%d.%d", ver.Major, ver.Minor, ver.Rev)
 	if !ver.AfterOrEqual(GoVersion{MinSupportedVersionOfGoMajor, MinSupportedVersionOfGoMinor, -1, 0, 0, ""}) {
 		if warnonly {
-			fmt.Fprintf(os.Stderr, "%v\n", fmt.Sprintf(goTooOldWarn, verstr))
+			logflags.WriteError(fmt.Sprintf(goTooOldWarn, verstr))
 			return nil
 		}
 		return fmt.Errorf(goTooOldErr, verstr)
 	}
 	if ver.AfterOrEqual(GoVersion{MaxSupportedVersionOfGoMajor, MaxSupportedVersionOfGoMinor + 1, -1, 0, 0, ""}) {
 		if warnonly {
-			fmt.Fprintf(os.Stderr, "%v\n", fmt.Sprintf(dlvTooOldWarn, verstr))
+			logflags.WriteError(fmt.Sprintf(dlvTooOldWarn, verstr))
 			return nil
 		}
 		return fmt.Errorf(dlvTooOldErr, verstr)
