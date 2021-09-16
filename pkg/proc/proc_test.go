@@ -3575,27 +3575,27 @@ func TestDeclLine(t *testing.T) {
 		setFileBreakpoint(p, t, fixture.Source, 11)
 		setFileBreakpoint(p, t, fixture.Source, 14)
 
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(p.Continue(), t, "Continue 1")
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
 			testDeclLineCount(t, p, 8, []string{})
 		} else {
 			testDeclLineCount(t, p, 8, []string{"a"})
 		}
 
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(p.Continue(), t, "Continue 2")
 		testDeclLineCount(t, p, 9, []string{"a"})
 
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(p.Continue(), t, "Continue 3")
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
 			testDeclLineCount(t, p, 10, []string{"a"})
 		} else {
 			testDeclLineCount(t, p, 10, []string{"a", "b"})
 		}
 
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(p.Continue(), t, "Continue 4")
 		testDeclLineCount(t, p, 11, []string{"a", "b"})
 
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(p.Continue(), t, "Continue 5")
 		testDeclLineCount(t, p, 14, []string{"a", "b"})
 	})
 }
@@ -3811,7 +3811,7 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 	}
 
 	withTestProcessArgs("testinline", t, ".", []string{}, protest.EnableInlining, func(p *proc.Target, fixture protest.Fixture) {
-		pcs, err := p.BinInfo().LineToPC(fixture.Source, 7)
+		pcs, err := proc.FindFileLocation(p, fixture.Source, 7)
 		assertNoError(err, t, "LineToPC")
 		if len(pcs) < 2 {
 			t.Fatalf("expected at least two locations for %s:%d (got %d: %#x)", fixture.Source, 7, len(pcs), pcs)
@@ -3960,7 +3960,7 @@ func TestInlineBreakpoint(t *testing.T) {
 		t.Skip("inlining not supported")
 	}
 	withTestProcessArgs("testinline", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p *proc.Target, fixture protest.Fixture) {
-		pcs, err := p.BinInfo().LineToPC(fixture.Source, 17)
+		pcs, err := proc.FindFileLocation(p, fixture.Source, 17)
 		t.Logf("%#v\n", pcs)
 		if len(pcs) != 1 {
 			t.Fatalf("unable to get PC for inlined function call: %v", pcs)
