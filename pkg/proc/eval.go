@@ -20,9 +20,12 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/logflags"
 )
 
 var errOperationOnSpecialFloat = errors.New("operations on non-finite floats not implemented")
+
+const goDictionaryName = ".dict"
 
 // EvalScope is the scope for variable evaluation. Contains the thread,
 // current location (PC), and canonical frame address.
@@ -49,6 +52,8 @@ type EvalScope struct {
 	// The goroutine executing the expression evaluation shall signal that the
 	// evaluation is complete by closing the continueRequest channel.
 	callCtx *callContext
+
+	dictAddr uint64 // dictionary address for instantiated generic functions
 }
 
 type localsFlags uint8
@@ -230,10 +235,35 @@ func (scope *EvalScope) Locals(flags localsFlags) ([]*Variable, error) {
 	}
 
 	varEntries := reader.Variables(dwarfTree, scope.PC, scope.Line, variablesFlags)
+
+	// look for dictionary entry
+	if scope.dictAddr == 0 {
+		for _, entry := range varEntries {
+			name, _ := entry.Val(dwarf.AttrName).(string)
+			if name == goDictionaryName {
+				dictVar, err := extractVarInfoFromEntry(scope.target, scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry.Tree, 0)
+				if err != nil {
+					logflags.DebuggerLogger().Errorf("could not load %s variable: %v", name, err)
+				} else if dictVar.Unreadable != nil {
+					logflags.DebuggerLogger().Errorf("could not load %s variable: %v", name, dictVar.Unreadable)
+				} else {
+					scope.dictAddr, err = readUintRaw(dictVar.mem, dictVar.Addr, int64(scope.BinInfo.Arch.PtrSize()))
+					if err != nil {
+						logflags.DebuggerLogger().Errorf("could not load %s variable: %v", name, err)
+					}
+				}
+				break
+			}
+		}
+	}
+
 	vars := make([]*Variable, 0, len(varEntries))
 	depths := make([]int, 0, len(varEntries))
 	for _, entry := range varEntries {
-		val, err := extractVarInfoFromEntry(scope.target, scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry.Tree)
+		if name, _ := entry.Val(dwarf.AttrName).(string); name == goDictionaryName {
+			continue
+		}
+		val, err := extractVarInfoFromEntry(scope.target, scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry.Tree, scope.dictAddr)
 		if err != nil {
 			// skip variables that we can't parse yet
 			continue
@@ -489,7 +519,7 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 		}
 
 		// Ignore errors trying to extract values
-		val, err := extractVarInfoFromEntry(scope.target, scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry))
+		val, err := extractVarInfoFromEntry(scope.target, scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry), 0)
 		if val != nil && val.Kind == reflect.Invalid {
 			continue
 		}
@@ -526,7 +556,7 @@ func (scope *EvalScope) findGlobalInternal(name string) (*Variable, error) {
 			if err != nil {
 				return nil, err
 			}
-			return extractVarInfoFromEntry(scope.target, scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry))
+			return extractVarInfoFromEntry(scope.target, scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry), 0)
 		}
 	}
 	for _, fn := range scope.BinInfo.Functions {
