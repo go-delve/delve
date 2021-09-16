@@ -84,7 +84,8 @@ var (
 
 	allowNonTerminalInteractive bool
 
-	conf *config.Config
+	conf        *config.Config
+	loadConfErr error
 )
 
 const dlvCommandLongDesc = `Delve is a source level debugger for Go programs.
@@ -101,7 +102,10 @@ Pass flags to the program you are debugging using ` + "`--`" + `, for example:
 // New returns an initialized command tree.
 func New(docCall bool) *cobra.Command {
 	// Config setup and load.
-	conf = config.LoadConfig()
+	conf, loadConfErr = config.LoadConfig()
+	// Delay reporting errors about configuration loading delayed until after the
+	// server is started so that the "server listening at" message is always
+	// the first thing emitted. Also logflags hasn't been setup yet at this point.
 	buildFlagsDefault := ""
 	if runtime.GOOS == "windows" {
 		ver, _ := goversion.Installed()
@@ -422,6 +426,10 @@ func dapCmd(cmd *cobra.Command, args []string) {
 		}
 		defer logflags.Close()
 
+		if loadConfErr != nil {
+			logflags.DebuggerLogger().Errorf("%v", loadConfErr)
+		}
+
 		if cmd.Flag("headless").Changed {
 			fmt.Fprintf(os.Stderr, "Warning: dap mode is always headless\n")
 		}
@@ -517,6 +525,9 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
+		}
+		if loadConfErr != nil {
+			logflags.DebuggerLogger().Errorf("%v", loadConfErr)
 		}
 
 		if headless {
@@ -726,6 +737,15 @@ func coreCmd(cmd *cobra.Command, args []string) {
 }
 
 func connectCmd(cmd *cobra.Command, args []string) {
+	if err := logflags.Setup(log, logOutput, logDest); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+		return
+	}
+	defer logflags.Close()
+	if loadConfErr != nil {
+		logflags.DebuggerLogger().Errorf("%v", loadConfErr)
+	}
 	addr := args[0]
 	if addr == "" {
 		fmt.Fprint(os.Stderr, "An empty address was provided. You must provide an address as the first argument.\n")
@@ -804,6 +824,9 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 		return 1
 	}
 	defer logflags.Close()
+	if loadConfErr != nil {
+		logflags.DebuggerLogger().Errorf("%v", loadConfErr)
+	}
 
 	if headless && (initFile != "") {
 		fmt.Fprint(os.Stderr, "Warning: init file ignored with --headless\n")
