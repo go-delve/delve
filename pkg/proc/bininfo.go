@@ -314,6 +314,8 @@ type Function struct {
 	offset     dwarf.Offset
 	cu         *compileUnit
 
+	trampoline bool // DW_AT_trampoline attribute set to true
+
 	// InlinedCalls lists all inlined calls to this function
 	InlinedCalls []InlinedCall
 }
@@ -2017,6 +2019,8 @@ func (bi *BinaryInfo) addConcreteSubprogram(entry *dwarf.Entry, ctxt *loadDebugI
 		bi.logger.Warnf("reading debug_info: concrete subprogram without name at %#x", entry.Offset)
 	}
 
+	trampoline, _ := entry.Val(dwarf.AttrTrampoline).(bool)
+
 	originIdx := ctxt.lookupAbstractOrigin(bi, entry.Offset)
 	fn := &bi.Functions[originIdx]
 
@@ -2025,6 +2029,7 @@ func (bi *BinaryInfo) addConcreteSubprogram(entry *dwarf.Entry, ctxt *loadDebugI
 	fn.End = highpc
 	fn.offset = entry.Offset
 	fn.cu = cu
+	fn.trampoline = trampoline
 
 	if entry.Children {
 		bi.loadDebugInfoMapsInlinedCalls(ctxt, reader, cu)
