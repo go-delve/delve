@@ -566,7 +566,7 @@ func funcCallCopyOneArg(scope *EvalScope, fncall *functionCallState, actualArg *
 	var formalArgVar *Variable
 	if formalArg.dwarfEntry != nil {
 		var err error
-		formalArgVar, err = extractVarInfoFromEntry(scope.target, formalScope.BinInfo, formalScope.image(), formalScope.Regs, formalScope.Mem, formalArg.dwarfEntry)
+		formalArgVar, err = extractVarInfoFromEntry(scope.target, formalScope.BinInfo, formalScope.image(), formalScope.Regs, formalScope.Mem, formalArg.dwarfEntry, 0)
 		if err != nil {
 			return err
 		}

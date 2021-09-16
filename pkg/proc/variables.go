@@ -18,6 +18,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/logflags"
 )
 
 const (
@@ -1135,7 +1136,7 @@ func readVarEntry(entry *godwarf.Tree, image *Image) (name string, typ godwarf.T
 
 // Extracts the name and type of a variable from a dwarf entry
 // then executes the instructions given in the  DW_AT_location attribute to grab the variable's address
-func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.DwarfRegisters, mem MemoryReadWriter, entry *godwarf.Tree) (*Variable, error) {
+func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.DwarfRegisters, mem MemoryReadWriter, entry *godwarf.Tree, dictAddr uint64) (*Variable, error) {
 	if entry.Tag != dwarf.TagFormalParameter && entry.Tag != dwarf.TagVariable {
 		return nil, fmt.Errorf("invalid entry tag, only supports FormalParameter and Variable, got %s", entry.Tag.String())
 	}
@@ -1143,6 +1144,12 @@ func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.
 	n, t, err := readVarEntry(entry, image)
 	if err != nil {
 		return nil, err
+	}
+
+	t, err = resolveParametricType(tgt, bi, mem, t, dictAddr)
+	if err != nil {
+		// Log the error, keep going with t, which will be the shape type
+		logflags.DebuggerLogger().Errorf("could not resolve parametric type of %s", n)
 	}
 
 	addr, pieces, descr, err := bi.Location(entry, dwarf.AttrLocation, regs.PC(), regs, mem)
