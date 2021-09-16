@@ -143,10 +143,8 @@ type Server struct {
 	haltRequested bool
 	haltMu        sync.Mutex
 
-	// changeStateMu must be held for a request to resume execution of the
-	// process.
-	// goroutine will hold changeStateMu to protect itself from another goroutine
-	// changing state at the same time.
+	// changeStateMu must be held for a request to protect itself from another goroutine
+	// changing the state of the running process at the same time.
 	changeStateMu sync.Mutex
 }
 
@@ -2916,8 +2914,6 @@ func (s *Server) resumeOnce(command string, allowNextStateChange chan struct{}) 
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
 func (s *Server) runUntilStopAndNotify(command string, allowNextStateChange chan struct{}) {
-	// Clear any manual stop requests that came in before we started running.
-	s.setHaltRequested(false)
 	state, err := s.runUntilStop(command, allowNextStateChange)
 
 	if processExited(state, err) {
@@ -3014,6 +3010,9 @@ func (s *Server) runUntilStopAndNotify(command string, allowNextStateChange chan
 }
 
 func (s *Server) runUntilStop(command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
+	// Clear any manual stop requests that came in before we started running.
+	s.setHaltRequested(false)
+
 	s.setRunningCmd(true)
 	defer s.setRunningCmd(false)
 
