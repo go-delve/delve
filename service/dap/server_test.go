@@ -582,8 +582,8 @@ func TestPreSetBreakpoint(t *testing.T) {
 		client.VariablesRequest(1000) // Arguments
 		args := client.ExpectVariablesResponse(t)
 		checkChildren(t, args, "Arguments", 2)
-		checkVarExact(t, args, 0, "y", "y", "0", "uint", noChildren)
-		checkVarExact(t, args, 1, "~r1", "", "0", "uint", noChildren)
+		checkVarExact(t, args, 0, "y", "y", "0 = 0x0", "uint", noChildren)
+		checkVarExact(t, args, 1, "~r1", "", "0 = 0x0", "uint", noChildren)
 
 		client.VariablesRequest(1001) // Locals
 		locals := client.ExpectVariablesResponse(t)
@@ -1101,15 +1101,15 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					// reflect.Kind == Int64 - see testvariables2
 					// reflect.Kind == Uint
 					// reflect.Kind == Uint8
-					checkVarExact(t, locals, -1, "u8", "u8", "255", "uint8", noChildren)
+					checkVarExact(t, locals, -1, "u8", "u8", "255 = 0xff", "uint8", noChildren)
 					// reflect.Kind == Uint16
-					checkVarExact(t, locals, -1, "u16", "u16", "65535", "uint16", noChildren)
+					checkVarExact(t, locals, -1, "u16", "u16", "65535 = 0xffff", "uint16", noChildren)
 					// reflect.Kind == Uint32
-					checkVarExact(t, locals, -1, "u32", "u32", "4294967295", "uint32", noChildren)
+					checkVarExact(t, locals, -1, "u32", "u32", "4294967295 = 0xffffffff", "uint32", noChildren)
 					// reflect.Kind == Uint64
-					checkVarExact(t, locals, -1, "u64", "u64", "18446744073709551615", "uint64", noChildren)
+					checkVarExact(t, locals, -1, "u64", "u64", "18446744073709551615 = 0xffffffffffffffff", "uint64", noChildren)
 					// reflect.Kind == Uintptr
-					checkVarExact(t, locals, -1, "up", "up", "5", "uintptr", noChildren)
+					checkVarExact(t, locals, -1, "up", "up", "5 = 0x5", "uintptr", noChildren)
 					// reflect.Kind == Float32
 					checkVarExact(t, locals, -1, "f32", "f32", "1.2", "float32", noChildren)
 					// reflect.Kind == Float64
@@ -1382,7 +1382,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 						client.VariablesRequest(ref)
 						ch1 := client.ExpectVariablesResponse(t)
 						checkChildren(t, ch1, "ch1", 11)
-						checkVarExact(t, ch1, 0, "qcount", "ch1.qcount", "4", "uint", noChildren)
+						checkVarExact(t, ch1, 0, "qcount", "ch1.qcount", "4 = 0x4", "uint", noChildren)
 						checkVarRegex(t, ch1, 10, "lock", "ch1.lock", `runtime\.mutex {.*key: 0.*}`, `runtime\.mutex`, hasChildren)
 						validateEvaluateName(t, client, ch1, 0)
 						validateEvaluateName(t, client, ch1, 10)
@@ -2007,41 +2007,44 @@ func TestVariablesMetadata(t *testing.T) {
 						}
 					}
 
+					bytes := []string{"116 = 0x74", "195 = 0xc3", "168 = 0xa8", "115 = 0x73", "116 = 0x74"}
+					runes := []string{"116", "232", "115", "116"}
+
 					// byteslice
 					ref := checkVarExactIndexed(t, locals, -1, "byteslice", "byteslice", "[]uint8 len: 5, cap: 5, [116,195,168,115,116]", "[]uint8", true, 5, 1)
-					checkNamedChildren(ref, "byteslice", "uint8", []string{"116", "195", "168", "115", "116"}, false)
+					checkNamedChildren(ref, "byteslice", "uint8", bytes, false)
 
 					client.EvaluateRequest("byteslice", 0, "")
 					got := client.ExpectEvaluateResponse(t)
 					ref = checkEvalIndexed(t, got, "[]uint8 len: 5, cap: 5, [116,195,168,115,116]", hasChildren, 5, 1)
-					checkNamedChildren(ref, "byteslice", "uint8", []string{"116", "195", "168", "115", "116"}, true)
+					checkNamedChildren(ref, "byteslice", "uint8", bytes, true)
 
 					// runeslice
 					ref = checkVarExactIndexed(t, locals, -1, "runeslice", "runeslice", "[]int32 len: 4, cap: 4, [116,232,115,116]", "[]int32", true, 4, 1)
-					checkNamedChildren(ref, "runeslice", "int32", []string{"116", "232", "115", "116"}, false)
+					checkNamedChildren(ref, "runeslice", "int32", runes, false)
 
 					client.EvaluateRequest("runeslice", 0, "repl")
 					got = client.ExpectEvaluateResponse(t)
 					ref = checkEvalIndexed(t, got, "[]int32 len: 4, cap: 4, [116,232,115,116]", hasChildren, 4, 1)
-					checkNamedChildren(ref, "runeslice", "int32", []string{"116", "232", "115", "116"}, true)
+					checkNamedChildren(ref, "runeslice", "int32", runes, true)
 
 					// bytearray
 					ref = checkVarExactIndexed(t, locals, -1, "bytearray", "bytearray", "[5]uint8 [116,195,168,115,116]", "[5]uint8", true, 5, 1)
-					checkNamedChildren(ref, "bytearray", "uint8", []string{"116", "195", "168", "115", "116"}, false)
+					checkNamedChildren(ref, "bytearray", "uint8", bytes, false)
 
 					client.EvaluateRequest("bytearray", 0, "hover")
 					got = client.ExpectEvaluateResponse(t)
 					ref = checkEvalIndexed(t, got, "[5]uint8 [116,195,168,115,116]", hasChildren, 5, 1)
-					checkNamedChildren(ref, "bytearray", "uint8", []string{"116", "195", "168", "115", "116"}, true)
+					checkNamedChildren(ref, "bytearray", "uint8", bytes, true)
 
 					// runearray
 					ref = checkVarExactIndexed(t, locals, -1, "runearray", "runearray", "[4]int32 [116,232,115,116]", "[4]int32", true, 4, 1)
-					checkNamedChildren(ref, "runearray", "int32", []string{"116", "232", "115", "116"}, false)
+					checkNamedChildren(ref, "runearray", "int32", runes, false)
 
 					client.EvaluateRequest("runearray", 0, "watch")
 					got = client.ExpectEvaluateResponse(t)
 					ref = checkEvalIndexed(t, got, "[4]int32 [116,232,115,116]", hasChildren, 4, 1)
-					checkNamedChildren(ref, "runearray", "int32", []string{"116", "232", "115", "116"}, true)
+					checkNamedChildren(ref, "runearray", "int32", runes, true)
 				},
 				disconnect: true,
 			}})
