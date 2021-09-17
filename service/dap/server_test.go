@@ -2299,6 +2299,109 @@ func TestSetBreakpoint(t *testing.T) {
 	})
 }
 
+// TestSetInstructionBreakpoint executes to a breakpoint and tests different
+// configurations of setInstructionBreakpoint requests.
+func TestSetInstructionBreakpoint(t *testing.T) {
+	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{16}, // b main.main
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 16)
+
+					// Set two breakpoints in the loop
+					client.SetBreakpointsRequest(fixture.Source, []int{8, 9})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}, {9, fixture.Source, true, ""}})
+
+					// Continue to the two breakpoints and get the instructionPointerReference.
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					checkStop(t, client, 1, "main.loop", 8)
+
+					client.StackTraceRequest(1, 0, 1)
+					st := client.ExpectStackTraceResponse(t)
+					if len(st.Body.StackFrames) < 1 {
+						t.Fatalf("\ngot  %#v\nwant len(stackframes) => 1", st)
+					}
+					pc8 := st.Body.StackFrames[0].InstructionPointerReference
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					checkStop(t, client, 1, "main.loop", 9)
+
+					client.StackTraceRequest(1, 0, 1)
+					st = client.ExpectStackTraceResponse(t)
+					if len(st.Body.StackFrames) < 1 {
+						t.Fatalf("\ngot  %#v\nwant len(stackframes) => 1", st)
+					}
+					pc9 := st.Body.StackFrames[0].InstructionPointerReference
+
+					// Clear the source breakpoints.
+					// TODO(suzmue): there is an existing issue that breakpoints with identical locations
+					// from different setBreakpoints, setFunctionBreakpoints, setInstructionBreakpoints
+					// requests will prevent subsequent ones from being set.
+					client.SetBreakpointsRequest(fixture.Source, []int{})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{})
+
+					// Set the breakpoints using the instruction pointer references.
+					client.SetInstructionBreakpointsRequest([]dap.InstructionBreakpoint{{InstructionReference: pc8}, {InstructionReference: pc9}})
+					bps := client.ExpectSetInstructionBreakpointsResponse(t).Body.Breakpoints
+					checkBreakpoints(t, client, []Breakpoint{{line: 8, path: fixture.Source, verified: true}, {line: 9, path: fixture.Source, verified: true}}, bps)
+
+					// Continue to the two breakpoints and get the instructionPointerReference.
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					checkStop(t, client, 1, "main.loop", 8)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					checkStop(t, client, 1, "main.loop", 9)
+
+					// Remove the breakpoint on line 8 and continue.
+					client.SetInstructionBreakpointsRequest([]dap.InstructionBreakpoint{{InstructionReference: pc9}})
+					bps = client.ExpectSetInstructionBreakpointsResponse(t).Body.Breakpoints
+					checkBreakpoints(t, client, []Breakpoint{{line: 9, path: fixture.Source, verified: true}}, bps)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					checkStop(t, client, 1, "main.loop", 9)
+
+					// Set two breakpoints and expect an error on the second one.
+					client.SetInstructionBreakpointsRequest([]dap.InstructionBreakpoint{{InstructionReference: pc8}, {InstructionReference: pc8}})
+					bps = client.ExpectSetInstructionBreakpointsResponse(t).Body.Breakpoints
+					checkBreakpoints(t, client, []Breakpoint{{line: 8, path: fixture.Source, verified: true}, {line: -1, path: "", verified: false, msgPrefix: "breakpoint name already exists"}}, bps)
+
+					// Add a condition
+					client.SetInstructionBreakpointsRequest([]dap.InstructionBreakpoint{{InstructionReference: pc8, Condition: "i == 100"}})
+					bps = client.ExpectSetInstructionBreakpointsResponse(t).Body.Breakpoints
+					checkBreakpoints(t, client, []Breakpoint{{line: 8, path: fixture.Source, verified: true}}, bps)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
+					checkStop(t, client, 1, "main.loop", 8)
+
+					client.VariablesRequest(1001) // Locals
+					locals := client.ExpectVariablesResponse(t)
+					checkVarExact(t, locals, 0, "i", "i", "100", "int", noChildren) // i == 100
+
+				},
+				// The program has an infinite loop, so we must kill it by disconnecting.
+				disconnect: true,
+			}})
+	})
+}
+
 func TestPauseAtStop(t *testing.T) {
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
