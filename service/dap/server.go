@@ -2897,7 +2897,7 @@ func (s *Server) resumeOnce(command string, allowNextStateChange chan struct{}) 
 	}()
 
 	// There may have been a manual halt while the program was
-	// stopped. If this happened, do not resume exection of
+	// stopped. If this happened, do not resume execution of
 	// the program.
 	if s.checkHaltRequested() {
 		state, err := s.debugger.State(false)
@@ -2923,6 +2923,9 @@ func (s *Server) runUntilStopAndNotify(command string, allowNextStateChange chan
 
 	stopReason := s.debugger.StopReason()
 	// Override the stop reason if there was a manual stop request.
+	// TODO(suzmue): move this logic into the runUntilStop command
+	// so that the stop reason is determined by that function which
+	// has all the context.
 	if s.checkHaltRequested() {
 		stopReason = proc.StopManual
 	}
