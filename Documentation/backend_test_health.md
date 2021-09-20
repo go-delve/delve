@@ -17,6 +17,9 @@ Tests skipped by each supported backend:
 * freebsd skipped = 15
 	* 11 broken
 	* 4 not implemented
+* illumos skipped = 15
+	* 11 broken
+	* 4 not implemented
 * linux/386/pie skipped = 1
 	* 1 broken
 * linux/arm64 skipped = 1
@@ -25,6 +28,9 @@ Tests skipped by each supported backend:
 	* 2 upstream issue - https://github.com/golang/go/issues/29322
 * rr skipped = 3
 	* 3 not implemented
+* solaris skipped = 15
+	* 11 broken
+	* 4 not implemented
 * windows skipped = 5
 	* 1 broken
 	* 3 not implemented

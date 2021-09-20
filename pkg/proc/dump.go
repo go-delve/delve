@@ -122,6 +122,8 @@ func (t *Target) Dump(out elfwriter.WriteCloserSeeker, flags DumpFlags, state *D
 		fhdr.OSABI = elf.ELFOSABI_LINUX
 	case "freebsd":
 		fhdr.OSABI = elf.ELFOSABI_FREEBSD
+	case "solaris":
+		fhdr.OSABI = elf.ELFOSABI_SOLARIS
 	default:
 		// There is no OSABI value for windows or macOS because nobody generates ELF core dumps on those systems.
 		fhdr.OSABI = 0xff

@@ -975,8 +975,8 @@ func Test1NegativeStackDepthBug(t *testing.T) {
 }
 
 func Test1ClientServer_CondBreakpoint(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
-		t.Skip("test is not valid on FreeBSD")
+	if runtime.GOOS == "freebsd" || runtime.GOOS == "solaris" || runtime.GOOS == "illumos" {
+		t.Skip("test is not valid on FreeBSD/Solaris")
 	}
 	withTestClient1("parallel_next", t, func(c *rpc1.RPCClient) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: 1})

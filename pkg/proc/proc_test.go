@@ -584,6 +584,8 @@ func TestNextGeneral(t *testing.T) {
 
 func TestNextConcurrent(t *testing.T) {
 	skipOn(t, "broken", "freebsd")
+	skipOn(t, "broken", "solaris")
+	skipOn(t, "broken", "illumos")
 	testcases := []nextTest{
 		{8, 9},
 		{9, 10},
@@ -620,6 +622,8 @@ func TestNextConcurrent(t *testing.T) {
 
 func TestNextConcurrentVariant2(t *testing.T) {
 	skipOn(t, "broken", "freebsd")
+	skipOn(t, "broken", "solaris")
+	skipOn(t, "broken", "illumos")
 	// Just like TestNextConcurrent but instead of removing the initial breakpoint we check that when it happens is for other goroutines
 	testcases := []nextTest{
 		{8, 9},
@@ -1440,6 +1444,8 @@ func TestIssue325(t *testing.T) {
 
 func TestBreakpointCounts(t *testing.T) {
 	skipOn(t, "broken", "freebsd")
+	skipOn(t, "broken", "solaris")
+	skipOn(t, "broken", "illumos")
 	protest.AllowRecording(t)
 	withTestProcess("bpcountstest", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 12)
@@ -1646,6 +1652,8 @@ func BenchmarkLocalVariables(b *testing.B) {
 
 func TestCondBreakpoint(t *testing.T) {
 	skipOn(t, "broken", "freebsd")
+	skipOn(t, "broken", "solaris")
+	skipOn(t, "broken", "illumos")
 	protest.AllowRecording(t)
 	withTestProcess("parallel_next", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 9)
@@ -1668,6 +1676,8 @@ func TestCondBreakpoint(t *testing.T) {
 
 func TestCondBreakpointError(t *testing.T) {
 	skipOn(t, "broken", "freebsd")
+	skipOn(t, "broken", "solaris")
+	skipOn(t, "broken", "illumos")
 	protest.AllowRecording(t)
 	withTestProcess("parallel_next", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 9)
@@ -2030,6 +2040,8 @@ func TestIssue462(t *testing.T) {
 
 func TestNextParked(t *testing.T) {
 	skipOn(t, "broken", "freebsd")
+	skipOn(t, "broken", "solaris")
+	skipOn(t, "broken", "illumos")
 	protest.AllowRecording(t)
 	withTestProcess("parallel_next", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.sayhi")
@@ -2081,6 +2093,8 @@ func TestNextParked(t *testing.T) {
 
 func TestStepParked(t *testing.T) {
 	skipOn(t, "broken", "freebsd")
+	skipOn(t, "broken", "solaris")
+	skipOn(t, "broken", "illumos")
 	protest.AllowRecording(t)
 	withTestProcess("parallel_next", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.sayhi")
@@ -2410,6 +2424,8 @@ func TestStepOut(t *testing.T) {
 
 func TestStepConcurrentDirect(t *testing.T) {
 	skipOn(t, "broken", "freebsd")
+	skipOn(t, "broken", "solaris")
+	skipOn(t, "broken", "illumos")
 	protest.AllowRecording(t)
 	withTestProcess("teststepconcurrent", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 37)
@@ -2474,6 +2490,8 @@ func TestStepConcurrentDirect(t *testing.T) {
 
 func TestStepConcurrentPtr(t *testing.T) {
 	skipOn(t, "broken", "freebsd")
+	skipOn(t, "broken", "solaris")
+	skipOn(t, "broken", "illumos")
 	protest.AllowRecording(t)
 	withTestProcess("teststepconcurrent", t, func(p *proc.Target, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, fixture.Source, 24)
@@ -3506,7 +3524,11 @@ func TestIssue1034(t *testing.T) {
 	withTestProcess("cgostacktest/", t, func(p *proc.Target, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(p.Continue(), t, "Continue()")
-		frames, err := p.SelectedGoroutine().Stacktrace(10, 0)
+		g := p.SelectedGoroutine()
+		if g == nil {
+			t.Fatal("selected goroutine is nil")
+		}
+		frames, err := g.Stacktrace(10, 0)
 		assertNoError(err, t, "Stacktrace")
 		scope := proc.FrameToScope(p, p.Memory(), nil, frames[2:]...)
 		args, _ := scope.FunctionArguments(normalLoadConfig)
@@ -4495,6 +4517,8 @@ func testCallConcurrentCheckReturns(p *proc.Target, t *testing.T, gid1, gid2 int
 
 func TestCallConcurrent(t *testing.T) {
 	skipOn(t, "broken", "freebsd")
+	skipOn(t, "broken", "solaris")
+	skipOn(t, "broken", "illumos")
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestProcess("teststepconcurrent", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 24)
@@ -4980,6 +5004,8 @@ func TestRequestManualStopWhileStopped(t *testing.T) {
 func TestStepOutPreservesGoroutine(t *testing.T) {
 	// Checks that StepOut preserves the currently selected goroutine.
 	skipOn(t, "broken", "freebsd")
+	skipOn(t, "broken", "solaris")
+	skipOn(t, "broken", "illumos")
 	rand.Seed(time.Now().Unix())
 	withTestProcess("issue2113", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue()")
@@ -5082,7 +5108,7 @@ func TestIssue2319(t *testing.T) {
 }
 
 func TestDump(t *testing.T) {
-	if runtime.GOOS == "freebsd" || (runtime.GOOS == "darwin" && testBackend == "native") {
+	if runtime.GOOS == "freebsd" || runtime.GOOS == "solaris" || runtime.GOOS == "illumos" || (runtime.GOOS == "darwin" && testBackend == "native") {
 		t.Skip("not supported")
 	}
 
@@ -5246,6 +5272,8 @@ func TestCompositeMemoryWrite(t *testing.T) {
 		t.Skip("only valid on amd64")
 	}
 	skipOn(t, "not implemented", "freebsd")
+	skipOn(t, "not implemented", "solaris")
+	skipOn(t, "not implemented", "illumos")
 	withTestProcess("fputest/", t, func(p *proc.Target, fixture protest.Fixture) {
 		getregs := func() (pc, rax, xmm1 uint64) {
 			regs, err := p.CurrentThread().Registers()
@@ -5334,6 +5362,8 @@ func TestVariablesWithExternalLinking(t *testing.T) {
 func TestWatchpointsBasic(t *testing.T) {
 	skipOn(t, "not implemented", "windows")
 	skipOn(t, "not implemented", "freebsd")
+	skipOn(t, "not implemented", "solaris")
+	skipOn(t, "not implemented", "illumos")
 	skipOn(t, "not implemented", "darwin")
 	skipOn(t, "not implemented", "386")
 	skipOn(t, "not implemented", "arm64")
@@ -5380,6 +5410,8 @@ func TestWatchpointsBasic(t *testing.T) {
 func TestWatchpointCounts(t *testing.T) {
 	skipOn(t, "not implemented", "windows")
 	skipOn(t, "not implemented", "freebsd")
+	skipOn(t, "not implemented", "solaris")
+	skipOn(t, "not implemented", "illumos")
 	skipOn(t, "not implemented", "darwin")
 	skipOn(t, "not implemented", "386")
 	skipOn(t, "not implemented", "arm64")
@@ -5498,6 +5530,8 @@ func TestDwrapStartLocation(t *testing.T) {
 func TestWatchpointStack(t *testing.T) {
 	skipOn(t, "not implemented", "windows")
 	skipOn(t, "not implemented", "freebsd")
+	skipOn(t, "not implemented", "solaris")
+	skipOn(t, "not implemented", "illumos")
 	skipOn(t, "not implemented", "darwin")
 	skipOn(t, "not implemented", "386")
 	skipOn(t, "not implemented", "arm64")

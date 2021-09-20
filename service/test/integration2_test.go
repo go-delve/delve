@@ -1301,8 +1301,8 @@ func TestNegativeStackDepthBug(t *testing.T) {
 }
 
 func TestClientServer_CondBreakpoint(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
-		t.Skip("test is not valid on FreeBSD")
+	if runtime.GOOS == "freebsd" || runtime.GOOS == "solaris" || runtime.GOOS == "illumos" {
+		t.Skip("test is not valid on FreeBSD/Solaris")
 	}
 	protest.AllowRecording(t)
 	withTestClient2("parallel_next", t, func(c service.Client) {
@@ -1550,7 +1550,7 @@ func TestClientServer_FpRegisters(t *testing.T) {
 		avx2 := boolvar("avx2")
 		avx512 := boolvar("avx512")
 
-		if runtime.GOOS == "windows" {
+		if runtime.GOOS == "windows" || runtime.GOOS == "solaris" || runtime.GOOS == "illumos" {
 			// not supported
 			avx2 = false
 			avx512 = false

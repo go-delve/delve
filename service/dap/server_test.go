@@ -293,7 +293,7 @@ func TestLaunchStopOnEntry(t *testing.T) {
 
 // TestAttachStopOnEntry is like TestLaunchStopOnEntry, but with attach request.
 func TestAttachStopOnEntry(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
+	if runtime.GOOS == "freebsd" || runtime.GOOS == "solaris" || runtime.GOOS == "illumos" {
 		t.SkipNow()
 	}
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
@@ -2923,7 +2923,7 @@ func TestLaunchSubstitutePath(t *testing.T) {
 // that does not exist and expects the substitutePath attribute
 // in the launch configuration to take care of the mapping.
 func TestAttachSubstitutePath(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
+	if runtime.GOOS == "freebsd" || runtime.GOOS == "solaris" || runtime.GOOS == "illumos" {
 		t.SkipNow()
 	}
 	if runtime.GOOS == "windows" {
@@ -3599,7 +3599,7 @@ func TestNextAndStep(t *testing.T) {
 }
 
 func TestNextParked(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
+	if runtime.GOOS == "freebsd" || runtime.GOOS == "solaris" || runtime.GOOS == "illumos" {
 		t.SkipNow()
 	}
 	runTest(t, "parallel_next", func(client *daptest.Client, fixture protest.Fixture) {
@@ -3687,7 +3687,7 @@ func testStepParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 // and checks that StepOut preserves the currently selected goroutine.
 func TestStepOutPreservesGoroutine(t *testing.T) {
 	// Checks that StepOut preserves the currently selected goroutine.
-	if runtime.GOOS == "freebsd" {
+	if runtime.GOOS == "freebsd" || runtime.GOOS == "solaris" || runtime.GOOS == "illumos" {
 		t.SkipNow()
 	}
 	rand.Seed(time.Now().Unix())
@@ -3840,8 +3840,8 @@ func TestBadAccess(t *testing.T) {
 // again will produce an error with a helpful message, and 'continue'
 // will resume the program.
 func TestNextWhileNexting(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
-		t.Skip("test is not valid on FreeBSD")
+	if runtime.GOOS == "freebsd" || runtime.GOOS == "solaris" || runtime.GOOS == "illumos" {
+		t.Skip("test is not valid on FreeBSD/Solaris")
 	}
 	// a breakpoint triggering during a 'next' operation will interrupt 'next''
 	// Unlike the test for the terminal package, we cannot be certain
@@ -4457,7 +4457,7 @@ func TestLaunchRequestWithBuildFlags(t *testing.T) {
 }
 
 func TestAttachRequest(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
+	if runtime.GOOS == "freebsd" || runtime.GOOS == "solaris" || runtime.GOOS == "illumos" {
 		t.SkipNow()
 	}
 	if runtime.GOOS == "windows" {

@@ -46,8 +46,10 @@ func TestDebugger_LaunchInvalidFormat(t *testing.T) {
 	switchOS := map[string]string{
 		"darwin":  "linux",
 		"windows": "linux",
+		"solaris": "linux",
 		"freebsd": "windows",
 		"linux":   "windows",
+		"illumos": "windows",
 	}
 	if runtime.GOARCH == "arm64" && runtime.GOOS == "linux" {
 		os.Setenv("GOARCH", "amd64")

@@ -1,4 +1,4 @@
-//+build freebsd,amd64 darwin
+//+build freebsd,amd64 darwin solaris
 
 package native
 

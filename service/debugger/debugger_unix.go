@@ -30,7 +30,7 @@ func verifyBinaryFormat(exePath string) error {
 	switch runtime.GOOS {
 	case "darwin":
 		_, err = macho.NewFile(f)
-	case "linux", "freebsd":
+	case "linux", "freebsd", "solaris", "illumos":
 		_, err = elf.NewFile(f)
 	default:
 		panic("attempting to open file Delve cannot parse")
