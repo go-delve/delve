@@ -26,7 +26,7 @@ This project adheres to Semantic Versioning.
 
 * Include selected goroutine in threads request (@suzmue)
 * Remove individual OS install instructions (@gabriel-vasile)
-* DAP: Show decimal / hex values for uint
+* DAP: Show decimal / hex values for uint (@suzmue)
 * Avoid bright colors in default syntax highlighting (@krobelus)
 
 ## [1.7.1] 2021-08-18
