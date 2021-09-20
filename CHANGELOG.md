@@ -4,6 +4,31 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.7.2] 2021-09-21
+
+### Added
+
+* Documentation: Add notes on porting Delve to other architectures (@aarzilli)
+* Add internal checks to ensure we're synched with Go runtime internals (@aarzilli)
+* eBPF backend can parse goroutine info (@derekparker)
+* Add support for debuginfo-find (@derekparker)
+* Add MAKE arguments for GOOS / GOARCH (@cmol)
+
+### Fixed
+
+* Correctly check for 1.17 and regabi (@aarzilli)
+* Print config output strings quouted (@aarzilli, @krobelus)
+* Update check for system goroutines (@suzmue)
+* DAP: Halt before detach in Stop (@polinasok)
+* DAP: Do not send halt request if debuggee is not running (@suzmue)
+
+### Changed
+
+* Include selected goroutine in threads request (@suzmue)
+* Remove individual OS install instructions (@gabriel-vasile)
+* DAP: Show decimal / hex values for uint
+* Avoid bright colors in default syntax highlighting (@krobelus)
+
 ## [1.7.1] 2021-08-18
 
 ### Added
