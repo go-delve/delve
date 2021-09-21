@@ -28,6 +28,8 @@ import (
 const stopOnEntry bool = true
 const hasChildren bool = true
 const noChildren bool = false
+const localsScope = 1000
+const globalsScope = 1001
 
 var testBackend string
 
@@ -593,21 +595,16 @@ func TestPreSetBreakpoint(t *testing.T) {
 
 		client.ScopesRequest(1000)
 		scopes := client.ExpectScopesResponse(t)
-		if len(scopes.Body.Scopes) > 2 {
-			t.Errorf("\ngot  %#v\nwant len(Scopes)=2 (Arguments & Locals)", scopes)
+		if len(scopes.Body.Scopes) > 1 {
+			t.Errorf("\ngot  %#v\nwant len(Scopes)=1 (Locals)", scopes)
 		}
-		checkScope(t, scopes, 0, "Arguments", 1000)
-		checkScope(t, scopes, 1, "Locals", 1001)
+		checkScope(t, scopes, 0, "Locals", 1000)
 
-		client.VariablesRequest(1000) // Arguments
+		client.VariablesRequest(localsScope) // Locals
 		args := client.ExpectVariablesResponse(t)
-		checkChildren(t, args, "Arguments", 2)
+		checkChildren(t, args, "Locals", 2)
 		checkVarExact(t, args, 0, "y", "y", "0 = 0x0", "uint", noChildren)
 		checkVarExact(t, args, 1, "~r1", "", "0 = 0x0", "uint", noChildren)
-
-		client.VariablesRequest(1001) // Locals
-		locals := client.ExpectVariablesResponse(t)
-		checkChildren(t, locals, "Locals", 0)
 
 		client.ContinueRequest(1)
 		ctResp := client.ExpectContinueResponse(t)
@@ -1075,17 +1072,22 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
-					checkScope(t, scopes, 0, "Arguments", 1000)
-					checkScope(t, scopes, 1, "Locals", 1001)
-					checkScope(t, scopes, 2, "Globals (package main)", 1002)
+					checkScope(t, scopes, 0, "Locals", localsScope)
+					checkScope(t, scopes, 1, "Globals (package main)", globalsScope)
 
-					// Arguments
+					// Globals
 
-					client.VariablesRequest(1000)
-					args := client.ExpectVariablesResponse(t)
-					checkChildren(t, args, "Arguments", 2)
-					checkVarExact(t, args, 0, "baz", "baz", `"bazburzum"`, "string", noChildren)
-					ref := checkVarExact(t, args, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
+					client.VariablesRequest(globalsScope)
+					globals := client.ExpectVariablesResponse(t)
+					checkVarExact(t, globals, 0, "p1", "main.p1", "10", "int", noChildren)
+
+					// Locals
+
+					client.VariablesRequest(localsScope)
+					locals := client.ExpectVariablesResponse(t)
+					checkChildren(t, locals, "Locals", 33)
+					checkVarExact(t, locals, 0, "baz", "baz", `"bazburzum"`, "string", noChildren)
+					ref := checkVarExact(t, locals, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						bar := client.ExpectVariablesResponse(t)
@@ -1095,18 +1097,6 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 						validateEvaluateName(t, client, bar, 0)
 						validateEvaluateName(t, client, bar, 1)
 					}
-
-					// Globals
-
-					client.VariablesRequest(1002)
-					globals := client.ExpectVariablesResponse(t)
-					checkVarExact(t, globals, 0, "p1", "main.p1", "10", "int", noChildren)
-
-					// Locals
-
-					client.VariablesRequest(1001)
-					locals := client.ExpectVariablesResponse(t)
-					checkChildren(t, locals, "Locals", 31)
 
 					// reflect.Kind == Bool
 					checkVarExact(t, locals, -1, "b1", "b1", "true", "bool", noChildren)
@@ -1289,9 +1279,8 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
-					checkScope(t, scopes, 0, "Arguments", 1000)
-					checkScope(t, scopes, 1, "Locals", 1001)
-					checkScope(t, scopes, 2, "Globals (package main)", 1002)
+					checkScope(t, scopes, 0, "Locals", localsScope)
+					checkScope(t, scopes, 1, "Globals (package main)", globalsScope)
 
 					client.ScopesRequest(1111)
 					erres := client.ExpectInvisibleErrorResponse(t)
@@ -1299,16 +1288,12 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to list locals: unknown frame id 1111\"", erres)
 					}
 
-					client.VariablesRequest(1000) // Arguments
-					args := client.ExpectVariablesResponse(t)
-					checkChildren(t, args, "Arguments", 0)
-
-					client.VariablesRequest(1001) // Locals
+					client.VariablesRequest(localsScope) // Locals
 					locals := client.ExpectVariablesResponse(t)
 					checkChildren(t, locals, "Locals", 1)
 					checkVarExact(t, locals, -1, "a1", "a1", `"bur"`, "string", noChildren)
 
-					client.VariablesRequest(1002) // Globals
+					client.VariablesRequest(globalsScope) // Globals
 					globals := client.ExpectVariablesResponse(t)
 					checkVarExact(t, globals, 0, "p1", "main.p1", "10", "int", noChildren)
 
@@ -1342,8 +1327,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
-					checkScope(t, scopes, 0, "Arguments", 1000)
-					checkScope(t, scopes, 1, "Locals", 1001)
+					checkScope(t, scopes, 0, "Locals", 1000)
 				},
 				disconnect: false,
 			}, {
@@ -1354,21 +1338,14 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
-					if len(scopes.Body.Scopes) > 2 {
-						t.Errorf("\ngot  %#v\nwant len(scopes)=2 (Argumes & Locals)", scopes)
+					if len(scopes.Body.Scopes) > 1 {
+						t.Errorf("\ngot  %#v\nwant len(scopes)=1 (Argumes & Locals)", scopes)
 					}
-					checkScope(t, scopes, 0, "Arguments", 1000)
-					checkScope(t, scopes, 1, "Locals", 1001)
-
-					// Arguments
-
-					client.VariablesRequest(1000)
-					args := client.ExpectVariablesResponse(t)
-					checkChildren(t, args, "Arguments", 0)
+					checkScope(t, scopes, 0, "Locals", 1000)
 
 					// Locals
 
-					client.VariablesRequest(1001)
+					client.VariablesRequest(1000)
 					locals := client.ExpectVariablesResponse(t)
 
 					// reflect.Kind == Bool - see testvariables
@@ -1627,9 +1604,8 @@ func TestScopesRequestsOptimized(t *testing.T) {
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
-					checkScope(t, scopes, 0, "Arguments (warning: optimized function)", 1000)
-					checkScope(t, scopes, 1, "Locals (warning: optimized function)", 1001)
-					checkScope(t, scopes, 2, "Globals (package main)", 1002)
+					checkScope(t, scopes, 0, "Locals (warning: optimized function)", localsScope)
+					checkScope(t, scopes, 1, "Globals (package main)", globalsScope)
 				},
 				disconnect: false,
 			}, {
@@ -1642,9 +1618,8 @@ func TestScopesRequestsOptimized(t *testing.T) {
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
-					checkScope(t, scopes, 0, "Arguments (warning: optimized function)", 1000)
-					checkScope(t, scopes, 1, "Locals (warning: optimized function)", 1001)
-					checkScope(t, scopes, 2, "Globals (package main)", 1002)
+					checkScope(t, scopes, 0, "Locals (warning: optimized function)", localsScope)
+					checkScope(t, scopes, 1, "Globals (package main)", globalsScope)
 				},
 				disconnect: false,
 			}})
@@ -1682,7 +1657,7 @@ func TestVariablesLoading(t *testing.T) {
 					client.ScopesRequest(1000)
 					client.ExpectScopesResponse(t)
 
-					client.VariablesRequest(1001) // Locals
+					client.VariablesRequest(localsScope) // Locals
 					locals := client.ExpectVariablesResponse(t)
 
 					// String partially missing based on LoadConfig.MaxStringLen
@@ -2003,7 +1978,7 @@ func TestVariablesMetadata(t *testing.T) {
 				execute: func() {
 					checkStop(t, client, 1, "main.main", 368)
 
-					client.VariablesRequest(1001) // Locals
+					client.VariablesRequest(localsScope) // Locals
 					locals := client.ExpectVariablesResponse(t)
 
 					checkNamedChildren := func(ref int, name, typeStr string, vals []string, evaluate bool) {
@@ -2095,11 +2070,10 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
-					checkScope(t, scopes, 0, "Arguments", 1000)
-					checkScope(t, scopes, 1, "Locals", 1001)
-					checkScope(t, scopes, 2, "Globals (package main)", 1002)
+					checkScope(t, scopes, 0, "Locals", localsScope)
+					checkScope(t, scopes, 1, "Globals (package main)", globalsScope)
 
-					client.VariablesRequest(1002)
+					client.VariablesRequest(globalsScope)
 					client.ExpectVariablesResponse(t)
 					// The program has no user-defined globals.
 					// Depending on the Go version, there might
@@ -2117,11 +2091,10 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 
 					client.ScopesRequest(1000)
 					scopes = client.ExpectScopesResponse(t)
-					checkScope(t, scopes, 0, "Arguments", 1000)
-					checkScope(t, scopes, 1, "Locals", 1001)
-					checkScope(t, scopes, 2, "Globals (package github.com/go-delve/delve/_fixtures/internal/dir0/pkg)", 1002)
+					checkScope(t, scopes, 0, "Locals", localsScope)
+					checkScope(t, scopes, 1, "Globals (package github.com/go-delve/delve/_fixtures/internal/dir0/pkg)", globalsScope)
 
-					client.VariablesRequest(1002)
+					client.VariablesRequest(globalsScope)
 					globals := client.ExpectVariablesResponse(t)
 					checkChildren(t, globals, "Globals", 1)
 					ref := checkVarExact(t, globals, 0, "SomeVar", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeVar", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType {X: 0}", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType", hasChildren)
@@ -2161,11 +2134,10 @@ func TestShadowedVariables(t *testing.T) {
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
-					checkScope(t, scopes, 0, "Arguments", 1000)
-					checkScope(t, scopes, 1, "Locals", 1001)
-					checkScope(t, scopes, 2, "Globals (package main)", 1002)
+					checkScope(t, scopes, 0, "Locals", localsScope)
+					checkScope(t, scopes, 1, "Globals (package main)", globalsScope)
 
-					client.VariablesRequest(1001)
+					client.VariablesRequest(localsScope)
 					locals := client.ExpectVariablesResponse(t)
 
 					checkVarExact(t, locals, 0, "(a)", "a", "0", "int", !hasChildren)
@@ -2279,7 +2251,7 @@ func TestSetBreakpoint(t *testing.T) {
 					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
 					checkStop(t, client, 1, "main.loop", 8)
-					client.VariablesRequest(1001) // Locals
+					client.VariablesRequest(localsScope) // Locals
 					locals := client.ExpectVariablesResponse(t)
 					checkVarExact(t, locals, 0, "i", "i", "0", "int", noChildren) // i == 0
 
@@ -2292,7 +2264,7 @@ func TestSetBreakpoint(t *testing.T) {
 					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
 					checkStop(t, client, 1, "main.loop", 8)
-					client.VariablesRequest(1001) // Locals
+					client.VariablesRequest(localsScope) // Locals
 					locals = client.ExpectVariablesResponse(t)
 					checkVarExact(t, locals, 0, "i", "i", "3", "int", noChildren) // i == 3
 
@@ -2305,7 +2277,7 @@ func TestSetBreakpoint(t *testing.T) {
 					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
 					checkStop(t, client, 1, "main.loop", 8)
-					client.VariablesRequest(1001) // Locals
+					client.VariablesRequest(localsScope) // Locals
 					locals = client.ExpectVariablesResponse(t)
 					checkVarExact(t, locals, 0, "i", "i", "4", "int", noChildren) // i == 4
 
@@ -2885,7 +2857,7 @@ func TestHitConditionBreakpoints(t *testing.T) {
 					checkStop(t, client, 1, "main.main", 7)
 
 					// Check that we are stopped at the correct value of i.
-					client.VariablesRequest(1001)
+					client.VariablesRequest(localsScope)
 					locals := client.ExpectVariablesResponse(t)
 					checkVarExact(t, locals, 0, "i", "i", "4", "int", noChildren)
 
@@ -2899,7 +2871,7 @@ func TestHitConditionBreakpoints(t *testing.T) {
 					checkStop(t, client, 1, "main.main", 7)
 
 					// Check that we are stopped at the correct value of i.
-					client.VariablesRequest(1001)
+					client.VariablesRequest(localsScope)
 					locals = client.ExpectVariablesResponse(t)
 					checkVarExact(t, locals, 0, "i", "i", "6", "int", noChildren)
 
@@ -2916,7 +2888,7 @@ func TestHitConditionBreakpoints(t *testing.T) {
 					checkStop(t, client, 1, "main.main", 7)
 
 					// Check that we are stopped at the correct value of i.
-					client.VariablesRequest(1001)
+					client.VariablesRequest(localsScope)
 					locals = client.ExpectVariablesResponse(t)
 					checkVarExact(t, locals, 0, "i", "i", "7", "int", noChildren)
 
@@ -3043,7 +3015,7 @@ func TestWorkingDir(t *testing.T) {
 			[]onBreakpoint{{
 				execute: func() {
 					checkStop(t, client, 1, "main.main", 10)
-					client.VariablesRequest(1001) // Locals
+					client.VariablesRequest(localsScope) // Locals
 					locals := client.ExpectVariablesResponse(t)
 					checkChildren(t, locals, "Locals", 2)
 					for i := range locals.Body.Variables {
@@ -3277,7 +3249,7 @@ func TestVariableValueTruncation(t *testing.T) {
 				execute: func() {
 					checkStop(t, client, 1, "main.main", -1)
 
-					client.VariablesRequest(1001) // Locals
+					client.VariablesRequest(localsScope) // Locals
 					locals := client.ExpectVariablesResponse(t)
 
 					// Compound variable values may be truncated
@@ -3353,7 +3325,7 @@ func TestVariableLoadingOfLongStrings(t *testing.T) {
 				execute: func() {
 					checkStop(t, client, 1, "main.main", -1)
 
-					client.VariablesRequest(1001) // Locals
+					client.VariablesRequest(localsScope) // Locals
 					locals := client.ExpectVariablesResponse(t)
 
 					// Limits vary for evaluate requests with different contexts
@@ -4133,9 +4105,7 @@ func checkStop(t *testing.T, client *daptest.Client, thread int, name string, li
 	client.ScopesRequest(1000)
 	client.ExpectScopesResponse(t)
 
-	client.VariablesRequest(1000) // Arguments
-	client.ExpectVariablesResponse(t)
-	client.VariablesRequest(1001) // Locals
+	client.VariablesRequest(localsScope) // Locals
 	client.ExpectVariablesResponse(t)
 }
 
@@ -4499,7 +4469,7 @@ func TestAttachRequest(t *testing.T) {
 				// Stop at line 8
 				execute: func() {
 					checkStop(t, client, 1, "main.loop", 8)
-					client.VariablesRequest(1001) // Locals
+					client.VariablesRequest(localsScope) // Locals
 					locals := client.ExpectVariablesResponse(t)
 					checkChildren(t, locals, "Locals", 1)
 					checkVarRegex(t, locals, 0, "i", "i", "[0-9]+", "int", noChildren)
@@ -4694,32 +4664,29 @@ func TestSetVariable(t *testing.T) {
 
 					checkStop(t, client, 1, "main.foobar", startLineno)
 
-					// Args of foobar(baz string, bar FooBar)
-					args := tester.variables(1000)
+					// Local variables
+					locals := tester.variables(localsScope)
 
-					checkVarExact(t, args, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
-					tester.failSetVariable(1000, "bar", `main.FooBar {Baz: 42, Bur: "ipsum"}`, "*ast.CompositeLit not implemented")
+					checkVarExact(t, locals, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
+					tester.failSetVariable(localsScope, "bar", `main.FooBar {Baz: 42, Bur: "ipsum"}`, "*ast.CompositeLit not implemented")
 
 					// Nested field.
-					barRef := checkVarExact(t, args, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
+					barRef := checkVarExact(t, locals, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
 					tester.expectSetVariable(barRef, "Baz", "42")
 					tester.evaluate("bar", `main.FooBar {Baz: 42, Bur: "lorem"}`, hasChildren)
 
 					tester.failSetVariable(barRef, "Baz", `"string"`, "can not convert")
 
-					// Local variables
-					locals := tester.variables(1001)
-
 					// int
 					checkVarExact(t, locals, -1, "a2", "a2", "6", "int", noChildren)
-					tester.expectSetVariable(1001, "a2", "42")
+					tester.expectSetVariable(localsScope, "a2", "42")
 					tester.evaluate("a2", "42", noChildren)
 
-					tester.failSetVariable(1001, "a2", "false", "can not convert")
+					tester.failSetVariable(localsScope, "a2", "false", "can not convert")
 
 					// float
 					checkVarExact(t, locals, -1, "a3", "a3", "7.23", "float64", noChildren)
-					tester.expectSetVariable(1001, "a3", "-0.1")
+					tester.expectSetVariable(localsScope, "a3", "-0.1")
 					tester.evaluate("a3", "-0.1", noChildren)
 
 					// array of int
@@ -4727,7 +4694,7 @@ func TestSetVariable(t *testing.T) {
 					tester.expectSetVariable(a4Ref, "[1]", "-7")
 					tester.evaluate("a4", "[2]int [1,-7]", hasChildren)
 
-					tester.failSetVariable(1001, "a4", "[2]int{3, 4}", "not implemented")
+					tester.failSetVariable(localsScope, "a4", "[2]int{3, 4}", "not implemented")
 
 					// slice of int
 					a5Ref := checkVarExact(t, locals, -1, "a5", "a5", "[]int len: 5, cap: 5, [1,2,3,4,5]", "[]int", hasChildren)
@@ -4743,7 +4710,7 @@ func TestSetVariable(t *testing.T) {
 
 					// pointer
 					checkVarExact(t, locals, -1, "a9", "a9", `*main.FooBar nil`, "*main.FooBar", noChildren)
-					tester.expectSetVariable(1001, "a9", "&a6")
+					tester.expectSetVariable(localsScope, "a9", "&a6")
 					tester.evaluate("a9", `*main.FooBar {Baz: 8, Bur: "word"}`, hasChildren)
 
 					// slice of pointers
@@ -4757,20 +4724,20 @@ func TestSetVariable(t *testing.T) {
 
 					// complex
 					tester.evaluate("c64", `(1 + 2i)`, hasChildren)
-					tester.expectSetVariable(1001, "c64", "(2 + 3i)")
+					tester.expectSetVariable(localsScope, "c64", "(2 + 3i)")
 					tester.evaluate("c64", `(2 + 3i)`, hasChildren)
 					// note: complex's real, imaginary part can't be directly mutable.
 
 					//
 					// Global variables
 					//    p1 = 10
-					client.VariablesRequest(1002)
+					client.VariablesRequest(globalsScope)
 					globals := client.ExpectVariablesResponse(t)
 
 					checkVarExact(t, globals, -1, "p1", "main.p1", "10", "int", noChildren)
-					tester.expectSetVariable(1002, "p1", "-10")
+					tester.expectSetVariable(globalsScope, "p1", "-10")
 					tester.evaluate("p1", "-10", noChildren)
-					tester.failSetVariable(1002, "p1", "0.1", "can not convert")
+					tester.failSetVariable(globalsScope, "p1", "0.1", "can not convert")
 				},
 				disconnect: true,
 			}})
@@ -4794,21 +4761,21 @@ func TestSetVariable(t *testing.T) {
 					}
 
 					checkStop(t, client, 1, "main.main", startLineno)
-					locals := tester.variables(1001)
+					locals := tester.variables(localsScope)
 
 					// channel
 					tester.evaluate("chnil", "chan int nil", noChildren)
-					tester.expectSetVariable(1001, "chnil", "ch1")
+					tester.expectSetVariable(localsScope, "chnil", "ch1")
 					tester.evaluate("chnil", "chan int 4/11", hasChildren)
 
 					// func
 					tester.evaluate("fn2", "nil", noChildren)
-					tester.expectSetVariable(1001, "fn2", "fn1")
+					tester.expectSetVariable(localsScope, "fn2", "fn1")
 					tester.evaluate("fn2", "main.afunc", noChildren)
 
 					// interface
 					tester.evaluate("ifacenil", "interface {} nil", noChildren)
-					tester.expectSetVariable(1001, "ifacenil", "iface1")
+					tester.expectSetVariable(localsScope, "ifacenil", "iface1")
 					tester.evaluate("ifacenil", "interface {}(*main.astruct) *{A: 1, B: 2}", hasChildren)
 
 					// interface.(data)
@@ -4844,7 +4811,7 @@ func TestSetVariable(t *testing.T) {
 
 					// unsigned pointer
 					checkVarRegex(t, locals, -1, "up1", "up1", `unsafe\.Pointer\(0x[0-9a-f]+\)`, "unsafe.Pointer", noChildren)
-					tester.expectSetVariable(1001, "up1", "unsafe.Pointer(0x0)")
+					tester.expectSetVariable(localsScope, "up1", "unsafe.Pointer(0x0)")
 					tester.evaluate("up1", "unsafe.Pointer(0x0)", noChildren)
 
 					// val := A{val: 1}
@@ -4883,23 +4850,19 @@ func TestSetVariableWithCall(t *testing.T) {
 
 					checkStop(t, client, 1, "main.foobar", startLineno)
 
-					// Args of foobar(baz string, bar FooBar)
-					args := tester.variables(1000)
+					// Local variables
+					locals := tester.variables(localsScope)
 
-					checkVarExact(t, args, 0, "baz", "baz", `"bazburzum"`, "string", noChildren)
-					tester.expectSetVariable(1000, "baz", `"BazBurZum"`)
+					checkVarExact(t, locals, 0, "baz", "baz", `"bazburzum"`, "string", noChildren)
+					tester.expectSetVariable(localsScope, "baz", `"BazBurZum"`)
 					tester.evaluate("baz", `"BazBurZum"`, noChildren)
 
-					args = tester.variables(1000)
-					barRef := checkVarExact(t, args, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
+					barRef := checkVarExact(t, locals, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
 					tester.expectSetVariable(barRef, "Bur", `"ipsum"`)
 					tester.evaluate("bar", `main.FooBar {Baz: 10, Bur: "ipsum"}`, hasChildren)
 
-					// Local variables
-					locals := tester.variables(1001)
-
 					checkVarExact(t, locals, -1, "a1", "a1", `"foofoofoofoofoofoo"`, "string", noChildren)
-					tester.expectSetVariable(1001, "a1", `"barbarbar"`)
+					tester.expectSetVariable(localsScope, "a1", `"barbarbar"`)
 					tester.evaluate("a1", `"barbarbar"`, noChildren)
 
 					a6Ref := checkVarExact(t, locals, -1, "a6", "a6", `main.FooBar {Baz: 8, Bur: "word"}`, "main.FooBar", hasChildren)
@@ -4916,9 +4879,9 @@ func TestSetVariableWithCall(t *testing.T) {
 					checkStop(t, client, 1, "main.barfoo", -1)
 					// Test: set string 'a1' in main.barfoo.
 					// This shouldn't affect 'a1' in main.foobar - we will check that in the next breakpoint.
-					locals := tester.variables(1001)
+					locals := tester.variables(localsScope)
 					checkVarExact(t, locals, -1, "a1", "a1", `"bur"`, "string", noChildren)
-					tester.expectSetVariable(1001, "a1", `"fur"`)
+					tester.expectSetVariable(localsScope, "a1", `"fur"`)
 					tester.evaluate("a1", `"fur"`, noChildren)
 					// We will check a1 in main.foobar isn't affected from the next breakpoint.
 
@@ -4951,17 +4914,17 @@ func TestSetVariableWithCall(t *testing.T) {
 
 					checkStop(t, client, 1, "main.main", -1)
 
-					_ = tester.variables(1001)
+					_ = tester.variables(localsScope)
 
 					// successful variable set using a function call.
-					tester.expectSetVariable(1001, "str", `callstacktrace()`)
+					tester.expectSetVariable(localsScope, "str", `callstacktrace()`)
 					tester.evaluateRegex("str", `.*in main.callstacktrace at.*`, noChildren)
 
-					tester.failSetVariableAndStop(1001, "str", `callpanic()`, `callpanic panicked`)
+					tester.failSetVariableAndStop(localsScope, "str", `callpanic()`, `callpanic panicked`)
 					checkStop(t, client, 1, "main.main", -1)
 
 					// breakpoint during a function call.
-					tester.failSetVariableAndStop(1001, "str", `callbreak()`, "call stopped")
+					tester.failSetVariableAndStop(localsScope, "str", `callbreak()`, "call stopped")
 
 					// TODO(hyangah): continue after this causes runtime error while resuming
 					// unfinished injected call.

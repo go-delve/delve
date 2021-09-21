@@ -1690,7 +1690,6 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to list args", err.Error())
 		return
 	}
-	argScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Arguments%s", suffix), Children: slicePtrVarToSliceVar(args)}, "", true, 0}
 
 	// Retrieve local variables
 	locals, err := s.debugger.LocalVariables(goid, frame, 0, DefaultLoadConfig)
@@ -1698,11 +1697,9 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list locals", err.Error())
 		return
 	}
-	locScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Locals%s", suffix), Children: slicePtrVarToSliceVar(locals)}, "", true, 0}
-
-	scopeArgs := dap.Scope{Name: argScope.Name, VariablesReference: s.variableHandles.create(argScope)}
+	locScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Locals%s", suffix), Children: slicePtrVarToSliceVar(append(args, locals...))}, "", true, 0}
 	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
-	scopes := []dap.Scope{scopeArgs, scopeLocals}
+	scopes := []dap.Scope{scopeLocals}
 
 	if s.args.showGlobalVariables {
 		// Limit what global variables we will return to the current package only.
