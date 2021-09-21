@@ -3040,7 +3040,7 @@ func (s *Server) resumeOnceAndCheckStop(command string, allowNextStateChange cha
 	resumed, state, err := s.resumeOnce(command, allowNextStateChange)
 	// We should not try to process the log points if the program was not
 	// resumed or there was an error.
-	if !resumed || state == nil || err != nil {
+	if !resumed || processExited(state, err) || state == nil || err != nil {
 		s.setRunningCmd(false)
 		return state, err
 	}
