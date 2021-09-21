@@ -69,13 +69,13 @@ func startDapServerWithClient(t *testing.T, serverStopped chan struct{}) *daptes
 	return client
 }
 
-func startDapServer(t *testing.T, serverStopped chan struct{}) (listener net.Listener, disconnectChan chan struct{}) {
+func startDapServer(t *testing.T, serverStopped chan struct{}) (listener net.Listener, forceStop chan struct{}) {
 	// Start the DAP server.
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	disconnectChan = make(chan struct{})
+	disconnectChan := make(chan struct{})
 	server := NewServer(&service.Config{
 		Listener:       listener,
 		DisconnectChan: disconnectChan,
@@ -87,43 +87,47 @@ func startDapServer(t *testing.T, serverStopped chan struct{}) (listener net.Lis
 	// Run a goroutine that stops the server when disconnectChan is signaled.
 	// This helps us test that certain events cause the server to stop as
 	// expected.
+	forceStop = make(chan struct{})
 	go func() {
 		defer func() {
 			if serverStopped != nil {
 				close(serverStopped)
 			}
 		}()
-		<-disconnectChan
+		select {
+		case <-disconnectChan: // Stop triggered internally
+		case <-forceStop: // Stop triggered externally
+		}
 		server.Stop()
 	}()
 
-	return listener, disconnectChan
+	return listener, forceStop
 }
 
-func TestForceQuitNoClient(t *testing.T) {
+func TestForceStopNoClient(t *testing.T) {
 	serverStopped := make(chan struct{})
-	_, disconnectChan := startDapServer(t, serverStopped)
-	close(disconnectChan) // trigger server.Stop()
+	_, forceStop := startDapServer(t, serverStopped)
+	close(forceStop)
 	<-serverStopped
 }
 
-func TestForceQuitNoTarget(t *testing.T) {
+func TestForceStopNoTarget(t *testing.T) {
 	serverStopped := make(chan struct{})
-	listener, disconnectChan := startDapServer(t, serverStopped)
+	listener, forceStop := startDapServer(t, serverStopped)
 	client := daptest.NewClient(listener.Addr().String())
-	defer client.Close()
+	defer client.Close() // does not trigger Stop
 
 	client.InitializeRequest()
 	client.ExpectInitializeResponseAndCapabilities(t)
-	close(disconnectChan)
+	close(forceStop)
 	<-serverStopped
 }
 
-func TestForceQuitWithTarget(t *testing.T) {
+func TestForceStopWithTarget(t *testing.T) {
 	serverStopped := make(chan struct{})
-	listener, disconnectChan := startDapServer(t, serverStopped)
+	listener, forceStop := startDapServer(t, serverStopped)
 	client := daptest.NewClient(listener.Addr().String())
-	defer client.Close()
+	defer client.Close() // does not trigger Stop
 
 	client.InitializeRequest()
 	client.ExpectInitializeResponseAndCapabilities(t)
@@ -131,7 +135,23 @@ func TestForceQuitWithTarget(t *testing.T) {
 	client.LaunchRequest("exec", fixture.Path, stopOnEntry)
 	client.ExpectInitializedEvent(t)
 	client.ExpectLaunchResponse(t)
-	close(disconnectChan)
+	close(forceStop)
+	<-serverStopped
+}
+
+func TestForceStopWhileStopping(t *testing.T) {
+	serverStopped := make(chan struct{})
+	listener, forceStop := startDapServer(t, serverStopped)
+	client := daptest.NewClient(listener.Addr().String())
+
+	client.InitializeRequest()
+	client.ExpectInitializeResponseAndCapabilities(t)
+	fixture := protest.BuildFixture("increment", protest.AllNonOptimized)
+	client.LaunchRequest("exec", fixture.Path, stopOnEntry)
+	client.ExpectInitializedEvent(t)
+	client.Close() // depending on timing may trigger Stop()
+	time.Sleep(time.Microsecond)
+	close(forceStop) // depending on timing may trigger Stop()
 	<-serverStopped
 }
 
