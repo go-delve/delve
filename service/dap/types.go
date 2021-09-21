@@ -37,9 +37,10 @@ func isValidLaunchMode(mode string) bool {
 // Attach debug sessions support the following modes:
 // -- [DEFAULT] "local" -- attaches debugger to a local running process
 //      Required args: processID
-// TODO(polina): support "remote" mode
+// -- "remote" - attaches client to a debugger already attached to a process
+//      Required args: none (host/port are used externally to connect)
 func isValidAttachMode(mode string) bool {
-	return mode == "local"
+	return mode == "local" || mode == "remote"
 }
 
 // Default values for Launch/Attach configs.

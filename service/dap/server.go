@@ -561,6 +561,8 @@ func (s *Server) handleRequest(request dap.Message) {
 		}()
 		<-resumeRequestLoop
 	//--- Synchronous requests ---
+	// TODO(polina): target might be running when remote attach debug session
+	// is started. Support handling initialize and attach requests while running.
 	case *dap.InitializeRequest:
 		// Required
 		s.onInitializeRequest(request)
@@ -748,6 +750,12 @@ func cleanExeName(name string) string {
 }
 
 func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
+	if s.debugger != nil {
+		s.sendErrorResponse(request.Request, FailedToLaunch,
+			"Failed to launch", "debugger already started - use attach request to connect")
+		return
+	}
+
 	var args = defaultLaunchConfig // narrow copy for initializing non-zero default values
 	if err := unmarshalLaunchAttachArgs(request.Arguments, &args); err != nil {
 		s.sendErrorResponse(request.Request,
@@ -763,7 +771,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", fmt.Sprintf("invalid debug configuration - unsupported 'mode' attribute %q", mode))
 		return
 	}
-	// TODO(polina): Respond with an error if debug session is in progress?
+
 	program := args.Program
 	if program == "" && mode != "replay" { // Only fail on modes requiring a program
 		s.sendErrorResponse(request.Request,
@@ -953,6 +961,8 @@ func (s *Server) stopNoDebugProcess() {
 // onDisconnectRequest handles the DisconnectRequest. Per the DAP spec,
 // it disconnects the debuggee and signals that the debug adaptor
 // (in our case this TCP server) can be terminated.
+// TODO(polina): differentiate between single- and multi-client
+// server mode when handling requests for debug session shutdown.
 func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
 	defer s.triggerServerStop()
 	s.mu.Lock()
@@ -1023,7 +1033,6 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 		s.logToConsole("Detaching without terminating target processs")
 	}
 	err = s.debugger.Detach(killProcess)
-	s.debugger = nil
 	if err != nil {
 		switch err.(type) {
 		case proc.ErrProcessExited:
@@ -1303,7 +1312,7 @@ func (s *Server) asyncCommandDone(asyncSetupDone chan struct{}) {
 
 // onConfigurationDoneRequest handles 'configurationDone' request.
 // This is an optional request enabled by capability ‘supportsConfigurationDoneRequest’.
-// It gets triggered after all the debug requests that followinitalized event,
+// It gets triggered after all the debug requests that follow initalized event,
 // so the s.debugger is guaranteed to be set.
 func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest, asyncSetupDone chan struct{}) {
 	defer s.asyncCommandDone(asyncSetupDone)
@@ -1461,7 +1470,30 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 			fmt.Sprintf("invalid debug configuration - unsupported 'mode' attribute %q", args.Mode))
 		return
 	}
+
+	if err := s.setLaunchAttachArgs(args.LaunchAttachCommonConfig); err != nil {
+		s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
+		return
+	}
+
+	if mode == "remote" {
+		if s.debugger == nil {
+			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", "no debugger found")
+			return
+		}
+		s.log.Debug("debugger already started")
+		// TODO(polina): once we allow initialize and attach request while running,
+		// halt before sending initialized event. onConfigurationDone will restart
+		// execution if user requested !stopOnEntry.
+	}
+
 	if mode == "local" {
+		if s.debugger != nil {
+			s.sendErrorResponse(
+				request.Request, FailedToAttach,
+				"Failed to attach", "debugger already started - use remote mode to connect")
+			return
+		}
 		if args.ProcessID == 0 {
 			s.sendErrorResponse(request.Request,
 				FailedToAttach, "Failed to attach",
@@ -1469,10 +1501,7 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 			return
 		}
 		s.config.Debugger.AttachPid = args.ProcessID
-		if err := s.setLaunchAttachArgs(args.LaunchAttachCommonConfig); err != nil {
-			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
-			return
-		}
+		s.log.Debugf("attaching to pid %d", args.ProcessID)
 		if backend := args.Backend; backend != "" {
 			s.config.Debugger.Backend = backend
 		} else {
