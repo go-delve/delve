@@ -2922,13 +2922,6 @@ func (s *Server) runUntilStopAndNotify(command string, allowNextStateChange chan
 	}
 
 	stopReason := s.debugger.StopReason()
-	// Override the stop reason if there was a manual stop request.
-	// TODO(suzmue): move this logic into the runUntilStop command
-	// so that the stop reason is determined by that function which
-	// has all the context.
-	if s.checkHaltRequested() {
-		stopReason = proc.StopManual
-	}
 	file, line := "?", -1
 	if state != nil && state.CurrentThread != nil {
 		file, line = state.CurrentThread.File, state.CurrentThread.Line
@@ -2977,6 +2970,16 @@ func (s *Server) runUntilStopAndNotify(command string, allowNextStateChange chan
 				}
 				stopped.Body.HitBreakpointIds = []int{bp.ID}
 			}
+		}
+
+		// Override the stop reason if there was a manual stop request.
+		// TODO(suzmue): move this logic into the runUntilStop command
+		// so that the stop reason is determined by that function which
+		// has all the context.
+		if stopped.Body.Reason != "exception" && s.checkHaltRequested() {
+			s.log.Debugf("manual halt requested, stop reason %q converted to \"pause\"", stopped.Body.Reason)
+			stopped.Body.Reason = "pause"
+			stopped.Body.HitBreakpointIds = []int{}
 		}
 
 	} else {

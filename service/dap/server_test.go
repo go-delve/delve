@@ -2740,7 +2740,7 @@ func TestLogPoints(t *testing.T) {
 	})
 }
 
-// TestHaltAutoResume tests that a pause request issued while processing
+// TestHaltPreventsAutoResume tests that a pause request issued while processing
 // log messages will result in a real stop.
 func TestHaltPreventsAutoResume(t *testing.T) {
 	runTest(t, "callme", func(client *daptest.Client, fixture protest.Fixture) {
