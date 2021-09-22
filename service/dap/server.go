@@ -707,7 +707,8 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 		return
 	}
 
-	// TODO(polina): Respond with an error if debug session is in progress?
+	// TODO(polina): Respond with an error if debug session started
+	// with an initialize request is in progress?
 	response := &dap.InitializeResponse{Response: *newResponse(request.Request)}
 	response.Body.SupportsConfigurationDoneRequest = true
 	response.Body.SupportsConditionalBreakpoints = true
