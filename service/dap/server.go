@@ -1453,6 +1453,11 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 
 // onAttachRequest handles 'attach' request.
 // This is a mandatory request to support.
+// Attach debug sessions support the following modes:
+// -- [DEFAULT] "local" -- attaches debugger to a local running process
+//      Required args: processID
+// -- "remote" - attaches client to a debugger already attached to a process
+//      Required args: none (host/port are used externally to connect)
 func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 	var args AttachConfig = defaultAttachConfig // narrow copy for initializing non-zero default values
 	if err := unmarshalLaunchAttachArgs(request.Arguments, &args); err != nil {
@@ -1461,33 +1466,11 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 	}
 
 	mode := args.Mode
-	if mode == "" {
+	switch mode {
+	case "":
 		mode = "local"
-	}
-
-	if !isValidAttachMode(mode) {
-		s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach",
-			fmt.Sprintf("invalid debug configuration - unsupported 'mode' attribute %q", args.Mode))
-		return
-	}
-
-	if err := s.setLaunchAttachArgs(args.LaunchAttachCommonConfig); err != nil {
-		s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
-		return
-	}
-
-	if mode == "remote" {
-		if s.debugger == nil {
-			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", "no debugger found")
-			return
-		}
-		s.log.Debug("debugger already started")
-		// TODO(polina): once we allow initialize and attach request while running,
-		// halt before sending initialized event. onConfigurationDone will restart
-		// execution if user requested !stopOnEntry.
-	}
-
-	if mode == "local" {
+		fallthrough
+	case "local":
 		if s.debugger != nil {
 			s.sendErrorResponse(
 				request.Request, FailedToAttach,
@@ -1517,7 +1500,26 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
 			return
 		}
+	case "remote":
+		if s.debugger == nil {
+			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", "no debugger found")
+			return
+		}
+		s.log.Debug("debugger already started")
+		// TODO(polina): once we allow initialize and attach request while running,
+		// halt before sending initialized event. onConfigurationDone will restart
+		// execution if user requested !stopOnEntry.
+	default:
+		s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach",
+			fmt.Sprintf("invalid debug configuration - unsupported 'mode' attribute %q", args.Mode))
+		return
 	}
+
+	if err := s.setLaunchAttachArgs(args.LaunchAttachCommonConfig); err != nil {
+		s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
+		return
+	}
+
 	// Notify the client that the debugger is ready to start accepting
 	// configuration requests for setting breakpoints, etc. The client
 	// will end the configuration sequence with 'configurationDone'.
