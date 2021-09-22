@@ -753,7 +753,7 @@ func cleanExeName(name string) string {
 func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	if s.debugger != nil {
 		s.sendErrorResponse(request.Request, FailedToLaunch,
-			"Failed to launch", "debugger already started - use attach request to connect")
+			"Failed to launch", "debugger already started - use remote attach to connect to a server with an active debug session")
 		return
 	}
 

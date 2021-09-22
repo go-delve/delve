@@ -5405,7 +5405,7 @@ func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 			t.Run(mode, func(t *testing.T) {
 				client.LaunchRequestWithArgs(map[string]interface{}{"mode": mode})
 				er := client.ExpectErrorResponse(t)
-				msg := "Failed to launch: debugger already started - use attach request to connect"
+				msg := "Failed to launch: debugger already started - use remote attach to connect to a server with an active debug session"
 				if er.Body.Error.Id != 3000 || er.Body.Error.Format != msg {
 					t.Errorf("got %#v, want Id=3001 Format=%q", er, msg)
 				}
