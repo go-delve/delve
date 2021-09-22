@@ -2,11 +2,12 @@ package dap
 
 import (
 	"bufio"
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"math/rand"
+	"math/big"
 	"net"
 	"os"
 	"os/exec"
@@ -3687,7 +3688,6 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.SkipNow()
 	}
-	rand.Seed(time.Now().Unix())
 	runTest(t, "issue2113", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
@@ -3730,12 +3730,19 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 					}
 					var goroutineId int
 					if len(bestg) > 0 {
-						goroutineId = bestg[rand.Intn(len(bestg))]
+						i, err := rand.Int(rand.Reader, big.NewInt(int64(len(bestg))))
+						if err != nil {
+							t.Fatal(err)
+						}
+						goroutineId = bestg[i.Int64()]
 						t.Logf("selected goroutine %d (best)\n", goroutineId)
 					} else if len(candg) > 0 {
-						goroutineId = candg[rand.Intn(len(candg))]
+						i, err := rand.Int(rand.Reader, big.NewInt(int64(len(candg))))
+						if err != nil {
+							t.Fatal(err)
+						}
+						goroutineId = candg[i.Int64()]
 						t.Logf("selected goroutine %d\n", goroutineId)
-
 					}
 
 					if goroutineId != 0 {
