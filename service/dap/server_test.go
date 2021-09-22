@@ -2213,15 +2213,15 @@ type Breakpoint struct {
 
 func expectSetBreakpointsResponse(t *testing.T, client *daptest.Client, bps []Breakpoint) {
 	t.Helper()
-	checkSetBreakpointsResponse(t, client, bps, client.ExpectSetBreakpointsResponse(t))
+	checkSetBreakpointsResponse(t, bps, client.ExpectSetBreakpointsResponse(t))
 }
 
-func checkSetBreakpointsResponse(t *testing.T, client *daptest.Client, bps []Breakpoint, got *dap.SetBreakpointsResponse) {
+func checkSetBreakpointsResponse(t *testing.T, bps []Breakpoint, got *dap.SetBreakpointsResponse) {
 	t.Helper()
-	checkBreakpoints(t, client, bps, got.Body.Breakpoints)
+	checkBreakpoints(t, bps, got.Body.Breakpoints)
 }
 
-func checkBreakpoints(t *testing.T, client *daptest.Client, bps []Breakpoint, breakpoints []dap.Breakpoint) {
+func checkBreakpoints(t *testing.T, bps []Breakpoint, breakpoints []dap.Breakpoint) {
 	t.Helper()
 	if len(breakpoints) != len(bps) {
 		t.Errorf("got %#v,\nwant len(Breakpoints)=%d", breakpoints, len(bps))
@@ -2401,14 +2401,14 @@ func TestHitBreakpointIds(t *testing.T) {
 					// Set two source breakpoints and two function breakpoints.
 					client.SetBreakpointsRequest(fixture.Source, []int{23, 33})
 					sourceBps := client.ExpectSetBreakpointsResponse(t).Body.Breakpoints
-					checkBreakpoints(t, client, []Breakpoint{{line: 23, path: fixture.Source, verified: true}, {line: 33, path: fixture.Source, verified: true}}, sourceBps)
+					checkBreakpoints(t, []Breakpoint{{line: 23, path: fixture.Source, verified: true}, {line: 33, path: fixture.Source, verified: true}}, sourceBps)
 
 					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{
 						{Name: "anotherFunction"},
 						{Name: "anotherFunction:1"},
 					})
 					functionBps := client.ExpectSetFunctionBreakpointsResponse(t).Body.Breakpoints
-					checkBreakpoints(t, client, []Breakpoint{{line: 26, path: fixture.Source, verified: true}, {line: 27, path: fixture.Source, verified: true}}, functionBps)
+					checkBreakpoints(t, []Breakpoint{{line: 26, path: fixture.Source, verified: true}, {line: 27, path: fixture.Source, verified: true}}, functionBps)
 
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
@@ -2765,7 +2765,7 @@ func TestSetBreakpointWhileRunning(t *testing.T) {
 					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
 						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
 					}
-					checkSetBreakpointsResponse(t, client, []Breakpoint{{15, fixture.Source, true, ""}}, br)
+					checkSetBreakpointsResponse(t, []Breakpoint{{15, fixture.Source, true, ""}}, br)
 					// Halt cancelled next, so if we continue we will not stop at line 14.
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
@@ -2783,7 +2783,7 @@ func TestSetBreakpointWhileRunning(t *testing.T) {
 					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
 						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
 					}
-					checkSetBreakpointsResponse(t, client, []Breakpoint{{9, fixture.Source, true, ""}}, br)
+					checkSetBreakpointsResponse(t, []Breakpoint{{9, fixture.Source, true, ""}}, br)
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					se = client.ExpectStoppedEvent(t)
@@ -2820,7 +2820,7 @@ func TestSetFunctionBreakpointWhileRunning(t *testing.T) {
 					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
 						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
 					}
-					checkBreakpoints(t, client, []Breakpoint{{8, fixture.Source, true, ""}}, br.Body.Breakpoints)
+					checkBreakpoints(t, []Breakpoint{{8, fixture.Source, true, ""}}, br.Body.Breakpoints)
 
 					client.SetBreakpointsRequest(fixture.Source, []int{}) // [16,8] => [8]
 					expectSetBreakpointsResponse(t, client, []Breakpoint{})
@@ -2842,11 +2842,11 @@ func TestSetFunctionBreakpointWhileRunning(t *testing.T) {
 					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
 						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
 					}
-					checkBreakpoints(t, client, []Breakpoint{}, br.Body.Breakpoints)
+					checkBreakpoints(t, []Breakpoint{}, br.Body.Breakpoints)
 					if se.Body.Reason != "pause" || !se.Body.AllThreadsStopped || se.Body.ThreadId != 0 && se.Body.ThreadId != 1 {
 						t.Errorf("\ngot  %#v\nwant Reason='pause' AllThreadsStopped=true ThreadId=0/1", se)
 					}
-					checkBreakpoints(t, client, []Breakpoint{}, br.Body.Breakpoints)
+					checkBreakpoints(t, []Breakpoint{}, br.Body.Breakpoints)
 
 					client.SetBreakpointsRequest(fixture.Source, []int{16}) // [] => [16]
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{16, fixture.Source, true, ""}})
