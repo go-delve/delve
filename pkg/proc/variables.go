@@ -538,7 +538,7 @@ func (g *G) System(tgt *Target) bool {
 		return false
 	}
 	switch loc.Fn.Name {
-	case "runtime.main", "runtime.handleAsyncEvent", "runtime.runfinq":
+	case "runtime.main", "runtime.handleAsyncEvent":
 		return false
 	}
 	return strings.HasPrefix(loc.Fn.Name, "runtime.")
