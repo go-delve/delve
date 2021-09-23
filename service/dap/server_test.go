@@ -5131,7 +5131,7 @@ func TestBadLaunchRequests(t *testing.T) {
 			"Failed to launch: invalid debug configuration - cannot use {\"from\":\"path1\",\"to\":123} as 'substitutePath' of type {\"from\":string, \"to\":string}")
 		// Bad "cwd"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "cwd": 123})
-		checkFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: invalid debug configuration - cannot unmarshal number into \"cwd\" of type string")
 
 		// Skip detailed message checks for potentially different OS-specific errors.
@@ -5398,7 +5398,7 @@ func TestAttachRemoteToHaltedTargetContinueOnEntry(t *testing.T) {
 func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 	runTestWithDebugger(t, launchDebuggerWithTargetHalted(t, "increment"), func(client *daptest.Client) {
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 100})
-		er := client.ExpectErrorResponse(t)
+		er := client.ExpectVisibleErrorResponse(t)
 		msg := "Failed to attach: debugger already started - use remote mode to connect"
 		if er.Body.Error.Id != 3001 || er.Body.Error.Format != msg {
 			t.Errorf("got %#v, want Id=3001 Format=%q", er, msg)
@@ -5407,7 +5407,7 @@ func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 		for _, mode := range tests {
 			t.Run(mode, func(t *testing.T) {
 				client.LaunchRequestWithArgs(map[string]interface{}{"mode": mode})
-				er := client.ExpectErrorResponse(t)
+				er := client.ExpectVisibleErrorResponse(t)
 				msg := "Failed to launch: debugger already started - use remote attach to connect to a server with an active debug session"
 				if er.Body.Error.Id != 3000 || er.Body.Error.Format != msg {
 					t.Errorf("got %#v, want Id=3001 Format=%q", er, msg)
