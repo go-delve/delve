@@ -4431,9 +4431,9 @@ func TestLaunchRequestWithRelativeExecPath(t *testing.T) {
 func TestLaunchTestRequest(t *testing.T) {
 	orgWD, _ := os.Getwd()
 	fixtures := protest.FindFixturesDir() // relative to current working directory.
-	fixturesDir, _ := filepath.Abs(fixtures)
-	pkgDir, _ := filepath.Abs(filepath.Join(fixtures, "buildtest"))
-	testFile := filepath.Join(pkgDir, "main_test.go")
+	absoluteFixturesDir, _ := filepath.Abs(fixtures)
+	absolutePkgDir, _ := filepath.Abs(filepath.Join(fixtures, "buildtest"))
+	testFile := filepath.Join(absolutePkgDir, "main_test.go")
 
 	for _, tc := range []struct {
 		name       string
@@ -4443,49 +4443,51 @@ func TestLaunchTestRequest(t *testing.T) {
 	}{{
 		name: "default",
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": pkgDir,
+			"mode": "test", "program": absolutePkgDir,
 		},
-		wantWD: pkgDir,
+		wantWD: absolutePkgDir,
 	}, {
 		name: "output",
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": pkgDir, "output": "test.out",
+			"mode": "test", "program": absolutePkgDir, "output": "test.out",
 		},
-		wantWD: pkgDir,
+		wantWD: absolutePkgDir,
 	}, {
-		name: "buildDir",
+		name: "delveCWD",
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": pkgDir, "buildDir": ".",
+			"mode": "test", "program": absolutePkgDir, "delveCWD": ".",
 		},
-		wantWD: pkgDir,
+		wantWD: absolutePkgDir,
 	}, {
-		name: "buildDir2",
+		name: "delveCWD2",
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": ".", "buildDir": pkgDir,
+			"mode": "test", "program": ".", "delveCWD": absolutePkgDir,
 		},
-		wantWD: pkgDir,
+		wantWD: absolutePkgDir,
 	}, {
 		name: "cwd",
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": pkgDir, "cwd": fixtures, // fixtures is relative to the current working directory.
+			"mode": "test", "program": absolutePkgDir, "cwd": fixtures, // fixtures is relative to the current working directory.
 		},
-		wantWD: fixturesDir,
+		wantWD: absoluteFixturesDir,
 	}, {
 		name:  "dlv runs outside of module",
 		dlvWD: os.TempDir(),
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": pkgDir, "buildDir": fixturesDir,
+			"mode": "test", "program": absolutePkgDir, "delveCWD": absoluteFixturesDir,
 		},
-		wantWD: pkgDir,
+		wantWD: absolutePkgDir,
 	}, {
-		name:  "cwd",
+		name:  "dlv builds in delveCWD but runs in cwd",
 		dlvWD: fixtures,
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": pkgDir, "buildDir": pkgDir, "cwd": ".", // "." relative to dlvWD.
+			"mode": "test", "program": absolutePkgDir, "delveCWD": absolutePkgDir, "cwd": "..", // relative to delveCWD.
 		},
-		wantWD: fixturesDir,
+		wantWD: absoluteFixturesDir,
 	}} {
 		t.Run(tc.name, func(t *testing.T) {
+			// Some test cases with delveCWD or dlvWD change process working directory.
+			defer os.Chdir(orgWD)
 			if tc.dlvWD != "" {
 				os.Chdir(tc.dlvWD)
 				defer os.Chdir(orgWD)
@@ -4546,117 +4548,6 @@ func TestLaunchRequestWithBuildFlags(t *testing.T) {
 				"buildFlags": "-ldflags '-X main.Hello=World'"})
 		})
 	})
-}
-
-func TestLaunchRequestWithBuildDir(t *testing.T) {
-	origWD, _ := os.Getwd()
-
-	fixtures := protest.FindFixturesDir() // relative to current working directory.
-	fixturesDir, _ := filepath.Abs(fixtures)
-	sourceFile := filepath.Join(fixturesDir, "workdir.go")
-
-	// Run delve DAP server from the github.com/go-delve/delve module
-	// and debug a target outside of it.
-	// In module mode, `go build` will complain e.g. directory * is outside available modules
-	// if program is a directory. By supplying BuildDir, we avoid the issue.
-	workDir, err := prepareModule(sourceFile)
-	if err != nil {
-		t.Fatalf("failed to set up a module for testing: %v", err)
-	}
-	defer os.RemoveAll(workDir)
-
-	for _, tc := range []struct {
-		name                   string
-		program, buildDir, cwd string
-		want                   string
-	}{{
-		name:     "buildDir",
-		program:  workDir,
-		buildDir: workDir,
-		want:     fmt.Sprintf("%q", origWD), // buildDir does not affect default cwd.
-	}, {
-		name:     "buildDir/cwd",
-		program:  workDir,
-		buildDir: workDir,
-		cwd:      workDir,
-		want:     fmt.Sprintf("%q", workDir), // buildDir does not affect cwd.
-
-	}, {
-		name:     "buildDir/cwd",
-		program:  ".", // program is relative to buildDir.
-		buildDir: workDir,
-		cwd:      fixtures,
-		want:     fmt.Sprintf("%q", fixturesDir), // cwd is relative to origWD.
-	}} {
-		t.Run(tc.name, func(t *testing.T) {
-			serverStopped := make(chan struct{})
-			client := startDapServerWithClient(t, serverStopped)
-			defer client.Close()
-
-			runDebugSessionWithBPs(t, client, "launch",
-				// Launch
-				func() {
-					client.LaunchRequestWithArgs(map[string]interface{}{
-						"mode":     "debug",
-						"program":  tc.program,
-						"buildDir": tc.buildDir,
-						"cwd":      tc.cwd,
-					})
-				},
-				// Set breakpoints
-				filepath.Join(workDir, "workdir.go"), []int{10}, // b main.main
-				[]onBreakpoint{{
-					execute: func() {
-						checkStop(t, client, 1, "main.main", 10)
-						client.VariablesRequest(1001) // Locals
-						locals := client.ExpectVariablesResponse(t)
-						checkChildren(t, locals, "Locals", 2)
-						for i := range locals.Body.Variables {
-							switch locals.Body.Variables[i].Name {
-							case "pwd":
-								// buildDir does not affect the work directory.
-								checkVarExact(t, locals, i, "pwd", "pwd", tc.want, "string", noChildren)
-							case "err":
-								checkVarExact(t, locals, i, "err", "err", "error nil", "error", noChildren)
-							}
-						}
-					},
-					disconnect: false,
-				}})
-
-			<-serverStopped
-		})
-	}
-}
-
-// prepareModule copies all regular files in sourceDir into a separate
-// module in a temporary directory. Caller is responsible for clean up
-// the returned module source directory path.
-func prepareModule(sourceFile string) (string, error) {
-	prog, err := ioutil.ReadFile(sourceFile)
-	if err != nil {
-		return "", err
-	}
-	basename := filepath.Base(sourceFile)
-
-	tmpDir := os.TempDir()
-	// For Darwin `os.TempDir()` returns `/tmp` which is symlink to `/private/tmp`.
-	if runtime.GOOS == "darwin" {
-		tmpDir = "/private/tmp"
-	}
-	workDir, err := ioutil.TempDir(tmpDir, "dap_test")
-	if err != nil {
-		return "", err
-	}
-	if err := ioutil.WriteFile(filepath.Join(workDir, "go.mod"), []byte("module example"), 0644); err != nil {
-		os.RemoveAll(workDir)
-		return "", err
-	}
-	if err := ioutil.WriteFile(filepath.Join(workDir, basename), prog, 0644); err != nil {
-		os.RemoveAll(workDir)
-		return "", err
-	}
-	return workDir, nil
 }
 
 func TestAttachRequest(t *testing.T) {

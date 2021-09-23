@@ -75,7 +75,11 @@ import (
 // error or responding to a (synchronous) DAP disconnect request.
 // Once stop is triggered, the goroutine exits.
 //
-// TODO(polina): add another layer of per-client goroutines to support multiple clients
+// TODO(polina): add another layer of per-client goroutines to support multiple clients.
+// Note that some requests change the process's environment such
+// as working directory (for example, see DelveCwd of launch configuration).
+// So if we want to reuse this process for multiple debugging sessions
+// we need to address that.
 //
 // (3) Per-request goroutine is started for each asynchronous request
 // that resumes execution. We check if target is running already, so
@@ -750,12 +754,12 @@ func (s *Server) tempDebugBinary() string {
 	f, err := ioutil.TempFile("", binaryPattern)
 	if err != nil {
 		s.log.Errorf("failed to create a temporary binary (%v), falling back to %q", err, defaultDebugBinary)
-		return defaultDebugBinary
+		return cleanExeName(defaultDebugBinary)
 	}
 	name := f.Name()
 	if err := f.Close(); err != nil {
 		s.log.Errorf("failed to create a temporary binary (%v), falling back to %q", err, defaultDebugBinary)
-		return defaultDebugBinary
+		return cleanExeName(defaultDebugBinary)
 	}
 	return name
 }
@@ -773,6 +777,14 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.sendShowUserErrorResponse(request.Request,
 			FailedToLaunch, "Failed to launch", fmt.Sprintf("invalid debug configuration - %v", err))
 		return
+	}
+
+	if args.DelveCwd != "" {
+		if err := os.Chdir(args.DelveCwd); err != nil {
+			s.sendShowUserErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch", fmt.Sprintf("failed to chdir using %q - %v", args.DelveCwd, err))
+			return
+		}
 	}
 
 	mode := args.Mode
@@ -833,31 +845,28 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		debugbinary := args.Output
 		if debugbinary == "" {
 			debugbinary = s.tempDebugBinary()
+		} else {
+			debugbinary = cleanExeName(debugbinary)
 		}
 
-		if !filepath.IsAbs(debugbinary) {
-			o, err := filepath.Abs(debugbinary)
-			if err != nil {
-				s.sendInternalErrorResponse(request.Seq, err.Error())
-				return
-			}
+		if o, err := filepath.Abs(debugbinary); err != nil {
+			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
+			return
+		} else {
 			debugbinary = o
 		}
-		debugbinary = cleanExeName(debugbinary)
-		buildDir := args.BuildDir
-		if buildDir == "" {
-			buildDir = "."
-		}
+
+		wd, _ := os.Getwd()
+		s.log.Debugf("building program %q in %q with flags '%v'", program, wd, args.BuildFlags)
 
 		var cmd string
 		var out []byte
 		var err error
-		s.log.Debugf("building program %q in %q with flags '%v'", program, args.BuildDir, args.BuildFlags)
 		switch mode {
 		case "debug":
-			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, args.BuildFlags, buildDir)
+			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, args.BuildFlags)
 		case "test":
-			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, args.BuildFlags, buildDir)
+			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, args.BuildFlags)
 		}
 		if err != nil {
 			s.send(&dap.OutputEvent{
@@ -874,11 +883,6 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		}
 		program = debugbinary
 
-		if mode == "test" && args.Cwd == "" {
-			// In test mode, run the test binary from the package directory
-			// like in `go test` and `dlv test` by default.
-			args.Cwd = getPackageDir(args.Program, buildDir)
-		}
 		s.mu.Lock()
 		s.binaryToRemove = debugbinary
 		s.mu.Unlock()
@@ -890,7 +894,16 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 
 	s.config.ProcessArgs = append([]string{program}, args.Args...)
-	s.config.Debugger.WorkingDir = args.Cwd // cwd: "" == "."
+
+	if args.Cwd != "" {
+		s.config.Debugger.WorkingDir = args.Cwd
+	} else if mode == "test" {
+		// In test mode, run the test binary from the package directory
+		// like in `go test` and `dlv test` by default.
+		s.config.Debugger.WorkingDir = s.getPackageDir(args.Program)
+	} else {
+		s.config.Debugger.WorkingDir = "."
+	}
 
 	s.log.Debugf("running binary '%s' in '%s'", program, s.config.Debugger.WorkingDir)
 	if args.NoDebug {
@@ -946,14 +959,12 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
 }
 
-func getPackageDir(pkg, buildDir string) string {
+func (s *Server) getPackageDir(pkg string) string {
 	cmd := exec.Command("go", "list", "-f", "{{.Dir}}", pkg)
-	if buildDir != "" {
-		cmd.Dir = buildDir
-	}
 	out, err := cmd.Output()
 	if err != nil {
-		return buildDir // fallback to the build directory.
+		s.log.Debugf("failed to determin package directory for %v: %v\n%s", pkg, err, out)
+		return "."
 	}
 	return string(bytes.TrimSpace(out))
 }
