@@ -752,7 +752,7 @@ func cleanExeName(name string) string {
 
 func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	if s.debugger != nil {
-		s.sendErrorResponse(request.Request, FailedToLaunch,
+		s.sendShowUserErrorResponse(request.Request, FailedToLaunch,
 			"Failed to launch", "debugger already started - use remote attach to connect to a server with an active debug session")
 		return
 	}
@@ -1471,7 +1471,7 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 		fallthrough
 	case "local":
 		if s.debugger != nil {
-			s.sendErrorResponse(
+			s.sendShowUserErrorResponse(
 				request.Request, FailedToAttach,
 				"Failed to attach", "debugger already started - use remote mode to connect")
 			return
@@ -1500,7 +1500,7 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 		}
 	case "remote":
 		if s.debugger == nil {
-			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", "no debugger found")
+			s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach", "no debugger found")
 			return
 		}
 		s.log.Debug("debugger already started")
@@ -1514,7 +1514,7 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 	}
 
 	if err := s.setLaunchAttachArgs(args.LaunchAttachCommonConfig); err != nil {
-		s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
+		s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
 		return
 	}
 
