@@ -32,6 +32,7 @@ type commonState struct {
 	cursorRows        int
 	maxRows           int
 	shouldRestart     ShouldRestart
+	noBeep            bool
 	needRefresh       bool
 }
 
@@ -144,7 +145,7 @@ func (s *State) AppendHistory(item string) {
 	}
 }
 
-// ClearHistory clears the scroollback history.
+// ClearHistory clears the scrollback history.
 func (s *State) ClearHistory() {
 	s.historyMutex.Lock()
 	defer s.historyMutex.Unlock()
@@ -161,7 +162,7 @@ func (s *State) getHistoryByPrefix(prefix string) (ph []string) {
 	return
 }
 
-// Returns the history lines matching the inteligent search
+// Returns the history lines matching the intelligent search
 func (s *State) getHistoryByPattern(pattern string) (ph []string, pos []int) {
 	if pattern == "" {
 		return
@@ -241,6 +242,12 @@ type ShouldRestart func(err error) bool
 // whether to retry the call to, or return the error returned by, readNext.
 func (s *State) SetShouldRestart(f ShouldRestart) {
 	s.shouldRestart = f
+}
+
+// SetBeep sets whether liner should beep the terminal at various times (output
+// ASCII BEL, 0x07). Default is true (will beep).
+func (s *State) SetBeep(beep bool) {
+	s.noBeep = !beep
 }
 
 func (s *State) promptUnsupported(p string) (string, error) {

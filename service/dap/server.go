@@ -759,7 +759,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 
 	var args = defaultLaunchConfig // narrow copy for initializing non-zero default values
 	if err := unmarshalLaunchAttachArgs(request.Arguments, &args); err != nil {
-		s.sendErrorResponse(request.Request,
+		s.sendShowUserErrorResponse(request.Request,
 			FailedToLaunch, "Failed to launch", fmt.Sprintf("invalid debug configuration - %v", err))
 		return
 	}
@@ -769,14 +769,14 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		mode = "debug"
 	}
 	if !isValidLaunchMode(mode) {
-		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", fmt.Sprintf("invalid debug configuration - unsupported 'mode' attribute %q", mode))
+		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
+			fmt.Sprintf("invalid debug configuration - unsupported 'mode' attribute %q", mode))
 		return
 	}
 
 	program := args.Program
 	if program == "" && mode != "replay" { // Only fail on modes requiring a program
-		s.sendErrorResponse(request.Request,
-			FailedToLaunch, "Failed to launch",
+		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
 			"The program attribute is missing in debug configuration.")
 		return
 	}
@@ -791,8 +791,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		traceDirPath := args.TraceDirPath
 		// Validate trace directory
 		if traceDirPath == "" {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
+			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
 				"The 'traceDirPath' attribute is missing in debug configuration.")
 			return
 		}
@@ -806,8 +805,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		coreFilePath := args.CoreFilePath
 		// Validate core dump path
 		if coreFilePath == "" {
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
+			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
 				"The 'coreFilePath' attribute is missing in debug configuration.")
 			return
 		}
@@ -828,10 +826,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		output = cleanExeName(output)
 		debugbinary, err := filepath.Abs(output)
 		if err != nil {
-			s.sendInternalErrorResponse(request.Seq, err.Error())
+			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 			return
 		}
-
 		buildFlags := args.BuildFlags
 
 		var cmd string
@@ -851,8 +848,9 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 					Output:   fmt.Sprintf("Build Error: %s\n%s (%s)\n", cmd, strings.TrimSpace(string(out)), err.Error()),
 					Category: "stderr",
 				}})
-			s.sendErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch",
+			// Users are used to checking the Debug Console for build errors.
+			// No need to bother them with a visible pop-up.
+			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
 				"Build error: Check the debug console for details.")
 			return
 		}
@@ -863,7 +861,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 
 	if err := s.setLaunchAttachArgs(args.LaunchAttachCommonConfig); err != nil {
-		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
+		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 		return
 	}
 
@@ -879,7 +877,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		cmd, err := s.newNoDebugProcess(program, args.Args, s.config.Debugger.WorkingDir)
 		s.mu.Unlock()
 		if err != nil {
-			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
+			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 			return
 		}
 		// Skip 'initialized' event, which will prevent the client from sending
@@ -912,7 +910,7 @@ func (s *Server) onLaunchRequest(request *dap.LaunchRequest) {
 		s.debugger, err = debugger.New(&s.config.Debugger, s.config.ProcessArgs)
 	}()
 	if err != nil {
-		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
+		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 		return
 	}
 	// Enable StepBack controls on supported backends
@@ -1462,7 +1460,7 @@ func (s *Server) onThreadsRequest(request *dap.ThreadsRequest) {
 func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 	var args AttachConfig = defaultAttachConfig // narrow copy for initializing non-zero default values
 	if err := unmarshalLaunchAttachArgs(request.Arguments, &args); err != nil {
-		s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", fmt.Sprintf("invalid debug configuration - %v", err))
+		s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach", fmt.Sprintf("invalid debug configuration - %v", err))
 		return
 	}
 
@@ -1479,8 +1477,7 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 			return
 		}
 		if args.ProcessID == 0 {
-			s.sendErrorResponse(request.Request,
-				FailedToAttach, "Failed to attach",
+			s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach",
 				"The 'processId' attribute is missing in debug configuration")
 			return
 		}
@@ -1498,7 +1495,7 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 			s.debugger, err = debugger.New(&s.config.Debugger, nil)
 		}()
 		if err != nil {
-			s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
+			s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
 			return
 		}
 	case "remote":
@@ -1511,7 +1508,7 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 		// halt before sending initialized event. onConfigurationDone will restart
 		// execution if user requested !stopOnEntry.
 	default:
-		s.sendErrorResponse(request.Request, FailedToAttach, "Failed to attach",
+		s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach",
 			fmt.Sprintf("invalid debug configuration - unsupported 'mode' attribute %q", args.Mode))
 		return
 	}
@@ -2755,9 +2752,14 @@ func (s *Server) sendErrorResponseWithOpts(request dap.Request, id int, summary,
 	s.send(er)
 }
 
-// sendErrorResponse sends an error response with default visibility settings.
+// sendErrorResponse sends an error response with showUser disabled (default).
 func (s *Server) sendErrorResponse(request dap.Request, id int, summary, details string) {
 	s.sendErrorResponseWithOpts(request, id, summary, details, false /*showUser*/)
+}
+
+// sendShowUserErrorResponse sends an error response with showUser enabled.
+func (s *Server) sendShowUserErrorResponse(request dap.Request, id int, summary, details string) {
+	s.sendErrorResponseWithOpts(request, id, summary, details, true /*showUser*/)
 }
 
 // sendInternalErrorResponse sends an "internal error" response back to the client.
