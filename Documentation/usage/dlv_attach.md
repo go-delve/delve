@@ -4,7 +4,6 @@ Attach to running process and begin debugging.
 
 ### Synopsis
 
-
 Attach to an already running process and begin debugging it.
 
 This command will cause Delve to take control of an already running process, and
@@ -13,13 +12,14 @@ option to let the process continue or kill it.
 
 
 ```
-dlv attach pid [executable]
+dlv attach pid [executable] [flags]
 ```
 
 ### Options
 
 ```
       --continue   Continue the debugged process on start.
+  -h, --help       help for attach
 ```
 
 ### Options inherited from parent commands
@@ -44,5 +44,6 @@ dlv attach pid [executable]
 ```
 
 ### SEE ALSO
+
 * [dlv](dlv.md)	 - Delve is a debugger for the Go programming language.
 

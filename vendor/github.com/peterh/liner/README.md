@@ -29,7 +29,8 @@ Ctrl-C       | Reset input (create new empty prompt)
 Ctrl-L       | Clear screen (line is unmodified)
 Ctrl-T       | Transpose previous character with current character
 Ctrl-H, BackSpace | Delete character before cursor
-Ctrl-W       | Delete word leading up to cursor
+Ctrl-W, Alt-BackSpace | Delete word leading up to cursor
+Alt-D        | Delete word following cursor
 Ctrl-K       | Delete from cursor to end of line
 Ctrl-U       | Delete from start of line to cursor
 Ctrl-P, Up   | Previous match from history

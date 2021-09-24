@@ -50,9 +50,16 @@ if ($version -eq "gotip") {
 } else {
     # Install Go
     Write-Host "Finding latest patch version for $version"
-    $version = Invoke-WebRequest -Uri 'https://golang.org/dl/?mode=json&include=all' -UseBasicParsing | foreach {$_.Content} | ConvertFrom-Json | foreach {$_.version} | Select-String -Pattern "^$version($|\.|beta|rc)" | Select-Object -First 1 | foreach {$_.Line}
-    Write-Host "Go $version on $arch"
-    GetGo $version
+    $versions = Invoke-WebRequest -Uri 'https://golang.org/dl/?mode=json&include=all' -UseBasicParsing | foreach {$_.Content} | ConvertFrom-Json
+    $v = $versions | foreach {$_.version} | Select-String -Pattern "^$version($|\.)" | Sort-Object -Descending | Select-Object -First 1
+    if ($v -eq $null) {
+      $v = $versions | foreach {$_.version} | Select-String -Pattern "^$version(rc)" | Sort-Object -Descending | Select-Object -First 1
+    }
+    if ($v -eq $null) {
+      $v = $versions | foreach {$_.version} | Select-String -Pattern "^$version(beta)" | Sort-Object -Descending | Select-Object -First 1
+    }
+    Write-Host "Go $v on $arch"
+    GetGo $v
 }
 
 $env:GOPATH = "C:\gopath"
@@ -64,3 +71,4 @@ Write-Host $env:GOPATH
 go version
 go env
 go run _scripts/make.go test
+Exit $LastExitCode

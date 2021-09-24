@@ -10,6 +10,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/derekparker/trie"
 	"github.com/peterh/liner"
 
 	"github.com/go-delve/delve/pkg/config"
@@ -110,10 +111,10 @@ func New(client service.Client, conf *config.Config) *Term {
 			return s
 		}
 		t.colorEscapes[colorize.KeywordStyle] = conf.SourceListKeywordColor
-		t.colorEscapes[colorize.StringStyle] = wd(conf.SourceListStringColor, ansiBrGreen)
+		t.colorEscapes[colorize.StringStyle] = wd(conf.SourceListStringColor, ansiGreen)
 		t.colorEscapes[colorize.NumberStyle] = conf.SourceListNumberColor
 		t.colorEscapes[colorize.CommentStyle] = wd(conf.SourceListCommentColor, ansiBrMagenta)
-		t.colorEscapes[colorize.ArrowStyle] = wd(conf.SourceListArrowColor, ansiBrYellow)
+		t.colorEscapes[colorize.ArrowStyle] = wd(conf.SourceListArrowColor, ansiYellow)
 		switch x := conf.SourceListLineColor.(type) {
 		case string:
 			t.colorEscapes[colorize.LineNoStyle] = x
@@ -210,21 +211,32 @@ func (t *Term) Run() (int, error) {
 	signal.Notify(ch, syscall.SIGINT)
 	go t.sigintGuard(ch, multiClient)
 
-	t.line.SetCompleter(func(line string) (c []string) {
-		if strings.HasPrefix(line, "break ") || strings.HasPrefix(line, "b ") {
-			filter := line[strings.Index(line, " ")+1:]
-			funcs, _ := t.client.ListFunctions(filter)
-			for _, f := range funcs {
-				c = append(c, "break "+f)
-			}
-			return
+	fns := trie.New()
+	cmds := trie.New()
+	funcs, _ := t.client.ListFunctions("")
+	for _, fn := range funcs {
+		fns.Add(fn, nil)
+	}
+	for _, cmd := range t.cmds.cmds {
+		for _, alias := range cmd.aliases {
+			cmds.Add(alias, nil)
 		}
-		for _, cmd := range t.cmds.cmds {
-			for _, alias := range cmd.aliases {
-				if strings.HasPrefix(alias, strings.ToLower(line)) {
-					c = append(c, alias)
+	}
+
+	t.line.SetCompleter(func(line string) (c []string) {
+		cmd := t.cmds.Find(strings.Split(line, " ")[0], noPrefix)
+		switch cmd.aliases[0] {
+		case "break", "trace", "continue":
+			if spc := strings.LastIndex(line, " "); spc > 0 {
+				prefix := line[:spc] + " "
+				funcs := fns.FuzzySearch(line[spc+1:])
+				for _, f := range funcs {
+					c = append(c, prefix+f)
 				}
 			}
+		case "nullcmd", "nocmd":
+			commands := cmds.FuzzySearch(strings.ToLower(line))
+			c = append(c, commands...)
 		}
 		return
 	})

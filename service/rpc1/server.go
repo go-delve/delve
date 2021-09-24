@@ -98,7 +98,7 @@ func (s *RPCServer) StacktraceGoroutine(args *StacktraceGoroutineArgs, locations
 }
 
 func (s *RPCServer) ListBreakpoints(arg interface{}, breakpoints *[]*api.Breakpoint) error {
-	*breakpoints = s.debugger.Breakpoints()
+	*breakpoints = s.debugger.Breakpoints(false)
 	return nil
 }
 
@@ -288,7 +288,7 @@ func (s *RPCServer) ListGoroutines(arg interface{}, goroutines *[]*api.Goroutine
 	}
 	s.debugger.LockTarget()
 	s.debugger.UnlockTarget()
-	*goroutines = api.ConvertGoroutines(gs)
+	*goroutines = api.ConvertGoroutines(s.debugger.Target(), gs)
 	return nil
 }
 

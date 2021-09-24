@@ -1,18 +1,21 @@
 ## dlv dap
 
-[EXPERIMENTAL] Starts a TCP server communicating via Debug Adaptor Protocol (DAP).
+[EXPERIMENTAL] Starts a headless TCP server communicating via Debug Adaptor Protocol (DAP).
 
 ### Synopsis
 
+[EXPERIMENTAL] Starts a headless TCP server communicating via Debug Adaptor Protocol (DAP).
 
-[EXPERIMENTAL] Starts a TCP server communicating via Debug Adaptor Protocol (DAP).
-
-The server is headless and requires a DAP client like vscode to connect and request a binary
-to be launched or process to be attached to. The following modes are supported:
+The server is always headless and requires a DAP client like vscode to connect and request a binary
+to be launched or process to be attached to. The following modes can be specified via client's launch config:
 - launch + exec (executes precompiled binary, like 'dlv exec')
 - launch + debug (builds and launches, like 'dlv debug')
 - launch + test (builds and tests, like 'dlv test')
+- launch + replay (replays an rr trace, like 'dlv replay')
+- launch + core (replays a core dump file, like 'dlv core')
 - attach + local (attaches to a running process, like 'dlv attach')
+Program and output binary paths will be interpreted relative to dlv's working directory.
+
 The server does not yet accept multiple client connections (--accept-multiclient).
 While --continue is not supported, stopOnEntry launch/attach attribute can be used to control if
 execution is resumed at the start of the debug session.
@@ -22,7 +25,13 @@ by dialing in to the host:port where a DAP client is waiting. This server proces
 will exit when the debug session ends.
 
 ```
-dlv dap
+dlv dap [flags]
+```
+
+### Options
+
+```
+  -h, --help   help for dap
 ```
 
 ### Options
@@ -53,5 +62,6 @@ dlv dap
 ```
 
 ### SEE ALSO
+
 * [dlv](dlv.md)	 - Delve is a debugger for the Go programming language.
 

@@ -4,7 +4,6 @@ Help about the --backend flag.
 
 ### Synopsis
 
-
 The --backend flag specifies which backend should be used, possible values
 are:
 
@@ -14,6 +13,12 @@ are:
 	rr		Uses mozilla rr (https://github.com/mozilla/rr).
 
 
+
+### Options
+
+```
+  -h, --help   help for backend
+```
 
 ### Options inherited from parent commands
 
@@ -37,5 +42,6 @@ are:
 ```
 
 ### SEE ALSO
+
 * [dlv](dlv.md)	 - Delve is a debugger for the Go programming language.
 

@@ -14,6 +14,7 @@ import (
 	"go/token"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -99,6 +100,12 @@ type BinaryInfo struct {
 	// of a function to a list of PC addresses where an inlined call to that
 	// function starts.
 	inlinedCallLines map[fileLine][]uint64
+
+	// dwrapUnwrapCache caches unwrapping of defer wrapper functions (dwrap)
+	dwrapUnwrapCache map[uint64]*Function
+
+	// Go 1.17 register ABI is enabled.
+	regabi bool
 
 	logger *logrus.Entry
 }
@@ -656,7 +663,8 @@ type Image struct {
 
 	compileUnits []*compileUnit // compileUnits is sorted by increasing DWARF offset
 
-	dwarfTreeCache *simplelru.LRU
+	dwarfTreeCache      *simplelru.LRU
+	runtimeMallocgcTree *godwarf.Tree // patched version of runtime.mallocgc's DIE
 
 	// runtimeTypeToDIE maps between the offset of a runtime._type in
 	// runtime.moduledata.types and the offset of the DIE in debug_info. This
@@ -708,14 +716,28 @@ func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
 
 // moduleDataToImage finds the image corresponding to the given module data object.
 func (bi *BinaryInfo) moduleDataToImage(md *moduleData) *Image {
-	return bi.funcToImage(bi.PCToFunc(uint64(md.text)))
+	fn := bi.PCToFunc(uint64(md.text))
+	if fn != nil {
+		return bi.funcToImage(fn)
+	}
+	// Try searching for the image with the closest address preceding md.text
+	var so *Image
+	for i := range bi.Images {
+		if int64(bi.Images[i].StaticBase) > int64(md.text) {
+			continue
+		}
+		if so == nil || int64(bi.Images[i].StaticBase) > int64(so.StaticBase) {
+			so = bi.Images[i]
+		}
+	}
+	return so
 }
 
 // imageToModuleData finds the module data in mds corresponding to the given image.
 func (bi *BinaryInfo) imageToModuleData(image *Image, mds []moduleData) *moduleData {
 	for _, md := range mds {
 		im2 := bi.moduleDataToImage(&md)
-		if im2.index == image.index {
+		if im2 != nil && im2.index == image.index {
 			return &md
 		}
 	}
@@ -782,6 +804,9 @@ func (image *Image) LoadError() error {
 }
 
 func (image *Image) getDwarfTree(off dwarf.Offset) (*godwarf.Tree, error) {
+	if image.runtimeMallocgcTree != nil && off == image.runtimeMallocgcTree.Offset {
+		return image.runtimeMallocgcTree, nil
+	}
 	if r, ok := image.dwarfTreeCache.Get(off); ok {
 		return r.(*godwarf.Tree), nil
 	}
@@ -912,12 +937,16 @@ func (bi *BinaryInfo) LocationCovers(entry *dwarf.Entry, attr dwarf.Attr) ([][2]
 // This will either be an int64 address or a slice of Pieces for locations
 // that don't correspond to a single memory address (registers, composite
 // locations).
-func (bi *BinaryInfo) Location(entry godwarf.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters) (int64, []op.Piece, *locationExpr, error) {
+func (bi *BinaryInfo) Location(entry godwarf.Entry, attr dwarf.Attr, pc uint64, regs op.DwarfRegisters, mem MemoryReadWriter) (int64, []op.Piece, *locationExpr, error) {
 	instr, descr, err := bi.locationExpr(entry, attr, pc)
 	if err != nil {
 		return 0, nil, nil, err
 	}
-	addr, pieces, err := op.ExecuteStackProgram(regs, instr, bi.Arch.PtrSize())
+	readMemory := op.ReadMemoryFunc(nil)
+	if mem != nil {
+		readMemory = mem.ReadMemory
+	}
+	addr, pieces, err := op.ExecuteStackProgram(regs, instr, bi.Arch.PtrSize(), readMemory)
 	return addr, pieces, descr, err
 }
 
@@ -1061,13 +1090,10 @@ func (e *ErrNoBuildIDNote) Error() string {
 // will look in directories specified by the debug-info-directories config value.
 func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugInfoDirectories []string) (*os.File, *elf.File, error) {
 	var debugFilePath string
+	desc1, desc2, _ := parseBuildID(exe)
 	for _, dir := range debugInfoDirectories {
 		var potentialDebugFilePath string
 		if strings.Contains(dir, "build-id") {
-			desc1, desc2, err := parseBuildID(exe)
-			if err != nil {
-				continue
-			}
 			potentialDebugFilePath = fmt.Sprintf("%s/%s/%s.debug", dir, desc1, desc2)
 		} else if strings.HasPrefix(image.Path, "/proc") {
 			path, err := filepath.EvalSymlinks(image.Path)
@@ -1083,8 +1109,20 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 			break
 		}
 	}
+	// We cannot find the debug information locally on the system. Try and see if we're on a system that
+	// has debuginfod so that we can use that in order to find any relevant debug information.
 	if debugFilePath == "" {
-		return nil, nil, ErrNoDebugInfoFound
+		const debuginfodFind = "debuginfod-find"
+		if _, err := exec.LookPath(debuginfodFind); err == nil {
+			cmd := exec.Command(debuginfodFind, "debuginfo", desc1+desc2)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				return nil, nil, ErrNoDebugInfoFound
+			}
+			debugFilePath = string(out)
+		} else {
+			return nil, nil, ErrNoDebugInfoFound
+		}
 	}
 	sepFile, err := os.OpenFile(debugFilePath, 0, os.ModePerm)
 	if err != nil {
@@ -1681,6 +1719,9 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 	if bi.inlinedCallLines == nil {
 		bi.inlinedCallLines = make(map[fileLine][]uint64)
 	}
+	if bi.dwrapUnwrapCache == nil {
+		bi.dwrapUnwrapCache = make(map[uint64]*Function)
+	}
 
 	image.runtimeTypeToDIE = make(map[uint64]runtimeTypeDIE)
 
@@ -1735,6 +1776,13 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 					cu.optimized = goversion.ProducerAfterOrEqual(cu.producer, 1, 10)
 				} else {
 					cu.optimized = !strings.Contains(cu.producer[semicolon:], "-N") || !strings.Contains(cu.producer[semicolon:], "-l")
+					const regabi = " regabi"
+					if i := strings.Index(cu.producer[semicolon:], regabi); i > 0 {
+						i += semicolon
+						if i+len(regabi) >= len(cu.producer) || cu.producer[i+len(regabi)] == ' ' {
+							bi.regabi = true
+						}
+					}
 					cu.producer = cu.producer[:semicolon]
 				}
 			}
@@ -1774,6 +1822,22 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 	}
 	sort.Strings(bi.Sources)
 	bi.Sources = uniq(bi.Sources)
+
+	if bi.regabi {
+		// prepare patch for runtime.mallocgc's DIE
+		fn := bi.LookupFunc["runtime.mallocgc"]
+		if fn != nil {
+			tree, err := image.getDwarfTree(fn.offset)
+			if err == nil {
+				tree.Children, err = regabiMallocgcWorkaround(bi)
+				if err != nil {
+					bi.logger.Errorf("could not patch runtime.mallogc: %v", err)
+				} else {
+					image.runtimeMallocgcTree = tree
+				}
+			}
+		}
+	}
 
 	if cont != nil {
 		cont()

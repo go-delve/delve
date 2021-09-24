@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -177,7 +178,7 @@ func withTestTerminalBuildFlags(name string, t testing.TB, buildFlags test.Build
 func TestCommandDefault(t *testing.T) {
 	var (
 		cmds = Commands{}
-		cmd  = cmds.Find("non-existant-command", noPrefix)
+		cmd  = cmds.Find("non-existant-command", noPrefix).cmdFn
 	)
 
 	err := cmd(nil, callContext{}, "")
@@ -193,7 +194,7 @@ func TestCommandDefault(t *testing.T) {
 func TestCommandReplayWithoutPreviousCommand(t *testing.T) {
 	var (
 		cmds = DebugCommands(nil)
-		cmd  = cmds.Find("", noPrefix)
+		cmd  = cmds.Find("", noPrefix).cmdFn
 		err  = cmd(nil, callContext{}, "")
 	)
 
@@ -205,7 +206,7 @@ func TestCommandReplayWithoutPreviousCommand(t *testing.T) {
 func TestCommandThread(t *testing.T) {
 	var (
 		cmds = DebugCommands(nil)
-		cmd  = cmds.Find("thread", noPrefix)
+		cmd  = cmds.Find("thread", noPrefix).cmdFn
 	)
 
 	err := cmd(nil, callContext{}, "")
@@ -579,47 +580,6 @@ func countOccurrences(s, needle string) int {
 		s = s[idx+len(needle):]
 	}
 	return count
-}
-
-func TestIssue387(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
-		t.Skip("test is not valid on FreeBSD")
-	}
-	// a breakpoint triggering during a 'next' operation will interrupt it
-	test.AllowRecording(t)
-	withTestTerminal("issue387", t, func(term *FakeTerminal) {
-		breakpointHitCount := 0
-		term.MustExec("break dostuff")
-		for {
-			outstr, err := term.Exec("continue")
-			breakpointHitCount += countOccurrences(outstr, "issue387.go:8")
-			t.Log(outstr)
-			if err != nil {
-				if !strings.Contains(err.Error(), "exited") {
-					t.Fatalf("Unexpected error executing 'continue': %v", err)
-				}
-				break
-			}
-
-			pos := 9
-
-			for {
-				outstr = term.MustExec("next")
-				breakpointHitCount += countOccurrences(outstr, "issue387.go:8")
-				t.Log(outstr)
-				if countOccurrences(outstr, fmt.Sprintf("issue387.go:%d", pos)) == 0 {
-					t.Fatalf("did not continue to expected position %d", pos)
-				}
-				pos++
-				if pos >= 11 {
-					break
-				}
-			}
-		}
-		if breakpointHitCount != 10 {
-			t.Fatalf("Breakpoint hit wrong number of times, expected 10 got %d", breakpointHitCount)
-		}
-	})
 }
 
 func listIsAt(t *testing.T, term *FakeTerminal, listcmd string, cur, start, end int) {
@@ -1170,6 +1130,18 @@ func TestContinueUntil(t *testing.T) {
 	})
 }
 
+func TestContinueUntilExistingBreakpoint(t *testing.T) {
+	withTestTerminal("continuetestprog", t, func(term *FakeTerminal) {
+		term.MustExec("break main.main")
+		if runtime.GOARCH != "386" {
+			listIsAt(t, term, "continue main.main", 16, -1, -1)
+		} else {
+			listIsAt(t, term, "continue main.main", 17, -1, -1)
+		}
+		listIsAt(t, term, "continue main.sayhi", 12, -1, -1)
+	})
+}
+
 func TestPrintFormat(t *testing.T) {
 	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
 		term.MustExec("continue")
@@ -1191,4 +1163,91 @@ func TestHitCondBreakpoint(t *testing.T) {
 			t.Fatalf("wrong value of i")
 		}
 	})
+}
+
+func TestBreakpointEditing(t *testing.T) {
+	term := &FakeTerminal{
+		t:    t,
+		Term: New(nil, &config.Config{}),
+	}
+	_ = term
+
+	var testCases = []struct {
+		inBp    *api.Breakpoint
+		inBpStr string
+		edit    string
+		outBp   *api.Breakpoint
+	}{
+		{ // tracepoint -> breakpoint
+			&api.Breakpoint{Tracepoint: true},
+			"trace",
+			"",
+			&api.Breakpoint{}},
+		{ // breakpoint -> tracepoint
+			&api.Breakpoint{Variables: []string{"a"}},
+			"print a",
+			"print a\ntrace",
+			&api.Breakpoint{Tracepoint: true, Variables: []string{"a"}}},
+		{ // add print var
+			&api.Breakpoint{Variables: []string{"a"}},
+			"print a",
+			"print b\nprint a\n",
+			&api.Breakpoint{Variables: []string{"b", "a"}}},
+		{ // add goroutine flag
+			&api.Breakpoint{},
+			"",
+			"goroutine",
+			&api.Breakpoint{Goroutine: true}},
+		{ // remove goroutine flag
+			&api.Breakpoint{Goroutine: true},
+			"goroutine",
+			"",
+			&api.Breakpoint{}},
+		{ // add stack directive
+			&api.Breakpoint{},
+			"",
+			"stack 10",
+			&api.Breakpoint{Stacktrace: 10}},
+		{ // remove stack directive
+			&api.Breakpoint{Stacktrace: 20},
+			"stack 20",
+			"print a",
+			&api.Breakpoint{Variables: []string{"a"}}},
+		{ // add condition
+			&api.Breakpoint{Variables: []string{"a"}},
+			"print a",
+			"print a\ncond a < b",
+			&api.Breakpoint{Variables: []string{"a"}, Cond: "a < b"}},
+		{ // remove condition
+			&api.Breakpoint{Cond: "a < b"},
+			"cond a < b",
+			"",
+			&api.Breakpoint{}},
+		{ // change condition
+			&api.Breakpoint{Cond: "a < b"},
+			"cond a < b",
+			"cond a < 5",
+			&api.Breakpoint{Cond: "a < 5"}},
+		{ // change hitcount condition
+			&api.Breakpoint{HitCond: "% 2"},
+			"cond -hitcount % 2",
+			"cond -hitcount = 2",
+			&api.Breakpoint{HitCond: "= 2"}},
+	}
+
+	for _, tc := range testCases {
+		bp := *tc.inBp
+		bpStr := strings.Join(formatBreakpointAttrs("", &bp, true), "\n")
+		if bpStr != tc.inBpStr {
+			t.Errorf("Expected %q got %q for:\n%#v", tc.inBpStr, bpStr, tc.inBp)
+		}
+		ctx := callContext{Prefix: onPrefix, Scope: api.EvalScope{GoroutineID: -1, Frame: 0, DeferredCall: 0}, Breakpoint: &bp}
+		err := term.cmds.parseBreakpointAttrs(nil, ctx, strings.NewReader(tc.edit))
+		if err != nil {
+			t.Errorf("Unexpected error during edit %q", tc.edit)
+		}
+		if !reflect.DeepEqual(bp, *tc.outBp) {
+			t.Errorf("mismatch after edit\nexpected: %#v\ngot: %#v", tc.outBp, bp)
+		}
+	}
 }

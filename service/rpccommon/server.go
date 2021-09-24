@@ -90,9 +90,13 @@ func NewServer(config *service.Config) *ServerImpl {
 
 // Stop stops the JSON-RPC server.
 func (s *ServerImpl) Stop() error {
+	s.log.Debug("stopping")
 	close(s.stopChan)
 	if s.config.AcceptMulti {
 		s.listener.Close()
+	}
+	if s.debugger.IsRunning() {
+		s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 	}
 	kill := s.config.Debugger.AttachPid == 0
 	return s.debugger.Detach(kill)
@@ -146,7 +150,7 @@ func (s *ServerImpl) Run() error {
 			}
 
 			if s.config.CheckLocalConnUser {
-				if !sameuser.CanAccept(s.listener.Addr(), c.RemoteAddr()) {
+				if !sameuser.CanAccept(s.listener.Addr(), c.LocalAddr(), c.RemoteAddr()) {
 					c.Close()
 					continue
 				}

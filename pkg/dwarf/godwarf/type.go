@@ -787,6 +787,7 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 		case reflect.String:
 			str := new(StringType)
 			t = &str.StructType
+			str.ReflectKind = reflect.String
 			typ = str
 		default:
 			typ = t

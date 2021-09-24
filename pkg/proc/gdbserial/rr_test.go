@@ -164,18 +164,18 @@ func TestReverseBreakpointCounts(t *testing.T) {
 			}
 		}
 
-		t.Logf("TotalHitCount: %d", bp.TotalHitCount)
-		if bp.TotalHitCount != 200 {
-			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d)", bp.TotalHitCount)
+		t.Logf("TotalHitCount: %d", bp.UserBreaklet().TotalHitCount)
+		if bp.UserBreaklet().TotalHitCount != 200 {
+			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d)", bp.UserBreaklet().TotalHitCount)
 		}
 
-		if len(bp.HitCount) != 2 {
-			t.Fatalf("Wrong number of goroutines for breakpoint (%d)", len(bp.HitCount))
+		if len(bp.UserBreaklet().HitCount) != 2 {
+			t.Fatalf("Wrong number of goroutines for breakpoint (%d)", len(bp.UserBreaklet().HitCount))
 		}
 
-		for _, v := range bp.HitCount {
+		for _, v := range bp.UserBreaklet().HitCount {
 			if v != 100 {
-				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.HitCount)
+				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.UserBreaklet().HitCount)
 			}
 		}
 	})

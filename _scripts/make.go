@@ -21,6 +21,9 @@ var Verbose bool
 var NOTimeout bool
 var TestIncludePIE bool
 var TestSet, TestRegex, TestBackend, TestBuildMode string
+var Tags *[]string
+var Architecture string
+var OS string
 
 func NewMakeCommands() *cobra.Command {
 	RootCommand := &cobra.Command{
@@ -34,17 +37,40 @@ func NewMakeCommands() *cobra.Command {
 		Run:   checkCertCmd,
 	})
 
-	RootCommand.AddCommand(&cobra.Command{
+	buildCmd := &cobra.Command{
 		Use:   "build",
 		Short: "Build delve",
 		Run: func(cmd *cobra.Command, args []string) {
 			tagFlag := prepareMacnative()
-			execute("go", "build", tagFlag, buildFlags(), DelveMainPackagePath)
+			if len(*Tags) > 0 {
+				if len(tagFlag) == 0 {
+					tagFlag = "-tags="
+				} else {
+					tagFlag += ","
+				}
+				tagFlag += strings.Join(*Tags, ",")
+			}
+			envflags := []string{}
+			if len(Architecture) > 0 {
+				envflags = append(envflags, "GOARCH="+Architecture)
+			}
+			if len(OS) > 0 {
+				envflags = append(envflags, "GOOS="+OS)
+			}
+			if len(envflags) > 0 {
+				executeEnv(envflags, "go", "build", "-ldflags", "-extldflags -static", tagFlag, buildFlags(), DelveMainPackagePath)
+			} else {
+				execute("go", "build", "-ldflags", "-extldflags -static", tagFlag, buildFlags(), DelveMainPackagePath)
+			}
 			if runtime.GOOS == "darwin" && os.Getenv("CERT") != "" && canMacnative() {
 				codesign("./dlv")
 			}
 		},
-	})
+	}
+	Tags = buildCmd.PersistentFlags().StringArray("tags", []string{}, "Build tags")
+	buildCmd.PersistentFlags().StringVar(&Architecture, "GOARCH", "", "Architecture to build for")
+	buildCmd.PersistentFlags().StringVar(&OS, "GOOS", "", "OS to build for")
+	RootCommand.AddCommand(buildCmd)
 
 	RootCommand.AddCommand(&cobra.Command{
 		Use:   "install",
@@ -154,11 +180,14 @@ func strflatten(v []interface{}) []string {
 	return r
 }
 
-func executeq(cmd string, args ...interface{}) {
+func executeq(env []string, cmd string, args ...interface{}) {
 	x := exec.Command(cmd, strflatten(args)...)
 	x.Stdout = os.Stdout
 	x.Stderr = os.Stderr
 	x.Env = os.Environ()
+	for _, e := range env {
+		x.Env = append(x.Env, e)
+	}
 	err := x.Run()
 	if x.ProcessState != nil && !x.ProcessState.Success() {
 		os.Exit(1)
@@ -170,7 +199,14 @@ func executeq(cmd string, args ...interface{}) {
 
 func execute(cmd string, args ...interface{}) {
 	fmt.Printf("%s %s\n", cmd, strings.Join(quotemaybe(strflatten(args)), " "))
-	executeq(cmd, args...)
+	env := []string{}
+	executeq(env, cmd, args...)
+}
+
+func executeEnv(env []string, cmd string, args ...interface{}) {
+	fmt.Printf("%s %s %s\n", strings.Join(env, " "),
+		cmd, strings.Join(quotemaybe(strflatten(args)), " "))
+	executeq(env, cmd, args...)
 }
 
 func quotemaybe(args []string) []string {
@@ -302,7 +338,8 @@ func testCmd(cmd *cobra.Command, args []string) {
 
 		fmt.Println("\nTesting")
 		os.Setenv("PROCTEST", "lldb")
-		executeq("sudo", "-E", "go", "test", testFlags(), allPackages())
+		env := []string{}
+		executeq(env, "sudo", "-E", "go", "test", testFlags(), allPackages())
 		return
 	}
 
@@ -342,10 +379,30 @@ func testStandard() {
 		fmt.Println("\nTesting RR backend")
 		testCmdIntl("basic", "", "rr", "normal")
 	}
-	if TestIncludePIE && (runtime.GOOS == "linux" || (runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15))) {
-		fmt.Println("\nTesting PIE buildmode, default backend")
-		testCmdIntl("basic", "", "default", "pie")
-		testCmdIntl("core", "", "default", "pie")
+	if TestIncludePIE {
+		dopie := false
+		switch runtime.GOOS {
+		case "linux":
+			dopie = true
+		case "windows":
+			// only on Go 1.15 or later, with CGO_ENABLED and gcc found in path
+			if goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
+				out, err := exec.Command("go", "env", "CGO_ENABLED").CombinedOutput()
+				if err != nil {
+					panic(err)
+				}
+				if strings.TrimSpace(string(out)) == "1" {
+					if _, err = exec.LookPath("gcc"); err == nil {
+						dopie = true
+					}
+				}
+			}
+		}
+		if dopie {
+			fmt.Println("\nTesting PIE buildmode, default backend")
+			testCmdIntl("basic", "", "default", "pie")
+			testCmdIntl("core", "", "default", "pie")
+		}
 	}
 	if runtime.GOOS == "linux" && inpath("rr") {
 		fmt.Println("\nTesting PIE buildmode, RR backend")
@@ -384,7 +441,8 @@ func testCmdIntl(testSet, testRegex, testBackend, testBuildMode string) {
 	}
 
 	if len(testPackages) > 3 {
-		executeq("go", "test", testFlags(), buildFlags(), testPackages, backendFlag, buildModeFlag)
+		env := []string{}
+		executeq(env, "go", "test", testFlags(), buildFlags(), testPackages, backendFlag, buildModeFlag)
 	} else if testRegex != "" {
 		execute("go", "test", testFlags(), buildFlags(), testPackages, "-run="+testRegex, backendFlag, buildModeFlag)
 	} else {

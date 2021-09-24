@@ -4,7 +4,6 @@ Help about logging flags.
 
 ### Synopsis
 
-
 Logging can be enabled by specifying the --log flag and using the
 --log-output flag to select which components should produce logs.
 
@@ -30,6 +29,12 @@ and dap modes.
 
 
 
+### Options
+
+```
+  -h, --help   help for log
+```
+
 ### Options inherited from parent commands
 
 ```
@@ -52,5 +57,6 @@ and dap modes.
 ```
 
 ### SEE ALSO
+
 * [dlv](dlv.md)	 - Delve is a debugger for the Go programming language.
 

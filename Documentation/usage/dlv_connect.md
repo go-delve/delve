@@ -4,11 +4,16 @@ Connect to a headless debug server.
 
 ### Synopsis
 
-
 Connect to a running headless debug server.
 
 ```
-dlv connect addr
+dlv connect addr [flags]
+```
+
+### Options
+
+```
+  -h, --help   help for connect
 ```
 
 ### Options inherited from parent commands
@@ -33,5 +38,6 @@ dlv connect addr
 ```
 
 ### SEE ALSO
+
 * [dlv](dlv.md)	 - Delve is a debugger for the Go programming language.
 
