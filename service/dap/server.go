@@ -1024,6 +1024,8 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 		s.log.Debug("halt returned state: ", exited)
 	}
 	if exited != nil {
+		// TODO(suzmue): log exited error when the process exits, which may have been before
+		// halt was called.
 		s.logToConsole(exited.Error())
 		s.logToConsole("Detaching")
 	} else if killProcess {
