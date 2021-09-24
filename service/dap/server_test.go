@@ -598,7 +598,7 @@ func TestPreSetBreakpoint(t *testing.T) {
 		if len(scopes.Body.Scopes) > 1 {
 			t.Errorf("\ngot  %#v\nwant len(Scopes)=1 (Locals)", scopes)
 		}
-		checkScope(t, scopes, 0, "Locals", 1000)
+		checkScope(t, scopes, 0, "Locals", localsScope)
 
 		client.VariablesRequest(localsScope) // Locals
 		args := client.ExpectVariablesResponse(t)
@@ -1327,7 +1327,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
-					checkScope(t, scopes, 0, "Locals", 1000)
+					checkScope(t, scopes, 0, "Locals", localsScope)
 				},
 				disconnect: false,
 			}, {
@@ -1341,11 +1341,10 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					if len(scopes.Body.Scopes) > 1 {
 						t.Errorf("\ngot  %#v\nwant len(scopes)=1 (Argumes & Locals)", scopes)
 					}
-					checkScope(t, scopes, 0, "Locals", 1000)
+					checkScope(t, scopes, 0, "Locals", localsScope)
 
 					// Locals
-
-					client.VariablesRequest(1000)
+					client.VariablesRequest(localsScope)
 					locals := client.ExpectVariablesResponse(t)
 
 					// reflect.Kind == Bool - see testvariables
@@ -1573,7 +1572,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 }
 
 // TestScopesRequestsOptimized executes to a breakpoint and tests different
-// that the names of the "Locals" and "Arguments" scopes are correctly annotated with
+// that the name of the "Locals" scope is correctly annotated with
 // a warning about debugging an optimized function.
 func TestScopesRequestsOptimized(t *testing.T) {
 	runTestBuildFlags(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
@@ -4667,6 +4666,7 @@ func TestSetVariable(t *testing.T) {
 					// Local variables
 					locals := tester.variables(localsScope)
 
+					// Args of foobar(baz string, bar FooBar)
 					checkVarExact(t, locals, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
 					tester.failSetVariable(localsScope, "bar", `main.FooBar {Baz: 42, Bur: "ipsum"}`, "*ast.CompositeLit not implemented")
 
@@ -4853,6 +4853,7 @@ func TestSetVariableWithCall(t *testing.T) {
 					// Local variables
 					locals := tester.variables(localsScope)
 
+					// Args of foobar(baz string, bar FooBar)
 					checkVarExact(t, locals, 0, "baz", "baz", `"bazburzum"`, "string", noChildren)
 					tester.expectSetVariable(localsScope, "baz", `"BazBurZum"`)
 					tester.evaluate("baz", `"BazBurZum"`, noChildren)
