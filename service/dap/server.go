@@ -1507,6 +1507,11 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 		// TODO(polina): once we allow initialize and attach request while running,
 		// halt before sending initialized event. onConfigurationDone will restart
 		// execution if user requested !stopOnEntry.
+
+		// Enable StepBack controls on supported backends
+		if s.config.Debugger.Backend == "rr" {
+			s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportsStepBack: true}}})
+		}
 	default:
 		s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach",
 			fmt.Sprintf("invalid debug configuration - unsupported 'mode' attribute %q", args.Mode))
