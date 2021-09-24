@@ -36,6 +36,7 @@ func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 		WatchExpr:    bp.WatchExpr,
 		WatchType:    WatchType(bp.WatchType),
 		Addrs:        []uint64{bp.Addr},
+		UserData:     bp.UserData,
 	}
 
 	breaklet := bp.UserBreaklet()

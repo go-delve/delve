@@ -131,6 +131,21 @@ type Server struct {
 	// sendingMu synchronizes writing to net.Conn
 	// to ensure that messages do not get interleaved
 	sendingMu sync.Mutex
+
+	// runningCmd tracks whether the server is running an asyncronous
+	// command that resumes execution, which may not correspond to the actual
+	// running state of the process (e.g. if a command is temporarily interrupted).
+	runningCmd bool
+	runningMu  sync.Mutex
+
+	// haltRequested tracks whether a halt of the program has been requested, which may
+	// not correspond to whether a Halt Request has been sent to the target.
+	haltRequested bool
+	haltMu        sync.Mutex
+
+	// changeStateMu must be held for a request to protect itself from another goroutine
+	// changing the state of the running process at the same time.
+	changeStateMu sync.Mutex
 }
 
 // launchAttachArgs captures arguments from launch/attach request that
@@ -384,7 +399,6 @@ func (s *Server) recoverPanic(request dap.Message) {
 
 func (s *Server) handleRequest(request dap.Message) {
 	defer s.recoverPanic(request)
-
 	jsonmsg, _ := json.Marshal(request)
 	s.log.Debug("[<- from client]", string(jsonmsg))
 
@@ -445,7 +459,7 @@ func (s *Server) handleRequest(request dap.Message) {
 	// the next stop. In addition, the editor itself might block waiting
 	// for these requests to return. We are not aware of any requests
 	// that would benefit from this approach at this time.
-	if s.debugger != nil && s.debugger.IsRunning() {
+	if s.debugger != nil && s.isRunningCmd() {
 		switch request := request.(type) {
 		case *dap.ThreadsRequest:
 			// On start-up, the client requests the baseline of currently existing threads
@@ -460,8 +474,10 @@ func (s *Server) handleRequest(request dap.Message) {
 			}
 			s.send(response)
 		case *dap.SetBreakpointsRequest:
+			s.changeStateMu.Lock()
+			defer s.changeStateMu.Unlock()
 			s.log.Debug("halting execution to set breakpoints")
-			_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+			_, err := s.halt()
 			if err != nil {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
@@ -469,7 +485,7 @@ func (s *Server) handleRequest(request dap.Message) {
 			s.logToConsole("Execution halted to set breakpoints - please resume execution manually")
 			s.onSetBreakpointsRequest(request)
 			// TODO(polina): consider resuming execution here automatically after suppressing
-			// a stop event when an operation in doRunCommand returns. In case that operation
+			// a stop event when an operation in runUntilStopAndNotify returns. In case that operation
 			// was already stopping for a different reason, we would need to examine the state
 			// that is returned to determine if this halt was the cause of the stop or not.
 			// We should stop with an event and not resume if one of the following is true:
@@ -483,8 +499,10 @@ func (s *Server) handleRequest(request dap.Message) {
 			// introduce a new version of halt that skips ClearInternalBreakpoints
 			// in proc.(*Target).Continue, leaving NextInProgress as true.
 		case *dap.SetFunctionBreakpointsRequest:
+			s.changeStateMu.Lock()
+			defer s.changeStateMu.Unlock()
 			s.log.Debug("halting execution to set breakpoints")
-			_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+			_, err := s.halt()
 			if err != nil {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
@@ -719,6 +737,7 @@ func (s *Server) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsSetVariable = true
 	response.Body.SupportsEvaluateForHovers = true
 	response.Body.SupportsClipboardContext = true
+	response.Body.SupportsLogPoints = true
 	// TODO(polina): support these requests in addition to vscode-go feature parity
 	response.Body.SupportsTerminateRequest = false
 	response.Body.SupportsRestartRequest = false
@@ -993,6 +1012,8 @@ func (s *Server) onDisconnectRequest(request *dap.DisconnectRequest) {
 // onDisconnectRequest (run goroutine) and requires holding mu lock.
 // Returns any detach error other than proc.ErrProcessExited.
 func (s *Server) stopDebugSession(killProcess bool) error {
+	s.changeStateMu.Lock()
+	defer s.changeStateMu.Unlock()
 	if s.debugger == nil {
 		return nil
 	}
@@ -1004,7 +1025,7 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 	// To avoid goroutine leaks, we can use a wait group or have the goroutine listen
 	// for a stop signal on a dedicated quit channel at suitable points (use context?).
 	// Additional clean-up might be especially critical when we support multiple clients.
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+	state, err := s.halt()
 	if err == proc.ErrProcessDetached {
 		s.log.Debug("halt returned error: ", err)
 		return nil
@@ -1045,6 +1066,17 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 		}
 	}
 	return err
+}
+
+// halt sends a halt request if the debuggee is running.
+// changeStateMu should be held when calling (*Server).halt.
+func (s *Server) halt() (*api.DebuggerState, error) {
+	s.setHaltRequested(true)
+	// Only send a halt request if the debuggee is running.
+	if s.debugger.IsRunning() {
+		return s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+	}
+	return s.debugger.State(false)
 }
 
 func (s *Server) isNoDebug() bool {
@@ -1095,6 +1127,8 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 		} else {
 			got.Cond = want.Condition
 			got.HitCond = want.HitCondition
+			got.Tracepoint = want.LogMessage != ""
+			got.UserData = want.LogMessage
 			err = s.debugger.AmendBreakpoint(got)
 			bpAdded[reqString] = struct{}{}
 		}
@@ -1122,12 +1156,21 @@ func (s *Server) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 		} else {
 			// Create new breakpoints.
 			got, err = s.debugger.CreateBreakpoint(
-				&api.Breakpoint{File: serverPath, Line: want.Line, Cond: want.Condition, HitCond: want.HitCondition, Name: reqString})
+				&api.Breakpoint{
+					File:       serverPath,
+					Line:       want.Line,
+					Cond:       want.Condition,
+					HitCond:    want.HitCondition,
+					Name:       reqString,
+					Tracepoint: want.LogMessage != "",
+					UserData:   want.LogMessage,
+				})
 			bpAdded[reqString] = struct{}{}
 		}
 
 		updateBreakpointsResponse(breakpoints, i, err, got, clientPath)
 	}
+
 	response := &dap.SetBreakpointsResponse{Response: *newResponse(request.Request)}
 	response.Body.Breakpoints = breakpoints
 
@@ -1300,13 +1343,13 @@ func (s *Server) onSetExceptionBreakpointsRequest(request *dap.SetExceptionBreak
 	s.send(&dap.SetExceptionBreakpointsResponse{Response: *newResponse(request.Request)})
 }
 
-func (s *Server) asyncCommandDone(asyncSetupDone chan struct{}) {
-	if asyncSetupDone != nil {
+func closeIfOpen(ch chan struct{}) {
+	if ch != nil {
 		select {
-		case <-asyncSetupDone:
+		case <-ch:
 			// already closed
 		default:
-			close(asyncSetupDone)
+			close(ch)
 		}
 	}
 }
@@ -1315,8 +1358,8 @@ func (s *Server) asyncCommandDone(asyncSetupDone chan struct{}) {
 // This is an optional request enabled by capability ‘supportsConfigurationDoneRequest’.
 // It gets triggered after all the debug requests that follow initalized event,
 // so the s.debugger is guaranteed to be set.
-func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest, asyncSetupDone chan struct{}) {
-	defer s.asyncCommandDone(asyncSetupDone)
+func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest, allowNextStateChange chan struct{}) {
+	defer closeIfOpen(allowNextStateChange)
 	if s.args.stopOnEntry {
 		e := &dap.StoppedEvent{
 			Event: *newEvent("stopped"),
@@ -1328,17 +1371,17 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
 	if !s.args.stopOnEntry {
-		s.doRunCommand(api.Continue, asyncSetupDone)
+		s.runUntilStopAndNotify(api.Continue, allowNextStateChange)
 	}
 }
 
 // onContinueRequest handles 'continue' request.
 // This is a mandatory request to support.
-func (s *Server) onContinueRequest(request *dap.ContinueRequest, asyncSetupDone chan struct{}) {
+func (s *Server) onContinueRequest(request *dap.ContinueRequest, allowNextStateChange chan struct{}) {
 	s.send(&dap.ContinueResponse{
 		Response: *newResponse(request.Request),
 		Body:     dap.ContinueResponseBody{AllThreadsContinued: true}})
-	s.doRunCommand(api.Continue, asyncSetupDone)
+	s.runUntilStopAndNotify(api.Continue, allowNextStateChange)
 }
 
 func fnName(loc *proc.Location) string {
@@ -1534,23 +1577,23 @@ func (s *Server) onAttachRequest(request *dap.AttachRequest) {
 
 // onNextRequest handles 'next' request.
 // This is a mandatory request to support.
-func (s *Server) onNextRequest(request *dap.NextRequest, asyncSetupDone chan struct{}) {
+func (s *Server) onNextRequest(request *dap.NextRequest, allowNextStateChange chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.NextResponse{Response: *newResponse(request.Request)})
-	s.doStepCommand(api.Next, request.Arguments.ThreadId, asyncSetupDone)
+	s.stepUntilStopAndNotify(api.Next, request.Arguments.ThreadId, allowNextStateChange)
 }
 
 // onStepInRequest handles 'stepIn' request
 // This is a mandatory request to support.
-func (s *Server) onStepInRequest(request *dap.StepInRequest, asyncSetupDone chan struct{}) {
+func (s *Server) onStepInRequest(request *dap.StepInRequest, allowNextStateChange chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepInResponse{Response: *newResponse(request.Request)})
-	s.doStepCommand(api.Step, request.Arguments.ThreadId, asyncSetupDone)
+	s.stepUntilStopAndNotify(api.Step, request.Arguments.ThreadId, allowNextStateChange)
 }
 
 // onStepOutRequest handles 'stepOut' request
 // This is a mandatory request to support.
-func (s *Server) onStepOutRequest(request *dap.StepOutRequest, asyncSetupDone chan struct{}) {
+func (s *Server) onStepOutRequest(request *dap.StepOutRequest, allowNextStateChange chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepOutResponse{Response: *newResponse(request.Request)})
-	s.doStepCommand(api.StepOut, request.Arguments.ThreadId, asyncSetupDone)
+	s.stepUntilStopAndNotify(api.StepOut, request.Arguments.ThreadId, allowNextStateChange)
 }
 
 func (s *Server) sendStepResponse(threadId int, message dap.Message) {
@@ -1575,13 +1618,37 @@ func stoppedGoroutineID(state *api.DebuggerState) (id int) {
 	return id
 }
 
-// doStepCommand is a wrapper around doRunCommand that
-// first switches selected goroutine. asyncSetupDone is
+// stoppedOnBreakpointGoroutineID gets the goroutine id of the first goroutine
+// that is stopped on a real breakpoint, starting with the selected goroutine.
+func (s *Server) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int, *api.Breakpoint) {
+	// Check if the selected goroutine is stopped on a real breakpoint
+	// since we would prefer to use that one.
+	goid := stoppedGoroutineID(state)
+	if g, _ := s.debugger.FindGoroutine(goid); g != nil && g.Thread != nil {
+		if bp := g.Thread.Breakpoint(); bp != nil && bp.Breakpoint != nil && !bp.Breakpoint.Tracepoint {
+			return goid, api.ConvertBreakpoint(bp.Breakpoint)
+		}
+	}
+
+	// Some of the breakpoints may be log points, choose the goroutine
+	// that is not stopped on a tracepoint.
+	for _, th := range state.Threads {
+		if bp := th.Breakpoint; bp != nil {
+			if !bp.Tracepoint {
+				return th.GoroutineID, bp
+			}
+		}
+	}
+	return 0, nil
+}
+
+// stepUntilStopAndNotify is a wrapper around runUntilStopAndNotify that
+// first switches selected goroutine. allowNextStateChange is
 // a channel that will be closed to signal that an
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
-func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan struct{}) {
-	defer s.asyncCommandDone(asyncSetupDone)
+func (s *Server) stepUntilStopAndNotify(command string, threadId int, allowNextStateChange chan struct{}) {
+	defer closeIfOpen(allowNextStateChange)
 	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
 	if err != nil {
 		s.log.Errorf("Error switching goroutines while stepping: %v", err)
@@ -1599,18 +1666,18 @@ func (s *Server) doStepCommand(command string, threadId int, asyncSetupDone chan
 		s.send(stopped)
 		return
 	}
-	s.doRunCommand(command, asyncSetupDone)
+	s.runUntilStopAndNotify(command, allowNextStateChange)
 }
 
 // onPauseRequest handles 'pause' request.
 // This is a mandatory request to support.
 func (s *Server) onPauseRequest(request *dap.PauseRequest) {
-	if s.debugger.IsRunning() {
-		_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
-		if err != nil {
-			s.sendErrorResponse(request.Request, UnableToHalt, "Unable to halt execution", err.Error())
-			return
-		}
+	s.changeStateMu.Lock()
+	defer s.changeStateMu.Unlock()
+	_, err := s.halt()
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToHalt, "Unable to halt execution", err.Error())
+		return
 	}
 	s.send(&dap.PauseResponse{Response: *newResponse(request.Request)})
 	// No need to send any event here.
@@ -2455,19 +2522,19 @@ func (s *Server) onRestartRequest(request *dap.RestartRequest) {
 
 // onStepBackRequest handles 'stepBack' request.
 // This is an optional request enabled by capability ‘supportsStepBackRequest’.
-func (s *Server) onStepBackRequest(request *dap.StepBackRequest, asyncSetupDone chan struct{}) {
+func (s *Server) onStepBackRequest(request *dap.StepBackRequest, allowNextStateChange chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepBackResponse{Response: *newResponse(request.Request)})
-	s.doStepCommand(api.ReverseNext, request.Arguments.ThreadId, asyncSetupDone)
+	s.stepUntilStopAndNotify(api.ReverseNext, request.Arguments.ThreadId, allowNextStateChange)
 }
 
 // onReverseContinueRequest performs a rewind command call up to the previous
 // breakpoint or the start of the process
 // This is an optional request enabled by capability ‘supportsStepBackRequest’.
-func (s *Server) onReverseContinueRequest(request *dap.ReverseContinueRequest, asyncSetupDone chan struct{}) {
+func (s *Server) onReverseContinueRequest(request *dap.ReverseContinueRequest, allowNextStateChange chan struct{}) {
 	s.send(&dap.ReverseContinueResponse{
 		Response: *newResponse(request.Request),
 	})
-	s.doRunCommand(api.Rewind, asyncSetupDone)
+	s.runUntilStopAndNotify(api.Rewind, allowNextStateChange)
 }
 
 // computeEvaluateName finds the named child, and computes its evaluate name.
@@ -2831,19 +2898,65 @@ func processExited(state *api.DebuggerState, err error) bool {
 	_, isexited := err.(proc.ErrProcessExited)
 	return isexited || err == nil && state.Exited
 }
+func (s *Server) setRunningCmd(running bool) {
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
+	s.runningCmd = running
+}
 
-// doRunCommand runs a debugger command until it stops on
+func (s *Server) isRunningCmd() bool {
+	s.runningMu.Lock()
+	defer s.runningMu.Unlock()
+	return s.runningCmd
+}
+
+func (s *Server) setHaltRequested(requested bool) {
+	s.haltMu.Lock()
+	defer s.haltMu.Unlock()
+	s.haltRequested = requested
+}
+
+func (s *Server) checkHaltRequested() bool {
+	s.haltMu.Lock()
+	defer s.haltMu.Unlock()
+	return s.haltRequested
+}
+
+// resumeOnce is a helper function to resume the execution
+// of the target when the program is halted.
+func (s *Server) resumeOnce(command string, allowNextStateChange chan struct{}) (bool, *api.DebuggerState, error) {
+	// No other goroutines should be able to try to resume
+	// or halt execution while this goroutine is resuming
+	// execution, so we do not miss those events.
+	asyncSetupDone := make(chan struct{}, 1)
+	defer closeIfOpen(asyncSetupDone)
+	s.changeStateMu.Lock()
+	go func() {
+		defer s.changeStateMu.Unlock()
+		defer closeIfOpen(allowNextStateChange)
+		<-asyncSetupDone
+	}()
+
+	// There may have been a manual halt while the program was
+	// stopped. If this happened, do not resume execution of
+	// the program.
+	if s.checkHaltRequested() {
+		state, err := s.debugger.State(false)
+		return false, state, err
+	}
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
+	return true, state, err
+}
+
+// runUntilStopAndNotify runs a debugger command until it stops on
 // termination, error, breakpoint, etc, when an appropriate
-// event needs to be sent to the client. asyncSetupDone is
+// event needs to be sent to the client. allowNextStateChange is
 // a channel that will be closed to signal that an
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
-func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
-	// TODO(polina): it appears that debugger.Command doesn't always close
-	// asyncSetupDone (e.g. when having an error next while nexting).
-	// So we should always close it ourselves just in case.
-	defer s.asyncCommandDone(asyncSetupDone)
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
+func (s *Server) runUntilStopAndNotify(command string, allowNextStateChange chan struct{}) {
+	state, err := s.runUntilStop(command, allowNextStateChange)
+
 	if processExited(state, err) {
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		return
@@ -2868,9 +2981,6 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 				state.NextInProgress = false
 			}
 		}
-		// TODO(suzmue): If stopped.Body.ThreadId is not a valid goroutine
-		// then the stopped reason does not show up anywhere in the
-		// vscode ui.
 		stopped.Body.ThreadId = stoppedGoroutineID(state)
 
 		switch stopReason {
@@ -2884,23 +2994,35 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 			stopped.Body.Reason = "data breakpoint"
 		default:
 			stopped.Body.Reason = "breakpoint"
-		}
-		if state.CurrentThread != nil && state.CurrentThread.Breakpoint != nil {
-			switch state.CurrentThread.Breakpoint.Name {
-			case proc.FatalThrow:
-				stopped.Body.Reason = "exception"
-				stopped.Body.Description = "fatal error"
-				stopped.Body.Text, _ = s.throwReason(stopped.Body.ThreadId)
-			case proc.UnrecoveredPanic:
-				stopped.Body.Reason = "exception"
-				stopped.Body.Description = "panic"
-				stopped.Body.Text, _ = s.panicReason(stopped.Body.ThreadId)
+			var bp *api.Breakpoint
+			if stopped.Body.ThreadId, bp = s.stoppedOnBreakpointGoroutineID(state); bp != nil {
+				switch bp.Name {
+				case proc.FatalThrow:
+					stopped.Body.Reason = "exception"
+					stopped.Body.Description = "fatal error"
+					stopped.Body.Text, _ = s.throwReason(stopped.Body.ThreadId)
+				case proc.UnrecoveredPanic:
+					stopped.Body.Reason = "exception"
+					stopped.Body.Description = "panic"
+					stopped.Body.Text, _ = s.panicReason(stopped.Body.ThreadId)
+				}
+				if strings.HasPrefix(bp.Name, functionBpPrefix) {
+					stopped.Body.Reason = "function breakpoint"
+				}
+				stopped.Body.HitBreakpointIds = []int{bp.ID}
 			}
-			if strings.HasPrefix(state.CurrentThread.Breakpoint.Name, functionBpPrefix) {
-				stopped.Body.Reason = "function breakpoint"
-			}
-			stopped.Body.HitBreakpointIds = []int{state.CurrentThread.Breakpoint.ID}
 		}
+
+		// Override the stop reason if there was a manual stop request.
+		// TODO(suzmue): move this logic into the runUntilStop command
+		// so that the stop reason is determined by that function which
+		// has all the context.
+		if stopped.Body.Reason != "exception" && s.checkHaltRequested() {
+			s.log.Debugf("manual halt requested, stop reason %q converted to \"pause\"", stopped.Body.Reason)
+			stopped.Body.Reason = "pause"
+			stopped.Body.HitBreakpointIds = []int{}
+		}
+
 	} else {
 		s.exceptionErr = err
 		s.log.Error("runtime error: ", err)
@@ -2932,6 +3054,79 @@ func (s *Server) doRunCommand(command string, asyncSetupDone chan struct{}) {
 	if state != nil && state.NextInProgress {
 		s.logToConsole("Step interrupted by a breakpoint. Use 'Continue' to resume the original step command.")
 	}
+}
+
+func (s *Server) runUntilStop(command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
+	// Clear any manual stop requests that came in before we started running.
+	s.setHaltRequested(false)
+
+	s.setRunningCmd(true)
+	defer s.setRunningCmd(false)
+
+	var state *api.DebuggerState
+	var err error
+	for s.isRunningCmd() {
+		state, err = resumeOnceAndCheckStop(s, command, allowNextStateChange)
+		command = api.DirectionCongruentContinue
+	}
+	return state, err
+}
+
+// Make this a var so it can be stubbed in testing.
+var resumeOnceAndCheckStop = func(s *Server, command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
+	return s.resumeOnceAndCheckStop(command, allowNextStateChange)
+}
+
+func (s *Server) resumeOnceAndCheckStop(command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
+	resumed, state, err := s.resumeOnce(command, allowNextStateChange)
+	// We should not try to process the log points if the program was not
+	// resumed or there was an error.
+	if !resumed || processExited(state, err) || state == nil || err != nil {
+		s.setRunningCmd(false)
+		return state, err
+	}
+
+	if s.debugger.StopReason() != proc.StopBreakpoint {
+		s.setRunningCmd(false)
+	}
+
+	foundRealBreakpoint := s.handleLogPoints(state)
+	if foundRealBreakpoint {
+		s.setRunningCmd(false)
+	}
+
+	return state, err
+}
+
+func (s *Server) handleLogPoints(state *api.DebuggerState) bool {
+	foundRealBreakpoint := false
+	for _, th := range state.Threads {
+		if bp := th.Breakpoint; bp != nil {
+			logged := s.logBreakpointMessage(bp)
+			if !logged {
+				foundRealBreakpoint = true
+			}
+		}
+	}
+	return foundRealBreakpoint
+}
+
+func (s *Server) logBreakpointMessage(bp *api.Breakpoint) bool {
+	if !bp.Tracepoint {
+		return false
+	}
+	// TODO(suzmue): allow evaluate expressions within log points and
+	// consider adding line and goid info to output.
+	if msg, ok := bp.UserData.(string); ok {
+		s.send(&dap.OutputEvent{
+			Event: *newEvent("output"),
+			Body: dap.OutputEventBody{
+				Category: "stdout",
+				Output:   msg + "\n",
+			},
+		})
+	}
+	return true
 }
 
 func (s *Server) toClientPath(path string) string {

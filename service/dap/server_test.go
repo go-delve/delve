@@ -21,6 +21,7 @@ import (
 	"github.com/go-delve/delve/pkg/logflags"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service"
+	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/dap/daptest"
 	"github.com/go-delve/delve/service/debugger"
 	"github.com/google/go-dap"
@@ -2285,7 +2286,7 @@ func TestSetBreakpoint(t *testing.T) {
 					checkVarExact(t, locals, 0, "i", "i", "0", "int", noChildren) // i == 0
 
 					// Edit the breakpoint to add a condition
-					client.SetConditionalBreakpointsRequest(fixture.Source, []int{8}, map[int]string{8: "i == 3"})
+					client.SetBreakpointsRequestWithArgs(fixture.Source, []int{8}, map[int]string{8: "i == 3"}, nil, nil)
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}})
 
 					// Continue until condition is hit
@@ -2298,7 +2299,7 @@ func TestSetBreakpoint(t *testing.T) {
 					checkVarExact(t, locals, 0, "i", "i", "3", "int", noChildren) // i == 3
 
 					// Edit the breakpoint to remove a condition
-					client.SetConditionalBreakpointsRequest(fixture.Source, []int{8}, map[int]string{8: ""})
+					client.SetBreakpointsRequestWithArgs(fixture.Source, []int{8}, map[int]string{8: ""}, nil, nil)
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}})
 
 					// Continue for one more loop iteration
@@ -2697,6 +2698,210 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 	})
 }
 
+// TestLogPoints executes to a breakpoint and tests that log points
+// send OutputEvents and do not halt program execution.
+func TestLogPoints(t *testing.T) {
+	runTest(t, "callme", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{23},
+			[]onBreakpoint{{
+				// Stop at line 23
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 23)
+					bps := []int{6, 25, 27, 16}
+					logMessages := map[int]string{6: "in callme!", 16: "in callme2!"}
+					client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
+					client.ExpectSetBreakpointsResponse(t)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					for i := 0; i < 5; i++ {
+						se := client.ExpectStoppedEvent(t)
+						if se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
+							t.Errorf("got stopped event = %#v, \nwant Reason=\"breakpoint\" ThreadId=1", se)
+						}
+						checkStop(t, client, 1, "main.main", 25)
+
+						client.ContinueRequest(1)
+						client.ExpectContinueResponse(t)
+
+						oe := client.ExpectOutputEvent(t)
+						if oe.Body.Category != "stdout" || oe.Body.Output != "in callme!\n" {
+							t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"in callme!\n\"", oe)
+						}
+					}
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
+						t.Errorf("got stopped event = %#v, \nwant Reason=\"breakpoint\" ThreadId=1", se)
+					}
+					checkStop(t, client, 1, "main.main", 27)
+
+					client.NextRequest(1)
+					client.ExpectNextResponse(t)
+
+					oe := client.ExpectOutputEvent(t)
+					if oe.Body.Category != "stdout" || oe.Body.Output != "in callme2!\n" {
+						t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"in callme2!\n\"", oe)
+					}
+
+					se = client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "step" || se.Body.ThreadId != 1 {
+						t.Errorf("got stopped event = %#v, \nwant Reason=\"step\" ThreadId=1", se)
+					}
+					checkStop(t, client, 1, "main.main", 28)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+// TestHaltPreventsAutoResume tests that a pause request issued while processing
+// log messages will result in a real stop.
+func TestHaltPreventsAutoResume(t *testing.T) {
+	runTest(t, "callme", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch", // Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{23},
+			[]onBreakpoint{{
+				execute: func() {
+					savedResumeOnce := resumeOnceAndCheckStop
+					defer func() {
+						resumeOnceAndCheckStop = savedResumeOnce
+					}()
+					checkStop(t, client, 1, "main.main", 23)
+					bps := []int{6, 25}
+					logMessages := map[int]string{6: "in callme!"}
+					client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
+					client.ExpectSetBreakpointsResponse(t)
+
+					for i := 0; i < 5; i++ {
+						// Reset the handler to the default behavior.
+						resumeOnceAndCheckStop = savedResumeOnce
+
+						// Expect a pause request while stopped not to interrupt continue.
+						client.PauseRequest(1)
+						client.ExpectPauseResponse(t)
+
+						client.ContinueRequest(1)
+						client.ExpectContinueResponse(t)
+						se := client.ExpectStoppedEvent(t)
+						if se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
+							t.Errorf("got stopped event = %#v, \nwant Reason=\"breakpoint\" ThreadId=1", se)
+						}
+						checkStop(t, client, 1, "main.main", 25)
+
+						pauseDoneChan := make(chan struct{}, 1)
+						outputDoneChan := make(chan struct{}, 1)
+						// Send a halt request when trying to resume the program after being
+						// interrupted. This should allow the log message to be processed,
+						// but keep the process from continuing beyond the line.
+						resumeOnceAndCheckStop = func(s *Server, command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
+							// This should trigger after the log message is sent, but before
+							// execution is resumed.
+							if command == api.DirectionCongruentContinue {
+								go func() {
+									<-outputDoneChan
+									defer close(pauseDoneChan)
+									client.PauseRequest(1)
+									client.ExpectPauseResponse(t)
+								}()
+								// Wait for the pause to be complete.
+								<-pauseDoneChan
+							}
+							return s.resumeOnceAndCheckStop(command, allowNextStateChange)
+						}
+
+						client.ContinueRequest(1)
+						client.ExpectContinueResponse(t)
+						oe := client.ExpectOutputEvent(t)
+						if oe.Body.Category != "stdout" || oe.Body.Output != "in callme!\n" {
+							t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"in callme!\n\"", oe)
+						}
+						// Signal that the output event has been received.
+						close(outputDoneChan)
+						// Wait for the pause to be complete.
+						<-pauseDoneChan
+						se = client.ExpectStoppedEvent(t)
+						if se.Body.Reason != "pause" {
+							t.Errorf("got stopped event = %#v, \nwant Reason=\"pause\"", se)
+						}
+						checkStop(t, client, 1, "main.callme", 6)
+					}
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+// TestConcurrentBreakpointsLogPoints executes to a breakpoint and then tests
+// that a breakpoint set in the main goroutine is hit the correct number of times
+// and log points set in the children goroutines produce the correct number of
+// output events.
+func TestConcurrentBreakpointsLogPoints(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.SkipNow()
+	}
+	runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{20},
+			[]onBreakpoint{{
+				// Stop at line 20
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 20)
+					bps := []int{8, 23}
+					logMessages := map[int]string{8: "hello"}
+					client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
+					client.ExpectSetBreakpointsResponse(t)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					// There may be up to 1 breakpoint and any number of log points that are
+					// hit concurrently. We should get a stopped event everytime the breakpoint
+					// is hit and an output event for each log point hit.
+					var oeCount, seCount int
+					for oeCount < 10 || seCount < 10 {
+						switch m := client.ExpectMessage(t).(type) {
+						case *dap.StoppedEvent:
+							if m.Body.Reason != "breakpoint" || !m.Body.AllThreadsStopped || m.Body.ThreadId != 1 {
+								t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", m)
+							}
+							checkStop(t, client, 1, "main.main", 23)
+							seCount++
+							client.ContinueRequest(1)
+						case *dap.OutputEvent:
+							if m.Body.Category != "stdout" || m.Body.Output != "hello\n" {
+								t.Errorf("\ngot  %#v\nwant Category=\"stdout\" Output=\"hello\"", m)
+							}
+							oeCount++
+						case *dap.ContinueResponse:
+						case *dap.TerminatedEvent:
+							t.Fatalf("\nexpected 10 output events and 10 stopped events, got %d output events and %d stopped events", oeCount, seCount)
+						default:
+							t.Fatalf("Unexpected message type: expect StoppedEvent, OutputEvent, or ContinueResponse, got %#v", m)
+						}
+					}
+					client.ExpectTerminatedEvent(t)
+				},
+				disconnect: false,
+			}})
+	})
+}
+
 func expectSetBreakpointsResponseAndStoppedEvent(t *testing.T, client *daptest.Client) (se *dap.StoppedEvent, br *dap.SetBreakpointsResponse) {
 	t.Helper()
 	var oe *dap.OutputEvent
@@ -2877,7 +3082,7 @@ func TestHitConditionBreakpoints(t *testing.T) {
 			fixture.Source, []int{4},
 			[]onBreakpoint{{
 				execute: func() {
-					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "4"})
+					client.SetBreakpointsRequestWithArgs(fixture.Source, []int{7}, nil, map[int]string{7: "4"}, nil)
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{7, fixture.Source, true, ""}})
 
 					client.ContinueRequest(1)
@@ -2891,7 +3096,7 @@ func TestHitConditionBreakpoints(t *testing.T) {
 					checkVarExact(t, locals, 0, "i", "i", "4", "int", noChildren)
 
 					// Change the hit condition.
-					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "% 2"})
+					client.SetBreakpointsRequestWithArgs(fixture.Source, []int{7}, nil, map[int]string{7: "% 2"}, nil)
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{7, fixture.Source, true, ""}})
 
 					client.ContinueRequest(1)
@@ -2905,11 +3110,11 @@ func TestHitConditionBreakpoints(t *testing.T) {
 					checkVarExact(t, locals, 0, "i", "i", "6", "int", noChildren)
 
 					// Expect an error if an assignment is passed.
-					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "= 2"})
+					client.SetBreakpointsRequestWithArgs(fixture.Source, []int{7}, nil, map[int]string{7: "= 2"}, nil)
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{-1, "", false, ""}})
 
 					// Change the hit condition.
-					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "< 8"})
+					client.SetBreakpointsRequestWithArgs(fixture.Source, []int{7}, nil, map[int]string{7: "< 8"}, nil)
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{7, fixture.Source, true, ""}})
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
