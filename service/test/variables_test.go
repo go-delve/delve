@@ -1286,6 +1286,7 @@ func TestCallFunction(t *testing.T) {
 	var testcases117 = []testCaseCallFunction{
 		{`regabistacktest("one", "two", "three", "four", "five", 4)`, []string{`:string:"onetwo"`, `:string:"twothree"`, `:string:"threefour"`, `:string:"fourfive"`, `:string:"fiveone"`, ":uint8:8"}, nil},
 		{`regabistacktest2(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)`, []string{":int:3", ":int:5", ":int:7", ":int:9", ":int:11", ":int:13", ":int:15", ":int:17", ":int:19", ":int:11"}, nil},
+		{`issue2698.String()`, []string{`:string:"1 2 3 4"`}, nil},
 	}
 
 	withTestProcessArgs("fncall", t, ".", nil, protest.AllNonOptimized, func(p *proc.Target, fixture protest.Fixture) {
