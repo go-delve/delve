@@ -600,7 +600,7 @@ func TestPreSetBreakpoint(t *testing.T) {
 		}
 		checkScope(t, scopes, 0, "Locals", localsScope)
 
-		client.VariablesRequest(localsScope) // Locals
+		client.VariablesRequest(localsScope)
 		args := client.ExpectVariablesResponse(t)
 		checkChildren(t, args, "Locals", 2)
 		checkVarExact(t, args, 0, "y", "y", "0 = 0x0", "uint", noChildren)
@@ -1288,12 +1288,12 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to list locals: unknown frame id 1111\"", erres)
 					}
 
-					client.VariablesRequest(localsScope) // Locals
+					client.VariablesRequest(localsScope)
 					locals := client.ExpectVariablesResponse(t)
 					checkChildren(t, locals, "Locals", 1)
 					checkVarExact(t, locals, -1, "a1", "a1", `"bur"`, "string", noChildren)
 
-					client.VariablesRequest(globalsScope) // Globals
+					client.VariablesRequest(globalsScope)
 					globals := client.ExpectVariablesResponse(t)
 					checkVarExact(t, globals, 0, "p1", "main.p1", "10", "int", noChildren)
 
@@ -1656,7 +1656,7 @@ func TestVariablesLoading(t *testing.T) {
 					client.ScopesRequest(1000)
 					client.ExpectScopesResponse(t)
 
-					client.VariablesRequest(localsScope) // Locals
+					client.VariablesRequest(localsScope)
 					locals := client.ExpectVariablesResponse(t)
 
 					// String partially missing based on LoadConfig.MaxStringLen
@@ -1977,7 +1977,7 @@ func TestVariablesMetadata(t *testing.T) {
 				execute: func() {
 					checkStop(t, client, 1, "main.main", 368)
 
-					client.VariablesRequest(localsScope) // Locals
+					client.VariablesRequest(localsScope)
 					locals := client.ExpectVariablesResponse(t)
 
 					checkNamedChildren := func(ref int, name, typeStr string, vals []string, evaluate bool) {
@@ -2250,7 +2250,7 @@ func TestSetBreakpoint(t *testing.T) {
 					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
 					checkStop(t, client, 1, "main.loop", 8)
-					client.VariablesRequest(localsScope) // Locals
+					client.VariablesRequest(localsScope)
 					locals := client.ExpectVariablesResponse(t)
 					checkVarExact(t, locals, 0, "i", "i", "0", "int", noChildren) // i == 0
 
@@ -2263,7 +2263,7 @@ func TestSetBreakpoint(t *testing.T) {
 					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
 					checkStop(t, client, 1, "main.loop", 8)
-					client.VariablesRequest(localsScope) // Locals
+					client.VariablesRequest(localsScope)
 					locals = client.ExpectVariablesResponse(t)
 					checkVarExact(t, locals, 0, "i", "i", "3", "int", noChildren) // i == 3
 
@@ -2276,7 +2276,7 @@ func TestSetBreakpoint(t *testing.T) {
 					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
 					checkStop(t, client, 1, "main.loop", 8)
-					client.VariablesRequest(localsScope) // Locals
+					client.VariablesRequest(localsScope)
 					locals = client.ExpectVariablesResponse(t)
 					checkVarExact(t, locals, 0, "i", "i", "4", "int", noChildren) // i == 4
 
@@ -3014,7 +3014,7 @@ func TestWorkingDir(t *testing.T) {
 			[]onBreakpoint{{
 				execute: func() {
 					checkStop(t, client, 1, "main.main", 10)
-					client.VariablesRequest(localsScope) // Locals
+					client.VariablesRequest(localsScope)
 					locals := client.ExpectVariablesResponse(t)
 					checkChildren(t, locals, "Locals", 2)
 					for i := range locals.Body.Variables {
@@ -3248,7 +3248,7 @@ func TestVariableValueTruncation(t *testing.T) {
 				execute: func() {
 					checkStop(t, client, 1, "main.main", -1)
 
-					client.VariablesRequest(localsScope) // Locals
+					client.VariablesRequest(localsScope)
 					locals := client.ExpectVariablesResponse(t)
 
 					// Compound variable values may be truncated
@@ -3324,7 +3324,7 @@ func TestVariableLoadingOfLongStrings(t *testing.T) {
 				execute: func() {
 					checkStop(t, client, 1, "main.main", -1)
 
-					client.VariablesRequest(localsScope) // Locals
+					client.VariablesRequest(localsScope)
 					locals := client.ExpectVariablesResponse(t)
 
 					// Limits vary for evaluate requests with different contexts
@@ -4104,7 +4104,7 @@ func checkStop(t *testing.T, client *daptest.Client, thread int, name string, li
 	client.ScopesRequest(1000)
 	client.ExpectScopesResponse(t)
 
-	client.VariablesRequest(localsScope) // Locals
+	client.VariablesRequest(localsScope)
 	client.ExpectVariablesResponse(t)
 }
 
@@ -4468,7 +4468,7 @@ func TestAttachRequest(t *testing.T) {
 				// Stop at line 8
 				execute: func() {
 					checkStop(t, client, 1, "main.loop", 8)
-					client.VariablesRequest(localsScope) // Locals
+					client.VariablesRequest(localsScope)
 					locals := client.ExpectVariablesResponse(t)
 					checkChildren(t, locals, "Locals", 1)
 					checkVarRegex(t, locals, 0, "i", "i", "[0-9]+", "int", noChildren)
