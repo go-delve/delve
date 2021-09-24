@@ -78,7 +78,7 @@ func startDapServer(t *testing.T, serverStopped chan struct{}) (listener net.Lis
 	server := NewServer(&service.Config{
 		Listener:       listener,
 		DisconnectChan: disconnectChan,
-	})
+	}, nil)
 	server.Run()
 	// Give server time to start listening for clients
 	time.Sleep(100 * time.Millisecond)

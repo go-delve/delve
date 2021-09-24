@@ -673,8 +673,8 @@ func TestDap(t *testing.T) {
 	cmd.Wait()
 }
 
-// TestDapReverse verifies that a dap-reverse command can be started and shut down.
-func TestDapReverse(t *testing.T) {
+// TestDapWithClient tests dlv dap --client-addr can be started and shut down.
+func TestDapWithClient(t *testing.T) {
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatalf("cannot setup listener required for testing: %v", err)
@@ -688,7 +688,7 @@ func TestDapReverse(t *testing.T) {
 	buf := &bytes.Buffer{}
 	cmd.Stdin = buf
 	cmd.Stdout = buf
-	assertNoError(cmd.Start(), t, "start reverse dap instance")
+	assertNoError(cmd.Start(), t, "start dlv dap process with --client-addr flag")
 
 	// Wait for the connection.
 	conn, err := listener.Accept()
@@ -696,7 +696,7 @@ func TestDapReverse(t *testing.T) {
 		cmd.Process.Kill() // release the port
 		t.Fatalf("Failed to get connection: %v", err)
 	}
-	t.Log("dlv-reverse dialed in successfully")
+	t.Log("dlv dap process dialed in successfully")
 
 	client := daptest.NewClientFromConn(conn)
 	client.InitializeRequest()

@@ -50,8 +50,7 @@ import (
 // program termination and failed or closed client connection
 // would also result in stopping this single-use server.
 //
-// The DAP server initialized with NewServer
-// operates via the following goroutines:
+// The DAP server operates via the following goroutines:
 //
 // (1) Main goroutine where the server is created via NewServer(),
 // started via Run() and stopped via Stop(). Once the server is
@@ -91,15 +90,11 @@ import (
 // They block on running debugger commands that are interrupted
 // when halt is issued while stopping. At that point these goroutines
 // wrap-up and exit.
-//
-// The DAP server set up using NewReverseServer is a special DAP server,
-// that is bound to a single net.Conn. Once the connection is closed,
-// the server stops.
 type Server struct {
 	// config is all the information necessary to start the debugger and server.
 	config *service.Config
 	// listener is used to accept the client connection.
-	// In reverse mode, this is nil.
+	// When working with a predetermined client, this is nil.
 	listener net.Listener
 	// stopTriggered is closed when the server is Stop()-ed.
 	stopTriggered chan struct{}
@@ -208,32 +203,33 @@ var (
 	maxGoroutines = 1 << 10
 )
 
-// NewServer creates a new DAP Server. It takes an opened Listener
-// via config and assumes its ownership. config.DisconnectChan has to be set;
-// it will be closed by the server when the client fails to connect,
+// NewServer creates a new DAP Server.
+// If the provided config has a net.Listener, the server waits
+// for client's connection using the Listener. The server takes
+// ownership of the Listener object. In this case, conn must be nil.
+//
+// If conn is provided, the server operates only with the
+// supplied Conn. It takes ownership of the Conn object.
+// The config's Listner must be nil.
+//
+// config.DisconnectChan has to be set; it will be closed by
+// the server when the client fails to connect,
 // disconnects or requests shutdown. Once config.DisconnectChan is closed,
 // Server.Stop() must be called to shutdown this single-user server.
-func NewServer(config *service.Config) *Server {
-	return newServer(config, nil)
-}
-
-// NewReverseServer creates a special DAP server that operates in reverse mode.
-// Reverse DAP server is not actually running a TCP server listening on a port,
-// but communicates with the provided net.Conn only for a single debug session.
-func NewReverseServer(config *service.Config, conn net.Conn) *Server {
-	return newServer(config, conn)
-}
-
-func newServer(config *service.Config, conn net.Conn) *Server {
+func NewServer(config *service.Config, conn net.Conn) *Server {
 	logger := logflags.DAPLogger()
-	if config.Listener != nil {
-		logflags.WriteDAPListeningMessage(config.Listener.Addr().String())
-		logger.Debug("DAP server pid = ", os.Getpid())
-	} else if conn != nil {
-		logger.Debug("Reverse DAP server pid = ", os.Getpid())
-	} else {
+	if config.Listener == nil && conn == nil {
 		logger.Fatal("Cannot set up a DAP server without network configuration")
 	}
+	if config.Listener != nil && conn != nil {
+		logger.Fatal("Cannot set up a DAP server with both config.Listener and net.Conn")
+	}
+	if config.Listener != nil {
+		logflags.WriteDAPListeningMessage(config.Listener.Addr().String())
+	} else { // conn != nil
+		logger.Debugf("DAP server connected with client at %s", conn.RemoteAddr())
+	}
+	logger.Debug("DAP server pid = ", os.Getpid())
 
 	return &Server{
 		config:            config,
@@ -341,6 +337,12 @@ func (s *Server) triggerServerStop() {
 // so the editor needs to launch delve only once?
 func (s *Server) Run() {
 	if s.listener == nil {
+		// Server works with a predetermined client
+		// over the network connection this process started.
+		// The same user check is unnecessary because the point of
+		// the same user check is to prevent an unexpected user
+		// from connecting to the server through the open port.
+		// There is no open port in the process running in this mode.
 		go s.serveDAPCodec()
 		return
 	}

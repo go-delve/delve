@@ -462,57 +462,35 @@ func dapCmd(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(os.Stderr, "Warning: program flags ignored with dap; specify via launch/attach request instead\n")
 		}
 
-		var server *dap.Server
 		disconnectChan := make(chan struct{})
-
+		config := &service.Config{
+			DisconnectChan: disconnectChan,
+			Debugger: debugger.Config{
+				Backend:              backend,
+				Foreground:           true, // server always runs without terminal client
+				DebugInfoDirectories: conf.DebugInfoDirectories,
+				CheckGoVersion:       checkGoVersion,
+			},
+			CheckLocalConnUser: checkLocalConnUser,
+		}
+		var conn net.Conn
 		if dapClientAddr == "" {
 			listener, err := net.Listen("tcp", addr)
 			if err != nil {
 				fmt.Printf("couldn't start listener: %s\n", err)
 				return 1
 			}
-			server = dap.NewServer(&service.Config{
-				Listener:       listener,
-				DisconnectChan: disconnectChan,
-				Debugger: debugger.Config{
-					Backend:              backend,
-					Foreground:           headless && tty == "",
-					DebugInfoDirectories: conf.DebugInfoDirectories,
-					CheckGoVersion:       checkGoVersion,
-				},
-				CheckLocalConnUser: checkLocalConnUser,
-			})
-
-			server := dap.NewServer(&service.Config{
-				Listener:       listener,
-				DisconnectChan: disconnectChan,
-				Debugger: debugger.Config{
-					Backend:              backend,
-					Foreground:           true, // server always runs without terminal client
-					DebugInfoDirectories: conf.DebugInfoDirectories,
-					CheckGoVersion:       checkGoVersion,
-				},
-				CheckLocalConnUser: checkLocalConnUser,
-			})
-			defer server.Stop()
-		} else { // reverse mode
-			headless = true // TODO(github.com/go-delve/delve/issues/2552): consider the same for the normal mode.
-
-			conn, err := net.Dial("tcp", dapClientAddr)
+			config.Listener = listener
+		} else { // with a predetermined client.
+			var err error
+			conn, err = net.Dial("tcp", dapClientAddr)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to connect to the DAP client: %v\n", err)
 				return 1
 			}
-			server = dap.NewReverseServer(&service.Config{
-				DisconnectChan: disconnectChan,
-				Debugger: debugger.Config{
-					Backend:              backend,
-					Foreground:           true, // server always runs without terminal client
-					DebugInfoDirectories: conf.DebugInfoDirectories,
-					CheckGoVersion:       checkGoVersion,
-				},
-			}, conn)
 		}
+
+		server := dap.NewServer(config, conn)
 		defer server.Stop()
 		server.Run()
 		waitForDisconnectSignal(disconnectChan)

@@ -31,13 +31,8 @@ dlv dap [flags]
 ### Options
 
 ```
-  -h, --help   help for dap
-```
-
-### Options
-
-```
       --client-addr string   host:port where the DAP client is waiting for the DAP server to dial in
+  -h, --help                 help for dap
 ```
 
 ### Options inherited from parent commands
