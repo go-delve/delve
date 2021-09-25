@@ -136,6 +136,14 @@ func writeListeningMessage(server, addr string) {
 	}
 }
 
+func WriteError(msg string) {
+	if logOut != nil {
+		fmt.Fprintln(logOut, msg)
+	} else {
+		fmt.Fprintln(os.Stderr, msg)
+	}
+}
+
 var errLogstrWithoutLog = errors.New("--log-output specified without --log")
 
 // Setup sets debugger flags based on the contents of logstr.

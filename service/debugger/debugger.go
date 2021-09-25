@@ -223,9 +223,6 @@ func (d *Debugger) canRestart() bool {
 }
 
 func (d *Debugger) checkGoVersion() error {
-	if !d.config.CheckGoVersion {
-		return nil
-	}
 	if d.isRecording() {
 		// do not do anything if we are still recording
 		return nil
@@ -234,7 +231,7 @@ func (d *Debugger) checkGoVersion() error {
 	if producer == "" {
 		return nil
 	}
-	return goversion.Compatible(producer)
+	return goversion.Compatible(producer, !d.config.CheckGoVersion)
 }
 
 func (d *Debugger) TargetGoVersion() string {
