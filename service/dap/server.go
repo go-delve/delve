@@ -483,20 +483,6 @@ func (s *Server) handleRequest(request dap.Message) {
 				return
 			}
 			s.onSetBreakpointsRequest(request)
-			// TODO(polina): consider resuming execution here automatically after suppressing
-			// a stop event when an operation in runUntilStopAndNotify returns. In case that operation
-			// was already stopping for a different reason, we would need to examine the state
-			// that is returned to determine if this halt was the cause of the stop or not.
-			// We should stop with an event and not resume if one of the following is true:
-			// - StopReason is anything but manual
-			// - Any thread has a breakpoint or CallReturn set
-			// - NextInProgress is false and the last command sent by the user was: next,
-			//   step, stepOut, reverseNext, reverseStep or reverseStepOut
-			// Otherwise, we can skip the stop event and resume the temporarily
-			// interrupted process execution with api.DirectionCongruentContinue.
-			// For this to apply in cases other than api.Continue, we would also need to
-			// introduce a new version of halt that skips ClearInternalBreakpoints
-			// in proc.(*Target).Continue, leaving NextInProgress as true.
 		case *dap.SetFunctionBreakpointsRequest:
 			s.changeStateMu.Lock()
 			defer s.changeStateMu.Unlock()
@@ -1068,8 +1054,8 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 
 // halt sends a halt request if the debuggee is running.
 // changeStateMu should be held when calling (*Server).halt.
-func (s *Server) halt(tempHalt bool) (*api.DebuggerState, error) {
-	if !tempHalt {
+func (s *Server) halt(shouldResume bool) (*api.DebuggerState, error) {
+	if !shouldResume {
 		s.setHaltRequested(true)
 	}
 	// Only send a halt request if the debuggee is running.
