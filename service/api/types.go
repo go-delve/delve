@@ -593,7 +593,7 @@ const (
 	StacktraceG
 )
 
-// ImportPathToDirectoryPath maps an import path to a directory path.
+// PackageBuildInfo maps an import path to a directory path.
 type PackageBuildInfo struct {
 	ImportPath    string
 	DirectoryPath string

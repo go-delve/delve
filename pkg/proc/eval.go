@@ -321,6 +321,7 @@ func (scope *EvalScope) setValue(dstv, srcv *Variable, srcExpr string) error {
 	}
 
 	if srcv.Unreadable != nil {
+		//lint:ignore ST1005 backwards compatibility
 		return fmt.Errorf("Expression \"%s\" is unreadable: %v", srcExpr, srcv.Unreadable)
 	}
 
@@ -392,10 +393,12 @@ func (scope *EvalScope) SetVariable(name, value string) error {
 	}
 
 	if xv.Addr == 0 {
+		//lint:ignore ST1005 backwards compatibility
 		return fmt.Errorf("Can not assign to \"%s\"", name)
 	}
 
 	if xv.Unreadable != nil {
+		//lint:ignore ST1005 backwards compatibility
 		return fmt.Errorf("Expression \"%s\" is unreadable: %v", name, xv.Unreadable)
 	}
 
@@ -701,7 +704,7 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 	case *ast.CallExpr:
 		if len(node.Args) == 1 {
 			v, err := scope.evalTypeCast(node)
-			if err == nil || err != reader.TypeNotFoundErr {
+			if err == nil || err != reader.ErrTypeNotFound {
 				return v, err
 			}
 		}

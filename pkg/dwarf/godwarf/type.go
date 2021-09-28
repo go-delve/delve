@@ -529,7 +529,7 @@ func (t *UnsupportedType) stringIntl(recCheck) string {
 
 func (t *UnsupportedType) String() string { return t.stringIntl(nil) }
 
-// Type reads the type at off in the DWARF ``info'' section.
+// ReadType reads the type at off in the DWARF ``info'' section.
 func ReadType(d *dwarf.Data, index int, off dwarf.Offset, typeCache map[dwarf.Offset]Type) (Type, error) {
 	typ, err := readType(d, "info", d.Reader(), off, typeCache, nil)
 	if typ != nil {

@@ -724,7 +724,7 @@ func (t *Target) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
 	return bp, nil
 }
 
-// ClearInternalBreakpoints removes all stepping breakpoints from the map,
+// ClearSteppingBreakpoints removes all stepping breakpoints from the map,
 // calling clearBreakpoint on each one.
 func (t *Target) ClearSteppingBreakpoints() error {
 	bpmap := t.Breakpoints()

@@ -158,7 +158,7 @@ func (dbp *Target) Continue() error {
 				if !arch.BreakInstrMovesPC() {
 					bpsize := arch.BreakpointSize()
 					bp := make([]byte, bpsize)
-					_, err = dbp.Memory().ReadMemory(bp, loc.PC)
+					dbp.Memory().ReadMemory(bp, loc.PC)
 					if bytes.Equal(bp, arch.BreakpointInstruction()) {
 						setPC(curthread, loc.PC+uint64(bpsize))
 					}
@@ -807,6 +807,7 @@ func setStepIntoBreakpoint(dbp *Target, curfn *Function, text []AsmInstruction, 
 
 func allowDuplicateBreakpoint(bp *Breakpoint, err error) (*Breakpoint, error) {
 	if err != nil {
+		//lint:ignore S1020 this is clearer
 		if _, isexists := err.(BreakpointExistsError); isexists {
 			return bp, nil
 		}
