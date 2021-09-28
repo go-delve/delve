@@ -291,7 +291,7 @@ func (c *Client) NextRequest(thread int) {
 	c.send(request)
 }
 
-// NextRequest sends a 'next' request.
+// NextInstructionRequest sends a 'next' request with granularity 'instruction'.
 func (c *Client) NextInstructionRequest(thread int) {
 	request := &dap.NextRequest{Request: *c.newRequest("next")}
 	request.Arguments.ThreadId = thread
@@ -306,7 +306,7 @@ func (c *Client) StepInRequest(thread int) {
 	c.send(request)
 }
 
-// NextRequest sends a 'next' request.
+// StepInInstructionRequest sends a 'stepIn' request with granularity 'instruction'.
 func (c *Client) StepInInstructionRequest(thread int) {
 	request := &dap.StepInRequest{Request: *c.newRequest("stepIn")}
 	request.Arguments.ThreadId = thread
@@ -321,7 +321,7 @@ func (c *Client) StepOutRequest(thread int) {
 	c.send(request)
 }
 
-// StepOutRequest sends a 'stepOut' request.
+// StepOutInstructionRequest sends a 'stepOut' request with granularity 'instruction'.
 func (c *Client) StepOutInstructionRequest(thread int) {
 	request := &dap.StepOutRequest{Request: *c.newRequest("stepOut")}
 	request.Arguments.ThreadId = thread

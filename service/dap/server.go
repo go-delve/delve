@@ -3106,6 +3106,11 @@ func (s *Server) resumeOnceAndCheckStop(command string, allowNextStateChange cha
 		s.setRunningCmd(false)
 	}
 
+	// Stepping a single instruction will never require continuing again.
+	if command == api.StepInstruction || command == api.ReverseStepInstruction {
+		s.setRunningCmd(false)
+	}
+
 	return state, err
 }
 
