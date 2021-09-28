@@ -11,6 +11,7 @@ import (
 	sys "golang.org/x/sys/unix"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/amd64util"
 )
 
 type waitStatus sys.WaitStatus
@@ -121,14 +122,6 @@ func (t *nativeThread) ReadMemory(data []byte, addr uint64) (n int, err error) {
 	return n, err
 }
 
-func (t *nativeThread) writeHardwareBreakpoint(addr uint64, wtype proc.WatchType, idx uint8) error {
+func (t *nativeThread) withDebugRegisters(f func(*amd64util.DebugRegisters) error) error {
 	return proc.ErrHWBreakUnsupported
-}
-
-func (t *nativeThread) clearHardwareBreakpoint(addr uint64, wtype proc.WatchType, idx uint8) error {
-	return proc.ErrHWBreakUnsupported
-}
-
-func (t *nativeThread) findHardwareBreakpoint() (*proc.Breakpoint, error) {
-	return nil, nil
 }

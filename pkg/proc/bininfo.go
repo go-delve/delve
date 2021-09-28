@@ -246,15 +246,15 @@ func (e *ErrUnsupportedArch) Error() string {
 	var supportArchs []cpuArch
 	switch e.os {
 	case "linux":
-		for linuxArch, _ := range supportedLinuxArch {
+		for linuxArch := range supportedLinuxArch {
 			supportArchs = append(supportArchs, linuxArch)
 		}
 	case "windows":
-		for windowArch, _ := range supportedWindowsArch {
+		for windowArch := range supportedWindowsArch {
 			supportArchs = append(supportArchs, windowArch)
 		}
 	case "darwin":
-		for darwinArch, _ := range supportedDarwinArch {
+		for darwinArch := range supportedDarwinArch {
 			supportArchs = append(supportArchs, darwinArch)
 		}
 	}
@@ -1265,12 +1265,10 @@ func (bi *BinaryInfo) loadSymbolName(image *Image, file *elf.File, wg *sync.Wait
 		bi.SymNames = make(map[uint64]*elf.Symbol)
 	}
 	symSecs, _ := file.Symbols()
-	if symSecs != nil {
-		for _, symSec := range symSecs {
-			if symSec.Info == _STT_FUNC { // TODO(chainhelen), need to parse others types.
-				s := symSec
-				bi.SymNames[symSec.Value+image.StaticBase] = &s
-			}
+	for _, symSec := range symSecs {
+		if symSec.Info == _STT_FUNC { // TODO(chainhelen), need to parse others types.
+			s := symSec
+			bi.SymNames[symSec.Value+image.StaticBase] = &s
 		}
 	}
 }
@@ -1599,7 +1597,7 @@ func (bi *BinaryInfo) macOSDebugFrameBugWorkaround() {
 func (bi *BinaryInfo) findType(name string) (godwarf.Type, error) {
 	ref, found := bi.types[name]
 	if !found {
-		return nil, reader.TypeNotFoundErr
+		return nil, reader.ErrTypeNotFound
 	}
 	image := bi.Images[ref.imageIndex]
 	return godwarf.ReadType(image.dwarf, ref.imageIndex, ref.offset, image.typeCache)

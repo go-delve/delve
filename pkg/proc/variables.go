@@ -1478,6 +1478,7 @@ func (v *Variable) loadSliceInfo(t *godwarf.SliceType) {
 				// Dereference array type to get value type
 				ptrType, ok := f.Type.(*godwarf.PtrType)
 				if !ok {
+					//lint:ignore ST1005 backwards compatibility
 					v.Unreadable = fmt.Errorf("Invalid type %s in slice array", f.Type)
 					return
 				}
@@ -1566,6 +1567,7 @@ func (v *Variable) loadArrayValues(recurseLevel int, cfg LoadConfig) {
 		return
 	}
 	if v.Len < 0 {
+		//lint:ignore ST1005 backwards compatibility
 		v.Unreadable = errors.New("Negative array length")
 		return
 	}
@@ -2240,7 +2242,7 @@ func (v *Variable) ConstDescr() string {
 	if ctyp == nil {
 		return ""
 	}
-	if typename := v.DwarfType.Common().Name; strings.Index(typename, ".") < 0 || strings.HasPrefix(typename, "C.") {
+	if typename := v.DwarfType.Common().Name; !strings.Contains(typename, ".") || strings.HasPrefix(typename, "C.") {
 		// only attempt to use constants for user defined type, otherwise every
 		// int variable with value 1 will be described with os.SEEK_CUR and other
 		// similar problems.
@@ -2382,9 +2384,7 @@ func (cm constantsMap) Get(typ godwarf.Type) *constantType {
 		ctyp.initialized = true
 		sort.Sort(constantValuesByValue(ctyp.values))
 		for i := range ctyp.values {
-			if strings.HasPrefix(ctyp.values[i].name, typepkg) {
-				ctyp.values[i].name = ctyp.values[i].name[len(typepkg):]
-			}
+			ctyp.values[i].name = strings.TrimPrefix(ctyp.values[i].name, typepkg)
 			if popcnt(uint64(ctyp.values[i].value)) == 1 {
 				ctyp.values[i].singleBit = true
 			}

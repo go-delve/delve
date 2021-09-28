@@ -11,7 +11,7 @@ require (
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/mattn/go-colorable v0.0.9
 	github.com/mattn/go-isatty v0.0.3
-	github.com/peterh/liner v0.0.0-20170317030525-88609521dc4b
+	github.com/peterh/liner v1.2.1
 	github.com/sirupsen/logrus v1.6.0
 	github.com/spf13/cobra v1.1.3
 	go.starlark.net v0.0.0-20200821142938-949cc6f4b097

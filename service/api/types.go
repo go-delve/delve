@@ -121,6 +121,8 @@ type Breakpoint struct {
 	TotalHitCount uint64 `json:"totalHitCount"`
 	// Disabled flag, signifying the state of the breakpoint
 	Disabled bool `json:"disabled"`
+
+	UserData interface{} `json:"-"`
 }
 
 // ValidBreakpointName returns an error if
@@ -591,7 +593,7 @@ const (
 	StacktraceG
 )
 
-// ImportPathToDirectoryPath maps an import path to a directory path.
+// PackageBuildInfo maps an import path to a directory path.
 type PackageBuildInfo struct {
 	ImportPath    string
 	DirectoryPath string

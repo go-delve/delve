@@ -59,7 +59,7 @@ var (
 
 func (i Arch) String() string {
 	switch {
-	case 0 <= i && i <= 10:
+	case i <= 10:
 		return _Arch_name_0[_Arch_index_0[i]:_Arch_index_0[i+1]]
 	case i == 12:
 		return _Arch_name_1

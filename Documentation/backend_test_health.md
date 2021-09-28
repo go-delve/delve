@@ -25,7 +25,6 @@ Tests skipped by each supported backend:
 	* 2 upstream issue - https://github.com/golang/go/issues/29322
 * rr skipped = 3
 	* 3 not implemented
-* windows skipped = 5
+* windows skipped = 2
 	* 1 broken
-	* 3 not implemented
 	* 1 upstream issue

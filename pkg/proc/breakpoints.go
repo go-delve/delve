@@ -60,6 +60,7 @@ type Breakpoint struct {
 	Variables   []string // Variables to evaluate
 	LoadArgs    *LoadConfig
 	LoadLocals  *LoadConfig
+	UserData    interface{} // Any additional information about the breakpoint
 
 	// ReturnInfo describes how to collect return variables when this
 	// breakpoint is hit as a return breakpoint.
@@ -723,7 +724,7 @@ func (t *Target) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
 	return bp, nil
 }
 
-// ClearInternalBreakpoints removes all stepping breakpoints from the map,
+// ClearSteppingBreakpoints removes all stepping breakpoints from the map,
 // calling clearBreakpoint on each one.
 func (t *Target) ClearSteppingBreakpoints() error {
 	bpmap := t.Breakpoints()
