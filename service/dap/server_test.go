@@ -2274,7 +2274,7 @@ func TestSetBreakpoint(t *testing.T) {
 
 					// Set another breakpoint inside the loop in loop(), twice to trigger error
 					client.SetBreakpointsRequest(fixture.Source, []int{8, 8})
-					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}, {-1, "", false, "breakpoint exists"}})
+					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}, {-1, "", false, "breakpoint already exists"}})
 
 					// Continue into the loop
 					client.ContinueRequest(1)
@@ -2401,7 +2401,7 @@ func TestSetInstructionBreakpoint(t *testing.T) {
 					// Set two breakpoints and expect an error on the second one.
 					client.SetInstructionBreakpointsRequest([]dap.InstructionBreakpoint{{InstructionReference: pc8}, {InstructionReference: pc8}})
 					bps = client.ExpectSetInstructionBreakpointsResponse(t).Body.Breakpoints
-					checkBreakpoints(t, []Breakpoint{{line: 8, path: fixture.Source, verified: true}, {line: -1, path: "", verified: false, msgPrefix: "breakpoint name already exists"}}, bps)
+					checkBreakpoints(t, []Breakpoint{{line: 8, path: fixture.Source, verified: true}, {line: -1, path: "", verified: false, msgPrefix: "breakpoint already exists"}}, bps)
 
 					// Add a condition
 					client.SetInstructionBreakpointsRequest([]dap.InstructionBreakpoint{{InstructionReference: pc8, Condition: "i == 100"}})
@@ -2416,7 +2416,6 @@ func TestSetInstructionBreakpoint(t *testing.T) {
 					client.VariablesRequest(1001) // Locals
 					locals := client.ExpectVariablesResponse(t)
 					checkVarExact(t, locals, 0, "i", "i", "100", "int", noChildren) // i == 100
-
 				},
 				// The program has an infinite loop, so we must kill it by disconnecting.
 				disconnect: true,
