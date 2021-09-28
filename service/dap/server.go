@@ -477,12 +477,11 @@ func (s *Server) handleRequest(request dap.Message) {
 			s.changeStateMu.Lock()
 			defer s.changeStateMu.Unlock()
 			s.log.Debug("halting execution to set breakpoints")
-			_, err := s.halt()
+			_, err := s.halt(true)
 			if err != nil {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
 			}
-			s.logToConsole("Execution halted to set breakpoints - please resume execution manually")
 			s.onSetBreakpointsRequest(request)
 			// TODO(polina): consider resuming execution here automatically after suppressing
 			// a stop event when an operation in runUntilStopAndNotify returns. In case that operation
@@ -502,12 +501,11 @@ func (s *Server) handleRequest(request dap.Message) {
 			s.changeStateMu.Lock()
 			defer s.changeStateMu.Unlock()
 			s.log.Debug("halting execution to set breakpoints")
-			_, err := s.halt()
+			_, err := s.halt(true)
 			if err != nil {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
 			}
-			s.logToConsole("Execution halted to set breakpoints - please resume execution manually")
 			s.onSetFunctionBreakpointsRequest(request)
 		default:
 			r := request.(dap.RequestMessage).GetRequest()
@@ -1025,7 +1023,7 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 	// To avoid goroutine leaks, we can use a wait group or have the goroutine listen
 	// for a stop signal on a dedicated quit channel at suitable points (use context?).
 	// Additional clean-up might be especially critical when we support multiple clients.
-	state, err := s.halt()
+	state, err := s.halt(false)
 	if err == proc.ErrProcessDetached {
 		s.log.Debug("halt returned error: ", err)
 		return nil
@@ -1070,8 +1068,10 @@ func (s *Server) stopDebugSession(killProcess bool) error {
 
 // halt sends a halt request if the debuggee is running.
 // changeStateMu should be held when calling (*Server).halt.
-func (s *Server) halt() (*api.DebuggerState, error) {
-	s.setHaltRequested(true)
+func (s *Server) halt(tempHalt bool) (*api.DebuggerState, error) {
+	if !tempHalt {
+		s.setHaltRequested(true)
+	}
 	// Only send a halt request if the debuggee is running.
 	if s.debugger.IsRunning() {
 		return s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
@@ -1674,7 +1674,7 @@ func (s *Server) stepUntilStopAndNotify(command string, threadId int, allowNextS
 func (s *Server) onPauseRequest(request *dap.PauseRequest) {
 	s.changeStateMu.Lock()
 	defer s.changeStateMu.Unlock()
-	_, err := s.halt()
+	_, err := s.halt(false)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToHalt, "Unable to halt execution", err.Error())
 		return
@@ -3086,12 +3086,18 @@ func (s *Server) resumeOnceAndCheckStop(command string, allowNextStateChange cha
 		return state, err
 	}
 
-	if s.debugger.StopReason() != proc.StopBreakpoint {
-		s.setRunningCmd(false)
-	}
-
 	foundRealBreakpoint := s.handleLogPoints(state)
-	if foundRealBreakpoint {
+
+	switch s.debugger.StopReason() {
+	case proc.StopBreakpoint:
+		if foundRealBreakpoint {
+			s.setRunningCmd(false)
+		}
+	case proc.StopManual:
+		if s.checkHaltRequested() { // Make sure a real manual stop was requested.
+			s.setRunningCmd(false)
+		}
+	default:
 		s.setRunningCmd(false)
 	}
 
