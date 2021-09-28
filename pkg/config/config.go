@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/user"
 	"path"
@@ -138,7 +137,7 @@ func LoadConfig() *Config {
 		}
 	}()
 
-	data, err := ioutil.ReadAll(f)
+	data, err := io.ReadAll(f)
 	if err != nil {
 		fmt.Printf("Unable to read config data: %v.", err)
 		return &Config{}

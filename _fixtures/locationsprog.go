@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 )
 
 type SomeType struct {
@@ -34,7 +34,7 @@ func main() {
 	fmt.Printf("%s %s %v\n", a.String(), b.String(), i)
 	a.SomeFunction()
 	anotherFunction()
-	ioutil.ReadFile("nonexistent.file.txt")
+	os.ReadFile("nonexistent.file.txt")
 }
 
 var amap map[string]func()

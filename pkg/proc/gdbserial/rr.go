@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -45,7 +44,7 @@ func RecordAsync(cmd []string, wd string, quiet bool, redirects [3]string) (run 
 
 	tracedirChan := make(chan string)
 	go func() {
-		bs, _ := ioutil.ReadAll(rfd)
+		bs, _ := io.ReadAll(rfd)
 		tracedirChan <- strings.TrimSpace(string(bs))
 	}()
 
@@ -184,7 +183,7 @@ func checkRRAvailable() error {
 	}
 
 	// Check that /proc/sys/kernel/perf_event_paranoid doesn't exist or is <= 1.
-	buf, err := ioutil.ReadFile("/proc/sys/kernel/perf_event_paranoid")
+	buf, err := os.ReadFile("/proc/sys/kernel/perf_event_paranoid")
 	if err == nil {
 		perfEventParanoid, _ := strconv.Atoi(strings.TrimSpace(string(buf)))
 		if perfEventParanoid > 1 {

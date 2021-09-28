@@ -8,7 +8,7 @@ import (
 	"go/ast"
 	"go/constant"
 	"go/token"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"net"
 	"net/http"
@@ -2840,7 +2840,7 @@ func getg(goid int, gs []*proc.G) *proc.G {
 
 func TestAttachDetach(t *testing.T) {
 	if testBackend == "lldb" && runtime.GOOS == "linux" {
-		bs, _ := ioutil.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
+		bs, _ := os.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
 		if bs == nil || strings.TrimSpace(string(bs)) != "0" {
 			t.Logf("can not run TestAttachDetach: %v\n", bs)
 			return
@@ -2905,7 +2905,7 @@ func TestAttachDetach(t *testing.T) {
 		// seems to be a bug with debugserver.
 		resp, err := http.Get("http://127.0.0.1:9191/nobp")
 		assertNoError(err, t, "Page request after detach")
-		bs, err := ioutil.ReadAll(resp.Body)
+		bs, err := io.ReadAll(resp.Body)
 		assertNoError(err, t, "Reading /nobp page")
 		if out := string(bs); !strings.Contains(out, "hello, world!") {
 			t.Fatalf("/nobp page does not contain \"hello, world!\": %q", out)
@@ -3139,7 +3139,7 @@ func TestShadowedFlag(t *testing.T) {
 
 func TestAttachStripped(t *testing.T) {
 	if testBackend == "lldb" && runtime.GOOS == "linux" {
-		bs, _ := ioutil.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
+		bs, _ := os.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
 		if bs == nil || strings.TrimSpace(string(bs)) != "0" {
 			t.Logf("can not run TestAttachStripped: %v\n", bs)
 			return

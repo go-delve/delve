@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -169,14 +168,14 @@ func Attach(pid int, debugInfoDirs []string) (*proc.Target, error) {
 }
 
 func initialize(dbp *nativeProcess) error {
-	comm, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/comm", dbp.pid))
+	comm, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", dbp.pid))
 	if err == nil {
 		// removes newline character
 		comm = bytes.TrimSuffix(comm, []byte("\n"))
 	}
 
 	if comm == nil || len(comm) <= 0 {
-		stat, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/stat", dbp.pid))
+		stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", dbp.pid))
 		if err != nil {
 			return fmt.Errorf("could not read proc stat: %v", err)
 		}
@@ -697,7 +696,7 @@ func (dbp *nativeProcess) detach(kill bool) error {
 // EntryPoint will return the process entry point address, useful for
 // debugging PIEs.
 func (dbp *nativeProcess) EntryPoint() (uint64, error) {
-	auxvbuf, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/auxv", dbp.pid))
+	auxvbuf, err := os.ReadFile(fmt.Sprintf("/proc/%d/auxv", dbp.pid))
 	if err != nil {
 		return 0, fmt.Errorf("could not read auxiliary vector: %v", err)
 	}

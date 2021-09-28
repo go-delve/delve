@@ -8,7 +8,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"runtime"
 	"testing"
@@ -27,7 +26,7 @@ func slurpGzip(path string) ([]byte, error) {
 		return nil, err
 	}
 	defer gzin.Close()
-	return ioutil.ReadAll(gzin)
+	return io.ReadAll(gzin)
 }
 
 func TestGrafana(t *testing.T) {

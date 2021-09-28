@@ -3,7 +3,7 @@ package frame
 import (
 	"bytes"
 	"encoding/binary"
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 )
@@ -47,7 +47,7 @@ func BenchmarkParse(b *testing.B) {
 	}
 	defer f.Close()
 
-	data, err := ioutil.ReadAll(f)
+	data, err := io.ReadAll(f)
 	if err != nil {
 		b.Fatal(err)
 	}

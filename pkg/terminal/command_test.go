@@ -3,7 +3,6 @@ package terminal
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -52,7 +51,7 @@ type FakeTerminal struct {
 const logCommandOutput = false
 
 func (ft *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
-	outfh, err := ioutil.TempFile("", "cmdtestout")
+	outfh, err := os.CreateTemp("", "cmdtestout")
 	if err != nil {
 		ft.t.Fatalf("could not create temporary file: %v", err)
 	}
@@ -62,7 +61,7 @@ func (ft *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
 	defer func() {
 		os.Stdout, os.Stderr, ft.Term.stdout = stdout, stderr, termstdout
 		outfh.Close()
-		outbs, err1 := ioutil.ReadFile(outfh.Name())
+		outbs, err1 := os.ReadFile(outfh.Name())
 		if err1 != nil {
 			ft.t.Fatalf("could not read temporary output file: %v", err)
 		}
@@ -77,7 +76,7 @@ func (ft *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
 }
 
 func (ft *FakeTerminal) ExecStarlark(starlarkProgram string) (outstr string, err error) {
-	outfh, err := ioutil.TempFile("", "cmdtestout")
+	outfh, err := os.CreateTemp("", "cmdtestout")
 	if err != nil {
 		ft.t.Fatalf("could not create temporary file: %v", err)
 	}
@@ -87,7 +86,7 @@ func (ft *FakeTerminal) ExecStarlark(starlarkProgram string) (outstr string, err
 	defer func() {
 		os.Stdout, os.Stderr, ft.Term.stdout = stdout, stderr, termstdout
 		outfh.Close()
-		outbs, err1 := ioutil.ReadFile(outfh.Name())
+		outbs, err1 := os.ReadFile(outfh.Name())
 		if err1 != nil {
 			ft.t.Fatalf("could not read temporary output file: %v", err)
 		}

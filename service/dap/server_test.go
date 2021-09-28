@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"os"
@@ -4459,7 +4458,7 @@ func TestLaunchDebugRequest(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	w.Close()
-	err, _ := ioutil.ReadAll(r)
+	err, _ := io.ReadAll(r)
 	t.Log(string(err))
 	os.Stderr = rescueStderr
 

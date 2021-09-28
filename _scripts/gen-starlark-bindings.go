@@ -6,7 +6,6 @@ import (
 	"go/format"
 	"go/token"
 	"go/types"
-	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -241,7 +240,7 @@ const (
 )
 
 func spliceDocs(docpath string, docs []byte, outpath string) {
-	docbuf, err := ioutil.ReadFile(docpath)
+	docbuf, err := os.ReadFile(docpath)
 	if err != nil {
 		log.Fatalf("could not read doc file: %v", err)
 	}
@@ -266,7 +265,7 @@ func spliceDocs(docpath string, docs []byte, outpath string) {
 	outbuf = append(outbuf, []byte(footer)...)
 
 	if outpath != "-" {
-		err = ioutil.WriteFile(outpath, outbuf, 0664)
+		err = os.WriteFile(outpath, outbuf, 0664)
 		if err != nil {
 			log.Fatalf("could not write documentation file: %v", err)
 		}

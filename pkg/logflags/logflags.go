@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"sort"
@@ -164,7 +163,7 @@ func Setup(logFlag bool, logstr, logDest string) error {
 	}
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	if !logFlag {
-		log.SetOutput(ioutil.Discard)
+		log.SetOutput(io.Discard)
 		if logstr != "" {
 			return errLogstrWithoutLog
 		}

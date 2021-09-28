@@ -3,7 +3,6 @@ package service_test
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/rpc"
@@ -243,14 +242,14 @@ func TestRestart_rebuild(t *testing.T) {
 		fi, err := os.Stat(f.Source)
 		assertNoError(err, t, "Stat fixture.Source")
 
-		originalSource, err := ioutil.ReadFile(f.Source)
+		originalSource, err := os.ReadFile(f.Source)
 		assertNoError(err, t, "Reading original source")
 
 		// Ensure we write the original source code back after the test exits.
-		defer ioutil.WriteFile(f.Source, originalSource, fi.Mode())
+		defer os.WriteFile(f.Source, originalSource, fi.Mode())
 
 		// Write modified source code to the fixture file.
-		err = ioutil.WriteFile(f.Source, []byte(modifiedSource), fi.Mode())
+		err = os.WriteFile(f.Source, []byte(modifiedSource), fi.Mode())
 		assertNoError(err, t, "Writing modified source")
 
 		// First set our new env var and ensure later that the
@@ -2254,7 +2253,7 @@ func TestRedirects(t *testing.T) {
 	withTestClient2Extended("redirect", t, 0, [3]string{infile, outfile, ""}, func(c service.Client, fixture protest.Fixture) {
 		outpath := filepath.Join(fixture.BuildDir, outfile)
 		<-c.Continue()
-		buf, err := ioutil.ReadFile(outpath)
+		buf, err := os.ReadFile(outpath)
 		assertNoError(err, t, "Reading output file")
 		t.Logf("output %q", buf)
 		if !strings.HasPrefix(string(buf), "Redirect test") {
@@ -2265,7 +2264,7 @@ func TestRedirects(t *testing.T) {
 			_, err = c.Restart(false)
 			assertNoError(err, t, "Restart")
 			<-c.Continue()
-			buf2, err := ioutil.ReadFile(outpath)
+			buf2, err := os.ReadFile(outpath)
 			t.Logf("output %q", buf2)
 			assertNoError(err, t, "Reading output file (second time)")
 			if !strings.HasPrefix(string(buf2), "Redirect test") {

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"go/constant"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -1332,7 +1332,7 @@ func TestCallFunction(t *testing.T) {
 }
 
 func testCallFunctionSetBreakpoint(t *testing.T, p *proc.Target, fixture protest.Fixture) {
-	buf, err := ioutil.ReadFile(fixture.Source)
+	buf, err := os.ReadFile(fixture.Source)
 	assertNoError(err, t, "ReadFile")
 	for i, line := range strings.Split(string(buf), "\n") {
 		if strings.Contains(line, "// breakpoint here") {

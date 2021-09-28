@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"go/constant"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path"
@@ -201,7 +200,7 @@ func TestSplicedReader(t *testing.T) {
 func withCoreFile(t *testing.T, name, args string) *proc.Target {
 	// This is all very fragile and won't work on hosts with non-default core patterns.
 	// Might be better to check in the binary and core?
-	tempDir, err := ioutil.TempDir("", "")
+	tempDir, err := os.MkdirTemp("", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,9 +225,9 @@ func withCoreFile(t *testing.T, name, args string) *proc.Target {
 	p, err := OpenCore(corePath, fix.Path, []string{})
 	if err != nil {
 		t.Errorf("OpenCore(%q) failed: %v", corePath, err)
-		pat, err := ioutil.ReadFile("/proc/sys/kernel/core_pattern")
+		pat, err := os.ReadFile("/proc/sys/kernel/core_pattern")
 		t.Errorf("read core_pattern: %q, %v", pat, err)
-		apport, err := ioutil.ReadFile("/var/log/apport.log")
+		apport, err := os.ReadFile("/var/log/apport.log")
 		t.Errorf("read apport log: %q, %v", apport, err)
 		t.Fatalf("previous errors")
 	}

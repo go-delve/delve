@@ -2,7 +2,6 @@ package debugger
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"syscall"
 
@@ -14,7 +13,7 @@ func attachErrorMessage(pid int, err error) error {
 	if serr, ok := err.(syscall.Errno); ok {
 		switch serr {
 		case syscall.EPERM:
-			bs, err := ioutil.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
+			bs, err := os.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
 			if err == nil && len(bs) >= 1 && bs[0] != '0' {
 				// Yama documentation: https://www.kernel.org/doc/Documentation/security/Yama.txt
 				return fmt.Errorf("Could not attach to pid %d: this could be caused by a kernel security setting, try writing \"0\" to /proc/sys/kernel/yama/ptrace_scope", pid)

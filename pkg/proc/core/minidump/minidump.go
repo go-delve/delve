@@ -20,7 +20,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"os"
 	"unicode/utf16"
 	"unsafe"
 
@@ -318,7 +318,7 @@ const (
 
 // Open reads the minidump file at path and returns it as a Minidump structure.
 func Open(path string, logfn func(fmt string, args ...interface{})) (*Minidump, error) {
-	rawbuf, err := ioutil.ReadFile(path) //TODO(aarzilli): mmap?
+	rawbuf, err := os.ReadFile(path) //TODO(aarzilli): mmap?
 	if err != nil {
 		return nil, err
 	}
