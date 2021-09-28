@@ -223,9 +223,6 @@ func (d *Debugger) canRestart() bool {
 }
 
 func (d *Debugger) checkGoVersion() error {
-	if !d.config.CheckGoVersion {
-		return nil
-	}
 	if d.isRecording() {
 		// do not do anything if we are still recording
 		return nil
@@ -234,7 +231,7 @@ func (d *Debugger) checkGoVersion() error {
 	if producer == "" {
 		return nil
 	}
-	return goversion.Compatible(producer)
+	return goversion.Compatible(producer, !d.config.CheckGoVersion)
 }
 
 func (d *Debugger) TargetGoVersion() string {
@@ -823,6 +820,7 @@ func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err err
 	bp.Goroutine = requested.Goroutine
 	bp.Stacktrace = requested.Stacktrace
 	bp.Variables = requested.Variables
+	bp.UserData = requested.UserData
 	bp.LoadArgs = api.LoadConfigToProc(requested.LoadArgs)
 	bp.LoadLocals = api.LoadConfigToProc(requested.LoadLocals)
 	breaklet := bp.UserBreaklet()
@@ -1130,6 +1128,11 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 		d.recordMutex.Lock()
 		if d.stopRecording == nil {
 			err = d.target.RequestManualStop()
+			// The error returned from d.target.Valid will have more context
+			// about the exited process.
+			if _, valErr := d.target.Valid(); valErr != nil {
+				err = valErr
+			}
 		}
 		d.recordMutex.Unlock()
 	}
