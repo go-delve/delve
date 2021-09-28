@@ -6,7 +6,7 @@ import (
 	"github.com/go-delve/delve/pkg/proc"
 )
 
-// Regs is a wrapper for sys.PtraceRegs.
+// ARM64Registers is a wrapper for sys.PtraceRegs.
 type ARM64Registers struct {
 	Regs      *ARM64PtraceRegs //general-purpose registers
 	iscgo     bool

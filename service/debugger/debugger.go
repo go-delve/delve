@@ -941,7 +941,7 @@ func (d *Debugger) clearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 	}
 
 	clearedBp := api.ConvertBreakpoints(bps)
-	if len(clearedBp) < 0 {
+	if len(clearedBp) == 0 {
 		return nil, nil
 	}
 	d.log.Infof("cleared breakpoint: %#v", clearedBp)

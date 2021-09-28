@@ -397,7 +397,7 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 
 	cfareg, err := it.executeFrameRegRule(0, framectx.CFA, 0)
 	if cfareg == nil {
-		it.err = fmt.Errorf("CFA becomes undefined at PC %#x", it.pc)
+		it.err = fmt.Errorf("CFA becomes undefined at PC %#x: %v", it.pc, err)
 		return op.DwarfRegisters{}, 0, 0
 	}
 	it.regs.CFA = int64(cfareg.Uint64Val)
@@ -421,6 +421,7 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 		if i == framectx.RetAddrReg {
 			if reg == nil {
 				if err == nil {
+					//lint:ignore ST1005 backwards compatibility
 					err = fmt.Errorf("Undefined return address at %#x", it.pc)
 				}
 				it.err = err
