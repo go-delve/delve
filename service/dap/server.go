@@ -224,7 +224,7 @@ var (
 // Server.Stop() must be called to shutdown this single-user server.
 func NewServer(config *service.Config) *Server {
 	logger := logflags.DAPLogger()
-	logflags.WriteDAPListeningMessage(config.Listener.Addr().String())
+	logflags.WriteDAPListeningMessage(config.Listener.Addr())
 	logger.Debug("DAP server pid = ", os.Getpid())
 	return &Server{
 		config:            config,
