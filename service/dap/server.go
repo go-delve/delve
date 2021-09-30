@@ -2683,10 +2683,17 @@ func (s *Server) onDisassembleRequest(request *dap.DisassembleRequest) {
 	start := uint64(addr)
 	maxInstructionLength := s.debugger.Target().BinInfo().Arch.MaxInstructionLength()
 	offset := request.Arguments.InstructionOffset * maxInstructionLength
+	// Adjust the offset to include instructions before the requested address.
 	if offset < 0 {
 		start = uint64(addr + int64(offset))
 	}
-	end := uint64(addr + int64(request.Arguments.InstructionCount*maxInstructionLength))
+	// Adjust the number of instructions to include enough instructions after
+	// the requested address.
+	count := request.Arguments.InstructionCount
+	if offset > 0 {
+		count += offset
+	}
+	end := uint64(addr + int64(count*maxInstructionLength))
 
 	// Make sure the PCs are lined up with instructions.
 	start, end = alignPCs(s.debugger.Target().BinInfo(), start, end)
@@ -2705,7 +2712,7 @@ func (s *Server) onDisassembleRequest(request *dap.DisassembleRequest) {
 		return
 	}
 
-	// Turn the given range of instructions into dap instructions
+	// Turn the given range of instructions into dap instructions.
 	instructions := make([]dap.DisassembledInstruction, endIdx-startIdx)
 	lastFile, lastLine := "", -1
 	for i := 0; i < len(instructions); i++ {
