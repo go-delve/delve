@@ -19,6 +19,7 @@ import (
 
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
+	"github.com/go-delve/delve/pkg/proc"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
@@ -5242,9 +5243,6 @@ func TestOptionalNotYetImplementedResponses(t *testing.T) {
 		client.ReadMemoryRequest()
 		expectNotYetImplemented("readMemory")
 
-		client.DisassembleRequest()
-		expectNotYetImplemented("disassemble")
-
 		client.CancelRequest()
 		expectNotYetImplemented("cancel")
 
@@ -5743,4 +5741,302 @@ func TestBadlyFormattedMessageToServer(t *testing.T) {
 		client.DisconnectRequest()
 		client.ExpectDisconnectResponse(t)
 	})
+}
+
+func TestDisassemble(t *testing.T) {
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{17},
+			[]onBreakpoint{{
+				// Stop at line 17
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 17)
+
+					client.StackTraceRequest(1, 0, 1)
+					st := client.ExpectStackTraceResponse(t)
+					if len(st.Body.StackFrames) < 1 {
+						t.Fatalf("\ngot  %#v\nwant len(stackframes) => 1", st)
+					}
+					// Request the single instruction that the program is stopped at.
+					pc := st.Body.StackFrames[0].InstructionPointerReference
+					client.DisassembleRequest(pc, 0, 1)
+					dr := client.ExpectDisassembleResponse(t)
+					if len(dr.Body.Instructions) != 1 {
+						t.Errorf("\ngot %#v\nwant len(instructions) = 1", dr)
+					} else if dr.Body.Instructions[0].Address != pc {
+						t.Errorf("\ngot %#v\nwant instructions[0].Address = %s", dr, pc)
+					}
+
+					// Request the instruction that the program is stopped at, and the two
+					// surrounding it.
+					client.DisassembleRequest(pc, -1, 3)
+					dr = client.ExpectDisassembleResponse(t)
+					if len(dr.Body.Instructions) != 3 {
+						t.Errorf("\ngot %#v\nwant len(instructions) = 3", dr)
+					} else if dr.Body.Instructions[1].Address != pc {
+						t.Errorf("\ngot %#v\nwant instructions[1].Address = %s", dr, pc)
+					}
+
+					// Bad request, not a number.
+					client.DisassembleRequest("hello, world!", 0, 1)
+					client.ExpectErrorResponse(t)
+
+					// Bad request, not an address in program.
+					client.DisassembleRequest("0x5", 0, 100)
+					client.ExpectErrorResponse(t)
+				},
+				disconnect: true,
+			}},
+		)
+	})
+}
+
+func TestAlignPCs(t *testing.T) {
+	NUM_FUNCS := 10
+	// Create fake functions to test align PCs.
+	funcs := make([]proc.Function, NUM_FUNCS)
+	for i := 0; i < len(funcs); i++ {
+		funcs[i] = proc.Function{
+			Entry: uint64(100 + i*10),
+			End:   uint64(100 + i*10 + 5),
+		}
+	}
+	bi := &proc.BinaryInfo{
+		Functions: funcs,
+	}
+	type args struct {
+		start uint64
+		end   uint64
+	}
+	tests := []struct {
+		name      string
+		args      args
+		wantStart uint64
+		wantEnd   uint64
+	}{
+		{
+			name: "out of bounds",
+			args: args{
+				start: funcs[0].Entry - 5,
+				end:   funcs[NUM_FUNCS-1].End + 5,
+			},
+			wantStart: funcs[0].Entry,         // start of first function
+			wantEnd:   funcs[NUM_FUNCS-1].End, // end of last function
+		},
+		{
+			name: "same function",
+			args: args{
+				start: funcs[1].Entry + 1,
+				end:   funcs[1].Entry + 2,
+			},
+			wantStart: funcs[1].Entry, // start of containing function
+			wantEnd:   funcs[1].End,   // end of containing function
+		},
+		{
+			name: "between functions",
+			args: args{
+				start: funcs[1].End + 1,
+				end:   funcs[1].End + 2,
+			},
+			wantStart: funcs[1].Entry, // start of function before
+			wantEnd:   funcs[2].Entry, // start of function after
+		},
+		{
+			name: "start of function",
+			args: args{
+				start: funcs[2].Entry,
+				end:   funcs[5].Entry,
+			},
+			wantStart: funcs[2].Entry, // start of current function
+			wantEnd:   funcs[5].End,   // end of current function
+		},
+		{
+			name: "end of function",
+			args: args{
+				start: funcs[4].End,
+				end:   funcs[8].End,
+			},
+			wantStart: funcs[4].Entry, // start of current function
+			wantEnd:   funcs[9].Entry, // start of next function
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotStart, gotEnd := alignPCs(bi, tt.args.start, tt.args.end)
+			if gotStart != tt.wantStart {
+				t.Errorf("alignPCs() got start = %v, want %v", gotStart, tt.wantStart)
+			}
+			if gotEnd != tt.wantEnd {
+				t.Errorf("alignPCs() got end = %v, want %v", gotEnd, tt.wantEnd)
+			}
+		})
+	}
+}
+
+func TestFindRange(t *testing.T) {
+	numInstructions := 100
+	startPC := 0x1000
+	procInstructions := make([]proc.AsmInstruction, numInstructions)
+	for i := 0; i < len(procInstructions); i++ {
+		procInstructions[i] = proc.AsmInstruction{
+			Loc: proc.Location{
+				PC: uint64(startPC + 2*i),
+			},
+		}
+	}
+
+	type args struct {
+		addr   int64
+		offset int
+		count  int
+	}
+	tests := []struct {
+		name      string
+		args      args
+		wantStart int
+		wantEnd   int
+		wantErr   bool
+	}{
+		{
+			name: "request all",
+			args: args{
+				addr:   int64(startPC),
+				offset: 0,
+				count:  100,
+			},
+			wantStart: 0,
+			wantEnd:   numInstructions,
+			wantErr:   false,
+		},
+		{
+			name: "request all (with offset)",
+			args: args{
+				addr:   int64(startPC + numInstructions), // the instruction addr at numInstructions/2
+				offset: -numInstructions / 2,
+				count:  numInstructions,
+			},
+			wantStart: 0,
+			wantEnd:   numInstructions,
+			wantErr:   false,
+		},
+		{
+			name: "request half (with offset)",
+			args: args{
+				addr:   int64(startPC),
+				offset: 0,
+				count:  numInstructions / 2,
+			},
+			wantStart: 0,
+			wantEnd:   numInstructions / 2,
+			wantErr:   false,
+		},
+		{
+			name: "request half (with offset)",
+			args: args{
+				addr:   int64(startPC),
+				offset: numInstructions / 2,
+				count:  numInstructions / 2,
+			},
+			wantStart: numInstructions / 2,
+			wantEnd:   len(procInstructions),
+			wantErr:   false,
+		},
+		{
+			name: "request too many",
+			args: args{
+				addr:   int64(startPC),
+				offset: 0,
+				count:  numInstructions * 2,
+			},
+			wantStart: 0,
+			wantEnd:   numInstructions,
+			wantErr:   false,
+		},
+		{
+			name: "request too many with offset",
+			args: args{
+				addr:   int64(startPC),
+				offset: -numInstructions,
+				count:  numInstructions * 2,
+			},
+			wantStart: 0,
+			wantEnd:   numInstructions,
+			wantErr:   false,
+		},
+		{
+			name: "request out of bounds",
+			args: args{
+				addr:   int64(startPC),
+				offset: -numInstructions,
+				count:  numInstructions,
+			},
+			wantStart: -1,
+			wantEnd:   -1,
+			wantErr:   false,
+		},
+		{
+			name: "request out of bounds",
+			args: args{
+				addr:   int64(uint64(startPC + 2*(numInstructions-1))),
+				offset: 1,
+				count:  numInstructions,
+			},
+			wantStart: -1,
+			wantEnd:   -1,
+			wantErr:   false,
+		},
+		{
+			name: "addr out of bounds (low)",
+			args: args{
+				addr:   0,
+				offset: 0,
+				count:  100,
+			},
+			wantStart: -1,
+			wantEnd:   -1,
+			wantErr:   true,
+		},
+		{
+			name: "addr out of bounds (high)",
+			args: args{
+				addr:   int64(startPC + 2*(numInstructions+1)),
+				offset: -10,
+				count:  20,
+			},
+			wantStart: -1,
+			wantEnd:   -1,
+			wantErr:   true,
+		},
+		{
+			name: "addr not aligned",
+			args: args{
+				addr:   int64(startPC + 1),
+				offset: 0,
+				count:  20,
+			},
+			wantStart: -1,
+			wantEnd:   -1,
+			wantErr:   true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotStart, gotEnd, err := findRange(procInstructions, tt.args.addr, tt.args.offset, tt.args.count)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("findRange() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if gotStart != tt.wantStart {
+				t.Errorf("findRange() got start = %v, want %v", gotStart, tt.wantStart)
+			}
+			if gotEnd != tt.wantEnd {
+				t.Errorf("findRange() got end = %v, want %v", gotEnd, tt.wantEnd)
+			}
+		})
+	}
 }
