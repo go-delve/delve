@@ -521,7 +521,7 @@ type EvalOut struct {
 	Variable *api.Variable
 }
 
-// EvalVariable returns a variable in the specified context.
+// Eval returns a variable in the specified context.
 //
 // See https://github.com/go-delve/delve/blob/master/Documentation/cli/expr.md
 // for a description of acceptable values of arg.Expr.

@@ -224,7 +224,7 @@ var (
 // Server.Stop() must be called to shutdown this single-user server.
 func NewServer(config *service.Config) *Server {
 	logger := logflags.DAPLogger()
-	logflags.WriteDAPListeningMessage(config.Listener.Addr().String())
+	logflags.WriteDAPListeningMessage(config.Listener.Addr())
 	logger.Debug("DAP server pid = ", os.Getpid())
 	return &Server{
 		config:            config,
@@ -1674,6 +1674,7 @@ func (s *Server) stepUntilStopAndNotify(command string, threadId int, granularit
 			command = api.ReverseStepInstruction
 		default:
 			// TODO(suzmue): consider differentiating between next, step in, and step out.
+			// For example, next could step over call requests.
 			command = api.StepInstruction
 		}
 	}

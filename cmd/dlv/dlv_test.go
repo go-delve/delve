@@ -888,7 +888,15 @@ func TestStaticcheck(t *testing.T) {
 		t.Skip("staticcheck not installed")
 	}
 	// default checks minus SA1019 which complains about deprecated identifiers, which change between versions of Go.
-	args := []string{"-tests=false", "-checks=all,-SA1019,-ST1000,-ST1003,-ST1016,-ST1020,-ST1021,-ST1022", "github.com/go-delve/delve/..."}
+	args := []string{"-tests=false", "-checks=all,-SA1019,-ST1000,-ST1003,-ST1016,-S1021,-ST1023", "github.com/go-delve/delve/..."}
+	// * SA1019 is disabled because new deprecations get added on every version
+	//   of Go making the output of staticcheck inconsistent depending on the
+	//   version of Go used to run it.
+	// * ST1000,ST1003,ST1016 are disabled in the default
+	//   staticcheck configuration
+	// * S1021 "Merge variable declaration and assignment" is disabled because
+	//   where we don't do this it is a deliberate style choice.
+	// * ST1023 "Redundant type in variable declaration" same as S1021.
 	cmd := exec.Command("staticcheck", args...)
 	cmd.Dir = projectRoot()
 	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64")

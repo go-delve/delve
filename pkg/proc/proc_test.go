@@ -360,7 +360,7 @@ func TestClearBreakpointBreakpoint(t *testing.T) {
 	withTestProcess("testprog", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.sleepytime")
 
-		_, err := p.ClearBreakpoint(bp.Addr)
+		err := p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint()")
 
 		data, err := dataAtAddr(p.Memory(), bp.Addr)
@@ -384,7 +384,7 @@ type nextTest struct {
 func countBreakpoints(p *proc.Target) int {
 	bpcount := 0
 	for _, bp := range p.Breakpoints().M {
-		if bp.LogicalID >= 0 {
+		if bp.LogicalID() >= 0 {
 			bpcount++
 		}
 	}
@@ -473,7 +473,7 @@ func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *te
 					if traceTestseq2 {
 						t.Log("clearing initial breakpoint")
 					}
-					_, err := p.ClearBreakpoint(bp.Addr)
+					err := p.ClearBreakpoint(bp.Addr)
 					assertNoError(err, t, "ClearBreakpoint() returned an error")
 				}
 			case contReverseNext:
@@ -503,7 +503,7 @@ func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *te
 					t.Log("continue")
 				}
 				assertNoError(p.Continue(), t, "Continue() returned an error")
-				_, err := p.ClearBreakpoint(bp.Addr)
+				err := p.ClearBreakpoint(bp.Addr)
 				assertNoError(err, t, "ClearBreakpoint() returned an error")
 			}
 
@@ -596,7 +596,7 @@ func TestNextConcurrent(t *testing.T) {
 		f, ln := currentLineNumber(p, t)
 		initV := evalVariable(p, t, "n")
 		initVval, _ := constant.Int64Val(initV.Value)
-		_, err := p.ClearBreakpoint(bp.Addr)
+		err := p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint()")
 		for _, tc := range testcases {
 			g, err := proc.GetG(p.CurrentThread())
@@ -1086,11 +1086,11 @@ func TestContinueMulti(t *testing.T) {
 			}
 			assertNoError(err, t, "Continue()")
 
-			if bp := p.CurrentThread().Breakpoint(); bp.LogicalID == bp1.LogicalID {
+			if bp := p.CurrentThread().Breakpoint(); bp.LogicalID() == bp1.LogicalID() {
 				mainCount++
 			}
 
-			if bp := p.CurrentThread().Breakpoint(); bp.LogicalID == bp2.LogicalID {
+			if bp := p.CurrentThread().Breakpoint(); bp.LogicalID() == bp2.LogicalID() {
 				sayhiCount++
 			}
 		}
@@ -2415,12 +2415,12 @@ func TestStepConcurrentDirect(t *testing.T) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 37)
 
 		assertNoError(p.Continue(), t, "Continue()")
-		_, err := p.ClearBreakpoint(bp.Addr)
+		err := p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint()")
 
 		for _, b := range p.Breakpoints().M {
 			if b.Name == proc.UnrecoveredPanic {
-				_, err := p.ClearBreakpoint(b.Addr)
+				err := p.ClearBreakpoint(b.Addr)
 				assertNoError(err, t, "ClearBreakpoint(unrecovered-panic)")
 				break
 			}
@@ -2480,7 +2480,7 @@ func TestStepConcurrentPtr(t *testing.T) {
 
 		for _, b := range p.Breakpoints().M {
 			if b.Name == proc.UnrecoveredPanic {
-				_, err := p.ClearBreakpoint(b.Addr)
+				err := p.ClearBreakpoint(b.Addr)
 				assertNoError(err, t, "ClearBreakpoint(unrecovered-panic)")
 				break
 			}
@@ -2972,7 +2972,7 @@ func TestRecursiveNext(t *testing.T) {
 	withTestProcess("increment", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.Increment")
 		assertNoError(p.Continue(), t, "Continue")
-		_, err := p.ClearBreakpoint(bp.Addr)
+		err := p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint")
 		assertNoError(p.Next(), t, "Next 1")
 		assertNoError(p.Next(), t, "Next 2")
@@ -4509,12 +4509,12 @@ func TestCallConcurrent(t *testing.T) {
 		returned := testCallConcurrentCheckReturns(p, t, gid1, -1)
 
 		curthread := p.CurrentThread()
-		if curbp := curthread.Breakpoint(); curbp.Breakpoint == nil || curbp.LogicalID != bp.LogicalID || returned > 0 {
+		if curbp := curthread.Breakpoint(); curbp.Breakpoint == nil || curbp.LogicalID() != bp.LogicalID() || returned > 0 {
 			t.Logf("skipping test, the call injection terminated before we hit a breakpoint in a different thread")
 			return
 		}
 
-		_, err := p.ClearBreakpoint(bp.Addr)
+		err := p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint() returned an error")
 
 		gid2 := p.SelectedGoroutine().ID
@@ -5551,7 +5551,7 @@ func TestWatchpointStack(t *testing.T) {
 			t.Errorf("wrong number of out-of-scope watchpoints after watchpoint goes out of scope: %d", len(p.Breakpoints().WatchOutOfScope))
 		}
 
-		_, err = p.ClearBreakpoint(retaddr)
+		err = p.ClearBreakpoint(retaddr)
 		assertNoError(err, t, "ClearBreakpoint")
 
 		if len(p.Breakpoints().M) != clearlen {

@@ -4,6 +4,8 @@
 
 // Buffered reading and decoding of DWARF data streams.
 
+//lint:file-ignore ST1021 imported file
+
 package util
 
 import (

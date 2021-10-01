@@ -39,7 +39,6 @@ func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 		}
 
 		_, _, restoreRegistersErr = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_SETFPREGS, uintptr(t.ID), uintptr(0), uintptr(unsafe.Pointer(&sr.Fpregset.AMD64PtraceFpRegs)), 0, 0)
-		return
 	})
 	if restoreRegistersErr == syscall.Errno(0) {
 		restoreRegistersErr = nil
