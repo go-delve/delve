@@ -2668,9 +2668,29 @@ func (s *Server) onReadMemoryRequest(request *dap.ReadMemoryRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
+var invalidInstruction = dap.DisassembledInstruction{
+	Address:     "out of bounds",
+	Instruction: "invalid instruction",
+}
+
 // onDisassembleRequest handles 'disassemble' requests.
 // Capability 'supportsDisassembleRequest' is set in 'initialize' response.
 func (s *Server) onDisassembleRequest(request *dap.DisassembleRequest) {
+	// If the requested memory address is an invalid location, return all invalid instructions.
+	if request.Arguments.MemoryReference == invalidInstruction.Address {
+		instructions := make([]dap.DisassembledInstruction, request.Arguments.InstructionCount)
+		for i := range instructions {
+			instructions[i] = invalidInstruction
+		}
+		response := &dap.DisassembleResponse{
+			Response: *newResponse(request.Request),
+			Body: dap.DisassembleResponseBody{
+				Instructions: instructions,
+			},
+		}
+		s.send(response)
+		return
+	}
 	// TODO(suzmue): microsoft/vscode#129655 is discussing the difference between
 	// memory reference and instructionPointerReference, which are currently
 	// being used interchangeably by vscode.
@@ -2682,16 +2702,16 @@ func (s *Server) onDisassembleRequest(request *dap.DisassembleRequest) {
 
 	start := uint64(addr)
 	maxInstructionLength := s.debugger.Target().BinInfo().Arch.MaxInstructionLength()
-	offset := request.Arguments.InstructionOffset * maxInstructionLength
+	byteOffset := request.Arguments.InstructionOffset * maxInstructionLength
 	// Adjust the offset to include instructions before the requested address.
-	if offset < 0 {
-		start = uint64(addr + int64(offset))
+	if byteOffset < 0 {
+		start = uint64(addr + int64(byteOffset))
 	}
 	// Adjust the number of instructions to include enough instructions after
 	// the requested address.
 	count := request.Arguments.InstructionCount
-	if offset > 0 {
-		count += offset
+	if byteOffset > 0 {
+		count += byteOffset
 	}
 	end := uint64(addr + int64(count*maxInstructionLength))
 
@@ -2706,17 +2726,22 @@ func (s *Server) onDisassembleRequest(request *dap.DisassembleRequest) {
 	}
 
 	// Find the section of instructions that were requested.
-	startIdx, endIdx, err := findRange(procInstructions, addr, (request.Arguments.InstructionOffset), (request.Arguments.InstructionCount))
+	procInstructions, offset, err := findInstructions(procInstructions, addr, request.Arguments.InstructionOffset, request.Arguments.InstructionCount)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToDisassemble, "Unable to disassemble", err.Error())
 		return
 	}
 
 	// Turn the given range of instructions into dap instructions.
-	instructions := make([]dap.DisassembledInstruction, endIdx-startIdx)
+	instructions := make([]dap.DisassembledInstruction, request.Arguments.InstructionCount)
 	lastFile, lastLine := "", -1
-	for i := 0; i < len(instructions); i++ {
-		instruction := api.ConvertAsmInstruction(procInstructions[startIdx+i], s.debugger.AsmInstructionText(&procInstructions[startIdx+i], proc.GoFlavour))
+	for i := range instructions {
+		if i < offset || (i-offset) >= len(procInstructions) {
+			// i is not in a valid range.
+			instructions[i] = invalidInstruction
+			continue
+		}
+		instruction := api.ConvertAsmInstruction(procInstructions[i-offset], s.debugger.AsmInstructionText(&procInstructions[i-offset], proc.GoFlavour))
 		instructions[i] = dap.DisassembledInstruction{
 			Address:          fmt.Sprintf("%#x", instruction.Loc.PC),
 			InstructionBytes: fmt.Sprintf("%x", instruction.Bytes),
@@ -2729,6 +2754,7 @@ func (s *Server) onDisassembleRequest(request *dap.DisassembleRequest) {
 			lastFile, lastLine = instruction.Loc.File, instruction.Loc.Line
 		}
 	}
+
 	response := &dap.DisassembleResponse{
 		Response: *newResponse(request.Request),
 		Body: dap.DisassembleResponseBody{
@@ -2738,26 +2764,34 @@ func (s *Server) onDisassembleRequest(request *dap.DisassembleRequest) {
 	s.send(response)
 }
 
-func findRange(procInstructions []proc.AsmInstruction, addr int64, offset, count int) (int, int, error) {
-
+func findInstructions(procInstructions []proc.AsmInstruction, addr int64, instructionOffset, count int) ([]proc.AsmInstruction, int, error) {
 	ref := sort.Search(len(procInstructions), func(i int) bool {
 		return procInstructions[i].Loc.PC >= uint64(addr)
 	})
 	if ref == len(procInstructions) || procInstructions[ref].Loc.PC != uint64(addr) {
-		return -1, -1, fmt.Errorf("could not find memory reference")
+		return nil, -1, fmt.Errorf("could not find memory reference")
 	}
-	startIdx := 0
-	if ref+offset > 0 {
-		startIdx = ref + offset
+	// offset is the number of instructions that should appear before the first instruction
+	// returned by findInstructions.
+	offset := 0
+	if ref+instructionOffset < 0 {
+		offset = -(ref + instructionOffset)
 	}
-	endIdx := ref + offset + count
+	// Figure out the index to slice at.
+	startIdx := ref + instructionOffset
+	endIdx := ref + instructionOffset + count
+	if endIdx <= 0 || startIdx >= len(procInstructions) {
+		return []proc.AsmInstruction{}, 0, nil
+	}
+	// Adjust start and end to be inbounds.
+	if startIdx < 0 {
+		offset = -startIdx
+		startIdx = 0
+	}
 	if endIdx > len(procInstructions) {
 		endIdx = len(procInstructions)
 	}
-	if endIdx <= startIdx {
-		endIdx, startIdx = -1, -1
-	}
-	return startIdx, endIdx, nil
+	return procInstructions[startIdx:endIdx], offset, nil
 }
 
 func alignPCs(bi *proc.BinaryInfo, start, end uint64) (uint64, uint64) {

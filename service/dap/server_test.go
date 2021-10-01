@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"strings"
@@ -5782,6 +5783,17 @@ func TestDisassemble(t *testing.T) {
 						t.Errorf("\ngot %#v\nwant instructions[1].Address = %s", dr, pc)
 					}
 
+					// Request invalid instructions.
+					client.DisassembleRequest(invalidInstruction.Address, 0, 10)
+					dr = client.ExpectDisassembleResponse(t)
+					if len(dr.Body.Instructions) != 10 {
+						t.Errorf("\ngot %#v\nwant len(instructions) = 10", dr)
+					}
+					for i, got := range dr.Body.Instructions {
+						if !reflect.DeepEqual(got, invalidInstruction) {
+							t.Errorf("\ngot [%d]=%#v\nwant = %#v", i, got, invalidInstruction)
+						}
+					}
 					// Bad request, not a number.
 					client.DisassembleRequest("hello, world!", 0, 1)
 					client.ExpectErrorResponse(t)
@@ -5878,7 +5890,7 @@ func TestAlignPCs(t *testing.T) {
 	}
 }
 
-func TestFindRange(t *testing.T) {
+func TestFindInstructions(t *testing.T) {
 	numInstructions := 100
 	startPC := 0x1000
 	procInstructions := make([]proc.AsmInstruction, numInstructions)
@@ -5889,18 +5901,17 @@ func TestFindRange(t *testing.T) {
 			},
 		}
 	}
-
 	type args struct {
 		addr   int64
 		offset int
 		count  int
 	}
 	tests := []struct {
-		name      string
-		args      args
-		wantStart int
-		wantEnd   int
-		wantErr   bool
+		name             string
+		args             args
+		wantInstructions []proc.AsmInstruction
+		wantOffset       int
+		wantErr          bool
 	}{
 		{
 			name: "request all",
@@ -5909,9 +5920,9 @@ func TestFindRange(t *testing.T) {
 				offset: 0,
 				count:  100,
 			},
-			wantStart: 0,
-			wantEnd:   numInstructions,
-			wantErr:   false,
+			wantInstructions: procInstructions,
+			wantOffset:       0,
+			wantErr:          false,
 		},
 		{
 			name: "request all (with offset)",
@@ -5920,9 +5931,9 @@ func TestFindRange(t *testing.T) {
 				offset: -numInstructions / 2,
 				count:  numInstructions,
 			},
-			wantStart: 0,
-			wantEnd:   numInstructions,
-			wantErr:   false,
+			wantInstructions: procInstructions,
+			wantOffset:       0,
+			wantErr:          false,
 		},
 		{
 			name: "request half (with offset)",
@@ -5931,9 +5942,9 @@ func TestFindRange(t *testing.T) {
 				offset: 0,
 				count:  numInstructions / 2,
 			},
-			wantStart: 0,
-			wantEnd:   numInstructions / 2,
-			wantErr:   false,
+			wantInstructions: procInstructions[:numInstructions/2],
+			wantOffset:       0,
+			wantErr:          false,
 		},
 		{
 			name: "request half (with offset)",
@@ -5942,9 +5953,9 @@ func TestFindRange(t *testing.T) {
 				offset: numInstructions / 2,
 				count:  numInstructions / 2,
 			},
-			wantStart: numInstructions / 2,
-			wantEnd:   len(procInstructions),
-			wantErr:   false,
+			wantInstructions: procInstructions[numInstructions/2:],
+			wantOffset:       0,
+			wantErr:          false,
 		},
 		{
 			name: "request too many",
@@ -5953,9 +5964,9 @@ func TestFindRange(t *testing.T) {
 				offset: 0,
 				count:  numInstructions * 2,
 			},
-			wantStart: 0,
-			wantEnd:   numInstructions,
-			wantErr:   false,
+			wantInstructions: procInstructions,
+			wantOffset:       0,
+			wantErr:          false,
 		},
 		{
 			name: "request too many with offset",
@@ -5964,9 +5975,9 @@ func TestFindRange(t *testing.T) {
 				offset: -numInstructions,
 				count:  numInstructions * 2,
 			},
-			wantStart: 0,
-			wantEnd:   numInstructions,
-			wantErr:   false,
+			wantInstructions: procInstructions,
+			wantOffset:       numInstructions,
+			wantErr:          false,
 		},
 		{
 			name: "request out of bounds",
@@ -5975,9 +5986,9 @@ func TestFindRange(t *testing.T) {
 				offset: -numInstructions,
 				count:  numInstructions,
 			},
-			wantStart: -1,
-			wantEnd:   -1,
-			wantErr:   false,
+			wantInstructions: []proc.AsmInstruction{},
+			wantOffset:       0,
+			wantErr:          false,
 		},
 		{
 			name: "request out of bounds",
@@ -5986,9 +5997,9 @@ func TestFindRange(t *testing.T) {
 				offset: 1,
 				count:  numInstructions,
 			},
-			wantStart: -1,
-			wantEnd:   -1,
-			wantErr:   false,
+			wantInstructions: []proc.AsmInstruction{},
+			wantOffset:       0,
+			wantErr:          false,
 		},
 		{
 			name: "addr out of bounds (low)",
@@ -5997,9 +6008,9 @@ func TestFindRange(t *testing.T) {
 				offset: 0,
 				count:  100,
 			},
-			wantStart: -1,
-			wantEnd:   -1,
-			wantErr:   true,
+			wantInstructions: nil,
+			wantOffset:       -1,
+			wantErr:          true,
 		},
 		{
 			name: "addr out of bounds (high)",
@@ -6008,9 +6019,9 @@ func TestFindRange(t *testing.T) {
 				offset: -10,
 				count:  20,
 			},
-			wantStart: -1,
-			wantEnd:   -1,
-			wantErr:   true,
+			wantInstructions: nil,
+			wantOffset:       -1,
+			wantErr:          true,
 		},
 		{
 			name: "addr not aligned",
@@ -6019,23 +6030,23 @@ func TestFindRange(t *testing.T) {
 				offset: 0,
 				count:  20,
 			},
-			wantStart: -1,
-			wantEnd:   -1,
-			wantErr:   true,
+			wantInstructions: nil,
+			wantOffset:       -1,
+			wantErr:          true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotStart, gotEnd, err := findRange(procInstructions, tt.args.addr, tt.args.offset, tt.args.count)
+			gotInstructions, gotOffset, err := findInstructions(procInstructions, tt.args.addr, tt.args.offset, tt.args.count)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("findRange() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("findInstructions() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if gotStart != tt.wantStart {
-				t.Errorf("findRange() got start = %v, want %v", gotStart, tt.wantStart)
+			if !reflect.DeepEqual(gotInstructions, tt.wantInstructions) {
+				t.Errorf("findInstructions() got instructions = %v, want %v", gotInstructions, tt.wantInstructions)
 			}
-			if gotEnd != tt.wantEnd {
-				t.Errorf("findRange() got end = %v, want %v", gotEnd, tt.wantEnd)
+			if gotOffset != tt.wantOffset {
+				t.Errorf("findInstructions() got offset = %v, want %v", gotOffset, tt.wantOffset)
 			}
 		})
 	}
