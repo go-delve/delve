@@ -3102,7 +3102,7 @@ func (s *Server) handleLogPoints(state *api.DebuggerState) bool {
 	foundRealBreakpoint := false
 	for _, th := range state.Threads {
 		if bp := th.Breakpoint; bp != nil {
-			logged := s.logBreakpointMessage(bp)
+			logged := s.logBreakpointMessage(bp, th.GoroutineID)
 			if !logged {
 				foundRealBreakpoint = true
 			}
@@ -3111,18 +3111,21 @@ func (s *Server) handleLogPoints(state *api.DebuggerState) bool {
 	return foundRealBreakpoint
 }
 
-func (s *Server) logBreakpointMessage(bp *api.Breakpoint) bool {
+func (s *Server) logBreakpointMessage(bp *api.Breakpoint, goid int) bool {
 	if !bp.Tracepoint {
 		return false
 	}
-	// TODO(suzmue): allow evaluate expressions within log points and
-	// consider adding line and goid info to output.
+	// TODO(suzmue): allow evaluate expressions within log points.
 	if msg, ok := bp.UserData.(string); ok {
 		s.send(&dap.OutputEvent{
 			Event: *newEvent("output"),
 			Body: dap.OutputEventBody{
 				Category: "stdout",
-				Output:   msg + "\n",
+				Output:   fmt.Sprintf("> goroutine=%d: %s\n", goid, msg),
+				Source: dap.Source{
+					Path: s.toClientPath(bp.File),
+				},
+				Line: bp.Line,
 			},
 		})
 	}

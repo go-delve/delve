@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -2730,11 +2731,7 @@ func TestLogPoints(t *testing.T) {
 
 						client.ContinueRequest(1)
 						client.ExpectContinueResponse(t)
-
-						oe := client.ExpectOutputEvent(t)
-						if oe.Body.Category != "stdout" || oe.Body.Output != "in callme!\n" {
-							t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"in callme!\n\"", oe)
-						}
+						checkLogMessage(t, client.ExpectOutputEvent(t), 1, "in callme!", fixture.Source, 6)
 					}
 					se := client.ExpectStoppedEvent(t)
 					if se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
@@ -2745,10 +2742,7 @@ func TestLogPoints(t *testing.T) {
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
 
-					oe := client.ExpectOutputEvent(t)
-					if oe.Body.Category != "stdout" || oe.Body.Output != "in callme2!\n" {
-						t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"in callme2!\n\"", oe)
-					}
+					checkLogMessage(t, client.ExpectOutputEvent(t), 1, "in callme2!", fixture.Source, 16)
 
 					se = client.ExpectStoppedEvent(t)
 					if se.Body.Reason != "step" || se.Body.ThreadId != 1 {
@@ -2759,6 +2753,20 @@ func TestLogPoints(t *testing.T) {
 				disconnect: true,
 			}})
 	})
+}
+
+func checkLogMessage(t *testing.T, oe *dap.OutputEvent, goid int, text, path string, line int) {
+	t.Helper()
+	prefix := "> goroutine="
+	if goid >= 0 {
+		prefix += strconv.Itoa(goid)
+	}
+	if oe.Body.Category != "stdout" || !strings.HasPrefix(oe.Body.Output, prefix) || !strings.HasSuffix(oe.Body.Output, text+"\n") {
+		t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"%s: %s\\n\"", oe, prefix, text)
+	}
+	if oe.Body.Line != line || oe.Body.Source.Path != path {
+		t.Errorf("got output event = %#v, \nwant Line=%d Source.Path=%s", oe, line, path)
+	}
 }
 
 // TestHaltPreventsAutoResume tests that a pause request issued while processing
@@ -2822,10 +2830,7 @@ func TestHaltPreventsAutoResume(t *testing.T) {
 
 						client.ContinueRequest(1)
 						client.ExpectContinueResponse(t)
-						oe := client.ExpectOutputEvent(t)
-						if oe.Body.Category != "stdout" || oe.Body.Output != "in callme!\n" {
-							t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"in callme!\n\"", oe)
-						}
+						checkLogMessage(t, client.ExpectOutputEvent(t), 1, "in callme!", fixture.Source, 6)
 						// Signal that the output event has been received.
 						close(outputDoneChan)
 						// Wait for the pause to be complete.
@@ -2884,9 +2889,7 @@ func TestConcurrentBreakpointsLogPoints(t *testing.T) {
 							seCount++
 							client.ContinueRequest(1)
 						case *dap.OutputEvent:
-							if m.Body.Category != "stdout" || m.Body.Output != "hello\n" {
-								t.Errorf("\ngot  %#v\nwant Category=\"stdout\" Output=\"hello\"", m)
-							}
+							checkLogMessage(t, m, -1, "hello", fixture.Source, 8)
 							oeCount++
 						case *dap.ContinueResponse:
 						case *dap.TerminatedEvent:
