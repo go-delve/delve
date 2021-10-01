@@ -5576,8 +5576,12 @@ func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *dapt
 	serverStopped := make(chan struct{})
 	server, _ := startDapServer(t, serverStopped)
 	client := daptest.NewClient(server.listener.Addr().String())
+	time.Sleep(100 * time.Millisecond) // Give time for connection to be set as dap.Session
 	// TODO(polina): update once the server interface is refactored to take debugger as arg
 	server.sessionMu.Lock()
+	if server.session == nil {
+		t.Fatal("dap session is not ready")
+	}
 	server.session.debugger = dbg
 	server.sessionMu.Unlock()
 	defer client.Close()
