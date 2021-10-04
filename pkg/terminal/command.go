@@ -147,6 +147,8 @@ The memory location is specified with the same expression language used by 'prin
 
 will watch the address of variable 'v'.
 
+Note that writes that do not change the value of the watched memory address might not be reported.
+
 See also: "help print".`},
 		{aliases: []string{"restart", "r"}, group: runCmds, cmdFn: restart, helpMsg: `Restart process.
 
