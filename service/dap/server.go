@@ -1049,6 +1049,8 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		s.conn.Close()
+		// TODO(polina): should we always restart the target if it is not running?
+		// There is also suspendDebuggee - TBD if vscode supports it.
 		return
 	}
 
