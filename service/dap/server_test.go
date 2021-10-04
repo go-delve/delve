@@ -5571,7 +5571,7 @@ func launchDebuggerWithTargetHalted(t *testing.T, fixture string) *debugger.Debu
 }
 
 // runTestWithDebugger starts the server and sets its debugger, initializes a debug session,
-// runs test, then disconnects. Expects the process at the end of test() to be halted
+// runs test, then disconnects. Expects the process at the end of test() to be halted.
 func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *daptest.Client)) {
 	serverStopped := make(chan struct{})
 	server, _ := startDapServer(t, serverStopped)
@@ -5585,10 +5585,7 @@ func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *dapt
 	test(client)
 
 	client.DisconnectRequest()
-	if server.config.AcceptMulti {
-		// TODO(polina): support multi-client mode
-		t.Fatal("testing of accept-multiclient not yet supporteed")
-	} else if server.config.Debugger.AttachPid == 0 { // launched target
+	if server.config.Debugger.AttachPid == 0 { // launched target
 		client.ExpectOutputEventDetachingKill(t)
 	} else { // attached to target
 		client.ExpectOutputEventDetachingNoKill(t)
@@ -5628,6 +5625,60 @@ func TestAttachRemoteToHaltedTargetContinueOnEntry(t *testing.T) {
 }
 
 // TODO(polina): Running + stop/continue on entry
+
+// TestMultiClient tests that that remote attach doesn't take down
+// the server in multi-client mode unless terminateDebugee is explicitely set.
+func TestAttachRemoteMultiClient(t *testing.T) {
+	closingClientSession := "Closing client session, but leaving multi-client DAP server running at"
+	detachingAndTerminating := "Detaching and terminating target process"
+	tests := []struct {
+		name              string
+		disconnectRequest func(client *daptest.Client)
+		expect            string
+	}{
+		{"default", func(c *daptest.Client) { c.DisconnectRequest() }, closingClientSession},
+		{"terminate=true", func(c *daptest.Client) { c.DisconnectRequestWithKillOption(true) }, detachingAndTerminating},
+		{"terminate=false", func(c *daptest.Client) { c.DisconnectRequestWithKillOption(false) }, closingClientSession},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			serverStopped := make(chan struct{})
+			server, forceStop := startDapServer(t, serverStopped)
+			// DAP server doesn't support accept-multiclient, but we can use this
+			// hack to test the inner connection logic that can be used by a server that does.
+			server.config.AcceptMulti = true
+			// TODO(polina): update once the server interface is refactored to take debugger as arg
+			server.debugger = launchDebuggerWithTargetHalted(t, "increment")
+			client := daptest.NewClient(server.listener.Addr().String())
+			client.InitializeRequest()
+			client.ExpectInitializeResponseAndCapabilities(t)
+
+			client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
+			client.ExpectInitializedEvent(t)
+			client.ExpectAttachResponse(t)
+			client.ConfigurationDoneRequest()
+			client.ExpectStoppedEvent(t)
+			client.ExpectConfigurationDoneResponse(t)
+
+			tc.disconnectRequest(client)
+			e := client.ExpectOutputEvent(t)
+			if matched, _ := regexp.MatchString(tc.expect, e.Body.Output); !matched {
+				t.Errorf("\ngot %#v\nwant Output=%q", e, tc.expect)
+			}
+			client.ExpectDisconnectResponse(t)
+			client.ExpectTerminatedEvent(t)
+			client.Close()
+
+			if tc.expect == closingClientSession {
+				// At this point a multi-client server is still running, but since
+				// it is a dap server, it cannot accept another client, so the only
+				// way to take down the server is too force kill it.
+				close(forceStop)
+			}
+			<-serverStopped
+		})
+	}
+}
 
 func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 	runTestWithDebugger(t, launchDebuggerWithTargetHalted(t, "increment"), func(client *daptest.Client) {
