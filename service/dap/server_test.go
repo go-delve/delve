@@ -748,7 +748,11 @@ func checkVar(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, v
 	goti := got.Body.Variables[i]
 	matchedName := false
 	if useExactMatch {
-		matchedName = (goti.Name == name)
+		if strings.HasPrefix(name, "~r") {
+			matchedName = strings.HasPrefix(goti.Name, "~r")
+		} else {
+			matchedName = (goti.Name == name)
+		}
 	} else {
 		matchedName, _ = regexp.MatchString(name, goti.Name)
 	}
@@ -2812,7 +2816,7 @@ func TestHaltPreventsAutoResume(t *testing.T) {
 						// Send a halt request when trying to resume the program after being
 						// interrupted. This should allow the log message to be processed,
 						// but keep the process from continuing beyond the line.
-						resumeOnceAndCheckStop = func(s *Server, command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
+						resumeOnceAndCheckStop = func(s *Session, command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
 							// This should trigger after the log message is sent, but before
 							// execution is resumed.
 							if command == api.DirectionCongruentContinue {
@@ -5578,9 +5582,15 @@ func launchDebuggerWithTargetHalted(t *testing.T, fixture string) *debugger.Debu
 func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *daptest.Client)) {
 	serverStopped := make(chan struct{})
 	server, _ := startDapServer(t, serverStopped)
-	// TODO(polina): update once the server interface is refactored to take debugger as arg
-	server.debugger = dbg
 	client := daptest.NewClient(server.listener.Addr().String())
+	time.Sleep(100 * time.Millisecond) // Give time for connection to be set as dap.Session
+	// TODO(polina): update once the server interface is refactored to take debugger as arg
+	server.sessionMu.Lock()
+	if server.session == nil {
+		t.Fatal("dap session is not ready")
+	}
+	server.session.debugger = dbg
+	server.sessionMu.Unlock()
 	defer client.Close()
 	client.InitializeRequest()
 	client.ExpectInitializeResponseAndCapabilities(t)

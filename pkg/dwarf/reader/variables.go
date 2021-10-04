@@ -23,6 +23,7 @@ const (
 	VariablesOnlyVisible VariablesFlags = 1 << iota
 	VariablesSkipInlinedSubroutines
 	VariablesTrustDeclLine
+	VariablesNoDeclLineCheck
 )
 
 // Variables returns a list of variables contained inside 'root'.
@@ -60,7 +61,7 @@ func variablesInternal(v []Variable, root *godwarf.Tree, depth int, pc uint64, l
 			// are defined.
 			o = 1
 		}
-		if declLine, ok := root.Val(dwarf.AttrDeclLine).(int64); !ok || line >= int(declLine)+o {
+		if declLine, ok := root.Val(dwarf.AttrDeclLine).(int64); (flags&VariablesNoDeclLineCheck != 0) || !ok || line >= int(declLine)+o {
 			return append(v, Variable{root, depth})
 		}
 		return v

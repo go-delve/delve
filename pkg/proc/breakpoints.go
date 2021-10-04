@@ -372,6 +372,13 @@ func isPanicCall(frames []Stackframe) (bool, int) {
 }
 
 func isDeferReturnCall(frames []Stackframe, deferReturns []uint64) (bool, uint64) {
+	if len(frames) >= 2 && (len(deferReturns) > 0) {
+		// On Go 1.18 and later runtime.deferreturn doesn't use jmpdefer anymore,
+		// it's a normal function making normal calls to deferred functions.
+		if frames[1].Current.Fn != nil && frames[1].Current.Fn.Name == "runtime.deferreturn" {
+			return true, 0
+		}
+	}
 	if len(frames) >= 1 {
 		for _, pc := range deferReturns {
 			if frames[0].Ret == pc {
@@ -892,7 +899,7 @@ func (rbpi *returnBreakpointInfo) Collect(t *Target, thread Thread) []*Variable 
 		return returnInfoError("could not read function entry", err, thread.ProcessMemory())
 	}
 
-	vars, err := scope.Locals()
+	vars, err := scope.Locals(0)
 	if err != nil {
 		return returnInfoError("could not evaluate return variables", err, thread.ProcessMemory())
 	}
