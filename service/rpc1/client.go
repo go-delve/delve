@@ -12,7 +12,7 @@ import (
 	"github.com/go-delve/delve/service/api"
 )
 
-// Client is a RPC service.Client.
+// RPCClient is a RPC service.Client.
 type RPCClient struct {
 	addr    string
 	client  *rpc.Client
@@ -20,7 +20,7 @@ type RPCClient struct {
 	haltReq bool
 }
 
-var unsupportedApiError = errors.New("unsupported")
+var errAPIUnsupported = errors.New("unsupported")
 
 // NewClient creates a new RPCClient.
 func NewClient(addr string) *RPCClient {
@@ -75,6 +75,7 @@ func (c *RPCClient) Continue() <-chan *api.DebuggerState {
 			}
 			if state.Exited {
 				// Error types apparently cannot be marshalled by Go correctly. Must reset error here.
+				//lint:ignore ST1005 backwards compatibility
 				state.Err = fmt.Errorf("Process %d has exited with status %d", c.ProcessPid(), state.ExitStatus)
 			}
 			ch <- state
@@ -202,7 +203,7 @@ func (c *RPCClient) AmendBreakpoint(bp *api.Breakpoint) error {
 }
 
 func (c *RPCClient) CancelNext() error {
-	return unsupportedApiError
+	return errAPIUnsupported
 }
 
 func (c *RPCClient) ListThreads() ([]*api.Thread, error) {
@@ -300,14 +301,14 @@ func (c *RPCClient) FindLocation(scope api.EvalScope, loc string) ([]api.Locatio
 	return answer, err
 }
 
-// Disassemble code between startPC and endPC
+// DisassembleRange disassembles code between startPC and endPC
 func (c *RPCClient) DisassembleRange(scope api.EvalScope, startPC, endPC uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error) {
 	var r api.AsmInstructions
 	err := c.call("Disassemble", DisassembleRequest{scope, startPC, endPC, flavour}, &r)
 	return r, err
 }
 
-// Disassemble function containing pc
+// DisassemblePC disassembles function containing pc
 func (c *RPCClient) DisassemblePC(scope api.EvalScope, pc uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error) {
 	var r api.AsmInstructions
 	err := c.call("Disassemble", DisassembleRequest{scope, pc, 0, flavour}, &r)

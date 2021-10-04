@@ -722,12 +722,12 @@ func createLogicalBreakpoint(d *Debugger, addrs []uint64, requestedBp *api.Break
 			bps[i], err = p.SetBreakpointWithID(id, addrs[i])
 		} else {
 			bps[i], err = p.SetBreakpoint(addrs[i], proc.UserBreakpoint, nil)
+			if err == nil {
+				id = bps[i].LogicalID()
+			}
 		}
 		if err != nil {
 			break
-		}
-		if i > 0 {
-			bps[i].LogicalID = bps[0].LogicalID
 		}
 		err = copyBreakpointInfo(bps[i], requestedBp)
 		if err != nil {
@@ -742,7 +742,7 @@ func createLogicalBreakpoint(d *Debugger, addrs []uint64, requestedBp *api.Break
 			if bp == nil {
 				continue
 			}
-			if _, err1 := p.ClearBreakpoint(bp.Addr); err1 != nil {
+			if err1 := p.ClearBreakpoint(bp.Addr); err1 != nil {
 				err = fmt.Errorf("error while creating breakpoint: %v, additionally the breakpoint could not be properly rolled back: %v", err, err1)
 				return nil, err
 			}
@@ -901,16 +901,19 @@ func (d *Debugger) clearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 		return bp, nil
 	}
 
-	var bps []*proc.Breakpoint
+	var clearedBp *api.Breakpoint
 	var errs []error
 
 	clear := func(addr uint64) {
-		bp, err := d.target.ClearBreakpoint(addr)
+		if clearedBp == nil {
+			bp := d.target.Breakpoints().M[addr]
+			if bp != nil {
+				clearedBp = api.ConvertBreakpoint(bp)
+			}
+		}
+		err := d.target.ClearBreakpoint(addr)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("address %#x: %v", addr, err))
-		}
-		if bp != nil {
-			bps = append(bps, bp)
 		}
 	}
 
@@ -934,18 +937,14 @@ func (d *Debugger) clearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 			}
 		}
 
-		if len(bps) == 0 {
+		if clearedBp == nil {
 			return nil, fmt.Errorf("unable to clear breakpoint %d: %v", requestedBp.ID, buf.String())
 		}
 		return nil, fmt.Errorf("unable to clear breakpoint %d (partial): %s", requestedBp.ID, buf.String())
 	}
 
-	clearedBp := api.ConvertBreakpoints(bps)
-	if len(clearedBp) < 0 {
-		return nil, nil
-	}
 	d.log.Infof("cleared breakpoint: %#v", clearedBp)
-	return clearedBp[0], nil
+	return clearedBp, nil
 }
 
 // Breakpoints returns the list of current breakpoints.
@@ -998,7 +997,7 @@ func (d *Debugger) FindBreakpoint(id int) *api.Breakpoint {
 func (d *Debugger) findBreakpoint(id int) []*proc.Breakpoint {
 	var bps []*proc.Breakpoint
 	for _, bp := range d.target.Breakpoints().M {
-		if bp.IsUser() && bp.LogicalID == id {
+		if bp.LogicalID() == id {
 			bps = append(bps, bp)
 		}
 	}
@@ -2181,11 +2180,11 @@ func (v breakpointsByLogicalID) Len() int      { return len(v) }
 func (v breakpointsByLogicalID) Swap(i, j int) { v[i], v[j] = v[j], v[i] }
 
 func (v breakpointsByLogicalID) Less(i, j int) bool {
-	if v[i].LogicalID == v[j].LogicalID {
+	if v[i].LogicalID() == v[j].LogicalID() {
 		if v[i].WatchType != v[j].WatchType {
 			return v[i].WatchType > v[j].WatchType // if a logical breakpoint contains a watchpoint let the watchpoint sort first
 		}
 		return v[i].Addr < v[j].Addr
 	}
-	return v[i].LogicalID < v[j].LogicalID
+	return v[i].LogicalID() < v[j].LogicalID()
 }

@@ -251,7 +251,7 @@ func TestCheckpoints(t *testing.T) {
 
 		// Delete breakpoint, move back to checkpoint then next twice and check
 		// output of 'when' again
-		_, err = p.ClearBreakpoint(bp.Addr)
+		err = p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint")
 		p.Restart(fmt.Sprintf("c%d", cpid))
 		g, _ = proc.FindGoroutine(p, 1)
@@ -283,7 +283,7 @@ func TestIssue1376(t *testing.T) {
 	withTestRecording("continuetestprog", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(p.Continue(), t, "Continue (forward)")
-		_, err := p.ClearBreakpoint(bp.Addr)
+		err := p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint")
 		assertNoError(p.ChangeDirection(proc.Backward), t, "Switching to backward direction")
 		assertNoError(p.Continue(), t, "Continue (backward)")

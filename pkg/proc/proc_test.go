@@ -360,7 +360,7 @@ func TestClearBreakpointBreakpoint(t *testing.T) {
 	withTestProcess("testprog", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.sleepytime")
 
-		_, err := p.ClearBreakpoint(bp.Addr)
+		err := p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint()")
 
 		data, err := dataAtAddr(p.Memory(), bp.Addr)
@@ -384,7 +384,7 @@ type nextTest struct {
 func countBreakpoints(p *proc.Target) int {
 	bpcount := 0
 	for _, bp := range p.Breakpoints().M {
-		if bp.LogicalID >= 0 {
+		if bp.LogicalID() >= 0 {
 			bpcount++
 		}
 	}
@@ -473,7 +473,7 @@ func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *te
 					if traceTestseq2 {
 						t.Log("clearing initial breakpoint")
 					}
-					_, err := p.ClearBreakpoint(bp.Addr)
+					err := p.ClearBreakpoint(bp.Addr)
 					assertNoError(err, t, "ClearBreakpoint() returned an error")
 				}
 			case contReverseNext:
@@ -503,7 +503,7 @@ func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *te
 					t.Log("continue")
 				}
 				assertNoError(p.Continue(), t, "Continue() returned an error")
-				_, err := p.ClearBreakpoint(bp.Addr)
+				err := p.ClearBreakpoint(bp.Addr)
 				assertNoError(err, t, "ClearBreakpoint() returned an error")
 			}
 
@@ -517,7 +517,7 @@ func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *te
 			}
 			switch pos := tc.pos.(type) {
 			case int:
-				if ln != pos {
+				if pos >= 0 && ln != pos {
 					t.Fatalf("Program did not continue to correct next location expected %d was %s:%d (%#x) (testcase %d)", pos, filepath.Base(f), ln, pc, i)
 				}
 			case string:
@@ -596,7 +596,7 @@ func TestNextConcurrent(t *testing.T) {
 		f, ln := currentLineNumber(p, t)
 		initV := evalVariable(p, t, "n")
 		initVval, _ := constant.Int64Val(initV.Value)
-		_, err := p.ClearBreakpoint(bp.Addr)
+		err := p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint()")
 		for _, tc := range testcases {
 			g, err := proc.GetG(p.CurrentThread())
@@ -1086,11 +1086,11 @@ func TestContinueMulti(t *testing.T) {
 			}
 			assertNoError(err, t, "Continue()")
 
-			if bp := p.CurrentThread().Breakpoint(); bp.LogicalID == bp1.LogicalID {
+			if bp := p.CurrentThread().Breakpoint(); bp.LogicalID() == bp1.LogicalID() {
 				mainCount++
 			}
 
-			if bp := p.CurrentThread().Breakpoint(); bp.LogicalID == bp2.LogicalID {
+			if bp := p.CurrentThread().Breakpoint(); bp.LogicalID() == bp2.LogicalID() {
 				sayhiCount++
 			}
 		}
@@ -2415,12 +2415,12 @@ func TestStepConcurrentDirect(t *testing.T) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 37)
 
 		assertNoError(p.Continue(), t, "Continue()")
-		_, err := p.ClearBreakpoint(bp.Addr)
+		err := p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint()")
 
 		for _, b := range p.Breakpoints().M {
 			if b.Name == proc.UnrecoveredPanic {
-				_, err := p.ClearBreakpoint(b.Addr)
+				err := p.ClearBreakpoint(b.Addr)
 				assertNoError(err, t, "ClearBreakpoint(unrecovered-panic)")
 				break
 			}
@@ -2480,7 +2480,7 @@ func TestStepConcurrentPtr(t *testing.T) {
 
 		for _, b := range p.Breakpoints().M {
 			if b.Name == proc.UnrecoveredPanic {
-				_, err := p.ClearBreakpoint(b.Addr)
+				err := p.ClearBreakpoint(b.Addr)
 				assertNoError(err, t, "ClearBreakpoint(unrecovered-panic)")
 				break
 			}
@@ -2972,7 +2972,7 @@ func TestRecursiveNext(t *testing.T) {
 	withTestProcess("increment", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.Increment")
 		assertNoError(p.Continue(), t, "Continue")
-		_, err := p.ClearBreakpoint(bp.Addr)
+		err := p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint")
 		assertNoError(p.Next(), t, "Next 1")
 		assertNoError(p.Next(), t, "Next 2")
@@ -3544,7 +3544,7 @@ func testDeclLineCount(t *testing.T, p *proc.Target, lineno int, tgtvars []strin
 	assertLineNumber(p, t, lineno, "Program did not continue to correct next location")
 	scope, err := proc.GoroutineScope(p, p.CurrentThread())
 	assertNoError(err, t, fmt.Sprintf("GoroutineScope (:%d)", lineno))
-	vars, err := scope.Locals()
+	vars, err := scope.Locals(0)
 	assertNoError(err, t, fmt.Sprintf("Locals (:%d)", lineno))
 	if len(vars) != len(tgtvars) {
 		t.Fatalf("wrong number of variables %d (:%d)", len(vars), lineno)
@@ -3575,27 +3575,27 @@ func TestDeclLine(t *testing.T) {
 		setFileBreakpoint(p, t, fixture.Source, 11)
 		setFileBreakpoint(p, t, fixture.Source, 14)
 
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(p.Continue(), t, "Continue 1")
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
 			testDeclLineCount(t, p, 8, []string{})
 		} else {
 			testDeclLineCount(t, p, 8, []string{"a"})
 		}
 
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(p.Continue(), t, "Continue 2")
 		testDeclLineCount(t, p, 9, []string{"a"})
 
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(p.Continue(), t, "Continue 3")
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
 			testDeclLineCount(t, p, 10, []string{"a"})
 		} else {
 			testDeclLineCount(t, p, 10, []string{"a", "b"})
 		}
 
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(p.Continue(), t, "Continue 4")
 		testDeclLineCount(t, p, 11, []string{"a", "b"})
 
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(p.Continue(), t, "Continue 5")
 		testDeclLineCount(t, p, 14, []string{"a", "b"})
 	})
 }
@@ -3811,7 +3811,7 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 	}
 
 	withTestProcessArgs("testinline", t, ".", []string{}, protest.EnableInlining, func(p *proc.Target, fixture protest.Fixture) {
-		pcs, err := p.BinInfo().LineToPC(fixture.Source, 7)
+		pcs, err := proc.FindFileLocation(p, fixture.Source, 7)
 		assertNoError(err, t, "LineToPC")
 		if len(pcs) < 2 {
 			t.Fatalf("expected at least two locations for %s:%d (got %d: %#x)", fixture.Source, 7, len(pcs), pcs)
@@ -3960,7 +3960,7 @@ func TestInlineBreakpoint(t *testing.T) {
 		t.Skip("inlining not supported")
 	}
 	withTestProcessArgs("testinline", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p *proc.Target, fixture protest.Fixture) {
-		pcs, err := p.BinInfo().LineToPC(fixture.Source, 17)
+		pcs, err := proc.FindFileLocation(p, fixture.Source, 17)
 		t.Logf("%#v\n", pcs)
 		if len(pcs) != 1 {
 			t.Fatalf("unable to get PC for inlined function call: %v", pcs)
@@ -4509,12 +4509,12 @@ func TestCallConcurrent(t *testing.T) {
 		returned := testCallConcurrentCheckReturns(p, t, gid1, -1)
 
 		curthread := p.CurrentThread()
-		if curbp := curthread.Breakpoint(); curbp.Breakpoint == nil || curbp.LogicalID != bp.LogicalID || returned > 0 {
+		if curbp := curthread.Breakpoint(); curbp.Breakpoint == nil || curbp.LogicalID() != bp.LogicalID() || returned > 0 {
 			t.Logf("skipping test, the call injection terminated before we hit a breakpoint in a different thread")
 			return
 		}
 
-		_, err := p.ClearBreakpoint(bp.Addr)
+		err := p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint() returned an error")
 
 		gid2 := p.SelectedGoroutine().ID
@@ -4816,33 +4816,64 @@ func TestBackwardNextDeferPanic(t *testing.T) {
 	if testBackend != "rr" {
 		t.Skip("Reverse stepping test needs rr")
 	}
-	testseq2(t, "defercall", "", []seqTest{
-		{contContinue, 12},
-		{contReverseNext, 11},
-		{contReverseNext, 10},
-		{contReverseNext, 9},
-		{contReverseNext, 27},
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
+		testseq2(t, "defercall", "", []seqTest{
+			{contContinue, 12},
+			{contReverseNext, 11},
+			{contReverseNext, 10},
+			{contReverseNext, 9},
+			{contReverseNext, 27},
 
-		{contContinueToBreakpoint, 12}, // skip first call to sampleFunction
-		{contContinueToBreakpoint, 6},  // go to call to sampleFunction through deferreturn
-		{contReverseNext, 13},
-		{contReverseNext, 12},
-		{contReverseNext, 11},
-		{contReverseNext, 10},
-		{contReverseNext, 9},
-		{contReverseNext, 27},
+			{contContinueToBreakpoint, 12}, // skip first call to sampleFunction
+			{contContinueToBreakpoint, 6},  // go to call to sampleFunction through deferreturn
+			{contReverseNext, -1},          // runtime.deferreturn, maybe we should try to skip this
+			{contReverseStepout, 13},
+			{contReverseNext, 12},
+			{contReverseNext, 11},
+			{contReverseNext, 10},
+			{contReverseNext, 9},
+			{contReverseNext, 27},
 
-		{contContinueToBreakpoint, 18}, // go to panic call
-		{contNext, 6},                  // panic so the deferred call happens
-		{contReverseNext, 18},
-		{contReverseNext, 17},
-		{contReverseNext, 16},
-		{contReverseNext, 15},
-		{contReverseNext, 23},
-		{contReverseNext, 22},
-		{contReverseNext, 21},
-		{contReverseNext, 28},
-	})
+			{contContinueToBreakpoint, 18}, // go to panic call
+			{contNext, 6},                  // panic so the deferred call happens
+			{contReverseNext, 18},
+			{contReverseNext, 17},
+			{contReverseNext, 16},
+			{contReverseNext, 15},
+			{contReverseNext, 23},
+			{contReverseNext, 22},
+			{contReverseNext, 21},
+			{contReverseNext, 28},
+		})
+	} else {
+		testseq2(t, "defercall", "", []seqTest{
+			{contContinue, 12},
+			{contReverseNext, 11},
+			{contReverseNext, 10},
+			{contReverseNext, 9},
+			{contReverseNext, 27},
+
+			{contContinueToBreakpoint, 12}, // skip first call to sampleFunction
+			{contContinueToBreakpoint, 6},  // go to call to sampleFunction through deferreturn
+			{contReverseNext, 13},
+			{contReverseNext, 12},
+			{contReverseNext, 11},
+			{contReverseNext, 10},
+			{contReverseNext, 9},
+			{contReverseNext, 27},
+
+			{contContinueToBreakpoint, 18}, // go to panic call
+			{contNext, 6},                  // panic so the deferred call happens
+			{contReverseNext, 18},
+			{contReverseNext, 17},
+			{contReverseNext, 16},
+			{contReverseNext, 15},
+			{contReverseNext, 23},
+			{contReverseNext, 22},
+			{contReverseNext, 21},
+			{contReverseNext, 28},
+		})
+	}
 }
 
 func TestIssue1925(t *testing.T) {
@@ -5551,7 +5582,7 @@ func TestWatchpointStack(t *testing.T) {
 			t.Errorf("wrong number of out-of-scope watchpoints after watchpoint goes out of scope: %d", len(p.Breakpoints().WatchOutOfScope))
 		}
 
-		_, err = p.ClearBreakpoint(retaddr)
+		err = p.ClearBreakpoint(retaddr)
 		assertNoError(err, t, "ClearBreakpoint")
 
 		if len(p.Breakpoints().M) != clearlen {

@@ -20,9 +20,12 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/logflags"
 )
 
 var errOperationOnSpecialFloat = errors.New("operations on non-finite floats not implemented")
+
+const goDictionaryName = ".dict"
 
 // EvalScope is the scope for variable evaluation. Contains the thread,
 // current location (PC), and canonical frame address.
@@ -50,11 +53,21 @@ type EvalScope struct {
 	// evaluation is complete by closing the continueRequest channel.
 	callCtx *callContext
 
-	// If trustArgOrder is true function arguments that don't have an address
-	// will have one assigned by looking at their position in the argument
-	// list.
-	trustArgOrder bool
+	dictAddr uint64 // dictionary address for instantiated generic functions
 }
+
+type localsFlags uint8
+
+const (
+	// If localsTrustArgOrder is set function arguments that don't have an
+	// address will have one assigned by looking at their position in the argument
+	// list.
+	localsTrustArgOrder localsFlags = 1 << iota
+
+	// If localsNoDeclLineCheck the declaration line isn't checked at
+	// all to determine if the variable is in scope.
+	localsNoDeclLineCheck
+)
 
 // ConvertEvalScope returns a new EvalScope in the context of the
 // specified goroutine ID and stack frame.
@@ -201,12 +214,12 @@ func isAssignment(err error) (int, bool) {
 }
 
 // Locals returns all variables in 'scope'.
-func (scope *EvalScope) Locals() ([]*Variable, error) {
+func (scope *EvalScope) Locals(flags localsFlags) ([]*Variable, error) {
 	if scope.Fn == nil {
 		return nil, errors.New("unable to find function context")
 	}
 
-	trustArgOrder := scope.trustArgOrder && scope.BinInfo.Producer() != "" && goversion.ProducerAfterOrEqual(scope.BinInfo.Producer(), 1, 12) && scope.Fn != nil && (scope.PC == scope.Fn.Entry)
+	trustArgOrder := (flags&localsTrustArgOrder != 0) && scope.BinInfo.Producer() != "" && goversion.ProducerAfterOrEqual(scope.BinInfo.Producer(), 1, 12) && scope.Fn != nil && (scope.PC == scope.Fn.Entry)
 
 	dwarfTree, err := scope.image().getDwarfTree(scope.Fn.offset)
 	if err != nil {
@@ -214,15 +227,43 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 	}
 
 	variablesFlags := reader.VariablesOnlyVisible
+	if flags&localsNoDeclLineCheck != 0 {
+		variablesFlags = reader.VariablesNoDeclLineCheck
+	}
 	if scope.BinInfo.Producer() != "" && goversion.ProducerAfterOrEqual(scope.BinInfo.Producer(), 1, 15) {
 		variablesFlags |= reader.VariablesTrustDeclLine
 	}
 
 	varEntries := reader.Variables(dwarfTree, scope.PC, scope.Line, variablesFlags)
+
+	// look for dictionary entry
+	if scope.dictAddr == 0 {
+		for _, entry := range varEntries {
+			name, _ := entry.Val(dwarf.AttrName).(string)
+			if name == goDictionaryName {
+				dictVar, err := extractVarInfoFromEntry(scope.target, scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry.Tree, 0)
+				if err != nil {
+					logflags.DebuggerLogger().Errorf("could not load %s variable: %v", name, err)
+				} else if dictVar.Unreadable != nil {
+					logflags.DebuggerLogger().Errorf("could not load %s variable: %v", name, dictVar.Unreadable)
+				} else {
+					scope.dictAddr, err = readUintRaw(dictVar.mem, dictVar.Addr, int64(scope.BinInfo.Arch.PtrSize()))
+					if err != nil {
+						logflags.DebuggerLogger().Errorf("could not load %s variable: %v", name, err)
+					}
+				}
+				break
+			}
+		}
+	}
+
 	vars := make([]*Variable, 0, len(varEntries))
 	depths := make([]int, 0, len(varEntries))
 	for _, entry := range varEntries {
-		val, err := extractVarInfoFromEntry(scope.target, scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry.Tree)
+		if name, _ := entry.Val(dwarf.AttrName).(string); name == goDictionaryName {
+			continue
+		}
+		val, err := extractVarInfoFromEntry(scope.target, scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry.Tree, scope.dictAddr)
 		if err != nil {
 			// skip variables that we can't parse yet
 			continue
@@ -321,6 +362,7 @@ func (scope *EvalScope) setValue(dstv, srcv *Variable, srcExpr string) error {
 	}
 
 	if srcv.Unreadable != nil {
+		//lint:ignore ST1005 backwards compatibility
 		return fmt.Errorf("Expression \"%s\" is unreadable: %v", srcExpr, srcv.Unreadable)
 	}
 
@@ -392,10 +434,12 @@ func (scope *EvalScope) SetVariable(name, value string) error {
 	}
 
 	if xv.Addr == 0 {
+		//lint:ignore ST1005 backwards compatibility
 		return fmt.Errorf("Can not assign to \"%s\"", name)
 	}
 
 	if xv.Unreadable != nil {
+		//lint:ignore ST1005 backwards compatibility
 		return fmt.Errorf("Expression \"%s\" is unreadable: %v", name, xv.Unreadable)
 	}
 
@@ -414,7 +458,7 @@ func (scope *EvalScope) SetVariable(name, value string) error {
 
 // LocalVariables returns all local variables from the current function scope.
 func (scope *EvalScope) LocalVariables(cfg LoadConfig) ([]*Variable, error) {
-	vars, err := scope.Locals()
+	vars, err := scope.Locals(0)
 	if err != nil {
 		return nil, err
 	}
@@ -428,7 +472,7 @@ func (scope *EvalScope) LocalVariables(cfg LoadConfig) ([]*Variable, error) {
 
 // FunctionArguments returns the name, value, and type of all current function arguments.
 func (scope *EvalScope) FunctionArguments(cfg LoadConfig) ([]*Variable, error) {
-	vars, err := scope.Locals()
+	vars, err := scope.Locals(0)
 	if err != nil {
 		return nil, err
 	}
@@ -475,7 +519,7 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 		}
 
 		// Ignore errors trying to extract values
-		val, err := extractVarInfoFromEntry(scope.target, scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry))
+		val, err := extractVarInfoFromEntry(scope.target, scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry), 0)
 		if val != nil && val.Kind == reflect.Invalid {
 			continue
 		}
@@ -512,7 +556,7 @@ func (scope *EvalScope) findGlobalInternal(name string) (*Variable, error) {
 			if err != nil {
 				return nil, err
 			}
-			return extractVarInfoFromEntry(scope.target, scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry))
+			return extractVarInfoFromEntry(scope.target, scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry), 0)
 		}
 	}
 	for _, fn := range scope.BinInfo.Functions {
@@ -701,7 +745,7 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 	case *ast.CallExpr:
 		if len(node.Args) == 1 {
 			v, err := scope.evalTypeCast(node)
-			if err == nil || err != reader.TypeNotFoundErr {
+			if err == nil || err != reader.ErrTypeNotFound {
 				return v, err
 			}
 		}
@@ -1131,7 +1175,7 @@ func (scope *EvalScope) evalIdent(node *ast.Ident) (*Variable, error) {
 		return nilVariable, nil
 	}
 
-	vars, err := scope.Locals()
+	vars, err := scope.Locals(0)
 	if err != nil {
 		return nil, err
 	}

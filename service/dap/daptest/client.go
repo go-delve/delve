@@ -225,7 +225,7 @@ func (c *Client) DisconnectRequest() {
 	c.send(request)
 }
 
-// DisconnectRequest sends a 'disconnect' request with an option to specify
+// DisconnectRequestWithKillOption sends a 'disconnect' request with an option to specify
 // `terminateDebuggee`.
 func (c *Client) DisconnectRequestWithKillOption(kill bool) {
 	request := &dap.DisconnectRequest{Request: *c.newRequest("disconnect")}
@@ -358,7 +358,7 @@ func (c *Client) NamedVariablesRequest(variablesReference int) {
 	c.send(request)
 }
 
-// TeriminateRequest sends a 'terminate' request.
+// TerminateRequest sends a 'terminate' request.
 func (c *Client) TerminateRequest() {
 	c.send(&dap.TerminateRequest{Request: *c.newRequest("terminate")})
 }

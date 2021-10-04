@@ -77,7 +77,7 @@ func NewServer(config *service.Config) *ServerImpl {
 	}
 	if config.Debugger.Foreground {
 		// Print listener address
-		logflags.WriteAPIListeningMessage(config.Listener.Addr().String())
+		logflags.WriteAPIListeningMessage(config.Listener.Addr())
 		logger.Debug("API server pid = ", os.Getpid())
 	}
 	return &ServerImpl{
@@ -404,7 +404,7 @@ func (s *RPCServer) GetVersion(args api.GetVersionIn, out *api.GetVersionOut) er
 	return s.s.debugger.GetVersion(out)
 }
 
-// Changes version of the API being served.
+// SetApiVersion changes version of the API being served.
 func (s *RPCServer) SetApiVersion(args api.SetAPIVersionIn, out *api.SetAPIVersionOut) error {
 	if args.APIVersion < 2 {
 		args.APIVersion = 1
