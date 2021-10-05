@@ -2677,6 +2677,8 @@ var invalidInstruction = dap.DisassembledInstruction{
 // Capability 'supportsDisassembleRequest' is set in 'initialize' response.
 func (s *Server) onDisassembleRequest(request *dap.DisassembleRequest) {
 	// If the requested memory address is an invalid location, return all invalid instructions.
+	// TODO(suzmue): consider adding fake addresses that would allow us to receive out of bounds
+	// requests that include valid instructions designated by InstructionOffset or InstructionCount.
 	if request.Arguments.MemoryReference == invalidInstruction.Address {
 		instructions := make([]dap.DisassembledInstruction, request.Arguments.InstructionCount)
 		for i := range instructions {

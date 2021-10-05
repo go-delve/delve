@@ -5783,6 +5783,13 @@ func TestDisassemble(t *testing.T) {
 						t.Errorf("\ngot %#v\nwant instructions[1].Address = %s", dr, pc)
 					}
 
+					// Request zero instrutions.
+					client.DisassembleRequest(pc, 0, 0)
+					dr = client.ExpectDisassembleResponse(t)
+					if len(dr.Body.Instructions) != 0 {
+						t.Errorf("\ngot %#v\nwant len(instructions) = 0", dr)
+					}
+
 					// Request invalid instructions.
 					client.DisassembleRequest(invalidInstruction.Address, 0, 10)
 					dr = client.ExpectDisassembleResponse(t)
