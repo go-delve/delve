@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
-	"runtime"
+	//
 )
 
 func f() {
 	w := 0
-	runtime.Breakpoint()
+
 	g(1000, &w) // Position 0
 }
 

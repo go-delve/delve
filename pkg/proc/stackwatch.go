@@ -72,6 +72,28 @@ func (t *Target) setStackWatchBreakpoints(scope *EvalScope, watchpoint *Breakpoi
 	retbreaklet.watchpoint = watchpoint
 	retbreaklet.callback = woos
 
+	if recorded, _ := t.Recorded(); recorded && retframe.Current.Fn != nil {
+		// Must also set a breakpoint on the call instruction immediately
+		// preceding retframe.Current.PC, because the watchpoint could also go out
+		// of scope while we are running backwards.
+		callerText, err := disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), retframe.Current.Fn.Entry, retframe.Current.Fn.End, false)
+		if err != nil {
+			return err
+		}
+		for i, instr := range callerText {
+			if instr.Loc.PC == retframe.Current.PC && i > 0 {
+				retbp2, err := t.SetBreakpoint(callerText[i-1].Loc.PC, WatchOutOfScopeBreakpoint, retFrameCond)
+				if err != nil {
+					return err
+				}
+				retbreaklet2 := retbp2.Breaklets[len(retbp.Breaklets)-1]
+				retbreaklet2.watchpoint = watchpoint
+				retbreaklet2.callback = woos
+				break
+			}
+		}
+	}
+
 	// Stack Resize Sentinel
 
 	fn := t.BinInfo().LookupFunc["runtime.copystack"]
