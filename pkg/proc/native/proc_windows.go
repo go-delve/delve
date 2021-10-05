@@ -489,12 +489,20 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 	}
 
 	if !trapthreadFound {
+		wasDbgUiRemoteBreakIn := trapthread.os.dbgUiRemoteBreakIn
 		// trapthread exited during stop, pick another one
 		trapthread = nil
 		for _, thread := range dbp.threads {
 			if thread.CurrentBreakpoint.Breakpoint != nil && thread.os.delayErr == nil {
 				trapthread = thread
 				break
+			}
+		}
+		if trapthread == nil && wasDbgUiRemoteBreakIn {
+			// If this was triggered by a manual stop request we should stop
+			// regardless, pick a thread.
+			for _, thread := range dbp.threads {
+				return thread, nil
 			}
 		}
 	}
