@@ -148,16 +148,15 @@ func (lineInfo *DebugLineInfo) AllPCsForFileLines(f string, m map[int][]uint64) 
 			}
 		}
 	}
-	return
 }
 
-var NoSourceError = errors.New("no source available")
+var ErrNoSource = errors.New("no source available")
 
 // AllPCsBetween returns all PC addresses between begin and end (including both begin and end)
 // that have the is_stmt flag set and do not belong to excludeFile:excludeLine.
 func (lineInfo *DebugLineInfo) AllPCsBetween(begin, end uint64, excludeFile string, excludeLine int) ([]uint64, error) {
 	if lineInfo == nil {
-		return nil, NoSourceError
+		return nil, ErrNoSource
 	}
 
 	var (
@@ -278,76 +277,35 @@ func (sm *StateMachine) PCToLine(pc uint64) (string, int, bool) {
 	return "", 0, false
 }
 
-// LineToPC returns the first PC address associated with filename:lineno.
-func (lineInfo *DebugLineInfo) LineToPC(filename string, lineno int) uint64 {
+// PCStmt is a PC address with its is_stmt flag
+type PCStmt struct {
+	PC   uint64
+	Stmt bool
+}
+
+// LineToPCs returns all PCs associated with filename:lineno
+func (lineInfo *DebugLineInfo) LineToPCs(filename string, lineno int) []PCStmt {
 	if lineInfo == nil {
-		return 0
+		return nil
 	}
 
 	sm := newStateMachine(lineInfo, lineInfo.Instructions, lineInfo.ptrSize)
 
-	// if no instruction marked is_stmt is found fallback to the first
-	// instruction assigned to the filename:line.
-	var fallbackPC uint64
+	pcstmts := []PCStmt{}
 
 	for {
 		if err := sm.next(); err != nil {
 			if lineInfo.Logf != nil && err != io.EOF {
-				lineInfo.Logf("LineToPC error: %v", err)
+				lineInfo.Logf("LineToPCs error: %v", err)
 			}
 			break
 		}
 		if sm.line == lineno && sm.file == filename && sm.valid {
-			if sm.isStmt {
-				return sm.address
-			} else if fallbackPC == 0 {
-				fallbackPC = sm.address
-			}
+			pcstmts = append(pcstmts, PCStmt{sm.address, sm.isStmt})
 		}
 	}
-	return fallbackPC
-}
 
-// LineToPCIn returns the first PC for filename:lineno in the interval [startPC, endPC).
-// This function is used to find the instruction corresponding to
-// filename:lineno for a function that has been inlined.
-// basePC will be used for caching, it's normally the entry point for the
-// function containing pc.
-func (lineInfo *DebugLineInfo) LineToPCIn(filename string, lineno int, basePC, startPC, endPC uint64) uint64 {
-	if lineInfo == nil {
-		return 0
-	}
-	if basePC > startPC {
-		panic(fmt.Errorf("basePC after startPC %#x %#x", basePC, startPC))
-	}
-
-	sm := lineInfo.stateMachineFor(basePC, startPC)
-
-	var fallbackPC uint64
-
-	for {
-		if sm.valid && sm.started {
-			if sm.address >= endPC {
-				break
-			}
-			if sm.line == lineno && sm.file == filename && sm.address >= startPC {
-				if sm.isStmt {
-					return sm.address
-				} else {
-					fallbackPC = sm.address
-				}
-			}
-		}
-		if err := sm.next(); err != nil {
-			if lineInfo.Logf != nil && err != io.EOF {
-				lineInfo.Logf("LineToPC error: %v", err)
-			}
-			break
-		}
-
-	}
-
-	return fallbackPC
+	return pcstmts
 }
 
 // PrologueEndPC returns the first PC address marked as prologue_end in the half open interval [start, end)

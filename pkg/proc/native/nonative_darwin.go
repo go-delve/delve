@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/amd64util"
 	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 )
 
@@ -130,16 +131,8 @@ func (t *nativeThread) restoreRegisters(sr proc.Registers) error {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (t *nativeThread) findHardwareBreakpoint() (*proc.Breakpoint, error) {
-	panic(ErrNativeBackendDisabled)
-}
-
-func (t *nativeThread) writeHardwareBreakpoint(addr uint64, wtype proc.WatchType, idx uint8) error {
-	panic(ErrNativeBackendDisabled)
-}
-
-func (t *nativeThread) clearHardwareBreakpoint(addr uint64, wtype proc.WatchType, idx uint8) error {
-	panic(ErrNativeBackendDisabled)
+func (t *nativeThread) withDebugRegisters(f func(*amd64util.DebugRegisters) error) error {
+	return proc.ErrHWBreakUnsupported
 }
 
 // Stopped returns whether the thread is stopped at

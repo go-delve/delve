@@ -21,7 +21,9 @@ import (
 	"github.com/go-delve/delve/pkg/logflags"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service"
+	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/dap/daptest"
+	"github.com/go-delve/delve/service/debugger"
 	"github.com/google/go-dap"
 )
 
@@ -63,19 +65,19 @@ func runTestBuildFlags(t *testing.T, name string, test func(c *daptest.Client, f
 }
 
 func startDapServerWithClient(t *testing.T, serverStopped chan struct{}) *daptest.Client {
-	listener, _ := startDapServer(t, serverStopped)
-	client := daptest.NewClient(listener.Addr().String())
+	server, _ := startDapServer(t, serverStopped)
+	client := daptest.NewClient(server.config.Listener.Addr().String())
 	return client
 }
 
-func startDapServer(t *testing.T, serverStopped chan struct{}) (listener net.Listener, forceStop chan struct{}) {
+func startDapServer(t *testing.T, serverStopped chan struct{}) (server *Server, forceStop chan struct{}) {
 	// Start the DAP server.
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	disconnectChan := make(chan struct{})
-	server := NewServer(&service.Config{
+	server = NewServer(&service.Config{
 		Listener:       listener,
 		DisconnectChan: disconnectChan,
 	})
@@ -100,7 +102,7 @@ func startDapServer(t *testing.T, serverStopped chan struct{}) (listener net.Lis
 		server.Stop()
 	}()
 
-	return listener, forceStop
+	return server, forceStop
 }
 
 func TestForceStopNoClient(t *testing.T) {
@@ -112,9 +114,9 @@ func TestForceStopNoClient(t *testing.T) {
 
 func TestForceStopNoTarget(t *testing.T) {
 	serverStopped := make(chan struct{})
-	listener, forceStop := startDapServer(t, serverStopped)
-	client := daptest.NewClient(listener.Addr().String())
-	defer client.Close() // does not trigger Stop
+	server, forceStop := startDapServer(t, serverStopped)
+	client := daptest.NewClient(server.config.Listener.Addr().String())
+	defer client.Close()
 
 	client.InitializeRequest()
 	client.ExpectInitializeResponseAndCapabilities(t)
@@ -124,9 +126,9 @@ func TestForceStopNoTarget(t *testing.T) {
 
 func TestForceStopWithTarget(t *testing.T) {
 	serverStopped := make(chan struct{})
-	listener, forceStop := startDapServer(t, serverStopped)
-	client := daptest.NewClient(listener.Addr().String())
-	defer client.Close() // does not trigger Stop
+	server, forceStop := startDapServer(t, serverStopped)
+	client := daptest.NewClient(server.config.Listener.Addr().String())
+	defer client.Close()
 
 	client.InitializeRequest()
 	client.ExpectInitializeResponseAndCapabilities(t)
@@ -140,8 +142,8 @@ func TestForceStopWithTarget(t *testing.T) {
 
 func TestForceStopWhileStopping(t *testing.T) {
 	serverStopped := make(chan struct{})
-	listener, forceStop := startDapServer(t, serverStopped)
-	client := daptest.NewClient(listener.Addr().String())
+	server, forceStop := startDapServer(t, serverStopped)
+	client := daptest.NewClient(server.config.Listener.Addr().String())
 
 	client.InitializeRequest()
 	client.ExpectInitializeResponseAndCapabilities(t)
@@ -745,7 +747,11 @@ func checkVar(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, v
 	goti := got.Body.Variables[i]
 	matchedName := false
 	if useExactMatch {
-		matchedName = (goti.Name == name)
+		if strings.HasPrefix(name, "~r") {
+			matchedName = strings.HasPrefix(goti.Name, "~r")
+		} else {
+			matchedName = (goti.Name == name)
+		}
 	} else {
 		matchedName, _ = regexp.MatchString(name, goti.Name)
 	}
@@ -2284,7 +2290,7 @@ func TestSetBreakpoint(t *testing.T) {
 					checkVarExact(t, locals, 0, "i", "i", "0", "int", noChildren) // i == 0
 
 					// Edit the breakpoint to add a condition
-					client.SetConditionalBreakpointsRequest(fixture.Source, []int{8}, map[int]string{8: "i == 3"})
+					client.SetBreakpointsRequestWithArgs(fixture.Source, []int{8}, map[int]string{8: "i == 3"}, nil, nil)
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}})
 
 					// Continue until condition is hit
@@ -2297,7 +2303,7 @@ func TestSetBreakpoint(t *testing.T) {
 					checkVarExact(t, locals, 0, "i", "i", "3", "int", noChildren) // i == 3
 
 					// Edit the breakpoint to remove a condition
-					client.SetConditionalBreakpointsRequest(fixture.Source, []int{8}, map[int]string{8: ""})
+					client.SetBreakpointsRequestWithArgs(fixture.Source, []int{8}, map[int]string{8: ""}, nil, nil)
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}})
 
 					// Continue for one more loop iteration
@@ -2696,6 +2702,210 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 	})
 }
 
+// TestLogPoints executes to a breakpoint and tests that log points
+// send OutputEvents and do not halt program execution.
+func TestLogPoints(t *testing.T) {
+	runTest(t, "callme", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{23},
+			[]onBreakpoint{{
+				// Stop at line 23
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 23)
+					bps := []int{6, 25, 27, 16}
+					logMessages := map[int]string{6: "in callme!", 16: "in callme2!"}
+					client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
+					client.ExpectSetBreakpointsResponse(t)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					for i := 0; i < 5; i++ {
+						se := client.ExpectStoppedEvent(t)
+						if se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
+							t.Errorf("got stopped event = %#v, \nwant Reason=\"breakpoint\" ThreadId=1", se)
+						}
+						checkStop(t, client, 1, "main.main", 25)
+
+						client.ContinueRequest(1)
+						client.ExpectContinueResponse(t)
+
+						oe := client.ExpectOutputEvent(t)
+						if oe.Body.Category != "stdout" || oe.Body.Output != "in callme!\n" {
+							t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"in callme!\n\"", oe)
+						}
+					}
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
+						t.Errorf("got stopped event = %#v, \nwant Reason=\"breakpoint\" ThreadId=1", se)
+					}
+					checkStop(t, client, 1, "main.main", 27)
+
+					client.NextRequest(1)
+					client.ExpectNextResponse(t)
+
+					oe := client.ExpectOutputEvent(t)
+					if oe.Body.Category != "stdout" || oe.Body.Output != "in callme2!\n" {
+						t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"in callme2!\n\"", oe)
+					}
+
+					se = client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "step" || se.Body.ThreadId != 1 {
+						t.Errorf("got stopped event = %#v, \nwant Reason=\"step\" ThreadId=1", se)
+					}
+					checkStop(t, client, 1, "main.main", 28)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+// TestHaltPreventsAutoResume tests that a pause request issued while processing
+// log messages will result in a real stop.
+func TestHaltPreventsAutoResume(t *testing.T) {
+	runTest(t, "callme", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch", // Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{23},
+			[]onBreakpoint{{
+				execute: func() {
+					savedResumeOnce := resumeOnceAndCheckStop
+					defer func() {
+						resumeOnceAndCheckStop = savedResumeOnce
+					}()
+					checkStop(t, client, 1, "main.main", 23)
+					bps := []int{6, 25}
+					logMessages := map[int]string{6: "in callme!"}
+					client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
+					client.ExpectSetBreakpointsResponse(t)
+
+					for i := 0; i < 5; i++ {
+						// Reset the handler to the default behavior.
+						resumeOnceAndCheckStop = savedResumeOnce
+
+						// Expect a pause request while stopped not to interrupt continue.
+						client.PauseRequest(1)
+						client.ExpectPauseResponse(t)
+
+						client.ContinueRequest(1)
+						client.ExpectContinueResponse(t)
+						se := client.ExpectStoppedEvent(t)
+						if se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
+							t.Errorf("got stopped event = %#v, \nwant Reason=\"breakpoint\" ThreadId=1", se)
+						}
+						checkStop(t, client, 1, "main.main", 25)
+
+						pauseDoneChan := make(chan struct{}, 1)
+						outputDoneChan := make(chan struct{}, 1)
+						// Send a halt request when trying to resume the program after being
+						// interrupted. This should allow the log message to be processed,
+						// but keep the process from continuing beyond the line.
+						resumeOnceAndCheckStop = func(s *Session, command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
+							// This should trigger after the log message is sent, but before
+							// execution is resumed.
+							if command == api.DirectionCongruentContinue {
+								go func() {
+									<-outputDoneChan
+									defer close(pauseDoneChan)
+									client.PauseRequest(1)
+									client.ExpectPauseResponse(t)
+								}()
+								// Wait for the pause to be complete.
+								<-pauseDoneChan
+							}
+							return s.resumeOnceAndCheckStop(command, allowNextStateChange)
+						}
+
+						client.ContinueRequest(1)
+						client.ExpectContinueResponse(t)
+						oe := client.ExpectOutputEvent(t)
+						if oe.Body.Category != "stdout" || oe.Body.Output != "in callme!\n" {
+							t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"in callme!\n\"", oe)
+						}
+						// Signal that the output event has been received.
+						close(outputDoneChan)
+						// Wait for the pause to be complete.
+						<-pauseDoneChan
+						se = client.ExpectStoppedEvent(t)
+						if se.Body.Reason != "pause" {
+							t.Errorf("got stopped event = %#v, \nwant Reason=\"pause\"", se)
+						}
+						checkStop(t, client, 1, "main.callme", 6)
+					}
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+// TestConcurrentBreakpointsLogPoints executes to a breakpoint and then tests
+// that a breakpoint set in the main goroutine is hit the correct number of times
+// and log points set in the children goroutines produce the correct number of
+// output events.
+func TestConcurrentBreakpointsLogPoints(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.SkipNow()
+	}
+	runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{20},
+			[]onBreakpoint{{
+				// Stop at line 20
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 20)
+					bps := []int{8, 23}
+					logMessages := map[int]string{8: "hello"}
+					client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
+					client.ExpectSetBreakpointsResponse(t)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					// There may be up to 1 breakpoint and any number of log points that are
+					// hit concurrently. We should get a stopped event everytime the breakpoint
+					// is hit and an output event for each log point hit.
+					var oeCount, seCount int
+					for oeCount < 10 || seCount < 10 {
+						switch m := client.ExpectMessage(t).(type) {
+						case *dap.StoppedEvent:
+							if m.Body.Reason != "breakpoint" || !m.Body.AllThreadsStopped || m.Body.ThreadId != 1 {
+								t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", m)
+							}
+							checkStop(t, client, 1, "main.main", 23)
+							seCount++
+							client.ContinueRequest(1)
+						case *dap.OutputEvent:
+							if m.Body.Category != "stdout" || m.Body.Output != "hello\n" {
+								t.Errorf("\ngot  %#v\nwant Category=\"stdout\" Output=\"hello\"", m)
+							}
+							oeCount++
+						case *dap.ContinueResponse:
+						case *dap.TerminatedEvent:
+							t.Fatalf("\nexpected 10 output events and 10 stopped events, got %d output events and %d stopped events", oeCount, seCount)
+						default:
+							t.Fatalf("Unexpected message type: expect StoppedEvent, OutputEvent, or ContinueResponse, got %#v", m)
+						}
+					}
+					client.ExpectTerminatedEvent(t)
+				},
+				disconnect: false,
+			}})
+	})
+}
+
 func expectSetBreakpointsResponseAndStoppedEvent(t *testing.T, client *daptest.Client) (se *dap.StoppedEvent, br *dap.SetBreakpointsResponse) {
 	t.Helper()
 	var oe *dap.OutputEvent
@@ -2876,7 +3086,7 @@ func TestHitConditionBreakpoints(t *testing.T) {
 			fixture.Source, []int{4},
 			[]onBreakpoint{{
 				execute: func() {
-					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "4"})
+					client.SetBreakpointsRequestWithArgs(fixture.Source, []int{7}, nil, map[int]string{7: "4"}, nil)
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{7, fixture.Source, true, ""}})
 
 					client.ContinueRequest(1)
@@ -2890,7 +3100,7 @@ func TestHitConditionBreakpoints(t *testing.T) {
 					checkVarExact(t, locals, 0, "i", "i", "4", "int", noChildren)
 
 					// Change the hit condition.
-					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "% 2"})
+					client.SetBreakpointsRequestWithArgs(fixture.Source, []int{7}, nil, map[int]string{7: "% 2"}, nil)
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{7, fixture.Source, true, ""}})
 
 					client.ContinueRequest(1)
@@ -2904,11 +3114,11 @@ func TestHitConditionBreakpoints(t *testing.T) {
 					checkVarExact(t, locals, 0, "i", "i", "6", "int", noChildren)
 
 					// Expect an error if an assignment is passed.
-					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "= 2"})
+					client.SetBreakpointsRequestWithArgs(fixture.Source, []int{7}, nil, map[int]string{7: "= 2"}, nil)
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{-1, "", false, ""}})
 
 					// Change the hit condition.
-					client.SetHitConditionalBreakpointsRequest(fixture.Source, []int{7}, map[int]string{7: "< 8"})
+					client.SetBreakpointsRequestWithArgs(fixture.Source, []int{7}, nil, map[int]string{7: "< 8"}, nil)
 					expectSetBreakpointsResponse(t, client, []Breakpoint{{7, fixture.Source, true, ""}})
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
@@ -4324,6 +4534,35 @@ func TestLaunchRequestOutputPath(t *testing.T) {
 	})
 }
 
+func TestExitNonZeroStatus(t *testing.T) {
+	runTest(t, "pr1055", func(client *daptest.Client, fixture protest.Fixture) {
+		client.InitializeRequest()
+		client.ExpectInitializeResponseAndCapabilities(t)
+
+		client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+		client.ExpectInitializedEvent(t)
+		client.ExpectLaunchResponse(t)
+
+		client.ConfigurationDoneRequest()
+		client.ExpectConfigurationDoneResponse(t)
+
+		client.ExpectTerminatedEvent(t)
+
+		client.DisconnectRequest()
+		// Check that the process exit status is 2.
+		oep := client.ExpectOutputEventProcessExited(t, 2)
+		if oep.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Category='console'", oep)
+		}
+		oed := client.ExpectOutputEventDetaching(t)
+		if oed.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Category='console'", oed)
+		}
+		client.ExpectDisconnectResponse(t)
+		client.ExpectTerminatedEvent(t)
+	})
+}
+
 func TestNoDebug_GoodExitStatus(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runNoDebugSession(t, client, func() {
@@ -4583,6 +4822,24 @@ func TestAttachRequest(t *testing.T) {
 	})
 }
 
+// Since we are in async mode while running, we might receive thee messages after pause request
+// in either order.
+func expectPauseResponseAndStoppedEvent(t *testing.T, client *daptest.Client) {
+	t.Helper()
+	for i := 0; i < 2; i++ {
+		msg := client.ExpectMessage(t)
+		switch m := msg.(type) {
+		case *dap.StoppedEvent:
+			if m.Body.Reason != "pause" || m.Body.ThreadId != 0 && m.Body.ThreadId != 1 {
+				t.Errorf("\ngot %#v\nwant ThreadId=0/1 Reason='pause'", m)
+			}
+		case *dap.PauseResponse:
+		default:
+			t.Fatalf("got %#v, want StoppedEvent or PauseResponse", m)
+		}
+	}
+}
+
 func TestPauseAndContinue(t *testing.T) {
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
@@ -4604,19 +4861,7 @@ func TestPauseAndContinue(t *testing.T) {
 
 					// Halt pauses all goroutines, so thread id is ignored
 					client.PauseRequest(56789)
-					// Since we are in async mode while running, we might receive next two messages in either order.
-					for i := 0; i < 2; i++ {
-						msg := client.ExpectMessage(t)
-						switch m := msg.(type) {
-						case *dap.StoppedEvent:
-							if m.Body.Reason != "pause" || m.Body.ThreadId != 0 && m.Body.ThreadId != 1 {
-								t.Errorf("\ngot %#v\nwant ThreadId=0/1 Reason='pause'", m)
-							}
-						case *dap.PauseResponse:
-						default:
-							t.Fatalf("got %#v, want StoppedEvent or PauseResponse", m)
-						}
-					}
+					expectPauseResponseAndStoppedEvent(t, client)
 
 					// Pause will be a no-op at a pause: there will be no additional stopped events
 					client.PauseRequest(1)
@@ -5198,7 +5443,7 @@ func TestBadLaunchRequests(t *testing.T) {
 			"Failed to launch: invalid debug configuration - cannot use {\"from\":\"path1\",\"to\":123} as 'substitutePath' of type {\"from\":string, \"to\":string}")
 		// Bad "cwd"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "cwd": 123})
-		checkFailedToLaunchWithMessage(client.ExpectErrorResponse(t),
+		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch: invalid debug configuration - cannot unmarshal number into \"cwd\" of type string")
 
 		// Skip detailed message checks for potentially different OS-specific errors.
@@ -5316,10 +5561,6 @@ func TestBadAttachRequest(t *testing.T) {
 		}
 
 		// Bad "mode"
-		client.AttachRequest(map[string]interface{}{"mode": "remote"})
-		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
-			"Failed to attach: invalid debug configuration - unsupported 'mode' attribute \"remote\"")
-
 		client.AttachRequest(map[string]interface{}{"mode": "blah blah blah"})
 		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to attach: invalid debug configuration - unsupported 'mode' attribute \"blah blah blah\"")
@@ -5388,6 +5629,108 @@ func TestBadAttachRequest(t *testing.T) {
 		dresp := client.ExpectDisconnectResponse(t)
 		if dresp.RequestSeq != seqCnt {
 			t.Errorf("got %#v, want RequestSeq=%d", dresp, seqCnt)
+		}
+	})
+}
+
+// TODO(polina): also add launchDebuggerWithTargetRunning
+func launchDebuggerWithTargetHalted(t *testing.T, fixture string) *debugger.Debugger {
+	t.Helper()
+	bin := protest.BuildFixture(fixture, protest.AllNonOptimized)
+	cfg := service.Config{
+		ProcessArgs: []string{bin.Path},
+		Debugger:    debugger.Config{Backend: "default"},
+	}
+	dbg, err := debugger.New(&cfg.Debugger, cfg.ProcessArgs) // debugger halts process on entry
+	if err != nil {
+		t.Fatal("failed to start debugger:", err)
+	}
+	return dbg
+}
+
+// runTestWithDebugger starts the server and sets its debugger, initializes a debug session,
+// runs test, then disconnects. Expects the process at the end of test() to be halted
+func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *daptest.Client)) {
+	serverStopped := make(chan struct{})
+	server, _ := startDapServer(t, serverStopped)
+	client := daptest.NewClient(server.listener.Addr().String())
+	time.Sleep(100 * time.Millisecond) // Give time for connection to be set as dap.Session
+	// TODO(polina): update once the server interface is refactored to take debugger as arg
+	server.sessionMu.Lock()
+	if server.session == nil {
+		t.Fatal("dap session is not ready")
+	}
+	server.session.debugger = dbg
+	server.sessionMu.Unlock()
+	defer client.Close()
+	client.InitializeRequest()
+	client.ExpectInitializeResponseAndCapabilities(t)
+
+	test(client)
+
+	client.DisconnectRequest()
+	if server.config.AcceptMulti {
+		// TODO(polina): support multi-client mode
+		t.Fatal("testing of accept-multiclient not yet supporteed")
+	} else if server.config.Debugger.AttachPid == 0 { // launched target
+		client.ExpectOutputEventDetachingKill(t)
+	} else { // attached to target
+		client.ExpectOutputEventDetachingNoKill(t)
+	}
+	client.ExpectDisconnectResponse(t)
+	client.ExpectTerminatedEvent(t)
+
+	<-serverStopped
+}
+
+func TestAttachRemoteToHaltedTargetStopOnEntry(t *testing.T) {
+	// Halted + stop on entry
+	runTestWithDebugger(t, launchDebuggerWithTargetHalted(t, "increment"), func(client *daptest.Client) {
+		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
+		client.ExpectInitializedEvent(t)
+		client.ExpectAttachResponse(t)
+		client.ConfigurationDoneRequest()
+		client.ExpectStoppedEvent(t)
+		client.ExpectConfigurationDoneResponse(t)
+	})
+}
+
+func TestAttachRemoteToHaltedTargetContinueOnEntry(t *testing.T) {
+	// Halted + continue on entry
+	runTestWithDebugger(t, launchDebuggerWithTargetHalted(t, "http_server"), func(client *daptest.Client) {
+		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": false})
+		client.ExpectInitializedEvent(t)
+		client.ExpectAttachResponse(t)
+		client.ConfigurationDoneRequest()
+		client.ExpectConfigurationDoneResponse(t)
+		// Continuing
+		time.Sleep(time.Second)
+		// Halt to make the disconnect sequence more predictable.
+		client.PauseRequest(1)
+		expectPauseResponseAndStoppedEvent(t, client)
+	})
+}
+
+// TODO(polina): Running + stop/continue on entry
+
+func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
+	runTestWithDebugger(t, launchDebuggerWithTargetHalted(t, "increment"), func(client *daptest.Client) {
+		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 100})
+		er := client.ExpectVisibleErrorResponse(t)
+		msg := "Failed to attach: debugger already started - use remote mode to connect"
+		if er.Body.Error.Id != 3001 || er.Body.Error.Format != msg {
+			t.Errorf("got %#v, want Id=3001 Format=%q", er, msg)
+		}
+		tests := []string{"debug", "test", "exec", "replay", "core"}
+		for _, mode := range tests {
+			t.Run(mode, func(t *testing.T) {
+				client.LaunchRequestWithArgs(map[string]interface{}{"mode": mode})
+				er := client.ExpectVisibleErrorResponse(t)
+				msg := "Failed to launch: debugger already started - use remote attach to connect to a server with an active debug session"
+				if er.Body.Error.Id != 3000 || er.Body.Error.Format != msg {
+					t.Errorf("got %#v, want Id=3001 Format=%q", er, msg)
+				}
+			})
 		}
 	})
 }

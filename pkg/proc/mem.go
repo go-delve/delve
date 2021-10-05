@@ -179,7 +179,9 @@ func (mem *compositeMemory) WriteMemory(addr uint64, data []byte) (int, error) {
 
 			switch piece.Kind {
 			case op.RegPiece:
-				err := mem.regs.ChangeFunc(piece.Val, op.DwarfRegisterFromBytes(pieceMem))
+				oldReg := mem.regs.Reg(piece.Val)
+				newReg := op.DwarfRegisterFromBytes(pieceMem)
+				err := mem.regs.ChangeFunc(piece.Val, oldReg.Overwrite(newReg))
 				if err != nil {
 					return donesz, err
 				}

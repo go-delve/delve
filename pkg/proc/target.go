@@ -325,7 +325,7 @@ func (t *Target) Detach(kill bool) error {
 		}
 		for _, bp := range t.Breakpoints().M {
 			if bp != nil {
-				_, err := t.ClearBreakpoint(bp.Addr)
+				err := t.ClearBreakpoint(bp.Addr)
 				if err != nil {
 					return err
 				}
@@ -518,7 +518,7 @@ func (t *Target) dwrapUnwrap(fn *Function) *Function {
 	if fn == nil {
 		return nil
 	}
-	if !strings.Contains(fn.Name, "·dwrap·") {
+	if !strings.Contains(fn.Name, "·dwrap·") && !fn.trampoline {
 		return fn
 	}
 	if unwrap := t.BinInfo().dwrapUnwrapCache[fn.Entry]; unwrap != nil {
