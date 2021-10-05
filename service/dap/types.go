@@ -44,7 +44,6 @@ var (
 	}
 	defaultLaunchConfig = LaunchConfig{
 		Mode:                     "debug",
-		Output:                   defaultDebugBinary,
 		LaunchAttachCommonConfig: defaultLaunchAttachCommonConfig,
 	}
 	defaultAttachConfig = AttachConfig{
@@ -65,28 +64,34 @@ type LaunchConfig struct {
 	// Default is "debug".
 	Mode string `json:"mode,omitempty"`
 
-	// Required when mode is `debug`, `test`, or `exec`.
 	// Path to the program folder (or any go file within that folder)
 	// when in `debug` or `test` mode, and to the pre-built binary file
 	// to debug in `exec` mode.
 	// If it is not an absolute path, it will be interpreted as a path
-	// relative to the working directory of the delve process.
+	// relative to Delve's working directory.
+	// Required when mode is `debug`, `test`, `exec`, and `core`.
 	Program string `json:"program,omitempty"`
 
 	// Command line arguments passed to the debugged program.
+	// Relative paths used in Args will be interpreted as paths relative
+	// to `cwd`.
 	Args []string `json:"args,omitempty"`
 
-	// Working directory of the program being debugged
-	// if a non-empty value is specified. If a relative path is provided,
-	// it will be interpreted as a relative path to the delve's
-	// working directory.
+	// Working directory of the program being debugged.
+	// If a relative path is provided, it will be interpreted as
+	// a relative path to the delve's working directory. This is
+	// similar to delve's `--wd` flag.
 	//
-	// If not specified or empty, currently the built program's directory will
-	// be used.
-	// This is similar to delve's `--wd` flag.
+	// If not specified or empty, delve's working directory is
+	// used by default. But for `test` mode, delve tries to find
+	// the test's package source directory and run tests from there.
+	// This matches the behavior of `dlv test` and `go test`.
 	Cwd string `json:"cwd,omitempty"`
 
 	// Build flags, to be passed to the Go compiler.
+	// Relative paths used in BuildFlags will be interpreted as paths
+	// relative to Delve's current working directory.
+	//
 	// It is like delve's `--build-flags`. For example,
 	//
 	//    "buildFlags": "-tags=integration -mod=vendor -cover -v"
@@ -94,25 +99,37 @@ type LaunchConfig struct {
 
 	// Output path for the binary of the debugee.
 	// Relative path is interpreted as the path relative to
-	// the delve process's working directory.
+	// the delve's current working directory.
 	// This is deleted after the debug session ends.
-	//
-	// FIXIT: the built program's directory is used as the default
-	// working directory of the debugged program, which means
-	// the directory of `output` is used as the default working
-	// directory. This is a bug and needs fix.
 	Output string `json:"output,omitempty"`
 
 	// NoDebug is used to run the program without debugging.
 	NoDebug bool `json:"noDebug,omitempty"`
 
 	// TraceDirPath is the trace directory path for replay mode.
+	// Relative path is interpreted as a path relative to Delve's
+	// current working directory.
 	// This is required for "replay" mode but unused in other modes.
 	TraceDirPath string `json:"traceDirPath,omitempty"`
 
 	// CoreFilePath is the core file path for core mode.
+	//
 	// This is required for "core" mode but unused in other modes.
 	CoreFilePath string `json:"coreFilePath,omitempty"`
+
+	// DelveCwd is the working directory of Delve.
+	// If specified, the delve DAP server will change its working
+	// directory to the specified directory using os.Chdir.
+	// Any relative paths used in most of other attributes are
+	// interpreted as paths relative to Delve's working directory
+	// unless explicitely stated otherwise. When Delve needs to
+	// build the program (in debug/test modes), Delve runs the
+	// go command from the Delve's working directory.
+	//
+	// If a relative path is provided as DelveCwd, it will be
+	// interpreted as a path relative to Delve's current working
+	// directory.
+	DelveCwd string `json:"delveCwd,omitempty"`
 
 	LaunchAttachCommonConfig
 }

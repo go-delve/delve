@@ -21,7 +21,7 @@ import (
 func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 	b := &Breakpoint{
 		Name:         bp.Name,
-		ID:           bp.LogicalID,
+		ID:           bp.LogicalID(),
 		FunctionName: bp.FunctionName,
 		File:         bp.File,
 		Line:         bp.Line,
@@ -68,10 +68,10 @@ func ConvertBreakpoints(bps []*proc.Breakpoint) []*Breakpoint {
 	r := make([]*Breakpoint, 0, len(bps))
 	for _, bp := range bps {
 		if len(r) > 0 {
-			if r[len(r)-1].ID == bp.LogicalID {
+			if r[len(r)-1].ID == bp.LogicalID() {
 				r[len(r)-1].Addrs = append(r[len(r)-1].Addrs, bp.Addr)
 				continue
-			} else if r[len(r)-1].ID > bp.LogicalID {
+			} else if r[len(r)-1].ID > bp.LogicalID() {
 				panic("input not sorted")
 			}
 		}

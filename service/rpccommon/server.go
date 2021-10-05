@@ -77,7 +77,7 @@ func NewServer(config *service.Config) *ServerImpl {
 	}
 	if config.Debugger.Foreground {
 		// Print listener address
-		logflags.WriteAPIListeningMessage(config.Listener.Addr().String())
+		logflags.WriteAPIListeningMessage(config.Listener.Addr())
 		logger.Debug("API server pid = ", os.Getpid())
 	}
 	return &ServerImpl{

@@ -27,6 +27,8 @@ const (
 
 	unrecoveredPanicID = -1
 	fatalThrowID       = -2
+
+	NoLogicalID = -1000 // Logical breakpoint ID for breakpoints internal breakpoints.
 )
 
 // Breakpoint represents a physical breakpoint. Stores information on the break
@@ -41,7 +43,6 @@ type Breakpoint struct {
 	Addr         uint64 // Address breakpoint is set for.
 	OriginalData []byte // If software breakpoint, the data we replace with breakpoint instruction.
 	Name         string // User defined name of the breakpoint
-	LogicalID    int    // ID of the logical breakpoint that owns this physical breakpoint
 
 	WatchExpr     string
 	WatchType     WatchType
@@ -73,6 +74,8 @@ type Breaklet struct {
 	// Kind describes whether this is a stepping breakpoint (for next'ing or
 	// stepping).
 	Kind BreakpointKind
+
+	LogicalID int // ID of the logical breakpoint that owns this physical breakpoint
 
 	// Cond: if not nil the breakpoint will be triggered only if evaluating Cond returns true
 	Cond ast.Expr
@@ -175,7 +178,16 @@ func (wtype WatchType) withSize(sz uint8) WatchType {
 var ErrHWBreakUnsupported = errors.New("hardware breakpoints not implemented")
 
 func (bp *Breakpoint) String() string {
-	return fmt.Sprintf("Breakpoint %d at %#v %s:%d", bp.LogicalID, bp.Addr, bp.File, bp.Line)
+	return fmt.Sprintf("Breakpoint %d at %#v %s:%d", bp.LogicalID(), bp.Addr, bp.File, bp.Line)
+}
+
+func (bp *Breakpoint) LogicalID() int {
+	for _, breaklet := range bp.Breaklets {
+		if breaklet.Kind == UserBreakpoint {
+			return breaklet.LogicalID
+		}
+	}
+	return NoLogicalID
 }
 
 // VerboseDescr returns a string describing parts of the breakpoint struct
@@ -360,6 +372,13 @@ func isPanicCall(frames []Stackframe) (bool, int) {
 }
 
 func isDeferReturnCall(frames []Stackframe, deferReturns []uint64) (bool, uint64) {
+	if len(frames) >= 2 && (len(deferReturns) > 0) {
+		// On Go 1.18 and later runtime.deferreturn doesn't use jmpdefer anymore,
+		// it's a normal function making normal calls to deferred functions.
+		if frames[1].Current.Fn != nil && frames[1].Current.Fn.Name == "runtime.deferreturn" {
+			return true, 0
+		}
+	}
 	if len(frames) >= 1 {
 		for _, pc := range deferReturns {
 			if frames[0].Ret == pc {
@@ -448,8 +467,7 @@ type BreakpointMap struct {
 	// the last resume operation
 	WatchOutOfScope []*Breakpoint
 
-	breakpointIDCounter         int
-	internalBreakpointIDCounter int
+	breakpointIDCounter int
 }
 
 // NewBreakpointMap creates a new BreakpointMap.
@@ -610,10 +628,21 @@ func (t *Target) setBreakpointInternal(addr uint64, kind BreakpointKind, wtype W
 	newBreaklet := &Breaklet{Kind: kind, Cond: cond}
 	if kind == UserBreakpoint {
 		newBreaklet.HitCount = map[int]uint64{}
+		bpmap.breakpointIDCounter++
+		newBreaklet.LogicalID = bpmap.breakpointIDCounter
 	}
 	if bp, ok := bpmap.M[addr]; ok {
 		if !bp.canOverlap(kind) {
 			return bp, BreakpointExistsError{bp.File, bp.Line, bp.Addr}
+		}
+		if kind == UserBreakpoint {
+			bp.Tracepoint = false
+			bp.TraceReturn = false
+			bp.Goroutine = false
+			bp.Stacktrace = 0
+			bp.Variables = nil
+			bp.LoadArgs = nil
+			bp.LoadLocals = nil
 		}
 		bp.Breaklets = append(bp.Breaklets, newBreaklet)
 		return bp, nil
@@ -655,14 +684,6 @@ func (t *Target) setBreakpointInternal(addr uint64, kind BreakpointKind, wtype W
 		return nil, err
 	}
 
-	if kind != UserBreakpoint {
-		bpmap.internalBreakpointIDCounter++
-		newBreakpoint.LogicalID = bpmap.internalBreakpointIDCounter
-	} else {
-		bpmap.breakpointIDCounter++
-		newBreakpoint.LogicalID = bpmap.breakpointIDCounter
-	}
-
 	newBreakpoint.Breaklets = append(newBreakpoint.Breaklets, newBreaklet)
 
 	bpmap.M[addr] = newBreakpoint
@@ -675,8 +696,13 @@ func (t *Target) SetBreakpointWithID(id int, addr uint64) (*Breakpoint, error) {
 	bpmap := t.Breakpoints()
 	bp, err := t.SetBreakpoint(addr, UserBreakpoint, nil)
 	if err == nil {
-		bp.LogicalID = id
-		bpmap.breakpointIDCounter--
+		for _, breaklet := range bp.Breaklets {
+			if breaklet.Kind == UserBreakpoint {
+				breaklet.LogicalID = id
+				bpmap.breakpointIDCounter--
+				break
+			}
+		}
 	}
 	return bp, err
 }
@@ -693,13 +719,13 @@ func (bp *Breakpoint) canOverlap(kind BreakpointKind) bool {
 }
 
 // ClearBreakpoint clears the breakpoint at addr.
-func (t *Target) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
+func (t *Target) ClearBreakpoint(addr uint64) error {
 	if valid, err := t.Valid(); !valid {
-		return nil, err
+		return err
 	}
 	bp, ok := t.Breakpoints().M[addr]
 	if !ok {
-		return nil, NoBreakpointError{Addr: addr}
+		return NoBreakpointError{Addr: addr}
 	}
 
 	for i := range bp.Breaklets {
@@ -710,18 +736,18 @@ func (t *Target) ClearBreakpoint(addr uint64) (*Breakpoint, error) {
 
 	_, err := t.finishClearBreakpoint(bp)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if bp.WatchExpr != "" && bp.watchStackOff != 0 {
 		// stack watchpoint, must remove all its WatchOutOfScopeBreakpoints/StackResizeBreakpoints
 		err := t.clearStackWatchBreakpoints(bp)
 		if err != nil {
-			return bp, err
+			return err
 		}
 	}
 
-	return bp, nil
+	return nil
 }
 
 // ClearSteppingBreakpoints removes all stepping breakpoints from the map,
@@ -873,7 +899,7 @@ func (rbpi *returnBreakpointInfo) Collect(t *Target, thread Thread) []*Variable 
 		return returnInfoError("could not read function entry", err, thread.ProcessMemory())
 	}
 
-	vars, err := scope.Locals()
+	vars, err := scope.Locals(0)
 	if err != nil {
 		return returnInfoError("could not evaluate return variables", err, thread.ProcessMemory())
 	}
