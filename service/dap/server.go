@@ -1245,7 +1245,6 @@ type bpLocation struct {
 // and the location. The location is computed separately because this may be more
 // expensive to compute and may not always be necessary.
 func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(i int) *bpMetadata, locFunc func(i int) (*bpLocation, error)) []dap.Breakpoint {
-	// See https://github.com/golang/vscode-go/issues/163 for details.
 	// If a breakpoint:
 	// -- exists and not in request => ClearBreakpoint
 	// -- exists and in request => AmendBreakpoint
