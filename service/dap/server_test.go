@@ -2761,9 +2761,9 @@ func TestLogPoints(t *testing.T) {
 
 func checkLogMessage(t *testing.T, oe *dap.OutputEvent, goid int, text, path string, line int) {
 	t.Helper()
-	prefix := "> goroutine="
+	prefix := "> [Go "
 	if goid >= 0 {
-		prefix += strconv.Itoa(goid)
+		prefix += strconv.Itoa(goid) + "]"
 	}
 	if oe.Body.Category != "stdout" || !strings.HasPrefix(oe.Body.Output, prefix) || !strings.HasSuffix(oe.Body.Output, text+"\n") {
 		t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"%s: %s\\n\"", oe, prefix, text)

@@ -3172,7 +3172,7 @@ func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int) bool {
 			Event: *newEvent("output"),
 			Body: dap.OutputEventBody{
 				Category: "stdout",
-				Output:   fmt.Sprintf("> goroutine=%d: %s\n", goid, msg),
+				Output:   fmt.Sprintf("> [Go %d]: %s\n", goid, msg),
 				Source: dap.Source{
 					Path: s.toClientPath(bp.File),
 				},
