@@ -4504,10 +4504,9 @@ func TestLaunchRequestDefaults(t *testing.T) {
 	})
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, "launch", func() {
-			// Use the default output directory.
+			// Use the temporary output binary.
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "debug", "program": fixture.Source})
-			// writes to default output dir __debug_bin
 		})
 	})
 }
@@ -4673,16 +4672,95 @@ func TestLaunchRequestWithRelativeExecPath(t *testing.T) {
 }
 
 func TestLaunchTestRequest(t *testing.T) {
-	serverStopped := make(chan struct{})
-	client := startDapServerWithClient(t, serverStopped)
-	defer client.Close()
-	runDebugSession(t, client, "launch", func() {
-		fixtures := protest.FindFixturesDir()
-		testdir, _ := filepath.Abs(filepath.Join(fixtures, "buildtest"))
-		client.LaunchRequestWithArgs(map[string]interface{}{
-			"mode": "test", "program": testdir, "output": "__mytestdir"})
-	})
-	<-serverStopped
+	orgWD, _ := os.Getwd()
+	fixtures := protest.FindFixturesDir() // relative to current working directory.
+	absoluteFixturesDir, _ := filepath.Abs(fixtures)
+	absolutePkgDir, _ := filepath.Abs(filepath.Join(fixtures, "buildtest"))
+	testFile := filepath.Join(absolutePkgDir, "main_test.go")
+
+	for _, tc := range []struct {
+		name       string
+		dlvWD      string
+		launchArgs map[string]interface{}
+		wantWD     string
+	}{{
+		name: "default",
+		launchArgs: map[string]interface{}{
+			"mode": "test", "program": absolutePkgDir,
+		},
+		wantWD: absolutePkgDir,
+	}, {
+		name: "output",
+		launchArgs: map[string]interface{}{
+			"mode": "test", "program": absolutePkgDir, "output": "test.out",
+		},
+		wantWD: absolutePkgDir,
+	}, {
+		name: "delveCWD",
+		launchArgs: map[string]interface{}{
+			"mode": "test", "program": absolutePkgDir, "delveCWD": ".",
+		},
+		wantWD: absolutePkgDir,
+	}, {
+		name: "delveCWD2",
+		launchArgs: map[string]interface{}{
+			"mode": "test", "program": ".", "delveCWD": absolutePkgDir,
+		},
+		wantWD: absolutePkgDir,
+	}, {
+		name: "cwd",
+		launchArgs: map[string]interface{}{
+			"mode": "test", "program": absolutePkgDir, "cwd": fixtures, // fixtures is relative to the current working directory.
+		},
+		wantWD: absoluteFixturesDir,
+	}, {
+		name:  "dlv runs outside of module",
+		dlvWD: os.TempDir(),
+		launchArgs: map[string]interface{}{
+			"mode": "test", "program": absolutePkgDir, "delveCWD": absoluteFixturesDir,
+		},
+		wantWD: absolutePkgDir,
+	}, {
+		name:  "dlv builds in delveCWD but runs in cwd",
+		dlvWD: fixtures,
+		launchArgs: map[string]interface{}{
+			"mode": "test", "program": absolutePkgDir, "delveCWD": absolutePkgDir, "cwd": "..", // relative to delveCWD.
+		},
+		wantWD: absoluteFixturesDir,
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Some test cases with delveCWD or dlvWD change process working directory.
+			defer os.Chdir(orgWD)
+			if tc.dlvWD != "" {
+				os.Chdir(tc.dlvWD)
+				defer os.Chdir(orgWD)
+			}
+			serverStopped := make(chan struct{})
+			client := startDapServerWithClient(t, serverStopped)
+			defer client.Close()
+
+			runDebugSessionWithBPs(t, client, "launch",
+				func() { // Launch
+					client.LaunchRequestWithArgs(tc.launchArgs)
+				},
+				testFile, []int{14},
+				[]onBreakpoint{{
+					execute: func() {
+						checkStop(t, client, -1, "github.com/go-delve/delve/_fixtures/buildtest.TestCurrentDirectory", 14)
+						client.VariablesRequest(1001) // Locals
+						locals := client.ExpectVariablesResponse(t)
+						checkChildren(t, locals, "Locals", 1)
+						for i := range locals.Body.Variables {
+							switch locals.Body.Variables[i].Name {
+							case "wd": // The test's working directory is the package directory by default.
+								checkVarExact(t, locals, i, "wd", "wd", fmt.Sprintf("%q", tc.wantWD), "string", noChildren)
+							}
+						}
+					}}})
+
+			<-serverStopped
+		})
+	}
 }
 
 // Tests that 'args' from LaunchRequest are parsed and passed to the target
