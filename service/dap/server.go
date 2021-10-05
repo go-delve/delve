@@ -2155,8 +2155,8 @@ func (s *Session) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 		config := DefaultLoadConfig
 		config.MaxArrayValues = config.MaxStringLen
 		vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, loadExpr, config)
-		val := s.convertVariableToString(vLoaded)
 		if err == nil {
+			val := s.convertVariableToString(vLoaded)
 			// TODO(suzmue): Add evaluate name. Using string(name) will not get the same result because the
 			// MaxArrayValues is not auto adjusted in evaluate requests like MaxStringLen is adjusted.
 			children = append(children, dap.Variable{
@@ -2164,6 +2164,8 @@ func (s *Session) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 				Value: val,
 				Type:  "string",
 			})
+		} else {
+			s.config.log.Debugf("failed to load %q: %v", v.fullyQualifiedNameOrExpr, err)
 		}
 	}
 	return children, nil
