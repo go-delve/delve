@@ -1253,12 +1253,15 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 
 	// Get all existing breakpoints matching the prefix.
 	existingBps := s.getMatchingBreakpoints(prefix)
-	bpAdded := make(map[string]struct{}, len(existingBps))
-	for _, bp := range existingBps {
-		existingBps[bp.Name] = bp
-	}
+
+	// createdBps is a set of breakpoint names that have been added
+	// during this request. This is used to catch duplicate set
+	// breakpoints requests and to track which breakpoints need to
+	// be deleted.
+	createdBps := make(map[string]struct{}, len(existingBps))
 
 	breakpoints := make([]dap.Breakpoint, totalBps)
+	// Amend existing breakpoints.
 	for i := 0; i < totalBps; i++ {
 		want := metadataFunc(i)
 		got, ok := existingBps[want.name]
@@ -1268,7 +1271,7 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 		}
 
 		var err error
-		if _, ok := bpAdded[want.name]; ok {
+		if _, ok := createdBps[want.name]; ok {
 			err = fmt.Errorf("breakpoint already exists")
 		} else {
 			got.Cond = want.condition
@@ -1277,12 +1280,15 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 			got.UserData = want.logMessage
 			err = s.debugger.AmendBreakpoint(got)
 		}
-		bpAdded[want.name] = struct{}{}
+		createdBps[want.name] = struct{}{}
 		s.updateBreakpointsResponse(breakpoints, i, err, got)
 	}
 
-	s.clearBreakpoints(existingBps, bpAdded)
+	// Clear breakpoints.
+	// Any breakpoint that existed before this request but was not amended must be deleted.
+	s.clearBreakpoints(existingBps, createdBps)
 
+	// Add new breakpoints.
 	for i := 0; i < totalBps; i++ {
 		want := metadataFunc(i)
 		if _, ok := existingBps[want.name]; ok {
@@ -1292,7 +1298,7 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 		var got *api.Breakpoint
 		wantLoc, err := locFunc(i)
 		if err == nil {
-			if _, ok := bpAdded[want.name]; ok {
+			if _, ok := createdBps[want.name]; ok {
 				err = fmt.Errorf("breakpoint already exists")
 			} else {
 				// Create new breakpoints.
@@ -1310,7 +1316,7 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 					})
 			}
 		}
-		bpAdded[want.name] = struct{}{}
+		createdBps[want.name] = struct{}{}
 		s.updateBreakpointsResponse(breakpoints, i, err, got)
 	}
 	return breakpoints
@@ -1409,9 +1415,9 @@ func (s *Session) onSetInstructionBreakpointsRequest(request *dap.SetInstruction
 	s.send(response)
 }
 
-func (s *Session) clearBreakpoints(existingBps map[string]*api.Breakpoint, bpAdded map[string]struct{}) error {
+func (s *Session) clearBreakpoints(existingBps map[string]*api.Breakpoint, amendedBps map[string]struct{}) error {
 	for req, bp := range existingBps {
-		if _, ok := bpAdded[req]; ok {
+		if _, ok := amendedBps[req]; ok {
 			continue
 		}
 		_, err := s.debugger.ClearBreakpoint(bp)
