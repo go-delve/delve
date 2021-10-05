@@ -4318,9 +4318,13 @@ func verifyStopLocation(t *testing.T, client *daptest.Client, thread int, name s
 	st := client.ExpectStackTraceResponse(t)
 	if len(st.Body.StackFrames) < 1 {
 		t.Errorf("\ngot  %#v\nwant len(stackframes) => 1", st)
-	} else if frame := st.Body.StackFrames[0]; frame.Name != name || (line != -1 && frame.Line != line) {
-		t.Errorf("\ngot  %#v\nwant Line=%d, Name=%q", frame, line, name)
-		t.Logf("Full response: %#v", st)
+	} else {
+		if line != -1 && st.Body.StackFrames[0].Line != line {
+			t.Errorf("\ngot  %#v\nwant Line=%d", st, line)
+		}
+		if st.Body.StackFrames[0].Name != name {
+			t.Errorf("\ngot  %#v\nwant Name=%q", st, name)
+		}
 	}
 }
 

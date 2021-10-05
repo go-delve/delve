@@ -932,18 +932,19 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		} else {
 			debugbinary = o
 		}
-
-		wd, _ := os.Getwd()
-		s.config.log.Debugf("building program '%s' in '%s' with flags '%v'", program, wd, args.BuildFlags)
+		buildFlags := args.BuildFlags
 
 		var cmd string
 		var out []byte
+		wd, _ := os.Getwd()
+		s.config.log.Debugf("building program '%s' in '%s' with flags '%v'", program, wd, buildFlags)
+
 		var err error
 		switch mode {
 		case "debug":
-			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, args.BuildFlags)
+			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
 		case "test":
-			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, args.BuildFlags)
+			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
 		}
 		if err != nil {
 			s.send(&dap.OutputEvent{
@@ -959,7 +960,6 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			return
 		}
 		program = debugbinary
-
 		s.mu.Lock()
 		s.binaryToRemove = debugbinary
 		s.mu.Unlock()
@@ -971,7 +971,6 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 
 	s.config.ProcessArgs = append([]string{program}, args.Args...)
-
 	if args.Cwd != "" {
 		s.config.Debugger.WorkingDir = args.Cwd
 	} else if mode == "test" {
