@@ -2475,3 +2475,38 @@ func TestLongStringArg(t *testing.T) {
 		}
 	})
 }
+
+func TestGenericsBreakpoint(t *testing.T) {
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
+		t.Skip("generics")
+	}
+	// Tests that setting breakpoints inside a generic function with multiple
+	// instantiations results in a single logical breakpoint with N physical
+	// breakpoints (N = number of instantiations).
+	withTestClient2("genericbp", t, func(c service.Client) {
+		fp := testProgPath(t, "genericbp")
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 6})
+		assertNoError(err, t, "CreateBreakpoint")
+		if len(bp.Addrs) != 2 {
+			t.Fatalf("wrong number of physical breakpoints: %d", len(bp.Addrs))
+		}
+
+		frame1Line := func() int {
+			frames, err := c.Stacktrace(-1, 10, 0, nil)
+			assertNoError(err, t, "Stacktrace")
+			return frames[1].Line
+		}
+
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue")
+		if line := frame1Line(); line != 10 {
+			t.Errorf("wrong line after first continue, expected 10, got %d", line)
+		}
+
+		state = <-c.Continue()
+		assertNoError(state.Err, t, "Continue")
+		if line := frame1Line(); line != 11 {
+			t.Errorf("wrong line after first continue, expected 11, got %d", line)
+		}
+	})
+}

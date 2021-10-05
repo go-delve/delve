@@ -1602,7 +1602,48 @@ func TestCgoEval(t *testing.T) {
 					t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
 				}
 			}
+		}
+	})
+}
 
+func TestEvalExpressionGenerics(t *testing.T) {
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
+		t.Skip("generics not supported")
+	}
+
+	testcases := [][]varTest{
+		// testfn[int, float32]
+		[]varTest{
+			{"arg1", true, "3", "", "int", nil},
+			{"arg2", true, "2.1", "", "float32", nil},
+			{"m", true, "map[float32]int [2.1: 3, ]", "", "map[float32]int", nil},
+		},
+
+		// testfn[*astruct, astruct]
+		[]varTest{
+			{"arg1", true, "*main.astruct {x: 0, y: 1}", "", "*main.astruct", nil},
+			{"arg2", true, "main.astruct {x: 2, y: 3}", "", "main.astruct", nil},
+			{"m", true, "map[main.astruct]*main.astruct [{x: 2, y: 3}: *{x: 0, y: 1}, ]", "", "map[main.astruct]*main.astruct", nil},
+		},
+	}
+
+	withTestProcess("testvariables_generic", t, func(p *proc.Target, fixture protest.Fixture) {
+		for i, tcs := range testcases {
+			assertNoError(p.Continue(), t, fmt.Sprintf("Continue() returned an error (%d)", i))
+			for _, tc := range tcs {
+				variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
+				if tc.err == nil {
+					assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
+					assertVariable(t, variable, tc)
+				} else {
+					if err == nil {
+						t.Fatalf("Expected error %s, got no error (%s)", tc.err.Error(), tc.name)
+					}
+					if tc.err.Error() != err.Error() {
+						t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+					}
+				}
+			}
 		}
 	})
 }
