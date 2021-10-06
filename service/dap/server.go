@@ -960,8 +960,6 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		s.mu.Lock()
 		s.binaryToRemove = args.Output
 		s.mu.Unlock()
-	} else {
-		args.Output = "" // optional arg that can be ignored: no program to build
 	}
 	s.config.ProcessArgs = append([]string{debugbinary}, args.Args...)
 
