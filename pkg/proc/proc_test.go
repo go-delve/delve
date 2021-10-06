@@ -5368,20 +5368,20 @@ func TestWatchpointsBasic(t *testing.T) {
 	skipOn(t, "not implemented", "linux", "arm64")
 	protest.AllowRecording(t)
 
-	position1 := 17
-	position5 := 33
+	position1 := 19
+	position5 := 41
 
 	if runtime.GOARCH == "arm64" {
-		position1 = 16
-		position5 = 32
+		position1 = 18
+		position5 = 40
 	}
 
 	withTestProcess("databpeasy", t, func(p *proc.Target, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
-		setFileBreakpoint(p, t, fixture.Source, 19) // Position 2 breakpoint
-		setFileBreakpoint(p, t, fixture.Source, 25) // Position 4 breakpoint
+		setFileBreakpoint(p, t, fixture.Source, 21) // Position 2 breakpoint
+		setFileBreakpoint(p, t, fixture.Source, 27) // Position 4 breakpoint
 		assertNoError(p.Continue(), t, "Continue 0")
-		assertLineNumber(p, t, 11, "Continue 0") // Position 0
+		assertLineNumber(p, t, 13, "Continue 0") // Position 0
 
 		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "GoroutineScope")
@@ -5399,18 +5399,18 @@ func TestWatchpointsBasic(t *testing.T) {
 		p.ClearBreakpoint(bp.Addr)
 
 		assertNoError(p.Continue(), t, "Continue 2")
-		assertLineNumber(p, t, 19, "Continue 2") // Position 2
+		assertLineNumber(p, t, 21, "Continue 2") // Position 2
 
 		_, err = p.SetWatchpoint(scope, "globalvar1", proc.WatchWrite|proc.WatchRead, nil)
 		assertNoError(err, t, "SetDataBreakpoint(read-write)")
 
 		assertNoError(p.Continue(), t, "Continue 3")
-		assertLineNumber(p, t, 20, "Continue 3") // Position 3
+		assertLineNumber(p, t, 22, "Continue 3") // Position 3
 
 		p.ClearBreakpoint(bp.Addr)
 
 		assertNoError(p.Continue(), t, "Continue 4")
-		assertLineNumber(p, t, 25, "Continue 4") // Position 4
+		assertLineNumber(p, t, 27, "Continue 4") // Position 4
 
 		t.Logf("setting final breakpoint")
 		_, err = p.SetWatchpoint(scope, "globalvar1", proc.WatchWrite, nil)
