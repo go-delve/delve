@@ -1005,8 +1005,8 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			s.noDebugProcess = nil
 			s.mu.Unlock()
 
+			s.logToConsole(proc.ErrProcessExited{Pid: cmd.ProcessState.Pid(), Status: cmd.ProcessState.ExitCode()}.Error())
 			if !stopped { // process terminated on its own
-				s.logToConsole(proc.ErrProcessExited{Pid: cmd.ProcessState.Pid(), Status: cmd.ProcessState.ExitCode()}.Error())
 				s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 			}
 		}()
@@ -1067,13 +1067,9 @@ func (s *Session) stopNoDebugProcess() {
 		// We already handled termination or there was never a process
 		return
 	}
-	if s.noDebugProcess.ProcessState != nil && s.noDebugProcess.ProcessState.Exited() {
-		s.logToConsole(proc.ErrProcessExited{Pid: s.noDebugProcess.ProcessState.Pid(), Status: s.noDebugProcess.ProcessState.ExitCode()}.Error())
-	} else {
-		// TODO(hyangah): gracefully terminate the process and its children processes.
-		s.logToConsole(fmt.Sprintf("Terminating process %d", s.noDebugProcess.Process.Pid))
-		s.noDebugProcess.Process.Kill() // Don't check error. Process killing and self-termination may race.
-	}
+	// TODO(hyangah): gracefully terminate the process and its children processes.
+	s.logToConsole(fmt.Sprintf("Terminating process %d", s.noDebugProcess.Process.Pid))
+	s.noDebugProcess.Process.Kill() // Don't check error. Process killing and self-termination may race.
 	s.noDebugProcess = nil
 }
 
