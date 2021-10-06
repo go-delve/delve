@@ -473,6 +473,18 @@ func (s *Session) handleRequest(request dap.Message) {
 
 	// These requests, can be handled regardless of whether the targret is running
 	switch request := request.(type) {
+	case *dap.InitializeRequest:
+		// Required
+		s.onInitializeRequest(request)
+		return
+	case *dap.LaunchRequest:
+		// Required
+		s.onLaunchRequest(request)
+		return
+	case *dap.AttachRequest:
+		// Required
+		s.onAttachRequest(request)
+		return
 	case *dap.DisconnectRequest:
 		// Required
 		s.onDisconnectRequest(request)
@@ -510,7 +522,7 @@ func (s *Session) handleRequest(request dap.Message) {
 	// the next stop. In addition, the editor itself might block waiting
 	// for these requests to return. We are not aware of any requests
 	// that would benefit from this approach at this time.
-	if s.debugger != nil && s.isRunningCmd() {
+	if s.debugger != nil && s.debugger.IsRunning() || s.isRunningCmd() {
 		switch request := request.(type) {
 		case *dap.ThreadsRequest:
 			// On start-up, the client requests the baseline of currently existing threads
@@ -630,17 +642,6 @@ func (s *Session) handleRequest(request dap.Message) {
 		}()
 		<-resumeRequestLoop
 	//--- Synchronous requests ---
-	// TODO(polina): target might be running when remote attach debug session
-	// is started. Support handling initialize and attach requests while running.
-	case *dap.InitializeRequest:
-		// Required
-		s.onInitializeRequest(request)
-	case *dap.LaunchRequest:
-		// Required
-		s.onLaunchRequest(request)
-	case *dap.AttachRequest:
-		// Required
-		s.onAttachRequest(request)
 	case *dap.SetBreakpointsRequest:
 		// Required
 		s.onSetBreakpointsRequest(request)
@@ -1459,9 +1460,12 @@ func closeIfOpen(ch chan struct{}) {
 // onConfigurationDoneRequest handles 'configurationDone' request.
 // This is an optional request enabled by capability ‘supportsConfigurationDoneRequest’.
 // It gets triggered after all the debug requests that follow initalized event,
-// so the s.debugger is guaranteed to be set.
+// so the s.debugger is guaranteed to be set. Expects the target to be halted.
 func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest, allowNextStateChange chan struct{}) {
 	defer closeIfOpen(allowNextStateChange)
+	if s.debugger.IsRunning() {
+		panic("process must be halted on entry")
+	}
 	if s.args.stopOnEntry {
 		e := &dap.StoppedEvent{
 			Event: *newEvent("stopped"),
@@ -1651,10 +1655,12 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 			return
 		}
 		s.config.log.Debug("debugger already started")
-		// TODO(polina): once we allow initialize and attach request while running,
-		// halt before sending initialized event. onConfigurationDone will restart
+		// Halt for configuration sequence. onConfigurationDone will restart
 		// execution if user requested !stopOnEntry.
-
+		if _, err := s.halt(); err != nil {
+			s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
+			return
+		}
 		// Enable StepBack controls on supported backends
 		if s.config.Debugger.Backend == "rr" {
 			s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportsStepBack: true}}})
