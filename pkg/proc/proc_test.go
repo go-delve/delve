@@ -5364,13 +5364,22 @@ func TestVariablesWithExternalLinking(t *testing.T) {
 
 func TestWatchpointsBasic(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
-	skipOn(t, "not implemented", "darwin")
 	skipOn(t, "not implemented", "386")
-	skipOn(t, "not implemented", "arm64")
-	skipOn(t, "not implemented", "rr")
+	skipOn(t, "not implemented", "linux", "arm64")
+	protest.AllowRecording(t)
+
+	position1 := 17
+	position5 := 33
+
+	if runtime.GOARCH == "arm64" {
+		position1 = 16
+		position5 = 32
+	}
 
 	withTestProcess("databpeasy", t, func(p *proc.Target, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
+		setFileBreakpoint(p, t, fixture.Source, 19) // Position 2 breakpoint
+		setFileBreakpoint(p, t, fixture.Source, 25) // Position 4 breakpoint
 		assertNoError(p.Continue(), t, "Continue 0")
 		assertLineNumber(p, t, 11, "Continue 0") // Position 0
 
@@ -5381,7 +5390,11 @@ func TestWatchpointsBasic(t *testing.T) {
 		assertNoError(err, t, "SetDataBreakpoint(write-only)")
 
 		assertNoError(p.Continue(), t, "Continue 1")
-		assertLineNumber(p, t, 17, "Continue 1") // Position 1
+		assertLineNumber(p, t, position1, "Continue 1") // Position 1
+
+		if curbp := p.CurrentThread().Breakpoint().Breakpoint; curbp == nil || (curbp.LogicalID() != bp.LogicalID()) {
+			t.Fatal("breakpoint not set")
+		}
 
 		p.ClearBreakpoint(bp.Addr)
 
@@ -5399,22 +5412,21 @@ func TestWatchpointsBasic(t *testing.T) {
 		assertNoError(p.Continue(), t, "Continue 4")
 		assertLineNumber(p, t, 25, "Continue 4") // Position 4
 
+		t.Logf("setting final breakpoint")
 		_, err = p.SetWatchpoint(scope, "globalvar1", proc.WatchWrite, nil)
 		assertNoError(err, t, "SetDataBreakpoint(write-only, again)")
 
 		assertNoError(p.Continue(), t, "Continue 5")
-		assertLineNumber(p, t, 33, "Continue 5") // Position 5
+		assertLineNumber(p, t, position5, "Continue 5") // Position 5
 	})
 }
 
 func TestWatchpointCounts(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
-	skipOn(t, "not implemented", "darwin")
 	skipOn(t, "not implemented", "386")
-	skipOn(t, "not implemented", "arm64")
-	skipOn(t, "not implemented", "rr")
-
+	skipOn(t, "not implemented", "linux", "arm64")
 	protest.AllowRecording(t)
+
 	withTestProcess("databpcountstest", t, func(p *proc.Target, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(p.Continue(), t, "Continue 0")
@@ -5526,12 +5538,18 @@ func TestDwrapStartLocation(t *testing.T) {
 
 func TestWatchpointStack(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
-	skipOn(t, "not implemented", "darwin")
 	skipOn(t, "not implemented", "386")
-	skipOn(t, "not implemented", "arm64")
-	skipOn(t, "not implemented", "rr")
+	skipOn(t, "not implemented", "linux", "arm64")
+	protest.AllowRecording(t)
+
+	position1 := 17
+
+	if runtime.GOARCH == "arm64" {
+		position1 = 16
+	}
 
 	withTestProcess("databpstack", t, func(p *proc.Target, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture.Source, 11) // Position 0 breakpoint
 		clearlen := len(p.Breakpoints().M)
 
 		assertNoError(p.Continue(), t, "Continue 0")
@@ -5543,8 +5561,13 @@ func TestWatchpointStack(t *testing.T) {
 		_, err = p.SetWatchpoint(scope, "w", proc.WatchWrite, nil)
 		assertNoError(err, t, "SetDataBreakpoint(write-only)")
 
-		if len(p.Breakpoints().M) != clearlen+3 {
-			// want 1 watchpoint, 1 stack resize breakpoint, 1 out of scope sentinel
+		watchbpnum := 3
+		if recorded, _ := p.Recorded(); recorded {
+			watchbpnum = 4
+		}
+
+		if len(p.Breakpoints().M) != clearlen+watchbpnum {
+			// want 1 watchpoint, 1 stack resize breakpoint, 1 out of scope sentinel (2 if recorded)
 			t.Errorf("wrong number of breakpoints after setting watchpoint: %d", len(p.Breakpoints().M)-clearlen)
 		}
 
@@ -5558,16 +5581,21 @@ func TestWatchpointStack(t *testing.T) {
 			}
 		}
 
+		// Note: for recorded processes retaddr will not always be the return
+		// address, ~50% of the times it will be the address of the CALL
+		// instruction preceding the return address, this does not matter for this
+		// test.
+
 		_, err = p.SetBreakpoint(retaddr, proc.UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint")
 
-		if len(p.Breakpoints().M) != clearlen+3 {
-			// want 1 watchpoint, 1 stack resize breakpoint, 1 out of scope sentinel (which is also a user breakpoint)
+		if len(p.Breakpoints().M) != clearlen+watchbpnum {
+			// want 1 watchpoint, 1 stack resize breakpoint, 1 out of scope sentinel (which is also a user breakpoint) (and another out of scope sentinel if recorded)
 			t.Errorf("wrong number of breakpoints after setting watchpoint: %d", len(p.Breakpoints().M)-clearlen)
 		}
 
 		assertNoError(p.Continue(), t, "Continue 1")
-		assertLineNumber(p, t, 17, "Continue 1") // Position 1
+		assertLineNumber(p, t, position1, "Continue 1") // Position 1
 
 		assertNoError(p.Continue(), t, "Continue 2")
 		t.Logf("%#v", p.CurrentThread().Breakpoint().Breakpoint)
@@ -5584,6 +5612,55 @@ func TestWatchpointStack(t *testing.T) {
 
 		err = p.ClearBreakpoint(retaddr)
 		assertNoError(err, t, "ClearBreakpoint")
+
+		if len(p.Breakpoints().M) != clearlen {
+			// want 1 user breakpoint set at retaddr
+			t.Errorf("wrong number of breakpoints after removing user breakpoint: %d", len(p.Breakpoints().M)-clearlen)
+		}
+	})
+}
+
+func TestWatchpointStackBackwardsOutOfScope(t *testing.T) {
+	skipUnlessOn(t, "only for recorded targets", "rr")
+	protest.AllowRecording(t)
+
+	withTestProcess("databpstack", t, func(p *proc.Target, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture.Source, 11) // Position 0 breakpoint
+		clearlen := len(p.Breakpoints().M)
+
+		assertNoError(p.Continue(), t, "Continue 0")
+		assertLineNumber(p, t, 11, "Continue 0") // Position 0
+
+		scope, err := proc.GoroutineScope(p, p.CurrentThread())
+		assertNoError(err, t, "GoroutineScope")
+
+		_, err = p.SetWatchpoint(scope, "w", proc.WatchWrite, nil)
+		assertNoError(err, t, "SetDataBreakpoint(write-only)")
+
+		assertNoError(p.Continue(), t, "Continue 1")
+		assertLineNumber(p, t, 17, "Continue 1") // Position 1
+
+		p.ChangeDirection(proc.Backward)
+
+		assertNoError(p.Continue(), t, "Continue 2")
+		t.Logf("%#v", p.CurrentThread().Breakpoint().Breakpoint)
+		assertLineNumber(p, t, 16, "Continue 2") // Position 1 again (because of inverted movement)
+
+		assertNoError(p.Continue(), t, "Continue 3")
+		t.Logf("%#v", p.CurrentThread().Breakpoint().Breakpoint)
+		assertLineNumber(p, t, 11, "Continue 3") // Position 0 (breakpoint 1 hit)
+
+		assertNoError(p.Continue(), t, "Continue 4")
+		t.Logf("%#v", p.CurrentThread().Breakpoint().Breakpoint)
+		assertLineNumber(p, t, 23, "Continue 4") // Position 2 (watchpoint gone out of scope)
+
+		if len(p.Breakpoints().M) != clearlen {
+			t.Errorf("wrong number of breakpoints after watchpoint goes out of scope: %d", len(p.Breakpoints().M)-clearlen)
+		}
+
+		if len(p.Breakpoints().WatchOutOfScope) != 1 {
+			t.Errorf("wrong number of out-of-scope watchpoints after watchpoint goes out of scope: %d", len(p.Breakpoints().WatchOutOfScope))
+		}
 
 		if len(p.Breakpoints().M) != clearlen {
 			// want 1 user breakpoint set at retaddr

@@ -17,6 +17,7 @@ import (
 	"go/constant"
 	"go/parser"
 	"io"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -74,7 +75,11 @@ import (
 // error or responding to a (synchronous) DAP disconnect request.
 // Once stop is triggered, the goroutine exits.
 //
-// TODO(polina): add another layer of per-client goroutines to support multiple clients
+// TODO(polina): add another layer of per-client goroutines to support multiple clients.
+// Note that some requests change the process's environment such
+// as working directory (for example, see DelveCwd of launch configuration).
+// So if we want to reuse this process for multiple debugging sessions
+// we need to address that.
 //
 // (3) Per-request goroutine is started for each asynchronous request
 // that resumes execution. We check if target is running already, so
@@ -807,9 +812,28 @@ func (s *Session) setClientCapabilities(args dap.InitializeRequestArguments) {
 	s.clientCapabilities.supportsVariableType = args.SupportsVariableType
 }
 
-// Default output file pathname for the compiled binary in debug or test modes,
-// relative to the current working directory of the server.
+// Default output file pathname for the compiled binary in debug or test modes
+// when temporary debug binary creation fails.
+// This is relative to the current working directory of the server.
 const defaultDebugBinary string = "./__debug_bin"
+
+func (s *Session) tempDebugBinary() string {
+	binaryPattern := "__debug_bin"
+	if runtime.GOOS == "windows" {
+		binaryPattern = "__debug_bin*.exe"
+	}
+	f, err := ioutil.TempFile("", binaryPattern)
+	if err != nil {
+		s.config.log.Errorf("failed to create a temporary binary (%v), falling back to %q", err, defaultDebugBinary)
+		return cleanExeName(defaultDebugBinary)
+	}
+	name := f.Name()
+	if err := f.Close(); err != nil {
+		s.config.log.Errorf("failed to create a temporary binary (%v), falling back to %q", err, defaultDebugBinary)
+		return cleanExeName(defaultDebugBinary)
+	}
+	return name
+}
 
 func cleanExeName(name string) string {
 	if runtime.GOOS == "windows" && filepath.Ext(name) != ".exe" {
@@ -833,6 +857,16 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 	s.config.log.Debug("parsed launch config: ", prettyPrint(args))
+
+	if args.DelveCwd != "" {
+		if err := os.Chdir(args.DelveCwd); err != nil {
+			s.sendShowUserErrorResponse(request.Request,
+				FailedToLaunch, "Failed to launch", fmt.Sprintf("failed to chdir using %q - %v", args.DelveCwd, err))
+			return
+		}
+	} else {
+		args.DelveCwd, _ = os.Getwd()
+	}
 
 	if args.Mode == "" {
 		args.Mode = "debug"
@@ -888,18 +922,22 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	debugbinary := args.Program
 	if args.Mode == "debug" || args.Mode == "test" {
 		if args.Output == "" {
-			args.Output = defaultDebugBinary
+			args.Output = s.tempDebugBinary()
+		} else {
+			args.Output = cleanExeName(args.Output)
 		}
-		args.Output, err = filepath.Abs(cleanExeName(args.Output))
+		args.Output, err = filepath.Abs(args.Output)
 		if err != nil {
 			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 			return
 		}
+		debugbinary = args.Output
 
 		var cmd string
 		var out []byte
-		wd, _ := os.Getwd()
-		s.config.log.Debugf("building program '%s' in '%s' with flags '%v'", args.Program, wd, args.BuildFlags)
+		s.config.log.Debugf("building program '%s' in '%s' with flags '%v'", args.Program, args.DelveCwd, args.BuildFlags)
+
+		var err error
 		switch args.Mode {
 		case "debug":
 			cmd, out, err = gobuild.GoBuildCombinedOutput(args.Output, []string{args.Program}, args.BuildFlags)
@@ -919,24 +957,30 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 				"Build error: Check the debug console for details.")
 			return
 		}
-		debugbinary = args.Output
 		s.mu.Lock()
 		s.binaryToRemove = args.Output
 		s.mu.Unlock()
 	} else {
 		args.Output = "" // optional arg that can be ignored: no program to build
 	}
+	s.config.ProcessArgs = append([]string{debugbinary}, args.Args...)
 
 	if err := s.setLaunchAttachArgs(args.LaunchAttachCommonConfig); err != nil {
 		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 		return
 	}
 
-	s.config.ProcessArgs = append([]string{debugbinary}, args.Args...)
 	if args.Cwd == "" {
-		args.Cwd = filepath.Dir(debugbinary)
+		if args.Mode == "test" {
+			// In test mode, run the test binary from the package directory
+			// like in `go test` and `dlv test` by default.
+			args.Cwd = s.getPackageDir(args.Program)
+		} else {
+			args.Cwd = "."
+		}
 	}
 	s.config.Debugger.WorkingDir = args.Cwd
+
 	s.config.log.Debugf("launching binary '%s' with config: %s", debugbinary, prettyPrint(args))
 
 	if args.NoDebug {
@@ -989,6 +1033,16 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	// will end the configuration sequence with 'configurationDone'.
 	s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
 	s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
+}
+
+func (s *Session) getPackageDir(pkg string) string {
+	cmd := exec.Command("go", "list", "-f", "{{.Dir}}", pkg)
+	out, err := cmd.Output()
+	if err != nil {
+		s.config.log.Debugf("failed to determin package directory for %v: %v\n%s", pkg, err, out)
+		return "."
+	}
+	return string(bytes.TrimSpace(out))
 }
 
 // newNoDebugProcess is called from onLaunchRequest (run goroutine) and
@@ -1840,7 +1894,6 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to list args", err.Error())
 		return
 	}
-	argScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Arguments%s", suffix), Children: slicePtrVarToSliceVar(args)}, "", true, 0}
 
 	// Retrieve local variables
 	locals, err := s.debugger.LocalVariables(goid, frame, 0, DefaultLoadConfig)
@@ -1848,11 +1901,9 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list locals", err.Error())
 		return
 	}
-	locScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Locals%s", suffix), Children: slicePtrVarToSliceVar(locals)}, "", true, 0}
-
-	scopeArgs := dap.Scope{Name: argScope.Name, VariablesReference: s.variableHandles.create(argScope)}
+	locScope := &fullyQualifiedVariable{&proc.Variable{Name: fmt.Sprintf("Locals%s", suffix), Children: slicePtrVarToSliceVar(append(args, locals...))}, "", true, 0}
 	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
-	scopes := []dap.Scope{scopeArgs, scopeLocals}
+	scopes := []dap.Scope{scopeLocals}
 
 	if s.args.showGlobalVariables {
 		// Limit what global variables we will return to the current package only.
