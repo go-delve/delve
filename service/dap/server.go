@@ -76,10 +76,6 @@ import (
 // Once stop is triggered, the goroutine exits.
 //
 // TODO(polina): add another layer of per-client goroutines to support multiple clients.
-// Note that some requests change the process's environment such
-// as working directory (for example, see DelveCwd of launch configuration).
-// So if we want to reuse this process for multiple debugging sessions
-// we need to address that.
 //
 // (3) Per-request goroutine is started for each asynchronous request
 // that resumes execution. We check if target is running already, so
@@ -374,7 +370,10 @@ func (c *Config) triggerServerStop() {
 // The server should be restarted for every new debug session.
 // The debugger won't be started until launch/attach request is received.
 // TODO(polina): allow new client connections for new debug sessions,
-// so the editor needs to launch delve only once?
+// so the editor needs to launch dap server only once? Note that some requests
+// may change the server's environment (e.g. see dlvCwd of launch configuration).
+// So if we want to reuse this server for multiple independent debugging sessions
+// we need to take that into consideration.
 func (s *Server) Run() {
 	go func() {
 		conn, err := s.listener.Accept() // listener is closed in Stop()
@@ -856,10 +855,10 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	if args.DelveCwd != "" {
-		if err := os.Chdir(args.DelveCwd); err != nil {
+	if args.DlvCwd != "" {
+		if err := os.Chdir(args.DlvCwd); err != nil {
 			s.sendShowUserErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch", fmt.Sprintf("failed to chdir using %q - %v", args.DelveCwd, err))
+				FailedToLaunch, "Failed to launch", fmt.Sprintf("failed to chdir to %q - %v", args.DlvCwd, err))
 			return
 		}
 	}
