@@ -47,6 +47,8 @@ type ProcessInternal interface {
 
 	SupportsBPF() bool
 	SetUProbe(string, int64, []ebpf.UProbeArgMap) error
+	EnableURetProbes() error
+	DisableURetProbes() error
 
 	// DumpProcessNotes returns ELF core notes describing the process and its threads.
 	// Implementing this method is optional.

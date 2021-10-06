@@ -2157,6 +2157,9 @@ func (d *Debugger) GetBufferedTracepoints() []api.TracepointResult {
 		for _, p := range trace.InputParams {
 			results[i].InputParams = append(results[i].InputParams, *api.ConvertVar(p))
 		}
+		for _, p := range trace.ReturnParams {
+			results[i].ReturnParams = append(results[i].ReturnParams, *api.ConvertVar(p))
+		}
 	}
 	return results
 }

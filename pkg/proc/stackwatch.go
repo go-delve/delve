@@ -95,10 +95,25 @@ func (t *Target) setStackWatchBreakpoints(scope *EvalScope, watchpoint *Breakpoi
 	}
 
 	// Stack Resize Sentinel
+	return t.setStackResizeSentinel(watchpoint, false, func(th Thread) bool {
+		adjustStackWatchpoint(t, th, watchpoint)
+		return false // we never want this breakpoint to be shown to the user
+	})
+}
 
+func (t *Target) setStackResizeSentinel(watchpoint *Breakpoint, breakOnEntry bool, callback func(Thread) bool) error {
 	fn := t.BinInfo().LookupFunc["runtime.copystack"]
 	if fn == nil {
 		return errors.New("could not find runtime.copystack")
+	}
+	if breakOnEntry {
+		bp, err := t.SetBreakpoint(fn.Entry, StackResizeBreakpoint, nil)
+		if err != nil {
+			return err
+		}
+		bp.Name = "copystack-entry"
+		brklt := bp.Breaklets[len(bp.Breaklets)-1]
+		brklt.callback = callback
 	}
 	text, err := Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), fn.Entry, fn.End)
 	if err != nil {
@@ -116,18 +131,15 @@ func (t *Target) setStackWatchBreakpoints(scope *EvalScope, watchpoint *Breakpoi
 	if retpc == 0 {
 		return errors.New("could not find return instruction in runtime.copystack")
 	}
-	rszbp, err := t.SetBreakpoint(retpc, StackResizeBreakpoint, sameGCond)
+
+	rszbp, err := t.SetBreakpoint(retpc, StackResizeBreakpoint, nil)
 	if err != nil {
 		return err
 	}
 
 	rszbreaklet := rszbp.Breaklets[len(rszbp.Breaklets)-1]
 	rszbreaklet.watchpoint = watchpoint
-	rszbreaklet.callback = func(th Thread) bool {
-		adjustStackWatchpoint(t, th, watchpoint)
-		return false // we never want this breakpoint to be shown to the user
-	}
-
+	rszbreaklet.callback = callback
 	return nil
 }
 

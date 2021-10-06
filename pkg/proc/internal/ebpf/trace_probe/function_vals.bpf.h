@@ -8,7 +8,7 @@ typedef struct function_parameter {
       unsigned int size; 
 
       // Offset from stack pointer. This should only be set from the Go side.
-      unsigned int offset; 
+      int offset;
 
       // If true, the parameter is passed in a register.
       bool in_reg;      
@@ -20,7 +20,7 @@ typedef struct function_parameter {
       int reg_nums[6]; 
 
       // The following are filled in by the eBPF program.
-      unsigned int daddr;   // Data address.
+      size_t daddr;   // Data address.
       char val[0x30];       // Value of the parameter.
       char deref_val[0x30]; // Dereference value of the parameter.
 } function_parameter_t;
@@ -33,6 +33,10 @@ typedef struct function_parameter_list {
       int goroutine_id;
 
       unsigned int fn_addr;
+
       unsigned int n_parameters;          // number of parameters.
       function_parameter_t params[6];     // list of parameters.
+
+      unsigned int n_ret_parameters;      // number of return parameters.
+      function_parameter_t ret_params[6]; // list of return parameters.
 } function_parameter_list_t;

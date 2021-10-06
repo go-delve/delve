@@ -708,12 +708,17 @@ func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProbeArgMap) error {
 	// Lazily load and initialize the BPF program upon request to set a uprobe.
 	if dbp.os.ebpf == nil {
-		dbp.os.ebpf, _ = ebpf.LoadEBPFTracingProgram()
+		var err error
+		dbp.os.ebpf, err = ebpf.LoadEBPFTracingProgram()
+		if err != nil {
+			return err
+		}
 	}
 
-	// We only allow up to 6 args for a BPF probe.
+	// We only allow up to 12 args for a BPF probe.
+	// 6 inputs + 6 outputs.
 	// Return early if we have more.
-	if len(args) > 6 {
+	if len(args) > 12 {
 		return errors.New("too many arguments in traced function, max is 6")
 	}
 
@@ -733,7 +738,32 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 	if err != nil {
 		return err
 	}
-	return dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, offset)
+	err = dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, offset)
+	if err != nil {
+		return err
+	}
+	return dbp.os.ebpf.AttachURetprobe(dbp.Pid(), debugname, offset)
+}
+
+func (dbp *nativeProcess) DisableURetProbes() error {
+	for _, ret := range dbp.os.ebpf.GetURetProbes() {
+		err := ret.Destroy()
+		if err != nil {
+			return err
+		}
+	}
+	dbp.os.ebpf.ClearURetProbes()
+	return nil
+}
+
+func (dbp *nativeProcess) EnableURetProbes() error {
+	for _, ret := range dbp.os.ebpf.GetClearedURetProbes() {
+		err := dbp.os.ebpf.AttachURetprobe(ret.Pid, ret.Path, ret.Offset)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func killProcess(pid int) error {

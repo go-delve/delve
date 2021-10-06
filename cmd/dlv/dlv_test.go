@@ -890,6 +890,46 @@ func TestTraceEBPF(t *testing.T) {
 	cmd.Wait()
 }
 
+func TestTraceEBPFRet(t *testing.T) {
+	if os.Getenv("CI") == "true" {
+		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
+	}
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("not implemented on non linux/amd64 systems")
+	}
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+		t.Skip("requires at least Go 1.16 to run test")
+	}
+	usr, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usr.Uid != "0" {
+		t.Skip("test must be run as root")
+	}
+
+	dlvbin, tmpdir := getDlvBinEBPF(t)
+	defer os.RemoveAll(tmpdir)
+
+	expected := "> (1) main.g(1000, 0xdeadbeef) => 10\n"
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(tmpdir, "__debug"), filepath.Join(fixtures, "databpstack2.go"), "main.g")
+	rdr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	assertNoError(cmd.Start(), t, "running trace")
+
+	output, err := bufio.NewReader(rdr).ReadString('\n')
+	assertNoError(err, t, "ReadAll")
+
+	if !strings.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", expected, output)
+	}
+	cmd.Wait()
+}
+
 func TestDlvTestChdir(t *testing.T) {
 	dlvbin, tmpdir := getDlvBin(t)
 	defer os.RemoveAll(tmpdir)

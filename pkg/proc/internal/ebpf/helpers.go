@@ -26,12 +26,28 @@ var TraceProbeBytes []byte
 
 const FakeAddressBase = 0xbeed000000000000
 
+type Uretprobe struct {
+	Link   *bpf.BPFLink
+	Pid    int
+	Path   string
+	Offset uint32
+}
+
+func (u *Uretprobe) Destroy() error {
+	return u.Link.Destroy()
+}
+
 type EBPFContext struct {
 	bpfModule  *bpf.Module
 	bpfProg    *bpf.BPFProg
 	bpfEvents  chan []byte
 	bpfRingBuf *bpf.RingBuffer
 	bpfArgMap  *bpf.BPFMap
+
+	uretprobes          []Uretprobe
+	clearedURetProbes   []Uretprobe
+	clearURetProbesOnce sync.Once
+	u                   sync.Mutex
 
 	parsedBpfEvents []RawUProbeParams
 	m               sync.Mutex
@@ -43,11 +59,53 @@ func (ctx *EBPFContext) Close() {
 	}
 }
 
+func (ctx *EBPFContext) GetURetProbes() []Uretprobe {
+	ctx.u.Lock()
+	defer ctx.u.Unlock()
+	return ctx.uretprobes
+}
+
+func (ctx *EBPFContext) ClearURetProbes() {
+	ctx.u.Lock()
+	defer ctx.u.Unlock()
+	// We wrap this in a sync.Once because we want this operation to only
+	// happen once per hit of the runtime.copystack function. We seem to hit that
+	// breakpoint multiple times, but we only want to clear the list of uretprobes
+	// once.
+	ctx.clearURetProbesOnce.Do(func() {
+		ctx.clearedURetProbes = ctx.uretprobes
+		ctx.uretprobes = make([]Uretprobe, 0)
+	})
+}
+
+func (ctx *EBPFContext) GetClearedURetProbes() []Uretprobe {
+	ctx.u.Lock()
+	defer ctx.u.Unlock()
+	return ctx.clearedURetProbes
+}
+
 func (ctx *EBPFContext) AttachUprobe(pid int, name string, offset uint32) error {
 	if ctx.bpfProg == nil {
 		return errors.New("no eBPF program loaded")
 	}
 	_, err := ctx.bpfProg.AttachUprobe(pid, name, offset)
+	return err
+}
+
+func (ctx *EBPFContext) AttachURetprobe(pid int, name string, offset uint32) error {
+	ctx.u.Lock()
+	defer ctx.u.Unlock()
+	if ctx.bpfProg == nil {
+		return errors.New("no eBPF program loaded")
+	}
+	link, err := ctx.bpfProg.AttachURetprobe(pid, name, offset)
+	ctx.uretprobes = append(ctx.uretprobes, Uretprobe{Link: link, Pid: pid, Path: name, Offset: offset})
+
+	// If we're attaching a uretprobe we can consider the list of uretprobes to be
+	// active again, which means they can once again be cleared. Let's set up another
+	// sync.Once to do this.
+	ctx.clearURetProbesOnce = sync.Once{}
+
 	return err
 }
 
@@ -82,7 +140,7 @@ func LoadEBPFTracingProgram() (*EBPFContext, error) {
 	var ctx EBPFContext
 	var err error
 
-	ctx.bpfModule, err = bpf.NewModuleFromBuffer(TraceProbeBytes, "trace.o")
+	ctx.bpfModule, err = bpf.NewModuleFromBuffer(TraceProbeBytes, "trace_probe/trace.o")
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +172,7 @@ func LoadEBPFTracingProgram() (*EBPFContext, error) {
 				return
 			}
 
-			parsed := ParseFunctionParameterList(b)
+			parsed := parseFunctionParameterList(b)
 
 			ctx.m.Lock()
 			ctx.parsedBpfEvents = append(ctx.parsedBpfEvents, parsed)
@@ -125,7 +183,7 @@ func LoadEBPFTracingProgram() (*EBPFContext, error) {
 	return &ctx, nil
 }
 
-func ParseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
+func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 	params := (*C.function_parameter_list_t)(unsafe.Pointer(&rawParamBytes[0]))
 
 	defer runtime.KeepAlive(params) // Ensure the param is not garbage collected.
@@ -134,10 +192,10 @@ func ParseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 	rawParams.FnAddr = int(params.fn_addr)
 	rawParams.GoroutineID = int(params.goroutine_id)
 
-	for i := 0; i < int(params.n_parameters); i++ {
+	parseParam := func(param C.function_parameter_t) *RawUProbeParam {
 		iparam := &RawUProbeParam{}
 		data := make([]byte, 0x60)
-		ret := params.params[i]
+		ret := param
 		iparam.Kind = reflect.Kind(ret.kind)
 
 		val := C.GoBytes(unsafe.Pointer(&ret.val), C.int(ret.size))
@@ -161,8 +219,14 @@ func ParseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 			iparam.Base = FakeAddressBase + 0x30
 			iparam.Len = int64(strLen)
 		}
+		return iparam
+	}
 
-		rawParams.InputParams = append(rawParams.InputParams, iparam)
+	for i := 0; i < int(params.n_parameters); i++ {
+		rawParams.InputParams = append(rawParams.InputParams, parseParam(params.params[i]))
+	}
+	for i := 0; i < int(params.n_ret_parameters); i++ {
+		rawParams.ReturnParams = append(rawParams.ReturnParams, parseParam(params.ret_params[i]))
 	}
 
 	return rawParams
@@ -171,12 +235,13 @@ func ParseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 func createFunctionParameterList(entry uint64, goidOffset int64, args []UProbeArgMap) C.function_parameter_list_t {
 	var params C.function_parameter_list_t
 	params.goid_offset = C.uint(goidOffset)
-	params.n_parameters = C.uint(len(args))
 	params.fn_addr = C.uint(entry)
-	for i, arg := range args {
+	params.n_parameters = C.uint(0)
+	params.n_ret_parameters = C.uint(0)
+	for _, arg := range args {
 		var param C.function_parameter_t
 		param.size = C.uint(arg.Size)
-		param.offset = C.uint(arg.Offset)
+		param.offset = C.int(arg.Offset)
 		param.kind = C.uint(arg.Kind)
 		if arg.InReg {
 			param.in_reg = true
@@ -188,7 +253,15 @@ func createFunctionParameterList(entry uint64, goidOffset int64, args []UProbeAr
 				param.reg_nums[i] = C.int(arg.Pieces[i])
 			}
 		}
-		params.params[i] = param
+		if !arg.Ret {
+			params.params[params.n_parameters] = param
+			params.n_parameters++
+		} else {
+			offset := arg.Offset
+			param.offset = C.int(offset)
+			params.ret_params[params.n_ret_parameters] = param
+			params.n_ret_parameters++
+		}
 	}
 	return params
 }

@@ -381,6 +381,14 @@ func (dbp *gdbProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf.UP
 	panic("not implemented")
 }
 
+func (dbp *gdbProcess) EnableURetProbes() error {
+	panic("not implemented")
+}
+
+func (dbp *gdbProcess) DisableURetProbes() error {
+	panic("not implemented")
+}
+
 // unusedPort returns an unused tcp port
 // This is a hack and subject to a race condition with other running
 // programs, but most (all?) OS will cycle through all ephemeral ports

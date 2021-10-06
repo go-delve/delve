@@ -494,7 +494,6 @@ func (t *Target) SetEBPFTracepoint(fnName string) error {
 	}
 	// Start putting together the argument map. This will tell the eBPF program
 	// all of the arguments we want to trace and how to find them.
-	var args []ebpf.UProbeArgMap
 	fn, ok := t.BinInfo().LookupFunc[fnName]
 	if !ok {
 		return fmt.Errorf("could not find function %s", fnName)
@@ -533,17 +532,22 @@ func (t *Target) SetEBPFTracepoint(fnName string) error {
 	}
 	_, l, _ := t.BinInfo().PCToLine(fn.Entry)
 
+	var args []ebpf.UProbeArgMap
 	varEntries := reader.Variables(dwarfTree, fn.Entry, l, variablesFlags)
 	for _, entry := range varEntries {
-		isret, _ := entry.Val(dwarf.AttrVarParam).(bool)
-		if isret {
-			continue
-		}
 		_, dt, err := readVarEntry(entry.Tree, fn.cu.image)
 		if err != nil {
 			return err
 		}
-		offset, pieces, _, err := t.BinInfo().Location(entry, dwarf.AttrLocation, fn.Entry, op.DwarfRegisters{}, nil)
+
+		var addr uint64
+		isret, _ := entry.Val(dwarf.AttrVarParam).(bool)
+		if isret {
+			addr = fn.End
+		} else {
+			addr = fn.Entry
+		}
+		origOffset, pieces, _, err := t.BinInfo().Location(entry, dwarf.AttrLocation, addr, op.DwarfRegisters{}, nil)
 		if err != nil {
 			return err
 		}
@@ -553,12 +557,39 @@ func (t *Target) SetEBPFTracepoint(fnName string) error {
 				paramPieces = append(paramPieces, int(piece.Val))
 			}
 		}
-		offset += int64(t.BinInfo().Arch.PtrSize())
-		args = append(args, ebpf.UProbeArgMap{Offset: offset, Size: dt.Size(), Kind: dt.Common().ReflectKind, Pieces: paramPieces, InReg: len(pieces) > 0})
+		offset := origOffset + int64(t.BinInfo().Arch.PtrSize())
+		if isret {
+			offset = origOffset
+		}
+		args = append(args, ebpf.UProbeArgMap{
+			Offset: offset,
+			Size:   dt.Size(),
+			Kind:   dt.Common().ReflectKind,
+			Pieces: paramPieces,
+			InReg:  len(pieces) > 0,
+			Ret:    isret,
+		})
 	}
 
 	// Finally, set the uprobe on the function.
 	t.proc.SetUProbe(fnName, goidOffset, args)
+
+	// Next we want to set the uretprobe on the function.
+	// We have to be careful here, just as with stack watchpoints, we need to
+	// ensure that we watch the runtime to ensure that whenever it decides to grow and copy
+	// a stack frame, we will be notified.
+	err = t.setStackResizeSentinel(nil, true, func(th Thread) bool {
+		if th.Breakpoint().Name == "copystack-entry" {
+			t.proc.DisableURetProbes()
+		} else {
+			t.proc.EnableURetProbes()
+		}
+		return false // we don't want this showing up for users.
+	})
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
