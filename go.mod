@@ -3,7 +3,7 @@ module github.com/go-delve/delve
 go 1.16
 
 require (
-	github.com/aquasecurity/libbpfgo v0.1.2-0.20210708203834-4928d36fafac
+	github.com/aquasecurity/libbpfgo v0.2.1-libbpf-0.4.0.0.20210928124427-df4987ad001c
 	github.com/cosiner/argv v0.1.0
 	github.com/creack/pty v1.1.9
 	github.com/derekparker/trie v0.0.0-20200317170641-1fdf38b7b0e9

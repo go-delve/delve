@@ -1,4 +1,3 @@
-
-[submodule "selftest/libbpf-module"]
-	path = selftest/libbpf-module
-	url = https://github.com/libbpf/libbpf
+[submodule "libbpf"]
+	path = libbpf
+	url = https://github.com/libbpf/libbpf.git

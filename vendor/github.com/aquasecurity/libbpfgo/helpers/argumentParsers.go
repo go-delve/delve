@@ -95,6 +95,7 @@ func ParseMemProt(prot uint32) string {
 			f = append(f, "PROT_EXEC")
 		}
 	}
+
 	return strings.Join(f, "|")
 }
 
@@ -104,7 +105,7 @@ func ParseMemProt(prot uint32) string {
 func ParseOpenFlags(flags uint32) string {
 	var f []string
 
-	//access mode
+	// access mode
 	switch {
 	case flags&01 == 01:
 		f = append(f, "O_WRONLY")
@@ -184,6 +185,7 @@ func ParseAccessMode(mode uint32) string {
 			f = append(f, "X_OK")
 		}
 	}
+
 	return strings.Join(f, "|")
 }
 
@@ -200,6 +202,7 @@ func ParseExecFlags(flags uint32) string {
 	if len(f) == 0 {
 		f = append(f, "0")
 	}
+
 	return strings.Join(f, "|")
 }
 
@@ -282,6 +285,7 @@ func ParseCloneFlags(flags uint64) string {
 	if len(f) == 0 {
 		f = append(f, "0")
 	}
+
 	return strings.Join(f, "|")
 }
 
@@ -297,7 +301,9 @@ func ParseSocketType(st uint32) string {
 		6:  "SOCK_DCCP",
 		10: "SOCK_PACKET",
 	}
+
 	var f []string
+
 	if stName, ok := socketTypes[st&0xf]; ok {
 		f = append(f, stName)
 	} else {
@@ -309,6 +315,7 @@ func ParseSocketType(st uint32) string {
 	if st&002000000 == 002000000 {
 		f = append(f, "SOCK_CLOEXEC")
 	}
+
 	return strings.Join(f, "|")
 }
 
@@ -362,12 +369,15 @@ func ParseSocketDomain(sd uint32) string {
 		43: "AF_SMC",
 		44: "AF_XDP",
 	}
+
 	var res string
+
 	if sdName, ok := socketDomains[sd]; ok {
 		res = sdName
 	} else {
 		res = strconv.Itoa(int(sd))
 	}
+
 	return res
 }
 
@@ -375,19 +385,23 @@ func ParseSocketDomain(sd uint32) string {
 func ParseUint32IP(in uint32) string {
 	ip := make(net.IP, net.IPv4len)
 	binary.BigEndian.PutUint32(ip, in)
+
 	return ip.String()
 }
 
-// Parse16BytesSliceIP parses the IP address encoded as 16 bytes long PrintBytesSliceIP
-// It would be more correct to accept a [16]byte instead of variable lenth slice, but that would case unnecessary memory copying and type conversions
+// Parse16BytesSliceIP parses the IP address encoded as 16 bytes long
+// PrintBytesSliceIP. It would be more correct to accept a [16]byte instead of
+// variable lenth slice, but that would case unnecessary memory copying and
+// type conversions.
 func Parse16BytesSliceIP(in []byte) string {
 	ip := net.IP(in)
+
 	return ip.String()
 }
 
-// ParseCapability parses the `capability` bitmask argument of the `cap_capable` function
-// include/uapi/linux/capability.h
-func ParseCapability(cap int32) string {
+// ParseCapability parses the `capability` bitmask argument of the
+// `cap_capable` function include/uapi/linux/capability.h
+func ParseCapability(c int32) string {
 	var capabilities = map[int32]string{
 		0:  "CAP_CHOWN",
 		1:  "CAP_DAC_OVERRIDE",
@@ -428,12 +442,15 @@ func ParseCapability(cap int32) string {
 		36: "CAP_BLOCK_SUSPEND",
 		37: "CAP_AUDIT_READ",
 	}
+
 	var res string
-	if capName, ok := capabilities[cap]; ok {
+
+	if capName, ok := capabilities[c]; ok {
 		res = capName
 	} else {
-		res = strconv.Itoa(int(cap))
+		res = strconv.Itoa(int(c))
 	}
+
 	return res
 }
 
@@ -501,6 +518,7 @@ func ParsePrctlOption(op int32) string {
 	} else {
 		res = strconv.Itoa(int(op))
 	}
+
 	return res
 }
 
@@ -549,6 +567,7 @@ func ParsePtraceRequest(req int64) string {
 	} else {
 		res = strconv.Itoa(int(req))
 	}
+
 	return res
 }
 
@@ -599,5 +618,6 @@ func ParseBPFCmd(cmd int32) string {
 	} else {
 		res = strconv.Itoa(int(cmd))
 	}
+
 	return res
 }

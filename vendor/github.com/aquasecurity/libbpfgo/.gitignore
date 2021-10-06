@@ -1,1 +1,7 @@
-selftest/dist
+output*
+selftest/*/*.o
+selftest/*/*.skel.h
+selftest/*/*-static
+selftest/*/*-dynamic
+selftest/uprobe/ctest
+selftest/uprobe/gotest
