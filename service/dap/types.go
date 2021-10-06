@@ -68,7 +68,7 @@ type LaunchConfig struct {
 	// when in `debug` or `test` mode, and to the pre-built binary file
 	// to debug in `exec` mode.
 	// If it is not an absolute path, it will be interpreted as a path
-	// relative to dlv's working directory.
+	// relative to Delve's working directory.
 	// Required when mode is `debug`, `test`, `exec`, and `core`.
 	Program string `json:"program,omitempty"`
 
@@ -79,27 +79,26 @@ type LaunchConfig struct {
 
 	// Working directory of the program being debugged.
 	// If a relative path is provided, it will be interpreted as
-	// a relative path to dlv's working directory. This is
-	// similar to dlv's `--wd` flag.
+	// a relative path to Delve's working directory. This is
+	// similar to `dlv --wd` flag.
 	//
-	// If not specified or empty, dlv's working directory is
-	// used by default. But for `test` mode, dlv tries to find
+	// If not specified or empty, Delve's working directory is
+	// used by default. But for `test` mode, Delve tries to find
 	// the test's package source directory and run tests from there.
 	// This matches the behavior of `dlv test` and `go test`.
 	Cwd string `json:"cwd,omitempty"`
 
 	// Build flags, to be passed to the Go compiler.
 	// Relative paths used in BuildFlags will be interpreted as paths
-	// relative to dlv's current working directory.
+	// relative to Delve's current working directory.
 	//
-	// It is like dlv's `--build-flags`. For example,
-	//
+	// It is like `dlv --build-flags`. For example,
 	//    "buildFlags": "-tags=integration -mod=vendor -cover -v"
 	BuildFlags string `json:"buildFlags,omitempty"`
 
 	// Output path for the binary of the debugee.
 	// Relative path is interpreted as the path relative to
-	// the dlv's current working directory.
+	// the Delve's current working directory.
 	// This is deleted after the debug session ends.
 	Output string `json:"output,omitempty"`
 
@@ -107,7 +106,7 @@ type LaunchConfig struct {
 	NoDebug bool `json:"noDebug,omitempty"`
 
 	// TraceDirPath is the trace directory path for replay mode.
-	// Relative path is interpreted as a path relative to dlv's
+	// Relative path is interpreted as a path relative to Delve's
 	// current working directory.
 	// This is required for "replay" mode but unused in other modes.
 	TraceDirPath string `json:"traceDirPath,omitempty"`
@@ -117,16 +116,16 @@ type LaunchConfig struct {
 	// This is required for "core" mode but unused in other modes.
 	CoreFilePath string `json:"coreFilePath,omitempty"`
 
-	// DlvCwd is the new working directory for dlv server.
+	// DlvCwd is the new working directory for Delve server.
 	// If specified, the server will change its working
 	// directory to the specified directory using os.Chdir.
 	// Any other launch attributes with relative paths interpreted
-	// using dlv's working directory will use this new directory.
-	// When dlv needs to build the program (in debug/test modes),
+	// using Delve's working directory will use this new directory.
+	// When Delve needs to build the program (in debug/test modes),
 	// it will run the go command from this directory as well.
 	//
 	// If a relative path is provided as DlvCwd, it will be
-	// interpreted as a path relative to dlv's current working
+	// interpreted as a path relative to Delve's current working
 	// directory.
 	DlvCwd string `json:"dlvCwd,omitempty"`
 
