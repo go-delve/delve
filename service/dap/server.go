@@ -1097,8 +1097,14 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		s.conn.Close()
-		// TODO(polina): should we always restart the target if it is not running?
-		// There is also suspendDebuggee - TBD if vscode supports it.
+		// The target is left in whatever state it is already in - halted or running.
+		// The users therefore have the flexibility to choose the appropriate state
+		// for their case before disconnecting. This is also desirable in case of
+		// the client connection fails unexpectedly and the user needs to reconnect.
+		// TODO(polina): should we always issue a continue here if it is not running
+		// like is done in vscode-go legacy adapter?
+		// Ideally we want to use bool suspendDebuggee flag, but it is not yet
+		// available in vscode: https://github.com/microsoft/vscode/issues/134412
 		return
 	}
 
