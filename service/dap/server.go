@@ -376,7 +376,10 @@ func (c *Config) triggerServerStop() {
 // The server should be restarted for every new debug session.
 // The debugger won't be started until launch/attach request is received.
 // TODO(polina): allow new client connections for new debug sessions,
-// so the editor needs to launch delve only once?
+// so the editor needs to launch dap server only once? Note that some requests
+// may change the server's environment (e.g. see dlvCwd of launch configuration).
+// So if we want to reuse this server for multiple independent debugging sessions
+// we need to take that into consideration.
 func (s *Server) Run() {
 	go func() {
 		conn, err := s.listener.Accept() // listener is closed in Stop()
@@ -862,10 +865,10 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	if args.DelveCwd != "" {
-		if err := os.Chdir(args.DelveCwd); err != nil {
+	if args.DlvCwd != "" {
+		if err := os.Chdir(args.DlvCwd); err != nil {
 			s.sendShowUserErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch", fmt.Sprintf("failed to chdir using %q - %v", args.DelveCwd, err))
+				FailedToLaunch, "Failed to launch", fmt.Sprintf("failed to chdir to %q - %v", args.DlvCwd, err))
 			return
 		}
 	}
@@ -3222,7 +3225,7 @@ func (s *Session) handleLogPoints(state *api.DebuggerState) bool {
 	foundRealBreakpoint := false
 	for _, th := range state.Threads {
 		if bp := th.Breakpoint; bp != nil {
-			logged := s.logBreakpointMessage(bp)
+			logged := s.logBreakpointMessage(bp, th.GoroutineID)
 			if !logged {
 				foundRealBreakpoint = true
 			}
@@ -3231,18 +3234,21 @@ func (s *Session) handleLogPoints(state *api.DebuggerState) bool {
 	return foundRealBreakpoint
 }
 
-func (s *Session) logBreakpointMessage(bp *api.Breakpoint) bool {
+func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int) bool {
 	if !bp.Tracepoint {
 		return false
 	}
-	// TODO(suzmue): allow evaluate expressions within log points and
-	// consider adding line and goid info to output.
+	// TODO(suzmue): allow evaluate expressions within log points.
 	if msg, ok := bp.UserData.(string); ok {
 		s.send(&dap.OutputEvent{
 			Event: *newEvent("output"),
 			Body: dap.OutputEventBody{
 				Category: "stdout",
-				Output:   msg + "\n",
+				Output:   fmt.Sprintf("> [Go %d]: %s\n", goid, msg),
+				Source: dap.Source{
+					Path: s.toClientPath(bp.File),
+				},
+				Line: bp.Line,
 			},
 		})
 	}

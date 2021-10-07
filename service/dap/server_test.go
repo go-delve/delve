@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -59,20 +60,20 @@ func runTestBuildFlags(t *testing.T, name string, test func(c *daptest.Client, f
 
 	// Start the DAP server.
 	serverStopped := make(chan struct{})
-	client := startDapServerWithClient(t, serverStopped)
+	client := startDAPServerWithClient(t, serverStopped)
 	defer client.Close()
 
 	test(client, fixture)
 	<-serverStopped
 }
 
-func startDapServerWithClient(t *testing.T, serverStopped chan struct{}) *daptest.Client {
-	server, _ := startDapServer(t, serverStopped)
+func startDAPServerWithClient(t *testing.T, serverStopped chan struct{}) *daptest.Client {
+	server, _ := startDAPServer(t, serverStopped)
 	client := daptest.NewClient(server.config.Listener.Addr().String())
 	return client
 }
 
-func startDapServer(t *testing.T, serverStopped chan struct{}) (server *Server, forceStop chan struct{}) {
+func startDAPServer(t *testing.T, serverStopped chan struct{}) (server *Server, forceStop chan struct{}) {
 	// Start the DAP server.
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -109,14 +110,14 @@ func startDapServer(t *testing.T, serverStopped chan struct{}) (server *Server, 
 
 func TestForceStopNoClient(t *testing.T) {
 	serverStopped := make(chan struct{})
-	_, forceStop := startDapServer(t, serverStopped)
+	_, forceStop := startDAPServer(t, serverStopped)
 	close(forceStop)
 	<-serverStopped
 }
 
 func TestForceStopNoTarget(t *testing.T) {
 	serverStopped := make(chan struct{})
-	server, forceStop := startDapServer(t, serverStopped)
+	server, forceStop := startDAPServer(t, serverStopped)
 	client := daptest.NewClient(server.config.Listener.Addr().String())
 	defer client.Close()
 
@@ -128,7 +129,7 @@ func TestForceStopNoTarget(t *testing.T) {
 
 func TestForceStopWithTarget(t *testing.T) {
 	serverStopped := make(chan struct{})
-	server, forceStop := startDapServer(t, serverStopped)
+	server, forceStop := startDAPServer(t, serverStopped)
 	client := daptest.NewClient(server.config.Listener.Addr().String())
 	defer client.Close()
 
@@ -144,7 +145,7 @@ func TestForceStopWithTarget(t *testing.T) {
 
 func TestForceStopWhileStopping(t *testing.T) {
 	serverStopped := make(chan struct{})
-	server, forceStop := startDapServer(t, serverStopped)
+	server, forceStop := startDAPServer(t, serverStopped)
 	client := daptest.NewClient(server.config.Listener.Addr().String())
 
 	client.InitializeRequest()
@@ -2705,11 +2706,7 @@ func TestLogPoints(t *testing.T) {
 
 						client.ContinueRequest(1)
 						client.ExpectContinueResponse(t)
-
-						oe := client.ExpectOutputEvent(t)
-						if oe.Body.Category != "stdout" || oe.Body.Output != "in callme!\n" {
-							t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"in callme!\n\"", oe)
-						}
+						checkLogMessage(t, client.ExpectOutputEvent(t), 1, "in callme!", fixture.Source, 6)
 					}
 					se := client.ExpectStoppedEvent(t)
 					if se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
@@ -2720,10 +2717,7 @@ func TestLogPoints(t *testing.T) {
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
 
-					oe := client.ExpectOutputEvent(t)
-					if oe.Body.Category != "stdout" || oe.Body.Output != "in callme2!\n" {
-						t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"in callme2!\n\"", oe)
-					}
+					checkLogMessage(t, client.ExpectOutputEvent(t), 1, "in callme2!", fixture.Source, 16)
 
 					se = client.ExpectStoppedEvent(t)
 					if se.Body.Reason != "step" || se.Body.ThreadId != 1 {
@@ -2734,6 +2728,20 @@ func TestLogPoints(t *testing.T) {
 				disconnect: true,
 			}})
 	})
+}
+
+func checkLogMessage(t *testing.T, oe *dap.OutputEvent, goid int, text, path string, line int) {
+	t.Helper()
+	prefix := "> [Go "
+	if goid >= 0 {
+		prefix += strconv.Itoa(goid) + "]"
+	}
+	if oe.Body.Category != "stdout" || !strings.HasPrefix(oe.Body.Output, prefix) || !strings.HasSuffix(oe.Body.Output, text+"\n") {
+		t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"%s: %s\\n\"", oe, prefix, text)
+	}
+	if oe.Body.Line != line || oe.Body.Source.Path != path {
+		t.Errorf("got output event = %#v, \nwant Line=%d Source.Path=%s", oe, line, path)
+	}
 }
 
 // TestHaltPreventsAutoResume tests that a pause request issued while processing
@@ -2797,10 +2805,7 @@ func TestHaltPreventsAutoResume(t *testing.T) {
 
 						client.ContinueRequest(1)
 						client.ExpectContinueResponse(t)
-						oe := client.ExpectOutputEvent(t)
-						if oe.Body.Category != "stdout" || oe.Body.Output != "in callme!\n" {
-							t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"in callme!\n\"", oe)
-						}
+						checkLogMessage(t, client.ExpectOutputEvent(t), 1, "in callme!", fixture.Source, 6)
 						// Signal that the output event has been received.
 						close(outputDoneChan)
 						// Wait for the pause to be complete.
@@ -2859,9 +2864,7 @@ func TestConcurrentBreakpointsLogPoints(t *testing.T) {
 							seCount++
 							client.ContinueRequest(1)
 						case *dap.OutputEvent:
-							if m.Body.Category != "stdout" || m.Body.Output != "hello\n" {
-								t.Errorf("\ngot  %#v\nwant Category=\"stdout\" Output=\"hello\"", m)
-							}
+							checkLogMessage(t, m, -1, "hello", fixture.Source, 8)
 							oeCount++
 						case *dap.ContinueResponse:
 						case *dap.TerminatedEvent:
@@ -4047,7 +4050,7 @@ func TestNextWhileNexting(t *testing.T) {
 	// a breakpoint triggering during a 'next' operation will interrupt 'next''
 	// Unlike the test for the terminal package, we cannot be certain
 	// of the number of breakpoints we expect to hit, since multiple
-	// breakpoints being hit at the same time is not supported in dap stopped
+	// breakpoints being hit at the same time is not supported in DAP stopped
 	// events.
 	runTest(t, "issue387", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
@@ -4606,7 +4609,7 @@ func TestNoDebug_AcceptNoRequestsButDisconnect(t *testing.T) {
 
 func TestLaunchRequestWithRelativeBuildPath(t *testing.T) {
 	serverStopped := make(chan struct{})
-	client := startDapServerWithClient(t, serverStopped)
+	client := startDAPServerWithClient(t, serverStopped)
 	defer client.Close()
 
 	fixdir := protest.FindFixturesDir()
@@ -4665,15 +4668,15 @@ func TestLaunchTestRequest(t *testing.T) {
 		},
 		wantWD: absolutePkgDir,
 	}, {
-		name: "delveCWD",
+		name: "dlvCwd",
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": absolutePkgDir, "delveCWD": ".",
+			"mode": "test", "program": absolutePkgDir, "dlvCwd": ".",
 		},
 		wantWD: absolutePkgDir,
 	}, {
-		name: "delveCWD2",
+		name: "dlvCwd2",
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": ".", "delveCWD": absolutePkgDir,
+			"mode": "test", "program": ".", "dlvCwd": absolutePkgDir,
 		},
 		wantWD: absolutePkgDir,
 	}, {
@@ -4686,26 +4689,26 @@ func TestLaunchTestRequest(t *testing.T) {
 		name:  "dlv runs outside of module",
 		dlvWD: os.TempDir(),
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": absolutePkgDir, "delveCWD": absoluteFixturesDir,
+			"mode": "test", "program": absolutePkgDir, "dlvCwd": absoluteFixturesDir,
 		},
 		wantWD: absolutePkgDir,
 	}, {
-		name:  "dlv builds in delveCWD but runs in cwd",
+		name:  "dlv builds in dlvCwd but runs in cwd",
 		dlvWD: fixtures,
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": absolutePkgDir, "delveCWD": absolutePkgDir, "cwd": "..", // relative to delveCWD.
+			"mode": "test", "program": absolutePkgDir, "dlvCwd": absolutePkgDir, "cwd": "..", // relative to dlvCwd.
 		},
 		wantWD: absoluteFixturesDir,
 	}} {
 		t.Run(tc.name, func(t *testing.T) {
-			// Some test cases with delveCWD or dlvWD change process working directory.
+			// Some test cases with dlvCwd or dlvWD change process working directory.
 			defer os.Chdir(orgWD)
 			if tc.dlvWD != "" {
 				os.Chdir(tc.dlvWD)
 				defer os.Chdir(orgWD)
 			}
 			serverStopped := make(chan struct{})
-			client := startDapServerWithClient(t, serverStopped)
+			client := startDAPServerWithClient(t, serverStopped)
 			defer client.Close()
 
 			runDebugSessionWithBPs(t, client, "launch",
@@ -5620,13 +5623,13 @@ func launchDebuggerWithTargetHalted(t *testing.T, fixture string) *debugger.Debu
 // runs test, then disconnects. Expects the process at the end of test() to be halted.
 func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *daptest.Client)) {
 	serverStopped := make(chan struct{})
-	server, _ := startDapServer(t, serverStopped)
+	server, _ := startDAPServer(t, serverStopped)
 	client := daptest.NewClient(server.listener.Addr().String())
 	time.Sleep(100 * time.Millisecond) // Give time for connection to be set as dap.Session
 	// TODO(polina): update once the server interface is refactored to take debugger as arg
 	server.sessionMu.Lock()
 	if server.session == nil {
-		t.Fatal("dap session is not ready")
+		t.Fatal("DAP session is not ready")
 	}
 	server.session.debugger = dbg
 	server.sessionMu.Unlock()
@@ -5767,7 +5770,7 @@ func TestBadInitializeRequest(t *testing.T) {
 		// Only one initialize request is allowed, so use a new server
 		// for each test.
 		serverStopped := make(chan struct{})
-		client := startDapServerWithClient(t, serverStopped)
+		client := startDAPServerWithClient(t, serverStopped)
 		defer client.Close()
 
 		client.InitializeRequestWithArgs(args)
