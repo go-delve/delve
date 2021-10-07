@@ -4668,15 +4668,15 @@ func TestLaunchTestRequest(t *testing.T) {
 		},
 		wantWD: absolutePkgDir,
 	}, {
-		name: "delveCWD",
+		name: "dlvCwd",
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": absolutePkgDir, "delveCWD": ".",
+			"mode": "test", "program": absolutePkgDir, "dlvCwd": ".",
 		},
 		wantWD: absolutePkgDir,
 	}, {
-		name: "delveCWD2",
+		name: "dlvCwd2",
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": ".", "delveCWD": absolutePkgDir,
+			"mode": "test", "program": ".", "dlvCwd": absolutePkgDir,
 		},
 		wantWD: absolutePkgDir,
 	}, {
@@ -4689,19 +4689,19 @@ func TestLaunchTestRequest(t *testing.T) {
 		name:  "dlv runs outside of module",
 		dlvWD: os.TempDir(),
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": absolutePkgDir, "delveCWD": absoluteFixturesDir,
+			"mode": "test", "program": absolutePkgDir, "dlvCwd": absoluteFixturesDir,
 		},
 		wantWD: absolutePkgDir,
 	}, {
-		name:  "dlv builds in delveCWD but runs in cwd",
+		name:  "dlv builds in dlvCwd but runs in cwd",
 		dlvWD: fixtures,
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": absolutePkgDir, "delveCWD": absolutePkgDir, "cwd": "..", // relative to delveCWD.
+			"mode": "test", "program": absolutePkgDir, "dlvCwd": absolutePkgDir, "cwd": "..", // relative to dlvCwd.
 		},
 		wantWD: absoluteFixturesDir,
 	}} {
 		t.Run(tc.name, func(t *testing.T) {
-			// Some test cases with delveCWD or dlvWD change process working directory.
+			// Some test cases with dlvCwd or dlvWD change process working directory.
 			defer os.Chdir(orgWD)
 			if tc.dlvWD != "" {
 				os.Chdir(tc.dlvWD)
