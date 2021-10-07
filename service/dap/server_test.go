@@ -60,20 +60,20 @@ func runTestBuildFlags(t *testing.T, name string, test func(c *daptest.Client, f
 
 	// Start the DAP server.
 	serverStopped := make(chan struct{})
-	client := startDapServerWithClient(t, serverStopped)
+	client := startDAPServerWithClient(t, serverStopped)
 	defer client.Close()
 
 	test(client, fixture)
 	<-serverStopped
 }
 
-func startDapServerWithClient(t *testing.T, serverStopped chan struct{}) *daptest.Client {
-	server, _ := startDapServer(t, serverStopped)
+func startDAPServerWithClient(t *testing.T, serverStopped chan struct{}) *daptest.Client {
+	server, _ := startDAPServer(t, serverStopped)
 	client := daptest.NewClient(server.config.Listener.Addr().String())
 	return client
 }
 
-func startDapServer(t *testing.T, serverStopped chan struct{}) (server *Server, forceStop chan struct{}) {
+func startDAPServer(t *testing.T, serverStopped chan struct{}) (server *Server, forceStop chan struct{}) {
 	// Start the DAP server.
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -110,14 +110,14 @@ func startDapServer(t *testing.T, serverStopped chan struct{}) (server *Server, 
 
 func TestForceStopNoClient(t *testing.T) {
 	serverStopped := make(chan struct{})
-	_, forceStop := startDapServer(t, serverStopped)
+	_, forceStop := startDAPServer(t, serverStopped)
 	close(forceStop)
 	<-serverStopped
 }
 
 func TestForceStopNoTarget(t *testing.T) {
 	serverStopped := make(chan struct{})
-	server, forceStop := startDapServer(t, serverStopped)
+	server, forceStop := startDAPServer(t, serverStopped)
 	client := daptest.NewClient(server.config.Listener.Addr().String())
 	defer client.Close()
 
@@ -129,7 +129,7 @@ func TestForceStopNoTarget(t *testing.T) {
 
 func TestForceStopWithTarget(t *testing.T) {
 	serverStopped := make(chan struct{})
-	server, forceStop := startDapServer(t, serverStopped)
+	server, forceStop := startDAPServer(t, serverStopped)
 	client := daptest.NewClient(server.config.Listener.Addr().String())
 	defer client.Close()
 
@@ -145,7 +145,7 @@ func TestForceStopWithTarget(t *testing.T) {
 
 func TestForceStopWhileStopping(t *testing.T) {
 	serverStopped := make(chan struct{})
-	server, forceStop := startDapServer(t, serverStopped)
+	server, forceStop := startDAPServer(t, serverStopped)
 	client := daptest.NewClient(server.config.Listener.Addr().String())
 
 	client.InitializeRequest()
@@ -4050,7 +4050,7 @@ func TestNextWhileNexting(t *testing.T) {
 	// a breakpoint triggering during a 'next' operation will interrupt 'next''
 	// Unlike the test for the terminal package, we cannot be certain
 	// of the number of breakpoints we expect to hit, since multiple
-	// breakpoints being hit at the same time is not supported in dap stopped
+	// breakpoints being hit at the same time is not supported in DAP stopped
 	// events.
 	runTest(t, "issue387", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
@@ -4609,7 +4609,7 @@ func TestNoDebug_AcceptNoRequestsButDisconnect(t *testing.T) {
 
 func TestLaunchRequestWithRelativeBuildPath(t *testing.T) {
 	serverStopped := make(chan struct{})
-	client := startDapServerWithClient(t, serverStopped)
+	client := startDAPServerWithClient(t, serverStopped)
 	defer client.Close()
 
 	fixdir := protest.FindFixturesDir()
@@ -4708,7 +4708,7 @@ func TestLaunchTestRequest(t *testing.T) {
 				defer os.Chdir(orgWD)
 			}
 			serverStopped := make(chan struct{})
-			client := startDapServerWithClient(t, serverStopped)
+			client := startDAPServerWithClient(t, serverStopped)
 			defer client.Close()
 
 			runDebugSessionWithBPs(t, client, "launch",
@@ -5623,13 +5623,13 @@ func launchDebuggerWithTargetHalted(t *testing.T, fixture string) *debugger.Debu
 // runs test, then disconnects. Expects the process at the end of test() to be halted
 func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *daptest.Client)) {
 	serverStopped := make(chan struct{})
-	server, _ := startDapServer(t, serverStopped)
+	server, _ := startDAPServer(t, serverStopped)
 	client := daptest.NewClient(server.listener.Addr().String())
 	time.Sleep(100 * time.Millisecond) // Give time for connection to be set as dap.Session
 	// TODO(polina): update once the server interface is refactored to take debugger as arg
 	server.sessionMu.Lock()
 	if server.session == nil {
-		t.Fatal("dap session is not ready")
+		t.Fatal("DAP session is not ready")
 	}
 	server.session.debugger = dbg
 	server.sessionMu.Unlock()
@@ -5712,7 +5712,7 @@ func TestBadInitializeRequest(t *testing.T) {
 		// Only one initialize request is allowed, so use a new server
 		// for each test.
 		serverStopped := make(chan struct{})
-		client := startDapServerWithClient(t, serverStopped)
+		client := startDAPServerWithClient(t, serverStopped)
 		defer client.Close()
 
 		client.InitializeRequestWithArgs(args)
