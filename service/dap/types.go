@@ -52,7 +52,7 @@ var (
 	}
 )
 
-// LaunchConfig is the collection of launch request attributes recognized by delve DAP implementation.
+// LaunchConfig is the collection of launch request attributes recognized by DAP implementation.
 type LaunchConfig struct {
 	// Acceptable values are:
 	//   "debug": compiles your program with optimizations disabled, starts and attaches to it.
@@ -79,11 +79,11 @@ type LaunchConfig struct {
 
 	// Working directory of the program being debugged.
 	// If a relative path is provided, it will be interpreted as
-	// a relative path to the delve's working directory. This is
-	// similar to delve's `--wd` flag.
+	// a relative path to Delve's working directory. This is
+	// similar to `dlv --wd` flag.
 	//
-	// If not specified or empty, delve's working directory is
-	// used by default. But for `test` mode, delve tries to find
+	// If not specified or empty, Delve's working directory is
+	// used by default. But for `test` mode, Delve tries to find
 	// the test's package source directory and run tests from there.
 	// This matches the behavior of `dlv test` and `go test`.
 	Cwd string `json:"cwd,omitempty"`
@@ -92,14 +92,13 @@ type LaunchConfig struct {
 	// Relative paths used in BuildFlags will be interpreted as paths
 	// relative to Delve's current working directory.
 	//
-	// It is like delve's `--build-flags`. For example,
-	//
+	// It is like `dlv --build-flags`. For example,
 	//    "buildFlags": "-tags=integration -mod=vendor -cover -v"
 	BuildFlags string `json:"buildFlags,omitempty"`
 
 	// Output path for the binary of the debugee.
 	// Relative path is interpreted as the path relative to
-	// the delve's current working directory.
+	// the Delve's current working directory.
 	// This is deleted after the debug session ends.
 	Output string `json:"output,omitempty"`
 
@@ -117,19 +116,18 @@ type LaunchConfig struct {
 	// This is required for "core" mode but unused in other modes.
 	CoreFilePath string `json:"coreFilePath,omitempty"`
 
-	// DelveCwd is the working directory of Delve.
-	// If specified, the delve DAP server will change its working
+	// DlvCwd is the new working directory for Delve server.
+	// If specified, the server will change its working
 	// directory to the specified directory using os.Chdir.
-	// Any relative paths used in most of other attributes are
-	// interpreted as paths relative to Delve's working directory
-	// unless explicitely stated otherwise. When Delve needs to
-	// build the program (in debug/test modes), Delve runs the
-	// go command from the Delve's working directory.
+	// Any other launch attributes with relative paths interpreted
+	// using Delve's working directory will use this new directory.
+	// When Delve needs to build the program (in debug/test modes),
+	// it will run the go command from this directory as well.
 	//
-	// If a relative path is provided as DelveCwd, it will be
+	// If a relative path is provided as DlvCwd, it will be
 	// interpreted as a path relative to Delve's current working
 	// directory.
-	DelveCwd string `json:"delveCwd,omitempty"`
+	DlvCwd string `json:"dlvCwd,omitempty"`
 
 	LaunchAttachCommonConfig
 }
@@ -139,11 +137,11 @@ type LaunchAttachCommonConfig struct {
 	// Automatically stop program after launch or attach.
 	StopOnEntry bool `json:"stopOnEntry,omitempty"`
 
-	// Backend used by delve. See `dlv backend` for allowed values.
+	// Backend used for debugging. See `dlv backend` for allowed values.
 	// Default is "default".
 	Backend string `json:"backend,omitempty"`
 
-	// Maximum depth of stack trace collected from Delve.
+	// Maximum depth of stack trace to return.
 	// Default is 50.
 	StackTraceDepth int `json:"stackTraceDepth,omitempty"`
 
@@ -185,7 +183,7 @@ func (m *SubstitutePath) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// AttachConfig is the collection of attach request attributes recognized by delve DAP implementation.
+// AttachConfig is the collection of attach request attributes recognized by DAP implementation.
 type AttachConfig struct {
 	// Acceptable values are:
 	//   "local": attaches to the local process with the given ProcessID.

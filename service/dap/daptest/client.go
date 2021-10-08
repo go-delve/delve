@@ -105,6 +105,7 @@ func (c *Client) ExpectInitializeResponseAndCapabilities(t *testing.T) *dap.Init
 		SupportsFunctionBreakpoints:      true,
 		SupportsEvaluateForHovers:        true,
 		SupportsClipboardContext:         true,
+		SupportsSteppingGranularity:      true,
 		SupportsLogPoints:                true,
 	}
 	if !reflect.DeepEqual(initResp.Body, wantCapabilities) {
@@ -290,17 +291,41 @@ func (c *Client) NextRequest(thread int) {
 	c.send(request)
 }
 
+// NextInstructionRequest sends a 'next' request with granularity 'instruction'.
+func (c *Client) NextInstructionRequest(thread int) {
+	request := &dap.NextRequest{Request: *c.newRequest("next")}
+	request.Arguments.ThreadId = thread
+	request.Arguments.Granularity = "instruction"
+	c.send(request)
+}
+
 // StepInRequest sends a 'stepIn' request.
 func (c *Client) StepInRequest(thread int) {
-	request := &dap.NextRequest{Request: *c.newRequest("stepIn")}
+	request := &dap.StepInRequest{Request: *c.newRequest("stepIn")}
 	request.Arguments.ThreadId = thread
+	c.send(request)
+}
+
+// StepInInstructionRequest sends a 'stepIn' request with granularity 'instruction'.
+func (c *Client) StepInInstructionRequest(thread int) {
+	request := &dap.StepInRequest{Request: *c.newRequest("stepIn")}
+	request.Arguments.ThreadId = thread
+	request.Arguments.Granularity = "instruction"
 	c.send(request)
 }
 
 // StepOutRequest sends a 'stepOut' request.
 func (c *Client) StepOutRequest(thread int) {
-	request := &dap.NextRequest{Request: *c.newRequest("stepOut")}
+	request := &dap.StepOutRequest{Request: *c.newRequest("stepOut")}
 	request.Arguments.ThreadId = thread
+	c.send(request)
+}
+
+// StepOutInstructionRequest sends a 'stepOut' request with granularity 'instruction'.
+func (c *Client) StepOutInstructionRequest(thread int) {
+	request := &dap.StepOutRequest{Request: *c.newRequest("stepOut")}
+	request.Arguments.ThreadId = thread
+	request.Arguments.Granularity = "instruction"
 	c.send(request)
 }
 

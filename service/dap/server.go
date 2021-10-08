@@ -76,10 +76,6 @@ import (
 // Once stop is triggered, the goroutine exits.
 //
 // TODO(polina): add another layer of per-client goroutines to support multiple clients.
-// Note that some requests change the process's environment such
-// as working directory (for example, see DelveCwd of launch configuration).
-// So if we want to reuse this process for multiple debugging sessions
-// we need to address that.
 //
 // (3) Per-request goroutine is started for each asynchronous request
 // that resumes execution. We check if target is running already, so
@@ -374,7 +370,10 @@ func (c *Config) triggerServerStop() {
 // The server should be restarted for every new debug session.
 // The debugger won't be started until launch/attach request is received.
 // TODO(polina): allow new client connections for new debug sessions,
-// so the editor needs to launch delve only once?
+// so the editor needs to launch dap server only once? Note that some requests
+// may change the server's environment (e.g. see dlvCwd of launch configuration).
+// So if we want to reuse this server for multiple independent debugging sessions
+// we need to take that into consideration.
 func (s *Server) Run() {
 	go func() {
 		conn, err := s.listener.Accept() // listener is closed in Stop()
@@ -791,6 +790,7 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsSetVariable = true
 	response.Body.SupportsEvaluateForHovers = true
 	response.Body.SupportsClipboardContext = true
+	response.Body.SupportsSteppingGranularity = true
 	response.Body.SupportsLogPoints = true
 	// TODO(polina): support these requests in addition to vscode-go feature parity
 	response.Body.SupportsTerminateRequest = false
@@ -858,10 +858,10 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 	s.config.log.Debug("parsed launch config: ", prettyPrint(args))
 
-	if args.DelveCwd != "" {
-		if err := os.Chdir(args.DelveCwd); err != nil {
+	if args.DlvCwd != "" {
+		if err := os.Chdir(args.DlvCwd); err != nil {
 			s.sendShowUserErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch", fmt.Sprintf("failed to chdir using %q - %v", args.DelveCwd, err))
+				FailedToLaunch, "Failed to launch", fmt.Sprintf("failed to chdir to %q - %v", args.DlvCwd, err))
 			return
 		}
 	}
@@ -1678,21 +1678,21 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 // This is a mandatory request to support.
 func (s *Session) onNextRequest(request *dap.NextRequest, allowNextStateChange chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.NextResponse{Response: *newResponse(request.Request)})
-	s.stepUntilStopAndNotify(api.Next, request.Arguments.ThreadId, allowNextStateChange)
+	s.stepUntilStopAndNotify(api.Next, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
 
 // onStepInRequest handles 'stepIn' request
 // This is a mandatory request to support.
 func (s *Session) onStepInRequest(request *dap.StepInRequest, allowNextStateChange chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepInResponse{Response: *newResponse(request.Request)})
-	s.stepUntilStopAndNotify(api.Step, request.Arguments.ThreadId, allowNextStateChange)
+	s.stepUntilStopAndNotify(api.Step, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
 
 // onStepOutRequest handles 'stepOut' request
 // This is a mandatory request to support.
 func (s *Session) onStepOutRequest(request *dap.StepOutRequest, allowNextStateChange chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepOutResponse{Response: *newResponse(request.Request)})
-	s.stepUntilStopAndNotify(api.StepOut, request.Arguments.ThreadId, allowNextStateChange)
+	s.stepUntilStopAndNotify(api.StepOut, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
 
 func (s *Session) sendStepResponse(threadId int, message dap.Message) {
@@ -1746,7 +1746,7 @@ func (s *Session) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int,
 // a channel that will be closed to signal that an
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
-func (s *Session) stepUntilStopAndNotify(command string, threadId int, allowNextStateChange chan struct{}) {
+func (s *Session) stepUntilStopAndNotify(command string, threadId int, granularity dap.SteppingGranularity, allowNextStateChange chan struct{}) {
 	defer closeIfOpen(allowNextStateChange)
 	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
 	if err != nil {
@@ -1764,6 +1764,17 @@ func (s *Session) stepUntilStopAndNotify(command string, threadId int, allowNext
 		stopped.Body.Text = err.Error()
 		s.send(stopped)
 		return
+	}
+
+	if granularity == "instruction" {
+		switch command {
+		case api.ReverseNext:
+			command = api.ReverseStepInstruction
+		default:
+			// TODO(suzmue): consider differentiating between next, step in, and step out.
+			// For example, next could step over call requests.
+			command = api.StepInstruction
+		}
 	}
 	s.runUntilStopAndNotify(command, allowNextStateChange)
 }
@@ -1833,7 +1844,7 @@ func (s *Session) onStackTraceRequest(request *dap.StackTraceRequest) {
 		frame := frames[start+i]
 		loc := &frame.Call
 		uniqueStackFrameID := s.stackFrameHandles.create(stackFrame{goroutineID, start + i})
-		stackFrame := dap.StackFrame{Id: uniqueStackFrameID, Line: loc.Line, Name: fnName(loc)}
+		stackFrame := dap.StackFrame{Id: uniqueStackFrameID, Line: loc.Line, Name: fnName(loc), InstructionPointerReference: fmt.Sprintf("%#x", loc.PC)}
 		if loc.File != "<autogenerated>" {
 			clientPath := s.toClientPath(loc.File)
 			stackFrame.Source = dap.Source{Name: filepath.Base(clientPath), Path: clientPath}
@@ -2201,8 +2212,8 @@ func (s *Session) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 		config := DefaultLoadConfig
 		config.MaxArrayValues = config.MaxStringLen
 		vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, loadExpr, config)
-		val := s.convertVariableToString(vLoaded)
 		if err == nil {
+			val := s.convertVariableToString(vLoaded)
 			// TODO(suzmue): Add evaluate name. Using string(name) will not get the same result because the
 			// MaxArrayValues is not auto adjusted in evaluate requests like MaxStringLen is adjusted.
 			children = append(children, dap.Variable{
@@ -2210,6 +2221,8 @@ func (s *Session) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 				Value: val,
 				Type:  "string",
 			})
+		} else {
+			s.config.log.Debugf("failed to load %q: %v", v.fullyQualifiedNameOrExpr, err)
 		}
 	}
 	return children, nil
@@ -2620,7 +2633,7 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 // This is an optional request enabled by capability ‘supportsStepBackRequest’.
 func (s *Session) onStepBackRequest(request *dap.StepBackRequest, allowNextStateChange chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepBackResponse{Response: *newResponse(request.Request)})
-	s.stepUntilStopAndNotify(api.ReverseNext, request.Arguments.ThreadId, allowNextStateChange)
+	s.stepUntilStopAndNotify(api.ReverseNext, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
 
 // onReverseContinueRequest performs a rewind command call up to the previous
@@ -3192,6 +3205,11 @@ func (s *Session) resumeOnceAndCheckStop(command string, allowNextStateChange ch
 		s.setRunningCmd(false)
 	}
 
+	// Stepping a single instruction will never require continuing again.
+	if command == api.StepInstruction || command == api.ReverseStepInstruction {
+		s.setRunningCmd(false)
+	}
+
 	return state, err
 }
 
@@ -3199,7 +3217,7 @@ func (s *Session) handleLogPoints(state *api.DebuggerState) bool {
 	foundRealBreakpoint := false
 	for _, th := range state.Threads {
 		if bp := th.Breakpoint; bp != nil {
-			logged := s.logBreakpointMessage(bp)
+			logged := s.logBreakpointMessage(bp, th.GoroutineID)
 			if !logged {
 				foundRealBreakpoint = true
 			}
@@ -3208,18 +3226,21 @@ func (s *Session) handleLogPoints(state *api.DebuggerState) bool {
 	return foundRealBreakpoint
 }
 
-func (s *Session) logBreakpointMessage(bp *api.Breakpoint) bool {
+func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int) bool {
 	if !bp.Tracepoint {
 		return false
 	}
-	// TODO(suzmue): allow evaluate expressions within log points and
-	// consider adding line and goid info to output.
+	// TODO(suzmue): allow evaluate expressions within log points.
 	if msg, ok := bp.UserData.(string); ok {
 		s.send(&dap.OutputEvent{
 			Event: *newEvent("output"),
 			Body: dap.OutputEventBody{
 				Category: "stdout",
-				Output:   msg + "\n",
+				Output:   fmt.Sprintf("> [Go %d]: %s\n", goid, msg),
+				Source: dap.Source{
+					Path: s.toClientPath(bp.File),
+				},
+				Line: bp.Line,
 			},
 		})
 	}
