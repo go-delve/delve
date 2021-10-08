@@ -929,8 +929,6 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 
 		var cmd string
 		var out []byte
-		s.config.log.Debugf("building program '%s' in '%s' with flags '%v'", args.Program, args.DelveCwd, args.BuildFlags)
-
 		var err error
 		switch args.Mode {
 		case "debug":
@@ -938,6 +936,8 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		case "test":
 			cmd, out, err = gobuild.GoTestBuildCombinedOutput(args.Output, []string{args.Program}, args.BuildFlags)
 		}
+		args.DlvCwd, _ = filepath.Abs(args.DlvCwd)
+		s.config.log.Debugf("building from %q: [%s]", args.DlvCwd, cmd)
 		if err != nil {
 			s.send(&dap.OutputEvent{
 				Event: *newEvent("output"),
@@ -977,7 +977,6 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	// reflect that before logging.
 	argsToLog := args
 	argsToLog.Program, _ = filepath.Abs(args.Program)
-	argsToLog.DelveCwd, _ = filepath.Abs(args.DelveCwd)
 	argsToLog.Cwd, _ = filepath.Abs(args.Cwd)
 	s.config.log.Debugf("launching binary '%s' with config: %s", debugbinary, prettyPrint(argsToLog))
 
