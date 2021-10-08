@@ -1982,7 +1982,7 @@ func TestVariablesMetadata(t *testing.T) {
 				disconnect: false,
 			}, {
 				execute: func() {
-					checkStop(t, client, 1, "main.main", 368)
+					checkStop(t, client, 1, "main.main", 372)
 
 					client.VariablesRequest(localsScope)
 					locals := client.ExpectVariablesResponse(t)
@@ -2046,6 +2046,16 @@ func TestVariablesMetadata(t *testing.T) {
 					got = client.ExpectEvaluateResponse(t)
 					ref = checkEvalIndexed(t, got, "[4]int32 [116,232,115,116]", hasChildren, 4, 1)
 					checkNamedChildren(ref, "runearray", "int32", runes, true)
+
+					// string feature is not available with user-defined byte types
+					ref = checkVarExactIndexed(t, locals, -1, "bytestypeslice", "bytestypeslice", "[]main.Byte len: 5, cap: 5, [116,195,168,115,116]", "[]main.Byte", true, 5, 1)
+					client.NamedVariablesRequest(ref)
+					namedchildren := client.ExpectVariablesResponse(t)
+					checkChildren(t, namedchildren, "bytestypeslice as string", 0)
+					ref = checkVarExactIndexed(t, locals, -1, "bytetypearray", "bytetypearray", "[5]main.Byte [116,195,168,115,116]", "[5]main.Byte", true, 5, 1)
+					client.NamedVariablesRequest(ref)
+					namedchildren = client.ExpectVariablesResponse(t)
+					checkChildren(t, namedchildren, "bytetypearray as string", 0)
 				},
 				disconnect: true,
 			}})
@@ -5081,7 +5091,7 @@ func TestSetVariable(t *testing.T) {
 				execute: func() {
 					tester := &helperForSetVariable{t, client}
 
-					startLineno := 360 // after runtime.Breakpoint
+					startLineno := 364 // after runtime.Breakpoint
 					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
 						startLineno = -1
 					}
