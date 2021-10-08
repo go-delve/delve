@@ -240,7 +240,7 @@ func (env *Env) variableValueToStarlarkValue(v *api.Variable, top bool) (starlar
 		case "NaN":
 			return starlark.Float(math.NaN()), nil
 		default:
-			n, _ := strconv.ParseFloat(v.Value, 0)
+			n, _ := strconv.ParseFloat(v.Value, 64)
 			return starlark.Float(n), nil
 		}
 	case reflect.Ptr, reflect.Interface:
@@ -289,7 +289,7 @@ func (v structVariableAsStarlarkValue) Hash() (uint32, error) {
 }
 
 func (v structVariableAsStarlarkValue) String() string {
-	return fmt.Sprintf("%s", v.v.SinglelineString())
+	return v.v.SinglelineString()
 }
 
 func (v structVariableAsStarlarkValue) Truth() starlark.Bool {
@@ -349,7 +349,7 @@ func (v sliceVariableAsStarlarkValue) Hash() (uint32, error) {
 }
 
 func (v sliceVariableAsStarlarkValue) String() string {
-	return fmt.Sprintf("%s", v.v.SinglelineString())
+	return v.v.SinglelineString()
 }
 
 func (v sliceVariableAsStarlarkValue) Truth() starlark.Bool {
@@ -415,7 +415,7 @@ func (v ptrVariableAsStarlarkValue) Hash() (uint32, error) {
 }
 
 func (v ptrVariableAsStarlarkValue) String() string {
-	return fmt.Sprintf("%s", v.v.SinglelineString())
+	return v.v.SinglelineString()
 }
 
 func (v ptrVariableAsStarlarkValue) Truth() starlark.Bool {
@@ -494,7 +494,7 @@ func (v mapVariableAsStarlarkValue) Hash() (uint32, error) {
 }
 
 func (v mapVariableAsStarlarkValue) String() string {
-	return fmt.Sprintf("%s", v.v.SinglelineString())
+	return v.v.SinglelineString()
 }
 
 func (v mapVariableAsStarlarkValue) Truth() starlark.Bool {

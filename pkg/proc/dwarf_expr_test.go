@@ -245,7 +245,7 @@ func TestDwarfExprComposite(t *testing.T) {
 	if changeCalls[0] != "3 - 2f00000000000000" {
 		t.Errorf("wrong call to SetReg (Rbx)")
 	}
-	if changeCalls[1] != "2 - 0c00" {
+	if changeCalls[1] != "2 - 0c00000000000000" {
 		t.Errorf("wrong call to SetReg (Rcx)")
 	}
 	if mem.data[0x10] != 13 || mem.data[0x11] != 0x00 {

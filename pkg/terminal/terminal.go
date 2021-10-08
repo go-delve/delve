@@ -1,5 +1,7 @@
 package terminal
 
+//lint:file-ignore ST1005 errors here can be capitalized
+
 import (
 	"fmt"
 	"io"

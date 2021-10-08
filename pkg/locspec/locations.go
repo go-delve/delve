@@ -68,6 +68,7 @@ func Parse(locStr string) (LocationSpec, error) {
 	rest := locStr
 
 	malformed := func(reason string) error {
+		//lint:ignore ST1005 backwards compatibility
 		return fmt.Errorf("Malformed breakpoint location \"%s\" at %d: %s", locStr, len(locStr)-len(rest), reason)
 	}
 
@@ -107,6 +108,7 @@ func Parse(locStr string) (LocationSpec, error) {
 
 func parseLocationSpecDefault(locStr, rest string) (LocationSpec, error) {
 	malformed := func(reason string) error {
+		//lint:ignore ST1005 backwards compatibility
 		return fmt.Errorf("Malformed breakpoint location \"%s\" at %d: %s", locStr, len(locStr)-len(rest), reason)
 	}
 
@@ -420,6 +422,7 @@ func (loc *NormalLocationSpec) Find(t *proc.Target, processArgs []string, scope 
 	var err error
 	if len(candidateFiles) == 1 {
 		if loc.LineOffset < 0 {
+			//lint:ignore ST1005 backwards compatibility
 			return nil, fmt.Errorf("Malformed breakpoint location, no line offset specified")
 		}
 		addrs, err = proc.FindFileLocation(t, candidateFiles[0], loc.LineOffset)

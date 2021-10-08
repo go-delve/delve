@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"os"
 	"sort"
 	"strconv"
@@ -118,21 +119,36 @@ func MinidumpLogger() *logrus.Entry {
 }
 
 // WriteDAPListeningMessage writes the "DAP server listening" message in dap mode.
-func WriteDAPListeningMessage(addr string) {
+func WriteDAPListeningMessage(addr net.Addr) {
 	writeListeningMessage("DAP", addr)
 }
 
 // WriteAPIListeningMessage writes the "API server listening" message in headless mode.
-func WriteAPIListeningMessage(addr string) {
+func WriteAPIListeningMessage(addr net.Addr) {
 	writeListeningMessage("API", addr)
 }
 
-func writeListeningMessage(server, addr string) {
+func writeListeningMessage(server string, addr net.Addr) {
 	msg := fmt.Sprintf("%s server listening at: %s", server, addr)
 	if logOut != nil {
 		fmt.Fprintln(logOut, msg)
 	} else {
 		fmt.Println(msg)
+	}
+	tcpAddr, _ := addr.(*net.TCPAddr)
+	if tcpAddr == nil || tcpAddr.IP.IsLoopback() {
+		return
+	}
+	logger := RPCLogger()
+	logger.Logger.Level = logrus.WarnLevel
+	logger.Warnln("Listening for remote connections (connections are not authenticated nor encrypted)")
+}
+
+func WriteError(msg string) {
+	if logOut != nil {
+		fmt.Fprintln(logOut, msg)
+	} else {
+		fmt.Fprintln(os.Stderr, msg)
 	}
 }
 
