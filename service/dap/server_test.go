@@ -5698,7 +5698,7 @@ func TestAttachRemoteMultiClient(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			serverStopped := make(chan struct{})
-			server, forceStop := startDapServer(t, serverStopped)
+			server, forceStop := startDAPServer(t, serverStopped)
 			client := daptest.NewClient(server.listener.Addr().String())
 			time.Sleep(100 * time.Millisecond) // Give time for connection to be set as dap.Session
 			server.sessionMu.Lock()
