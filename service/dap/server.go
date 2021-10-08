@@ -864,8 +864,6 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 				FailedToLaunch, "Failed to launch", fmt.Sprintf("failed to chdir using %q - %v", args.DelveCwd, err))
 			return
 		}
-	} else {
-		args.DelveCwd, _ = os.Getwd()
 	}
 
 	if args.Mode == "" {
@@ -882,11 +880,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			"The program attribute is missing in debug configuration.")
 		return
 	}
-	args.Program, err = filepath.Abs(args.Program)
-	if err != nil {
-		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
-		return
-	}
+
 	if args.Backend == "" {
 		args.Backend = "default"
 	}
@@ -979,7 +973,13 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 	s.config.Debugger.WorkingDir = args.Cwd
 
-	s.config.log.Debugf("launching binary '%s' with config: %s", debugbinary, prettyPrint(args))
+	// Backend layers will interpret paths relative to server's working directory:
+	// reflect that before logging.
+	argsToLog := args
+	argsToLog.Program, _ = filepath.Abs(args.Program)
+	argsToLog.DelveCwd, _ = filepath.Abs(args.DelveCwd)
+	argsToLog.Cwd, _ = filepath.Abs(args.Cwd)
+	s.config.log.Debugf("launching binary '%s' with config: %s", debugbinary, prettyPrint(argsToLog))
 
 	if args.NoDebug {
 		s.mu.Lock()
