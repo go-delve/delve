@@ -432,7 +432,7 @@ func (s *Server) RunWithClient(conn net.Conn) {
 		s.config.log.Fatal("RunWithClient must not be used when the Server is configured with a Listener")
 		return
 	}
-	s.config.log.Debugf("DAP server connect to client at %s", conn.RemoteAddr())
+	s.config.log.Debugf("Connected to the client at %s", conn.RemoteAddr())
 	go s.runSession(conn)
 }
 
