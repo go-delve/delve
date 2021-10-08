@@ -4602,6 +4602,8 @@ func TestNoDebug_AcceptNoRequestsButDisconnect(t *testing.T) {
 		// Disconnect request is ok
 		client.DisconnectRequestWithKillOption(true)
 		client.ExpectOutputEventTerminating(t)
+		client.ExpectOutputEventProcessExited(t, -1)
+		client.ExpectTerminatedEvent(t)
 		client.ExpectDisconnectResponse(t)
 		client.ExpectTerminatedEvent(t)
 	})
