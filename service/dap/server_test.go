@@ -3812,6 +3812,102 @@ func TestNextAndStep(t *testing.T) {
 	})
 }
 
+// TestStepInstruction executes to a breakpoint and tests stepping
+// a single instruction
+func TestStepInstruction(t *testing.T) {
+	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{32}, // b main.foobar
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.foobar", 32)
+
+					pc, err := getPC(t, client, 1)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					// The exact instructions may change due to compiler changes,
+					// but we want to make sure that all of our instructions are
+					// instantiating variables, since these should not include
+					// jumps.
+					verifyExpectedLocation := func() {
+						client.StackTraceRequest(1, 0, 20)
+						st := client.ExpectStackTraceResponse(t)
+						if len(st.Body.StackFrames) < 1 {
+							t.Errorf("\ngot  %#v\nwant len(stackframes) => 1", st)
+						} else {
+							// There is a hardcoded breakpoint on line 32. All of the
+							// steps should be completed before that line.
+							if st.Body.StackFrames[0].Line < 32 {
+								t.Errorf("\ngot  %#v\nwant Line<32", st)
+							}
+							if st.Body.StackFrames[0].Name != "main.foobar" {
+								t.Errorf("\ngot  %#v\nwant Name=\"main.foobar\"", st)
+							}
+						}
+					}
+
+					// Next instruction.
+					client.NextInstructionRequest(1)
+					client.ExpectNextResponse(t)
+					client.ExpectStoppedEvent(t)
+					verifyExpectedLocation()
+					nextPC, err := getPC(t, client, 1)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if nextPC <= pc {
+						t.Errorf("got %#x, expected InstructionPointerReference>%#x", nextPC, pc)
+					}
+
+					// StepIn instruction.
+					pc = nextPC
+					client.StepInInstructionRequest(1)
+					client.ExpectStepInResponse(t)
+					client.ExpectStoppedEvent(t)
+					verifyExpectedLocation()
+					nextPC, err = getPC(t, client, 1)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if nextPC <= pc {
+						t.Errorf("got %#x, expected InstructionPointerReference>%#x", nextPC, pc)
+					}
+
+					// StepOut Instruction.
+					pc = nextPC
+					client.StepOutInstructionRequest(1)
+					client.ExpectStepOutResponse(t)
+					client.ExpectStoppedEvent(t)
+					verifyExpectedLocation()
+					nextPC, err = getPC(t, client, 1)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if nextPC <= pc {
+						t.Errorf("got %#x, expected InstructionPointerReference>%#x", nextPC, pc)
+					}
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+func getPC(t *testing.T, client *daptest.Client, threadId int) (int64, error) {
+	client.StackTraceRequest(threadId, 0, 1)
+	st := client.ExpectStackTraceResponse(t)
+	if len(st.Body.StackFrames) < 1 {
+		t.Fatalf("\ngot  %#v\nwant len(stackframes) => 1", st)
+	}
+	return strconv.ParseInt(st.Body.StackFrames[0].InstructionPointerReference, 0, 64)
+}
+
 func TestNextParked(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.SkipNow()
