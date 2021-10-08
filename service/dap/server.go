@@ -1058,7 +1058,7 @@ func (s *Session) stopDebugSession(killProcess bool) error {
 	// TODO(polina): Per-request goroutine could still not be done when this one is.
 	// To avoid goroutine leaks, we can use a wait group or have the goroutine listen
 	// for a stop signal on a dedicated quit channel at suitable points (use context?).
-	// Additional clean-up might be especially critical when we support multiple clients
+	// Additional clean-up might be especially critical when we support multiple clients.
 	s.setHaltRequested(true)
 	state, err := s.halt()
 	if err == proc.ErrProcessDetached {
