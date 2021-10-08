@@ -1214,8 +1214,8 @@ func (s *Session) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 	}, func(i int) (*bpLocation, error) {
 		want := request.Arguments.Breakpoints[i]
 		return &bpLocation{
-			File: serverPath,
-			Line: want.Line,
+			file: serverPath,
+			line: want.Line,
 		}, nil
 	})
 
@@ -1233,10 +1233,10 @@ type bpMetadata struct {
 }
 
 type bpLocation struct {
-	File  string
-	Line  int
-	Addr  uint64
-	Addrs []uint64
+	file  string
+	line  int
+	addr  uint64
+	addrs []uint64
 }
 
 // setBreakpoints is a helper function for setting source, function and instruction
@@ -1304,10 +1304,10 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 				got, err = s.debugger.CreateBreakpoint(
 					&api.Breakpoint{
 						Name:       want.name,
-						File:       wantLoc.File,
-						Line:       wantLoc.Line,
-						Addr:       wantLoc.Addr,
-						Addrs:      wantLoc.Addrs,
+						File:       wantLoc.file,
+						Line:       wantLoc.line,
+						Addr:       wantLoc.addr,
+						Addrs:      wantLoc.addrs,
 						Cond:       want.condition,
 						HitCond:    want.hitCondition,
 						Tracepoint: want.logMessage != "",
@@ -1380,7 +1380,7 @@ func (s *Session) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakp
 
 		// Set breakpoint using the PCs that were found.
 		loc := locs[0]
-		return &bpLocation{Addr: loc.PC, Addrs: loc.PCs}, nil
+		return &bpLocation{addr: loc.PC, addrs: loc.PCs}, nil
 	})
 
 	response := &dap.SetFunctionBreakpointsResponse{Response: *newResponse(request.Request)}
@@ -1406,7 +1406,7 @@ func (s *Session) onSetInstructionBreakpointsRequest(request *dap.SetInstruction
 		if err != nil {
 			return nil, err
 		}
-		return &bpLocation{Addr: uint64(addr)}, nil
+		return &bpLocation{addr: uint64(addr)}, nil
 	})
 
 	response := &dap.SetInstructionBreakpointsResponse{Response: *newResponse(request.Request)}
