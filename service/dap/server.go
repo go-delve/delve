@@ -1463,9 +1463,6 @@ func closeIfOpen(ch chan struct{}) {
 // so the s.debugger is guaranteed to be set. Expects the target to be halted.
 func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest, allowNextStateChange chan struct{}) {
 	defer closeIfOpen(allowNextStateChange)
-	if s.debugger.IsRunning() {
-		panic("process must be halted on entry")
-	}
 	if s.args.stopOnEntry {
 		e := &dap.StoppedEvent{
 			Event: *newEvent("stopped"),
@@ -1657,6 +1654,8 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 		s.config.log.Debug("debugger already started")
 		// Halt for configuration sequence. onConfigurationDone will restart
 		// execution if user requested !stopOnEntry.
+		s.changeStateMu.Lock()
+		defer s.changeStateMu.Unlock()
 		if _, err := s.halt(); err != nil {
 			s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
 			return

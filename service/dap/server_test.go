@@ -5765,8 +5765,8 @@ func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 				client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 100})
 				er := client.ExpectVisibleErrorResponse(t)
 				msg := "Failed to attach: debugger already started - use remote mode to connect"
-				if er.Body.Error.Id != 3001 || er.Body.Error.Format != msg {
-					t.Errorf("got %#v, want Id=3001 Format=%q", er, msg)
+				if er.Body.Error.Id != FailedToAttach || er.Body.Error.Format != msg {
+					t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToAttach, msg)
 				}
 				tests := []string{"debug", "test", "exec", "replay", "core"}
 				for _, mode := range tests {
@@ -5774,8 +5774,8 @@ func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 						client.LaunchRequestWithArgs(map[string]interface{}{"mode": mode})
 						er := client.ExpectVisibleErrorResponse(t)
 						msg := "Failed to launch: debugger already started - use remote attach to connect to a server with an active debug session"
-						if er.Body.Error.Id != 3000 || er.Body.Error.Format != msg {
-							t.Errorf("got %#v, want Id=3001 Format=%q", er, msg)
+						if er.Body.Error.Id != FailedToLaunch || er.Body.Error.Format != msg {
+							t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToLaunch, msg)
 						}
 					})
 				}
