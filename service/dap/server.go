@@ -75,7 +75,9 @@ import (
 // error or responding to a (synchronous) DAP disconnect request.
 // Once stop is triggered, the goroutine exits.
 //
-// TODO(polina): add another layer of per-client goroutines to support multiple clients.
+// Unlike rpccommon, there is not another layer of per-client
+// goroutines here because the dap server does not support
+// multiple clients.
 //
 // (3) Per-request goroutine is started for each asynchronous request
 // that resumes execution. We check if target is running already, so
@@ -244,6 +246,10 @@ func NewServer(config *service.Config) *Server {
 	logger := logflags.DAPLogger()
 	logflags.WriteDAPListeningMessage(config.Listener.Addr())
 	logger.Debug("DAP server pid = ", os.Getpid())
+	if config.AcceptMulti {
+		logger.Warn("DAP server does not support accept-multiclient mode")
+		config.AcceptMulti = false
+	}
 	return &Server{
 		config: &Config{
 			Config:        config,
@@ -429,7 +435,11 @@ func (s *Session) serveDAPCodec() {
 					}
 					s.config.log.Error("DAP error: ", err)
 				}
-				s.config.triggerServerStop()
+				if s.config.AcceptMulti {
+					s.conn.Close()
+				} else {
+					s.config.triggerServerStop()
+				}
 			}
 			return
 		}
@@ -1080,13 +1090,29 @@ func (s *Session) stopNoDebugProcess() {
 // onDisconnectRequest handles the DisconnectRequest. Per the DAP spec,
 // it disconnects the debuggee and signals that the debug adaptor
 // (in our case this TCP server) can be terminated.
-// TODO(polina): differentiate between single- and multi-client
-// server mode when handling requests for debug session shutdown.
 func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
-	defer s.config.triggerServerStop()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.debugger != nil && s.config.AcceptMulti && !request.Arguments.TerminateDebuggee {
+		// This is a multi-use server/debugger, so a disconnect request that doesn't
+		// terminate the debuggee should clean up only the client connection, but not the server.
+		s.logToConsole("Closing client session, but leaving multi-client DAP server running at " + s.config.Listener.Addr().String())
+		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
+		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
+		s.conn.Close()
+		// The target is left in whatever state it is already in - halted or running.
+		// The users therefore have the flexibility to choose the appropriate state
+		// for their case before disconnecting. This is also desirable in case of
+		// the client connection fails unexpectedly and the user needs to reconnect.
+		// TODO(polina): should we always issue a continue here if it is not running
+		// like is done in vscode-go legacy adapter?
+		// Ideally we want to use bool suspendDebuggee flag, but it is not yet
+		// available in vscode: https://github.com/microsoft/vscode/issues/134412
+		return
+	}
+
+	defer s.config.triggerServerStop()
 	var err error
 	if s.debugger != nil {
 		// We always kill launched programs.
@@ -1104,9 +1130,7 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 	}
 	// The debugging session has ended, so we send a terminated event.
-	s.send(&dap.TerminatedEvent{
-		Event: *newEvent("terminated"),
-	})
+	s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 }
 
 // stopDebugSession is called from Stop (main goroutine) and
