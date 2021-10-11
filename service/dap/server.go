@@ -2213,9 +2213,14 @@ func (s *Session) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 			}
 
 			if v.isScope && v.Name == "Registers" {
+				// Align all of the register names.
 				name = fmt.Sprintf("%6s", strings.ToLower(c.Name))
+				// Set the correct evaluate name for the register.
 				cfqname = fmt.Sprintf("_%s", strings.ToUpper(c.Name))
-				cvalue, _ = strconv.Unquote(cvalue)
+				// Unquote the value
+				if ucvalue, err := strconv.Unquote(cvalue); err == nil {
+					cvalue = ucvalue
+				}
 			}
 
 			children[i] = dap.Variable{
