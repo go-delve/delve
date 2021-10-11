@@ -2190,8 +2190,6 @@ func (s *Session) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 
 			if strings.HasPrefix(c.Name, "~") || strings.HasPrefix(c.Name, ".") {
 				cfqname = ""
-			} else if v.isScope && v.Name == "Registers" {
-				cfqname = fmt.Sprintf("_%s", c.Name)
 			} else if v.isScope && v.fullyQualifiedNameOrExpr == "" {
 				cfqname = c.Name
 			} else if v.fullyQualifiedNameOrExpr == "" {
@@ -2212,6 +2210,12 @@ func (s *Session) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 			name := c.Name
 			if c.Flags&proc.VariableShadowed == proc.VariableShadowed {
 				name = fmt.Sprintf("(%s)", name)
+			}
+
+			if v.isScope && v.Name == "Registers" {
+				name = fmt.Sprintf("%6s", strings.ToLower(c.Name))
+				cfqname = fmt.Sprintf("_%s", strings.ToUpper(c.Name))
+				cvalue, _ = strconv.Unquote(cvalue)
 			}
 
 			children[i] = dap.Variable{

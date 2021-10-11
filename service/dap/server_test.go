@@ -2167,6 +2167,7 @@ func TestRegistersScopeAndVariables(t *testing.T) {
 					checkScope(t, scopes, 0, "Locals", localsScope())
 					checkScope(t, scopes, 1, "Registers", registersScope(false))
 
+					// Check that rip points to the InstructionPointerReference.
 					pc, err := getPC(t, client, 1)
 					if err != nil {
 						t.Error(pc)
@@ -2178,12 +2179,12 @@ func TestRegistersScopeAndVariables(t *testing.T) {
 						t.Fatal("no registers returned")
 					}
 					rip := vr.Body.Variables[0]
-					gotPc, err := strconv.ParseUint(rip.Value[1:len(rip.Value)-1], 0, 64)
+					gotPc, err := strconv.ParseUint(rip.Value, 0, 64)
 					if err != nil {
 						t.Error(err)
 					}
-					if rip.Name != "Rip" || gotPc != pc || rip.EvaluateName != "_Rip" {
-						t.Errorf("got %#v,\nwant Name=Rip Value=%#x EvaluateName=_Rip", rip, pc)
+					if strings.TrimSpace(rip.Name) != "rip" || gotPc != pc || rip.EvaluateName != "_RIP" {
+						t.Errorf("got %#v,\nwant Name=rip Value=%#x EvaluateName=_RIP", rip, pc)
 					}
 
 					// The program has no user-defined globals.
@@ -2204,6 +2205,25 @@ func TestRegistersScopeAndVariables(t *testing.T) {
 					scopes = client.ExpectScopesResponse(t)
 					checkScope(t, scopes, 0, "Locals", localsScope())
 					checkScope(t, scopes, 1, "Registers", registersScope(false))
+
+					// Check that rip points to the InstructionPointerReference.
+					pc, err = getPC(t, client, 1)
+					if err != nil {
+						t.Error(pc)
+					}
+					client.VariablesRequest(registersScope(false))
+					vr = client.ExpectVariablesResponse(t)
+					if len(vr.Body.Variables) == 0 {
+						t.Fatal("no registers returned")
+					}
+					rip = vr.Body.Variables[0]
+					gotPc, err = strconv.ParseUint(rip.Value, 0, 64)
+					if err != nil {
+						t.Error(err)
+					}
+					if strings.TrimSpace(rip.Name) != "rip" || gotPc != pc || rip.EvaluateName != "_RIP" {
+						t.Errorf("got %#v,\nwant Name=rip Value=%#x EvaluateName=_RIP", rip, pc)
+					}
 				},
 				disconnect: false,
 			}})
