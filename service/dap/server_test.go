@@ -2701,7 +2701,7 @@ func TestLogPoints(t *testing.T) {
 				execute: func() {
 					checkStop(t, client, 1, "main.main", 23)
 					bps := []int{6, 25, 27, 16}
-					logMessages := map[int]string{6: "in callme!", 16: "in callme2!"}
+					logMessages := map[int]string{6: "{i*2}: in callme!", 16: "in callme2!"}
 					client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
 					client.ExpectSetBreakpointsResponse(t)
 
@@ -2717,7 +2717,7 @@ func TestLogPoints(t *testing.T) {
 
 						client.ContinueRequest(1)
 						client.ExpectContinueResponse(t)
-						checkLogMessage(t, client.ExpectOutputEvent(t), 1, "in callme!", fixture.Source, 6)
+						checkLogMessage(t, client.ExpectOutputEvent(t), 1, fmt.Sprintf("%d: in callme!", i*2), fixture.Source, 6)
 					}
 					se := client.ExpectStoppedEvent(t)
 					if se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
@@ -5970,49 +5970,55 @@ func TestParseLogPoint(t *testing.T) {
 		msg string
 	}
 	tests := []struct {
-		name       string
-		args       args
-		wantFormat string
-		wantArgs   []string
-		wantErr    bool
+		name           string
+		args           args
+		wantTracepoint bool
+		wantFormat     string
+		wantArgs       []string
+		wantErr        bool
 	}{
 		{
 			name: "simple string",
 			args: args{
 				msg: "hello, world!",
 			},
-			wantFormat: "hello, world!",
+			wantTracepoint: true,
+			wantFormat:     "hello, world!",
 		},
 		{
 			name: "simple eval",
 			args: args{
 				msg: "{x}",
 			},
-			wantFormat: "%s",
-			wantArgs:   []string{"x"},
+			wantTracepoint: true,
+			wantFormat:     "%s",
+			wantArgs:       []string{"x"},
 		},
 		{
 			name: "type cast",
 			args: args{
 				msg: "hello {string(x)}",
 			},
-			wantFormat: "hello %s",
-			wantArgs:   []string{"string(x)"},
+			wantTracepoint: true,
+			wantFormat:     "hello %s",
+			wantArgs:       []string{"string(x)"},
 		},
 		{
 			name: "multiple eval",
 			args: args{
 				msg: "{x} {y} {z}",
 			},
-			wantFormat: "%s %s %s",
-			wantArgs:   []string{"x", "y", "z"},
+			wantTracepoint: true,
+			wantFormat:     "%s %s %s",
+			wantArgs:       []string{"x", "y", "z"},
 		},
 		{
 			name: "empty string",
 			args: args{
 				msg: "",
 			},
-			wantErr: true,
+			wantTracepoint: false,
+			wantErr:        false,
 		},
 		{
 			name: "empty evaluation",
@@ -6031,16 +6037,27 @@ func TestParseLogPoint(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotFormat, gotArgs, err := parseLogPoint(tt.args.msg)
+			gotTracepoint, gotLogMessage, err := parseLogPoint(tt.args.msg)
+			if gotTracepoint != tt.wantTracepoint {
+				t.Errorf("parseLogPoint() tracepoint = %v, wantTracepoint %v", gotTracepoint, tt.wantTracepoint)
+				return
+			}
 			if (err != nil) != tt.wantErr {
 				t.Errorf("parseLogPoint() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if gotFormat != tt.wantFormat {
-				t.Errorf("parseLogPoint() gotFormat = %v, want %v", gotFormat, tt.wantFormat)
+			if !tt.wantTracepoint {
+				return
 			}
-			if !reflect.DeepEqual(gotArgs, tt.wantArgs) {
-				t.Errorf("parseLogPoint() gotArgs = %v, want %v", gotArgs, tt.wantArgs)
+			if gotLogMessage == nil {
+				t.Errorf("parseLogPoint() gotLogMessage = nil, want log message")
+				return
+			}
+			if gotLogMessage.format != tt.wantFormat {
+				t.Errorf("parseLogPoint() gotFormat = %v, want %v", gotLogMessage.format, tt.wantFormat)
+			}
+			if !reflect.DeepEqual(gotLogMessage.args, tt.wantArgs) {
+				t.Errorf("parseLogPoint() gotArgs = %v, want %v", gotLogMessage.args, tt.wantArgs)
 			}
 		})
 	}

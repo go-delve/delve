@@ -1280,17 +1280,26 @@ func (s *Session) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 		if _, ok := bpAdded[reqString]; ok {
 			err = fmt.Errorf("breakpoint exists at %q, line: %d, column: %d", request.Arguments.Source.Path, want.Line, want.Column)
 		} else {
-			// Create new breakpoints.
-			got, err = s.debugger.CreateBreakpoint(
-				&api.Breakpoint{
-					File:       serverPath,
-					Line:       want.Line,
-					Cond:       want.Condition,
-					HitCond:    want.HitCondition,
-					Name:       reqString,
-					Tracepoint: want.LogMessage != "",
-					UserData:   want.LogMessage,
-				})
+			bp := &api.Breakpoint{
+				File:    serverPath,
+				Line:    want.Line,
+				Cond:    want.Condition,
+				HitCond: want.HitCondition,
+				Name:    reqString,
+			}
+			var (
+				tracepoint bool
+				userdata   *logMessage
+			)
+			tracepoint, userdata, err = parseLogPoint(want.LogMessage)
+			if err == nil {
+				bp.Tracepoint = tracepoint
+				if userdata != nil {
+					bp.UserData = *userdata
+				}
+				// Create new breakpoints.
+				got, err = s.debugger.CreateBreakpoint(bp)
+			}
 			bpAdded[reqString] = struct{}{}
 		}
 
@@ -3258,12 +3267,13 @@ func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int) bool {
 		return false
 	}
 	// TODO(suzmue): allow evaluate expressions within log points.
-	if msg, ok := bp.UserData.(string); ok {
+	if msg, ok := bp.UserData.(logMessage); ok {
+		evaluated := s.evaluateArgs(goid, msg.args)
 		s.send(&dap.OutputEvent{
 			Event: *newEvent("output"),
 			Body: dap.OutputEventBody{
 				Category: "stdout",
-				Output:   fmt.Sprintf("> [Go %d]: %s\n", goid, msg),
+				Output:   fmt.Sprintf("> [Go %d]: %s\n", goid, fmt.Sprintf(msg.format, evaluated...)),
 				Source: dap.Source{
 					Path: s.toClientPath(bp.File),
 				},
@@ -3272,6 +3282,19 @@ func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int) bool {
 		})
 	}
 	return true
+}
+
+func (s *Session) evaluateArgs(goid int, args []string) []interface{} {
+	evaluated := make([]interface{}, len(args))
+	for i := range args {
+		exprVar, err := s.debugger.EvalVariableInScope(goid, 0, 0, args[i], DefaultLoadConfig)
+		if err != nil {
+			evaluated[i] = fmt.Sprintf("{eval err: %e}", err)
+			continue
+		}
+		evaluated[i] = s.convertVariableToString(exprVar)
+	}
+	return evaluated
 }
 
 func (s *Session) toClientPath(path string) string {
@@ -3296,7 +3319,14 @@ func (s *Session) toServerPath(path string) string {
 	return serverPath
 }
 
-func parseLogPoint(msg string) (format string, args []string, err error) {
+type logMessage struct {
+	format string
+	args   []string
+}
+
+func parseLogPoint(msg string) (bool, *logMessage, error) {
+	var args []string
+
 	var isArg bool
 	var formatSlice, argSlice []rune
 	braceCount := 0
@@ -3307,7 +3337,7 @@ func parseLogPoint(msg string) (format string, args []string, err error) {
 				if braceCount--; braceCount == 0 {
 					argStr := strings.TrimSpace(string(argSlice))
 					if len(argStr) == 0 {
-						return "", nil, fmt.Errorf("empty evaluation string")
+						return false, nil, fmt.Errorf("empty evaluation string")
 					}
 					args = append(args, argStr)
 					formatSlice = append(formatSlice, '%', 's')
@@ -3330,10 +3360,13 @@ func parseLogPoint(msg string) (format string, args []string, err error) {
 		formatSlice = append(formatSlice, r)
 	}
 	if isArg {
-		return "", nil, fmt.Errorf("invalid log point format")
+		return false, nil, fmt.Errorf("invalid log point format")
 	}
 	if len(formatSlice) == 0 {
-		return "", nil, fmt.Errorf("empty log message")
+		return false, nil, nil
 	}
-	return string(formatSlice), args, nil
+	return true, &logMessage{
+		format: string(formatSlice),
+		args:   args,
+	}, nil
 }
