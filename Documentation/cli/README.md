@@ -114,6 +114,10 @@ Aliases: b
 
 ## breakpoints
 Print out info for active breakpoints.
+	
+	breakpoints [-a]
+
+Specifying -a prints all physical breakpoint, including internal breakpoints.
 
 Aliases: bp
 
@@ -664,6 +668,8 @@ The memory location is specified with the same expression language used by 'prin
 	watch v
 
 will watch the address of variable 'v'.
+
+Note that writes that do not change the value of the watched memory address might not be reported.
 
 See also: "help print".
 

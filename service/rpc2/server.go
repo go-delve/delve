@@ -227,6 +227,7 @@ func (s *RPCServer) Ancestors(arg AncestorsIn, out *AncestorsOut) error {
 }
 
 type ListBreakpointsIn struct {
+	All bool
 }
 
 type ListBreakpointsOut struct {
@@ -235,7 +236,7 @@ type ListBreakpointsOut struct {
 
 // ListBreakpoints gets all breakpoints.
 func (s *RPCServer) ListBreakpoints(arg ListBreakpointsIn, out *ListBreakpointsOut) error {
-	out.Breakpoints = s.debugger.Breakpoints()
+	out.Breakpoints = s.debugger.Breakpoints(arg.All)
 	return nil
 }
 
@@ -520,7 +521,7 @@ type EvalOut struct {
 	Variable *api.Variable
 }
 
-// EvalVariable returns a variable in the specified context.
+// Eval returns a variable in the specified context.
 //
 // See https://github.com/go-delve/delve/blob/master/Documentation/cli/expr.md
 // for a description of acceptable values of arg.Expr.

@@ -115,7 +115,7 @@ func newCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters
 		switch piece.Kind {
 		case op.RegPiece:
 			reg := regs.Bytes(piece.Val)
-			if piece.Size == 0 && len(pieces) == 1 {
+			if piece.Size == 0 && i == len(pieces)-1 {
 				piece.Size = len(reg)
 			}
 			if piece.Size > len(reg) {
@@ -130,12 +130,18 @@ func newCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters
 			mem.ReadMemory(buf, uint64(piece.Val))
 			cmem.data = append(cmem.data, buf...)
 		case op.ImmPiece:
-			sz := 8
-			if piece.Size > sz {
-				sz = piece.Size
+			buf := piece.Bytes
+			if buf == nil {
+				sz := 8
+				if piece.Size > sz {
+					sz = piece.Size
+				}
+				if piece.Size == 0 && i == len(pieces)-1 {
+					piece.Size = arch.PtrSize() // DWARF doesn't say what this should be
+				}
+				buf = make([]byte, sz)
+				binary.LittleEndian.PutUint64(buf, piece.Val)
 			}
-			buf := make([]byte, sz)
-			binary.LittleEndian.PutUint64(buf, piece.Val)
 			cmem.data = append(cmem.data, buf[:piece.Size]...)
 		default:
 			panic("unsupported piece kind")
@@ -173,7 +179,9 @@ func (mem *compositeMemory) WriteMemory(addr uint64, data []byte) (int, error) {
 
 			switch piece.Kind {
 			case op.RegPiece:
-				err := mem.regs.ChangeFunc(piece.Val, op.DwarfRegisterFromBytes(pieceMem))
+				oldReg := mem.regs.Reg(piece.Val)
+				newReg := op.DwarfRegisterFromBytes(pieceMem)
+				err := mem.regs.ChangeFunc(piece.Val, oldReg.Overwrite(newReg))
 				if err != nil {
 					return donesz, err
 				}

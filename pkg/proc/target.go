@@ -46,6 +46,10 @@ type Target struct {
 	// CanDump is true if core dumping is supported.
 	CanDump bool
 
+	// KeepSteppingBreakpoints determines whether certain stop reasons (e.g. manual halts)
+	// will keep the stepping breakpoints instead of clearing them.
+	KeepSteppingBreakpoints KeepSteppingBreakpoints
+
 	// currentThread is the thread that will be used by next/step/stepout and to evaluate variables if no goroutine is selected.
 	currentThread Thread
 
@@ -75,6 +79,13 @@ type Target struct {
 	fakeMemoryRegistry    []*compositeMemory
 	fakeMemoryRegistryMap map[string]*compositeMemory
 }
+
+type KeepSteppingBreakpoints uint8
+
+const (
+	HaltKeepsSteppingBreakpoints KeepSteppingBreakpoints = 1 << iota
+	TracepointKeepsSteppingBreakpoints
+)
 
 // ErrProcessExited indicates that the process has exited and contains both
 // process id and exit status.
@@ -203,7 +214,7 @@ func (t *Target) IsCgo() bool {
 	if t.iscgo != nil {
 		return *t.iscgo
 	}
-	scope := globalScope(t.BinInfo(), t.BinInfo().Images[0], t.Memory())
+	scope := globalScope(t, t.BinInfo(), t.BinInfo().Images[0], t.Memory())
 	iscgov, err := scope.findGlobal("runtime", "iscgo")
 	if err == nil {
 		iscgov.loadValue(loadFullValue)
@@ -314,7 +325,7 @@ func (t *Target) Detach(kill bool) error {
 		}
 		for _, bp := range t.Breakpoints().M {
 			if bp != nil {
-				_, err := t.ClearBreakpoint(bp.Addr)
+				err := t.ClearBreakpoint(bp.Addr)
 				if err != nil {
 					return err
 				}
@@ -333,13 +344,14 @@ func setAsyncPreemptOff(p *Target, v int64) {
 		return
 	}
 	logger := p.BinInfo().logger
-	scope := globalScope(p.BinInfo(), p.BinInfo().Images[0], p.Memory())
+	scope := globalScope(p, p.BinInfo(), p.BinInfo().Images[0], p.Memory())
+	// +rtype -var debug anytype
 	debugv, err := scope.findGlobal("runtime", "debug")
 	if err != nil || debugv.Unreadable != nil {
 		logger.Warnf("could not find runtime/debug variable (or unreadable): %v %v", err, debugv.Unreadable)
 		return
 	}
-	asyncpreemptoffv, err := debugv.structMember("asyncpreemptoff")
+	asyncpreemptoffv, err := debugv.structMember("asyncpreemptoff") // +rtype int32
 	if err != nil {
 		logger.Warnf("could not find asyncpreemptoff field: %v", err)
 		return
@@ -393,6 +405,7 @@ func (t *Target) CurrentThread() Thread {
 
 type UProbeTraceResult struct {
 	FnAddr      int
+	GoroutineID int
 	InputParams []*Variable
 }
 
@@ -402,6 +415,7 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 	for _, tp := range tracepoints {
 		r := &UProbeTraceResult{}
 		r.FnAddr = tp.FnAddr
+		r.GoroutineID = tp.GoroutineID
 		for _, ip := range tp.InputParams {
 			v := &Variable{}
 			v.RealType = ip.RealType
@@ -504,7 +518,7 @@ func (t *Target) dwrapUnwrap(fn *Function) *Function {
 	if fn == nil {
 		return nil
 	}
-	if !strings.Contains(fn.Name, "·dwrap·") {
+	if !strings.Contains(fn.Name, "·dwrap·") && !fn.trampoline {
 		return fn
 	}
 	if unwrap := t.BinInfo().dwrapUnwrapCache[fn.Entry]; unwrap != nil {

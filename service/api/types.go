@@ -39,6 +39,9 @@ type DebuggerState struct {
 	// While NextInProgress is set further requests for next or step may be rejected.
 	// Either execute continue until NextInProgress is false or call CancelNext
 	NextInProgress bool
+	// WatchOutOfScope contains the list of watchpoints that went out of scope
+	// during the last continue.
+	WatchOutOfScope []*Breakpoint
 	// Exited indicates whether the debugged process has exited.
 	Exited     bool `json:"exited"`
 	ExitStatus int  `json:"exitStatus"`
@@ -49,7 +52,7 @@ type DebuggerState struct {
 }
 
 type TracepointResult struct {
-	// Addr is deprecated, use Addrs.
+	// Addr is the address of this tracepoint.
 	Addr uint64 `json:"addr"`
 	// File is the source file for the breakpoint.
 	File string `json:"file"`
@@ -58,6 +61,8 @@ type TracepointResult struct {
 	// FunctionName is the name of the function at the current breakpoint, and
 	// may not always be available.
 	FunctionName string `json:"functionName,omitempty"`
+
+	GoroutineID int `json:"goroutineID"`
 
 	InputParams  []Variable `json:"inputParams,omitempty"`
 	ReturnParams []Variable `json:"returnParams,omitempty"`
@@ -108,12 +113,16 @@ type Breakpoint struct {
 	WatchExpr string
 	WatchType WatchType
 
+	VerboseDescr []string `json:"VerboseDescr,omitempty"`
+
 	// number of times a breakpoint has been reached in a certain goroutine
 	HitCount map[string]uint64 `json:"hitCount"`
 	// number of times a breakpoint has been reached
 	TotalHitCount uint64 `json:"totalHitCount"`
 	// Disabled flag, signifying the state of the breakpoint
 	Disabled bool `json:"disabled"`
+
+	UserData interface{} `json:"-"`
 }
 
 // ValidBreakpointName returns an error if
@@ -584,7 +593,7 @@ const (
 	StacktraceG
 )
 
-// ImportPathToDirectoryPath maps an import path to a directory path.
+// PackageBuildInfo maps an import path to a directory path.
 type PackageBuildInfo struct {
 	ImportPath    string
 	DirectoryPath string

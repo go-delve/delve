@@ -360,7 +360,7 @@ func TestClearBreakpointBreakpoint(t *testing.T) {
 	withTestProcess("testprog", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.sleepytime")
 
-		_, err := p.ClearBreakpoint(bp.Addr)
+		err := p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint()")
 
 		data, err := dataAtAddr(p.Memory(), bp.Addr)
@@ -384,7 +384,7 @@ type nextTest struct {
 func countBreakpoints(p *proc.Target) int {
 	bpcount := 0
 	for _, bp := range p.Breakpoints().M {
-		if bp.LogicalID >= 0 {
+		if bp.LogicalID() >= 0 {
 			bpcount++
 		}
 	}
@@ -473,7 +473,7 @@ func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *te
 					if traceTestseq2 {
 						t.Log("clearing initial breakpoint")
 					}
-					_, err := p.ClearBreakpoint(bp.Addr)
+					err := p.ClearBreakpoint(bp.Addr)
 					assertNoError(err, t, "ClearBreakpoint() returned an error")
 				}
 			case contReverseNext:
@@ -503,7 +503,7 @@ func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *te
 					t.Log("continue")
 				}
 				assertNoError(p.Continue(), t, "Continue() returned an error")
-				_, err := p.ClearBreakpoint(bp.Addr)
+				err := p.ClearBreakpoint(bp.Addr)
 				assertNoError(err, t, "ClearBreakpoint() returned an error")
 			}
 
@@ -517,7 +517,7 @@ func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *te
 			}
 			switch pos := tc.pos.(type) {
 			case int:
-				if ln != pos {
+				if pos >= 0 && ln != pos {
 					t.Fatalf("Program did not continue to correct next location expected %d was %s:%d (%#x) (testcase %d)", pos, filepath.Base(f), ln, pc, i)
 				}
 			case string:
@@ -596,7 +596,7 @@ func TestNextConcurrent(t *testing.T) {
 		f, ln := currentLineNumber(p, t)
 		initV := evalVariable(p, t, "n")
 		initVval, _ := constant.Int64Val(initV.Value)
-		_, err := p.ClearBreakpoint(bp.Addr)
+		err := p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint()")
 		for _, tc := range testcases {
 			g, err := proc.GetG(p.CurrentThread())
@@ -1086,11 +1086,11 @@ func TestContinueMulti(t *testing.T) {
 			}
 			assertNoError(err, t, "Continue()")
 
-			if bp := p.CurrentThread().Breakpoint(); bp.LogicalID == bp1.LogicalID {
+			if bp := p.CurrentThread().Breakpoint(); bp.LogicalID() == bp1.LogicalID() {
 				mainCount++
 			}
 
-			if bp := p.CurrentThread().Breakpoint(); bp.LogicalID == bp2.LogicalID {
+			if bp := p.CurrentThread().Breakpoint(); bp.LogicalID() == bp2.LogicalID() {
 				sayhiCount++
 			}
 		}
@@ -1149,7 +1149,7 @@ func evalVariableOrError(p *proc.Target, symbol string) (*proc.Variable, error) 
 		var frame proc.Stackframe
 		frame, err = findFirstNonRuntimeFrame(p)
 		if err == nil {
-			scope = proc.FrameToScope(p, p.BinInfo(), p.Memory(), nil, frame)
+			scope = proc.FrameToScope(p, p.Memory(), nil, frame)
 		}
 	} else {
 		scope, err = proc.GoroutineScope(p, p.CurrentThread())
@@ -2238,7 +2238,7 @@ func TestStepCall(t *testing.T) {
 func TestStepCallPtr(t *testing.T) {
 	// Tests that Step works correctly when calling functions with a
 	// function pointer.
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) && !(goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) && (runtime.GOARCH == "amd64")) {
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) && !protest.RegabiSupported() {
 		testseq("teststepprog", contStep, []nextTest{
 			{9, 10},
 			{10, 6},
@@ -2328,7 +2328,7 @@ func TestStepIgnorePrivateRuntime(t *testing.T) {
 	// Tests that Step will ignore calls to private runtime functions
 	// (such as runtime.convT2E in this case)
 	switch {
-	case goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) && (runtime.GOARCH == "amd64"):
+	case goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) && protest.RegabiSupported():
 		testseq("teststepprog", contStep, []nextTest{
 			{21, 13},
 			{13, 14},
@@ -2415,12 +2415,12 @@ func TestStepConcurrentDirect(t *testing.T) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 37)
 
 		assertNoError(p.Continue(), t, "Continue()")
-		_, err := p.ClearBreakpoint(bp.Addr)
+		err := p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint()")
 
 		for _, b := range p.Breakpoints().M {
 			if b.Name == proc.UnrecoveredPanic {
-				_, err := p.ClearBreakpoint(b.Addr)
+				err := p.ClearBreakpoint(b.Addr)
 				assertNoError(err, t, "ClearBreakpoint(unrecovered-panic)")
 				break
 			}
@@ -2480,7 +2480,7 @@ func TestStepConcurrentPtr(t *testing.T) {
 
 		for _, b := range p.Breakpoints().M {
 			if b.Name == proc.UnrecoveredPanic {
-				_, err := p.ClearBreakpoint(b.Addr)
+				err := p.ClearBreakpoint(b.Addr)
 				assertNoError(err, t, "ClearBreakpoint(unrecovered-panic)")
 				break
 			}
@@ -2545,6 +2545,66 @@ func TestStepConcurrentPtr(t *testing.T) {
 	})
 }
 
+func TestStepOutBreakpoint(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcess("testnextprog", t, func(p *proc.Target, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture.Source, 13)
+		assertNoError(p.Continue(), t, "Continue()")
+		p.ClearBreakpoint(bp.Addr)
+
+		// StepOut should be interrupted by a breakpoint on the same goroutine.
+		setFileBreakpoint(p, t, fixture.Source, 14)
+		assertNoError(p.StepOut(), t, "StepOut()")
+		assertLineNumber(p, t, 14, "wrong line number")
+		if p.Breakpoints().HasSteppingBreakpoints() {
+			t.Fatal("has internal breakpoints after hitting breakpoint on same goroutine")
+		}
+	})
+}
+
+func TestNextBreakpoint(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcess("testnextprog", t, func(p *proc.Target, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture.Source, 34)
+		assertNoError(p.Continue(), t, "Continue()")
+		p.ClearBreakpoint(bp.Addr)
+
+		// Next should be interrupted by a breakpoint on the same goroutine.
+		setFileBreakpoint(p, t, fixture.Source, 14)
+		assertNoError(p.Next(), t, "Next()")
+		assertLineNumber(p, t, 14, "wrong line number")
+		if p.Breakpoints().HasSteppingBreakpoints() {
+			t.Fatal("has internal breakpoints after hitting breakpoint on same goroutine")
+		}
+	})
+}
+
+func TestNextBreakpointKeepsSteppingBreakpoints(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcess("testnextprog", t, func(p *proc.Target, fixture protest.Fixture) {
+		p.KeepSteppingBreakpoints = proc.TracepointKeepsSteppingBreakpoints
+		bp := setFileBreakpoint(p, t, fixture.Source, 34)
+		assertNoError(p.Continue(), t, "Continue()")
+		p.ClearBreakpoint(bp.Addr)
+
+		// Next should be interrupted by a tracepoint on the same goroutine.
+		bp = setFileBreakpoint(p, t, fixture.Source, 14)
+		bp.Tracepoint = true
+		assertNoError(p.Next(), t, "Next()")
+		assertLineNumber(p, t, 14, "wrong line number")
+		if !p.Breakpoints().HasSteppingBreakpoints() {
+			t.Fatal("does not have internal breakpoints after hitting tracepoint on same goroutine")
+		}
+
+		// Continue to complete next.
+		assertNoError(p.Continue(), t, "Continue()")
+		assertLineNumber(p, t, 35, "wrong line number")
+		if p.Breakpoints().HasSteppingBreakpoints() {
+			t.Fatal("has internal breakpoints after completing next")
+		}
+	})
+}
+
 func TestStepOutDefer(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testnextdefer", t, func(p *proc.Target, fixture protest.Fixture) {
@@ -2604,7 +2664,7 @@ func TestStepOnCallPtrInstr(t *testing.T) {
 
 		assertNoError(p.Step(), t, "Step()")
 
-		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) && !(goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) && (runtime.GOARCH == "amd64")) {
+		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) && !protest.RegabiSupported() {
 			assertLineNumber(p, t, 6, "Step continued to wrong line,")
 		} else {
 			assertLineNumber(p, t, 5, "Step continued to wrong line,")
@@ -2912,7 +2972,7 @@ func TestRecursiveNext(t *testing.T) {
 	withTestProcess("increment", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.Increment")
 		assertNoError(p.Continue(), t, "Continue")
-		_, err := p.ClearBreakpoint(bp.Addr)
+		err := p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint")
 		assertNoError(p.Next(), t, "Next 1")
 		assertNoError(p.Next(), t, "Next 2")
@@ -3002,7 +3062,7 @@ func TestIssue871(t *testing.T) {
 			var frame proc.Stackframe
 			frame, err = findFirstNonRuntimeFrame(p)
 			if err == nil {
-				scope = proc.FrameToScope(p, p.BinInfo(), p.Memory(), nil, frame)
+				scope = proc.FrameToScope(p, p.Memory(), nil, frame)
 			}
 		} else {
 			scope, err = proc.GoroutineScope(p, p.CurrentThread())
@@ -3448,7 +3508,7 @@ func TestIssue1034(t *testing.T) {
 		assertNoError(p.Continue(), t, "Continue()")
 		frames, err := p.SelectedGoroutine().Stacktrace(10, 0)
 		assertNoError(err, t, "Stacktrace")
-		scope := proc.FrameToScope(p, p.BinInfo(), p.Memory(), nil, frames[2:]...)
+		scope := proc.FrameToScope(p, p.Memory(), nil, frames[2:]...)
 		args, _ := scope.FunctionArguments(normalLoadConfig)
 		assertNoError(err, t, "FunctionArguments()")
 		if len(args) > 0 {
@@ -3484,7 +3544,7 @@ func testDeclLineCount(t *testing.T, p *proc.Target, lineno int, tgtvars []strin
 	assertLineNumber(p, t, lineno, "Program did not continue to correct next location")
 	scope, err := proc.GoroutineScope(p, p.CurrentThread())
 	assertNoError(err, t, fmt.Sprintf("GoroutineScope (:%d)", lineno))
-	vars, err := scope.Locals()
+	vars, err := scope.Locals(0)
 	assertNoError(err, t, fmt.Sprintf("Locals (:%d)", lineno))
 	if len(vars) != len(tgtvars) {
 		t.Fatalf("wrong number of variables %d (:%d)", len(vars), lineno)
@@ -3515,27 +3575,27 @@ func TestDeclLine(t *testing.T) {
 		setFileBreakpoint(p, t, fixture.Source, 11)
 		setFileBreakpoint(p, t, fixture.Source, 14)
 
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(p.Continue(), t, "Continue 1")
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
 			testDeclLineCount(t, p, 8, []string{})
 		} else {
 			testDeclLineCount(t, p, 8, []string{"a"})
 		}
 
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(p.Continue(), t, "Continue 2")
 		testDeclLineCount(t, p, 9, []string{"a"})
 
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(p.Continue(), t, "Continue 3")
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
 			testDeclLineCount(t, p, 10, []string{"a"})
 		} else {
 			testDeclLineCount(t, p, 10, []string{"a", "b"})
 		}
 
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(p.Continue(), t, "Continue 4")
 		testDeclLineCount(t, p, 11, []string{"a", "b"})
 
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(p.Continue(), t, "Continue 5")
 		testDeclLineCount(t, p, 14, []string{"a", "b"})
 	})
 }
@@ -3579,9 +3639,13 @@ func TestIssue1101(t *testing.T) {
 			exitErr = p.Continue()
 		}
 		if pexit, exited := exitErr.(proc.ErrProcessExited); exited {
-			if pexit.Status != 2 && testBackend != "lldb" {
-				// looks like there's a bug with debugserver on macOS that sometimes
+			if pexit.Status != 2 && testBackend != "lldb" && (runtime.GOOS != "linux" || runtime.GOARCH != "386") {
+				// Looks like there's a bug with debugserver on macOS that sometimes
 				// will report exit status 0 instead of the proper exit status.
+				//
+				// Also it seems that sometimes on linux/386 we will not receive the
+				// exit status. This happens if the process exits at the same time as it
+				// receives a signal.
 				t.Fatalf("process exited status %d (expected 2)", pexit.Status)
 			}
 		} else {
@@ -3606,6 +3670,26 @@ func TestIssue1145(t *testing.T) {
 		assertNoError(p.Next(), t, "Next()")
 		if p.Breakpoints().HasSteppingBreakpoints() {
 			t.Fatal("has internal breakpoints after manual stop request")
+		}
+	})
+}
+
+func TestHaltKeepsSteppingBreakpoints(t *testing.T) {
+	withTestProcess("sleep", t, func(p *proc.Target, fixture protest.Fixture) {
+		p.KeepSteppingBreakpoints = proc.HaltKeepsSteppingBreakpoints
+		setFileBreakpoint(p, t, fixture.Source, 18)
+		assertNoError(p.Continue(), t, "Continue()")
+		resumeChan := make(chan struct{}, 1)
+		p.ResumeNotify(resumeChan)
+		go func() {
+			<-resumeChan
+			time.Sleep(100 * time.Millisecond)
+			p.RequestManualStop()
+		}()
+
+		assertNoError(p.Next(), t, "Next()")
+		if !p.Breakpoints().HasSteppingBreakpoints() {
+			t.Fatal("does not have internal breakpoints after manual stop request")
 		}
 	})
 }
@@ -3727,7 +3811,7 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 	}
 
 	withTestProcessArgs("testinline", t, ".", []string{}, protest.EnableInlining, func(p *proc.Target, fixture protest.Fixture) {
-		pcs, err := p.BinInfo().LineToPC(fixture.Source, 7)
+		pcs, err := proc.FindFileLocation(p, fixture.Source, 7)
 		assertNoError(err, t, "LineToPC")
 		if len(pcs) < 2 {
 			t.Fatalf("expected at least two locations for %s:%d (got %d: %#x)", fixture.Source, 7, len(pcs), pcs)
@@ -3876,7 +3960,7 @@ func TestInlineBreakpoint(t *testing.T) {
 		t.Skip("inlining not supported")
 	}
 	withTestProcessArgs("testinline", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p *proc.Target, fixture protest.Fixture) {
-		pcs, err := p.BinInfo().LineToPC(fixture.Source, 17)
+		pcs, err := proc.FindFileLocation(p, fixture.Source, 17)
 		t.Logf("%#v\n", pcs)
 		if len(pcs) != 1 {
 			t.Fatalf("unable to get PC for inlined function call: %v", pcs)
@@ -4425,12 +4509,12 @@ func TestCallConcurrent(t *testing.T) {
 		returned := testCallConcurrentCheckReturns(p, t, gid1, -1)
 
 		curthread := p.CurrentThread()
-		if curbp := curthread.Breakpoint(); curbp.Breakpoint == nil || curbp.LogicalID != bp.LogicalID || returned > 0 {
+		if curbp := curthread.Breakpoint(); curbp.Breakpoint == nil || curbp.LogicalID() != bp.LogicalID() || returned > 0 {
 			t.Logf("skipping test, the call injection terminated before we hit a breakpoint in a different thread")
 			return
 		}
 
-		_, err := p.ClearBreakpoint(bp.Addr)
+		err := p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint() returned an error")
 
 		gid2 := p.SelectedGoroutine().ID
@@ -4732,33 +4816,64 @@ func TestBackwardNextDeferPanic(t *testing.T) {
 	if testBackend != "rr" {
 		t.Skip("Reverse stepping test needs rr")
 	}
-	testseq2(t, "defercall", "", []seqTest{
-		{contContinue, 12},
-		{contReverseNext, 11},
-		{contReverseNext, 10},
-		{contReverseNext, 9},
-		{contReverseNext, 27},
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
+		testseq2(t, "defercall", "", []seqTest{
+			{contContinue, 12},
+			{contReverseNext, 11},
+			{contReverseNext, 10},
+			{contReverseNext, 9},
+			{contReverseNext, 27},
 
-		{contContinueToBreakpoint, 12}, // skip first call to sampleFunction
-		{contContinueToBreakpoint, 6},  // go to call to sampleFunction through deferreturn
-		{contReverseNext, 13},
-		{contReverseNext, 12},
-		{contReverseNext, 11},
-		{contReverseNext, 10},
-		{contReverseNext, 9},
-		{contReverseNext, 27},
+			{contContinueToBreakpoint, 12}, // skip first call to sampleFunction
+			{contContinueToBreakpoint, 6},  // go to call to sampleFunction through deferreturn
+			{contReverseNext, -1},          // runtime.deferreturn, maybe we should try to skip this
+			{contReverseStepout, 13},
+			{contReverseNext, 12},
+			{contReverseNext, 11},
+			{contReverseNext, 10},
+			{contReverseNext, 9},
+			{contReverseNext, 27},
 
-		{contContinueToBreakpoint, 18}, // go to panic call
-		{contNext, 6},                  // panic so the deferred call happens
-		{contReverseNext, 18},
-		{contReverseNext, 17},
-		{contReverseNext, 16},
-		{contReverseNext, 15},
-		{contReverseNext, 23},
-		{contReverseNext, 22},
-		{contReverseNext, 21},
-		{contReverseNext, 28},
-	})
+			{contContinueToBreakpoint, 18}, // go to panic call
+			{contNext, 6},                  // panic so the deferred call happens
+			{contReverseNext, 18},
+			{contReverseNext, 17},
+			{contReverseNext, 16},
+			{contReverseNext, 15},
+			{contReverseNext, 23},
+			{contReverseNext, 22},
+			{contReverseNext, 21},
+			{contReverseNext, 28},
+		})
+	} else {
+		testseq2(t, "defercall", "", []seqTest{
+			{contContinue, 12},
+			{contReverseNext, 11},
+			{contReverseNext, 10},
+			{contReverseNext, 9},
+			{contReverseNext, 27},
+
+			{contContinueToBreakpoint, 12}, // skip first call to sampleFunction
+			{contContinueToBreakpoint, 6},  // go to call to sampleFunction through deferreturn
+			{contReverseNext, 13},
+			{contReverseNext, 12},
+			{contReverseNext, 11},
+			{contReverseNext, 10},
+			{contReverseNext, 9},
+			{contReverseNext, 27},
+
+			{contContinueToBreakpoint, 18}, // go to panic call
+			{contNext, 6},                  // panic so the deferred call happens
+			{contReverseNext, 18},
+			{contReverseNext, 17},
+			{contReverseNext, 16},
+			{contReverseNext, 15},
+			{contReverseNext, 23},
+			{contReverseNext, 22},
+			{contReverseNext, 21},
+			{contReverseNext, 28},
+		})
+	}
 }
 
 func TestIssue1925(t *testing.T) {
@@ -5107,8 +5222,8 @@ func TestDump(t *testing.T) {
 					t.Errorf("Frame mismatch %d.%d\nlive:\t%s\ncore:\t%s", gos[i].ID, j, convertFrame(p.BinInfo().Arch, &frames[j]), convertFrame(p.BinInfo().Arch, &cframes[j]))
 				}
 				if frames[j].Call.Fn != nil && frames[j].Call.Fn.Name == "main.main" {
-					scope = proc.FrameToScope(p, p.BinInfo(), p.Memory(), gos[i], frames[j:]...)
-					cscope = proc.FrameToScope(c, c.BinInfo(), c.Memory(), cgos[i], cframes[j:]...)
+					scope = proc.FrameToScope(p, p.Memory(), gos[i], frames[j:]...)
+					cscope = proc.FrameToScope(c, c.Memory(), cgos[i], cframes[j:]...)
 				}
 			}
 		}
@@ -5229,6 +5344,7 @@ func TestCompositeMemoryWrite(t *testing.T) {
 }
 
 func TestVariablesWithExternalLinking(t *testing.T) {
+	protest.MustHaveCgo(t)
 	// Tests that macOSDebugFrameBugWorkaround works.
 	// See:
 	//  https://github.com/golang/go/issues/25841
@@ -5247,15 +5363,23 @@ func TestVariablesWithExternalLinking(t *testing.T) {
 }
 
 func TestWatchpointsBasic(t *testing.T) {
-	skipOn(t, "not implemented", "windows")
 	skipOn(t, "not implemented", "freebsd")
-	skipOn(t, "not implemented", "darwin")
 	skipOn(t, "not implemented", "386")
-	skipOn(t, "not implemented", "arm64")
-	skipOn(t, "not implemented", "rr")
+	skipOn(t, "not implemented", "linux", "arm64")
+	protest.AllowRecording(t)
+
+	position1 := 17
+	position5 := 33
+
+	if runtime.GOARCH == "arm64" {
+		position1 = 16
+		position5 = 32
+	}
 
 	withTestProcess("databpeasy", t, func(p *proc.Target, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
+		setFileBreakpoint(p, t, fixture.Source, 19) // Position 2 breakpoint
+		setFileBreakpoint(p, t, fixture.Source, 25) // Position 4 breakpoint
 		assertNoError(p.Continue(), t, "Continue 0")
 		assertLineNumber(p, t, 11, "Continue 0") // Position 0
 
@@ -5266,7 +5390,11 @@ func TestWatchpointsBasic(t *testing.T) {
 		assertNoError(err, t, "SetDataBreakpoint(write-only)")
 
 		assertNoError(p.Continue(), t, "Continue 1")
-		assertLineNumber(p, t, 17, "Continue 1") // Position 1
+		assertLineNumber(p, t, position1, "Continue 1") // Position 1
+
+		if curbp := p.CurrentThread().Breakpoint().Breakpoint; curbp == nil || (curbp.LogicalID() != bp.LogicalID()) {
+			t.Fatal("breakpoint not set")
+		}
 
 		p.ClearBreakpoint(bp.Addr)
 
@@ -5284,23 +5412,21 @@ func TestWatchpointsBasic(t *testing.T) {
 		assertNoError(p.Continue(), t, "Continue 4")
 		assertLineNumber(p, t, 25, "Continue 4") // Position 4
 
+		t.Logf("setting final breakpoint")
 		_, err = p.SetWatchpoint(scope, "globalvar1", proc.WatchWrite, nil)
 		assertNoError(err, t, "SetDataBreakpoint(write-only, again)")
 
 		assertNoError(p.Continue(), t, "Continue 5")
-		assertLineNumber(p, t, 33, "Continue 5") // Position 5
+		assertLineNumber(p, t, position5, "Continue 5") // Position 5
 	})
 }
 
 func TestWatchpointCounts(t *testing.T) {
-	skipOn(t, "not implemented", "windows")
 	skipOn(t, "not implemented", "freebsd")
-	skipOn(t, "not implemented", "darwin")
 	skipOn(t, "not implemented", "386")
-	skipOn(t, "not implemented", "arm64")
-	skipOn(t, "not implemented", "rr")
-
+	skipOn(t, "not implemented", "linux", "arm64")
 	protest.AllowRecording(t)
+
 	withTestProcess("databpcountstest", t, func(p *proc.Target, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(p.Continue(), t, "Continue 0")
@@ -5406,6 +5532,139 @@ func TestDwrapStartLocation(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("could not find any goroutine with a start location of main.agoroutine")
+		}
+	})
+}
+
+func TestWatchpointStack(t *testing.T) {
+	skipOn(t, "not implemented", "freebsd")
+	skipOn(t, "not implemented", "386")
+	skipOn(t, "not implemented", "linux", "arm64")
+	protest.AllowRecording(t)
+
+	position1 := 17
+
+	if runtime.GOARCH == "arm64" {
+		position1 = 16
+	}
+
+	withTestProcess("databpstack", t, func(p *proc.Target, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture.Source, 11) // Position 0 breakpoint
+		clearlen := len(p.Breakpoints().M)
+
+		assertNoError(p.Continue(), t, "Continue 0")
+		assertLineNumber(p, t, 11, "Continue 0") // Position 0
+
+		scope, err := proc.GoroutineScope(p, p.CurrentThread())
+		assertNoError(err, t, "GoroutineScope")
+
+		_, err = p.SetWatchpoint(scope, "w", proc.WatchWrite, nil)
+		assertNoError(err, t, "SetDataBreakpoint(write-only)")
+
+		watchbpnum := 3
+		if recorded, _ := p.Recorded(); recorded {
+			watchbpnum = 4
+		}
+
+		if len(p.Breakpoints().M) != clearlen+watchbpnum {
+			// want 1 watchpoint, 1 stack resize breakpoint, 1 out of scope sentinel (2 if recorded)
+			t.Errorf("wrong number of breakpoints after setting watchpoint: %d", len(p.Breakpoints().M)-clearlen)
+		}
+
+		var retaddr uint64
+		for _, bp := range p.Breakpoints().M {
+			for _, breaklet := range bp.Breaklets {
+				if breaklet.Kind&proc.WatchOutOfScopeBreakpoint != 0 {
+					retaddr = bp.Addr
+					break
+				}
+			}
+		}
+
+		// Note: for recorded processes retaddr will not always be the return
+		// address, ~50% of the times it will be the address of the CALL
+		// instruction preceding the return address, this does not matter for this
+		// test.
+
+		_, err = p.SetBreakpoint(retaddr, proc.UserBreakpoint, nil)
+		assertNoError(err, t, "SetBreakpoint")
+
+		if len(p.Breakpoints().M) != clearlen+watchbpnum {
+			// want 1 watchpoint, 1 stack resize breakpoint, 1 out of scope sentinel (which is also a user breakpoint) (and another out of scope sentinel if recorded)
+			t.Errorf("wrong number of breakpoints after setting watchpoint: %d", len(p.Breakpoints().M)-clearlen)
+		}
+
+		assertNoError(p.Continue(), t, "Continue 1")
+		assertLineNumber(p, t, position1, "Continue 1") // Position 1
+
+		assertNoError(p.Continue(), t, "Continue 2")
+		t.Logf("%#v", p.CurrentThread().Breakpoint().Breakpoint)
+		assertLineNumber(p, t, 24, "Continue 2") // Position 2 (watchpoint gone out of scope)
+
+		if len(p.Breakpoints().M) != clearlen+1 {
+			// want 1 user breakpoint set at retaddr
+			t.Errorf("wrong number of breakpoints after watchpoint goes out of scope: %d", len(p.Breakpoints().M)-clearlen)
+		}
+
+		if len(p.Breakpoints().WatchOutOfScope) != 1 {
+			t.Errorf("wrong number of out-of-scope watchpoints after watchpoint goes out of scope: %d", len(p.Breakpoints().WatchOutOfScope))
+		}
+
+		err = p.ClearBreakpoint(retaddr)
+		assertNoError(err, t, "ClearBreakpoint")
+
+		if len(p.Breakpoints().M) != clearlen {
+			// want 1 user breakpoint set at retaddr
+			t.Errorf("wrong number of breakpoints after removing user breakpoint: %d", len(p.Breakpoints().M)-clearlen)
+		}
+	})
+}
+
+func TestWatchpointStackBackwardsOutOfScope(t *testing.T) {
+	skipUnlessOn(t, "only for recorded targets", "rr")
+	protest.AllowRecording(t)
+
+	withTestProcess("databpstack", t, func(p *proc.Target, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture.Source, 11) // Position 0 breakpoint
+		clearlen := len(p.Breakpoints().M)
+
+		assertNoError(p.Continue(), t, "Continue 0")
+		assertLineNumber(p, t, 11, "Continue 0") // Position 0
+
+		scope, err := proc.GoroutineScope(p, p.CurrentThread())
+		assertNoError(err, t, "GoroutineScope")
+
+		_, err = p.SetWatchpoint(scope, "w", proc.WatchWrite, nil)
+		assertNoError(err, t, "SetDataBreakpoint(write-only)")
+
+		assertNoError(p.Continue(), t, "Continue 1")
+		assertLineNumber(p, t, 17, "Continue 1") // Position 1
+
+		p.ChangeDirection(proc.Backward)
+
+		assertNoError(p.Continue(), t, "Continue 2")
+		t.Logf("%#v", p.CurrentThread().Breakpoint().Breakpoint)
+		assertLineNumber(p, t, 16, "Continue 2") // Position 1 again (because of inverted movement)
+
+		assertNoError(p.Continue(), t, "Continue 3")
+		t.Logf("%#v", p.CurrentThread().Breakpoint().Breakpoint)
+		assertLineNumber(p, t, 11, "Continue 3") // Position 0 (breakpoint 1 hit)
+
+		assertNoError(p.Continue(), t, "Continue 4")
+		t.Logf("%#v", p.CurrentThread().Breakpoint().Breakpoint)
+		assertLineNumber(p, t, 23, "Continue 4") // Position 2 (watchpoint gone out of scope)
+
+		if len(p.Breakpoints().M) != clearlen {
+			t.Errorf("wrong number of breakpoints after watchpoint goes out of scope: %d", len(p.Breakpoints().M)-clearlen)
+		}
+
+		if len(p.Breakpoints().WatchOutOfScope) != 1 {
+			t.Errorf("wrong number of out-of-scope watchpoints after watchpoint goes out of scope: %d", len(p.Breakpoints().WatchOutOfScope))
+		}
+
+		if len(p.Breakpoints().M) != clearlen {
+			// want 1 user breakpoint set at retaddr
+			t.Errorf("wrong number of breakpoints after removing user breakpoint: %d", len(p.Breakpoints().M)-clearlen)
 		}
 	})
 }

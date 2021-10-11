@@ -2,6 +2,8 @@
 // input and dispatching to appropriate backend commands.
 package terminal
 
+//lint:file-ignore ST1005 errors here can be capitalized
+
 import (
 	"bufio"
 	"bytes"
@@ -145,6 +147,8 @@ The memory location is specified with the same expression language used by 'prin
 
 will watch the address of variable 'v'.
 
+Note that writes that do not change the value of the watched memory address might not be reported.
+
 See also: "help print".`},
 		{aliases: []string{"restart", "r"}, group: runCmds, cmdFn: restart, helpMsg: `Restart process.
 
@@ -286,7 +290,11 @@ Groups goroutines by the value of the label with the specified key.
 Called without arguments it will show information about the current goroutine.
 Called with a single argument it will switch to the specified goroutine.
 Called with more arguments it will execute a command on the specified goroutine.`},
-		{aliases: []string{"breakpoints", "bp"}, group: breakCmds, cmdFn: breakpoints, helpMsg: "Print out info for active breakpoints."},
+		{aliases: []string{"breakpoints", "bp"}, group: breakCmds, cmdFn: breakpoints, helpMsg: `Print out info for active breakpoints.
+	
+	breakpoints [-a]
+
+Specifying -a prints all physical breakpoint, including internal breakpoints.`},
 		{aliases: []string{"print", "p"}, group: dataCmds, allowedPrefixes: onPrefix | deferredPrefix, cmdFn: printVar, helpMsg: `Evaluate an expression.
 
 	[goroutine <n>] [frame <m>] print [%format] <expression>
@@ -590,10 +598,10 @@ func (c *Commands) Register(cmdstr string, cf cmdfunc, helpMsg string) {
 // Find will look up the command function for the given command input.
 // If it cannot find the command it will default to noCmdAvailable().
 // If the command is an empty string it will replay the last command.
-func (c *Commands) Find(cmdstr string, prefix cmdPrefix) cmdfunc {
+func (c *Commands) Find(cmdstr string, prefix cmdPrefix) command {
 	// If <enter> use last command, if there was one.
 	if cmdstr == "" {
-		return nullCommand
+		return command{aliases: []string{"nullcmd"}, cmdFn: nullCommand}
 	}
 
 	for _, v := range c.cmds {
@@ -601,11 +609,11 @@ func (c *Commands) Find(cmdstr string, prefix cmdPrefix) cmdfunc {
 			if prefix != noPrefix && v.allowedPrefixes&prefix == 0 {
 				continue
 			}
-			return v.cmdFn
+			return v
 		}
 	}
 
-	return noCmdAvailable
+	return command{aliases: []string{"nocmd"}, cmdFn: noCmdAvailable}
 }
 
 // CallWithContext takes a command and a context that command should be executed in.
@@ -616,7 +624,7 @@ func (c *Commands) CallWithContext(cmdstr string, t *Term, ctx callContext) erro
 	if len(vals) > 1 {
 		args = strings.TrimSpace(vals[1])
 	}
-	return c.Find(cmdname, ctx.Prefix)(t, ctx, args)
+	return c.Find(cmdname, ctx.Prefix).cmdFn(t, ctx, args)
 }
 
 // Call takes a command to execute.
@@ -643,10 +651,10 @@ func (c *Commands) Merge(allAliases map[string][]string) {
 	}
 }
 
-var noCmdError = errors.New("command not available")
+var errNoCmd = errors.New("command not available")
 
 func noCmdAvailable(t *Term, ctx callContext, args string) error {
-	return noCmdError
+	return errNoCmd
 }
 
 func nullCommand(t *Term, ctx callContext, args string) error {
@@ -663,7 +671,7 @@ func (c *Commands) help(t *Term, ctx callContext, args string) error {
 				}
 			}
 		}
-		return noCmdError
+		return errNoCmd
 	}
 
 	fmt.Println("The following commands are available:")
@@ -979,7 +987,7 @@ func selectedGID(state *api.DebuggerState) int {
 
 func split2PartsBySpace(s string) []string {
 	v := strings.SplitN(s, " ", 2)
-	for i, _ := range v {
+	for i := range v {
 		v[i] = strings.TrimSpace(v[i])
 	}
 	return v
@@ -1537,14 +1545,14 @@ func (c *Commands) step(t *Term, ctx callContext, args string) error {
 	return continueUntilCompleteNext(t, state, "step", true)
 }
 
-var notOnFrameZeroErr = errors.New("not on topmost frame")
+var errNotOnFrameZero = errors.New("not on topmost frame")
 
 func (c *Commands) stepInstruction(t *Term, ctx callContext, args string) error {
 	if err := scopePrefixSwitch(t, ctx); err != nil {
 		return err
 	}
 	if c.frame != 0 {
-		return notOnFrameZeroErr
+		return errNotOnFrameZero
 	}
 
 	defer t.onStop()
@@ -1580,7 +1588,7 @@ func (c *Commands) next(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	if c.frame != 0 {
-		return notOnFrameZeroErr
+		return errNotOnFrameZero
 	}
 
 	nextfn := t.client.Next
@@ -1618,7 +1626,7 @@ func (c *Commands) stepout(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	if c.frame != 0 {
-		return notOnFrameZeroErr
+		return errNotOnFrameZero
 	}
 
 	stepoutfn := t.client.StepOut
@@ -1674,7 +1682,7 @@ func clear(t *Term, ctx callContext, args string) error {
 }
 
 func clearAll(t *Term, ctx callContext, args string) error {
-	breakPoints, err := t.client.ListBreakpoints()
+	breakPoints, err := t.client.ListBreakpoints(false)
 	if err != nil {
 		return err
 	}
@@ -1740,13 +1748,17 @@ func (a byID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
 func breakpoints(t *Term, ctx callContext, args string) error {
-	breakPoints, err := t.client.ListBreakpoints()
+	breakPoints, err := t.client.ListBreakpoints(args == "-a")
 	if err != nil {
 		return err
 	}
 	sort.Sort(byID(breakPoints))
 	for _, bp := range breakPoints {
-		fmt.Printf("%s at %v (%d)\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp), bp.TotalHitCount)
+		enabled := "(enabled)"
+		if bp.Disabled {
+			enabled = "(disabled)"
+		}
+		fmt.Printf("%s %s at %v (%d)\n", formatBreakpointName(bp, true), enabled, t.formatBreakpointLocation(bp), bp.TotalHitCount)
 
 		attrs := formatBreakpointAttrs("\t", bp, false)
 
@@ -1790,6 +1802,9 @@ func formatBreakpointAttrs(prefix string, bp *api.Breakpoint, includeTrace bool)
 	}
 	if includeTrace && bp.Tracepoint {
 		attrs = append(attrs, fmt.Sprintf("%strace", prefix))
+	}
+	for i := range bp.VerboseDescr {
+		attrs = append(attrs, fmt.Sprintf("%s%s", prefix, bp.VerboseDescr[i]))
 	}
 	return attrs
 }
@@ -2465,7 +2480,7 @@ func (c *Commands) sourceCommand(t *Term, ctx callContext, args string) error {
 	return c.executeFile(t, args)
 }
 
-var disasmUsageError = errors.New("wrong number of arguments: disassemble [-a <start> <end>] [-l <locspec>]")
+var errDisasmUsage = errors.New("wrong number of arguments: disassemble [-a <start> <end>] [-l <locspec>]")
 
 func disassCommand(t *Term, ctx callContext, args string) error {
 	var cmd, rest string
@@ -2473,7 +2488,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 	if args != "" {
 		argv := split2PartsBySpace(args)
 		if len(argv) != 2 {
-			return disasmUsageError
+			return errDisasmUsage
 		}
 		cmd = argv[0]
 		rest = argv[1]
@@ -2504,7 +2519,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 	case "-a":
 		v := split2PartsBySpace(rest)
 		if len(v) != 2 {
-			return disasmUsageError
+			return errDisasmUsage
 		}
 		startpc, err := strconv.ParseInt(v[0], 0, 64)
 		if err != nil {
@@ -2525,7 +2540,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		}
 		disasm, disasmErr = t.client.DisassemblePC(ctx.Scope, locs[0].PC, flavor)
 	default:
-		return disasmUsageError
+		return errDisasmUsage
 	}
 
 	if disasmErr != nil {
@@ -2601,6 +2616,10 @@ func printcontext(t *Term, state *api.DebuggerState) {
 
 	if state.When != "" {
 		fmt.Println(state.When)
+	}
+
+	for _, watchpoint := range state.WatchOutOfScope {
+		fmt.Printf("%s went out of scope and was cleared\n", formatBreakpointName(watchpoint, true))
 	}
 }
 
@@ -3113,11 +3132,7 @@ func formatBreakpointName(bp *api.Breakpoint, upcase bool) string {
 	if bp.WatchExpr != "" && bp.WatchExpr != bp.Name {
 		return fmt.Sprintf("%s %s on [%s]", thing, id, bp.WatchExpr)
 	}
-	state := "(enabled)"
-	if bp.Disabled {
-		state = "(disabled)"
-	}
-	return fmt.Sprintf("%s %s %s", thing, id, state)
+	return fmt.Sprintf("%s %s", thing, id)
 }
 
 func (t *Term) formatBreakpointLocation(bp *api.Breakpoint) string {

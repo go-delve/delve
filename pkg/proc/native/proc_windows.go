@@ -10,6 +10,8 @@ import (
 	sys "golang.org/x/sys/windows"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
+	"github.com/go-delve/delve/pkg/proc/winutil"
 )
 
 // osProcessDetails holds Windows specific information.
@@ -436,11 +438,17 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 		return nil, err
 	}
 
+	context := winutil.NewCONTEXT()
+
 	for _, thread := range dbp.threads {
+		thread.os.delayErr = nil
 		if !thread.os.dbgUiRemoteBreakIn {
-			_, err := _SuspendThread(thread.os.hThread)
-			if err != nil {
-				return nil, err
+			// Wait before reporting the error, the thread could be removed when we
+			// call waitForDebugEvent in the next loop.
+			_, thread.os.delayErr = _SuspendThread(thread.os.hThread)
+			if thread.os.delayErr == nil {
+				// This call will block until the thread has stopped.
+				_ = _GetThreadContext(thread.os.hThread, context)
 			}
 		}
 	}
@@ -466,6 +474,31 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 		}
 	}
 
+	// Check if trapthread still exist, if the process is dying it could have
+	// been removed while we were stopping the other threads.
+	trapthreadFound := false
+	for _, thread := range dbp.threads {
+		if thread.ID == trapthread.ID {
+			trapthreadFound = true
+		}
+		if thread.os.delayErr != nil && thread.os.delayErr != syscall.Errno(0x5) {
+			// Do not report Access is denied error, it is caused by the thread
+			// having already died but we haven't been notified about it yet.
+			return nil, thread.os.delayErr
+		}
+	}
+
+	if !trapthreadFound {
+		// trapthread exited during stop, pick another one
+		trapthread = nil
+		for _, thread := range dbp.threads {
+			if thread.CurrentBreakpoint.Breakpoint != nil && thread.os.delayErr == nil {
+				trapthread = thread
+				break
+			}
+		}
+	}
+
 	return trapthread, nil
 }
 
@@ -488,10 +521,15 @@ func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 }
 
 func (dbp *nativeProcess) SupportsBPF() bool {
-	return true
+	return false
 }
 
-func (dbp *nativeProcess) SetUProbe(fnName string, args []proc.UProbeArgMap) {
+func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProbeArgMap) error {
+	return nil
+}
+
+func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
+	return nil
 }
 
 func killProcess(pid int) error {

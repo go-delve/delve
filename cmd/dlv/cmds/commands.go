@@ -130,7 +130,7 @@ func New(docCall bool) *cobra.Command {
 	rootCommand.PersistentFlags().StringVar(&initFile, "init", "", "Init file, executed by the terminal client.")
 	rootCommand.PersistentFlags().StringVar(&buildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler. For example: --build-flags=\"-tags=integration -mod=vendor -cover -v\"")
 	rootCommand.PersistentFlags().StringVar(&workingDir, "wd", "", "Working directory for running the program.")
-	rootCommand.PersistentFlags().BoolVarP(&checkGoVersion, "check-go-version", "", true, "Checks that the version of Go in use is compatible with Delve.")
+	rootCommand.PersistentFlags().BoolVarP(&checkGoVersion, "check-go-version", "", true, "Exits if the version of Go in use is not compatible (too old or too new) with the version of Delve.")
 	rootCommand.PersistentFlags().BoolVarP(&checkLocalConnUser, "only-same-user", "", true, "Only connections from the same user that started this instance of Delve are allowed to connect.")
 	rootCommand.PersistentFlags().StringVar(&backend, "backend", "default", `Backend selection (see 'dlv help backend').`)
 	rootCommand.PersistentFlags().StringArrayVarP(&redirects, "redirect", "r", []string{}, "Specifies redirect rules for target process (see 'dlv help redirect')")
@@ -180,13 +180,15 @@ option to let the process continue or kill it.
 		Long: `[EXPERIMENTAL] Starts a headless TCP server communicating via Debug Adaptor Protocol (DAP).
 
 The server is always headless and requires a DAP client like vscode to connect and request a binary
-to be launched or process to be attached to. The following modes are supported:
+to be launched or process to be attached to. The following modes can be specified via client's launch config:
 - launch + exec (executes precompiled binary, like 'dlv exec')
 - launch + debug (builds and launches, like 'dlv debug')
 - launch + test (builds and tests, like 'dlv test')
 - launch + replay (replays an rr trace, like 'dlv replay')
 - launch + core (replays a core dump file, like 'dlv core')
 - attach + local (attaches to a running process, like 'dlv attach')
+Program and output binary paths will be interpreted relative to dlv's working directory.
+
 The server does not yet accept multiple client connections (--accept-multiclient).
 While --continue is not supported, stopOnEntry launch/attach attribute can be used to control if
 execution is resumed at the start of the debug session.`,
@@ -475,18 +477,30 @@ func dapCmd(cmd *cobra.Command, args []string) {
 	os.Exit(status)
 }
 
+func buildBinary(cmd *cobra.Command, args []string, isTest bool) (string, bool) {
+	debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return "", false
+	}
+
+	if isTest {
+		err = gobuild.GoTestBuild(debugname, args, buildFlags)
+	} else {
+		err = gobuild.GoBuild(debugname, args, buildFlags)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return "", false
+	}
+	return debugname, true
+}
+
 func debugCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
-		debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			return 1
-		}
-
 		dlvArgs, targetArgs := splitArgs(cmd, args)
-		err = gobuild.GoBuild(debugname, dlvArgs, buildFlags)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
+		debugname, ok := buildBinary(cmd, dlvArgs, false)
+		if !ok {
 			return 1
 		}
 		defer gobuild.Remove(debugname)
@@ -534,22 +548,11 @@ func traceCmd(cmd *cobra.Command, args []string) {
 
 			debugname = traceExecFile
 			if traceExecFile == "" {
-				debugname, err = filepath.Abs(cmd.Flag("output").Value.String())
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "%v\n", err)
+				debugexe, ok := buildBinary(cmd, dlvArgs, traceTestBinary)
+				if !ok {
 					return 1
 				}
-				if traceTestBinary {
-					if err := gobuild.GoTestBuild(debugname, dlvArgs, buildFlags); err != nil {
-						fmt.Fprintf(os.Stderr, "%v\n", err)
-						return 1
-					}
-				} else {
-					if err := gobuild.GoBuild(debugname, dlvArgs, buildFlags); err != nil {
-						fmt.Fprintf(os.Stderr, "%v\n", err)
-						return 1
-					}
-				}
+				debugname = debugexe
 				defer gobuild.Remove(debugname)
 			}
 
@@ -654,7 +657,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 									params.WriteString(p.Value)
 								}
 							}
-							fmt.Printf("%s:%d %s(%s)\n", t.File, t.Line, t.FunctionName, params.String())
+							fmt.Fprintf(os.Stderr, "> (%d) %s(%s)\n", t.GoroutineID, t.FunctionName, params.String())
 						}
 					}
 				}
@@ -672,16 +675,9 @@ func isBreakpointExistsErr(err error) bool {
 
 func testCmd(cmd *cobra.Command, args []string) {
 	status := func() int {
-		debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			return 1
-		}
-
 		dlvArgs, targetArgs := splitArgs(cmd, args)
-		err = gobuild.GoTestBuild(debugname, dlvArgs, buildFlags)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
+		debugname, ok := buildBinary(cmd, dlvArgs, true)
+		if !ok {
 			return 1
 		}
 		defer gobuild.Remove(debugname)
@@ -752,15 +748,10 @@ func waitForDisconnectSignal(disconnectChan chan struct{}) {
 		// as SIGINT to delve. Ignore it instead of stopping the server
 		// in order to be able to debug signal handlers.
 		go func() {
-			for {
-				select {
-				case <-ch:
-				}
+			for range ch {
 			}
 		}()
-		select {
-		case <-disconnectChan:
-		}
+		<-disconnectChan
 	} else {
 		select {
 		case <-ch:

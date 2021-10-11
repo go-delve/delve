@@ -18,6 +18,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/logflags"
 )
 
 const (
@@ -25,10 +26,14 @@ const (
 
 	maxArrayStridePrefetch = 1024 // Maximum size of array stride for which we will prefetch the array contents
 
-	hashTophashEmptyZero = 0 // used by map reading code, indicates an empty cell
-	hashTophashEmptyOne  = 1 // used by map reading code, indicates an empty cell in Go 1.12 and later
-	hashMinTopHashGo111  = 4 // used by map reading code, indicates minimum value of tophash that isn't empty or evacuated, in Go1.11
-	hashMinTopHashGo112  = 5 // used by map reading code, indicates minimum value of tophash that isn't empty or evacuated, in Go1.12
+	// hashTophashEmptyZero is used by map reading code, indicates an empty cell
+	hashTophashEmptyZero = 0 // +rtype emptyRest
+	// hashTophashEmptyOne is used by map reading code, indicates an empty cell in Go 1.12 and later
+	hashTophashEmptyOne = 1 // +rtype emptyOne
+	// hashMinTopHashGo111 used by map reading code, indicates minimum value of tophash that isn't empty or evacuated, in Go1.11
+	hashMinTopHashGo111 = 4 // +rtype minTopHash
+	// hashMinTopHashGo112 is used by map reading code, indicates minimum value of tophash that isn't empty or evacuated, in Go1.12
+	hashMinTopHashGo112 = 5 // +rtype minTopHash
 
 	maxFramePrefetchSize = 1 * 1024 * 1024 // Maximum prefetch size for a stack frame
 
@@ -534,7 +539,7 @@ func (g *G) System(tgt *Target) bool {
 		return false
 	}
 	switch loc.Fn.Name {
-	case "runtime.main", "runtime.handleAsyncEvent", "runtime.runfinq":
+	case "runtime.main", "runtime.handleAsyncEvent":
 		return false
 	}
 	return strings.HasPrefix(loc.Fn.Name, "runtime.")
@@ -581,8 +586,8 @@ func (err *IsNilErr) Error() string {
 	return fmt.Sprintf("%s is nil", err.name)
 }
 
-func globalScope(bi *BinaryInfo, image *Image, mem MemoryReadWriter) *EvalScope {
-	return &EvalScope{Location: Location{}, Regs: op.DwarfRegisters{StaticBase: image.StaticBase}, Mem: mem, g: nil, BinInfo: bi, frameOffset: 0}
+func globalScope(tgt *Target, bi *BinaryInfo, image *Image, mem MemoryReadWriter) *EvalScope {
+	return &EvalScope{Location: Location{}, Regs: op.DwarfRegisters{StaticBase: image.StaticBase}, Mem: mem, g: nil, BinInfo: bi, target: tgt, frameOffset: 0}
 }
 
 func newVariableFromThread(t Thread, name string, addr uint64, dwarfType godwarf.Type) *Variable {
@@ -839,26 +844,27 @@ func (v *Variable) parseG() (*G, error) {
 		}
 		return nil, ErrNoGoroutine{tid: id}
 	}
-	for {
-		if _, isptr := v.RealType.(*godwarf.PtrType); !isptr {
-			break
-		}
-		v = v.maybeDereference()
+	isptr := func(t godwarf.Type) bool {
+		_, ok := t.(*godwarf.PtrType)
+		return ok
+	}
+	for isptr(v.RealType) {
+		v = v.maybeDereference() // +rtype g
 	}
 
 	v.mem = cacheMemory(v.mem, v.Addr, int(v.RealType.Size()))
 
-	schedVar := v.loadFieldNamed("sched")
+	schedVar := v.loadFieldNamed("sched") // +rtype gobuf
 	if schedVar == nil {
 		return nil, ErrUnreadableG
 	}
-	pc, _ := constant.Int64Val(schedVar.fieldVariable("pc").Value)
-	sp, _ := constant.Int64Val(schedVar.fieldVariable("sp").Value)
+	pc, _ := constant.Int64Val(schedVar.fieldVariable("pc").Value) // +rtype uintptr
+	sp, _ := constant.Int64Val(schedVar.fieldVariable("sp").Value) // +rtype uintptr
 	var bp, lr int64
-	if bpvar := schedVar.fieldVariable("bp"); bpvar != nil && bpvar.Value != nil {
+	if bpvar := schedVar.fieldVariable("bp"); /* +rtype -opt uintptr */ bpvar != nil && bpvar.Value != nil {
 		bp, _ = constant.Int64Val(bpvar.Value)
 	}
-	if bpvar := schedVar.fieldVariable("lr"); bpvar != nil && bpvar.Value != nil {
+	if bpvar := schedVar.fieldVariable("lr"); /* +rtype -opt uintptr */ bpvar != nil && bpvar.Value != nil {
 		lr, _ = constant.Int64Val(bpvar.Value)
 	}
 
@@ -874,25 +880,25 @@ func (v *Variable) parseG() (*G, error) {
 		return n
 	}
 
-	id := loadInt64Maybe("goid")
-	gopc := loadInt64Maybe("gopc")
-	startpc := loadInt64Maybe("startpc")
-	waitSince := loadInt64Maybe("waitsince")
+	id := loadInt64Maybe("goid")             // +rtype int64
+	gopc := loadInt64Maybe("gopc")           // +rtype uintptr
+	startpc := loadInt64Maybe("startpc")     // +rtype uintptr
+	waitSince := loadInt64Maybe("waitsince") // +rtype int64
 	waitReason := int64(0)
 	if producer := v.bi.Producer(); producer != "" && goversion.ProducerAfterOrEqual(producer, 1, 11) {
-		waitReason = loadInt64Maybe("waitreason")
+		waitReason = loadInt64Maybe("waitreason") // +rtype -opt waitReason
 	}
 	var stackhi, stacklo uint64
-	if stackVar := v.loadFieldNamed("stack"); stackVar != nil {
-		if stackhiVar := stackVar.fieldVariable("hi"); stackhiVar != nil {
+	if stackVar := v.loadFieldNamed("stack"); /* +rtype stack */ stackVar != nil {
+		if stackhiVar := stackVar.fieldVariable("hi"); /* +rtype uintptr */ stackhiVar != nil {
 			stackhi, _ = constant.Uint64Val(stackhiVar.Value)
 		}
-		if stackloVar := stackVar.fieldVariable("lo"); stackloVar != nil {
+		if stackloVar := stackVar.fieldVariable("lo"); /* +rtype uintptr */ stackloVar != nil {
 			stacklo, _ = constant.Uint64Val(stackloVar.Value)
 		}
 	}
 
-	status := loadInt64Maybe("atomicstatus")
+	status := loadInt64Maybe("atomicstatus") // +rtype uint32
 
 	if unreadable {
 		return nil, ErrUnreadableG
@@ -947,8 +953,8 @@ func (v *Variable) fieldVariable(name string) *Variable {
 var errTracebackAncestorsDisabled = errors.New("tracebackancestors is disabled")
 
 // Ancestors returns the list of ancestors for g.
-func Ancestors(p Process, g *G, n int) ([]Ancestor, error) {
-	scope := globalScope(p.BinInfo(), p.BinInfo().Images[0], p.Memory())
+func Ancestors(p *Target, g *G, n int) ([]Ancestor, error) {
+	scope := globalScope(p, p.BinInfo(), p.BinInfo().Images[0], p.Memory())
 	tbav, err := scope.EvalExpression("runtime.debug.tracebackancestors", loadSingleValue)
 	if err == nil && tbav.Unreadable == nil && tbav.Kind == reflect.Int {
 		tba, _ := constant.Int64Val(tbav.Value)
@@ -1130,7 +1136,7 @@ func readVarEntry(entry *godwarf.Tree, image *Image) (name string, typ godwarf.T
 
 // Extracts the name and type of a variable from a dwarf entry
 // then executes the instructions given in the  DW_AT_location attribute to grab the variable's address
-func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.DwarfRegisters, mem MemoryReadWriter, entry *godwarf.Tree) (*Variable, error) {
+func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.DwarfRegisters, mem MemoryReadWriter, entry *godwarf.Tree, dictAddr uint64) (*Variable, error) {
 	if entry.Tag != dwarf.TagFormalParameter && entry.Tag != dwarf.TagVariable {
 		return nil, fmt.Errorf("invalid entry tag, only supports FormalParameter and Variable, got %s", entry.Tag.String())
 	}
@@ -1140,7 +1146,13 @@ func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.
 		return nil, err
 	}
 
-	addr, pieces, descr, err := bi.Location(entry, dwarf.AttrLocation, regs.PC(), regs)
+	t, err = resolveParametricType(tgt, bi, mem, t, dictAddr)
+	if err != nil {
+		// Log the error, keep going with t, which will be the shape type
+		logflags.DebuggerLogger().Errorf("could not resolve parametric type of %s", n)
+	}
+
+	addr, pieces, descr, err := bi.Location(entry, dwarf.AttrLocation, regs.PC(), regs, mem)
 	if pieces != nil {
 		var cmem *compositeMemory
 		if tgt != nil {
@@ -1473,6 +1485,7 @@ func (v *Variable) loadSliceInfo(t *godwarf.SliceType) {
 				// Dereference array type to get value type
 				ptrType, ok := f.Type.(*godwarf.PtrType)
 				if !ok {
+					//lint:ignore ST1005 backwards compatibility
 					v.Unreadable = fmt.Errorf("Invalid type %s in slice array", f.Type)
 					return
 				}
@@ -1561,6 +1574,7 @@ func (v *Variable) loadArrayValues(recurseLevel int, cfg LoadConfig) {
 		return
 	}
 	if v.Len < 0 {
+		//lint:ignore ST1005 backwards compatibility
 		v.Unreadable = errors.New("Negative array length")
 		return
 	}
@@ -1923,16 +1937,16 @@ func (v *Variable) mapIterator() *mapIterator {
 		var err error
 		field, _ := sv.toField(f)
 		switch f.Name {
-		case "count":
+		case "count": // +rtype -fieldof hmap int
 			v.Len, err = field.asInt()
-		case "B":
+		case "B": // +rtype -fieldof hmap uint8
 			var b uint64
 			b, err = field.asUint()
 			it.numbuckets = 1 << b
 			it.oldmask = (1 << (b - 1)) - 1
-		case "buckets":
+		case "buckets": // +rtype -fieldof hmap unsafe.Pointer
 			it.buckets = field.maybeDereference()
-		case "oldbuckets":
+		case "oldbuckets": // +rtype -fieldof hmap unsafe.Pointer
 			it.oldbuckets = field.maybeDereference()
 		}
 		if err != nil {
@@ -2034,7 +2048,7 @@ func (it *mapIterator) nextBucket() bool {
 		}
 
 		switch f.Name {
-		case "tophash":
+		case "tophash": // +rtype -fieldof bmap [8]uint8
 			it.tophashes = field
 		case "keys":
 			it.keys = field
@@ -2150,15 +2164,20 @@ func (v *Variable) readInterface() (_type, data *Variable, isnil bool) {
 
 	ityp := resolveTypedef(&v.RealType.(*godwarf.InterfaceType).TypedefType).(*godwarf.StructType)
 
+	// +rtype -field iface.tab *itab
+	// +rtype -field iface.data unsafe.Pointer
+	// +rtype -field eface._type *_type
+	// +rtype -field eface.data unsafe.Pointer
+
 	for _, f := range ityp.Field {
 		switch f.Name {
 		case "tab": // for runtime.iface
-			tab, _ := v.toField(f)
+			tab, _ := v.toField(f) // +rtype *itab
 			tab = tab.maybeDereference()
 			isnil = tab.Addr == 0
 			if !isnil {
 				var err error
-				_type, err = tab.structMember("_type")
+				_type, err = tab.structMember("_type") // +rtype *_type
 				if err != nil {
 					v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
 					return
@@ -2230,7 +2249,7 @@ func (v *Variable) ConstDescr() string {
 	if ctyp == nil {
 		return ""
 	}
-	if typename := v.DwarfType.Common().Name; strings.Index(typename, ".") < 0 || strings.HasPrefix(typename, "C.") {
+	if typename := v.DwarfType.Common().Name; !strings.Contains(typename, ".") || strings.HasPrefix(typename, "C.") {
 		// only attempt to use constants for user defined type, otherwise every
 		// int variable with value 1 will be described with os.SEEK_CUR and other
 		// similar problems.
@@ -2372,9 +2391,7 @@ func (cm constantsMap) Get(typ godwarf.Type) *constantType {
 		ctyp.initialized = true
 		sort.Sort(constantValuesByValue(ctyp.values))
 		for i := range ctyp.values {
-			if strings.HasPrefix(ctyp.values[i].name, typepkg) {
-				ctyp.values[i].name = ctyp.values[i].name[len(typepkg):]
-			}
+			ctyp.values[i].name = strings.TrimPrefix(ctyp.values[i].name, typepkg)
 			if popcnt(uint64(ctyp.values[i].value)) == 1 {
 				ctyp.values[i].singleBit = true
 			}
