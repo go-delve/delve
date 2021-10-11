@@ -1048,6 +1048,109 @@ func TestSelectedThreadsRequest(t *testing.T) {
 	})
 }
 
+func TestHideSystemGoroutinesRequest(t *testing.T) {
+	runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode":                 "exec",
+					"program":              fixture.Path,
+					"hideSystemGoroutines": true,
+					"stopOnEntry":          !stopOnEntry,
+				})
+			},
+			// Set breakpoints
+			fixture.Source, []int{20},
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 20)
+
+					client.SetBreakpointsRequest(fixture.Source, []int{25})
+					client.ExpectSetBreakpointsResponse(t)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
+						t.Errorf("got %#v, want Reason=%q, ThreadId=1", se, "breakpoint")
+					}
+
+					client.ThreadsRequest()
+					tr := client.ExpectThreadsResponse(t)
+					if len(tr.Body.Threads) != 11 {
+						t.Errorf("got %d threads, expected 11\n", len(tr.Body.Threads))
+					}
+					reMain, _ := regexp.Compile(`(\* |)\[Go [0-9]+\] main\..+`)
+					wantMain := dap.Thread{Id: 1, Name: "[Go 1] main.function"}
+					for i, got := range tr.Body.Threads {
+						if !reMain.MatchString(got.Name) {
+							t.Errorf("\ngot threads[%d] = %#v\nwant %#v", i, got, wantMain)
+						}
+					}
+				},
+				disconnect: true,
+			}})
+	})
+	runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode":                 "exec",
+					"program":              fixture.Path,
+					"hideSystemGoroutines": false,
+					"stopOnEntry":          !stopOnEntry,
+				})
+			},
+			// Set breakpoints
+			fixture.Source, []int{20},
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 20)
+
+					client.SetBreakpointsRequest(fixture.Source, []int{25})
+					client.ExpectSetBreakpointsResponse(t)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
+						t.Errorf("got %#v, want Reason=%q, ThreadId=1", se, "breakpoint")
+					}
+
+					client.ThreadsRequest()
+					tr := client.ExpectThreadsResponse(t)
+					if len(tr.Body.Threads) <= 11 {
+						t.Errorf("got %d threads, expected >11\n", len(tr.Body.Threads))
+					}
+
+					reMain, _ := regexp.Compile(`(\* |)\[Go [0-9]+\] main\..+`)
+					wantMain := dap.Thread{Id: 1, Name: "[Go 1] main.function"}
+					reRuntime, _ := regexp.Compile(`(\* |)\[Go [0-9]+\] runtime\..+`)
+					wantRuntime := dap.Thread{Id: 1, Name: "[Go 1] runtime.function"}
+
+					mainCount := 0
+					for i, got := range tr.Body.Threads {
+						if reMain.MatchString(got.Name) {
+							mainCount++
+						}
+						if !reMain.MatchString(got.Name) && !reRuntime.MatchString(got.Name) {
+							t.Errorf("\ngot threads[%d] = %#v\nwant %#v or %#v", i, got, wantMain, wantRuntime)
+						}
+					}
+
+					if mainCount != 11 {
+						t.Errorf("got %#v,\n expected 11 main goroutines\n", tr.Body.Threads)
+					}
+				},
+				disconnect: true,
+			}})
+	})
+}
+
 // TestScopesAndVariablesRequests executes to a breakpoint and tests different
 // configurations of 'scopes' and 'variables' requests.
 func TestScopesAndVariablesRequests(t *testing.T) {

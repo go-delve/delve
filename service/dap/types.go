@@ -151,6 +151,10 @@ type LaunchAttachCommonConfig struct {
 	// should be shown in the variables pane or not.
 	ShowGlobalVariables bool `json:"showGlobalVariables,omitempty"`
 
+	// Boolean value to indicate whether system goroutines
+	// should be shown in the call stack view or not.
+	HideSystemGoroutines bool `json:"hideSystemGoroutines,omitempty"`
+
 	// An array of mappings from a local path (client) to the remote path (debugger).
 	// This setting is useful when working in a file system with symbolic links,
 	// running remote debugging, or debugging an executable compiled externally.
