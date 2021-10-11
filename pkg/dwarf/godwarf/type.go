@@ -27,6 +27,7 @@ const (
 	AttrGoEmbeddedField dwarf.Attr = 0x2903
 	AttrGoRuntimeType   dwarf.Attr = 0x2904
 	AttrGoPackageName   dwarf.Attr = 0x2905
+	AttrGoDictIndex     dwarf.Attr = 0x2906
 )
 
 // Basic type encodings -- the value for AttrEncoding in a TagBaseType Entry.
@@ -513,6 +514,11 @@ func (t *ChanType) stringIntl(recCheck recCheck) string {
 	return "chan " + t.ElemType.String()
 }
 
+type ParametricType struct {
+	TypedefType
+	DictIndex int64
+}
+
 // An UnsupportedType is a placeholder returned in situations where we
 // encounter a type that isn't supported.
 type UnsupportedType struct {
@@ -529,7 +535,7 @@ func (t *UnsupportedType) stringIntl(recCheck) string {
 
 func (t *UnsupportedType) String() string { return t.stringIntl(nil) }
 
-// Type reads the type at off in the DWARF ``info'' section.
+// ReadType reads the type at off in the DWARF ``info'' section.
 func ReadType(d *dwarf.Data, index int, off dwarf.Offset, typeCache map[dwarf.Offset]Type) (Type, error) {
 	typ, err := readType(d, "info", d.Reader(), off, typeCache, nil)
 	if typ != nil {
@@ -787,6 +793,7 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 		case reflect.String:
 			str := new(StringType)
 			t = &str.StructType
+			str.ReflectKind = reflect.String
 			typ = str
 		default:
 			typ = t
@@ -1010,7 +1017,15 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 			typeCache[off] = it
 			t = &it.TypedefType
 		default:
-			typ = t
+			if dictIndex, ok := e.Val(AttrGoDictIndex).(int64); ok {
+				pt := new(ParametricType)
+				pt.DictIndex = dictIndex
+				typ = pt
+				typeCache[off] = pt
+				t = &pt.TypedefType
+			} else {
+				typ = t
+			}
 		}
 		typeCache[off] = typ
 		t.Name, _ = e.Val(dwarf.AttrName).(string)

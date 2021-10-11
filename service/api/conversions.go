@@ -20,31 +20,40 @@ import (
 // an api.Breakpoint.
 func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
 	b := &Breakpoint{
-		Name:          bp.Name,
-		ID:            bp.LogicalID,
-		FunctionName:  bp.FunctionName,
-		File:          bp.File,
-		Line:          bp.Line,
-		Addr:          bp.Addr,
-		Tracepoint:    bp.Tracepoint,
-		TraceReturn:   bp.TraceReturn,
-		Stacktrace:    bp.Stacktrace,
-		Goroutine:     bp.Goroutine,
-		Variables:     bp.Variables,
-		LoadArgs:      LoadConfigFromProc(bp.LoadArgs),
-		LoadLocals:    LoadConfigFromProc(bp.LoadLocals),
-		TotalHitCount: bp.TotalHitCount,
-		Addrs:         []uint64{bp.Addr},
+		Name:         bp.Name,
+		ID:           bp.LogicalID(),
+		FunctionName: bp.FunctionName,
+		File:         bp.File,
+		Line:         bp.Line,
+		Addr:         bp.Addr,
+		Tracepoint:   bp.Tracepoint,
+		TraceReturn:  bp.TraceReturn,
+		Stacktrace:   bp.Stacktrace,
+		Goroutine:    bp.Goroutine,
+		Variables:    bp.Variables,
+		LoadArgs:     LoadConfigFromProc(bp.LoadArgs),
+		LoadLocals:   LoadConfigFromProc(bp.LoadLocals),
+		WatchExpr:    bp.WatchExpr,
+		WatchType:    WatchType(bp.WatchType),
+		Addrs:        []uint64{bp.Addr},
+		UserData:     bp.UserData,
 	}
 
-	b.HitCount = map[string]uint64{}
-	for idx := range bp.HitCount {
-		b.HitCount[strconv.Itoa(idx)] = bp.HitCount[idx]
-	}
+	breaklet := bp.UserBreaklet()
+	if breaklet != nil {
+		b.TotalHitCount = breaklet.TotalHitCount
+		b.HitCount = map[string]uint64{}
+		for idx := range breaklet.HitCount {
+			b.HitCount[strconv.Itoa(idx)] = breaklet.HitCount[idx]
+		}
 
-	var buf bytes.Buffer
-	printer.Fprint(&buf, token.NewFileSet(), bp.Cond)
-	b.Cond = buf.String()
+		var buf bytes.Buffer
+		printer.Fprint(&buf, token.NewFileSet(), breaklet.Cond)
+		b.Cond = buf.String()
+		if breaklet.HitCond != nil {
+			b.HitCond = fmt.Sprintf("%s %d", breaklet.HitCond.Op.String(), breaklet.HitCond.Val)
+		}
+	}
 
 	return b
 }
@@ -59,10 +68,10 @@ func ConvertBreakpoints(bps []*proc.Breakpoint) []*Breakpoint {
 	r := make([]*Breakpoint, 0, len(bps))
 	for _, bp := range bps {
 		if len(r) > 0 {
-			if r[len(r)-1].ID == bp.LogicalID {
+			if r[len(r)-1].ID == bp.LogicalID() {
 				r[len(r)-1].Addrs = append(r[len(r)-1].Addrs, bp.Addr)
 				continue
-			} else if r[len(r)-1].ID > bp.LogicalID {
+			} else if r[len(r)-1].ID > bp.LogicalID() {
 				panic("input not sorted")
 			}
 		}
@@ -279,7 +288,7 @@ func ConvertFunction(fn *proc.Function) *Function {
 }
 
 // ConvertGoroutine converts from proc.G to api.Goroutine.
-func ConvertGoroutine(g *proc.G) *Goroutine {
+func ConvertGoroutine(tgt *proc.Target, g *proc.G) *Goroutine {
 	th := g.Thread
 	tid := 0
 	if th != nil {
@@ -293,7 +302,7 @@ func ConvertGoroutine(g *proc.G) *Goroutine {
 		CurrentLoc:     ConvertLocation(g.CurrentLoc),
 		UserCurrentLoc: ConvertLocation(g.UserCurrent()),
 		GoStatementLoc: ConvertLocation(g.Go()),
-		StartLoc:       ConvertLocation(g.StartLoc()),
+		StartLoc:       ConvertLocation(g.StartLoc(tgt)),
 		ThreadID:       tid,
 		WaitSince:      g.WaitSince,
 		WaitReason:     g.WaitReason,
@@ -303,10 +312,10 @@ func ConvertGoroutine(g *proc.G) *Goroutine {
 }
 
 // ConvertGoroutines converts from []*proc.G to []*api.Goroutine.
-func ConvertGoroutines(gs []*proc.G) []*Goroutine {
+func ConvertGoroutines(tgt *proc.Target, gs []*proc.G) []*Goroutine {
 	goroutines := make([]*Goroutine, len(gs))
 	for i := range gs {
-		goroutines[i] = ConvertGoroutine(gs[i])
+		goroutines[i] = ConvertGoroutine(tgt, gs[i])
 	}
 	return goroutines
 }

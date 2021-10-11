@@ -4,21 +4,25 @@ Compile test binary and begin debugging program.
 
 ### Synopsis
 
-
 Compiles a test binary with optimizations disabled and begins a new debug session.
 
 The test command allows you to begin a new debug session in the context of your
 unit tests. By default Delve will debug the tests in the current directory.
 Alternatively you can specify a package name, and Delve will debug the tests in
-that package instead.
+that package instead. Double-dashes `--` can be used to pass arguments to the test program:
+
+dlv test [package] -- -test.v -other-argument
+
+See also: 'go help testflag'.
 
 ```
-dlv test [package]
+dlv test [package] [flags]
 ```
 
 ### Options
 
 ```
+  -h, --help            help for test
       --output string   Output path for the binary. (default "debug.test")
 ```
 
@@ -30,7 +34,7 @@ dlv test [package]
       --api-version int                  Selects API version when headless. New clients should use v2. Can be reset via RPCServer.SetApiVersion. See Documentation/api/json-rpc/README.md. (default 1)
       --backend string                   Backend selection (see 'dlv help backend'). (default "default")
       --build-flags string               Build flags, to be passed to the compiler. For example: --build-flags="-tags=integration -mod=vendor -cover -v"
-      --check-go-version                 Checks that the version of Go in use is compatible with Delve. (default true)
+      --check-go-version                 Exits if the version of Go in use is not compatible (too old or too new) with the version of Delve. (default true)
       --disable-aslr                     Disables address space randomization
       --headless                         Run debug server only, in headless mode.
       --init string                      Init file, executed by the terminal client.
@@ -44,5 +48,6 @@ dlv test [package]
 ```
 
 ### SEE ALSO
+
 * [dlv](dlv.md)	 - Delve is a debugger for the Go programming language.
 

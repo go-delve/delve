@@ -7,6 +7,7 @@ import (
 	sys "golang.org/x/sys/windows"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/amd64util"
 	"github.com/go-delve/delve/pkg/proc/winutil"
 )
 
@@ -18,6 +19,7 @@ type waitStatus sys.WaitStatus
 type osSpecificDetails struct {
 	hThread            syscall.Handle
 	dbgUiRemoteBreakIn bool // whether thread is an auxiliary DbgUiRemoteBreakIn thread created by Windows
+	delayErr           error
 }
 
 func (t *nativeThread) singleStep() error {
@@ -154,4 +156,27 @@ func (t *nativeThread) ReadMemory(buf []byte, addr uint64) (int, error) {
 
 func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 	return _SetThreadContext(t.os.hThread, savedRegs.(*winutil.AMD64Registers).Context)
+}
+
+func (t *nativeThread) withDebugRegisters(f func(*amd64util.DebugRegisters) error) error {
+	context := winutil.NewCONTEXT()
+	context.ContextFlags = _CONTEXT_DEBUG_REGISTERS
+
+	err := _GetThreadContext(t.os.hThread, context)
+	if err != nil {
+		return err
+	}
+
+	drs := amd64util.NewDebugRegisters(&context.Dr0, &context.Dr1, &context.Dr2, &context.Dr3, &context.Dr6, &context.Dr7)
+
+	err = f(drs)
+	if err != nil {
+		return err
+	}
+
+	if drs.Dirty {
+		return _SetThreadContext(t.os.hThread, context)
+	}
+
+	return nil
 }

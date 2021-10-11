@@ -1,6 +1,10 @@
 package proc
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/go-delve/delve/pkg/dwarf/op"
+)
 
 // AsmInstruction represents one assembly instruction.
 type AsmInstruction struct {
@@ -124,6 +128,11 @@ func Disassemble(mem MemoryReadWriter, regs Registers, breakpoints *BreakpointMa
 }
 
 func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints *BreakpointMap, bi *BinaryInfo, startAddr, endAddr uint64, singleInstr bool) ([]AsmInstruction, error) {
+	var dregs *op.DwarfRegisters
+	if regs != nil {
+		dregs = bi.Arch.RegistersToDwarfRegisters(0, regs)
+	}
+
 	mem := make([]byte, int(endAddr-startAddr))
 	_, err := memrw.ReadMemory(mem, startAddr)
 	if err != nil {
@@ -153,7 +162,7 @@ func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints *Breakpoint
 		inst.Breakpoint = atbp
 		inst.AtPC = (regs != nil) && (curpc == pc)
 
-		bi.Arch.asmDecode(&inst, mem, regs, memrw, bi)
+		bi.Arch.asmDecode(&inst, mem, dregs, memrw, bi)
 
 		r = append(r, inst)
 

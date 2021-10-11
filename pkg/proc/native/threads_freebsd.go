@@ -11,6 +11,7 @@ import (
 	sys "golang.org/x/sys/unix"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/amd64util"
 )
 
 type waitStatus sys.WaitStatus
@@ -119,4 +120,8 @@ func (t *nativeThread) ReadMemory(data []byte, addr uint64) (n int, err error) {
 	}
 	t.dbp.execPtraceFunc(func() { n, err = ptraceReadData(t.ID, uintptr(addr), data) })
 	return n, err
+}
+
+func (t *nativeThread) withDebugRegisters(f func(*amd64util.DebugRegisters) error) error {
+	return proc.ErrHWBreakUnsupported
 }

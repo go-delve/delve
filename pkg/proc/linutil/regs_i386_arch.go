@@ -1,8 +1,6 @@
 package linutil
 
 import (
-	"golang.org/x/arch/x86/x86asm"
-
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/amd64util"
 )
@@ -111,80 +109,6 @@ func (r I386Registers) TLS() uint64 {
 // otherwise.
 func (r *I386Registers) GAddr() (uint64, bool) {
 	return 0, false
-}
-
-// Get returns the value of the n-th register (in x86asm order).
-func (r *I386Registers) Get(n int) (uint64, error) {
-	reg := x86asm.Reg(n)
-	const (
-		mask8  = 0x000000ff
-		mask16 = 0x0000ffff
-	)
-
-	switch reg {
-	// 8-bit
-	case x86asm.AL:
-		return uint64(r.Regs.Eax) & mask8, nil
-	case x86asm.CL:
-		return uint64(r.Regs.Ecx) & mask8, nil
-	case x86asm.DL:
-		return uint64(r.Regs.Edx) & mask8, nil
-	case x86asm.BL:
-		return uint64(r.Regs.Ebx) & mask8, nil
-	case x86asm.AH:
-		return (uint64(r.Regs.Eax) >> 8) & mask8, nil
-	case x86asm.CH:
-		return (uint64(r.Regs.Ecx) >> 8) & mask8, nil
-	case x86asm.DH:
-		return (uint64(r.Regs.Edx) >> 8) & mask8, nil
-	case x86asm.BH:
-		return (uint64(r.Regs.Ebx) >> 8) & mask8, nil
-	case x86asm.SPB:
-		return uint64(r.Regs.Esp) & mask8, nil
-	case x86asm.BPB:
-		return uint64(r.Regs.Ebp) & mask8, nil
-	case x86asm.SIB:
-		return uint64(r.Regs.Esi) & mask8, nil
-	case x86asm.DIB:
-		return uint64(r.Regs.Edi) & mask8, nil
-
-	// 16-bit
-	case x86asm.AX:
-		return uint64(r.Regs.Eax) & mask16, nil
-	case x86asm.CX:
-		return uint64(r.Regs.Ecx) & mask16, nil
-	case x86asm.DX:
-		return uint64(r.Regs.Edx) & mask16, nil
-	case x86asm.BX:
-		return uint64(r.Regs.Ebx) & mask16, nil
-	case x86asm.SP:
-		return uint64(r.Regs.Esp) & mask16, nil
-	case x86asm.BP:
-		return uint64(r.Regs.Ebp) & mask16, nil
-	case x86asm.SI:
-		return uint64(r.Regs.Esi) & mask16, nil
-	case x86asm.DI:
-		return uint64(r.Regs.Edi) & mask16, nil
-
-	// 32-bit
-	case x86asm.EAX:
-		return uint64(uint32(r.Regs.Eax)), nil
-	case x86asm.ECX:
-		return uint64(uint32(r.Regs.Ecx)), nil
-	case x86asm.EDX:
-		return uint64(uint32(r.Regs.Edx)), nil
-	case x86asm.EBX:
-		return uint64(uint32(r.Regs.Ebx)), nil
-	case x86asm.ESP:
-		return uint64(uint32(r.Regs.Esp)), nil
-	case x86asm.EBP:
-		return uint64(uint32(r.Regs.Ebp)), nil
-	case x86asm.ESI:
-		return uint64(uint32(r.Regs.Esi)), nil
-	case x86asm.EDI:
-		return uint64(uint32(r.Regs.Edi)), nil
-	}
-	return 0, proc.ErrUnknownRegister
 }
 
 // Copy returns a copy of these registers that is guaranteed not to change.

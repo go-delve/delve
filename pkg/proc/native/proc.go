@@ -206,6 +206,16 @@ func (dbp *nativeProcess) CheckAndClearManualStopRequest() bool {
 }
 
 func (dbp *nativeProcess) WriteBreakpoint(bp *proc.Breakpoint) error {
+	if bp.WatchType != 0 {
+		for _, thread := range dbp.threads {
+			err := thread.writeHardwareBreakpoint(bp.Addr, bp.WatchType, bp.HWBreakIndex)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
 	bp.OriginalData = make([]byte, dbp.bi.Arch.BreakpointSize())
 	_, err := dbp.memthread.ReadMemory(bp.OriginalData, bp.Addr)
 	if err != nil {
@@ -215,7 +225,17 @@ func (dbp *nativeProcess) WriteBreakpoint(bp *proc.Breakpoint) error {
 }
 
 func (dbp *nativeProcess) EraseBreakpoint(bp *proc.Breakpoint) error {
-	return dbp.memthread.ClearBreakpoint(bp)
+	if bp.WatchType != 0 {
+		for _, thread := range dbp.threads {
+			err := thread.clearHardwareBreakpoint(bp.Addr, bp.WatchType, bp.HWBreakIndex)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	return dbp.memthread.clearSoftwareBreakpoint(bp)
 }
 
 // ContinueOnce will continue the target until it stops.
@@ -323,6 +343,7 @@ func (dbp *nativeProcess) postExit() {
 	if dbp.ctty != nil {
 		dbp.ctty.Close()
 	}
+	dbp.os.Close()
 }
 
 func (dbp *nativeProcess) writeSoftwareBreakpoint(thread *nativeThread, addr uint64) error {

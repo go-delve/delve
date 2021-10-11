@@ -1,4 +1,5 @@
-//+build darwin,macnative
+//go:build darwin && macnative
+// +build darwin,macnative
 
 package native
 
@@ -18,6 +19,8 @@ import (
 	sys "golang.org/x/sys/unix"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
+	"github.com/go-delve/delve/pkg/proc/macutil"
 )
 
 // osProcessDetails holds Darwin specific information.
@@ -32,6 +35,8 @@ type osProcessDetails struct {
 	// exception and notification ports.
 	portSet C.mach_port_t
 }
+
+func (os *osProcessDetails) Close() {}
 
 // Launch creates and begins debugging a new process. Uses a
 // custom fork/exec process in order to take advantage of
@@ -49,6 +54,9 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 		}
 	}
 	if _, err := os.Stat(argv0Go); err != nil {
+		return nil, err
+	}
+	if err := macutil.CheckRosetta(); err != nil {
 		return nil, err
 	}
 
@@ -130,6 +138,9 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 
 // Attach to an existing process with the given PID.
 func Attach(pid int, _ []string) (*proc.Target, error) {
+	if err := macutil.CheckRosetta(); err != nil {
+		return nil, err
+	}
 	dbp := newProcess(pid)
 
 	kret := C.acquire_mach_task(C.int(pid),
@@ -460,6 +471,18 @@ func (dbp *nativeProcess) detach(kill bool) error {
 func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 	//TODO(aarzilli): implement this
 	return 0, nil
+}
+
+func (dbp *nativeProcess) SupportsBPF() bool {
+	return false
+}
+
+func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProbeArgMap) error {
+	panic("not implemented")
+}
+
+func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
+	panic("not implemented")
 }
 
 func initialize(dbp *nativeProcess) error { return nil }

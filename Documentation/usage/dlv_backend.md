@@ -4,7 +4,6 @@ Help about the --backend flag.
 
 ### Synopsis
 
-
 The --backend flag specifies which backend should be used, possible values
 are:
 
@@ -15,6 +14,12 @@ are:
 
 
 
+### Options
+
+```
+  -h, --help   help for backend
+```
+
 ### Options inherited from parent commands
 
 ```
@@ -23,7 +28,7 @@ are:
       --api-version int                  Selects API version when headless. New clients should use v2. Can be reset via RPCServer.SetApiVersion. See Documentation/api/json-rpc/README.md. (default 1)
       --backend string                   Backend selection (see 'dlv help backend'). (default "default")
       --build-flags string               Build flags, to be passed to the compiler. For example: --build-flags="-tags=integration -mod=vendor -cover -v"
-      --check-go-version                 Checks that the version of Go in use is compatible with Delve. (default true)
+      --check-go-version                 Exits if the version of Go in use is not compatible (too old or too new) with the version of Delve. (default true)
       --disable-aslr                     Disables address space randomization
       --headless                         Run debug server only, in headless mode.
       --init string                      Init file, executed by the terminal client.
@@ -37,5 +42,6 @@ are:
 ```
 
 ### SEE ALSO
+
 * [dlv](dlv.md)	 - Delve is a debugger for the Go programming language.
 

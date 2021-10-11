@@ -13,9 +13,10 @@ type waitStatus sys.WaitStatus
 // osSpecificDetails hold Linux specific
 // process details.
 type osSpecificDetails struct {
-	delayedSignal int
-	running       bool
-	setbp         bool
+	delayedSignal       int
+	running             bool
+	setbp               bool
+	phantomBreakpointPC uint64
 }
 
 func (t *nativeThread) stop() (err error) {

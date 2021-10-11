@@ -128,18 +128,24 @@ func EncodeSLEB128(out io.ByteWriter, x int64) {
 }
 
 // ParseString reads a null-terminated string from data.
-func ParseString(data *bytes.Buffer) (string, uint32) {
+func ParseString(data *bytes.Buffer) (string, error) {
 	str, err := data.ReadString(0x0)
 	if err != nil {
-		panic("Could not parse string")
+		return "", err
 	}
 
-	return str[:len(str)-1], uint32(len(str))
+	return str[:len(str)-1], nil
 }
 
 // ReadUintRaw reads an integer of ptrSize bytes, with the specified byte order, from reader.
 func ReadUintRaw(reader io.Reader, order binary.ByteOrder, ptrSize int) (uint64, error) {
 	switch ptrSize {
+	case 2:
+		var n uint16
+		if err := binary.Read(reader, order, &n); err != nil {
+			return 0, err
+		}
+		return uint64(n), nil
 	case 4:
 		var n uint32
 		if err := binary.Read(reader, order, &n); err != nil {
@@ -153,7 +159,7 @@ func ReadUintRaw(reader io.Reader, order binary.ByteOrder, ptrSize int) (uint64,
 		}
 		return n, nil
 	}
-	return 0, fmt.Errorf("not supprted ptr size %d", ptrSize)
+	return 0, fmt.Errorf("pointer size %d not supported", ptrSize)
 }
 
 // WriteUint writes an integer of ptrSize bytes to writer, in the specified byte order.
@@ -164,10 +170,10 @@ func WriteUint(writer io.Writer, order binary.ByteOrder, ptrSize int, data uint6
 	case 8:
 		return binary.Write(writer, order, data)
 	}
-	return fmt.Errorf("not support prt size %d", ptrSize)
+	return fmt.Errorf("pointer size %d not supported", ptrSize)
 }
 
-// ReadDwarfLength reads a DWARF length field followed by a version field
+// ReadDwarfLengthVersion reads a DWARF length field followed by a version field
 func ReadDwarfLengthVersion(data []byte) (length uint64, dwarf64 bool, version uint8, byteOrder binary.ByteOrder) {
 	if len(data) < 4 {
 		return 0, false, 0, binary.LittleEndian

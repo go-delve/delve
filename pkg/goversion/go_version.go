@@ -37,9 +37,14 @@ func Parse(ver string) (GoVersion, bool) {
 		switch len(v) {
 		case 2:
 			r.Major, err1 = strconv.Atoi(v[0])
-			vr := strings.SplitN(v[1], "beta", 2)
-			if len(vr) == 2 {
+			var vr []string
+
+			if vr = strings.SplitN(v[1], "beta", 2); len(vr) == 2 {
 				r.Beta, err3 = strconv.Atoi(vr[1])
+			} else if vr = strings.SplitN(v[1], "b", 2); len(vr) == 2 {
+				if _, err := strconv.Atoi(vr[1]); err != nil {
+					return GoVersion{}, false
+				}
 			} else {
 				vr = strings.SplitN(v[1], "rc", 2)
 				if len(vr) == 2 {
@@ -67,7 +72,14 @@ func Parse(ver string) (GoVersion, bool) {
 
 			r.Major, err1 = strconv.Atoi(v[0])
 			r.Minor, err2 = strconv.Atoi(v[1])
-			r.Rev, err3 = strconv.Atoi(v[2])
+
+			vr := strings.SplitN(v[2], "b", 2)
+			if len(vr) == 2 {
+				r.Rev, err3 = strconv.Atoi(vr[0])
+			} else {
+				r.Rev, err3 = strconv.Atoi(v[2])
+			}
+
 			r.Proposal = ""
 			if err1 != nil || err2 != nil || err3 != nil {
 				return GoVersion{}, false
@@ -174,17 +186,15 @@ const producerVersionPrefix = "Go cmd/compile "
 // ProducerAfterOrEqual checks that the DW_AT_producer version is
 // major.minor or a later version, or a development version.
 func ProducerAfterOrEqual(producer string, major, minor int) bool {
-	ver := parseProducer(producer)
+	ver := ParseProducer(producer)
 	if ver.IsDevel() {
 		return true
 	}
 	return ver.AfterOrEqual(GoVersion{major, minor, -1, 0, 0, ""})
 }
 
-func parseProducer(producer string) GoVersion {
-	if strings.HasPrefix(producer, producerVersionPrefix) {
-		producer = producer[len(producerVersionPrefix):]
-	}
+func ParseProducer(producer string) GoVersion {
+	producer = strings.TrimPrefix(producer, producerVersionPrefix)
 	ver, _ := Parse(producer)
 	return ver
 }

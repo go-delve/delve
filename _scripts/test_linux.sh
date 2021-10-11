@@ -4,6 +4,7 @@ set -x
 
 apt-get -qq update
 apt-get install -y dwz wget make git gcc curl jq lsof
+
 dwz --version
 
 version=$1
@@ -20,7 +21,10 @@ function getgo {
 }
 
 if [ "$version" = "gotip" ]; then
-	exit 0
+	# TODO: remove this
+	if [ "$arch" != "amd64" ]; then
+		exit 0
+	fi
 	echo Building Go from tip
 	getgo $(curl https://golang.org/VERSION?m=text)
 	export GOROOT_BOOTSTRAP=$GOROOT
@@ -31,7 +35,7 @@ if [ "$version" = "gotip" ]; then
 	cd -
 else
 	echo Finding latest patch version for $version
-	version=$(curl 'https://golang.org/dl/?mode=json&include=all' | jq '.[].version' --raw-output | egrep ^$version'($|\.|beta|rc)' | head -1)
+	version=$(curl 'https://golang.org/dl/?mode=json&include=all' | jq '.[].version' --raw-output | egrep ^$version'($|\.|beta|rc)' | sort -rV | head -1)
 	echo "Go $version on $arch"
 	getgo $version
 fi
@@ -41,10 +45,12 @@ GOPATH=$(pwd)/go
 export GOPATH
 export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
 go version
+go install honnef.co/go/tools/cmd/staticcheck@2021.1.1 || true
 
 uname -a
 echo "$PATH"
 echo "$GOROOT"
 echo "$GOPATH"
 cd delve
+
 make test

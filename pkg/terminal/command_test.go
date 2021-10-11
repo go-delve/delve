@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -177,7 +178,7 @@ func withTestTerminalBuildFlags(name string, t testing.TB, buildFlags test.Build
 func TestCommandDefault(t *testing.T) {
 	var (
 		cmds = Commands{}
-		cmd  = cmds.Find("non-existant-command", noPrefix)
+		cmd  = cmds.Find("non-existant-command", noPrefix).cmdFn
 	)
 
 	err := cmd(nil, callContext{}, "")
@@ -193,7 +194,7 @@ func TestCommandDefault(t *testing.T) {
 func TestCommandReplayWithoutPreviousCommand(t *testing.T) {
 	var (
 		cmds = DebugCommands(nil)
-		cmd  = cmds.Find("", noPrefix)
+		cmd  = cmds.Find("", noPrefix).cmdFn
 		err  = cmd(nil, callContext{}, "")
 	)
 
@@ -205,7 +206,7 @@ func TestCommandReplayWithoutPreviousCommand(t *testing.T) {
 func TestCommandThread(t *testing.T) {
 	var (
 		cmds = DebugCommands(nil)
-		cmd  = cmds.Find("thread", noPrefix)
+		cmd  = cmds.Find("thread", noPrefix).cmdFn
 	)
 
 	err := cmd(nil, callContext{}, "")
@@ -581,47 +582,6 @@ func countOccurrences(s, needle string) int {
 	return count
 }
 
-func TestIssue387(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
-		t.Skip("test is not valid on FreeBSD")
-	}
-	// a breakpoint triggering during a 'next' operation will interrupt it
-	test.AllowRecording(t)
-	withTestTerminal("issue387", t, func(term *FakeTerminal) {
-		breakpointHitCount := 0
-		term.MustExec("break dostuff")
-		for {
-			outstr, err := term.Exec("continue")
-			breakpointHitCount += countOccurrences(outstr, "issue387.go:8")
-			t.Log(outstr)
-			if err != nil {
-				if !strings.Contains(err.Error(), "exited") {
-					t.Fatalf("Unexpected error executing 'continue': %v", err)
-				}
-				break
-			}
-
-			pos := 9
-
-			for {
-				outstr = term.MustExec("next")
-				breakpointHitCount += countOccurrences(outstr, "issue387.go:8")
-				t.Log(outstr)
-				if countOccurrences(outstr, fmt.Sprintf("issue387.go:%d", pos)) == 0 {
-					t.Fatalf("did not continue to expected position %d", pos)
-				}
-				pos++
-				if pos >= 11 {
-					break
-				}
-			}
-		}
-		if breakpointHitCount != 10 {
-			t.Fatalf("Breakpoint hit wrong number of times, expected 10 got %d", breakpointHitCount)
-		}
-	})
-}
-
 func listIsAt(t *testing.T, term *FakeTerminal, listcmd string, cur, start, end int) {
 	t.Helper()
 	outstr := term.MustExec(listcmd)
@@ -943,6 +903,7 @@ func TestOptimizationCheck(t *testing.T) {
 }
 
 func TestTruncateStacktrace(t *testing.T) {
+	const stacktraceTruncatedMessage = "(truncated)"
 	withTestTerminal("stacktraceprog", t, func(term *FakeTerminal) {
 		term.MustExec("break main.stacktraceme")
 		term.MustExec("continue")
@@ -1029,6 +990,66 @@ func TestExamineMemoryCmd(t *testing.T) {
 		if !strings.Contains(res, firstLine) {
 			t.Fatalf("expected first line: %s", firstLine)
 		}
+
+		// third examining memory: -x addr
+		res = term.MustExec("examinemem -x " + addressStr)
+		t.Logf("the third result of examining memory result \n%s", res)
+		firstLine = fmt.Sprintf("%#x:   0xff", address)
+		if !strings.Contains(res, firstLine) {
+			t.Fatalf("expected first line: %s", firstLine)
+		}
+
+		// fourth examining memory: -x addr + offset
+		res = term.MustExec("examinemem -x " + addressStr + " + 8")
+		t.Logf("the fourth result of examining memory result \n%s", res)
+		firstLine = fmt.Sprintf("%#x:   0x12", address+8)
+		if !strings.Contains(res, firstLine) {
+			t.Fatalf("expected first line: %s", firstLine)
+		}
+		// fifth examining memory: -x &var
+		res = term.MustExec("examinemem -x &bs[0]")
+		t.Logf("the fifth result of examining memory result \n%s", res)
+		firstLine = fmt.Sprintf("%#x:   0xff", address)
+		if !strings.Contains(res, firstLine) {
+			t.Fatalf("expected first line: %s", firstLine)
+		}
+
+		// sixth examining memory: -fmt and double spaces
+		res = term.MustExec("examinemem -fmt  hex  -x &bs[0]")
+		t.Logf("the sixth result of examining memory result \n%s", res)
+		firstLine = fmt.Sprintf("%#x:   0xff", address)
+		if !strings.Contains(res, firstLine) {
+			t.Fatalf("expected first line: %s", firstLine)
+		}
+	})
+
+	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
+		tests := []struct {
+			Expr string
+			Want int
+		}{
+			{Expr: "&i1", Want: 1},
+			{Expr: "&i2", Want: 2},
+			{Expr: "p1", Want: 1},
+			{Expr: "*pp1", Want: 1},
+			{Expr: "&str1[1]", Want: '1'},
+			{Expr: "c1.pb", Want: 1},
+			{Expr: "&c1.pb.a", Want: 1},
+			{Expr: "&c1.pb.a.A", Want: 1},
+			{Expr: "&c1.pb.a.B", Want: 2},
+		}
+		term.MustExec("continue")
+		for _, test := range tests {
+			res := term.MustExec("examinemem -fmt dec -x " + test.Expr)
+			// strip addr from output, e.g. "0xc0000160b8:   023" -> "023"
+			res = strings.TrimSpace(strings.Split(res, ":")[1])
+			got, err := strconv.Atoi(res)
+			if err != nil {
+				t.Fatalf("expr=%q err=%s", test.Expr, err)
+			} else if got != test.Want {
+				t.Errorf("expr=%q got=%d want=%d", test.Expr, got, test.Want)
+			}
+		}
 	})
 }
 
@@ -1109,6 +1130,18 @@ func TestContinueUntil(t *testing.T) {
 	})
 }
 
+func TestContinueUntilExistingBreakpoint(t *testing.T) {
+	withTestTerminal("continuetestprog", t, func(term *FakeTerminal) {
+		term.MustExec("break main.main")
+		if runtime.GOARCH != "386" {
+			listIsAt(t, term, "continue main.main", 16, -1, -1)
+		} else {
+			listIsAt(t, term, "continue main.main", 17, -1, -1)
+		}
+		listIsAt(t, term, "continue main.sayhi", 12, -1, -1)
+	})
+}
+
 func TestPrintFormat(t *testing.T) {
 	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
 		term.MustExec("continue")
@@ -1117,4 +1150,104 @@ func TestPrintFormat(t *testing.T) {
 			t.Fatalf("output did not contain '0xb': %q", out)
 		}
 	})
+}
+
+func TestHitCondBreakpoint(t *testing.T) {
+	withTestTerminal("break", t, func(term *FakeTerminal) {
+		term.MustExec("break bp1 main.main:4")
+		term.MustExec("condition -hitcount bp1 > 2")
+		listIsAt(t, term, "continue", 7, -1, -1)
+		out := term.MustExec("print i")
+		t.Logf("%q", out)
+		if !strings.Contains(out, "3\n") {
+			t.Fatalf("wrong value of i")
+		}
+	})
+}
+
+func TestBreakpointEditing(t *testing.T) {
+	term := &FakeTerminal{
+		t:    t,
+		Term: New(nil, &config.Config{}),
+	}
+	_ = term
+
+	var testCases = []struct {
+		inBp    *api.Breakpoint
+		inBpStr string
+		edit    string
+		outBp   *api.Breakpoint
+	}{
+		{ // tracepoint -> breakpoint
+			&api.Breakpoint{Tracepoint: true},
+			"trace",
+			"",
+			&api.Breakpoint{}},
+		{ // breakpoint -> tracepoint
+			&api.Breakpoint{Variables: []string{"a"}},
+			"print a",
+			"print a\ntrace",
+			&api.Breakpoint{Tracepoint: true, Variables: []string{"a"}}},
+		{ // add print var
+			&api.Breakpoint{Variables: []string{"a"}},
+			"print a",
+			"print b\nprint a\n",
+			&api.Breakpoint{Variables: []string{"b", "a"}}},
+		{ // add goroutine flag
+			&api.Breakpoint{},
+			"",
+			"goroutine",
+			&api.Breakpoint{Goroutine: true}},
+		{ // remove goroutine flag
+			&api.Breakpoint{Goroutine: true},
+			"goroutine",
+			"",
+			&api.Breakpoint{}},
+		{ // add stack directive
+			&api.Breakpoint{},
+			"",
+			"stack 10",
+			&api.Breakpoint{Stacktrace: 10}},
+		{ // remove stack directive
+			&api.Breakpoint{Stacktrace: 20},
+			"stack 20",
+			"print a",
+			&api.Breakpoint{Variables: []string{"a"}}},
+		{ // add condition
+			&api.Breakpoint{Variables: []string{"a"}},
+			"print a",
+			"print a\ncond a < b",
+			&api.Breakpoint{Variables: []string{"a"}, Cond: "a < b"}},
+		{ // remove condition
+			&api.Breakpoint{Cond: "a < b"},
+			"cond a < b",
+			"",
+			&api.Breakpoint{}},
+		{ // change condition
+			&api.Breakpoint{Cond: "a < b"},
+			"cond a < b",
+			"cond a < 5",
+			&api.Breakpoint{Cond: "a < 5"}},
+		{ // change hitcount condition
+			&api.Breakpoint{HitCond: "% 2"},
+			"cond -hitcount % 2",
+			"cond -hitcount = 2",
+			&api.Breakpoint{HitCond: "= 2"}},
+	}
+
+	for _, tc := range testCases {
+		bp := *tc.inBp
+		bpStr := strings.Join(formatBreakpointAttrs("", &bp, true), "\n")
+		if bpStr != tc.inBpStr {
+			t.Errorf("Expected %q got %q for:\n%#v", tc.inBpStr, bpStr, tc.inBp)
+		}
+		ctx := callContext{Prefix: onPrefix, Scope: api.EvalScope{GoroutineID: -1, Frame: 0, DeferredCall: 0}, Breakpoint: &bp}
+		err := term.cmds.parseBreakpointAttrs(nil, ctx, strings.NewReader(tc.edit))
+		if err != nil {
+			t.Errorf("Unexpected error during edit %q", tc.edit)
+		}
+		if !reflect.DeepEqual(bp, *tc.outBp) {
+			t.Errorf("mismatch after edit\nexpected: %#v\ngot: %#v", tc.outBp, bp)
+		}
+	}
 }

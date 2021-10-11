@@ -22,6 +22,7 @@ The following editor plugins for delve are available:
 * [vim-go](https://github.com/fatih/vim-go) (both Vim and Neovim)
 * [vim-delve](https://github.com/sebdah/vim-delve) (both Vim and Neovim)
 * [vim-godebug](https://github.com/jodosha/vim-godebug) (only Neovim)
+* [vimspector](https://github.com/puremourning/vimspector/)
 
 **VisualStudio Code**
 * [Go for Visual Studio Code](https://github.com/golang/vscode-go)

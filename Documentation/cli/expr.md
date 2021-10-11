@@ -110,3 +110,22 @@ Packages with the same name can be disambiguated by using the full package path.
 # Pointers in Cgo
 
 Char pointers are always treated as NUL terminated strings, both indexing and the slice operator can be applied to them. Other C pointers can also be used similarly to Go slices, with indexing and the slice operator. In both of these cases it is up to the user to respect array bounds.
+
+
+# CPU Registers
+
+The name of a CPU register, in all uppercase letters, will resolve to the value of that CPU register in the current frame. For example on AMD64 the expression `RAX` will evaluate to the value of the RAX register. 
+
+Register names are shadowed by both local and global variables, so if a local variable called "RAX" exists, the `RAX` expression will evaluate to it instead of the CPU register.
+
+Register names can optionally be prefixed by any number of underscore characters, so `RAX`, `_RAX`, `__RAX`, etc... can all be used to refer to the same RAX register and, in absence of shadowing from other variables, will all evaluate to the same value.
+
+Registers of 64bits or less are returned as uint64 variables. Larger registers are returned as strings of hexadecimal digits.
+
+Because many architectures have SIMD registers that can be used by the application in different ways the following syntax is also available:
+
+* `REGNAME.intN` returns the register REGNAME as an array of intN elements.
+* `REGNAME.uintN` returns the register REGNAME as an array of uintN elements.
+* `REGNAME.floatN` returns the register REGNAME as an array fo floatN elements.
+
+In all cases N must be a power of 2.

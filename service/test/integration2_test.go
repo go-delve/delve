@@ -196,7 +196,7 @@ func TestRestart_duringStop(t *testing.T) {
 		if c.ProcessPid() == origPid {
 			t.Fatal("did not spawn new process, has same PID")
 		}
-		bps, err := c.ListBreakpoints()
+		bps, err := c.ListBreakpoints(false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -510,6 +510,7 @@ func TestClientServer_clearBreakpoint(t *testing.T) {
 func TestClientServer_toggleBreakpoint(t *testing.T) {
 	withTestClient2("testtoggle", t, func(c service.Client) {
 		toggle := func(bp *api.Breakpoint) {
+			t.Helper()
 			dbp, err := c.ToggleBreakpoint(bp.ID)
 			if err != nil {
 				t.Fatalf("Unexpected error: %v", err)
@@ -1528,15 +1529,16 @@ func TestClientServer_FpRegisters(t *testing.T) {
 		{"XMM12", "…[ZMM12hh] 0x3ff66666666666663ff4cccccccccccd"},
 	}
 	protest.AllowRecording(t)
-	withTestClient2("fputest/", t, func(c service.Client) {
+	withTestClient2Extended("fputest/", t, 0, [3]string{}, func(c service.Client, fixture protest.Fixture) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{File: filepath.Join(fixture.BuildDir, "fputest.go"), Line: 25})
+		assertNoError(err, t, "CreateBreakpoint")
+
 		state := <-c.Continue()
 		t.Logf("state after continue: %#v", state)
 
+		scope := api.EvalScope{GoroutineID: -1}
+
 		boolvar := func(name string) bool {
-			scope := api.EvalScope{GoroutineID: -1}
-			if testBackend == "rr" {
-				scope.Frame = 2
-			}
 			v, err := c.EvalVariable(scope, name, normalLoadConfig)
 			if err != nil {
 				t.Fatalf("could not read %s variable", name)
@@ -1554,16 +1556,17 @@ func TestClientServer_FpRegisters(t *testing.T) {
 			avx512 = false
 		}
 
+		state = <-c.Continue()
+		t.Logf("state after continue: %#v", state)
+
 		regs, err := c.ListThreadRegisters(0, true)
 		assertNoError(err, t, "ListThreadRegisters()")
-
-		t.Logf("%s", regs.String())
 
 		for _, regtest := range regtests {
 			if regtest.name == "XMM11" && !avx2 {
 				continue
 			}
-			if regtest.name == "XMM12" && !avx512 {
+			if regtest.name == "XMM12" && (!avx512 || testBackend == "rr") {
 				continue
 			}
 			found := false
@@ -1583,6 +1586,29 @@ func TestClientServer_FpRegisters(t *testing.T) {
 			}
 			if !found {
 				t.Fatalf("register %s not found: %v", regtest.name, regs)
+			}
+		}
+
+		// Test register expressions
+
+		for _, tc := range []struct{ expr, tgt string }{
+			{"XMM1[:32]", `"cdccccccccccf43f666666666666f63f"`},
+			{"_XMM1[:32]", `"cdccccccccccf43f666666666666f63f"`},
+			{"__XMM1[:32]", `"cdccccccccccf43f666666666666f63f"`},
+			{"XMM1.int8[0]", `-51`},
+			{"XMM1.uint16[0]", `52429`},
+			{"XMM1.float32[0]", `-107374184`},
+			{"XMM1.float64[0]", `1.3`},
+			{"RAX.uint8[0]", "42"},
+		} {
+			v, err := c.EvalVariable(scope, tc.expr, normalLoadConfig)
+			if err != nil {
+				t.Fatalf("could not evalue expression %s: %v", tc.expr, err)
+			}
+			out := v.SinglelineString()
+
+			if out != tc.tgt {
+				t.Fatalf("for %q expected %q got %q\n", tc.expr, tc.tgt, out)
 			}
 		}
 	})
@@ -1605,7 +1631,7 @@ func TestClientServer_RestartBreakpointPosition(t *testing.T) {
 		assertNoError(err, t, "Halt")
 		_, err = c.Restart(false)
 		assertNoError(err, t, "Restart")
-		bps, err := c.ListBreakpoints()
+		bps, err := c.ListBreakpoints(false)
 		assertNoError(err, t, "ListBreakpoints")
 		for _, bp := range bps {
 			if bp.Name == bpBefore.Name {
@@ -1748,6 +1774,23 @@ func TestClientServerConsistentExit(t *testing.T) {
 		if state.ExitStatus != 2 {
 			t.Fatalf("Process exit status is not 2, got: %v", state.ExitStatus)
 		}
+
+		// Ensure future commands also return the correct exit status.
+		// Previously there was a bug where the command which prompted the
+		// process to exit (continue, next, etc...) would return the corrent
+		// exit status but subsequent commands would return an incorrect exit
+		// status of 0. To test this we simply repeat the 'next' command and
+		// ensure we get the correct response again.
+		state, err = c.Next()
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+		if !state.Exited {
+			t.Fatal("Second process state is not exited")
+		}
+		if state.ExitStatus != 2 {
+			t.Fatalf("Second process exit status is not 2, got: %v", state.ExitStatus)
+		}
 	})
 }
 
@@ -1849,17 +1892,42 @@ func TestAcceptMulticlient(t *testing.T) {
 	<-serverDone
 }
 
-func mustHaveDebugCalls(t *testing.T, c service.Client) {
-	locs, err := c.FindLocation(api.EvalScope{GoroutineID: -1}, "runtime.debugCallV1", false, nil)
-	if len(locs) == 0 || err != nil {
-		t.Skip("function calls not supported on this version of go")
+func TestForceStopWhileContinue(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("couldn't start listener: %s\n", err)
 	}
+	serverStopped := make(chan struct{})
+	disconnectChan := make(chan struct{})
+	go func() {
+		defer close(serverStopped)
+		defer listener.Close()
+		server := rpccommon.NewServer(&service.Config{
+			Listener:       listener,
+			ProcessArgs:    []string{protest.BuildFixture("http_server", protest.AllNonOptimized).Path},
+			AcceptMulti:    true,
+			DisconnectChan: disconnectChan,
+			Debugger: debugger.Config{
+				Backend: "default",
+			},
+		})
+		if err := server.Run(); err != nil {
+			panic(err)
+		}
+		<-disconnectChan
+		server.Stop()
+	}()
+
+	client := rpc2.NewClient(listener.Addr().String())
+	client.Disconnect(true /*continue*/)
+	time.Sleep(10 * time.Millisecond) // give server time to start running
+	close(disconnectChan)             // stop the server
+	<-serverStopped                   // Stop() didn't block on detach because we halted first
 }
 
 func TestClientServerFunctionCall(t *testing.T) {
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
-		mustHaveDebugCalls(t, c)
 		c.SetReturnValuesLoadConfig(&normalLoadConfig)
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
@@ -1893,7 +1961,6 @@ func TestClientServerFunctionCallBadPos(t *testing.T) {
 		t.Skip("this is a safe point for Go 1.12")
 	}
 	withTestClient2("fncall", t, func(c service.Client) {
-		mustHaveDebugCalls(t, c)
 		loc, err := c.FindLocation(api.EvalScope{GoroutineID: -1}, "fmt/print.go:649", false, nil)
 		assertNoError(err, t, "could not find location")
 
@@ -1917,7 +1984,6 @@ func TestClientServerFunctionCallBadPos(t *testing.T) {
 func TestClientServerFunctionCallPanic(t *testing.T) {
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
-		mustHaveDebugCalls(t, c)
 		c.SetReturnValuesLoadConfig(&normalLoadConfig)
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
@@ -1946,7 +2012,6 @@ func TestClientServerFunctionCallStacktrace(t *testing.T) {
 	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
-		mustHaveDebugCalls(t, c)
 		c.SetReturnValuesLoadConfig(&api.LoadConfig{FollowPointers: false, MaxStringLen: 2048})
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
@@ -2106,7 +2171,7 @@ func TestDoubleCreateBreakpoint(t *testing.T) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1, Name: "firstbreakpoint", Tracepoint: true})
 		assertNoError(err, t, "CreateBreakpoint 1")
 
-		bps, err := c.ListBreakpoints()
+		bps, err := c.ListBreakpoints(false)
 		assertNoError(err, t, "ListBreakpoints 1")
 
 		t.Logf("breakpoints before second call:")
@@ -2119,7 +2184,7 @@ func TestDoubleCreateBreakpoint(t *testing.T) {
 		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1, Name: "secondbreakpoint", Tracepoint: true})
 		assertError(err, t, "CreateBreakpoint 2") // breakpoint exists
 
-		bps, err = c.ListBreakpoints()
+		bps, err = c.ListBreakpoints(false)
 		assertNoError(err, t, "ListBreakpoints 2")
 
 		t.Logf("breakpoints after second call:")
@@ -2169,7 +2234,7 @@ func TestClearLogicalBreakpoint(t *testing.T) {
 		}
 		_, err = c.ClearBreakpoint(bp.ID)
 		assertNoError(err, t, "ClearBreakpoint()")
-		bps, err := c.ListBreakpoints()
+		bps, err := c.ListBreakpoints(false)
 		assertNoError(err, t, "ListBreakpoints()")
 		for _, curbp := range bps {
 			if curbp.ID == bp.ID {
@@ -2290,7 +2355,7 @@ func TestDetachLeaveRunning(t *testing.T) {
 
 func assertNoDuplicateBreakpoints(t *testing.T, c service.Client) {
 	t.Helper()
-	bps, _ := c.ListBreakpoints()
+	bps, _ := c.ListBreakpoints(false)
 	seen := make(map[int]bool)
 	for _, bp := range bps {
 		t.Logf("%#v\n", bp)
@@ -2348,4 +2413,100 @@ func TestStopServerWithClosedListener(t *testing.T) {
 	server.Stop()
 	listener.Close()
 	time.Sleep(1 * time.Second) // give time to server to panic
+}
+
+func TestGoroutinesGrouping(t *testing.T) {
+	// Tests the goroutine grouping and filtering feature
+	withTestClient2("goroutinegroup", t, func(c service.Client) {
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue")
+		_, ggrp, _, _, err := c.ListGoroutinesWithFilter(0, 0, nil, &api.GoroutineGroupingOptions{GroupBy: api.GoroutineLabel, GroupByKey: "name", MaxGroupMembers: 5, MaxGroups: 10})
+		assertNoError(err, t, "ListGoroutinesWithFilter (group by label)")
+		t.Logf("%#v\n", ggrp)
+		if len(ggrp) < 5 {
+			t.Errorf("not enough groups %d\n", len(ggrp))
+		}
+		var unnamedCount int
+		for i := range ggrp {
+			if ggrp[i].Name == "name=" {
+				unnamedCount = ggrp[i].Total
+				break
+			}
+		}
+		gs, _, _, _, err := c.ListGoroutinesWithFilter(0, 0, []api.ListGoroutinesFilter{{Kind: api.GoroutineLabel, Arg: "name="}}, nil)
+		assertNoError(err, t, "ListGoroutinesWithFilter (filter unnamed)")
+		if len(gs) != unnamedCount {
+			t.Errorf("wrong number of goroutines returned by filter: %d (expected %d)\n", len(gs), unnamedCount)
+		}
+	})
+}
+
+func TestLongStringArg(t *testing.T) {
+	// Test the ability to load more elements of a string argument, this could
+	// be broken if registerized variables are not handled correctly.
+	withTestClient2("morestringarg", t, func(c service.Client) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.f"})
+		assertNoError(err, t, "CreateBreakpoint")
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue")
+
+		test := func(name, val1, val2 string) uint64 {
+			var1, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, name, normalLoadConfig)
+			assertNoError(err, t, "EvalVariable")
+			t.Logf("%#v\n", var1)
+			if var1.Value != val1 {
+				t.Fatalf("wrong value for variable: %q", var1.Value)
+			}
+			var2, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, fmt.Sprintf("(*(*%q)(%#x))[64:]", var1.Type, var1.Addr), normalLoadConfig)
+			assertNoError(err, t, "EvalVariable")
+			t.Logf("%#v\n", var2)
+			if var2.Value != val2 {
+				t.Fatalf("wrong value for variable: %q", var2.Value)
+
+			}
+			return var1.Addr
+		}
+
+		saddr := test("s", "very long string 01234567890123456789012345678901234567890123456", "7890123456789012345678901234567890123456789X")
+		test("q", "very long string B 012345678901234567890123456789012345678901234", "567890123456789012345678901234567890123456789X2")
+		saddr2 := test("s", "very long string 01234567890123456789012345678901234567890123456", "7890123456789012345678901234567890123456789X")
+		if saddr != saddr2 {
+			t.Fatalf("address of s changed (%#x %#x)", saddr, saddr2)
+		}
+	})
+}
+
+func TestGenericsBreakpoint(t *testing.T) {
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
+		t.Skip("generics")
+	}
+	// Tests that setting breakpoints inside a generic function with multiple
+	// instantiations results in a single logical breakpoint with N physical
+	// breakpoints (N = number of instantiations).
+	withTestClient2("genericbp", t, func(c service.Client) {
+		fp := testProgPath(t, "genericbp")
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 6})
+		assertNoError(err, t, "CreateBreakpoint")
+		if len(bp.Addrs) != 2 {
+			t.Fatalf("wrong number of physical breakpoints: %d", len(bp.Addrs))
+		}
+
+		frame1Line := func() int {
+			frames, err := c.Stacktrace(-1, 10, 0, nil)
+			assertNoError(err, t, "Stacktrace")
+			return frames[1].Line
+		}
+
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue")
+		if line := frame1Line(); line != 10 {
+			t.Errorf("wrong line after first continue, expected 10, got %d", line)
+		}
+
+		state = <-c.Continue()
+		assertNoError(state.Err, t, "Continue")
+		if line := frame1Line(); line != 11 {
+			t.Errorf("wrong line after first continue, expected 11, got %d", line)
+		}
+	})
 }

@@ -164,18 +164,18 @@ func TestReverseBreakpointCounts(t *testing.T) {
 			}
 		}
 
-		t.Logf("TotalHitCount: %d", bp.TotalHitCount)
-		if bp.TotalHitCount != 200 {
-			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d)", bp.TotalHitCount)
+		t.Logf("TotalHitCount: %d", bp.UserBreaklet().TotalHitCount)
+		if bp.UserBreaklet().TotalHitCount != 200 {
+			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d)", bp.UserBreaklet().TotalHitCount)
 		}
 
-		if len(bp.HitCount) != 2 {
-			t.Fatalf("Wrong number of goroutines for breakpoint (%d)", len(bp.HitCount))
+		if len(bp.UserBreaklet().HitCount) != 2 {
+			t.Fatalf("Wrong number of goroutines for breakpoint (%d)", len(bp.UserBreaklet().HitCount))
 		}
 
-		for _, v := range bp.HitCount {
+		for _, v := range bp.UserBreaklet().HitCount {
 			if v != 100 {
-				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.HitCount)
+				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.UserBreaklet().HitCount)
 			}
 		}
 	})
@@ -251,7 +251,7 @@ func TestCheckpoints(t *testing.T) {
 
 		// Delete breakpoint, move back to checkpoint then next twice and check
 		// output of 'when' again
-		_, err = p.ClearBreakpoint(bp.Addr)
+		err = p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint")
 		p.Restart(fmt.Sprintf("c%d", cpid))
 		g, _ = proc.FindGoroutine(p, 1)
@@ -283,7 +283,7 @@ func TestIssue1376(t *testing.T) {
 	withTestRecording("continuetestprog", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(p.Continue(), t, "Continue (forward)")
-		_, err := p.ClearBreakpoint(bp.Addr)
+		err := p.ClearBreakpoint(bp.Addr)
 		assertNoError(err, t, "ClearBreakpoint")
 		assertNoError(p.ChangeDirection(proc.Backward), t, "Switching to backward direction")
 		assertNoError(p.Continue(), t, "Continue (backward)")

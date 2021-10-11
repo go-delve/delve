@@ -3,7 +3,6 @@ package core
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -154,10 +153,6 @@ func (regs *delveRegisters) GAddr() (uint64, bool) { return regs.gaddr, regs.has
 
 func (regs *delveRegisters) Copy() (proc.Registers, error) {
 	return regs, nil
-}
-
-func (regs *delveRegisters) Get(int) (uint64, error) {
-	return 0, errors.New("not supported")
 }
 
 func (regs *delveRegisters) Slice(bool) ([]proc.Register, error) {

@@ -19,6 +19,7 @@ import (
 	sys "golang.org/x/sys/unix"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 	"github.com/go-delve/delve/pkg/proc/linutil"
 
 	isatty "github.com/mattn/go-isatty"
@@ -45,6 +46,14 @@ const (
 // process details.
 type osProcessDetails struct {
 	comm string
+
+	ebpf *ebpf.EBPFContext
+}
+
+func (os *osProcessDetails) Close() {
+	if os.ebpf != nil {
+		os.ebpf.Close()
+	}
 }
 
 // Launch creates and begins debugging a new process. First entry in
@@ -183,7 +192,15 @@ func initialize(dbp *nativeProcess) error {
 		comm = match[1]
 	}
 	dbp.os.comm = strings.ReplaceAll(string(comm), "%", "%%")
+
 	return nil
+}
+
+func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
+	if dbp.os.ebpf == nil {
+		return nil
+	}
+	return dbp.os.ebpf.GetBufferedTracepoints()
 }
 
 // kill kills the target process.
@@ -213,7 +230,6 @@ func (dbp *nativeProcess) kill() error {
 			return err
 		}
 	}
-	return nil
 }
 
 func (dbp *nativeProcess) requestManualStop() (err error) {
@@ -267,6 +283,14 @@ func (dbp *nativeProcess) addThread(tid int, attach bool) (*nativeThread, error)
 	}
 	if dbp.memthread == nil {
 		dbp.memthread = dbp.threads[tid]
+	}
+	for _, bp := range dbp.Breakpoints().M {
+		if bp.WatchType != 0 {
+			err := dbp.threads[tid].writeHardwareBreakpoint(bp.Addr, bp.WatchType, bp.HWBreakIndex)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 	return dbp.threads[tid], nil
 }
@@ -331,6 +355,16 @@ func (dbp *nativeProcess) trapWaitInternal(pid int, options trapWaitOptions) (*n
 				dbp.postExit()
 				return nil, proc.ErrProcessExited{Pid: wpid, Status: status.ExitStatus()}
 			}
+			delete(dbp.threads, wpid)
+			continue
+		}
+		if status.Signaled() {
+			// Signaled means the thread was terminated due to a signal.
+			if wpid == dbp.pid {
+				dbp.postExit()
+				return nil, proc.ErrProcessExited{Pid: wpid, Status: -int(status.Signal())}
+			}
+			// does this ever happen?
 			delete(dbp.threads, wpid)
 			continue
 		}
@@ -558,12 +592,28 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 	switchTrapthread := false
 
 	// set breakpoints on SIGTRAP threads
+	var err1 error
 	for _, th := range dbp.threads {
-		if th.CurrentBreakpoint.Breakpoint == nil && th.os.setbp {
-			if err := th.SetCurrentBreakpoint(true); err != nil {
-				return nil, err
+		pc, _ := th.PC()
+
+		if !th.os.setbp && pc != th.os.phantomBreakpointPC {
+			// check if this could be a breakpoint hit anyway that the OS hasn't notified us about, yet.
+			if _, ok := dbp.FindBreakpoint(pc, dbp.BinInfo().Arch.BreakInstrMovesPC()); ok {
+				th.os.phantomBreakpointPC = pc
 			}
 		}
+
+		if pc != th.os.phantomBreakpointPC {
+			th.os.phantomBreakpointPC = 0
+		}
+
+		if th.CurrentBreakpoint.Breakpoint == nil && th.os.setbp {
+			if err := th.SetCurrentBreakpoint(true); err != nil {
+				err1 = err
+				continue
+			}
+		}
+
 		if th.CurrentBreakpoint.Breakpoint == nil && th.os.setbp && (th.Status != nil) && ((*sys.WaitStatus)(th.Status).StopSignal() == sys.SIGTRAP) && dbp.BinInfo().Arch.BreakInstrMovesPC() {
 			manualStop := false
 			if th.ThreadID() == trapthread.ThreadID() {
@@ -571,7 +621,7 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 				manualStop = dbp.manualStopRequested
 				dbp.stopMu.Unlock()
 			}
-			if !manualStop {
+			if !manualStop && th.os.phantomBreakpointPC == pc {
 				// Thread received a SIGTRAP but we don't have a breakpoint for it and
 				// it wasn't sent by a manual stop request. It's either a hardcoded
 				// breakpoint or a phantom breakpoint hit (a breakpoint that was hit but
@@ -605,6 +655,9 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 				}
 			}
 		}
+	}
+	if err1 != nil {
+		return nil, err1
 	}
 
 	if switchTrapthread {
@@ -650,6 +703,37 @@ func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 	}
 
 	return linutil.EntryPointFromAuxv(auxvbuf, dbp.bi.Arch.PtrSize()), nil
+}
+
+func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProbeArgMap) error {
+	// Lazily load and initialize the BPF program upon request to set a uprobe.
+	if dbp.os.ebpf == nil {
+		dbp.os.ebpf, _ = ebpf.LoadEBPFTracingProgram()
+	}
+
+	// We only allow up to 6 args for a BPF probe.
+	// Return early if we have more.
+	if len(args) > 6 {
+		return errors.New("too many arguments in traced function, max is 6")
+	}
+
+	fn, ok := dbp.bi.LookupFunc[fnName]
+	if !ok {
+		return fmt.Errorf("could not find function: %s", fnName)
+	}
+
+	key := fn.Entry
+	err := dbp.os.ebpf.UpdateArgMap(key, goidOffset, args, dbp.BinInfo().GStructOffset())
+	if err != nil {
+		return err
+	}
+
+	debugname := dbp.bi.Images[0].Path
+	offset, err := ebpf.SymbolToOffset(debugname, fnName)
+	if err != nil {
+		return err
+	}
+	return dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, offset)
 }
 
 func killProcess(pid int) error {

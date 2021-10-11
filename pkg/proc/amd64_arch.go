@@ -38,6 +38,8 @@ func AMD64Arch(goos string) *Arch {
 		SPRegNum:                         regnum.AMD64_Rsp,
 		BPRegNum:                         regnum.AMD64_Rbp,
 		ContextRegNum:                    regnum.AMD64_Rdx,
+		asmRegisters:                     amd64AsmRegisters,
+		RegisterNameToDwarf:              nameToDwarfFunc(regnum.AMD64NameToDwarf),
 	}
 }
 
@@ -217,7 +219,7 @@ func amd64SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 		return true
 
 	default:
-		if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.fatalthrow" {
+		if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.throw" && it.frame.Current.Fn.Name != "runtime.fatalthrow" {
 			// The runtime switches to the system stack in multiple places.
 			// This usually happens through a call to runtime.systemstack but there
 			// are functions that switch to the system stack manually (for example
@@ -226,7 +228,7 @@ func amd64SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 			// calls we switch directly to the goroutine stack if we detect that the
 			// function at the top of the stack is a runtime function.
 			//
-			// The function "runtime.fatalthrow" is deliberately excluded from this
+			// The function "runtime.throw" is deliberately excluded from this
 			// because it can end up in the stack during a cgo call and switching to
 			// the goroutine stack will exclude all the C functions from the stack
 			// trace.
@@ -255,11 +257,11 @@ func amd64RegSize(rn uint64) int {
 	return 8
 }
 
-func amd64RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.DwarfRegisters {
+func amd64RegistersToDwarfRegisters(staticBase uint64, regs Registers) *op.DwarfRegisters {
 	dregs := initDwarfRegistersFromSlice(int(regnum.AMD64MaxRegNum()), regs, regnum.AMD64NameToDwarf)
 	dr := op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, regnum.AMD64_Rip, regnum.AMD64_Rsp, regnum.AMD64_Rbp, 0)
 	dr.SetLoadMoreCallback(loadMoreDwarfRegistersFromSliceFunc(dr, regs, regnum.AMD64NameToDwarf))
-	return *dr
+	return dr
 }
 
 func initDwarfRegistersFromSlice(maxRegs int, regs Registers, nameToDwarf map[string]int) []*op.DwarfRegister {

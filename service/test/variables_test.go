@@ -86,13 +86,13 @@ func findFirstNonRuntimeFrame(p *proc.Target) (proc.Stackframe, error) {
 
 func evalScope(p *proc.Target) (*proc.EvalScope, error) {
 	if testBackend != "rr" {
-		return proc.GoroutineScope(p.CurrentThread())
+		return proc.GoroutineScope(p, p.CurrentThread())
 	}
 	frame, err := findFirstNonRuntimeFrame(p)
 	if err != nil {
 		return nil, err
 	}
-	return proc.FrameToScope(p.BinInfo(), p.Memory(), nil, frame), nil
+	return proc.FrameToScope(p, p.Memory(), nil, frame), nil
 }
 
 func evalVariable(p *proc.Target, symbol string, cfg proc.LoadConfig) (*proc.Variable, error) {
@@ -111,7 +111,7 @@ func (tc *varTest) alternateVarTest() varTest {
 }
 
 func setVariable(p *proc.Target, symbol, value string) error {
-	scope, err := proc.GoroutineScope(p.CurrentThread())
+	scope, err := proc.GoroutineScope(p, p.CurrentThread())
 	if err != nil {
 		return err
 	}
@@ -471,10 +471,10 @@ func TestLocalVariables(t *testing.T) {
 				var frame proc.Stackframe
 				frame, err = findFirstNonRuntimeFrame(p)
 				if err == nil {
-					scope = proc.FrameToScope(p.BinInfo(), p.Memory(), nil, frame)
+					scope = proc.FrameToScope(p, p.Memory(), nil, frame)
 				}
 			} else {
-				scope, err = proc.GoroutineScope(p.CurrentThread())
+				scope, err = proc.GoroutineScope(p, p.CurrentThread())
 			}
 
 			assertNoError(err, t, "scope")
@@ -836,6 +836,10 @@ func TestEvalExpression(t *testing.T) {
 		{`iface2map.(data)`, false, "…", "…", "map[string]interface {}", nil},
 
 		{"issue1578", false, "main.Block {cache: *main.Cache nil}", "main.Block {cache: *main.Cache nil}", "main.Block", nil},
+		{"ni8 << 2", false, "-20", "-20", "int8", nil},
+		{"ni8 << 8", false, "0", "0", "int8", nil},
+		{"ni8 >> 1", false, "-3", "-3", "int8", nil},
+		{"bytearray[0] * bytearray[0]", false, "144", "144", "uint8", nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())
@@ -1148,7 +1152,7 @@ func TestIssue1075(t *testing.T) {
 		setFunctionBreakpoint(p, t, "net/http.(*Client).Do")
 		assertNoError(p.Continue(), t, "Continue()")
 		for i := 0; i < 10; i++ {
-			scope, err := proc.GoroutineScope(p.CurrentThread())
+			scope, err := proc.GoroutineScope(p, p.CurrentThread())
 			assertNoError(err, t, fmt.Sprintf("GoroutineScope (%d)", i))
 			vars, err := scope.LocalVariables(pnormalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("LocalVariables (%d)", i))
@@ -1279,12 +1283,13 @@ func TestCallFunction(t *testing.T) {
 		{`strings.Join(s1, comma)`, nil, errors.New(`error evaluating "s1" as argument elems in function strings.Join: could not find symbol value for s1`)},
 	}
 
-	withTestProcess("fncall", t, func(p *proc.Target, fixture protest.Fixture) {
-		_, err := proc.FindFunctionLocation(p, "runtime.debugCallV1", 0)
-		if err != nil {
-			t.Skip("function calls not supported on this version of go")
-		}
+	var testcases117 = []testCaseCallFunction{
+		{`regabistacktest("one", "two", "three", "four", "five", 4)`, []string{`:string:"onetwo"`, `:string:"twothree"`, `:string:"threefour"`, `:string:"fourfive"`, `:string:"fiveone"`, ":uint8:8"}, nil},
+		{`regabistacktest2(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)`, []string{":int:3", ":int:5", ":int:7", ":int:9", ":int:11", ":int:13", ":int:15", ":int:17", ":int:19", ":int:11"}, nil},
+		{`issue2698.String()`, []string{`:string:"1 2 3 4"`}, nil},
+	}
 
+	withTestProcessArgs("fncall", t, ".", nil, protest.AllNonOptimized, func(p *proc.Target, fixture protest.Fixture) {
 		testCallFunctionSetBreakpoint(t, p, fixture)
 
 		assertNoError(p.Continue(), t, "Continue()")
@@ -1311,6 +1316,12 @@ func TestCallFunction(t *testing.T) {
 
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
 			for _, tc := range testcases114 {
+				testCallFunction(t, p, tc)
+			}
+		}
+
+		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) {
+			for _, tc := range testcases117 {
 				testCallFunction(t, p, tc)
 			}
 		}
@@ -1373,7 +1384,7 @@ func testCallFunction(t *testing.T, p *proc.Target, tc testCaseCallFunction) {
 	}
 
 	if varExpr != "" {
-		scope, err := proc.GoroutineScope(p.CurrentThread())
+		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "GoroutineScope")
 		v, err := scope.EvalExpression(varExpr, pnormalLoadConfig)
 		assertNoError(err, t, fmt.Sprintf("EvalExpression(%s)", varExpr))
@@ -1591,7 +1602,48 @@ func TestCgoEval(t *testing.T) {
 					t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
 				}
 			}
+		}
+	})
+}
 
+func TestEvalExpressionGenerics(t *testing.T) {
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
+		t.Skip("generics not supported")
+	}
+
+	testcases := [][]varTest{
+		// testfn[int, float32]
+		[]varTest{
+			{"arg1", true, "3", "", "int", nil},
+			{"arg2", true, "2.1", "", "float32", nil},
+			{"m", true, "map[float32]int [2.1: 3, ]", "", "map[float32]int", nil},
+		},
+
+		// testfn[*astruct, astruct]
+		[]varTest{
+			{"arg1", true, "*main.astruct {x: 0, y: 1}", "", "*main.astruct", nil},
+			{"arg2", true, "main.astruct {x: 2, y: 3}", "", "main.astruct", nil},
+			{"m", true, "map[main.astruct]*main.astruct [{x: 2, y: 3}: *{x: 0, y: 1}, ]", "", "map[main.astruct]*main.astruct", nil},
+		},
+	}
+
+	withTestProcess("testvariables_generic", t, func(p *proc.Target, fixture protest.Fixture) {
+		for i, tcs := range testcases {
+			assertNoError(p.Continue(), t, fmt.Sprintf("Continue() returned an error (%d)", i))
+			for _, tc := range tcs {
+				variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
+				if tc.err == nil {
+					assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
+					assertVariable(t, variable, tc)
+				} else {
+					if err == nil {
+						t.Fatalf("Expected error %s, got no error (%s)", tc.err.Error(), tc.name)
+					}
+					if tc.err.Error() != err.Error() {
+						t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+					}
+				}
+			}
 		}
 	})
 }

@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"go/constant"
 	"os"
+	"sort"
 	"strings"
 
+	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/goversion"
 )
 
@@ -44,6 +46,10 @@ type Target struct {
 	// CanDump is true if core dumping is supported.
 	CanDump bool
 
+	// KeepSteppingBreakpoints determines whether certain stop reasons (e.g. manual halts)
+	// will keep the stepping breakpoints instead of clearing them.
+	KeepSteppingBreakpoints KeepSteppingBreakpoints
+
 	// currentThread is the thread that will be used by next/step/stepout and to evaluate variables if no goroutine is selected.
 	currentThread Thread
 
@@ -62,7 +68,24 @@ type Target struct {
 	// This must be cleared whenever the target is resumed.
 	gcache goroutineCache
 	iscgo  *bool
+
+	// exitStatus is the exit status of the process we are debugging.
+	// Saved here to relay to any future commands.
+	exitStatus int
+
+	// fakeMemoryRegistry contains the list of all compositeMemory objects
+	// created since the last restart, it exists so that registerized variables
+	// can be given a unique address.
+	fakeMemoryRegistry    []*compositeMemory
+	fakeMemoryRegistryMap map[string]*compositeMemory
 }
+
+type KeepSteppingBreakpoints uint8
+
+const (
+	HaltKeepsSteppingBreakpoints KeepSteppingBreakpoints = 1 << iota
+	TracepointKeepsSteppingBreakpoints
+)
 
 // ErrProcessExited indicates that the process has exited and contains both
 // process id and exit status.
@@ -84,7 +107,7 @@ type StopReason uint8
 func (sr StopReason) String() string {
 	switch sr {
 	case StopUnknown:
-		return "unkown"
+		return "unknown"
 	case StopLaunched:
 		return "launched"
 	case StopAttached:
@@ -101,6 +124,8 @@ func (sr StopReason) String() string {
 		return "next finished"
 	case StopCallReturned:
 		return "call returned"
+	case StopWatchpoint:
+		return "watchpoint"
 	default:
 		return ""
 	}
@@ -116,6 +141,7 @@ const (
 	StopManual                         // A manual stop was requested
 	StopNextFinished                   // The next/step/stepout command terminated
 	StopCallReturned                   // An injected call completed
+	StopWatchpoint                     // The target process hit one or more watchpoints
 )
 
 // NewTargetConfig contains the configuration for a new Target object,
@@ -174,6 +200,7 @@ func NewTarget(p Process, currentThread Thread, cfg NewTargetConfig) (*Target, e
 	t.createFatalThrowBreakpoint()
 
 	t.gcache.init(p.BinInfo())
+	t.fakeMemoryRegistryMap = make(map[string]*compositeMemory)
 
 	if cfg.DisableAsyncPreempt {
 		setAsyncPreemptOff(t, 1)
@@ -187,7 +214,7 @@ func (t *Target) IsCgo() bool {
 	if t.iscgo != nil {
 		return *t.iscgo
 	}
-	scope := globalScope(t.BinInfo(), t.BinInfo().Images[0], t.Memory())
+	scope := globalScope(t, t.BinInfo(), t.BinInfo().Images[0], t.Memory())
 	iscgov, err := scope.findGlobal("runtime", "iscgo")
 	if err == nil {
 		iscgov.loadValue(loadFullValue)
@@ -198,6 +225,20 @@ func (t *Target) IsCgo() bool {
 		}
 	}
 	return false
+}
+
+// Valid returns true if this Process can be used. When it returns false it
+// also returns an error describing why the Process is invalid (either
+// ErrProcessExited or ErrProcessDetached).
+func (t *Target) Valid() (bool, error) {
+	ok, err := t.proc.Valid()
+	if !ok && err != nil {
+		if pe, ok := err.(ErrProcessExited); ok {
+			pe.Status = t.exitStatus
+			err = pe
+		}
+	}
+	return ok, err
 }
 
 // SupportsFunctionCalls returns whether or not the backend supports
@@ -211,9 +252,10 @@ func (t *Target) SupportsFunctionCalls() bool {
 	return t.Process.BinInfo().Arch.Name == "amd64"
 }
 
-// ClearAllGCache clears the internal Goroutine cache.
+// ClearCaches clears internal caches that should not survive a restart.
 // This should be called anytime the target process executes instructions.
-func (t *Target) ClearAllGCache() {
+func (t *Target) ClearCaches() {
+	t.clearFakeMemory()
 	t.gcache.Clear()
 	for _, thread := range t.ThreadList() {
 		thread.Common().g = nil
@@ -224,7 +266,7 @@ func (t *Target) ClearAllGCache() {
 // This is only useful for recorded targets.
 // Restarting of a normal process happens at a higher level (debugger.Restart).
 func (t *Target) Restart(from string) error {
-	t.ClearAllGCache()
+	t.ClearCaches()
 	currentThread, err := t.proc.Restart(from)
 	if err != nil {
 		return err
@@ -283,7 +325,7 @@ func (t *Target) Detach(kill bool) error {
 		}
 		for _, bp := range t.Breakpoints().M {
 			if bp != nil {
-				_, err := t.ClearBreakpoint(bp.Addr)
+				err := t.ClearBreakpoint(bp.Addr)
 				if err != nil {
 					return err
 				}
@@ -302,13 +344,14 @@ func setAsyncPreemptOff(p *Target, v int64) {
 		return
 	}
 	logger := p.BinInfo().logger
-	scope := globalScope(p.BinInfo(), p.BinInfo().Images[0], p.Memory())
+	scope := globalScope(p, p.BinInfo(), p.BinInfo().Images[0], p.Memory())
+	// +rtype -var debug anytype
 	debugv, err := scope.findGlobal("runtime", "debug")
 	if err != nil || debugv.Unreadable != nil {
 		logger.Warnf("could not find runtime/debug variable (or unreadable): %v %v", err, debugv.Unreadable)
 		return
 	}
-	asyncpreemptoffv, err := debugv.structMember("asyncpreemptoff")
+	asyncpreemptoffv, err := debugv.structMember("asyncpreemptoff") // +rtype int32
 	if err != nil {
 		logger.Warnf("could not find asyncpreemptoff field: %v", err)
 		return
@@ -344,7 +387,7 @@ func (t *Target) createUnrecoveredPanicBreakpoint() {
 
 // createFatalThrowBreakpoint creates the a breakpoint as runtime.fatalthrow.
 func (t *Target) createFatalThrowBreakpoint() {
-	fatalpcs, err := FindFunctionLocation(t.Process, "runtime.fatalthrow", 0)
+	fatalpcs, err := FindFunctionLocation(t.Process, "runtime.throw", 0)
 	if err == nil {
 		bp, err := t.SetBreakpointWithID(fatalThrowID, fatalpcs[0])
 		if err == nil {
@@ -360,7 +403,136 @@ func (t *Target) CurrentThread() Thread {
 	return t.currentThread
 }
 
+type UProbeTraceResult struct {
+	FnAddr      int
+	GoroutineID int
+	InputParams []*Variable
+}
+
+func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
+	var results []*UProbeTraceResult
+	tracepoints := t.proc.GetBufferedTracepoints()
+	for _, tp := range tracepoints {
+		r := &UProbeTraceResult{}
+		r.FnAddr = tp.FnAddr
+		r.GoroutineID = tp.GoroutineID
+		for _, ip := range tp.InputParams {
+			v := &Variable{}
+			v.RealType = ip.RealType
+			v.Len = ip.Len
+			v.Base = ip.Base
+			v.Addr = ip.Addr
+			v.Kind = ip.Kind
+
+			cachedMem := CreateLoadedCachedMemory(ip.Data)
+			compMem, _ := CreateCompositeMemory(cachedMem, t.BinInfo().Arch, op.DwarfRegisters{}, ip.Pieces)
+			v.mem = compMem
+
+			// Load the value here so that we don't have to export
+			// loadValue outside of proc.
+			v.loadValue(loadFullValue)
+			r.InputParams = append(r.InputParams, v)
+		}
+		results = append(results, r)
+	}
+	return results
+}
+
 // SetNextBreakpointID sets the breakpoint ID of the next breakpoint
 func (t *Target) SetNextBreakpointID(id int) {
 	t.Breakpoints().breakpointIDCounter = id
+}
+
+const (
+	FakeAddressBase     = 0xbeef000000000000
+	fakeAddressUnresolv = 0xbeed000000000000 // this address never resloves to memory
+)
+
+// newCompositeMemory creates a new compositeMemory object and registers it.
+// If the same composite memory has been created before it will return a
+// cached object.
+// This caching is primarily done so that registerized variables don't get a
+// different address every time they are evaluated, which would be confusing
+// and leak memory.
+func (t *Target) newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters, pieces []op.Piece, descr *locationExpr) (int64, *compositeMemory, error) {
+	var key string
+	if regs.CFA != 0 && len(pieces) > 0 {
+		// key is created by concatenating the location expression with the CFA,
+		// this combination is guaranteed to be unique between resumes.
+		buf := new(strings.Builder)
+		fmt.Fprintf(buf, "%#x ", regs.CFA)
+		op.PrettyPrint(buf, descr.instr)
+		key = buf.String()
+
+		if cmem := t.fakeMemoryRegistryMap[key]; cmem != nil {
+			return int64(cmem.base), cmem, nil
+		}
+	}
+
+	cmem, err := newCompositeMemory(mem, t.BinInfo().Arch, regs, pieces)
+	if err != nil {
+		return 0, cmem, err
+	}
+	t.registerFakeMemory(cmem)
+	if key != "" {
+		t.fakeMemoryRegistryMap[key] = cmem
+	}
+	return int64(cmem.base), cmem, nil
+}
+
+func (t *Target) registerFakeMemory(mem *compositeMemory) (addr uint64) {
+	t.fakeMemoryRegistry = append(t.fakeMemoryRegistry, mem)
+	addr = FakeAddressBase
+	if len(t.fakeMemoryRegistry) > 1 {
+		prevMem := t.fakeMemoryRegistry[len(t.fakeMemoryRegistry)-2]
+		addr = uint64(alignAddr(int64(prevMem.base+uint64(len(prevMem.data))), 0x100)) // the call to alignAddr just makes the address look nicer, it is not necessary
+	}
+	mem.base = addr
+	return addr
+}
+
+func (t *Target) findFakeMemory(addr uint64) *compositeMemory {
+	i := sort.Search(len(t.fakeMemoryRegistry), func(i int) bool {
+		mem := t.fakeMemoryRegistry[i]
+		return addr <= mem.base || (mem.base <= addr && addr < (mem.base+uint64(len(mem.data))))
+	})
+	if i != len(t.fakeMemoryRegistry) {
+		mem := t.fakeMemoryRegistry[i]
+		if mem.base <= addr && addr < (mem.base+uint64(len(mem.data))) {
+			return mem
+		}
+	}
+	return nil
+}
+
+func (t *Target) clearFakeMemory() {
+	for i := range t.fakeMemoryRegistry {
+		t.fakeMemoryRegistry[i] = nil
+	}
+	t.fakeMemoryRegistry = t.fakeMemoryRegistry[:0]
+	t.fakeMemoryRegistryMap = make(map[string]*compositeMemory)
+}
+
+// dwrapUnwrap checks if fn is a dwrap wrapper function and unwraps it if it is.
+func (t *Target) dwrapUnwrap(fn *Function) *Function {
+	if fn == nil {
+		return nil
+	}
+	if !strings.Contains(fn.Name, "·dwrap·") && !fn.trampoline {
+		return fn
+	}
+	if unwrap := t.BinInfo().dwrapUnwrapCache[fn.Entry]; unwrap != nil {
+		return unwrap
+	}
+	text, err := disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), fn.Entry, fn.End, false)
+	if err != nil {
+		return fn
+	}
+	for _, instr := range text {
+		if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil && !instr.DestLoc.Fn.privateRuntime() {
+			t.BinInfo().dwrapUnwrapCache[fn.Entry] = instr.DestLoc.Fn
+			return instr.DestLoc.Fn
+		}
+	}
+	return fn
 }

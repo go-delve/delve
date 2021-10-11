@@ -11,12 +11,14 @@ import (
 	"math"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"unsafe"
 
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/logflags"
 )
 
 const (
@@ -24,10 +26,14 @@ const (
 
 	maxArrayStridePrefetch = 1024 // Maximum size of array stride for which we will prefetch the array contents
 
-	hashTophashEmptyZero = 0 // used by map reading code, indicates an empty cell
-	hashTophashEmptyOne  = 1 // used by map reading code, indicates an empty cell in Go 1.12 and later
-	hashMinTopHashGo111  = 4 // used by map reading code, indicates minimum value of tophash that isn't empty or evacuated, in Go1.11
-	hashMinTopHashGo112  = 5 // used by map reading code, indicates minimum value of tophash that isn't empty or evacuated, in Go1.12
+	// hashTophashEmptyZero is used by map reading code, indicates an empty cell
+	hashTophashEmptyZero = 0 // +rtype emptyRest
+	// hashTophashEmptyOne is used by map reading code, indicates an empty cell in Go 1.12 and later
+	hashTophashEmptyOne = 1 // +rtype emptyOne
+	// hashMinTopHashGo111 used by map reading code, indicates minimum value of tophash that isn't empty or evacuated, in Go1.11
+	hashMinTopHashGo111 = 4 // +rtype minTopHash
+	// hashMinTopHashGo112 is used by map reading code, indicates minimum value of tophash that isn't empty or evacuated, in Go1.12
+	hashMinTopHashGo112 = 5 // +rtype minTopHash
 
 	maxFramePrefetchSize = 1 * 1024 * 1024 // Maximum prefetch size for a stack frame
 
@@ -76,6 +82,8 @@ const (
 	VariableFakeAddress
 	// VariableCPrt means the variable is a C pointer
 	VariableCPtr
+	// VariableCPURegister means this variable is a CPU register.
+	VariableCPURegister
 )
 
 // Variable represents a variable. It contains the address, name,
@@ -94,6 +102,7 @@ type Variable struct {
 
 	Value        constant.Value
 	FloatSpecial floatSpecial
+	reg          *op.DwarfRegister // contains the value of this variable if VariableCPURegister flag is set and loaded is false
 
 	Len int64
 	Cap int64
@@ -186,17 +195,15 @@ const (
 // G represents a runtime G (goroutine) structure (at least the
 // fields that Delve is interested in).
 type G struct {
-	ID        int    // Goroutine ID
-	PC        uint64 // PC of goroutine when it was parked.
-	SP        uint64 // SP of goroutine when it was parked.
-	BP        uint64 // BP of goroutine when it was parked (go >= 1.7).
-	LR        uint64 // LR of goroutine when it was parked.
-	GoPC      uint64 // PC of 'go' statement that created this goroutine.
-	StartPC   uint64 // PC of the first function run on this goroutine.
-	Status    uint64
-	stkbarVar *Variable // stkbar field of g struct
-	stkbarPos int       // stkbarPos field of g struct
-	stack     stack     // value of stack
+	ID      int    // Goroutine ID
+	PC      uint64 // PC of goroutine when it was parked.
+	SP      uint64 // SP of goroutine when it was parked.
+	BP      uint64 // BP of goroutine when it was parked (go >= 1.7).
+	LR      uint64 // LR of goroutine when it was parked.
+	GoPC    uint64 // PC of 'go' statement that created this goroutine.
+	StartPC uint64 // PC of the first function run on this goroutine.
+	Status  uint64
+	stack   stack // value of stack
 
 	WaitSince  int64
 	WaitReason int64
@@ -514,9 +521,28 @@ func (g *G) Go() Location {
 }
 
 // StartLoc returns the starting location of the goroutine.
-func (g *G) StartLoc() Location {
-	f, l, fn := g.variable.bi.PCToLine(g.StartPC)
-	return Location{PC: g.StartPC, File: f, Line: l, Fn: fn}
+func (g *G) StartLoc(tgt *Target) Location {
+	fn := g.variable.bi.PCToFunc(g.StartPC)
+	fn = tgt.dwrapUnwrap(fn)
+	if fn == nil {
+		return Location{PC: g.StartPC}
+	}
+	f, l := fn.cu.lineInfo.PCToLine(fn.Entry, fn.Entry)
+	return Location{PC: fn.Entry, File: f, Line: l, Fn: fn}
+}
+
+// System returns true if g is a system goroutine. See isSystemGoroutine in
+// $GOROOT/src/runtime/traceback.go.
+func (g *G) System(tgt *Target) bool {
+	loc := g.StartLoc(tgt)
+	if loc.Fn == nil {
+		return false
+	}
+	switch loc.Fn.Name {
+	case "runtime.main", "runtime.handleAsyncEvent":
+		return false
+	}
+	return strings.HasPrefix(loc.Fn.Name, "runtime.")
 }
 
 func (g *G) Labels() map[string]string {
@@ -560,8 +586,8 @@ func (err *IsNilErr) Error() string {
 	return fmt.Sprintf("%s is nil", err.name)
 }
 
-func globalScope(bi *BinaryInfo, image *Image, mem MemoryReadWriter) *EvalScope {
-	return &EvalScope{Location: Location{}, Regs: op.DwarfRegisters{StaticBase: image.StaticBase}, Mem: mem, g: nil, BinInfo: bi, frameOffset: 0}
+func globalScope(tgt *Target, bi *BinaryInfo, image *Image, mem MemoryReadWriter) *EvalScope {
+	return &EvalScope{Location: Location{}, Regs: op.DwarfRegisters{StaticBase: image.StaticBase}, Mem: mem, g: nil, BinInfo: bi, target: tgt, frameOffset: 0}
 }
 
 func newVariableFromThread(t Thread, name string, addr uint64, dwarfType godwarf.Type) *Variable {
@@ -751,10 +777,20 @@ func (v *Variable) TypeString() string {
 	if v == nilVariable {
 		return "nil"
 	}
-	if v.DwarfType != nil {
+	if v.DwarfType == nil {
+		return v.Kind.String()
+	}
+	if v.DwarfType.Common().Name != "" {
 		return v.DwarfType.Common().Name
 	}
-	return v.Kind.String()
+	r := v.DwarfType.String()
+	if r == "*void" {
+		cu := v.bi.Images[v.DwarfType.Common().Index].findCompileUnitForOffset(v.DwarfType.Common().Offset)
+		if cu != nil && cu.isgo {
+			r = "unsafe.Pointer"
+		}
+	}
+	return r
 }
 
 func (v *Variable) toField(field *godwarf.StructField) (*Variable, error) {
@@ -808,26 +844,27 @@ func (v *Variable) parseG() (*G, error) {
 		}
 		return nil, ErrNoGoroutine{tid: id}
 	}
-	for {
-		if _, isptr := v.RealType.(*godwarf.PtrType); !isptr {
-			break
-		}
-		v = v.maybeDereference()
+	isptr := func(t godwarf.Type) bool {
+		_, ok := t.(*godwarf.PtrType)
+		return ok
+	}
+	for isptr(v.RealType) {
+		v = v.maybeDereference() // +rtype g
 	}
 
 	v.mem = cacheMemory(v.mem, v.Addr, int(v.RealType.Size()))
 
-	schedVar := v.loadFieldNamed("sched")
+	schedVar := v.loadFieldNamed("sched") // +rtype gobuf
 	if schedVar == nil {
 		return nil, ErrUnreadableG
 	}
-	pc, _ := constant.Int64Val(schedVar.fieldVariable("pc").Value)
-	sp, _ := constant.Int64Val(schedVar.fieldVariable("sp").Value)
+	pc, _ := constant.Int64Val(schedVar.fieldVariable("pc").Value) // +rtype uintptr
+	sp, _ := constant.Int64Val(schedVar.fieldVariable("sp").Value) // +rtype uintptr
 	var bp, lr int64
-	if bpvar := schedVar.fieldVariable("bp"); bpvar != nil && bpvar.Value != nil {
+	if bpvar := schedVar.fieldVariable("bp"); /* +rtype -opt uintptr */ bpvar != nil && bpvar.Value != nil {
 		bp, _ = constant.Int64Val(bpvar.Value)
 	}
-	if bpvar := schedVar.fieldVariable("lr"); bpvar != nil && bpvar.Value != nil {
+	if bpvar := schedVar.fieldVariable("lr"); /* +rtype -opt uintptr */ bpvar != nil && bpvar.Value != nil {
 		lr, _ = constant.Int64Val(bpvar.Value)
 	}
 
@@ -843,32 +880,25 @@ func (v *Variable) parseG() (*G, error) {
 		return n
 	}
 
-	id := loadInt64Maybe("goid")
-	gopc := loadInt64Maybe("gopc")
-	startpc := loadInt64Maybe("startpc")
-	waitSince := loadInt64Maybe("waitsince")
+	id := loadInt64Maybe("goid")             // +rtype int64
+	gopc := loadInt64Maybe("gopc")           // +rtype uintptr
+	startpc := loadInt64Maybe("startpc")     // +rtype uintptr
+	waitSince := loadInt64Maybe("waitsince") // +rtype int64
 	waitReason := int64(0)
 	if producer := v.bi.Producer(); producer != "" && goversion.ProducerAfterOrEqual(producer, 1, 11) {
-		waitReason = loadInt64Maybe("waitreason")
+		waitReason = loadInt64Maybe("waitreason") // +rtype -opt waitReason
 	}
 	var stackhi, stacklo uint64
-	if stackVar := v.loadFieldNamed("stack"); stackVar != nil {
-		if stackhiVar := stackVar.fieldVariable("hi"); stackhiVar != nil {
+	if stackVar := v.loadFieldNamed("stack"); /* +rtype stack */ stackVar != nil {
+		if stackhiVar := stackVar.fieldVariable("hi"); /* +rtype uintptr */ stackhiVar != nil {
 			stackhi, _ = constant.Uint64Val(stackhiVar.Value)
 		}
-		if stackloVar := stackVar.fieldVariable("lo"); stackloVar != nil {
+		if stackloVar := stackVar.fieldVariable("lo"); /* +rtype uintptr */ stackloVar != nil {
 			stacklo, _ = constant.Uint64Val(stackloVar.Value)
 		}
 	}
 
-	stkbarVar := v.loadFieldNamed("stkbar")
-	stkbarVarPosFld := v.loadFieldNamed("stkbarPos")
-	var stkbarPos int64
-	if stkbarVarPosFld != nil { // stack barriers were removed in Go 1.9
-		stkbarPos, _ = constant.Int64Val(stkbarVarPosFld.Value)
-	}
-
-	status := loadInt64Maybe("atomicstatus")
+	status := loadInt64Maybe("atomicstatus") // +rtype uint32
 
 	if unreadable {
 		return nil, ErrUnreadableG
@@ -891,8 +921,6 @@ func (v *Variable) parseG() (*G, error) {
 		WaitReason: waitReason,
 		CurrentLoc: Location{PC: uint64(pc), File: f, Line: l, Fn: fn},
 		variable:   v,
-		stkbarVar:  stkbarVar,
-		stkbarPos:  int(stkbarPos),
 		stack:      stack{hi: stackhi, lo: stacklo},
 	}
 	return g, nil
@@ -925,8 +953,8 @@ func (v *Variable) fieldVariable(name string) *Variable {
 var errTracebackAncestorsDisabled = errors.New("tracebackancestors is disabled")
 
 // Ancestors returns the list of ancestors for g.
-func Ancestors(p Process, g *G, n int) ([]Ancestor, error) {
-	scope := globalScope(p.BinInfo(), p.BinInfo().Images[0], p.Memory())
+func Ancestors(p *Target, g *G, n int) ([]Ancestor, error) {
+	scope := globalScope(p, p.BinInfo(), p.BinInfo().Images[0], p.Memory())
 	tbav, err := scope.EvalExpression("runtime.debug.tracebackancestors", loadSingleValue)
 	if err == nil && tbav.Unreadable == nil && tbav.Kind == reflect.Int {
 		tba, _ := constant.Int64Val(tbav.Value)
@@ -1009,31 +1037,6 @@ func (a *Ancestor) Stack(n int) ([]Stackframe, error) {
 		r[i] = Stackframe{Current: loc, Call: loc}
 	}
 	r[len(r)-1].Bottom = pcsVar.Len == int64(len(pcsVar.Children))
-	return r, nil
-}
-
-// Returns the list of saved return addresses used by stack barriers
-func (g *G) stkbar() ([]savedLR, error) {
-	if g.stkbarVar == nil { // stack barriers were removed in Go 1.9
-		return nil, nil
-	}
-	g.stkbarVar.loadValue(LoadConfig{false, 1, 0, int(g.stkbarVar.Len), 3, 0})
-	if g.stkbarVar.Unreadable != nil {
-		return nil, fmt.Errorf("unreadable stkbar: %v", g.stkbarVar.Unreadable)
-	}
-	r := make([]savedLR, len(g.stkbarVar.Children))
-	for i, child := range g.stkbarVar.Children {
-		for _, field := range child.Children {
-			switch field.Name {
-			case "savedLRPtr":
-				ptr, _ := constant.Int64Val(field.Value)
-				r[i].ptr = uint64(ptr)
-			case "savedLRVal":
-				val, _ := constant.Int64Val(field.Value)
-				r[i].val = uint64(val)
-			}
-		}
-	}
 	return r, nil
 }
 
@@ -1133,7 +1136,7 @@ func readVarEntry(entry *godwarf.Tree, image *Image) (name string, typ godwarf.T
 
 // Extracts the name and type of a variable from a dwarf entry
 // then executes the instructions given in the  DW_AT_location attribute to grab the variable's address
-func extractVarInfoFromEntry(bi *BinaryInfo, image *Image, regs op.DwarfRegisters, mem MemoryReadWriter, entry *godwarf.Tree) (*Variable, error) {
+func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.DwarfRegisters, mem MemoryReadWriter, entry *godwarf.Tree, dictAddr uint64) (*Variable, error) {
 	if entry.Tag != dwarf.TagFormalParameter && entry.Tag != dwarf.TagVariable {
 		return nil, fmt.Errorf("invalid entry tag, only supports FormalParameter and Variable, got %s", entry.Tag.String())
 	}
@@ -1143,11 +1146,24 @@ func extractVarInfoFromEntry(bi *BinaryInfo, image *Image, regs op.DwarfRegister
 		return nil, err
 	}
 
-	addr, pieces, descr, err := bi.Location(entry, dwarf.AttrLocation, regs.PC(), regs)
+	t, err = resolveParametricType(tgt, bi, mem, t, dictAddr)
+	if err != nil {
+		// Log the error, keep going with t, which will be the shape type
+		logflags.DebuggerLogger().Errorf("could not resolve parametric type of %s", n)
+	}
+
+	addr, pieces, descr, err := bi.Location(entry, dwarf.AttrLocation, regs.PC(), regs, mem)
 	if pieces != nil {
-		addr = fakeAddress
 		var cmem *compositeMemory
-		cmem, err = newCompositeMemory(mem, bi.Arch, regs, pieces)
+		if tgt != nil {
+			addr, cmem, err = tgt.newCompositeMemory(mem, regs, pieces, descr)
+		} else {
+			cmem, err = newCompositeMemory(mem, bi.Arch, regs, pieces)
+			if cmem != nil {
+				cmem.base = fakeAddressUnresolv
+				addr = int64(cmem.base)
+			}
+		}
 		if cmem != nil {
 			mem = cmem
 		}
@@ -1241,9 +1257,8 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 
 	case reflect.String:
 		var val string
-		if v.Flags&VariableCPtr == 0 {
-			val, v.Unreadable = readStringValue(DereferenceMemory(v.mem), v.Base, v.Len, cfg)
-		} else {
+		switch {
+		case v.Flags&VariableCPtr != 0:
 			var done bool
 			val, done, v.Unreadable = readCStringValue(DereferenceMemory(v.mem), v.Base, cfg)
 			if v.Unreadable == nil {
@@ -1252,6 +1267,19 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 					v.Len++
 				}
 			}
+
+		case v.Flags&VariableCPURegister != 0:
+			val = fmt.Sprintf("%x", v.reg.Bytes)
+			s := v.Base - fakeAddressUnresolv
+			if s < uint64(len(val)) {
+				val = val[s:]
+				if v.Len >= 0 && v.Len < int64(len(val)) {
+					val = val[:v.Len]
+				}
+			}
+
+		default:
+			val, v.Unreadable = readStringValue(DereferenceMemory(v.mem), v.Base, v.Len, cfg)
 		}
 		v.Value = constant.MakeString(val)
 
@@ -1287,10 +1315,13 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 		val, v.Unreadable = readIntRaw(v.mem, v.Addr, v.RealType.(*godwarf.IntType).ByteSize)
 		v.Value = constant.MakeInt64(val)
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		var val uint64
-		val, v.Unreadable = readUintRaw(v.mem, v.Addr, v.RealType.(*godwarf.UintType).ByteSize)
-		v.Value = constant.MakeUint64(val)
-
+		if v.Flags&VariableCPURegister != 0 {
+			v.Value = constant.MakeUint64(v.reg.Uint64Val)
+		} else {
+			var val uint64
+			val, v.Unreadable = readUintRaw(v.mem, v.Addr, v.RealType.(*godwarf.UintType).ByteSize)
+			v.Value = constant.MakeUint64(val)
+		}
 	case reflect.Bool:
 		val := make([]byte, 1)
 		_, err := v.mem.ReadMemory(val, v.Addr)
@@ -1454,6 +1485,7 @@ func (v *Variable) loadSliceInfo(t *godwarf.SliceType) {
 				// Dereference array type to get value type
 				ptrType, ok := f.Type.(*godwarf.PtrType)
 				if !ok {
+					//lint:ignore ST1005 backwards compatibility
 					v.Unreadable = fmt.Errorf("Invalid type %s in slice array", f.Type)
 					return
 				}
@@ -1542,6 +1574,7 @@ func (v *Variable) loadArrayValues(recurseLevel int, cfg LoadConfig) {
 		return
 	}
 	if v.Len < 0 {
+		//lint:ignore ST1005 backwards compatibility
 		v.Unreadable = errors.New("Negative array length")
 		return
 	}
@@ -1904,16 +1937,16 @@ func (v *Variable) mapIterator() *mapIterator {
 		var err error
 		field, _ := sv.toField(f)
 		switch f.Name {
-		case "count":
+		case "count": // +rtype -fieldof hmap int
 			v.Len, err = field.asInt()
-		case "B":
+		case "B": // +rtype -fieldof hmap uint8
 			var b uint64
 			b, err = field.asUint()
 			it.numbuckets = 1 << b
 			it.oldmask = (1 << (b - 1)) - 1
-		case "buckets":
+		case "buckets": // +rtype -fieldof hmap unsafe.Pointer
 			it.buckets = field.maybeDereference()
-		case "oldbuckets":
+		case "oldbuckets": // +rtype -fieldof hmap unsafe.Pointer
 			it.oldbuckets = field.maybeDereference()
 		}
 		if err != nil {
@@ -2015,7 +2048,7 @@ func (it *mapIterator) nextBucket() bool {
 		}
 
 		switch f.Name {
-		case "tophash":
+		case "tophash": // +rtype -fieldof bmap [8]uint8
 			it.tophashes = field
 		case "keys":
 			it.keys = field
@@ -2131,15 +2164,20 @@ func (v *Variable) readInterface() (_type, data *Variable, isnil bool) {
 
 	ityp := resolveTypedef(&v.RealType.(*godwarf.InterfaceType).TypedefType).(*godwarf.StructType)
 
+	// +rtype -field iface.tab *itab
+	// +rtype -field iface.data unsafe.Pointer
+	// +rtype -field eface._type *_type
+	// +rtype -field eface.data unsafe.Pointer
+
 	for _, f := range ityp.Field {
 		switch f.Name {
 		case "tab": // for runtime.iface
-			tab, _ := v.toField(f)
+			tab, _ := v.toField(f) // +rtype *itab
 			tab = tab.maybeDereference()
 			isnil = tab.Addr == 0
 			if !isnil {
 				var err error
-				_type, err = tab.structMember("_type")
+				_type, err = tab.structMember("_type") // +rtype *_type
 				if err != nil {
 					v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
 					return
@@ -2211,7 +2249,7 @@ func (v *Variable) ConstDescr() string {
 	if ctyp == nil {
 		return ""
 	}
-	if typename := v.DwarfType.Common().Name; strings.Index(typename, ".") < 0 || strings.HasPrefix(typename, "C.") {
+	if typename := v.DwarfType.Common().Name; !strings.Contains(typename, ".") || strings.HasPrefix(typename, "C.") {
 		// only attempt to use constants for user defined type, otherwise every
 		// int variable with value 1 will be described with os.SEEK_CUR and other
 		// similar problems.
@@ -2226,6 +2264,73 @@ func (v *Variable) ConstDescr() string {
 		return ctyp.describe(n)
 	}
 	return ""
+}
+
+// registerVariableTypeConv implements type conversions for CPU register variables (REGNAME.int8, etc)
+func (v *Variable) registerVariableTypeConv(newtyp string) (*Variable, error) {
+	var n int = 0
+	for i := 0; i < len(v.reg.Bytes); i += n {
+		var child *Variable
+		switch newtyp {
+		case "int8":
+			child = newConstant(constant.MakeInt64(int64(int8(v.reg.Bytes[i]))), v.mem)
+			n = 1
+		case "int16":
+			child = newConstant(constant.MakeInt64(int64(int16(binary.LittleEndian.Uint16(v.reg.Bytes[i:])))), v.mem)
+			n = 2
+		case "int32":
+			child = newConstant(constant.MakeInt64(int64(int32(binary.LittleEndian.Uint32(v.reg.Bytes[i:])))), v.mem)
+			n = 4
+		case "int64":
+			child = newConstant(constant.MakeInt64(int64(binary.LittleEndian.Uint64(v.reg.Bytes[i:]))), v.mem)
+			n = 8
+		case "uint8":
+			child = newConstant(constant.MakeUint64(uint64(v.reg.Bytes[i])), v.mem)
+			n = 1
+		case "uint16":
+			child = newConstant(constant.MakeUint64(uint64(binary.LittleEndian.Uint16(v.reg.Bytes[i:]))), v.mem)
+			n = 2
+		case "uint32":
+			child = newConstant(constant.MakeUint64(uint64(binary.LittleEndian.Uint32(v.reg.Bytes[i:]))), v.mem)
+			n = 4
+		case "uint64":
+			child = newConstant(constant.MakeUint64(uint64(binary.LittleEndian.Uint64(v.reg.Bytes[i:]))), v.mem)
+			n = 8
+		case "float32":
+			a := binary.LittleEndian.Uint32(v.reg.Bytes[i:])
+			x := *(*float32)(unsafe.Pointer(&a))
+			child = newConstant(constant.MakeFloat64(float64(x)), v.mem)
+			n = 4
+		case "float64":
+			a := binary.LittleEndian.Uint64(v.reg.Bytes[i:])
+			x := *(*float64)(unsafe.Pointer(&a))
+			child = newConstant(constant.MakeFloat64(x), v.mem)
+			n = 8
+		default:
+			if n == 0 {
+				for _, pfx := range []string{"uint", "int"} {
+					if strings.HasPrefix(newtyp, pfx) {
+						n, _ = strconv.Atoi(newtyp[len(pfx):])
+						break
+					}
+				}
+				if n == 0 || popcnt(uint64(n)) != 1 {
+					return nil, fmt.Errorf("unknown CPU register type conversion to %q", newtyp)
+				}
+				n = n / 8
+			}
+			child = newConstant(constant.MakeString(fmt.Sprintf("%x", v.reg.Bytes[i:][:n])), v.mem)
+		}
+		v.Children = append(v.Children, *child)
+	}
+
+	v.loaded = true
+	v.Kind = reflect.Array
+	v.Len = int64(len(v.Children))
+	v.Base = fakeAddressUnresolv
+	v.DwarfType = fakeArrayType(uint64(len(v.Children)), &godwarf.VoidType{CommonType: godwarf.CommonType{ByteSize: int64(n)}})
+	v.RealType = v.DwarfType
+	return v, nil
 }
 
 // popcnt is the number of bits set to 1 in x.
@@ -2286,9 +2391,7 @@ func (cm constantsMap) Get(typ godwarf.Type) *constantType {
 		ctyp.initialized = true
 		sort.Sort(constantValuesByValue(ctyp.values))
 		for i := range ctyp.values {
-			if strings.HasPrefix(ctyp.values[i].name, typepkg) {
-				ctyp.values[i].name = ctyp.values[i].name[len(typepkg):]
-			}
+			ctyp.values[i].name = strings.TrimPrefix(ctyp.values[i].name, typepkg)
 			if popcnt(uint64(ctyp.values[i].value)) == 1 {
 				ctyp.values[i].singleBit = true
 			}

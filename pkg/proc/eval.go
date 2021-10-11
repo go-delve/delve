@@ -3,7 +3,6 @@ package proc
 import (
 	"bytes"
 	"debug/dwarf"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"go/ast"
@@ -21,9 +20,12 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/logflags"
 )
 
 var errOperationOnSpecialFloat = errors.New("operations on non-finite floats not implemented")
+
+const goDictionaryName = ".dict"
 
 // EvalScope is the scope for variable evaluation. Contains the thread,
 // current location (PC), and canonical frame address.
@@ -33,6 +35,7 @@ type EvalScope struct {
 	Mem     MemoryReadWriter // Target's memory
 	g       *G
 	BinInfo *BinaryInfo
+	target  *Target
 
 	frameOffset int64
 
@@ -50,11 +53,21 @@ type EvalScope struct {
 	// evaluation is complete by closing the continueRequest channel.
 	callCtx *callContext
 
-	// If trustArgOrder is true function arguments that don't have an address
-	// will have one assigned by looking at their position in the argument
-	// list.
-	trustArgOrder bool
+	dictAddr uint64 // dictionary address for instantiated generic functions
 }
+
+type localsFlags uint8
+
+const (
+	// If localsTrustArgOrder is set function arguments that don't have an
+	// address will have one assigned by looking at their position in the argument
+	// list.
+	localsTrustArgOrder localsFlags = 1 << iota
+
+	// If localsNoDeclLineCheck the declaration line isn't checked at
+	// all to determine if the variable is in scope.
+	localsNoDeclLineCheck
+)
 
 // ConvertEvalScope returns a new EvalScope in the context of the
 // specified goroutine ID and stack frame.
@@ -68,16 +81,18 @@ func ConvertEvalScope(dbp *Target, gid, frame, deferCall int) (*EvalScope, error
 	if err != nil {
 		return nil, err
 	}
-	if g == nil {
-		return ThreadScope(ct)
-	}
 
 	var opts StacktraceOptions
 	if deferCall > 0 {
 		opts = StacktraceReadDefers
 	}
 
-	locs, err := g.Stacktrace(frame+1, opts)
+	var locs []Stackframe
+	if g != nil {
+		locs, err = g.Stacktrace(frame+1, opts)
+	} else {
+		locs, err = ThreadStacktrace(ct, frame+1)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -96,10 +111,10 @@ func ConvertEvalScope(dbp *Target, gid, frame, deferCall int) (*EvalScope, error
 			return nil, d.Unreadable
 		}
 
-		return d.EvalScope(ct)
+		return d.EvalScope(dbp, ct)
 	}
 
-	return FrameToScope(dbp.BinInfo(), dbp.Memory(), g, locs[frame:]...), nil
+	return FrameToScope(dbp, dbp.Memory(), g, locs[frame:]...), nil
 }
 
 // FrameToScope returns a new EvalScope for frames[0].
@@ -107,7 +122,7 @@ func ConvertEvalScope(dbp *Target, gid, frame, deferCall int) (*EvalScope, error
 // frames[0].Regs.SP() and frames[1].Regs.CFA will be cached.
 // Otherwise all memory between frames[0].Regs.SP() and frames[0].Regs.CFA
 // will be cached.
-func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stackframe) *EvalScope {
+func FrameToScope(t *Target, thread MemoryReadWriter, g *G, frames ...Stackframe) *EvalScope {
 	// Creates a cacheMem that will preload the entire stack frame the first
 	// time any local variable is read.
 	// Remember that the stack grows downward in memory.
@@ -122,13 +137,13 @@ func FrameToScope(bi *BinaryInfo, thread MemoryReadWriter, g *G, frames ...Stack
 		thread = cacheMemory(thread, minaddr, int(maxaddr-minaddr))
 	}
 
-	s := &EvalScope{Location: frames[0].Call, Regs: frames[0].Regs, Mem: thread, g: g, BinInfo: bi, frameOffset: frames[0].FrameOffset()}
+	s := &EvalScope{Location: frames[0].Call, Regs: frames[0].Regs, Mem: thread, g: g, BinInfo: t.BinInfo(), target: t, frameOffset: frames[0].FrameOffset()}
 	s.PC = frames[0].lastpc
 	return s
 }
 
 // ThreadScope returns an EvalScope for the given thread.
-func ThreadScope(thread Thread) (*EvalScope, error) {
+func ThreadScope(t *Target, thread Thread) (*EvalScope, error) {
 	locations, err := ThreadStacktrace(thread, 1)
 	if err != nil {
 		return nil, err
@@ -136,11 +151,11 @@ func ThreadScope(thread Thread) (*EvalScope, error) {
 	if len(locations) < 1 {
 		return nil, errors.New("could not decode first frame")
 	}
-	return FrameToScope(thread.BinInfo(), thread.ProcessMemory(), nil, locations...), nil
+	return FrameToScope(t, thread.ProcessMemory(), nil, locations...), nil
 }
 
 // GoroutineScope returns an EvalScope for the goroutine running on the given thread.
-func GoroutineScope(thread Thread) (*EvalScope, error) {
+func GoroutineScope(t *Target, thread Thread) (*EvalScope, error) {
 	locations, err := ThreadStacktrace(thread, 1)
 	if err != nil {
 		return nil, err
@@ -152,7 +167,7 @@ func GoroutineScope(thread Thread) (*EvalScope, error) {
 	if err != nil {
 		return nil, err
 	}
-	return FrameToScope(thread.BinInfo(), thread.ProcessMemory(), g, locations...), nil
+	return FrameToScope(t, thread.ProcessMemory(), g, locations...), nil
 }
 
 // EvalExpression returns the value of the given expression.
@@ -199,12 +214,12 @@ func isAssignment(err error) (int, bool) {
 }
 
 // Locals returns all variables in 'scope'.
-func (scope *EvalScope) Locals() ([]*Variable, error) {
+func (scope *EvalScope) Locals(flags localsFlags) ([]*Variable, error) {
 	if scope.Fn == nil {
 		return nil, errors.New("unable to find function context")
 	}
 
-	trustArgOrder := scope.trustArgOrder && scope.BinInfo.Producer() != "" && goversion.ProducerAfterOrEqual(scope.BinInfo.Producer(), 1, 12) && scope.Fn != nil && (scope.PC == scope.Fn.Entry)
+	trustArgOrder := (flags&localsTrustArgOrder != 0) && scope.BinInfo.Producer() != "" && goversion.ProducerAfterOrEqual(scope.BinInfo.Producer(), 1, 12) && scope.Fn != nil && (scope.PC == scope.Fn.Entry)
 
 	dwarfTree, err := scope.image().getDwarfTree(scope.Fn.offset)
 	if err != nil {
@@ -212,15 +227,43 @@ func (scope *EvalScope) Locals() ([]*Variable, error) {
 	}
 
 	variablesFlags := reader.VariablesOnlyVisible
+	if flags&localsNoDeclLineCheck != 0 {
+		variablesFlags = reader.VariablesNoDeclLineCheck
+	}
 	if scope.BinInfo.Producer() != "" && goversion.ProducerAfterOrEqual(scope.BinInfo.Producer(), 1, 15) {
 		variablesFlags |= reader.VariablesTrustDeclLine
 	}
 
 	varEntries := reader.Variables(dwarfTree, scope.PC, scope.Line, variablesFlags)
+
+	// look for dictionary entry
+	if scope.dictAddr == 0 {
+		for _, entry := range varEntries {
+			name, _ := entry.Val(dwarf.AttrName).(string)
+			if name == goDictionaryName {
+				dictVar, err := extractVarInfoFromEntry(scope.target, scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry.Tree, 0)
+				if err != nil {
+					logflags.DebuggerLogger().Errorf("could not load %s variable: %v", name, err)
+				} else if dictVar.Unreadable != nil {
+					logflags.DebuggerLogger().Errorf("could not load %s variable: %v", name, dictVar.Unreadable)
+				} else {
+					scope.dictAddr, err = readUintRaw(dictVar.mem, dictVar.Addr, int64(scope.BinInfo.Arch.PtrSize()))
+					if err != nil {
+						logflags.DebuggerLogger().Errorf("could not load %s variable: %v", name, err)
+					}
+				}
+				break
+			}
+		}
+	}
+
 	vars := make([]*Variable, 0, len(varEntries))
 	depths := make([]int, 0, len(varEntries))
 	for _, entry := range varEntries {
-		val, err := extractVarInfoFromEntry(scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry.Tree)
+		if name, _ := entry.Val(dwarf.AttrName).(string); name == goDictionaryName {
+			continue
+		}
+		val, err := extractVarInfoFromEntry(scope.target, scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry.Tree, scope.dictAddr)
 		if err != nil {
 			// skip variables that we can't parse yet
 			continue
@@ -319,6 +362,7 @@ func (scope *EvalScope) setValue(dstv, srcv *Variable, srcExpr string) error {
 	}
 
 	if srcv.Unreadable != nil {
+		//lint:ignore ST1005 backwards compatibility
 		return fmt.Errorf("Expression \"%s\" is unreadable: %v", srcExpr, srcv.Unreadable)
 	}
 
@@ -390,10 +434,12 @@ func (scope *EvalScope) SetVariable(name, value string) error {
 	}
 
 	if xv.Addr == 0 {
+		//lint:ignore ST1005 backwards compatibility
 		return fmt.Errorf("Can not assign to \"%s\"", name)
 	}
 
 	if xv.Unreadable != nil {
+		//lint:ignore ST1005 backwards compatibility
 		return fmt.Errorf("Expression \"%s\" is unreadable: %v", name, xv.Unreadable)
 	}
 
@@ -412,7 +458,7 @@ func (scope *EvalScope) SetVariable(name, value string) error {
 
 // LocalVariables returns all local variables from the current function scope.
 func (scope *EvalScope) LocalVariables(cfg LoadConfig) ([]*Variable, error) {
-	vars, err := scope.Locals()
+	vars, err := scope.Locals(0)
 	if err != nil {
 		return nil, err
 	}
@@ -426,7 +472,7 @@ func (scope *EvalScope) LocalVariables(cfg LoadConfig) ([]*Variable, error) {
 
 // FunctionArguments returns the name, value, and type of all current function arguments.
 func (scope *EvalScope) FunctionArguments(cfg LoadConfig) ([]*Variable, error) {
-	vars, err := scope.Locals()
+	vars, err := scope.Locals(0)
 	if err != nil {
 		return nil, err
 	}
@@ -473,7 +519,7 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 		}
 
 		// Ignore errors trying to extract values
-		val, err := extractVarInfoFromEntry(scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry))
+		val, err := extractVarInfoFromEntry(scope.target, scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry), 0)
 		if val != nil && val.Kind == reflect.Invalid {
 			continue
 		}
@@ -510,7 +556,7 @@ func (scope *EvalScope) findGlobalInternal(name string) (*Variable, error) {
 			if err != nil {
 				return nil, err
 			}
-			return extractVarInfoFromEntry(scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry))
+			return extractVarInfoFromEntry(scope.target, scope.BinInfo, pkgvar.cu.image, regsReplaceStaticBase(scope.Regs, pkgvar.cu.image), scope.Mem, godwarf.EntryToTree(entry), 0)
 		}
 	}
 	for _, fn := range scope.BinInfo.Functions {
@@ -699,7 +745,7 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 	case *ast.CallExpr:
 		if len(node.Args) == 1 {
 			v, err := scope.evalTypeCast(node)
-			if err == nil || err != reader.TypeNotFoundErr {
+			if err == nil || err != reader.ErrTypeNotFound {
 				return v, err
 			}
 		}
@@ -721,7 +767,7 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 					if err != nil {
 						return nil, fmt.Errorf("blah: %v", err)
 					}
-					gvar := newVariable("curg", fakeAddress, typ, scope.BinInfo, scope.Mem)
+					gvar := newVariable("curg", fakeAddressUnresolv, typ, scope.BinInfo, scope.Mem)
 					gvar.loaded = true
 					gvar.Flags = VariableFakeAddress
 					gvar.Children = append(gvar.Children, *newConstant(constant.MakeInt64(0), scope.Mem))
@@ -842,7 +888,14 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 
 		n, _ := constant.Int64Val(argv.Value)
 
-		v.Children = []Variable{*(newVariable("", uint64(n), ttyp.Type, scope.BinInfo, scope.Mem))}
+		mem := scope.Mem
+		if scope.target != nil {
+			if mem2 := scope.target.findFakeMemory(uint64(n)); mem2 != nil {
+				mem = mem2
+			}
+		}
+
+		v.Children = []Variable{*(newVariable("", uint64(n), ttyp.Type, scope.BinInfo, mem))}
 		v.Children[0].OnlyAddr = true
 		return v, nil
 
@@ -905,17 +958,14 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 }
 
 func convertInt(n uint64, signed bool, size int64) uint64 {
-	buf := make([]byte, 64/8)
-	binary.BigEndian.PutUint64(buf, n)
-	m := 64/8 - int(size)
-	s := byte(0)
-	if signed && (buf[m]&0x80 > 0) {
-		s = 0xff
+	bits := uint64(size) * 8
+	mask := uint64((1 << bits) - 1)
+	r := n & mask
+	if signed && (r>>(bits-1)) != 0 {
+		// sign extension
+		r |= ^uint64(0) &^ mask
 	}
-	for i := 0; i < m; i++ {
-		buf[i] = s
-	}
-	return uint64(binary.BigEndian.Uint64(buf))
+	return r
 }
 
 func (scope *EvalScope) evalBuiltinCall(node *ast.CallExpr) (*Variable, error) {
@@ -1125,7 +1175,7 @@ func (scope *EvalScope) evalIdent(node *ast.Ident) (*Variable, error) {
 		return nilVariable, nil
 	}
 
-	vars, err := scope.Locals()
+	vars, err := scope.Locals(0)
 	if err != nil {
 		return nil, err
 	}
@@ -1142,6 +1192,36 @@ func (scope *EvalScope) evalIdent(node *ast.Ident) (*Variable, error) {
 			return v, nil
 		}
 	}
+
+	// not a local variable, nor a global variable, try a CPU register
+	if s := validRegisterName(node.Name); s != "" {
+		if regnum, ok := scope.BinInfo.Arch.RegisterNameToDwarf(s); ok {
+			if reg := scope.Regs.Reg(uint64(regnum)); reg != nil {
+				reg.FillBytes()
+
+				var typ godwarf.Type
+				if len(reg.Bytes) <= 8 {
+					typ = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 8, Name: "uint64"}, BitSize: 64, BitOffset: 0}}
+				} else {
+					typ, err = scope.BinInfo.findType("string")
+					if err != nil {
+						return nil, err
+					}
+				}
+
+				v := newVariable(node.Name, 0, typ, scope.BinInfo, scope.Mem)
+				if v.Kind == reflect.String {
+					v.Len = int64(len(reg.Bytes) * 2)
+					v.Base = fakeAddressUnresolv
+				}
+				v.Addr = fakeAddressUnresolv
+				v.Flags = VariableCPURegister
+				v.reg = reg
+				return v, nil
+			}
+		}
+	}
+
 	return nil, fmt.Errorf("could not find symbol value for %s", node.Name)
 }
 
@@ -1159,6 +1239,10 @@ func (scope *EvalScope) evalStructSelector(node *ast.SelectorExpr) (*Variable, e
 	// Prevent abuse, attempting to call "\"fake\".member" directly.
 	if xv.Addr == 0 && xv.Name == "" && xv.DwarfType == nil && xv.RealType == nil {
 		return nil, fmt.Errorf("%s (type %s) is not a struct", xv.Value, xv.TypeString())
+	}
+	// Special type conversions for CPU register variables (REGNAME.int8, etc)
+	if xv.Flags&VariableCPURegister != 0 && !xv.loaded {
+		return xv.registerVariableTypeConv(node.Sel.Name)
 	}
 
 	rv, err := xv.findMethod(node.Sel.Name)
@@ -1602,8 +1686,15 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 
 		r := xv.newVariable("", 0, typ, scope.Mem)
 		r.Value = rc
-		if r.Kind == reflect.String {
+		switch r.Kind {
+		case reflect.String:
 			r.Len = xv.Len + yv.Len
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			n, _ := constant.Int64Val(r.Value)
+			r.Value = constant.MakeInt64(int64(convertInt(uint64(n), true, typ.Size())))
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			n, _ := constant.Uint64Val(r.Value)
+			r.Value = constant.MakeUint64(convertInt(n, false, typ.Size()))
 		}
 		return r, nil
 	}
@@ -1869,6 +1960,9 @@ func (v *Variable) sliceAccess(idx int) (*Variable, error) {
 	if wrong {
 		return nil, fmt.Errorf("index out of bounds")
 	}
+	if v.loaded {
+		return &v.Children[idx], nil
+	}
 	mem := v.mem
 	if v.Kind != reflect.Array {
 		mem = DereferenceMemory(mem)
@@ -1910,6 +2004,31 @@ func (v *Variable) mapAccess(idx *Variable) (*Variable, error) {
 	return nil, fmt.Errorf("key not found")
 }
 
+// LoadResliced returns a new array, slice or map that starts at index start and contains
+// up to cfg.MaxArrayValues children.
+func (v *Variable) LoadResliced(start int, cfg LoadConfig) (newV *Variable, err error) {
+	switch v.Kind {
+	case reflect.Array, reflect.Slice:
+		low, high := int64(start), int64(start+cfg.MaxArrayValues)
+		if high > v.Len {
+			high = v.Len
+		}
+		newV, err = v.reslice(low, high)
+		if err != nil {
+			return nil, err
+		}
+	case reflect.Map:
+		newV = v.clone()
+		newV.Children = nil
+		newV.loaded = false
+		newV.mapSkip = start
+	default:
+		return nil, fmt.Errorf("variable to reslice is not an array, slice, or map")
+	}
+	newV.loadValue(cfg)
+	return newV, nil
+}
+
 func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 	wrong := false
 	cptrNeedsFakeSlice := false
@@ -1949,6 +2068,8 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 	r.Base = base
 	r.stride = v.stride
 	r.fieldType = v.fieldType
+	r.Flags = v.Flags
+	r.reg = v.reg
 
 	return r, nil
 }
@@ -2153,4 +2274,16 @@ func (fn *Function) fakeType(bi *BinaryInfo, removeReceiver bool) (*godwarf.Func
 		// reads the subroutine entry because it needs to know the stack offsets).
 		// If we start using them they should be filled here.
 	}, nil
+}
+
+func validRegisterName(s string) string {
+	for len(s) > 0 && s[0] == '_' {
+		s = s[1:]
+	}
+	for i := range s {
+		if (s[i] < '0' || s[i] > '9') && (s[i] < 'A' || s[i] > 'Z') {
+			return ""
+		}
+	}
+	return s
 }

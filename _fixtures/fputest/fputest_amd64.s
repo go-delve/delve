@@ -56,6 +56,8 @@ TEXT ·fputestsetup(SB),$0-50
 	MOVAPS X1, X9
 	MOVAPS X2, X10
 	
+	MOVQ $42, AX
+	
 	CMPB avx2+48(FP), $0x0
 	JE done
 	//copy XMM1 to both halves of YMM11
@@ -67,6 +69,11 @@ TEXT ·fputestsetup(SB),$0-50
 	VSHUFF64X2 $0x44, Z11, Z11, Z12
 
 done:
+	CMPB dobreak+50(FP), $0x0
+	JE return
+	BYTE $0xcc // INT 3
+	
+return:
 	RET
 
 TEXT ·getCPUID70(SB),$0

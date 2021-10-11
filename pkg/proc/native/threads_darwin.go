@@ -13,6 +13,7 @@ import (
 	sys "golang.org/x/sys/unix"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/amd64util"
 )
 
 // waitStatus is a synonym for the platform-specific WaitStatus
@@ -131,4 +132,8 @@ func (t *nativeThread) ReadMemory(buf []byte, addr uint64) (int, error) {
 
 func (t *nativeThread) restoreRegisters(sr proc.Registers) error {
 	return errors.New("not implemented")
+}
+
+func (t *nativeThread) withDebugRegisters(f func(*amd64util.DebugRegisters) error) error {
+	return proc.ErrHWBreakUnsupported
 }

@@ -1,6 +1,7 @@
 package proc
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 
@@ -57,6 +58,10 @@ func (m *memCache) WriteMemory(addr uint64, data []byte) (written int, err error
 	return m.mem.WriteMemory(addr, data)
 }
 
+func CreateLoadedCachedMemory(data []byte) MemoryReadWriter {
+	return &memCache{loaded: true, cacheAddr: fakeAddressUnresolv, cache: data, mem: nil}
+}
+
 func cacheMemory(mem MemoryReadWriter, addr uint64, size int) MemoryReadWriter {
 	if !cacheEnabled {
 		return mem
@@ -75,11 +80,6 @@ func cacheMemory(mem MemoryReadWriter, addr uint64, size int) MemoryReadWriter {
 	return &memCache{false, addr, make([]byte, size), mem}
 }
 
-// fakeAddress used by extractVarInfoFromEntry for variables that do not
-// have a memory address, we can't use 0 because a lot of code (likely
-// including client code) assumes that addr == 0 is nil
-const fakeAddress = 0xbeef0000
-
 // compositeMemory represents a chunk of memory that is stored in CPU
 // registers or non-contiguously.
 //
@@ -88,6 +88,7 @@ const fakeAddress = 0xbeef0000
 // with some fields stored into CPU registers and other fields stored in
 // memory.
 type compositeMemory struct {
+	base    uint64 // base address for this composite memory
 	realmem MemoryReadWriter
 	arch    *Arch
 	regs    op.DwarfRegisters
@@ -95,33 +96,62 @@ type compositeMemory struct {
 	data    []byte
 }
 
+// CreateCompositeMemory created a new composite memory type using the provided MemoryReadWriter as the
+// underlying memory buffer.
+func CreateCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters, pieces []op.Piece) (*compositeMemory, error) {
+	// This is basically a small wrapper to avoid having to change all callers
+	// of newCompositeMemory since it existed first.
+	cm, err := newCompositeMemory(mem, arch, regs, pieces)
+	if cm != nil {
+		cm.base = fakeAddressUnresolv
+	}
+	return cm, err
+}
+
 func newCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters, pieces []op.Piece) (*compositeMemory, error) {
 	cmem := &compositeMemory{realmem: mem, arch: arch, regs: regs, pieces: pieces, data: []byte{}}
 	for i := range pieces {
 		piece := &pieces[i]
-		if piece.IsRegister {
-			reg := regs.Bytes(piece.RegNum)
-			if piece.Size == 0 && len(pieces) == 1 {
+		switch piece.Kind {
+		case op.RegPiece:
+			reg := regs.Bytes(piece.Val)
+			if piece.Size == 0 && i == len(pieces)-1 {
 				piece.Size = len(reg)
 			}
 			if piece.Size > len(reg) {
 				if regs.FloatLoadError != nil {
-					return nil, fmt.Errorf("could not read %d bytes from register %d (size: %d), also error loading floating point registers: %v", piece.Size, piece.RegNum, len(reg), regs.FloatLoadError)
+					return nil, fmt.Errorf("could not read %d bytes from register %d (size: %d), also error loading floating point registers: %v", piece.Size, piece.Val, len(reg), regs.FloatLoadError)
 				}
-				return nil, fmt.Errorf("could not read %d bytes from register %d (size: %d)", piece.Size, piece.RegNum, len(reg))
+				return nil, fmt.Errorf("could not read %d bytes from register %d (size: %d)", piece.Size, piece.Val, len(reg))
 			}
 			cmem.data = append(cmem.data, reg[:piece.Size]...)
-		} else {
+		case op.AddrPiece:
 			buf := make([]byte, piece.Size)
-			mem.ReadMemory(buf, uint64(piece.Addr))
+			mem.ReadMemory(buf, uint64(piece.Val))
 			cmem.data = append(cmem.data, buf...)
+		case op.ImmPiece:
+			buf := piece.Bytes
+			if buf == nil {
+				sz := 8
+				if piece.Size > sz {
+					sz = piece.Size
+				}
+				if piece.Size == 0 && i == len(pieces)-1 {
+					piece.Size = arch.PtrSize() // DWARF doesn't say what this should be
+				}
+				buf = make([]byte, sz)
+				binary.LittleEndian.PutUint64(buf, piece.Val)
+			}
+			cmem.data = append(cmem.data, buf[:piece.Size]...)
+		default:
+			panic("unsupported piece kind")
 		}
 	}
 	return cmem, nil
 }
 
 func (mem *compositeMemory) ReadMemory(data []byte, addr uint64) (int, error) {
-	addr -= fakeAddress
+	addr -= mem.base
 	if addr >= uint64(len(mem.data)) || addr+uint64(len(data)) > uint64(len(mem.data)) {
 		return 0, errors.New("read out of bounds")
 	}
@@ -130,7 +160,7 @@ func (mem *compositeMemory) ReadMemory(data []byte, addr uint64) (int, error) {
 }
 
 func (mem *compositeMemory) WriteMemory(addr uint64, data []byte) (int, error) {
-	addr -= fakeAddress
+	addr -= mem.base
 	if addr >= uint64(len(mem.data)) || addr+uint64(len(data)) > uint64(len(mem.data)) {
 		return 0, errors.New("write out of bounds")
 	}
@@ -147,17 +177,24 @@ func (mem *compositeMemory) WriteMemory(addr uint64, data []byte) (int, error) {
 			// changed memory interval overlaps current piece
 			pieceMem := mem.data[curAddr : curAddr+uint64(piece.Size)]
 
-			if piece.IsRegister {
-				err := mem.regs.ChangeFunc(piece.RegNum, op.DwarfRegisterFromBytes(pieceMem))
+			switch piece.Kind {
+			case op.RegPiece:
+				oldReg := mem.regs.Reg(piece.Val)
+				newReg := op.DwarfRegisterFromBytes(pieceMem)
+				err := mem.regs.ChangeFunc(piece.Val, oldReg.Overwrite(newReg))
 				if err != nil {
 					return donesz, err
 				}
-			} else {
-				n, err := mem.realmem.WriteMemory(uint64(piece.Addr), pieceMem)
+			case op.AddrPiece:
+				n, err := mem.realmem.WriteMemory(uint64(piece.Val), pieceMem)
 				if err != nil {
 					return donesz + n, err
 				}
-
+			case op.ImmPiece:
+				//TODO(aarzilli): maybe return an error if the user tried to change the value?
+				// nothing to do
+			default:
+				panic("unsupported piece kind")
 			}
 			donesz += piece.Size
 		}

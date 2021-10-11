@@ -1,4 +1,5 @@
-//+build darwin,!macnative
+//go:build darwin && !macnative
+// +build darwin,!macnative
 
 package native
 
@@ -8,6 +9,8 @@ import (
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/amd64util"
+	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 )
 
 var ErrNativeBackendDisabled = errors.New("native backend disabled during compilation")
@@ -31,6 +34,8 @@ type osSpecificDetails struct{}
 
 // osProcessDetails holds Darwin specific information.
 type osProcessDetails struct{}
+
+func (os *osProcessDetails) Close() {}
 
 func findExecutable(path string, pid int) string {
 	panic(ErrNativeBackendDisabled)
@@ -82,6 +87,18 @@ func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 	panic(ErrNativeBackendDisabled)
 }
 
+func (dbp *nativeProcess) SupportsBPF() bool {
+	panic(ErrNativeBackendDisabled)
+}
+
+func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProbeArgMap) error {
+	panic(ErrNativeBackendDisabled)
+}
+
+func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
+	panic(ErrNativeBackendDisabled)
+}
+
 // SetPC sets the value of the PC register.
 func (t *nativeThread) setPC(pc uint64) error {
 	panic(ErrNativeBackendDisabled)
@@ -112,6 +129,10 @@ func (t *nativeThread) singleStep() error {
 
 func (t *nativeThread) restoreRegisters(sr proc.Registers) error {
 	panic(ErrNativeBackendDisabled)
+}
+
+func (t *nativeThread) withDebugRegisters(f func(*amd64util.DebugRegisters) error) error {
+	return proc.ErrHWBreakUnsupported
 }
 
 // Stopped returns whether the thread is stopped at

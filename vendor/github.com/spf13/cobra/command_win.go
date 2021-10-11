@@ -3,6 +3,7 @@
 package cobra
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -11,16 +12,15 @@ import (
 
 var preExecHookFn = preExecHook
 
-// enables an information splash screen on Windows if the CLI is started from explorer.exe.
-var MousetrapHelpText string = `This is a command line tool
-
-You need to open cmd.exe and run it from there.
-`
-
 func preExecHook(c *Command) {
-	if mousetrap.StartedByExplorer() {
+	if MousetrapHelpText != "" && mousetrap.StartedByExplorer() {
 		c.Print(MousetrapHelpText)
-		time.Sleep(5 * time.Second)
+		if MousetrapDisplayDuration > 0 {
+			time.Sleep(MousetrapDisplayDuration)
+		} else {
+			c.Println("Press return to continue...")
+			fmt.Scanln()
+		}
 		os.Exit(1)
 	}
 }

@@ -34,6 +34,8 @@ func I386Arch(goos string) *Arch {
 		asmDecode:                        i386AsmDecode,
 		PCRegNum:                         regnum.I386_Eip,
 		SPRegNum:                         regnum.I386_Esp,
+		asmRegisters:                     i386AsmRegisters,
+		RegisterNameToDwarf:              nameToDwarfFunc(regnum.I386NameToDwarf),
 	}
 }
 
@@ -146,7 +148,7 @@ func i386SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 		return true
 
 	default:
-		if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.fatalthrow" {
+		if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.throw" && it.frame.Current.Fn.Name != "runtime.fatalthrow" {
 			// The runtime switches to the system stack in multiple places.
 			// This usually happens through a call to runtime.systemstack but there
 			// are functions that switch to the system stack manually (for example
@@ -155,7 +157,7 @@ func i386SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 			// calls we switch directly to the goroutine stack if we detect that the
 			// function at the top of the stack is a runtime function.
 			//
-			// The function "runtime.fatalthrow" is deliberately excluded from this
+			// The function "runtime.throw" is deliberately excluded from this
 			// because it can end up in the stack during a cgo call and switching to
 			// the goroutine stack will exclude all the C functions from the stack
 			// trace.
@@ -184,12 +186,12 @@ func i386RegSize(regnum uint64) int {
 	return 4
 }
 
-func i386RegistersToDwarfRegisters(staticBase uint64, regs Registers) op.DwarfRegisters {
+func i386RegistersToDwarfRegisters(staticBase uint64, regs Registers) *op.DwarfRegisters {
 	dregs := initDwarfRegistersFromSlice(regnum.I386MaxRegNum(), regs, regnum.I386NameToDwarf)
 	dr := op.NewDwarfRegisters(staticBase, dregs, binary.LittleEndian, regnum.I386_Eip, regnum.I386_Esp, regnum.I386_Ebp, 0)
 	dr.SetLoadMoreCallback(loadMoreDwarfRegistersFromSliceFunc(dr, regs, regnum.I386NameToDwarf))
 
-	return *dr
+	return dr
 }
 
 func i386AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op.DwarfRegisters {

@@ -95,7 +95,7 @@ func ReadBaseMessage(r *bufio.Reader) ([]byte, error) {
 // and required:
 // 		Content-Length: [0-9]+\r\n\r\n
 // Extracts and returns the content length.
-func readContentLengthHeader(r *bufio.Reader) (contentLength int, err error) {
+func readContentLengthHeader(r *bufio.Reader) (contentLength int64, err error) {
 	// Look for <some header>\r\n\r\n
 	headerWithCr, err := r.ReadString('\r')
 	if err != nil {
@@ -115,7 +115,7 @@ func readContentLengthHeader(r *bufio.Reader) (contentLength int, err error) {
 	if len(headerAndLength) < 2 {
 		return 0, ErrHeaderNotContentLength
 	}
-	return strconv.Atoi(headerAndLength[1])
+	return strconv.ParseInt(headerAndLength[1], 10, 64)
 }
 
 // WriteProtocolMessage encodes message and writes it to w.

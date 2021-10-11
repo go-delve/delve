@@ -3,14 +3,11 @@ param (
     [Parameter(Mandatory = $true)][string]$arch
 )
 
+# Install Chocolatey
+#Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
+
 # Install MinGW.
-if (-Not(Test-Path "C:\mingw64"))
-{
-    $file = "x86_64-4.9.2-release-win32-seh-rt_v4-rev3.7z"
-    $url = "https://bintray.com/artifact/download/drewwells/generic/$file"
-    Invoke-WebRequest -UserAgent wget -Uri $url -OutFile $file
-    &7z x -oC:\ $file > $null
-}
+choco install -y mingw --version 10.2.0 
 
 # Install Procdump
 if (-Not(Test-Path "C:\procdump"))
@@ -53,9 +50,16 @@ if ($version -eq "gotip") {
 } else {
     # Install Go
     Write-Host "Finding latest patch version for $version"
-    $version = Invoke-WebRequest -Uri 'https://golang.org/dl/?mode=json&include=all' -UseBasicParsing | foreach {$_.Content} | ConvertFrom-Json | foreach {$_.version} | Select-String -Pattern "^$version($|\.|beta|rc)" | Select-Object -First 1 | foreach {$_.Line}
-    Write-Host "Go $version on $arch"
-    GetGo $version
+    $versions = Invoke-WebRequest -Uri 'https://golang.org/dl/?mode=json&include=all' -UseBasicParsing | foreach {$_.Content} | ConvertFrom-Json
+    $v = $versions | foreach {$_.version} | Select-String -Pattern "^$version($|\.)" | Sort-Object -Descending | Select-Object -First 1
+    if ($v -eq $null) {
+      $v = $versions | foreach {$_.version} | Select-String -Pattern "^$version(rc)" | Sort-Object -Descending | Select-Object -First 1
+    }
+    if ($v -eq $null) {
+      $v = $versions | foreach {$_.version} | Select-String -Pattern "^$version(beta)" | Sort-Object -Descending | Select-Object -First 1
+    }
+    Write-Host "Go $v on $arch"
+    GetGo $v
 }
 
 $env:GOPATH = "C:\gopath"
@@ -66,4 +70,5 @@ Write-Host $env:GOPATH
 
 go version
 go env
-mingw32-make test
+go run _scripts/make.go test
+Exit $LastExitCode

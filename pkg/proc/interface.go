@@ -1,6 +1,9 @@
 package proc
 
-import "github.com/go-delve/delve/pkg/elfwriter"
+import (
+	"github.com/go-delve/delve/pkg/elfwriter"
+	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
+)
 
 // Process represents the target of the debugger. This
 // target could be a system process, core file, etc.
@@ -26,6 +29,10 @@ type Process interface {
 // the `proc` package.
 // This is temporary and in support of an ongoing refactor.
 type ProcessInternal interface {
+	// Valid returns true if this Process can be used. When it returns false it
+	// also returns an error describing why the Process is invalid (either
+	// ErrProcessExited or ErrProcessDetached).
+	Valid() (bool, error)
 	// Restart restarts the recording from the specified position, or from the
 	// last checkpoint if pos == "".
 	// If pos starts with 'c' it's a checkpoint ID, otherwise it's an event
@@ -38,11 +45,16 @@ type ProcessInternal interface {
 	WriteBreakpoint(*Breakpoint) error
 	EraseBreakpoint(*Breakpoint) error
 
+	SupportsBPF() bool
+	SetUProbe(string, int64, []ebpf.UProbeArgMap) error
+
 	// DumpProcessNotes returns ELF core notes describing the process and its threads.
 	// Implementing this method is optional.
 	DumpProcessNotes(notes []elfwriter.Note, threadDone func()) (bool, []elfwriter.Note, error)
 	// MemoryMap returns the memory map of the target process. This method must be implemented if CanDump is true.
 	MemoryMap() ([]MemoryMapEntry, error)
+
+	GetBufferedTracepoints() []ebpf.RawUProbeParams
 }
 
 // RecordingManipulation is an interface for manipulating process recordings.
@@ -87,10 +99,6 @@ type Info interface {
 	// ResumeNotify specifies a channel that will be closed the next time
 	// ContinueOnce finishes resuming the target.
 	ResumeNotify(chan<- struct{})
-	// Valid returns true if this Process can be used. When it returns false it
-	// also returns an error describing why the Process is invalid (either
-	// ErrProcessExited or ErrProcessDetached).
-	Valid() (bool, error)
 	BinInfo() *BinaryInfo
 	EntryPoint() (uint64, error)
 

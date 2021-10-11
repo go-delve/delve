@@ -5,7 +5,7 @@ import (
 	"runtime"
 )
 
-func fputestsetup(f64a, f64b, f64c, f64d float64, f32a, f32b, f32c, f32d float32, avx2, avx512 bool)
+func fputestsetup(f64a, f64b, f64c, f64d float64, f32a, f32b, f32c, f32d float32, avx2, avx512, dobreak bool)
 func getCPUID70() (ebx, ecx uint32)
 
 func main() {
@@ -22,7 +22,7 @@ func main() {
 	avx2 := ebx&(1<<5) != 0
 	avx512 := ebx&(1<<16) != 0
 
-	fputestsetup(f64a, f64b, f64c, f64d, f32a, f32b, f32c, f32d, avx2, avx512)
+	fputestsetup(f64a, f64b, f64c, f64d, f32a, f32b, f32c, f32d, avx2, avx512, len(os.Args) < 2 || os.Args[1] != "panic")
 	if len(os.Args) < 2 || os.Args[1] != "panic" {
 		runtime.Breakpoint()
 	} else {

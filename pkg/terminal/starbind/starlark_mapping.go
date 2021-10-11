@@ -313,6 +313,84 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 		}
 		return env.interfaceToStarlarkValue(rpcRet), nil
 	})
+	r["create_ebpf_tracepoint"] = starlark.NewBuiltin("create_ebpf_tracepoint", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		if err := isCancelled(thread); err != nil {
+			return starlark.None, decorateError(thread, err)
+		}
+		var rpcArgs rpc2.CreateEBPFTracepointIn
+		var rpcRet rpc2.CreateEBPFTracepointOut
+		if len(args) > 0 && args[0] != starlark.None {
+			err := unmarshalStarlarkValue(args[0], &rpcArgs.FunctionName, "FunctionName")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		for _, kv := range kwargs {
+			var err error
+			switch kv[0].(starlark.String) {
+			case "FunctionName":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.FunctionName, "FunctionName")
+			default:
+				err = fmt.Errorf("unknown argument %q", kv[0])
+			}
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		err := env.ctx.Client().CallAPI("CreateEBPFTracepoint", &rpcArgs, &rpcRet)
+		if err != nil {
+			return starlark.None, err
+		}
+		return env.interfaceToStarlarkValue(rpcRet), nil
+	})
+	r["create_watchpoint"] = starlark.NewBuiltin("create_watchpoint", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		if err := isCancelled(thread); err != nil {
+			return starlark.None, decorateError(thread, err)
+		}
+		var rpcArgs rpc2.CreateWatchpointIn
+		var rpcRet rpc2.CreateWatchpointOut
+		if len(args) > 0 && args[0] != starlark.None {
+			err := unmarshalStarlarkValue(args[0], &rpcArgs.Scope, "Scope")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		} else {
+			rpcArgs.Scope = env.ctx.Scope()
+		}
+		if len(args) > 1 && args[1] != starlark.None {
+			err := unmarshalStarlarkValue(args[1], &rpcArgs.Expr, "Expr")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		if len(args) > 2 && args[2] != starlark.None {
+			err := unmarshalStarlarkValue(args[2], &rpcArgs.Type, "Type")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		for _, kv := range kwargs {
+			var err error
+			switch kv[0].(starlark.String) {
+			case "Scope":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Scope, "Scope")
+			case "Expr":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Expr, "Expr")
+			case "Type":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Type, "Type")
+			default:
+				err = fmt.Errorf("unknown argument %q", kv[0])
+			}
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		err := env.ctx.Client().CallAPI("CreateWatchpoint", &rpcArgs, &rpcRet)
+		if err != nil {
+			return starlark.None, err
+		}
+		return env.interfaceToStarlarkValue(rpcRet), nil
+	})
 	r["detach"] = starlark.NewBuiltin("detach", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if err := isCancelled(thread); err != nil {
 			return starlark.None, decorateError(thread, err)
@@ -684,6 +762,18 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 		}
 		return env.interfaceToStarlarkValue(rpcRet), nil
 	})
+	r["get_buffered_tracepoints"] = starlark.NewBuiltin("get_buffered_tracepoints", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		if err := isCancelled(thread); err != nil {
+			return starlark.None, decorateError(thread, err)
+		}
+		var rpcArgs rpc2.GetBufferedTracepointsIn
+		var rpcRet rpc2.GetBufferedTracepointsOut
+		err := env.ctx.Client().CallAPI("GetBufferedTracepoints", &rpcArgs, &rpcRet)
+		if err != nil {
+			return starlark.None, err
+		}
+		return env.interfaceToStarlarkValue(rpcRet), nil
+	})
 	r["get_thread"] = starlark.NewBuiltin("get_thread", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if err := isCancelled(thread); err != nil {
 			return starlark.None, decorateError(thread, err)
@@ -744,6 +834,24 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 		}
 		var rpcArgs rpc2.ListBreakpointsIn
 		var rpcRet rpc2.ListBreakpointsOut
+		if len(args) > 0 && args[0] != starlark.None {
+			err := unmarshalStarlarkValue(args[0], &rpcArgs.All, "All")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		for _, kv := range kwargs {
+			var err error
+			switch kv[0].(starlark.String) {
+			case "All":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.All, "All")
+			default:
+				err = fmt.Errorf("unknown argument %q", kv[0])
+			}
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
 		err := env.ctx.Client().CallAPI("ListBreakpoints", &rpcArgs, &rpcRet)
 		if err != nil {
 			return starlark.None, err
@@ -864,6 +972,18 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 				return starlark.None, decorateError(thread, err)
 			}
 		}
+		if len(args) > 2 && args[2] != starlark.None {
+			err := unmarshalStarlarkValue(args[2], &rpcArgs.Filters, "Filters")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		if len(args) > 3 && args[3] != starlark.None {
+			err := unmarshalStarlarkValue(args[3], &rpcArgs.GoroutineGroupingOptions, "GoroutineGroupingOptions")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
 		for _, kv := range kwargs {
 			var err error
 			switch kv[0].(starlark.String) {
@@ -871,6 +991,10 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Start, "Start")
 			case "Count":
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Count, "Count")
+			case "Filters":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Filters, "Filters")
+			case "GoroutineGroupingOptions":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.GoroutineGroupingOptions, "GoroutineGroupingOptions")
 			default:
 				err = fmt.Errorf("unknown argument %q", kv[0])
 			}

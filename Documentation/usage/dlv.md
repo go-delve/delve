@@ -4,7 +4,6 @@ Delve is a debugger for the Go programming language.
 
 ### Synopsis
 
-
 Delve is a source level debugger for Go programs.
 
 Delve enables you to interact with your program by controlling the execution of the process,
@@ -24,9 +23,10 @@ Pass flags to the program you are debugging using `--`, for example:
       --api-version int                  Selects API version when headless. New clients should use v2. Can be reset via RPCServer.SetApiVersion. See Documentation/api/json-rpc/README.md. (default 1)
       --backend string                   Backend selection (see 'dlv help backend'). (default "default")
       --build-flags string               Build flags, to be passed to the compiler. For example: --build-flags="-tags=integration -mod=vendor -cover -v"
-      --check-go-version                 Checks that the version of Go in use is compatible with Delve. (default true)
+      --check-go-version                 Exits if the version of Go in use is not compatible (too old or too new) with the version of Delve. (default true)
       --disable-aslr                     Disables address space randomization
       --headless                         Run debug server only, in headless mode.
+  -h, --help                             help for dlv
       --init string                      Init file, executed by the terminal client.
   -l, --listen string                    Debugging server listen address. (default "127.0.0.1:0")
       --log                              Enable debugging server logging.
@@ -38,10 +38,11 @@ Pass flags to the program you are debugging using `--`, for example:
 ```
 
 ### SEE ALSO
+
 * [dlv attach](dlv_attach.md)	 - Attach to running process and begin debugging.
 * [dlv connect](dlv_connect.md)	 - Connect to a headless debug server.
 * [dlv core](dlv_core.md)	 - Examine a core dump.
-* [dlv dap](dlv_dap.md)	 - [EXPERIMENTAL] Starts a TCP server communicating via Debug Adaptor Protocol (DAP).
+* [dlv dap](dlv_dap.md)	 - [EXPERIMENTAL] Starts a headless TCP server communicating via Debug Adaptor Protocol (DAP).
 * [dlv debug](dlv_debug.md)	 - Compile and begin debugging main package in current directory, or the package specified.
 * [dlv exec](dlv_exec.md)	 - Execute a precompiled binary, and begin a debug session.
 * [dlv replay](dlv_replay.md)	 - Replays a rr trace.

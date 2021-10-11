@@ -12,6 +12,7 @@ const (
 	// values below are inspired the original vscode-go debug adaptor.
 	FailedToLaunch             = 3000
 	FailedToAttach             = 3001
+	FailedToInitialize         = 3002
 	UnableToSetBreakpoints     = 2002
 	UnableToDisplayThreads     = 2003
 	UnableToProduceStackTrace  = 2004
@@ -20,7 +21,12 @@ const (
 	UnableToListGlobals        = 2007
 	UnableToLookupVariable     = 2008
 	UnableToEvaluateExpression = 2009
-	UnableToListRegisters      = 2010
+	UnableToHalt               = 2010
+	UnableToGetExceptionInfo   = 2011
+	UnableToSetVariable        = 2012
+	UnableToListRegisters      = 2013
 	// Add more codes as we support more requests
-	DisconnectError = 5000
+	NoDebugIsRunning  = 3000
+	DebuggeeIsRunning = 4000
+	DisconnectError   = 5000
 )
