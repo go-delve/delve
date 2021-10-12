@@ -63,6 +63,9 @@ func getConfigureString(sargs *launchAttachArgs, cfgname string, readonly []stri
 	if cfgname == "substitutePath" {
 		result += config.ConfigureListByName(sargs, "substitutePathReverse", readonly)
 	}
+	if cfgname == "substitutePathReverse" {
+		result = config.ConfigureListByName(sargs, "substitutePath", readonly) + result
+	}
 	return result
 }
 
