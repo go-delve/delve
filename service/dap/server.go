@@ -25,7 +25,6 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -136,27 +135,27 @@ type Server struct {
 // launchAttachArgs captures arguments from launch/attach request that
 // impact handling of subsequent requests.
 type launchAttachArgs struct {
-	// stopOnEntry is set to automatically stop the debugee after start.
-	stopOnEntry bool
-	// stackTraceDepth is the maximum length of the returned list of stack frames.
-	stackTraceDepth int
-	// showGlobalVariables indicates if global package variables should be loaded.
-	showGlobalVariables bool
+	// StopOnEntry is set to automatically stop the debugee after start.
+	StopOnEntry bool `yaml:"stopOnEntry"`
+	// StackTraceDepth is the maximum length of the returned list of stack frames.
+	StackTraceDepth int `yaml:"stackTraceDepth"`
+	// ShowGlobalVariables indicates if global package variables should be loaded.
+	ShowGlobalVariables bool `yaml:"showGlobalVariables"`
 	// substitutePathClientToServer indicates rules for converting file paths between client and debugger.
 	// These must be directory paths.
-	substitutePathClientToServer [][2]string
+	substitutePathClientToServer [][2]string `yaml:"substitutePath"`
 	// substitutePathServerToClient indicates rules for converting file paths between debugger and client.
 	// These must be directory paths.
-	substitutePathServerToClient [][2]string
+	substitutePathServerToClient [][2]string `yaml:"substitutePathReverse"`
 }
 
 // defaultArgs borrows the defaults for the arguments from the original vscode-go adapter.
 // TODO(polinasok): clean up this and its reference (Server.args)
 // in favor of default*Config variables defined in types.go.
 var defaultArgs = launchAttachArgs{
-	stopOnEntry:                  false,
-	stackTraceDepth:              50,
-	showGlobalVariables:          false,
+	StopOnEntry:                  false,
+	StackTraceDepth:              50,
+	ShowGlobalVariables:          false,
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
 }
@@ -226,11 +225,11 @@ func NewServer(config *service.Config) *Server {
 // If user-specified options are provided via Launch/AttachRequest,
 // we override the defaults for optional args.
 func (s *Server) setLaunchAttachArgs(args LaunchAttachCommonConfig) error {
-	s.args.stopOnEntry = args.StopOnEntry
+	s.args.StopOnEntry = args.StopOnEntry
 	if depth := args.StackTraceDepth; depth > 0 {
-		s.args.stackTraceDepth = depth
+		s.args.StackTraceDepth = depth
 	}
-	s.args.showGlobalVariables = args.ShowGlobalVariables
+	s.args.ShowGlobalVariables = args.ShowGlobalVariables
 	if paths := args.SubstitutePath; len(paths) > 0 {
 		clientToServer := make([][2]string, 0, len(paths))
 		serverToClient := make([][2]string, 0, len(paths))
@@ -1307,7 +1306,7 @@ func (s *Server) asyncCommandDone(asyncSetupDone chan struct{}) {
 // so the s.debugger is guaranteed to be set.
 func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest, asyncSetupDone chan struct{}) {
 	defer s.asyncCommandDone(asyncSetupDone)
-	if s.args.stopOnEntry {
+	if s.args.StopOnEntry {
 		e := &dap.StoppedEvent{
 			Event: *newEvent("stopped"),
 			Body:  dap.StoppedEventBody{Reason: "entry", ThreadId: 1, AllThreadsStopped: true},
@@ -1317,7 +1316,7 @@ func (s *Server) onConfigurationDoneRequest(request *dap.ConfigurationDoneReques
 	s.debugger.Target().KeepSteppingBreakpoints = proc.HaltKeepsSteppingBreakpoints | proc.TracepointKeepsSteppingBreakpoints
 
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
-	if !s.args.stopOnEntry {
+	if !s.args.StopOnEntry {
 		s.doRunCommand(api.Continue, asyncSetupDone)
 	}
 }
@@ -1604,7 +1603,7 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 	if start < 0 {
 		start = 0
 	}
-	levels := s.args.stackTraceDepth
+	levels := s.args.StackTraceDepth
 	if request.Arguments.Levels > 0 {
 		levels = request.Arguments.Levels
 	}
@@ -1648,7 +1647,7 @@ func (s *Server) onStackTraceRequest(request *dap.StackTraceRequest) {
 		// We don't know the exact number of available stack frames, so
 		// add an arbitrary number so the client knows to request additional
 		// frames.
-		totalFrames += s.args.stackTraceDepth
+		totalFrames += s.args.StackTraceDepth
 	}
 	response := &dap.StackTraceResponse{
 		Response: *newResponse(request.Request),
@@ -1702,7 +1701,7 @@ func (s *Server) onScopesRequest(request *dap.ScopesRequest) {
 	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
 	scopes := []dap.Scope{scopeArgs, scopeLocals}
 
-	if s.args.showGlobalVariables {
+	if s.args.ShowGlobalVariables {
 		// Limit what global variables we will return to the current package only.
 		// TODO(polina): This is how vscode-go currently does it to make
 		// the amount of the returned data manageable. In fact, this is
@@ -2308,65 +2307,6 @@ func (s *Server) onEvaluateRequest(request *dap.EvaluateRequest) {
 	s.send(response)
 }
 
-func (s *Server) evaluateConfig(expr string) (string, error) {
-	// TODO(suzmue): reuse terminal package config parsing and handling.
-	argv := split2PartsBySpace(expr)
-	name := argv[0]
-	switch name {
-	case "get":
-		return listConfig([]config{{"showGlobalVariables", s.args.showGlobalVariables}, {"stackTraceDepth", s.args.stackTraceDepth}}), nil
-	case "showGlobalVariables":
-		if len(argv) != 2 {
-			return "", fmt.Errorf("expected 1 argument to config showGlobalVariables, got %d", len(argv)-1)
-		}
-		showGlobal, err := strconv.ParseBool(argv[1])
-		if err != nil {
-			return "", err
-		}
-		s.args.showGlobalVariables = showGlobal
-		s.send(&dap.InvalidatedEvent{
-			Event: *newEvent("invalidated"),
-			Body: dap.InvalidatedEventBody{
-				Areas: []dap.InvalidatedAreas{"variables"},
-			},
-		})
-	case "stackTraceDepth":
-		if len(argv) != 2 {
-			return "", fmt.Errorf("expected 1 argument to config stackTraceDepth, got %d", len(argv)-1)
-		}
-		stackDepth, err := strconv.ParseInt(argv[1], 0, 64)
-		if err != nil {
-			return "", err
-		}
-		s.args.stackTraceDepth = int(stackDepth)
-	default:
-		return "", fmt.Errorf("invalid config value %s", name)
-	}
-	return "Success", nil
-}
-
-type config struct {
-	name  string
-	value interface{}
-}
-
-func listConfig(configurations []config) string {
-	var val string
-	for _, cfg := range configurations {
-		val += fmt.Sprintf("%s:\t%v\n", cfg.name, cfg.value)
-	}
-	return val
-}
-
-// Taken from terminal.
-func split2PartsBySpace(s string) []string {
-	v := strings.SplitN(s, " ", 2)
-	for i, _ := range v {
-		v[i] = strings.TrimSpace(v[i])
-	}
-	return v
-}
-
 func (s *Server) doCall(goid, frame int, expr string) (*api.DebuggerState, []*proc.Variable, error) {
 	// This call might be evaluated in the context of the frame that is not topmost
 	// if the editor is set to view the variables for one of the parent frames.
@@ -2730,7 +2670,7 @@ func (s *Server) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 }
 
 func (s *Server) stacktrace(goroutineID int, g *proc.G) (string, error) {
-	frames, err := s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
+	frames, err := s.debugger.Stacktrace(goroutineID, s.args.StackTraceDepth, 0)
 	if err != nil {
 		return "", err
 	}

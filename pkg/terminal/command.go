@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/cosiner/argv"
+	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/locspec"
 	"github.com/go-delve/delve/pkg/terminal/colorize"
 	"github.com/go-delve/delve/service"
@@ -981,16 +982,8 @@ func selectedGID(state *api.DebuggerState) int {
 	return state.SelectedGoroutine.ID
 }
 
-func split2PartsBySpace(s string) []string {
-	v := strings.SplitN(s, " ", 2)
-	for i, _ := range v {
-		v[i] = strings.TrimSpace(v[i])
-	}
-	return v
-}
-
 func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
-	args := split2PartsBySpace(argstr)
+	args := config.Split2PartsBySpace(argstr)
 
 	if ctx.Prefix == onPrefix {
 		if len(args) != 1 || args[0] != "" {
@@ -1039,7 +1032,7 @@ func (c *Commands) frameCommand(t *Term, ctx callContext, argstr string, directi
 			return errors.New("not enough arguments")
 		}
 	} else {
-		args := split2PartsBySpace(argstr)
+		args := config.Split2PartsBySpace(argstr)
 		var err error
 		if frame, err = strconv.Atoi(args[0]); err != nil {
 			return err
@@ -1254,7 +1247,7 @@ func restart(t *Term, ctx callContext, args string) error {
 }
 
 func restartRecorded(t *Term, ctx callContext, args string) error {
-	v := split2PartsBySpace(args)
+	v := config.Split2PartsBySpace(args)
 
 	rerecord := false
 	resetArgs := false
@@ -1806,7 +1799,7 @@ func formatBreakpointAttrs(prefix string, bp *api.Breakpoint, includeTrace bool)
 }
 
 func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]*api.Breakpoint, error) {
-	args := split2PartsBySpace(argstr)
+	args := config.Split2PartsBySpace(argstr)
 
 	requestedBp := &api.Breakpoint{}
 	spec := ""
@@ -2208,7 +2201,7 @@ func types(t *Term, ctx callContext, args string) error {
 }
 
 func parseVarArguments(args string, t *Term) (filter string, cfg api.LoadConfig) {
-	if v := split2PartsBySpace(args); len(v) >= 1 && v[0] == "-v" {
+	if v := config.Split2PartsBySpace(args); len(v) >= 1 && v[0] == "-v" {
 		if len(v) == 2 {
 			return v[1], t.loadConfig()
 		} else {
@@ -2482,7 +2475,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 	var cmd, rest string
 
 	if args != "" {
-		argv := split2PartsBySpace(args)
+		argv := config.Split2PartsBySpace(args)
 		if len(argv) != 2 {
 			return disasmUsageError
 		}
@@ -2513,7 +2506,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		}
 		disasm, disasmErr = t.client.DisassemblePC(ctx.Scope, locs[0].PC, flavor)
 	case "-a":
-		v := split2PartsBySpace(rest)
+		v := config.Split2PartsBySpace(rest)
 		if len(v) != 2 {
 			return disasmUsageError
 		}
@@ -2835,7 +2828,7 @@ func getBreakpointByIDOrName(t *Term, arg string) (*api.Breakpoint, error) {
 }
 
 func (c *Commands) onCmd(t *Term, ctx callContext, argstr string) error {
-	args := split2PartsBySpace(argstr)
+	args := config.Split2PartsBySpace(argstr)
 
 	if len(args) < 2 {
 		return errors.New("not enough arguments")
@@ -2912,7 +2905,7 @@ func (c *Commands) parseBreakpointAttrs(t *Term, ctx callContext, r io.Reader) e
 }
 
 func conditionCmd(t *Term, ctx callContext, argstr string) error {
-	args := split2PartsBySpace(argstr)
+	args := config.Split2PartsBySpace(argstr)
 
 	if len(args) < 2 {
 		return fmt.Errorf("not enough arguments")
@@ -2926,7 +2919,7 @@ func conditionCmd(t *Term, ctx callContext, argstr string) error {
 			return nil
 		}
 
-		args = split2PartsBySpace(args[1])
+		args = config.Split2PartsBySpace(args[1])
 		if len(args) < 2 {
 			return fmt.Errorf("not enough arguments")
 		}

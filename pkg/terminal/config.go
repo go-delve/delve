@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"strconv"
-	"strings"
 	"text/tabwriter"
 
 	"github.com/go-delve/delve/pkg/config"
@@ -32,80 +30,15 @@ func configureCmd(t *Term, ctx callContext, args string) error {
 	}
 }
 
-type configureIterator struct {
-	cfgValue reflect.Value
-	cfgType  reflect.Type
-	i        int
-}
-
-func iterateConfiguration(conf *config.Config) *configureIterator {
-	cfgValue := reflect.ValueOf(conf).Elem()
-	cfgType := cfgValue.Type()
-
-	return &configureIterator{cfgValue, cfgType, -1}
-}
-
-func (it *configureIterator) Next() bool {
-	it.i++
-	return it.i < it.cfgValue.NumField()
-}
-
-func (it *configureIterator) Field() (name string, field reflect.Value) {
-	name = it.cfgType.Field(it.i).Tag.Get("yaml")
-	if comma := strings.Index(name, ","); comma >= 0 {
-		name = name[:comma]
-	}
-	field = it.cfgValue.Field(it.i)
-	return
-}
-
-func configureFindFieldByName(conf *config.Config, name string) reflect.Value {
-	it := iterateConfiguration(conf)
-	for it.Next() {
-		fieldName, field := it.Field()
-		if fieldName == name {
-			return field
-		}
-	}
-	return reflect.ValueOf(nil)
-}
-
 func configureList(t *Term) error {
 	w := new(tabwriter.Writer)
 	w.Init(os.Stdout, 0, 8, 1, ' ', 0)
-
-	it := iterateConfiguration(t.conf)
-	for it.Next() {
-		fieldName, field := it.Field()
-		if fieldName == "" {
-			continue
-		}
-
-		switch field.Kind() {
-		case reflect.Interface:
-			switch field := field.Interface().(type) {
-			case string:
-				fmt.Fprintf(w, "%s\t%q\n", fieldName, field)
-			default:
-				fmt.Fprintf(w, "%s\t%v\n", fieldName, field)
-			}
-		case reflect.Ptr:
-			if !field.IsNil() {
-				fmt.Fprintf(w, "%s\t%v\n", fieldName, field.Elem())
-			} else {
-				fmt.Fprintf(w, "%s\t<not defined>\n", fieldName)
-			}
-		case reflect.String:
-			fmt.Fprintf(w, "%s\t%q\n", fieldName, field)
-		default:
-			fmt.Fprintf(w, "%s\t%v\n", fieldName, field)
-		}
-	}
+	config.ConfigureList(w, t.conf, nil)
 	return w.Flush()
 }
 
 func configureSet(t *Term, args string) error {
-	v := split2PartsBySpace(args)
+	v := config.Split2PartsBySpace(args)
 
 	cfgname := v[0]
 	var rest string
@@ -117,7 +50,7 @@ func configureSet(t *Term, args string) error {
 		return configureSetAlias(t, rest)
 	}
 
-	field := configureFindFieldByName(t.conf, cfgname)
+	field := config.ConfigureFindFieldByName(t.conf, cfgname)
 	if !field.CanAddr() {
 		return fmt.Errorf("%q is not a configuration parameter", cfgname)
 	}
@@ -126,41 +59,7 @@ func configureSet(t *Term, args string) error {
 		return configureSetSubstitutePath(t, rest)
 	}
 
-	simpleArg := func(typ reflect.Type) (reflect.Value, error) {
-		switch typ.Kind() {
-		case reflect.Int:
-			n, err := strconv.Atoi(rest)
-			if err != nil {
-				return reflect.ValueOf(nil), fmt.Errorf("argument to %q must be a number", cfgname)
-			}
-			if n < 0 {
-				return reflect.ValueOf(nil), fmt.Errorf("argument to %q must be a number greater than zero", cfgname)
-			}
-			return reflect.ValueOf(&n), nil
-		case reflect.Bool:
-			v := rest == "true"
-			return reflect.ValueOf(&v), nil
-		case reflect.String:
-			return reflect.ValueOf(&rest), nil
-		default:
-			return reflect.ValueOf(nil), fmt.Errorf("unsupported type for configuration key %q", cfgname)
-		}
-	}
-
-	if field.Kind() == reflect.Ptr {
-		val, err := simpleArg(field.Type().Elem())
-		if err != nil {
-			return err
-		}
-		field.Set(val)
-	} else {
-		val, err := simpleArg(field.Type())
-		if err != nil {
-			return err
-		}
-		field.Set(val.Elem())
-	}
-	return nil
+	return config.ConfigureSetSimple(rest, cfgname, field)
 }
 
 func configureSetSubstitutePath(t *Term, rest string) error {

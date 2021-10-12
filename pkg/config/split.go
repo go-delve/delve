@@ -2,6 +2,11 @@ package config
 
 import (
 	"bytes"
+	"fmt"
+	"io"
+	"reflect"
+	"strconv"
+	"strings"
 	"unicode"
 )
 
@@ -60,4 +65,143 @@ func SplitQuotedFields(in string, quote rune) []string {
 	}
 
 	return r
+}
+
+func ConfigureSetSimple(rest string, cfgname string, field reflect.Value) error {
+	simpleArg := func(typ reflect.Type) (reflect.Value, error) {
+		switch typ.Kind() {
+		case reflect.Int:
+			n, err := strconv.Atoi(rest)
+			if err != nil {
+				return reflect.ValueOf(nil), fmt.Errorf("argument to %q must be a number", cfgname)
+			}
+			if n < 0 {
+				return reflect.ValueOf(nil), fmt.Errorf("argument to %q must be a number greater than zero", cfgname)
+			}
+			return reflect.ValueOf(&n), nil
+		case reflect.Bool:
+			v := rest == "true"
+			return reflect.ValueOf(&v), nil
+		case reflect.String:
+			return reflect.ValueOf(&rest), nil
+		default:
+			return reflect.ValueOf(nil), fmt.Errorf("unsupported type for configuration key %q", cfgname)
+		}
+	}
+
+	if field.Kind() == reflect.Ptr {
+		val, err := simpleArg(field.Type().Elem())
+		if err != nil {
+			return err
+		}
+		field.Set(val)
+	} else {
+		val, err := simpleArg(field.Type())
+		if err != nil {
+			return err
+		}
+		field.Set(val.Elem())
+	}
+	return nil
+}
+
+func ConfigureList(w io.Writer, config interface{}, readonly []string) {
+	it := IterateConfiguration(config)
+	for it.Next() {
+		fieldName, field := it.Field()
+		if fieldName == "" {
+			continue
+		}
+
+		writeField(w, field, fieldName, readonly)
+	}
+}
+
+func writeField(w io.Writer, field reflect.Value, fieldName string, readonly []string) {
+
+	var readOnlyMessage string
+	for _, f := range readonly {
+		if fieldName == f {
+			readOnlyMessage = " (read only)"
+		}
+	}
+
+	switch field.Kind() {
+	case reflect.Interface:
+		switch field := field.Interface().(type) {
+		case string:
+			fmt.Fprintf(w, "%s\t%q\n", fieldName, field)
+		default:
+			fmt.Fprintf(w, "%s\t%v\n", fieldName, field)
+		}
+	case reflect.Ptr:
+		if !field.IsNil() {
+			fmt.Fprintf(w, "%s\t%v%s\n", fieldName, field.Elem(), readOnlyMessage)
+		} else {
+			fmt.Fprintf(w, "%s%s\t<not defined>\n", fieldName, readOnlyMessage)
+		}
+	case reflect.String:
+		fmt.Fprintf(w, "%s\t%q%s\n", fieldName, field, readOnlyMessage)
+	default:
+		fmt.Fprintf(w, "%s\t%v%s\n", fieldName, field, readOnlyMessage)
+	}
+}
+
+type configureIterator struct {
+	cfgValue reflect.Value
+	cfgType  reflect.Type
+	i        int
+}
+
+func IterateConfiguration(conf interface{}) *configureIterator {
+	cfgValue := reflect.ValueOf(conf).Elem()
+	cfgType := cfgValue.Type()
+
+	return &configureIterator{cfgValue, cfgType, -1}
+}
+
+func (it *configureIterator) Next() bool {
+	it.i++
+	return it.i < it.cfgValue.NumField()
+}
+
+func (it *configureIterator) Field() (name string, field reflect.Value) {
+	name = it.cfgType.Field(it.i).Tag.Get("yaml")
+	if comma := strings.Index(name, ","); comma >= 0 {
+		name = name[:comma]
+	}
+	field = it.cfgValue.Field(it.i)
+	return
+}
+
+func ConfigureListByName(conf interface{}, name string, readonly []string) string {
+	it := IterateConfiguration(conf)
+	for it.Next() {
+		fieldName, field := it.Field()
+		if fieldName == name {
+			var buf bytes.Buffer
+			writeField(&buf, field, fieldName, readonly)
+			return buf.String()
+		}
+	}
+	return ""
+}
+
+func ConfigureFindFieldByName(conf interface{}, name string) reflect.Value {
+	it := IterateConfiguration(conf)
+	for it.Next() {
+		fieldName, field := it.Field()
+		if fieldName == name {
+			return field
+		}
+	}
+	return reflect.ValueOf(nil)
+}
+
+func Split2PartsBySpace(s string) []string {
+	v := strings.SplitN(s, " ", 2)
+	for i := range v {
+		v[i] = strings.TrimSpace(v[i])
+	}
+	return v
 }
