@@ -1,3 +1,0 @@
-localtests/issue2593/main.go:23:6: func issue2593_call is unused (U1000)
-pkg/proc/native/proc_linux.go:807:5: the surrounding loop is unconditionally terminated (SA4004)
-vendor/github.com/aquasecurity/libbpfgo/libbpf_cb.go:4:2: could not import C (cgo preprocessing failed) (compile)
