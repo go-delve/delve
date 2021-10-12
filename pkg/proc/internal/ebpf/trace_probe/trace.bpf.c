@@ -244,7 +244,7 @@ int uprobe__dlv_trace(struct pt_regs *ctx) {
         return 1;
     }
 
-    if (args->fn_addr == ctx->ip) {
+    if (!args->is_ret) {
         // In uprobe at function entry.
 
         // We're in the entry point of the function at the uprobe we set.

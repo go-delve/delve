@@ -44,7 +44,7 @@ func (ctx *EBPFContext) AttachURetprobe(pid int, name string, offset uint32) err
 	return errors.New("eBPF is disabled")
 }
 
-func (ctx *EBPFContext) UpdateArgMap(key uint64, goidOffset int64, args []UProbeArgMap, gAddrOffset uint64) error {
+func (ctx *EBPFContext) UpdateArgMap(key uint64, goidOffset int64, args []UProbeArgMap, gAddrOffset uint64, isret bool) error {
 	return errors.New("eBPF is disabled")
 }
 

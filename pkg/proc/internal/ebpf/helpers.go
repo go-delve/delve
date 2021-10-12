@@ -44,11 +44,6 @@ type EBPFContext struct {
 	bpfRingBuf *bpf.RingBuffer
 	bpfArgMap  *bpf.BPFMap
 
-	uretprobes          []Uretprobe
-	clearedURetProbes   []Uretprobe
-	clearURetProbesOnce sync.Once
-	u                   sync.Mutex
-
 	parsedBpfEvents []RawUProbeParams
 	m               sync.Mutex
 }
@@ -59,31 +54,6 @@ func (ctx *EBPFContext) Close() {
 	}
 }
 
-func (ctx *EBPFContext) GetURetProbes() []Uretprobe {
-	ctx.u.Lock()
-	defer ctx.u.Unlock()
-	return ctx.uretprobes
-}
-
-func (ctx *EBPFContext) ClearURetProbes() {
-	ctx.u.Lock()
-	defer ctx.u.Unlock()
-	// We wrap this in a sync.Once because we want this operation to only
-	// happen once per hit of the runtime.copystack function. We seem to hit that
-	// breakpoint multiple times, but we only want to clear the list of uretprobes
-	// once.
-	ctx.clearURetProbesOnce.Do(func() {
-		ctx.clearedURetProbes = ctx.uretprobes
-		ctx.uretprobes = make([]Uretprobe, 0)
-	})
-}
-
-func (ctx *EBPFContext) GetClearedURetProbes() []Uretprobe {
-	ctx.u.Lock()
-	defer ctx.u.Unlock()
-	return ctx.clearedURetProbes
-}
-
 func (ctx *EBPFContext) AttachUprobe(pid int, name string, offset uint32) error {
 	if ctx.bpfProg == nil {
 		return errors.New("no eBPF program loaded")
@@ -92,28 +62,11 @@ func (ctx *EBPFContext) AttachUprobe(pid int, name string, offset uint32) error 
 	return err
 }
 
-func (ctx *EBPFContext) AttachURetprobe(pid int, name string, offset uint32) error {
-	ctx.u.Lock()
-	defer ctx.u.Unlock()
-	if ctx.bpfProg == nil {
-		return errors.New("no eBPF program loaded")
-	}
-	link, err := ctx.bpfProg.AttachURetprobe(pid, name, offset)
-	ctx.uretprobes = append(ctx.uretprobes, Uretprobe{Link: link, Pid: pid, Path: name, Offset: offset})
-
-	// If we're attaching a uretprobe we can consider the list of uretprobes to be
-	// active again, which means they can once again be cleared. Let's set up another
-	// sync.Once to do this.
-	ctx.clearURetProbesOnce = sync.Once{}
-
-	return err
-}
-
-func (ctx *EBPFContext) UpdateArgMap(key uint64, goidOffset int64, args []UProbeArgMap, gAddrOffset uint64) error {
+func (ctx *EBPFContext) UpdateArgMap(key uint64, goidOffset int64, args []UProbeArgMap, gAddrOffset uint64, isret bool) error {
 	if ctx.bpfArgMap == nil {
 		return errors.New("eBPF map not loaded")
 	}
-	params := createFunctionParameterList(key, goidOffset, args)
+	params := createFunctionParameterList(key, goidOffset, args, isret)
 	params.g_addr_offset = C.longlong(gAddrOffset)
 	return ctx.bpfArgMap.Update(unsafe.Pointer(&key), unsafe.Pointer(&params))
 }
@@ -232,10 +185,11 @@ func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 	return rawParams
 }
 
-func createFunctionParameterList(entry uint64, goidOffset int64, args []UProbeArgMap) C.function_parameter_list_t {
+func createFunctionParameterList(entry uint64, goidOffset int64, args []UProbeArgMap, isret bool) C.function_parameter_list_t {
 	var params C.function_parameter_list_t
 	params.goid_offset = C.uint(goidOffset)
 	params.fn_addr = C.uint(entry)
+	params.is_ret = C.bool(isret)
 	params.n_parameters = C.uint(0)
 	params.n_ret_parameters = C.uint(0)
 	for _, arg := range args {

@@ -180,7 +180,7 @@ func watchpointOutOfScope(t *Target, watchpoint *Breakpoint) {
 
 // adjustStackWatchpoint is called when the goroutine of watchpoint resizes
 // its stack. It is used as a breaklet callback function.
-// Its responsibility is to move the watchpoint to a its new address.
+// Its responsibility is to move the watchpoint to its new address.
 func adjustStackWatchpoint(t *Target, th Thread, watchpoint *Breakpoint) {
 	g, _ := GetG(th)
 	if g == nil {

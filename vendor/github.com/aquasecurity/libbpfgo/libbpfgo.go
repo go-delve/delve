@@ -251,6 +251,14 @@ type BPFLink struct {
 	eventName string
 }
 
+func (l *BPFLink) Detach() error {
+	ret := C.bpf_link__detach(l.link)
+	if ret < 0 {
+		return syscall.Errno(-ret)
+	}
+	return nil
+}
+
 func (l *BPFLink) Destroy() error {
 	ret := C.bpf_link__destroy(l.link)
 	if ret < 0 {

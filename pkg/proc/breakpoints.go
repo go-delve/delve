@@ -558,9 +558,6 @@ func (t *Target) SetEBPFTracepoint(fnName string) error {
 			}
 		}
 		offset := origOffset + int64(t.BinInfo().Arch.PtrSize())
-		if isret {
-			offset = origOffset
-		}
 		args = append(args, ebpf.UProbeArgMap{
 			Offset: offset,
 			Size:   dt.Size(),
@@ -573,23 +570,6 @@ func (t *Target) SetEBPFTracepoint(fnName string) error {
 
 	// Finally, set the uprobe on the function.
 	t.proc.SetUProbe(fnName, goidOffset, args)
-
-	// Next we want to set the uretprobe on the function.
-	// We have to be careful here, just as with stack watchpoints, we need to
-	// ensure that we watch the runtime to ensure that whenever it decides to grow and copy
-	// a stack frame, we will be notified.
-	err = t.setStackResizeSentinel(nil, true, func(th Thread) bool {
-		if th.Breakpoint().Name == "copystack-entry" {
-			t.proc.DisableURetProbes()
-		} else {
-			t.proc.EnableURetProbes()
-		}
-		return false // we don't want this showing up for users.
-	})
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 

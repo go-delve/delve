@@ -33,6 +33,7 @@ typedef struct function_parameter_list {
       int goroutine_id;
 
       unsigned int fn_addr;
+      bool is_ret;
 
       unsigned int n_parameters;          // number of parameters.
       function_parameter_t params[6];     // list of parameters.

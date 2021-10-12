@@ -911,7 +911,7 @@ func TestTraceEBPFRet(t *testing.T) {
 	dlvbin, tmpdir := getDlvBinEBPF(t)
 	defer os.RemoveAll(tmpdir)
 
-	expected := "> (1) main.g(1000, 0xdeadbeef) => 10\n"
+	expected := "> (1) main.g(1000) => \"10\"\n"
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(tmpdir, "__debug"), filepath.Join(fixtures, "databpstack2.go"), "main.g")
@@ -921,10 +921,10 @@ func TestTraceEBPFRet(t *testing.T) {
 
 	assertNoError(cmd.Start(), t, "running trace")
 
-	output, err := bufio.NewReader(rdr).ReadString('\n')
+	output, err := ioutil.ReadAll(rdr)
 	assertNoError(err, t, "ReadAll")
 
-	if !strings.Contains(output, expected) {
+	if !strings.Contains(string(output), expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", expected, output)
 	}
 	cmd.Wait()
