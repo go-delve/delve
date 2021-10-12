@@ -5,11 +5,28 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/go-delve/delve/pkg/config"
 )
 
-type cmdPrefix int
+func (s *Session) delveConfig(goid, frame int, cmdstr string) (string, error) {
+	vals := strings.SplitN(strings.TrimSpace(cmdstr), " ", 2)
+	cmdname := vals[0]
+	var args string
+	if len(vals) > 1 {
+		args = strings.TrimSpace(vals[1])
+	}
+	for _, cmd := range debugCommands(s) {
+		for _, alias := range cmd.aliases {
+			if alias == cmdname {
+				return cmd.cmdFn(goid, frame, args)
+			}
+		}
+	}
+	return "", errNoCmd
+}
 
-type cmdfunc func(args string) (string, error)
+type cmdfunc func(goid, frame int, args string) (string, error)
 
 type command struct {
 	aliases []string
@@ -18,7 +35,7 @@ type command struct {
 }
 
 // debugCommands returns a Commands struct with default commands defined.
-func debugCommands(s *Server) []command {
+func debugCommands(s *Session) []command {
 	return []command{
 		{aliases: []string{"help", "h"}, cmdFn: s.helpMessage, helpMsg: `Prints the help message.
 
@@ -44,7 +61,7 @@ Adds or removes a path substitution rule.`},
 
 var errNoCmd = errors.New("command not available")
 
-func (s *Server) helpMessage(args string) (string, error) {
+func (s *Session) helpMessage(_, _ int, args string) (string, error) {
 	var buf bytes.Buffer
 	if args != "" {
 		for _, cmd := range debugCommands(s) {
@@ -59,7 +76,7 @@ func (s *Server) helpMessage(args string) (string, error) {
 
 	fmt.Fprintln(&buf, "The following commands are available:")
 
-	for _, cmd := range s.debugCommands(s) {
+	for _, cmd := range debugCommands(s) {
 		h := cmd.helpMsg
 		if idx := strings.Index(h, "\n"); idx >= 0 {
 			h = h[:idx]
@@ -74,4 +91,19 @@ func (s *Server) helpMessage(args string) (string, error) {
 	fmt.Fprintln(&buf)
 	fmt.Fprintln(&buf, "Type help followed by a command for full documentation.")
 	return buf.String(), nil
+}
+
+func (s *Session) evaluateConfig(_, _ int, expr string) (string, error) {
+	argv := config.Split2PartsBySpace(expr)
+	name := argv[0]
+	switch name {
+	case "-list":
+		return listConfig(&s.args), nil
+	default:
+		res, err := configureSet(&s.args, expr)
+		if err != nil {
+			return "", err
+		}
+		return res, nil
+	}
 }

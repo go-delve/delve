@@ -7,21 +7,6 @@ import (
 	"github.com/go-delve/delve/pkg/config"
 )
 
-func (s *Server) evaluateConfig(expr string) (string, error) {
-	argv := config.Split2PartsBySpace(expr)
-	name := argv[0]
-	switch name {
-	case "-list":
-		return listConfig(&s.args), nil
-	default:
-		res, err := configureSet(&s.args, expr)
-		if err != nil {
-			return "", err
-		}
-		return res, nil
-	}
-}
-
 var readOnlyConfiguration = []string{
 	"substitutePathReverse",
 }

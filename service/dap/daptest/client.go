@@ -105,6 +105,8 @@ func (c *Client) ExpectInitializeResponseAndCapabilities(t *testing.T) *dap.Init
 		SupportsFunctionBreakpoints:      true,
 		SupportsEvaluateForHovers:        true,
 		SupportsClipboardContext:         true,
+		SupportsSteppingGranularity:      true,
+		SupportsLogPoints:                true,
 	}
 	if !reflect.DeepEqual(initResp.Body, wantCapabilities) {
 		t.Errorf("capabilities in initializeResponse: got %+v, want %v", pretty(initResp.Body), pretty(wantCapabilities))
@@ -224,7 +226,7 @@ func (c *Client) DisconnectRequest() {
 	c.send(request)
 }
 
-// DisconnectRequest sends a 'disconnect' request with an option to specify
+// DisconnectRequestWithKillOption sends a 'disconnect' request with an option to specify
 // `terminateDebuggee`.
 func (c *Client) DisconnectRequestWithKillOption(kill bool) {
 	request := &dap.DisconnectRequest{Request: *c.newRequest("disconnect")}
@@ -234,11 +236,12 @@ func (c *Client) DisconnectRequestWithKillOption(kill bool) {
 
 // SetBreakpointsRequest sends a 'setBreakpoints' request.
 func (c *Client) SetBreakpointsRequest(file string, lines []int) {
-	c.SetConditionalBreakpointsRequest(file, lines, nil)
+	c.SetBreakpointsRequestWithArgs(file, lines, nil, nil, nil)
 }
 
-// SetBreakpointsRequest sends a 'setBreakpoints' request with conditions.
-func (c *Client) SetConditionalBreakpointsRequest(file string, lines []int, conditions map[int]string) {
+// SetBreakpointsRequestWithArgs sends a 'setBreakpoints' request with an option to
+// specify conditions, hit conditions, and log messages.
+func (c *Client) SetBreakpointsRequestWithArgs(file string, lines []int, conditions, hitConditions, logMessages map[int]string) {
 	request := &dap.SetBreakpointsRequest{Request: *c.newRequest("setBreakpoints")}
 	request.Arguments = dap.SetBreakpointsArguments{
 		Source: dap.Source{
@@ -249,29 +252,14 @@ func (c *Client) SetConditionalBreakpointsRequest(file string, lines []int, cond
 	}
 	for i, l := range lines {
 		request.Arguments.Breakpoints[i].Line = l
-		cond, ok := conditions[l]
-		if ok {
+		if cond, ok := conditions[l]; ok {
 			request.Arguments.Breakpoints[i].Condition = cond
 		}
-	}
-	c.send(request)
-}
-
-// SetBreakpointsRequest sends a 'setBreakpoints' request with conditions.
-func (c *Client) SetHitConditionalBreakpointsRequest(file string, lines []int, conditions map[int]string) {
-	request := &dap.SetBreakpointsRequest{Request: *c.newRequest("setBreakpoints")}
-	request.Arguments = dap.SetBreakpointsArguments{
-		Source: dap.Source{
-			Name: filepath.Base(file),
-			Path: file,
-		},
-		Breakpoints: make([]dap.SourceBreakpoint, len(lines)),
-	}
-	for i, l := range lines {
-		request.Arguments.Breakpoints[i].Line = l
-		cond, ok := conditions[l]
-		if ok {
-			request.Arguments.Breakpoints[i].HitCondition = cond
+		if hitCond, ok := hitConditions[l]; ok {
+			request.Arguments.Breakpoints[i].HitCondition = hitCond
+		}
+		if logMessage, ok := logMessages[l]; ok {
+			request.Arguments.Breakpoints[i].LogMessage = logMessage
 		}
 	}
 	c.send(request)
@@ -303,17 +291,41 @@ func (c *Client) NextRequest(thread int) {
 	c.send(request)
 }
 
+// NextInstructionRequest sends a 'next' request with granularity 'instruction'.
+func (c *Client) NextInstructionRequest(thread int) {
+	request := &dap.NextRequest{Request: *c.newRequest("next")}
+	request.Arguments.ThreadId = thread
+	request.Arguments.Granularity = "instruction"
+	c.send(request)
+}
+
 // StepInRequest sends a 'stepIn' request.
 func (c *Client) StepInRequest(thread int) {
-	request := &dap.NextRequest{Request: *c.newRequest("stepIn")}
+	request := &dap.StepInRequest{Request: *c.newRequest("stepIn")}
 	request.Arguments.ThreadId = thread
+	c.send(request)
+}
+
+// StepInInstructionRequest sends a 'stepIn' request with granularity 'instruction'.
+func (c *Client) StepInInstructionRequest(thread int) {
+	request := &dap.StepInRequest{Request: *c.newRequest("stepIn")}
+	request.Arguments.ThreadId = thread
+	request.Arguments.Granularity = "instruction"
 	c.send(request)
 }
 
 // StepOutRequest sends a 'stepOut' request.
 func (c *Client) StepOutRequest(thread int) {
-	request := &dap.NextRequest{Request: *c.newRequest("stepOut")}
+	request := &dap.StepOutRequest{Request: *c.newRequest("stepOut")}
 	request.Arguments.ThreadId = thread
+	c.send(request)
+}
+
+// StepOutInstructionRequest sends a 'stepOut' request with granularity 'instruction'.
+func (c *Client) StepOutInstructionRequest(thread int) {
+	request := &dap.StepOutRequest{Request: *c.newRequest("stepOut")}
+	request.Arguments.ThreadId = thread
+	request.Arguments.Granularity = "instruction"
 	c.send(request)
 }
 
@@ -371,7 +383,7 @@ func (c *Client) NamedVariablesRequest(variablesReference int) {
 	c.send(request)
 }
 
-// TeriminateRequest sends a 'terminate' request.
+// TerminateRequest sends a 'terminate' request.
 func (c *Client) TerminateRequest() {
 	c.send(&dap.TerminateRequest{Request: *c.newRequest("terminate")})
 }

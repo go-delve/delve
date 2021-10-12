@@ -155,7 +155,7 @@ type Module struct {
 	MiscRecord []byte
 }
 
-// VSFixedFileInfo: Visual Studio Fixed File Info.
+// VSFixedFileInfo  Visual Studio Fixed File Info.
 // See: https://docs.microsoft.com/en-us/windows/win32/api/verrsrc/ns-verrsrc-vs_fixedfileinfo
 type VSFixedFileInfo struct {
 	Signature        uint32

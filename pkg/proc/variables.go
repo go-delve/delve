@@ -18,6 +18,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/logflags"
 )
 
 const (
@@ -538,7 +539,7 @@ func (g *G) System(tgt *Target) bool {
 		return false
 	}
 	switch loc.Fn.Name {
-	case "runtime.main", "runtime.handleAsyncEvent", "runtime.runfinq":
+	case "runtime.main", "runtime.handleAsyncEvent":
 		return false
 	}
 	return strings.HasPrefix(loc.Fn.Name, "runtime.")
@@ -1135,7 +1136,7 @@ func readVarEntry(entry *godwarf.Tree, image *Image) (name string, typ godwarf.T
 
 // Extracts the name and type of a variable from a dwarf entry
 // then executes the instructions given in the  DW_AT_location attribute to grab the variable's address
-func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.DwarfRegisters, mem MemoryReadWriter, entry *godwarf.Tree) (*Variable, error) {
+func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.DwarfRegisters, mem MemoryReadWriter, entry *godwarf.Tree, dictAddr uint64) (*Variable, error) {
 	if entry.Tag != dwarf.TagFormalParameter && entry.Tag != dwarf.TagVariable {
 		return nil, fmt.Errorf("invalid entry tag, only supports FormalParameter and Variable, got %s", entry.Tag.String())
 	}
@@ -1143,6 +1144,12 @@ func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.
 	n, t, err := readVarEntry(entry, image)
 	if err != nil {
 		return nil, err
+	}
+
+	t, err = resolveParametricType(tgt, bi, mem, t, dictAddr)
+	if err != nil {
+		// Log the error, keep going with t, which will be the shape type
+		logflags.DebuggerLogger().Errorf("could not resolve parametric type of %s", n)
 	}
 
 	addr, pieces, descr, err := bi.Location(entry, dwarf.AttrLocation, regs.PC(), regs, mem)
@@ -1478,6 +1485,7 @@ func (v *Variable) loadSliceInfo(t *godwarf.SliceType) {
 				// Dereference array type to get value type
 				ptrType, ok := f.Type.(*godwarf.PtrType)
 				if !ok {
+					//lint:ignore ST1005 backwards compatibility
 					v.Unreadable = fmt.Errorf("Invalid type %s in slice array", f.Type)
 					return
 				}
@@ -1566,6 +1574,7 @@ func (v *Variable) loadArrayValues(recurseLevel int, cfg LoadConfig) {
 		return
 	}
 	if v.Len < 0 {
+		//lint:ignore ST1005 backwards compatibility
 		v.Unreadable = errors.New("Negative array length")
 		return
 	}
@@ -2240,7 +2249,7 @@ func (v *Variable) ConstDescr() string {
 	if ctyp == nil {
 		return ""
 	}
-	if typename := v.DwarfType.Common().Name; strings.Index(typename, ".") < 0 || strings.HasPrefix(typename, "C.") {
+	if typename := v.DwarfType.Common().Name; !strings.Contains(typename, ".") || strings.HasPrefix(typename, "C.") {
 		// only attempt to use constants for user defined type, otherwise every
 		// int variable with value 1 will be described with os.SEEK_CUR and other
 		// similar problems.
@@ -2382,9 +2391,7 @@ func (cm constantsMap) Get(typ godwarf.Type) *constantType {
 		ctyp.initialized = true
 		sort.Sort(constantValuesByValue(ctyp.values))
 		for i := range ctyp.values {
-			if strings.HasPrefix(ctyp.values[i].name, typepkg) {
-				ctyp.values[i].name = ctyp.values[i].name[len(typepkg):]
-			}
+			ctyp.values[i].name = strings.TrimPrefix(ctyp.values[i].name, typepkg)
 			if popcnt(uint64(ctyp.values[i].value)) == 1 {
 				ctyp.values[i].singleBit = true
 			}

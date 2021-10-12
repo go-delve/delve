@@ -7,6 +7,7 @@ import (
 	sys "golang.org/x/sys/windows"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/amd64util"
 	"github.com/go-delve/delve/pkg/proc/winutil"
 )
 
@@ -157,14 +158,25 @@ func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 	return _SetThreadContext(t.os.hThread, savedRegs.(*winutil.AMD64Registers).Context)
 }
 
-func (t *nativeThread) writeHardwareBreakpoint(addr uint64, wtype proc.WatchType, idx uint8) error {
-	return proc.ErrHWBreakUnsupported
-}
+func (t *nativeThread) withDebugRegisters(f func(*amd64util.DebugRegisters) error) error {
+	context := winutil.NewCONTEXT()
+	context.ContextFlags = _CONTEXT_DEBUG_REGISTERS
 
-func (t *nativeThread) clearHardwareBreakpoint(addr uint64, wtype proc.WatchType, idx uint8) error {
-	return proc.ErrHWBreakUnsupported
-}
+	err := _GetThreadContext(t.os.hThread, context)
+	if err != nil {
+		return err
+	}
 
-func (t *nativeThread) findHardwareBreakpoint() (*proc.Breakpoint, error) {
-	return nil, nil
+	drs := amd64util.NewDebugRegisters(&context.Dr0, &context.Dr1, &context.Dr2, &context.Dr3, &context.Dr6, &context.Dr7)
+
+	err = f(drs)
+	if err != nil {
+		return err
+	}
+
+	if drs.Dirty {
+		return _SetThreadContext(t.os.hThread, context)
+	}
+
+	return nil
 }

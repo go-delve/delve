@@ -173,7 +173,7 @@ func WriteUint(writer io.Writer, order binary.ByteOrder, ptrSize int, data uint6
 	return fmt.Errorf("pointer size %d not supported", ptrSize)
 }
 
-// ReadDwarfLength reads a DWARF length field followed by a version field
+// ReadDwarfLengthVersion reads a DWARF length field followed by a version field
 func ReadDwarfLengthVersion(data []byte) (length uint64, dwarf64 bool, version uint8, byteOrder binary.ByteOrder) {
 	if len(data) < 4 {
 		return 0, false, 0, binary.LittleEndian

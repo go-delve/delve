@@ -4,12 +4,9 @@ Tests skipped by each supported backend:
 	* 1 broken
 	* 3 broken - cgo stacktraces
 	* 3 not implemented
-* arm64 skipped = 5
+* arm64 skipped = 2
 	* 1 broken
 	* 1 broken - global variable symbolication
-	* 3 not implemented
-* darwin skipped = 3
-	* 3 not implemented
 * darwin/arm64 skipped = 1
 	* 1 broken - cgo stacktraces
 * darwin/lldb skipped = 1
@@ -19,13 +16,11 @@ Tests skipped by each supported backend:
 	* 4 not implemented
 * linux/386/pie skipped = 1
 	* 1 broken
-* linux/arm64 skipped = 1
+* linux/arm64 skipped = 4
 	* 1 broken - cgo stacktraces
+	* 3 not implemented
 * pie skipped = 2
 	* 2 upstream issue - https://github.com/golang/go/issues/29322
-* rr skipped = 3
-	* 3 not implemented
-* windows skipped = 5
+* windows skipped = 2
 	* 1 broken
-	* 3 not implemented
 	* 1 upstream issue

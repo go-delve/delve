@@ -2,6 +2,8 @@
 // input and dispatching to appropriate backend commands.
 package terminal
 
+//lint:file-ignore ST1005 errors here can be capitalized
+
 import (
 	"bufio"
 	"bytes"
@@ -145,6 +147,8 @@ The memory location is specified with the same expression language used by 'prin
 	watch v
 
 will watch the address of variable 'v'.
+
+Note that writes that do not change the value of the watched memory address might not be reported.
 
 See also: "help print".`},
 		{aliases: []string{"restart", "r"}, group: runCmds, cmdFn: restart, helpMsg: `Restart process.
@@ -648,10 +652,10 @@ func (c *Commands) Merge(allAliases map[string][]string) {
 	}
 }
 
-var noCmdError = errors.New("command not available")
+var errNoCmd = errors.New("command not available")
 
 func noCmdAvailable(t *Term, ctx callContext, args string) error {
-	return noCmdError
+	return errNoCmd
 }
 
 func nullCommand(t *Term, ctx callContext, args string) error {
@@ -668,7 +672,7 @@ func (c *Commands) help(t *Term, ctx callContext, args string) error {
 				}
 			}
 		}
-		return noCmdError
+		return errNoCmd
 	}
 
 	fmt.Println("The following commands are available:")
@@ -1534,14 +1538,14 @@ func (c *Commands) step(t *Term, ctx callContext, args string) error {
 	return continueUntilCompleteNext(t, state, "step", true)
 }
 
-var notOnFrameZeroErr = errors.New("not on topmost frame")
+var errNotOnFrameZero = errors.New("not on topmost frame")
 
 func (c *Commands) stepInstruction(t *Term, ctx callContext, args string) error {
 	if err := scopePrefixSwitch(t, ctx); err != nil {
 		return err
 	}
 	if c.frame != 0 {
-		return notOnFrameZeroErr
+		return errNotOnFrameZero
 	}
 
 	defer t.onStop()
@@ -1577,7 +1581,7 @@ func (c *Commands) next(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	if c.frame != 0 {
-		return notOnFrameZeroErr
+		return errNotOnFrameZero
 	}
 
 	nextfn := t.client.Next
@@ -1615,7 +1619,7 @@ func (c *Commands) stepout(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	if c.frame != 0 {
-		return notOnFrameZeroErr
+		return errNotOnFrameZero
 	}
 
 	stepoutfn := t.client.StepOut
@@ -2469,7 +2473,7 @@ func (c *Commands) sourceCommand(t *Term, ctx callContext, args string) error {
 	return c.executeFile(t, args)
 }
 
-var disasmUsageError = errors.New("wrong number of arguments: disassemble [-a <start> <end>] [-l <locspec>]")
+var errDisasmUsage = errors.New("wrong number of arguments: disassemble [-a <start> <end>] [-l <locspec>]")
 
 func disassCommand(t *Term, ctx callContext, args string) error {
 	var cmd, rest string
@@ -2477,7 +2481,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 	if args != "" {
 		argv := config.Split2PartsBySpace(args)
 		if len(argv) != 2 {
-			return disasmUsageError
+			return errDisasmUsage
 		}
 		cmd = argv[0]
 		rest = argv[1]
@@ -2508,7 +2512,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 	case "-a":
 		v := config.Split2PartsBySpace(rest)
 		if len(v) != 2 {
-			return disasmUsageError
+			return errDisasmUsage
 		}
 		startpc, err := strconv.ParseInt(v[0], 0, 64)
 		if err != nil {
@@ -2529,7 +2533,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		}
 		disasm, disasmErr = t.client.DisassemblePC(ctx.Scope, locs[0].PC, flavor)
 	default:
-		return disasmUsageError
+		return errDisasmUsage
 	}
 
 	if disasmErr != nil {
