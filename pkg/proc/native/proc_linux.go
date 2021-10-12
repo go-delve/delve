@@ -804,7 +804,6 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 				if err != nil {
 					return err
 				}
-				break
 			}
 		}
 	}
