@@ -746,7 +746,8 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 	// 2. uretprobes seem to not restore the function return addr on the stack when removed, destroying any
 	//    kind of workaround we could come up with.
 	// TODO(derekparker): this whole thing could likely be optimized a bit.
-	f, err := elf.Open(dbp.BinInfo().Images[0].Path)
+	img := dbp.BinInfo().PCToImage(fn.Entry)
+	f, err := elf.Open(img.Path)
 	if err != nil {
 		return fmt.Errorf("could not open elf file to resolve symbol offset: %w", err)
 	}
