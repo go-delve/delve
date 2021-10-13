@@ -26,13 +26,6 @@ var TraceProbeBytes []byte
 
 const FakeAddressBase = 0xbeed000000000000
 
-type Uretprobe struct {
-	Link   *bpf.BPFLink
-	Pid    int
-	Path   string
-	Offset uint32
-}
-
 type EBPFContext struct {
 	bpfModule  *bpf.Module
 	bpfProg    *bpf.BPFProg

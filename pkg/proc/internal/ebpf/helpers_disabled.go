@@ -7,29 +7,7 @@ import (
 	"errors"
 )
 
-type Uretprobe struct {
-	Link   interface{}
-	Pid    int
-	Path   string
-	Offset uint32
-}
-
-func (u *Uretprobe) Destroy() error {
-	return nil
-}
-
 type EBPFContext struct {
-}
-
-func (ctx *EBPFContext) GetURetProbes() []Uretprobe {
-	return nil
-}
-
-func (ctx *EBPFContext) ClearURetProbes() {
-}
-
-func (ctx *EBPFContext) GetClearedURetProbes() []Uretprobe {
-	return nil
 }
 
 func (ctx *EBPFContext) Close() {
