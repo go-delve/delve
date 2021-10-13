@@ -875,6 +875,7 @@ func cleanExeName(name string) string {
 }
 
 func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
+	var err error
 	if s.debugger != nil {
 		s.sendShowUserErrorResponse(request.Request, FailedToLaunch,
 			"Failed to launch", "debugger already started - use remote attach to connect to a server with an active debug session")
@@ -887,6 +888,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			FailedToLaunch, "Failed to launch", fmt.Sprintf("invalid debug configuration - %v", err))
 		return
 	}
+	s.config.log.Debug("parsed launch config: ", prettyPrint(args))
 
 	if args.DlvCwd != "" {
 		if err := os.Chdir(args.DlvCwd); err != nil {
@@ -896,88 +898,78 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		}
 	}
 
-	mode := args.Mode
-	if mode == "" {
-		mode = "debug"
+	if args.Mode == "" {
+		args.Mode = "debug"
 	}
-	if !isValidLaunchMode(mode) {
+	if !isValidLaunchMode(args.Mode) {
 		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
-			fmt.Sprintf("invalid debug configuration - unsupported 'mode' attribute %q", mode))
+			fmt.Sprintf("invalid debug configuration - unsupported 'mode' attribute %q", args.Mode))
 		return
 	}
 
-	program := args.Program
-	if program == "" && mode != "replay" { // Only fail on modes requiring a program
+	if args.Program == "" && args.Mode != "replay" { // Only fail on modes requiring a program
 		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
 			"The program attribute is missing in debug configuration.")
 		return
 	}
 
-	if backend := args.Backend; backend != "" {
-		s.config.Debugger.Backend = backend
-	} else {
-		s.config.Debugger.Backend = "default"
+	if args.Backend == "" {
+		args.Backend = "default"
 	}
 
-	if mode == "replay" {
-		traceDirPath := args.TraceDirPath
+	if args.Mode == "replay" {
 		// Validate trace directory
-		if traceDirPath == "" {
+		if args.TraceDirPath == "" {
 			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
 				"The 'traceDirPath' attribute is missing in debug configuration.")
 			return
 		}
 
 		// Assign the rr trace directory path to debugger configuration
-		s.config.Debugger.CoreFile = traceDirPath
-		s.config.Debugger.Backend = "rr"
+		s.config.Debugger.CoreFile = args.TraceDirPath
+		args.Backend = "rr"
 	}
-
-	if mode == "core" {
-		coreFilePath := args.CoreFilePath
+	if args.Mode == "core" {
 		// Validate core dump path
-		if coreFilePath == "" {
+		if args.CoreFilePath == "" {
 			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
 				"The 'coreFilePath' attribute is missing in debug configuration.")
 			return
 		}
 		// Assign the non-empty core file path to debugger configuration. This will
 		// trigger a native core file replay instead of an rr trace replay
-		s.config.Debugger.CoreFile = coreFilePath
-		s.config.Debugger.Backend = "core"
+		s.config.Debugger.CoreFile = args.CoreFilePath
+		args.Backend = "core"
 	}
 
-	s.config.log.Debugf("debug backend is '%s'", s.config.Debugger.Backend)
+	s.config.Debugger.Backend = args.Backend
 
-	// Prepare the debug executable filename, build flags and build it
-	if mode == "debug" || mode == "test" {
-		debugbinary := args.Output
-		if debugbinary == "" {
-			debugbinary = s.tempDebugBinary()
+	// Prepare the debug executable filename, building it if necessary
+	debugbinary := args.Program
+	if args.Mode == "debug" || args.Mode == "test" {
+		if args.Output == "" {
+			args.Output = s.tempDebugBinary()
 		} else {
-			debugbinary = cleanExeName(debugbinary)
+			args.Output = cleanExeName(args.Output)
 		}
-
-		if o, err := filepath.Abs(debugbinary); err != nil {
-			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
+		args.Output, err = filepath.Abs(args.Output)
+		if err != nil {
+			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 			return
-		} else {
-			debugbinary = o
 		}
-		buildFlags := args.BuildFlags
+		debugbinary = args.Output
 
 		var cmd string
 		var out []byte
-		wd, _ := os.Getwd()
-		s.config.log.Debugf("building program '%s' in '%s' with flags '%v'", program, wd, buildFlags)
-
 		var err error
-		switch mode {
+		switch args.Mode {
 		case "debug":
-			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
+			cmd, out, err = gobuild.GoBuildCombinedOutput(args.Output, []string{args.Program}, args.BuildFlags)
 		case "test":
-			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
+			cmd, out, err = gobuild.GoTestBuildCombinedOutput(args.Output, []string{args.Program}, args.BuildFlags)
 		}
+		args.DlvCwd, _ = filepath.Abs(args.DlvCwd)
+		s.config.log.Debugf("building from %q: [%s]", args.DlvCwd, cmd)
 		if err != nil {
 			s.send(&dap.OutputEvent{
 				Event: *newEvent("output"),
@@ -991,32 +983,38 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 				"Build error: Check the debug console for details.")
 			return
 		}
-		program = debugbinary
 		s.mu.Lock()
-		s.binaryToRemove = debugbinary
+		s.binaryToRemove = args.Output
 		s.mu.Unlock()
 	}
+	s.config.ProcessArgs = append([]string{debugbinary}, args.Args...)
 
 	if err := s.setLaunchAttachArgs(args.LaunchAttachCommonConfig); err != nil {
 		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 		return
 	}
 
-	s.config.ProcessArgs = append([]string{program}, args.Args...)
-	if args.Cwd != "" {
-		s.config.Debugger.WorkingDir = args.Cwd
-	} else if mode == "test" {
-		// In test mode, run the test binary from the package directory
-		// like in `go test` and `dlv test` by default.
-		s.config.Debugger.WorkingDir = s.getPackageDir(args.Program)
-	} else {
-		s.config.Debugger.WorkingDir = "."
+	if args.Cwd == "" {
+		if args.Mode == "test" {
+			// In test mode, run the test binary from the package directory
+			// like in `go test` and `dlv test` by default.
+			args.Cwd = s.getPackageDir(args.Program)
+		} else {
+			args.Cwd = "."
+		}
 	}
+	s.config.Debugger.WorkingDir = args.Cwd
 
-	s.config.log.Debugf("running binary '%s' in '%s'", program, s.config.Debugger.WorkingDir)
+	// Backend layers will interpret paths relative to server's working directory:
+	// reflect that before logging.
+	argsToLog := args
+	argsToLog.Program, _ = filepath.Abs(args.Program)
+	argsToLog.Cwd, _ = filepath.Abs(args.Cwd)
+	s.config.log.Debugf("launching binary '%s' with config: %s", debugbinary, prettyPrint(argsToLog))
+
 	if args.NoDebug {
 		s.mu.Lock()
-		cmd, err := s.newNoDebugProcess(program, args.Args, s.config.Debugger.WorkingDir)
+		cmd, err := s.newNoDebugProcess(debugbinary, args.Args, s.config.Debugger.WorkingDir)
 		s.mu.Unlock()
 		if err != nil {
 			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
@@ -1045,7 +1043,6 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	var err error
 	func() {
 		s.mu.Lock()
 		defer s.mu.Unlock() // Make sure to unlock in case of panic that will become internal error
@@ -1657,11 +1654,11 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 		s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach", fmt.Sprintf("invalid debug configuration - %v", err))
 		return
 	}
+	s.config.log.Debug("parsed launch config: ", prettyPrint(args))
 
-	mode := args.Mode
-	switch mode {
+	switch args.Mode {
 	case "":
-		mode = "local"
+		args.Mode = "local"
 		fallthrough
 	case "local":
 		if s.debugger != nil {
@@ -1676,12 +1673,11 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 			return
 		}
 		s.config.Debugger.AttachPid = args.ProcessID
-		s.config.log.Debugf("attaching to pid %d", args.ProcessID)
-		if backend := args.Backend; backend != "" {
-			s.config.Debugger.Backend = backend
-		} else {
-			s.config.Debugger.Backend = "default"
+		if args.Backend == "" {
+			args.Backend = "default"
 		}
+		s.config.Debugger.Backend = args.Backend
+		s.config.log.Debugf("attaching to pid %d", args.ProcessID)
 		var err error
 		func() {
 			s.mu.Lock()
