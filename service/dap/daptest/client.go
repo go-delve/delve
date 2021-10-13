@@ -37,6 +37,12 @@ func NewClient(addr string) *Client {
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
+	return NewClientFromConn(conn)
+}
+
+// NewClientFromConn creates a new Client with the given TCP connection.
+// Call Close to close the connection.
+func NewClientFromConn(conn net.Conn) *Client {
 	c := &Client{conn: conn, reader: bufio.NewReader(conn)}
 	c.seq = 1 // match VS Code numbering
 	return c
@@ -103,6 +109,7 @@ func (c *Client) ExpectInitializeResponseAndCapabilities(t *testing.T) *dap.Init
 		SupportsExceptionInfoRequest:     true,
 		SupportsSetVariable:              true,
 		SupportsFunctionBreakpoints:      true,
+		SupportsInstructionBreakpoints:   true,
 		SupportsEvaluateForHovers:        true,
 		SupportsClipboardContext:         true,
 		SupportsSteppingGranularity:      true,
@@ -398,6 +405,16 @@ func (c *Client) SetFunctionBreakpointsRequest(breakpoints []dap.FunctionBreakpo
 	c.send(&dap.SetFunctionBreakpointsRequest{
 		Request: *c.newRequest("setFunctionBreakpoints"),
 		Arguments: dap.SetFunctionBreakpointsArguments{
+			Breakpoints: breakpoints,
+		},
+	})
+}
+
+// SetInstructionBreakpointsRequest sends a 'setInstructionBreakpoints' request.
+func (c *Client) SetInstructionBreakpointsRequest(breakpoints []dap.InstructionBreakpoint) {
+	c.send(&dap.SetInstructionBreakpointsRequest{
+		Request: *c.newRequest("setInstructionBreakpoints"),
+		Arguments: dap.SetInstructionBreakpointsArguments{
 			Breakpoints: breakpoints,
 		},
 	})
