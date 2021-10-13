@@ -701,7 +701,7 @@ func (bi *BinaryInfo) PCToImage(pc uint64) *Image {
 type Image struct {
 	Path       string
 	StaticBase uint64
-	Addr       uint64
+	addr       uint64
 
 	index int // index of this object in BinaryInfo.SharedObjects
 
@@ -750,13 +750,13 @@ func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
 		return nil
 	}
 	for _, image := range bi.Images {
-		if image.Path == path && image.Addr == addr {
+		if image.Path == path && image.addr == addr {
 			return nil
 		}
 	}
 
 	// Actually add the image.
-	image := &Image{Path: path, Addr: addr, typeCache: make(map[dwarf.Offset]godwarf.Type)}
+	image := &Image{Path: path, addr: addr, typeCache: make(map[dwarf.Offset]godwarf.Type)}
 	image.dwarfTreeCache, _ = simplelru.NewLRU(dwarfTreeCacheSize, nil)
 
 	// add Image regardless of error so that we don't attempt to re-add it every time we stop

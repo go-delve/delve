@@ -511,10 +511,10 @@ func (scope *EvalScope) PackageVariables(cfg LoadConfig) ([]*Variable, error) {
 	pkgvars := make([]packageVar, len(scope.BinInfo.packageVars))
 	copy(pkgvars, scope.BinInfo.packageVars)
 	sort.Slice(pkgvars, func(i, j int) bool {
-		if pkgvars[i].cu.image.Addr == pkgvars[j].cu.image.Addr {
+		if pkgvars[i].cu.image.addr == pkgvars[j].cu.image.addr {
 			return pkgvars[i].offset < pkgvars[j].offset
 		}
-		return pkgvars[i].cu.image.Addr < pkgvars[j].cu.image.Addr
+		return pkgvars[i].cu.image.addr < pkgvars[j].cu.image.addr
 	})
 	vars := make([]*Variable, 0, len(scope.BinInfo.packageVars))
 	for _, pkgvar := range pkgvars {
