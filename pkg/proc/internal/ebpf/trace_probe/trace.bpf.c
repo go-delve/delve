@@ -257,11 +257,7 @@ int uprobe__dlv_trace(struct pt_regs *ctx) {
         // Parse input parameters.
         parse_params(ctx, args, parsed_args, false);
     } else {
-        // In uretprobe at function return address.
-        // Note we are not at the RET instruction,
-        // we are actually at the return address of
-        // the function we are tracing in the calling
-        // function.
+        // We are now stopped at the RET instruction for this function.
 
         // Parse output parameters.
         parse_params(ctx, args, parsed_args, true);
