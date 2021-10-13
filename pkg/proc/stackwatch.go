@@ -95,25 +95,10 @@ func (t *Target) setStackWatchBreakpoints(scope *EvalScope, watchpoint *Breakpoi
 	}
 
 	// Stack Resize Sentinel
-	return t.setStackResizeSentinel(watchpoint, false, func(th Thread) bool {
-		adjustStackWatchpoint(t, th, watchpoint)
-		return false // we never want this breakpoint to be shown to the user
-	})
-}
 
-func (t *Target) setStackResizeSentinel(watchpoint *Breakpoint, breakOnEntry bool, callback func(Thread) bool) error {
 	fn := t.BinInfo().LookupFunc["runtime.copystack"]
 	if fn == nil {
 		return errors.New("could not find runtime.copystack")
-	}
-	if breakOnEntry {
-		bp, err := t.SetBreakpoint(fn.Entry, StackResizeBreakpoint, nil)
-		if err != nil {
-			return err
-		}
-		bp.Name = "copystack-entry"
-		brklt := bp.Breaklets[len(bp.Breaklets)-1]
-		brklt.callback = callback
 	}
 	text, err := Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), fn.Entry, fn.End)
 	if err != nil {
@@ -131,15 +116,18 @@ func (t *Target) setStackResizeSentinel(watchpoint *Breakpoint, breakOnEntry boo
 	if retpc == 0 {
 		return errors.New("could not find return instruction in runtime.copystack")
 	}
-
-	rszbp, err := t.SetBreakpoint(retpc, StackResizeBreakpoint, nil)
+	rszbp, err := t.SetBreakpoint(retpc, StackResizeBreakpoint, sameGCond)
 	if err != nil {
 		return err
 	}
 
 	rszbreaklet := rszbp.Breaklets[len(rszbp.Breaklets)-1]
 	rszbreaklet.watchpoint = watchpoint
-	rszbreaklet.callback = callback
+	rszbreaklet.callback = func(th Thread) bool {
+		adjustStackWatchpoint(t, th, watchpoint)
+		return false // we never want this breakpoint to be shown to the user
+	}
+
 	return nil
 }
 
@@ -180,7 +168,7 @@ func watchpointOutOfScope(t *Target, watchpoint *Breakpoint) {
 
 // adjustStackWatchpoint is called when the goroutine of watchpoint resizes
 // its stack. It is used as a breaklet callback function.
-// Its responsibility is to move the watchpoint to its new address.
+// Its responsibility is to move the watchpoint to a its new address.
 func adjustStackWatchpoint(t *Target, th Thread, watchpoint *Breakpoint) {
 	g, _ := GetG(th)
 	if g == nil {
