@@ -60,20 +60,20 @@ func runTestBuildFlags(t *testing.T, name string, test func(c *daptest.Client, f
 
 	// Start the DAP server.
 	serverStopped := make(chan struct{})
-	client := startDapServerWithClient(t, serverStopped)
+	client := startDAPServerWithClient(t, serverStopped)
 	defer client.Close()
 
 	test(client, fixture)
 	<-serverStopped
 }
 
-func startDapServerWithClient(t *testing.T, serverStopped chan struct{}) *daptest.Client {
-	server, _ := startDapServer(t, serverStopped)
+func startDAPServerWithClient(t *testing.T, serverStopped chan struct{}) *daptest.Client {
+	server, _ := startDAPServer(t, serverStopped)
 	client := daptest.NewClient(server.config.Listener.Addr().String())
 	return client
 }
 
-func startDapServer(t *testing.T, serverStopped chan struct{}) (server *Server, forceStop chan struct{}) {
+func startDAPServer(t *testing.T, serverStopped chan struct{}) (server *Server, forceStop chan struct{}) {
 	// Start the DAP server.
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -110,14 +110,14 @@ func startDapServer(t *testing.T, serverStopped chan struct{}) (server *Server, 
 
 func TestForceStopNoClient(t *testing.T) {
 	serverStopped := make(chan struct{})
-	_, forceStop := startDapServer(t, serverStopped)
+	_, forceStop := startDAPServer(t, serverStopped)
 	close(forceStop)
 	<-serverStopped
 }
 
 func TestForceStopNoTarget(t *testing.T) {
 	serverStopped := make(chan struct{})
-	server, forceStop := startDapServer(t, serverStopped)
+	server, forceStop := startDAPServer(t, serverStopped)
 	client := daptest.NewClient(server.config.Listener.Addr().String())
 	defer client.Close()
 
@@ -129,7 +129,7 @@ func TestForceStopNoTarget(t *testing.T) {
 
 func TestForceStopWithTarget(t *testing.T) {
 	serverStopped := make(chan struct{})
-	server, forceStop := startDapServer(t, serverStopped)
+	server, forceStop := startDAPServer(t, serverStopped)
 	client := daptest.NewClient(server.config.Listener.Addr().String())
 	defer client.Close()
 
@@ -145,7 +145,7 @@ func TestForceStopWithTarget(t *testing.T) {
 
 func TestForceStopWhileStopping(t *testing.T) {
 	serverStopped := make(chan struct{})
-	server, forceStop := startDapServer(t, serverStopped)
+	server, forceStop := startDAPServer(t, serverStopped)
 	client := daptest.NewClient(server.config.Listener.Addr().String())
 
 	client.InitializeRequest()
@@ -269,15 +269,15 @@ func TestLaunchStopOnEntry(t *testing.T) {
 		// 9 >> stackTrace, << error
 		client.StackTraceRequest(1, 0, 20)
 		stResp = client.ExpectInvisibleErrorResponse(t)
-		if stResp.Seq != 0 || stResp.RequestSeq != 9 || stResp.Body.Error.Id != 2004 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Id=2004", stResp)
+		if stResp.Seq != 0 || stResp.RequestSeq != 9 || stResp.Body.Error.Id != UnableToProduceStackTrace {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Id=%d", stResp, UnableToProduceStackTrace)
 		}
 
 		// 10 >> evaluate, << error
 		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
 		erResp := client.ExpectInvisibleErrorResponse(t)
-		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Id != 2009 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=2009", erResp)
+		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Id != UnableToEvaluateExpression {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=%d", erResp, UnableToEvaluateExpression)
 		}
 
 		// 11 >> evaluate, << evaluate
@@ -411,8 +411,8 @@ func TestAttachStopOnEntry(t *testing.T) {
 		// 10 >> evaluate, << error
 		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
 		erResp := client.ExpectInvisibleErrorResponse(t)
-		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Id != 2009 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=2009", erResp)
+		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Id != UnableToEvaluateExpression {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=%d", erResp, UnableToEvaluateExpression)
 		}
 
 		// 11 >> evaluate, << evaluate
@@ -1982,7 +1982,7 @@ func TestVariablesMetadata(t *testing.T) {
 				disconnect: false,
 			}, {
 				execute: func() {
-					checkStop(t, client, 1, "main.main", 368)
+					checkStop(t, client, 1, "main.main", 372)
 
 					client.VariablesRequest(localsScope)
 					locals := client.ExpectVariablesResponse(t)
@@ -2046,6 +2046,16 @@ func TestVariablesMetadata(t *testing.T) {
 					got = client.ExpectEvaluateResponse(t)
 					ref = checkEvalIndexed(t, got, "[4]int32 [116,232,115,116]", hasChildren, 4, 1)
 					checkNamedChildren(ref, "runearray", "int32", runes, true)
+
+					// string feature is not available with user-defined byte types
+					ref = checkVarExactIndexed(t, locals, -1, "bytestypeslice", "bytestypeslice", "[]main.Byte len: 5, cap: 5, [116,195,168,115,116]", "[]main.Byte", true, 5, 1)
+					client.NamedVariablesRequest(ref)
+					namedchildren := client.ExpectVariablesResponse(t)
+					checkChildren(t, namedchildren, "bytestypeslice as string", 0)
+					ref = checkVarExactIndexed(t, locals, -1, "bytetypearray", "bytetypearray", "[5]main.Byte [116,195,168,115,116]", "[5]main.Byte", true, 5, 1)
+					client.NamedVariablesRequest(ref)
+					namedchildren = client.ExpectVariablesResponse(t)
+					checkChildren(t, namedchildren, "bytetypearray as string", 0)
 				},
 				disconnect: true,
 			}})
@@ -3802,6 +3812,102 @@ func TestNextAndStep(t *testing.T) {
 	})
 }
 
+// TestStepInstruction executes to a breakpoint and tests stepping
+// a single instruction
+func TestStepInstruction(t *testing.T) {
+	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{32}, // b main.foobar
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.foobar", 32)
+
+					pc, err := getPC(t, client, 1)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					// The exact instructions may change due to compiler changes,
+					// but we want to make sure that all of our instructions are
+					// instantiating variables, since these should not include
+					// jumps.
+					verifyExpectedLocation := func() {
+						client.StackTraceRequest(1, 0, 20)
+						st := client.ExpectStackTraceResponse(t)
+						if len(st.Body.StackFrames) < 1 {
+							t.Errorf("\ngot  %#v\nwant len(stackframes) => 1", st)
+						} else {
+							// There is a hardcoded breakpoint on line 32. All of the
+							// steps should be completed before that line.
+							if st.Body.StackFrames[0].Line < 32 {
+								t.Errorf("\ngot  %#v\nwant Line<32", st)
+							}
+							if st.Body.StackFrames[0].Name != "main.foobar" {
+								t.Errorf("\ngot  %#v\nwant Name=\"main.foobar\"", st)
+							}
+						}
+					}
+
+					// Next instruction.
+					client.NextInstructionRequest(1)
+					client.ExpectNextResponse(t)
+					client.ExpectStoppedEvent(t)
+					verifyExpectedLocation()
+					nextPC, err := getPC(t, client, 1)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if nextPC <= pc {
+						t.Errorf("got %#x, expected InstructionPointerReference>%#x", nextPC, pc)
+					}
+
+					// StepIn instruction.
+					pc = nextPC
+					client.StepInInstructionRequest(1)
+					client.ExpectStepInResponse(t)
+					client.ExpectStoppedEvent(t)
+					verifyExpectedLocation()
+					nextPC, err = getPC(t, client, 1)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if nextPC <= pc {
+						t.Errorf("got %#x, expected InstructionPointerReference>%#x", nextPC, pc)
+					}
+
+					// StepOut Instruction.
+					pc = nextPC
+					client.StepOutInstructionRequest(1)
+					client.ExpectStepOutResponse(t)
+					client.ExpectStoppedEvent(t)
+					verifyExpectedLocation()
+					nextPC, err = getPC(t, client, 1)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if nextPC <= pc {
+						t.Errorf("got %#x, expected InstructionPointerReference>%#x", nextPC, pc)
+					}
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+func getPC(t *testing.T, client *daptest.Client, threadId int) (int64, error) {
+	client.StackTraceRequest(threadId, 0, 1)
+	st := client.ExpectStackTraceResponse(t)
+	if len(st.Body.StackFrames) < 1 {
+		t.Fatalf("\ngot  %#v\nwant len(stackframes) => 1", st)
+	}
+	return strconv.ParseInt(st.Body.StackFrames[0].InstructionPointerReference, 0, 64)
+}
+
 func TestNextParked(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.SkipNow()
@@ -4050,7 +4156,7 @@ func TestNextWhileNexting(t *testing.T) {
 	// a breakpoint triggering during a 'next' operation will interrupt 'next''
 	// Unlike the test for the terminal package, we cannot be certain
 	// of the number of breakpoints we expect to hit, since multiple
-	// breakpoints being hit at the same time is not supported in dap stopped
+	// breakpoints being hit at the same time is not supported in DAP stopped
 	// events.
 	runTest(t, "issue387", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
@@ -4609,7 +4715,7 @@ func TestNoDebug_AcceptNoRequestsButDisconnect(t *testing.T) {
 
 func TestLaunchRequestWithRelativeBuildPath(t *testing.T) {
 	serverStopped := make(chan struct{})
-	client := startDapServerWithClient(t, serverStopped)
+	client := startDAPServerWithClient(t, serverStopped)
 	defer client.Close()
 
 	fixdir := protest.FindFixturesDir()
@@ -4668,15 +4774,15 @@ func TestLaunchTestRequest(t *testing.T) {
 		},
 		wantWD: absolutePkgDir,
 	}, {
-		name: "delveCWD",
+		name: "dlvCwd",
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": absolutePkgDir, "delveCWD": ".",
+			"mode": "test", "program": absolutePkgDir, "dlvCwd": ".",
 		},
 		wantWD: absolutePkgDir,
 	}, {
-		name: "delveCWD2",
+		name: "dlvCwd2",
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": ".", "delveCWD": absolutePkgDir,
+			"mode": "test", "program": ".", "dlvCwd": absolutePkgDir,
 		},
 		wantWD: absolutePkgDir,
 	}, {
@@ -4689,26 +4795,26 @@ func TestLaunchTestRequest(t *testing.T) {
 		name:  "dlv runs outside of module",
 		dlvWD: os.TempDir(),
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": absolutePkgDir, "delveCWD": absoluteFixturesDir,
+			"mode": "test", "program": absolutePkgDir, "dlvCwd": absoluteFixturesDir,
 		},
 		wantWD: absolutePkgDir,
 	}, {
-		name:  "dlv builds in delveCWD but runs in cwd",
+		name:  "dlv builds in dlvCwd but runs in cwd",
 		dlvWD: fixtures,
 		launchArgs: map[string]interface{}{
-			"mode": "test", "program": absolutePkgDir, "delveCWD": absolutePkgDir, "cwd": "..", // relative to delveCWD.
+			"mode": "test", "program": absolutePkgDir, "dlvCwd": absolutePkgDir, "cwd": "..", // relative to dlvCwd.
 		},
 		wantWD: absoluteFixturesDir,
 	}} {
 		t.Run(tc.name, func(t *testing.T) {
-			// Some test cases with delveCWD or dlvWD change process working directory.
+			// Some test cases with dlvCwd or dlvWD change process working directory.
 			defer os.Chdir(orgWD)
 			if tc.dlvWD != "" {
 				os.Chdir(tc.dlvWD)
 				defer os.Chdir(orgWD)
 			}
 			serverStopped := make(chan struct{})
-			client := startDapServerWithClient(t, serverStopped)
+			client := startDAPServerWithClient(t, serverStopped)
 			defer client.Close()
 
 			runDebugSessionWithBPs(t, client, "launch",
@@ -5081,7 +5187,7 @@ func TestSetVariable(t *testing.T) {
 				execute: func() {
 					tester := &helperForSetVariable{t, client}
 
-					startLineno := 360 // after runtime.Breakpoint
+					startLineno := 364 // after runtime.Breakpoint
 					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
 						startLineno = -1
 					}
@@ -5316,8 +5422,8 @@ func TestBadLaunchRequests(t *testing.T) {
 			if response.Message != "Failed to launch" {
 				t.Errorf("Message got %q, want \"Failed to launch\"", response.Message)
 			}
-			if response.Body.Error.Id != 3000 {
-				t.Errorf("Id got %d, want 3000", response.Body.Error.Id)
+			if response.Body.Error.Id != FailedToLaunch {
+				t.Errorf("Id got %d, want %d", response.Body.Error.Id, FailedToLaunch)
 			}
 			seqCnt++
 		}
@@ -5517,8 +5623,8 @@ func TestBadAttachRequest(t *testing.T) {
 			if response.Message != "Failed to attach" {
 				t.Errorf("Message got %q, want \"Failed to attach\"", response.Message)
 			}
-			if response.Body.Error.Id != 3001 {
-				t.Errorf("Id got %d, want 3001", response.Body.Error.Id)
+			if response.Body.Error.Id != FailedToAttach {
+				t.Errorf("Id got %d, want %d", response.Body.Error.Id, FailedToAttach)
 			}
 			seqCnt++
 		}
@@ -5582,8 +5688,8 @@ func TestBadAttachRequest(t *testing.T) {
 		if er.Body.Error.Format != "Internal Error: runtime error: index out of range [0] with length 0" {
 			t.Errorf("Message got %q, want \"Internal Error: runtime error: index out of range [0] with length 0\"", er.Message)
 		}
-		if er.Body.Error.Id != 8888 {
-			t.Errorf("Id got %d, want 8888", er.Body.Error.Id)
+		if er.Body.Error.Id != InternalError {
+			t.Errorf("Id got %d, want %d", er.Body.Error.Id, InternalError)
 		}
 
 		// Bad "backend"
@@ -5644,13 +5750,13 @@ func launchDebuggerWithTargetHalted(t *testing.T, fixture string) (*protest.Fixt
 // process is halted or debug session never launched.)
 func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *daptest.Client)) {
 	serverStopped := make(chan struct{})
-	server, _ := startDapServer(t, serverStopped)
+	server, _ := startDAPServer(t, serverStopped)
 	client := daptest.NewClient(server.listener.Addr().String())
 	time.Sleep(100 * time.Millisecond) // Give time for connection to be set as dap.Session
 	// TODO(polina): update once the server interface is refactored to take debugger as arg
 	server.sessionMu.Lock()
 	if server.session == nil {
-		t.Fatal("dap session is not ready")
+		t.Fatal("DAP session is not ready")
 	}
 	server.session.debugger = dbg
 	server.sessionMu.Unlock()
@@ -5661,10 +5767,7 @@ func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *dapt
 	test(client)
 
 	client.DisconnectRequest()
-	if server.config.AcceptMulti {
-		// TODO(polina): support multi-client mode
-		t.Fatal("testing of accept-multiclient not yet supporteed")
-	} else if server.config.Debugger.AttachPid == 0 { // launched target
+	if server.config.Debugger.AttachPid == 0 { // launched target
 		client.ExpectOutputEventDetachingKill(t)
 	} else { // attached to target
 		client.ExpectOutputEventDetachingNoKill(t)
@@ -5741,6 +5844,67 @@ func TestAttachRemoteToRunningTargetContinueOnEntry(t *testing.T) {
 	})
 }
 
+// TestMultiClient tests that that remote attach doesn't take down
+// the server in multi-client mode unless terminateDebugee is explicitely set.
+func TestAttachRemoteMultiClient(t *testing.T) {
+	closingClientSession := "Closing client session, but leaving multi-client DAP server running at"
+	detachingAndTerminating := "Detaching and terminating target process"
+	tests := []struct {
+		name              string
+		disconnectRequest func(client *daptest.Client)
+		expect            string
+	}{
+		{"default", func(c *daptest.Client) { c.DisconnectRequest() }, closingClientSession},
+		{"terminate=true", func(c *daptest.Client) { c.DisconnectRequestWithKillOption(true) }, detachingAndTerminating},
+		{"terminate=false", func(c *daptest.Client) { c.DisconnectRequestWithKillOption(false) }, closingClientSession},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			serverStopped := make(chan struct{})
+			server, forceStop := startDAPServer(t, serverStopped)
+			client := daptest.NewClient(server.listener.Addr().String())
+			time.Sleep(100 * time.Millisecond) // Give time for connection to be set as dap.Session
+			server.sessionMu.Lock()
+			if server.session == nil {
+				t.Fatal("dap session is not ready")
+			}
+			// DAP server doesn't support accept-multiclient, but we can use this
+			// hack to test the inner connection logic that can be used by a server that does.
+			server.session.config.AcceptMulti = true
+			// TODO(polina): update once the server interface is refactored to take debugger as arg
+			_, server.session.debugger = launchDebuggerWithTargetHalted(t, "increment")
+			server.sessionMu.Unlock()
+
+			client.InitializeRequest()
+			client.ExpectInitializeResponseAndCapabilities(t)
+
+			client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
+			client.ExpectInitializedEvent(t)
+			client.ExpectAttachResponse(t)
+			client.ConfigurationDoneRequest()
+			client.ExpectStoppedEvent(t)
+			client.ExpectConfigurationDoneResponse(t)
+
+			tc.disconnectRequest(client)
+			e := client.ExpectOutputEvent(t)
+			if matched, _ := regexp.MatchString(tc.expect, e.Body.Output); !matched {
+				t.Errorf("\ngot %#v\nwant Output=%q", e, tc.expect)
+			}
+			client.ExpectDisconnectResponse(t)
+			client.ExpectTerminatedEvent(t)
+			client.Close()
+
+			if tc.expect == closingClientSession {
+				// At this point a multi-client server is still running, but since
+				// it is a dap server, it cannot accept another client, so the only
+				// way to take down the server is too force kill it.
+				close(forceStop)
+			}
+			<-serverStopped
+		})
+	}
+}
+
 func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 	_, dbgRunning := launchDebuggerWithTargetRunning(t, "loopprog")
 	_, dbgHalted := launchDebuggerWithTargetHalted(t, "increment")
@@ -5790,7 +5954,7 @@ func TestBadInitializeRequest(t *testing.T) {
 		// Only one initialize request is allowed, so use a new server
 		// for each test.
 		serverStopped := make(chan struct{})
-		client := startDapServerWithClient(t, serverStopped)
+		client := startDAPServerWithClient(t, serverStopped)
 		defer client.Close()
 
 		client.InitializeRequestWithArgs(args)
@@ -5801,8 +5965,8 @@ func TestBadInitializeRequest(t *testing.T) {
 		if response.Message != "Failed to initialize" {
 			t.Errorf("Message got %q, want \"Failed to launch\"", response.Message)
 		}
-		if response.Body.Error.Id != 3002 {
-			t.Errorf("Id got %d, want 3002", response.Body.Error.Id)
+		if response.Body.Error.Id != FailedToInitialize {
+			t.Errorf("Id got %d, want %d", response.Body.Error.Id, FailedToInitialize)
 		}
 		if response.Body.Error.Format != err {
 			t.Errorf("\ngot  %q\nwant %q", response.Body.Error.Format, err)

@@ -75,11 +75,9 @@ import (
 // error or responding to a (synchronous) DAP disconnect request.
 // Once stop is triggered, the goroutine exits.
 //
-// TODO(polina): add another layer of per-client goroutines to support multiple clients.
-// Note that some requests change the process's environment such
-// as working directory (for example, see DelveCwd of launch configuration).
-// So if we want to reuse this process for multiple debugging sessions
-// we need to address that.
+// Unlike rpccommon, there is not another layer of per-client
+// goroutines here because the dap server does not support
+// multiple clients.
 //
 // (3) Per-request goroutine is started for each asynchronous request
 // that resumes execution. We check if target is running already, so
@@ -248,6 +246,10 @@ func NewServer(config *service.Config) *Server {
 	logger := logflags.DAPLogger()
 	logflags.WriteDAPListeningMessage(config.Listener.Addr())
 	logger.Debug("DAP server pid = ", os.Getpid())
+	if config.AcceptMulti {
+		logger.Warn("DAP server does not support accept-multiclient mode")
+		config.AcceptMulti = false
+	}
 	return &Server{
 		config: &Config{
 			Config:        config,
@@ -374,7 +376,10 @@ func (c *Config) triggerServerStop() {
 // The server should be restarted for every new debug session.
 // The debugger won't be started until launch/attach request is received.
 // TODO(polina): allow new client connections for new debug sessions,
-// so the editor needs to launch delve only once?
+// so the editor needs to launch dap server only once? Note that some requests
+// may change the server's environment (e.g. see dlvCwd of launch configuration).
+// So if we want to reuse this server for multiple independent debugging sessions
+// we need to take that into consideration.
 func (s *Server) Run() {
 	go func() {
 		conn, err := s.listener.Accept() // listener is closed in Stop()
@@ -430,7 +435,11 @@ func (s *Session) serveDAPCodec() {
 					}
 					s.config.log.Error("DAP error: ", err)
 				}
-				s.config.triggerServerStop()
+				if s.config.AcceptMulti {
+					s.conn.Close()
+				} else {
+					s.config.triggerServerStop()
+				}
 			}
 			return
 		}
@@ -792,6 +801,7 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsSetVariable = true
 	response.Body.SupportsEvaluateForHovers = true
 	response.Body.SupportsClipboardContext = true
+	response.Body.SupportsSteppingGranularity = true
 	response.Body.SupportsLogPoints = true
 	// TODO(polina): support these requests in addition to vscode-go feature parity
 	response.Body.SupportsTerminateRequest = false
@@ -857,10 +867,10 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	if args.DelveCwd != "" {
-		if err := os.Chdir(args.DelveCwd); err != nil {
+	if args.DlvCwd != "" {
+		if err := os.Chdir(args.DlvCwd); err != nil {
 			s.sendShowUserErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch", fmt.Sprintf("failed to chdir using %q - %v", args.DelveCwd, err))
+				FailedToLaunch, "Failed to launch", fmt.Sprintf("failed to chdir to %q - %v", args.DlvCwd, err))
 			return
 		}
 	}
@@ -1081,13 +1091,29 @@ func (s *Session) stopNoDebugProcess() {
 // onDisconnectRequest handles the DisconnectRequest. Per the DAP spec,
 // it disconnects the debuggee and signals that the debug adaptor
 // (in our case this TCP server) can be terminated.
-// TODO(polina): differentiate between single- and multi-client
-// server mode when handling requests for debug session shutdown.
 func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
-	defer s.config.triggerServerStop()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.debugger != nil && s.config.AcceptMulti && !request.Arguments.TerminateDebuggee {
+		// This is a multi-use server/debugger, so a disconnect request that doesn't
+		// terminate the debuggee should clean up only the client connection, but not the server.
+		s.logToConsole("Closing client session, but leaving multi-client DAP server running at " + s.config.Listener.Addr().String())
+		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
+		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
+		s.conn.Close()
+		// The target is left in whatever state it is already in - halted or running.
+		// The users therefore have the flexibility to choose the appropriate state
+		// for their case before disconnecting. This is also desirable in case of
+		// the client connection fails unexpectedly and the user needs to reconnect.
+		// TODO(polina): should we always issue a continue here if it is not running
+		// like is done in vscode-go legacy adapter?
+		// Ideally we want to use bool suspendDebuggee flag, but it is not yet
+		// available in vscode: https://github.com/microsoft/vscode/issues/134412
+		return
+	}
+
+	defer s.config.triggerServerStop()
 	var err error
 	if s.debugger != nil {
 		// We always kill launched programs.
@@ -1105,9 +1131,7 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 	}
 	// The debugging session has ended, so we send a terminated event.
-	s.send(&dap.TerminatedEvent{
-		Event: *newEvent("terminated"),
-	})
+	s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 }
 
 // stopDebugSession is called from Stop (main goroutine) and
@@ -1686,21 +1710,21 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 // This is a mandatory request to support.
 func (s *Session) onNextRequest(request *dap.NextRequest, allowNextStateChange chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.NextResponse{Response: *newResponse(request.Request)})
-	s.stepUntilStopAndNotify(api.Next, request.Arguments.ThreadId, allowNextStateChange)
+	s.stepUntilStopAndNotify(api.Next, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
 
 // onStepInRequest handles 'stepIn' request
 // This is a mandatory request to support.
 func (s *Session) onStepInRequest(request *dap.StepInRequest, allowNextStateChange chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepInResponse{Response: *newResponse(request.Request)})
-	s.stepUntilStopAndNotify(api.Step, request.Arguments.ThreadId, allowNextStateChange)
+	s.stepUntilStopAndNotify(api.Step, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
 
 // onStepOutRequest handles 'stepOut' request
 // This is a mandatory request to support.
 func (s *Session) onStepOutRequest(request *dap.StepOutRequest, allowNextStateChange chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepOutResponse{Response: *newResponse(request.Request)})
-	s.stepUntilStopAndNotify(api.StepOut, request.Arguments.ThreadId, allowNextStateChange)
+	s.stepUntilStopAndNotify(api.StepOut, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
 
 func (s *Session) sendStepResponse(threadId int, message dap.Message) {
@@ -1754,7 +1778,7 @@ func (s *Session) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int,
 // a channel that will be closed to signal that an
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
-func (s *Session) stepUntilStopAndNotify(command string, threadId int, allowNextStateChange chan struct{}) {
+func (s *Session) stepUntilStopAndNotify(command string, threadId int, granularity dap.SteppingGranularity, allowNextStateChange chan struct{}) {
 	defer closeIfOpen(allowNextStateChange)
 	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
 	if err != nil {
@@ -1772,6 +1796,17 @@ func (s *Session) stepUntilStopAndNotify(command string, threadId int, allowNext
 		stopped.Body.Text = err.Error()
 		s.send(stopped)
 		return
+	}
+
+	if granularity == "instruction" {
+		switch command {
+		case api.ReverseNext:
+			command = api.ReverseStepInstruction
+		default:
+			// TODO(suzmue): consider differentiating between next, step in, and step out.
+			// For example, next could step over call requests.
+			command = api.StepInstruction
+		}
 	}
 	s.runUntilStopAndNotify(command, allowNextStateChange)
 }
@@ -1841,7 +1876,7 @@ func (s *Session) onStackTraceRequest(request *dap.StackTraceRequest) {
 		frame := frames[start+i]
 		loc := &frame.Call
 		uniqueStackFrameID := s.stackFrameHandles.create(stackFrame{goroutineID, start + i})
-		stackFrame := dap.StackFrame{Id: uniqueStackFrameID, Line: loc.Line, Name: fnName(loc)}
+		stackFrame := dap.StackFrame{Id: uniqueStackFrameID, Line: loc.Line, Name: fnName(loc), InstructionPointerReference: fmt.Sprintf("%#x", loc.PC)}
 		if loc.File != "<autogenerated>" {
 			clientPath := s.toClientPath(loc.File)
 			stackFrame.Source = dap.Source{Name: filepath.Base(clientPath), Path: clientPath}
@@ -2209,8 +2244,8 @@ func (s *Session) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 		config := DefaultLoadConfig
 		config.MaxArrayValues = config.MaxStringLen
 		vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, loadExpr, config)
-		val := s.convertVariableToString(vLoaded)
 		if err == nil {
+			val := s.convertVariableToString(vLoaded)
 			// TODO(suzmue): Add evaluate name. Using string(name) will not get the same result because the
 			// MaxArrayValues is not auto adjusted in evaluate requests like MaxStringLen is adjusted.
 			children = append(children, dap.Variable{
@@ -2218,6 +2253,8 @@ func (s *Session) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 				Value: val,
 				Type:  "string",
 			})
+		} else {
+			s.config.log.Debugf("failed to load %q: %v", v.fullyQualifiedNameOrExpr, err)
 		}
 	}
 	return children, nil
@@ -2628,7 +2665,7 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 // This is an optional request enabled by capability ‘supportsStepBackRequest’.
 func (s *Session) onStepBackRequest(request *dap.StepBackRequest, allowNextStateChange chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepBackResponse{Response: *newResponse(request.Request)})
-	s.stepUntilStopAndNotify(api.ReverseNext, request.Arguments.ThreadId, allowNextStateChange)
+	s.stepUntilStopAndNotify(api.ReverseNext, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
 
 // onReverseContinueRequest performs a rewind command call up to the previous
@@ -3197,6 +3234,11 @@ func (s *Session) resumeOnceAndCheckStop(command string, allowNextStateChange ch
 
 	foundRealBreakpoint := s.handleLogPoints(state)
 	if foundRealBreakpoint {
+		s.setRunningCmd(false)
+	}
+
+	// Stepping a single instruction will never require continuing again.
+	if command == api.StepInstruction || command == api.ReverseStepInstruction {
 		s.setRunningCmd(false)
 	}
 
