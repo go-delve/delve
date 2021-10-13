@@ -577,22 +577,7 @@ func (s *Session) handleRequest(request dap.Message) {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
 			}
-			s.logToConsole("Execution halted to set breakpoints - please resume execution manually")
 			s.onSetBreakpointsRequest(request)
-			// TODO(polina): consider resuming execution here automatically after suppressing
-			// a stop event when an operation in runUntilStopAndNotify returns. In case that operation
-			// was already stopping for a different reason, we would need to examine the state
-			// that is returned to determine if this halt was the cause of the stop or not.
-			// We should stop with an event and not resume if one of the following is true:
-			// - StopReason is anything but manual
-			// - Any thread has a breakpoint or CallReturn set
-			// - NextInProgress is false and the last command sent by the user was: next,
-			//   step, stepOut, reverseNext, reverseStep or reverseStepOut
-			// Otherwise, we can skip the stop event and resume the temporarily
-			// interrupted process execution with api.DirectionCongruentContinue.
-			// For this to apply in cases other than api.Continue, we would also need to
-			// introduce a new version of halt that skips ClearInternalBreakpoints
-			// in proc.(*Target).Continue, leaving NextInProgress as true.
 		case *dap.SetFunctionBreakpointsRequest:
 			s.changeStateMu.Lock()
 			defer s.changeStateMu.Unlock()
@@ -602,7 +587,6 @@ func (s *Session) handleRequest(request dap.Message) {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
 			}
-			s.logToConsole("Execution halted to set breakpoints - please resume execution manually")
 			s.onSetFunctionBreakpointsRequest(request)
 		default:
 			r := request.(dap.RequestMessage).GetRequest()
@@ -691,6 +675,9 @@ func (s *Session) handleRequest(request dap.Message) {
 	case *dap.SetFunctionBreakpointsRequest:
 		// Optional (capability ‘supportsFunctionBreakpoints’)
 		s.onSetFunctionBreakpointsRequest(request)
+	case *dap.SetInstructionBreakpointsRequest:
+		// Optional (capability 'supportsInstructionBreakpoints')
+		s.onSetInstructionBreakpointsRequest(request)
 	case *dap.SetExceptionBreakpointsRequest:
 		// Optional (capability ‘exceptionBreakpointFilters’)
 		s.onSetExceptionBreakpointsRequest(request)
@@ -831,6 +818,7 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsDelayedStackTraceLoading = true
 	response.Body.SupportTerminateDebuggee = true
 	response.Body.SupportsFunctionBreakpoints = true
+	response.Body.SupportsInstructionBreakpoints = true
 	response.Body.SupportsExceptionInfoRequest = true
 	response.Body.SupportsSetVariable = true
 	response.Body.SupportsEvaluateForHovers = true
@@ -1186,6 +1174,7 @@ func (s *Session) stopDebugSession(killProcess bool) error {
 	// To avoid goroutine leaks, we can use a wait group or have the goroutine listen
 	// for a stop signal on a dedicated quit channel at suitable points (use context?).
 	// Additional clean-up might be especially critical when we support multiple clients.
+	s.setHaltRequested(true)
 	state, err := s.halt()
 	if err == proc.ErrProcessDetached {
 		s.config.log.Debug("halt returned error: ", err)
@@ -1232,7 +1221,6 @@ func (s *Session) stopDebugSession(killProcess bool) error {
 // halt sends a halt request if the debuggee is running.
 // changeStateMu should be held when calling (*Server).halt.
 func (s *Session) halt() (*api.DebuggerState, error) {
-	s.setHaltRequested(true)
 	// Only send a halt request if the debuggee is running.
 	if s.debugger.IsRunning() {
 		return s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
@@ -1255,82 +1243,24 @@ func (s *Session) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 	clientPath := request.Arguments.Source.Path
 	serverPath := s.toServerPath(clientPath)
 
-	// According to the spec we should "set multiple breakpoints for a single source
-	// and clear all previous breakpoints in that source." The simplest way is
-	// to clear all and then set all. To maintain state (for hit count conditions)
-	// we want to amend existing breakpoints.
-	//
-	// See https://github.com/golang/vscode-go/issues/163 for details.
-	// If a breakpoint:
-	// -- exists and not in request => ClearBreakpoint
-	// -- exists and in request => AmendBreakpoint
-	// -- doesn't exist and in request => SetBreakpoint
-
 	// Get all existing breakpoints that match for this source.
 	sourceRequestPrefix := fmt.Sprintf("sourceBp Path=%q ", request.Arguments.Source.Path)
-	existingBps := s.getMatchingBreakpoints(sourceRequestPrefix)
-	bpAdded := make(map[string]struct{}, len(existingBps))
 
-	// Amend existing breakpoints.
-	breakpoints := make([]dap.Breakpoint, len(request.Arguments.Breakpoints))
-	for i, want := range request.Arguments.Breakpoints {
-		reqString := fmt.Sprintf("%s Line=%d Column=%d", sourceRequestPrefix, want.Line, want.Column)
-		var err error
-		got, ok := existingBps[reqString]
-		if !ok {
-			// Skip if the breakpoint does not already exist.
-			// These will be created after deleting existing
-			// breakpoints to avoid conflicts.
-			continue
+	breakpoints := s.setBreakpoints(sourceRequestPrefix, len(request.Arguments.Breakpoints), func(i int) *bpMetadata {
+		want := request.Arguments.Breakpoints[i]
+		return &bpMetadata{
+			name:         fmt.Sprintf("%s Line=%d Column=%d", sourceRequestPrefix, want.Line, want.Column),
+			condition:    want.Condition,
+			hitCondition: want.HitCondition,
+			logMessage:   want.LogMessage,
 		}
-		if _, ok := bpAdded[reqString]; ok {
-			err = fmt.Errorf("breakpoint exists at %q, line: %d, column: %d", request.Arguments.Source.Path, want.Line, want.Column)
-		} else {
-			got.Cond = want.Condition
-			got.HitCond = want.HitCondition
-			got.Tracepoint = want.LogMessage != ""
-			got.UserData = want.LogMessage
-			err = s.debugger.AmendBreakpoint(got)
-			bpAdded[reqString] = struct{}{}
-		}
-
-		updateBreakpointsResponse(breakpoints, i, err, got, clientPath)
-	}
-
-	// Clear existing breakpoints that were not added.
-	err := s.clearBreakpoints(existingBps, bpAdded)
-	if err != nil {
-		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
-		return
-	}
-
-	for i, want := range request.Arguments.Breakpoints {
-		reqString := fmt.Sprintf("%s Line=%d Column=%d", sourceRequestPrefix, want.Line, want.Column)
-		if _, ok := existingBps[reqString]; ok {
-			continue
-		}
-
-		var got *api.Breakpoint
-		var err error
-		if _, ok := bpAdded[reqString]; ok {
-			err = fmt.Errorf("breakpoint exists at %q, line: %d, column: %d", request.Arguments.Source.Path, want.Line, want.Column)
-		} else {
-			// Create new breakpoints.
-			got, err = s.debugger.CreateBreakpoint(
-				&api.Breakpoint{
-					File:       serverPath,
-					Line:       want.Line,
-					Cond:       want.Condition,
-					HitCond:    want.HitCondition,
-					Name:       reqString,
-					Tracepoint: want.LogMessage != "",
-					UserData:   want.LogMessage,
-				})
-			bpAdded[reqString] = struct{}{}
-		}
-
-		updateBreakpointsResponse(breakpoints, i, err, got, clientPath)
-	}
+	}, func(i int) (*bpLocation, error) {
+		want := request.Arguments.Breakpoints[i]
+		return &bpLocation{
+			file: serverPath,
+			line: want.Line,
+		}, nil
+	})
 
 	response := &dap.SetBreakpointsResponse{Response: *newResponse(request.Request)}
 	response.Body.Breakpoints = breakpoints
@@ -1338,11 +1268,108 @@ func (s *Session) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 	s.send(response)
 }
 
-func updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int, err error, got *api.Breakpoint, path string) {
+type bpMetadata struct {
+	name         string
+	condition    string
+	hitCondition string
+	logMessage   string
+}
+
+type bpLocation struct {
+	file  string
+	line  int
+	addr  uint64
+	addrs []uint64
+}
+
+// setBreakpoints is a helper function for setting source, function and instruction
+// breakpoints. It takes the prefix of the name for all breakpoints that should be
+// included, the total number of breakpoints, and functions for computing the metadata
+// and the location. The location is computed separately because this may be more
+// expensive to compute and may not always be necessary.
+func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(i int) *bpMetadata, locFunc func(i int) (*bpLocation, error)) []dap.Breakpoint {
+	// If a breakpoint:
+	// -- exists and not in request => ClearBreakpoint
+	// -- exists and in request => AmendBreakpoint
+	// -- doesn't exist and in request => SetBreakpoint
+
+	// Get all existing breakpoints matching the prefix.
+	existingBps := s.getMatchingBreakpoints(prefix)
+
+	// createdBps is a set of breakpoint names that have been added
+	// during this request. This is used to catch duplicate set
+	// breakpoints requests and to track which breakpoints need to
+	// be deleted.
+	createdBps := make(map[string]struct{}, len(existingBps))
+
+	breakpoints := make([]dap.Breakpoint, totalBps)
+	// Amend existing breakpoints.
+	for i := 0; i < totalBps; i++ {
+		want := metadataFunc(i)
+		got, ok := existingBps[want.name]
+		if got == nil || !ok {
+			// Skip if the breakpoint does not already exist.
+			continue
+		}
+
+		var err error
+		if _, ok := createdBps[want.name]; ok {
+			err = fmt.Errorf("breakpoint already exists")
+		} else {
+			got.Cond = want.condition
+			got.HitCond = want.hitCondition
+			got.Tracepoint = want.logMessage != ""
+			got.UserData = want.logMessage
+			err = s.debugger.AmendBreakpoint(got)
+		}
+		createdBps[want.name] = struct{}{}
+		s.updateBreakpointsResponse(breakpoints, i, err, got)
+	}
+
+	// Clear breakpoints.
+	// Any breakpoint that existed before this request but was not amended must be deleted.
+	s.clearBreakpoints(existingBps, createdBps)
+
+	// Add new breakpoints.
+	for i := 0; i < totalBps; i++ {
+		want := metadataFunc(i)
+		if _, ok := existingBps[want.name]; ok {
+			continue
+		}
+
+		var got *api.Breakpoint
+		wantLoc, err := locFunc(i)
+		if err == nil {
+			if _, ok := createdBps[want.name]; ok {
+				err = fmt.Errorf("breakpoint already exists")
+			} else {
+				// Create new breakpoints.
+				got, err = s.debugger.CreateBreakpoint(
+					&api.Breakpoint{
+						Name:       want.name,
+						File:       wantLoc.file,
+						Line:       wantLoc.line,
+						Addr:       wantLoc.addr,
+						Addrs:      wantLoc.addrs,
+						Cond:       want.condition,
+						HitCond:    want.hitCondition,
+						Tracepoint: want.logMessage != "",
+						UserData:   want.logMessage,
+					})
+			}
+		}
+		createdBps[want.name] = struct{}{}
+		s.updateBreakpointsResponse(breakpoints, i, err, got)
+	}
+	return breakpoints
+}
+
+func (s *Session) updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int, err error, got *api.Breakpoint) {
 	breakpoints[i].Verified = (err == nil)
 	if err != nil {
 		breakpoints[i].Message = err.Error()
 	} else {
+		path := s.toClientPath(got.File)
 		breakpoints[i].Id = got.ID
 		breakpoints[i].Line = got.Line
 		breakpoints[i].Source = dap.Source{Name: filepath.Base(path), Path: path}
@@ -1354,84 +1381,30 @@ func updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int, err error, g
 const functionBpPrefix = "functionBreakpoint"
 
 func (s *Session) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpointsRequest) {
-	// According to the spec, setFunctionBreakpoints "replaces all existing function
-	// breakpoints with new function breakpoints." The simplest way is
-	// to clear all and then set all. To maintain state (for hit count conditions)
-	// we want to amend existing breakpoints.
-	//
-	// See https://github.com/golang/vscode-go/issues/163 for details.
-	// If a breakpoint:
-	// -- exists and not in request => ClearBreakpoint
-	// -- exists and in request => AmendBreakpoint
-	// -- doesn't exist and in request => SetBreakpoint
-
-	// Get all existing function breakpoints.
-	existingBps := s.getMatchingBreakpoints(functionBpPrefix)
-	bpAdded := make(map[string]struct{}, len(existingBps))
-	for _, bp := range existingBps {
-		existingBps[bp.Name] = bp
-	}
-
-	// Amend any existing breakpoints.
-	breakpoints := make([]dap.Breakpoint, len(request.Arguments.Breakpoints))
-	for i, want := range request.Arguments.Breakpoints {
-		reqString := fmt.Sprintf("%s Name=%s", functionBpPrefix, want.Name)
-		var err error
-		got, ok := existingBps[reqString]
-		if !ok {
-			// Skip if the breakpoint does not already exist.
-			// These will be created after deleting existing
-			// breakpoints to avoid conflicts.
-			continue
+	breakpoints := s.setBreakpoints(functionBpPrefix, len(request.Arguments.Breakpoints), func(i int) *bpMetadata {
+		want := request.Arguments.Breakpoints[i]
+		return &bpMetadata{
+			name:         fmt.Sprintf("%s Name=%s", functionBpPrefix, want.Name),
+			condition:    want.Condition,
+			hitCondition: want.HitCondition,
+			logMessage:   "",
 		}
-		if _, ok := bpAdded[reqString]; ok {
-			err = fmt.Errorf("breakpoint exists at function %q", want.Name)
-		} else {
-			got.Cond = want.Condition
-			got.HitCond = want.HitCondition
-			err = s.debugger.AmendBreakpoint(got)
-			bpAdded[reqString] = struct{}{}
-		}
-
-		var clientPath string
-		if got != nil {
-			clientPath = s.toClientPath(got.File)
-		}
-		updateBreakpointsResponse(breakpoints, i, err, got, clientPath)
-	}
-
-	// Clear existing breakpoints that were not added.
-	err := s.clearBreakpoints(existingBps, bpAdded)
-	if err != nil {
-		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
-		return
-	}
-
-	// Create new breakpoints.
-	for i, want := range request.Arguments.Breakpoints {
-		reqString := fmt.Sprintf("%s Name=%s", functionBpPrefix, want.Name)
-		if _, ok := existingBps[reqString]; ok {
-			// Amend existing breakpoints.
-			continue
-		}
-
+	}, func(i int) (*bpLocation, error) {
+		want := request.Arguments.Breakpoints[i]
 		// Set the function breakpoint breakpoint
 		spec, err := locspec.Parse(want.Name)
 		if err != nil {
-			breakpoints[i].Message = err.Error()
-			continue
+			return nil, err
 		}
 		if loc, ok := spec.(*locspec.NormalLocationSpec); !ok || loc.FuncBase == nil {
 			// Other locations do not make sense in the context of function breakpoints.
 			// Regex locations are likely to resolve to multiple places and offset locations
 			// are only meaningful at the time the breakpoint was created.
-			breakpoints[i].Message = fmt.Sprintf("breakpoint name %q could not be parsed as a function. name must be in the format 'funcName', 'funcName:line' or 'fileName:line'.", want.Name)
-			continue
+			return nil, fmt.Errorf("breakpoint name %q could not be parsed as a function. name must be in the format 'funcName', 'funcName:line' or 'fileName:line'", want.Name)
 		}
 
 		if want.Name[0] == '.' {
-			breakpoints[i].Message = "breakpoint names that are relative paths are not supported."
-			continue
+			return nil, fmt.Errorf("breakpoint names that are relative paths are not supported")
 		}
 		// Find the location of the function name. CreateBreakpoint requires the name to include the base
 		// (e.g. main.functionName is supported but not functionName).
@@ -1439,28 +1412,19 @@ func (s *Session) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakp
 		var locs []api.Location
 		locs, err = s.debugger.FindLocationSpec(-1, 0, 0, want.Name, spec, true, s.args.substitutePathClientToServer)
 		if err != nil {
-			breakpoints[i].Message = err.Error()
-			continue
+			return nil, err
 		}
 		if len(locs) == 0 {
-			breakpoints[i].Message = fmt.Sprintf("no location found for %q", want.Name)
-			continue
+			return nil, err
 		}
 		if len(locs) > 0 {
 			s.config.log.Debugf("multiple locations found for %s", want.Name)
-			breakpoints[i].Message = fmt.Sprintf("multiple locations found for %s, function breakpoint is only set for the first location", want.Name)
 		}
 
 		// Set breakpoint using the PCs that were found.
 		loc := locs[0]
-		got, err := s.debugger.CreateBreakpoint(&api.Breakpoint{Addr: loc.PC, Addrs: loc.PCs, Cond: want.Condition, Name: reqString})
-
-		var clientPath string
-		if got != nil {
-			clientPath = s.toClientPath(got.File)
-		}
-		updateBreakpointsResponse(breakpoints, i, err, got, clientPath)
-	}
+		return &bpLocation{addr: loc.PC, addrs: loc.PCs}, nil
+	})
 
 	response := &dap.SetFunctionBreakpointsResponse{Response: *newResponse(request.Request)}
 	response.Body.Breakpoints = breakpoints
@@ -1468,9 +1432,34 @@ func (s *Session) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakp
 	s.send(response)
 }
 
-func (s *Session) clearBreakpoints(existingBps map[string]*api.Breakpoint, bpAdded map[string]struct{}) error {
+const instructionBpPrefix = "instructionBreakpoint"
+
+func (s *Session) onSetInstructionBreakpointsRequest(request *dap.SetInstructionBreakpointsRequest) {
+	breakpoints := s.setBreakpoints(instructionBpPrefix, len(request.Arguments.Breakpoints), func(i int) *bpMetadata {
+		want := request.Arguments.Breakpoints[i]
+		return &bpMetadata{
+			name:         fmt.Sprintf("%s PC=%s", instructionBpPrefix, want.InstructionReference),
+			condition:    want.Condition,
+			hitCondition: want.HitCondition,
+			logMessage:   "",
+		}
+	}, func(i int) (*bpLocation, error) {
+		want := request.Arguments.Breakpoints[i]
+		addr, err := strconv.ParseInt(want.InstructionReference, 0, 64)
+		if err != nil {
+			return nil, err
+		}
+		return &bpLocation{addr: uint64(addr)}, nil
+	})
+
+	response := &dap.SetInstructionBreakpointsResponse{Response: *newResponse(request.Request)}
+	response.Body.Breakpoints = breakpoints
+	s.send(response)
+}
+
+func (s *Session) clearBreakpoints(existingBps map[string]*api.Breakpoint, amendedBps map[string]struct{}) error {
 	for req, bp := range existingBps {
-		if _, ok := bpAdded[req]; ok {
+		if _, ok := amendedBps[req]; ok {
 			continue
 		}
 		_, err := s.debugger.ClearBreakpoint(bp)
@@ -1846,6 +1835,7 @@ func (s *Session) stepUntilStopAndNotify(command string, threadId int, granulari
 func (s *Session) onPauseRequest(request *dap.PauseRequest) {
 	s.changeStateMu.Lock()
 	defer s.changeStateMu.Unlock()
+	s.setHaltRequested(true)
 	_, err := s.halt()
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToHalt, "Unable to halt execution", err.Error())
@@ -3181,6 +3171,9 @@ func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange cha
 				if strings.HasPrefix(bp.Name, functionBpPrefix) {
 					stopped.Body.Reason = "function breakpoint"
 				}
+				if strings.HasPrefix(bp.Name, instructionBpPrefix) {
+					stopped.Body.Reason = "instruction breakpoint"
+				}
 				stopped.Body.HitBreakpointIds = []int{bp.ID}
 			}
 		}
@@ -3258,12 +3251,15 @@ func (s *Session) resumeOnceAndCheckStop(command string, allowNextStateChange ch
 		return state, err
 	}
 
-	if s.debugger.StopReason() != proc.StopBreakpoint {
-		s.setRunningCmd(false)
-	}
-
 	foundRealBreakpoint := s.handleLogPoints(state)
-	if foundRealBreakpoint {
+
+	switch s.debugger.StopReason() {
+	case proc.StopBreakpoint, proc.StopManual:
+		// Make sure a real manual stop was requested or a real breakpoint was hit.
+		if foundRealBreakpoint || s.checkHaltRequested() {
+			s.setRunningCmd(false)
+		}
+	default:
 		s.setRunningCmd(false)
 	}
 
