@@ -222,3 +222,11 @@ func unmarshalLaunchAttachArgs(input json.RawMessage, config interface{}) error 
 	}
 	return nil
 }
+
+func prettyPrint(config interface{}) string {
+	pretty, err := json.MarshalIndent(config, "", "\t")
+	if err != nil {
+		return fmt.Sprintf("%#v", config)
+	}
+	return string(pretty)
+}
