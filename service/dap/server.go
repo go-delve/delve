@@ -394,8 +394,7 @@ func (c *Config) triggerServerStop() {
 // we need to take that into consideration.
 func (s *Server) Run() {
 	if s.listener == nil {
-		s.config.log.Errorf("Misconfigured server: no Listener is configured.")
-		s.config.triggerServerStop()
+		s.config.log.Fatal("Misconfigured server: no Listener is configured.")
 		return
 	}
 
