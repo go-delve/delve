@@ -97,6 +97,7 @@ type Server struct {
 	// config is all the information necessary to start the debugger and server.
 	config *Config
 	// listener is used to accept the client connection.
+	// When working with a predetermined client, this is nil.
 	listener net.Listener
 	// session is the debug session that comes with an client connection.
 	session   *Session
@@ -242,9 +243,17 @@ var (
 // it will be closed by the server when the client fails to connect,
 // disconnects or requests shutdown. Once config.DisconnectChan is closed,
 // Server.Stop() must be called to shutdown this single-user server.
+//
+// NewServer can be used to create a special DAP Server that works
+// only with a predetermined client. In that case, config.Listener is
+// nil and its RunWithClient must be used instead of Run.
 func NewServer(config *service.Config) *Server {
 	logger := logflags.DAPLogger()
-	logflags.WriteDAPListeningMessage(config.Listener.Addr())
+	if config.Listener != nil {
+		logflags.WriteDAPListeningMessage(config.Listener.Addr())
+	} else {
+		logger.Debug("DAP server for a predetermined client")
+	}
 	logger.Debug("DAP server pid = ", os.Getpid())
 	if config.AcceptMulti {
 		logger.Warn("DAP server does not support accept-multiclient mode")
@@ -308,8 +317,11 @@ func (s *Server) Stop() {
 	s.config.log.Debug("DAP server stopping...")
 	defer s.config.log.Debug("DAP server stopped")
 	close(s.config.stopTriggered)
-	// If run goroutine is blocked on accept, this will unblock it.
-	_ = s.listener.Close()
+
+	if s.listener != nil {
+		// If run goroutine is blocked on accept, this will unblock it.
+		_ = s.listener.Close()
+	}
 
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
@@ -381,6 +393,11 @@ func (c *Config) triggerServerStop() {
 // So if we want to reuse this server for multiple independent debugging sessions
 // we need to take that into consideration.
 func (s *Server) Run() {
+	if s.listener == nil {
+		s.config.log.Fatal("Misconfigured server: no Listener is configured.")
+		return
+	}
+
 	go func() {
 		conn, err := s.listener.Accept() // listener is closed in Stop()
 		if err != nil {
@@ -399,11 +416,28 @@ func (s *Server) Run() {
 				return
 			}
 		}
-		s.sessionMu.Lock()
-		s.session = NewSession(conn, s.config) // closed in Stop()
-		s.sessionMu.Unlock()
-		s.session.serveDAPCodec()
+		s.runSession(conn)
 	}()
+}
+
+func (s *Server) runSession(conn io.ReadWriteCloser) {
+	s.sessionMu.Lock()
+	s.session = NewSession(conn, s.config) // closed in Stop()
+	s.sessionMu.Unlock()
+	s.session.serveDAPCodec()
+}
+
+// RunWithClient is similar to Run but works only with an already established
+// connection instead of waiting on the listener to accept a new client.
+// RunWithClient takes ownership of conn. Debugger won't be started
+// until a launch/attach request is received over the connection.
+func (s *Server) RunWithClient(conn net.Conn) {
+	if s.listener != nil {
+		s.config.log.Fatal("RunWithClient must not be used when the Server is configured with a Listener")
+		return
+	}
+	s.config.log.Debugf("Connected to the client at %s", conn.RemoteAddr())
+	go s.runSession(conn)
 }
 
 // serveDAPCodec reads and decodes requests from the client

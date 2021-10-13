@@ -62,6 +62,11 @@ var (
 	// disableASLR is used to disable ASLR
 	disableASLR bool
 
+	// dapClientAddr is dap subcommand's flag that specifies the address of a DAP client.
+	// If it is specified, the dap server starts a debug session by dialing to the client.
+	// The dap server will serve only for the debug session.
+	dapClientAddr string
+
 	// backend selection
 	backend string
 
@@ -191,9 +196,15 @@ Program and output binary paths will be interpreted relative to dlv's working di
 
 The server does not yet accept multiple client connections (--accept-multiclient).
 While --continue is not supported, stopOnEntry launch/attach attribute can be used to control if
-execution is resumed at the start of the debug session.`,
+execution is resumed at the start of the debug session.
+
+The --client-addr flag is a special flag that makes the server initiate a debug session
+by dialing in to the host:port where a DAP client is waiting. This server process
+will exit when the debug session ends.`,
 		Run: dapCmd,
 	}
+	dapCommand.Flags().StringVar(&dapClientAddr, "client-addr", "", "host:port where the DAP client is waiting for the DAP server to dial in")
+
 	// TODO(polina): support --tty when dlv dap allows to launch a program from command-line
 	rootCommand.AddCommand(dapCommand)
 
@@ -451,14 +462,8 @@ func dapCmd(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(os.Stderr, "Warning: program flags ignored with dap; specify via launch/attach request instead\n")
 		}
 
-		listener, err := net.Listen("tcp", addr)
-		if err != nil {
-			fmt.Printf("couldn't start listener: %s\n", err)
-			return 1
-		}
 		disconnectChan := make(chan struct{})
-		server := dap.NewServer(&service.Config{
-			Listener:       listener,
+		config := &service.Config{
 			DisconnectChan: disconnectChan,
 			Debugger: debugger.Config{
 				Backend:              backend,
@@ -467,10 +472,31 @@ func dapCmd(cmd *cobra.Command, args []string) {
 				CheckGoVersion:       checkGoVersion,
 			},
 			CheckLocalConnUser: checkLocalConnUser,
-		})
-		defer server.Stop()
+		}
+		var conn net.Conn
+		if dapClientAddr == "" {
+			listener, err := net.Listen("tcp", addr)
+			if err != nil {
+				fmt.Printf("couldn't start listener: %s\n", err)
+				return 1
+			}
+			config.Listener = listener
+		} else { // with a predetermined client.
+			var err error
+			conn, err = net.Dial("tcp", dapClientAddr)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to connect to the DAP client: %v\n", err)
+				return 1
+			}
+		}
 
-		server.Run()
+		server := dap.NewServer(config)
+		defer server.Stop()
+		if conn == nil {
+			server.Run()
+		} else { // work with a predetermined client.
+			server.RunWithClient(conn)
+		}
 		waitForDisconnectSignal(disconnectChan)
 		return 0
 	}()
