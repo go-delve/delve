@@ -104,6 +104,7 @@ func Test1Restart_afterExit(t *testing.T) {
 }
 
 func Test1Restart_breakpointPreservation(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestClient1("continuetestprog", t, func(c *rpc1.RPCClient) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1, Name: "firstbreakpoint", Tracepoint: true})
 		assertNoError(err, t, "CreateBreakpoint()")
@@ -160,6 +161,7 @@ func Test1Restart_duringStop(t *testing.T) {
 }
 
 func Test1ClientServer_exit(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestClient1("continuetestprog", t, func(c *rpc1.RPCClient) {
 		state, err := c.GetState()
 		if err != nil {
@@ -183,6 +185,7 @@ func Test1ClientServer_exit(t *testing.T) {
 }
 
 func Test1ClientServer_step(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestClient1("testprog", t, func(c *rpc1.RPCClient) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.helloworld", Line: -1})
 		if err != nil {
@@ -206,6 +209,7 @@ func Test1ClientServer_step(t *testing.T) {
 }
 
 func testnext(testcases []nextTest, initialLocation string, t *testing.T) {
+	protest.AllowRecording(t)
 	withTestClient1("testnextprog", t, func(c *rpc1.RPCClient) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: initialLocation, Line: -1})
 		if err != nil {
@@ -297,6 +301,7 @@ func Test1NextFunctionReturn(t *testing.T) {
 }
 
 func Test1ClientServer_breakpointInMainThread(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestClient1("testprog", t, func(c *rpc1.RPCClient) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.helloworld", Line: 1})
 		if err != nil {
@@ -318,6 +323,7 @@ func Test1ClientServer_breakpointInMainThread(t *testing.T) {
 }
 
 func Test1ClientServer_breakpointInSeparateGoroutine(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestClient1("testthreads", t, func(c *rpc1.RPCClient) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.anotherthread", Line: 1})
 		if err != nil {
@@ -337,6 +343,7 @@ func Test1ClientServer_breakpointInSeparateGoroutine(t *testing.T) {
 }
 
 func Test1ClientServer_breakAtNonexistentPoint(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestClient1("testprog", t, func(c *rpc1.RPCClient) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "nowhere", Line: 1})
 		if err == nil {
@@ -346,6 +353,7 @@ func Test1ClientServer_breakAtNonexistentPoint(t *testing.T) {
 }
 
 func Test1ClientServer_clearBreakpoint(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestClient1("testprog", t, func(c *rpc1.RPCClient) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sleepytime", Line: 1})
 		if err != nil {
@@ -372,6 +380,7 @@ func Test1ClientServer_clearBreakpoint(t *testing.T) {
 }
 
 func Test1ClientServer_switchThread(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestClient1("testnextprog", t, func(c *rpc1.RPCClient) {
 		// With invalid thread id
 		_, err := c.SwitchThread(-1)
@@ -415,6 +424,7 @@ func Test1ClientServer_switchThread(t *testing.T) {
 }
 
 func Test1ClientServer_infoLocals(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestClient1("testnextprog", t, func(c *rpc1.RPCClient) {
 		fp := testProgPath(t, "testnextprog")
 		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 24})
@@ -436,6 +446,7 @@ func Test1ClientServer_infoLocals(t *testing.T) {
 }
 
 func Test1ClientServer_infoArgs(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestClient1("testnextprog", t, func(c *rpc1.RPCClient) {
 		fp := testProgPath(t, "testnextprog")
 		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 47})
@@ -464,6 +475,7 @@ func Test1ClientServer_infoArgs(t *testing.T) {
 }
 
 func Test1ClientServer_traceContinue(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestClient1("integrationprog", t, func(c *rpc1.RPCClient) {
 		fp := testProgPath(t, "integrationprog")
 		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 15, Tracepoint: true, Goroutine: true, Stacktrace: 5, Variables: []string{"i"}})
@@ -521,6 +533,7 @@ func Test1ClientServer_traceContinue(t *testing.T) {
 }
 
 func Test1ClientServer_traceContinue2(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestClient1("integrationprog", t, func(c *rpc1.RPCClient) {
 		bp1, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 1, Tracepoint: true})
 		if err != nil {
@@ -564,6 +577,7 @@ func Test1ClientServer_traceContinue2(t *testing.T) {
 }
 
 func Test1ClientServer_FindLocations(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestClient1("locationsprog", t, func(c *rpc1.RPCClient) {
 		someFunctionCallAddr := findLocationHelper(t, c, "locationsprog.go:26", false, 1, 0)[0]
 		someFunctionLine1 := findLocationHelper(t, c, "locationsprog.go:27", false, 1, 0)[0]
@@ -725,6 +739,7 @@ func Test1ClientServer_FullStacktrace(t *testing.T) {
 		lenient = true
 	}
 
+	protest.AllowRecording(t)
 	withTestClient1("goroutinestackprog", t, func(c *rpc1.RPCClient) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.stacktraceme", Line: -1})
 		assertNoError(err, t, "CreateBreakpoint()")
@@ -972,6 +987,7 @@ func Test1Disasm(t *testing.T) {
 }
 
 func Test1NegativeStackDepthBug(t *testing.T) {
+	protest.AllowRecording(t)
 	// After the target process has terminated should return an error but not crash
 	withTestClient1("continuetestprog", t, func(c *rpc1.RPCClient) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: -1})
@@ -988,6 +1004,7 @@ func Test1ClientServer_CondBreakpoint(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.Skip("test is not valid on FreeBSD")
 	}
+	protest.AllowRecording(t)
 	withTestClient1("parallel_next", t, func(c *rpc1.RPCClient) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: 1})
 		assertNoError(err, t, "CreateBreakpoint()")
@@ -1035,6 +1052,7 @@ func Test1Issue419(t *testing.T) {
 }
 
 func Test1TypesCommand(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestClient1("testvariables2", t, func(c *rpc1.RPCClient) {
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
@@ -1061,6 +1079,7 @@ func Test1TypesCommand(t *testing.T) {
 }
 
 func Test1Issue406(t *testing.T) {
+	protest.AllowRecording(t)
 	withTestClient1("issue406", t, func(c *rpc1.RPCClient) {
 		locs, err := c.FindLocation(api.EvalScope{GoroutineID: -1}, "issue406.go:146")
 		assertNoError(err, t, "FindLocation()")
