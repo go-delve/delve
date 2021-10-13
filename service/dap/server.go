@@ -542,22 +542,7 @@ func (s *Session) handleRequest(request dap.Message) {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
 			}
-			s.logToConsole("Execution halted to set breakpoints - please resume execution manually")
 			s.onSetBreakpointsRequest(request)
-			// TODO(polina): consider resuming execution here automatically after suppressing
-			// a stop event when an operation in runUntilStopAndNotify returns. In case that operation
-			// was already stopping for a different reason, we would need to examine the state
-			// that is returned to determine if this halt was the cause of the stop or not.
-			// We should stop with an event and not resume if one of the following is true:
-			// - StopReason is anything but manual
-			// - Any thread has a breakpoint or CallReturn set
-			// - NextInProgress is false and the last command sent by the user was: next,
-			//   step, stepOut, reverseNext, reverseStep or reverseStepOut
-			// Otherwise, we can skip the stop event and resume the temporarily
-			// interrupted process execution with api.DirectionCongruentContinue.
-			// For this to apply in cases other than api.Continue, we would also need to
-			// introduce a new version of halt that skips ClearInternalBreakpoints
-			// in proc.(*Target).Continue, leaving NextInProgress as true.
 		case *dap.SetFunctionBreakpointsRequest:
 			s.changeStateMu.Lock()
 			defer s.changeStateMu.Unlock()
@@ -567,7 +552,6 @@ func (s *Session) handleRequest(request dap.Message) {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
 			}
-			s.logToConsole("Execution halted to set breakpoints - please resume execution manually")
 			s.onSetFunctionBreakpointsRequest(request)
 		default:
 			r := request.(dap.RequestMessage).GetRequest()
@@ -1155,6 +1139,7 @@ func (s *Session) stopDebugSession(killProcess bool) error {
 	// To avoid goroutine leaks, we can use a wait group or have the goroutine listen
 	// for a stop signal on a dedicated quit channel at suitable points (use context?).
 	// Additional clean-up might be especially critical when we support multiple clients.
+	s.setHaltRequested(true)
 	state, err := s.halt()
 	if err == proc.ErrProcessDetached {
 		s.config.log.Debug("halt returned error: ", err)
@@ -1201,7 +1186,6 @@ func (s *Session) stopDebugSession(killProcess bool) error {
 // halt sends a halt request if the debuggee is running.
 // changeStateMu should be held when calling (*Server).halt.
 func (s *Session) halt() (*api.DebuggerState, error) {
-	s.setHaltRequested(true)
 	// Only send a halt request if the debuggee is running.
 	if s.debugger.IsRunning() {
 		return s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
@@ -1816,6 +1800,7 @@ func (s *Session) stepUntilStopAndNotify(command string, threadId int, granulari
 func (s *Session) onPauseRequest(request *dap.PauseRequest) {
 	s.changeStateMu.Lock()
 	defer s.changeStateMu.Unlock()
+	s.setHaltRequested(true)
 	_, err := s.halt()
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToHalt, "Unable to halt execution", err.Error())
@@ -3231,12 +3216,15 @@ func (s *Session) resumeOnceAndCheckStop(command string, allowNextStateChange ch
 		return state, err
 	}
 
-	if s.debugger.StopReason() != proc.StopBreakpoint {
-		s.setRunningCmd(false)
-	}
-
 	foundRealBreakpoint := s.handleLogPoints(state)
-	if foundRealBreakpoint {
+
+	switch s.debugger.StopReason() {
+	case proc.StopBreakpoint, proc.StopManual:
+		// Make sure a real manual stop was requested or a real breakpoint was hit.
+		if foundRealBreakpoint || s.checkHaltRequested() {
+			s.setRunningCmd(false)
+		}
+	default:
 		s.setRunningCmd(false)
 	}
 
