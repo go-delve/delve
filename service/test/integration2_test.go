@@ -947,6 +947,76 @@ func TestClientServer_FindLocations(t *testing.T) {
 			findLocationHelper(t, c, "dirio.SomeFunction:0", false, 1, someFuncLoc)
 		})
 	}
+
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
+		withTestClient2("locationsprog_generic", t, func(c service.Client) {
+			const (
+				methodLine = "locationsprog_generic.go:9"
+				funcLine   = "locationsprog_generic.go:13"
+				funcLine2  = "locationsprog_generic.go:14"
+			)
+			methodLoc := findLocationHelper2(t, c, methodLine, nil)
+			if len(methodLoc.PCs) != 2 {
+				// we didn't get both instantiations of the method
+				t.Errorf("wrong number of PCs for %s: %#x", methodLine, methodLoc.PCs)
+			}
+
+			funcLoc := findLocationHelper2(t, c, funcLine, nil)
+			if len(funcLoc.PCs) != 2 {
+				// we didn't get both instantiations of the function
+				t.Errorf("wrong number of PCs for %s: %#x", funcLine, funcLoc.PCs)
+			}
+
+			funcLoc2 := findLocationHelper2(t, c, funcLine2, nil)
+			if len(funcLoc2.PCs) != 2 {
+				t.Errorf("wrong number of PCs for %s: %#x", funcLine2, funcLoc2.PCs)
+			}
+
+			findLocationHelper2(t, c, "main.ParamFunc", funcLoc)
+
+			findLocationHelper2(t, c, "ParamFunc", funcLoc)
+
+			findLocationHelper2(t, c, "main.ParamReceiver.Amethod", methodLoc)
+			findLocationHelper2(t, c, "main.Amethod", methodLoc)
+			findLocationHelper2(t, c, "ParamReceiver.Amethod", methodLoc)
+			findLocationHelper2(t, c, "Amethod", methodLoc)
+
+			findLocationHelper2(t, c, "main.(*ParamReceiver).Amethod", methodLoc)
+			findLocationHelper2(t, c, "(*ParamReceiver).Amethod", methodLoc)
+
+			findLocationHelper2(t, c, "main.(*ParamReceiver).Amethod", methodLoc)
+			findLocationHelper2(t, c, "(*ParamReceiver).Amethod", methodLoc)
+
+			findLocationHelper2(t, c, "main.ParamFunc:1", funcLoc2)
+		})
+	}
+}
+
+func findLocationHelper2(t *testing.T, c service.Client, loc string, checkLoc *api.Location) *api.Location {
+	locs, err := c.FindLocation(api.EvalScope{GoroutineID: -1}, loc, false, nil)
+	if err != nil {
+		t.Fatalf("FindLocation(%q) -> error %v", loc, err)
+	}
+	t.Logf("FindLocation(%q) → %v\n", loc, locs)
+	if len(locs) != 1 {
+		t.Logf("Wrong number of locations returned for location %q (got %d expected 1)", loc, len(locs))
+	}
+
+	if checkLoc == nil {
+		return &locs[0]
+	}
+
+	if len(checkLoc.PCs) != len(locs[0].PCs) {
+		t.Fatalf("Wrong number of PCs returned (got %#x expected %#x)", locs[0].PCs, checkLoc.PCs)
+	}
+
+	for i := range checkLoc.PCs {
+		if checkLoc.PCs[i] != locs[0].PCs[i] {
+			t.Fatalf("Wrong PCs returned (got %#x expected %#x)", locs[0].PCs, checkLoc.PCs)
+		}
+	}
+
+	return &locs[0]
 }
 
 func TestClientServer_FindLocationsAddr(t *testing.T) {
