@@ -179,7 +179,7 @@ type launchAttachArgs struct {
 	stackTraceDepth int
 	// showGlobalVariables indicates if global package variables should be loaded.
 	showGlobalVariables bool
-	// hideSystemGoroutines indicates if system goroutines should be included in threads
+	// hideSystemGoroutines indicates if system goroutines should be removed from threads
 	// responses.
 	hideSystemGoroutines bool
 	// substitutePathClientToServer indicates rules for converting file paths between client and debugger.
