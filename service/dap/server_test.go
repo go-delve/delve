@@ -1057,22 +1057,23 @@ func TestHideSystemGoroutinesRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	wantRegex := []*regexp.Regexp{reMain, reRuntime}
 	tests := []struct {
 		hideSystemGoroutines bool
-		wantLen              int
-		wantRegex            []*regexp.Regexp
+		// wantMatched holds the number of goroutines that
+		// should match each regex. If the value is -1, then
+		// the match number should > 0.
+		wantMatched []int
 	}{
 		{
 			hideSystemGoroutines: true,
 			// The user process creates 10 goroutines in addition to the
 			// main goroutine, for a total of 11 goroutines.
-			wantLen:   11,
-			wantRegex: []*regexp.Regexp{reMain},
+			wantMatched: []int{11, 0},
 		},
 		{
 			hideSystemGoroutines: false,
-			wantLen:              14,
-			wantRegex:            []*regexp.Regexp{reMain, reRuntime},
+			wantMatched:          []int{11, -1},
 		},
 	}
 	for _, tt := range tests {
@@ -1095,18 +1096,30 @@ func TestHideSystemGoroutinesRequest(t *testing.T) {
 
 						client.ThreadsRequest()
 						tr := client.ExpectThreadsResponse(t)
-						if len(tr.Body.Threads) != tt.wantLen {
-							t.Errorf("got %d threads, expected %d\n", len(tr.Body.Threads), tt.wantLen)
-						}
 
+						var matchedRe = make([]int, len(wantRegex))
 						for i, got := range tr.Body.Threads {
 							matched := false
-							for _, re := range tt.wantRegex {
-								matched = matched || re.MatchString(got.Name)
+							for i, re := range wantRegex {
+								if re.MatchString(got.Name) {
+									matched = true
+									matchedRe[i]++
+								}
 							}
 							if !matched {
-								t.Errorf("\ngot threads[%d] = %#v\nwant %#v", i, got, tt.wantRegex)
+								t.Errorf("\ngot threads[%d] = %#v\nwant %#v", i, got, wantRegex)
 							}
+						}
+
+						for i := range matchedRe {
+							if tt.wantMatched[i] < 0 {
+								if matchedRe[i] == 0 {
+									t.Errorf("got %d threads matching %q, expected %d\n", matchedRe[i], wantRegex[i], tt.wantMatched[i])
+								}
+							} else if matchedRe[i] != tt.wantMatched[i] {
+								t.Errorf("got %d threads matching %q, expected %d\n", matchedRe[i], wantRegex[i], tt.wantMatched[i])
+							}
+
 						}
 					},
 					disconnect: true,
