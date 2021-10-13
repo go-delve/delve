@@ -103,6 +103,7 @@ func (c *Client) ExpectInitializeResponseAndCapabilities(t *testing.T) *dap.Init
 		SupportsExceptionInfoRequest:     true,
 		SupportsSetVariable:              true,
 		SupportsFunctionBreakpoints:      true,
+		SupportsInstructionBreakpoints:   true,
 		SupportsEvaluateForHovers:        true,
 		SupportsClipboardContext:         true,
 		SupportsSteppingGranularity:      true,
@@ -398,6 +399,16 @@ func (c *Client) SetFunctionBreakpointsRequest(breakpoints []dap.FunctionBreakpo
 	c.send(&dap.SetFunctionBreakpointsRequest{
 		Request: *c.newRequest("setFunctionBreakpoints"),
 		Arguments: dap.SetFunctionBreakpointsArguments{
+			Breakpoints: breakpoints,
+		},
+	})
+}
+
+// SetInstructionBreakpointsRequest sends a 'setInstructionBreakpoints' request.
+func (c *Client) SetInstructionBreakpointsRequest(breakpoints []dap.InstructionBreakpoint) {
+	c.send(&dap.SetInstructionBreakpointsRequest{
+		Request: *c.newRequest("setInstructionBreakpoints"),
+		Arguments: dap.SetInstructionBreakpointsArguments{
 			Breakpoints: breakpoints,
 		},
 	})
