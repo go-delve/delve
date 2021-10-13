@@ -540,14 +540,7 @@ func (t *Target) SetEBPFTracepoint(fnName string) error {
 			return err
 		}
 
-		var addr uint64
-		isret, _ := entry.Val(dwarf.AttrVarParam).(bool)
-		if isret {
-			addr = fn.End
-		} else {
-			addr = fn.Entry
-		}
-		origOffset, pieces, _, err := t.BinInfo().Location(entry, dwarf.AttrLocation, addr, op.DwarfRegisters{}, nil)
+		offset, pieces, _, err := t.BinInfo().Location(entry, dwarf.AttrLocation, fn.Entry, op.DwarfRegisters{}, nil)
 		if err != nil {
 			return err
 		}
@@ -557,7 +550,8 @@ func (t *Target) SetEBPFTracepoint(fnName string) error {
 				paramPieces = append(paramPieces, int(piece.Val))
 			}
 		}
-		offset := origOffset + int64(t.BinInfo().Arch.PtrSize())
+		isret, _ := entry.Val(dwarf.AttrVarParam).(bool)
+		offset += int64(t.BinInfo().Arch.PtrSize())
 		args = append(args, ebpf.UProbeArgMap{
 			Offset: offset,
 			Size:   dt.Size(),
