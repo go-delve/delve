@@ -15,20 +15,19 @@ import (
 func TracePipeListen() error {
 	f, err := os.Open("/sys/kernel/debug/tracing/trace_pipe")
 	if err != nil {
-		return fmt.Errorf("failed to open trace pipe: %w", err)
+		return fmt.Errorf("failed to open trace pipe: %v", err)
 	}
 	defer f.Close()
 
 	r := bufio.NewReader(f)
 	b := make([]byte, 1024)
-
 	for {
-		l, err := r.Read(b)
+		len, err := r.Read(b)
 		if err != nil {
-			return fmt.Errorf("failed to read from trace pipe: %w", err)
+			return fmt.Errorf("failed to read from trace pipe: %v", err)
 		}
 
-		s := string(b[:l])
+		s := string(b[:len])
 		fmt.Println(s)
 	}
 }

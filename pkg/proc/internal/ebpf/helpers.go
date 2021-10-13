@@ -33,10 +33,6 @@ type Uretprobe struct {
 	Offset uint32
 }
 
-func (u *Uretprobe) Destroy() error {
-	return u.Link.Destroy()
-}
-
 type EBPFContext struct {
 	bpfModule  *bpf.Module
 	bpfProg    *bpf.BPFProg

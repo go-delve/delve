@@ -39,7 +39,6 @@ func (a *RWArray) Put(v interface{}) int {
 		if !a.slots[i].used {
 			a.slots[i].value = v
 			a.slots[i].used = true
-
 			return i
 		}
 	}

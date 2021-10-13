@@ -70,7 +70,7 @@ struct perf_buffer * init_perf_buf(int map_fd, int page_cnt, uintptr_t ctx) {
     pb_opts.lost_cb = perfLostCallback;
     pb_opts.ctx = (void*)ctx;
     pb = perf_buffer__new(map_fd, page_cnt, &pb_opts);
-    if (libbpf_get_error(pb)) {
+    if (pb < 0) {
         fprintf(stderr, "Failed to initialize perf buffer!\n");
         return NULL;
     }
@@ -197,6 +197,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -251,22 +252,6 @@ type BPFLink struct {
 	eventName string
 }
 
-func (l *BPFLink) Detach() error {
-	ret := C.bpf_link__detach(l.link)
-	if ret < 0 {
-		return syscall.Errno(-ret)
-	}
-	return nil
-}
-
-func (l *BPFLink) Destroy() error {
-	ret := C.bpf_link__destroy(l.link)
-	if ret < 0 {
-		return syscall.Errno(-ret)
-	}
-	return nil
-}
-
 type PerfBuffer struct {
 	pb         *C.struct_perf_buffer
 	bpfMap     *BPFMap
@@ -311,49 +296,14 @@ func errptrError(ptr unsafe.Pointer, format string, args ...interface{}) error {
 	return fmt.Errorf(format+": %v", args...)
 }
 
-type NewModuleArgs struct {
-	KConfigFilePath string
-	BTFObjPath      string
-	BPFObjName      string
-	BPFObjPath      string
-	BPFObjBuff      []byte
-}
-
-func NewModuleFromFile(bpfObjPath string) (*Module, error) {
-
-	return NewModuleFromFileArgs(NewModuleArgs{
-		BPFObjPath: bpfObjPath,
-	})
-}
-
-func NewModuleFromFileArgs(args NewModuleArgs) (*Module, error) {
+func NewModuleFromFile(bpfObjFile string) (*Module, error) {
 	C.set_print_fn()
-	if err := bumpMemlockRlimit(); err != nil {
-		return nil, err
-	}
-	opts := C.struct_bpf_object_open_opts{}
-	opts.sz = C.sizeof_struct_bpf_object_open_opts
-
-	bpfFile := C.CString(args.BPFObjPath)
-	defer C.free(unsafe.Pointer(bpfFile))
-
-	// instruct libbpf to use user provided kernel BTF file
-	if args.BTFObjPath != "" {
-		btfFile := C.CString(args.BTFObjPath)
-		opts.btf_custom_path = btfFile
-		defer C.free(unsafe.Pointer(btfFile))
-	}
-
-	// instruct libbpf to use user provided KConfigFile
-	if args.KConfigFilePath != "" {
-		kConfigFile := C.CString(args.KConfigFilePath)
-		opts.kconfig = kConfigFile
-		defer C.free(unsafe.Pointer(kConfigFile))
-	}
-
-	obj := C.bpf_object__open_file(bpfFile, &opts)
+	bumpMemlockRlimit()
+	cs := C.CString(bpfObjFile)
+	obj := C.bpf_object__open(cs)
+	C.free(unsafe.Pointer(cs))
 	if C.IS_ERR_OR_NULL(unsafe.Pointer(obj)) {
-		return nil, errptrError(unsafe.Pointer(obj), "failed to open BPF object %s", args.BPFObjPath)
+		return nil, errptrError(unsafe.Pointer(obj), "failed to open BPF object %s", bpfObjFile)
 	}
 
 	return &Module{
@@ -362,45 +312,17 @@ func NewModuleFromFileArgs(args NewModuleArgs) (*Module, error) {
 }
 
 func NewModuleFromBuffer(bpfObjBuff []byte, bpfObjName string) (*Module, error) {
-
-	return NewModuleFromBufferArgs(NewModuleArgs{
-		BPFObjBuff: bpfObjBuff,
-		BPFObjName: bpfObjName,
-	})
-}
-
-func NewModuleFromBufferArgs(args NewModuleArgs) (*Module, error) {
 	C.set_print_fn()
-	if err := bumpMemlockRlimit(); err != nil {
-		return nil, err
-	}
-	if args.BTFObjPath == "" {
-		args.BTFObjPath = "/sys/kernel/btf/vmlinux"
-	}
-	btfFile := C.CString(args.BTFObjPath)
-	bpfName := C.CString(args.BPFObjName)
-	bpfBuff := unsafe.Pointer(C.CBytes(args.BPFObjBuff))
-	bpfBuffSize := C.size_t(len(args.BPFObjBuff))
-
-	opts := C.struct_bpf_object_open_opts{}
-	opts.object_name = bpfName
-	opts.sz = C.sizeof_struct_bpf_object_open_opts
-	opts.btf_custom_path = btfFile // instruct libbpf to use user provided kernel BTF file
-
-	if len(args.KConfigFilePath) > 2 {
-		kConfigFile := C.CString(args.KConfigFilePath)
-		opts.kconfig = kConfigFile // instruct libbpf to use user provided KConfigFile
-		defer C.free(unsafe.Pointer(kConfigFile))
-	}
-
-	obj := C.bpf_object__open_mem(bpfBuff, bpfBuffSize, &opts)
+	bumpMemlockRlimit()
+	name := C.CString(bpfObjName)
+	buffSize := C.size_t(len(bpfObjBuff))
+	buffPtr := unsafe.Pointer(C.CBytes(bpfObjBuff))
+	obj := C.bpf_object__open_buffer(buffPtr, buffSize, name)
+	C.free(unsafe.Pointer(name))
+	C.free(unsafe.Pointer(buffPtr))
 	if C.IS_ERR_OR_NULL(unsafe.Pointer(obj)) {
-		return nil, errptrError(unsafe.Pointer(obj), "failed to open BPF object %s: %v", args.BPFObjName, args.BPFObjBuff[:20])
+		return nil, errptrError(unsafe.Pointer(obj), "failed to open BPF object %s: %v", bpfObjName, bpfObjBuff[:20])
 	}
-
-	C.free(bpfBuff)
-	C.free(unsafe.Pointer(bpfName))
-	C.free(unsafe.Pointer(btfFile))
 
 	return &Module{
 		obj: obj,
@@ -456,9 +378,11 @@ func (m *Module) GetMap(mapName string) (*BPFMap, error) {
 }
 
 func (b *BPFMap) Pin(pinPath string) error {
+	cs := C.CString(b.name)
 	path := C.CString(pinPath)
-	errC := C.bpf_map__pin(b.bpfMap, path)
-	C.free(unsafe.Pointer(path))
+	bpfMap := C.bpf_object__find_map_by_name(b.module.obj, cs)
+	errC := C.bpf_map__pin(bpfMap, path)
+	C.free(unsafe.Pointer(cs))
 	if errC != 0 {
 		return fmt.Errorf("failed to pin map %s to path %s", b.name, pinPath)
 	}
@@ -466,9 +390,11 @@ func (b *BPFMap) Pin(pinPath string) error {
 }
 
 func (b *BPFMap) Unpin(pinPath string) error {
+	cs := C.CString(b.name)
 	path := C.CString(pinPath)
-	errC := C.bpf_map__unpin(b.bpfMap, path)
-	C.free(unsafe.Pointer(path))
+	bpfMap := C.bpf_object__find_map_by_name(b.module.obj, cs)
+	errC := C.bpf_map__unpin(bpfMap, path)
+	C.free(unsafe.Pointer(cs))
 	if errC != 0 {
 		return fmt.Errorf("failed to unpin map %s from path %s", b.name, pinPath)
 	}
@@ -476,9 +402,11 @@ func (b *BPFMap) Unpin(pinPath string) error {
 }
 
 func (b *BPFMap) SetPinPath(pinPath string) error {
+	cs := C.CString(b.name)
 	path := C.CString(pinPath)
-	errC := C.bpf_map__set_pin_path(b.bpfMap, path)
-	C.free(unsafe.Pointer(path))
+	bpfMap := C.bpf_object__find_map_by_name(b.module.obj, cs)
+	errC := C.bpf_map__set_pin_path(bpfMap, path)
+	C.free(unsafe.Pointer(cs))
 	if errC != 0 {
 		return fmt.Errorf("failed to set pin for map %s to path %s", b.name, pinPath)
 	}
@@ -491,7 +419,10 @@ func (b *BPFMap) SetPinPath(pinPath string) error {
 // Note: for ring buffer and perf buffer, maxEntries is the
 // capacity in bytes.
 func (b *BPFMap) Resize(maxEntries uint32) error {
-	errC := C.bpf_map__set_max_entries(b.bpfMap, C.uint(maxEntries))
+	cs := C.CString(b.name)
+	bpfMap := C.bpf_object__find_map_by_name(b.module.obj, cs)
+	errC := C.bpf_map__resize(bpfMap, C.uint(maxEntries))
+	C.free(unsafe.Pointer(cs))
 	if errC != 0 {
 		return fmt.Errorf("failed to resize map %s to %v", b.name, maxEntries)
 	}
@@ -502,33 +433,11 @@ func (b *BPFMap) Resize(maxEntries uint32) error {
 // Note: for ring buffer and perf buffer, maxEntries is the
 // capacity in bytes.
 func (b *BPFMap) GetMaxEntries() uint32 {
-	maxEntries := C.bpf_map__max_entries(b.bpfMap)
+	cs := C.CString(b.name)
+	bpfMap := C.bpf_object__find_map_by_name(b.module.obj, cs)
+	maxEntries := C.bpf_map__max_entries(bpfMap)
+	C.free(unsafe.Pointer(cs))
 	return uint32(maxEntries)
-}
-
-func (b *BPFMap) GetFd() int {
-	return int(b.fd)
-}
-
-func (b *BPFMap) GetName() string {
-	return b.name
-}
-
-func (b *BPFMap) GetModule() *Module {
-	return b.module
-}
-
-func (b *BPFMap) GetPinPath() string {
-	pinPathGo := C.GoString(C.bpf_map__get_pin_path(b.bpfMap))
-	return pinPathGo
-}
-
-func (b *BPFMap) IsPinned() bool {
-	isPinned := C.bpf_map__is_pinned(b.bpfMap)
-	if isPinned == C.bool(true) {
-		return true
-	}
-	return false
 }
 
 func GetUnsafePointer(data interface{}) (unsafe.Pointer, error) {
@@ -690,16 +599,8 @@ func (m *Module) GetProgram(progName string) (*BPFProg, error) {
 	}, nil
 }
 
-func (p *BPFProg) GetFd() int {
-	return int(C.bpf_program__fd(p.prog))
-}
-
-func (p *BPFProg) GetModule() *Module {
-	return p.module
-}
-
-func (p *BPFProg) GetName() string {
-	return p.name
+func (p *BPFProg) GetFd() C.int {
+	return C.bpf_program__fd(p.prog)
 }
 
 // BPFProgType is an enum as defined in https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/bpf.h
@@ -760,21 +661,25 @@ func (p *BPFProg) SetTracepoint() error {
 	return nil
 }
 
-func (p *BPFProg) AttachTracepoint(category, name string) (*BPFLink, error) {
-	tpCategory := C.CString(category)
-	tpName := C.CString(name)
+func (p *BPFProg) AttachTracepoint(tp string) (*BPFLink, error) {
+	tpEvent := strings.Split(tp, ":")
+	if len(tpEvent) != 2 {
+		return nil, fmt.Errorf("tracepoint must be in 'category:name' format")
+	}
+	tpCategory := C.CString(tpEvent[0])
+	tpName := C.CString(tpEvent[1])
 	link := C.bpf_program__attach_tracepoint(p.prog, tpCategory, tpName)
 	C.free(unsafe.Pointer(tpCategory))
 	C.free(unsafe.Pointer(tpName))
 	if C.IS_ERR_OR_NULL(unsafe.Pointer(link)) {
-		return nil, errptrError(unsafe.Pointer(link), "failed to attach tracepoint %s to program %s", name, p.name)
+		return nil, errptrError(unsafe.Pointer(link), "failed to attach tracepoint %s to program %s", tp, p.name)
 	}
 
 	bpfLink := &BPFLink{
 		link:      link,
 		prog:      p,
 		linkType:  Tracepoint,
-		eventName: name,
+		eventName: tp,
 	}
 	p.module.links = append(p.module.links, bpfLink)
 	return bpfLink, nil
@@ -896,7 +801,7 @@ func doAttachUprobe(prog *BPFProg, isUretprobe bool, pid int, path string, offse
 	link := C.bpf_program__attach_uprobe(prog.prog, retCBool, pidCint, pathCString, offsetCsizet)
 	C.free(unsafe.Pointer(pathCString))
 	if C.IS_ERR_OR_NULL(unsafe.Pointer(link)) {
-		return nil, errptrError(unsafe.Pointer(link), "failed to attach u(ret)probe to program %s:%d with pid %d, ", path, offset, pid)
+		return nil, errptrError(unsafe.Pointer(link), "failed to attach u(ret)probe to program %s:%d with pid %s, ", path, offset, pid)
 	}
 
 	upType := Uprobe
@@ -908,7 +813,7 @@ func doAttachUprobe(prog *BPFProg, isUretprobe bool, pid int, path string, offse
 		link:      link,
 		prog:      prog,
 		linkType:  upType,
-		eventName: fmt.Sprintf("%s:%d:%d", path, pid, offset),
+		eventName: fmt.Sprintf("%s:%d:%s", path, pid, offset),
 	}
 	return bpfLink, nil
 }
