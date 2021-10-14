@@ -200,8 +200,6 @@ func createFunctionParameterList(entry uint64, goidOffset int64, args []UProbeAr
 			params.params[params.n_parameters] = param
 			params.n_parameters++
 		} else {
-			offset := arg.Offset
-			param.offset = C.int(offset)
 			params.ret_params[params.n_ret_parameters] = param
 			params.n_ret_parameters++
 		}
