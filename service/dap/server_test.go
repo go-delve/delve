@@ -2158,7 +2158,7 @@ func TestRegistersScopeAndVariables(t *testing.T) {
 					registersScope := localsScope + 1
 					checkScope(t, scopes, 1, "Registers", registersScope)
 
-					// Check that rip points to the InstructionPointerReference.
+					// Check that instructionPointer points to the InstructionPointerReference.
 					pc, err := getPC(t, client, 1)
 					if err != nil {
 						t.Error(pc)
@@ -2169,13 +2169,18 @@ func TestRegistersScopeAndVariables(t *testing.T) {
 					if len(vr.Body.Variables) == 0 {
 						t.Fatal("no registers returned")
 					}
-					rip := vr.Body.Variables[0]
-					gotPc, err := strconv.ParseUint(rip.Value, 0, 64)
+					idx := findPcReg(vr.Body.Variables)
+					if idx < 0 {
+						t.Fatalf("got %#v, want a reg with instruction pointer", vr.Body.Variables)
+					}
+					pcReg := vr.Body.Variables[idx]
+					gotPc, err := strconv.ParseUint(pcReg.Value, 0, 64)
 					if err != nil {
 						t.Error(err)
 					}
-					if strings.TrimSpace(rip.Name) != "rip" || gotPc != pc || rip.EvaluateName != "_RIP" {
-						t.Errorf("got %#v,\nwant Name=rip Value=%#x EvaluateName=_RIP", rip, pc)
+					name := strings.TrimSpace(pcReg.Name)
+					if gotPc != pc || pcReg.EvaluateName != fmt.Sprintf("_%s", strings.ToUpper(name)) {
+						t.Errorf("got %#v,\nwant Name=%s Value=%#x EvaluateName=%q", pcReg, name, pc, fmt.Sprintf("_%s", strings.ToUpper(name)))
 					}
 
 					// The program has no user-defined globals.
@@ -2207,18 +2212,43 @@ func TestRegistersScopeAndVariables(t *testing.T) {
 					if len(vr.Body.Variables) == 0 {
 						t.Fatal("no registers returned")
 					}
-					rip = vr.Body.Variables[0]
-					gotPc, err = strconv.ParseUint(rip.Value, 0, 64)
+
+					idx = findPcReg(vr.Body.Variables)
+					if idx < 0 {
+						t.Fatalf("got %#v, want a reg with instruction pointer", vr.Body.Variables)
+					}
+					pcReg = vr.Body.Variables[idx]
+					gotPc, err = strconv.ParseUint(pcReg.Value, 0, 64)
 					if err != nil {
 						t.Error(err)
 					}
-					if strings.TrimSpace(rip.Name) != "rip" || gotPc != pc || rip.EvaluateName != "_RIP" {
-						t.Errorf("got %#v,\nwant Name=rip Value=%#x EvaluateName=_RIP", rip, pc)
+
+					if gotPc != pc || pcReg.EvaluateName != fmt.Sprintf("_%s", strings.ToUpper(name)) {
+						t.Errorf("got %#v,\nwant Name=%s Value=%#x EvaluateName=%q", pcReg, name, pc, fmt.Sprintf("_%s", strings.ToUpper(name)))
 					}
 				},
 				disconnect: false,
 			}})
 	})
+}
+
+func findPcReg(regs []dap.Variable) int {
+	for i, reg := range regs {
+		if isPcReg(reg) {
+			return i
+		}
+	}
+	return -1
+}
+
+func isPcReg(reg dap.Variable) bool {
+	pcRegNames := []string{"rip", "pc", "eip"}
+	for _, name := range pcRegNames {
+		if name == strings.TrimSpace(reg.Name) {
+			return true
+		}
+	}
+	return false
 }
 
 // TestShadowedVariables executes to a breakpoint and checks the shadowed
