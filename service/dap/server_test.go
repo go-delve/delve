@@ -1051,10 +1051,8 @@ func TestSelectedThreadsRequest(t *testing.T) {
 func TestHideSystemGoroutinesRequest(t *testing.T) {
 	tests := []struct {
 		hideSystemGoroutines bool
-		// If the value is -1, then the number of goroutines
-		// should > 0.
-		wantUser   int
-		wantSystem bool
+		wantUser             int
+		wantSystem           bool
 	}{
 		{
 			hideSystemGoroutines: true,
