@@ -4452,12 +4452,12 @@ func verifyStopLocation(t *testing.T, client *daptest.Client, thread int, name s
 // The details have been tested by other tests,
 // so this is just a sanity check.
 // Skips line check if line is -1.
-func checkStop(t *testing.T, client *daptest.Client, thread int, name string, line int) {
+func checkStop(t *testing.T, client *daptest.Client, thread int, fname string, line int) {
 	t.Helper()
 	client.ThreadsRequest()
 	client.ExpectThreadsResponse(t)
 
-	verifyStopLocation(t, client, thread, name, line)
+	verifyStopLocation(t, client, thread, fname, line)
 
 	client.ScopesRequest(1000)
 	client.ExpectScopesResponse(t)
@@ -5748,23 +5748,44 @@ func TestBadAttachRequest(t *testing.T) {
 	})
 }
 
-// TODO(polina): also add launchDebuggerWithTargetRunning
-func launchDebuggerWithTargetHalted(t *testing.T, fixture string) *debugger.Debugger {
+func launchDebuggerWithTargetRunning(t *testing.T, fixture string) (*protest.Fixture, *debugger.Debugger) {
 	t.Helper()
-	bin := protest.BuildFixture(fixture, protest.AllNonOptimized)
+	fixbin, dbg := launchDebuggerWithTargetHalted(t, fixture)
+	running := make(chan struct{})
+	var err error
+	go func() {
+		t.Helper()
+		_, err = dbg.Command(&api.DebuggerCommand{Name: api.Continue}, running)
+		select {
+		case <-running:
+		default:
+			close(running)
+		}
+	}()
+	<-running
+	if err != nil {
+		t.Fatal("failed to continue on launch", err)
+	}
+	return fixbin, dbg
+}
+
+func launchDebuggerWithTargetHalted(t *testing.T, fixture string) (*protest.Fixture, *debugger.Debugger) {
+	t.Helper()
+	fixbin := protest.BuildFixture(fixture, protest.AllNonOptimized)
 	cfg := service.Config{
-		ProcessArgs: []string{bin.Path},
+		ProcessArgs: []string{fixbin.Path},
 		Debugger:    debugger.Config{Backend: "default"},
 	}
 	dbg, err := debugger.New(&cfg.Debugger, cfg.ProcessArgs) // debugger halts process on entry
 	if err != nil {
 		t.Fatal("failed to start debugger:", err)
 	}
-	return dbg
+	return &fixbin, dbg
 }
 
 // runTestWithDebugger starts the server and sets its debugger, initializes a debug session,
-// runs test, then disconnects. Expects the process at the end of test() to be halted.
+// runs test, then disconnects. Expects no running async handler at the end of test() (either
+// process is halted or debug session never launched.)
 func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *daptest.Client)) {
 	serverStopped := make(chan struct{})
 	server, _ := startDAPServer(t, serverStopped)
@@ -5797,7 +5818,8 @@ func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *dapt
 
 func TestAttachRemoteToHaltedTargetStopOnEntry(t *testing.T) {
 	// Halted + stop on entry
-	runTestWithDebugger(t, launchDebuggerWithTargetHalted(t, "increment"), func(client *daptest.Client) {
+	_, dbg := launchDebuggerWithTargetHalted(t, "increment")
+	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
 		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
 		client.ExpectInitializedEvent(t)
 		client.ExpectAttachResponse(t)
@@ -5809,7 +5831,8 @@ func TestAttachRemoteToHaltedTargetStopOnEntry(t *testing.T) {
 
 func TestAttachRemoteToHaltedTargetContinueOnEntry(t *testing.T) {
 	// Halted + continue on entry
-	runTestWithDebugger(t, launchDebuggerWithTargetHalted(t, "http_server"), func(client *daptest.Client) {
+	_, dbg := launchDebuggerWithTargetHalted(t, "http_server")
+	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
 		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": false})
 		client.ExpectInitializedEvent(t)
 		client.ExpectAttachResponse(t)
@@ -5823,7 +5846,41 @@ func TestAttachRemoteToHaltedTargetContinueOnEntry(t *testing.T) {
 	})
 }
 
-// TODO(polina): Running + stop/continue on entry
+func TestAttachRemoteToRunningTargetStopOnEntry(t *testing.T) {
+	fixture, dbg := launchDebuggerWithTargetRunning(t, "loopprog")
+	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
+		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
+		client.ExpectInitializedEvent(t)
+		client.ExpectAttachResponse(t)
+		// Target is halted here
+		client.SetBreakpointsRequest(fixture.Source, []int{8})
+		expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}})
+		client.ConfigurationDoneRequest()
+		client.ExpectStoppedEvent(t)
+		client.ExpectConfigurationDoneResponse(t)
+		client.ContinueRequest(1)
+		client.ExpectContinueResponse(t)
+		client.ExpectStoppedEvent(t)
+		checkStop(t, client, 1, "main.loop", 8)
+	})
+}
+
+func TestAttachRemoteToRunningTargetContinueOnEntry(t *testing.T) {
+	fixture, dbg := launchDebuggerWithTargetRunning(t, "loopprog")
+	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
+		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": false})
+		client.ExpectInitializedEvent(t)
+		client.ExpectAttachResponse(t)
+		// Target is halted here
+		client.SetBreakpointsRequest(fixture.Source, []int{8})
+		expectSetBreakpointsResponse(t, client, []Breakpoint{{8, fixture.Source, true, ""}})
+		client.ConfigurationDoneRequest()
+		// Target is restarted here
+		client.ExpectConfigurationDoneResponse(t)
+		client.ExpectStoppedEvent(t)
+		checkStop(t, client, 1, "main.loop", 8)
+	})
+}
 
 // TestMultiClient tests that that remote attach doesn't take down
 // the server in multi-client mode unless terminateDebugee is explicitely set.
@@ -5853,7 +5910,7 @@ func TestAttachRemoteMultiClient(t *testing.T) {
 			// hack to test the inner connection logic that can be used by a server that does.
 			server.session.config.AcceptMulti = true
 			// TODO(polina): update once the server interface is refactored to take debugger as arg
-			server.session.debugger = launchDebuggerWithTargetHalted(t, "increment")
+			_, server.session.debugger = launchDebuggerWithTargetHalted(t, "increment")
 			server.sessionMu.Unlock()
 
 			client.InitializeRequest()
@@ -5887,25 +5944,44 @@ func TestAttachRemoteMultiClient(t *testing.T) {
 }
 
 func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
-	runTestWithDebugger(t, launchDebuggerWithTargetHalted(t, "increment"), func(client *daptest.Client) {
-		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 100})
-		er := client.ExpectVisibleErrorResponse(t)
-		msg := "Failed to attach: debugger already started - use remote mode to connect"
-		if er.Body.Error.Id != FailedToAttach || er.Body.Error.Format != msg {
-			t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToAttach, msg)
-		}
-		tests := []string{"debug", "test", "exec", "replay", "core"}
-		for _, mode := range tests {
-			t.Run(mode, func(t *testing.T) {
-				client.LaunchRequestWithArgs(map[string]interface{}{"mode": mode})
+	tests := []struct {
+		name string
+		dbg  func() *debugger.Debugger
+	}{
+		{"halted", func() *debugger.Debugger { _, dbg := launchDebuggerWithTargetHalted(t, "increment"); return dbg }},
+		{"running", func() *debugger.Debugger { _, dbg := launchDebuggerWithTargetRunning(t, "loopprog"); return dbg }},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			runTestWithDebugger(t, tc.dbg(), func(client *daptest.Client) {
+				client.EvaluateRequest("1==1", 0 /*no frame specified*/, "repl")
+				if tc.name == "running" {
+					client.ExpectInvisibleErrorResponse(t)
+				} else {
+					client.ExpectEvaluateResponse(t)
+				}
+
+				// Both launch and attach requests should go through for additional error checking
+				client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 100})
 				er := client.ExpectVisibleErrorResponse(t)
-				msg := "Failed to launch: debugger already started - use remote attach to connect to a server with an active debug session"
-				if er.Body.Error.Id != FailedToLaunch || er.Body.Error.Format != msg {
-					t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToLaunch, msg)
+				msg := "Failed to attach: debugger already started - use remote mode to connect"
+				if er.Body.Error.Id != FailedToAttach || er.Body.Error.Format != msg {
+					t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToAttach, msg)
+				}
+				tests := []string{"debug", "test", "exec", "replay", "core"}
+				for _, mode := range tests {
+					t.Run(mode, func(t *testing.T) {
+						client.LaunchRequestWithArgs(map[string]interface{}{"mode": mode})
+						er := client.ExpectVisibleErrorResponse(t)
+						msg := "Failed to launch: debugger already started - use remote attach to connect to a server with an active debug session"
+						if er.Body.Error.Id != FailedToLaunch || er.Body.Error.Format != msg {
+							t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToLaunch, msg)
+						}
+					})
 				}
 			})
-		}
-	})
+		})
+	}
 }
 
 func TestBadInitializeRequest(t *testing.T) {
