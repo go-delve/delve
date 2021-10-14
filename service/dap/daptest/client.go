@@ -114,6 +114,7 @@ func (c *Client) ExpectInitializeResponseAndCapabilities(t *testing.T) *dap.Init
 		SupportsClipboardContext:         true,
 		SupportsSteppingGranularity:      true,
 		SupportsLogPoints:                true,
+		SupportsDisassembleRequest:       true,
 	}
 	if !reflect.DeepEqual(initResp.Body, wantCapabilities) {
 		t.Errorf("capabilities in initializeResponse: got %+v, want %v", pretty(initResp.Body), pretty(wantCapabilities))
@@ -518,8 +519,17 @@ func (c *Client) ReadMemoryRequest() {
 }
 
 // DisassembleRequest sends a 'disassemble' request.
-func (c *Client) DisassembleRequest() {
-	c.send(&dap.DisassembleRequest{Request: *c.newRequest("disassemble")})
+func (c *Client) DisassembleRequest(memoryReference string, instructionOffset, inctructionCount int) {
+	c.send(&dap.DisassembleRequest{
+		Request: *c.newRequest("disassemble"),
+		Arguments: dap.DisassembleArguments{
+			MemoryReference:   memoryReference,
+			Offset:            0,
+			InstructionOffset: instructionOffset,
+			InstructionCount:  inctructionCount,
+			ResolveSymbols:    false,
+		},
+	})
 }
 
 // CancelRequest sends a 'cancel' request.

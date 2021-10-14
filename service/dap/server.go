@@ -26,6 +26,7 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -830,6 +831,7 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsClipboardContext = true
 	response.Body.SupportsSteppingGranularity = true
 	response.Body.SupportsLogPoints = true
+	response.Body.SupportsDisassembleRequest = true
 	// TODO(polina): support these requests in addition to vscode-go feature parity
 	response.Body.SupportsTerminateRequest = false
 	response.Body.SupportsRestartRequest = false
@@ -837,7 +839,6 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsSetExpression = false
 	response.Body.SupportsLoadedSourcesRequest = false
 	response.Body.SupportsReadMemoryRequest = false
-	response.Body.SupportsDisassembleRequest = false
 	response.Body.SupportsCancelRequest = false
 	s.send(response)
 }
@@ -2833,10 +2834,206 @@ func (s *Session) onReadMemoryRequest(request *dap.ReadMemoryRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onDisassembleRequest sends a not-yet-implemented error response.
-// Capability 'supportsDisassembleRequest' is not set 'initialize' response.
+var invalidInstruction = dap.DisassembledInstruction{
+	Address:     "out of bounds",
+	Instruction: "invalid instruction",
+}
+
+// onDisassembleRequest handles 'disassemble' requests.
+// Capability 'supportsDisassembleRequest' is set in 'initialize' response.
 func (s *Session) onDisassembleRequest(request *dap.DisassembleRequest) {
-	s.sendNotYetImplementedErrorResponse(request.Request)
+	// If the requested memory address is an invalid location, return all invalid instructions.
+	// TODO(suzmue): consider adding fake addresses that would allow us to receive out of bounds
+	// requests that include valid instructions designated by InstructionOffset or InstructionCount.
+	if request.Arguments.MemoryReference == invalidInstruction.Address {
+		instructions := make([]dap.DisassembledInstruction, request.Arguments.InstructionCount)
+		for i := range instructions {
+			instructions[i] = invalidInstruction
+		}
+		response := &dap.DisassembleResponse{
+			Response: *newResponse(request.Request),
+			Body: dap.DisassembleResponseBody{
+				Instructions: instructions,
+			},
+		}
+		s.send(response)
+		return
+	}
+	// TODO(suzmue): microsoft/vscode#129655 is discussing the difference between
+	// memory reference and instructionPointerReference, which are currently
+	// being used interchangeably by vscode.
+	addr, err := strconv.ParseInt(request.Arguments.MemoryReference, 0, 64)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToDisassemble, "Unable to disassemble", err.Error())
+		return
+	}
+
+	start := uint64(addr)
+	maxInstructionLength := s.debugger.Target().BinInfo().Arch.MaxInstructionLength()
+	byteOffset := request.Arguments.InstructionOffset * maxInstructionLength
+	// Adjust the offset to include instructions before the requested address.
+	if byteOffset < 0 {
+		start = uint64(addr + int64(byteOffset))
+	}
+	// Adjust the number of instructions to include enough instructions after
+	// the requested address.
+	count := request.Arguments.InstructionCount
+	if byteOffset > 0 {
+		count += byteOffset
+	}
+	end := uint64(addr + int64(count*maxInstructionLength))
+
+	// Make sure the PCs are lined up with instructions.
+	start, end = alignPCs(s.debugger.Target().BinInfo(), start, end)
+
+	// Disassemble the instructions
+	procInstructions, err := s.debugger.Disassemble(-1, start, end)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToDisassemble, "Unable to disassemble", err.Error())
+		return
+	}
+
+	// Find the section of instructions that were requested.
+	procInstructions, offset, err := findInstructions(procInstructions, addr, request.Arguments.InstructionOffset, request.Arguments.InstructionCount)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToDisassemble, "Unable to disassemble", err.Error())
+		return
+	}
+
+	// Turn the given range of instructions into dap instructions.
+	instructions := make([]dap.DisassembledInstruction, request.Arguments.InstructionCount)
+	lastFile, lastLine := "", -1
+	for i := range instructions {
+		if i < offset || (i-offset) >= len(procInstructions) {
+			// i is not in a valid range.
+			instructions[i] = invalidInstruction
+			continue
+		}
+		instruction := api.ConvertAsmInstruction(procInstructions[i-offset], s.debugger.AsmInstructionText(&procInstructions[i-offset], proc.GoFlavour))
+		instructions[i] = dap.DisassembledInstruction{
+			Address:          fmt.Sprintf("%#x", instruction.Loc.PC),
+			InstructionBytes: fmt.Sprintf("%x", instruction.Bytes),
+			Instruction:      instruction.Text,
+		}
+		// Only set the location on the first instruction for a given line.
+		if instruction.Loc.File != lastFile || instruction.Loc.Line != lastLine {
+			instructions[i].Location = dap.Source{Path: instruction.Loc.File}
+			instructions[i].Line = instruction.Loc.Line
+			lastFile, lastLine = instruction.Loc.File, instruction.Loc.Line
+		}
+	}
+
+	response := &dap.DisassembleResponse{
+		Response: *newResponse(request.Request),
+		Body: dap.DisassembleResponseBody{
+			Instructions: instructions,
+		},
+	}
+	s.send(response)
+}
+
+func findInstructions(procInstructions []proc.AsmInstruction, addr int64, instructionOffset, count int) ([]proc.AsmInstruction, int, error) {
+	ref := sort.Search(len(procInstructions), func(i int) bool {
+		return procInstructions[i].Loc.PC >= uint64(addr)
+	})
+	if ref == len(procInstructions) || procInstructions[ref].Loc.PC != uint64(addr) {
+		return nil, -1, fmt.Errorf("could not find memory reference")
+	}
+	// offset is the number of instructions that should appear before the first instruction
+	// returned by findInstructions.
+	offset := 0
+	if ref+instructionOffset < 0 {
+		offset = -(ref + instructionOffset)
+	}
+	// Figure out the index to slice at.
+	startIdx := ref + instructionOffset
+	endIdx := ref + instructionOffset + count
+	if endIdx <= 0 || startIdx >= len(procInstructions) {
+		return []proc.AsmInstruction{}, 0, nil
+	}
+	// Adjust start and end to be inbounds.
+	if startIdx < 0 {
+		offset = -startIdx
+		startIdx = 0
+	}
+	if endIdx > len(procInstructions) {
+		endIdx = len(procInstructions)
+	}
+	return procInstructions[startIdx:endIdx], offset, nil
+}
+
+func alignPCs(bi *proc.BinaryInfo, start, end uint64) (uint64, uint64) {
+	// We want to find the function locations position that would enclose
+	// the range from start to end.
+	//
+	// Example:
+	//
+	// 0x0000	instruction (func1)
+	// 0x0004	instruction (func1)
+	// 0x0008	instruction (func1)
+	// 0x000c	nop
+	// 0x000e	nop
+	// 0x0000	nop
+	// 0x0002	nop
+	// 0x0004	instruction (func2)
+	// 0x0008	instruction (func2)
+	// 0x000c	instruction (func2)
+	//
+	// start values:
+	// < 0x0000			at func1.Entry	=	0x0000
+	// 0x0000-0x000b	at func1.Entry	=	0x0000
+	// 0x000c-0x0003	at func1.End	=	0x000c
+	// 0x0004-0x000f	at func2.Entry	=	0x0004
+	// > 0x000f			at func2.End	=	0x0010
+	//
+	// end values:
+	// < 0x0000			at func1.Entry	=	0x0000
+	// 0x0000-0x000b	at func1.End	=	0x0000
+	// 0x000c-0x0003	at func2.Entry	=	0x000c
+	// 0x0004-0x000f	at func2.End	=	0x0004
+	// > 0x000f			at func2.End	=	0x0004
+	// Handle start values:
+	fn := bi.PCToFunc(start)
+	if fn != nil {
+		// start is in a funcition.
+		start = fn.Entry
+	} else if b, pc := checkOutOfAddressSpace(start, bi); b {
+		start = pc
+	} else {
+		// Otherwise it must come after some function.
+		i := sort.Search(len(bi.Functions), func(i int) bool {
+			fn := bi.Functions[len(bi.Functions)-(i+1)]
+			return start >= fn.End
+		})
+		start = bi.Functions[len(bi.Functions)-(i+1)].Entry
+	}
+
+	// Handle end values:
+	if fn := bi.PCToFunc(end); fn != nil {
+		// end is in a funcition.
+		end = fn.End
+	} else if b, pc := checkOutOfAddressSpace(end, bi); b {
+		end = pc
+	} else {
+		// Otherwise it must come before some function.
+		i := sort.Search(len(bi.Functions), func(i int) bool {
+			fn := bi.Functions[i]
+			return end < fn.Entry
+		})
+		end = bi.Functions[i].Entry
+	}
+
+	return start, end
+}
+
+func checkOutOfAddressSpace(pc uint64, bi *proc.BinaryInfo) (bool, uint64) {
+	if pc < bi.Functions[0].Entry {
+		return true, bi.Functions[0].Entry
+	}
+	if pc >= bi.Functions[len(bi.Functions)-1].End {
+		return true, bi.Functions[len(bi.Functions)-1].End
+	}
+	return false, pc
 }
 
 // onCancelRequest sends a not-yet-implemented error response.
