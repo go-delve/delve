@@ -1171,6 +1171,7 @@ type testCaseCallFunction struct {
 
 func TestCallFunction(t *testing.T) {
 	protest.MustSupportFunctionCalls(t, testBackend)
+	protest.AllowRecording(t)
 
 	var testcases = []testCaseCallFunction{
 		// Basic function call injection tests
@@ -1396,7 +1397,7 @@ func testCallFunction(t *testing.T, p *proc.Target, tc testCaseCallFunction) {
 	}
 
 	if len(retvals) != len(tc.outs) {
-		t.Fatalf("call %q: wrong number of return parameters", tc.expr)
+		t.Fatalf("call %q: wrong number of return parameters (%#v)", tc.expr, retvals)
 	}
 
 	for i := range retvals {

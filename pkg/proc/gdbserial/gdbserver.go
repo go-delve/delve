@@ -131,6 +131,10 @@ var debugserverExecutablePaths = []string{
 // while there are still internal breakpoints set.
 var ErrDirChange = errors.New("direction change with internal breakpoints")
 
+// ErrStartCallInjectionBackwards is returned when trying to start a call
+// injection while the recording is being run backwards.
+var ErrStartCallInjectionBackwards = errors.New("can not start a call injection while running backwards")
+
 var checkCanUnmaskSignalsOnce sync.Once
 var canUnmaskSignalsCached bool
 
@@ -151,7 +155,8 @@ type gdbProcess struct {
 
 	breakpoints proc.BreakpointMap
 
-	gcmdok         bool   // true if the stub supports g and G commands
+	gcmdok         bool   // true if the stub supports g and (maybe) G commands
+	_Gcmdok        bool   // true if the stub supports G command
 	threadStopInfo bool   // true if the stub supports qThreadStopInfo
 	tracedir       string // if attached to rr the path to the trace directory
 
@@ -1207,6 +1212,39 @@ func (p *gdbProcess) ChangeDirection(dir proc.Direction) error {
 	return nil
 }
 
+// StartCallInjection notifies the backend that we are about to inject a function call.
+func (p *gdbProcess) StartCallInjection() (func(), error) {
+	if p.tracedir == "" {
+		return func() {}, nil
+	}
+	if p.conn.conn == nil {
+		return nil, proc.ErrProcessExited{Pid: p.conn.pid}
+	}
+	if p.conn.direction != proc.Forward {
+		return nil, ErrStartCallInjectionBackwards
+	}
+
+	// Normally it's impossible to inject function calls in a recorded target
+	// because the sequence of instructions that the target will execute is
+	// predetermined.
+	// RR however allows this in a "diversion". When a diversion is started rr
+	// takes the current state of the process and runs it forward as a normal
+	// process, not following the recording.
+	// The gdb serial protocol does not have a way to start a diversion and gdb
+	// (the main frontend of rr) does not know how to do it. Instead a
+	// diversion is started by reading siginfo, because that's the first
+	// request gdb does when starting a function call injection.
+
+	_, err := p.conn.qXfer("siginfo", "", true)
+	if err != nil {
+		return nil, err
+	}
+
+	return func() {
+		_ = p.conn.qXferWrite("siginfo", "") // rr always returns an error for qXfer:siginfo:write... even though it works
+	}, nil
+}
+
 // GetDirection returns the current direction of execution.
 func (p *gdbProcess) GetDirection() proc.Direction {
 	return p.conn.direction
@@ -1649,8 +1687,14 @@ func (t *gdbThread) writeSomeRegisters(regNames ...string) error {
 }
 
 func (t *gdbThread) writeRegisters() error {
-	if t.p.gcmdok {
-		return t.p.conn.writeRegisters(t.strID, t.regs.buf)
+	if t.p.gcmdok && t.p._Gcmdok {
+		err := t.p.conn.writeRegisters(t.strID, t.regs.buf)
+		if isProtocolErrorUnsupported(err) {
+			t.p._Gcmdok = false
+		} else {
+			return err
+		}
+
 	}
 	for _, r := range t.regs.regs {
 		if r.ignoreOnWrite {

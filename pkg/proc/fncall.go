@@ -132,6 +132,7 @@ type callInjection struct {
 	continueCompleted chan<- *G
 	continueRequest   <-chan continueRequest
 	startThreadID     int
+	endCallInjection  func()
 }
 
 func (callCtx *callContext) doContinue() *G {
@@ -188,10 +189,16 @@ func EvalExpressionWithCalls(t *Target, g *G, expr string, retLoadCfg LoadConfig
 		continueCompleted: continueCompleted,
 	}
 
+	endCallInjection, err := t.proc.StartCallInjection()
+	if err != nil {
+		return err
+	}
+
 	t.fncallForG[g.ID] = &callInjection{
 		continueCompleted: continueCompleted,
 		continueRequest:   continueRequest,
 		startThreadID:     0,
+		endCallInjection:  endCallInjection,
 	}
 
 	go scope.EvalExpression(expr, retLoadCfg)
@@ -230,7 +237,13 @@ func finishEvalExpressionWithCalls(t *Target, g *G, contReq continueRequest, ok 
 	}
 
 	close(t.fncallForG[g.ID].continueCompleted)
-	delete(t.fncallForG, g.ID)
+	callinj := t.fncallForG[g.ID]
+	for goid := range t.fncallForG {
+		if t.fncallForG[goid] == callinj {
+			delete(t.fncallForG, goid)
+		}
+	}
+	callinj.endCallInjection()
 	return err
 }
 

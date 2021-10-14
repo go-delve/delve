@@ -47,6 +47,8 @@ type gdbConn struct {
 	xcmdok                bool // x command can be used to transfer memory
 	goarch                string
 
+	useXcmd bool // forces writeMemory to use the 'X' command
+
 	log *logrus.Entry
 }
 
@@ -403,6 +405,17 @@ func (conn *gdbConn) qXfer(kind, annex string, binary bool) ([]byte, error) {
 		}
 	}
 	return out, nil
+}
+
+// qXferWrite executes a 'qXfer' write with the specified kind and annex.
+func (conn *gdbConn) qXferWrite(kind, annex string) error {
+	conn.outbuf.Reset()
+	fmt.Fprintf(&conn.outbuf, "$qXfer:%s:write:%s:0:", kind, annex)
+	//TODO(aarzilli): if we ever actually need to write something with qXfer,
+	//this will need to be implemented properly. At the moment it is only used
+	//for a fake write to the siginfo kind, to end a diversion in 'rr'.
+	_, err := conn.exec(conn.outbuf.Bytes(), "qXfer")
+	return err
 }
 
 type breakpointType uint8
@@ -988,8 +1001,16 @@ func writeAsciiBytes(w io.Writer, data []byte) {
 	}
 }
 
-// executes 'M' (write memory) command
+// writeMemory writes memory using either 'M' or 'X'
 func (conn *gdbConn) writeMemory(addr uint64, data []byte) (written int, err error) {
+	if conn.useXcmd {
+		return conn.writeMemoryBinary(addr, data)
+	}
+	return conn.writeMemoryHex(addr, data)
+}
+
+// executes 'M' (write memory) command
+func (conn *gdbConn) writeMemoryHex(addr uint64, data []byte) (written int, err error) {
 	if len(data) == 0 {
 		// LLDB can't parse requests for 0-length writes and hangs if we emit them
 		return 0, nil
@@ -999,6 +1020,27 @@ func (conn *gdbConn) writeMemory(addr uint64, data []byte) (written int, err err
 	fmt.Fprintf(&conn.outbuf, "$M%x,%x:", addr, len(data))
 
 	writeAsciiBytes(&conn.outbuf, data)
+
+	_, err = conn.exec(conn.outbuf.Bytes(), "memory write")
+	if err != nil {
+		return 0, err
+	}
+	return len(data), nil
+}
+
+func (conn *gdbConn) writeMemoryBinary(addr uint64, data []byte) (written int, err error) {
+	conn.outbuf.Reset()
+	fmt.Fprintf(&conn.outbuf, "$X%x,%x:", addr, len(data))
+
+	for _, b := range data {
+		switch b {
+		case '#', '$', '}':
+			conn.outbuf.WriteByte('}')
+			conn.outbuf.WriteByte(b ^ escapeXor)
+		default:
+			conn.outbuf.WriteByte(b)
+		}
+	}
 
 	_, err = conn.exec(conn.outbuf.Bytes(), "memory write")
 	if err != nil {
