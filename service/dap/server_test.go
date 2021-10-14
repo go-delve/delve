@@ -1054,19 +1054,19 @@ func TestHideSystemGoroutinesRequest(t *testing.T) {
 		// If the value is -1, then the number of goroutines
 		// should > 0.
 		wantUser   int
-		wantSystem int
+		wantSystem bool
 	}{
 		{
 			hideSystemGoroutines: true,
 			// The user process creates 10 goroutines in addition to the
 			// main goroutine, for a total of 11 goroutines.
 			wantUser:   11,
-			wantSystem: 0,
+			wantSystem: false,
 		},
 		{
 			hideSystemGoroutines: false,
 			wantUser:             11,
-			wantSystem:           -1,
+			wantSystem:           true,
 		},
 	}
 	for _, tt := range tests {
@@ -1101,19 +1101,15 @@ func TestHideSystemGoroutinesRequest(t *testing.T) {
 							}
 						}
 
-						if tt.wantUser < 0 {
-							if userCount == 0 {
-								t.Errorf("got 0 user goroutines, expected > 0\n")
-							}
-						} else if userCount != tt.wantUser {
+						if userCount != tt.wantUser {
 							t.Errorf("got %d user goroutines, expected %d\n", userCount, tt.wantUser)
 						}
-						if tt.wantSystem < 0 {
+						if tt.wantSystem {
 							if systemCount == 0 {
 								t.Errorf("got 0 system goroutines, expected > 0\n")
 							}
-						} else if systemCount != tt.wantSystem {
-							t.Errorf("got %d system goroutines, expected %d\n", systemCount, tt.wantSystem)
+						} else if systemCount != 0 {
+							t.Errorf("got %d system goroutines, expected 0\n", systemCount)
 						}
 					},
 					disconnect: true,
