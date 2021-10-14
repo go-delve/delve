@@ -5906,18 +5906,16 @@ func TestAttachRemoteMultiClient(t *testing.T) {
 }
 
 func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
-	_, dbgRunning := launchDebuggerWithTargetRunning(t, "loopprog")
-	_, dbgHalted := launchDebuggerWithTargetHalted(t, "increment")
 	tests := []struct {
 		name string
-		dbg  *debugger.Debugger
+		dbg  func() *debugger.Debugger
 	}{
-		{"running", dbgRunning},
-		{"halted", dbgHalted},
+		{"halted", func() *debugger.Debugger { _, dbg := launchDebuggerWithTargetHalted(t, "increment"); return dbg }},
+		{"running", func() *debugger.Debugger { _, dbg := launchDebuggerWithTargetRunning(t, "loopprog"); return dbg }},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			runTestWithDebugger(t, tc.dbg, func(client *daptest.Client) {
+			runTestWithDebugger(t, tc.dbg(), func(client *daptest.Client) {
 				client.EvaluateRequest("1==1", 0 /*no frame specified*/, "repl")
 				if tc.name == "running" {
 					client.ExpectInvisibleErrorResponse(t)
