@@ -62,6 +62,11 @@ var (
 	// disableASLR is used to disable ASLR
 	disableASLR bool
 
+	// dapClientAddr is dap subcommand's flag that specifies the address of a DAP client.
+	// If it is specified, the dap server starts a debug session by dialing to the client.
+	// The dap server will serve only for the debug session.
+	dapClientAddr string
+
 	// backend selection
 	backend string
 
@@ -84,7 +89,8 @@ var (
 
 	allowNonTerminalInteractive bool
 
-	conf *config.Config
+	conf        *config.Config
+	loadConfErr error
 )
 
 const dlvCommandLongDesc = `Delve is a source level debugger for Go programs.
@@ -101,7 +107,10 @@ Pass flags to the program you are debugging using ` + "`--`" + `, for example:
 // New returns an initialized command tree.
 func New(docCall bool) *cobra.Command {
 	// Config setup and load.
-	conf = config.LoadConfig()
+	conf, loadConfErr = config.LoadConfig()
+	// Delay reporting errors about configuration loading delayed until after the
+	// server is started so that the "server listening at" message is always
+	// the first thing emitted. Also logflags hasn't been setup yet at this point.
 	buildFlagsDefault := ""
 	if runtime.GOOS == "windows" {
 		ver, _ := goversion.Installed()
@@ -191,9 +200,15 @@ Program and output binary paths will be interpreted relative to dlv's working di
 
 The server does not yet accept multiple client connections (--accept-multiclient).
 While --continue is not supported, stopOnEntry launch/attach attribute can be used to control if
-execution is resumed at the start of the debug session.`,
+execution is resumed at the start of the debug session.
+
+The --client-addr flag is a special flag that makes the server initiate a debug session
+by dialing in to the host:port where a DAP client is waiting. This server process
+will exit when the debug session ends.`,
 		Run: dapCmd,
 	}
+	dapCommand.Flags().StringVar(&dapClientAddr, "client-addr", "", "host:port where the DAP client is waiting for the DAP server to dial in")
+
 	// TODO(polina): support --tty when dlv dap allows to launch a program from command-line
 	rootCommand.AddCommand(dapCommand)
 
@@ -422,6 +437,10 @@ func dapCmd(cmd *cobra.Command, args []string) {
 		}
 		defer logflags.Close()
 
+		if loadConfErr != nil {
+			logflags.DebuggerLogger().Errorf("%v", loadConfErr)
+		}
+
 		if cmd.Flag("headless").Changed {
 			fmt.Fprintf(os.Stderr, "Warning: dap mode is always headless\n")
 		}
@@ -451,14 +470,8 @@ func dapCmd(cmd *cobra.Command, args []string) {
 			fmt.Fprintf(os.Stderr, "Warning: program flags ignored with dap; specify via launch/attach request instead\n")
 		}
 
-		listener, err := net.Listen("tcp", addr)
-		if err != nil {
-			fmt.Printf("couldn't start listener: %s\n", err)
-			return 1
-		}
 		disconnectChan := make(chan struct{})
-		server := dap.NewServer(&service.Config{
-			Listener:       listener,
+		config := &service.Config{
 			DisconnectChan: disconnectChan,
 			Debugger: debugger.Config{
 				Backend:              backend,
@@ -467,10 +480,31 @@ func dapCmd(cmd *cobra.Command, args []string) {
 				CheckGoVersion:       checkGoVersion,
 			},
 			CheckLocalConnUser: checkLocalConnUser,
-		})
-		defer server.Stop()
+		}
+		var conn net.Conn
+		if dapClientAddr == "" {
+			listener, err := net.Listen("tcp", addr)
+			if err != nil {
+				fmt.Printf("couldn't start listener: %s\n", err)
+				return 1
+			}
+			config.Listener = listener
+		} else { // with a predetermined client.
+			var err error
+			conn, err = net.Dial("tcp", dapClientAddr)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to connect to the DAP client: %v\n", err)
+				return 1
+			}
+		}
 
-		server.Run()
+		server := dap.NewServer(config)
+		defer server.Stop()
+		if conn == nil {
+			server.Run()
+		} else { // work with a predetermined client.
+			server.RunWithClient(conn)
+		}
 		waitForDisconnectSignal(disconnectChan)
 		return 0
 	}()
@@ -517,6 +551,9 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
 			return 1
+		}
+		if loadConfErr != nil {
+			logflags.DebuggerLogger().Errorf("%v", loadConfErr)
 		}
 
 		if headless {
@@ -726,6 +763,15 @@ func coreCmd(cmd *cobra.Command, args []string) {
 }
 
 func connectCmd(cmd *cobra.Command, args []string) {
+	if err := logflags.Setup(log, logOutput, logDest); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+		return
+	}
+	defer logflags.Close()
+	if loadConfErr != nil {
+		logflags.DebuggerLogger().Errorf("%v", loadConfErr)
+	}
 	addr := args[0]
 	if addr == "" {
 		fmt.Fprint(os.Stderr, "An empty address was provided. You must provide an address as the first argument.\n")
@@ -804,6 +850,9 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 		return 1
 	}
 	defer logflags.Close()
+	if loadConfErr != nil {
+		logflags.DebuggerLogger().Errorf("%v", loadConfErr)
+	}
 
 	if headless && (initFile != "") {
 		fmt.Fprint(os.Stderr, "Warning: init file ignored with --headless\n")

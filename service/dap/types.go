@@ -44,7 +44,6 @@ var (
 	}
 	defaultLaunchConfig = LaunchConfig{
 		Mode:                     "debug",
-		Output:                   defaultDebugBinary,
 		LaunchAttachCommonConfig: defaultLaunchAttachCommonConfig,
 	}
 	defaultAttachConfig = AttachConfig{
@@ -53,7 +52,7 @@ var (
 	}
 )
 
-// LaunchConfig is the collection of launch request attributes recognized by delve DAP implementation.
+// LaunchConfig is the collection of launch request attributes recognized by DAP implementation.
 type LaunchConfig struct {
 	// Acceptable values are:
 	//   "debug": compiles your program with optimizations disabled, starts and attaches to it.
@@ -65,54 +64,70 @@ type LaunchConfig struct {
 	// Default is "debug".
 	Mode string `json:"mode,omitempty"`
 
-	// Required when mode is `debug`, `test`, or `exec`.
 	// Path to the program folder (or any go file within that folder)
 	// when in `debug` or `test` mode, and to the pre-built binary file
 	// to debug in `exec` mode.
 	// If it is not an absolute path, it will be interpreted as a path
-	// relative to the working directory of the delve process.
+	// relative to Delve's working directory.
+	// Required when mode is `debug`, `test`, `exec`, and `core`.
 	Program string `json:"program,omitempty"`
 
 	// Command line arguments passed to the debugged program.
+	// Relative paths used in Args will be interpreted as paths relative
+	// to `cwd`.
 	Args []string `json:"args,omitempty"`
 
-	// Working directory of the program being debugged
-	// if a non-empty value is specified. If a relative path is provided,
-	// it will be interpreted as a relative path to the delve's
-	// working directory.
+	// Working directory of the program being debugged.
+	// If a relative path is provided, it will be interpreted as
+	// a relative path to Delve's working directory. This is
+	// similar to `dlv --wd` flag.
 	//
-	// If not specified or empty, currently the built program's directory will
-	// be used.
-	// This is similar to delve's `--wd` flag.
+	// If not specified or empty, Delve's working directory is
+	// used by default. But for `test` mode, Delve tries to find
+	// the test's package source directory and run tests from there.
+	// This matches the behavior of `dlv test` and `go test`.
 	Cwd string `json:"cwd,omitempty"`
 
 	// Build flags, to be passed to the Go compiler.
-	// It is like delve's `--build-flags`. For example,
+	// Relative paths used in BuildFlags will be interpreted as paths
+	// relative to Delve's current working directory.
 	//
+	// It is like `dlv --build-flags`. For example,
 	//    "buildFlags": "-tags=integration -mod=vendor -cover -v"
 	BuildFlags string `json:"buildFlags,omitempty"`
 
 	// Output path for the binary of the debugee.
 	// Relative path is interpreted as the path relative to
-	// the delve process's working directory.
+	// the Delve's current working directory.
 	// This is deleted after the debug session ends.
-	//
-	// FIXIT: the built program's directory is used as the default
-	// working directory of the debugged program, which means
-	// the directory of `output` is used as the default working
-	// directory. This is a bug and needs fix.
 	Output string `json:"output,omitempty"`
 
 	// NoDebug is used to run the program without debugging.
 	NoDebug bool `json:"noDebug,omitempty"`
 
 	// TraceDirPath is the trace directory path for replay mode.
+	// Relative path is interpreted as a path relative to Delve's
+	// current working directory.
 	// This is required for "replay" mode but unused in other modes.
 	TraceDirPath string `json:"traceDirPath,omitempty"`
 
 	// CoreFilePath is the core file path for core mode.
+	//
 	// This is required for "core" mode but unused in other modes.
 	CoreFilePath string `json:"coreFilePath,omitempty"`
+
+	// DlvCwd is the new working directory for Delve server.
+	// If specified, the server will change its working
+	// directory to the specified directory using os.Chdir.
+	// Any other launch attributes with relative paths interpreted
+	// using Delve's working directory will use this new directory.
+	// When Delve needs to build the program (in debug/test modes),
+	// it will run the go command from this directory as well.
+	//
+	// If a relative path is provided as DlvCwd, it will be
+	// interpreted as a path relative to Delve's current working
+	// directory.
+	DlvCwd string `json:"dlvCwd,omitempty"`
 
 	LaunchAttachCommonConfig
 }
@@ -122,11 +137,11 @@ type LaunchAttachCommonConfig struct {
 	// Automatically stop program after launch or attach.
 	StopOnEntry bool `json:"stopOnEntry,omitempty"`
 
-	// Backend used by delve. See `dlv backend` for allowed values.
+	// Backend used for debugging. See `dlv backend` for allowed values.
 	// Default is "default".
 	Backend string `json:"backend,omitempty"`
 
-	// Maximum depth of stack trace collected from Delve.
+	// Maximum depth of stack trace to return.
 	// Default is 50.
 	StackTraceDepth int `json:"stackTraceDepth,omitempty"`
 
@@ -168,7 +183,7 @@ func (m *SubstitutePath) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// AttachConfig is the collection of attach request attributes recognized by delve DAP implementation.
+// AttachConfig is the collection of attach request attributes recognized by DAP implementation.
 type AttachConfig struct {
 	// Acceptable values are:
 	//   "local": attaches to the local process with the given ProcessID.
@@ -202,4 +217,12 @@ func unmarshalLaunchAttachArgs(input json.RawMessage, config interface{}) error 
 		return err
 	}
 	return nil
+}
+
+func prettyPrint(config interface{}) string {
+	pretty, err := json.MarshalIndent(config, "", "\t")
+	if err != nil {
+		return fmt.Sprintf("%#v", config)
+	}
+	return string(pretty)
 }

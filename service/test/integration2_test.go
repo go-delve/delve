@@ -1022,6 +1022,12 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
 		t.Skip("cgo doesn't work on darwin/arm64")
 	}
+
+	lenient := false
+	if runtime.GOOS == "windows" {
+		lenient = true
+	}
+
 	withTestClient2("goroutinestackprog", t, func(c service.Client) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.stacktraceme", Line: -1})
 		assertNoError(err, t, "CreateBreakpoint()")
@@ -1060,7 +1066,11 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 
 		for i := range found {
 			if !found[i] {
-				t.Fatalf("Goroutine %d not found", i)
+				if lenient {
+					lenient = false
+				} else {
+					t.Fatalf("Goroutine %d not found", i)
+				}
 			}
 		}
 
@@ -2472,6 +2482,41 @@ func TestLongStringArg(t *testing.T) {
 		saddr2 := test("s", "very long string 01234567890123456789012345678901234567890123456", "7890123456789012345678901234567890123456789X")
 		if saddr != saddr2 {
 			t.Fatalf("address of s changed (%#x %#x)", saddr, saddr2)
+		}
+	})
+}
+
+func TestGenericsBreakpoint(t *testing.T) {
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
+		t.Skip("generics")
+	}
+	// Tests that setting breakpoints inside a generic function with multiple
+	// instantiations results in a single logical breakpoint with N physical
+	// breakpoints (N = number of instantiations).
+	withTestClient2("genericbp", t, func(c service.Client) {
+		fp := testProgPath(t, "genericbp")
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 6})
+		assertNoError(err, t, "CreateBreakpoint")
+		if len(bp.Addrs) != 2 {
+			t.Fatalf("wrong number of physical breakpoints: %d", len(bp.Addrs))
+		}
+
+		frame1Line := func() int {
+			frames, err := c.Stacktrace(-1, 10, 0, nil)
+			assertNoError(err, t, "Stacktrace")
+			return frames[1].Line
+		}
+
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue")
+		if line := frame1Line(); line != 10 {
+			t.Errorf("wrong line after first continue, expected 10, got %d", line)
+		}
+
+		state = <-c.Continue()
+		assertNoError(state.Err, t, "Continue")
+		if line := frame1Line(); line != 11 {
+			t.Errorf("wrong line after first continue, expected 11, got %d", line)
 		}
 	})
 }

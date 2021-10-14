@@ -331,6 +331,11 @@ func TestScopePrefix(t *testing.T) {
 	const goroutinesCurLinePrefix = "* Goroutine "
 	test.AllowRecording(t)
 
+	lenient := 0
+	if runtime.GOOS == "windows" {
+		lenient = 1
+	}
+
 	withTestTerminal("goroutinestackprog", t, func(term *FakeTerminal) {
 		term.MustExec("b stacktraceme")
 		term.MustExec("continue")
@@ -383,7 +388,7 @@ func TestScopePrefix(t *testing.T) {
 					}
 				}
 			}
-			if len(agoroutines)+extraAgoroutines < 10 {
+			if len(agoroutines)+extraAgoroutines < 10-lenient {
 				t.Fatalf("Output of goroutines did not have 10 goroutines stopped on main.agoroutine (%d+%d found): %q", len(agoroutines), extraAgoroutines, goroutinesOut)
 			}
 		}
@@ -429,7 +434,11 @@ func TestScopePrefix(t *testing.T) {
 
 		for i := range seen {
 			if !seen[i] {
-				t.Fatalf("goroutine %d not found", i)
+				if lenient > 0 {
+					lenient--
+				} else {
+					t.Fatalf("goroutine %d not found", i)
+				}
 			}
 		}
 
@@ -474,6 +483,10 @@ func TestOnPrefix(t *testing.T) {
 	}
 	const prefix = "\ti: "
 	test.AllowRecording(t)
+	lenient := false
+	if runtime.GOOS == "windows" {
+		lenient = true
+	}
 	withTestTerminal("goroutinestackprog", t, func(term *FakeTerminal) {
 		term.MustExec("b agobp main.agoroutine")
 		term.MustExec("on agobp print i")
@@ -507,7 +520,11 @@ func TestOnPrefix(t *testing.T) {
 
 		for i := range seen {
 			if !seen[i] {
-				t.Fatalf("Goroutine %d not seen\n", i)
+				if lenient {
+					lenient = false
+				} else {
+					t.Fatalf("Goroutine %d not seen\n", i)
+				}
 			}
 		}
 	})

@@ -37,6 +37,12 @@ func NewClient(addr string) *Client {
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
+	return NewClientFromConn(conn)
+}
+
+// NewClientFromConn creates a new Client with the given TCP connection.
+// Call Close to close the connection.
+func NewClientFromConn(conn net.Conn) *Client {
 	c := &Client{conn: conn, reader: bufio.NewReader(conn)}
 	c.seq = 1 // match VS Code numbering
 	return c
@@ -103,8 +109,10 @@ func (c *Client) ExpectInitializeResponseAndCapabilities(t *testing.T) *dap.Init
 		SupportsExceptionInfoRequest:     true,
 		SupportsSetVariable:              true,
 		SupportsFunctionBreakpoints:      true,
+		SupportsInstructionBreakpoints:   true,
 		SupportsEvaluateForHovers:        true,
 		SupportsClipboardContext:         true,
+		SupportsSteppingGranularity:      true,
 		SupportsLogPoints:                true,
 		SupportsDisassembleRequest:       true,
 	}
@@ -138,9 +146,11 @@ func (c *Client) ExpectOutputEventRegex(t *testing.T, want string) *dap.OutputEv
 	return e
 }
 
+const ProcessExited = `Process [0-9]+ has exited with status %s\n`
+
 func (c *Client) ExpectOutputEventProcessExited(t *testing.T, status int) *dap.OutputEvent {
 	t.Helper()
-	return c.ExpectOutputEventRegex(t, fmt.Sprintf(`Process [0-9]+ has exited with status %d\n`, status))
+	return c.ExpectOutputEventRegex(t, fmt.Sprintf(ProcessExited, fmt.Sprintf("%d", status)))
 }
 
 func (c *Client) ExpectOutputEventDetaching(t *testing.T) *dap.OutputEvent {
@@ -291,17 +301,41 @@ func (c *Client) NextRequest(thread int) {
 	c.send(request)
 }
 
+// NextInstructionRequest sends a 'next' request with granularity 'instruction'.
+func (c *Client) NextInstructionRequest(thread int) {
+	request := &dap.NextRequest{Request: *c.newRequest("next")}
+	request.Arguments.ThreadId = thread
+	request.Arguments.Granularity = "instruction"
+	c.send(request)
+}
+
 // StepInRequest sends a 'stepIn' request.
 func (c *Client) StepInRequest(thread int) {
-	request := &dap.NextRequest{Request: *c.newRequest("stepIn")}
+	request := &dap.StepInRequest{Request: *c.newRequest("stepIn")}
 	request.Arguments.ThreadId = thread
+	c.send(request)
+}
+
+// StepInInstructionRequest sends a 'stepIn' request with granularity 'instruction'.
+func (c *Client) StepInInstructionRequest(thread int) {
+	request := &dap.StepInRequest{Request: *c.newRequest("stepIn")}
+	request.Arguments.ThreadId = thread
+	request.Arguments.Granularity = "instruction"
 	c.send(request)
 }
 
 // StepOutRequest sends a 'stepOut' request.
 func (c *Client) StepOutRequest(thread int) {
-	request := &dap.NextRequest{Request: *c.newRequest("stepOut")}
+	request := &dap.StepOutRequest{Request: *c.newRequest("stepOut")}
 	request.Arguments.ThreadId = thread
+	c.send(request)
+}
+
+// StepOutInstructionRequest sends a 'stepOut' request with granularity 'instruction'.
+func (c *Client) StepOutInstructionRequest(thread int) {
+	request := &dap.StepOutRequest{Request: *c.newRequest("stepOut")}
+	request.Arguments.ThreadId = thread
+	request.Arguments.Granularity = "instruction"
 	c.send(request)
 }
 
@@ -374,6 +408,16 @@ func (c *Client) SetFunctionBreakpointsRequest(breakpoints []dap.FunctionBreakpo
 	c.send(&dap.SetFunctionBreakpointsRequest{
 		Request: *c.newRequest("setFunctionBreakpoints"),
 		Arguments: dap.SetFunctionBreakpointsArguments{
+			Breakpoints: breakpoints,
+		},
+	})
+}
+
+// SetInstructionBreakpointsRequest sends a 'setInstructionBreakpoints' request.
+func (c *Client) SetInstructionBreakpointsRequest(breakpoints []dap.InstructionBreakpoint) {
+	c.send(&dap.SetInstructionBreakpointsRequest{
+		Request: *c.newRequest("setInstructionBreakpoints"),
+		Arguments: dap.SetInstructionBreakpointsArguments{
 			Breakpoints: breakpoints,
 		},
 	})

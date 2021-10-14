@@ -27,6 +27,7 @@ const (
 	AttrGoEmbeddedField dwarf.Attr = 0x2903
 	AttrGoRuntimeType   dwarf.Attr = 0x2904
 	AttrGoPackageName   dwarf.Attr = 0x2905
+	AttrGoDictIndex     dwarf.Attr = 0x2906
 )
 
 // Basic type encodings -- the value for AttrEncoding in a TagBaseType Entry.
@@ -511,6 +512,11 @@ func (t *ChanType) stringIntl(recCheck recCheck) string {
 		return t.Name
 	}
 	return "chan " + t.ElemType.String()
+}
+
+type ParametricType struct {
+	TypedefType
+	DictIndex int64
 }
 
 // An UnsupportedType is a placeholder returned in situations where we
@@ -1011,7 +1017,15 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 			typeCache[off] = it
 			t = &it.TypedefType
 		default:
-			typ = t
+			if dictIndex, ok := e.Val(AttrGoDictIndex).(int64); ok {
+				pt := new(ParametricType)
+				pt.DictIndex = dictIndex
+				typ = pt
+				typeCache[off] = pt
+				t = &pt.TypedefType
+			} else {
+				typ = t
+			}
 		}
 		typeCache[off] = typ
 		t.Name, _ = e.Val(dwarf.AttrName).(string)
