@@ -29,6 +29,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/goversion"
@@ -135,7 +136,7 @@ type Session struct {
 	// binaryToRemove is the temp compiled binary to be removed on disconnect (if any).
 	binaryToRemove string
 	// noDebugProcess is set for the noDebug launch process.
-	noDebugProcess *exec.Cmd
+	noDebugProcess *process
 
 	// sendingMu synchronizes writing to conn
 	// to ensure that messages do not get interleaved
@@ -167,6 +168,11 @@ type Config struct {
 	// stopTriggered is closed when the server is Stop()-ed.
 	// Can be used to safeguard against duplicate shutdown sequences.
 	stopTriggered chan struct{}
+}
+
+type process struct {
+	*exec.Cmd
+	exited chan struct{}
 }
 
 // launchAttachArgs captures arguments from launch/attach request that
@@ -1029,16 +1035,9 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			if err := cmd.Wait(); err != nil {
 				s.config.log.Debugf("program exited with error: %v", err)
 			}
-			stopped := false
-			s.mu.Lock()
-			stopped = s.noDebugProcess == nil // if it was stopped, this should be nil
-			s.noDebugProcess = nil
-			s.mu.Unlock()
-
-			if !stopped { // process terminated on its own
-				s.logToConsole(proc.ErrProcessExited{Pid: cmd.ProcessState.Pid(), Status: cmd.ProcessState.ExitCode()}.Error())
-				s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
-			}
+			s.logToConsole(proc.ErrProcessExited{Pid: cmd.ProcessState.Pid(), Status: cmd.ProcessState.ExitCode()}.Error())
+			s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
+			close(s.noDebugProcess.exited)
 		}()
 		return
 	}
@@ -1085,7 +1084,7 @@ func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd stri
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	s.noDebugProcess = cmd
+	s.noDebugProcess = &process{Cmd: cmd, exited: make(chan struct{})}
 	return cmd, nil
 }
 
@@ -1096,14 +1095,25 @@ func (s *Session) stopNoDebugProcess() {
 		// We already handled termination or there was never a process
 		return
 	}
-	if s.noDebugProcess.ProcessState != nil && s.noDebugProcess.ProcessState.Exited() {
-		s.logToConsole(proc.ErrProcessExited{Pid: s.noDebugProcess.ProcessState.Pid(), Status: s.noDebugProcess.ProcessState.ExitCode()}.Error())
-	} else {
-		// TODO(hyangah): gracefully terminate the process and its children processes.
-		s.logToConsole(fmt.Sprintf("Terminating process %d", s.noDebugProcess.Process.Pid))
-		s.noDebugProcess.Process.Kill() // Don't check error. Process killing and self-termination may race.
+	select {
+	case <-s.noDebugProcess.exited:
+		s.noDebugProcess = nil
+		return
+	default:
 	}
-	s.noDebugProcess = nil
+
+	// TODO(hyangah): gracefully terminate the process and its children processes.
+	s.logToConsole(fmt.Sprintf("Terminating process %d", s.noDebugProcess.Process.Pid))
+	s.noDebugProcess.Process.Kill() // Don't check error. Process killing and self-termination may race.
+
+	// Wait for kill to complete or time out
+	select {
+	case <-time.After(5 * time.Second):
+		s.config.log.Debug("noDebug process kill timed out")
+	case <-s.noDebugProcess.exited:
+		s.config.log.Debug("noDebug process killed")
+		s.noDebugProcess = nil
+	}
 }
 
 // onDisconnectRequest handles the DisconnectRequest. Per the DAP spec,

@@ -145,9 +145,11 @@ func (c *Client) ExpectOutputEventRegex(t *testing.T, want string) *dap.OutputEv
 	return e
 }
 
+const ProcessExited = `Process [0-9]+ has exited with status %s\n`
+
 func (c *Client) ExpectOutputEventProcessExited(t *testing.T, status int) *dap.OutputEvent {
 	t.Helper()
-	return c.ExpectOutputEventRegex(t, fmt.Sprintf(`Process [0-9]+ has exited with status %d\n`, status))
+	return c.ExpectOutputEventRegex(t, fmt.Sprintf(ProcessExited, fmt.Sprintf("%d", status)))
 }
 
 func (c *Client) ExpectOutputEventDetaching(t *testing.T) *dap.OutputEvent {
