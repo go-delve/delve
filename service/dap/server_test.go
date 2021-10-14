@@ -1049,31 +1049,24 @@ func TestSelectedThreadsRequest(t *testing.T) {
 }
 
 func TestHideSystemGoroutinesRequest(t *testing.T) {
-	reMain, err := regexp.Compile(`(\* |)\[Go [0-9]+\] main\..+`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	reRuntime, err := regexp.Compile(`(\* |)\[Go [0-9]+\] runtime\..+`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	wantRegex := []*regexp.Regexp{reMain, reRuntime}
 	tests := []struct {
 		hideSystemGoroutines bool
-		// wantMatched holds the number of goroutines that
-		// should match each regex. If the value is -1, then
-		// the match number should > 0.
-		wantMatched []int
+		// If the value is -1, then the number of goroutines
+		// should > 0.
+		wantUser   int
+		wantSystem int
 	}{
 		{
 			hideSystemGoroutines: true,
 			// The user process creates 10 goroutines in addition to the
 			// main goroutine, for a total of 11 goroutines.
-			wantMatched: []int{11, 0},
+			wantUser:   11,
+			wantSystem: 0,
 		},
 		{
 			hideSystemGoroutines: false,
-			wantMatched:          []int{11, -1},
+			wantUser:             11,
+			wantSystem:           -1,
 		},
 	}
 	for _, tt := range tests {
@@ -1097,29 +1090,30 @@ func TestHideSystemGoroutinesRequest(t *testing.T) {
 						client.ThreadsRequest()
 						tr := client.ExpectThreadsResponse(t)
 
-						var matchedRe = make([]int, len(wantRegex))
-						for i, got := range tr.Body.Threads {
-							matched := false
-							for i, re := range wantRegex {
-								if re.MatchString(got.Name) {
-									matched = true
-									matchedRe[i]++
-								}
-							}
-							if !matched {
-								t.Errorf("\ngot threads[%d] = %#v\nwant %#v", i, got, wantRegex)
+						userCount, systemCount := 0, 0
+						for _, got := range tr.Body.Threads {
+							if strings.Contains(got.Name, "runtime.main") ||
+								strings.Contains(got.Name, "runtime.handleAsyncEvent") ||
+								!strings.Contains(got.Name, "runtime.") {
+								userCount++
+							} else {
+								systemCount++
 							}
 						}
 
-						for i := range matchedRe {
-							if tt.wantMatched[i] < 0 {
-								if matchedRe[i] == 0 {
-									t.Errorf("got %d threads matching %q, expected %d\n", matchedRe[i], wantRegex[i], tt.wantMatched[i])
-								}
-							} else if matchedRe[i] != tt.wantMatched[i] {
-								t.Errorf("got %d threads matching %q, expected %d\n", matchedRe[i], wantRegex[i], tt.wantMatched[i])
+						if tt.wantUser < 0 {
+							if userCount == 0 {
+								t.Errorf("got 0 user goroutines, expected > 0\n")
 							}
-
+						} else if userCount != tt.wantUser {
+							t.Errorf("got %d user goroutines, expected %d\n", userCount, tt.wantUser)
+						}
+						if tt.wantSystem < 0 {
+							if systemCount == 0 {
+								t.Errorf("got 0 system goroutines, expected > 0\n")
+							}
+						} else if systemCount != tt.wantSystem {
+							t.Errorf("got %d system goroutines, expected %d\n", systemCount, tt.wantSystem)
 						}
 					},
 					disconnect: true,
