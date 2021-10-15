@@ -117,16 +117,18 @@ func verifyServerStopped(t *testing.T, server *Server) {
 			t.Error("server should have closed listener after shutdown")
 		}
 	}
-	if server.session != nil {
-		verifySessionStopped(t, server.session)
-	}
+	verifySessionStopped(t, server.session)
 }
 
 func verifySessionStopped(t *testing.T, session *Session) {
 	t.Helper()
-	if session.conn != nil {
-		verifyConnStopped(t, session.conn)
+	if session == nil {
+		return
 	}
+	if session.conn == nil {
+		t.Error("session must always have a set connection")
+	}
+	verifyConnStopped(t, session.conn)
 	if session.debugger != nil {
 		t.Error("session should have no pointer to debugger after shutdown")
 	}
@@ -6082,8 +6084,9 @@ func TestAttachRemoteMultiClient(t *testing.T) {
 			client.Close()
 
 			if tc.expect == closingClientSession {
-				// At this point a multi-client server is still running, but since
-				// it is a dap server, it cannot accept another client, so the only
+				// At this point a multi-client server is still running.
+				verifySessionStopped(t, server.session)
+				// Since it is a dap server, it cannot accept another client, so the only
 				// way to take down the server is to force kill it.
 				close(forceStop)
 			}

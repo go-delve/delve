@@ -1134,11 +1134,13 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 
 	if s.debugger != nil && s.config.AcceptMulti && !request.Arguments.TerminateDebuggee {
 		// This is a multi-use server/debugger, so a disconnect request that doesn't
-		// terminate the debuggee should clean up only the client connection, but not the server.
+		// terminate the debuggee should clean up only the client connection and pointer to debugger,
+		// but not the entire server.
 		s.logToConsole("Closing client session, but leaving multi-client DAP server running at " + s.config.Listener.Addr().String())
 		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		s.conn.Close()
+		s.debugger = nil
 		// The target is left in whatever state it is already in - halted or running.
 		// The users therefore have the flexibility to choose the appropriate state
 		// for their case before disconnecting. This is also desirable in case of
