@@ -1052,23 +1052,9 @@ func TestSelectedThreadsRequest(t *testing.T) {
 }
 
 func TestHideSystemGoroutinesRequest(t *testing.T) {
-	tests := []struct {
-		hideSystemGoroutines bool
-		wantUser             int
-		wantSystem           bool
-	}{
-		{
-			hideSystemGoroutines: true,
-			// The user process creates 10 goroutines in addition to the
-			// main goroutine, for a total of 11 goroutines.
-			wantUser:   11,
-			wantSystem: false,
-		},
-		{
-			hideSystemGoroutines: false,
-			wantUser:             11,
-			wantSystem:           true,
-		},
+	tests := []struct{ hideSystemGoroutines bool }{
+		{hideSystemGoroutines: true},
+		{hideSystemGoroutines: false},
 	}
 	for _, tt := range tests {
 		runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
@@ -1091,26 +1077,17 @@ func TestHideSystemGoroutinesRequest(t *testing.T) {
 						client.ThreadsRequest()
 						tr := client.ExpectThreadsResponse(t)
 
-						userCount, systemCount := 0, 0
-						for _, got := range tr.Body.Threads {
-							if strings.Contains(got.Name, "runtime.main") ||
-								strings.Contains(got.Name, "runtime.handleAsyncEvent") ||
-								!strings.Contains(got.Name, "runtime.") {
-								userCount++
-							} else {
-								systemCount++
+						// The user process creates 10 goroutines in addition to the
+						// main goroutine, for a total of 11 goroutines.
+						userCount := 11
+						if tt.hideSystemGoroutines {
+							if len(tr.Body.Threads) != userCount {
+								t.Errorf("got %d goroutines, expected %d\n", len(tr.Body.Threads), userCount)
 							}
-						}
-
-						if userCount != tt.wantUser {
-							t.Errorf("got %d user goroutines, expected %d\n", userCount, tt.wantUser)
-						}
-						if tt.wantSystem {
-							if systemCount == 0 {
-								t.Errorf("got 0 system goroutines, expected > 0\n")
+						} else {
+							if len(tr.Body.Threads) <= userCount {
+								t.Errorf("got %d goroutines, expected >%d\n", len(tr.Body.Threads), userCount)
 							}
-						} else if systemCount != 0 {
-							t.Errorf("got %d system goroutines, expected 0\n", systemCount)
 						}
 					},
 					disconnect: true,
