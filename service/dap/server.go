@@ -26,9 +26,11 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/goversion"
@@ -75,11 +77,9 @@ import (
 // error or responding to a (synchronous) DAP disconnect request.
 // Once stop is triggered, the goroutine exits.
 //
-// TODO(polina): add another layer of per-client goroutines to support multiple clients.
-// Note that some requests change the process's environment such
-// as working directory (for example, see DelveCwd of launch configuration).
-// So if we want to reuse this process for multiple debugging sessions
-// we need to address that.
+// Unlike rpccommon, there is not another layer of per-client
+// goroutines here because the dap server does not support
+// multiple clients.
 //
 // (3) Per-request goroutine is started for each asynchronous request
 // that resumes execution. We check if target is running already, so
@@ -99,6 +99,7 @@ type Server struct {
 	// config is all the information necessary to start the debugger and server.
 	config *Config
 	// listener is used to accept the client connection.
+	// When working with a predetermined client, this is nil.
 	listener net.Listener
 	// session is the debug session that comes with an client connection.
 	session   *Session
@@ -136,7 +137,7 @@ type Session struct {
 	// binaryToRemove is the temp compiled binary to be removed on disconnect (if any).
 	binaryToRemove string
 	// noDebugProcess is set for the noDebug launch process.
-	noDebugProcess *exec.Cmd
+	noDebugProcess *process
 
 	// sendingMu synchronizes writing to conn
 	// to ensure that messages do not get interleaved
@@ -170,6 +171,11 @@ type Config struct {
 	stopTriggered chan struct{}
 }
 
+type process struct {
+	*exec.Cmd
+	exited chan struct{}
+}
+
 // launchAttachArgs captures arguments from launch/attach request that
 // impact handling of subsequent requests.
 type launchAttachArgs struct {
@@ -182,6 +188,8 @@ type launchAttachArgs struct {
 	// hideSystemGoroutines indicates if system goroutines should be removed from threads
 	// responses.
 	hideSystemGoroutines bool
+	// showRegisters indicates if register values should be loaded.
+	showRegisters bool
 	// substitutePathClientToServer indicates rules for converting file paths between client and debugger.
 	// These must be directory paths.
 	substitutePathClientToServer [][2]string
@@ -198,6 +206,7 @@ var defaultArgs = launchAttachArgs{
 	stackTraceDepth:              50,
 	showGlobalVariables:          false,
 	hideSystemGoroutines:         false,
+	showRegisters:                false,
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
 }
@@ -248,10 +257,22 @@ var (
 // it will be closed by the server when the client fails to connect,
 // disconnects or requests shutdown. Once config.DisconnectChan is closed,
 // Server.Stop() must be called to shutdown this single-user server.
+//
+// NewServer can be used to create a special DAP Server that works
+// only with a predetermined client. In that case, config.Listener is
+// nil and its RunWithClient must be used instead of Run.
 func NewServer(config *service.Config) *Server {
 	logger := logflags.DAPLogger()
-	logflags.WriteDAPListeningMessage(config.Listener.Addr())
+	if config.Listener != nil {
+		logflags.WriteDAPListeningMessage(config.Listener.Addr())
+	} else {
+		logger.Debug("DAP server for a predetermined client")
+	}
 	logger.Debug("DAP server pid = ", os.Getpid())
+	if config.AcceptMulti {
+		logger.Warn("DAP server does not support accept-multiclient mode")
+		config.AcceptMulti = false
+	}
 	return &Server{
 		config: &Config{
 			Config:        config,
@@ -289,6 +310,7 @@ func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) error {
 	}
 	s.args.showGlobalVariables = args.ShowGlobalVariables
 	s.args.hideSystemGoroutines = args.HideSystemGoroutines
+	s.args.showRegisters = args.ShowRegisters
 	if paths := args.SubstitutePath; len(paths) > 0 {
 		clientToServer := make([][2]string, 0, len(paths))
 		serverToClient := make([][2]string, 0, len(paths))
@@ -311,8 +333,11 @@ func (s *Server) Stop() {
 	s.config.log.Debug("DAP server stopping...")
 	defer s.config.log.Debug("DAP server stopped")
 	close(s.config.stopTriggered)
-	// If run goroutine is blocked on accept, this will unblock it.
-	_ = s.listener.Close()
+
+	if s.listener != nil {
+		// If run goroutine is blocked on accept, this will unblock it.
+		_ = s.listener.Close()
+	}
 
 	s.sessionMu.Lock()
 	defer s.sessionMu.Unlock()
@@ -379,8 +404,16 @@ func (c *Config) triggerServerStop() {
 // The server should be restarted for every new debug session.
 // The debugger won't be started until launch/attach request is received.
 // TODO(polina): allow new client connections for new debug sessions,
-// so the editor needs to launch delve only once?
+// so the editor needs to launch dap server only once? Note that some requests
+// may change the server's environment (e.g. see dlvCwd of launch configuration).
+// So if we want to reuse this server for multiple independent debugging sessions
+// we need to take that into consideration.
 func (s *Server) Run() {
+	if s.listener == nil {
+		s.config.log.Fatal("Misconfigured server: no Listener is configured.")
+		return
+	}
+
 	go func() {
 		conn, err := s.listener.Accept() // listener is closed in Stop()
 		if err != nil {
@@ -399,11 +432,28 @@ func (s *Server) Run() {
 				return
 			}
 		}
-		s.sessionMu.Lock()
-		s.session = NewSession(conn, s.config) // closed in Stop()
-		s.sessionMu.Unlock()
-		s.session.serveDAPCodec()
+		s.runSession(conn)
 	}()
+}
+
+func (s *Server) runSession(conn io.ReadWriteCloser) {
+	s.sessionMu.Lock()
+	s.session = NewSession(conn, s.config) // closed in Stop()
+	s.sessionMu.Unlock()
+	s.session.serveDAPCodec()
+}
+
+// RunWithClient is similar to Run but works only with an already established
+// connection instead of waiting on the listener to accept a new client.
+// RunWithClient takes ownership of conn. Debugger won't be started
+// until a launch/attach request is received over the connection.
+func (s *Server) RunWithClient(conn net.Conn) {
+	if s.listener != nil {
+		s.config.log.Fatal("RunWithClient must not be used when the Server is configured with a Listener")
+		return
+	}
+	s.config.log.Debugf("Connected to the client at %s", conn.RemoteAddr())
+	go s.runSession(conn)
 }
 
 // serveDAPCodec reads and decodes requests from the client
@@ -435,7 +485,11 @@ func (s *Session) serveDAPCodec() {
 					}
 					s.config.log.Error("DAP error: ", err)
 				}
-				s.config.triggerServerStop()
+				if s.config.AcceptMulti {
+					s.conn.Close()
+				} else {
+					s.config.triggerServerStop()
+				}
 			}
 			return
 		}
@@ -478,6 +532,18 @@ func (s *Session) handleRequest(request dap.Message) {
 
 	// These requests, can be handled regardless of whether the targret is running
 	switch request := request.(type) {
+	case *dap.InitializeRequest:
+		// Required
+		s.onInitializeRequest(request)
+		return
+	case *dap.LaunchRequest:
+		// Required
+		s.onLaunchRequest(request)
+		return
+	case *dap.AttachRequest:
+		// Required
+		s.onAttachRequest(request)
+		return
 	case *dap.DisconnectRequest:
 		// Required
 		s.onDisconnectRequest(request)
@@ -515,7 +581,7 @@ func (s *Session) handleRequest(request dap.Message) {
 	// the next stop. In addition, the editor itself might block waiting
 	// for these requests to return. We are not aware of any requests
 	// that would benefit from this approach at this time.
-	if s.debugger != nil && s.isRunningCmd() {
+	if s.debugger != nil && s.debugger.IsRunning() || s.isRunningCmd() {
 		switch request := request.(type) {
 		case *dap.ThreadsRequest:
 			// On start-up, the client requests the baseline of currently existing threads
@@ -538,22 +604,7 @@ func (s *Session) handleRequest(request dap.Message) {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
 			}
-			s.logToConsole("Execution halted to set breakpoints - please resume execution manually")
 			s.onSetBreakpointsRequest(request)
-			// TODO(polina): consider resuming execution here automatically after suppressing
-			// a stop event when an operation in runUntilStopAndNotify returns. In case that operation
-			// was already stopping for a different reason, we would need to examine the state
-			// that is returned to determine if this halt was the cause of the stop or not.
-			// We should stop with an event and not resume if one of the following is true:
-			// - StopReason is anything but manual
-			// - Any thread has a breakpoint or CallReturn set
-			// - NextInProgress is false and the last command sent by the user was: next,
-			//   step, stepOut, reverseNext, reverseStep or reverseStepOut
-			// Otherwise, we can skip the stop event and resume the temporarily
-			// interrupted process execution with api.DirectionCongruentContinue.
-			// For this to apply in cases other than api.Continue, we would also need to
-			// introduce a new version of halt that skips ClearInternalBreakpoints
-			// in proc.(*Target).Continue, leaving NextInProgress as true.
 		case *dap.SetFunctionBreakpointsRequest:
 			s.changeStateMu.Lock()
 			defer s.changeStateMu.Unlock()
@@ -563,7 +614,6 @@ func (s *Session) handleRequest(request dap.Message) {
 				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
 				return
 			}
-			s.logToConsole("Execution halted to set breakpoints - please resume execution manually")
 			s.onSetFunctionBreakpointsRequest(request)
 		default:
 			r := request.(dap.RequestMessage).GetRequest()
@@ -635,23 +685,15 @@ func (s *Session) handleRequest(request dap.Message) {
 		}()
 		<-resumeRequestLoop
 	//--- Synchronous requests ---
-	// TODO(polina): target might be running when remote attach debug session
-	// is started. Support handling initialize and attach requests while running.
-	case *dap.InitializeRequest:
-		// Required
-		s.onInitializeRequest(request)
-	case *dap.LaunchRequest:
-		// Required
-		s.onLaunchRequest(request)
-	case *dap.AttachRequest:
-		// Required
-		s.onAttachRequest(request)
 	case *dap.SetBreakpointsRequest:
 		// Required
 		s.onSetBreakpointsRequest(request)
 	case *dap.SetFunctionBreakpointsRequest:
 		// Optional (capability ‘supportsFunctionBreakpoints’)
 		s.onSetFunctionBreakpointsRequest(request)
+	case *dap.SetInstructionBreakpointsRequest:
+		// Optional (capability 'supportsInstructionBreakpoints')
+		s.onSetInstructionBreakpointsRequest(request)
 	case *dap.SetExceptionBreakpointsRequest:
 		// Optional (capability ‘exceptionBreakpointFilters’)
 		s.onSetExceptionBreakpointsRequest(request)
@@ -792,11 +834,14 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsDelayedStackTraceLoading = true
 	response.Body.SupportTerminateDebuggee = true
 	response.Body.SupportsFunctionBreakpoints = true
+	response.Body.SupportsInstructionBreakpoints = true
 	response.Body.SupportsExceptionInfoRequest = true
 	response.Body.SupportsSetVariable = true
 	response.Body.SupportsEvaluateForHovers = true
 	response.Body.SupportsClipboardContext = true
+	response.Body.SupportsSteppingGranularity = true
 	response.Body.SupportsLogPoints = true
+	response.Body.SupportsDisassembleRequest = true
 	// TODO(polina): support these requests in addition to vscode-go feature parity
 	response.Body.SupportsTerminateRequest = false
 	response.Body.SupportsRestartRequest = false
@@ -804,7 +849,6 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsSetExpression = false
 	response.Body.SupportsLoadedSourcesRequest = false
 	response.Body.SupportsReadMemoryRequest = false
-	response.Body.SupportsDisassembleRequest = false
 	response.Body.SupportsCancelRequest = false
 	s.send(response)
 }
@@ -848,6 +892,7 @@ func cleanExeName(name string) string {
 }
 
 func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
+	var err error
 	if s.debugger != nil {
 		s.sendShowUserErrorResponse(request.Request, FailedToLaunch,
 			"Failed to launch", "debugger already started - use remote attach to connect to a server with an active debug session")
@@ -860,97 +905,88 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			FailedToLaunch, "Failed to launch", fmt.Sprintf("invalid debug configuration - %v", err))
 		return
 	}
+	s.config.log.Debug("parsed launch config: ", prettyPrint(args))
 
-	if args.DelveCwd != "" {
-		if err := os.Chdir(args.DelveCwd); err != nil {
+	if args.DlvCwd != "" {
+		if err := os.Chdir(args.DlvCwd); err != nil {
 			s.sendShowUserErrorResponse(request.Request,
-				FailedToLaunch, "Failed to launch", fmt.Sprintf("failed to chdir using %q - %v", args.DelveCwd, err))
+				FailedToLaunch, "Failed to launch", fmt.Sprintf("failed to chdir to %q - %v", args.DlvCwd, err))
 			return
 		}
 	}
 
-	mode := args.Mode
-	if mode == "" {
-		mode = "debug"
+	if args.Mode == "" {
+		args.Mode = "debug"
 	}
-	if !isValidLaunchMode(mode) {
+	if !isValidLaunchMode(args.Mode) {
 		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
-			fmt.Sprintf("invalid debug configuration - unsupported 'mode' attribute %q", mode))
+			fmt.Sprintf("invalid debug configuration - unsupported 'mode' attribute %q", args.Mode))
 		return
 	}
 
-	program := args.Program
-	if program == "" && mode != "replay" { // Only fail on modes requiring a program
+	if args.Program == "" && args.Mode != "replay" { // Only fail on modes requiring a program
 		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
 			"The program attribute is missing in debug configuration.")
 		return
 	}
 
-	if backend := args.Backend; backend != "" {
-		s.config.Debugger.Backend = backend
-	} else {
-		s.config.Debugger.Backend = "default"
+	if args.Backend == "" {
+		args.Backend = "default"
 	}
 
-	if mode == "replay" {
-		traceDirPath := args.TraceDirPath
+	if args.Mode == "replay" {
 		// Validate trace directory
-		if traceDirPath == "" {
+		if args.TraceDirPath == "" {
 			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
 				"The 'traceDirPath' attribute is missing in debug configuration.")
 			return
 		}
 
 		// Assign the rr trace directory path to debugger configuration
-		s.config.Debugger.CoreFile = traceDirPath
-		s.config.Debugger.Backend = "rr"
+		s.config.Debugger.CoreFile = args.TraceDirPath
+		args.Backend = "rr"
 	}
-
-	if mode == "core" {
-		coreFilePath := args.CoreFilePath
+	if args.Mode == "core" {
 		// Validate core dump path
-		if coreFilePath == "" {
+		if args.CoreFilePath == "" {
 			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
 				"The 'coreFilePath' attribute is missing in debug configuration.")
 			return
 		}
 		// Assign the non-empty core file path to debugger configuration. This will
 		// trigger a native core file replay instead of an rr trace replay
-		s.config.Debugger.CoreFile = coreFilePath
-		s.config.Debugger.Backend = "core"
+		s.config.Debugger.CoreFile = args.CoreFilePath
+		args.Backend = "core"
 	}
 
-	s.config.log.Debugf("debug backend is '%s'", s.config.Debugger.Backend)
+	s.config.Debugger.Backend = args.Backend
 
-	// Prepare the debug executable filename, build flags and build it
-	if mode == "debug" || mode == "test" {
-		debugbinary := args.Output
-		if debugbinary == "" {
-			debugbinary = s.tempDebugBinary()
+	// Prepare the debug executable filename, building it if necessary
+	debugbinary := args.Program
+	if args.Mode == "debug" || args.Mode == "test" {
+		if args.Output == "" {
+			args.Output = s.tempDebugBinary()
 		} else {
-			debugbinary = cleanExeName(debugbinary)
+			args.Output = cleanExeName(args.Output)
 		}
-
-		if o, err := filepath.Abs(debugbinary); err != nil {
-			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
+		args.Output, err = filepath.Abs(args.Output)
+		if err != nil {
+			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 			return
-		} else {
-			debugbinary = o
 		}
-		buildFlags := args.BuildFlags
+		debugbinary = args.Output
 
 		var cmd string
 		var out []byte
-		wd, _ := os.Getwd()
-		s.config.log.Debugf("building program '%s' in '%s' with flags '%v'", program, wd, buildFlags)
-
 		var err error
-		switch mode {
+		switch args.Mode {
 		case "debug":
-			cmd, out, err = gobuild.GoBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
+			cmd, out, err = gobuild.GoBuildCombinedOutput(args.Output, []string{args.Program}, args.BuildFlags)
 		case "test":
-			cmd, out, err = gobuild.GoTestBuildCombinedOutput(debugbinary, []string{program}, buildFlags)
+			cmd, out, err = gobuild.GoTestBuildCombinedOutput(args.Output, []string{args.Program}, args.BuildFlags)
 		}
+		args.DlvCwd, _ = filepath.Abs(args.DlvCwd)
+		s.config.log.Debugf("building from %q: [%s]", args.DlvCwd, cmd)
 		if err != nil {
 			s.send(&dap.OutputEvent{
 				Event: *newEvent("output"),
@@ -964,32 +1000,38 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 				"Build error: Check the debug console for details.")
 			return
 		}
-		program = debugbinary
 		s.mu.Lock()
-		s.binaryToRemove = debugbinary
+		s.binaryToRemove = args.Output
 		s.mu.Unlock()
 	}
+	s.config.ProcessArgs = append([]string{debugbinary}, args.Args...)
 
 	if err := s.setLaunchAttachArgs(args.LaunchAttachCommonConfig); err != nil {
 		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 		return
 	}
 
-	s.config.ProcessArgs = append([]string{program}, args.Args...)
-	if args.Cwd != "" {
-		s.config.Debugger.WorkingDir = args.Cwd
-	} else if mode == "test" {
-		// In test mode, run the test binary from the package directory
-		// like in `go test` and `dlv test` by default.
-		s.config.Debugger.WorkingDir = s.getPackageDir(args.Program)
-	} else {
-		s.config.Debugger.WorkingDir = "."
+	if args.Cwd == "" {
+		if args.Mode == "test" {
+			// In test mode, run the test binary from the package directory
+			// like in `go test` and `dlv test` by default.
+			args.Cwd = s.getPackageDir(args.Program)
+		} else {
+			args.Cwd = "."
+		}
 	}
+	s.config.Debugger.WorkingDir = args.Cwd
 
-	s.config.log.Debugf("running binary '%s' in '%s'", program, s.config.Debugger.WorkingDir)
+	// Backend layers will interpret paths relative to server's working directory:
+	// reflect that before logging.
+	argsToLog := args
+	argsToLog.Program, _ = filepath.Abs(args.Program)
+	argsToLog.Cwd, _ = filepath.Abs(args.Cwd)
+	s.config.log.Debugf("launching binary '%s' with config: %s", debugbinary, prettyPrint(argsToLog))
+
 	if args.NoDebug {
 		s.mu.Lock()
-		cmd, err := s.newNoDebugProcess(program, args.Args, s.config.Debugger.WorkingDir)
+		cmd, err := s.newNoDebugProcess(debugbinary, args.Args, s.config.Debugger.WorkingDir)
 		s.mu.Unlock()
 		if err != nil {
 			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
@@ -1004,21 +1046,13 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			if err := cmd.Wait(); err != nil {
 				s.config.log.Debugf("program exited with error: %v", err)
 			}
-			stopped := false
-			s.mu.Lock()
-			stopped = s.noDebugProcess == nil // if it was stopped, this should be nil
-			s.noDebugProcess = nil
-			s.mu.Unlock()
-
-			if !stopped { // process terminated on its own
-				s.logToConsole(proc.ErrProcessExited{Pid: cmd.ProcessState.Pid(), Status: cmd.ProcessState.ExitCode()}.Error())
-				s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
-			}
+			s.logToConsole(proc.ErrProcessExited{Pid: cmd.ProcessState.Pid(), Status: cmd.ProcessState.ExitCode()}.Error())
+			s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
+			close(s.noDebugProcess.exited)
 		}()
 		return
 	}
 
-	var err error
 	func() {
 		s.mu.Lock()
 		defer s.mu.Unlock() // Make sure to unlock in case of panic that will become internal error
@@ -1061,7 +1095,7 @@ func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd stri
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	s.noDebugProcess = cmd
+	s.noDebugProcess = &process{Cmd: cmd, exited: make(chan struct{})}
 	return cmd, nil
 }
 
@@ -1072,26 +1106,53 @@ func (s *Session) stopNoDebugProcess() {
 		// We already handled termination or there was never a process
 		return
 	}
-	if s.noDebugProcess.ProcessState != nil && s.noDebugProcess.ProcessState.Exited() {
-		s.logToConsole(proc.ErrProcessExited{Pid: s.noDebugProcess.ProcessState.Pid(), Status: s.noDebugProcess.ProcessState.ExitCode()}.Error())
-	} else {
-		// TODO(hyangah): gracefully terminate the process and its children processes.
-		s.logToConsole(fmt.Sprintf("Terminating process %d", s.noDebugProcess.Process.Pid))
-		s.noDebugProcess.Process.Kill() // Don't check error. Process killing and self-termination may race.
+	select {
+	case <-s.noDebugProcess.exited:
+		s.noDebugProcess = nil
+		return
+	default:
 	}
-	s.noDebugProcess = nil
+
+	// TODO(hyangah): gracefully terminate the process and its children processes.
+	s.logToConsole(fmt.Sprintf("Terminating process %d", s.noDebugProcess.Process.Pid))
+	s.noDebugProcess.Process.Kill() // Don't check error. Process killing and self-termination may race.
+
+	// Wait for kill to complete or time out
+	select {
+	case <-time.After(5 * time.Second):
+		s.config.log.Debug("noDebug process kill timed out")
+	case <-s.noDebugProcess.exited:
+		s.config.log.Debug("noDebug process killed")
+		s.noDebugProcess = nil
+	}
 }
 
 // onDisconnectRequest handles the DisconnectRequest. Per the DAP spec,
 // it disconnects the debuggee and signals that the debug adaptor
 // (in our case this TCP server) can be terminated.
-// TODO(polina): differentiate between single- and multi-client
-// server mode when handling requests for debug session shutdown.
 func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
-	defer s.config.triggerServerStop()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.debugger != nil && s.config.AcceptMulti && !request.Arguments.TerminateDebuggee {
+		// This is a multi-use server/debugger, so a disconnect request that doesn't
+		// terminate the debuggee should clean up only the client connection, but not the server.
+		s.logToConsole("Closing client session, but leaving multi-client DAP server running at " + s.config.Listener.Addr().String())
+		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
+		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
+		s.conn.Close()
+		// The target is left in whatever state it is already in - halted or running.
+		// The users therefore have the flexibility to choose the appropriate state
+		// for their case before disconnecting. This is also desirable in case of
+		// the client connection fails unexpectedly and the user needs to reconnect.
+		// TODO(polina): should we always issue a continue here if it is not running
+		// like is done in vscode-go legacy adapter?
+		// Ideally we want to use bool suspendDebuggee flag, but it is not yet
+		// available in vscode: https://github.com/microsoft/vscode/issues/134412
+		return
+	}
+
+	defer s.config.triggerServerStop()
 	var err error
 	if s.debugger != nil {
 		// We always kill launched programs.
@@ -1109,9 +1170,7 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 	}
 	// The debugging session has ended, so we send a terminated event.
-	s.send(&dap.TerminatedEvent{
-		Event: *newEvent("terminated"),
-	})
+	s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 }
 
 // stopDebugSession is called from Stop (main goroutine) and
@@ -1132,6 +1191,7 @@ func (s *Session) stopDebugSession(killProcess bool) error {
 	// To avoid goroutine leaks, we can use a wait group or have the goroutine listen
 	// for a stop signal on a dedicated quit channel at suitable points (use context?).
 	// Additional clean-up might be especially critical when we support multiple clients.
+	s.setHaltRequested(true)
 	state, err := s.halt()
 	if err == proc.ErrProcessDetached {
 		s.config.log.Debug("halt returned error: ", err)
@@ -1178,7 +1238,6 @@ func (s *Session) stopDebugSession(killProcess bool) error {
 // halt sends a halt request if the debuggee is running.
 // changeStateMu should be held when calling (*Server).halt.
 func (s *Session) halt() (*api.DebuggerState, error) {
-	s.setHaltRequested(true)
 	// Only send a halt request if the debuggee is running.
 	if s.debugger.IsRunning() {
 		return s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
@@ -1201,82 +1260,24 @@ func (s *Session) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 	clientPath := request.Arguments.Source.Path
 	serverPath := s.toServerPath(clientPath)
 
-	// According to the spec we should "set multiple breakpoints for a single source
-	// and clear all previous breakpoints in that source." The simplest way is
-	// to clear all and then set all. To maintain state (for hit count conditions)
-	// we want to amend existing breakpoints.
-	//
-	// See https://github.com/golang/vscode-go/issues/163 for details.
-	// If a breakpoint:
-	// -- exists and not in request => ClearBreakpoint
-	// -- exists and in request => AmendBreakpoint
-	// -- doesn't exist and in request => SetBreakpoint
-
 	// Get all existing breakpoints that match for this source.
 	sourceRequestPrefix := fmt.Sprintf("sourceBp Path=%q ", request.Arguments.Source.Path)
-	existingBps := s.getMatchingBreakpoints(sourceRequestPrefix)
-	bpAdded := make(map[string]struct{}, len(existingBps))
 
-	// Amend existing breakpoints.
-	breakpoints := make([]dap.Breakpoint, len(request.Arguments.Breakpoints))
-	for i, want := range request.Arguments.Breakpoints {
-		reqString := fmt.Sprintf("%s Line=%d Column=%d", sourceRequestPrefix, want.Line, want.Column)
-		var err error
-		got, ok := existingBps[reqString]
-		if !ok {
-			// Skip if the breakpoint does not already exist.
-			// These will be created after deleting existing
-			// breakpoints to avoid conflicts.
-			continue
+	breakpoints := s.setBreakpoints(sourceRequestPrefix, len(request.Arguments.Breakpoints), func(i int) *bpMetadata {
+		want := request.Arguments.Breakpoints[i]
+		return &bpMetadata{
+			name:         fmt.Sprintf("%s Line=%d Column=%d", sourceRequestPrefix, want.Line, want.Column),
+			condition:    want.Condition,
+			hitCondition: want.HitCondition,
+			logMessage:   want.LogMessage,
 		}
-		if _, ok := bpAdded[reqString]; ok {
-			err = fmt.Errorf("breakpoint exists at %q, line: %d, column: %d", request.Arguments.Source.Path, want.Line, want.Column)
-		} else {
-			got.Cond = want.Condition
-			got.HitCond = want.HitCondition
-			got.Tracepoint = want.LogMessage != ""
-			got.UserData = want.LogMessage
-			err = s.debugger.AmendBreakpoint(got)
-			bpAdded[reqString] = struct{}{}
-		}
-
-		updateBreakpointsResponse(breakpoints, i, err, got, clientPath)
-	}
-
-	// Clear existing breakpoints that were not added.
-	err := s.clearBreakpoints(existingBps, bpAdded)
-	if err != nil {
-		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
-		return
-	}
-
-	for i, want := range request.Arguments.Breakpoints {
-		reqString := fmt.Sprintf("%s Line=%d Column=%d", sourceRequestPrefix, want.Line, want.Column)
-		if _, ok := existingBps[reqString]; ok {
-			continue
-		}
-
-		var got *api.Breakpoint
-		var err error
-		if _, ok := bpAdded[reqString]; ok {
-			err = fmt.Errorf("breakpoint exists at %q, line: %d, column: %d", request.Arguments.Source.Path, want.Line, want.Column)
-		} else {
-			// Create new breakpoints.
-			got, err = s.debugger.CreateBreakpoint(
-				&api.Breakpoint{
-					File:       serverPath,
-					Line:       want.Line,
-					Cond:       want.Condition,
-					HitCond:    want.HitCondition,
-					Name:       reqString,
-					Tracepoint: want.LogMessage != "",
-					UserData:   want.LogMessage,
-				})
-			bpAdded[reqString] = struct{}{}
-		}
-
-		updateBreakpointsResponse(breakpoints, i, err, got, clientPath)
-	}
+	}, func(i int) (*bpLocation, error) {
+		want := request.Arguments.Breakpoints[i]
+		return &bpLocation{
+			file: serverPath,
+			line: want.Line,
+		}, nil
+	})
 
 	response := &dap.SetBreakpointsResponse{Response: *newResponse(request.Request)}
 	response.Body.Breakpoints = breakpoints
@@ -1284,11 +1285,108 @@ func (s *Session) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 	s.send(response)
 }
 
-func updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int, err error, got *api.Breakpoint, path string) {
+type bpMetadata struct {
+	name         string
+	condition    string
+	hitCondition string
+	logMessage   string
+}
+
+type bpLocation struct {
+	file  string
+	line  int
+	addr  uint64
+	addrs []uint64
+}
+
+// setBreakpoints is a helper function for setting source, function and instruction
+// breakpoints. It takes the prefix of the name for all breakpoints that should be
+// included, the total number of breakpoints, and functions for computing the metadata
+// and the location. The location is computed separately because this may be more
+// expensive to compute and may not always be necessary.
+func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(i int) *bpMetadata, locFunc func(i int) (*bpLocation, error)) []dap.Breakpoint {
+	// If a breakpoint:
+	// -- exists and not in request => ClearBreakpoint
+	// -- exists and in request => AmendBreakpoint
+	// -- doesn't exist and in request => SetBreakpoint
+
+	// Get all existing breakpoints matching the prefix.
+	existingBps := s.getMatchingBreakpoints(prefix)
+
+	// createdBps is a set of breakpoint names that have been added
+	// during this request. This is used to catch duplicate set
+	// breakpoints requests and to track which breakpoints need to
+	// be deleted.
+	createdBps := make(map[string]struct{}, len(existingBps))
+
+	breakpoints := make([]dap.Breakpoint, totalBps)
+	// Amend existing breakpoints.
+	for i := 0; i < totalBps; i++ {
+		want := metadataFunc(i)
+		got, ok := existingBps[want.name]
+		if got == nil || !ok {
+			// Skip if the breakpoint does not already exist.
+			continue
+		}
+
+		var err error
+		if _, ok := createdBps[want.name]; ok {
+			err = fmt.Errorf("breakpoint already exists")
+		} else {
+			got.Cond = want.condition
+			got.HitCond = want.hitCondition
+			got.Tracepoint = want.logMessage != ""
+			got.UserData = want.logMessage
+			err = s.debugger.AmendBreakpoint(got)
+		}
+		createdBps[want.name] = struct{}{}
+		s.updateBreakpointsResponse(breakpoints, i, err, got)
+	}
+
+	// Clear breakpoints.
+	// Any breakpoint that existed before this request but was not amended must be deleted.
+	s.clearBreakpoints(existingBps, createdBps)
+
+	// Add new breakpoints.
+	for i := 0; i < totalBps; i++ {
+		want := metadataFunc(i)
+		if _, ok := existingBps[want.name]; ok {
+			continue
+		}
+
+		var got *api.Breakpoint
+		wantLoc, err := locFunc(i)
+		if err == nil {
+			if _, ok := createdBps[want.name]; ok {
+				err = fmt.Errorf("breakpoint already exists")
+			} else {
+				// Create new breakpoints.
+				got, err = s.debugger.CreateBreakpoint(
+					&api.Breakpoint{
+						Name:       want.name,
+						File:       wantLoc.file,
+						Line:       wantLoc.line,
+						Addr:       wantLoc.addr,
+						Addrs:      wantLoc.addrs,
+						Cond:       want.condition,
+						HitCond:    want.hitCondition,
+						Tracepoint: want.logMessage != "",
+						UserData:   want.logMessage,
+					})
+			}
+		}
+		createdBps[want.name] = struct{}{}
+		s.updateBreakpointsResponse(breakpoints, i, err, got)
+	}
+	return breakpoints
+}
+
+func (s *Session) updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int, err error, got *api.Breakpoint) {
 	breakpoints[i].Verified = (err == nil)
 	if err != nil {
 		breakpoints[i].Message = err.Error()
 	} else {
+		path := s.toClientPath(got.File)
 		breakpoints[i].Id = got.ID
 		breakpoints[i].Line = got.Line
 		breakpoints[i].Source = dap.Source{Name: filepath.Base(path), Path: path}
@@ -1300,84 +1398,30 @@ func updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int, err error, g
 const functionBpPrefix = "functionBreakpoint"
 
 func (s *Session) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpointsRequest) {
-	// According to the spec, setFunctionBreakpoints "replaces all existing function
-	// breakpoints with new function breakpoints." The simplest way is
-	// to clear all and then set all. To maintain state (for hit count conditions)
-	// we want to amend existing breakpoints.
-	//
-	// See https://github.com/golang/vscode-go/issues/163 for details.
-	// If a breakpoint:
-	// -- exists and not in request => ClearBreakpoint
-	// -- exists and in request => AmendBreakpoint
-	// -- doesn't exist and in request => SetBreakpoint
-
-	// Get all existing function breakpoints.
-	existingBps := s.getMatchingBreakpoints(functionBpPrefix)
-	bpAdded := make(map[string]struct{}, len(existingBps))
-	for _, bp := range existingBps {
-		existingBps[bp.Name] = bp
-	}
-
-	// Amend any existing breakpoints.
-	breakpoints := make([]dap.Breakpoint, len(request.Arguments.Breakpoints))
-	for i, want := range request.Arguments.Breakpoints {
-		reqString := fmt.Sprintf("%s Name=%s", functionBpPrefix, want.Name)
-		var err error
-		got, ok := existingBps[reqString]
-		if !ok {
-			// Skip if the breakpoint does not already exist.
-			// These will be created after deleting existing
-			// breakpoints to avoid conflicts.
-			continue
+	breakpoints := s.setBreakpoints(functionBpPrefix, len(request.Arguments.Breakpoints), func(i int) *bpMetadata {
+		want := request.Arguments.Breakpoints[i]
+		return &bpMetadata{
+			name:         fmt.Sprintf("%s Name=%s", functionBpPrefix, want.Name),
+			condition:    want.Condition,
+			hitCondition: want.HitCondition,
+			logMessage:   "",
 		}
-		if _, ok := bpAdded[reqString]; ok {
-			err = fmt.Errorf("breakpoint exists at function %q", want.Name)
-		} else {
-			got.Cond = want.Condition
-			got.HitCond = want.HitCondition
-			err = s.debugger.AmendBreakpoint(got)
-			bpAdded[reqString] = struct{}{}
-		}
-
-		var clientPath string
-		if got != nil {
-			clientPath = s.toClientPath(got.File)
-		}
-		updateBreakpointsResponse(breakpoints, i, err, got, clientPath)
-	}
-
-	// Clear existing breakpoints that were not added.
-	err := s.clearBreakpoints(existingBps, bpAdded)
-	if err != nil {
-		s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
-		return
-	}
-
-	// Create new breakpoints.
-	for i, want := range request.Arguments.Breakpoints {
-		reqString := fmt.Sprintf("%s Name=%s", functionBpPrefix, want.Name)
-		if _, ok := existingBps[reqString]; ok {
-			// Amend existing breakpoints.
-			continue
-		}
-
+	}, func(i int) (*bpLocation, error) {
+		want := request.Arguments.Breakpoints[i]
 		// Set the function breakpoint breakpoint
 		spec, err := locspec.Parse(want.Name)
 		if err != nil {
-			breakpoints[i].Message = err.Error()
-			continue
+			return nil, err
 		}
 		if loc, ok := spec.(*locspec.NormalLocationSpec); !ok || loc.FuncBase == nil {
 			// Other locations do not make sense in the context of function breakpoints.
 			// Regex locations are likely to resolve to multiple places and offset locations
 			// are only meaningful at the time the breakpoint was created.
-			breakpoints[i].Message = fmt.Sprintf("breakpoint name %q could not be parsed as a function. name must be in the format 'funcName', 'funcName:line' or 'fileName:line'.", want.Name)
-			continue
+			return nil, fmt.Errorf("breakpoint name %q could not be parsed as a function. name must be in the format 'funcName', 'funcName:line' or 'fileName:line'", want.Name)
 		}
 
 		if want.Name[0] == '.' {
-			breakpoints[i].Message = "breakpoint names that are relative paths are not supported."
-			continue
+			return nil, fmt.Errorf("breakpoint names that are relative paths are not supported")
 		}
 		// Find the location of the function name. CreateBreakpoint requires the name to include the base
 		// (e.g. main.functionName is supported but not functionName).
@@ -1385,28 +1429,19 @@ func (s *Session) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakp
 		var locs []api.Location
 		locs, err = s.debugger.FindLocationSpec(-1, 0, 0, want.Name, spec, true, s.args.substitutePathClientToServer)
 		if err != nil {
-			breakpoints[i].Message = err.Error()
-			continue
+			return nil, err
 		}
 		if len(locs) == 0 {
-			breakpoints[i].Message = fmt.Sprintf("no location found for %q", want.Name)
-			continue
+			return nil, err
 		}
 		if len(locs) > 0 {
 			s.config.log.Debugf("multiple locations found for %s", want.Name)
-			breakpoints[i].Message = fmt.Sprintf("multiple locations found for %s, function breakpoint is only set for the first location", want.Name)
 		}
 
 		// Set breakpoint using the PCs that were found.
 		loc := locs[0]
-		got, err := s.debugger.CreateBreakpoint(&api.Breakpoint{Addr: loc.PC, Addrs: loc.PCs, Cond: want.Condition, Name: reqString})
-
-		var clientPath string
-		if got != nil {
-			clientPath = s.toClientPath(got.File)
-		}
-		updateBreakpointsResponse(breakpoints, i, err, got, clientPath)
-	}
+		return &bpLocation{addr: loc.PC, addrs: loc.PCs}, nil
+	})
 
 	response := &dap.SetFunctionBreakpointsResponse{Response: *newResponse(request.Request)}
 	response.Body.Breakpoints = breakpoints
@@ -1414,9 +1449,34 @@ func (s *Session) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakp
 	s.send(response)
 }
 
-func (s *Session) clearBreakpoints(existingBps map[string]*api.Breakpoint, bpAdded map[string]struct{}) error {
+const instructionBpPrefix = "instructionBreakpoint"
+
+func (s *Session) onSetInstructionBreakpointsRequest(request *dap.SetInstructionBreakpointsRequest) {
+	breakpoints := s.setBreakpoints(instructionBpPrefix, len(request.Arguments.Breakpoints), func(i int) *bpMetadata {
+		want := request.Arguments.Breakpoints[i]
+		return &bpMetadata{
+			name:         fmt.Sprintf("%s PC=%s", instructionBpPrefix, want.InstructionReference),
+			condition:    want.Condition,
+			hitCondition: want.HitCondition,
+			logMessage:   "",
+		}
+	}, func(i int) (*bpLocation, error) {
+		want := request.Arguments.Breakpoints[i]
+		addr, err := strconv.ParseInt(want.InstructionReference, 0, 64)
+		if err != nil {
+			return nil, err
+		}
+		return &bpLocation{addr: uint64(addr)}, nil
+	})
+
+	response := &dap.SetInstructionBreakpointsResponse{Response: *newResponse(request.Request)}
+	response.Body.Breakpoints = breakpoints
+	s.send(response)
+}
+
+func (s *Session) clearBreakpoints(existingBps map[string]*api.Breakpoint, amendedBps map[string]struct{}) error {
 	for req, bp := range existingBps {
-		if _, ok := bpAdded[req]; ok {
+		if _, ok := amendedBps[req]; ok {
 			continue
 		}
 		_, err := s.debugger.ClearBreakpoint(bp)
@@ -1464,7 +1524,7 @@ func closeIfOpen(ch chan struct{}) {
 // onConfigurationDoneRequest handles 'configurationDone' request.
 // This is an optional request enabled by capability ‘supportsConfigurationDoneRequest’.
 // It gets triggered after all the debug requests that follow initalized event,
-// so the s.debugger is guaranteed to be set.
+// so the s.debugger is guaranteed to be set. Expects the target to be halted.
 func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest, allowNextStateChange chan struct{}) {
 	defer closeIfOpen(allowNextStateChange)
 	if s.args.stopOnEntry {
@@ -1621,11 +1681,11 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 		s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach", fmt.Sprintf("invalid debug configuration - %v", err))
 		return
 	}
+	s.config.log.Debug("parsed launch config: ", prettyPrint(args))
 
-	mode := args.Mode
-	switch mode {
+	switch args.Mode {
 	case "":
-		mode = "local"
+		args.Mode = "local"
 		fallthrough
 	case "local":
 		if s.debugger != nil {
@@ -1640,12 +1700,11 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 			return
 		}
 		s.config.Debugger.AttachPid = args.ProcessID
-		s.config.log.Debugf("attaching to pid %d", args.ProcessID)
-		if backend := args.Backend; backend != "" {
-			s.config.Debugger.Backend = backend
-		} else {
-			s.config.Debugger.Backend = "default"
+		if args.Backend == "" {
+			args.Backend = "default"
 		}
+		s.config.Debugger.Backend = args.Backend
+		s.config.log.Debugf("attaching to pid %d", args.ProcessID)
 		var err error
 		func() {
 			s.mu.Lock()
@@ -1662,10 +1721,14 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 			return
 		}
 		s.config.log.Debug("debugger already started")
-		// TODO(polina): once we allow initialize and attach request while running,
-		// halt before sending initialized event. onConfigurationDone will restart
+		// Halt for configuration sequence. onConfigurationDone will restart
 		// execution if user requested !stopOnEntry.
-
+		s.changeStateMu.Lock()
+		defer s.changeStateMu.Unlock()
+		if _, err := s.halt(); err != nil {
+			s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
+			return
+		}
 		// Enable StepBack controls on supported backends
 		if s.config.Debugger.Backend == "rr" {
 			s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportsStepBack: true}}})
@@ -1692,21 +1755,21 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 // This is a mandatory request to support.
 func (s *Session) onNextRequest(request *dap.NextRequest, allowNextStateChange chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.NextResponse{Response: *newResponse(request.Request)})
-	s.stepUntilStopAndNotify(api.Next, request.Arguments.ThreadId, allowNextStateChange)
+	s.stepUntilStopAndNotify(api.Next, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
 
 // onStepInRequest handles 'stepIn' request
 // This is a mandatory request to support.
 func (s *Session) onStepInRequest(request *dap.StepInRequest, allowNextStateChange chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepInResponse{Response: *newResponse(request.Request)})
-	s.stepUntilStopAndNotify(api.Step, request.Arguments.ThreadId, allowNextStateChange)
+	s.stepUntilStopAndNotify(api.Step, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
 
 // onStepOutRequest handles 'stepOut' request
 // This is a mandatory request to support.
 func (s *Session) onStepOutRequest(request *dap.StepOutRequest, allowNextStateChange chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepOutResponse{Response: *newResponse(request.Request)})
-	s.stepUntilStopAndNotify(api.StepOut, request.Arguments.ThreadId, allowNextStateChange)
+	s.stepUntilStopAndNotify(api.StepOut, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
 
 func (s *Session) sendStepResponse(threadId int, message dap.Message) {
@@ -1760,7 +1823,7 @@ func (s *Session) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int,
 // a channel that will be closed to signal that an
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
-func (s *Session) stepUntilStopAndNotify(command string, threadId int, allowNextStateChange chan struct{}) {
+func (s *Session) stepUntilStopAndNotify(command string, threadId int, granularity dap.SteppingGranularity, allowNextStateChange chan struct{}) {
 	defer closeIfOpen(allowNextStateChange)
 	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
 	if err != nil {
@@ -1779,6 +1842,17 @@ func (s *Session) stepUntilStopAndNotify(command string, threadId int, allowNext
 		s.send(stopped)
 		return
 	}
+
+	if granularity == "instruction" {
+		switch command {
+		case api.ReverseNext:
+			command = api.ReverseStepInstruction
+		default:
+			// TODO(suzmue): consider differentiating between next, step in, and step out.
+			// For example, next could step over call requests.
+			command = api.StepInstruction
+		}
+	}
 	s.runUntilStopAndNotify(command, allowNextStateChange)
 }
 
@@ -1787,6 +1861,7 @@ func (s *Session) stepUntilStopAndNotify(command string, threadId int, allowNext
 func (s *Session) onPauseRequest(request *dap.PauseRequest) {
 	s.changeStateMu.Lock()
 	defer s.changeStateMu.Unlock()
+	s.setHaltRequested(true)
 	_, err := s.halt()
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToHalt, "Unable to halt execution", err.Error())
@@ -1847,7 +1922,7 @@ func (s *Session) onStackTraceRequest(request *dap.StackTraceRequest) {
 		frame := frames[start+i]
 		loc := &frame.Call
 		uniqueStackFrameID := s.stackFrameHandles.create(stackFrame{goroutineID, start + i})
-		stackFrame := dap.StackFrame{Id: uniqueStackFrameID, Line: loc.Line, Name: fnName(loc)}
+		stackFrame := dap.StackFrame{Id: uniqueStackFrameID, Line: loc.Line, Name: fnName(loc), InstructionPointerReference: fmt.Sprintf("%#x", loc.PC)}
 		if loc.File != "<autogenerated>" {
 			clientPath := s.toClientPath(loc.File)
 			stackFrame.Source = dap.Source{Name: filepath.Base(clientPath), Path: clientPath}
@@ -1950,6 +2025,27 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 		}, currPkg, true, 0}
 		scopeGlobals := dap.Scope{Name: globScope.Name, VariablesReference: s.variableHandles.create(globScope)}
 		scopes = append(scopes, scopeGlobals)
+	}
+
+	if s.args.showRegisters {
+		// Retrieve registers
+		regs, err := s.debugger.ScopeRegisters(goid, frame, 0, false)
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToListRegisters, "Unable to list registers", err.Error())
+			return
+		}
+		outRegs := api.ConvertRegisters(regs, s.debugger.DwarfRegisterToString, false)
+		regsVar := make([]proc.Variable, len(outRegs))
+		for i, r := range outRegs {
+			regsVar[i] = proc.Variable{
+				Name:  r.Name,
+				Value: constant.MakeString(r.Value),
+				Kind:  reflect.Kind(proc.VariableConstant),
+			}
+		}
+		regsScope := &fullyQualifiedVariable{&proc.Variable{Name: "Registers", Children: regsVar}, "", true, 0}
+		scopeRegisters := dap.Scope{Name: regsScope.Name, VariablesReference: s.variableHandles.create(regsScope)}
+		scopes = append(scopes, scopeRegisters)
 	}
 	response := &dap.ScopesResponse{
 		Response: *newResponse(request.Request),
@@ -2163,6 +2259,17 @@ func (s *Session) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 				name = fmt.Sprintf("(%s)", name)
 			}
 
+			if v.isScope && v.Name == "Registers" {
+				// Align all of the register names.
+				name = fmt.Sprintf("%6s", strings.ToLower(c.Name))
+				// Set the correct evaluate name for the register.
+				cfqname = fmt.Sprintf("_%s", strings.ToUpper(c.Name))
+				// Unquote the value
+				if ucvalue, err := strconv.Unquote(cvalue); err == nil {
+					cvalue = ucvalue
+				}
+			}
+
 			children[i] = dap.Variable{
 				Name:               name,
 				EvaluateName:       cfqname,
@@ -2215,8 +2322,8 @@ func (s *Session) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 		config := DefaultLoadConfig
 		config.MaxArrayValues = config.MaxStringLen
 		vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, loadExpr, config)
-		val := s.convertVariableToString(vLoaded)
 		if err == nil {
+			val := s.convertVariableToString(vLoaded)
 			// TODO(suzmue): Add evaluate name. Using string(name) will not get the same result because the
 			// MaxArrayValues is not auto adjusted in evaluate requests like MaxStringLen is adjusted.
 			children = append(children, dap.Variable{
@@ -2224,6 +2331,8 @@ func (s *Session) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 				Value: val,
 				Type:  "string",
 			})
+		} else {
+			s.config.log.Debugf("failed to load %q: %v", v.fullyQualifiedNameOrExpr, err)
 		}
 	}
 	return children, nil
@@ -2634,7 +2743,7 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 // This is an optional request enabled by capability ‘supportsStepBackRequest’.
 func (s *Session) onStepBackRequest(request *dap.StepBackRequest, allowNextStateChange chan struct{}) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepBackResponse{Response: *newResponse(request.Request)})
-	s.stepUntilStopAndNotify(api.ReverseNext, request.Arguments.ThreadId, allowNextStateChange)
+	s.stepUntilStopAndNotify(api.ReverseNext, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
 
 // onReverseContinueRequest performs a rewind command call up to the previous
@@ -2777,10 +2886,206 @@ func (s *Session) onReadMemoryRequest(request *dap.ReadMemoryRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onDisassembleRequest sends a not-yet-implemented error response.
-// Capability 'supportsDisassembleRequest' is not set 'initialize' response.
+var invalidInstruction = dap.DisassembledInstruction{
+	Address:     "out of bounds",
+	Instruction: "invalid instruction",
+}
+
+// onDisassembleRequest handles 'disassemble' requests.
+// Capability 'supportsDisassembleRequest' is set in 'initialize' response.
 func (s *Session) onDisassembleRequest(request *dap.DisassembleRequest) {
-	s.sendNotYetImplementedErrorResponse(request.Request)
+	// If the requested memory address is an invalid location, return all invalid instructions.
+	// TODO(suzmue): consider adding fake addresses that would allow us to receive out of bounds
+	// requests that include valid instructions designated by InstructionOffset or InstructionCount.
+	if request.Arguments.MemoryReference == invalidInstruction.Address {
+		instructions := make([]dap.DisassembledInstruction, request.Arguments.InstructionCount)
+		for i := range instructions {
+			instructions[i] = invalidInstruction
+		}
+		response := &dap.DisassembleResponse{
+			Response: *newResponse(request.Request),
+			Body: dap.DisassembleResponseBody{
+				Instructions: instructions,
+			},
+		}
+		s.send(response)
+		return
+	}
+	// TODO(suzmue): microsoft/vscode#129655 is discussing the difference between
+	// memory reference and instructionPointerReference, which are currently
+	// being used interchangeably by vscode.
+	addr, err := strconv.ParseInt(request.Arguments.MemoryReference, 0, 64)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToDisassemble, "Unable to disassemble", err.Error())
+		return
+	}
+
+	start := uint64(addr)
+	maxInstructionLength := s.debugger.Target().BinInfo().Arch.MaxInstructionLength()
+	byteOffset := request.Arguments.InstructionOffset * maxInstructionLength
+	// Adjust the offset to include instructions before the requested address.
+	if byteOffset < 0 {
+		start = uint64(addr + int64(byteOffset))
+	}
+	// Adjust the number of instructions to include enough instructions after
+	// the requested address.
+	count := request.Arguments.InstructionCount
+	if byteOffset > 0 {
+		count += byteOffset
+	}
+	end := uint64(addr + int64(count*maxInstructionLength))
+
+	// Make sure the PCs are lined up with instructions.
+	start, end = alignPCs(s.debugger.Target().BinInfo(), start, end)
+
+	// Disassemble the instructions
+	procInstructions, err := s.debugger.Disassemble(-1, start, end)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToDisassemble, "Unable to disassemble", err.Error())
+		return
+	}
+
+	// Find the section of instructions that were requested.
+	procInstructions, offset, err := findInstructions(procInstructions, addr, request.Arguments.InstructionOffset, request.Arguments.InstructionCount)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToDisassemble, "Unable to disassemble", err.Error())
+		return
+	}
+
+	// Turn the given range of instructions into dap instructions.
+	instructions := make([]dap.DisassembledInstruction, request.Arguments.InstructionCount)
+	lastFile, lastLine := "", -1
+	for i := range instructions {
+		if i < offset || (i-offset) >= len(procInstructions) {
+			// i is not in a valid range.
+			instructions[i] = invalidInstruction
+			continue
+		}
+		instruction := api.ConvertAsmInstruction(procInstructions[i-offset], s.debugger.AsmInstructionText(&procInstructions[i-offset], proc.GoFlavour))
+		instructions[i] = dap.DisassembledInstruction{
+			Address:          fmt.Sprintf("%#x", instruction.Loc.PC),
+			InstructionBytes: fmt.Sprintf("%x", instruction.Bytes),
+			Instruction:      instruction.Text,
+		}
+		// Only set the location on the first instruction for a given line.
+		if instruction.Loc.File != lastFile || instruction.Loc.Line != lastLine {
+			instructions[i].Location = dap.Source{Path: instruction.Loc.File}
+			instructions[i].Line = instruction.Loc.Line
+			lastFile, lastLine = instruction.Loc.File, instruction.Loc.Line
+		}
+	}
+
+	response := &dap.DisassembleResponse{
+		Response: *newResponse(request.Request),
+		Body: dap.DisassembleResponseBody{
+			Instructions: instructions,
+		},
+	}
+	s.send(response)
+}
+
+func findInstructions(procInstructions []proc.AsmInstruction, addr int64, instructionOffset, count int) ([]proc.AsmInstruction, int, error) {
+	ref := sort.Search(len(procInstructions), func(i int) bool {
+		return procInstructions[i].Loc.PC >= uint64(addr)
+	})
+	if ref == len(procInstructions) || procInstructions[ref].Loc.PC != uint64(addr) {
+		return nil, -1, fmt.Errorf("could not find memory reference")
+	}
+	// offset is the number of instructions that should appear before the first instruction
+	// returned by findInstructions.
+	offset := 0
+	if ref+instructionOffset < 0 {
+		offset = -(ref + instructionOffset)
+	}
+	// Figure out the index to slice at.
+	startIdx := ref + instructionOffset
+	endIdx := ref + instructionOffset + count
+	if endIdx <= 0 || startIdx >= len(procInstructions) {
+		return []proc.AsmInstruction{}, 0, nil
+	}
+	// Adjust start and end to be inbounds.
+	if startIdx < 0 {
+		offset = -startIdx
+		startIdx = 0
+	}
+	if endIdx > len(procInstructions) {
+		endIdx = len(procInstructions)
+	}
+	return procInstructions[startIdx:endIdx], offset, nil
+}
+
+func alignPCs(bi *proc.BinaryInfo, start, end uint64) (uint64, uint64) {
+	// We want to find the function locations position that would enclose
+	// the range from start to end.
+	//
+	// Example:
+	//
+	// 0x0000	instruction (func1)
+	// 0x0004	instruction (func1)
+	// 0x0008	instruction (func1)
+	// 0x000c	nop
+	// 0x000e	nop
+	// 0x0000	nop
+	// 0x0002	nop
+	// 0x0004	instruction (func2)
+	// 0x0008	instruction (func2)
+	// 0x000c	instruction (func2)
+	//
+	// start values:
+	// < 0x0000			at func1.Entry	=	0x0000
+	// 0x0000-0x000b	at func1.Entry	=	0x0000
+	// 0x000c-0x0003	at func1.End	=	0x000c
+	// 0x0004-0x000f	at func2.Entry	=	0x0004
+	// > 0x000f			at func2.End	=	0x0010
+	//
+	// end values:
+	// < 0x0000			at func1.Entry	=	0x0000
+	// 0x0000-0x000b	at func1.End	=	0x0000
+	// 0x000c-0x0003	at func2.Entry	=	0x000c
+	// 0x0004-0x000f	at func2.End	=	0x0004
+	// > 0x000f			at func2.End	=	0x0004
+	// Handle start values:
+	fn := bi.PCToFunc(start)
+	if fn != nil {
+		// start is in a funcition.
+		start = fn.Entry
+	} else if b, pc := checkOutOfAddressSpace(start, bi); b {
+		start = pc
+	} else {
+		// Otherwise it must come after some function.
+		i := sort.Search(len(bi.Functions), func(i int) bool {
+			fn := bi.Functions[len(bi.Functions)-(i+1)]
+			return start >= fn.End
+		})
+		start = bi.Functions[len(bi.Functions)-(i+1)].Entry
+	}
+
+	// Handle end values:
+	if fn := bi.PCToFunc(end); fn != nil {
+		// end is in a funcition.
+		end = fn.End
+	} else if b, pc := checkOutOfAddressSpace(end, bi); b {
+		end = pc
+	} else {
+		// Otherwise it must come before some function.
+		i := sort.Search(len(bi.Functions), func(i int) bool {
+			fn := bi.Functions[i]
+			return end < fn.Entry
+		})
+		end = bi.Functions[i].Entry
+	}
+
+	return start, end
+}
+
+func checkOutOfAddressSpace(pc uint64, bi *proc.BinaryInfo) (bool, uint64) {
+	if pc < bi.Functions[0].Entry {
+		return true, bi.Functions[0].Entry
+	}
+	if pc >= bi.Functions[len(bi.Functions)-1].End {
+		return true, bi.Functions[len(bi.Functions)-1].End
+	}
+	return false, pc
 }
 
 // onCancelRequest sends a not-yet-implemented error response.
@@ -3120,6 +3425,9 @@ func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange cha
 				if strings.HasPrefix(bp.Name, functionBpPrefix) {
 					stopped.Body.Reason = "function breakpoint"
 				}
+				if strings.HasPrefix(bp.Name, instructionBpPrefix) {
+					stopped.Body.Reason = "instruction breakpoint"
+				}
 				stopped.Body.HitBreakpointIds = []int{bp.ID}
 			}
 		}
@@ -3197,12 +3505,20 @@ func (s *Session) resumeOnceAndCheckStop(command string, allowNextStateChange ch
 		return state, err
 	}
 
-	if s.debugger.StopReason() != proc.StopBreakpoint {
+	foundRealBreakpoint := s.handleLogPoints(state)
+
+	switch s.debugger.StopReason() {
+	case proc.StopBreakpoint, proc.StopManual:
+		// Make sure a real manual stop was requested or a real breakpoint was hit.
+		if foundRealBreakpoint || s.checkHaltRequested() {
+			s.setRunningCmd(false)
+		}
+	default:
 		s.setRunningCmd(false)
 	}
 
-	foundRealBreakpoint := s.handleLogPoints(state)
-	if foundRealBreakpoint {
+	// Stepping a single instruction will never require continuing again.
+	if command == api.StepInstruction || command == api.ReverseStepInstruction {
 		s.setRunningCmd(false)
 	}
 

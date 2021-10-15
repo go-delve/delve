@@ -222,6 +222,16 @@ func (dbp *nativeProcess) addThread(hThread syscall.Handle, threadID int, attach
 			return nil, err
 		}
 	}
+
+	for _, bp := range dbp.Breakpoints().M {
+		if bp.WatchType != 0 {
+			err := thread.writeHardwareBreakpoint(bp.Addr, bp.WatchType, bp.HWBreakIndex)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	return thread, nil
 }
 
@@ -489,12 +499,20 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 	}
 
 	if !trapthreadFound {
+		wasDbgUiRemoteBreakIn := trapthread.os.dbgUiRemoteBreakIn
 		// trapthread exited during stop, pick another one
 		trapthread = nil
 		for _, thread := range dbp.threads {
 			if thread.CurrentBreakpoint.Breakpoint != nil && thread.os.delayErr == nil {
 				trapthread = thread
 				break
+			}
+		}
+		if trapthread == nil && wasDbgUiRemoteBreakIn {
+			// If this was triggered by a manual stop request we should stop
+			// regardless, pick a thread.
+			for _, thread := range dbp.threads {
+				return thread, nil
 			}
 		}
 	}
