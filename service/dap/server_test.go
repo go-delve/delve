@@ -33,6 +33,7 @@ import (
 const stopOnEntry bool = true
 const hasChildren bool = true
 const noChildren bool = false
+
 const localsScope = 1000
 const globalsScope = 1001
 
@@ -2074,7 +2075,7 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 			// Launch
 			func() {
 				client.LaunchRequestWithArgs(map[string]interface{}{
-					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
+					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true, "showRegisters": true,
 				})
 			},
 			// Breakpoints are set within the program
@@ -2090,6 +2091,7 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 					scopes := client.ExpectScopesResponse(t)
 					checkScope(t, scopes, 0, "Locals", localsScope)
 					checkScope(t, scopes, 1, "Globals (package main)", globalsScope)
+					checkScope(t, scopes, 2, "Registers", globalsScope+1)
 
 					client.VariablesRequest(globalsScope)
 					client.ExpectVariablesResponse(t)
@@ -2128,6 +2130,127 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 				disconnect: false,
 			}})
 	})
+}
+
+// TestRegisterScopeAndVariables launches the program with showRegisters
+// arg set, executes to a breakpoint in the main package and tests that the registers
+// got loaded. It then steps into a function in another package and tests that
+// the registers were updated by checking PC.
+func TestRegistersScopeAndVariables(t *testing.T) {
+	runTest(t, "consts", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path, "showRegisters": true,
+				})
+			},
+			// Breakpoints are set within the program
+			fixture.Source, []int{},
+			[]onBreakpoint{{
+				// Stop at line 36
+				execute: func() {
+					client.StackTraceRequest(1, 0, 20)
+					stack := client.ExpectStackTraceResponse(t)
+					checkStackFramesExact(t, stack, "main.main", 36, 1000, 3, 3)
+
+					client.ScopesRequest(1000)
+					scopes := client.ExpectScopesResponse(t)
+					checkScope(t, scopes, 0, "Locals", localsScope)
+					registersScope := localsScope + 1
+					checkScope(t, scopes, 1, "Registers", registersScope)
+
+					// Check that instructionPointer points to the InstructionPointerReference.
+					pc, err := getPC(t, client, 1)
+					if err != nil {
+						t.Error(pc)
+					}
+
+					client.VariablesRequest(registersScope)
+					vr := client.ExpectVariablesResponse(t)
+					if len(vr.Body.Variables) == 0 {
+						t.Fatal("no registers returned")
+					}
+					idx := findPcReg(vr.Body.Variables)
+					if idx < 0 {
+						t.Fatalf("got %#v, want a reg with instruction pointer", vr.Body.Variables)
+					}
+					pcReg := vr.Body.Variables[idx]
+					gotPc, err := strconv.ParseUint(pcReg.Value, 0, 64)
+					if err != nil {
+						t.Error(err)
+					}
+					name := strings.TrimSpace(pcReg.Name)
+					if gotPc != pc || pcReg.EvaluateName != fmt.Sprintf("_%s", strings.ToUpper(name)) {
+						t.Errorf("got %#v,\nwant Name=%s Value=%#x EvaluateName=%q", pcReg, name, pc, fmt.Sprintf("_%s", strings.ToUpper(name)))
+					}
+
+					// The program has no user-defined globals.
+					// Depending on the Go version, there might
+					// be some runtime globals (e.g. main..inittask)
+					// so testing for the total number is too fragile.
+
+					// Step into pkg.AnotherMethod()
+					client.StepInRequest(1)
+					client.ExpectStepInResponse(t)
+					client.ExpectStoppedEvent(t)
+
+					client.StackTraceRequest(1, 0, 20)
+					stack = client.ExpectStackTraceResponse(t)
+					checkStackFramesExact(t, stack, "", 13, 1000, 4, 4)
+
+					client.ScopesRequest(1000)
+					scopes = client.ExpectScopesResponse(t)
+					checkScope(t, scopes, 0, "Locals", localsScope)
+					checkScope(t, scopes, 1, "Registers", registersScope)
+
+					// Check that rip points to the InstructionPointerReference.
+					pc, err = getPC(t, client, 1)
+					if err != nil {
+						t.Error(pc)
+					}
+					client.VariablesRequest(registersScope)
+					vr = client.ExpectVariablesResponse(t)
+					if len(vr.Body.Variables) == 0 {
+						t.Fatal("no registers returned")
+					}
+
+					idx = findPcReg(vr.Body.Variables)
+					if idx < 0 {
+						t.Fatalf("got %#v, want a reg with instruction pointer", vr.Body.Variables)
+					}
+					pcReg = vr.Body.Variables[idx]
+					gotPc, err = strconv.ParseUint(pcReg.Value, 0, 64)
+					if err != nil {
+						t.Error(err)
+					}
+
+					if gotPc != pc || pcReg.EvaluateName != fmt.Sprintf("_%s", strings.ToUpper(name)) {
+						t.Errorf("got %#v,\nwant Name=%s Value=%#x EvaluateName=%q", pcReg, name, pc, fmt.Sprintf("_%s", strings.ToUpper(name)))
+					}
+				},
+				disconnect: false,
+			}})
+	})
+}
+
+func findPcReg(regs []dap.Variable) int {
+	for i, reg := range regs {
+		if isPcReg(reg) {
+			return i
+		}
+	}
+	return -1
+}
+
+func isPcReg(reg dap.Variable) bool {
+	pcRegNames := []string{"rip", "pc", "eip"}
+	for _, name := range pcRegNames {
+		if name == strings.TrimSpace(reg.Name) {
+			return true
+		}
+	}
+	return false
 }
 
 // TestShadowedVariables executes to a breakpoint and checks the shadowed
@@ -3938,13 +4061,13 @@ func TestStepInstruction(t *testing.T) {
 	})
 }
 
-func getPC(t *testing.T, client *daptest.Client, threadId int) (int64, error) {
+func getPC(t *testing.T, client *daptest.Client, threadId int) (uint64, error) {
 	client.StackTraceRequest(threadId, 0, 1)
 	st := client.ExpectStackTraceResponse(t)
 	if len(st.Body.StackFrames) < 1 {
 		t.Fatalf("\ngot  %#v\nwant len(stackframes) => 1", st)
 	}
-	return strconv.ParseInt(st.Body.StackFrames[0].InstructionPointerReference, 0, 64)
+	return strconv.ParseUint(st.Body.StackFrames[0].InstructionPointerReference, 0, 64)
 }
 
 func TestNextParked(t *testing.T) {

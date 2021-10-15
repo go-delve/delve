@@ -185,6 +185,8 @@ type launchAttachArgs struct {
 	stackTraceDepth int
 	// showGlobalVariables indicates if global package variables should be loaded.
 	showGlobalVariables bool
+	// showRegisters indicates if register values should be loaded.
+	showRegisters bool
 	// substitutePathClientToServer indicates rules for converting file paths between client and debugger.
 	// These must be directory paths.
 	substitutePathClientToServer [][2]string
@@ -200,6 +202,7 @@ var defaultArgs = launchAttachArgs{
 	stopOnEntry:                  false,
 	stackTraceDepth:              50,
 	showGlobalVariables:          false,
+	showRegisters:                false,
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
 }
@@ -302,6 +305,7 @@ func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) error {
 		s.args.stackTraceDepth = depth
 	}
 	s.args.showGlobalVariables = args.ShowGlobalVariables
+	s.args.showRegisters = args.ShowRegisters
 	if paths := args.SubstitutePath; len(paths) > 0 {
 		clientToServer := make([][2]string, 0, len(paths))
 		serverToClient := make([][2]string, 0, len(paths))
@@ -2011,6 +2015,27 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 		scopeGlobals := dap.Scope{Name: globScope.Name, VariablesReference: s.variableHandles.create(globScope)}
 		scopes = append(scopes, scopeGlobals)
 	}
+
+	if s.args.showRegisters {
+		// Retrieve registers
+		regs, err := s.debugger.ScopeRegisters(goid, frame, 0, false)
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToListRegisters, "Unable to list registers", err.Error())
+			return
+		}
+		outRegs := api.ConvertRegisters(regs, s.debugger.DwarfRegisterToString, false)
+		regsVar := make([]proc.Variable, len(outRegs))
+		for i, r := range outRegs {
+			regsVar[i] = proc.Variable{
+				Name:  r.Name,
+				Value: constant.MakeString(r.Value),
+				Kind:  reflect.Kind(proc.VariableConstant),
+			}
+		}
+		regsScope := &fullyQualifiedVariable{&proc.Variable{Name: "Registers", Children: regsVar}, "", true, 0}
+		scopeRegisters := dap.Scope{Name: regsScope.Name, VariablesReference: s.variableHandles.create(regsScope)}
+		scopes = append(scopes, scopeRegisters)
+	}
 	response := &dap.ScopesResponse{
 		Response: *newResponse(request.Request),
 		Body:     dap.ScopesResponseBody{Scopes: scopes},
@@ -2221,6 +2246,17 @@ func (s *Session) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 			name := c.Name
 			if c.Flags&proc.VariableShadowed == proc.VariableShadowed {
 				name = fmt.Sprintf("(%s)", name)
+			}
+
+			if v.isScope && v.Name == "Registers" {
+				// Align all of the register names.
+				name = fmt.Sprintf("%6s", strings.ToLower(c.Name))
+				// Set the correct evaluate name for the register.
+				cfqname = fmt.Sprintf("_%s", strings.ToUpper(c.Name))
+				// Unquote the value
+				if ucvalue, err := strconv.Unquote(cvalue); err == nil {
+					cvalue = ucvalue
+				}
 			}
 
 			children[i] = dap.Variable{
