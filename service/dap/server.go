@@ -3509,12 +3509,12 @@ func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int) bool {
 	}
 	// TODO(suzmue): allow evaluate expressions within log points.
 	if msg, ok := bp.UserData.(logMessage); ok {
-		evaluated := s.evaluateArgs(goid, msg.args)
+		logMessage := msg.evaluate(s, goid)
 		s.send(&dap.OutputEvent{
 			Event: *newEvent("output"),
 			Body: dap.OutputEventBody{
 				Category: "stdout",
-				Output:   fmt.Sprintf("> [Go %d]: %s\n", goid, fmt.Sprintf(msg.format, evaluated...)),
+				Output:   fmt.Sprintf("> [Go %d]: %s\n", goid, logMessage),
 				Source: dap.Source{
 					Path: s.toClientPath(bp.File),
 				},
@@ -3525,17 +3525,17 @@ func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int) bool {
 	return true
 }
 
-func (s *Session) evaluateArgs(goid int, args []string) []interface{} {
-	evaluated := make([]interface{}, len(args))
-	for i := range args {
-		exprVar, err := s.debugger.EvalVariableInScope(goid, 0, 0, args[i], DefaultLoadConfig)
+func (msg *logMessage) evaluate(s *Session, goid int) string {
+	evaluated := make([]interface{}, len(msg.args))
+	for i := range msg.args {
+		exprVar, err := s.debugger.EvalVariableInScope(goid, 0, 0, msg.args[i], DefaultLoadConfig)
 		if err != nil {
 			evaluated[i] = fmt.Sprintf("{eval err: %e}", err)
 			continue
 		}
 		evaluated[i] = s.convertVariableToString(exprVar)
 	}
-	return evaluated
+	return fmt.Sprintf(msg.format, evaluated...)
 }
 
 func (s *Session) toClientPath(path string) string {
