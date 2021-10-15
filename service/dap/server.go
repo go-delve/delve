@@ -3565,7 +3565,11 @@ type logMessage struct {
 	args   []string
 }
 
+// parseLogPoint parses a log message according to the DAP spec:
+//   "Expressions within {} are interpolated."
 func parseLogPoint(msg string) (bool, *logMessage, error) {
+	// Note: All open braces '{' *must* be closed, even those within an
+	// expression to be interpolated.
 	var args []string
 
 	var isArg bool
@@ -3592,7 +3596,10 @@ func parseLogPoint(msg string) (bool, *logMessage, error) {
 			continue
 		}
 
-		if r == '{' {
+		switch r {
+		case '}':
+			return false, nil, fmt.Errorf("invalid log point format, unexpected '}'")
+		case '{':
 			if braceCount++; braceCount == 1 {
 				isArg, argSlice = true, []rune{}
 				continue

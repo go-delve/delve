@@ -6126,6 +6126,15 @@ func TestParseLogPoint(t *testing.T) {
 			wantArgs:       []string{"x", "y", "z"},
 		},
 		{
+			name: "eval expressions contain braces",
+			args: args{
+				msg: "{interface{}(x)} {myType{y}} {[]myType{{z}}}",
+			},
+			wantTracepoint: true,
+			wantFormat:     "%s %s %s",
+			wantArgs:       []string{"interface{}(x)", "myType{y}", "[]myType{{z}}"},
+		},
+		{
 			name: "empty string",
 			args: args{
 				msg: "",
@@ -6144,6 +6153,34 @@ func TestParseLogPoint(t *testing.T) {
 			name: "empty space evaluation",
 			args: args{
 				msg: "{   \n}",
+			},
+			wantErr: true,
+		},
+		{
+			name: "open brace missing closed",
+			args: args{
+				msg: "{",
+			},
+			wantErr: true,
+		},
+		{
+			name: "closed brace missing open",
+			args: args{
+				msg: "}",
+			},
+			wantErr: true,
+		},
+		{
+			name: "open brace in expression",
+			args: args{
+				msg: `{m["{"]}`,
+			},
+			wantErr: true,
+		},
+		{
+			name: "closed brace in expression",
+			args: args{
+				msg: `{m["}"]}`,
 			},
 			wantErr: true,
 		},
