@@ -21,6 +21,7 @@ func TestListConfig(t *testing.T) {
 			want: `stopOnEntry	false
 stackTraceDepth	0
 showGlobalVariables	false
+showRegisters	false
 substitutePath	[]
 substitutePathReverse	[] (read only)
 `,
@@ -33,6 +34,7 @@ substitutePathReverse	[] (read only)
 			want: `stopOnEntry	false
 stackTraceDepth	50
 showGlobalVariables	false
+showRegisters	false
 substitutePath	[]
 substitutePathReverse	[] (read only)
 `,
@@ -51,6 +53,7 @@ substitutePathReverse	[] (read only)
 			want: `stopOnEntry	false
 stackTraceDepth	35
 showGlobalVariables	true
+showRegisters	false
 substitutePath	[[hello world]]
 substitutePathReverse	[[world hello]] (read only)
 `,

@@ -383,6 +383,13 @@ func (scope *EvalScope) setValue(dstv, srcv *Variable, srcExpr string) error {
 		real, _ := constant.Float64Val(constant.Real(srcv.Value))
 		imag, _ := constant.Float64Val(constant.Imag(srcv.Value))
 		return dstv.writeComplex(real, imag, dstv.RealType.Size())
+	case reflect.Func:
+		if dstv.RealType.Size() == 0 {
+			if dstv.Name != "" {
+				return fmt.Errorf("can not assign to %s", dstv.Name)
+			}
+			return errors.New("can not assign to function expression")
+		}
 	}
 
 	// nilling nillable variables

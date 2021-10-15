@@ -246,9 +246,6 @@ func (t *Target) Valid() (bool, error) {
 // Currently only non-recorded processes running on AMD64 support
 // function calls.
 func (t *Target) SupportsFunctionCalls() bool {
-	if ok, _ := t.Process.Recorded(); ok {
-		return false
-	}
 	return t.Process.BinInfo().Arch.Name == "amd64"
 }
 

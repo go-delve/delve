@@ -149,6 +149,10 @@ type LaunchAttachCommonConfig struct {
 	// should be shown in the variables pane or not.
 	ShowGlobalVariables bool `json:"showGlobalVariables,omitempty"`
 
+	// Boolean value to indicate whether registers should be shown
+	// in the variables pane or not.
+	ShowRegisters bool `json:"showRegisters,omitempty"`
+
 	// An array of mappings from a local path (client) to the remote path (debugger).
 	// This setting is useful when working in a file system with symbolic links,
 	// running remote debugging, or debugging an executable compiled externally.
@@ -217,4 +221,12 @@ func unmarshalLaunchAttachArgs(input json.RawMessage, config interface{}) error 
 		return err
 	}
 	return nil
+}
+
+func prettyPrint(config interface{}) string {
+	pretty, err := json.MarshalIndent(config, "", "\t")
+	if err != nil {
+		return fmt.Sprintf("%#v", config)
+	}
+	return string(pretty)
 }
