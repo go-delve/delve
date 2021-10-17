@@ -132,6 +132,10 @@ const arm64cgocallSPOffsetSaveSlot = 0x8
 const prevG0schedSPOffsetSaveSlot = 0x10
 
 func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool {
+	if it.frame.Current.Fn == nil && it.systemstack && it.g != nil && it.top {
+		it.switchToGoroutineStack()
+		return true
+	}
 	if it.frame.Current.Fn != nil {
 		switch it.frame.Current.Fn.Name {
 		case "runtime.asmcgocall", "runtime.cgocallback_gofunc", "runtime.sigpanic", "runtime.cgocallback":

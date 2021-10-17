@@ -131,6 +131,10 @@ const amd64cgocallSPOffsetSaveSlot = 0x28
 
 func amd64SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 	if it.frame.Current.Fn == nil {
+		if it.systemstack && it.g != nil && it.top {
+			it.switchToGoroutineStack()
+			return true
+		}
 		return false
 	}
 	switch it.frame.Current.Fn.Name {
