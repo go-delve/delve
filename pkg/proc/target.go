@@ -423,6 +423,10 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 		compMem, _ := CreateCompositeMemory(cachedMem, t.BinInfo().Arch, op.DwarfRegisters{}, ip.Pieces)
 		v.mem = compMem
 
+		// Load the value here so that we don't have to export
+		// loadValue outside of proc.
+		v.loadValue(loadFullValue)
+
 		return v
 	}
 	for _, tp := range tracepoints {
@@ -431,18 +435,10 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 		r.GoroutineID = tp.GoroutineID
 		for _, ip := range tp.InputParams {
 			v := convertInputParamToVariable(ip)
-
-			// Load the value here so that we don't have to export
-			// loadValue outside of proc.
-			v.loadValue(loadFullValue)
 			r.InputParams = append(r.InputParams, v)
 		}
 		for _, ip := range tp.ReturnParams {
 			v := convertInputParamToVariable(ip)
-
-			// Load the value here so that we don't have to export
-			// loadValue outside of proc.
-			v.loadValue(loadFullValue)
 			r.ReturnParams = append(r.ReturnParams, v)
 		}
 		results = append(results, r)

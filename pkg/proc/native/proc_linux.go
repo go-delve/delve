@@ -751,61 +751,34 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 	if err != nil {
 		return fmt.Errorf("could not open elf file to resolve symbol offset: %w", err)
 	}
-	syms, err := f.Symbols()
+
+	var regs proc.Registers
+	mem := dbp.Memory()
+	regs, _ = dbp.memthread.Registers()
+	instructions, err := proc.Disassemble(mem, regs, &proc.BreakpointMap{}, dbp.BinInfo(), fn.Entry, fn.End)
 	if err != nil {
-		return fmt.Errorf("could not open symbol section to resolve symbol offset: %w", err)
+		return err
 	}
 
-	sectionsToSearchForSymbol := []*elf.Section{}
-
-	for i := range f.Sections {
-		if f.Sections[i].Flags == elf.SHF_ALLOC+elf.SHF_EXECINSTR {
-			sectionsToSearchForSymbol = append(sectionsToSearchForSymbol, f.Sections[i])
+	var addrs []uint64
+	for _, instruction := range instructions {
+		if instruction.IsRet() {
+			addrs = append(addrs, instruction.Loc.PC)
 		}
 	}
-
-	var executableSection *elf.Section
-
-	for j := range syms {
-		if syms[j].Name == fnName {
-			// Find what section the symbol is in by checking the executable section's
-			// addr space.
-			for m := range sectionsToSearchForSymbol {
-				if syms[j].Value > sectionsToSearchForSymbol[m].Addr &&
-					syms[j].Value < sectionsToSearchForSymbol[m].Addr+sectionsToSearchForSymbol[m].Size {
-					executableSection = sectionsToSearchForSymbol[m]
-				}
-			}
-
-			if executableSection == nil {
-				return errors.New("could not find symbol in executable sections of binary")
-			}
-			var regs proc.Registers
-			mem := dbp.Memory()
-			regs, _ = dbp.memthread.Registers()
-			instructions, err := proc.Disassemble(mem, regs, &proc.BreakpointMap{}, dbp.BinInfo(), fn.Entry, fn.End)
-			if err != nil {
-				return err
-			}
-
-			var addrs []uint64
-			for _, instruction := range instructions {
-				if instruction.IsRet() {
-					addrs = append(addrs, instruction.Loc.PC)
-				}
-			}
-			addrs = append(addrs, proc.FindDeferReturnCalls(instructions)...)
-			for _, addr := range addrs {
-				err := dbp.os.ebpf.UpdateArgMap(addr, goidOffset, args, dbp.BinInfo().GStructOffset(), true)
-				if err != nil {
-					return err
-				}
-				off := uint32(addr - executableSection.Addr + executableSection.Offset)
-				err = dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, off)
-				if err != nil {
-					return err
-				}
-			}
+	addrs = append(addrs, proc.FindDeferReturnCalls(instructions)...)
+	for _, addr := range addrs {
+		err := dbp.os.ebpf.UpdateArgMap(addr, goidOffset, args, dbp.BinInfo().GStructOffset(), true)
+		if err != nil {
+			return err
+		}
+		off, err := ebpf.AddressToOffset(f, addr)
+		if err != nil {
+			return err
+		}
+		err = dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, off)
+		if err != nil {
+			return err
 		}
 	}
 

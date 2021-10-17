@@ -6,6 +6,7 @@ package ebpf
 // #include "./trace_probe/function_vals.bpf.h"
 import "C"
 import (
+	"debug/elf"
 	_ "embed"
 	"encoding/binary"
 	"errors"
@@ -205,4 +206,31 @@ func createFunctionParameterList(entry uint64, goidOffset int64, args []UProbeAr
 		}
 	}
 	return params
+}
+
+func AddressToOffset(f *elf.File, addr uint64) (uint32, error) {
+	sectionsToSearchForSymbol := []*elf.Section{}
+
+	for i := range f.Sections {
+		if f.Sections[i].Flags == elf.SHF_ALLOC+elf.SHF_EXECINSTR {
+			sectionsToSearchForSymbol = append(sectionsToSearchForSymbol, f.Sections[i])
+		}
+	}
+
+	var executableSection *elf.Section
+
+	// Find what section the symbol is in by checking the executable section's
+	// addr space.
+	for m := range sectionsToSearchForSymbol {
+		if addr > sectionsToSearchForSymbol[m].Addr &&
+			addr < sectionsToSearchForSymbol[m].Addr+sectionsToSearchForSymbol[m].Size {
+			executableSection = sectionsToSearchForSymbol[m]
+		}
+	}
+
+	if executableSection == nil {
+		return 0, errors.New("could not find symbol in executable sections of binary")
+	}
+
+	return uint32(addr - executableSection.Addr + executableSection.Offset), nil
 }

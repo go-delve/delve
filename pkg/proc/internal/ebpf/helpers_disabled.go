@@ -4,6 +4,7 @@
 package ebpf
 
 import (
+	"debug/elf"
 	"errors"
 )
 
@@ -36,4 +37,8 @@ func SymbolToOffset(file, symbol string) (uint32, error) {
 
 func LoadEBPFTracingProgram() (*EBPFContext, error) {
 	return nil, errors.New("eBPF disabled")
+}
+
+func AddressToOffset(f *elf.File, addr uint64) (uint32, error) {
+	return 0, errors.New("eBPF disabled")
 }

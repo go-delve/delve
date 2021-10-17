@@ -177,39 +177,22 @@ int get_goroutine_id(function_parameter_list_t *parsed_args) {
 }
 
 __always_inline
-void parse_params(struct pt_regs *ctx, function_parameter_list_t *args, function_parameter_list_t *parsed_args, bool ret) {
+void parse_params(struct pt_regs *ctx, unsigned int n_params, function_parameter_t params[6], bool ret) {
     // Since we cannot loop in eBPF programs let's take adavantage of the
     // fact that in C switch cases will pass through automatically.
-    if (!ret) {
-        switch (args->n_parameters) {
-            case 6:
-                parse_param(ctx, &parsed_args->params[5]);
-            case 5:
-                parse_param(ctx, &parsed_args->params[4]);
-            case 4:
-                parse_param(ctx, &parsed_args->params[3]);
-            case 3:
-                parse_param(ctx, &parsed_args->params[2]);
-            case 2:
-                parse_param(ctx, &parsed_args->params[1]);
-            case 1:
-                parse_param(ctx, &parsed_args->params[0]);
-        }
-    } else {
-        switch (args->n_ret_parameters) {
-            case 6:
-                parse_param(ctx, &parsed_args->ret_params[5]);
-            case 5:
-                parse_param(ctx, &parsed_args->ret_params[4]);
-            case 4:
-                parse_param(ctx, &parsed_args->ret_params[3]);
-            case 3:
-                parse_param(ctx, &parsed_args->ret_params[2]);
-            case 2:
-                parse_param(ctx, &parsed_args->ret_params[1]);
-            case 1:
-                parse_param(ctx, &parsed_args->ret_params[0]);
-        }
+    switch (n_params) {
+        case 6:
+            parse_param(ctx, &params[5]);
+        case 5:
+            parse_param(ctx, &params[4]);
+        case 4:
+            parse_param(ctx, &params[3]);
+        case 3:
+            parse_param(ctx, &params[2]);
+        case 2:
+            parse_param(ctx, &params[1]);
+        case 1:
+            parse_param(ctx, &params[0]);
     }
 }
 
@@ -247,20 +230,13 @@ int uprobe__dlv_trace(struct pt_regs *ctx) {
     if (!args->is_ret) {
         // In uprobe at function entry.
 
-        // We're in the entry point of the function at the uprobe we set.
-        // Get our return address and ensure that we set the parameter information
-        // at that address as well for the uretprobe.
-        size_t ret_addr;
-        bpf_probe_read_user(&ret_addr, sizeof(size_t), (void*)(ctx->sp));
-        bpf_map_update_elem(&arg_map, &ret_addr, args, 0);
-
         // Parse input parameters.
-        parse_params(ctx, args, parsed_args, false);
+        parse_params(ctx, args->n_parameters, parsed_args->params, false);
     } else {
         // We are now stopped at the RET instruction for this function.
 
         // Parse output parameters.
-        parse_params(ctx, args, parsed_args, true);
+        parse_params(ctx, args->n_ret_parameters, parsed_args->ret_params, true);
     }
 
     bpf_ringbuf_submit(parsed_args, 0);
