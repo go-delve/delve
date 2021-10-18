@@ -1327,7 +1327,9 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 			got.Cond = want.condition
 			got.HitCond = want.hitCondition
 			got, err = setLogMessage(want.logMessage, got)
-			err = s.debugger.AmendBreakpoint(got)
+			if err == nil {
+				err = s.debugger.AmendBreakpoint(got)
+			}
 		}
 		createdBps[want.name] = struct{}{}
 		s.updateBreakpointsResponse(breakpoints, i, err, got)
