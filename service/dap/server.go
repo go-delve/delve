@@ -185,6 +185,9 @@ type launchAttachArgs struct {
 	stackTraceDepth int
 	// showGlobalVariables indicates if global package variables should be loaded.
 	showGlobalVariables bool
+	// hideSystemGoroutines indicates if system goroutines should be removed from threads
+	// responses.
+	hideSystemGoroutines bool
 	// showRegisters indicates if register values should be loaded.
 	showRegisters bool
 	// substitutePathClientToServer indicates rules for converting file paths between client and debugger.
@@ -202,6 +205,7 @@ var defaultArgs = launchAttachArgs{
 	stopOnEntry:                  false,
 	stackTraceDepth:              50,
 	showGlobalVariables:          false,
+	hideSystemGoroutines:         false,
 	showRegisters:                false,
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
@@ -305,6 +309,7 @@ func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) error {
 		s.args.stackTraceDepth = depth
 	}
 	s.args.showGlobalVariables = args.ShowGlobalVariables
+	s.args.hideSystemGoroutines = args.HideSystemGoroutines
 	s.args.showRegisters = args.ShowRegisters
 	if paths := args.SubstitutePath; len(paths) > 0 {
 		clientToServer := make([][2]string, 0, len(paths))
@@ -1577,6 +1582,12 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 	var next int
 	if s.debugger != nil {
 		gs, next, err = s.debugger.Goroutines(0, maxGoroutines)
+		if err == nil && s.args.hideSystemGoroutines {
+			gs = s.debugger.FilterGoroutines(gs, []api.ListGoroutinesFilter{{
+				Kind:    api.GoroutineUser,
+				Negated: false,
+			}})
+		}
 	}
 
 	var threads []dap.Thread

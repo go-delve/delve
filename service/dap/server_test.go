@@ -1051,6 +1051,51 @@ func TestSelectedThreadsRequest(t *testing.T) {
 	})
 }
 
+func TestHideSystemGoroutinesRequest(t *testing.T) {
+	tests := []struct{ hideSystemGoroutines bool }{
+		{hideSystemGoroutines: true},
+		{hideSystemGoroutines: false},
+	}
+	for _, tt := range tests {
+		runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
+			runDebugSessionWithBPs(t, client, "launch",
+				// Launch
+				func() {
+					client.LaunchRequestWithArgs(map[string]interface{}{
+						"mode":                 "exec",
+						"program":              fixture.Path,
+						"hideSystemGoroutines": tt.hideSystemGoroutines,
+						"stopOnEntry":          !stopOnEntry,
+					})
+				},
+				// Set breakpoints
+				fixture.Source, []int{25},
+				[]onBreakpoint{{
+					execute: func() {
+						checkStop(t, client, 1, "main.main", 25)
+
+						client.ThreadsRequest()
+						tr := client.ExpectThreadsResponse(t)
+
+						// The user process creates 10 goroutines in addition to the
+						// main goroutine, for a total of 11 goroutines.
+						userCount := 11
+						if tt.hideSystemGoroutines {
+							if len(tr.Body.Threads) != userCount {
+								t.Errorf("got %d goroutines, expected %d\n", len(tr.Body.Threads), userCount)
+							}
+						} else {
+							if len(tr.Body.Threads) <= userCount {
+								t.Errorf("got %d goroutines, expected >%d\n", len(tr.Body.Threads), userCount)
+							}
+						}
+					},
+					disconnect: true,
+				}})
+		})
+	}
+}
+
 // TestScopesAndVariablesRequests executes to a breakpoint and tests different
 // configurations of 'scopes' and 'variables' requests.
 func TestScopesAndVariablesRequests(t *testing.T) {
