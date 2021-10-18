@@ -117,6 +117,10 @@ func i386FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryI
 // SwitchStack will use the current frame to determine if it's time to
 func i386SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 	if it.frame.Current.Fn == nil {
+		if it.systemstack && it.g != nil && it.top {
+			it.switchToGoroutineStack()
+			return true
+		}
 		return false
 	}
 	switch it.frame.Current.Fn.Name {

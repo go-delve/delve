@@ -5408,7 +5408,7 @@ func TestWatchpointsBasic(t *testing.T) {
 			t.Fatal("breakpoint not set")
 		}
 
-		p.ClearBreakpoint(bp.Addr)
+		assertNoError(p.ClearBreakpoint(bp.Addr), t, "ClearBreakpoint")
 
 		assertNoError(p.Continue(), t, "Continue 2")
 		assertLineNumber(p, t, 21, "Continue 2") // Position 2

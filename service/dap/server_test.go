@@ -4734,6 +4734,15 @@ func TestLaunchDebugRequest(t *testing.T) {
 	rescueStderr := os.Stderr
 	r, w, _ := os.Pipe()
 	os.Stderr = w
+	done := make(chan struct{})
+
+	var err []byte
+
+	go func() {
+		err, _ = ioutil.ReadAll(r)
+		t.Log(string(err))
+		close(done)
+	}()
 
 	tmpBin := "__tmpBin"
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
@@ -4748,8 +4757,7 @@ func TestLaunchDebugRequest(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	w.Close()
-	err, _ := ioutil.ReadAll(r)
-	t.Log(string(err))
+	<-done
 	os.Stderr = rescueStderr
 
 	rmErrRe, _ := regexp.Compile(`could not remove .*\n`)
