@@ -455,7 +455,9 @@ func (s *Server) RunWithClient(conn net.Conn) {
 // until it encounters an error or EOF, when it sends
 // a disconnect signal and returns.
 func (s *Session) serveDAPCodec() {
-	defer s.conn.Close() // TODO(polina) or should this be s.Close()?
+	// Close conn, but not the debugger in case we are in AcceptMuli mode.
+	// If not, it will be shut down in Stop().
+	defer s.conn.Close()
 	reader := bufio.NewReader(s.conn)
 	for {
 		request, err := dap.ReadProtocolMessage(reader)
