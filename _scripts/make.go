@@ -329,7 +329,7 @@ func testFlags() []string {
 func testCmd(cmd *cobra.Command, args []string) {
 	checkCertCmd(nil, nil)
 
-	if os.Getenv("TRAVIS") == "true" && runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "amd64" {
 		fmt.Println("Building with native backend")
 		execute("go", "build", "-tags=macnative", buildFlags(), DelveMainPackagePath)
 
