@@ -285,7 +285,7 @@ func NewSession(conn io.ReadWriteCloser, config *Config) *Session {
 	}
 	config.log.Debug("DAP connection started")
 	if config.stopTriggered == nil {
-		config.log.Fatal("Session must be configred with stopTriggered")
+		config.log.Fatal("Session must be configured with stopTriggered")
 	}
 	return &Session{
 		config:            config,
