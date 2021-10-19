@@ -9,7 +9,7 @@ import (
 	"github.com/go-delve/delve/pkg/config"
 )
 
-func (s *Session) delveConfig(goid, frame int, cmdstr string) (string, error) {
+func (s *Session) delveCmd(goid, frame int, cmdstr string) (string, error) {
 	vals := strings.SplitN(strings.TrimSpace(cmdstr), " ", 2)
 	cmdname := vals[0]
 	var args string

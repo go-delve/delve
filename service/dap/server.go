@@ -1531,7 +1531,9 @@ func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneReque
 	}
 	s.debugger.Target().KeepSteppingBreakpoints = proc.HaltKeepsSteppingBreakpoints | proc.TracepointKeepsSteppingBreakpoints
 
+	s.logToConsole("Type 'dlv help' for list of commands.")
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
+
 	if !s.args.StopOnEntry {
 		s.runUntilStopAndNotify(api.Continue, allowNextStateChange)
 	}
@@ -2559,7 +2561,7 @@ func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 
 	if isConfig, err := regexp.MatchString(`^\s*dlv\s+\S+`, expr); err == nil && isConfig { // dlv {command}{
 		expr := strings.Replace(expr, "dlv ", "", 1)
-		result, err := s.delveConfig(goid, frame, expr)
+		result, err := s.delveCmd(goid, frame, expr)
 		if err != nil {
 			s.sendErrorResponseWithOpts(request.Request, UnableToRunDlvCommand, "Unable to run dlv command", err.Error(), showErrorToUser)
 			return

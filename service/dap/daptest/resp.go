@@ -128,6 +128,14 @@ func (c *Client) ExpectConfigurationDoneResponse(t *testing.T) *dap.Configuratio
 // CheckConfigurationDoneResponse fails the test if m is not *ConfigurationDoneResponse.
 func (c *Client) CheckConfigurationDoneResponse(t *testing.T, m dap.Message) *dap.ConfigurationDoneResponse {
 	t.Helper()
+	oe, ok := m.(*dap.OutputEvent)
+	if !ok {
+		t.Fatalf("got %#v, want *dap.OutputEvent", m)
+	}
+	if oe.Body.Output != "Type 'dlv help' for list of commands.\n" {
+		t.Fatalf("got %#v, want Output=%q", m, "Type 'dlv help' for list of commands.\n")
+	}
+	m = c.ExpectMessage(t)
 	r, ok := m.(*dap.ConfigurationDoneResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ConfigurationDoneResponse", m)
@@ -437,6 +445,24 @@ func (c *Client) CheckLoadedSourcesResponse(t *testing.T, m dap.Message) *dap.Lo
 	r, ok := m.(*dap.LoadedSourcesResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.LoadedSourcesResponse", m)
+	}
+	return r
+}
+
+// ExpectMemoryEvent reads a protocol message from the connection
+// and fails the test if the read message is not *MemoryEvent.
+func (c *Client) ExpectMemoryEvent(t *testing.T) *dap.MemoryEvent {
+	t.Helper()
+	m := c.ExpectMessage(t)
+	return c.CheckMemoryEvent(t, m)
+}
+
+// CheckMemoryEvent fails the test if m is not *MemoryEvent.
+func (c *Client) CheckMemoryEvent(t *testing.T, m dap.Message) *dap.MemoryEvent {
+	t.Helper()
+	r, ok := m.(*dap.MemoryEvent)
+	if !ok {
+		t.Fatalf("got %#v, want *dap.MemoryEvent", m)
 	}
 	return r
 }
@@ -1082,6 +1108,24 @@ func (c *Client) CheckVariablesResponse(t *testing.T, m dap.Message) *dap.Variab
 	r, ok := m.(*dap.VariablesResponse)
 	if !ok {
 		t.Fatalf("got %#v, want *dap.VariablesResponse", m)
+	}
+	return r
+}
+
+// ExpectWriteMemoryResponse reads a protocol message from the connection
+// and fails the test if the read message is not *WriteMemoryResponse.
+func (c *Client) ExpectWriteMemoryResponse(t *testing.T) *dap.WriteMemoryResponse {
+	t.Helper()
+	m := c.ExpectMessage(t)
+	return c.CheckWriteMemoryResponse(t, m)
+}
+
+// CheckWriteMemoryResponse fails the test if m is not *WriteMemoryResponse.
+func (c *Client) CheckWriteMemoryResponse(t *testing.T, m dap.Message) *dap.WriteMemoryResponse {
+	t.Helper()
+	r, ok := m.(*dap.WriteMemoryResponse)
+	if !ok {
+		t.Fatalf("got %#v, want *dap.WriteMemoryResponse", m)
 	}
 	return r
 }
