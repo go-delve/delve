@@ -1326,7 +1326,7 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 		} else {
 			got.Cond = want.condition
 			got.HitCond = want.hitCondition
-			got, err = setLogMessage(want.logMessage, got)
+			err = setLogMessage(got, want.logMessage)
 			if err == nil {
 				err = s.debugger.AmendBreakpoint(got)
 			}
@@ -1361,7 +1361,7 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 					Cond:    want.condition,
 					HitCond: want.hitCondition,
 				}
-				bp, err = setLogMessage(want.logMessage, bp)
+				err = setLogMessage(bp, want.logMessage)
 				if err == nil {
 					// Create new breakpoints.
 					got, err = s.debugger.CreateBreakpoint(bp)
@@ -1374,16 +1374,16 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 	return breakpoints
 }
 
-func setLogMessage(msg string, got *api.Breakpoint) (*api.Breakpoint, error) {
+func setLogMessage(bp *api.Breakpoint, msg string) error {
 	tracepoint, userdata, err := parseLogPoint(msg)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	got.Tracepoint = tracepoint
+	bp.Tracepoint = tracepoint
 	if userdata != nil {
-		got.UserData = *userdata
+		bp.UserData = *userdata
 	}
-	return got, nil
+	return nil
 }
 
 func (s *Session) updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int, err error, got *api.Breakpoint) {
@@ -3509,14 +3509,13 @@ func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int) bool {
 	if !bp.Tracepoint {
 		return false
 	}
-	// TODO(suzmue): allow evaluate expressions within log points.
-	if msg, ok := bp.UserData.(logMessage); ok {
-		logMessage := msg.evaluate(s, goid)
+	if lMsg, ok := bp.UserData.(logMessage); ok {
+		msg := lMsg.evaluate(s, goid)
 		s.send(&dap.OutputEvent{
 			Event: *newEvent("output"),
 			Body: dap.OutputEventBody{
 				Category: "stdout",
-				Output:   fmt.Sprintf("> [Go %d]: %s\n", goid, logMessage),
+				Output:   fmt.Sprintf("> [Go %d]: %s\n", goid, msg),
 				Source: dap.Source{
 					Path: s.toClientPath(bp.File),
 				},

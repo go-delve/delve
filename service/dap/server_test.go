@@ -6079,116 +6079,57 @@ func TestBadlyFormattedMessageToServer(t *testing.T) {
 }
 
 func TestParseLogPoint(t *testing.T) {
-	type args struct {
-		msg string
-	}
 	tests := []struct {
 		name           string
-		args           args
+		msg            string
 		wantTracepoint bool
 		wantFormat     string
 		wantArgs       []string
 		wantErr        bool
 	}{
+		// Test simple log messages.
+		{name: "simple string", msg: "hello, world!", wantTracepoint: true, wantFormat: "hello, world!"},
+		{name: "empty string", msg: "", wantTracepoint: false, wantErr: false},
+		// Test parse eval expressions.
 		{
-			name: "simple string",
-			args: args{
-				msg: "hello, world!",
-			},
-			wantTracepoint: true,
-			wantFormat:     "hello, world!",
-		},
-		{
-			name: "simple eval",
-			args: args{
-				msg: "{x}",
-			},
+			name:           "simple eval",
+			msg:            "{x}",
 			wantTracepoint: true,
 			wantFormat:     "%s",
 			wantArgs:       []string{"x"},
 		},
 		{
-			name: "type cast",
-			args: args{
-				msg: "hello {string(x)}",
-			},
+			name:           "type cast",
+			msg:            "hello {string(x)}",
 			wantTracepoint: true,
 			wantFormat:     "hello %s",
 			wantArgs:       []string{"string(x)"},
 		},
 		{
-			name: "multiple eval",
-			args: args{
-				msg: "{x} {y} {z}",
-			},
+			name:           "multiple eval",
+			msg:            "{x} {y} {z}",
 			wantTracepoint: true,
 			wantFormat:     "%s %s %s",
 			wantArgs:       []string{"x", "y", "z"},
 		},
 		{
-			name: "eval expressions contain braces",
-			args: args{
-				msg: "{interface{}(x)} {myType{y}} {[]myType{{z}}}",
-			},
+			name:           "eval expressions contain braces",
+			msg:            "{interface{}(x)} {myType{y}} {[]myType{{z}}}",
 			wantTracepoint: true,
 			wantFormat:     "%s %s %s",
 			wantArgs:       []string{"interface{}(x)", "myType{y}", "[]myType{{z}}"},
 		},
-		{
-			name: "empty string",
-			args: args{
-				msg: "",
-			},
-			wantTracepoint: false,
-			wantErr:        false,
-		},
-		{
-			name: "empty evaluation",
-			args: args{
-				msg: "{}",
-			},
-			wantErr: true,
-		},
-		{
-			name: "empty space evaluation",
-			args: args{
-				msg: "{   \n}",
-			},
-			wantErr: true,
-		},
-		{
-			name: "open brace missing closed",
-			args: args{
-				msg: "{",
-			},
-			wantErr: true,
-		},
-		{
-			name: "closed brace missing open",
-			args: args{
-				msg: "}",
-			},
-			wantErr: true,
-		},
-		{
-			name: "open brace in expression",
-			args: args{
-				msg: `{m["{"]}`,
-			},
-			wantErr: true,
-		},
-		{
-			name: "closed brace in expression",
-			args: args{
-				msg: `{m["}"]}`,
-			},
-			wantErr: true,
-		},
+		// Test parse errors.
+		{name: "empty evaluation", msg: "{}", wantErr: true},
+		{name: "empty space evaluation", msg: "{   \n}", wantErr: true},
+		{name: "open brace missing closed", msg: "{", wantErr: true},
+		{name: "closed brace missing open", msg: "}", wantErr: true},
+		{name: "open brace in expression", msg: `{m["{"]}`, wantErr: true},
+		{name: "closed brace in expression", msg: `{m["}"]}`, wantErr: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
-			gotTracepoint, gotLogMessage, err := parseLogPoint(tt.args.msg)
+			gotTracepoint, gotLogMessage, err := parseLogPoint(tt.msg)
 			if gotTracepoint != tt.wantTracepoint {
 				t.Errorf("parseLogPoint() tracepoint = %v, wantTracepoint %v", gotTracepoint, tt.wantTracepoint)
 				return
