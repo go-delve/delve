@@ -2647,14 +2647,7 @@ func TestHitBreakpointIds(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					se = client.ExpectStoppedEvent(t)
-					go func() {
-						x := 0
-						for {
-							x += 1
-							x -= 3
-							_ = x
-						}
-					}()
+
 					checkHitBreakpointIds(t, se, "function breakpoint", functionBps[1].Id)
 
 					checkStop(t, client, 1, "main.anotherFunction", 27)
@@ -3619,7 +3612,18 @@ func TestEvaluateRequest(t *testing.T) {
 	})
 }
 
-func TestEvaluateConfigRequest(t *testing.T) {
+func checkConfig(t *testing.T, got *dap.EvaluateResponse, depth int, showGlobals, showRegisters bool, substitutePath, reverse [][2]string) {
+	t.Helper()
+	formatStr := `stackTraceDepth	%d
+showGlobalVariables	%v
+showRegisters	%v
+substitutePath	%v
+substitutePathReverse	%v (read only)
+`
+	checkEval(t, got, fmt.Sprintf(formatStr, depth, showGlobals, showRegisters, substitutePath, reverse), noChildren)
+}
+
+func TestEvaluateCommandRequest(t *testing.T) {
 	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
@@ -3632,18 +3636,23 @@ func TestEvaluateConfigRequest(t *testing.T) {
 					checkStop(t, client, 1, "main.foobar", 66)
 
 					// Request help.
+					const dlvHelp = `The following commands are available:
+    help (alias: h) 	 Prints the help message.
+    config 	 Changes configuration parameters.
+
+Type help followed by a command for full documentation.
+`
 					client.EvaluateRequest("dlv help", 1000, "repl")
 					got := client.ExpectEvaluateResponse(t)
-					checkEval(t, got, "The following commands are available:\n    help (alias: h) \t Prints the help message.\n    config \t Changes configuration parameters.\n\nType help followed by a command for full documentation.\n", noChildren)
+					checkEval(t, got, dlvHelp, noChildren)
 
 					client.EvaluateRequest("dlv help config", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, "Changes configuration parameters.\n\nconfig -list\n\nShow all configuration parameters.\n\nconfig <parameter> <value>\n\nChanges the value of a configuration parameter.\n\nconfig substitutePath <from> <to>\nconfig substitutePath <from>\n\nAdds or removes a path substitution rule.", noChildren)
+					checkEval(t, got, msgConfig, noChildren)
 
 					// Test config.
 					client.EvaluateRequest("dlv config -list", 1000, "repl")
-					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, "stopOnEntry\tfalse\nstackTraceDepth\t50\nshowGlobalVariables\tfalse\nshowRegisters\tfalse\nsubstitutePath\t[]\nsubstitutePathReverse\t[] (read only)\n", noChildren)
+					checkConfig(t, client.ExpectEvaluateResponse(t), 50, false, false, [][2]string{}, [][2]string{})
 
 					// Read and modify showGlobalVariables.
 					client.EvaluateRequest("dlv config showGlobalVariables", 1000, "repl")
@@ -3660,6 +3669,9 @@ func TestEvaluateConfigRequest(t *testing.T) {
 					client.EvaluateRequest("dlv config showGlobalVariables true", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
 					checkEval(t, got, "showGlobalVariables\ttrue\n\nUpdated", noChildren)
+
+					client.EvaluateRequest("dlv config -list", 1000, "repl")
+					checkConfig(t, client.ExpectEvaluateResponse(t), 50, true, false, [][2]string{}, [][2]string{})
 
 					client.ScopesRequest(1000)
 					scopes = client.ExpectScopesResponse(t)

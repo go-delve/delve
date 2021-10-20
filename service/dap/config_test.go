@@ -43,7 +43,7 @@ substitutePathReverse	[] (read only)
 			name: "custom values",
 			args: args{
 				args: &launchAttachArgs{
-					StopOnEntry:                  false,
+					stopOnEntry:                  false,
 					StackTraceDepth:              35,
 					ShowGlobalVariables:          true,
 					substitutePathClientToServer: [][2]string{{"hello", "world"}},
@@ -83,7 +83,7 @@ func TestGetConfigureString(t *testing.T) {
 			name: "basic bool",
 			args: args{
 				sargs: &launchAttachArgs{
-					StopOnEntry:                  false,
+					stopOnEntry:                  false,
 					StackTraceDepth:              0,
 					ShowGlobalVariables:          true,
 					substitutePathClientToServer: [][2]string{},
@@ -98,7 +98,7 @@ func TestGetConfigureString(t *testing.T) {
 			name: "basic readonly",
 			args: args{
 				sargs: &launchAttachArgs{
-					StopOnEntry:                  false,
+					stopOnEntry:                  false,
 					StackTraceDepth:              34,
 					ShowGlobalVariables:          true,
 					substitutePathClientToServer: [][2]string{},
@@ -113,7 +113,7 @@ func TestGetConfigureString(t *testing.T) {
 			name: "substitute path print both",
 			args: args{
 				sargs: &launchAttachArgs{
-					StopOnEntry:                  false,
+					stopOnEntry:                  false,
 					StackTraceDepth:              34,
 					ShowGlobalVariables:          true,
 					substitutePathClientToServer: [][2]string{},
@@ -128,7 +128,7 @@ func TestGetConfigureString(t *testing.T) {
 			name: "substitute path reverse print both",
 			args: args{
 				sargs: &launchAttachArgs{
-					StopOnEntry:                  false,
+					stopOnEntry:                  false,
 					StackTraceDepth:              34,
 					ShowGlobalVariables:          true,
 					substitutePathClientToServer: [][2]string{},
@@ -152,7 +152,7 @@ func TestGetConfigureString(t *testing.T) {
 			name: "invalid",
 			args: args{
 				sargs: &launchAttachArgs{
-					StopOnEntry:                  false,
+					stopOnEntry:                  false,
 					StackTraceDepth:              0,
 					ShowGlobalVariables:          false,
 					substitutePathClientToServer: [][2]string{},

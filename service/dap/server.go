@@ -179,8 +179,8 @@ type process struct {
 // launchAttachArgs captures arguments from launch/attach request that
 // impact handling of subsequent requests.
 type launchAttachArgs struct {
-	// StopOnEntry is set to automatically stop the debugee after start.
-	StopOnEntry bool `yaml:"stopOnEntry"`
+	// stopOnEntry is set to automatically stop the debugee after start.
+	stopOnEntry bool
 	// StackTraceDepth is the maximum length of the returned list of stack frames.
 	StackTraceDepth int `yaml:"stackTraceDepth"`
 	// ShowGlobalVariables indicates if global package variables should be loaded.
@@ -199,7 +199,7 @@ type launchAttachArgs struct {
 // TODO(polinasok): clean up this and its reference (Server.args)
 // in favor of default*Config variables defined in types.go.
 var defaultArgs = launchAttachArgs{
-	StopOnEntry:                  false,
+	stopOnEntry:                  false,
 	StackTraceDepth:              50,
 	ShowGlobalVariables:          false,
 	ShowRegisters:                false,
@@ -300,7 +300,7 @@ func NewSession(conn io.ReadWriteCloser, config *Config) *Session {
 // If user-specified options are provided via Launch/AttachRequest,
 // we override the defaults for optional args.
 func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) error {
-	s.args.StopOnEntry = args.StopOnEntry
+	s.args.stopOnEntry = args.StopOnEntry
 	if depth := args.StackTraceDepth; depth > 0 {
 		s.args.StackTraceDepth = depth
 	}
@@ -1522,7 +1522,7 @@ func closeIfOpen(ch chan struct{}) {
 // so the s.debugger is guaranteed to be set. Expects the target to be halted.
 func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest, allowNextStateChange chan struct{}) {
 	defer closeIfOpen(allowNextStateChange)
-	if s.args.StopOnEntry {
+	if s.args.stopOnEntry {
 		e := &dap.StoppedEvent{
 			Event: *newEvent("stopped"),
 			Body:  dap.StoppedEventBody{Reason: "entry", ThreadId: 1, AllThreadsStopped: true},
@@ -1534,7 +1534,7 @@ func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneReque
 	s.logToConsole("Type 'dlv help' for list of commands.")
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
 
-	if !s.args.StopOnEntry {
+	if !s.args.stopOnEntry {
 		s.runUntilStopAndNotify(api.Continue, allowNextStateChange)
 	}
 }

@@ -34,28 +34,35 @@ type command struct {
 	cmdFn   cmdfunc
 }
 
+const (
+	msgHelp = `Prints the help message.
+	
+help [command]
+
+Type "help" followed by the name of a command for more information about it.`
+
+	msgConfig = `Changes configuration parameters.
+	
+	config -list
+	
+	Show all configuration parameters.
+	
+	config <parameter> <value>
+	
+	Changes the value of a configuration parameter.
+	
+	config substitutePath <from> <to>
+	config substitutePath <from>
+	
+	Adds or removes a path substitution rule.`
+)
+
 // debugCommands returns a Commands struct with default commands defined.
 func debugCommands(s *Session) []command {
+
 	return []command{
-		{aliases: []string{"help", "h"}, cmdFn: s.helpMessage, helpMsg: `Prints the help message.
-
-	help [command]
-
-Type "help" followed by the name of a command for more information about it.`},
-		{aliases: []string{"config"}, cmdFn: s.evaluateConfig, helpMsg: `Changes configuration parameters.
-
-config -list
-
-Show all configuration parameters.
-
-config <parameter> <value>
-
-Changes the value of a configuration parameter.
-
-config substitutePath <from> <to>
-config substitutePath <from>
-
-Adds or removes a path substitution rule.`},
+		{aliases: []string{"help", "h"}, cmdFn: s.helpMessage, helpMsg: msgHelp},
+		{aliases: []string{"config"}, cmdFn: s.evaluateConfig, helpMsg: msgConfig},
 	}
 }
 
