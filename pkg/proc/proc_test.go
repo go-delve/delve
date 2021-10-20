@@ -5378,7 +5378,6 @@ func TestVariablesWithExternalLinking(t *testing.T) {
 func TestWatchpointsBasic(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "386")
-	skipOn(t, "not implemented", "linux", "arm64")
 	protest.AllowRecording(t)
 
 	position1 := 19
@@ -5409,7 +5408,7 @@ func TestWatchpointsBasic(t *testing.T) {
 			t.Fatal("breakpoint not set")
 		}
 
-		p.ClearBreakpoint(bp.Addr)
+		assertNoError(p.ClearBreakpoint(bp.Addr), t, "ClearBreakpoint")
 
 		assertNoError(p.Continue(), t, "Continue 2")
 		assertLineNumber(p, t, 21, "Continue 2") // Position 2
@@ -5437,7 +5436,6 @@ func TestWatchpointsBasic(t *testing.T) {
 func TestWatchpointCounts(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "386")
-	skipOn(t, "not implemented", "linux", "arm64")
 	protest.AllowRecording(t)
 
 	withTestProcess("databpcountstest", t, func(p *proc.Target, fixture protest.Fixture) {
@@ -5552,7 +5550,6 @@ func TestDwrapStartLocation(t *testing.T) {
 func TestWatchpointStack(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "386")
-	skipOn(t, "not implemented", "linux", "arm64")
 	protest.AllowRecording(t)
 
 	position1 := 17

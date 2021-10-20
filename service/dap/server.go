@@ -187,6 +187,9 @@ type launchAttachArgs struct {
 	ShowGlobalVariables bool `yaml:"showGlobalVariables"`
 	// ShowRegisters indicates if register values should be loaded.
 	ShowRegisters bool `yaml:"showRegisters"`
+	// HideSystemGoroutines indicates if system goroutines should be removed from threads
+	// responses.
+	HideSystemGoroutines bool `yaml:"hideSystemGoroutines"`
 	// substitutePathClientToServer indicates rules for converting file paths between client and debugger.
 	// These must be directory paths.
 	substitutePathClientToServer [][2]string `yaml:"substitutePath"`
@@ -202,6 +205,7 @@ var defaultArgs = launchAttachArgs{
 	stopOnEntry:                  false,
 	StackTraceDepth:              50,
 	ShowGlobalVariables:          false,
+	HideSystemGoroutines:         false,
 	ShowRegisters:                false,
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
@@ -306,6 +310,7 @@ func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) error {
 	}
 	s.args.ShowGlobalVariables = args.ShowGlobalVariables
 	s.args.ShowRegisters = args.ShowRegisters
+	s.args.HideSystemGoroutines = args.HideSystemGoroutines
 	if paths := args.SubstitutePath; len(paths) > 0 {
 		clientToServer := make([][2]string, 0, len(paths))
 		serverToClient := make([][2]string, 0, len(paths))
@@ -1579,6 +1584,12 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 	var next int
 	if s.debugger != nil {
 		gs, next, err = s.debugger.Goroutines(0, maxGoroutines)
+		if err == nil && s.args.HideSystemGoroutines {
+			gs = s.debugger.FilterGoroutines(gs, []api.ListGoroutinesFilter{{
+				Kind:    api.GoroutineUser,
+				Negated: false,
+			}})
+		}
 	}
 
 	var threads []dap.Thread

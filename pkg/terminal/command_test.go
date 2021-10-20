@@ -402,6 +402,7 @@ func TestScopePrefix(t *testing.T) {
 			stackOut := strings.Split(term.MustExec(fmt.Sprintf("goroutine %d stack", gid)), "\n")
 			fid := -1
 			for _, line := range stackOut {
+				line = strings.TrimLeft(line, " ")
 				space := strings.Index(line, " ")
 				if space < 0 {
 					continue
@@ -417,7 +418,7 @@ func TestScopePrefix(t *testing.T) {
 				}
 			}
 			if fid < 0 {
-				t.Fatalf("Could not find frame for goroutine %d: %v", gid, stackOut)
+				t.Fatalf("Could not find frame for goroutine %d: %q", gid, stackOut)
 			}
 			term.AssertExec(fmt.Sprintf("goroutine     %d    frame     %d     locals", gid, fid), "(no locals)\n")
 			argsOut := strings.Split(term.MustExec(fmt.Sprintf("goroutine %d frame %d args", gid, fid)), "\n")

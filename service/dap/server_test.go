@@ -1052,6 +1052,51 @@ func TestSelectedThreadsRequest(t *testing.T) {
 	})
 }
 
+func TestHideSystemGoroutinesRequest(t *testing.T) {
+	tests := []struct{ hideSystemGoroutines bool }{
+		{hideSystemGoroutines: true},
+		{hideSystemGoroutines: false},
+	}
+	for _, tt := range tests {
+		runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
+			runDebugSessionWithBPs(t, client, "launch",
+				// Launch
+				func() {
+					client.LaunchRequestWithArgs(map[string]interface{}{
+						"mode":                 "exec",
+						"program":              fixture.Path,
+						"hideSystemGoroutines": tt.hideSystemGoroutines,
+						"stopOnEntry":          !stopOnEntry,
+					})
+				},
+				// Set breakpoints
+				fixture.Source, []int{25},
+				[]onBreakpoint{{
+					execute: func() {
+						checkStop(t, client, 1, "main.main", 25)
+
+						client.ThreadsRequest()
+						tr := client.ExpectThreadsResponse(t)
+
+						// The user process creates 10 goroutines in addition to the
+						// main goroutine, for a total of 11 goroutines.
+						userCount := 11
+						if tt.hideSystemGoroutines {
+							if len(tr.Body.Threads) != userCount {
+								t.Errorf("got %d goroutines, expected %d\n", len(tr.Body.Threads), userCount)
+							}
+						} else {
+							if len(tr.Body.Threads) <= userCount {
+								t.Errorf("got %d goroutines, expected >%d\n", len(tr.Body.Threads), userCount)
+							}
+						}
+					},
+					disconnect: true,
+				}})
+		})
+	}
+}
+
 // TestScopesAndVariablesRequests executes to a breakpoint and tests different
 // configurations of 'scopes' and 'variables' requests.
 func TestScopesAndVariablesRequests(t *testing.T) {
@@ -3612,15 +3657,16 @@ func TestEvaluateRequest(t *testing.T) {
 	})
 }
 
-func checkConfig(t *testing.T, got *dap.EvaluateResponse, depth int, showGlobals, showRegisters bool, substitutePath, reverse [][2]string) {
+func checkConfig(t *testing.T, got *dap.EvaluateResponse, depth int, showGlobals, showRegisters, hideSystemGoroutines bool, substitutePath, reverse [][2]string) {
 	t.Helper()
 	formatStr := `stackTraceDepth	%d
 showGlobalVariables	%v
 showRegisters	%v
+hideSystemGoroutines	%v
 substitutePath	%v
 substitutePathReverse	%v (read only)
 `
-	checkEval(t, got, fmt.Sprintf(formatStr, depth, showGlobals, showRegisters, substitutePath, reverse), noChildren)
+	checkEval(t, got, fmt.Sprintf(formatStr, depth, showGlobals, showRegisters, hideSystemGoroutines, substitutePath, reverse), noChildren)
 }
 
 func TestEvaluateCommandRequest(t *testing.T) {
@@ -3652,7 +3698,7 @@ Type help followed by a command for full documentation.
 
 					// Test config.
 					client.EvaluateRequest("dlv config -list", 1000, "repl")
-					checkConfig(t, client.ExpectEvaluateResponse(t), 50, false, false, [][2]string{}, [][2]string{})
+					checkConfig(t, client.ExpectEvaluateResponse(t), 50, false, false, false, [][2]string{}, [][2]string{})
 
 					// Read and modify showGlobalVariables.
 					client.EvaluateRequest("dlv config showGlobalVariables", 1000, "repl")
@@ -3671,7 +3717,7 @@ Type help followed by a command for full documentation.
 					checkEval(t, got, "showGlobalVariables\ttrue\n\nUpdated", noChildren)
 
 					client.EvaluateRequest("dlv config -list", 1000, "repl")
-					checkConfig(t, client.ExpectEvaluateResponse(t), 50, true, false, [][2]string{}, [][2]string{})
+					checkConfig(t, client.ExpectEvaluateResponse(t), 50, true, false, false, [][2]string{}, [][2]string{})
 
 					client.ScopesRequest(1000)
 					scopes = client.ExpectScopesResponse(t)
@@ -4793,6 +4839,15 @@ func TestLaunchDebugRequest(t *testing.T) {
 	rescueStderr := os.Stderr
 	r, w, _ := os.Pipe()
 	os.Stderr = w
+	done := make(chan struct{})
+
+	var err []byte
+
+	go func() {
+		err, _ = ioutil.ReadAll(r)
+		t.Log(string(err))
+		close(done)
+	}()
 
 	tmpBin := "__tmpBin"
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
@@ -4807,8 +4862,7 @@ func TestLaunchDebugRequest(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	w.Close()
-	err, _ := ioutil.ReadAll(r)
-	t.Log(string(err))
+	<-done
 	os.Stderr = rescueStderr
 
 	rmErrRe, _ := regexp.Compile(`could not remove .*\n`)

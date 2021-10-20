@@ -1,4 +1,5 @@
-// +build !amd64
+//go:build (linux && 386) || (darwin && arm64)
+// +build linux,386 darwin,arm64
 
 package native
 
