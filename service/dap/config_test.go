@@ -18,45 +18,26 @@ func TestListConfig(t *testing.T) {
 			args: args{
 				args: &launchAttachArgs{},
 			},
-			want: `stopOnEntry	false
-stackTraceDepth	0
-showGlobalVariables	false
-showRegisters	false
-substitutePath	[]
-substitutePathReverse	[] (read only)
-`,
+			want: formatConfig(0, false, false, false, [][2]string{}, [][2]string{}),
 		},
 		{
 			name: "default values",
 			args: args{
 				args: &defaultArgs,
 			},
-			want: `stopOnEntry	false
-stackTraceDepth	50
-showGlobalVariables	false
-showRegisters	false
-substitutePath	[]
-substitutePathReverse	[] (read only)
-`,
+			want: formatConfig(50, false, false, false, [][2]string{}, [][2]string{}),
 		},
 		{
 			name: "custom values",
 			args: args{
 				args: &launchAttachArgs{
-					stopOnEntry:                  false,
 					StackTraceDepth:              35,
 					ShowGlobalVariables:          true,
 					substitutePathClientToServer: [][2]string{{"hello", "world"}},
 					substitutePathServerToClient: [][2]string{{"world", "hello"}},
 				},
 			},
-			want: `stopOnEntry	false
-stackTraceDepth	35
-showGlobalVariables	true
-showRegisters	false
-substitutePath	[[hello world]]
-substitutePathReverse	[[world hello]] (read only)
-`,
+			want: formatConfig(35, true, false, false, [][2]string{{"hello", "world"}}, [][2]string{{"world", "hello"}}),
 		},
 	}
 	for _, tt := range tests {

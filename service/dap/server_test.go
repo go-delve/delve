@@ -693,7 +693,7 @@ func checkStackFramesNamed(testName string, t *testing.T, got *dap.StackTraceRes
 // checkScope is a helper for verifying the values within a ScopesResponse.
 //     i - index of the scope within ScopesRespose.Body.Scopes array
 //     name - name of the scope
-//     varRef - reference to retrieve variables of this scope. if varRef is negative, the reference is not checked.
+//     varRef - reference to retrieve variables of this scope. If varRef is negative, the reference is not checked.
 func checkScope(t *testing.T, got *dap.ScopesResponse, i int, name string, varRef int) {
 	t.Helper()
 	if len(got.Body.Scopes) <= i {
@@ -3657,8 +3657,7 @@ func TestEvaluateRequest(t *testing.T) {
 	})
 }
 
-func checkConfig(t *testing.T, got *dap.EvaluateResponse, depth int, showGlobals, showRegisters, hideSystemGoroutines bool, substitutePath, reverse [][2]string) {
-	t.Helper()
+func formatConfig(depth int, showGlobals, showRegisters, hideSystemGoroutines bool, substitutePath, reverse [][2]string) string {
 	formatStr := `stackTraceDepth	%d
 showGlobalVariables	%v
 showRegisters	%v
@@ -3666,7 +3665,7 @@ hideSystemGoroutines	%v
 substitutePath	%v
 substitutePathReverse	%v (read only)
 `
-	checkEval(t, got, fmt.Sprintf(formatStr, depth, showGlobals, showRegisters, hideSystemGoroutines, substitutePath, reverse), noChildren)
+	return fmt.Sprintf(formatStr, depth, showGlobals, showRegisters, hideSystemGoroutines, substitutePath, reverse)
 }
 
 func TestEvaluateCommandRequest(t *testing.T) {
@@ -3698,7 +3697,8 @@ Type help followed by a command for full documentation.
 
 					// Test config.
 					client.EvaluateRequest("dlv config -list", 1000, "repl")
-					checkConfig(t, client.ExpectEvaluateResponse(t), 50, false, false, false, [][2]string{}, [][2]string{})
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, formatConfig(50, false, false, false, [][2]string{}, [][2]string{}), noChildren)
 
 					// Read and modify showGlobalVariables.
 					client.EvaluateRequest("dlv config showGlobalVariables", 1000, "repl")
@@ -3717,7 +3717,8 @@ Type help followed by a command for full documentation.
 					checkEval(t, got, "showGlobalVariables\ttrue\n\nUpdated", noChildren)
 
 					client.EvaluateRequest("dlv config -list", 1000, "repl")
-					checkConfig(t, client.ExpectEvaluateResponse(t), 50, true, false, false, [][2]string{}, [][2]string{})
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, formatConfig(50, true, false, false, [][2]string{}, [][2]string{}), noChildren)
 
 					client.ScopesRequest(1000)
 					scopes = client.ExpectScopesResponse(t)

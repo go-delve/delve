@@ -175,6 +175,9 @@ func (it *configureIterator) Field() (name string, field reflect.Value) {
 }
 
 func ConfigureListByName(conf interface{}, name string, readonly []string) string {
+	if name == "" {
+		return ""
+	}
 	it := IterateConfiguration(conf)
 	for it.Next() {
 		fieldName, field := it.Field()
