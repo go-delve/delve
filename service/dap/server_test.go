@@ -6036,22 +6036,23 @@ func TestAttachRemoteToRunningTargetContinueOnEntry(t *testing.T) {
 // TestMultiClient tests that that remote attach doesn't take down
 // the server in multi-client mode unless terminateDebugee is explicitely set.
 func TestAttachRemoteMultiClient(t *testing.T) {
-	closingClientSession := "Closing client session, but leaving multi-client DAP server running at"
+	closingClientSessionOnly := "Closing client session, but leaving multi-client DAP server running at"
 	detachingAndTerminating := "Detaching and terminating target process"
 	tests := []struct {
 		name              string
 		disconnectRequest func(client *daptest.Client)
 		expect            string
 	}{
-		{"default", func(c *daptest.Client) { c.DisconnectRequest() }, closingClientSession},
+		{"default", func(c *daptest.Client) { c.DisconnectRequest() }, closingClientSessionOnly},
 		{"terminate=true", func(c *daptest.Client) { c.DisconnectRequestWithKillOption(true) }, detachingAndTerminating},
-		{"terminate=false", func(c *daptest.Client) { c.DisconnectRequestWithKillOption(false) }, closingClientSession},
+		{"terminate=false", func(c *daptest.Client) { c.DisconnectRequestWithKillOption(false) }, closingClientSessionOnly},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			serverStopped := make(chan struct{})
 			server, forceStop := startDAPServer(t, serverStopped)
 			client := daptest.NewClient(server.listener.Addr().String())
+			defer client.Close()
 			time.Sleep(100 * time.Millisecond) // Give time for connection to be set as dap.Session
 			server.sessionMu.Lock()
 			if server.session == nil {
@@ -6081,13 +6082,13 @@ func TestAttachRemoteMultiClient(t *testing.T) {
 			}
 			client.ExpectDisconnectResponse(t)
 			client.ExpectTerminatedEvent(t)
-			client.Close()
+			time.Sleep(10 * time.Millisecond) // give time for things to shut down
 
-			if tc.expect == closingClientSession {
+			if tc.expect == closingClientSessionOnly {
 				// At this point a multi-client server is still running.
 				verifySessionStopped(t, server.session)
 				// Since it is a dap server, it cannot accept another client, so the only
-				// way to take down the server is to force kill it.
+				// way to take down the server is to force-kill it.
 				close(forceStop)
 			}
 			<-serverStopped
