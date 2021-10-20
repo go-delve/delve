@@ -693,7 +693,7 @@ func checkStackFramesNamed(testName string, t *testing.T, got *dap.StackTraceRes
 // checkScope is a helper for verifying the values within a ScopesResponse.
 //     i - index of the scope within ScopesRespose.Body.Scopes array
 //     name - name of the scope
-//     varRef - reference to retrieve variables of this scope
+//     varRef - reference to retrieve variables of this scope. if varRef is negative, the reference is not checked.
 func checkScope(t *testing.T, got *dap.ScopesResponse, i int, name string, varRef int) {
 	t.Helper()
 	if len(got.Body.Scopes) <= i {

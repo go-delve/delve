@@ -2570,7 +2570,7 @@ func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 	response := &dap.EvaluateResponse{Response: *newResponse(request.Request)}
 	expr := request.Arguments.Expression
 
-	if isConfig, err := regexp.MatchString(`^\s*dlv\s+\S+`, expr); err == nil && isConfig { // dlv {command}{
+	if isConfig, err := regexp.MatchString(`^\s*dlv\s+\S+`, expr); err == nil && isConfig { // dlv {command}
 		expr := strings.Replace(expr, "dlv ", "", 1)
 		result, err := s.delveCmd(goid, frame, expr)
 		if err != nil {
