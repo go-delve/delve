@@ -1766,19 +1766,15 @@ func stoppedGoroutineID(state *api.DebuggerState) (id int) {
 // stoppedOnBreakpointGoroutineID gets the goroutine id of the first goroutine
 // that is stopped on a real breakpoint, starting with the selected goroutine.
 func (s *Session) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int, *api.Breakpoint) {
-	// Check the current thread first. There may be no selected goroutine.
-	if thrd := state.CurrentThread; thrd != nil {
-		bp := thrd.Breakpoint
-		if bp != nil && !bp.Tracepoint {
-			return stoppedGoroutineID(state), bp
-		}
-	}
 	// Use the first goroutine that is stopped on a breakpoint.
-	gs := s.stoppedGs(state, true)
+	gs := s.stoppedGs(state)
 	if len(gs) == 0 {
 		return 0, nil
 	}
 	goid := gs[0]
+	if goid == 0 {
+		return goid, state.CurrentThread.Breakpoint
+	}
 	g, _ := s.debugger.FindGoroutine(goid)
 	if g == nil || g.Thread == nil {
 		return goid, nil
@@ -3250,7 +3246,7 @@ func (s *Session) resumeOnceAndCheckStop(command string, allowNextStateChange ch
 	}
 
 	s.handleLogPoints(state)
-	gsOnBp := s.stoppedGs(state, false)
+	gsOnBp := s.stoppedGs(state)
 
 	switch s.debugger.StopReason() {
 	case proc.StopBreakpoint, proc.StopManual:
@@ -3278,9 +3274,11 @@ func (s *Session) handleLogPoints(state *api.DebuggerState) {
 	}
 }
 
-func (s *Session) stoppedGs(state *api.DebuggerState, clear bool) (gs []int) {
-	// If stop reason is proc.StopHardcodedBreakpoint, the selected thread
-	// is stopped on a hardcoded breakpoint.
+func (s *Session) stoppedGs(state *api.DebuggerState) (gs []int) {
+	// Check the current thread first. There may be no selected goroutine.
+	if state.CurrentThread.Breakpoint != nil && !state.CurrentThread.Breakpoint.Tracepoint {
+		gs = append(gs, state.CurrentThread.GoroutineID)
+	}
 	if s.debugger.StopReason() == proc.StopHardcodedBreakpoint {
 		gs = append(gs, stoppedGoroutineID(state))
 	}
@@ -3288,6 +3286,10 @@ func (s *Session) stoppedGs(state *api.DebuggerState, clear bool) (gs []int) {
 		// Some threads may be stopped on a hardcoded breakpoint.
 		if th.Function.Name() == "runtime.breakpoint" {
 			gs = append(gs, th.GoroutineID)
+			continue
+		}
+		// We already added the current thread if it had a breakpoint.
+		if th.ID == state.CurrentThread.ID {
 			continue
 		}
 		if bp := th.Breakpoint; bp != nil {

@@ -2934,110 +2934,79 @@ func TestHaltPreventsAutoResume(t *testing.T) {
 	})
 }
 
-// TestConcurrentBreakpointsLogPoints executes to a breakpoint and then tests
-// that a breakpoint set in the main goroutine is hit the correct number of times
-// and log points set in the children goroutines produce the correct number of
-// output events.
+// TestConcurrentBreakpointsLogPoints tests that a breakpoint set in the main
+// goroutine is hit the correct number of times and log points set in the
+// children goroutines produce the correct number of output events.
 func TestConcurrentBreakpointsLogPoints(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.SkipNow()
 	}
-	runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
-		runDebugSessionWithBPs(t, client, "launch",
-			// Launch
-			func() {
+	tests := []struct {
+		name        string
+		fixture     string
+		start       int
+		breakpoints []int
+	}{
+		{
+			name:        "source breakpoints",
+			fixture:     "goroutinestackprog",
+			breakpoints: []int{23},
+		},
+		{
+			name:    "hardcoded breakpoint",
+			fixture: "goroutinebreak",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runTest(t, tt.fixture, func(client *daptest.Client, fixture protest.Fixture) {
+				client.InitializeRequest()
+				client.ExpectInitializeResponseAndCapabilities(t)
+
 				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
-			},
-			// Set breakpoints
-			fixture.Source, []int{20},
-			[]onBreakpoint{{
-				// Stop at line 20
-				execute: func() {
-					checkStop(t, client, 1, "main.main", 20)
-					bps := []int{8, 23}
-					logMessages := map[int]string{8: "hello"}
-					client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
-					client.ExpectSetBreakpointsResponse(t)
+				client.ExpectInitializedEvent(t)
+				client.ExpectLaunchResponse(t)
 
-					client.ContinueRequest(1)
-					client.ExpectContinueResponse(t)
+				bps := append([]int{8}, tt.breakpoints...)
+				logMessages := map[int]string{8: "hello"}
+				client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
+				client.ExpectSetBreakpointsResponse(t)
 
-					// There may be up to 1 breakpoint and any number of log points that are
-					// hit concurrently. We should get a stopped event everytime the breakpoint
-					// is hit and an output event for each log point hit.
-					var oeCount, seCount int
-					for oeCount < 10 || seCount < 10 {
-						switch m := client.ExpectMessage(t).(type) {
-						case *dap.StoppedEvent:
-							if m.Body.Reason != "breakpoint" || !m.Body.AllThreadsStopped || m.Body.ThreadId != 1 {
-								t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", m)
-							}
-							checkStop(t, client, 1, "main.main", 23)
-							seCount++
-							client.ContinueRequest(1)
-						case *dap.OutputEvent:
-							checkLogMessage(t, m, -1, "hello", fixture.Source, 8)
-							oeCount++
-						case *dap.ContinueResponse:
-						case *dap.TerminatedEvent:
-							t.Fatalf("\nexpected 10 output events and 10 stopped events, got %d output events and %d stopped events", oeCount, seCount)
-						default:
-							t.Fatalf("Unexpected message type: expect StoppedEvent, OutputEvent, or ContinueResponse, got %#v", m)
+				client.ConfigurationDoneRequest()
+				client.ExpectConfigurationDoneResponse(t)
+
+				// There may be up to 1 breakpoint and any number of log points that are
+				// hit concurrently. We should get a stopped event everytime the breakpoint
+				// is hit and an output event for each log point hit.
+				var oeCount, seCount int
+				for oeCount < 10 || seCount < 10 {
+					switch m := client.ExpectMessage(t).(type) {
+					case *dap.StoppedEvent:
+						if m.Body.Reason != "breakpoint" || !m.Body.AllThreadsStopped || m.Body.ThreadId != 1 {
+							t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", m)
 						}
+						seCount++
+						client.ContinueRequest(1)
+					case *dap.OutputEvent:
+						checkLogMessage(t, m, -1, "hello", fixture.Source, 8)
+						oeCount++
+					case *dap.ContinueResponse:
+					case *dap.TerminatedEvent:
+						t.Fatalf("\nexpected 10 output events and 10 stopped events, got %d output events and %d stopped events", oeCount, seCount)
+					default:
+						t.Fatalf("Unexpected message type: expect StoppedEvent, OutputEvent, or ContinueResponse, got %#v", m)
 					}
-					client.ExpectTerminatedEvent(t)
-				},
-				disconnect: false,
-			}})
-	})
-	runTest(t, "goroutinebreak", func(client *daptest.Client, fixture protest.Fixture) {
-		runDebugSessionWithBPs(t, client, "launch",
-			// Launch
-			func() {
-				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
-			},
-			// Set breakpoints
-			fixture.Source, []int{12},
-			[]onBreakpoint{{
-				// Stop at line 12
-				execute: func() {
-					checkStop(t, client, 1, "main.main", 12)
-					bps := []int{8}
-					logMessages := map[int]string{8: "hello"}
-					client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
-					client.ExpectSetBreakpointsResponse(t)
+				}
+				client.ExpectTerminatedEvent(t)
 
-					client.ContinueRequest(1)
-					client.ExpectContinueResponse(t)
-
-					// There may be up to 1 breakpoint and any number of log points that are
-					// hit concurrently. We should get a stopped event everytime the breakpoint
-					// is hit and an output event for each log point hit.
-					var oeCount, seCount int
-					for oeCount < 10 || seCount < 10 {
-						switch m := client.ExpectMessage(t).(type) {
-						case *dap.StoppedEvent:
-							if m.Body.Reason != "breakpoint" || !m.Body.AllThreadsStopped || m.Body.ThreadId != 1 {
-								t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", m)
-							}
-							// This could be in main.main or runtime.breakpoint.
-							seCount++
-							client.ContinueRequest(1)
-						case *dap.OutputEvent:
-							checkLogMessage(t, m, -1, "hello", fixture.Source, 8)
-							oeCount++
-						case *dap.ContinueResponse:
-						case *dap.TerminatedEvent:
-							t.Fatalf("\nexpected 10 output events and 10 stopped events, got %d output events and %d stopped events", oeCount, seCount)
-						default:
-							t.Fatalf("Unexpected message type: expect StoppedEvent, OutputEvent, or ContinueResponse, got %#v", m)
-						}
-					}
-					client.ExpectTerminatedEvent(t)
-				},
-				disconnect: false,
-			}})
-	})
+				client.DisconnectRequest()
+				client.ExpectOutputEventProcessExited(t, 0)
+				client.ExpectOutputEventDetaching(t)
+				client.ExpectDisconnectResponse(t)
+				client.ExpectTerminatedEvent(t)
+			})
+		})
+	}
 }
 
 func TestSetBreakpointWhileRunning(t *testing.T) {
