@@ -55,6 +55,9 @@ type ProcessInternal interface {
 	MemoryMap() ([]MemoryMapEntry, error)
 
 	GetBufferedTracepoints() []ebpf.RawUProbeParams
+
+	// StartCallInjection notifies the backend that we are about to inject a function call.
+	StartCallInjection() (func(), error)
 }
 
 // RecordingManipulation is an interface for manipulating process recordings.

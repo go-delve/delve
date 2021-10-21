@@ -26,9 +26,11 @@ import (
 	"regexp"
 	"runtime"
 	"runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/goversion"
@@ -135,7 +137,7 @@ type Session struct {
 	// binaryToRemove is the temp compiled binary to be removed on disconnect (if any).
 	binaryToRemove string
 	// noDebugProcess is set for the noDebug launch process.
-	noDebugProcess *exec.Cmd
+	noDebugProcess *process
 
 	// sendingMu synchronizes writing to conn
 	// to ensure that messages do not get interleaved
@@ -169,6 +171,11 @@ type Config struct {
 	stopTriggered chan struct{}
 }
 
+type process struct {
+	*exec.Cmd
+	exited chan struct{}
+}
+
 // launchAttachArgs captures arguments from launch/attach request that
 // impact handling of subsequent requests.
 type launchAttachArgs struct {
@@ -178,6 +185,11 @@ type launchAttachArgs struct {
 	stackTraceDepth int
 	// showGlobalVariables indicates if global package variables should be loaded.
 	showGlobalVariables bool
+	// hideSystemGoroutines indicates if system goroutines should be removed from threads
+	// responses.
+	hideSystemGoroutines bool
+	// showRegisters indicates if register values should be loaded.
+	showRegisters bool
 	// substitutePathClientToServer indicates rules for converting file paths between client and debugger.
 	// These must be directory paths.
 	substitutePathClientToServer [][2]string
@@ -193,6 +205,8 @@ var defaultArgs = launchAttachArgs{
 	stopOnEntry:                  false,
 	stackTraceDepth:              50,
 	showGlobalVariables:          false,
+	hideSystemGoroutines:         false,
+	showRegisters:                false,
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
 }
@@ -295,6 +309,8 @@ func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) error {
 		s.args.stackTraceDepth = depth
 	}
 	s.args.showGlobalVariables = args.ShowGlobalVariables
+	s.args.hideSystemGoroutines = args.HideSystemGoroutines
+	s.args.showRegisters = args.ShowRegisters
 	if paths := args.SubstitutePath; len(paths) > 0 {
 		clientToServer := make([][2]string, 0, len(paths))
 		serverToClient := make([][2]string, 0, len(paths))
@@ -516,6 +532,18 @@ func (s *Session) handleRequest(request dap.Message) {
 
 	// These requests, can be handled regardless of whether the targret is running
 	switch request := request.(type) {
+	case *dap.InitializeRequest:
+		// Required
+		s.onInitializeRequest(request)
+		return
+	case *dap.LaunchRequest:
+		// Required
+		s.onLaunchRequest(request)
+		return
+	case *dap.AttachRequest:
+		// Required
+		s.onAttachRequest(request)
+		return
 	case *dap.DisconnectRequest:
 		// Required
 		s.onDisconnectRequest(request)
@@ -553,7 +581,7 @@ func (s *Session) handleRequest(request dap.Message) {
 	// the next stop. In addition, the editor itself might block waiting
 	// for these requests to return. We are not aware of any requests
 	// that would benefit from this approach at this time.
-	if s.debugger != nil && s.isRunningCmd() {
+	if s.debugger != nil && s.debugger.IsRunning() || s.isRunningCmd() {
 		switch request := request.(type) {
 		case *dap.ThreadsRequest:
 			// On start-up, the client requests the baseline of currently existing threads
@@ -657,17 +685,6 @@ func (s *Session) handleRequest(request dap.Message) {
 		}()
 		<-resumeRequestLoop
 	//--- Synchronous requests ---
-	// TODO(polina): target might be running when remote attach debug session
-	// is started. Support handling initialize and attach requests while running.
-	case *dap.InitializeRequest:
-		// Required
-		s.onInitializeRequest(request)
-	case *dap.LaunchRequest:
-		// Required
-		s.onLaunchRequest(request)
-	case *dap.AttachRequest:
-		// Required
-		s.onAttachRequest(request)
 	case *dap.SetBreakpointsRequest:
 		// Required
 		s.onSetBreakpointsRequest(request)
@@ -824,6 +841,7 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsClipboardContext = true
 	response.Body.SupportsSteppingGranularity = true
 	response.Body.SupportsLogPoints = true
+	response.Body.SupportsDisassembleRequest = true
 	// TODO(polina): support these requests in addition to vscode-go feature parity
 	response.Body.SupportsTerminateRequest = false
 	response.Body.SupportsRestartRequest = false
@@ -831,7 +849,6 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsSetExpression = false
 	response.Body.SupportsLoadedSourcesRequest = false
 	response.Body.SupportsReadMemoryRequest = false
-	response.Body.SupportsDisassembleRequest = false
 	response.Body.SupportsCancelRequest = false
 	s.send(response)
 }
@@ -1029,16 +1046,9 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			if err := cmd.Wait(); err != nil {
 				s.config.log.Debugf("program exited with error: %v", err)
 			}
-			stopped := false
-			s.mu.Lock()
-			stopped = s.noDebugProcess == nil // if it was stopped, this should be nil
-			s.noDebugProcess = nil
-			s.mu.Unlock()
-
-			if !stopped { // process terminated on its own
-				s.logToConsole(proc.ErrProcessExited{Pid: cmd.ProcessState.Pid(), Status: cmd.ProcessState.ExitCode()}.Error())
-				s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
-			}
+			s.logToConsole(proc.ErrProcessExited{Pid: cmd.ProcessState.Pid(), Status: cmd.ProcessState.ExitCode()}.Error())
+			s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
+			close(s.noDebugProcess.exited)
 		}()
 		return
 	}
@@ -1085,7 +1095,7 @@ func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd stri
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	s.noDebugProcess = cmd
+	s.noDebugProcess = &process{Cmd: cmd, exited: make(chan struct{})}
 	return cmd, nil
 }
 
@@ -1096,14 +1106,25 @@ func (s *Session) stopNoDebugProcess() {
 		// We already handled termination or there was never a process
 		return
 	}
-	if s.noDebugProcess.ProcessState != nil && s.noDebugProcess.ProcessState.Exited() {
-		s.logToConsole(proc.ErrProcessExited{Pid: s.noDebugProcess.ProcessState.Pid(), Status: s.noDebugProcess.ProcessState.ExitCode()}.Error())
-	} else {
-		// TODO(hyangah): gracefully terminate the process and its children processes.
-		s.logToConsole(fmt.Sprintf("Terminating process %d", s.noDebugProcess.Process.Pid))
-		s.noDebugProcess.Process.Kill() // Don't check error. Process killing and self-termination may race.
+	select {
+	case <-s.noDebugProcess.exited:
+		s.noDebugProcess = nil
+		return
+	default:
 	}
-	s.noDebugProcess = nil
+
+	// TODO(hyangah): gracefully terminate the process and its children processes.
+	s.logToConsole(fmt.Sprintf("Terminating process %d", s.noDebugProcess.Process.Pid))
+	s.noDebugProcess.Process.Kill() // Don't check error. Process killing and self-termination may race.
+
+	// Wait for kill to complete or time out
+	select {
+	case <-time.After(5 * time.Second):
+		s.config.log.Debug("noDebug process kill timed out")
+	case <-s.noDebugProcess.exited:
+		s.config.log.Debug("noDebug process killed")
+		s.noDebugProcess = nil
+	}
 }
 
 // onDisconnectRequest handles the DisconnectRequest. Per the DAP spec,
@@ -1503,7 +1524,7 @@ func closeIfOpen(ch chan struct{}) {
 // onConfigurationDoneRequest handles 'configurationDone' request.
 // This is an optional request enabled by capability ‘supportsConfigurationDoneRequest’.
 // It gets triggered after all the debug requests that follow initalized event,
-// so the s.debugger is guaranteed to be set.
+// so the s.debugger is guaranteed to be set. Expects the target to be halted.
 func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest, allowNextStateChange chan struct{}) {
 	defer closeIfOpen(allowNextStateChange)
 	if s.args.stopOnEntry {
@@ -1561,6 +1582,12 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 	var next int
 	if s.debugger != nil {
 		gs, next, err = s.debugger.Goroutines(0, maxGoroutines)
+		if err == nil && s.args.hideSystemGoroutines {
+			gs = s.debugger.FilterGoroutines(gs, []api.ListGoroutinesFilter{{
+				Kind:    api.GoroutineUser,
+				Negated: false,
+			}})
+		}
 	}
 
 	var threads []dap.Thread
@@ -1694,10 +1721,14 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 			return
 		}
 		s.config.log.Debug("debugger already started")
-		// TODO(polina): once we allow initialize and attach request while running,
-		// halt before sending initialized event. onConfigurationDone will restart
+		// Halt for configuration sequence. onConfigurationDone will restart
 		// execution if user requested !stopOnEntry.
-
+		s.changeStateMu.Lock()
+		defer s.changeStateMu.Unlock()
+		if _, err := s.halt(); err != nil {
+			s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
+			return
+		}
 		// Enable StepBack controls on supported backends
 		if s.config.Debugger.Backend == "rr" {
 			s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportsStepBack: true}}})
@@ -1994,6 +2025,27 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 		scopeGlobals := dap.Scope{Name: globScope.Name, VariablesReference: s.variableHandles.create(globScope)}
 		scopes = append(scopes, scopeGlobals)
 	}
+
+	if s.args.showRegisters {
+		// Retrieve registers
+		regs, err := s.debugger.ScopeRegisters(goid, frame, 0, false)
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToListRegisters, "Unable to list registers", err.Error())
+			return
+		}
+		outRegs := api.ConvertRegisters(regs, s.debugger.DwarfRegisterToString, false)
+		regsVar := make([]proc.Variable, len(outRegs))
+		for i, r := range outRegs {
+			regsVar[i] = proc.Variable{
+				Name:  r.Name,
+				Value: constant.MakeString(r.Value),
+				Kind:  reflect.Kind(proc.VariableConstant),
+			}
+		}
+		regsScope := &fullyQualifiedVariable{&proc.Variable{Name: "Registers", Children: regsVar}, "", true, 0}
+		scopeRegisters := dap.Scope{Name: regsScope.Name, VariablesReference: s.variableHandles.create(regsScope)}
+		scopes = append(scopes, scopeRegisters)
+	}
 	response := &dap.ScopesResponse{
 		Response: *newResponse(request.Request),
 		Body:     dap.ScopesResponseBody{Scopes: scopes},
@@ -2204,6 +2256,17 @@ func (s *Session) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 			name := c.Name
 			if c.Flags&proc.VariableShadowed == proc.VariableShadowed {
 				name = fmt.Sprintf("(%s)", name)
+			}
+
+			if v.isScope && v.Name == "Registers" {
+				// Align all of the register names.
+				name = fmt.Sprintf("%6s", strings.ToLower(c.Name))
+				// Set the correct evaluate name for the register.
+				cfqname = fmt.Sprintf("_%s", strings.ToUpper(c.Name))
+				// Unquote the value
+				if ucvalue, err := strconv.Unquote(cvalue); err == nil {
+					cvalue = ucvalue
+				}
 			}
 
 			children[i] = dap.Variable{
@@ -2822,10 +2885,206 @@ func (s *Session) onReadMemoryRequest(request *dap.ReadMemoryRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onDisassembleRequest sends a not-yet-implemented error response.
-// Capability 'supportsDisassembleRequest' is not set 'initialize' response.
+var invalidInstruction = dap.DisassembledInstruction{
+	Address:     "out of bounds",
+	Instruction: "invalid instruction",
+}
+
+// onDisassembleRequest handles 'disassemble' requests.
+// Capability 'supportsDisassembleRequest' is set in 'initialize' response.
 func (s *Session) onDisassembleRequest(request *dap.DisassembleRequest) {
-	s.sendNotYetImplementedErrorResponse(request.Request)
+	// If the requested memory address is an invalid location, return all invalid instructions.
+	// TODO(suzmue): consider adding fake addresses that would allow us to receive out of bounds
+	// requests that include valid instructions designated by InstructionOffset or InstructionCount.
+	if request.Arguments.MemoryReference == invalidInstruction.Address {
+		instructions := make([]dap.DisassembledInstruction, request.Arguments.InstructionCount)
+		for i := range instructions {
+			instructions[i] = invalidInstruction
+		}
+		response := &dap.DisassembleResponse{
+			Response: *newResponse(request.Request),
+			Body: dap.DisassembleResponseBody{
+				Instructions: instructions,
+			},
+		}
+		s.send(response)
+		return
+	}
+	// TODO(suzmue): microsoft/vscode#129655 is discussing the difference between
+	// memory reference and instructionPointerReference, which are currently
+	// being used interchangeably by vscode.
+	addr, err := strconv.ParseInt(request.Arguments.MemoryReference, 0, 64)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToDisassemble, "Unable to disassemble", err.Error())
+		return
+	}
+
+	start := uint64(addr)
+	maxInstructionLength := s.debugger.Target().BinInfo().Arch.MaxInstructionLength()
+	byteOffset := request.Arguments.InstructionOffset * maxInstructionLength
+	// Adjust the offset to include instructions before the requested address.
+	if byteOffset < 0 {
+		start = uint64(addr + int64(byteOffset))
+	}
+	// Adjust the number of instructions to include enough instructions after
+	// the requested address.
+	count := request.Arguments.InstructionCount
+	if byteOffset > 0 {
+		count += byteOffset
+	}
+	end := uint64(addr + int64(count*maxInstructionLength))
+
+	// Make sure the PCs are lined up with instructions.
+	start, end = alignPCs(s.debugger.Target().BinInfo(), start, end)
+
+	// Disassemble the instructions
+	procInstructions, err := s.debugger.Disassemble(-1, start, end)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToDisassemble, "Unable to disassemble", err.Error())
+		return
+	}
+
+	// Find the section of instructions that were requested.
+	procInstructions, offset, err := findInstructions(procInstructions, addr, request.Arguments.InstructionOffset, request.Arguments.InstructionCount)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToDisassemble, "Unable to disassemble", err.Error())
+		return
+	}
+
+	// Turn the given range of instructions into dap instructions.
+	instructions := make([]dap.DisassembledInstruction, request.Arguments.InstructionCount)
+	lastFile, lastLine := "", -1
+	for i := range instructions {
+		if i < offset || (i-offset) >= len(procInstructions) {
+			// i is not in a valid range.
+			instructions[i] = invalidInstruction
+			continue
+		}
+		instruction := api.ConvertAsmInstruction(procInstructions[i-offset], s.debugger.AsmInstructionText(&procInstructions[i-offset], proc.GoFlavour))
+		instructions[i] = dap.DisassembledInstruction{
+			Address:          fmt.Sprintf("%#x", instruction.Loc.PC),
+			InstructionBytes: fmt.Sprintf("%x", instruction.Bytes),
+			Instruction:      instruction.Text,
+		}
+		// Only set the location on the first instruction for a given line.
+		if instruction.Loc.File != lastFile || instruction.Loc.Line != lastLine {
+			instructions[i].Location = dap.Source{Path: instruction.Loc.File}
+			instructions[i].Line = instruction.Loc.Line
+			lastFile, lastLine = instruction.Loc.File, instruction.Loc.Line
+		}
+	}
+
+	response := &dap.DisassembleResponse{
+		Response: *newResponse(request.Request),
+		Body: dap.DisassembleResponseBody{
+			Instructions: instructions,
+		},
+	}
+	s.send(response)
+}
+
+func findInstructions(procInstructions []proc.AsmInstruction, addr int64, instructionOffset, count int) ([]proc.AsmInstruction, int, error) {
+	ref := sort.Search(len(procInstructions), func(i int) bool {
+		return procInstructions[i].Loc.PC >= uint64(addr)
+	})
+	if ref == len(procInstructions) || procInstructions[ref].Loc.PC != uint64(addr) {
+		return nil, -1, fmt.Errorf("could not find memory reference")
+	}
+	// offset is the number of instructions that should appear before the first instruction
+	// returned by findInstructions.
+	offset := 0
+	if ref+instructionOffset < 0 {
+		offset = -(ref + instructionOffset)
+	}
+	// Figure out the index to slice at.
+	startIdx := ref + instructionOffset
+	endIdx := ref + instructionOffset + count
+	if endIdx <= 0 || startIdx >= len(procInstructions) {
+		return []proc.AsmInstruction{}, 0, nil
+	}
+	// Adjust start and end to be inbounds.
+	if startIdx < 0 {
+		offset = -startIdx
+		startIdx = 0
+	}
+	if endIdx > len(procInstructions) {
+		endIdx = len(procInstructions)
+	}
+	return procInstructions[startIdx:endIdx], offset, nil
+}
+
+func alignPCs(bi *proc.BinaryInfo, start, end uint64) (uint64, uint64) {
+	// We want to find the function locations position that would enclose
+	// the range from start to end.
+	//
+	// Example:
+	//
+	// 0x0000	instruction (func1)
+	// 0x0004	instruction (func1)
+	// 0x0008	instruction (func1)
+	// 0x000c	nop
+	// 0x000e	nop
+	// 0x0000	nop
+	// 0x0002	nop
+	// 0x0004	instruction (func2)
+	// 0x0008	instruction (func2)
+	// 0x000c	instruction (func2)
+	//
+	// start values:
+	// < 0x0000			at func1.Entry	=	0x0000
+	// 0x0000-0x000b	at func1.Entry	=	0x0000
+	// 0x000c-0x0003	at func1.End	=	0x000c
+	// 0x0004-0x000f	at func2.Entry	=	0x0004
+	// > 0x000f			at func2.End	=	0x0010
+	//
+	// end values:
+	// < 0x0000			at func1.Entry	=	0x0000
+	// 0x0000-0x000b	at func1.End	=	0x0000
+	// 0x000c-0x0003	at func2.Entry	=	0x000c
+	// 0x0004-0x000f	at func2.End	=	0x0004
+	// > 0x000f			at func2.End	=	0x0004
+	// Handle start values:
+	fn := bi.PCToFunc(start)
+	if fn != nil {
+		// start is in a funcition.
+		start = fn.Entry
+	} else if b, pc := checkOutOfAddressSpace(start, bi); b {
+		start = pc
+	} else {
+		// Otherwise it must come after some function.
+		i := sort.Search(len(bi.Functions), func(i int) bool {
+			fn := bi.Functions[len(bi.Functions)-(i+1)]
+			return start >= fn.End
+		})
+		start = bi.Functions[len(bi.Functions)-(i+1)].Entry
+	}
+
+	// Handle end values:
+	if fn := bi.PCToFunc(end); fn != nil {
+		// end is in a funcition.
+		end = fn.End
+	} else if b, pc := checkOutOfAddressSpace(end, bi); b {
+		end = pc
+	} else {
+		// Otherwise it must come before some function.
+		i := sort.Search(len(bi.Functions), func(i int) bool {
+			fn := bi.Functions[i]
+			return end < fn.Entry
+		})
+		end = bi.Functions[i].Entry
+	}
+
+	return start, end
+}
+
+func checkOutOfAddressSpace(pc uint64, bi *proc.BinaryInfo) (bool, uint64) {
+	if pc < bi.Functions[0].Entry {
+		return true, bi.Functions[0].Entry
+	}
+	if pc >= bi.Functions[len(bi.Functions)-1].End {
+		return true, bi.Functions[len(bi.Functions)-1].End
+	}
+	return false, pc
 }
 
 // onCancelRequest sends a not-yet-implemented error response.

@@ -154,6 +154,7 @@ func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string)
 
 	p := newProcess(rrcmd.Process)
 	p.tracedir = tracedir
+	p.conn.useXcmd = true // 'rr' does not support the 'M' command which is what we would usually use to write memory, this is only important during function calls, in any other situation writing memory will fail anyway.
 	if deleteOnDetach {
 		p.onDetach = func() {
 			safeRemoveAll(p.tracedir)
