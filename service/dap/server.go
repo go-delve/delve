@@ -166,9 +166,9 @@ type Config struct {
 
 	// log is used for structured logging.
 	log *logrus.Entry
-	// stopTriggered is closed when the server is Stop()-ed.
+	// StopTriggered is closed when the server is Stop()-ed.
 	// Can be used to safeguard against duplicate shutdown sequences.
-	stopTriggered chan struct{}
+	StopTriggered chan struct{}
 }
 
 type process struct {
@@ -277,7 +277,7 @@ func NewServer(config *service.Config) *Server {
 		config: &Config{
 			Config:        config,
 			log:           logger,
-			stopTriggered: make(chan struct{}),
+			StopTriggered: make(chan struct{}),
 		},
 		listener: config.Listener,
 	}
@@ -286,7 +286,7 @@ func NewServer(config *service.Config) *Server {
 // NewSession creates a new client session that can handle DAP traffic.
 // It takes an open connection and provides a Close() method to shut it
 // down when the DAP session disconnects or a connection error occurs.
-func NewSession(conn io.ReadWriteCloser, config *Config) *Session {
+func NewSession(conn io.ReadWriteCloser, config *Config, debugger *debugger.Debugger) *Session {
 	if config.log == nil {
 		config.log = logflags.DAPLogger()
 	}
@@ -298,6 +298,7 @@ func NewSession(conn io.ReadWriteCloser, config *Config) *Session {
 		variableHandles:   newVariablesHandlesMap(),
 		args:              defaultArgs,
 		exceptionErr:      nil,
+		debugger:          debugger,
 	}
 }
 
@@ -328,11 +329,11 @@ func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) error {
 // connection. It shuts down the underlying debugger and kills the target
 // process if it was launched by it or stops the noDebug process.
 // This method mustn't be called more than once.
-// stopTriggered notifies other goroutines that stop is in progreess.
+// StopTriggered notifies other goroutines that stop is in progreess.
 func (s *Server) Stop() {
 	s.config.log.Debug("DAP server stopping...")
 	defer s.config.log.Debug("DAP server stopped")
-	close(s.config.stopTriggered)
+	close(s.config.StopTriggered)
 
 	if s.listener != nil {
 		// If run goroutine is blocked on accept, this will unblock it.
@@ -365,7 +366,7 @@ func (s *Session) Close() {
 	}
 	// Close client connection last, so other shutdown stages
 	// can send client notifications.
-	// Unless Stop() was called after read loop in serveDAPCodec()
+	// Unless Stop() was called after read loop in ServeDAPCodec()
 	// returned, this will result in a closed connection error
 	// on next read, breaking out the read loop andd
 	// allowing the run goroutinee to exit.
@@ -387,8 +388,8 @@ func (c *Config) triggerServerStop() {
 	// -- run goroutine: calls triggerServerStop()
 	// -- main goroutine: calls Stop()
 	// -- main goroutine: Stop() closes client connection (or client closed it)
-	// -- run goroutine: serveDAPCodec() gets "closed network connection"
-	// -- run goroutine: serveDAPCodec() returns and calls triggerServerStop()
+	// -- run goroutine: ServeDAPCodec() gets "closed network connection"
+	// -- run goroutine: ServeDAPCodec() returns and calls triggerServerStop()
 	if c.DisconnectChan != nil {
 		close(c.DisconnectChan)
 		c.DisconnectChan = nil
@@ -418,7 +419,7 @@ func (s *Server) Run() {
 		conn, err := s.listener.Accept() // listener is closed in Stop()
 		if err != nil {
 			select {
-			case <-s.config.stopTriggered:
+			case <-s.config.StopTriggered:
 			default:
 				s.config.log.Errorf("Error accepting client connection: %s\n", err)
 				s.config.triggerServerStop()
@@ -438,9 +439,9 @@ func (s *Server) Run() {
 
 func (s *Server) runSession(conn io.ReadWriteCloser) {
 	s.sessionMu.Lock()
-	s.session = NewSession(conn, s.config) // closed in Stop()
+	s.session = NewSession(conn, s.config, nil) // closed in Stop()
 	s.sessionMu.Unlock()
-	s.session.serveDAPCodec()
+	s.session.ServeDAPCodec()
 }
 
 // RunWithClient is similar to Run but works only with an already established
@@ -456,10 +457,10 @@ func (s *Server) RunWithClient(conn net.Conn) {
 	go s.runSession(conn)
 }
 
-// serveDAPCodec reads and decodes requests from the client
+// ServeDAPCodec reads and decodes requests from the client
 // until it encounters an error or EOF, when it sends
 // a disconnect signal and returns.
-func (s *Session) serveDAPCodec() {
+func (s *Session) ServeDAPCodec() {
 	// TODO(polina): defer-close conn/session like in serveJSONCodec
 	reader := bufio.NewReader(s.conn)
 	for {
@@ -475,7 +476,7 @@ func (s *Session) serveDAPCodec() {
 		if err != nil {
 			s.config.log.Debug("DAP error: ", err)
 			select {
-			case <-s.config.stopTriggered:
+			case <-s.config.StopTriggered:
 			default:
 				if err != io.EOF { // EOF means client closed connection
 					if decodeErr, ok := err.(*dap.DecodeProtocolMessageFieldError); ok {
@@ -1238,10 +1239,12 @@ func (s *Session) stopDebugSession(killProcess bool) error {
 // halt sends a halt request if the debuggee is running.
 // changeStateMu should be held when calling (*Server).halt.
 func (s *Session) halt() (*api.DebuggerState, error) {
+	s.config.log.Debug("halting")
 	// Only send a halt request if the debuggee is running.
 	if s.debugger.IsRunning() {
 		return s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 	}
+	s.config.log.Debug("process not running")
 	return s.debugger.State(false)
 }
 
