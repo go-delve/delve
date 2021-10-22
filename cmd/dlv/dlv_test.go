@@ -743,8 +743,8 @@ func TestRemoteDAPClient(t *testing.T) {
 	client.ExpectOutputEventDetaching(t)
 	client.ExpectDisconnectResponse(t)
 	client.ExpectTerminatedEvent(t)
-	if _, err := client.ReadMessage(); err != io.EOF {
-		t.Errorf("got %q, want \"EOF\"\n", err)
+	if _, err := client.ReadMessage(); err == nil {
+		t.Error("expected read error upon shutdown")
 	}
 	client.Close()
 	cmd.Wait()
@@ -858,8 +858,8 @@ func TestRemoteDAPClientAfterContinue(t *testing.T) {
 	c.ExpectOutputEventDetachingKill(t)
 	c.ExpectDisconnectResponse(t)
 	c.ExpectTerminatedEvent(t)
-	if _, err := c.ReadMessage(); err != io.EOF {
-		t.Errorf("got %q, want \"EOF\"\n", err)
+	if _, err := c.ReadMessage(); err == nil {
+		t.Error("expected read error upon shutdown")
 	}
 	c.Close()
 	cmd.Wait()
