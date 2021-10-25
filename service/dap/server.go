@@ -3546,6 +3546,9 @@ func (s *Session) stoppedGs(state *api.DebuggerState) (gs []int) {
 	}
 	for _, th := range state.Threads {
 		// Some threads may be stopped on a hardcoded breakpoint.
+		// TODO(suzmue): This is a workaround for detecting hard coded breakpoints,
+		// though this check is likely not sufficient. It would be better to resolve
+		// this in the debugger layer instead.
 		if th.Function.Name() == "runtime.breakpoint" {
 			gs = append(gs, th.GoroutineID)
 			continue
