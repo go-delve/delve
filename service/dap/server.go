@@ -178,6 +178,9 @@ type process struct {
 
 // launchAttachArgs captures arguments from launch/attach request that
 // impact handling of subsequent requests.
+// The fields with yaml tag can be updated through an evaluation request.
+// TODO(suzmue): consider using a mechanism besides a yaml tag to determine
+// the names and whether to include the field in the 'dlv config' responses.
 type launchAttachArgs struct {
 	// stopOnEntry is set to automatically stop the debugee after start.
 	stopOnEntry bool
