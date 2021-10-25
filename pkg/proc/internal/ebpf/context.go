@@ -13,6 +13,7 @@ type UProbeArgMap struct {
 	Kind   reflect.Kind // Kind of variable.
 	Pieces []int        // Pieces of the variables as stored in registers.
 	InReg  bool         // True if this param is contained in a register.
+	Ret    bool         // True if this param is a return value.
 }
 
 type RawUProbeParam struct {
@@ -26,7 +27,8 @@ type RawUProbeParam struct {
 }
 
 type RawUProbeParams struct {
-	FnAddr      int
-	GoroutineID int
-	InputParams []*RawUProbeParam
+	FnAddr       int
+	GoroutineID  int
+	InputParams  []*RawUProbeParam
+	ReturnParams []*RawUProbeParam
 }

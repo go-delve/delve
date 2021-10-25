@@ -871,7 +871,7 @@ func TestTraceEBPF(t *testing.T) {
 	dlvbin, tmpdir := getDlvBinEBPF(t)
 	defer os.RemoveAll(tmpdir)
 
-	expected := []byte("> (1) main.foo(99, 9801)\n")
+	expected := []byte("> (1) main.foo(99, 9801)\n=> \"9900\"")
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(tmpdir, "__debug"), filepath.Join(fixtures, "issue573.go"), "foo")

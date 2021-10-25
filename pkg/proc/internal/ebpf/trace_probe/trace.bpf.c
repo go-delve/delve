@@ -124,9 +124,9 @@ int parse_param(struct pt_regs *ctx, function_parameter_t *param) {
     // a slice we will need some further processing below.
     int ret = 0;
     if (param->in_reg) {
-        parse_param_registers(ctx, param);
+        ret = parse_param_registers(ctx, param);
     } else {
-        parse_param_stack(ctx, param);
+        ret = parse_param_stack(ctx, param);
     }
     if (ret != 0) {
         return ret;
@@ -176,11 +176,30 @@ int get_goroutine_id(function_parameter_list_t *parsed_args) {
     return 1;
 }
 
+__always_inline
+void parse_params(struct pt_regs *ctx, unsigned int n_params, function_parameter_t params[6]) {
+    // Since we cannot loop in eBPF programs let's take adavantage of the
+    // fact that in C switch cases will pass through automatically.
+    switch (n_params) {
+        case 6:
+            parse_param(ctx, &params[5]);
+        case 5:
+            parse_param(ctx, &params[4]);
+        case 4:
+            parse_param(ctx, &params[3]);
+        case 3:
+            parse_param(ctx, &params[2]);
+        case 2:
+            parse_param(ctx, &params[1]);
+        case 1:
+            parse_param(ctx, &params[0]);
+    }
+}
+
 SEC("uprobe/dlv_trace")
 int uprobe__dlv_trace(struct pt_regs *ctx) {
     function_parameter_list_t *args;
     function_parameter_list_t *parsed_args;
-    function_parameter_t param;
     uint64_t key = ctx->ip;
 
     args = bpf_map_lookup_elem(&arg_map, &key);
@@ -192,28 +211,32 @@ int uprobe__dlv_trace(struct pt_regs *ctx) {
     if (!parsed_args) {
         return 1;
     }
-    memcpy(parsed_args, args, sizeof(function_parameter_list_t));
+
+    // Initialize the parsed_args struct.
+    parsed_args->goid_offset = args->goid_offset;
+    parsed_args->g_addr_offset = args->g_addr_offset;
+    parsed_args->goroutine_id = args->goroutine_id;
+    parsed_args->fn_addr = args->fn_addr;
+    parsed_args->n_parameters = args->n_parameters;
+    parsed_args->n_ret_parameters = args->n_ret_parameters;
+    memcpy(parsed_args->params, args->params, sizeof(args->params));
+    memcpy(parsed_args->ret_params, args->ret_params, sizeof(args->ret_params));
 
     if (!get_goroutine_id(parsed_args)) {
         bpf_ringbuf_discard(parsed_args, 0);
         return 1;
     }
 
-    // Since we cannot loop in eBPF programs let's take adavantage of the
-    // fact that in C switch cases will pass through automatically.
-    switch (args->n_parameters) {
-        case 6:
-            parse_param(ctx, &parsed_args->params[5]);
-        case 5:
-            parse_param(ctx, &parsed_args->params[4]);
-        case 4:
-            parse_param(ctx, &parsed_args->params[3]);
-        case 3:
-            parse_param(ctx, &parsed_args->params[2]);
-        case 2:
-            parse_param(ctx, &parsed_args->params[1]);
-        case 1:
-            parse_param(ctx, &parsed_args->params[0]);
+    if (!args->is_ret) {
+        // In uprobe at function entry.
+
+        // Parse input parameters.
+        parse_params(ctx, args->n_parameters, parsed_args->params);
+    } else {
+        // We are now stopped at the RET instruction for this function.
+
+        // Parse output parameters.
+        parse_params(ctx, args->n_ret_parameters, parsed_args->ret_params);
     }
 
     bpf_ringbuf_submit(parsed_args, 0);

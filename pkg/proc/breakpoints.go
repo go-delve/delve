@@ -494,7 +494,6 @@ func (t *Target) SetEBPFTracepoint(fnName string) error {
 	}
 	// Start putting together the argument map. This will tell the eBPF program
 	// all of the arguments we want to trace and how to find them.
-	var args []ebpf.UProbeArgMap
 	fn, ok := t.BinInfo().LookupFunc[fnName]
 	if !ok {
 		return fmt.Errorf("could not find function %s", fnName)
@@ -533,16 +532,14 @@ func (t *Target) SetEBPFTracepoint(fnName string) error {
 	}
 	_, l, _ := t.BinInfo().PCToLine(fn.Entry)
 
+	var args []ebpf.UProbeArgMap
 	varEntries := reader.Variables(dwarfTree, fn.Entry, l, variablesFlags)
 	for _, entry := range varEntries {
-		isret, _ := entry.Val(dwarf.AttrVarParam).(bool)
-		if isret {
-			continue
-		}
 		_, dt, err := readVarEntry(entry.Tree, fn.cu.image)
 		if err != nil {
 			return err
 		}
+
 		offset, pieces, _, err := t.BinInfo().Location(entry, dwarf.AttrLocation, fn.Entry, op.DwarfRegisters{}, nil)
 		if err != nil {
 			return err
@@ -553,8 +550,16 @@ func (t *Target) SetEBPFTracepoint(fnName string) error {
 				paramPieces = append(paramPieces, int(piece.Val))
 			}
 		}
+		isret, _ := entry.Val(dwarf.AttrVarParam).(bool)
 		offset += int64(t.BinInfo().Arch.PtrSize())
-		args = append(args, ebpf.UProbeArgMap{Offset: offset, Size: dt.Size(), Kind: dt.Common().ReflectKind, Pieces: paramPieces, InReg: len(pieces) > 0})
+		args = append(args, ebpf.UProbeArgMap{
+			Offset: offset,
+			Size:   dt.Size(),
+			Kind:   dt.Common().ReflectKind,
+			Pieces: paramPieces,
+			InReg:  len(pieces) > 0,
+			Ret:    isret,
+		})
 	}
 
 	// Finally, set the uprobe on the function.
