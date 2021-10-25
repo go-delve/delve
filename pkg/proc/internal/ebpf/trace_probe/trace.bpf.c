@@ -177,7 +177,7 @@ int get_goroutine_id(function_parameter_list_t *parsed_args) {
 }
 
 __always_inline
-void parse_params(struct pt_regs *ctx, unsigned int n_params, function_parameter_t params[6], bool ret) {
+void parse_params(struct pt_regs *ctx, unsigned int n_params, function_parameter_t params[6]) {
     // Since we cannot loop in eBPF programs let's take adavantage of the
     // fact that in C switch cases will pass through automatically.
     switch (n_params) {
@@ -231,12 +231,12 @@ int uprobe__dlv_trace(struct pt_regs *ctx) {
         // In uprobe at function entry.
 
         // Parse input parameters.
-        parse_params(ctx, args->n_parameters, parsed_args->params, false);
+        parse_params(ctx, args->n_parameters, parsed_args->params);
     } else {
         // We are now stopped at the RET instruction for this function.
 
         // Parse output parameters.
-        parse_params(ctx, args->n_ret_parameters, parsed_args->ret_params, true);
+        parse_params(ctx, args->n_ret_parameters, parsed_args->ret_params);
     }
 
     bpf_ringbuf_submit(parsed_args, 0);
