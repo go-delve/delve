@@ -24,8 +24,10 @@ import (
 	"github.com/go-delve/delve/pkg/goversion"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/pkg/terminal"
+	"github.com/go-delve/delve/service/dap"
 	"github.com/go-delve/delve/service/dap/daptest"
 	"github.com/go-delve/delve/service/rpc2"
+	godap "github.com/google/go-dap"
 	"golang.org/x/tools/go/packages"
 )
 
@@ -52,6 +54,7 @@ func TestMain(m *testing.M) {
 }
 
 func assertNoError(err error, t testing.TB, s string) {
+	t.Helper()
 	if err != nil {
 		_, file, line, _ := runtime.Caller(1)
 		fname := filepath.Base(file)
@@ -647,8 +650,8 @@ func TestTypecheckRPC(t *testing.T) {
 	}
 }
 
-// TestDap verifies that a dap server can be started and shut down.
-func TestDap(t *testing.T) {
+// TestDAPCmd verifies that a dap server can be started and shut down.
+func TestDAPCmd(t *testing.T) {
 	const listenAddr = "127.0.0.1:40575"
 
 	dlvbin, tmpdir := getDlvBin(t)
@@ -691,8 +694,179 @@ func TestDap(t *testing.T) {
 	cmd.Wait()
 }
 
-// TestDapWithClient tests dlv dap --client-addr can be started and shut down.
-func TestDapWithClient(t *testing.T) {
+func newDAPRemoteClient(t *testing.T, addr string) *daptest.Client {
+	c := daptest.NewClient(addr)
+	c.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
+	c.ExpectInitializedEvent(t)
+	c.ExpectAttachResponse(t)
+	c.ConfigurationDoneRequest()
+	c.ExpectStoppedEvent(t)
+	c.ExpectConfigurationDoneResponse(t)
+	return c
+}
+
+func TestRemoteDAPClient(t *testing.T) {
+	const listenAddr = "127.0.0.1:40576"
+
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
+	cmd := exec.Command(dlvbin, "debug", "--headless", "--log-output=dap", "--log", "--listen", listenAddr)
+	cmd.Dir = buildtestdir
+	stdout, err := cmd.StdoutPipe()
+	assertNoError(err, t, "stdout pipe")
+	defer stdout.Close()
+	stderr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer stderr.Close()
+	assertNoError(cmd.Start(), t, "start headless instance")
+
+	scanOut := bufio.NewScanner(stdout)
+	scanErr := bufio.NewScanner(stderr)
+	// Wait for the debug server to start
+	scanOut.Scan()
+	t.Log(scanOut.Text())
+	go func() { // Capture logging
+		for scanErr.Scan() {
+			t.Log(scanErr.Text())
+		}
+	}()
+
+	client := newDAPRemoteClient(t, listenAddr)
+	client.ContinueRequest(1)
+	client.ExpectContinueResponse(t)
+	client.ExpectTerminatedEvent(t)
+
+	client.DisconnectRequest()
+	client.ExpectOutputEventProcessExited(t, 0)
+	client.ExpectOutputEventDetaching(t)
+	client.ExpectDisconnectResponse(t)
+	client.ExpectTerminatedEvent(t)
+	if _, err := client.ReadMessage(); err == nil {
+		t.Error("expected read error upon shutdown")
+	}
+	client.Close()
+	cmd.Wait()
+}
+
+func closeDAPRemoteMultiClient(t *testing.T, c *daptest.Client) {
+	c.DisconnectRequest()
+	c.ExpectOutputEventClosingClient(t)
+	c.ExpectDisconnectResponse(t)
+	c.ExpectTerminatedEvent(t)
+	c.Close()
+	time.Sleep(10 * time.Millisecond)
+}
+
+func TestRemoteDAPClientMulti(t *testing.T) {
+	const listenAddr = "127.0.0.1:40577"
+
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
+	cmd := exec.Command(dlvbin, "debug", "--headless", "--accept-multiclient", "--log-output=debugger", "--log", "--listen", listenAddr)
+	cmd.Dir = buildtestdir
+	stdout, err := cmd.StdoutPipe()
+	assertNoError(err, t, "stdout pipe")
+	defer stdout.Close()
+	stderr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer stderr.Close()
+	assertNoError(cmd.Start(), t, "start headless instance")
+
+	scanOut := bufio.NewScanner(stdout)
+	scanErr := bufio.NewScanner(stderr)
+	// Wait for the debug server to start
+	scanOut.Scan()
+	t.Log(scanOut.Text())
+	go func() { // Capture logging
+		for scanErr.Scan() {
+			t.Log(scanErr.Text())
+		}
+	}()
+
+	// Client 1 connects and continues to main.main
+	dapclient := newDAPRemoteClient(t, listenAddr)
+	dapclient.SetFunctionBreakpointsRequest([]godap.FunctionBreakpoint{{Name: "main.main"}})
+	dapclient.ExpectSetFunctionBreakpointsResponse(t)
+	dapclient.ContinueRequest(1)
+	dapclient.ExpectContinueResponse(t)
+	dapclient.ExpectStoppedEvent(t)
+	dapclient.CheckStopLocation(t, 1, "main.main", 5)
+	closeDAPRemoteMultiClient(t, dapclient)
+
+	// Client 2 reconnects at main.main and continues to process exit
+	dapclient2 := newDAPRemoteClient(t, listenAddr)
+	dapclient2.CheckStopLocation(t, 1, "main.main", 5)
+	dapclient2.ContinueRequest(1)
+	dapclient2.ExpectContinueResponse(t)
+	dapclient2.ExpectTerminatedEvent(t)
+	closeDAPRemoteMultiClient(t, dapclient2)
+
+	// Attach to exited processs is an error
+	dapclient3 := daptest.NewClient(listenAddr)
+	dapclient3.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
+	dapclient3.ExpectErrorResponseWith(t, dap.FailedToAttach, `Process \d+ has exited with status 0`, true)
+	closeDAPRemoteMultiClient(t, dapclient3)
+
+	// But rpc clients can still connect and restart
+	rpcclient := rpc2.NewClient(listenAddr)
+	if _, err := rpcclient.Restart(false); err != nil {
+		t.Errorf("error restarting with rpc client: %v", err)
+	}
+	if err := rpcclient.Detach(true); err != nil {
+		t.Fatalf("error detaching from headless instance: %v", err)
+	}
+	cmd.Wait()
+}
+
+func TestRemoteDAPClientAfterContinue(t *testing.T) {
+	const listenAddr = "127.0.0.1:40578"
+
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	fixture := protest.BuildFixture("loopprog", 0)
+	cmd := exec.Command(dlvbin, "exec", fixture.Path, "--headless", "--continue", "--accept-multiclient", "--log-output=debugger,dap", "--log", "--listen", listenAddr)
+	stdout, err := cmd.StdoutPipe()
+	assertNoError(err, t, "stdout pipe")
+	defer stdout.Close()
+	stderr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer stderr.Close()
+	assertNoError(cmd.Start(), t, "start headless instance")
+
+	scanOut := bufio.NewScanner(stdout)
+	scanErr := bufio.NewScanner(stderr)
+	// Wait for the debug server to start
+	scanOut.Scan() // "API server listening...""
+	t.Log(scanOut.Text())
+	// Wait for the program to start
+	scanOut.Scan() // "past main"
+	t.Log(scanOut.Text())
+
+	go func() { // Capture logging
+		for scanErr.Scan() {
+			t.Log(scanErr.Text())
+		}
+	}()
+
+	c := newDAPRemoteClient(t, listenAddr)
+	c.DisconnectRequestWithKillOption(true)
+	c.ExpectOutputEventDetachingKill(t)
+	c.ExpectDisconnectResponse(t)
+	c.ExpectTerminatedEvent(t)
+	if _, err := c.ReadMessage(); err == nil {
+		t.Error("expected read error upon shutdown")
+	}
+	c.Close()
+	cmd.Wait()
+}
+
+// TestDAPCmdWithClient tests dlv dap --client-addr can be started and shut down.
+func TestDAPCmdWithClient(t *testing.T) {
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatalf("cannot setup listener required for testing: %v", err)
@@ -871,7 +1045,7 @@ func TestTraceEBPF(t *testing.T) {
 	dlvbin, tmpdir := getDlvBinEBPF(t)
 	defer os.RemoveAll(tmpdir)
 
-	expected := []byte("> (1) main.foo(99, 9801)\n")
+	expected := []byte("> (1) main.foo(99, 9801)\n=> \"9900\"")
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(tmpdir, "__debug"), filepath.Join(fixtures, "issue573.go"), "foo")

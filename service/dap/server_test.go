@@ -4639,23 +4639,6 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 	})
 }
 
-func verifyStopLocation(t *testing.T, client *daptest.Client, thread int, name string, line int) {
-	t.Helper()
-
-	client.StackTraceRequest(thread, 0, 20)
-	st := client.ExpectStackTraceResponse(t)
-	if len(st.Body.StackFrames) < 1 {
-		t.Errorf("\ngot  %#v\nwant len(stackframes) => 1", st)
-	} else {
-		if line != -1 && st.Body.StackFrames[0].Line != line {
-			t.Errorf("\ngot  %#v\nwant Line=%d", st, line)
-		}
-		if st.Body.StackFrames[0].Name != name {
-			t.Errorf("\ngot  %#v\nwant Name=%q", st, name)
-		}
-	}
-}
-
 // checkStop covers the standard sequence of requests issued by
 // a client at a breakpoint or another non-terminal stop event.
 // The details have been tested by other tests,
@@ -4666,7 +4649,7 @@ func checkStop(t *testing.T, client *daptest.Client, thread int, fname string, l
 	client.ThreadsRequest()
 	client.ExpectThreadsResponse(t)
 
-	verifyStopLocation(t, client, thread, fname, line)
+	client.CheckStopLocation(t, thread, fname, line)
 
 	client.ScopesRequest(1000)
 	client.ExpectScopesResponse(t)
@@ -5191,7 +5174,7 @@ func TestPauseAndContinue(t *testing.T) {
 			fixture.Source, []int{6},
 			[]onBreakpoint{{
 				execute: func() {
-					verifyStopLocation(t, client, 1, "main.loop", 6)
+					client.CheckStopLocation(t, 1, "main.loop", 6)
 
 					// Continue resumes all goroutines, so thread id is ignored
 					client.ContinueRequest(12345)
@@ -6008,7 +5991,6 @@ func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *dapt
 	server, _ := startDAPServer(t, serverStopped)
 	client := daptest.NewClient(server.listener.Addr().String())
 	time.Sleep(100 * time.Millisecond) // Give time for connection to be set as dap.Session
-	// TODO(polina): update once the server interface is refactored to take debugger as arg
 	server.sessionMu.Lock()
 	if server.session == nil {
 		t.Fatal("DAP session is not ready")
@@ -6126,7 +6108,6 @@ func TestAttachRemoteMultiClient(t *testing.T) {
 			// DAP server doesn't support accept-multiclient, but we can use this
 			// hack to test the inner connection logic that can be used by a server that does.
 			server.session.config.AcceptMulti = true
-			// TODO(polina): update once the server interface is refactored to take debugger as arg
 			_, server.session.debugger = launchDebuggerWithTargetHalted(t, "increment")
 			server.sessionMu.Unlock()
 

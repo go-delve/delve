@@ -1,6 +1,7 @@
 package rpccommon
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"github.com/go-delve/delve/pkg/version"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
+	"github.com/go-delve/delve/service/dap"
 	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/internal/sameuser"
 	"github.com/go-delve/delve/service/rpc1"
@@ -156,13 +158,35 @@ func (s *ServerImpl) Run() error {
 				}
 			}
 
-			go s.serveJSONCodec(c)
+			go s.serveConnectionDemux(c)
 			if !s.config.AcceptMulti {
 				break
 			}
 		}
 	}()
 	return nil
+}
+
+type bufReadWriteCloser struct {
+	*bufio.Reader
+	io.WriteCloser
+}
+
+func (s *ServerImpl) serveConnectionDemux(c io.ReadWriteCloser) {
+	conn := &bufReadWriteCloser{bufio.NewReader(c), c}
+	b, err := conn.Peek(1)
+	if err != nil {
+		s.log.Warnf("error determining new connection protocol: %v", err)
+		return
+	}
+	if b[0] == 'C' { // C is for DAP's Content-Length
+		s.log.Debugf("serving DAP on new connection")
+		ds := dap.NewSession(conn, &dap.Config{Config: s.config, StopTriggered: s.stopChan}, s.debugger)
+		go ds.ServeDAPCodec()
+	} else {
+		s.log.Debugf("serving JSON-RPC on new connection")
+		go s.serveJSONCodec(conn)
+	}
 }
 
 // Precompute the reflect type for error.  Can't use error directly
