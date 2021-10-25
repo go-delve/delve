@@ -18,14 +18,14 @@ func TestListConfig(t *testing.T) {
 			args: args{
 				args: &launchAttachArgs{},
 			},
-			want: formatConfig(0, false, false, false, [][2]string{}, [][2]string{}),
+			want: formatConfig(0, false, false, false, [][2]string{}),
 		},
 		{
 			name: "default values",
 			args: args{
 				args: &defaultArgs,
 			},
-			want: formatConfig(50, false, false, false, [][2]string{}, [][2]string{}),
+			want: formatConfig(50, false, false, false, [][2]string{}),
 		},
 		{
 			name: "custom values",
@@ -37,118 +37,13 @@ func TestListConfig(t *testing.T) {
 					substitutePathServerToClient: [][2]string{{"world", "hello"}},
 				},
 			},
-			want: formatConfig(35, true, false, false, [][2]string{{"hello", "world"}}, [][2]string{{"world", "hello"}}),
+			want: formatConfig(35, true, false, false, [][2]string{{"hello", "world"}}),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := listConfig(tt.args.args); got != tt.want {
 				t.Errorf("listConfig() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func TestGetConfigureString(t *testing.T) {
-	type args struct {
-		sargs    *launchAttachArgs
-		cfgname  string
-		readonly []string
-	}
-	tests := []struct {
-		name string
-		args args
-		want string
-	}{
-		{
-			name: "basic bool",
-			args: args{
-				sargs: &launchAttachArgs{
-					stopOnEntry:                  false,
-					StackTraceDepth:              0,
-					ShowGlobalVariables:          true,
-					substitutePathClientToServer: [][2]string{},
-					substitutePathServerToClient: [][2]string{},
-				},
-				cfgname:  "showGlobalVariables",
-				readonly: []string{},
-			},
-			want: "showGlobalVariables	true\n",
-		},
-		{
-			name: "basic readonly",
-			args: args{
-				sargs: &launchAttachArgs{
-					stopOnEntry:                  false,
-					StackTraceDepth:              34,
-					ShowGlobalVariables:          true,
-					substitutePathClientToServer: [][2]string{},
-					substitutePathServerToClient: [][2]string{},
-				},
-				cfgname:  "stackTraceDepth",
-				readonly: []string{"stackTraceDepth"},
-			},
-			want: "stackTraceDepth	34 (read only)\n",
-		},
-		{
-			name: "substitute path print both",
-			args: args{
-				sargs: &launchAttachArgs{
-					stopOnEntry:                  false,
-					StackTraceDepth:              34,
-					ShowGlobalVariables:          true,
-					substitutePathClientToServer: [][2]string{},
-					substitutePathServerToClient: [][2]string{},
-				},
-				cfgname:  "substitutePath",
-				readonly: []string{"substitutePathReverse"},
-			},
-			want: "substitutePath	[]\nsubstitutePathReverse	[] (read only)\n",
-		},
-		{
-			name: "substitute path reverse print both",
-			args: args{
-				sargs: &launchAttachArgs{
-					stopOnEntry:                  false,
-					StackTraceDepth:              34,
-					ShowGlobalVariables:          true,
-					substitutePathClientToServer: [][2]string{},
-					substitutePathServerToClient: [][2]string{},
-				},
-				cfgname:  "substitutePathReverse",
-				readonly: []string{"substitutePathReverse"},
-			},
-			want: "substitutePath	[]\nsubstitutePathReverse	[] (read only)\n",
-		},
-		{
-			name: "empty",
-			args: args{
-				sargs:    &launchAttachArgs{},
-				cfgname:  "",
-				readonly: []string{},
-			},
-			want: "",
-		},
-		{
-			name: "invalid",
-			args: args{
-				sargs: &launchAttachArgs{
-					stopOnEntry:                  false,
-					StackTraceDepth:              0,
-					ShowGlobalVariables:          false,
-					substitutePathClientToServer: [][2]string{},
-					substitutePathServerToClient: [][2]string{},
-				},
-				cfgname:  "nonexistent",
-				readonly: []string{},
-			},
-			want: "",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := getConfigureString(tt.args.sargs, tt.args.cfgname, tt.args.readonly); got != tt.want {
-				t.Errorf("getConfigureString() = %v, want %v", got, tt.want)
 			}
 		})
 	}

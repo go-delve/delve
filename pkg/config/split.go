@@ -105,7 +105,7 @@ func ConfigureSetSimple(rest string, cfgname string, field reflect.Value) error 
 	return nil
 }
 
-func ConfigureList(w io.Writer, config interface{}, readonly []string) {
+func ConfigureList(w io.Writer, config interface{}) {
 	it := IterateConfiguration(config)
 	for it.Next() {
 		fieldName, field := it.Field()
@@ -113,19 +113,11 @@ func ConfigureList(w io.Writer, config interface{}, readonly []string) {
 			continue
 		}
 
-		writeField(w, field, fieldName, readonly)
+		writeField(w, field, fieldName)
 	}
 }
 
-func writeField(w io.Writer, field reflect.Value, fieldName string, readonly []string) {
-
-	var readOnlyMessage string
-	for _, f := range readonly {
-		if fieldName == f {
-			readOnlyMessage = " (read only)"
-		}
-	}
-
+func writeField(w io.Writer, field reflect.Value, fieldName string) {
 	switch field.Kind() {
 	case reflect.Interface:
 		switch field := field.Interface().(type) {
@@ -136,14 +128,14 @@ func writeField(w io.Writer, field reflect.Value, fieldName string, readonly []s
 		}
 	case reflect.Ptr:
 		if !field.IsNil() {
-			fmt.Fprintf(w, "%s\t%v%s\n", fieldName, field.Elem(), readOnlyMessage)
+			fmt.Fprintf(w, "%s\t%v\n", fieldName, field.Elem())
 		} else {
-			fmt.Fprintf(w, "%s%s\t<not defined>\n", fieldName, readOnlyMessage)
+			fmt.Fprintf(w, "%s\t<not defined>\n", fieldName)
 		}
 	case reflect.String:
-		fmt.Fprintf(w, "%s\t%q%s\n", fieldName, field, readOnlyMessage)
+		fmt.Fprintf(w, "%s\t%q\n", fieldName, field)
 	default:
-		fmt.Fprintf(w, "%s\t%v%s\n", fieldName, field, readOnlyMessage)
+		fmt.Fprintf(w, "%s\t%v\n", fieldName, field)
 	}
 }
 
@@ -174,7 +166,7 @@ func (it *configureIterator) Field() (name string, field reflect.Value) {
 	return
 }
 
-func ConfigureListByName(conf interface{}, name string, readonly []string) string {
+func ConfigureListByName(conf interface{}, name string) string {
 	if name == "" {
 		return ""
 	}
@@ -183,7 +175,7 @@ func ConfigureListByName(conf interface{}, name string, readonly []string) strin
 		fieldName, field := it.Field()
 		if fieldName == name {
 			var buf bytes.Buffer
-			writeField(&buf, field, fieldName, readonly)
+			writeField(&buf, field, fieldName)
 			return buf.String()
 		}
 	}

@@ -7,13 +7,9 @@ import (
 	"github.com/go-delve/delve/pkg/config"
 )
 
-var readOnlyConfiguration = []string{
-	"substitutePathReverse",
-}
-
 func listConfig(args *launchAttachArgs) string {
 	var buf bytes.Buffer
-	config.ConfigureList(&buf, args, readOnlyConfiguration)
+	config.ConfigureList(&buf, args)
 	return buf.String()
 }
 
@@ -33,7 +29,7 @@ func configureSet(sargs *launchAttachArgs, args string) (string, error) {
 
 	// If there were no arguments provided, just list the value.
 	if len(v) == 1 {
-		return getConfigureString(sargs, cfgname, readOnlyConfiguration), nil
+		return config.ConfigureListByName(sargs, cfgname), nil
 	}
 
 	if cfgname == "substitutePath" {
@@ -42,31 +38,14 @@ func configureSet(sargs *launchAttachArgs, args string) (string, error) {
 			return "", err
 		}
 		// Print the updated client to server and server to client maps.
-		return fmt.Sprintf("%s\nUpdated", getConfigureString(sargs, cfgname, readOnlyConfiguration)), nil
-	}
-
-	for _, f := range readOnlyConfiguration {
-		if cfgname == f {
-			return "", fmt.Errorf("%q is read only", cfgname)
-		}
+		return fmt.Sprintf("%s\nUpdated", config.ConfigureListByName(sargs, cfgname)), nil
 	}
 
 	err := config.ConfigureSetSimple(rest, cfgname, field)
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%s\nUpdated", getConfigureString(sargs, cfgname, readOnlyConfiguration)), nil
-}
-
-func getConfigureString(sargs *launchAttachArgs, cfgname string, readonly []string) string {
-	result := config.ConfigureListByName(sargs, cfgname, readonly)
-	if cfgname == "substitutePath" {
-		result += config.ConfigureListByName(sargs, "substitutePathReverse", readonly)
-	}
-	if cfgname == "substitutePathReverse" {
-		result = config.ConfigureListByName(sargs, "substitutePath", readonly) + result
-	}
-	return result
+	return fmt.Sprintf("%s\nUpdated", config.ConfigureListByName(sargs, cfgname)), nil
 }
 
 func configureSetSubstitutePath(args *launchAttachArgs, rest string) error {

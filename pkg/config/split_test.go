@@ -35,3 +35,67 @@ func TestSplitDoubleQuotedFields(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigureListByName(t *testing.T) {
+	type testConfig struct {
+		boolArg bool     `yaml:"bool-arg"`
+		listArg []string `yaml:"list-arg"`
+	}
+
+	type args struct {
+		sargs   *testConfig
+		cfgname string
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "basic bool",
+			args: args{
+				sargs: &testConfig{
+					boolArg: true,
+					listArg: []string{},
+				},
+				cfgname: "bool-arg",
+			},
+			want: "bool-arg	true\n",
+		},
+		{
+			name: "list arg",
+			args: args{
+				sargs: &testConfig{
+					boolArg: true,
+					listArg: []string{"item 1", "item 2"},
+				},
+
+				cfgname: "list-arg",
+			},
+			want: "list-arg	[item 1 item 2]\n",
+		},
+		{
+			name: "empty",
+			args: args{
+				sargs:   &testConfig{},
+				cfgname: "",
+			},
+			want: "",
+		},
+		{
+			name: "invalid",
+			args: args{
+				sargs:   &testConfig{},
+				cfgname: "nonexistent",
+			},
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ConfigureListByName(tt.args.sargs, tt.args.cfgname); got != tt.want {
+				t.Errorf("ConfigureListByName() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

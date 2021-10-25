@@ -195,7 +195,7 @@ type launchAttachArgs struct {
 	substitutePathClientToServer [][2]string `yaml:"substitutePath"`
 	// substitutePathServerToClient indicates rules for converting file paths between debugger and client.
 	// These must be directory paths.
-	substitutePathServerToClient [][2]string `yaml:"substitutePathReverse"`
+	substitutePathServerToClient [][2]string
 }
 
 // defaultArgs borrows the defaults for the arguments from the original vscode-go adapter.

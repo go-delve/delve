@@ -57,9 +57,8 @@ Type "help" followed by the name of a command for more information about it.`
 	Adds or removes a path substitution rule.`
 )
 
-// debugCommands returns a Commands struct with default commands defined.
+// debugCommands returns a list of commands with default commands defined.
 func debugCommands(s *Session) []command {
-
 	return []command{
 		{aliases: []string{"help", "h"}, cmdFn: s.helpMessage, helpMsg: msgHelp},
 		{aliases: []string{"config"}, cmdFn: s.evaluateConfig, helpMsg: msgConfig},

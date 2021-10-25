@@ -33,7 +33,7 @@ func configureCmd(t *Term, ctx callContext, args string) error {
 func configureList(t *Term) error {
 	w := new(tabwriter.Writer)
 	w.Init(os.Stdout, 0, 8, 1, ' ', 0)
-	config.ConfigureList(w, t.conf, nil)
+	config.ConfigureList(w, t.conf)
 	return w.Flush()
 }
 

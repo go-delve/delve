@@ -3657,15 +3657,14 @@ func TestEvaluateRequest(t *testing.T) {
 	})
 }
 
-func formatConfig(depth int, showGlobals, showRegisters, hideSystemGoroutines bool, substitutePath, reverse [][2]string) string {
+func formatConfig(depth int, showGlobals, showRegisters, hideSystemGoroutines bool, substitutePath [][2]string) string {
 	formatStr := `stackTraceDepth	%d
 showGlobalVariables	%v
 showRegisters	%v
 hideSystemGoroutines	%v
 substitutePath	%v
-substitutePathReverse	%v (read only)
 `
-	return fmt.Sprintf(formatStr, depth, showGlobals, showRegisters, hideSystemGoroutines, substitutePath, reverse)
+	return fmt.Sprintf(formatStr, depth, showGlobals, showRegisters, hideSystemGoroutines, substitutePath)
 }
 
 func TestEvaluateCommandRequest(t *testing.T) {
@@ -3698,7 +3697,7 @@ Type help followed by a command for full documentation.
 					// Test config.
 					client.EvaluateRequest("dlv config -list", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, formatConfig(50, false, false, false, [][2]string{}, [][2]string{}), noChildren)
+					checkEval(t, got, formatConfig(50, false, false, false, [][2]string{}), noChildren)
 
 					// Read and modify showGlobalVariables.
 					client.EvaluateRequest("dlv config showGlobalVariables", 1000, "repl")
@@ -3718,7 +3717,7 @@ Type help followed by a command for full documentation.
 
 					client.EvaluateRequest("dlv config -list", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, formatConfig(50, true, false, false, [][2]string{}, [][2]string{}), noChildren)
+					checkEval(t, got, formatConfig(50, true, false, false, [][2]string{}), noChildren)
 
 					client.ScopesRequest(1000)
 					scopes = client.ExpectScopesResponse(t)
@@ -3731,24 +3730,21 @@ Type help followed by a command for full documentation.
 					// Read and modify substitutePath.
 					client.EvaluateRequest("dlv config substitutePath", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, "substitutePath\t[]\nsubstitutePathReverse\t[] (read only)\n", noChildren)
+					checkEval(t, got, "substitutePath\t[]\n", noChildren)
 
 					client.EvaluateRequest(fmt.Sprintf("dlv config substitutePath %q %q", "my/client/path", "your/server/path"), 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, "substitutePath\t[[my/client/path your/server/path]]\nsubstitutePathReverse\t[[your/server/path my/client/path]] (read only)\n\nUpdated", noChildren)
+					checkEval(t, got, "substitutePath\t[[my/client/path your/server/path]]\n\nUpdated", noChildren)
 
 					client.EvaluateRequest(fmt.Sprintf("dlv config substitutePath %q %q", "my/client/path", "new/your/server/path"), 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, "substitutePath\t[[my/client/path new/your/server/path]]\nsubstitutePathReverse\t[[new/your/server/path my/client/path]] (read only)\n\nUpdated", noChildren)
+					checkEval(t, got, "substitutePath\t[[my/client/path new/your/server/path]]\n\nUpdated", noChildren)
 
 					client.EvaluateRequest(fmt.Sprintf("dlv config substitutePath %q", "my/client/path"), 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, "substitutePath\t[]\nsubstitutePathReverse\t[] (read only)\n\nUpdated", noChildren)
+					checkEval(t, got, "substitutePath\t[]\n\nUpdated", noChildren)
 
 					// Test bad inputs.
-					client.EvaluateRequest("dlv config substitutePathReverse server/path client/path", 1000, "repl") // read only
-					client.ExpectErrorResponse(t)
-
 					client.EvaluateRequest("dlv help bad", 1000, "repl")
 					client.ExpectErrorResponse(t)
 
