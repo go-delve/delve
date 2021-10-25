@@ -53,4 +53,12 @@ echo "$GOROOT"
 echo "$GOPATH"
 cd delve
 
+# Starting with go1.18 'go build' and 'go run' will try to stamp the build
+# with the current VCS revision, which does not work with TeamCity
+if [ "$version" = "gotip" ]; then
+	export GOFLAGS=-buildvcs=false
+elif [ ${version:4} -gt 17 ]; then
+	export GOFLAGS=-buildvcs=false
+fi
+
 make test

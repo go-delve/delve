@@ -166,9 +166,9 @@ type Config struct {
 
 	// log is used for structured logging.
 	log *logrus.Entry
-	// stopTriggered is closed when the server is Stop()-ed.
+	// StopTriggered is closed when the server is Stop()-ed.
 	// Can be used to safeguard against duplicate shutdown sequences.
-	stopTriggered chan struct{}
+	StopTriggered chan struct{}
 }
 
 type process struct {
@@ -185,6 +185,11 @@ type launchAttachArgs struct {
 	stackTraceDepth int
 	// showGlobalVariables indicates if global package variables should be loaded.
 	showGlobalVariables bool
+	// hideSystemGoroutines indicates if system goroutines should be removed from threads
+	// responses.
+	hideSystemGoroutines bool
+	// showRegisters indicates if register values should be loaded.
+	showRegisters bool
 	// substitutePathClientToServer indicates rules for converting file paths between client and debugger.
 	// These must be directory paths.
 	substitutePathClientToServer [][2]string
@@ -200,6 +205,8 @@ var defaultArgs = launchAttachArgs{
 	stopOnEntry:                  false,
 	stackTraceDepth:              50,
 	showGlobalVariables:          false,
+	hideSystemGoroutines:         false,
+	showRegisters:                false,
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
 }
@@ -270,7 +277,7 @@ func NewServer(config *service.Config) *Server {
 		config: &Config{
 			Config:        config,
 			log:           logger,
-			stopTriggered: make(chan struct{}),
+			StopTriggered: make(chan struct{}),
 		},
 		listener: config.Listener,
 	}
@@ -279,13 +286,13 @@ func NewServer(config *service.Config) *Server {
 // NewSession creates a new client session that can handle DAP traffic.
 // It takes an open connection and provides a Close() method to shut it
 // down when the DAP session disconnects or a connection error occurs.
-func NewSession(conn io.ReadWriteCloser, config *Config) *Session {
+func NewSession(conn io.ReadWriteCloser, config *Config, debugger *debugger.Debugger) *Session {
 	if config.log == nil {
 		config.log = logflags.DAPLogger()
 	}
 	config.log.Debug("DAP connection started")
-	if config.stopTriggered == nil {
-		config.log.Fatal("Session must be configured with stopTriggered")
+	if config.StopTriggered == nil {
+		config.log.Fatal("Session must be configured with StopTriggered")
 	}
 	return &Session{
 		config:            config,
@@ -294,6 +301,7 @@ func NewSession(conn io.ReadWriteCloser, config *Config) *Session {
 		variableHandles:   newVariablesHandlesMap(),
 		args:              defaultArgs,
 		exceptionErr:      nil,
+		debugger:          debugger,
 	}
 }
 
@@ -305,6 +313,8 @@ func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) error {
 		s.args.stackTraceDepth = depth
 	}
 	s.args.showGlobalVariables = args.ShowGlobalVariables
+	s.args.hideSystemGoroutines = args.HideSystemGoroutines
+	s.args.showRegisters = args.ShowRegisters
 	if paths := args.SubstitutePath; len(paths) > 0 {
 		clientToServer := make([][2]string, 0, len(paths))
 		serverToClient := make([][2]string, 0, len(paths))
@@ -322,11 +332,11 @@ func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) error {
 // connection. It shuts down the underlying debugger and kills the target
 // process if it was launched by it or stops the noDebug process.
 // This method mustn't be called more than once.
-// stopTriggered notifies other goroutines that stop is in progreess.
+// StopTriggered notifies other goroutines that stop is in progreess.
 func (s *Server) Stop() {
 	s.config.log.Debug("DAP server stopping...")
 	defer s.config.log.Debug("DAP server stopped")
-	close(s.config.stopTriggered)
+	close(s.config.StopTriggered)
 
 	if s.listener != nil {
 		// If run goroutine is blocked on accept, this will unblock it.
@@ -361,7 +371,7 @@ func (s *Session) Close() {
 	}
 	// Close client connection last, so other shutdown stages
 	// can send client notifications.
-	// Unless Stop() was called after read loop in serveDAPCodec()
+	// Unless Stop() was called after read loop in ServeDAPCodec()
 	// returned, this will result in a closed connection error
 	// on next read, breaking out the read loop andd
 	// allowing the run goroutinee to exit.
@@ -413,7 +423,7 @@ func (s *Server) Run() {
 		conn, err := s.listener.Accept() // listener is closed in Stop()
 		if err != nil {
 			select {
-			case <-s.config.stopTriggered:
+			case <-s.config.StopTriggered:
 			default:
 				s.config.log.Errorf("Error accepting client connection: %s\n", err)
 				s.config.triggerServerStop()
@@ -433,9 +443,9 @@ func (s *Server) Run() {
 
 func (s *Server) runSession(conn io.ReadWriteCloser) {
 	s.sessionMu.Lock()
-	s.session = NewSession(conn, s.config) // closed in Stop()
+	s.session = NewSession(conn, s.config, nil) // closed in Stop()
 	s.sessionMu.Unlock()
-	s.session.serveDAPCodec()
+	s.session.ServeDAPCodec()
 }
 
 // RunWithClient is similar to Run but works only with an already established
@@ -451,12 +461,12 @@ func (s *Server) RunWithClient(conn net.Conn) {
 	go s.runSession(conn)
 }
 
-// serveDAPCodec reads and decodes requests from the client
+// ServeDAPCodec reads and decodes requests from the client
 // until it encounters an error or EOF, when it sends
 // a disconnect signal and returns.
-func (s *Session) serveDAPCodec() {
+func (s *Session) ServeDAPCodec() {
 	// Close conn, but not the debugger in case we are in AcceptMuli mode.
-	// If not, it will be shut down in Stop().
+	// If not, debugger will be shut down in Stop().
 	defer s.conn.Close()
 	reader := bufio.NewReader(s.conn)
 	for {
@@ -472,7 +482,7 @@ func (s *Session) serveDAPCodec() {
 		if err != nil {
 			s.config.log.Debug("DAP error: ", err)
 			select {
-			case <-s.config.stopTriggered:
+			case <-s.config.StopTriggered:
 			default:
 				if !s.config.AcceptMulti {
 					defer s.config.triggerServerStop()
@@ -1245,10 +1255,12 @@ func (s *Session) stopDebugSession(killProcess bool) error {
 // halt sends a halt request if the debuggee is running.
 // changeStateMu should be held when calling (*Server).halt.
 func (s *Session) halt() (*api.DebuggerState, error) {
+	s.config.log.Debug("halting")
 	// Only send a halt request if the debuggee is running.
 	if s.debugger.IsRunning() {
 		return s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 	}
+	s.config.log.Debug("process not running")
 	return s.debugger.State(false)
 }
 
@@ -1589,6 +1601,12 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 	var next int
 	if s.debugger != nil {
 		gs, next, err = s.debugger.Goroutines(0, maxGoroutines)
+		if err == nil && s.args.hideSystemGoroutines {
+			gs = s.debugger.FilterGoroutines(gs, []api.ListGoroutinesFilter{{
+				Kind:    api.GoroutineUser,
+				Negated: false,
+			}})
+		}
 	}
 
 	var threads []dap.Thread
@@ -2027,6 +2045,27 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 		scopeGlobals := dap.Scope{Name: globScope.Name, VariablesReference: s.variableHandles.create(globScope)}
 		scopes = append(scopes, scopeGlobals)
 	}
+
+	if s.args.showRegisters {
+		// Retrieve registers
+		regs, err := s.debugger.ScopeRegisters(goid, frame, 0, false)
+		if err != nil {
+			s.sendErrorResponse(request.Request, UnableToListRegisters, "Unable to list registers", err.Error())
+			return
+		}
+		outRegs := api.ConvertRegisters(regs, s.debugger.DwarfRegisterToString, false)
+		regsVar := make([]proc.Variable, len(outRegs))
+		for i, r := range outRegs {
+			regsVar[i] = proc.Variable{
+				Name:  r.Name,
+				Value: constant.MakeString(r.Value),
+				Kind:  reflect.Kind(proc.VariableConstant),
+			}
+		}
+		regsScope := &fullyQualifiedVariable{&proc.Variable{Name: "Registers", Children: regsVar}, "", true, 0}
+		scopeRegisters := dap.Scope{Name: regsScope.Name, VariablesReference: s.variableHandles.create(regsScope)}
+		scopes = append(scopes, scopeRegisters)
+	}
 	response := &dap.ScopesResponse{
 		Response: *newResponse(request.Request),
 		Body:     dap.ScopesResponseBody{Scopes: scopes},
@@ -2237,6 +2276,17 @@ func (s *Session) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 			name := c.Name
 			if c.Flags&proc.VariableShadowed == proc.VariableShadowed {
 				name = fmt.Sprintf("(%s)", name)
+			}
+
+			if v.isScope && v.Name == "Registers" {
+				// Align all of the register names.
+				name = fmt.Sprintf("%6s", strings.ToLower(c.Name))
+				// Set the correct evaluate name for the register.
+				cfqname = fmt.Sprintf("_%s", strings.ToUpper(c.Name))
+				// Unquote the value
+				if ucvalue, err := strconv.Unquote(cvalue); err == nil {
+					cvalue = ucvalue
+				}
 			}
 
 			children[i] = dap.Variable{

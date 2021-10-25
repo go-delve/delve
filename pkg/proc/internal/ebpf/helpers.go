@@ -6,6 +6,7 @@ package ebpf
 // #include "./trace_probe/function_vals.bpf.h"
 import "C"
 import (
+	"debug/elf"
 	_ "embed"
 	"encoding/binary"
 	"errors"
@@ -51,11 +52,11 @@ func (ctx *EBPFContext) AttachUprobe(pid int, name string, offset uint32) error 
 	return err
 }
 
-func (ctx *EBPFContext) UpdateArgMap(key uint64, goidOffset int64, args []UProbeArgMap, gAddrOffset uint64) error {
+func (ctx *EBPFContext) UpdateArgMap(key uint64, goidOffset int64, args []UProbeArgMap, gAddrOffset uint64, isret bool) error {
 	if ctx.bpfArgMap == nil {
 		return errors.New("eBPF map not loaded")
 	}
-	params := createFunctionParameterList(key, goidOffset, args)
+	params := createFunctionParameterList(key, goidOffset, args, isret)
 	params.g_addr_offset = C.longlong(gAddrOffset)
 	return ctx.bpfArgMap.Update(unsafe.Pointer(&key), unsafe.Pointer(&params))
 }
@@ -82,7 +83,7 @@ func LoadEBPFTracingProgram() (*EBPFContext, error) {
 	var ctx EBPFContext
 	var err error
 
-	ctx.bpfModule, err = bpf.NewModuleFromBuffer(TraceProbeBytes, "trace.o")
+	ctx.bpfModule, err = bpf.NewModuleFromBuffer(TraceProbeBytes, "trace_probe/trace.o")
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +115,7 @@ func LoadEBPFTracingProgram() (*EBPFContext, error) {
 				return
 			}
 
-			parsed := ParseFunctionParameterList(b)
+			parsed := parseFunctionParameterList(b)
 
 			ctx.m.Lock()
 			ctx.parsedBpfEvents = append(ctx.parsedBpfEvents, parsed)
@@ -125,7 +126,7 @@ func LoadEBPFTracingProgram() (*EBPFContext, error) {
 	return &ctx, nil
 }
 
-func ParseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
+func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 	params := (*C.function_parameter_list_t)(unsafe.Pointer(&rawParamBytes[0]))
 
 	defer runtime.KeepAlive(params) // Ensure the param is not garbage collected.
@@ -134,10 +135,10 @@ func ParseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 	rawParams.FnAddr = int(params.fn_addr)
 	rawParams.GoroutineID = int(params.goroutine_id)
 
-	for i := 0; i < int(params.n_parameters); i++ {
+	parseParam := func(param C.function_parameter_t) *RawUProbeParam {
 		iparam := &RawUProbeParam{}
 		data := make([]byte, 0x60)
-		ret := params.params[i]
+		ret := param
 		iparam.Kind = reflect.Kind(ret.kind)
 
 		val := C.GoBytes(unsafe.Pointer(&ret.val), C.int(ret.size))
@@ -161,22 +162,30 @@ func ParseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 			iparam.Base = FakeAddressBase + 0x30
 			iparam.Len = int64(strLen)
 		}
+		return iparam
+	}
 
-		rawParams.InputParams = append(rawParams.InputParams, iparam)
+	for i := 0; i < int(params.n_parameters); i++ {
+		rawParams.InputParams = append(rawParams.InputParams, parseParam(params.params[i]))
+	}
+	for i := 0; i < int(params.n_ret_parameters); i++ {
+		rawParams.ReturnParams = append(rawParams.ReturnParams, parseParam(params.ret_params[i]))
 	}
 
 	return rawParams
 }
 
-func createFunctionParameterList(entry uint64, goidOffset int64, args []UProbeArgMap) C.function_parameter_list_t {
+func createFunctionParameterList(entry uint64, goidOffset int64, args []UProbeArgMap, isret bool) C.function_parameter_list_t {
 	var params C.function_parameter_list_t
 	params.goid_offset = C.uint(goidOffset)
-	params.n_parameters = C.uint(len(args))
 	params.fn_addr = C.uint(entry)
-	for i, arg := range args {
+	params.is_ret = C.bool(isret)
+	params.n_parameters = C.uint(0)
+	params.n_ret_parameters = C.uint(0)
+	for _, arg := range args {
 		var param C.function_parameter_t
 		param.size = C.uint(arg.Size)
-		param.offset = C.uint(arg.Offset)
+		param.offset = C.int(arg.Offset)
 		param.kind = C.uint(arg.Kind)
 		if arg.InReg {
 			param.in_reg = true
@@ -188,7 +197,40 @@ func createFunctionParameterList(entry uint64, goidOffset int64, args []UProbeAr
 				param.reg_nums[i] = C.int(arg.Pieces[i])
 			}
 		}
-		params.params[i] = param
+		if !arg.Ret {
+			params.params[params.n_parameters] = param
+			params.n_parameters++
+		} else {
+			params.ret_params[params.n_ret_parameters] = param
+			params.n_ret_parameters++
+		}
 	}
 	return params
+}
+
+func AddressToOffset(f *elf.File, addr uint64) (uint32, error) {
+	sectionsToSearchForSymbol := []*elf.Section{}
+
+	for i := range f.Sections {
+		if f.Sections[i].Flags == elf.SHF_ALLOC+elf.SHF_EXECINSTR {
+			sectionsToSearchForSymbol = append(sectionsToSearchForSymbol, f.Sections[i])
+		}
+	}
+
+	var executableSection *elf.Section
+
+	// Find what section the symbol is in by checking the executable section's
+	// addr space.
+	for m := range sectionsToSearchForSymbol {
+		if addr > sectionsToSearchForSymbol[m].Addr &&
+			addr < sectionsToSearchForSymbol[m].Addr+sectionsToSearchForSymbol[m].Size {
+			executableSection = sectionsToSearchForSymbol[m]
+		}
+	}
+
+	if executableSection == nil {
+		return 0, errors.New("could not find symbol in executable sections of binary")
+	}
+
+	return uint32(addr - executableSection.Addr + executableSection.Offset), nil
 }

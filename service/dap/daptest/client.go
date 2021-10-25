@@ -88,11 +88,11 @@ func (c *Client) ExpectVisibleErrorResponse(t *testing.T) *dap.ErrorResponse {
 	return er
 }
 
-func (c *Client) expectErrorResponse(t *testing.T, id int, message string) *dap.ErrorResponse {
+func (c *Client) ExpectErrorResponseWith(t *testing.T, id int, message string, showUser bool) *dap.ErrorResponse {
 	t.Helper()
 	er := c.ExpectErrorResponse(t)
-	if er.Body.Error.Id != id || er.Message != message {
-		t.Errorf("\ngot %#v\nwant Id=%d Message=%q", er, id, message)
+	if matched, _ := regexp.MatchString(message, er.Body.Error.Format); !matched || er.Body.Error.Id != id || er.Body.Error.ShowUser != showUser {
+		t.Errorf("got %#v, want Id=%d Format=%q ShowUser=%v", er, id, message, showUser)
 	}
 	return er
 }
@@ -129,12 +129,12 @@ func pretty(v interface{}) string {
 
 func (c *Client) ExpectNotYetImplementedErrorResponse(t *testing.T) *dap.ErrorResponse {
 	t.Helper()
-	return c.expectErrorResponse(t, 7777, "Not yet implemented")
+	return c.ExpectErrorResponseWith(t, 7777, "Not yet implemented", false)
 }
 
 func (c *Client) ExpectUnsupportedCommandErrorResponse(t *testing.T) *dap.ErrorResponse {
 	t.Helper()
-	return c.expectErrorResponse(t, 9999, "Unsupported command")
+	return c.ExpectErrorResponseWith(t, 9999, "Unsupported command", false)
 }
 
 func (c *Client) ExpectOutputEventRegex(t *testing.T, want string) *dap.OutputEvent {
@@ -171,6 +171,27 @@ func (c *Client) ExpectOutputEventDetachingNoKill(t *testing.T) *dap.OutputEvent
 func (c *Client) ExpectOutputEventTerminating(t *testing.T) *dap.OutputEvent {
 	t.Helper()
 	return c.ExpectOutputEventRegex(t, `Terminating process [0-9]+\n`)
+}
+
+func (c *Client) ExpectOutputEventClosingClient(t *testing.T) *dap.OutputEvent {
+	t.Helper()
+	return c.ExpectOutputEventRegex(t, `Closing client session, but leaving multi-client DAP server running at .+:[0-9]+\n`)
+}
+
+func (c *Client) CheckStopLocation(t *testing.T, thread int, name string, line int) {
+	t.Helper()
+	c.StackTraceRequest(thread, 0, 20)
+	st := c.ExpectStackTraceResponse(t)
+	if len(st.Body.StackFrames) < 1 {
+		t.Errorf("\ngot  %#v\nwant len(stackframes) => 1", st)
+	} else {
+		if line != -1 && st.Body.StackFrames[0].Line != line {
+			t.Errorf("\ngot  %#v\nwant Line=%d", st, line)
+		}
+		if st.Body.StackFrames[0].Name != name {
+			t.Errorf("\ngot  %#v\nwant Name=%q", st, name)
+		}
+	}
 }
 
 // InitializeRequest sends an 'initialize' request.

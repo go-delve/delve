@@ -281,6 +281,14 @@ func (dbp *process) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProb
 // StartCallInjection notifies the backend that we are about to inject a function call.
 func (p *process) StartCallInjection() (func(), error) { return func() {}, nil }
 
+func (dbp *process) EnableURetProbes() error {
+	panic("not implemented")
+}
+
+func (dbp *process) DisableURetProbes() error {
+	panic("not implemented")
+}
+
 // ReadMemory will return memory from the core file at the specified location and put the
 // read memory into `data`, returning the length read, and returning an error if
 // the length read is shorter than the length of the `data` buffer.

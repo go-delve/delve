@@ -3,6 +3,7 @@ package native
 import (
 	"bufio"
 	"bytes"
+	"debug/elf"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -708,13 +709,18 @@ func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProbeArgMap) error {
 	// Lazily load and initialize the BPF program upon request to set a uprobe.
 	if dbp.os.ebpf == nil {
-		dbp.os.ebpf, _ = ebpf.LoadEBPFTracingProgram()
+		var err error
+		dbp.os.ebpf, err = ebpf.LoadEBPFTracingProgram()
+		if err != nil {
+			return err
+		}
 	}
 
-	// We only allow up to 6 args for a BPF probe.
+	// We only allow up to 12 args for a BPF probe.
+	// 6 inputs + 6 outputs.
 	// Return early if we have more.
-	if len(args) > 6 {
-		return errors.New("too many arguments in traced function, max is 6")
+	if len(args) > 12 {
+		return errors.New("too many arguments in traced function, max is 12 input+return")
 	}
 
 	fn, ok := dbp.bi.LookupFunc[fnName]
@@ -723,7 +729,7 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 	}
 
 	key := fn.Entry
-	err := dbp.os.ebpf.UpdateArgMap(key, goidOffset, args, dbp.BinInfo().GStructOffset())
+	err := dbp.os.ebpf.UpdateArgMap(key, goidOffset, args, dbp.BinInfo().GStructOffset(), false)
 	if err != nil {
 		return err
 	}
@@ -733,6 +739,49 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 	if err != nil {
 		return err
 	}
+
+	// First attach a uprobe at all return addresses. We do this instead of using a uretprobe
+	// for two reasons:
+	// 1. uretprobes do not play well with Go
+	// 2. uretprobes seem to not restore the function return addr on the stack when removed, destroying any
+	//    kind of workaround we could come up with.
+	// TODO(derekparker): this whole thing could likely be optimized a bit.
+	img := dbp.BinInfo().PCToImage(fn.Entry)
+	f, err := elf.Open(img.Path)
+	if err != nil {
+		return fmt.Errorf("could not open elf file to resolve symbol offset: %w", err)
+	}
+
+	var regs proc.Registers
+	mem := dbp.Memory()
+	regs, _ = dbp.memthread.Registers()
+	instructions, err := proc.Disassemble(mem, regs, &proc.BreakpointMap{}, dbp.BinInfo(), fn.Entry, fn.End)
+	if err != nil {
+		return err
+	}
+
+	var addrs []uint64
+	for _, instruction := range instructions {
+		if instruction.IsRet() {
+			addrs = append(addrs, instruction.Loc.PC)
+		}
+	}
+	addrs = append(addrs, proc.FindDeferReturnCalls(instructions)...)
+	for _, addr := range addrs {
+		err := dbp.os.ebpf.UpdateArgMap(addr, goidOffset, args, dbp.BinInfo().GStructOffset(), true)
+		if err != nil {
+			return err
+		}
+		off, err := ebpf.AddressToOffset(f, addr)
+		if err != nil {
+			return err
+		}
+		err = dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, off)
+		if err != nil {
+			return err
+		}
+	}
+
 	return dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, offset)
 }
 
