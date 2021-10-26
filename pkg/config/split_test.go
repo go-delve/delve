@@ -38,8 +38,8 @@ func TestSplitDoubleQuotedFields(t *testing.T) {
 
 func TestConfigureListByName(t *testing.T) {
 	type testConfig struct {
-		boolArg bool     `yaml:"bool-arg"`
-		listArg []string `yaml:"list-arg"`
+		boolArg bool     `cfgName:"bool-arg"`
+		listArg []string `cfgName:"list-arg"`
 	}
 
 	type args struct {
@@ -93,7 +93,7 @@ func TestConfigureListByName(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := ConfigureListByName(tt.args.sargs, tt.args.cfgname); got != tt.want {
+			if got := ConfigureListByName(tt.args.sargs, tt.args.cfgname, "cfgName"); got != tt.want {
 				t.Errorf("ConfigureListByName() = %v, want %v", got, tt.want)
 			}
 		})

@@ -33,7 +33,7 @@ func configureCmd(t *Term, ctx callContext, args string) error {
 func configureList(t *Term) error {
 	w := new(tabwriter.Writer)
 	w.Init(os.Stdout, 0, 8, 1, ' ', 0)
-	config.ConfigureList(w, t.conf)
+	config.ConfigureList(w, t.conf, "yaml")
 	return w.Flush()
 }
 
@@ -50,7 +50,7 @@ func configureSet(t *Term, args string) error {
 		return configureSetAlias(t, rest)
 	}
 
-	field := config.ConfigureFindFieldByName(t.conf, cfgname)
+	field := config.ConfigureFindFieldByName(t.conf, cfgname, "yaml")
 	if !field.CanAddr() {
 		return fmt.Errorf("%q is not a configuration parameter", cfgname)
 	}

@@ -178,24 +178,22 @@ type process struct {
 
 // launchAttachArgs captures arguments from launch/attach request that
 // impact handling of subsequent requests.
-// The fields with yaml tag can be updated through an evaluation request.
-// TODO(suzmue): consider using a mechanism besides a yaml tag to determine
-// the names and whether to include the field in the 'dlv config' responses.
+// The fields with cfgName tag can be updated through an evaluation request.
 type launchAttachArgs struct {
 	// stopOnEntry is set to automatically stop the debugee after start.
 	stopOnEntry bool
 	// StackTraceDepth is the maximum length of the returned list of stack frames.
-	StackTraceDepth int `yaml:"stackTraceDepth"`
+	StackTraceDepth int `cfgName:"stackTraceDepth"`
 	// ShowGlobalVariables indicates if global package variables should be loaded.
-	ShowGlobalVariables bool `yaml:"showGlobalVariables"`
+	ShowGlobalVariables bool `cfgName:"showGlobalVariables"`
 	// ShowRegisters indicates if register values should be loaded.
-	ShowRegisters bool `yaml:"showRegisters"`
+	ShowRegisters bool `cfgName:"showRegisters"`
 	// HideSystemGoroutines indicates if system goroutines should be removed from threads
 	// responses.
-	HideSystemGoroutines bool `yaml:"hideSystemGoroutines"`
+	HideSystemGoroutines bool `cfgName:"hideSystemGoroutines"`
 	// substitutePathClientToServer indicates rules for converting file paths between client and debugger.
 	// These must be directory paths.
-	substitutePathClientToServer [][2]string `yaml:"substitutePath"`
+	substitutePathClientToServer [][2]string `cfgName:"substitutePath"`
 	// substitutePathServerToClient indicates rules for converting file paths between debugger and client.
 	// These must be directory paths.
 	substitutePathServerToClient [][2]string

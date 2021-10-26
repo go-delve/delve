@@ -105,8 +105,8 @@ func ConfigureSetSimple(rest string, cfgname string, field reflect.Value) error 
 	return nil
 }
 
-func ConfigureList(w io.Writer, config interface{}) {
-	it := IterateConfiguration(config)
+func ConfigureList(w io.Writer, config interface{}, tag string) {
+	it := IterateConfiguration(config, tag)
 	for it.Next() {
 		fieldName, field := it.Field()
 		if fieldName == "" {
@@ -143,13 +143,14 @@ type configureIterator struct {
 	cfgValue reflect.Value
 	cfgType  reflect.Type
 	i        int
+	tag      string
 }
 
-func IterateConfiguration(conf interface{}) *configureIterator {
+func IterateConfiguration(conf interface{}, tag string) *configureIterator {
 	cfgValue := reflect.ValueOf(conf).Elem()
 	cfgType := cfgValue.Type()
 
-	return &configureIterator{cfgValue, cfgType, -1}
+	return &configureIterator{cfgValue, cfgType, -1, tag}
 }
 
 func (it *configureIterator) Next() bool {
@@ -158,7 +159,7 @@ func (it *configureIterator) Next() bool {
 }
 
 func (it *configureIterator) Field() (name string, field reflect.Value) {
-	name = it.cfgType.Field(it.i).Tag.Get("yaml")
+	name = it.cfgType.Field(it.i).Tag.Get(it.tag)
 	if comma := strings.Index(name, ","); comma >= 0 {
 		name = name[:comma]
 	}
@@ -166,11 +167,11 @@ func (it *configureIterator) Field() (name string, field reflect.Value) {
 	return
 }
 
-func ConfigureListByName(conf interface{}, name string) string {
+func ConfigureListByName(conf interface{}, name, tag string) string {
 	if name == "" {
 		return ""
 	}
-	it := IterateConfiguration(conf)
+	it := IterateConfiguration(conf, tag)
 	for it.Next() {
 		fieldName, field := it.Field()
 		if fieldName == name {
@@ -182,8 +183,8 @@ func ConfigureListByName(conf interface{}, name string) string {
 	return ""
 }
 
-func ConfigureFindFieldByName(conf interface{}, name string) reflect.Value {
-	it := IterateConfiguration(conf)
+func ConfigureFindFieldByName(conf interface{}, name, tag string) reflect.Value {
+	it := IterateConfiguration(conf, tag)
 	for it.Next() {
 		fieldName, field := it.Field()
 		if fieldName == name {
