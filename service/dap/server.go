@@ -37,7 +37,6 @@ import (
 	"github.com/go-delve/delve/pkg/locspec"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
-	"github.com/go-delve/delve/pkg/terminal"
 
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
@@ -1594,7 +1593,10 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 		gs, next, err = s.debugger.Goroutines(0, maxGoroutines)
 		if err == nil {
 			// Parse the goroutine arguments.
-			filters, _, _, _, _, _, _ := terminal.ParseGoroutineArgs(s.args.goroutineFilters)
+			filters, _, _, _, _, _, parseErr := api.ParseGoroutineArgs(s.args.goroutineFilters)
+			if parseErr != nil {
+				s.logToConsole(parseErr.Error())
+			}
 			if s.args.hideSystemGoroutines {
 				filters = append(filters, api.ListGoroutinesFilter{
 					Kind:    api.GoroutineUser,

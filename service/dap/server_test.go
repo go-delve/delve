@@ -656,37 +656,61 @@ func checkStackFramesExact(t *testing.T, got *dap.StackTraceResponse,
 
 func TestFilterGoroutines(t *testing.T) {
 	tt := []struct {
+		name    string
 		filter  string
 		want    []string
 		wantLen int
+		wantErr bool
 	}{
 		{
+			name:    "user goroutines",
 			filter:  "-with user",
 			want:    []string{"main.main", "main.agoroutine"},
 			wantLen: 11,
 		},
 		{
+			name:    "filter by user loc",
 			filter:  "-with userloc main.main",
 			want:    []string{"main.main"},
 			wantLen: 1,
 		},
 		{
-			filter:  "-with userloc main.agoroutine",
+			name:    "multiple filters",
+			filter:  "-with user -with userloc main.agoroutine",
 			want:    []string{"main.agoroutine"},
 			wantLen: 10,
 		},
 		{
+			name:   "system goroutines",
 			filter: "-without user",
 			want:   []string{"runtime."},
 		},
+
+		// Filters that should return all goroutines.
 		{
+			name:    "empty filter string",
+			filter:  "",
+			want:    []string{"main.main", "main.agoroutine", "runtime."},
+			wantLen: -1,
+		},
+		{
+			name:    "bad filter string",
+			filter:  "not parsable to filters",
+			want:    []string{"main.main", "main.agoroutine", "runtime."},
+			wantLen: -1,
+			wantErr: true,
+		},
+		// Filters that should produce none.
+		{
+			name:    "no match to user loc",
 			filter:  "-with userloc main.NotAUserFrame",
 			want:    []string{"Dummy"},
 			wantLen: 1,
 		},
 		{
+			name:    "no match to user and not user",
 			filter:  "-with user -without user",
-			want:    []string{"Dummy"}, // Nothing should appear.
+			want:    []string{"Dummy"},
 			wantLen: 1,
 		},
 	}
@@ -707,6 +731,9 @@ func TestFilterGoroutines(t *testing.T) {
 					// Stop at line 30
 					execute: func() {
 						client.ThreadsRequest()
+						if tc.wantErr {
+							client.ExpectOutputEvent(t)
+						}
 						tr := client.ExpectThreadsResponse(t)
 						if tc.wantLen > 0 && len(tr.Body.Threads) != tc.wantLen {
 							t.Errorf("got Threads=%#v, want Len=%d\n", tr.Body.Threads, tc.wantLen)
