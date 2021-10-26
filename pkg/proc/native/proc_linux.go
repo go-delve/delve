@@ -3,6 +3,7 @@ package native
 import (
 	"bufio"
 	"bytes"
+	"debug/elf"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -19,6 +20,7 @@ import (
 	sys "golang.org/x/sys/unix"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 	"github.com/go-delve/delve/pkg/proc/linutil"
 
 	isatty "github.com/mattn/go-isatty"
@@ -45,6 +47,14 @@ const (
 // process details.
 type osProcessDetails struct {
 	comm string
+
+	ebpf *ebpf.EBPFContext
+}
+
+func (os *osProcessDetails) Close() {
+	if os.ebpf != nil {
+		os.ebpf.Close()
+	}
 }
 
 // Launch creates and begins debugging a new process. First entry in
@@ -183,7 +193,15 @@ func initialize(dbp *nativeProcess) error {
 		comm = match[1]
 	}
 	dbp.os.comm = strings.ReplaceAll(string(comm), "%", "%%")
+
 	return nil
+}
+
+func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
+	if dbp.os.ebpf == nil {
+		return nil
+	}
+	return dbp.os.ebpf.GetBufferedTracepoints()
 }
 
 // kill kills the target process.
@@ -213,7 +231,6 @@ func (dbp *nativeProcess) kill() error {
 			return err
 		}
 	}
-	return nil
 }
 
 func (dbp *nativeProcess) requestManualStop() (err error) {
@@ -687,6 +704,85 @@ func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 	}
 
 	return linutil.EntryPointFromAuxv(auxvbuf, dbp.bi.Arch.PtrSize()), nil
+}
+
+func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProbeArgMap) error {
+	// Lazily load and initialize the BPF program upon request to set a uprobe.
+	if dbp.os.ebpf == nil {
+		var err error
+		dbp.os.ebpf, err = ebpf.LoadEBPFTracingProgram()
+		if err != nil {
+			return err
+		}
+	}
+
+	// We only allow up to 12 args for a BPF probe.
+	// 6 inputs + 6 outputs.
+	// Return early if we have more.
+	if len(args) > 12 {
+		return errors.New("too many arguments in traced function, max is 12 input+return")
+	}
+
+	fn, ok := dbp.bi.LookupFunc[fnName]
+	if !ok {
+		return fmt.Errorf("could not find function: %s", fnName)
+	}
+
+	key := fn.Entry
+	err := dbp.os.ebpf.UpdateArgMap(key, goidOffset, args, dbp.BinInfo().GStructOffset(), false)
+	if err != nil {
+		return err
+	}
+
+	debugname := dbp.bi.Images[0].Path
+	offset, err := ebpf.SymbolToOffset(debugname, fnName)
+	if err != nil {
+		return err
+	}
+
+	// First attach a uprobe at all return addresses. We do this instead of using a uretprobe
+	// for two reasons:
+	// 1. uretprobes do not play well with Go
+	// 2. uretprobes seem to not restore the function return addr on the stack when removed, destroying any
+	//    kind of workaround we could come up with.
+	// TODO(derekparker): this whole thing could likely be optimized a bit.
+	img := dbp.BinInfo().PCToImage(fn.Entry)
+	f, err := elf.Open(img.Path)
+	if err != nil {
+		return fmt.Errorf("could not open elf file to resolve symbol offset: %w", err)
+	}
+
+	var regs proc.Registers
+	mem := dbp.Memory()
+	regs, _ = dbp.memthread.Registers()
+	instructions, err := proc.Disassemble(mem, regs, &proc.BreakpointMap{}, dbp.BinInfo(), fn.Entry, fn.End)
+	if err != nil {
+		return err
+	}
+
+	var addrs []uint64
+	for _, instruction := range instructions {
+		if instruction.IsRet() {
+			addrs = append(addrs, instruction.Loc.PC)
+		}
+	}
+	addrs = append(addrs, proc.FindDeferReturnCalls(instructions)...)
+	for _, addr := range addrs {
+		err := dbp.os.ebpf.UpdateArgMap(addr, goidOffset, args, dbp.BinInfo().GStructOffset(), true)
+		if err != nil {
+			return err
+		}
+		off, err := ebpf.AddressToOffset(f, addr)
+		if err != nil {
+			return err
+		}
+		err = dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, off)
+		if err != nil {
+			return err
+		}
+	}
+
+	return dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, offset)
 }
 
 func killProcess(pid int) error {

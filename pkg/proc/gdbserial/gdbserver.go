@@ -81,6 +81,7 @@ import (
 	"github.com/go-delve/delve/pkg/elfwriter"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 	"github.com/go-delve/delve/pkg/proc/linutil"
 	"github.com/go-delve/delve/pkg/proc/macutil"
 	isatty "github.com/mattn/go-isatty"
@@ -130,6 +131,10 @@ var debugserverExecutablePaths = []string{
 // while there are still internal breakpoints set.
 var ErrDirChange = errors.New("direction change with internal breakpoints")
 
+// ErrStartCallInjectionBackwards is returned when trying to start a call
+// injection while the recording is being run backwards.
+var ErrStartCallInjectionBackwards = errors.New("can not start a call injection while running backwards")
+
 var checkCanUnmaskSignalsOnce sync.Once
 var canUnmaskSignalsCached bool
 
@@ -150,7 +155,8 @@ type gdbProcess struct {
 
 	breakpoints proc.BreakpointMap
 
-	gcmdok         bool   // true if the stub supports g and G commands
+	gcmdok         bool   // true if the stub supports g and (maybe) G commands
+	_Gcmdok        bool   // true if the stub supports G command
 	threadStopInfo bool   // true if the stub supports qThreadStopInfo
 	tracedir       string // if attached to rr the path to the trace directory
 
@@ -173,8 +179,9 @@ type gdbThread struct {
 	regs              gdbRegisters
 	CurrentBreakpoint proc.BreakpointState
 	p                 *gdbProcess
-	sig               uint8 // signal received by thread after last stop
-	setbp             bool  // thread was stopped because of a breakpoint
+	sig               uint8  // signal received by thread after last stop
+	setbp             bool   // thread was stopped because of a breakpoint
+	watchAddr         uint64 // if > 0 this is the watchpoint address
 	common            proc.CommonThread
 }
 
@@ -224,6 +231,7 @@ func newProcess(process *os.Process) *gdbProcess {
 			inbuf:               make([]byte, 0, initialInputBufferSize),
 			direction:           proc.Forward,
 			log:                 logger,
+			goarch:              runtime.GOARCH,
 		},
 		threads:        make(map[int]*gdbThread),
 		bi:             proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
@@ -359,6 +367,18 @@ func (p *gdbProcess) Connect(conn net.Conn, path string, pid int, debugInfoDirs 
 	}
 
 	return tgt, nil
+}
+
+func (p *gdbProcess) SupportsBPF() bool {
+	return false
+}
+
+func (dbp *gdbProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
+	return nil
+}
+
+func (dbp *gdbProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProbeArgMap) error {
+	panic("not implemented")
 }
 
 // unusedPort returns an unused tcp port
@@ -809,10 +829,9 @@ func (p *gdbProcess) ContinueOnce() (proc.Thread, proc.StopReason, error) {
 	var atstart bool
 continueLoop:
 	for {
-		var err error
-		var sig uint8
 		tu.Reset()
-		threadID, sig, err = p.conn.resume(p.threads, &tu)
+		sp, err := p.conn.resume(p.threads, &tu)
+		threadID = sp.threadID
 		if err != nil {
 			if _, exited := err.(proc.ErrProcessExited); exited {
 				p.exited = true
@@ -829,7 +848,8 @@ continueLoop:
 		if trapthread != nil && !p.threadStopInfo {
 			// For stubs that do not support qThreadStopInfo we manually set the
 			// reason the thread returned by resume() stopped.
-			trapthread.sig = sig
+			trapthread.sig = sp.sig
+			trapthread.watchAddr = sp.watchAddr
 		}
 
 		var shouldStop bool
@@ -1062,7 +1082,7 @@ func (p *gdbProcess) Restart(pos string) (proc.Thread, error) {
 
 	// for some reason we have to send a vCont;c after a vRun to make rr behave
 	// properly, because that's what gdb does.
-	_, _, err = p.conn.resume(nil, nil)
+	_, err = p.conn.resume(nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1074,8 +1094,8 @@ func (p *gdbProcess) Restart(pos string) (proc.Thread, error) {
 	p.clearThreadSignals()
 	p.clearThreadRegisters()
 
-	for addr := range p.breakpoints.M {
-		p.conn.setBreakpoint(addr, p.breakpointKind)
+	for _, bp := range p.breakpoints.M {
+		p.WriteBreakpoint(bp)
 	}
 
 	return p.currentThread, p.setCurrentBreakpoints()
@@ -1192,6 +1212,39 @@ func (p *gdbProcess) ChangeDirection(dir proc.Direction) error {
 	return nil
 }
 
+// StartCallInjection notifies the backend that we are about to inject a function call.
+func (p *gdbProcess) StartCallInjection() (func(), error) {
+	if p.tracedir == "" {
+		return func() {}, nil
+	}
+	if p.conn.conn == nil {
+		return nil, proc.ErrProcessExited{Pid: p.conn.pid}
+	}
+	if p.conn.direction != proc.Forward {
+		return nil, ErrStartCallInjectionBackwards
+	}
+
+	// Normally it's impossible to inject function calls in a recorded target
+	// because the sequence of instructions that the target will execute is
+	// predetermined.
+	// RR however allows this in a "diversion". When a diversion is started rr
+	// takes the current state of the process and runs it forward as a normal
+	// process, not following the recording.
+	// The gdb serial protocol does not have a way to start a diversion and gdb
+	// (the main frontend of rr) does not know how to do it. Instead a
+	// diversion is started by reading siginfo, because that's the first
+	// request gdb does when starting a function call injection.
+
+	_, err := p.conn.qXfer("siginfo", "", true)
+	if err != nil {
+		return nil, err
+	}
+
+	return func() {
+		_ = p.conn.qXferWrite("siginfo", "") // rr always returns an error for qXfer:siginfo:write... even though it works
+	}, nil
+}
+
 // GetDirection returns the current direction of execution.
 func (p *gdbProcess) GetDirection() proc.Direction {
 	return p.conn.direction
@@ -1211,15 +1264,33 @@ func (p *gdbProcess) FindBreakpoint(pc uint64) (*proc.Breakpoint, bool) {
 	return nil, false
 }
 
-func (p *gdbProcess) WriteBreakpoint(bp *proc.Breakpoint) error {
-	if bp.WatchType != 0 {
-		return errors.New("hardware breakpoints not supported")
+func watchTypeToBreakpointType(wtype proc.WatchType) breakpointType {
+	switch {
+	case wtype.Read() && wtype.Write():
+		return accessWatchpoint
+	case wtype.Write():
+		return writeWatchpoint
+	case wtype.Read():
+		return readWatchpoint
+	default:
+		return swBreakpoint
 	}
-	return p.conn.setBreakpoint(bp.Addr, p.breakpointKind)
+}
+
+func (p *gdbProcess) WriteBreakpoint(bp *proc.Breakpoint) error {
+	kind := p.breakpointKind
+	if bp.WatchType != 0 {
+		kind = bp.WatchType.Size()
+	}
+	return p.conn.setBreakpoint(bp.Addr, watchTypeToBreakpointType(bp.WatchType), kind)
 }
 
 func (p *gdbProcess) EraseBreakpoint(bp *proc.Breakpoint) error {
-	return p.conn.clearBreakpoint(bp.Addr, p.breakpointKind)
+	kind := p.breakpointKind
+	if bp.WatchType != 0 {
+		kind = bp.WatchType.Size()
+	}
+	return p.conn.clearBreakpoint(bp.Addr, watchTypeToBreakpointType(bp.WatchType), kind)
 }
 
 type threadUpdater struct {
@@ -1311,7 +1382,7 @@ func (p *gdbProcess) updateThreadList(tu *threadUpdater) error {
 
 	for _, th := range p.threads {
 		if p.threadStopInfo {
-			sig, reason, err := p.conn.threadStopInfo(th.strID)
+			sp, err := p.conn.threadStopInfo(th.strID)
 			if err != nil {
 				if isProtocolErrorUnsupported(err) {
 					p.threadStopInfo = false
@@ -1319,10 +1390,12 @@ func (p *gdbProcess) updateThreadList(tu *threadUpdater) error {
 				}
 				return err
 			}
-			th.setbp = (reason == "breakpoint" || (reason == "" && sig == breakpointSignal))
-			th.sig = sig
+			th.setbp = (sp.reason == "breakpoint" || (sp.reason == "" && sp.sig == breakpointSignal) || (sp.watchAddr > 0))
+			th.sig = sp.sig
+			th.watchAddr = sp.watchAddr
 		} else {
 			th.sig = 0
+			th.watchAddr = 0
 		}
 	}
 
@@ -1439,12 +1512,12 @@ func (t *gdbThread) Common() *proc.CommonThread {
 // StepInstruction will step exactly 1 CPU instruction.
 func (t *gdbThread) StepInstruction() error {
 	pc := t.regs.PC()
-	if _, atbp := t.p.breakpoints.M[pc]; atbp {
-		err := t.p.conn.clearBreakpoint(pc, t.p.breakpointKind)
+	if bp, atbp := t.p.breakpoints.M[pc]; atbp && bp.WatchType == 0 {
+		err := t.p.conn.clearBreakpoint(pc, swBreakpoint, t.p.breakpointKind)
 		if err != nil {
 			return err
 		}
-		defer t.p.conn.setBreakpoint(pc, t.p.breakpointKind)
+		defer t.p.conn.setBreakpoint(pc, swBreakpoint, t.p.breakpointKind)
 	}
 	// Reset thread registers so the next call to
 	// Thread.Registers will not be cached.
@@ -1614,8 +1687,14 @@ func (t *gdbThread) writeSomeRegisters(regNames ...string) error {
 }
 
 func (t *gdbThread) writeRegisters() error {
-	if t.p.gcmdok {
-		return t.p.conn.writeRegisters(t.strID, t.regs.buf)
+	if t.p.gcmdok && t.p._Gcmdok {
+		err := t.p.conn.writeRegisters(t.strID, t.regs.buf)
+		if isProtocolErrorUnsupported(err) {
+			t.p._Gcmdok = false
+		} else {
+			return err
+		}
+
 	}
 	for _, r := range t.regs.regs {
 		if r.ignoreOnWrite {
@@ -1664,13 +1743,16 @@ func (t *gdbThread) reloadGAtPC() error {
 	// around by clearing and re-setting the breakpoint in a specific sequence
 	// with the memory writes.
 	// Additionally all breakpoints in [pc, pc+len(movinstr)] need to be removed
-	for addr := range t.p.breakpoints.M {
+	for addr, bp := range t.p.breakpoints.M {
+		if bp.WatchType != 0 {
+			continue
+		}
 		if addr >= pc && addr <= pc+uint64(len(movinstr)) {
-			err := t.p.conn.clearBreakpoint(addr, t.p.breakpointKind)
+			err := t.p.conn.clearBreakpoint(addr, swBreakpoint, t.p.breakpointKind)
 			if err != nil {
 				return err
 			}
-			defer t.p.conn.setBreakpoint(addr, t.p.breakpointKind)
+			defer t.p.conn.setBreakpoint(addr, swBreakpoint, t.p.breakpointKind)
 		}
 	}
 
@@ -1782,6 +1864,13 @@ func (t *gdbThread) SetCurrentBreakpoint(adjustPC bool) error {
 	// adjustPC is ignored, it is the stub's responsibiility to set the PC
 	// address correctly after hitting a breakpoint.
 	t.clearBreakpointState()
+	if t.watchAddr > 0 {
+		t.CurrentBreakpoint.Breakpoint = t.p.Breakpoints().M[t.watchAddr]
+		if t.CurrentBreakpoint.Breakpoint == nil {
+			return fmt.Errorf("could not find watchpoint at address %#x", t.watchAddr)
+		}
+		return nil
+	}
 	regs, err := t.Registers()
 	if err != nil {
 		return err
@@ -1793,7 +1882,7 @@ func (t *gdbThread) SetCurrentBreakpoint(adjustPC bool) error {
 				return err
 			}
 		}
-		t.CurrentBreakpoint = bp.CheckCondition(t)
+		t.CurrentBreakpoint.Breakpoint = bp
 	}
 	return nil
 }

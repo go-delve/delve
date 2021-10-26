@@ -246,7 +246,7 @@ func readFileEntry(info *DebugLineInfo, buf *bytes.Buffer, exitOnEmptyPath bool)
 	entry.LastModTime, _ = util.DecodeULEB128(buf)
 	entry.Length, _ = util.DecodeULEB128(buf)
 	if !pathIsAbs(entry.Path) {
-		if entry.DirIdx >= 0 && entry.DirIdx < uint64(len(info.IncludeDirs)) {
+		if entry.DirIdx < uint64(len(info.IncludeDirs)) {
 			entry.Path = path.Join(info.IncludeDirs[entry.DirIdx], entry.Path)
 		}
 	}
@@ -283,7 +283,8 @@ func parseFileEntries5(info *DebugLineInfo, buf *bytes.Buffer) bool {
 		for fileEntryFormReader.next(buf) {
 			entry := new(FileEntry)
 			var p string
-			var diridx int = -1
+			var diridx int
+			diridx = -1
 
 			switch fileEntryFormReader.contentType {
 			case _DW_LNCT_path:

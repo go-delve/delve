@@ -12,7 +12,7 @@ import (
 	"github.com/go-delve/delve/service/api"
 )
 
-// Client is a RPC service.Client.
+// RPCClient is a RPC service.Client.
 type RPCClient struct {
 	client *rpc.Client
 
@@ -108,6 +108,7 @@ func (c *RPCClient) continueDir(cmd string) <-chan *api.DebuggerState {
 			}
 			if state.Exited {
 				// Error types apparently cannot be marshalled by Go correctly. Must reset error here.
+				//lint:ignore ST1005 backwards compatibility
 				state.Err = fmt.Errorf("Process %d has exited with status %d", c.ProcessPid(), state.ExitStatus)
 			}
 			ch <- &state
@@ -214,6 +215,12 @@ func (c *RPCClient) Halt() (*api.DebuggerState, error) {
 	return &out.State, err
 }
 
+func (c *RPCClient) GetBufferedTracepoints() ([]api.TracepointResult, error) {
+	var out GetBufferedTracepointsOut
+	err := c.call("GetBufferedTracepoints", GetBufferedTracepointsIn{}, &out)
+	return out.TracepointResults, err
+}
+
 func (c *RPCClient) GetBreakpoint(id int) (*api.Breakpoint, error) {
 	var out GetBreakpointOut
 	err := c.call("GetBreakpoint", GetBreakpointIn{id, ""}, &out)
@@ -236,15 +243,20 @@ func (c *RPCClient) CreateBreakpoint(breakPoint *api.Breakpoint) (*api.Breakpoin
 	return &out.Breakpoint, err
 }
 
+func (c *RPCClient) CreateEBPFTracepoint(fnName string) error {
+	var out CreateEBPFTracepointOut
+	return c.call("CreateEBPFTracepoint", CreateEBPFTracepointIn{FunctionName: fnName}, &out)
+}
+
 func (c *RPCClient) CreateWatchpoint(scope api.EvalScope, expr string, wtype api.WatchType) (*api.Breakpoint, error) {
 	var out CreateWatchpointOut
 	err := c.call("CreateWatchpoint", CreateWatchpointIn{scope, expr, wtype}, &out)
 	return out.Breakpoint, err
 }
 
-func (c *RPCClient) ListBreakpoints() ([]*api.Breakpoint, error) {
+func (c *RPCClient) ListBreakpoints(all bool) ([]*api.Breakpoint, error) {
 	var out ListBreakpointsOut
-	err := c.call("ListBreakpoints", ListBreakpointsIn{}, &out)
+	err := c.call("ListBreakpoints", ListBreakpointsIn{all}, &out)
 	return out.Breakpoints, err
 }
 
@@ -393,14 +405,14 @@ func (c *RPCClient) FindLocation(scope api.EvalScope, loc string, findInstructio
 	return out.Locations, err
 }
 
-// Disassemble code between startPC and endPC
+// DisassembleRange disassembles code between startPC and endPC
 func (c *RPCClient) DisassembleRange(scope api.EvalScope, startPC, endPC uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error) {
 	var out DisassembleOut
 	err := c.call("Disassemble", DisassembleIn{scope, startPC, endPC, flavour}, &out)
 	return out.Disassemble, err
 }
 
-// Disassemble function containing pc
+// DisassemblePC disassembles function containing pc
 func (c *RPCClient) DisassemblePC(scope api.EvalScope, pc uint64, flavour api.AssemblyFlavour) (api.AsmInstructions, error) {
 	var out DisassembleOut
 	err := c.call("Disassemble", DisassembleIn{scope, pc, 0, flavour}, &out)

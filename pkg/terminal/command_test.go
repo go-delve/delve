@@ -178,7 +178,7 @@ func withTestTerminalBuildFlags(name string, t testing.TB, buildFlags test.Build
 func TestCommandDefault(t *testing.T) {
 	var (
 		cmds = Commands{}
-		cmd  = cmds.Find("non-existant-command", noPrefix)
+		cmd  = cmds.Find("non-existant-command", noPrefix).cmdFn
 	)
 
 	err := cmd(nil, callContext{}, "")
@@ -194,7 +194,7 @@ func TestCommandDefault(t *testing.T) {
 func TestCommandReplayWithoutPreviousCommand(t *testing.T) {
 	var (
 		cmds = DebugCommands(nil)
-		cmd  = cmds.Find("", noPrefix)
+		cmd  = cmds.Find("", noPrefix).cmdFn
 		err  = cmd(nil, callContext{}, "")
 	)
 
@@ -206,7 +206,7 @@ func TestCommandReplayWithoutPreviousCommand(t *testing.T) {
 func TestCommandThread(t *testing.T) {
 	var (
 		cmds = DebugCommands(nil)
-		cmd  = cmds.Find("thread", noPrefix)
+		cmd  = cmds.Find("thread", noPrefix).cmdFn
 	)
 
 	err := cmd(nil, callContext{}, "")
@@ -331,6 +331,11 @@ func TestScopePrefix(t *testing.T) {
 	const goroutinesCurLinePrefix = "* Goroutine "
 	test.AllowRecording(t)
 
+	lenient := 0
+	if runtime.GOOS == "windows" {
+		lenient = 1
+	}
+
 	withTestTerminal("goroutinestackprog", t, func(term *FakeTerminal) {
 		term.MustExec("b stacktraceme")
 		term.MustExec("continue")
@@ -383,7 +388,7 @@ func TestScopePrefix(t *testing.T) {
 					}
 				}
 			}
-			if len(agoroutines)+extraAgoroutines < 10 {
+			if len(agoroutines)+extraAgoroutines < 10-lenient {
 				t.Fatalf("Output of goroutines did not have 10 goroutines stopped on main.agoroutine (%d+%d found): %q", len(agoroutines), extraAgoroutines, goroutinesOut)
 			}
 		}
@@ -397,6 +402,7 @@ func TestScopePrefix(t *testing.T) {
 			stackOut := strings.Split(term.MustExec(fmt.Sprintf("goroutine %d stack", gid)), "\n")
 			fid := -1
 			for _, line := range stackOut {
+				line = strings.TrimLeft(line, " ")
 				space := strings.Index(line, " ")
 				if space < 0 {
 					continue
@@ -412,7 +418,7 @@ func TestScopePrefix(t *testing.T) {
 				}
 			}
 			if fid < 0 {
-				t.Fatalf("Could not find frame for goroutine %d: %v", gid, stackOut)
+				t.Fatalf("Could not find frame for goroutine %d: %q", gid, stackOut)
 			}
 			term.AssertExec(fmt.Sprintf("goroutine     %d    frame     %d     locals", gid, fid), "(no locals)\n")
 			argsOut := strings.Split(term.MustExec(fmt.Sprintf("goroutine %d frame %d args", gid, fid)), "\n")
@@ -429,7 +435,11 @@ func TestScopePrefix(t *testing.T) {
 
 		for i := range seen {
 			if !seen[i] {
-				t.Fatalf("goroutine %d not found", i)
+				if lenient > 0 {
+					lenient--
+				} else {
+					t.Fatalf("goroutine %d not found", i)
+				}
 			}
 		}
 
@@ -474,6 +484,10 @@ func TestOnPrefix(t *testing.T) {
 	}
 	const prefix = "\ti: "
 	test.AllowRecording(t)
+	lenient := false
+	if runtime.GOOS == "windows" {
+		lenient = true
+	}
 	withTestTerminal("goroutinestackprog", t, func(term *FakeTerminal) {
 		term.MustExec("b agobp main.agoroutine")
 		term.MustExec("on agobp print i")
@@ -507,7 +521,11 @@ func TestOnPrefix(t *testing.T) {
 
 		for i := range seen {
 			if !seen[i] {
-				t.Fatalf("Goroutine %d not seen\n", i)
+				if lenient {
+					lenient = false
+				} else {
+					t.Fatalf("Goroutine %d not seen\n", i)
+				}
 			}
 		}
 	})
@@ -1121,6 +1139,18 @@ func TestParseNewArgv(t *testing.T) {
 
 func TestContinueUntil(t *testing.T) {
 	withTestTerminal("continuetestprog", t, func(term *FakeTerminal) {
+		if runtime.GOARCH != "386" {
+			listIsAt(t, term, "continue main.main", 16, -1, -1)
+		} else {
+			listIsAt(t, term, "continue main.main", 17, -1, -1)
+		}
+		listIsAt(t, term, "continue main.sayhi", 12, -1, -1)
+	})
+}
+
+func TestContinueUntilExistingBreakpoint(t *testing.T) {
+	withTestTerminal("continuetestprog", t, func(term *FakeTerminal) {
+		term.MustExec("break main.main")
 		if runtime.GOARCH != "386" {
 			listIsAt(t, term, "continue main.main", 16, -1, -1)
 		} else {

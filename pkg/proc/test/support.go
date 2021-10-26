@@ -314,7 +314,7 @@ func MustSupportFunctionCalls(t *testing.T, testBackend string) {
 		t.Skip("this version of Go does not support function calls")
 	}
 
-	if testBackend == "rr" || (runtime.GOOS == "darwin" && testBackend == "native") {
+	if runtime.GOOS == "darwin" && testBackend == "native" {
 		t.Skip("this backend does not support function calls")
 	}
 
@@ -367,11 +367,27 @@ var hasCgo = func() bool {
 	if err != nil {
 		panic(err)
 	}
-	return strings.TrimSpace(string(out)) == "1"
+	if strings.TrimSpace(string(out)) != "1" {
+		return false
+	}
+	_, err = exec.LookPath("gcc")
+	return err == nil
 }()
 
 func MustHaveCgo(t *testing.T) {
 	if !hasCgo {
 		t.Skip("Cgo not enabled")
+	}
+}
+
+func RegabiSupported() bool {
+	// Tracks regabiSupported variable in ParseGOEXPERIMENT internal/buildcfg/exp.go
+	switch {
+	case !goversion.VersionAfterOrEqual(runtime.Version(), 1, 17): // < 1.17
+		return false
+	case goversion.VersionAfterOrEqual(runtime.Version(), 1, 17):
+		return runtime.GOARCH == "amd64" && (runtime.GOOS == "android" || runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "windows")
+	default: // >= 1.18
+		return runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64"
 	}
 }

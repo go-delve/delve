@@ -53,9 +53,8 @@ type Config struct {
 	// expression for its argument.
 	ShowLocationExpr bool `yaml:"show-location-expr"`
 
-	// Source list line-number color (3/4 bit color codes as defined
-	// here: https://en.wikipedia.org/wiki/ANSI_escape_code#Colors),
-	// or a string containing a terminal escape sequence.
+	// Source list line-number color, as a terminal escape sequence.
+	// For historic reasons, this can also be an integer color code.
 	SourceListLineColor interface{} `yaml:"source-list-line-color"`
 
 	// Source list arrow color, as a terminal escape sequence.
@@ -92,34 +91,27 @@ func (c *Config) GetSourceListLineCount() int {
 }
 
 // LoadConfig attempts to populate a Config object from the config.yml file.
-func LoadConfig() *Config {
+func LoadConfig() (*Config, error) {
 	err := createConfigPath()
 	if err != nil {
-		fmt.Printf("Could not create config directory: %v.", err)
-		return &Config{}
+		return &Config{}, fmt.Errorf("could not create config directory: %v", err)
 	}
 	fullConfigFile, err := GetConfigFilePath(configFile)
 	if err != nil {
-		fmt.Printf("Unable to get config file path: %v.", err)
-		return &Config{}
+		return &Config{}, fmt.Errorf("unable to get config file path: %v", err)
 	}
 
-	hasOldConfig, err := hasOldConfig()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to determine if old config exists: %v\n", err)
-	}
+	hasOldConfig, _ := hasOldConfig()
 
 	if hasOldConfig {
 		userHomeDir := getUserHomeDir()
 		oldLocation := path.Join(userHomeDir, configDirHidden)
 		if err := moveOldConfig(); err != nil {
-			fmt.Fprintf(os.Stderr, "Unable to move old config: %v\n", err)
-			return &Config{}
+			return &Config{}, fmt.Errorf("unable to move old config: %v", err)
 		}
 
 		if err := os.RemoveAll(oldLocation); err != nil {
-			fmt.Fprintf(os.Stderr, "Unable to remove old config location: %v\n", err)
-			return &Config{}
+			return &Config{}, fmt.Errorf("unable to remove old config location: %v", err)
 		}
 		fmt.Fprintf(os.Stderr, "Successfully moved config from: %s to: %s\n", oldLocation, fullConfigFile)
 	}
@@ -128,35 +120,27 @@ func LoadConfig() *Config {
 	if err != nil {
 		f, err = createDefaultConfig(fullConfigFile)
 		if err != nil {
-			fmt.Printf("Error creating default config file: %v", err)
-			return &Config{}
+			return &Config{}, fmt.Errorf("error creating default config file: %v", err)
 		}
 	}
-	defer func() {
-		err := f.Close()
-		if err != nil {
-			fmt.Printf("Closing config file failed: %v.", err)
-		}
-	}()
+	defer f.Close()
 
 	data, err := ioutil.ReadAll(f)
 	if err != nil {
-		fmt.Printf("Unable to read config data: %v.", err)
-		return &Config{}
+		return &Config{}, fmt.Errorf("unable to read config data: %v", err)
 	}
 
 	var c Config
 	err = yaml.Unmarshal(data, &c)
 	if err != nil {
-		fmt.Printf("Unable to decode config file: %v.", err)
-		return &Config{}
+		return &Config{}, fmt.Errorf("unable to decode config file: %v", err)
 	}
 
 	if len(c.DebugInfoDirectories) == 0 {
 		c.DebugInfoDirectories = []string{"/usr/lib/debug/.build-id"}
 	}
 
-	return &c
+	return &c, nil
 }
 
 // SaveConfig will marshal and save the config struct
@@ -228,11 +212,10 @@ func writeDefaultConfig(f *os.File) error {
 # This is the default configuration file. Available options are provided, but disabled.
 # Delete the leading hash mark to enable an item.
 
-# Uncomment the following line and set your preferred ANSI foreground color
-# for source line numbers in the (list) command (if unset, default is 34,
-# dark blue) See https://en.wikipedia.org/wiki/ANSI_escape_code#3/4_bit
-# Alternatively a string containing an escape sequence can also be used.
-# source-list-line-color: 34
+# Uncomment the following line and set your preferred ANSI color for source
+# line numbers in the (list) command. The default is 34 (dark blue). See
+# https://en.wikipedia.org/wiki/ANSI_escape_code#3/4_bit
+# source-list-line-color: "\x1b[34m"
 
 # Uncomment the following lines to change the colors used by syntax highlighting.
 # source-list-keyword-color: "\x1b[0m"

@@ -33,7 +33,7 @@ func (reader *Reader) SeekToEntry(entry *dwarf.Entry) error {
 	return err
 }
 
-// Returns the address for the named entry.
+// AddrFor returns the address for the named entry.
 func (reader *Reader) AddrFor(name string, staticBase uint64, ptrSize int) (uint64, error) {
 	entry, err := reader.FindEntryNamed(name, false)
 	if err != nil {
@@ -43,38 +43,14 @@ func (reader *Reader) AddrFor(name string, staticBase uint64, ptrSize int) (uint
 	if !ok {
 		return 0, fmt.Errorf("type assertion failed")
 	}
-	addr, _, err := op.ExecuteStackProgram(op.DwarfRegisters{StaticBase: staticBase}, instructions, ptrSize)
+	addr, _, err := op.ExecuteStackProgram(op.DwarfRegisters{StaticBase: staticBase}, instructions, ptrSize, nil)
 	if err != nil {
 		return 0, err
 	}
 	return uint64(addr), nil
 }
 
-// Returns the address for the named struct member. Expects the reader to be at the parent entry
-// or one of the parents children, thus does not seek to parent by itself.
-func (reader *Reader) AddrForMember(member string, initialInstructions []byte, ptrSize int) (uint64, error) {
-	for {
-		entry, err := reader.NextMemberVariable()
-		if err != nil {
-			return 0, err
-		}
-		if entry == nil {
-			return 0, fmt.Errorf("nil entry for member named %s", member)
-		}
-		name, ok := entry.Val(dwarf.AttrName).(string)
-		if !ok || name != member {
-			continue
-		}
-		instructions, ok := entry.Val(dwarf.AttrDataMemberLoc).([]byte)
-		if !ok {
-			continue
-		}
-		addr, _, err := op.ExecuteStackProgram(op.DwarfRegisters{}, append(initialInstructions, instructions...), ptrSize)
-		return uint64(addr), err
-	}
-}
-
-var TypeNotFoundErr = errors.New("no type entry found, use 'types' for a list of valid types")
+var ErrTypeNotFound = errors.New("no type entry found, use 'types' for a list of valid types")
 
 // SeekToType moves the reader to the type specified by the entry,
 // optionally resolving typedefs and pointer types. If the reader is set
@@ -110,7 +86,7 @@ func (reader *Reader) SeekToType(entry *dwarf.Entry, resolveTypedefs bool, resol
 		reader.Seek(offset)
 	}
 
-	return nil, TypeNotFoundErr
+	return nil, ErrTypeNotFound
 }
 
 func (reader *Reader) NextType() (*dwarf.Entry, error) {
@@ -148,10 +124,10 @@ func (reader *Reader) SeekToTypeNamed(name string) (*dwarf.Entry, error) {
 		}
 	}
 
-	return nil, TypeNotFoundErr
+	return nil, ErrTypeNotFound
 }
 
-// Finds the entry for 'name'.
+// FindEntryNamed finds the entry for 'name'.
 func (reader *Reader) FindEntryNamed(name string, member bool) (*dwarf.Entry, error) {
 	depth := 1
 	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {

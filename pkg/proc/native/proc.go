@@ -106,6 +106,9 @@ func (dbp *nativeProcess) Checkpoints() ([]proc.Checkpoint, error) { return nil,
 // only supported in recorded traces.
 func (dbp *nativeProcess) ClearCheckpoint(int) error { return proc.ErrNotRecorded }
 
+// StartCallInjection notifies the backend that we are about to inject a function call.
+func (dbp *nativeProcess) StartCallInjection() (func(), error) { return func() {}, nil }
+
 // Detach from the process being debugged, optionally killing it.
 func (dbp *nativeProcess) Detach(kill bool) (err error) {
 	if dbp.exited {
@@ -343,6 +346,7 @@ func (dbp *nativeProcess) postExit() {
 	if dbp.ctty != nil {
 		dbp.ctty.Close()
 	}
+	dbp.os.Close()
 }
 
 func (dbp *nativeProcess) writeSoftwareBreakpoint(thread *nativeThread, addr uint64) error {

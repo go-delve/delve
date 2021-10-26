@@ -104,7 +104,7 @@ func TestScope(t *testing.T) {
 			}
 
 			scopeCheck.ok = true
-			_, err := p.ClearBreakpoint(bp.Addr)
+			err := p.ClearBreakpoint(bp.Addr)
 			assertNoError(err, t, "ClearBreakpoint")
 		}
 	})

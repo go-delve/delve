@@ -4,6 +4,7 @@ set -x
 
 apt-get -qq update
 apt-get install -y dwz wget make git gcc curl jq lsof
+
 dwz --version
 
 version=$1
@@ -20,7 +21,10 @@ function getgo {
 }
 
 if [ "$version" = "gotip" ]; then
-	exit 0
+	# TODO: remove this
+	if [ "$arch" != "amd64" ]; then
+		exit 0
+	fi
 	echo Building Go from tip
 	getgo $(curl https://golang.org/VERSION?m=text)
 	export GOROOT_BOOTSTRAP=$GOROOT
@@ -41,10 +45,20 @@ GOPATH=$(pwd)/go
 export GOPATH
 export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
 go version
+go install honnef.co/go/tools/cmd/staticcheck@2021.1.1 || true
 
 uname -a
 echo "$PATH"
 echo "$GOROOT"
 echo "$GOPATH"
 cd delve
+
+# Starting with go1.18 'go build' and 'go run' will try to stamp the build
+# with the current VCS revision, which does not work with TeamCity
+if [ "$version" = "gotip" ]; then
+	export GOFLAGS=-buildvcs=false
+elif [ ${version:4} -gt 17 ]; then
+	export GOFLAGS=-buildvcs=false
+fi
+
 make test

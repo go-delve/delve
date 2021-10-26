@@ -119,12 +119,11 @@ func (b *Builder) TagClose() {
 		b.info.WriteByte(0)
 	}
 	b.tagStack = b.tagStack[:len(b.tagStack)-1]
-	return
 }
 
 // Attr adds an attribute to the current DIE.
 func (b *Builder) Attr(attr dwarf.Attr, val interface{}) dwarf.Offset {
-	if len(b.tagStack) < 0 {
+	if len(b.tagStack) == 0 {
 		panic("Attr with no open tags")
 	}
 	off := dwarf.Offset(b.info.Len())

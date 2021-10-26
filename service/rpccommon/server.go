@@ -1,6 +1,7 @@
 package rpccommon
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"github.com/go-delve/delve/pkg/version"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
+	"github.com/go-delve/delve/service/dap"
 	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/internal/sameuser"
 	"github.com/go-delve/delve/service/rpc1"
@@ -77,7 +79,7 @@ func NewServer(config *service.Config) *ServerImpl {
 	}
 	if config.Debugger.Foreground {
 		// Print listener address
-		logflags.WriteAPIListeningMessage(config.Listener.Addr().String())
+		logflags.WriteAPIListeningMessage(config.Listener.Addr())
 		logger.Debug("API server pid = ", os.Getpid())
 	}
 	return &ServerImpl{
@@ -90,9 +92,13 @@ func NewServer(config *service.Config) *ServerImpl {
 
 // Stop stops the JSON-RPC server.
 func (s *ServerImpl) Stop() error {
+	s.log.Debug("stopping")
 	close(s.stopChan)
 	if s.config.AcceptMulti {
 		s.listener.Close()
+	}
+	if s.debugger.IsRunning() {
+		s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
 	}
 	kill := s.config.Debugger.AttachPid == 0
 	return s.debugger.Detach(kill)
@@ -146,19 +152,41 @@ func (s *ServerImpl) Run() error {
 			}
 
 			if s.config.CheckLocalConnUser {
-				if !sameuser.CanAccept(s.listener.Addr(), c.RemoteAddr()) {
+				if !sameuser.CanAccept(s.listener.Addr(), c.LocalAddr(), c.RemoteAddr()) {
 					c.Close()
 					continue
 				}
 			}
 
-			go s.serveJSONCodec(c)
+			go s.serveConnectionDemux(c)
 			if !s.config.AcceptMulti {
 				break
 			}
 		}
 	}()
 	return nil
+}
+
+type bufReadWriteCloser struct {
+	*bufio.Reader
+	io.WriteCloser
+}
+
+func (s *ServerImpl) serveConnectionDemux(c io.ReadWriteCloser) {
+	conn := &bufReadWriteCloser{bufio.NewReader(c), c}
+	b, err := conn.Peek(1)
+	if err != nil {
+		s.log.Warnf("error determining new connection protocol: %v", err)
+		return
+	}
+	if b[0] == 'C' { // C is for DAP's Content-Length
+		s.log.Debugf("serving DAP on new connection")
+		ds := dap.NewSession(conn, &dap.Config{Config: s.config, StopTriggered: s.stopChan}, s.debugger)
+		go ds.ServeDAPCodec()
+	} else {
+		s.log.Debugf("serving JSON-RPC on new connection")
+		go s.serveJSONCodec(conn)
+	}
 }
 
 // Precompute the reflect type for error.  Can't use error directly
@@ -400,7 +428,7 @@ func (s *RPCServer) GetVersion(args api.GetVersionIn, out *api.GetVersionOut) er
 	return s.s.debugger.GetVersion(out)
 }
 
-// Changes version of the API being served.
+// SetApiVersion changes version of the API being served.
 func (s *RPCServer) SetApiVersion(args api.SetAPIVersionIn, out *api.SetAPIVersionOut) error {
 	if args.APIVersion < 2 {
 		args.APIVersion = 1

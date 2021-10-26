@@ -10,6 +10,8 @@ import (
 	sys "golang.org/x/sys/windows"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
+	"github.com/go-delve/delve/pkg/proc/winutil"
 )
 
 // osProcessDetails holds Windows specific information.
@@ -19,6 +21,8 @@ type osProcessDetails struct {
 	entryPoint  uint64
 	running     bool
 }
+
+func (os *osProcessDetails) Close() {}
 
 // Launch creates and begins debugging a new process.
 func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ string, redirects [3]string) (*proc.Target, error) {
@@ -218,6 +222,16 @@ func (dbp *nativeProcess) addThread(hThread syscall.Handle, threadID int, attach
 			return nil, err
 		}
 	}
+
+	for _, bp := range dbp.Breakpoints().M {
+		if bp.WatchType != 0 {
+			err := thread.writeHardwareBreakpoint(bp.Addr, bp.WatchType, bp.HWBreakIndex)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	return thread, nil
 }
 
@@ -434,11 +448,17 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 		return nil, err
 	}
 
+	context := winutil.NewCONTEXT()
+
 	for _, thread := range dbp.threads {
+		thread.os.delayErr = nil
 		if !thread.os.dbgUiRemoteBreakIn {
-			_, err := _SuspendThread(thread.os.hThread)
-			if err != nil {
-				return nil, err
+			// Wait before reporting the error, the thread could be removed when we
+			// call waitForDebugEvent in the next loop.
+			_, thread.os.delayErr = _SuspendThread(thread.os.hThread)
+			if thread.os.delayErr == nil {
+				// This call will block until the thread has stopped.
+				_ = _GetThreadContext(thread.os.hThread, context)
 			}
 		}
 	}
@@ -464,6 +484,39 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 		}
 	}
 
+	// Check if trapthread still exist, if the process is dying it could have
+	// been removed while we were stopping the other threads.
+	trapthreadFound := false
+	for _, thread := range dbp.threads {
+		if thread.ID == trapthread.ID {
+			trapthreadFound = true
+		}
+		if thread.os.delayErr != nil && thread.os.delayErr != syscall.Errno(0x5) {
+			// Do not report Access is denied error, it is caused by the thread
+			// having already died but we haven't been notified about it yet.
+			return nil, thread.os.delayErr
+		}
+	}
+
+	if !trapthreadFound {
+		wasDbgUiRemoteBreakIn := trapthread.os.dbgUiRemoteBreakIn
+		// trapthread exited during stop, pick another one
+		trapthread = nil
+		for _, thread := range dbp.threads {
+			if thread.CurrentBreakpoint.Breakpoint != nil && thread.os.delayErr == nil {
+				trapthread = thread
+				break
+			}
+		}
+		if trapthread == nil && wasDbgUiRemoteBreakIn {
+			// If this was triggered by a manual stop request we should stop
+			// regardless, pick a thread.
+			for _, thread := range dbp.threads {
+				return thread, nil
+			}
+		}
+	}
+
 	return trapthread, nil
 }
 
@@ -483,6 +536,18 @@ func (dbp *nativeProcess) detach(kill bool) error {
 
 func (dbp *nativeProcess) EntryPoint() (uint64, error) {
 	return dbp.os.entryPoint, nil
+}
+
+func (dbp *nativeProcess) SupportsBPF() bool {
+	return false
+}
+
+func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProbeArgMap) error {
+	return nil
+}
+
+func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
+	return nil
 }
 
 func killProcess(pid int) error {

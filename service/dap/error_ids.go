@@ -24,7 +24,10 @@ const (
 	UnableToHalt               = 2010
 	UnableToGetExceptionInfo   = 2011
 	UnableToSetVariable        = 2012
+	UnableToDisassemble        = 2013
+	UnableToListRegisters      = 2014
 	// Add more codes as we support more requests
+	NoDebugIsRunning  = 3000
 	DebuggeeIsRunning = 4000
 	DisconnectError   = 5000
 )

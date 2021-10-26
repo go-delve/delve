@@ -45,6 +45,9 @@ type gdbConn struct {
 	threadSuffixSupported bool // thread suffix supported by stub
 	isDebugserver         bool // true if the stub is debugserver
 	xcmdok                bool // x command can be used to transfer memory
+	goarch                string
+
+	useXcmd bool // forces writeMemory to use the 'X' command
 
 	log *logrus.Entry
 }
@@ -404,18 +407,39 @@ func (conn *gdbConn) qXfer(kind, annex string, binary bool) ([]byte, error) {
 	return out, nil
 }
 
-// setBreakpoint executes a 'Z' (insert breakpoint) command of type '0' and kind '1' or '4'
-func (conn *gdbConn) setBreakpoint(addr uint64, kind int) error {
+// qXferWrite executes a 'qXfer' write with the specified kind and annex.
+func (conn *gdbConn) qXferWrite(kind, annex string) error {
 	conn.outbuf.Reset()
-	fmt.Fprintf(&conn.outbuf, "$Z0,%x,%d", addr, kind)
+	fmt.Fprintf(&conn.outbuf, "$qXfer:%s:write:%s:0:", kind, annex)
+	//TODO(aarzilli): if we ever actually need to write something with qXfer,
+	//this will need to be implemented properly. At the moment it is only used
+	//for a fake write to the siginfo kind, to end a diversion in 'rr'.
+	_, err := conn.exec(conn.outbuf.Bytes(), "qXfer")
+	return err
+}
+
+type breakpointType uint8
+
+const (
+	swBreakpoint     breakpointType = 0
+	hwBreakpoint     breakpointType = 1
+	writeWatchpoint  breakpointType = 2
+	readWatchpoint   breakpointType = 3
+	accessWatchpoint breakpointType = 4
+)
+
+// setBreakpoint executes a 'Z' (insert breakpoint) command of type '0' and kind '1' or '4'
+func (conn *gdbConn) setBreakpoint(addr uint64, typ breakpointType, kind int) error {
+	conn.outbuf.Reset()
+	fmt.Fprintf(&conn.outbuf, "$Z%d,%x,%d", typ, addr, kind)
 	_, err := conn.exec(conn.outbuf.Bytes(), "set breakpoint")
 	return err
 }
 
 // clearBreakpoint executes a 'z' (remove breakpoint) command of type '0' and kind '1' or '4'
-func (conn *gdbConn) clearBreakpoint(addr uint64, kind int) error {
+func (conn *gdbConn) clearBreakpoint(addr uint64, typ breakpointType, kind int) error {
 	conn.outbuf.Reset()
-	fmt.Fprintf(&conn.outbuf, "$z0,%x,%d", addr, kind)
+	fmt.Fprintf(&conn.outbuf, "$z%d,%x,%d", typ, addr, kind)
 	_, err := conn.exec(conn.outbuf.Bytes(), "clear breakpoint")
 	return err
 }
@@ -537,7 +561,7 @@ func (conn *gdbConn) writeRegister(threadID string, regnum int, data []byte) err
 // resume each thread. If a thread has sig == 0 the 'c' action will be used,
 // otherwise the 'C' action will be used and the value of sig will be passed
 // to it.
-func (conn *gdbConn) resume(threads map[int]*gdbThread, tu *threadUpdater) (string, uint8, error) {
+func (conn *gdbConn) resume(threads map[int]*gdbThread, tu *threadUpdater) (stopPacket, error) {
 	if conn.direction == proc.Forward {
 		conn.outbuf.Reset()
 		fmt.Fprintf(&conn.outbuf, "$vCont")
@@ -549,7 +573,7 @@ func (conn *gdbConn) resume(threads map[int]*gdbThread, tu *threadUpdater) (stri
 		fmt.Fprintf(&conn.outbuf, ";c")
 	} else {
 		if err := conn.selectThread('c', "p-1.-1", "resume"); err != nil {
-			return "", 0, err
+			return stopPacket{}, err
 		}
 		conn.outbuf.Reset()
 		fmt.Fprint(&conn.outbuf, "$bc")
@@ -557,7 +581,7 @@ func (conn *gdbConn) resume(threads map[int]*gdbThread, tu *threadUpdater) (stri
 	conn.manualStopMutex.Lock()
 	if err := conn.send(conn.outbuf.Bytes()); err != nil {
 		conn.manualStopMutex.Unlock()
-		return "", 0, err
+		return stopPacket{}, err
 	}
 	conn.running = true
 	conn.manualStopMutex.Unlock()
@@ -584,7 +608,7 @@ func (conn *gdbConn) step(threadID string, tu *threadUpdater, ignoreFaultSignal 
 		if err := conn.send(conn.outbuf.Bytes()); err != nil {
 			return err
 		}
-		_, _, err := conn.waitForvContStop("singlestep", threadID, tu)
+		_, err := conn.waitForvContStop("singlestep", threadID, tu)
 		return err
 	}
 	var sig uint8 = 0
@@ -601,8 +625,8 @@ func (conn *gdbConn) step(threadID string, tu *threadUpdater, ignoreFaultSignal 
 		if tu != nil {
 			tu.Reset()
 		}
-		var err error
-		_, sig, err = conn.waitForvContStop("singlestep", threadID, tu)
+		sp, err := conn.waitForvContStop("singlestep", threadID, tu)
+		sig = sp.sig
 		if err != nil {
 			return err
 		}
@@ -626,7 +650,7 @@ func (conn *gdbConn) step(threadID string, tu *threadUpdater, ignoreFaultSignal 
 
 var errThreadBlocked = errors.New("thread blocked")
 
-func (conn *gdbConn) waitForvContStop(context string, threadID string, tu *threadUpdater) (string, uint8, error) {
+func (conn *gdbConn) waitForvContStop(context, threadID string, tu *threadUpdater) (stopPacket, error) {
 	count := 0
 	failed := false
 	for {
@@ -647,23 +671,35 @@ func (conn *gdbConn) waitForvContStop(context string, threadID string, tu *threa
 			}
 			count++
 		} else if failed {
-			return "", 0, errThreadBlocked
+			return stopPacket{}, errThreadBlocked
 		} else if err != nil {
-			return "", 0, err
+			return stopPacket{}, err
 		} else {
 			repeat, sp, err := conn.parseStopPacket(resp, threadID, tu)
 			if !repeat {
-				return sp.threadID, sp.sig, err
+				return sp, err
 			}
 		}
 	}
 }
 
 type stopPacket struct {
-	threadID string
-	sig      uint8
-	reason   string
+	threadID  string
+	sig       uint8
+	reason    string
+	watchAddr uint64
 }
+
+// Mach exception codes used to decode metype/medata keys in stop packets (necessary to support watchpoints with debugserver).
+// See:
+//  https://opensource.apple.com/source/xnu/xnu-4570.1.46/osfmk/mach/exception_types.h.auto.html
+//  https://opensource.apple.com/source/xnu/xnu-4570.1.46/osfmk/mach/i386/exception.h.auto.html
+//  https://opensource.apple.com/source/xnu/xnu-4570.1.46/osfmk/mach/arm/exception.h.auto.html
+const (
+	_EXC_BREAKPOINT   = 6     // mach exception type for hardware breakpoints
+	_EXC_I386_SGL     = 1     // mach exception code for single step on x86, for some reason this is also used for watchpoints
+	_EXC_ARM_DA_DEBUG = 0x102 // mach exception code for debug fault on arm/arm64
+)
 
 // executes 'vCont' (continue/step) command
 func (conn *gdbConn) parseStopPacket(resp []byte, threadID string, tu *threadUpdater) (repeat bool, sp stopPacket, err error) {
@@ -682,6 +718,9 @@ func (conn *gdbConn) parseStopPacket(resp []byte, threadID string, tu *threadUpd
 		if logflags.GdbWire() && gdbWireFullStopPacket {
 			conn.log.Debugf("full stop packet: %s", string(resp))
 		}
+
+		var metype int
+		var medata = make([]uint64, 0, 10)
 
 		buf := resp[3:]
 		for buf != nil {
@@ -712,6 +751,32 @@ func (conn *gdbConn) parseStopPacket(resp []byte, threadID string, tu *threadUpd
 				}
 			case "reason":
 				sp.reason = string(value)
+			case "watch", "awatch", "rwatch":
+				sp.watchAddr, err = strconv.ParseUint(string(value), 16, 64)
+				if err != nil {
+					return false, stopPacket{}, fmt.Errorf("malformed stop packet: %s (wrong watch address)", string(resp))
+				}
+			case "metype":
+				// mach exception type (debugserver extension)
+				metype, _ = strconv.Atoi(string(value))
+			case "medata":
+				// mach exception data (debugserver extension)
+				d, _ := strconv.ParseUint(string(value), 16, 64)
+				medata = append(medata, d)
+			}
+		}
+
+		// Debugserver does not report watchpoint stops in the standard way preferring
+		// instead the semi-undocumented metype/medata keys.
+		// These values also have different meanings depending on the CPU architecture.
+		switch conn.goarch {
+		case "amd64":
+			if metype == _EXC_BREAKPOINT && len(medata) >= 2 && medata[0] == _EXC_I386_SGL {
+				sp.watchAddr = medata[1] // this should be zero if this is really a single step stop and non-zero for watchpoints
+			}
+		case "arm64":
+			if metype == _EXC_BREAKPOINT && len(medata) >= 2 && medata[0] == _EXC_ARM_DA_DEBUG {
+				sp.watchAddr = medata[1]
 			}
 		}
 
@@ -936,8 +1001,16 @@ func writeAsciiBytes(w io.Writer, data []byte) {
 	}
 }
 
-// executes 'M' (write memory) command
+// writeMemory writes memory using either 'M' or 'X'
 func (conn *gdbConn) writeMemory(addr uint64, data []byte) (written int, err error) {
+	if conn.useXcmd {
+		return conn.writeMemoryBinary(addr, data)
+	}
+	return conn.writeMemoryHex(addr, data)
+}
+
+// executes 'M' (write memory) command
+func (conn *gdbConn) writeMemoryHex(addr uint64, data []byte) (written int, err error) {
 	if len(data) == 0 {
 		// LLDB can't parse requests for 0-length writes and hangs if we emit them
 		return 0, nil
@@ -947,6 +1020,27 @@ func (conn *gdbConn) writeMemory(addr uint64, data []byte) (written int, err err
 	fmt.Fprintf(&conn.outbuf, "$M%x,%x:", addr, len(data))
 
 	writeAsciiBytes(&conn.outbuf, data)
+
+	_, err = conn.exec(conn.outbuf.Bytes(), "memory write")
+	if err != nil {
+		return 0, err
+	}
+	return len(data), nil
+}
+
+func (conn *gdbConn) writeMemoryBinary(addr uint64, data []byte) (written int, err error) {
+	conn.outbuf.Reset()
+	fmt.Fprintf(&conn.outbuf, "$X%x,%x:", addr, len(data))
+
+	for _, b := range data {
+		switch b {
+		case '#', '$', '}':
+			conn.outbuf.WriteByte('}')
+			conn.outbuf.WriteByte(b ^ escapeXor)
+		default:
+			conn.outbuf.WriteByte(b)
+		}
+	}
 
 	_, err = conn.exec(conn.outbuf.Bytes(), "memory write")
 	if err != nil {
@@ -967,18 +1061,18 @@ func (conn *gdbConn) allocMemory(sz uint64) (uint64, error) {
 
 // threadStopInfo executes a 'qThreadStopInfo' and returns the reason the
 // thread stopped.
-func (conn *gdbConn) threadStopInfo(threadID string) (sig uint8, reason string, err error) {
+func (conn *gdbConn) threadStopInfo(threadID string) (sp stopPacket, err error) {
 	conn.outbuf.Reset()
 	fmt.Fprintf(&conn.outbuf, "$qThreadStopInfo%s", threadID)
 	resp, err := conn.exec(conn.outbuf.Bytes(), "thread stop info")
 	if err != nil {
-		return 0, "", err
+		return stopPacket{}, err
 	}
-	_, sp, err := conn.parseStopPacket(resp, "", nil)
+	_, sp, err = conn.parseStopPacket(resp, "", nil)
 	if err != nil {
-		return 0, "", err
+		return stopPacket{}, err
 	}
-	return sp.sig, sp.reason, nil
+	return sp, nil
 }
 
 // restart executes a 'vRun' command.

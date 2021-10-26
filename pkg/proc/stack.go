@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"go/constant"
+	"reflect"
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
@@ -258,7 +259,7 @@ func (it *stackIterator) frameBase(fn *Function) int64 {
 	if err != nil {
 		return 0
 	}
-	fb, _, _, _ := it.bi.Location(dwarfTree.Entry, dwarf.AttrFrameBase, it.pc, it.regs)
+	fb, _, _, _ := it.bi.Location(dwarfTree.Entry, dwarf.AttrFrameBase, it.pc, it.regs, it.mem)
 	return fb
 }
 
@@ -396,7 +397,7 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 
 	cfareg, err := it.executeFrameRegRule(0, framectx.CFA, 0)
 	if cfareg == nil {
-		it.err = fmt.Errorf("CFA becomes undefined at PC %#x", it.pc)
+		it.err = fmt.Errorf("CFA becomes undefined at PC %#x: %v", it.pc, err)
 		return op.DwarfRegisters{}, 0, 0
 	}
 	it.regs.CFA = int64(cfareg.Uint64Val)
@@ -420,6 +421,7 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 		if i == framectx.RetAddrReg {
 			if reg == nil {
 				if err == nil {
+					//lint:ignore ST1005 backwards compatibility
 					err = fmt.Errorf("Undefined return address at %#x", it.pc)
 				}
 				it.err = err
@@ -458,13 +460,13 @@ func (it *stackIterator) executeFrameRegRule(regnum uint64, rule frame.DWRule, c
 	case frame.RuleRegister:
 		return it.regs.Reg(rule.Reg), nil
 	case frame.RuleExpression:
-		v, _, err := op.ExecuteStackProgram(it.regs, rule.Expression, it.bi.Arch.PtrSize())
+		v, _, err := op.ExecuteStackProgram(it.regs, rule.Expression, it.bi.Arch.PtrSize(), it.mem.ReadMemory)
 		if err != nil {
 			return nil, err
 		}
 		return it.readRegisterAt(regnum, uint64(v))
 	case frame.RuleValExpression:
-		v, _, err := op.ExecuteStackProgram(it.regs, rule.Expression, it.bi.Arch.PtrSize())
+		v, _, err := op.ExecuteStackProgram(it.regs, rule.Expression, it.bi.Arch.PtrSize(), it.mem.ReadMemory)
 		if err != nil {
 			return nil, err
 		}
@@ -519,11 +521,11 @@ func (it *stackIterator) loadG0SchedSP() {
 
 // Defer represents one deferred call
 type Defer struct {
-	DwrapPC uint64 // Value of field _defer.fn.fn, the deferred function or a wrapper to it in Go 1.17 or later
+	DwrapPC uint64 // PC of the deferred function or, in Go 1.17+ a wrapper to it
 	DeferPC uint64 // PC address of instruction that added this defer
 	SP      uint64 // Value of SP register when this function was deferred (this field gets adjusted when the stack is moved to match the new stack space)
 	link    *Defer // Next deferred function
-	argSz   int64
+	argSz   int64  // Always 0 in Go >=1.17
 
 	variable   *Variable
 	Unreadable error
@@ -574,25 +576,37 @@ func (g *G) readDefers(frames []Stackframe) {
 }
 
 func (d *Defer) load() {
-	d.variable.loadValue(LoadConfig{false, 1, 0, 0, -1, 0})
-	if d.variable.Unreadable != nil {
-		d.Unreadable = d.variable.Unreadable
+	v := d.variable // +rtype _defer
+	v.loadValue(LoadConfig{false, 1, 0, 0, -1, 0})
+	if v.Unreadable != nil {
+		d.Unreadable = v.Unreadable
 		return
 	}
 
-	fnvar := d.variable.fieldVariable("fn").maybeDereference()
-	if fnvar.Addr != 0 {
+	fnvar := v.fieldVariable("fn")
+	if fnvar.Kind == reflect.Func {
+		// In Go 1.18, fn is a func().
+		d.DwrapPC = fnvar.Base
+	} else if val := fnvar.maybeDereference(); val.Addr != 0 {
+		// In Go <1.18, fn is a *funcval.
 		fnvar = fnvar.loadFieldNamed("fn")
 		if fnvar.Unreadable == nil {
 			d.DwrapPC, _ = constant.Uint64Val(fnvar.Value)
 		}
 	}
 
-	d.DeferPC, _ = constant.Uint64Val(d.variable.fieldVariable("pc").Value)
-	d.SP, _ = constant.Uint64Val(d.variable.fieldVariable("sp").Value)
-	d.argSz, _ = constant.Int64Val(d.variable.fieldVariable("siz").Value)
+	d.DeferPC, _ = constant.Uint64Val(v.fieldVariable("pc").Value) // +rtype uintptr
+	d.SP, _ = constant.Uint64Val(v.fieldVariable("sp").Value)      // +rtype uintptr
+	sizVar := v.fieldVariable("siz")                               // +rtype -opt int32
+	if sizVar != nil {
+		// In Go <1.18, siz stores the number of bytes of
+		// defer arguments following the defer record. In Go
+		// 1.18, the defer record doesn't store arguments, so
+		// we leave this 0.
+		d.argSz, _ = constant.Int64Val(sizVar.Value)
+	}
 
-	linkvar := d.variable.fieldVariable("link").maybeDereference()
+	linkvar := v.fieldVariable("link").maybeDereference() // +rtype *_defer
 	if linkvar.Addr != 0 {
 		d.link = &Defer{variable: linkvar}
 	}
@@ -659,7 +673,7 @@ func (d *Defer) EvalScope(t *Target, thread Thread) (*EvalScope, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not read DWARF function entry: %v", err)
 	}
-	scope.Regs.FrameBase, _, _, _ = bi.Location(e, dwarf.AttrFrameBase, scope.PC, scope.Regs)
+	scope.Regs.FrameBase, _, _, _ = bi.Location(e, dwarf.AttrFrameBase, scope.PC, scope.Regs, scope.Mem)
 	scope.Mem = cacheMemory(scope.Mem, uint64(scope.Regs.CFA), int(d.argSz))
 
 	return scope, nil

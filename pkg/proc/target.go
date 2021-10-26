@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 )
 
 var (
@@ -46,6 +47,10 @@ type Target struct {
 	// CanDump is true if core dumping is supported.
 	CanDump bool
 
+	// KeepSteppingBreakpoints determines whether certain stop reasons (e.g. manual halts)
+	// will keep the stepping breakpoints instead of clearing them.
+	KeepSteppingBreakpoints KeepSteppingBreakpoints
+
 	// currentThread is the thread that will be used by next/step/stepout and to evaluate variables if no goroutine is selected.
 	currentThread Thread
 
@@ -75,6 +80,13 @@ type Target struct {
 	fakeMemoryRegistry    []*compositeMemory
 	fakeMemoryRegistryMap map[string]*compositeMemory
 }
+
+type KeepSteppingBreakpoints uint8
+
+const (
+	HaltKeepsSteppingBreakpoints KeepSteppingBreakpoints = 1 << iota
+	TracepointKeepsSteppingBreakpoints
+)
 
 // ErrProcessExited indicates that the process has exited and contains both
 // process id and exit status.
@@ -203,7 +215,7 @@ func (t *Target) IsCgo() bool {
 	if t.iscgo != nil {
 		return *t.iscgo
 	}
-	scope := globalScope(t.BinInfo(), t.BinInfo().Images[0], t.Memory())
+	scope := globalScope(t, t.BinInfo(), t.BinInfo().Images[0], t.Memory())
 	iscgov, err := scope.findGlobal("runtime", "iscgo")
 	if err == nil {
 		iscgov.loadValue(loadFullValue)
@@ -235,9 +247,6 @@ func (t *Target) Valid() (bool, error) {
 // Currently only non-recorded processes running on AMD64 support
 // function calls.
 func (t *Target) SupportsFunctionCalls() bool {
-	if ok, _ := t.Process.Recorded(); ok {
-		return false
-	}
 	return t.Process.BinInfo().Arch.Name == "amd64"
 }
 
@@ -314,7 +323,7 @@ func (t *Target) Detach(kill bool) error {
 		}
 		for _, bp := range t.Breakpoints().M {
 			if bp != nil {
-				_, err := t.ClearBreakpoint(bp.Addr)
+				err := t.ClearBreakpoint(bp.Addr)
 				if err != nil {
 					return err
 				}
@@ -333,13 +342,14 @@ func setAsyncPreemptOff(p *Target, v int64) {
 		return
 	}
 	logger := p.BinInfo().logger
-	scope := globalScope(p.BinInfo(), p.BinInfo().Images[0], p.Memory())
+	scope := globalScope(p, p.BinInfo(), p.BinInfo().Images[0], p.Memory())
+	// +rtype -var debug anytype
 	debugv, err := scope.findGlobal("runtime", "debug")
 	if err != nil || debugv.Unreadable != nil {
 		logger.Warnf("could not find runtime/debug variable (or unreadable): %v %v", err, debugv.Unreadable)
 		return
 	}
-	asyncpreemptoffv, err := debugv.structMember("asyncpreemptoff")
+	asyncpreemptoffv, err := debugv.structMember("asyncpreemptoff") // +rtype int32
 	if err != nil {
 		logger.Warnf("could not find asyncpreemptoff field: %v", err)
 		return
@@ -375,7 +385,7 @@ func (t *Target) createUnrecoveredPanicBreakpoint() {
 
 // createFatalThrowBreakpoint creates the a breakpoint as runtime.fatalthrow.
 func (t *Target) createFatalThrowBreakpoint() {
-	fatalpcs, err := FindFunctionLocation(t.Process, "runtime.fatalthrow", 0)
+	fatalpcs, err := FindFunctionLocation(t.Process, "runtime.throw", 0)
 	if err == nil {
 		bp, err := t.SetBreakpointWithID(fatalThrowID, fatalpcs[0])
 		if err == nil {
@@ -391,13 +401,58 @@ func (t *Target) CurrentThread() Thread {
 	return t.currentThread
 }
 
+type UProbeTraceResult struct {
+	FnAddr       int
+	GoroutineID  int
+	InputParams  []*Variable
+	ReturnParams []*Variable
+}
+
+func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
+	var results []*UProbeTraceResult
+	tracepoints := t.proc.GetBufferedTracepoints()
+	convertInputParamToVariable := func(ip *ebpf.RawUProbeParam) *Variable {
+		v := &Variable{}
+		v.RealType = ip.RealType
+		v.Len = ip.Len
+		v.Base = ip.Base
+		v.Addr = ip.Addr
+		v.Kind = ip.Kind
+
+		cachedMem := CreateLoadedCachedMemory(ip.Data)
+		compMem, _ := CreateCompositeMemory(cachedMem, t.BinInfo().Arch, op.DwarfRegisters{}, ip.Pieces)
+		v.mem = compMem
+
+		// Load the value here so that we don't have to export
+		// loadValue outside of proc.
+		v.loadValue(loadFullValue)
+
+		return v
+	}
+	for _, tp := range tracepoints {
+		r := &UProbeTraceResult{}
+		r.FnAddr = tp.FnAddr
+		r.GoroutineID = tp.GoroutineID
+		for _, ip := range tp.InputParams {
+			v := convertInputParamToVariable(ip)
+			r.InputParams = append(r.InputParams, v)
+		}
+		for _, ip := range tp.ReturnParams {
+			v := convertInputParamToVariable(ip)
+			r.ReturnParams = append(r.ReturnParams, v)
+		}
+		results = append(results, r)
+	}
+	return results
+}
+
 // SetNextBreakpointID sets the breakpoint ID of the next breakpoint
 func (t *Target) SetNextBreakpointID(id int) {
 	t.Breakpoints().breakpointIDCounter = id
 }
 
 const (
-	fakeAddressBase     = 0xbeef000000000000
+	FakeAddressBase     = 0xbeef000000000000
 	fakeAddressUnresolv = 0xbeed000000000000 // this address never resloves to memory
 )
 
@@ -435,7 +490,7 @@ func (t *Target) newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters
 
 func (t *Target) registerFakeMemory(mem *compositeMemory) (addr uint64) {
 	t.fakeMemoryRegistry = append(t.fakeMemoryRegistry, mem)
-	addr = fakeAddressBase
+	addr = FakeAddressBase
 	if len(t.fakeMemoryRegistry) > 1 {
 		prevMem := t.fakeMemoryRegistry[len(t.fakeMemoryRegistry)-2]
 		addr = uint64(alignAddr(int64(prevMem.base+uint64(len(prevMem.data))), 0x100)) // the call to alignAddr just makes the address look nicer, it is not necessary
@@ -471,7 +526,7 @@ func (t *Target) dwrapUnwrap(fn *Function) *Function {
 	if fn == nil {
 		return nil
 	}
-	if !strings.Contains(fn.Name, "·dwrap·") {
+	if !strings.Contains(fn.Name, "·dwrap·") && !fn.trampoline {
 		return fn
 	}
 	if unwrap := t.BinInfo().dwrapUnwrapCache[fn.Entry]; unwrap != nil {
