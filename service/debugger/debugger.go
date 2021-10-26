@@ -1647,19 +1647,9 @@ func (d *Debugger) GroupGoroutines(gs []*proc.G, group *api.GoroutineGroupingOpt
 		case api.GoroutineLabel:
 			key = fmt.Sprintf("%s=%s", group.GroupByKey, g.Labels()[group.GroupByKey])
 		case api.GoroutineRunning:
-			running := g.Thread != nil
-			if running {
-				key = "running"
-			} else {
-				key = "running=false"
-			}
+			key = fmt.Sprintf("running=%v", g.Thread != nil)
 		case api.GoroutineUser:
-			if !g.System(d.target) {
-				key = "user"
-			} else {
-				key = "user=false"
-			}
-
+			key = fmt.Sprintf("user=%v", !g.System(d.target))
 		}
 		if len(groupMembers[key]) < group.MaxGroupMembers {
 			groupMembers[key] = append(groupMembers[key], g)
