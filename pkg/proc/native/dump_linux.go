@@ -47,6 +47,9 @@ smapsLinesLoop:
 
 		for i := range vmflags {
 			switch vmflags[i] {
+			case "pf":
+				// pure PFN range, see https://github.com/go-delve/delve/issues/2630
+				continue smapsLinesLoop
 			case "dd":
 				// "don't dump"
 				continue smapsLinesLoop
