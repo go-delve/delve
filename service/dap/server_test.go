@@ -4280,8 +4280,7 @@ func TestNextParked(t *testing.T) {
 			fixture.Source, []int{15},
 			[]onBreakpoint{{ // Stop at line 15
 				execute: func() {
-					if goroutineId := testStepParkedHelper(t, client, fixture); goroutineId >= 0 {
-
+					if goroutineId, terminated := testStepParkedHelper(t, client, fixture); !terminated {
 						client.NextRequest(goroutineId)
 						client.ExpectNextResponse(t)
 
@@ -4291,64 +4290,66 @@ func TestNextParked(t *testing.T) {
 						}
 					}
 				},
-				disconnect: false,
+				terminated: true,
 			}})
 	})
 }
 
-func testStepParkedHelper(t *testing.T, client *daptest.Client, fixture protest.Fixture) int {
+func testStepParkedHelper(t *testing.T, client *daptest.Client, fixture protest.Fixture) (int, bool) {
 	t.Helper()
 	// Set a breakpoint at main.sayHi
 	client.SetBreakpointsRequest(fixture.Source, []int{8})
 	client.ExpectSetBreakpointsResponse(t)
 
-	var goroutineId = -1
-	for goroutineId < 0 {
-		client.ContinueRequest(1)
-		contResp := client.ExpectMessage(t)
-		switch contResp.(type) {
-		case *dap.ContinueResponse:
-			// ok
-		case *dap.TerminatedEvent:
-			return -1
+	client.ContinueRequest(1)
+	contResp := client.ExpectMessage(t)
+	switch contResp.(type) {
+	case *dap.ContinueResponse:
+		// ok
+	case *dap.TerminatedEvent:
+		return -1, true
+	}
+
+	se := client.ExpectStoppedEvent(t)
+
+	client.ThreadsRequest()
+	threads := client.ExpectThreadsResponse(t)
+
+	// Search for a parked goroutine that we know for sure will have to be
+	// resumed before the program can exit. This is a parked goroutine that:
+	// Prefer goroutines that are not the current goroutine.
+	// 1. is executing main.sayhi
+	// 2. hasn't called wg.Done yet
+	// 3. is not the currently selected goroutine
+	goroutineId := -1
+	for _, g := range threads.Body.Threads {
+		// We do not need to check the thread that the program
+		// is currently stopped on.
+		if g.Id == se.Body.ThreadId {
+			continue
 		}
-
-		se := client.ExpectStoppedEvent(t)
-
-		client.ThreadsRequest()
-		threads := client.ExpectThreadsResponse(t)
-
-		// Search for a parked goroutine that we know for sure will have to be
-		// resumed before the program can exit. This is a parked goroutine that:
-		// 1. is executing main.sayhi
-		// 2. hasn't called wg.Done yet
-		// 3. is not the currently selected goroutine
-		for _, g := range threads.Body.Threads {
-			// We do not need to check the thread that the program
-			// is currently stopped on.
-			if g.Id == se.Body.ThreadId {
-				continue
-			}
-			client.StackTraceRequest(g.Id, 0, 5)
-			frames := client.ExpectStackTraceResponse(t)
-			for _, frame := range frames.Body.StackFrames {
-				// line 11 is the line where wg.Done is called
-				if frame.Name == "main.sayhi" && frame.Line < 11 {
-					goroutineId = g.Id
-					break
-				}
-			}
-			if goroutineId >= 0 {
+		client.StackTraceRequest(g.Id, 0, 5)
+		frames := client.ExpectStackTraceResponse(t)
+		for _, frame := range frames.Body.StackFrames {
+			// line 11 is the line where wg.Done is called
+			if frame.Name == "main.sayhi" && frame.Line < 11 {
+				goroutineId = g.Id
 				break
 			}
 		}
+		if goroutineId >= 0 {
+			break
+		}
+	}
+	if goroutineId < 0 {
+		goroutineId = se.Body.ThreadId
 	}
 
 	// Clear all breakpoints.
 	client.SetBreakpointsRequest(fixture.Source, []int{})
 	client.ExpectSetBreakpointsResponse(t)
 
-	return goroutineId
+	return goroutineId, false
 }
 
 // TestStepOutPreservesGoroutine is inspired by proc_test.TestStepOutPreservesGoroutine
