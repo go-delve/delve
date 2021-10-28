@@ -517,6 +517,31 @@ func (s *Session) recoverPanic(request dap.Message) {
 	}
 }
 
+// asyncSetupDone holds two structs to help determine if an asynchronous
+// command has completed setup. doneCh is used when the whole command is
+// done running, and commandCh is used if the setup for a command is done
+// running.
+type asyncSetupDone struct {
+	commandCh chan struct{}
+	doneCh    chan struct{}
+}
+
+// newAsyncSetupDone returns a pointer to an initialized asyncSetupDone.
+func newAsyncSetupDone() *asyncSetupDone {
+	return &asyncSetupDone{
+		commandCh: make(chan struct{}),
+		doneCh:    make(chan struct{}),
+	}
+}
+
+// wait waits on either w.commandCh or w.doneCh to close.
+func (w *asyncSetupDone) wait() {
+	select {
+	case <-w.commandCh:
+	case <-w.doneCh:
+	}
+}
+
 func (s *Session) handleRequest(request dap.Message) {
 	defer s.recoverPanic(request)
 	jsonmsg, _ := json.Marshal(request)
@@ -641,7 +666,7 @@ func (s *Session) handleRequest(request dap.Message) {
 
 	// Non-blocking request handlers will signal when they are ready
 	// setting up for async execution, so more requests can be processed.
-	resumeRequestLoop := make(chan struct{})
+	resumeRequestLoop := newAsyncSetupDone()
 
 	switch request := request.(type) {
 	//--- Asynchronous requests ---
@@ -649,51 +674,58 @@ func (s *Session) handleRequest(request dap.Message) {
 		// Optional (capability ‘supportsConfigurationDoneRequest’)
 		go func() {
 			defer s.recoverPanic(request)
+			defer close(resumeRequestLoop.doneCh)
 			s.onConfigurationDoneRequest(request, resumeRequestLoop)
 		}()
-		<-resumeRequestLoop
+		resumeRequestLoop.wait()
 	case *dap.ContinueRequest:
 		// Required
 		go func() {
 			defer s.recoverPanic(request)
+			defer close(resumeRequestLoop.doneCh)
 			s.onContinueRequest(request, resumeRequestLoop)
 		}()
-		<-resumeRequestLoop
+		resumeRequestLoop.wait()
 	case *dap.NextRequest:
 		// Required
 		go func() {
 			defer s.recoverPanic(request)
+			defer close(resumeRequestLoop.doneCh)
 			s.onNextRequest(request, resumeRequestLoop)
 		}()
-		<-resumeRequestLoop
+		resumeRequestLoop.wait()
 	case *dap.StepInRequest:
 		// Required
 		go func() {
 			defer s.recoverPanic(request)
+			defer close(resumeRequestLoop.doneCh)
 			s.onStepInRequest(request, resumeRequestLoop)
 		}()
-		<-resumeRequestLoop
+		resumeRequestLoop.wait()
 	case *dap.StepOutRequest:
 		// Required
 		go func() {
 			defer s.recoverPanic(request)
+			defer close(resumeRequestLoop.doneCh)
 			s.onStepOutRequest(request, resumeRequestLoop)
 		}()
-		<-resumeRequestLoop
+		resumeRequestLoop.wait()
 	case *dap.StepBackRequest:
 		// Optional (capability ‘supportsStepBack’)
 		go func() {
 			defer s.recoverPanic(request)
+			defer close(resumeRequestLoop.doneCh)
 			s.onStepBackRequest(request, resumeRequestLoop)
 		}()
-		<-resumeRequestLoop
+		resumeRequestLoop.wait()
 	case *dap.ReverseContinueRequest:
 		// Optional (capability ‘supportsStepBack’)
 		go func() {
 			defer s.recoverPanic(request)
+			defer close(resumeRequestLoop.doneCh)
 			s.onReverseContinueRequest(request, resumeRequestLoop)
 		}()
-		<-resumeRequestLoop
+		resumeRequestLoop.wait()
 	//--- Synchronous requests ---
 	case *dap.SetBreakpointsRequest:
 		// Required
@@ -1529,23 +1561,11 @@ func (s *Session) onSetExceptionBreakpointsRequest(request *dap.SetExceptionBrea
 	s.send(&dap.SetExceptionBreakpointsResponse{Response: *newResponse(request.Request)})
 }
 
-func closeIfOpen(ch chan struct{}) {
-	if ch != nil {
-		select {
-		case <-ch:
-			// already closed
-		default:
-			close(ch)
-		}
-	}
-}
-
 // onConfigurationDoneRequest handles 'configurationDone' request.
 // This is an optional request enabled by capability ‘supportsConfigurationDoneRequest’.
 // It gets triggered after all the debug requests that follow initalized event,
 // so the s.debugger is guaranteed to be set. Expects the target to be halted.
-func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest, allowNextStateChange chan struct{}) {
-	defer closeIfOpen(allowNextStateChange)
+func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest, allowNextStateChange *asyncSetupDone) {
 	if s.args.stopOnEntry {
 		e := &dap.StoppedEvent{
 			Event: *newEvent("stopped"),
@@ -1563,7 +1583,7 @@ func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneReque
 
 // onContinueRequest handles 'continue' request.
 // This is a mandatory request to support.
-func (s *Session) onContinueRequest(request *dap.ContinueRequest, allowNextStateChange chan struct{}) {
+func (s *Session) onContinueRequest(request *dap.ContinueRequest, allowNextStateChange *asyncSetupDone) {
 	s.send(&dap.ContinueResponse{
 		Response: *newResponse(request.Request),
 		Body:     dap.ContinueResponseBody{AllThreadsContinued: true}})
@@ -1772,21 +1792,21 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 
 // onNextRequest handles 'next' request.
 // This is a mandatory request to support.
-func (s *Session) onNextRequest(request *dap.NextRequest, allowNextStateChange chan struct{}) {
+func (s *Session) onNextRequest(request *dap.NextRequest, allowNextStateChange *asyncSetupDone) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.NextResponse{Response: *newResponse(request.Request)})
 	s.stepUntilStopAndNotify(api.Next, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
 
 // onStepInRequest handles 'stepIn' request
 // This is a mandatory request to support.
-func (s *Session) onStepInRequest(request *dap.StepInRequest, allowNextStateChange chan struct{}) {
+func (s *Session) onStepInRequest(request *dap.StepInRequest, allowNextStateChange *asyncSetupDone) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepInResponse{Response: *newResponse(request.Request)})
 	s.stepUntilStopAndNotify(api.Step, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
 
 // onStepOutRequest handles 'stepOut' request
 // This is a mandatory request to support.
-func (s *Session) onStepOutRequest(request *dap.StepOutRequest, allowNextStateChange chan struct{}) {
+func (s *Session) onStepOutRequest(request *dap.StepOutRequest, allowNextStateChange *asyncSetupDone) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepOutResponse{Response: *newResponse(request.Request)})
 	s.stepUntilStopAndNotify(api.StepOut, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
@@ -1842,8 +1862,7 @@ func (s *Session) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int,
 // a channel that will be closed to signal that an
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
-func (s *Session) stepUntilStopAndNotify(command string, threadId int, granularity dap.SteppingGranularity, allowNextStateChange chan struct{}) {
-	defer closeIfOpen(allowNextStateChange)
+func (s *Session) stepUntilStopAndNotify(command string, threadId int, granularity dap.SteppingGranularity, allowNextStateChange *asyncSetupDone) {
 	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
 	if err != nil {
 		s.config.log.Errorf("Error switching goroutines while stepping: %v", err)
@@ -2760,7 +2779,7 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 
 // onStepBackRequest handles 'stepBack' request.
 // This is an optional request enabled by capability ‘supportsStepBackRequest’.
-func (s *Session) onStepBackRequest(request *dap.StepBackRequest, allowNextStateChange chan struct{}) {
+func (s *Session) onStepBackRequest(request *dap.StepBackRequest, allowNextStateChange *asyncSetupDone) {
 	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepBackResponse{Response: *newResponse(request.Request)})
 	s.stepUntilStopAndNotify(api.ReverseNext, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
@@ -2768,7 +2787,7 @@ func (s *Session) onStepBackRequest(request *dap.StepBackRequest, allowNextState
 // onReverseContinueRequest performs a rewind command call up to the previous
 // breakpoint or the start of the process
 // This is an optional request enabled by capability ‘supportsStepBackRequest’.
-func (s *Session) onReverseContinueRequest(request *dap.ReverseContinueRequest, allowNextStateChange chan struct{}) {
+func (s *Session) onReverseContinueRequest(request *dap.ReverseContinueRequest, allowNextStateChange *asyncSetupDone) {
 	s.send(&dap.ReverseContinueResponse{
 		Response: *newResponse(request.Request),
 	})
@@ -3359,17 +3378,24 @@ func (s *Session) checkHaltRequested() bool {
 
 // resumeOnce is a helper function to resume the execution
 // of the target when the program is halted.
-func (s *Session) resumeOnce(command string, allowNextStateChange chan struct{}) (bool, *api.DebuggerState, error) {
+func (s *Session) resumeOnce(command string, allowNextStateChange *asyncSetupDone) (bool, *api.DebuggerState, error) {
 	// No other goroutines should be able to try to resume
 	// or halt execution while this goroutine is resuming
 	// execution, so we do not miss those events.
-	asyncSetupDone := make(chan struct{}, 1)
-	defer closeIfOpen(asyncSetupDone)
+	asyncSetupDone := newAsyncSetupDone()
+	defer close(asyncSetupDone.doneCh)
 	s.changeStateMu.Lock()
 	go func() {
-		defer s.changeStateMu.Unlock()
-		defer closeIfOpen(allowNextStateChange)
-		<-asyncSetupDone
+		// When we are done waiting for the command to finish or this function to complete,
+		// we want to close the allowNextStateChange.commandCh to notify the request loop
+		// that the setup is done and unlock s.changeStateMu.
+		defer func() {
+			if allowNextStateChange != nil {
+				close(allowNextStateChange.commandCh)
+			}
+			s.changeStateMu.Unlock()
+		}()
+		asyncSetupDone.wait()
 	}()
 
 	// There may have been a manual halt while the program was
@@ -3379,7 +3405,7 @@ func (s *Session) resumeOnce(command string, allowNextStateChange chan struct{})
 		state, err := s.debugger.State(false)
 		return false, state, err
 	}
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone)
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone.commandCh)
 	return true, state, err
 }
 
@@ -3389,7 +3415,7 @@ func (s *Session) resumeOnce(command string, allowNextStateChange chan struct{})
 // a channel that will be closed to signal that an
 // asynchornous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
-func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange chan struct{}) {
+func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange *asyncSetupDone) {
 	state, err := s.runUntilStop(command, allowNextStateChange)
 
 	if processExited(state, err) {
@@ -3494,7 +3520,7 @@ func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange cha
 	}
 }
 
-func (s *Session) runUntilStop(command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
+func (s *Session) runUntilStop(command string, allowNextStateChange *asyncSetupDone) (*api.DebuggerState, error) {
 	// Clear any manual stop requests that came in before we started running.
 	s.setHaltRequested(false)
 
@@ -3506,16 +3532,17 @@ func (s *Session) runUntilStop(command string, allowNextStateChange chan struct{
 	for s.isRunningCmd() {
 		state, err = resumeOnceAndCheckStop(s, command, allowNextStateChange)
 		command = api.DirectionCongruentContinue
+		allowNextStateChange = nil
 	}
 	return state, err
 }
 
 // Make this a var so it can be stubbed in testing.
-var resumeOnceAndCheckStop = func(s *Session, command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
+var resumeOnceAndCheckStop = func(s *Session, command string, allowNextStateChange *asyncSetupDone) (*api.DebuggerState, error) {
 	return s.resumeOnceAndCheckStop(command, allowNextStateChange)
 }
 
-func (s *Session) resumeOnceAndCheckStop(command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
+func (s *Session) resumeOnceAndCheckStop(command string, allowNextStateChange *asyncSetupDone) (*api.DebuggerState, error) {
 	resumed, state, err := s.resumeOnce(command, allowNextStateChange)
 	// We should not try to process the log points if the program was not
 	// resumed or there was an error.

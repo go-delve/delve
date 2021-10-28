@@ -3220,7 +3220,7 @@ func TestHaltPreventsAutoResume(t *testing.T) {
 						// Send a halt request when trying to resume the program after being
 						// interrupted. This should allow the log message to be processed,
 						// but keep the process from continuing beyond the line.
-						resumeOnceAndCheckStop = func(s *Session, command string, allowNextStateChange chan struct{}) (*api.DebuggerState, error) {
+						resumeOnceAndCheckStop = func(s *Session, command string, allowNextStateChange *asyncSetupDone) (*api.DebuggerState, error) {
 							// This should trigger after the log message is sent, but before
 							// execution is resumed.
 							if command == api.DirectionCongruentContinue {
