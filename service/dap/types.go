@@ -154,11 +154,11 @@ type LaunchAttachCommonConfig struct {
 	ShowRegisters bool `json:"showRegisters,omitempty"`
 
 	// Boolean value to indicate whether system goroutines
-	// should be should be hidden from the call stack view.
+	// should be hidden from the call stack view.
 	HideSystemGoroutines bool `json:"hideSystemGoroutines,omitempty"`
 
 	// String value to indicate which system goroutines
-	// should be should be shown in the call stack view.
+	// should be shown in the call stack view.
 	GoroutineFilters string `json:"goroutineFilters,omitempty"`
 
 	// An array of mappings from a local path (client) to the remote path (debugger).
