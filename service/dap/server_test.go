@@ -111,39 +111,189 @@ func startDAPServer(t *testing.T, serverStopped chan struct{}) (server *Server, 
 	return server, forceStop
 }
 
-func TestForceStopNoClient(t *testing.T) {
-	serverStopped := make(chan struct{})
-	_, forceStop := startDAPServer(t, serverStopped)
-	close(forceStop)
-	<-serverStopped
+func verifyServerStopped(t *testing.T, server *Server) {
+	t.Helper()
+	if server.listener != nil {
+		if server.listener.Close() == nil {
+			t.Error("server should have closed listener after shutdown")
+		}
+	}
+	verifySessionStopped(t, server.session)
 }
 
-func TestForceStopNoTarget(t *testing.T) {
-	serverStopped := make(chan struct{})
-	server, forceStop := startDAPServer(t, serverStopped)
-	client := daptest.NewClient(server.config.Listener.Addr().String())
-	defer client.Close()
-
-	client.InitializeRequest()
-	client.ExpectInitializeResponseAndCapabilities(t)
-	close(forceStop)
-	<-serverStopped
+func verifySessionStopped(t *testing.T, session *Session) {
+	t.Helper()
+	if session == nil {
+		return
+	}
+	if session.conn == nil {
+		t.Error("session must always have a set connection")
+	}
+	verifyConnStopped(t, session.conn)
+	if session.debugger != nil {
+		t.Error("session should have no pointer to debugger after shutdown")
+	}
+	if session.binaryToRemove != "" {
+		t.Error("session should have no binary to remove after shutdown")
+	}
 }
 
-func TestForceStopWithTarget(t *testing.T) {
-	serverStopped := make(chan struct{})
-	server, forceStop := startDAPServer(t, serverStopped)
-	client := daptest.NewClient(server.config.Listener.Addr().String())
-	defer client.Close()
+func verifyConnStopped(t *testing.T, conn io.ReadWriteCloser) {
+	t.Helper()
+	if conn.Close() == nil {
+		t.Error("client connection should be closed after shutdown")
+	}
+}
 
-	client.InitializeRequest()
-	client.ExpectInitializeResponseAndCapabilities(t)
-	fixture := protest.BuildFixture("increment", protest.AllNonOptimized)
-	client.LaunchRequest("exec", fixture.Path, stopOnEntry)
-	client.ExpectInitializedEvent(t)
-	client.ExpectLaunchResponse(t)
-	close(forceStop)
-	<-serverStopped
+func TestStopNoClient(t *testing.T) {
+	for name, triggerStop := range map[string]func(s *Server, forceStop chan struct{}){
+		"force":        func(s *Server, forceStop chan struct{}) { close(forceStop) },
+		"accept error": func(s *Server, forceStop chan struct{}) { s.config.Listener.Close() },
+	} {
+		t.Run(name, func(t *testing.T) {
+			serverStopped := make(chan struct{})
+			server, forceStop := startDAPServer(t, serverStopped)
+			triggerStop(server, forceStop)
+			<-serverStopped
+			verifyServerStopped(t, server)
+		})
+	}
+}
+
+func TestStopNoTarget(t *testing.T) {
+	for name, triggerStop := range map[string]func(c *daptest.Client, forceStop chan struct{}){
+		"force":      func(c *daptest.Client, forceStop chan struct{}) { close(forceStop) },
+		"read error": func(c *daptest.Client, forceStop chan struct{}) { c.Close() },
+		"disconnect": func(c *daptest.Client, forceStop chan struct{}) { c.DisconnectRequest() },
+	} {
+		t.Run(name, func(t *testing.T) {
+			serverStopped := make(chan struct{})
+			server, forceStop := startDAPServer(t, serverStopped)
+			client := daptest.NewClient(server.config.Listener.Addr().String())
+			defer client.Close()
+
+			client.InitializeRequest()
+			client.ExpectInitializeResponseAndCapabilities(t)
+			triggerStop(client, forceStop)
+			<-serverStopped
+			verifyServerStopped(t, server)
+		})
+	}
+}
+
+func TestStopWithTarget(t *testing.T) {
+	for name, triggerStop := range map[string]func(c *daptest.Client, forceStop chan struct{}){
+		"force":                  func(c *daptest.Client, forceStop chan struct{}) { close(forceStop) },
+		"read error":             func(c *daptest.Client, forceStop chan struct{}) { c.Close() },
+		"disconnect before exit": func(c *daptest.Client, forceStop chan struct{}) { c.DisconnectRequest() },
+		"disconnect after  exit": func(c *daptest.Client, forceStop chan struct{}) {
+			c.ContinueRequest(1)
+			c.ExpectContinueResponse(t)
+			c.ExpectTerminatedEvent(t)
+			c.DisconnectRequest()
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			serverStopped := make(chan struct{})
+			server, forceStop := startDAPServer(t, serverStopped)
+			client := daptest.NewClient(server.config.Listener.Addr().String())
+			defer client.Close()
+
+			client.InitializeRequest()
+			client.ExpectInitializeResponseAndCapabilities(t)
+			fixture := protest.BuildFixture("increment", protest.AllNonOptimized)
+			client.LaunchRequest("debug", fixture.Source, stopOnEntry)
+			client.ExpectInitializedEvent(t)
+			client.ExpectLaunchResponse(t)
+			triggerStop(client, forceStop)
+			<-serverStopped
+			verifyServerStopped(t, server)
+		})
+	}
+}
+
+func TestSessionStop(t *testing.T) {
+	verifySessionState := func(t *testing.T, s *Session, binaryToRemoveSet bool, debuggerSet bool, disconnectChanSet bool) {
+		t.Helper()
+		if binaryToRemoveSet && s.binaryToRemove == "" || !binaryToRemoveSet && s.binaryToRemove != "" {
+			t.Errorf("binaryToRemove: got %s, want set=%v", s.binaryToRemove, binaryToRemoveSet)
+		}
+		if debuggerSet && s.debugger == nil || !debuggerSet && s.debugger != nil {
+			t.Errorf("debugger: got %v, want set=%v", s.debugger, debuggerSet)
+		}
+		if disconnectChanSet && s.config.DisconnectChan == nil || !disconnectChanSet && s.config.DisconnectChan != nil {
+			t.Errorf("disconnectChan: got %v, want set=%v", s.config.DisconnectChan, disconnectChanSet)
+		}
+	}
+	for name, stopSession := range map[string]func(s *Session, c *daptest.Client, serveDone chan struct{}){
+		"force": func(s *Session, c *daptest.Client, serveDone chan struct{}) {
+			s.Close()
+			<-serveDone
+			verifySessionState(t, s, false /*binaryToRemoveSet*/, false /*debuggerSet*/, false /*disconnectChanSet*/)
+		},
+		"read error": func(s *Session, c *daptest.Client, serveDone chan struct{}) {
+			c.Close()
+			<-serveDone
+			verifyConnStopped(t, s.conn)
+			verifySessionState(t, s, true /*binaryToRemoveSet*/, true /*debuggerSet*/, false /*disconnectChanSet*/)
+			s.Close()
+		},
+		"disconnect before exit": func(s *Session, c *daptest.Client, serveDone chan struct{}) {
+			c.DisconnectRequest()
+			<-serveDone
+			verifyConnStopped(t, s.conn)
+			verifySessionState(t, s, true /*binaryToRemoveSet*/, false /*debuggerSet*/, false /*disconnectChanSet*/)
+			s.Close()
+		},
+		"disconnect after exit": func(s *Session, c *daptest.Client, serveDone chan struct{}) {
+			c.ContinueRequest(1)
+			c.ExpectContinueResponse(t)
+			c.ExpectTerminatedEvent(t)
+			c.DisconnectRequest()
+			<-serveDone
+			verifyConnStopped(t, s.conn)
+			verifySessionState(t, s, true /*binaryToRemoveSet*/, false /*debuggerSet*/, false /*disconnectChanSet*/)
+			s.Close()
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			listener, err := net.Listen("tcp", ":0")
+			if err != nil {
+				t.Fatalf("cannot setup listener required for testing: %v", err)
+			}
+			defer listener.Close()
+			acceptDone := make(chan struct{})
+			var conn net.Conn
+			go func() {
+				conn, err = listener.Accept()
+				close(acceptDone)
+			}()
+			time.Sleep(10 * time.Millisecond) // give time to start listening
+			client := daptest.NewClient(listener.Addr().String())
+			defer client.Close()
+			<-acceptDone
+			if err != nil {
+				t.Fatalf("cannot accept client requireed for testing: %v", err)
+			}
+			session := NewSession(conn, &Config{
+				Config:        &service.Config{DisconnectChan: make(chan struct{})},
+				StopTriggered: make(chan struct{})}, nil)
+			serveDAPCodecDone := make(chan struct{})
+			go func() {
+				session.ServeDAPCodec()
+				close(serveDAPCodecDone)
+			}()
+			time.Sleep(10 * time.Millisecond) // give time to start reading
+			client.InitializeRequest()
+			client.ExpectInitializeResponseAndCapabilities(t)
+			fixture := protest.BuildFixture("increment", protest.AllNonOptimized)
+			client.LaunchRequest("debug", fixture.Source, stopOnEntry)
+			client.ExpectInitializedEvent(t)
+			client.ExpectLaunchResponse(t)
+			stopSession(session, client, serveDAPCodecDone)
+			verifySessionStopped(t, session)
+		})
+	}
 }
 
 func TestForceStopWhileStopping(t *testing.T) {
@@ -160,6 +310,7 @@ func TestForceStopWhileStopping(t *testing.T) {
 	time.Sleep(time.Microsecond)
 	close(forceStop) // depending on timing may trigger Stop()
 	<-serverStopped
+	verifyServerStopped(t, server)
 }
 
 // TestLaunchStopOnEntry emulates the message exchange that can be observed with
@@ -6147,22 +6298,23 @@ func TestAttachRemoteToRunningTargetContinueOnEntry(t *testing.T) {
 // TestMultiClient tests that that remote attach doesn't take down
 // the server in multi-client mode unless terminateDebugee is explicitely set.
 func TestAttachRemoteMultiClient(t *testing.T) {
-	closingClientSession := "Closing client session, but leaving multi-client DAP server running at"
+	closingClientSessionOnly := "Closing client session, but leaving multi-client DAP server running at"
 	detachingAndTerminating := "Detaching and terminating target process"
 	tests := []struct {
 		name              string
 		disconnectRequest func(client *daptest.Client)
 		expect            string
 	}{
-		{"default", func(c *daptest.Client) { c.DisconnectRequest() }, closingClientSession},
+		{"default", func(c *daptest.Client) { c.DisconnectRequest() }, closingClientSessionOnly},
 		{"terminate=true", func(c *daptest.Client) { c.DisconnectRequestWithKillOption(true) }, detachingAndTerminating},
-		{"terminate=false", func(c *daptest.Client) { c.DisconnectRequestWithKillOption(false) }, closingClientSession},
+		{"terminate=false", func(c *daptest.Client) { c.DisconnectRequestWithKillOption(false) }, closingClientSessionOnly},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			serverStopped := make(chan struct{})
 			server, forceStop := startDAPServer(t, serverStopped)
 			client := daptest.NewClient(server.listener.Addr().String())
+			defer client.Close()
 			time.Sleep(100 * time.Millisecond) // Give time for connection to be set as dap.Session
 			server.sessionMu.Lock()
 			if server.session == nil {
@@ -6191,12 +6343,13 @@ func TestAttachRemoteMultiClient(t *testing.T) {
 			}
 			client.ExpectDisconnectResponse(t)
 			client.ExpectTerminatedEvent(t)
-			client.Close()
+			time.Sleep(10 * time.Millisecond) // give time for things to shut down
 
-			if tc.expect == closingClientSession {
-				// At this point a multi-client server is still running, but since
-				// it is a dap server, it cannot accept another client, so the only
-				// way to take down the server is too force kill it.
+			if tc.expect == closingClientSessionOnly {
+				// At this point a multi-client server is still running.
+				verifySessionStopped(t, server.session)
+				// Since it is a dap server, it cannot accept another client, so the only
+				// way to take down the server is to force-kill it.
 				close(forceStop)
 			}
 			<-serverStopped

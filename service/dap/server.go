@@ -296,6 +296,9 @@ func NewSession(conn io.ReadWriteCloser, config *Config, debugger *debugger.Debu
 		config.log = logflags.DAPLogger()
 	}
 	config.log.Debug("DAP connection started")
+	if config.StopTriggered == nil {
+		config.log.Fatal("Session must be configured with StopTriggered")
+	}
 	return &Session{
 		config:            config,
 		conn:              conn,
@@ -356,6 +359,7 @@ func (s *Server) Stop() {
 }
 
 // Close closes the underlying debugger/process and connection.
+// May be called more than once.
 func (s *Session) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -363,12 +367,13 @@ func (s *Session) Close() {
 	if s.debugger != nil {
 		killProcess := s.config.Debugger.AttachPid == 0
 		s.stopDebugSession(killProcess)
-	} else {
+	} else if s.noDebugProcess != nil {
 		s.stopNoDebugProcess()
 	}
 	// The binary is no longer in use by the debugger. It is safe to remove it.
 	if s.binaryToRemove != "" {
 		gobuild.Remove(s.binaryToRemove)
+		s.binaryToRemove = "" // avoid error printed on duplicate removal
 	}
 	// Close client connection last, so other shutdown stages
 	// can send client notifications.
@@ -376,6 +381,11 @@ func (s *Session) Close() {
 	// returned, this will result in a closed connection error
 	// on next read, breaking out the read loop andd
 	// allowing the run goroutinee to exit.
+	// This connection is closed here and in serveDAPCodec().
+	// If this was a forced shutdown, external stop logic can close this first.
+	// If this was a client loop exit (on error or disconnect), serveDAPCodec()
+	// will be first.
+	// Duplicate close calls return an error, but are not fatal.
 	_ = s.conn.Close()
 }
 
@@ -388,14 +398,8 @@ func (s *Session) Close() {
 // and is currently only called from the run goroutine.
 func (c *Config) triggerServerStop() {
 	// Avoid accidentally closing the channel twice and causing a panic, when
-	// this function is called more than once. For example, we could have the
-	// following sequence of events:
-	// -- run goroutine: calls onDisconnectRequest()
-	// -- run goroutine: calls triggerServerStop()
-	// -- main goroutine: calls Stop()
-	// -- main goroutine: Stop() closes client connection (or client closed it)
-	// -- run goroutine: ServeDAPCodec() gets "closed network connection"
-	// -- run goroutine: ServeDAPCodec() returns and calls triggerServerStop()
+	// this function is called more than once because stop was triggered
+	// by multiple conditions simultenously.
 	if c.DisconnectChan != nil {
 		close(c.DisconnectChan)
 		c.DisconnectChan = nil
@@ -467,7 +471,9 @@ func (s *Server) RunWithClient(conn net.Conn) {
 // until it encounters an error or EOF, when it sends
 // a disconnect signal and returns.
 func (s *Session) ServeDAPCodec() {
-	// TODO(polina): defer-close conn/session like in serveJSONCodec
+	// Close conn, but not the debugger in case we are in AcceptMuli mode.
+	// If not, debugger will be shut down in Stop().
+	defer s.conn.Close()
 	reader := bufio.NewReader(s.conn)
 	for {
 		request, err := dap.ReadProtocolMessage(reader)
@@ -484,6 +490,9 @@ func (s *Session) ServeDAPCodec() {
 			select {
 			case <-s.config.StopTriggered:
 			default:
+				if !s.config.AcceptMulti {
+					defer s.config.triggerServerStop()
+				}
 				if err != io.EOF { // EOF means client closed connection
 					if decodeErr, ok := err.(*dap.DecodeProtocolMessageFieldError); ok {
 						// Send an error response to the users if we were unable to process the message.
@@ -492,15 +501,15 @@ func (s *Session) ServeDAPCodec() {
 					}
 					s.config.log.Error("DAP error: ", err)
 				}
-				if s.config.AcceptMulti {
-					s.conn.Close()
-				} else {
-					s.config.triggerServerStop()
-				}
 			}
 			return
 		}
 		s.handleRequest(request)
+
+		if _, ok := request.(*dap.DisconnectRequest); ok {
+			// disconnect already shut things down and triggered stopping
+			return
+		}
 	}
 }
 
@@ -1143,11 +1152,13 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 
 	if s.debugger != nil && s.config.AcceptMulti && !request.Arguments.TerminateDebuggee {
 		// This is a multi-use server/debugger, so a disconnect request that doesn't
-		// terminate the debuggee should clean up only the client connection, but not the server.
+		// terminate the debuggee should clean up only the client connection and pointer to debugger,
+		// but not the entire server.
 		s.logToConsole("Closing client session, but leaving multi-client DAP server running at " + s.config.Listener.Addr().String())
 		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		s.conn.Close()
+		s.debugger = nil
 		// The target is left in whatever state it is already in - halted or running.
 		// The users therefore have the flexibility to choose the appropriate state
 		// for their case before disconnecting. This is also desirable in case of
@@ -1168,7 +1179,7 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 		// overridden by an explicit request to terminate.
 		killProcess := s.config.Debugger.AttachPid == 0 || request.Arguments.TerminateDebuggee
 		err = s.stopDebugSession(killProcess)
-	} else {
+	} else if s.noDebugProcess != nil {
 		s.stopNoDebugProcess()
 	}
 	if err != nil {
@@ -1185,7 +1196,12 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 // Returns any detach error other than proc.ErrProcessExited.
 func (s *Session) stopDebugSession(killProcess bool) error {
 	s.changeStateMu.Lock()
-	defer s.changeStateMu.Unlock()
+	defer func() {
+		// Avoid running stop sequence twice.
+		// It's not fatal, but will result in duplicate logging.
+		s.debugger = nil
+		s.changeStateMu.Unlock()
+	}()
 	if s.debugger == nil {
 		return nil
 	}
