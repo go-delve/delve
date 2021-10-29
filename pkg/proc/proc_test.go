@@ -5378,6 +5378,7 @@ func TestVariablesWithExternalLinking(t *testing.T) {
 func TestWatchpointsBasic(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "386")
+	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
 	protest.AllowRecording(t)
 
 	position1 := 19
@@ -5436,6 +5437,7 @@ func TestWatchpointsBasic(t *testing.T) {
 func TestWatchpointCounts(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "386")
+	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
 	protest.AllowRecording(t)
 
 	withTestProcess("databpcountstest", t, func(p *proc.Target, fixture protest.Fixture) {
@@ -5550,6 +5552,7 @@ func TestDwrapStartLocation(t *testing.T) {
 func TestWatchpointStack(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "386")
+	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
 	protest.AllowRecording(t)
 
 	position1 := 17
