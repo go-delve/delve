@@ -1355,9 +1355,10 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 		} else {
 			got.Cond = want.condition
 			got.HitCond = want.hitCondition
-			got.Tracepoint = want.logMessage != ""
-			got.UserData = want.logMessage
-			err = s.debugger.AmendBreakpoint(got)
+			err = setLogMessage(got, want.logMessage)
+			if err == nil {
+				err = s.debugger.AmendBreakpoint(got)
+			}
 		}
 		createdBps[want.name] = struct{}{}
 		s.updateBreakpointsResponse(breakpoints, i, err, got)
@@ -1380,25 +1381,38 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 			if _, ok := createdBps[want.name]; ok {
 				err = fmt.Errorf("breakpoint already exists")
 			} else {
-				// Create new breakpoints.
-				got, err = s.debugger.CreateBreakpoint(
-					&api.Breakpoint{
-						Name:       want.name,
-						File:       wantLoc.file,
-						Line:       wantLoc.line,
-						Addr:       wantLoc.addr,
-						Addrs:      wantLoc.addrs,
-						Cond:       want.condition,
-						HitCond:    want.hitCondition,
-						Tracepoint: want.logMessage != "",
-						UserData:   want.logMessage,
-					})
+				bp := &api.Breakpoint{
+					Name:    want.name,
+					File:    wantLoc.file,
+					Line:    wantLoc.line,
+					Addr:    wantLoc.addr,
+					Addrs:   wantLoc.addrs,
+					Cond:    want.condition,
+					HitCond: want.hitCondition,
+				}
+				err = setLogMessage(bp, want.logMessage)
+				if err == nil {
+					// Create new breakpoints.
+					got, err = s.debugger.CreateBreakpoint(bp)
+				}
 			}
 		}
 		createdBps[want.name] = struct{}{}
 		s.updateBreakpointsResponse(breakpoints, i, err, got)
 	}
 	return breakpoints
+}
+
+func setLogMessage(bp *api.Breakpoint, msg string) error {
+	tracepoint, userdata, err := parseLogPoint(msg)
+	if err != nil {
+		return err
+	}
+	bp.Tracepoint = tracepoint
+	if userdata != nil {
+		bp.UserData = *userdata
+	}
+	return nil
 }
 
 func (s *Session) updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int, err error, got *api.Breakpoint) {
@@ -3601,8 +3615,8 @@ func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int) bool {
 	if !bp.Tracepoint {
 		return false
 	}
-	// TODO(suzmue): allow evaluate expressions within log points.
-	if msg, ok := bp.UserData.(string); ok {
+	if lMsg, ok := bp.UserData.(logMessage); ok {
+		msg := lMsg.evaluate(s, goid)
 		s.send(&dap.OutputEvent{
 			Event: *newEvent("output"),
 			Body: dap.OutputEventBody{
@@ -3616,6 +3630,19 @@ func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int) bool {
 		})
 	}
 	return true
+}
+
+func (msg *logMessage) evaluate(s *Session, goid int) string {
+	evaluated := make([]interface{}, len(msg.args))
+	for i := range msg.args {
+		exprVar, err := s.debugger.EvalVariableInScope(goid, 0, 0, msg.args[i], DefaultLoadConfig)
+		if err != nil {
+			evaluated[i] = fmt.Sprintf("{eval err: %e}", err)
+			continue
+		}
+		evaluated[i] = s.convertVariableToString(exprVar)
+	}
+	return fmt.Sprintf(msg.format, evaluated...)
 }
 
 func (s *Session) toClientPath(path string) string {
@@ -3638,4 +3665,65 @@ func (s *Session) toServerPath(path string) string {
 		s.config.log.Debugf("client path=%s converted to server path=%s\n", path, serverPath)
 	}
 	return serverPath
+}
+
+type logMessage struct {
+	format string
+	args   []string
+}
+
+// parseLogPoint parses a log message according to the DAP spec:
+//   "Expressions within {} are interpolated."
+func parseLogPoint(msg string) (bool, *logMessage, error) {
+	// Note: All braces *must* come in pairs, even those within an
+	// expression to be interpolated.
+	// TODO(suzmue): support individual braces in string values in
+	// eval expressions.
+	var args []string
+
+	var isArg bool
+	var formatSlice, argSlice []rune
+	braceCount := 0
+	for _, r := range msg {
+		if isArg {
+			switch r {
+			case '}':
+				if braceCount--; braceCount == 0 {
+					argStr := strings.TrimSpace(string(argSlice))
+					if len(argStr) == 0 {
+						return false, nil, fmt.Errorf("empty evaluation string")
+					}
+					args = append(args, argStr)
+					formatSlice = append(formatSlice, '%', 's')
+					isArg = false
+					continue
+				}
+			case '{':
+				braceCount += 1
+			}
+			argSlice = append(argSlice, r)
+			continue
+		}
+
+		switch r {
+		case '}':
+			return false, nil, fmt.Errorf("invalid log point format, unexpected '}'")
+		case '{':
+			if braceCount++; braceCount == 1 {
+				isArg, argSlice = true, []rune{}
+				continue
+			}
+		}
+		formatSlice = append(formatSlice, r)
+	}
+	if isArg {
+		return false, nil, fmt.Errorf("invalid log point format")
+	}
+	if len(formatSlice) == 0 {
+		return false, nil, nil
+	}
+	return true, &logMessage{
+		format: string(formatSlice),
+		args:   args,
+	}, nil
 }
