@@ -1819,25 +1819,24 @@ func stoppedGoroutineID(state *api.DebuggerState) (id int) {
 // stoppedOnBreakpointGoroutineID gets the goroutine id of the first goroutine
 // that is stopped on a real breakpoint, starting with the selected goroutine.
 func (s *Session) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int, *api.Breakpoint) {
-	// Check if the selected goroutine is stopped on a real breakpoint
-	// since we would prefer to use that one.
-	goid := stoppedGoroutineID(state)
-	if g, _ := s.debugger.FindGoroutine(goid); g != nil && g.Thread != nil {
-		if bp := g.Thread.Breakpoint(); bp != nil && bp.Breakpoint != nil && !bp.Breakpoint.Tracepoint {
-			return goid, api.ConvertBreakpoint(bp.Breakpoint)
-		}
+	// Use the first goroutine that is stopped on a breakpoint.
+	gs := s.stoppedGs(state)
+	if len(gs) == 0 {
+		return 0, nil
 	}
-
-	// Some of the breakpoints may be log points, choose the goroutine
-	// that is not stopped on a tracepoint.
-	for _, th := range state.Threads {
-		if bp := th.Breakpoint; bp != nil {
-			if !bp.Tracepoint {
-				return th.GoroutineID, bp
-			}
-		}
+	goid := gs[0]
+	if goid == 0 {
+		return goid, state.CurrentThread.Breakpoint
 	}
-	return 0, nil
+	g, _ := s.debugger.FindGoroutine(goid)
+	if g == nil || g.Thread == nil {
+		return goid, nil
+	}
+	bp := g.Thread.Breakpoint()
+	if bp == nil || bp.Breakpoint == nil {
+		return goid, nil
+	}
+	return goid, api.ConvertBreakpoint(bp.Breakpoint)
 }
 
 // stepUntilStopAndNotify is a wrapper around runUntilStopAndNotify that
@@ -3539,12 +3538,13 @@ func (s *Session) resumeOnceAndCheckStop(command string, allowNextStateChange ch
 		return state, err
 	}
 
-	foundRealBreakpoint := s.handleLogPoints(state)
+	s.handleLogPoints(state)
+	gsOnBp := s.stoppedGs(state)
 
 	switch s.debugger.StopReason() {
 	case proc.StopBreakpoint, proc.StopManual:
 		// Make sure a real manual stop was requested or a real breakpoint was hit.
-		if foundRealBreakpoint || s.checkHaltRequested() {
+		if len(gsOnBp) > 0 || s.checkHaltRequested() {
 			s.setRunningCmd(false)
 		}
 	default:
@@ -3559,17 +3559,42 @@ func (s *Session) resumeOnceAndCheckStop(command string, allowNextStateChange ch
 	return state, err
 }
 
-func (s *Session) handleLogPoints(state *api.DebuggerState) bool {
-	foundRealBreakpoint := false
+func (s *Session) handleLogPoints(state *api.DebuggerState) {
 	for _, th := range state.Threads {
 		if bp := th.Breakpoint; bp != nil {
-			logged := s.logBreakpointMessage(bp, th.GoroutineID)
-			if !logged {
-				foundRealBreakpoint = true
+			s.logBreakpointMessage(bp, th.GoroutineID)
+		}
+	}
+}
+
+func (s *Session) stoppedGs(state *api.DebuggerState) (gs []int) {
+	// Check the current thread first. There may be no selected goroutine.
+	if state.CurrentThread.Breakpoint != nil && !state.CurrentThread.Breakpoint.Tracepoint {
+		gs = append(gs, state.CurrentThread.GoroutineID)
+	}
+	if s.debugger.StopReason() == proc.StopHardcodedBreakpoint {
+		gs = append(gs, stoppedGoroutineID(state))
+	}
+	for _, th := range state.Threads {
+		// Some threads may be stopped on a hardcoded breakpoint.
+		// TODO(suzmue): This is a workaround for detecting hard coded breakpoints,
+		// though this check is likely not sufficient. It would be better to resolve
+		// this in the debugger layer instead.
+		if th.Function.Name() == "runtime.breakpoint" {
+			gs = append(gs, th.GoroutineID)
+			continue
+		}
+		// We already added the current thread if it had a breakpoint.
+		if th.ID == state.CurrentThread.ID {
+			continue
+		}
+		if bp := th.Breakpoint; bp != nil {
+			if !th.Breakpoint.Tracepoint {
+				gs = append(gs, th.GoroutineID)
 			}
 		}
 	}
-	return foundRealBreakpoint
+	return gs
 }
 
 func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int) bool {
