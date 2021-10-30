@@ -37,6 +37,8 @@ type gdbConn struct {
 	packetSize int               // maximum packet size supported by stub
 	regsInfo   []gdbRegisterInfo // list of registers
 
+	workaroundReg *gdbRegisterInfo // used to work-around a register setting bug in debugserver, see use in gdbserver.go
+
 	pid int // cache process id
 
 	ack                   bool // when ack is true acknowledgment packets are enabled
@@ -338,6 +340,9 @@ func (conn *gdbConn) readRegisterInfo(regFound map[string]bool) (err error) {
 		}
 
 		if contained {
+			if regname == "xmm0" {
+				conn.workaroundReg = &gdbRegisterInfo{Regnum: regnum, Name: regname, Bitsize: bitsize, Offset: offset, ignoreOnWrite: ignoreOnWrite}
+			}
 			regnum++
 			continue
 		}
