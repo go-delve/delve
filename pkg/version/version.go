@@ -18,6 +18,7 @@ var (
 	// DelveVersion is the current version of Delve.
 	DelveVersion = Version{
 		Major: "1", Minor: "7", Patch: "2", Metadata: "",
+		//TODO(aarzilli): before updating this to 1.8.0 re-enable staticcheck test
 		Build: "$Id$",
 	}
 )
