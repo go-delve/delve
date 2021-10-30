@@ -178,21 +178,22 @@ type process struct {
 
 // launchAttachArgs captures arguments from launch/attach request that
 // impact handling of subsequent requests.
+// The fields with cfgName tag can be updated through an evaluation request.
 type launchAttachArgs struct {
 	// stopOnEntry is set to automatically stop the debugee after start.
 	stopOnEntry bool
-	// stackTraceDepth is the maximum length of the returned list of stack frames.
-	stackTraceDepth int
-	// showGlobalVariables indicates if global package variables should be loaded.
-	showGlobalVariables bool
-	// hideSystemGoroutines indicates if system goroutines should be removed from threads
+	// StackTraceDepth is the maximum length of the returned list of stack frames.
+	StackTraceDepth int `cfgName:"stackTraceDepth"`
+	// ShowGlobalVariables indicates if global package variables should be loaded.
+	ShowGlobalVariables bool `cfgName:"showGlobalVariables"`
+	// ShowRegisters indicates if register values should be loaded.
+	ShowRegisters bool `cfgName:"showRegisters"`
+	// HideSystemGoroutines indicates if system goroutines should be removed from threads
 	// responses.
-	hideSystemGoroutines bool
-	// showRegisters indicates if register values should be loaded.
-	showRegisters bool
+	HideSystemGoroutines bool `cfgName:"hideSystemGoroutines"`
 	// substitutePathClientToServer indicates rules for converting file paths between client and debugger.
 	// These must be directory paths.
-	substitutePathClientToServer [][2]string
+	substitutePathClientToServer [][2]string `cfgName:"substitutePath"`
 	// substitutePathServerToClient indicates rules for converting file paths between debugger and client.
 	// These must be directory paths.
 	substitutePathServerToClient [][2]string
@@ -203,10 +204,10 @@ type launchAttachArgs struct {
 // in favor of default*Config variables defined in types.go.
 var defaultArgs = launchAttachArgs{
 	stopOnEntry:                  false,
-	stackTraceDepth:              50,
-	showGlobalVariables:          false,
-	hideSystemGoroutines:         false,
-	showRegisters:                false,
+	StackTraceDepth:              50,
+	ShowGlobalVariables:          false,
+	HideSystemGoroutines:         false,
+	ShowRegisters:                false,
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
 }
@@ -310,11 +311,11 @@ func NewSession(conn io.ReadWriteCloser, config *Config, debugger *debugger.Debu
 func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) error {
 	s.args.stopOnEntry = args.StopOnEntry
 	if depth := args.StackTraceDepth; depth > 0 {
-		s.args.stackTraceDepth = depth
+		s.args.StackTraceDepth = depth
 	}
-	s.args.showGlobalVariables = args.ShowGlobalVariables
-	s.args.hideSystemGoroutines = args.HideSystemGoroutines
-	s.args.showRegisters = args.ShowRegisters
+	s.args.ShowGlobalVariables = args.ShowGlobalVariables
+	s.args.ShowRegisters = args.ShowRegisters
+	s.args.HideSystemGoroutines = args.HideSystemGoroutines
 	if paths := args.SubstitutePath; len(paths) > 0 {
 		clientToServer := make([][2]string, 0, len(paths))
 		serverToClient := make([][2]string, 0, len(paths))
@@ -1555,7 +1556,9 @@ func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneReque
 	}
 	s.debugger.Target().KeepSteppingBreakpoints = proc.HaltKeepsSteppingBreakpoints | proc.TracepointKeepsSteppingBreakpoints
 
+	s.logToConsole("Type 'dlv help' for list of commands.")
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
+
 	if !s.args.stopOnEntry {
 		s.runUntilStopAndNotify(api.Continue, allowNextStateChange)
 	}
@@ -1601,7 +1604,7 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 	var next int
 	if s.debugger != nil {
 		gs, next, err = s.debugger.Goroutines(0, maxGoroutines)
-		if err == nil && s.args.hideSystemGoroutines {
+		if err == nil && s.args.HideSystemGoroutines {
 			gs = s.debugger.FilterGoroutines(gs, []api.ListGoroutinesFilter{{
 				Kind:    api.GoroutineUser,
 				Negated: false,
@@ -1916,7 +1919,7 @@ func (s *Session) onStackTraceRequest(request *dap.StackTraceRequest) {
 	if start < 0 {
 		start = 0
 	}
-	levels := s.args.stackTraceDepth
+	levels := s.args.StackTraceDepth
 	if request.Arguments.Levels > 0 {
 		levels = request.Arguments.Levels
 	}
@@ -1960,7 +1963,7 @@ func (s *Session) onStackTraceRequest(request *dap.StackTraceRequest) {
 		// We don't know the exact number of available stack frames, so
 		// add an arbitrary number so the client knows to request additional
 		// frames.
-		totalFrames += s.args.stackTraceDepth
+		totalFrames += s.args.StackTraceDepth
 	}
 	response := &dap.StackTraceResponse{
 		Response: *newResponse(request.Request),
@@ -2011,7 +2014,7 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
 	scopes := []dap.Scope{scopeLocals}
 
-	if s.args.showGlobalVariables {
+	if s.args.ShowGlobalVariables {
 		// Limit what global variables we will return to the current package only.
 		// TODO(polina): This is how vscode-go currently does it to make
 		// the amount of the returned data manageable. In fact, this is
@@ -2046,7 +2049,7 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 		scopes = append(scopes, scopeGlobals)
 	}
 
-	if s.args.showRegisters {
+	if s.args.ShowRegisters {
 		// Retrieve registers
 		regs, err := s.debugger.ScopeRegisters(goid, frame, 0, false)
 		if err != nil {
@@ -2565,6 +2568,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 // Support the following expressions:
 // -- {expression} - evaluates the expression and returns the result as a variable
 // -- call {function} - injects a function call and returns the result as a variable
+// -- config {expression} - updates configuration paramaters
 // TODO(polina): users have complained about having to click to expand multi-level
 // variables, so consider also adding the following:
 // -- print {expression} - return the result as a string like from dlv cli
@@ -2584,9 +2588,20 @@ func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 	}
 
 	response := &dap.EvaluateResponse{Response: *newResponse(request.Request)}
-	isCall, err := regexp.MatchString(`^\s*call\s+\S+`, request.Arguments.Expression)
-	if err == nil && isCall { // call {expression}
-		expr := strings.Replace(request.Arguments.Expression, "call ", "", 1)
+	expr := request.Arguments.Expression
+
+	if isConfig, err := regexp.MatchString(`^\s*dlv\s+\S+`, expr); err == nil && isConfig { // dlv {command}
+		expr := strings.Replace(expr, "dlv ", "", 1)
+		result, err := s.delveCmd(goid, frame, expr)
+		if err != nil {
+			s.sendErrorResponseWithOpts(request.Request, UnableToRunDlvCommand, "Unable to run dlv command", err.Error(), showErrorToUser)
+			return
+		}
+		response.Body = dap.EvaluateResponseBody{
+			Result: result,
+		}
+	} else if isCall, err := regexp.MatchString(`^\s*call\s+\S+`, expr); err == nil && isCall { // call {expression}
+		expr := strings.Replace(expr, "call ", "", 1)
 		_, retVars, err := s.doCall(goid, frame, expr)
 		if err != nil {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
@@ -2608,7 +2623,7 @@ func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 			}
 		}
 	} else { // {expression}
-		exprVar, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, DefaultLoadConfig)
+		exprVar, err := s.debugger.EvalVariableInScope(goid, frame, 0, expr, DefaultLoadConfig)
 		if err != nil {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 			return
@@ -3201,7 +3216,7 @@ func (s *Session) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 }
 
 func (s *Session) stacktrace(goroutineID int, g *proc.G) (string, error) {
-	frames, err := s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
+	frames, err := s.debugger.Stacktrace(goroutineID, s.args.StackTraceDepth, 0)
 	if err != nil {
 		return "", err
 	}
