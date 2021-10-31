@@ -710,7 +710,7 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 	// Lazily load and initialize the BPF program upon request to set a uprobe.
 	if dbp.os.ebpf == nil {
 		var err error
-		dbp.os.ebpf, err = ebpf.LoadEBPFTracingProgram()
+		dbp.os.ebpf, err = ebpf.LoadEBPFTracingProgram(dbp.bi.Images[0].Path)
 		if err != nil {
 			return err
 		}
@@ -735,10 +735,10 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 	}
 
 	debugname := dbp.bi.Images[0].Path
-	offset, err := ebpf.SymbolToOffset(debugname, fnName)
-	if err != nil {
-		return err
-	}
+	// offset, err := ebpf.SymbolToOffset(debugname, fnName)
+	// if err != nil {
+	// 	return err
+	// }
 
 	// First attach a uprobe at all return addresses. We do this instead of using a uretprobe
 	// for two reasons:
@@ -782,7 +782,12 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 		}
 	}
 
-	return dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, offset)
+	off, err := ebpf.AddressToOffset(f, fn.Entry)
+	if err != nil {
+		return err
+	}
+
+	return dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, off)
 }
 
 func killProcess(pid int) error {

@@ -1,4 +1,4 @@
-#include "trace.bpf.h"
+#include "include/trace.bpf.h"
 #include <string.h>
 
 #define STRING_KIND 24
@@ -239,7 +239,7 @@ int uprobe__dlv_trace(struct pt_regs *ctx) {
         parse_params(ctx, args->n_ret_parameters, parsed_args->ret_params);
     }
 
-    bpf_ringbuf_submit(parsed_args, 0);
+    bpf_ringbuf_submit(parsed_args, BPF_RB_FORCE_WAKEUP);
 
     return 0;
 }

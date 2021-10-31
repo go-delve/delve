@@ -1,13 +1,12 @@
-//go:build ebpf
-// +build ebpf
+//go:build linux && amd64 && go1.16 && go1.17
+// +build linux,amd64,go1.16,go1.17
 
 package ebpf
 
-// #include "./trace_probe/function_vals.bpf.h"
+// #include "./bpf/include/function_vals.bpf.h"
 import "C"
 import (
 	"debug/elf"
-	_ "embed"
 	"encoding/binary"
 	"errors"
 	"reflect"
@@ -18,37 +17,37 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 
-	bpf "github.com/aquasecurity/libbpfgo"
-	"github.com/aquasecurity/libbpfgo/helpers"
+	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/link"
+	"github.com/cilium/ebpf/ringbuf"
 )
 
-//go:embed trace_probe/trace.o
-var TraceProbeBytes []byte
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -tags "go1.16 go1.17" -target amd64 trace bpf/trace.bpf.c -- -I./bpf/include
 
 const FakeAddressBase = 0xbeed000000000000
 
 type EBPFContext struct {
-	bpfModule  *bpf.Module
-	bpfProg    *bpf.BPFProg
+	objs       *traceObjects
 	bpfEvents  chan []byte
-	bpfRingBuf *bpf.RingBuffer
-	bpfArgMap  *bpf.BPFMap
+	bpfRingBuf *ringbuf.Reader
+	executable *link.Executable
+	bpfArgMap  *ebpf.Map
 
 	parsedBpfEvents []RawUProbeParams
 	m               sync.Mutex
 }
 
 func (ctx *EBPFContext) Close() {
-	if ctx.bpfModule != nil {
-		ctx.bpfModule.Close()
+	if ctx.objs != nil {
+		ctx.objs.Close()
 	}
 }
 
-func (ctx *EBPFContext) AttachUprobe(pid int, name string, offset uint32) error {
-	if ctx.bpfProg == nil {
+func (ctx *EBPFContext) AttachUprobe(pid int, name string, offset uint64) error {
+	if ctx.executable == nil {
 		return errors.New("no eBPF program loaded")
 	}
-	_, err := ctx.bpfProg.AttachUprobe(pid, name, offset)
+	_, err := ctx.executable.Uprobe(name, ctx.objs.tracePrograms.UprobeDlvTrace, &link.UprobeOptions{PID: pid, Offset: offset})
 	return err
 }
 
@@ -58,7 +57,7 @@ func (ctx *EBPFContext) UpdateArgMap(key uint64, goidOffset int64, args []UProbe
 	}
 	params := createFunctionParameterList(key, goidOffset, args, isret)
 	params.g_addr_offset = C.longlong(gAddrOffset)
-	return ctx.bpfArgMap.Update(unsafe.Pointer(&key), unsafe.Pointer(&params))
+	return ctx.bpfArgMap.Update(unsafe.Pointer(&key), unsafe.Pointer(&params), ebpf.UpdateAny)
 }
 
 func (ctx *EBPFContext) GetBufferedTracepoints() []RawUProbeParams {
@@ -75,47 +74,39 @@ func (ctx *EBPFContext) GetBufferedTracepoints() []RawUProbeParams {
 	return events
 }
 
-func SymbolToOffset(file, symbol string) (uint32, error) {
-	return helpers.SymbolToOffset(file, symbol)
-}
+func LoadEBPFTracingProgram(path string) (*EBPFContext, error) {
+	var (
+		ctx  EBPFContext
+		err  error
+		objs traceObjects
+	)
 
-func LoadEBPFTracingProgram() (*EBPFContext, error) {
-	var ctx EBPFContext
-	var err error
-
-	ctx.bpfModule, err = bpf.NewModuleFromBuffer(TraceProbeBytes, "trace_probe/trace.o")
+	ctx.executable, err = link.OpenExecutable(path)
 	if err != nil {
 		return nil, err
 	}
 
-	ctx.bpfModule.BPFLoadObject()
-	prog, err := ctx.bpfModule.GetProgram("uprobe__dlv_trace")
-	if err != nil {
+	if err := loadTraceObjects(&objs, nil); err != nil {
 		return nil, err
 	}
-	ctx.bpfProg = prog
+	ctx.objs = &objs
 
-	ctx.bpfEvents = make(chan []byte)
-	ctx.bpfRingBuf, err = ctx.bpfModule.InitRingBuf("events", ctx.bpfEvents)
+	ctx.bpfRingBuf, err = ringbuf.NewReader(objs.Events)
 	if err != nil {
 		return nil, err
 	}
-	ctx.bpfRingBuf.Start()
 
-	ctx.bpfArgMap, err = ctx.bpfModule.GetMap("arg_map")
-	if err != nil {
-		return nil, err
-	}
+	ctx.bpfArgMap = objs.ArgMap
 
 	// TODO(derekparker): This should eventually be moved to a more generalized place.
 	go func() {
 		for {
-			b, ok := <-ctx.bpfEvents
-			if !ok {
+			e, err := ctx.bpfRingBuf.Read()
+			if err != nil {
 				return
 			}
 
-			parsed := parseFunctionParameterList(b)
+			parsed := parseFunctionParameterList(e.RawSample)
 
 			ctx.m.Lock()
 			ctx.parsedBpfEvents = append(ctx.parsedBpfEvents, parsed)
@@ -208,7 +199,7 @@ func createFunctionParameterList(entry uint64, goidOffset int64, args []UProbeAr
 	return params
 }
 
-func AddressToOffset(f *elf.File, addr uint64) (uint32, error) {
+func AddressToOffset(f *elf.File, addr uint64) (uint64, error) {
 	sectionsToSearchForSymbol := []*elf.Section{}
 
 	for i := range f.Sections {
@@ -232,5 +223,5 @@ func AddressToOffset(f *elf.File, addr uint64) (uint32, error) {
 		return 0, errors.New("could not find symbol in executable sections of binary")
 	}
 
-	return uint32(addr - executableSection.Addr + executableSection.Offset), nil
+	return uint64(addr - executableSection.Addr + executableSection.Offset), nil
 }
