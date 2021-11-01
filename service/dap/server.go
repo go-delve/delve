@@ -178,25 +178,24 @@ type process struct {
 
 // launchAttachArgs captures arguments from launch/attach request that
 // impact handling of subsequent requests.
+// The fields with cfgName tag can be updated through an evaluation request.
 type launchAttachArgs struct {
 	// stopOnEntry is set to automatically stop the debugee after start.
 	stopOnEntry bool
-	// stackTraceDepth is the maximum length of the returned list of stack frames.
-	stackTraceDepth int
-	// showGlobalVariables indicates if global package variables should be loaded.
-	showGlobalVariables bool
-	// showRegisters indicates if register values should be loaded.
-	showRegisters bool
-	// hideSystemGoroutines indicates if system goroutines should be removed from threads
+	// StackTraceDepth is the maximum length of the returned list of stack frames.
+	StackTraceDepth int `cfgName:"stackTraceDepth"`
+	// ShowGlobalVariables indicates if global package variables should be loaded.
+	ShowGlobalVariables bool `cfgName:"showGlobalVariables"`
+	// ShowRegisters indicates if register values should be loaded.
+	ShowRegisters bool `cfgName:"showRegisters"`
+	// GoroutineFilters are the filters used when loading goroutines.
+	GoroutineFilters string `cfgName:"goroutineFilters"`
+	// HideSystemGoroutines indicates if system goroutines should be removed from threads
 	// responses.
-	hideSystemGoroutines bool
-
-	// goroutineFilters are the filters used when loading goroutines.
-	goroutineFilters string
-
+	HideSystemGoroutines bool `cfgName:"hideSystemGoroutines"`
 	// substitutePathClientToServer indicates rules for converting file paths between client and debugger.
 	// These must be directory paths.
-	substitutePathClientToServer [][2]string
+	substitutePathClientToServer [][2]string `cfgName:"substitutePath"`
 	// substitutePathServerToClient indicates rules for converting file paths between debugger and client.
 	// These must be directory paths.
 	substitutePathServerToClient [][2]string
@@ -207,11 +206,11 @@ type launchAttachArgs struct {
 // in favor of default*Config variables defined in types.go.
 var defaultArgs = launchAttachArgs{
 	stopOnEntry:                  false,
-	stackTraceDepth:              50,
-	goroutineFilters:             "-with user",
-	showGlobalVariables:          false,
-	hideSystemGoroutines:         false,
-	showRegisters:                false,
+	StackTraceDepth:              50,
+	ShowGlobalVariables:          false,
+	HideSystemGoroutines:         false,
+	ShowRegisters:                false,
+	GoroutineFilters:             "",
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
 }
@@ -315,12 +314,12 @@ func NewSession(conn io.ReadWriteCloser, config *Config, debugger *debugger.Debu
 func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) error {
 	s.args.stopOnEntry = args.StopOnEntry
 	if depth := args.StackTraceDepth; depth > 0 {
-		s.args.stackTraceDepth = depth
+		s.args.StackTraceDepth = depth
 	}
-	s.args.showGlobalVariables = args.ShowGlobalVariables
-	s.args.showRegisters = args.ShowRegisters
-	s.args.hideSystemGoroutines = args.HideSystemGoroutines
-	s.args.goroutineFilters = args.GoroutineFilters
+	s.args.ShowGlobalVariables = args.ShowGlobalVariables
+	s.args.ShowRegisters = args.ShowRegisters
+	s.args.HideSystemGoroutines = args.HideSystemGoroutines
+	s.args.GoroutineFilters = args.GoroutineFilters
 	if paths := args.SubstitutePath; len(paths) > 0 {
 		clientToServer := make([][2]string, 0, len(paths))
 		serverToClient := make([][2]string, 0, len(paths))
@@ -1360,9 +1359,10 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 		} else {
 			got.Cond = want.condition
 			got.HitCond = want.hitCondition
-			got.Tracepoint = want.logMessage != ""
-			got.UserData = want.logMessage
-			err = s.debugger.AmendBreakpoint(got)
+			err = setLogMessage(got, want.logMessage)
+			if err == nil {
+				err = s.debugger.AmendBreakpoint(got)
+			}
 		}
 		createdBps[want.name] = struct{}{}
 		s.updateBreakpointsResponse(breakpoints, i, err, got)
@@ -1385,25 +1385,38 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 			if _, ok := createdBps[want.name]; ok {
 				err = fmt.Errorf("breakpoint already exists")
 			} else {
-				// Create new breakpoints.
-				got, err = s.debugger.CreateBreakpoint(
-					&api.Breakpoint{
-						Name:       want.name,
-						File:       wantLoc.file,
-						Line:       wantLoc.line,
-						Addr:       wantLoc.addr,
-						Addrs:      wantLoc.addrs,
-						Cond:       want.condition,
-						HitCond:    want.hitCondition,
-						Tracepoint: want.logMessage != "",
-						UserData:   want.logMessage,
-					})
+				bp := &api.Breakpoint{
+					Name:    want.name,
+					File:    wantLoc.file,
+					Line:    wantLoc.line,
+					Addr:    wantLoc.addr,
+					Addrs:   wantLoc.addrs,
+					Cond:    want.condition,
+					HitCond: want.hitCondition,
+				}
+				err = setLogMessage(bp, want.logMessage)
+				if err == nil {
+					// Create new breakpoints.
+					got, err = s.debugger.CreateBreakpoint(bp)
+				}
 			}
 		}
 		createdBps[want.name] = struct{}{}
 		s.updateBreakpointsResponse(breakpoints, i, err, got)
 	}
 	return breakpoints
+}
+
+func setLogMessage(bp *api.Breakpoint, msg string) error {
+	tracepoint, userdata, err := parseLogPoint(msg)
+	if err != nil {
+		return err
+	}
+	bp.Tracepoint = tracepoint
+	if userdata != nil {
+		bp.UserData = *userdata
+	}
+	return nil
 }
 
 func (s *Session) updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int, err error, got *api.Breakpoint) {
@@ -1561,7 +1574,9 @@ func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneReque
 	}
 	s.debugger.Target().KeepSteppingBreakpoints = proc.HaltKeepsSteppingBreakpoints | proc.TracepointKeepsSteppingBreakpoints
 
+	s.logToConsole("Type 'dlv help' for list of commands.")
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
+
 	if !s.args.stopOnEntry {
 		s.runUntilStopAndNotify(api.Continue, allowNextStateChange)
 	}
@@ -1609,11 +1624,11 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 		gs, next, err = s.debugger.Goroutines(0, maxGoroutines)
 		if err == nil {
 			// Parse the goroutine arguments.
-			filters, _, _, _, _, _, parseErr := api.ParseGoroutineArgs(s.args.goroutineFilters)
+			filters, _, _, _, _, _, parseErr := api.ParseGoroutineArgs(s.args.GoroutineFilters)
 			if parseErr != nil {
 				s.logToConsole(parseErr.Error())
 			}
-			if s.args.hideSystemGoroutines {
+			if s.args.HideSystemGoroutines {
 				filters = append(filters, api.ListGoroutinesFilter{
 					Kind:    api.GoroutineUser,
 					Negated: false,
@@ -1830,25 +1845,24 @@ func stoppedGoroutineID(state *api.DebuggerState) (id int) {
 // stoppedOnBreakpointGoroutineID gets the goroutine id of the first goroutine
 // that is stopped on a real breakpoint, starting with the selected goroutine.
 func (s *Session) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int, *api.Breakpoint) {
-	// Check if the selected goroutine is stopped on a real breakpoint
-	// since we would prefer to use that one.
-	goid := stoppedGoroutineID(state)
-	if g, _ := s.debugger.FindGoroutine(goid); g != nil && g.Thread != nil {
-		if bp := g.Thread.Breakpoint(); bp != nil && bp.Breakpoint != nil && !bp.Breakpoint.Tracepoint {
-			return goid, api.ConvertBreakpoint(bp.Breakpoint)
-		}
+	// Use the first goroutine that is stopped on a breakpoint.
+	gs := s.stoppedGs(state)
+	if len(gs) == 0 {
+		return 0, nil
 	}
-
-	// Some of the breakpoints may be log points, choose the goroutine
-	// that is not stopped on a tracepoint.
-	for _, th := range state.Threads {
-		if bp := th.Breakpoint; bp != nil {
-			if !bp.Tracepoint {
-				return th.GoroutineID, bp
-			}
-		}
+	goid := gs[0]
+	if goid == 0 {
+		return goid, state.CurrentThread.Breakpoint
 	}
-	return 0, nil
+	g, _ := s.debugger.FindGoroutine(goid)
+	if g == nil || g.Thread == nil {
+		return goid, nil
+	}
+	bp := g.Thread.Breakpoint()
+	if bp == nil || bp.Breakpoint == nil {
+		return goid, nil
+	}
+	return goid, api.ConvertBreakpoint(bp.Breakpoint)
 }
 
 // stepUntilStopAndNotify is a wrapper around runUntilStopAndNotify that
@@ -1930,7 +1944,7 @@ func (s *Session) onStackTraceRequest(request *dap.StackTraceRequest) {
 	if start < 0 {
 		start = 0
 	}
-	levels := s.args.stackTraceDepth
+	levels := s.args.StackTraceDepth
 	if request.Arguments.Levels > 0 {
 		levels = request.Arguments.Levels
 	}
@@ -1974,7 +1988,7 @@ func (s *Session) onStackTraceRequest(request *dap.StackTraceRequest) {
 		// We don't know the exact number of available stack frames, so
 		// add an arbitrary number so the client knows to request additional
 		// frames.
-		totalFrames += s.args.stackTraceDepth
+		totalFrames += s.args.StackTraceDepth
 	}
 	response := &dap.StackTraceResponse{
 		Response: *newResponse(request.Request),
@@ -2025,7 +2039,7 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 	scopeLocals := dap.Scope{Name: locScope.Name, VariablesReference: s.variableHandles.create(locScope)}
 	scopes := []dap.Scope{scopeLocals}
 
-	if s.args.showGlobalVariables {
+	if s.args.ShowGlobalVariables {
 		// Limit what global variables we will return to the current package only.
 		// TODO(polina): This is how vscode-go currently does it to make
 		// the amount of the returned data manageable. In fact, this is
@@ -2060,7 +2074,7 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 		scopes = append(scopes, scopeGlobals)
 	}
 
-	if s.args.showRegisters {
+	if s.args.ShowRegisters {
 		// Retrieve registers
 		regs, err := s.debugger.ScopeRegisters(goid, frame, 0, false)
 		if err != nil {
@@ -2579,6 +2593,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 // Support the following expressions:
 // -- {expression} - evaluates the expression and returns the result as a variable
 // -- call {function} - injects a function call and returns the result as a variable
+// -- config {expression} - updates configuration paramaters
 // TODO(polina): users have complained about having to click to expand multi-level
 // variables, so consider also adding the following:
 // -- print {expression} - return the result as a string like from dlv cli
@@ -2598,9 +2613,20 @@ func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 	}
 
 	response := &dap.EvaluateResponse{Response: *newResponse(request.Request)}
-	isCall, err := regexp.MatchString(`^\s*call\s+\S+`, request.Arguments.Expression)
-	if err == nil && isCall { // call {expression}
-		expr := strings.Replace(request.Arguments.Expression, "call ", "", 1)
+	expr := request.Arguments.Expression
+
+	if isConfig, err := regexp.MatchString(`^\s*dlv\s+\S+`, expr); err == nil && isConfig { // dlv {command}
+		expr := strings.Replace(expr, "dlv ", "", 1)
+		result, err := s.delveCmd(goid, frame, expr)
+		if err != nil {
+			s.sendErrorResponseWithOpts(request.Request, UnableToRunDlvCommand, "Unable to run dlv command", err.Error(), showErrorToUser)
+			return
+		}
+		response.Body = dap.EvaluateResponseBody{
+			Result: result,
+		}
+	} else if isCall, err := regexp.MatchString(`^\s*call\s+\S+`, expr); err == nil && isCall { // call {expression}
+		expr := strings.Replace(expr, "call ", "", 1)
 		_, retVars, err := s.doCall(goid, frame, expr)
 		if err != nil {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
@@ -2622,7 +2648,7 @@ func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 			}
 		}
 	} else { // {expression}
-		exprVar, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, DefaultLoadConfig)
+		exprVar, err := s.debugger.EvalVariableInScope(goid, frame, 0, expr, DefaultLoadConfig)
 		if err != nil {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 			return
@@ -3215,7 +3241,7 @@ func (s *Session) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 }
 
 func (s *Session) stacktrace(goroutineID int, g *proc.G) (string, error) {
-	frames, err := s.debugger.Stacktrace(goroutineID, s.args.stackTraceDepth, 0)
+	frames, err := s.debugger.Stacktrace(goroutineID, s.args.StackTraceDepth, 0)
 	if err != nil {
 		return "", err
 	}
@@ -3538,12 +3564,13 @@ func (s *Session) resumeOnceAndCheckStop(command string, allowNextStateChange ch
 		return state, err
 	}
 
-	foundRealBreakpoint := s.handleLogPoints(state)
+	s.handleLogPoints(state)
+	gsOnBp := s.stoppedGs(state)
 
 	switch s.debugger.StopReason() {
 	case proc.StopBreakpoint, proc.StopManual:
 		// Make sure a real manual stop was requested or a real breakpoint was hit.
-		if foundRealBreakpoint || s.checkHaltRequested() {
+		if len(gsOnBp) > 0 || s.checkHaltRequested() {
 			s.setRunningCmd(false)
 		}
 	default:
@@ -3558,25 +3585,50 @@ func (s *Session) resumeOnceAndCheckStop(command string, allowNextStateChange ch
 	return state, err
 }
 
-func (s *Session) handleLogPoints(state *api.DebuggerState) bool {
-	foundRealBreakpoint := false
+func (s *Session) handleLogPoints(state *api.DebuggerState) {
 	for _, th := range state.Threads {
 		if bp := th.Breakpoint; bp != nil {
-			logged := s.logBreakpointMessage(bp, th.GoroutineID)
-			if !logged {
-				foundRealBreakpoint = true
+			s.logBreakpointMessage(bp, th.GoroutineID)
+		}
+	}
+}
+
+func (s *Session) stoppedGs(state *api.DebuggerState) (gs []int) {
+	// Check the current thread first. There may be no selected goroutine.
+	if state.CurrentThread.Breakpoint != nil && !state.CurrentThread.Breakpoint.Tracepoint {
+		gs = append(gs, state.CurrentThread.GoroutineID)
+	}
+	if s.debugger.StopReason() == proc.StopHardcodedBreakpoint {
+		gs = append(gs, stoppedGoroutineID(state))
+	}
+	for _, th := range state.Threads {
+		// Some threads may be stopped on a hardcoded breakpoint.
+		// TODO(suzmue): This is a workaround for detecting hard coded breakpoints,
+		// though this check is likely not sufficient. It would be better to resolve
+		// this in the debugger layer instead.
+		if th.Function.Name() == "runtime.breakpoint" {
+			gs = append(gs, th.GoroutineID)
+			continue
+		}
+		// We already added the current thread if it had a breakpoint.
+		if th.ID == state.CurrentThread.ID {
+			continue
+		}
+		if bp := th.Breakpoint; bp != nil {
+			if !th.Breakpoint.Tracepoint {
+				gs = append(gs, th.GoroutineID)
 			}
 		}
 	}
-	return foundRealBreakpoint
+	return gs
 }
 
 func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int) bool {
 	if !bp.Tracepoint {
 		return false
 	}
-	// TODO(suzmue): allow evaluate expressions within log points.
-	if msg, ok := bp.UserData.(string); ok {
+	if lMsg, ok := bp.UserData.(logMessage); ok {
+		msg := lMsg.evaluate(s, goid)
 		s.send(&dap.OutputEvent{
 			Event: *newEvent("output"),
 			Body: dap.OutputEventBody{
@@ -3590,6 +3642,19 @@ func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int) bool {
 		})
 	}
 	return true
+}
+
+func (msg *logMessage) evaluate(s *Session, goid int) string {
+	evaluated := make([]interface{}, len(msg.args))
+	for i := range msg.args {
+		exprVar, err := s.debugger.EvalVariableInScope(goid, 0, 0, msg.args[i], DefaultLoadConfig)
+		if err != nil {
+			evaluated[i] = fmt.Sprintf("{eval err: %e}", err)
+			continue
+		}
+		evaluated[i] = s.convertVariableToString(exprVar)
+	}
+	return fmt.Sprintf(msg.format, evaluated...)
 }
 
 func (s *Session) toClientPath(path string) string {
@@ -3612,4 +3677,65 @@ func (s *Session) toServerPath(path string) string {
 		s.config.log.Debugf("client path=%s converted to server path=%s\n", path, serverPath)
 	}
 	return serverPath
+}
+
+type logMessage struct {
+	format string
+	args   []string
+}
+
+// parseLogPoint parses a log message according to the DAP spec:
+//   "Expressions within {} are interpolated."
+func parseLogPoint(msg string) (bool, *logMessage, error) {
+	// Note: All braces *must* come in pairs, even those within an
+	// expression to be interpolated.
+	// TODO(suzmue): support individual braces in string values in
+	// eval expressions.
+	var args []string
+
+	var isArg bool
+	var formatSlice, argSlice []rune
+	braceCount := 0
+	for _, r := range msg {
+		if isArg {
+			switch r {
+			case '}':
+				if braceCount--; braceCount == 0 {
+					argStr := strings.TrimSpace(string(argSlice))
+					if len(argStr) == 0 {
+						return false, nil, fmt.Errorf("empty evaluation string")
+					}
+					args = append(args, argStr)
+					formatSlice = append(formatSlice, '%', 's')
+					isArg = false
+					continue
+				}
+			case '{':
+				braceCount += 1
+			}
+			argSlice = append(argSlice, r)
+			continue
+		}
+
+		switch r {
+		case '}':
+			return false, nil, fmt.Errorf("invalid log point format, unexpected '}'")
+		case '{':
+			if braceCount++; braceCount == 1 {
+				isArg, argSlice = true, []rune{}
+				continue
+			}
+		}
+		formatSlice = append(formatSlice, r)
+	}
+	if isArg {
+		return false, nil, fmt.Errorf("invalid log point format")
+	}
+	if len(formatSlice) == 0 {
+		return false, nil, nil
+	}
+	return true, &logMessage{
+		format: string(formatSlice),
+		args:   args,
+	}, nil
 }

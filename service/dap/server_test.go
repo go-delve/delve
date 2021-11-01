@@ -948,14 +948,14 @@ func checkStackFramesNamed(testName string, t *testing.T, got *dap.StackTraceRes
 // checkScope is a helper for verifying the values within a ScopesResponse.
 //     i - index of the scope within ScopesRespose.Body.Scopes array
 //     name - name of the scope
-//     varRef - reference to retrieve variables of this scope
+//     varRef - reference to retrieve variables of this scope. If varRef is negative, the reference is not checked.
 func checkScope(t *testing.T, got *dap.ScopesResponse, i int, name string, varRef int) {
 	t.Helper()
 	if len(got.Body.Scopes) <= i {
 		t.Errorf("\ngot  %d\nwant len(Scopes)>%d", len(got.Body.Scopes), i)
 	}
 	goti := got.Body.Scopes[i]
-	if goti.Name != name || goti.VariablesReference != varRef || goti.Expensive {
+	if goti.Name != name || (varRef >= 0 && goti.VariablesReference != varRef) || goti.Expensive {
 		t.Errorf("\ngot  %#v\nwant Name=%q VariablesReference=%d Expensive=false", goti, name, varRef)
 	}
 }
@@ -1167,6 +1167,7 @@ func TestStackTraceRequest(t *testing.T) {
 					client.StackTraceRequest(1, 0, 0)
 					stResp = client.ExpectStackTraceResponse(t)
 					checkStackFramesExact(t, stResp, "main.main", 18, startHandle, 3, 3)
+
 				},
 				disconnect: false,
 			}})
@@ -2946,7 +2947,9 @@ func TestHitBreakpointIds(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					se = client.ExpectStoppedEvent(t)
+
 					checkHitBreakpointIds(t, se, "function breakpoint", functionBps[1].Id)
+
 					checkStop(t, client, 1, "main.anotherFunction", 27)
 				},
 				disconnect: true,
@@ -3227,7 +3230,7 @@ func TestLogPoints(t *testing.T) {
 				execute: func() {
 					checkStop(t, client, 1, "main.main", 23)
 					bps := []int{6, 25, 27, 16}
-					logMessages := map[int]string{6: "in callme!", 16: "in callme2!"}
+					logMessages := map[int]string{6: "{i*2}: in callme!", 16: "in callme2!"}
 					client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
 					client.ExpectSetBreakpointsResponse(t)
 
@@ -3243,7 +3246,7 @@ func TestLogPoints(t *testing.T) {
 
 						client.ContinueRequest(1)
 						client.ExpectContinueResponse(t)
-						checkLogMessage(t, client.ExpectOutputEvent(t), 1, "in callme!", fixture.Source, 6)
+						checkLogMessage(t, client.ExpectOutputEvent(t), 1, fmt.Sprintf("%d: in callme!", i*2), fixture.Source, 6)
 					}
 					se := client.ExpectStoppedEvent(t)
 					if se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
@@ -3359,62 +3362,76 @@ func TestHaltPreventsAutoResume(t *testing.T) {
 	})
 }
 
-// TestConcurrentBreakpointsLogPoints executes to a breakpoint and then tests
-// that a breakpoint set in the main goroutine is hit the correct number of times
-// and log points set in the children goroutines produce the correct number of
-// output events.
+// TestConcurrentBreakpointsLogPoints tests that a breakpoint set in the main
+// goroutine is hit the correct number of times and log points set in the
+// children goroutines produce the correct number of output events.
 func TestConcurrentBreakpointsLogPoints(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.SkipNow()
 	}
-	runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
-		runDebugSessionWithBPs(t, client, "launch",
-			// Launch
-			func() {
+	tests := []struct {
+		name        string
+		fixture     string
+		start       int
+		breakpoints []int
+	}{
+		{
+			name:        "source breakpoints",
+			fixture:     "goroutinestackprog",
+			breakpoints: []int{23},
+		},
+		{
+			name:    "hardcoded breakpoint",
+			fixture: "goroutinebreak",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runTest(t, tt.fixture, func(client *daptest.Client, fixture protest.Fixture) {
+				client.InitializeRequest()
+				client.ExpectInitializeResponseAndCapabilities(t)
+
 				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
-			},
-			// Set breakpoints
-			fixture.Source, []int{20},
-			[]onBreakpoint{{
-				// Stop at line 20
-				execute: func() {
-					checkStop(t, client, 1, "main.main", 20)
-					bps := []int{8, 23}
-					logMessages := map[int]string{8: "hello"}
-					client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
-					client.ExpectSetBreakpointsResponse(t)
+				client.ExpectInitializedEvent(t)
+				client.ExpectLaunchResponse(t)
 
-					client.ContinueRequest(1)
-					client.ExpectContinueResponse(t)
+				bps := append([]int{8}, tt.breakpoints...)
+				logMessages := map[int]string{8: "hello"}
+				client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
+				client.ExpectSetBreakpointsResponse(t)
 
-					// There may be up to 1 breakpoint and any number of log points that are
-					// hit concurrently. We should get a stopped event everytime the breakpoint
-					// is hit and an output event for each log point hit.
-					var oeCount, seCount int
-					for oeCount < 10 || seCount < 10 {
-						switch m := client.ExpectMessage(t).(type) {
-						case *dap.StoppedEvent:
-							if m.Body.Reason != "breakpoint" || !m.Body.AllThreadsStopped || m.Body.ThreadId != 1 {
-								t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", m)
-							}
-							checkStop(t, client, 1, "main.main", 23)
-							seCount++
-							client.ContinueRequest(1)
-						case *dap.OutputEvent:
-							checkLogMessage(t, m, -1, "hello", fixture.Source, 8)
-							oeCount++
-						case *dap.ContinueResponse:
-						case *dap.TerminatedEvent:
-							t.Fatalf("\nexpected 10 output events and 10 stopped events, got %d output events and %d stopped events", oeCount, seCount)
-						default:
-							t.Fatalf("Unexpected message type: expect StoppedEvent, OutputEvent, or ContinueResponse, got %#v", m)
+				client.ConfigurationDoneRequest()
+				client.ExpectConfigurationDoneResponse(t)
+
+				// There may be up to 1 breakpoint and any number of log points that are
+				// hit concurrently. We should get a stopped event everytime the breakpoint
+				// is hit and an output event for each log point hit.
+				var oeCount, seCount int
+				for oeCount < 10 || seCount < 10 {
+					switch m := client.ExpectMessage(t).(type) {
+					case *dap.StoppedEvent:
+						if m.Body.Reason != "breakpoint" || !m.Body.AllThreadsStopped || m.Body.ThreadId != 1 {
+							t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", m)
 						}
+						seCount++
+						client.ContinueRequest(1)
+					case *dap.OutputEvent:
+						checkLogMessage(t, m, -1, "hello", fixture.Source, 8)
+						oeCount++
+					case *dap.ContinueResponse:
+					case *dap.TerminatedEvent:
+						t.Fatalf("\nexpected 10 output events and 10 stopped events, got %d output events and %d stopped events", oeCount, seCount)
+					default:
+						t.Fatalf("Unexpected message type: expect StoppedEvent, OutputEvent, or ContinueResponse, got %#v", m)
 					}
-					client.ExpectTerminatedEvent(t)
-				},
-				disconnect: false,
-			}})
-	})
+				}
+				// TODO(suzmue): The dap server may identify some false
+				// positives for hard coded breakpoints, so there may still
+				// be more stopped events.
+				client.DisconnectRequestWithKillOption(true)
+			})
+		})
+	}
 }
 
 func TestSetBreakpointWhileRunning(t *testing.T) {
@@ -3909,6 +3926,106 @@ func TestEvaluateRequest(t *testing.T) {
 	})
 }
 
+func formatConfig(depth int, showGlobals, showRegisters bool, goroutineFilters string, hideSystemGoroutines bool, substitutePath [][2]string) string {
+	formatStr := `stackTraceDepth	%d
+showGlobalVariables	%v
+showRegisters	%v
+goroutineFilters	%q
+hideSystemGoroutines	%v
+substitutePath	%v
+`
+	return fmt.Sprintf(formatStr, depth, showGlobals, showRegisters, goroutineFilters, hideSystemGoroutines, substitutePath)
+}
+
+func TestEvaluateCommandRequest(t *testing.T) {
+	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			fixture.Source, []int{}, // Breakpoint set in the program
+			[]onBreakpoint{{ // Stop at first breakpoint
+				execute: func() {
+					checkStop(t, client, 1, "main.foobar", 66)
+
+					// Request help.
+					const dlvHelp = `The following commands are available:
+    help (alias: h) 	 Prints the help message.
+    config 	 Changes configuration parameters.
+
+Type help followed by a command for full documentation.
+`
+					client.EvaluateRequest("dlv help", 1000, "repl")
+					got := client.ExpectEvaluateResponse(t)
+					checkEval(t, got, dlvHelp, noChildren)
+
+					client.EvaluateRequest("dlv help config", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, msgConfig, noChildren)
+
+					// Test config.
+					client.EvaluateRequest("dlv config -list", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, formatConfig(50, false, false, "", false, [][2]string{}), noChildren)
+
+					// Read and modify showGlobalVariables.
+					client.EvaluateRequest("dlv config showGlobalVariables", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, "showGlobalVariables\tfalse\n", noChildren)
+
+					client.ScopesRequest(1000)
+					scopes := client.ExpectScopesResponse(t)
+					if len(scopes.Body.Scopes) > 1 {
+						t.Errorf("\ngot  %#v\nwant len(scopes)=1 (Locals)", scopes)
+					}
+					checkScope(t, scopes, 0, "Locals", -1)
+
+					client.EvaluateRequest("dlv config showGlobalVariables true", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, "showGlobalVariables\ttrue\n\nUpdated", noChildren)
+
+					client.EvaluateRequest("dlv config -list", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, formatConfig(50, true, false, "", false, [][2]string{}), noChildren)
+
+					client.ScopesRequest(1000)
+					scopes = client.ExpectScopesResponse(t)
+					if len(scopes.Body.Scopes) < 2 {
+						t.Errorf("\ngot  %#v\nwant len(scopes)=2 (Locals & Globals)", scopes)
+					}
+					checkScope(t, scopes, 0, "Locals", -1)
+					checkScope(t, scopes, 1, "Globals (package main)", -1)
+
+					// Read and modify substitutePath.
+					client.EvaluateRequest("dlv config substitutePath", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, "substitutePath\t[]\n", noChildren)
+
+					client.EvaluateRequest(fmt.Sprintf("dlv config substitutePath %q %q", "my/client/path", "your/server/path"), 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, "substitutePath\t[[my/client/path your/server/path]]\n\nUpdated", noChildren)
+
+					client.EvaluateRequest(fmt.Sprintf("dlv config substitutePath %q %q", "my/client/path", "new/your/server/path"), 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, "substitutePath\t[[my/client/path new/your/server/path]]\n\nUpdated", noChildren)
+
+					client.EvaluateRequest(fmt.Sprintf("dlv config substitutePath %q", "my/client/path"), 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, "substitutePath\t[]\n\nUpdated", noChildren)
+
+					// Test bad inputs.
+					client.EvaluateRequest("dlv help bad", 1000, "repl")
+					client.ExpectErrorResponse(t)
+
+					client.EvaluateRequest("dlv bad", 1000, "repl")
+					client.ExpectErrorResponse(t)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
 // From testvariables2 fixture
 const (
 	// As defined in the code
@@ -4268,6 +4385,30 @@ func TestNextAndStep(t *testing.T) {
 						t.Errorf("got %#v, want Reason=\"error\", Text=\"unknown goroutine -1000\"", se)
 					}
 					checkStop(t, client, 1, "main.inlineThis", 5)
+				},
+				disconnect: false,
+			}})
+	})
+}
+
+func TestHardCodedBreakpoints(t *testing.T) {
+	runTest(t, "consts", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			fixture.Source, []int{28},
+			[]onBreakpoint{{ // Stop at line 28
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 28)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "breakpoint" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"breakpoint\"", se)
+					}
 				},
 				disconnect: false,
 			}})
@@ -6490,6 +6631,83 @@ func TestBadlyFormattedMessageToServer(t *testing.T) {
 		client.DisconnectRequest()
 		client.ExpectDisconnectResponse(t)
 	})
+}
+
+func TestParseLogPoint(t *testing.T) {
+	tests := []struct {
+		name           string
+		msg            string
+		wantTracepoint bool
+		wantFormat     string
+		wantArgs       []string
+		wantErr        bool
+	}{
+		// Test simple log messages.
+		{name: "simple string", msg: "hello, world!", wantTracepoint: true, wantFormat: "hello, world!"},
+		{name: "empty string", msg: "", wantTracepoint: false, wantErr: false},
+		// Test parse eval expressions.
+		{
+			name:           "simple eval",
+			msg:            "{x}",
+			wantTracepoint: true,
+			wantFormat:     "%s",
+			wantArgs:       []string{"x"},
+		},
+		{
+			name:           "type cast",
+			msg:            "hello {string(x)}",
+			wantTracepoint: true,
+			wantFormat:     "hello %s",
+			wantArgs:       []string{"string(x)"},
+		},
+		{
+			name:           "multiple eval",
+			msg:            "{x} {y} {z}",
+			wantTracepoint: true,
+			wantFormat:     "%s %s %s",
+			wantArgs:       []string{"x", "y", "z"},
+		},
+		{
+			name:           "eval expressions contain braces",
+			msg:            "{interface{}(x)} {myType{y}} {[]myType{{z}}}",
+			wantTracepoint: true,
+			wantFormat:     "%s %s %s",
+			wantArgs:       []string{"interface{}(x)", "myType{y}", "[]myType{{z}}"},
+		},
+		// Test parse errors.
+		{name: "empty evaluation", msg: "{}", wantErr: true},
+		{name: "empty space evaluation", msg: "{   \n}", wantErr: true},
+		{name: "open brace missing closed", msg: "{", wantErr: true},
+		{name: "closed brace missing open", msg: "}", wantErr: true},
+		{name: "open brace in expression", msg: `{m["{"]}`, wantErr: true},
+		{name: "closed brace in expression", msg: `{m["}"]}`, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotTracepoint, gotLogMessage, err := parseLogPoint(tt.msg)
+			if gotTracepoint != tt.wantTracepoint {
+				t.Errorf("parseLogPoint() tracepoint = %v, wantTracepoint %v", gotTracepoint, tt.wantTracepoint)
+				return
+			}
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseLogPoint() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantTracepoint {
+				return
+			}
+			if gotLogMessage == nil {
+				t.Errorf("parseLogPoint() gotLogMessage = nil, want log message")
+				return
+			}
+			if gotLogMessage.format != tt.wantFormat {
+				t.Errorf("parseLogPoint() gotFormat = %v, want %v", gotLogMessage.format, tt.wantFormat)
+			}
+			if !reflect.DeepEqual(gotLogMessage.args, tt.wantArgs) {
+				t.Errorf("parseLogPoint() gotArgs = %v, want %v", gotLogMessage.args, tt.wantArgs)
+			}
+		})
+	}
 }
 
 func TestDisassemble(t *testing.T) {

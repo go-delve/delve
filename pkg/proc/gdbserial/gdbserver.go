@@ -1617,8 +1617,12 @@ func (regs *gdbRegisters) init(regsInfo []gdbRegisterInfo, arch *proc.Arch, regn
 	}
 	regs.buf = make([]byte, regsz)
 	for _, reginfo := range regsInfo {
-		regs.regs[reginfo.Name] = gdbRegister{regnum: reginfo.Regnum, value: regs.buf[reginfo.Offset : reginfo.Offset+reginfo.Bitsize/8], ignoreOnWrite: reginfo.ignoreOnWrite}
+		regs.regs[reginfo.Name] = regs.gdbRegisterNew(&reginfo)
 	}
+}
+
+func (regs *gdbRegisters) gdbRegisterNew(reginfo *gdbRegisterInfo) gdbRegister {
+	return gdbRegister{regnum: reginfo.Regnum, value: regs.buf[reginfo.Offset : reginfo.Offset+reginfo.Bitsize/8], ignoreOnWrite: reginfo.ignoreOnWrite}
 }
 
 // reloadRegisters loads the current value of the thread's registers.
@@ -1963,7 +1967,21 @@ func (t *gdbThread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
 		return fmt.Errorf("could not set register %s: wrong size, expected %d got %d", regName, len(gdbreg.value), len(reg.Bytes))
 	}
 	copy(gdbreg.value, reg.Bytes)
-	return t.p.conn.writeRegister(t.strID, gdbreg.regnum, gdbreg.value)
+	err := t.p.conn.writeRegister(t.strID, gdbreg.regnum, gdbreg.value)
+	if err != nil {
+		return err
+	}
+	if t.p.conn.workaroundReg != nil && len(gdbreg.value) > 16 {
+		// This is a workaround for a bug in debugserver where register writes (P
+		// packet) on AVX-2 and AVX-512 registers are ignored unless they are
+		// followed by a write to an AVX register.
+		// See:
+		//  Issue #2767
+		//  https://bugs.llvm.org/show_bug.cgi?id=52362
+		reg := t.regs.gdbRegisterNew(t.p.conn.workaroundReg)
+		return t.p.conn.writeRegister(t.strID, reg.regnum, reg.value)
+	}
+	return nil
 }
 
 func (regs *gdbRegisters) Slice(floatingPoint bool) ([]proc.Register, error) {

@@ -393,28 +393,31 @@ func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
 		g = p.SelectedGoroutine()
 	)
 
-	fn, ok := p.BinInfo().LookupFunc[fnName]
-	if !ok {
-		return nil, fmt.Errorf("unable to find function %s", fnName)
-	}
-
-	var regs proc.Registers
-	mem := p.Memory()
-	if g != nil && g.Thread != nil {
-		regs, _ = g.Thread.Registers()
-	}
-	instructions, err := proc.Disassemble(mem, regs, p.Breakpoints(), p.BinInfo(), fn.Entry, fn.End)
+	fns, err := p.BinInfo().FindFunction(fnName)
 	if err != nil {
 		return nil, err
 	}
 
 	var addrs []uint64
-	for _, instruction := range instructions {
-		if instruction.IsRet() {
-			addrs = append(addrs, instruction.Loc.PC)
+
+	for _, fn := range fns {
+		var regs proc.Registers
+		mem := p.Memory()
+		if g != nil && g.Thread != nil {
+			regs, _ = g.Thread.Registers()
 		}
+		instructions, err := proc.Disassemble(mem, regs, p.Breakpoints(), p.BinInfo(), fn.Entry, fn.End)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, instruction := range instructions {
+			if instruction.IsRet() {
+				addrs = append(addrs, instruction.Loc.PC)
+			}
+		}
+		addrs = append(addrs, proc.FindDeferReturnCalls(instructions)...)
 	}
-	addrs = append(addrs, proc.FindDeferReturnCalls(instructions)...)
 
 	return addrs, nil
 }

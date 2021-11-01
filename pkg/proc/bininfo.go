@@ -58,6 +58,9 @@ type BinaryInfo struct {
 	Sources []string
 	// LookupFunc maps function names to a description of the function.
 	LookupFunc map[string]*Function
+	// lookupGenericFunc maps function names, with their type parameters removed, to functions.
+	// Functions that are not generic are not added to this map.
+	lookupGenericFunc map[string][]*Function
 
 	// SymNames maps addr to a description *elf.Symbol of this addr.
 	SymNames map[uint64]*elf.Symbol
@@ -269,6 +272,8 @@ func FindFileLocation(p Process, filename string, lineno int) ([]uint64, error) 
 		}
 	}
 
+	sort.Slice(selectedPCs, func(i, j int) bool { return selectedPCs[i] < selectedPCs[j] })
+
 	return selectedPCs, nil
 }
 
@@ -303,36 +308,53 @@ func allInlineCallRanges(tree *godwarf.Tree) []inlRange {
 	return r
 }
 
+// FindFunction returns the functions with name funcName.
+func (bi *BinaryInfo) FindFunction(funcName string) ([]*Function, error) {
+	if fn := bi.LookupFunc[funcName]; fn != nil {
+		return []*Function{fn}, nil
+	}
+	fns := bi.LookupGenericFunc()[funcName]
+	if len(fns) == 0 {
+		return nil, &ErrFunctionNotFound{funcName}
+	}
+	return fns, nil
+}
+
 // FindFunctionLocation finds address of a function's line
 // If lineOffset is passed FindFunctionLocation will return the address of that line
 func FindFunctionLocation(p Process, funcName string, lineOffset int) ([]uint64, error) {
 	bi := p.BinInfo()
-	origfn := bi.LookupFunc[funcName]
-	if origfn == nil {
-		return nil, &ErrFunctionNotFound{funcName}
+	origfns, err := bi.FindFunction(funcName)
+	if err != nil {
+		return nil, err
 	}
 
 	if lineOffset > 0 {
-		filename, lineno := origfn.cu.lineInfo.PCToLine(origfn.Entry, origfn.Entry)
+		fn := origfns[0]
+		filename, lineno := fn.cu.lineInfo.PCToLine(fn.Entry, fn.Entry)
 		return FindFileLocation(p, filename, lineno+lineOffset)
 	}
 
-	r := make([]uint64, 0, len(origfn.InlinedCalls)+1)
-	if origfn.Entry > 0 {
-		// add concrete implementation of the function
-		pc, err := FirstPCAfterPrologue(p, origfn, false)
-		if err != nil {
-			return nil, err
+	r := make([]uint64, 0, len(origfns[0].InlinedCalls)+len(origfns))
+
+	for _, origfn := range origfns {
+		if origfn.Entry > 0 {
+			// add concrete implementation of the function
+			pc, err := FirstPCAfterPrologue(p, origfn, false)
+			if err != nil {
+				return nil, err
+			}
+			r = append(r, pc)
 		}
-		r = append(r, pc)
+		// add inlined calls to the function
+		for _, call := range origfn.InlinedCalls {
+			r = append(r, call.LowPC)
+		}
+		if len(r) == 0 {
+			return nil, &ErrFunctionNotFound{funcName}
+		}
 	}
-	// add inlined calls to the function
-	for _, call := range origfn.InlinedCalls {
-		r = append(r, call.LowPC)
-	}
-	if len(r) == 0 {
-		return nil, &ErrFunctionNotFound{funcName}
-	}
+	sort.Slice(r, func(i, j int) bool { return r[i] < r[j] })
 	return r, nil
 }
 
@@ -458,11 +480,35 @@ type Function struct {
 	InlinedCalls []InlinedCall
 }
 
+// instRange returns the indexes in fn.Name of the type parameter
+// instantiation, which is the position of the outermost '[' and ']'.
+// If fn is not an instantiated function both returned values will be len(fn.Name)
+func (fn *Function) instRange() [2]int {
+	d := len(fn.Name)
+	inst := [2]int{d, d}
+	if strings.HasPrefix(fn.Name, "type..") {
+		return inst
+	}
+	inst[0] = strings.Index(fn.Name, "[")
+	if inst[0] < 0 {
+		inst[0] = d
+		return inst
+	}
+	inst[1] = strings.LastIndex(fn.Name, "]")
+	if inst[1] < 0 {
+		inst[0] = d
+		inst[1] = d
+		return inst
+	}
+	return inst
+}
+
 // PackageName returns the package part of the symbol name,
 // or the empty string if there is none.
 // Borrowed from $GOROOT/debug/gosym/symtab.go
 func (fn *Function) PackageName() string {
-	return packageName(fn.Name)
+	inst := fn.instRange()
+	return packageName(fn.Name[:inst[0]])
 }
 
 func packageName(name string) string {
@@ -481,25 +527,42 @@ func packageName(name string) string {
 // or the empty string if there is none.
 // Borrowed from $GOROOT/debug/gosym/symtab.go
 func (fn *Function) ReceiverName() string {
-	pathend := strings.LastIndex(fn.Name, "/")
+	inst := fn.instRange()
+	pathend := strings.LastIndex(fn.Name[:inst[0]], "/")
 	if pathend < 0 {
 		pathend = 0
 	}
 	l := strings.Index(fn.Name[pathend:], ".")
-	r := strings.LastIndex(fn.Name[pathend:], ".")
-	if l == -1 || r == -1 || l == r {
+	if l == -1 {
 		return ""
 	}
-	return fn.Name[pathend+l+1 : pathend+r]
+	if r := strings.LastIndex(fn.Name[inst[1]:], "."); r != -1 && pathend+l != inst[1]+r {
+		return fn.Name[pathend+l+1 : inst[1]+r]
+	} else if r := strings.LastIndex(fn.Name[pathend:inst[0]], "."); r != -1 && l != r {
+		return fn.Name[pathend+l+1 : pathend+r]
+	}
+	return ""
 }
 
 // BaseName returns the symbol name without the package or receiver name.
 // Borrowed from $GOROOT/debug/gosym/symtab.go
 func (fn *Function) BaseName() string {
-	if i := strings.LastIndex(fn.Name, "."); i != -1 {
+	inst := fn.instRange()
+	if i := strings.LastIndex(fn.Name[inst[1]:], "."); i != -1 {
+		return fn.Name[inst[1]+i+1:]
+	} else if i := strings.LastIndex(fn.Name[:inst[0]], "."); i != -1 {
 		return fn.Name[i+1:]
 	}
 	return fn.Name
+}
+
+// NameWithoutTypeParams returns the function name without instantiation parameters
+func (fn *Function) NameWithoutTypeParams() string {
+	inst := fn.instRange()
+	if inst[0] == inst[1] {
+		return fn.Name
+	}
+	return fn.Name[:inst[0]] + fn.Name[inst[1]+1:]
 }
 
 // Optimized returns true if the function was optimized by the compiler.
@@ -1863,6 +1926,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 	sort.Sort(packageVarsByAddr(bi.packageVars))
 
 	bi.LookupFunc = make(map[string]*Function)
+	bi.lookupGenericFunc = nil
 	for i := range bi.Functions {
 		bi.LookupFunc[bi.Functions[i].Name] = &bi.Functions[i]
 	}
@@ -1896,6 +1960,24 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 	if cont != nil {
 		cont()
 	}
+}
+
+// LookupGenericFunc returns a map that allows searching for instantiations of generic function by specificying a function name without type parameters.
+// For example the key "pkg.(*Receiver).Amethod" will find all instantiations of Amethod:
+//  - pkg.(*Receiver[.shape.int]).Amethod"
+//  - pkg.(*Receiver[.shape.*uint8]).Amethod"
+//  - etc.
+func (bi *BinaryInfo) LookupGenericFunc() map[string][]*Function {
+	if bi.lookupGenericFunc == nil {
+		bi.lookupGenericFunc = make(map[string][]*Function)
+		for i := range bi.Functions {
+			dn := bi.Functions[i].NameWithoutTypeParams()
+			if dn != bi.Functions[i].Name {
+				bi.lookupGenericFunc[dn] = append(bi.lookupGenericFunc[dn], &bi.Functions[i])
+			}
+		}
+	}
+	return bi.lookupGenericFunc
 }
 
 // loadDebugInfoMapsCompileUnit loads entry from a single compile unit.

@@ -2118,6 +2118,8 @@ func (v *Variable) findMethod(mname string) (*Variable, error) {
 		pkg := typePath[:dot]
 		receiver := typePath[dot+1:]
 
+		//TODO(aarzilli): support generic functions?
+
 		if fn, ok := v.bi.LookupFunc[fmt.Sprintf("%s.%s.%s", pkg, receiver, mname)]; ok {
 			r, err := functionToVariable(fn, v.bi, v.mem)
 			if err != nil {
