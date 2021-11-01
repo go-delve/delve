@@ -3982,6 +3982,7 @@ Type help followed by a command for full documentation.
 					checkScope(t, scopes, 0, "Locals", -1)
 
 					client.EvaluateRequest("dlv config showGlobalVariables true", 1000, "repl")
+					client.ExpectInvalidatedEvent(t)
 					got = client.ExpectEvaluateResponse(t)
 					checkEval(t, got, "showGlobalVariables\ttrue\n\nUpdated", noChildren)
 

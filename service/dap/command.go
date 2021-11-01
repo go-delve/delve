@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/go-delve/delve/pkg/config"
+	"github.com/google/go-dap"
 )
 
 func (s *Session) delveCmd(goid, frame int, cmdstr string) (string, error) {
@@ -102,14 +103,35 @@ func (s *Session) helpMessage(_, _ int, args string) (string, error) {
 func (s *Session) evaluateConfig(_, _ int, expr string) (string, error) {
 	argv := config.Split2PartsBySpace(expr)
 	name := argv[0]
-	switch name {
-	case "-list":
+	if name == "-list" {
 		return listConfig(&s.args), nil
-	default:
-		res, err := configureSet(&s.args, expr)
-		if err != nil {
-			return "", err
-		}
-		return res, nil
 	}
+	updated, res, err := configureSet(&s.args, expr)
+	if err != nil {
+		return "", err
+	}
+
+	if updated {
+		// Send invalidated events for areas that are affected by configuration changes.
+		switch name {
+		case "showGlobalVariables", "showRegisters":
+			// Variable data has become invalidated.
+			s.send(&dap.InvalidatedEvent{
+				Event: *newEvent("invalidated"),
+				Body: dap.InvalidatedEventBody{
+					Areas: []dap.InvalidatedAreas{"variables"},
+				},
+			})
+		case "goroutineFilters", "hideSystemGoroutines":
+			// Thread related data has become invalidated.
+			s.send(&dap.InvalidatedEvent{
+				Event: *newEvent("invalidated"),
+				Body: dap.InvalidatedEventBody{
+					Areas: []dap.InvalidatedAreas{"threads"},
+				},
+			})
+		}
+		res += "\nUpdated"
+	}
+	return res, nil
 }

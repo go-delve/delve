@@ -13,7 +13,7 @@ func listConfig(args *launchAttachArgs) string {
 	return buf.String()
 }
 
-func configureSet(sargs *launchAttachArgs, args string) (string, error) {
+func configureSet(sargs *launchAttachArgs, args string) (bool, string, error) {
 	v := config.Split2PartsBySpace(args)
 
 	cfgname := v[0]
@@ -24,28 +24,28 @@ func configureSet(sargs *launchAttachArgs, args string) (string, error) {
 
 	field := config.ConfigureFindFieldByName(sargs, cfgname, "cfgName")
 	if !field.CanAddr() {
-		return "", fmt.Errorf("%q is not a configuration parameter", cfgname)
+		return false, "", fmt.Errorf("%q is not a configuration parameter", cfgname)
 	}
 
 	// If there were no arguments provided, just list the value.
 	if len(v) == 1 {
-		return config.ConfigureListByName(sargs, cfgname, "cfgName"), nil
+		return false, config.ConfigureListByName(sargs, cfgname, "cfgName"), nil
 	}
 
 	if cfgname == "substitutePath" {
 		err := configureSetSubstitutePath(sargs, rest)
 		if err != nil {
-			return "", err
+			return false, "", err
 		}
 		// Print the updated client to server and server to client maps.
-		return fmt.Sprintf("%s\nUpdated", config.ConfigureListByName(sargs, cfgname, "cfgName")), nil
+		return true, config.ConfigureListByName(sargs, cfgname, "cfgName"), nil
 	}
 
 	err := config.ConfigureSetSimple(rest, cfgname, field)
 	if err != nil {
-		return "", err
+		return false, "", err
 	}
-	return fmt.Sprintf("%s\nUpdated", config.ConfigureListByName(sargs, cfgname, "cfgName")), nil
+	return true, config.ConfigureListByName(sargs, cfgname, "cfgName"), nil
 }
 
 func configureSetSubstitutePath(args *launchAttachArgs, rest string) error {
