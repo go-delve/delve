@@ -735,10 +735,6 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 	}
 
 	debugname := dbp.bi.Images[0].Path
-	// offset, err := ebpf.SymbolToOffset(debugname, fnName)
-	// if err != nil {
-	// 	return err
-	// }
 
 	// First attach a uprobe at all return addresses. We do this instead of using a uretprobe
 	// for two reasons:
