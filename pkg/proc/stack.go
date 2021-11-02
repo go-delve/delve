@@ -236,7 +236,7 @@ func (it *stackIterator) switchToGoroutineStack() {
 	it.pc = it.g.PC
 	it.regs.Reg(it.regs.SPRegNum).Uint64Val = it.g.SP
 	it.regs.AddReg(it.regs.BPRegNum, op.DwarfRegisterFromUint64(it.g.BP))
-	if it.bi.Arch.Name == "arm64" {
+	if (it.bi.Arch.Name == "arm64") || (it.bi.Arch.Name == "loong64") {
 		it.regs.Reg(it.regs.LRRegNum).Uint64Val = it.g.LR
 	}
 }
@@ -432,7 +432,7 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 		}
 	}
 
-	if it.bi.Arch.Name == "arm64" {
+	if (it.bi.Arch.Name == "arm64") || (it.bi.Arch.Name == "loong64") {
 		if ret == 0 && it.regs.Reg(it.regs.LRRegNum) != nil {
 			ret = it.regs.Reg(it.regs.LRRegNum).Uint64Val
 		}

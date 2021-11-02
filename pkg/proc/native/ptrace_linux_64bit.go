@@ -1,4 +1,4 @@
-// +build linux,amd64 linux,arm64
+// +build linux,amd64 linux,arm64 linux,loong64
 
 package native
 
