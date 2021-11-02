@@ -2588,5 +2588,27 @@ func TestGenericsBreakpoint(t *testing.T) {
 		if line := frame1Line(); line != 11 {
 			t.Errorf("wrong line after first continue, expected 11, got %d", line)
 		}
+
+		if bp.FunctionName != "main.testfn" {
+			t.Errorf("wrong name for breakpoint (CreateBreakpoint): %q", bp.FunctionName)
+		}
+
+		bps, err := c.ListBreakpoints(false)
+		assertNoError(err, t, "ListBreakpoints")
+
+		for _, bp := range bps {
+			if bp.ID > 0 {
+				if bp.FunctionName != "main.testfn" {
+					t.Errorf("wrong name for breakpoint (ListBreakpoints): %q", bp.FunctionName)
+				}
+				break
+			}
+		}
+
+		rmbp, err := c.ClearBreakpoint(bp.ID)
+		assertNoError(err, t, "ClearBreakpoint")
+		if rmbp.FunctionName != "main.testfn" {
+			t.Errorf("wrong name for breakpoint (ClearBreakpoint): %q", rmbp.FunctionName)
+		}
 	})
 }

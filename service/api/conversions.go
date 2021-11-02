@@ -66,18 +66,35 @@ func ConvertBreakpoints(bps []*proc.Breakpoint) []*Breakpoint {
 		return nil
 	}
 	r := make([]*Breakpoint, 0, len(bps))
+	lg := false
 	for _, bp := range bps {
 		if len(r) > 0 {
 			if r[len(r)-1].ID == bp.LogicalID() {
 				r[len(r)-1].Addrs = append(r[len(r)-1].Addrs, bp.Addr)
+				if r[len(r)-1].FunctionName != bp.FunctionName && r[len(r)-1].FunctionName != "" {
+					if !lg {
+						r[len(r)-1].FunctionName = removeTypeParams(r[len(r)-1].FunctionName)
+						lg = true
+					}
+					fn := removeTypeParams(bp.FunctionName)
+					if r[len(r)-1].FunctionName != fn {
+						r[len(r)-1].FunctionName = "(multiple functions)"
+					}
+				}
 				continue
 			} else if r[len(r)-1].ID > bp.LogicalID() {
 				panic("input not sorted")
 			}
 		}
 		r = append(r, ConvertBreakpoint(bp))
+		lg = false
 	}
 	return r
+}
+
+func removeTypeParams(name string) string {
+	fn := proc.Function{Name: name}
+	return fn.NameWithoutTypeParams()
 }
 
 // ConvertThread converts a proc.Thread into an
