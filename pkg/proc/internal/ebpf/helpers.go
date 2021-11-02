@@ -22,7 +22,7 @@ import (
 	"github.com/cilium/ebpf/ringbuf"
 )
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -tags "go1.16 go1.17" -target amd64 trace bpf/trace.bpf.c -- -I./bpf/include
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -tags "go1.16" -target amd64 trace bpf/trace.bpf.c -- -I./bpf/include
 
 const FakeAddressBase = 0xbeed000000000000
 
