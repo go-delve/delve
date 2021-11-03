@@ -1,7 +1,12 @@
-# github.com/aquasecurity/libbpfgo v0.1.2-0.20210708203834-4928d36fafac
+# github.com/cilium/ebpf v0.7.0
 ## explicit
-github.com/aquasecurity/libbpfgo
-github.com/aquasecurity/libbpfgo/helpers
+github.com/cilium/ebpf
+github.com/cilium/ebpf/asm
+github.com/cilium/ebpf/internal
+github.com/cilium/ebpf/internal/btf
+github.com/cilium/ebpf/internal/unix
+github.com/cilium/ebpf/link
+github.com/cilium/ebpf/ringbuf
 # github.com/cosiner/argv v0.1.0
 ## explicit
 github.com/cosiner/argv
@@ -47,6 +52,8 @@ github.com/spf13/cobra
 github.com/spf13/cobra/doc
 # github.com/spf13/pflag v1.0.5
 github.com/spf13/pflag
+# github.com/stretchr/testify v1.7.0
+## explicit
 # go.starlark.net v0.0.0-20200821142938-949cc6f4b097
 ## explicit
 go.starlark.net/internal/compile

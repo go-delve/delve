@@ -1,5 +1,5 @@
-//go:build !ebpf
-// +build !ebpf
+//go:build !linux || !amd64 || !go1.16 || !cgo
+// +build !linux !amd64 !go1.16 !cgo
 
 package native
 
