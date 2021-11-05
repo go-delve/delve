@@ -6191,10 +6191,10 @@ func TestAttachRemoteToRunningTargetContinueOnEntry(t *testing.T) {
 	})
 }
 
-// TestMultiClient tests that that remote attach doesn't take down
+// TestAttachRemoteMultiClientDisconnect tests that that remote attach doesn't take down
 // the server in multi-client mode unless terminateDebugee is explicitely set.
-func TestAttachRemoteMultiClient(t *testing.T) {
-	closingClientSessionOnly := "Closing client session, but leaving multi-client DAP server running at"
+func TestAttachRemoteMultiClientDisconnect(t *testing.T) {
+	closingClientSessionOnly := fmt.Sprintf(daptest.ClosingClient, "halted")
 	detachingAndTerminating := "Detaching and terminating target process"
 	tests := []struct {
 		name              string
@@ -6274,18 +6274,18 @@ func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 				// Both launch and attach requests should go through for additional error checking
 				client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 100})
 				er := client.ExpectVisibleErrorResponse(t)
-				msg := "Failed to attach: debugger already started - use remote mode to connect"
-				if er.Body.Error.Id != FailedToAttach || er.Body.Error.Format != msg {
-					t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToAttach, msg)
+				msgRe, _ := regexp.Compile("Failed to attach: debug session already in progress at [0-9]+:[0-9]+ - use remote mode to connect to a server with an active debug session")
+				if er.Body.Error.Id != FailedToAttach || msgRe.MatchString(er.Body.Error.Format) {
+					t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToAttach, msgRe)
 				}
 				tests := []string{"debug", "test", "exec", "replay", "core"}
 				for _, mode := range tests {
 					t.Run(mode, func(t *testing.T) {
 						client.LaunchRequestWithArgs(map[string]interface{}{"mode": mode})
 						er := client.ExpectVisibleErrorResponse(t)
-						msg := "Failed to launch: debugger already started - use remote attach to connect to a server with an active debug session"
-						if er.Body.Error.Id != FailedToLaunch || er.Body.Error.Format != msg {
-							t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToLaunch, msg)
+						msgRe, _ := regexp.Compile("Failed to launch: debug session already in progress at [0-9]+:[0-9]+ - use remote attach mode to connect to a server with an active debug session")
+						if er.Body.Error.Id != FailedToLaunch || msgRe.MatchString(er.Body.Error.Format) {
+							t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToLaunch, msgRe)
 						}
 					})
 				}

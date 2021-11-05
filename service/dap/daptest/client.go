@@ -173,9 +173,11 @@ func (c *Client) ExpectOutputEventTerminating(t *testing.T) *dap.OutputEvent {
 	return c.ExpectOutputEventRegex(t, `Terminating process [0-9]+\n`)
 }
 
-func (c *Client) ExpectOutputEventClosingClient(t *testing.T) *dap.OutputEvent {
+const ClosingClient = "Closing client session, but leaving multi-client DAP server at .+:[0-9]+ with debuggee %s\n"
+
+func (c *Client) ExpectOutputEventClosingClient(t *testing.T, status string) *dap.OutputEvent {
 	t.Helper()
-	return c.ExpectOutputEventRegex(t, `Closing client session, but leaving multi-client DAP server running at .+:[0-9]+\n`)
+	return c.ExpectOutputEventRegex(t, fmt.Sprintf(ClosingClient, status))
 }
 
 func (c *Client) CheckStopLocation(t *testing.T, thread int, name string, line int) {

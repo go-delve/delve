@@ -195,6 +195,7 @@ func (m *SubstitutePath) UnmarshalJSON(data []byte) error {
 type AttachConfig struct {
 	// Acceptable values are:
 	//   "local": attaches to the local process with the given ProcessID.
+	//   "remote": expects the debugger to already be running to "attach" to an in-progress debug session.
 	//
 	// Default is "local".
 	Mode string `json:"mode"`
