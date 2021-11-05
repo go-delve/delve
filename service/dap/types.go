@@ -157,8 +157,9 @@ type LaunchAttachCommonConfig struct {
 	// should be hidden from the call stack view.
 	HideSystemGoroutines bool `json:"hideSystemGoroutines,omitempty"`
 
-	// String value to indicate which system goroutines
-	// should be shown in the call stack view.
+	// String value to indicate which system goroutines should be
+	// shown in the call stack view. See filtering documentation:
+	// https://github.com/go-delve/delve/blob/master/Documentation/cli/README.md#goroutines
 	GoroutineFilters string `json:"goroutineFilters,omitempty"`
 
 	// An array of mappings from a local path (client) to the remote path (debugger).

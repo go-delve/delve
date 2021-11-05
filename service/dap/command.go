@@ -47,6 +47,10 @@ Type "help" followed by the name of a command for more information about it.`
 	config -list
 	
 	Show all configuration parameters.
+
+	config -list <parameter>
+	
+	Show value of a configuration parameter.
 	
 	config <parameter> <value>
 	
@@ -104,6 +108,9 @@ func (s *Session) evaluateConfig(_, _ int, expr string) (string, error) {
 	argv := config.Split2PartsBySpace(expr)
 	name := argv[0]
 	if name == "-list" {
+		if len(argv) > 1 {
+			return config.ConfigureListByName(&s.args, argv[1], "cfgName"), nil
+		}
 		return listConfig(&s.args), nil
 	}
 	updated, res, err := configureSet(&s.args, expr)

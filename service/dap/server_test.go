@@ -836,7 +836,6 @@ func TestFilterGoroutines(t *testing.T) {
 			filter: "-without user",
 			want:   []string{"runtime."},
 		},
-
 		// Filters that should return all goroutines.
 		{
 			name:    "empty filter string",
@@ -865,22 +864,26 @@ func TestFilterGoroutines(t *testing.T) {
 			wantLen: 1,
 		},
 	}
-	for _, tc := range tt {
-		runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
-			runDebugSessionWithBPs(t, client, "launch",
-				// Launch
-				func() {
-					client.LaunchRequestWithArgs(map[string]interface{}{
-						"mode":             "exec",
-						"program":          fixture.Path,
-						"stopOnEntry":      !stopOnEntry,
-						"goroutineFilters": tc.filter})
-				},
-				// Set breakpoints
-				fixture.Source, []int{30},
-				[]onBreakpoint{{
-					// Stop at line 30
-					execute: func() {
+	runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode":        "exec",
+					"program":     fixture.Path,
+					"stopOnEntry": !stopOnEntry})
+			},
+			// Set breakpoints
+			fixture.Source, []int{30},
+			[]onBreakpoint{{
+				// Stop at line 30
+				execute: func() {
+					for _, tc := range tt {
+						command := fmt.Sprintf("dlv config goroutineFilters %s", tc.filter)
+						client.EvaluateRequest(command, 1000, "repl")
+						client.ExpectInvalidatedEvent(t)
+						client.ExpectEvaluateResponse(t)
+
 						client.ThreadsRequest()
 						if tc.wantErr {
 							client.ExpectOutputEvent(t)
@@ -901,12 +904,12 @@ func TestFilterGoroutines(t *testing.T) {
 								t.Errorf("got Threads[%d]=%#v, want Name=%v\n", i, frame, tc.want)
 							}
 						}
-					},
-					disconnect: false,
-				}})
+					}
+				},
+				disconnect: false,
+			}})
 
-		})
-	}
+	})
 }
 
 func checkStackFramesHasMore(t *testing.T, got *dap.StackTraceResponse,
@@ -3970,7 +3973,7 @@ Type help followed by a command for full documentation.
 					checkEval(t, got, formatConfig(50, false, false, "", false, [][2]string{}), noChildren)
 
 					// Read and modify showGlobalVariables.
-					client.EvaluateRequest("dlv config showGlobalVariables", 1000, "repl")
+					client.EvaluateRequest("dlv config -list showGlobalVariables", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
 					checkEval(t, got, "showGlobalVariables\tfalse\n", noChildren)
 
@@ -3999,7 +4002,7 @@ Type help followed by a command for full documentation.
 					checkScope(t, scopes, 1, "Globals (package main)", -1)
 
 					// Read and modify substitutePath.
-					client.EvaluateRequest("dlv config substitutePath", 1000, "repl")
+					client.EvaluateRequest("dlv config -list substitutePath", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
 					checkEval(t, got, "substitutePath\t[]\n", noChildren)
 

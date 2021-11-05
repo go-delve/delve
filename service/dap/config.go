@@ -27,11 +27,6 @@ func configureSet(sargs *launchAttachArgs, args string) (bool, string, error) {
 		return false, "", fmt.Errorf("%q is not a configuration parameter", cfgname)
 	}
 
-	// If there were no arguments provided, just list the value.
-	if len(v) == 1 {
-		return false, config.ConfigureListByName(sargs, cfgname, "cfgName"), nil
-	}
-
 	if cfgname == "substitutePath" {
 		err := configureSetSubstitutePath(sargs, rest)
 		if err != nil {
