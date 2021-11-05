@@ -1056,9 +1056,9 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			if err := cmd.Wait(); err != nil {
 				s.config.log.Debugf("program exited with error: %v", err)
 			}
+			close(s.noDebugProcess.exited)
 			s.logToConsole(proc.ErrProcessExited{Pid: cmd.ProcessState.Pid(), Status: cmd.ProcessState.ExitCode()}.Error())
 			s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
-			close(s.noDebugProcess.exited)
 		}()
 		return
 	}

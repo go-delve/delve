@@ -5026,16 +5026,7 @@ func runNoDebugSession(t *testing.T, client *daptest.Client, launchRequest func(
 	client.ExpectOutputEventProcessExited(t, exitStatus)
 	client.ExpectTerminatedEvent(t)
 	client.DisconnectRequestWithKillOption(true)
-	m := client.ExpectMessage(t)
-	switch m.(type) {
-	case *dap.DisconnectResponse:
-	case *dap.OutputEvent:
-		// There may be a race between closing the exited channel, and trying
-		// to kill the process, so we may get a "Terminating process" output
-		// event.
-		m = client.ExpectMessage(t)
-	}
-	client.CheckDisconnectResponse(t, m)
+	client.ExpectDisconnectResponse(t)
 	client.ExpectTerminatedEvent(t)
 }
 
