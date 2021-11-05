@@ -4290,6 +4290,7 @@ func TestNextParked(t *testing.T) {
 						}
 					}
 				},
+				disconnect: true,
 				terminated: true,
 			}})
 	})
