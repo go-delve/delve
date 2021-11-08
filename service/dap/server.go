@@ -1229,15 +1229,11 @@ func (s *Session) stopDebugSession(killProcess bool) error {
 	if s.debugger == nil {
 		return nil
 	}
-	// TODO(polina): reset debuggeer to nil at the end
 	var err error
 	var exited error
 	// Halting will stop any debugger command that's pending on another
-	// per-request goroutine, hence unblocking that goroutine to wrap-up and exit.
-	// TODO(polina): Per-request goroutine could still not be done when this one is.
-	// To avoid goroutine leaks, we can use a wait group or have the goroutine listen
-	// for a stop signal on a dedicated quit channel at suitable points (use context?).
-	// Additional clean-up might be especially critical when we support multiple clients.
+	// per-request goroutine. Tell auto-resumer not to resume, so the
+	// goroutine can wrap-up and exit.
 	s.setHaltRequested(true)
 	state, err := s.halt()
 	if err == proc.ErrProcessDetached {
