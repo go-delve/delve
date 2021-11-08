@@ -849,11 +849,25 @@ func TestRemoteDAPClientAfterContinue(t *testing.T) {
 
 	go func() { // Capture logging
 		for scanErr.Scan() {
-			t.Log(scanErr.Text())
+			text := scanErr.Text()
+			if strings.Contains(text, "Internal Error") {
+				t.Error("ERROR", text)
+			} else {
+				t.Log(text)
+			}
 		}
 	}()
 
 	c := newDAPRemoteClient(t, listenAddr)
+	c.ContinueRequest(1)
+	c.ExpectContinueResponse(t)
+	c.DisconnectRequest()
+	c.ExpectOutputEventClosingClient(t)
+	c.ExpectDisconnectResponse(t)
+	c.ExpectTerminatedEvent(t)
+	c.Close()
+
+	c = newDAPRemoteClient(t, listenAddr)
 	c.DisconnectRequestWithKillOption(true)
 	c.ExpectOutputEventDetachingKill(t)
 	c.ExpectDisconnectResponse(t)
