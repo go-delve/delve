@@ -36,8 +36,12 @@ const (
 // Target represents the process being debugged.
 type Target struct {
 	Process
+	RecordingManipulation
 
-	proc ProcessInternal
+	proc   ProcessInternal
+	recman RecordingManipulationInternal
+
+	pid int
 
 	// StopReason describes the reason why the target process is stopped.
 	// A process could be stopped for multiple simultaneous reasons, in which
@@ -169,7 +173,8 @@ func DisableAsyncPreemptEnv() []string {
 }
 
 // NewTarget returns an initialized Target object.
-func NewTarget(p Process, currentThread Thread, cfg NewTargetConfig) (*Target, error) {
+// The p argument can optionally implement the RecordingManipulation interface.
+func NewTarget(p ProcessInternal, pid int, currentThread Thread, cfg NewTargetConfig) (*Target, error) {
 	entryPoint, err := p.EntryPoint()
 	if err != nil {
 		return nil, err
@@ -187,12 +192,20 @@ func NewTarget(p Process, currentThread Thread, cfg NewTargetConfig) (*Target, e
 
 	t := &Target{
 		Process:       p,
-		proc:          p.(ProcessInternal),
+		proc:          p,
 		fncallForG:    make(map[int]*callInjection),
 		StopReason:    cfg.StopReason,
 		currentThread: currentThread,
 		CanDump:       cfg.CanDump,
+		pid:           pid,
 	}
+
+	if recman, ok := p.(RecordingManipulationInternal); ok {
+		t.recman = recman
+	} else {
+		t.recman = &dummyRecordingManipulation{}
+	}
+	t.RecordingManipulation = t.recman
 
 	g, _ := GetG(currentThread)
 	t.selectedGoroutine = g
@@ -208,6 +221,11 @@ func NewTarget(p Process, currentThread Thread, cfg NewTargetConfig) (*Target, e
 	}
 
 	return t, nil
+}
+
+// Pid returns the pid of the target process.
+func (t *Target) Pid() int {
+	return t.pid
 }
 
 // IsCgo returns the value of runtime.iscgo
@@ -265,7 +283,7 @@ func (t *Target) ClearCaches() {
 // Restarting of a normal process happens at a higher level (debugger.Restart).
 func (t *Target) Restart(from string) error {
 	t.ClearCaches()
-	currentThread, err := t.proc.Restart(from)
+	currentThread, err := t.recman.Restart(from)
 	if err != nil {
 		return err
 	}
@@ -544,3 +562,40 @@ func (t *Target) dwrapUnwrap(fn *Function) *Function {
 	}
 	return fn
 }
+
+type dummyRecordingManipulation struct {
+}
+
+// Recorded always returns false for the native proc backend.
+func (*dummyRecordingManipulation) Recorded() (bool, string) { return false, "" }
+
+// ChangeDirection will always return an error in the native proc backend, only for
+// recorded traces.
+func (*dummyRecordingManipulation) ChangeDirection(dir Direction) error {
+	if dir != Forward {
+		return ErrNotRecorded
+	}
+	return nil
+}
+
+// GetDirection will always return Forward.
+func (*dummyRecordingManipulation) GetDirection() Direction { return Forward }
+
+// When will always return an empty string and nil, not supported on native proc backend.
+func (*dummyRecordingManipulation) When() (string, error) { return "", nil }
+
+// Checkpoint will always return an error on the native proc backend,
+// only supported for recorded traces.
+func (*dummyRecordingManipulation) Checkpoint(string) (int, error) { return -1, ErrNotRecorded }
+
+// Checkpoints will always return an error on the native proc backend,
+// only supported for recorded traces.
+func (*dummyRecordingManipulation) Checkpoints() ([]Checkpoint, error) { return nil, ErrNotRecorded }
+
+// ClearCheckpoint will always return an error on the native proc backend,
+// only supported in recorded traces.
+func (*dummyRecordingManipulation) ClearCheckpoint(int) error { return ErrNotRecorded }
+
+// Restart will always return an error in the native proc backend, only for
+// recorded traces.
+func (*dummyRecordingManipulation) Restart(string) (Thread, error) { return nil, ErrNotRecorded }

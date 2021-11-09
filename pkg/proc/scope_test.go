@@ -285,7 +285,7 @@ func (check *scopeCheck) checkVar(v *proc.Variable, t *testing.T) {
 }
 
 func (varCheck *varCheck) checkInScope(line int, scope *proc.EvalScope, t *testing.T) {
-	v, err := scope.EvalVariable(varCheck.name, normalLoadConfig)
+	v, err := scope.EvalExpression(varCheck.name, normalLoadConfig)
 	assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", varCheck.name))
 	varCheck.check(line, v, t, "EvalExpression")
 

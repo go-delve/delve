@@ -235,10 +235,6 @@ func (dbp *nativeProcess) addThread(hThread syscall.Handle, threadID int, attach
 	return thread, nil
 }
 
-func findExecutable(path string, pid int) string {
-	return path
-}
-
 type waitForDebugEventFlags int
 
 const (
@@ -428,7 +424,7 @@ func (dbp *nativeProcess) resume() error {
 // stop stops all running threads threads and sets breakpoints
 func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) {
 	if dbp.exited {
-		return nil, proc.ErrProcessExited{Pid: dbp.Pid()}
+		return nil, proc.ErrProcessExited{Pid: dbp.pid}
 	}
 
 	dbp.os.running = false

@@ -1332,7 +1332,7 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 			bpi.Variables = make([]api.Variable, len(bp.Variables))
 		}
 		for i := range bp.Variables {
-			v, err := s.EvalVariable(bp.Variables[i], proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1})
+			v, err := s.EvalExpression(bp.Variables[i], proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1})
 			if err != nil {
 				bpi.Variables[i] = api.Variable{Name: bp.Variables[i], Unreadable: fmt.Sprintf("eval error: %v", err)}
 			} else {
@@ -1516,7 +1516,7 @@ func (d *Debugger) Function(goid, frame, deferredCall int, cfg proc.LoadConfig) 
 
 // EvalVariableInScope will attempt to evaluate the variable represented by 'symbol'
 // in the scope provided.
-func (d *Debugger) EvalVariableInScope(goid, frame, deferredCall int, symbol string, cfg proc.LoadConfig) (*proc.Variable, error) {
+func (d *Debugger) EvalVariableInScope(goid, frame, deferredCall int, expr string, cfg proc.LoadConfig) (*proc.Variable, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1524,7 +1524,7 @@ func (d *Debugger) EvalVariableInScope(goid, frame, deferredCall int, symbol str
 	if err != nil {
 		return nil, err
 	}
-	return s.EvalVariable(symbol, cfg)
+	return s.EvalExpression(expr, cfg)
 }
 
 // LoadResliced will attempt to 'reslice' a map, array or slice so that the values
