@@ -175,25 +175,14 @@ type Config struct {
 
 type connection struct {
 	io.ReadWriteCloser
-	closed chan struct{}
+	isClosed bool
 }
 
 func (c *connection) Close() error {
-	select {
-	case <-c.closed:
-	default:
-		close(c.closed)
-	}
+	// Set the flag first in case we get interrupted
+	// by a check on another goroutine.
+	c.isClosed = true
 	return c.ReadWriteCloser.Close()
-}
-
-func (c *connection) isClosed() bool {
-	select {
-	case <-c.closed:
-		return true
-	default:
-		return false
-	}
 }
 
 type process struct {
@@ -326,7 +315,7 @@ func NewSession(conn io.ReadWriteCloser, config *Config, debugger *debugger.Debu
 	return &Session{
 		config:            config,
 		id:                sessionCount,
-		conn:              &connection{conn, make(chan struct{})},
+		conn:              &connection{conn, false},
 		stackFrameHandles: newHandlesMap(),
 		variableHandles:   newVariablesHandlesMap(),
 		args:              defaultArgs,
@@ -3445,7 +3434,7 @@ func (s *Session) resumeOnce(command string, allowNextStateChange chan struct{})
 func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange chan struct{}) {
 	state, err := s.runUntilStop(command, allowNextStateChange)
 
-	if s.conn.isClosed() {
+	if s.conn.isClosed {
 		s.config.log.Debugf("connection %d closed - stopping %q command", s.id, command)
 		return
 	}
@@ -3577,7 +3566,7 @@ func (s *Session) resumeOnceAndCheckStop(command string, allowNextStateChange ch
 	resumed, state, err := s.resumeOnce(command, allowNextStateChange)
 	// We should not try to process the log points if the program was not
 	// resumed or there was an error.
-	if !resumed || processExited(state, err) || state == nil || err != nil || s.conn.isClosed() {
+	if !resumed || processExited(state, err) || state == nil || err != nil || s.conn.isClosed {
 		s.setRunningCmd(false)
 		return state, err
 	}
