@@ -112,6 +112,8 @@ type Server struct {
 type Session struct {
 	config *Config
 
+	id int
+
 	// stackFrameHandles maps frames of each goroutine to unique ids across all goroutines.
 	// Reset at every stop.
 	stackFrameHandles *handlesMap
@@ -131,7 +133,7 @@ type Session struct {
 	mu sync.Mutex
 
 	// conn is the accepted client connection.
-	conn io.ReadWriteCloser
+	conn *connection
 	// debugger is the underlying debugger service.
 	debugger *debugger.Debugger
 	// binaryToRemove is the temp compiled binary to be removed on disconnect (if any).
@@ -169,6 +171,29 @@ type Config struct {
 	// StopTriggered is closed when the server is Stop()-ed.
 	// Can be used to safeguard against duplicate shutdown sequences.
 	StopTriggered chan struct{}
+}
+
+type connection struct {
+	io.ReadWriteCloser
+	closed chan struct{}
+}
+
+func (c *connection) Close() error {
+	select {
+	case <-c.closed:
+	default:
+		close(c.closed)
+	}
+	return c.ReadWriteCloser.Close()
+}
+
+func (c *connection) isClosed() bool {
+	select {
+	case <-c.closed:
+		return true
+	default:
+		return false
+	}
 }
 
 type process struct {
@@ -284,20 +309,24 @@ func NewServer(config *service.Config) *Server {
 	}
 }
 
+var sessionCount = 0
+
 // NewSession creates a new client session that can handle DAP traffic.
 // It takes an open connection and provides a Close() method to shut it
 // down when the DAP session disconnects or a connection error occurs.
 func NewSession(conn io.ReadWriteCloser, config *Config, debugger *debugger.Debugger) *Session {
+	sessionCount++
 	if config.log == nil {
 		config.log = logflags.DAPLogger()
 	}
-	config.log.Debug("DAP connection started")
+	config.log.Debugf("DAP connection %d started", sessionCount)
 	if config.StopTriggered == nil {
 		config.log.Fatal("Session must be configured with StopTriggered")
 	}
 	return &Session{
 		config:            config,
-		conn:              conn,
+		id:                sessionCount,
+		conn:              &connection{conn, make(chan struct{})},
 		stackFrameHandles: newHandlesMap(),
 		variableHandles:   newVariablesHandlesMap(),
 		args:              defaultArgs,
@@ -1200,15 +1229,11 @@ func (s *Session) stopDebugSession(killProcess bool) error {
 	if s.debugger == nil {
 		return nil
 	}
-	// TODO(polina): reset debuggeer to nil at the end
 	var err error
 	var exited error
 	// Halting will stop any debugger command that's pending on another
-	// per-request goroutine, hence unblocking that goroutine to wrap-up and exit.
-	// TODO(polina): Per-request goroutine could still not be done when this one is.
-	// To avoid goroutine leaks, we can use a wait group or have the goroutine listen
-	// for a stop signal on a dedicated quit channel at suitable points (use context?).
-	// Additional clean-up might be especially critical when we support multiple clients.
+	// per-request goroutine. Tell auto-resumer not to resume, so the
+	// goroutine can wrap-up and exit.
 	s.setHaltRequested(true)
 	state, err := s.halt()
 	if err == proc.ErrProcessDetached {
@@ -3420,6 +3445,11 @@ func (s *Session) resumeOnce(command string, allowNextStateChange chan struct{})
 func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange chan struct{}) {
 	state, err := s.runUntilStop(command, allowNextStateChange)
 
+	if s.conn.isClosed() {
+		s.config.log.Debugf("connection %d closed - stopping %q command", s.id, command)
+		return
+	}
+
 	if processExited(state, err) {
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		return
@@ -3547,7 +3577,7 @@ func (s *Session) resumeOnceAndCheckStop(command string, allowNextStateChange ch
 	resumed, state, err := s.resumeOnce(command, allowNextStateChange)
 	// We should not try to process the log points if the program was not
 	// resumed or there was an error.
-	if !resumed || processExited(state, err) || state == nil || err != nil {
+	if !resumed || processExited(state, err) || state == nil || err != nil || s.conn.isClosed() {
 		s.setRunningCmd(false)
 		return state, err
 	}
