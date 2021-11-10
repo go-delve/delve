@@ -4406,6 +4406,8 @@ func getPC(t *testing.T, client *daptest.Client, threadId int) (uint64, error) {
 	return strconv.ParseUint(st.Body.StackFrames[0].InstructionPointerReference, 0, 64)
 }
 
+// TestNextParked tests that we can switched selected goroutine to a parked one
+// and perform next operation on it.
 func TestNextParked(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.SkipNow()
@@ -4420,40 +4422,48 @@ func TestNextParked(t *testing.T) {
 			fixture.Source, []int{15},
 			[]onBreakpoint{{ // Stop at line 15
 				execute: func() {
-					if goroutineId := testStepParkedHelper(t, client, fixture); goroutineId >= 0 {
-
-						client.NextRequest(goroutineId)
+					if parkedGoid := testNextParkedHelper(t, client, fixture); parkedGoid >= 0 {
+						client.NextRequest(parkedGoid)
 						client.ExpectNextResponse(t)
 
 						se := client.ExpectStoppedEvent(t)
-						if se.Body.ThreadId != goroutineId {
-							t.Fatalf("Next did not continue on the selected goroutine, expected %d got %d", goroutineId, se.Body.ThreadId)
+						if se.Body.ThreadId != parkedGoid {
+							t.Fatalf("Next did not continue on the newly selected goroutine, expected %d got %d", parkedGoid, se.Body.ThreadId)
 						}
 					}
 				},
+				// Let the test harness continue to process termination
+				// if it hasn't gotten there already.
 				disconnect: false,
 			}})
 	})
 }
 
-func testStepParkedHelper(t *testing.T, client *daptest.Client, fixture protest.Fixture) int {
+// Finds a goroutine other than the selected one that is parked inside of main.sayhi and therefore
+// still has a line to execute if resumed with next.
+func testNextParkedHelper(t *testing.T, client *daptest.Client, fixture protest.Fixture) int {
 	t.Helper()
-	// Set a breakpoint at main.sayHi
+	// Set a breakpoint at main.sayhi
 	client.SetBreakpointsRequest(fixture.Source, []int{8})
 	client.ExpectSetBreakpointsResponse(t)
 
-	var goroutineId = -1
-	for goroutineId < 0 {
+	var parkedGoid = -1
+	for parkedGoid < 0 {
 		client.ContinueRequest(1)
-		contResp := client.ExpectMessage(t)
-		switch contResp.(type) {
-		case *dap.ContinueResponse:
+		client.ExpectContinueResponse(t)
+		event := client.ExpectMessage(t)
+		switch event.(type) {
+		case *dap.StoppedEvent:
 			// ok
 		case *dap.TerminatedEvent:
+			// This is very unlikely to happen. But in theory if all sayhi
+			// gouritines are run serially, there will never be a second parked
+			// sayhi goroutine when another breaks and we will keep trying
+			// until process termination.
 			return -1
 		}
 
-		se := client.ExpectStoppedEvent(t)
+		se := event.(*dap.StoppedEvent)
 
 		client.ThreadsRequest()
 		threads := client.ExpectThreadsResponse(t)
@@ -4464,9 +4474,7 @@ func testStepParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 		// 2. hasn't called wg.Done yet
 		// 3. is not the currently selected goroutine
 		for _, g := range threads.Body.Threads {
-			// We do not need to check the thread that the program
-			// is currently stopped on.
-			if g.Id == se.Body.ThreadId {
+			if g.Id == se.Body.ThreadId { // Skip selected goroutine
 				continue
 			}
 			client.StackTraceRequest(g.Id, 0, 5)
@@ -4474,11 +4482,11 @@ func testStepParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 			for _, frame := range frames.Body.StackFrames {
 				// line 11 is the line where wg.Done is called
 				if frame.Name == "main.sayhi" && frame.Line < 11 {
-					goroutineId = g.Id
+					parkedGoid = g.Id
 					break
 				}
 			}
-			if goroutineId >= 0 {
+			if parkedGoid >= 0 {
 				break
 			}
 		}
@@ -4487,8 +4495,7 @@ func testStepParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 	// Clear all breakpoints.
 	client.SetBreakpointsRequest(fixture.Source, []int{})
 	client.ExpectSetBreakpointsResponse(t)
-
-	return goroutineId
+	return parkedGoid
 }
 
 // TestStepOutPreservesGoroutine is inspired by proc_test.TestStepOutPreservesGoroutine
@@ -4969,7 +4976,7 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 		if onBP.disconnect {
 			client.DisconnectRequestWithKillOption(true)
 			if onBP.terminated {
-				client.ExpectOutputEventProcessExited(t, 0)
+				client.ExpectOutputEventProcessExitedAnyStatus(t)
 				client.ExpectOutputEventDetaching(t)
 			} else {
 				client.ExpectOutputEventDetachingKill(t)
@@ -4988,7 +4995,7 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 	}
 	client.DisconnectRequestWithKillOption(true)
 	if cmd == "launch" {
-		client.ExpectOutputEventProcessExited(t, 0)
+		client.ExpectOutputEventProcessExitedAnyStatus(t)
 		client.ExpectOutputEventDetaching(t)
 	} else if cmd == "attach" {
 		client.ExpectOutputEventDetachingKill(t)
