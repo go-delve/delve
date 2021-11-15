@@ -1527,6 +1527,8 @@ func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint
 	image.loclist5 = loclist.NewDwarf5Reader(debugLoclistBytes)
 	debugAddrBytes, _ := godwarf.GetDebugSectionPE(peFile, "addr")
 	image.debugAddr = godwarf.ParseAddr(debugAddrBytes)
+	debugLineStrBytes, _ := godwarf.GetDebugSectionPE(peFile, "line_str")
+	image.debugLineStr = debugLineStrBytes
 
 	wg.Add(2)
 	go bi.parseDebugFramePE(image, peFile, debugInfoBytes, wg)
@@ -1603,6 +1605,8 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 	image.loclist5 = loclist.NewDwarf5Reader(debugLoclistBytes)
 	debugAddrBytes, _ := godwarf.GetDebugSectionMacho(exe, "addr")
 	image.debugAddr = godwarf.ParseAddr(debugAddrBytes)
+	debugLineStrBytes, _ := godwarf.GetDebugSectionMacho(exe, "line_str")
+	image.debugLineStr = debugLineStrBytes
 
 	wg.Add(2)
 	go bi.parseDebugFrameMacho(image, exe, debugInfoBytes, wg)
