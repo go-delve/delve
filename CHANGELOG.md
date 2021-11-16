@@ -4,6 +4,55 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.7.3] 2021-11-16
+
+### Added
+
+* Misc changes to prepare for Go 1.18 and generics (#2703, @2745, @aarzilli)
+* Watchpoint support (disabled on Windows) (#2651, #2659, #2667, #2769, @aarzilli)
+* Warn about listening to remote connections (#2721, @aarzilli)
+* Support call injection with rr backend (#2740, @aarzilli)
+* Support JSON-RPC and DAP on the same port from 'dlv debug/exec/test/attach' (#2755, @polinasok)
+* DAP: Remote attach support (#2709, @polinasok)
+* DAP: Multi-client support (#2731, #2737, #2781, @polinasok)
+* DAP: Logpoints support (#2634, #2730, #2747, #2748, @suzmue)
+* DAP: Dissasembly view support (#2713, #2716, #2728, #2742, @suzmue)
+* DAP: Support dlvCwd and use a temp file as default debug binary (#2660, #2734, @hyangah, @polinasok)
+* DAP: Auto resume execution when setting breakpoints (#2726, @suzmue)
+* DAP: Add --client-addr flag to run dap with a predefined client (#2568, @hyangah)
+* DAP: Log parsed and applied launch configs (#2732, @polinasok)
+* DAP: Add option to hide system goroutines (#2743, @suzmue)
+* DAP: Add support for special 'config' expressions (#2750, @suzmue)
+
+### Fixed
+
+* Return correct exit status from Halt command (#2674, @suzmue)
+* Merge register data before writing to register (#2699, @mknyszek)
+* Do not assign temp breakpoint IDs to avoid conflicts with user breakpoints (#2650, @aarzilli)
+* Miscellaneous fixes for Windows native backend (#2736, @aarzilli)
+* Miscellaneous fixes for test problems (#2751, @aarzilli)
+* Return error when assigning between function variables (#2692, @aarzilli)
+* Fix latestver.py to sort rc and beta versions (#2756, @aarzilli)
+* Obey logflags config for LoadConfig warnings (#2701, @aarzilli, @suzmue)
+* Workaround for debugserver register set bug (#2770, @aarzilli)
+* DAP: Fix nil dereference when byte array cannot be converted to string (#2733, @polinasok)
+* DAP: Fix data race for noDebugProcess.ProcessState (#2735, @polinasok)
+
+### Changed
+
+* Refine handling of version-too-old errors (#2684, #2712, @polinasok, @yang-wei)
+* eBPF tracing backend return value parsing (#2704, @derekparker)
+* Replace libbpfgo with cilium/ebpf (##2771, @derekparker)
+* Disable Windows Defender on TeamCity builds (#2775, @aarzilli)
+* Run staticcheck during tests (#2705, #2723, @aarzilli)
+* Dependency updates (#2700, #2710, @mssdvd, @polinasok)
+* DAP: Merge Arguments and Locals scopes (#2717, @suzmue)
+* DAP: Refine launch/attach error visibility (#2671, @polinasok)
+* DAP: Server refactoring to separate listener and client session layers (#2729, @polinasok)
+* DAP: Improve shutdown logic and test coverage (#2749, @polinasok)
+* DAP: Miscellaneous code clean-up (#2714, #2720, #2739, #2741, @suzmue, @hyangah, @polinasok)
+
+
 ## [1.7.2] 2021-09-21
 
 ### Added
