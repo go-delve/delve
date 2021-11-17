@@ -3846,10 +3846,11 @@ func TestEvaluateCommandRequest(t *testing.T) {
 
 					// Request help.
 					const dlvHelp = `The following commands are available:
-    help (alias: h) 	 Prints the help message.
-    config 	 Changes configuration parameters.
+    dlv help (alias: h) 	 Prints the help message.
+    dlv config 	 Changes configuration parameters.
+    dlv sources (alias: s) 	 Print list of source files.
 
-Type help followed by a command for full documentation.
+Type 'dlv help' followed by a command for full documentation.
 `
 					client.EvaluateRequest("dlv help", 1000, "repl")
 					got := client.ExpectEvaluateResponse(t)
@@ -3908,6 +3909,25 @@ Type help followed by a command for full documentation.
 					client.EvaluateRequest(fmt.Sprintf("dlv config substitutePath %q", "my/client/path"), 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
 					checkEval(t, got, "substitutePath\t[]\n\nUpdated", noChildren)
+
+					// Test sources.
+					client.EvaluateRequest("dlv sources", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					if !strings.Contains(got.Body.Result, fixture.Source) {
+						t.Errorf("\ngot: %#v, want sources contains %s", got, fixture.Source)
+					}
+
+					client.EvaluateRequest(fmt.Sprintf("dlv sources .*%s", strings.ReplaceAll(filepath.Base(fixture.Source), ".", "\\.")), 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					if got.Body.Result != fixture.Source+"\n" {
+						t.Errorf("\ngot: %#v, want sources=%q", got, fixture.Source+"\n")
+					}
+
+					client.EvaluateRequest("dlv sources nonexistentsource", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					if got.Body.Result != "" {
+						t.Errorf("\ngot: %#v, want sources=\"\"", got)
+					}
 
 					// Test bad inputs.
 					client.EvaluateRequest("dlv help bad", 1000, "repl")
