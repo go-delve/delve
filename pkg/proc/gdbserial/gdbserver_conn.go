@@ -48,6 +48,7 @@ type gdbConn struct {
 	isDebugserver         bool // true if the stub is debugserver
 	xcmdok                bool // x command can be used to transfer memory
 	goarch                string
+	goos                  string
 
 	useXcmd bool // forces writeMemory to use the 'X' command
 
@@ -603,7 +604,8 @@ func (conn *gdbConn) resume(threads map[int]*gdbThread, tu *threadUpdater) (stop
 }
 
 // step executes a 'vCont' command on the specified thread with 's' action.
-func (conn *gdbConn) step(threadID string, tu *threadUpdater, ignoreFaultSignal bool) error {
+func (conn *gdbConn) step(th *gdbThread, tu *threadUpdater, ignoreFaultSignal bool) error {
+	threadID := th.strID
 	if conn.direction != proc.Forward {
 		if err := conn.selectThread('c', threadID, "step"); err != nil {
 			return err
@@ -616,6 +618,17 @@ func (conn *gdbConn) step(threadID string, tu *threadUpdater, ignoreFaultSignal 
 		_, err := conn.waitForvContStop("singlestep", threadID, tu)
 		return err
 	}
+
+	var _SIGBUS uint8
+	switch conn.goos {
+	case "linux":
+		_SIGBUS = 0x7
+	case "darwin":
+		_SIGBUS = 0xa
+	default:
+		panic(fmt.Errorf("unknown GOOS %s", conn.goos))
+	}
+
 	var sig uint8 = 0
 	for {
 		conn.outbuf.Reset()
@@ -640,6 +653,8 @@ func (conn *gdbConn) step(threadID string, tu *threadUpdater, ignoreFaultSignal 
 			if ignoreFaultSignal { // we attempting to read the TLS, a fault here should be ignored
 				return nil
 			}
+		case _SIGILL, _SIGBUS, _SIGFPE:
+			// propagate these signals to inferior immediately
 		case interruptSignal, breakpointSignal, stopSignal:
 			return nil
 		case childSignal: // stop on debugserver but SIGCHLD on lldb-server/linux
@@ -647,9 +662,15 @@ func (conn *gdbConn) step(threadID string, tu *threadUpdater, ignoreFaultSignal 
 				return nil
 			}
 		case debugServerTargetExcBadAccess, debugServerTargetExcBadInstruction, debugServerTargetExcArithmetic, debugServerTargetExcEmulation, debugServerTargetExcSoftware, debugServerTargetExcBreakpoint:
-			return nil
+			if ignoreFaultSignal {
+				return nil
+			}
+			return machTargetExcToError(sig)
+		default:
+			// delay propagation of any other signal to until after the stepping is done
+			th.sig = sig
+			sig = 0
 		}
-		// any other signal is propagated to the inferior
 	}
 }
 

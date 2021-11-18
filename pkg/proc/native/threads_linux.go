@@ -48,8 +48,10 @@ func (t *nativeThread) resumeWithSig(sig int) (err error) {
 }
 
 func (t *nativeThread) singleStep() (err error) {
+	sig := 0
 	for {
-		t.dbp.execPtraceFunc(func() { err = sys.PtraceSingleStep(t.ID) })
+		t.dbp.execPtraceFunc(func() { err = ptraceSingleStep(t.ID, sig) })
+		sig = 0
 		if err != nil {
 			return err
 		}
@@ -65,8 +67,19 @@ func (t *nativeThread) singleStep() (err error) {
 			}
 			return proc.ErrProcessExited{Pid: t.dbp.pid, Status: rs}
 		}
-		if wpid == t.ID && status.StopSignal() == sys.SIGTRAP {
-			return nil
+		if wpid == t.ID {
+			switch s := status.StopSignal(); s {
+			case sys.SIGTRAP:
+				return nil
+			case sys.SIGSTOP:
+				// delayed SIGSTOP, ignore it
+			case sys.SIGILL, sys.SIGBUS, sys.SIGFPE, sys.SIGSEGV, sys.SIGSTKFLT:
+				// propagate signals that can have been caused by the current instruction
+				sig = int(s)
+			default:
+				// delay propagation of all other signals
+				t.os.delayedSignal = int(s)
+			}
 		}
 	}
 }
