@@ -121,15 +121,11 @@ func (s *Session) evaluateConfig(_, _ int, expr string) (string, error) {
 	}
 }
 
-func (s *Session) sources(_, _ int, args string) (string, error) {
-	sources, err := s.debugger.Sources(args)
+func (s *Session) sources(_, _ int, filter string) (string, error) {
+	sources, err := s.debugger.Sources(filter)
 	if err != nil {
 		return "", err
 	}
 	sort.Strings(sources)
-	var buf bytes.Buffer
-	for _, d := range sources {
-		fmt.Fprintln(&buf, d)
-	}
-	return buf.String(), nil
+	return strings.Join(sources, "\n"), nil
 }
