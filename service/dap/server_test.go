@@ -3919,8 +3919,8 @@ Type 'dlv help' followed by a command for full documentation.
 
 					client.EvaluateRequest(fmt.Sprintf("dlv sources .*%s", strings.ReplaceAll(filepath.Base(fixture.Source), ".", "\\.")), 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
-					if got.Body.Result != fixture.Source+"\n" {
-						t.Errorf("\ngot: %#v, want sources=%q", got, fixture.Source+"\n")
+					if got.Body.Result != fixture.Source {
+						t.Errorf("\ngot: %#v, want sources=%q", got, fixture.Source)
 					}
 
 					client.EvaluateRequest("dlv sources nonexistentsource", 1000, "repl")
