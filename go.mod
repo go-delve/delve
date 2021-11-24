@@ -21,3 +21,5 @@ require (
 	golang.org/x/tools v0.1.8
 	gopkg.in/yaml.v2 v2.4.0
 )
+
+replace github.com/peterh/liner v1.2.1 => github.com/go-delve/liner v1.2.1-1

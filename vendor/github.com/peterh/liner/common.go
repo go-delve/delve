@@ -26,6 +26,7 @@ type commonState struct {
 	columns           int
 	killRing          *ring.Ring
 	ctrlCAborts       bool
+	ctrlZStop         bool
 	r                 *bufio.Reader
 	tabStyle          TabStyle
 	multiLineMode     bool
@@ -227,6 +228,12 @@ type ModeApplier interface {
 // (and Prompt does not return) regardless of the value passed to SetCtrlCAborts.
 func (s *State) SetCtrlCAborts(aborts bool) {
 	s.ctrlCAborts = aborts
+}
+
+// SetCtrlZStop sets whether Prompt on a supported terminal will send
+// SIGTSTP when Ctrl-Z is pressed. The default is false
+func (s *State) SetCtrlZStop(stop bool) {
+	s.ctrlZStop = stop
 }
 
 // SetMultiLineMode sets whether line is auto-wrapped. The default is false (single line).
