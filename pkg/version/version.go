@@ -24,6 +24,7 @@ var (
 )
 
 func (v Version) String() string {
+	fixBuild(&v)
 	ver := fmt.Sprintf("Version: %s.%s.%s", v.Major, v.Minor, v.Patch)
 	if v.Metadata != "" {
 		ver += "-" + v.Metadata
@@ -37,4 +38,8 @@ var buildInfo = func() string {
 
 func BuildInfo() string {
 	return fmt.Sprintf("%s\n%s", runtime.Version(), buildInfo())
+}
+
+var fixBuild = func(v *Version) {
+	// does nothing
 }
