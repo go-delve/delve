@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/go-delve/delve/pkg/config"
@@ -37,24 +38,29 @@ type command struct {
 const (
 	msgHelp = `Prints the help message.
 	
-help [command]
+dlv help [command]
 
 Type "help" followed by the name of a command for more information about it.`
 
 	msgConfig = `Changes configuration parameters.
 	
-	config -list
+	dlv config -list
 	
 	Show all configuration parameters.
 	
-	config <parameter> <value>
+	dlv config <parameter> <value>
 	
 	Changes the value of a configuration parameter.
 	
-	config substitutePath <from> <to>
-	config substitutePath <from>
+	dlv config substitutePath <from> <to>
+	dlv config substitutePath <from>
 	
 	Adds or removes a path substitution rule.`
+	msgSources = `Print list of source files.
+
+	dlv sources [<regex>]
+
+If regex is specified only the source files matching it will be returned.`
 )
 
 // debugCommands returns a list of commands with default commands defined.
@@ -62,6 +68,7 @@ func debugCommands(s *Session) []command {
 	return []command{
 		{aliases: []string{"help", "h"}, cmdFn: s.helpMessage, helpMsg: msgHelp},
 		{aliases: []string{"config"}, cmdFn: s.evaluateConfig, helpMsg: msgConfig},
+		{aliases: []string{"sources", "s"}, cmdFn: s.sources, helpMsg: msgSources},
 	}
 }
 
@@ -88,14 +95,14 @@ func (s *Session) helpMessage(_, _ int, args string) (string, error) {
 			h = h[:idx]
 		}
 		if len(cmd.aliases) > 1 {
-			fmt.Fprintf(&buf, "    %s (alias: %s) \t %s\n", cmd.aliases[0], strings.Join(cmd.aliases[1:], " | "), h)
+			fmt.Fprintf(&buf, "    dlv %s (alias: %s) \t %s\n", cmd.aliases[0], strings.Join(cmd.aliases[1:], " | "), h)
 		} else {
-			fmt.Fprintf(&buf, "    %s \t %s\n", cmd.aliases[0], h)
+			fmt.Fprintf(&buf, "    dlv %s \t %s\n", cmd.aliases[0], h)
 		}
 	}
 
 	fmt.Fprintln(&buf)
-	fmt.Fprintln(&buf, "Type help followed by a command for full documentation.")
+	fmt.Fprintln(&buf, "Type 'dlv help' followed by a command for full documentation.")
 	return buf.String(), nil
 }
 
@@ -112,4 +119,13 @@ func (s *Session) evaluateConfig(_, _ int, expr string) (string, error) {
 		}
 		return res, nil
 	}
+}
+
+func (s *Session) sources(_, _ int, filter string) (string, error) {
+	sources, err := s.debugger.Sources(filter)
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(sources)
+	return strings.Join(sources, "\n"), nil
 }
