@@ -911,10 +911,13 @@ func (image *Image) Close() error {
 	return err2
 }
 
-func (image *Image) setLoadError(fmtstr string, args ...interface{}) {
+func (image *Image) setLoadError(logger *logrus.Entry, fmtstr string, args ...interface{}) {
 	image.loadErrMu.Lock()
 	image.loadErr = fmt.Errorf(fmtstr, args...)
 	image.loadErrMu.Unlock()
+	if logger != nil {
+		logger.Errorf("error loading binary %q: %v", image.Path, image.loadErr)
+	}
 }
 
 // LoadError returns any error incurred while loading this image.
@@ -1161,14 +1164,14 @@ func (bi *BinaryInfo) funcToImage(fn *Function) *Image {
 // debug_frame is present it must be parsable correctly.
 func (bi *BinaryInfo) parseDebugFrameGeneral(image *Image, debugFrameBytes []byte, debugFrameName string, debugFrameErr error, ehFrameBytes []byte, ehFrameAddr uint64, ehFrameName string, byteOrder binary.ByteOrder) {
 	if debugFrameBytes == nil && ehFrameBytes == nil {
-		image.setLoadError("could not get %s section: %v", debugFrameName, debugFrameErr)
+		image.setLoadError(bi.logger, "could not get %s section: %v", debugFrameName, debugFrameErr)
 		return
 	}
 
 	if debugFrameBytes != nil {
 		fe, err := frame.Parse(debugFrameBytes, byteOrder, image.StaticBase, bi.Arch.PtrSize(), 0)
 		if err != nil {
-			image.setLoadError("could not parse %s section: %v", debugFrameName, err)
+			image.setLoadError(bi.logger, "could not parse %s section: %v", debugFrameName, err)
 			return
 		}
 		bi.frameEntries = bi.frameEntries.Append(fe)
@@ -1178,7 +1181,7 @@ func (bi *BinaryInfo) parseDebugFrameGeneral(image *Image, debugFrameBytes []byt
 		fe, err := frame.Parse(ehFrameBytes, byteOrder, image.StaticBase, bi.Arch.PtrSize(), ehFrameAddr)
 		if err != nil {
 			if debugFrameBytes == nil {
-				image.setLoadError("could not parse %s section: %v", ehFrameName, err)
+				image.setLoadError(bi.logger, "could not parse %s section: %v", ehFrameName, err)
 				return
 			}
 			bi.logger.Warnf("could not parse %s section: %v", ehFrameName, err)
@@ -1431,7 +1434,7 @@ func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.
 
 	switch exe.Machine {
 	case elf.EM_X86_64, elf.EM_386:
-		tlsg := getSymbol(image, exe, "runtime.tlsg")
+		tlsg := getSymbol(image, bi.logger, exe, "runtime.tlsg")
 		if tlsg == nil || tls == nil {
 			bi.gStructOffset = ^uint64(bi.Arch.PtrSize()) + 1 //-ptrSize
 			return
@@ -1448,7 +1451,7 @@ func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.
 		bi.gStructOffset = ^(memsz) + 1 + tlsg.Value // -tls.Memsz + tlsg.Value
 
 	case elf.EM_AARCH64:
-		tlsg := getSymbol(image, exe, "runtime.tls_g")
+		tlsg := getSymbol(image, bi.logger, exe, "runtime.tls_g")
 		if tlsg == nil || tls == nil {
 			bi.gStructOffset = 2 * uint64(bi.Arch.PtrSize())
 			return
@@ -1462,10 +1465,10 @@ func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.
 	}
 }
 
-func getSymbol(image *Image, exe *elf.File, name string) *elf.Symbol {
+func getSymbol(image *Image, logger *logrus.Entry, exe *elf.File, name string) *elf.Symbol {
 	symbols, err := exe.Symbols()
 	if err != nil {
-		image.setLoadError("could not parse ELF symbols: %v", err)
+		image.setLoadError(logger, "could not parse ELF symbols: %v", err)
 		return nil
 	}
 
@@ -1524,6 +1527,8 @@ func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint
 	image.loclist5 = loclist.NewDwarf5Reader(debugLoclistBytes)
 	debugAddrBytes, _ := godwarf.GetDebugSectionPE(peFile, "addr")
 	image.debugAddr = godwarf.ParseAddr(debugAddrBytes)
+	debugLineStrBytes, _ := godwarf.GetDebugSectionPE(peFile, "line_str")
+	image.debugLineStr = debugLineStrBytes
 
 	wg.Add(2)
 	go bi.parseDebugFramePE(image, peFile, debugInfoBytes, wg)
@@ -1600,6 +1605,8 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 	image.loclist5 = loclist.NewDwarf5Reader(debugLoclistBytes)
 	debugAddrBytes, _ := godwarf.GetDebugSectionMacho(exe, "addr")
 	image.debugAddr = godwarf.ParseAddr(debugAddrBytes)
+	debugLineStrBytes, _ := godwarf.GetDebugSectionMacho(exe, "line_str")
+	image.debugLineStr = debugLineStrBytes
 
 	wg.Add(2)
 	go bi.parseDebugFrameMacho(image, exe, debugInfoBytes, wg)
@@ -1846,9 +1853,13 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 
 	reader := image.DwarfReader()
 
-	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
+	for {
+		entry, err := reader.Next()
 		if err != nil {
-			image.setLoadError("error reading debug_info: %v", err)
+			image.setLoadError(bi.logger, "error reading debug_info: %v", err)
+			break
+		}
+		if entry == nil {
 			break
 		}
 		switch entry.Tag {
@@ -1986,10 +1997,14 @@ func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContex
 
 	depth := 0
 
-	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
+	for {
+		entry, err := reader.Next()
 		if err != nil {
-			image.setLoadError("error reading debug_info: %v", err)
+			image.setLoadError(bi.logger, "error reading debug_info: %v", err)
 			return
+		}
+		if entry == nil {
+			break
 		}
 		switch entry.Tag {
 		case 0:
@@ -2197,7 +2212,7 @@ func (bi *BinaryInfo) loadDebugInfoMapsInlinedCalls(ctxt *loadDebugInfoMapsConte
 	for {
 		entry, err := reader.Next()
 		if err != nil {
-			cu.image.setLoadError("error reading debug_info: %v", err)
+			cu.image.setLoadError(bi.logger, "error reading debug_info: %v", err)
 			return
 		}
 		switch entry.Tag {
