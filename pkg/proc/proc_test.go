@@ -1164,7 +1164,7 @@ func evalVariableOrError(p *proc.Target, symbol string) (*proc.Variable, error) 
 	if err != nil {
 		return nil, err
 	}
-	return scope.EvalVariable(symbol, normalLoadConfig)
+	return scope.EvalExpression(symbol, normalLoadConfig)
 }
 
 func evalVariable(p *proc.Target, t testing.TB, symbol string) *proc.Variable {
@@ -1310,7 +1310,7 @@ func TestFrameEvaluation(t *testing.T) {
 			scope, err := proc.ConvertEvalScope(p, g.ID, frame, 0)
 			assertNoError(err, t, "ConvertEvalScope()")
 			t.Logf("scope = %v", scope)
-			v, err := scope.EvalVariable("i", normalLoadConfig)
+			v, err := scope.EvalExpression("i", normalLoadConfig)
 			t.Logf("v = %v", v)
 			if err != nil {
 				t.Logf("Goroutine %d: %v\n", g.ID, err)
@@ -1338,7 +1338,7 @@ func TestFrameEvaluation(t *testing.T) {
 		for i := 0; i <= 3; i++ {
 			scope, err := proc.ConvertEvalScope(p, g.ID, i+1, 0)
 			assertNoError(err, t, fmt.Sprintf("ConvertEvalScope() on frame %d", i+1))
-			v, err := scope.EvalVariable("n", normalLoadConfig)
+			v, err := scope.EvalExpression("n", normalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("EvalVariable() on frame %d", i+1))
 			n, _ := constant.Int64Val(v.Value)
 			t.Logf("frame %d n %d\n", i+1, n)
@@ -1367,7 +1367,7 @@ func TestThreadFrameEvaluation(t *testing.T) {
 		// be a thread scope.
 		scope, err := proc.ConvertEvalScope(p, 0, 0, 0)
 		assertNoError(err, t, "ConvertEvalScope() on frame 0")
-		_, err = scope.EvalVariable("s", normalLoadConfig)
+		_, err = scope.EvalExpression("s", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable(\"s\") on frame 0")
 	})
 }
@@ -1520,10 +1520,10 @@ func TestBreakpointCountsWithDetection(t *testing.T) {
 				}
 				scope, err := proc.GoroutineScope(p, th)
 				assertNoError(err, t, "Scope()")
-				v, err := scope.EvalVariable("i", normalLoadConfig)
+				v, err := scope.EvalExpression("i", normalLoadConfig)
 				assertNoError(err, t, "evalVariable")
 				i, _ := constant.Int64Val(v.Value)
-				v, err = scope.EvalVariable("id", normalLoadConfig)
+				v, err = scope.EvalExpression("id", normalLoadConfig)
 				assertNoError(err, t, "evalVariable")
 				id, _ := constant.Int64Val(v.Value)
 				m[id] = i
@@ -4253,11 +4253,11 @@ func TestReadDeferArgs(t *testing.T) {
 				}
 			}
 
-			avar, err := scope.EvalVariable("a", normalLoadConfig)
+			avar, err := scope.EvalExpression("a", normalLoadConfig)
 			if err != nil {
 				t.Fatal(err)
 			}
-			bvar, err := scope.EvalVariable("b", normalLoadConfig)
+			bvar, err := scope.EvalExpression("b", normalLoadConfig)
 			if err != nil {
 				t.Fatal(err)
 			}

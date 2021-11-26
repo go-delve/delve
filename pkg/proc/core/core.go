@@ -164,8 +164,6 @@ type process struct {
 	breakpoints proc.BreakpointMap
 }
 
-var _ proc.ProcessInternal = &process{}
-
 // thread represents a thread in the core file being debugged.
 type thread struct {
 	th     osThread
@@ -222,7 +220,7 @@ func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.Target, e
 		return nil, ErrNoThreads
 	}
 
-	return proc.NewTarget(p, currentThread, proc.NewTargetConfig{
+	return proc.NewTarget(p, p.pid, currentThread, proc.NewTargetConfig{
 		Path:                exePath,
 		DebugInfoDirs:       debugInfoDirs,
 		DisableAsyncPreempt: false,
@@ -457,11 +455,6 @@ func (p *process) Detach(bool) error {
 // for core files as it cannot exit or be otherwise detached from.
 func (p *process) Valid() (bool, error) {
 	return true, nil
-}
-
-// Pid returns the process ID of this process.
-func (p *process) Pid() int {
-	return p.pid
 }
 
 // ResumeNotify is a no-op on core files as we cannot

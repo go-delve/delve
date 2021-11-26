@@ -170,7 +170,7 @@ type gdbProcess struct {
 	onDetach func() // called after a successful detach
 }
 
-var _ proc.ProcessInternal = &gdbProcess{}
+var _ proc.RecordingManipulationInternal = &gdbProcess{}
 
 // gdbThread represents an operating system thread.
 type gdbThread struct {
@@ -704,7 +704,7 @@ func (p *gdbProcess) initialize(path string, debugInfoDirs []string, stopReason 
 			return nil, err
 		}
 	}
-	tgt, err := proc.NewTarget(p, p.currentThread, proc.NewTargetConfig{
+	tgt, err := proc.NewTarget(p, p.conn.pid, p.currentThread, proc.NewTargetConfig{
 		Path:                path,
 		DebugInfoDirs:       debugInfoDirs,
 		DisableAsyncPreempt: runtime.GOOS == "darwin",

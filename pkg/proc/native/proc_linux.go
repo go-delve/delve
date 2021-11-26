@@ -540,7 +540,7 @@ func (dbp *nativeProcess) resume() error {
 // stop stops all running threads and sets breakpoints
 func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) {
 	if dbp.exited {
-		return nil, proc.ErrProcessExited{Pid: dbp.Pid()}
+		return nil, proc.ErrProcessExited{Pid: dbp.pid}
 	}
 
 	for _, th := range dbp.threads {
@@ -772,7 +772,7 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 		if err != nil {
 			return err
 		}
-		err = dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, off)
+		err = dbp.os.ebpf.AttachUprobe(dbp.pid, debugname, off)
 		if err != nil {
 			return err
 		}
@@ -783,7 +783,7 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 		return err
 	}
 
-	return dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, off)
+	return dbp.os.ebpf.AttachUprobe(dbp.pid, debugname, off)
 }
 
 func killProcess(pid int) error {
