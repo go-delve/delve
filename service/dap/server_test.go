@@ -4786,8 +4786,8 @@ func TestPanicBreakpointOnContinue(t *testing.T) {
 					st := client.ExpectStackTraceResponse(t)
 					for i, frame := range st.Body.StackFrames {
 						if strings.HasPrefix(frame.Name, "runtime.") {
-							if frame.Source.PresentationHint != "deemphasize" {
-								t.Errorf("\ngot Body.StackFrames[%d]=%#v\nwant Source.PresentationHint=\"deemphasize\"", i, frame)
+							if frame.PresentationHint != "subtle" {
+								t.Errorf("\ngot Body.StackFrames[%d]=%#v\nwant Source.PresentationHint=\"subtle\"", i, frame)
 							}
 						} else if frame.Source.PresentationHint != "" {
 							t.Errorf("\ngot Body.StackFrames[%d]=%#v\nwant Source.PresentationHint=\"\"", i, frame)

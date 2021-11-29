@@ -1991,7 +1991,7 @@ func (s *Session) onStackTraceRequest(request *dap.StackTraceRequest) {
 
 		packageName := fnPackageName(loc)
 		if !isSystemGoroutine && packageName == "runtime" {
-			stackFrame.Source.PresentationHint = "deemphasize"
+			stackFrame.PresentationHint = "subtle"
 		}
 		stackFrames = append(stackFrames, stackFrame)
 	}
@@ -3264,7 +3264,7 @@ func (s *Session) stacktrace(goroutineID int, g *proc.G) (string, error) {
 	}
 
 	var buf bytes.Buffer
-	fmt.Fprintln(&buf, "Stack:")
+	fmt.Fprintln(&buf, "User Stack:")
 	userLoc := g.UserCurrent()
 	userFuncPkg := fnPackageName(&userLoc)
 	api.PrintStack(s.toClientPath, &buf, apiFrames, "\t", false, func(s api.Stackframe) bool {
