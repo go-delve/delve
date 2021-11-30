@@ -670,6 +670,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		}
 		cmds := terminal.DebugCommands(client)
 		t := terminal.New(client, nil)
+		t.RedirectTo(os.Stderr)
 		defer t.Close()
 		if traceUseEBPF {
 			done := make(chan struct{})

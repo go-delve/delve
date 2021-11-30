@@ -58,14 +58,14 @@ func (env *Env) REPL() error {
 		if err := isCancelled(thread); err != nil {
 			return err
 		}
-		if err := rep(rl, thread, globals); err != nil {
+		if err := rep(rl, thread, globals, env.out); err != nil {
 			if err == io.EOF {
 				break
 			}
 			return err
 		}
 	}
-	fmt.Println()
+	fmt.Fprintln(env.out)
 	return env.exportGlobals(globals)
 }
 
@@ -80,12 +80,14 @@ const (
 //
 // It returns an error (possibly readline.ErrInterrupt)
 // only if readline failed. Starlark errors are printed.
-func rep(rl *liner.State, thread *starlark.Thread, globals starlark.StringDict) error {
+func rep(rl *liner.State, thread *starlark.Thread, globals starlark.StringDict, out EchoWriter) error {
+	defer out.Flush()
 	eof := false
 
 	prompt := normalPrompt
 	readline := func() ([]byte, error) {
 		line, err := rl.Prompt(prompt)
+		out.Echo(prompt + line)
 		if line == exitCommand {
 			eof = true
 			return nil, io.EOF
@@ -122,7 +124,7 @@ func rep(rl *liner.State, thread *starlark.Thread, globals starlark.StringDict) 
 
 		// print
 		if v != starlark.None {
-			fmt.Println(v)
+			fmt.Fprintln(out, v)
 		}
 	} else {
 		// compile

@@ -28,7 +28,6 @@ import (
 	"github.com/cosiner/argv"
 	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/locspec"
-	"github.com/go-delve/delve/pkg/terminal/colorize"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
@@ -536,6 +535,15 @@ If display is called without arguments it will print the value of all expression
 	dump <output file>
 
 The core dump is always written in ELF, even on systems (windows, macOS) where this is not customary. For environments other than linux/amd64 threads and registers are dumped in a format that only Delve can read back.`},
+
+		{aliases: []string{"transcript"}, cmdFn: transcript, helpMsg: `Appends command output to a file.
+
+	transcript [-t] [-x] <output file>
+	transcript -off
+
+Output of Delve's command is appended to the specified output file. If '-t' is specified and the output file exists it is truncated. If '-x' is specified output to stdout is suppressed instead.
+
+Using the -off option disables the transcript.`},
 	}
 
 	addrecorded := client == nil
@@ -674,7 +682,7 @@ func (c *Commands) help(t *Term, ctx callContext, args string) error {
 		for _, cmd := range c.cmds {
 			for _, alias := range cmd.aliases {
 				if alias == args {
-					fmt.Println(cmd.helpMsg)
+					fmt.Fprintln(t.stdout, cmd.helpMsg)
 					return nil
 				}
 			}
@@ -682,12 +690,12 @@ func (c *Commands) help(t *Term, ctx callContext, args string) error {
 		return errNoCmd
 	}
 
-	fmt.Println("The following commands are available:")
+	fmt.Fprintln(t.stdout, "The following commands are available:")
 
 	for _, cgd := range commandGroupDescriptions {
-		fmt.Printf("\n%s:\n", cgd.description)
+		fmt.Fprintf(t.stdout, "\n%s:\n", cgd.description)
 		w := new(tabwriter.Writer)
-		w.Init(os.Stdout, 0, 8, 0, '-', 0)
+		w.Init(t.stdout, 0, 8, 0, '-', 0)
 		for _, cmd := range c.cmds {
 			if cmd.group != cgd.group {
 				continue
@@ -707,8 +715,8 @@ func (c *Commands) help(t *Term, ctx callContext, args string) error {
 		}
 	}
 
-	fmt.Println()
-	fmt.Println("Type help followed by a command for full documentation.")
+	fmt.Fprintln(t.stdout)
+	fmt.Fprintln(t.stdout, "Type help followed by a command for full documentation.")
 	return nil
 }
 
@@ -734,11 +742,11 @@ func threads(t *Term, ctx callContext, args string) error {
 			prefix = "* "
 		}
 		if th.Function != nil {
-			fmt.Printf("%sThread %d at %#v %s:%d %s\n",
+			fmt.Fprintf(t.stdout, "%sThread %d at %#v %s:%d %s\n",
 				prefix, th.ID, th.PC, t.formatPath(th.File),
 				th.Line, th.Function.Name())
 		} else {
-			fmt.Printf("%sThread %s\n", prefix, t.formatThread(th))
+			fmt.Fprintf(t.stdout, "%sThread %s\n", prefix, t.formatThread(th))
 		}
 	}
 	return nil
@@ -769,7 +777,7 @@ func thread(t *Term, ctx callContext, args string) error {
 	if newState.CurrentThread != nil {
 		newThread = strconv.Itoa(newState.CurrentThread.ID)
 	}
-	fmt.Printf("Switched from %s to %s\n", oldThread, newThread)
+	fmt.Fprintf(t.stdout, "Switched from %s to %s\n", oldThread, newThread)
 	return nil
 }
 
@@ -785,16 +793,16 @@ func printGoroutines(t *Term, indent string, gs []*api.Goroutine, fgl api.Format
 		if state.SelectedGoroutine != nil && g.ID == state.SelectedGoroutine.ID {
 			prefix = indent + "* "
 		}
-		fmt.Printf("%sGoroutine %s\n", prefix, t.formatGoroutine(g, fgl))
+		fmt.Fprintf(t.stdout, "%sGoroutine %s\n", prefix, t.formatGoroutine(g, fgl))
 		if flags&api.PrintGoroutinesLabels != 0 {
-			writeGoroutineLabels(os.Stdout, g, indent+"\t")
+			writeGoroutineLabels(t.stdout, g, indent+"\t")
 		}
 		if flags&api.PrintGoroutinesStack != 0 {
 			stack, err := t.client.Stacktrace(g.ID, depth, 0, nil)
 			if err != nil {
 				return err
 			}
-			printStack(t, os.Stdout, stack, indent+"\t", false)
+			printStack(t, t.stdout, stack, indent+"\t", false)
 		}
 	}
 	return nil
@@ -820,7 +828,7 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 	t.longCommandStart()
 	for start >= 0 {
 		if t.longCommandCanceled() {
-			fmt.Printf("interrupted\n")
+			fmt.Fprintf(t.stdout, "interrupted\n")
 			return nil
 		}
 		gs, groups, start, tooManyGroups, err = t.client.ListGoroutinesWithFilter(start, batchSize, filters, &group)
@@ -829,18 +837,18 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 		}
 		if len(groups) > 0 {
 			for i := range groups {
-				fmt.Printf("%s\n", groups[i].Name)
+				fmt.Fprintf(t.stdout, "%s\n", groups[i].Name)
 				err = printGoroutines(t, "\t", gs[groups[i].Offset:][:groups[i].Count], fgl, flags, depth, state)
 				if err != nil {
 					return err
 				}
-				fmt.Printf("\tTotal: %d\n", groups[i].Total)
+				fmt.Fprintf(t.stdout, "\tTotal: %d\n", groups[i].Total)
 				if i != len(groups)-1 {
-					fmt.Printf("\n")
+					fmt.Fprintf(t.stdout, "\n")
 				}
 			}
 			if tooManyGroups {
-				fmt.Printf("Too many groups\n")
+				fmt.Fprintf(t.stdout, "Too many groups\n")
 			}
 		} else {
 			sort.Sort(byGoroutineID(gs))
@@ -852,7 +860,7 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 		}
 	}
 	if gslen > 0 {
-		fmt.Printf("[%d goroutines]\n", gslen)
+		fmt.Fprintf(t.stdout, "[%d goroutines]\n", gslen)
 	}
 	return nil
 }
@@ -893,7 +901,7 @@ func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
 			return err
 		}
 		c.frame = 0
-		fmt.Printf("Switched from %d to %d (thread %d)\n", selectedGID(oldState), gid, newState.CurrentThread.ID)
+		fmt.Fprintf(t.stdout, "Switched from %d to %d (thread %d)\n", selectedGID(oldState), gid, newState.CurrentThread.ID)
 		return nil
 	}
 
@@ -950,7 +958,7 @@ func (c *Commands) frameCommand(t *Term, ctx callContext, argstr string, directi
 	}
 	printcontext(t, state)
 	th := stack[frame]
-	fmt.Printf("Frame %d: %s:%d (PC: %x)\n", frame, t.formatPath(th.File), th.Line, th.PC)
+	fmt.Fprintf(t.stdout, "Frame %d: %s:%d (PC: %x)\n", frame, t.formatPath(th.File), th.Line, th.PC)
 	printfile(t, th.File, th.Line, true)
 	return nil
 }
@@ -980,9 +988,9 @@ func printscope(t *Term) error {
 		return err
 	}
 
-	fmt.Printf("Thread %s\n", t.formatThread(state.CurrentThread))
+	fmt.Fprintf(t.stdout, "Thread %s\n", t.formatThread(state.CurrentThread))
 	if state.SelectedGoroutine != nil {
-		writeGoroutineLong(t, os.Stdout, state.SelectedGoroutine, "")
+		writeGoroutineLong(t, t.stdout, state.SelectedGoroutine, "")
 	}
 	return nil
 }
@@ -1182,7 +1190,7 @@ func restartLive(t *Term, ctx callContext, args string) error {
 		return err
 	}
 
-	fmt.Println("Process restarted with PID", t.client.ProcessPid())
+	fmt.Fprintln(t.stdout, "Process restarted with PID", t.client.ProcessPid())
 	return nil
 }
 
@@ -1192,7 +1200,7 @@ func restartIntl(t *Term, rerecord bool, restartPos string, resetArgs bool, newA
 		return err
 	}
 	for i := range discarded {
-		fmt.Printf("Discarded %s at %s: %v\n", formatBreakpointName(discarded[i].Breakpoint, false), t.formatBreakpointLocation(discarded[i].Breakpoint), discarded[i].Reason)
+		fmt.Fprintf(t.stdout, "Discarded %s at %s: %v\n", formatBreakpointName(discarded[i].Breakpoint, false), t.formatBreakpointLocation(discarded[i].Breakpoint), discarded[i].Reason)
 	}
 	return nil
 }
@@ -1276,7 +1284,7 @@ func (c *Commands) rebuild(t *Term, ctx callContext, args string) error {
 	defer t.onStop()
 	discarded, err := t.client.Restart(true)
 	if len(discarded) > 0 {
-		fmt.Printf("not all breakpoints could be restored.")
+		fmt.Fprintf(t.stdout, "not all breakpoints could be restored.")
 	}
 	return err
 }
@@ -1292,7 +1300,7 @@ func (c *Commands) cont(t *Term, ctx callContext, args string) error {
 		defer func() {
 			for _, bp := range tmp {
 				if _, err := t.client.ClearBreakpoint(bp.ID); err != nil {
-					fmt.Printf("failed to clear temporary breakpoint: %d", bp.ID)
+					fmt.Fprintf(t.stdout, "failed to clear temporary breakpoint: %d", bp.ID)
 				}
 			}
 		}()
@@ -1325,16 +1333,16 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string, sho
 	}
 	skipBreakpoints := false
 	for {
-		fmt.Printf("\tbreakpoint hit during %s", op)
+		fmt.Fprintf(t.stdout, "\tbreakpoint hit during %s", op)
 		if !skipBreakpoints {
-			fmt.Printf("\n")
+			fmt.Fprintf(t.stdout, "\n")
 			answer, err := promptAutoContinue(t, op)
 			switch answer {
 			case "f": // finish next
 				skipBreakpoints = true
 				fallthrough
 			case "c": // continue once
-				fmt.Printf("continuing...\n")
+				fmt.Fprintf(t.stdout, "continuing...\n")
 			case "s": // stop and cancel
 				fallthrough
 			default:
@@ -1343,7 +1351,7 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string, sho
 				return err
 			}
 		} else {
-			fmt.Printf(", continuing...\n")
+			fmt.Fprintf(t.stdout, ", continuing...\n")
 		}
 		stateChan := t.client.DirectionCongruentContinue()
 		var state *api.DebuggerState
@@ -1542,7 +1550,7 @@ func clear(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%s cleared at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
+	fmt.Fprintf(t.stdout, "%s cleared at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
 	return nil
 }
 
@@ -1580,9 +1588,9 @@ func clearAll(t *Term, ctx callContext, args string) error {
 
 		_, err := t.client.ClearBreakpoint(bp.ID)
 		if err != nil {
-			fmt.Printf("Couldn't delete %s at %s: %s\n", formatBreakpointName(bp, false), t.formatBreakpointLocation(bp), err)
+			fmt.Fprintf(t.stdout, "Couldn't delete %s at %s: %s\n", formatBreakpointName(bp, false), t.formatBreakpointLocation(bp), err)
 		}
-		fmt.Printf("%s cleared at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
+		fmt.Fprintf(t.stdout, "%s cleared at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
 	}
 	return nil
 }
@@ -1601,7 +1609,7 @@ func toggle(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%s toggled at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
+	fmt.Fprintf(t.stdout, "%s toggled at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
 	return nil
 }
 
@@ -1623,12 +1631,12 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 		if bp.Disabled {
 			enabled = "(disabled)"
 		}
-		fmt.Printf("%s %s at %v (%d)\n", formatBreakpointName(bp, true), enabled, t.formatBreakpointLocation(bp), bp.TotalHitCount)
+		fmt.Fprintf(t.stdout, "%s %s at %v (%d)\n", formatBreakpointName(bp, true), enabled, t.formatBreakpointLocation(bp), bp.TotalHitCount)
 
 		attrs := formatBreakpointAttrs("\t", bp, false)
 
 		if len(attrs) > 0 {
-			fmt.Printf("%s\n", strings.Join(attrs, "\n"))
+			fmt.Fprintf(t.stdout, "%s\n", strings.Join(attrs, "\n"))
 		}
 	}
 	return nil
@@ -1726,7 +1734,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 		}
 		created = append(created, bp)
 
-		fmt.Printf("%s set at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
+		fmt.Fprintf(t.stdout, "%s set at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
 	}
 
 	var shouldSetReturnBreakpoints bool
@@ -1825,7 +1833,7 @@ func watchpoint(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%s set at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
+	fmt.Fprintf(t.stdout, "%s set at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
 	return nil
 }
 
@@ -1955,7 +1963,7 @@ loop:
 	if err != nil {
 		return err
 	}
-	fmt.Print(api.PrettyExamineMemory(uintptr(address), memArea, isLittleEndian, priFmt, size))
+	fmt.Fprint(t.stdout, api.PrettyExamineMemory(uintptr(address), memArea, isLittleEndian, priFmt, size))
 	return nil
 }
 
@@ -1984,7 +1992,7 @@ func printVar(t *Term, ctx callContext, args string) error {
 		return err
 	}
 
-	fmt.Println(val.MultilineString("", fmtstr))
+	fmt.Fprintln(t.stdout, val.MultilineString("", fmtstr))
 	return nil
 }
 
@@ -1997,20 +2005,20 @@ func whatisCommand(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	if val.Flags&api.VariableCPURegister != 0 {
-		fmt.Println("CPU Register")
+		fmt.Fprintln(t.stdout, "CPU Register")
 		return nil
 	}
 	if val.Type != "" {
-		fmt.Println(val.Type)
+		fmt.Fprintln(t.stdout, val.Type)
 	}
 	if val.RealType != val.Type {
-		fmt.Printf("Real type: %s\n", val.RealType)
+		fmt.Fprintf(t.stdout, "Real type: %s\n", val.RealType)
 	}
 	if val.Kind == reflect.Interface && len(val.Children) > 0 {
-		fmt.Printf("Concrete type: %s\n", val.Children[0].Type)
+		fmt.Fprintf(t.stdout, "Concrete type: %s\n", val.Children[0].Type)
 	}
 	if t.conf.ShowLocationExpr && val.LocationExpr != "" {
-		fmt.Printf("location: %s\n", val.LocationExpr)
+		fmt.Fprintf(t.stdout, "location: %s\n", val.LocationExpr)
 	}
 	return nil
 }
@@ -2032,7 +2040,7 @@ func setVar(t *Term, ctx callContext, args string) error {
 	return t.client.SetVariable(ctx.Scope, lexpr, rexpr)
 }
 
-func printFilteredVariables(varType string, vars []api.Variable, filter string, cfg api.LoadConfig) error {
+func (t *Term) printFilteredVariables(varType string, vars []api.Variable, filter string, cfg api.LoadConfig) error {
 	reg, err := regexp.Compile(filter)
 	if err != nil {
 		return err
@@ -2046,39 +2054,39 @@ func printFilteredVariables(varType string, vars []api.Variable, filter string, 
 				name = "(" + name + ")"
 			}
 			if cfg == ShortLoadConfig {
-				fmt.Printf("%s = %s\n", name, v.SinglelineString())
+				fmt.Fprintf(t.stdout, "%s = %s\n", name, v.SinglelineString())
 			} else {
-				fmt.Printf("%s = %s\n", name, v.MultilineString("", ""))
+				fmt.Fprintf(t.stdout, "%s = %s\n", name, v.MultilineString("", ""))
 			}
 		}
 	}
 	if !match {
-		fmt.Printf("(no %s)\n", varType)
+		fmt.Fprintf(t.stdout, "(no %s)\n", varType)
 	}
 	return nil
 }
 
-func printSortedStrings(v []string, err error) error {
+func (t *Term) printSortedStrings(v []string, err error) error {
 	if err != nil {
 		return err
 	}
 	sort.Strings(v)
 	for _, d := range v {
-		fmt.Println(d)
+		fmt.Fprintln(t.stdout, d)
 	}
 	return nil
 }
 
 func sources(t *Term, ctx callContext, args string) error {
-	return printSortedStrings(t.client.ListSources(args))
+	return t.printSortedStrings(t.client.ListSources(args))
 }
 
 func funcs(t *Term, ctx callContext, args string) error {
-	return printSortedStrings(t.client.ListFunctions(args))
+	return t.printSortedStrings(t.client.ListFunctions(args))
 }
 
 func types(t *Term, ctx callContext, args string) error {
-	return printSortedStrings(t.client.ListTypes(args))
+	return t.printSortedStrings(t.client.ListTypes(args))
 }
 
 func parseVarArguments(args string, t *Term) (filter string, cfg api.LoadConfig) {
@@ -2105,7 +2113,7 @@ func args(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
-	return printFilteredVariables("args", vars, filter, cfg)
+	return t.printFilteredVariables("args", vars, filter, cfg)
 }
 
 func locals(t *Term, ctx callContext, args string) error {
@@ -2121,7 +2129,7 @@ func locals(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
-	return printFilteredVariables("locals", locals, filter, cfg)
+	return t.printFilteredVariables("locals", locals, filter, cfg)
 }
 
 func vars(t *Term, ctx callContext, args string) error {
@@ -2130,7 +2138,7 @@ func vars(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
-	return printFilteredVariables("vars", vars, filter, cfg)
+	return t.printFilteredVariables("vars", vars, filter, cfg)
 }
 
 func regs(t *Term, ctx callContext, args string) error {
@@ -2148,7 +2156,7 @@ func regs(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(regs)
+	fmt.Fprintln(t.stdout, regs)
 	return nil
 }
 
@@ -2169,19 +2177,19 @@ func stackCommand(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
-	printStack(t, os.Stdout, stack, "", sa.offsets)
+	printStack(t, t.stdout, stack, "", sa.offsets)
 	if sa.ancestors > 0 {
 		ancestors, err := t.client.Ancestors(ctx.Scope.GoroutineID, sa.ancestors, sa.ancestorDepth)
 		if err != nil {
 			return err
 		}
 		for _, ancestor := range ancestors {
-			fmt.Printf("Created by Goroutine %d:\n", ancestor.ID)
+			fmt.Fprintf(t.stdout, "Created by Goroutine %d:\n", ancestor.ID)
 			if ancestor.Unreadable != "" {
-				fmt.Printf("\t%s\n", ancestor.Unreadable)
+				fmt.Fprintf(t.stdout, "\t%s\n", ancestor.Unreadable)
 				continue
 			}
-			printStack(t, os.Stdout, ancestor.Stack, "\t", false)
+			printStack(t, t.stdout, ancestor.Stack, "\t", false)
 		}
 	}
 	return nil
@@ -2305,7 +2313,7 @@ func getLocation(t *Term, ctx callContext, args string, showContext bool) (file 
 			}
 		}
 		if showContext {
-			fmt.Printf("Goroutine %d frame %d at %s:%d (PC: %#x)\n", gid, ctx.Scope.Frame, loc.File, loc.Line, loc.PC)
+			fmt.Fprintf(t.stdout, "Goroutine %d frame %d at %s:%d (PC: %#x)\n", gid, ctx.Scope.Frame, loc.File, loc.Line, loc.PC)
 		}
 		return loc.File, loc.Line, true, nil
 
@@ -2319,7 +2327,7 @@ func getLocation(t *Term, ctx callContext, args string, showContext bool) (file 
 		}
 		loc := locs[0]
 		if showContext {
-			fmt.Printf("Showing %s:%d (PC: %#x)\n", loc.File, loc.Line, loc.PC)
+			fmt.Fprintf(t.stdout, "Showing %s:%d (PC: %#x)\n", loc.File, loc.Line, loc.PC)
 		}
 		return loc.File, loc.Line, false, nil
 	}
@@ -2417,7 +2425,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		return disasmErr
 	}
 
-	disasmPrint(disasm, os.Stdout)
+	disasmPrint(disasm, t.stdout)
 
 	return nil
 }
@@ -2429,7 +2437,7 @@ func libraries(t *Term, ctx callContext, args string) error {
 	}
 	d := digits(len(libs))
 	for i := range libs {
-		fmt.Printf("%"+strconv.Itoa(d)+"d. %#x %s\n", i, libs[i].Address, libs[i].Path)
+		fmt.Fprintf(t.stdout, "%"+strconv.Itoa(d)+"d. %#x %s\n", i, libs[i].Address, libs[i].Path)
 	}
 	return nil
 }
@@ -2456,7 +2464,7 @@ func printcontext(t *Term, state *api.DebuggerState) {
 	}
 
 	if state.CurrentThread == nil {
-		fmt.Println("No current thread available")
+		fmt.Fprintln(t.stdout, "No current thread available")
 		return
 	}
 
@@ -2477,38 +2485,38 @@ func printcontext(t *Term, state *api.DebuggerState) {
 	}
 
 	if th.File == "" {
-		fmt.Printf("Stopped at: 0x%x\n", state.CurrentThread.PC)
-		_ = colorize.Print(t.stdout, "", bytes.NewReader([]byte("no source available")), 1, 10, 1, nil)
+		fmt.Fprintf(t.stdout, "Stopped at: 0x%x\n", state.CurrentThread.PC)
+		t.stdout.ColorizePrint("", bytes.NewReader([]byte("no source available")), 1, 10, 1)
 		return
 	}
 
 	printcontextThread(t, th)
 
 	if state.When != "" {
-		fmt.Println(state.When)
+		fmt.Fprintln(t.stdout, state.When)
 	}
 
 	for _, watchpoint := range state.WatchOutOfScope {
-		fmt.Printf("%s went out of scope and was cleared\n", formatBreakpointName(watchpoint, true))
+		fmt.Fprintf(t.stdout, "%s went out of scope and was cleared\n", formatBreakpointName(watchpoint, true))
 	}
 }
 
 func printcontextLocation(t *Term, loc api.Location) {
-	fmt.Printf("> %s() %s:%d (PC: %#v)\n", loc.Function.Name(), t.formatPath(loc.File), loc.Line, loc.PC)
+	fmt.Fprintf(t.stdout, "> %s() %s:%d (PC: %#v)\n", loc.Function.Name(), t.formatPath(loc.File), loc.Line, loc.PC)
 	if loc.Function != nil && loc.Function.Optimized {
-		fmt.Println(optimizedFunctionWarning)
+		fmt.Fprintln(t.stdout, optimizedFunctionWarning)
 	}
 }
 
-func printReturnValues(th *api.Thread) {
+func printReturnValues(t *Term, th *api.Thread) {
 	if th.ReturnValues == nil {
 		return
 	}
-	fmt.Println("Values returned:")
+	fmt.Fprintln(t.stdout, "Values returned:")
 	for _, v := range th.ReturnValues {
-		fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t", ""))
+		fmt.Fprintf(t.stdout, "\t%s: %s\n", v.Name, v.MultilineString("\t", ""))
 	}
-	fmt.Println()
+	fmt.Fprintln(t.stdout)
 }
 
 func printcontextThread(t *Term, th *api.Thread) {
@@ -2516,7 +2524,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 
 	if th.Breakpoint == nil {
 		printcontextLocation(t, api.Location{PC: th.PC, File: th.File, Line: th.Line, Function: th.Function})
-		printReturnValues(th)
+		printReturnValues(t, th)
 		return
 	}
 
@@ -2553,7 +2561,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 	}
 
 	if hitCount, ok := th.Breakpoint.HitCount[strconv.Itoa(th.GoroutineID)]; ok {
-		fmt.Printf("> %s%s(%s) %s:%d (hits goroutine(%d):%d total:%d) (PC: %#v)\n",
+		fmt.Fprintf(t.stdout, "> %s%s(%s) %s:%d (hits goroutine(%d):%d total:%d) (PC: %#v)\n",
 			bpname,
 			fn.Name(),
 			args,
@@ -2564,7 +2572,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 			th.Breakpoint.TotalHitCount,
 			th.PC)
 	} else {
-		fmt.Printf("> %s%s(%s) %s:%d (hits total:%d) (PC: %#v)\n",
+		fmt.Fprintf(t.stdout, "> %s%s(%s) %s:%d (hits total:%d) (PC: %#v)\n",
 			bpname,
 			fn.Name(),
 			args,
@@ -2574,10 +2582,10 @@ func printcontextThread(t *Term, th *api.Thread) {
 			th.PC)
 	}
 	if th.Function != nil && th.Function.Optimized {
-		fmt.Println(optimizedFunctionWarning)
+		fmt.Fprintln(t.stdout, optimizedFunctionWarning)
 	}
 
-	printReturnValues(th)
+	printReturnValues(t, th)
 	printBreakpointInfo(t, th, false)
 }
 
@@ -2598,47 +2606,47 @@ func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 			return
 		}
 		didprintnl = true
-		fmt.Println()
+		fmt.Fprintln(t.stdout)
 	}
 
 	if bpi.Goroutine != nil {
 		tracepointnl()
-		writeGoroutineLong(t, os.Stdout, bpi.Goroutine, "\t")
+		writeGoroutineLong(t, t.stdout, bpi.Goroutine, "\t")
 	}
 
 	for _, v := range bpi.Variables {
 		tracepointnl()
-		fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t", ""))
+		fmt.Fprintf(t.stdout, "\t%s: %s\n", v.Name, v.MultilineString("\t", ""))
 	}
 
 	for _, v := range bpi.Locals {
 		tracepointnl()
 		if *bp.LoadLocals == longLoadConfig {
-			fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t", ""))
+			fmt.Fprintf(t.stdout, "\t%s: %s\n", v.Name, v.MultilineString("\t", ""))
 		} else {
-			fmt.Printf("\t%s: %s\n", v.Name, v.SinglelineString())
+			fmt.Fprintf(t.stdout, "\t%s: %s\n", v.Name, v.SinglelineString())
 		}
 	}
 
 	if bp.LoadArgs != nil && *bp.LoadArgs == longLoadConfig {
 		for _, v := range bpi.Arguments {
 			tracepointnl()
-			fmt.Printf("\t%s: %s\n", v.Name, v.MultilineString("\t", ""))
+			fmt.Fprintf(t.stdout, "\t%s: %s\n", v.Name, v.MultilineString("\t", ""))
 		}
 	}
 
 	if bpi.Stacktrace != nil {
 		tracepointnl()
-		fmt.Printf("\tStack:\n")
-		printStack(t, os.Stdout, bpi.Stacktrace, "\t\t", false)
+		fmt.Fprintf(t.stdout, "\tStack:\n")
+		printStack(t, t.stdout, bpi.Stacktrace, "\t\t", false)
 	}
 }
 
 func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, args string, hasReturnValue bool) {
 	if th.Breakpoint.Tracepoint {
-		fmt.Fprintf(os.Stderr, "> goroutine(%d): %s%s(%s)", th.GoroutineID, bpname, fn.Name(), args)
+		fmt.Fprintf(t.stdout, "> goroutine(%d): %s%s(%s)", th.GoroutineID, bpname, fn.Name(), args)
 		if !hasReturnValue {
-			fmt.Println()
+			fmt.Fprintln(t.stdout)
 		}
 		printBreakpointInfo(t, th, !hasReturnValue)
 	}
@@ -2647,12 +2655,12 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 		for _, v := range th.ReturnValues {
 			retVals = append(retVals, v.SinglelineString())
 		}
-		fmt.Fprintf(os.Stderr, " => (%s)\n", strings.Join(retVals, ","))
+		fmt.Fprintf(t.stdout, " => (%s)\n", strings.Join(retVals, ","))
 	}
 	if th.Breakpoint.TraceReturn || !hasReturnValue {
 		if th.BreakpointInfo != nil && th.BreakpointInfo.Stacktrace != nil {
-			fmt.Fprintf(os.Stderr, "\tStack:\n")
-			printStack(t, os.Stderr, th.BreakpointInfo.Stacktrace, "\t\t", false)
+			fmt.Fprintf(t.stdout, "\tStack:\n")
+			printStack(t, t.stdout, th.BreakpointInfo.Stacktrace, "\t\t", false)
 		}
 	}
 }
@@ -2677,10 +2685,10 @@ func printfile(t *Term, filename string, line int, showArrow bool) error {
 	fi, _ := file.Stat()
 	lastModExe := t.client.LastModified()
 	if fi.ModTime().After(lastModExe) {
-		fmt.Println("Warning: listing may not match stale executable")
+		fmt.Fprintln(t.stdout, "Warning: listing may not match stale executable")
 	}
 
-	return colorize.Print(t.stdout, file.Name(), file, line-lineCount, line+lineCount+1, arrowLine, t.colorEscapes)
+	return t.stdout.ColorizePrint(file.Name(), file, line-lineCount, line+lineCount+1, arrowLine)
 }
 
 // ExitRequestError is returned when the user
@@ -2779,7 +2787,7 @@ func (c *Commands) parseBreakpointAttrs(t *Term, ctx callContext, r io.Reader) e
 		lineno++
 		err := c.CallWithContext(scan.Text(), t, ctx)
 		if err != nil {
-			fmt.Printf("%d: %s\n", lineno, err.Error())
+			fmt.Fprintf(t.stdout, "%d: %s\n", lineno, err.Error())
 		}
 	}
 	return scan.Err()
@@ -2850,7 +2858,7 @@ func (c *Commands) executeFile(t *Term, name string) error {
 			if _, isExitRequest := err.(ExitRequestError); isExitRequest {
 				return err
 			}
-			fmt.Printf("%s:%d: %v\n", name, lineno, err)
+			fmt.Fprintf(t.stdout, "%s:%d: %v\n", name, lineno, err)
 		}
 	}
 
@@ -2889,7 +2897,7 @@ func checkpoint(t *Term, ctx callContext, args string) error {
 		return err
 	}
 
-	fmt.Printf("Checkpoint c%d created.\n", cpid)
+	fmt.Fprintf(t.stdout, "Checkpoint c%d created.\n", cpid)
 	return nil
 }
 
@@ -2899,7 +2907,7 @@ func checkpoints(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	w := new(tabwriter.Writer)
-	w.Init(os.Stdout, 4, 4, 2, ' ', 0)
+	w.Init(t.stdout, 4, 4, 2, ' ', 0)
 	fmt.Fprintln(w, "ID\tWhen\tNote")
 	for _, cp := range cps {
 		fmt.Fprintf(w, "c%d\t%s\t%s\n", cp.ID, cp.When, cp.Where)
@@ -2964,23 +2972,74 @@ func dump(t *Term, ctx callContext, args string) error {
 	}
 	for {
 		if dumpState.ThreadsDone != dumpState.ThreadsTotal {
-			fmt.Printf("\rDumping threads %d / %d...", dumpState.ThreadsDone, dumpState.ThreadsTotal)
+			fmt.Fprintf(t.stdout, "\rDumping threads %d / %d...", dumpState.ThreadsDone, dumpState.ThreadsTotal)
 		} else {
-			fmt.Printf("\rDumping memory %d / %d...", dumpState.MemDone, dumpState.MemTotal)
+			fmt.Fprintf(t.stdout, "\rDumping memory %d / %d...", dumpState.MemDone, dumpState.MemTotal)
 		}
 		if !dumpState.Dumping {
 			break
 		}
 		dumpState = t.client.CoreDumpWait(1000)
 	}
-	fmt.Printf("\n")
+	fmt.Fprintf(t.stdout, "\n")
 	if dumpState.Err != "" {
-		fmt.Printf("error dumping: %s\n", dumpState.Err)
+		fmt.Fprintf(t.stdout, "error dumping: %s\n", dumpState.Err)
 	} else if !dumpState.AllDone {
-		fmt.Printf("canceled\n")
+		fmt.Fprintf(t.stdout, "canceled\n")
 	} else if dumpState.MemDone != dumpState.MemTotal {
-		fmt.Printf("Core dump could be incomplete\n")
+		fmt.Fprintf(t.stdout, "Core dump could be incomplete\n")
 	}
+	return nil
+}
+
+func transcript(t *Term, ctx callContext, args string) error {
+	argv := strings.SplitN(args, " ", -1)
+	truncate := false
+	fileOnly := false
+	disable := false
+	path := ""
+	for _, arg := range argv {
+		switch arg {
+		case "-x":
+			fileOnly = true
+		case "-t":
+			truncate = true
+		case "-off":
+			disable = true
+		default:
+			if path != "" || strings.HasPrefix(arg, "-") {
+				return fmt.Errorf("unrecognized option %q", arg)
+			} else {
+				path = arg
+			}
+		}
+	}
+
+	if disable {
+		if path != "" {
+			return errors.New("-o option specified with an output path")
+		}
+		return t.stdout.CloseTranscript()
+	}
+
+	if path == "" {
+		return errors.New("no output path specified")
+	}
+
+	flags := os.O_APPEND | os.O_WRONLY | os.O_CREATE
+	if truncate {
+		flags |= os.O_TRUNC
+	}
+	fh, err := os.OpenFile(path, flags, 0660)
+	if err != nil {
+		return err
+	}
+
+	if err := t.stdout.CloseTranscript(); err != nil {
+		return err
+	}
+
+	t.stdout.TranscribeTo(fh, fileOnly)
 	return nil
 }
 

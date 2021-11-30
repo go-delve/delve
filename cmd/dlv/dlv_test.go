@@ -962,7 +962,7 @@ func TestTracePid(t *testing.T) {
 	dlvbin, tmpdir := getDlvBin(t)
 	defer os.RemoveAll(tmpdir)
 
-	expected := []byte("goroutine(1): main.A() => ()\n")
+	expected := []byte("goroutine(1): main.A()\n => ()\n")
 
 	// make process run
 	fix := protest.BuildFixture("issue2023", 0)
