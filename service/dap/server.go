@@ -3264,7 +3264,7 @@ func (s *Session) stacktrace(goroutineID int, g *proc.G) (string, error) {
 	}
 
 	var buf bytes.Buffer
-	fmt.Fprintln(&buf, "User Stack:")
+	fmt.Fprintln(&buf, "Stack:")
 	userLoc := g.UserCurrent()
 	userFuncPkg := fnPackageName(&userLoc)
 	api.PrintStack(s.toClientPath, &buf, apiFrames, "\t", false, func(s api.Stackframe) bool {
