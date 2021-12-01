@@ -1991,7 +1991,7 @@ func (s *Session) onStackTraceRequest(request *dap.StackTraceRequest) {
 
 		packageName := fnPackageName(loc)
 		if !isSystemGoroutine && packageName == "runtime" {
-			stackFrame.Source.PresentationHint = "deemphasize"
+			stackFrame.PresentationHint = "subtle"
 		}
 		stackFrames = append(stackFrames, stackFrame)
 	}
