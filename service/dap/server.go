@@ -213,6 +213,8 @@ type launchAttachArgs struct {
 	ShowGlobalVariables bool `cfgName:"showGlobalVariables"`
 	// ShowRegisters indicates if register values should be loaded.
 	ShowRegisters bool `cfgName:"showRegisters"`
+	// GoroutineFilters are the filters used when loading goroutines.
+	GoroutineFilters string `cfgName:"goroutineFilters"`
 	// HideSystemGoroutines indicates if system goroutines should be removed from threads
 	// responses.
 	HideSystemGoroutines bool `cfgName:"hideSystemGoroutines"`
@@ -233,6 +235,7 @@ var defaultArgs = launchAttachArgs{
 	ShowGlobalVariables:          false,
 	HideSystemGoroutines:         false,
 	ShowRegisters:                false,
+	GoroutineFilters:             "",
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
 }
@@ -345,6 +348,7 @@ func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) error {
 	s.args.ShowGlobalVariables = args.ShowGlobalVariables
 	s.args.ShowRegisters = args.ShowRegisters
 	s.args.HideSystemGoroutines = args.HideSystemGoroutines
+	s.args.GoroutineFilters = args.GoroutineFilters
 	if paths := args.SubstitutePath; len(paths) > 0 {
 		clientToServer := make([][2]string, 0, len(paths))
 		serverToClient := make([][2]string, 0, len(paths))
@@ -1659,11 +1663,19 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 	var next int
 	if s.debugger != nil {
 		gs, next, err = s.debugger.Goroutines(0, maxGoroutines)
-		if err == nil && s.args.HideSystemGoroutines {
-			gs = s.debugger.FilterGoroutines(gs, []api.ListGoroutinesFilter{{
-				Kind:    api.GoroutineUser,
-				Negated: false,
-			}})
+		if err == nil {
+			// Parse the goroutine arguments.
+			filters, _, _, _, _, _, parseErr := api.ParseGoroutineArgs(s.args.GoroutineFilters)
+			if parseErr != nil {
+				s.logToConsole(parseErr.Error())
+			}
+			if s.args.HideSystemGoroutines {
+				filters = append(filters, api.ListGoroutinesFilter{
+					Kind:    api.GoroutineUser,
+					Negated: false,
+				})
+			}
+			gs = s.debugger.FilterGoroutines(gs, filters)
 		}
 	}
 

@@ -772,27 +772,17 @@ func (a byGoroutineID) Len() int           { return len(a) }
 func (a byGoroutineID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byGoroutineID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
-// The number of goroutines we're going to request on each RPC call
-const goroutineBatchSize = 10000
-
-type printGoroutinesFlags uint8
-
-const (
-	printGoroutinesStack printGoroutinesFlags = 1 << iota
-	printGoroutinesLabels
-)
-
-func printGoroutines(t *Term, indent string, gs []*api.Goroutine, fgl formatGoroutineLoc, flags printGoroutinesFlags, depth int, state *api.DebuggerState) error {
+func printGoroutines(t *Term, indent string, gs []*api.Goroutine, fgl api.FormatGoroutineLoc, flags api.PrintGoroutinesFlags, depth int, state *api.DebuggerState) error {
 	for _, g := range gs {
 		prefix := indent + "  "
 		if state.SelectedGoroutine != nil && g.ID == state.SelectedGoroutine.ID {
 			prefix = indent + "* "
 		}
 		fmt.Printf("%sGoroutine %s\n", prefix, t.formatGoroutine(g, fgl))
-		if flags&printGoroutinesLabels != 0 {
+		if flags&api.PrintGoroutinesLabels != 0 {
 			writeGoroutineLabels(os.Stdout, g, indent+"\t")
 		}
-		if flags&printGoroutinesStack != 0 {
+		if flags&api.PrintGoroutinesStack != 0 {
 			stack, err := t.client.Stacktrace(g.ID, depth, 0, nil)
 			if err != nil {
 				return err
@@ -803,83 +793,10 @@ func printGoroutines(t *Term, indent string, gs []*api.Goroutine, fgl formatGoro
 	return nil
 }
 
-const (
-	maxGroupMembers    = 5
-	maxGoroutineGroups = 50
-)
-
 func goroutines(t *Term, ctx callContext, argstr string) error {
-	args := strings.Split(argstr, " ")
-	var filters []api.ListGoroutinesFilter
-	var group api.GoroutineGroupingOptions
-	var fgl = fglUserCurrent
-	var flags printGoroutinesFlags
-	var depth = 10
-	var batchSize = goroutineBatchSize
-
-	group.MaxGroupMembers = maxGroupMembers
-	group.MaxGroups = maxGoroutineGroups
-
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch arg {
-		case "-u":
-			fgl = fglUserCurrent
-		case "-r":
-			fgl = fglRuntimeCurrent
-		case "-g":
-			fgl = fglGo
-		case "-s":
-			fgl = fglStart
-		case "-l":
-			flags |= printGoroutinesLabels
-		case "-t":
-			flags |= printGoroutinesStack
-			// optional depth argument
-			if i+1 < len(args) && len(args[i+1]) > 0 {
-				n, err := strconv.Atoi(args[i+1])
-				if err == nil {
-					depth = n
-					i++
-				}
-			}
-
-		case "-w", "-with":
-			filter, err := readGoroutinesFilter(args, &i)
-			if err != nil {
-				return err
-			}
-			filters = append(filters, *filter)
-
-		case "-wo", "-without":
-			filter, err := readGoroutinesFilter(args, &i)
-			if err != nil {
-				return err
-			}
-			filter.Negated = true
-			filters = append(filters, *filter)
-
-		case "-group":
-			var err error
-			group.GroupBy, err = readGoroutinesFilterKind(args, i+1)
-			if err != nil {
-				return err
-			}
-			i++
-			if group.GroupBy == api.GoroutineLabel {
-				if i+1 >= len(args) {
-					return errors.New("-group label must be followed by an argument")
-				}
-				group.GroupByKey = args[i+1]
-				i++
-			}
-			batchSize = 0 // grouping only works well if run on all goroutines
-
-		case "":
-			// nothing to do
-		default:
-			return fmt.Errorf("wrong argument: '%s'", arg)
-		}
+	filters, group, fgl, flags, depth, batchSize, err := api.ParseGoroutineArgs(argstr)
+	if err != nil {
+		return err
 	}
 
 	state, err := t.client.GetState()
@@ -931,52 +848,6 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 		fmt.Printf("[%d goroutines]\n", gslen)
 	}
 	return nil
-}
-
-func readGoroutinesFilterKind(args []string, i int) (api.GoroutineField, error) {
-	if i >= len(args) {
-		return api.GoroutineFieldNone, fmt.Errorf("%s must be followed by an argument", args[i-1])
-	}
-
-	switch args[i] {
-	case "curloc":
-		return api.GoroutineCurrentLoc, nil
-	case "userloc":
-		return api.GoroutineUserLoc, nil
-	case "goloc":
-		return api.GoroutineGoLoc, nil
-	case "startloc":
-		return api.GoroutineStartLoc, nil
-	case "label":
-		return api.GoroutineLabel, nil
-	case "running":
-		return api.GoroutineRunning, nil
-	case "user":
-		return api.GoroutineUser, nil
-	default:
-		return api.GoroutineFieldNone, fmt.Errorf("unrecognized argument to %s %s", args[i-1], args[i])
-	}
-}
-
-func readGoroutinesFilter(args []string, pi *int) (*api.ListGoroutinesFilter, error) {
-	r := new(api.ListGoroutinesFilter)
-	var err error
-	r.Kind, err = readGoroutinesFilterKind(args, *pi+1)
-	if err != nil {
-		return nil, err
-	}
-	*pi++
-	switch r.Kind {
-	case api.GoroutineRunning, api.GoroutineUser:
-		return r, nil
-	}
-	if *pi+1 >= len(args) {
-		return nil, fmt.Errorf("%s %s needs to be followed by an expression", args[*pi-1], args[*pi])
-	}
-	r.Arg = args[*pi+1]
-	*pi++
-
-	return r, nil
 }
 
 func selectedGID(state *api.DebuggerState) int {
@@ -1113,20 +984,11 @@ func (t *Term) formatThread(th *api.Thread) string {
 	return fmt.Sprintf("%d at %s:%d", th.ID, t.formatPath(th.File), th.Line)
 }
 
-type formatGoroutineLoc int
-
-const (
-	fglRuntimeCurrent = formatGoroutineLoc(iota)
-	fglUserCurrent
-	fglGo
-	fglStart
-)
-
 func (t *Term) formatLocation(loc api.Location) string {
 	return fmt.Sprintf("%s:%d %s (%#v)", t.formatPath(loc.File), loc.Line, loc.Function.Name(), loc.PC)
 }
 
-func (t *Term) formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string {
+func (t *Term) formatGoroutine(g *api.Goroutine, fgl api.FormatGoroutineLoc) string {
 	if g == nil {
 		return "<nil>"
 	}
@@ -1136,16 +998,16 @@ func (t *Term) formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string 
 	var locname string
 	var loc api.Location
 	switch fgl {
-	case fglRuntimeCurrent:
+	case api.FglRuntimeCurrent:
 		locname = "Runtime"
 		loc = g.CurrentLoc
-	case fglUserCurrent:
+	case api.FglUserCurrent:
 		locname = "User"
 		loc = g.UserCurrentLoc
-	case fglGo:
+	case api.FglGo:
 		locname = "Go"
 		loc = g.GoStatementLoc
-	case fglStart:
+	case api.FglStart:
 		locname = "Start"
 		loc = g.StartLoc
 	}
