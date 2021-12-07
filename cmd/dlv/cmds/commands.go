@@ -46,6 +46,10 @@ var (
 	apiVersion int
 	// acceptMulti allows multiple clients to connect to the same server
 	acceptMulti bool
+	// checkGoVersionDefault sets default for --check-go-version
+	checkGoVersionDefault = "true"
+	// checkLocalConnUserDefault sets default for --only-same-user
+	checkLocalConnUserDefault = "true"
 	// addr is the debugging server listen address.
 	addr string
 	// initFile is the path to initialization file.
@@ -139,8 +143,8 @@ func New(docCall bool) *cobra.Command {
 	rootCommand.PersistentFlags().StringVar(&initFile, "init", "", "Init file, executed by the terminal client.")
 	rootCommand.PersistentFlags().StringVar(&buildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler. For example: --build-flags=\"-tags=integration -mod=vendor -cover -v\"")
 	rootCommand.PersistentFlags().StringVar(&workingDir, "wd", "", "Working directory for running the program.")
-	rootCommand.PersistentFlags().BoolVarP(&checkGoVersion, "check-go-version", "", true, "Exits if the version of Go in use is not compatible (too old or too new) with the version of Delve.")
-	rootCommand.PersistentFlags().BoolVarP(&checkLocalConnUser, "only-same-user", "", true, "Only connections from the same user that started this instance of Delve are allowed to connect.")
+	rootCommand.PersistentFlags().BoolVarP(&checkGoVersion, "check-go-version", "", parseBool(checkGoVersionDefault), "Exits if the version of Go in use is not compatible (too old or too new) with the version of Delve.")
+	rootCommand.PersistentFlags().BoolVarP(&checkLocalConnUser, "only-same-user", "", parseBool(checkLocalConnUserDefault), "Only connections from the same user that started this instance of Delve are allowed to connect.")
 	rootCommand.PersistentFlags().StringVar(&backend, "backend", "default", `Backend selection (see 'dlv help backend').`)
 	rootCommand.PersistentFlags().StringArrayVarP(&redirects, "redirect", "r", []string{}, "Specifies redirect rules for target process (see 'dlv help redirect')")
 	rootCommand.PersistentFlags().BoolVar(&allowNonTerminalInteractive, "allow-non-terminal-interactive", false, "Allows interactive sessions of Delve that don't have a terminal as stdin, stdout and stderr")
@@ -1019,4 +1023,15 @@ func parseRedirects(redirects []string) ([3]string, error) {
 		r[idx] = redirect
 	}
 	return r, nil
+}
+
+// parseBool parses a boolean value represented by a string, and panics if there is an error.
+// It is intended for boolean build-time constants that are set with 'go build -ldflags=-X xxx=bool'
+// and should only be a valid value.
+func parseBool(value string) bool {
+	b, err := strconv.ParseBool(value)
+	if err != nil {
+		panic(err)
+	}
+	return b
 }
