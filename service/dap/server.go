@@ -491,6 +491,16 @@ func (s *Server) RunWithClient(conn net.Conn) {
 	go s.runSession(conn)
 }
 
+func (s *Session) address() string {
+	if s.config.Listener != nil {
+		return s.config.Listener.Addr().String()
+	}
+	if netconn, ok := s.conn.(net.Conn); ok {
+		return netconn.LocalAddr().String()
+	}
+	return ""
+}
+
 // ServeDAPCodec reads and decodes requests from the client
 // until it encounters an error or EOF, when it sends
 // a disconnect signal and returns.
@@ -934,8 +944,8 @@ func cleanExeName(name string) string {
 func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	var err error
 	if s.debugger != nil {
-		s.sendShowUserErrorResponse(request.Request, FailedToLaunch,
-			"Failed to launch", "debugger already started - use remote attach to connect to a server with an active debug session")
+		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
+			fmt.Sprintf("debug session already in progress at %s - use remote attach mode to connect to a server with an active debug session", s.address()))
 		return
 	}
 
@@ -1178,7 +1188,13 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 		// This is a multi-use server/debugger, so a disconnect request that doesn't
 		// terminate the debuggee should clean up only the client connection and pointer to debugger,
 		// but not the entire server.
-		s.logToConsole("Closing client session, but leaving multi-client DAP server running at " + s.config.Listener.Addr().String())
+		status := "halted"
+		if s.isRunningCmd() {
+			status = "running"
+		} else if s, err := s.debugger.State(false); processExited(s, err) {
+			status = "exited"
+		}
+		s.logToConsole(fmt.Sprintf("Closing client session, but leaving multi-client DAP server at %s with debuggee %s", s.config.Listener.Addr().String(), status))
 		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		s.conn.Close()
@@ -1752,7 +1768,8 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 		if s.debugger != nil {
 			s.sendShowUserErrorResponse(
 				request.Request, FailedToAttach,
-				"Failed to attach", "debugger already started - use remote mode to connect")
+				"Failed to attach",
+				fmt.Sprintf("debug session already in progress at %s - use remote mode to connect to a server with an active debug session", s.address()))
 			return
 		}
 		if args.ProcessID == 0 {
