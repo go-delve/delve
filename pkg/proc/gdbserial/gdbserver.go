@@ -232,6 +232,7 @@ func newProcess(process *os.Process) *gdbProcess {
 			direction:           proc.Forward,
 			log:                 logger,
 			goarch:              runtime.GOARCH,
+			goos:                runtime.GOOS,
 		},
 		threads:        make(map[int]*gdbThread),
 		bi:             proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
@@ -790,6 +791,9 @@ const (
 	childSignal      = 0x11
 	stopSignal       = 0x13
 
+	_SIGILL = 0x4 // ok
+	_SIGFPE = 0x8 // ok
+
 	debugServerTargetExcBadAccess      = 0x91
 	debugServerTargetExcBadInstruction = 0x92
 	debugServerTargetExcArithmetic     = 0x93
@@ -880,21 +884,7 @@ continueLoop:
 		return nil, stopReason, fmt.Errorf("could not find thread %s", threadID)
 	}
 
-	var err error
-	switch trapthread.sig {
-	case 0x91:
-		err = errors.New("bad access")
-	case 0x92:
-		err = errors.New("bad instruction")
-	case 0x93:
-		err = errors.New("arithmetic exception")
-	case 0x94:
-		err = errors.New("emulation exception")
-	case 0x95:
-		err = errors.New("software exception")
-	case 0x96:
-		err = errors.New("breakpoint exception")
-	}
+	err := machTargetExcToError(trapthread.sig)
 	if err != nil {
 		// the signals that are reported here can not be propagated back to the target process.
 		trapthread.sig = 0
@@ -1522,7 +1512,7 @@ func (t *gdbThread) StepInstruction() error {
 	// Reset thread registers so the next call to
 	// Thread.Registers will not be cached.
 	t.regs.regs = nil
-	return t.p.conn.step(t.strID, &threadUpdater{p: t.p}, false)
+	return t.p.conn.step(t, &threadUpdater{p: t.p}, false)
 }
 
 // Blocked returns true if the thread is blocked in runtime or kernel code.
@@ -1784,7 +1774,7 @@ func (t *gdbThread) reloadGAtPC() error {
 		}
 	}()
 
-	err = t.p.conn.step(t.strID, nil, true)
+	err = t.p.conn.step(t, nil, true)
 	if err != nil {
 		if err == errThreadBlocked {
 			t.regs.tls = 0
@@ -1837,7 +1827,7 @@ func (t *gdbThread) reloadGAlloc() error {
 		}
 	}()
 
-	err = t.p.conn.step(t.strID, nil, true)
+	err = t.p.conn.step(t, nil, true)
 	if err != nil {
 		if err == errThreadBlocked {
 			t.regs.tls = 0
@@ -2055,4 +2045,22 @@ func (regs *gdbRegisters) Copy() (proc.Registers, error) {
 func registerName(arch *proc.Arch, regNum uint64) string {
 	regName, _, _ := arch.DwarfRegisterToString(int(regNum), nil)
 	return strings.ToLower(regName)
+}
+
+func machTargetExcToError(sig uint8) error {
+	switch sig {
+	case 0x91:
+		return errors.New("bad access")
+	case 0x92:
+		return errors.New("bad instruction")
+	case 0x93:
+		return errors.New("arithmetic exception")
+	case 0x94:
+		return errors.New("emulation exception")
+	case 0x95:
+		return errors.New("software exception")
+	case 0x96:
+		return errors.New("breakpoint exception")
+	}
+	return nil
 }
