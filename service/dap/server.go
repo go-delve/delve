@@ -499,7 +499,7 @@ func (s *Session) address() string {
 	if s.config.Listener != nil {
 		return s.config.Listener.Addr().String()
 	}
-	if netconn, ok := s.conn.(net.Conn); ok {
+	if netconn, ok := s.conn.ReadWriteCloser.(net.Conn); ok {
 		return netconn.LocalAddr().String()
 	}
 	return ""

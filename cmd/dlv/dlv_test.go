@@ -867,7 +867,7 @@ func TestRemoteDAPClientAfterContinue(t *testing.T) {
 	c.ContinueRequest(1)
 	c.ExpectContinueResponse(t)
 	c.DisconnectRequest()
-	c.ExpectOutputEventClosingClient(t)
+	c.ExpectOutputEventClosingClient(t, "running")
 	c.ExpectDisconnectResponse(t)
 	c.ExpectTerminatedEvent(t)
 	c.Close()
