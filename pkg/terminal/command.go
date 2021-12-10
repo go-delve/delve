@@ -951,7 +951,10 @@ func (c *Commands) frameCommand(t *Term, ctx callContext, argstr string, directi
 func (c *Commands) deferredCommand(t *Term, ctx callContext, argstr string) error {
 	ctx.Prefix = deferredPrefix
 
-	space := strings.Index(argstr, " ")
+	space := strings.IndexRune(argstr, ' ')
+	if space < 0 {
+		return errors.New("not enough arguments")
+	}
 
 	var err error
 	ctx.Scope.DeferredCall, err = strconv.Atoi(argstr[:space])
