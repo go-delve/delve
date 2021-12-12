@@ -1,4 +1,5 @@
-//+build freebsd,amd64 darwin
+//go:build (freebsd && amd64) || darwin
+// +build freebsd,amd64 darwin
 
 package native
 
