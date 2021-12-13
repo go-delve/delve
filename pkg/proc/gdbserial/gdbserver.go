@@ -149,6 +149,7 @@ type gdbProcess struct {
 	currentThread *gdbThread
 
 	exited, detached bool
+	almostExited     bool // true if 'rr' has sent its synthetic SIGKILL
 	ctrlC            bool // ctrl-c was sent to stop inferior
 
 	manualStopRequested bool
@@ -755,6 +756,9 @@ func (p *gdbProcess) Valid() (bool, error) {
 	if p.exited {
 		return false, proc.ErrProcessExited{Pid: p.Pid()}
 	}
+	if p.almostExited && p.conn.direction == proc.Forward {
+		return false, proc.ErrProcessExited{Pid: p.Pid()}
+	}
 	return true, nil
 }
 
@@ -791,8 +795,9 @@ const (
 	childSignal      = 0x11
 	stopSignal       = 0x13
 
-	_SIGILL = 0x4 // ok
-	_SIGFPE = 0x8 // ok
+	_SIGILL = 0x4
+	_SIGFPE = 0x8
+	_SIGKILL = 0x9
 
 	debugServerTargetExcBadAccess      = 0x91
 	debugServerTargetExcBadInstruction = 0x92
@@ -807,6 +812,12 @@ const (
 func (p *gdbProcess) ContinueOnce() (proc.Thread, proc.StopReason, error) {
 	if p.exited {
 		return nil, proc.StopExited, proc.ErrProcessExited{Pid: p.conn.pid}
+	}
+	if p.almostExited {
+		if p.conn.direction == proc.Forward {
+			return nil, proc.StopExited, proc.ErrProcessExited{Pid: p.conn.pid}
+		}
+		p.almostExited = false
 	}
 
 	if p.conn.direction == proc.Forward {
@@ -856,8 +867,12 @@ continueLoop:
 			trapthread.watchAddr = sp.watchAddr
 		}
 
-		var shouldStop bool
-		trapthread, atstart, shouldStop = p.handleThreadSignals(trapthread)
+		var shouldStop, shouldExitErr bool
+		trapthread, atstart, shouldStop, shouldExitErr = p.handleThreadSignals(trapthread)
+		if shouldExitErr {
+			p.almostExited = true
+			return nil, proc.StopExited, proc.ErrProcessExited{Pid: p.conn.pid}
+		}
 		if shouldStop {
 			break continueLoop
 		}
@@ -907,7 +922,7 @@ func (p *gdbProcess) findThreadByStrID(threadID string) *gdbThread {
 // and returns true if we should stop execution in response to one of the
 // signals and return control to the user.
 // Adjusts trapthread to a thread that we actually want to stop at.
-func (p *gdbProcess) handleThreadSignals(trapthread *gdbThread) (trapthreadOut *gdbThread, atstart, shouldStop bool) {
+func (p *gdbProcess) handleThreadSignals(trapthread *gdbThread) (trapthreadOut *gdbThread, atstart, shouldStop, shouldExitErr bool) {
 	var trapthreadCandidate *gdbThread
 
 	for _, th := range p.threads {
@@ -931,6 +946,16 @@ func (p *gdbProcess) handleThreadSignals(trapthread *gdbThread) (trapthreadOut *
 			}
 		case stopSignal: // stop
 			isStopSignal = true
+
+		case _SIGKILL:
+			if p.tracedir != "" {
+				// RR will send a synthetic SIGKILL packet right before the program
+				// exits, even if the program exited normally.
+				// Treat this signal as if the process had exited because right after
+				// this it is still possible to set breakpoints and rewind the process.
+				shouldExitErr = true
+				isStopSignal = true
+			}
 
 		// The following are fake BSD-style signals sent by debugserver
 		// Unfortunately debugserver can not convert them into signals for the
@@ -976,7 +1001,7 @@ func (p *gdbProcess) handleThreadSignals(trapthread *gdbThread) (trapthreadOut *
 		shouldStop = true
 	}
 
-	return trapthread, atstart, shouldStop
+	return trapthread, atstart, shouldStop, shouldExitErr
 }
 
 // RequestManualStop will attempt to stop the process
@@ -1058,6 +1083,7 @@ func (p *gdbProcess) Restart(pos string) (proc.Thread, error) {
 	}
 
 	p.exited = false
+	p.almostExited = false
 
 	for _, th := range p.threads {
 		th.clearBreakpointState()

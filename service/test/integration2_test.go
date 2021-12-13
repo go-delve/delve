@@ -2590,3 +2590,43 @@ func TestGenericsBreakpoint(t *testing.T) {
 		}
 	})
 }
+
+func TestRestartRewindAfterEnd(t *testing.T) {
+	if testBackend != "rr" {
+		t.Skip("not relevant")
+	}
+	// Check that Restart works after the program has terminated, even if a
+	// Continue is requested just before it.
+	// Also check that Rewind can be used after the program has terminated.
+	protest.AllowRecording(t)
+	withTestClient2("math", t, func(c service.Client) {
+		state := <-c.Continue()
+		if !state.Exited {
+			t.Fatalf("program did not exit")
+		}
+		state = <-c.Continue()
+		if !state.Exited {
+			t.Errorf("bad Continue return state: %v", state)
+		}
+		time.Sleep(1 * time.Second) // bug only happens if there is some time for the server to close the notify channel
+		_, err := c.Restart(false)
+		if err != nil {
+			t.Fatalf("Restart: %v", err)
+		}
+		state = <-c.Continue()
+		if !state.Exited {
+			t.Fatalf("program did not exit exited")
+		}
+		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 0})
+		if err != nil {
+			t.Fatalf("CreateBreakpoint: %v", err)
+		}
+		state = <-c.Rewind()
+		if state.Exited || state.Err != nil {
+			t.Errorf("bad Rewind return state: %v", state)
+		}
+		if state.CurrentThread.Line != 7 {
+			t.Errorf("wrong stop location %s:%d", state.CurrentThread.File, state.CurrentThread.Line)
+		}
+	})
+}
