@@ -144,7 +144,7 @@ const (
 	StopBreakpoint                     // The target process hit one or more software breakpoints
 	StopHardcodedBreakpoint            // The target process hit a hardcoded breakpoint (for example runtime.Breakpoint())
 	StopManual                         // A manual stop was requested
-	StopNextFinished                   // The next/step/stepout command terminated
+	StopNextFinished                   // The next/step/stepout/stepInstruction command terminated
 	StopCallReturned                   // An injected call completed
 	StopWatchpoint                     // The target process hit one or more watchpoints
 )

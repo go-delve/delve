@@ -457,6 +457,7 @@ func (dbp *Target) StepInstruction() (err error) {
 	if tg, _ := GetG(thread); tg != nil {
 		dbp.selectedGoroutine = tg
 	}
+	dbp.StopReason = StopNextFinished
 	return nil
 }
 
