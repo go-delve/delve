@@ -213,6 +213,8 @@ type launchAttachArgs struct {
 	ShowGlobalVariables bool `cfgName:"showGlobalVariables"`
 	// ShowRegisters indicates if register values should be loaded.
 	ShowRegisters bool `cfgName:"showRegisters"`
+	// GoroutineFilters are the filters used when loading goroutines.
+	GoroutineFilters string `cfgName:"goroutineFilters"`
 	// HideSystemGoroutines indicates if system goroutines should be removed from threads
 	// responses.
 	HideSystemGoroutines bool `cfgName:"hideSystemGoroutines"`
@@ -233,6 +235,7 @@ var defaultArgs = launchAttachArgs{
 	ShowGlobalVariables:          false,
 	HideSystemGoroutines:         false,
 	ShowRegisters:                false,
+	GoroutineFilters:             "",
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
 }
@@ -345,6 +348,7 @@ func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) error {
 	s.args.ShowGlobalVariables = args.ShowGlobalVariables
 	s.args.ShowRegisters = args.ShowRegisters
 	s.args.HideSystemGoroutines = args.HideSystemGoroutines
+	s.args.GoroutineFilters = args.GoroutineFilters
 	if paths := args.SubstitutePath; len(paths) > 0 {
 		clientToServer := make([][2]string, 0, len(paths))
 		serverToClient := make([][2]string, 0, len(paths))
@@ -489,6 +493,16 @@ func (s *Server) RunWithClient(conn net.Conn) {
 	}
 	s.config.log.Debugf("Connected to the client at %s", conn.RemoteAddr())
 	go s.runSession(conn)
+}
+
+func (s *Session) address() string {
+	if s.config.Listener != nil {
+		return s.config.Listener.Addr().String()
+	}
+	if netconn, ok := s.conn.ReadWriteCloser.(net.Conn); ok {
+		return netconn.LocalAddr().String()
+	}
+	return ""
 }
 
 // ServeDAPCodec reads and decodes requests from the client
@@ -934,8 +948,8 @@ func cleanExeName(name string) string {
 func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	var err error
 	if s.debugger != nil {
-		s.sendShowUserErrorResponse(request.Request, FailedToLaunch,
-			"Failed to launch", "debugger already started - use remote attach to connect to a server with an active debug session")
+		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
+			fmt.Sprintf("debug session already in progress at %s - use remote attach mode to connect to a server with an active debug session", s.address()))
 		return
 	}
 
@@ -1178,7 +1192,13 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 		// This is a multi-use server/debugger, so a disconnect request that doesn't
 		// terminate the debuggee should clean up only the client connection and pointer to debugger,
 		// but not the entire server.
-		s.logToConsole("Closing client session, but leaving multi-client DAP server running at " + s.config.Listener.Addr().String())
+		status := "halted"
+		if s.isRunningCmd() {
+			status = "running"
+		} else if s, err := s.debugger.State(false); processExited(s, err) {
+			status = "exited"
+		}
+		s.logToConsole(fmt.Sprintf("Closing client session, but leaving multi-client DAP server at %s with debuggee %s", s.config.Listener.Addr().String(), status))
 		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		s.conn.Close()
@@ -1643,11 +1663,19 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 	var next int
 	if s.debugger != nil {
 		gs, next, err = s.debugger.Goroutines(0, maxGoroutines)
-		if err == nil && s.args.HideSystemGoroutines {
-			gs = s.debugger.FilterGoroutines(gs, []api.ListGoroutinesFilter{{
-				Kind:    api.GoroutineUser,
-				Negated: false,
-			}})
+		if err == nil {
+			// Parse the goroutine arguments.
+			filters, _, _, _, _, _, parseErr := api.ParseGoroutineArgs(s.args.GoroutineFilters)
+			if parseErr != nil {
+				s.logToConsole(parseErr.Error())
+			}
+			if s.args.HideSystemGoroutines {
+				filters = append(filters, api.ListGoroutinesFilter{
+					Kind:    api.GoroutineUser,
+					Negated: false,
+				})
+			}
+			gs = s.debugger.FilterGoroutines(gs, filters)
 		}
 	}
 
@@ -1752,7 +1780,8 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 		if s.debugger != nil {
 			s.sendShowUserErrorResponse(
 				request.Request, FailedToAttach,
-				"Failed to attach", "debugger already started - use remote mode to connect")
+				"Failed to attach",
+				fmt.Sprintf("debug session already in progress at %s - use remote mode to connect to a server with an active debug session", s.address()))
 			return
 		}
 		if args.ProcessID == 0 {

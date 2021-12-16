@@ -555,7 +555,7 @@ type delayedSize struct {
 }
 
 // readType reads a type from r at off of name using and updating a
-// type cache, callers sohuld pass nil to delayedSize, it is used for recursion.
+// type cache, callers should pass nil to delayedSize, it is used for recursion.
 func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typeCache map[dwarf.Offset]Type, delayedSizes *[]delayedSize) (Type, error) {
 	if t, ok := typeCache[off]; ok {
 		return t, nil

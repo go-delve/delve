@@ -5736,3 +5736,42 @@ func TestSetYMMRegister(t *testing.T) {
 		}
 	})
 }
+
+func TestNilPtrDerefInBreakInstr(t *testing.T) {
+	// Checks that having a breakpoint on the exact instruction that causes a
+	// nil pointer dereference does not cause problems.
+
+	var asmfile string
+	switch runtime.GOARCH {
+	case "amd64":
+		asmfile = "main_amd64.s"
+	case "arm64":
+		asmfile = "main_arm64.s"
+	case "386":
+		asmfile = "main_386.s"
+	default:
+		t.Fatalf("assembly file for %s not provided", runtime.GOARCH)
+	}
+
+	withTestProcess("asmnilptr/", t, func(p *proc.Target, fixture protest.Fixture) {
+		f := filepath.Join(fixture.BuildDir, asmfile)
+		f = strings.Replace(f, "\\", "/", -1)
+		setFileBreakpoint(p, t, f, 5)
+		t.Logf("first continue")
+		assertNoError(p.Continue(), t, "Continue()")
+		t.Logf("second continue")
+		err := p.Continue()
+		if runtime.GOOS == "darwin" && err != nil && err.Error() == "bad access" {
+			// this is also ok
+			return
+		}
+		assertNoError(err, t, "Continue()")
+		bp := p.CurrentThread().Breakpoint()
+		if bp != nil {
+			t.Logf("%#v\n", bp.Breakpoint)
+		}
+		if bp == nil || (bp.Name != proc.UnrecoveredPanic) {
+			t.Fatalf("no breakpoint hit or wrong breakpoint hit: %#v", bp)
+		}
+	})
+}

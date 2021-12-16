@@ -453,6 +453,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 
 	recorded, _ := d.target.Recorded()
 	if recorded && !rerecord {
+		d.target.ResumeNotify(nil)
 		return nil, d.target.Restart(pos)
 	}
 
@@ -904,19 +905,12 @@ func (d *Debugger) clearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 		return bp, nil
 	}
 
-	var clearedBp *api.Breakpoint
-	var errs []error
+	var clearBps []*proc.Breakpoint
 
-	clear := func(addr uint64) {
-		if clearedBp == nil {
-			bp := d.target.Breakpoints().M[addr]
-			if bp != nil {
-				clearedBp = api.ConvertBreakpoint(bp)
-			}
-		}
-		err := d.target.ClearBreakpoint(addr)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("address %#x: %v", addr, err))
+	toclear := func(addr uint64) {
+		bp := d.target.Breakpoints().M[addr]
+		if bp != nil {
+			clearBps = append(clearBps, bp)
 		}
 	}
 
@@ -925,10 +919,23 @@ func (d *Debugger) clearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 		if addr == requestedBp.Addr {
 			clearAddr = false
 		}
-		clear(addr)
+		toclear(addr)
 	}
 	if clearAddr {
-		clear(requestedBp.Addr)
+		toclear(requestedBp.Addr)
+	}
+
+	// Breakpoints need to be converted before clearing them or they won't have
+	// an ID anymore.
+	sort.Sort(breakpointsByLogicalID(clearBps))
+	clearedBp := api.ConvertBreakpoints(clearBps)[0]
+
+	var errs []error
+	for _, bp := range clearBps {
+		err := d.target.ClearBreakpoint(bp.Addr)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("address %#x: %v", bp.Addr, err))
+		}
 	}
 
 	if len(errs) > 0 {
@@ -940,7 +947,7 @@ func (d *Debugger) clearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 			}
 		}
 
-		if clearedBp == nil {
+		if len(errs) == len(clearBps) {
 			return nil, fmt.Errorf("unable to clear breakpoint %d: %v", requestedBp.ID, buf.String())
 		}
 		return nil, fmt.Errorf("unable to clear breakpoint %d (partial): %s", requestedBp.ID, buf.String())

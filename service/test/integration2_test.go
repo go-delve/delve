@@ -2588,5 +2588,67 @@ func TestGenericsBreakpoint(t *testing.T) {
 		if line := frame1Line(); line != 11 {
 			t.Errorf("wrong line after first continue, expected 11, got %d", line)
 		}
+
+		if bp.FunctionName != "main.testfn" {
+			t.Errorf("wrong name for breakpoint (CreateBreakpoint): %q", bp.FunctionName)
+		}
+
+		bps, err := c.ListBreakpoints(false)
+		assertNoError(err, t, "ListBreakpoints")
+
+		for _, bp := range bps {
+			if bp.ID > 0 {
+				if bp.FunctionName != "main.testfn" {
+					t.Errorf("wrong name for breakpoint (ListBreakpoints): %q", bp.FunctionName)
+				}
+				break
+			}
+		}
+
+		rmbp, err := c.ClearBreakpoint(bp.ID)
+		assertNoError(err, t, "ClearBreakpoint")
+		if rmbp.FunctionName != "main.testfn" {
+			t.Errorf("wrong name for breakpoint (ClearBreakpoint): %q", rmbp.FunctionName)
+		}
+	})
+}
+
+func TestRestartRewindAfterEnd(t *testing.T) {
+	if testBackend != "rr" {
+		t.Skip("not relevant")
+	}
+	// Check that Restart works after the program has terminated, even if a
+	// Continue is requested just before it.
+	// Also check that Rewind can be used after the program has terminated.
+	protest.AllowRecording(t)
+	withTestClient2("math", t, func(c service.Client) {
+		state := <-c.Continue()
+		if !state.Exited {
+			t.Fatalf("program did not exit")
+		}
+		state = <-c.Continue()
+		if !state.Exited {
+			t.Errorf("bad Continue return state: %v", state)
+		}
+		time.Sleep(1 * time.Second) // bug only happens if there is some time for the server to close the notify channel
+		_, err := c.Restart(false)
+		if err != nil {
+			t.Fatalf("Restart: %v", err)
+		}
+		state = <-c.Continue()
+		if !state.Exited {
+			t.Fatalf("program did not exit exited")
+		}
+		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 0})
+		if err != nil {
+			t.Fatalf("CreateBreakpoint: %v", err)
+		}
+		state = <-c.Rewind()
+		if state.Exited || state.Err != nil {
+			t.Errorf("bad Rewind return state: %v", state)
+		}
+		if state.CurrentThread.Line != 7 {
+			t.Errorf("wrong stop location %s:%d", state.CurrentThread.File, state.CurrentThread.Line)
+		}
 	})
 }
