@@ -1335,6 +1335,10 @@ func TestFrameEvaluation(t *testing.T) {
 		g, err := proc.GetG(p.CurrentThread())
 		assertNoError(err, t, "GetG()")
 
+		frames, err := g.Stacktrace(40, 0)
+		t.Logf("Goroutine %d %#v", g.ID, g.Thread)
+		logStacktrace(t, p, frames)
+
 		for i := 0; i <= 3; i++ {
 			scope, err := proc.ConvertEvalScope(p, g.ID, i+1, 0)
 			assertNoError(err, t, fmt.Sprintf("ConvertEvalScope() on frame %d", i+1))
