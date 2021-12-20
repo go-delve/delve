@@ -24,6 +24,7 @@ var TestSet, TestRegex, TestBackend, TestBuildMode string
 var Tags *[]string
 var Architecture string
 var OS string
+var DisableGit bool
 
 func NewMakeCommands() *cobra.Command {
 	RootCommand := &cobra.Command{
@@ -68,6 +69,7 @@ func NewMakeCommands() *cobra.Command {
 		},
 	}
 	Tags = buildCmd.PersistentFlags().StringArray("tags", []string{}, "Build tags")
+	buildCmd.PersistentFlags().BoolVarP(&DisableGit, "no-git", "G", false, "Do not use git")
 	buildCmd.PersistentFlags().StringVar(&Architecture, "GOARCH", "", "Architecture to build for")
 	buildCmd.PersistentFlags().StringVar(&OS, "GOOS", "", "OS to build for")
 	RootCommand.AddCommand(buildCmd)
@@ -291,11 +293,11 @@ func prepareMacnative() string {
 }
 
 func buildFlags() []string {
-	buildSHA, err := exec.Command("git", "rev-parse", "HEAD").CombinedOutput()
+	buildSHA, err := getBuildSHA()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(fmt.Errorf("error getting build SHA via git: %w", err))
 	}
-	ldFlags := "-X main.Build=" + strings.TrimSpace(string(buildSHA))
+	ldFlags := "-X main.Build=" + buildSHA
 	if runtime.GOOS == "darwin" {
 		ldFlags = "-s " + ldFlags
 	}
@@ -494,6 +496,22 @@ func allPackages() []string {
 	}
 	sort.Strings(r)
 	return r
+}
+
+// getBuildSHA will invoke git to return the current SHA of the commit at HEAD.
+// If invoking git has been disabled, it will return an empty string instead.
+func getBuildSHA() (string, error) {
+	if DisableGit {
+		return "", nil
+	}
+
+	buildSHA, err := exec.Command("git", "rev-parse", "HEAD").CombinedOutput()
+	if err != nil {
+		return "", err
+	}
+
+	shaStr := strings.TrimSpace(string(buildSHA))
+	return shaStr, nil
 }
 
 func main() {

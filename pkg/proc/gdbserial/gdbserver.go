@@ -149,6 +149,7 @@ type gdbProcess struct {
 	currentThread *gdbThread
 
 	exited, detached bool
+	almostExited     bool // true if 'rr' has sent its synthetic SIGKILL
 	ctrlC            bool // ctrl-c was sent to stop inferior
 
 	manualStopRequested bool
@@ -170,7 +171,7 @@ type gdbProcess struct {
 	onDetach func() // called after a successful detach
 }
 
-var _ proc.ProcessInternal = &gdbProcess{}
+var _ proc.RecordingManipulationInternal = &gdbProcess{}
 
 // gdbThread represents an operating system thread.
 type gdbThread struct {
@@ -232,6 +233,7 @@ func newProcess(process *os.Process) *gdbProcess {
 			direction:           proc.Forward,
 			log:                 logger,
 			goarch:              runtime.GOARCH,
+			goos:                runtime.GOOS,
 		},
 		threads:        make(map[int]*gdbThread),
 		bi:             proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
@@ -704,7 +706,7 @@ func (p *gdbProcess) initialize(path string, debugInfoDirs []string, stopReason 
 			return nil, err
 		}
 	}
-	tgt, err := proc.NewTarget(p, p.currentThread, proc.NewTargetConfig{
+	tgt, err := proc.NewTarget(p, p.conn.pid, p.currentThread, proc.NewTargetConfig{
 		Path:                path,
 		DebugInfoDirs:       debugInfoDirs,
 		DisableAsyncPreempt: runtime.GOOS == "darwin",
@@ -754,6 +756,9 @@ func (p *gdbProcess) Valid() (bool, error) {
 	if p.exited {
 		return false, proc.ErrProcessExited{Pid: p.Pid()}
 	}
+	if p.almostExited && p.conn.direction == proc.Forward {
+		return false, proc.ErrProcessExited{Pid: p.Pid()}
+	}
 	return true, nil
 }
 
@@ -790,6 +795,10 @@ const (
 	childSignal      = 0x11
 	stopSignal       = 0x13
 
+	_SIGILL = 0x4
+	_SIGFPE = 0x8
+	_SIGKILL = 0x9
+
 	debugServerTargetExcBadAccess      = 0x91
 	debugServerTargetExcBadInstruction = 0x92
 	debugServerTargetExcArithmetic     = 0x93
@@ -803,6 +812,12 @@ const (
 func (p *gdbProcess) ContinueOnce() (proc.Thread, proc.StopReason, error) {
 	if p.exited {
 		return nil, proc.StopExited, proc.ErrProcessExited{Pid: p.conn.pid}
+	}
+	if p.almostExited {
+		if p.conn.direction == proc.Forward {
+			return nil, proc.StopExited, proc.ErrProcessExited{Pid: p.conn.pid}
+		}
+		p.almostExited = false
 	}
 
 	if p.conn.direction == proc.Forward {
@@ -852,8 +867,12 @@ continueLoop:
 			trapthread.watchAddr = sp.watchAddr
 		}
 
-		var shouldStop bool
-		trapthread, atstart, shouldStop = p.handleThreadSignals(trapthread)
+		var shouldStop, shouldExitErr bool
+		trapthread, atstart, shouldStop, shouldExitErr = p.handleThreadSignals(trapthread)
+		if shouldExitErr {
+			p.almostExited = true
+			return nil, proc.StopExited, proc.ErrProcessExited{Pid: p.conn.pid}
+		}
 		if shouldStop {
 			break continueLoop
 		}
@@ -880,21 +899,7 @@ continueLoop:
 		return nil, stopReason, fmt.Errorf("could not find thread %s", threadID)
 	}
 
-	var err error
-	switch trapthread.sig {
-	case 0x91:
-		err = errors.New("bad access")
-	case 0x92:
-		err = errors.New("bad instruction")
-	case 0x93:
-		err = errors.New("arithmetic exception")
-	case 0x94:
-		err = errors.New("emulation exception")
-	case 0x95:
-		err = errors.New("software exception")
-	case 0x96:
-		err = errors.New("breakpoint exception")
-	}
+	err := machTargetExcToError(trapthread.sig)
 	if err != nil {
 		// the signals that are reported here can not be propagated back to the target process.
 		trapthread.sig = 0
@@ -917,7 +922,7 @@ func (p *gdbProcess) findThreadByStrID(threadID string) *gdbThread {
 // and returns true if we should stop execution in response to one of the
 // signals and return control to the user.
 // Adjusts trapthread to a thread that we actually want to stop at.
-func (p *gdbProcess) handleThreadSignals(trapthread *gdbThread) (trapthreadOut *gdbThread, atstart, shouldStop bool) {
+func (p *gdbProcess) handleThreadSignals(trapthread *gdbThread) (trapthreadOut *gdbThread, atstart, shouldStop, shouldExitErr bool) {
 	var trapthreadCandidate *gdbThread
 
 	for _, th := range p.threads {
@@ -941,6 +946,16 @@ func (p *gdbProcess) handleThreadSignals(trapthread *gdbThread) (trapthreadOut *
 			}
 		case stopSignal: // stop
 			isStopSignal = true
+
+		case _SIGKILL:
+			if p.tracedir != "" {
+				// RR will send a synthetic SIGKILL packet right before the program
+				// exits, even if the program exited normally.
+				// Treat this signal as if the process had exited because right after
+				// this it is still possible to set breakpoints and rewind the process.
+				shouldExitErr = true
+				isStopSignal = true
+			}
 
 		// The following are fake BSD-style signals sent by debugserver
 		// Unfortunately debugserver can not convert them into signals for the
@@ -986,7 +1001,7 @@ func (p *gdbProcess) handleThreadSignals(trapthread *gdbThread) (trapthreadOut *
 		shouldStop = true
 	}
 
-	return trapthread, atstart, shouldStop
+	return trapthread, atstart, shouldStop, shouldExitErr
 }
 
 // RequestManualStop will attempt to stop the process
@@ -1068,6 +1083,7 @@ func (p *gdbProcess) Restart(pos string) (proc.Thread, error) {
 	}
 
 	p.exited = false
+	p.almostExited = false
 
 	for _, th := range p.threads {
 		th.clearBreakpointState()
@@ -1522,7 +1538,7 @@ func (t *gdbThread) StepInstruction() error {
 	// Reset thread registers so the next call to
 	// Thread.Registers will not be cached.
 	t.regs.regs = nil
-	return t.p.conn.step(t.strID, &threadUpdater{p: t.p}, false)
+	return t.p.conn.step(t, &threadUpdater{p: t.p}, false)
 }
 
 // Blocked returns true if the thread is blocked in runtime or kernel code.
@@ -1617,8 +1633,12 @@ func (regs *gdbRegisters) init(regsInfo []gdbRegisterInfo, arch *proc.Arch, regn
 	}
 	regs.buf = make([]byte, regsz)
 	for _, reginfo := range regsInfo {
-		regs.regs[reginfo.Name] = gdbRegister{regnum: reginfo.Regnum, value: regs.buf[reginfo.Offset : reginfo.Offset+reginfo.Bitsize/8], ignoreOnWrite: reginfo.ignoreOnWrite}
+		regs.regs[reginfo.Name] = regs.gdbRegisterNew(&reginfo)
 	}
+}
+
+func (regs *gdbRegisters) gdbRegisterNew(reginfo *gdbRegisterInfo) gdbRegister {
+	return gdbRegister{regnum: reginfo.Regnum, value: regs.buf[reginfo.Offset : reginfo.Offset+reginfo.Bitsize/8], ignoreOnWrite: reginfo.ignoreOnWrite}
 }
 
 // reloadRegisters loads the current value of the thread's registers.
@@ -1780,7 +1800,7 @@ func (t *gdbThread) reloadGAtPC() error {
 		}
 	}()
 
-	err = t.p.conn.step(t.strID, nil, true)
+	err = t.p.conn.step(t, nil, true)
 	if err != nil {
 		if err == errThreadBlocked {
 			t.regs.tls = 0
@@ -1833,7 +1853,7 @@ func (t *gdbThread) reloadGAlloc() error {
 		}
 	}()
 
-	err = t.p.conn.step(t.strID, nil, true)
+	err = t.p.conn.step(t, nil, true)
 	if err != nil {
 		if err == errThreadBlocked {
 			t.regs.tls = 0
@@ -1963,7 +1983,21 @@ func (t *gdbThread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
 		return fmt.Errorf("could not set register %s: wrong size, expected %d got %d", regName, len(gdbreg.value), len(reg.Bytes))
 	}
 	copy(gdbreg.value, reg.Bytes)
-	return t.p.conn.writeRegister(t.strID, gdbreg.regnum, gdbreg.value)
+	err := t.p.conn.writeRegister(t.strID, gdbreg.regnum, gdbreg.value)
+	if err != nil {
+		return err
+	}
+	if t.p.conn.workaroundReg != nil && len(gdbreg.value) > 16 {
+		// This is a workaround for a bug in debugserver where register writes (P
+		// packet) on AVX-2 and AVX-512 registers are ignored unless they are
+		// followed by a write to an AVX register.
+		// See:
+		//  Issue #2767
+		//  https://bugs.llvm.org/show_bug.cgi?id=52362
+		reg := t.regs.gdbRegisterNew(t.p.conn.workaroundReg)
+		return t.p.conn.writeRegister(t.strID, reg.regnum, reg.value)
+	}
+	return nil
 }
 
 func (regs *gdbRegisters) Slice(floatingPoint bool) ([]proc.Register, error) {
@@ -2037,4 +2071,22 @@ func (regs *gdbRegisters) Copy() (proc.Registers, error) {
 func registerName(arch *proc.Arch, regNum uint64) string {
 	regName, _, _ := arch.DwarfRegisterToString(int(regNum), nil)
 	return strings.ToLower(regName)
+}
+
+func machTargetExcToError(sig uint8) error {
+	switch sig {
+	case 0x91:
+		return errors.New("bad access")
+	case 0x92:
+		return errors.New("bad instruction")
+	case 0x93:
+		return errors.New("arithmetic exception")
+	case 0x94:
+		return errors.New("emulation exception")
+	case 0x95:
+		return errors.New("software exception")
+	case 0x96:
+		return errors.New("breakpoint exception")
+	}
+	return nil
 }

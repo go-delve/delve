@@ -44,7 +44,15 @@ func (c *Client) Check{{.}}(t *testing.T, m dap.Message) *dap.{{.}} {
 	if !ok {
 		t.Fatalf("got %#v, want *dap.ContinuedEvent", m)
 	}
-	m = c.ExpectMessage(t){{end}}
+	m = c.ExpectMessage(t){{else}}{{if (eq . "ConfigurationDoneResponse") }}
+	oe, ok := m.(*dap.OutputEvent)
+	if !ok {
+		t.Fatalf("got %#v, want *dap.OutputEvent", m)
+	}
+	if oe.Body.Output != "Type 'dlv help' for list of commands.\n" {
+		t.Fatalf("got %#v, want Output=%q", m, "Type 'dlv help' for list of commands.\n")
+	}
+	m = c.ExpectMessage(t){{end}}{{end}}
 	r, ok := m.(*dap.{{.}})
 	if !ok {
 		t.Fatalf("got %#v, want *dap.{{.}}", m)

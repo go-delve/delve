@@ -37,10 +37,6 @@ type osProcessDetails struct{}
 
 func (os *osProcessDetails) Close() {}
 
-func findExecutable(path string, pid int) string {
-	panic(ErrNativeBackendDisabled)
-}
-
 func killProcess(pid int) error {
 	panic(ErrNativeBackendDisabled)
 }

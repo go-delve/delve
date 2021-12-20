@@ -805,6 +805,113 @@ func checkStackFramesExact(t *testing.T, got *dap.StackTraceResponse,
 	checkStackFramesNamed("", t, got, wantStartName, wantStartLine, wantStartID, wantFrames, wantTotalFrames, true)
 }
 
+func TestFilterGoroutines(t *testing.T) {
+	tt := []struct {
+		name    string
+		filter  string
+		want    []string
+		wantLen int
+		wantErr bool
+	}{
+		{
+			name:    "user goroutines",
+			filter:  "-with user",
+			want:    []string{"main.main", "main.agoroutine"},
+			wantLen: 11,
+		},
+		{
+			name:    "filter by user loc",
+			filter:  "-with userloc main.main",
+			want:    []string{"main.main"},
+			wantLen: 1,
+		},
+		{
+			name:    "multiple filters",
+			filter:  "-with user -with userloc main.agoroutine",
+			want:    []string{"main.agoroutine"},
+			wantLen: 10,
+		},
+		{
+			name:   "system goroutines",
+			filter: "-without user",
+			want:   []string{"runtime."},
+		},
+		// Filters that should return all goroutines.
+		{
+			name:    "empty filter string",
+			filter:  "",
+			want:    []string{"main.main", "main.agoroutine", "runtime."},
+			wantLen: -1,
+		},
+		{
+			name:    "bad filter string",
+			filter:  "not parsable to filters",
+			want:    []string{"main.main", "main.agoroutine", "runtime."},
+			wantLen: -1,
+			wantErr: true,
+		},
+		// Filters that should produce none.
+		{
+			name:    "no match to user loc",
+			filter:  "-with userloc main.NotAUserFrame",
+			want:    []string{"Dummy"},
+			wantLen: 1,
+		},
+		{
+			name:    "no match to user and not user",
+			filter:  "-with user -without user",
+			want:    []string{"Dummy"},
+			wantLen: 1,
+		},
+	}
+	runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode":        "exec",
+					"program":     fixture.Path,
+					"stopOnEntry": !stopOnEntry})
+			},
+			// Set breakpoints
+			fixture.Source, []int{30},
+			[]onBreakpoint{{
+				// Stop at line 30
+				execute: func() {
+					for _, tc := range tt {
+						command := fmt.Sprintf("dlv config goroutineFilters %s", tc.filter)
+						client.EvaluateRequest(command, 1000, "repl")
+						client.ExpectInvalidatedEvent(t)
+						client.ExpectEvaluateResponse(t)
+
+						client.ThreadsRequest()
+						if tc.wantErr {
+							client.ExpectOutputEvent(t)
+						}
+						tr := client.ExpectThreadsResponse(t)
+						if tc.wantLen > 0 && len(tr.Body.Threads) != tc.wantLen {
+							t.Errorf("got Threads=%#v, want Len=%d\n", tr.Body.Threads, tc.wantLen)
+						}
+						for i, frame := range tr.Body.Threads {
+							var found bool
+							for _, wantName := range tc.want {
+								if strings.Contains(frame.Name, wantName) {
+									found = true
+									break
+								}
+							}
+							if !found {
+								t.Errorf("got Threads[%d]=%#v, want Name=%v\n", i, frame, tc.want)
+							}
+						}
+					}
+				},
+				disconnect: false,
+			}})
+
+	})
+}
+
 func checkStackFramesHasMore(t *testing.T, got *dap.StackTraceResponse,
 	wantStartName string, wantStartLine, wantStartID, wantFrames, wantTotalFrames int) {
 	t.Helper()
@@ -844,14 +951,14 @@ func checkStackFramesNamed(testName string, t *testing.T, got *dap.StackTraceRes
 // checkScope is a helper for verifying the values within a ScopesResponse.
 //     i - index of the scope within ScopesRespose.Body.Scopes array
 //     name - name of the scope
-//     varRef - reference to retrieve variables of this scope
+//     varRef - reference to retrieve variables of this scope. If varRef is negative, the reference is not checked.
 func checkScope(t *testing.T, got *dap.ScopesResponse, i int, name string, varRef int) {
 	t.Helper()
 	if len(got.Body.Scopes) <= i {
 		t.Errorf("\ngot  %d\nwant len(Scopes)>%d", len(got.Body.Scopes), i)
 	}
 	goti := got.Body.Scopes[i]
-	if goti.Name != name || goti.VariablesReference != varRef || goti.Expensive {
+	if goti.Name != name || (varRef >= 0 && goti.VariablesReference != varRef) || goti.Expensive {
 		t.Errorf("\ngot  %#v\nwant Name=%q VariablesReference=%d Expensive=false", goti, name, varRef)
 	}
 }
@@ -1063,6 +1170,7 @@ func TestStackTraceRequest(t *testing.T) {
 					client.StackTraceRequest(1, 0, 0)
 					stResp = client.ExpectStackTraceResponse(t)
 					checkStackFramesExact(t, stResp, "main.main", 18, startHandle, 3, 3)
+
 				},
 				disconnect: false,
 			}})
@@ -2842,7 +2950,9 @@ func TestHitBreakpointIds(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					se = client.ExpectStoppedEvent(t)
+
 					checkHitBreakpointIds(t, se, "function breakpoint", functionBps[1].Id)
+
 					checkStop(t, client, 1, "main.anotherFunction", 27)
 				},
 				disconnect: true,
@@ -3123,7 +3233,7 @@ func TestLogPoints(t *testing.T) {
 				execute: func() {
 					checkStop(t, client, 1, "main.main", 23)
 					bps := []int{6, 25, 27, 16}
-					logMessages := map[int]string{6: "in callme!", 16: "in callme2!"}
+					logMessages := map[int]string{6: "{i*2}: in callme!", 16: "in callme2!"}
 					client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
 					client.ExpectSetBreakpointsResponse(t)
 
@@ -3139,7 +3249,7 @@ func TestLogPoints(t *testing.T) {
 
 						client.ContinueRequest(1)
 						client.ExpectContinueResponse(t)
-						checkLogMessage(t, client.ExpectOutputEvent(t), 1, "in callme!", fixture.Source, 6)
+						checkLogMessage(t, client.ExpectOutputEvent(t), 1, fmt.Sprintf("%d: in callme!", i*2), fixture.Source, 6)
 					}
 					se := client.ExpectStoppedEvent(t)
 					if se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
@@ -3255,62 +3365,76 @@ func TestHaltPreventsAutoResume(t *testing.T) {
 	})
 }
 
-// TestConcurrentBreakpointsLogPoints executes to a breakpoint and then tests
-// that a breakpoint set in the main goroutine is hit the correct number of times
-// and log points set in the children goroutines produce the correct number of
-// output events.
+// TestConcurrentBreakpointsLogPoints tests that a breakpoint set in the main
+// goroutine is hit the correct number of times and log points set in the
+// children goroutines produce the correct number of output events.
 func TestConcurrentBreakpointsLogPoints(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.SkipNow()
 	}
-	runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
-		runDebugSessionWithBPs(t, client, "launch",
-			// Launch
-			func() {
+	tests := []struct {
+		name        string
+		fixture     string
+		start       int
+		breakpoints []int
+	}{
+		{
+			name:        "source breakpoints",
+			fixture:     "goroutinestackprog",
+			breakpoints: []int{23},
+		},
+		{
+			name:    "hardcoded breakpoint",
+			fixture: "goroutinebreak",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runTest(t, tt.fixture, func(client *daptest.Client, fixture protest.Fixture) {
+				client.InitializeRequest()
+				client.ExpectInitializeResponseAndCapabilities(t)
+
 				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
-			},
-			// Set breakpoints
-			fixture.Source, []int{20},
-			[]onBreakpoint{{
-				// Stop at line 20
-				execute: func() {
-					checkStop(t, client, 1, "main.main", 20)
-					bps := []int{8, 23}
-					logMessages := map[int]string{8: "hello"}
-					client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
-					client.ExpectSetBreakpointsResponse(t)
+				client.ExpectInitializedEvent(t)
+				client.ExpectLaunchResponse(t)
 
-					client.ContinueRequest(1)
-					client.ExpectContinueResponse(t)
+				bps := append([]int{8}, tt.breakpoints...)
+				logMessages := map[int]string{8: "hello"}
+				client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
+				client.ExpectSetBreakpointsResponse(t)
 
-					// There may be up to 1 breakpoint and any number of log points that are
-					// hit concurrently. We should get a stopped event everytime the breakpoint
-					// is hit and an output event for each log point hit.
-					var oeCount, seCount int
-					for oeCount < 10 || seCount < 10 {
-						switch m := client.ExpectMessage(t).(type) {
-						case *dap.StoppedEvent:
-							if m.Body.Reason != "breakpoint" || !m.Body.AllThreadsStopped || m.Body.ThreadId != 1 {
-								t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", m)
-							}
-							checkStop(t, client, 1, "main.main", 23)
-							seCount++
-							client.ContinueRequest(1)
-						case *dap.OutputEvent:
-							checkLogMessage(t, m, -1, "hello", fixture.Source, 8)
-							oeCount++
-						case *dap.ContinueResponse:
-						case *dap.TerminatedEvent:
-							t.Fatalf("\nexpected 10 output events and 10 stopped events, got %d output events and %d stopped events", oeCount, seCount)
-						default:
-							t.Fatalf("Unexpected message type: expect StoppedEvent, OutputEvent, or ContinueResponse, got %#v", m)
+				client.ConfigurationDoneRequest()
+				client.ExpectConfigurationDoneResponse(t)
+
+				// There may be up to 1 breakpoint and any number of log points that are
+				// hit concurrently. We should get a stopped event everytime the breakpoint
+				// is hit and an output event for each log point hit.
+				var oeCount, seCount int
+				for oeCount < 10 || seCount < 10 {
+					switch m := client.ExpectMessage(t).(type) {
+					case *dap.StoppedEvent:
+						if m.Body.Reason != "breakpoint" || !m.Body.AllThreadsStopped || m.Body.ThreadId != 1 {
+							t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", m)
 						}
+						seCount++
+						client.ContinueRequest(1)
+					case *dap.OutputEvent:
+						checkLogMessage(t, m, -1, "hello", fixture.Source, 8)
+						oeCount++
+					case *dap.ContinueResponse:
+					case *dap.TerminatedEvent:
+						t.Fatalf("\nexpected 10 output events and 10 stopped events, got %d output events and %d stopped events", oeCount, seCount)
+					default:
+						t.Fatalf("Unexpected message type: expect StoppedEvent, OutputEvent, or ContinueResponse, got %#v", m)
 					}
-					client.ExpectTerminatedEvent(t)
-				},
-				disconnect: false,
-			}})
-	})
+				}
+				// TODO(suzmue): The dap server may identify some false
+				// positives for hard coded breakpoints, so there may still
+				// be more stopped events.
+				client.DisconnectRequestWithKillOption(true)
+			})
+		})
+	}
 }
 
 func TestSetBreakpointWhileRunning(t *testing.T) {
@@ -3805,6 +3929,127 @@ func TestEvaluateRequest(t *testing.T) {
 	})
 }
 
+func formatConfig(depth int, showGlobals, showRegisters bool, goroutineFilters string, hideSystemGoroutines bool, substitutePath [][2]string) string {
+	formatStr := `stackTraceDepth	%d
+showGlobalVariables	%v
+showRegisters	%v
+goroutineFilters	%q
+hideSystemGoroutines	%v
+substitutePath	%v
+`
+	return fmt.Sprintf(formatStr, depth, showGlobals, showRegisters, goroutineFilters, hideSystemGoroutines, substitutePath)
+}
+
+func TestEvaluateCommandRequest(t *testing.T) {
+	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			fixture.Source, []int{}, // Breakpoint set in the program
+			[]onBreakpoint{{ // Stop at first breakpoint
+				execute: func() {
+					checkStop(t, client, 1, "main.foobar", 66)
+
+					// Request help.
+					const dlvHelp = `The following commands are available:
+    dlv help (alias: h) 	 Prints the help message.
+    dlv config 	 Changes configuration parameters.
+    dlv sources (alias: s) 	 Print list of source files.
+
+Type 'dlv help' followed by a command for full documentation.
+`
+					client.EvaluateRequest("dlv help", 1000, "repl")
+					got := client.ExpectEvaluateResponse(t)
+					checkEval(t, got, dlvHelp, noChildren)
+
+					client.EvaluateRequest("dlv help config", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, msgConfig, noChildren)
+
+					// Test config.
+					client.EvaluateRequest("dlv config -list", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, formatConfig(50, false, false, "", false, [][2]string{}), noChildren)
+
+					// Read and modify showGlobalVariables.
+					client.EvaluateRequest("dlv config -list showGlobalVariables", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, "showGlobalVariables\tfalse\n", noChildren)
+
+					client.ScopesRequest(1000)
+					scopes := client.ExpectScopesResponse(t)
+					if len(scopes.Body.Scopes) > 1 {
+						t.Errorf("\ngot  %#v\nwant len(scopes)=1 (Locals)", scopes)
+					}
+					checkScope(t, scopes, 0, "Locals", -1)
+
+					client.EvaluateRequest("dlv config showGlobalVariables true", 1000, "repl")
+					client.ExpectInvalidatedEvent(t)
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, "showGlobalVariables\ttrue\n\nUpdated", noChildren)
+
+					client.EvaluateRequest("dlv config -list", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, formatConfig(50, true, false, "", false, [][2]string{}), noChildren)
+
+					client.ScopesRequest(1000)
+					scopes = client.ExpectScopesResponse(t)
+					if len(scopes.Body.Scopes) < 2 {
+						t.Errorf("\ngot  %#v\nwant len(scopes)=2 (Locals & Globals)", scopes)
+					}
+					checkScope(t, scopes, 0, "Locals", -1)
+					checkScope(t, scopes, 1, "Globals (package main)", -1)
+
+					// Read and modify substitutePath.
+					client.EvaluateRequest("dlv config -list substitutePath", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, "substitutePath\t[]\n", noChildren)
+
+					client.EvaluateRequest(fmt.Sprintf("dlv config substitutePath %q %q", "my/client/path", "your/server/path"), 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, "substitutePath\t[[my/client/path your/server/path]]\n\nUpdated", noChildren)
+
+					client.EvaluateRequest(fmt.Sprintf("dlv config substitutePath %q %q", "my/client/path", "new/your/server/path"), 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, "substitutePath\t[[my/client/path new/your/server/path]]\n\nUpdated", noChildren)
+
+					client.EvaluateRequest(fmt.Sprintf("dlv config substitutePath %q", "my/client/path"), 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, "substitutePath\t[]\n\nUpdated", noChildren)
+
+					// Test sources.
+					client.EvaluateRequest("dlv sources", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					if !strings.Contains(got.Body.Result, fixture.Source) {
+						t.Errorf("\ngot: %#v, want sources contains %s", got, fixture.Source)
+					}
+
+					client.EvaluateRequest(fmt.Sprintf("dlv sources .*%s", strings.ReplaceAll(filepath.Base(fixture.Source), ".", "\\.")), 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					if got.Body.Result != fixture.Source {
+						t.Errorf("\ngot: %#v, want sources=%q", got, fixture.Source)
+					}
+
+					client.EvaluateRequest("dlv sources nonexistentsource", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					if got.Body.Result != "" {
+						t.Errorf("\ngot: %#v, want sources=\"\"", got)
+					}
+
+					// Test bad inputs.
+					client.EvaluateRequest("dlv help bad", 1000, "repl")
+					client.ExpectErrorResponse(t)
+
+					client.EvaluateRequest("dlv bad", 1000, "repl")
+					client.ExpectErrorResponse(t)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
 // From testvariables2 fixture
 const (
 	// As defined in the code
@@ -4170,6 +4415,30 @@ func TestNextAndStep(t *testing.T) {
 	})
 }
 
+func TestHardCodedBreakpoints(t *testing.T) {
+	runTest(t, "consts", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			fixture.Source, []int{28},
+			[]onBreakpoint{{ // Stop at line 28
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 28)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "breakpoint" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"breakpoint\"", se)
+					}
+				},
+				disconnect: false,
+			}})
+	})
+}
+
 // TestStepInstruction executes to a breakpoint and tests stepping
 // a single instruction
 func TestStepInstruction(t *testing.T) {
@@ -4266,6 +4535,8 @@ func getPC(t *testing.T, client *daptest.Client, threadId int) (uint64, error) {
 	return strconv.ParseUint(st.Body.StackFrames[0].InstructionPointerReference, 0, 64)
 }
 
+// TestNextParked tests that we can switched selected goroutine to a parked one
+// and perform next operation on it.
 func TestNextParked(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.SkipNow()
@@ -4280,40 +4551,48 @@ func TestNextParked(t *testing.T) {
 			fixture.Source, []int{15},
 			[]onBreakpoint{{ // Stop at line 15
 				execute: func() {
-					if goroutineId := testStepParkedHelper(t, client, fixture); goroutineId >= 0 {
-
-						client.NextRequest(goroutineId)
+					if parkedGoid := testNextParkedHelper(t, client, fixture); parkedGoid >= 0 {
+						client.NextRequest(parkedGoid)
 						client.ExpectNextResponse(t)
 
 						se := client.ExpectStoppedEvent(t)
-						if se.Body.ThreadId != goroutineId {
-							t.Fatalf("Next did not continue on the selected goroutine, expected %d got %d", goroutineId, se.Body.ThreadId)
+						if se.Body.ThreadId != parkedGoid {
+							t.Fatalf("Next did not continue on the newly selected goroutine, expected %d got %d", parkedGoid, se.Body.ThreadId)
 						}
 					}
 				},
+				// Let the test harness continue to process termination
+				// if it hasn't gotten there already.
 				disconnect: false,
 			}})
 	})
 }
 
-func testStepParkedHelper(t *testing.T, client *daptest.Client, fixture protest.Fixture) int {
+// Finds a goroutine other than the selected one that is parked inside of main.sayhi and therefore
+// still has a line to execute if resumed with next.
+func testNextParkedHelper(t *testing.T, client *daptest.Client, fixture protest.Fixture) int {
 	t.Helper()
-	// Set a breakpoint at main.sayHi
+	// Set a breakpoint at main.sayhi
 	client.SetBreakpointsRequest(fixture.Source, []int{8})
 	client.ExpectSetBreakpointsResponse(t)
 
-	var goroutineId = -1
-	for goroutineId < 0 {
+	var parkedGoid = -1
+	for parkedGoid < 0 {
 		client.ContinueRequest(1)
-		contResp := client.ExpectMessage(t)
-		switch contResp.(type) {
-		case *dap.ContinueResponse:
+		client.ExpectContinueResponse(t)
+		event := client.ExpectMessage(t)
+		switch event.(type) {
+		case *dap.StoppedEvent:
 			// ok
 		case *dap.TerminatedEvent:
+			// This is very unlikely to happen. But in theory if all sayhi
+			// gouritines are run serially, there will never be a second parked
+			// sayhi goroutine when another breaks and we will keep trying
+			// until process termination.
 			return -1
 		}
 
-		se := client.ExpectStoppedEvent(t)
+		se := event.(*dap.StoppedEvent)
 
 		client.ThreadsRequest()
 		threads := client.ExpectThreadsResponse(t)
@@ -4324,9 +4603,7 @@ func testStepParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 		// 2. hasn't called wg.Done yet
 		// 3. is not the currently selected goroutine
 		for _, g := range threads.Body.Threads {
-			// We do not need to check the thread that the program
-			// is currently stopped on.
-			if g.Id == se.Body.ThreadId {
+			if g.Id == se.Body.ThreadId { // Skip selected goroutine
 				continue
 			}
 			client.StackTraceRequest(g.Id, 0, 5)
@@ -4334,11 +4611,11 @@ func testStepParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 			for _, frame := range frames.Body.StackFrames {
 				// line 11 is the line where wg.Done is called
 				if frame.Name == "main.sayhi" && frame.Line < 11 {
-					goroutineId = g.Id
+					parkedGoid = g.Id
 					break
 				}
 			}
-			if goroutineId >= 0 {
+			if parkedGoid >= 0 {
 				break
 			}
 		}
@@ -4347,8 +4624,7 @@ func testStepParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 	// Clear all breakpoints.
 	client.SetBreakpointsRequest(fixture.Source, []int{})
 	client.ExpectSetBreakpointsResponse(t)
-
-	return goroutineId
+	return parkedGoid
 }
 
 // TestStepOutPreservesGoroutine is inspired by proc_test.TestStepOutPreservesGoroutine
@@ -4619,8 +4895,8 @@ func TestPanicBreakpointOnContinue(t *testing.T) {
 					st := client.ExpectStackTraceResponse(t)
 					for i, frame := range st.Body.StackFrames {
 						if strings.HasPrefix(frame.Name, "runtime.") {
-							if frame.Source.PresentationHint != "deemphasize" {
-								t.Errorf("\ngot Body.StackFrames[%d]=%#v\nwant Source.PresentationHint=\"deemphasize\"", i, frame)
+							if frame.PresentationHint != "subtle" {
+								t.Errorf("\ngot Body.StackFrames[%d]=%#v\nwant Source.PresentationHint=\"subtle\"", i, frame)
 							}
 						} else if frame.Source.PresentationHint != "" {
 							t.Errorf("\ngot Body.StackFrames[%d]=%#v\nwant Source.PresentationHint=\"\"", i, frame)
@@ -4829,7 +5105,7 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 		if onBP.disconnect {
 			client.DisconnectRequestWithKillOption(true)
 			if onBP.terminated {
-				client.ExpectOutputEventProcessExited(t, 0)
+				client.ExpectOutputEventProcessExitedAnyStatus(t)
 				client.ExpectOutputEventDetaching(t)
 			} else {
 				client.ExpectOutputEventDetachingKill(t)
@@ -4848,7 +5124,7 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 	}
 	client.DisconnectRequestWithKillOption(true)
 	if cmd == "launch" {
-		client.ExpectOutputEventProcessExited(t, 0)
+		client.ExpectOutputEventProcessExitedAnyStatus(t)
 		client.ExpectOutputEventDetaching(t)
 	} else if cmd == "attach" {
 		client.ExpectOutputEventDetachingKill(t)
@@ -6191,10 +6467,10 @@ func TestAttachRemoteToRunningTargetContinueOnEntry(t *testing.T) {
 	})
 }
 
-// TestMultiClient tests that that remote attach doesn't take down
+// TestAttachRemoteMultiClientDisconnect tests that that remote attach doesn't take down
 // the server in multi-client mode unless terminateDebugee is explicitely set.
-func TestAttachRemoteMultiClient(t *testing.T) {
-	closingClientSessionOnly := "Closing client session, but leaving multi-client DAP server running at"
+func TestAttachRemoteMultiClientDisconnect(t *testing.T) {
+	closingClientSessionOnly := fmt.Sprintf(daptest.ClosingClient, "halted")
 	detachingAndTerminating := "Detaching and terminating target process"
 	tests := []struct {
 		name              string
@@ -6274,18 +6550,18 @@ func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 				// Both launch and attach requests should go through for additional error checking
 				client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 100})
 				er := client.ExpectVisibleErrorResponse(t)
-				msg := "Failed to attach: debugger already started - use remote mode to connect"
-				if er.Body.Error.Id != FailedToAttach || er.Body.Error.Format != msg {
-					t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToAttach, msg)
+				msgRe, _ := regexp.Compile("Failed to attach: debug session already in progress at [0-9]+:[0-9]+ - use remote mode to connect to a server with an active debug session")
+				if er.Body.Error.Id != FailedToAttach || msgRe.MatchString(er.Body.Error.Format) {
+					t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToAttach, msgRe)
 				}
 				tests := []string{"debug", "test", "exec", "replay", "core"}
 				for _, mode := range tests {
 					t.Run(mode, func(t *testing.T) {
 						client.LaunchRequestWithArgs(map[string]interface{}{"mode": mode})
 						er := client.ExpectVisibleErrorResponse(t)
-						msg := "Failed to launch: debugger already started - use remote attach to connect to a server with an active debug session"
-						if er.Body.Error.Id != FailedToLaunch || er.Body.Error.Format != msg {
-							t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToLaunch, msg)
+						msgRe, _ := regexp.Compile("Failed to launch: debug session already in progress at [0-9]+:[0-9]+ - use remote attach mode to connect to a server with an active debug session")
+						if er.Body.Error.Id != FailedToLaunch || msgRe.MatchString(er.Body.Error.Format) {
+							t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToLaunch, msgRe)
 						}
 					})
 				}
@@ -6386,6 +6662,83 @@ func TestBadlyFormattedMessageToServer(t *testing.T) {
 		client.DisconnectRequest()
 		client.ExpectDisconnectResponse(t)
 	})
+}
+
+func TestParseLogPoint(t *testing.T) {
+	tests := []struct {
+		name           string
+		msg            string
+		wantTracepoint bool
+		wantFormat     string
+		wantArgs       []string
+		wantErr        bool
+	}{
+		// Test simple log messages.
+		{name: "simple string", msg: "hello, world!", wantTracepoint: true, wantFormat: "hello, world!"},
+		{name: "empty string", msg: "", wantTracepoint: false, wantErr: false},
+		// Test parse eval expressions.
+		{
+			name:           "simple eval",
+			msg:            "{x}",
+			wantTracepoint: true,
+			wantFormat:     "%s",
+			wantArgs:       []string{"x"},
+		},
+		{
+			name:           "type cast",
+			msg:            "hello {string(x)}",
+			wantTracepoint: true,
+			wantFormat:     "hello %s",
+			wantArgs:       []string{"string(x)"},
+		},
+		{
+			name:           "multiple eval",
+			msg:            "{x} {y} {z}",
+			wantTracepoint: true,
+			wantFormat:     "%s %s %s",
+			wantArgs:       []string{"x", "y", "z"},
+		},
+		{
+			name:           "eval expressions contain braces",
+			msg:            "{interface{}(x)} {myType{y}} {[]myType{{z}}}",
+			wantTracepoint: true,
+			wantFormat:     "%s %s %s",
+			wantArgs:       []string{"interface{}(x)", "myType{y}", "[]myType{{z}}"},
+		},
+		// Test parse errors.
+		{name: "empty evaluation", msg: "{}", wantErr: true},
+		{name: "empty space evaluation", msg: "{   \n}", wantErr: true},
+		{name: "open brace missing closed", msg: "{", wantErr: true},
+		{name: "closed brace missing open", msg: "}", wantErr: true},
+		{name: "open brace in expression", msg: `{m["{"]}`, wantErr: true},
+		{name: "closed brace in expression", msg: `{m["}"]}`, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotTracepoint, gotLogMessage, err := parseLogPoint(tt.msg)
+			if gotTracepoint != tt.wantTracepoint {
+				t.Errorf("parseLogPoint() tracepoint = %v, wantTracepoint %v", gotTracepoint, tt.wantTracepoint)
+				return
+			}
+			if (err != nil) != tt.wantErr {
+				t.Errorf("parseLogPoint() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantTracepoint {
+				return
+			}
+			if gotLogMessage == nil {
+				t.Errorf("parseLogPoint() gotLogMessage = nil, want log message")
+				return
+			}
+			if gotLogMessage.format != tt.wantFormat {
+				t.Errorf("parseLogPoint() gotFormat = %v, want %v", gotLogMessage.format, tt.wantFormat)
+			}
+			if !reflect.DeepEqual(gotLogMessage.args, tt.wantArgs) {
+				t.Errorf("parseLogPoint() gotArgs = %v, want %v", gotLogMessage.args, tt.wantArgs)
+			}
+		})
+	}
 }
 
 func TestDisassemble(t *testing.T) {

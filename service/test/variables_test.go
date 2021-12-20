@@ -101,7 +101,7 @@ func evalVariable(p *proc.Target, symbol string, cfg proc.LoadConfig) (*proc.Var
 		return nil, err
 	}
 
-	return scope.EvalVariable(symbol, cfg)
+	return scope.EvalExpression(symbol, cfg)
 }
 
 func (tc *varTest) alternateVarTest() varTest {

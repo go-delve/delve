@@ -947,6 +947,76 @@ func TestClientServer_FindLocations(t *testing.T) {
 			findLocationHelper(t, c, "dirio.SomeFunction:0", false, 1, someFuncLoc)
 		})
 	}
+
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
+		withTestClient2("locationsprog_generic", t, func(c service.Client) {
+			const (
+				methodLine = "locationsprog_generic.go:9"
+				funcLine   = "locationsprog_generic.go:13"
+				funcLine2  = "locationsprog_generic.go:14"
+			)
+			methodLoc := findLocationHelper2(t, c, methodLine, nil)
+			if len(methodLoc.PCs) != 2 {
+				// we didn't get both instantiations of the method
+				t.Errorf("wrong number of PCs for %s: %#x", methodLine, methodLoc.PCs)
+			}
+
+			funcLoc := findLocationHelper2(t, c, funcLine, nil)
+			if len(funcLoc.PCs) != 2 {
+				// we didn't get both instantiations of the function
+				t.Errorf("wrong number of PCs for %s: %#x", funcLine, funcLoc.PCs)
+			}
+
+			funcLoc2 := findLocationHelper2(t, c, funcLine2, nil)
+			if len(funcLoc2.PCs) != 2 {
+				t.Errorf("wrong number of PCs for %s: %#x", funcLine2, funcLoc2.PCs)
+			}
+
+			findLocationHelper2(t, c, "main.ParamFunc", funcLoc)
+
+			findLocationHelper2(t, c, "ParamFunc", funcLoc)
+
+			findLocationHelper2(t, c, "main.ParamReceiver.Amethod", methodLoc)
+			findLocationHelper2(t, c, "main.Amethod", methodLoc)
+			findLocationHelper2(t, c, "ParamReceiver.Amethod", methodLoc)
+			findLocationHelper2(t, c, "Amethod", methodLoc)
+
+			findLocationHelper2(t, c, "main.(*ParamReceiver).Amethod", methodLoc)
+			findLocationHelper2(t, c, "(*ParamReceiver).Amethod", methodLoc)
+
+			findLocationHelper2(t, c, "main.(*ParamReceiver).Amethod", methodLoc)
+			findLocationHelper2(t, c, "(*ParamReceiver).Amethod", methodLoc)
+
+			findLocationHelper2(t, c, "main.ParamFunc:1", funcLoc2)
+		})
+	}
+}
+
+func findLocationHelper2(t *testing.T, c service.Client, loc string, checkLoc *api.Location) *api.Location {
+	locs, err := c.FindLocation(api.EvalScope{GoroutineID: -1}, loc, false, nil)
+	if err != nil {
+		t.Fatalf("FindLocation(%q) -> error %v", loc, err)
+	}
+	t.Logf("FindLocation(%q) → %v\n", loc, locs)
+	if len(locs) != 1 {
+		t.Logf("Wrong number of locations returned for location %q (got %d expected 1)", loc, len(locs))
+	}
+
+	if checkLoc == nil {
+		return &locs[0]
+	}
+
+	if len(checkLoc.PCs) != len(locs[0].PCs) {
+		t.Fatalf("Wrong number of PCs returned (got %#x expected %#x)", locs[0].PCs, checkLoc.PCs)
+	}
+
+	for i := range checkLoc.PCs {
+		if checkLoc.PCs[i] != locs[0].PCs[i] {
+			t.Fatalf("Wrong PCs returned (got %#x expected %#x)", locs[0].PCs, checkLoc.PCs)
+		}
+	}
+
+	return &locs[0]
 }
 
 func TestClientServer_FindLocationsAddr(t *testing.T) {
@@ -2517,6 +2587,68 @@ func TestGenericsBreakpoint(t *testing.T) {
 		assertNoError(state.Err, t, "Continue")
 		if line := frame1Line(); line != 11 {
 			t.Errorf("wrong line after first continue, expected 11, got %d", line)
+		}
+
+		if bp.FunctionName != "main.testfn" {
+			t.Errorf("wrong name for breakpoint (CreateBreakpoint): %q", bp.FunctionName)
+		}
+
+		bps, err := c.ListBreakpoints(false)
+		assertNoError(err, t, "ListBreakpoints")
+
+		for _, bp := range bps {
+			if bp.ID > 0 {
+				if bp.FunctionName != "main.testfn" {
+					t.Errorf("wrong name for breakpoint (ListBreakpoints): %q", bp.FunctionName)
+				}
+				break
+			}
+		}
+
+		rmbp, err := c.ClearBreakpoint(bp.ID)
+		assertNoError(err, t, "ClearBreakpoint")
+		if rmbp.FunctionName != "main.testfn" {
+			t.Errorf("wrong name for breakpoint (ClearBreakpoint): %q", rmbp.FunctionName)
+		}
+	})
+}
+
+func TestRestartRewindAfterEnd(t *testing.T) {
+	if testBackend != "rr" {
+		t.Skip("not relevant")
+	}
+	// Check that Restart works after the program has terminated, even if a
+	// Continue is requested just before it.
+	// Also check that Rewind can be used after the program has terminated.
+	protest.AllowRecording(t)
+	withTestClient2("math", t, func(c service.Client) {
+		state := <-c.Continue()
+		if !state.Exited {
+			t.Fatalf("program did not exit")
+		}
+		state = <-c.Continue()
+		if !state.Exited {
+			t.Errorf("bad Continue return state: %v", state)
+		}
+		time.Sleep(1 * time.Second) // bug only happens if there is some time for the server to close the notify channel
+		_, err := c.Restart(false)
+		if err != nil {
+			t.Fatalf("Restart: %v", err)
+		}
+		state = <-c.Continue()
+		if !state.Exited {
+			t.Fatalf("program did not exit exited")
+		}
+		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 0})
+		if err != nil {
+			t.Fatalf("CreateBreakpoint: %v", err)
+		}
+		state = <-c.Rewind()
+		if state.Exited || state.Err != nil {
+			t.Errorf("bad Rewind return state: %v", state)
+		}
+		if state.CurrentThread.Line != 7 {
+			t.Errorf("wrong stop location %s:%d", state.CurrentThread.File, state.CurrentThread.Line)
 		}
 	})
 }

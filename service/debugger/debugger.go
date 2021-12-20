@@ -393,28 +393,31 @@ func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
 		g = p.SelectedGoroutine()
 	)
 
-	fn, ok := p.BinInfo().LookupFunc[fnName]
-	if !ok {
-		return nil, fmt.Errorf("unable to find function %s", fnName)
-	}
-
-	var regs proc.Registers
-	mem := p.Memory()
-	if g != nil && g.Thread != nil {
-		regs, _ = g.Thread.Registers()
-	}
-	instructions, err := proc.Disassemble(mem, regs, p.Breakpoints(), p.BinInfo(), fn.Entry, fn.End)
+	fns, err := p.BinInfo().FindFunction(fnName)
 	if err != nil {
 		return nil, err
 	}
 
 	var addrs []uint64
-	for _, instruction := range instructions {
-		if instruction.IsRet() {
-			addrs = append(addrs, instruction.Loc.PC)
+
+	for _, fn := range fns {
+		var regs proc.Registers
+		mem := p.Memory()
+		if g != nil && g.Thread != nil {
+			regs, _ = g.Thread.Registers()
 		}
+		instructions, err := proc.Disassemble(mem, regs, p.Breakpoints(), p.BinInfo(), fn.Entry, fn.End)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, instruction := range instructions {
+			if instruction.IsRet() {
+				addrs = append(addrs, instruction.Loc.PC)
+			}
+		}
+		addrs = append(addrs, proc.FindDeferReturnCalls(instructions)...)
 	}
-	addrs = append(addrs, proc.FindDeferReturnCalls(instructions)...)
 
 	return addrs, nil
 }
@@ -450,6 +453,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 
 	recorded, _ := d.target.Recorded()
 	if recorded && !rerecord {
+		d.target.ResumeNotify(nil)
 		return nil, d.target.Restart(pos)
 	}
 
@@ -901,19 +905,12 @@ func (d *Debugger) clearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 		return bp, nil
 	}
 
-	var clearedBp *api.Breakpoint
-	var errs []error
+	var clearBps []*proc.Breakpoint
 
-	clear := func(addr uint64) {
-		if clearedBp == nil {
-			bp := d.target.Breakpoints().M[addr]
-			if bp != nil {
-				clearedBp = api.ConvertBreakpoint(bp)
-			}
-		}
-		err := d.target.ClearBreakpoint(addr)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("address %#x: %v", addr, err))
+	toclear := func(addr uint64) {
+		bp := d.target.Breakpoints().M[addr]
+		if bp != nil {
+			clearBps = append(clearBps, bp)
 		}
 	}
 
@@ -922,10 +919,23 @@ func (d *Debugger) clearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 		if addr == requestedBp.Addr {
 			clearAddr = false
 		}
-		clear(addr)
+		toclear(addr)
 	}
 	if clearAddr {
-		clear(requestedBp.Addr)
+		toclear(requestedBp.Addr)
+	}
+
+	// Breakpoints need to be converted before clearing them or they won't have
+	// an ID anymore.
+	sort.Sort(breakpointsByLogicalID(clearBps))
+	clearedBp := api.ConvertBreakpoints(clearBps)[0]
+
+	var errs []error
+	for _, bp := range clearBps {
+		err := d.target.ClearBreakpoint(bp.Addr)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("address %#x: %v", bp.Addr, err))
+		}
 	}
 
 	if len(errs) > 0 {
@@ -937,7 +947,7 @@ func (d *Debugger) clearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 			}
 		}
 
-		if clearedBp == nil {
+		if len(errs) == len(clearBps) {
 			return nil, fmt.Errorf("unable to clear breakpoint %d: %v", requestedBp.ID, buf.String())
 		}
 		return nil, fmt.Errorf("unable to clear breakpoint %d (partial): %s", requestedBp.ID, buf.String())
@@ -1329,7 +1339,7 @@ func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error 
 			bpi.Variables = make([]api.Variable, len(bp.Variables))
 		}
 		for i := range bp.Variables {
-			v, err := s.EvalVariable(bp.Variables[i], proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1})
+			v, err := s.EvalExpression(bp.Variables[i], proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1})
 			if err != nil {
 				bpi.Variables[i] = api.Variable{Name: bp.Variables[i], Unreadable: fmt.Sprintf("eval error: %v", err)}
 			} else {
@@ -1513,7 +1523,7 @@ func (d *Debugger) Function(goid, frame, deferredCall int, cfg proc.LoadConfig) 
 
 // EvalVariableInScope will attempt to evaluate the variable represented by 'symbol'
 // in the scope provided.
-func (d *Debugger) EvalVariableInScope(goid, frame, deferredCall int, symbol string, cfg proc.LoadConfig) (*proc.Variable, error) {
+func (d *Debugger) EvalVariableInScope(goid, frame, deferredCall int, expr string, cfg proc.LoadConfig) (*proc.Variable, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1521,7 +1531,7 @@ func (d *Debugger) EvalVariableInScope(goid, frame, deferredCall int, symbol str
 	if err != nil {
 		return nil, err
 	}
-	return s.EvalVariable(symbol, cfg)
+	return s.EvalExpression(expr, cfg)
 }
 
 // LoadResliced will attempt to 'reslice' a map, array or slice so that the values

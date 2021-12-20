@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/cosiner/argv"
+	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/locspec"
 	"github.com/go-delve/delve/pkg/terminal/colorize"
 	"github.com/go-delve/delve/service"
@@ -771,27 +772,17 @@ func (a byGoroutineID) Len() int           { return len(a) }
 func (a byGoroutineID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byGoroutineID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
-// The number of goroutines we're going to request on each RPC call
-const goroutineBatchSize = 10000
-
-type printGoroutinesFlags uint8
-
-const (
-	printGoroutinesStack printGoroutinesFlags = 1 << iota
-	printGoroutinesLabels
-)
-
-func printGoroutines(t *Term, indent string, gs []*api.Goroutine, fgl formatGoroutineLoc, flags printGoroutinesFlags, depth int, state *api.DebuggerState) error {
+func printGoroutines(t *Term, indent string, gs []*api.Goroutine, fgl api.FormatGoroutineLoc, flags api.PrintGoroutinesFlags, depth int, state *api.DebuggerState) error {
 	for _, g := range gs {
 		prefix := indent + "  "
 		if state.SelectedGoroutine != nil && g.ID == state.SelectedGoroutine.ID {
 			prefix = indent + "* "
 		}
 		fmt.Printf("%sGoroutine %s\n", prefix, t.formatGoroutine(g, fgl))
-		if flags&printGoroutinesLabels != 0 {
+		if flags&api.PrintGoroutinesLabels != 0 {
 			writeGoroutineLabels(os.Stdout, g, indent+"\t")
 		}
-		if flags&printGoroutinesStack != 0 {
+		if flags&api.PrintGoroutinesStack != 0 {
 			stack, err := t.client.Stacktrace(g.ID, depth, 0, nil)
 			if err != nil {
 				return err
@@ -802,83 +793,10 @@ func printGoroutines(t *Term, indent string, gs []*api.Goroutine, fgl formatGoro
 	return nil
 }
 
-const (
-	maxGroupMembers    = 5
-	maxGoroutineGroups = 50
-)
-
 func goroutines(t *Term, ctx callContext, argstr string) error {
-	args := strings.Split(argstr, " ")
-	var filters []api.ListGoroutinesFilter
-	var group api.GoroutineGroupingOptions
-	var fgl = fglUserCurrent
-	var flags printGoroutinesFlags
-	var depth = 10
-	var batchSize = goroutineBatchSize
-
-	group.MaxGroupMembers = maxGroupMembers
-	group.MaxGroups = maxGoroutineGroups
-
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch arg {
-		case "-u":
-			fgl = fglUserCurrent
-		case "-r":
-			fgl = fglRuntimeCurrent
-		case "-g":
-			fgl = fglGo
-		case "-s":
-			fgl = fglStart
-		case "-l":
-			flags |= printGoroutinesLabels
-		case "-t":
-			flags |= printGoroutinesStack
-			// optional depth argument
-			if i+1 < len(args) && len(args[i+1]) > 0 {
-				n, err := strconv.Atoi(args[i+1])
-				if err == nil {
-					depth = n
-					i++
-				}
-			}
-
-		case "-w", "-with":
-			filter, err := readGoroutinesFilter(args, &i)
-			if err != nil {
-				return err
-			}
-			filters = append(filters, *filter)
-
-		case "-wo", "-without":
-			filter, err := readGoroutinesFilter(args, &i)
-			if err != nil {
-				return err
-			}
-			filter.Negated = true
-			filters = append(filters, *filter)
-
-		case "-group":
-			var err error
-			group.GroupBy, err = readGoroutinesFilterKind(args, i+1)
-			if err != nil {
-				return err
-			}
-			i++
-			if group.GroupBy == api.GoroutineLabel {
-				if i+1 >= len(args) {
-					return errors.New("-group label must be followed by an argument")
-				}
-				group.GroupByKey = args[i+1]
-				i++
-			}
-			batchSize = 0 // grouping only works well if run on all goroutines
-
-		case "":
-			// nothing to do
-		default:
-			return fmt.Errorf("wrong argument: '%s'", arg)
-		}
+	filters, group, fgl, flags, depth, batchSize, err := api.ParseGoroutineArgs(argstr)
+	if err != nil {
+		return err
 	}
 
 	state, err := t.client.GetState()
@@ -932,52 +850,6 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 	return nil
 }
 
-func readGoroutinesFilterKind(args []string, i int) (api.GoroutineField, error) {
-	if i >= len(args) {
-		return api.GoroutineFieldNone, fmt.Errorf("%s must be followed by an argument", args[i-1])
-	}
-
-	switch args[i] {
-	case "curloc":
-		return api.GoroutineCurrentLoc, nil
-	case "userloc":
-		return api.GoroutineUserLoc, nil
-	case "goloc":
-		return api.GoroutineGoLoc, nil
-	case "startloc":
-		return api.GoroutineStartLoc, nil
-	case "label":
-		return api.GoroutineLabel, nil
-	case "running":
-		return api.GoroutineRunning, nil
-	case "user":
-		return api.GoroutineUser, nil
-	default:
-		return api.GoroutineFieldNone, fmt.Errorf("unrecognized argument to %s %s", args[i-1], args[i])
-	}
-}
-
-func readGoroutinesFilter(args []string, pi *int) (*api.ListGoroutinesFilter, error) {
-	r := new(api.ListGoroutinesFilter)
-	var err error
-	r.Kind, err = readGoroutinesFilterKind(args, *pi+1)
-	if err != nil {
-		return nil, err
-	}
-	*pi++
-	switch r.Kind {
-	case api.GoroutineRunning, api.GoroutineUser:
-		return r, nil
-	}
-	if *pi+1 >= len(args) {
-		return nil, fmt.Errorf("%s %s needs to be followed by an expression", args[*pi-1], args[*pi])
-	}
-	r.Arg = args[*pi+1]
-	*pi++
-
-	return r, nil
-}
-
 func selectedGID(state *api.DebuggerState) int {
 	if state.SelectedGoroutine == nil {
 		return 0
@@ -985,16 +857,8 @@ func selectedGID(state *api.DebuggerState) int {
 	return state.SelectedGoroutine.ID
 }
 
-func split2PartsBySpace(s string) []string {
-	v := strings.SplitN(s, " ", 2)
-	for i := range v {
-		v[i] = strings.TrimSpace(v[i])
-	}
-	return v
-}
-
 func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
-	args := split2PartsBySpace(argstr)
+	args := config.Split2PartsBySpace(argstr)
 
 	if ctx.Prefix == onPrefix {
 		if len(args) != 1 || args[0] != "" {
@@ -1043,7 +907,7 @@ func (c *Commands) frameCommand(t *Term, ctx callContext, argstr string, directi
 			return errors.New("not enough arguments")
 		}
 	} else {
-		args := split2PartsBySpace(argstr)
+		args := config.Split2PartsBySpace(argstr)
 		var err error
 		if frame, err = strconv.Atoi(args[0]); err != nil {
 			return err
@@ -1087,7 +951,10 @@ func (c *Commands) frameCommand(t *Term, ctx callContext, argstr string, directi
 func (c *Commands) deferredCommand(t *Term, ctx callContext, argstr string) error {
 	ctx.Prefix = deferredPrefix
 
-	space := strings.Index(argstr, " ")
+	space := strings.IndexRune(argstr, ' ')
+	if space < 0 {
+		return errors.New("not enough arguments")
+	}
 
 	var err error
 	ctx.Scope.DeferredCall, err = strconv.Atoi(argstr[:space])
@@ -1120,20 +987,11 @@ func (t *Term) formatThread(th *api.Thread) string {
 	return fmt.Sprintf("%d at %s:%d", th.ID, t.formatPath(th.File), th.Line)
 }
 
-type formatGoroutineLoc int
-
-const (
-	fglRuntimeCurrent = formatGoroutineLoc(iota)
-	fglUserCurrent
-	fglGo
-	fglStart
-)
-
 func (t *Term) formatLocation(loc api.Location) string {
 	return fmt.Sprintf("%s:%d %s (%#v)", t.formatPath(loc.File), loc.Line, loc.Function.Name(), loc.PC)
 }
 
-func (t *Term) formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string {
+func (t *Term) formatGoroutine(g *api.Goroutine, fgl api.FormatGoroutineLoc) string {
 	if g == nil {
 		return "<nil>"
 	}
@@ -1143,16 +1001,16 @@ func (t *Term) formatGoroutine(g *api.Goroutine, fgl formatGoroutineLoc) string 
 	var locname string
 	var loc api.Location
 	switch fgl {
-	case fglRuntimeCurrent:
+	case api.FglRuntimeCurrent:
 		locname = "Runtime"
 		loc = g.CurrentLoc
-	case fglUserCurrent:
+	case api.FglUserCurrent:
 		locname = "User"
 		loc = g.UserCurrentLoc
-	case fglGo:
+	case api.FglGo:
 		locname = "Go"
 		loc = g.GoStatementLoc
-	case fglStart:
+	case api.FglStart:
 		locname = "Start"
 		loc = g.StartLoc
 	}
@@ -1258,7 +1116,7 @@ func restart(t *Term, ctx callContext, args string) error {
 }
 
 func restartRecorded(t *Term, ctx callContext, args string) error {
-	v := split2PartsBySpace(args)
+	v := config.Split2PartsBySpace(args)
 
 	rerecord := false
 	resetArgs := false
@@ -1810,7 +1668,7 @@ func formatBreakpointAttrs(prefix string, bp *api.Breakpoint, includeTrace bool)
 }
 
 func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]*api.Breakpoint, error) {
-	args := split2PartsBySpace(argstr)
+	args := config.Split2PartsBySpace(argstr)
 
 	requestedBp := &api.Breakpoint{}
 	spec := ""
@@ -2212,7 +2070,7 @@ func types(t *Term, ctx callContext, args string) error {
 }
 
 func parseVarArguments(args string, t *Term) (filter string, cfg api.LoadConfig) {
-	if v := split2PartsBySpace(args); len(v) >= 1 && v[0] == "-v" {
+	if v := config.Split2PartsBySpace(args); len(v) >= 1 && v[0] == "-v" {
 		if len(v) == 2 {
 			return v[1], t.loadConfig()
 		} else {
@@ -2486,7 +2344,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 	var cmd, rest string
 
 	if args != "" {
-		argv := split2PartsBySpace(args)
+		argv := config.Split2PartsBySpace(args)
 		if len(argv) != 2 {
 			return errDisasmUsage
 		}
@@ -2517,7 +2375,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		}
 		disasm, disasmErr = t.client.DisassemblePC(ctx.Scope, locs[0].PC, flavor)
 	case "-a":
-		v := split2PartsBySpace(rest)
+		v := config.Split2PartsBySpace(rest)
 		if len(v) != 2 {
 			return errDisasmUsage
 		}
@@ -2839,7 +2697,7 @@ func getBreakpointByIDOrName(t *Term, arg string) (*api.Breakpoint, error) {
 }
 
 func (c *Commands) onCmd(t *Term, ctx callContext, argstr string) error {
-	args := split2PartsBySpace(argstr)
+	args := config.Split2PartsBySpace(argstr)
 
 	if len(args) < 2 {
 		return errors.New("not enough arguments")
@@ -2916,7 +2774,7 @@ func (c *Commands) parseBreakpointAttrs(t *Term, ctx callContext, r io.Reader) e
 }
 
 func conditionCmd(t *Term, ctx callContext, argstr string) error {
-	args := split2PartsBySpace(argstr)
+	args := config.Split2PartsBySpace(argstr)
 
 	if len(args) < 2 {
 		return fmt.Errorf("not enough arguments")
@@ -2930,7 +2788,7 @@ func conditionCmd(t *Term, ctx callContext, argstr string) error {
 			return nil
 		}
 
-		args = split2PartsBySpace(args[1])
+		args = config.Split2PartsBySpace(args[1])
 		if len(args) < 2 {
 			return fmt.Errorf("not enough arguments")
 		}

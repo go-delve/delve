@@ -492,11 +492,9 @@ func (t *Target) SetEBPFTracepoint(fnName string) error {
 	if !t.proc.SupportsBPF() {
 		return errors.New("eBPF is not supported")
 	}
-	// Start putting together the argument map. This will tell the eBPF program
-	// all of the arguments we want to trace and how to find them.
-	fn, ok := t.BinInfo().LookupFunc[fnName]
-	if !ok {
-		return fmt.Errorf("could not find function %s", fnName)
+	fns, err := t.BinInfo().FindFunction(fnName)
+	if err != nil {
+		return err
 	}
 
 	// Get information on the Goroutine so we can tell the
@@ -518,6 +516,19 @@ func (t *Target) SetEBPFTracepoint(fnName string) error {
 			}
 		}
 	}
+
+	for _, fn := range fns {
+		err := t.setEBPFTracepointOnFunc(fn, goidOffset)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (t *Target) setEBPFTracepointOnFunc(fn *Function, goidOffset int64) error {
+	// Start putting together the argument map. This will tell the eBPF program
+	// all of the arguments we want to trace and how to find them.
 
 	// Start looping through each argument / return parameter for the function we
 	// are setting the uprobe on. Parse location information so that we can pass it
@@ -562,8 +573,10 @@ func (t *Target) SetEBPFTracepoint(fnName string) error {
 		})
 	}
 
+	//TODO(aarzilli): inlined calls?
+
 	// Finally, set the uprobe on the function.
-	t.proc.SetUProbe(fnName, goidOffset, args)
+	t.proc.SetUProbe(fn.Name, goidOffset, args)
 	return nil
 }
 
@@ -627,7 +640,10 @@ func (t *Target) SetWatchpoint(scope *EvalScope, expr string, wtype WatchType, c
 
 func (t *Target) setBreakpointInternal(addr uint64, kind BreakpointKind, wtype WatchType, cond ast.Expr) (*Breakpoint, error) {
 	if valid, err := t.Valid(); !valid {
-		return nil, err
+		recorded, _ := t.Recorded()
+		if !recorded {
+			return nil, err
+		}
 	}
 	bpmap := t.Breakpoints()
 	newBreaklet := &Breaklet{Kind: kind, Cond: cond}
@@ -726,7 +742,10 @@ func (bp *Breakpoint) canOverlap(kind BreakpointKind) bool {
 // ClearBreakpoint clears the breakpoint at addr.
 func (t *Target) ClearBreakpoint(addr uint64) error {
 	if valid, err := t.Valid(); !valid {
-		return err
+		recorded, _ := t.Recorded()
+		if !recorded {
+			return err
+		}
 	}
 	bp, ok := t.Breakpoints().M[addr]
 	if !ok {

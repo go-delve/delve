@@ -12,7 +12,7 @@ if [ "$GOVERSION" = "gotip" ]; then
     if [ "$arch" != "amd64" ]; then
         exit 0
     fi
-    bootstrapver=$(curl https://golang.org/VERSION?m=text)
+    bootstrapver=$(curl https://go.dev/VERSION?m=text)
     cd $TMPDIR
     curl -sSL "https://storage.googleapis.com/golang/$bootstrapver.darwin-$ARCH.tar.gz" | tar -xz
     cd -

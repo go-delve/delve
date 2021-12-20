@@ -750,9 +750,9 @@ func TestRemoteDAPClient(t *testing.T) {
 	cmd.Wait()
 }
 
-func closeDAPRemoteMultiClient(t *testing.T, c *daptest.Client) {
+func closeDAPRemoteMultiClient(t *testing.T, c *daptest.Client, expectStatus string) {
 	c.DisconnectRequest()
-	c.ExpectOutputEventClosingClient(t)
+	c.ExpectOutputEventClosingClient(t, expectStatus)
 	c.ExpectDisconnectResponse(t)
 	c.ExpectTerminatedEvent(t)
 	c.Close()
@@ -787,6 +787,11 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 		}
 	}()
 
+	// Client 0 connects but with the wrong attach request
+	dapclient0 := daptest.NewClient(listenAddr)
+	dapclient0.AttachRequest(map[string]interface{}{"mode": "local"})
+	dapclient0.ExpectErrorResponse(t)
+
 	// Client 1 connects and continues to main.main
 	dapclient := newDAPRemoteClient(t, listenAddr)
 	dapclient.SetFunctionBreakpointsRequest([]godap.FunctionBreakpoint{{Name: "main.main"}})
@@ -795,7 +800,7 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 	dapclient.ExpectContinueResponse(t)
 	dapclient.ExpectStoppedEvent(t)
 	dapclient.CheckStopLocation(t, 1, "main.main", 5)
-	closeDAPRemoteMultiClient(t, dapclient)
+	closeDAPRemoteMultiClient(t, dapclient, "halted")
 
 	// Client 2 reconnects at main.main and continues to process exit
 	dapclient2 := newDAPRemoteClient(t, listenAddr)
@@ -803,13 +808,13 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 	dapclient2.ContinueRequest(1)
 	dapclient2.ExpectContinueResponse(t)
 	dapclient2.ExpectTerminatedEvent(t)
-	closeDAPRemoteMultiClient(t, dapclient2)
+	closeDAPRemoteMultiClient(t, dapclient2, "exited")
 
 	// Attach to exited processs is an error
 	dapclient3 := daptest.NewClient(listenAddr)
 	dapclient3.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
 	dapclient3.ExpectErrorResponseWith(t, dap.FailedToAttach, `Process \d+ has exited with status 0`, true)
-	closeDAPRemoteMultiClient(t, dapclient3)
+	closeDAPRemoteMultiClient(t, dapclient3, "exited")
 
 	// But rpc clients can still connect and restart
 	rpcclient := rpc2.NewClient(listenAddr)
@@ -849,11 +854,25 @@ func TestRemoteDAPClientAfterContinue(t *testing.T) {
 
 	go func() { // Capture logging
 		for scanErr.Scan() {
-			t.Log(scanErr.Text())
+			text := scanErr.Text()
+			if strings.Contains(text, "Internal Error") {
+				t.Error("ERROR", text)
+			} else {
+				t.Log(text)
+			}
 		}
 	}()
 
 	c := newDAPRemoteClient(t, listenAddr)
+	c.ContinueRequest(1)
+	c.ExpectContinueResponse(t)
+	c.DisconnectRequest()
+	c.ExpectOutputEventClosingClient(t, "running")
+	c.ExpectDisconnectResponse(t)
+	c.ExpectTerminatedEvent(t)
+	c.Close()
+
+	c = newDAPRemoteClient(t, listenAddr)
 	c.DisconnectRequestWithKillOption(true)
 	c.ExpectOutputEventDetachingKill(t)
 	c.ExpectDisconnectResponse(t)
@@ -1100,6 +1119,10 @@ func TestVersion(t *testing.T) {
 }
 
 func TestStaticcheck(t *testing.T) {
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
+		//TODO(aarzilli): remove this before version 1.8.0 is released
+		t.Skip("staticcheck does not currently support Go 1.18")
+	}
 	_, err := exec.LookPath("staticcheck")
 	if err != nil {
 		t.Skip("staticcheck not installed")

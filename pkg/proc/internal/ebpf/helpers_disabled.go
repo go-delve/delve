@@ -1,5 +1,5 @@
-//go:build !ebpf
-// +build !ebpf
+//go:build !linux || !amd64 || !go1.16 || !cgo
+// +build !linux !amd64 !go1.16 !cgo
 
 package ebpf
 
@@ -35,7 +35,7 @@ func SymbolToOffset(file, symbol string) (uint32, error) {
 	return 0, errors.New("eBPF disabled")
 }
 
-func LoadEBPFTracingProgram() (*EBPFContext, error) {
+func LoadEBPFTracingProgram(path string) (*EBPFContext, error) {
 	return nil, errors.New("eBPF disabled")
 }
 

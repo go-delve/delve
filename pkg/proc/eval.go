@@ -423,11 +423,6 @@ func (scope *EvalScope) setValue(dstv, srcv *Variable, srcExpr string) error {
 	return fmt.Errorf("can not set variables of type %s (not implemented)", dstv.Kind.String())
 }
 
-// EvalVariable returns the value of the given expression (backwards compatibility).
-func (scope *EvalScope) EvalVariable(name string, cfg LoadConfig) (*Variable, error) {
-	return scope.EvalExpression(name, cfg)
-}
-
 // SetVariable sets the value of the named variable
 func (scope *EvalScope) SetVariable(name, value string) error {
 	t, err := parser.ParseExpr(name)
@@ -2117,6 +2112,8 @@ func (v *Variable) findMethod(mname string) (*Variable, error) {
 
 		pkg := typePath[:dot]
 		receiver := typePath[dot+1:]
+
+		//TODO(aarzilli): support generic functions?
 
 		if fn, ok := v.bi.LookupFunc[fmt.Sprintf("%s.%s.%s", pkg, receiver, mname)]; ok {
 			r, err := functionToVariable(fn, v.bi, v.mem)
