@@ -1346,6 +1346,7 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 		if _, ok := createdBps[want.name]; ok {
 			err = fmt.Errorf("breakpoint already exists")
 		} else {
+			got.Disabled = false
 			got.Cond = want.condition
 			got.HitCond = want.hitCondition
 			err = setLogMessage(got, want.logMessage)
