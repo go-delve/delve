@@ -18,6 +18,7 @@ import (
 	"go/parser"
 	"io"
 	"io/ioutil"
+	"math"
 	"net"
 	"os"
 	"os/exec"
@@ -2988,20 +2989,29 @@ func (s *Session) onReadMemoryRequest(request *dap.ReadMemoryRequest) {
 }
 
 var invalidInstruction = dap.DisassembledInstruction{
-	Address:     "out of bounds",
 	Instruction: "invalid instruction",
 }
 
 // onDisassembleRequest handles 'disassemble' requests.
 // Capability 'supportsDisassembleRequest' is set in 'initialize' response.
 func (s *Session) onDisassembleRequest(request *dap.DisassembleRequest) {
+	// TODO(suzmue): microsoft/vscode#129655 is discussing the difference between
+	// memory reference and instructionPointerReference, which are currently
+	// being used interchangeably by vscode.
+	addr, err := strconv.ParseUint(request.Arguments.MemoryReference, 0, 64)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToDisassemble, "Unable to disassemble", err.Error())
+		return
+	}
+
 	// If the requested memory address is an invalid location, return all invalid instructions.
 	// TODO(suzmue): consider adding fake addresses that would allow us to receive out of bounds
 	// requests that include valid instructions designated by InstructionOffset or InstructionCount.
-	if request.Arguments.MemoryReference == invalidInstruction.Address {
+	if addr == 0 || addr == uint64(math.MaxUint64) {
 		instructions := make([]dap.DisassembledInstruction, request.Arguments.InstructionCount)
 		for i := range instructions {
 			instructions[i] = invalidInstruction
+			instructions[i].Address = request.Arguments.MemoryReference
 		}
 		response := &dap.DisassembleResponse{
 			Response: *newResponse(request.Request),
@@ -3012,21 +3022,13 @@ func (s *Session) onDisassembleRequest(request *dap.DisassembleRequest) {
 		s.send(response)
 		return
 	}
-	// TODO(suzmue): microsoft/vscode#129655 is discussing the difference between
-	// memory reference and instructionPointerReference, which are currently
-	// being used interchangeably by vscode.
-	addr, err := strconv.ParseInt(request.Arguments.MemoryReference, 0, 64)
-	if err != nil {
-		s.sendErrorResponse(request.Request, UnableToDisassemble, "Unable to disassemble", err.Error())
-		return
-	}
 
 	start := uint64(addr)
 	maxInstructionLength := s.debugger.Target().BinInfo().Arch.MaxInstructionLength()
 	byteOffset := request.Arguments.InstructionOffset * maxInstructionLength
 	// Adjust the offset to include instructions before the requested address.
 	if byteOffset < 0 {
-		start = uint64(addr + int64(byteOffset))
+		start = uint64(int(addr) + byteOffset)
 	}
 	// Adjust the number of instructions to include enough instructions after
 	// the requested address.
@@ -3034,7 +3036,7 @@ func (s *Session) onDisassembleRequest(request *dap.DisassembleRequest) {
 	if byteOffset > 0 {
 		count += byteOffset
 	}
-	end := uint64(addr + int64(count*maxInstructionLength))
+	end := uint64(int(addr) + count*maxInstructionLength)
 
 	// Make sure the PCs are lined up with instructions.
 	start, end = alignPCs(s.debugger.Target().BinInfo(), start, end)
@@ -3057,10 +3059,20 @@ func (s *Session) onDisassembleRequest(request *dap.DisassembleRequest) {
 	instructions := make([]dap.DisassembledInstruction, request.Arguments.InstructionCount)
 	lastFile, lastLine := "", -1
 	for i := range instructions {
-		if i < offset || (i-offset) >= len(procInstructions) {
+		// i is not in a valid range, use an address that is just before or after
+		// the range. This ensures that it can still be parsed as an int.
+		if i < offset {
 			// i is not in a valid range.
 			instructions[i] = invalidInstruction
+			instructions[i].Address = "0x0"
 			continue
+		}
+		if (i - offset) >= len(procInstructions) {
+			// i is not in a valid range.
+			instructions[i] = invalidInstruction
+			instructions[i].Address = fmt.Sprintf("%#x", uint64(math.MaxUint64))
+			continue
+
 		}
 		instruction := api.ConvertAsmInstruction(procInstructions[i-offset], s.debugger.AsmInstructionText(&procInstructions[i-offset], proc.GoFlavour))
 		instructions[i] = dap.DisassembledInstruction{
@@ -3085,9 +3097,9 @@ func (s *Session) onDisassembleRequest(request *dap.DisassembleRequest) {
 	s.send(response)
 }
 
-func findInstructions(procInstructions []proc.AsmInstruction, addr int64, instructionOffset, count int) ([]proc.AsmInstruction, int, error) {
+func findInstructions(procInstructions []proc.AsmInstruction, addr uint64, instructionOffset, count int) ([]proc.AsmInstruction, int, error) {
 	ref := sort.Search(len(procInstructions), func(i int) bool {
-		return procInstructions[i].Loc.PC >= uint64(addr)
+		return procInstructions[i].Loc.PC >= addr
 	})
 	if ref == len(procInstructions) || procInstructions[ref].Loc.PC != uint64(addr) {
 		return nil, -1, fmt.Errorf("could not find memory reference")
@@ -3113,6 +3125,10 @@ func findInstructions(procInstructions []proc.AsmInstruction, addr int64, instru
 		endIdx = len(procInstructions)
 	}
 	return procInstructions[startIdx:endIdx], offset, nil
+}
+
+func getValidRange(bi *proc.BinaryInfo) (uint64, uint64) {
+	return bi.Functions[0].Entry, bi.Functions[len(bi.Functions)-1].End
 }
 
 func alignPCs(bi *proc.BinaryInfo, start, end uint64) (uint64, uint64) {
@@ -3180,11 +3196,12 @@ func alignPCs(bi *proc.BinaryInfo, start, end uint64) (uint64, uint64) {
 }
 
 func checkOutOfAddressSpace(pc uint64, bi *proc.BinaryInfo) (bool, uint64) {
-	if pc < bi.Functions[0].Entry {
-		return true, bi.Functions[0].Entry
+	entry, end := getValidRange(bi)
+	if pc < entry {
+		return true, entry
 	}
-	if pc >= bi.Functions[len(bi.Functions)-1].End {
-		return true, bi.Functions[len(bi.Functions)-1].End
+	if pc >= end {
+		return true, end
 	}
 	return false, pc
 }

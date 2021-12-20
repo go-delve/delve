@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"math/rand"
 	"net"
 	"os"
@@ -6788,16 +6789,30 @@ func TestDisassemble(t *testing.T) {
 					}
 
 					// Request invalid instructions.
-					client.DisassembleRequest(invalidInstruction.Address, 0, 10)
-					dr = client.ExpectDisassembleResponse(t)
-					if len(dr.Body.Instructions) != 10 {
-						t.Errorf("\ngot %#v\nwant len(instructions) = 10", dr)
-					}
-					for i, got := range dr.Body.Instructions {
-						if !reflect.DeepEqual(got, invalidInstruction) {
-							t.Errorf("\ngot [%d]=%#v\nwant = %#v", i, got, invalidInstruction)
+					var checkInvalidInstruction = func(instructions []dap.DisassembledInstruction, count int, address uint64) {
+						if len(instructions) != count {
+							t.Errorf("\ngot %#v\nwant len(instructions) = %d", dr, count)
+						}
+						for i, got := range instructions {
+							if got.Instruction != invalidInstruction.Instruction {
+								t.Errorf("\ngot [%d].Instruction=%q\nwant = %#v", i, got.Instruction, invalidInstruction.Address)
+							}
+							addr, err := strconv.ParseUint(got.Address, 0, 64)
+							if err != nil {
+								t.Error(err)
+								continue
+							}
+							if addr != address {
+								t.Errorf("\ngot [%d].Address=%s\nwant = %#x", i, got.Address, address)
+							}
 						}
 					}
+					client.DisassembleRequest("0x0", 0, 10)
+					checkInvalidInstruction(client.ExpectDisassembleResponse(t).Body.Instructions, 10, 0)
+
+					client.DisassembleRequest(fmt.Sprintf("%#x", uint64(math.MaxUint64)), 0, 10)
+					checkInvalidInstruction(client.ExpectDisassembleResponse(t).Body.Instructions, 10, uint64(math.MaxUint64))
+
 					// Bad request, not a number.
 					client.DisassembleRequest("hello, world!", 0, 1)
 					client.ExpectErrorResponse(t)
@@ -6906,7 +6921,7 @@ func TestFindInstructions(t *testing.T) {
 		}
 	}
 	type args struct {
-		addr   int64
+		addr   uint64
 		offset int
 		count  int
 	}
@@ -6920,7 +6935,7 @@ func TestFindInstructions(t *testing.T) {
 		{
 			name: "request all",
 			args: args{
-				addr:   int64(startPC),
+				addr:   uint64(startPC),
 				offset: 0,
 				count:  100,
 			},
@@ -6931,7 +6946,7 @@ func TestFindInstructions(t *testing.T) {
 		{
 			name: "request all (with offset)",
 			args: args{
-				addr:   int64(startPC + numInstructions), // the instruction addr at numInstructions/2
+				addr:   uint64(startPC + numInstructions), // the instruction addr at numInstructions/2
 				offset: -numInstructions / 2,
 				count:  numInstructions,
 			},
@@ -6942,7 +6957,7 @@ func TestFindInstructions(t *testing.T) {
 		{
 			name: "request half (with offset)",
 			args: args{
-				addr:   int64(startPC),
+				addr:   uint64(startPC),
 				offset: 0,
 				count:  numInstructions / 2,
 			},
@@ -6953,7 +6968,7 @@ func TestFindInstructions(t *testing.T) {
 		{
 			name: "request half (with offset)",
 			args: args{
-				addr:   int64(startPC),
+				addr:   uint64(startPC),
 				offset: numInstructions / 2,
 				count:  numInstructions / 2,
 			},
@@ -6964,7 +6979,7 @@ func TestFindInstructions(t *testing.T) {
 		{
 			name: "request too many",
 			args: args{
-				addr:   int64(startPC),
+				addr:   uint64(startPC),
 				offset: 0,
 				count:  numInstructions * 2,
 			},
@@ -6975,7 +6990,7 @@ func TestFindInstructions(t *testing.T) {
 		{
 			name: "request too many with offset",
 			args: args{
-				addr:   int64(startPC),
+				addr:   uint64(startPC),
 				offset: -numInstructions,
 				count:  numInstructions * 2,
 			},
@@ -6986,7 +7001,7 @@ func TestFindInstructions(t *testing.T) {
 		{
 			name: "request out of bounds",
 			args: args{
-				addr:   int64(startPC),
+				addr:   uint64(startPC),
 				offset: -numInstructions,
 				count:  numInstructions,
 			},
@@ -6997,7 +7012,7 @@ func TestFindInstructions(t *testing.T) {
 		{
 			name: "request out of bounds",
 			args: args{
-				addr:   int64(uint64(startPC + 2*(numInstructions-1))),
+				addr:   uint64(uint64(startPC + 2*(numInstructions-1))),
 				offset: 1,
 				count:  numInstructions,
 			},
@@ -7019,7 +7034,7 @@ func TestFindInstructions(t *testing.T) {
 		{
 			name: "addr out of bounds (high)",
 			args: args{
-				addr:   int64(startPC + 2*(numInstructions+1)),
+				addr:   uint64(startPC + 2*(numInstructions+1)),
 				offset: -10,
 				count:  20,
 			},
@@ -7030,7 +7045,7 @@ func TestFindInstructions(t *testing.T) {
 		{
 			name: "addr not aligned",
 			args: args{
-				addr:   int64(startPC + 1),
+				addr:   uint64(startPC + 1),
 				offset: 0,
 				count:  20,
 			},
