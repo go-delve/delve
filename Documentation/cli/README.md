@@ -182,6 +182,8 @@ Set breakpoint condition.
 
 Specifies that the breakpoint, tracepoint or watchpoint should break only if the boolean expression is true.
 
+See Documentation/cli/expr.md for a description of supported expressions.
+
 With the -hitcount option a condition on the breakpoint hit count can be set, the following operators are supported
 
 	condition -hitcount bp > n
@@ -193,6 +195,11 @@ With the -hitcount option a condition on the breakpoint hit count can be set, th
 	condition -hitcount bp % n
 	
 The '% n' form means we should stop at the breakpoint when the hitcount is a multiple of n.
+
+Examples:
+	cond 2 i == 10				breakpoint 2 will stop when variable i equals 10
+	cond name runtime.curg.goid == 5	breakpoint 'name' will stop only on goroutine 5
+
 
 Aliases: cond
 
@@ -489,7 +496,7 @@ Evaluate an expression.
 
 	[goroutine <n>] [frame <m>] print [%format] <expression>
 
-See [Documentation/cli/expr.md](//github.com/go-delve/delve/tree/master/Documentation/cli/expr.md) for a description of supported expressions.
+See Documentation/cli/expr.md for a description of supported expressions.
 
 The optional format argument is a format specifier, like the ones used by the fmt package. For example "print %x v" will print v as an hexadecimal number.
 
@@ -504,7 +511,7 @@ Print contents of CPU registers.
 
 	regs [-a]
 
-Argument -a shows more registers. Individual registers can also be displayed by 'print' and 'display'. See [Documentation/cli/expr.md.](//github.com/go-delve/delve/tree/master/Documentation/cli/expr.md.)
+Argument -a shows more registers. Individual registers can also be displayed by 'print' and 'display'. See Documentation/cli/expr.md.
 
 
 ## restart
@@ -547,7 +554,7 @@ Changes the value of a variable.
 
 	[goroutine <n>] [frame <m>] set <variable> = <value>
 
-See [Documentation/cli/expr.md](//github.com/go-delve/delve/tree/master/Documentation/cli/expr.md) for a description of supported expressions. Only numerical variables and pointers can be changed.
+See Documentation/cli/expr.md for a description of supported expressions. Only numerical variables and pointers can be changed.
 
 
 ## source

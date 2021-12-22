@@ -300,7 +300,7 @@ Specifying -a prints all physical breakpoint, including internal breakpoints.`},
 
 	[goroutine <n>] [frame <m>] print [%format] <expression>
 
-See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/expr.md for a description of supported expressions.
+See Documentation/cli/expr.md for a description of supported expressions.
 
 The optional format argument is a format specifier, like the ones used by the fmt package. For example "print %x v" will print v as an hexadecimal number.`},
 		{aliases: []string{"whatis"}, group: dataCmds, cmdFn: whatisCommand, helpMsg: `Prints type of an expression.
@@ -310,7 +310,7 @@ The optional format argument is a format specifier, like the ones used by the fm
 
 	[goroutine <n>] [frame <m>] set <variable> = <value>
 
-See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/expr.md for a description of supported expressions. Only numerical variables and pointers can be changed.`},
+See Documentation/cli/expr.md for a description of supported expressions. Only numerical variables and pointers can be changed.`},
 		{aliases: []string{"sources"}, cmdFn: sources, helpMsg: `Print list of source files.
 
 	sources [<regex>]
@@ -347,7 +347,7 @@ If regex is specified only package variables with a name matching it will be ret
 
 	regs [-a]
 
-Argument -a shows more registers. Individual registers can also be displayed by 'print' and 'display'. See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/expr.md.`},
+Argument -a shows more registers. Individual registers can also be displayed by 'print' and 'display'. See Documentation/cli/expr.md.`},
 		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: `Exit the debugger.
 		
 	exit [-c]
@@ -454,6 +454,8 @@ The command 'on x -edit' can be used to edit the list of commands executed when 
 
 Specifies that the breakpoint, tracepoint or watchpoint should break only if the boolean expression is true.
 
+See Documentation/cli/expr.md for a description of supported expressions.
+
 With the -hitcount option a condition on the breakpoint hit count can be set, the following operators are supported
 
 	condition -hitcount bp > n
@@ -464,7 +466,12 @@ With the -hitcount option a condition on the breakpoint hit count can be set, th
 	condition -hitcount bp != n
 	condition -hitcount bp % n
 	
-The '% n' form means we should stop at the breakpoint when the hitcount is a multiple of n.`},
+The '% n' form means we should stop at the breakpoint when the hitcount is a multiple of n.
+
+Examples:
+	cond 2 i == 10				breakpoint 2 will stop when variable i equals 10
+	cond name runtime.curg.goid == 5	breakpoint 'name' will stop only on goroutine 5
+`},
 		{aliases: []string{"config"}, cmdFn: configureCmd, helpMsg: `Changes configuration parameters.
 
 	config -list
