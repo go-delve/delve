@@ -383,11 +383,11 @@ func MustHaveCgo(t *testing.T) {
 func RegabiSupported() bool {
 	// Tracks regabiSupported variable in ParseGOEXPERIMENT internal/buildcfg/exp.go
 	switch {
-	case !goversion.VersionAfterOrEqual(runtime.Version(), 1, 17): // < 1.17
-		return false
+	case goversion.VersionAfterOrEqual(runtime.Version(), 1, 18):
+		return runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64" || runtime.GOARCH == "ppc64le" || runtime.GOARCH == "ppc64"
 	case goversion.VersionAfterOrEqual(runtime.Version(), 1, 17):
 		return runtime.GOARCH == "amd64" && (runtime.GOOS == "android" || runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "windows")
-	default: // >= 1.18
-		return runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64"
+	default:
+		return false
 	}
 }

@@ -2387,6 +2387,11 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 			[]onBreakpoint{{
 				// Stop at line 36
 				execute: func() {
+					if runtime.GOARCH == "386" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
+						client.StepInRequest(1)
+						client.ExpectStepInResponse(t)
+						client.ExpectStoppedEvent(t)
+					}
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
 					checkStackFramesExact(t, stack, "main.main", 36, 1000, 3, 3)
@@ -2454,6 +2459,12 @@ func TestRegistersScopeAndVariables(t *testing.T) {
 			[]onBreakpoint{{
 				// Stop at line 36
 				execute: func() {
+					if runtime.GOARCH == "386" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
+						client.StepInRequest(1)
+						client.ExpectStepInResponse(t)
+						client.ExpectStoppedEvent(t)
+					}
+
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
 					checkStackFramesExact(t, stack, "main.main", 36, 1000, 3, 3)

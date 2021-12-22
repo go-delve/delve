@@ -21,10 +21,6 @@ function getgo {
 }
 
 if [ "$version" = "gotip" ]; then
-	# TODO: remove this
-	if [ "$arch" != "amd64" ]; then
-		exit 0
-	fi
 	echo Building Go from tip
 	getgo $(curl https://go.dev/VERSION?m=text)
 	export GOROOT_BOOTSTRAP=$GOROOT
