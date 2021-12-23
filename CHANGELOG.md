@@ -4,6 +4,30 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.8.0] 2021-12-23
+
+### Added
+
+* Go 1.18 support
+* Support for DWARF5 on Windows/MacOS (@aarzilli)
+* Added more installation instructions to documentation (@polinasok)
+* Allow for rewind to work after process exit with RR backend (@aarzilli)
+* Added documentation on runtime.curg and runtime.frameoff in eval (@aarzilli)
+* DAP: Expose sources command in evaluate request (@suzmue)
+* DAP: Support Goroutine filters (@suzmue)
+
+### Fixed
+
+* Fix build version using buildinfo (@aarzilli)
+* Fix crash when using deferred with no args (@kaddy-tom)
+* DAP: Misc remote attach improvements (@polinasok)
+
+### Changed
+
+* Misc cleanup and refactoring (@aarzilli)
+* Added option to disable invoking git during build (@herbygillot)
+* Ignore 'pf' mappings during core dump creation (@aarzilli)
+
 ## [1.7.3] 2021-11-16
 
 ### Added
