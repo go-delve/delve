@@ -1119,6 +1119,10 @@ func TestVersion(t *testing.T) {
 }
 
 func TestStaticcheck(t *testing.T) {
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
+		//TODO(aarzilli): remove this before version 1.8.0 is released
+		t.Skip("staticcheck does not currently support Go 1.18")
+	}
 	_, err := exec.LookPath("staticcheck")
 	if err != nil {
 		t.Skip("staticcheck not installed")
