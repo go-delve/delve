@@ -1,5 +1,4 @@
 #include "include/trace.bpf.h"
-#include <string.h>
 
 #define STRING_KIND 24
 
@@ -7,13 +6,12 @@
 // will be put into param->deref_val. This function expects the string struct
 // which contains a pointer to the string and the length of the string to have
 // already been read from memory and passed in as param->val.
-__always_inline
-int parse_string_param(struct pt_regs *ctx, function_parameter_t *param) {
+static int parse_string_param(struct pt_regs *ctx, function_parameter_t *param) {
     u64 str_len;
     size_t str_addr;
 
-    memcpy(&str_addr, param->val, sizeof(str_addr));
-    memcpy(&str_len, param->val + sizeof(str_addr), sizeof(str_len));
+    __builtin_memcpy(&str_addr, param->val, sizeof(str_addr));
+    __builtin_memcpy(&str_len, param->val + sizeof(str_addr), sizeof(str_len));
     param->daddr = str_addr;
 
     if (str_addr != 0) {
@@ -28,8 +26,7 @@ int parse_string_param(struct pt_regs *ctx, function_parameter_t *param) {
     return 0;
 }
 
-__always_inline
-int parse_param_stack(struct pt_regs *ctx, function_parameter_t *param) {
+static int parse_param_stack(struct pt_regs *ctx, function_parameter_t *param) {
     long ret;
     size_t addr = ctx->sp + param->offset;
     ret = bpf_probe_read_user(&param->val, param->size, (void *)(addr));
@@ -39,62 +36,60 @@ int parse_param_stack(struct pt_regs *ctx, function_parameter_t *param) {
     return 0;
 }
 
-__always_inline
-void get_value_from_register(struct pt_regs *ctx, void *dest, int reg_num) {
+static void get_value_from_register(struct pt_regs *ctx, void *dest, int reg_num) {
     switch (reg_num) {
         case 0: // RAX
-            memcpy(dest, &ctx->ax, sizeof(ctx->ax));
+            __builtin_memcpy(dest, &ctx->ax, sizeof(ctx->ax));
             break;
         case 1: // RDX
-            memcpy(dest, &ctx->dx, sizeof(ctx->dx));
+            __builtin_memcpy(dest, &ctx->dx, sizeof(ctx->dx));
             break;
         case 2: // RCX
-            memcpy(dest, &ctx->cx, sizeof(ctx->cx));
+            __builtin_memcpy(dest, &ctx->cx, sizeof(ctx->cx));
             break;
         case 3: // RBX
-            memcpy(dest, &ctx->bx, sizeof(ctx->bx));
+            __builtin_memcpy(dest, &ctx->bx, sizeof(ctx->bx));
             break;
         case 4: // RSI
-            memcpy(dest, &ctx->si, sizeof(ctx->si));
+            __builtin_memcpy(dest, &ctx->si, sizeof(ctx->si));
             break;
         case 5: // RDI
-            memcpy(dest, &ctx->di, sizeof(ctx->di));
+            __builtin_memcpy(dest, &ctx->di, sizeof(ctx->di));
             break;
         case 6: // RBP
-            memcpy(dest, &ctx->bp, sizeof(ctx->bp));
+            __builtin_memcpy(dest, &ctx->bp, sizeof(ctx->bp));
             break;
         case 7: // RSP
-            memcpy(dest, &ctx->sp, sizeof(ctx->sp));
+            __builtin_memcpy(dest, &ctx->sp, sizeof(ctx->sp));
             break;
         case 8: // R8
-            memcpy(dest, &ctx->r8, sizeof(ctx->r8));
+            __builtin_memcpy(dest, &ctx->r8, sizeof(ctx->r8));
             break;
         case 9: // R9
-            memcpy(dest, &ctx->r9, sizeof(ctx->r9));
+            __builtin_memcpy(dest, &ctx->r9, sizeof(ctx->r9));
             break;
         case 10: // R10
-            memcpy(dest, &ctx->r10, sizeof(ctx->r10));
+            __builtin_memcpy(dest, &ctx->r10, sizeof(ctx->r10));
             break;
         case 11: // R11
-            memcpy(dest, &ctx->r11, sizeof(ctx->r11));
+            __builtin_memcpy(dest, &ctx->r11, sizeof(ctx->r11));
             break;
         case 12: // R12
-            memcpy(dest, &ctx->r12, sizeof(ctx->r12));
+            __builtin_memcpy(dest, &ctx->r12, sizeof(ctx->r12));
             break;
         case 13: // R13
-            memcpy(dest, &ctx->r13, sizeof(ctx->r13));
+            __builtin_memcpy(dest, &ctx->r13, sizeof(ctx->r13));
             break;
         case 14: // R14
-            memcpy(dest, &ctx->r14, sizeof(ctx->r14));
+            __builtin_memcpy(dest, &ctx->r14, sizeof(ctx->r14));
             break;
         case 15: // R15
-            memcpy(dest, &ctx->r15, sizeof(ctx->r15));
+            __builtin_memcpy(dest, &ctx->r15, sizeof(ctx->r15));
             break;
     }
 }
 
-__always_inline
-int parse_param_registers(struct pt_regs *ctx, function_parameter_t *param) {
+static int parse_param_registers(struct pt_regs *ctx, function_parameter_t *param) {
     switch (param->n_pieces) {
         case 6:
             get_value_from_register(ctx, param->val+40, param->reg_nums[5]);
@@ -112,8 +107,7 @@ int parse_param_registers(struct pt_regs *ctx, function_parameter_t *param) {
     return 0;
 }
 
-__always_inline
-int parse_param(struct pt_regs *ctx, function_parameter_t *param) {
+static int parse_param(struct pt_regs *ctx, function_parameter_t *param) {
     if (param->size > 0x30) {
         return 0;
     }
@@ -140,44 +134,19 @@ int parse_param(struct pt_regs *ctx, function_parameter_t *param) {
     return 0;
 }
 
-__always_inline
-int get_goroutine_id(function_parameter_list_t *parsed_args) {
-    // Since eBPF programs have such strict stack requirements
-    // me must implement our own heap using a ringbuffer.
-    // Reserve some memory in our "heap" for the task_struct.
-    struct task_struct *task;
-    task = bpf_ringbuf_reserve(&heap, sizeof(struct task_struct), 0); 
-    if (!task) {
-        return 0;
-    }
-
-    // Get the current task.
-    __u64 task_ptr = bpf_get_current_task();
-    if (!task_ptr)
-    {
-        bpf_ringbuf_discard(task, 0);
-        return 0;
-    }
-    // The bpf_get_current_task helper returns us the address of the task_struct in
-    // kernel memory. Use the bpf_probe_read_kernel helper to read the struct out of
-    // kernel memory.
-    bpf_probe_read_kernel(task, sizeof(struct task_struct), (void*)(task_ptr));
-
-    // Get the Goroutine ID which is stored in thread local storage.
+static int get_goroutine_id(function_parameter_list_t *parsed_args) {
+    struct task_struct *task = (struct task_struct *)bpf_get_current_task();
     __u64  goid;
     size_t g_addr;
+
+    // Get the Goroutine ID which is stored in thread local storage.
     bpf_probe_read_user(&g_addr, sizeof(void *), (void*)(task->thread.fsbase+parsed_args->g_addr_offset));
     bpf_probe_read_user(&goid, sizeof(void *), (void*)(g_addr+parsed_args->goid_offset));
     parsed_args->goroutine_id = goid;
-
-    // Free back up the memory we reserved for the task_struct.
-    bpf_ringbuf_discard(task, 0);
-
     return 1;
 }
 
-__always_inline
-void parse_params(struct pt_regs *ctx, unsigned int n_params, function_parameter_t params[6]) {
+static void parse_params(struct pt_regs *ctx, unsigned int n_params, function_parameter_t params[6]) {
     // Since we cannot loop in eBPF programs let's take adavantage of the
     // fact that in C switch cases will pass through automatically.
     switch (n_params) {
@@ -207,7 +176,7 @@ int uprobe__dlv_trace(struct pt_regs *ctx) {
         return 1;
     }
 
-    parsed_args = bpf_ringbuf_reserve(&events, sizeof(function_parameter_list_t), 0); 
+    parsed_args = bpf_ringbuf_reserve(&events, sizeof(function_parameter_list_t), 0);
     if (!parsed_args) {
         return 1;
     }
@@ -219,8 +188,8 @@ int uprobe__dlv_trace(struct pt_regs *ctx) {
     parsed_args->fn_addr = args->fn_addr;
     parsed_args->n_parameters = args->n_parameters;
     parsed_args->n_ret_parameters = args->n_ret_parameters;
-    memcpy(parsed_args->params, args->params, sizeof(args->params));
-    memcpy(parsed_args->ret_params, args->ret_params, sizeof(args->ret_params));
+    __builtin_memcpy(parsed_args->params, args->params, sizeof(args->params));
+    __builtin_memcpy(parsed_args->ret_params, args->ret_params, sizeof(args->ret_params));
 
     if (!get_goroutine_id(parsed_args)) {
         bpf_ringbuf_discard(parsed_args, 0);
