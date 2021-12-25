@@ -7,13 +7,13 @@
 
 // Ring buffer to handle communication of variable values back to userspace.
 struct {
-   __uint(type, BPF_MAP_TYPE_RINGBUF);
-   __uint(max_entries, BPF_MAX_VAR_SIZ);
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, BPF_MAX_VAR_SIZ);
 } events SEC(".maps");
 
 struct {
-   __uint(type, BPF_MAP_TYPE_RINGBUF);
-   __uint(max_entries, BPF_MAX_VAR_SIZ);
+    __uint(type, BPF_MAP_TYPE_RINGBUF);
+    __uint(max_entries, BPF_MAX_VAR_SIZ);
 } heap SEC(".maps");
 
 // Map which uses instruction address as key and function parameter info as the value.
