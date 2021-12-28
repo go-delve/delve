@@ -129,6 +129,11 @@ type LaunchConfig struct {
 	// directory.
 	DlvCwd string `json:"dlvCwd,omitempty"`
 
+	// Env specifies the environment variables set for Delve server
+	// in addition to the environment variables the server started with.
+	// Environment variables with 'nil' values will be unset.
+	Env map[string]*string `json:"env"`
+
 	LaunchAttachCommonConfig
 }
 

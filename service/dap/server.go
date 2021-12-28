@@ -969,6 +969,20 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		}
 	}
 
+	for k, v := range args.Env {
+		if v != nil {
+			if err := os.Setenv(k, *v); err != nil {
+				s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", fmt.Sprintf("failed to setenv(%v) - %v", k, err))
+				return
+			}
+		} else {
+			if err := os.Unsetenv(k); err != nil {
+				s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", fmt.Sprintf("failed to unsetenv(%v) - %v", k, err))
+				return
+			}
+		}
+	}
+
 	if args.Mode == "" {
 		args.Mode = "debug"
 	}
