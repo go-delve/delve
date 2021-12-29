@@ -371,6 +371,121 @@ func Test1ClientServer_clearBreakpoint(t *testing.T) {
 	})
 }
 
+func Test1ClientServer_disableHitCondLSSBreakpoint(t *testing.T) {
+	withTestClient1("break", t, func(c *rpc1.RPCClient) {
+		fp := testProgPath(t, "break")
+		hitCondBp, err := c.CreateBreakpoint(&api.Breakpoint{
+			File:    fp,
+			Line:    7,
+			HitCond: "< 3",
+		})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		state := <-c.Continue()
+		if state.Err != nil {
+			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
+		}
+
+		f, l := state.CurrentThread.File, state.CurrentThread.Line
+		if f != "break.go" && l != 7 {
+			t.Fatal("Program did not hit breakpoint")
+		}
+
+		ivar, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "i")
+		assertNoError(err, t, "EvalVariable")
+
+		t.Logf("ivar: %s", ivar.SinglelineString())
+
+		if ivar.Value != "1" {
+			t.Fatalf("Wrong variable value: %s", ivar.Value)
+		}
+
+		bp, err := c.GetBreakpoint(hitCondBp.ID)
+		assertNoError(err, t, "GetBreakpoint()")
+
+		if bp.Disabled {
+			t.Fatalf(
+				"Hit condition %s is still satisfiable but breakpoint has been disabled",
+				bp.HitCond,
+			)
+		}
+
+		state = <-c.Continue()
+		if state.Err != nil {
+			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
+		}
+
+		f, l = state.CurrentThread.File, state.CurrentThread.Line
+		if f != "break.go" && l != 7 {
+			t.Fatal("Program did not hit breakpoint")
+		}
+
+		ivar, err = c.EvalVariable(api.EvalScope{GoroutineID: -1}, "i")
+		assertNoError(err, t, "EvalVariable")
+
+		t.Logf("ivar: %s", ivar.SinglelineString())
+
+		if ivar.Value != "2" {
+			t.Fatalf("Wrong variable value: %s", ivar.Value)
+		}
+
+		bp, err = c.GetBreakpoint(hitCondBp.ID)
+		assertNoError(err, t, "GetBreakpoint()")
+
+		if !bp.Disabled {
+			t.Fatalf(
+				"Hit condition %s is no more satisfiable but breakpoint has not been disabled",
+				bp.HitCond,
+			)
+		}
+	})
+}
+
+func Test1ClientServer_disableHitEQLCondBreakpoint(t *testing.T) {
+	withTestClient1("break", t, func(c *rpc1.RPCClient) {
+		fp := testProgPath(t, "break")
+		hitCondBp, err := c.CreateBreakpoint(&api.Breakpoint{
+			File:    fp,
+			Line:    7,
+			HitCond: "== 3",
+		})
+		if err != nil {
+			t.Fatalf("Unexpected error: %v", err)
+		}
+
+		state := <-c.Continue()
+		if state.Err != nil {
+			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
+		}
+
+		f, l := state.CurrentThread.File, state.CurrentThread.Line
+		if f != "break.go" && l != 7 {
+			t.Fatal("Program did not hit breakpoint")
+		}
+
+		ivar, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "i")
+		assertNoError(err, t, "EvalVariable")
+
+		t.Logf("ivar: %s", ivar.SinglelineString())
+
+		if ivar.Value != "3" {
+			t.Fatalf("Wrong variable value: %s", ivar.Value)
+		}
+
+		bp, err := c.GetBreakpoint(hitCondBp.ID)
+		assertNoError(err, t, "GetBreakpoint()")
+
+		if !bp.Disabled {
+			t.Fatalf(
+				"Hit condition %s is no more satisfiable but breakpoint has not been disabled",
+				bp.HitCond,
+			)
+		}
+	})
+}
+
 func Test1ClientServer_switchThread(t *testing.T) {
 	withTestClient1("testnextprog", t, func(c *rpc1.RPCClient) {
 		// With invalid thread id
