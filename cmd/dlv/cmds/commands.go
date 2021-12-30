@@ -568,10 +568,14 @@ func traceCmd(cmd *cobra.Command, args []string) {
 
 		dlvArgs, targetArgs := splitArgs(cmd, args)
 		var dlvArgsLen = len(dlvArgs)
-		if dlvArgsLen == 1 {
+		switch dlvArgsLen {
+		case 0:
+			fmt.Fprintf(os.Stderr, "you must supply a regexp for functions to trace\n")
+			return 1
+		case 1:
 			regexp = args[0]
 			dlvArgs = dlvArgs[0:0]
-		} else if dlvArgsLen >= 2 {
+		default:
 			regexp = dlvArgs[dlvArgsLen-1]
 			dlvArgs = dlvArgs[:dlvArgsLen-1]
 		}
