@@ -341,6 +341,9 @@ func (dbp *nativeProcess) waitForDebugEvent(flags waitForDebugEventFlags) (threa
 
 				if atbp {
 					dbp.os.breakThread = tid
+					if th := dbp.threads[tid]; th != nil {
+						th.os.setbp = true
+					}
 					return tid, 0, nil
 				} else {
 					continueStatus = _DBG_CONTINUE
@@ -428,6 +431,10 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 	}
 
 	dbp.os.running = false
+	for _, th := range dbp.threads {
+		th.os.setbp = false
+	}
+	trapthread.os.setbp = true
 
 	// While the debug event that stopped the target was being propagated
 	// other target threads could generate other debug events.

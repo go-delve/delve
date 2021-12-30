@@ -25,8 +25,13 @@ const (
 	// process dies because of a fatal runtime error.
 	FatalThrow = "runtime-fatal-throw"
 
-	unrecoveredPanicID = -1
-	fatalThrowID       = -2
+	// HardcodedBreakpoint is the name given to hardcoded breakpoints (for
+	// example: calls to runtime.Breakpoint)
+	HardcodedBreakpoint = "hardcoded-breakpoint"
+
+	unrecoveredPanicID    = -1
+	fatalThrowID          = -2
+	hardcodedBreakpointID = -3
 
 	NoLogicalID = -1000 // Logical breakpoint ID for breakpoints internal breakpoints.
 )

@@ -137,4 +137,9 @@ func (t *nativeThread) Stopped() bool {
 	panic(ErrNativeBackendDisabled)
 }
 
+// SoftExc returns true if this thread received a software exception during the last resume.
+func (t *nativeThread) SoftExc() bool {
+	panic(ErrNativeBackendDisabled)
+}
+
 func initialize(dbp *nativeProcess) error { return nil }

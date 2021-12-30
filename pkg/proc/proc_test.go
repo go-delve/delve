@@ -1488,6 +1488,44 @@ func TestBreakpointCounts(t *testing.T) {
 	})
 }
 
+func TestHardcodedBreakpointCounts(t *testing.T) {
+	skipOn(t, "broken", "freebsd")
+	withTestProcess("hcbpcountstest", t, func(p *proc.Target, fixture protest.Fixture) {
+		counts := map[int]int{}
+		for {
+			if err := p.Continue(); err != nil {
+				if _, exited := err.(proc.ErrProcessExited); exited {
+					break
+				}
+				assertNoError(err, t, "Continue()")
+			}
+
+			for _, th := range p.ThreadList() {
+				bp := th.Breakpoint().Breakpoint
+				if bp == nil {
+					continue
+				}
+				if bp.Name != proc.HardcodedBreakpoint {
+					t.Fatalf("wrong breakpoint name %s", bp.Name)
+				}
+				g, err := proc.GetG(th)
+				assertNoError(err, t, "GetG")
+				counts[g.ID]++
+			}
+		}
+
+		if len(counts) != 2 {
+			t.Fatalf("Wrong number of goroutines for hardcoded breakpoint (%d)", len(counts))
+		}
+
+		for goid, count := range counts {
+			if count != 100 {
+				t.Fatalf("Wrong hit count for hardcoded breakpoint (%d) on goroutine %d", count, goid)
+			}
+		}
+	})
+}
+
 func BenchmarkArray(b *testing.B) {
 	// each bencharr struct is 128 bytes, bencharr is 64 elements long
 	b.SetBytes(int64(64 * 128))
