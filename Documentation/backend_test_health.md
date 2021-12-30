@@ -11,8 +11,8 @@ Tests skipped by each supported backend:
 	* 1 broken - cgo stacktraces
 * darwin/lldb skipped = 1
 	* 1 upstream issue
-* freebsd skipped = 15
-	* 11 broken
+* freebsd skipped = 16
+	* 12 broken
 	* 4 not implemented
 * linux/386/pie skipped = 1
 	* 1 broken

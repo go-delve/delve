@@ -22,6 +22,7 @@ type osSpecificDetails struct {
 	hThread            syscall.Handle
 	dbgUiRemoteBreakIn bool // whether thread is an auxiliary DbgUiRemoteBreakIn thread created by Windows
 	delayErr           error
+	setbp              bool
 }
 
 func (t *nativeThread) singleStep() error {
@@ -185,4 +186,9 @@ func (t *nativeThread) withDebugRegisters(f func(*amd64util.DebugRegisters) erro
 	}
 
 	return nil
+}
+
+// SoftExc returns true if this thread received a software exception during the last resume.
+func (t *nativeThread) SoftExc() bool {
+	return t.os.setbp
 }

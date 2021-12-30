@@ -55,12 +55,14 @@ func (dbp *Target) Continue() error {
 		thread.Common().returnValues = nil
 	}
 	dbp.Breakpoints().WatchOutOfScope = nil
+	dbp.clearHardcodedBreakpoints()
 	dbp.CheckAndClearManualStopRequest()
 	defer func() {
 		// Make sure we clear internal breakpoints if we simultaneously receive a
 		// manual stop request and hit a breakpoint.
 		if dbp.CheckAndClearManualStopRequest() {
 			dbp.StopReason = StopManual
+			dbp.clearHardcodedBreakpoints()
 			if dbp.KeepSteppingBreakpoints&HaltKeepsSteppingBreakpoints == 0 {
 				dbp.ClearSteppingBreakpoints()
 			}
@@ -69,6 +71,7 @@ func (dbp *Target) Continue() error {
 	for {
 		if dbp.CheckAndClearManualStopRequest() {
 			dbp.StopReason = StopManual
+			dbp.clearHardcodedBreakpoints()
 			if dbp.KeepSteppingBreakpoints&HaltKeepsSteppingBreakpoints == 0 {
 				dbp.ClearSteppingBreakpoints()
 			}
@@ -107,9 +110,10 @@ func (dbp *Target) Continue() error {
 		}
 
 		callInjectionDone, callErr := callInjectionProtocol(dbp, threads)
-		// callErr check delayed until after pickCurrentThread, which must always
-		// happen, otherwise the debugger could be left in an inconsistent
-		// state.
+		hcbpErr := dbp.handleHardcodedBreakpoints(trapthread, threads)
+		// callErr and hcbpErr check delayed until after pickCurrentThread, which
+		// must always happen, otherwise the debugger could be left in an
+		// inconsistent state.
 
 		if err := pickCurrentThread(dbp, trapthread, threads); err != nil {
 			return err
@@ -118,52 +122,14 @@ func (dbp *Target) Continue() error {
 		if callErr != nil {
 			return callErr
 		}
+		if hcbpErr != nil {
+			return hcbpErr
+		}
 
 		curthread := dbp.CurrentThread()
 		curbp := curthread.Breakpoint()
 
 		switch {
-		case curbp.Breakpoint == nil:
-			// runtime.Breakpoint, manual stop or debugCallV1-related stop
-
-			loc, err := curthread.Location()
-			if err != nil || loc.Fn == nil {
-				return conditionErrors(threads)
-			}
-			g, _ := GetG(curthread)
-			arch := dbp.BinInfo().Arch
-
-			switch {
-			case loc.Fn.Name == "runtime.breakpoint":
-				if recorded, _ := dbp.Recorded(); recorded {
-					return conditionErrors(threads)
-				}
-				// In linux-arm64, PtraceSingleStep seems cannot step over BRK instruction
-				// (linux-arm64 feature or kernel bug maybe).
-				if !arch.BreakInstrMovesPC() {
-					setPC(curthread, loc.PC+uint64(arch.BreakpointSize()))
-				}
-				// Single-step current thread until we exit runtime.breakpoint and
-				// runtime.Breakpoint.
-				// On go < 1.8 it was sufficient to single-step twice on go1.8 a change
-				// to the compiler requires 4 steps.
-				if err := stepInstructionOut(dbp, curthread, "runtime.breakpoint", "runtime.Breakpoint"); err != nil {
-					return err
-				}
-				dbp.StopReason = StopHardcodedBreakpoint
-				return conditionErrors(threads)
-			case g == nil || dbp.fncallForG[g.ID] == nil:
-				// a hardcoded breakpoint somewhere else in the code (probably cgo), or manual stop in cgo
-				if !arch.BreakInstrMovesPC() {
-					bpsize := arch.BreakpointSize()
-					bp := make([]byte, bpsize)
-					dbp.Memory().ReadMemory(bp, loc.PC)
-					if bytes.Equal(bp, arch.BreakpointInstruction()) {
-						setPC(curthread, loc.PC+uint64(bpsize))
-					}
-				}
-				return conditionErrors(threads)
-			}
 		case curbp.Active && curbp.Stepping:
 			if curbp.SteppingInto {
 				// See description of proc.(*Process).next for the meaning of StepBreakpoints
@@ -214,7 +180,9 @@ func (dbp *Target) Continue() error {
 			if curbp.Name == UnrecoveredPanic {
 				dbp.ClearSteppingBreakpoints()
 			}
-			dbp.StopReason = StopBreakpoint
+			if curbp.LogicalID() != hardcodedBreakpointID {
+				dbp.StopReason = StopBreakpoint
+			}
 			if curbp.Breakpoint.WatchType != 0 {
 				dbp.StopReason = StopWatchpoint
 			}
@@ -246,8 +214,8 @@ func conditionErrors(threads []Thread) error {
 }
 
 // pick a new dbp.currentThread, with the following priority:
-// 	- a thread with onTriggeredInternalBreakpoint() == true
-// 	- a thread with onTriggeredBreakpoint() == true (prioritizing trapthread)
+// 	- a thread with an active stepping breakpoint
+// 	- a thread with an active breakpoint, prioritizing trapthread
 // 	- trapthread
 func pickCurrentThread(dbp *Target, trapthread Thread, threads []Thread) error {
 	for _, th := range threads {
@@ -1083,4 +1051,113 @@ func (w *onNextGoroutineWalker) Visit(n ast.Node) ast.Visitor {
 		return nil
 	}
 	return w
+}
+
+func (tgt *Target) clearHardcodedBreakpoints() {
+	threads := tgt.ThreadList()
+	for _, thread := range threads {
+		if thread.Breakpoint().Breakpoint != nil && thread.Breakpoint().LogicalID() == hardcodedBreakpointID {
+			thread.Breakpoint().Active = false
+			thread.Breakpoint().Breakpoint = nil
+		}
+	}
+}
+
+// handleHardcodedBreakpoints looks for threads stopped at a hardcoded
+// breakpoint (i.e. a breakpoint instruction, like INT 3, hardcoded in the
+// program's text) and sets a fake breakpoint on them with logical id
+// hardcodedBreakpointID.
+// It checks trapthread and all threads that have SoftExc returning true.
+func (tgt *Target) handleHardcodedBreakpoints(trapthread Thread, threads []Thread) error {
+	mem := tgt.Memory()
+	arch := tgt.BinInfo().Arch
+	recorded, _ := tgt.Recorded()
+
+	isHardcodedBreakpoint := func(thread Thread, pc uint64) uint64 {
+		for _, bpinstr := range [][]byte{arch.BreakpointInstruction(), arch.AltBreakpointInstruction()} {
+			if bpinstr == nil {
+				continue
+			}
+			buf := make([]byte, len(bpinstr))
+			pc2 := pc
+			if arch.BreakInstrMovesPC() {
+				pc2 -= uint64(len(bpinstr))
+			}
+			_, _ = mem.ReadMemory(buf, pc2)
+			if bytes.Equal(buf, bpinstr) {
+				return uint64(len(bpinstr))
+			}
+		}
+		return 0
+	}
+
+	stepOverBreak := func(thread Thread, pc uint64) {
+		if arch.BreakInstrMovesPC() {
+			return
+		}
+		if recorded {
+			return
+		}
+		if bpsize := isHardcodedBreakpoint(thread, pc); bpsize > 0 {
+			setPC(thread, pc+uint64(bpsize))
+		}
+	}
+
+	setHardcodedBreakpoint := func(thread Thread, loc *Location) {
+		bpstate := thread.Breakpoint()
+		hcbp := &Breakpoint{}
+		bpstate.Active = true
+		bpstate.Breakpoint = hcbp
+		hcbp.FunctionName = loc.Fn.Name
+		hcbp.File = loc.File
+		hcbp.Line = loc.Line
+		hcbp.Addr = loc.PC
+		hcbp.Name = HardcodedBreakpoint
+		hcbp.Breaklets = []*Breaklet{&Breaklet{Kind: UserBreakpoint, LogicalID: hardcodedBreakpointID}}
+		tgt.StopReason = StopHardcodedBreakpoint
+	}
+
+	for _, thread := range threads {
+		if thread.Breakpoint().Breakpoint != nil {
+			continue
+		}
+		if (thread.ThreadID() != trapthread.ThreadID()) && !thread.SoftExc() {
+			continue
+		}
+
+		loc, err := thread.Location()
+		if err != nil || loc.Fn == nil {
+			continue
+		}
+
+		g, _ := GetG(thread)
+
+		switch {
+		case loc.Fn.Name == "runtime.breakpoint":
+			if recorded, _ := tgt.Recorded(); recorded {
+				setHardcodedBreakpoint(thread, loc)
+				continue
+			}
+			stepOverBreak(thread, loc.PC)
+			// In linux-arm64, PtraceSingleStep seems cannot step over BRK instruction
+			// (linux-arm64 feature or kernel bug maybe).
+			if !arch.BreakInstrMovesPC() {
+				setPC(thread, loc.PC+uint64(arch.BreakpointSize()))
+			}
+			// Single-step current thread until we exit runtime.breakpoint and
+			// runtime.Breakpoint.
+			// On go < 1.8 it was sufficient to single-step twice on go1.8 a change
+			// to the compiler requires 4 steps.
+			if err := stepInstructionOut(tgt, thread, "runtime.breakpoint", "runtime.Breakpoint"); err != nil {
+				return err
+			}
+			setHardcodedBreakpoint(thread, loc)
+		case g == nil || tgt.fncallForG[g.ID] == nil:
+			if isHardcodedBreakpoint(thread, loc.PC) > 0 {
+				stepOverBreak(thread, loc.PC)
+				setHardcodedBreakpoint(thread, loc)
+			}
+		}
+	}
+	return nil
 }

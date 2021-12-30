@@ -795,8 +795,8 @@ const (
 	childSignal      = 0x11
 	stopSignal       = 0x13
 
-	_SIGILL = 0x4
-	_SIGFPE = 0x8
+	_SIGILL  = 0x4
+	_SIGFPE  = 0x8
 	_SIGKILL = 0x9
 
 	debugServerTargetExcBadAccess      = 0x91
@@ -1541,6 +1541,11 @@ func (t *gdbThread) StepInstruction() error {
 	return t.p.conn.step(t, &threadUpdater{p: t.p}, false)
 }
 
+// SoftExc returns true if this thread received a software exception during the last resume.
+func (t *gdbThread) SoftExc() bool {
+	return t.setbp
+}
+
 // Blocked returns true if the thread is blocked in runtime or kernel code.
 func (t *gdbThread) Blocked() bool {
 	regs, err := t.Registers()
@@ -1883,7 +1888,7 @@ func (t *gdbThread) clearBreakpointState() {
 func (t *gdbThread) SetCurrentBreakpoint(adjustPC bool) error {
 	// adjustPC is ignored, it is the stub's responsibiility to set the PC
 	// address correctly after hitting a breakpoint.
-	t.clearBreakpointState()
+	t.CurrentBreakpoint.Clear()
 	if t.watchAddr > 0 {
 		t.CurrentBreakpoint.Breakpoint = t.p.Breakpoints().M[t.watchAddr]
 		if t.CurrentBreakpoint.Breakpoint == nil {

@@ -355,16 +355,15 @@ func (t *thread) StepInstruction() error {
 	return ErrContinueCore
 }
 
-// Blocked will return false always for core files as there is
-// no execution.
-func (t *thread) Blocked() bool {
-	return false
-}
-
 // SetCurrentBreakpoint will always just return nil
 // for core files, as there are no breakpoints in core files.
 func (t *thread) SetCurrentBreakpoint(adjustPC bool) error {
 	return nil
+}
+
+// SoftExc returns true if this thread received a software exception during the last resume.
+func (t *thread) SoftExc() bool {
+	return false
 }
 
 // Common returns a struct containing common information
