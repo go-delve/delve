@@ -586,35 +586,26 @@ func (s *Session) handleRequest(request dap.Message) {
 
 	// These requests, can be handled regardless of whether the targret is running
 	switch request := request.(type) {
-	case *dap.InitializeRequest:
-		// Required
+	case *dap.InitializeRequest: // Required
 		s.onInitializeRequest(request)
 		return
-	case *dap.LaunchRequest:
-		// Required
+	case *dap.LaunchRequest: // Required
 		s.onLaunchRequest(request)
 		return
-	case *dap.AttachRequest:
-		// Required
+	case *dap.AttachRequest: // Required
 		s.onAttachRequest(request)
 		return
-	case *dap.DisconnectRequest:
-		// Required
+	case *dap.DisconnectRequest: // Required
 		s.onDisconnectRequest(request)
 		return
-	case *dap.PauseRequest:
-		// Required
+	case *dap.PauseRequest: // Required
 		s.onPauseRequest(request)
 		return
-	case *dap.TerminateRequest:
-		// Optional (capability ‘supportsTerminateRequest‘)
-		// TODO: implement this request in V1
-		s.onTerminateRequest(request)
+	case *dap.TerminateRequest: // Optional (capability ‘supportsTerminateRequest‘)
+		/*TODO*/ s.onTerminateRequest(request) // not yet implemented
 		return
-	case *dap.RestartRequest:
-		// Optional (capability ‘supportsRestartRequest’)
-		// TODO: implement this request in V1
-		s.onRestartRequest(request)
+	case *dap.RestartRequest: // Optional (capability ‘supportsRestartRequest’)
+		/*TODO*/ s.onRestartRequest(request) // not yet implemented
 		return
 	}
 
@@ -637,7 +628,7 @@ func (s *Session) handleRequest(request dap.Message) {
 	// that would benefit from this approach at this time.
 	if s.debugger != nil && s.debugger.IsRunning() || s.isRunningCmd() {
 		switch request := request.(type) {
-		case *dap.ThreadsRequest:
+		case *dap.ThreadsRequest: // Required
 			// On start-up, the client requests the baseline of currently existing threads
 			// right away as there are a number of DAP requests that require a thread id
 			// (pause, continue, stacktrace, etc). This can happen after the program
@@ -649,7 +640,7 @@ func (s *Session) handleRequest(request dap.Message) {
 				Body:     dap.ThreadsResponseBody{Threads: []dap.Thread{{Id: -1, Name: "Current"}}},
 			}
 			s.send(response)
-		case *dap.SetBreakpointsRequest:
+		case *dap.SetBreakpointsRequest: // Required
 			s.changeStateMu.Lock()
 			defer s.changeStateMu.Unlock()
 			s.config.log.Debug("halting execution to set breakpoints")
@@ -659,7 +650,7 @@ func (s *Session) handleRequest(request dap.Message) {
 				return
 			}
 			s.onSetBreakpointsRequest(request)
-		case *dap.SetFunctionBreakpointsRequest:
+		case *dap.SetFunctionBreakpointsRequest: // Optional (capability ‘supportsFunctionBreakpoints’)
 			s.changeStateMu.Lock()
 			defer s.changeStateMu.Unlock()
 			s.config.log.Debug("halting execution to set breakpoints")
@@ -689,147 +680,104 @@ func (s *Session) handleRequest(request dap.Message) {
 
 	switch request := request.(type) {
 	//--- Asynchronous requests ---
-	case *dap.ConfigurationDoneRequest:
-		// Optional (capability ‘supportsConfigurationDoneRequest’)
+	case *dap.ConfigurationDoneRequest: // Optional (capability ‘supportsConfigurationDoneRequest’)
 		go func() {
 			defer s.recoverPanic(request)
 			s.onConfigurationDoneRequest(request, resumeRequestLoop)
 		}()
 		<-resumeRequestLoop
-	case *dap.ContinueRequest:
-		// Required
+	case *dap.ContinueRequest: // Required
 		go func() {
 			defer s.recoverPanic(request)
 			s.onContinueRequest(request, resumeRequestLoop)
 		}()
 		<-resumeRequestLoop
-	case *dap.NextRequest:
-		// Required
+	case *dap.NextRequest: // Required
 		go func() {
 			defer s.recoverPanic(request)
 			s.onNextRequest(request, resumeRequestLoop)
 		}()
 		<-resumeRequestLoop
-	case *dap.StepInRequest:
-		// Required
+	case *dap.StepInRequest: // Required
 		go func() {
 			defer s.recoverPanic(request)
 			s.onStepInRequest(request, resumeRequestLoop)
 		}()
 		<-resumeRequestLoop
-	case *dap.StepOutRequest:
-		// Required
+	case *dap.StepOutRequest: // Required
 		go func() {
 			defer s.recoverPanic(request)
 			s.onStepOutRequest(request, resumeRequestLoop)
 		}()
 		<-resumeRequestLoop
-	case *dap.StepBackRequest:
-		// Optional (capability ‘supportsStepBack’)
+	case *dap.StepBackRequest: // Optional (capability ‘supportsStepBack’)
 		go func() {
 			defer s.recoverPanic(request)
 			s.onStepBackRequest(request, resumeRequestLoop)
 		}()
 		<-resumeRequestLoop
-	case *dap.ReverseContinueRequest:
-		// Optional (capability ‘supportsStepBack’)
+	case *dap.ReverseContinueRequest: // Optional (capability ‘supportsStepBack’)
 		go func() {
 			defer s.recoverPanic(request)
 			s.onReverseContinueRequest(request, resumeRequestLoop)
 		}()
 		<-resumeRequestLoop
 	//--- Synchronous requests ---
-	case *dap.SetBreakpointsRequest:
-		// Required
+	case *dap.SetBreakpointsRequest: // Required
 		s.onSetBreakpointsRequest(request)
-	case *dap.SetFunctionBreakpointsRequest:
-		// Optional (capability ‘supportsFunctionBreakpoints’)
+	case *dap.SetFunctionBreakpointsRequest: // Optional (capability ‘supportsFunctionBreakpoints’)
 		s.onSetFunctionBreakpointsRequest(request)
-	case *dap.SetInstructionBreakpointsRequest:
-		// Optional (capability 'supportsInstructionBreakpoints')
+	case *dap.SetInstructionBreakpointsRequest: // Optional (capability 'supportsInstructionBreakpoints')
 		s.onSetInstructionBreakpointsRequest(request)
-	case *dap.SetExceptionBreakpointsRequest:
-		// Optional (capability ‘exceptionBreakpointFilters’)
+	case *dap.SetExceptionBreakpointsRequest: // Optional (capability ‘exceptionBreakpointFilters’)
 		s.onSetExceptionBreakpointsRequest(request)
-	case *dap.ThreadsRequest:
-		// Required
+	case *dap.ThreadsRequest: // Required
 		s.onThreadsRequest(request)
-	case *dap.StackTraceRequest:
-		// Required
+	case *dap.StackTraceRequest: // Required
 		s.onStackTraceRequest(request)
-	case *dap.ScopesRequest:
-		// Required
+	case *dap.ScopesRequest: // Required
 		s.onScopesRequest(request)
-	case *dap.VariablesRequest:
-		// Required
+	case *dap.VariablesRequest: // Required
 		s.onVariablesRequest(request)
-	case *dap.EvaluateRequest:
-		// Required
+	case *dap.EvaluateRequest: // Required
 		s.onEvaluateRequest(request)
-	case *dap.SetVariableRequest:
-		// Optional (capability ‘supportsSetVariable’)
-		// Supported by vscode-go
-		// TODO: implement this request in V0
+	case *dap.SetVariableRequest: // Optional (capability ‘supportsSetVariable’)
 		s.onSetVariableRequest(request)
-	case *dap.SetExpressionRequest:
-		// Optional (capability ‘supportsSetExpression’)
-		// TODO: implement this request in V1
-		s.onSetExpressionRequest(request)
-	case *dap.LoadedSourcesRequest:
-		// Optional (capability ‘supportsLoadedSourcesRequest’)
-		// TODO: implement this request in V1
-		s.onLoadedSourcesRequest(request)
-	case *dap.ReadMemoryRequest:
-		// Optional (capability ‘supportsReadMemoryRequest‘)
-		// TODO: implement this request in V1
-		s.onReadMemoryRequest(request)
-	case *dap.DisassembleRequest:
-		// Optional (capability ‘supportsDisassembleRequest’)
-		// TODO: implement this request in V1
-		s.onDisassembleRequest(request)
-	case *dap.CancelRequest:
-		// Optional (capability ‘supportsCancelRequest’)
-		// TODO: does this request make sense for delve?
-		s.onCancelRequest(request)
-	case *dap.ExceptionInfoRequest:
-		// Optional (capability ‘supportsExceptionInfoRequest’)
+	case *dap.ExceptionInfoRequest: // Optional (capability ‘supportsExceptionInfoRequest’)
 		s.onExceptionInfoRequest(request)
+	case *dap.DisassembleRequest: // Optional (capability ‘supportsDisassembleRequest’)
+		s.onDisassembleRequest(request)
+	//--- Requests that we may want to support ---
+	case *dap.SourceRequest: // Required
+		/*TODO*/ s.sendUnsupportedErrorResponse(request.Request) // https://github.com/go-delve/delve/issues/2851
+	case *dap.SetExpressionRequest: // Optional (capability ‘supportsSetExpression’)
+		/*TODO*/ s.onSetExpressionRequest(request) // Not yet implemented
+	case *dap.LoadedSourcesRequest: // Optional (capability ‘supportsLoadedSourcesRequest’)
+		/*TODO*/ s.onLoadedSourcesRequest(request) // Not yet implemented
+	case *dap.ReadMemoryRequest: // Optional (capability ‘supportsReadMemoryRequest‘)
+		/*TODO*/ s.onReadMemoryRequest(request) // Not yet implemented
+	case *dap.CancelRequest: // Optional (capability ‘supportsCancelRequest’)
+		/*TODO*/ s.onCancelRequest(request) // Not yet implemented (does this make sense?)
+	case *dap.ModulesRequest: // Optional (capability ‘supportsModulesRequest’)
+		/*TODO*/ s.sendUnsupportedErrorResponse(request.Request) // Not yet implemented (does this make sense?)
 	//--- Requests that we do not plan to support ---
-	case *dap.RestartFrameRequest:
-		// Optional (capability ’supportsRestartFrame’)
+	case *dap.RestartFrameRequest: // Optional (capability ’supportsRestartFrame’)
 		s.sendUnsupportedErrorResponse(request.Request)
-	case *dap.GotoRequest:
-		// Optional (capability ‘supportsGotoTargetsRequest’)
+	case *dap.GotoRequest: // Optional (capability ‘supportsGotoTargetsRequest’)
 		s.sendUnsupportedErrorResponse(request.Request)
-	case *dap.SourceRequest:
-		// Required
-		// This does not make sense in the context of Go as
-		// the source cannot be a string eval'ed at runtime.
+	case *dap.TerminateThreadsRequest: // Optional (capability ‘supportsTerminateThreadsRequest’)
 		s.sendUnsupportedErrorResponse(request.Request)
-	case *dap.TerminateThreadsRequest:
-		// Optional (capability ‘supportsTerminateThreadsRequest’)
+	case *dap.StepInTargetsRequest: // Optional (capability ‘supportsStepInTargetsRequest’)
 		s.sendUnsupportedErrorResponse(request.Request)
-	case *dap.StepInTargetsRequest:
-		// Optional (capability ‘supportsStepInTargetsRequest’)
+	case *dap.GotoTargetsRequest: // Optional (capability ‘supportsGotoTargetsRequest’)
 		s.sendUnsupportedErrorResponse(request.Request)
-	case *dap.GotoTargetsRequest:
-		// Optional (capability ‘supportsGotoTargetsRequest’)
+	case *dap.CompletionsRequest: // Optional (capability ‘supportsCompletionsRequest’)
 		s.sendUnsupportedErrorResponse(request.Request)
-	case *dap.CompletionsRequest:
-		// Optional (capability ‘supportsCompletionsRequest’)
+	case *dap.DataBreakpointInfoRequest: // Optional (capability ‘supportsDataBreakpoints’)
 		s.sendUnsupportedErrorResponse(request.Request)
-	case *dap.DataBreakpointInfoRequest:
-		// Optional (capability ‘supportsDataBreakpoints’)
+	case *dap.SetDataBreakpointsRequest: // Optional (capability ‘supportsDataBreakpoints’)
 		s.sendUnsupportedErrorResponse(request.Request)
-	case *dap.SetDataBreakpointsRequest:
-		// Optional (capability ‘supportsDataBreakpoints’)
-		s.sendUnsupportedErrorResponse(request.Request)
-	case *dap.BreakpointLocationsRequest:
-		// Optional (capability ‘supportsBreakpointLocationsRequest’)
-		s.sendUnsupportedErrorResponse(request.Request)
-	case *dap.ModulesRequest:
-		// Optional (capability ‘supportsModulesRequest’)
-		// TODO: does this request make sense for delve?
+	case *dap.BreakpointLocationsRequest: // Optional (capability ‘supportsBreakpointLocationsRequest’)
 		s.sendUnsupportedErrorResponse(request.Request)
 	default:
 		// This is a DAP message that go-dap has a struct for, so
