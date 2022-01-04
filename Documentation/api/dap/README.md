@@ -2,11 +2,11 @@
 
 Delve exposes a [DAP](https://microsoft.github.io/debug-adapter-protocol/overview) API interface.
 
-This interface is served over a streaming TCP socket, *not* over HTTP when the `dlv` server is run in one of the two headless modes:
+This interface is served over a streaming TCP socket using `dlv` server in one of the two headless modes:
 * `dlv dap` - starts a single-use DAP-only server that waits for a client to specify launch/attach configuration for starting the debug session.
 * `dlv --headless <command> <debugee>` - starts a general server, enters a debug session for the specified debuggee and waits for a [JSON-RPC](../json-rpc/README.md) or a [DAP](https://microsoft.github.io/debug-adapter-protocol/overview) client to begin interactive debugging. Can be used in multi-client mode with the following options:
    *  `--accept-multiclient` - use to support connections from multiple clients
-   *  `--continue` - use to resume execution of the debuggee on session entry 
+   *  `--continue` - use to resume debuggee execution as soon as server session starts
 
 The primary user of this mode is [VS Code Go](https://github.com/golang/vscode-go). Please see its 
 detailed [debugging documentation](https://github.com/golang/vscode-go/blob/master/docs/debugging.md) for additional information.
@@ -47,7 +47,7 @@ When used with `dlv dap` or `dlv --headless --accept-multiclient=false` (default
 
 When the program terminates, we send a [terminated event](https://microsoft.github.io/debug-adapter-protocol/specification#Events_Terminated), which is expected to trigger a [disconnect request](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Disconnect) from the client for a session and a server shutdown. The [restart request](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Restart) is not yet supported. 
 
-The server also shuts down in case of a client connection error or SIGTERM signal, but not SIGINT (Ctrl-C) signal, which gets forwarded to the foregrounded debuggee. In either case, the server takes down a launched process, but lets an attached process continue.
+The server also shuts down in case of a client connection error or SIGTERM signal, but not SIGINT (Ctrl-C) signal, which gets sent to the foregrounded debuggee. In either case, the server takes down a launched process, but lets an attached process continue.
 
 ### Multi-Client Mode
 
@@ -55,12 +55,12 @@ When used with `dlv --headless --accept-multiclient=true`, the DAP server will h
 
 The client may request full shutdown of the server and the debuggee with [`terminateDebuggee`](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Disconnect) option.
 
-The server shuts down in response to a SIGTERM signal, but not SIGINT (Ctrl-C) signal, which gets forwarded to the foregrounded debuggee. The server will take down a launched process, but let an attached process continue. 
+The server shuts down in response to a SIGTERM signal, but not SIGINT (Ctrl-C) signal, which gets sent to the foregrounded debuggee. The server will take down a launched process, but let an attached process continue.
 
 ## Debugger Output
 
 The debugger always logs one of the following on start-up to stdout:
-* `dlv dap`: 
+* `dlv dap`:
    * `DAP server listening at: <host>:<port>`
 * `dlv --headless`: 
    * `API server listening at: <host>:<port>`
