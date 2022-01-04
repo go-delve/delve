@@ -4,25 +4,24 @@ You can invoke Delve in [multiple ways](dlv.md), depending on your usage needs. 
 
 The [available commands](dlv.md) can be grouped into the following categories:
 
-*  Specify target and start debugging with a [terminal interface](../cli/README.md):
+*  Specify target and start debugging with the default [terminal interface](../cli/README.md):
    * [dlv debug [package]](dlv_debug.md)
    * [dlv test [package]](dlv_test.md)
    * [dlv exec \<exe\>](dlv_exec.md)
    * [dlv attach \<pid\>](dlv_attach.md)
    * [dlv core \<exe\> \<core\>](dlv_core.md)
    * [dlv replay \<rr trace\> ](dlv_replay.md)
+* Trace target program execution
    * [dlv trace [package] \<regexp\>](dlv_trace.md)
-* Start a headless backend server and connect with a [frontend client](../EditorIntegration.md):
+* Start a headless backend server only and connect with an external [frontend client](../EditorIntegration.md):
    * [dlv **--headless** \<command\> \<target\> \<args\> ](../api/ClientHowto.md#spawning-the-backend)
       * starts a server, enters a debug session for the specified target and waits to accept a client connection over JSON-RPC or DAP
-      * compatible with [dlv connect](dlv_connect.md)
-      * compatible with [VS Code Go](https://github.com/golang/vscode-go/blob/master/docs/debugging.md#remote-debugging)
-      * compatible with [GoLand](https://www.jetbrains.com/help/go/attach-to-running-go-processes-with-debugger.html#attach-to-a-process-on-a-remote-machine)
+      * if `--headless` flag is not specified the default [terminal client](../cli/README.md) will be automatically started instead
+      * compatible with [dlv connect](dlv_connect.md), [VS Code Go](https://github.com/golang/vscode-go/blob/master/docs/debugging.md#remote-debugging), [GoLand](https://www.jetbrains.com/help/go/attach-to-running-go-processes-with-debugger.html#attach-to-a-process-on-a-remote-machine)
    * [dlv dap](dlv_dap.md)
       * starts a DAP-only server and waits for a DAP client connection to specify the target and arguments
       * compatible with [VS Code Go](https://github.com/golang/vscode-go/blob/master/docs/debugging.md#remote-debugging)
-      * NOT compatible with [dlv connect](dlv_connect.md)
-      * NOT compatible with [GoLand](https://www.jetbrains.com/help/go/attach-to-running-go-processes-with-debugger.html#attach-to-a-process-on-a-remote-machine)
+      * NOT compatible with [dlv connect](dlv_connect.md), [GoLand](https://www.jetbrains.com/help/go/attach-to-running-go-processes-with-debugger.html#attach-to-a-process-on-a-remote-machine)
    * [dlv connect \<addr\>](dlv_connect.md)
       * starts a [terminal interface client](../cli/README.md) and connects it to a running headless server over JSON-RPC
 * Help information
