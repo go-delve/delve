@@ -104,9 +104,9 @@ If regex is specified only function arguments with a name matching it will be re
 ## break
 Sets a breakpoint.
 
-	break [name] <linespec>
+	break [name] [linespec]
 
-See [Documentation/cli/locspec.md](//github.com/go-delve/delve/tree/master/Documentation/cli/locspec.md) for the syntax of linespec.
+See [Documentation/cli/locspec.md](//github.com/go-delve/delve/tree/master/Documentation/cli/locspec.md) for the syntax of linespec. If linespec is omitted a breakpoint will be set on the current line.
 
 See also: "help on", "help cond" and "help clear"
 
@@ -628,9 +628,9 @@ toggle <breakpoint name or id>
 ## trace
 Set tracepoint.
 
-	trace [name] <linespec>
+	trace [name] [linespec]
 
-A tracepoint is a breakpoint that does not stop the execution of the program, instead when the tracepoint is hit a notification is displayed. See [Documentation/cli/locspec.md](//github.com/go-delve/delve/tree/master/Documentation/cli/locspec.md) for the syntax of linespec.
+A tracepoint is a breakpoint that does not stop the execution of the program, instead when the tracepoint is hit a notification is displayed. See [Documentation/cli/locspec.md](//github.com/go-delve/delve/tree/master/Documentation/cli/locspec.md) for the syntax of linespec. If linespec is omitted a tracepoint will be set on the current line.
 
 See also: "help on", "help cond" and "help clear"
 
