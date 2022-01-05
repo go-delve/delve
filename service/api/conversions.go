@@ -261,7 +261,7 @@ func VariableValueAsString(v *proc.Variable) string {
 		return convertFloatValue(v, 32)
 	case reflect.Float64:
 		return convertFloatValue(v, 64)
-	case reflect.String, reflect.Func:
+	case reflect.String, reflect.Func, reflect.Struct:
 		return constant.StringVal(v.Value)
 	default:
 		if cd := v.ConstDescr(); cd != "" {
