@@ -130,7 +130,8 @@ type LaunchConfig struct {
 	DlvCwd string `json:"dlvCwd,omitempty"`
 
 	// Env specifies optional environment variables for Delve server
-	// beyond the environment variables Delve initially started with.
+	// in addition to the environment variables Delve initially
+	// started with.
 	// Variables with 'nil' values can be used to unset the named
 	// environment variables.
 	// Values are interpreted verbatim. Variable substitution or
