@@ -244,4 +244,4 @@ int uprobe__dlv_trace(struct pt_regs *ctx) {
     return 0;
 }
 
-char _license[] SEC("license") = "GPL";
+char _license[] SEC("license") = "Dual MIT/GPL";
