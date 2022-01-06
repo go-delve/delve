@@ -2069,7 +2069,7 @@ func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContex
 		case dwarf.TagSubprogram:
 			inlined := false
 			if inval, ok := entry.Val(dwarf.AttrInline).(int64); ok {
-				inlined = inval == 1
+				inlined = inval >= 1
 			}
 
 			if inlined {
