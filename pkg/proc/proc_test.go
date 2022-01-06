@@ -1679,7 +1679,7 @@ func TestCondBreakpoint(t *testing.T) {
 
 		n, _ := constant.Int64Val(nvar.Value)
 		if n != 7 {
-			t.Fatalf("Stoppend on wrong goroutine %d\n", n)
+			t.Fatalf("Stopped on wrong goroutine %d\n", n)
 		}
 	})
 }
@@ -1720,7 +1720,7 @@ func TestCondBreakpointError(t *testing.T) {
 
 			n, _ := constant.Int64Val(nvar.Value)
 			if n != 7 {
-				t.Fatalf("Stoppend on wrong goroutine %d\n", n)
+				t.Fatalf("Stopped on wrong goroutine %d\n", n)
 			}
 		}
 	})
@@ -1739,7 +1739,7 @@ func TestHitCondBreakpointEQ(t *testing.T) {
 
 		i, _ := constant.Int64Val(ivar.Value)
 		if i != 3 {
-			t.Fatalf("Stoppend on wrong hitcount %d\n", i)
+			t.Fatalf("Stopped on wrong hitcount %d\n", i)
 		}
 
 		err := p.Continue()
@@ -1764,7 +1764,7 @@ func TestHitCondBreakpointGEQ(t *testing.T) {
 
 			i, _ := constant.Int64Val(ivar.Value)
 			if int(i) != it {
-				t.Fatalf("Stoppend on wrong hitcount %d\n", i)
+				t.Fatalf("Stopped on wrong hitcount %d\n", i)
 			}
 		}
 
@@ -1787,7 +1787,7 @@ func TestHitCondBreakpointREM(t *testing.T) {
 
 			i, _ := constant.Int64Val(ivar.Value)
 			if int(i) != it {
-				t.Fatalf("Stoppend on wrong hitcount %d\n", i)
+				t.Fatalf("Stopped on wrong hitcount %d\n", i)
 			}
 		}
 
