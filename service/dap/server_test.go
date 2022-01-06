@@ -4494,7 +4494,10 @@ func TestStepInstruction(t *testing.T) {
 					// Next instruction.
 					client.NextInstructionRequest(1)
 					client.ExpectNextResponse(t)
-					client.ExpectStoppedEvent(t)
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "step" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"step\"", se)
+					}
 					verifyExpectedLocation()
 					nextPC, err := getPC(t, client, 1)
 					if err != nil {
@@ -4508,7 +4511,10 @@ func TestStepInstruction(t *testing.T) {
 					pc = nextPC
 					client.StepInInstructionRequest(1)
 					client.ExpectStepInResponse(t)
-					client.ExpectStoppedEvent(t)
+					se = client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "step" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"step\"", se)
+					}
 					verifyExpectedLocation()
 					nextPC, err = getPC(t, client, 1)
 					if err != nil {
@@ -4522,7 +4528,10 @@ func TestStepInstruction(t *testing.T) {
 					pc = nextPC
 					client.StepOutInstructionRequest(1)
 					client.ExpectStepOutResponse(t)
-					client.ExpectStoppedEvent(t)
+					se = client.ExpectStoppedEvent(t)
+					if se.Body.ThreadId != 1 || se.Body.Reason != "step" {
+						t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"step\"", se)
+					}
 					verifyExpectedLocation()
 					nextPC, err = getPC(t, client, 1)
 					if err != nil {
