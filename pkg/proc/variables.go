@@ -497,7 +497,7 @@ func (g *G) UserCurrent() Location {
 		frame := it.Frame()
 		if frame.Call.Fn != nil {
 			name := frame.Call.Fn.Name
-			if strings.Contains(name, ".") && (!strings.HasPrefix(name, "runtime.") || frame.Call.Fn.exportedRuntime()) {
+			if strings.Contains(name, ".") && (!strings.HasPrefix(name, "runtime.") || frame.Call.Fn.exportedRuntime()) && !strings.HasPrefix(name, "internal/") && !strings.HasPrefix(name, "runtime/internal") {
 				return frame.Call
 			}
 		}
