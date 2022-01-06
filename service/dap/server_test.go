@@ -5509,6 +5509,106 @@ func TestLaunchRequestWithBuildFlags(t *testing.T) {
 	})
 }
 
+func TestLaunchRequestWithEnv(t *testing.T) {
+	// testenv fixture will lookup SOMEVAR with
+	//   x, y := os.Lookup("SOMEVAR")
+	// before stopping at runtime.Breakpoint.
+
+	type envMap map[string]*string
+	strVar := func(s string) *string { return &s }
+
+	fixtures := protest.FindFixturesDir() // relative to current working directory.
+	testFile, _ := filepath.Abs(filepath.Join(fixtures, "testenv.go"))
+	for _, tc := range []struct {
+		name      string
+		initEnv   envMap
+		launchEnv envMap
+		wantX     string
+		wantY     bool
+	}{
+		{
+			name:    "no env",
+			initEnv: envMap{"SOMEVAR": strVar("baz")},
+			wantX:   "baz",
+			wantY:   true,
+		},
+		{
+			name:      "overwrite",
+			initEnv:   envMap{"SOMEVAR": strVar("baz")},
+			launchEnv: envMap{"SOMEVAR": strVar("bar")},
+			wantX:     "bar",
+			wantY:     true,
+		},
+		{
+			name:      "unset",
+			initEnv:   envMap{"SOMEVAR": strVar("baz")},
+			launchEnv: envMap{"SOMEVAR": nil},
+			wantX:     "",
+			wantY:     false,
+		},
+		{
+			name:      "empty value",
+			initEnv:   envMap{"SOMEVAR": strVar("baz")},
+			launchEnv: envMap{"SOMEVAR": strVar("")},
+			wantX:     "",
+			wantY:     true,
+		},
+		{
+			name:      "set",
+			launchEnv: envMap{"SOMEVAR": strVar("foo")},
+			wantX:     "foo",
+			wantY:     true,
+		},
+		{
+			name:      "untouched",
+			initEnv:   envMap{"SOMEVAR": strVar("baz")},
+			launchEnv: envMap{"SOMEVAR2": nil, "SOMEVAR3": strVar("foo")},
+			wantX:     "baz",
+			wantY:     true,
+		},
+	} {
+
+		t.Run(tc.name, func(t *testing.T) {
+			// cleanup
+			defer func() {
+				os.Unsetenv("SOMEVAR")
+				os.Unsetenv("SOMEVAR2")
+				os.Unsetenv("SOMEVAR3")
+			}()
+
+			for k, v := range tc.initEnv {
+				if v != nil {
+					os.Setenv(k, *v)
+				}
+			}
+
+			serverStopped := make(chan struct{})
+			client := startDAPServerWithClient(t, serverStopped)
+			defer client.Close()
+
+			runDebugSessionWithBPs(t, client, "launch", func() { // launch
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode":    "debug",
+					"program": testFile,
+					"env":     tc.launchEnv,
+				})
+			}, testFile, nil, // runtime.Breakpoint
+				[]onBreakpoint{{
+					execute: func() {
+						client.EvaluateRequest("x", 1000, "whatever")
+						gotX := client.ExpectEvaluateResponse(t)
+						checkEval(t, gotX, fmt.Sprintf("%q", tc.wantX), false)
+						client.EvaluateRequest("y", 1000, "whatever")
+						gotY := client.ExpectEvaluateResponse(t)
+						checkEval(t, gotY, fmt.Sprintf("%v", tc.wantY), false)
+					},
+					disconnect: true,
+				}})
+			<-serverStopped
+		})
+	}
+}
+
 func TestAttachRequest(t *testing.T) {
 	if runtime.GOOS == "freebsd" {
 		t.SkipNow()
