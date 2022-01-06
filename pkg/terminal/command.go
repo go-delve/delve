@@ -122,16 +122,16 @@ func DebugCommands(client service.Client) *Commands {
 Type "help" followed by the name of a command for more information about it.`},
 		{aliases: []string{"break", "b"}, group: breakCmds, cmdFn: breakpoint, helpMsg: `Sets a breakpoint.
 
-	break [name] <linespec>
+	break [name] [linespec]
 
-See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/locspec.md for the syntax of linespec.
+See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/locspec.md for the syntax of linespec. If linespec is omitted a breakpoint will be set on the current line.
 
 See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"trace", "t"}, group: breakCmds, cmdFn: tracepoint, allowedPrefixes: onPrefix, helpMsg: `Set tracepoint.
 
-	trace [name] <linespec>
+	trace [name] [linespec]
 
-A tracepoint is a breakpoint that does not stop the execution of the program, instead when the tracepoint is hit a notification is displayed. See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/locspec.md for the syntax of linespec.
+A tracepoint is a breakpoint that does not stop the execution of the program, instead when the tracepoint is hit a notification is displayed. See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/locspec.md for the syntax of linespec. If linespec is omitted a tracepoint will be set on the current line.
 
 See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"watch"}, group: breakCmds, cmdFn: watchpoint, helpMsg: `Set watchpoint.
@@ -1681,7 +1681,12 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 	spec := ""
 	switch len(args) {
 	case 1:
-		spec = argstr
+		if len(args[0]) != 0 {
+			spec = argstr
+		} else {
+			// no arg specified
+			spec = "+0"
+		}
 	case 2:
 		if api.ValidBreakpointName(args[0]) == nil {
 			requestedBp.Name = args[0]
