@@ -47,7 +47,9 @@ When used with `dlv dap` or `dlv --headless --accept-multiclient=false` (default
 
 When the program terminates, we send a [terminated event](https://microsoft.github.io/debug-adapter-protocol/specification#Events_Terminated), which is expected to trigger a [disconnect request](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Disconnect) from the client for a session and a server shutdown. The [restart request](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Restart) is not yet supported. 
 
-The server also shuts down in case of a client connection error or SIGTERM signal, but not SIGINT (Ctrl-C) signal, which gets sent to the foregrounded debuggee. In either case, the server takes down a launched process, but lets an attached process continue.
+The server also shuts down in case of a client connection error or SIGTERM signal, taking down a launched process, but letting an attached process continue. 
+
+Pressing Ctrl-C on the terminal where a headless server is running sends SIGINT to the debuggee, foregrounded in headless mode to support debugging interactive programs.
 
 ### Multi-Client Mode
 
@@ -55,7 +57,9 @@ When used with `dlv --headless --accept-multiclient=true`, the DAP server will h
 
 The client may request full shutdown of the server and the debuggee with [`terminateDebuggee`](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Disconnect) option.
 
-The server shuts down in response to a SIGTERM signal, but not SIGINT (Ctrl-C) signal, which gets sent to the foregrounded debuggee. The server will take down a launched process, but let an attached process continue.
+The server shuts down in response to a SIGTERM signal, taking down a launched process, but letting an attached process continue.
+
+Pressing Ctrl-C on the terminal where a headless server is running sends SIGINT to the debuggee, foregrounded in headless mode to support debugging interactive programs.
 
 ## Debugger Output
 
