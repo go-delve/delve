@@ -16,6 +16,7 @@ The [available commands](dlv.md) can be grouped into the following categories:
 * Start a headless backend server only and connect with an external [frontend client](../EditorIntegration.md):
    * [dlv **--headless** \<command\> \<target\> \<args\> ](../api/ClientHowto.md#spawning-the-backend)
       * starts a server, enters a debug session for the specified target and waits to accept a client connection over JSON-RPC or DAP
+      * `<command>` can be any of `debug`, `test`, `exec`, `attach`, `core` or `replay`
       * if `--headless` flag is not specified the default [terminal client](../cli/README.md) will be automatically started instead
       * compatible with [dlv connect](dlv_connect.md), [VS Code Go](https://github.com/golang/vscode-go/blob/master/docs/debugging.md#remote-debugging), [GoLand](https://www.jetbrains.com/help/go/attach-to-running-go-processes-with-debugger.html#attach-to-a-process-on-a-remote-machine)
    * [dlv dap](dlv_dap.md)
