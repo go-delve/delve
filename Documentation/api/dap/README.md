@@ -109,3 +109,8 @@ The initial DAP support was released in v1.6.1 with many additional improvements
 
 The DAP API changes are backward-compatible as all new features are opt-in only. To update to a new [DAP version](https://microsoft.github.io/debug-adapter-protocol/changelog) and import a new DAP feature into delve, 
 one must first update the [go-dap](https://github.com/google/go-dap) dependency.
+
+<!--- TODO:
+- most requests are handled synchronously and block
+- hence many commands not supported when running, but setting breakpoints is
+--->
