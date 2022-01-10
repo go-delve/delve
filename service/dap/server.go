@@ -17,7 +17,6 @@ import (
 	"go/constant"
 	"go/parser"
 	"io"
-	"io/ioutil"
 	"math"
 	"net"
 	"os"
@@ -864,28 +863,9 @@ func (s *Session) setClientCapabilities(args dap.InitializeRequestArguments) {
 	s.clientCapabilities.supportsVariableType = args.SupportsVariableType
 }
 
-// Default output file pathname for the compiled binary in debug or test modes
-// when temporary debug binary creation fails.
+// Default output file pathname for the compiled binary in debug or test modes.
 // This is relative to the current working directory of the server.
 const defaultDebugBinary string = "./__debug_bin"
-
-func (s *Session) tempDebugBinary() string {
-	binaryPattern := "__debug_bin"
-	if runtime.GOOS == "windows" {
-		binaryPattern = "__debug_bin*.exe"
-	}
-	f, err := ioutil.TempFile("", binaryPattern)
-	if err != nil {
-		s.config.log.Errorf("failed to create a temporary binary (%v), falling back to %q", err, defaultDebugBinary)
-		return cleanExeName(defaultDebugBinary)
-	}
-	name := f.Name()
-	if err := f.Close(); err != nil {
-		s.config.log.Errorf("failed to create a temporary binary (%v), falling back to %q", err, defaultDebugBinary)
-		return cleanExeName(defaultDebugBinary)
-	}
-	return name
-}
 
 func cleanExeName(name string) string {
 	if runtime.GOOS == "windows" && filepath.Ext(name) != ".exe" {
@@ -982,7 +962,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	debugbinary := args.Program
 	if args.Mode == "debug" || args.Mode == "test" {
 		if args.Output == "" {
-			args.Output = s.tempDebugBinary()
+			args.Output = cleanExeName(defaultDebugBinary)
 		} else {
 			args.Output = cleanExeName(args.Output)
 		}
