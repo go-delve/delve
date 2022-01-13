@@ -16,7 +16,7 @@ Command | Description
 [rebuild](#rebuild) | Rebuild the target executable and restarts it. It does not work if the executable was not built by delve.
 [restart](#restart) | Restart process.
 [rev](#rev) | Reverses the execution of the target program for the command specified.
-[rewind](#rewind) | Run backwards until breakpoint or program termination.
+[rewind](#rewind) | Run backwards until breakpoint or start of recorded history.
 [step](#step) | Single step through program.
 [step-instruction](#step-instruction) | Single step a single cpu instruction.
 [stepout](#stepout) | Step out of the current function.
@@ -545,7 +545,7 @@ Currently, only the rev step-instruction command is supported.
 
 
 ## rewind
-Run backwards until breakpoint or program termination.
+Run backwards until breakpoint or start of recorded history.
 
 Aliases: rw
 
