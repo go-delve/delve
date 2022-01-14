@@ -5353,11 +5353,37 @@ func TestNoDebug_AcceptNoRequestsButDisconnect(t *testing.T) {
 
 		// Disconnect request is ok
 		client.DisconnectRequestWithKillOption(true)
-		client.ExpectOutputEventTerminating(t)
-		client.ExpectOutputEventRegex(t, fmt.Sprintf(daptest.ProcessExited, "(-1|1)"))
-		client.ExpectTerminatedEvent(t)
-		client.ExpectDisconnectResponse(t)
-		client.ExpectTerminatedEvent(t)
+		terminated, disconnectResp := false, false
+		for {
+			m, err := client.ReadMessage()
+			if err != nil {
+				break
+			}
+			switch m := m.(type) {
+			case *dap.OutputEvent:
+				ok := false
+				wants := []string{`Terminating process [0-9]+\n`, fmt.Sprintf(daptest.ProcessExited, "(-1|1)")}
+				for _, want := range wants {
+					if matched, _ := regexp.MatchString(want, m.Body.Output); matched {
+						ok = true
+						break
+					}
+				}
+				if !ok {
+					t.Errorf("\ngot %#v\nwant Output=%q\n", m, wants)
+				}
+			case *dap.TerminatedEvent:
+				terminated = true
+			case *dap.DisconnectResponse:
+				disconnectResp = true
+			}
+		}
+		if !terminated {
+			t.Errorf("did not get TerminatedEvent")
+		}
+		if !disconnectResp {
+			t.Errorf("did not get DisconnectResponse")
+		}
 	})
 }
 
