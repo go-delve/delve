@@ -554,7 +554,7 @@ The core dump is always written in ELF, even on systems (windows, macOS) where t
 				aliases: []string{"rewind", "rw"},
 				group:   runCmds,
 				cmdFn:   c.rewind,
-				helpMsg: "Run backwards until breakpoint or program termination.",
+				helpMsg: "Run backwards until breakpoint or start of recorded history.",
 			},
 			command{
 				aliases: []string{"check", "checkpoint"},
