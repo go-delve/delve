@@ -174,14 +174,13 @@ func (s *State) readNext() (interface{}, error) {
 	}
 
 	var input input_record
-	pbuf := uintptr(unsafe.Pointer(&input))
 	var rv uint32
-	prv := uintptr(unsafe.Pointer(&rv))
 
 	var surrogate uint16
 
 	for {
-		ok, _, err := procReadConsoleInput.Call(uintptr(s.handle), pbuf, 1, prv)
+		ok, _, err := procReadConsoleInput.Call(uintptr(s.handle),
+			uintptr(unsafe.Pointer(&input)), 1, uintptr(unsafe.Pointer(&rv)))
 
 		if ok == 0 {
 			return nil, err
