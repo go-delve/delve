@@ -471,8 +471,6 @@ type BreakpointMap struct {
 	// WatchOutOfScope is the list of watchpoints that went out of scope during
 	// the last resume operation
 	WatchOutOfScope []*Breakpoint
-
-	breakpointIDCounter int
 }
 
 // NewBreakpointMap creates a new BreakpointMap.
@@ -484,8 +482,8 @@ func NewBreakpointMap() BreakpointMap {
 
 // SetBreakpoint sets a breakpoint at addr, and stores it in the process wide
 // break point table.
-func (t *Target) SetBreakpoint(addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error) {
-	return t.setBreakpointInternal(addr, kind, 0, cond)
+func (t *Target) SetBreakpoint(logicalID int, addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error) {
+	return t.setBreakpointInternal(logicalID, addr, kind, 0, cond)
 }
 
 // SetEBPFTracepoint will attach a uprobe to the function
@@ -587,7 +585,7 @@ func (t *Target) setEBPFTracepointOnFunc(fn *Function, goidOffset int64) error {
 
 // SetWatchpoint sets a data breakpoint at addr and stores it in the
 // process wide break point table.
-func (t *Target) SetWatchpoint(scope *EvalScope, expr string, wtype WatchType, cond ast.Expr) (*Breakpoint, error) {
+func (t *Target) SetWatchpoint(logicalID int, scope *EvalScope, expr string, wtype WatchType, cond ast.Expr) (*Breakpoint, error) {
 	if (wtype&WatchWrite == 0) && (wtype&WatchRead == 0) {
 		return nil, errors.New("at least one of read and write must be set for watchpoint")
 	}
@@ -626,7 +624,7 @@ func (t *Target) SetWatchpoint(scope *EvalScope, expr string, wtype WatchType, c
 		return nil, errors.New("can not watch stack allocated variable for reads")
 	}
 
-	bp, err := t.setBreakpointInternal(xv.Addr, UserBreakpoint, wtype.withSize(uint8(sz)), cond)
+	bp, err := t.setBreakpointInternal(logicalID, xv.Addr, UserBreakpoint, wtype.withSize(uint8(sz)), cond)
 	if err != nil {
 		return bp, err
 	}
@@ -643,7 +641,7 @@ func (t *Target) SetWatchpoint(scope *EvalScope, expr string, wtype WatchType, c
 	return bp, nil
 }
 
-func (t *Target) setBreakpointInternal(addr uint64, kind BreakpointKind, wtype WatchType, cond ast.Expr) (*Breakpoint, error) {
+func (t *Target) setBreakpointInternal(logicalID int, addr uint64, kind BreakpointKind, wtype WatchType, cond ast.Expr) (*Breakpoint, error) {
 	if valid, err := t.Valid(); !valid {
 		recorded, _ := t.Recorded()
 		if !recorded {
@@ -654,8 +652,7 @@ func (t *Target) setBreakpointInternal(addr uint64, kind BreakpointKind, wtype W
 	newBreaklet := &Breaklet{Kind: kind, Cond: cond}
 	if kind == UserBreakpoint {
 		newBreaklet.HitCount = map[int]uint64{}
-		bpmap.breakpointIDCounter++
-		newBreaklet.LogicalID = bpmap.breakpointIDCounter
+		newBreaklet.LogicalID = logicalID
 	}
 	if bp, ok := bpmap.M[addr]; ok {
 		if !bp.canOverlap(kind) {
@@ -715,22 +712,6 @@ func (t *Target) setBreakpointInternal(addr uint64, kind BreakpointKind, wtype W
 	bpmap.M[addr] = newBreakpoint
 
 	return newBreakpoint, nil
-}
-
-// SetBreakpointWithID creates a breakpoint at addr, with the specified logical ID.
-func (t *Target) SetBreakpointWithID(id int, addr uint64) (*Breakpoint, error) {
-	bpmap := t.Breakpoints()
-	bp, err := t.SetBreakpoint(addr, UserBreakpoint, nil)
-	if err == nil {
-		for _, breaklet := range bp.Breaklets {
-			if breaklet.Kind == UserBreakpoint {
-				breaklet.LogicalID = id
-				bpmap.breakpointIDCounter--
-				break
-			}
-		}
-	}
-	return bp, err
 }
 
 // canOverlap returns true if a breakpoint of kind can be overlapped to the
