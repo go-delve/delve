@@ -1241,7 +1241,7 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 			if err != nil {
 				return nil, nil, ErrNoDebugInfoFound
 			}
-			debugFilePath = string(out)
+			debugFilePath = strings.TrimSpace(string(out))
 		} else {
 			return nil, nil, ErrNoDebugInfoFound
 		}
