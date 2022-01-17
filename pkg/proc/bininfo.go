@@ -1367,7 +1367,7 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 	image.debugLineStr = debugLineStrBytes
 
 	wg.Add(3)
-	go bi.parseDebugFrameElf(image, dwarfFile, debugInfoBytes, wg)
+	go bi.parseDebugFrameElf(image, dwarfFile, elfFile, debugInfoBytes, wg)
 	go bi.loadDebugInfoMaps(image, debugInfoBytes, debugLineBytes, wg, nil)
 	go bi.loadSymbolName(image, elfFile, wg)
 	if image.index == 0 {
@@ -1395,11 +1395,11 @@ func (bi *BinaryInfo) loadSymbolName(image *Image, file *elf.File, wg *sync.Wait
 	}
 }
 
-func (bi *BinaryInfo) parseDebugFrameElf(image *Image, exe *elf.File, debugInfoBytes []byte, wg *sync.WaitGroup) {
+func (bi *BinaryInfo) parseDebugFrameElf(image *Image, dwarfFile, exeFile *elf.File, debugInfoBytes []byte, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	debugFrameData, debugFrameErr := godwarf.GetDebugSectionElf(exe, "frame")
-	ehFrameSection := exe.Section(".eh_frame")
+	debugFrameData, debugFrameErr := godwarf.GetDebugSectionElf(dwarfFile, "frame")
+	ehFrameSection := exeFile.Section(".eh_frame")
 	var ehFrameData []byte
 	var ehFrameAddr uint64
 	if ehFrameSection != nil {
