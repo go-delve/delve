@@ -393,7 +393,7 @@ func (t *Target) createUnrecoveredPanicBreakpoint() {
 		panicpcs, err = FindFunctionLocation(t.Process, "runtime.fatalpanic", 0)
 	}
 	if err == nil {
-		bp, err := t.SetBreakpointWithID(unrecoveredPanicID, panicpcs[0])
+		bp, err := t.SetBreakpoint(unrecoveredPanicID, panicpcs[0], UserBreakpoint, nil)
 		if err == nil {
 			bp.Name = UnrecoveredPanic
 			bp.Variables = []string{"runtime.curg._panic.arg"}
@@ -405,7 +405,7 @@ func (t *Target) createUnrecoveredPanicBreakpoint() {
 func (t *Target) createFatalThrowBreakpoint() {
 	fatalpcs, err := FindFunctionLocation(t.Process, "runtime.throw", 0)
 	if err == nil {
-		bp, err := t.SetBreakpointWithID(fatalThrowID, fatalpcs[0])
+		bp, err := t.SetBreakpoint(fatalThrowID, fatalpcs[0], UserBreakpoint, nil)
 		if err == nil {
 			bp.Name = FatalThrow
 		}
@@ -462,11 +462,6 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 		results = append(results, r)
 	}
 	return results
-}
-
-// SetNextBreakpointID sets the breakpoint ID of the next breakpoint
-func (t *Target) SetNextBreakpointID(id int) {
-	t.Breakpoints().breakpointIDCounter = id
 }
 
 const (

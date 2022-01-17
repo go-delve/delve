@@ -218,7 +218,7 @@ func setFunctionBreakpoint(p *proc.Target, t testing.TB, fname string) *proc.Bre
 	if len(addrs) != 1 {
 		t.Fatalf("%s:%d: setFunctionBreakpoint(%s): too many results %v", f, l, fname, addrs)
 	}
-	bp, err := p.SetBreakpoint(addrs[0], proc.UserBreakpoint, nil)
+	bp, err := p.SetBreakpoint(int(addrs[0]), addrs[0], proc.UserBreakpoint, nil)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
 	}
@@ -236,7 +236,7 @@ func setFileBreakpoint(p *proc.Target, t testing.TB, path string, lineno int) *p
 	if len(addrs) != 1 {
 		t.Fatalf("%s:%d: setFileLineBreakpoint(%s, %d): too many (or not enough) results %v", f, l, path, lineno, addrs)
 	}
-	bp, err := p.SetBreakpoint(addrs[0], proc.UserBreakpoint, nil)
+	bp, err := p.SetBreakpoint(int(addrs[0]), addrs[0], proc.UserBreakpoint, nil)
 	if err != nil {
 		t.Fatalf("%s:%d: SetBreakpoint: %v", f, l, err)
 	}
@@ -350,7 +350,7 @@ func TestBreakpointInSeparateGoRoutine(t *testing.T) {
 
 func TestBreakpointWithNonExistantFunction(t *testing.T) {
 	withTestProcess("testprog", t, func(p *proc.Target, fixture protest.Fixture) {
-		_, err := p.SetBreakpoint(0, proc.UserBreakpoint, nil)
+		_, err := p.SetBreakpoint(0, 0, proc.UserBreakpoint, nil)
 		if err == nil {
 			t.Fatal("Should not be able to break at non existant function")
 		}
@@ -3874,7 +3874,7 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 		}
 		for _, pc := range pcs {
 			t.Logf("setting breakpoint at %#x\n", pc)
-			_, err := p.SetBreakpoint(pc, proc.UserBreakpoint, nil)
+			_, err := p.SetBreakpoint(0, pc, proc.UserBreakpoint, nil)
 			assertNoError(err, t, fmt.Sprintf("SetBreakpoint(%#x)", pc))
 		}
 
@@ -4026,7 +4026,7 @@ func TestInlineBreakpoint(t *testing.T) {
 		if fn.Name != expectedFn {
 			t.Fatalf("incorrect function returned, expected %s, got %s", expectedFn, fn.Name)
 		}
-		_, err = p.SetBreakpoint(pcs[0], proc.UserBreakpoint, nil)
+		_, err = p.SetBreakpoint(0, pcs[0], proc.UserBreakpoint, nil)
 		if err != nil {
 			t.Fatalf("unable to set breakpoint: %v", err)
 		}
@@ -5442,7 +5442,7 @@ func TestWatchpointsBasic(t *testing.T) {
 		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "GoroutineScope")
 
-		bp, err := p.SetWatchpoint(scope, "globalvar1", proc.WatchWrite, nil)
+		bp, err := p.SetWatchpoint(0, scope, "globalvar1", proc.WatchWrite, nil)
 		assertNoError(err, t, "SetDataBreakpoint(write-only)")
 
 		assertNoError(p.Continue(), t, "Continue 1")
@@ -5457,7 +5457,7 @@ func TestWatchpointsBasic(t *testing.T) {
 		assertNoError(p.Continue(), t, "Continue 2")
 		assertLineNumber(p, t, 21, "Continue 2") // Position 2
 
-		_, err = p.SetWatchpoint(scope, "globalvar1", proc.WatchWrite|proc.WatchRead, nil)
+		_, err = p.SetWatchpoint(0, scope, "globalvar1", proc.WatchWrite|proc.WatchRead, nil)
 		assertNoError(err, t, "SetDataBreakpoint(read-write)")
 
 		assertNoError(p.Continue(), t, "Continue 3")
@@ -5469,7 +5469,7 @@ func TestWatchpointsBasic(t *testing.T) {
 		assertLineNumber(p, t, 27, "Continue 4") // Position 4
 
 		t.Logf("setting final breakpoint")
-		_, err = p.SetWatchpoint(scope, "globalvar1", proc.WatchWrite, nil)
+		_, err = p.SetWatchpoint(0, scope, "globalvar1", proc.WatchWrite, nil)
 		assertNoError(err, t, "SetDataBreakpoint(write-only, again)")
 
 		assertNoError(p.Continue(), t, "Continue 5")
@@ -5490,7 +5490,7 @@ func TestWatchpointCounts(t *testing.T) {
 		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "GoroutineScope")
 
-		bp, err := p.SetWatchpoint(scope, "globalvar1", proc.WatchWrite, nil)
+		bp, err := p.SetWatchpoint(0, scope, "globalvar1", proc.WatchWrite, nil)
 		assertNoError(err, t, "SetWatchpoint(write-only)")
 
 		for {
@@ -5614,7 +5614,7 @@ func TestWatchpointStack(t *testing.T) {
 		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "GoroutineScope")
 
-		_, err = p.SetWatchpoint(scope, "w", proc.WatchWrite, nil)
+		_, err = p.SetWatchpoint(0, scope, "w", proc.WatchWrite, nil)
 		assertNoError(err, t, "SetDataBreakpoint(write-only)")
 
 		watchbpnum := 3
@@ -5642,7 +5642,7 @@ func TestWatchpointStack(t *testing.T) {
 		// instruction preceding the return address, this does not matter for this
 		// test.
 
-		_, err = p.SetBreakpoint(retaddr, proc.UserBreakpoint, nil)
+		_, err = p.SetBreakpoint(0, retaddr, proc.UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint")
 
 		if len(p.Breakpoints().M) != clearlen+watchbpnum {
@@ -5690,7 +5690,7 @@ func TestWatchpointStackBackwardsOutOfScope(t *testing.T) {
 		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "GoroutineScope")
 
-		_, err = p.SetWatchpoint(scope, "w", proc.WatchWrite, nil)
+		_, err = p.SetWatchpoint(0, scope, "w", proc.WatchWrite, nil)
 		assertNoError(err, t, "SetDataBreakpoint(write-only)")
 
 		assertNoError(p.Continue(), t, "Continue 1")

@@ -76,6 +76,8 @@ type Debugger struct {
 	// so lower layers like proc doesn't need to deal
 	// with them
 	disabledBreakpoints map[int]*api.Breakpoint
+
+	breakpointIDCounter int
 }
 
 type ExecuteKind int
@@ -541,7 +543,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 				discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: oldBp, Reason: "can not recreate address breakpoints on restart"})
 				continue
 			}
-			newBp, err := p.SetBreakpointWithID(oldBp.ID, oldBp.Addr)
+			newBp, err := p.SetBreakpoint(oldBp.ID, oldBp.Addr, proc.UserBreakpoint, nil)
 			if err != nil {
 				return nil, err
 			}
@@ -555,7 +557,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 			maxID = bp.ID
 		}
 	}
-	d.target.SetNextBreakpointID(maxID)
+	d.breakpointIDCounter = maxID
 	return discarded, nil
 }
 
@@ -722,14 +724,11 @@ func createLogicalBreakpoint(d *Debugger, addrs []uint64, requestedBp *api.Break
 	bps := make([]*proc.Breakpoint, len(addrs))
 	var err error
 	for i := range addrs {
-		if id > 0 {
-			bps[i], err = p.SetBreakpointWithID(id, addrs[i])
-		} else {
-			bps[i], err = p.SetBreakpoint(addrs[i], proc.UserBreakpoint, nil)
-			if err == nil {
-				id = bps[i].LogicalID()
-			}
+		if id <= 0 {
+			d.breakpointIDCounter++
+			id = d.breakpointIDCounter
 		}
+		bps[i], err = p.SetBreakpoint(id, addrs[i], proc.UserBreakpoint, nil)
 		if err != nil {
 			break
 		}
@@ -785,7 +784,7 @@ func (d *Debugger) amendBreakpoint(amend *api.Breakpoint) error {
 		return fmt.Errorf("no breakpoint with ID %d", amend.ID)
 	}
 	if !amend.Disabled && disabled { // enable the breakpoint
-		bp, err := d.target.SetBreakpointWithID(amend.ID, amend.Addr)
+		bp, err := d.target.SetBreakpoint(amend.ID, amend.Addr, proc.UserBreakpoint, nil)
 		if err != nil {
 			return err
 		}
@@ -1111,7 +1110,8 @@ func (d *Debugger) CreateWatchpoint(goid, frame, deferredCall int, expr string, 
 	if err != nil {
 		return nil, err
 	}
-	bp, err := d.target.SetWatchpoint(s, expr, proc.WatchType(wtype), nil)
+	d.breakpointIDCounter++
+	bp, err := d.target.SetWatchpoint(d.breakpointIDCounter, s, expr, proc.WatchType(wtype), nil)
 	if err != nil {
 		return nil, err
 	}
