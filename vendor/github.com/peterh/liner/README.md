@@ -6,6 +6,13 @@ everything Unix-like is a VT100 (or is trying very hard to be). If your
 terminal is not pretending to be a VT100, change it. Liner also support
 Windows.
 
+Liner is intended for use by cross-platform applications. Therefore, the
+decision was made to write it in pure Go, avoiding cgo, for ease of cross
+compilation. Furthermore, features only supported on some platforms have
+been intentionally omitted. For example, Ctrl-Z is "suspend" on Unix, but
+"EOF" on Windows. In the interest of making an application behave the same
+way on every supported platform, Ctrl-Z is ignored by Liner.
+
 Liner is released under the X11 license (which is similar to the new BSD
 license).
 
@@ -39,6 +46,12 @@ Ctrl-R       | Reverse Search history (Ctrl-S forward, Ctrl-G cancel)
 Ctrl-Y       | Paste from Yank buffer (Alt-Y to paste next yank instead)
 Tab          | Next completion
 Shift-Tab    | (after Tab) Previous completion
+
+Note that "Previous" and "Next match from history" will retain the part of
+the line that the user has already typed, similar to zsh's
+"up-line-or-beginning-search" (which is the default on some systems) or
+bash's "history-search-backward" (which is my preferred behaviour, but does
+not appear to be the default `Up` keybinding on any system).
 
 Getting started
 -----------------

@@ -1,3 +1,4 @@
+//go:build linux || darwin || freebsd || openbsd || netbsd
 // +build linux darwin freebsd openbsd netbsd
 
 package liner
@@ -21,17 +22,16 @@ func (mode *termios) ApplyMode() error {
 // This function is provided for convenience, and should
 // not be necessary for most users of liner.
 func TerminalMode() (ModeApplier, error) {
-	mode, errno := getMode(syscall.Stdin)
-
-	if errno != 0 {
-		return nil, errno
-	}
-	return mode, nil
+	return getMode(syscall.Stdin)
 }
 
-func getMode(handle int) (*termios, syscall.Errno) {
+func getMode(handle int) (*termios, error) {
 	var mode termios
+	var err error
 	_, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(handle), getTermios, uintptr(unsafe.Pointer(&mode)))
+	if errno != 0 {
+		err = errno
+	}
 
-	return &mode, errno
+	return &mode, err
 }
