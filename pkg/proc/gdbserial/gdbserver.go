@@ -152,8 +152,6 @@ type gdbProcess struct {
 	almostExited     bool // true if 'rr' has sent its synthetic SIGKILL
 	ctrlC            bool // ctrl-c was sent to stop inferior
 
-	manualStopRequested bool
-
 	breakpoints proc.BreakpointMap
 
 	gcmdok         bool   // true if the stub supports g and (maybe) G commands
@@ -762,12 +760,6 @@ func (p *gdbProcess) Valid() (bool, error) {
 	return true, nil
 }
 
-// ResumeNotify specifies a channel that will be closed the next time
-// ContinueOnce finishes resuming the target.
-func (p *gdbProcess) ResumeNotify(ch chan<- struct{}) {
-	p.conn.resumeChan = ch
-}
-
 // FindThread returns the thread with the given ID.
 func (p *gdbProcess) FindThread(threadID int) (proc.Thread, bool) {
 	thread, ok := p.threads[threadID]
@@ -809,7 +801,7 @@ const (
 
 // ContinueOnce will continue execution of the process until
 // a breakpoint is hit or signal is received.
-func (p *gdbProcess) ContinueOnce() (proc.Thread, proc.StopReason, error) {
+func (p *gdbProcess) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
 	if p.exited {
 		return nil, proc.StopExited, proc.ErrProcessExited{Pid: p.conn.pid}
 	}
@@ -835,7 +827,7 @@ func (p *gdbProcess) ContinueOnce() (proc.Thread, proc.StopReason, error) {
 		th.clearBreakpointState()
 	}
 
-	p.setCtrlC(false)
+	p.setCtrlC(cctx, false)
 
 	// resume all threads
 	var threadID string
@@ -845,7 +837,7 @@ func (p *gdbProcess) ContinueOnce() (proc.Thread, proc.StopReason, error) {
 continueLoop:
 	for {
 		tu.Reset()
-		sp, err := p.conn.resume(p.threads, &tu)
+		sp, err := p.conn.resume(cctx, p.threads, &tu)
 		threadID = sp.threadID
 		if err != nil {
 			if _, exited := err.(proc.ErrProcessExited); exited {
@@ -868,7 +860,7 @@ continueLoop:
 		}
 
 		var shouldStop, shouldExitErr bool
-		trapthread, atstart, shouldStop, shouldExitErr = p.handleThreadSignals(trapthread)
+		trapthread, atstart, shouldStop, shouldExitErr = p.handleThreadSignals(cctx, trapthread)
 		if shouldExitErr {
 			p.almostExited = true
 			return nil, proc.StopExited, proc.ErrProcessExited{Pid: p.conn.pid}
@@ -922,7 +914,7 @@ func (p *gdbProcess) findThreadByStrID(threadID string) *gdbThread {
 // and returns true if we should stop execution in response to one of the
 // signals and return control to the user.
 // Adjusts trapthread to a thread that we actually want to stop at.
-func (p *gdbProcess) handleThreadSignals(trapthread *gdbThread) (trapthreadOut *gdbThread, atstart, shouldStop, shouldExitErr bool) {
+func (p *gdbProcess) handleThreadSignals(cctx *proc.ContinueOnceContext, trapthread *gdbThread) (trapthreadOut *gdbThread, atstart, shouldStop, shouldExitErr bool) {
 	var trapthreadCandidate *gdbThread
 
 	for _, th := range p.threads {
@@ -935,7 +927,7 @@ func (p *gdbProcess) handleThreadSignals(trapthread *gdbThread) (trapthreadOut *
 		// the ctrlC flag to know that we are the originators.
 		switch th.sig {
 		case interruptSignal: // interrupt
-			if p.getCtrlC() {
+			if p.getCtrlC(cctx) {
 				isStopSignal = true
 			}
 		case breakpointSignal: // breakpoint
@@ -994,7 +986,7 @@ func (p *gdbProcess) handleThreadSignals(trapthread *gdbThread) (trapthreadOut *
 		trapthread = trapthreadCandidate
 	}
 
-	if p.getCtrlC() || p.getManualStopRequested() {
+	if p.getCtrlC(cctx) || cctx.GetManualStopRequested() {
 		// If we request an interrupt and a target thread simultaneously receives
 		// an unrelated singal debugserver will discard our interrupt request and
 		// report the signal but we should stop anyway.
@@ -1006,44 +998,23 @@ func (p *gdbProcess) handleThreadSignals(trapthread *gdbThread) (trapthreadOut *
 
 // RequestManualStop will attempt to stop the process
 // without a breakpoint or signal having been received.
-func (p *gdbProcess) RequestManualStop() error {
-	p.conn.manualStopMutex.Lock()
-	p.manualStopRequested = true
+func (p *gdbProcess) RequestManualStop(cctx *proc.ContinueOnceContext) error {
 	if !p.conn.running {
-		p.conn.manualStopMutex.Unlock()
 		return nil
 	}
 	p.ctrlC = true
-	p.conn.manualStopMutex.Unlock()
 	return p.conn.sendCtrlC()
 }
 
-// CheckAndClearManualStopRequest will check for a manual
-// stop and then clear that state.
-func (p *gdbProcess) CheckAndClearManualStopRequest() bool {
-	p.conn.manualStopMutex.Lock()
-	msr := p.manualStopRequested
-	p.manualStopRequested = false
-	p.conn.manualStopMutex.Unlock()
-	return msr
-}
-
-func (p *gdbProcess) getManualStopRequested() bool {
-	p.conn.manualStopMutex.Lock()
-	msr := p.manualStopRequested
-	p.conn.manualStopMutex.Unlock()
-	return msr
-}
-
-func (p *gdbProcess) setCtrlC(v bool) {
-	p.conn.manualStopMutex.Lock()
+func (p *gdbProcess) setCtrlC(cctx *proc.ContinueOnceContext, v bool) {
+	cctx.StopMu.Lock()
 	p.ctrlC = v
-	p.conn.manualStopMutex.Unlock()
+	cctx.StopMu.Unlock()
 }
 
-func (p *gdbProcess) getCtrlC() bool {
-	p.conn.manualStopMutex.Lock()
-	defer p.conn.manualStopMutex.Unlock()
+func (p *gdbProcess) getCtrlC(cctx *proc.ContinueOnceContext) bool {
+	cctx.StopMu.Lock()
+	defer cctx.StopMu.Unlock()
 	return p.ctrlC
 }
 
@@ -1077,7 +1048,7 @@ func (p *gdbProcess) Detach(kill bool) error {
 }
 
 // Restart will restart the process from the given position.
-func (p *gdbProcess) Restart(pos string) (proc.Thread, error) {
+func (p *gdbProcess) Restart(cctx *proc.ContinueOnceContext, pos string) (proc.Thread, error) {
 	if p.tracedir == "" {
 		return nil, proc.ErrNotRecorded
 	}
@@ -1089,7 +1060,7 @@ func (p *gdbProcess) Restart(pos string) (proc.Thread, error) {
 		th.clearBreakpointState()
 	}
 
-	p.setCtrlC(false)
+	p.ctrlC = false
 
 	err := p.conn.restart(pos)
 	if err != nil {
@@ -1098,7 +1069,7 @@ func (p *gdbProcess) Restart(pos string) (proc.Thread, error) {
 
 	// for some reason we have to send a vCont;c after a vRun to make rr behave
 	// properly, because that's what gdb does.
-	_, err = p.conn.resume(nil, nil)
+	_, err = p.conn.resume(cctx, nil, nil)
 	if err != nil {
 		return nil, err
 	}

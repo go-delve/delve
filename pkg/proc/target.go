@@ -83,6 +83,8 @@ type Target struct {
 	// can be given a unique address.
 	fakeMemoryRegistry    []*compositeMemory
 	fakeMemoryRegistryMap map[string]*compositeMemory
+
+	cctx *ContinueOnceContext
 }
 
 type KeepSteppingBreakpoints uint8
@@ -198,6 +200,7 @@ func NewTarget(p ProcessInternal, pid int, currentThread Thread, cfg NewTargetCo
 		currentThread: currentThread,
 		CanDump:       cfg.CanDump,
 		pid:           pid,
+		cctx:          &ContinueOnceContext{},
 	}
 
 	if recman, ok := p.(RecordingManipulationInternal); ok {
@@ -283,7 +286,7 @@ func (t *Target) ClearCaches() {
 // Restarting of a normal process happens at a higher level (debugger.Restart).
 func (t *Target) Restart(from string) error {
 	t.ClearCaches()
-	currentThread, err := t.recman.Restart(from)
+	currentThread, err := t.recman.Restart(t.cctx, from)
 	if err != nil {
 		return err
 	}
@@ -464,6 +467,20 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 	return results
 }
 
+// ResumeNotify specifies a channel that will be closed the next time
+// Continue finishes resuming the target.
+func (t *Target) ResumeNotify(ch chan<- struct{}) {
+	t.cctx.ResumeChan = ch
+}
+
+// RequestManualStop attempts to stop all the process' threads.
+func (t *Target) RequestManualStop() error {
+	t.cctx.StopMu.Lock()
+	defer t.cctx.StopMu.Unlock()
+	t.cctx.manualStopRequested = true
+	return t.proc.RequestManualStop(t.cctx)
+}
+
 const (
 	FakeAddressBase     = 0xbeef000000000000
 	fakeAddressUnresolv = 0xbeed000000000000 // this address never resloves to memory
@@ -593,4 +610,6 @@ func (*dummyRecordingManipulation) ClearCheckpoint(int) error { return ErrNotRec
 
 // Restart will always return an error in the native proc backend, only for
 // recorded traces.
-func (*dummyRecordingManipulation) Restart(string) (Thread, error) { return nil, ErrNotRecorded }
+func (*dummyRecordingManipulation) Restart(*ContinueOnceContext, string) (Thread, error) {
+	return nil, ErrNotRecorded
+}
