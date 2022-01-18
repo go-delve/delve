@@ -1,6 +1,8 @@
 package proc
 
 import (
+	"sync"
+
 	"github.com/go-delve/delve/pkg/elfwriter"
 	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 )
@@ -13,17 +15,8 @@ import (
 // There is one exception to this rule: it is safe to call RequestManualStop
 // concurrently with ContinueOnce.
 type Process interface {
-	// ResumeNotify specifies a channel that will be closed the next time
-	// ContinueOnce finishes resuming the target.
-	ResumeNotify(chan<- struct{})
 	BinInfo() *BinaryInfo
 	EntryPoint() (uint64, error)
-
-	// RequestManualStop attempts to stop all the process' threads.
-	RequestManualStop() error
-	// CheckAndClearManualStopRequest returns true the first time it's called
-	// after a call to RequestManualStop.
-	CheckAndClearManualStopRequest() bool
 
 	FindThread(threadID int) (Thread, bool)
 	ThreadList() []Thread
@@ -45,7 +38,10 @@ type ProcessInternal interface {
 	// ErrProcessExited or ErrProcessDetached).
 	Valid() (bool, error)
 	Detach(bool) error
-	ContinueOnce() (trapthread Thread, stopReason StopReason, err error)
+	ContinueOnce(*ContinueOnceContext) (trapthread Thread, stopReason StopReason, err error)
+
+	// RequestManualStop attempts to stop all the process' threads.
+	RequestManualStop(cctx *ContinueOnceContext) error
 
 	WriteBreakpoint(*Breakpoint) error
 	EraseBreakpoint(*Breakpoint) error
@@ -93,7 +89,7 @@ type RecordingManipulationInternal interface {
 	// If pos starts with 'c' it's a checkpoint ID, otherwise it's an event
 	// number.
 	// Returns the new current thread after the restart has completed.
-	Restart(pos string) (Thread, error)
+	Restart(cctx *ContinueOnceContext, pos string) (Thread, error)
 }
 
 // Direction is the direction of execution for the target process.
@@ -111,4 +107,31 @@ type Checkpoint struct {
 	ID    int
 	When  string
 	Where string
+}
+
+// ContinueOnceContext is an object passed to ContinueOnce that the backend
+// can use to communicate with the target layer.
+type ContinueOnceContext struct {
+	ResumeChan chan<- struct{}
+	StopMu     sync.Mutex
+	// manualStopRequested is set if all the threads in the process were
+	// signalled to stop as a result of a Halt API call. Used to disambiguate
+	// why a thread is found to have stopped.
+	manualStopRequested bool
+}
+
+// CheckAndClearManualStopRequest will check for a manual
+// stop and then clear that state.
+func (cctx *ContinueOnceContext) CheckAndClearManualStopRequest() bool {
+	cctx.StopMu.Lock()
+	defer cctx.StopMu.Unlock()
+	msr := cctx.manualStopRequested
+	cctx.manualStopRequested = false
+	return msr
+}
+
+func (cctx *ContinueOnceContext) GetManualStopRequested() bool {
+	cctx.StopMu.Lock()
+	defer cctx.StopMu.Unlock()
+	return cctx.manualStopRequested
 }

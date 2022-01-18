@@ -538,7 +538,7 @@ func (dbp *nativeProcess) resume() error {
 }
 
 // stop stops all running threads and sets breakpoints
-func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) {
+func (dbp *nativeProcess) stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
 	if dbp.exited {
 		return nil, proc.ErrProcessExited{Pid: dbp.pid}
 	}
@@ -618,9 +618,7 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 		if th.CurrentBreakpoint.Breakpoint == nil && th.os.setbp && (th.Status != nil) && ((*sys.WaitStatus)(th.Status).StopSignal() == sys.SIGTRAP) && dbp.BinInfo().Arch.BreakInstrMovesPC() {
 			manualStop := false
 			if th.ThreadID() == trapthread.ThreadID() {
-				dbp.stopMu.Lock()
-				manualStop = dbp.manualStopRequested
-				dbp.stopMu.Unlock()
+				manualStop = cctx.GetManualStopRequested()
 			}
 			if !manualStop && th.os.phantomBreakpointPC == pc {
 				// Thread received a SIGTRAP but we don't have a breakpoint for it and
