@@ -415,7 +415,7 @@ func (p *process) ClearInternalBreakpoints() error {
 
 // ContinueOnce will always return an error because you
 // cannot control execution of a core file.
-func (p *process) ContinueOnce() (proc.Thread, proc.StopReason, error) {
+func (p *process) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
 	return nil, proc.StopUnknown, ErrContinueCore
 }
 
@@ -427,7 +427,7 @@ func (p *process) StepInstruction() error {
 
 // RequestManualStop will return nil and have no effect
 // as you cannot control execution of a core file.
-func (p *process) RequestManualStop() error {
+func (p *process) RequestManualStop(cctx *proc.ContinueOnceContext) error {
 	return nil
 }
 

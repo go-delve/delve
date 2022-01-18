@@ -13,7 +13,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-delve/delve/pkg/logflags"
@@ -28,9 +27,7 @@ type gdbConn struct {
 	inbuf  []byte
 	outbuf bytes.Buffer
 
-	manualStopMutex sync.Mutex
-	running         bool
-	resumeChan      chan<- struct{}
+	running bool
 
 	direction proc.Direction // direction of execution
 
@@ -567,7 +564,7 @@ func (conn *gdbConn) writeRegister(threadID string, regnum int, data []byte) err
 // resume each thread. If a thread has sig == 0 the 'c' action will be used,
 // otherwise the 'C' action will be used and the value of sig will be passed
 // to it.
-func (conn *gdbConn) resume(threads map[int]*gdbThread, tu *threadUpdater) (stopPacket, error) {
+func (conn *gdbConn) resume(cctx *proc.ContinueOnceContext, threads map[int]*gdbThread, tu *threadUpdater) (stopPacket, error) {
 	if conn.direction == proc.Forward {
 		conn.outbuf.Reset()
 		fmt.Fprintf(&conn.outbuf, "$vCont")
@@ -584,21 +581,21 @@ func (conn *gdbConn) resume(threads map[int]*gdbThread, tu *threadUpdater) (stop
 		conn.outbuf.Reset()
 		fmt.Fprint(&conn.outbuf, "$bc")
 	}
-	conn.manualStopMutex.Lock()
+	cctx.StopMu.Lock()
 	if err := conn.send(conn.outbuf.Bytes()); err != nil {
-		conn.manualStopMutex.Unlock()
+		cctx.StopMu.Unlock()
 		return stopPacket{}, err
 	}
 	conn.running = true
-	conn.manualStopMutex.Unlock()
+	cctx.StopMu.Unlock()
 	defer func() {
-		conn.manualStopMutex.Lock()
+		cctx.StopMu.Lock()
 		conn.running = false
-		conn.manualStopMutex.Unlock()
+		cctx.StopMu.Unlock()
 	}()
-	if conn.resumeChan != nil {
-		close(conn.resumeChan)
-		conn.resumeChan = nil
+	if cctx.ResumeChan != nil {
+		close(cctx.ResumeChan)
+		cctx.ResumeChan = nil
 	}
 	return conn.waitForvContStop("resume", "-1", tu)
 }
