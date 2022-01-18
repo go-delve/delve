@@ -360,6 +360,12 @@ func checkAutogenDoc(t *testing.T, filename, gencommand string, generated []byte
 
 	saved = bytes.ReplaceAll(saved, []byte("\r\n"), []byte{'\n'})
 	generated = bytes.ReplaceAll(generated, []byte("\r\n"), []byte{'\n'})
+	for len(saved) > 0 && saved[len(saved)-1] == '\n' {
+		saved = saved[:len(saved)-1]
+	}
+	for len(generated) > 0 && generated[len(generated)-1] == '\n' {
+		generated = generated[:len(generated)-1]
+	}
 
 	if len(saved) != len(generated) {
 		if checkAutogenDocLongOutput {
