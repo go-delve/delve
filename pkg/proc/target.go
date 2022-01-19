@@ -398,8 +398,8 @@ func (t *Target) createUnrecoveredPanicBreakpoint() {
 	if err == nil {
 		bp, err := t.SetBreakpoint(unrecoveredPanicID, panicpcs[0], UserBreakpoint, nil)
 		if err == nil {
-			bp.Name = UnrecoveredPanic
-			bp.Variables = []string{"runtime.curg._panic.arg"}
+			bp.Logical.Name = UnrecoveredPanic
+			bp.Logical.Variables = []string{"runtime.curg._panic.arg"}
 		}
 	}
 }
@@ -410,7 +410,7 @@ func (t *Target) createFatalThrowBreakpoint() {
 	if err == nil {
 		bp, err := t.SetBreakpoint(fatalThrowID, fatalpcs[0], UserBreakpoint, nil)
 		if err == nil {
-			bp.Name = FatalThrow
+			bp.Logical.Name = FatalThrow
 		}
 	}
 }
