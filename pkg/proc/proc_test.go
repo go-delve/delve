@@ -809,6 +809,7 @@ func TestFindReturnAddress(t *testing.T) {
 }
 
 func TestFindReturnAddressTopOfStackFn(t *testing.T) {
+	skipOn(t, "broken in linux ppc64le", "linux", "ppc64le", "native")
 	protest.AllowRecording(t)
 	withTestProcess("testreturnaddress", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		fnName := "runtime.rt0_go"
@@ -903,6 +904,7 @@ func (l1 *loc) match(l2 proc.Stackframe) bool {
 }
 
 func TestStacktrace(t *testing.T) {
+	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	stacks := [][]loc{
 		{{4, "main.stacktraceme"}, {8, "main.func1"}, {16, "main.main"}},
 		{{4, "main.stacktraceme"}, {8, "main.func1"}, {12, "main.func2"}, {17, "main.main"}},
@@ -987,6 +989,7 @@ func stackMatch(stack []loc, locations []proc.Stackframe, skipRuntime bool) bool
 
 func TestStacktraceGoroutine(t *testing.T) {
 	skipOn(t, "broken - cgo stacktraces", "darwin", "arm64")
+	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 
 	mainStack := []loc{{14, "main.stacktraceme"}, {29, "main.main"}}
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
@@ -1311,6 +1314,7 @@ func TestVariableEvaluation(t *testing.T) {
 }
 
 func TestFrameEvaluation(t *testing.T) {
+	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	protest.AllowRecording(t)
 	lenient := false
 	if runtime.GOOS == "windows" {
@@ -2303,6 +2307,7 @@ func TestNextDeferReturnAndDirectCall(t *testing.T) {
 }
 
 func TestNextPanicAndDirectCall(t *testing.T) {
+	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	// Next should not step into a deferred function if it is called
 	// directly, only if it is called through a panic or a deferreturn.
 	// Here we test the case where the function is called by a panic
@@ -2320,6 +2325,7 @@ func TestStepCall(t *testing.T) {
 }
 
 func TestStepCallPtr(t *testing.T) {
+	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	// Tests that Step works correctly when calling functions with a
 	// function pointer.
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) && !protest.RegabiSupported() {
@@ -2339,6 +2345,7 @@ func TestStepCallPtr(t *testing.T) {
 }
 
 func TestStepReturnAndPanic(t *testing.T) {
+	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	// Tests that Step works correctly when returning from functions
 	// and when a deferred function is called when panic'ing.
 	testseq("defercall", contStep, []nextTest{
@@ -2350,6 +2357,7 @@ func TestStepReturnAndPanic(t *testing.T) {
 }
 
 func TestStepDeferReturn(t *testing.T) {
+	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	// Tests that Step works correctly when a deferred function is
 	// called during a return.
 	testseq("defercall", contStep, []nextTest{
@@ -2364,6 +2372,7 @@ func TestStepDeferReturn(t *testing.T) {
 }
 
 func TestStepIgnorePrivateRuntime(t *testing.T) {
+	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	// Tests that Step will ignore calls to private runtime functions
 	// (such as runtime.convT2E in this case)
 	switch {
@@ -2742,6 +2751,7 @@ func TestIssue594(t *testing.T) {
 }
 
 func TestStepOutPanicAndDirectCall(t *testing.T) {
+	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	// StepOut should not step into a deferred function if it is called
 	// directly, only if it is called through a panic.
 	// Here we test the case where the function is called by a panic
@@ -3170,6 +3180,7 @@ func TestDebugStripped(t *testing.T) {
 	// TODO(derekparker): Add support for Mach-O and PE.
 	skipUnlessOn(t, "linux only", "linux")
 	skipOn(t, "not working on linux/386 with PIE", "linux", "386", "pie")
+	skipOn(t, "not working on linux/ppc64le when -gcflags=-N -l is passed", "linux", "ppc64le")
 	withTestProcessArgs("testnextprog", t, "", []string{}, protest.LinkStrip, func(p *proc.Target, grp *proc.TargetGroup, f protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(grp.Continue(), t, "Continue")
@@ -3308,6 +3319,8 @@ func TestCgoStacktrace(t *testing.T) {
 		}
 	}
 	skipOn(t, "broken - cgo stacktraces", "386")
+	skipOn(t, "broken - cgo stacktraces", "windows", "arm64")
+	skipOn(t, "broken - cgo stacktraces", "linux", "ppc64le")
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 21) {
 		skipOn(t, "broken - cgo stacktraces", "windows", "arm64")
 	}
@@ -3437,6 +3450,7 @@ func TestCgoSources(t *testing.T) {
 }
 
 func TestSystemstackStacktrace(t *testing.T) {
+	skipOn(t, "broken", "ppc64le")
 	// check that we can follow a stack switch initiated by runtime.systemstack()
 	withTestProcess("panic", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "runtime.startpanic_m")
@@ -3455,6 +3469,7 @@ func TestSystemstackStacktrace(t *testing.T) {
 }
 
 func TestSystemstackOnRuntimeNewstack(t *testing.T) {
+	skipOn(t, "broken", "ppc64le")
 	// The bug being tested here manifests as follows:
 	// - set a breakpoint somewhere or interrupt the program with Ctrl-C
 	// - try to look at stacktraces of other goroutines
@@ -3692,7 +3707,8 @@ func TestHaltKeepsSteppingBreakpoints(t *testing.T) {
 }
 
 func TestDisassembleGlobalVars(t *testing.T) {
-	skipOn(t, "broken - global variable symbolication", "arm64") // On ARM64 symLookup can't look up variables due to how they are loaded, see issue #1778
+	skipOn(t, "broken - global variable symbolication", "arm64")   // On ARM64 symLookup can't look up variables due to how they are loaded, see issue #1778
+	skipOn(t, "broken - global variable symbolication", "ppc64le") // See comment on ARM64 above.
 	// On 386 linux when pie, the generated code use __x86.get_pc_thunk to ensure position-independent.
 	// Locate global variable by
 	//    `CALL __x86.get_pc_thunk.ax(SB) 0xb0f7f
@@ -3878,6 +3894,7 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 }
 
 func TestInlineStep(t *testing.T) {
+	skipOn(t, "broken", "ppc64le")
 	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		// Versions of go before 1.10 do not have DWARF information for inlined calls
 		t.Skip("inlining not supported")
@@ -4038,6 +4055,7 @@ func TestIssue951(t *testing.T) {
 }
 
 func TestDWZCompression(t *testing.T) {
+	skipOn(t, "broken", "ppc64le")
 	// If dwz is not available in the system, skip this test
 	if _, err := exec.LookPath("dwz"); err != nil {
 		t.Skip("dwz not installed")
@@ -4610,6 +4628,7 @@ func TestCgoStacktrace2(t *testing.T) {
 		skipOn(t, "broken", "386")
 	}
 	skipOn(t, "broken - cgo stacktraces", "darwin", "arm64")
+	skipOn(t, "broken", "ppc64le")
 	protest.MustHaveCgo(t)
 	// If a panic happens during cgo execution the stacktrace should show the C
 	// function that caused the problem.
@@ -4718,6 +4737,7 @@ func TestIssue1795(t *testing.T) {
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 13) {
 		t.Skip("Test not relevant to Go < 1.13")
 	}
+	skipOn(t, "broken", "ppc64le")
 	withTestProcessArgs("issue1795", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), t, "Continue()")
 		assertLineNumber(p, t, 12, "wrong line number after Continue,")
@@ -5149,6 +5169,7 @@ func TestDump(t *testing.T) {
 	if (runtime.GOOS == "darwin" && testBackend == "native") || (runtime.GOOS == "windows" && runtime.GOARCH != "amd64") {
 		t.Skip("not supported")
 	}
+	skipOn(t, "not implemented", "ppc64le")
 
 	convertRegisters := func(arch *proc.Arch, dregs op.DwarfRegisters) string {
 		dregs.Reg(^uint64(0))
@@ -5398,6 +5419,7 @@ func TestVariablesWithExternalLinking(t *testing.T) {
 func TestWatchpointsBasic(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "386")
+	skipOn(t, "not implemented", "ppc64le")
 	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
 	protest.AllowRecording(t)
 
@@ -5458,6 +5480,7 @@ func TestWatchpointCounts(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "386")
 	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
+	skipOn(t, "not implemented", "ppc64le")
 	protest.AllowRecording(t)
 
 	withTestProcess("databpcountstest", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
@@ -5545,6 +5568,7 @@ func TestManualStopWhileStopped(t *testing.T) {
 }
 
 func TestDwrapStartLocation(t *testing.T) {
+	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	// Tests that the start location of a goroutine is unwrapped in Go 1.17 and later.
 	withTestProcess("goroutinestackprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.stacktraceme")
@@ -5572,6 +5596,7 @@ func TestDwrapStartLocation(t *testing.T) {
 func TestWatchpointStack(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "386")
+	skipOn(t, "not implemented", "ppc64le")
 	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
 	protest.AllowRecording(t)
 
@@ -5768,13 +5793,15 @@ func TestNilPtrDerefInBreakInstr(t *testing.T) {
 		asmfile = "main_arm64.s"
 	case "386":
 		asmfile = "main_386.s"
+	case "ppc64le":
+		asmfile = "main_ppc64le.s"
 	default:
 		t.Fatalf("assembly file for %s not provided", runtime.GOARCH)
 	}
 
 	withTestProcess("asmnilptr/", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		f := filepath.Join(fixture.BuildDir, asmfile)
-		f = strings.ReplaceAll(f, "\\", "/")
+		f = strings.Replace(f, "\\", "/", -1)
 		setFileBreakpoint(p, t, f, 5)
 		t.Logf("first continue")
 		assertNoError(grp.Continue(), t, "Continue()")
@@ -6042,6 +6069,7 @@ func TestEscapeCheckUnreadable(t *testing.T) {
 }
 
 func TestStepShadowConcurrentBreakpoint(t *testing.T) {
+	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	// Checks that a StepBreakpoint can not shadow a concurrently hit user breakpoint
 	withTestProcess("stepshadow", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		break2 := setFunctionBreakpoint(p, t, "main.stacktraceme2")

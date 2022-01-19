@@ -8,7 +8,10 @@ import (
 	"go/ast"
 	"go/token"
 	"path/filepath"
+	"runtime"
 	"strings"
+
+	"golang.org/x/arch/ppc64/ppc64asm"
 
 	"github.com/go-delve/delve/pkg/astutil"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
@@ -913,7 +916,16 @@ func setStepIntoBreakpoint(dbp *Target, curfn *Function, text []AsmInstruction, 
 		return nil
 	}
 
+	pc := instr.DestLoc.PC
 	fn := instr.DestLoc.Fn
+	if runtime.GOARCH == "ppc64le" && instr.Inst.OpcodeEquals(uint64(ppc64asm.BCLRL)) {
+		regs, err := dbp.CurrentThread().Registers()
+		if err != nil {
+			return err
+		}
+		lr := regs.LR()
+		fn = dbp.BinInfo().PCToFunc(lr)
+	}
 
 	// Skip unexported runtime functions
 	if !stepIntoUnexportedRuntime && fn != nil && fn.privateRuntime() {
@@ -923,8 +935,6 @@ func setStepIntoBreakpoint(dbp *Target, curfn *Function, text []AsmInstruction, 
 	//TODO(aarzilli): if we want to let users hide functions
 	// or entire packages from being stepped into with 'step'
 	// those extra checks should be done here.
-
-	pc := instr.DestLoc.PC
 
 	// Skip InhibitStepInto functions for different arch.
 	if dbp.BinInfo().Arch.inhibitStepInto(dbp.BinInfo(), pc) {

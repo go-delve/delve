@@ -2458,6 +2458,9 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 // got loaded. It then steps into a function in another package and tests that
 // the registers were updated by checking PC.
 func TestRegistersScopeAndVariables(t *testing.T) {
+	if runtime.GOARCH == "ppc64le" {
+		t.Skip("skipped on ppc64le: broken")
+	}
 	runTest(t, "consts", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch

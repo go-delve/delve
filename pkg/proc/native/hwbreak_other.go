@@ -1,5 +1,5 @@
-//go:build (linux && 386) || (darwin && arm64) || (windows && arm64)
-// +build linux,386 darwin,arm64 windows,arm64
+//go:build (linux && 386) || (darwin && arm64) || (windows && arm64) || (linux && ppc64le)
+// +build linux,386 darwin,arm64 windows,arm64 linux,ppc64le
 
 package native
 

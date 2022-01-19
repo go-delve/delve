@@ -305,6 +305,9 @@ func TestExitStatus(t *testing.T) {
 }
 
 func TestScopePrefix(t *testing.T) {
+	if runtime.GOARCH == "ppc64le" && buildMode == "pie" {
+		t.Skip("pie mode broken on ppc64le")
+	}
 	const goroutinesLinePrefix = "  Goroutine "
 	const goroutinesCurLinePrefix = "* Goroutine "
 	test.AllowRecording(t)
@@ -873,6 +876,9 @@ func TestIssue1090(t *testing.T) {
 }
 
 func TestPrintContextParkedGoroutine(t *testing.T) {
+	if runtime.GOARCH == "ppc64le" && buildMode == "pie" {
+		t.Skip("pie mode broken on ppc64le")
+	}
 	withTestTerminal("goroutinestackprog", t, func(term *FakeTerminal) {
 		term.MustExec("break stacktraceme")
 		term.MustExec("continue")
@@ -946,6 +952,9 @@ func TestOptimizationCheck(t *testing.T) {
 }
 
 func TestTruncateStacktrace(t *testing.T) {
+	if runtime.GOARCH == "ppc64le" && buildMode == "pie" {
+		t.Skip("pie mode broken on ppc64le")
+	}
 	const stacktraceTruncatedMessage = "(truncated)"
 	withTestTerminal("stacktraceprog", t, func(term *FakeTerminal) {
 		term.MustExec("break main.stacktraceme")
@@ -966,6 +975,9 @@ func TestTruncateStacktrace(t *testing.T) {
 func TestIssue1493(t *testing.T) {
 	// The 'regs' command without the '-a' option should only return
 	// general purpose registers.
+	if runtime.GOARCH == "ppc64le" {
+		t.Skip("skipping, some registers such as vector registers are currently not loaded")
+	}
 	withTestTerminal("continuetestprog", t, func(term *FakeTerminal) {
 		r := term.MustExec("regs")
 		nr := len(strings.Split(r, "\n"))
@@ -1381,6 +1393,9 @@ func TestTranscript(t *testing.T) {
 }
 
 func TestDisassPosCmd(t *testing.T) {
+	if runtime.GOARCH == "ppc64le" && buildMode == "pie" {
+		t.Skip("pie mode broken on ppc64le")
+	}
 	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
 		term.MustExec("continue")
 		out := term.MustExec("step-instruction")

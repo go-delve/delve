@@ -151,5 +151,6 @@ func nameToDwarfFunc(n2d map[string]int) func(string) (int, bool) {
 const (
 	crosscall2SPOffsetBad          = 0x8
 	crosscall2SPOffsetWindowsAMD64 = 0x118
+	crosscall2SPOffsetLinuxPPC64LE = 0x158
 	crosscall2SPOffset             = 0x58
 )
