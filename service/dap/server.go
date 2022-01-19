@@ -1845,10 +1845,12 @@ func (s *Session) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int,
 		return goid, nil
 	}
 	bp := g.Thread.Breakpoint()
-	if bp == nil || bp.Breakpoint == nil {
+	if bp == nil || bp.Breakpoint == nil || bp.Breakpoint.Logical == nil {
 		return goid, nil
 	}
-	return goid, api.ConvertBreakpoint(bp.Breakpoint)
+	abp := api.ConvertLogicalBreakpoint(bp.Breakpoint.Logical)
+	api.ConvertPhysicalBreakpoints(abp, []*proc.Breakpoint{bp.Breakpoint})
+	return goid, abp
 }
 
 // stepUntilStopAndNotify is a wrapper around runUntilStopAndNotify that
@@ -3176,8 +3178,8 @@ func (s *Session) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 	}
 	// Check if this goroutine ID is stopped at a breakpoint.
 	includeStackTrace := true
-	if bpState != nil && bpState.Breakpoint != nil && (bpState.Breakpoint.Name == proc.FatalThrow || bpState.Breakpoint.Name == proc.UnrecoveredPanic) {
-		switch bpState.Breakpoint.Name {
+	if bpState != nil && bpState.Breakpoint != nil && bpState.Breakpoint.Logical != nil && (bpState.Breakpoint.Logical.Name == proc.FatalThrow || bpState.Breakpoint.Logical.Name == proc.UnrecoveredPanic) {
+		switch bpState.Breakpoint.Logical.Name {
 		case proc.FatalThrow:
 			body.ExceptionId = "fatal error"
 			body.Description, err = s.throwReason(goroutineID)

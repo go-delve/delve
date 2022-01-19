@@ -72,10 +72,6 @@ type Debugger struct {
 	recordMutex   sync.Mutex
 
 	dumpState proc.DumpState
-	// Debugger keeps a map of disabled breakpoints
-	// so lower layers like proc doesn't need to deal
-	// with them
-	disabledBreakpoints map[int]*api.Breakpoint
 
 	breakpointIDCounter int
 }
@@ -206,8 +202,6 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 			return nil, err
 		}
 	}
-
-	d.disabledBreakpoints = make(map[int]*api.Breakpoint)
 
 	return d, nil
 }
@@ -518,46 +512,24 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 	}
 
 	discarded := []api.DiscardedBreakpoint{}
-	breakpoints := api.ConvertBreakpoints(d.breakpoints())
+	p.Breakpoints().Logical = d.target.Breakpoints().Logical
 	d.target = p
-	maxID := 0
-	for _, oldBp := range breakpoints {
-		if oldBp.ID < 0 {
+	for _, oldBp := range d.target.Breakpoints().Logical {
+		if oldBp.LogicalID < 0 || !oldBp.Enabled {
 			continue
 		}
-		if oldBp.ID > maxID {
-			maxID = oldBp.ID
-		}
-		if oldBp.WatchExpr != "" {
-			discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: oldBp, Reason: "can not recreate watchpoints on restart"})
-		} else if len(oldBp.File) > 0 {
-			addrs, err := proc.FindFileLocation(p, oldBp.File, oldBp.Line)
+		if len(oldBp.File) > 0 {
+			oldBp.TotalHitCount = 0
+			oldBp.HitCount = make(map[int]uint64)
+			err := d.createPhysicalBreakpoints(oldBp)
 			if err != nil {
-				discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: oldBp, Reason: err.Error()})
+				discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: api.ConvertLogicalBreakpoint(oldBp), Reason: err.Error()})
 				continue
 			}
-			createLogicalBreakpoint(d, addrs, oldBp, oldBp.ID)
 		} else {
-			// Avoid setting a breakpoint based on address when rebuilding
-			if rebuild {
-				discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: oldBp, Reason: "can not recreate address breakpoints on restart"})
-				continue
-			}
-			newBp, err := p.SetBreakpoint(oldBp.ID, oldBp.Addr, proc.UserBreakpoint, nil)
-			if err != nil {
-				return nil, err
-			}
-			if err := copyBreakpointInfo(newBp, oldBp); err != nil {
-				return nil, err
-			}
+			discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: api.ConvertLogicalBreakpoint(oldBp), Reason: "can not recreate watchpoint on restart"})
 		}
 	}
-	for _, bp := range d.disabledBreakpoints {
-		if bp.ID > maxID {
-			maxID = bp.ID
-		}
-	}
-	d.breakpointIDCounter = maxID
 	return discarded, nil
 }
 
@@ -609,6 +581,10 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 	for _, thread := range d.target.ThreadList() {
 		th := api.ConvertThread(thread)
 
+		if b := thread.Breakpoint(); b.Active && b.Breakpoint.Logical != nil {
+			th.Breakpoint = d.convertBreakpoint(b.Breakpoint.Logical)
+		}
+
 		th.CallReturn = thread.Common().CallReturn
 		if retLoadCfg != nil {
 			th.ReturnValues = api.ConvertVars(thread.Common().ReturnValues(*retLoadCfg))
@@ -628,7 +604,9 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 
 	state.WatchOutOfScope = make([]*api.Breakpoint, 0, len(d.target.Breakpoints().WatchOutOfScope))
 	for _, bp := range d.target.Breakpoints().WatchOutOfScope {
-		state.WatchOutOfScope = append(state.WatchOutOfScope, api.ConvertBreakpoint(bp))
+		abp := api.ConvertLogicalBreakpoint(bp.Logical)
+		api.ConvertPhysicalBreakpoints(abp, []*proc.Breakpoint{bp})
+		state.WatchOutOfScope = append(state.WatchOutOfScope, abp)
 	}
 
 	return state, nil
@@ -671,7 +649,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 	)
 
 	if requestedBp.Name != "" {
-		if (d.findBreakpointByName(requestedBp.Name) != nil) || (d.findDisabledBreakpointByName(requestedBp.Name) != nil) {
+		if d.findBreakpointByName(requestedBp.Name) != nil {
 			return nil, errors.New("breakpoint name already exists")
 		}
 	}
@@ -712,32 +690,44 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 	return createdBp, nil
 }
 
+func (d *Debugger) convertBreakpoint(lbp *proc.LogicalBreakpoint) *api.Breakpoint {
+	abp := api.ConvertLogicalBreakpoint(lbp)
+	api.ConvertPhysicalBreakpoints(abp, d.findBreakpoint(lbp.LogicalID))
+	return abp
+}
+
 // createLogicalBreakpoint creates one physical breakpoint for each address
 // in addrs and associates all of them with the same logical breakpoint.
 func createLogicalBreakpoint(d *Debugger, addrs []uint64, requestedBp *api.Breakpoint, id int) (*api.Breakpoint, error) {
 	p := d.target
 
-	if dbp, ok := d.disabledBreakpoints[requestedBp.ID]; ok {
-		return dbp, proc.BreakpointExistsError{File: dbp.File, Line: dbp.Line, Addr: dbp.Addr}
+	if lbp := p.Breakpoints().Logical[requestedBp.ID]; lbp != nil {
+		abp := d.convertBreakpoint(lbp)
+		return abp, proc.BreakpointExistsError{File: lbp.File, Line: lbp.Line}
+	}
+
+	var lbp *proc.LogicalBreakpoint
+	if id <= 0 {
+		d.breakpointIDCounter++
+		id = d.breakpointIDCounter
+		lbp = &proc.LogicalBreakpoint{LogicalID: id, HitCount: make(map[int]uint64), Enabled: true}
+		p.Breakpoints().Logical[id] = lbp
+	}
+
+	err := copyLogicalBreakpointInfo(lbp, requestedBp)
+	if err != nil {
+		return nil, err
 	}
 
 	bps := make([]*proc.Breakpoint, len(addrs))
-	var err error
 	for i := range addrs {
-		if id <= 0 {
-			d.breakpointIDCounter++
-			id = d.breakpointIDCounter
-		}
 		bps[i], err = p.SetBreakpoint(id, addrs[i], proc.UserBreakpoint, nil)
-		if err != nil {
-			break
-		}
-		err = copyBreakpointInfo(bps[i], requestedBp)
 		if err != nil {
 			break
 		}
 	}
 	if err != nil {
+		delete(p.Breakpoints().Logical, id)
 		if isBreakpointExistsErr(err) {
 			return nil, err
 		}
@@ -753,8 +743,65 @@ func createLogicalBreakpoint(d *Debugger, addrs []uint64, requestedBp *api.Break
 		return nil, err
 	}
 
-	createdBp := api.ConvertBreakpoints(bps)
-	return createdBp[0], nil // we created a single logical breakpoint, the slice here will always have len == 1
+	return d.convertBreakpoint(bps[0].Logical), nil
+}
+
+func (d *Debugger) createPhysicalBreakpoints(lbp *proc.LogicalBreakpoint) error {
+	addrs, err := proc.FindFileLocation(d.target, lbp.File, lbp.Line)
+	if err != nil {
+		return err
+	}
+	bps := make([]*proc.Breakpoint, len(addrs))
+	for i := range addrs {
+		bps[i], err = d.target.SetBreakpoint(lbp.LogicalID, addrs[i], proc.UserBreakpoint, nil)
+		if err != nil {
+			break
+		}
+	}
+	if err != nil {
+		if isBreakpointExistsErr(err) {
+			return err
+		}
+		for _, bp := range bps {
+			if bp == nil {
+				continue
+			}
+			if err1 := d.target.ClearBreakpoint(bp.Addr); err1 != nil {
+				return fmt.Errorf("error while creating breakpoint: %v, additionally the breakpoint could not be properly rolled back: %v", err, err1)
+			}
+		}
+		return err
+	}
+	return nil
+}
+
+func (d *Debugger) clearPhysicalBreakpoints(id int) error {
+	var errs []error
+	n := 0
+	for _, bp := range d.target.Breakpoints().M {
+		if bp.LogicalID() == id {
+			n++
+			err := d.target.ClearBreakpoint(bp.Addr)
+			if err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	if len(errs) > 0 {
+		buf := new(bytes.Buffer)
+		for i, err := range errs {
+			fmt.Fprintf(buf, "%s", err)
+			if i != len(errs)-1 {
+				fmt.Fprintf(buf, ", ")
+			}
+		}
+
+		if len(errs) == n {
+			return fmt.Errorf("unable to clear breakpoint %d: %v", id, buf.String())
+		}
+		return fmt.Errorf("unable to clear breakpoint %d (partial): %s", id, buf.String())
+	}
+	return nil
 }
 
 func isBreakpointExistsErr(err error) bool {
@@ -773,47 +820,32 @@ func (d *Debugger) CreateEBPFTracepoint(fnName string) error {
 // It also enables or disables the breakpoint.
 // We can consume this function to avoid locking a goroutine.
 func (d *Debugger) amendBreakpoint(amend *api.Breakpoint) error {
-	originals := d.findBreakpoint(amend.ID)
-
-	if len(originals) > 0 && originals[0].WatchExpr != "" && amend.Disabled {
-		return errors.New("can not disable watchpoints")
-	}
-
-	_, disabled := d.disabledBreakpoints[amend.ID]
-	if originals == nil && !disabled {
+	original := d.target.Breakpoints().Logical[amend.ID]
+	if original == nil {
 		return fmt.Errorf("no breakpoint with ID %d", amend.ID)
 	}
-	if !amend.Disabled && disabled { // enable the breakpoint
-		bp, err := d.target.SetBreakpoint(amend.ID, amend.Addr, proc.UserBreakpoint, nil)
+	if amend.Disabled && original.Enabled {
+		original.Enabled = false
+		err := copyLogicalBreakpointInfo(original, amend)
 		if err != nil {
 			return err
 		}
-		copyBreakpointInfo(bp, amend)
-		if breaklet := bp.UserBreaklet(); breaklet != nil {
-			breaklet.TotalHitCount = amend.TotalHitCount
-			breaklet.HitCount = map[int]uint64{}
-			for idx := range amend.HitCount {
-				i, err := strconv.Atoi(idx)
-				if err != nil {
-					return fmt.Errorf("can't convert goroutine ID: %w", err)
-				}
-				breaklet.HitCount[i] = amend.HitCount[idx]
-			}
-		}
-		delete(d.disabledBreakpoints, amend.ID)
-	}
-	if amend.Disabled && !disabled { // disable the breakpoint
-		if _, err := d.clearBreakpoint(amend); err != nil {
-			return err
-		}
-		d.disabledBreakpoints[amend.ID] = amend
-	}
-	for _, original := range originals {
-		if err := copyBreakpointInfo(original, amend); err != nil {
-			return err
-		}
+		return d.clearPhysicalBreakpoints(amend.ID)
 	}
 
+	if !amend.Disabled && !original.Enabled {
+		original.Enabled = true
+		copyLogicalBreakpointInfo(original, amend)
+		return d.createPhysicalBreakpoints(original)
+	}
+
+	err := copyLogicalBreakpointInfo(original, amend)
+	if err != nil {
+		return err
+	}
+	for _, bp := range d.findBreakpoint(amend.ID) {
+		bp.UserBreaklet().Cond = original.Cond
+	}
 	return nil
 }
 
@@ -834,37 +866,38 @@ func (d *Debugger) CancelNext() error {
 	return d.target.ClearSteppingBreakpoints()
 }
 
-func copyBreakpointInfo(bp *proc.Breakpoint, requested *api.Breakpoint) (err error) {
-	bp.Name = requested.Name
-	bp.Tracepoint = requested.Tracepoint
-	bp.TraceReturn = requested.TraceReturn
-	bp.Goroutine = requested.Goroutine
-	bp.Stacktrace = requested.Stacktrace
-	bp.Variables = requested.Variables
-	bp.UserData = requested.UserData
-	bp.LoadArgs = api.LoadConfigToProc(requested.LoadArgs)
-	bp.LoadLocals = api.LoadConfigToProc(requested.LoadLocals)
-	breaklet := bp.UserBreaklet()
-	if breaklet != nil {
-		breaklet.Cond = nil
-		if requested.Cond != "" {
-			breaklet.Cond, err = parser.ParseExpr(requested.Cond)
-		}
-		breaklet.HitCond = nil
-		if requested.HitCond != "" {
-			opTok, val, parseErr := parseHitCondition(requested.HitCond)
-			if err == nil {
-				err = parseErr
-			}
-			if parseErr == nil {
-				breaklet.HitCond = &struct {
-					Op  token.Token
-					Val int
-				}{opTok, val}
-			}
+func copyLogicalBreakpointInfo(lbp *proc.LogicalBreakpoint, requested *api.Breakpoint) error {
+	lbp.Name = requested.Name
+	lbp.Tracepoint = requested.Tracepoint
+	lbp.TraceReturn = requested.TraceReturn
+	lbp.Goroutine = requested.Goroutine
+	lbp.Stacktrace = requested.Stacktrace
+	lbp.Variables = requested.Variables
+	lbp.LoadArgs = api.LoadConfigToProc(requested.LoadArgs)
+	lbp.LoadLocals = api.LoadConfigToProc(requested.LoadLocals)
+	lbp.UserData = requested.UserData
+	lbp.Cond = nil
+	if requested.Cond != "" {
+		var err error
+		lbp.Cond, err = parser.ParseExpr(requested.Cond)
+		if err != nil {
+			return err
 		}
 	}
-	return err
+
+	lbp.HitCond = nil
+	if requested.HitCond != "" {
+		opTok, val, err := parseHitCondition(requested.HitCond)
+		if err != nil {
+			return err
+		}
+		lbp.HitCond = &struct {
+			Op  token.Token
+			Val int
+		}{opTok, val}
+	}
+
+	return nil
 }
 
 func parseHitCondition(hitCond string) (token.Token, int, error) {
@@ -917,57 +950,19 @@ func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 
 // clearBreakpoint clears a breakpoint, we can consume this function to avoid locking a goroutine
 func (d *Debugger) clearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
-	if bp, ok := d.disabledBreakpoints[requestedBp.ID]; ok {
-		delete(d.disabledBreakpoints, bp.ID)
-		return bp, nil
+	if requestedBp.ID <= 0 {
+		bp := d.target.Breakpoints().M[requestedBp.Addr]
+		requestedBp.ID = bp.LogicalID()
 	}
 
-	var clearBps []*proc.Breakpoint
+	lbp := d.target.Breakpoints().Logical[requestedBp.ID]
+	clearedBp := d.convertBreakpoint(lbp)
 
-	toclear := func(addr uint64) {
-		bp := d.target.Breakpoints().M[addr]
-		if bp != nil {
-			clearBps = append(clearBps, bp)
-		}
-	}
+	delete(d.target.Breakpoints().Logical, requestedBp.ID)
 
-	clearAddr := true
-	for _, addr := range requestedBp.Addrs {
-		if addr == requestedBp.Addr {
-			clearAddr = false
-		}
-		toclear(addr)
-	}
-	if clearAddr {
-		toclear(requestedBp.Addr)
-	}
-
-	// Breakpoints need to be converted before clearing them or they won't have
-	// an ID anymore.
-	sort.Sort(breakpointsByLogicalID(clearBps))
-	clearedBp := api.ConvertBreakpoints(clearBps)[0]
-
-	var errs []error
-	for _, bp := range clearBps {
-		err := d.target.ClearBreakpoint(bp.Addr)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("address %#x: %v", bp.Addr, err))
-		}
-	}
-
-	if len(errs) > 0 {
-		buf := new(bytes.Buffer)
-		for i, err := range errs {
-			fmt.Fprintf(buf, "%s", err)
-			if i != len(errs)-1 {
-				fmt.Fprintf(buf, ", ")
-			}
-		}
-
-		if len(errs) == len(clearBps) {
-			return nil, fmt.Errorf("unable to clear breakpoint %d: %v", requestedBp.ID, buf.String())
-		}
-		return nil, fmt.Errorf("unable to clear breakpoint %d (partial): %s", requestedBp.ID, buf.String())
+	err := d.clearPhysicalBreakpoints(requestedBp.ID)
+	if err != nil {
+		return nil, err
 	}
 
 	d.log.Infof("cleared breakpoint: %#v", clearedBp)
@@ -1006,46 +1001,36 @@ func (d *Debugger) Breakpoints(all bool) []*api.Breakpoint {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	var bps []*api.Breakpoint
-
-	if !all {
-		bps = api.ConvertBreakpoints(d.breakpoints())
-	} else {
+	abps := []*api.Breakpoint{}
+	if all {
 		for _, bp := range d.target.Breakpoints().M {
-			abp := api.ConvertBreakpoint(bp)
+			var abp *api.Breakpoint
+			if bp.Logical != nil {
+				abp = api.ConvertLogicalBreakpoint(bp.Logical)
+			} else {
+				abp = &api.Breakpoint{}
+			}
+			api.ConvertPhysicalBreakpoints(abp, []*proc.Breakpoint{bp})
 			abp.VerboseDescr = bp.VerboseDescr()
-			bps = append(bps, abp)
+			abps = append(abps, abp)
+		}
+	} else {
+		for _, lbp := range d.target.Breakpoints().Logical {
+			abps = append(abps, d.convertBreakpoint(lbp))
 		}
 	}
-
-	for _, bp := range d.disabledBreakpoints {
-		bps = append(bps, bp)
-	}
-
-	return bps
-}
-
-func (d *Debugger) breakpoints() []*proc.Breakpoint {
-	bps := []*proc.Breakpoint{}
-	for _, bp := range d.target.Breakpoints().M {
-		if bp.IsUser() {
-			bps = append(bps, bp)
-		}
-	}
-	sort.Sort(breakpointsByLogicalID(bps))
-	return bps
+	return abps
 }
 
 // FindBreakpoint returns the breakpoint specified by 'id'.
 func (d *Debugger) FindBreakpoint(id int) *api.Breakpoint {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-	bps := api.ConvertBreakpoints(d.findBreakpoint(id))
-	bps = append(bps, d.findDisabledBreakpoint(id)...)
-	if len(bps) <= 0 {
+	lbp := d.target.Breakpoints().Logical[id]
+	if lbp == nil {
 		return nil
 	}
-	return bps[0]
+	return d.convertBreakpoint(lbp)
 }
 
 func (d *Debugger) findBreakpoint(id int) []*proc.Breakpoint {
@@ -1058,47 +1043,17 @@ func (d *Debugger) findBreakpoint(id int) []*proc.Breakpoint {
 	return bps
 }
 
-func (d *Debugger) findDisabledBreakpoint(id int) []*api.Breakpoint {
-	var bps []*api.Breakpoint
-	for _, dbp := range d.disabledBreakpoints {
-		if dbp.ID == id {
-			bps = append(bps, dbp)
-		}
-	}
-	return bps
-}
-
 // FindBreakpointByName returns the breakpoint specified by 'name'
 func (d *Debugger) FindBreakpointByName(name string) *api.Breakpoint {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-
-	bp := d.findBreakpointByName(name)
-	if bp == nil {
-		bp = d.findDisabledBreakpointByName(name)
-	}
-	return bp
+	return d.findBreakpointByName(name)
 }
 
 func (d *Debugger) findBreakpointByName(name string) *api.Breakpoint {
-	var bps []*proc.Breakpoint
-	for _, bp := range d.breakpoints() {
-		if bp.Name == name {
-			bps = append(bps, bp)
-		}
-	}
-	if len(bps) == 0 {
-		return nil
-	}
-	sort.Sort(breakpointsByLogicalID(bps))
-	r := api.ConvertBreakpoints(bps)
-	return r[0] // there can only be one logical breakpoint with the same name
-}
-
-func (d *Debugger) findDisabledBreakpointByName(name string) *api.Breakpoint {
-	for _, dbp := range d.disabledBreakpoints {
-		if dbp.Name == name {
-			return dbp
+	for _, lbp := range d.target.Breakpoints().Logical {
+		if lbp.Name == name {
+			return d.convertBreakpoint(lbp)
 		}
 	}
 	return nil
@@ -1116,9 +1071,9 @@ func (d *Debugger) CreateWatchpoint(goid, frame, deferredCall int, expr string, 
 		return nil, err
 	}
 	if d.findBreakpointByName(expr) == nil {
-		bp.Name = expr
+		bp.Logical.Name = expr
 	}
-	return api.ConvertBreakpoint(bp), nil
+	return d.convertBreakpoint(bp.Logical), nil
 }
 
 // Threads returns the threads of the target process.
@@ -2238,19 +2193,4 @@ func go11DecodeErrorCheck(err error) error {
 	}
 
 	return fmt.Errorf("executables built by Go 1.11 or later need Delve built by Go 1.11 or later")
-}
-
-type breakpointsByLogicalID []*proc.Breakpoint
-
-func (v breakpointsByLogicalID) Len() int      { return len(v) }
-func (v breakpointsByLogicalID) Swap(i, j int) { v[i], v[j] = v[j], v[i] }
-
-func (v breakpointsByLogicalID) Less(i, j int) bool {
-	if v[i].LogicalID() == v[j].LogicalID() {
-		if v[i].WatchType != v[j].WatchType {
-			return v[i].WatchType > v[j].WatchType // if a logical breakpoint contains a watchpoint let the watchpoint sort first
-		}
-		return v[i].Addr < v[j].Addr
-	}
-	return v[i].LogicalID() < v[j].LogicalID()
 }

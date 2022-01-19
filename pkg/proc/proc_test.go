@@ -319,8 +319,8 @@ func TestBreakpoint(t *testing.T) {
 		assertNoError(err, t, "Registers")
 		pc := regs.PC()
 
-		if bp.UserBreaklet().TotalHitCount != 1 {
-			t.Fatalf("Breakpoint should be hit once, got %d\n", bp.UserBreaklet().TotalHitCount)
+		if bp.Logical.TotalHitCount != 1 {
+			t.Fatalf("Breakpoint should be hit once, got %d\n", bp.Logical.TotalHitCount)
 		}
 
 		if pc-1 != bp.Addr && pc != bp.Addr {
@@ -1363,7 +1363,7 @@ func TestThreadFrameEvaluation(t *testing.T) {
 		assertNoError(p.Continue(), t, "Continue()")
 
 		bp := p.CurrentThread().Breakpoint()
-		if bp.Breakpoint == nil || bp.Name != deadlockBp {
+		if bp.Breakpoint == nil || bp.Logical.Name != deadlockBp {
 			t.Fatalf("did not stop at deadlock breakpoint %v", bp)
 		}
 
@@ -1471,18 +1471,18 @@ func TestBreakpointCounts(t *testing.T) {
 			}
 		}
 
-		t.Logf("TotalHitCount: %d", bp.UserBreaklet().TotalHitCount)
-		if bp.UserBreaklet().TotalHitCount != 200 {
-			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d)", bp.UserBreaklet().TotalHitCount)
+		t.Logf("TotalHitCount: %d", bp.Logical.TotalHitCount)
+		if bp.Logical.TotalHitCount != 200 {
+			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d)", bp.Logical.TotalHitCount)
 		}
 
-		if len(bp.UserBreaklet().HitCount) != 2 {
-			t.Fatalf("Wrong number of goroutines for breakpoint (%d)", len(bp.UserBreaklet().HitCount))
+		if len(bp.Logical.HitCount) != 2 {
+			t.Fatalf("Wrong number of goroutines for breakpoint (%d)", len(bp.Logical.HitCount))
 		}
 
-		for _, v := range bp.UserBreaklet().HitCount {
+		for _, v := range bp.Logical.HitCount {
 			if v != 100 {
-				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.UserBreaklet().HitCount)
+				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.Logical.HitCount)
 			}
 		}
 	})
@@ -1505,8 +1505,8 @@ func TestHardcodedBreakpointCounts(t *testing.T) {
 				if bp == nil {
 					continue
 				}
-				if bp.Name != proc.HardcodedBreakpoint {
-					t.Fatalf("wrong breakpoint name %s", bp.Name)
+				if bp.Logical.Name != proc.HardcodedBreakpoint {
+					t.Fatalf("wrong breakpoint name %s", bp.Logical.Name)
 				}
 				g, err := proc.GetG(th)
 				assertNoError(err, t, "GetG")
@@ -1576,23 +1576,23 @@ func TestBreakpointCountsWithDetection(t *testing.T) {
 				total += m[i] + 1
 			}
 
-			if uint64(total) != bp.UserBreaklet().TotalHitCount {
-				t.Fatalf("Mismatched total count %d %d\n", total, bp.UserBreaklet().TotalHitCount)
+			if uint64(total) != bp.Logical.TotalHitCount {
+				t.Fatalf("Mismatched total count %d %d\n", total, bp.Logical.TotalHitCount)
 			}
 		}
 
-		t.Logf("TotalHitCount: %d", bp.UserBreaklet().TotalHitCount)
-		if bp.UserBreaklet().TotalHitCount != 200 {
-			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d)", bp.UserBreaklet().TotalHitCount)
+		t.Logf("TotalHitCount: %d", bp.Logical.TotalHitCount)
+		if bp.Logical.TotalHitCount != 200 {
+			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d)", bp.Logical.TotalHitCount)
 		}
 
-		if len(bp.UserBreaklet().HitCount) != 2 {
-			t.Fatalf("Wrong number of goroutines for breakpoint (%d)", len(bp.UserBreaklet().HitCount))
+		if len(bp.Logical.HitCount) != 2 {
+			t.Fatalf("Wrong number of goroutines for breakpoint (%d)", len(bp.Logical.HitCount))
 		}
 
-		for _, v := range bp.UserBreaklet().HitCount {
+		for _, v := range bp.Logical.HitCount {
 			if v != 100 {
-				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.UserBreaklet().HitCount)
+				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.Logical.HitCount)
 			}
 		}
 	})
@@ -1767,7 +1767,7 @@ func TestCondBreakpointError(t *testing.T) {
 func TestHitCondBreakpointEQ(t *testing.T) {
 	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 7)
-		bp.UserBreaklet().HitCond = &struct {
+		bp.Logical.HitCond = &struct {
 			Op  token.Token
 			Val int
 		}{token.EQL, 3}
@@ -1791,7 +1791,7 @@ func TestHitCondBreakpointGEQ(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 7)
-		bp.UserBreaklet().HitCond = &struct {
+		bp.Logical.HitCond = &struct {
 			Op  token.Token
 			Val int
 		}{token.GEQ, 3}
@@ -1814,7 +1814,7 @@ func TestHitCondBreakpointREM(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("break", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 7)
-		bp.UserBreaklet().HitCond = &struct {
+		bp.Logical.HitCond = &struct {
 			Op  token.Token
 			Val int
 		}{token.REM, 2}
@@ -2015,7 +2015,7 @@ func TestPanicBreakpoint(t *testing.T) {
 	withTestProcess("panic", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue()")
 		bp := p.CurrentThread().Breakpoint()
-		if bp.Breakpoint == nil || bp.Name != proc.UnrecoveredPanic {
+		if bp.Breakpoint == nil || bp.Logical.Name != proc.UnrecoveredPanic {
 			t.Fatalf("not on unrecovered-panic breakpoint: %v", bp)
 		}
 	})
@@ -2025,7 +2025,7 @@ func TestCmdLineArgs(t *testing.T) {
 	expectSuccess := func(p *proc.Target, fixture protest.Fixture) {
 		err := p.Continue()
 		bp := p.CurrentThread().Breakpoint()
-		if bp.Breakpoint != nil && bp.Name == proc.UnrecoveredPanic {
+		if bp.Breakpoint != nil && bp.Logical.Name == proc.UnrecoveredPanic {
 			t.Fatalf("testing args failed on unrecovered-panic breakpoint: %v", bp)
 		}
 		exit, exited := err.(proc.ErrProcessExited)
@@ -2041,7 +2041,7 @@ func TestCmdLineArgs(t *testing.T) {
 	expectPanic := func(p *proc.Target, fixture protest.Fixture) {
 		p.Continue()
 		bp := p.CurrentThread().Breakpoint()
-		if bp.Breakpoint == nil || bp.Name != proc.UnrecoveredPanic {
+		if bp.Breakpoint == nil || bp.Logical.Name != proc.UnrecoveredPanic {
 			t.Fatalf("not on unrecovered-panic breakpoint: %v", bp)
 		}
 	}
@@ -2475,7 +2475,7 @@ func TestStepConcurrentDirect(t *testing.T) {
 		assertNoError(err, t, "ClearBreakpoint()")
 
 		for _, b := range p.Breakpoints().M {
-			if b.Name == proc.UnrecoveredPanic {
+			if b.Logical.Name == proc.UnrecoveredPanic {
 				err := p.ClearBreakpoint(b.Addr)
 				assertNoError(err, t, "ClearBreakpoint(unrecovered-panic)")
 				break
@@ -2535,7 +2535,7 @@ func TestStepConcurrentPtr(t *testing.T) {
 		setFileBreakpoint(p, t, fixture.Source, 24)
 
 		for _, b := range p.Breakpoints().M {
-			if b.Name == proc.UnrecoveredPanic {
+			if b.Logical.Name == proc.UnrecoveredPanic {
 				err := p.ClearBreakpoint(b.Addr)
 				assertNoError(err, t, "ClearBreakpoint(unrecovered-panic)")
 				break
@@ -2645,7 +2645,7 @@ func TestNextBreakpointKeepsSteppingBreakpoints(t *testing.T) {
 
 		// Next should be interrupted by a tracepoint on the same goroutine.
 		bp = setFileBreakpoint(p, t, fixture.Source, 14)
-		bp.Tracepoint = true
+		bp.Logical.Tracepoint = true
 		assertNoError(p.Next(), t, "Next()")
 		assertLineNumber(p, t, 14, "wrong line number")
 		if !p.Breakpoints().HasSteppingBreakpoints() {
@@ -4448,7 +4448,7 @@ func TestDeadlockBreakpoint(t *testing.T) {
 		assertNoError(p.Continue(), t, "Continue()")
 
 		bp := p.CurrentThread().Breakpoint()
-		if bp.Breakpoint == nil || bp.Name != deadlockBp {
+		if bp.Breakpoint == nil || bp.Logical.Name != deadlockBp {
 			t.Fatalf("did not stop at deadlock breakpoint %v", bp)
 		}
 	})
@@ -5526,18 +5526,18 @@ func TestWatchpointCounts(t *testing.T) {
 			}
 		}
 
-		t.Logf("TotalHitCount: %d", bp.UserBreaklet().TotalHitCount)
-		if bp.UserBreaklet().TotalHitCount != 200 {
-			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d)", bp.UserBreaklet().TotalHitCount)
+		t.Logf("TotalHitCount: %d", bp.Logical.TotalHitCount)
+		if bp.Logical.TotalHitCount != 200 {
+			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d)", bp.Logical.TotalHitCount)
 		}
 
-		if len(bp.UserBreaklet().HitCount) != 2 {
-			t.Fatalf("Wrong number of goroutines for breakpoint (%d)", len(bp.UserBreaklet().HitCount))
+		if len(bp.Logical.HitCount) != 2 {
+			t.Fatalf("Wrong number of goroutines for breakpoint (%d)", len(bp.Logical.HitCount))
 		}
 
-		for _, v := range bp.UserBreaklet().HitCount {
+		for _, v := range bp.Logical.HitCount {
 			if v != 100 {
-				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.UserBreaklet().HitCount)
+				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.Logical.HitCount)
 			}
 		}
 	})
@@ -5836,7 +5836,7 @@ func TestNilPtrDerefInBreakInstr(t *testing.T) {
 		if bp != nil {
 			t.Logf("%#v\n", bp.Breakpoint)
 		}
-		if bp == nil || (bp.Name != proc.UnrecoveredPanic) {
+		if bp == nil || (bp.Logical.Name != proc.UnrecoveredPanic) {
 			t.Fatalf("no breakpoint hit or wrong breakpoint hit: %#v", bp)
 		}
 	})

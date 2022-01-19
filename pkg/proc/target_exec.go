@@ -171,13 +171,13 @@ func (dbp *Target) Continue() error {
 				return err
 			}
 			if onNextGoroutine &&
-				((!curbp.Tracepoint && !curbp.TraceReturn) || dbp.KeepSteppingBreakpoints&TracepointKeepsSteppingBreakpoints == 0) {
+				(!isTraceOrTraceReturn(curbp.Breakpoint) || dbp.KeepSteppingBreakpoints&TracepointKeepsSteppingBreakpoints == 0) {
 				err := dbp.ClearSteppingBreakpoints()
 				if err != nil {
 					return err
 				}
 			}
-			if curbp.Name == UnrecoveredPanic {
+			if curbp.LogicalID() == unrecoveredPanicID {
 				dbp.ClearSteppingBreakpoints()
 			}
 			if curbp.LogicalID() != hardcodedBreakpointID {
@@ -197,6 +197,13 @@ func (dbp *Target) Continue() error {
 			return conditionErrors(threads)
 		}
 	}
+}
+
+func isTraceOrTraceReturn(bp *Breakpoint) bool {
+	if bp.Logical == nil {
+		return false
+	}
+	return bp.Logical.Tracepoint || bp.Logical.TraceReturn
 }
 
 func conditionErrors(threads []Thread) error {
@@ -1112,7 +1119,8 @@ func (tgt *Target) handleHardcodedBreakpoints(trapthread Thread, threads []Threa
 		hcbp.File = loc.File
 		hcbp.Line = loc.Line
 		hcbp.Addr = loc.PC
-		hcbp.Name = HardcodedBreakpoint
+		hcbp.Logical = &LogicalBreakpoint{}
+		hcbp.Logical.Name = HardcodedBreakpoint
 		hcbp.Breaklets = []*Breaklet{&Breaklet{Kind: UserBreakpoint, LogicalID: hardcodedBreakpointID}}
 		tgt.StopReason = StopHardcodedBreakpoint
 	}
