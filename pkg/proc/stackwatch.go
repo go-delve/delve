@@ -164,6 +164,7 @@ func watchpointOutOfScope(t *Target, watchpoint *Breakpoint) {
 		log := logflags.DebuggerLogger()
 		log.Errorf("could not clear out-of-scope watchpoint: %v", err)
 	}
+	delete(t.Breakpoints().Logical, watchpoint.LogicalID())
 }
 
 // adjustStackWatchpoint is called when the goroutine of watchpoint resizes
