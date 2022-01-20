@@ -3979,6 +3979,9 @@ func TestInlineBreakpoint(t *testing.T) {
 	}
 	withTestProcessArgs("testinline", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p *proc.Target, fixture protest.Fixture) {
 		pcs, err := proc.FindFileLocation(p, fixture.Source, 17)
+		if err != nil {
+			t.Fatal(err)
+		}
 		t.Logf("%#v\n", pcs)
 		if len(pcs) != 1 {
 			t.Fatalf("unable to get PC for inlined function call: %v", pcs)
@@ -3991,6 +3994,27 @@ func TestInlineBreakpoint(t *testing.T) {
 		_, err = p.SetBreakpoint(pcs[0], proc.UserBreakpoint, nil)
 		if err != nil {
 			t.Fatalf("unable to set breakpoint: %v", err)
+		}
+	})
+}
+
+func TestDoubleInlineBreakpoint(t *testing.T) {
+	// We should be able to set a breakpoint on an inlined function that
+	// has been inlined within an inlined function.
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
+		// Versions of go before 1.10 do not have DWARF information for inlined calls
+		t.Skip("inlining not supported")
+	}
+	withTestProcessArgs("doubleinline", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p *proc.Target, fixture protest.Fixture) {
+		fns, err := p.BinInfo().FindFunction("main.(*Rectangle).Height")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(fns) != 1 {
+			t.Fatalf("expected one function for Height, got %d", len(fns))
+		}
+		if len(fns[0].InlinedCalls) != 1 {
+			t.Fatalf("expected one inlined call for Height, got %d", len(fns[0].InlinedCalls))
 		}
 	})
 }

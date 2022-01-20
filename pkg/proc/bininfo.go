@@ -2262,6 +2262,10 @@ func (bi *BinaryInfo) loadDebugInfoMapsInlinedCalls(ctxt *loadDebugInfoMapsConte
 
 			fl := fileLine{callfile, int(callline)}
 			bi.inlinedCallLines[fl] = append(bi.inlinedCallLines[fl], lowpc)
+
+			if entry.Children {
+				bi.loadDebugInfoMapsInlinedCalls(ctxt, reader, cu)
+			}
 		}
 		reader.SkipChildren()
 	}
