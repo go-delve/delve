@@ -152,7 +152,7 @@ def main():
 Use it like this:
 
 ```
-(dlv) source goroutine_start_line.start
+(dlv) source goroutine_start_line.star
 (dlv) goroutine_start_line
 1 	 /usr/local/go/src/runtime/proc.go:110 	 func main() {
 2 	 /usr/local/go/src/runtime/proc.go:242 	 func forcegchelper() {
