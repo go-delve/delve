@@ -3,6 +3,7 @@ package starbind
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"runtime"
 	"strings"
@@ -56,13 +57,15 @@ type Env struct {
 	cancelfn  context.CancelFunc
 
 	ctx Context
+	out EchoWriter
 }
 
 // New creates a new starlark binding environment.
-func New(ctx Context) *Env {
+func New(ctx Context, out EchoWriter) *Env {
 	env := &Env{}
 
 	env.ctx = ctx
+	env.out = out
 
 	env.env = env.starlarkPredeclare()
 	env.env[dlvCommandBuiltinName] = starlark.NewBuiltin(dlvCommandBuiltinName, func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -117,6 +120,18 @@ func New(ctx Context) *Env {
 	return env
 }
 
+// Redirect redirects starlark output to out.
+func (env *Env) Redirect(out EchoWriter) {
+	env.out = out
+	if env.thread != nil {
+		env.thread.Print = env.printFunc()
+	}
+}
+
+func (env *Env) printFunc() func(_ *starlark.Thread, msg string) {
+	return func(_ *starlark.Thread, msg string) { fmt.Fprintln(env.out, msg) }
+}
+
 // Execute executes a script. Path is the name of the file to execute and
 // source is the source code to execute.
 // Source can be either a []byte, a string or a io.Reader. If source is nil
@@ -128,7 +143,7 @@ func (env *Env) Execute(path string, source interface{}, mainFnName string, args
 		if err == nil {
 			return
 		}
-		fmt.Printf("panic executing starlark script: %v\n", err)
+		fmt.Fprintf(env.out, "panic executing starlark script: %v\n", err)
 		for i := 0; ; i++ {
 			pc, file, line, ok := runtime.Caller(i)
 			if !ok {
@@ -139,7 +154,7 @@ func (env *Env) Execute(path string, source interface{}, mainFnName string, args
 			if fn != nil {
 				fname = fn.Name()
 			}
-			fmt.Printf("%s\n\tin %s:%d\n", fname, file, line)
+			fmt.Fprintf(env.out, "%s\n\tin %s:%d\n", fname, file, line)
 		}
 	}()
 
@@ -193,7 +208,7 @@ func (env *Env) Cancel() {
 
 func (env *Env) newThread() *starlark.Thread {
 	thread := &starlark.Thread{
-		Print: func(_ *starlark.Thread, msg string) { fmt.Println(msg) },
+		Print: env.printFunc(),
 	}
 	env.contextMu.Lock()
 	var ctx context.Context
@@ -286,4 +301,10 @@ func decorateError(thread *starlark.Thread, err error) error {
 		return fmt.Errorf("%s:%d:%d: %v", pos.Filename(), pos.Line, pos.Col, err)
 	}
 	return fmt.Errorf("%s:%d: %v", pos.Filename(), pos.Line, err)
+}
+
+type EchoWriter interface {
+	io.Writer
+	Echo(string)
+	Flush()
 }

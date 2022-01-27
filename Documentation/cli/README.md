@@ -91,6 +91,7 @@ Command | Description
 [list](#list) | Show source code.
 [source](#source) | Executes a file containing a list of delve commands
 [sources](#sources) | Print list of source files.
+[transcript](#transcript) | Appends command output to a file.
 [types](#types) | Print list of types
 
 ## args
@@ -635,6 +636,17 @@ A tracepoint is a breakpoint that does not stop the execution of the program, in
 See also: "help on", "help cond" and "help clear"
 
 Aliases: t
+
+## transcript
+Appends command output to a file.
+
+	transcript [-t] [-x] <output file>
+	transcript -off
+
+Output of Delve's command is appended to the specified output file. If '-t' is specified and the output file exists it is truncated. If '-x' is specified output to stdout is suppressed instead.
+
+Using the -off option disables the transcript.
+
 
 ## types
 Print list of types
