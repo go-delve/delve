@@ -634,8 +634,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			if traceUseEBPF {
 				err := client.CreateEBPFTracepoint(funcs[i])
 				if err != nil {
-					fmt.Fprintln(os.Stderr, err)
-					return 1
+					fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
 				}
 			} else {
 				// Fall back to breakpoint based tracing if we get an error.
@@ -647,13 +646,11 @@ func traceCmd(cmd *cobra.Command, args []string) {
 					LoadArgs:     &terminal.ShortLoadConfig,
 				})
 				if err != nil && !isBreakpointExistsErr(err) {
-					fmt.Fprintln(os.Stderr, err)
-					return 1
+					fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
 				}
 				addrs, err := client.FunctionReturnLocations(funcs[i])
 				if err != nil {
-					fmt.Fprintln(os.Stderr, err)
-					return 1
+					fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
 				}
 				for i := range addrs {
 					_, err = client.CreateBreakpoint(&api.Breakpoint{
@@ -664,8 +661,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 						LoadArgs:    &terminal.ShortLoadConfig,
 					})
 					if err != nil && !isBreakpointExistsErr(err) {
-						fmt.Fprintln(os.Stderr, err)
-						return 1
+						fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
 					}
 				}
 			}
