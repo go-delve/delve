@@ -36,7 +36,7 @@ github.com/mattn/go-colorable
 github.com/mattn/go-isatty
 # github.com/mattn/go-runewidth v0.0.3
 github.com/mattn/go-runewidth
-# github.com/peterh/liner v1.2.1 => github.com/go-delve/liner v1.2.1-1
+# github.com/peterh/liner v1.2.1 => github.com/go-delve/liner v1.2.2-1
 ## explicit
 github.com/peterh/liner
 # github.com/russross/blackfriday/v2 v2.0.1
