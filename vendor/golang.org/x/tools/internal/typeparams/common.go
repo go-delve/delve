@@ -13,7 +13,6 @@ package typeparams
 import (
 	"go/ast"
 	"go/token"
-	"go/types"
 )
 
 // A IndexExprData holds data from both ast.IndexExpr and the new
@@ -23,10 +22,4 @@ type IndexExprData struct {
 	Lbrack  token.Pos  // position of "["
 	Indices []ast.Expr // index expressions
 	Rbrack  token.Pos  // position of "]"
-}
-
-// IsTypeParam reports whether t is a type parameter.
-func IsTypeParam(t types.Type) bool {
-	_, ok := t.(*TypeParam)
-	return ok
 }

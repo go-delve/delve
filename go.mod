@@ -2,6 +2,8 @@ module github.com/go-delve/delve
 
 go 1.16
 
+replace github.com/peterh/liner v1.2.2 => github.com/go-delve/liner v1.2.2-1
+
 require (
 	github.com/cilium/ebpf v0.7.0
 	github.com/cosiner/argv v0.1.0
@@ -21,5 +23,3 @@ require (
 	golang.org/x/tools v0.1.8-0.20211028023602-8de2a7fd1736
 	gopkg.in/yaml.v2 v2.4.0
 )
-
-replace github.com/peterh/liner v1.2.1 => github.com/go-delve/liner v1.2.2-1
