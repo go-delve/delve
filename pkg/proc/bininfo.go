@@ -52,6 +52,9 @@ type BinaryInfo struct {
 
 	debugInfoDirectories []string
 
+	// BuildID of this binary.
+	BuildID string
+
 	// Functions is a list of all DW_TAG_subprogram entries in debug_info, sorted by entry point
 	Functions []Function
 	// Sources is a list of all source files found in debug_line.
@@ -1212,11 +1215,10 @@ func (e *ErrNoBuildIDNote) Error() string {
 // will look in directories specified by the debug-info-directories config value.
 func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugInfoDirectories []string) (*os.File, *elf.File, error) {
 	var debugFilePath string
-	desc1, desc2, _ := parseBuildID(exe)
 	for _, dir := range debugInfoDirectories {
 		var potentialDebugFilePath string
 		if strings.Contains(dir, "build-id") {
-			potentialDebugFilePath = fmt.Sprintf("%s/%s/%s.debug", dir, desc1, desc2)
+			potentialDebugFilePath = fmt.Sprintf("%s/%s/%s.debug", dir, bi.BuildID[:2], bi.BuildID[2:])
 		} else if strings.HasPrefix(image.Path, "/proc") {
 			path, err := filepath.EvalSymlinks(image.Path)
 			if err == nil {
@@ -1236,7 +1238,7 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 	if debugFilePath == "" {
 		const debuginfodFind = "debuginfod-find"
 		if _, err := exec.LookPath(debuginfodFind); err == nil {
-			cmd := exec.Command(debuginfodFind, "debuginfo", desc1+desc2)
+			cmd := exec.Command(debuginfodFind, "debuginfo", bi.BuildID)
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				return nil, nil, ErrNoDebugInfoFound
@@ -1265,33 +1267,33 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 	return sepFile, elfFile, nil
 }
 
-func parseBuildID(exe *elf.File) (string, string, error) {
+func parseBuildID(exe *elf.File) (string, error) {
 	buildid := exe.Section(".note.gnu.build-id")
 	if buildid == nil {
-		return "", "", &ErrNoBuildIDNote{}
+		return "", &ErrNoBuildIDNote{}
 	}
 
 	br := buildid.Open()
 	bh := new(buildIDHeader)
 	if err := binary.Read(br, binary.LittleEndian, bh); err != nil {
-		return "", "", errors.New("can't read build-id header: " + err.Error())
+		return "", errors.New("can't read build-id header: " + err.Error())
 	}
 
 	name := make([]byte, bh.Namesz)
 	if err := binary.Read(br, binary.LittleEndian, name); err != nil {
-		return "", "", errors.New("can't read build-id name: " + err.Error())
+		return "", errors.New("can't read build-id name: " + err.Error())
 	}
 
 	if strings.TrimSpace(string(name)) != "GNU\x00" {
-		return "", "", errors.New("invalid build-id signature")
+		return "", errors.New("invalid build-id signature")
 	}
 
 	descBinary := make([]byte, bh.Descsz)
 	if err := binary.Read(br, binary.LittleEndian, descBinary); err != nil {
-		return "", "", errors.New("can't read build-id desc: " + err.Error())
+		return "", errors.New("can't read build-id desc: " + err.Error())
 	}
 	desc := hex.EncodeToString(descBinary)
-	return desc[:2], desc[2:], nil
+	return desc, nil
 }
 
 // loadBinaryInfoElf specifically loads information from an ELF binary.
@@ -1330,6 +1332,7 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 
 	dwarfFile := elfFile
 
+	bi.loadBuildID(image, elfFile)
 	var debugInfoBytes []byte
 	image.dwarf, err = elfFile.DWARF()
 	if err != nil {
@@ -1393,6 +1396,11 @@ func (bi *BinaryInfo) loadSymbolName(image *Image, file *elf.File, wg *sync.Wait
 			bi.SymNames[symSec.Value+image.StaticBase] = &s
 		}
 	}
+}
+
+func (bi *BinaryInfo) loadBuildID(image *Image, file *elf.File) {
+	buildid, _ := parseBuildID(file)
+	bi.BuildID = buildid
 }
 
 func (bi *BinaryInfo) parseDebugFrameElf(image *Image, dwarfFile, exeFile *elf.File, debugInfoBytes []byte, wg *sync.WaitGroup) {
