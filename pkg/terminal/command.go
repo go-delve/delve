@@ -2679,10 +2679,10 @@ func printfile(t *Term, filename string, line int, showArrow bool) error {
 
 	var file *os.File
 	path := t.substitutePath(filename)
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		path, err = debuginfod.GetSource(t.client.BuildID(), filename)
-		if err != nil {
-			return fmt.Errorf("couldn't find debuginfod sources")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		foundPath, err := debuginfod.GetSource(t.client.BuildID(), filename)
+		if err == nil {
+			path = foundPath
 		}
 	}
 	file, err := os.OpenFile(path, 0, os.ModePerm)
