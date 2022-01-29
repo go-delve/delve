@@ -111,6 +111,8 @@ func processServerMethods(serverMethods []*types.Func) []binding {
 			name = "set_expr"
 		case "command":
 			name = "raw_command"
+		case "build_i_d":
+			name = "build_id"
 		case "create_e_b_p_f_tracepoint":
 			name = "create_ebpf_tracepoint"
 		default:
