@@ -1196,15 +1196,6 @@ func (bi *BinaryInfo) parseDebugFrameGeneral(image *Image, debugFrameBytes []byt
 
 // ELF ///////////////////////////////////////////////////////////////
 
-// ErrNoBuildIDNote is used in openSeparateDebugInfo to signal there's no
-// build-id note on the binary, so LoadBinaryInfoElf will return
-// the error message coming from elfFile.DWARF() instead.
-type ErrNoBuildIDNote struct{}
-
-func (e *ErrNoBuildIDNote) Error() string {
-	return "can't find build-id note on binary"
-}
-
 // openSeparateDebugInfo searches for a file containing the separate
 // debug info for the binary using the "build ID" method as described
 // in GDB's documentation [1], and if found returns two handles, one
@@ -1259,35 +1250,6 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 	}
 
 	return sepFile, elfFile, nil
-}
-
-func parseBuildID(exe *elf.File) (string, error) {
-	buildid := exe.Section(".note.gnu.build-id")
-	if buildid == nil {
-		return "", &ErrNoBuildIDNote{}
-	}
-
-	br := buildid.Open()
-	bh := new(buildIDHeader)
-	if err := binary.Read(br, binary.LittleEndian, bh); err != nil {
-		return "", errors.New("can't read build-id header: " + err.Error())
-	}
-
-	name := make([]byte, bh.Namesz)
-	if err := binary.Read(br, binary.LittleEndian, name); err != nil {
-		return "", errors.New("can't read build-id name: " + err.Error())
-	}
-
-	if strings.TrimSpace(string(name)) != "GNU\x00" {
-		return "", errors.New("invalid build-id signature")
-	}
-
-	descBinary := make([]byte, bh.Descsz)
-	if err := binary.Read(br, binary.LittleEndian, descBinary); err != nil {
-		return "", errors.New("can't read build-id desc: " + err.Error())
-	}
-	desc := hex.EncodeToString(descBinary)
-	return desc, nil
 }
 
 // loadBinaryInfoElf specifically loads information from an ELF binary.
@@ -1393,8 +1355,36 @@ func (bi *BinaryInfo) loadSymbolName(image *Image, file *elf.File, wg *sync.Wait
 }
 
 func (bi *BinaryInfo) loadBuildID(image *Image, file *elf.File) {
-	buildid, _ := parseBuildID(file)
-	bi.BuildID = buildid
+	buildid := file.Section(".note.gnu.build-id")
+	if buildid == nil {
+		bi.logger.Error("can't find build-id note on binary")
+		return
+	}
+
+	br := buildid.Open()
+	bh := new(buildIDHeader)
+	if err := binary.Read(br, binary.LittleEndian, bh); err != nil {
+		bi.logger.Errorf("can't read build-id header: %v", err)
+		return
+	}
+
+	name := make([]byte, bh.Namesz)
+	if err := binary.Read(br, binary.LittleEndian, name); err != nil {
+		bi.logger.Errorf("can't read build-id name: %v", err)
+		return
+	}
+
+	if strings.TrimSpace(string(name)) != "GNU\x00" {
+		bi.logger.Error("invalid build-id signature")
+		return
+	}
+
+	descBinary := make([]byte, bh.Descsz)
+	if err := binary.Read(br, binary.LittleEndian, descBinary); err != nil {
+		bi.logger.Errorf("can't read build-id desc: %v", err)
+		return
+	}
+	bi.BuildID = hex.EncodeToString(descBinary)
 }
 
 func (bi *BinaryInfo) parseDebugFrameElf(image *Image, dwarfFile, exeFile *elf.File, debugInfoBytes []byte, wg *sync.WaitGroup) {
