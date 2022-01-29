@@ -14,7 +14,6 @@ import (
 	"go/token"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -31,6 +30,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/util"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
+	"github.com/go-delve/delve/pkg/proc/debuginfod"
 	"github.com/hashicorp/golang-lru/simplelru"
 	"github.com/sirupsen/logrus"
 )
@@ -1215,6 +1215,7 @@ func (e *ErrNoBuildIDNote) Error() string {
 // will look in directories specified by the debug-info-directories config value.
 func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugInfoDirectories []string) (*os.File, *elf.File, error) {
 	var debugFilePath string
+	var err error
 	for _, dir := range debugInfoDirectories {
 		var potentialDebugFilePath string
 		if strings.Contains(dir, "build-id") {
@@ -1236,15 +1237,8 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 	// We cannot find the debug information locally on the system. Try and see if we're on a system that
 	// has debuginfod so that we can use that in order to find any relevant debug information.
 	if debugFilePath == "" {
-		const debuginfodFind = "debuginfod-find"
-		if _, err := exec.LookPath(debuginfodFind); err == nil {
-			cmd := exec.Command(debuginfodFind, "debuginfo", bi.BuildID)
-			out, err := cmd.CombinedOutput()
-			if err != nil {
-				return nil, nil, ErrNoDebugInfoFound
-			}
-			debugFilePath = strings.TrimSpace(string(out))
-		} else {
+		debugFilePath, err = debuginfod.GetDebuginfo(bi.BuildID)
+		if err != nil {
 			return nil, nil, ErrNoDebugInfoFound
 		}
 	}

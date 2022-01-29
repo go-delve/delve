@@ -28,6 +28,7 @@ import (
 	"github.com/cosiner/argv"
 	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/locspec"
+	"github.com/go-delve/delve/pkg/proc/debuginfod"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
@@ -2679,27 +2680,16 @@ func printfile(t *Term, filename string, line int, showArrow bool) error {
 	var file *os.File
 	path := t.substitutePath(filename)
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		const debuginfodFind = "debuginfod-find"
-		buildid := t.client.BuildID()
-		if _, err := exec.LookPath(debuginfodFind); err == nil {
-			cmd := exec.Command(debuginfodFind, "source", buildid, filename)
-			out, err := cmd.CombinedOutput()
-			if err != nil {
-				return fmt.Errorf("couldn't find debuginfod sources")
-			}
-			debugFilePath := strings.TrimSpace(string(out))
-			file, err = os.OpenFile(debugFilePath, 0, os.ModePerm)
-			if err != nil {
-				return err
-			}
-		}
-	} else {
-		file, err = os.Open(path)
+		path, err = debuginfod.GetSource(t.client.BuildID(), filename)
 		if err != nil {
-			return err
+			return fmt.Errorf("couldn't find debuginfod sources")
 		}
-		defer file.Close()
 	}
+	file, err := os.OpenFile(path, 0, os.ModePerm)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
 
 	fi, _ := file.Stat()
 	lastModExe := t.client.LastModified()
