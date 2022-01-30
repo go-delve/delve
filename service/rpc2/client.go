@@ -48,6 +48,12 @@ func (c *RPCClient) ProcessPid() int {
 	return out.Pid
 }
 
+func (c *RPCClient) BuildID() string {
+	out := new(BuildIDOut)
+	c.call("BuildID", BuildIDIn{}, out)
+	return out.BuildID
+}
+
 func (c *RPCClient) LastModified() time.Time {
 	out := new(LastModifiedOut)
 	c.call("LastModified", LastModifiedIn{}, out)

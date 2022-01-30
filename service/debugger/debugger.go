@@ -2199,6 +2199,10 @@ func (d *Debugger) Target() *proc.Target {
 	return d.target
 }
 
+func (d *Debugger) BuildID() string {
+	return d.target.BinInfo().BuildID
+}
+
 func (d *Debugger) GetBufferedTracepoints() []api.TracepointResult {
 	traces := d.target.GetBufferedTracepoints()
 	if traces == nil {

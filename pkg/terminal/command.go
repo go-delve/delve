@@ -28,6 +28,7 @@ import (
 	"github.com/cosiner/argv"
 	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/locspec"
+	"github.com/go-delve/delve/pkg/proc/debuginfod"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
@@ -2676,7 +2677,15 @@ func printfile(t *Term, filename string, line int, showArrow bool) error {
 		arrowLine = line
 	}
 
-	file, err := os.Open(t.substitutePath(filename))
+	var file *os.File
+	path := t.substitutePath(filename)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		foundPath, err := debuginfod.GetSource(t.client.BuildID(), filename)
+		if err == nil {
+			path = foundPath
+		}
+	}
+	file, err := os.OpenFile(path, 0, os.ModePerm)
 	if err != nil {
 		return err
 	}

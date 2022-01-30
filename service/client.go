@@ -12,6 +12,9 @@ type Client interface {
 	// Returns the pid of the process we are debugging.
 	ProcessPid() int
 
+	// Returns the BuildID of the process' executable we are debugging.
+	BuildID() string
+
 	// LastModified returns the time that the process' executable was modified.
 	LastModified() time.Time
 
