@@ -45,20 +45,11 @@ func (r *intReader) uint64() uint64 {
 }
 
 // Keep this in sync with constants in iexport.go.
-//
-// Temporarily, the x/tools importer accepts generic code at both version 1 and
-// 2. However, version 2 contains some breaking changes on top of version 1:
-//   - the 'implicit' bit is added to exported constraints
-//   - a 'kind' byte is added to constant values (not yet done)
-//
-// Once we've completed the bump to version 2 in the standard library, we'll
-// remove support for generics here at version 1.
 const (
-	iexportVersionGo1_11 = 0
-	iexportVersionPosCol = 1
-	iexportVersionGo1_18 = 2
-	// TODO: before release, change this back to 2.
-	iexportVersionGenerics = iexportVersionPosCol
+	iexportVersionGo1_11   = 0
+	iexportVersionPosCol   = 1
+	iexportVersionGo1_18   = 2
+	iexportVersionGenerics = 2
 )
 
 type ident struct {
@@ -331,7 +322,7 @@ func (p *iimporter) pkgAt(off uint64) *types.Package {
 }
 
 func (p *iimporter) typAt(off uint64, base *types.Named) types.Type {
-	if t, ok := p.typCache[off]; ok && (base == nil || !isInterface(t)) {
+	if t, ok := p.typCache[off]; ok && canReuse(base, t) {
 		return t
 	}
 
@@ -343,10 +334,28 @@ func (p *iimporter) typAt(off uint64, base *types.Named) types.Type {
 	r.declReader.Reset(p.declData[off-predeclReserved:])
 	t := r.doType(base)
 
-	if base == nil || !isInterface(t) {
+	if canReuse(base, t) {
 		p.typCache[off] = t
 	}
 	return t
+}
+
+// canReuse reports whether the type rhs on the RHS of the declaration for def
+// may be re-used.
+//
+// Specifically, if def is non-nil and rhs is an interface type with methods, it
+// may not be re-used because we have a convention of setting the receiver type
+// for interface methods to def.
+func canReuse(def *types.Named, rhs types.Type) bool {
+	if def == nil {
+		return true
+	}
+	iface, _ := rhs.(*types.Interface)
+	if iface == nil {
+		return true
+	}
+	// Don't use iface.Empty() here as iface may not be complete.
+	return iface.NumEmbeddeds() == 0 && iface.NumExplicitMethods() == 0
 }
 
 type importReader struct {
@@ -429,12 +438,7 @@ func (r *importReader) obj(name string) {
 		if r.p.version < iexportVersionGenerics {
 			errorf("unexpected type param type")
 		}
-		// Remove the "path" from the type param name that makes it unique
-		ix := strings.LastIndex(name, ".")
-		if ix < 0 {
-			errorf("missing path for type param")
-		}
-		name0 := name[ix+1:]
+		name0 := tparamName(name)
 		tn := types.NewTypeName(pos, r.currPkg, name0, nil)
 		t := typeparams.NewTypeParam(tn, nil)
 

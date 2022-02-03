@@ -73,7 +73,7 @@ golang.org/x/sys/execabs
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/tools v0.1.8-0.20211028023602-8de2a7fd1736
+# golang.org/x/tools v0.1.9
 ## explicit
 golang.org/x/tools/go/gcexportdata
 golang.org/x/tools/go/internal/gcimporter
