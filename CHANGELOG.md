@@ -4,6 +4,31 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.8.1] 2021-02-07
+
+### Added
+
+- Downloading source code listings with debuginfod (@Foxboron)
+- Added `transcript` command (@aarzilli)
+- Enabled `dump` command on windows (@aarzilli)
+- Env attribute in DAP launch requests (@hyangah)
+- Better documentation for the DAP interface (@polinasok)
+
+### Fixed
+
+- Require argument for trace subcommand (@derekparker)
+- Handling of inlined calls within inlined calls (@derekparker)
+- Handling of DW_AT_inline attribute (@aarzilli)
+- Set stop reason in StepInstruction (@suzmue)
+
+### Changed
+
+- The DAP interface will not create executables in the temp directory (@hyangah)
+- When the `goroutines` command looks for the user frame it will exclude frames in internal and runtime/internal in addition to private runtime functions (@aarzilli)
+- Breakpoints with hitcount conditions are automatically disabled when their condition can no longer be satisfied (@pippolo84)
+- The commands `break` and `trace` will set a breakpoint on the current line if no argument is specified (@thockin)
+- Miscellaneous documentation improvements (@chainhelen, @gareth-rees, @polinasok)
+
 ## [1.8.0] 2021-12-23
 
 ### Added
