@@ -78,8 +78,6 @@ func Print(out io.Writer, path string, reader io.Reader, startLine, endLine, arr
 		toks = append(toks, colorTok{tok, int(start), int(end)})
 	}
 
-	emit(token.PACKAGE, f.Package, token.NoPos)
-
 	for _, cgrp := range f.Comments {
 		for _, cmnt := range cgrp.List {
 			emit(token.COMMENT, cmnt.Pos(), cmnt.End())
@@ -92,6 +90,9 @@ func Print(out io.Writer, path string, reader io.Reader, startLine, endLine, arr
 		}
 
 		switch n := n.(type) {
+		case *ast.File:
+			emit(token.PACKAGE, f.Package, token.NoPos)
+			return true
 		case *ast.BasicLit:
 			emit(n.Kind, n.Pos(), n.End())
 			return true
@@ -126,11 +127,11 @@ func Print(out io.Writer, path string, reader io.Reader, startLine, endLine, arr
 			emit(tokval.Interface().(token.Token), tokposval.Interface().(token.Pos), token.NoPos)
 		}
 
-		for _, kwname := range []string{"Case", "Begin", "Defer", "Pacakge", "For", "Func", "Go", "Interface", "Map", "Return", "Select", "Struct", "Switch"} {
+		for _, kwname := range []string{"Case", "Begin", "Defer", "For", "Func", "Go", "Interface", "Map", "Return", "Select", "Struct", "Switch"} {
 			kwposval := nval.FieldByName(kwname)
 			if kwposval != (reflect.Value{}) {
 				kwpos, ok := kwposval.Interface().(token.Pos)
-				if ok {
+				if ok && kwpos != token.NoPos {
 					emit(token.ILLEGAL, kwpos, token.NoPos)
 				}
 			}
