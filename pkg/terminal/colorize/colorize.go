@@ -13,8 +13,6 @@ import (
 	"unicode"
 )
 
-var count = 0
-
 // Style describes the style of a chunk of text.
 type Style uint8
 
