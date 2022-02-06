@@ -126,7 +126,7 @@ func Print(out io.Writer, path string, reader io.Reader, startLine, endLine, arr
 			emit(tokval.Interface().(token.Token), tokposval.Interface().(token.Pos), token.NoPos)
 		}
 
-		for _, kwname := range []string{"Case", "Begin", "Defer", "Pacakge", "For", "Func", "Go", "Interface", "Map", "Return", "Select", "Struct", "Switch"} {
+		for _, kwname := range []string{"Case", "Begin", "Defer", "For", "Func", "Go", "Interface", "Map", "Return", "Select", "Struct", "Switch"} {
 			kwposval := nval.FieldByName(kwname)
 			if kwposval != (reflect.Value{}) {
 				kwpos, ok := kwposval.Interface().(token.Pos)
