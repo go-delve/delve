@@ -38,7 +38,6 @@ type ProcessInternal interface {
 	// ErrProcessExited or ErrProcessDetached).
 	Valid() (bool, error)
 	Detach(bool) error
-	ContinueOnce(*ContinueOnceContext) (trapthread Thread, stopReason StopReason, err error)
 
 	// RequestManualStop attempts to stop all the process' threads.
 	RequestManualStop(cctx *ContinueOnceContext) error

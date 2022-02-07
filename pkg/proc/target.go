@@ -36,10 +36,10 @@ const (
 // Target represents the process being debugged.
 type Target struct {
 	Process
-	RecordingManipulation
 
-	proc   ProcessInternal
-	recman RecordingManipulationInternal
+	proc         ProcessInternal
+	recman       RecordingManipulationInternal
+	continueOnce ContinueOnceFunc
 
 	pid int
 
@@ -50,10 +50,6 @@ type Target struct {
 
 	// CanDump is true if core dumping is supported.
 	CanDump bool
-
-	// KeepSteppingBreakpoints determines whether certain stop reasons (e.g. manual halts)
-	// will keep the stepping breakpoints instead of clearing them.
-	KeepSteppingBreakpoints KeepSteppingBreakpoints
 
 	// currentThread is the thread that will be used by next/step/stepout and to evaluate variables if no goroutine is selected.
 	currentThread Thread
@@ -84,7 +80,7 @@ type Target struct {
 	fakeMemoryRegistry    []*compositeMemory
 	fakeMemoryRegistryMap map[string]*compositeMemory
 
-	cctx *ContinueOnceContext
+	partOfGroup bool
 }
 
 type KeepSteppingBreakpoints uint8
@@ -151,6 +147,8 @@ const (
 	StopWatchpoint                     // The target process hit one or more watchpoints
 )
 
+type ContinueOnceFunc func([]ProcessInternal, *ContinueOnceContext) (trapthread Thread, stopReason StopReason, err error)
+
 // NewTargetConfig contains the configuration for a new Target object,
 type NewTargetConfig struct {
 	Path                string     // path of the main executable
@@ -158,6 +156,7 @@ type NewTargetConfig struct {
 	DisableAsyncPreempt bool       // Go 1.14 asynchronous preemption should be disabled
 	StopReason          StopReason // Initial stop reason
 	CanDump             bool       // Can create core dumps (must implement ProcessInternal.MemoryMap)
+	ContinueOnce        ContinueOnceFunc
 }
 
 // DisableAsyncPreemptEnv returns a process environment (like os.Environ)
@@ -200,7 +199,7 @@ func NewTarget(p ProcessInternal, pid int, currentThread Thread, cfg NewTargetCo
 		currentThread: currentThread,
 		CanDump:       cfg.CanDump,
 		pid:           pid,
-		cctx:          &ContinueOnceContext{},
+		continueOnce:  cfg.ContinueOnce,
 	}
 
 	if recman, ok := p.(RecordingManipulationInternal); ok {
@@ -208,7 +207,6 @@ func NewTarget(p ProcessInternal, pid int, currentThread Thread, cfg NewTargetCo
 	} else {
 		t.recman = &dummyRecordingManipulation{}
 	}
-	t.RecordingManipulation = t.recman
 
 	g, _ := GetG(currentThread)
 	t.selectedGoroutine = g
@@ -281,12 +279,18 @@ func (t *Target) ClearCaches() {
 	}
 }
 
-// Restart will start the process over from the location specified by the "from" locspec.
+// Restart will start the process group over from the location specified by the "from" locspec.
 // This is only useful for recorded targets.
 // Restarting of a normal process happens at a higher level (debugger.Restart).
-func (t *Target) Restart(from string) error {
-	t.ClearCaches()
-	currentThread, err := t.recman.Restart(t.cctx, from)
+func (grp *TargetGroup) Restart(from string) error {
+	if len(grp.targets) != 1 {
+		panic("multiple targets not implemented")
+	}
+	for _, t := range grp.targets {
+		t.ClearCaches()
+	}
+	t := grp.Sel
+	currentThread, err := t.recman.Restart(grp.cctx, from)
 	if err != nil {
 		return err
 	}
@@ -333,11 +337,11 @@ func (p *Target) SwitchThread(tid int) error {
 	return fmt.Errorf("thread %d does not exist", tid)
 }
 
-// Detach will detach the target from the underylying process.
+// detach will detach the target from the underylying process.
 // This means the debugger will no longer receive events from the process
 // we were previously debugging.
 // If kill is true then the process will be killed when we detach.
-func (t *Target) Detach(kill bool) error {
+func (t *Target) detach(kill bool) error {
 	if !kill {
 		if t.asyncPreemptChanged {
 			setAsyncPreemptOff(t, t.asyncPreemptOff)
@@ -468,17 +472,17 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 }
 
 // ResumeNotify specifies a channel that will be closed the next time
-// Continue finishes resuming the target.
-func (t *Target) ResumeNotify(ch chan<- struct{}) {
+// Continue finishes resuming the targets.
+func (t *TargetGroup) ResumeNotify(ch chan<- struct{}) {
 	t.cctx.ResumeChan = ch
 }
 
-// RequestManualStop attempts to stop all the process' threads.
-func (t *Target) RequestManualStop() error {
+// RequestManualStop attempts to stop all the processes' threads.
+func (t *TargetGroup) RequestManualStop() error {
 	t.cctx.StopMu.Lock()
 	defer t.cctx.StopMu.Unlock()
 	t.cctx.manualStopRequested = true
-	return t.proc.RequestManualStop(t.cctx)
+	return t.Sel.proc.RequestManualStop(t.cctx)
 }
 
 const (
