@@ -72,7 +72,7 @@ func (t *Target) setStackWatchBreakpoints(scope *EvalScope, watchpoint *Breakpoi
 	retbreaklet.watchpoint = watchpoint
 	retbreaklet.callback = woos
 
-	if recorded, _ := t.Recorded(); recorded && retframe.Current.Fn != nil {
+	if recorded, _ := t.recman.Recorded(); recorded && retframe.Current.Fn != nil {
 		// Must also set a breakpoint on the call instruction immediately
 		// preceding retframe.Current.PC, because the watchpoint could also go out
 		// of scope while we are running backwards.

@@ -172,9 +172,11 @@ func (dbp *nativeProcess) EraseBreakpoint(bp *proc.Breakpoint) error {
 	return dbp.memthread.clearSoftwareBreakpoint(bp)
 }
 
-// ContinueOnce will continue the target until it stops.
-// This could be the result of a breakpoint or signal.
-func (dbp *nativeProcess) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
+func continueOnce(procs []proc.ProcessInternal, cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
+	if len(procs) != 1 {
+		panic("not implemented")
+	}
+	dbp := procs[0].(*nativeProcess)
 	if dbp.exited {
 		return nil, proc.StopExited, proc.ErrProcessExited{Pid: dbp.pid}
 	}
@@ -253,8 +255,9 @@ func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc
 		//    See: https://go-review.googlesource.com/c/go/+/208126
 		DisableAsyncPreempt: runtime.GOOS == "windows" || runtime.GOOS == "freebsd" || (runtime.GOOS == "linux" && runtime.GOARCH == "arm64"),
 
-		StopReason: stopReason,
-		CanDump:    runtime.GOOS == "linux" || runtime.GOOS == "windows",
+		StopReason:   stopReason,
+		CanDump:      runtime.GOOS == "linux" || runtime.GOOS == "windows",
+		ContinueOnce: continueOnce,
 	})
 	if err != nil {
 		return nil, err

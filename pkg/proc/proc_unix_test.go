@@ -37,24 +37,25 @@ func TestIssue419(t *testing.T) {
 
 	// SIGINT directed at the inferior should be passed along not swallowed by delve
 	withTestProcess("issue419", t, func(p *proc.Target, fixture protest.Fixture) {
+		grp := proc.NewGroup(p)
 		setFunctionBreakpoint(p, t, "main.main")
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(grp.Continue(), t, "Continue()")
 		resumeChan := make(chan struct{}, 1)
 		go func() {
 			time.Sleep(500 * time.Millisecond)
 			<-resumeChan
 			if p.Pid() <= 0 {
 				// if we don't stop the inferior the test will never finish
-				p.RequestManualStop()
-				err := p.Detach(true)
+				grp.RequestManualStop()
+				err := grp.Detach(true)
 				errChan <- errIssue419{pid: p.Pid(), err: err}
 				return
 			}
 			err := syscall.Kill(p.Pid(), syscall.SIGINT)
 			errChan <- errIssue419{pid: p.Pid(), err: err}
 		}()
-		p.ResumeNotify(resumeChan)
-		errChan <- p.Continue()
+		grp.ResumeNotify(resumeChan)
+		errChan <- grp.Continue()
 	})
 
 	for i := 0; i < 2; i++ {

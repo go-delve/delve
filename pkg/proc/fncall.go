@@ -150,7 +150,8 @@ func (callCtx *callContext) doReturn(ret *Variable, err error) {
 // EvalExpressionWithCalls is like EvalExpression but allows function calls in 'expr'.
 // Because this can only be done in the current goroutine, unlike
 // EvalExpression, EvalExpressionWithCalls is not a method of EvalScope.
-func EvalExpressionWithCalls(t *Target, g *G, expr string, retLoadCfg LoadConfig, checkEscape bool) error {
+func EvalExpressionWithCalls(grp *TargetGroup, g *G, expr string, retLoadCfg LoadConfig, checkEscape bool) error {
+	t := grp.Sel
 	bi := t.BinInfo()
 	if !t.SupportsFunctionCalls() {
 		return errFuncCallUnsupportedBackend
@@ -205,7 +206,7 @@ func EvalExpressionWithCalls(t *Target, g *G, expr string, retLoadCfg LoadConfig
 
 	contReq, ok := <-continueRequest
 	if contReq.cont {
-		return t.Continue()
+		return grp.Continue()
 	}
 
 	return finishEvalExpressionWithCalls(t, g, contReq, ok)

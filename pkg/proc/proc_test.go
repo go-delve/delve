@@ -272,16 +272,17 @@ func findFileLocation(p *proc.Target, t *testing.T, file string, lineno int) uin
 func TestHalt(t *testing.T) {
 	stopChan := make(chan interface{}, 1)
 	withTestProcess("loopprog", t, func(p *proc.Target, fixture protest.Fixture) {
+		grp := proc.NewGroup(p)
 		setFunctionBreakpoint(p, t, "main.loop")
-		assertNoError(p.Continue(), t, "Continue")
+		assertNoError(grp.Continue(), t, "Continue")
 		resumeChan := make(chan struct{}, 1)
 		go func() {
 			<-resumeChan
 			time.Sleep(100 * time.Millisecond)
-			stopChan <- p.RequestManualStop()
+			stopChan <- grp.RequestManualStop()
 		}()
-		p.ResumeNotify(resumeChan)
-		assertNoError(p.Continue(), t, "Continue")
+		grp.ResumeNotify(resumeChan)
+		assertNoError(grp.Continue(), t, "Continue")
 		retVal := <-stopChan
 
 		if err, ok := retVal.(error); ok && err != nil {
@@ -2064,6 +2065,7 @@ func TestCmdLineArgs(t *testing.T) {
 func TestIssue462(t *testing.T) {
 	skipOn(t, "broken", "windows") // Stacktrace of Goroutine 0 fails with an error
 	withTestProcess("testnextnethttp", t, func(p *proc.Target, fixture protest.Fixture) {
+		grp := proc.NewGroup(p)
 		go func() {
 			// Wait for program to start listening.
 			for {
@@ -2075,10 +2077,10 @@ func TestIssue462(t *testing.T) {
 				time.Sleep(50 * time.Millisecond)
 			}
 
-			p.RequestManualStop()
+			grp.RequestManualStop()
 		}()
 
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(grp.Continue(), t, "Continue()")
 		_, err := proc.ThreadStacktrace(p.CurrentThread(), 40)
 		assertNoError(err, t, "Stacktrace()")
 	})
@@ -2638,22 +2640,23 @@ func TestNextBreakpoint(t *testing.T) {
 func TestNextBreakpointKeepsSteppingBreakpoints(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testnextprog", t, func(p *proc.Target, fixture protest.Fixture) {
-		p.KeepSteppingBreakpoints = proc.TracepointKeepsSteppingBreakpoints
+		grp := proc.NewGroup(p)
+		grp.KeepSteppingBreakpoints = proc.TracepointKeepsSteppingBreakpoints
 		bp := setFileBreakpoint(p, t, fixture.Source, 34)
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(grp.Continue(), t, "Continue()")
 		p.ClearBreakpoint(bp.Addr)
 
 		// Next should be interrupted by a tracepoint on the same goroutine.
 		bp = setFileBreakpoint(p, t, fixture.Source, 14)
 		bp.Logical.Tracepoint = true
-		assertNoError(p.Next(), t, "Next()")
+		assertNoError(grp.Next(), t, "Next()")
 		assertLineNumber(p, t, 14, "wrong line number")
 		if !p.Breakpoints().HasSteppingBreakpoints() {
 			t.Fatal("does not have internal breakpoints after hitting tracepoint on same goroutine")
 		}
 
 		// Continue to complete next.
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(grp.Continue(), t, "Continue()")
 		assertLineNumber(p, t, 35, "wrong line number")
 		if p.Breakpoints().HasSteppingBreakpoints() {
 			t.Fatal("has internal breakpoints after completing next")
@@ -3713,17 +3716,18 @@ func TestIssue1101(t *testing.T) {
 
 func TestIssue1145(t *testing.T) {
 	withTestProcess("sleep", t, func(p *proc.Target, fixture protest.Fixture) {
+		grp := proc.NewGroup(p)
 		setFileBreakpoint(p, t, fixture.Source, 18)
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(grp.Continue(), t, "Continue()")
 		resumeChan := make(chan struct{}, 1)
-		p.ResumeNotify(resumeChan)
+		grp.ResumeNotify(resumeChan)
 		go func() {
 			<-resumeChan
 			time.Sleep(100 * time.Millisecond)
-			p.RequestManualStop()
+			grp.RequestManualStop()
 		}()
 
-		assertNoError(p.Next(), t, "Next()")
+		assertNoError(grp.Next(), t, "Next()")
 		if p.Breakpoints().HasSteppingBreakpoints() {
 			t.Fatal("has internal breakpoints after manual stop request")
 		}
@@ -3732,18 +3736,19 @@ func TestIssue1145(t *testing.T) {
 
 func TestHaltKeepsSteppingBreakpoints(t *testing.T) {
 	withTestProcess("sleep", t, func(p *proc.Target, fixture protest.Fixture) {
-		p.KeepSteppingBreakpoints = proc.HaltKeepsSteppingBreakpoints
+		grp := proc.NewGroup(p)
+		grp.KeepSteppingBreakpoints = proc.HaltKeepsSteppingBreakpoints
 		setFileBreakpoint(p, t, fixture.Source, 18)
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(grp.Continue(), t, "Continue()")
 		resumeChan := make(chan struct{}, 1)
-		p.ResumeNotify(resumeChan)
+		grp.ResumeNotify(resumeChan)
 		go func() {
 			<-resumeChan
 			time.Sleep(100 * time.Millisecond)
-			p.RequestManualStop()
+			grp.RequestManualStop()
 		}()
 
-		assertNoError(p.Next(), t, "Next()")
+		assertNoError(grp.Next(), t, "Next()")
 		if !p.Breakpoints().HasSteppingBreakpoints() {
 			t.Fatal("does not have internal breakpoints after manual stop request")
 		}
@@ -4346,11 +4351,12 @@ func TestIssue1374(t *testing.T) {
 	// Continue did not work when stopped at a breakpoint immediately after calling CallFunction.
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestProcess("issue1374", t, func(p *proc.Target, fixture protest.Fixture) {
+		grp := proc.NewGroup(p)
 		setFileBreakpoint(p, t, fixture.Source, 7)
-		assertNoError(p.Continue(), t, "First Continue")
+		assertNoError(grp.Continue(), t, "First Continue")
 		assertLineNumber(p, t, 7, "Did not continue to correct location (first continue),")
-		assertNoError(proc.EvalExpressionWithCalls(p, p.SelectedGoroutine(), "getNum()", normalLoadConfig, true), t, "Call")
-		err := p.Continue()
+		assertNoError(proc.EvalExpressionWithCalls(grp, p.SelectedGoroutine(), "getNum()", normalLoadConfig, true), t, "Call")
+		err := grp.Continue()
 		if _, isexited := err.(proc.ErrProcessExited); !isexited {
 			regs, _ := p.CurrentThread().Registers()
 			f, l, _ := p.BinInfo().PCToLine(regs.PC())
@@ -4577,14 +4583,15 @@ func TestCallConcurrent(t *testing.T) {
 	skipOn(t, "broken", "freebsd")
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestProcess("teststepconcurrent", t, func(p *proc.Target, fixture protest.Fixture) {
+		grp := proc.NewGroup(p)
 		bp := setFileBreakpoint(p, t, fixture.Source, 24)
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(grp.Continue(), t, "Continue()")
 		//_, err := p.ClearBreakpoint(bp.Addr)
 		//assertNoError(err, t, "ClearBreakpoint() returned an error")
 
 		gid1 := p.SelectedGoroutine().ID
 		t.Logf("starting injection in %d / %d", p.SelectedGoroutine().ID, p.CurrentThread().ThreadID())
-		assertNoError(proc.EvalExpressionWithCalls(p, p.SelectedGoroutine(), "Foo(10, 1)", normalLoadConfig, false), t, "EvalExpressionWithCalls()")
+		assertNoError(proc.EvalExpressionWithCalls(grp, p.SelectedGoroutine(), "Foo(10, 1)", normalLoadConfig, false), t, "EvalExpressionWithCalls()")
 
 		returned := testCallConcurrentCheckReturns(p, t, gid1, -1)
 
@@ -4599,7 +4606,7 @@ func TestCallConcurrent(t *testing.T) {
 
 		gid2 := p.SelectedGoroutine().ID
 		t.Logf("starting second injection in %d / %d", p.SelectedGoroutine().ID, p.CurrentThread().ThreadID())
-		assertNoError(proc.EvalExpressionWithCalls(p, p.SelectedGoroutine(), "Foo(10, 2)", normalLoadConfig, false), t, "EvalExpressioniWithCalls")
+		assertNoError(proc.EvalExpressionWithCalls(grp, p.SelectedGoroutine(), "Foo(10, 2)", normalLoadConfig, false), t, "EvalExpressioniWithCalls")
 
 		for {
 			returned += testCallConcurrentCheckReturns(p, t, gid1, gid2)
@@ -4607,10 +4614,10 @@ func TestCallConcurrent(t *testing.T) {
 				break
 			}
 			t.Logf("Continuing... %d", returned)
-			assertNoError(p.Continue(), t, "Continue()")
+			assertNoError(grp.Continue(), t, "Continue()")
 		}
 
-		p.Continue()
+		grp.Continue()
 	})
 }
 
@@ -4964,8 +4971,9 @@ func TestIssue1925(t *testing.T) {
 	// altering the state of the target process.
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestProcess("testvariables2", t, func(p *proc.Target, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue()")
-		assertNoError(proc.EvalExpressionWithCalls(p, p.SelectedGoroutine(), "afunc(2)", normalLoadConfig, true), t, "Call")
+		grp := proc.NewGroup(p)
+		assertNoError(grp.Continue(), t, "Continue()")
+		assertNoError(proc.EvalExpressionWithCalls(grp, p.SelectedGoroutine(), "afunc(2)", normalLoadConfig, true), t, "Call")
 		t.Logf("%v\n", p.SelectedGoroutine().CurrentLoc)
 		if loc := p.SelectedGoroutine().CurrentLoc; loc.File != fixture.Source {
 			t.Errorf("wrong location for selected goroutine after call: %s:%d", loc.File, loc.Line)
@@ -5059,31 +5067,32 @@ func TestStepoutOneliner(t *testing.T) {
 func TestRequestManualStopWhileStopped(t *testing.T) {
 	// Requesting a manual stop while stopped shouldn't cause problems (issue #2138).
 	withTestProcess("issue2138", t, func(p *proc.Target, fixture protest.Fixture) {
+		grp := proc.NewGroup(p)
 		resumed := make(chan struct{})
 		setFileBreakpoint(p, t, fixture.Source, 8)
-		assertNoError(p.Continue(), t, "Continue() 1")
-		p.ResumeNotify(resumed)
+		assertNoError(grp.Continue(), t, "Continue() 1")
+		grp.ResumeNotify(resumed)
 		go func() {
 			<-resumed
 			time.Sleep(1 * time.Second)
-			p.RequestManualStop()
+			grp.RequestManualStop()
 		}()
 		t.Logf("at time.Sleep call")
-		assertNoError(p.Continue(), t, "Continue() 2")
+		assertNoError(grp.Continue(), t, "Continue() 2")
 		t.Logf("manually stopped")
-		p.RequestManualStop()
-		p.RequestManualStop()
-		p.RequestManualStop()
+		grp.RequestManualStop()
+		grp.RequestManualStop()
+		grp.RequestManualStop()
 
 		resumed = make(chan struct{})
-		p.ResumeNotify(resumed)
+		grp.ResumeNotify(resumed)
 		go func() {
 			<-resumed
 			time.Sleep(1 * time.Second)
-			p.RequestManualStop()
+			grp.RequestManualStop()
 		}()
 		t.Logf("resuming sleep")
-		assertNoError(p.Continue(), t, "Continue() 3")
+		assertNoError(grp.Continue(), t, "Continue() 3")
 		t.Logf("done")
 	})
 }
@@ -5546,9 +5555,10 @@ func TestWatchpointCounts(t *testing.T) {
 func TestManualStopWhileStopped(t *testing.T) {
 	// Checks that RequestManualStop sent to a stopped thread does not cause the target process to die.
 	withTestProcess("loopprog", t, func(p *proc.Target, fixture protest.Fixture) {
+		grp := proc.NewGroup(p)
 		asyncCont := func(done chan struct{}) {
 			defer close(done)
-			err := p.Continue()
+			err := grp.Continue()
 			t.Logf("%v\n", err)
 			if err != nil {
 				panic(err)
@@ -5571,9 +5581,9 @@ func TestManualStopWhileStopped(t *testing.T) {
 			done := make(chan struct{})
 			go asyncCont(done)
 			time.Sleep(1 * time.Second)
-			p.RequestManualStop()
+			grp.RequestManualStop()
 			time.Sleep(1 * time.Second)
-			p.RequestManualStop()
+			grp.RequestManualStop()
 			time.Sleep(1 * time.Second)
 			<-done
 		}
@@ -5581,11 +5591,11 @@ func TestManualStopWhileStopped(t *testing.T) {
 			t.Logf("Continue %d (fast)", i)
 			rch := make(chan struct{})
 			done := make(chan struct{})
-			p.ResumeNotify(rch)
+			grp.ResumeNotify(rch)
 			go asyncCont(done)
 			<-rch
-			p.RequestManualStop()
-			p.RequestManualStop()
+			grp.RequestManualStop()
+			grp.RequestManualStop()
 			<-done
 		}
 	})
