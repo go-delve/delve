@@ -1357,31 +1357,31 @@ func (bi *BinaryInfo) loadSymbolName(image *Image, file *elf.File, wg *sync.Wait
 func (bi *BinaryInfo) loadBuildID(image *Image, file *elf.File) {
 	buildid := file.Section(".note.gnu.build-id")
 	if buildid == nil {
-		bi.logger.Error("can't find build-id note on binary")
+		bi.logger.Warn("can't find build-id note on binary")
 		return
 	}
 
 	br := buildid.Open()
 	bh := new(buildIDHeader)
 	if err := binary.Read(br, binary.LittleEndian, bh); err != nil {
-		bi.logger.Errorf("can't read build-id header: %v", err)
+		bi.logger.Warnf("can't read build-id header: %v", err)
 		return
 	}
 
 	name := make([]byte, bh.Namesz)
 	if err := binary.Read(br, binary.LittleEndian, name); err != nil {
-		bi.logger.Errorf("can't read build-id name: %v", err)
+		bi.logger.Warnf("can't read build-id name: %v", err)
 		return
 	}
 
 	if strings.TrimSpace(string(name)) != "GNU\x00" {
-		bi.logger.Error("invalid build-id signature")
+		bi.logger.Warn("invalid build-id signature")
 		return
 	}
 
 	descBinary := make([]byte, bh.Descsz)
 	if err := binary.Read(br, binary.LittleEndian, descBinary); err != nil {
-		bi.logger.Errorf("can't read build-id desc: %v", err)
+		bi.logger.Warnf("can't read build-id desc: %v", err)
 		return
 	}
 	bi.BuildID = hex.EncodeToString(descBinary)
