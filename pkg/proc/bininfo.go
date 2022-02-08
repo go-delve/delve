@@ -1209,7 +1209,7 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 	var err error
 	for _, dir := range debugInfoDirectories {
 		var potentialDebugFilePath string
-		if strings.Contains(dir, "build-id") {
+		if strings.Contains(dir, "build-id") && len(bi.BuildID) > 2 {
 			potentialDebugFilePath = fmt.Sprintf("%s/%s/%s.debug", dir, bi.BuildID[:2], bi.BuildID[2:])
 		} else if strings.HasPrefix(image.Path, "/proc") {
 			path, err := filepath.EvalSymlinks(image.Path)
