@@ -840,6 +840,16 @@ func TestEvalExpression(t *testing.T) {
 		{"ni8 << 8", false, "0", "0", "int8", nil},
 		{"ni8 >> 1", false, "-3", "-3", "int8", nil},
 		{"bytearray[0] * bytearray[0]", false, "144", "144", "uint8", nil},
+
+		// function call / typecast errors
+		{"unknownthing(1, 2)", false, "", "", "", errors.New("function calls not allowed without using 'call'")},
+		{"(unknownthing)(1, 2)", false, "", "", "", errors.New("function calls not allowed without using 'call'")},
+		{"afunc(2)", false, "", "", "", errors.New("function calls not allowed without using 'call'")},
+		{"(afunc)(2)", false, "", "", "", errors.New("function calls not allowed without using 'call'")},
+		{"(*afunc)(2)", false, "", "", "", errors.New("could not evaluate function or type (*afunc): expression \"afunc\" (func()) can not be dereferenced")},
+		{"unknownthing(2)", false, "", "", "", errors.New("could not evaluate function or type unknownthing: could not find symbol value for unknownthing")},
+		{"(*unknownthing)(2)", false, "", "", "", errors.New("could not evaluate function or type (*unknownthing): could not find symbol value for unknownthing")},
+		{"(*strings.Split)(2)", false, "", "", "", errors.New("could not evaluate function or type (*strings.Split): could not find symbol value for strings")},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())
@@ -1230,7 +1240,7 @@ func TestCallFunction(t *testing.T) {
 		{`onetwothree(intcallpanic(2))`, []string{`:[]int:[]int len: 3, cap: 3, [3,4,5]`}, nil},
 		{`onetwothree(intcallpanic(0))`, []string{`~panic:interface {}:interface {}(string) "panic requested"`}, nil},
 		{`onetwothree(intcallpanic(2)+1)`, []string{`:[]int:[]int len: 3, cap: 3, [4,5,6]`}, nil},
-		{`onetwothree(intcallpanic("not a number"))`, nil, errors.New("can not convert \"not a number\" constant to int")},
+		{`onetwothree(intcallpanic("not a number"))`, nil, errors.New("error evaluating \"intcallpanic(\\\"not a number\\\")\" as argument n in function main.onetwothree: can not convert \"not a number\" constant to int")},
 
 		// Variable setting tests
 		{`pa2 = getAStructPtr(8); pa2`, []string{`pa2:*main.astruct:*main.astruct {X: 8}`}, nil},

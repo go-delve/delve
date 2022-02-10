@@ -745,13 +745,7 @@ func (scope *EvalScope) evalToplevelTypeCast(t ast.Expr, cfg LoadConfig) (*Varia
 func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 	switch node := t.(type) {
 	case *ast.CallExpr:
-		if len(node.Args) == 1 {
-			v, err := scope.evalTypeCast(node)
-			if err == nil || err != reader.ErrTypeNotFound {
-				return v, err
-			}
-		}
-		return evalFunctionCall(scope, node)
+		return scope.evalTypeCastOrFuncCall(node)
 
 	case *ast.Ident:
 		return scope.evalIdent(node)
@@ -848,6 +842,70 @@ func removeParen(n ast.Expr) ast.Expr {
 		n = p.X
 	}
 	return n
+}
+
+// evalTypeCastOrFuncCall evaluates a type cast or a function call
+func (scope *EvalScope) evalTypeCastOrFuncCall(node *ast.CallExpr) (*Variable, error) {
+	if len(node.Args) != 1 {
+		// Things that have more or less than one argument are always function calls.
+		return evalFunctionCall(scope, node)
+	}
+
+	ambiguous := func() (*Variable, error) {
+		// Ambiguous, could be a function call or a type cast, if node.Fun can be
+		// evaluated then try to treat it as a function call, otherwise try the
+		// type cast.
+		_, err0 := scope.evalAST(node.Fun)
+		if err0 == nil {
+			return evalFunctionCall(scope, node)
+		}
+		v, err := scope.evalTypeCast(node)
+		if err == reader.ErrTypeNotFound {
+			return nil, fmt.Errorf("could not evaluate function or type %s: %v", exprToString(node.Fun), err0)
+		}
+		return v, err
+	}
+
+	fnnode := removeParen(node.Fun)
+	if n, _ := fnnode.(*ast.StarExpr); n != nil {
+		fnnode = removeParen(n.X)
+	}
+
+	switch n := fnnode.(type) {
+	case *ast.BasicLit:
+		// It can only be a ("type string")(x) type cast
+		return scope.evalTypeCast(node)
+	case *ast.ArrayType, *ast.StructType, *ast.FuncType, *ast.InterfaceType, *ast.MapType, *ast.ChanType:
+		return scope.evalTypeCast(node)
+	case *ast.SelectorExpr:
+		if _, isident := n.X.(*ast.Ident); isident {
+			return ambiguous()
+		}
+		return evalFunctionCall(scope, node)
+	case *ast.Ident:
+		if supportedBuiltins[n.Name] {
+			return evalFunctionCall(scope, node)
+		}
+		return ambiguous()
+	case *ast.IndexExpr:
+		// Ambiguous, could be a parametric type
+		switch n.X.(type) {
+		case *ast.Ident, *ast.SelectorExpr:
+			// Do the type-cast first since evaluating node.Fun could be expensive.
+			v, err := scope.evalTypeCast(node)
+			if err == nil || err != reader.ErrTypeNotFound {
+				return v, err
+			}
+			return evalFunctionCall(scope, node)
+		default:
+			return evalFunctionCall(scope, node)
+		}
+	case *astIndexListExpr:
+		return scope.evalTypeCast(node)
+	default:
+		// All other expressions must be function calls
+		return evalFunctionCall(scope, node)
+	}
 }
 
 // Eval type cast expressions
@@ -969,6 +1027,8 @@ func convertInt(n uint64, signed bool, size int64) uint64 {
 	}
 	return r
 }
+
+var supportedBuiltins = map[string]bool{"cap": true, "len": true, "complex": true, "imag": true, "real": true}
 
 func (scope *EvalScope) evalBuiltinCall(node *ast.CallExpr) (*Variable, error) {
 	fnnode, ok := node.Fun.(*ast.Ident)
