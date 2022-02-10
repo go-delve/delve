@@ -101,6 +101,7 @@ func New(client service.Client, conf *config.Config) *Term {
 		cmds:   cmds,
 		stdout: &transcriptWriter{w: os.Stdout},
 	}
+	t.line.SetCtrlZStop(true)
 
 	if strings.ToLower(os.Getenv("TERM")) != "dumb" {
 		t.stdout.w = getColorableWriter()

@@ -36,7 +36,7 @@ github.com/mattn/go-colorable
 github.com/mattn/go-isatty
 # github.com/mattn/go-runewidth v0.0.3
 github.com/mattn/go-runewidth
-# github.com/peterh/liner v1.2.2
+# github.com/peterh/liner v1.2.2 => github.com/go-delve/liner v1.2.2-1
 ## explicit
 github.com/peterh/liner
 # github.com/russross/blackfriday/v2 v2.0.1
@@ -73,7 +73,7 @@ golang.org/x/sys/execabs
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/tools v0.1.8
+# golang.org/x/tools v0.1.9
 ## explicit
 golang.org/x/tools/go/gcexportdata
 golang.org/x/tools/go/internal/gcimporter
