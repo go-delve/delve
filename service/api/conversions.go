@@ -53,7 +53,7 @@ func ConvertLogicalBreakpoint(lbp *proc.LogicalBreakpoint) *Breakpoint {
 }
 
 // ConvertPhysicalBreakpoints adds informations from physical breakpoints to an API breakpoint.
-func ConvertPhysicalBreakpoints(b *Breakpoint, bps []*proc.Breakpoint) {
+func ConvertPhysicalBreakpoints(b *Breakpoint, pids []int, bps []*proc.Breakpoint) {
 	if len(bps) == 0 {
 		return
 	}

@@ -713,16 +713,16 @@ func (bi *BinaryInfo) PCToLine(pc uint64) (string, int, *Function) {
 }
 
 type ErrCouldNotFindLine struct {
-	fileFound bool
-	filename  string
-	lineno    int
+	FileFound bool
+	Filename  string
+	Lineno    int
 }
 
 func (err *ErrCouldNotFindLine) Error() string {
-	if err.fileFound {
-		return fmt.Sprintf("could not find statement at %s:%d, please use a line with a statement", err.filename, err.lineno)
+	if err.FileFound {
+		return fmt.Sprintf("could not find statement at %s:%d, please use a line with a statement", err.Filename, err.Lineno)
 	}
-	return fmt.Sprintf("could not find file %s", err.filename)
+	return fmt.Sprintf("could not find file %s", err.Filename)
 }
 
 // AllPCsForFileLines returns a map providing all PC addresses for filename and each line in linenos

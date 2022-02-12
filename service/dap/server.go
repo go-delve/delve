@@ -1855,7 +1855,7 @@ func (s *Session) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int,
 		return goid, nil
 	}
 	abp := api.ConvertLogicalBreakpoint(bp.Breakpoint.Logical)
-	api.ConvertPhysicalBreakpoints(abp, []*proc.Breakpoint{bp.Breakpoint})
+	api.ConvertPhysicalBreakpoints(abp, []int{0}, []*proc.Breakpoint{bp.Breakpoint})
 	return goid, abp
 }
 
