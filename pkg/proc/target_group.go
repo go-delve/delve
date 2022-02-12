@@ -1,6 +1,8 @@
 package proc
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -46,9 +48,52 @@ func NewGroup(t *Target) *TargetGroup {
 	}
 }
 
-// Targets returns a slice of targets in the group.
-func (grp *TargetGroup) Targets() []*Target {
+// NewGroupWithBreakpoints creates a new group of targets containing t and
+// sets the breakpoints in logicalBreakpoints.
+// Breakpoints that can not be set will be discarded, if discard is not nil
+// it will be called for each discarded breakpoint.
+func NewGroupWithBreakpoints(t *Target, logicalBreakpoints map[int]*LogicalBreakpoint, discard func(*LogicalBreakpoint, error)) *TargetGroup {
+	grp := NewGroup(t)
+	grp.LogicalBreakpoints = logicalBreakpoints
+	t.Breakpoints().Logical = logicalBreakpoints
+	for _, bp := range grp.LogicalBreakpoints {
+		if bp.LogicalID < 0 || !bp.Enabled {
+			continue
+		}
+		if len(bp.File) > 0 {
+			bp.TotalHitCount = 0
+			bp.HitCount = make(map[int]uint64)
+			err := grp.EnableBreakpoint(bp)
+			if err != nil {
+				if discard != nil {
+					discard(bp, err)
+				}
+				delete(grp.LogicalBreakpoints, bp.LogicalID)
+			}
+		} else {
+			if discard != nil {
+				discard(bp, errors.New("can not recreate watchpoint on restart"))
+			}
+		}
+	}
+	return grp
+}
+
+// AllTargets returns a slice of all targets in the group, including the
+// ones that are no longer valid.
+func (grp *TargetGroup) AllTargets() []*Target {
 	return grp.targets
+}
+
+// ValidTargets returns a slice of all targets in the group that are valid.
+func (grp *TargetGroup) ValidTargets() []*Target {
+	r := []*Target{}
+	for _, t := range grp.targets {
+		if isvalid, _ := t.Valid(); isvalid {
+			r = append(r, t)
+		}
+	}
+	return r
 }
 
 // Valid returns true if any target in the target group is valid.
@@ -121,5 +166,100 @@ func (grp *TargetGroup) TargetForThread(thread Thread) *Target {
 			}
 		}
 	}
+	return nil
+}
+
+// GetTarget returns the target with the given PID.
+func (grp *TargetGroup) GetTarget(pid int) *Target {
+	for _, t := range grp.targets {
+		if t.Pid() == pid {
+			return t
+		}
+	}
+	return nil
+}
+
+// EnableBreakpoint re-enables a disabled logical breakpoint.
+func (grp *TargetGroup) EnableBreakpoint(lbp *LogicalBreakpoint) error {
+	var err0 error
+	bps := []*Breakpoint{}
+	bpps := []*Target{}
+targetLoop:
+	for _, p := range grp.ValidTargets() {
+		addrs, err := FindFileLocation(p, lbp.File, lbp.Line)
+		if err != nil {
+			if errNotFound, _ := err.(*ErrCouldNotFindLine); errNotFound != nil {
+				continue
+			}
+			err0 = err
+			break
+		}
+		for _, addr := range addrs {
+			bp, err := p.SetBreakpoint(lbp.LogicalID, addr, UserBreakpoint, nil)
+			if err != nil {
+				if _, isexists := err.(BreakpointExistsError); isexists {
+					continue
+				}
+				err0 = err
+				break targetLoop
+			}
+			bps = append(bps, bp)
+			bpps = append(bpps, p)
+		}
+	}
+	if err0 != nil {
+		for i, bp := range bps {
+			if bp == nil {
+				continue
+			}
+			p := bpps[i]
+			if err1 := p.ClearBreakpoint(bp.Addr); err1 != nil {
+				return fmt.Errorf("error while creating breakpoint: %v, additionally the breakpoint could not be properly rolled back: %v", err0, err1)
+			}
+		}
+		return err0
+	}
+	lbp.Enabled = true
+	return nil
+}
+
+// DisableBreakpoint disables a logical breakpoint.
+//
+// TODO(aarzilli): it's possible to create breakpoints on arbitrary
+// addresses, that either are not associated with any file:line pair or
+// that are associated with only some of the addresses associated with a
+// file:line pair. Disabling and re-enabling a breakpoint will eliminate
+// this distinction. This is a problem without a simple solution, since
+// disabled breakpoints can survive target restarts.
+// A similar issue is present with watchpoints.
+func (grp *TargetGroup) DisableBreakpoint(lbp *LogicalBreakpoint) error {
+	var errs []error
+	n := 0
+	for _, p := range grp.ValidTargets() {
+		for _, bp := range p.Breakpoints().M {
+			if bp.LogicalID() == lbp.LogicalID {
+				n++
+				err := p.ClearBreakpoint(bp.Addr)
+				if err != nil {
+					errs = append(errs, err)
+				}
+			}
+		}
+	}
+	if len(errs) > 0 {
+		buf := new(bytes.Buffer)
+		for i, err := range errs {
+			fmt.Fprintf(buf, "%s", err)
+			if i != len(errs)-1 {
+				fmt.Fprintf(buf, ", ")
+			}
+		}
+
+		if len(errs) == n {
+			return fmt.Errorf("unable to clear breakpoint %d: %v", lbp.LogicalID, buf.String())
+		}
+		return fmt.Errorf("unable to clear breakpoint %d (partial): %s", lbp.LogicalID, buf.String())
+	}
+	lbp.Enabled = false
 	return nil
 }

@@ -79,6 +79,9 @@ type Breakpoint struct {
 	Addr uint64 `json:"addr"`
 	// Addrs is the list of addresses for this breakpoint.
 	Addrs []uint64 `json:"addrs"`
+	// AddrPid[i] is the PID associated with by Addrs[i], when debugging a
+	// single target process this is optional, otherwise it is mandatory.
+	AddrPid []int `json:"addrpid"`
 	// File is the source file for the breakpoint.
 	File string `json:"file"`
 	// Line is a line in File for the breakpoint.
@@ -189,6 +192,7 @@ type Location struct {
 	Line     int       `json:"line"`
 	Function *Function `json:"function,omitempty"`
 	PCs      []uint64  `json:"pcs,omitempty"`
+	PCPids   []int     `json:"pcpids,omitempty"`
 }
 
 // Stackframe describes one frame in a stack trace.

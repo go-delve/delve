@@ -1,7 +1,6 @@
 package debugger
 
 import (
-	"bytes"
 	"debug/dwarf"
 	"errors"
 	"fmt"
@@ -45,6 +44,9 @@ var (
 
 	// ErrCoreDumpNotSupported is returned when core dumping is not supported
 	ErrCoreDumpNotSupported = errors.New("core dumping not supported")
+
+	// ErrNotImplementedWithMultitarget is returned for operations that are not implemented with multiple targets
+	ErrNotImplementedWithMultitarget = errors.New("not implemented for multiple targets")
 )
 
 // Debugger service.
@@ -384,6 +386,10 @@ func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
+	if len(d.target.AllTargets()) > 1 {
+		return nil, ErrNotImplementedWithMultitarget
+	}
+
 	var (
 		p = d.target.Sel
 		g = p.SelectedGoroutine()
@@ -506,24 +512,9 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 	}
 
 	discarded := []api.DiscardedBreakpoint{}
-	p.Breakpoints().Logical = d.target.LogicalBreakpoints
-	d.target = proc.NewGroup(p)
-	for _, oldBp := range d.target.LogicalBreakpoints {
-		if oldBp.LogicalID < 0 || !oldBp.Enabled {
-			continue
-		}
-		if len(oldBp.File) > 0 {
-			oldBp.TotalHitCount = 0
-			oldBp.HitCount = make(map[int]uint64)
-			err := d.createPhysicalBreakpoints(oldBp)
-			if err != nil {
-				discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: api.ConvertLogicalBreakpoint(oldBp), Reason: err.Error()})
-				continue
-			}
-		} else {
-			discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: api.ConvertLogicalBreakpoint(oldBp), Reason: "can not recreate watchpoint on restart"})
-		}
-	}
+	d.target = proc.NewGroupWithBreakpoints(p, d.target.LogicalBreakpoints, func(oldBp *proc.LogicalBreakpoint, err error) {
+		discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: api.ConvertLogicalBreakpoint(oldBp), Reason: err.Error()})
+	})
 	return discarded, nil
 }
 
@@ -606,10 +597,10 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig, withBreakpointInfo bool) (
 		state.When, _ = d.target.When()
 	}
 
-	for _, t := range d.target.Targets() {
+	for _, t := range d.target.ValidTargets() {
 		for _, bp := range t.Breakpoints().WatchOutOfScope {
 			abp := api.ConvertLogicalBreakpoint(bp.Logical)
-			api.ConvertPhysicalBreakpoints(abp, []*proc.Breakpoint{bp})
+			api.ConvertPhysicalBreakpoints(abp, []int{t.Pid()}, []*proc.Breakpoint{bp})
 			state.WatchOutOfScope = append(state.WatchOutOfScope, abp)
 		}
 	}
@@ -648,17 +639,8 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	if len(d.target.Targets()) != 1 {
-		//TODO(aarzilli):
-		// - the calls to FindFileLocation and FindFunctionLocation need to be done on all targets
-		// - the Addrs slice and the Addr field need to be converted to a format
-		// that can specify to which target an address belongs when there are
-		// multiple targets (but this must happen in a backwards compatible way)
-		panic("multiple targets not implemented")
-	}
-
 	var (
-		addrs []uint64
+		addrs []pidAddr
 		err   error
 	)
 
@@ -670,14 +652,17 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 
 	switch {
 	case requestedBp.TraceReturn:
-		addrs = []uint64{requestedBp.Addr}
+		if len(d.target.AllTargets()) != 1 {
+			return nil, ErrNotImplementedWithMultitarget
+		}
+		addrs = []pidAddr{{d.target.Sel.Pid(), requestedBp.Addr}}
 	case len(requestedBp.File) > 0:
 		fileName := requestedBp.File
 		if runtime.GOOS == "windows" {
 			// Accept fileName which is case-insensitive and slash-insensitive match
 			fileNameNormalized := strings.ToLower(filepath.ToSlash(fileName))
 		caseInsensitiveSearch:
-			for _, t := range d.target.Targets() {
+			for _, t := range d.target.ValidTargets() {
 				for _, symFile := range t.BinInfo().Sources {
 					if fileNameNormalized == strings.ToLower(filepath.ToSlash(symFile)) {
 						fileName = symFile
@@ -686,13 +671,26 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 				}
 			}
 		}
-		addrs, err = proc.FindFileLocation(d.target.Sel, fileName, requestedBp.Line)
+		addrs, err = d.findFileLocation(fileName, requestedBp.Line)
 	case len(requestedBp.FunctionName) > 0:
-		addrs, err = proc.FindFunctionLocation(d.target.Sel, requestedBp.FunctionName, requestedBp.Line)
+		addrs, err = d.findFunctionLocation(requestedBp.FunctionName, requestedBp.Line)
 	case len(requestedBp.Addrs) > 0:
-		addrs = requestedBp.Addrs
+		addrs = make([]pidAddr, len(requestedBp.Addrs))
+		if len(d.target.AllTargets()) == 1 {
+			pid := d.target.Sel.Pid()
+			for i, addr := range requestedBp.Addrs {
+				addrs[i] = pidAddr{pid, addr}
+			}
+		} else {
+			if len(requestedBp.Addrs) != len(requestedBp.AddrPid) {
+				return nil, errors.New("mismatched length in addrs and addrpid")
+			}
+			for i, addr := range requestedBp.Addrs {
+				addrs[i] = pidAddr{requestedBp.AddrPid[i], addr}
+			}
+		}
 	default:
-		addrs = []uint64{requestedBp.Addr}
+		addrs = []pidAddr{{d.target.Sel.Pid(), requestedBp.Addr}}
 	}
 
 	if err != nil {
@@ -709,20 +707,21 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 
 func (d *Debugger) convertBreakpoint(lbp *proc.LogicalBreakpoint) *api.Breakpoint {
 	abp := api.ConvertLogicalBreakpoint(lbp)
-	api.ConvertPhysicalBreakpoints(abp, d.findBreakpoint(lbp.LogicalID))
+	tgtbps := d.findBreakpoint(lbp.LogicalID)
+	pids := make([]int, len(tgtbps))
+	bps := make([]*proc.Breakpoint, len(tgtbps))
+	for i := range tgtbps {
+		pids[i] = tgtbps[i].p.Pid()
+		bps[i] = tgtbps[i].bp
+	}
+	api.ConvertPhysicalBreakpoints(abp, pids, bps)
 	return abp
 }
 
 // createLogicalBreakpoint creates one physical breakpoint for each address
 // in addrs and associates all of them with the same logical breakpoint.
-func createLogicalBreakpoint(d *Debugger, addrs []uint64, requestedBp *api.Breakpoint, id int) (*api.Breakpoint, error) {
-	if len(d.target.Targets()) != 1 {
-		panic("multiple targets not implemented")
-	}
-
-	p := d.target.Sel
-
-	if lbp := p.Breakpoints().Logical[requestedBp.ID]; lbp != nil {
+func createLogicalBreakpoint(d *Debugger, addrs []pidAddr, requestedBp *api.Breakpoint, id int) (*api.Breakpoint, error) {
+	if lbp := d.target.LogicalBreakpoints[requestedBp.ID]; lbp != nil {
 		abp := d.convertBreakpoint(lbp)
 		return abp, proc.BreakpointExistsError{File: lbp.File, Line: lbp.Line}
 	}
@@ -732,7 +731,7 @@ func createLogicalBreakpoint(d *Debugger, addrs []uint64, requestedBp *api.Break
 		d.breakpointIDCounter++
 		id = d.breakpointIDCounter
 		lbp = &proc.LogicalBreakpoint{LogicalID: id, HitCount: make(map[int]uint64), Enabled: true}
-		p.Breakpoints().Logical[id] = lbp
+		d.target.LogicalBreakpoints[id] = lbp
 	}
 
 	err := copyLogicalBreakpointInfo(lbp, requestedBp)
@@ -742,20 +741,26 @@ func createLogicalBreakpoint(d *Debugger, addrs []uint64, requestedBp *api.Break
 
 	bps := make([]*proc.Breakpoint, len(addrs))
 	for i := range addrs {
-		bps[i], err = p.SetBreakpoint(id, addrs[i], proc.UserBreakpoint, nil)
+		p := d.target.GetTarget(addrs[i].pid)
+		if p == nil {
+			err = fmt.Errorf("target pid not found %d", addrs[i].pid)
+			break
+		}
+		bps[i], err = p.SetBreakpoint(id, addrs[i].addr, proc.UserBreakpoint, nil)
 		if err != nil {
 			break
 		}
 	}
 	if err != nil {
-		delete(p.Breakpoints().Logical, id)
+		delete(d.target.LogicalBreakpoints, id)
 		if isBreakpointExistsErr(err) {
 			return nil, err
 		}
-		for _, bp := range bps {
+		for i, bp := range bps {
 			if bp == nil {
 				continue
 			}
+			p := d.target.GetTarget(addrs[i].pid)
 			if err1 := p.ClearBreakpoint(bp.Addr); err1 != nil {
 				err = fmt.Errorf("error while creating breakpoint: %v, additionally the breakpoint could not be properly rolled back: %v", err, err1)
 				return nil, err
@@ -767,72 +772,6 @@ func createLogicalBreakpoint(d *Debugger, addrs []uint64, requestedBp *api.Break
 	return d.convertBreakpoint(bps[0].Logical), nil
 }
 
-func (d *Debugger) createPhysicalBreakpoints(lbp *proc.LogicalBreakpoint) error {
-	if len(d.target.Targets()) != 1 {
-		panic("multiple targets not implemented")
-	}
-	p := d.target.Sel
-	addrs, err := proc.FindFileLocation(p, lbp.File, lbp.Line)
-	if err != nil {
-		return err
-	}
-	bps := make([]*proc.Breakpoint, len(addrs))
-	for i := range addrs {
-		bps[i], err = p.SetBreakpoint(lbp.LogicalID, addrs[i], proc.UserBreakpoint, nil)
-		if err != nil {
-			break
-		}
-	}
-	if err != nil {
-		if isBreakpointExistsErr(err) {
-			return err
-		}
-		for _, bp := range bps {
-			if bp == nil {
-				continue
-			}
-			if err1 := p.ClearBreakpoint(bp.Addr); err1 != nil {
-				return fmt.Errorf("error while creating breakpoint: %v, additionally the breakpoint could not be properly rolled back: %v", err, err1)
-			}
-		}
-		return err
-	}
-	return nil
-}
-
-func (d *Debugger) clearPhysicalBreakpoints(id int) error {
-	if len(d.target.Targets()) != 1 {
-		panic("multiple targets not implemented")
-	}
-	p := d.target.Sel
-	var errs []error
-	n := 0
-	for _, bp := range p.Breakpoints().M {
-		if bp.LogicalID() == id {
-			n++
-			err := p.ClearBreakpoint(bp.Addr)
-			if err != nil {
-				errs = append(errs, err)
-			}
-		}
-	}
-	if len(errs) > 0 {
-		buf := new(bytes.Buffer)
-		for i, err := range errs {
-			fmt.Fprintf(buf, "%s", err)
-			if i != len(errs)-1 {
-				fmt.Fprintf(buf, ", ")
-			}
-		}
-
-		if len(errs) == n {
-			return fmt.Errorf("unable to clear breakpoint %d: %v", id, buf.String())
-		}
-		return fmt.Errorf("unable to clear breakpoint %d (partial): %s", id, buf.String())
-	}
-	return nil
-}
-
 func isBreakpointExistsErr(err error) bool {
 	_, r := err.(proc.BreakpointExistsError)
 	return r
@@ -842,8 +781,8 @@ func (d *Debugger) CreateEBPFTracepoint(fnName string) error {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	if len(d.target.Targets()) != 1 {
-		panic("multiple targets not implemented")
+	if len(d.target.AllTargets()) != 1 {
+		return ErrNotImplementedWithMultitarget
 	}
 	p := d.target.Sel
 
@@ -854,36 +793,39 @@ func (d *Debugger) CreateEBPFTracepoint(fnName string) error {
 // It also enables or disables the breakpoint.
 // We can consume this function to avoid locking a goroutine.
 func (d *Debugger) amendBreakpoint(amend *api.Breakpoint) error {
-	if len(d.target.Targets()) != 1 {
-		panic("multiple targets not implemented")
-	}
 	original := d.target.LogicalBreakpoints[amend.ID]
 	if original == nil {
 		return fmt.Errorf("no breakpoint with ID %d", amend.ID)
 	}
-	if amend.Disabled && original.Enabled {
-		original.Enabled = false
-		err := copyLogicalBreakpointInfo(original, amend)
-		if err != nil {
-			return err
-		}
-		return d.clearPhysicalBreakpoints(amend.ID)
-	}
-
-	if !amend.Disabled && !original.Enabled {
-		original.Enabled = true
-		copyLogicalBreakpointInfo(original, amend)
-		return d.createPhysicalBreakpoints(original)
-	}
-
+	enabledBefore := original.Enabled
 	err := copyLogicalBreakpointInfo(original, amend)
 	if err != nil {
 		return err
 	}
+	original.Enabled = !amend.Disabled
+
+	if enabledBefore && !original.Enabled {
+		if d.isWatchpoint(original) {
+			return errors.New("can not disable watchpoints")
+		}
+		return d.target.DisableBreakpoint(original)
+	}
+	if !enabledBefore && original.Enabled {
+		return d.target.EnableBreakpoint(original)
+	}
+
 	for _, bp := range d.findBreakpoint(amend.ID) {
-		bp.UserBreaklet().Cond = original.Cond
+		bp.bp.UserBreaklet().Cond = original.Cond
 	}
 	return nil
+}
+
+func (d *Debugger) isWatchpoint(bp *proc.LogicalBreakpoint) bool {
+	bps := d.findBreakpoint(bp.LogicalID)
+	if len(bps) == 0 {
+		return false
+	}
+	return bps[0].bp.WatchType != 0
 }
 
 // AmendBreakpoint will update the breakpoint with the matching ID.
@@ -982,30 +924,29 @@ func parseHitCondition(hitCond string) (token.Token, int, error) {
 func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-	return d.clearBreakpoint(requestedBp)
-}
 
-// clearBreakpoint clears a breakpoint, we can consume this function to avoid locking a goroutine
-func (d *Debugger) clearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
-	if len(d.target.Targets()) != 1 {
-		panic("multiple targets not implemented")
+	if len(d.target.ValidTargets()) == 0 {
+		_, err := d.target.AllTargets()[0].Valid()
+		return nil, err
 	}
-	p := d.target.Sel
 
 	if requestedBp.ID <= 0 {
-		bp := p.Breakpoints().M[requestedBp.Addr]
+		if len(d.target.AllTargets()) != 1 {
+			return nil, ErrNotImplementedWithMultitarget
+		}
+		bp := d.target.Sel.Breakpoints().M[requestedBp.Addr]
 		requestedBp.ID = bp.LogicalID()
 	}
 
-	lbp := p.Breakpoints().Logical[requestedBp.ID]
+	lbp := d.target.LogicalBreakpoints[requestedBp.ID]
 	clearedBp := d.convertBreakpoint(lbp)
 
-	delete(p.Breakpoints().Logical, requestedBp.ID)
-
-	err := d.clearPhysicalBreakpoints(requestedBp.ID)
+	err := d.target.DisableBreakpoint(lbp)
 	if err != nil {
 		return nil, err
 	}
+
+	delete(d.target.LogicalBreakpoints, requestedBp.ID)
 
 	d.log.Infof("cleared breakpoint: %#v", clearedBp)
 	return clearedBp, nil
@@ -1043,23 +984,20 @@ func (d *Debugger) Breakpoints(all bool) []*api.Breakpoint {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	if len(d.target.Targets()) != 1 {
-		panic("multiple targets not implemented")
-	}
-	p := d.target.Sel
-
 	abps := []*api.Breakpoint{}
 	if all {
-		for _, bp := range p.Breakpoints().M {
-			var abp *api.Breakpoint
-			if bp.Logical != nil {
-				abp = api.ConvertLogicalBreakpoint(bp.Logical)
-			} else {
-				abp = &api.Breakpoint{}
+		for _, p := range d.target.ValidTargets() {
+			for _, bp := range p.Breakpoints().M {
+				var abp *api.Breakpoint
+				if bp.Logical != nil {
+					abp = api.ConvertLogicalBreakpoint(bp.Logical)
+				} else {
+					abp = &api.Breakpoint{}
+				}
+				api.ConvertPhysicalBreakpoints(abp, []int{p.Pid()}, []*proc.Breakpoint{bp})
+				abp.VerboseDescr = bp.VerboseDescr()
+				abps = append(abps, abp)
 			}
-			api.ConvertPhysicalBreakpoints(abp, []*proc.Breakpoint{bp})
-			abp.VerboseDescr = bp.VerboseDescr()
-			abps = append(abps, abp)
 		}
 	} else {
 		for _, lbp := range d.target.LogicalBreakpoints {
@@ -1080,16 +1018,18 @@ func (d *Debugger) FindBreakpoint(id int) *api.Breakpoint {
 	return d.convertBreakpoint(lbp)
 }
 
-func (d *Debugger) findBreakpoint(id int) []*proc.Breakpoint {
-	if len(d.target.Targets()) != 1 {
-		panic("multiple targets not implemented")
-	}
-	p := d.target.Sel
+type targetBreak struct {
+	p  *proc.Target
+	bp *proc.Breakpoint
+}
 
-	var bps []*proc.Breakpoint
-	for _, bp := range p.Breakpoints().M {
-		if bp.LogicalID() == id {
-			bps = append(bps, bp)
+func (d *Debugger) findBreakpoint(id int) []targetBreak {
+	var bps []targetBreak
+	for _, p := range d.target.ValidTargets() {
+		for _, bp := range p.Breakpoints().M {
+			if bp.LogicalID() == id {
+				bps = append(bps, targetBreak{p, bp})
+			}
 		}
 	}
 	return bps
@@ -1113,9 +1053,6 @@ func (d *Debugger) findBreakpointByName(name string) *api.Breakpoint {
 
 // CreateWatchpoint creates a watchpoint on the specified expression.
 func (d *Debugger) CreateWatchpoint(goid, frame, deferredCall int, expr string, wtype api.WatchType) (*api.Breakpoint, error) {
-	if len(d.target.Targets()) != 1 {
-		panic("multiple targets not implemented")
-	}
 	p := d.target.Sel
 
 	s, err := proc.ConvertEvalScope(p, goid, frame, deferredCall)
@@ -1420,7 +1357,7 @@ func (d *Debugger) Sources(filter string) ([]string, error) {
 	}
 
 	files := []string{}
-	for _, t := range d.target.Targets() {
+	for _, t := range d.target.ValidTargets() {
 		for _, f := range t.BinInfo().Sources {
 			if regex.Match([]byte(f)) {
 				files = append(files, f)
@@ -1458,7 +1395,7 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 	}
 
 	funcs := []string{}
-	for _, t := range d.target.Targets() {
+	for _, t := range d.target.ValidTargets() {
 		for _, f := range t.BinInfo().Functions {
 			if regex.MatchString(f.Name) {
 				funcs = append(funcs, f.Name)
@@ -1482,7 +1419,7 @@ func (d *Debugger) Types(filter string) ([]string, error) {
 
 	r := []string{}
 
-	for _, t := range d.target.Targets() {
+	for _, t := range d.target.ValidTargets() {
 		types, err := t.BinInfo().Types()
 		if err != nil {
 			return nil, err
@@ -1928,13 +1865,6 @@ func (d *Debugger) FindLocation(goid, frame, deferredCall int, locStr string, in
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	if len(d.target.Targets()) != 1 {
-		//TODO(aarzilli): if there is more than one target process all must be
-		//searched and the addresses returned need to specify which target process
-		//they belong to.
-		panic("multiple targets not implemented")
-	}
-
 	if _, err := d.target.Valid(); err != nil {
 		return nil, err
 	}
@@ -1944,7 +1874,7 @@ func (d *Debugger) FindLocation(goid, frame, deferredCall int, locStr string, in
 		return nil, err
 	}
 
-	return d.findLocation(d.target.Sel, goid, frame, deferredCall, locStr, loc, includeNonExecutableLines, substitutePathRules)
+	return d.findLocation(goid, frame, deferredCall, locStr, loc, includeNonExecutableLines, substitutePathRules)
 }
 
 // FindLocationSpec will find the location specified by 'locStr' and 'locSpec'.
@@ -1955,34 +1885,38 @@ func (d *Debugger) FindLocationSpec(goid, frame, deferredCall int, locStr string
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	if len(d.target.Targets()) != 1 {
-		//TODO(aarzilli): if there is more than one target process all must be
-		//searched and the addresses returned need to specify which target process
-		//they belong to.
-		panic("multiple targets not implemented")
-	}
-
 	if _, err := d.target.Valid(); err != nil {
 		return nil, err
 	}
 
-	return d.findLocation(d.target.Sel, goid, frame, deferredCall, locStr, locSpec, includeNonExecutableLines, substitutePathRules)
+	return d.findLocation(goid, frame, deferredCall, locStr, locSpec, includeNonExecutableLines, substitutePathRules)
 }
 
-func (d *Debugger) findLocation(p *proc.Target, goid, frame, deferredCall int, locStr string, locSpec locspec.LocationSpec, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
-	s, _ := proc.ConvertEvalScope(p, goid, frame, deferredCall)
-
-	locs, err := locSpec.Find(p, d.processArgs, s, locStr, includeNonExecutableLines, substitutePathRules)
-	for i := range locs {
-		if locs[i].PC == 0 {
-			continue
+func (d *Debugger) findLocation(goid, frame, deferredCall int, locStr string, locSpec locspec.LocationSpec, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
+	locations := []api.Location{}
+	for _, p := range d.target.ValidTargets() {
+		pid := p.Pid()
+		s, _ := proc.ConvertEvalScope(p, goid, frame, deferredCall)
+		locs, err := locSpec.Find(p, d.processArgs, s, locStr, includeNonExecutableLines, substitutePathRules)
+		if err != nil {
+			return nil, err
 		}
-		file, line, fn := p.BinInfo().PCToLine(locs[i].PC)
-		locs[i].File = file
-		locs[i].Line = line
-		locs[i].Function = api.ConvertFunction(fn)
+		for i := range locs {
+			if locs[i].PC == 0 {
+				continue
+			}
+			file, line, fn := p.BinInfo().PCToLine(locs[i].PC)
+			locs[i].File = file
+			locs[i].Line = line
+			locs[i].Function = api.ConvertFunction(fn)
+			locs[i].PCPids = make([]int, len(locs[i].PCs))
+			for j := range locs[i].PCs {
+				locs[i].PCPids[j] = pid
+			}
+		}
+		locations = append(locations, locs...)
 	}
-	return locs, err
+	return locations, nil
 }
 
 // Disassemble code between startPC and endPC.
@@ -2269,6 +2203,54 @@ func (d *Debugger) GetBufferedTracepoints() []api.TracepointResult {
 		}
 	}
 	return results
+}
+
+type pidAddr struct {
+	pid  int
+	addr uint64
+}
+
+func (d *Debugger) findFileLocation(filename string, lineno int) ([]pidAddr, error) {
+	r := []pidAddr{}
+	err0 := &proc.ErrCouldNotFindLine{false, filename, lineno}
+	for _, p := range d.target.AllTargets() {
+		pid := p.Pid()
+		addrs, err := proc.FindFileLocation(p, filename, lineno)
+		if err != nil {
+			if errNotFound, _ := err.(*proc.ErrCouldNotFindLine); errNotFound != nil {
+				err0.FileFound = err0.FileFound || errNotFound.FileFound
+			} else {
+				return nil, err
+			}
+		}
+		for _, addr := range addrs {
+			r = append(r, pidAddr{pid, addr})
+		}
+	}
+	if len(r) == 0 {
+		return nil, err0
+	}
+	return r, nil
+}
+
+func (d *Debugger) findFunctionLocation(funcName string, lineno int) ([]pidAddr, error) {
+	r := []pidAddr{}
+	for _, p := range d.target.AllTargets() {
+		pid := p.Pid()
+		addrs, err := proc.FindFunctionLocation(p, funcName, lineno)
+		if err != nil {
+			if _, isNotFound := err.(*proc.ErrFunctionNotFound); !isNotFound {
+				return nil, err
+			}
+		}
+		for _, addr := range addrs {
+			r = append(r, pidAddr{pid, addr})
+		}
+	}
+	if len(r) == 0 {
+		return nil, &proc.ErrFunctionNotFound{funcName}
+	}
+	return r, nil
 }
 
 func go11DecodeErrorCheck(err error) error {

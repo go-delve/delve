@@ -1729,6 +1729,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 	for _, loc := range locs {
 		requestedBp.Addr = loc.PC
 		requestedBp.Addrs = loc.PCs
+		requestedBp.AddrPid = loc.PCPids
 		if tracepoint {
 			requestedBp.LoadArgs = &ShortLoadConfig
 		}
