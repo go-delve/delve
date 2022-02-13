@@ -14,7 +14,7 @@ import (
 	"syscall"
 
 	"github.com/derekparker/trie"
-	"github.com/peterh/liner"
+	"github.com/go-delve/liner"
 
 	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/locspec"

@@ -41,7 +41,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
-	"github.com/peterh/liner"
+	"github.com/go-delve/liner"
 )
 
 // REPL executes a read, eval, print loop.
