@@ -1160,6 +1160,26 @@ func TestHitCondBreakpoint(t *testing.T) {
 	})
 }
 
+func TestClearCondBreakpoint(t *testing.T) {
+	withTestTerminal("break", t, func(term *FakeTerminal) {
+		term.MustExec("break main.main:4")
+		term.MustExec("condition 1 i%3==2")
+		listIsAt(t, term, "continue", 7, -1, -1)
+		out := term.MustExec("print i")
+		t.Logf("%q", out)
+		if !strings.Contains(out, "2\n") {
+			t.Fatalf("wrong value of i")
+		}
+		term.MustExec("condition -clear 1")
+		listIsAt(t, term, "continue", 7, -1, -1)
+		out = term.MustExec("print i")
+		t.Logf("%q", out)
+		if !strings.Contains(out, "3\n") {
+			t.Fatalf("wrong value of i")
+		}
+	})
+}
+
 func TestBreakpointEditing(t *testing.T) {
 	term := &FakeTerminal{
 		t:    t,

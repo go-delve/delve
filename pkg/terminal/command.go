@@ -450,7 +450,8 @@ The command 'on x -edit' can be used to edit the list of commands executed when 
 		{aliases: []string{"condition", "cond"}, group: breakCmds, cmdFn: conditionCmd, allowedPrefixes: onPrefix, helpMsg: `Set breakpoint condition.
 
 	condition <breakpoint name or id> <boolean expression>.
-	condition -hitcount <breakpoint name or id> <operator> <argument>
+	condition -hitcount <breakpoint name or id> <operator> <argument>.
+	condition -clear <breakpoint name or id>.
 
 Specifies that the breakpoint, tracepoint or watchpoint should break only if the boolean expression is true.
 
@@ -465,12 +466,15 @@ With the -hitcount option a condition on the breakpoint hit count can be set, th
 	condition -hitcount bp == n
 	condition -hitcount bp != n
 	condition -hitcount bp % n
+
+With the -clear option a condtion on the breakpoint can removed.
 	
 The '% n' form means we should stop at the breakpoint when the hitcount is a multiple of n.
 
 Examples:
 	cond 2 i == 10				breakpoint 2 will stop when variable i equals 10
 	cond name runtime.curg.goid == 5	breakpoint 'name' will stop only on goroutine 5
+	cond -clear 2				the condition on breakpoint 2 will be removed
 `},
 		{aliases: []string{"config"}, cmdFn: configureCmd, helpMsg: `Changes configuration parameters.
 
@@ -2829,6 +2833,15 @@ func conditionCmd(t *Term, ctx callContext, argstr string) error {
 
 		bp.HitCond = args[1]
 
+		return t.client.AmendBreakpoint(bp)
+	}
+
+	if args[0] == "-clear" {
+		bp, err := getBreakpointByIDOrName(t, args[1])
+		if err != nil {
+			return err
+		}
+		bp.Cond = ""
 		return t.client.AmendBreakpoint(bp)
 	}
 
