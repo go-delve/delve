@@ -951,6 +951,8 @@ type LogicalBreakpoint struct {
 	Line         int
 	Enabled      bool
 
+	Set SetBreakpoint
+
 	Tracepoint  bool // Tracepoint flag
 	TraceReturn bool
 	Goroutine   bool     // Retrieve goroutine information
@@ -973,4 +975,12 @@ type LogicalBreakpoint struct {
 	Cond ast.Expr
 
 	UserData interface{} // Any additional information about the breakpoint
+}
+
+// SetBreakpoint describes how a breakpoint should be set.
+type SetBreakpoint struct {
+	FunctionName string
+	File         string
+	Line         int
+	Expr         func(*Target) []uint64
 }

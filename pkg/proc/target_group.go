@@ -2,7 +2,6 @@ package proc
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"strings"
 )
@@ -60,20 +59,14 @@ func NewGroupWithBreakpoints(t *Target, logicalBreakpoints map[int]*LogicalBreak
 		if bp.LogicalID < 0 || !bp.Enabled {
 			continue
 		}
-		if len(bp.File) > 0 {
-			bp.TotalHitCount = 0
-			bp.HitCount = make(map[int]uint64)
-			err := grp.EnableBreakpoint(bp)
-			if err != nil {
-				if discard != nil {
-					discard(bp, err)
-				}
-				delete(grp.LogicalBreakpoints, bp.LogicalID)
-			}
-		} else {
+		bp.TotalHitCount = 0
+		bp.HitCount = make(map[int]uint64)
+		err := grp.EnableBreakpoint(bp)
+		if err != nil {
 			if discard != nil {
-				discard(bp, errors.New("can not recreate watchpoint on restart"))
+				discard(bp, err)
 			}
+			delete(grp.LogicalBreakpoints, bp.LogicalID)
 		}
 	}
 	return grp
@@ -181,40 +174,42 @@ func (grp *TargetGroup) GetTarget(pid int) *Target {
 
 // EnableBreakpoint re-enables a disabled logical breakpoint.
 func (grp *TargetGroup) EnableBreakpoint(lbp *LogicalBreakpoint) error {
-	var err0 error
-	bps := []*Breakpoint{}
-	bpps := []*Target{}
+	var err0, errNotFound, errExists error
+	didSet := false
 targetLoop:
-	for _, p := range grp.ValidTargets() {
-		addrs, err := FindFileLocation(p, lbp.File, lbp.Line)
-		if err != nil {
-			if errNotFound, _ := err.(*ErrCouldNotFindLine); errNotFound != nil {
-				continue
-			}
+	for _, p := range grp.targets {
+		err := enableBreakpointOnTarget(p, lbp)
+
+		switch err.(type) {
+		case nil:
+			didSet = true
+		case *ErrFunctionNotFound, *ErrCouldNotFindLine:
+			errNotFound = err
+		case BreakpointExistsError:
+			errExists = err
+		default:
 			err0 = err
-			break
-		}
-		for _, addr := range addrs {
-			bp, err := p.SetBreakpoint(lbp.LogicalID, addr, UserBreakpoint, nil)
-			if err != nil {
-				if _, isexists := err.(BreakpointExistsError); isexists {
-					continue
-				}
-				err0 = err
-				break targetLoop
-			}
-			bps = append(bps, bp)
-			bpps = append(bpps, p)
+			break targetLoop
 		}
 	}
+	if errNotFound != nil && !didSet {
+		return errNotFound
+	}
+	if errExists != nil && !didSet {
+		return errExists
+	}
+	if !didSet && len(grp.ValidTargets()) == 0 {
+		_, err := grp.Valid()
+		return err
+	}
 	if err0 != nil {
-		for i, bp := range bps {
-			if bp == nil {
-				continue
-			}
-			p := bpps[i]
-			if err1 := p.ClearBreakpoint(bp.Addr); err1 != nil {
-				return fmt.Errorf("error while creating breakpoint: %v, additionally the breakpoint could not be properly rolled back: %v", err0, err1)
+		for _, p := range grp.ValidTargets() {
+			for _, bp := range p.Breakpoints().M {
+				if bp.LogicalID() == lbp.LogicalID {
+					if err1 := p.ClearBreakpoint(bp.Addr); err1 != nil {
+						return fmt.Errorf("error while creating breakpoint: %v, additionally the breakpoint could not be properly rolled back: %v", err0, err1)
+					}
+				}
 			}
 		}
 		return err0
@@ -223,15 +218,36 @@ targetLoop:
 	return nil
 }
 
+func enableBreakpointOnTarget(p *Target, lbp *LogicalBreakpoint) error {
+	var err error
+	var addrs []uint64
+	switch {
+	case lbp.Set.File != "":
+		addrs, err = FindFileLocation(p, lbp.Set.File, lbp.Set.Line)
+	case lbp.Set.FunctionName != "":
+		addrs, err = FindFunctionLocation(p, lbp.Set.FunctionName, lbp.Set.Line)
+	case lbp.Set.Expr != nil:
+		addrs = lbp.Set.Expr(p)
+	}
+
+	if err != nil {
+		return err
+	}
+
+	for _, addr := range addrs {
+		_, err = p.SetBreakpoint(lbp.LogicalID, addr, UserBreakpoint, nil)
+		if err != nil {
+			if _, isexists := err.(BreakpointExistsError); isexists {
+				continue
+			}
+			return err
+		}
+	}
+
+	return err
+}
+
 // DisableBreakpoint disables a logical breakpoint.
-//
-// TODO(aarzilli): it's possible to create breakpoints on arbitrary
-// addresses, that either are not associated with any file:line pair or
-// that are associated with only some of the addresses associated with a
-// file:line pair. Disabling and re-enabling a breakpoint will eliminate
-// this distinction. This is a problem without a simple solution, since
-// disabled breakpoints can survive target restarts.
-// A similar issue is present with watchpoints.
 func (grp *TargetGroup) DisableBreakpoint(lbp *LogicalBreakpoint) error {
 	var errs []error
 	n := 0

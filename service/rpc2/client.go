@@ -245,7 +245,16 @@ func (c *RPCClient) GetBreakpointByName(name string) (*api.Breakpoint, error) {
 // https://pkg.go.dev/github.com/go-delve/delve/service/debugger#Debugger.CreateBreakpoint
 func (c *RPCClient) CreateBreakpoint(breakPoint *api.Breakpoint) (*api.Breakpoint, error) {
 	var out CreateBreakpointOut
-	err := c.call("CreateBreakpoint", CreateBreakpointIn{*breakPoint}, &out)
+	err := c.call("CreateBreakpoint", CreateBreakpointIn{*breakPoint, "", nil}, &out)
+	return &out.Breakpoint, err
+}
+
+// CreateBreakpointWithExpr is like CreateBreakpoint but will also set a
+// location expression to be used to restore the breakpoint after it is
+// disabled.
+func (c *RPCClient) CreateBreakpointWithExpr(breakPoint *api.Breakpoint, locExpr string, substitutePathRules [][2]string) (*api.Breakpoint, error) {
+	var out CreateBreakpointOut
+	err := c.call("CreateBreakpoint", CreateBreakpointIn{*breakPoint, locExpr, substitutePathRules}, &out)
 	return &out.Breakpoint, err
 }
 

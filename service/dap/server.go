@@ -1382,7 +1382,7 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 				err = setLogMessage(bp, want.logMessage)
 				if err == nil {
 					// Create new breakpoints.
-					got, err = s.debugger.CreateBreakpoint(bp)
+					got, err = s.debugger.CreateBreakpoint(bp, "", nil)
 				}
 			}
 		}
