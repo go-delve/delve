@@ -242,6 +242,9 @@ func (s *RPCServer) ListBreakpoints(arg ListBreakpointsIn, out *ListBreakpointsO
 
 type CreateBreakpointIn struct {
 	Breakpoint api.Breakpoint
+
+	LocExpr             string
+	SubstitutePathRules [][2]string
 }
 
 type CreateBreakpointOut struct {
@@ -256,7 +259,7 @@ func (s *RPCServer) CreateBreakpoint(arg CreateBreakpointIn, out *CreateBreakpoi
 	if err := api.ValidBreakpointName(arg.Breakpoint.Name); err != nil {
 		return err
 	}
-	createdbp, err := s.debugger.CreateBreakpoint(&arg.Breakpoint)
+	createdbp, err := s.debugger.CreateBreakpoint(&arg.Breakpoint, arg.LocExpr, arg.SubstitutePathRules)
 	if err != nil {
 		return err
 	}
