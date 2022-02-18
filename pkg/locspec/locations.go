@@ -270,6 +270,10 @@ func packageMatch(specPkg, symPkg string, packageMap map[string][]string) bool {
 // Find will search all functions in the target program and filter them via the
 // regex location spec. Only functions matching the regex will be returned.
 func (loc *RegexLocationSpec) Find(t *proc.Target, _ []string, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool, _ [][2]string) ([]api.Location, error) {
+	if scope == nil {
+		//TODO(aarzilli): this needs only the list of function we should make it work
+		return nil, fmt.Errorf("could not determine location (scope is nil)")
+	}
 	funcs := scope.BinInfo.Functions
 	matches, err := regexFilterFuncs(loc.FuncRegex, funcs)
 	if err != nil {
@@ -390,7 +394,10 @@ func (loc *NormalLocationSpec) Find(t *proc.Target, processArgs []string, scope 
 		candidateFuncs = loc.findFuncCandidates(t.BinInfo(), limit)
 	}
 
-	if matching := len(candidateFiles) + len(candidateFuncs); matching == 0 && scope != nil {
+	if matching := len(candidateFiles) + len(candidateFuncs); matching == 0 {
+		if scope == nil {
+			return nil, fmt.Errorf("location \"%s\" not found", locStr)
+		}
 		// if no result was found this locations string could be an
 		// expression that the user forgot to prefix with '*', try treating it as
 		// such.

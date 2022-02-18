@@ -55,12 +55,12 @@ func TestMain(m *testing.M) {
 }
 
 func withTestClient2(name string, t *testing.T, fn func(c service.Client)) {
-	withTestClient2Extended(name, t, 0, [3]string{}, func(c service.Client, fixture protest.Fixture) {
+	withTestClient2Extended(name, t, 0, [3]string{}, nil, func(c service.Client, fixture protest.Fixture) {
 		fn(c)
 	})
 }
 
-func startServer(name string, buildFlags protest.BuildFlags, t *testing.T, redirects [3]string) (clientConn net.Conn, fixture protest.Fixture) {
+func startServer(name string, buildFlags protest.BuildFlags, t *testing.T, redirects [3]string, args []string) (clientConn net.Conn, fixture protest.Fixture) {
 	if testBackend == "rr" {
 		protest.MustHaveRecordingAllowed(t)
 	}
@@ -77,7 +77,7 @@ func startServer(name string, buildFlags protest.BuildFlags, t *testing.T, redir
 	}
 	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
-		ProcessArgs: []string{fixture.Path},
+		ProcessArgs: append([]string{fixture.Path}, args...),
 		Debugger: debugger.Config{
 			Backend:        testBackend,
 			CheckGoVersion: true,
@@ -93,8 +93,8 @@ func startServer(name string, buildFlags protest.BuildFlags, t *testing.T, redir
 	return clientConn, fixture
 }
 
-func withTestClient2Extended(name string, t *testing.T, buildFlags protest.BuildFlags, redirects [3]string, fn func(c service.Client, fixture protest.Fixture)) {
-	clientConn, fixture := startServer(name, buildFlags, t, redirects)
+func withTestClient2Extended(name string, t *testing.T, buildFlags protest.BuildFlags, redirects [3]string, args []string, fn func(c service.Client, fixture protest.Fixture)) {
+	clientConn, fixture := startServer(name, buildFlags, t, redirects, args)
 	client := rpc2.NewClientFromConn(clientConn)
 	defer func() {
 		client.Detach(true)
@@ -230,7 +230,7 @@ func TestRestart_rebuild(t *testing.T) {
 	// In the original fixture file the env var tested for is SOMEVAR.
 	os.Setenv("SOMEVAR", "bah")
 
-	withTestClient2Extended("testenv", t, 0, [3]string{}, func(c service.Client, f protest.Fixture) {
+	withTestClient2Extended("testenv", t, 0, [3]string{}, nil, func(c service.Client, f protest.Fixture) {
 		<-c.Continue()
 
 		var1, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "x", normalLoadConfig)
@@ -1019,7 +1019,7 @@ func TestClientServer_FindLocations(t *testing.T) {
 		findLocationHelper(t, c, "main.stacktraceme", false, 1, stacktracemeAddr)
 	})
 
-	withTestClient2Extended("locationsUpperCase", t, 0, [3]string{}, func(c service.Client, fixture protest.Fixture) {
+	withTestClient2Extended("locationsUpperCase", t, 0, [3]string{}, nil, func(c service.Client, fixture protest.Fixture) {
 		// Upper case
 		findLocationHelper(t, c, "locationsUpperCase.go:6", false, 1, 0)
 
@@ -1724,7 +1724,7 @@ func TestClientServer_FpRegisters(t *testing.T) {
 		{"XMM12", "…[ZMM12hh] 0x3ff66666666666663ff4cccccccccccd"},
 	}
 	protest.AllowRecording(t)
-	withTestClient2Extended("fputest/", t, 0, [3]string{}, func(c service.Client, fixture protest.Fixture) {
+	withTestClient2Extended("fputest/", t, 0, [3]string{}, nil, func(c service.Client, fixture protest.Fixture) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{File: filepath.Join(fixture.BuildDir, "fputest.go"), Line: 25})
 		assertNoError(err, t, "CreateBreakpoint")
 
@@ -2276,7 +2276,7 @@ func (c *brokenRPCClient) call(method string, args, reply interface{}) error {
 }
 
 func TestUnknownMethodCall(t *testing.T) {
-	clientConn, _ := startServer("continuetestprog", 0, t, [3]string{})
+	clientConn, _ := startServer("continuetestprog", 0, t, [3]string{}, nil)
 	client := &brokenRPCClient{jsonrpc.NewClient(clientConn)}
 	client.call("SetApiVersion", api.SetAPIVersionIn{APIVersion: 2}, &api.SetAPIVersionOut{})
 	defer client.Detach(true)
@@ -2420,7 +2420,7 @@ func TestClearLogicalBreakpoint(t *testing.T) {
 	// Clearing a logical breakpoint should clear all associated physical
 	// breakpoints.
 	// Issue #1955.
-	withTestClient2Extended("testinline", t, protest.EnableInlining, [3]string{}, func(c service.Client, fixture protest.Fixture) {
+	withTestClient2Extended("testinline", t, protest.EnableInlining, [3]string{}, nil, func(c service.Client, fixture protest.Fixture) {
 		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.inlineThis"})
 		assertNoError(err, t, "CreateBreakpoint()")
 		t.Logf("breakpoint set at %#v", bp.Addrs)
@@ -2446,7 +2446,7 @@ func TestRedirects(t *testing.T) {
 		outfile = "redirect-output.txt"
 	)
 	protest.AllowRecording(t)
-	withTestClient2Extended("redirect", t, 0, [3]string{infile, outfile, ""}, func(c service.Client, fixture protest.Fixture) {
+	withTestClient2Extended("redirect", t, 0, [3]string{infile, outfile, ""}, nil, func(c service.Client, fixture protest.Fixture) {
 		outpath := filepath.Join(fixture.BuildDir, outfile)
 		<-c.Continue()
 		buf, err := ioutil.ReadFile(outpath)
@@ -2774,7 +2774,7 @@ func TestClientServer_SinglelineStringFormattedWithBigInts(t *testing.T) {
 	if runtime.GOARCH != "amd64" {
 		t.Skip("N/A")
 	}
-	withTestClient2Extended("xmm0print/", t, 0, [3]string{}, func(c service.Client, fixture protest.Fixture) {
+	withTestClient2Extended("xmm0print/", t, 0, [3]string{}, nil, func(c service.Client, fixture protest.Fixture) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.VPSLLQ36", Line: 4})
 		assertNoError(err, t, "CreateBreakpoint")
 		state := <-c.Continue()
@@ -2872,7 +2872,7 @@ func TestRestart_PreserveFunctionBreakpoint(t *testing.T) {
 
 	copy(filepath.Join(dir, "testfnpos1.go"))
 
-	withTestClient2Extended("testfnpos", t, 0, [3]string{}, func(c service.Client, f protest.Fixture) {
+	withTestClient2Extended("testfnpos", t, 0, [3]string{}, nil, func(c service.Client, f protest.Fixture) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.f1"})
 		assertNoError(err, t, "CreateBreakpoint")
 		state := <-c.Continue()
@@ -2893,5 +2893,71 @@ func TestRestart_PreserveFunctionBreakpoint(t *testing.T) {
 		if state.CurrentThread.Line != 9 {
 			t.Fatalf("wrong location %s:%d", state.CurrentThread.File, state.CurrentThread.Line)
 		}
+	})
+}
+
+func assertLine(t *testing.T, state *api.DebuggerState, file string, lineno int) {
+	t.Helper()
+	t.Logf("%s:%d", state.CurrentThread.File, state.CurrentThread.Line)
+	if !strings.HasSuffix(state.CurrentThread.File, file) || state.CurrentThread.Line != lineno {
+		t.Fatalf("wrong location %s:%d", state.CurrentThread.File, state.CurrentThread.Line)
+	}
+}
+
+func TestPluginSuspendedBreakpoint(t *testing.T) {
+	// Tests that breakpoints created in a suspended state will be enabled automatically when a plugin is loaded.
+	pluginFixtures := protest.WithPlugins(t, protest.AllNonOptimized, "plugin1/", "plugin2/")
+	dir, err := filepath.Abs(protest.FindFixturesDir())
+	assertNoError(err, t, "filepath.Abs")
+
+	withTestClient2Extended("plugintest", t, protest.AllNonOptimized, [3]string{}, []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, func(c service.Client, f protest.Fixture) {
+		_, err := c.CreateBreakpointWithExpr(&api.Breakpoint{FunctionName: "github.com/go-delve/delve/_fixtures/plugin1.Fn1", Line: 1}, "", nil, true)
+		assertNoError(err, t, "CreateBreakpointWithExpr(Fn1) (suspended)")
+
+		_, err = c.CreateBreakpointWithExpr(&api.Breakpoint{File: filepath.Join(dir, "plugin2", "plugin2.go"), Line: 9}, "", nil, true)
+		assertNoError(err, t, "CreateBreakpointWithExpr(plugin2.go:9) (suspended)")
+
+		cont := func(name, file string, lineno int) {
+			t.Helper()
+			state := <-c.Continue()
+			assertNoError(state.Err, t, name)
+			assertLine(t, state, file, lineno)
+		}
+
+		cont("Continue 1", "plugintest.go", 22)
+		cont("Continue 2", "plugintest.go", 27)
+		cont("Continue 3", "plugin1.go", 6)
+		cont("Continue 4", "plugin2.go", 9)
+	})
+
+	withTestClient2Extended("plugintest", t, protest.AllNonOptimized, [3]string{}, []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, func(c service.Client, f protest.Fixture) {
+		exprbreak := func(expr string) {
+			t.Helper()
+			_, err := c.CreateBreakpointWithExpr(&api.Breakpoint{}, expr, nil, true)
+			assertNoError(err, t, fmt.Sprintf("CreateBreakpointWithExpr(%s) (suspended)", expr))
+		}
+
+		cont := func(name, file string, lineno int) {
+			t.Helper()
+			state := <-c.Continue()
+			assertNoError(state.Err, t, name)
+			assertLine(t, state, file, lineno)
+		}
+
+		exprbreak("plugin1.Fn1")
+		exprbreak("plugin2.go:9")
+
+		// The following breakpoints can never be un-suspended because the
+		// expression is never resolved, but this shouldn't cause problems
+
+		exprbreak("m[0]")
+		exprbreak("*m[0]")
+		exprbreak("unknownfn")
+		exprbreak("+2")
+
+		cont("Continue 1", "plugintest.go", 22)
+		cont("Continue 2", "plugintest.go", 27)
+		cont("Continue 3", "plugin1.go", 5)
+		cont("Continue 4", "plugin2.go", 9)
 	})
 }
