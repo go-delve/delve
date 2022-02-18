@@ -245,6 +245,7 @@ type CreateBreakpointIn struct {
 
 	LocExpr             string
 	SubstitutePathRules [][2]string
+	Suspended           bool
 }
 
 type CreateBreakpointOut struct {
@@ -259,7 +260,7 @@ func (s *RPCServer) CreateBreakpoint(arg CreateBreakpointIn, out *CreateBreakpoi
 	if err := api.ValidBreakpointName(arg.Breakpoint.Name); err != nil {
 		return err
 	}
-	createdbp, err := s.debugger.CreateBreakpoint(&arg.Breakpoint, arg.LocExpr, arg.SubstitutePathRules)
+	createdbp, err := s.debugger.CreateBreakpoint(&arg.Breakpoint, arg.LocExpr, arg.SubstitutePathRules, arg.Suspended)
 	if err != nil {
 		return err
 	}

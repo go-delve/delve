@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 )
 
@@ -213,6 +214,7 @@ func NewTarget(p ProcessInternal, pid int, currentThread Thread, cfg NewTargetCo
 
 	t.createUnrecoveredPanicBreakpoint()
 	t.createFatalThrowBreakpoint()
+	t.createPluginOpenBreakpoint()
 
 	t.gcache.init(p.BinInfo())
 	t.fakeMemoryRegistryMap = make(map[string]*compositeMemory)
@@ -419,6 +421,21 @@ func (t *Target) createFatalThrowBreakpoint() {
 	}
 }
 
+// createPluginOpenBreakpoint creates a breakpoint at the return instruction
+// of plugin.Open (if it exists) that will try to enable suspended
+// breakpoints.
+func (t *Target) createPluginOpenBreakpoint() {
+	retpcs, _ := findRetPC(t, "plugin.Open")
+	for _, retpc := range retpcs {
+		bp, err := t.SetBreakpoint(0, retpc, PluginOpenBreakpoint, nil)
+		if err != nil {
+			t.BinInfo().logger.Errorf("could not set plugin.Open breakpoint: %v", err)
+		} else {
+			bp.Breaklets[len(bp.Breaklets)-1].callback = t.pluginOpenCallback
+		}
+	}
+}
+
 // CurrentThread returns the currently selected thread which will be used
 // for next/step/stepout and for reading variables, unless a goroutine is
 // selected.
@@ -577,6 +594,30 @@ func (t *Target) dwrapUnwrap(fn *Function) *Function {
 		}
 	}
 	return fn
+}
+
+func (t *Target) pluginOpenCallback(Thread) bool {
+	logger := logflags.DebuggerLogger()
+	for _, lbp := range t.Breakpoints().Logical {
+		if isSuspended(t, lbp) {
+			err := enableBreakpointOnTarget(t, lbp)
+			if err != nil {
+				logger.Debugf("could not enable breakpoint %d: %v", lbp.LogicalID, err)
+			} else {
+				logger.Debugf("suspended breakpoint %d enabled", lbp.LogicalID)
+			}
+		}
+	}
+	return false
+}
+
+func isSuspended(t *Target, lbp *LogicalBreakpoint) bool {
+	for _, bp := range t.Breakpoints().M {
+		if bp.LogicalID() == lbp.LogicalID {
+			return false
+		}
+	}
+	return true
 }
 
 type dummyRecordingManipulation struct {
