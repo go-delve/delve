@@ -394,6 +394,27 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 	return pc, nil
 }
 
+func findRetPC(t *Target, name string) ([]uint64, error) {
+	fn := t.BinInfo().LookupFunc[name]
+	if fn == nil {
+		return nil, fmt.Errorf("could not find %s", name)
+	}
+	text, err := Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), fn.Entry, fn.End)
+	if err != nil {
+		return nil, err
+	}
+	r := []uint64{}
+	for _, instr := range text {
+		if instr.IsRet() {
+			r = append(r, instr.Loc.PC)
+		}
+	}
+	if len(r) == 0 {
+		return nil, fmt.Errorf("could not find return instruction in %s", name)
+	}
+	return r, nil
+}
+
 // cpuArch is a stringer interface representing CPU architectures.
 type cpuArch interface {
 	String() string

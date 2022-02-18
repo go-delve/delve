@@ -1712,19 +1712,37 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 	}
 
 	requestedBp.Tracepoint = tracepoint
-	locs, err := t.client.FindLocation(ctx.Scope, spec, true, t.substitutePathRules())
-	if err != nil {
-		if requestedBp.Name == "" {
-			return nil, err
-		}
+	locs, findLocErr := t.client.FindLocation(ctx.Scope, spec, true, t.substitutePathRules())
+	if findLocErr != nil && requestedBp.Name != "" {
 		requestedBp.Name = ""
 		spec = argstr
 		var err2 error
 		locs, err2 = t.client.FindLocation(ctx.Scope, spec, true, t.substitutePathRules())
-		if err2 != nil {
-			return nil, err
+		if err2 == nil {
+			findLocErr = nil
 		}
 	}
+	if findLocErr != nil && shouldAskToSuspendBreakpoint(t) {
+		fmt.Fprintf(os.Stderr, "Command failed: %s\n", findLocErr.Error())
+		findLocErr = nil
+		answer, err := yesno(t.line, "Set a suspended breakpoint (Delve will try to set this breakpoint when a plugin is loaded) [Y/n]?")
+		if err != nil {
+			return nil, err
+		}
+		if !answer {
+			return nil, nil
+		}
+		bp, err := t.client.CreateBreakpointWithExpr(requestedBp, spec, t.substitutePathRules(), true)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Fprintf(t.stdout, "%s set at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
+		return nil, nil
+	}
+	if findLocErr != nil {
+		return nil, findLocErr
+	}
+
 	created := []*api.Breakpoint{}
 	for _, loc := range locs {
 		requestedBp.Addr = loc.PC
@@ -1734,7 +1752,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 			requestedBp.LoadArgs = &ShortLoadConfig
 		}
 
-		bp, err := t.client.CreateBreakpointWithExpr(requestedBp, spec, t.substitutePathRules())
+		bp, err := t.client.CreateBreakpointWithExpr(requestedBp, spec, t.substitutePathRules(), false)
 		if err != nil {
 			return nil, err
 		}
@@ -3110,4 +3128,9 @@ func (t *Term) formatBreakpointLocation(bp *api.Breakpoint) string {
 		fmt.Fprintf(&out, "%s:%d", p, bp.Line)
 	}
 	return out.String()
+}
+
+func shouldAskToSuspendBreakpoint(t *Term) bool {
+	fns, _ := t.client.ListFunctions(`^plugin\.Open$`)
+	return len(fns) > 0
 }

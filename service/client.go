@@ -70,7 +70,7 @@ type Client interface {
 	// CreateBreakpoint creates a new breakpoint.
 	CreateBreakpoint(*api.Breakpoint) (*api.Breakpoint, error)
 	// CreateBreakpointWithExpr creates a new breakpoint and sets an expression to restore it after it is disabled.
-	CreateBreakpointWithExpr(*api.Breakpoint, string, [][2]string) (*api.Breakpoint, error)
+	CreateBreakpointWithExpr(*api.Breakpoint, string, [][2]string, bool) (*api.Breakpoint, error)
 	// CreateWatchpoint creates a new watchpoint.
 	CreateWatchpoint(api.EvalScope, string, api.WatchType) (*api.Breakpoint, error)
 	// ListBreakpoints gets all breakpoints.

@@ -319,6 +319,12 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 				return starlark.None, decorateError(thread, err)
 			}
 		}
+		if len(args) > 3 && args[3] != starlark.None {
+			err := unmarshalStarlarkValue(args[3], &rpcArgs.Suspended, "Suspended")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
 		for _, kv := range kwargs {
 			var err error
 			switch kv[0].(starlark.String) {
@@ -328,6 +334,8 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.LocExpr, "LocExpr")
 			case "SubstitutePathRules":
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.SubstitutePathRules, "SubstitutePathRules")
+			case "Suspended":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Suspended, "Suspended")
 			default:
 				err = fmt.Errorf("unknown argument %q", kv[0])
 			}

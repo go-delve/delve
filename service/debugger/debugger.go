@@ -638,7 +638,11 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig, withBreakpointInfo bool) (
 //
 // If LocExpr is specified it will be used, along with substitutePathRules,
 // to re-enable the breakpoint after it is disabled.
-func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string, substitutePathRules [][2]string) (*api.Breakpoint, error) {
+//
+// If suspended is true a logical breakpoint will be created even if the
+// location can not be found, the backend will attempt to enable the
+// breakpoint every time a new plugin is loaded.
+func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string, substitutePathRules [][2]string, suspended bool) (*api.Breakpoint, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -701,7 +705,9 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 			}
 		}
 	default:
-		addrs = []pidAddr{{d.target.Sel.Pid(), requestedBp.Addr}}
+		if requestedBp.Addr != 0 {
+			addrs = []pidAddr{{d.target.Sel.Pid(), requestedBp.Addr}}
+		}
 	}
 
 	if err != nil {
@@ -716,6 +722,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 		setbp.Expr = func(t *proc.Target) []uint64 {
 			locs, err := loc.Find(t, d.processArgs, nil, locExpr, false, substitutePathRules)
 			if err != nil || len(locs) != 1 {
+				logflags.DebuggerLogger().Debugf("could not evaluate breakpoint expression %q: %v (number of results %d)", locExpr, err, len(locs))
 				return nil
 			}
 			return locs[0].PCs
@@ -742,8 +749,12 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 	if len(addrs) == 0 {
 		err := d.target.EnableBreakpoint(lbp)
 		if err != nil {
-			delete(d.target.LogicalBreakpoints, lbp.LogicalID)
-			return nil, err
+			if suspended {
+				logflags.DebuggerLogger().Debugf("could not enable new breakpoint: %v (breakpoint will be suspended)", err)
+			} else {
+				delete(d.target.LogicalBreakpoints, lbp.LogicalID)
+				return nil, err
+			}
 		}
 	} else {
 		bps := make([]*proc.Breakpoint, len(addrs))
