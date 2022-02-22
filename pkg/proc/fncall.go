@@ -547,6 +547,9 @@ func funcCallEvalArgs(scope *EvalScope, fncall *functionCallState, formalScope *
 
 		actualArg, err := scope.evalAST(fncall.expr.Args[i])
 		if err != nil {
+			if _, ispanic := err.(fncallPanicErr); ispanic {
+				return err
+			}
 			return fmt.Errorf("error evaluating %q as argument %s in function %s: %v", exprToString(fncall.expr.Args[i]), formalArg.name, fncall.fn.Name, err)
 		}
 		actualArg.Name = exprToString(fncall.expr.Args[i])
