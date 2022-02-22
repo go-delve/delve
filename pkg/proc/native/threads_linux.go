@@ -115,3 +115,8 @@ func (t *nativeThread) ReadMemory(data []byte, addr uint64) (n int, err error) {
 	}
 	return
 }
+
+// SoftExc returns true if this thread received a software exception during the last resume.
+func (t *nativeThread) SoftExc() bool {
+	return t.os.setbp
+}

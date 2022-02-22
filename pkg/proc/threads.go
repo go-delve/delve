@@ -30,6 +30,8 @@ type Thread interface {
 	StepInstruction() error
 	// SetCurrentBreakpoint updates the current breakpoint of this thread, if adjustPC is true also checks for breakpoints that were just hit (this should only be passed true after a thread resume)
 	SetCurrentBreakpoint(adjustPC bool) error
+	// SoftExc returns true if this thread received a software exception during the last resume.
+	SoftExc() bool
 	// Common returns the CommonThread structure for this thread
 	Common() *CommonThread
 
