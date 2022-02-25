@@ -271,7 +271,8 @@ func canMacnative() bool {
 
 	typesHeader := "/usr/include/sys/types.h"
 	if major >= 11 || (major == 10 && minor >= 15) {
-		typesHeader = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/sys/types.h"
+		sdkpath := strings.TrimSpace(getoutput("xcrun", "--sdk", "macosx", "--show-sdk-path"))
+		typesHeader = filepath.Join(sdkpath, "usr", "include", "sys", "types.h")
 	}
 	_, err = os.Stat(typesHeader)
 	if err != nil {
