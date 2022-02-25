@@ -1150,7 +1150,7 @@ func setFunctionBreakpoint(p *proc.Target, t testing.TB, fname string) *proc.Bre
 	if len(addrs) != 1 {
 		t.Fatalf("%s:%d: setFunctionBreakpoint(%s): too many results %v", f, l, fname, addrs)
 	}
-	bp, err := p.SetBreakpoint(addrs[0], proc.UserBreakpoint, nil)
+	bp, err := p.SetBreakpoint(int(addrs[0]), addrs[0], proc.UserBreakpoint, nil)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
 	}
@@ -1480,7 +1480,7 @@ func setFileBreakpoint(p *proc.Target, t *testing.T, fixture protest.Fixture, li
 	if len(addrs) != 1 {
 		t.Fatalf("%s:%d: setFileLineBreakpoint(%s, %d): too many results %v", f, l, fixture.Source, lineno, addrs)
 	}
-	bp, err := p.SetBreakpoint(addrs[0], proc.UserBreakpoint, nil)
+	bp, err := p.SetBreakpoint(int(addrs[0]), addrs[0], proc.UserBreakpoint, nil)
 	if err != nil {
 		t.Fatalf("%s:%d: SetBreakpoint: %v", f, l, err)
 	}
