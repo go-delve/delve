@@ -10,6 +10,7 @@ const (
 
 	// Where applicable and for consistency only,
 	// values below are inspired the original vscode-go debug adaptor.
+
 	FailedToLaunch             = 3000
 	FailedToAttach             = 3001
 	FailedToInitialize         = 3002
@@ -27,7 +28,9 @@ const (
 	UnableToDisassemble        = 2013
 	UnableToListRegisters      = 2014
 	UnableToRunDlvCommand      = 2015
+
 	// Add more codes as we support more requests
+
 	NoDebugIsRunning  = 3000
 	DebuggeeIsRunning = 4000
 	DisconnectError   = 5000
