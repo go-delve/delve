@@ -4,6 +4,21 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.8.2] 2021-03-07
+### Added
+- Add '-clear' option for 'condition' command (@chainhelen)
+- Support ctrl-Z for shell job control (@derekparker)
+
+### Fixed
+- Improve handling of hard coded breakpoints (@aarzilli)
+- Better error messages for ambiguous function calls / type casts (@aarzilli)
+- Fix crash when trying to open separate debug info (@aarzilli)
+- Handle non-install dev tools on osx (@zchee)
+
+### Changed
+- Downgrade loadBuildID error to warning (@aarzilli)
+- Require go-delve/liner in go.mod file instead of upstream version (@hyanhag)
+
 ## [1.8.1] 2021-02-07
 
 ### Added
