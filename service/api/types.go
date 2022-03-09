@@ -282,7 +282,7 @@ const (
 	// frame that no longer exists)
 	VariableFakeAddress
 
-	// VariableCPrt means the variable is a C pointer
+	// VariableCPtr means the variable is a C pointer
 	VariableCPtr
 
 	// VariableCPURegister means this variable is a CPU register.
@@ -433,7 +433,7 @@ const (
 	Continue = "continue"
 	// Rewind resumes process execution backwards (target must be a recording).
 	Rewind = "rewind"
-	// DirecitonCongruentContinue resumes process execution, if a reverse next, step or stepout operation is in progress it will resume execution backward.
+	// DirectionCongruentContinue resumes process execution, if a reverse next, step or stepout operation is in progress it will resume execution backward.
 	DirectionCongruentContinue = "directionCongruentContinue"
 	// Step continues to next source line, entering function calls.
 	Step = "step"
