@@ -33,3 +33,11 @@ func ptraceSingleStep(pid, sig int) error {
 	}
 	return nil
 }
+
+// remoteIovec is like golang.org/x/sys/unix.Iovec but uses uintptr for the
+// base field instead of *byte so that we can use it with addresses that
+// belong to the target process.
+type remoteIovec struct {
+	base uintptr
+	len  uintptr
+}
