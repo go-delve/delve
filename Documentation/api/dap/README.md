@@ -105,7 +105,7 @@ Debuggee's stdout and stderr are written to stdout and stderr respectfully and a
 
 ## Versions
 
-The initial DAP support was released in v1.6.1 with many additional improvements in subsequent versions. The [remote attach](https://github.com/go-delve/delve/issues/2328) support was added in v1.7.3.
+The initial DAP support was released in [v1.6.1](https://github.com/go-delve/delve/releases/tag/v1.6.1) with many additional improvements in subsequent versions. The [remote attach](https://github.com/go-delve/delve/issues/2328) support was added in [v1.7.3](https://github.com/go-delve/delve/releases/tag/v1.7.3).
 
 The DAP API changes are backward-compatible as all new features are opt-in only. To update to a new [DAP version](https://microsoft.github.io/debug-adapter-protocol/changelog) and import a new DAP feature into delve, 
 one must first update the [go-dap](https://github.com/google/go-dap) dependency.
