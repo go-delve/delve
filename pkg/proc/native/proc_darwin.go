@@ -121,7 +121,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 	if err != nil {
 		return nil, err
 	}
-	if _, err := dbp.stop(nil, nil); err != nil {
+	if _, err := dbp.stop(nil); err != nil {
 		return nil, err
 	}
 
@@ -291,6 +291,10 @@ func findExecutable(path string, pid int) string {
 	return path
 }
 
+func trapWait(cctx *proc.ContinueOnceContext, pid int) (*nativeThread, error) {
+	return cctx.Proc(0).(*nativeProcess).trapWait(pid)
+}
+
 func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
 	for {
 		task := dbp.os.task
@@ -429,7 +433,11 @@ func (dbp *nativeProcess) resume() error {
 }
 
 // stop stops all running threads and sets breakpoints
-func (dbp *nativeProcess) stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
+func stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
+	return cctx.Proc(0).(*nativeProcess).stop(trapthread)
+}
+
+func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) {
 	if dbp.exited {
 		return nil, proc.ErrProcessExited{Pid: dbp.pid}
 	}

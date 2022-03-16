@@ -26,9 +26,11 @@ type nativeProcess struct {
 
 	os             *osProcessDetails
 	firstStart     bool
+	ptraceRefCnt   *int
 	ptraceChan     chan func()
 	ptraceDoneChan chan interface{}
 	childProcess   bool // this process was launched, not attached to
+	followExec     bool // automatically attach to new processes
 
 	// Controlling terminal file descriptor for
 	// this process.
@@ -52,10 +54,28 @@ func newProcess(pid int) *nativeProcess {
 		os:             new(osProcessDetails),
 		ptraceChan:     make(chan func()),
 		ptraceDoneChan: make(chan interface{}),
+		ptraceRefCnt:   new(int),
 		bi:             proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
 	}
+	(*dbp.ptraceRefCnt)++
 	go dbp.handlePtraceFuncs()
 	return dbp
+}
+
+// newChildProcess is like newProcess but uses the same ptrace thread as dbp.
+func newChildProcess(dbp *nativeProcess, pid int) *nativeProcess {
+	(*dbp.ptraceRefCnt)++
+	return &nativeProcess{
+		pid:            pid,
+		threads:        make(map[int]*nativeThread),
+		breakpoints:    proc.NewBreakpointMap(),
+		firstStart:     true,
+		os:             new(osProcessDetails),
+		ptraceChan:     dbp.ptraceChan,
+		ptraceDoneChan: dbp.ptraceDoneChan,
+		ptraceRefCnt:   dbp.ptraceRefCnt,
+		bi:             proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
+	}
 }
 
 // BinInfo will return the binary info struct associated with this process.
@@ -172,23 +192,26 @@ func (dbp *nativeProcess) EraseBreakpoint(bp *proc.Breakpoint) error {
 	return dbp.memthread.clearSoftwareBreakpoint(bp)
 }
 
-func continueOnce(procs []proc.ProcessInternal, cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
-	if len(procs) != 1 {
+func continueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
+	if cctx.NumProcs() != 1 && runtime.GOOS != "linux" {
 		panic("not implemented")
 	}
-	dbp := procs[0].(*nativeProcess)
-	if dbp.exited {
-		return nil, proc.StopExited, proc.ErrProcessExited{Pid: dbp.pid}
+	if numValid(cctx) == 0 {
+		return nil, proc.StopExited, proc.ErrProcessExited{Pid: cctx.Proc(0).(*nativeProcess).pid}
 	}
 
 	for {
-
-		if err := dbp.resume(); err != nil {
-			return nil, proc.StopUnknown, err
-		}
-
-		for _, th := range dbp.threads {
-			th.CurrentBreakpoint.Clear()
+		for i := 0; i < cctx.NumProcs(); i++ {
+			dbp := cctx.Proc(i).(*nativeProcess)
+			if dbp.exited {
+				continue
+			}
+			if err := dbp.resume(); err != nil {
+				return nil, proc.StopUnknown, err
+			}
+			for _, th := range dbp.threads {
+				th.CurrentBreakpoint.Clear()
+			}
 		}
 
 		if cctx.ResumeChan != nil {
@@ -196,16 +219,30 @@ func continueOnce(procs []proc.ProcessInternal, cctx *proc.ContinueOnceContext) 
 			cctx.ResumeChan = nil
 		}
 
-		trapthread, err := dbp.trapWait(-1)
+		trapthread, err := trapWait(cctx, -1)
 		if err != nil {
 			return nil, proc.StopUnknown, err
 		}
-		trapthread, err = dbp.stop(cctx, trapthread)
+		trapthread, err = stop(cctx, trapthread)
 		if err != nil {
 			return nil, proc.StopUnknown, err
 		}
 		if trapthread != nil {
+			dbp := procForThread(cctx, trapthread.ID)
 			dbp.memthread = trapthread
+			// refresh memthread for every other process
+			for i := 0; i < cctx.NumProcs(); i++ {
+				p2 := cctx.Proc(i).(*nativeProcess)
+				if p2.exited || p2 == dbp {
+					continue
+				}
+				for _, th := range p2.threads {
+					p2.memthread = th
+					if th.SoftExc() {
+						break
+					}
+				}
+			}
 			return trapthread, proc.StopUnknown, nil
 		}
 	}
@@ -287,8 +324,11 @@ func (dbp *nativeProcess) execPtraceFunc(fn func()) {
 
 func (dbp *nativeProcess) postExit() {
 	dbp.exited = true
-	close(dbp.ptraceChan)
-	close(dbp.ptraceDoneChan)
+	(*dbp.ptraceRefCnt)--
+	if *dbp.ptraceRefCnt == 0 {
+		close(dbp.ptraceChan)
+		close(dbp.ptraceDoneChan)
+	}
 	dbp.bi.Close()
 	if dbp.ctty != nil {
 		dbp.ctty.Close()
@@ -343,4 +383,27 @@ func openRedirects(redirects [3]string, foreground bool) (stdin, stdout, stderr 
 	}
 
 	return stdin, stdout, stderr, closefn, nil
+}
+
+func numValid(cctx *proc.ContinueOnceContext) int {
+	r := 0
+	for i := 0; i < cctx.NumProcs(); i++ {
+		if !cctx.Proc(i).(*nativeProcess).exited {
+			r++
+		}
+	}
+	return r
+}
+
+func procForThread(cctx *proc.ContinueOnceContext, tid int) *nativeProcess {
+	for i := 0; i < cctx.NumProcs(); i++ {
+		dbp := cctx.Proc(i).(*nativeProcess)
+		if dbp.exited {
+			continue
+		}
+		if dbp.threads[tid] != nil {
+			return dbp
+		}
+	}
+	return nil
 }

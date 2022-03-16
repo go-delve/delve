@@ -2,8 +2,11 @@ package proc
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/go-delve/delve/pkg/logflags"
 )
 
 // TargetGroup reperesents a group of target processes being debugged that
@@ -13,11 +16,15 @@ import (
 // contain a single target process.
 type TargetGroup struct {
 	targets []*Target
-	procs   []ProcessInternal
 	Sel     *Target
 
 	RecordingManipulation
 	recman RecordingManipulationInternal
+
+	// StopReason describes the reason why the target process is stopped.
+	// A process could be stopped for multiple simultaneous reasons, in which
+	// case only one will be reported.
+	StopReason StopReason
 
 	// KeepSteppingBreakpoints determines whether certain stop reasons (e.g. manual halts)
 	// will keep the stepping breakpoints instead of clearing them.
@@ -35,16 +42,18 @@ func NewGroup(t *Target) *TargetGroup {
 		panic("internal error: target is already part of a group")
 	}
 	t.partOfGroup = true
-	return &TargetGroup{
+	grp := &TargetGroup{
 		RecordingManipulation: t.recman,
 		targets:               []*Target{t},
-		procs:                 []ProcessInternal{t.proc},
 		Sel:                   t,
 		cctx:                  &ContinueOnceContext{},
 		recman:                t.recman,
 		LogicalBreakpoints:    t.Breakpoints().Logical,
 		continueOnce:          t.continueOnce,
 	}
+	grp.cctx.grp = grp
+	grp.cctx.DebugInfoDirs = t.debugInfoDirs
+	return grp
 }
 
 // NewGroupWithBreakpoints creates a new group of targets containing t and
@@ -70,6 +79,28 @@ func NewGroupWithBreakpoints(t *Target, logicalBreakpoints map[int]*LogicalBreak
 		}
 	}
 	return grp
+}
+
+func (grp *TargetGroup) addTarget(t *Target) {
+	//TODO(aarzilli): check if the target's command line matches the regex
+	if t.partOfGroup {
+		panic("internal error: target is already part of group")
+	}
+	t.partOfGroup = true
+	t.Breakpoints().Logical = grp.LogicalBreakpoints
+	logger := logflags.DebuggerLogger()
+	for _, lbp := range grp.LogicalBreakpoints {
+		if lbp.LogicalID < 0 {
+			continue
+		}
+		err := enableBreakpointOnTarget(t, lbp)
+		if err != nil {
+			logger.Debugf("could not enable breakpoint %d on new target %d: %v", lbp.LogicalID, t.Pid(), err)
+		} else {
+			logger.Debugf("breakpoint %d enabled on new target %d: %v", lbp.LogicalID, t.Pid(), err)
+		}
+	}
+	grp.targets = append(grp.targets, t)
 }
 
 // AllTargets returns a slice of all targets in the group, including the
@@ -100,6 +131,17 @@ func (grp *TargetGroup) Valid() (bool, error) {
 		err0 = err
 	}
 	return false, err0
+}
+
+func (grp *TargetGroup) numValid() int {
+	r := 0
+	for _, t := range grp.targets {
+		ok, _ := t.Valid()
+		if ok {
+			r++
+		}
+	}
+	return r
 }
 
 // Detach detaches all targets in the group.
@@ -153,10 +195,8 @@ func (grp *TargetGroup) ThreadList() []Thread {
 // TargetForThread returns the target containing the given thread.
 func (grp *TargetGroup) TargetForThread(thread Thread) *Target {
 	for _, t := range grp.targets {
-		for _, th := range t.ThreadList() {
-			if th == thread {
-				return t
-			}
+		if _, ok := t.FindThread(thread.ThreadID()); ok {
+			return t
 		}
 	}
 	return nil
@@ -277,5 +317,23 @@ func (grp *TargetGroup) DisableBreakpoint(lbp *LogicalBreakpoint) error {
 		return fmt.Errorf("unable to clear breakpoint %d (partial): %s", lbp.LogicalID, buf.String())
 	}
 	lbp.Enabled = false
+	return nil
+}
+
+// FollowExec enables or disables follow exec mode. When follow exec mode is
+// enabled new processes spawned by the target process are automatically
+// added to the target group.
+// If regex is not the empty string only processes whose command line
+// matches regex will be added to the target group.
+func (grp *TargetGroup) FollowExec(v bool, regex string) error {
+	if regex != "" {
+		return errors.New("regex not implemented")
+	}
+	for _, p := range grp.ValidTargets() {
+		err := p.proc.FollowExec(v)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }

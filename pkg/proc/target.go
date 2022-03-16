@@ -81,7 +81,8 @@ type Target struct {
 	fakeMemoryRegistry    []*compositeMemory
 	fakeMemoryRegistryMap map[string]*compositeMemory
 
-	partOfGroup bool
+	partOfGroup   bool
+	debugInfoDirs []string
 }
 
 type KeepSteppingBreakpoints uint8
@@ -148,7 +149,7 @@ const (
 	StopWatchpoint                     // The target process hit one or more watchpoints
 )
 
-type ContinueOnceFunc func([]ProcessInternal, *ContinueOnceContext) (trapthread Thread, stopReason StopReason, err error)
+type ContinueOnceFunc func(*ContinueOnceContext) (trapthread Thread, stopReason StopReason, err error)
 
 // NewTargetConfig contains the configuration for a new Target object,
 type NewTargetConfig struct {
@@ -201,6 +202,7 @@ func NewTarget(p ProcessInternal, pid int, currentThread Thread, cfg NewTargetCo
 		CanDump:       cfg.CanDump,
 		pid:           pid,
 		continueOnce:  cfg.ContinueOnce,
+		debugInfoDirs: cfg.DebugInfoDirs,
 	}
 
 	if recman, ok := p.(RecordingManipulationInternal); ok {
