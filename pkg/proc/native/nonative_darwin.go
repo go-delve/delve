@@ -57,11 +57,11 @@ func (dbp *nativeProcess) resume() error {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
+func trapWait(cctx *proc.ContinueOnceContext, pid int) (*nativeThread, error) {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *nativeProcess) stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
+func stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
 	panic(ErrNativeBackendDisabled)
 }
 

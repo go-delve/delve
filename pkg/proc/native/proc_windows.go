@@ -378,7 +378,8 @@ func (dbp *nativeProcess) waitForDebugEvent(flags waitForDebugEventFlags) (threa
 	}
 }
 
-func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
+func trapWait(cctx *proc.ContinueOnceContext, pid int) (*nativeThread, error) {
+	dbp := cctx.Proc(0).(*nativeProcess)
 	var err error
 	var tid, exitCode int
 	dbp.execPtraceFunc(func() {
@@ -425,7 +426,8 @@ func (dbp *nativeProcess) resume() error {
 }
 
 // stop stops all running threads threads and sets breakpoints
-func (dbp *nativeProcess) stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
+func stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
+	dbp := cctx.Proc(0).(*nativeProcess)
 	if dbp.exited {
 		return nil, proc.ErrProcessExited{Pid: dbp.pid}
 	}

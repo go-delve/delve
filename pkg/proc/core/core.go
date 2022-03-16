@@ -306,6 +306,11 @@ func (p *process) WriteMemory(addr uint64, data []byte) (int, error) {
 	return 0, ErrWriteCore
 }
 
+// FollowExec enables (or disables) follow exec mode
+func (p *process) FollowExec(bool) error {
+	return nil
+}
+
 // ProcessMemory returns the memory of this thread's process.
 func (t *thread) ProcessMemory() proc.MemoryReadWriter {
 	return t.p
@@ -415,7 +420,7 @@ func (p *process) ClearInternalBreakpoints() error {
 	return nil
 }
 
-func continueOnce(procs []proc.ProcessInternal, cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
+func continueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
 	return nil, proc.StopUnknown, ErrContinueCore
 }
 

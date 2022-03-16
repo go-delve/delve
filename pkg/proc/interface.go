@@ -57,6 +57,9 @@ type ProcessInternal interface {
 
 	// StartCallInjection notifies the backend that we are about to inject a function call.
 	StartCallInjection() (func(), error)
+
+	// FollowExec enables (or disables) follow exec mode
+	FollowExec(bool) error
 }
 
 // RecordingManipulation is an interface for manipulating process recordings.
@@ -111,12 +114,14 @@ type Checkpoint struct {
 // ContinueOnceContext is an object passed to ContinueOnce that the backend
 // can use to communicate with the target layer.
 type ContinueOnceContext struct {
-	ResumeChan chan<- struct{}
-	StopMu     sync.Mutex
+	ResumeChan    chan<- struct{}
+	StopMu        sync.Mutex
+	DebugInfoDirs []string
 	// manualStopRequested is set if all the threads in the process were
 	// signalled to stop as a result of a Halt API call. Used to disambiguate
 	// why a thread is found to have stopped.
 	manualStopRequested bool
+	grp                 *TargetGroup
 }
 
 // CheckAndClearManualStopRequest will check for a manual
@@ -133,4 +138,19 @@ func (cctx *ContinueOnceContext) GetManualStopRequested() bool {
 	cctx.StopMu.Lock()
 	defer cctx.StopMu.Unlock()
 	return cctx.manualStopRequested
+}
+
+// NumProcs returns the number of processes in the target group being resumed.
+func (cctx *ContinueOnceContext) NumProcs() int {
+	return len(cctx.grp.targets)
+}
+
+// Proc returns the i-th process in the group.
+func (cctx *ContinueOnceContext) Proc(i int) ProcessInternal {
+	return cctx.grp.targets[i].proc
+}
+
+// AddTarget adds a target to the group being resumed.
+func (cctx *ContinueOnceContext) AddTarget(tgt *Target) {
+	cctx.grp.addTarget(tgt)
 }

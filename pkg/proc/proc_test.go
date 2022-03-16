@@ -5851,3 +5851,109 @@ func TestNilPtrDerefInBreakInstr(t *testing.T) {
 		}
 	})
 }
+
+func TestFollowExec(t *testing.T) {
+	skipUnlessOn(t, "follow exec only supported on linux", "linux")
+	withTestProcessArgs("spawn", t, ".", []string{"spawn", "3"}, 0, func(p *proc.Target, fixture protest.Fixture) {
+		grp := proc.NewGroup(p)
+
+		grp.LogicalBreakpoints[1] = &proc.LogicalBreakpoint{LogicalID: 1, Set: proc.SetBreakpoint{FunctionName: "main.traceme1"}, HitCount: make(map[int]uint64)}
+		grp.LogicalBreakpoints[2] = &proc.LogicalBreakpoint{LogicalID: 2, Set: proc.SetBreakpoint{FunctionName: "main.traceme2"}, HitCount: make(map[int]uint64)}
+		grp.LogicalBreakpoints[3] = &proc.LogicalBreakpoint{LogicalID: 3, Set: proc.SetBreakpoint{FunctionName: "main.traceme3"}, HitCount: make(map[int]uint64)}
+
+		assertNoError(grp.EnableBreakpoint(grp.LogicalBreakpoints[1]), t, "EnableBreakpoint(main.traceme1)")
+		assertNoError(grp.EnableBreakpoint(grp.LogicalBreakpoints[3]), t, "EnableBreakpoint(main.traceme3)")
+
+		assertNoError(grp.FollowExec(true, ""), t, "FollowExec")
+
+		first := true
+		finished := false
+		pids := map[int]int{}
+		ns := map[string]int{}
+
+		for {
+			t.Log("Continuing")
+			err := grp.Continue()
+			if err != nil {
+				_, isexited := err.(proc.ErrProcessExited)
+				if isexited {
+					break
+				}
+				assertNoError(err, t, "Continue")
+			}
+
+			if first {
+				first = false
+				if grp.Sel != p {
+					t.Fatalf("first breakpoint hit was not on the parent process")
+				}
+				if grp.Sel.CurrentThread().Breakpoint().Breakpoint.LogicalID() != 1 {
+					t.Fatalf("wrong breakpoint %#v", grp.Sel.CurrentThread().Breakpoint().Breakpoint)
+				}
+				loc, err := grp.Sel.CurrentThread().Location()
+				assertNoError(err, t, "Location")
+				if loc.Fn.Name != "main.traceme1" {
+					t.Fatalf("wrong stop location %#v", loc)
+				}
+			} else if grp.Sel == p {
+				if finished {
+					t.Fatalf("breakpoint hit after the last one in the parent process")
+				}
+				if p.CurrentThread().Breakpoint().Breakpoint.LogicalID() != 3 {
+					t.Fatalf("wrong breakpoint %#v", p.CurrentThread().Breakpoint().Breakpoint)
+				}
+				loc, err := p.CurrentThread().Location()
+				assertNoError(err, t, "Location")
+				if loc.Fn.Name != "main.traceme3" {
+					t.Fatalf("wrong stop location %#v", loc)
+				}
+				finished = true
+			} else {
+				if finished {
+					t.Fatalf("breakpoint hit after the last one in a child process")
+				}
+				for _, tgt := range grp.ValidTargets() {
+					if !tgt.CurrentThread().Breakpoint().Active {
+						continue
+					}
+					if tgt.CurrentThread().Breakpoint().Breakpoint.LogicalID() != 2 {
+						t.Fatalf("wrong breakpoint %#v", grp.Sel.CurrentThread().Breakpoint().Breakpoint)
+					}
+					pids[tgt.Pid()]++
+					loc, err := tgt.CurrentThread().Location()
+					assertNoError(err, t, "Location")
+					if loc.Fn.Name != "main.traceme2" {
+						t.Fatalf("wrong stop location %#v", loc)
+					}
+					nvar := evalVariable(tgt, t, "n")
+					if nvar.Unreadable != nil {
+						t.Fatalf("unreadable variable 'n' on target %d: %v", tgt.Pid(), nvar.Unreadable)
+					}
+					t.Logf("variable 'n' on target %d: %#v (%v)", tgt.Pid(), nvar, nvar.Value)
+					ns[constant.StringVal(nvar.Value)]++
+				}
+			}
+		}
+
+		if len(ns) != 3 {
+			t.Errorf("bad contents of ns: %#v", ns)
+		}
+		for _, v := range ns {
+			if v != 1 {
+				t.Errorf("bad contents of ns: %#v", ns)
+			}
+		}
+		if ns["C0"] != 1 || ns["C1"] != 1 || ns["C2"] != 1 {
+			t.Errorf("bad contents of ns: %#v", ns)
+		}
+
+		if len(pids) != 3 {
+			t.Errorf("bad contents of pids: %#v", pids)
+		}
+		for _, v := range pids {
+			if v != 1 {
+				t.Errorf("bad contents of pids: %#v", pids)
+			}
+		}
+	})
+}

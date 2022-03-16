@@ -801,11 +801,11 @@ const (
 	debugServerTargetExcBreakpoint     = 0x96
 )
 
-func continueOnce(procs []proc.ProcessInternal, cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
-	if len(procs) != 1 {
+func continueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
+	if cctx.NumProcs() != 1 {
 		panic("not implemented")
 	}
-	p := procs[0].(*gdbProcess)
+	p := cctx.Proc(0).(*gdbProcess)
 	if p.exited {
 		return nil, proc.StopExited, proc.ErrProcessExited{Pid: p.conn.pid}
 	}
@@ -1282,6 +1282,11 @@ func (p *gdbProcess) EraseBreakpoint(bp *proc.Breakpoint) error {
 		kind = bp.WatchType.Size()
 	}
 	return p.conn.clearBreakpoint(bp.Addr, watchTypeToBreakpointType(bp.WatchType), kind)
+}
+
+// FollowExec enables (or disables) follow exec mode
+func (p *gdbProcess) FollowExec(bool) error {
+	return errors.New("follow exec not supported")
 }
 
 type threadUpdater struct {
