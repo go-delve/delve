@@ -42,7 +42,7 @@ func (os *osProcessDetails) Close() {}
 // custom fork/exec process in order to take advantage of
 // PT_SIGEXC on Darwin which will turn Unix signals into
 // Mach exceptions.
-func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ string, _ [3]string) (*proc.Target, error) {
+func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ string, _ [3]string) (*proc.TargetGroup, error) {
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err
@@ -121,7 +121,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 	if err != nil {
 		return nil, err
 	}
-	if _, err := dbp.stop(nil, nil); err != nil {
+	if _, err := dbp.stop(nil); err != nil {
 		return nil, err
 	}
 
@@ -137,7 +137,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 }
 
 // Attach to an existing process with the given PID.
-func Attach(pid int, _ []string) (*proc.Target, error) {
+func Attach(pid int, _ []string) (*proc.TargetGroup, error) {
 	if err := macutil.CheckRosetta(); err != nil {
 		return nil, err
 	}
@@ -291,6 +291,10 @@ func findExecutable(path string, pid int) string {
 	return path
 }
 
+func trapWait(procgrp *processGroup, pid int) (*nativeThread, error) {
+	return procgrp.procs[0].trapWait(pid)
+}
+
 func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
 	for {
 		task := dbp.os.task
@@ -429,7 +433,11 @@ func (dbp *nativeProcess) resume() error {
 }
 
 // stop stops all running threads and sets breakpoints
-func (dbp *nativeProcess) stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
+func (procgrp *processGroup) stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
+	return procgrp.procs[0].stop(trapthread)
+}
+
+func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) {
 	if dbp.exited {
 		return nil, proc.ErrProcessExited{Pid: dbp.pid}
 	}

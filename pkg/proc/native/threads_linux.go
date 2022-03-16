@@ -22,6 +22,9 @@ type osSpecificDetails struct {
 func (t *nativeThread) stop() (err error) {
 	err = sys.Tgkill(t.dbp.pid, t.ID, sys.SIGSTOP)
 	if err != nil {
+		if err == sys.ESRCH {
+			return
+		}
 		err = fmt.Errorf("stop err %s on thread %d", err, t.ID)
 		return
 	}

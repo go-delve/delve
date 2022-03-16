@@ -48,48 +48,55 @@ func (grp *TargetGroup) Next() (err error) {
 // processes. It will continue until it hits a breakpoint
 // or is otherwise stopped.
 func (grp *TargetGroup) Continue() error {
-	if len(grp.targets) != 1 {
-		panic("multiple targets not implemented")
-	}
-	dbp := grp.Selected
-	if _, err := dbp.Valid(); err != nil {
+	if grp.numValid() == 0 {
+		_, err := grp.targets[0].Valid()
 		return err
 	}
-	for _, thread := range dbp.ThreadList() {
-		thread.Common().CallReturn = false
-		thread.Common().returnValues = nil
+	for _, dbp := range grp.targets {
+		if isvalid, _ := dbp.Valid(); !isvalid {
+			continue
+		}
+		for _, thread := range dbp.ThreadList() {
+			thread.Common().CallReturn = false
+			thread.Common().returnValues = nil
+		}
+		dbp.Breakpoints().WatchOutOfScope = nil
+		dbp.clearHardcodedBreakpoints()
 	}
-	dbp.Breakpoints().WatchOutOfScope = nil
-	dbp.clearHardcodedBreakpoints()
 	grp.cctx.CheckAndClearManualStopRequest()
 	defer func() {
 		// Make sure we clear internal breakpoints if we simultaneously receive a
 		// manual stop request and hit a breakpoint.
 		if grp.cctx.CheckAndClearManualStopRequest() {
-			dbp.StopReason = StopManual
-			dbp.clearHardcodedBreakpoints()
-			if grp.KeepSteppingBreakpoints&HaltKeepsSteppingBreakpoints == 0 {
-				dbp.ClearSteppingBreakpoints()
-			}
+			grp.finishManualStop()
 		}
 	}()
 	for {
 		if grp.cctx.CheckAndClearManualStopRequest() {
-			dbp.StopReason = StopManual
-			dbp.clearHardcodedBreakpoints()
-			if grp.KeepSteppingBreakpoints&HaltKeepsSteppingBreakpoints == 0 {
-				dbp.ClearSteppingBreakpoints()
-			}
+			grp.finishManualStop()
 			return nil
 		}
-		dbp.ClearCaches()
-		trapthread, stopReason, contOnceErr := grp.continueOnce([]ProcessInternal{grp.targets[0].proc}, grp.cctx)
-		dbp.StopReason = stopReason
+		for _, dbp := range grp.targets {
+			dbp.ClearCaches()
+		}
+		trapthread, stopReason, contOnceErr := grp.procgrp.ContinueOnce(grp.cctx)
+		var traptgt *Target
+		if trapthread != nil {
+			traptgt = grp.TargetForThread(trapthread.ThreadID())
+			if traptgt == nil {
+				return fmt.Errorf("could not find target for thread %d", trapthread.ThreadID())
+			}
+		} else {
+			traptgt = grp.targets[0]
+		}
+		traptgt.StopReason = stopReason
 
-		threads := dbp.ThreadList()
-		for _, thread := range threads {
-			if thread.Breakpoint().Breakpoint != nil {
-				thread.Breakpoint().Breakpoint.checkCondition(dbp, thread, thread.Breakpoint())
+		it := ValidTargets{Group: grp}
+		for it.Next() {
+			for _, thread := range it.ThreadList() {
+				if thread.Breakpoint().Breakpoint != nil {
+					thread.Breakpoint().Breakpoint.checkCondition(it.Target, thread, thread.Breakpoint())
+				}
 			}
 		}
 
@@ -98,31 +105,56 @@ func (grp *TargetGroup) Continue() error {
 			// Issue #2078.
 			// Errors are ignored because depending on why ContinueOnce failed this
 			// might very well not work.
-			if valid, _ := dbp.Valid(); valid {
-				if trapthread != nil {
-					_ = dbp.SwitchThread(trapthread.ThreadID())
-				} else if curth := dbp.CurrentThread(); curth != nil {
-					dbp.selectedGoroutine, _ = GetG(curth)
-				}
-			}
+			_ = grp.setCurrentThreads(traptgt, trapthread)
 			if pe, ok := contOnceErr.(ErrProcessExited); ok {
-				dbp.exitStatus = pe.Status
+				traptgt.exitStatus = pe.Status
 			}
 			return contOnceErr
 		}
-		if dbp.StopReason == StopLaunched {
-			dbp.ClearSteppingBreakpoints()
+		if stopReason == StopLaunched {
+			it.Reset()
+			for it.Next() {
+				it.Target.ClearSteppingBreakpoints()
+			}
 		}
 
-		callInjectionDone, callErr := callInjectionProtocol(dbp, threads)
-		hcbpErr := dbp.handleHardcodedBreakpoints(trapthread, threads)
+		var callInjectionDone bool
+		var callErr error
+		var hcbpErr error
+		it.Reset()
+		for it.Next() {
+			dbp := it.Target
+			threads := dbp.ThreadList()
+			callInjectionDoneThis, callErrThis := callInjectionProtocol(dbp, threads)
+			callInjectionDone = callInjectionDone || callInjectionDoneThis
+			if callInjectionDoneThis {
+				dbp.StopReason = StopCallReturned
+			}
+			if callErrThis != nil && callErr == nil {
+				callErr = callErrThis
+			}
+			hcbpErrThis := dbp.handleHardcodedBreakpoints(trapthread, threads)
+			if hcbpErrThis != nil && hcbpErr == nil {
+				hcbpErr = hcbpErrThis
+			}
+		}
 		// callErr and hcbpErr check delayed until after pickCurrentThread, which
 		// must always happen, otherwise the debugger could be left in an
 		// inconsistent state.
 
-		if err := pickCurrentThread(dbp, trapthread, threads); err != nil {
-			return err
+		it = ValidTargets{Group: grp}
+		for it.Next() {
+			var th Thread = nil
+			if it.Target == traptgt {
+				th = trapthread
+			}
+			err := pickCurrentThread(it.Target, th)
+			if err != nil {
+				return err
+			}
 		}
+		grp.pickCurrentTarget(traptgt)
+		dbp := grp.Selected
 
 		if callErr != nil {
 			return callErr
@@ -138,7 +170,7 @@ func (grp *TargetGroup) Continue() error {
 		case curbp.Active && curbp.Stepping:
 			if curbp.SteppingInto {
 				// See description of proc.(*Process).next for the meaning of StepBreakpoints
-				if err := conditionErrors(threads); err != nil {
+				if err := conditionErrors(grp); err != nil {
 					return err
 				}
 				if grp.GetDirection() == Forward {
@@ -168,7 +200,7 @@ func (grp *TargetGroup) Continue() error {
 					return err
 				}
 				dbp.StopReason = StopNextFinished
-				return conditionErrors(threads)
+				return conditionErrors(grp)
 			}
 		case curbp.Active:
 			onNextGoroutine, err := onNextGoroutine(dbp, curthread, dbp.Breakpoints())
@@ -191,17 +223,56 @@ func (grp *TargetGroup) Continue() error {
 			if curbp.Breakpoint.WatchType != 0 {
 				dbp.StopReason = StopWatchpoint
 			}
-			return conditionErrors(threads)
+			return conditionErrors(grp)
 		default:
 			// not a manual stop, not on runtime.Breakpoint, not on a breakpoint, just repeat
 		}
 		if callInjectionDone {
 			// a call injection was finished, don't let a breakpoint with a failed
 			// condition or a step breakpoint shadow this.
-			dbp.StopReason = StopCallReturned
-			return conditionErrors(threads)
+			return conditionErrors(grp)
 		}
 	}
+}
+
+func (grp *TargetGroup) finishManualStop() {
+	for _, dbp := range grp.targets {
+		if isvalid, _ := dbp.Valid(); !isvalid {
+			continue
+		}
+		dbp.StopReason = StopManual
+		dbp.clearHardcodedBreakpoints()
+		if grp.KeepSteppingBreakpoints&HaltKeepsSteppingBreakpoints == 0 {
+			dbp.ClearSteppingBreakpoints()
+		}
+	}
+}
+
+// setCurrentThreads switches traptgt to trapthread, then for each target in
+// the group if its current thread exists it refreshes the current
+// goroutine, otherwise it switches it to a randomly selected thread.
+func (grp *TargetGroup) setCurrentThreads(traptgt *Target, trapthread Thread) error {
+	var err error
+	if traptgt != nil && trapthread != nil {
+		err = traptgt.SwitchThread(trapthread.ThreadID())
+	}
+	for _, tgt := range grp.targets {
+		if isvalid, _ := tgt.Valid(); !isvalid {
+			continue
+		}
+		if _, ok := tgt.FindThread(tgt.currentThread.ThreadID()); ok {
+			tgt.selectedGoroutine, _ = GetG(tgt.currentThread)
+		} else {
+			threads := tgt.ThreadList()
+			if len(threads) > 0 {
+				err1 := tgt.SwitchThread(threads[0].ThreadID())
+				if err1 != nil && err == nil {
+					err = err1
+				}
+			}
+		}
+	}
+	return err
 }
 
 func isTraceOrTraceReturn(bp *Breakpoint) bool {
@@ -211,14 +282,19 @@ func isTraceOrTraceReturn(bp *Breakpoint) bool {
 	return bp.Logical.Tracepoint || bp.Logical.TraceReturn
 }
 
-func conditionErrors(threads []Thread) error {
+func conditionErrors(grp *TargetGroup) error {
 	var condErr error
-	for _, th := range threads {
-		if bp := th.Breakpoint(); bp.Breakpoint != nil && bp.CondError != nil {
-			if condErr == nil {
-				condErr = bp.CondError
-			} else {
-				return fmt.Errorf("multiple errors evaluating conditions")
+	for _, dbp := range grp.targets {
+		if isvalid, _ := dbp.Valid(); !isvalid {
+			continue
+		}
+		for _, th := range dbp.ThreadList() {
+			if bp := th.Breakpoint(); bp.Breakpoint != nil && bp.CondError != nil {
+				if condErr == nil {
+					condErr = bp.CondError
+				} else {
+					return fmt.Errorf("multiple errors evaluating conditions")
+				}
 			}
 		}
 	}
@@ -226,24 +302,88 @@ func conditionErrors(threads []Thread) error {
 }
 
 // pick a new dbp.currentThread, with the following priority:
+//
 //   - a thread with an active stepping breakpoint
 //   - a thread with an active breakpoint, prioritizing trapthread
-//   - trapthread
-func pickCurrentThread(dbp *Target, trapthread Thread, threads []Thread) error {
+//   - trapthread if it is not nil
+//   - the previous current thread if it still exists
+//   - a randomly selected thread
+func pickCurrentThread(dbp *Target, trapthread Thread) error {
+	threads := dbp.ThreadList()
 	for _, th := range threads {
 		if bp := th.Breakpoint(); bp.Active && bp.Stepping {
 			return dbp.SwitchThread(th.ThreadID())
 		}
 	}
-	if bp := trapthread.Breakpoint(); bp.Active {
-		return dbp.SwitchThread(trapthread.ThreadID())
+	if trapthread != nil {
+		if bp := trapthread.Breakpoint(); bp.Active {
+			return dbp.SwitchThread(trapthread.ThreadID())
+		}
 	}
 	for _, th := range threads {
 		if bp := th.Breakpoint(); bp.Active {
 			return dbp.SwitchThread(th.ThreadID())
 		}
 	}
-	return dbp.SwitchThread(trapthread.ThreadID())
+	if trapthread != nil {
+		return dbp.SwitchThread(trapthread.ThreadID())
+	}
+	if _, ok := dbp.FindThread(dbp.currentThread.ThreadID()); ok {
+		dbp.selectedGoroutine, _ = GetG(dbp.currentThread)
+		return nil
+	}
+	if len(threads) > 0 {
+		return dbp.SwitchThread(threads[0].ThreadID())
+	}
+	return nil
+}
+
+// pickCurrentTarget picks a new current target, with the following property:
+//
+//   - a target with an active stepping breakpoint
+//   - a target with StopReason == StopCallReturned
+//   - a target with an active breakpoint, prioritizing traptgt
+//   - traptgt
+func (grp *TargetGroup) pickCurrentTarget(traptgt *Target) {
+	if len(grp.targets) == 1 {
+		grp.Selected = grp.targets[0]
+		return
+	}
+	for _, dbp := range grp.targets {
+		if isvalid, _ := dbp.Valid(); !isvalid {
+			continue
+		}
+		bp := dbp.currentThread.Breakpoint()
+		if bp.Active && bp.Stepping {
+			grp.Selected = dbp
+			return
+		}
+	}
+	for _, dbp := range grp.targets {
+		if isvalid, _ := dbp.Valid(); !isvalid {
+			continue
+		}
+		if dbp.StopReason == StopCallReturned {
+			grp.Selected = dbp
+			return
+		}
+	}
+
+	if traptgt.currentThread.Breakpoint().Active {
+		grp.Selected = traptgt
+		return
+	}
+	for _, dbp := range grp.targets {
+		if isvalid, _ := dbp.Valid(); !isvalid {
+			continue
+		}
+		bp := dbp.currentThread.Breakpoint()
+		if bp.Active {
+			grp.Selected = dbp
+			return
+		}
+	}
+	grp.Selected = traptgt
 }
 
 func disassembleCurrentInstruction(p Process, thread Thread, off int64) ([]AsmInstruction, error) {

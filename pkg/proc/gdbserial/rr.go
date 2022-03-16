@@ -124,7 +124,7 @@ func Record(cmd []string, wd string, quiet bool, redirects [3]string) (tracedir 
 
 // Replay starts an instance of rr in replay mode, with the specified trace
 // directory, and connects to it.
-func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string) (*proc.Target, error) {
+func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string) (*proc.TargetGroup, error) {
 	if err := checkRRAvailable(); err != nil {
 		return nil, err
 	}
@@ -279,7 +279,7 @@ func rrParseGdbCommand(line string) rrInit {
 }
 
 // RecordAndReplay acts like calling Record and then Replay.
-func RecordAndReplay(cmd []string, wd string, quiet bool, debugInfoDirs []string, redirects [3]string) (*proc.Target, string, error) {
+func RecordAndReplay(cmd []string, wd string, quiet bool, debugInfoDirs []string, redirects [3]string) (*proc.TargetGroup, string, error) {
 	tracedir, err := Record(cmd, wd, quiet, redirects)
 	if tracedir == "" {
 		return nil, "", err

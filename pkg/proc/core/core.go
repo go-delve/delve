@@ -204,7 +204,7 @@ var ErrUnrecognizedFormat = errors.New("unrecognized core format")
 // OpenCore will open the core file and return a Process struct.
 // If the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.Target, error) {
+func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.TargetGroup, error) {
 	var p *process
 	var currentThread proc.Thread
 	var err error
@@ -222,14 +222,13 @@ func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.Target, e
 		return nil, ErrNoThreads
 	}
 
-	return proc.NewTarget(p, p.pid, currentThread, proc.NewTargetConfig{
-		Path:                exePath,
+	grp, addTarget := proc.NewGroup(p, proc.NewTargetGroupConfig{
 		DebugInfoDirs:       debugInfoDirs,
 		DisableAsyncPreempt: false,
-		StopReason:          proc.StopAttached,
 		CanDump:             false,
-		ContinueOnce:        continueOnce,
 	})
+	_, err = addTarget(p, p.pid, currentThread, exePath, proc.StopAttached)
+	return grp, err
 }
 
 // BinInfo will return the binary info.
@@ -308,6 +307,11 @@ func (p *process) ReadMemory(data []byte, addr uint64) (n int, err error) {
 // to the memory of a core process.
 func (p *process) WriteMemory(addr uint64, data []byte) (int, error) {
 	return 0, ErrWriteCore
+}
+
+// FollowExec enables (or disables) follow exec mode
+func (p *process) FollowExec(bool) error {
+	return nil
 }
 
 // ProcessMemory returns the memory of this thread's process.
@@ -419,7 +423,7 @@ func (p *process) ClearInternalBreakpoints() error {
 	return nil
 }
 
-func continueOnce(procs []proc.ProcessInternal, cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
+func (*process) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
 	return nil, proc.StopUnknown, ErrContinueCore
 }
 
