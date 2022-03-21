@@ -56,11 +56,11 @@ func (dbp *Target) Continue() error {
 	}
 	dbp.Breakpoints().WatchOutOfScope = nil
 	dbp.clearHardcodedBreakpoints()
-	dbp.CheckAndClearManualStopRequest()
+	dbp.cctx.CheckAndClearManualStopRequest()
 	defer func() {
 		// Make sure we clear internal breakpoints if we simultaneously receive a
 		// manual stop request and hit a breakpoint.
-		if dbp.CheckAndClearManualStopRequest() {
+		if dbp.cctx.CheckAndClearManualStopRequest() {
 			dbp.StopReason = StopManual
 			dbp.clearHardcodedBreakpoints()
 			if dbp.KeepSteppingBreakpoints&HaltKeepsSteppingBreakpoints == 0 {
@@ -69,7 +69,7 @@ func (dbp *Target) Continue() error {
 		}
 	}()
 	for {
-		if dbp.CheckAndClearManualStopRequest() {
+		if dbp.cctx.CheckAndClearManualStopRequest() {
 			dbp.StopReason = StopManual
 			dbp.clearHardcodedBreakpoints()
 			if dbp.KeepSteppingBreakpoints&HaltKeepsSteppingBreakpoints == 0 {
@@ -78,7 +78,7 @@ func (dbp *Target) Continue() error {
 			return nil
 		}
 		dbp.ClearCaches()
-		trapthread, stopReason, contOnceErr := dbp.proc.ContinueOnce()
+		trapthread, stopReason, contOnceErr := dbp.proc.ContinueOnce(dbp.cctx)
 		dbp.StopReason = stopReason
 
 		threads := dbp.ThreadList()

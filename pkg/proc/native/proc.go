@@ -3,7 +3,6 @@ package native
 import (
 	"os"
 	"runtime"
-	"sync"
 
 	"github.com/go-delve/delve/pkg/proc"
 )
@@ -27,15 +26,9 @@ type nativeProcess struct {
 
 	os             *osProcessDetails
 	firstStart     bool
-	resumeChan     chan<- struct{}
 	ptraceChan     chan func()
 	ptraceDoneChan chan interface{}
-	childProcess   bool       // this process was launched, not attached to
-	stopMu         sync.Mutex // protects manualStopRequested
-	// manualStopRequested is set if all the threads in the process were
-	// signalled to stop as a result of a Halt API call. Used to disambiguate
-	// why a thread is found to have stopped.
-	manualStopRequested bool
+	childProcess   bool // this process was launched, not attached to
 
 	// Controlling terminal file descriptor for
 	// this process.
@@ -112,12 +105,6 @@ func (dbp *nativeProcess) Valid() (bool, error) {
 	return true, nil
 }
 
-// ResumeNotify specifies a channel that will be closed the next time
-// ContinueOnce finishes resuming the target.
-func (dbp *nativeProcess) ResumeNotify(ch chan<- struct{}) {
-	dbp.resumeChan = ch
-}
-
 // ThreadList returns a list of threads in the process.
 func (dbp *nativeProcess) ThreadList() []proc.Thread {
 	r := make([]proc.Thread, 0, len(dbp.threads))
@@ -145,26 +132,11 @@ func (dbp *nativeProcess) Breakpoints() *proc.BreakpointMap {
 
 // RequestManualStop sets the `manualStopRequested` flag and
 // sends SIGSTOP to all threads.
-func (dbp *nativeProcess) RequestManualStop() error {
+func (dbp *nativeProcess) RequestManualStop(cctx *proc.ContinueOnceContext) error {
 	if dbp.exited {
 		return proc.ErrProcessExited{Pid: dbp.pid}
 	}
-	dbp.stopMu.Lock()
-	defer dbp.stopMu.Unlock()
-	dbp.manualStopRequested = true
 	return dbp.requestManualStop()
-}
-
-// CheckAndClearManualStopRequest checks if a manual stop has
-// been requested, and then clears that state.
-func (dbp *nativeProcess) CheckAndClearManualStopRequest() bool {
-	dbp.stopMu.Lock()
-	defer dbp.stopMu.Unlock()
-
-	msr := dbp.manualStopRequested
-	dbp.manualStopRequested = false
-
-	return msr
 }
 
 func (dbp *nativeProcess) WriteBreakpoint(bp *proc.Breakpoint) error {
@@ -202,7 +174,7 @@ func (dbp *nativeProcess) EraseBreakpoint(bp *proc.Breakpoint) error {
 
 // ContinueOnce will continue the target until it stops.
 // This could be the result of a breakpoint or signal.
-func (dbp *nativeProcess) ContinueOnce() (proc.Thread, proc.StopReason, error) {
+func (dbp *nativeProcess) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
 	if dbp.exited {
 		return nil, proc.StopExited, proc.ErrProcessExited{Pid: dbp.pid}
 	}
@@ -217,16 +189,16 @@ func (dbp *nativeProcess) ContinueOnce() (proc.Thread, proc.StopReason, error) {
 			th.CurrentBreakpoint.Clear()
 		}
 
-		if dbp.resumeChan != nil {
-			close(dbp.resumeChan)
-			dbp.resumeChan = nil
+		if cctx.ResumeChan != nil {
+			close(cctx.ResumeChan)
+			cctx.ResumeChan = nil
 		}
 
 		trapthread, err := dbp.trapWait(-1)
 		if err != nil {
 			return nil, proc.StopUnknown, err
 		}
-		trapthread, err = dbp.stop(trapthread)
+		trapthread, err = dbp.stop(cctx, trapthread)
 		if err != nil {
 			return nil, proc.StopUnknown, err
 		}
