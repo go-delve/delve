@@ -655,3 +655,10 @@ type GoroutineGroupingOptions struct {
 	MaxGroupMembers int
 	MaxGroups       int
 }
+
+// Target represents a debugging target.
+type Target struct {
+	Pid           int
+	CmdLine       string
+	CurrentThread *Thread
+}
