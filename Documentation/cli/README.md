@@ -105,9 +105,9 @@ If regex is specified only function arguments with a name matching it will be re
 ## break
 Sets a breakpoint.
 
-	break [name] [linespec]
+	break [name] [locspec]
 
-See [Documentation/cli/locspec.md](//github.com/go-delve/delve/tree/master/Documentation/cli/locspec.md) for the syntax of linespec. If linespec is omitted a breakpoint will be set on the current line.
+See [Documentation/cli/locspec.md](//github.com/go-delve/delve/tree/master/Documentation/cli/locspec.md) for the syntax of locspec. If locspec is omitted a breakpoint will be set on the current line.
 
 See also: "help on", "help cond" and "help clear"
 
@@ -170,9 +170,9 @@ Aliases: clearcheck
 ## clearall
 Deletes multiple breakpoints.
 
-	clearall [<linespec>]
+	clearall [<locspec>]
 
-If called with the linespec argument it will delete all the breakpoints matching the linespec. If linespec is omitted all breakpoints are deleted.
+If called with the locspec argument it will delete all the breakpoints matching the locspec. If locspec is omitted all breakpoints are deleted.
 
 
 ## condition
@@ -237,9 +237,9 @@ Defines <alias> as an alias to <command> or removes an alias.
 ## continue
 Run until breakpoint or program termination.
 
-	continue [<linespec>]
+	continue [<locspec>]
 
-Optional linespec argument allows you to continue until a specific location is reached. The program will halt if a breakpoint is hit before reaching the specified location.
+Optional locspec argument allows you to continue until a specific location is reached. The program will halt if a breakpoint is hit before reaching the specified location.
 
 For example:
 
@@ -446,9 +446,9 @@ List loaded dynamic libraries
 ## list
 Show source code.
 
-	[goroutine <n>] [frame <m>] list [<linespec>]
+	[goroutine <n>] [frame <m>] list [<locspec>]
 
-Show source around current point or provided linespec.
+Show source around current point or provided locspec.
 
 For example:
 
@@ -633,9 +633,9 @@ toggle <breakpoint name or id>
 ## trace
 Set tracepoint.
 
-	trace [name] [linespec]
+	trace [name] [locspec]
 
-A tracepoint is a breakpoint that does not stop the execution of the program, instead when the tracepoint is hit a notification is displayed. See [Documentation/cli/locspec.md](//github.com/go-delve/delve/tree/master/Documentation/cli/locspec.md) for the syntax of linespec. If linespec is omitted a tracepoint will be set on the current line.
+A tracepoint is a breakpoint that does not stop the execution of the program, instead when the tracepoint is hit a notification is displayed. See [Documentation/cli/locspec.md](//github.com/go-delve/delve/tree/master/Documentation/cli/locspec.md) for the syntax of locspec. If locspec is omitted a tracepoint will be set on the current line.
 
 See also: "help on", "help cond" and "help clear"
 
