@@ -1270,6 +1270,12 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 		err = d.target.StepOut()
 	case api.SwitchThread:
 		d.log.Debugf("switching to thread %d", command.ThreadID)
+		for _, tgt := range d.target.ValidTargets() {
+			if _, ok := tgt.FindThread(command.ThreadID); ok {
+				d.target.Sel = tgt
+				break
+			}
+		}
 		err = d.target.Sel.SwitchThread(command.ThreadID)
 		withBreakpointInfo = false
 	case api.SwitchGoroutine:
@@ -2237,6 +2243,19 @@ func (d *Debugger) GetBufferedTracepoints() []api.TracepointResult {
 		}
 	}
 	return results
+}
+
+// FollowExec enabled or disables follow exec mode.
+func (d *Debugger) FollowExec(enabled bool, regex string) error {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+	return d.target.FollowExec(enabled, regex)
+}
+
+func (d *Debugger) FollowExecEnabled() bool {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+	return d.target.FollowExecEnabled
 }
 
 type pidAddr struct {

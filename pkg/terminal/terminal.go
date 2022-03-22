@@ -59,6 +59,7 @@ type Term struct {
 	stdout   *transcriptWriter
 	InitFile string
 	displays []displayEntry
+	oldPid   int
 
 	historyFile *os.File
 

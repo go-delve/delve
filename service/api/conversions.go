@@ -446,3 +446,11 @@ func ConvertDumpState(dumpState *proc.DumpState) *DumpState {
 	}
 	return r
 }
+
+func ConvertTarget(tgt *proc.Target) *Target {
+	//TODO(aarzilli): copy command line here
+	return &Target{
+		Pid:           tgt.Pid(),
+		CurrentThread: ConvertThread(tgt.CurrentThread()),
+	}
+}

@@ -15,8 +15,9 @@ import (
 // enabled and the backend supports it, otherwise the group will always
 // contain a single target process.
 type TargetGroup struct {
-	targets []*Target
-	Sel     *Target
+	targets           []*Target
+	Sel               *Target
+	FollowExecEnabled bool
 
 	RecordingManipulation
 	recman RecordingManipulationInternal
@@ -335,5 +336,6 @@ func (grp *TargetGroup) FollowExec(v bool, regex string) error {
 			return err
 		}
 	}
+	grp.FollowExecEnabled = v
 	return nil
 }

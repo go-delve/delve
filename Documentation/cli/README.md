@@ -91,6 +91,7 @@ Command | Description
 [list](#list) | Show source code.
 [source](#source) | Executes a file containing a list of delve commands
 [sources](#sources) | Print list of source files.
+[target](#target) | Manages child process debugging.
 [transcript](#transcript) | Appends command output to a file.
 [types](#types) | Print list of types
 
@@ -612,6 +613,22 @@ Aliases: si
 Step out of the current function.
 
 Aliases: so
+
+## target
+Manages child process debugging.
+
+	target follow-exec [-on [regex]] [-off]
+
+Enables or disables follow exec mode. When follow exec mode Delve will automatically attach to new child processes executed by the target process. An optional regular expression can be passed to 'target follow-exec', only child processes with a command line matching the regular expression will be followed.
+
+	target list
+
+List currently attached processes.
+
+	target switch [pid]
+
+Switches to the specified process.
+
 
 ## thread
 Switch to the specified thread.

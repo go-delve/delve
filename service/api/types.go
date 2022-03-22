@@ -652,3 +652,9 @@ type GoroutineGroupingOptions struct {
 	MaxGroupMembers int
 	MaxGroups       int
 }
+
+type Target struct {
+	Pid           int
+	CmdLine       string
+	CurrentThread *Thread
+}

@@ -530,6 +530,24 @@ func (c *RPCClient) CoreDumpCancel() error {
 	return c.call("DumpCancel", DumpCancelIn{}, out)
 }
 
+func (c *RPCClient) ListTargets() ([]api.Target, error) {
+	out := &ListTargetsOut{}
+	err := c.call("ListTargets", ListTargetsIn{}, out)
+	return out.Targets, err
+}
+
+func (c *RPCClient) FollowExec(v bool, regex string) error {
+	out := &FollowExecOut{}
+	err := c.call("FollowExec", FollowExecIn{Enable: v, Regex: regex}, out)
+	return err
+}
+
+func (c *RPCClient) FollowExecEnabled() bool {
+	out := &FollowExecEnabledOut{}
+	_ = c.call("FollowExecEnabled", FollowExecEnabledIn{}, out)
+	return out.Enabled
+}
+
 func (c *RPCClient) call(method string, args, reply interface{}) error {
 	return c.client.Call("RPCServer."+method, args, reply)
 }
