@@ -696,6 +696,7 @@ func TestDAPCmd(t *testing.T) {
 func newDAPRemoteClient(t *testing.T, addr string) *daptest.Client {
 	c := daptest.NewClient(addr)
 	c.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
+	c.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
 	c.ExpectInitializedEvent(t)
 	c.ExpectAttachResponse(t)
 	c.ConfigurationDoneRequest()
