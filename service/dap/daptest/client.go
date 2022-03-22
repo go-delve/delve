@@ -105,7 +105,6 @@ func (c *Client) ExpectInitializeResponseAndCapabilities(t *testing.T) *dap.Init
 		SupportsConfigurationDoneRequest: true,
 		SupportsConditionalBreakpoints:   true,
 		SupportsDelayedStackTraceLoading: true,
-		SupportTerminateDebuggee:         true,
 		SupportsExceptionInfoRequest:     true,
 		SupportsSetVariable:              true,
 		SupportsFunctionBreakpoints:      true,
@@ -135,6 +134,15 @@ func (c *Client) ExpectNotYetImplementedErrorResponse(t *testing.T) *dap.ErrorRe
 func (c *Client) ExpectUnsupportedCommandErrorResponse(t *testing.T) *dap.ErrorResponse {
 	t.Helper()
 	return c.ExpectErrorResponseWith(t, 9999, "Unsupported command", false)
+}
+
+func (c *Client) ExpectCapabilitiesEventSupportTerminateDebuggee(t *testing.T) *dap.CapabilitiesEvent {
+	t.Helper()
+	e := c.ExpectCapabilitiesEvent(t)
+	if !e.Body.Capabilities.SupportTerminateDebuggee {
+		t.Errorf("\ngot %#v\nwant SupportTerminateDebuggee=true", e.Body.Capabilities.SupportTerminateDebuggee)
+	}
+	return e
 }
 
 func (c *Client) ExpectOutputEventRegex(t *testing.T, want string) *dap.OutputEvent {

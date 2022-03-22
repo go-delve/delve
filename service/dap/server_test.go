@@ -506,6 +506,7 @@ func TestAttachStopOnEntry(t *testing.T) {
 		// 2 >> attach, << initialized, << attach
 		client.AttachRequest(
 			map[string]interface{}{"mode": "local", "processId": cmd.Process.Pid, "stopOnEntry": true, "backend": "default"})
+		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
 		initEvent := client.ExpectInitializedEvent(t)
 		if initEvent.Seq != 0 {
 			t.Errorf("\ngot %#v\nwant Seq=0", initEvent)
@@ -3676,6 +3677,7 @@ func substitutePathTestHelper(t *testing.T, fixture protest.Fixture, client *dap
 			switch request {
 			case "attach":
 				client.AttachRequest(launchAttachConfig)
+				client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
 			case "launch":
 				client.LaunchRequestWithArgs(launchAttachConfig)
 			default:
@@ -5663,6 +5665,7 @@ func TestAttachRequest(t *testing.T) {
 			func() {
 				client.AttachRequest(map[string]interface{}{
 					/*"mode": "local" by default*/ "processId": cmd.Process.Pid, "stopOnEntry": false})
+				client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
 			},
 			// Set breakpoints
 			fixture.Source, []int{8},
@@ -6555,6 +6558,7 @@ func TestAttachRemoteToHaltedTargetStopOnEntry(t *testing.T) {
 	_, dbg := launchDebuggerWithTargetHalted(t, "increment")
 	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
 		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
+		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
 		client.ExpectInitializedEvent(t)
 		client.ExpectAttachResponse(t)
 		client.ConfigurationDoneRequest()
@@ -6568,6 +6572,7 @@ func TestAttachRemoteToHaltedTargetContinueOnEntry(t *testing.T) {
 	_, dbg := launchDebuggerWithTargetHalted(t, "http_server")
 	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
 		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": false})
+		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
 		client.ExpectInitializedEvent(t)
 		client.ExpectAttachResponse(t)
 		client.ConfigurationDoneRequest()
@@ -6584,6 +6589,7 @@ func TestAttachRemoteToRunningTargetStopOnEntry(t *testing.T) {
 	fixture, dbg := launchDebuggerWithTargetRunning(t, "loopprog")
 	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
 		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
+		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
 		client.ExpectInitializedEvent(t)
 		client.ExpectAttachResponse(t)
 		// Target is halted here
@@ -6603,6 +6609,7 @@ func TestAttachRemoteToRunningTargetContinueOnEntry(t *testing.T) {
 	fixture, dbg := launchDebuggerWithTargetRunning(t, "loopprog")
 	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
 		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": false})
+		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
 		client.ExpectInitializedEvent(t)
 		client.ExpectAttachResponse(t)
 		// Target is halted here
@@ -6617,7 +6624,7 @@ func TestAttachRemoteToRunningTargetContinueOnEntry(t *testing.T) {
 }
 
 // TestAttachRemoteMultiClientDisconnect tests that that remote attach doesn't take down
-// the server in multi-client mode unless terminateDebugee is explicitely set.
+// the server in multi-client mode unless terminateDebuggee is explicitely set.
 func TestAttachRemoteMultiClientDisconnect(t *testing.T) {
 	closingClientSessionOnly := fmt.Sprintf(daptest.ClosingClient, "halted")
 	detachingAndTerminating := "Detaching and terminating target process"
@@ -6651,6 +6658,7 @@ func TestAttachRemoteMultiClientDisconnect(t *testing.T) {
 			client.ExpectInitializeResponseAndCapabilities(t)
 
 			client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
+			client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
 			client.ExpectInitializedEvent(t)
 			client.ExpectAttachResponse(t)
 			client.ConfigurationDoneRequest()
