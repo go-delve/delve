@@ -277,7 +277,7 @@ const (
 
 	// VariableFakeAddress means the address of this variable is either fake
 	// (i.e. the variable is partially or completely stored in a CPU register
-	// and doesn't have a real address) or possibly no longer availabe (because
+	// and doesn't have a real address) or possibly no longer available (because
 	// the variable is the return value of a function call and allocated on a
 	// frame that no longer exists)
 	VariableFakeAddress

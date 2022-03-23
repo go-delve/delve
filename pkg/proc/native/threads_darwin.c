@@ -14,7 +14,7 @@ write_memory(task_t task, mach_vm_address_t addr, void *d, mach_msg_type_number_
 	kret = mach_vm_region((vm_map_t)task, &(mach_vm_address_t){addr}, (mach_vm_size_t*)&l, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&info, &count, &objname);
 	if (kret != KERN_SUCCESS) return -1;
 
-	// Set permissions to enable writting to this memory location
+	// Set permissions to enable writing to this memory location
 	kret = mach_vm_protect(task, addr, len, FALSE, VM_PROT_WRITE|VM_PROT_COPY|VM_PROT_READ);
 	if (kret != KERN_SUCCESS) return -1;
 

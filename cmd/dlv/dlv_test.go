@@ -810,7 +810,7 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 	dapclient2.ExpectTerminatedEvent(t)
 	closeDAPRemoteMultiClient(t, dapclient2, "exited")
 
-	// Attach to exited processs is an error
+	// Attach to exited processes is an error
 	dapclient3 := daptest.NewClient(listenAddr)
 	dapclient3.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
 	dapclient3.ExpectErrorResponseWith(t, dap.FailedToAttach, `Process \d+ has exited with status 0`, true)

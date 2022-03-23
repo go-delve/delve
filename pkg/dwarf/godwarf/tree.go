@@ -194,7 +194,7 @@ func max(a, b uint64) uint64 {
 
 // fuseRanges fuses rngs2 into rngs1, it's the equivalent of
 //     normalizeRanges(append(rngs1, rngs2))
-// but more efficent.
+// but more efficient.
 func fuseRanges(rngs1, rngs2 [][2]uint64) [][2]uint64 {
 	if rangesContains(rngs1, rngs2) {
 		return rngs1

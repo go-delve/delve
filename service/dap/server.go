@@ -145,7 +145,7 @@ type Session struct {
 	// to ensure that messages do not get interleaved
 	sendingMu sync.Mutex
 
-	// runningCmd tracks whether the server is running an asyncronous
+	// runningCmd tracks whether the server is running an asynchronous
 	// command that resumes execution, which may not correspond to the actual
 	// running state of the process (e.g. if a command is temporarily interrupted).
 	runningCmd bool
@@ -251,9 +251,9 @@ type dapClientCapabilites struct {
 }
 
 // DefaultLoadConfig controls how variables are loaded from the target's memory.
-// These limits are conservative to minimize performace overhead for bulk loading.
+// These limits are conservative to minimize performance overhead for bulk loading.
 // With dlv-dap, users do not have a way to adjust these.
-// Instead we are focusing in interacive loading with nested reloads, array/map
+// Instead we are focusing in interactive loading with nested reloads, array/map
 // paging and context-specific string limits.
 var DefaultLoadConfig = proc.LoadConfig{
 	FollowPointers:     true,
@@ -1547,7 +1547,7 @@ func closeIfOpen(ch chan struct{}) {
 
 // onConfigurationDoneRequest handles 'configurationDone' request.
 // This is an optional request enabled by capability ‘supportsConfigurationDoneRequest’.
-// It gets triggered after all the debug requests that follow initalized event,
+// It gets triggered after all the debug requests that follow initialized event,
 // so the s.debugger is guaranteed to be set. Expects the target to be halted.
 func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest, allowNextStateChange chan struct{}) {
 	defer closeIfOpen(allowNextStateChange)
@@ -2203,7 +2203,7 @@ func (s *Session) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 			keyType := s.getTypeIfSupported(keyv)
 			valType := s.getTypeIfSupported(valv)
 			// If key or value or both are scalars, we can use
-			// a single variable to represet key:value format.
+			// a single variable to represent key:value format.
 			// Otherwise, we must return separate variables for both.
 			if keyref > 0 && valref > 0 { // Both are not scalars
 				keyvar := dap.Variable{
@@ -2585,7 +2585,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 // Support the following expressions:
 // -- {expression} - evaluates the expression and returns the result as a variable
 // -- call {function} - injects a function call and returns the result as a variable
-// -- config {expression} - updates configuration paramaters
+// -- config {expression} - updates configuration parameters
 // TODO(polina): users have complained about having to click to expand multi-level
 // variables, so consider also adding the following:
 // -- print {expression} - return the result as a string like from dlv cli

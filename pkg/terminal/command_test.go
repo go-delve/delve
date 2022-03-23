@@ -155,7 +155,7 @@ func withTestTerminalBuildFlags(name string, t testing.TB, buildFlags test.Build
 func TestCommandDefault(t *testing.T) {
 	var (
 		cmds = Commands{}
-		cmd  = cmds.Find("non-existant-command", noPrefix).cmdFn
+		cmd  = cmds.Find("non-existent-command", noPrefix).cmdFn
 	)
 
 	err := cmd(nil, callContext{}, "")

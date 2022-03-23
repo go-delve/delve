@@ -429,7 +429,7 @@ func PrettyExamineMemory(address uintptr, memArea []byte, isLittleEndian bool, f
 		addrFmt string
 	)
 
-	// Diffrent versions of golang output differently about '#'.
+	// Different versions of golang output differently about '#'.
 	// See https://ci.appveyor.com/project/derekparker/delve-facy3/builds/30179356.
 	switch format {
 	case 'b':
