@@ -36,7 +36,7 @@ type DumpState struct {
 type DumpFlags uint16
 
 const (
-	DumpPlatformIndependent DumpFlags = 1 << iota // always use platfrom-independent notes format
+	DumpPlatformIndependent DumpFlags = 1 << iota // always use platform-independent notes format
 )
 
 // MemoryMapEntry represent a memory mapping in the target process.

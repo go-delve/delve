@@ -191,7 +191,7 @@ func FindFileLocation(p Process, filename string, lineno int) ([]uint64, error) 
 		return nil, &ErrCouldNotFindLine{fileFound, filename, lineno}
 	}
 
-	// 2. assign all occurences of filename:lineno to their containing function
+	// 2. assign all occurrences of filename:lineno to their containing function
 
 	pcByFunc := map[*Function][]line.PCStmt{}
 	sort.Slice(pcs, func(i, j int) bool { return pcs[i].PC < pcs[j].PC })

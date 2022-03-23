@@ -483,7 +483,7 @@ func (t *Target) RequestManualStop() error {
 
 const (
 	FakeAddressBase     = 0xbeef000000000000
-	fakeAddressUnresolv = 0xbeed000000000000 // this address never resloves to memory
+	fakeAddressUnresolv = 0xbeed000000000000 // this address never resolves to memory
 )
 
 // newCompositeMemory creates a new compositeMemory object and registers it.

@@ -270,7 +270,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	if thread == nil {
 		// We are doing a nested function call and using Go 1.15, the original
 		// injection goroutine was suspended and now we are using a different
-		// goroutine, evaluation still happend on the original goroutine but we
+		// goroutine, evaluation still happened on the original goroutine but we
 		// need to use a different thread to do the nested call injection.
 		thread = scope.callCtx.injectionThread
 		g2, err := GetG(thread)
