@@ -2291,7 +2291,7 @@ func TestVariablesMetadata(t *testing.T) {
 				disconnect: false,
 			}, {
 				execute: func() {
-					checkStop(t, client, 1, "main.main", 372)
+					checkStop(t, client, 1, "main.main", -1)
 
 					client.VariablesRequest(localsScope)
 					locals := client.ExpectVariablesResponse(t)
@@ -5966,12 +5966,7 @@ func TestSetVariable(t *testing.T) {
 				execute: func() {
 					tester := &helperForSetVariable{t, client}
 
-					startLineno := 364 // after runtime.Breakpoint
-					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
-						startLineno = -1
-					}
-
-					checkStop(t, client, 1, "main.main", startLineno)
+					checkStop(t, client, 1, "main.main", -1)
 					locals := tester.variables(localsScope)
 
 					// channel

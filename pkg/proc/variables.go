@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unsafe"
 
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
@@ -1304,6 +1305,9 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 				v.Children[i].loadValueInternal(recurseLevel+1, cfg)
 			}
 		}
+		if t.Name == "time.Time" {
+			v.formatTime()
+		}
 
 	case reflect.Interface:
 		v.loadInterface(recurseLevel, true, cfg)
@@ -2454,3 +2458,63 @@ type constantValuesByValue []constantValue
 func (v constantValuesByValue) Len() int               { return len(v) }
 func (v constantValuesByValue) Less(i int, j int) bool { return v[i].value < v[j].value }
 func (v constantValuesByValue) Swap(i int, j int)      { v[i], v[j] = v[j], v[i] }
+
+const (
+	timeTimeWallHasMonotonicBit uint64 = (1 << 63) // hasMonotonic bit of time.Time.wall
+
+	//lint:ignore ST1011 addSeconds is the name of the relevant function
+	maxAddSeconds time.Duration = (time.Duration(^uint64(0)>>1) / time.Second) * time.Second // maximum number of seconds that can be added with (time.Time).Add, measured in nanoseconds
+
+	wallNsecShift = 30 // size of the nanoseconds field of time.Time.wall
+
+	unixTimestampOfWallEpoch = -2682288000 // number of seconds between the unix epoch and the epoch for time.Time.wall (1 jan 1885)
+)
+
+// formatTime writes formatted value of a time.Time to v.Value.
+// See $GOROOT/src/time/time.go for a description of time.Time internals.
+func (v *Variable) formatTime() {
+	wallv := v.fieldVariable("wall")
+	extv := v.fieldVariable("ext")
+	if wallv == nil || extv == nil || wallv.Unreadable != nil || extv.Unreadable != nil || wallv.Value == nil || extv.Value == nil {
+		return
+	}
+
+	var loc *time.Location
+
+	locv := v.fieldVariable("loc")
+	if locv != nil && locv.Unreadable == nil {
+		namev := locv.loadFieldNamed("name")
+		if namev != nil && namev.Unreadable == nil {
+			name := constant.StringVal(namev.Value)
+			loc, _ = time.LoadLocation(name)
+		}
+	}
+
+	wall, _ := constant.Uint64Val(wallv.Value)
+	ext, _ := constant.Int64Val(extv.Value)
+
+	hasMonotonic := (wall & timeTimeWallHasMonotonicBit) != 0
+	if hasMonotonic {
+		// the 33-bit field of wall holds a 33-bit unsigned wall
+		// seconds since Jan 1 year 1885, and ext holds a signed 64-bit monotonic
+		// clock reading, nanoseconds since process start
+		sec := int64(wall << 1 >> (wallNsecShift + 1)) // seconds since 1 Jan 1885
+		t := time.Unix(sec+unixTimestampOfWallEpoch, 0).UTC()
+		if loc != nil {
+			t = t.In(loc)
+		}
+		v.Value = constant.MakeString(fmt.Sprintf("%s, %+d", t.Format(time.RFC3339), ext))
+	} else {
+		// the full signed 64-bit wall seconds since Jan 1 year 1 is stored in ext
+		var t time.Time
+		for ext > int64(maxAddSeconds/time.Second) {
+			t = t.Add(maxAddSeconds)
+			ext -= int64(maxAddSeconds / time.Second)
+		}
+		t = t.Add(time.Duration(ext) * time.Second)
+		if loc != nil {
+			t = t.In(loc)
+		}
+		v.Value = constant.MakeString(t.Format(time.RFC3339))
+	}
+}

@@ -89,6 +89,10 @@ func (v *Variable) writeTo(buf io.Writer, top, newlines, includeType bool, inden
 			}
 		}
 	case reflect.Struct:
+		if v.Value != "" {
+			fmt.Fprintf(buf, "%s(%s)", v.Type, v.Value)
+			includeType = false
+		}
 		v.writeStructTo(buf, newlines, includeType, indent, fmtstr)
 	case reflect.Interface:
 		if v.Addr == 0 {

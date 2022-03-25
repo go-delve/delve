@@ -850,6 +850,10 @@ func TestEvalExpression(t *testing.T) {
 		{"unknownthing(2)", false, "", "", "", errors.New("could not evaluate function or type unknownthing: could not find symbol value for unknownthing")},
 		{"(*unknownthing)(2)", false, "", "", "", errors.New("could not evaluate function or type (*unknownthing): could not find symbol value for unknownthing")},
 		{"(*strings.Split)(2)", false, "", "", "", errors.New("could not evaluate function or type (*strings.Split): could not find symbol value for strings")},
+
+		// pretty printing special types
+		{"tim1", false, `time.Time(1977-05-25T18:00:00Z)…`, `time.Time(1977-05-25T18:00:00Z)…`, "time.Time", nil},
+		{"tim2", false, `time.Time(2022-06-07T02:03:04-06:00)…`, `time.Time(2022-06-07T02:03:04-06:00)…`, "time.Time", nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())
