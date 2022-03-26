@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Check if the certificate is already present in the system keychain
-security find-certificate -Z -p -c "dlv-cert" /Library/Keychains/System.keychain > /dev/null 2>&1
+security find-certificate -Z -p -c "dlv-cert" /Library/Keychains/System.keychain
 EXIT_CODE=$?
 if [ $EXIT_CODE -eq 0 ]; then
   # Certificate has already been generated and installed
@@ -26,7 +26,7 @@ extendedKeyUsage   = critical,codeSigning
 EOF
 
 # Generate a new certificate
-openssl req -new -newkey rsa:2048 -x509 -days 3650 -nodes -config $CERT.tmpl -extensions codesign_reqext -batch -out $CERT.cer -keyout $CERT.key > /dev/null 2>&1
+openssl req -new -newkey rsa:2048 -x509 -days 3650 -nodes -config $CERT.tmpl -extensions codesign_reqext -batch -out $CERT.cer -keyout $CERT.key
 EXIT_CODE=$?
 if [ $EXIT_CODE -ne 0 ]; then
   # Something went wrong when generating the certificate
@@ -34,7 +34,7 @@ if [ $EXIT_CODE -ne 0 ]; then
 fi
 
 # Install the certificate in the system keychain
-sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain $CERT.cer > /dev/null 2>&1
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain $CERT.cer
 EXIT_CODE=$?
 if [ $EXIT_CODE -ne 0 ]; then
   # Something went wrong when installing the certificate
@@ -42,7 +42,7 @@ if [ $EXIT_CODE -ne 0 ]; then
 fi
 
 # Install the key for the certificate in the system keychain
-sudo security import $CERT.key -A -k /Library/Keychains/System.keychain > /dev/null 2>&1
+sudo security import $CERT.key -A -k /Library/Keychains/System.keychain
 EXIT_CODE=$?
 if [ $EXIT_CODE -ne 0 ]; then
   # Something went wrong when installing the key
@@ -50,10 +50,10 @@ if [ $EXIT_CODE -ne 0 ]; then
 fi
 
 # Kill task_for_pid access control daemon
-sudo pkill -f /usr/libexec/taskgated > /dev/null 2>&1
+sudo pkill -f /usr/libexec/taskgated
 
 # Remove generated files
-rm $CERT.tmpl $CERT.cer $CERT.key > /dev/null 2>&1
+rm $CERT.tmpl $CERT.cer $CERT.key
 
 # Exit indicating the certificate is now generated and installed
 exit 0

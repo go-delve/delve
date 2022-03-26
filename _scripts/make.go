@@ -150,7 +150,7 @@ func checkCert() bool {
 	x.Env = os.Environ()
 	err := x.Run()
 	if x.ProcessState != nil && !x.ProcessState.Success() {
-		fmt.Printf("An error occurred when generating and installing a new certificate\n")
+		fmt.Printf("An error occurred when generating and installing a new certificate: %s\n", x.ProcessState.String())
 		return false
 	}
 	if err != nil {
