@@ -169,7 +169,7 @@ func Attach(pid int, debugInfoDirs []string) (*proc.TargetGroup, error) {
 	return tgt, nil
 }
 
-func initialize(dbp *nativeProcess) error {
+func initialize(dbp *nativeProcess) (string, error) {
 	comm, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/comm", dbp.pid))
 	if err == nil {
 		// removes newline character
@@ -179,22 +179,22 @@ func initialize(dbp *nativeProcess) error {
 	if comm == nil || len(comm) <= 0 {
 		stat, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/stat", dbp.pid))
 		if err != nil {
-			return fmt.Errorf("could not read proc stat: %v", err)
+			return "", fmt.Errorf("could not read proc stat: %v", err)
 		}
 		expr := fmt.Sprintf("%d\\s*\\((.*)\\)", dbp.pid)
 		rexp, err := regexp.Compile(expr)
 		if err != nil {
-			return fmt.Errorf("regexp compile error: %v", err)
+			return "", fmt.Errorf("regexp compile error: %v", err)
 		}
 		match := rexp.FindSubmatch(stat)
 		if match == nil {
-			return fmt.Errorf("no match found using regexp '%s' in /proc/%d/stat", expr, dbp.pid)
+			return "", fmt.Errorf("no match found using regexp '%s' in /proc/%d/stat", expr, dbp.pid)
 		}
 		comm = match[1]
 	}
 	dbp.os.comm = strings.ReplaceAll(string(comm), "%", "%%")
 
-	return nil
+	return getCmdLine(dbp.pid), nil
 }
 
 func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
@@ -460,8 +460,8 @@ func trapWaitInternal(procgrp *processGroup, pid int, options trapWaitOptions) (
 			}
 			dbp = newChildProcess(procgrp.procs[0], wpid)
 			dbp.followExec = true
-			dbp.initializeBasic()
-			_, err := procgrp.add(dbp, dbp.pid, dbp.memthread, findExecutable("", dbp.pid), proc.StopLaunched)
+			cmdline, _ := dbp.initializeBasic()
+			tgt, err := procgrp.add(dbp, dbp.pid, dbp.memthread, findExecutable("", dbp.pid), proc.StopLaunched, cmdline)
 			if err != nil {
 				_ = dbp.Detach(false)
 				return nil, err
@@ -469,12 +469,16 @@ func trapWaitInternal(procgrp *processGroup, pid int, options trapWaitOptions) (
 			if halt {
 				return nil, nil
 			}
-			// TODO(aarzilli): if we want to give users the ability to stop the target
-			// group on exec here is where we should return
-			err = dbp.threads[dbp.pid].Continue()
-			if err != nil {
-				return nil, err
+			if tgt != nil {
+				// If tgt is nil we decided we are not interested in debugging this
+				// process, and we have already detached from it.
+				err = dbp.threads[dbp.pid].Continue()
+				if err != nil {
+					return nil, err
+				}
 			}
+			//TODO(aarzilli): if we want to give users the ability to stop the target
+			//group on exec here is where we should return
 			continue
 		}
 		if th == nil {
@@ -916,4 +920,18 @@ func (dbp *nativeProcess) FollowExec(v bool) error {
 
 func killProcess(pid int) error {
 	return sys.Kill(pid, sys.SIGINT)
+}
+
+func getCmdLine(pid int) string {
+	buf, _ := ioutil.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+	args := strings.SplitN(string(buf), "\x00", -1)
+	for i := range args {
+		if strings.Contains(args[i], " ") {
+			args[i] = strconv.Quote(args[i])
+		}
+	}
+	if len(args) > 0 && args[len(args)-1] == "" {
+		args = args[:len(args)-1]
+	}
+	return strings.Join(args, " ")
 }

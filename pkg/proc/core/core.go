@@ -227,7 +227,7 @@ func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.TargetGro
 		DisableAsyncPreempt: false,
 		CanDump:             false,
 	})
-	_, err = addTarget(p, p.pid, currentThread, exePath, proc.StopAttached)
+	_, err = addTarget(p, p.pid, currentThread, exePath, proc.StopAttached, "")
 	return grp, err
 }
 

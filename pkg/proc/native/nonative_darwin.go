@@ -142,4 +142,4 @@ func (t *nativeThread) SoftExc() bool {
 	panic(ErrNativeBackendDisabled)
 }
 
-func initialize(dbp *nativeProcess) error { return nil }
+func initialize(dbp *nativeProcess) (string, error) { return "", nil }

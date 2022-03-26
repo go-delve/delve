@@ -2553,7 +2553,7 @@ func printcontext(t *Term, state *api.DebuggerState) {
 
 	if state.Pid != t.oldPid {
 		if t.oldPid != 0 {
-			fmt.Fprintf(t.stdout, "Switch target process from %d to %d\n", t.oldPid, state.Pid)
+			fmt.Fprintf(t.stdout, "Switch target process from %d to %d (%s)\n", t.oldPid, state.Pid, state.TargetCommandLine)
 		}
 		t.oldPid = state.Pid
 	}
