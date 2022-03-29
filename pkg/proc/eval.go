@@ -2095,7 +2095,7 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 	wrong := false
 	cptrNeedsFakeSlice := false
 	if v.Flags&VariableCPtr == 0 {
-		wrong = low < 0 || low >= v.Len || high < 0 || high > v.Len
+		wrong = low < 0 || low > v.Len || high < 0 || high > v.Len
 	} else {
 		wrong = low < 0 || high < 0
 		if high == 0 {
