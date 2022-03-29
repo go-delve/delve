@@ -601,6 +601,7 @@ func TestEvalExpression(t *testing.T) {
 		{"str1[3:]", false, "\"34567890\"", "\"34567890\"", "string", nil},
 		{"str1[0:12]", false, "", "", "string", fmt.Errorf("index out of bounds")},
 		{"str1[5:3]", false, "", "", "string", fmt.Errorf("index out of bounds")},
+		{"str1[11:]", false, "\"\"", "\"\"", "string", nil},
 
 		// NaN and Inf floats
 		{"pinf", false, "+Inf", "+Inf", "float64", nil},
