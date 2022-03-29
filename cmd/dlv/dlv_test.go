@@ -295,8 +295,14 @@ func TestChildProcessExitWhenNoDebugInfo(t *testing.T) {
 	fix := protest.BuildFixture("http_server", protest.LinkStrip)
 
 	// dlv exec the binary file and expect error.
-	if _, err := exec.Command(dlvbin, "exec", fix.Path).CombinedOutput(); err == nil {
+	out, err := exec.Command(dlvbin, "exec", "--headless", "--log", fix.Path).CombinedOutput()
+	t.Log(string(out))
+	if err == nil {
 		t.Fatalf("Expected err when launching the binary without debug info, but got nil")
+	}
+	//  Test only for dlv's prefix of the error like "could not launch process: could not open debug info"
+	if !strings.Contains(string(out), "could not launch process") {
+		t.Fatalf("Expected logged error 'could not launch process: ...'")
 	}
 
 	// search the running process named fix.Name
