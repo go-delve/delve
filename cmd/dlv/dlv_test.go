@@ -26,6 +26,7 @@ import (
 	"github.com/go-delve/delve/pkg/terminal"
 	"github.com/go-delve/delve/service/dap"
 	"github.com/go-delve/delve/service/dap/daptest"
+	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/rpc2"
 	godap "github.com/google/go-dap"
 	"golang.org/x/tools/go/packages"
@@ -301,8 +302,8 @@ func TestChildProcessExitWhenNoDebugInfo(t *testing.T) {
 		t.Fatalf("Expected err when launching the binary without debug info, but got nil")
 	}
 	//  Test only for dlv's prefix of the error like "could not launch process: could not open debug info"
-	if !strings.Contains(string(out), "could not launch process") {
-		t.Fatalf("Expected logged error 'could not launch process: ...'")
+	if !strings.Contains(string(out), "could not launch process") || !strings.Contains(string(out), debugger.NoDebugWarning) {
+		t.Fatalf("Expected logged error 'could not launch process: ... - %s'", debugger.NoDebugWarning)
 	}
 
 	// search the running process named fix.Name

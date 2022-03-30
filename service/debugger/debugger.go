@@ -162,6 +162,7 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		p, err := d.Attach(d.config.AttachPid, path)
 		if err != nil {
 			err = go11DecodeErrorCheck(err)
+			err = noDebugErrorWarning(err)
 			return nil, attachErrorMessage(d.config.AttachPid, err)
 		}
 		d.target = p
@@ -193,6 +194,7 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		if err != nil {
 			if _, ok := err.(*proc.ErrUnsupportedArch); !ok {
 				err = go11DecodeErrorCheck(err)
+				err = noDebugErrorWarning(err)
 				err = fmt.Errorf("could not launch process: %s", err)
 			}
 			return nil, err
@@ -2238,6 +2240,15 @@ func go11DecodeErrorCheck(err error) error {
 	}
 
 	return fmt.Errorf("executables built by Go 1.11 or later need Delve built by Go 1.11 or later")
+}
+
+const NoDebugWarning string = "debuggee must not be built with 'go run' or -ldflgs='-s -w', which strip debug info"
+
+func noDebugErrorWarning(err error) error {
+	if _, isdecodeerr := err.(dwarf.DecodeError); isdecodeerr || strings.Contains(err.Error(), "could not open debug info") {
+		return fmt.Errorf("%s - %s", err.Error(), NoDebugWarning)
+	}
+	return err
 }
 
 type breakpointsByLogicalID []*proc.Breakpoint
