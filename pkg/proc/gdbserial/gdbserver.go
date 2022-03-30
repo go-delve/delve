@@ -711,7 +711,7 @@ func (p *gdbProcess) initialize(path string, debugInfoDirs []string, stopReason 
 		StopReason:          stopReason,
 		CanDump:             runtime.GOOS == "darwin"})
 	if err != nil {
-		p.conn.conn.Close()
+		p.Detach(true)
 		return nil, err
 	}
 	return tgt, nil

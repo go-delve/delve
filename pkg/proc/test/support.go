@@ -78,6 +78,8 @@ const (
 	BuildModePlugin
 	BuildModeExternalLinker
 	AllNonOptimized
+	// LinkDisableDWARF enables '-ldflags="-w"'.
+	LinkDisableDWARF
 )
 
 // BuildFixture will compile the fixture 'name' using the provided build flags.
@@ -114,9 +116,14 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 		// Work-around for https://github.com/golang/go/issues/13154
 		buildFlags = append(buildFlags, "-ldflags=-linkmode internal")
 	}
+	ldflagsv := []string{}
 	if flags&LinkStrip != 0 {
-		buildFlags = append(buildFlags, "-ldflags=-s")
+		ldflagsv = append(ldflagsv, "-s")
 	}
+	if flags&LinkDisableDWARF != 0 {
+		ldflagsv = append(ldflagsv, "-w")
+	}
+	buildFlags = append(buildFlags, "-ldflags="+strings.Join(ldflagsv, " "))
 	gcflagsv := []string{}
 	if flags&EnableInlining == 0 {
 		gcflagsv = append(gcflagsv, "-l")
