@@ -2242,7 +2242,7 @@ func go11DecodeErrorCheck(err error) error {
 	return fmt.Errorf("executables built by Go 1.11 or later need Delve built by Go 1.11 or later")
 }
 
-const NoDebugWarning string = "debuggee must not be built with 'go run' or -ldflgs='-s -w', which strip debug info"
+const NoDebugWarning string = "debuggee must not be built with 'go run' or -ldflags='-s -w', which strip debug info"
 
 func noDebugErrorWarning(err error) error {
 	if _, isdecodeerr := err.(dwarf.DecodeError); isdecodeerr || strings.Contains(err.Error(), "could not open debug info") {
