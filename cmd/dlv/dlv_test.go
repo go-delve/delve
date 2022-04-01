@@ -282,8 +282,10 @@ func TestContinue(t *testing.T) {
 
 // TestChildProcessExitWhenNoDebugInfo verifies that the child process exits when dlv launch the binary without debug info
 func TestChildProcessExitWhenNoDebugInfo(t *testing.T) {
+	noDebugFlags := protest.LinkStrip
+	// -s doesn't strip symbols on Mac, use -w instead
 	if runtime.GOOS == "darwin" {
-		t.Skip("test skipped on darwin, see https://github.com/go-delve/delve/pull/2018 for details")
+		noDebugFlags = protest.LinkDisableDWARF
 	}
 
 	if _, err := exec.LookPath("ps"); err != nil {
@@ -293,7 +295,7 @@ func TestChildProcessExitWhenNoDebugInfo(t *testing.T) {
 	dlvbin, tmpdir := getDlvBin(t)
 	defer os.RemoveAll(tmpdir)
 
-	fix := protest.BuildFixture("http_server", protest.LinkStrip)
+	fix := protest.BuildFixture("http_server", noDebugFlags)
 
 	// dlv exec the binary file and expect error.
 	out, err := exec.Command(dlvbin, "exec", "--headless", "--log", fix.Path).CombinedOutput()
@@ -696,6 +698,58 @@ func TestDAPCmd(t *testing.T) {
 	if _, err := client.ReadMessage(); err != io.EOF {
 		t.Errorf("got %q, want \"EOF\"\n", err)
 	}
+	client.Close()
+	cmd.Wait()
+}
+
+func TestDAPCmdWithNoDebugBinary(t *testing.T) {
+	const listenAddr = "127.0.0.1:40579"
+
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	cmd := exec.Command(dlvbin, "dap", "--log", "--listen", listenAddr)
+	stdout, err := cmd.StdoutPipe()
+	assertNoError(err, t, "stdout pipe")
+	defer stdout.Close()
+	stderr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer stderr.Close()
+	assertNoError(cmd.Start(), t, "start dap instance")
+
+	scanOut := bufio.NewScanner(stdout)
+	scanErr := bufio.NewScanner(stderr)
+	// Wait for the debug server to start
+	scanOut.Scan()
+	listening := "DAP server listening at: " + listenAddr
+	if scanOut.Text() != listening {
+		cmd.Process.Kill() // release the port
+		t.Fatalf("Unexpected stdout:\ngot  %q\nwant %q", scanOut.Text(), listening)
+	}
+	go func() { // Capture logging
+		for scanErr.Scan() {
+			t.Log(scanErr.Text())
+		}
+	}()
+
+	// Exec the stripped debuggee and expect things to fail
+	noDebugFlags := protest.LinkStrip
+	// -s doesn't strip symbols on Mac, use -w instead
+	if runtime.GOOS == "darwin" {
+		noDebugFlags = protest.LinkDisableDWARF
+	}
+	fixture := protest.BuildFixture("increment", noDebugFlags)
+	go func() {
+		for scanOut.Scan() {
+			t.Errorf("Unexpected stdout: %s", scanOut.Text())
+		}
+	}()
+	client := daptest.NewClient(listenAddr)
+	client.LaunchRequest("exec", fixture.Path, false)
+	client.ExpectErrorResponse(t)
+	client.DisconnectRequest()
+	client.ExpectDisconnectResponse(t)
+	client.ExpectTerminatedEvent(t)
 	client.Close()
 	cmd.Wait()
 }
