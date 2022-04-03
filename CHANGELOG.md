@@ -4,7 +4,7 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
-## [1.8.2] 2021-03-07
+## [1.8.2] 2022-03-07
 ### Added
 - Add '-clear' option for 'condition' command (@chainhelen)
 - Support ctrl-Z for shell job control (@derekparker)
@@ -19,7 +19,7 @@ This project adheres to Semantic Versioning.
 - Downgrade loadBuildID error to warning (@aarzilli)
 - Require go-delve/liner in go.mod file instead of upstream version (@hyanhag)
 
-## [1.8.1] 2021-02-07
+## [1.8.1] 2022-02-07
 
 ### Added
 
