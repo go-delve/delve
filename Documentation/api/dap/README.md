@@ -3,7 +3,7 @@
 Delve exposes a [DAP](https://microsoft.github.io/debug-adapter-protocol/overview) API interface.
 
 This interface is served over a streaming TCP socket using `dlv` server in one of the two headless modes:
-* `dlv dap` - starts a single-use DAP-only server that waits for a client to specify launch/attach configuration for starting the debug session.
+* [`dlv dap`](../../usage/dlv_dap.md) - starts a single-use DAP-only server that waits for a client to specify launch/attach configuration for starting the debug session.
 * `dlv --headless <command> <debugee>` - starts a general server, enters a debug session for the specified debuggee and waits for a [JSON-RPC](../json-rpc/README.md) or a [DAP](https://microsoft.github.io/debug-adapter-protocol/overview) client to begin interactive debugging. Can be used in multi-client mode with the following options:
    *  `--accept-multiclient` - use to support connections from multiple clients
    *  `--continue` - use to resume debuggee execution as soon as server session starts
