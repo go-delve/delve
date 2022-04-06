@@ -3374,6 +3374,9 @@ func TestCgoStacktrace(t *testing.T) {
 		if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 8, Rev: -1}) {
 			t.Skip("disabled on macOS with go before version 1.8")
 		}
+		if runtime.GOARCH == "arm64" && (ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 19, Rev: -1})) {
+			t.Skip("disable on macOS/arm64 with Go after version 1.19")
+		}
 	}
 
 	skipOn(t, "broken - cgo stacktraces", "386")
