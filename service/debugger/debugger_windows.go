@@ -36,7 +36,7 @@ func verifyBinaryFormat(exePath string) error {
 	}
 
 	if _, err = pe.NewFile(f); err != nil {
-		return api.ErrNotExecutable
+		return api.ErrNotExecutableSysMismatch
 	}
 	return nil
 }

@@ -14,6 +14,9 @@ import (
 // ErrNotExecutable is an error returned when trying
 // to debug a non-executable file.
 var ErrNotExecutable = errors.New("not an executable file")
+// ErrNotExecutableSysMismatch is an error returned when trying
+// to debug a file with GOOS/GOARCH settings incompaatible with the host system.
+var ErrNotExecutableSysMismatch = errors.New("not an executable file - incompatible GOOS/GOARCH")
 
 // DebuggerState represents the current context of the debugger.
 type DebuggerState struct {

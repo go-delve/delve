@@ -64,7 +64,7 @@ func TestDebugger_LaunchInvalidFormat(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error but none was generated")
 	}
-	if err != api.ErrNotExecutable {
-		t.Fatalf("expected error \"%s\" got \"%v\"", api.ErrNotExecutable, err)
+	if err != api.ErrNotExecutableSysMismatch {
+		t.Fatalf("expected error \"%s\" got \"%v\"", api.ErrNotExecutableSysMismatch, err)
 	}
 }

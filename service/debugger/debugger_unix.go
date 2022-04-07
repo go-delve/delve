@@ -37,7 +37,7 @@ func verifyBinaryFormat(exePath string) error {
 		panic("attempting to open file Delve cannot parse")
 	}
 	if err != nil {
-		return api.ErrNotExecutable
+		return api.ErrNotExecutableSysMismatch
 	}
 	return nil
 }
