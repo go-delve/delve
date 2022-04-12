@@ -480,6 +480,7 @@ func dapCmd(cmd *cobra.Command, args []string) {
 				Foreground:           true, // server always runs without terminal client
 				DebugInfoDirectories: conf.DebugInfoDirectories,
 				CheckGoVersion:       checkGoVersion,
+				DisableASLR:          disableASLR,
 			},
 			CheckLocalConnUser: checkLocalConnUser,
 		}
