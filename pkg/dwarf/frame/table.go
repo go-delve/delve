@@ -62,6 +62,12 @@ const (
 	DW_CFA_advance_loc        = (0x1 << 6) // High 2 bits: 0x1, low 6: delta
 	DW_CFA_offset             = (0x2 << 6) // High 2 bits: 0x2, low 6: register
 	DW_CFA_restore            = (0x3 << 6) // High 2 bits: 0x3, low 6: register
+	// TODO(kakkoyun): Find corresponding values in the spec.
+	// TODO(kakkoyun): Implement noop funcs that skips corresponding bytes.
+	DW_CFA_MIPS_advance_loc8            = 0x1d
+	DW_CFA_GNU_window_save              = 0x2d
+	DW_CFA_GNU_args_size                = 0x2e
+	DW_CFA_GNU_negative_offset_extended = 0x2f
 )
 
 // Rule rule defined for register values.
@@ -113,6 +119,7 @@ var fnlookup = map[byte]instruction{
 	DW_CFA_val_expression:     valexpression,
 	DW_CFA_lo_user:            louser,
 	DW_CFA_hi_user:            hiuser,
+	DW_CFA_GNU_args_size:      gnuargsize,
 }
 
 func executeCIEInstructions(cie *CommonInformationEntry) *FrameContext {
@@ -144,6 +151,18 @@ func executeDwarfProgramUntilPC(fde *FrameDescriptionEntry, pc uint64) *FrameCon
 	return frame
 }
 
+// Unwind the stack to find the return address register.
+func ExecuteDwarfProgram(fde *FrameDescriptionEntry) *FrameContext {
+	// TODO(kakkoyun): Consider using sync.Pool for FrameContext.
+	frame := executeCIEInstructions(fde.CIE)
+	frame.order = fde.order
+	frame.loc = fde.Begin()
+	// frame.address = pc
+	frame.Execute(fde.Instructions)
+
+	return frame
+}
+
 func (frame *FrameContext) executeDwarfProgram() {
 	for frame.buf.Len() > 0 {
 		executeDwarfInstruction(frame)
@@ -159,6 +178,24 @@ func (frame *FrameContext) ExecuteUntilPC(instructions []byte) {
 	// ctx.loc > ctx.address (which is the address we
 	// are currently at in the traced process).
 	for frame.address >= frame.loc && frame.buf.Len() > 0 {
+		executeDwarfInstruction(frame)
+	}
+}
+
+// Execute execute dwarf instructions.
+func (frame *FrameContext) Execute(instructions []byte) {
+	frame.buf.Truncate(0)
+	frame.buf.Write(instructions)
+
+	// TODO(kakkoyun): Cleanup.
+
+	// We only need to execute the instructions until
+	// ctx.loc > ctx.address (which is the address we
+	// are currently at in the traced process).
+	// for frame.address >= frame.loc &&
+
+	// TODO(kakkoyun): What are the implications without a PC?
+	for frame.buf.Len() > 0 {
 		executeDwarfInstruction(frame)
 	}
 }
@@ -207,6 +244,11 @@ func lookupFunc(instruction byte, buf *bytes.Buffer) instruction {
 
 	fn, ok := fnlookup[instruction]
 	if !ok {
+		//msg := fmt.Sprintf("Encountered an unexpected DWARF CFA opcode: %#v", instruction)
+		//fmt.Println(msg)
+		//return unknown
+
+		// TODO(kakkoyun): Why do we have to panic?
 		panic(fmt.Sprintf("Encountered an unexpected DWARF CFA opcode: %#v", instruction))
 	}
 
@@ -423,4 +465,19 @@ func louser(frame *FrameContext) {
 
 func hiuser(frame *FrameContext) {
 	frame.buf.Next(1)
+}
+
+func gnuargsize(frame *FrameContext) {
+	// The DW_CFA_GNU_args_size instruction takes an unsigned LEB128 operand representing an argument size.
+	// Just read and do nothing.
+	// TODO(kakkoyun): !!
+	_, _ = util.DecodeSLEB128(frame.buf)
+}
+
+// TODO(kakkoyun): ? How to move cursor without corrupting?  Do we actually need to do this?
+func unknown(frame *FrameContext) {
+	_, err := frame.buf.ReadByte()
+	if err != nil {
+		panic("Could not read byte")
+	}
 }
