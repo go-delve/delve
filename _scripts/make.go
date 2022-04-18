@@ -294,11 +294,13 @@ func prepareMacnative() string {
 }
 
 func buildFlags() []string {
+	var ldFlags string
 	buildSHA, err := getBuildSHA()
 	if err != nil {
-		log.Fatal(fmt.Errorf("error getting build SHA via git: %w", err))
+		log.Printf("error getting build SHA via git: %w", err)
+	} else {
+		ldFlags = "-X main.Build=" + buildSHA
 	}
-	ldFlags := "-X main.Build=" + buildSHA
 	if runtime.GOOS == "darwin" {
 		ldFlags = "-s " + ldFlags
 	}
