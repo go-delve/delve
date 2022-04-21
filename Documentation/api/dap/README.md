@@ -39,7 +39,7 @@ Not all of the configurations are supported by each of the two available DAP ser
 </tr>
 <tr>
 <td>attach<td>"remote"<td>NOT supported<td>supported<td>Tells the `dlv --headless` server that it is expected to already be debugging a target specified as part of its command-line invocation.
-<td>The client would expect `host:port` specification of an external (a.k.a. remote) server that the user already started with target [command and args](../../usage/README.md).
+<td>The client would expect `host:port` specification of an external (a.k.a. remote) server that the user already started with target <a href="../../usage/README.md">command and args</a>.
 </tr>
 </table>
 
