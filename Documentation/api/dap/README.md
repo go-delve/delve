@@ -3,10 +3,12 @@
 Delve exposes a [DAP](https://microsoft.github.io/debug-adapter-protocol/overview) API interface.
 
 This interface is served over a streaming TCP socket using `dlv` server in one of the two headless modes:
-* [`dlv dap`](../../usage/dlv_dap.md) - starts a single-use DAP-only server that waits for a client to specify launch/attach configuration for starting the debug session.
-* `dlv --headless <command> <debugee>` - starts a general server, enters a debug session for the specified debuggee and waits for a [JSON-RPC](../json-rpc/README.md) or a [DAP](https://microsoft.github.io/debug-adapter-protocol/overview) client to begin interactive debugging. Can be used in multi-client mode with the following options:
+1. [`dlv dap`](../../usage/dlv_dap.md) - starts a single-use DAP-only server that waits for a client to specify launch/attach configuration for starting the debug session.
+2. `dlv --headless <command> <debugee>` - starts a general server, enters a debug session for the specified debuggee and waits for a [JSON-RPC](../json-rpc/README.md) or a [DAP](https://microsoft.github.io/debug-adapter-protocol/overview) remote-attach client to begin interactive debugging. Can be used in multi-client mode with the following options:
    *  `--accept-multiclient` - use to support connections from multiple clients
    *  `--continue` - use to resume debuggee execution as soon as server session starts
+
+See [Launch and Attach Configurations](#launch-and-attach-configurations) for more usage details of these two options.
 
 The primary user of this mode is [VS Code Go](https://github.com/golang/vscode-go). Please see its 
 detailed [debugging documentation](https://github.com/golang/vscode-go/blob/master/docs/debugging.md) for additional information.
@@ -20,22 +22,24 @@ See [dap.Server.handleRequest](https://github.com/go-delve/delve/search?q=handle
 ## Launch and Attach Configurations
 
 In addition to the general [DAP spec](https://microsoft.github.io/debug-adapter-protocol/specification), the server supports the following implementation-specific configuration options for starting the debug session:
-   * [AttachRequestArguments](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Attach) - see [AttachConfig godoc](https://pkg.go.dev/github.com/go-delve/delve/service/dap#AttachConfig)
    * [LaunchRequestArguments](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Launch) - see [LaunchConfig godoc](https://pkg.go.dev/github.com/go-delve/delve/service/dap#LaunchConfig)
+   * [AttachRequestArguments](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Attach) - see [AttachConfig godoc](https://pkg.go.dev/github.com/go-delve/delve/service/dap#AttachConfig)
 
 Not all of the configurations are supported by each of the two available DAP servers:
 
 <table border=1>
 <tr>
-<th>request<th>"mode":<th>`dlv dap`<th>`dlv --headless`
+<th>request<th>"mode":<th>`dlv dap`<th>`dlv --headless` <th> Description <th> Typical Client Usage
 </tr>
 <tr>
-<td>launch<td>"debug"<br>"test"<br>"exec"<br>...<td>supported<td>NOT supported
+<td>launch<td>"debug"<br>"test"<br>"exec"<br>"replay"<br>"core"<td>supported<td>NOT supported <td> Tells the `dlv dap` server to launch the specified target and start debugging it.
+<td rowspan=2>The client would launch the `dlv dap` server for the user or allow them to specify `host:port` of an external (a.k.a. remote) server.
 <tr>
-<td>attach<td>"local"<td>supported<td>NOT supported
+<td>attach<td>"local"<td>supported<td>NOT supported<td>Tells the `dlv dap` server to attach to an existing process local to the server.
 </tr>
 <tr>
-<td>attach<td>"remote"<td>NOT supported<td>supported
+<td>attach<td>"remote"<td>NOT supported<td>supported<td>Tells the `dlv --headless` server that it is expected to already be debugging a target specified as part of its command-line invocation.
+<td>The client would expect `host:port` specification of an external (a.k.a. remote) server that the user already started with target [command and args](../../usage/README.md).
 </tr>
 </table>
 
