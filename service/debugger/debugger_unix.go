@@ -28,16 +28,18 @@ func verifyBinaryFormat(exePath string) error {
 	}
 
 	// check that the binary format is what we expect for the host system
+	var exe interface{ Close() error }
 	switch runtime.GOOS {
 	case "darwin":
-		_, err = macho.NewFile(f)
+		exe, err = macho.NewFile(f)
 	case "linux", "freebsd":
-		_, err = elf.NewFile(f)
+		exe, err = elf.NewFile(f)
 	default:
 		panic("attempting to open file Delve cannot parse")
 	}
 	if err != nil {
 		return api.ErrNotExecutable
 	}
+	exe.Close()
 	return nil
 }
