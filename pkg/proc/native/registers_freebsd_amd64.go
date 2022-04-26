@@ -32,12 +32,40 @@ func (thread *nativeThread) SetReg(regNum uint64, reg *op.DwarfRegister) (err er
 	}
 	r := ir.(*fbsdutil.AMD64Registers)
 	switch regNum {
-	case regnum.AMD64_Rip:
-		r.Regs.Rip = int64(reg.Uint64Val)
-	case regnum.AMD64_Rsp:
-		r.Regs.Rsp = int64(reg.Uint64Val)
+	case regnum.AMD64_Rax:
+		r.Regs.Rax = int64(reg.Uint64Val)
+	case regnum.AMD64_Rbx:
+		r.Regs.Rbx = int64(reg.Uint64Val)
+	case regnum.AMD64_Rcx:
+		r.Regs.Rcx = int64(reg.Uint64Val)
 	case regnum.AMD64_Rdx:
 		r.Regs.Rdx = int64(reg.Uint64Val)
+	case regnum.AMD64_Rsi:
+		r.Regs.Rsi = int64(reg.Uint64Val)
+	case regnum.AMD64_Rdi:
+		r.Regs.Rdi = int64(reg.Uint64Val)
+	case regnum.AMD64_Rbp:
+		r.Regs.Rbp = int64(reg.Uint64Val)
+	case regnum.AMD64_Rsp:
+		r.Regs.Rsp = int64(reg.Uint64Val)
+	case regnum.AMD64_R8:
+		r.Regs.R8 = int64(reg.Uint64Val)
+	case regnum.AMD64_R9:
+		r.Regs.R9 = int64(reg.Uint64Val)
+	case regnum.AMD64_R10:
+		r.Regs.R10 = int64(reg.Uint64Val)
+	case regnum.AMD64_R11:
+		r.Regs.R11 = int64(reg.Uint64Val)
+	case regnum.AMD64_R12:
+		r.Regs.R12 = int64(reg.Uint64Val)
+	case regnum.AMD64_R13:
+		r.Regs.R13 = int64(reg.Uint64Val)
+	case regnum.AMD64_R14:
+		r.Regs.R14 = int64(reg.Uint64Val)
+	case regnum.AMD64_R15:
+		r.Regs.R15 = int64(reg.Uint64Val)
+	case regnum.AMD64_Rip:
+		r.Regs.Rip = int64(reg.Uint64Val)
 	default:
 		return fmt.Errorf("changing register %d not implemented", regNum)
 	}
