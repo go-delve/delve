@@ -129,6 +129,11 @@ func (r *AMD64Registers) GAddr() (uint64, bool) {
 	return 0, false
 }
 
+// LR returns the link register.
+func (r *AMD64Registers) LR() uint64 {
+	panic("not valid")
+}
+
 // Copy returns a copy of these registers that is guaranteed not to change.
 func (r *AMD64Registers) Copy() (proc.Registers, error) {
 	if r.loadFpRegs != nil {

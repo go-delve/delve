@@ -3,6 +3,8 @@ package linutil
 import (
 	"fmt"
 
+	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/regnum"
 	"github.com/go-delve/delve/pkg/proc"
 )
 
@@ -115,6 +117,11 @@ func (r *ARM64Registers) GAddr() (uint64, bool) {
 	return r.Regs.Regs[28], !r.iscgo
 }
 
+// LR returns the link register.
+func (r *ARM64Registers) LR() uint64 {
+	return r.Regs.Regs[30]
+}
+
 // Copy returns a copy of these registers that is guaranteed not to change.
 func (r *ARM64Registers) Copy() (proc.Registers, error) {
 	if r.loadFpRegs != nil {
@@ -136,6 +143,40 @@ func (r *ARM64Registers) Copy() (proc.Registers, error) {
 		copy(rr.Fpregset, r.Fpregset)
 	}
 	return &rr, nil
+}
+
+func (r *ARM64Registers) SetReg(regNum uint64, reg *op.DwarfRegister) (fpchanged bool, err error) {
+	switch regNum {
+	case regnum.ARM64_PC:
+		r.Regs.Pc = reg.Uint64Val
+		return false, nil
+	case regnum.ARM64_SP:
+		r.Regs.Sp = reg.Uint64Val
+		return false, nil
+	default:
+		switch {
+		case regNum >= regnum.ARM64_X0 && regNum <= regnum.ARM64_X0+30:
+			r.Regs.Regs[regNum-regnum.ARM64_X0] = reg.Uint64Val
+			return false, nil
+
+		case regNum >= regnum.ARM64_V0 && regNum <= regnum.ARM64_V0+30:
+			if r.loadFpRegs != nil {
+				err := r.loadFpRegs(r)
+				r.loadFpRegs = nil
+				if err != nil {
+					return false, err
+				}
+			}
+
+			i := regNum - regnum.ARM64_V0
+			reg.FillBytes()
+			copy(r.Fpregset[16*i:], reg.Bytes)
+			return true, nil
+
+		default:
+			return false, fmt.Errorf("changing register %d not implemented", regNum)
+		}
+	}
 }
 
 type ARM64PtraceFpRegs struct {

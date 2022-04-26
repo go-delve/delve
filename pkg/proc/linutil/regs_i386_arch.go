@@ -101,8 +101,13 @@ func (r *I386Registers) CX() uint64 {
 }
 
 // TLS returns the address of the thread local storage memory segment.
-func (r I386Registers) TLS() uint64 {
+func (r *I386Registers) TLS() uint64 {
 	return r.Tls
+}
+
+// LR returns the link register.
+func (r *I386Registers) LR() uint64 {
+	panic("not valid")
 }
 
 // GAddr returns the address of the G variable if it is known, 0 and false
