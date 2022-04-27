@@ -42,4 +42,11 @@ export GOARCH="$ARCH"
 export PATH="$GOROOT/bin:$PATH"
 go version
 
+set +e
 make test
+x=$?
+if [ "$GOVERSION" = "gotip" ]; then
+	exit 0
+else
+	exit $x
+fi
