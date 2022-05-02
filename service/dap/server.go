@@ -393,7 +393,7 @@ func (s *Session) Close() {
 	defer s.mu.Unlock()
 
 	if s.debugger != nil {
-		killProcess := s.config.Debugger.AttachPid == 0
+		killProcess := s.debugger.AttachPid() == 0
 		s.stopDebugSession(killProcess)
 	} else if s.noDebugProcess != nil {
 		s.stopNoDebugProcess()
@@ -1165,7 +1165,7 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 		// In case of attach, we leave the program
 		// running by default, which can be
 		// overridden by an explicit request to terminate.
-		killProcess := s.config.Debugger.AttachPid == 0 || request.Arguments.TerminateDebuggee
+		killProcess := s.debugger.AttachPid() == 0 || request.Arguments.TerminateDebuggee
 		err = s.stopDebugSession(killProcess)
 	} else if s.noDebugProcess != nil {
 		s.stopNoDebugProcess()
@@ -1226,7 +1226,7 @@ func (s *Session) stopDebugSession(killProcess bool) error {
 	} else if killProcess {
 		s.logToConsole("Detaching and terminating target process")
 	} else {
-		s.logToConsole("Detaching without terminating target processs")
+		s.logToConsole("Detaching without terminating target process")
 	}
 	err = s.debugger.Detach(killProcess)
 	if err != nil {
@@ -1770,9 +1770,15 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 		if s.config.Debugger.Backend == "rr" {
 			s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportsStepBack: true}}})
 		}
-		// Give the user an option to terminate this server when client disconnects (default is to leave it)
-		s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportTerminateDebuggee: true}}})
-		// TODO(polina); also use SupportSuspendDebuggee when available
+		// Customize termination options for debugger and debuggee
+		if s.config.AcceptMulti {
+			// User can stop debugger with process or leave it running
+			s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportTerminateDebuggee: true}}})
+			// TODO(polina): support SupportSuspendDebuggee when available
+		} else if s.config.Debugger.AttachPid > 0 {
+			// User can stop debugger with process or leave the processs running
+			s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportTerminateDebuggee: true}}})
+		} // else program was launched and the only option will be to stop both
 	default:
 		s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach",
 			fmt.Sprintf("invalid debug configuration - unsupported 'mode' attribute %q", args.Mode))
