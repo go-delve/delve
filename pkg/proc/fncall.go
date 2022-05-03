@@ -44,10 +44,6 @@ const (
 	debugCallFunctionNamePrefix2 = "runtime.debugCall"
 	maxDebugCallVersion          = 2
 	maxArgFrameSize              = 65535
-
-	// maxRegArgBytes is extra padding for ABI1 call injections, equivalent to
-	// the maximum space occupied by register arguments.
-	maxRegArgBytes = 9*8 + 15*8 // TODO: Make this generic for other platforms.
 )
 
 var (
@@ -303,10 +299,10 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	if err != nil {
 		return nil, err
 	}
-	if regs.SP()-256 <= stacklo {
+	if regs.SP()-bi.Arch.debugCallMinStackSize <= stacklo {
 		return nil, errNotEnoughStack
 	}
-	protocolReg, ok := debugCallProtocolReg(dbgcallversion)
+	protocolReg, ok := debugCallProtocolReg(bi.Arch.Name, dbgcallversion)
 	if !ok {
 		return nil, errFuncCallUnsupported
 	}
@@ -324,12 +320,44 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 		return nil, err
 	}
 
-	if err := callOP(bi, thread, regs, dbgcallfn.Entry); err != nil {
-		return nil, err
-	}
-	// write the desired argument frame size at SP-(2*pointer_size) (the extra pointer is the saved PC)
-	if err := writePointer(bi, scope.Mem, regs.SP()-3*uint64(bi.Arch.PtrSize()), uint64(fncall.argFrameSize)); err != nil {
-		return nil, err
+	switch bi.Arch.Name {
+	case "amd64":
+		if err := callOP(bi, thread, regs, dbgcallfn.Entry); err != nil {
+			return nil, err
+		}
+		// write the desired argument frame size at SP-(2*pointer_size) (the extra pointer is the saved PC)
+		if err := writePointer(bi, scope.Mem, regs.SP()-3*uint64(bi.Arch.PtrSize()), uint64(fncall.argFrameSize)); err != nil {
+			return nil, err
+		}
+	case "arm64":
+		// debugCallV2 on arm64 needs a special call sequence, callOP can not be used
+		sp := regs.SP()
+		sp -= 2 * uint64(bi.Arch.PtrSize())
+		if err := setSP(thread, sp); err != nil {
+			return nil, err
+		}
+		if err := writePointer(bi, scope.Mem, sp, regs.LR()); err != nil {
+			return nil, err
+		}
+		if err := setLR(thread, regs.PC()); err != nil {
+			return nil, err
+		}
+		if err := writePointer(bi, scope.Mem, sp-uint64(2*bi.Arch.PtrSize()), uint64(fncall.argFrameSize)); err != nil {
+			return nil, err
+		}
+		regs, err = thread.Registers()
+		if err != nil {
+			return nil, err
+		}
+		regs, err = regs.Copy()
+		if err != nil {
+			return nil, err
+		}
+		fncall.savedRegs = regs
+		err = setPC(thread, dbgcallfn.Entry)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	fncallLog("function call initiated %v frame size %d goroutine %d (thread %d)", fncall.fn, fncall.argFrameSize, scope.g.ID, thread.ThreadID())
@@ -436,16 +464,26 @@ func writePointer(bi *BinaryInfo, mem MemoryReadWriter, addr, val uint64) error 
 // * changes the value of PC to callAddr
 // Note: regs are NOT updated!
 func callOP(bi *BinaryInfo, thread Thread, regs Registers, callAddr uint64) error {
-	sp := regs.SP()
-	// push PC on the stack
-	sp -= uint64(bi.Arch.PtrSize())
-	if err := setSP(thread, sp); err != nil {
-		return err
+	switch bi.Arch.Name {
+	case "amd64":
+		sp := regs.SP()
+		// push PC on the stack
+		sp -= uint64(bi.Arch.PtrSize())
+		if err := setSP(thread, sp); err != nil {
+			return err
+		}
+		if err := writePointer(bi, thread.ProcessMemory(), sp, regs.PC()); err != nil {
+			return err
+		}
+		return setPC(thread, callAddr)
+	case "arm64":
+		if err := setLR(thread, regs.PC()); err != nil {
+			return err
+		}
+		return setPC(thread, callAddr)
+	default:
+		panic("not implemented")
 	}
-	if err := writePointer(bi, thread.ProcessMemory(), sp, regs.PC()); err != nil {
-		return err
-	}
-	return setPC(thread, callAddr)
 }
 
 // funcCallEvalFuncExpr evaluates expr.Fun and returns the function that we're trying to call.
@@ -658,7 +696,7 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 		// See: https://github.com/go-delve/delve/pull/2451#discussion_r665761531
 		// TODO: Make this generic for other platforms.
 		argFrameSize = alignAddr(argFrameSize, 8)
-		argFrameSize += maxRegArgBytes
+		argFrameSize += int64(bi.Arch.maxRegArgBytes)
 	}
 
 	sort.Slice(formalArgs, func(i, j int) bool {
@@ -807,9 +845,13 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 	}
 
 	switch regval {
-	case debugCallRegPrecheckFailed:
+	case debugCallRegPrecheckFailed: // 8
+		archoff := uint64(0)
+		if bi.Arch.Name == "arm64" {
+			archoff = 8
+		}
 		// get error from top of the stack and return it to user
-		errvar, err := readTopstackVariable(p, thread, regs, "string", loadFullValue)
+		errvar, err := readStackVariable(p, thread, regs, archoff, "string", loadFullValue)
 		if err != nil {
 			fncall.err = fmt.Errorf("could not get precheck error reason: %v", err)
 			break
@@ -817,8 +859,9 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		errvar.Name = "err"
 		fncall.err = fmt.Errorf("%v", constant.StringVal(errvar.Value))
 
-	case debugCallRegCompleteCall:
+	case debugCallRegCompleteCall: // 0
 		p.fncallForG[callScope.g.ID].startThreadID = 0
+
 		// evaluate arguments of the target function, copy them into its argument frame and call the function
 		if fncall.fn == nil || fncall.receiver != nil || fncall.closureAddr != 0 {
 			// if we couldn't figure out which function we are calling before
@@ -849,6 +892,10 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		}
 		cfa := regs.SP()
 		oldpc := regs.PC()
+		var oldlr uint64
+		if bi.Arch.Name == "arm64" {
+			oldlr = regs.LR()
+		}
 		callOP(bi, thread, regs, fncall.fn.Entry)
 		formalScope, err := GoroutineScope(callScope.target, thread)
 		if formalScope != nil && formalScope.Regs.CFA != int64(cfa) {
@@ -861,14 +908,22 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 
 		if err != nil {
 			// rolling back the call, note: this works because we called regs.Copy() above
-			setSP(thread, cfa)
-			setPC(thread, oldpc)
+			switch bi.Arch.Name {
+			case "amd64":
+				setSP(thread, cfa)
+				setPC(thread, oldpc)
+			case "arm64":
+				setLR(thread, oldlr)
+				setPC(thread, oldpc)
+			default:
+				panic("not implemented")
+			}
 			fncall.err = err
 			fncall.lateCallFailure = true
 			break
 		}
 
-	case debugCallRegRestoreRegisters:
+	case debugCallRegRestoreRegisters: // 16
 		// runtime requests that we restore the registers (all except pc and sp),
 		// this is also the last step of the function call protocol.
 		pc, sp := regs.PC(), regs.SP()
@@ -886,7 +941,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		}
 		return true
 
-	case debugCallRegReadReturn:
+	case debugCallRegReadReturn: // 1
 		// read return arguments from stack
 		if fncall.panicvar != nil || fncall.lateCallFailure {
 			break
@@ -925,10 +980,25 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		if threadg, _ := GetG(thread); threadg != nil {
 			callScope.callCtx.stacks = append(callScope.callCtx.stacks, threadg.stack)
 		}
+		if bi.Arch.Name == "arm64" {
+			oldlr, err := readUintRaw(thread.ProcessMemory(), regs.SP(), int64(bi.Arch.PtrSize()))
+			if err != nil {
+				fncall.err = fmt.Errorf("could not restore LR: %v", err)
+				break
+			}
+			if err = setLR(thread, oldlr); err != nil {
+				fncall.err = fmt.Errorf("could not restore LR: %v", err)
+				break
+			}
+		}
 
-	case debugCallRegReadPanic:
+	case debugCallRegReadPanic: // 2
 		// read panic value from stack
-		fncall.panicvar, err = readTopstackVariable(p, thread, regs, "interface {}", callScope.callCtx.retLoadCfg)
+		archoff := uint64(0)
+		if bi.Arch.Name == "arm64" {
+			archoff = 8
+		}
+		fncall.panicvar, err = readStackVariable(p, thread, regs, archoff, "interface {}", callScope.callCtx.retLoadCfg)
 		if err != nil {
 			fncall.err = fmt.Errorf("could not get panic: %v", err)
 			break
@@ -944,7 +1014,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 	return false
 }
 
-func readTopstackVariable(t *Target, thread Thread, regs Registers, typename string, loadCfg LoadConfig) (*Variable, error) {
+func readStackVariable(t *Target, thread Thread, regs Registers, off uint64, typename string, loadCfg LoadConfig) (*Variable, error) {
 	bi := thread.BinInfo()
 	scope, err := ThreadScope(t, thread)
 	if err != nil {
@@ -954,7 +1024,7 @@ func readTopstackVariable(t *Target, thread Thread, regs Registers, typename str
 	if err != nil {
 		return nil, err
 	}
-	v := newVariable("", regs.SP(), typ, scope.BinInfo, scope.Mem)
+	v := newVariable("", regs.SP()+off, typ, scope.BinInfo, scope.Mem)
 	v.loadValue(loadCfg)
 	if v.Unreadable != nil {
 		return nil, v.Unreadable
@@ -1040,7 +1110,11 @@ func isCallInjectionStop(t *Target, thread Thread, loc *Location) bool {
 		// call injection just started, did not make any progress before being interrupted by a concurrent breakpoint.
 		return false
 	}
-	text, err := disassembleCurrentInstruction(t, thread, -1)
+	off := int64(0)
+	if thread.BinInfo().Arch.breakInstrMovesPC {
+		off = -int64(len(thread.BinInfo().Arch.breakpointInstruction))
+	}
+	text, err := disassembleCurrentInstruction(t, thread, off)
 	if err != nil || len(text) <= 0 {
 		return false
 	}
@@ -1067,6 +1141,11 @@ func callInjectionProtocol(t *Target, threads []Thread) (done bool, err error) {
 		g, callinj, err := findCallInjectionStateForThread(t, thread)
 		if err != nil {
 			return false, err
+		}
+
+		arch := thread.BinInfo().Arch
+		if !arch.breakInstrMovesPC {
+			setPC(thread, loc.PC+uint64(len(arch.breakpointInstruction)))
 		}
 
 		fncallLog("step for injection on goroutine %d (current) thread=%d (location %s)", g.ID, thread.ThreadID(), loc.Fn.Name)
@@ -1134,18 +1213,27 @@ func debugCallFunction(bi *BinaryInfo) (*Function, int) {
 // debugCallProtocolReg returns the register ID (as defined in pkg/dwarf/regnum)
 // of the register used in the debug call protocol, given the debug call version.
 // Also returns a bool indicating whether the version is supported.
-func debugCallProtocolReg(version int) (uint64, bool) {
-	// TODO(aarzilli): make this generic when call injection is supported on other architectures.
-	var protocolReg uint64
-	switch version {
-	case 1:
-		protocolReg = regnum.AMD64_Rax
-	case 2:
-		protocolReg = regnum.AMD64_R12
+func debugCallProtocolReg(archName string, version int) (uint64, bool) {
+	switch archName {
+	case "amd64":
+		var protocolReg uint64
+		switch version {
+		case 1:
+			protocolReg = regnum.AMD64_Rax
+		case 2:
+			protocolReg = regnum.AMD64_R12
+		default:
+			return 0, false
+		}
+		return protocolReg, true
+	case "arm64":
+		if version == 2 {
+			return regnum.ARM64_X0 + 20, true
+		}
+		return 0, false
 	default:
 		return 0, false
 	}
-	return protocolReg, true
 }
 
 type fakeEntry map[dwarf.Attr]interface{}
@@ -1186,12 +1274,25 @@ func regabiMallocgcWorkaround(bi *BinaryInfo) ([]*godwarf.Tree, error) {
 		}
 	}
 
-	r := []*godwarf.Tree{
-		m("size", t("uintptr"), regnum.AMD64_Rax, false),
-		m("typ", t("*runtime._type"), regnum.AMD64_Rbx, false),
-		m("needzero", t("bool"), regnum.AMD64_Rcx, false),
-		m("~r1", t("unsafe.Pointer"), regnum.AMD64_Rax, true),
+	switch bi.Arch.Name {
+	case "amd64":
+		r := []*godwarf.Tree{
+			m("size", t("uintptr"), regnum.AMD64_Rax, false),
+			m("typ", t("*runtime._type"), regnum.AMD64_Rbx, false),
+			m("needzero", t("bool"), regnum.AMD64_Rcx, false),
+			m("~r1", t("unsafe.Pointer"), regnum.AMD64_Rax, true),
+		}
+		return r, err1
+	case "arm64":
+		r := []*godwarf.Tree{
+			m("size", t("uintptr"), regnum.ARM64_X0, false),
+			m("typ", t("*runtime._type"), regnum.ARM64_X0+1, false),
+			m("needzero", t("bool"), regnum.ARM64_X0+2, false),
+			m("~r1", t("unsafe.Pointer"), regnum.ARM64_X0, true),
+		}
+		return r, err1
+	default:
+		// do nothing
+		return nil, nil
 	}
-
-	return r, err1
 }

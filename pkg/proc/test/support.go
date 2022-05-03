@@ -325,11 +325,16 @@ func MustSupportFunctionCalls(t *testing.T, testBackend string) {
 		t.Skip("this backend does not support function calls")
 	}
 
-	if runtime.GOOS == "darwin" && os.Getenv("TRAVIS") == "true" {
+	if runtime.GOOS == "darwin" && os.Getenv("TRAVIS") == "true" && runtime.GOARCH == "amd64" {
 		t.Skip("function call injection tests are failing on macOS on Travis-CI (see #1802)")
 	}
-	if runtime.GOARCH == "arm64" || runtime.GOARCH == "386" {
+	if runtime.GOARCH == "386" {
 		t.Skip(fmt.Errorf("%s does not support FunctionCall for now", runtime.GOARCH))
+	}
+	if runtime.GOARCH == "arm64" {
+		if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 19) {
+			t.Skip("this version of Go does not support function calls")
+		}
 	}
 }
 

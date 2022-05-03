@@ -1915,6 +1915,10 @@ func (regs *gdbRegisters) GAddr() (uint64, bool) {
 	return regs.gaddr, regs.hasgaddr
 }
 
+func (regs *gdbRegisters) LR() uint64 {
+	return binary.LittleEndian.Uint64(regs.regs["lr"].value)
+}
+
 func (regs *gdbRegisters) byName(name string) uint64 {
 	reg, ok := regs.regs[name]
 	if !ok {
@@ -1950,6 +1954,9 @@ func (t *gdbThread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
 		if !ok {
 			gdbreg, ok = t.regs.regs["z"+regName[1:]]
 		}
+	}
+	if !ok && t.p.bi.Arch.Name == "arm64" && regName == "x30" {
+		gdbreg, ok = t.regs.regs["lr"]
 	}
 	if !ok {
 		return fmt.Errorf("could not set register %s: not found", regName)
