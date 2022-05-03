@@ -57,4 +57,12 @@ elif [ ${version:4:2} -gt 17 ]; then
 	export GOFLAGS=-buildvcs=false
 fi
 
+set +e
 make test
+x=$?
+if [ "$version" = "gotip" ]; then
+	exit 0
+else
+	exit $x
+fi
+
