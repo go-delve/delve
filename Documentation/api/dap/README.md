@@ -22,8 +22,34 @@ See [dap.Server.handleRequest](https://github.com/go-delve/delve/search?q=handle
 ## Launch and Attach Configurations
 
 In addition to the general [DAP spec](https://microsoft.github.io/debug-adapter-protocol/specification), the server supports the following implementation-specific configuration options for starting the debug session:
-   * [LaunchRequestArguments](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Launch) - see [LaunchConfig godoc](https://pkg.go.dev/github.com/go-delve/delve/service/dap#LaunchConfig)
-   * [AttachRequestArguments](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Attach) - see [AttachConfig godoc](https://pkg.go.dev/github.com/go-delve/delve/service/dap#AttachConfig)
+
+<table border=1>
+<tr><th>request<th>mode<th>required<th colspan=9>optional<th></tr>
+<tr><td rowspan=5>launch<br><a href="https://pkg.go.dev/github.com/go-delve/delve/service/dap#LaunchConfig">godoc</a>
+    <td>debug<td>program               <td>dlvCwd<td>env<td>backend<td>args<td>cwd<td>buildFlags<td>output<td>noDebug
+    <td rowspan=7>
+    substitutePath<br>
+    stopOnEntry<br>
+    stackTraceDepth<br>
+    showGlobalVariables<br>
+    showRegisters<br>
+    hideSystemGoroutines<br>
+    goroutineFilters
+    </tr>
+<tr>
+    <td>test<td>program                <td>dlvCwd<td>env<td>backend<td>args<td>cwd<td>buildFlags<td>output<td>noDebug</tr>
+<tr>
+    <td>exec<td>program                <td>dlvCwd<td>env<td>backend<td>args<td>cwd<td>          <td>      <td>noDebug</tr>
+<tr>
+    <td>core<td>program<br>corefilePath<td>dlvCwd<td>env<td>       <td>    <td>   <td>          <td>      <td>       </tr>
+<tr>
+    <td>replay<td>traceDirPath         <td>dlvCwd<td>env<td>       <td>    <td>   <td>          <td>      <td>       </tr>
+<tr><td rowspan=2>attach<br><a href="https://pkg.go.dev/github.com/go-delve/delve/service/dap#AttachConfig">godoc</a>
+    <td>local<td>processId             <td>      <td>   <td>backend<td>   <td>    <td>          <td>      <td>        </tr>
+<tr>
+    <td>remote<td>                     <td>      <td>   <td>       <td>   <td>    <td>          <td>      <td>        </tr>
+</table>
+
 
 Not all of the configurations are supported by each of the two available DAP servers:
 
