@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -52,52 +53,28 @@ type FakeTerminal struct {
 const logCommandOutput = false
 
 func (ft *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
-	outfh, err := ioutil.TempFile("", "cmdtestout")
-	if err != nil {
-		ft.t.Fatalf("could not create temporary file: %v", err)
-	}
-
-	stdout, stderr, termstdout := os.Stdout, os.Stderr, ft.Term.stdout
-	os.Stdout, os.Stderr, ft.Term.stdout = outfh, outfh, outfh
-	defer func() {
-		os.Stdout, os.Stderr, ft.Term.stdout = stdout, stderr, termstdout
-		outfh.Close()
-		outbs, err1 := ioutil.ReadFile(outfh.Name())
-		if err1 != nil {
-			ft.t.Fatalf("could not read temporary output file: %v", err)
-		}
-		outstr = string(outbs)
-		if logCommandOutput {
-			ft.t.Logf("command %q -> %q", cmdstr, outstr)
-		}
-		os.Remove(outfh.Name())
-	}()
+	var buf bytes.Buffer
+	ft.Term.stdout.w = &buf
+	ft.Term.starlarkEnv.Redirect(ft.Term.stdout)
 	err = ft.cmds.Call(cmdstr, ft.Term)
+	outstr = buf.String()
+	if logCommandOutput {
+		ft.t.Logf("command %q -> %q", cmdstr, outstr)
+	}
+	ft.Term.stdout.Flush()
 	return
 }
 
 func (ft *FakeTerminal) ExecStarlark(starlarkProgram string) (outstr string, err error) {
-	outfh, err := ioutil.TempFile("", "cmdtestout")
-	if err != nil {
-		ft.t.Fatalf("could not create temporary file: %v", err)
-	}
-
-	stdout, stderr, termstdout := os.Stdout, os.Stderr, ft.Term.stdout
-	os.Stdout, os.Stderr, ft.Term.stdout = outfh, outfh, outfh
-	defer func() {
-		os.Stdout, os.Stderr, ft.Term.stdout = stdout, stderr, termstdout
-		outfh.Close()
-		outbs, err1 := ioutil.ReadFile(outfh.Name())
-		if err1 != nil {
-			ft.t.Fatalf("could not read temporary output file: %v", err)
-		}
-		outstr = string(outbs)
-		if logCommandOutput {
-			ft.t.Logf("command %q -> %q", starlarkProgram, outstr)
-		}
-		os.Remove(outfh.Name())
-	}()
+	var buf bytes.Buffer
+	ft.Term.stdout.w = &buf
+	ft.Term.starlarkEnv.Redirect(ft.Term.stdout)
 	_, err = ft.Term.starlarkEnv.Execute("<stdin>", starlarkProgram, "main", nil)
+	outstr = buf.String()
+	if logCommandOutput {
+		ft.t.Logf("command %q -> %q", starlarkProgram, outstr)
+	}
+	ft.Term.stdout.Flush()
 	return
 }
 
@@ -178,7 +155,7 @@ func withTestTerminalBuildFlags(name string, t testing.TB, buildFlags test.Build
 func TestCommandDefault(t *testing.T) {
 	var (
 		cmds = Commands{}
-		cmd  = cmds.Find("non-existant-command", noPrefix).cmdFn
+		cmd  = cmds.Find("non-existent-command", noPrefix).cmdFn
 	)
 
 	err := cmd(nil, callContext{}, "")
@@ -1183,6 +1160,26 @@ func TestHitCondBreakpoint(t *testing.T) {
 	})
 }
 
+func TestClearCondBreakpoint(t *testing.T) {
+	withTestTerminal("break", t, func(term *FakeTerminal) {
+		term.MustExec("break main.main:4")
+		term.MustExec("condition 1 i%3==2")
+		listIsAt(t, term, "continue", 7, -1, -1)
+		out := term.MustExec("print i")
+		t.Logf("%q", out)
+		if !strings.Contains(out, "2\n") {
+			t.Fatalf("wrong value of i")
+		}
+		term.MustExec("condition -clear 1")
+		listIsAt(t, term, "continue", 7, -1, -1)
+		out = term.MustExec("print i")
+		t.Logf("%q", out)
+		if !strings.Contains(out, "3\n") {
+			t.Fatalf("wrong value of i")
+		}
+	})
+}
+
 func TestBreakpointEditing(t *testing.T) {
 	term := &FakeTerminal{
 		t:    t,
@@ -1268,4 +1265,49 @@ func TestBreakpointEditing(t *testing.T) {
 			t.Errorf("mismatch after edit\nexpected: %#v\ngot: %#v", tc.outBp, bp)
 		}
 	}
+}
+
+func TestTranscript(t *testing.T) {
+	withTestTerminal("math", t, func(term *FakeTerminal) {
+		term.MustExec("break main.main")
+		out := term.MustExec("continue")
+		if !strings.HasPrefix(out, "> main.main()") {
+			t.Fatalf("Wrong output for next: <%s>", out)
+		}
+		fh, err := ioutil.TempFile("", "test-transcript-*")
+		if err != nil {
+			t.Fatalf("TempFile: %v", err)
+		}
+		name := fh.Name()
+		fh.Close()
+		t.Logf("output to %q", name)
+
+		slurp := func() string {
+			b, err := ioutil.ReadFile(name)
+			if err != nil {
+				t.Fatalf("could not read transcript file: %v", err)
+			}
+			return string(b)
+		}
+
+		term.MustExec(fmt.Sprintf("transcript %s", name))
+		out = term.MustExec("list")
+		//term.MustExec("transcript -off")
+		if out != slurp() {
+			t.Logf("output of list %s", out)
+			t.Logf("contents of transcript: %s", slurp())
+			t.Errorf("transcript and command out differ")
+		}
+
+		term.MustExec(fmt.Sprintf("transcript -t -x %s", name))
+		out = term.MustExec(`print "hello"`)
+		if out != "" {
+			t.Errorf("output of print is %q but should have been suppressed by transcript", out)
+		}
+		if slurp() != "\"hello\"\n" {
+			t.Errorf("wrong contents of transcript: %q", slurp())
+		}
+
+		os.Remove(name)
+	})
 }

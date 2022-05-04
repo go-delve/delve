@@ -26,6 +26,7 @@ import (
 	"github.com/go-delve/delve/pkg/terminal"
 	"github.com/go-delve/delve/service/dap"
 	"github.com/go-delve/delve/service/dap/daptest"
+	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/rpc2"
 	godap "github.com/google/go-dap"
 	"golang.org/x/tools/go/packages"
@@ -208,7 +209,6 @@ func getDlvBin(t *testing.T) (string, string) {
 }
 
 func getDlvBinEBPF(t *testing.T) (string, string) {
-	os.Setenv("CGO_LDFLAGS", "/usr/lib/libbpf.a")
 	return getDlvBinInternal(t, "-tags", "ebpf")
 }
 
@@ -282,8 +282,10 @@ func TestContinue(t *testing.T) {
 
 // TestChildProcessExitWhenNoDebugInfo verifies that the child process exits when dlv launch the binary without debug info
 func TestChildProcessExitWhenNoDebugInfo(t *testing.T) {
+	noDebugFlags := protest.LinkStrip
+	// -s doesn't strip symbols on Mac, use -w instead
 	if runtime.GOOS == "darwin" {
-		t.Skip("test skipped on darwin, see https://github.com/go-delve/delve/pull/2018 for details")
+		noDebugFlags = protest.LinkDisableDWARF
 	}
 
 	if _, err := exec.LookPath("ps"); err != nil {
@@ -293,11 +295,17 @@ func TestChildProcessExitWhenNoDebugInfo(t *testing.T) {
 	dlvbin, tmpdir := getDlvBin(t)
 	defer os.RemoveAll(tmpdir)
 
-	fix := protest.BuildFixture("http_server", protest.LinkStrip)
+	fix := protest.BuildFixture("http_server", noDebugFlags)
 
 	// dlv exec the binary file and expect error.
-	if _, err := exec.Command(dlvbin, "exec", fix.Path).CombinedOutput(); err == nil {
+	out, err := exec.Command(dlvbin, "exec", "--headless", "--log", fix.Path).CombinedOutput()
+	t.Log(string(out))
+	if err == nil {
 		t.Fatalf("Expected err when launching the binary without debug info, but got nil")
+	}
+	//  Test only for dlv's prefix of the error like "could not launch process: could not open debug info"
+	if !strings.Contains(string(out), "could not launch process") || !strings.Contains(string(out), debugger.NoDebugWarning) {
+		t.Fatalf("Expected logged error 'could not launch process: ... - %s'", debugger.NoDebugWarning)
 	}
 
 	// search the running process named fix.Name
@@ -694,9 +702,62 @@ func TestDAPCmd(t *testing.T) {
 	cmd.Wait()
 }
 
+func TestDAPCmdWithNoDebugBinary(t *testing.T) {
+	const listenAddr = "127.0.0.1:40579"
+
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	cmd := exec.Command(dlvbin, "dap", "--log", "--listen", listenAddr)
+	stdout, err := cmd.StdoutPipe()
+	assertNoError(err, t, "stdout pipe")
+	defer stdout.Close()
+	stderr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer stderr.Close()
+	assertNoError(cmd.Start(), t, "start dap instance")
+
+	scanOut := bufio.NewScanner(stdout)
+	scanErr := bufio.NewScanner(stderr)
+	// Wait for the debug server to start
+	scanOut.Scan()
+	listening := "DAP server listening at: " + listenAddr
+	if scanOut.Text() != listening {
+		cmd.Process.Kill() // release the port
+		t.Fatalf("Unexpected stdout:\ngot  %q\nwant %q", scanOut.Text(), listening)
+	}
+	go func() { // Capture logging
+		for scanErr.Scan() {
+			t.Log(scanErr.Text())
+		}
+	}()
+
+	// Exec the stripped debuggee and expect things to fail
+	noDebugFlags := protest.LinkStrip
+	// -s doesn't strip symbols on Mac, use -w instead
+	if runtime.GOOS == "darwin" {
+		noDebugFlags = protest.LinkDisableDWARF
+	}
+	fixture := protest.BuildFixture("increment", noDebugFlags)
+	go func() {
+		for scanOut.Scan() {
+			t.Errorf("Unexpected stdout: %s", scanOut.Text())
+		}
+	}()
+	client := daptest.NewClient(listenAddr)
+	client.LaunchRequest("exec", fixture.Path, false)
+	client.ExpectErrorResponse(t)
+	client.DisconnectRequest()
+	client.ExpectDisconnectResponse(t)
+	client.ExpectTerminatedEvent(t)
+	client.Close()
+	cmd.Wait()
+}
+
 func newDAPRemoteClient(t *testing.T, addr string) *daptest.Client {
 	c := daptest.NewClient(addr)
 	c.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
+	c.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
 	c.ExpectInitializedEvent(t)
 	c.ExpectAttachResponse(t)
 	c.ConfigurationDoneRequest()
@@ -750,9 +811,9 @@ func TestRemoteDAPClient(t *testing.T) {
 	cmd.Wait()
 }
 
-func closeDAPRemoteMultiClient(t *testing.T, c *daptest.Client) {
+func closeDAPRemoteMultiClient(t *testing.T, c *daptest.Client, expectStatus string) {
 	c.DisconnectRequest()
-	c.ExpectOutputEventClosingClient(t)
+	c.ExpectOutputEventClosingClient(t, expectStatus)
 	c.ExpectDisconnectResponse(t)
 	c.ExpectTerminatedEvent(t)
 	c.Close()
@@ -787,6 +848,11 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 		}
 	}()
 
+	// Client 0 connects but with the wrong attach request
+	dapclient0 := daptest.NewClient(listenAddr)
+	dapclient0.AttachRequest(map[string]interface{}{"mode": "local"})
+	dapclient0.ExpectErrorResponse(t)
+
 	// Client 1 connects and continues to main.main
 	dapclient := newDAPRemoteClient(t, listenAddr)
 	dapclient.SetFunctionBreakpointsRequest([]godap.FunctionBreakpoint{{Name: "main.main"}})
@@ -795,7 +861,7 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 	dapclient.ExpectContinueResponse(t)
 	dapclient.ExpectStoppedEvent(t)
 	dapclient.CheckStopLocation(t, 1, "main.main", 5)
-	closeDAPRemoteMultiClient(t, dapclient)
+	closeDAPRemoteMultiClient(t, dapclient, "halted")
 
 	// Client 2 reconnects at main.main and continues to process exit
 	dapclient2 := newDAPRemoteClient(t, listenAddr)
@@ -803,13 +869,13 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 	dapclient2.ContinueRequest(1)
 	dapclient2.ExpectContinueResponse(t)
 	dapclient2.ExpectTerminatedEvent(t)
-	closeDAPRemoteMultiClient(t, dapclient2)
+	closeDAPRemoteMultiClient(t, dapclient2, "exited")
 
-	// Attach to exited processs is an error
+	// Attach to exited processes is an error
 	dapclient3 := daptest.NewClient(listenAddr)
 	dapclient3.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
 	dapclient3.ExpectErrorResponseWith(t, dap.FailedToAttach, `Process \d+ has exited with status 0`, true)
-	closeDAPRemoteMultiClient(t, dapclient3)
+	closeDAPRemoteMultiClient(t, dapclient3, "exited")
 
 	// But rpc clients can still connect and restart
 	rpcclient := rpc2.NewClient(listenAddr)
@@ -849,11 +915,25 @@ func TestRemoteDAPClientAfterContinue(t *testing.T) {
 
 	go func() { // Capture logging
 		for scanErr.Scan() {
-			t.Log(scanErr.Text())
+			text := scanErr.Text()
+			if strings.Contains(text, "Internal Error") {
+				t.Error("ERROR", text)
+			} else {
+				t.Log(text)
+			}
 		}
 	}()
 
 	c := newDAPRemoteClient(t, listenAddr)
+	c.ContinueRequest(1)
+	c.ExpectContinueResponse(t)
+	c.DisconnectRequest()
+	c.ExpectOutputEventClosingClient(t, "running")
+	c.ExpectDisconnectResponse(t)
+	c.ExpectTerminatedEvent(t)
+	c.Close()
+
+	c = newDAPRemoteClient(t, listenAddr)
 	c.DisconnectRequestWithKillOption(true)
 	c.ExpectOutputEventDetachingKill(t)
 	c.ExpectDisconnectResponse(t)
@@ -944,7 +1024,7 @@ func TestTracePid(t *testing.T) {
 	dlvbin, tmpdir := getDlvBin(t)
 	defer os.RemoveAll(tmpdir)
 
-	expected := []byte("goroutine(1): main.A() => ()\n")
+	expected := []byte("goroutine(1): main.A()\n => ()\n")
 
 	// make process run
 	fix := protest.BuildFixture("issue2023", 0)
@@ -1100,6 +1180,10 @@ func TestVersion(t *testing.T) {
 }
 
 func TestStaticcheck(t *testing.T) {
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
+		//TODO(aarzilli): remove this before version 1.8.0 is released
+		t.Skip("staticcheck does not currently support Go 1.18")
+	}
 	_, err := exec.LookPath("staticcheck")
 	if err != nil {
 		t.Skip("staticcheck not installed")

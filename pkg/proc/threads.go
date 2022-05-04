@@ -30,6 +30,8 @@ type Thread interface {
 	StepInstruction() error
 	// SetCurrentBreakpoint updates the current breakpoint of this thread, if adjustPC is true also checks for breakpoints that were just hit (this should only be passed true after a thread resume)
 	SetCurrentBreakpoint(adjustPC bool) error
+	// SoftExc returns true if this thread received a software exception during the last resume.
+	SoftExc() bool
 	// Common returns the CommonThread structure for this thread
 	Common() *CommonThread
 
@@ -97,4 +99,8 @@ func setSP(thread Thread, newSP uint64) error {
 
 func setClosureReg(thread Thread, newClosureReg uint64) error {
 	return thread.SetReg(thread.BinInfo().Arch.ContextRegNum, op.DwarfRegisterFromUint64(newClosureReg))
+}
+
+func setLR(thread Thread, newLR uint64) error {
+	return thread.SetReg(thread.BinInfo().Arch.LRRegNum, op.DwarfRegisterFromUint64(newLR))
 }

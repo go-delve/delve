@@ -35,8 +35,12 @@ func ARM64Arch(goos string) *Arch {
 		usesLR:                           true,
 		PCRegNum:                         regnum.ARM64_PC,
 		SPRegNum:                         regnum.ARM64_SP,
+		ContextRegNum:                    regnum.ARM64_X0 + 26,
+		LRRegNum:                         regnum.ARM64_LR,
 		asmRegisters:                     arm64AsmRegisters,
 		RegisterNameToDwarf:              nameToDwarfFunc(regnum.ARM64NameToDwarf),
+		debugCallMinStackSize:            288,
+		maxRegArgBytes:                   16*8 + 16*8, // 16 int argument registers plus 16 float argument registers
 	}
 }
 

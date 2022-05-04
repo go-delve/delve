@@ -121,7 +121,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 	if err != nil {
 		return nil, err
 	}
-	if _, err := dbp.stop(nil); err != nil {
+	if _, err := dbp.stop(nil, nil); err != nil {
 		return nil, err
 	}
 
@@ -318,9 +318,7 @@ func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
 			return nil, proc.ErrProcessExited{Pid: dbp.pid, Status: status.ExitStatus()}
 
 		case C.MACH_RCV_INTERRUPTED:
-			dbp.stopMu.Lock()
 			halt := dbp.os.halt
-			dbp.stopMu.Unlock()
 			if !halt {
 				// Call trapWait again, it seems
 				// MACH_RCV_INTERRUPTED is emitted before
@@ -349,9 +347,7 @@ func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
 		dbp.updateThreadList()
 		th, ok := dbp.threads[int(port)]
 		if !ok {
-			dbp.stopMu.Lock()
 			halt := dbp.os.halt
-			dbp.stopMu.Unlock()
 			if halt {
 				dbp.os.halt = false
 				return th, nil
@@ -433,9 +429,9 @@ func (dbp *nativeProcess) resume() error {
 }
 
 // stop stops all running threads and sets breakpoints
-func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) {
+func (dbp *nativeProcess) stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
 	if dbp.exited {
-		return nil, proc.ErrProcessExited{Pid: dbp.Pid()}
+		return nil, proc.ErrProcessExited{Pid: dbp.pid}
 	}
 	for _, th := range dbp.threads {
 		if !th.Stopped() {

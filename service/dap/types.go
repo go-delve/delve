@@ -129,6 +129,15 @@ type LaunchConfig struct {
 	// directory.
 	DlvCwd string `json:"dlvCwd,omitempty"`
 
+	// Env specifies optional environment variables for Delve server
+	// in addition to the environment variables Delve initially
+	// started with.
+	// Variables with 'nil' values can be used to unset the named
+	// environment variables.
+	// Values are interpreted verbatim. Variable substitution or
+	// reference to other environment variables is not supported.
+	Env map[string]*string `json:"env,omitempty"`
+
 	LaunchAttachCommonConfig
 }
 
@@ -154,8 +163,13 @@ type LaunchAttachCommonConfig struct {
 	ShowRegisters bool `json:"showRegisters,omitempty"`
 
 	// Boolean value to indicate whether system goroutines
-	// should be should be hidden from the call stack view.
+	// should be hidden from the call stack view.
 	HideSystemGoroutines bool `json:"hideSystemGoroutines,omitempty"`
+
+	// String value to indicate which system goroutines should be
+	// shown in the call stack view. See filtering documentation:
+	// https://github.com/go-delve/delve/blob/master/Documentation/cli/README.md#goroutines
+	GoroutineFilters string `json:"goroutineFilters,omitempty"`
 
 	// An array of mappings from a local path (client) to the remote path (debugger).
 	// This setting is useful when working in a file system with symbolic links,
@@ -195,6 +209,7 @@ func (m *SubstitutePath) UnmarshalJSON(data []byte) error {
 type AttachConfig struct {
 	// Acceptable values are:
 	//   "local": attaches to the local process with the given ProcessID.
+	//   "remote": expects the debugger to already be running to "attach" to an in-progress debug session.
 	//
 	// Default is "local".
 	Mode string `json:"mode"`

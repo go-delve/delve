@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/go-delve/delve/pkg/config"
-	"github.com/go-delve/delve/pkg/goversion"
 )
 
 // Remove the file at path and issue a warning to stderr if this fails.
@@ -31,25 +30,6 @@ func Remove(path string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not remove %v: %v\n", path, err)
 	}
-}
-
-// optflags generates default build flags to turn off optimization and inlining.
-func optflags(args []string) []string {
-	// after go1.9 building with -gcflags='-N -l' and -a simultaneously works.
-	// after go1.10 specifying -a is unnecessary because of the new caching strategy,
-	// but we should pass -gcflags=all=-N -l to have it applied to all packages
-	// see https://github.com/golang/go/commit/5993251c015dfa1e905bdf44bdb41572387edf90
-
-	ver, _ := goversion.Installed()
-	switch {
-	case ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}):
-		args = append(args, "-gcflags", "all=-N -l")
-	case ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}):
-		args = append(args, "-gcflags", "-N -l", "-a")
-	default:
-		args = append(args, "-gcflags", "-N -l")
-	}
-	return args
 }
 
 // GoBuild builds non-test files in 'pkgs' with the specified 'buildflags'
@@ -85,7 +65,7 @@ func goBuildArgs(debugname string, pkgs []string, buildflags string, isTest bool
 	if isTest {
 		args = append([]string{"-c"}, args...)
 	}
-	args = optflags(args)
+	args = append(args, "-gcflags", "all=-N -l")
 	if buildflags != "" {
 		args = append(args, config.SplitQuotedFields(buildflags, '\'')...)
 	}

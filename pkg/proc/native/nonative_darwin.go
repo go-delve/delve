@@ -37,10 +37,6 @@ type osProcessDetails struct{}
 
 func (os *osProcessDetails) Close() {}
 
-func findExecutable(path string, pid int) string {
-	panic(ErrNativeBackendDisabled)
-}
-
 func killProcess(pid int) error {
 	panic(ErrNativeBackendDisabled)
 }
@@ -65,7 +61,7 @@ func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) {
+func (dbp *nativeProcess) stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
 	panic(ErrNativeBackendDisabled)
 }
 
@@ -138,6 +134,11 @@ func (t *nativeThread) withDebugRegisters(f func(*amd64util.DebugRegisters) erro
 // Stopped returns whether the thread is stopped at
 // the operating system level.
 func (t *nativeThread) Stopped() bool {
+	panic(ErrNativeBackendDisabled)
+}
+
+// SoftExc returns true if this thread received a software exception during the last resume.
+func (t *nativeThread) SoftExc() bool {
 	panic(ErrNativeBackendDisabled)
 }
 

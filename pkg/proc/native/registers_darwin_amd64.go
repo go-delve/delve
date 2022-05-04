@@ -1,4 +1,5 @@
-//+build darwin,macnative
+//go:build darwin && macnative
+// +build darwin,macnative
 
 package native
 
@@ -98,6 +99,10 @@ func (r *Regs) SP() uint64 {
 
 func (r *Regs) BP() uint64 {
 	return r.rbp
+}
+
+func (r *Regs) LR() uint64 {
+	return 0
 }
 
 // TLS returns the value of the register

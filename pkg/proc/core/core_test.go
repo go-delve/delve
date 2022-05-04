@@ -257,6 +257,11 @@ func TestCore(t *testing.T) {
 	}
 	p := withCoreFile(t, "panic", "")
 
+	recorded, _ := p.Recorded()
+	if !recorded {
+		t.Fatalf("expecting recorded to be true")
+	}
+
 	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 	if err != nil || len(gs) == 0 {
 		t.Fatalf("GoroutinesInfo() = %v, %v; wanted at least one goroutine", gs, err)
@@ -297,7 +302,7 @@ func TestCore(t *testing.T) {
 	if mainFrame == nil {
 		t.Fatalf("Couldn't find main in stack %v", panickingStack)
 	}
-	msg, err := proc.FrameToScope(p, p.Memory(), nil, *mainFrame).EvalVariable("msg", proc.LoadConfig{MaxStringLen: 64})
+	msg, err := proc.FrameToScope(p, p.Memory(), nil, *mainFrame).EvalExpression("msg", proc.LoadConfig{MaxStringLen: 64})
 	if err != nil {
 		t.Fatalf("Couldn't EvalVariable(msg, ...): %v", err)
 	}
@@ -429,11 +434,11 @@ mainSearch:
 
 	scope := proc.FrameToScope(p, p.Memory(), nil, *mainFrame)
 	loadConfig := proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
-	v1, err := scope.EvalVariable("t", loadConfig)
+	v1, err := scope.EvalExpression("t", loadConfig)
 	assertNoError(err, t, "EvalVariable(t)")
 	assertNoError(v1.Unreadable, t, "unreadable variable 't'")
 	t.Logf("t = %#v\n", v1)
-	v2, err := scope.EvalVariable("s", loadConfig)
+	v2, err := scope.EvalExpression("s", loadConfig)
 	assertNoError(err, t, "EvalVariable(s)")
 	assertNoError(v2.Unreadable, t, "unreadable variable 's'")
 	t.Logf("s = %#v\n", v2)

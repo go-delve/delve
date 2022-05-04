@@ -11,6 +11,8 @@ import (
 	"github.com/go-delve/delve/pkg/proc/winutil"
 )
 
+const enableHardwareBreakpoints = false // see https://github.com/go-delve/delve/issues/2768
+
 // waitStatus is a synonym for the platform-specific WaitStatus
 type waitStatus sys.WaitStatus
 
@@ -20,6 +22,7 @@ type osSpecificDetails struct {
 	hThread            syscall.Handle
 	dbgUiRemoteBreakIn bool // whether thread is an auxiliary DbgUiRemoteBreakIn thread created by Windows
 	delayErr           error
+	setbp              bool
 }
 
 func (t *nativeThread) singleStep() error {
@@ -159,6 +162,10 @@ func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 }
 
 func (t *nativeThread) withDebugRegisters(f func(*amd64util.DebugRegisters) error) error {
+	if !enableHardwareBreakpoints {
+		return errors.New("hardware breakpoints not supported")
+	}
+
 	context := winutil.NewCONTEXT()
 	context.ContextFlags = _CONTEXT_DEBUG_REGISTERS
 
@@ -179,4 +186,9 @@ func (t *nativeThread) withDebugRegisters(f func(*amd64util.DebugRegisters) erro
 	}
 
 	return nil
+}
+
+// SoftExc returns true if this thread received a software exception during the last resume.
+func (t *nativeThread) SoftExc() bool {
+	return t.os.setbp
 }

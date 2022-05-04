@@ -78,6 +78,8 @@ const (
 	BuildModePlugin
 	BuildModeExternalLinker
 	AllNonOptimized
+	// LinkDisableDWARF enables '-ldflags="-w"'.
+	LinkDisableDWARF
 )
 
 // BuildFixture will compile the fixture 'name' using the provided build flags.
@@ -114,9 +116,14 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 		// Work-around for https://github.com/golang/go/issues/13154
 		buildFlags = append(buildFlags, "-ldflags=-linkmode internal")
 	}
+	ldflagsv := []string{}
 	if flags&LinkStrip != 0 {
-		buildFlags = append(buildFlags, "-ldflags=-s")
+		ldflagsv = append(ldflagsv, "-s")
 	}
+	if flags&LinkDisableDWARF != 0 {
+		ldflagsv = append(ldflagsv, "-w")
+	}
+	buildFlags = append(buildFlags, "-ldflags="+strings.Join(ldflagsv, " "))
 	gcflagsv := []string{}
 	if flags&EnableInlining == 0 {
 		gcflagsv = append(gcflagsv, "-l")
@@ -318,11 +325,16 @@ func MustSupportFunctionCalls(t *testing.T, testBackend string) {
 		t.Skip("this backend does not support function calls")
 	}
 
-	if runtime.GOOS == "darwin" && os.Getenv("TRAVIS") == "true" {
+	if runtime.GOOS == "darwin" && os.Getenv("TRAVIS") == "true" && runtime.GOARCH == "amd64" {
 		t.Skip("function call injection tests are failing on macOS on Travis-CI (see #1802)")
 	}
-	if runtime.GOARCH == "arm64" || runtime.GOARCH == "386" {
+	if runtime.GOARCH == "386" {
 		t.Skip(fmt.Errorf("%s does not support FunctionCall for now", runtime.GOARCH))
+	}
+	if runtime.GOARCH == "arm64" {
+		if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 19) {
+			t.Skip("this version of Go does not support function calls")
+		}
 	}
 }
 
@@ -383,11 +395,11 @@ func MustHaveCgo(t *testing.T) {
 func RegabiSupported() bool {
 	// Tracks regabiSupported variable in ParseGOEXPERIMENT internal/buildcfg/exp.go
 	switch {
-	case !goversion.VersionAfterOrEqual(runtime.Version(), 1, 17): // < 1.17
-		return false
+	case goversion.VersionAfterOrEqual(runtime.Version(), 1, 18):
+		return runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64" || runtime.GOARCH == "ppc64le" || runtime.GOARCH == "ppc64"
 	case goversion.VersionAfterOrEqual(runtime.Version(), 1, 17):
 		return runtime.GOARCH == "amd64" && (runtime.GOOS == "android" || runtime.GOOS == "linux" || runtime.GOOS == "darwin" || runtime.GOOS == "windows")
-	default: // >= 1.18
-		return runtime.GOARCH == "amd64" || runtime.GOARCH == "arm64"
+	default:
+		return false
 	}
 }

@@ -8,11 +8,7 @@ ARCH=$2
 TMPDIR=$3
 
 if [ "$GOVERSION" = "gotip" ]; then
-    # TODO: remove this
-    if [ "$arch" != "amd64" ]; then
-        exit 0
-    fi
-    bootstrapver=$(curl https://golang.org/VERSION?m=text)
+    bootstrapver=$(curl https://go.dev/VERSION?m=text)
     cd $TMPDIR
     curl -sSL "https://storage.googleapis.com/golang/$bootstrapver.darwin-$ARCH.tar.gz" | tar -xz
     cd -
@@ -46,4 +42,11 @@ export GOARCH="$ARCH"
 export PATH="$GOROOT/bin:$PATH"
 go version
 
+set +e
 make test
+x=$?
+if [ "$GOVERSION" = "gotip" ]; then
+	exit 0
+else
+	exit $x
+fi

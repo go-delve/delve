@@ -14,6 +14,13 @@ Delve can evaluate a subset of go expression language, specifically the followin
 - Calls to builtin functions: `cap`, `len`, `complex`, `imag` and `real`
 - Type assertion on interface variables (i.e. `somevar.(concretetype)`)
 
+# Special Variables
+
+Delve defines two special variables:
+
+* `runtime.curg` evaluates to the 'g' struct for the current goroutine, in particular `runtime.curg.goid` is the goroutine id of the current goroutine.
+* `runtime.frameoff` is the offset of the frame's base address from the bottom of the stack.
+
 # Nesting limit
 
 When delve evaluates a memory address it will automatically return the value of nested struct members, array and slice items and dereference pointers.
@@ -129,3 +136,4 @@ Because many architectures have SIMD registers that can be used by the applicati
 * `REGNAME.floatN` returns the register REGNAME as an array fo floatN elements.
 
 In all cases N must be a power of 2.
+

@@ -538,9 +538,9 @@ func (dbp *nativeProcess) resume() error {
 }
 
 // stop stops all running threads and sets breakpoints
-func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) {
+func (dbp *nativeProcess) stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
 	if dbp.exited {
-		return nil, proc.ErrProcessExited{Pid: dbp.Pid()}
+		return nil, proc.ErrProcessExited{Pid: dbp.pid}
 	}
 
 	for _, th := range dbp.threads {
@@ -618,9 +618,7 @@ func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) 
 		if th.CurrentBreakpoint.Breakpoint == nil && th.os.setbp && (th.Status != nil) && ((*sys.WaitStatus)(th.Status).StopSignal() == sys.SIGTRAP) && dbp.BinInfo().Arch.BreakInstrMovesPC() {
 			manualStop := false
 			if th.ThreadID() == trapthread.ThreadID() {
-				dbp.stopMu.Lock()
-				manualStop = dbp.manualStopRequested
-				dbp.stopMu.Unlock()
+				manualStop = cctx.GetManualStopRequested()
 			}
 			if !manualStop && th.os.phantomBreakpointPC == pc {
 				// Thread received a SIGTRAP but we don't have a breakpoint for it and
@@ -710,7 +708,7 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 	// Lazily load and initialize the BPF program upon request to set a uprobe.
 	if dbp.os.ebpf == nil {
 		var err error
-		dbp.os.ebpf, err = ebpf.LoadEBPFTracingProgram()
+		dbp.os.ebpf, err = ebpf.LoadEBPFTracingProgram(dbp.bi.Images[0].Path)
 		if err != nil {
 			return err
 		}
@@ -735,10 +733,6 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 	}
 
 	debugname := dbp.bi.Images[0].Path
-	offset, err := ebpf.SymbolToOffset(debugname, fnName)
-	if err != nil {
-		return err
-	}
 
 	// First attach a uprobe at all return addresses. We do this instead of using a uretprobe
 	// for two reasons:
@@ -776,13 +770,18 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 		if err != nil {
 			return err
 		}
-		err = dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, off)
+		err = dbp.os.ebpf.AttachUprobe(dbp.pid, debugname, off)
 		if err != nil {
 			return err
 		}
 	}
 
-	return dbp.os.ebpf.AttachUprobe(dbp.Pid(), debugname, offset)
+	off, err := ebpf.AddressToOffset(f, fn.Entry)
+	if err != nil {
+		return err
+	}
+
+	return dbp.os.ebpf.AttachUprobe(dbp.pid, debugname, off)
 }
 
 func killProcess(pid int) error {

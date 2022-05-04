@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	x := os.Getenv("SOMEVAR")
+	x, y := os.LookupEnv("SOMEVAR")
 	runtime.Breakpoint()
-	fmt.Printf("SOMEVAR=%s\n", x)
+	fmt.Printf("SOMEVAR=%s\n%v", x, y)
 }

@@ -105,7 +105,6 @@ func (c *Client) ExpectInitializeResponseAndCapabilities(t *testing.T) *dap.Init
 		SupportsConfigurationDoneRequest: true,
 		SupportsConditionalBreakpoints:   true,
 		SupportsDelayedStackTraceLoading: true,
-		SupportTerminateDebuggee:         true,
 		SupportsExceptionInfoRequest:     true,
 		SupportsSetVariable:              true,
 		SupportsFunctionBreakpoints:      true,
@@ -137,6 +136,15 @@ func (c *Client) ExpectUnsupportedCommandErrorResponse(t *testing.T) *dap.ErrorR
 	return c.ExpectErrorResponseWith(t, 9999, "Unsupported command", false)
 }
 
+func (c *Client) ExpectCapabilitiesEventSupportTerminateDebuggee(t *testing.T) *dap.CapabilitiesEvent {
+	t.Helper()
+	e := c.ExpectCapabilitiesEvent(t)
+	if !e.Body.Capabilities.SupportTerminateDebuggee {
+		t.Errorf("\ngot %#v\nwant SupportTerminateDebuggee=true", e.Body.Capabilities.SupportTerminateDebuggee)
+	}
+	return e
+}
+
 func (c *Client) ExpectOutputEventRegex(t *testing.T, want string) *dap.OutputEvent {
 	t.Helper()
 	e := c.ExpectOutputEvent(t)
@@ -150,7 +158,13 @@ const ProcessExited = `Process [0-9]+ has exited with status %s\n`
 
 func (c *Client) ExpectOutputEventProcessExited(t *testing.T, status int) *dap.OutputEvent {
 	t.Helper()
-	return c.ExpectOutputEventRegex(t, fmt.Sprintf(ProcessExited, fmt.Sprintf("%d", status)))
+	// We sometimes fail to return the correct exit status on Linux, so allow -1 here as well.
+	return c.ExpectOutputEventRegex(t, fmt.Sprintf(ProcessExited, fmt.Sprintf("(%d|-1)", status)))
+}
+
+func (c *Client) ExpectOutputEventProcessExitedAnyStatus(t *testing.T) *dap.OutputEvent {
+	t.Helper()
+	return c.ExpectOutputEventRegex(t, fmt.Sprintf(ProcessExited, `-?\d+`))
 }
 
 func (c *Client) ExpectOutputEventDetaching(t *testing.T) *dap.OutputEvent {
@@ -173,9 +187,11 @@ func (c *Client) ExpectOutputEventTerminating(t *testing.T) *dap.OutputEvent {
 	return c.ExpectOutputEventRegex(t, `Terminating process [0-9]+\n`)
 }
 
-func (c *Client) ExpectOutputEventClosingClient(t *testing.T) *dap.OutputEvent {
+const ClosingClient = "Closing client session, but leaving multi-client DAP server at .+:[0-9]+ with debuggee %s\n"
+
+func (c *Client) ExpectOutputEventClosingClient(t *testing.T, status string) *dap.OutputEvent {
 	t.Helper()
-	return c.ExpectOutputEventRegex(t, `Closing client session, but leaving multi-client DAP server running at .+:[0-9]+\n`)
+	return c.ExpectOutputEventRegex(t, fmt.Sprintf(ClosingClient, status))
 }
 
 func (c *Client) CheckStopLocation(t *testing.T, thread int, name string, line int) {

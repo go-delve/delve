@@ -13,7 +13,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/go-delve/delve/pkg/logflags"
@@ -28,14 +27,14 @@ type gdbConn struct {
 	inbuf  []byte
 	outbuf bytes.Buffer
 
-	manualStopMutex sync.Mutex
-	running         bool
-	resumeChan      chan<- struct{}
+	running bool
 
 	direction proc.Direction // direction of execution
 
 	packetSize int               // maximum packet size supported by stub
 	regsInfo   []gdbRegisterInfo // list of registers
+
+	workaroundReg *gdbRegisterInfo // used to work-around a register setting bug in debugserver, see use in gdbserver.go
 
 	pid int // cache process id
 
@@ -46,6 +45,7 @@ type gdbConn struct {
 	isDebugserver         bool // true if the stub is debugserver
 	xcmdok                bool // x command can be used to transfer memory
 	goarch                string
+	goos                  string
 
 	useXcmd bool // forces writeMemory to use the 'X' command
 
@@ -324,7 +324,7 @@ func (conn *gdbConn) readRegisterInfo(regFound map[string]bool) (err error) {
 				case "container-regs":
 					contained = true
 				case "set":
-					if value == "Exception State Registers" {
+					if value == "Exception State Registers" || value == "AMX Registers" {
 						// debugserver doesn't like it if we try to write these
 						ignoreOnWrite = true
 					}
@@ -338,6 +338,9 @@ func (conn *gdbConn) readRegisterInfo(regFound map[string]bool) (err error) {
 		}
 
 		if contained {
+			if regname == "xmm0" {
+				conn.workaroundReg = &gdbRegisterInfo{Regnum: regnum, Name: regname, Bitsize: bitsize, Offset: offset, ignoreOnWrite: ignoreOnWrite}
+			}
 			regnum++
 			continue
 		}
@@ -561,7 +564,7 @@ func (conn *gdbConn) writeRegister(threadID string, regnum int, data []byte) err
 // resume each thread. If a thread has sig == 0 the 'c' action will be used,
 // otherwise the 'C' action will be used and the value of sig will be passed
 // to it.
-func (conn *gdbConn) resume(threads map[int]*gdbThread, tu *threadUpdater) (stopPacket, error) {
+func (conn *gdbConn) resume(cctx *proc.ContinueOnceContext, threads map[int]*gdbThread, tu *threadUpdater) (stopPacket, error) {
 	if conn.direction == proc.Forward {
 		conn.outbuf.Reset()
 		fmt.Fprintf(&conn.outbuf, "$vCont")
@@ -578,27 +581,28 @@ func (conn *gdbConn) resume(threads map[int]*gdbThread, tu *threadUpdater) (stop
 		conn.outbuf.Reset()
 		fmt.Fprint(&conn.outbuf, "$bc")
 	}
-	conn.manualStopMutex.Lock()
+	cctx.StopMu.Lock()
 	if err := conn.send(conn.outbuf.Bytes()); err != nil {
-		conn.manualStopMutex.Unlock()
+		cctx.StopMu.Unlock()
 		return stopPacket{}, err
 	}
 	conn.running = true
-	conn.manualStopMutex.Unlock()
+	cctx.StopMu.Unlock()
 	defer func() {
-		conn.manualStopMutex.Lock()
+		cctx.StopMu.Lock()
 		conn.running = false
-		conn.manualStopMutex.Unlock()
+		cctx.StopMu.Unlock()
 	}()
-	if conn.resumeChan != nil {
-		close(conn.resumeChan)
-		conn.resumeChan = nil
+	if cctx.ResumeChan != nil {
+		close(cctx.ResumeChan)
+		cctx.ResumeChan = nil
 	}
 	return conn.waitForvContStop("resume", "-1", tu)
 }
 
 // step executes a 'vCont' command on the specified thread with 's' action.
-func (conn *gdbConn) step(threadID string, tu *threadUpdater, ignoreFaultSignal bool) error {
+func (conn *gdbConn) step(th *gdbThread, tu *threadUpdater, ignoreFaultSignal bool) error {
+	threadID := th.strID
 	if conn.direction != proc.Forward {
 		if err := conn.selectThread('c', threadID, "step"); err != nil {
 			return err
@@ -611,6 +615,17 @@ func (conn *gdbConn) step(threadID string, tu *threadUpdater, ignoreFaultSignal 
 		_, err := conn.waitForvContStop("singlestep", threadID, tu)
 		return err
 	}
+
+	var _SIGBUS uint8
+	switch conn.goos {
+	case "linux":
+		_SIGBUS = 0x7
+	case "darwin":
+		_SIGBUS = 0xa
+	default:
+		panic(fmt.Errorf("unknown GOOS %s", conn.goos))
+	}
+
 	var sig uint8 = 0
 	for {
 		conn.outbuf.Reset()
@@ -635,6 +650,8 @@ func (conn *gdbConn) step(threadID string, tu *threadUpdater, ignoreFaultSignal 
 			if ignoreFaultSignal { // we attempting to read the TLS, a fault here should be ignored
 				return nil
 			}
+		case _SIGILL, _SIGBUS, _SIGFPE:
+			// propagate these signals to inferior immediately
 		case interruptSignal, breakpointSignal, stopSignal:
 			return nil
 		case childSignal: // stop on debugserver but SIGCHLD on lldb-server/linux
@@ -642,9 +659,15 @@ func (conn *gdbConn) step(threadID string, tu *threadUpdater, ignoreFaultSignal 
 				return nil
 			}
 		case debugServerTargetExcBadAccess, debugServerTargetExcBadInstruction, debugServerTargetExcArithmetic, debugServerTargetExcEmulation, debugServerTargetExcSoftware, debugServerTargetExcBreakpoint:
-			return nil
+			if ignoreFaultSignal {
+				return nil
+			}
+			return machTargetExcToError(sig)
+		default:
+			// delay propagation of any other signal to until after the stepping is done
+			th.sig = sig
+			sig = 0
 		}
-		// any other signal is propagated to the inferior
 	}
 }
 

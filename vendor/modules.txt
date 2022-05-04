@@ -1,7 +1,12 @@
-# github.com/aquasecurity/libbpfgo v0.1.2-0.20210708203834-4928d36fafac
+# github.com/cilium/ebpf v0.7.0
 ## explicit
-github.com/aquasecurity/libbpfgo
-github.com/aquasecurity/libbpfgo/helpers
+github.com/cilium/ebpf
+github.com/cilium/ebpf/asm
+github.com/cilium/ebpf/internal
+github.com/cilium/ebpf/internal/btf
+github.com/cilium/ebpf/internal/unix
+github.com/cilium/ebpf/link
+github.com/cilium/ebpf/ringbuf
 # github.com/cosiner/argv v0.1.0
 ## explicit
 github.com/cosiner/argv
@@ -13,6 +18,9 @@ github.com/creack/pty
 # github.com/derekparker/trie v0.0.0-20200317170641-1fdf38b7b0e9
 ## explicit
 github.com/derekparker/trie
+# github.com/go-delve/liner v1.2.2-1
+## explicit
+github.com/go-delve/liner
 # github.com/google/go-dap v0.6.0
 ## explicit
 github.com/google/go-dap
@@ -29,11 +37,11 @@ github.com/mattn/go-colorable
 # github.com/mattn/go-isatty v0.0.3
 ## explicit
 github.com/mattn/go-isatty
-# github.com/mattn/go-runewidth v0.0.3
-github.com/mattn/go-runewidth
-# github.com/peterh/liner v1.2.1
+# github.com/mattn/go-runewidth v0.0.13
 ## explicit
-github.com/peterh/liner
+github.com/mattn/go-runewidth
+# github.com/rivo/uniseg v0.2.0
+github.com/rivo/uniseg
 # github.com/russross/blackfriday/v2 v2.0.1
 github.com/russross/blackfriday/v2
 # github.com/shurcooL/sanitized_anchor_name v1.0.0
@@ -47,6 +55,8 @@ github.com/spf13/cobra
 github.com/spf13/cobra/doc
 # github.com/spf13/pflag v1.0.5
 github.com/spf13/pflag
+# github.com/stretchr/testify v1.7.0
+## explicit
 # go.starlark.net v0.0.0-20200821142938-949cc6f4b097
 ## explicit
 go.starlark.net/internal/compile
@@ -58,21 +68,31 @@ go.starlark.net/syntax
 ## explicit
 golang.org/x/arch/arm64/arm64asm
 golang.org/x/arch/x86/x86asm
-# golang.org/x/sys v0.0.0-20210514084401-e8d321eab015
+# golang.org/x/mod v0.5.1
+golang.org/x/mod/semver
+# golang.org/x/sys v0.0.0-20211117180635-dee7805ff2e1
 ## explicit
+golang.org/x/sys/execabs
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/tools v0.0.0-20191127201027-ecd32218bd7f
+# golang.org/x/tools v0.1.9
 ## explicit
 golang.org/x/tools/go/gcexportdata
 golang.org/x/tools/go/internal/gcimporter
 golang.org/x/tools/go/internal/packagesdriver
 golang.org/x/tools/go/packages
-golang.org/x/tools/internal/fastwalk
-golang.org/x/tools/internal/gopathwalk
-golang.org/x/tools/internal/semver
-golang.org/x/tools/internal/span
+golang.org/x/tools/internal/event
+golang.org/x/tools/internal/event/core
+golang.org/x/tools/internal/event/keys
+golang.org/x/tools/internal/event/label
+golang.org/x/tools/internal/gocommand
+golang.org/x/tools/internal/packagesinternal
+golang.org/x/tools/internal/typeparams
+golang.org/x/tools/internal/typesinternal
+# golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
+golang.org/x/xerrors
+golang.org/x/xerrors/internal
 # gopkg.in/yaml.v2 v2.4.0
 ## explicit
 gopkg.in/yaml.v2

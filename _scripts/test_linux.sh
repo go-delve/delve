@@ -21,12 +21,8 @@ function getgo {
 }
 
 if [ "$version" = "gotip" ]; then
-	# TODO: remove this
-	if [ "$arch" != "amd64" ]; then
-		exit 0
-	fi
 	echo Building Go from tip
-	getgo $(curl https://golang.org/VERSION?m=text)
+	getgo $(curl https://go.dev/VERSION?m=text)
 	export GOROOT_BOOTSTRAP=$GOROOT
 	export GOROOT=/usr/local/go/go-tip
 	git clone https://go.googlesource.com/go /usr/local/go/go-tip
@@ -35,7 +31,7 @@ if [ "$version" = "gotip" ]; then
 	cd -
 else
 	echo Finding latest patch version for $version
-	version=$(curl 'https://golang.org/dl/?mode=json&include=all' | jq '.[].version' --raw-output | egrep ^$version'($|\.|beta|rc)' | sort -rV | head -1)
+	version=$(curl 'https://go.dev/dl/?mode=json&include=all' | jq '.[].version' --raw-output | egrep ^$version'($|\.|beta|rc)' | sort -rV | head -1)
 	echo "Go $version on $arch"
 	getgo $version
 fi
@@ -57,8 +53,16 @@ cd delve
 # with the current VCS revision, which does not work with TeamCity
 if [ "$version" = "gotip" ]; then
 	export GOFLAGS=-buildvcs=false
-elif [ ${version:4} -gt 17 ]; then
+elif [ ${version:4:2} -gt 17 ]; then
 	export GOFLAGS=-buildvcs=false
 fi
 
+set +e
 make test
+x=$?
+if [ "$version" = "gotip" ]; then
+	exit 0
+else
+	exit $x
+fi
+

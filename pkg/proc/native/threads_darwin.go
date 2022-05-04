@@ -1,4 +1,5 @@
-//+build darwin,macnative
+//go:build darwin && macnative
+// +build darwin,macnative
 
 package native
 
@@ -136,4 +137,9 @@ func (t *nativeThread) restoreRegisters(sr proc.Registers) error {
 
 func (t *nativeThread) withDebugRegisters(f func(*amd64util.DebugRegisters) error) error {
 	return proc.ErrHWBreakUnsupported
+}
+
+// SoftExc returns true if this thread received a software exception during the last resume.
+func (t *nativeThread) SoftExc() bool {
+	return false
 }

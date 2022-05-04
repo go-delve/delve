@@ -276,6 +276,9 @@ func (it *stackIterator) newStackframe(ret, retaddr uint64) Stackframe {
 		it.regs.FrameBase = it.frameBase(fn)
 	}
 	r := Stackframe{Current: Location{PC: it.pc, File: f, Line: l, Fn: fn}, Regs: it.regs, Ret: ret, addrret: retaddr, stackHi: it.stackhi, SystemStack: it.systemstack, lastpc: it.pc}
+	if r.Regs.Reg(it.regs.PCRegNum) == nil {
+		r.Regs.AddReg(it.regs.PCRegNum, op.DwarfRegisterFromUint64(it.pc))
+	}
 	r.Call = r.Current
 	if !it.top && r.Current.Fn != nil && it.pc != r.Current.Fn.Entry {
 		// if the return address is the entry point of the function that

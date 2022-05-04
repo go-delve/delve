@@ -35,8 +35,10 @@ func verifyBinaryFormat(exePath string) error {
 		}
 	}
 
-	if _, err = pe.NewFile(f); err != nil {
+	exe, err := pe.NewFile(f)
+	if err != nil {
 		return api.ErrNotExecutable
 	}
+	exe.Close()
 	return nil
 }

@@ -24,3 +24,20 @@ func ptraceDetach(tid, sig int) error {
 func ptraceCont(tid, sig int) error {
 	return sys.PtraceCont(tid, sig)
 }
+
+// ptraceSingleStep executes ptrace PTRACE_SINGLESTEP
+func ptraceSingleStep(pid, sig int) error {
+	_, _, e1 := sys.Syscall6(sys.SYS_PTRACE, uintptr(sys.PTRACE_SINGLESTEP), uintptr(pid), uintptr(0), uintptr(sig), 0, 0)
+	if e1 != 0 {
+		return e1
+	}
+	return nil
+}
+
+// remoteIovec is like golang.org/x/sys/unix.Iovec but uses uintptr for the
+// base field instead of *byte so that we can use it with addresses that
+// belong to the target process.
+type remoteIovec struct {
+	base uintptr
+	len  uintptr
+}

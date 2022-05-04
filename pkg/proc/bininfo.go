@@ -14,7 +14,6 @@ import (
 	"go/token"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -31,6 +30,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/util"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
+	"github.com/go-delve/delve/pkg/proc/debuginfod"
 	"github.com/hashicorp/golang-lru/simplelru"
 	"github.com/sirupsen/logrus"
 )
@@ -52,12 +52,18 @@ type BinaryInfo struct {
 
 	debugInfoDirectories []string
 
+	// BuildID of this binary.
+	BuildID string
+
 	// Functions is a list of all DW_TAG_subprogram entries in debug_info, sorted by entry point
 	Functions []Function
 	// Sources is a list of all source files found in debug_line.
 	Sources []string
 	// LookupFunc maps function names to a description of the function.
 	LookupFunc map[string]*Function
+	// lookupGenericFunc maps function names, with their type parameters removed, to functions.
+	// Functions that are not generic are not added to this map.
+	lookupGenericFunc map[string][]*Function
 
 	// SymNames maps addr to a description *elf.Symbol of this addr.
 	SymNames map[uint64]*elf.Symbol
@@ -185,7 +191,7 @@ func FindFileLocation(p Process, filename string, lineno int) ([]uint64, error) 
 		return nil, &ErrCouldNotFindLine{fileFound, filename, lineno}
 	}
 
-	// 2. assign all occurences of filename:lineno to their containing function
+	// 2. assign all occurrences of filename:lineno to their containing function
 
 	pcByFunc := map[*Function][]line.PCStmt{}
 	sort.Slice(pcs, func(i, j int) bool { return pcs[i].PC < pcs[j].PC })
@@ -269,6 +275,8 @@ func FindFileLocation(p Process, filename string, lineno int) ([]uint64, error) 
 		}
 	}
 
+	sort.Slice(selectedPCs, func(i, j int) bool { return selectedPCs[i] < selectedPCs[j] })
+
 	return selectedPCs, nil
 }
 
@@ -303,36 +311,53 @@ func allInlineCallRanges(tree *godwarf.Tree) []inlRange {
 	return r
 }
 
+// FindFunction returns the functions with name funcName.
+func (bi *BinaryInfo) FindFunction(funcName string) ([]*Function, error) {
+	if fn := bi.LookupFunc[funcName]; fn != nil {
+		return []*Function{fn}, nil
+	}
+	fns := bi.LookupGenericFunc()[funcName]
+	if len(fns) == 0 {
+		return nil, &ErrFunctionNotFound{funcName}
+	}
+	return fns, nil
+}
+
 // FindFunctionLocation finds address of a function's line
 // If lineOffset is passed FindFunctionLocation will return the address of that line
 func FindFunctionLocation(p Process, funcName string, lineOffset int) ([]uint64, error) {
 	bi := p.BinInfo()
-	origfn := bi.LookupFunc[funcName]
-	if origfn == nil {
-		return nil, &ErrFunctionNotFound{funcName}
+	origfns, err := bi.FindFunction(funcName)
+	if err != nil {
+		return nil, err
 	}
 
 	if lineOffset > 0 {
-		filename, lineno := origfn.cu.lineInfo.PCToLine(origfn.Entry, origfn.Entry)
+		fn := origfns[0]
+		filename, lineno := fn.cu.lineInfo.PCToLine(fn.Entry, fn.Entry)
 		return FindFileLocation(p, filename, lineno+lineOffset)
 	}
 
-	r := make([]uint64, 0, len(origfn.InlinedCalls)+1)
-	if origfn.Entry > 0 {
-		// add concrete implementation of the function
-		pc, err := FirstPCAfterPrologue(p, origfn, false)
-		if err != nil {
-			return nil, err
+	r := make([]uint64, 0, len(origfns[0].InlinedCalls)+len(origfns))
+
+	for _, origfn := range origfns {
+		if origfn.Entry > 0 {
+			// add concrete implementation of the function
+			pc, err := FirstPCAfterPrologue(p, origfn, false)
+			if err != nil {
+				return nil, err
+			}
+			r = append(r, pc)
 		}
-		r = append(r, pc)
+		// add inlined calls to the function
+		for _, call := range origfn.InlinedCalls {
+			r = append(r, call.LowPC)
+		}
+		if len(r) == 0 {
+			return nil, &ErrFunctionNotFound{funcName}
+		}
 	}
-	// add inlined calls to the function
-	for _, call := range origfn.InlinedCalls {
-		r = append(r, call.LowPC)
-	}
-	if len(r) == 0 {
-		return nil, &ErrFunctionNotFound{funcName}
-	}
+	sort.Slice(r, func(i, j int) bool { return r[i] < r[j] })
 	return r, nil
 }
 
@@ -458,11 +483,35 @@ type Function struct {
 	InlinedCalls []InlinedCall
 }
 
+// instRange returns the indexes in fn.Name of the type parameter
+// instantiation, which is the position of the outermost '[' and ']'.
+// If fn is not an instantiated function both returned values will be len(fn.Name)
+func (fn *Function) instRange() [2]int {
+	d := len(fn.Name)
+	inst := [2]int{d, d}
+	if strings.HasPrefix(fn.Name, "type..") {
+		return inst
+	}
+	inst[0] = strings.Index(fn.Name, "[")
+	if inst[0] < 0 {
+		inst[0] = d
+		return inst
+	}
+	inst[1] = strings.LastIndex(fn.Name, "]")
+	if inst[1] < 0 {
+		inst[0] = d
+		inst[1] = d
+		return inst
+	}
+	return inst
+}
+
 // PackageName returns the package part of the symbol name,
 // or the empty string if there is none.
 // Borrowed from $GOROOT/debug/gosym/symtab.go
 func (fn *Function) PackageName() string {
-	return packageName(fn.Name)
+	inst := fn.instRange()
+	return packageName(fn.Name[:inst[0]])
 }
 
 func packageName(name string) string {
@@ -481,25 +530,42 @@ func packageName(name string) string {
 // or the empty string if there is none.
 // Borrowed from $GOROOT/debug/gosym/symtab.go
 func (fn *Function) ReceiverName() string {
-	pathend := strings.LastIndex(fn.Name, "/")
+	inst := fn.instRange()
+	pathend := strings.LastIndex(fn.Name[:inst[0]], "/")
 	if pathend < 0 {
 		pathend = 0
 	}
 	l := strings.Index(fn.Name[pathend:], ".")
-	r := strings.LastIndex(fn.Name[pathend:], ".")
-	if l == -1 || r == -1 || l == r {
+	if l == -1 {
 		return ""
 	}
-	return fn.Name[pathend+l+1 : pathend+r]
+	if r := strings.LastIndex(fn.Name[inst[1]:], "."); r != -1 && pathend+l != inst[1]+r {
+		return fn.Name[pathend+l+1 : inst[1]+r]
+	} else if r := strings.LastIndex(fn.Name[pathend:inst[0]], "."); r != -1 && l != r {
+		return fn.Name[pathend+l+1 : pathend+r]
+	}
+	return ""
 }
 
 // BaseName returns the symbol name without the package or receiver name.
 // Borrowed from $GOROOT/debug/gosym/symtab.go
 func (fn *Function) BaseName() string {
-	if i := strings.LastIndex(fn.Name, "."); i != -1 {
+	inst := fn.instRange()
+	if i := strings.LastIndex(fn.Name[inst[1]:], "."); i != -1 {
+		return fn.Name[inst[1]+i+1:]
+	} else if i := strings.LastIndex(fn.Name[:inst[0]], "."); i != -1 {
 		return fn.Name[i+1:]
 	}
 	return fn.Name
+}
+
+// NameWithoutTypeParams returns the function name without instantiation parameters
+func (fn *Function) NameWithoutTypeParams() string {
+	inst := fn.instRange()
+	if inst[0] == inst[1] {
+		return fn.Name
+	}
+	return fn.Name[:inst[0]] + fn.Name[inst[1]+1:]
 }
 
 // Optimized returns true if the function was optimized by the compiler.
@@ -848,10 +914,13 @@ func (image *Image) Close() error {
 	return err2
 }
 
-func (image *Image) setLoadError(fmtstr string, args ...interface{}) {
+func (image *Image) setLoadError(logger *logrus.Entry, fmtstr string, args ...interface{}) {
 	image.loadErrMu.Lock()
 	image.loadErr = fmt.Errorf(fmtstr, args...)
 	image.loadErrMu.Unlock()
+	if logger != nil {
+		logger.Errorf("error loading binary %q: %v", image.Path, image.loadErr)
+	}
 }
 
 // LoadError returns any error incurred while loading this image.
@@ -1098,14 +1167,14 @@ func (bi *BinaryInfo) funcToImage(fn *Function) *Image {
 // debug_frame is present it must be parsable correctly.
 func (bi *BinaryInfo) parseDebugFrameGeneral(image *Image, debugFrameBytes []byte, debugFrameName string, debugFrameErr error, ehFrameBytes []byte, ehFrameAddr uint64, ehFrameName string, byteOrder binary.ByteOrder) {
 	if debugFrameBytes == nil && ehFrameBytes == nil {
-		image.setLoadError("could not get %s section: %v", debugFrameName, debugFrameErr)
+		image.setLoadError(bi.logger, "could not get %s section: %v", debugFrameName, debugFrameErr)
 		return
 	}
 
 	if debugFrameBytes != nil {
 		fe, err := frame.Parse(debugFrameBytes, byteOrder, image.StaticBase, bi.Arch.PtrSize(), 0)
 		if err != nil {
-			image.setLoadError("could not parse %s section: %v", debugFrameName, err)
+			image.setLoadError(bi.logger, "could not parse %s section: %v", debugFrameName, err)
 			return
 		}
 		bi.frameEntries = bi.frameEntries.Append(fe)
@@ -1115,7 +1184,7 @@ func (bi *BinaryInfo) parseDebugFrameGeneral(image *Image, debugFrameBytes []byt
 		fe, err := frame.Parse(ehFrameBytes, byteOrder, image.StaticBase, bi.Arch.PtrSize(), ehFrameAddr)
 		if err != nil {
 			if debugFrameBytes == nil {
-				image.setLoadError("could not parse %s section: %v", ehFrameName, err)
+				image.setLoadError(bi.logger, "could not parse %s section: %v", ehFrameName, err)
 				return
 			}
 			bi.logger.Warnf("could not parse %s section: %v", ehFrameName, err)
@@ -1127,15 +1196,6 @@ func (bi *BinaryInfo) parseDebugFrameGeneral(image *Image, debugFrameBytes []byt
 
 // ELF ///////////////////////////////////////////////////////////////
 
-// ErrNoBuildIDNote is used in openSeparateDebugInfo to signal there's no
-// build-id note on the binary, so LoadBinaryInfoElf will return
-// the error message coming from elfFile.DWARF() instead.
-type ErrNoBuildIDNote struct{}
-
-func (e *ErrNoBuildIDNote) Error() string {
-	return "can't find build-id note on binary"
-}
-
 // openSeparateDebugInfo searches for a file containing the separate
 // debug info for the binary using the "build ID" method as described
 // in GDB's documentation [1], and if found returns two handles, one
@@ -1146,11 +1206,11 @@ func (e *ErrNoBuildIDNote) Error() string {
 // will look in directories specified by the debug-info-directories config value.
 func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugInfoDirectories []string) (*os.File, *elf.File, error) {
 	var debugFilePath string
-	desc1, desc2, _ := parseBuildID(exe)
+	var err error
 	for _, dir := range debugInfoDirectories {
 		var potentialDebugFilePath string
-		if strings.Contains(dir, "build-id") {
-			potentialDebugFilePath = fmt.Sprintf("%s/%s/%s.debug", dir, desc1, desc2)
+		if strings.Contains(dir, "build-id") && len(bi.BuildID) > 2 {
+			potentialDebugFilePath = fmt.Sprintf("%s/%s/%s.debug", dir, bi.BuildID[:2], bi.BuildID[2:])
 		} else if strings.HasPrefix(image.Path, "/proc") {
 			path, err := filepath.EvalSymlinks(image.Path)
 			if err == nil {
@@ -1168,15 +1228,8 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 	// We cannot find the debug information locally on the system. Try and see if we're on a system that
 	// has debuginfod so that we can use that in order to find any relevant debug information.
 	if debugFilePath == "" {
-		const debuginfodFind = "debuginfod-find"
-		if _, err := exec.LookPath(debuginfodFind); err == nil {
-			cmd := exec.Command(debuginfodFind, "debuginfo", desc1+desc2)
-			out, err := cmd.CombinedOutput()
-			if err != nil {
-				return nil, nil, ErrNoDebugInfoFound
-			}
-			debugFilePath = string(out)
-		} else {
+		debugFilePath, err = debuginfod.GetDebuginfo(bi.BuildID)
+		if err != nil {
 			return nil, nil, ErrNoDebugInfoFound
 		}
 	}
@@ -1197,35 +1250,6 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 	}
 
 	return sepFile, elfFile, nil
-}
-
-func parseBuildID(exe *elf.File) (string, string, error) {
-	buildid := exe.Section(".note.gnu.build-id")
-	if buildid == nil {
-		return "", "", &ErrNoBuildIDNote{}
-	}
-
-	br := buildid.Open()
-	bh := new(buildIDHeader)
-	if err := binary.Read(br, binary.LittleEndian, bh); err != nil {
-		return "", "", errors.New("can't read build-id header: " + err.Error())
-	}
-
-	name := make([]byte, bh.Namesz)
-	if err := binary.Read(br, binary.LittleEndian, name); err != nil {
-		return "", "", errors.New("can't read build-id name: " + err.Error())
-	}
-
-	if strings.TrimSpace(string(name)) != "GNU\x00" {
-		return "", "", errors.New("invalid build-id signature")
-	}
-
-	descBinary := make([]byte, bh.Descsz)
-	if err := binary.Read(br, binary.LittleEndian, descBinary); err != nil {
-		return "", "", errors.New("can't read build-id desc: " + err.Error())
-	}
-	desc := hex.EncodeToString(descBinary)
-	return desc[:2], desc[2:], nil
 }
 
 // loadBinaryInfoElf specifically loads information from an ELF binary.
@@ -1264,6 +1288,7 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 
 	dwarfFile := elfFile
 
+	bi.loadBuildID(image, elfFile)
 	var debugInfoBytes []byte
 	image.dwarf, err = elfFile.DWARF()
 	if err != nil {
@@ -1301,7 +1326,7 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 	image.debugLineStr = debugLineStrBytes
 
 	wg.Add(3)
-	go bi.parseDebugFrameElf(image, dwarfFile, debugInfoBytes, wg)
+	go bi.parseDebugFrameElf(image, dwarfFile, elfFile, debugInfoBytes, wg)
 	go bi.loadDebugInfoMaps(image, debugInfoBytes, debugLineBytes, wg, nil)
 	go bi.loadSymbolName(image, elfFile, wg)
 	if image.index == 0 {
@@ -1329,11 +1354,44 @@ func (bi *BinaryInfo) loadSymbolName(image *Image, file *elf.File, wg *sync.Wait
 	}
 }
 
-func (bi *BinaryInfo) parseDebugFrameElf(image *Image, exe *elf.File, debugInfoBytes []byte, wg *sync.WaitGroup) {
+func (bi *BinaryInfo) loadBuildID(image *Image, file *elf.File) {
+	buildid := file.Section(".note.gnu.build-id")
+	if buildid == nil {
+		bi.logger.Warn("can't find build-id note on binary")
+		return
+	}
+
+	br := buildid.Open()
+	bh := new(buildIDHeader)
+	if err := binary.Read(br, binary.LittleEndian, bh); err != nil {
+		bi.logger.Warnf("can't read build-id header: %v", err)
+		return
+	}
+
+	name := make([]byte, bh.Namesz)
+	if err := binary.Read(br, binary.LittleEndian, name); err != nil {
+		bi.logger.Warnf("can't read build-id name: %v", err)
+		return
+	}
+
+	if strings.TrimSpace(string(name)) != "GNU\x00" {
+		bi.logger.Warn("invalid build-id signature")
+		return
+	}
+
+	descBinary := make([]byte, bh.Descsz)
+	if err := binary.Read(br, binary.LittleEndian, descBinary); err != nil {
+		bi.logger.Warnf("can't read build-id desc: %v", err)
+		return
+	}
+	bi.BuildID = hex.EncodeToString(descBinary)
+}
+
+func (bi *BinaryInfo) parseDebugFrameElf(image *Image, dwarfFile, exeFile *elf.File, debugInfoBytes []byte, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	debugFrameData, debugFrameErr := godwarf.GetDebugSectionElf(exe, "frame")
-	ehFrameSection := exe.Section(".eh_frame")
+	debugFrameData, debugFrameErr := godwarf.GetDebugSectionElf(dwarfFile, "frame")
+	ehFrameSection := exeFile.Section(".eh_frame")
 	var ehFrameData []byte
 	var ehFrameAddr uint64
 	if ehFrameSection != nil {
@@ -1368,7 +1426,7 @@ func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.
 
 	switch exe.Machine {
 	case elf.EM_X86_64, elf.EM_386:
-		tlsg := getSymbol(image, exe, "runtime.tlsg")
+		tlsg := getSymbol(image, bi.logger, exe, "runtime.tlsg")
 		if tlsg == nil || tls == nil {
 			bi.gStructOffset = ^uint64(bi.Arch.PtrSize()) + 1 //-ptrSize
 			return
@@ -1385,7 +1443,7 @@ func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.
 		bi.gStructOffset = ^(memsz) + 1 + tlsg.Value // -tls.Memsz + tlsg.Value
 
 	case elf.EM_AARCH64:
-		tlsg := getSymbol(image, exe, "runtime.tls_g")
+		tlsg := getSymbol(image, bi.logger, exe, "runtime.tls_g")
 		if tlsg == nil || tls == nil {
 			bi.gStructOffset = 2 * uint64(bi.Arch.PtrSize())
 			return
@@ -1399,10 +1457,10 @@ func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.
 	}
 }
 
-func getSymbol(image *Image, exe *elf.File, name string) *elf.Symbol {
+func getSymbol(image *Image, logger *logrus.Entry, exe *elf.File, name string) *elf.Symbol {
 	symbols, err := exe.Symbols()
 	if err != nil {
-		image.setLoadError("could not parse ELF symbols: %v", err)
+		image.setLoadError(logger, "could not parse ELF symbols: %v", err)
 		return nil
 	}
 
@@ -1461,6 +1519,8 @@ func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint
 	image.loclist5 = loclist.NewDwarf5Reader(debugLoclistBytes)
 	debugAddrBytes, _ := godwarf.GetDebugSectionPE(peFile, "addr")
 	image.debugAddr = godwarf.ParseAddr(debugAddrBytes)
+	debugLineStrBytes, _ := godwarf.GetDebugSectionPE(peFile, "line_str")
+	image.debugLineStr = debugLineStrBytes
 
 	wg.Add(2)
 	go bi.parseDebugFramePE(image, peFile, debugInfoBytes, wg)
@@ -1537,6 +1597,8 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 	image.loclist5 = loclist.NewDwarf5Reader(debugLoclistBytes)
 	debugAddrBytes, _ := godwarf.GetDebugSectionMacho(exe, "addr")
 	image.debugAddr = godwarf.ParseAddr(debugAddrBytes)
+	debugLineStrBytes, _ := godwarf.GetDebugSectionMacho(exe, "line_str")
+	image.debugLineStr = debugLineStrBytes
 
 	wg.Add(2)
 	go bi.parseDebugFrameMacho(image, exe, debugInfoBytes, wg)
@@ -1783,9 +1845,13 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 
 	reader := image.DwarfReader()
 
-	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
+	for {
+		entry, err := reader.Next()
 		if err != nil {
-			image.setLoadError("error reading debug_info: %v", err)
+			image.setLoadError(bi.logger, "error reading debug_info: %v", err)
+			break
+		}
+		if entry == nil {
 			break
 		}
 		switch entry.Tag {
@@ -1863,6 +1929,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 	sort.Sort(packageVarsByAddr(bi.packageVars))
 
 	bi.LookupFunc = make(map[string]*Function)
+	bi.lookupGenericFunc = nil
 	for i := range bi.Functions {
 		bi.LookupFunc[bi.Functions[i].Name] = &bi.Functions[i]
 	}
@@ -1898,16 +1965,38 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 	}
 }
 
+// LookupGenericFunc returns a map that allows searching for instantiations of generic function by specificying a function name without type parameters.
+// For example the key "pkg.(*Receiver).Amethod" will find all instantiations of Amethod:
+//  - pkg.(*Receiver[.shape.int]).Amethod"
+//  - pkg.(*Receiver[.shape.*uint8]).Amethod"
+//  - etc.
+func (bi *BinaryInfo) LookupGenericFunc() map[string][]*Function {
+	if bi.lookupGenericFunc == nil {
+		bi.lookupGenericFunc = make(map[string][]*Function)
+		for i := range bi.Functions {
+			dn := bi.Functions[i].NameWithoutTypeParams()
+			if dn != bi.Functions[i].Name {
+				bi.lookupGenericFunc[dn] = append(bi.lookupGenericFunc[dn], &bi.Functions[i])
+			}
+		}
+	}
+	return bi.lookupGenericFunc
+}
+
 // loadDebugInfoMapsCompileUnit loads entry from a single compile unit.
 func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContext, image *Image, reader *reader.Reader, cu *compileUnit) {
 	hasAttrGoPkgName := goversion.ProducerAfterOrEqual(cu.producer, 1, 13)
 
 	depth := 0
 
-	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
+	for {
+		entry, err := reader.Next()
 		if err != nil {
-			image.setLoadError("error reading debug_info: %v", err)
+			image.setLoadError(bi.logger, "error reading debug_info: %v", err)
 			return
+		}
+		if entry == nil {
+			break
 		}
 		switch entry.Tag {
 		case 0:
@@ -1972,7 +2061,7 @@ func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContex
 		case dwarf.TagSubprogram:
 			inlined := false
 			if inval, ok := entry.Val(dwarf.AttrInline).(int64); ok {
-				inlined = inval == 1
+				inlined = inval >= 1
 			}
 
 			if inlined {
@@ -2115,7 +2204,7 @@ func (bi *BinaryInfo) loadDebugInfoMapsInlinedCalls(ctxt *loadDebugInfoMapsConte
 	for {
 		entry, err := reader.Next()
 		if err != nil {
-			cu.image.setLoadError("error reading debug_info: %v", err)
+			cu.image.setLoadError(bi.logger, "error reading debug_info: %v", err)
 			return
 		}
 		switch entry.Tag {
@@ -2165,6 +2254,10 @@ func (bi *BinaryInfo) loadDebugInfoMapsInlinedCalls(ctxt *loadDebugInfoMapsConte
 
 			fl := fileLine{callfile, int(callline)}
 			bi.inlinedCallLines[fl] = append(bi.inlinedCallLines[fl], lowpc)
+
+			if entry.Children {
+				bi.loadDebugInfoMapsInlinedCalls(ctxt, reader, cu)
+			}
 		}
 		reader.SkipChildren()
 	}

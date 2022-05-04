@@ -1011,3 +1011,15 @@ func (s *RPCServer) CreateWatchpoint(arg CreateWatchpointIn, out *CreateWatchpoi
 	out.Breakpoint, err = s.debugger.CreateWatchpoint(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall, arg.Expr, arg.Type)
 	return err
 }
+
+type BuildIDIn struct {
+}
+
+type BuildIDOut struct {
+	BuildID string
+}
+
+func (s *RPCServer) BuildID(arg BuildIDIn, out *BuildIDOut) error {
+	out.BuildID = s.debugger.BuildID()
+	return nil
+}

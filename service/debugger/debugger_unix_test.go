@@ -1,3 +1,4 @@
+//go:build !windows
 // +build !windows
 
 package debugger
@@ -9,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/creack/pty"
@@ -86,12 +88,17 @@ func TestDebugger_LaunchWithTTY(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("lsof", "-p", fmt.Sprintf("%d", d.ProcessPid()))
+	openFileCmd, wantTTYName := "lsof", tty.Name()
+	if runtime.GOOS == "freebsd" {
+		openFileCmd = "fstat"
+		wantTTYName = strings.TrimPrefix(wantTTYName, "/dev/")
+	}
+	cmd := exec.Command(openFileCmd, "-p", fmt.Sprintf("%d", d.ProcessPid()))
 	result, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(result, []byte(tty.Name())) {
-		t.Fatal("process open file list does not contain expected tty")
+	if !bytes.Contains(result, []byte(wantTTYName)) {
+		t.Fatalf("process open file list does not contain expected tty %q", wantTTYName)
 	}
 }

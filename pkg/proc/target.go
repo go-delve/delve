@@ -36,8 +36,12 @@ const (
 // Target represents the process being debugged.
 type Target struct {
 	Process
+	RecordingManipulation
 
-	proc ProcessInternal
+	proc   ProcessInternal
+	recman RecordingManipulationInternal
+
+	pid int
 
 	// StopReason describes the reason why the target process is stopped.
 	// A process could be stopped for multiple simultaneous reasons, in which
@@ -79,6 +83,8 @@ type Target struct {
 	// can be given a unique address.
 	fakeMemoryRegistry    []*compositeMemory
 	fakeMemoryRegistryMap map[string]*compositeMemory
+
+	cctx *ContinueOnceContext
 }
 
 type KeepSteppingBreakpoints uint8
@@ -140,7 +146,7 @@ const (
 	StopBreakpoint                     // The target process hit one or more software breakpoints
 	StopHardcodedBreakpoint            // The target process hit a hardcoded breakpoint (for example runtime.Breakpoint())
 	StopManual                         // A manual stop was requested
-	StopNextFinished                   // The next/step/stepout command terminated
+	StopNextFinished                   // The next/step/stepout/stepInstruction command terminated
 	StopCallReturned                   // An injected call completed
 	StopWatchpoint                     // The target process hit one or more watchpoints
 )
@@ -169,7 +175,8 @@ func DisableAsyncPreemptEnv() []string {
 }
 
 // NewTarget returns an initialized Target object.
-func NewTarget(p Process, currentThread Thread, cfg NewTargetConfig) (*Target, error) {
+// The p argument can optionally implement the RecordingManipulation interface.
+func NewTarget(p ProcessInternal, pid int, currentThread Thread, cfg NewTargetConfig) (*Target, error) {
 	entryPoint, err := p.EntryPoint()
 	if err != nil {
 		return nil, err
@@ -187,12 +194,21 @@ func NewTarget(p Process, currentThread Thread, cfg NewTargetConfig) (*Target, e
 
 	t := &Target{
 		Process:       p,
-		proc:          p.(ProcessInternal),
+		proc:          p,
 		fncallForG:    make(map[int]*callInjection),
 		StopReason:    cfg.StopReason,
 		currentThread: currentThread,
 		CanDump:       cfg.CanDump,
+		pid:           pid,
+		cctx:          &ContinueOnceContext{},
 	}
+
+	if recman, ok := p.(RecordingManipulationInternal); ok {
+		t.recman = recman
+	} else {
+		t.recman = &dummyRecordingManipulation{}
+	}
+	t.RecordingManipulation = t.recman
 
 	g, _ := GetG(currentThread)
 	t.selectedGoroutine = g
@@ -208,6 +224,11 @@ func NewTarget(p Process, currentThread Thread, cfg NewTargetConfig) (*Target, e
 	}
 
 	return t, nil
+}
+
+// Pid returns the pid of the target process.
+func (t *Target) Pid() int {
+	return t.pid
 }
 
 // IsCgo returns the value of runtime.iscgo
@@ -247,7 +268,7 @@ func (t *Target) Valid() (bool, error) {
 // Currently only non-recorded processes running on AMD64 support
 // function calls.
 func (t *Target) SupportsFunctionCalls() bool {
-	return t.Process.BinInfo().Arch.Name == "amd64"
+	return t.Process.BinInfo().Arch.Name == "amd64" || t.Process.BinInfo().Arch.Name == "arm64"
 }
 
 // ClearCaches clears internal caches that should not survive a restart.
@@ -265,7 +286,7 @@ func (t *Target) ClearCaches() {
 // Restarting of a normal process happens at a higher level (debugger.Restart).
 func (t *Target) Restart(from string) error {
 	t.ClearCaches()
-	currentThread, err := t.proc.Restart(from)
+	currentThread, err := t.recman.Restart(t.cctx, from)
 	if err != nil {
 		return err
 	}
@@ -375,7 +396,7 @@ func (t *Target) createUnrecoveredPanicBreakpoint() {
 		panicpcs, err = FindFunctionLocation(t.Process, "runtime.fatalpanic", 0)
 	}
 	if err == nil {
-		bp, err := t.SetBreakpointWithID(unrecoveredPanicID, panicpcs[0])
+		bp, err := t.SetBreakpoint(unrecoveredPanicID, panicpcs[0], UserBreakpoint, nil)
 		if err == nil {
 			bp.Name = UnrecoveredPanic
 			bp.Variables = []string{"runtime.curg._panic.arg"}
@@ -387,7 +408,7 @@ func (t *Target) createUnrecoveredPanicBreakpoint() {
 func (t *Target) createFatalThrowBreakpoint() {
 	fatalpcs, err := FindFunctionLocation(t.Process, "runtime.throw", 0)
 	if err == nil {
-		bp, err := t.SetBreakpointWithID(fatalThrowID, fatalpcs[0])
+		bp, err := t.SetBreakpoint(fatalThrowID, fatalpcs[0], UserBreakpoint, nil)
 		if err == nil {
 			bp.Name = FatalThrow
 		}
@@ -446,14 +467,23 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 	return results
 }
 
-// SetNextBreakpointID sets the breakpoint ID of the next breakpoint
-func (t *Target) SetNextBreakpointID(id int) {
-	t.Breakpoints().breakpointIDCounter = id
+// ResumeNotify specifies a channel that will be closed the next time
+// Continue finishes resuming the target.
+func (t *Target) ResumeNotify(ch chan<- struct{}) {
+	t.cctx.ResumeChan = ch
+}
+
+// RequestManualStop attempts to stop all the process' threads.
+func (t *Target) RequestManualStop() error {
+	t.cctx.StopMu.Lock()
+	defer t.cctx.StopMu.Unlock()
+	t.cctx.manualStopRequested = true
+	return t.proc.RequestManualStop(t.cctx)
 }
 
 const (
 	FakeAddressBase     = 0xbeef000000000000
-	fakeAddressUnresolv = 0xbeed000000000000 // this address never resloves to memory
+	fakeAddressUnresolv = 0xbeed000000000000 // this address never resolves to memory
 )
 
 // newCompositeMemory creates a new compositeMemory object and registers it.
@@ -543,4 +573,43 @@ func (t *Target) dwrapUnwrap(fn *Function) *Function {
 		}
 	}
 	return fn
+}
+
+type dummyRecordingManipulation struct {
+}
+
+// Recorded always returns false for the native proc backend.
+func (*dummyRecordingManipulation) Recorded() (bool, string) { return false, "" }
+
+// ChangeDirection will always return an error in the native proc backend, only for
+// recorded traces.
+func (*dummyRecordingManipulation) ChangeDirection(dir Direction) error {
+	if dir != Forward {
+		return ErrNotRecorded
+	}
+	return nil
+}
+
+// GetDirection will always return Forward.
+func (*dummyRecordingManipulation) GetDirection() Direction { return Forward }
+
+// When will always return an empty string and nil, not supported on native proc backend.
+func (*dummyRecordingManipulation) When() (string, error) { return "", nil }
+
+// Checkpoint will always return an error on the native proc backend,
+// only supported for recorded traces.
+func (*dummyRecordingManipulation) Checkpoint(string) (int, error) { return -1, ErrNotRecorded }
+
+// Checkpoints will always return an error on the native proc backend,
+// only supported for recorded traces.
+func (*dummyRecordingManipulation) Checkpoints() ([]Checkpoint, error) { return nil, ErrNotRecorded }
+
+// ClearCheckpoint will always return an error on the native proc backend,
+// only supported in recorded traces.
+func (*dummyRecordingManipulation) ClearCheckpoint(int) error { return ErrNotRecorded }
+
+// Restart will always return an error in the native proc backend, only for
+// recorded traces.
+func (*dummyRecordingManipulation) Restart(*ContinueOnceContext, string) (Thread, error) {
+	return nil, ErrNotRecorded
 }

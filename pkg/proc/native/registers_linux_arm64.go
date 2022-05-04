@@ -2,14 +2,12 @@ package native
 
 import (
 	"debug/elf"
-	"fmt"
 	"syscall"
 	"unsafe"
 
 	sys "golang.org/x/sys/unix"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
-	"github.com/go-delve/delve/pkg/dwarf/regnum"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/linutil"
 )
@@ -84,19 +82,24 @@ func (thread *nativeThread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
 		return err
 	}
 	r := ir.(*linutil.ARM64Registers)
-
-	switch regNum {
-	case regnum.ARM64_PC:
-		r.Regs.Pc = reg.Uint64Val
-	case regnum.ARM64_SP:
-		r.Regs.Sp = reg.Uint64Val
-	default:
-		//TODO(aarzilli): when the register calling convention is adopted by Go on
-		// arm64 this should be implemented.
-		return fmt.Errorf("changing register %d not implemented", regNum)
+	fpchanged, err := r.SetReg(regNum, reg)
+	if err != nil {
+		return err
 	}
 
-	thread.dbp.execPtraceFunc(func() { err = ptraceSetGRegs(thread.ID, r.Regs) })
+	thread.dbp.execPtraceFunc(func() {
+		err = ptraceSetGRegs(thread.ID, r.Regs)
+		if err != syscall.Errno(0) && err != nil {
+			return
+		}
+		if fpchanged && r.Fpregset != nil {
+			iov := sys.Iovec{Base: &r.Fpregset[0], Len: uint64(len(r.Fpregset))}
+			_, _, err = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_SETREGSET, uintptr(thread.ID), uintptr(elf.NT_FPREGSET), uintptr(unsafe.Pointer(&iov)), 0, 0)
+		}
+	})
+	if err == syscall.Errno(0) {
+		err = nil
+	}
 	return err
 }
 

@@ -93,7 +93,7 @@ func LoadTree(off dwarf.Offset, dw *dwarf.Data, staticBase uint64) (*Tree, error
 // EntryToTree converts a single entry, without children, to a *Tree object.
 func EntryToTree(entry *dwarf.Entry) *Tree {
 	if entry.Children {
-		panic(fmt.Sprintf("EntryToTree called on entry with children; " +
+		panic(fmt.Sprintf("EntryToTree called on entry with children; "+
 			"LoadTree should have been used instead. entry: %+v", entry))
 	}
 	return entryToTreeInternal(entry)
@@ -194,7 +194,7 @@ func max(a, b uint64) uint64 {
 
 // fuseRanges fuses rngs2 into rngs1, it's the equivalent of
 //     normalizeRanges(append(rngs1, rngs2))
-// but more efficent.
+// but more efficient.
 func fuseRanges(rngs1, rngs2 [][2]uint64) [][2]uint64 {
 	if rangesContains(rngs1, rngs2) {
 		return rngs1

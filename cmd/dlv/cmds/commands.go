@@ -133,9 +133,9 @@ func New(docCall bool) *cobra.Command {
 	rootCommand.PersistentFlags().StringVarP(&logOutput, "log-output", "", "", `Comma separated list of components that should produce debug output (see 'dlv help log')`)
 	rootCommand.PersistentFlags().StringVarP(&logDest, "log-dest", "", "", "Writes logs to the specified file or file descriptor (see 'dlv help log').")
 
-	rootCommand.PersistentFlags().BoolVarP(&headless, "headless", "", false, "Run debug server only, in headless mode.")
-	rootCommand.PersistentFlags().BoolVarP(&acceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections.")
-	rootCommand.PersistentFlags().IntVar(&apiVersion, "api-version", 1, "Selects API version when headless. New clients should use v2. Can be reset via RPCServer.SetApiVersion. See Documentation/api/json-rpc/README.md.")
+	rootCommand.PersistentFlags().BoolVarP(&headless, "headless", "", false, "Run debug server only, in headless mode. Server will accept both JSON-RPC or DAP client connections.")
+	rootCommand.PersistentFlags().BoolVarP(&acceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections via JSON-RPC or DAP.")
+	rootCommand.PersistentFlags().IntVar(&apiVersion, "api-version", 1, "Selects JSON-RPC API version when headless. New clients should use v2. Can be reset via RPCServer.SetApiVersion. See Documentation/api/json-rpc/README.md.")
 	rootCommand.PersistentFlags().StringVar(&initFile, "init", "", "Init file, executed by the terminal client.")
 	rootCommand.PersistentFlags().StringVar(&buildFlags, "build-flags", buildFlagsDefault, "Build flags, to be passed to the compiler. For example: --build-flags=\"-tags=integration -mod=vendor -cover -v\"")
 	rootCommand.PersistentFlags().StringVar(&workingDir, "wd", "", "Working directory for running the program.")
@@ -170,8 +170,8 @@ option to let the process continue or kill it.
 	// 'connect' subcommand.
 	connectCommand := &cobra.Command{
 		Use:   "connect addr",
-		Short: "Connect to a headless debug server.",
-		Long:  "Connect to a running headless debug server.",
+		Short: "Connect to a headless debug server with a terminal client.",
+		Long:  "Connect to a running headless debug server with a terminal client.",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return errors.New("you must provide an address as the first argument")
@@ -185,20 +185,22 @@ option to let the process continue or kill it.
 	// 'dap' subcommand.
 	dapCommand := &cobra.Command{
 		Use:   "dap",
-		Short: "[EXPERIMENTAL] Starts a headless TCP server communicating via Debug Adaptor Protocol (DAP).",
-		Long: `[EXPERIMENTAL] Starts a headless TCP server communicating via Debug Adaptor Protocol (DAP).
+		Short: "Starts a headless TCP server communicating via Debug Adaptor Protocol (DAP).",
+		Long: `Starts a headless TCP server communicating via Debug Adaptor Protocol (DAP).
 
-The server is always headless and requires a DAP client like vscode to connect and request a binary
-to be launched or process to be attached to. The following modes can be specified via client's launch config:
-- launch + exec (executes precompiled binary, like 'dlv exec')
-- launch + debug (builds and launches, like 'dlv debug')
-- launch + test (builds and tests, like 'dlv test')
+The server is always headless and requires a DAP client like VS Code to connect and request a binary
+to be launched or a process to be attached to. The following modes can be specified via the client's launch config:
+- launch + exec   (executes precompiled binary, like 'dlv exec')
+- launch + debug  (builds and launches, like 'dlv debug')
+- launch + test   (builds and tests, like 'dlv test')
 - launch + replay (replays an rr trace, like 'dlv replay')
-- launch + core (replays a core dump file, like 'dlv core')
-- attach + local (attaches to a running process, like 'dlv attach')
+- launch + core   (replays a core dump file, like 'dlv core')
+- attach + local  (attaches to a running process, like 'dlv attach')
+
 Program and output binary paths will be interpreted relative to dlv's working directory.
 
-The server does not yet accept multiple client connections (--accept-multiclient).
+This server does not accept multiple client connections (--accept-multiclient).
+Use 'dlv [command] --headless' instead and a DAP client with attach + remote config.
 While --continue is not supported, stopOnEntry launch/attach attribute can be used to control if
 execution is resumed at the start of the debug session.
 
@@ -478,6 +480,7 @@ func dapCmd(cmd *cobra.Command, args []string) {
 				Foreground:           true, // server always runs without terminal client
 				DebugInfoDirectories: conf.DebugInfoDirectories,
 				CheckGoVersion:       checkGoVersion,
+				DisableASLR:          disableASLR,
 			},
 			CheckLocalConnUser: checkLocalConnUser,
 		}
@@ -568,10 +571,14 @@ func traceCmd(cmd *cobra.Command, args []string) {
 
 		dlvArgs, targetArgs := splitArgs(cmd, args)
 		var dlvArgsLen = len(dlvArgs)
-		if dlvArgsLen == 1 {
+		switch dlvArgsLen {
+		case 0:
+			fmt.Fprintf(os.Stderr, "you must supply a regexp for functions to trace\n")
+			return 1
+		case 1:
 			regexp = args[0]
 			dlvArgs = dlvArgs[0:0]
-		} else if dlvArgsLen >= 2 {
+		default:
 			regexp = dlvArgs[dlvArgsLen-1]
 			dlvArgs = dlvArgs[:dlvArgsLen-1]
 		}
@@ -630,8 +637,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			if traceUseEBPF {
 				err := client.CreateEBPFTracepoint(funcs[i])
 				if err != nil {
-					fmt.Fprintln(os.Stderr, err)
-					return 1
+					fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
 				}
 			} else {
 				// Fall back to breakpoint based tracing if we get an error.
@@ -643,13 +649,11 @@ func traceCmd(cmd *cobra.Command, args []string) {
 					LoadArgs:     &terminal.ShortLoadConfig,
 				})
 				if err != nil && !isBreakpointExistsErr(err) {
-					fmt.Fprintln(os.Stderr, err)
-					return 1
+					fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
 				}
 				addrs, err := client.FunctionReturnLocations(funcs[i])
 				if err != nil {
-					fmt.Fprintln(os.Stderr, err)
-					return 1
+					fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
 				}
 				for i := range addrs {
 					_, err = client.CreateBreakpoint(&api.Breakpoint{
@@ -660,14 +664,14 @@ func traceCmd(cmd *cobra.Command, args []string) {
 						LoadArgs:    &terminal.ShortLoadConfig,
 					})
 					if err != nil && !isBreakpointExistsErr(err) {
-						fmt.Fprintln(os.Stderr, err)
-						return 1
+						fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
 					}
 				}
 			}
 		}
 		cmds := terminal.DebugCommands(client)
 		t := terminal.New(client, nil)
+		t.RedirectTo(os.Stderr)
 		defer t.Close()
 		if traceUseEBPF {
 			done := make(chan struct{})

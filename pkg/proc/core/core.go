@@ -164,8 +164,6 @@ type process struct {
 	breakpoints proc.BreakpointMap
 }
 
-var _ proc.ProcessInternal = &process{}
-
 // thread represents a thread in the core file being debugged.
 type thread struct {
 	th     osThread
@@ -222,7 +220,7 @@ func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.Target, e
 		return nil, ErrNoThreads
 	}
 
-	return proc.NewTarget(p, currentThread, proc.NewTargetConfig{
+	return proc.NewTarget(p, p.pid, currentThread, proc.NewTargetConfig{
 		Path:                exePath,
 		DebugInfoDirs:       debugInfoDirs,
 		DisableAsyncPreempt: false,
@@ -250,7 +248,9 @@ func (p *process) WriteBreakpoint(*proc.Breakpoint) error {
 func (p *process) Recorded() (bool, string) { return true, "" }
 
 // Restart will only return an error for core files, as they are not executing.
-func (p *process) Restart(string) (proc.Thread, error) { return nil, ErrContinueCore }
+func (p *process) Restart(*proc.ContinueOnceContext, string) (proc.Thread, error) {
+	return nil, ErrContinueCore
+}
 
 // ChangeDirection will only return an error as you cannot continue a core process.
 func (p *process) ChangeDirection(proc.Direction) error { return ErrContinueCore }
@@ -357,16 +357,15 @@ func (t *thread) StepInstruction() error {
 	return ErrContinueCore
 }
 
-// Blocked will return false always for core files as there is
-// no execution.
-func (t *thread) Blocked() bool {
-	return false
-}
-
 // SetCurrentBreakpoint will always just return nil
 // for core files, as there are no breakpoints in core files.
 func (t *thread) SetCurrentBreakpoint(adjustPC bool) error {
 	return nil
+}
+
+// SoftExc returns true if this thread received a software exception during the last resume.
+func (t *thread) SoftExc() bool {
+	return false
 }
 
 // Common returns a struct containing common information
@@ -418,7 +417,7 @@ func (p *process) ClearInternalBreakpoints() error {
 
 // ContinueOnce will always return an error because you
 // cannot control execution of a core file.
-func (p *process) ContinueOnce() (proc.Thread, proc.StopReason, error) {
+func (p *process) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
 	return nil, proc.StopUnknown, ErrContinueCore
 }
 
@@ -430,7 +429,7 @@ func (p *process) StepInstruction() error {
 
 // RequestManualStop will return nil and have no effect
 // as you cannot control execution of a core file.
-func (p *process) RequestManualStop() error {
+func (p *process) RequestManualStop(cctx *proc.ContinueOnceContext) error {
 	return nil
 }
 
@@ -457,11 +456,6 @@ func (p *process) Detach(bool) error {
 // for core files as it cannot exit or be otherwise detached from.
 func (p *process) Valid() (bool, error) {
 	return true, nil
-}
-
-// Pid returns the process ID of this process.
-func (p *process) Pid() int {
-	return p.pid
 }
 
 // ResumeNotify is a no-op on core files as we cannot

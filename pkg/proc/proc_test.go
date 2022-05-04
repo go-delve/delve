@@ -25,6 +25,7 @@ import (
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/regnum"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
@@ -217,7 +218,7 @@ func setFunctionBreakpoint(p *proc.Target, t testing.TB, fname string) *proc.Bre
 	if len(addrs) != 1 {
 		t.Fatalf("%s:%d: setFunctionBreakpoint(%s): too many results %v", f, l, fname, addrs)
 	}
-	bp, err := p.SetBreakpoint(addrs[0], proc.UserBreakpoint, nil)
+	bp, err := p.SetBreakpoint(int(addrs[0]), addrs[0], proc.UserBreakpoint, nil)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
 	}
@@ -235,7 +236,7 @@ func setFileBreakpoint(p *proc.Target, t testing.TB, path string, lineno int) *p
 	if len(addrs) != 1 {
 		t.Fatalf("%s:%d: setFileLineBreakpoint(%s, %d): too many (or not enough) results %v", f, l, path, lineno, addrs)
 	}
-	bp, err := p.SetBreakpoint(addrs[0], proc.UserBreakpoint, nil)
+	bp, err := p.SetBreakpoint(int(addrs[0]), addrs[0], proc.UserBreakpoint, nil)
 	if err != nil {
 		t.Fatalf("%s:%d: SetBreakpoint: %v", f, l, err)
 	}
@@ -349,9 +350,9 @@ func TestBreakpointInSeparateGoRoutine(t *testing.T) {
 
 func TestBreakpointWithNonExistantFunction(t *testing.T) {
 	withTestProcess("testprog", t, func(p *proc.Target, fixture protest.Fixture) {
-		_, err := p.SetBreakpoint(0, proc.UserBreakpoint, nil)
+		_, err := p.SetBreakpoint(0, 0, proc.UserBreakpoint, nil)
 		if err == nil {
-			t.Fatal("Should not be able to break at non existant function")
+			t.Fatal("Should not be able to break at non existent function")
 		}
 	})
 }
@@ -1163,7 +1164,7 @@ func evalVariableOrError(p *proc.Target, symbol string) (*proc.Variable, error) 
 	if err != nil {
 		return nil, err
 	}
-	return scope.EvalVariable(symbol, normalLoadConfig)
+	return scope.EvalExpression(symbol, normalLoadConfig)
 }
 
 func evalVariable(p *proc.Target, t testing.TB, symbol string) *proc.Variable {
@@ -1309,7 +1310,7 @@ func TestFrameEvaluation(t *testing.T) {
 			scope, err := proc.ConvertEvalScope(p, g.ID, frame, 0)
 			assertNoError(err, t, "ConvertEvalScope()")
 			t.Logf("scope = %v", scope)
-			v, err := scope.EvalVariable("i", normalLoadConfig)
+			v, err := scope.EvalExpression("i", normalLoadConfig)
 			t.Logf("v = %v", v)
 			if err != nil {
 				t.Logf("Goroutine %d: %v\n", g.ID, err)
@@ -1334,10 +1335,14 @@ func TestFrameEvaluation(t *testing.T) {
 		g, err := proc.GetG(p.CurrentThread())
 		assertNoError(err, t, "GetG()")
 
+		frames, err := g.Stacktrace(40, 0)
+		t.Logf("Goroutine %d %#v", g.ID, g.Thread)
+		logStacktrace(t, p, frames)
+
 		for i := 0; i <= 3; i++ {
 			scope, err := proc.ConvertEvalScope(p, g.ID, i+1, 0)
 			assertNoError(err, t, fmt.Sprintf("ConvertEvalScope() on frame %d", i+1))
-			v, err := scope.EvalVariable("n", normalLoadConfig)
+			v, err := scope.EvalExpression("n", normalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("EvalVariable() on frame %d", i+1))
 			n, _ := constant.Int64Val(v.Value)
 			t.Logf("frame %d n %d\n", i+1, n)
@@ -1366,7 +1371,7 @@ func TestThreadFrameEvaluation(t *testing.T) {
 		// be a thread scope.
 		scope, err := proc.ConvertEvalScope(p, 0, 0, 0)
 		assertNoError(err, t, "ConvertEvalScope() on frame 0")
-		_, err = scope.EvalVariable("s", normalLoadConfig)
+		_, err = scope.EvalExpression("s", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable(\"s\") on frame 0")
 	})
 }
@@ -1483,6 +1488,44 @@ func TestBreakpointCounts(t *testing.T) {
 	})
 }
 
+func TestHardcodedBreakpointCounts(t *testing.T) {
+	skipOn(t, "broken", "freebsd")
+	withTestProcess("hcbpcountstest", t, func(p *proc.Target, fixture protest.Fixture) {
+		counts := map[int]int{}
+		for {
+			if err := p.Continue(); err != nil {
+				if _, exited := err.(proc.ErrProcessExited); exited {
+					break
+				}
+				assertNoError(err, t, "Continue()")
+			}
+
+			for _, th := range p.ThreadList() {
+				bp := th.Breakpoint().Breakpoint
+				if bp == nil {
+					continue
+				}
+				if bp.Name != proc.HardcodedBreakpoint {
+					t.Fatalf("wrong breakpoint name %s", bp.Name)
+				}
+				g, err := proc.GetG(th)
+				assertNoError(err, t, "GetG")
+				counts[g.ID]++
+			}
+		}
+
+		if len(counts) != 2 {
+			t.Fatalf("Wrong number of goroutines for hardcoded breakpoint (%d)", len(counts))
+		}
+
+		for goid, count := range counts {
+			if count != 100 {
+				t.Fatalf("Wrong hit count for hardcoded breakpoint (%d) on goroutine %d", count, goid)
+			}
+		}
+	})
+}
+
 func BenchmarkArray(b *testing.B) {
 	// each bencharr struct is 128 bytes, bencharr is 64 elements long
 	b.SetBytes(int64(64 * 128))
@@ -1519,10 +1562,10 @@ func TestBreakpointCountsWithDetection(t *testing.T) {
 				}
 				scope, err := proc.GoroutineScope(p, th)
 				assertNoError(err, t, "Scope()")
-				v, err := scope.EvalVariable("i", normalLoadConfig)
+				v, err := scope.EvalExpression("i", normalLoadConfig)
 				assertNoError(err, t, "evalVariable")
 				i, _ := constant.Int64Val(v.Value)
-				v, err = scope.EvalVariable("id", normalLoadConfig)
+				v, err = scope.EvalExpression("id", normalLoadConfig)
 				assertNoError(err, t, "evalVariable")
 				id, _ := constant.Int64Val(v.Value)
 				m[id] = i
@@ -1674,7 +1717,7 @@ func TestCondBreakpoint(t *testing.T) {
 
 		n, _ := constant.Int64Val(nvar.Value)
 		if n != 7 {
-			t.Fatalf("Stoppend on wrong goroutine %d\n", n)
+			t.Fatalf("Stopped on wrong goroutine %d\n", n)
 		}
 	})
 }
@@ -1715,7 +1758,7 @@ func TestCondBreakpointError(t *testing.T) {
 
 			n, _ := constant.Int64Val(nvar.Value)
 			if n != 7 {
-				t.Fatalf("Stoppend on wrong goroutine %d\n", n)
+				t.Fatalf("Stopped on wrong goroutine %d\n", n)
 			}
 		}
 	})
@@ -1734,7 +1777,7 @@ func TestHitCondBreakpointEQ(t *testing.T) {
 
 		i, _ := constant.Int64Val(ivar.Value)
 		if i != 3 {
-			t.Fatalf("Stoppend on wrong hitcount %d\n", i)
+			t.Fatalf("Stopped on wrong hitcount %d\n", i)
 		}
 
 		err := p.Continue()
@@ -1759,7 +1802,7 @@ func TestHitCondBreakpointGEQ(t *testing.T) {
 
 			i, _ := constant.Int64Val(ivar.Value)
 			if int(i) != it {
-				t.Fatalf("Stoppend on wrong hitcount %d\n", i)
+				t.Fatalf("Stopped on wrong hitcount %d\n", i)
 			}
 		}
 
@@ -1782,7 +1825,7 @@ func TestHitCondBreakpointREM(t *testing.T) {
 
 			i, _ := constant.Int64Val(ivar.Value)
 			if int(i) != it {
-				t.Fatalf("Stoppend on wrong hitcount %d\n", i)
+				t.Fatalf("Stopped on wrong hitcount %d\n", i)
 			}
 		}
 
@@ -3831,7 +3874,7 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 		}
 		for _, pc := range pcs {
 			t.Logf("setting breakpoint at %#x\n", pc)
-			_, err := p.SetBreakpoint(pc, proc.UserBreakpoint, nil)
+			_, err := p.SetBreakpoint(0, pc, proc.UserBreakpoint, nil)
 			assertNoError(err, t, fmt.Sprintf("SetBreakpoint(%#x)", pc))
 		}
 
@@ -3974,6 +4017,9 @@ func TestInlineBreakpoint(t *testing.T) {
 	}
 	withTestProcessArgs("testinline", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p *proc.Target, fixture protest.Fixture) {
 		pcs, err := proc.FindFileLocation(p, fixture.Source, 17)
+		if err != nil {
+			t.Fatal(err)
+		}
 		t.Logf("%#v\n", pcs)
 		if len(pcs) != 1 {
 			t.Fatalf("unable to get PC for inlined function call: %v", pcs)
@@ -3983,9 +4029,30 @@ func TestInlineBreakpoint(t *testing.T) {
 		if fn.Name != expectedFn {
 			t.Fatalf("incorrect function returned, expected %s, got %s", expectedFn, fn.Name)
 		}
-		_, err = p.SetBreakpoint(pcs[0], proc.UserBreakpoint, nil)
+		_, err = p.SetBreakpoint(0, pcs[0], proc.UserBreakpoint, nil)
 		if err != nil {
 			t.Fatalf("unable to set breakpoint: %v", err)
+		}
+	})
+}
+
+func TestDoubleInlineBreakpoint(t *testing.T) {
+	// We should be able to set a breakpoint on an inlined function that
+	// has been inlined within an inlined function.
+	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
+		// Versions of go before 1.10 do not have DWARF information for inlined calls
+		t.Skip("inlining not supported")
+	}
+	withTestProcessArgs("doubleinline", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p *proc.Target, fixture protest.Fixture) {
+		fns, err := p.BinInfo().FindFunction("main.(*Rectangle).Height")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(fns) != 1 {
+			t.Fatalf("expected one function for Height, got %d", len(fns))
+		}
+		if len(fns[0].InlinedCalls) != 1 {
+			t.Fatalf("expected one inlined call for Height, got %d", len(fns[0].InlinedCalls))
 		}
 	})
 }
@@ -4222,7 +4289,7 @@ func TestReadDeferArgs(t *testing.T) {
 		// the autogenerated code used to unpack the argument frame stored in
 		// runtime._defer into registers.
 		// We either need to know how to do the translation, implementing the ABI1
-		// rules in Delve, or have some assistence from the compiler (for example
+		// rules in Delve, or have some assistance from the compiler (for example
 		// have the dwrap function contain entries for each of the captured
 		// variables with a location describing their offset from DX).
 		// Ultimately this feature is unimportant enough that we can leave it
@@ -4252,11 +4319,11 @@ func TestReadDeferArgs(t *testing.T) {
 				}
 			}
 
-			avar, err := scope.EvalVariable("a", normalLoadConfig)
+			avar, err := scope.EvalExpression("a", normalLoadConfig)
 			if err != nil {
 				t.Fatal(err)
 			}
-			bvar, err := scope.EvalVariable("b", normalLoadConfig)
+			bvar, err := scope.EvalExpression("b", normalLoadConfig)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -5378,6 +5445,7 @@ func TestVariablesWithExternalLinking(t *testing.T) {
 func TestWatchpointsBasic(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "386")
+	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
 	protest.AllowRecording(t)
 
 	position1 := 19
@@ -5398,7 +5466,7 @@ func TestWatchpointsBasic(t *testing.T) {
 		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "GoroutineScope")
 
-		bp, err := p.SetWatchpoint(scope, "globalvar1", proc.WatchWrite, nil)
+		bp, err := p.SetWatchpoint(0, scope, "globalvar1", proc.WatchWrite, nil)
 		assertNoError(err, t, "SetDataBreakpoint(write-only)")
 
 		assertNoError(p.Continue(), t, "Continue 1")
@@ -5413,7 +5481,7 @@ func TestWatchpointsBasic(t *testing.T) {
 		assertNoError(p.Continue(), t, "Continue 2")
 		assertLineNumber(p, t, 21, "Continue 2") // Position 2
 
-		_, err = p.SetWatchpoint(scope, "globalvar1", proc.WatchWrite|proc.WatchRead, nil)
+		_, err = p.SetWatchpoint(0, scope, "globalvar1", proc.WatchWrite|proc.WatchRead, nil)
 		assertNoError(err, t, "SetDataBreakpoint(read-write)")
 
 		assertNoError(p.Continue(), t, "Continue 3")
@@ -5425,7 +5493,7 @@ func TestWatchpointsBasic(t *testing.T) {
 		assertLineNumber(p, t, 27, "Continue 4") // Position 4
 
 		t.Logf("setting final breakpoint")
-		_, err = p.SetWatchpoint(scope, "globalvar1", proc.WatchWrite, nil)
+		_, err = p.SetWatchpoint(0, scope, "globalvar1", proc.WatchWrite, nil)
 		assertNoError(err, t, "SetDataBreakpoint(write-only, again)")
 
 		assertNoError(p.Continue(), t, "Continue 5")
@@ -5436,6 +5504,7 @@ func TestWatchpointsBasic(t *testing.T) {
 func TestWatchpointCounts(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "386")
+	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
 	protest.AllowRecording(t)
 
 	withTestProcess("databpcountstest", t, func(p *proc.Target, fixture protest.Fixture) {
@@ -5445,7 +5514,7 @@ func TestWatchpointCounts(t *testing.T) {
 		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "GoroutineScope")
 
-		bp, err := p.SetWatchpoint(scope, "globalvar1", proc.WatchWrite, nil)
+		bp, err := p.SetWatchpoint(0, scope, "globalvar1", proc.WatchWrite, nil)
 		assertNoError(err, t, "SetWatchpoint(write-only)")
 
 		for {
@@ -5550,6 +5619,7 @@ func TestDwrapStartLocation(t *testing.T) {
 func TestWatchpointStack(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "386")
+	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
 	protest.AllowRecording(t)
 
 	position1 := 17
@@ -5568,7 +5638,7 @@ func TestWatchpointStack(t *testing.T) {
 		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "GoroutineScope")
 
-		_, err = p.SetWatchpoint(scope, "w", proc.WatchWrite, nil)
+		_, err = p.SetWatchpoint(0, scope, "w", proc.WatchWrite, nil)
 		assertNoError(err, t, "SetDataBreakpoint(write-only)")
 
 		watchbpnum := 3
@@ -5596,7 +5666,7 @@ func TestWatchpointStack(t *testing.T) {
 		// instruction preceding the return address, this does not matter for this
 		// test.
 
-		_, err = p.SetBreakpoint(retaddr, proc.UserBreakpoint, nil)
+		_, err = p.SetBreakpoint(0, retaddr, proc.UserBreakpoint, nil)
 		assertNoError(err, t, "SetBreakpoint")
 
 		if len(p.Breakpoints().M) != clearlen+watchbpnum {
@@ -5644,7 +5714,7 @@ func TestWatchpointStackBackwardsOutOfScope(t *testing.T) {
 		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "GoroutineScope")
 
-		_, err = p.SetWatchpoint(scope, "w", proc.WatchWrite, nil)
+		_, err = p.SetWatchpoint(0, scope, "w", proc.WatchWrite, nil)
 		assertNoError(err, t, "SetDataBreakpoint(write-only)")
 
 		assertNoError(p.Continue(), t, "Continue 1")
@@ -5691,5 +5761,94 @@ func TestSetOnFunctions(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error when assigning between function variables")
 		}
+	})
+}
+
+func TestSetYMMRegister(t *testing.T) {
+	skipUnlessOn(t, "N/A", "darwin", "amd64")
+	// Checks that setting a XMM register works. This checks that the
+	// workaround for a bug in debugserver works.
+	// See issue #2767.
+	withTestProcess("setymmreg/", t, func(p *proc.Target, fixture protest.Fixture) {
+		setFunctionBreakpoint(p, t, "main.asmFunc")
+		assertNoError(p.Continue(), t, "Continue()")
+
+		getReg := func(pos string) *op.DwarfRegister {
+			regs := getRegisters(p, t)
+
+			arch := p.BinInfo().Arch
+			dregs := arch.RegistersToDwarfRegisters(0, regs)
+
+			r := dregs.Reg(regnum.AMD64_XMM0)
+			t.Logf("%s: %#v", pos, r)
+			return r
+		}
+
+		getReg("before")
+
+		p.CurrentThread().SetReg(regnum.AMD64_XMM0, op.DwarfRegisterFromBytes([]byte{
+			0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
+			0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
+			0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
+			0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44}))
+		assertNoError(p.CurrentThread().StepInstruction(), t, "SetpInstruction")
+
+		xmm0 := getReg("after")
+
+		for i := range xmm0.Bytes {
+			if xmm0.Bytes[i] != 0x44 {
+				t.Fatalf("wrong register value")
+			}
+		}
+	})
+}
+
+func TestNilPtrDerefInBreakInstr(t *testing.T) {
+	// Checks that having a breakpoint on the exact instruction that causes a
+	// nil pointer dereference does not cause problems.
+
+	var asmfile string
+	switch runtime.GOARCH {
+	case "amd64":
+		asmfile = "main_amd64.s"
+	case "arm64":
+		asmfile = "main_arm64.s"
+	case "386":
+		asmfile = "main_386.s"
+	default:
+		t.Fatalf("assembly file for %s not provided", runtime.GOARCH)
+	}
+
+	withTestProcess("asmnilptr/", t, func(p *proc.Target, fixture protest.Fixture) {
+		f := filepath.Join(fixture.BuildDir, asmfile)
+		f = strings.Replace(f, "\\", "/", -1)
+		setFileBreakpoint(p, t, f, 5)
+		t.Logf("first continue")
+		assertNoError(p.Continue(), t, "Continue()")
+		t.Logf("second continue")
+		err := p.Continue()
+		if runtime.GOOS == "darwin" && err != nil && err.Error() == "bad access" {
+			// this is also ok
+			return
+		}
+		assertNoError(err, t, "Continue()")
+		bp := p.CurrentThread().Breakpoint()
+		if bp != nil {
+			t.Logf("%#v\n", bp.Breakpoint)
+		}
+		if bp == nil || (bp.Name != proc.UnrecoveredPanic) {
+			t.Fatalf("no breakpoint hit or wrong breakpoint hit: %#v", bp)
+		}
+	})
+}
+
+func TestStepIntoAutogeneratedSkip(t *testing.T) {
+	// Tests that autogenerated functions are skipped with the new naming
+	// scheme for autogenerated functions (issue #2948).
+	withTestProcess("stepintobug", t, func(p *proc.Target, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture.Source, 9)
+		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(p.Step(), t, "Step")
+		assertLineNumber(p, t, 12, "After step")
 	})
 }

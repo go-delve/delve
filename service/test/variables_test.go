@@ -101,7 +101,7 @@ func evalVariable(p *proc.Target, symbol string, cfg proc.LoadConfig) (*proc.Var
 		return nil, err
 	}
 
-	return scope.EvalVariable(symbol, cfg)
+	return scope.EvalExpression(symbol, cfg)
 }
 
 func (tc *varTest) alternateVarTest() varTest {
@@ -601,6 +601,7 @@ func TestEvalExpression(t *testing.T) {
 		{"str1[3:]", false, "\"34567890\"", "\"34567890\"", "string", nil},
 		{"str1[0:12]", false, "", "", "string", fmt.Errorf("index out of bounds")},
 		{"str1[5:3]", false, "", "", "string", fmt.Errorf("index out of bounds")},
+		{"str1[11:]", false, "\"\"", "\"\"", "string", nil},
 
 		// NaN and Inf floats
 		{"pinf", false, "+Inf", "+Inf", "float64", nil},
@@ -840,6 +841,20 @@ func TestEvalExpression(t *testing.T) {
 		{"ni8 << 8", false, "0", "0", "int8", nil},
 		{"ni8 >> 1", false, "-3", "-3", "int8", nil},
 		{"bytearray[0] * bytearray[0]", false, "144", "144", "uint8", nil},
+
+		// function call / typecast errors
+		{"unknownthing(1, 2)", false, "", "", "", errors.New("function calls not allowed without using 'call'")},
+		{"(unknownthing)(1, 2)", false, "", "", "", errors.New("function calls not allowed without using 'call'")},
+		{"afunc(2)", false, "", "", "", errors.New("function calls not allowed without using 'call'")},
+		{"(afunc)(2)", false, "", "", "", errors.New("function calls not allowed without using 'call'")},
+		{"(*afunc)(2)", false, "", "", "", errors.New("could not evaluate function or type (*afunc): expression \"afunc\" (func()) can not be dereferenced")},
+		{"unknownthing(2)", false, "", "", "", errors.New("could not evaluate function or type unknownthing: could not find symbol value for unknownthing")},
+		{"(*unknownthing)(2)", false, "", "", "", errors.New("could not evaluate function or type (*unknownthing): could not find symbol value for unknownthing")},
+		{"(*strings.Split)(2)", false, "", "", "", errors.New("could not evaluate function or type (*strings.Split): could not find symbol value for strings")},
+
+		// pretty printing special types
+		{"tim1", false, `time.Time(1977-05-25T18:00:00Z)…`, `time.Time(1977-05-25T18:00:00Z)…`, "time.Time", nil},
+		{"tim2", false, `time.Time(2022-06-07T02:03:04-06:00)…`, `time.Time(2022-06-07T02:03:04-06:00)…`, "time.Time", nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())
@@ -1140,7 +1155,7 @@ func setFunctionBreakpoint(p *proc.Target, t testing.TB, fname string) *proc.Bre
 	if len(addrs) != 1 {
 		t.Fatalf("%s:%d: setFunctionBreakpoint(%s): too many results %v", f, l, fname, addrs)
 	}
-	bp, err := p.SetBreakpoint(addrs[0], proc.UserBreakpoint, nil)
+	bp, err := p.SetBreakpoint(int(addrs[0]), addrs[0], proc.UserBreakpoint, nil)
 	if err != nil {
 		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
 	}
@@ -1230,7 +1245,7 @@ func TestCallFunction(t *testing.T) {
 		{`onetwothree(intcallpanic(2))`, []string{`:[]int:[]int len: 3, cap: 3, [3,4,5]`}, nil},
 		{`onetwothree(intcallpanic(0))`, []string{`~panic:interface {}:interface {}(string) "panic requested"`}, nil},
 		{`onetwothree(intcallpanic(2)+1)`, []string{`:[]int:[]int len: 3, cap: 3, [4,5,6]`}, nil},
-		{`onetwothree(intcallpanic("not a number"))`, nil, errors.New("can not convert \"not a number\" constant to int")},
+		{`onetwothree(intcallpanic("not a number"))`, nil, errors.New("error evaluating \"intcallpanic(\\\"not a number\\\")\" as argument n in function main.onetwothree: can not convert \"not a number\" constant to int")},
 
 		// Variable setting tests
 		{`pa2 = getAStructPtr(8); pa2`, []string{`pa2:*main.astruct:*main.astruct {X: 8}`}, nil},
@@ -1288,6 +1303,8 @@ func TestCallFunction(t *testing.T) {
 		{`regabistacktest("one", "two", "three", "four", "five", 4)`, []string{`:string:"onetwo"`, `:string:"twothree"`, `:string:"threefour"`, `:string:"fourfive"`, `:string:"fiveone"`, ":uint8:8"}, nil},
 		{`regabistacktest2(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)`, []string{":int:3", ":int:5", ":int:7", ":int:9", ":int:11", ":int:13", ":int:15", ":int:17", ":int:19", ":int:11"}, nil},
 		{`issue2698.String()`, []string{`:string:"1 2 3 4"`}, nil},
+		{`regabistacktest3(rast3, 5)`, []string{`:[10]string:[10]string ["onetwo","twothree","threefour","fourfive","fivesix","sixseven","sevenheight","heightnine","nineten","tenone"]`, ":uint8:15"}, nil},
+		{`floatsum(1, 2)`, []string{":float64:3"}, nil},
 	}
 
 	withTestProcessArgs("fncall", t, ".", nil, protest.AllNonOptimized, func(p *proc.Target, fixture protest.Fixture) {
@@ -1470,7 +1487,7 @@ func setFileBreakpoint(p *proc.Target, t *testing.T, fixture protest.Fixture, li
 	if len(addrs) != 1 {
 		t.Fatalf("%s:%d: setFileLineBreakpoint(%s, %d): too many results %v", f, l, fixture.Source, lineno, addrs)
 	}
-	bp, err := p.SetBreakpoint(addrs[0], proc.UserBreakpoint, nil)
+	bp, err := p.SetBreakpoint(int(addrs[0]), addrs[0], proc.UserBreakpoint, nil)
 	if err != nil {
 		t.Fatalf("%s:%d: SetBreakpoint: %v", f, l, err)
 	}

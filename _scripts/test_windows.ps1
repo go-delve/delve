@@ -3,6 +3,8 @@ param (
     [Parameter(Mandatory = $true)][string]$arch
 )
 
+Set-MpPreference -DisableRealtimeMonitoring $true
+
 # Install Chocolatey
 #Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
 
@@ -32,7 +34,7 @@ function GetGo($version) {
 }
 
 if ($version -eq "gotip") {
-    Exit 0
+    #Exit 0
     $latest = Invoke-WebRequest -Uri https://golang.org/VERSION?m=text -UseBasicParsing | Select-Object -ExpandProperty Content
     GetGo $latest
     $env:GOROOT_BOOTSTRAP = $env:GOROOT
@@ -71,4 +73,7 @@ Write-Host $env:GOPATH
 go version
 go env
 go run _scripts/make.go test
-Exit $LastExitCode
+x = $LastExitCode
+if ($version -ne "gotip") {
+	Exit $x
+}

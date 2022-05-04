@@ -12,10 +12,10 @@ import (
 func (p *nativeProcess) MemoryMap() ([]proc.MemoryMapEntry, error) {
 	const VmFlagsPrefix = "VmFlags:"
 
-	smapsbuf, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/smaps", p.Pid()))
+	smapsbuf, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/smaps", p.pid))
 	if err != nil {
 		// Older versions of Linux don't have smaps but have maps which is in a similar format.
-		smapsbuf, err = ioutil.ReadFile(fmt.Sprintf("/proc/%d/maps", p.Pid()))
+		smapsbuf, err = ioutil.ReadFile(fmt.Sprintf("/proc/%d/maps", p.pid))
 		if err != nil {
 			return nil, err
 		}
@@ -47,6 +47,9 @@ smapsLinesLoop:
 
 		for i := range vmflags {
 			switch vmflags[i] {
+			case "pf":
+				// pure PFN range, see https://github.com/go-delve/delve/issues/2630
+				continue smapsLinesLoop
 			case "dd":
 				// "don't dump"
 				continue smapsLinesLoop

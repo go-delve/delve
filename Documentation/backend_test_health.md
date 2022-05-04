@@ -11,8 +11,8 @@ Tests skipped by each supported backend:
 	* 1 broken - cgo stacktraces
 * darwin/lldb skipped = 1
 	* 1 upstream issue
-* freebsd skipped = 15
-	* 11 broken
+* freebsd skipped = 16
+	* 12 broken
 	* 4 not implemented
 * linux/386/pie skipped = 1
 	* 1 broken
@@ -20,6 +20,7 @@ Tests skipped by each supported backend:
 	* 1 broken - cgo stacktraces
 * pie skipped = 2
 	* 2 upstream issue - https://github.com/golang/go/issues/29322
-* windows skipped = 2
+* windows skipped = 5
 	* 1 broken
+	* 3 see https://github.com/go-delve/delve/issues/2768
 	* 1 upstream issue
