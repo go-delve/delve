@@ -325,6 +325,10 @@ func MustSupportFunctionCalls(t *testing.T, testBackend string) {
 		t.Skip("this backend does not support function calls")
 	}
 
+	if runtime.GOOS == "freebsd" {
+		t.Skip("freebsd backend has problems with changing and restoring XMM registers")
+	}
+
 	if runtime.GOOS == "darwin" && os.Getenv("TRAVIS") == "true" && runtime.GOARCH == "amd64" {
 		t.Skip("function call injection tests are failing on macOS on Travis-CI (see #1802)")
 	}
