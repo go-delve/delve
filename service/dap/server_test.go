@@ -510,7 +510,7 @@ func TestAttachStopOnEntry(t *testing.T) {
 		// 2 >> attach, << initialized, << attach
 		client.AttachRequest(
 			map[string]interface{}{"mode": "local", "processId": cmd.Process.Pid, "stopOnEntry": true, "backend": "default"})
-		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
+		client.ExpectCapabilitiesEventSupportDisconnectOptions(t, true, false)
 		initEvent := client.ExpectInitializedEvent(t)
 		if initEvent.Seq != 0 {
 			t.Errorf("\ngot %#v\nwant Seq=0", initEvent)
@@ -3681,7 +3681,7 @@ func substitutePathTestHelper(t *testing.T, fixture protest.Fixture, client *dap
 			switch request {
 			case "attach":
 				client.AttachRequest(launchAttachConfig)
-				client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
+				client.ExpectCapabilitiesEventSupportDisconnectOptions(t, true, false)
 			case "launch":
 				client.LaunchRequestWithArgs(launchAttachConfig)
 			default:
@@ -5669,7 +5669,7 @@ func TestAttachRequest(t *testing.T) {
 			func() {
 				client.AttachRequest(map[string]interface{}{
 					/*"mode": "local" by default*/ "processId": cmd.Process.Pid, "stopOnEntry": false})
-				client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
+				client.ExpectCapabilitiesEventSupportDisconnectOptions(t, true, false)
 			},
 			// Set breakpoints
 			fixture.Source, []int{8},
@@ -6592,7 +6592,7 @@ func TestAttachRemoteToDlvAttachHaltedStopOnEntry(t *testing.T) {
 	_, dbg := attachDebuggerWithTargetHalted(t, "http_server")
 	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
 		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
-		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
+		client.ExpectCapabilitiesEventSupportDisconnectOptions(t, true, false)
 		client.ExpectInitializedEvent(t)
 		client.ExpectAttachResponse(t)
 		client.ConfigurationDoneRequest()
@@ -6657,16 +6657,19 @@ func TestAttachRemoteToRunningTargetContinueOnEntry(t *testing.T) {
 // TestAttachRemoteMultiClientDisconnect tests that that remote attach doesn't take down
 // the server in multi-client mode unless terminateDebuggee is explicitely set.
 func TestAttachRemoteMultiClientDisconnect(t *testing.T) {
-	closingClientSessionOnly := fmt.Sprintf(daptest.ClosingClient, "halted")
+	closingClientSessionOnlyRunning := fmt.Sprintf(daptest.ClosingClient, "running")
+	closingClientSessionOnlySuspended := fmt.Sprintf(daptest.ClosingClient, "suspended")
 	detachingAndTerminating := "Detaching and terminating target process"
 	tests := []struct {
 		name              string
 		disconnectRequest func(client *daptest.Client)
 		expect            string
 	}{
-		{"default", func(c *daptest.Client) { c.DisconnectRequest() }, closingClientSessionOnly},
-		{"terminate=true", func(c *daptest.Client) { c.DisconnectRequestWithKillOption(true) }, detachingAndTerminating},
-		{"terminate=false", func(c *daptest.Client) { c.DisconnectRequestWithKillOption(false) }, closingClientSessionOnly},
+		{"default", func(c *daptest.Client) { c.DisconnectRequest() }, closingClientSessionOnlyRunning},
+		{"terminate=false,suspend=false", func(c *daptest.Client) { c.DisconnectRequestWithOptions(false, false) }, closingClientSessionOnlyRunning},
+		{"terminate=false,suspend=true", func(c *daptest.Client) { c.DisconnectRequestWithOptions(false, true) }, closingClientSessionOnlySuspended},
+		{"terminate=true,suspend=false", func(c *daptest.Client) { c.DisconnectRequestWithOptions(true, false) }, detachingAndTerminating},
+		{"terminate=true,suspend=true", func(c *daptest.Client) { c.DisconnectRequestWithOptions(true, false) }, detachingAndTerminating},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -6682,14 +6685,14 @@ func TestAttachRemoteMultiClientDisconnect(t *testing.T) {
 			// A dap.Server doesn't support accept-multiclient, but we can use this
 			// hack to test the inner connection logic that is used by a server that does.
 			server.session.config.AcceptMulti = true
-			_, server.session.debugger = launchDebuggerWithTargetHalted(t, "increment")
+			_, server.session.debugger = launchDebuggerWithTargetHalted(t, "http_server")
 			server.sessionMu.Unlock()
 
 			client.InitializeRequest()
 			client.ExpectInitializeResponseAndCapabilities(t)
 
 			client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
-			client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
+			client.ExpectCapabilitiesEventSupportDisconnectOptions(t, true, true)
 			client.ExpectInitializedEvent(t)
 			client.ExpectAttachResponse(t)
 			client.ConfigurationDoneRequest()
@@ -6705,11 +6708,11 @@ func TestAttachRemoteMultiClientDisconnect(t *testing.T) {
 			client.ExpectTerminatedEvent(t)
 			time.Sleep(10 * time.Millisecond) // give time for things to shut down
 
-			if tc.expect == closingClientSessionOnly {
+			if e.Body.Output != detachingAndTerminating {
 				// At this point a multi-client server is still running.
 				verifySessionStopped(t, server.session)
 				// Since it is a dap.Server, it cannot accept another client, so the only
-				// way to take down the server is to force-kill it.
+				// way to take down the server and the target is to force-kill it.
 				close(forceStop)
 			}
 			<-serverStopped

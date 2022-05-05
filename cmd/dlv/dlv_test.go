@@ -757,8 +757,10 @@ func TestDAPCmdWithNoDebugBinary(t *testing.T) {
 func newDAPRemoteClient(t *testing.T, addr string, isDlvAttach bool, isMulti bool) *daptest.Client {
 	c := daptest.NewClient(addr)
 	c.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
-	if isDlvAttach || isMulti {
-		c.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
+	if isDlvAttach {
+		c.ExpectCapabilitiesEventSupportDisconnectOptions(t, true, false)
+	} else if isMulti {
+		c.ExpectCapabilitiesEventSupportDisconnectOptions(t, true, true)
 	}
 	c.ExpectInitializedEvent(t)
 	c.ExpectAttachResponse(t)
@@ -814,7 +816,7 @@ func TestRemoteDAPClient(t *testing.T) {
 }
 
 func closeDAPRemoteMultiClient(t *testing.T, c *daptest.Client, expectStatus string) {
-	c.DisconnectRequest()
+	c.DisconnectRequestWithOptions(false, true)
 	c.ExpectOutputEventClosingClient(t, expectStatus)
 	c.ExpectDisconnectResponse(t)
 	c.ExpectTerminatedEvent(t)
@@ -863,7 +865,7 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 	dapclient.ExpectContinueResponse(t)
 	dapclient.ExpectStoppedEvent(t)
 	dapclient.CheckStopLocation(t, 1, "main.main", 5)
-	closeDAPRemoteMultiClient(t, dapclient, "halted")
+	closeDAPRemoteMultiClient(t, dapclient, "suspended")
 
 	// Client 2 reconnects at main.main and continues to process exit
 	dapclient2 := newDAPRemoteClient(t, listenAddr, false, true)

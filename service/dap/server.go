@@ -843,9 +843,10 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsSteppingGranularity = true
 	response.Body.SupportsLogPoints = true
 	response.Body.SupportsDisassembleRequest = true
-	// To be enabled by CapabilitiesEvent based on launch configuration
+	// To be enabled by CapabilitiesEvent based on launch/attach configuration
 	response.Body.SupportsStepBack = false
 	response.Body.SupportTerminateDebuggee = false
+	response.Body.SupportSuspendDebuggee = false
 	// TODO(polina): support these requests in addition to vscode-go feature parity
 	response.Body.SupportsTerminateRequest = false
 	response.Body.SupportsRestartRequest = false
@@ -1136,10 +1137,27 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 		// This is a multi-use server/debugger, so a disconnect request that doesn't
 		// terminate the debuggee should clean up only the client connection and pointer to debugger,
 		// but not the entire server.
-		status := "halted"
-		if s.isRunningCmd() {
+		status := "running"
+		if request.Arguments.SuspendDebuggee {
+			status = "suspended"
+			s.changeStateMu.Lock()
+			defer s.changeStateMu.Unlock()
+			s.setHaltRequested(true)
+			if _, err := s.halt(); err != nil {
+				s.config.log.Debug("halt returned error: ", err)
+			}
+		} else if !s.isRunningCmd() {
 			status = "running"
-		} else if s, err := s.debugger.State(false); processExited(s, err) {
+			asyncSetupDone := make(chan struct{})
+			go func() {
+				defer closeIfOpen(asyncSetupDone)
+				if _, err := s.runUntilStop(api.Continue, asyncSetupDone); err != nil {
+					s.config.log.Debug("continue returned error: ", err)
+				}
+			}()
+			<-asyncSetupDone
+		}
+		if state, err := s.debugger.State(true /*nowait*/); processExited(state, err) {
 			status = "exited"
 		}
 		s.logToConsole(fmt.Sprintf("Closing client session, but leaving multi-client DAP server at %s with debuggee %s", s.config.Listener.Addr().String(), status))
@@ -1147,14 +1165,6 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		s.conn.Close()
 		s.debugger = nil
-		// The target is left in whatever state it is already in - halted or running.
-		// The users therefore have the flexibility to choose the appropriate state
-		// for their case before disconnecting. This is also desirable in case of
-		// the client connection fails unexpectedly and the user needs to reconnect.
-		// TODO(polina): should we always issue a continue here if it is not running
-		// like is done in vscode-go legacy adapter?
-		// Ideally we want to use bool suspendDebuggee flag, but it is not yet
-		// available in vscode: https://github.com/microsoft/vscode/issues/134412
 		return
 	}
 
@@ -1773,8 +1783,7 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 		// Customize termination options for debugger and debuggee
 		if s.config.AcceptMulti {
 			// User can stop debugger with process or leave it running
-			s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportTerminateDebuggee: true}}})
-			// TODO(polina): support SupportSuspendDebuggee when available
+			s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportTerminateDebuggee: true, SupportSuspendDebuggee: true}}})
 		} else if s.config.Debugger.AttachPid > 0 {
 			// User can stop debugger with process or leave the processs running
 			s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportTerminateDebuggee: true}}})

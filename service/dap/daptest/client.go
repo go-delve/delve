@@ -136,11 +136,14 @@ func (c *Client) ExpectUnsupportedCommandErrorResponse(t *testing.T) *dap.ErrorR
 	return c.ExpectErrorResponseWith(t, 9999, "Unsupported command", false)
 }
 
-func (c *Client) ExpectCapabilitiesEventSupportTerminateDebuggee(t *testing.T) *dap.CapabilitiesEvent {
+func (c *Client) ExpectCapabilitiesEventSupportDisconnectOptions(t *testing.T, terminate bool, suspend bool) *dap.CapabilitiesEvent {
 	t.Helper()
 	e := c.ExpectCapabilitiesEvent(t)
-	if !e.Body.Capabilities.SupportTerminateDebuggee {
-		t.Errorf("\ngot %#v\nwant SupportTerminateDebuggee=true", e.Body.Capabilities.SupportTerminateDebuggee)
+	if e.Body.Capabilities.SupportTerminateDebuggee != terminate {
+		t.Errorf("\ngot %#v\nwant SupportTerminateDebuggee=%v", e.Body.Capabilities.SupportTerminateDebuggee, terminate)
+	}
+	if e.Body.Capabilities.SupportSuspendDebuggee != suspend {
+		t.Errorf("\ngot %#v\nwant SupportSuspendDebuggee=%v", e.Body.Capabilities.SupportSuspendDebuggee, suspend)
 	}
 	return e
 }
@@ -278,6 +281,15 @@ func (c *Client) DisconnectRequest() {
 func (c *Client) DisconnectRequestWithKillOption(kill bool) {
 	request := &dap.DisconnectRequest{Request: *c.newRequest("disconnect")}
 	request.Arguments.TerminateDebuggee = kill
+	c.send(request)
+}
+
+// DisconnectRequestWithKillOption sends a 'disconnect' request with an option to specify
+// `terminateDebuggee` and `suspendDebuggee`
+func (c *Client) DisconnectRequestWithOptions(terminate bool, suspend bool) {
+	request := &dap.DisconnectRequest{Request: *c.newRequest("disconnect")}
+	request.Arguments.TerminateDebuggee = terminate
+	request.Arguments.SuspendDebuggee = suspend
 	c.send(request)
 }
 
