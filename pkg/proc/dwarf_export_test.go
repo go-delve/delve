@@ -1,6 +1,9 @@
 package proc
 
-import "github.com/go-delve/delve/pkg/dwarf/op"
+import (
+	"github.com/go-delve/delve/pkg/dwarf/op"
+	"golang.org/x/arch/x86/x86asm"
+)
 
 // PackageVars returns bi.packageVars (for tests)
 func (bi *BinaryInfo) PackageVars() []packageVar {
@@ -22,4 +25,8 @@ func NewCompositeMemory(p *Target, pieces []op.Piece, base uint64) (*compositeMe
 		mem.base = base
 	}
 	return mem, err
+}
+
+func IsJNZ(inst archInst) bool {
+	return inst.(*x86Inst).Op == x86asm.JNE
 }

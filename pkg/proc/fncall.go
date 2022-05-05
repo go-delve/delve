@@ -939,6 +939,17 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		if err := stepInstructionOut(p, thread, debugCallName, debugCallName); err != nil {
 			fncall.err = fmt.Errorf("could not step out of %s: %v", debugCallName, err)
 		}
+		if bi.Arch.Name == "amd64" {
+			// The tail of debugCallV2 corrupts the state of RFLAGS, we must restore
+			// it one extra time after stepping out of it.
+			// See https://github.com/go-delve/delve/issues/2985 and
+			// TestCallInjectionFlagCorruption
+			rflags := bi.Arch.RegistersToDwarfRegisters(0, fncall.savedRegs).Uint64Val(regnum.AMD64_Rflags)
+			err := thread.SetReg(regnum.AMD64_Rflags, op.DwarfRegisterFromUint64(rflags))
+			if err != nil {
+				fncall.err = fmt.Errorf("could not restore RFLAGS register: %v", err)
+			}
+		}
 		return true
 
 	case debugCallRegReadReturn: // 1
