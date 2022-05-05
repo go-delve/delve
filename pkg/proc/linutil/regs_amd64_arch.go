@@ -194,6 +194,8 @@ func (r *AMD64Registers) SetReg(regNum uint64, reg *op.DwarfRegister) (bool, err
 		p = &r.Regs.R15
 	case regnum.AMD64_Rip:
 		p = &r.Regs.Rip
+	case regnum.AMD64_Rflags:
+		p = &r.Regs.Eflags
 	}
 
 	if p != nil {
