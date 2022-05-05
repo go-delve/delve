@@ -1340,6 +1340,11 @@ func TestCallFunction(t *testing.T) {
 
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) {
 			for _, tc := range testcases117 {
+				if strings.Contains(tc.expr, "floatsum") && testBackend == "rr" {
+					// Can not set floating point registers with RR.
+					// See: https://github.com/rr-debugger/rr/issues/3208
+					continue
+				}
 				testCallFunction(t, p, tc)
 			}
 		}
