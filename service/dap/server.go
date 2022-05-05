@@ -561,28 +561,43 @@ func (s *Session) recoverPanic(request dap.Message) {
 	}
 }
 
-// asyncSetupDone holds two structs to help determine if an asynchronous
-// command has completed setup. doneCh is used when the whole command is
-// done running, and commandCh is used if the setup for a command is done
-// running.
+// asyncSetupDone holds two channels to help determine if an asynchronous
+// command has completed setup.
+// Either signal indicates that the server is free to issue new state-changing
+// commands to the debugger.
 type asyncSetupDone struct {
+	// commandCh is closed when the async command caller returns after calling or
+	// deciding not to call the actual debugger command.
 	commandCh chan struct{}
-	doneCh    chan struct{}
+	// setupCh is closed when the underlying asynchronous debugger command sets up for execution or fails to.
+	setupCh chan struct{}
+}
+
+func (a *asyncSetupDone) commandDone() {
+	if a.commandCh != nil {
+		close(a.commandCh)
+	}
+}
+
+// wait waits on either w.commandCh or w.doneCh to close.
+func (a *asyncSetupDone) wait() {
+	select {
+	case <-a.commandCh:
+	case <-a.setupCh:
+	}
+}
+
+func (a *asyncSetupDone) setupDone() {
+	if a.setupCh != nil {
+		close(a.setupCh)
+	}
 }
 
 // newAsyncSetupDone returns a pointer to an initialized asyncSetupDone.
 func newAsyncSetupDone() *asyncSetupDone {
 	return &asyncSetupDone{
 		commandCh: make(chan struct{}),
-		doneCh:    make(chan struct{}),
-	}
-}
-
-// wait waits on either w.commandCh or w.doneCh to close.
-func (w *asyncSetupDone) wait() {
-	select {
-	case <-w.commandCh:
-	case <-w.doneCh:
+		setupCh:   make(chan struct{}),
 	}
 }
 
@@ -708,49 +723,49 @@ func (s *Session) handleRequest(request dap.Message) {
 	case *dap.ConfigurationDoneRequest: // Optional (capability ‘supportsConfigurationDoneRequest’)
 		go func() {
 			defer s.recoverPanic(request)
-			defer close(resumeRequestLoop.doneCh)
+			defer resumeRequestLoop.setupDone()
 			s.onConfigurationDoneRequest(request, resumeRequestLoop)
 		}()
 		resumeRequestLoop.wait()
 	case *dap.ContinueRequest: // Required
 		go func() {
 			defer s.recoverPanic(request)
-			defer close(resumeRequestLoop.doneCh)
+			defer resumeRequestLoop.setupDone()
 			s.onContinueRequest(request, resumeRequestLoop)
 		}()
 		resumeRequestLoop.wait()
 	case *dap.NextRequest: // Required
 		go func() {
 			defer s.recoverPanic(request)
-			defer close(resumeRequestLoop.doneCh)
+			defer resumeRequestLoop.setupDone()
 			s.onNextRequest(request, resumeRequestLoop)
 		}()
 		resumeRequestLoop.wait()
 	case *dap.StepInRequest: // Required
 		go func() {
 			defer s.recoverPanic(request)
-			defer close(resumeRequestLoop.doneCh)
+			defer resumeRequestLoop.setupDone()
 			s.onStepInRequest(request, resumeRequestLoop)
 		}()
 		resumeRequestLoop.wait()
 	case *dap.StepOutRequest: // Required
 		go func() {
 			defer s.recoverPanic(request)
-			defer close(resumeRequestLoop.doneCh)
+			defer resumeRequestLoop.setupDone()
 			s.onStepOutRequest(request, resumeRequestLoop)
 		}()
 		resumeRequestLoop.wait()
 	case *dap.StepBackRequest: // Optional (capability ‘supportsStepBack’)
 		go func() {
 			defer s.recoverPanic(request)
-			defer close(resumeRequestLoop.doneCh)
+			defer resumeRequestLoop.setupDone()
 			s.onStepBackRequest(request, resumeRequestLoop)
 		}()
 		resumeRequestLoop.wait()
 	case *dap.ReverseContinueRequest: // Optional (capability ‘supportsStepBack’)
 		go func() {
 			defer s.recoverPanic(request)
-			defer close(resumeRequestLoop.doneCh)
+			defer resumeRequestLoop.setupDone()
 			s.onReverseContinueRequest(request, resumeRequestLoop)
 		}()
 		resumeRequestLoop.wait()
@@ -3430,20 +3445,21 @@ func (s *Session) resumeOnce(command string, allowNextStateChange *asyncSetupDon
 	// No other goroutines should be able to try to resume
 	// or halt execution while this goroutine is resuming
 	// execution, so we do not miss those events.
-	asyncSetupDone := newAsyncSetupDone()
-	defer close(asyncSetupDone.doneCh)
+	resumeSetupDone := newAsyncSetupDone()
+	defer resumeSetupDone.setupDone()
 	s.changeStateMu.Lock()
 	go func() {
-		// When we are done waiting for the command to finish or this function to complete,
-		// we want to close the allowNextStateChange.commandCh to notify the request loop
-		// that the setup is done and unlock s.changeStateMu.
+		// When resumeSetupDone indicates that we are done setting up for
+		// or processing this resume attempt, close allowNextStateChange
+		// and unlock changeStateMu to unblock the request loop waiting
+		// on one of these mechanisms.
 		defer func() {
 			if allowNextStateChange != nil {
-				close(allowNextStateChange.commandCh)
+				allowNextStateChange.commandDone()
 			}
 			s.changeStateMu.Unlock()
 		}()
-		asyncSetupDone.wait()
+		resumeSetupDone.wait()
 	}()
 
 	// There may have been a manual halt while the program was
@@ -3453,7 +3469,7 @@ func (s *Session) resumeOnce(command string, allowNextStateChange *asyncSetupDon
 		state, err := s.debugger.State(false)
 		return false, state, err
 	}
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone.commandCh)
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, resumeSetupDone.commandCh)
 	return true, state, err
 }
 
