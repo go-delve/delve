@@ -243,6 +243,28 @@ func (t *Term) Run() (int, error) {
 		case "nullcmd", "nocmd":
 			commands := cmds.FuzzySearch(strings.ToLower(line))
 			c = append(c, commands...)
+		case "print", "whatis":
+			localVars, err := t.client.ListLocalVariables(
+				api.EvalScope{GoroutineID: -1, Frame: t.cmds.frame, DeferredCall: 0},
+				t.loadConfig(),
+			)
+			if err != nil {
+				fmt.Printf("Unable to get local variables: %v.", err)
+				break
+			}
+
+			locs := trie.New()
+			for _, loc := range localVars {
+				locs.Add(loc.Name, nil)
+			}
+
+			if spc := strings.LastIndex(line, " "); spc > 0 {
+				prefix := line[:spc] + " "
+				locals := locs.FuzzySearch(line[spc+1:])
+				for _, l := range locals {
+					c = append(c, prefix+l)
+				}
+			}
 		}
 		return
 	})
