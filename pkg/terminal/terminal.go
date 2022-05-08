@@ -460,7 +460,7 @@ func (t *Term) handleExit() (int, error) {
 	return 0, nil
 }
 
-// loadConfig returns an api.LoadConfig with the parameterss specified in
+// loadConfig returns an api.LoadConfig with the parameters specified in
 // the configuration file.
 func (t *Term) loadConfig() api.LoadConfig {
 	r := api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
