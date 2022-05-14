@@ -246,7 +246,7 @@ func (t *Term) Run() (int, error) {
 		case "print", "whatis":
 			localVars, err := t.client.ListLocalVariables(
 				api.EvalScope{GoroutineID: -1, Frame: t.cmds.frame, DeferredCall: 0},
-				t.loadConfig(),
+				api.LoadConfig{},
 			)
 			if err != nil {
 				fmt.Printf("Unable to get local variables: %v.", err)
