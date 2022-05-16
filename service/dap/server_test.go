@@ -103,8 +103,10 @@ func startDAPServer(t *testing.T, serverStopped chan struct{}) (server *Server, 
 			}
 		}()
 		select {
-		case <-disconnectChan: // Stop triggered internally
-		case <-forceStop: // Stop triggered externally
+		case <-disconnectChan:
+			t.Log("server stop triggered internally")
+		case <-forceStop:
+			t.Log("server stop triggered externally")
 		}
 		server.Stop()
 	}()
@@ -6618,6 +6620,60 @@ func TestAttachRemoteToRunningTargetContinueOnEntry(t *testing.T) {
 	})
 }
 
+// MultiClientCloseServerMock mocks the rpccommon.Server using a dap.Server to exercise
+// the shutdown logic in dap.Session where it does NOT take down the server on close
+// in multi-client mode. (The dap mode of the rpccommon.Server is tested in dlv_test).
+// The dap.Server is a single-use server. Once its one and only session is closed,
+// the server and the target must be taken down manually for the test not to leak.
+type MultiClientCloseServerMock struct {
+	impl      *Server
+	debugger  *debugger.Debugger
+	forceStop chan struct{}
+	stopped   chan struct{}
+}
+
+func NewMultiClientCloseServerMock(t *testing.T, fixture string) *MultiClientCloseServerMock {
+	var s MultiClientCloseServerMock
+	s.stopped = make(chan struct{})
+	s.impl, s.forceStop = startDAPServer(t, s.stopped)
+	_, s.debugger = launchDebuggerWithTargetHalted(t, "http_server")
+	return &s
+}
+
+func (s *MultiClientCloseServerMock) acceptNewClient(t *testing.T) *daptest.Client {
+	client := daptest.NewClient(s.impl.listener.Addr().String())
+	time.Sleep(100 * time.Millisecond) // Give time for connection to be set as dap.Session
+	s.impl.sessionMu.Lock()
+	if s.impl.session == nil {
+		t.Fatal("dap session is not ready")
+	}
+	// A dap.Server doesn't support accept-multiclient, but we can use this
+	// hack to test the inner connection logic that is used by a server that does.
+	s.impl.session.config.AcceptMulti = true
+	s.impl.session.debugger = s.debugger
+	s.impl.sessionMu.Unlock()
+	return client
+}
+
+func (s *MultiClientCloseServerMock) stop(t *testing.T) {
+	close(s.forceStop)
+	// If the server doesn't have an active session,
+	// closing it would leak the debbuger with the target because
+	// they are part of dap.Session.
+	// We must take it down manually as if we are in rpccommon::ServerImpl::Stop.
+	if s.debugger.IsRunning() {
+		s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+	}
+	s.debugger.Detach(true)
+}
+
+func (s *MultiClientCloseServerMock) verifyStopped(t *testing.T) {
+	if state, err := s.debugger.State(true /*nowait*/); err != proc.ErrProcessDetached && !processExited(state, err) {
+		t.Errorf("target leak")
+	}
+	verifyServerStopped(t, s.impl)
+}
+
 // TestAttachRemoteMultiClientDisconnect tests that that remote attach doesn't take down
 // the server in multi-client mode unless terminateDebuggee is explicitely set.
 func TestAttachRemoteMultiClientDisconnect(t *testing.T) {
@@ -6634,20 +6690,9 @@ func TestAttachRemoteMultiClientDisconnect(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			serverStopped := make(chan struct{})
-			server, forceStop := startDAPServer(t, serverStopped)
-			client := daptest.NewClient(server.listener.Addr().String())
+			server := NewMultiClientCloseServerMock(t, "increment")
+			client := server.acceptNewClient(t)
 			defer client.Close()
-			time.Sleep(100 * time.Millisecond) // Give time for connection to be set as dap.Session
-			server.sessionMu.Lock()
-			if server.session == nil {
-				t.Fatal("dap session is not ready")
-			}
-			// DAP server doesn't support accept-multiclient, but we can use this
-			// hack to test the inner connection logic that can be used by a server that does.
-			server.session.config.AcceptMulti = true
-			_, server.session.debugger = launchDebuggerWithTargetHalted(t, "increment")
-			server.sessionMu.Unlock()
 
 			client.InitializeRequest()
 			client.ExpectInitializeResponseAndCapabilities(t)
@@ -6670,13 +6715,16 @@ func TestAttachRemoteMultiClientDisconnect(t *testing.T) {
 			time.Sleep(10 * time.Millisecond) // give time for things to shut down
 
 			if tc.expect == closingClientSessionOnly {
-				// At this point a multi-client server is still running.
-				verifySessionStopped(t, server.session)
-				// Since it is a dap server, it cannot accept another client, so the only
-				// way to take down the server is to force-kill it.
-				close(forceStop)
+				// At this point a multi-client server is still running. but session should be done.
+				verifySessionStopped(t, server.impl.session)
+				// Verify target's running state.
+				if server.debugger.IsRunning() {
+					t.Errorf("\ngot running=true, want false")
+				}
+				server.stop(t)
 			}
-			<-serverStopped
+			<-server.stopped
+			server.verifyStopped(t)
 		})
 	}
 }
