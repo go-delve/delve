@@ -17,7 +17,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -6520,7 +6519,7 @@ func launchDebuggerWithTargetHalted(t *testing.T, fixture string) (*protest.Fixt
 	return &fixbin, dbg
 }
 
-func attachDebuggerWithTargetHalted(t *testing.T, fixture string) (*service.Config, *debugger.Debugger) {
+func attachDebuggerWithTargetHalted(t *testing.T, fixture string) (*exec.Cmd, *debugger.Debugger) {
 	t.Helper()
 	fixbin := protest.BuildFixture(fixture, protest.AllNonOptimized)
 	cmd := execFixture(t, fixbin)
@@ -6529,7 +6528,7 @@ func attachDebuggerWithTargetHalted(t *testing.T, fixture string) (*service.Conf
 	if err != nil {
 		t.Fatal("failed to start debugger:", err)
 	}
-	return &cfg, dbg
+	return cmd, dbg
 }
 
 // runTestWithDebugger starts the server and sets its debugger, initializes a debug session,
@@ -6557,8 +6556,7 @@ func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *dapt
 	test(client)
 
 	client.DisconnectRequest()
-	pid := dbg.AttachPid()
-	if pid == 0 { // launched target
+	if dbg.AttachPid() == 0 { // launched target
 		client.ExpectOutputEventDetachingKill(t)
 	} else { // attached to target
 		client.ExpectOutputEventDetachingNoKill(t)
@@ -6567,9 +6565,6 @@ func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *dapt
 	client.ExpectTerminatedEvent(t)
 
 	<-serverStopped
-	if pid > 0 {
-		syscall.Kill(pid, syscall.SIGKILL)
-	}
 }
 
 func TestAttachRemoteToDlvLaunchHaltedStopOnEntry(t *testing.T) {
@@ -6589,7 +6584,7 @@ func TestAttachRemoteToDlvAttachHaltedStopOnEntry(t *testing.T) {
 	if runtime.GOOS == "freebsd" || runtime.GOOS == "windows" {
 		t.SkipNow()
 	}
-	_, dbg := attachDebuggerWithTargetHalted(t, "http_server")
+	cmd, dbg := attachDebuggerWithTargetHalted(t, "http_server")
 	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
 		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
 		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
@@ -6599,6 +6594,7 @@ func TestAttachRemoteToDlvAttachHaltedStopOnEntry(t *testing.T) {
 		client.ExpectStoppedEvent(t)
 		client.ExpectConfigurationDoneResponse(t)
 	})
+	cmd.Process.Kill()
 }
 
 func TestAttachRemoteToHaltedTargetContinueOnEntry(t *testing.T) {
