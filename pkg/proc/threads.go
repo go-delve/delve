@@ -100,3 +100,7 @@ func setSP(thread Thread, newSP uint64) error {
 func setClosureReg(thread Thread, newClosureReg uint64) error {
 	return thread.SetReg(thread.BinInfo().Arch.ContextRegNum, op.DwarfRegisterFromUint64(newClosureReg))
 }
+
+func setLR(thread Thread, newLR uint64) error {
+	return thread.SetReg(thread.BinInfo().Arch.LRRegNum, op.DwarfRegisterFromUint64(newLR))
+}

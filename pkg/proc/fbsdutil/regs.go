@@ -141,6 +141,10 @@ func (r *AMD64Registers) BP() uint64 {
 	return uint64(r.Regs.Rbp)
 }
 
+func (r *AMD64Registers) LR() uint64 {
+	return 0
+}
+
 // TLS returns the address of the thread local storage memory segment.
 func (r *AMD64Registers) TLS() uint64 {
 	return r.Fsbase

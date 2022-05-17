@@ -30,7 +30,7 @@ func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 	var restoreRegistersErr error
 	t.dbp.execPtraceFunc(func() {
 		restoreRegistersErr = ptraceSetGRegs(t.ID, sr.Regs)
-		if restoreRegistersErr != syscall.Errno(0) {
+		if restoreRegistersErr != syscall.Errno(0) && restoreRegistersErr != nil {
 			return
 		}
 		if sr.Fpregset != nil {

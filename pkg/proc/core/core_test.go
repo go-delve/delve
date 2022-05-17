@@ -257,6 +257,11 @@ func TestCore(t *testing.T) {
 	}
 	p := withCoreFile(t, "panic", "")
 
+	recorded, _ := p.Recorded()
+	if !recorded {
+		t.Fatalf("expecting recorded to be true")
+	}
+
 	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 	if err != nil || len(gs) == 0 {
 		t.Fatalf("GoroutinesInfo() = %v, %v; wanted at least one goroutine", gs, err)

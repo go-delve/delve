@@ -149,6 +149,11 @@ func (r *AMD64Registers) BP() uint64 {
 	return r.rbp
 }
 
+// LR returns the link register.
+func (r *AMD64Registers) LR() uint64 {
+	return 0
+}
+
 // TLS returns the value of the register
 // that contains the location of the thread
 // local storage segment.

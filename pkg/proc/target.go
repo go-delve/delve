@@ -268,7 +268,7 @@ func (t *Target) Valid() (bool, error) {
 // Currently only non-recorded processes running on AMD64 support
 // function calls.
 func (t *Target) SupportsFunctionCalls() bool {
-	return t.Process.BinInfo().Arch.Name == "amd64"
+	return (t.Process.BinInfo().Arch.Name == "amd64" && t.Process.BinInfo().GOOS != "freebsd") || t.Process.BinInfo().Arch.Name == "arm64"
 }
 
 // ClearCaches clears internal caches that should not survive a restart.

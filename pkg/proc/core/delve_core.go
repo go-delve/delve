@@ -150,6 +150,7 @@ func (regs *delveRegisters) BP() uint64            { return regs.bp }
 func (regs *delveRegisters) SP() uint64            { return regs.sp }
 func (regs *delveRegisters) TLS() uint64           { return regs.tls }
 func (regs *delveRegisters) GAddr() (uint64, bool) { return regs.gaddr, regs.hasGAddr }
+func (regs *delveRegisters) LR() uint64            { return 0 }
 
 func (regs *delveRegisters) Copy() (proc.Registers, error) {
 	return regs, nil
