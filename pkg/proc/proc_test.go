@@ -5860,6 +5860,7 @@ func TestCallInjectionFlagCorruption(t *testing.T) {
 	// time, after stepping out of debugCallV2.
 	// Fixes issue https://github.com/go-delve/delve/issues/2985
 	skipUnlessOn(t, "not relevant", "amd64")
+	protest.MustSupportFunctionCalls(t, testBackend)
 
 	withTestProcessArgs("badflags", t, ".", []string{"0"}, 0, func(p *proc.Target, fixture protest.Fixture) {
 		mainfn := p.BinInfo().LookupFunc["main.main"]
