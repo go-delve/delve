@@ -246,6 +246,22 @@ func (t *Term) Run() (int, error) {
 			commands := cmds.FuzzySearch(strings.ToLower(line))
 			c = append(c, commands...)
 		case "print", "whatis":
+			if locs == nil {
+				localVars, err := t.client.ListLocalVariables(
+					api.EvalScope{GoroutineID: -1, Frame: t.cmds.frame, DeferredCall: 0},
+					api.LoadConfig{},
+				)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Unable to get local variables: %s\n", err)
+					break
+				}
+
+				locs = trie.New()
+				for _, loc := range localVars {
+					locs.Add(loc.Name, nil)
+				}
+			}
+
 			if spc := strings.LastIndex(line, " "); spc > 0 {
 				prefix := line[:spc] + " "
 				locals := locs.FuzzySearch(line[spc+1:])
@@ -289,18 +305,7 @@ func (t *Term) Run() (int, error) {
 	_, _ = t.client.GetState()
 
 	for {
-		localVars, err := t.client.ListLocalVariables(
-			api.EvalScope{GoroutineID: -1, Frame: t.cmds.frame, DeferredCall: 0},
-			api.LoadConfig{},
-		)
-		if err != nil && !isErrProcessExited(err) {
-			fmt.Fprintf(os.Stderr, "Unable to get local variables: %s\n", err)
-		}
-
-		locs = trie.New()
-		for _, loc := range localVars {
-			locs.Add(loc.Name, nil)
-		}
+		locs = nil
 
 		cmdstr, err := t.promptForInput()
 		if err != nil {
