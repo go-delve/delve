@@ -77,6 +77,9 @@ func startDAPServerWithClient(t *testing.T, serverStopped chan struct{}) *daptes
 	return client
 }
 
+// Starts an empty server and a stripped down config just to establish a client connection.
+// To mock a server created by dap.NewServer(config) or serving dap.NewSession(conn, config, debugger)
+// set those arg fields manually after the server creation.
 func startDAPServer(t *testing.T, serverStopped chan struct{}) (server *Server, forceStop chan struct{}) {
 	// Start the DAP server.
 	listener, err := net.Listen("tcp", ":0")
@@ -6518,6 +6521,18 @@ func launchDebuggerWithTargetHalted(t *testing.T, fixture string) (*protest.Fixt
 	return &fixbin, dbg
 }
 
+func attachDebuggerWithTargetHalted(t *testing.T, fixture string) (*exec.Cmd, *debugger.Debugger) {
+	t.Helper()
+	fixbin := protest.BuildFixture(fixture, protest.AllNonOptimized)
+	cmd := execFixture(t, fixbin)
+	cfg := service.Config{Debugger: debugger.Config{Backend: "default", AttachPid: cmd.Process.Pid}}
+	dbg, err := debugger.New(&cfg.Debugger, nil) // debugger halts process on entry
+	if err != nil {
+		t.Fatal("failed to start debugger:", err)
+	}
+	return cmd, dbg
+}
+
 // runTestWithDebugger starts the server and sets its debugger, initializes a debug session,
 // runs test, then disconnects. Expects no running async handler at the end of test() (either
 // process is halted or debug session never launched.)
@@ -6530,6 +6545,10 @@ func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *dapt
 	if server.session == nil {
 		t.Fatal("DAP session is not ready")
 	}
+	// Mock dap.NewSession arguments, so
+	// this dap.Server can be used as a proxy for
+	// rpccommon.Server running dap.Session.
+	server.session.config.Debugger.AttachPid = dbg.AttachPid()
 	server.session.debugger = dbg
 	server.sessionMu.Unlock()
 	defer client.Close()
@@ -6539,7 +6558,7 @@ func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *dapt
 	test(client)
 
 	client.DisconnectRequest()
-	if server.config.Debugger.AttachPid == 0 { // launched target
+	if dbg.AttachPid() == 0 { // launched target
 		client.ExpectOutputEventDetachingKill(t)
 	} else { // attached to target
 		client.ExpectOutputEventDetachingNoKill(t)
@@ -6550,9 +6569,24 @@ func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *dapt
 	<-serverStopped
 }
 
-func TestAttachRemoteToHaltedTargetStopOnEntry(t *testing.T) {
+func TestAttachRemoteToDlvLaunchHaltedStopOnEntry(t *testing.T) {
 	// Halted + stop on entry
 	_, dbg := launchDebuggerWithTargetHalted(t, "increment")
+	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
+		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
+		client.ExpectInitializedEvent(t)
+		client.ExpectAttachResponse(t)
+		client.ConfigurationDoneRequest()
+		client.ExpectStoppedEvent(t)
+		client.ExpectConfigurationDoneResponse(t)
+	})
+}
+
+func TestAttachRemoteToDlvAttachHaltedStopOnEntry(t *testing.T) {
+	if runtime.GOOS == "freebsd" || runtime.GOOS == "windows" {
+		t.SkipNow()
+	}
+	cmd, dbg := attachDebuggerWithTargetHalted(t, "http_server")
 	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
 		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
 		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
@@ -6562,6 +6596,7 @@ func TestAttachRemoteToHaltedTargetStopOnEntry(t *testing.T) {
 		client.ExpectStoppedEvent(t)
 		client.ExpectConfigurationDoneResponse(t)
 	})
+	cmd.Process.Kill()
 }
 
 func TestAttachRemoteToHaltedTargetContinueOnEntry(t *testing.T) {
@@ -6569,7 +6604,6 @@ func TestAttachRemoteToHaltedTargetContinueOnEntry(t *testing.T) {
 	_, dbg := launchDebuggerWithTargetHalted(t, "http_server")
 	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
 		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": false})
-		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
 		client.ExpectInitializedEvent(t)
 		client.ExpectAttachResponse(t)
 		client.ConfigurationDoneRequest()
@@ -6586,7 +6620,6 @@ func TestAttachRemoteToRunningTargetStopOnEntry(t *testing.T) {
 	fixture, dbg := launchDebuggerWithTargetRunning(t, "loopprog")
 	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
 		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
-		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
 		client.ExpectInitializedEvent(t)
 		client.ExpectAttachResponse(t)
 		// Target is halted here
@@ -6606,7 +6639,6 @@ func TestAttachRemoteToRunningTargetContinueOnEntry(t *testing.T) {
 	fixture, dbg := launchDebuggerWithTargetRunning(t, "loopprog")
 	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
 		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": false})
-		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
 		client.ExpectInitializedEvent(t)
 		client.ExpectAttachResponse(t)
 		// Target is halted here

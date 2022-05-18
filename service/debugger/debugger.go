@@ -2205,6 +2205,10 @@ func (d *Debugger) BuildID() string {
 	return d.target.BinInfo().BuildID
 }
 
+func (d *Debugger) AttachPid() int {
+	return d.config.AttachPid
+}
+
 func (d *Debugger) GetBufferedTracepoints() []api.TracepointResult {
 	traces := d.target.GetBufferedTracepoints()
 	if traces == nil {
