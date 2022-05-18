@@ -17,7 +17,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -107,8 +106,10 @@ func startDAPServer(t *testing.T, serverStopped chan struct{}) (server *Server, 
 			}
 		}()
 		select {
-		case <-disconnectChan: // Stop triggered internally
-		case <-forceStop: // Stop triggered externally
+		case <-disconnectChan:
+			t.Log("server stop triggered internally")
+		case <-forceStop:
+			t.Log("server stop triggered externally")
 		}
 		server.Stop()
 	}()
@@ -6520,7 +6521,7 @@ func launchDebuggerWithTargetHalted(t *testing.T, fixture string) (*protest.Fixt
 	return &fixbin, dbg
 }
 
-func attachDebuggerWithTargetHalted(t *testing.T, fixture string) (*service.Config, *debugger.Debugger) {
+func attachDebuggerWithTargetHalted(t *testing.T, fixture string) (*exec.Cmd, *debugger.Debugger) {
 	t.Helper()
 	fixbin := protest.BuildFixture(fixture, protest.AllNonOptimized)
 	cmd := execFixture(t, fixbin)
@@ -6529,7 +6530,7 @@ func attachDebuggerWithTargetHalted(t *testing.T, fixture string) (*service.Conf
 	if err != nil {
 		t.Fatal("failed to start debugger:", err)
 	}
-	return &cfg, dbg
+	return cmd, dbg
 }
 
 // runTestWithDebugger starts the server and sets its debugger, initializes a debug session,
@@ -6557,8 +6558,7 @@ func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *dapt
 	test(client)
 
 	client.DisconnectRequest()
-	pid := dbg.AttachPid()
-	if pid == 0 { // launched target
+	if dbg.AttachPid() == 0 { // launched target
 		client.ExpectOutputEventDetachingKill(t)
 	} else { // attached to target
 		client.ExpectOutputEventDetachingNoKill(t)
@@ -6567,9 +6567,6 @@ func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *dapt
 	client.ExpectTerminatedEvent(t)
 
 	<-serverStopped
-	if pid > 0 {
-		syscall.Kill(pid, syscall.SIGKILL)
-	}
 }
 
 func TestAttachRemoteToDlvLaunchHaltedStopOnEntry(t *testing.T) {
@@ -6589,7 +6586,7 @@ func TestAttachRemoteToDlvAttachHaltedStopOnEntry(t *testing.T) {
 	if runtime.GOOS == "freebsd" || runtime.GOOS == "windows" {
 		t.SkipNow()
 	}
-	_, dbg := attachDebuggerWithTargetHalted(t, "http_server")
+	cmd, dbg := attachDebuggerWithTargetHalted(t, "http_server")
 	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
 		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
 		client.ExpectCapabilitiesEventSupportDisconnectOptions(t, true, false)
@@ -6599,6 +6596,7 @@ func TestAttachRemoteToDlvAttachHaltedStopOnEntry(t *testing.T) {
 		client.ExpectStoppedEvent(t)
 		client.ExpectConfigurationDoneResponse(t)
 	})
+	cmd.Process.Kill()
 }
 
 func TestAttachRemoteToHaltedTargetContinueOnEntry(t *testing.T) {
@@ -6654,12 +6652,68 @@ func TestAttachRemoteToRunningTargetContinueOnEntry(t *testing.T) {
 	})
 }
 
+// MultiClientCloseServerMock mocks the rpccommon.Server using a dap.Server to exercise
+// the shutdown logic in dap.Session where it does NOT take down the server on close
+// in multi-client mode. (The dap mode of the rpccommon.Server is tested in dlv_test).
+// The dap.Server is a single-use server. Once its one and only session is closed,
+// the server and the target must be taken down manually for the test not to leak.
+type MultiClientCloseServerMock struct {
+	impl      *Server
+	debugger  *debugger.Debugger
+	forceStop chan struct{}
+	stopped   chan struct{}
+	cmd       *exec.Cmd
+}
+
+func NewMultiClientCloseServerMock(t *testing.T, fixture string) *MultiClientCloseServerMock {
+	var s MultiClientCloseServerMock
+	s.stopped = make(chan struct{})
+	s.impl, s.forceStop = startDAPServer(t, s.stopped)
+	_, s.debugger = launchDebuggerWithTargetHalted(t, "http_server")
+	return &s
+}
+
+func (s *MultiClientCloseServerMock) acceptNewClient(t *testing.T) *daptest.Client {
+	client := daptest.NewClient(s.impl.listener.Addr().String())
+	time.Sleep(100 * time.Millisecond) // Give time for connection to be set as dap.Session
+	s.impl.sessionMu.Lock()
+	if s.impl.session == nil {
+		t.Fatal("dap session is not ready")
+	}
+	// A dap.Server doesn't support accept-multiclient, but we can use this
+	// hack to test the inner connection logic that is used by a server that does.
+	s.impl.session.config.AcceptMulti = true
+	s.impl.session.debugger = s.debugger
+	s.impl.sessionMu.Unlock()
+	return client
+}
+
+func (s *MultiClientCloseServerMock) stop(t *testing.T) {
+	close(s.forceStop)
+	// If the server doesn't have an active session,
+	// closing it would leak the debbuger with the target because
+	// they are part of dap.Session.
+	// We must take it down manually as if we are in rpccommon::ServerImpl::Stop.
+	if s.debugger.IsRunning() {
+		s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+	}
+	s.debugger.Detach(true)
+}
+
+func (s *MultiClientCloseServerMock) verifyStopped(t *testing.T) {
+	if state, err := s.debugger.State(true /*nowait*/); err != proc.ErrProcessDetached && !processExited(state, err) {
+		t.Errorf("target leak")
+	}
+	verifyServerStopped(t, s.impl)
+}
+
 // TestAttachRemoteMultiClientDisconnect tests that that remote attach doesn't take down
 // the server in multi-client mode unless terminateDebuggee is explicitely set.
+// Also tests suspendDebugggee option.
 func TestAttachRemoteMultiClientDisconnect(t *testing.T) {
 	closingClientSessionOnlyRunning := fmt.Sprintf(daptest.ClosingClient, "running")
 	closingClientSessionOnlySuspended := fmt.Sprintf(daptest.ClosingClient, "suspended")
-	detachingAndTerminating := "Detaching and terminating target process"
+	detachingAndTerminating := "Detaching and terminating target process\n"
 	tests := []struct {
 		name              string
 		disconnectRequest func(client *daptest.Client)
@@ -6673,20 +6727,9 @@ func TestAttachRemoteMultiClientDisconnect(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			serverStopped := make(chan struct{})
-			server, forceStop := startDAPServer(t, serverStopped)
-			client := daptest.NewClient(server.listener.Addr().String())
+			server := NewMultiClientCloseServerMock(t, "increment")
+			client := server.acceptNewClient(t)
 			defer client.Close()
-			time.Sleep(100 * time.Millisecond) // Give time for connection to be set as dap.Session
-			server.sessionMu.Lock()
-			if server.session == nil {
-				t.Fatal("dap session is not ready")
-			}
-			// A dap.Server doesn't support accept-multiclient, but we can use this
-			// hack to test the inner connection logic that is used by a server that does.
-			server.session.config.AcceptMulti = true
-			_, server.session.debugger = launchDebuggerWithTargetHalted(t, "http_server")
-			server.sessionMu.Unlock()
 
 			client.InitializeRequest()
 			client.ExpectInitializeResponseAndCapabilities(t)
@@ -6709,13 +6752,12 @@ func TestAttachRemoteMultiClientDisconnect(t *testing.T) {
 			time.Sleep(10 * time.Millisecond) // give time for things to shut down
 
 			if e.Body.Output != detachingAndTerminating {
-				// At this point a multi-client server is still running.
-				verifySessionStopped(t, server.session)
-				// Since it is a dap.Server, it cannot accept another client, so the only
-				// way to take down the server and the target is to force-kill it.
-				close(forceStop)
+				// At this point a multi-client server is still running, but session should be doone.
+				verifySessionStopped(t, server.impl.session)
+				server.stop(t)
 			}
-			<-serverStopped
+			<-server.stopped
+			server.verifyStopped(t)
 		})
 	}
 }

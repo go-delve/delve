@@ -24,6 +24,7 @@ type Arch struct {
 	SPRegNum                 uint64
 	BPRegNum                 uint64
 	ContextRegNum            uint64 // register used to pass a closure context when calling a function pointer
+	LRRegNum                 uint64
 
 	// asmDecode decodes the assembly instruction starting at mem[0:] into asmInst.
 	// It assumes that the Loc and AtPC fields of asmInst have already been filled.
@@ -48,6 +49,11 @@ type Arch struct {
 	// inhibitStepInto returns whether StepBreakpoint can be set at pc.
 	inhibitStepInto     func(bi *BinaryInfo, pc uint64) bool
 	RegisterNameToDwarf func(s string) (int, bool)
+	// debugCallMinStackSize is the minimum stack size for call injection on this architecture.
+	debugCallMinStackSize uint64
+	// maxRegArgBytes is extra padding for ABI1 call injections, equivalent to
+	// the maximum space occupied by register arguments.
+	maxRegArgBytes int
 
 	// asmRegisters maps assembly register numbers to dwarf registers.
 	asmRegisters map[int]asmRegister

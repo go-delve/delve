@@ -76,3 +76,35 @@ ssh -NL 4040:localhost:4040 user@remote.ip
 ```
 dlv connect :4040
 ```
+
+#### <a name="substpath"></a> Can not set breakpoints or see source listing in a complicated debugging environment
+
+This problem manifests when one or more of these things happen:
+
+* Can not see source code when the program stops at a breakpoint
+* Setting a breakpoint using full path, or through an IDE, does not work
+
+While doing one of the following things:
+
+* **The program is built and run inside a container** and Delve (or an IDE) is remotely connecting to it
+* Generally, every time the build environment (VM, container, computer...) differs from the environment where Delve's front-end (dlv or a IDE) runs 
+* Using `-trimpath` or `-gcflags=-trimpath`
+* Using a build system other than `go build` (eg. bazel)
+* Using symlinks in your source tree
+
+If you are affected by this problem then the `list main.main` command (in the command line interface) will have this result:
+
+```
+(dlv) list main.main
+Showing /path/to/the/mainfile.go:42 (PC: 0x47dfca)
+Command failed: open /path/to/the/mainfile.go: no such file or directory
+(dlv)
+```
+
+This is not a bug. The Go compiler embeds the paths of source files into the executable so that debuggers, including Delve, can use them. Doing any of the things listed above will prevent this feature from working seamlessly.
+
+The substitute-path feature can be used to solve this problem, see `config help substitute-path` or the `substitutePath` option in launch.json.
+
+The `source` command could also be useful in troubleshooting this problem, it shows the list of file paths that has been embedded by the compiler into the executable.
+
+If you still think this is a bug in Delve and not a configuration problem, open an [issue](https://github.com/go-delve/delve/issues), filling the issue template and including the logs produced by delve with the options `--log --log-output=rpc,dap`.

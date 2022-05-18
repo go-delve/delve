@@ -324,7 +324,7 @@ func (conn *gdbConn) readRegisterInfo(regFound map[string]bool) (err error) {
 				case "container-regs":
 					contained = true
 				case "set":
-					if value == "Exception State Registers" {
+					if value == "Exception State Registers" || value == "AMX Registers" {
 						// debugserver doesn't like it if we try to write these
 						ignoreOnWrite = true
 					}

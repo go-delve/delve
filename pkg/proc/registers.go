@@ -17,6 +17,7 @@ type Registers interface {
 	PC() uint64
 	SP() uint64
 	BP() uint64
+	LR() uint64
 	TLS() uint64
 	// GAddr returns the address of the G variable if it is known, 0 and false otherwise
 	GAddr() (uint64, bool)

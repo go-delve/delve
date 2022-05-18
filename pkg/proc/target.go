@@ -268,7 +268,7 @@ func (t *Target) Valid() (bool, error) {
 // Currently only non-recorded processes running on AMD64 support
 // function calls.
 func (t *Target) SupportsFunctionCalls() bool {
-	return t.Process.BinInfo().Arch.Name == "amd64"
+	return (t.Process.BinInfo().Arch.Name == "amd64" && t.Process.BinInfo().GOOS != "freebsd") || t.Process.BinInfo().Arch.Name == "arm64"
 }
 
 // ClearCaches clears internal caches that should not survive a restart.
@@ -407,6 +407,13 @@ func (t *Target) createUnrecoveredPanicBreakpoint() {
 // createFatalThrowBreakpoint creates the a breakpoint as runtime.fatalthrow.
 func (t *Target) createFatalThrowBreakpoint() {
 	fatalpcs, err := FindFunctionLocation(t.Process, "runtime.throw", 0)
+	if err == nil {
+		bp, err := t.SetBreakpoint(fatalThrowID, fatalpcs[0], UserBreakpoint, nil)
+		if err == nil {
+			bp.Name = FatalThrow
+		}
+	}
+	fatalpcs, err = FindFunctionLocation(t.Process, "runtime.fatal", 0)
 	if err == nil {
 		bp, err := t.SetBreakpoint(fatalThrowID, fatalpcs[0], UserBreakpoint, nil)
 		if err == nil {

@@ -229,6 +229,8 @@ func (t *Term) Run() (int, error) {
 		}
 	}
 
+	var locs *trie.Trie
+
 	t.line.SetCompleter(func(line string) (c []string) {
 		cmd := t.cmds.Find(strings.Split(line, " ")[0], noPrefix)
 		switch cmd.aliases[0] {
@@ -243,6 +245,30 @@ func (t *Term) Run() (int, error) {
 		case "nullcmd", "nocmd":
 			commands := cmds.FuzzySearch(strings.ToLower(line))
 			c = append(c, commands...)
+		case "print", "whatis":
+			if locs == nil {
+				localVars, err := t.client.ListLocalVariables(
+					api.EvalScope{GoroutineID: -1, Frame: t.cmds.frame, DeferredCall: 0},
+					api.LoadConfig{},
+				)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Unable to get local variables: %s\n", err)
+					break
+				}
+
+				locs = trie.New()
+				for _, loc := range localVars {
+					locs.Add(loc.Name, nil)
+				}
+			}
+
+			if spc := strings.LastIndex(line, " "); spc > 0 {
+				prefix := line[:spc] + " "
+				locals := locs.FuzzySearch(line[spc+1:])
+				for _, l := range locals {
+					c = append(c, prefix+l)
+				}
+			}
 		}
 		return
 	})
@@ -279,6 +305,8 @@ func (t *Term) Run() (int, error) {
 	_, _ = t.client.GetState()
 
 	for {
+		locs = nil
+
 		cmdstr, err := t.promptForInput()
 		if err != nil {
 			if err == io.EOF {
@@ -460,7 +488,7 @@ func (t *Term) handleExit() (int, error) {
 	return 0, nil
 }
 
-// loadConfig returns an api.LoadConfig with the parameterss specified in
+// loadConfig returns an api.LoadConfig with the parameters specified in
 // the configuration file.
 func (t *Term) loadConfig() api.LoadConfig {
 	r := api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}

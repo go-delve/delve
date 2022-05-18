@@ -40,6 +40,8 @@ func AMD64Arch(goos string) *Arch {
 		ContextRegNum:                    regnum.AMD64_Rdx,
 		asmRegisters:                     amd64AsmRegisters,
 		RegisterNameToDwarf:              nameToDwarfFunc(regnum.AMD64NameToDwarf),
+		debugCallMinStackSize:            256,
+		maxRegArgBytes:                   9*8 + 15*8,
 	}
 }
 

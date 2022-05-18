@@ -248,7 +248,9 @@ func (p *process) WriteBreakpoint(*proc.Breakpoint) error {
 func (p *process) Recorded() (bool, string) { return true, "" }
 
 // Restart will only return an error for core files, as they are not executing.
-func (p *process) Restart(string) (proc.Thread, error) { return nil, ErrContinueCore }
+func (p *process) Restart(*proc.ContinueOnceContext, string) (proc.Thread, error) {
+	return nil, ErrContinueCore
+}
 
 // ChangeDirection will only return an error as you cannot continue a core process.
 func (p *process) ChangeDirection(proc.Direction) error { return ErrContinueCore }
