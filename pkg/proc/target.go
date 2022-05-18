@@ -413,6 +413,13 @@ func (t *Target) createFatalThrowBreakpoint() {
 			bp.Name = FatalThrow
 		}
 	}
+	fatalpcs, err = FindFunctionLocation(t.Process, "runtime.fatal", 0)
+	if err == nil {
+		bp, err := t.SetBreakpoint(fatalThrowID, fatalpcs[0], UserBreakpoint, nil)
+		if err == nil {
+			bp.Name = FatalThrow
+		}
+	}
 }
 
 // CurrentThread returns the currently selected thread which will be used
