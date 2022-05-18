@@ -754,10 +754,12 @@ func TestDAPCmdWithNoDebugBinary(t *testing.T) {
 	cmd.Wait()
 }
 
-func newDAPRemoteClient(t *testing.T, addr string) *daptest.Client {
+func newDAPRemoteClient(t *testing.T, addr string, isDlvAttach bool, isMulti bool) *daptest.Client {
 	c := daptest.NewClient(addr)
 	c.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
-	c.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
+	if isDlvAttach || isMulti {
+		c.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
+	}
 	c.ExpectInitializedEvent(t)
 	c.ExpectAttachResponse(t)
 	c.ConfigurationDoneRequest()
@@ -794,7 +796,7 @@ func TestRemoteDAPClient(t *testing.T) {
 		}
 	}()
 
-	client := newDAPRemoteClient(t, listenAddr)
+	client := newDAPRemoteClient(t, listenAddr, false, false)
 	client.ContinueRequest(1)
 	client.ExpectContinueResponse(t)
 	client.ExpectTerminatedEvent(t)
@@ -854,7 +856,7 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 	dapclient0.ExpectErrorResponse(t)
 
 	// Client 1 connects and continues to main.main
-	dapclient := newDAPRemoteClient(t, listenAddr)
+	dapclient := newDAPRemoteClient(t, listenAddr, false, true)
 	dapclient.SetFunctionBreakpointsRequest([]godap.FunctionBreakpoint{{Name: "main.main"}})
 	dapclient.ExpectSetFunctionBreakpointsResponse(t)
 	dapclient.ContinueRequest(1)
@@ -864,7 +866,7 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 	closeDAPRemoteMultiClient(t, dapclient, "halted")
 
 	// Client 2 reconnects at main.main and continues to process exit
-	dapclient2 := newDAPRemoteClient(t, listenAddr)
+	dapclient2 := newDAPRemoteClient(t, listenAddr, false, true)
 	dapclient2.CheckStopLocation(t, 1, "main.main", 5)
 	dapclient2.ContinueRequest(1)
 	dapclient2.ExpectContinueResponse(t)
@@ -924,7 +926,7 @@ func TestRemoteDAPClientAfterContinue(t *testing.T) {
 		}
 	}()
 
-	c := newDAPRemoteClient(t, listenAddr)
+	c := newDAPRemoteClient(t, listenAddr, false, true)
 	c.ContinueRequest(1)
 	c.ExpectContinueResponse(t)
 	c.DisconnectRequest()
@@ -933,7 +935,7 @@ func TestRemoteDAPClientAfterContinue(t *testing.T) {
 	c.ExpectTerminatedEvent(t)
 	c.Close()
 
-	c = newDAPRemoteClient(t, listenAddr)
+	c = newDAPRemoteClient(t, listenAddr, false, true)
 	c.DisconnectRequestWithKillOption(true)
 	c.ExpectOutputEventDetachingKill(t)
 	c.ExpectDisconnectResponse(t)
