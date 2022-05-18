@@ -284,7 +284,7 @@ func (c *Client) DisconnectRequestWithKillOption(kill bool) {
 	c.send(request)
 }
 
-// DisconnectRequestWithKillOption sends a 'disconnect' request with an option to specify
+// DisconnectRequestWithOptions sends a 'disconnect' request with an option to specify
 // `terminateDebuggee` and `suspendDebuggee`
 func (c *Client) DisconnectRequestWithOptions(terminate bool, suspend bool) {
 	request := &dap.DisconnectRequest{Request: *c.newRequest("disconnect")}
