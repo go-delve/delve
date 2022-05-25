@@ -387,7 +387,7 @@ func (s *RPCServer) ListThreads(arg ListThreadsIn, out *ListThreadsOut) (err err
 	}
 	s.debugger.LockTarget()
 	defer s.debugger.UnlockTarget()
-	out.Threads = api.ConvertThreads(threads)
+	out.Threads = api.ConvertThreads(threads, s.debugger.ConvertThreadBreakpoint)
 	return nil
 }
 
@@ -410,7 +410,7 @@ func (s *RPCServer) GetThread(arg GetThreadIn, out *GetThreadOut) error {
 	}
 	s.debugger.LockTarget()
 	defer s.debugger.UnlockTarget()
-	out.Thread = api.ConvertThread(t)
+	out.Thread = api.ConvertThread(t, s.debugger.ConvertThreadBreakpoint(t))
 	return nil
 }
 

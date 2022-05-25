@@ -16,80 +16,69 @@ import (
 	"github.com/go-delve/delve/pkg/proc"
 )
 
-// ConvertBreakpoint converts from a proc.Breakpoint to
-// an api.Breakpoint.
-func ConvertBreakpoint(bp *proc.Breakpoint) *Breakpoint {
+// ConvertLogicalBreakpoint converts a proc.LogicalBreakpoint into an API breakpoint.
+func ConvertLogicalBreakpoint(lbp *proc.LogicalBreakpoint) *Breakpoint {
 	b := &Breakpoint{
-		Name:         bp.Name,
-		ID:           bp.LogicalID(),
-		FunctionName: bp.FunctionName,
-		File:         bp.File,
-		Line:         bp.Line,
-		Addr:         bp.Addr,
-		Tracepoint:   bp.Tracepoint,
-		TraceReturn:  bp.TraceReturn,
-		Stacktrace:   bp.Stacktrace,
-		Goroutine:    bp.Goroutine,
-		Variables:    bp.Variables,
-		LoadArgs:     LoadConfigFromProc(bp.LoadArgs),
-		LoadLocals:   LoadConfigFromProc(bp.LoadLocals),
-		WatchExpr:    bp.WatchExpr,
-		WatchType:    WatchType(bp.WatchType),
-		Addrs:        []uint64{bp.Addr},
-		UserData:     bp.UserData,
+		ID:            lbp.LogicalID,
+		FunctionName:  lbp.FunctionName,
+		File:          lbp.File,
+		Line:          lbp.Line,
+		Name:          lbp.Name,
+		Tracepoint:    lbp.Tracepoint,
+		TraceReturn:   lbp.TraceReturn,
+		Stacktrace:    lbp.Stacktrace,
+		Goroutine:     lbp.Goroutine,
+		Variables:     lbp.Variables,
+		LoadArgs:      LoadConfigFromProc(lbp.LoadArgs),
+		LoadLocals:    LoadConfigFromProc(lbp.LoadLocals),
+		TotalHitCount: lbp.TotalHitCount,
+		Disabled:      !lbp.Enabled,
+		UserData:      lbp.UserData,
 	}
 
-	breaklet := bp.UserBreaklet()
-	if breaklet != nil {
-		b.TotalHitCount = breaklet.TotalHitCount
-		b.HitCount = map[string]uint64{}
-		for idx := range breaklet.HitCount {
-			b.HitCount[strconv.Itoa(idx)] = breaklet.HitCount[idx]
-		}
-
-		var buf bytes.Buffer
-		printer.Fprint(&buf, token.NewFileSet(), breaklet.Cond)
-		b.Cond = buf.String()
-		if breaklet.HitCond != nil {
-			b.HitCond = fmt.Sprintf("%s %d", breaklet.HitCond.Op.String(), breaklet.HitCond.Val)
-		}
+	b.HitCount = map[string]uint64{}
+	for idx := range lbp.HitCount {
+		b.HitCount[strconv.Itoa(idx)] = lbp.HitCount[idx]
 	}
+
+	if lbp.HitCond != nil {
+		b.HitCond = fmt.Sprintf("%s %d", lbp.HitCond.Op.String(), lbp.HitCond.Val)
+	}
+
+	var buf bytes.Buffer
+	printer.Fprint(&buf, token.NewFileSet(), lbp.Cond)
+	b.Cond = buf.String()
 
 	return b
 }
 
-// ConvertBreakpoints converts a slice of physical breakpoints into a slice
-// of logical breakpoints.
-// The input must be sorted by increasing LogicalID
-func ConvertBreakpoints(bps []*proc.Breakpoint) []*Breakpoint {
-	if len(bps) <= 0 {
-		return nil
+// ConvertPhysicalBreakpoints adds informations from physical breakpoints to an API breakpoint.
+func ConvertPhysicalBreakpoints(b *Breakpoint, bps []*proc.Breakpoint) {
+	if len(bps) == 0 {
+		return
 	}
-	r := make([]*Breakpoint, 0, len(bps))
+
+	b.WatchExpr = bps[0].WatchExpr
+	b.WatchType = WatchType(bps[0].WatchType)
+
 	lg := false
 	for _, bp := range bps {
-		if len(r) > 0 {
-			if r[len(r)-1].ID == bp.LogicalID() {
-				r[len(r)-1].Addrs = append(r[len(r)-1].Addrs, bp.Addr)
-				if r[len(r)-1].FunctionName != bp.FunctionName && r[len(r)-1].FunctionName != "" {
-					if !lg {
-						r[len(r)-1].FunctionName = removeTypeParams(r[len(r)-1].FunctionName)
-						lg = true
-					}
-					fn := removeTypeParams(bp.FunctionName)
-					if r[len(r)-1].FunctionName != fn {
-						r[len(r)-1].FunctionName = "(multiple functions)"
-					}
-				}
-				continue
-			} else if r[len(r)-1].ID > bp.LogicalID() {
-				panic("input not sorted")
+		b.Addrs = append(b.Addrs, bp.Addr)
+		if b.FunctionName != bp.FunctionName && b.FunctionName != "" {
+			if !lg {
+				b.FunctionName = removeTypeParams(b.FunctionName)
+				lg = true
+			}
+			fn := removeTypeParams(bp.FunctionName)
+			if b.FunctionName != fn {
+				b.FunctionName = "(multiple functions)"
 			}
 		}
-		r = append(r, ConvertBreakpoint(bp))
-		lg = false
 	}
-	return r
+
+	if len(b.Addrs) > 0 {
+		b.Addr = b.Addrs[0]
+	}
 }
 
 func removeTypeParams(name string) string {
@@ -99,7 +88,7 @@ func removeTypeParams(name string) string {
 
 // ConvertThread converts a proc.Thread into an
 // api thread.
-func ConvertThread(th proc.Thread) *Thread {
+func ConvertThread(th proc.Thread, bp *Breakpoint) *Thread {
 	var (
 		function *Function
 		file     string
@@ -114,12 +103,6 @@ func ConvertThread(th proc.Thread) *Thread {
 		file = loc.File
 		line = loc.Line
 		function = ConvertFunction(loc.Fn)
-	}
-
-	var bp *Breakpoint
-
-	if b := th.Breakpoint(); b.Active {
-		bp = ConvertBreakpoint(b.Breakpoint)
 	}
 
 	if g, _ := proc.GetG(th); g != nil {
@@ -138,10 +121,10 @@ func ConvertThread(th proc.Thread) *Thread {
 }
 
 // ConvertThreads converts a slice of proc.Thread into a slice of api.Thread.
-func ConvertThreads(threads []proc.Thread) []*Thread {
+func ConvertThreads(threads []proc.Thread, convertBreakpoint func(proc.Thread) *Breakpoint) []*Thread {
 	r := make([]*Thread, len(threads))
 	for i := range threads {
-		r[i] = ConvertThread(threads[i])
+		r[i] = ConvertThread(threads[i], convertBreakpoint(threads[i]))
 	}
 	return r
 }
