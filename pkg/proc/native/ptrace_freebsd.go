@@ -5,16 +5,13 @@ package native
 //#include <sys/ptrace.h>
 //
 // #include <stdlib.h>
-// #include "ptrace_freebsd_amd64.h"
+//
 import "C"
 
 import (
-	"syscall"
 	"unsafe"
 
 	sys "golang.org/x/sys/unix"
-
-	"github.com/go-delve/delve/pkg/proc/amd64util"
 )
 
 // ptraceAttach executes the sys.PtraceAttach call.
@@ -42,9 +39,9 @@ func ptraceSingleStep(id int) error {
 
 // Get a list of the thread ids of a process
 func ptraceGetLwpList(pid int) (tids []int32) {
-	num_lwps, _ := C.ptrace_get_num_lwps(C.int(pid))
-	tids = make([]int32, num_lwps)
-	n, _ := C.ptrace_get_lwp_list(C.int(pid), (*C.int)(unsafe.Pointer(&tids[0])), C.size_t(num_lwps))
+	numLWPS, _ := C.ptrace(C.PT_GETNUMLWPS, C.pid_t(pid), C.caddr_t(unsafe.Pointer(uintptr(0))), C.int(0))
+	tids = make([]int32, numLWPS)
+	n, _ := C.ptrace(C.PT_GETLWPLIST, C.pid_t(pid), C.caddr_t(unsafe.Pointer(&tids[0])), C.int(numLWPS))
 	return tids[0:n]
 }
 
@@ -52,20 +49,6 @@ func ptraceGetLwpList(pid int) (tids []int32) {
 func ptraceGetLwpInfo(wpid int) (info sys.PtraceLwpInfoStruct, err error) {
 	err = sys.PtraceLwpInfo(wpid, uintptr(unsafe.Pointer(&info)))
 	return info, err
-}
-
-func ptraceGetRegset(id int) (regset amd64util.AMD64Xstate, err error) {
-	_, _, err = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_GETFPREGS, uintptr(id), uintptr(unsafe.Pointer(&regset.AMD64PtraceFpRegs)), 0, 0, 0)
-	if err == syscall.Errno(0) || err == syscall.ENODEV {
-		var xsave_len C.size_t
-		xsave, _ := C.ptrace_get_xsave(C.int(id), &xsave_len)
-		defer C.free(unsafe.Pointer(xsave))
-		if xsave != nil {
-			xsave_sl := C.GoBytes(unsafe.Pointer(xsave), C.int(xsave_len))
-			err = amd64util.AMD64XstateRead(xsave_sl, false, &regset)
-		}
-	}
-	return
 }
 
 // id may be a PID or an LWPID
