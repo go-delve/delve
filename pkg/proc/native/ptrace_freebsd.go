@@ -39,9 +39,15 @@ func ptraceSingleStep(id int) error {
 
 // Get a list of the thread ids of a process
 func ptraceGetLwpList(pid int) (tids []int32) {
-	numLWPS, _ := C.ptrace(C.PT_GETNUMLWPS, C.pid_t(pid), C.caddr_t(unsafe.Pointer(uintptr(0))), C.int(0))
+	numLWPS := C.ptrace(C.PT_GETNUMLWPS, C.pid_t(pid), C.caddr_t(unsafe.Pointer(uintptr(0))), C.int(0))
+	if numLWPS < 0 {
+		panic("PT_GETNUMLWPS failed")
+	}
 	tids = make([]int32, numLWPS)
-	n, _ := C.ptrace(C.PT_GETLWPLIST, C.pid_t(pid), C.caddr_t(unsafe.Pointer(&tids[0])), C.int(numLWPS))
+	n := C.ptrace(C.PT_GETLWPLIST, C.pid_t(pid), C.caddr_t(unsafe.Pointer(&tids[0])), C.int(numLWPS))
+	if n < 0 {
+		panic("PT_GETLWPLIST failed")
+	}
 	return tids[0:n]
 }
 
