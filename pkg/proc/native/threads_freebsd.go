@@ -2,11 +2,11 @@ package native
 
 // #include <sys/thr.h>
 import "C"
+
 import (
 	"fmt"
 	"github.com/go-delve/delve/pkg/proc/fbsdutil"
 	"syscall"
-	"unsafe"
 
 	sys "golang.org/x/sys/unix"
 
@@ -85,13 +85,7 @@ func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 		if restoreRegistersErr != nil {
 			return
 		}
-		if sr.Fpregset.Xsave != nil {
-			iov := sys.Iovec{Base: &sr.Fpregset.Xsave[0], Len: uint64(len(sr.Fpregset.Xsave))}
-			_, _, restoreRegistersErr = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_SETREGS, uintptr(t.ID), uintptr(unsafe.Pointer(&iov)), 0, 0, 0)
-			return
-		}
-
-		_, _, restoreRegistersErr = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_SETFPREGS, uintptr(t.ID), uintptr(unsafe.Pointer(&sr.Fpregset.AMD64PtraceFpRegs)), 0, 0, 0)
+		restoreRegistersErr = ptraceSetRegset(t.ID, sr.Fpregset)
 		return
 	})
 	if restoreRegistersErr == syscall.Errno(0) {
