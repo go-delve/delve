@@ -54,16 +54,17 @@ func ptraceGetXsave(tid int) ([]byte, error) {
 	return xsaveBuf, nil
 }
 
-func ptraceGetRegset(id int) (regset amd64util.AMD64Xstate, err error) {
+func ptraceGetRegset(id int) (*amd64util.AMD64Xstate, error) {
+	var regset amd64util.AMD64Xstate
 	ret, err := C.ptrace(C.PT_GETFPREGS, C.pid_t(id), C.caddr_t(unsafe.Pointer(&regset.AMD64PtraceFpRegs)), C.int(0))
 	if ret != 0 {
-		return amd64util.AMD64Xstate{}, fmt.Errorf("failed to get FP registers: %v", err)
+		return nil, fmt.Errorf("failed to get FP registers: %v", err)
 	}
 	var xsave []byte
 	xsave, err = ptraceGetXsave(id)
 	if err != nil {
-		return amd64util.AMD64Xstate{}, err
+		return nil, err
 	}
 	err = amd64util.AMD64XstateRead(xsave, false, &regset)
-	return
+	return &regset, err
 }

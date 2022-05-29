@@ -88,18 +88,14 @@ func registers(thread *nativeThread) (proc.Registers, error) {
 		return nil, err
 	}
 	r := fbsdutil.NewAMD64Registers(&regs, uint64(fsbase), func(r *fbsdutil.AMD64Registers) error {
-		var fpregset amd64util.AMD64Xstate
 		var floatLoadError error
-		r.Fpregs, fpregset, floatLoadError = thread.fpRegisters()
-		r.Fpregset = &fpregset
+		r.Fpregs, r.Fpregset, floatLoadError = thread.fpRegisters()
 		return floatLoadError
 	})
 	return r, nil
 }
 
-const _NT_X86_XSTATE = 0x202
-
-func (thread *nativeThread) fpRegisters() (regs []proc.Register, fpregs amd64util.AMD64Xstate, err error) {
+func (thread *nativeThread) fpRegisters() (regs []proc.Register, fpregs *amd64util.AMD64Xstate, err error) {
 	thread.dbp.execPtraceFunc(func() { fpregs, err = ptraceGetRegset(thread.ID) })
 	if err != nil {
 		err = fmt.Errorf("could not get floating point registers: %v", err.Error())
