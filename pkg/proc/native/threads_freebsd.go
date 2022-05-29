@@ -6,7 +6,6 @@ import "C"
 import (
 	"fmt"
 	"github.com/go-delve/delve/pkg/proc/fbsdutil"
-	"syscall"
 
 	sys "golang.org/x/sys/unix"
 
@@ -78,20 +77,7 @@ func (t *nativeThread) singleStep() (err error) {
 
 func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 	sr := savedRegs.(*fbsdutil.AMD64Registers)
-
-	var restoreRegistersErr error
-	t.dbp.execPtraceFunc(func() {
-		restoreRegistersErr = sys.PtraceSetRegs(t.ID, (*sys.Reg)(sr.Regs))
-		if restoreRegistersErr != nil {
-			return
-		}
-		restoreRegistersErr = ptraceSetRegset(t.ID, sr.Fpregset)
-		return
-	})
-	if restoreRegistersErr == syscall.Errno(0) {
-		restoreRegistersErr = nil
-	}
-	return restoreRegistersErr
+	return setRegisters(t, sr, true)
 }
 
 func (t *nativeThread) WriteMemory(addr uint64, data []byte) (written int, err error) {

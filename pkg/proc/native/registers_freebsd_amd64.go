@@ -2,7 +2,6 @@ package native
 
 import (
 	"fmt"
-	"syscall"
 
 	sys "golang.org/x/sys/unix"
 
@@ -35,19 +34,7 @@ func (thread *nativeThread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
 	if err != nil {
 		return err
 	}
-	thread.dbp.execPtraceFunc(func() {
-		err = sys.PtraceSetRegs(thread.ID, (*sys.Reg)(r.Regs))
-		if err != nil {
-			return
-		}
-		if fpchanged && r.Fpregset != nil {
-			err = ptraceSetRegset(thread.ID, r.Fpregset)
-			if err == syscall.Errno(0) {
-				err = nil
-			}
-		}
-	})
-	return err
+	return setRegisters(thread, r, fpchanged)
 }
 
 func registers(thread *nativeThread) (proc.Registers, error) {
@@ -78,5 +65,18 @@ func (thread *nativeThread) fpRegisters() (regs []proc.Register, fpregs *amd64ut
 		err = fmt.Errorf("could not get floating point registers: %v", err.Error())
 	}
 	regs = fpregs.Decode()
+	return
+}
+
+func setRegisters(thread *nativeThread, r *fbsdutil.AMD64Registers, setFP bool) (err error) {
+	thread.dbp.execPtraceFunc(func() {
+		err = sys.PtraceSetRegs(thread.ID, (*sys.Reg)(r.Regs))
+		if err != nil {
+			return
+		}
+		if setFP && r.Fpregset != nil {
+			err = ptraceSetRegset(thread.ID, r.Fpregset)
+		}
+	})
 	return
 }
