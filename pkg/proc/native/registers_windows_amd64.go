@@ -80,7 +80,7 @@ func (thread *nativeThread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
 		}
 		*p = reg.Uint64Val
 	} else if regNum == regnum.AMD64_Rflags {
-		context.Eflags = uint32(reg.Uint64Val)
+		context.EFlags = uint32(reg.Uint64Val)
 	} else {
 		if regNum < regnum.AMD64_XMM0 || regNum > regnum.AMD64_XMM0+15 {
 			return fmt.Errorf("can not set register %s", regnum.AMD64ToName(regNum))
