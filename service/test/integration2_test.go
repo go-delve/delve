@@ -2767,3 +2767,53 @@ func TestRestartRewindAfterEnd(t *testing.T) {
 		}
 	})
 }
+
+func TestClientServer_SinglelineStringFormattedWithBigInts(t *testing.T) {
+	// Check that variables that represent large numbers are represented correctly when using a formatting string
+
+	if runtime.GOARCH != "amd64" {
+		t.Skip("N/A")
+	}
+	withTestClient2Extended("xmm0print/", t, 0, [3]string{}, func(c service.Client, fixture protest.Fixture) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.VPSLLQ36", Line: 4})
+		assertNoError(err, t, "CreateBreakpoint")
+		state := <-c.Continue()
+		if state.CurrentThread.Line != 8 {
+			t.Fatalf("wrong location after continue %s:%d", state.CurrentThread.File, state.CurrentThread.Line)
+		}
+
+		constvar, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "9331634762088972288", normalLoadConfig)
+		assertNoError(err, t, "ErrVariable(9331634762088972288)")
+		out := constvar.SinglelineStringFormatted("%X")
+		t.Logf("constant: %q\n", out)
+		if out != "8180A06000000000" {
+			t.Errorf("expected \"8180A06000000000\" got %q when printing constant", out)
+		}
+
+		xmm0var, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "XMM0.uint64", normalLoadConfig)
+		assertNoError(err, t, "EvalVariable(XMM0.uint64)")
+
+		expected := []string{
+			"9331634762088972288", "8180A06000000000",
+			"9331634762088972288", "8180A06000000000",
+			"9259436018245828608", "8080200000000000",
+			"9259436018245828608", "8080200000000000",
+		}
+
+		for i := range xmm0var.Children {
+			child := &xmm0var.Children[i]
+			if child.Kind != reflect.Uint64 {
+				t.Errorf("wrong kind for variable %s\n", child.Kind)
+			}
+			out1 := child.SinglelineString()
+			out2 := child.SinglelineStringFormatted("%X")
+			t.Logf("%q %q\n", out1, out2)
+			if out1 != expected[i*2] {
+				t.Errorf("for child %d expected %s got %s (decimal)", i, expected[i*2], out1)
+			}
+			if out2 != expected[i*2+1] {
+				t.Errorf("for child %d expected %s got %s (hexadecimal)", i, expected[i*2+1], out2)
+			}
+		}
+	})
+}
