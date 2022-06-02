@@ -18,7 +18,7 @@ github.com/creack/pty
 # github.com/derekparker/trie v0.0.0-20200317170641-1fdf38b7b0e9
 ## explicit
 github.com/derekparker/trie
-# github.com/go-delve/liner v1.2.2-1
+# github.com/go-delve/liner v1.2.3-0.20220127212407-d32d89dd2a5d
 ## explicit
 github.com/go-delve/liner
 # github.com/google/go-dap v0.6.0

@@ -7,7 +7,7 @@ require (
 	github.com/cosiner/argv v0.1.0
 	github.com/creack/pty v1.1.9
 	github.com/derekparker/trie v0.0.0-20200317170641-1fdf38b7b0e9
-	github.com/go-delve/liner v1.2.2-1
+	github.com/go-delve/liner v1.2.3-0.20220127212407-d32d89dd2a5d
 	github.com/google/go-dap v0.6.0
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/mattn/go-colorable v0.0.9
