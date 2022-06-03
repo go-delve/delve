@@ -6054,3 +6054,63 @@ func TestEscapeCheckUnreadable(t *testing.T) {
 		proc.EvalExpressionWithCalls(grp, p.SelectedGoroutine(), "value.Type()", normalLoadConfig, true)
 	})
 }
+
+func TestStepShadowConcurrentBreakpoint(t *testing.T) {
+	// Checks that a StepBreakpoint can not shadow a concurrently hit user breakpoint
+	withTestProcess("stepshadow", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		break2 := setFunctionBreakpoint(p, t, "main.stacktraceme2")
+		breakMain := setFileBreakpoint(p, t, fixture.Source, 15)
+		assertNoError(grp.Continue(), t, "Continue()")
+
+		stacktraceme1calls, stacktraceme2calls := 0, 0
+
+		for {
+			t.Logf("stop (%d %d):", stacktraceme1calls, stacktraceme2calls)
+			for _, th := range p.ThreadList() {
+				loc, _ := th.Location()
+				t.Logf("\t%s:%d\n", loc.File, loc.Line)
+				bp := th.Breakpoint().Breakpoint
+				if bp != nil && bp.Addr == break2.Addr {
+					stacktraceme2calls++
+				}
+				// make stop on the breakpoint in main.main the selected goroutine so we can use step later
+				if bp != nil && bp.Addr == breakMain.Addr {
+					g, _ := proc.GetG(th)
+					p.SwitchGoroutine(g)
+				}
+			}
+
+			file, lineno := currentLineNumber(p, t)
+
+			var err error
+			var reason string
+			switch lineno {
+			default:
+				t.Fatalf("unexpected stop location %s:%d", file, lineno)
+			case 15: // loop in main.main
+				reason = "Step()"
+				err = grp.Step()
+			case 28: // main.stacktraceme1
+				stacktraceme1calls++
+				reason = "Continue()"
+				err = grp.Continue()
+			case 30, 31: // main.stacktraceme2
+				reason = "Continue()"
+				err = grp.Continue()
+			}
+			if _, isexited := err.(proc.ErrProcessExited); isexited {
+				break
+			}
+			assertNoError(err, t, reason)
+		}
+
+		t.Logf("%d %d\n", stacktraceme1calls, stacktraceme2calls)
+
+		if stacktraceme1calls != 100 {
+			t.Errorf("wrong number of calls to stacktraceme1 found: %d", stacktraceme1calls)
+		}
+		if stacktraceme2calls != 100 {
+			t.Errorf("wrong number of calls to stacktraceme2 found: %d", stacktraceme2calls)
+		}
+	})
+}
