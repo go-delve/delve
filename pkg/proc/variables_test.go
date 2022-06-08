@@ -1,11 +1,10 @@
-package service_test
+package proc_test
 
 import (
 	"errors"
 	"fmt"
 	"go/constant"
 	"io/ioutil"
-	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -13,8 +12,6 @@ import (
 
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/proc"
-	"github.com/go-delve/delve/pkg/proc/gdbserial"
-	"github.com/go-delve/delve/pkg/proc/native"
 	"github.com/go-delve/delve/service/api"
 
 	protest "github.com/go-delve/delve/pkg/proc/test"
@@ -70,20 +67,6 @@ func assertVariable(t *testing.T, variable *proc.Variable, expected varTest) {
 	}
 }
 
-func findFirstNonRuntimeFrame(p *proc.Target) (proc.Stackframe, error) {
-	frames, err := proc.ThreadStacktrace(p.CurrentThread(), 10)
-	if err != nil {
-		return proc.Stackframe{}, err
-	}
-
-	for _, frame := range frames {
-		if frame.Current.Fn != nil && !strings.HasPrefix(frame.Current.Fn.Name, "runtime.") {
-			return frame, nil
-		}
-	}
-	return proc.Stackframe{}, fmt.Errorf("non-runtime frame not found")
-}
-
 func evalScope(p *proc.Target) (*proc.EvalScope, error) {
 	if testBackend != "rr" {
 		return proc.GoroutineScope(p, p.CurrentThread())
@@ -95,7 +78,7 @@ func evalScope(p *proc.Target) (*proc.EvalScope, error) {
 	return proc.FrameToScope(p, p.Memory(), nil, frame), nil
 }
 
-func evalVariable(p *proc.Target, symbol string, cfg proc.LoadConfig) (*proc.Variable, error) {
+func evalVariableWithCfg(p *proc.Target, symbol string, cfg proc.LoadConfig) (*proc.Variable, error) {
 	scope, err := evalScope(p)
 	if err != nil {
 		return nil, err
@@ -110,51 +93,7 @@ func (tc *varTest) alternateVarTest() varTest {
 	return r
 }
 
-func setVariable(p *proc.Target, symbol, value string) error {
-	scope, err := proc.GoroutineScope(p, p.CurrentThread())
-	if err != nil {
-		return err
-	}
-	return scope.SetVariable(symbol, value)
-}
-
-func withTestProcess(name string, t *testing.T, fn func(p *proc.Target, fixture protest.Fixture)) {
-	withTestProcessArgs(name, t, ".", []string{}, 0, fn)
-}
-
-func withTestProcessArgs(name string, t *testing.T, wd string, args []string, buildFlags protest.BuildFlags, fn func(p *proc.Target, fixture protest.Fixture)) {
-	if buildMode == "pie" {
-		buildFlags |= protest.BuildModePIE
-	}
-	fixture := protest.BuildFixture(name, buildFlags)
-	var p *proc.Target
-	var err error
-	var tracedir string
-	switch testBackend {
-	case "native":
-		p, err = native.Launch(append([]string{fixture.Path}, args...), wd, 0, []string{}, "", [3]string{})
-	case "lldb":
-		p, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), wd, 0, []string{}, "", [3]string{})
-	case "rr":
-		protest.MustHaveRecordingAllowed(t)
-		t.Log("recording")
-		p, tracedir, err = gdbserial.RecordAndReplay(append([]string{fixture.Path}, args...), wd, true, []string{}, [3]string{})
-		t.Logf("replaying %q", tracedir)
-	default:
-		t.Fatalf("unknown backend %q", testBackend)
-	}
-	if err != nil {
-		t.Fatal("Launch():", err)
-	}
-
-	defer func() {
-		p.Detach(true)
-	}()
-
-	fn(p, fixture)
-}
-
-func TestVariableEvaluation(t *testing.T) {
+func TestVariableEvaluation2(t *testing.T) {
 	testcases := []varTest{
 		{"a1", true, "\"foofoofoofoofoofoo\"", "", "string", nil},
 		{"a11", true, "[3]main.FooBar [{Baz: 1, Bur: \"a\"},{Baz: 2, Bur: \"b\"},{Baz: 3, Bur: \"c\"}]", "", "[3]main.FooBar", nil},
@@ -205,7 +144,7 @@ func TestVariableEvaluation(t *testing.T) {
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
-			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
+			variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 			if tc.err == nil {
 				assertNoError(err, t, "EvalVariable() returned an error")
 				assertVariable(t, variable, tc)
@@ -220,12 +159,12 @@ func TestVariableEvaluation(t *testing.T) {
 
 			if tc.alternate != "" && testBackend != "rr" {
 				assertNoError(setVariable(p, tc.name, tc.alternate), t, "SetVariable()")
-				variable, err = evalVariable(p, tc.name, pnormalLoadConfig)
+				variable, err = evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 				assertNoError(err, t, "EvalVariable()")
 				assertVariable(t, variable, tc.alternateVarTest())
 
 				assertNoError(setVariable(p, tc.name, tc.value), t, "SetVariable()")
-				variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
+				variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 				assertNoError(err, t, "EvalVariable()")
 				assertVariable(t, variable, tc)
 			}
@@ -268,13 +207,13 @@ func TestSetVariable(t *testing.T) {
 					continue
 				}
 			}
-			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
+			variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 			assertNoError(err, t, "EvalVariable()")
 			assertVariable(t, variable, varTest{tc.name, true, tc.startVal, "", tc.typ, nil})
 
 			assertNoError(setVariable(p, tc.name, tc.expr), t, "SetVariable()")
 
-			variable, err = evalVariable(p, tc.name, pnormalLoadConfig)
+			variable, err = evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 			assertNoError(err, t, "EvalVariable()")
 			assertVariable(t, variable, varTest{tc.name, true, tc.finalVal, "", tc.typ, nil})
 		}
@@ -332,7 +271,7 @@ func TestVariableEvaluationShort(t *testing.T) {
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
-			variable, err := evalVariable(p, tc.name, pshortLoadConfig)
+			variable, err := evalVariableWithCfg(p, tc.name, pshortLoadConfig)
 			if tc.err == nil {
 				assertNoError(err, t, "EvalVariable() returned an error")
 				assertVariable(t, variable, tc)
@@ -388,7 +327,7 @@ func TestMultilineVariableEvaluation(t *testing.T) {
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
-			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
+			variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 			assertNoError(err, t, "EvalVariable() returned an error")
 			if ms := api.ConvertVar(variable).MultilineString("", ""); !matchStringOrPrefix(ms, tc.value) {
 				t.Fatalf("Expected %s got %s (variable %s)\n", tc.value, ms, variable.Name)
@@ -534,11 +473,11 @@ func TestEmbeddedStruct(t *testing.T) {
 		}
 
 		for _, tc := range testcases {
-			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
+			variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 			if tc.err == nil {
 				assertNoError(err, t, fmt.Sprintf("EvalVariable(%s) returned an error", tc.name))
 				assertVariable(t, variable, tc)
-				variable, err = evalVariable(p, tc.name, pshortLoadConfig)
+				variable, err = evalVariableWithCfg(p, tc.name, pshortLoadConfig)
 				assertNoError(err, t, fmt.Sprintf("EvalVariable(%s, pshortLoadConfig) returned an error", tc.name))
 				assertVariable(t, variable, tc.alternateVarTest())
 			} else {
@@ -557,7 +496,7 @@ func TestComplexSetting(t *testing.T) {
 
 		h := func(setExpr, value string) {
 			assertNoError(setVariable(p, "c128", setExpr), t, "SetVariable()")
-			variable, err := evalVariable(p, "c128", pnormalLoadConfig)
+			variable, err := evalVariableWithCfg(p, "c128", pnormalLoadConfig)
 			assertNoError(err, t, "EvalVariable()")
 			if s := api.ConvertVar(variable).SinglelineString(); s != value {
 				t.Fatalf("Wrong value of c128: \"%s\", expected \"%s\" after setting it to \"%s\"", s, value, setExpr)
@@ -871,7 +810,7 @@ func TestEvalExpression(t *testing.T) {
 	withTestProcess("testvariables2", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue() returned an error")
 		for _, tc := range testcases {
-			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
+			variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 			if err != nil && err.Error() == "evaluating methods not supported on this version of Go" {
 				// this type of eval is unsupported with the current version of Go.
 				continue
@@ -879,7 +818,7 @@ func TestEvalExpression(t *testing.T) {
 			if tc.err == nil {
 				assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
 				assertVariable(t, variable, tc)
-				variable, err := evalVariable(p, tc.name, pshortLoadConfig)
+				variable, err := evalVariableWithCfg(p, tc.name, pshortLoadConfig)
 				assertNoError(err, t, fmt.Sprintf("EvalExpression(%s, pshortLoadConfig) returned an error", tc.name))
 				assertVariable(t, variable, tc.alternateVarTest())
 			} else {
@@ -898,7 +837,7 @@ func TestEvalAddrAndCast(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue() returned an error")
-		c1addr, err := evalVariable(p, "&c1", pnormalLoadConfig)
+		c1addr, err := evalVariableWithCfg(p, "&c1", pnormalLoadConfig)
 		assertNoError(err, t, "EvalExpression(&c1)")
 		c1addrstr := api.ConvertVar(c1addr).SinglelineString()
 		t.Logf("&c1 → %s", c1addrstr)
@@ -906,7 +845,7 @@ func TestEvalAddrAndCast(t *testing.T) {
 			t.Fatalf("Invalid value of EvalExpression(&c1) \"%s\"", c1addrstr)
 		}
 
-		aaddr, err := evalVariable(p, "&(c1.pb.a)", pnormalLoadConfig)
+		aaddr, err := evalVariableWithCfg(p, "&(c1.pb.a)", pnormalLoadConfig)
 		assertNoError(err, t, "EvalExpression(&(c1.pb.a))")
 		aaddrstr := api.ConvertVar(aaddr).SinglelineString()
 		t.Logf("&(c1.pb.a) → %s", aaddrstr)
@@ -914,7 +853,7 @@ func TestEvalAddrAndCast(t *testing.T) {
 			t.Fatalf("invalid value of EvalExpression(&(c1.pb.a)) \"%s\"", aaddrstr)
 		}
 
-		a, err := evalVariable(p, "*"+aaddrstr, pnormalLoadConfig)
+		a, err := evalVariableWithCfg(p, "*"+aaddrstr, pnormalLoadConfig)
 		assertNoError(err, t, fmt.Sprintf("EvalExpression(*%s)", aaddrstr))
 		t.Logf("*%s → %s", aaddrstr, api.ConvertVar(a).SinglelineString())
 		assertVariable(t, a, varTest{aaddrstr, false, "main.astruct {A: 1, B: 2}", "", "main.astruct", nil})
@@ -925,7 +864,7 @@ func TestMapEvaluation(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue() returned an error")
-		m1v, err := evalVariable(p, "m1", pnormalLoadConfig)
+		m1v, err := evalVariableWithCfg(p, "m1", pnormalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
 		m1 := api.ConvertVar(m1v)
 		t.Logf("m1 = %v", m1.MultilineString("", ""))
@@ -938,7 +877,7 @@ func TestMapEvaluation(t *testing.T) {
 			t.Fatalf("Wrong number of children: %d", len(m1.Children)/2)
 		}
 
-		m1sliced, err := evalVariable(p, "m1[64:]", pnormalLoadConfig)
+		m1sliced, err := evalVariableWithCfg(p, "m1[64:]", pnormalLoadConfig)
 		assertNoError(err, t, "EvalVariable(m1[64:])")
 		if len(m1sliced.Children)/2 != int(m1.Len-64) {
 			t.Fatalf("Wrong number of children (after slicing): %d", len(m1sliced.Children)/2)
@@ -967,7 +906,7 @@ func TestUnsafePointer(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue() returned an error")
-		up1v, err := evalVariable(p, "up1", pnormalLoadConfig)
+		up1v, err := evalVariableWithCfg(p, "up1", pnormalLoadConfig)
 		assertNoError(err, t, "EvalVariable(up1)")
 		up1 := api.ConvertVar(up1v)
 		if ss := up1.SinglelineString(); !strings.HasPrefix(ss, "unsafe.Pointer(") {
@@ -1006,11 +945,11 @@ func TestIssue426(t *testing.T) {
 	withTestProcess("testvariables2", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue() returned an error")
 		for _, testcase := range testcases {
-			v, err := evalVariable(p, testcase.name, pnormalLoadConfig)
+			v, err := evalVariableWithCfg(p, testcase.name, pnormalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", testcase.name))
 			t.Logf("%s → %s", testcase.name, v.RealType.String())
 			expr := fmt.Sprintf("(*%q)(%d)", testcase.typ, v.Addr)
-			_, err = evalVariable(p, expr, pnormalLoadConfig)
+			_, err = evalVariableWithCfg(p, expr, pnormalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", expr))
 		}
 	})
@@ -1018,7 +957,7 @@ func TestIssue426(t *testing.T) {
 
 func testPackageRenamesHelper(t *testing.T, p *proc.Target, testcases []varTest) {
 	for _, tc := range testcases {
-		variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
+		variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 		if tc.err == nil {
 			assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
 			assertVariable(t, variable, tc)
@@ -1137,29 +1076,11 @@ func TestConstants(t *testing.T) {
 	withTestProcess("consts", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue")
 		for _, testcase := range testcases {
-			variable, err := evalVariable(p, testcase.name, pnormalLoadConfig)
+			variable, err := evalVariableWithCfg(p, testcase.name, pnormalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", testcase.name))
 			assertVariable(t, variable, testcase)
 		}
 	})
-}
-
-func setFunctionBreakpoint(p *proc.Target, t testing.TB, fname string) *proc.Breakpoint {
-	_, f, l, _ := runtime.Caller(1)
-	f = filepath.Base(f)
-
-	addrs, err := proc.FindFunctionLocation(p, fname, 0)
-	if err != nil {
-		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
-	}
-	if len(addrs) != 1 {
-		t.Fatalf("%s:%d: setFunctionBreakpoint(%s): too many results %v", f, l, fname, addrs)
-	}
-	bp, err := p.SetBreakpoint(int(addrs[0]), addrs[0], proc.UserBreakpoint, nil)
-	if err != nil {
-		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
-	}
-	return bp
 }
 
 func TestIssue1075(t *testing.T) {
@@ -1354,7 +1275,7 @@ func testCallFunctionSetBreakpoint(t *testing.T, p *proc.Target, fixture protest
 	assertNoError(err, t, "ReadFile")
 	for i, line := range strings.Split(string(buf), "\n") {
 		if strings.Contains(line, "// breakpoint here") {
-			setFileBreakpoint(p, t, fixture, i+1)
+			setFileBreakpoint(p, t, fixture.Source, i+1)
 			return
 		}
 	}
@@ -1462,36 +1383,18 @@ func TestIssue1531(t *testing.T) {
 			}
 		}
 
-		mv, err := evalVariable(p, "m", pnormalLoadConfig)
+		mv, err := evalVariableWithCfg(p, "m", pnormalLoadConfig)
 		assertNoError(err, t, "EvalVariable(m)")
 		cmv := api.ConvertVar(mv)
 		t.Logf("m = %s", cmv.SinglelineString())
 		hasKeys(mv, "s", "r", "v")
 
-		mmv, err := evalVariable(p, "mm", pnormalLoadConfig)
+		mmv, err := evalVariableWithCfg(p, "mm", pnormalLoadConfig)
 		assertNoError(err, t, "EvalVariable(mm)")
 		cmmv := api.ConvertVar(mmv)
 		t.Logf("mm = %s", cmmv.SinglelineString())
 		hasKeys(mmv, "r", "t", "v")
 	})
-}
-
-func setFileBreakpoint(p *proc.Target, t *testing.T, fixture protest.Fixture, lineno int) *proc.Breakpoint {
-	_, f, l, _ := runtime.Caller(1)
-	f = filepath.Base(f)
-
-	addrs, err := proc.FindFileLocation(p, fixture.Source, lineno)
-	if err != nil {
-		t.Fatalf("%s:%d: FindFileLocation(%s, %d): %v", f, l, fixture.Source, lineno, err)
-	}
-	if len(addrs) != 1 {
-		t.Fatalf("%s:%d: setFileLineBreakpoint(%s, %d): too many results %v", f, l, fixture.Source, lineno, addrs)
-	}
-	bp, err := p.SetBreakpoint(int(addrs[0]), addrs[0], proc.UserBreakpoint, nil)
-	if err != nil {
-		t.Fatalf("%s:%d: SetBreakpoint: %v", f, l, err)
-	}
-	return bp
 }
 
 func currentLocation(p *proc.Target, t *testing.T) (pc uint64, f string, ln int, fn *proc.Function) {
@@ -1518,7 +1421,7 @@ func TestPluginVariables(t *testing.T) {
 	pluginFixtures := protest.WithPlugins(t, protest.AllNonOptimized, "plugin1/", "plugin2/")
 
 	withTestProcessArgs("plugintest2", t, ".", []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, protest.AllNonOptimized, func(p *proc.Target, fixture protest.Fixture) {
-		setFileBreakpoint(p, t, fixture, 41)
+		setFileBreakpoint(p, t, fixture.Source, 41)
 		assertNoError(p.Continue(), t, "Continue 1")
 
 		bp := setFunctionBreakpoint(p, t, "github.com/go-delve/delve/_fixtures/plugin2.TypesTest")
@@ -1553,7 +1456,7 @@ func TestPluginVariables(t *testing.T) {
 		}
 
 		// read interface variable, inside plugin code, with a concrete type defined in the executable
-		vs, err := evalVariable(p, "s", pnormalLoadConfig)
+		vs, err := evalVariableWithCfg(p, "s", pnormalLoadConfig)
 		assertNoError(err, t, "Eval(s)")
 		assertVariable(t, vs, varTest{"s", true, `github.com/go-delve/delve/_fixtures/internal/pluginsupport.Something(*main.asomething) *{n: 2}`, ``, `github.com/go-delve/delve/_fixtures/internal/pluginsupport.Something`, nil})
 
@@ -1561,7 +1464,7 @@ func TestPluginVariables(t *testing.T) {
 		assertNoError(setVariable(p, "plugin2.A", "main.ExeGlobal"), t, "setVariable(plugin2.A = main.ExeGlobal)")
 		assertNoError(p.Continue(), t, "Continue 3")
 		assertCurrentLocationFunction(p, t, "github.com/go-delve/delve/_fixtures/plugin2.aIsNotNil")
-		vstr, err := evalVariable(p, "str", pnormalLoadConfig)
+		vstr, err := evalVariableWithCfg(p, "str", pnormalLoadConfig)
 		assertNoError(err, t, "Eval(str)")
 		assertVariable(t, vstr, varTest{"str", true, `"success"`, ``, `string`, nil})
 
@@ -1570,7 +1473,7 @@ func TestPluginVariables(t *testing.T) {
 		assertNoError(p.Next(), t, "Next")
 
 		// read interface variable, inside executable code, with a concrete type defined in a plugin
-		vb, err := evalVariable(p, "b", pnormalLoadConfig)
+		vb, err := evalVariableWithCfg(p, "b", pnormalLoadConfig)
 		assertNoError(err, t, "Eval(b)")
 		assertVariable(t, vb, varTest{"b", true, `github.com/go-delve/delve/_fixtures/internal/pluginsupport.SomethingElse(*github.com/go-delve/delve/_fixtures/plugin2.asomethingelse) *{x: 1, y: 4}`, ``, `github.com/go-delve/delve/_fixtures/internal/pluginsupport.SomethingElse`, nil})
 	})
@@ -1601,7 +1504,7 @@ func TestCgoEval(t *testing.T) {
 	withTestProcess("testvariablescgo/", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue() returned an error")
 		for _, tc := range testcases {
-			variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
+			variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 			if err != nil && err.Error() == "evaluating methods not supported on this version of Go" {
 				// this type of eval is unsupported with the current version of Go.
 				continue
@@ -1609,7 +1512,7 @@ func TestCgoEval(t *testing.T) {
 			if tc.err == nil {
 				assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
 				assertVariable(t, variable, tc)
-				variable, err := evalVariable(p, tc.name, pshortLoadConfig)
+				variable, err := evalVariableWithCfg(p, tc.name, pshortLoadConfig)
 				assertNoError(err, t, fmt.Sprintf("EvalExpression(%s, pshortLoadConfig) returned an error", tc.name))
 				assertVariable(t, variable, tc.alternateVarTest())
 			} else {
@@ -1649,7 +1552,7 @@ func TestEvalExpressionGenerics(t *testing.T) {
 		for i, tcs := range testcases {
 			assertNoError(p.Continue(), t, fmt.Sprintf("Continue() returned an error (%d)", i))
 			for _, tc := range tcs {
-				variable, err := evalVariable(p, tc.name, pnormalLoadConfig)
+				variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 				if tc.err == nil {
 					assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
 					assertVariable(t, variable, tc)
