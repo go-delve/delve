@@ -256,7 +256,8 @@ func setRegFound(regFound map[string]bool, name string) {
 // readTargetXml reads target.xml file from stub using qXfer:features:read,
 // then parses it requesting any additional files.
 // The schema of target.xml is described by:
-//  https://github.com/bminor/binutils-gdb/blob/61baf725eca99af2569262d10aca03dcde2698f6/gdb/features/gdb-target.dtd
+//
+//	https://github.com/bminor/binutils-gdb/blob/61baf725eca99af2569262d10aca03dcde2698f6/gdb/features/gdb-target.dtd
 func (conn *gdbConn) readTargetXml(regFound map[string]bool) (err error) {
 	conn.regsInfo, err = conn.readAnnex("target.xml")
 	if err != nil {
@@ -715,9 +716,10 @@ type stopPacket struct {
 
 // Mach exception codes used to decode metype/medata keys in stop packets (necessary to support watchpoints with debugserver).
 // See:
-//  https://opensource.apple.com/source/xnu/xnu-4570.1.46/osfmk/mach/exception_types.h.auto.html
-//  https://opensource.apple.com/source/xnu/xnu-4570.1.46/osfmk/mach/i386/exception.h.auto.html
-//  https://opensource.apple.com/source/xnu/xnu-4570.1.46/osfmk/mach/arm/exception.h.auto.html
+//
+//	https://opensource.apple.com/source/xnu/xnu-4570.1.46/osfmk/mach/exception_types.h.auto.html
+//	https://opensource.apple.com/source/xnu/xnu-4570.1.46/osfmk/mach/i386/exception.h.auto.html
+//	https://opensource.apple.com/source/xnu/xnu-4570.1.46/osfmk/mach/arm/exception.h.auto.html
 const (
 	_EXC_BREAKPOINT   = 6     // mach exception type for hardware breakpoints
 	_EXC_I386_SGL     = 1     // mach exception code for single step on x86, for some reason this is also used for watchpoints
@@ -1095,6 +1097,36 @@ func (conn *gdbConn) threadStopInfo(threadID string) (sp stopPacket, err error) 
 	if err != nil {
 		return stopPacket{}, err
 	}
+	if sp.threadID != threadID {
+		// When we send a ^C (manual stop request) and the process is close to
+		// stopping anyway, sometimes, debugserver will send back two stop
+		// packets. We need to ignore this spurious stop packet. Because the first
+		// thing we do after the stop is updateThreadList, which calls this
+		// function, this is relatively painless. We simply need to check that the
+		// stop packet we receive is for the thread we requested, if it isn't we
+		// can assume it is the spurious extra stop packet and simply ignore it.
+		// An example of a problematic interaction is in the commit message for
+		// this change.
+		// See https://github.com/go-delve/delve/issues/3013.
+
+		conn.conn.SetReadDeadline(time.Now().Add(10 * time.Millisecond))
+		resp, err = conn.recv(conn.outbuf.Bytes(), "thread stop info", false)
+		conn.conn.SetReadDeadline(time.Time{})
+		if err != nil {
+			if neterr, isneterr := err.(net.Error); isneterr && neterr.Timeout() {
+				return stopPacket{}, fmt.Errorf("qThreadStopInfo mismatch, requested %s got %s", sp.threadID, threadID)
+			}
+			return stopPacket{}, err
+		}
+		_, sp, err = conn.parseStopPacket(resp, "", nil)
+		if err != nil {
+			return stopPacket{}, err
+		}
+		if sp.threadID != threadID {
+			return stopPacket{}, fmt.Errorf("qThreadStopInfo mismatch, requested %s got %s", sp.threadID, threadID)
+		}
+	}
+
 	return sp, nil
 }
 
@@ -1246,7 +1278,8 @@ func (conn *gdbConn) memoryRegionInfo(addr uint64) (*memoryRegionInfo, error) {
 
 // exec executes a message to the stub and reads a response.
 // The details of the wire protocol are described here:
-//  https://sourceware.org/gdb/onlinedocs/gdb/Overview.html#Overview
+//
+//	https://sourceware.org/gdb/onlinedocs/gdb/Overview.html#Overview
 func (conn *gdbConn) exec(cmd []byte, context string) ([]byte, error) {
 	if err := conn.send(cmd); err != nil {
 		return nil, err

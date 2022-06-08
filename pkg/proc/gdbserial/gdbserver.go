@@ -849,6 +849,9 @@ continueLoop:
 
 		// For stubs that support qThreadStopInfo updateThreadList will
 		// find out the reason why each thread stopped.
+		// NOTE: because debugserver will sometimes send two stop packets after a
+		// continue it is important that this is the very first thing we do after
+		// resume(). See comment in threadStopInfo for an explanation.
 		p.updateThreadList(&tu)
 
 		trapthread = p.findThreadByStrID(threadID)
