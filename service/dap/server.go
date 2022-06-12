@@ -1558,7 +1558,7 @@ func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneReque
 		}
 		s.send(e)
 	}
-	s.debugger.Target().KeepSteppingBreakpoints = proc.HaltKeepsSteppingBreakpoints | proc.TracepointKeepsSteppingBreakpoints
+	s.debugger.TargetGroup().KeepSteppingBreakpoints = proc.HaltKeepsSteppingBreakpoints | proc.TracepointKeepsSteppingBreakpoints
 
 	s.logToConsole("Type 'dlv help' for list of commands.")
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})

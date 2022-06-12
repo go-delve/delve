@@ -227,7 +227,9 @@ func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.Target, e
 		DebugInfoDirs:       debugInfoDirs,
 		DisableAsyncPreempt: false,
 		StopReason:          proc.StopAttached,
-		CanDump:             false})
+		CanDump:             false,
+		ContinueOnce:        continueOnce,
+	})
 }
 
 // BinInfo will return the binary info.
@@ -417,9 +419,7 @@ func (p *process) ClearInternalBreakpoints() error {
 	return nil
 }
 
-// ContinueOnce will always return an error because you
-// cannot control execution of a core file.
-func (p *process) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
+func continueOnce(procs []proc.ProcessInternal, cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
 	return nil, proc.StopUnknown, ErrContinueCore
 }
 
