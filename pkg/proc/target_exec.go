@@ -221,9 +221,9 @@ func conditionErrors(threads []Thread) error {
 }
 
 // pick a new dbp.currentThread, with the following priority:
-// 	- a thread with an active stepping breakpoint
-// 	- a thread with an active breakpoint, prioritizing trapthread
-// 	- trapthread
+//   - a thread with an active stepping breakpoint
+//   - a thread with an active breakpoint, prioritizing trapthread
+//   - trapthread
 func pickCurrentThread(dbp *Target, trapthread Thread, threads []Thread) error {
 	for _, th := range threads {
 		if bp := th.Breakpoint(); bp.Active && bp.Stepping {
@@ -445,14 +445,14 @@ func (dbp *Target) StepInstruction() (err error) {
 // once the CALL is reached.
 //
 // Regardless of stepInto the following breakpoints will be set:
-// - a breakpoint on the first deferred function with NextDeferBreakpoint
-//   kind, the list of all the addresses to deferreturn calls in this function
-//   and condition checking that we remain on the same goroutine
-// - a breakpoint on each line of the function, with a condition checking
-//   that we stay on the same stack frame and goroutine.
-// - a breakpoint on the return address of the function, with a condition
-//   checking that we move to the previous stack frame and stay on the same
-//   goroutine.
+//   - a breakpoint on the first deferred function with NextDeferBreakpoint
+//     kind, the list of all the addresses to deferreturn calls in this function
+//     and condition checking that we remain on the same goroutine
+//   - a breakpoint on each line of the function, with a condition checking
+//     that we stay on the same stack frame and goroutine.
+//   - a breakpoint on the return address of the function, with a condition
+//     checking that we move to the previous stack frame and stay on the same
+//     goroutine.
 //
 // The breakpoint on the return address is *not* set if the current frame is
 // an inlined call. For inlined calls topframe.Current.Fn is the function
@@ -957,12 +957,13 @@ func findCallInstrForRet(p Process, mem MemoryReadWriter, ret uint64, fn *Functi
 }
 
 // stepOutReverse sets a breakpoint on the CALL instruction that created the current frame, this is either:
-// - the CALL instruction immediately preceding the return address of the
-//   current frame
-// - the return address of the current frame if the current frame was
-//   created by a runtime.deferreturn run
-// - the return address of the runtime.gopanic frame if the current frame
-//   was created by a panic
+//   - the CALL instruction immediately preceding the return address of the
+//     current frame
+//   - the return address of the current frame if the current frame was
+//     created by a runtime.deferreturn run
+//   - the return address of the runtime.gopanic frame if the current frame
+//     was created by a panic
+//
 // This function is used to implement reversed StepOut
 func stepOutReverse(p *Target, topframe, retframe Stackframe, sameGCond ast.Expr) error {
 	curthread := p.CurrentThread()

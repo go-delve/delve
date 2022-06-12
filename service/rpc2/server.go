@@ -632,15 +632,21 @@ type ListGoroutinesOut struct {
 // If arg.Filters are specified the list of returned goroutines is filtered
 // applying the specified filters.
 // For example:
-//    ListGoroutinesFilter{ Kind: ListGoroutinesFilterUserLoc, Negated: false, Arg: "afile.go" }
+//
+//	ListGoroutinesFilter{ Kind: ListGoroutinesFilterUserLoc, Negated: false, Arg: "afile.go" }
+//
 // will only return goroutines whose UserLoc contains "afile.go" as a substring.
 // More specifically a goroutine matches a location filter if the specified
 // location, formatted like this:
-//    filename:lineno in function
+//
+//	filename:lineno in function
+//
 // contains Arg[0] as a substring.
 //
 // Filters can also be applied to goroutine labels:
-//    ListGoroutineFilter{ Kind: ListGoroutinesFilterLabel, Negated: false, Arg: "key=value" }
+//
+//	ListGoroutineFilter{ Kind: ListGoroutinesFilterLabel, Negated: false, Arg: "key=value" }
+//
 // this filter will only return goroutines that have a key=value label.
 //
 // If arg.GroupBy is not GoroutineFieldNone then the goroutines will
@@ -700,15 +706,15 @@ type FindLocationOut struct {
 
 // FindLocation returns concrete location information described by a location expression.
 //
-//  loc ::= <filename>:<line> | <function>[:<line>] | /<regex>/ | (+|-)<offset> | <line> | *<address>
-//  * <filename> can be the full path of a file or just a suffix
-//  * <function> ::= <package>.<receiver type>.<name> | <package>.(*<receiver type>).<name> | <receiver type>.<name> | <package>.<name> | (*<receiver type>).<name> | <name>
-//  * <function> must be unambiguous
-//  * /<regex>/ will return a location for each function matched by regex
-//  * +<offset> returns a location for the line that is <offset> lines after the current line
-//  * -<offset> returns a location for the line that is <offset> lines before the current line
-//  * <line> returns a location for a line in the current file
-//  * *<address> returns the location corresponding to the specified address
+//	loc ::= <filename>:<line> | <function>[:<line>] | /<regex>/ | (+|-)<offset> | <line> | *<address>
+//	* <filename> can be the full path of a file or just a suffix
+//	* <function> ::= <package>.<receiver type>.<name> | <package>.(*<receiver type>).<name> | <receiver type>.<name> | <package>.<name> | (*<receiver type>).<name> | <name>
+//	  <function> must be unambiguous
+//	* /<regex>/ will return a location for each function matched by regex
+//	* +<offset> returns a location for the line that is <offset> lines after the current line
+//	* -<offset> returns a location for the line that is <offset> lines before the current line
+//	* <line> returns a location for a line in the current file
+//	* *<address> returns the location corresponding to the specified address
 //
 // NOTE: this function does not actually set breakpoints.
 func (c *RPCServer) FindLocation(arg FindLocationIn, out *FindLocationOut) error {

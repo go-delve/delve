@@ -213,8 +213,9 @@ func isExportedOrBuiltinType(t reflect.Type) bool {
 // available through the RPC interface.
 // These are all the public methods of rcvr that have one of those
 // two signatures:
-//  func (rcvr ReceiverType) Method(in InputType, out *ReplyType) error
-//  func (rcvr ReceiverType) Method(in InputType, cb service.RPCCallback)
+//
+//	func (rcvr ReceiverType) Method(in InputType, out *ReplyType) error
+//	func (rcvr ReceiverType) Method(in InputType, cb service.RPCCallback)
 func suitableMethods(rcvr interface{}, methods map[string]*methodType, log *logrus.Entry) {
 	typ := reflect.TypeOf(rcvr)
 	rcvrv := reflect.ValueOf(rcvr)

@@ -21,10 +21,12 @@ var ErrNoThreads = errors.New("no threads found in core file")
 // 0x0000000000400000  0x000000000044f000  0x0000000000000000
 // but then it's partially overwritten with an RW mapping whose data is stored
 // in the core file:
-// Type           Offset             VirtAddr           PhysAddr
-//                FileSiz            MemSiz              Flags  Align
-// LOAD           0x0000000000004000 0x000000000049a000 0x0000000000000000
-//                0x0000000000002000 0x0000000000002000  RW     1000
+//
+//	Type           Offset             VirtAddr           PhysAddr
+//	               FileSiz            MemSiz              Flags  Align
+//	LOAD           0x0000000000004000 0x000000000049a000 0x0000000000000000
+//	               0x0000000000002000 0x0000000000002000  RW     1000
+//
 // This can be represented in a SplicedMemory by adding the original region,
 // then putting the RW mapping on top of it.
 type splicedMemory struct {

@@ -1705,10 +1705,11 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 // onAttachRequest handles 'attach' request.
 // This is a mandatory request to support.
 // Attach debug sessions support the following modes:
-// -- [DEFAULT] "local" -- attaches debugger to a local running process
-//      Required args: processID
-// -- "remote" - attaches client to a debugger already attached to a process
-//      Required args: none (host/port are used externally to connect)
+//
+//   - [DEFAULT] "local" -- attaches debugger to a local running process.
+//     Required args: processID
+//   - "remote" -- attaches client to a debugger already attached to a process.
+//     Required args: none (host/port are used externally to connect)
 func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 	var args AttachConfig = defaultAttachConfig // narrow copy for initializing non-zero default values
 	if err := unmarshalLaunchAttachArgs(request.Arguments, &args); err != nil {
@@ -2591,12 +2592,15 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 // onEvaluateRequest handles 'evalute' requests.
 // This is a mandatory request to support.
 // Support the following expressions:
-// -- {expression} - evaluates the expression and returns the result as a variable
-// -- call {function} - injects a function call and returns the result as a variable
-// -- config {expression} - updates configuration parameters
+//
+//   - {expression} - evaluates the expression and returns the result as a variable
+//   - call {function} - injects a function call and returns the result as a variable
+//   - config {expression} - updates configuration parameters
+//
 // TODO(polina): users have complained about having to click to expand multi-level
 // variables, so consider also adding the following:
-// -- print {expression} - return the result as a string like from dlv cli
+//
+//   - print {expression} - return the result as a string like from dlv cli
 func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 	showErrorToUser := request.Arguments.Context != "watch" && request.Arguments.Context != "repl" && request.Arguments.Context != "hover"
 	if s.debugger == nil {
@@ -3301,7 +3305,8 @@ func (s *Session) getExprString(expr string, goroutineID, frame int) (string, er
 }
 
 // sendErrorResponseWithOpts offers configuration options.
-//   showUser - if true, the error will be shown to the user (e.g. via a visible pop-up)
+//
+//	showUser - if true, the error will be shown to the user (e.g. via a visible pop-up)
 func (s *Session) sendErrorResponseWithOpts(request dap.Request, id int, summary, details string, showUser bool) {
 	er := &dap.ErrorResponse{}
 	er.Type = "response"
@@ -3706,7 +3711,8 @@ type logMessage struct {
 }
 
 // parseLogPoint parses a log message according to the DAP spec:
-//   "Expressions within {} are interpolated."
+//
+//	"Expressions within {} are interpolated."
 func parseLogPoint(msg string) (bool, *logMessage, error) {
 	// Note: All braces *must* come in pairs, even those within an
 	// expression to be interpolated.
