@@ -42,26 +42,26 @@ func TestScopeWithEscapedVariable(t *testing.T) {
 }
 
 // TestScope will:
-// - run _fixtures/scopetest.go
-// - set a breakpoint on all lines containing a comment
-// - continue until the program ends
-// - every time a breakpoint is hit it will check that
-//   scope.FunctionArguments+scope.LocalVariables and scope.EvalExpression
-//   return what the corresponding comment describes they should return and
-//   removes the breakpoint.
+//   - run _fixtures/scopetest.go
+//   - set a breakpoint on all lines containing a comment
+//   - continue until the program ends
+//   - every time a breakpoint is hit it will check that
+//     scope.FunctionArguments+scope.LocalVariables and scope.EvalExpression
+//     return what the corresponding comment describes they should return and
+//     removes the breakpoint.
 //
 // Each comment is a comma separated list of variable declarations, with
 // each variable declaration having the following format:
 //
-//  name type = initialvalue
+//	name type = initialvalue
 //
 // the = and the initial value are optional and can only be specified if the
 // type is an integer type, float32, float64 or bool.
 //
 // If multiple variables with the same name are specified:
-// 1. LocalVariables+FunctionArguments should return them in the same order and
-//    every variable except the last one should be marked as shadowed
-// 2. EvalExpression should return the last one.
+//  1. LocalVariables+FunctionArguments should return them in the same order and
+//     every variable except the last one should be marked as shadowed
+//  2. EvalExpression should return the last one.
 func TestScope(t *testing.T) {
 	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
 		return

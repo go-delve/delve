@@ -338,17 +338,17 @@ func afterLastArgAddr(vars []*Variable) uint64 {
 }
 
 // setValue writes the value of srcv to dstv.
-// * If srcv is a numerical literal constant and srcv is of a compatible type
-//   the necessary type conversion is performed.
-// * If srcv is nil and dstv is of a nil'able type then dstv is nilled.
-// * If srcv is the empty string and dstv is a string then dstv is set to the
-//   empty string.
-// * If dstv is an "interface {}" and srcv is either an interface (possibly
-//   non-empty) or a pointer shaped type (map, channel, pointer or struct
-//   containing a single pointer field) the type conversion to "interface {}"
-//   is performed.
-// * If srcv and dstv have the same type and are both addressable then the
-//   contents of srcv are copied byte-by-byte into dstv
+//   - If srcv is a numerical literal constant and srcv is of a compatible type
+//     the necessary type conversion is performed.
+//   - If srcv is nil and dstv is of a nil'able type then dstv is nilled.
+//   - If srcv is the empty string and dstv is a string then dstv is set to the
+//     empty string.
+//   - If dstv is an "interface {}" and srcv is either an interface (possibly
+//     non-empty) or a pointer shaped type (map, channel, pointer or struct
+//     containing a single pointer field) the type conversion to "interface {}"
+//     is performed.
+//   - If srcv and dstv have the same type and are both addressable then the
+//     contents of srcv are copied byte-by-byte into dstv
 func (scope *EvalScope) setValue(dstv, srcv *Variable, srcExpr string) error {
 	srcv.loadValue(loadSingleValue)
 

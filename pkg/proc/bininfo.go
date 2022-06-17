@@ -1337,7 +1337,7 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 	return nil
 }
 
-//  _STT_FUNC is a code object, see /usr/include/elf.h for a full definition.
+// _STT_FUNC is a code object, see /usr/include/elf.h for a full definition.
 const _STT_FUNC = 2
 
 func (bi *BinaryInfo) loadSymbolName(image *Image, file *elf.File, wg *sync.WaitGroup) {
@@ -1633,13 +1633,15 @@ func (bi *BinaryInfo) parseDebugFrameMacho(image *Image, exe *macho.File, debugI
 	bi.parseDebugFrameGeneral(image, debugFrameBytes, "__debug_frame", debugFrameErr, ehFrameBytes, ehFrameAddr, "__eh_frame", frame.DwarfEndian(debugInfoBytes))
 }
 
-// macOSDebugFrameBugWorkaround applies a workaround for:
-//  https://github.com/golang/go/issues/25841
+// macOSDebugFrameBugWorkaround applies a workaround for [golang/go#25841]
+//
 // It finds the Go function with the lowest entry point and the first
 // debug_frame FDE, calculates the difference between the start of the
 // function and the start of the FDE and sums it to all debug_frame FDEs.
 // A number of additional checks are performed to make sure we don't ruin
 // executables unaffected by this bug.
+//
+// [golang/go#25841]: https://github.com/golang/go/issues/25841
 func (bi *BinaryInfo) macOSDebugFrameBugWorkaround() {
 	//TODO: log extensively because of bugs in the field
 	if bi.GOOS != "darwin" || bi.Arch.Name != "arm64" {
@@ -1967,9 +1969,9 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 
 // LookupGenericFunc returns a map that allows searching for instantiations of generic function by specificying a function name without type parameters.
 // For example the key "pkg.(*Receiver).Amethod" will find all instantiations of Amethod:
-//  - pkg.(*Receiver[.shape.int]).Amethod"
-//  - pkg.(*Receiver[.shape.*uint8]).Amethod"
-//  - etc.
+//   - pkg.(*Receiver[.shape.int]).Amethod
+//   - pkg.(*Receiver[.shape.*uint8]).Amethod
+//   - etc.
 func (bi *BinaryInfo) LookupGenericFunc() map[string][]*Function {
 	if bi.lookupGenericFunc == nil {
 		bi.lookupGenericFunc = make(map[string][]*Function)

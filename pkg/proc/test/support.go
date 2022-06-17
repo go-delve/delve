@@ -263,20 +263,20 @@ func AllowRecording(t testing.TB) {
 // MustHaveRecordingAllowed skips this test if recording is not allowed
 //
 // Not all the tests can be run with a recording:
-// - some fixtures never terminate independently (loopprog,
-//   testnextnethttp) and can not be recorded
-// - some tests assume they can interact with the target process (for
-//   example TestIssue419, or anything changing the value of a variable),
-//   which we can't do on with a recording
-// - some tests assume that the Pid returned by the process is valid, but
-//   it won't be at replay time
-// - some tests will start the fixture but not never execute a single
-//   instruction, for some reason rr doesn't like this and will print an
-//   error if it happens
-// - many tests will assume that we can return from a runtime.Breakpoint,
-//   with a recording this is not possible because when the fixture ran it
-//   wasn't attached to a debugger and in those circumstances a
-//   runtime.Breakpoint leads directly to a crash
+//   - some fixtures never terminate independently (loopprog,
+//     testnextnethttp) and can not be recorded
+//   - some tests assume they can interact with the target process (for
+//     example TestIssue419, or anything changing the value of a variable),
+//     which we can't do on with a recording
+//   - some tests assume that the Pid returned by the process is valid, but
+//     it won't be at replay time
+//   - some tests will start the fixture but not never execute a single
+//     instruction, for some reason rr doesn't like this and will print an
+//     error if it happens
+//   - many tests will assume that we can return from a runtime.Breakpoint,
+//     with a recording this is not possible because when the fixture ran it
+//     wasn't attached to a debugger and in those circumstances a
+//     runtime.Breakpoint leads directly to a crash
 //
 // Some of the tests using runtime.Breakpoint (anything involving variable
 // evaluation and TestWorkDir) have been adapted to work with a recording.

@@ -321,37 +321,39 @@ func TestForceStopWhileStopping(t *testing.T) {
 
 // TestLaunchStopOnEntry emulates the message exchange that can be observed with
 // VS Code for the most basic launch debug session with "stopOnEntry" enabled:
-// - User selects "Start Debugging":  1 >> initialize
-//                                 :  1 << initialize
-//                                 :  2 >> launch
-//                                 :    << initialized event
-//                                 :  2 << launch
-//                                 :  3 >> setBreakpoints (empty)
-//                                 :  3 << setBreakpoints
-//                                 :  4 >> setExceptionBreakpoints (empty)
-//                                 :  4 << setExceptionBreakpoints
-//                                 :  5 >> configurationDone
-// - Program stops upon launching  :    << stopped event
-//                                 :  5 << configurationDone
-//                                 :  6 >> threads
-//                                 :  6 << threads (Dummy)
-//                                 :  7 >> threads
-//                                 :  7 << threads (Dummy)
-//                                 :  8 >> stackTrace
-//                                 :  8 << error (Unable to produce stack trace)
-//                                 :  9 >> stackTrace
-//                                 :  9 << error (Unable to produce stack trace)
-// - User evaluates bad expression : 10 >> evaluate
-//                                 : 10 << error (unable to find function context)
-// - User evaluates good expression: 11 >> evaluate
-//                                 : 11 << evaluate
-// - User selects "Continue"       : 12 >> continue
-//                                 : 12 << continue
-// - Program runs to completion    :    << terminated event
-//                                 : 13 >> disconnect
-//                                 :    << output event (Process exited)
-//                                 :    << output event (Detaching)
-//                                 : 13 << disconnect
+//
+//	User selects "Start Debugging":  1 >> initialize
+//	                              :  1 << initialize
+//	                              :  2 >> launch
+//	                              :    << initialized event
+//	                              :  2 << launch
+//	                              :  3 >> setBreakpoints (empty)
+//	                              :  3 << setBreakpoints
+//	                              :  4 >> setExceptionBreakpoints (empty)
+//	                              :  4 << setExceptionBreakpoints
+//	                              :  5 >> configurationDone
+//	Program stops upon launching  :    << stopped event
+//	                              :  5 << configurationDone
+//	                              :  6 >> threads
+//	                              :  6 << threads (Dummy)
+//	                              :  7 >> threads
+//	                              :  7 << threads (Dummy)
+//	                              :  8 >> stackTrace
+//	                              :  8 << error (Unable to produce stack trace)
+//	                              :  9 >> stackTrace
+//	                              :  9 << error (Unable to produce stack trace)
+//	User evaluates bad expression : 10 >> evaluate
+//	                              : 10 << error (unable to find function context)
+//	User evaluates good expression: 11 >> evaluate
+//	                              : 11 << evaluate
+//	User selects "Continue"       : 12 >> continue
+//	                              : 12 << continue
+//	Program runs to completion    :    << terminated event
+//	                              : 13 >> disconnect
+//	                              :    << output event (Process exited)
+//	                              :    << output event (Detaching)
+//	                              : 13 << disconnect
+//
 // This test exhaustively tests Seq and RequestSeq on all messages from the
 // server. Other tests do not necessarily need to repeat all these checks.
 func TestLaunchStopOnEntry(t *testing.T) {
@@ -801,11 +803,12 @@ func TestPreSetBreakpoint(t *testing.T) {
 }
 
 // checkStackFramesExact is a helper for verifying the values within StackTraceResponse.
-//     wantStartName - name of the first returned frame (ignored if "")
-//     wantStartLine - file line of the first returned frame (ignored if <0).
-//     wantStartID - id of the first frame returned (ignored if wantFrames is 0).
-//     wantFrames - number of frames returned (length of StackTraceResponse.Body.StackFrames array).
-//     wantTotalFrames - total number of stack frames available (StackTraceResponse.Body.TotalFrames).
+//
+//	wantStartName - name of the first returned frame (ignored if "")
+//	wantStartLine - file line of the first returned frame (ignored if <0).
+//	wantStartID - id of the first frame returned (ignored if wantFrames is 0).
+//	wantFrames - number of frames returned (length of StackTraceResponse.Body.StackFrames array).
+//	wantTotalFrames - total number of stack frames available (StackTraceResponse.Body.TotalFrames).
 func checkStackFramesExact(t *testing.T, got *dap.StackTraceResponse,
 	wantStartName string, wantStartLine, wantStartID, wantFrames, wantTotalFrames int) {
 	t.Helper()
@@ -956,9 +959,10 @@ func checkStackFramesNamed(testName string, t *testing.T, got *dap.StackTraceRes
 }
 
 // checkScope is a helper for verifying the values within a ScopesResponse.
-//     i - index of the scope within ScopesRespose.Body.Scopes array
-//     name - name of the scope
-//     varRef - reference to retrieve variables of this scope. If varRef is negative, the reference is not checked.
+//
+//	i - index of the scope within ScopesRespose.Body.Scopes array
+//	name - name of the scope
+//	varRef - reference to retrieve variables of this scope. If varRef is negative, the reference is not checked.
 func checkScope(t *testing.T, got *dap.ScopesResponse, i int, name string, varRef int) {
 	t.Helper()
 	if len(got.Body.Scopes) <= i {
@@ -971,8 +975,9 @@ func checkScope(t *testing.T, got *dap.ScopesResponse, i int, name string, varRe
 }
 
 // checkChildren is a helper for verifying the number of variables within a VariablesResponse.
-//      parentName - pseudoname of the enclosing variable or scope (used for error message only)
-//      numChildren - number of variables/fields/elements of this variable
+//
+//	parentName - pseudoname of the enclosing variable or scope (used for error message only)
+//	numChildren - number of variables/fields/elements of this variable
 func checkChildren(t *testing.T, got *dap.VariablesResponse, parentName string, numChildren int) {
 	t.Helper()
 	if got.Body.Variables == nil {
@@ -984,13 +989,14 @@ func checkChildren(t *testing.T, got *dap.VariablesResponse, parentName string, 
 }
 
 // checkVar is a helper for verifying the values within a VariablesResponse.
-//     i - index of the variable within VariablesRespose.Body.Variables array (-1 will search all vars for a match)
-//     name - name of the variable
-//     evalName - fully qualified variable name or alternative expression to load this variable
-//     value - the value of the variable
-//     useExactMatch - true if name, evalName and value are to be compared to exactly, false if to be used as regex
-//     hasRef - true if the variable should have children and therefore a non-0 variable reference
-//     ref - reference to retrieve children of this variable (0 if none)
+//
+//	i - index of the variable within VariablesRespose.Body.Variables array (-1 will search all vars for a match)
+//	name - name of the variable
+//	evalName - fully qualified variable name or alternative expression to load this variable
+//	value - the value of the variable
+//	useExactMatch - true if name, evalName and value are to be compared to exactly, false if to be used as regex
+//	hasRef - true if the variable should have children and therefore a non-0 variable reference
+//	ref - reference to retrieve children of this variable (0 if none)
 func checkVar(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, useExactMatch, hasRef bool, indexed, named int) (ref int) {
 	t.Helper()
 	if len(got.Body.Variables) <= i {
@@ -3756,9 +3762,10 @@ func TestWorkingDir(t *testing.T) {
 }
 
 // checkEval is a helper for verifying the values within an EvaluateResponse.
-//     value - the value of the evaluated expression
-//     hasRef - true if the evaluated expression should have children and therefore a non-0 variable reference
-//     ref - reference to retrieve children of this evaluated expression (0 if none)
+//
+//	value - the value of the evaluated expression
+//	hasRef - true if the evaluated expression should have children and therefore a non-0 variable reference
+//	ref - reference to retrieve children of this evaluated expression (0 if none)
 func checkEval(t *testing.T, got *dap.EvaluateResponse, value string, hasRef bool) (ref int) {
 	t.Helper()
 	if got.Body.Result != value || (got.Body.VariablesReference > 0) != hasRef {
@@ -3768,9 +3775,10 @@ func checkEval(t *testing.T, got *dap.EvaluateResponse, value string, hasRef boo
 }
 
 // checkEvalIndexed is a helper for verifying the values within an EvaluateResponse.
-//     value - the value of the evaluated expression
-//     hasRef - true if the evaluated expression should have children and therefore a non-0 variable reference
-//     ref - reference to retrieve children of this evaluated expression (0 if none)
+//
+//	value - the value of the evaluated expression
+//	hasRef - true if the evaluated expression should have children and therefore a non-0 variable reference
+//	ref - reference to retrieve children of this evaluated expression (0 if none)
 func checkEvalIndexed(t *testing.T, got *dap.EvaluateResponse, value string, hasRef bool, indexed, named int) (ref int) {
 	t.Helper()
 	if got.Body.Result != value || (got.Body.VariablesReference > 0) != hasRef || got.Body.IndexedVariables != indexed || got.Body.NamedVariables != named {
@@ -5089,14 +5097,15 @@ type onBreakpoint struct {
 // runDebugSessionWithBPs is a helper for executing the common init and shutdown
 // sequences for a program that does not stop on entry
 // while specifying breakpoints and unique launch/attach criteria via parameters.
-//    cmd            - "launch" or "attach"
-//    cmdRequest     - a function that sends a launch or attach request,
-//                     so the test author has full control of its arguments.
-//                     Note that he rest of the test sequence assumes that
-//                     stopOnEntry is false.
-//     source        - source file path, needed to set breakpoints, "" if none to be set.
-//     breakpoints   - list of lines, where breakpoints are to be set
-//     onBPs         - list of test sequences to execute at each of the set breakpoints.
+//
+//	cmd            - "launch" or "attach"
+//	cmdRequest     - a function that sends a launch or attach request,
+//	                 so the test author has full control of its arguments.
+//	                 Note that he rest of the test sequence assumes that
+//	                 stopOnEntry is false.
+//	 source        - source file path, needed to set breakpoints, "" if none to be set.
+//	 breakpoints   - list of lines, where breakpoints are to be set
+//	 onBPs         - list of test sequences to execute at each of the set breakpoints.
 func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cmdRequest func(), source string, breakpoints []int, onBPs []onBreakpoint) {
 	client.InitializeRequest()
 	client.ExpectInitializeResponseAndCapabilities(t)

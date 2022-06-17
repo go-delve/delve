@@ -65,9 +65,10 @@ func (wpstate *watchpointState) set(idx uint8, addr, ctrl uint64) {
 // The format of this register set is described by user_hwdebug_state in
 // arch/arm64/include/uapi/asm/ptrace.h.
 // It consists of one 64bit word containing:
-//  * 1byte number of watchpoints
-//  * 1byte debug architecture version (the 4 least significant bits of ID_AA64DFR0_EL1)
-//  * 6bytes padding
+//   - 1byte number of watchpoints
+//   - 1byte debug architecture version (the 4 least significant bits of ID_AA64DFR0_EL1)
+//   - 6bytes padding
+//
 // Followed by 2 64bit words for each watchpoint, up to a maximum of 16
 // watchpoints. The first word contains the address at which the watchpoint
 // is set (DBGWVRn_EL1), the second word is the control register for the
