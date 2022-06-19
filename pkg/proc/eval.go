@@ -2038,10 +2038,18 @@ func (v *Variable) mapAccess(idx *Variable) (*Variable, error) {
 		return nil, fmt.Errorf("can not access unreadable map: %v", v.Unreadable)
 	}
 
+	lcfg := loadFullValue
+	if idx.Kind == reflect.String && int64(len(constant.StringVal(idx.Value))) == idx.Len && idx.Len > int64(lcfg.MaxStringLen) {
+		// If the index is a string load as much of the keys to at least match the length of the index.
+		//TODO(aarzilli): when struct literals are implemented this needs to be
+		//done recursively for literal struct fields.
+		lcfg.MaxStringLen = int(idx.Len)
+	}
+
 	first := true
 	for it.next() {
 		key := it.key()
-		key.loadValue(loadFullValue)
+		key.loadValue(lcfg)
 		if key.Unreadable != nil {
 			return nil, fmt.Errorf("can not access unreadable map: %v", key.Unreadable)
 		}
