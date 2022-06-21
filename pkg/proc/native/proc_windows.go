@@ -38,6 +38,11 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 		return nil, err
 	}
 
+	creationFlags := uint32(_DEBUG_ONLY_THIS_PROCESS)
+	if flags&proc.LaunchForeground == 0 {
+		creationFlags |= syscall.CREATE_NEW_PROCESS_GROUP
+	}
+
 	var p *os.Process
 	dbp := newProcess(0)
 	dbp.execPtraceFunc(func() {
@@ -45,7 +50,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 			Dir:   wd,
 			Files: []*os.File{stdin, stdout, stderr},
 			Sys: &syscall.SysProcAttr{
-				CreationFlags: _DEBUG_ONLY_THIS_PROCESS,
+				CreationFlags: creationFlags,
 			},
 			Env: env,
 		}
