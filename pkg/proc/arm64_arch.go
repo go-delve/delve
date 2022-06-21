@@ -9,6 +9,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/regnum"
+	"github.com/go-delve/delve/pkg/goversion"
 )
 
 var arm64BreakInstruction = []byte{0x0, 0x0, 0x20, 0xd4}
@@ -150,13 +151,20 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 			return true
 		case "crosscall2":
 			//The offsets get from runtime/cgo/asm_arm64.s:10
+			bpoff := uint64(14)
+			lroff := uint64(15)
+			if producer := it.bi.Producer(); producer != "" && goversion.ProducerAfterOrEqual(producer, 1, 19) {
+				// In Go 1.19 (specifically eee6f9f82) the order registers are saved was changed.
+				bpoff = 22
+				lroff = 23
+			}
 			newsp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*24), int64(it.bi.Arch.PtrSize()))
-			newbp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*14), int64(it.bi.Arch.PtrSize()))
-			newlr, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*15), int64(it.bi.Arch.PtrSize()))
+			newbp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*bpoff), int64(it.bi.Arch.PtrSize()))
+			newlr, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*lroff), int64(it.bi.Arch.PtrSize()))
 			if it.regs.Reg(it.regs.BPRegNum) != nil {
 				it.regs.Reg(it.regs.BPRegNum).Uint64Val = uint64(newbp)
 			} else {
-				reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+8*14)
+				reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+8*bpoff)
 				it.regs.AddReg(it.regs.BPRegNum, reg)
 			}
 			it.regs.Reg(it.regs.LRRegNum).Uint64Val = uint64(newlr)
