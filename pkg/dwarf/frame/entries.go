@@ -108,8 +108,8 @@ func (fdes FrameDescriptionEntries) Append(otherFDEs FrameDescriptionEntries) Fr
 // ptrEnc represents a pointer encoding value, used during eh_frame decoding
 // to determine how pointers were encoded.
 // Least significant 4 (0xf) bytes encode the size  as well as its
-// signed-ness,  most significant 4 bytes (0xf0) are flags describing how
-// the value should be interpreted (absolute, relative...)
+// signed-ness,  most significant 4 bytes (0xf0 == ptrEncFlagsMask) are flags
+// describing how the value should be interpreted (absolute, relative...)
 // See https://www.airs.com/blog/archives/460.
 type ptrEnc uint8
 
@@ -126,12 +126,16 @@ const (
 	ptrEncSdata4 ptrEnc = 0x0b // 4 bytes, signed
 	ptrEncSdata8 ptrEnc = 0x0c // 8 bytes, signed
 
+	ptrEncFlagsMask ptrEnc = 0xf0
+
 	ptrEncPCRel    ptrEnc = 0x10 // value is relative to the memory address where it appears
 	ptrEncTextRel  ptrEnc = 0x20 // value is relative to the address of the text section
 	ptrEncDataRel  ptrEnc = 0x30 // value is relative to the address of the data section
 	ptrEncFuncRel  ptrEnc = 0x40 // value is relative to the start of the function
 	ptrEncAligned  ptrEnc = 0x50 // value should be aligned
 	ptrEncIndirect ptrEnc = 0x80 // value is an address where the real value of the pointer is stored
+
+	ptrEncSupportedFlags = ptrEncPCRel
 )
 
 // Supported returns true if this pointer encoding is supported.
@@ -142,7 +146,7 @@ func (ptrEnc ptrEnc) Supported() bool {
 			// These values aren't defined at the moment
 			return false
 		}
-		if ptrEnc&0xf0 != ptrEncPCRel {
+		if (ptrEnc&ptrEncFlagsMask)&^ptrEncSupportedFlags != 0 {
 			// Currently only the PC relative flag is supported
 			return false
 		}

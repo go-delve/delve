@@ -201,12 +201,13 @@ func parseCIE(ctx *parseContext) parsefunc {
 				// the pointer to the personality function encoded as specified by the
 				// pointer encoding.
 				// We don't support this but have to read it anyway.
-				e, _ := buf.ReadByte()
-				if !ptrEnc(e).Supported() {
+				b, _ := buf.ReadByte()
+				e := ptrEnc(b) &^ ptrEncIndirect
+				if !e.Supported() {
 					ctx.err = fmt.Errorf("pointer encoding not supported %#x at %#x", e, ctx.offset())
 					return nil
 				}
-				ctx.readEncodedPtr(0, buf, ptrEnc(e))
+				ctx.readEncodedPtr(0, buf, e)
 			default:
 				ctx.err = fmt.Errorf("unsupported augmentation character %c at %#x", ctx.common.Augmentation[i], ctx.offset())
 				return nil
