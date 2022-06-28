@@ -1172,7 +1172,7 @@ func restartRecorded(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	printcontext(t, state)
-	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+	printPos(t, state.CurrentThread, printPosShowArrow)
 	t.onStop()
 	return nil
 }
@@ -1325,7 +1325,7 @@ func (c *Commands) cont(t *Term, ctx callContext, args string) error {
 		}
 		printcontext(t, state)
 	}
-	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+	printPos(t, state.CurrentThread, printPosShowArrow)
 	return nil
 }
 
@@ -1333,7 +1333,7 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string, sho
 	defer t.onStop()
 	if !state.NextInProgress {
 		if shouldPrintFile {
-			printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+			printPos(t, state.CurrentThread, printPosShowArrow)
 		}
 		return nil
 	}
@@ -1353,7 +1353,7 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string, sho
 				fallthrough
 			default:
 				t.client.CancelNext()
-				printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+				printPos(t, state.CurrentThread, printPosShowArrow)
 				return err
 			}
 		} else {
@@ -1369,7 +1369,7 @@ func continueUntilCompleteNext(t *Term, state *api.DebuggerState, op string, sho
 			printcontext(t, state)
 		}
 		if !state.NextInProgress {
-			printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+			printPos(t, state.CurrentThread, printPosShowArrow)
 			return nil
 		}
 	}
@@ -1449,7 +1449,7 @@ func (c *Commands) stepInstruction(t *Term, ctx callContext, args string) error 
 		return err
 	}
 	printcontext(t, state)
-	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+	printPos(t, state.CurrentThread, printPosShowArrow|printPosStepInstruction)
 	return nil
 }
 
@@ -2378,17 +2378,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		rest = argv[1]
 	}
 
-	flavor := api.IntelFlavour
-	if t.conf != nil && t.conf.DisassembleFlavor != nil {
-		switch *t.conf.DisassembleFlavor {
-		case "go":
-			flavor = api.GoFlavour
-		case "gnu":
-			flavor = api.GNUFlavour
-		default:
-			flavor = api.IntelFlavour
-		}
-	}
+	flavor := t.conf.GetDisassembleFlavour()
 
 	var disasm api.AsmInstructions
 	var disasmErr error
@@ -2431,7 +2421,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		return disasmErr
 	}
 
-	disasmPrint(disasm, t.stdout)
+	disasmPrint(disasm, t.stdout, true)
 
 	return nil
 }
@@ -2671,6 +2661,26 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 	}
 }
 
+type printPosFlags uint8
+
+const (
+	printPosShowArrow printPosFlags = 1 << iota
+	printPosStepInstruction
+)
+
+func printPos(t *Term, th *api.Thread, flags printPosFlags) error {
+	if flags&printPosStepInstruction != 0 {
+		if t.conf.Position == config.PositionSource {
+			return printfile(t, th.File, th.Line, flags&printPosShowArrow != 0)
+		}
+		return printdisass(t, th.PC)
+	}
+	if t.conf.Position == config.PositionDisassembly {
+		return printdisass(t, th.PC)
+	}
+	return printfile(t, th.File, th.Line, flags&printPosShowArrow != 0)
+}
+
 func printfile(t *Term, filename string, line int, showArrow bool) error {
 	if filename == "" {
 		return nil
@@ -2703,6 +2713,35 @@ func printfile(t *Term, filename string, line int, showArrow bool) error {
 	}
 
 	return t.stdout.ColorizePrint(file.Name(), file, line-lineCount, line+lineCount+1, arrowLine)
+}
+
+func printdisass(t *Term, pc uint64) error {
+	disasm, err := t.client.DisassemblePC(api.EvalScope{GoroutineID: -1, Frame: 0, DeferredCall: 0}, pc, t.conf.GetDisassembleFlavour())
+	if err != nil {
+		return err
+	}
+
+	lineCount := t.conf.GetSourceListLineCount()
+
+	showHeader := true
+	for i := range disasm {
+		if disasm[i].AtPC {
+			s := i - lineCount
+			if s < 0 {
+				s = 0
+			}
+			e := i + lineCount + 1
+			if e > len(disasm) {
+				e = len(disasm)
+			}
+			showHeader = s == 0
+			disasm = disasm[s:e]
+			break
+		}
+	}
+
+	disasmPrint(disasm, t.stdout, showHeader)
+	return nil
 }
 
 // ExitRequestError is returned when the user
@@ -2898,7 +2937,7 @@ func (c *Commands) rewind(t *Term, ctx callContext, args string) error {
 		}
 		printcontext(t, state)
 	}
-	printfile(t, state.CurrentThread.File, state.CurrentThread.Line, true)
+	printPos(t, state.CurrentThread, printPosShowArrow)
 	return nil
 }
 

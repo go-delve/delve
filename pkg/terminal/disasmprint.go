@@ -10,10 +10,10 @@ import (
 	"github.com/go-delve/delve/service/api"
 )
 
-func disasmPrint(dv api.AsmInstructions, out io.Writer) {
+func disasmPrint(dv api.AsmInstructions, out io.Writer, showHeader bool) {
 	bw := bufio.NewWriter(out)
 	defer bw.Flush()
-	if len(dv) > 0 && dv[0].Loc.Function != nil {
+	if len(dv) > 0 && dv[0].Loc.Function != nil && showHeader {
 		fmt.Fprintf(bw, "TEXT %s(SB) %s\n", dv[0].Loc.Function.Name(), dv[0].Loc.File)
 	}
 	tw := tabwriter.NewWriter(bw, 1, 8, 1, '\t', 0)

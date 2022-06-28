@@ -1311,3 +1311,14 @@ func TestTranscript(t *testing.T) {
 		os.Remove(name)
 	})
 }
+
+func TestDisassPosCmd(t *testing.T) {
+	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
+		term.MustExec("continue")
+		out := term.MustExec("step-instruction")
+		t.Logf("%q\n", out)
+		if !strings.Contains(out, "call $runtime.Breakpoint") && !strings.Contains(out, "CALL runtime.Breakpoint(SB)") {
+			t.Errorf("output doesn't look like disassembly")
+		}
+	})
+}
