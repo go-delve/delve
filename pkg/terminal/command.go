@@ -816,7 +816,7 @@ func (c *Commands) printGoroutines(t *Term, ctx callContext, indent string, gs [
 			}
 			printStack(t, t.stdout, stack, indent+"\t", false)
 		}
-		if flags&api.PrintGoroutinesExec != 0 && cmd != "" {
+		if cmd != "" {
 			ctx.Scope.GoroutineID = g.ID
 			if err := c.CallWithContext(cmd, t, ctx); err != nil {
 				return err
