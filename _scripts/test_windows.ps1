@@ -9,7 +9,7 @@ Set-MpPreference -DisableRealtimeMonitoring $true
 #Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
 
 # Install MinGW.
-choco install -y mingw --version 10.2.0 
+choco install -y mingw
 
 # Install Procdump
 if (-Not(Test-Path "C:\procdump"))
