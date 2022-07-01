@@ -103,7 +103,7 @@ func ExecuteStackProgram(regs DwarfRegisters, instructions []byte, ptrSize int, 
 }
 
 // PrettyPrint prints the DWARF stack program instructions to `out`.
-func PrettyPrint(out io.Writer, instructions []byte) {
+func PrettyPrint(out io.Writer, instructions []byte, regnumToName func(uint64) string) {
 	in := bytes.NewBuffer(instructions)
 
 	for {
@@ -111,19 +111,31 @@ func PrettyPrint(out io.Writer, instructions []byte) {
 		if err != nil {
 			break
 		}
-		if name, hasname := opcodeName[Opcode(opcode)]; hasname {
+		op := Opcode(opcode)
+		if name, hasname := opcodeName[op]; hasname {
 			io.WriteString(out, name)
+			if regnumToName != nil {
+				if op >= DW_OP_reg0 && op <= DW_OP_reg31 {
+					fmt.Fprintf(out, "(%s)", regnumToName(uint64(op-DW_OP_reg0)))
+				} else if op >= DW_OP_breg0 && op <= DW_OP_breg31 {
+					fmt.Fprintf(out, "(%s)", regnumToName(uint64(op-DW_OP_breg0)))
+				}
+			}
 			out.Write([]byte{' '})
 		} else {
 			fmt.Fprintf(out, "%#x ", opcode)
 		}
-		for _, arg := range opcodeArgs[Opcode(opcode)] {
+
+		for i, arg := range opcodeArgs[Opcode(opcode)] {
+			var regnum uint64
 			switch arg {
 			case 's':
 				n, _ := util.DecodeSLEB128(in)
+				regnum = uint64(n)
 				fmt.Fprintf(out, "%#x ", n)
 			case 'u':
 				n, _ := util.DecodeULEB128(in)
+				regnum = n
 				fmt.Fprintf(out, "%#x ", n)
 			case '1':
 				var x uint8
@@ -147,6 +159,9 @@ func PrettyPrint(out io.Writer, instructions []byte) {
 				sz2, _ := in.Read(data)
 				data = data[:sz2]
 				fmt.Fprintf(out, "%d [%x] ", sz, data)
+			}
+			if regnumToName != nil && i == 0 && (op == DW_OP_regx || op == DW_OP_bregx) {
+				fmt.Fprintf(out, "(%s)", regnumToName(regnum))
 			}
 		}
 	}

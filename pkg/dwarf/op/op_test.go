@@ -13,7 +13,7 @@ func assertExprResult(t *testing.T, expected int64, instructions []byte) {
 	}
 	if actual != expected {
 		buf := new(strings.Builder)
-		PrettyPrint(buf, instructions)
+		PrettyPrint(buf, instructions, nil)
 		t.Errorf("actual %d != expected %d (in %s)", actual, expected, buf.String())
 	}
 }

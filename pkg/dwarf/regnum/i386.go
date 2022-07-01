@@ -93,8 +93,8 @@ func I386MaxRegNum() int {
 	return max
 }
 
-func I386ToName(num int) string {
-	name, ok := i386DwarfToName[num]
+func I386ToName(num uint64) string {
+	name, ok := i386DwarfToName[int(num)]
 	if ok {
 		return name
 	}

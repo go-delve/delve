@@ -36,6 +36,7 @@ func I386Arch(goos string) *Arch {
 		SPRegNum:                         regnum.I386_Esp,
 		asmRegisters:                     i386AsmRegisters,
 		RegisterNameToDwarf:              nameToDwarfFunc(regnum.I386NameToDwarf),
+		RegnumToString:                   regnum.I386ToName,
 	}
 }
 
@@ -208,7 +209,7 @@ func i386AddrAndStackRegsToDwarfRegisters(staticBase, pc, sp, bp, lr uint64) op.
 }
 
 func i386DwarfRegisterToString(j int, reg *op.DwarfRegister) (name string, floatingPoint bool, repr string) {
-	name = regnum.I386ToName(j)
+	name = regnum.I386ToName(uint64(j))
 
 	if reg == nil {
 		return name, false, ""

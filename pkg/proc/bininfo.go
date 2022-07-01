@@ -975,7 +975,7 @@ func (bi *BinaryInfo) locationExpr(entry godwarf.Entry, attr dwarf.Attr, pc uint
 		return nil, nil, fmt.Errorf("no location attribute %s", attr)
 	}
 	if instr, ok := a.([]byte); ok {
-		return instr, &locationExpr{isBlock: true, instr: instr}, nil
+		return instr, &locationExpr{isBlock: true, instr: instr, regnumToName: bi.Arch.RegnumToString}, nil
 	}
 	off, ok := a.(int64)
 	if !ok {
@@ -985,7 +985,7 @@ func (bi *BinaryInfo) locationExpr(entry godwarf.Entry, attr dwarf.Attr, pc uint
 	if instr == nil {
 		return nil, nil, fmt.Errorf("could not find loclist entry at %#x for address %#x", off, pc)
 	}
-	return instr, &locationExpr{pc: pc, off: off, instr: instr}, nil
+	return instr, &locationExpr{pc: pc, off: off, instr: instr, regnumToName: bi.Arch.RegnumToString}, nil
 }
 
 type locationExpr struct {
@@ -994,6 +994,8 @@ type locationExpr struct {
 	off       int64
 	pc        uint64
 	instr     []byte
+
+	regnumToName func(uint64) string
 }
 
 func (le *locationExpr) String() string {
@@ -1004,10 +1006,10 @@ func (le *locationExpr) String() string {
 
 	if le.isBlock {
 		fmt.Fprintf(&descr, "[block] ")
-		op.PrettyPrint(&descr, le.instr)
+		op.PrettyPrint(&descr, le.instr, le.regnumToName)
 	} else {
 		fmt.Fprintf(&descr, "[%#x:%#x] ", le.off, le.pc)
-		op.PrettyPrint(&descr, le.instr)
+		op.PrettyPrint(&descr, le.instr, le.regnumToName)
 	}
 
 	if le.isEscaped {
