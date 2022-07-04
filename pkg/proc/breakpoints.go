@@ -264,14 +264,16 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 
 	switch breaklet.Kind {
 	case UserBreakpoint:
+		var goroutineID int
 		lbp := bpstate.Breakpoint.Logical
 		if lbp != nil {
 			if g, err := GetG(thread); err == nil {
-				lbp.HitCount[g.ID]++
+				goroutineID = g.ID
+				lbp.HitCount[goroutineID]++
 			}
 			lbp.TotalHitCount++
 		}
-		active = checkHitCond(lbp)
+		active = checkHitCond(lbp, goroutineID)
 
 	case StepBreakpoint, NextBreakpoint, NextDeferBreakpoint:
 		nextDeferOk := true
@@ -318,26 +320,30 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 }
 
 // checkHitCond evaluates bp's hit condition on thread.
-func checkHitCond(lbp *LogicalBreakpoint) bool {
+func checkHitCond(lbp *LogicalBreakpoint, goroutineID int) bool {
 	if lbp == nil || lbp.HitCond == nil {
 		return true
+	}
+	hitCount := int(lbp.TotalHitCount)
+	if lbp.HitCondPerG && goroutineID > 0 {
+		hitCount = int(lbp.HitCount[goroutineID])
 	}
 	// Evaluate the breakpoint condition.
 	switch lbp.HitCond.Op {
 	case token.EQL:
-		return int(lbp.TotalHitCount) == lbp.HitCond.Val
+		return hitCount == lbp.HitCond.Val
 	case token.NEQ:
-		return int(lbp.TotalHitCount) != lbp.HitCond.Val
+		return hitCount != lbp.HitCond.Val
 	case token.GTR:
-		return int(lbp.TotalHitCount) > lbp.HitCond.Val
+		return hitCount > lbp.HitCond.Val
 	case token.LSS:
-		return int(lbp.TotalHitCount) < lbp.HitCond.Val
+		return hitCount < lbp.HitCond.Val
 	case token.GEQ:
-		return int(lbp.TotalHitCount) >= lbp.HitCond.Val
+		return hitCount >= lbp.HitCond.Val
 	case token.LEQ:
-		return int(lbp.TotalHitCount) <= lbp.HitCond.Val
+		return hitCount <= lbp.HitCond.Val
 	case token.REM:
-		return int(lbp.TotalHitCount)%lbp.HitCond.Val == 0
+		return hitCount%lbp.HitCond.Val == 0
 	}
 	return false
 }
@@ -971,6 +977,7 @@ type LogicalBreakpoint struct {
 
 	HitCount      map[int]uint64 // Number of times a breakpoint has been reached in a certain goroutine
 	TotalHitCount uint64         // Number of times a breakpoint has been reached
+	HitCondPerG   bool           // Use per goroutine hitcount as HitCond operand, instead of total hitcount
 
 	// HitCond: if not nil the breakpoint will be triggered only if the evaluated HitCond returns
 	// true with the TotalHitCount.

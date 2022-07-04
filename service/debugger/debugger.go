@@ -900,6 +900,7 @@ func copyLogicalBreakpointInfo(lbp *proc.LogicalBreakpoint, requested *api.Break
 			Op  token.Token
 			Val int
 		}{opTok, val}
+		lbp.HitCondPerG = requested.HitCondPerG
 	}
 
 	return nil

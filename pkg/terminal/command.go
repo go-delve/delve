@@ -451,6 +451,7 @@ The command 'on x -edit' can be used to edit the list of commands executed when 
 
 	condition <breakpoint name or id> <boolean expression>.
 	condition -hitcount <breakpoint name or id> <operator> <argument>.
+	condition -per-g-hitcount <breakpoint name or id> <operator> <argument>.
 	condition -clear <breakpoint name or id>.
 
 Specifies that the breakpoint, tracepoint or watchpoint should break only if the boolean expression is true.
@@ -466,6 +467,8 @@ With the -hitcount option a condition on the breakpoint hit count can be set, th
 	condition -hitcount bp == n
 	condition -hitcount bp != n
 	condition -hitcount bp % n
+
+The -per-g-hitcount option works like -hitcount, but use per goroutine hitcount to compare with n.
 
 With the -clear option a condtion on the breakpoint can removed.
 	
@@ -1654,7 +1657,11 @@ func formatBreakpointAttrs(prefix string, bp *api.Breakpoint, includeTrace bool)
 		attrs = append(attrs, fmt.Sprintf("%scond %s", prefix, bp.Cond))
 	}
 	if bp.HitCond != "" {
-		attrs = append(attrs, fmt.Sprintf("%scond -hitcount %s", prefix, bp.HitCond))
+		if bp.HitCondPerG {
+			attrs = append(attrs, fmt.Sprintf("%scond -per-g-hitcount %s", prefix, bp.HitCond))
+		} else {
+			attrs = append(attrs, fmt.Sprintf("%scond -hitcount %s", prefix, bp.HitCond))
+		}
 	}
 	if bp.Stacktrace > 0 {
 		attrs = append(attrs, fmt.Sprintf("%sstack %d", prefix, bp.Stacktrace))
@@ -2814,11 +2821,13 @@ func conditionCmd(t *Term, ctx callContext, argstr string) error {
 		return fmt.Errorf("not enough arguments")
 	}
 
-	if args[0] == "-hitcount" {
+	hitCondPerG := args[0] == "-per-g-hitcount"
+	if args[0] == "-hitcount" || hitCondPerG {
 		// hitcount breakpoint
 
 		if ctx.Prefix == onPrefix {
 			ctx.Breakpoint.HitCond = args[1]
+			ctx.Breakpoint.HitCondPerG = hitCondPerG
 			return nil
 		}
 
@@ -2833,6 +2842,7 @@ func conditionCmd(t *Term, ctx callContext, argstr string) error {
 		}
 
 		bp.HitCond = args[1]
+		bp.HitCondPerG = hitCondPerG
 
 		return t.client.AmendBreakpoint(bp)
 	}

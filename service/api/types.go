@@ -92,6 +92,8 @@ type Breakpoint struct {
 	// Breakpoint hit count condition.
 	// Supported hit count conditions are "NUMBER" and "OP NUMBER".
 	HitCond string
+	// HitCondPerG use per goroutine hitcount as HitCond operand, instead of total hitcount
+	HitCondPerG bool
 
 	// Tracepoint flag, signifying this is a tracepoint.
 	Tracepoint bool `json:"continue"`
