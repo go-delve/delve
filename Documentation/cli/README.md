@@ -180,6 +180,7 @@ Set breakpoint condition.
 
 	condition <breakpoint name or id> <boolean expression>.
 	condition -hitcount <breakpoint name or id> <operator> <argument>.
+	condition -per-g-hitcount <breakpoint name or id> <operator> <argument>.
 	condition -clear <breakpoint name or id>.
 
 Specifies that the breakpoint, tracepoint or watchpoint should break only if the boolean expression is true.
@@ -195,6 +196,8 @@ With the -hitcount option a condition on the breakpoint hit count can be set, th
 	condition -hitcount bp == n
 	condition -hitcount bp != n
 	condition -hitcount bp % n
+
+The -per-g-hitcount option works like -hitcount, but use per goroutine hitcount to compare with n.
 
 With the -clear option a condtion on the breakpoint can removed.
 	
