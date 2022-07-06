@@ -751,7 +751,12 @@ func threads(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	sort.Sort(byThreadID(threads))
+	done := false
+	t.stdout.w.PageMaybe(func() { done = false })
 	for _, th := range threads {
+		if done {
+			break
+		}
 		prefix := "  "
 		if state.CurrentThread != nil && state.CurrentThread.ID == th.ID {
 			prefix = "* "
@@ -802,8 +807,11 @@ func (a byGoroutineID) Len() int           { return len(a) }
 func (a byGoroutineID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byGoroutineID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
-func (c *Commands) printGoroutines(t *Term, ctx callContext, indent string, gs []*api.Goroutine, fgl api.FormatGoroutineLoc, flags api.PrintGoroutinesFlags, depth int, cmd string, state *api.DebuggerState) error {
+func (c *Commands) printGoroutines(t *Term, ctx callContext, indent string, gs []*api.Goroutine, fgl api.FormatGoroutineLoc, flags api.PrintGoroutinesFlags, depth int, cmd string, pdone *bool, state *api.DebuggerState) error {
 	for _, g := range gs {
+		if t.longCommandCanceled() || (pdone != nil && *pdone) {
+			break
+		}
 		prefix := indent + "  "
 		if state.SelectedGoroutine != nil && g.ID == state.SelectedGoroutine.ID {
 			prefix = indent + "* "
@@ -846,9 +854,11 @@ func (c *Commands) goroutines(t *Term, ctx callContext, argstr string) error {
 		groups        []api.GoroutineGroup
 		tooManyGroups bool
 	)
+	done := false
+	t.stdout.w.PageMaybe(func() { done = true })
 	t.longCommandStart()
 	for start >= 0 {
-		if t.longCommandCanceled() {
+		if t.longCommandCanceled() || done {
 			fmt.Fprintf(t.stdout, "interrupted\n")
 			return nil
 		}
@@ -859,7 +869,7 @@ func (c *Commands) goroutines(t *Term, ctx callContext, argstr string) error {
 		if len(groups) > 0 {
 			for i := range groups {
 				fmt.Fprintf(t.stdout, "%s\n", groups[i].Name)
-				err = c.printGoroutines(t, ctx, "\t", gs[groups[i].Offset:][:groups[i].Count], fgl, flags, depth, cmd, state)
+				err = c.printGoroutines(t, ctx, "\t", gs[groups[i].Offset:][:groups[i].Count], fgl, flags, depth, cmd, &done, state)
 				if err != nil {
 					return err
 				}
@@ -873,7 +883,7 @@ func (c *Commands) goroutines(t *Term, ctx callContext, argstr string) error {
 			}
 		} else {
 			sort.Sort(byGoroutineID(gs))
-			err = c.printGoroutines(t, ctx, "", gs, fgl, flags, depth, cmd, state)
+			err = c.printGoroutines(t, ctx, "", gs, fgl, flags, depth, cmd, &done, state)
 			if err != nil {
 				return err
 			}
@@ -1988,6 +1998,7 @@ loop:
 	if err != nil {
 		return err
 	}
+	t.stdout.w.PageMaybe(nil)
 	fmt.Fprint(t.stdout, api.PrettyExamineMemory(uintptr(address), memArea, isLittleEndian, priFmt, size))
 	return nil
 }
@@ -2096,7 +2107,12 @@ func (t *Term) printSortedStrings(v []string, err error) error {
 		return err
 	}
 	sort.Strings(v)
+	done := false
+	t.stdout.w.PageMaybe(func() { done = false })
 	for _, d := range v {
+		if done {
+			break
+		}
 		fmt.Fprintln(t.stdout, d)
 	}
 	return nil
@@ -2202,6 +2218,7 @@ func stackCommand(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
+	t.stdout.w.PageMaybe(nil)
 	printStack(t, t.stdout, stack, "", sa.offsets)
 	if sa.ancestors > 0 {
 		ancestors, err := t.client.Ancestors(ctx.Scope.GoroutineID, sa.ancestors, sa.ancestorDepth)
@@ -2396,6 +2413,8 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		cmd = argv[0]
 		rest = argv[1]
 	}
+
+	t.stdout.w.PageMaybe(nil)
 
 	flavor := t.conf.GetDisassembleFlavour()
 
