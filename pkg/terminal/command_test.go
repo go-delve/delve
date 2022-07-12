@@ -1158,6 +1158,26 @@ func TestHitCondBreakpoint(t *testing.T) {
 			t.Fatalf("wrong value of i")
 		}
 	})
+
+	withTestTerminal("condperghitcount", t, func(term *FakeTerminal) {
+		term.MustExec("break bp1 main.main:8")
+		term.MustExec("condition -per-g-hitcount bp1 == 2")
+		listIsAt(t, term, "continue", 16, -1, -1)
+		// first g hit
+		out := term.MustExec("print j")
+		t.Logf("%q", out)
+		if !strings.Contains(out, "2\n") {
+			t.Fatalf("wrong value of j")
+		}
+		term.MustExec("toggle bp1")
+		listIsAt(t, term, "continue", 16, -1, -1)
+		// second g hit
+		out = term.MustExec("print j")
+		t.Logf("%q", out)
+		if !strings.Contains(out, "2\n") {
+			t.Fatalf("wrong value of j")
+		}
+	})
 }
 
 func TestClearCondBreakpoint(t *testing.T) {

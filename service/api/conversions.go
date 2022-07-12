@@ -43,6 +43,7 @@ func ConvertLogicalBreakpoint(lbp *proc.LogicalBreakpoint) *Breakpoint {
 
 	if lbp.HitCond != nil {
 		b.HitCond = fmt.Sprintf("%s %d", lbp.HitCond.Op.String(), lbp.HitCond.Val)
+		b.HitCondPerG = lbp.HitCondPerG
 	}
 
 	var buf bytes.Buffer
