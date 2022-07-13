@@ -13,16 +13,23 @@ import (
 )
 
 var arm64BreakInstruction = []byte{0x0, 0x0, 0x20, 0xd4}
+var arm64WindowsBreakInstruction = []byte{0x0, 0x0, 0x3e, 0xd4}
 
 // ARM64Arch returns an initialized ARM64
 // struct.
 func ARM64Arch(goos string) *Arch {
+	var brk []byte
+	if goos == "windows" {
+		brk = arm64WindowsBreakInstruction
+	} else {
+		brk = arm64BreakInstruction
+	}
 	return &Arch{
 		Name:                             "arm64",
 		ptrSize:                          8,
 		maxInstructionLength:             4,
-		breakpointInstruction:            arm64BreakInstruction,
-		breakInstrMovesPC:                false,
+		breakpointInstruction:            brk,
+		breakInstrMovesPC:                goos == "windows",
 		derefTLS:                         false,
 		prologues:                        prologuesARM64,
 		fixFrameUnwindContext:            arm64FixFrameUnwindContext,
@@ -102,12 +109,7 @@ func arm64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Binary
 	if a.crosscall2fn != nil && pc >= a.crosscall2fn.Entry && pc < a.crosscall2fn.End {
 		rule := fctxt.CFA
 		if rule.Offset == crosscall2SPOffsetBad {
-			switch bi.GOOS {
-			case "windows":
-				rule.Offset += crosscall2SPOffsetWindows
-			default:
-				rule.Offset += crosscall2SPOffsetNonWindows
-			}
+			rule.Offset += crosscall2SPOffsetNonWindows
 		}
 		fctxt.CFA = rule
 	}

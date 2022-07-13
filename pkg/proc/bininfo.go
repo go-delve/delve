@@ -137,6 +137,7 @@ var (
 
 	supportedWindowsArch = map[_PEMachine]bool{
 		_IMAGE_FILE_MACHINE_AMD64: true,
+		_IMAGE_FILE_MACHINE_ARM64: true,
 	}
 
 	supportedDarwinArch = map[macho.Cpu]bool{
