@@ -9,6 +9,7 @@ import (
 	"path"
 	"runtime"
 
+	"github.com/go-delve/delve/service/api"
 	"gopkg.in/yaml.v2"
 )
 
@@ -16,6 +17,10 @@ const (
 	configDir       string = "dlv"
 	configDirHidden string = ".dlv"
 	configFile      string = "config.yml"
+
+	PositionSource      = "source"
+	PositionDisassembly = "disassembly"
+	PositionDefault     = "default"
 )
 
 // SubstitutePathRule describes a rule for substitution of path to source code file.
@@ -76,9 +81,19 @@ type Config struct {
 	// called (i.e. when execution stops, listCommand is used, etc)
 	SourceListLineCount *int `yaml:"source-list-line-count,omitempty"`
 
-	// DebugFileDirectories is the list of directories Delve will use
+	// DebugInfoDirectories is the list of directories Delve will use
 	// in order to resolve external debug info files.
 	DebugInfoDirectories []string `yaml:"debug-info-directories"`
+
+	// Position controls how the current position in the program is displayed.
+	// There are three possible values:
+	//  - source: always show the current position in the program's source
+	//    code.
+	//  - disassembly: always should the current position by disassembling the
+	//    current function.
+	//  - default (or the empty string): use disassembly for step-instruction,
+	//    source for everything else.
+	Position string `yaml:"position"`
 }
 
 func (c *Config) GetSourceListLineCount() int {
@@ -88,6 +103,20 @@ func (c *Config) GetSourceListLineCount() int {
 		n = *lcp
 	}
 	return n
+}
+
+func (c *Config) GetDisassembleFlavour() api.AssemblyFlavour {
+	if c == nil || c.DisassembleFlavor == nil {
+		return api.IntelFlavour
+	}
+	switch *c.DisassembleFlavor {
+	case "go":
+		return api.GoFlavour
+	case "gnu":
+		return api.GNUFlavour
+	default:
+		return api.IntelFlavour
+	}
 }
 
 // LoadConfig attempts to populate a Config object from the config.yml file.
