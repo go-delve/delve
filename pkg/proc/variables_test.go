@@ -1232,44 +1232,45 @@ func TestCallFunction(t *testing.T) {
 	}
 
 	withTestProcessArgs("fncall", t, ".", nil, protest.AllNonOptimized, func(p *proc.Target, fixture protest.Fixture) {
+		grp := proc.NewGroup(p)
 		testCallFunctionSetBreakpoint(t, p, fixture)
 
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(grp.Continue(), t, "Continue()")
 		for _, tc := range testcases {
-			testCallFunction(t, p, tc)
+			testCallFunction(t, grp, p, tc)
 		}
 
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 12) {
 			for _, tc := range testcases112 {
-				testCallFunction(t, p, tc)
+				testCallFunction(t, grp, p, tc)
 			}
 			if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
 				for _, tc := range testcasesBefore114After112 {
-					testCallFunction(t, p, tc)
+					testCallFunction(t, grp, p, tc)
 				}
 			}
 		}
 
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 13) {
 			for _, tc := range testcases113 {
-				testCallFunction(t, p, tc)
+				testCallFunction(t, grp, p, tc)
 			}
 		}
 
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) {
 			for _, tc := range testcases114 {
-				testCallFunction(t, p, tc)
+				testCallFunction(t, grp, p, tc)
 			}
 		}
 
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) {
 			for _, tc := range testcases117 {
-				testCallFunction(t, p, tc)
+				testCallFunction(t, grp, p, tc)
 			}
 		}
 
 		// LEAVE THIS AS THE LAST ITEM, IT BREAKS THE TARGET PROCESS!!!
-		testCallFunction(t, p, testCaseCallFunction{"-unsafe escapeArg(&a2)", nil, nil})
+		testCallFunction(t, grp, p, testCaseCallFunction{"-unsafe escapeArg(&a2)", nil, nil})
 	})
 }
 
@@ -1284,7 +1285,7 @@ func testCallFunctionSetBreakpoint(t *testing.T, p *proc.Target, fixture protest
 	}
 }
 
-func testCallFunction(t *testing.T, p *proc.Target, tc testCaseCallFunction) {
+func testCallFunction(t *testing.T, grp *proc.TargetGroup, p *proc.Target, tc testCaseCallFunction) {
 	const unsafePrefix = "-unsafe "
 
 	var callExpr, varExpr string
@@ -1302,7 +1303,7 @@ func testCallFunction(t *testing.T, p *proc.Target, tc testCaseCallFunction) {
 		checkEscape = false
 	}
 	t.Logf("call %q", tc.expr)
-	err := proc.EvalExpressionWithCalls(p, p.SelectedGoroutine(), callExpr, pnormalLoadConfig, checkEscape)
+	err := proc.EvalExpressionWithCalls(grp, p.SelectedGoroutine(), callExpr, pnormalLoadConfig, checkEscape)
 	if tc.err != nil {
 		t.Logf("\terr = %v\n", err)
 		if err == nil {

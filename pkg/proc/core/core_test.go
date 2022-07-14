@@ -256,8 +256,9 @@ func TestCore(t *testing.T) {
 		t.Skip("disabled on linux, Github Actions, with PIE buildmode")
 	}
 	p := withCoreFile(t, "panic", "")
+	grp := proc.NewGroup(p)
 
-	recorded, _ := p.Recorded()
+	recorded, _ := grp.Recorded()
 	if !recorded {
 		t.Fatalf("expecting recorded to be true")
 	}

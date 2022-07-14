@@ -709,7 +709,9 @@ func (p *gdbProcess) initialize(path string, debugInfoDirs []string, stopReason 
 		DebugInfoDirs:       debugInfoDirs,
 		DisableAsyncPreempt: runtime.GOOS == "darwin",
 		StopReason:          stopReason,
-		CanDump:             runtime.GOOS == "darwin"})
+		CanDump:             runtime.GOOS == "darwin",
+		ContinueOnce:        continueOnce,
+	})
 	if err != nil {
 		p.Detach(true)
 		return nil, err
@@ -799,9 +801,11 @@ const (
 	debugServerTargetExcBreakpoint     = 0x96
 )
 
-// ContinueOnce will continue execution of the process until
-// a breakpoint is hit or signal is received.
-func (p *gdbProcess) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
+func continueOnce(procs []proc.ProcessInternal, cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
+	if len(procs) != 1 {
+		panic("not implemented")
+	}
+	p := procs[0].(*gdbProcess)
 	if p.exited {
 		return nil, proc.StopExited, proc.ErrProcessExited{Pid: p.conn.pid}
 	}
