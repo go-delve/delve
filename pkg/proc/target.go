@@ -510,7 +510,7 @@ func (t *Target) newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters
 		// this combination is guaranteed to be unique between resumes.
 		buf := new(strings.Builder)
 		fmt.Fprintf(buf, "%#x ", regs.CFA)
-		op.PrettyPrint(buf, descr.instr)
+		op.PrettyPrint(buf, descr.instr, t.BinInfo().Arch.RegnumToString)
 		key = buf.String()
 
 		if cmem := t.fakeMemoryRegistryMap[key]; cmem != nil {

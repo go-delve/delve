@@ -112,6 +112,18 @@ func dwarfExprCheck(t *testing.T, scope *proc.EvalScope, testCases map[string]ui
 	}
 }
 
+func exprToStringCheck(t *testing.T, scope *proc.EvalScope, exprToStringCheck map[string]string) {
+	for name, expr := range exprToStringCheck {
+		thevar, err := scope.EvalExpression(name, normalLoadConfig)
+		assertNoError(err, t, fmt.Sprintf("EvalExpression(%s)", name))
+		out := thevar.LocationExpr.String()
+		t.Logf("%q -> %q\n", name, out)
+		if out != expr {
+			t.Errorf("%q expected expression: %q got %q", name, expr, out)
+		}
+	}
+}
+
 func dwarfRegisters(bi *proc.BinaryInfo, regs *linutil.AMD64Registers) *op.DwarfRegisters {
 	a := proc.AMD64Arch("linux")
 	so := bi.PCToImage(regs.PC())
@@ -157,6 +169,12 @@ func TestDwarfExprComposite(t *testing.T) {
 		"n":       42,
 		"pair2.k": 0x8765,
 		"pair2.v": 0,
+	}
+
+	testCasesExprToString := map[string]string{
+		"pair":  "[block] DW_OP_reg2(Rcx) DW_OP_piece 0x2 DW_OP_call_frame_cfa DW_OP_consts 0x10 DW_OP_plus DW_OP_piece 0x2 ",
+		"n":     "[block] DW_OP_reg3(Rbx) ",
+		"pair2": "[block] DW_OP_reg2(Rcx) DW_OP_piece 0x2 DW_OP_piece 0x2 ",
 	}
 
 	const stringVal = "this is a string"
@@ -218,6 +236,7 @@ func TestDwarfExprComposite(t *testing.T) {
 	scope := fakeScope(mem, dwarfRegs, bi, mainfn)
 
 	dwarfExprCheck(t, scope, testCases)
+	exprToStringCheck(t, scope, testCasesExprToString)
 
 	thevar, err := scope.EvalExpression("s", normalLoadConfig)
 	assertNoError(err, t, fmt.Sprintf("EvalExpression(%s)", "s"))

@@ -49,6 +49,7 @@ type Arch struct {
 	// inhibitStepInto returns whether StepBreakpoint can be set at pc.
 	inhibitStepInto     func(bi *BinaryInfo, pc uint64) bool
 	RegisterNameToDwarf func(s string) (int, bool)
+	RegnumToString      func(uint64) string
 	// debugCallMinStackSize is the minimum stack size for call injection on this architecture.
 	debugCallMinStackSize uint64
 	// maxRegArgBytes is extra padding for ABI1 call injections, equivalent to
