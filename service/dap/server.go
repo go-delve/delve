@@ -3151,6 +3151,10 @@ func alignPCs(bi *proc.BinaryInfo, start, end uint64) (uint64, uint64) {
 			return end < fn.Entry
 		})
 		end = bi.Functions[i].Entry
+		const limit = 10 * 1024
+		if end-start > limit {
+			end = start + limit
+		}
 	}
 
 	return start, end

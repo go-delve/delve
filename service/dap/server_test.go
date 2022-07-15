@@ -55,24 +55,24 @@ func TestMain(m *testing.M) {
 
 // name is for _fixtures/<name>.go
 func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.Fixture)) {
-	runTestBuildFlags(t, name, test, protest.AllNonOptimized)
+	runTestBuildFlags(t, name, test, protest.AllNonOptimized, false)
 }
 
 // name is for _fixtures/<name>.go
-func runTestBuildFlags(t *testing.T, name string, test func(c *daptest.Client, f protest.Fixture), buildFlags protest.BuildFlags) {
+func runTestBuildFlags(t *testing.T, name string, test func(c *daptest.Client, f protest.Fixture), buildFlags protest.BuildFlags, defaultDebugInfoDirs bool) {
 	fixture := protest.BuildFixture(name, buildFlags)
 
 	// Start the DAP server.
 	serverStopped := make(chan struct{})
-	client := startDAPServerWithClient(t, serverStopped)
+	client := startDAPServerWithClient(t, defaultDebugInfoDirs, serverStopped)
 	defer client.Close()
 
 	test(client, fixture)
 	<-serverStopped
 }
 
-func startDAPServerWithClient(t *testing.T, serverStopped chan struct{}) *daptest.Client {
-	server, _ := startDAPServer(t, serverStopped)
+func startDAPServerWithClient(t *testing.T, defaultDebugInfoDirs bool, serverStopped chan struct{}) *daptest.Client {
+	server, _ := startDAPServer(t, defaultDebugInfoDirs, serverStopped)
 	client := daptest.NewClient(server.config.Listener.Addr().String())
 	return client
 }
@@ -80,16 +80,21 @@ func startDAPServerWithClient(t *testing.T, serverStopped chan struct{}) *daptes
 // Starts an empty server and a stripped down config just to establish a client connection.
 // To mock a server created by dap.NewServer(config) or serving dap.NewSession(conn, config, debugger)
 // set those arg fields manually after the server creation.
-func startDAPServer(t *testing.T, serverStopped chan struct{}) (server *Server, forceStop chan struct{}) {
+func startDAPServer(t *testing.T, defaultDebugInfoDirs bool, serverStopped chan struct{}) (server *Server, forceStop chan struct{}) {
 	// Start the DAP server.
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		t.Fatal(err)
 	}
+	debugInfoDirs := []string{}
+	if defaultDebugInfoDirs {
+		debugInfoDirs = []string{"/usr/lib/debug/.build-id"}
+	}
 	disconnectChan := make(chan struct{})
 	server = NewServer(&service.Config{
 		Listener:       listener,
 		DisconnectChan: disconnectChan,
+		Debugger:       debugger.Config{DebugInfoDirectories: debugInfoDirs},
 	})
 	server.Run()
 	// Give server time to start listening for clients
@@ -158,7 +163,7 @@ func TestStopNoClient(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			serverStopped := make(chan struct{})
-			server, forceStop := startDAPServer(t, serverStopped)
+			server, forceStop := startDAPServer(t, false, serverStopped)
 			triggerStop(server, forceStop)
 			<-serverStopped
 			verifyServerStopped(t, server)
@@ -174,7 +179,7 @@ func TestStopNoTarget(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			serverStopped := make(chan struct{})
-			server, forceStop := startDAPServer(t, serverStopped)
+			server, forceStop := startDAPServer(t, false, serverStopped)
 			client := daptest.NewClient(server.config.Listener.Addr().String())
 			defer client.Close()
 
@@ -201,7 +206,7 @@ func TestStopWithTarget(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			serverStopped := make(chan struct{})
-			server, forceStop := startDAPServer(t, serverStopped)
+			server, forceStop := startDAPServer(t, false, serverStopped)
 			client := daptest.NewClient(server.config.Listener.Addr().String())
 			defer client.Close()
 
@@ -304,7 +309,7 @@ func TestSessionStop(t *testing.T) {
 
 func TestForceStopWhileStopping(t *testing.T) {
 	serverStopped := make(chan struct{})
-	server, forceStop := startDAPServer(t, serverStopped)
+	server, forceStop := startDAPServer(t, false, serverStopped)
 	client := daptest.NewClient(server.config.Listener.Addr().String())
 
 	client.InitializeRequest()
@@ -1950,7 +1955,7 @@ func TestScopesRequestsOptimized(t *testing.T) {
 				disconnect: false,
 			}})
 	},
-		protest.EnableOptimization)
+		protest.EnableOptimization, false)
 }
 
 // TestVariablesLoading exposes test cases where variables might be partially or
@@ -5407,7 +5412,7 @@ func TestNoDebug_AcceptNoRequestsButDisconnect(t *testing.T) {
 
 func TestLaunchRequestWithRelativeBuildPath(t *testing.T) {
 	serverStopped := make(chan struct{})
-	client := startDAPServerWithClient(t, serverStopped)
+	client := startDAPServerWithClient(t, false, serverStopped)
 	defer client.Close()
 
 	fixdir := protest.FindFixturesDir()
@@ -5506,7 +5511,7 @@ func TestLaunchTestRequest(t *testing.T) {
 				defer os.Chdir(orgWD)
 			}
 			serverStopped := make(chan struct{})
-			client := startDAPServerWithClient(t, serverStopped)
+			client := startDAPServerWithClient(t, false, serverStopped)
 			defer client.Close()
 
 			runDebugSessionWithBPs(t, client, "launch",
@@ -5637,7 +5642,7 @@ func TestLaunchRequestWithEnv(t *testing.T) {
 			}
 
 			serverStopped := make(chan struct{})
-			client := startDAPServerWithClient(t, serverStopped)
+			client := startDAPServerWithClient(t, false, serverStopped)
 			defer client.Close()
 
 			runDebugSessionWithBPs(t, client, "launch", func() { // launch
@@ -6547,7 +6552,7 @@ func attachDebuggerWithTargetHalted(t *testing.T, fixture string) (*exec.Cmd, *d
 // process is halted or debug session never launched.)
 func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *daptest.Client)) {
 	serverStopped := make(chan struct{})
-	server, _ := startDAPServer(t, serverStopped)
+	server, _ := startDAPServer(t, false, serverStopped)
 	client := daptest.NewClient(server.listener.Addr().String())
 	time.Sleep(100 * time.Millisecond) // Give time for connection to be set as dap.Session
 	server.sessionMu.Lock()
@@ -6676,7 +6681,7 @@ type MultiClientCloseServerMock struct {
 func NewMultiClientCloseServerMock(t *testing.T, fixture string) *MultiClientCloseServerMock {
 	var s MultiClientCloseServerMock
 	s.stopped = make(chan struct{})
-	s.impl, s.forceStop = startDAPServer(t, s.stopped)
+	s.impl, s.forceStop = startDAPServer(t, false, s.stopped)
 	_, s.debugger = launchDebuggerWithTargetHalted(t, "http_server")
 	return &s
 }
@@ -6817,7 +6822,7 @@ func TestBadInitializeRequest(t *testing.T) {
 		// Only one initialize request is allowed, so use a new server
 		// for each test.
 		serverStopped := make(chan struct{})
-		client := startDAPServerWithClient(t, serverStopped)
+		client := startDAPServerWithClient(t, false, serverStopped)
 		defer client.Close()
 
 		client.InitializeRequestWithArgs(args)
@@ -7309,4 +7314,38 @@ func TestFindInstructions(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDisassembleCgo(t *testing.T) {
+	// Test that disassembling a program containing cgo code does not create problems.
+	// See issue #3040
+	runTestBuildFlags(t, "cgodisass", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{11},
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 11)
+
+					client.StackTraceRequest(1, 0, 1)
+					st := client.ExpectStackTraceResponse(t)
+					if len(st.Body.StackFrames) < 1 {
+						t.Fatalf("\ngot  %#v\nwant len(stackframes) => 1", st)
+					}
+
+					// Request the single instruction that the program is stopped at.
+					pc := st.Body.StackFrames[0].InstructionPointerReference
+
+					client.DisassembleRequest(pc, -200, 400)
+					client.ExpectDisassembleResponse(t)
+				},
+				disconnect: true,
+			}},
+		)
+	},
+		protest.AllNonOptimized, true)
 }
