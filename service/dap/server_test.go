@@ -2047,7 +2047,7 @@ func TestVariablesLoading(t *testing.T) {
 
 					// Map not fully loaded based on LoadConfig.MaxArrayValues
 					// Expect to be able to load map by paging.
-					ref = checkVarRegexIndexed(t, locals, -1, "m1", "m1", `map\[string\]main\.astruct \[.+\.\.\.`, `map\[string\]main\.astruct`, hasChildren, 66, 1)
+					ref = checkVarRegexIndexed(t, locals, -1, "m1", "m1", `map\[string\]main\.astruct \[.+\.\.\.`, `map\[string\]main\.astruct`, hasChildren, 132, 1)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m1 := client.ExpectVariablesResponse(t)
