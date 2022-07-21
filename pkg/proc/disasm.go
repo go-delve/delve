@@ -150,9 +150,7 @@ func disassemble(memrw MemoryReadWriter, regs Registers, breakpoints *Breakpoint
 	for len(mem) > 0 {
 		bp, atbp := breakpoints.M[pc]
 		if atbp {
-			for i := range bp.OriginalData {
-				mem[i] = bp.OriginalData[i]
-			}
+			copy(mem, bp.OriginalData)
 		}
 
 		file, line, fn := bi.PCToLine(pc)

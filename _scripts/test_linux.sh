@@ -41,7 +41,7 @@ GOPATH=$(pwd)/go
 export GOPATH
 export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
 go version
-go install honnef.co/go/tools/cmd/staticcheck@2021.1.1 || true
+go install honnef.co/go/tools/cmd/staticcheck@2022.1.2 || true
 
 uname -a
 echo "$PATH"

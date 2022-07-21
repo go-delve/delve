@@ -1,10 +1,8 @@
-//go:build linux && amd64 && cgo && go1.16
-// +build linux,amd64,cgo,go1.16
+//go:build linux && amd64 && go1.16
+// +build linux,amd64,go1.16
 
 package ebpf
 
-// #include "./bpf/include/function_vals.bpf.h"
-import "C"
 import (
 	"debug/elf"
 	"encoding/binary"
@@ -21,6 +19,36 @@ import (
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
 )
+
+//lint:file-ignore U1000 some fields are used by the C program
+
+// function_parameter_t tracks function_parameter_t from function_vals.bpf.h
+type function_parameter_t struct {
+	kind      uint32
+	size      uint32
+	offset    int32
+	in_reg    bool
+	n_pieces  int32
+	reg_nums  [6]int32
+	daddr     uint64
+	val       [0x30]byte
+	deref_val [0x30]byte
+}
+
+// function_parameter_list_t tracks function_parameter_list_t from function_vals.bpf.h
+type function_parameter_list_t struct {
+	goid_offset   uint32
+	g_addr_offset uint64
+	goroutine_id  uint32
+	fn_addr       uint32
+	is_ret        bool
+
+	n_parameters uint32
+	params       [6]function_parameter_t
+
+	n_ret_parameters uint32
+	ret_params       [6]function_parameter_t
+}
 
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -tags "go1.16" -target amd64 trace bpf/trace.bpf.c -- -I./bpf/include
 
@@ -56,7 +84,7 @@ func (ctx *EBPFContext) UpdateArgMap(key uint64, goidOffset int64, args []UProbe
 		return errors.New("eBPF map not loaded")
 	}
 	params := createFunctionParameterList(key, goidOffset, args, isret)
-	params.g_addr_offset = C.longlong(gAddrOffset)
+	params.g_addr_offset = gAddrOffset
 	return ctx.bpfArgMap.Update(unsafe.Pointer(&key), unsafe.Pointer(&params), ebpf.UpdateAny)
 }
 
@@ -118,7 +146,7 @@ func LoadEBPFTracingProgram(path string) (*EBPFContext, error) {
 }
 
 func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
-	params := (*C.function_parameter_list_t)(unsafe.Pointer(&rawParamBytes[0]))
+	params := (*function_parameter_list_t)(unsafe.Pointer(&rawParamBytes[0]))
 
 	defer runtime.KeepAlive(params) // Ensure the param is not garbage collected.
 
@@ -126,14 +154,14 @@ func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 	rawParams.FnAddr = int(params.fn_addr)
 	rawParams.GoroutineID = int(params.goroutine_id)
 
-	parseParam := func(param C.function_parameter_t) *RawUProbeParam {
+	parseParam := func(param function_parameter_t) *RawUProbeParam {
 		iparam := &RawUProbeParam{}
 		data := make([]byte, 0x60)
 		ret := param
 		iparam.Kind = reflect.Kind(ret.kind)
 
-		val := C.GoBytes(unsafe.Pointer(&ret.val), C.int(ret.size))
-		rawDerefValue := C.GoBytes(unsafe.Pointer(&ret.deref_val[0]), 0x30)
+		val := ret.val[:ret.size]
+		rawDerefValue := ret.deref_val[:0x30]
 		copy(data, val)
 		copy(data[0x30:], rawDerefValue)
 		iparam.Data = data
@@ -166,26 +194,26 @@ func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 	return rawParams
 }
 
-func createFunctionParameterList(entry uint64, goidOffset int64, args []UProbeArgMap, isret bool) C.function_parameter_list_t {
-	var params C.function_parameter_list_t
-	params.goid_offset = C.uint(goidOffset)
-	params.fn_addr = C.uint(entry)
-	params.is_ret = C.bool(isret)
-	params.n_parameters = C.uint(0)
-	params.n_ret_parameters = C.uint(0)
+func createFunctionParameterList(entry uint64, goidOffset int64, args []UProbeArgMap, isret bool) function_parameter_list_t {
+	var params function_parameter_list_t
+	params.goid_offset = uint32(goidOffset)
+	params.fn_addr = uint32(entry)
+	params.is_ret = isret
+	params.n_parameters = 0
+	params.n_ret_parameters = 0
 	for _, arg := range args {
-		var param C.function_parameter_t
-		param.size = C.uint(arg.Size)
-		param.offset = C.int(arg.Offset)
-		param.kind = C.uint(arg.Kind)
+		var param function_parameter_t
+		param.size = uint32(arg.Size)
+		param.offset = int32(arg.Offset)
+		param.kind = uint32(arg.Kind)
 		if arg.InReg {
 			param.in_reg = true
-			param.n_pieces = C.int(len(arg.Pieces))
+			param.n_pieces = int32(len(arg.Pieces))
 			for i := range arg.Pieces {
 				if i > 5 {
 					break
 				}
-				param.reg_nums[i] = C.int(arg.Pieces[i])
+				param.reg_nums[i] = int32(arg.Pieces[i])
 			}
 		}
 		if !arg.Ret {
