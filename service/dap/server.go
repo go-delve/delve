@@ -2157,10 +2157,17 @@ func (s *Session) onVariablesRequest(request *dap.VariablesRequest) {
 }
 
 func (s *Session) maybeLoadResliced(v *fullyQualifiedVariable, start, count int) (*fullyQualifiedVariable, error) {
-	if start == 0 && count == len(v.Children) {
-		// If we have already loaded the correct children,
-		// just return the variable.
-		return v, nil
+	if start == 0 {
+		want := count
+		if v.Kind == reflect.Map {
+			// For maps, we need to have 2*count children since each key-value pair is two variables.
+			want *= 2
+		}
+		if want == len(v.Children) {
+			// If we have already loaded the correct children,
+			// just return the variable.
+			return v, nil
+		}
 	}
 	indexedLoadConfig := DefaultLoadConfig
 	indexedLoadConfig.MaxArrayValues = count
@@ -2171,13 +2178,14 @@ func (s *Session) maybeLoadResliced(v *fullyQualifiedVariable, start, count int)
 	return &fullyQualifiedVariable{newV, v.fullyQualifiedNameOrExpr, false, start}, nil
 }
 
-func getIndexedVariableCount(c *proc.Variable) int {
+// getIndexedVariableCount returns the number of indexed variables
+// for a DAP variable. If the whole indexed range is requested, all of the
+// indexed children for v will be returned.
+func getIndexedVariableCount(v *proc.Variable) int {
 	indexedVars := 0
-	switch c.Kind {
-	case reflect.Array, reflect.Slice:
-		indexedVars = int(c.Len)
-	case reflect.Map:
-		indexedVars = int(c.Len) * 2
+	switch v.Kind {
+	case reflect.Array, reflect.Slice, reflect.Map:
+		indexedVars = int(v.Len)
 	}
 	return indexedVars
 }
