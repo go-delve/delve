@@ -575,8 +575,7 @@ func (t *Target) setEBPFTracepointOnFunc(fn *Function, goidOffset int64) error {
 	//TODO(aarzilli): inlined calls?
 
 	// Finally, set the uprobe on the function.
-	t.proc.SetUProbe(fn.Name, goidOffset, args)
-	return nil
+	return t.proc.SetUProbe(fn.Name, goidOffset, args)
 }
 
 // SetWatchpoint sets a data breakpoint at addr and stores it in the

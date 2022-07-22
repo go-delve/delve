@@ -26,7 +26,7 @@ dlv trace [package] regexp [flags]
   -h, --help            help for trace
       --output string   Output path for the binary. (default "debug")
   -p, --pid int         Pid to attach to.
-  -s, --stack int       Show stack trace with given depth. (Ignored with -ebpf)
+  -s, --stack int       Show stack trace with given depth. (Ignored with --ebpf)
   -t, --test            Trace a test binary.
 ```
 
