@@ -2179,8 +2179,9 @@ func (s *Session) maybeLoadResliced(v *fullyQualifiedVariable, start, count int)
 }
 
 // getIndexedVariableCount returns the number of indexed variables
-// for a DAP variable. If the whole indexed range is requested, all of the
-// indexed children for v will be returned.
+// for a DAP variable. For maps this may be less than the actual
+// number of children returned, since a key-value pair may be split
+// into two separate children.
 func getIndexedVariableCount(v *proc.Variable) int {
 	indexedVars := 0
 	switch v.Kind {
