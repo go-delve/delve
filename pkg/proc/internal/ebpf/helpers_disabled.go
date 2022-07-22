@@ -1,5 +1,5 @@
-//go:build !linux || !amd64 || !go1.16 || !cgo
-// +build !linux !amd64 !go1.16 !cgo
+//go:build !linux || !amd64 || !go1.16
+// +build !linux !amd64 !go1.16
 
 package ebpf
 
