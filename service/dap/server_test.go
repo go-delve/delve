@@ -1980,7 +1980,7 @@ func TestVariablesLoading(t *testing.T) {
 					DefaultLoadConfig.MaxStringLen = 64
 					// Set the MaxArrayValues = 33 to execute a bug for map handling where
 					// a request for  2*MaxArrayValues indexed map children would not correctly
-					// reslice the map.
+					// reslice the map. See https://github.com/golang/vscode-go/issues/2351.
 					DefaultLoadConfig.MaxArrayValues = 33
 					defer func() {
 						DefaultLoadConfig = saveDefaultConfig
