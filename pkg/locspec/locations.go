@@ -492,6 +492,12 @@ func SubstitutePath(path string, rules [][2]string) string {
 		from := crossPlatformPath(r[0])
 		to := r[1]
 
+		// If we have an exact match, use it directly.
+		if path == from {
+			return to
+		}
+
+		// Otherwise check if it's a directory prefix.
 		if !strings.HasSuffix(from, separator) {
 			from = from + separator
 		}

@@ -219,10 +219,8 @@ type launchAttachArgs struct {
 	// responses.
 	HideSystemGoroutines bool `cfgName:"hideSystemGoroutines"`
 	// substitutePathClientToServer indicates rules for converting file paths between client and debugger.
-	// These must be directory paths.
 	substitutePathClientToServer [][2]string `cfgName:"substitutePath"`
 	// substitutePathServerToClient indicates rules for converting file paths between debugger and client.
-	// These must be directory paths.
 	substitutePathServerToClient [][2]string
 }
 
