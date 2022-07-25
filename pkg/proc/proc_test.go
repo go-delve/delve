@@ -5921,3 +5921,48 @@ func TestCallInjectionFlagCorruption(t *testing.T) {
 		assertLineNumber(p, t, 17, "expected line :17") // since we passed "0" as argument we should be going into the false branch at line :17
 	})
 }
+
+func TestGnuDebuglink(t *testing.T) {
+	skipUnlessOn(t, "N/A", "linux")
+
+	// build math.go and make a copy of the executable
+	fixture := protest.BuildFixture("math", 0)
+	buf, err := ioutil.ReadFile(fixture.Path)
+	assertNoError(err, t, "ReadFile")
+	debuglinkPath := fixture.Path + "-gnu_debuglink"
+	assertNoError(ioutil.WriteFile(debuglinkPath, buf, 0666), t, "WriteFile")
+	defer os.Remove(debuglinkPath)
+
+	run := func(exe string, args ...string) {
+		cmd := exec.Command(exe, args...)
+		out, err := cmd.CombinedOutput()
+		assertNoError(err, t, fmt.Sprintf("%s %q: %s", cmd, strings.Join(args, " "), out))
+	}
+
+	// convert the executable copy to use .gnu_debuglink
+	debuglinkDwoPath := debuglinkPath + ".dwo"
+	run("objcopy", "--only-keep-debug", debuglinkPath, debuglinkDwoPath)
+	defer os.Remove(debuglinkDwoPath)
+	run("objcopy", "--strip-debug", debuglinkPath)
+	run("objcopy", "--add-gnu-debuglink="+debuglinkDwoPath, debuglinkPath)
+
+	// open original executable
+	normalBinInfo := proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH)
+	assertNoError(normalBinInfo.LoadBinaryInfo(fixture.Path, 0, []string{"/debugdir"}), t, "LoadBinaryInfo (normal exe)")
+
+	// open .gnu_debuglink executable
+	debuglinkBinInfo := proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH)
+	assertNoError(debuglinkBinInfo.LoadBinaryInfo(debuglinkPath, 0, []string{"/debugdir"}), t, "LoadBinaryInfo (gnu_debuglink exe)")
+
+	if len(normalBinInfo.Functions) != len(debuglinkBinInfo.Functions) {
+		t.Fatalf("function list mismatch")
+	}
+
+	for i := range normalBinInfo.Functions {
+		normalFn := normalBinInfo.Functions[i]
+		debuglinkFn := debuglinkBinInfo.Functions[i]
+		if normalFn.Entry != debuglinkFn.Entry || normalFn.Name != normalFn.Name {
+			t.Fatalf("function definition mismatch")
+		}
+	}
+}
