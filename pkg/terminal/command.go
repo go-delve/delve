@@ -224,9 +224,9 @@ If called with the locspec argument it will delete all the breakpoints matching 
 		{aliases: []string{"toggle"}, group: breakCmds, cmdFn: toggle, helpMsg: `Toggles on or off a breakpoint.
 
 toggle <breakpoint name or id>`},
-		{aliases: []string{"goroutines", "grs"}, group: goroutineCmds, cmdFn: goroutines, helpMsg: `List program goroutines.
+		{aliases: []string{"goroutines", "grs"}, group: goroutineCmds, cmdFn: c.goroutines, helpMsg: `List program goroutines.
 
-	goroutines [-u|-r|-g|-s] [-t [depth]] [-l] [-with loc expr] [-without loc expr] [-group argument]
+	goroutines [-u|-r|-g|-s] [-t [depth]] [-l] [-with loc expr] [-without loc expr] [-group argument] [-exec command]
 
 Print out info for every goroutine. The flag controls what information is shown along with each goroutine:
 
@@ -281,6 +281,12 @@ Groups goroutines by the given location, running status or user classification, 
 	goroutines -group label key
 
 Groups goroutines by the value of the label with the specified key.
+
+EXEC
+
+	goroutines -exec <command>
+
+Runs the command on every goroutine.
 `},
 		{aliases: []string{"goroutine", "gr"}, group: goroutineCmds, allowedPrefixes: onPrefix, cmdFn: c.goroutine, helpMsg: `Shows or changes current goroutine
 
@@ -796,7 +802,7 @@ func (a byGoroutineID) Len() int           { return len(a) }
 func (a byGoroutineID) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a byGoroutineID) Less(i, j int) bool { return a[i].ID < a[j].ID }
 
-func printGoroutines(t *Term, indent string, gs []*api.Goroutine, fgl api.FormatGoroutineLoc, flags api.PrintGoroutinesFlags, depth int, state *api.DebuggerState) error {
+func (c *Commands) printGoroutines(t *Term, ctx callContext, indent string, gs []*api.Goroutine, fgl api.FormatGoroutineLoc, flags api.PrintGoroutinesFlags, depth int, cmd string, state *api.DebuggerState) error {
 	for _, g := range gs {
 		prefix := indent + "  "
 		if state.SelectedGoroutine != nil && g.ID == state.SelectedGoroutine.ID {
@@ -813,12 +819,18 @@ func printGoroutines(t *Term, indent string, gs []*api.Goroutine, fgl api.Format
 			}
 			printStack(t, t.stdout, stack, indent+"\t", false)
 		}
+		if cmd != "" {
+			ctx.Scope.GoroutineID = g.ID
+			if err := c.CallWithContext(cmd, t, ctx); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
 
-func goroutines(t *Term, ctx callContext, argstr string) error {
-	filters, group, fgl, flags, depth, batchSize, err := api.ParseGoroutineArgs(argstr)
+func (c *Commands) goroutines(t *Term, ctx callContext, argstr string) error {
+	filters, group, fgl, flags, depth, batchSize, cmd, err := api.ParseGoroutineArgs(argstr)
 	if err != nil {
 		return err
 	}
@@ -847,7 +859,7 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 		if len(groups) > 0 {
 			for i := range groups {
 				fmt.Fprintf(t.stdout, "%s\n", groups[i].Name)
-				err = printGoroutines(t, "\t", gs[groups[i].Offset:][:groups[i].Count], fgl, flags, depth, state)
+				err = c.printGoroutines(t, ctx, "\t", gs[groups[i].Offset:][:groups[i].Count], fgl, flags, depth, cmd, state)
 				if err != nil {
 					return err
 				}
@@ -861,7 +873,7 @@ func goroutines(t *Term, ctx callContext, argstr string) error {
 			}
 		} else {
 			sort.Sort(byGoroutineID(gs))
-			err = printGoroutines(t, "", gs, fgl, flags, depth, state)
+			err = c.printGoroutines(t, ctx, "", gs, fgl, flags, depth, cmd, state)
 			if err != nil {
 				return err
 			}

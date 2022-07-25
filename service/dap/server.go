@@ -1608,7 +1608,7 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 		gs, next, err = s.debugger.Goroutines(0, maxGoroutines)
 		if err == nil {
 			// Parse the goroutine arguments.
-			filters, _, _, _, _, _, parseErr := api.ParseGoroutineArgs(s.args.GoroutineFilters)
+			filters, _, _, _, _, _, _, parseErr := api.ParseGoroutineArgs(s.args.GoroutineFilters)
 			if parseErr != nil {
 				s.logToConsole(parseErr.Error())
 			}

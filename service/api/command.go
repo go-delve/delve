@@ -11,6 +11,7 @@ type PrintGoroutinesFlags uint8
 const (
 	PrintGoroutinesStack PrintGoroutinesFlags = 1 << iota
 	PrintGoroutinesLabels
+	PrintGoroutinesExec
 )
 
 type FormatGoroutineLoc int
@@ -30,7 +31,7 @@ const (
 // The number of goroutines we're going to request on each RPC call
 const goroutineBatchSize = 10000
 
-func ParseGoroutineArgs(argstr string) ([]ListGoroutinesFilter, GoroutineGroupingOptions, FormatGoroutineLoc, PrintGoroutinesFlags, int, int, error) {
+func ParseGoroutineArgs(argstr string) ([]ListGoroutinesFilter, GoroutineGroupingOptions, FormatGoroutineLoc, PrintGoroutinesFlags, int, int, string, error) {
 	args := strings.Split(argstr, " ")
 	var filters []ListGoroutinesFilter
 	var group GoroutineGroupingOptions
@@ -38,6 +39,7 @@ func ParseGoroutineArgs(argstr string) ([]ListGoroutinesFilter, GoroutineGroupin
 	var flags PrintGoroutinesFlags
 	var depth = 10
 	var batchSize = goroutineBatchSize
+	var cmd string
 
 	group.MaxGroupMembers = maxGroupMembers
 	group.MaxGroups = maxGoroutineGroups
@@ -69,14 +71,14 @@ func ParseGoroutineArgs(argstr string) ([]ListGoroutinesFilter, GoroutineGroupin
 		case "-w", "-with":
 			filter, err := readGoroutinesFilter(args, &i)
 			if err != nil {
-				return nil, GoroutineGroupingOptions{}, 0, 0, 0, 0, fmt.Errorf("wrong argument: '%s'", arg)
+				return nil, GoroutineGroupingOptions{}, 0, 0, 0, 0, "", fmt.Errorf("wrong argument: '%s'", arg)
 			}
 			filters = append(filters, *filter)
 
 		case "-wo", "-without":
 			filter, err := readGoroutinesFilter(args, &i)
 			if err != nil {
-				return nil, GoroutineGroupingOptions{}, 0, 0, 0, 0, fmt.Errorf("wrong argument: '%s'", arg)
+				return nil, GoroutineGroupingOptions{}, 0, 0, 0, 0, "", fmt.Errorf("wrong argument: '%s'", arg)
 			}
 			filter.Negated = true
 			filters = append(filters, *filter)
@@ -85,25 +87,30 @@ func ParseGoroutineArgs(argstr string) ([]ListGoroutinesFilter, GoroutineGroupin
 			var err error
 			group.GroupBy, err = readGoroutinesFilterKind(args, i+1)
 			if err != nil {
-				return nil, GoroutineGroupingOptions{}, 0, 0, 0, 0, fmt.Errorf("wrong argument: '%s'", arg)
+				return nil, GoroutineGroupingOptions{}, 0, 0, 0, 0, "", fmt.Errorf("wrong argument: '%s'", arg)
 			}
 			i++
 			if group.GroupBy == GoroutineLabel {
 				if i+1 >= len(args) {
-					return nil, GoroutineGroupingOptions{}, 0, 0, 0, 0, fmt.Errorf("wrong argument: '%s'", arg)
+					return nil, GoroutineGroupingOptions{}, 0, 0, 0, 0, "", fmt.Errorf("wrong argument: '%s'", arg)
 				}
 				group.GroupByKey = args[i+1]
 				i++
 			}
 			batchSize = 0 // grouping only works well if run on all goroutines
 
+		case "-exec":
+			flags |= PrintGoroutinesExec
+			cmd = strings.Join(args[i+1:], " ")
+			i = len(args)
+
 		case "":
 			// nothing to do
 		default:
-			return nil, GoroutineGroupingOptions{}, 0, 0, 0, 0, fmt.Errorf("wrong argument: '%s'", arg)
+			return nil, GoroutineGroupingOptions{}, 0, 0, 0, 0, "", fmt.Errorf("wrong argument: '%s'", arg)
 		}
 	}
-	return filters, group, fgl, flags, depth, batchSize, nil
+	return filters, group, fgl, flags, depth, batchSize, cmd, nil
 }
 
 func readGoroutinesFilterKind(args []string, i int) (GoroutineField, error) {

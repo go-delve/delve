@@ -375,7 +375,7 @@ Aliases: gr
 ## goroutines
 List program goroutines.
 
-	goroutines [-u|-r|-g|-s] [-t [depth]] [-l] [-with loc expr] [-without loc expr] [-group argument]
+	goroutines [-u|-r|-g|-s] [-t [depth]] [-l] [-with loc expr] [-without loc expr] [-group argument] [-exec command]
 
 Print out info for every goroutine. The flag controls what information is shown along with each goroutine:
 
@@ -430,6 +430,12 @@ Groups goroutines by the given location, running status or user classification, 
 	goroutines -group label key
 
 Groups goroutines by the value of the label with the specified key.
+
+EXEC
+
+	goroutines -exec <command>
+
+Runs the command on every goroutine.
 
 
 Aliases: grs
