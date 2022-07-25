@@ -27,8 +27,10 @@ func platformCases() []tCase {
 		{[]tRule{{"/tmp/path/", "/new/path2/"}}, "/tmp/path/file.go", "/new/path2/file.go"},
 		{[]tRule{{"/tmp/path/", "/new/path2"}}, "/tmp/path/file.go", "/new/path2/file.go"},
 		{[]tRule{{"/tmp/path", "/new/path2/"}}, "/tmp/path/file.go", "/new/path2/file.go"},
-		// Should apply only for directory names
+		// Should apply to directory prefixes
 		{[]tRule{{"/tmp/path", "/new/path2"}}, "/tmp/path-2/file.go", "/tmp/path-2/file.go"},
+		// Should apply to exact matches
+		{[]tRule{{"/tmp/path/file.go", "/new/path2/file2.go"}}, "/tmp/path/file.go", "/new/path2/file2.go"},
 		// First matched rule should be used
 		{[]tRule{
 			{"/tmp/path1", "/new/path1"},
@@ -54,8 +56,10 @@ func platformCases() []tCase {
 		{[]tRule{{`c:\tmp\path\`, `d:\new\path2\`}}, `c:\tmp\path\file.go`, `d:\new\path2\file.go`},
 		{[]tRule{{`c:\tmp\path`, `d:\new\path2\`}}, `c:\tmp\path\file.go`, `d:\new\path2\file.go`},
 		{[]tRule{{`c:\tmp\path\`, `d:\new\path2`}}, `c:\tmp\path\file.go`, `d:\new\path2\file.go`},
-		// Should apply only for directory names
+		// Should apply to directory prefixes
 		{[]tRule{{`c:\tmp\path`, `d:\new\path2`}}, `c:\tmp\path-2\file.go`, `c:\tmp\path-2\file.go`},
+		// Should apply to exact matches
+		{[]tRule{{`c:\tmp\path\file.go`, `d:\new\path2\file2.go`}}, `c:\tmp\path\file.go`, `d:\new\path2\file2.go`},
 		// Should be case-insensitive
 		{[]tRule{{`c:\tmp\path`, `d:\new\path2`}}, `C:\TmP\PaTh\file.go`, `d:\new\path2\file.go`},
 	}
