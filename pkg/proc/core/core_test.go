@@ -446,8 +446,8 @@ mainSearch:
 }
 
 func TestMinidump(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("minidumps can only be produced on windows")
+	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
+		t.Skip("minidumps can only be produced on windows/amd64")
 	}
 	var buildFlags test.BuildFlags
 	if buildMode == "pie" {

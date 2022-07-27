@@ -256,7 +256,7 @@ func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc
 		DisableAsyncPreempt: runtime.GOOS == "windows" || runtime.GOOS == "freebsd" || (runtime.GOOS == "linux" && runtime.GOARCH == "arm64"),
 
 		StopReason:   stopReason,
-		CanDump:      runtime.GOOS == "linux" || runtime.GOOS == "windows",
+		CanDump:      runtime.GOOS == "linux" || (runtime.GOOS == "windows" && runtime.GOARCH == "amd64"),
 		ContinueOnce: continueOnce,
 	})
 	if err != nil {
