@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"unsafe"
 
+	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/regnum"
 	"github.com/go-delve/delve/pkg/proc"
 )
 
@@ -33,13 +35,13 @@ type AMD64Registers struct {
 	fs      uint64
 	gs      uint64
 	tls     uint64
-	Context *CONTEXT
+	Context *AMD64CONTEXT
 	fltSave *XMM_SAVE_AREA32
 }
 
 // NewAMD64Registers creates a new AMD64Registers struct from a CONTEXT
 // struct and the TEB base address of the thread.
-func NewAMD64Registers(context *CONTEXT, TebBaseAddress uint64) *AMD64Registers {
+func NewAMD64Registers(context *AMD64CONTEXT, TebBaseAddress uint64) *AMD64Registers {
 	regs := &AMD64Registers{
 		rax:    uint64(context.Rax),
 		rbx:    uint64(context.Rbx),
@@ -171,7 +173,7 @@ func (r *AMD64Registers) GAddr() (uint64, bool) {
 func (r *AMD64Registers) Copy() (proc.Registers, error) {
 	var rr AMD64Registers
 	rr = *r
-	rr.Context = NewCONTEXT()
+	rr.Context = NewAMD64CONTEXT()
 	*(rr.Context) = *(r.Context)
 	rr.fltSave = &rr.Context.FltSave
 	return &rr, nil
@@ -203,8 +205,8 @@ type XMM_SAVE_AREA32 struct {
 	Reserved4      [96]byte
 }
 
-// CONTEXT tracks the _CONTEXT of windows.
-type CONTEXT struct {
+// AMD64CONTEXT tracks the _CONTEXT of windows.
+type AMD64CONTEXT struct {
 	P1Home uint64
 	P2Home uint64
 	P3Home uint64
@@ -261,9 +263,86 @@ type CONTEXT struct {
 	LastExceptionFromRip uint64
 }
 
-// NewCONTEXT allocates Windows CONTEXT structure aligned to 16 bytes.
-func NewCONTEXT() *CONTEXT {
-	var c *CONTEXT
+// NewAMD64CONTEXT allocates Windows CONTEXT structure aligned to 16 bytes.
+func NewAMD64CONTEXT() *AMD64CONTEXT {
+	var c *AMD64CONTEXT
 	buf := make([]byte, unsafe.Sizeof(*c)+15)
-	return (*CONTEXT)(unsafe.Pointer((uintptr(unsafe.Pointer(&buf[15]))) &^ 15))
+	return (*AMD64CONTEXT)(unsafe.Pointer((uintptr(unsafe.Pointer(&buf[15]))) &^ 15))
+}
+
+func (ctx *AMD64CONTEXT) SetFlags(flags uint32) {
+	ctx.ContextFlags = flags
+}
+
+func (ctx *AMD64CONTEXT) SetPC(pc uint64) {
+	ctx.Rip = pc
+}
+
+func (ctx *AMD64CONTEXT) SetTrap(trap bool) {
+	const v = 0x100
+	if trap {
+		ctx.EFlags |= v
+	} else {
+		ctx.EFlags &= ^uint32(v)
+	}
+}
+
+func (ctx *AMD64CONTEXT) SetReg(regNum uint64, reg *op.DwarfRegister) error {
+	var p *uint64
+
+	switch regNum {
+	case regnum.AMD64_Rax:
+		p = &ctx.Rax
+	case regnum.AMD64_Rbx:
+		p = &ctx.Rbx
+	case regnum.AMD64_Rcx:
+		p = &ctx.Rcx
+	case regnum.AMD64_Rdx:
+		p = &ctx.Rdx
+	case regnum.AMD64_Rsi:
+		p = &ctx.Rsi
+	case regnum.AMD64_Rdi:
+		p = &ctx.Rdi
+	case regnum.AMD64_Rbp:
+		p = &ctx.Rbp
+	case regnum.AMD64_Rsp:
+		p = &ctx.Rsp
+	case regnum.AMD64_R8:
+		p = &ctx.R8
+	case regnum.AMD64_R9:
+		p = &ctx.R9
+	case regnum.AMD64_R10:
+		p = &ctx.R10
+	case regnum.AMD64_R11:
+		p = &ctx.R11
+	case regnum.AMD64_R12:
+		p = &ctx.R12
+	case regnum.AMD64_R13:
+		p = &ctx.R13
+	case regnum.AMD64_R14:
+		p = &ctx.R14
+	case regnum.AMD64_R15:
+		p = &ctx.R15
+	case regnum.AMD64_Rip:
+		p = &ctx.Rip
+	}
+
+	if p != nil {
+		if reg.Bytes != nil && len(reg.Bytes) != 8 {
+			return fmt.Errorf("wrong number of bytes for register %s (%d)", regnum.AMD64ToName(regNum), len(reg.Bytes))
+		}
+		*p = reg.Uint64Val
+	} else if regNum == regnum.AMD64_Rflags {
+		ctx.EFlags = uint32(reg.Uint64Val)
+	} else {
+		if regNum < regnum.AMD64_XMM0 || regNum > regnum.AMD64_XMM0+15 {
+			return fmt.Errorf("can not set register %s", regnum.AMD64ToName(regNum))
+		}
+		reg.FillBytes()
+		if len(reg.Bytes) > 16 {
+			return fmt.Errorf("too many bytes when setting register %s", regnum.AMD64ToName(regNum))
+		}
+		copy(ctx.FltSave.XmmRegisters[(regNum-regnum.AMD64_XMM0)*16:], reg.Bytes)
+	}
+	return nil
 }

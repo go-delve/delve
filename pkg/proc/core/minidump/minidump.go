@@ -135,7 +135,7 @@ type Thread struct {
 	PriorityClass uint32
 	Priority      uint32
 	TEB           uint64
-	Context       winutil.CONTEXT
+	Context       winutil.AMD64CONTEXT
 }
 
 // Module represents an entry in the ModuleList stream.
@@ -545,7 +545,7 @@ func readThreadList(mdmp *Minidump, buf *minidumpBuf) {
 
 		readMemoryDescriptor(mdmp, buf)                    // thread stack
 		_, rawThreadContext := readLocationDescriptor(buf) // thread context
-		thread.Context = *((*winutil.CONTEXT)(unsafe.Pointer(&rawThreadContext[0])))
+		thread.Context = *((*winutil.AMD64CONTEXT)(unsafe.Pointer(&rawThreadContext[0])))
 		if buf.err != nil {
 			return
 		}
