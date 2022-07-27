@@ -32,7 +32,7 @@ typedef struct function_parameter_list {
       long long g_addr_offset;  // Offset of the Goroutine struct from the TLS segment.
       int goroutine_id;
 
-      unsigned int fn_addr;
+      unsigned long long int fn_addr;
       bool is_ret;
 
       unsigned int n_parameters;          // number of parameters.

@@ -40,7 +40,7 @@ type function_parameter_list_t struct {
 	goid_offset   uint32
 	g_addr_offset uint64
 	goroutine_id  uint32
-	fn_addr       uint32
+	fn_addr       uint64
 	is_ret        bool
 
 	n_parameters uint32
@@ -197,7 +197,7 @@ func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 func createFunctionParameterList(entry uint64, goidOffset int64, args []UProbeArgMap, isret bool) function_parameter_list_t {
 	var params function_parameter_list_t
 	params.goid_offset = uint32(goidOffset)
-	params.fn_addr = uint32(entry)
+	params.fn_addr = entry
 	params.is_ret = isret
 	params.n_parameters = 0
 	params.n_ret_parameters = 0
