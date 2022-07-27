@@ -196,13 +196,6 @@ void parse_params(struct pt_regs *ctx, unsigned int n_params, function_parameter
     }
 }
 
-#define bpf_printk(fmt, ...)                            \
-({                                                      \
-        char ____fmt[] = fmt;                           \
-        bpf_trace_printk(____fmt, sizeof(____fmt),      \
-                         ##__VA_ARGS__);                \
-})
-
 SEC("uprobe/dlv_trace")
 int uprobe__dlv_trace(struct pt_regs *ctx) {
     function_parameter_list_t *args;
@@ -236,13 +229,11 @@ int uprobe__dlv_trace(struct pt_regs *ctx) {
     }
 
     if (!args->is_ret) {
-        bpf_printk("at fn entry");
         // In uprobe at function entry.
 
         // Parse input parameters.
         parse_params(ctx, args->n_parameters, parsed_args->params);
     } else {
-        bpf_printk("at fn exit");
         // We are now stopped at the RET instruction for this function.
 
         // Parse output parameters.
