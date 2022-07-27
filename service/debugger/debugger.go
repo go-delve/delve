@@ -2272,6 +2272,8 @@ func (d *Debugger) GetBufferedTracepoints() []api.TracepointResult {
 	}
 	results := make([]api.TracepointResult, len(traces))
 	for i, trace := range traces {
+		results[i].IsRet = trace.IsRet
+
 		f, l, fn := d.target.Selected.BinInfo().PCToLine(uint64(trace.FnAddr))
 
 		results[i].FunctionName = fn.Name

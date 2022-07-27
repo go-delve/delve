@@ -153,6 +153,7 @@ func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 	var rawParams RawUProbeParams
 	rawParams.FnAddr = int(params.fn_addr)
 	rawParams.GoroutineID = int(params.goroutine_id)
+	rawParams.IsRet = params.is_ret
 
 	parseParam := func(param function_parameter_t) *RawUProbeParam {
 		iparam := &RawUProbeParam{}
