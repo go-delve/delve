@@ -1978,6 +1978,10 @@ func TestVariablesLoading(t *testing.T) {
 					saveDefaultConfig := DefaultLoadConfig
 					DefaultLoadConfig.MaxStructFields = 5
 					DefaultLoadConfig.MaxStringLen = 64
+					// Set the MaxArrayValues = 33 to execute a bug for map handling where
+					// a request for  2*MaxArrayValues indexed map children would not correctly
+					// reslice the map. See https://github.com/golang/vscode-go/issues/2351.
+					DefaultLoadConfig.MaxArrayValues = 33
 					defer func() {
 						DefaultLoadConfig = saveDefaultConfig
 					}()
@@ -2007,11 +2011,11 @@ func TestVariablesLoading(t *testing.T) {
 
 					// Array not fully loaded based on LoadConfig.MaxArrayValues.
 					// Expect to be able to load array by paging.
-					ref := checkVarExactIndexed(t, locals, -1, "longarr", "longarr", "[100]int [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", "[100]int", hasChildren, 100, 0)
+					ref := checkVarExactIndexed(t, locals, -1, "longarr", "longarr", "[100]int [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+67 more]", "[100]int", hasChildren, 100, 0)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						longarr := client.ExpectVariablesResponse(t)
-						checkChildren(t, longarr, "longarr", 64)
+						checkChildren(t, longarr, "longarr", 33)
 						checkArrayChildren(t, longarr, "longarr", 0)
 
 						client.IndexedVariablesRequest(ref, 0, 100)
@@ -2027,11 +2031,11 @@ func TestVariablesLoading(t *testing.T) {
 
 					// Slice not fully loaded based on LoadConfig.MaxArrayValues.
 					// Expect to be able to load slice by paging.
-					ref = checkVarExactIndexed(t, locals, -1, "longslice", "longslice", "[]int len: 100, cap: 100, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+36 more]", "[]int", hasChildren, 100, 0)
+					ref = checkVarExactIndexed(t, locals, -1, "longslice", "longslice", "[]int len: 100, cap: 100, [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+67 more]", "[]int", hasChildren, 100, 0)
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						longarr := client.ExpectVariablesResponse(t)
-						checkChildren(t, longarr, "longslice", 64)
+						checkChildren(t, longarr, "longslice", 33)
 						checkArrayChildren(t, longarr, "longslice", 0)
 
 						client.IndexedVariablesRequest(ref, 0, 100)
@@ -2051,7 +2055,7 @@ func TestVariablesLoading(t *testing.T) {
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						m1 := client.ExpectVariablesResponse(t)
-						checkChildren(t, m1, "m1", 65)
+						checkChildren(t, m1, "m1", 34)
 
 						client.IndexedVariablesRequest(ref, 0, 66)
 						m1 = client.ExpectVariablesResponse(t)
@@ -2161,7 +2165,7 @@ func TestVariablesLoading(t *testing.T) {
 							if ref > 0 {
 								client.VariablesRequest(ref)
 								tmV0 := client.ExpectVariablesResponse(t)
-								checkChildren(t, tmV0, "tm.v[0]", 65)
+								checkChildren(t, tmV0, "tm.v[0]", 34)
 							}
 						}
 					}
@@ -2191,7 +2195,7 @@ func TestVariablesLoading(t *testing.T) {
 								if ref > 0 {
 									client.VariablesRequest(ref)
 									tmV0 := client.ExpectVariablesResponse(t)
-									checkChildren(t, tmV0, "tm.v[0]", 65)
+									checkChildren(t, tmV0, "tm.v[0]", 34)
 								}
 							}
 						}
