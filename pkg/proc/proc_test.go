@@ -5234,7 +5234,7 @@ func TestIssue2319(t *testing.T) {
 }
 
 func TestDump(t *testing.T) {
-	if runtime.GOOS == "freebsd" || (runtime.GOOS == "darwin" && testBackend == "native") {
+	if runtime.GOOS == "freebsd" || (runtime.GOOS == "darwin" && testBackend == "native") || (runtime.GOOS == "windows" && runtime.GOARCH != "amd64") {
 		t.Skip("not supported")
 	}
 
