@@ -1146,6 +1146,67 @@ func TestTraceEBPF(t *testing.T) {
 	cmd.Wait()
 }
 
+func TestTraceEBPF2(t *testing.T) {
+	if os.Getenv("CI") == "true" {
+		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
+	}
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("not implemented on non linux/amd64 systems")
+	}
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+		t.Skip("requires at least Go 1.16 to run test")
+	}
+	usr, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usr.Uid != "0" {
+		t.Skip("test must be run as root")
+	}
+
+	dlvbin, tmpdir := getDlvBinEBPF(t)
+	defer os.RemoveAll(tmpdir)
+
+	expected := []byte(`> (1) main.callme(10)
+> (1) main.callme(9)
+> (1) main.callme(8)
+> (1) main.callme(7)
+> (1) main.callme(6)
+> (1) main.callme(5)
+> (1) main.callme(4)
+> (1) main.callme(3)
+> (1) main.callme(2)
+> (1) main.callme(1)
+> (1) main.callme(0)
+=> "100"
+=> "100"
+=> "100"
+=> "100"
+=> "100"
+=> "100"
+=> "100"
+=> "100"
+=> "100"
+=> "100"
+=> "100"`)
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(tmpdir, "__debug"), filepath.Join(fixtures, "ebpf_trace.go"), "main.callme")
+	rdr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	assertNoError(cmd.Start(), t, "running trace")
+
+	output, err := ioutil.ReadAll(rdr)
+	assertNoError(err, t, "ReadAll")
+
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
+	}
+	cmd.Wait()
+}
+
 func TestDlvTestChdir(t *testing.T) {
 	dlvbin, tmpdir := getDlvBin(t)
 	defer os.RemoveAll(tmpdir)

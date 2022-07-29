@@ -691,7 +691,6 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			done := make(chan struct{})
 			defer close(done)
 			go func() {
-				gFnEntrySeen := map[int]struct{}{}
 				for {
 					select {
 					case <-done:
@@ -713,14 +712,11 @@ func traceCmd(cmd *cobra.Command, args []string) {
 									params.WriteString(p.Value)
 								}
 							}
-							_, seen := gFnEntrySeen[t.GoroutineID]
-							if seen {
+							if t.IsRet {
 								for _, p := range t.ReturnParams {
 									fmt.Fprintf(os.Stderr, "=> %#v\n", p.Value)
 								}
-								delete(gFnEntrySeen, t.GoroutineID)
 							} else {
-								gFnEntrySeen[t.GoroutineID] = struct{}{}
 								fmt.Fprintf(os.Stderr, "> (%d) %s(%s)\n", t.GoroutineID, t.FunctionName, params.String())
 							}
 						}

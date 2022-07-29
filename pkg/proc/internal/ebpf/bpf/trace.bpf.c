@@ -219,6 +219,7 @@ int uprobe__dlv_trace(struct pt_regs *ctx) {
     parsed_args->fn_addr = args->fn_addr;
     parsed_args->n_parameters = args->n_parameters;
     parsed_args->n_ret_parameters = args->n_ret_parameters;
+    parsed_args->is_ret = args->is_ret;
     memcpy(parsed_args->params, args->params, sizeof(args->params));
     memcpy(parsed_args->ret_params, args->ret_params, sizeof(args->ret_params));
 

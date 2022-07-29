@@ -57,7 +57,8 @@ type TracepointResult struct {
 	// File is the source file for the breakpoint.
 	File string `json:"file"`
 	// Line is a line in File for the breakpoint.
-	Line int `json:"line"`
+	Line  int  `json:"line"`
+	IsRet bool `json:"is_ret"`
 	// FunctionName is the name of the function at the current breakpoint, and
 	// may not always be available.
 	FunctionName string `json:"functionName,omitempty"`
