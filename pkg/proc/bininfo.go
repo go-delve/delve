@@ -1569,8 +1569,6 @@ func getSymbol(image *Image, logger *logrus.Entry, exe *elf.File, name string) *
 
 // PE ////////////////////////////////////////////////////////////////
 
-const _IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE = 0x0040
-
 // loadBinaryInfoPE specifically loads information from a PE binary.
 func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint64, wg *sync.WaitGroup) error {
 	peFile, closer, err := openExecutablePathPE(path)
@@ -1591,14 +1589,17 @@ func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint
 		return err
 	}
 
-	//TODO(aarzilli): actually test this when Go supports PIE buildmode on Windows.
-	opth := peFile.OptionalHeader.(*pe.OptionalHeader64)
-	if entryPoint != 0 {
-		image.StaticBase = entryPoint - opth.ImageBase
-	} else {
-		if opth.DllCharacteristics&_IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE != 0 {
-			return ErrCouldNotDetermineRelocation
-		}
+	switch h := peFile.OptionalHeader.(type) {
+	case *pe.OptionalHeader32:
+		image.StaticBase = uint64(h.ImageBase)
+	case *pe.OptionalHeader64:
+		image.StaticBase = uint64(h.ImageBase)
+	default:
+		return fmt.Errorf("unknown OptionalHeader %T", peFile.OptionalHeader)
+	}
+
+	if entryPoint > 0 {
+		image.StaticBase = entryPoint - image.StaticBase
 	}
 
 	image.dwarfReader = image.dwarf.Reader()
