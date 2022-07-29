@@ -77,3 +77,12 @@ $x = $LastExitCode
 if ($version -ne "gotip") {
 	Exit $x
 }
+
+# TODO: Remove once we have a windows/arm64 builder.
+# Test windows/arm64 compiles.
+$env:GOARCH = "arm64"
+go run _scripts/make.go build --tags exp.winarm64
+$x = $LastExitCode
+if ($version -ne "gotip") {
+	Exit $x
+}
