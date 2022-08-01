@@ -2691,6 +2691,26 @@ func TestStepOutDeferReturnAndDirectCall(t *testing.T) {
 		{contStepout, 28}})
 }
 
+func TestStepInstructionOnBreakpoint(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skipf("skipping since not amd64")
+	}
+	// StepInstruction should step one instruction forward when
+	// PC is on a 1 byte instruction with a software breakpoint.
+	protest.AllowRecording(t)
+	withTestProcess("break/", t, func(p *proc.Target, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, filepath.ToSlash(filepath.Join(fixture.BuildDir, "break_amd64.s")), 4)
+
+		assertNoError(p.Continue(), t, "Continue()")
+
+		pc := getRegisters(p, t).PC()
+		assertNoError(p.StepInstruction(), t, "StepInstruction()")
+		if pc == getRegisters(p, t).PC() {
+			t.Fatal("Could not step a single instruction")
+		}
+	})
+}
+
 func TestStepOnCallPtrInstr(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("teststepprog", t, func(p *proc.Target, fixture protest.Fixture) {

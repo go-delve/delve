@@ -433,7 +433,7 @@ func (grp *TargetGroup) StepInstruction() (err error) {
 		return err
 	}
 	thread.Breakpoint().Clear()
-	err = thread.SetCurrentBreakpoint(true)
+	err = thread.SetCurrentBreakpoint(false)
 	if err != nil {
 		return err
 	}
