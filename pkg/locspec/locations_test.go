@@ -1,6 +1,7 @@
 package locspec
 
 import (
+	"runtime"
 	"testing"
 )
 
@@ -65,4 +66,58 @@ func TestFunctionLocationParsing(t *testing.T) {
 	assertNormalLocationSpec(t, "github.com/go-delve/delve/pkg/proc.(*Process).Continue:10", NormalLocationSpec{"github.com/go-delve/delve/pkg/proc.(*Process).Continue", &FuncLocationSpec{PackageName: "github.com/go-delve/delve/pkg/proc", ReceiverName: "Process", BaseName: "Continue"}, 10})
 	assertNormalLocationSpec(t, "github.com/go-delve/delve/pkg/proc.Process.Continue:10", NormalLocationSpec{"github.com/go-delve/delve/pkg/proc.Process.Continue", &FuncLocationSpec{PackageName: "github.com/go-delve/delve/pkg/proc", ReceiverName: "Process", BaseName: "Continue"}, 10})
 	assertNormalLocationSpec(t, "github.com/go-delve/delve/pkg/proc.Continue:10", NormalLocationSpec{"github.com/go-delve/delve/pkg/proc.Continue", &FuncLocationSpec{PackageName: "github.com/go-delve/delve/pkg/proc", BaseName: "Continue"}, 10})
+}
+
+func assertSubstitutePathEqual(t *testing.T, expected string, substituted string) {
+	if expected != substituted {
+		t.Fatalf("Expected substitutedPath to be %s got %s instead", expected, substituted)
+	}
+}
+
+func TestSubstitutePathUnix(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping unix SubstitutePath test in windows")
+	}
+
+	// Relative paths mapping
+	assertSubstitutePathEqual(t, "/my/asb/folder/relative/path", SubstitutePath("relative/path", [][2]string{{"", "/my/asb/folder/"}}))
+	assertSubstitutePathEqual(t, "/already/abs/path", SubstitutePath("/already/abs/path", [][2]string{{"", "/my/asb/folder/"}}))
+	assertSubstitutePathEqual(t, "relative/path", SubstitutePath("/my/asb/folder/relative/path", [][2]string{{"/my/asb/folder/", ""}}))
+	assertSubstitutePathEqual(t, "/another/folder/relative/path", SubstitutePath("/another/folder/relative/path", [][2]string{{"/my/asb/folder/", ""}}))
+	assertSubstitutePathEqual(t, "my/path", SubstitutePath("relative/path/my/path", [][2]string{{"relative/path", ""}}))
+	assertSubstitutePathEqual(t, "/abs/my/path", SubstitutePath("/abs/my/path", [][2]string{{"abs/my", ""}}))
+
+	// Absolute paths mapping
+	assertSubstitutePathEqual(t, "/new/mapping/path", SubstitutePath("/original/path", [][2]string{{"/original", "/new/mapping"}}))
+	assertSubstitutePathEqual(t, "/no/change/path", SubstitutePath("/no/change/path", [][2]string{{"/original", "/new/mapping"}}))
+	assertSubstitutePathEqual(t, "/folder/should_not_be_replaced/path", SubstitutePath("/folder/should_not_be_replaced/path", [][2]string{{"should_not_be_replaced", ""}}))
+
+	// Mix absolute and relative mapping
+	assertSubstitutePathEqual(t, "/new/mapping/path", SubstitutePath("/original/path", [][2]string{{"", "/my/asb/folder/"}, {"/my/asb/folder/", ""}, {"/original", "/new/mapping"}}))
+	assertSubstitutePathEqual(t, "/my/asb/folder/path", SubstitutePath("path", [][2]string{{"/original", "/new/mapping"}, {"", "/my/asb/folder/"}, {"/my/asb/folder/", ""}}))
+	assertSubstitutePathEqual(t, "path", SubstitutePath("/my/asb/folder/path", [][2]string{{"/original", "/new/mapping"}, {"/my/asb/folder/", ""}, {"", "/my/asb/folder/"}}))
+}
+
+func TestSubstitutePathWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Skipping windows SubstitutePath test in unix")
+	}
+
+	// Relative paths mapping
+	assertSubstitutePathEqual(t, "c:\\my\\asb\\folder\\relative\\path", SubstitutePath("relative\\path", [][2]string{{"", "c:\\my\\asb\\folder\\"}}))
+	assertSubstitutePathEqual(t, "f:\\already\\abs\\path", SubstitutePath("F:\\already\\abs\\path", [][2]string{{"", "c:\\my\\asb\\folder\\"}}))
+	assertSubstitutePathEqual(t, "relative\\path", SubstitutePath("C:\\my\\asb\\folder\\relative\\path", [][2]string{{"c:\\my\\asb\\folder\\", ""}}))
+	assertSubstitutePathEqual(t, "f:\\another\\folder\\relative\\path", SubstitutePath("F:\\another\\folder\\relative\\path", [][2]string{{"c:\\my\\asb\\folder\\", ""}}))
+	assertSubstitutePathEqual(t, "my\\path", SubstitutePath("relative\\path\\my\\path", [][2]string{{"relative\\path", ""}}))
+	assertSubstitutePathEqual(t, "c:\\abs\\my\\path", SubstitutePath("c:\\abs\\my\\path", [][2]string{{"abs\\my", ""}}))
+
+	// Absolute paths mapping
+	assertSubstitutePathEqual(t, "c:\\new\\mapping\\path", SubstitutePath("D:\\original\\path", [][2]string{{"d:\\original", "c:\\new\\mapping"}}))
+	assertSubstitutePathEqual(t, "f:\\no\\change\\path", SubstitutePath("F:\\no\\change\\path", [][2]string{{"d:\\original", "c:\\new\\mapping"}}))
+	assertSubstitutePathEqual(t, "c:\\folder\\should_not_be_replaced\\path", SubstitutePath("c:\\folder\\should_not_be_replaced\\path", [][2]string{{"should_not_be_replaced", ""}}))
+
+	// Mix absolute and relative mapping
+	assertSubstitutePathEqual(t, "c:\\new\\mapping\\path", SubstitutePath("D:\\original\\path", [][2]string{{"", "c:\\my\\asb\\folder\\"}, {"c:\\my\\asb\\folder\\", ""}, {"d:\\original", "c:\\new\\mapping"}}))
+	assertSubstitutePathEqual(t, "c:\\my\\asb\\folder\\path\\", SubstitutePath("path\\", [][2]string{{"d:\\original", "c:\\new\\mapping"}, {"", "c:\\my\\asb\\folder\\"}, {"c:\\my\\asb\\folder\\", ""}}))
+	assertSubstitutePathEqual(t, "path", SubstitutePath("C:\\my\\asb\\folder\\path", [][2]string{{"d:\\original", "c:\\new\\mapping"}, {"c:\\my\\asb\\folder\\", ""}, {"", "c:\\my\\asb\\folder\\"}}))
 }

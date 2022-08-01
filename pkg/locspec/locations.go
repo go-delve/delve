@@ -498,13 +498,19 @@ func SubstitutePath(path string, rules [][2]string) string {
 		}
 
 		// Otherwise check if it's a directory prefix.
-		if !strings.HasSuffix(from, separator) {
+		if from != "" && !strings.HasSuffix(from, separator) {
 			from = from + separator
 		}
-		if !strings.HasSuffix(to, separator) {
+		if to != "" && !strings.HasSuffix(to, separator) {
 			to = to + separator
 		}
-		if strings.HasPrefix(path, from) {
+
+		//  If 'from' is a empty string and path is not absolute, prepende 'to'.
+		if from == "" && !filepath.IsAbs(path) {
+			return strings.Replace(path, from, to, 1)
+		}
+
+		if from != "" && strings.HasPrefix(path, from) {
 			return strings.Replace(path, from, to, 1)
 		}
 	}
