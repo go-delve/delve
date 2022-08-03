@@ -278,6 +278,7 @@ func parseFileEntries5(info *DebugLineInfo, buf *bytes.Buffer) bool {
 	}
 	fileCount, _ := util.DecodeULEB128(buf)
 	info.FileNames = make([]*FileEntry, 0, fileCount)
+	var lastp string
 	for i := 0; i < int(fileCount); i++ {
 		fileEntryFormReader.reset()
 		for fileEntryFormReader.next(buf) {
@@ -307,16 +308,20 @@ func parseFileEntries5(info *DebugLineInfo, buf *bytes.Buffer) bool {
 				// not implemented
 			}
 
-			if info.normalizeBackslash {
-				p = strings.ReplaceAll(p, "\\", "/")
+			if p == "" {
+				if diridx >= 0 && diridx < len(info.IncludeDirs) {
+					p = path.Join(info.IncludeDirs[diridx], lastp)
+				}
+				if info.normalizeBackslash {
+					p = strings.ReplaceAll(p, "\\", "/")
+				}
+				entry.Path = p
+				info.FileNames = append(info.FileNames, entry)
+				info.Lookup[entry.Path] = entry
 			}
-
-			if diridx >= 0 && !pathIsAbs(p) && diridx < len(info.IncludeDirs) {
-				p = path.Join(info.IncludeDirs[diridx], p)
+			if !pathIsAbs(p) {
+				lastp = p
 			}
-			entry.Path = p
-			info.FileNames = append(info.FileNames, entry)
-			info.Lookup[entry.Path] = entry
 		}
 		if fileEntryFormReader.err != nil {
 			if info.Logf != nil {

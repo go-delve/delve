@@ -849,6 +849,18 @@ func TestCGONext(t *testing.T) {
 	})
 }
 
+func TestCGOBreakpointLocation(t *testing.T) {
+	protest.MustHaveCgo(t)
+	protest.AllowRecording(t)
+
+	withTestProcess("cgotest", t, func(p *proc.Target, fixture protest.Fixture) {
+		bp := setFunctionBreakpoint(p, t, "C.foo")
+		if !strings.Contains(bp.File, "cgotest.go") {
+			t.Fatalf("incorrect breakpoint location, expected cgotest.go got %s", bp.File)
+		}
+	})
+}
+
 type loc struct {
 	line int
 	fn   string

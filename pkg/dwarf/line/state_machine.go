@@ -231,7 +231,7 @@ func (lineInfo *DebugLineInfo) stateMachineFor(basePC, pc uint64) *StateMachine 
 		sm = newStateMachine(lineInfo, lineInfo.Instructions, lineInfo.ptrSize)
 	} else {
 		// Try to use the last state machine that we used for this function, if
-		// there isn't one or it's already past pc try to clone the cached state
+		// there isn't one, or it's already past pc try to clone the cached state
 		// machine stopped at the entry point of the function.
 		// As a last resort start from the start of the debug_line section.
 		sm = lineInfo.lastMachineCache[basePC]
@@ -239,6 +239,7 @@ func (lineInfo *DebugLineInfo) stateMachineFor(basePC, pc uint64) *StateMachine 
 			sm = lineInfo.stateMachineForEntry(basePC)
 			lineInfo.lastMachineCache[basePC] = sm
 		}
+		sm = sm.copy()
 	}
 	return sm
 }
