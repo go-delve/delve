@@ -993,7 +993,7 @@ func TestTrace(t *testing.T) {
 	dlvbin, tmpdir := getDlvBin(t)
 	defer os.RemoveAll(tmpdir)
 
-	expected := []byte("> goroutine(1): main.foo(99, 9801) => (9900)\n")
+	expected := []byte("> goroutine(1): main.foo(99, 9801)\n>> goroutine(1): => (9900)\n")
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(tmpdir, "__debug"), filepath.Join(fixtures, "issue573.go"), "foo")
@@ -1014,6 +1014,38 @@ func TestTrace(t *testing.T) {
 	cmd.Wait()
 }
 
+func TestTraceMultipleGoroutines(t *testing.T) {
+	dlvbin, tmpdir := getDlvBin(t)
+	defer os.RemoveAll(tmpdir)
+
+	// TODO(derekparker) this test has to be a bit vague to avoid flakyness.
+	// I think a future improvement could be to use regexp captures to match the
+	// goroutine IDs at function entry and exit.
+	expected := []byte("main.callme(0, \"five\")\n")
+	expected2 := []byte("=> (0)\n")
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(tmpdir, "__debug"), filepath.Join(fixtures, "goroutines-trace.go"), "callme")
+	rdr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	cmd.Dir = filepath.Join(fixtures, "buildtest")
+
+	assertNoError(cmd.Start(), t, "running trace")
+
+	output, err := ioutil.ReadAll(rdr)
+	assertNoError(err, t, "ReadAll")
+
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
+	}
+	if !bytes.Contains(output, expected2) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
+	}
+	cmd.Wait()
+}
+
 func TestTracePid(t *testing.T) {
 	if runtime.GOOS == "linux" {
 		bs, _ := ioutil.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
@@ -1026,7 +1058,7 @@ func TestTracePid(t *testing.T) {
 	dlvbin, tmpdir := getDlvBin(t)
 	defer os.RemoveAll(tmpdir)
 
-	expected := []byte("goroutine(1): main.A()\n => ()\n")
+	expected := []byte("goroutine(1): main.A()\n>> goroutine(1): => ()\n")
 
 	// make process run
 	fix := protest.BuildFixture("issue2023", 0)

@@ -685,6 +685,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		}
 		cmds := terminal.DebugCommands(client)
 		t := terminal.New(client, nil)
+		t.SetTraceNonInteractive()
 		t.RedirectTo(os.Stderr)
 		defer t.Close()
 		if traceUseEBPF {
@@ -724,7 +725,11 @@ func traceCmd(cmd *cobra.Command, args []string) {
 				}
 			}()
 		}
-		cmds.Call("continue", t)
+		err = cmds.Call("continue", t)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
 		return 0
 	}()
 	os.Exit(status)
