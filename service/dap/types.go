@@ -189,7 +189,7 @@ type LaunchAttachCommonConfig struct {
 }
 
 // SubstitutePath defines a mapping from a local path to the remote path.
-// Both 'from' and 'to' must be specified and non-empty.
+// Both 'from' and 'to' must be specified and non-null.
 type SubstitutePath struct {
 	// The local path to be replaced when passing paths to the debugger.
 	From string `json:"from,omitempty"`
@@ -199,7 +199,10 @@ type SubstitutePath struct {
 
 func (m *SubstitutePath) UnmarshalJSON(data []byte) error {
 	// use custom unmarshal to check if both from/to are set.
-	type tmpType SubstitutePath
+	type tmpType struct {
+		From *string
+		To   *string
+	}
 	var tmp tmpType
 
 	if err := json.Unmarshal(data, &tmp); err != nil {
@@ -208,10 +211,10 @@ func (m *SubstitutePath) UnmarshalJSON(data []byte) error {
 		}
 		return err
 	}
-	if tmp.From == "" || tmp.To == "" {
+	if tmp.From == nil || tmp.To == nil {
 		return errors.New("'substitutePath' requires both 'from' and 'to' entries")
 	}
-	*m = SubstitutePath(tmp)
+	*m = SubstitutePath{*tmp.From, *tmp.To}
 	return nil
 }
 
