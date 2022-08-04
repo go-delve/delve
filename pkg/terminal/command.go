@@ -2469,6 +2469,17 @@ func printStack(t *Term, out io.Writer, stack []api.Stackframe, ind string, offs
 }
 
 func printcontext(t *Term, state *api.DebuggerState) {
+	if t.IsTraceNonInteractive() {
+		// If we're just running the `trace` subcommand there isn't any need
+		// to print out the rest of the state below.
+		for i := range state.Threads {
+			if state.Threads[i].Breakpoint != nil {
+				printcontextThread(t, state.Threads[i])
+			}
+		}
+		return
+	}
+
 	for i := range state.Threads {
 		if (state.CurrentThread != nil) && (state.Threads[i].ID == state.CurrentThread.ID) {
 			continue
@@ -2659,10 +2670,7 @@ func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 
 func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, args string, hasReturnValue bool) {
 	if th.Breakpoint.Tracepoint {
-		fmt.Fprintf(t.stdout, "> goroutine(%d): %s%s(%s)", th.GoroutineID, bpname, fn.Name(), args)
-		if !hasReturnValue {
-			fmt.Fprintln(t.stdout)
-		}
+		fmt.Fprintf(t.stdout, "> goroutine(%d): %s%s(%s)\n", th.GoroutineID, bpname, fn.Name(), args)
 		printBreakpointInfo(t, th, !hasReturnValue)
 	}
 	if th.Breakpoint.TraceReturn {
@@ -2670,7 +2678,7 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 		for _, v := range th.ReturnValues {
 			retVals = append(retVals, v.SinglelineString())
 		}
-		fmt.Fprintf(t.stdout, " => (%s)\n", strings.Join(retVals, ","))
+		fmt.Fprintf(t.stdout, ">> goroutine(%d): => (%s)\n", th.GoroutineID, strings.Join(retVals, ","))
 	}
 	if th.Breakpoint.TraceReturn || !hasReturnValue {
 		if th.BreakpointInfo != nil && th.BreakpointInfo.Stacktrace != nil {

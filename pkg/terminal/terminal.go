@@ -75,6 +75,8 @@ type Term struct {
 
 	quittingMutex sync.Mutex
 	quitting      bool
+
+	traceNonInteractive bool
 }
 
 type displayEntry struct {
@@ -138,6 +140,14 @@ func New(client service.Client, conf *config.Config) *Term {
 
 	t.starlarkEnv = starbind.New(starlarkContext{t}, t.stdout)
 	return t
+}
+
+func (t *Term) SetTraceNonInteractive() {
+	t.traceNonInteractive = true
+}
+
+func (t *Term) IsTraceNonInteractive() bool {
+	return t.traceNonInteractive
 }
 
 // Close returns the terminal to its previous mode.

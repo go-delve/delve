@@ -2,7 +2,6 @@ package proc
 
 import (
 	"errors"
-
 	"github.com/go-delve/delve/pkg/dwarf/op"
 )
 
