@@ -239,7 +239,6 @@ func (lineInfo *DebugLineInfo) stateMachineFor(basePC, pc uint64) *StateMachine 
 			sm = lineInfo.stateMachineForEntry(basePC)
 			lineInfo.lastMachineCache[basePC] = sm
 		}
-		sm = sm.copy()
 	}
 	return sm
 }
