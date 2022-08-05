@@ -95,6 +95,74 @@ func TestConfigureSetSubstitutePath(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "add rule from empty string",
+			args: args{
+				args: &launchAttachArgs{
+					substitutePathClientToServer: [][2]string{},
+					substitutePathServerToClient: [][2]string{},
+				},
+				rest: `"" /path/to/client/dir`,
+			},
+			wantRules: [][2]string{{"", "/path/to/client/dir"}},
+			wantErr:   false,
+		},
+		{
+			name: "add rule to empty string",
+			args: args{
+				args: &launchAttachArgs{
+					substitutePathClientToServer: [][2]string{},
+					substitutePathServerToClient: [][2]string{},
+				},
+				rest: `/path/to/client/dir ""`,
+			},
+			wantRules: [][2]string{{"/path/to/client/dir", ""}},
+			wantErr:   false,
+		},
+		{
+			name: "add rule from empty string(multiple)",
+			args: args{
+				args: &launchAttachArgs{
+					substitutePathClientToServer: [][2]string{
+						{"/path/to/client/dir/a", "/path/to/server/dir/a"},
+						{"/path/to/client/dir/b", "/path/to/server/dir/b"},
+					},
+					substitutePathServerToClient: [][2]string{
+						{"/path/to/server/dir/a", "/path/to/client/dir/a"},
+						{"/path/to/server/dir/b", "/path/to/client/dir/b"},
+					},
+				},
+				rest: `"" /path/to/client/dir/c`,
+			},
+			wantRules: [][2]string{
+				{"/path/to/client/dir/a", "/path/to/server/dir/a"},
+				{"/path/to/client/dir/b", "/path/to/server/dir/b"},
+				{"", "/path/to/client/dir/c"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "add rule to empty string(multiple)",
+			args: args{
+				args: &launchAttachArgs{
+					substitutePathClientToServer: [][2]string{
+						{"/path/to/client/dir/a", "/path/to/server/dir/a"},
+						{"/path/to/client/dir/b", "/path/to/server/dir/b"},
+					},
+					substitutePathServerToClient: [][2]string{
+						{"/path/to/server/dir/a", "/path/to/client/dir/a"},
+						{"/path/to/server/dir/b", "/path/to/client/dir/b"},
+					},
+				},
+				rest: `/path/to/client/dir/c ""`,
+			},
+			wantRules: [][2]string{
+				{"/path/to/client/dir/a", "/path/to/server/dir/a"},
+				{"/path/to/client/dir/b", "/path/to/server/dir/b"},
+				{"/path/to/client/dir/c", ""},
+			},
+			wantErr: false,
+		},
 		// Test modify rule.
 		{
 			name: "modify rule",
@@ -106,6 +174,30 @@ func TestConfigureSetSubstitutePath(t *testing.T) {
 				rest: "/path/to/client/dir /new/path/to/server/dir",
 			},
 			wantRules: [][2]string{{"/path/to/client/dir", "/new/path/to/server/dir"}},
+			wantErr:   false,
+		},
+		{
+			name: "modify rule with from as empty string",
+			args: args{
+				args: &launchAttachArgs{
+					substitutePathClientToServer: [][2]string{{"", "/path/to/server/dir"}},
+					substitutePathServerToClient: [][2]string{{"/path/to/server/dir", ""}},
+				},
+				rest: `"" /new/path/to/server/dir`,
+			},
+			wantRules: [][2]string{{"", "/new/path/to/server/dir"}},
+			wantErr:   false,
+		},
+		{
+			name: "modify rule with to as empty string",
+			args: args{
+				args: &launchAttachArgs{
+					substitutePathClientToServer: [][2]string{{"/path/to/client/dir", ""}},
+					substitutePathServerToClient: [][2]string{{"", "/path/to/client/dir"}},
+				},
+				rest: `/path/to/client/dir ""`,
+			},
+			wantRules: [][2]string{{"/path/to/client/dir", ""}},
 			wantErr:   false,
 		},
 		{
@@ -132,6 +224,54 @@ func TestConfigureSetSubstitutePath(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "modify rule with from as empty string(multiple)",
+			args: args{
+				args: &launchAttachArgs{
+					substitutePathClientToServer: [][2]string{
+						{"/path/to/client/dir/a", "/path/to/server/dir/a"},
+						{"", "/path/to/server/dir/b"},
+						{"/path/to/client/dir/c", "/path/to/server/dir/b"},
+					},
+					substitutePathServerToClient: [][2]string{
+						{"/path/to/server/dir/a", "/path/to/client/dir/a"},
+						{"/path/to/server/dir/b", ""},
+						{"/path/to/server/dir/b", "/path/to/client/dir/c"},
+					},
+				},
+				rest: `"" /new/path`,
+			},
+			wantRules: [][2]string{
+				{"/path/to/client/dir/a", "/path/to/server/dir/a"},
+				{"", "/new/path"},
+				{"/path/to/client/dir/c", "/path/to/server/dir/b"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "modify rule with to as empty string(multiple)",
+			args: args{
+				args: &launchAttachArgs{
+					substitutePathClientToServer: [][2]string{
+						{"/path/to/client/dir/a", "/path/to/server/dir/a"},
+						{"/path/to/client/dir/b", "/path/to/server/dir/b"},
+						{"/path/to/client/dir/c", "/path/to/server/dir/b"},
+					},
+					substitutePathServerToClient: [][2]string{
+						{"/path/to/server/dir/a", "/path/to/client/dir/a"},
+						{"/path/to/server/dir/b", "/path/to/client/dir/b"},
+						{"/path/to/server/dir/b", "/path/to/client/dir/c"},
+					},
+				},
+				rest: `/path/to/client/dir/b ""`,
+			},
+			wantRules: [][2]string{
+				{"/path/to/client/dir/a", "/path/to/server/dir/a"},
+				{"/path/to/client/dir/b", ""},
+				{"/path/to/client/dir/c", "/path/to/server/dir/b"},
+			},
+			wantErr: false,
+		},
 		// Test delete rule.
 		{
 			name: "delete rule",
@@ -141,6 +281,18 @@ func TestConfigureSetSubstitutePath(t *testing.T) {
 					substitutePathServerToClient: [][2]string{{"/path/to/server/dir", "/path/to/client/dir"}},
 				},
 				rest: "/path/to/client/dir",
+			},
+			wantRules: [][2]string{},
+			wantErr:   false,
+		},
+		{
+			name: "delete rule, empty string",
+			args: args{
+				args: &launchAttachArgs{
+					substitutePathClientToServer: [][2]string{{"", "/path/to/server/dir"}},
+					substitutePathServerToClient: [][2]string{{"/path/to/server/dir", ""}},
+				},
+				rest: `""`,
 			},
 			wantRules: [][2]string{},
 			wantErr:   false,

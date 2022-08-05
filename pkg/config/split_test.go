@@ -21,8 +21,8 @@ func TestSplitQuotedFields(t *testing.T) {
 }
 
 func TestSplitDoubleQuotedFields(t *testing.T) {
-	in := `field"A" "fieldB" fie"l'd"C "field\"D" "yet another field"`
-	tgt := []string{"fieldA", "fieldB", "fiel'dC", "field\"D", "yet another field"}
+	in := `field"A" "fieldB" fie"l'd"C "field\"D" "yet another field" "" `
+	tgt := []string{"fieldA", "fieldB", "fiel'dC", "field\"D", "yet another field", "", ""}
 	out := SplitQuotedFields(in, '"')
 
 	if len(tgt) != len(out) {
