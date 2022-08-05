@@ -279,11 +279,16 @@ func parseFileEntries5(info *DebugLineInfo, buf *bytes.Buffer) bool {
 	fileCount, _ := util.DecodeULEB128(buf)
 	info.FileNames = make([]*FileEntry, 0, fileCount)
 	for i := 0; i < int(fileCount); i++ {
+		var (
+			p      string
+			diridx int
+
+			entry = new(FileEntry)
+		)
+
 		fileEntryFormReader.reset()
+
 		for fileEntryFormReader.next(buf) {
-			entry := new(FileEntry)
-			var p string
-			var diridx int
 			diridx = -1
 
 			switch fileEntryFormReader.contentType {
@@ -306,17 +311,6 @@ func parseFileEntries5(info *DebugLineInfo, buf *bytes.Buffer) bool {
 			case _DW_LNCT_MD5:
 				// not implemented
 			}
-
-			if info.normalizeBackslash {
-				p = strings.ReplaceAll(p, "\\", "/")
-			}
-
-			if diridx >= 0 && !pathIsAbs(p) && diridx < len(info.IncludeDirs) {
-				p = path.Join(info.IncludeDirs[diridx], p)
-			}
-			entry.Path = p
-			info.FileNames = append(info.FileNames, entry)
-			info.Lookup[entry.Path] = entry
 		}
 		if fileEntryFormReader.err != nil {
 			if info.Logf != nil {
@@ -324,6 +318,16 @@ func parseFileEntries5(info *DebugLineInfo, buf *bytes.Buffer) bool {
 			}
 			return false
 		}
+
+		if diridx >= 0 && diridx < len(info.IncludeDirs) {
+			p = path.Join(info.IncludeDirs[diridx], p)
+		}
+		if info.normalizeBackslash {
+			p = strings.ReplaceAll(p, "\\", "/")
+		}
+		entry.Path = p
+		info.FileNames = append(info.FileNames, entry)
+		info.Lookup[entry.Path] = entry
 	}
 	return true
 }
