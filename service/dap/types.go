@@ -189,7 +189,8 @@ type LaunchAttachCommonConfig struct {
 }
 
 // SubstitutePath defines a mapping from a local path to the remote path.
-// Both 'from' and 'to' must be specified and non-null.
+// Both 'from' and 'to' must be specified and non-null but it can be empty string.
+// Mapping with 'to' as empty string can be used to expand relative paths.
 type SubstitutePath struct {
 	// The local path to be replaced when passing paths to the debugger.
 	From string `json:"from,omitempty"`

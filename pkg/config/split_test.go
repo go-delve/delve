@@ -21,18 +21,52 @@ func TestSplitQuotedFields(t *testing.T) {
 }
 
 func TestSplitDoubleQuotedFields(t *testing.T) {
-	in := `field"A" "fieldB" fie"l'd"C "field\"D" "yet another field" "" `
-	tgt := []string{"fieldA", "fieldB", "fiel'dC", "field\"D", "yet another field", "", ""}
-	out := SplitQuotedFields(in, '"')
-
-	if len(tgt) != len(out) {
-		t.Fatalf("expected %#v, got %#v (len mismatch)", tgt, out)
+	tests := []struct {
+		name     string
+		in       string
+		expected []string
+	}{
+		{
+			name:     "generic test case",
+			in:       `field"A" "fieldB" fie"l'd"C "field\"D" "yet another field"`,
+			expected: []string{"fieldA", "fieldB", "fiel'dC", "field\"D", "yet another field"},
+		},
+		{
+			name:     "with empty string in the end",
+			in:       `field"A" "" `,
+			expected: []string{"fieldA", ""},
+		},
+		{
+			name:     "with empty string at the beginning",
+			in:       ` "" field"A"`,
+			expected: []string{"", "fieldA"},
+		},
+		{
+			name:     "lots of spaces",
+			in:       `    field"A"   `,
+			expected: []string{"fieldA"},
+		},
+		{
+			name:     "only empty string",
+			in:       ` "" "" "" """" "" `,
+			expected: []string{"", "", "", "", ""},
+		},
 	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := tt.in
+			tgt := tt.expected
+			out := SplitQuotedFields(in, '"')
+			if len(tgt) != len(out) {
+				t.Fatalf("expected %#v, got %#v (len mismatch)", tgt, out)
+			}
 
-	for i := range tgt {
-		if tgt[i] != out[i] {
-			t.Fatalf(" expected %#v, got %#v (mismatch at %d)", tgt, out, i)
-		}
+			for i := range tgt {
+				if tgt[i] != out[i] {
+					t.Fatalf(" expected %#v, got %#v (mismatch at %d)", tgt, out, i)
+				}
+			}
+		})
 	}
 }
 

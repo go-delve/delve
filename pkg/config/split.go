@@ -41,6 +41,7 @@ func SplitQuotedFields(in string, quote rune) []string {
 			} else if unicode.IsSpace(ch) {
 				r = append(r, buf.String())
 				buf.Reset()
+				state = inSpace
 			} else {
 				buf.WriteRune(ch)
 			}

@@ -505,7 +505,7 @@ func SubstitutePath(path string, rules [][2]string) string {
 			to = to + separator
 		}
 
-		//  If 'from' is a empty string and path is not absolute, prepende 'to'.
+		// Expand relative paths with the specified prefix
 		if from == "" && !filepath.IsAbs(path) {
 			return strings.Replace(path, from, to, 1)
 		}
