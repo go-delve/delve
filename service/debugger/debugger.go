@@ -547,10 +547,10 @@ func (d *Debugger) State(nowait bool) (*api.DebuggerState, error) {
 
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-	return d.state(nil)
+	return d.state(nil, false)
 }
 
-func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error) {
+func (d *Debugger) state(retLoadCfg *proc.LoadConfig, withBreakpointInfo bool) (*api.DebuggerState, error) {
 	if _, err := d.target.Valid(); err != nil {
 		return nil, err
 	}
@@ -583,6 +583,13 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig) (*api.DebuggerState, error
 		th.CallReturn = thread.Common().CallReturn
 		if retLoadCfg != nil {
 			th.ReturnValues = api.ConvertVars(thread.Common().ReturnValues(*retLoadCfg))
+		}
+
+		if withBreakpointInfo {
+			err := d.collectBreakpointInformation(th, thread)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		state.Threads = append(state.Threads, th)
@@ -1320,12 +1327,9 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 		}
 		return nil, err
 	}
-	state, stateErr := d.state(api.LoadConfigToProc(command.ReturnInfoLoadConfig))
+	state, stateErr := d.state(api.LoadConfigToProc(command.ReturnInfoLoadConfig), withBreakpointInfo)
 	if stateErr != nil {
 		return state, stateErr
-	}
-	if withBreakpointInfo {
-		err = d.collectBreakpointInformation(state)
 	}
 	for _, th := range state.Threads {
 		if th.Breakpoint != nil && th.Breakpoint.TraceReturn {
@@ -1343,79 +1347,67 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 	return state, err
 }
 
-func (d *Debugger) collectBreakpointInformation(state *api.DebuggerState) error {
-	//TODO(aarzilli): this doesn't work when there are multiple targets because the state.Threads slice will contain threads from all targets, not just d.target .Selected
-
-	if state == nil {
+func (d *Debugger) collectBreakpointInformation(apiThread *api.Thread, thread proc.Thread) error {
+	if apiThread.Breakpoint == nil || apiThread.BreakpointInfo != nil {
 		return nil
 	}
 
-	for i := range state.Threads {
-		if state.Threads[i].Breakpoint == nil || state.Threads[i].BreakpointInfo != nil {
-			continue
-		}
+	bp := apiThread.Breakpoint
+	bpi := &api.BreakpointInfo{}
+	apiThread.BreakpointInfo = bpi
 
-		bp := state.Threads[i].Breakpoint
-		bpi := &api.BreakpointInfo{}
-		state.Threads[i].BreakpointInfo = bpi
+	tgt := d.target.TargetForThread(thread)
 
-		if bp.Goroutine {
-			g, err := proc.GetG(d.target.Selected.CurrentThread())
-			if err != nil {
-				return err
-			}
-			bpi.Goroutine = api.ConvertGoroutine(d.target.Selected, g)
-		}
-
-		if bp.Stacktrace > 0 {
-			rawlocs, err := proc.ThreadStacktrace(d.target.Selected.CurrentThread(), bp.Stacktrace)
-			if err != nil {
-				return err
-			}
-			bpi.Stacktrace, err = d.convertStacktrace(rawlocs, nil)
-			if err != nil {
-				return err
-			}
-		}
-
-		thread, found := d.target.Selected.FindThread(state.Threads[i].ID)
-		if !found {
-			return fmt.Errorf("could not find thread %d", state.Threads[i].ID)
-		}
-
-		if len(bp.Variables) == 0 && bp.LoadArgs == nil && bp.LoadLocals == nil {
-			// don't try to create goroutine scope if there is nothing to load
-			continue
-		}
-
-		s, err := proc.GoroutineScope(d.target.Selected, thread)
+	if bp.Goroutine {
+		g, err := proc.GetG(thread)
 		if err != nil {
 			return err
 		}
+		bpi.Goroutine = api.ConvertGoroutine(tgt, g)
+	}
 
-		if len(bp.Variables) > 0 {
-			bpi.Variables = make([]api.Variable, len(bp.Variables))
+	if bp.Stacktrace > 0 {
+		rawlocs, err := proc.ThreadStacktrace(thread, bp.Stacktrace)
+		if err != nil {
+			return err
 		}
-		for i := range bp.Variables {
-			v, err := s.EvalExpression(bp.Variables[i], proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1})
-			if err != nil {
-				bpi.Variables[i] = api.Variable{Name: bp.Variables[i], Unreadable: fmt.Sprintf("eval error: %v", err)}
-			} else {
-				bpi.Variables[i] = *api.ConvertVar(v)
-			}
-		}
-		if bp.LoadArgs != nil {
-			if vars, err := s.FunctionArguments(*api.LoadConfigToProc(bp.LoadArgs)); err == nil {
-				bpi.Arguments = api.ConvertVars(vars)
-			}
-		}
-		if bp.LoadLocals != nil {
-			if locals, err := s.LocalVariables(*api.LoadConfigToProc(bp.LoadLocals)); err == nil {
-				bpi.Locals = api.ConvertVars(locals)
-			}
+		bpi.Stacktrace, err = d.convertStacktrace(rawlocs, nil)
+		if err != nil {
+			return err
 		}
 	}
 
+	if len(bp.Variables) == 0 && bp.LoadArgs == nil && bp.LoadLocals == nil {
+		// don't try to create goroutine scope if there is nothing to load
+		return nil
+	}
+
+	s, err := proc.GoroutineScope(tgt, thread)
+	if err != nil {
+		return err
+	}
+
+	if len(bp.Variables) > 0 {
+		bpi.Variables = make([]api.Variable, len(bp.Variables))
+	}
+	for i := range bp.Variables {
+		v, err := s.EvalExpression(bp.Variables[i], proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1})
+		if err != nil {
+			bpi.Variables[i] = api.Variable{Name: bp.Variables[i], Unreadable: fmt.Sprintf("eval error: %v", err)}
+		} else {
+			bpi.Variables[i] = *api.ConvertVar(v)
+		}
+	}
+	if bp.LoadArgs != nil {
+		if vars, err := s.FunctionArguments(*api.LoadConfigToProc(bp.LoadArgs)); err == nil {
+			bpi.Arguments = api.ConvertVars(vars)
+		}
+	}
+	if bp.LoadLocals != nil {
+		if locals, err := s.LocalVariables(*api.LoadConfigToProc(bp.LoadLocals)); err == nil {
+			bpi.Locals = api.ConvertVars(locals)
+		}
+	}
 	return nil
 }
 
