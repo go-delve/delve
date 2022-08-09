@@ -93,7 +93,9 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	}
 
 	if flags&EnableCGOOptimization == 0 {
-		os.Setenv("CGO_CFLAGS", "-O0 -g")
+		if os.Getenv("CI") == "" || os.Getenv("CGO_CFLAGS") == "" {
+			os.Setenv("CGO_CFLAGS", "-O0 -g")
+		}
 	}
 
 	fixturesDir := FindFixturesDir()
@@ -163,6 +165,9 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 
 	cmd := exec.Command("go", buildFlags...)
 	cmd.Dir = dir
+	if os.Getenv("CI") != "" {
+		cmd.Env = os.Environ()
+	}
 
 	// Build the test binary
 	if out, err := cmd.CombinedOutput(); err != nil {
