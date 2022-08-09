@@ -896,11 +896,15 @@ func (v *Variable) parseG() (*G, error) {
 	}
 	var stackhi, stacklo uint64
 	if stackVar := v.loadFieldNamed("stack"); /* +rtype stack */ stackVar != nil {
-		if stackhiVar := stackVar.fieldVariable("hi"); /* +rtype uintptr */ stackhiVar != nil {
+		if stackhiVar := stackVar.fieldVariable("hi"); /* +rtype uintptr */ stackhiVar != nil && stackhiVar.Value != nil {
 			stackhi, _ = constant.Uint64Val(stackhiVar.Value)
+		} else {
+			unreadable = true
 		}
-		if stackloVar := stackVar.fieldVariable("lo"); /* +rtype uintptr */ stackloVar != nil {
+		if stackloVar := stackVar.fieldVariable("lo"); /* +rtype uintptr */ stackloVar != nil && stackloVar.Value != nil {
 			stacklo, _ = constant.Uint64Val(stackloVar.Value)
+		} else {
+			unreadable = true
 		}
 	}
 
