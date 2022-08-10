@@ -148,6 +148,12 @@ type LaunchConfig struct {
 	// reference to other environment variables is not supported.
 	Env map[string]*string `json:"env,omitempty"`
 
+	// Console specifies the console the user desired to execute with.
+	// If the user requested `internalConsole` as its terminal, then we
+	// wish to redirect its stdout/stderr as DAP OutputEvents.
+	// By default, we do not redirect if it doesn't exist.
+	Console string `json:"console,omitempty"`
+
 	LaunchAttachCommonConfig
 }
 
