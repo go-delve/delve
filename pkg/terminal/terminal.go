@@ -100,12 +100,12 @@ func New(client service.Client, conf *config.Config) *Term {
 		prompt: "(dlv) ",
 		line:   liner.NewLiner(),
 		cmds:   cmds,
-		stdout: &transcriptWriter{w: &pagingWriter{w: os.Stdout}},
+		stdout: &transcriptWriter{pw: &pagingWriter{w: os.Stdout}},
 	}
 	t.line.SetCtrlZStop(true)
 
 	if strings.ToLower(os.Getenv("TERM")) != "dumb" {
-		t.stdout.w = &pagingWriter{w: getColorableWriter()}
+		t.stdout.pw = &pagingWriter{w: getColorableWriter()}
 		t.stdout.colorEscapes = make(map[colorize.Style]string)
 		t.stdout.colorEscapes[colorize.NormalStyle] = terminalResetEscapeCode
 		wd := func(s string, defaultCode int) string {
@@ -353,7 +353,7 @@ func (t *Term) Run() (int, error) {
 		}
 
 		t.stdout.Flush()
-		t.stdout.w.Reset()
+		t.stdout.pw.Reset()
 	}
 }
 
@@ -580,7 +580,7 @@ func (t *Term) longCommandCanceled() bool {
 
 // RedirectTo redirects the output of this terminal to the specified writer.
 func (t *Term) RedirectTo(w io.Writer) {
-	t.stdout.w.w = w
+	t.stdout.pw.w = w
 }
 
 // isErrProcessExited returns true if `err` is an RPC error equivalent of proc.ErrProcessExited

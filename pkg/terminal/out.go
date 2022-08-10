@@ -15,7 +15,7 @@ import (
 // buffered file.
 type transcriptWriter struct {
 	fileOnly     bool
-	w            *pagingWriter
+	pw           *pagingWriter
 	file         *bufio.Writer
 	fh           io.Closer
 	colorEscapes map[colorize.Style]string
@@ -23,7 +23,7 @@ type transcriptWriter struct {
 
 func (w *transcriptWriter) Write(p []byte) (nn int, err error) {
 	if !w.fileOnly {
-		nn, err = w.w.Write(p)
+		nn, err = w.pw.Write(p)
 	}
 	if err == nil {
 		if w.file != nil {
@@ -38,7 +38,7 @@ func (w *transcriptWriter) Write(p []byte) (nn int, err error) {
 func (w *transcriptWriter) ColorizePrint(path string, reader io.ReadSeeker, startLine, endLine, arrowLine int) error {
 	var err error
 	if !w.fileOnly {
-		err = colorize.Print(w.w.w, path, reader, startLine, endLine, arrowLine, w.colorEscapes)
+		err = colorize.Print(w.pw.w, path, reader, startLine, endLine, arrowLine, w.colorEscapes)
 	}
 	if err == nil {
 		if w.file != nil {

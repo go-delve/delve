@@ -752,7 +752,7 @@ func threads(t *Term, ctx callContext, args string) error {
 	}
 	sort.Sort(byThreadID(threads))
 	done := false
-	t.stdout.w.PageMaybe(func() { done = false })
+	t.stdout.pw.PageMaybe(func() { done = false })
 	for _, th := range threads {
 		if done {
 			break
@@ -855,7 +855,7 @@ func (c *Commands) goroutines(t *Term, ctx callContext, argstr string) error {
 		tooManyGroups bool
 	)
 	done := false
-	t.stdout.w.PageMaybe(func() { done = true })
+	t.stdout.pw.PageMaybe(func() { done = true })
 	t.longCommandStart()
 	for start >= 0 {
 		if t.longCommandCanceled() || done {
@@ -1998,7 +1998,7 @@ loop:
 	if err != nil {
 		return err
 	}
-	t.stdout.w.PageMaybe(nil)
+	t.stdout.pw.PageMaybe(nil)
 	fmt.Fprint(t.stdout, api.PrettyExamineMemory(uintptr(address), memArea, isLittleEndian, priFmt, size))
 	return nil
 }
@@ -2108,7 +2108,7 @@ func (t *Term) printSortedStrings(v []string, err error) error {
 	}
 	sort.Strings(v)
 	done := false
-	t.stdout.w.PageMaybe(func() { done = false })
+	t.stdout.pw.PageMaybe(func() { done = false })
 	for _, d := range v {
 		if done {
 			break
@@ -2218,7 +2218,7 @@ func stackCommand(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
-	t.stdout.w.PageMaybe(nil)
+	t.stdout.pw.PageMaybe(nil)
 	printStack(t, t.stdout, stack, "", sa.offsets)
 	if sa.ancestors > 0 {
 		ancestors, err := t.client.Ancestors(ctx.Scope.GoroutineID, sa.ancestors, sa.ancestorDepth)
@@ -2414,7 +2414,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		rest = argv[1]
 	}
 
-	t.stdout.w.PageMaybe(nil)
+	t.stdout.pw.PageMaybe(nil)
 
 	flavor := t.conf.GetDisassembleFlavour()
 
