@@ -326,7 +326,7 @@ func openRedirects(redirects [3]string, foreground bool) (stdin, stdout, stderr 
 			return dflt
 		}
 		var f *os.File
-		f, err = os.Create(path)
+		f, err = os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o666)
 		if f != nil {
 			toclose = append(toclose, f)
 		}
