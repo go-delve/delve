@@ -797,6 +797,9 @@ func TestEvalExpression(t *testing.T) {
 
 		// issue #3034 - map access with long string key
 		{`m6["very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"]`, false, `123`, `123`, "int", nil},
+
+		// issue #1423 - special typecasts everywhere
+		{`string(byteslice) == "tèst"`, false, `true`, `false`, "", nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())
