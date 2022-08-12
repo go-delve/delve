@@ -54,7 +54,7 @@ func ConvertLogicalBreakpoint(lbp *proc.LogicalBreakpoint) *Breakpoint {
 }
 
 // ConvertPhysicalBreakpoints adds informations from physical breakpoints to an API breakpoint.
-func ConvertPhysicalBreakpoints(b *Breakpoint, bps []*proc.Breakpoint) {
+func ConvertPhysicalBreakpoints(b *Breakpoint, pids []int, bps []*proc.Breakpoint) {
 	if len(bps) == 0 {
 		return
 	}
@@ -63,8 +63,9 @@ func ConvertPhysicalBreakpoints(b *Breakpoint, bps []*proc.Breakpoint) {
 	b.WatchType = WatchType(bps[0].WatchType)
 
 	lg := false
-	for _, bp := range bps {
+	for i, bp := range bps {
 		b.Addrs = append(b.Addrs, bp.Addr)
+		b.AddrPid = append(b.AddrPid, pids[i])
 		if b.FunctionName != bp.FunctionName && b.FunctionName != "" {
 			if !lg {
 				b.FunctionName = removeTypeParams(b.FunctionName)

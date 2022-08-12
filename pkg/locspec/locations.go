@@ -370,7 +370,7 @@ func (ale AmbiguousLocationError) Error() string {
 func (loc *NormalLocationSpec) Find(t *proc.Target, processArgs []string, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
 	limit := maxFindLocationCandidates
 	var candidateFiles []string
-	for _, sourceFile := range scope.BinInfo.Sources {
+	for _, sourceFile := range t.BinInfo().Sources {
 		substFile := sourceFile
 		if len(substitutePathRules) > 0 {
 			substFile = SubstitutePath(sourceFile, substitutePathRules)
@@ -387,10 +387,10 @@ func (loc *NormalLocationSpec) Find(t *proc.Target, processArgs []string, scope 
 
 	var candidateFuncs []string
 	if loc.FuncBase != nil && limit > 0 {
-		candidateFuncs = loc.findFuncCandidates(scope, limit)
+		candidateFuncs = loc.findFuncCandidates(t.BinInfo(), limit)
 	}
 
-	if matching := len(candidateFiles) + len(candidateFuncs); matching == 0 {
+	if matching := len(candidateFiles) + len(candidateFuncs); matching == 0 && scope != nil {
 		// if no result was found this locations string could be an
 		// expression that the user forgot to prefix with '*', try treating it as
 		// such.
@@ -428,14 +428,14 @@ func (loc *NormalLocationSpec) Find(t *proc.Target, processArgs []string, scope 
 	return []api.Location{addressesToLocation(addrs)}, nil
 }
 
-func (loc *NormalLocationSpec) findFuncCandidates(scope *proc.EvalScope, limit int) []string {
+func (loc *NormalLocationSpec) findFuncCandidates(bi *proc.BinaryInfo, limit int) []string {
 	candidateFuncs := map[string]struct{}{}
 	// See if it matches generic functions first
-	for fname := range scope.BinInfo.LookupGenericFunc() {
+	for fname := range bi.LookupGenericFunc() {
 		if len(candidateFuncs) >= limit {
 			break
 		}
-		if !loc.FuncBase.Match(&proc.Function{Name: fname}, scope.BinInfo.PackageMap) {
+		if !loc.FuncBase.Match(&proc.Function{Name: fname}, bi.PackageMap) {
 			continue
 		}
 		if loc.Base == fname {
@@ -443,11 +443,11 @@ func (loc *NormalLocationSpec) findFuncCandidates(scope *proc.EvalScope, limit i
 		}
 		candidateFuncs[fname] = struct{}{}
 	}
-	for _, f := range scope.BinInfo.LookupFunc {
+	for _, f := range bi.LookupFunc {
 		if len(candidateFuncs) >= limit {
 			break
 		}
-		if !loc.FuncBase.Match(f, scope.BinInfo.PackageMap) {
+		if !loc.FuncBase.Match(f, bi.PackageMap) {
 			continue
 		}
 		if loc.Base == f.Name {
