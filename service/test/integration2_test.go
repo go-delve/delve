@@ -2856,3 +2856,42 @@ func TestNonGoDebug(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRestart_PreserveFunctionBreakpoint(t *testing.T) {
+	// Tests that function breakpoint get restored correctly, after a rebuild,
+	// even if the function changed position in the source file.
+
+	dir := protest.FindFixturesDir()
+
+	copy := func(inpath string) {
+		buf, err := ioutil.ReadFile(inpath)
+		assertNoError(err, t, fmt.Sprintf("Reading %q", inpath))
+		outpath := filepath.Join(dir, "testfnpos.go")
+		assertNoError(ioutil.WriteFile(outpath, buf, 0666), t, fmt.Sprintf("Creating %q", outpath))
+	}
+
+	copy(filepath.Join(dir, "testfnpos1.go"))
+
+	withTestClient2Extended("testfnpos", t, 0, [3]string{}, func(c service.Client, f protest.Fixture) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.f1"})
+		assertNoError(err, t, "CreateBreakpoint")
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue")
+		t.Logf("%s:%d", state.CurrentThread.File, state.CurrentThread.Line)
+		if state.CurrentThread.Line != 5 {
+			t.Fatalf("wrong location %s:%d", state.CurrentThread.File, state.CurrentThread.Line)
+		}
+
+		// rewrite test file and restart, rebuilding
+		copy(filepath.Join(dir, "testfnpos2.go"))
+		_, err = c.Restart(true)
+		assertNoError(err, t, "Restart(true)")
+
+		state = <-c.Continue()
+		assertNoError(state.Err, t, "Continue")
+		t.Logf("%s:%d", state.CurrentThread.File, state.CurrentThread.Line)
+		if state.CurrentThread.Line != 9 {
+			t.Fatalf("wrong location %s:%d", state.CurrentThread.File, state.CurrentThread.Line)
+		}
+	})
+}

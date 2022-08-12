@@ -106,7 +106,7 @@ func (s *RPCServer) CreateBreakpoint(bp, newBreakpoint *api.Breakpoint) error {
 	if err := api.ValidBreakpointName(bp.Name); err != nil {
 		return err
 	}
-	createdbp, err := s.debugger.CreateBreakpoint(bp)
+	createdbp, err := s.debugger.CreateBreakpoint(bp, "", nil)
 	if err != nil {
 		return err
 	}
