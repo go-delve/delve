@@ -1243,7 +1243,7 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 	if debugFilePath == "" && len(bi.BuildID) > 2 {
 		// Build ID method: look for a file named .build-id/nn/nnnnnnnn.debug in
 		// every debug info directory.
-		find(nil, fmt.Sprintf(".build-id/%s/%s.debug", bi.BuildID[:2], bi.BuildID[2:]))
+		find(nil, fmt.Sprintf("%s/%s.debug", bi.BuildID[:2], bi.BuildID[2:]))
 	}
 
 	if debugFilePath == "" {
