@@ -50,7 +50,7 @@ type Client interface {
 	// ReverseStepOut continues backward to the calle rof the current function.
 	ReverseStepOut() (*api.DebuggerState, error)
 	// Call resumes process execution while making a function call.
-	Call(goroutineID int, expr string, unsafe bool) (*api.DebuggerState, error)
+	Call(goroutineID int64, expr string, unsafe bool) (*api.DebuggerState, error)
 
 	// StepInstruction will step a single cpu instruction.
 	StepInstruction() (*api.DebuggerState, error)
@@ -59,7 +59,7 @@ type Client interface {
 	// SwitchThread switches the current thread context.
 	SwitchThread(threadID int) (*api.DebuggerState, error)
 	// SwitchGoroutine switches the current goroutine (and the current thread as well)
-	SwitchGoroutine(goroutineID int) (*api.DebuggerState, error)
+	SwitchGoroutine(goroutineID int64) (*api.DebuggerState, error)
 	// Halt suspends the process.
 	Halt() (*api.DebuggerState, error)
 
@@ -121,10 +121,10 @@ type Client interface {
 	ListGoroutinesWithFilter(start, count int, filters []api.ListGoroutinesFilter, group *api.GoroutineGroupingOptions) ([]*api.Goroutine, []api.GoroutineGroup, int, bool, error)
 
 	// Stacktrace returns stacktrace
-	Stacktrace(goroutineID int, depth int, opts api.StacktraceOptions, cfg *api.LoadConfig) ([]api.Stackframe, error)
+	Stacktrace(goroutineID int64, depth int, opts api.StacktraceOptions, cfg *api.LoadConfig) ([]api.Stackframe, error)
 
 	// Ancestors returns ancestor stacktraces
-	Ancestors(goroutineID int, numAncestors int, depth int) ([]api.Ancestor, error)
+	Ancestors(goroutineID int64, numAncestors int, depth int) ([]api.Ancestor, error)
 
 	// AttachedToExistingProcess returns whether we attached to a running process or not
 	AttachedToExistingProcess() bool

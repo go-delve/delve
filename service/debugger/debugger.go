@@ -516,7 +516,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 		}
 		if len(oldBp.File) > 0 {
 			oldBp.TotalHitCount = 0
-			oldBp.HitCount = make(map[int]uint64)
+			oldBp.HitCount = make(map[int64]uint64)
 			err := d.createPhysicalBreakpoints(oldBp)
 			if err != nil {
 				discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: api.ConvertLogicalBreakpoint(oldBp), Reason: err.Error()})
@@ -735,7 +735,7 @@ func createLogicalBreakpoint(d *Debugger, addrs []uint64, requestedBp *api.Break
 	if id <= 0 {
 		d.breakpointIDCounter++
 		id = d.breakpointIDCounter
-		lbp = &proc.LogicalBreakpoint{LogicalID: id, HitCount: make(map[int]uint64), Enabled: true}
+		lbp = &proc.LogicalBreakpoint{LogicalID: id, HitCount: make(map[int64]uint64), Enabled: true}
 		p.Breakpoints().Logical[id] = lbp
 	}
 
@@ -1114,7 +1114,7 @@ func (d *Debugger) findBreakpointByName(name string) *api.Breakpoint {
 }
 
 // CreateWatchpoint creates a watchpoint on the specified expression.
-func (d *Debugger) CreateWatchpoint(goid, frame, deferredCall int, expr string, wtype api.WatchType) (*api.Breakpoint, error) {
+func (d *Debugger) CreateWatchpoint(goid int64, frame, deferredCall int, expr string, wtype api.WatchType) (*api.Breakpoint, error) {
 	if len(d.target.Targets()) != 1 {
 		panic("multiple targets not implemented")
 	}
@@ -1165,7 +1165,7 @@ func (d *Debugger) FindThread(id int) (proc.Thread, error) {
 }
 
 // FindGoroutine returns the goroutine for the given 'id'.
-func (d *Debugger) FindGoroutine(id int) (*proc.G, error) {
+func (d *Debugger) FindGoroutine(id int64) (*proc.G, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1548,7 +1548,7 @@ func (d *Debugger) ThreadRegisters(threadID int, floatingPoint bool) (*op.DwarfR
 }
 
 // ScopeRegisters returns registers for the specified scope.
-func (d *Debugger) ScopeRegisters(goid, frame, deferredCall int, floatingPoint bool) (*op.DwarfRegisters, error) {
+func (d *Debugger) ScopeRegisters(goid int64, frame, deferredCall int, floatingPoint bool) (*op.DwarfRegisters, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1565,7 +1565,7 @@ func (d *Debugger) DwarfRegisterToString(i int, reg *op.DwarfRegister) (string, 
 }
 
 // LocalVariables returns a list of the local variables.
-func (d *Debugger) LocalVariables(goid, frame, deferredCall int, cfg proc.LoadConfig) ([]*proc.Variable, error) {
+func (d *Debugger) LocalVariables(goid int64, frame, deferredCall int, cfg proc.LoadConfig) ([]*proc.Variable, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1577,7 +1577,7 @@ func (d *Debugger) LocalVariables(goid, frame, deferredCall int, cfg proc.LoadCo
 }
 
 // FunctionArguments returns the arguments to the current function.
-func (d *Debugger) FunctionArguments(goid, frame, deferredCall int, cfg proc.LoadConfig) ([]*proc.Variable, error) {
+func (d *Debugger) FunctionArguments(goid int64, frame, deferredCall int, cfg proc.LoadConfig) ([]*proc.Variable, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1589,7 +1589,7 @@ func (d *Debugger) FunctionArguments(goid, frame, deferredCall int, cfg proc.Loa
 }
 
 // Function returns the current function.
-func (d *Debugger) Function(goid, frame, deferredCall int, cfg proc.LoadConfig) (*proc.Function, error) {
+func (d *Debugger) Function(goid int64, frame, deferredCall int, cfg proc.LoadConfig) (*proc.Function, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1602,7 +1602,7 @@ func (d *Debugger) Function(goid, frame, deferredCall int, cfg proc.LoadConfig) 
 
 // EvalVariableInScope will attempt to evaluate the variable represented by 'symbol'
 // in the scope provided.
-func (d *Debugger) EvalVariableInScope(goid, frame, deferredCall int, expr string, cfg proc.LoadConfig) (*proc.Variable, error) {
+func (d *Debugger) EvalVariableInScope(goid int64, frame, deferredCall int, expr string, cfg proc.LoadConfig) (*proc.Variable, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1623,7 +1623,7 @@ func (d *Debugger) LoadResliced(v *proc.Variable, start int, cfg proc.LoadConfig
 
 // SetVariableInScope will set the value of the variable represented by
 // 'symbol' to the value given, in the given scope.
-func (d *Debugger) SetVariableInScope(goid, frame, deferredCall int, symbol, value string) error {
+func (d *Debugger) SetVariableInScope(goid int64, frame, deferredCall int, symbol, value string) error {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1769,7 +1769,7 @@ func (d *Debugger) GroupGoroutines(gs []*proc.G, group *api.GoroutineGroupingOpt
 // Stacktrace returns a list of Stackframes for the given goroutine. The
 // length of the returned list will be min(stack_len, depth).
 // If 'full' is true, then local vars, function args, etc will be returned as well.
-func (d *Debugger) Stacktrace(goroutineID, depth int, opts api.StacktraceOptions) ([]proc.Stackframe, error) {
+func (d *Debugger) Stacktrace(goroutineID int64, depth int, opts api.StacktraceOptions) ([]proc.Stackframe, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1790,7 +1790,7 @@ func (d *Debugger) Stacktrace(goroutineID, depth int, opts api.StacktraceOptions
 }
 
 // Ancestors returns the stacktraces for the ancestors of a goroutine.
-func (d *Debugger) Ancestors(goroutineID, numAncestors, depth int) ([]api.Ancestor, error) {
+func (d *Debugger) Ancestors(goroutineID int64, numAncestors, depth int) ([]api.Ancestor, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1928,7 +1928,7 @@ func (d *Debugger) CurrentPackage() (string, error) {
 }
 
 // FindLocation will find the location specified by 'locStr'.
-func (d *Debugger) FindLocation(goid, frame, deferredCall int, locStr string, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
+func (d *Debugger) FindLocation(goid int64, frame, deferredCall int, locStr string, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1955,7 +1955,7 @@ func (d *Debugger) FindLocation(goid, frame, deferredCall int, locStr string, in
 // 'locSpec' should be the result of calling 'locspec.Parse(locStr)'. 'locStr'
 // is also passed, because it made be used to broaden the search criteria, if
 // the parsed result did not find anything.
-func (d *Debugger) FindLocationSpec(goid, frame, deferredCall int, locStr string, locSpec locspec.LocationSpec, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
+func (d *Debugger) FindLocationSpec(goid int64, frame, deferredCall int, locStr string, locSpec locspec.LocationSpec, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1973,7 +1973,7 @@ func (d *Debugger) FindLocationSpec(goid, frame, deferredCall int, locStr string
 	return d.findLocation(d.target.Selected, goid, frame, deferredCall, locStr, locSpec, includeNonExecutableLines, substitutePathRules)
 }
 
-func (d *Debugger) findLocation(p *proc.Target, goid, frame, deferredCall int, locStr string, locSpec locspec.LocationSpec, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
+func (d *Debugger) findLocation(p *proc.Target, goid int64, frame, deferredCall int, locStr string, locSpec locspec.LocationSpec, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
 	s, _ := proc.ConvertEvalScope(p, goid, frame, deferredCall)
 
 	locs, err := locSpec.Find(p, d.processArgs, s, locStr, includeNonExecutableLines, substitutePathRules)
@@ -1991,7 +1991,7 @@ func (d *Debugger) findLocation(p *proc.Target, goid, frame, deferredCall int, l
 
 // Disassemble code between startPC and endPC.
 // if endPC == 0 it will find the function containing startPC and disassemble the whole function.
-func (d *Debugger) Disassemble(goroutineID int, addr1, addr2 uint64) ([]proc.AsmInstruction, error) {
+func (d *Debugger) Disassemble(goroutineID int64, addr1, addr2 uint64) ([]proc.AsmInstruction, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 

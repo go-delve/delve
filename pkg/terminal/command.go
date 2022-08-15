@@ -886,7 +886,7 @@ func (c *Commands) goroutines(t *Term, ctx callContext, argstr string) error {
 	return nil
 }
 
-func selectedGID(state *api.DebuggerState) int {
+func selectedGID(state *api.DebuggerState) int64 {
 	if state.SelectedGoroutine == nil {
 		return 0
 	}
@@ -908,7 +908,7 @@ func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
 		if args[0] == "" {
 			return printscope(t)
 		}
-		gid, err := strconv.Atoi(argstr)
+		gid, err := strconv.ParseInt(argstr, 10, 64)
 		if err != nil {
 			return err
 		}
@@ -927,7 +927,7 @@ func (c *Commands) goroutine(t *Term, ctx callContext, argstr string) error {
 	}
 
 	var err error
-	ctx.Scope.GoroutineID, err = strconv.Atoi(args[0])
+	ctx.Scope.GoroutineID, err = strconv.ParseInt(args[0], 10, 64)
 	if err != nil {
 		return err
 	}
@@ -2586,7 +2586,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 		return
 	}
 
-	if hitCount, ok := th.Breakpoint.HitCount[strconv.Itoa(th.GoroutineID)]; ok {
+	if hitCount, ok := th.Breakpoint.HitCount[strconv.FormatInt(th.GoroutineID, 10)]; ok {
 		fmt.Fprintf(t.stdout, "> %s%s(%s) %s:%d (hits goroutine(%d):%d total:%d) (PC: %#v)\n",
 			bpname,
 			fn.Name(),

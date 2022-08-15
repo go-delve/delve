@@ -50,8 +50,12 @@
 // 	it must have type T).
 //
 //
-// Anywhere a type is required anytype can be used to specify that we don't
-// care about its type.
+// Anywhere a type is required the following expressions can be used:
+//
+//  - any builtin type
+//  - a type defined in the runtime package, without the 'runtime.' prefix
+//  - anytype to match all possible types
+//  - an expression of the form T1|T2 where both T1 and T2 can be arbitrary type expressions
 
 package main
 
@@ -379,7 +383,7 @@ func processProcVariableUses(decl ast.Node, tinfo *types.Info, procVarIdent *ast
 		}
 		var methodName string
 		if isParseG {
-			if xident, _ := fncall.Fun.(*ast.Ident); xident != nil && xident.Name == "loadInt64Maybe" {
+			if xident, _ := fncall.Fun.(*ast.Ident); xident != nil && (xident.Name == "loadInt64Maybe" || xident.Name == "loadUint64Maybe") {
 				methodName = "loadInt64Maybe"
 			}
 		}
@@ -629,6 +633,14 @@ func fieldTypeByName(typ *types.Struct, name string) types.Type {
 func matchType(typ types.Type, T string) bool {
 	if T == "anytype" {
 		return true
+	}
+	if strings.Index(T, "|") > 0 {
+		for _, t1 := range strings.Split(T, "|") {
+			if typeStr(typ) == t1 {
+				return true
+			}
+		}
+		return false
 	}
 	return typeStr(typ) == T
 }

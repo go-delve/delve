@@ -146,7 +146,7 @@ func (c *RPCClient) SwitchGoroutine(goroutineID int) (*api.DebuggerState, error)
 	state := new(api.DebuggerState)
 	cmd := &api.DebuggerCommand{
 		Name:        api.SwitchGoroutine,
-		GoroutineID: goroutineID,
+		GoroutineID: int64(goroutineID),
 	}
 	err := c.call("Command", cmd, state)
 	return state, err

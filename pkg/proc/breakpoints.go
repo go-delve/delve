@@ -264,7 +264,7 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 
 	switch breaklet.Kind {
 	case UserBreakpoint:
-		var goroutineID int
+		var goroutineID int64
 		lbp := bpstate.Breakpoint.Logical
 		if lbp != nil {
 			if g, err := GetG(thread); err == nil {
@@ -320,7 +320,7 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 }
 
 // checkHitCond evaluates bp's hit condition on thread.
-func checkHitCond(lbp *LogicalBreakpoint, goroutineID int) bool {
+func checkHitCond(lbp *LogicalBreakpoint, goroutineID int64) bool {
 	if lbp == nil || lbp.HitCond == nil {
 		return true
 	}
@@ -659,7 +659,7 @@ func (t *Target) setBreakpointInternal(logicalID int, addr uint64, kind Breakpoi
 		lbp := bpmap.Logical[logicalID]
 		if lbp == nil {
 			lbp = &LogicalBreakpoint{LogicalID: logicalID}
-			lbp.HitCount = make(map[int]uint64)
+			lbp.HitCount = make(map[int64]uint64)
 			lbp.Enabled = true
 			bpmap.Logical[logicalID] = lbp
 		}
@@ -974,9 +974,9 @@ type LogicalBreakpoint struct {
 	LoadArgs    *LoadConfig
 	LoadLocals  *LoadConfig
 
-	HitCount      map[int]uint64 // Number of times a breakpoint has been reached in a certain goroutine
-	TotalHitCount uint64         // Number of times a breakpoint has been reached
-	HitCondPerG   bool           // Use per goroutine hitcount as HitCond operand, instead of total hitcount
+	HitCount      map[int64]uint64 // Number of times a breakpoint has been reached in a certain goroutine
+	TotalHitCount uint64           // Number of times a breakpoint has been reached
+	HitCondPerG   bool             // Use per goroutine hitcount as HitCond operand, instead of total hitcount
 
 	// HitCond: if not nil the breakpoint will be triggered only if the evaluated HitCond returns
 	// true with the TotalHitCount.

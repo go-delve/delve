@@ -737,7 +737,7 @@ func Test1ClientServer_FullStacktrace(t *testing.T) {
 		assertNoError(err, t, "GoroutinesInfo()")
 		found := make([]bool, 10)
 		for _, g := range gs {
-			frames, err := c.Stacktrace(g.ID, 40, true)
+			frames, err := c.Stacktrace(int(g.ID), 40, true)
 			assertNoError(err, t, fmt.Sprintf("Stacktrace(%d)", g.ID))
 			t.Logf("goroutine %d", g.ID)
 			for i, frame := range frames {
@@ -831,7 +831,7 @@ func Test1Issue355(t *testing.T) {
 		assertErrorOrExited(s, err, t, "StepInstruction()")
 		s, err = c.SwitchThread(tid)
 		assertErrorOrExited(s, err, t, "SwitchThread()")
-		s, err = c.SwitchGoroutine(gid)
+		s, err = c.SwitchGoroutine(int(gid))
 		assertErrorOrExited(s, err, t, "SwitchGoroutine()")
 		s, err = c.Halt()
 		assertErrorOrExited(s, err, t, "Halt()")
@@ -852,7 +852,7 @@ func Test1Issue355(t *testing.T) {
 		assertError(err, t, "ListRegisters()")
 		_, err = c.ListGoroutines()
 		assertError(err, t, "ListGoroutines()")
-		_, err = c.Stacktrace(gid, 10, false)
+		_, err = c.Stacktrace(int(gid), 10, false)
 		assertError(err, t, "Stacktrace()")
 		_, err = c.FindLocation(api.EvalScope{GoroutineID: gid}, "+1")
 		assertError(err, t, "FindLocation()")

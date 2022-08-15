@@ -1504,7 +1504,7 @@ func TestBreakpointCounts(t *testing.T) {
 func TestHardcodedBreakpointCounts(t *testing.T) {
 	skipOn(t, "broken", "freebsd")
 	withTestProcess("hcbpcountstest", t, func(p *proc.Target, fixture protest.Fixture) {
-		counts := map[int]int{}
+		counts := map[int64]int{}
 		for {
 			if err := p.Continue(); err != nil {
 				if _, exited := err.(proc.ErrProcessExited); exited {
@@ -2556,7 +2556,7 @@ func TestStepConcurrentPtr(t *testing.T) {
 			}
 		}
 
-		kvals := map[int]int64{}
+		kvals := map[int64]int64{}
 		count := 0
 		for {
 			err := p.Continue()
@@ -2920,7 +2920,7 @@ func TestNextInDeferReturn(t *testing.T) {
 	})
 }
 
-func getg(goid int, gs []*proc.G) *proc.G {
+func getg(goid int64, gs []*proc.G) *proc.G {
 	for _, g := range gs {
 		if g.ID == goid {
 			return g
@@ -3432,7 +3432,7 @@ func TestCgoStacktrace(t *testing.T) {
 		[]string{"C.helloworld_pt4", "C.helloworld_pt3", "main.helloWorldS", "main.helloWorld", "C.helloworld_pt2", "C.helloworld", "main.main"},
 		[]string{"main.helloWorld2", "C.helloworld_pt4", "C.helloworld_pt3", "main.helloWorldS", "main.helloWorld", "C.helloworld_pt2", "C.helloworld", "main.main"}}
 
-	var gid int
+	var gid int64
 
 	frameOffs := map[string]int64{}
 	framePointerOffs := map[string]int64{}
@@ -4449,7 +4449,7 @@ func TestIssue1469(t *testing.T) {
 		setFileBreakpoint(p, t, fixture.Source, 13)
 		assertNoError(p.Continue(), t, "Continue()")
 
-		gid2thread := make(map[int][]proc.Thread)
+		gid2thread := make(map[int64][]proc.Thread)
 		for _, thread := range p.ThreadList() {
 			g, _ := proc.GetG(thread)
 			if g == nil {
@@ -4582,7 +4582,7 @@ func TestAncestors(t *testing.T) {
 	})
 }
 
-func testCallConcurrentCheckReturns(p *proc.Target, t *testing.T, gid1, gid2 int) int {
+func testCallConcurrentCheckReturns(p *proc.Target, t *testing.T, gid1, gid2 int64) int {
 	found := 0
 	for _, thread := range p.ThreadList() {
 		g, _ := proc.GetG(thread)
@@ -5138,7 +5138,7 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 
 		logState := func() {
 			g := p.SelectedGoroutine()
-			var goid int = -42
+			var goid int64 = -42
 			if g != nil {
 				goid = g.ID
 			}

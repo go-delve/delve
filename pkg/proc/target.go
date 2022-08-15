@@ -59,7 +59,7 @@ type Target struct {
 	selectedGoroutine *G
 
 	// fncallForG stores a mapping of current active function calls.
-	fncallForG map[int]*callInjection
+	fncallForG map[int64]*callInjection
 
 	asyncPreemptChanged bool  // runtime/debug.asyncpreemptoff was changed
 	asyncPreemptOff     int64 // cached value of runtime/debug.asyncpreemptoff
@@ -194,7 +194,7 @@ func NewTarget(p ProcessInternal, pid int, currentThread Thread, cfg NewTargetCo
 	t := &Target{
 		Process:       p,
 		proc:          p,
-		fncallForG:    make(map[int]*callInjection),
+		fncallForG:    make(map[int64]*callInjection),
 		StopReason:    cfg.StopReason,
 		currentThread: currentThread,
 		CanDump:       cfg.CanDump,

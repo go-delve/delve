@@ -168,7 +168,7 @@ type Thread struct {
 	Function *Function `json:"function,omitempty"`
 
 	// ID of the goroutine running on this thread
-	GoroutineID int `json:"goroutineID"`
+	GoroutineID int64 `json:"goroutineID"`
 
 	// Breakpoint this thread is stopped at
 	Breakpoint *Breakpoint `json:"breakPoint,omitempty"`
@@ -358,7 +358,7 @@ type LoadConfig struct {
 // internal G structure.
 type Goroutine struct {
 	// ID is a unique identifier for the goroutine.
-	ID int `json:"id"`
+	ID int64 `json:"id"`
 	// Current location of the goroutine
 	CurrentLoc Location `json:"currentLoc"`
 	// Current location of the goroutine, excluding calls inside runtime
@@ -391,7 +391,7 @@ type DebuggerCommand struct {
 	ThreadID int `json:"threadID,omitempty"`
 	// GoroutineID is used to specify which thread to use with the SwitchGoroutine
 	// and Call commands.
-	GoroutineID int `json:"goroutineID,omitempty"`
+	GoroutineID int64 `json:"goroutineID,omitempty"`
 	// When ReturnInfoLoadConfig is not nil it will be used to load the value
 	// of any return variables.
 	ReturnInfoLoadConfig *LoadConfig
@@ -426,7 +426,7 @@ type BreakpointInfo struct {
 // EvalScope is the scope a command should
 // be evaluated in. Describes the goroutine and frame number.
 type EvalScope struct {
-	GoroutineID  int
+	GoroutineID  int64
 	Frame        int
 	DeferredCall int // when DeferredCall is n > 0 this eval scope is relative to the n-th deferred call in the current frame
 }

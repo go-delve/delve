@@ -21,7 +21,7 @@ type eface struct {
 
 type g struct {
 	sched gobuf
-	goid int64
+	goid int64|uint64
 	gopc uintptr
 	startpc uintptr
 	waitsince int64

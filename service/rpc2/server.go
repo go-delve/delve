@@ -176,7 +176,7 @@ func (s *RPCServer) GetBreakpoint(arg GetBreakpointIn, out *GetBreakpointOut) er
 }
 
 type StacktraceIn struct {
-	Id     int
+	Id     int64
 	Depth  int
 	Full   bool
 	Defers bool // read deferred functions (equivalent to passing StacktraceReadDefers in Opts)
@@ -210,7 +210,7 @@ func (s *RPCServer) Stacktrace(arg StacktraceIn, out *StacktraceOut) error {
 }
 
 type AncestorsIn struct {
-	GoroutineID  int
+	GoroutineID  int64
 	NumAncestors int
 	Depth        int
 }
