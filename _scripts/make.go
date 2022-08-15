@@ -445,13 +445,17 @@ func testCmdIntl(testSet, testRegex, testBackend, testBuildMode string) {
 		buildModeFlag = "-test-buildmode=" + testBuildMode
 	}
 
+	env := []string{}
+	if os.Getenv("CI") != "" {
+		env = os.Environ()
+	}
+
 	if len(testPackages) > 3 {
-		env := []string{}
 		executeq(env, "go", "test", testFlags(), buildFlags(), testPackages, backendFlag, buildModeFlag)
 	} else if testRegex != "" {
-		execute("go", "test", testFlags(), buildFlags(), testPackages, "-run="+testRegex, backendFlag, buildModeFlag)
+		executeq(env, "go", "test", testFlags(), buildFlags(), testPackages, "-run="+testRegex, backendFlag, buildModeFlag)
 	} else {
-		execute("go", "test", testFlags(), buildFlags(), testPackages, backendFlag, buildModeFlag)
+		executeq(env, "go", "test", testFlags(), buildFlags(), testPackages, backendFlag, buildModeFlag)
 	}
 }
 

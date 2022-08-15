@@ -57,6 +57,13 @@ elif [ ${version:4:2} -gt 17 ]; then
 	export GOFLAGS=-buildvcs=false
 fi
 
+if [ "$arch" = "386" ]; then
+	ver=$(go version)
+	if [ "$ver" = "go version go1.19 linux/386" ]; then
+		export CGO_CFLAGS='-g -O0 -fno-stack-protector'
+	fi
+fi
+
 set +e
 make test
 x=$?

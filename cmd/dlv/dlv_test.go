@@ -111,8 +111,13 @@ func TestBuild(t *testing.T) {
 
 	scan := bufio.NewScanner(stderr)
 	// wait for the debugger to start
-	scan.Scan()
-	t.Log(scan.Text())
+	for scan.Scan() {
+		text := scan.Text()
+		t.Log(text)
+		if strings.Contains(text, "API server pid = ") {
+			break
+		}
+	}
 	go func() {
 		for scan.Scan() {
 			t.Log(scan.Text())
