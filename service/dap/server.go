@@ -1689,7 +1689,7 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 			// so no need to include them here.
 			loc := g.UserCurrent()
 			threads[i].Name = fmt.Sprintf("%s[Go %d] %s%s", selected, g.ID, fnName(&loc), thread)
-			threads[i].Id = g.ID
+			threads[i].Id = int(g.ID)
 		}
 	}
 
@@ -1830,7 +1830,7 @@ func (s *Session) sendStepResponse(threadId int, message dap.Message) {
 	s.send(message)
 }
 
-func stoppedGoroutineID(state *api.DebuggerState) (id int) {
+func stoppedGoroutineID(state *api.DebuggerState) (id int64) {
 	if state.SelectedGoroutine != nil {
 		id = state.SelectedGoroutine.ID
 	} else if state.CurrentThread != nil {
@@ -1841,7 +1841,7 @@ func stoppedGoroutineID(state *api.DebuggerState) (id int) {
 
 // stoppedOnBreakpointGoroutineID gets the goroutine id of the first goroutine
 // that is stopped on a real breakpoint, starting with the selected goroutine.
-func (s *Session) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int, *api.Breakpoint) {
+func (s *Session) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int64, *api.Breakpoint) {
 	// Use the first goroutine that is stopped on a breakpoint.
 	gs := s.stoppedGs(state)
 	if len(gs) == 0 {
@@ -1871,7 +1871,7 @@ func (s *Session) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int,
 // due to an error, so the server is ready to receive new requests.
 func (s *Session) stepUntilStopAndNotify(command string, threadId int, granularity dap.SteppingGranularity, allowNextStateChange chan struct{}) {
 	defer closeIfOpen(allowNextStateChange)
-	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: threadId}, nil)
+	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: int64(threadId)}, nil)
 	if err != nil {
 		s.config.log.Errorf("Error switching goroutines while stepping: %v", err)
 		// If we encounter an error, we will have to send a stopped event
@@ -1881,7 +1881,7 @@ func (s *Session) stepUntilStopAndNotify(command string, threadId int, granulari
 		if state, err := s.debugger.State(false); err != nil {
 			s.config.log.Errorf("Error retrieving state: %e", err)
 		} else {
-			stopped.Body.ThreadId = stoppedGoroutineID(state)
+			stopped.Body.ThreadId = int(stoppedGoroutineID(state))
 		}
 		stopped.Body.Reason = "error"
 		stopped.Body.Text = err.Error()
@@ -1951,7 +1951,7 @@ func (s *Session) onStackTraceRequest(request *dap.StackTraceRequest) {
 	// Since the backend doesn't support paging, we load all frames up to
 	// the requested depth and then slice them here per
 	// `supportsDelayedStackTraceLoading` capability.
-	frames, err := s.debugger.Stacktrace(goroutineID, start+levels-1, 0)
+	frames, err := s.debugger.Stacktrace(int64(goroutineID), start+levels-1, 0)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToProduceStackTrace, "Unable to produce stack trace", err.Error())
 		return
@@ -1959,7 +1959,7 @@ func (s *Session) onStackTraceRequest(request *dap.StackTraceRequest) {
 
 	// Determine if the goroutine is a system goroutine.
 	isSystemGoroutine := true
-	if g, _ := s.debugger.FindGoroutine(goroutineID); g != nil {
+	if g, _ := s.debugger.FindGoroutine(int64(goroutineID)); g != nil {
 		isSystemGoroutine = g.System(s.debugger.Target())
 	}
 
@@ -2012,7 +2012,7 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 	frame := sf.(stackFrame).frameIndex
 
 	// Check if the function is optimized.
-	fn, err := s.debugger.Function(goid, frame, 0, DefaultLoadConfig)
+	fn, err := s.debugger.Function(int64(goid), frame, 0, DefaultLoadConfig)
 	if fn == nil || err != nil {
 		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to find enclosing function", err.Error())
 		return
@@ -2022,14 +2022,14 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 		suffix = " (warning: optimized function)"
 	}
 	// Retrieve arguments
-	args, err := s.debugger.FunctionArguments(goid, frame, 0, DefaultLoadConfig)
+	args, err := s.debugger.FunctionArguments(int64(goid), frame, 0, DefaultLoadConfig)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to list args", err.Error())
 		return
 	}
 
 	// Retrieve local variables
-	locals, err := s.debugger.LocalVariables(goid, frame, 0, DefaultLoadConfig)
+	locals, err := s.debugger.LocalVariables(int64(goid), frame, 0, DefaultLoadConfig)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list locals", err.Error())
 		return
@@ -2075,7 +2075,7 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 
 	if s.args.ShowRegisters {
 		// Retrieve registers
-		regs, err := s.debugger.ScopeRegisters(goid, frame, 0, false)
+		regs, err := s.debugger.ScopeRegisters(int64(goid), frame, 0, false)
 		if err != nil {
 			s.sendErrorResponse(request.Request, UnableToListRegisters, "Unable to list registers", err.Error())
 			return
@@ -2661,7 +2661,7 @@ func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 			}
 		}
 	} else { // {expression}
-		exprVar, err := s.debugger.EvalVariableInScope(goid, frame, 0, expr, DefaultLoadConfig)
+		exprVar, err := s.debugger.EvalVariableInScope(int64(goid), frame, 0, expr, DefaultLoadConfig)
 		if err != nil {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 			return
@@ -2675,7 +2675,7 @@ func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 					// Reload the string value with a bigger limit.
 					loadCfg := DefaultLoadConfig
 					loadCfg.MaxStringLen = maxSingleStringLen
-					if v, err := s.debugger.EvalVariableInScope(goid, frame, 0, request.Arguments.Expression, loadCfg); err != nil {
+					if v, err := s.debugger.EvalVariableInScope(int64(goid), frame, 0, request.Arguments.Expression, loadCfg); err != nil {
 						s.config.log.Debugf("Failed to load more for %v: %v", request.Arguments.Expression, err)
 					} else {
 						exprVar = v
@@ -2725,7 +2725,7 @@ func (s *Session) doCall(goid, frame int, expr string) (*api.DebuggerState, []*p
 		ReturnInfoLoadConfig: api.LoadConfigFromProc(&loadCfg),
 		Expr:                 expr,
 		UnsafeCall:           false,
-		GoroutineID:          goid,
+		GoroutineID:          int64(goid),
 	}, nil)
 	if processExited(state, err) {
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
@@ -2794,7 +2794,7 @@ func (s *Session) doCall(goid, frame int, expr string) (*api.DebuggerState, []*p
 func (s *Session) sendStoppedEvent(state *api.DebuggerState) {
 	stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
 	stopped.Body.AllThreadsStopped = true
-	stopped.Body.ThreadId = stoppedGoroutineID(state)
+	stopped.Body.ThreadId = int(stoppedGoroutineID(state))
 	stopped.Body.Reason = s.debugger.StopReason().String()
 	s.send(stopped)
 }
@@ -2868,7 +2868,7 @@ func (s *Session) onSetVariableRequest(request *dap.SetVariableRequest) {
 	// trying to update is valid and accessible from the top most frame & the
 	// current goroutine.
 	goid, frame := -1, 0
-	evaluated, err := s.debugger.EvalVariableInScope(goid, frame, 0, evaluateName, DefaultLoadConfig)
+	evaluated, err := s.debugger.EvalVariableInScope(int64(goid), frame, 0, evaluateName, DefaultLoadConfig)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToSetVariable, "Unable to lookup variable", err.Error())
 		return
@@ -2911,7 +2911,7 @@ func (s *Session) onSetVariableRequest(request *dap.SetVariableRequest) {
 			return
 		}
 	} else {
-		if err := s.debugger.SetVariableInScope(goid, frame, 0, evaluateName, arg.Value); err != nil {
+		if err := s.debugger.SetVariableInScope(int64(goid), frame, 0, evaluateName, arg.Value); err != nil {
 			s.sendErrorResponse(request.Request, UnableToSetVariable, "Unable to set variable", err.Error())
 			return
 		}
@@ -3189,7 +3189,7 @@ func (s *Session) onCancelRequest(request *dap.CancelRequest) {
 // onExceptionInfoRequest handles 'exceptionInfo' requests.
 // Capability 'supportsExceptionInfoRequest' is set in 'initialize' response.
 func (s *Session) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
-	goroutineID := request.Arguments.ThreadId
+	goroutineID := int64(request.Arguments.ThreadId)
 	var body dap.ExceptionInfoResponseBody
 	// Get the goroutine and the current state.
 	g, err := s.debugger.FindGoroutine(goroutineID)
@@ -3273,7 +3273,7 @@ func (s *Session) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 	s.send(response)
 }
 
-func (s *Session) stacktrace(goroutineID int, g *proc.G) (string, error) {
+func (s *Session) stacktrace(goroutineID int64, g *proc.G) (string, error) {
 	frames, err := s.debugger.Stacktrace(goroutineID, s.args.StackTraceDepth, 0)
 	if err != nil {
 		return "", err
@@ -3298,15 +3298,15 @@ func (s *Session) stacktrace(goroutineID int, g *proc.G) (string, error) {
 	return buf.String(), nil
 }
 
-func (s *Session) throwReason(goroutineID int) (string, error) {
+func (s *Session) throwReason(goroutineID int64) (string, error) {
 	return s.getExprString("s", goroutineID, 0)
 }
 
-func (s *Session) panicReason(goroutineID int) (string, error) {
+func (s *Session) panicReason(goroutineID int64) (string, error) {
 	return s.getExprString("(*msgs).arg.(data)", goroutineID, 0)
 }
 
-func (s *Session) getExprString(expr string, goroutineID, frame int) (string, error) {
+func (s *Session) getExprString(expr string, goroutineID int64, frame int) (string, error) {
 	exprVar, err := s.debugger.EvalVariableInScope(goroutineID, frame, 0, expr, DefaultLoadConfig)
 	if err != nil {
 		return "", err
@@ -3495,7 +3495,7 @@ func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange cha
 				state.NextInProgress = false
 			}
 		}
-		stopped.Body.ThreadId = stoppedGoroutineID(state)
+		stopped.Body.ThreadId = int(stoppedGoroutineID(state))
 
 		switch stopReason {
 		case proc.StopNextFinished:
@@ -3508,17 +3508,18 @@ func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange cha
 			stopped.Body.Reason = "data breakpoint"
 		default:
 			stopped.Body.Reason = "breakpoint"
-			var bp *api.Breakpoint
-			if stopped.Body.ThreadId, bp = s.stoppedOnBreakpointGoroutineID(state); bp != nil {
+			goid, bp := s.stoppedOnBreakpointGoroutineID(state)
+			stopped.Body.ThreadId = int(goid)
+			if bp != nil {
 				switch bp.Name {
 				case proc.FatalThrow:
 					stopped.Body.Reason = "exception"
 					stopped.Body.Description = "fatal error"
-					stopped.Body.Text, _ = s.throwReason(stopped.Body.ThreadId)
+					stopped.Body.Text, _ = s.throwReason(int64(stopped.Body.ThreadId))
 				case proc.UnrecoveredPanic:
 					stopped.Body.Reason = "exception"
 					stopped.Body.Description = "panic"
-					stopped.Body.Text, _ = s.panicReason(stopped.Body.ThreadId)
+					stopped.Body.Text, _ = s.panicReason(int64(stopped.Body.ThreadId))
 				}
 				if strings.HasPrefix(bp.Name, functionBpPrefix) {
 					stopped.Body.Reason = "function breakpoint"
@@ -3558,7 +3559,7 @@ func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange cha
 
 		state, err := s.debugger.State( /*nowait*/ true)
 		if err == nil {
-			stopped.Body.ThreadId = stoppedGoroutineID(state)
+			stopped.Body.ThreadId = int(stoppedGoroutineID(state))
 		}
 	}
 
@@ -3632,7 +3633,7 @@ func (s *Session) handleLogPoints(state *api.DebuggerState) {
 	}
 }
 
-func (s *Session) stoppedGs(state *api.DebuggerState) (gs []int) {
+func (s *Session) stoppedGs(state *api.DebuggerState) (gs []int64) {
 	// Check the current thread first. There may be no selected goroutine.
 	if state.CurrentThread.Breakpoint != nil && !state.CurrentThread.Breakpoint.Tracepoint {
 		gs = append(gs, state.CurrentThread.GoroutineID)
@@ -3662,7 +3663,7 @@ func (s *Session) stoppedGs(state *api.DebuggerState) (gs []int) {
 	return gs
 }
 
-func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int) bool {
+func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int64) bool {
 	if !bp.Tracepoint {
 		return false
 	}
@@ -3683,7 +3684,7 @@ func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int) bool {
 	return true
 }
 
-func (msg *logMessage) evaluate(s *Session, goid int) string {
+func (msg *logMessage) evaluate(s *Session, goid int64) string {
 	evaluated := make([]interface{}, len(msg.args))
 	for i := range msg.args {
 		exprVar, err := s.debugger.EvalVariableInScope(goid, 0, 0, msg.args[i], DefaultLoadConfig)

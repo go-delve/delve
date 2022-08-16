@@ -1,7 +1,7 @@
 package proc
 
 type goroutineCache struct {
-	partialGCache map[int]*G
+	partialGCache map[int64]*G
 	allGCache     []*G
 
 	allgentryAddr, allglenAddr uint64
@@ -41,7 +41,7 @@ func (gcache *goroutineCache) getRuntimeAllg(bi *BinaryInfo, mem MemoryReadWrite
 
 func (gcache *goroutineCache) addGoroutine(g *G) {
 	if gcache.partialGCache == nil {
-		gcache.partialGCache = make(map[int]*G)
+		gcache.partialGCache = make(map[int64]*G)
 	}
 	gcache.partialGCache[g.ID] = g
 }

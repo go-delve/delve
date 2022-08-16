@@ -177,7 +177,7 @@ func (c *RPCClient) ReverseStepOut() (*api.DebuggerState, error) {
 	return &out.State, err
 }
 
-func (c *RPCClient) Call(goroutineID int, expr string, unsafe bool) (*api.DebuggerState, error) {
+func (c *RPCClient) Call(goroutineID int64, expr string, unsafe bool) (*api.DebuggerState, error) {
 	var out CommandOut
 	err := c.call("Command", api.DebuggerCommand{Name: api.Call, ReturnInfoLoadConfig: c.retValLoadCfg, Expr: expr, UnsafeCall: unsafe, GoroutineID: goroutineID}, &out)
 	return &out.State, err
@@ -205,7 +205,7 @@ func (c *RPCClient) SwitchThread(threadID int) (*api.DebuggerState, error) {
 	return &out.State, err
 }
 
-func (c *RPCClient) SwitchGoroutine(goroutineID int) (*api.DebuggerState, error) {
+func (c *RPCClient) SwitchGoroutine(goroutineID int64) (*api.DebuggerState, error) {
 	var out CommandOut
 	cmd := api.DebuggerCommand{
 		Name:        api.SwitchGoroutine,
@@ -387,13 +387,13 @@ func (c *RPCClient) ListGoroutinesWithFilter(start, count int, filters []api.Lis
 	return out.Goroutines, out.Groups, out.Nextg, out.TooManyGroups, err
 }
 
-func (c *RPCClient) Stacktrace(goroutineId, depth int, opts api.StacktraceOptions, cfg *api.LoadConfig) ([]api.Stackframe, error) {
+func (c *RPCClient) Stacktrace(goroutineId int64, depth int, opts api.StacktraceOptions, cfg *api.LoadConfig) ([]api.Stackframe, error) {
 	var out StacktraceOut
 	err := c.call("Stacktrace", StacktraceIn{goroutineId, depth, false, false, opts, cfg}, &out)
 	return out.Locations, err
 }
 
-func (c *RPCClient) Ancestors(goroutineID int, numAncestors int, depth int) ([]api.Ancestor, error) {
+func (c *RPCClient) Ancestors(goroutineID int64, numAncestors int, depth int) ([]api.Ancestor, error) {
 	var out AncestorsOut
 	err := c.call("Ancestors", AncestorsIn{goroutineID, numAncestors, depth}, &out)
 	return out.Ancestors, err

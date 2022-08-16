@@ -196,7 +196,7 @@ const (
 // G represents a runtime G (goroutine) structure (at least the
 // fields that Delve is interested in).
 type G struct {
-	ID      int    // Goroutine ID
+	ID      int64  // Goroutine ID
 	PC      uint64 // PC of goroutine when it was parked.
 	SP      uint64 // SP of goroutine when it was parked.
 	BP      uint64 // BP of goroutine when it was parked (go >= 1.7).
@@ -312,7 +312,7 @@ func GoroutinesInfo(dbp *Target, start, count int) ([]*G, int, error) {
 	}
 
 	var (
-		threadg = map[int]*G{}
+		threadg = map[int64]*G{}
 		allg    []*G
 	)
 
@@ -367,7 +367,7 @@ func GoroutinesInfo(dbp *Target, start, count int) ([]*G, int, error) {
 
 // FindGoroutine returns a G struct representing the goroutine
 // specified by `gid`.
-func FindGoroutine(dbp *Target, gid int) (*G, error) {
+func FindGoroutine(dbp *Target, gid int64) (*G, error) {
 	if selg := dbp.SelectedGoroutine(); (gid == -1) || (selg != nil && selg.ID == gid) || (selg == nil && gid == 0) {
 		// Return the currently selected goroutine in the following circumstances:
 		//
@@ -886,7 +886,17 @@ func (v *Variable) parseG() (*G, error) {
 		return n
 	}
 
-	id := loadInt64Maybe("goid")             // +rtype int64
+	loadUint64Maybe := func(name string) uint64 {
+		vv := v.loadFieldNamed(name)
+		if vv == nil {
+			unreadable = true
+			return 0
+		}
+		n, _ := constant.Uint64Val(vv.Value)
+		return n
+	}
+
+	id := loadUint64Maybe("goid")            // +rtype int64|uint64
 	gopc := loadInt64Maybe("gopc")           // +rtype uintptr
 	startpc := loadInt64Maybe("startpc")     // +rtype uintptr
 	waitSince := loadInt64Maybe("waitsince") // +rtype int64
@@ -919,7 +929,7 @@ func (v *Variable) parseG() (*G, error) {
 	v.Name = "runtime.curg"
 
 	g := &G{
-		ID:         int(id),
+		ID:         int64(id),
 		GoPC:       uint64(gopc),
 		StartPC:    uint64(startpc),
 		PC:         uint64(pc),

@@ -73,7 +73,7 @@ const (
 // ConvertEvalScope returns a new EvalScope in the context of the
 // specified goroutine ID and stack frame.
 // If deferCall is > 0 the eval scope will be relative to the specified deferred call.
-func ConvertEvalScope(dbp *Target, gid, frame, deferCall int) (*EvalScope, error) {
+func ConvertEvalScope(dbp *Target, gid int64, frame, deferCall int) (*EvalScope, error) {
 	if _, err := dbp.Valid(); err != nil {
 		return nil, err
 	}

@@ -38,7 +38,7 @@ func ConvertLogicalBreakpoint(lbp *proc.LogicalBreakpoint) *Breakpoint {
 
 	b.HitCount = map[string]uint64{}
 	for idx := range lbp.HitCount {
-		b.HitCount[strconv.Itoa(idx)] = lbp.HitCount[idx]
+		b.HitCount[strconv.FormatInt(idx, 10)] = lbp.HitCount[idx]
 	}
 
 	if lbp.HitCond != nil {
@@ -95,7 +95,7 @@ func ConvertThread(th proc.Thread, bp *Breakpoint) *Thread {
 		file     string
 		line     int
 		pc       uint64
-		gid      int
+		gid      int64
 	)
 
 	loc, err := th.Location()
