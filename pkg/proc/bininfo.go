@@ -1599,10 +1599,6 @@ func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint
 		}
 	}
 
-	if entryPoint > 0 {
-		image.StaticBase = entryPoint - image.StaticBase
-	}
-
 	image.dwarfReader = image.dwarf.Reader()
 
 	debugLineBytes, err := godwarf.GetDebugSectionPE(peFile, "line")
