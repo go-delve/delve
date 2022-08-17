@@ -123,7 +123,7 @@ func TestStarlarkVariable(t *testing.T) {
 		term.MustExec("continue")
 		for _, tc := range []struct{ expr, tgt string }{
 			{`v = eval(None, "i1").Variable; print(v.Value)`, "1"},
-			{`v = eval(None, "f1").Variable; print(v.Value)`, "3"},
+			{`v = eval(None, "f1").Variable; print(v.Value)`, "3.0"},
 			{`v = eval(None, "as1").Variable; print(v.Value.A)`, "1"},
 			{`v = eval(None, "as1").Variable; print(v.Value.B)`, "1"},
 			{`v = eval(None, "as1").Variable; print(v.Value["A"])`, "1"},

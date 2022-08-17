@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"reflect"
 	"strconv"
 
 	"go.starlark.net/syntax"
@@ -43,12 +44,18 @@ func MakeUint64(x uint64) Int {
 }
 
 // MakeBigInt returns a Starlark int for the specified big.Int.
-// The caller must not subsequently modify x.
+// The new Int value will contain a copy of x. The caller is safe to modify x.
 func MakeBigInt(x *big.Int) Int {
-	if n := x.BitLen(); n < 32 || n == 32 && x.Int64() == math.MinInt32 {
+	if isSmall(x) {
 		return makeSmallInt(x.Int64())
 	}
-	return makeBigInt(x)
+	z := new(big.Int).Set(x)
+	return makeBigInt(z)
+}
+
+func isSmall(x *big.Int) bool {
+	n := x.BitLen()
+	return n < 32 || n == 32 && x.Int64() == math.MinInt32
 }
 
 var (
@@ -85,9 +92,19 @@ func (i Int) Int64() (_ int64, ok bool) {
 	return iSmall, true
 }
 
-// BigInt returns the value as a big.Int.
-// The returned variable must not be modified by the client.
+// BigInt returns a new big.Int with the same value as the Int.
 func (i Int) BigInt() *big.Int {
+	iSmall, iBig := i.get()
+	if iBig != nil {
+		return new(big.Int).Set(iBig)
+	}
+	return big.NewInt(iSmall)
+}
+
+// bigInt returns the value as a big.Int.
+// It differs from BigInt in that this method returns the actual
+// reference and any modification will change the state of i.
+func (i Int) bigInt() *big.Int {
 	iSmall, iBig := i.get()
 	if iBig != nil {
 		return iBig
@@ -178,7 +195,7 @@ func (x Int) CompareSameType(op syntax.Token, v Value, depth int) (bool, error) 
 	xSmall, xBig := x.get()
 	ySmall, yBig := y.get()
 	if xBig != nil || yBig != nil {
-		return threeway(op, x.BigInt().Cmp(y.BigInt())), nil
+		return threeway(op, x.bigInt().Cmp(y.bigInt())), nil
 	}
 	return threeway(op, signum64(xSmall-ySmall)), nil
 }
@@ -193,6 +210,16 @@ func (i Int) Float() Float {
 	return Float(iSmall)
 }
 
+// finiteFloat returns the finite float value nearest i,
+// or an error if the magnitude is too large.
+func (i Int) finiteFloat() (Float, error) {
+	f := i.Float()
+	if math.IsInf(float64(f), 0) {
+		return 0, fmt.Errorf("int too large to convert to float")
+	}
+	return f, nil
+}
+
 func (x Int) Sign() int {
 	xSmall, xBig := x.get()
 	if xBig != nil {
@@ -205,7 +232,7 @@ func (x Int) Add(y Int) Int {
 	xSmall, xBig := x.get()
 	ySmall, yBig := y.get()
 	if xBig != nil || yBig != nil {
-		return MakeBigInt(new(big.Int).Add(x.BigInt(), y.BigInt()))
+		return MakeBigInt(new(big.Int).Add(x.bigInt(), y.bigInt()))
 	}
 	return MakeInt64(xSmall + ySmall)
 }
@@ -213,7 +240,7 @@ func (x Int) Sub(y Int) Int {
 	xSmall, xBig := x.get()
 	ySmall, yBig := y.get()
 	if xBig != nil || yBig != nil {
-		return MakeBigInt(new(big.Int).Sub(x.BigInt(), y.BigInt()))
+		return MakeBigInt(new(big.Int).Sub(x.bigInt(), y.bigInt()))
 	}
 	return MakeInt64(xSmall - ySmall)
 }
@@ -221,7 +248,7 @@ func (x Int) Mul(y Int) Int {
 	xSmall, xBig := x.get()
 	ySmall, yBig := y.get()
 	if xBig != nil || yBig != nil {
-		return MakeBigInt(new(big.Int).Mul(x.BigInt(), y.BigInt()))
+		return MakeBigInt(new(big.Int).Mul(x.bigInt(), y.bigInt()))
 	}
 	return MakeInt64(xSmall * ySmall)
 }
@@ -229,7 +256,7 @@ func (x Int) Or(y Int) Int {
 	xSmall, xBig := x.get()
 	ySmall, yBig := y.get()
 	if xBig != nil || yBig != nil {
-		return MakeBigInt(new(big.Int).Or(x.BigInt(), y.BigInt()))
+		return MakeBigInt(new(big.Int).Or(x.bigInt(), y.bigInt()))
 	}
 	return makeSmallInt(xSmall | ySmall)
 }
@@ -237,7 +264,7 @@ func (x Int) And(y Int) Int {
 	xSmall, xBig := x.get()
 	ySmall, yBig := y.get()
 	if xBig != nil || yBig != nil {
-		return MakeBigInt(new(big.Int).And(x.BigInt(), y.BigInt()))
+		return MakeBigInt(new(big.Int).And(x.bigInt(), y.bigInt()))
 	}
 	return makeSmallInt(xSmall & ySmall)
 }
@@ -245,7 +272,7 @@ func (x Int) Xor(y Int) Int {
 	xSmall, xBig := x.get()
 	ySmall, yBig := y.get()
 	if xBig != nil || yBig != nil {
-		return MakeBigInt(new(big.Int).Xor(x.BigInt(), y.BigInt()))
+		return MakeBigInt(new(big.Int).Xor(x.bigInt(), y.bigInt()))
 	}
 	return makeSmallInt(xSmall ^ ySmall)
 }
@@ -256,8 +283,8 @@ func (x Int) Not() Int {
 	}
 	return makeSmallInt(^xSmall)
 }
-func (x Int) Lsh(y uint) Int { return MakeBigInt(new(big.Int).Lsh(x.BigInt(), y)) }
-func (x Int) Rsh(y uint) Int { return MakeBigInt(new(big.Int).Rsh(x.BigInt(), y)) }
+func (x Int) Lsh(y uint) Int { return MakeBigInt(new(big.Int).Lsh(x.bigInt(), y)) }
+func (x Int) Rsh(y uint) Int { return MakeBigInt(new(big.Int).Rsh(x.bigInt(), y)) }
 
 // Precondition: y is nonzero.
 func (x Int) Div(y Int) Int {
@@ -265,7 +292,7 @@ func (x Int) Div(y Int) Int {
 	ySmall, yBig := y.get()
 	// http://python-history.blogspot.com/2010/08/why-pythons-integer-division-floors.html
 	if xBig != nil || yBig != nil {
-		xb, yb := x.BigInt(), y.BigInt()
+		xb, yb := x.bigInt(), y.bigInt()
 
 		var quo, rem big.Int
 		quo.QuoRem(xb, yb, &rem)
@@ -287,7 +314,7 @@ func (x Int) Mod(y Int) Int {
 	xSmall, xBig := x.get()
 	ySmall, yBig := y.get()
 	if xBig != nil || yBig != nil {
-		xb, yb := x.BigInt(), y.BigInt()
+		xb, yb := x.bigInt(), y.bigInt()
 
 		var quo, rem big.Int
 		quo.QuoRem(xb, yb, &rem)
@@ -324,6 +351,61 @@ func AsInt32(x Value) (int, error) {
 	return int(iSmall), nil
 }
 
+// AsInt sets *ptr to the value of Starlark int x, if it is exactly representable,
+// otherwise it returns an error.
+// The type of ptr must be one of the pointer types *int, *int8, *int16, *int32, or *int64,
+// or one of their unsigned counterparts including *uintptr.
+func AsInt(x Value, ptr interface{}) error {
+	xint, ok := x.(Int)
+	if !ok {
+		return fmt.Errorf("got %s, want int", x.Type())
+	}
+
+	bits := reflect.TypeOf(ptr).Elem().Size() * 8
+	switch ptr.(type) {
+	case *int, *int8, *int16, *int32, *int64:
+		i, ok := xint.Int64()
+		if !ok || bits < 64 && !(-1<<(bits-1) <= i && i < 1<<(bits-1)) {
+			return fmt.Errorf("%s out of range (want value in signed %d-bit range)", xint, bits)
+		}
+		switch ptr := ptr.(type) {
+		case *int:
+			*ptr = int(i)
+		case *int8:
+			*ptr = int8(i)
+		case *int16:
+			*ptr = int16(i)
+		case *int32:
+			*ptr = int32(i)
+		case *int64:
+			*ptr = int64(i)
+		}
+
+	case *uint, *uint8, *uint16, *uint32, *uint64, *uintptr:
+		i, ok := xint.Uint64()
+		if !ok || bits < 64 && i >= 1<<bits {
+			return fmt.Errorf("%s out of range (want value in unsigned %d-bit range)", xint, bits)
+		}
+		switch ptr := ptr.(type) {
+		case *uint:
+			*ptr = uint(i)
+		case *uint8:
+			*ptr = uint8(i)
+		case *uint16:
+			*ptr = uint16(i)
+		case *uint32:
+			*ptr = uint32(i)
+		case *uint64:
+			*ptr = uint64(i)
+		case *uintptr:
+			*ptr = uintptr(i)
+		}
+	default:
+		panic(fmt.Sprintf("invalid argument type: %T", ptr))
+	}
+	return nil
+}
+
 // NumberToInt converts a number x to an integer value.
 // An int is returned unchanged, a float is truncated towards zero.
 // NumberToInt reports an error for all other values.
@@ -347,7 +429,9 @@ func NumberToInt(x Value) (Int, error) {
 // finiteFloatToInt converts f to an Int, truncating towards zero.
 // f must be finite.
 func finiteFloatToInt(f Float) Int {
-	if math.MinInt64 <= f && f <= math.MaxInt64 {
+	// We avoid '<= MaxInt64' so that both constants are exactly representable as floats.
+	// See https://github.com/google/starlark-go/issues/375.
+	if math.MinInt64 <= f && f < math.MaxInt64+1 {
 		// small values
 		return MakeInt64(int64(f))
 	}

@@ -156,7 +156,13 @@ const (
 	MAX_PATH      = 260
 	MAX_LONG_PATH = 32768
 
+	MAX_MODULE_NAME32 = 255
+
 	MAX_COMPUTERNAME_LENGTH = 15
+
+	MAX_DHCPV6_DUID_LENGTH = 130
+
+	MAX_DNS_SUFFIX_STRING_LENGTH = 256
 
 	TIME_ZONE_ID_UNKNOWN  = 0
 	TIME_ZONE_ID_STANDARD = 1
@@ -936,8 +942,8 @@ type StartupInfoEx struct {
 type ProcThreadAttributeList struct{}
 
 type ProcThreadAttributeListContainer struct {
-	data            *ProcThreadAttributeList
-	heapAllocations []uintptr
+	data     *ProcThreadAttributeList
+	pointers []unsafe.Pointer
 }
 
 type ProcessInformation struct {
@@ -969,6 +975,21 @@ type ThreadEntry32 struct {
 	DeltaPri       int32
 	Flags          uint32
 }
+
+type ModuleEntry32 struct {
+	Size         uint32
+	ModuleID     uint32
+	ProcessID    uint32
+	GlblcntUsage uint32
+	ProccntUsage uint32
+	ModBaseAddr  uintptr
+	ModBaseSize  uint32
+	ModuleHandle Handle
+	Module       [MAX_MODULE_NAME32 + 1]uint16
+	ExePath      [MAX_PATH]uint16
+}
+
+const SizeofModuleEntry32 = unsafe.Sizeof(ModuleEntry32{})
 
 type Systemtime struct {
 	Year         uint16
@@ -1983,27 +2004,62 @@ type IpAdapterPrefix struct {
 }
 
 type IpAdapterAddresses struct {
-	Length                uint32
-	IfIndex               uint32
-	Next                  *IpAdapterAddresses
-	AdapterName           *byte
-	FirstUnicastAddress   *IpAdapterUnicastAddress
-	FirstAnycastAddress   *IpAdapterAnycastAddress
-	FirstMulticastAddress *IpAdapterMulticastAddress
-	FirstDnsServerAddress *IpAdapterDnsServerAdapter
-	DnsSuffix             *uint16
-	Description           *uint16
-	FriendlyName          *uint16
-	PhysicalAddress       [syscall.MAX_ADAPTER_ADDRESS_LENGTH]byte
-	PhysicalAddressLength uint32
-	Flags                 uint32
-	Mtu                   uint32
-	IfType                uint32
-	OperStatus            uint32
-	Ipv6IfIndex           uint32
-	ZoneIndices           [16]uint32
-	FirstPrefix           *IpAdapterPrefix
-	/* more fields might be present here. */
+	Length                 uint32
+	IfIndex                uint32
+	Next                   *IpAdapterAddresses
+	AdapterName            *byte
+	FirstUnicastAddress    *IpAdapterUnicastAddress
+	FirstAnycastAddress    *IpAdapterAnycastAddress
+	FirstMulticastAddress  *IpAdapterMulticastAddress
+	FirstDnsServerAddress  *IpAdapterDnsServerAdapter
+	DnsSuffix              *uint16
+	Description            *uint16
+	FriendlyName           *uint16
+	PhysicalAddress        [syscall.MAX_ADAPTER_ADDRESS_LENGTH]byte
+	PhysicalAddressLength  uint32
+	Flags                  uint32
+	Mtu                    uint32
+	IfType                 uint32
+	OperStatus             uint32
+	Ipv6IfIndex            uint32
+	ZoneIndices            [16]uint32
+	FirstPrefix            *IpAdapterPrefix
+	TransmitLinkSpeed      uint64
+	ReceiveLinkSpeed       uint64
+	FirstWinsServerAddress *IpAdapterWinsServerAddress
+	FirstGatewayAddress    *IpAdapterGatewayAddress
+	Ipv4Metric             uint32
+	Ipv6Metric             uint32
+	Luid                   uint64
+	Dhcpv4Server           SocketAddress
+	CompartmentId          uint32
+	NetworkGuid            GUID
+	ConnectionType         uint32
+	TunnelType             uint32
+	Dhcpv6Server           SocketAddress
+	Dhcpv6ClientDuid       [MAX_DHCPV6_DUID_LENGTH]byte
+	Dhcpv6ClientDuidLength uint32
+	Dhcpv6Iaid             uint32
+	FirstDnsSuffix         *IpAdapterDNSSuffix
+}
+
+type IpAdapterWinsServerAddress struct {
+	Length   uint32
+	Reserved uint32
+	Next     *IpAdapterWinsServerAddress
+	Address  SocketAddress
+}
+
+type IpAdapterGatewayAddress struct {
+	Length   uint32
+	Reserved uint32
+	Next     *IpAdapterGatewayAddress
+	Address  SocketAddress
+}
+
+type IpAdapterDNSSuffix struct {
+	Next   *IpAdapterDNSSuffix
+	String [MAX_DNS_SUFFIX_STRING_LENGTH]uint16
 }
 
 const (
@@ -2732,6 +2788,43 @@ type PROCESS_BASIC_INFORMATION struct {
 	InheritedFromUniqueProcessId uintptr
 }
 
+type SYSTEM_PROCESS_INFORMATION struct {
+	NextEntryOffset              uint32
+	NumberOfThreads              uint32
+	WorkingSetPrivateSize        int64
+	HardFaultCount               uint32
+	NumberOfThreadsHighWatermark uint32
+	CycleTime                    uint64
+	CreateTime                   int64
+	UserTime                     int64
+	KernelTime                   int64
+	ImageName                    NTUnicodeString
+	BasePriority                 int32
+	UniqueProcessID              uintptr
+	InheritedFromUniqueProcessID uintptr
+	HandleCount                  uint32
+	SessionID                    uint32
+	UniqueProcessKey             *uint32
+	PeakVirtualSize              uintptr
+	VirtualSize                  uintptr
+	PageFaultCount               uint32
+	PeakWorkingSetSize           uintptr
+	WorkingSetSize               uintptr
+	QuotaPeakPagedPoolUsage      uintptr
+	QuotaPagedPoolUsage          uintptr
+	QuotaPeakNonPagedPoolUsage   uintptr
+	QuotaNonPagedPoolUsage       uintptr
+	PagefileUsage                uintptr
+	PeakPagefileUsage            uintptr
+	PrivatePageCount             uintptr
+	ReadOperationCount           int64
+	WriteOperationCount          int64
+	OtherOperationCount          int64
+	ReadTransferCount            int64
+	WriteTransferCount           int64
+	OtherTransferCount           int64
+}
+
 // SystemInformationClasses for NtQuerySystemInformation and NtSetSystemInformation
 const (
 	SystemBasicInformation = iota
@@ -3118,3 +3211,5 @@ type ModuleInfo struct {
 	SizeOfImage uint32
 	EntryPoint  uintptr
 }
+
+const ALL_PROCESSOR_GROUPS = 0xFFFF

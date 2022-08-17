@@ -35,6 +35,7 @@ const (
 	INT    // 123
 	FLOAT  // 1.23e45
 	STRING // "foo" or 'foo' or '''foo''' or r'foo' or r"foo"
+	BYTES  // b"foo", etc
 
 	// Punctuation
 	PLUS          // +
@@ -182,6 +183,15 @@ var tokenNames = [...]string{
 	WHILE:         "while",
 }
 
+// A FilePortion describes the content of a portion of a file.
+// Callers may provide a FilePortion for the src argument of Parse
+// when the desired initial line and column numbers are not (1, 1),
+// such as when an expression is parsed from within larger file.
+type FilePortion struct {
+	Content             []byte
+	FirstLine, FirstCol int32
+}
+
 // A Position describes the location of a rune of input.
 type Position struct {
 	file *string // filename (indirect for compactness)
@@ -249,13 +259,17 @@ type scanner struct {
 }
 
 func newScanner(filename string, src interface{}, keepComments bool) (*scanner, error) {
+	var firstLine, firstCol int32 = 1, 1
+	if portion, ok := src.(FilePortion); ok {
+		firstLine, firstCol = portion.FirstLine, portion.FirstCol
+	}
 	sc := &scanner{
-		pos:          Position{file: &filename, Line: 1, Col: 1},
+		pos:          MakePosition(&filename, firstLine, firstCol),
 		indentstk:    make([]int, 1, 10), // []int{0} + spare capacity
 		lineStart:    true,
 		keepComments: keepComments,
 	}
-	sc.readline, _ = src.(func() ([]byte, error)) // REPL only
+	sc.readline, _ = src.(func() ([]byte, error)) // ParseCompoundStmt (REPL) only
 	if sc.readline == nil {
 		data, err := readSource(filename, src)
 		if err != nil {
@@ -279,6 +293,8 @@ func readSource(filename string, src interface{}) ([]byte, error) {
 			return nil, err
 		}
 		return data, nil
+	case FilePortion:
+		return src.Content, nil
 	case nil:
 		return ioutil.ReadFile(filename)
 	default:
@@ -407,7 +423,7 @@ type tokenValue struct {
 	int    int64    // decoded int
 	bigInt *big.Int // decoded integers > int64
 	float  float64  // decoded float
-	string string   // decoded string
+	string string   // decoded string or bytes
 	pos    Position // start position of token
 }
 
@@ -627,8 +643,15 @@ start:
 
 	// identifier or keyword
 	if isIdentStart(c) {
-		// raw string literal
-		if c == 'r' && len(sc.rest) > 1 && (sc.rest[1] == '"' || sc.rest[1] == '\'') {
+		if (c == 'r' || c == 'b') && len(sc.rest) > 1 && (sc.rest[1] == '"' || sc.rest[1] == '\'') {
+			//  r"..."
+			//  b"..."
+			sc.readRune()
+			c = sc.peekRune()
+			return sc.scanString(val, c)
+		} else if c == 'r' && len(sc.rest) > 2 && sc.rest[1] == 'b' && (sc.rest[2] == '"' || sc.rest[2] == '\'') {
+			// rb"..."
+			sc.readRune()
 			sc.readRune()
 			c = sc.peekRune()
 			return sc.scanString(val, c)
@@ -872,12 +895,16 @@ func (sc *scanner) scanString(val *tokenValue, quote rune) Token {
 	}
 	val.raw = raw.String()
 
-	s, _, err := unquote(val.raw)
+	s, _, isByte, err := unquote(val.raw)
 	if err != nil {
 		sc.error(start, err.Error())
 	}
 	val.string = s
-	return STRING
+	if isByte {
+		return BYTES
+	} else {
+		return STRING
+	}
 }
 
 func (sc *scanner) scanNumber(val *tokenValue, c rune) Token {
