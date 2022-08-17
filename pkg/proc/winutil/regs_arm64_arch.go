@@ -171,6 +171,12 @@ func (ctx *ARM64CONTEXT) SetReg(regNum uint64, reg *op.DwarfRegister) error {
 		case regNum >= regnum.ARM64_X0 && regNum <= regnum.ARM64_X0+30:
 			ctx.Regs[regNum-regnum.ARM64_X0] = reg.Uint64Val
 			return nil
+
+		case regNum >= regnum.ARM64_V0 && regNum <= regnum.ARM64_V0+30:
+			i := regNum - regnum.ARM64_V0
+			ctx.FloatRegisters[i].Low = reg.Uint64Val
+			ctx.FloatRegisters[i].High = 0
+			return nil
 		default:
 			return fmt.Errorf("changing register %d not implemented", regNum)
 		}
