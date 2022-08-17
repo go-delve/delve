@@ -33,3 +33,12 @@ The [available commands](dlv.md) can be grouped into the following categories:
    * [dlv version](dlv_version.md)
 
 The above list may be incomplete. Refer to the auto-generated [complete usage document](dlv.md) to further explore all available commands.
+
+## Environment variables
+
+Delve also reads the following environment variables:
+
+* `$DELVE_EDITOR` is used by the `edit` command (if it isn't set the `$EDITOR` variable is used instead)
+* `$DELVE_PAGER` is used by commands that emit large output (if it isn't set the `$PAGER` variable is used instead, if neither is set `more` is used)
+* `$TERM` is used to decide whether or not ANSI escape codes should be used for colorized output
+* `$DELVE_DEBUGSERVER_PATH` is used to locate the debugserver executable on macOS

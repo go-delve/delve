@@ -3,7 +3,6 @@ package terminal
 //lint:file-ignore ST1005 errors here can be capitalized
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"net/rpc"
@@ -101,12 +100,12 @@ func New(client service.Client, conf *config.Config) *Term {
 		prompt: "(dlv) ",
 		line:   liner.NewLiner(),
 		cmds:   cmds,
-		stdout: &transcriptWriter{w: os.Stdout},
+		stdout: &transcriptWriter{pw: &pagingWriter{w: os.Stdout}},
 	}
 	t.line.SetCtrlZStop(true)
 
 	if strings.ToLower(os.Getenv("TERM")) != "dumb" {
-		t.stdout.w = getColorableWriter()
+		t.stdout.pw = &pagingWriter{w: getColorableWriter()}
 		t.stdout.colorEscapes = make(map[colorize.Style]string)
 		t.stdout.colorEscapes[colorize.NormalStyle] = terminalResetEscapeCode
 		wd := func(s string, defaultCode int) string {
@@ -354,6 +353,7 @@ func (t *Term) Run() (int, error) {
 		}
 
 		t.stdout.Flush()
+		t.stdout.pw.Reset()
 	}
 }
 
@@ -580,88 +580,11 @@ func (t *Term) longCommandCanceled() bool {
 
 // RedirectTo redirects the output of this terminal to the specified writer.
 func (t *Term) RedirectTo(w io.Writer) {
-	t.stdout.w = w
+	t.stdout.pw.w = w
 }
 
 // isErrProcessExited returns true if `err` is an RPC error equivalent of proc.ErrProcessExited
 func isErrProcessExited(err error) bool {
 	rpcError, ok := err.(rpc.ServerError)
 	return ok && strings.Contains(rpcError.Error(), "has exited with status")
-}
-
-// transcriptWriter writes to a io.Writer and also, optionally, to a
-// buffered file.
-type transcriptWriter struct {
-	fileOnly     bool
-	w            io.Writer
-	file         *bufio.Writer
-	fh           io.Closer
-	colorEscapes map[colorize.Style]string
-}
-
-func (w *transcriptWriter) Write(p []byte) (nn int, err error) {
-	if !w.fileOnly {
-		nn, err = w.w.Write(p)
-	}
-	if err == nil {
-		if w.file != nil {
-			return w.file.Write(p)
-		}
-	}
-	return
-}
-
-// ColorizePrint prints to out a syntax highlighted version of the text read from
-// reader, between lines startLine and endLine.
-func (w *transcriptWriter) ColorizePrint(path string, reader io.ReadSeeker, startLine, endLine, arrowLine int) error {
-	var err error
-	if !w.fileOnly {
-		err = colorize.Print(w.w, path, reader, startLine, endLine, arrowLine, w.colorEscapes)
-	}
-	if err == nil {
-		if w.file != nil {
-			reader.Seek(0, io.SeekStart)
-			return colorize.Print(w.file, path, reader, startLine, endLine, arrowLine, nil)
-		}
-	}
-	return err
-}
-
-// Echo outputs str only to the optional transcript file.
-func (w *transcriptWriter) Echo(str string) {
-	if w.file != nil {
-		w.file.WriteString(str)
-	}
-}
-
-// Flush flushes the optional transcript file.
-func (w *transcriptWriter) Flush() {
-	if w.file != nil {
-		w.file.Flush()
-	}
-}
-
-// CloseTranscript closes the optional transcript file.
-func (w *transcriptWriter) CloseTranscript() error {
-	if w.file == nil {
-		return nil
-	}
-	w.file.Flush()
-	w.fileOnly = false
-	err := w.fh.Close()
-	w.file = nil
-	w.fh = nil
-	return err
-}
-
-// TranscribeTo starts transcribing the output to the specified file. If
-// fileOnly is true the output will only go to the file, output to the
-// io.Writer will be suppressed.
-func (w *transcriptWriter) TranscribeTo(fh io.WriteCloser, fileOnly bool) {
-	if w.file == nil {
-		w.CloseTranscript()
-	}
-	w.fh = fh
-	w.file = bufio.NewWriter(fh)
-	w.fileOnly = fileOnly
 }
