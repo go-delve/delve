@@ -13,6 +13,9 @@ import (
 )
 
 var arm64BreakInstruction = []byte{0x0, 0x0, 0x20, 0xd4}
+
+// Windows ARM64 expects a breakpoint to be compiled to the instruction BRK #0xF000.
+// See go.dev/issues/53837.
 var arm64WindowsBreakInstruction = []byte{0x0, 0x0, 0x3e, 0xd4}
 
 // ARM64Arch returns an initialized ARM64
