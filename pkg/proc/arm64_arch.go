@@ -112,7 +112,7 @@ func arm64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Binary
 	if a.crosscall2fn != nil && pc >= a.crosscall2fn.Entry && pc < a.crosscall2fn.End {
 		rule := fctxt.CFA
 		if rule.Offset == crosscall2SPOffsetBad {
-			rule.Offset += crosscall2SPOffsetNonWindows
+			rule.Offset += crosscall2SPOffset
 		}
 		fctxt.CFA = rule
 	}

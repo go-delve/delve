@@ -149,7 +149,7 @@ func nameToDwarfFunc(n2d map[string]int) func(string) (int, bool) {
 
 // crosscall2 is defined in $GOROOT/src/runtime/cgo/asm_amd64.s.
 const (
-	crosscall2SPOffsetBad        = 0x8
-	crosscall2SPOffsetWindows    = 0x118
-	crosscall2SPOffsetNonWindows = 0x58
+	crosscall2SPOffsetBad          = 0x8
+	crosscall2SPOffsetWindowsAMD64 = 0x118
+	crosscall2SPOffset             = 0x58
 )
