@@ -9,8 +9,20 @@ func newContext() *winutil.ARM64CONTEXT {
 	return winutil.NewARM64CONTEXT()
 }
 
-func newRegisters(context *winutil.ARM64CONTEXT, TebBaseAddress uint64) *winutil.ARM64Registers {
-	return winutil.NewARM64Registers(context, TebBaseAddress)
+func registers(t *nativeThread) (proc.Registers, error) {
+	context := newContext()
+
+	context.SetFlags(_CONTEXT_ALL)
+	err := t.getContext(context)
+	if err != nil {
+		return nil, err
+	}
+
+	return winutil.NewARM64Registers(context, t.dbp.iscgo), nil
+}
+
+func newRegisters(context *winutil.ARM64CONTEXT, TebBaseAddress uint64, iscgo bool) *winutil.ARM64Registers {
+	return winutil.NewARM64Registers(context, iscgo)
 }
 
 func (t *nativeThread) setContext(context *winutil.ARM64CONTEXT) error {

@@ -438,8 +438,15 @@ func getGVariable(thread Thread) (*Variable, error) {
 
 	gaddr, hasgaddr := regs.GAddr()
 	if !hasgaddr {
-		var err error
-		gaddr, err = readUintRaw(thread.ProcessMemory(), regs.TLS()+thread.BinInfo().GStructOffset(), int64(thread.BinInfo().Arch.PtrSize()))
+		offset := thread.BinInfo().GStructOffset()
+		if thread.BinInfo().Arch.DerefGStructOffset() {
+			var err error
+			offset, err = readUintRaw(thread.ProcessMemory(), offset, int64(thread.BinInfo().Arch.PtrSize()))
+			if err != nil {
+				return nil, err
+			}
+		}
+		gaddr, err = readUintRaw(thread.ProcessMemory(), regs.TLS()+offset, int64(thread.BinInfo().Arch.PtrSize()))
 		if err != nil {
 			return nil, err
 		}

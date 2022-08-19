@@ -19,6 +19,7 @@ type Arch struct {
 	altBreakpointInstruction []byte
 	breakInstrMovesPC        bool
 	derefTLS                 bool
+	derefGStructOffset       bool
 	usesLR                   bool // architecture uses a link register, also called RA on some architectures
 	PCRegNum                 uint64
 	SPRegNum                 uint64
@@ -119,6 +120,12 @@ func (a *Arch) BreakpointSize() int {
 // and the address must be dereferenced to find to actual G struct.
 func (a *Arch) DerefTLS() bool {
 	return a.derefTLS
+}
+
+// DerefGStructOffset is true if the G struct offset from the the TLS section is a pointer
+// and the address must be dereferenced to find to actual G struct offset.
+func (a *Arch) DerefGStructOffset() bool {
+	return a.derefGStructOffset
 }
 
 // getAsmRegister returns the value of the asm register asmreg using the asmRegisters table of arch.

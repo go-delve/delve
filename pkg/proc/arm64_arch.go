@@ -34,6 +34,7 @@ func ARM64Arch(goos string) *Arch {
 		breakpointInstruction:            brk,
 		breakInstrMovesPC:                goos == "windows",
 		derefTLS:                         false,
+		derefGStructOffset:               goos == "windows",
 		prologues:                        prologuesARM64,
 		fixFrameUnwindContext:            arm64FixFrameUnwindContext,
 		switchStack:                      arm64SwitchStack,

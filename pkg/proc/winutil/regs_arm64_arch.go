@@ -24,8 +24,8 @@ type neon128 struct {
 
 // ARM64Registers represents CPU registers on an ARM64 processor.
 type ARM64Registers struct {
+	iscgo          bool
 	Regs           [31]uint64
-	tls            uint64
 	Sp             uint64
 	Pc             uint64
 	FloatRegisters [32]neon128
@@ -38,12 +38,11 @@ type ARM64Registers struct {
 	Context        *ARM64CONTEXT
 }
 
-// NewARM64Registers creates a new ARM64Registers struct from a CONTEXT
-// struct and the TEB base address of the thread.
-func NewARM64Registers(context *ARM64CONTEXT, TebBaseAddress uint64) *ARM64Registers {
+// NewARM64Registers creates a new ARM64Registers struct from a CONTEXT.
+func NewARM64Registers(context *ARM64CONTEXT, iscgo bool) *ARM64Registers {
 	regs := &ARM64Registers{
+		iscgo:          iscgo,
 		Regs:           context.Regs,
-		tls:            TebBaseAddress,
 		Sp:             context.Sp,
 		Pc:             context.Pc,
 		FloatRegisters: context.FloatRegisters,
@@ -96,13 +95,16 @@ func (r *ARM64Registers) BP() uint64 {
 
 // TLS returns the address of the thread local storage memory segment.
 func (r *ARM64Registers) TLS() uint64 {
-	return r.tls
+	if !r.iscgo {
+		return 0
+	}
+	return r.Regs[18]
 }
 
 // GAddr returns the address of the G variable if it is known, 0 and false
 // otherwise.
 func (r *ARM64Registers) GAddr() (uint64, bool) {
-	return r.Regs[28], true
+	return r.Regs[28], !r.iscgo
 }
 
 // LR returns the link register.
