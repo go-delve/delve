@@ -7,7 +7,11 @@
 #elif __i386__
 #define BREAKPOINT asm("int3;")
 #elif __aarch64__
+#ifdef WIN32
+#define BREAKPOINT asm("brk 0xF000;")
+#else
 #define BREAKPOINT asm("brk 0;")
+#endif
 #endif
 
 #define N 100
