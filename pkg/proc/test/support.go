@@ -82,6 +82,13 @@ const (
 	LinkDisableDWARF
 )
 
+// TempFile makes a (good enough) random temporary file name
+func TempFile(name string) string {
+	r := make([]byte, 4)
+	rand.Read(r)
+	return filepath.Join(os.TempDir(), fmt.Sprintf("%s.%s", name, hex.EncodeToString(r)))
+}
+
 // BuildFixture will compile the fixture 'name' using the provided build flags.
 func BuildFixture(name string, flags BuildFlags) Fixture {
 	if !runningWithFixtures {
@@ -100,9 +107,6 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 
 	fixturesDir := FindFixturesDir()
 
-	// Make a (good enough) random temporary file name
-	r := make([]byte, 4)
-	rand.Read(r)
 	dir := fixturesDir
 	path := filepath.Join(fixturesDir, name+".go")
 	if name[len(name)-1] == '/' {
@@ -110,7 +114,7 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 		path = ""
 		name = name[:len(name)-1]
 	}
-	tmpfile := filepath.Join(os.TempDir(), fmt.Sprintf("%s.%s", name, hex.EncodeToString(r)))
+	tmpfile := TempFile(name)
 
 	buildFlags := []string{"build"}
 	var ver goversion.GoVersion
