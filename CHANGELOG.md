@@ -1,16 +1,48 @@
-
 # Changelog
 
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
-## [1.9.0] 2022-07-06
+## [1.9.1] 2022-08-23
+
 ### Added
+
+- Add support for empty string in substitutePath (@RuijieC-dev)
+- Support gnu_debuglink section (@aarzilli)
+- Support exact matches in SubstitutePath (@eandre)
+- Add ability to show disassembly instead of source code (@aazilli)
+- Add -per-g-hitcount to breakpoint conditions (@yangxikun)
+
+### Fixed
+
+- Ensure breakpoint map exists (@aarzilli)
+- Use standard library to compute CRC for gnu_debuglink section (@aarzilli)
+- Fix command to download Go version in CI (@derekparker)
+- Do not panic reading bad G struct (@aarzilli)
+- Fix parsing DWARFv5 file table (@derekparker)
+- Improve trace subcommand output (@derekparker)
+- Fix documentation for examinemem (@aaarzilli)
+- Fix step instruction on 1 byte instruction with software breakpoint (@qmuntal)
+- Fix handling of function entry / return in ebpf tracing backend (@derekparker)
+- Fix size of ebpf type for fn_addr (@derekparker)
+
+### Changed
+
+- Send large terminal output to pager (@aarzilli)
+- Refactor windows backend framework (@qmuntal)
+- Complete the dropping of CGO dependency for ebpf backend (@aarzilli)
+- Limit disassembly range in DAP backend (@aarzilli)
+
+## [1.9.0] 2022-07-06
+
+### Added
+
 - Support for Go 1.19 (#3038, #3031, #3009, @aarzilli)
 - Autocomplete for local variables (#3004, @pippolo84)
 - Support for function call injection on arm64 (#2996, @aarzilli)
 
 ### Fixed
+
 - Ctrl-C handling on Windows (#3039, @aarzilli)
 - Expressions accessing maps with string literals (#3036, @aarzilli)
 - Occasional crash caused by race between manual stop and normal stop on macOS (#3021, @aarzilli)
