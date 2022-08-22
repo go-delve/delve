@@ -20,6 +20,12 @@ import (
 	isatty "github.com/mattn/go-isatty"
 )
 
+const (
+	_PL_FLAG_BORN   = 0x100
+	_PL_FLAG_EXITED = 0x200
+	_PL_FLAG_SI     = 0x20
+)
+
 // Process statuses
 const (
 	statusIdle     = 1
@@ -247,14 +253,14 @@ func (dbp *nativeProcess) trapWaitInternal(pid int, halt bool) (*nativeThread, e
 		}
 
 		if status.StopSignal() == sys.SIGTRAP {
-			if pl_flags&sys.PL_FLAG_EXITED != 0 {
+			if pl_flags&_PL_FLAG_EXITED != 0 {
 				delete(dbp.threads, tid)
 				dbp.execPtraceFunc(func() { err = ptraceCont(tid, 0) })
 				if err != nil {
 					return nil, err
 				}
 				continue
-			} else if pl_flags&sys.PL_FLAG_BORN != 0 {
+			} else if pl_flags&_PL_FLAG_BORN != 0 {
 				th, err = dbp.addThread(int(tid), false)
 				if err != nil {
 					if err == sys.ESRCH {

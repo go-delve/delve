@@ -9,7 +9,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"math"
 	"math/big"
 	"sort"
 	"strings"
@@ -48,6 +47,10 @@ type Thread struct {
 	// See example_test.go for some example implementations of Load.
 	Load func(thread *Thread, module string) (StringDict, error)
 
+	// OnMaxSteps is called when the thread reaches the limit set by SetMaxExecutionSteps.
+	// The default behavior is to call thread.Cancel("too many steps").
+	OnMaxSteps func(thread *Thread)
+
 	// steps counts abstract computation steps executed by this thread.
 	steps, maxSteps uint64
 
@@ -75,7 +78,8 @@ func (thread *Thread) ExecutionSteps() uint64 {
 // SetMaxExecutionSteps sets a limit on the number of Starlark
 // computation steps that may be executed by this thread. If the
 // thread's step counter exceeds this limit, the interpreter calls
-// thread.Cancel("too many steps").
+// the optional OnMaxSteps function or the default behavior
+// of calling thread.Cancel("too many steps").
 func (thread *Thread) SetMaxExecutionSteps(max uint64) {
 	thread.maxSteps = max
 }
@@ -218,7 +222,9 @@ func (stack *CallStack) Pop() CallFrame {
 // String returns a user-friendly description of the stack.
 func (stack CallStack) String() string {
 	out := new(strings.Builder)
-	fmt.Fprintf(out, "Traceback (most recent call last):\n")
+	if len(stack) > 0 {
+		fmt.Fprintf(out, "Traceback (most recent call last):\n")
+	}
 	for _, fr := range stack {
 		fmt.Fprintf(out, "  %s: in %s\n", fr.Pos, fr.Name)
 	}
@@ -260,7 +266,15 @@ func (e *EvalError) Error() string { return e.Msg }
 // Backtrace returns a user-friendly error message describing the stack
 // of calls that led to this error.
 func (e *EvalError) Backtrace() string {
-	return fmt.Sprintf("%sError: %s", e.CallStack, e.Msg)
+	// If the topmost stack frame is a built-in function,
+	// remove it from the stack and add print "Error in fn:".
+	stack := e.CallStack
+	suffix := ""
+	if last := len(stack) - 1; last >= 0 && stack[last].Pos.Filename() == builtinFilename {
+		suffix = " in " + stack[last].Name
+		stack = stack[:last]
+	}
+	return fmt.Sprintf("%sError%s: %s", stack, suffix, e.Msg)
 }
 
 func (e *EvalError) Unwrap() error { return e.cause }
@@ -469,6 +483,8 @@ func makeToplevelFunction(prog *compile.Program, predeclared StringDict) *Functi
 			v = MakeBigInt(c)
 		case string:
 			v = String(c)
+		case compile.Bytes:
+			v = Bytes(c)
 		case float64:
 			v = Float(c)
 		default:
@@ -714,14 +730,22 @@ func Binary(op syntax.Token, x, y Value) (Value, error) {
 			case Int:
 				return x.Add(y), nil
 			case Float:
-				return x.Float() + y, nil
+				xf, err := x.finiteFloat()
+				if err != nil {
+					return nil, err
+				}
+				return xf + y, nil
 			}
 		case Float:
 			switch y := y.(type) {
 			case Float:
 				return x + y, nil
 			case Int:
-				return x + y.Float(), nil
+				yf, err := y.finiteFloat()
+				if err != nil {
+					return nil, err
+				}
+				return x + yf, nil
 			}
 		case *List:
 			if y, ok := y.(*List); ok {
@@ -746,14 +770,22 @@ func Binary(op syntax.Token, x, y Value) (Value, error) {
 			case Int:
 				return x.Sub(y), nil
 			case Float:
-				return x.Float() - y, nil
+				xf, err := x.finiteFloat()
+				if err != nil {
+					return nil, err
+				}
+				return xf - y, nil
 			}
 		case Float:
 			switch y := y.(type) {
 			case Float:
 				return x - y, nil
 			case Int:
-				return x - y.Float(), nil
+				yf, err := y.finiteFloat()
+				if err != nil {
+					return nil, err
+				}
+				return x - yf, nil
 			}
 		}
 
@@ -764,9 +796,15 @@ func Binary(op syntax.Token, x, y Value) (Value, error) {
 			case Int:
 				return x.Mul(y), nil
 			case Float:
-				return x.Float() * y, nil
+				xf, err := x.finiteFloat()
+				if err != nil {
+					return nil, err
+				}
+				return xf * y, nil
 			case String:
 				return stringRepeat(y, x)
+			case Bytes:
+				return bytesRepeat(y, x)
 			case *List:
 				elems, err := tupleRepeat(Tuple(y.elems), x)
 				if err != nil {
@@ -781,11 +819,19 @@ func Binary(op syntax.Token, x, y Value) (Value, error) {
 			case Float:
 				return x * y, nil
 			case Int:
-				return x * y.Float(), nil
+				yf, err := y.finiteFloat()
+				if err != nil {
+					return nil, err
+				}
+				return x * yf, nil
 			}
 		case String:
 			if y, ok := y.(Int); ok {
 				return stringRepeat(x, y)
+			}
+		case Bytes:
+			if y, ok := y.(Int); ok {
+				return bytesRepeat(x, y)
 			}
 		case *List:
 			if y, ok := y.(Int); ok {
@@ -805,30 +851,40 @@ func Binary(op syntax.Token, x, y Value) (Value, error) {
 	case syntax.SLASH:
 		switch x := x.(type) {
 		case Int:
+			xf, err := x.finiteFloat()
+			if err != nil {
+				return nil, err
+			}
 			switch y := y.(type) {
 			case Int:
-				yf := y.Float()
-				if yf == 0.0 {
-					return nil, fmt.Errorf("real division by zero")
+				yf, err := y.finiteFloat()
+				if err != nil {
+					return nil, err
 				}
-				return x.Float() / yf, nil
+				if yf == 0.0 {
+					return nil, fmt.Errorf("floating-point division by zero")
+				}
+				return xf / yf, nil
 			case Float:
 				if y == 0.0 {
-					return nil, fmt.Errorf("real division by zero")
+					return nil, fmt.Errorf("floating-point division by zero")
 				}
-				return x.Float() / y, nil
+				return xf / y, nil
 			}
 		case Float:
 			switch y := y.(type) {
 			case Float:
 				if y == 0.0 {
-					return nil, fmt.Errorf("real division by zero")
+					return nil, fmt.Errorf("floating-point division by zero")
 				}
 				return x / y, nil
 			case Int:
-				yf := y.Float()
+				yf, err := y.finiteFloat()
+				if err != nil {
+					return nil, err
+				}
 				if yf == 0.0 {
-					return nil, fmt.Errorf("real division by zero")
+					return nil, fmt.Errorf("floating-point division by zero")
 				}
 				return x / yf, nil
 			}
@@ -844,10 +900,14 @@ func Binary(op syntax.Token, x, y Value) (Value, error) {
 				}
 				return x.Div(y), nil
 			case Float:
+				xf, err := x.finiteFloat()
+				if err != nil {
+					return nil, err
+				}
 				if y == 0.0 {
 					return nil, fmt.Errorf("floored division by zero")
 				}
-				return floor((x.Float() / y)), nil
+				return floor(xf / y), nil
 			}
 		case Float:
 			switch y := y.(type) {
@@ -857,7 +917,10 @@ func Binary(op syntax.Token, x, y Value) (Value, error) {
 				}
 				return floor(x / y), nil
 			case Int:
-				yf := y.Float()
+				yf, err := y.finiteFloat()
+				if err != nil {
+					return nil, err
+				}
 				if yf == 0.0 {
 					return nil, fmt.Errorf("floored division by zero")
 				}
@@ -875,23 +938,31 @@ func Binary(op syntax.Token, x, y Value) (Value, error) {
 				}
 				return x.Mod(y), nil
 			case Float:
-				if y == 0 {
-					return nil, fmt.Errorf("float modulo by zero")
+				xf, err := x.finiteFloat()
+				if err != nil {
+					return nil, err
 				}
-				return x.Float().Mod(y), nil
+				if y == 0 {
+					return nil, fmt.Errorf("floating-point modulo by zero")
+				}
+				return xf.Mod(y), nil
 			}
 		case Float:
 			switch y := y.(type) {
 			case Float:
 				if y == 0.0 {
-					return nil, fmt.Errorf("float modulo by zero")
+					return nil, fmt.Errorf("floating-point modulo by zero")
 				}
-				return Float(math.Mod(float64(x), float64(y))), nil
+				return x.Mod(y), nil
 			case Int:
 				if y.Sign() == 0 {
-					return nil, fmt.Errorf("float modulo by zero")
+					return nil, fmt.Errorf("floating-point modulo by zero")
 				}
-				return x.Mod(y.Float()), nil
+				yf, err := y.finiteFloat()
+				if err != nil {
+					return nil, err
+				}
+				return x.Mod(yf), nil
 			}
 		case String:
 			return interpolate(string(x), y)
@@ -938,6 +1009,19 @@ func Binary(op syntax.Token, x, y Value) (Value, error) {
 				return nil, fmt.Errorf("'in <string>' requires string as left operand, not %s", x.Type())
 			}
 			return Bool(strings.Contains(string(y), string(needle))), nil
+		case Bytes:
+			switch needle := x.(type) {
+			case Bytes:
+				return Bool(strings.Contains(string(y), string(needle))), nil
+			case Int:
+				var b byte
+				if err := AsInt(needle, &b); err != nil {
+					return nil, fmt.Errorf("int in bytes: %s", err)
+				}
+				return Bool(strings.IndexByte(string(y), b) >= 0), nil
+			default:
+				return nil, fmt.Errorf("'in bytes' requires bytes or int as left operand, not %s", x.Type())
+			}
 		case rangeValue:
 			i, err := NumberToInt(x)
 			if err != nil {
@@ -1080,6 +1164,11 @@ func tupleRepeat(elems Tuple, n Int) (Tuple, error) {
 	return res, nil
 }
 
+func bytesRepeat(b Bytes, n Int) (Bytes, error) {
+	res, err := stringRepeat(String(b), n)
+	return Bytes(res), err
+}
+
 func stringRepeat(s String, n Int) (String, error) {
 	if s == "" {
 		return "", nil
@@ -1163,7 +1252,7 @@ func slice(x, lo, hi, step_ Value) (Value, error) {
 		var err error
 		step, err = AsInt32(step_)
 		if err != nil {
-			return nil, fmt.Errorf("got %s for slice step, want int", step_.Type())
+			return nil, fmt.Errorf("invalid slice step: %s", err)
 		}
 		if step == 0 {
 			return nil, fmt.Errorf("zero is not a valid slice step")
@@ -1257,7 +1346,7 @@ func asIndex(v Value, len int, result *int) error {
 		var err error
 		*result, err = AsInt32(v)
 		if err != nil {
-			return fmt.Errorf("got %s, want int", v.Type())
+			return err
 		}
 		if *result < 0 {
 			*result += len
@@ -1498,20 +1587,7 @@ func interpolate(format string, x Value) (Value, error) {
 			if !ok {
 				return nil, fmt.Errorf("%%%c format requires float, not %s", c, arg.Type())
 			}
-			switch c {
-			case 'e':
-				fmt.Fprintf(buf, "%e", f)
-			case 'f':
-				fmt.Fprintf(buf, "%f", f)
-			case 'g':
-				fmt.Fprintf(buf, "%g", f)
-			case 'E':
-				fmt.Fprintf(buf, "%E", f)
-			case 'F':
-				fmt.Fprintf(buf, "%F", f)
-			case 'G':
-				fmt.Fprintf(buf, "%G", f)
-			}
+			Float(f).format(buf, c)
 		case 'c':
 			switch arg := arg.(type) {
 			case Int:

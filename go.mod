@@ -16,9 +16,9 @@ require (
 	github.com/sirupsen/logrus v1.6.0
 	github.com/spf13/cobra v1.1.3
 	github.com/stretchr/testify v1.7.0 // indirect
-	go.starlark.net v0.0.0-20200821142938-949cc6f4b097
+	go.starlark.net v0.0.0-20220816155156-cfacd8902214
 	golang.org/x/arch v0.0.0-20190927153633-4e8777c89be4
-	golang.org/x/sys v0.0.0-20211117180635-dee7805ff2e1
+	golang.org/x/sys v0.0.0-20220811171246-fbc7d0a398ab
 	golang.org/x/tools v0.1.11
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	gopkg.in/yaml.v2 v2.4.0

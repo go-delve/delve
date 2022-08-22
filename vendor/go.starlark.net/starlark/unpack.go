@@ -8,6 +8,8 @@ import (
 	"log"
 	"reflect"
 	"strings"
+
+	"go.starlark.net/internal/spell"
 )
 
 // An Unpacker defines custom argument unpacking behavior.
@@ -20,12 +22,18 @@ type Unpacker interface {
 // supplied parameter variables.  pairs is an alternating list of names
 // and pointers to variables.
 //
-// If the variable is a bool, int, string, *List, *Dict, Callable,
+// If the variable is a bool, integer, string, *List, *Dict, Callable,
 // Iterable, or user-defined implementation of Value,
 // UnpackArgs performs the appropriate type check.
-// An int uses the AsInt32 check.
-// If the parameter name ends with "?",
-// it and all following parameters are optional.
+// Predeclared Go integer types uses the AsInt check.
+//
+// If the parameter name ends with "?", it is optional.
+//
+// If the parameter name ends with "??", it is optional and treats the None value
+// as if the argument was absent.
+//
+// If a parameter is marked optional, then all following parameters are
+// implicitly optional where or not they are marked.
 //
 // If the variable implements Unpacker, its Unpack argument
 // is called with the argument value, allowing an application
@@ -87,12 +95,16 @@ func UnpackArgs(fnname string, args Tuple, kwargs []Tuple, pairs ...interface{})
 	var defined intset
 	defined.init(nparams)
 
-	paramName := func(x interface{}) string { // (no free variables)
-		name := x.(string)
-		if name[len(name)-1] == '?' {
+	paramName := func(x interface{}) (name string, skipNone bool) { // (no free variables)
+		name = x.(string)
+		if strings.HasSuffix(name, "??") {
+			name = strings.TrimSuffix(name, "??")
+			skipNone = true
+		} else if name[len(name)-1] == '?' {
 			name = name[:len(name)-1]
 		}
-		return name
+
+		return name, skipNone
 	}
 
 	// positional arguments
@@ -102,8 +114,13 @@ func UnpackArgs(fnname string, args Tuple, kwargs []Tuple, pairs ...interface{})
 	}
 	for i, arg := range args {
 		defined.set(i)
+		name, skipNone := paramName(pairs[2*i])
+		if skipNone {
+			if _, isNone := arg.(NoneType); isNone {
+				continue
+			}
+		}
 		if err := unpackOneArg(arg, pairs[2*i+1]); err != nil {
-			name := paramName(pairs[2*i])
 			return fmt.Errorf("%s: for parameter %s: %s", fnname, name, err)
 		}
 	}
@@ -113,12 +130,20 @@ kwloop:
 	for _, item := range kwargs {
 		name, arg := item[0].(String), item[1]
 		for i := 0; i < nparams; i++ {
-			if paramName(pairs[2*i]) == string(name) {
+			pName, skipNone := paramName(pairs[2*i])
+			if pName == string(name) {
 				// found it
 				if defined.set(i) {
 					return fmt.Errorf("%s: got multiple values for keyword argument %s",
 						fnname, name)
 				}
+
+				if skipNone {
+					if _, isNone := arg.(NoneType); isNone {
+						continue kwloop
+					}
+				}
+
 				ptr := pairs[2*i+1]
 				if err := unpackOneArg(arg, ptr); err != nil {
 					return fmt.Errorf("%s: for parameter %s: %s", fnname, name, err)
@@ -126,7 +151,16 @@ kwloop:
 				continue kwloop
 			}
 		}
-		return fmt.Errorf("%s: unexpected keyword argument %s", fnname, name)
+		err := fmt.Errorf("%s: unexpected keyword argument %s", fnname, name)
+		names := make([]string, 0, nparams)
+		for i := 0; i < nparams; i += 2 {
+			param, _ := paramName(pairs[i])
+			names = append(names, param)
+		}
+		if n := spell.Nearest(string(name), names); n != "" {
+			err = fmt.Errorf("%s (did you mean %s?)", err.Error(), n)
+		}
+		return err
 	}
 
 	// Check that all non-optional parameters are defined.
@@ -199,12 +233,15 @@ func unpackOneArg(v Value, ptr interface{}) error {
 			return fmt.Errorf("got %s, want bool", v.Type())
 		}
 		*ptr = bool(b)
-	case *int:
-		i, err := AsInt32(v)
-		if err != nil {
-			return err
+	case *int, *int8, *int16, *int32, *int64,
+		*uint, *uint8, *uint16, *uint32, *uint64, *uintptr:
+		return AsInt(v, ptr)
+	case *float64:
+		f, ok := v.(Float)
+		if !ok {
+			return fmt.Errorf("got %s, want float", v.Type())
 		}
-		*ptr = i
+		*ptr = float64(f)
 	case **List:
 		list, ok := v.(*List)
 		if !ok {

@@ -89,7 +89,11 @@ loop:
 	for {
 		thread.steps++
 		if thread.steps >= thread.maxSteps {
-			thread.Cancel("too many steps")
+			if thread.OnMaxSteps != nil {
+				thread.OnMaxSteps(thread)
+			} else {
+				thread.Cancel("too many steps")
+			}
 		}
 		if reason := atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&thread.cancelReason))); reason != nil {
 			err = fmt.Errorf("Starlark computation cancelled: %s", *(*string)(reason))
@@ -547,11 +551,9 @@ loop:
 			locals[arg] = stack[sp-1]
 			sp--
 
-		case compile.SETCELL:
-			x := stack[sp-2]
-			y := stack[sp-1]
-			sp -= 2
-			y.(*cell).v = x
+		case compile.SETLOCALCELL:
+			locals[arg].(*cell).v = stack[sp-1]
+			sp--
 
 		case compile.SETGLOBAL:
 			fn.module.globals[arg] = stack[sp-1]
@@ -570,9 +572,23 @@ loop:
 			stack[sp] = fn.freevars[arg]
 			sp++
 
-		case compile.CELL:
-			x := stack[sp-1]
-			stack[sp-1] = x.(*cell).v
+		case compile.LOCALCELL:
+			v := locals[arg].(*cell).v
+			if v == nil {
+				err = fmt.Errorf("local variable %s referenced before assignment", f.Locals[arg].Name)
+				break loop
+			}
+			stack[sp] = v
+			sp++
+
+		case compile.FREECELL:
+			v := fn.freevars[arg].(*cell).v
+			if v == nil {
+				err = fmt.Errorf("local variable %s referenced before assignment", f.Freevars[arg].Name)
+				break loop
+			}
+			stack[sp] = v
+			sp++
 
 		case compile.GLOBAL:
 			x := fn.module.globals[arg]
@@ -641,7 +657,7 @@ func (mandatory) Hash() (uint32, error) { return 0, nil }
 // A cell is a box containing a Value.
 // Local variables marked as cells hold their value indirectly
 // so that they may be shared by outer and inner nested functions.
-// Cells are always accessed using indirect CELL/SETCELL instructions.
+// Cells are always accessed using indirect {FREE,LOCAL,SETLOCAL}CELL instructions.
 // The FreeVars tuple contains only cells.
 // The FREE instruction always yields a cell.
 type cell struct{ v Value }
