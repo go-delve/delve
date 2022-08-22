@@ -33,6 +33,9 @@ func NewGroup(t *Target) *TargetGroup {
 		panic("internal error: target is already part of a group")
 	}
 	t.partOfGroup = true
+	if t.Breakpoints().Logical == nil {
+		t.Breakpoints().Logical = make(map[int]*LogicalBreakpoint)
+	}
 	return &TargetGroup{
 		RecordingManipulation: t.recman,
 		targets:               []*Target{t},

@@ -2817,3 +2817,42 @@ func TestClientServer_SinglelineStringFormattedWithBigInts(t *testing.T) {
 		}
 	})
 }
+
+func TestNonGoDebug(t *testing.T) {
+	// Test that we can at least set breakpoints while debugging a non-go executable.
+	if runtime.GOOS != "linux" {
+		t.Skip()
+	}
+	dir := protest.FindFixturesDir()
+	path := protest.TempFile("testc")
+	cmd := exec.Command("cc", "-g", "-o", path, filepath.Join(dir, "test.c"))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("Error compiling %s: %s\n%s", path, err, out)
+	}
+
+	listener, clientConn := service.ListenerPipe()
+	defer listener.Close()
+
+	server := rpccommon.NewServer(&service.Config{
+		Listener:    listener,
+		ProcessArgs: []string{path},
+		Debugger: debugger.Config{
+			Backend:     testBackend,
+			ExecuteKind: debugger.ExecutingExistingFile,
+		},
+	})
+
+	if err := server.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	client := rpc2.NewClientFromConn(clientConn)
+	defer func() {
+		client.Detach(true)
+	}()
+
+	_, err := client.CreateBreakpoint(&api.Breakpoint{FunctionName: "C.main", Line: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
