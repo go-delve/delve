@@ -438,15 +438,18 @@ func getGVariable(thread Thread) (*Variable, error) {
 
 	gaddr, hasgaddr := regs.GAddr()
 	if !hasgaddr {
-		offset := thread.BinInfo().GStructOffset()
-		if thread.BinInfo().Arch.DerefGStructOffset() {
+		bi := thread.BinInfo()
+		offset := bi.GStructOffset()
+		if bi.GOOS == "windows" && bi.Arch.Name == "arm64" {
+			// The G struct offset from the TLS section is a pointer
+			// and the address must be dereferenced to find to actual G struct offset.
 			var err error
-			offset, err = readUintRaw(thread.ProcessMemory(), offset, int64(thread.BinInfo().Arch.PtrSize()))
+			offset, err = readUintRaw(thread.ProcessMemory(), offset, int64(bi.Arch.PtrSize()))
 			if err != nil {
 				return nil, err
 			}
 		}
-		gaddr, err = readUintRaw(thread.ProcessMemory(), regs.TLS()+offset, int64(thread.BinInfo().Arch.PtrSize()))
+		gaddr, err = readUintRaw(thread.ProcessMemory(), regs.TLS()+offset, int64(bi.Arch.PtrSize()))
 		if err != nil {
 			return nil, err
 		}
