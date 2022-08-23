@@ -359,9 +359,11 @@ func (p *gdbProcess) Connect(conn net.Conn, path string, pid int, debugInfoDirs 
 		// store the MOV instruction.
 		// If the stub doesn't support memory allocation reloadRegisters will
 		// overwrite some existing memory to store the MOV.
-		if addr, err := p.conn.allocMemory(256); err == nil {
-			if _, err := p.conn.writeMemory(addr, p.loadGInstr()); err == nil {
-				p.loadGInstrAddr = addr
+		if ginstr, err := p.loadGInstr(); err == nil {
+			if addr, err := p.conn.allocMemory(256); err == nil {
+				if _, err := p.conn.writeMemory(addr, ginstr); err == nil {
+					p.loadGInstrAddr = addr
+				}
 			}
 		}
 	}
@@ -1553,7 +1555,7 @@ func (t *gdbThread) Blocked() bool {
 // loadGInstr returns the correct MOV instruction for the current
 // OS/architecture that can be executed to load the address of G from an
 // inferior's thread.
-func (p *gdbProcess) loadGInstr() []byte {
+func (p *gdbProcess) loadGInstr() ([]byte, error) {
 	var op []byte
 	switch p.bi.GOOS {
 	case "windows", "darwin", "freebsd":
@@ -1565,10 +1567,14 @@ func (p *gdbProcess) loadGInstr() []byte {
 	default:
 		panic("unsupported operating system attempting to find Goroutine on Thread")
 	}
+	offset, err := p.bi.GStructOffset(p.Memory())
+	if err != nil {
+		return nil, err
+	}
 	buf := &bytes.Buffer{}
 	buf.Write(op)
-	binary.Write(buf, binary.LittleEndian, uint32(p.bi.GStructOffset()))
-	return buf.Bytes()
+	binary.Write(buf, binary.LittleEndian, uint32(offset))
+	return buf.Bytes(), nil
 }
 
 func (p *gdbProcess) MemoryMap() ([]proc.MemoryMapEntry, error) {
@@ -1727,7 +1733,10 @@ func (t *gdbThread) readSomeRegisters(regNames ...string) error {
 // the MOV instruction used to load current G, executes this single
 // instruction and then puts everything back the way it was.
 func (t *gdbThread) reloadGAtPC() error {
-	movinstr := t.p.loadGInstr()
+	movinstr, err := t.p.loadGInstr()
+	if err != nil {
+		return err
+	}
 
 	if t.Blocked() {
 		t.regs.tls = 0
@@ -1760,7 +1769,7 @@ func (t *gdbThread) reloadGAtPC() error {
 	}
 
 	savedcode := make([]byte, len(movinstr))
-	_, err := t.p.ReadMemory(savedcode, pc)
+	_, err = t.p.ReadMemory(savedcode, pc)
 	if err != nil {
 		return err
 	}

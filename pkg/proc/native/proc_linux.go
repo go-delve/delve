@@ -726,8 +726,12 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 		return fmt.Errorf("could not find function: %s", fnName)
 	}
 
+	offset, err := dbp.BinInfo().GStructOffset(dbp.Memory())
+	if err != nil {
+		return err
+	}
 	key := fn.Entry
-	err := dbp.os.ebpf.UpdateArgMap(key, goidOffset, args, dbp.BinInfo().GStructOffset(), false)
+	err = dbp.os.ebpf.UpdateArgMap(key, goidOffset, args, offset, false)
 	if err != nil {
 		return err
 	}
@@ -762,7 +766,7 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 	}
 	addrs = append(addrs, proc.FindDeferReturnCalls(instructions)...)
 	for _, addr := range addrs {
-		err := dbp.os.ebpf.UpdateArgMap(addr, goidOffset, args, dbp.BinInfo().GStructOffset(), true)
+		err := dbp.os.ebpf.UpdateArgMap(addr, goidOffset, args, offset, true)
 		if err != nil {
 			return err
 		}

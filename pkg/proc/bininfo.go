@@ -682,8 +682,18 @@ func loadBinaryInfo(bi *BinaryInfo, image *Image, path string, entryPoint uint64
 
 // GStructOffset returns the offset of the G
 // struct in thread local storage.
-func (bi *BinaryInfo) GStructOffset() uint64 {
-	return bi.gStructOffset
+func (bi *BinaryInfo) GStructOffset(mem MemoryReadWriter) (uint64, error) {
+	offset := bi.gStructOffset
+	if bi.GOOS == "windows" && bi.Arch.Name == "arm64" {
+		// The G struct offset from the TLS section is a pointer
+		// and the address must be dereferenced to find to actual G struct offset.
+		var err error
+		offset, err = readUintRaw(mem, offset, int64(bi.Arch.PtrSize()))
+		if err != nil {
+			return 0, err
+		}
+	}
+	return offset, nil
 }
 
 // LastModified returns the last modified time of the binary.
