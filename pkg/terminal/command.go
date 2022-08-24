@@ -605,7 +605,7 @@ The "note" is arbitrary text that can be used to identify the checkpoint, if it 
 				group:   runCmds,
 				cmdFn:   c.revCmd,
 				helpMsg: `Reverses the execution of the target program for the command specified.
-Currently, only the rev step-instruction command is supported.`,
+Currently, rev next, step, step-instruction and stepout commands are supported.`,
 			})
 	}
 
