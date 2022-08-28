@@ -35,3 +35,4 @@ The following editor plugins for delve are available:
 The following alternative UIs for delve are available:
 
 * [Gdlv](https://github.com/aarzilli/gdlv)
+* [Debugger](https://github.com/emad-elsaid/debugger)
