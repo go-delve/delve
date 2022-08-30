@@ -124,14 +124,14 @@ Type "help" followed by the name of a command for more information about it.`},
 
 	break [name] [locspec]
 
-See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/locspec.md for the syntax of locspec. If locspec is omitted a breakpoint will be set on the current line.
+See Documentation/cli/locspec.md for the syntax of locspec. If locspec is omitted a breakpoint will be set on the current line.
 
 See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"trace", "t"}, group: breakCmds, cmdFn: tracepoint, allowedPrefixes: onPrefix, helpMsg: `Set tracepoint.
 
 	trace [name] [locspec]
 
-A tracepoint is a breakpoint that does not stop the execution of the program, instead when the tracepoint is hit a notification is displayed. See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/locspec.md for the syntax of locspec. If locspec is omitted a tracepoint will be set on the current line.
+A tracepoint is a breakpoint that does not stop the execution of the program, instead when the tracepoint is hit a notification is displayed. See Documentation/cli/locspec.md for the syntax of locspec. If locspec is omitted a tracepoint will be set on the current line.
 
 See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"watch"}, group: breakCmds, cmdFn: watchpoint, helpMsg: `Set watchpoint.
@@ -428,7 +428,7 @@ Executes the specified command (print, args, locals) in the context of the n-th 
 
 	source <path>
 	
-If path ends with the .star extension it will be interpreted as a starlark script. See $GOPATH/src/github.com/go-delve/delve/Documentation/cli/starlark.md for the syntax.
+If path ends with the .star extension it will be interpreted as a starlark script. See Documentation/cli/starlark.md for the syntax.
 
 If path is a single '-' character an interactive starlark interpreter will start instead. Type 'exit' to exit.`},
 		{aliases: []string{"disassemble", "disass"}, cmdFn: disassCommand, helpMsg: `Disassembler.
