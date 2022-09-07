@@ -918,7 +918,21 @@ func (v *Variable) parseG() (*G, error) {
 		}
 	}
 
-	status := loadInt64Maybe("atomicstatus") // +rtype uint32
+	status := uint64(0)
+	if atomicStatus := v.loadFieldNamed("atomicstatus"); atomicStatus != nil {
+		if constant.Val(atomicStatus.Value) != nil {
+			status, _ = constant.Uint64Val(atomicStatus.Value)
+		} else {
+			vv := atomicStatus.fieldVariable("value")
+			if vv == nil {
+				unreadable = true
+			} else {
+				status, _ = constant.Uint64Val(vv.Value)
+			}
+		}
+	} else {
+		unreadable = true
+	}
 
 	if unreadable {
 		return nil, ErrUnreadableG

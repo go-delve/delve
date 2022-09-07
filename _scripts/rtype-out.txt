@@ -27,7 +27,7 @@ type g struct {
 	waitsince int64
 	waitreason waitReason (optional)
 	stack stack
-	atomicstatus uint32
+	atomicstatus anytype
 }
 
 type gobuf struct {
