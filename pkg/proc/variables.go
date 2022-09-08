@@ -833,7 +833,7 @@ var ErrUnreadableG = errors.New("could not read G struct")
 
 func (v *Variable) parseG() (*G, error) {
 	mem := v.mem
-	gaddr := uint64(v.Addr)
+	gaddr := v.Addr
 	_, deref := v.RealType.(*godwarf.PtrType)
 
 	if deref {
