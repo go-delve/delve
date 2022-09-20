@@ -3306,6 +3306,39 @@ func TestLogPoints(t *testing.T) {
 	})
 }
 
+// TestLogPointsShowFullValue tests that log points will not truncate the string value.
+func TestLogPointsShowFullValue(t *testing.T) {
+	runTest(t, "longstrings", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{16},
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 16)
+					bps := []int{19}
+					logMessages := map[int]string{19: "{&s4097}"}
+					client.SetBreakpointsRequestWithArgs(fixture.Source, bps, nil, nil, logMessages)
+					client.ExpectSetBreakpointsResponse(t)
+
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					checkLogMessage(t, client.ExpectOutputEvent(t), 1, "*\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx...+3585 more\"", fixture.Source, 19)
+
+					se := client.ExpectStoppedEvent(t)
+					if se.Body.Reason != "breakpoint" || se.Body.ThreadId != 1 {
+						t.Errorf("got stopped event = %#v, \nwant Reason=\"breakpoint\" ThreadId=1", se)
+					}
+					checkStop(t, client, 1, "main.main", 22)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
 func checkLogMessage(t *testing.T, oe *dap.OutputEvent, goid int, text, path string, line int) {
 	t.Helper()
 	prefix := "> [Go "

@@ -3692,7 +3692,7 @@ func (msg *logMessage) evaluate(s *Session, goid int64) string {
 			evaluated[i] = fmt.Sprintf("{eval err: %e}", err)
 			continue
 		}
-		evaluated[i] = s.convertVariableToString(exprVar)
+		evaluated[i], _ = s.convertVariableWithOpts(exprVar, "", skipRef|showFullValue)
 	}
 	return fmt.Sprintf(msg.format, evaluated...)
 }
