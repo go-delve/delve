@@ -23,7 +23,6 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
-	"time"
 
 	"github.com/cosiner/argv"
 	"github.com/go-delve/delve/pkg/config"
@@ -1076,7 +1075,7 @@ func (t *Term) formatGoroutine(g *api.Goroutine, fgl api.FormatGoroutineLoc) str
 		}
 		fmt.Fprintf(buf, " [%s", wr)
 		if g.WaitSince > 0 {
-			fmt.Fprintf(buf, " %s", time.Since(time.Unix(0, g.WaitSince)).String())
+			fmt.Fprintf(buf, " %d", g.WaitSince)
 		}
 		fmt.Fprintf(buf, "]")
 	}
