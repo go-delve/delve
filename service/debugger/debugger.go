@@ -3,11 +3,15 @@ package debugger
 import (
 	"bytes"
 	"debug/dwarf"
+	"debug/elf"
+	"debug/macho"
+	"debug/pe"
 	"errors"
 	"fmt"
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -2303,4 +2307,56 @@ func noDebugErrorWarning(err error) error {
 		return fmt.Errorf("%s - %s", err.Error(), NoDebugWarning)
 	}
 	return err
+}
+
+func verifyBinaryFormat(exePath string) error {
+	f, err := os.Open(exePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	switch runtime.GOOS {
+	case "windows":
+		// Make sure the binary exists and is an executable file
+		if filepath.Base(exePath) == exePath {
+			if _, err := exec.LookPath(exePath); err != nil {
+				return err
+			}
+		}
+	default:
+		fi, err := f.Stat()
+		if err != nil {
+			return err
+		}
+		if (fi.Mode() & 0111) == 0 {
+			return api.ErrNotExecutable
+		}
+	}
+
+	// check that the binary format is what we expect for the host system
+	var exe interface{ Close() error }
+
+	switch runtime.GOOS {
+	case "darwin":
+		exe, err = macho.NewFile(f)
+	case "linux", "freebsd":
+		exe, err = elf.NewFile(f)
+	case "windows":
+		exe, err = pe.NewFile(f)
+	default:
+		panic("attempting to open file Delve cannot parse")
+	}
+
+	if err != nil {
+		return api.ErrNotExecutable
+	}
+	exe.Close()
+	return nil
+}
+
+var attachErrorMessage = attachErrorMessageDefault
+
+func attachErrorMessageDefault(pid int, err error) error {
+	return fmt.Errorf("could not attach to pid %d: %s", pid, err)
 }
