@@ -2,6 +2,8 @@ package native
 
 import (
 	"errors"
+	"fmt"
+	"unsafe"
 
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/amd64util"
@@ -12,8 +14,22 @@ func newContext() *winutil.AMD64CONTEXT {
 	return winutil.NewAMD64CONTEXT()
 }
 
-func newRegisters(context *winutil.AMD64CONTEXT, TebBaseAddress uint64) *winutil.AMD64Registers {
-	return winutil.NewAMD64Registers(context, TebBaseAddress)
+func registers(t *nativeThread) (proc.Registers, error) {
+	context := newContext()
+
+	context.SetFlags(_CONTEXT_ALL)
+	err := t.getContext(context)
+	if err != nil {
+		return nil, err
+	}
+
+	var threadInfo _THREAD_BASIC_INFORMATION
+	status := _NtQueryInformationThread(t.os.hThread, _ThreadBasicInformation, uintptr(unsafe.Pointer(&threadInfo)), uint32(unsafe.Sizeof(threadInfo)), nil)
+	if !_NT_SUCCESS(status) {
+		return nil, fmt.Errorf("NtQueryInformationThread failed: it returns 0x%x", status)
+	}
+
+	return winutil.NewAMD64Registers(context, uint64(threadInfo.TebBaseAddress)), nil
 }
 
 func (t *nativeThread) setContext(context *winutil.AMD64CONTEXT) error {

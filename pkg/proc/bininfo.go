@@ -137,6 +137,7 @@ var (
 
 	supportedWindowsArch = map[_PEMachine]bool{
 		_IMAGE_FILE_MACHINE_AMD64: true,
+		_IMAGE_FILE_MACHINE_ARM64: true,
 	}
 
 	supportedDarwinArch = map[macho.Cpu]bool{
@@ -681,8 +682,18 @@ func loadBinaryInfo(bi *BinaryInfo, image *Image, path string, entryPoint uint64
 
 // GStructOffset returns the offset of the G
 // struct in thread local storage.
-func (bi *BinaryInfo) GStructOffset() uint64 {
-	return bi.gStructOffset
+func (bi *BinaryInfo) GStructOffset(mem MemoryReadWriter) (uint64, error) {
+	offset := bi.gStructOffset
+	if bi.GOOS == "windows" && bi.Arch.Name == "arm64" {
+		// The G struct offset from the TLS section is a pointer
+		// and the address must be dereferenced to find to actual G struct offset.
+		var err error
+		offset, err = readUintRaw(mem, offset, int64(bi.Arch.PtrSize()))
+		if err != nil {
+			return 0, err
+		}
+	}
+	return offset, nil
 }
 
 // LastModified returns the last modified time of the binary.
@@ -1589,8 +1600,6 @@ func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint
 	if err != nil {
 		return err
 	}
-
-	//TODO(aarzilli): actually test this when Go supports PIE buildmode on Windows.
 	opth := peFile.OptionalHeader.(*pe.OptionalHeader64)
 	if entryPoint != 0 {
 		image.StaticBase = entryPoint - opth.ImageBase
@@ -1618,13 +1627,38 @@ func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint
 	wg.Add(2)
 	go bi.parseDebugFramePE(image, peFile, debugInfoBytes, wg)
 	go bi.loadDebugInfoMaps(image, debugInfoBytes, debugLineBytes, wg, nil)
+	if image.index == 0 {
+		// determine g struct offset only when loading the executable file
+		wg.Add(1)
+		go bi.setGStructOffsetPE(entryPoint, peFile, wg)
+	}
+	return nil
+}
 
+func (bi *BinaryInfo) setGStructOffsetPE(entryPoint uint64, peFile *pe.File, wg *sync.WaitGroup) {
+	defer wg.Done()
+	switch _PEMachine(peFile.Machine) {
+	case _IMAGE_FILE_MACHINE_AMD64:
 	// Use ArbitraryUserPointer (0x28) as pointer to pointer
 	// to G struct per:
 	// https://golang.org/src/runtime/cgo/gcc_windows_amd64.c
-
 	bi.gStructOffset = 0x28
-	return nil
+	case _IMAGE_FILE_MACHINE_ARM64:
+		// Use runtime.tls_g as pointer to offset from R18 to G struct:
+		// https://golang.org/src/runtime/sys_windows_arm64.s:runtime·wintls
+		for _, s := range peFile.Symbols {
+			if s.Name == "runtime.tls_g" {
+				i := int(s.SectionNumber) - 1
+				if 0 <= i && i < len(peFile.Sections) {
+					sect := peFile.Sections[i]
+					if s.Value < sect.VirtualSize {
+						bi.gStructOffset = entryPoint + uint64(sect.VirtualAddress) + uint64(s.Value)
+					}
+				}
+				break
+			}
+		}
+	}
 }
 
 func openExecutablePathPE(path string) (*pe.File, io.Closer, error) {

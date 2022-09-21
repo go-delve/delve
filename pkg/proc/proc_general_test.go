@@ -112,7 +112,9 @@ func TestDwarfVersion(t *testing.T) {
 	// Tests that we correctly read the version of compilation units
 	fixture := protest.BuildFixture("math", 0)
 	bi := NewBinaryInfo(runtime.GOOS, runtime.GOARCH)
-	assertNoError(bi.LoadBinaryInfo(fixture.Path, 0, nil), t, "LoadBinaryInfo")
+	// Use a fake entry point so LoadBinaryInfo does not error in case the binary is PIE.
+	const fakeEntryPoint = 1
+	assertNoError(bi.LoadBinaryInfo(fixture.Path, fakeEntryPoint, nil), t, "LoadBinaryInfo")
 	for _, cu := range bi.Images[0].compileUnits {
 		if cu.Version != 4 {
 			t.Errorf("compile unit %q at %#x has bad version %d", cu.name, cu.entry.Offset, cu.Version)
@@ -127,7 +129,9 @@ func TestRegabiFlagSentinel(t *testing.T) {
 	}
 	fixture := protest.BuildFixture("math", 0)
 	bi := NewBinaryInfo(runtime.GOOS, runtime.GOARCH)
-	assertNoError(bi.LoadBinaryInfo(fixture.Path, 0, nil), t, "LoadBinaryInfo")
+	// Use a fake entry point so LoadBinaryInfo does not error in case the binary is PIE.
+	const fakeEntryPoint = 1
+	assertNoError(bi.LoadBinaryInfo(fixture.Path, fakeEntryPoint, nil), t, "LoadBinaryInfo")
 	if !bi.regabi {
 		t.Errorf("regabi flag not set %s GOEXPERIMENT=%s", runtime.Version(), os.Getenv("GOEXPERIMENT"))
 	}
