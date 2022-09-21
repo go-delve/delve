@@ -7,9 +7,13 @@ import (
 	"syscall"
 )
 
+func init() {
+	attachErrorMessage = attachErrorMessageLinux
+}
+
 //lint:file-ignore ST1005 errors here can be capitalized
 
-func attachErrorMessage(pid int, err error) error {
+func attachErrorMessageLinux(pid int, err error) error {
 	fallbackerr := fmt.Errorf("could not attach to pid %d: %s", pid, err)
 	if serr, ok := err.(syscall.Errno); ok {
 		switch serr {
