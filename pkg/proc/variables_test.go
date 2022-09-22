@@ -805,6 +805,21 @@ func TestEvalExpression(t *testing.T) {
 		// issue #3138 - typecast to *interface{} breaking
 		{`*(*interface {})(uintptr(&iface1))`, false, `interface {}(*main.astruct) *{A: 1, B: 2}`, `interface {}(*main.astruct)…`, "interface {}", nil},
 		{`*(*struct {})(uintptr(&zsvar))`, false, `struct {} {}`, `struct {} {}`, "struct {}", nil},
+
+		// issue #3130 - typecasts that are only valid because of underlying type compatibility
+		{`main.Byte(bytearray[0])`, false, `116`, `116`, "main.Byte", nil},
+		{`uint8(bytetypearray[0])`, false, `116`, `116`, "uint8", nil},
+		{`main.Byte(2)`, false, `2`, `2`, "main.Byte", nil},
+		{`main.String(s1[0])`, false, `"one"`, `"one"`, "main.String", nil},
+		{`string(typedstringvar)`, false, `"blah"`, `"blah"`, "string", nil},
+		{`main.String("test")`, false, `"test"`, `"test"`, "main.String", nil},
+		{`main.astruct(namedA1)`, false, `main.astruct {A: 12, B: 45}`, `main.astruct {A: 12, B: 45}`, "main.astruct", nil},
+		{`main.astructName2(namedA1)`, false, `main.astructName2 {A: 12, B: 45}`, `main.astructName2 {A: 12, B: 45}`, "main.astructName2", nil},
+		{`(*main.Byte)(&bytearray[0])`, false, `(*main.Byte)(…`, `(*main.Byte)(…`, "*main.Byte", nil},
+		{`(*main.String)(&s1[0])`, false, `(*main.String)(…`, `(*main.String)(…`, "*main.String", nil},
+		{`(*string)(&typedstringvar)`, false, `(*string)(…`, `(*string)(…`, "*string", nil},
+		{`(*main.astruct)(&namedA1)`, false, `(*main.astruct)(…`, `(*main.astruct)(…`, "*main.astruct", nil},
+		{`(*main.astructName2)(&namedA1)`, false, `(*main.astructName2)(…`, `(*main.astructName2)(…`, "*main.astructName2", nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())

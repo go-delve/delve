@@ -666,7 +666,7 @@ func newVariable(name string, addr uint64, dwarfType godwarf.Type, bi *BinaryInf
 	case *godwarf.StringType:
 		v.Kind = reflect.String
 		v.stride = 1
-		v.fieldType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 1, Name: "byte"}, BitSize: 8, BitOffset: 0}}
+		v.fieldType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 1, Name: "byte", ReflectKind: reflect.Uint8}, BitSize: 8, BitOffset: 0}}
 		if v.Addr != 0 {
 			v.Base, v.Len, v.Unreadable = readStringInfo(v.mem, v.bi.Arch, v.Addr)
 		}
@@ -1665,7 +1665,7 @@ func (v *Variable) readComplex(size int64) {
 		return
 	}
 
-	ftyp := &godwarf.FloatType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: fs, Name: fmt.Sprintf("float%d", fs)}, BitSize: fs * 8, BitOffset: 0}}
+	ftyp := fakeBasicType("float", int(fs*8))
 
 	realvar := v.newVariable("real", v.Addr, ftyp, v.mem)
 	imagvar := v.newVariable("imaginary", v.Addr+uint64(fs), ftyp, v.mem)
