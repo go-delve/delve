@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -800,6 +801,10 @@ func TestEvalExpression(t *testing.T) {
 
 		// issue #1423 - special typecasts everywhere
 		{`string(byteslice) == "tèst"`, false, `true`, `false`, "", nil},
+
+		// issue #3138 - typecast to *interface{} breaking
+		{`*(*interface {})(uintptr(&iface1))`, false, `interface {}(*main.astruct) *{A: 1, B: 2}`, `interface {}(*main.astruct)…`, "interface {}", nil},
+		{`*(*struct {})(uintptr(&zsvar))`, false, `struct {} {}`, `struct {} {}`, "struct {}", nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())
@@ -815,26 +820,28 @@ func TestEvalExpression(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue() returned an error")
-		for _, tc := range testcases {
-			variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
-			if err != nil && err.Error() == "evaluating methods not supported on this version of Go" {
-				// this type of eval is unsupported with the current version of Go.
-				continue
-			}
-			if tc.err == nil {
-				assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
-				assertVariable(t, variable, tc)
-				variable, err := evalVariableWithCfg(p, tc.name, pshortLoadConfig)
-				assertNoError(err, t, fmt.Sprintf("EvalExpression(%s, pshortLoadConfig) returned an error", tc.name))
-				assertVariable(t, variable, tc.alternateVarTest())
-			} else {
-				if err == nil {
-					t.Fatalf("Expected error %s, got no error (%s)", tc.err.Error(), tc.name)
+		for i, tc := range testcases {
+			t.Run(strconv.Itoa(i), func(t *testing.T) {
+				variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
+				if err != nil && err.Error() == "evaluating methods not supported on this version of Go" {
+					// this type of eval is unsupported with the current version of Go.
+					return
 				}
-				if tc.err.Error() != err.Error() {
-					t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+				if tc.err == nil {
+					assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
+					assertVariable(t, variable, tc)
+					variable, err := evalVariableWithCfg(p, tc.name, pshortLoadConfig)
+					assertNoError(err, t, fmt.Sprintf("EvalExpression(%s, pshortLoadConfig) returned an error", tc.name))
+					assertVariable(t, variable, tc.alternateVarTest())
+				} else {
+					if err == nil {
+						t.Fatalf("Expected error %s, got no error (%s)", tc.err.Error(), tc.name)
+					}
+					if tc.err.Error() != err.Error() {
+						t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+					}
 				}
-			}
+			})
 		}
 	})
 }
