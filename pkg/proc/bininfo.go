@@ -1295,7 +1295,7 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 		// Previous verrsions of delve looked for the build id in every debug info
 		// directory that contained the build-id substring. This behavior deviates
 		// from the ones specified by GDB but we keep it for backwards compatibility.
-		find(func(dir string) bool { return strings.Contains(dir, "build-id") }, fmt.Sprintf(".build-id/%s/%s.debug", bi.BuildID[:2], bi.BuildID[2:]))
+		find(func(dir string) bool { return strings.Contains(dir, "build-id") }, fmt.Sprintf("%s/%s.debug", bi.BuildID[:2], bi.BuildID[2:]))
 	}
 
 	if debugFilePath == "" {
@@ -1639,10 +1639,10 @@ func (bi *BinaryInfo) setGStructOffsetPE(entryPoint uint64, peFile *pe.File, wg 
 	defer wg.Done()
 	switch _PEMachine(peFile.Machine) {
 	case _IMAGE_FILE_MACHINE_AMD64:
-	// Use ArbitraryUserPointer (0x28) as pointer to pointer
-	// to G struct per:
-	// https://golang.org/src/runtime/cgo/gcc_windows_amd64.c
-	bi.gStructOffset = 0x28
+		// Use ArbitraryUserPointer (0x28) as pointer to pointer
+		// to G struct per:
+		// https://golang.org/src/runtime/cgo/gcc_windows_amd64.c
+		bi.gStructOffset = 0x28
 	case _IMAGE_FILE_MACHINE_ARM64:
 		// Use runtime.tls_g as pointer to offset from R18 to G struct:
 		// https://golang.org/src/runtime/sys_windows_arm64.s:runtime·wintls
