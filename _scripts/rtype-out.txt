@@ -27,7 +27,7 @@ type g struct {
 	waitsince int64
 	waitreason waitReason (optional)
 	stack stack
-	atomicstatus anytype
+	atomicstatus uint32|runtime/internal/atomic.Uint32
 }
 
 type gobuf struct {
@@ -56,6 +56,10 @@ type itab struct {
 type moduledata struct {
 	text uintptr
 	types uintptr
+}
+
+type runtime/internal/atomic.Uint32 struct {
+	value uint32
 }
 
 type stack struct {

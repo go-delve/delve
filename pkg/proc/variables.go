@@ -923,11 +923,12 @@ func (v *Variable) parseG() (*G, error) {
 	}
 
 	status := uint64(0)
-	if atomicStatus := v.loadFieldNamed("atomicstatus"); atomicStatus != nil {
+	if atomicStatus := v.loadFieldNamed("atomicstatus"); /* +rtype uint32|runtime/internal/atomic.Uint32 */ atomicStatus != nil {
 		if constant.Val(atomicStatus.Value) != nil {
 			status, _ = constant.Uint64Val(atomicStatus.Value)
 		} else {
-			vv := atomicStatus.fieldVariable("value")
+			atomicStatus := atomicStatus              // +rtype runtime/internal/atomic.Uint32
+			vv := atomicStatus.fieldVariable("value") // +rtype uint32
 			if vv == nil {
 				unreadable = true
 			} else {
