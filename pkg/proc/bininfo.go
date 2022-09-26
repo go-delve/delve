@@ -1639,10 +1639,10 @@ func (bi *BinaryInfo) setGStructOffsetPE(entryPoint uint64, peFile *pe.File, wg 
 	defer wg.Done()
 	switch _PEMachine(peFile.Machine) {
 	case _IMAGE_FILE_MACHINE_AMD64:
-	// Use ArbitraryUserPointer (0x28) as pointer to pointer
-	// to G struct per:
-	// https://golang.org/src/runtime/cgo/gcc_windows_amd64.c
-	bi.gStructOffset = 0x28
+		// Use ArbitraryUserPointer (0x28) as pointer to pointer
+		// to G struct per:
+		// https://golang.org/src/runtime/cgo/gcc_windows_amd64.c
+		bi.gStructOffset = 0x28
 	case _IMAGE_FILE_MACHINE_ARM64:
 		// Use runtime.tls_g as pointer to offset from R18 to G struct:
 		// https://golang.org/src/runtime/sys_windows_arm64.s:runtime·wintls
@@ -1842,6 +1842,8 @@ func (bi *BinaryInfo) macOSDebugFrameBugWorkaround() {
 
 // Do not call this function directly it isn't able to deal correctly with package paths
 func (bi *BinaryInfo) findType(name string) (godwarf.Type, error) {
+	name = strings.Replace(name, "interface{", "interface {", -1)
+	name = strings.Replace(name, "struct{", "struct {", -1)
 	ref, found := bi.types[name]
 	if !found {
 		return nil, reader.ErrTypeNotFound
