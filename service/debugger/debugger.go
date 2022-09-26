@@ -49,6 +49,9 @@ var (
 
 	// ErrCoreDumpNotSupported is returned when core dumping is not supported
 	ErrCoreDumpNotSupported = errors.New("core dumping not supported")
+
+	// ErrNotImplementedWithMultitarget is returned for operations that are not implemented with multiple targets
+	ErrNotImplementedWithMultitarget = errors.New("not implemented for multiple targets")
 )
 
 // Debugger service.
@@ -390,6 +393,10 @@ func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
+	if len(d.target.Targets()) > 1 {
+		return nil, ErrNotImplementedWithMultitarget
+	}
+
 	var (
 		p = d.target.Selected
 		g = p.SelectedGoroutine()
@@ -608,10 +615,11 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig, withBreakpointInfo bool) (
 		state.When, _ = d.target.When()
 	}
 
-	for _, t := range d.target.Targets() {
+	t := proc.ValidTargets{Group: d.target}
+	for t.Next() {
 		for _, bp := range t.Breakpoints().WatchOutOfScope {
 			abp := api.ConvertLogicalBreakpoint(bp.Logical)
-			api.ConvertPhysicalBreakpoints(abp, []*proc.Breakpoint{bp})
+			api.ConvertPhysicalBreakpoints(abp, []int{t.Pid()}, []*proc.Breakpoint{bp})
 			state.WatchOutOfScope = append(state.WatchOutOfScope, abp)
 		}
 	}
@@ -678,8 +686,9 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 		if runtime.GOOS == "windows" {
 			// Accept fileName which is case-insensitive and slash-insensitive match
 			fileNameNormalized := strings.ToLower(filepath.ToSlash(fileName))
+			t := proc.ValidTargets{Group: d.target}
 		caseInsensitiveSearch:
-			for _, t := range d.target.Targets() {
+			for t.Next() {
 				for _, symFile := range t.BinInfo().Sources {
 					if fileNameNormalized == strings.ToLower(filepath.ToSlash(symFile)) {
 						fileName = symFile
@@ -693,6 +702,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 		addrs, err = proc.FindFunctionLocation(d.target.Selected, requestedBp.FunctionName, requestedBp.Line)
 	case len(requestedBp.Addrs) > 0:
 		addrs = requestedBp.Addrs
+		//TODO(aarzilli): read requestedBp.AddrPid
 	default:
 		addrs = []uint64{requestedBp.Addr}
 	}
@@ -711,7 +721,18 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoin
 
 func (d *Debugger) convertBreakpoint(lbp *proc.LogicalBreakpoint) *api.Breakpoint {
 	abp := api.ConvertLogicalBreakpoint(lbp)
-	api.ConvertPhysicalBreakpoints(abp, d.findBreakpoint(lbp.LogicalID))
+	bps := []*proc.Breakpoint{}
+	pids := []int{}
+	t := proc.ValidTargets{Group: d.target}
+	for t.Next() {
+		for _, bp := range t.Breakpoints().M {
+			if bp.LogicalID() == lbp.LogicalID {
+				bps = append(bps, bp)
+				pids = append(pids, t.Pid())
+			}
+		}
+	}
+	api.ConvertPhysicalBreakpoints(abp, pids, bps)
 	return abp
 }
 
@@ -850,7 +871,7 @@ func (d *Debugger) CreateEBPFTracepoint(fnName string) error {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 	if len(d.target.Targets()) != 1 {
-		panic("multiple targets not implemented")
+		return ErrNotImplementedWithMultitarget
 	}
 	p := d.target.Selected
 	return p.SetEBPFTracepoint(fnName)
@@ -1049,23 +1070,22 @@ func isBpHitCondNotSatisfiable(bp *api.Breakpoint) bool {
 func (d *Debugger) Breakpoints(all bool) []*api.Breakpoint {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-	if len(d.target.Targets()) != 1 {
-		panic("multiple targets not implemented")
-	}
-	p := d.target.Selected
 
 	abps := []*api.Breakpoint{}
 	if all {
-		for _, bp := range p.Breakpoints().M {
-			var abp *api.Breakpoint
-			if bp.Logical != nil {
-				abp = api.ConvertLogicalBreakpoint(bp.Logical)
-			} else {
-				abp = &api.Breakpoint{}
+		t := proc.ValidTargets{Group: d.target}
+		for t.Next() {
+			for _, bp := range t.Breakpoints().M {
+				var abp *api.Breakpoint
+				if bp.Logical != nil {
+					abp = api.ConvertLogicalBreakpoint(bp.Logical)
+				} else {
+					abp = &api.Breakpoint{}
+				}
+				api.ConvertPhysicalBreakpoints(abp, []int{t.Pid()}, []*proc.Breakpoint{bp})
+				abp.VerboseDescr = bp.VerboseDescr()
+				abps = append(abps, abp)
 			}
-			api.ConvertPhysicalBreakpoints(abp, []*proc.Breakpoint{bp})
-			abp.VerboseDescr = bp.VerboseDescr()
-			abps = append(abps, abp)
 		}
 	} else {
 		for _, lbp := range d.target.LogicalBreakpoints {
@@ -1426,7 +1446,8 @@ func (d *Debugger) Sources(filter string) ([]string, error) {
 	}
 
 	files := []string{}
-	for _, t := range d.target.Targets() {
+	t := proc.ValidTargets{Group: d.target}
+	for t.Next() {
 		for _, f := range t.BinInfo().Sources {
 			if regex.Match([]byte(f)) {
 				files = append(files, f)
@@ -1464,7 +1485,8 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 	}
 
 	funcs := []string{}
-	for _, t := range d.target.Targets() {
+	t := proc.ValidTargets{Group: d.target}
+	for t.Next() {
 		for _, f := range t.BinInfo().Functions {
 			if regex.MatchString(f.Name) {
 				funcs = append(funcs, f.Name)
@@ -1488,7 +1510,8 @@ func (d *Debugger) Types(filter string) ([]string, error) {
 
 	r := []string{}
 
-	for _, t := range d.target.Targets() {
+	t := proc.ValidTargets{Group: d.target}
+	for t.Next() {
 		types, err := t.BinInfo().Types()
 		if err != nil {
 			return nil, err
@@ -1936,13 +1959,6 @@ func (d *Debugger) FindLocation(goid int64, frame, deferredCall int, locStr stri
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	if len(d.target.Targets()) != 1 {
-		//TODO(aarzilli): if there is more than one target process all must be
-		//searched and the addresses returned need to specify which target process
-		//they belong to.
-		panic("multiple targets not implemented")
-	}
-
 	if _, err := d.target.Valid(); err != nil {
 		return nil, err
 	}
@@ -1952,7 +1968,7 @@ func (d *Debugger) FindLocation(goid int64, frame, deferredCall int, locStr stri
 		return nil, err
 	}
 
-	return d.findLocation(d.target.Selected, goid, frame, deferredCall, locStr, loc, includeNonExecutableLines, substitutePathRules)
+	return d.findLocation(goid, frame, deferredCall, locStr, loc, includeNonExecutableLines, substitutePathRules)
 }
 
 // FindLocationSpec will find the location specified by 'locStr' and 'locSpec'.
@@ -1963,34 +1979,39 @@ func (d *Debugger) FindLocationSpec(goid int64, frame, deferredCall int, locStr 
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	if len(d.target.Targets()) != 1 {
-		//TODO(aarzilli): if there is more than one target process all must be
-		//searched and the addresses returned need to specify which target process
-		//they belong to.
-		panic("multiple targets not implemented")
-	}
-
 	if _, err := d.target.Valid(); err != nil {
 		return nil, err
 	}
 
-	return d.findLocation(d.target.Selected, goid, frame, deferredCall, locStr, locSpec, includeNonExecutableLines, substitutePathRules)
+	return d.findLocation(goid, frame, deferredCall, locStr, locSpec, includeNonExecutableLines, substitutePathRules)
 }
 
-func (d *Debugger) findLocation(p *proc.Target, goid int64, frame, deferredCall int, locStr string, locSpec locspec.LocationSpec, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
-	s, _ := proc.ConvertEvalScope(p, goid, frame, deferredCall)
-
-	locs, err := locSpec.Find(p, d.processArgs, s, locStr, includeNonExecutableLines, substitutePathRules)
-	for i := range locs {
-		if locs[i].PC == 0 {
-			continue
+func (d *Debugger) findLocation(goid int64, frame, deferredCall int, locStr string, locSpec locspec.LocationSpec, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
+	locations := []api.Location{}
+	t := proc.ValidTargets{Group: d.target}
+	for t.Next() {
+		pid := t.Pid()
+		s, _ := proc.ConvertEvalScope(t.Target, goid, frame, deferredCall)
+		locs, err := locSpec.Find(t.Target, d.processArgs, s, locStr, includeNonExecutableLines, substitutePathRules)
+		if err != nil {
+			return nil, err
 		}
-		file, line, fn := p.BinInfo().PCToLine(locs[i].PC)
-		locs[i].File = file
-		locs[i].Line = line
-		locs[i].Function = api.ConvertFunction(fn)
+		for i := range locs {
+			if locs[i].PC == 0 {
+				continue
+			}
+			file, line, fn := t.BinInfo().PCToLine(locs[i].PC)
+			locs[i].File = file
+			locs[i].Line = line
+			locs[i].Function = api.ConvertFunction(fn)
+			locs[i].PCPids = make([]int, len(locs[i].PCs))
+			for j := range locs[i].PCs {
+				locs[i].PCPids[j] = pid
+			}
+		}
+		locations = append(locations, locs...)
 	}
-	return locs, err
+	return locations, nil
 }
 
 // Disassemble code between startPC and endPC.

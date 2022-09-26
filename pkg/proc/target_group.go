@@ -47,7 +47,8 @@ func NewGroup(t *Target) *TargetGroup {
 	}
 }
 
-// Targets returns a slice of targets in the group.
+// Targets returns a slice of all targets in the group, including the
+// ones that are no longer valid.
 func (grp *TargetGroup) Targets() []*Target {
 	return grp.targets
 }
@@ -60,7 +61,9 @@ func (grp *TargetGroup) Valid() (bool, error) {
 		if ok {
 			return true, nil
 		}
-		err0 = err
+		if err0 == nil {
+			err0 = err
+		}
 	}
 	return false, err0
 }
@@ -123,4 +126,26 @@ func (grp *TargetGroup) TargetForThread(thread Thread) *Target {
 		}
 	}
 	return nil
+}
+
+// ValidTargets iterates through all valid targets in Group.
+type ValidTargets struct {
+	*Target
+	Group *TargetGroup
+	start int
+}
+
+// Next moves to the next valid target, returns false if there aren't more
+// valid targets in the group.
+func (it *ValidTargets) Next() bool {
+	for i := it.start; i < len(it.Group.targets); i++ {
+		if ok, _ := it.Group.targets[i].Valid(); ok {
+			it.Target = it.Group.targets[i]
+			it.start = i + 1
+			return true
+		}
+	}
+	it.start = len(it.Group.targets)
+	it.Target = nil
+	return false
 }
