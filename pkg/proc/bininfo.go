@@ -1295,7 +1295,7 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 		// Previous verrsions of delve looked for the build id in every debug info
 		// directory that contained the build-id substring. This behavior deviates
 		// from the ones specified by GDB but we keep it for backwards compatibility.
-		find(func(dir string) bool { return strings.Contains(dir, "build-id") }, fmt.Sprintf(".build-id/%s/%s.debug", bi.BuildID[:2], bi.BuildID[2:]))
+		find(func(dir string) bool { return strings.Contains(dir, "build-id") }, fmt.Sprintf("%s/%s.debug", bi.BuildID[:2], bi.BuildID[2:]))
 	}
 
 	if debugFilePath == "" {
