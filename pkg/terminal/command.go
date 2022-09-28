@@ -1763,7 +1763,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 			requestedBp.LoadArgs = &ShortLoadConfig
 		}
 
-		bp, err := t.client.CreateBreakpoint(requestedBp)
+		bp, err := t.client.CreateBreakpointWithExpr(requestedBp, spec, t.substitutePathRules())
 		if err != nil {
 			return nil, err
 		}
