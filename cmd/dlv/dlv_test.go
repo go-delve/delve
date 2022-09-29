@@ -1021,6 +1021,11 @@ func TestTrace(t *testing.T) {
 }
 
 func TestTraceMultipleGoroutines(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		//TODO(aarzilli): investigate further when the FreeBSD backend is more stable.
+		t.Skip("temporarily disabled due to issues with FreeBSD in Delve and Go")
+	}
+
 	dlvbin, tmpdir := getDlvBin(t)
 	defer os.RemoveAll(tmpdir)
 
