@@ -3903,7 +3903,7 @@ func TestEvaluateRequest(t *testing.T) {
 					// Type casts between string, []byte and []rune
 					client.EvaluateRequest("[]byte(\"ABC€\")", 1000, "this context will be ignored")
 					got = client.ExpectEvaluateResponse(t)
-					checkEvalIndexed(t, got, "[]uint8 len: 6, cap: 6, [65,66,67,226,130,172]", noChildren, 6, 0)
+					checkEvalIndexed(t, got, "[]uint8 len: 6, cap: 6, [65,66,67,226,130,172]", noChildren, 6, 1)
 
 					// Struct member access (i.e. somevar.memberfield)
 					client.EvaluateRequest("ms.Nest.Level", 1000, "this context will be ignored")
