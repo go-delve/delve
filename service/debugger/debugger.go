@@ -641,7 +641,11 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig, withBreakpointInfo bool) (
 //
 // If LocExpr is specified it will be used, along with substitutePathRules,
 // to re-enable the breakpoint after it is disabled.
-func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string, substitutePathRules [][2]string) (*api.Breakpoint, error) {
+//
+// If suspended is true a logical breakpoint will be created even if the
+// location can not be found, the backend will attempt to enable the
+// breakpoint every time a new plugin is loaded.
+func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string, substitutePathRules [][2]string, suspended bool) (*api.Breakpoint, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -721,12 +725,13 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 		setbp.Expr = func(t *proc.Target) []uint64 {
 			locs, err := loc.Find(t, d.processArgs, nil, locExpr, false, substitutePathRules)
 			if err != nil || len(locs) != 1 {
+				logflags.DebuggerLogger().Debugf("could not evaluate breakpoint expression %q: %v (number of results %d)", locExpr, err, len(locs))
 				return nil
 			}
 			return locs[0].PCs
 		}
 	}
-	createdBp, err := createLogicalBreakpoint(d, requestedBp, &setbp)
+	createdBp, err := createLogicalBreakpoint(d, requestedBp, &setbp, suspended)
 
 	if err != nil {
 		return nil, err
@@ -761,7 +766,7 @@ func (d *Debugger) ConvertThreadBreakpoint(thread proc.Thread) *api.Breakpoint {
 
 // createLogicalBreakpoint creates one physical breakpoint for each address
 // in addrs and associates all of them with the same logical breakpoint.
-func createLogicalBreakpoint(d *Debugger, requestedBp *api.Breakpoint, setbp *proc.SetBreakpoint) (*api.Breakpoint, error) {
+func createLogicalBreakpoint(d *Debugger, requestedBp *api.Breakpoint, setbp *proc.SetBreakpoint, suspended bool) (*api.Breakpoint, error) {
 	id := requestedBp.ID
 
 	var lbp *proc.LogicalBreakpoint
@@ -781,8 +786,12 @@ func createLogicalBreakpoint(d *Debugger, requestedBp *api.Breakpoint, setbp *pr
 
 	err = d.target.EnableBreakpoint(lbp)
 	if err != nil {
-		delete(d.target.LogicalBreakpoints, lbp.LogicalID)
-		return nil, err
+		if suspended {
+			logflags.DebuggerLogger().Debugf("could not enable new breakpoint: %v (breakpoint will be suspended)", err)
+		} else {
+			delete(d.target.LogicalBreakpoints, lbp.LogicalID)
+			return nil, err
+		}
 	}
 
 	return d.convertBreakpoint(lbp), nil

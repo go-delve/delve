@@ -131,6 +131,10 @@ const (
 	// adjust the watchpoint of stack variables.
 	StackResizeBreakpoint
 
+	// PluginOpenBreakpoint is a breakpoint used to detect that a plugin has
+	// been loaded and we should try to enable suspended breakpoints.
+	PluginOpenBreakpoint
+
 	steppingMask = NextBreakpoint | NextDeferBreakpoint | StepBreakpoint
 )
 
@@ -204,6 +208,8 @@ func (bp *Breakpoint) VerboseDescr() []string {
 			r = append(r, fmt.Sprintf("WatchOutOfScope Cond=%q checkPanicCall=%v", exprToString(breaklet.Cond), breaklet.checkPanicCall))
 		case StackResizeBreakpoint:
 			r = append(r, fmt.Sprintf("StackResizeBreakpoint Cond=%q", exprToString(breaklet.Cond)))
+		case PluginOpenBreakpoint:
+			r = append(r, "PluginOpenBreakpoint")
 		default:
 			r = append(r, fmt.Sprintf("Unknown %d", breaklet.Kind))
 		}
@@ -304,7 +310,7 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 			}
 		}
 
-	case StackResizeBreakpoint:
+	case StackResizeBreakpoint, PluginOpenBreakpoint:
 		// no further checks
 
 	default:
