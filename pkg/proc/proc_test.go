@@ -840,6 +840,7 @@ func TestCGONext(t *testing.T) {
 	protest.MustHaveCgo(t)
 
 	skipOn(t, "broken - cgo stacktraces", "darwin", "arm64")
+	skipOn(t, "broken - see https://github.com/go-delve/delve/issues/3158", "darwin", "amd64")
 
 	protest.AllowRecording(t)
 	withTestProcess("cgotest", t, func(p *proc.Target, fixture protest.Fixture) {
