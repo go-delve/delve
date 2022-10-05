@@ -2014,7 +2014,11 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 	// Check if the function is optimized.
 	fn, err := s.debugger.Function(int64(goid), frame, 0, DefaultLoadConfig)
 	if fn == nil || err != nil {
-		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to find enclosing function", err.Error())
+		var details string
+		if err != nil {
+			details = err.Error()
+		}
+		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to find enclosing function", details)
 		return
 	}
 	suffix := ""
