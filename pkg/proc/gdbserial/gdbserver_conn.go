@@ -1510,7 +1510,7 @@ func binarywiredecode(in, buf []byte) (newbuf, msg []byte) {
 	return buf, buf[start:]
 }
 
-// Checksumok checks that checksum is a valid checksum for packet.
+// checksumok checks that checksum is a valid checksum for packet.
 func checksumok(packet, checksumBuf []byte) bool {
 	if packet[0] != '$' {
 		return false

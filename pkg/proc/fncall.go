@@ -1045,7 +1045,7 @@ func readStackVariable(t *Target, thread Thread, regs Registers, off uint64, typ
 	return v, nil
 }
 
-// fakeEntryScope alters scope to pretend that we are at the entry point of
+// fakeFunctionEntryScope alters scope to pretend that we are at the entry point of
 // fn and CFA and SP are the ones passed as argument.
 // This function is used to create a scope for a call frame that doesn't
 // exist anymore, to read the return variables of an injected function call,

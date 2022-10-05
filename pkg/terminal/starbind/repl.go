@@ -160,7 +160,7 @@ func soleExpr(f *syntax.File) syntax.Expr {
 	return nil
 }
 
-// PrintError prints the error to stderr,
+// printError prints the error to stderr,
 // or its backtrace if it is a Starlark evaluation error.
 func printError(err error) {
 	if evalErr, ok := err.(*starlark.EvalError); ok {
