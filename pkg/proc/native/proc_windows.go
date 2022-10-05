@@ -141,8 +141,20 @@ func findExePath(pid int) (string, error) {
 	}
 }
 
+var debugPrivilegeRequested = false
+
 // Attach to an existing process with the given PID.
 func Attach(pid int, _ []string) (*proc.Target, error) {
+	var aperr error
+	if !debugPrivilegeRequested {
+		debugPrivilegeRequested = true
+		// The following call will only work if the user is an administrator
+		// has the "Debug Programs" privilege in Local security settings.
+		// Since this privilege is not needed to debug processes owned by the
+		// current user, do not complain about this unless attach actually fails.
+		aperr = acquireDebugPrivilege()
+	}
+
 	dbp := newProcess(pid)
 	var err error
 	dbp.execPtraceFunc(func() {
@@ -150,6 +162,9 @@ func Attach(pid int, _ []string) (*proc.Target, error) {
 		err = _DebugActiveProcess(uint32(pid))
 	})
 	if err != nil {
+		if aperr != nil {
+			return nil, fmt.Errorf("%v also %v", err, aperr)
+		}
 		return nil, err
 	}
 	exepath, err := findExePath(pid)
@@ -162,6 +177,40 @@ func Attach(pid int, _ []string) (*proc.Target, error) {
 		return nil, err
 	}
 	return tgt, nil
+}
+
+// acquireDebugPrivilege acquires the debug privilege which is needed to
+// debug other user's processes.
+// See:
+//
+//   - https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/debug-privilege
+//   - https://github.com/go-delve/delve/issues/3136
+func acquireDebugPrivilege() error {
+	var token sys.Token
+	err := sys.OpenProcessToken(sys.CurrentProcess(), sys.TOKEN_QUERY|sys.TOKEN_ADJUST_PRIVILEGES, &token)
+	if err != nil {
+		return fmt.Errorf("could not acquire debug privilege (OpenCurrentProcessToken): %v", err)
+	}
+	defer token.Close()
+
+	privName, _ := sys.UTF16FromString("SeDebugPrivilege")
+	var luid sys.LUID
+	err = sys.LookupPrivilegeValue(nil, &privName[0], &luid)
+	if err != nil {
+		return fmt.Errorf("could not acquire debug privilege  (LookupPrivilegeValue): %v", err)
+	}
+
+	var tp sys.Tokenprivileges
+	tp.PrivilegeCount = 1
+	tp.Privileges[0].Luid = luid
+	tp.Privileges[0].Attributes = sys.SE_PRIVILEGE_ENABLED
+
+	err = sys.AdjustTokenPrivileges(token, false, &tp, 0, nil, nil)
+	if err != nil {
+		return fmt.Errorf("could not acquire debug privilege (AdjustTokenPrivileges): %v", err)
+	}
+
+	return nil
 }
 
 // kill kills the process.
