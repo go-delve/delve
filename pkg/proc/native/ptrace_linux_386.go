@@ -1,7 +1,5 @@
 package native
 
-import "C"
-
 import (
 	"fmt"
 	"syscall"
