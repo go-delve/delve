@@ -258,6 +258,16 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 		launchFlags |= proc.LaunchDisableASLR
 	}
 
+	_, err := exec.LookPath(processArgs[0])
+	if err != nil {
+		if wd == "." {
+			if cwd, err := os.Getwd(); err == nil {
+				wd = cwd
+			}
+		}
+		processArgs[0] = filepath.Join(wd, processArgs[0])
+	}
+
 	switch d.config.Backend {
 	case "native":
 		return native.Launch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects)
