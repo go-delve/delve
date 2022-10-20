@@ -292,7 +292,7 @@ func (t *Term) Run() (int, error) {
 		fmt.Printf("Unable to open history file: %v. History will not be saved for this session.", err)
 	}
 	if _, err := t.line.ReadHistory(t.historyFile); err != nil {
-		fmt.Printf("Unable to read history file: %v", err)
+		fmt.Printf("Unable to read history file %s: %v\n", t.historyFile, err)
 	}
 
 	fmt.Println("Type 'help' for list of commands.")
