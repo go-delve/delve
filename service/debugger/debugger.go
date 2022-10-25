@@ -2262,7 +2262,6 @@ func noDebugErrorWarning(err error) error {
 }
 
 func verifyBinaryFormat(exePath string) (string, error) {
-	// Get the full path of the executable to launch.
 	fullpath, err := filepath.Abs(exePath)
 	if err != nil {
 		return "", err

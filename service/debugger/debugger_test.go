@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/go-delve/delve/pkg/gobuild"
@@ -66,5 +67,34 @@ func TestDebugger_LaunchInvalidFormat(t *testing.T) {
 	}
 	if err != api.ErrNotExecutable {
 		t.Fatalf("expected error \"%s\" got \"%v\"", api.ErrNotExecutable, err)
+	}
+}
+
+func TestDebugger_LaunchCurrentDir(t *testing.T) {
+	fixturesDir := protest.FindFixturesDir()
+	testDir := filepath.Join(fixturesDir, "buildtest")
+	debugname := "debug"
+	exepath := filepath.Join(testDir, debugname)
+	defer os.Remove(exepath)
+	if err := gobuild.GoBuild(debugname, []string{testDir}, fmt.Sprintf("-o %s", exepath)); err != nil {
+		t.Fatalf("go build error %v", err)
+	}
+
+	testExec, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalPath := filepath.Dir(testExec)
+	os.Chdir(testDir)
+	defer os.Chdir(originalPath)
+
+	d := new(Debugger)
+	d.config = &Config{}
+	_, err = d.Launch([]string{debugname}, ".")
+	if err == nil {
+		t.Fatal("expected error but none was generated")
+	}
+	if err != nil && !strings.Contains(err.Error(), "unknown backend") {
+		t.Fatal(err)
 	}
 }
