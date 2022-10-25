@@ -75,18 +75,21 @@ func TestDebugger_LaunchCurrentDir(t *testing.T) {
 	testDir := filepath.Join(fixturesDir, "buildtest")
 	debugname := "debug"
 	exepath := filepath.Join(testDir, debugname)
-	defer os.Remove(exepath)
+	originalPath, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(originalPath)
+	defer func() {
+		if err := os.Remove(exepath); err != nil {
+			t.Fatalf("error removing executable %v", err)
+		}
+	}()
 	if err := gobuild.GoBuild(debugname, []string{testDir}, fmt.Sprintf("-o %s", exepath)); err != nil {
 		t.Fatalf("go build error %v", err)
 	}
 
-	testExec, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	originalPath := filepath.Dir(testExec)
 	os.Chdir(testDir)
-	defer os.Chdir(originalPath)
 
 	d := new(Debugger)
 	d.config = &Config{}
