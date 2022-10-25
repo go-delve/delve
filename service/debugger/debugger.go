@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -246,21 +246,11 @@ func (d *Debugger) TargetGoVersion() string {
 
 // Launch will start a process with the given args and working directory.
 func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error) {
-	// Get the full path of the executable to launch.
-	fullpath, err := filepath.Abs(processArgs[0])
-	if err != nil {
-		return nil, err
-	}
-	// Ensure it is a proper executable.
-	fullpath, err = exec.LookPath(fullpath)
+	fullpath, err := verifyBinaryFormat(processArgs[0])
 	if err != nil {
 		return nil, err
 	}
 	processArgs[0] = fullpath
-
-	if err := verifyBinaryFormat(processArgs[0]); err != nil {
-		return nil, err
-	}
 
 	launchFlags := proc.LaunchFlags(0)
 	if d.config.Foreground {
@@ -2271,27 +2261,29 @@ func noDebugErrorWarning(err error) error {
 	return err
 }
 
-func verifyBinaryFormat(exePath string) error {
-	f, err := os.Open(exePath)
+func verifyBinaryFormat(exePath string) (string, error) {
+	// Get the full path of the executable to launch.
+	fullpath, err := filepath.Abs(exePath)
 	if err != nil {
-		return err
+		return "", err
+	}
+
+	f, err := os.Open(fullpath)
+	if err != nil {
+		return "", err
 	}
 	defer f.Close()
 
-	switch runtime.GOOS {
-	default:
-		fi, err := f.Stat()
-		if err != nil {
-			return err
-		}
-		if (fi.Mode() & 0111) == 0 {
-			return api.ErrNotExecutable
-		}
+	fi, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	if (fi.Mode() & 0111) == 0 {
+		return "", api.ErrNotExecutable
 	}
 
 	// check that the binary format is what we expect for the host system
-	var exe interface{ Close() error }
-
+	var exe io.Closer
 	switch runtime.GOOS {
 	case "darwin":
 		exe, err = macho.NewFile(f)
@@ -2304,10 +2296,10 @@ func verifyBinaryFormat(exePath string) error {
 	}
 
 	if err != nil {
-		return api.ErrNotExecutable
+		return "", api.ErrNotExecutable
 	}
 	exe.Close()
-	return nil
+	return fullpath, nil
 }
 
 var attachErrorMessage = attachErrorMessageDefault
