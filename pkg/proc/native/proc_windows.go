@@ -3,7 +3,6 @@ package native
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"syscall"
 	"unsafe"
 
