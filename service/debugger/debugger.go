@@ -246,12 +246,15 @@ func (d *Debugger) TargetGoVersion() string {
 
 // Launch will start a process with the given args and working directory.
 func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error) {
-	fullpath, err := exec.LookPath(processArgs[0])
+	// Get the full path of the executable to launch.
+	fullpath, err := filepath.Abs(processArgs[0])
 	if err != nil {
-		fullpath, err = filepath.Abs(processArgs[0])
-		if err != nil {
-			return nil, err
-		}
+		return nil, err
+	}
+	// Ensure it is a proper executable.
+	fullpath, err = exec.LookPath(fullpath)
+	if err != nil {
+		return nil, err
 	}
 	processArgs[0] = fullpath
 
