@@ -260,12 +260,11 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 
 	_, err := exec.LookPath(processArgs[0])
 	if err != nil {
-		if wd == "." {
-			if cwd, err := os.Getwd(); err == nil {
-				wd = cwd
-			}
+		fullpath, err := filepath.Abs(processArgs[0])
+		if err != nil {
+			return nil, err
 		}
-		processArgs[0] = filepath.Join(wd, processArgs[0])
+		processArgs[0] = fullpath
 	}
 
 	switch d.config.Backend {
