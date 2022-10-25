@@ -2694,7 +2694,7 @@ func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 			opts |= showFullValue
 		}
 		exprVal, exprRef := s.convertVariableWithOpts(exprVar, fmt.Sprintf("(%s)", request.Arguments.Expression), opts)
-		response.Body = dap.EvaluateResponseBody{Result: exprVal, VariablesReference: exprRef, IndexedVariables: getIndexedVariableCount(exprVar), NamedVariables: getNamedVariableCount(exprVar)}
+		response.Body = dap.EvaluateResponseBody{Result: exprVal, Type: s.getTypeIfSupported(exprVar), VariablesReference: exprRef, IndexedVariables: getIndexedVariableCount(exprVar), NamedVariables: getNamedVariableCount(exprVar)}
 	}
 	s.send(response)
 }
