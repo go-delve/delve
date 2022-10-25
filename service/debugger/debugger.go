@@ -246,6 +246,15 @@ func (d *Debugger) TargetGoVersion() string {
 
 // Launch will start a process with the given args and working directory.
 func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error) {
+	fullpath, err := exec.LookPath(processArgs[0])
+	if err != nil {
+		fullpath, err = filepath.Abs(processArgs[0])
+		if err != nil {
+			return nil, err
+		}
+	}
+	processArgs[0] = fullpath
+
 	if err := verifyBinaryFormat(processArgs[0]); err != nil {
 		return nil, err
 	}
@@ -256,15 +265,6 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 	}
 	if d.config.DisableASLR {
 		launchFlags |= proc.LaunchDisableASLR
-	}
-
-	_, err := exec.LookPath(processArgs[0])
-	if err != nil {
-		fullpath, err := filepath.Abs(processArgs[0])
-		if err != nil {
-			return nil, err
-		}
-		processArgs[0] = fullpath
 	}
 
 	switch d.config.Backend {
@@ -2276,13 +2276,6 @@ func verifyBinaryFormat(exePath string) error {
 	defer f.Close()
 
 	switch runtime.GOOS {
-	case "windows":
-		// Make sure the binary exists and is an executable file
-		if filepath.Base(exePath) == exePath {
-			if _, err := exec.LookPath(exePath); err != nil {
-				return err
-			}
-		}
 	default:
 		fi, err := f.Stat()
 		if err != nil {

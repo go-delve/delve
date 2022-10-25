@@ -25,10 +25,7 @@ func (os *osProcessDetails) Close() {}
 
 // Launch creates and begins debugging a new process.
 func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ string, redirects [3]string) (*proc.Target, error) {
-	argv0Go, err := filepath.Abs(cmd[0])
-	if err != nil {
-		return nil, err
-	}
+	argv0Go := cmd[0]
 
 	env := proc.DisableAsyncPreemptEnv()
 
