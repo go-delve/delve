@@ -11,6 +11,7 @@ import (
 	"go/token"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -2273,11 +2274,9 @@ func verifyBinaryFormat(exePath string) (string, error) {
 	}
 	defer f.Close()
 
-	fi, err := f.Stat()
+	// Ensure the file is executable
+	_, err = exec.LookPath(fullpath)
 	if err != nil {
-		return "", err
-	}
-	if (fi.Mode() & 0111) == 0 {
 		return "", api.ErrNotExecutable
 	}
 
