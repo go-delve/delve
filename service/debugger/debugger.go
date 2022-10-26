@@ -2274,10 +2274,15 @@ func verifyBinaryFormat(exePath string) (string, error) {
 	}
 	defer f.Close()
 
-	// Ensure the file is executable
-	_, err = exec.LookPath(fullpath)
-	if err != nil {
-		return "", api.ErrNotExecutable
+	// Skip this check on Windows.
+	// TODO(derekparker) exec.LookPath looks for valid Windows extensions.
+	// We don't create our binaries with valid extensions, even though we should.
+	// Skip this check for now.
+	if runtime.GOOS != "windows" {
+		_, err = exec.LookPath(fullpath)
+		if err != nil {
+			return "", api.ErrNotExecutable
+		}
 	}
 
 	// check that the binary format is what we expect for the host system
