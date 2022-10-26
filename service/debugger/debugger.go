@@ -2274,20 +2274,12 @@ func verifyBinaryFormat(exePath string) (string, error) {
 	}
 	defer f.Close()
 
-	switch runtime.GOOS {
-	case "windows":
-		// Make sure the binary exists and is an executable file
-		if _, err := exec.LookPath(fullpath); err != nil {
-			return "", err
-		}
-	default:
-		fi, err := f.Stat()
-		if err != nil {
-			return "", err
-		}
-		if (fi.Mode() & 0111) == 0 {
-			return "", api.ErrNotExecutable
-		}
+	fi, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+	if (fi.Mode() & 0111) == 0 {
+		return "", api.ErrNotExecutable
 	}
 
 	// check that the binary format is what we expect for the host system
