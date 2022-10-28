@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -246,9 +247,11 @@ func (d *Debugger) TargetGoVersion() string {
 
 // Launch will start a process with the given args and working directory.
 func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error) {
-	if err := verifyBinaryFormat(processArgs[0]); err != nil {
+	fullpath, err := verifyBinaryFormat(processArgs[0])
+	if err != nil {
 		return nil, err
 	}
+	processArgs[0] = fullpath
 
 	launchFlags := proc.LaunchFlags(0)
 	if d.config.Foreground {
@@ -2259,34 +2262,31 @@ func noDebugErrorWarning(err error) error {
 	return err
 }
 
-func verifyBinaryFormat(exePath string) error {
-	f, err := os.Open(exePath)
+func verifyBinaryFormat(exePath string) (string, error) {
+	fullpath, err := filepath.Abs(exePath)
 	if err != nil {
-		return err
+		return "", err
+	}
+
+	f, err := os.Open(fullpath)
+	if err != nil {
+		return "", err
 	}
 	defer f.Close()
 
-	switch runtime.GOOS {
-	case "windows":
-		// Make sure the binary exists and is an executable file
-		if filepath.Base(exePath) == exePath {
-			if _, err := exec.LookPath(exePath); err != nil {
-				return err
-			}
-		}
-	default:
-		fi, err := f.Stat()
+	// Skip this check on Windows.
+	// TODO(derekparker) exec.LookPath looks for valid Windows extensions.
+	// We don't create our binaries with valid extensions, even though we should.
+	// Skip this check for now.
+	if runtime.GOOS != "windows" {
+		_, err = exec.LookPath(fullpath)
 		if err != nil {
-			return err
-		}
-		if (fi.Mode() & 0111) == 0 {
-			return api.ErrNotExecutable
+			return "", api.ErrNotExecutable
 		}
 	}
 
 	// check that the binary format is what we expect for the host system
-	var exe interface{ Close() error }
-
+	var exe io.Closer
 	switch runtime.GOOS {
 	case "darwin":
 		exe, err = macho.NewFile(f)
@@ -2299,10 +2299,10 @@ func verifyBinaryFormat(exePath string) error {
 	}
 
 	if err != nil {
-		return api.ErrNotExecutable
+		return "", api.ErrNotExecutable
 	}
 	exe.Close()
-	return nil
+	return fullpath, nil
 }
 
 var attachErrorMessage = attachErrorMessageDefault
