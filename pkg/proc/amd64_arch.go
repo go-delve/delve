@@ -179,7 +179,6 @@ func amd64SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 		// switch from the system stack back into the goroutine stack
 		// Since we are going backwards on the stack here we see the transition
 		// as goroutine stack -> system stack.
-
 		if it.top || it.systemstack {
 			return false
 		}
@@ -198,6 +197,7 @@ func amd64SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 		it.pc = frameOnSystemStack.Ret
 		it.regs = callFrameRegs
 		it.systemstack = true
+
 		return true
 
 	case "runtime.goexit", "runtime.rt0_go", "runtime.mcall":

@@ -191,6 +191,7 @@ type stackIterator struct {
 
 	g                  *G     // the goroutine being stacktraced, nil if we are stacktracing a goroutine-less thread
 	g0_sched_sp        uint64 // value of g0.sched.sp (see comments around its use)
+	g0_sched_bp        uint64 // value of g0.sched.sp (see comments around its use)
 	g0_sched_sp_loaded bool   // g0_sched_sp was loaded from g0
 
 	opts StacktraceOptions
@@ -407,7 +408,14 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 
 	callimage := it.bi.PCToImage(it.pc)
 
-	callFrameRegs = op.DwarfRegisters{StaticBase: callimage.StaticBase, ByteOrder: it.regs.ByteOrder, PCRegNum: it.regs.PCRegNum, SPRegNum: it.regs.SPRegNum, BPRegNum: it.regs.BPRegNum, LRRegNum: it.regs.LRRegNum}
+	callFrameRegs = op.DwarfRegisters{
+		StaticBase: callimage.StaticBase,
+		ByteOrder:  it.regs.ByteOrder,
+		PCRegNum:   it.regs.PCRegNum,
+		SPRegNum:   it.regs.SPRegNum,
+		BPRegNum:   it.regs.BPRegNum,
+		LRRegNum:   it.regs.LRRegNum,
+	}
 
 	// According to the standard the compiler should be responsible for emitting
 	// rules for the RSP register so that it can then be used to calculate CFA,
