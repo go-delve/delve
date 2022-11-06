@@ -547,6 +547,17 @@ func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs [
 
 	if runtime.GOOS == "darwin" {
 		process.Env = proc.DisableAsyncPreemptEnv()
+		// Filter out DYLD_INSERT_LIBRARIES on Darwin.
+		// This is needed since macOS Ventura, loading custom dylib into debugserver
+		// using DYLD_INSERT_LIBRARIES leads to a crash.
+		// This is unlike other protected processes, where they just strip it out.
+		env := make([]string, 0, len(process.Env))
+		for _, v := range process.Env {
+			if !(v == "DYLD_INSERT_LIBRARIES") {
+				env = append(env, v)
+			}
+		}
+		process.Env = env
 	}
 
 	if err = process.Start(); err != nil {
