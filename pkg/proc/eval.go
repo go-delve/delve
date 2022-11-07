@@ -2084,7 +2084,21 @@ func (v *Variable) sliceAccess(idx int) (*Variable, error) {
 		return nil, fmt.Errorf("index out of bounds")
 	}
 	if v.loaded {
-		return &v.Children[idx], nil
+		if v.Kind == reflect.String {
+			s := constant.StringVal(v.Value)
+			if idx >= len(s) {
+				return nil, fmt.Errorf("index out of bounds")
+			}
+			r := v.newVariable("", v.Base+uint64(int64(idx)*v.stride), v.fieldType, v.mem)
+			r.loaded = true
+			r.Value = constant.MakeInt64(int64(s[idx]))
+			return r, nil
+		} else {
+			if idx >= len(v.Children) {
+				return nil, fmt.Errorf("index out of bounds")
+			}
+			return &v.Children[idx], nil
+		}
 	}
 	mem := v.mem
 	if v.Kind != reflect.Array {
