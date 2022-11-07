@@ -1206,6 +1206,10 @@ func TestCallFunction(t *testing.T) {
 		// Issue 1577
 		{"1+2", []string{`::3`}, nil},
 		{`"de"+"mo"`, []string{`::"demo"`}, nil},
+
+		// Issue 3176
+		{`ref.String()[0]`, []string{`:byte:98`}, nil},
+		{`ref.String()[20]`, nil, errors.New("index out of bounds")},
 	}
 
 	var testcases112 = []testCaseCallFunction{
