@@ -772,13 +772,15 @@ func (d *Debugger) ConvertThreadBreakpoint(thread proc.Thread) *api.Breakpoint {
 func createLogicalBreakpoint(d *Debugger, requestedBp *api.Breakpoint, setbp *proc.SetBreakpoint, suspended bool) (*api.Breakpoint, error) {
 	id := requestedBp.ID
 
-	var lbp *proc.LogicalBreakpoint
 	if id <= 0 {
 		d.breakpointIDCounter++
 		id = d.breakpointIDCounter
-		lbp = &proc.LogicalBreakpoint{LogicalID: id, HitCount: make(map[int64]uint64), Enabled: true}
-		d.target.LogicalBreakpoints[id] = lbp
+	} else {
+		d.breakpointIDCounter = id
 	}
+
+	lbp := &proc.LogicalBreakpoint{LogicalID: id, HitCount: make(map[int64]uint64), Enabled: true}
+	d.target.LogicalBreakpoints[id] = lbp
 
 	err := copyLogicalBreakpointInfo(lbp, requestedBp)
 	if err != nil {
