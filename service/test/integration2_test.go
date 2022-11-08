@@ -2961,3 +2961,20 @@ func TestPluginSuspendedBreakpoint(t *testing.T) {
 		cont("Continue 4", "plugin2.go", 9)
 	})
 }
+
+func TestClientServer_createBreakpointWithID(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestClient2("continuetestprog", t, func(c service.Client) {
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{ID: 2, FunctionName: "main.main", Line: 1})
+		assertNoError(err, t, "CreateBreakpoint()")
+		if bp.ID != 2 {
+			t.Errorf("wrong ID for breakpoint %d", bp.ID)
+		}
+
+		bp2, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: 2})
+		assertNoError(err, t, "CreateBreakpoint()")
+		if bp2.ID != 3 {
+			t.Errorf("wrong ID for breakpoint %d", bp2.ID)
+		}
+	})
+}
