@@ -811,6 +811,11 @@ func (scope *EvalScope) evalTypeCast(node *ast.CallExpr) (*Variable, error) {
 
 	// compatible underlying types
 	if typeCastCompatibleTypes(argv.RealType, typ) {
+		if ptyp, isptr := typ.(*godwarf.PtrType); argv.Kind == reflect.Ptr && argv.loaded && len(argv.Children) > 0 && isptr {
+			cv := argv.Children[0]
+			argv.Children[0] = *newVariable(cv.Name, cv.Addr, ptyp.Type, cv.bi, cv.mem)
+			argv.Children[0].OnlyAddr = true
+		}
 		argv.RealType = typ
 		argv.DwarfType = styp
 		return argv, nil
@@ -1028,6 +1033,11 @@ func typeCastCompatibleTypes(typ1, typ2 godwarf.Type) bool {
 	switch ttyp1 := typ1.(type) {
 	case *godwarf.PtrType:
 		if ttyp2, ok := typ2.(*godwarf.PtrType); ok {
+			_, isvoid1 := ttyp1.Type.(*godwarf.VoidType)
+			_, isvoid2 := ttyp2.Type.(*godwarf.VoidType)
+			if isvoid1 || isvoid2 {
+				return true
+			}
 			// pointer types are compatible if their element types are compatible
 			return typeCastCompatibleTypes(resolveTypedef(ttyp1.Type), resolveTypedef(ttyp2.Type))
 		}
