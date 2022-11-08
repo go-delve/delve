@@ -739,9 +739,14 @@ func (scope *EvalScope) evalTypeCastOrFuncCall(node *ast.CallExpr) (*Variable, e
 		return v, err
 	}
 
-	fnnode := removeParen(node.Fun)
-	if n, _ := fnnode.(*ast.StarExpr); n != nil {
-		fnnode = removeParen(n.X)
+	fnnode := node.Fun
+	for {
+		fnnode = removeParen(fnnode)
+		n, _ := fnnode.(*ast.StarExpr)
+		if n == nil {
+			break
+		}
+		fnnode = n.X
 	}
 
 	switch n := fnnode.(type) {

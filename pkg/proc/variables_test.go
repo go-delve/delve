@@ -826,6 +826,9 @@ func TestEvalExpression(t *testing.T) {
 		{`*(*uint)(uintptr(&i1))`, false, `1`, `1`, "uint", nil},
 		{`*(*uint)(unsafe.Pointer(p1))`, false, `1`, `1`, "uint", nil},
 		{`*(*uint)(unsafe.Pointer(&i1))`, false, `1`, `1`, "uint", nil},
+
+		// Conversions to ptr-to-ptr types
+		{`**(**runtime.hmap)(uintptr(&m1))`, false, `…`, `…`, "runtime.hmap", nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())
