@@ -820,6 +820,15 @@ func TestEvalExpression(t *testing.T) {
 		{`(*string)(&typedstringvar)`, false, `(*string)(…`, `(*string)(…`, "*string", nil},
 		{`(*main.astruct)(&namedA1)`, false, `(*main.astruct)(…`, `(*main.astruct)(…`, "*main.astruct", nil},
 		{`(*main.astructName2)(&namedA1)`, false, `(*main.astructName2)(…`, `(*main.astructName2)(…`, "*main.astructName2", nil},
+
+		// Conversions to and from uintptr/unsafe.Pointer
+		{`*(*uint)(uintptr(p1))`, false, `1`, `1`, "uint", nil},
+		{`*(*uint)(uintptr(&i1))`, false, `1`, `1`, "uint", nil},
+		{`*(*uint)(unsafe.Pointer(p1))`, false, `1`, `1`, "uint", nil},
+		{`*(*uint)(unsafe.Pointer(&i1))`, false, `1`, `1`, "uint", nil},
+
+		// Conversions to ptr-to-ptr types
+		{`**(**runtime.hmap)(uintptr(&m1))`, false, `…`, `…`, "runtime.hmap", nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())
