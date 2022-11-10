@@ -1291,6 +1291,9 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 				suffix := filepath.Join(filepath.Dir(exePath)[1:], debugLink)
 				find(nil, suffix)
 			}
+			if debugFilePath == "" {
+				bi.logger.Warnf("gnu_debuglink link %q not found in any debug info directory", debugLink)
+			}
 		}
 
 		if debugFilePath != "" {
