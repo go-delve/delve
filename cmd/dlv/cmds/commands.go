@@ -327,6 +327,10 @@ Currently supports linux/amd64 and linux/arm64 core files, windows/amd64 minidum
 		},
 		Run: coreCmd,
 	}
+	// -c is unused and exists so delve can be used with coredumpctl
+	core := false
+	coreCommand.Flags().BoolVarP(&core, "core", "c", false, "")
+	coreCommand.Flags().MarkHidden("core")
 	rootCommand.AddCommand(coreCommand)
 
 	// 'version' subcommand.
