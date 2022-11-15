@@ -1342,3 +1342,17 @@ func TestDisassPosCmd(t *testing.T) {
 		}
 	})
 }
+
+func TestCreateBreakpointByLocExpr(t *testing.T) {
+	withTestTerminal("math", t, func(term *FakeTerminal) {
+		out := term.MustExec("break main.main")
+		position1 := strings.Split(out, " set at ")[1]
+		term.MustExec("continue")
+		term.MustExec("clear 1")
+		out = term.MustExec("break +0")
+		position2 := strings.Split(out, " set at ")[1]
+		if position1 != position2 {
+			t.Fatalf("mismatched positions %q and %q\n", position1, position2)
+		}
+	})
+}
