@@ -94,7 +94,8 @@ type BinaryInfo struct {
 	types       map[string]dwarfRef
 	packageVars []packageVar // packageVars is a list of all global/package variables in debug_info, sorted by address
 
-	gStructOffset uint64
+	gStructOffset      uint64
+	gStructOffsetIsPtr bool
 
 	// consts[off] lists all the constants with the type defined at offset off.
 	consts constantsMap
@@ -700,7 +701,7 @@ func loadBinaryInfo(bi *BinaryInfo, image *Image, path string, entryPoint uint64
 // struct in thread local storage.
 func (bi *BinaryInfo) GStructOffset(mem MemoryReadWriter) (uint64, error) {
 	offset := bi.gStructOffset
-	if bi.GOOS == "windows" && bi.Arch.Name == "arm64" {
+	if bi.gStructOffsetIsPtr {
 		// The G struct offset from the TLS section is a pointer
 		// and the address must be dereferenced to find to actual G struct offset.
 		var err error
@@ -1645,38 +1646,52 @@ func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint
 
 	wg.Add(2)
 	go bi.parseDebugFramePE(image, peFile, debugInfoBytes, wg)
-	go bi.loadDebugInfoMaps(image, debugInfoBytes, debugLineBytes, wg, nil)
-	if image.index == 0 {
-		// determine g struct offset only when loading the executable file
-		wg.Add(1)
-		go bi.setGStructOffsetPE(entryPoint, peFile, wg)
-	}
+	go bi.loadDebugInfoMaps(image, debugInfoBytes, debugLineBytes, wg, func() {
+		// setGStructOffsetPE requires the image compile units to be loaded,
+		// so it can't be called concurrently with loadDebugInfoMaps.
+		if image.index == 0 {
+			// determine g struct offset only when loading the executable file.
+			bi.setGStructOffsetPE(entryPoint, peFile)
+		}
+	})
 	return nil
 }
 
-func (bi *BinaryInfo) setGStructOffsetPE(entryPoint uint64, peFile *pe.File, wg *sync.WaitGroup) {
-	defer wg.Done()
-	switch _PEMachine(peFile.Machine) {
-	case _IMAGE_FILE_MACHINE_AMD64:
-		// Use ArbitraryUserPointer (0x28) as pointer to pointer
-		// to G struct per:
-		// https://golang.org/src/runtime/cgo/gcc_windows_amd64.c
-		bi.gStructOffset = 0x28
-	case _IMAGE_FILE_MACHINE_ARM64:
-		// Use runtime.tls_g as pointer to offset from R18 to G struct:
-		// https://golang.org/src/runtime/sys_windows_arm64.s:runtime·wintls
+func (bi *BinaryInfo) setGStructOffsetPE(entryPoint uint64, peFile *pe.File) {
+	readtls_g := func() uint64 {
 		for _, s := range peFile.Symbols {
 			if s.Name == "runtime.tls_g" {
 				i := int(s.SectionNumber) - 1
 				if 0 <= i && i < len(peFile.Sections) {
 					sect := peFile.Sections[i]
 					if s.Value < sect.VirtualSize {
-						bi.gStructOffset = entryPoint + uint64(sect.VirtualAddress) + uint64(s.Value)
+						return entryPoint + uint64(sect.VirtualAddress) + uint64(s.Value)
 					}
 				}
 				break
 			}
 		}
+		return 0
+	}
+	switch _PEMachine(peFile.Machine) {
+	case _IMAGE_FILE_MACHINE_AMD64:
+		producer := bi.Producer()
+		if producer != "" && goversion.ProducerAfterOrEqual(producer, 1, 20) {
+			// Use runtime.tls_g as pointer to offset from GS to G struct:
+			// https://golang.org/src/runtime/sys_windows_amd64.s
+			bi.gStructOffset = readtls_g()
+			bi.gStructOffsetIsPtr = true
+		} else {
+			// Use ArbitraryUserPointer (0x28) as pointer to pointer
+			// to G struct per:
+			// https://golang.org/src/runtime/cgo/gcc_windows_amd64.c
+			bi.gStructOffset = 0x28
+		}
+	case _IMAGE_FILE_MACHINE_ARM64:
+		// Use runtime.tls_g as pointer to offset from R18 to G struct:
+		// https://golang.org/src/runtime/sys_windows_arm64.s
+		bi.gStructOffset = readtls_g()
+		bi.gStructOffsetIsPtr = true
 	}
 }
 
