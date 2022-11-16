@@ -211,14 +211,14 @@ func enableBreakpointOnTarget(p *Target, lbp *LogicalBreakpoint) error {
 		addrs, err = FindFileLocation(p, lbp.Set.File, lbp.Set.Line)
 	case lbp.Set.FunctionName != "":
 		addrs, err = FindFunctionLocation(p, lbp.Set.FunctionName, lbp.Set.Line)
-	case lbp.Set.Expr != nil:
-		addrs = lbp.Set.Expr(p)
 	case len(lbp.Set.PidAddrs) > 0:
 		for _, pidAddr := range lbp.Set.PidAddrs {
 			if pidAddr.Pid == p.Pid() {
 				addrs = append(addrs, pidAddr.Addr)
 			}
 		}
+	case lbp.Set.Expr != nil:
+		addrs = lbp.Set.Expr(p)
 	default:
 		return fmt.Errorf("breakpoint %d can not be enabled", lbp.LogicalID)
 	}
