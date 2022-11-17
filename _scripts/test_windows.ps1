@@ -7,7 +7,7 @@ Set-MpPreference -DisableRealtimeMonitoring $true
 
 if ($arch -eq "arm64") {
     # TODO: Remove when TeamCity subproject for windows/arm64 is set up.
-    Exit 0
+    Exit 1
 }
 
 # Install Chocolatey
