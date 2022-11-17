@@ -204,7 +204,7 @@ class TestBuild(val os: String, val arch: String, version: String, buildId: Abso
                     scriptMode = file {
                         path = "_scripts/test_windows.ps1"
                     }
-                    param("jetbrains_powershell_scriptArguments", "-version ${"go$version"} -arch $arch")
+                    param("jetbrains_powershell_scriptArguments", "-version ${"go$version"} -arch $arch -binDir %teamcity.build.systemDir%")
                 }
             }
             "mac" -> {
