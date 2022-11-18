@@ -9,6 +9,7 @@ if ($binDir -eq "") {
     $binDir = Resolve-Path "../../system" # working directory
 }
 
+
 Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
 
 # Install MinGW.
