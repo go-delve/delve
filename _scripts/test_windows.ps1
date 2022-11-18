@@ -96,7 +96,7 @@ Write-Host $env:GOPATH
 Get-Command go
 go version
 go env
-go run _scripts/make.go test
+go run _scripts/make.go test -v
 $x = $LastExitCode
 if ($version -ne "gotip") {
     Exit $x
