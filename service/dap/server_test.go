@@ -5472,10 +5472,10 @@ func TestLaunchRequestWithRelativeExecPath(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		symlink := "./__thisexe"
 		err := os.Symlink(fixture.Path, symlink)
-		defer os.Remove(symlink)
 		if err != nil {
-			t.Fatal("unable to create relative symlink:", err)
+			t.Skip("this test requires symlinks to be enabled and allowed")
 		}
+		defer os.Remove(symlink)
 		runDebugSession(t, client, "launch", func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "exec", "program": symlink})
