@@ -1,6 +1,3 @@
-// +build windows
-// +build !appengine
-
 package runewidth
 
 import (

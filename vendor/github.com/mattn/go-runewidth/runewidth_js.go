@@ -1,5 +1,4 @@
 // +build js
-// +build !appengine
 
 package runewidth
 

@@ -13,6 +13,8 @@ import (
 	"sync"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/internal/unsafeheader"
 )
 
 var (
@@ -115,7 +117,11 @@ func (m *mmapper) Mmap(fd int, offset int64, length int, prot int, flags int) (d
 	}
 
 	// Use unsafe to convert addr into a []byte.
-	b := unsafe.Slice((*byte)(unsafe.Pointer(addr)), length)
+	var b []byte
+	hdr := (*unsafeheader.Slice)(unsafe.Pointer(&b))
+	hdr.Data = unsafe.Pointer(addr)
+	hdr.Cap = length
+	hdr.Len = length
 
 	// Register mapping in m and return it.
 	p := &b[cap(b)-1]
@@ -423,15 +429,11 @@ func Send(s int, buf []byte, flags int) (err error) {
 }
 
 func Sendto(fd int, p []byte, flags int, to Sockaddr) (err error) {
-	var ptr unsafe.Pointer
-	var salen _Socklen
-	if to != nil {
-		ptr, salen, err = to.sockaddr()
-		if err != nil {
-			return err
-		}
+	ptr, n, err := to.sockaddr()
+	if err != nil {
+		return err
 	}
-	return sendto(fd, p, flags, ptr, salen)
+	return sendto(fd, p, flags, ptr, n)
 }
 
 func SetsockoptByte(fd, level, opt int, value byte) (err error) {
