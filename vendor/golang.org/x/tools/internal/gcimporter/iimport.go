@@ -17,6 +17,7 @@ import (
 	"go/token"
 	"go/types"
 	"io"
+	"math/big"
 	"sort"
 	"strings"
 
@@ -50,6 +51,8 @@ const (
 	iexportVersionPosCol   = 1
 	iexportVersionGo1_18   = 2
 	iexportVersionGenerics = 2
+
+	iexportVersionCurrent = 2
 )
 
 type ident struct {
@@ -82,7 +85,7 @@ const (
 // If the export data version is not recognized or the format is otherwise
 // compromised, an error is returned.
 func IImportData(fset *token.FileSet, imports map[string]*types.Package, data []byte, path string) (int, *types.Package, error) {
-	pkgs, err := iimportCommon(fset, imports, data, false, path)
+	pkgs, err := iimportCommon(fset, imports, data, false, path, nil)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -91,11 +94,11 @@ func IImportData(fset *token.FileSet, imports map[string]*types.Package, data []
 
 // IImportBundle imports a set of packages from the serialized package bundle.
 func IImportBundle(fset *token.FileSet, imports map[string]*types.Package, data []byte) ([]*types.Package, error) {
-	return iimportCommon(fset, imports, data, true, "")
+	return iimportCommon(fset, imports, data, true, "", nil)
 }
 
-func iimportCommon(fset *token.FileSet, imports map[string]*types.Package, data []byte, bundle bool, path string) (pkgs []*types.Package, err error) {
-	const currentVersion = 1
+func iimportCommon(fset *token.FileSet, imports map[string]*types.Package, data []byte, bundle bool, path string, insert InsertType) (pkgs []*types.Package, err error) {
+	const currentVersion = iexportVersionCurrent
 	version := int64(-1)
 	if !debug {
 		defer func() {
@@ -144,6 +147,7 @@ func iimportCommon(fset *token.FileSet, imports map[string]*types.Package, data 
 	p := iimporter{
 		version: int(version),
 		ipath:   path,
+		insert:  insert,
 
 		stringData:  stringData,
 		stringCache: make(map[uint64]string),
@@ -184,11 +188,18 @@ func iimportCommon(fset *token.FileSet, imports map[string]*types.Package, data 
 		} else if pkg.Name() != pkgName {
 			errorf("conflicting names %s and %s for package %q", pkg.Name(), pkgName, path)
 		}
+		if i == 0 && !bundle {
+			p.localpkg = pkg
+		}
 
 		p.pkgCache[pkgPathOff] = pkg
 
+		// Read index for package.
 		nameIndex := make(map[string]uint64)
-		for nSyms := r.uint64(); nSyms > 0; nSyms-- {
+		nSyms := r.uint64()
+		// In shallow mode we don't expect an index for other packages.
+		assert(nSyms == 0 || p.localpkg == pkg || p.insert == nil)
+		for ; nSyms > 0; nSyms-- {
 			name := p.stringAt(r.uint64())
 			nameIndex[name] = r.uint64()
 		}
@@ -264,6 +275,9 @@ type iimporter struct {
 	version int
 	ipath   string
 
+	localpkg *types.Package
+	insert   func(pkg *types.Package, name string) // "shallow" mode only
+
 	stringData  []byte
 	stringCache map[uint64]string
 	pkgCache    map[uint64]*types.Package
@@ -307,6 +321,13 @@ func (p *iimporter) doDecl(pkg *types.Package, name string) {
 
 	off, ok := p.pkgIndex[pkg][name]
 	if !ok {
+		// In "shallow" mode, call back to the application to
+		// find the object and insert it into the package scope.
+		if p.insert != nil {
+			assert(pkg != p.localpkg)
+			p.insert(pkg, name) // "can't fail"
+			return
+		}
 		errorf("%v.%v not in index", pkg, name)
 	}
 
@@ -512,7 +533,9 @@ func (r *importReader) value() (typ types.Type, val constant.Value) {
 		val = constant.MakeString(r.string())
 
 	case types.IsInteger:
-		val = r.mpint(b)
+		var x big.Int
+		r.mpint(&x, b)
+		val = constant.Make(&x)
 
 	case types.IsFloat:
 		val = r.mpfloat(b)
@@ -561,8 +584,8 @@ func intSize(b *types.Basic) (signed bool, maxBytes uint) {
 	return
 }
 
-func (r *importReader) mpint(b *types.Basic) constant.Value {
-	signed, maxBytes := intSize(b)
+func (r *importReader) mpint(x *big.Int, typ *types.Basic) {
+	signed, maxBytes := intSize(typ)
 
 	maxSmall := 256 - maxBytes
 	if signed {
@@ -581,7 +604,8 @@ func (r *importReader) mpint(b *types.Basic) constant.Value {
 				v = ^v
 			}
 		}
-		return constant.MakeInt64(v)
+		x.SetInt64(v)
+		return
 	}
 
 	v := -n
@@ -591,47 +615,23 @@ func (r *importReader) mpint(b *types.Basic) constant.Value {
 	if v < 1 || uint(v) > maxBytes {
 		errorf("weird decoding: %v, %v => %v", n, signed, v)
 	}
-
-	buf := make([]byte, v)
-	io.ReadFull(&r.declReader, buf)
-
-	// convert to little endian
-	// TODO(gri) go/constant should have a more direct conversion function
-	//           (e.g., once it supports a big.Float based implementation)
-	for i, j := 0, len(buf)-1; i < j; i, j = i+1, j-1 {
-		buf[i], buf[j] = buf[j], buf[i]
-	}
-
-	x := constant.MakeFromBytes(buf)
+	b := make([]byte, v)
+	io.ReadFull(&r.declReader, b)
+	x.SetBytes(b)
 	if signed && n&1 != 0 {
-		x = constant.UnaryOp(token.SUB, x, 0)
+		x.Neg(x)
 	}
-	return x
 }
 
-func (r *importReader) mpfloat(b *types.Basic) constant.Value {
-	x := r.mpint(b)
-	if constant.Sign(x) == 0 {
-		return x
+func (r *importReader) mpfloat(typ *types.Basic) constant.Value {
+	var mant big.Int
+	r.mpint(&mant, typ)
+	var f big.Float
+	f.SetInt(&mant)
+	if f.Sign() != 0 {
+		f.SetMantExp(&f, int(r.int64()))
 	}
-
-	exp := r.int64()
-	switch {
-	case exp > 0:
-		x = constant.Shift(x, token.SHL, uint(exp))
-		// Ensure that the imported Kind is Float, else this constant may run into
-		// bitsize limits on overlarge integers. Eventually we can instead adopt
-		// the approach of CL 288632, but that CL relies on go/constant APIs that
-		// were introduced in go1.13.
-		//
-		// TODO(rFindley): sync the logic here with tip Go once we no longer
-		// support go1.12.
-		x = constant.ToFloat(x)
-	case exp < 0:
-		d := constant.Shift(constant.MakeInt64(1), token.SHL, uint(-exp))
-		x = constant.BinaryOp(x, token.QUO, d)
-	}
-	return x
+	return constant.Make(&f)
 }
 
 func (r *importReader) ident() string {
