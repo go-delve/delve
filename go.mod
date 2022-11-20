@@ -1,6 +1,6 @@
 module github.com/go-delve/delve
 
-go 1.16
+go 1.17
 
 require (
 	github.com/cilium/ebpf v0.7.0
