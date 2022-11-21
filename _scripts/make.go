@@ -391,7 +391,7 @@ func testStandard() {
 			dopie = true
 		case "windows":
 			// only on Go 1.15 or later, with CGO_ENABLED and gcc found in path
-			if goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
+			if runtime.GOARCH != "arm64" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
 				out, err := exec.Command("go", "env", "CGO_ENABLED").CombinedOutput()
 				if err != nil {
 					panic(err)
