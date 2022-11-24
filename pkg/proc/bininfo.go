@@ -1804,8 +1804,7 @@ func (bi *BinaryInfo) parseDebugFrameMacho(image *Image, exe *macho.File, debugI
 //
 // [golang/go#25841]: https://github.com/golang/go/issues/25841
 func (bi *BinaryInfo) macOSDebugFrameBugWorkaround() {
-	//TODO: log extensively because of bugs in the field
-	if bi.GOOS != "darwin" || bi.Arch.Name != "arm64" {
+	if bi.GOOS != "darwin" {
 		return
 	}
 	if len(bi.Images) > 1 {
@@ -1818,9 +1817,28 @@ func (bi *BinaryInfo) macOSDebugFrameBugWorkaround() {
 	if !ok {
 		return
 	}
-	if exe.Flags&macho.FlagPIE == 0 {
-		bi.logger.Infof("debug_frame workaround not needed: not a PIE (%#x)", exe.Flags)
-		return
+	if bi.Arch.Name == "arm64" {
+		if exe.Flags&macho.FlagPIE == 0 {
+			bi.logger.Infof("debug_frame workaround not needed: not a PIE (%#x)", exe.Flags)
+			return
+		}
+	} else {
+		prod := goversion.ParseProducer(bi.Producer())
+		if !prod.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 19, Rev: 3}) && !prod.IsDevel() {
+			bi.logger.Infof("debug_frame workaround not needed (version %q on %s)", bi.Producer(), bi.Arch.Name)
+			return
+		}
+		found := false
+		for i := range bi.frameEntries {
+			if bi.frameEntries[i].CIE.CIE_id == ^uint32(0) && bi.frameEntries[i].Begin() < 0x4000000 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			bi.logger.Infof("debug_frame workaround not needed (all FDEs above 0x4000000)")
+			return
+		}
 	}
 
 	// Find first Go function (first = lowest entry point)
