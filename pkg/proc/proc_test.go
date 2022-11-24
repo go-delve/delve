@@ -4045,9 +4045,8 @@ func TestInlineFunctionList(t *testing.T) {
 		// Versions of go before 1.10 do not have DWARF information for inlined calls
 		t.Skip("inlining not supported")
 	}
-	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" && ver.Major >= 0 && ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 20, Rev: -1}) {
-		// go 1.20 does not have have DWARF information for inlined calls.
-		// TODO(qmuntal): investigate regression.
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
+		// TODO(qmuntal): seems to be an upstream issue, investigate.
 		t.Skip("inlining not supported")
 	}
 	withTestProcessArgs("testinline", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p *proc.Target, fixture protest.Fixture) {

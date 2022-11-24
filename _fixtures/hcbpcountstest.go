@@ -14,7 +14,7 @@ func demo(id int, wait *sync.WaitGroup) {
 		if runtime.GOOS == "windows" {
 			// This test is flaky on windows,
 			// give it some more time.
-			min = 10
+			min = 20
 		}
 		sleep := rand.Intn(10) + min
 		runtime.Breakpoint()
