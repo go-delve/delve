@@ -390,6 +390,7 @@ func testStandard() {
 		case "linux":
 			dopie = true
 		case "windows":
+			// windows/arm64 always uses pie buildmode, no need to test everything again.
 			// only on Go 1.15 or later, with CGO_ENABLED and gcc found in path
 			if runtime.GOARCH != "arm64" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
 				out, err := exec.Command("go", "env", "CGO_ENABLED").CombinedOutput()
