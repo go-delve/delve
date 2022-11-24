@@ -10,7 +10,13 @@ import (
 
 func demo(id int, wait *sync.WaitGroup) {
 	for i := 0; i < 100; i++ {
-		sleep := rand.Intn(10) + 1
+		min := 1
+		if runtime.GOOS == "windows" {
+			// This test is flaky on windows,
+			// give it some more time.
+			min = 10
+		}
+		sleep := rand.Intn(10) + min
 		runtime.Breakpoint()
 		fmt.Printf("id: %d step: %d sleeping %d\n", id, i, sleep)
 		time.Sleep(time.Duration(sleep) * time.Millisecond)

@@ -3636,8 +3636,8 @@ func TestIssue1008(t *testing.T) {
 		if !strings.HasSuffix(loc.File, "/main.go") {
 			t.Errorf("unexpected location %s:%d\n", loc.File, loc.Line)
 		}
-		if loc.Line > 31 {
-			t.Errorf("unexpected location %s:%d (file only has 30 lines)\n", loc.File, loc.Line)
+		if loc.Line > 35 {
+			t.Errorf("unexpected location %s:%d (file only has 34 lines)\n", loc.File, loc.Line)
 		}
 	})
 }
@@ -4040,8 +4040,14 @@ func TestInlineStepOut(t *testing.T) {
 
 func TestInlineFunctionList(t *testing.T) {
 	// We should be able to list all functions, even inlined ones.
-	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		// Versions of go before 1.10 do not have DWARF information for inlined calls
+		t.Skip("inlining not supported")
+	}
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" && ver.Major >= 0 && ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 20, Rev: -1}) {
+		// go 1.20 does not have have DWARF information for inlined calls.
+		// TODO(qmuntal): investigate regression.
 		t.Skip("inlining not supported")
 	}
 	withTestProcessArgs("testinline", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p *proc.Target, fixture protest.Fixture) {
