@@ -5473,7 +5473,11 @@ func TestLaunchRequestWithRelativeExecPath(t *testing.T) {
 		symlink := "./__thisexe"
 		err := os.Symlink(fixture.Path, symlink)
 		if err != nil {
-			t.Skip("this test requires symlinks to be enabled and allowed")
+			if runtime.GOOS == "windows" {
+				t.Skip("this test requires symlinks to be enabled and allowed")
+			} else {
+				t.Fatal("unable to create relative symlink:", err)
+			}
 		}
 		defer os.Remove(symlink)
 		runDebugSession(t, client, "launch", func() {
