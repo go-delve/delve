@@ -2482,6 +2482,7 @@ func TestStepOut(t *testing.T) {
 
 func TestStepConcurrentDirect(t *testing.T) {
 	skipOn(t, "broken", "freebsd")
+	skipOn(t, "broken - step concurrent", "windows", "arm64")
 	protest.AllowRecording(t)
 	withTestProcess("teststepconcurrent", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 37)
