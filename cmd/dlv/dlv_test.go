@@ -210,7 +210,11 @@ func getDlvBin(t *testing.T) (string, string) {
 	// we can ensure we don't get build errors
 	// depending on the test ordering.
 	os.Setenv("CGO_LDFLAGS", ldFlags)
-	return getDlvBinInternal(t)
+	var tags string
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
+		tags = "-tags=exp.winarm64"
+	}
+	return getDlvBinInternal(t, tags)
 }
 
 func getDlvBinEBPF(t *testing.T) (string, string) {
@@ -424,6 +428,10 @@ func TestGeneratedDoc(t *testing.T) {
 	if strings.ToLower(os.Getenv("TRAVIS")) == "true" && runtime.GOOS == "windows" {
 		t.Skip("skipping test on Windows in CI")
 	}
+	var tags string
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
+		tags = "-tags=exp.winarm64"
+	}
 	// Checks gen-cli-docs.go
 	var generatedBuf bytes.Buffer
 	commands := terminal.DebugCommands(nil)
@@ -434,7 +442,7 @@ func TestGeneratedDoc(t *testing.T) {
 	tempDir, err := ioutil.TempDir(os.TempDir(), "test-gen-doc")
 	assertNoError(err, t, "TempDir")
 	defer protest.SafeRemoveAll(tempDir)
-	cmd := exec.Command("go", "run", "_scripts/gen-usage-docs.go", tempDir)
+	cmd := exec.Command("go", "run", tags, "_scripts/gen-usage-docs.go", tempDir)
 	cmd.Dir = projectRoot()
 	err = cmd.Run()
 	assertNoError(err, t, "go run _scripts/gen-usage-docs.go")
@@ -457,7 +465,7 @@ func TestGeneratedDoc(t *testing.T) {
 		return out
 	}
 
-	checkAutogenDoc(t, "Documentation/backend_test_health.md", "go run _scripts/gen-backend_test_health.go", runScript("_scripts/gen-backend_test_health.go", "-"))
+	checkAutogenDoc(t, "Documentation/backend_test_health.md", "go run _scripts/gen-backend_test_health.go", runScript(tags, "_scripts/gen-backend_test_health.go", "-"))
 
 	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
 		//TODO(qmuntal): investigate further when the Windows ARM64 backend is more stable.
