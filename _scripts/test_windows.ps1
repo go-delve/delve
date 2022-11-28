@@ -98,7 +98,7 @@ go version
 go env
 $tags = ""
 if ($arch -eq "arm64") {
-    $tags = "-tags=exp.winarm64"
+    $tags = "--tags=exp.winarm64"
 }
 go run _scripts/make.go test $tags -v
 $x = $LastExitCode
