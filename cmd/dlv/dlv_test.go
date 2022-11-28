@@ -428,9 +428,9 @@ func TestGeneratedDoc(t *testing.T) {
 	if strings.ToLower(os.Getenv("TRAVIS")) == "true" && runtime.GOOS == "windows" {
 		t.Skip("skipping test on Windows in CI")
 	}
-	var tags string
 	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
-		tags = "-tags=exp.winarm64"
+		//TODO(qmuntal): investigate further when the Windows ARM64 backend is more stable.
+		t.Skip("skipping test on Windows in CI")
 	}
 	// Checks gen-cli-docs.go
 	var generatedBuf bytes.Buffer
@@ -442,7 +442,7 @@ func TestGeneratedDoc(t *testing.T) {
 	tempDir, err := ioutil.TempDir(os.TempDir(), "test-gen-doc")
 	assertNoError(err, t, "TempDir")
 	defer protest.SafeRemoveAll(tempDir)
-	cmd := exec.Command("go", "run", tags, "_scripts/gen-usage-docs.go", tempDir)
+	cmd := exec.Command("go", "run", "_scripts/gen-usage-docs.go", tempDir)
 	cmd.Dir = projectRoot()
 	err = cmd.Run()
 	assertNoError(err, t, "go run _scripts/gen-usage-docs.go")
@@ -465,12 +465,7 @@ func TestGeneratedDoc(t *testing.T) {
 		return out
 	}
 
-	checkAutogenDoc(t, "Documentation/backend_test_health.md", "go run _scripts/gen-backend_test_health.go", runScript(tags, "_scripts/gen-backend_test_health.go", "-"))
-
-	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
-		//TODO(qmuntal): investigate further when the Windows ARM64 backend is more stable.
-		t.Skip("skipping test on Windows in CI")
-	}
+	checkAutogenDoc(t, "Documentation/backend_test_health.md", "go run _scripts/gen-backend_test_health.go", runScript("_scripts/gen-backend_test_health.go", "-"))
 	checkAutogenDoc(t, "pkg/terminal/starbind/starlark_mapping.go", "'go generate' inside pkg/terminal/starbind", runScript("_scripts/gen-starlark-bindings.go", "go", "-"))
 	checkAutogenDoc(t, "Documentation/cli/starlark.md", "'go generate' inside pkg/terminal/starbind", runScript("_scripts/gen-starlark-bindings.go", "doc/dummy", "Documentation/cli/starlark.md"))
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
