@@ -96,7 +96,11 @@ Write-Host $env:GOPATH
 Get-Command go
 go version
 go env
-go run _scripts/make.go test -v
+$tags = ""
+if ($arch -eq "arm64") {
+    $tags = "-tags=exp.winarm64"
+}
+go run _scripts/make.go test $tags -v
 $x = $LastExitCode
 if ($version -ne "gotip") {
     Exit $x

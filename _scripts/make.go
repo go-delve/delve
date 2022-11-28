@@ -495,7 +495,11 @@ func inpath(exe string) bool {
 
 func allPackages() []string {
 	r := []string{}
-	for _, dir := range strings.Split(getoutput("go", "list", "-mod=vendor", "./..."), "\n") {
+	var tags string
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
+		tags = "-tags=exp.winarm64"
+	}
+	for _, dir := range strings.Split(getoutput("go", "list", "-mod=vendor", tags, "./..."), "\n") {
 		dir = strings.TrimSpace(dir)
 		if dir == "" || strings.Contains(dir, "/vendor/") || strings.Contains(dir, "/_scripts") {
 			continue
