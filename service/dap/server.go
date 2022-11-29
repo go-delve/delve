@@ -973,14 +973,20 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		debugbinary = args.Output
 
 		var cmd string
-		var out []byte
-		var err error
+		var execCmd *exec.Cmd
 		switch args.Mode {
 		case "debug":
-			cmd, out, err = gobuild.GoBuildCombinedOutput(args.Output, []string{args.Program}, args.BuildFlags)
+			cmd, execCmd = gobuild.MakeGoBuildCmd(args.Output, []string{args.Program}, args.BuildFlags)
 		case "test":
-			cmd, out, err = gobuild.GoTestBuildCombinedOutput(args.Output, []string{args.Program}, args.BuildFlags)
+			cmd, execCmd = gobuild.MakeGoTestCmd(args.Output, []string{args.Program}, args.BuildFlags)
 		}
+		s.send(&dap.OutputEvent{
+			Event: *newEvent("output"),
+			Body: dap.OutputEventBody{
+				Output:   fmt.Sprintf("Building from %q: [%s]\n", args.DlvCwd, cmd),
+				Category: "stdout",
+			}})
+		out, err := execCmd.CombinedOutput()
 		args.DlvCwd, _ = filepath.Abs(args.DlvCwd)
 		s.config.log.Debugf("building from %q: [%s]", args.DlvCwd, cmd)
 		if err != nil {

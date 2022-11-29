@@ -46,6 +46,16 @@ func GoBuildCombinedOutput(debugname string, pkgs []string, buildflags string) (
 	return gocommandCombinedOutput("build", args...)
 }
 
+func MakeGoBuildCmd(debugname string, pkgs []string, buildflags string) (string, *exec.Cmd) {
+	args := goBuildArgs(debugname, pkgs, buildflags, false)
+	return gocommandExecCmd("build", args...)
+}
+
+func MakeGoTestCmd(debugname string, pkgs []string, buildflags string) (string, *exec.Cmd) {
+	args := goBuildArgs(debugname, pkgs, buildflags, true)
+	return gocommandExecCmd("test", args...)
+}
+
 // GoTestBuild builds test files 'pkgs' with the specified 'buildflags'
 // and writes the output at 'debugname'.
 func GoTestBuild(debugname string, pkgs []string, buildflags string) error {
