@@ -6,6 +6,8 @@ package gdbserial
 import (
 	"os/signal"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 func sysProcAttr(foreground bool) *syscall.SysProcAttr {
@@ -14,4 +16,8 @@ func sysProcAttr(foreground bool) *syscall.SysProcAttr {
 
 func foregroundSignalsIgnore() {
 	signal.Ignore(syscall.SIGTTOU, syscall.SIGTTIN)
+}
+
+func tcsetpgrp(fd uintptr, pid int) error {
+	return unix.IoctlSetPointerInt(int(fd), unix.TIOCSPGRP, pid)
 }

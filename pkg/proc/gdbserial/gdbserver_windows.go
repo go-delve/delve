@@ -8,3 +8,7 @@ func sysProcAttr(foreground bool) *syscall.SysProcAttr {
 
 func foregroundSignalsIgnore() {
 }
+
+func tcsetpgrp(fd uintptr, pid int) error {
+	return nil
+}
