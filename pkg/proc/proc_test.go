@@ -6012,3 +6012,19 @@ func TestGnuDebuglink(t *testing.T) {
 		}
 	}
 }
+
+func TestStacktraceExtlinkMac(t *testing.T) {
+	// Tests stacktrace for programs built using external linker.
+	// See issue #3194
+	skipUnlessOn(t, "darwin only", "darwin")
+	withTestProcess("issue3194", t, func(p *proc.Target, fixture protest.Fixture) {
+		setFunctionBreakpoint(p, t, "main.main")
+		assertNoError(p.Continue(), t, "First Continue()")
+		frames, err := proc.ThreadStacktrace(p.CurrentThread(), 10)
+		assertNoError(err, t, "ThreadStacktrace")
+		logStacktrace(t, p, frames)
+		if len(frames) < 2 || frames[0].Call.Fn.Name != "main.main" || frames[1].Call.Fn.Name != "runtime.main" {
+			t.Fatalf("bad stacktrace")
+		}
+	})
+}
