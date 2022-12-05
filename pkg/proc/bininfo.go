@@ -1520,7 +1520,12 @@ func (bi *BinaryInfo) parseDebugFrameElf(image *Image, dwarfFile, exeFile *elf.F
 	var ehFrameAddr uint64
 	if ehFrameSection != nil {
 		ehFrameAddr = ehFrameSection.Addr
-		ehFrameData, _ = ehFrameSection.Data()
+		// Workaround for go.dev/cl/429601
+		if ehFrameSection.Type == elf.SHT_NOBITS {
+			ehFrameData = make([]byte, ehFrameSection.Size)
+		} else {
+			ehFrameData, _ = ehFrameSection.Data()
+		}
 	}
 
 	bi.parseDebugFrameGeneral(image, debugFrameData, ".debug_frame", debugFrameErr, ehFrameData, ehFrameAddr, ".eh_frame", frame.DwarfEndian(debugInfoBytes))

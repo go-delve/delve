@@ -3994,6 +3994,9 @@ func TestInlineStep(t *testing.T) {
 		{contContinue, 18},
 		{contStep, 6},
 		{contStep, 7},
+		{contStep, 24},
+		{contStep, 25},
+		{contStep, 7},
 		{contStep, 18},
 		{contStep, 19},
 	})

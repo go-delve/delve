@@ -701,8 +701,15 @@ func TestDAPCmd(t *testing.T) {
 	client.DisconnectRequest()
 	client.ExpectDisconnectResponse(t)
 	client.ExpectTerminatedEvent(t)
-	if _, err := client.ReadMessage(); err != io.EOF {
-		t.Errorf("got %q, want \"EOF\"\n", err)
+	_, err = client.ReadMessage()
+	if runtime.GOOS == "windows" {
+		if err == nil {
+			t.Errorf("got %q, want non-nil\n", err)
+		}
+	} else {
+		if err != io.EOF {
+			t.Errorf("got %q, want \"EOF\"\n", err)
+		}
 	}
 	client.Close()
 	cmd.Wait()
@@ -1289,6 +1296,10 @@ func TestStaticcheck(t *testing.T) {
 	_, err := exec.LookPath("staticcheck")
 	if err != nil {
 		t.Skip("staticcheck not installed")
+	}
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 20) {
+		//TODO(aarzilli): remove this when there is a version of staticcheck that can support go1.20
+		t.Skip("staticcheck does not support go1.20 currently")
 	}
 	// default checks minus SA1019 which complains about deprecated identifiers, which change between versions of Go.
 	args := []string{"-tests=false", "-checks=all,-SA1019,-ST1000,-ST1003,-ST1016,-S1021,-ST1023", "github.com/go-delve/delve/..."}
