@@ -42,15 +42,6 @@ func NewMakeCommands() *cobra.Command {
 		Use:   "build",
 		Short: "Build delve",
 		Run: func(cmd *cobra.Command, args []string) {
-			tagFlag := prepareMacnative()
-			if len(*Tags) > 0 {
-				if len(tagFlag) == 0 {
-					tagFlag = "-tags="
-				} else {
-					tagFlag += ","
-				}
-				tagFlag += strings.Join(*Tags, ",")
-			}
 			envflags := []string{}
 			if len(Architecture) > 0 {
 				envflags = append(envflags, "GOARCH="+Architecture)
@@ -59,9 +50,9 @@ func NewMakeCommands() *cobra.Command {
 				envflags = append(envflags, "GOOS="+OS)
 			}
 			if len(envflags) > 0 {
-				executeEnv(envflags, "go", "build", "-ldflags", "-extldflags -static", tagFlag, buildFlags(), DelveMainPackagePath)
+				executeEnv(envflags, "go", "build", "-ldflags", "-extldflags -static", tagFlags(), buildFlags(), DelveMainPackagePath)
 			} else {
-				execute("go", "build", "-ldflags", "-extldflags -static", tagFlag, buildFlags(), DelveMainPackagePath)
+				execute("go", "build", "-ldflags", "-extldflags -static", tagFlags(), buildFlags(), DelveMainPackagePath)
 			}
 			if runtime.GOOS == "darwin" && os.Getenv("CERT") != "" && canMacnative() {
 				codesign("./dlv")
@@ -78,8 +69,7 @@ func NewMakeCommands() *cobra.Command {
 		Use:   "install",
 		Short: "Installs delve",
 		Run: func(cmd *cobra.Command, args []string) {
-			tagFlag := prepareMacnative()
-			execute("go", "install", tagFlag, buildFlags(), DelveMainPackagePath)
+			execute("go", "install", tagFlags(), buildFlags(), DelveMainPackagePath)
 			if runtime.GOOS == "darwin" && os.Getenv("CERT") != "" && canMacnative() {
 				codesign(installedExecutablePath())
 			}
@@ -290,7 +280,24 @@ func prepareMacnative() string {
 	if !checkCert() {
 		return ""
 	}
-	return "-tags=macnative"
+	return "macnative"
+}
+
+func tagFlags() string {
+	var tags []string
+	if mactags := prepareMacnative(); mactags != "" {
+		tags = append(tags, mactags)
+	}
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
+		tags = append(tags, "exp.winarm64")
+	}
+	if Tags != nil && len(*Tags) > 0 {
+		tags = append(tags, *Tags...)
+	}
+	if len(tags) == 0 {
+		return ""
+	}
+	return "-tags=" + strings.Join(tags, ",")
 }
 
 func buildFlags() []string {
@@ -390,8 +397,9 @@ func testStandard() {
 		case "linux":
 			dopie = true
 		case "windows":
+			// windows/arm64 always uses pie buildmode, no need to test everything again.
 			// only on Go 1.15 or later, with CGO_ENABLED and gcc found in path
-			if goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
+			if runtime.GOARCH != "arm64" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
 				out, err := exec.Command("go", "env", "CGO_ENABLED").CombinedOutput()
 				if err != nil {
 					panic(err)
@@ -451,11 +459,11 @@ func testCmdIntl(testSet, testRegex, testBackend, testBuildMode string) {
 	}
 
 	if len(testPackages) > 3 {
-		executeq(env, "go", "test", testFlags(), buildFlags(), testPackages, backendFlag, buildModeFlag)
+		executeq(env, "go", "test", testFlags(), buildFlags(), tagFlags(), testPackages, backendFlag, buildModeFlag)
 	} else if testRegex != "" {
-		executeq(env, "go", "test", testFlags(), buildFlags(), testPackages, "-run="+testRegex, backendFlag, buildModeFlag)
+		executeq(env, "go", "test", testFlags(), buildFlags(), tagFlags(), testPackages, "-run="+testRegex, backendFlag, buildModeFlag)
 	} else {
-		executeq(env, "go", "test", testFlags(), buildFlags(), testPackages, backendFlag, buildModeFlag)
+		executeq(env, "go", "test", testFlags(), buildFlags(), tagFlags(), testPackages, backendFlag, buildModeFlag)
 	}
 }
 
@@ -494,7 +502,7 @@ func inpath(exe string) bool {
 
 func allPackages() []string {
 	r := []string{}
-	for _, dir := range strings.Split(getoutput("go", "list", "-mod=vendor", "./..."), "\n") {
+	for _, dir := range strings.Split(getoutput("go", "list", "-mod=vendor", tagFlags(), "./..."), "\n") {
 		dir = strings.TrimSpace(dir)
 		if dir == "" || strings.Contains(dir, "/vendor/") || strings.Contains(dir, "/_scripts") {
 			continue
