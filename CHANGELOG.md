@@ -3,6 +3,31 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.20.0] 2022-12-07
+
+### Added
+
+- Support for Go 1.20 (#3129, #3196, #3180, @cuiweixie, @qmuntal, @aarzilli)
+- Support for Windows/arm64 (gated by a build tag) (#3063, #3198, #3200, @qmuntal)
+- Compatibility with coredumpctl (#3195, @Foxboron)
+
+### Fixed
+
+- Improve evaluation of type casts (#3146, #3149, #3186, @aarzilli)
+- DAP: Added type to response of EvaluateRequest (#3172, @gfszr)
+- Cgo stacktraces on linux/arm64 (#3192, @derekparker)
+- Debugserver crashes on recent versions of macOS when $DYLD_INSERT_LIBRARIES is set (#3181, @aviramha)
+- Stacktraces and stepping on Go 1.19.2 and later on macOS (#3204, @aarzilli)
+- Attaching to processes used by a different user on Windows (#3162, @aarzilli)
+- Nil pointer dereference when current address is not part of a function (#3157, @aarzilli)
+
+### Changed
+
+- Change behavior of exec command so that it looks for the executable in the current directory (#3167, @derekparker)
+- DAP shows full value when evaluating log messages (#3141, @suzmue)
+- Wait time is no longer reported for parked goroutines (its value was always incorrect) (#3139, @aarzilli)
+- Miscellaneous improvements to documentation and error messages (#3119, #3117, #3154, #3161, #3169, #3188, @aarzilli, @derekparker, @cuishuang, @Frederick888,  @dlipovetsky)
+
 ## [1.9.1] 2022-08-23
 
 ### Added
