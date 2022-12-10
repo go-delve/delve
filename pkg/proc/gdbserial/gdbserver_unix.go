@@ -19,5 +19,9 @@ func foregroundSignalsIgnore() {
 }
 
 func tcsetpgrp(fd uintptr, pid int) error {
-	return unix.IoctlSetPointerInt(int(fd), unix.TIOCSPGRP, pid)
+	pgid, _ := syscall.Getpgid(pid)
+	if pid == pgid {
+		return unix.IoctlSetPointerInt(int(fd), unix.TIOCSPGRP, pid)
+	}
+	return nil
 }

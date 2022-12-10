@@ -31,8 +31,11 @@ if [ "$version" = "gotip" ]; then
 	cd -
 else
 	echo Finding latest patch version for $version
-	version=$(curl 'https://go.dev/dl/?mode=json&include=all' | jq '.[].version' --raw-output | egrep ^$version'($|\.|^beta|^rc)' | sort -rV | head -1)
 	echo "Go $version on $arch"
+	version=$(curl 'https://go.dev/dl/?mode=json&include=all' | jq '.[].version' --raw-output | egrep ^$version'($|\.|beta|rc)' | sort -rV | head -1)
+	if [ "x$version" = "x" ]; then
+		version=$(curl 'https://go.dev/dl/?mode=json&include=all' | jq '.[].version' --raw-output | egrep ^$version'($|\.)' | sort -rV | head -1)
+	fi
 	getgo $version
 fi
 

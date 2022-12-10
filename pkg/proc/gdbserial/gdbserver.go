@@ -575,7 +575,7 @@ func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs [
 	}
 	if p.conn.pid != 0 && foreground && isatty.IsTerminal(os.Stdin.Fd()) {
 		// Make the target process the controlling process of the tty if it is a foreground process.
-		err = tcsetpgrp(os.Stdin.Fd(), p.conn.pid)
+		err := tcsetpgrp(os.Stdin.Fd(), p.conn.pid)
 		if err != nil {
 			logflags.DebuggerLogger().Errorf("could not set controlling process: %v", err)
 		}
