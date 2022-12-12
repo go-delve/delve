@@ -2293,7 +2293,7 @@ func (v *Variable) ConstDescr() string {
 	}
 	if typename := v.DwarfType.Common().Name; !strings.Contains(typename, ".") || strings.HasPrefix(typename, "C.") {
 		// only attempt to use constants for user defined type, otherwise every
-		// int variable with value 1 will be described with os.SEEK_CUR and other
+		// int variable with value 1 will be described with io.SeekCurrent and other
 		// similar problems.
 		return ""
 	}

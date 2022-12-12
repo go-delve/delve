@@ -340,14 +340,14 @@ func readNote(r io.ReadSeeker, machineType elf.Machine) (*note, error) {
 
 // skipPadding moves r to the next multiple of pad.
 func skipPadding(r io.ReadSeeker, pad int64) error {
-	pos, err := r.Seek(0, os.SEEK_CUR)
+	pos, err := r.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return err
 	}
 	if pos%pad == 0 {
 		return nil
 	}
-	if _, err := r.Seek(pad-(pos%pad), os.SEEK_CUR); err != nil {
+	if _, err := r.Seek(pad-(pos%pad), io.SeekCurrent); err != nil {
 		return err
 	}
 	return nil
