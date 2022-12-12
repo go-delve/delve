@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.20.1] 2022-12-12
+
+### Fixed
+
+- Fix executing programs on macOS with most versions of debugserver installed (#3211, @aarzilli)
+
 ## [1.20.0] 2022-12-07
 
 ### Added
