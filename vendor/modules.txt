@@ -15,7 +15,7 @@ github.com/cpuguy83/go-md2man/v2/md2man
 # github.com/creack/pty v1.1.9
 ## explicit
 github.com/creack/pty
-# github.com/derekparker/trie v0.0.0-20200317170641-1fdf38b7b0e9
+# github.com/derekparker/trie v0.0.0-20221213183930-4c74548207f4
 ## explicit
 github.com/derekparker/trie
 # github.com/go-delve/liner v1.2.3-0.20220127212407-d32d89dd2a5d
