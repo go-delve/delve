@@ -223,7 +223,7 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 		it.atend = true
 		return true
 	case "crosscall2":
-		//The offsets get from runtime/cgo/asm_arm64.s:10
+		// The offsets get from runtime/cgo/asm_arm64.s:10
 		bpoff := uint64(14)
 		lroff := uint64(15)
 		if producer := it.bi.Producer(); producer != "" && goversion.ProducerAfterOrEqual(producer, 1, 19) {

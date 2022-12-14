@@ -396,7 +396,7 @@ func (t *thread) SetDX(uint64) error {
 	return ErrChangeRegisterCore
 }
 
-// ChangeRegs will always return an error, you cannot
+// SetReg will always return an error, you cannot
 // change register values when debugging core files.
 func (t *thread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
 	return ErrChangeRegisterCore

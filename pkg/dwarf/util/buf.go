@@ -36,7 +36,7 @@ type dataFormat interface {
 	addrsize() int
 }
 
-// Some parts of DWARF have no data format, e.g., abbrevs.
+// UnknownFormat is a struct for some parts of DWARF that have no data format, e.g., abbrevs.
 type UnknownFormat struct{}
 
 func (u UnknownFormat) version() int {
@@ -66,7 +66,7 @@ func (b *buf) Uint8() uint8 {
 	return val
 }
 
-// Read a varint, which is 7 bits per byte, little endian.
+// Varint reads a varint, which is 7 bits per byte, little endian.
 // the 0x80 bit means read another byte.
 func (b *buf) Varint() (c uint64, bits uint) {
 	for i := 0; i < len(b.data); i++ {
@@ -82,13 +82,13 @@ func (b *buf) Varint() (c uint64, bits uint) {
 	return 0, 0
 }
 
-// Unsigned int is just a varint.
+// Uint is just a varint.
 func (b *buf) Uint() uint64 {
 	x, _ := b.Varint()
 	return x
 }
 
-// Signed int is a sign-extended varint.
+// Int is a sign-extended varint.
 func (b *buf) Int() int64 {
 	ux, bits := b.Varint()
 	x := int64(ux)

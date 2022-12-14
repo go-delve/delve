@@ -43,7 +43,7 @@ func arm64AsmDecode(asmInst *AsmInstruction, mem []byte, regs *op.DwarfRegisters
 func resolveCallArgARM64(inst *arm64asm.Inst, instAddr uint64, currentGoroutine bool, regs *op.DwarfRegisters, mem MemoryReadWriter, bininfo *BinaryInfo) *Location {
 	switch inst.Op {
 	case arm64asm.BL, arm64asm.BLR, arm64asm.B, arm64asm.BR:
-		//ok
+		// ok
 	default:
 		return nil
 	}

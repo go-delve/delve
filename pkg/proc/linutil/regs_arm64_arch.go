@@ -10,11 +10,11 @@ import (
 
 // ARM64Registers is a wrapper for sys.PtraceRegs.
 type ARM64Registers struct {
-	Regs      *ARM64PtraceRegs //general-purpose registers
+	Regs      *ARM64PtraceRegs // general-purpose registers
 	iscgo     bool
 	tpidr_el0 uint64
-	Fpregs    []proc.Register //Formatted floating point registers
-	Fpregset  []byte          //holding all floating point register values
+	Fpregs    []proc.Register // Formatted floating point registers
+	Fpregset  []byte          // holding all floating point register values
 
 	loadFpRegs func(*ARM64Registers) error
 }

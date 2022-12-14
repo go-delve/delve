@@ -64,7 +64,7 @@ type RecordingManipulation interface {
 	// Recorded returns true if the current process is a recording and the path
 	// to the trace directory.
 	Recorded() (recorded bool, tracedir string)
-	// Direction changes execution direction.
+	// ChangeDirection changes execution direction.
 	ChangeDirection(Direction) error
 	// GetDirection returns the current direction of execution.
 	GetDirection() Direction
