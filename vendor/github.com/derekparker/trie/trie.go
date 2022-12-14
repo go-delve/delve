@@ -246,7 +246,7 @@ func collect(node *Node) []string {
 		i int
 	)
 	keys := make([]string, 0, node.termCount)
-	nodes := make([]*Node, 1, len(node.children))
+	nodes := make([]*Node, 1, len(node.children)+1)
 	nodes[0] = node
 	for l := len(nodes); l != 0; l = len(nodes) {
 		i = l - 1
