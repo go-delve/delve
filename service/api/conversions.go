@@ -195,11 +195,11 @@ func ConvertVar(v *proc.Variable) *Variable {
 		r.Children[1].Kind = reflect.Float32
 
 		if v.Value != nil {
-			real, _ := constant.Float64Val(constant.Real(v.Value))
-			r.Children[0].Value = strconv.FormatFloat(real, 'f', -1, 32)
+			realVal, _ := constant.Float64Val(constant.Real(v.Value))
+			r.Children[0].Value = strconv.FormatFloat(realVal, 'f', -1, 32)
 
-			imag, _ := constant.Float64Val(constant.Imag(v.Value))
-			r.Children[1].Value = strconv.FormatFloat(imag, 'f', -1, 32)
+			imagVal, _ := constant.Float64Val(constant.Imag(v.Value))
+			r.Children[1].Value = strconv.FormatFloat(imagVal, 'f', -1, 32)
 		} else {
 			r.Children[0].Value = "nil"
 			r.Children[1].Value = "nil"
@@ -216,11 +216,11 @@ func ConvertVar(v *proc.Variable) *Variable {
 		r.Children[1].Kind = reflect.Float64
 
 		if v.Value != nil {
-			real, _ := constant.Float64Val(constant.Real(v.Value))
-			r.Children[0].Value = strconv.FormatFloat(real, 'f', -1, 64)
+			realVal, _ := constant.Float64Val(constant.Real(v.Value))
+			r.Children[0].Value = strconv.FormatFloat(realVal, 'f', -1, 64)
 
-			imag, _ := constant.Float64Val(constant.Imag(v.Value))
-			r.Children[1].Value = strconv.FormatFloat(imag, 'f', -1, 64)
+			imagVal, _ := constant.Float64Val(constant.Imag(v.Value))
+			r.Children[1].Value = strconv.FormatFloat(imagVal, 'f', -1, 64)
 		} else {
 			r.Children[0].Value = "nil"
 			r.Children[1].Value = "nil"

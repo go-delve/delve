@@ -380,9 +380,9 @@ func (scope *EvalScope) setValue(dstv, srcv *Variable, srcExpr string) error {
 	case reflect.Bool:
 		return dstv.writeBool(constant.BoolVal(srcv.Value))
 	case reflect.Complex64, reflect.Complex128:
-		real, _ := constant.Float64Val(constant.Real(srcv.Value))
-		imag, _ := constant.Float64Val(constant.Imag(srcv.Value))
-		return dstv.writeComplex(real, imag, dstv.RealType.Size())
+		realVal, _ := constant.Float64Val(constant.Real(srcv.Value))
+		imagVal, _ := constant.Float64Val(constant.Imag(srcv.Value))
+		return dstv.writeComplex(realVal, imagVal, dstv.RealType.Size())
 	case reflect.Func:
 		if dstv.RealType.Size() == 0 {
 			if dstv.Name != "" {
@@ -2206,9 +2206,9 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 	}
 
 	base := v.Base + uint64(int64(low)*v.stride)
-	len := high - low
+	length := high - low
 
-	if high-low < 0 {
+	if length < 0 {
 		return nil, fmt.Errorf("index out of bounds")
 	}
 
@@ -2223,8 +2223,8 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 	}
 
 	r := v.newVariable("", 0, typ, mem)
-	r.Cap = len
-	r.Len = len
+	r.Cap = length
+	r.Len = length
 	r.Base = base
 	r.stride = v.stride
 	r.fieldType = v.fieldType

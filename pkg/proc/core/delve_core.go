@@ -94,16 +94,16 @@ func threadsFromDelveNotes(p *process, notes []*note) (proc.Thread, error) {
 			if readerr != nil {
 				return nil
 			}
-			var len uint16
-			read(&len)
-			if maxlen > 0 && len > maxlen {
+			var length uint16
+			read(&length)
+			if maxlen > 0 && length > maxlen {
 				readerr = fmt.Errorf("maximum len exceeded (%d) reading %s", len, kind)
 				return nil
 			}
-			buf := make([]byte, len)
 			if readerr != nil {
 				return nil
 			}
+			buf := make([]byte, length)
 			_, readerr = body.Read(buf)
 			return buf
 		}

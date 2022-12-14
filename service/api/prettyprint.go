@@ -189,9 +189,9 @@ func (v *Variable) writeBasicType(buf io.Writer, fmtstr string) {
 			fmt.Fprintf(buf, "(%s + %si)", v.Children[0].Value, v.Children[1].Value)
 			return
 		}
-		real, _ := strconv.ParseFloat(v.Children[0].Value, 64)
-		imag, _ := strconv.ParseFloat(v.Children[1].Value, 64)
-		var x complex128 = complex(real, imag)
+		realVal, _ := strconv.ParseFloat(v.Children[0].Value, 64)
+		imagVal, _ := strconv.ParseFloat(v.Children[1].Value, 64)
+		var x complex128 = complex(realVal, imagVal)
 		fmt.Fprintf(buf, fmtstr, x)
 
 	case reflect.String:

@@ -2863,14 +2863,14 @@ func TestRestart_PreserveFunctionBreakpoint(t *testing.T) {
 
 	dir := protest.FindFixturesDir()
 
-	copy := func(inpath string) {
+	copyFn := func(inpath string) {
 		buf, err := ioutil.ReadFile(inpath)
 		assertNoError(err, t, fmt.Sprintf("Reading %q", inpath))
 		outpath := filepath.Join(dir, "testfnpos.go")
 		assertNoError(ioutil.WriteFile(outpath, buf, 0666), t, fmt.Sprintf("Creating %q", outpath))
 	}
 
-	copy(filepath.Join(dir, "testfnpos1.go"))
+	copyFn(filepath.Join(dir, "testfnpos1.go"))
 
 	withTestClient2Extended("testfnpos", t, 0, [3]string{}, nil, func(c service.Client, f protest.Fixture) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.f1"})

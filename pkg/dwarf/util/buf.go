@@ -70,10 +70,10 @@ func (b *buf) Uint8() uint8 {
 // the 0x80 bit means read another byte.
 func (b *buf) Varint() (c uint64, bits uint) {
 	for i := 0; i < len(b.data); i++ {
-		byte := b.data[i]
-		c |= uint64(byte&0x7F) << bits
+		dataByte := b.data[i]
+		c |= uint64(dataByte&0x7F) << bits
 		bits += 7
-		if byte&0x80 == 0 {
+		if dataByte&0x80 == 0 {
 			b.off += dwarf.Offset(i + 1)
 			b.data = b.data[i+1:]
 			return c, bits
