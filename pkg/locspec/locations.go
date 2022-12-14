@@ -491,8 +491,8 @@ func SubstitutePath(path string, rules [][2]string) string {
 	// On windows paths returned from headless server are as c:/dir/dir
 	// though os.PathSeparator is '\\'
 
-	separator := "/"                  //make it default
-	if strings.Contains(path, "\\") { //dependent on the path
+	separator := "/"                  // make it default
+	if strings.Contains(path, "\\") { // dependent on the path
 		separator = "\\"
 	}
 	for _, r := range rules {

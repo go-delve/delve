@@ -1047,7 +1047,7 @@ func TestKill(t *testing.T) {
 		}
 		if runtime.GOOS == "linux" {
 			if runtime.GOARCH == "arm64" {
-				//there is no any sync between signal sended(tracee handled) and open /proc/%d/. It may fail on arm64
+				// there is no any sync between signal sended(tracee handled) and open /proc/%d/. It may fail on arm64
 				return
 			}
 			_, err := os.Open(fmt.Sprintf("/proc/%d/", p.Pid()))
@@ -4693,7 +4693,7 @@ func TestPluginStepping(t *testing.T) {
 
 func TestIssue1601(t *testing.T) {
 	protest.MustHaveCgo(t)
-	//Tests that recursive types involving C qualifiers and typedefs are parsed correctly
+	// Tests that recursive types involving C qualifiers and typedefs are parsed correctly
 	withTestProcess("issue1601", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue")
 		evalVariable(p, t, "C.globalq")
