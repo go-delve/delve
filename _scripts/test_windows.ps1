@@ -5,7 +5,6 @@ param (
 )
 
 if ($binDir -eq "") {
-    # TODO: remove once the current version of settings.kts gets to master.
     $binDir = Resolve-Path "../../system" # working directory
 }
 
