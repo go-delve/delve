@@ -103,8 +103,8 @@ Command failed: open /path/to/the/mainfile.go: no such file or directory
 
 This is not a bug. The Go compiler embeds the paths of source files into the executable so that debuggers, including Delve, can use them. Doing any of the things listed above will prevent this feature from working seamlessly.
 
-The substitute-path feature can be used to solve this problem, see `config help substitute-path` or the `substitutePath` option in launch.json.
+The substitute-path feature can be used to solve this problem, see `help config` or the `substitutePath` option in launch.json.
 
-The `source` command could also be useful in troubleshooting this problem, it shows the list of file paths that has been embedded by the compiler into the executable.
+The `sources` command could also be useful in troubleshooting this problem, it shows the list of file paths that has been embedded by the compiler into the executable.
 
 If you still think this is a bug in Delve and not a configuration problem, open an [issue](https://github.com/go-delve/delve/issues), filling the issue template and including the logs produced by delve with the options `--log --log-output=rpc,dap`.
