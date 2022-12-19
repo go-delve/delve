@@ -189,8 +189,7 @@ func (lineInfo *DebugLineInfo) AllPCsBetween(begin, end uint64, excludeFile stri
 // copy returns a copy of this state machine, running the returned state
 // machine will not affect sm.
 func (sm *StateMachine) copy() *StateMachine {
-	var r StateMachine
-	r = *sm
+	r := *sm
 	r.buf = bytes.NewBuffer(sm.buf.Bytes())
 	return &r
 }

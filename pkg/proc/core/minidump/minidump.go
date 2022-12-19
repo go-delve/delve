@@ -421,8 +421,7 @@ func Open(path string, logfn func(fmt string, args ...interface{})) (*Minidump, 
 func decodeUTF16(in []byte) string {
 	utf16encoded := []uint16{}
 	for i := 0; i+1 < len(in); i += 2 {
-		var ch uint16
-		ch = uint16(in[i]) + uint16(in[i+1])<<8
+		ch := uint16(in[i]) + uint16(in[i+1])<<8
 		utf16encoded = append(utf16encoded, ch)
 	}
 	s := string(utf16.Decode(utf16encoded))

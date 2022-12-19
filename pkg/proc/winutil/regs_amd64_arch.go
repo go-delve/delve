@@ -171,8 +171,7 @@ func (r *AMD64Registers) GAddr() (uint64, bool) {
 
 // Copy returns a copy of these registers that is guaranteed not to change.
 func (r *AMD64Registers) Copy() (proc.Registers, error) {
-	var rr AMD64Registers
-	rr = *r
+	rr := *r
 	rr.Context = NewAMD64CONTEXT()
 	*(rr.Context) = *(r.Context)
 	rr.fltSave = &rr.Context.FltSave
