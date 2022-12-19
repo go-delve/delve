@@ -10,6 +10,7 @@ import "C"
 
 import (
 	"unsafe"
+	"syscall"
 
 	sys "golang.org/x/sys/unix"
 )
@@ -65,4 +66,36 @@ func ptraceReadData(id int, addr uintptr, data []byte) (n int, err error) {
 // id may be a PID or an LWPID
 func ptraceWriteData(id int, addr uintptr, data []byte) (n int, err error) {
 	return sys.PtraceIO(sys.PIOD_WRITE_D, id, addr, data, len(data))
+}
+
+func ptraceSuspend(id int) error {
+	_, _, e1 := sys.Syscall6(sys.SYS_PTRACE, uintptr(C.PT_SUSPEND), uintptr(id), uintptr(1), uintptr(0), 0, 0)
+	if e1 != 0 {
+		return syscall.Errno(e1)
+	}
+	return nil
+}
+
+func ptraceResume(id int) error {
+	_, _, e1 := sys.Syscall6(sys.SYS_PTRACE, uintptr(C.PT_RESUME), uintptr(id), uintptr(1), uintptr(0), 0, 0)
+	if e1 != 0 {
+		return syscall.Errno(e1)
+	}
+	return nil
+}
+
+func ptraceSetStep(id int) error {
+	_, _, e1 := sys.Syscall6(sys.SYS_PTRACE, uintptr(C.PT_SETSTEP), uintptr(id), uintptr(0), uintptr(0), 0, 0)
+	if e1 != 0 {
+		return syscall.Errno(e1)
+	}
+	return nil
+}
+
+func ptraceClearStep(id int) error {
+	_, _, e1 := sys.Syscall6(sys.SYS_PTRACE, uintptr(C.PT_CLEARSTEP), uintptr(id), uintptr(0), uintptr(0), 0, 0)
+	if e1 != 0 {
+		return syscall.Errno(e1)
+	}
+	return nil
 }

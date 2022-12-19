@@ -586,7 +586,6 @@ func TestNextGeneral(t *testing.T) {
 }
 
 func TestNextConcurrent(t *testing.T) {
-	skipOn(t, "broken", "freebsd")
 	testcases := []nextTest{
 		{8, 9},
 		{9, 10},
@@ -622,7 +621,6 @@ func TestNextConcurrent(t *testing.T) {
 }
 
 func TestNextConcurrentVariant2(t *testing.T) {
-	skipOn(t, "broken", "freebsd")
 	// Just like TestNextConcurrent but instead of removing the initial breakpoint we check that when it happens is for other goroutines
 	testcases := []nextTest{
 		{8, 9},
@@ -1472,7 +1470,6 @@ func TestIssue325(t *testing.T) {
 }
 
 func TestBreakpointCounts(t *testing.T) {
-	skipOn(t, "broken", "freebsd")
 	protest.AllowRecording(t)
 	withTestProcess("bpcountstest", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 12)
@@ -1504,7 +1501,6 @@ func TestBreakpointCounts(t *testing.T) {
 }
 
 func TestHardcodedBreakpointCounts(t *testing.T) {
-	skipOn(t, "broken", "freebsd")
 	withTestProcess("hcbpcountstest", t, func(p *proc.Target, fixture protest.Fixture) {
 		counts := map[int64]int{}
 		for {
@@ -1716,7 +1712,6 @@ func BenchmarkLocalVariables(b *testing.B) {
 }
 
 func TestCondBreakpoint(t *testing.T) {
-	skipOn(t, "broken", "freebsd")
 	protest.AllowRecording(t)
 	withTestProcess("parallel_next", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 9)
@@ -1738,7 +1733,6 @@ func TestCondBreakpoint(t *testing.T) {
 }
 
 func TestCondBreakpointError(t *testing.T) {
-	skipOn(t, "broken", "freebsd")
 	protest.AllowRecording(t)
 	withTestProcess("parallel_next", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 9)
@@ -2101,7 +2095,6 @@ func TestIssue462(t *testing.T) {
 }
 
 func TestNextParked(t *testing.T) {
-	skipOn(t, "broken", "freebsd")
 	protest.AllowRecording(t)
 	withTestProcess("parallel_next", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.sayhi")
@@ -2152,7 +2145,6 @@ func TestNextParked(t *testing.T) {
 }
 
 func TestStepParked(t *testing.T) {
-	skipOn(t, "broken", "freebsd")
 	protest.AllowRecording(t)
 	withTestProcess("parallel_next", t, func(p *proc.Target, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.sayhi")
@@ -2481,7 +2473,6 @@ func TestStepOut(t *testing.T) {
 }
 
 func TestStepConcurrentDirect(t *testing.T) {
-	skipOn(t, "broken", "freebsd")
 	skipOn(t, "broken - step concurrent", "windows", "arm64")
 	protest.AllowRecording(t)
 	withTestProcess("teststepconcurrent", t, func(p *proc.Target, fixture protest.Fixture) {
@@ -2546,7 +2537,6 @@ func TestStepConcurrentDirect(t *testing.T) {
 }
 
 func TestStepConcurrentPtr(t *testing.T) {
-	skipOn(t, "broken", "freebsd")
 	protest.AllowRecording(t)
 	withTestProcess("teststepconcurrent", t, func(p *proc.Target, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, fixture.Source, 24)
@@ -4633,7 +4623,6 @@ func testCallConcurrentCheckReturns(p *proc.Target, t *testing.T, gid1, gid2 int
 }
 
 func TestCallConcurrent(t *testing.T) {
-	skipOn(t, "broken", "freebsd")
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestProcess("teststepconcurrent", t, func(p *proc.Target, fixture protest.Fixture) {
 		grp := proc.NewGroup(p)
@@ -5152,7 +5141,6 @@ func TestRequestManualStopWhileStopped(t *testing.T) {
 
 func TestStepOutPreservesGoroutine(t *testing.T) {
 	// Checks that StepOut preserves the currently selected goroutine.
-	skipOn(t, "broken", "freebsd")
 	rand.Seed(time.Now().Unix())
 	withTestProcess("issue2113", t, func(p *proc.Target, fixture protest.Fixture) {
 		assertNoError(p.Continue(), t, "Continue()")
@@ -5894,6 +5882,7 @@ func TestNilPtrDerefInBreakInstr(t *testing.T) {
 			// this is also ok
 			return
 		}
+		t.Logf("third continue")
 		assertNoError(err, t, "Continue()")
 		bp := p.CurrentThread().Breakpoint()
 		if bp != nil {

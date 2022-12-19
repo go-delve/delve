@@ -485,9 +485,6 @@ func TestLaunchStopOnEntry(t *testing.T) {
 
 // TestAttachStopOnEntry is like TestLaunchStopOnEntry, but with attach request.
 func TestAttachStopOnEntry(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
-		t.SkipNow()
-	}
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		// Start the program to attach to
 		cmd := exec.Command(fixture.Path)
@@ -3435,9 +3432,6 @@ func TestHaltPreventsAutoResume(t *testing.T) {
 // goroutine is hit the correct number of times and log points set in the
 // children goroutines produce the correct number of output events.
 func TestConcurrentBreakpointsLogPoints(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
-		t.SkipNow()
-	}
 	tests := []struct {
 		name        string
 		fixture     string
@@ -3685,9 +3679,6 @@ func TestLaunchSubstitutePath(t *testing.T) {
 // that does not exist and expects the substitutePath attribute
 // in the launch configuration to take care of the mapping.
 func TestAttachSubstitutePath(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
-		t.SkipNow()
-	}
 	if runtime.GOOS == "windows" {
 		t.Skip("test skipped on windows, see https://delve.beta.teamcity.com/project/Delve_windows for details")
 	}
@@ -4616,9 +4607,6 @@ func getPC(t *testing.T, client *daptest.Client, threadId int) (uint64, error) {
 // TestNextParked tests that we can switched selected goroutine to a parked one
 // and perform next operation on it.
 func TestNextParked(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
-		t.SkipNow()
-	}
 	runTest(t, "parallel_next", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
@@ -4681,7 +4669,8 @@ func testNextParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 		// 2. hasn't called wg.Done yet
 		// 3. is not the currently selected goroutine
 		for _, g := range threads.Body.Threads {
-			if g.Id == se.Body.ThreadId { // Skip selected goroutine
+			if g.Id == se.Body.ThreadId || g.Id == 0 {
+				// Skip selected goroutine and goroutine 0
 				continue
 			}
 			client.StackTraceRequest(g.Id, 0, 5)
@@ -4709,9 +4698,6 @@ func testNextParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 // and checks that StepOut preserves the currently selected goroutine.
 func TestStepOutPreservesGoroutine(t *testing.T) {
 	// Checks that StepOut preserves the currently selected goroutine.
-	if runtime.GOOS == "freebsd" {
-		t.SkipNow()
-	}
 	rand.Seed(time.Now().Unix())
 	runTest(t, "issue2113", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
@@ -4862,9 +4848,6 @@ func TestBadAccess(t *testing.T) {
 // again will produce an error with a helpful message, and 'continue'
 // will resume the program.
 func TestNextWhileNexting(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
-		t.Skip("test is not valid on FreeBSD")
-	}
 	// a breakpoint triggering during a 'next' operation will interrupt 'next''
 	// Unlike the test for the terminal package, we cannot be certain
 	// of the number of breakpoints we expect to hit, since multiple
@@ -5710,9 +5693,6 @@ func TestLaunchRequestWithEnv(t *testing.T) {
 }
 
 func TestAttachRequest(t *testing.T) {
-	if runtime.GOOS == "freebsd" {
-		t.SkipNow()
-	}
 	if runtime.GOOS == "windows" {
 		t.Skip("test skipped on windows, see https://delve.beta.teamcity.com/project/Delve_windows for details")
 	}
@@ -6638,9 +6618,6 @@ func TestAttachRemoteToDlvLaunchHaltedStopOnEntry(t *testing.T) {
 }
 
 func TestAttachRemoteToDlvAttachHaltedStopOnEntry(t *testing.T) {
-	if runtime.GOOS == "freebsd" || runtime.GOOS == "windows" {
-		t.SkipNow()
-	}
 	cmd, dbg := attachDebuggerWithTargetHalted(t, "http_server")
 	runTestWithDebugger(t, dbg, func(client *daptest.Client) {
 		client.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})

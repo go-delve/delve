@@ -107,22 +107,6 @@ func (t *nativeThread) singleStep() error {
 	return t.setContext(context)
 }
 
-func (t *nativeThread) resume() error {
-	var err error
-	t.dbp.execPtraceFunc(func() {
-		//TODO: Note that we are ignoring the thread we were asked to continue and are continuing the
-		//thread that we last broke on.
-		err = _ContinueDebugEvent(uint32(t.dbp.pid), uint32(t.ID), _DBG_CONTINUE)
-	})
-	return err
-}
-
-// Stopped returns whether the thread is stopped at the operating system
-// level. On windows this always returns true.
-func (t *nativeThread) Stopped() bool {
-	return true
-}
-
 func (t *nativeThread) WriteMemory(addr uint64, data []byte) (int, error) {
 	if t.dbp.exited {
 		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
