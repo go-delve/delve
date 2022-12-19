@@ -1561,8 +1561,8 @@ func (d *Debugger) Function(goid int64, frame, deferredCall int, cfg proc.LoadCo
 	return s.Fn, nil
 }
 
-// EvalVariableInScope will attempt to evaluate the variable represented by 'symbol'
-// in the scope provided.
+// EvalVariableInScope will attempt to evaluate the 'expr' in the scope
+// corresponding to the given 'frame' on the goroutine identified by 'goid'.
 func (d *Debugger) EvalVariableInScope(goid int64, frame, deferredCall int, expr string, cfg proc.LoadConfig) (*proc.Variable, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
