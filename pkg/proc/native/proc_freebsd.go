@@ -42,6 +42,10 @@ const (
 type osProcessDetails struct {
 	comm string
 	tid  int
+
+	delayedSignal  syscall.Signal
+	trapThreads    []int
+	selectedThread *nativeThread
 }
 
 func (os *osProcessDetails) Close() {}
@@ -83,7 +87,6 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []str
 		process.Stdout = stdout
 		process.Stderr = stderr
 		process.SysProcAttr = &syscall.SysProcAttr{Ptrace: true, Setpgid: true, Foreground: foreground}
-		process.Env = proc.DisableAsyncPreemptEnv()
 		if foreground {
 			signal.Ignore(syscall.SIGTTOU, syscall.SIGTTIN)
 		}
@@ -152,7 +155,12 @@ func (dbp *nativeProcess) kill() (err error) {
 	if dbp.exited {
 		return nil
 	}
-	dbp.execPtraceFunc(func() { err = ptraceCont(dbp.pid, int(sys.SIGKILL)) })
+	dbp.execPtraceFunc(func() {
+		for _, th := range dbp.threads {
+			ptraceResume(th.ID)
+		}
+		err = ptraceCont(dbp.pid, int(sys.SIGKILL))
+	})
 	if err != nil {
 		return err
 	}
@@ -165,7 +173,7 @@ func (dbp *nativeProcess) kill() (err error) {
 
 // Used by RequestManualStop
 func (dbp *nativeProcess) requestManualStop() (err error) {
-	return sys.Kill(dbp.pid, sys.SIGTRAP)
+	return sys.Kill(dbp.pid, sys.SIGSTOP)
 }
 
 // Attach to a newly created thread, and store that thread in our list of
@@ -178,7 +186,7 @@ func (dbp *nativeProcess) addThread(tid int, attach bool) (*nativeThread, error)
 	var err error
 	dbp.execPtraceFunc(func() { err = sys.PtraceLwpEvents(dbp.pid, 1) })
 	if err == syscall.ESRCH {
-		if _, _, err = dbp.waitFast(dbp.pid); err != nil {
+		if _, _, err = dbp.wait(dbp.pid, 0); err != nil {
 			return nil, fmt.Errorf("error while waiting after adding process: %d %s", dbp.pid, err)
 		}
 	}
@@ -220,13 +228,29 @@ func findExecutable(path string, pid int) string {
 }
 
 func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
-	return dbp.trapWaitInternal(pid, false)
+	return dbp.trapWaitInternal(pid, trapWaitNormal)
 }
 
+type trapWaitMode uint8
+
+const (
+	trapWaitNormal trapWaitMode = iota
+	trapWaitStepping
+)
+
 // Used by stop and trapWait
-func (dbp *nativeProcess) trapWaitInternal(pid int, halt bool) (*nativeThread, error) {
+func (dbp *nativeProcess) trapWaitInternal(pid int, mode trapWaitMode) (*nativeThread, error) {
+	if dbp.os.selectedThread != nil {
+		th := dbp.os.selectedThread
+		dbp.os.selectedThread = nil
+		return th, nil
+	}
 	for {
 		wpid, status, err := dbp.wait(pid, 0)
+		if wpid != dbp.pid {
+			// possibly a delayed notification from a process we just detached and killed, freebsd bug?
+			continue
+		}
 		if err != nil {
 			return nil, fmt.Errorf("wait err %s %d", err, pid)
 		}
@@ -238,6 +262,11 @@ func (dbp *nativeProcess) trapWaitInternal(pid int, halt bool) (*nativeThread, e
 		if status.Exited() {
 			dbp.postExit()
 			return nil, proc.ErrProcessExited{Pid: wpid, Status: status.ExitStatus()}
+		}
+		if status.Signaled() {
+			// Killed by a signal
+			dbp.postExit()
+			return nil, proc.ErrProcessExited{Pid: wpid, Status: -int(status.Signal())}
 		}
 
 		var info sys.PtraceLwpInfoStruct
@@ -269,10 +298,10 @@ func (dbp *nativeProcess) trapWaitInternal(pid int, halt bool) (*nativeThread, e
 					}
 					return nil, err
 				}
-				if halt {
-					return nil, nil
+				if mode == trapWaitStepping {
+					dbp.execPtraceFunc(func() { ptraceSuspend(tid) })
 				}
-				if err = th.Continue(); err != nil {
+				if err = dbp.ptraceCont(0); err != nil {
 					if err == sys.ESRCH {
 						// thread died while we were adding it
 						delete(dbp.threads, int(tid))
@@ -288,12 +317,16 @@ func (dbp *nativeProcess) trapWaitInternal(pid int, halt bool) (*nativeThread, e
 			continue
 		}
 
-		if (halt && status.StopSignal() == sys.SIGSTOP) || (status.StopSignal() == sys.SIGTRAP) {
+		if mode == trapWaitStepping {
+			return th, nil
+		}
+		if status.StopSignal() == sys.SIGTRAP || status.Continued() {
+			// Continued in this case means we received the SIGSTOP signal
 			return th, nil
 		}
 
 		// TODO(dp) alert user about unexpected signals here.
-		if err := th.resumeWithSig(int(status.StopSignal())); err != nil {
+		if err := dbp.ptraceCont(int(status.StopSignal())); err != nil {
 			if err == sys.ESRCH {
 				return nil, proc.ErrProcessExited{Pid: dbp.pid}
 			}
@@ -309,14 +342,6 @@ func status(pid int) rune {
 	return status
 }
 
-// Used by stop and singleStep
-// waitFast is like wait but does not handle process-exit correctly
-func (dbp *nativeProcess) waitFast(pid int) (int, *sys.WaitStatus, error) {
-	var s sys.WaitStatus
-	wpid, err := sys.Wait4(pid, &s, 0, nil)
-	return wpid, &s, err
-}
-
 // Only used in this file
 func (dbp *nativeProcess) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	var s sys.WaitStatus
@@ -330,7 +355,7 @@ func (dbp *nativeProcess) exitGuard(err error) error {
 		return err
 	}
 	if status(dbp.pid) == statusZombie {
-		_, err := dbp.trapWaitInternal(-1, false)
+		_, err := dbp.trapWaitInternal(-1, trapWaitNormal)
 		return err
 	}
 
@@ -348,9 +373,31 @@ func (dbp *nativeProcess) resume() error {
 			thread.CurrentBreakpoint.Clear()
 		}
 	}
+	if len(dbp.os.trapThreads) > 0 {
+		// On these threads we have already received a SIGTRAP while stepping on a different thread,
+		// do not resume the process, instead record the breakpoint hits on them.
+		tt := dbp.os.trapThreads
+		dbp.os.trapThreads = dbp.os.trapThreads[:0]
+		var err error
+		dbp.os.selectedThread, err = dbp.postStop(tt...)
+		return err
+	}
 	// all threads are resumed
 	var err error
-	dbp.execPtraceFunc(func() { err = ptraceCont(dbp.pid, 0) })
+	dbp.execPtraceFunc(func() {
+		for _, th := range dbp.threads {
+			err = ptraceResume(th.ID)
+			if err != nil {
+				return
+			}
+		}
+		sig := int(dbp.os.delayedSignal)
+		dbp.os.delayedSignal = 0
+		for _, thread := range dbp.threads {
+			thread.Status = nil
+		}
+		err = ptraceCont(dbp.pid, sig)
+	})
 	return err
 }
 
@@ -360,19 +407,72 @@ func (dbp *nativeProcess) stop(cctx *proc.ContinueOnceContext, trapthread *nativ
 	if dbp.exited {
 		return nil, proc.ErrProcessExited{Pid: dbp.pid}
 	}
-	// set breakpoints on all threads
-	for _, th := range dbp.threads {
-		if th.CurrentBreakpoint.Breakpoint == nil {
-			if err := th.SetCurrentBreakpoint(true); err != nil {
-				return nil, err
+
+	var err error
+	dbp.execPtraceFunc(func() {
+		for _, th := range dbp.threads {
+			err = ptraceSuspend(th.ID)
+			if err != nil {
+				return
 			}
 		}
+	})
+	if err != nil {
+		return nil, err
 	}
-	return trapthread, nil
+
+	if trapthread.Status == nil || (*sys.WaitStatus)(trapthread.Status).StopSignal() != sys.SIGTRAP {
+		return trapthread, nil
+	}
+
+	return dbp.postStop(trapthread.ID)
+}
+
+func (dbp *nativeProcess) postStop(tids ...int) (*nativeThread, error) {
+	var pickedTrapThread *nativeThread
+	for _, tid := range tids {
+		trapthread := dbp.threads[tid]
+		if trapthread == nil {
+			continue
+		}
+
+		// Must either be a hardcoded breakpoint, a currently set breakpoint or a
+		// phantom breakpoint hit caused by a SIGTRAP that was delayed.
+		// If someone sent a SIGTRAP directly to the process this will fail, but we
+		// can't do better.
+
+		err := trapthread.SetCurrentBreakpoint(true)
+		if err != nil {
+			return nil, err
+		}
+
+		if trapthread.CurrentBreakpoint.Breakpoint == nil {
+			// hardcoded breakpoint or phantom breakpoint hit
+			if dbp.BinInfo().Arch.BreakInstrMovesPC() {
+				pc, _ := trapthread.PC()
+				if !trapthread.atHardcodedBreakpoint(pc) {
+					// phantom breakpoint hit
+					_ = trapthread.setPC(pc - uint64(len(dbp.BinInfo().Arch.BreakpointInstruction())))
+					trapthread = nil
+				}
+			}
+		}
+
+		if pickedTrapThread == nil && trapthread != nil {
+			pickedTrapThread = trapthread
+		}
+	}
+
+	return pickedTrapThread, nil
 }
 
 // Used by Detach
 func (dbp *nativeProcess) detach(kill bool) error {
+	if !kill {
+		for _, th := range dbp.threads {
+			ptraceResume(th.ID)
+		}
+	}
 	return ptraceDetach(dbp.pid)
 }
 
@@ -393,6 +493,12 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 
 func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
 	panic("not implemented")
+}
+
+func (dbp *nativeProcess) ptraceCont(sig int) error {
+	var err error
+	dbp.execPtraceFunc(func() { err = ptraceCont(dbp.pid, sig) })
+	return err
 }
 
 // Usedy by Detach

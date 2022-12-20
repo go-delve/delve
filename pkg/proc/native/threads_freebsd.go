@@ -1,16 +1,13 @@
 package native
 
-// #include <sys/thr.h>
-import "C"
-
 import (
-	"fmt"
-	"github.com/go-delve/delve/pkg/proc/fbsdutil"
+	"bytes"
 
 	sys "golang.org/x/sys/unix"
 
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/amd64util"
+	"github.com/go-delve/delve/pkg/proc/fbsdutil"
 )
 
 type waitStatus sys.WaitStatus
@@ -20,59 +17,58 @@ type osSpecificDetails struct {
 	registers sys.Reg
 }
 
-func (t *nativeThread) stop() (err error) {
-	_, err = C.thr_kill2(C.pid_t(t.dbp.pid), C.long(t.ID), C.int(sys.SIGSTOP))
-	if err != nil {
-		err = fmt.Errorf("stop err %s on thread %d", err, t.ID)
-		return
-	}
-	// If the process is stopped, we must continue it so it can receive the
-	// signal
-	t.dbp.execPtraceFunc(func() { err = ptraceCont(t.dbp.pid, 0) })
-	if err != nil {
-		return err
-	}
-	_, _, err = t.dbp.waitFast(t.dbp.pid)
-	if err != nil {
-		err = fmt.Errorf("wait err %s on thread %d", err, t.ID)
-		return
-	}
-	return
-}
-
-func (t *nativeThread) Stopped() bool {
-	state := status(t.dbp.pid)
-	return state == statusStopped
-}
-
-func (t *nativeThread) resume() error {
-	return t.resumeWithSig(0)
-}
-
-func (t *nativeThread) resumeWithSig(sig int) (err error) {
-	t.dbp.execPtraceFunc(func() { err = ptraceCont(t.ID, sig) })
-	return
-}
-
 func (t *nativeThread) singleStep() (err error) {
-	t.dbp.execPtraceFunc(func() { err = ptraceSingleStep(t.ID) })
+	t.dbp.execPtraceFunc(func() { err = ptraceSetStep(t.ID) })
 	if err != nil {
 		return err
 	}
+	defer func() {
+		t.dbp.execPtraceFunc(func() { ptraceClearStep(t.ID) })
+	}()
+
+	t.dbp.execPtraceFunc(func() { err = ptraceResume(t.ID) })
+	if err != nil {
+		return err
+	}
+	defer func() {
+		t.dbp.execPtraceFunc(func() { ptraceSuspend(t.ID) })
+	}()
+
+	sig := 0
 	for {
-		th, err := t.dbp.trapWait(t.dbp.pid)
+		err = t.dbp.ptraceCont(sig)
+		sig = 0
 		if err != nil {
 			return err
 		}
-		if th.ID == t.ID {
-			break
-		}
-		t.dbp.execPtraceFunc(func() { err = ptraceCont(th.ID, 0) })
+
+		trapthread, err := t.dbp.trapWaitInternal(-1, trapWaitStepping)
 		if err != nil {
 			return err
+		}
+
+		status := ((*sys.WaitStatus)(trapthread.Status))
+
+		if trapthread.ID == t.ID {
+			switch s := status.StopSignal(); s {
+			case sys.SIGTRAP:
+				return nil
+			case sys.SIGSTOP:
+				// delayed SIGSTOP, ignore it
+			case sys.SIGILL, sys.SIGBUS, sys.SIGFPE, sys.SIGSEGV:
+				// propagate signals that can be caused by current instruction
+				sig = int(s)
+			default:
+				t.dbp.os.delayedSignal = s
+			}
+		} else {
+			if status.StopSignal() == sys.SIGTRAP {
+				t.dbp.os.trapThreads = append(t.dbp.os.trapThreads, trapthread.ID)
+			} else {
+				t.dbp.os.delayedSignal = status.StopSignal()
+			}
 		}
 	}
-	return nil
 }
 
 func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
@@ -108,5 +104,21 @@ func (t *nativeThread) withDebugRegisters(f func(*amd64util.DebugRegisters) erro
 
 // SoftExc returns true if this thread received a software exception during the last resume.
 func (t *nativeThread) SoftExc() bool {
+	return false
+}
+
+func (t *nativeThread) atHardcodedBreakpoint(pc uint64) bool {
+	for _, bpinstr := range [][]byte{
+		t.dbp.BinInfo().Arch.BreakpointInstruction(),
+		t.dbp.BinInfo().Arch.AltBreakpointInstruction()} {
+		if bpinstr == nil {
+			continue
+		}
+		buf := make([]byte, len(bpinstr))
+		_, _ = t.ReadMemory(buf, pc-uint64(len(buf)))
+		if bytes.Equal(buf, bpinstr) {
+			return true
+		}
+	}
 	return false
 }
