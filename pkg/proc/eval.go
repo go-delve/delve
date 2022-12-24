@@ -1571,7 +1571,14 @@ func (scope *EvalScope) evalPointerDeref(node *ast.StarExpr) (*Variable, error) 
 		xev.Children[0].OnlyAddr = false
 		return &(xev.Children[0]), nil
 	}
-	rv := xev.maybeDereference()
+	xev.loadPtr()
+	if xev.Unreadable != nil {
+		val, ok := constant.Uint64Val(xev.Value)
+		if ok && val == 0 {
+			return nil, fmt.Errorf("couldn't read pointer: %w", xev.Unreadable)
+		}
+	}
+	rv := &xev.Children[0]
 	if rv.Addr == 0 {
 		return nil, fmt.Errorf("nil pointer dereference")
 	}

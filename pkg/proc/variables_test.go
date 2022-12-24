@@ -1623,8 +1623,15 @@ func TestBadUnsafePtr(t *testing.T) {
 		t.Logf("danglingPtrPtr (%s): unreadable: %v. addr: 0x%x, value: %v",
 			danglingPtrPtr.TypeString(), danglingPtrPtr.Unreadable, danglingPtrPtr.Addr, danglingPtrPtr.Value)
 		assertNoError(danglingPtrPtr.Unreadable, t, "danglingPtrPtr is unreadable")
-		if val := danglingPtrPtr.Value; val != nil {
-			t.Fatalf("Value unexpectedly set for danglingPtrPtr: %v", val)
+		if val := danglingPtrPtr.Value; val == nil {
+			t.Fatal("Value not set danglingPtrPtr")
+		}
+		val, ok := constant.Uint64Val(danglingPtrPtr.Value)
+		if !ok {
+			t.Fatalf("Value not uint64: %v", danglingPtrPtr.Value)
+		}
+		if val != 0x42 {
+			t.Fatalf("expected value to be 0x42, got 0x%x", val)
 		}
 		if len(danglingPtrPtr.Children) != 1 {
 			t.Fatalf("expected 1 child, got: %d", len(danglingPtrPtr.Children))
@@ -1634,10 +1641,9 @@ func TestBadUnsafePtr(t *testing.T) {
 		assertNoError(err, t, "error evaluating *danglingPtrPtr")
 		t.Logf("badPtr: (%s): unreadable: %v. addr: 0x%x, value: %v",
 			badPtr.TypeString(), badPtr.Unreadable, badPtr.Addr, badPtr.Value)
-		// *danglingPtrPtr is dereferencing the unreadable address, the
-		// expression can't be properly evaluated, but we don't mark pointer
-		// variables as Unreadable.
-		assertNoError(badPtr.Unreadable, t, "*danglingPtr is unexpectedly unreadable")
+		if badPtr.Unreadable == nil {
+			t.Fatalf("badPtr should be unreadable")
+		}
 		if badPtr.Addr != 0x42 {
 			t.Fatalf("expected danglingPtr to point to 0x42, got 0x%x", badPtr.Addr)
 		}
@@ -1657,10 +1663,13 @@ func TestBadUnsafePtr(t *testing.T) {
 		if err == nil {
 			t.Fatalf("expected error doing **danglingPtrPtr")
 		}
-		// The error is "nil pointer dereference, although that doesn't actually
-		// make sense: there were no nil pointers involved.
-		if !strings.Contains(err.Error(), "nil pointer dereference") {
-			t.Fatalf("expected \"nil pointer dereference error\", got: \"%s\"", err)
+		expErr := "couldn't read pointer"
+		if !strings.Contains(err.Error(), expErr) {
+			t.Fatalf("expected \"%s\", got: \"%s\"", expErr, err)
+		}
+		nexpErr := "nil pointer dereference"
+		if strings.Contains(err.Error(), nexpErr) {
+			t.Fatalf("shouldn't have gotten \"%s\", but got: \"%s\"", nexpErr, err)
 		}
 	})
 }
