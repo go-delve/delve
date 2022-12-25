@@ -1610,3 +1610,57 @@ func TestEvalExpressionGenerics(t *testing.T) {
 		}
 	})
 }
+
+// Test the behavior when reading dangling pointers produced by unsafe code.
+func TestBadUnsafePtr(t *testing.T) {
+	withTestProcess("testunsafepointers", t, func(p *proc.Target, fixture protest.Fixture) {
+		assertNoError(p.Continue(), t, "Continue()")
+
+		// danglingPtrPtr is a pointer with value 0x42, which is an unreadable
+		// address.
+		danglingPtrPtr, err := evalVariableWithCfg(p, "danglingPtrPtr", pnormalLoadConfig)
+		assertNoError(err, t, "eval returned an error")
+		t.Logf("danglingPtrPtr (%s): unreadable: %v. addr: 0x%x, value: %v",
+			danglingPtrPtr.TypeString(), danglingPtrPtr.Unreadable, danglingPtrPtr.Addr, danglingPtrPtr.Value)
+		assertNoError(danglingPtrPtr.Unreadable, t, "danglingPtrPtr is unreadable")
+		if val := danglingPtrPtr.Value; val != nil {
+			t.Fatalf("Value unexpectedly set for danglingPtrPtr: %v", val)
+		}
+		if len(danglingPtrPtr.Children) != 1 {
+			t.Fatalf("expected 1 child, got: %d", len(danglingPtrPtr.Children))
+		}
+
+		badPtr, err := evalVariableWithCfg(p, "*danglingPtrPtr", pnormalLoadConfig)
+		assertNoError(err, t, "error evaluating *danglingPtrPtr")
+		t.Logf("badPtr: (%s): unreadable: %v. addr: 0x%x, value: %v",
+			badPtr.TypeString(), badPtr.Unreadable, badPtr.Addr, badPtr.Value)
+		// *danglingPtrPtr is dereferencing the unreadable address, the
+		// expression can't be properly evaluated, but we don't mark pointer
+		// variables as Unreadable.
+		assertNoError(badPtr.Unreadable, t, "*danglingPtr is unexpectedly unreadable")
+		if badPtr.Addr != 0x42 {
+			t.Fatalf("expected danglingPtr to point to 0x42, got 0x%x", badPtr.Addr)
+		}
+		if len(badPtr.Children) != 1 {
+			t.Fatalf("expected 1 child, got: %d", len(badPtr.Children))
+		}
+		badPtrChild := badPtr.Children[0]
+		t.Logf("badPtr.Child (%s): unreadable: %v. addr: 0x%x, value: %v",
+			badPtrChild.TypeString(), badPtrChild.Unreadable, badPtrChild.Addr, badPtrChild.Value)
+		// We expect the dummy child variable to be marked as unreadable.
+		if badPtrChild.Unreadable == nil {
+			t.Fatalf("expected x to be unreadable, but got value: %v", badPtrChild.Value)
+		}
+
+		// Evaluating **danglingPtrPtr fails.
+		_, err = evalVariableWithCfg(p, "**danglingPtrPtr", pnormalLoadConfig)
+		if err == nil {
+			t.Fatalf("expected error doing **danglingPtrPtr")
+		}
+		// The error is "nil pointer dereference, although that doesn't actually
+		// make sense: there were no nil pointers involved.
+		if !strings.Contains(err.Error(), "nil pointer dereference") {
+			t.Fatalf("expected \"nil pointer dereference error\", got: \"%s\"", err)
+		}
+	})
+}
