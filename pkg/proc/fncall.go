@@ -615,7 +615,7 @@ func funcCallCopyOneArg(scope *EvalScope, fncall *functionCallState, actualArg *
 		}
 	}
 
-	//TODO(aarzilli): autmoatic wrapping in interfaces for cases not handled
+	//TODO(aarzilli): automatic wrapping in interfaces for cases not handled
 	// by convertToEface.
 
 	var formalArgVar *Variable

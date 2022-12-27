@@ -46,7 +46,7 @@ func (t *nativeThread) singleStep() error {
 	// runtime it will have a suspend count greater than 1 and to actually take
 	// a single step we have to resume it multiple times here.
 	// We keep a counter of how many times it was suspended so that after
-	// single-stepping we can re-suspend it the corrent number of times.
+	// single-stepping we can re-suspend it the correct number of times.
 	for {
 		n, err := _ResumeThread(t.os.hThread)
 		if err != nil {

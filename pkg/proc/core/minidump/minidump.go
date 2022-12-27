@@ -193,7 +193,7 @@ func (m *MemoryRange) ReadMemory(buf []byte, addr uint64) (int, error) {
 	return len(buf), nil
 }
 
-// MemoryInfo reprents an entry in the MemoryInfoList stream.
+// MemoryInfo represents an entry in the MemoryInfoList stream.
 // See: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_memory_info_list
 type MemoryInfo struct {
 	Addr       uint64
@@ -473,7 +473,7 @@ func readMinidumpHeader(mdmp *Minidump, buf *minidumpBuf) {
 	mdmp.Flags = FileFlags(buf.u64())
 }
 
-// readDirectory reads the list of streams (i.e. the minidum "directory")
+// readDirectory reads the list of streams (i.e. the minidump "directory")
 func readDirectory(mdmp *Minidump, buf *minidumpBuf) {
 	buf.off = int(mdmp.streamOff)
 

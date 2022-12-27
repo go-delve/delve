@@ -242,7 +242,7 @@ func (t *Target) dumpThreadNotes(notes []elfwriter.Note, state *DumpState, th Th
 	// - register_name_len (2 bytes)
 	// - register_name (register_name_len bytes)
 	// - register_data_len (2 bytes)
-	// - register_data (regiter_data_len bytes)
+	// - register_data (register_data_len bytes)
 
 	buf := new(bytes.Buffer)
 	_ = binary.Write(buf, binary.LittleEndian, uint64(th.ThreadID()))

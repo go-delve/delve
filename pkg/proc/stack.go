@@ -623,7 +623,7 @@ func (d *Defer) load() {
 }
 
 // errSPDecreased is used when (*Defer).Next detects a corrupted linked
-// list, specifically when after followin a link pointer the value of SP
+// list, specifically when after following a link pointer the value of SP
 // decreases rather than increasing or staying the same (the defer list is a
 // FIFO list, nodes further down the list have been added by function calls
 // further down the call stack and therefore the SP should always increase).

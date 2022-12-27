@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// TargetGroup reperesents a group of target processes being debugged that
+// TargetGroup represents a group of target processes being debugged that
 // will be resumed and stopped simultaneously.
 // New targets are automatically added to the group if exec catching is
 // enabled and the backend supports it, otherwise the group will always

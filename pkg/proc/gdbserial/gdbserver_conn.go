@@ -81,7 +81,7 @@ func isProtocolErrorUnsupported(err error) bool {
 	return gdberr.code == ""
 }
 
-// GdbMalformedThreadIDError is returned when a the stub responds with a
+// GdbMalformedThreadIDError is returned when the stub responds with a
 // thread ID that does not conform with the Gdb Remote Serial Protocol
 // specification.
 type GdbMalformedThreadIDError struct {

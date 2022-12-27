@@ -1392,7 +1392,7 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 
 // convertToEface converts srcv into an "interface {}" and writes it to
 // dstv.
-// Dstv must be a variable of type "inteface {}" and srcv must either be an
+// Dstv must be a variable of type "interface {}" and srcv must either be an
 // interface or a pointer shaped variable (map, channel, pointer or struct
 // containing a single pointer)
 func convertToEface(srcv, dstv *Variable) error {
