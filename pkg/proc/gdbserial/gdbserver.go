@@ -1015,7 +1015,7 @@ func (p *gdbProcess) handleThreadSignals(cctx *proc.ContinueOnceContext, trapthr
 
 	if p.getCtrlC(cctx) || cctx.GetManualStopRequested() {
 		// If we request an interrupt and a target thread simultaneously receives
-		// an unrelated singal debugserver will discard our interrupt request and
+		// an unrelated signal debugserver will discard our interrupt request and
 		// report the signal but we should stop anyway.
 		shouldStop = true
 	}
@@ -1891,7 +1891,7 @@ func (t *gdbThread) clearBreakpointState() {
 
 // SetCurrentBreakpoint will find and set the threads current breakpoint.
 func (t *gdbThread) SetCurrentBreakpoint(adjustPC bool) error {
-	// adjustPC is ignored, it is the stub's responsibiility to set the PC
+	// adjustPC is ignored, it is the stub's responsibility to set the PC
 	// address correctly after hitting a breakpoint.
 	t.CurrentBreakpoint.Clear()
 	if t.watchAddr > 0 {
@@ -1967,7 +1967,7 @@ func (r *gdbRegisters) FloatLoadError() error {
 
 // SetPC will set the value of the PC register to the given value.
 func (t *gdbThread) setPC(pc uint64) error {
-	_, _ = t.Registers() // Registes must be loaded first
+	_, _ = t.Registers() // Registers must be loaded first
 	t.regs.setPC(pc)
 	if t.p.gcmdok {
 		return t.p.conn.writeRegisters(t.strID, t.regs.buf)

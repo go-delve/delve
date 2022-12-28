@@ -97,7 +97,7 @@ func (ctxt *loadDebugInfoMapsContext) lookupAbstractOrigin(bi *BinaryInfo, off d
 //     the name of the type, and then the type's name is used to look up
 //     debug_info
 //   - After go1.11 the runtimeTypeToDIE map is used to look up the address of
-//     the type and map it drectly to a DIE.
+//     the type and map it directly to a DIE.
 func runtimeTypeToDIE(_type *Variable, dataAddr uint64) (typ godwarf.Type, kind int64, err error) {
 	bi := _type.bi
 

@@ -1312,7 +1312,7 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 	}
 
 	if debugFilePath == "" && len(bi.BuildID) > 2 {
-		// Previous verrsions of delve looked for the build id in every debug info
+		// Previous versions of delve looked for the build id in every debug info
 		// directory that contained the build-id substring. This behavior deviates
 		// from the ones specified by GDB but we keep it for backwards compatibility.
 		find(func(dir string) bool { return strings.Contains(dir, "build-id") }, fmt.Sprintf("%s/%s.debug", bi.BuildID[:2], bi.BuildID[2:]))
@@ -1543,7 +1543,7 @@ func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.
 	//   emitting runtime.tlsg, a TLS symbol, which is relocated to the chosen
 	//   offset in libc's TLS block.
 	// - On ARM64 (but really, any architecture other than i386 and 86x64) the
-	//   offset is calculate using runtime.tls_g and the formula is different.
+	//   offset is calculated using runtime.tls_g and the formula is different.
 
 	var tls *elf.Prog
 	for _, prog := range exe.Progs {
@@ -2153,7 +2153,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 	}
 }
 
-// LookupGenericFunc returns a map that allows searching for instantiations of generic function by specificying a function name without type parameters.
+// LookupGenericFunc returns a map that allows searching for instantiations of generic function by specifying a function name without type parameters.
 // For example the key "pkg.(*Receiver).Amethod" will find all instantiations of Amethod:
 //   - pkg.(*Receiver[.shape.int]).Amethod
 //   - pkg.(*Receiver[.shape.*uint8]).Amethod

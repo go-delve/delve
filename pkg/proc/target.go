@@ -339,7 +339,7 @@ func (p *Target) SwitchThread(tid int) error {
 	return fmt.Errorf("thread %d does not exist", tid)
 }
 
-// detach will detach the target from the underylying process.
+// detach will detach the target from the underlying process.
 // This means the debugger will no longer receive events from the process
 // we were previously debugging.
 // If kill is true then the process will be killed when we detach.
