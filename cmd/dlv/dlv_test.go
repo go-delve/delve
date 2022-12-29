@@ -1265,19 +1265,32 @@ func TestDlvTestChdir(t *testing.T) {
 	defer os.RemoveAll(tmpdir)
 
 	fixtures := protest.FindFixturesDir()
-	cmd := exec.Command(dlvbin, "--allow-non-terminal-interactive=true", "test", filepath.Join(fixtures, "buildtest"), "--", "-test.v")
-	cmd.Stdin = strings.NewReader("continue\nexit\n")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("error executing Delve: %v", err)
-	}
-	t.Logf("output: %q", out)
 
-	p, _ := filepath.Abs(filepath.Join(fixtures, "buildtest"))
-	tgt := "current directory: " + p
-	if !strings.Contains(string(out), tgt) {
-		t.Errorf("output did not contain expected string %q", tgt)
+	dotest := func(testargs []string) {
+		t.Helper()
+
+		args := []string{"--allow-non-terminal-interactive=true", "test"}
+		args = append(args, testargs...)
+		args = append(args, "--", "-test.v")
+		t.Logf("dlv test %s", args)
+		cmd := exec.Command(dlvbin, args...)
+		cmd.Stdin = strings.NewReader("continue\nexit\n")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("error executing Delve: %v", err)
+		}
+		t.Logf("output: %q", out)
+
+		p, _ := filepath.Abs(filepath.Join(fixtures, "buildtest"))
+		tgt := "current directory: " + p
+		if !strings.Contains(string(out), tgt) {
+			t.Errorf("output did not contain expected string %q", tgt)
+		}
 	}
+
+	dotest([]string{filepath.Join(fixtures, "buildtest")})
+	files, _ := filepath.Glob(filepath.Join(fixtures, "buildtest", "*.go"))
+	dotest(files)
 }
 
 func TestVersion(t *testing.T) {

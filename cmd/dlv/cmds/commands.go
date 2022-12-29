@@ -754,11 +754,7 @@ func testCmd(cmd *cobra.Command, args []string) {
 		processArgs := append([]string{debugname}, targetArgs...)
 
 		if workingDir == "" {
-			if len(dlvArgs) == 1 {
-				workingDir = getPackageDir(dlvArgs[0])
-			} else {
-				workingDir = "."
-			}
+			workingDir = getPackageDir(dlvArgs)
 		}
 
 		return execute(0, processArgs, conf, "", debugger.ExecutingGeneratedTest, dlvArgs, buildFlags)
@@ -766,8 +762,10 @@ func testCmd(cmd *cobra.Command, args []string) {
 	os.Exit(status)
 }
 
-func getPackageDir(pkg string) string {
-	out, err := exec.Command("go", "list", "--json", pkg).CombinedOutput()
+func getPackageDir(pkg []string) string {
+	args := []string{"list", "--json"}
+	args = append(args, pkg...)
+	out, err := exec.Command("go", args...).CombinedOutput()
 	if err != nil {
 		return "."
 	}
