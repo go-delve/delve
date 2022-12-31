@@ -1,6 +1,15 @@
 ## Frequently Asked Questions
 
-#### I'm getting an error while compiling Delve / unsupported architectures and OSs
+<!-- BEGIN TOC -->
+* [I'm getting an error while compiling Delve / unsupported architectures and OSs](#unsupportedplatforms)
+* [How do I use Delve with Docker?](#docker)
+* [How can I use Delve to debug a CLI application?](#ttydebug)
+* [How can I use Delve for remote debugging?](#remote)
+* [Can not set breakpoints or see source listing in a complicated debugging environment](#substpath)
+* [Using Delve to debug the Go runtime](#runtime)
+<!-- END TOC -->
+
+### <a name="unsupportedplatforms"></a> I'm getting an error while compiling Delve / unsupported architectures and OSs
 
 The most likely cause of this is that you are running an unsupported Operating System or architecture.
 Currently Delve supports (GOOS / GOARCH):
@@ -18,7 +27,7 @@ There is no planned ETA for support of other architectures or operating systems.
 
 See also: [backend test health](backend_test_health.md).
 
-#### How do I use Delve with Docker?
+### <a name="docker"></a> How do I use Delve with Docker?
 
 When running the container you should pass the `--security-opt=seccomp:unconfined` option to Docker. You can start a headless instance of Delve inside the container like this:
 
@@ -40,7 +49,7 @@ dlv exec --headless --continue --listen :4040 --accept-multiclient /path/to/exec
 
 Note that the connection to Delve is unauthenticated and will allow arbitrary remote code execution: *do not do this in production*.
 
-#### How can I use Delve to debug a CLI application?
+### <a name="ttydebug"></a> How can I use Delve to debug a CLI application?
 
 There are three good ways to go about this
 
@@ -54,7 +63,7 @@ the terminal TTY.
 `dlv debug` and `dlv exec` commands. For the best experience, you should create your own PTY and 
 assign it as the TTY. This can be done via [ptyme](https://github.com/derekparker/ptyme).
 
-#### How can I use Delve for remote debugging?
+### <a name="remote"></a> How can I use Delve for remote debugging?
 
 It is best not to use remote debugging on a public network. If you have to do this, we recommend using ssh tunnels or a vpn connection.  
 
@@ -77,7 +86,7 @@ ssh -NL 4040:localhost:4040 user@remote.ip
 dlv connect :4040
 ```
 
-#### <a name="substpath"></a> Can not set breakpoints or see source listing in a complicated debugging environment
+### <a name="substpath"></a> Can not set breakpoints or see source listing in a complicated debugging environment
 
 This problem manifests when one or more of these things happen:
 
@@ -108,3 +117,15 @@ The substitute-path feature can be used to solve this problem, see `help config`
 The `sources` command could also be useful in troubleshooting this problem, it shows the list of file paths that has been embedded by the compiler into the executable.
 
 If you still think this is a bug in Delve and not a configuration problem, open an [issue](https://github.com/go-delve/delve/issues), filling the issue template and including the logs produced by delve with the options `--log --log-output=rpc,dap`.
+
+### <a name="runtime"></a> Using Delve to debug the Go runtime
+
+It's possible to use Delve to debug the Go runtime, however there are some caveats to keep in mind
+
+* The `runtime` package is always compiled with optimizations and inlining, all of the caveats that apply to debugging optimized binaries apply to the runtime package. In particular some variables could be unavailable or have stale values and it could expose some bugs with the compiler assigning line numbers to instructions.
+
+* Next, step and stepout try to follow the current goroutine, if you debug one of the functions in the runtime that modify the curg pointer they will get confused. The 'step-instruction' command should be used instead.
+ 
+* When executing a stacktrace from g0 Delve will return the top frame and then immediately switch to the goroutine stack. If you want to see the g0 stacktrace use `stack -mode simple`.
+
+* The step command only steps into private runtime functions if it is already inside a runtime function. To step inside a private runtime function inserted into user code by the compiler set a breakpoint and then use `runtime.curg.goid == <current goroutine id>` as condition.
