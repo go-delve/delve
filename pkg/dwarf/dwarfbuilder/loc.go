@@ -3,8 +3,8 @@ package dwarfbuilder
 import (
 	"bytes"
 
+	"github.com/go-delve/delve/pkg/dwarf/leb128"
 	"github.com/go-delve/delve/pkg/dwarf/op"
-	"github.com/go-delve/delve/pkg/dwarf/util"
 )
 
 // LocEntry represents one entry of debug_loc.
@@ -23,9 +23,9 @@ func LocationBlock(args ...interface{}) []byte {
 		case op.Opcode:
 			buf.WriteByte(byte(x))
 		case int:
-			util.EncodeSLEB128(&buf, int64(x))
+			leb128.EncodeSigned(&buf, int64(x))
 		case uint:
-			util.EncodeULEB128(&buf, uint64(x))
+			leb128.EncodeUnsigned(&buf, uint64(x))
 		default:
 			panic("unsupported value type")
 		}

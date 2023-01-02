@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
+	"github.com/go-delve/delve/pkg/dwarf/leb128"
 	"github.com/go-delve/delve/pkg/dwarf/util"
 )
 
@@ -116,7 +117,7 @@ func (it *loclistsIterator) next() bool {
 		return false
 
 	case _DW_LLE_base_addressx:
-		baseIdx, _ := util.DecodeULEB128(it.buf)
+		baseIdx, _ := leb128.DecodeUnsigned(it.buf)
 		if err != nil {
 			it.err = err
 			return false
@@ -126,8 +127,8 @@ func (it *loclistsIterator) next() bool {
 		it.onRange = false
 
 	case _DW_LLE_startx_endx:
-		startIdx, _ := util.DecodeULEB128(it.buf)
-		endIdx, _ := util.DecodeULEB128(it.buf)
+		startIdx, _ := leb128.DecodeUnsigned(it.buf)
+		endIdx, _ := leb128.DecodeUnsigned(it.buf)
 		it.readInstr()
 
 		it.start, it.err = it.debugAddr.Get(startIdx)
@@ -137,8 +138,8 @@ func (it *loclistsIterator) next() bool {
 		it.onRange = true
 
 	case _DW_LLE_startx_length:
-		startIdx, _ := util.DecodeULEB128(it.buf)
-		length, _ := util.DecodeULEB128(it.buf)
+		startIdx, _ := leb128.DecodeUnsigned(it.buf)
+		length, _ := leb128.DecodeUnsigned(it.buf)
 		it.readInstr()
 
 		it.start, it.err = it.debugAddr.Get(startIdx)
@@ -146,8 +147,8 @@ func (it *loclistsIterator) next() bool {
 		it.onRange = true
 
 	case _DW_LLE_offset_pair:
-		off1, _ := util.DecodeULEB128(it.buf)
-		off2, _ := util.DecodeULEB128(it.buf)
+		off1, _ := leb128.DecodeUnsigned(it.buf)
+		off2, _ := leb128.DecodeUnsigned(it.buf)
 		it.readInstr()
 
 		it.start = it.base + off1
@@ -172,7 +173,7 @@ func (it *loclistsIterator) next() bool {
 
 	case _DW_LLE_start_length:
 		it.start, it.err = util.ReadUintRaw(it.buf, it.rdr.byteOrder, it.rdr.ptrSz)
-		length, _ := util.DecodeULEB128(it.buf)
+		length, _ := leb128.DecodeUnsigned(it.buf)
 		it.readInstr()
 		it.end = it.start + length
 		it.onRange = true
@@ -188,6 +189,6 @@ func (it *loclistsIterator) next() bool {
 }
 
 func (it *loclistsIterator) readInstr() {
-	length, _ := util.DecodeULEB128(it.buf)
+	length, _ := leb128.DecodeUnsigned(it.buf)
 	it.instr = it.buf.Next(int(length))
 }

@@ -6,7 +6,7 @@ import (
 	"encoding/binary"
 
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
-	"github.com/go-delve/delve/pkg/dwarf/util"
+	"github.com/go-delve/delve/pkg/dwarf/leb128"
 )
 
 // Form represents a DWARF form kind (see Figure 20, page 160 and following,
@@ -229,19 +229,19 @@ func (b *Builder) makeAbbrevTable() []byte {
 	var abbrev bytes.Buffer
 
 	for i := range b.abbrevs {
-		util.EncodeULEB128(&abbrev, uint64(i+1))
-		util.EncodeULEB128(&abbrev, uint64(b.abbrevs[i].tag))
+		leb128.EncodeUnsigned(&abbrev, uint64(i+1))
+		leb128.EncodeUnsigned(&abbrev, uint64(b.abbrevs[i].tag))
 		if b.abbrevs[i].children {
 			abbrev.WriteByte(0x01)
 		} else {
 			abbrev.WriteByte(0x00)
 		}
 		for j := range b.abbrevs[i].attr {
-			util.EncodeULEB128(&abbrev, uint64(b.abbrevs[i].attr[j]))
-			util.EncodeULEB128(&abbrev, uint64(b.abbrevs[i].form[j]))
+			leb128.EncodeUnsigned(&abbrev, uint64(b.abbrevs[i].attr[j]))
+			leb128.EncodeUnsigned(&abbrev, uint64(b.abbrevs[i].form[j]))
 		}
-		util.EncodeULEB128(&abbrev, 0)
-		util.EncodeULEB128(&abbrev, 0)
+		leb128.EncodeUnsigned(&abbrev, 0)
+		leb128.EncodeUnsigned(&abbrev, 0)
 	}
 
 	return abbrev.Bytes()

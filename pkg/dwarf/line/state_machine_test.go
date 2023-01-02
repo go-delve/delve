@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/go-delve/delve/pkg/dwarf/leb128"
 	"github.com/go-delve/delve/pkg/dwarf/util"
 )
 
@@ -136,7 +137,7 @@ func TestMultipleSequences(t *testing.T) {
 
 	write_DW_LNE_set_address := func(addr uint64) {
 		instr.WriteByte(0)
-		util.EncodeULEB128(instr, 9) // 1 + ptr_size
+		leb128.EncodeUnsigned(instr, 9) // 1 + ptr_size
 		instr.WriteByte(DW_LINE_set_address)
 		util.WriteUint(instr, binary.LittleEndian, ptrSize, addr)
 	}
@@ -147,17 +148,17 @@ func TestMultipleSequences(t *testing.T) {
 
 	write_DW_LNS_advance_pc := func(off uint64) {
 		instr.WriteByte(DW_LNS_advance_pc)
-		util.EncodeULEB128(instr, off)
+		leb128.EncodeUnsigned(instr, off)
 	}
 
 	write_DW_LNS_advance_line := func(off int64) {
 		instr.WriteByte(DW_LNS_advance_line)
-		util.EncodeSLEB128(instr, off)
+		leb128.EncodeSigned(instr, off)
 	}
 
 	write_DW_LNE_end_sequence := func() {
 		instr.WriteByte(0)
-		util.EncodeULEB128(instr, 1)
+		leb128.EncodeUnsigned(instr, 1)
 		instr.WriteByte(DW_LINE_end_sequence)
 	}
 

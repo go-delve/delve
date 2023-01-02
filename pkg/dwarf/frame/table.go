@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/go-delve/delve/pkg/dwarf/util"
+	"github.com/go-delve/delve/pkg/dwarf/leb128"
 )
 
 // DWRule wrapper of rule defined for register values.
@@ -254,7 +254,7 @@ func offset(frame *FrameContext) {
 
 	var (
 		reg       = b & low_6_offset
-		offset, _ = util.DecodeULEB128(frame.buf)
+		offset, _ = leb128.DecodeUnsigned(frame.buf)
 	)
 
 	frame.Regs[uint64(reg)] = DWRule{Offset: int64(offset) * frame.dataAlignment, Rule: RuleOffset}
@@ -284,26 +284,26 @@ func setloc(frame *FrameContext) {
 
 func offsetextended(frame *FrameContext) {
 	var (
-		reg, _    = util.DecodeULEB128(frame.buf)
-		offset, _ = util.DecodeULEB128(frame.buf)
+		reg, _    = leb128.DecodeUnsigned(frame.buf)
+		offset, _ = leb128.DecodeUnsigned(frame.buf)
 	)
 
 	frame.Regs[reg] = DWRule{Offset: int64(offset) * frame.dataAlignment, Rule: RuleOffset}
 }
 
 func undefined(frame *FrameContext) {
-	reg, _ := util.DecodeULEB128(frame.buf)
+	reg, _ := leb128.DecodeUnsigned(frame.buf)
 	frame.Regs[reg] = DWRule{Rule: RuleUndefined}
 }
 
 func samevalue(frame *FrameContext) {
-	reg, _ := util.DecodeULEB128(frame.buf)
+	reg, _ := leb128.DecodeUnsigned(frame.buf)
 	frame.Regs[reg] = DWRule{Rule: RuleSameVal}
 }
 
 func register(frame *FrameContext) {
-	reg1, _ := util.DecodeULEB128(frame.buf)
-	reg2, _ := util.DecodeULEB128(frame.buf)
+	reg1, _ := leb128.DecodeUnsigned(frame.buf)
+	reg2, _ := leb128.DecodeUnsigned(frame.buf)
 	frame.Regs[reg1] = DWRule{Reg: reg2, Rule: RuleRegister}
 }
 
@@ -316,7 +316,7 @@ func restorestate(frame *FrameContext) {
 }
 
 func restoreextended(frame *FrameContext) {
-	reg, _ := util.DecodeULEB128(frame.buf)
+	reg, _ := leb128.DecodeUnsigned(frame.buf)
 
 	oldrule, ok := frame.initialRegs[reg]
 	if ok {
@@ -327,8 +327,8 @@ func restoreextended(frame *FrameContext) {
 }
 
 func defcfa(frame *FrameContext) {
-	reg, _ := util.DecodeULEB128(frame.buf)
-	offset, _ := util.DecodeULEB128(frame.buf)
+	reg, _ := leb128.DecodeUnsigned(frame.buf)
+	offset, _ := leb128.DecodeUnsigned(frame.buf)
 
 	frame.CFA.Rule = RuleCFA
 	frame.CFA.Reg = reg
@@ -336,18 +336,18 @@ func defcfa(frame *FrameContext) {
 }
 
 func defcfaregister(frame *FrameContext) {
-	reg, _ := util.DecodeULEB128(frame.buf)
+	reg, _ := leb128.DecodeUnsigned(frame.buf)
 	frame.CFA.Reg = reg
 }
 
 func defcfaoffset(frame *FrameContext) {
-	offset, _ := util.DecodeULEB128(frame.buf)
+	offset, _ := leb128.DecodeUnsigned(frame.buf)
 	frame.CFA.Offset = int64(offset)
 }
 
 func defcfasf(frame *FrameContext) {
-	reg, _ := util.DecodeULEB128(frame.buf)
-	offset, _ := util.DecodeSLEB128(frame.buf)
+	reg, _ := leb128.DecodeUnsigned(frame.buf)
+	offset, _ := leb128.DecodeSigned(frame.buf)
 
 	frame.CFA.Rule = RuleCFA
 	frame.CFA.Reg = reg
@@ -355,14 +355,14 @@ func defcfasf(frame *FrameContext) {
 }
 
 func defcfaoffsetsf(frame *FrameContext) {
-	offset, _ := util.DecodeSLEB128(frame.buf)
+	offset, _ := leb128.DecodeSigned(frame.buf)
 	offset *= frame.dataAlignment
 	frame.CFA.Offset = offset
 }
 
 func defcfaexpression(frame *FrameContext) {
 	var (
-		l, _ = util.DecodeULEB128(frame.buf)
+		l, _ = leb128.DecodeUnsigned(frame.buf)
 		expr = frame.buf.Next(int(l))
 	)
 
@@ -372,8 +372,8 @@ func defcfaexpression(frame *FrameContext) {
 
 func expression(frame *FrameContext) {
 	var (
-		reg, _ = util.DecodeULEB128(frame.buf)
-		l, _   = util.DecodeULEB128(frame.buf)
+		reg, _ = leb128.DecodeUnsigned(frame.buf)
+		l, _   = leb128.DecodeUnsigned(frame.buf)
 		expr   = frame.buf.Next(int(l))
 	)
 
@@ -382,8 +382,8 @@ func expression(frame *FrameContext) {
 
 func offsetextendedsf(frame *FrameContext) {
 	var (
-		reg, _    = util.DecodeULEB128(frame.buf)
-		offset, _ = util.DecodeSLEB128(frame.buf)
+		reg, _    = leb128.DecodeUnsigned(frame.buf)
+		offset, _ = leb128.DecodeSigned(frame.buf)
 	)
 
 	frame.Regs[reg] = DWRule{Offset: offset * frame.dataAlignment, Rule: RuleOffset}
@@ -391,8 +391,8 @@ func offsetextendedsf(frame *FrameContext) {
 
 func valoffset(frame *FrameContext) {
 	var (
-		reg, _    = util.DecodeULEB128(frame.buf)
-		offset, _ = util.DecodeULEB128(frame.buf)
+		reg, _    = leb128.DecodeUnsigned(frame.buf)
+		offset, _ = leb128.DecodeUnsigned(frame.buf)
 	)
 
 	frame.Regs[reg] = DWRule{Offset: int64(offset), Rule: RuleValOffset}
@@ -400,8 +400,8 @@ func valoffset(frame *FrameContext) {
 
 func valoffsetsf(frame *FrameContext) {
 	var (
-		reg, _    = util.DecodeULEB128(frame.buf)
-		offset, _ = util.DecodeSLEB128(frame.buf)
+		reg, _    = leb128.DecodeUnsigned(frame.buf)
+		offset, _ = leb128.DecodeSigned(frame.buf)
 	)
 
 	frame.Regs[reg] = DWRule{Offset: offset * frame.dataAlignment, Rule: RuleValOffset}
@@ -409,8 +409,8 @@ func valoffsetsf(frame *FrameContext) {
 
 func valexpression(frame *FrameContext) {
 	var (
-		reg, _ = util.DecodeULEB128(frame.buf)
-		l, _   = util.DecodeULEB128(frame.buf)
+		reg, _ = leb128.DecodeUnsigned(frame.buf)
+		l, _   = leb128.DecodeUnsigned(frame.buf)
 		expr   = frame.buf.Next(int(l))
 	)
 
