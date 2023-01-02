@@ -1056,7 +1056,7 @@ func (bi *BinaryInfo) LocationCovers(entry *dwarf.Entry, attr dwarf.Attr) ([][2]
 		return nil, fmt.Errorf("attribute %s not found", attr)
 	}
 	if _, isblock := a.([]byte); isblock {
-		return [][2]uint64{[2]uint64{0, ^uint64(0)}}, nil
+		return [][2]uint64{{0, ^uint64(0)}}, nil
 	}
 
 	off, ok := a.(int64)

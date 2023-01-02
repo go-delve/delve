@@ -68,15 +68,15 @@ func i386FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryI
 		return &frame.FrameContext{
 			RetAddrReg: regnum.I386_Eip,
 			Regs: map[uint64]frame.DWRule{
-				regnum.I386_Eip: frame.DWRule{
+				regnum.I386_Eip: {
 					Rule:   frame.RuleOffset,
 					Offset: int64(-i.PtrSize()),
 				},
-				regnum.I386_Ebp: frame.DWRule{
+				regnum.I386_Ebp: {
 					Rule:   frame.RuleOffset,
 					Offset: int64(-2 * i.PtrSize()),
 				},
-				regnum.I386_Esp: frame.DWRule{
+				regnum.I386_Esp: {
 					Rule:   frame.RuleValOffset,
 					Offset: 0,
 				},

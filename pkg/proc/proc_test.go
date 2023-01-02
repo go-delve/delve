@@ -3429,11 +3429,11 @@ func TestCgoStacktrace(t *testing.T) {
 	// frame than those listed here but all the frames listed must appear in
 	// the specified order.
 	testCases := [][]string{
-		[]string{"main.main"},
-		[]string{"C.helloworld_pt2", "C.helloworld", "main.main"},
-		[]string{"main.helloWorldS", "main.helloWorld", "C.helloworld_pt2", "C.helloworld", "main.main"},
-		[]string{"C.helloworld_pt4", "C.helloworld_pt3", "main.helloWorldS", "main.helloWorld", "C.helloworld_pt2", "C.helloworld", "main.main"},
-		[]string{"main.helloWorld2", "C.helloworld_pt4", "C.helloworld_pt3", "main.helloWorldS", "main.helloWorld", "C.helloworld_pt2", "C.helloworld", "main.main"}}
+		{"main.main"},
+		{"C.helloworld_pt2", "C.helloworld", "main.main"},
+		{"main.helloWorldS", "main.helloWorld", "C.helloworld_pt2", "C.helloworld", "main.main"},
+		{"C.helloworld_pt4", "C.helloworld_pt3", "main.helloWorldS", "main.helloWorld", "C.helloworld_pt2", "C.helloworld", "main.main"},
+		{"main.helloWorld2", "C.helloworld_pt4", "C.helloworld_pt3", "main.helloWorldS", "main.helloWorld", "C.helloworld_pt2", "C.helloworld", "main.main"}}
 
 	var gid int64
 
@@ -3868,14 +3868,14 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 		line: 7,
 		ok:   false,
 		varChecks: []varCheck{
-			varCheck{
+			{
 				name:   "a",
 				typ:    "int",
 				kind:   reflect.Int,
 				hasVal: true,
 				intVal: 3,
 			},
-			varCheck{
+			{
 				name:   "z",
 				typ:    "int",
 				kind:   reflect.Int,
@@ -3889,14 +3889,14 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 		line: 7,
 		ok:   false,
 		varChecks: []varCheck{
-			varCheck{
+			{
 				name:   "a",
 				typ:    "int",
 				kind:   reflect.Int,
 				hasVal: true,
 				intVal: 4,
 			},
-			varCheck{
+			{
 				name:   "z",
 				typ:    "int",
 				kind:   reflect.Int,
