@@ -20,6 +20,5 @@ require (
 	golang.org/x/arch v0.0.0-20190927153633-4e8777c89be4
 	golang.org/x/sys v0.0.0-20220908164124-27713097b956
 	golang.org/x/tools v0.1.12
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	gopkg.in/yaml.v2 v2.4.0
 )
