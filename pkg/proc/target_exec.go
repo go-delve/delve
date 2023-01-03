@@ -1137,7 +1137,7 @@ func (tgt *Target) handleHardcodedBreakpoints(trapthread Thread, threads []Threa
 		hcbp.Addr = loc.PC
 		hcbp.Logical = &LogicalBreakpoint{}
 		hcbp.Logical.Name = HardcodedBreakpoint
-		hcbp.Breaklets = []*Breaklet{&Breaklet{Kind: UserBreakpoint, LogicalID: hardcodedBreakpointID}}
+		hcbp.Breaklets = []*Breaklet{{Kind: UserBreakpoint, LogicalID: hardcodedBreakpointID}}
 		tgt.StopReason = StopHardcodedBreakpoint
 	}
 
