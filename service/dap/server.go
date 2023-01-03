@@ -1411,7 +1411,7 @@ func (s *Session) updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int,
 		path := s.toClientPath(got.File)
 		breakpoints[i].Id = got.ID
 		breakpoints[i].Line = got.Line
-		breakpoints[i].Source = dap.Source{Name: filepath.Base(path), Path: path}
+		breakpoints[i].Source = &dap.Source{Name: filepath.Base(path), Path: path}
 	}
 }
 

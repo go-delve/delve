@@ -8,7 +8,7 @@ require (
 	github.com/creack/pty v1.1.9
 	github.com/derekparker/trie v0.0.0-20221213183930-4c74548207f4
 	github.com/go-delve/liner v1.2.3-0.20220127212407-d32d89dd2a5d
-	github.com/google/go-dap v0.6.0
+	github.com/google/go-dap v0.7.0
 	github.com/hashicorp/golang-lru v0.5.4
 	github.com/mattn/go-colorable v0.0.9
 	github.com/mattn/go-isatty v0.0.3
@@ -20,6 +20,5 @@ require (
 	golang.org/x/arch v0.0.0-20190927153633-4e8777c89be4
 	golang.org/x/sys v0.0.0-20220908164124-27713097b956
 	golang.org/x/tools v0.1.12
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	gopkg.in/yaml.v2 v2.4.0
 )

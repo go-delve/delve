@@ -1827,16 +1827,16 @@ type InstructionBreakpoint struct {
 
 // Breakpoint: Information about a Breakpoint created in setBreakpoints, setFunctionBreakpoints, setInstructionBreakpoints, or setDataBreakpoints.
 type Breakpoint struct {
-	Id                   int    `json:"id,omitempty"`
-	Verified             bool   `json:"verified"`
-	Message              string `json:"message,omitempty"`
-	Source               Source `json:"source,omitempty"`
-	Line                 int    `json:"line,omitempty"`
-	Column               int    `json:"column,omitempty"`
-	EndLine              int    `json:"endLine,omitempty"`
-	EndColumn            int    `json:"endColumn,omitempty"`
-	InstructionReference string `json:"instructionReference,omitempty"`
-	Offset               int    `json:"offset,omitempty"`
+	Id                   int     `json:"id,omitempty"`
+	Verified             bool    `json:"verified"`
+	Message              string  `json:"message,omitempty"`
+	Source               *Source `json:"source,omitempty"`
+	Line                 int     `json:"line,omitempty"`
+	Column               int     `json:"column,omitempty"`
+	EndLine              int     `json:"endLine,omitempty"`
+	EndColumn            int     `json:"endColumn,omitempty"`
+	InstructionReference string  `json:"instructionReference,omitempty"`
+	Offset               int     `json:"offset,omitempty"`
 }
 
 // SteppingGranularity: The granularity of one 'step' in the stepping requests 'next', 'stepIn', 'stepOut', and 'stepBack'.
