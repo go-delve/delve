@@ -108,28 +108,7 @@ func New(client service.Client, conf *config.Config) *Term {
 		t.stdout.pw = &pagingWriter{w: getColorableWriter()}
 		t.stdout.colorEscapes = make(map[colorize.Style]string)
 		t.stdout.colorEscapes[colorize.NormalStyle] = terminalResetEscapeCode
-		wd := func(s string, defaultCode int) string {
-			if s == "" {
-				return fmt.Sprintf(terminalHighlightEscapeCode, defaultCode)
-			}
-			return s
-		}
-		t.stdout.colorEscapes[colorize.KeywordStyle] = conf.SourceListKeywordColor
-		t.stdout.colorEscapes[colorize.StringStyle] = wd(conf.SourceListStringColor, ansiGreen)
-		t.stdout.colorEscapes[colorize.NumberStyle] = conf.SourceListNumberColor
-		t.stdout.colorEscapes[colorize.CommentStyle] = wd(conf.SourceListCommentColor, ansiBrMagenta)
-		t.stdout.colorEscapes[colorize.ArrowStyle] = wd(conf.SourceListArrowColor, ansiYellow)
-		switch x := conf.SourceListLineColor.(type) {
-		case string:
-			t.stdout.colorEscapes[colorize.LineNoStyle] = x
-		case int:
-			if (x > ansiWhite && x < ansiBrBlack) || x < ansiBlack || x > ansiBrWhite {
-				x = ansiBlue
-			}
-			t.stdout.colorEscapes[colorize.LineNoStyle] = fmt.Sprintf(terminalHighlightEscapeCode, x)
-		case nil:
-			t.stdout.colorEscapes[colorize.LineNoStyle] = fmt.Sprintf(terminalHighlightEscapeCode, ansiBlue)
-		}
+		t.updateColorScheme()
 	}
 
 	if client != nil {
@@ -142,30 +121,28 @@ func New(client service.Client, conf *config.Config) *Term {
 }
 
 func (t *Term) updateColorScheme() {
-	if strings.ToLower(os.Getenv("TERM")) != "dumb" {
-		conf := t.conf
-		wd := func(s string, defaultCode int) string {
-			if s == "" {
-				return fmt.Sprintf(terminalHighlightEscapeCode, defaultCode)
-			}
-			return s
+	conf := t.conf
+	wd := func(s string, defaultCode int) string {
+		if s == "" {
+			return fmt.Sprintf(terminalHighlightEscapeCode, defaultCode)
 		}
-		t.stdout.colorEscapes[colorize.KeywordStyle] = conf.SourceListKeywordColor
-		t.stdout.colorEscapes[colorize.StringStyle] = wd(conf.SourceListStringColor, ansiGreen)
-		t.stdout.colorEscapes[colorize.NumberStyle] = conf.SourceListNumberColor
-		t.stdout.colorEscapes[colorize.CommentStyle] = wd(conf.SourceListCommentColor, ansiBrMagenta)
-		t.stdout.colorEscapes[colorize.ArrowStyle] = wd(conf.SourceListArrowColor, ansiYellow)
-		switch x := conf.SourceListLineColor.(type) {
-		case string:
-			t.stdout.colorEscapes[colorize.LineNoStyle] = x
-		case int:
-			if (x > ansiWhite && x < ansiBrBlack) || x < ansiBlack || x > ansiBrWhite {
-				x = ansiBlue
-			}
-			t.stdout.colorEscapes[colorize.LineNoStyle] = fmt.Sprintf(terminalHighlightEscapeCode, x)
-		case nil:
-			t.stdout.colorEscapes[colorize.LineNoStyle] = fmt.Sprintf(terminalHighlightEscapeCode, ansiBlue)
+		return s
+	}
+	t.stdout.colorEscapes[colorize.KeywordStyle] = conf.SourceListKeywordColor
+	t.stdout.colorEscapes[colorize.StringStyle] = wd(conf.SourceListStringColor, ansiGreen)
+	t.stdout.colorEscapes[colorize.NumberStyle] = conf.SourceListNumberColor
+	t.stdout.colorEscapes[colorize.CommentStyle] = wd(conf.SourceListCommentColor, ansiBrMagenta)
+	t.stdout.colorEscapes[colorize.ArrowStyle] = wd(conf.SourceListArrowColor, ansiYellow)
+	switch x := conf.SourceListLineColor.(type) {
+	case string:
+		t.stdout.colorEscapes[colorize.LineNoStyle] = x
+	case int:
+		if (x > ansiWhite && x < ansiBrBlack) || x < ansiBlack || x > ansiBrWhite {
+			x = ansiBlue
 		}
+		t.stdout.colorEscapes[colorize.LineNoStyle] = fmt.Sprintf(terminalHighlightEscapeCode, x)
+	case nil:
+		t.stdout.colorEscapes[colorize.LineNoStyle] = fmt.Sprintf(terminalHighlightEscapeCode, ansiBlue)
 	}
 }
 
