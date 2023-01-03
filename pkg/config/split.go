@@ -84,7 +84,29 @@ func ConfigureSetSimple(rest string, cfgname string, field reflect.Value) error 
 			v := rest == "true"
 			return reflect.ValueOf(&v), nil
 		case reflect.String:
+			var err error
+			rest, err = strconv.Unquote(rest)
+			if err != nil {
+				return reflect.ValueOf(nil), err
+			}
 			return reflect.ValueOf(&rest), nil
+		case reflect.Interface:
+			// We special case this particular configuration key because historically we accept both a numerical value and a string value for it.
+			if cfgname == "source-list-line-color" {
+				n, err := strconv.Atoi(rest)
+				if err == nil {
+					if n < 0 {
+						return reflect.ValueOf(nil), fmt.Errorf("argument to %q must be a number greater than zero", cfgname)
+					}
+					return reflect.ValueOf(&n), nil
+				}
+				rest, err = strconv.Unquote(rest)
+				if err != nil {
+					return reflect.ValueOf(nil), err
+				}
+				return reflect.ValueOf(&rest), nil
+			}
+			fallthrough
 		default:
 			return reflect.ValueOf(nil), fmt.Errorf("unsupported type for configuration key %q", cfgname)
 		}
@@ -123,20 +145,24 @@ func writeField(w io.Writer, field reflect.Value, fieldName string) {
 	case reflect.Interface:
 		switch field := field.Interface().(type) {
 		case string:
-			fmt.Fprintf(w, "%s\t%q\n", fieldName, field)
+			fmt.Fprintf(w, "%s\t= %q\n", fieldName, field)
 		default:
-			fmt.Fprintf(w, "%s\t%v\n", fieldName, field)
+			fmt.Fprintf(w, "%s\t= %v\n", fieldName, field)
 		}
 	case reflect.Ptr:
 		if !field.IsNil() {
-			fmt.Fprintf(w, "%s\t%v\n", fieldName, field.Elem())
+			fmt.Fprintf(w, "%s\t= %v\n", fieldName, field.Elem())
 		} else {
-			fmt.Fprintf(w, "%s\t<not defined>\n", fieldName)
+			fmt.Fprintf(w, "%s\t= <not defined>\n", fieldName)
 		}
 	case reflect.String:
-		fmt.Fprintf(w, "%s\t%q\n", fieldName, field)
+		if field.IsZero() {
+			fmt.Fprintf(w, "%s\t= <not defined>\n", fieldName)
+		} else {
+			fmt.Fprintf(w, "%s\t= %v\n", fieldName, field)
+		}
 	default:
-		fmt.Fprintf(w, "%s\t%v\n", fieldName, field)
+		fmt.Fprintf(w, "%s\t= %v\n", fieldName, field)
 	}
 }
 
