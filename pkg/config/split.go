@@ -144,24 +144,20 @@ func writeField(w io.Writer, field reflect.Value, fieldName string) {
 	case reflect.Interface:
 		switch field := field.Interface().(type) {
 		case string:
-			fmt.Fprintf(w, "%s\t= %q\n", fieldName, field)
+			fmt.Fprintf(w, "%s\t%q\n", fieldName, field)
 		default:
-			fmt.Fprintf(w, "%s\t= %v\n", fieldName, field)
+			fmt.Fprintf(w, "%s\t%v\n", fieldName, field)
 		}
 	case reflect.Ptr:
 		if !field.IsNil() {
-			fmt.Fprintf(w, "%s\t= %v\n", fieldName, field.Elem())
+			fmt.Fprintf(w, "%s\t%v\n", fieldName, field.Elem())
 		} else {
-			fmt.Fprintf(w, "%s\t= <not defined>\n", fieldName)
+			fmt.Fprintf(w, "%s\t<not defined>\n", fieldName)
 		}
 	case reflect.String:
-		if field.IsZero() {
-			fmt.Fprintf(w, "%s\t= <not defined>\n", fieldName)
-		} else {
-			fmt.Fprintf(w, "%s\t= %v\n", fieldName, field)
-		}
+		fmt.Fprintf(w, "%s\t%q\n", fieldName, field)
 	default:
-		fmt.Fprintf(w, "%s\t= %v\n", fieldName, field)
+		fmt.Fprintf(w, "%s\t%v\n", fieldName, field)
 	}
 }
 

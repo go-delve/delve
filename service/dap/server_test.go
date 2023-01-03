@@ -3999,12 +3999,12 @@ func TestEvaluateRequest(t *testing.T) {
 }
 
 func formatConfig(depth int, showGlobals, showRegisters bool, goroutineFilters string, hideSystemGoroutines bool, substitutePath [][2]string) string {
-	formatStr := `stackTraceDepth	= %d
-showGlobalVariables	= %v
-showRegisters	= %v
-goroutineFilters	= %q
-hideSystemGoroutines	= %v
-substitutePath	= %v
+	formatStr := `stackTraceDepth	%d
+showGlobalVariables	%v
+showRegisters	%v
+goroutineFilters	%q
+hideSystemGoroutines	%v
+substitutePath	%v
 `
 	return fmt.Sprintf(formatStr, depth, showGlobals, showRegisters, goroutineFilters, hideSystemGoroutines, substitutePath)
 }

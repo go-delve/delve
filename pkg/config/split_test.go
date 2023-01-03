@@ -94,7 +94,7 @@ func TestConfigureListByName(t *testing.T) {
 				},
 				cfgname: "bool-arg",
 			},
-			want: "bool-arg	= true\n",
+			want: "bool-arg	true\n",
 		},
 		{
 			name: "list arg",
@@ -106,7 +106,7 @@ func TestConfigureListByName(t *testing.T) {
 
 				cfgname: "list-arg",
 			},
-			want: "list-arg	= [item 1 item 2]\n",
+			want: "list-arg	[item 1 item 2]\n",
 		},
 		{
 			name: "empty",
