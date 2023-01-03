@@ -84,7 +84,15 @@ func ConfigureSetSimple(rest string, cfgname string, field reflect.Value) error 
 			v := rest == "true"
 			return reflect.ValueOf(&v), nil
 		case reflect.String:
-			return reflect.ValueOf(&rest), nil
+			v := reflect.ValueOf(&rest)
+			if len(rest) > 0 && rest[0] == '"' {
+				s, err := strconv.Unquote(rest)
+				if err != nil {
+					return reflect.ValueOf(nil), fmt.Errorf("argument to %q must be a string", cfgname)
+				}
+				v = reflect.ValueOf(&s)
+			}
+			return v, nil
 		default:
 			return reflect.ValueOf(nil), fmt.Errorf("unsupported type for configuration key %q", cfgname)
 		}
