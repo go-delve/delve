@@ -23,17 +23,28 @@ const (
 	CommentStyle
 	LineNoStyle
 	ArrowStyle
+	TabStyle
 )
 
 // Print prints to out a syntax highlighted version of the text read from
 // reader, between lines startLine and endLine.
-func Print(out io.Writer, path string, reader io.Reader, startLine, endLine, arrowLine int, colorEscapes map[Style]string) error {
+func Print(out io.Writer, path string, reader io.Reader, startLine, endLine, arrowLine int, colorEscapes map[Style]string, altTabStr string) error {
 	buf, err := ioutil.ReadAll(reader)
 	if err != nil {
 		return err
 	}
 
-	w := &lineWriter{w: out, lineRange: [2]int{startLine, endLine}, arrowLine: arrowLine, colorEscapes: colorEscapes}
+	w := &lineWriter{
+		w:            out,
+		lineRange:    [2]int{startLine, endLine},
+		arrowLine:    arrowLine,
+		colorEscapes: colorEscapes,
+	}
+	if len(altTabStr) > 0 {
+		w.tabBytes = []byte(altTabStr)
+	} else {
+		w.tabBytes = []byte("\t")
+	}
 
 	if filepath.Ext(path) != ".go" {
 		w.Write(NormalStyle, buf, true)
@@ -211,6 +222,8 @@ type lineWriter struct {
 	lineno   int
 
 	colorEscapes map[Style]string
+
+	tabBytes []byte
 }
 
 func (w *lineWriter) style(style Style) {
@@ -268,7 +281,8 @@ func (w *lineWriter) writeInternal(style Style, data []byte) {
 func (w *lineWriter) Write(style Style, data []byte, last bool) {
 	cur := 0
 	for i := range data {
-		if data[i] == '\n' {
+		switch data[i] {
+		case '\n':
 			if last && i == len(data)-1 {
 				w.writeInternal(style, data[cur:i])
 				if w.curStyle != NormalStyle {
@@ -282,6 +296,10 @@ func (w *lineWriter) Write(style Style, data []byte, last bool) {
 				w.writeInternal(style, data[cur:i+1])
 				w.nl()
 			}
+			cur = i + 1
+		case '\t':
+			w.writeInternal(style, data[cur:i])
+			w.writeInternal(TabStyle, w.tabBytes)
 			cur = i + 1
 		}
 	}
