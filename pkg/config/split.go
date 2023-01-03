@@ -84,10 +84,9 @@ func ConfigureSetSimple(rest string, cfgname string, field reflect.Value) error 
 			v := rest == "true"
 			return reflect.ValueOf(&v), nil
 		case reflect.String:
-			var err error
-			rest, err = strconv.Unquote(rest)
-			if err != nil {
-				return reflect.ValueOf(nil), err
+			unquoted, err := strconv.Unquote(rest)
+			if err == nil {
+				rest = unquoted
 			}
 			return reflect.ValueOf(&rest), nil
 		case reflect.Interface:
@@ -100,9 +99,9 @@ func ConfigureSetSimple(rest string, cfgname string, field reflect.Value) error 
 					}
 					return reflect.ValueOf(&n), nil
 				}
-				rest, err = strconv.Unquote(rest)
-				if err != nil {
-					return reflect.ValueOf(nil), err
+				unquoted, err := strconv.Unquote(rest)
+				if err == nil {
+					rest = unquoted
 				}
 				return reflect.ValueOf(&rest), nil
 			}
