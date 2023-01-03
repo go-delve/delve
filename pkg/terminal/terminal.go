@@ -121,6 +121,10 @@ func New(client service.Client, conf *config.Config) *Term {
 }
 
 func (t *Term) updateColorScheme() {
+	if t.stdout.colorEscapes == nil {
+		return
+	}
+
 	conf := t.conf
 	wd := func(s string, defaultCode int) string {
 		if s == "" {
