@@ -553,7 +553,7 @@ func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs [
 		// This is unlike other protected processes, where they just strip it out.
 		env := make([]string, 0, len(process.Env))
 		for _, v := range process.Env {
-			if !(v == "DYLD_INSERT_LIBRARIES") {
+			if !strings.HasPrefix(v, "DYLD_INSERT_LIBRARIES") {
 				env = append(env, v)
 			}
 		}
