@@ -30,6 +30,7 @@ go_register_toolchains(
 load("@bazel_gazelle//:deps.bzl", "gazelle_dependencies")
 load("//:deps.bzl", "go_dependencies")
 
+# gazelle:repository_macro deps.bzl%go_dependencies
 go_dependencies()
 
 gazelle_dependencies()
