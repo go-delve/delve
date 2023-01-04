@@ -1,0 +1,110 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "ebpf",
+    srcs = [
+        "context.go",
+        "helpers.go",
+        "helpers_disabled.go",
+        "trace_bpfel_x86.go",
+    ],
+    embedsrcs = select({
+        "@io_bazel_rules_go//go/platform:386": [
+            "trace_bpfel_x86.o",
+        ],
+        "@io_bazel_rules_go//go/platform:amd64": [
+            "trace_bpfel_x86.o",
+        ],
+        "//conditions:default": [],
+    }),
+    importpath = "github.com/go-delve/delve/pkg/proc/internal/ebpf",
+    visibility = ["//pkg/proc:__subpackages__"],
+    deps = [
+        "//pkg/dwarf/godwarf",
+        "//pkg/dwarf/op",
+    ] + select({
+        "@io_bazel_rules_go//go/platform:android_386": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "@io_bazel_rules_go//go/platform:android_amd64": [
+            "//vendor/github.com/cilium/ebpf",
+            "//vendor/github.com/cilium/ebpf/link",
+            "//vendor/github.com/cilium/ebpf/ringbuf",
+        ],
+        "@io_bazel_rules_go//go/platform:darwin_386": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "@io_bazel_rules_go//go/platform:darwin_amd64": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "@io_bazel_rules_go//go/platform:dragonfly_amd64": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "@io_bazel_rules_go//go/platform:freebsd_386": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "@io_bazel_rules_go//go/platform:freebsd_amd64": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "@io_bazel_rules_go//go/platform:illumos_amd64": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "@io_bazel_rules_go//go/platform:ios_386": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "@io_bazel_rules_go//go/platform:ios_amd64": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_386": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_amd64": [
+            "//vendor/github.com/cilium/ebpf",
+            "//vendor/github.com/cilium/ebpf/link",
+            "//vendor/github.com/cilium/ebpf/ringbuf",
+        ],
+        "@io_bazel_rules_go//go/platform:netbsd_386": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "@io_bazel_rules_go//go/platform:netbsd_amd64": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "@io_bazel_rules_go//go/platform:openbsd_386": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "@io_bazel_rules_go//go/platform:openbsd_amd64": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "@io_bazel_rules_go//go/platform:plan9_386": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "@io_bazel_rules_go//go/platform:plan9_amd64": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "@io_bazel_rules_go//go/platform:solaris_amd64": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "@io_bazel_rules_go//go/platform:windows_386": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "@io_bazel_rules_go//go/platform:windows_amd64": [
+            "//vendor/github.com/cilium/ebpf",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+go_test(
+    name = "ebpf_test",
+    srcs = ["helpers_test.go"],
+    embed = [":ebpf"],
+    deps = select({
+        "@io_bazel_rules_go//go/platform:android_amd64": [
+            "//pkg/proc/internal/ebpf/testhelper",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_amd64": [
+            "//pkg/proc/internal/ebpf/testhelper",
+        ],
+        "//conditions:default": [],
+    }),
+)

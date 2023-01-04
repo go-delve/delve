@@ -1,0 +1,23 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "godwarf",
+    srcs = [
+        "addr.go",
+        "sections.go",
+        "tree.go",
+        "type.go",
+    ],
+    importpath = "github.com/go-delve/delve/pkg/dwarf/godwarf",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/dwarf/op",
+        "//pkg/dwarf/util",
+    ],
+)
+
+go_test(
+    name = "godwarf_test",
+    srcs = ["tree_test.go"],
+    embed = [":godwarf"],
+)

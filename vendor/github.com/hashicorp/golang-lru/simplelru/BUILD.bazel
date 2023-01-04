@@ -1,0 +1,12 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "simplelru",
+    srcs = [
+        "lru.go",
+        "lru_interface.go",
+    ],
+    importmap = "github.com/go-delve/delve/vendor/github.com/hashicorp/golang-lru/simplelru",
+    importpath = "github.com/hashicorp/golang-lru/simplelru",
+    visibility = ["//visibility:public"],
+)

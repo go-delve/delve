@@ -1,0 +1,12 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "daptest",
+    srcs = [
+        "client.go",
+        "resp.go",
+    ],
+    importpath = "github.com/go-delve/delve/service/dap/daptest",
+    visibility = ["//visibility:public"],
+    deps = ["//vendor/github.com/google/go-dap"],
+)

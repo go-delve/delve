@@ -1,0 +1,22 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "starbind",
+    srcs = [
+        "conv.go",
+        "repl.go",
+        "starlark.go",
+        "starlark_mapping.go",
+    ],
+    importpath = "github.com/go-delve/delve/pkg/terminal/starbind",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//service",
+        "//service/api",
+        "//service/rpc2",
+        "//vendor/github.com/go-delve/liner",
+        "//vendor/go.starlark.net/resolve",
+        "//vendor/go.starlark.net/starlark",
+        "//vendor/go.starlark.net/syntax",
+    ],
+)

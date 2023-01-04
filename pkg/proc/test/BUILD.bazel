@@ -1,0 +1,9 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "test",
+    srcs = ["support.go"],
+    importpath = "github.com/go-delve/delve/pkg/proc/test",
+    visibility = ["//visibility:public"],
+    deps = ["//pkg/goversion"],
+)

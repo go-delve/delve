@@ -1,0 +1,14 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "argv",
+    srcs = [
+        "argv.go",
+        "cmd.go",
+        "parser.go",
+        "scanner.go",
+    ],
+    importmap = "github.com/go-delve/delve/vendor/github.com/cosiner/argv",
+    importpath = "github.com/cosiner/argv",
+    visibility = ["//visibility:public"],
+)

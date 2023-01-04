@@ -1,0 +1,9 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "logflags",
+    srcs = ["logflags.go"],
+    importpath = "github.com/go-delve/delve/pkg/logflags",
+    visibility = ["//visibility:public"],
+    deps = ["//vendor/github.com/sirupsen/logrus"],
+)

@@ -1,0 +1,17 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "core",
+    srcs = [
+        "event.go",
+        "export.go",
+        "fast.go",
+    ],
+    importmap = "github.com/go-delve/delve/vendor/golang.org/x/tools/internal/event/core",
+    importpath = "golang.org/x/tools/internal/event/core",
+    visibility = ["//vendor/golang.org/x/tools:__subpackages__"],
+    deps = [
+        "//vendor/golang.org/x/tools/internal/event/keys",
+        "//vendor/golang.org/x/tools/internal/event/label",
+    ],
+)

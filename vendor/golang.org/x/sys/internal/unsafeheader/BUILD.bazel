@@ -1,0 +1,9 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "unsafeheader",
+    srcs = ["unsafeheader.go"],
+    importmap = "github.com/go-delve/delve/vendor/golang.org/x/sys/internal/unsafeheader",
+    importpath = "golang.org/x/sys/internal/unsafeheader",
+    visibility = ["//vendor/golang.org/x/sys:__subpackages__"],
+)

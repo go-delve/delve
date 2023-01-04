@@ -1,0 +1,24 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "api",
+    srcs = [
+        "command.go",
+        "conversions.go",
+        "prettyprint.go",
+        "types.go",
+    ],
+    importpath = "github.com/go-delve/delve/service/api",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/dwarf/godwarf",
+        "//pkg/dwarf/op",
+        "//pkg/proc",
+    ],
+)
+
+go_test(
+    name = "api_test",
+    srcs = ["prettyprint_test.go"],
+    embed = [":api"],
+)

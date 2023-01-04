@@ -1,0 +1,17 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "setymmreg_lib",
+    srcs = [
+        "main.go",
+        "setymmreg_amd64.s",
+    ],
+    importpath = "github.com/go-delve/delve/_fixtures/setymmreg",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "setymmreg",
+    embed = [":setymmreg_lib"],
+    visibility = ["//visibility:public"],
+)

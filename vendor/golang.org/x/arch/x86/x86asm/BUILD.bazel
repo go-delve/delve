@@ -1,0 +1,16 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "x86asm",
+    srcs = [
+        "decode.go",
+        "gnu.go",
+        "inst.go",
+        "intel.go",
+        "plan9x.go",
+        "tables.go",
+    ],
+    importmap = "github.com/go-delve/delve/vendor/golang.org/x/arch/x86/x86asm",
+    importpath = "golang.org/x/arch/x86/x86asm",
+    visibility = ["//visibility:public"],
+)

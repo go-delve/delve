@@ -1,0 +1,18 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "arm64asm",
+    srcs = [
+        "arg.go",
+        "condition.go",
+        "condition_util.go",
+        "decode.go",
+        "gnu.go",
+        "inst.go",
+        "plan9x.go",
+        "tables.go",
+    ],
+    importmap = "github.com/go-delve/delve/vendor/golang.org/x/arch/arm64/arm64asm",
+    importpath = "golang.org/x/arch/arm64/arm64asm",
+    visibility = ["//visibility:public"],
+)

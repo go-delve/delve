@@ -1,0 +1,21 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "locspec",
+    srcs = [
+        "doc.go",
+        "locations.go",
+    ],
+    importpath = "github.com/go-delve/delve/pkg/locspec",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/proc",
+        "//service/api",
+    ],
+)
+
+go_test(
+    name = "locspec_test",
+    srcs = ["locations_test.go"],
+    embed = [":locspec"],
+)

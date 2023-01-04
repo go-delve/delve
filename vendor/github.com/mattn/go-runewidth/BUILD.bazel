@@ -1,0 +1,16 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go-runewidth",
+    srcs = [
+        "runewidth.go",
+        "runewidth_js.go",
+        "runewidth_posix.go",
+        "runewidth_table.go",
+        "runewidth_windows.go",
+    ],
+    importmap = "github.com/go-delve/delve/vendor/github.com/mattn/go-runewidth",
+    importpath = "github.com/mattn/go-runewidth",
+    visibility = ["//visibility:public"],
+    deps = ["//vendor/github.com/rivo/uniseg"],
+)

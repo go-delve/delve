@@ -1,0 +1,18 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "goversion",
+    srcs = [
+        "compat.go",
+        "go_version.go",
+    ],
+    importpath = "github.com/go-delve/delve/pkg/goversion",
+    visibility = ["//visibility:public"],
+    deps = ["//pkg/logflags"],
+)
+
+go_test(
+    name = "goversion_test",
+    srcs = ["version_test.go"],
+    embed = [":goversion"],
+)

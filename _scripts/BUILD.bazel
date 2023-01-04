@@ -1,0 +1,27 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "_scripts_lib",
+    srcs = [
+        "gen-backend_test_health.go",
+        "gen-faq-toc.go",
+        "gen-opcodes.go",
+        "gen-starlark-bindings.go",
+        "gen-travis.go",
+        "make.go",
+        "rtype.go",
+    ],
+    importpath = "github.com/go-delve/delve/_scripts",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//pkg/goversion",
+        "//vendor/github.com/spf13/cobra",
+        "//vendor/golang.org/x/tools/go/packages",
+    ],
+)
+
+go_binary(
+    name = "_scripts",
+    embed = [":_scripts_lib"],
+    visibility = ["//visibility:public"],
+)

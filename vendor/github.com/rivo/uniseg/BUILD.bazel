@@ -1,0 +1,13 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "uniseg",
+    srcs = [
+        "doc.go",
+        "grapheme.go",
+        "properties.go",
+    ],
+    importmap = "github.com/go-delve/delve/vendor/github.com/rivo/uniseg",
+    importpath = "github.com/rivo/uniseg",
+    visibility = ["//visibility:public"],
+)

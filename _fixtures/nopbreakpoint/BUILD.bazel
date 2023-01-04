@@ -1,0 +1,17 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "nopbreakpoint_lib",
+    srcs = [
+        "main.go",
+        "main.s",
+    ],
+    importpath = "github.com/go-delve/delve/_fixtures/nopbreakpoint",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "nopbreakpoint",
+    embed = [":nopbreakpoint_lib"],
+    visibility = ["//visibility:public"],
+)

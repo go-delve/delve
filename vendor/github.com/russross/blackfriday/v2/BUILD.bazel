@@ -1,0 +1,19 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "blackfriday",
+    srcs = [
+        "block.go",
+        "doc.go",
+        "esc.go",
+        "html.go",
+        "inline.go",
+        "markdown.go",
+        "node.go",
+        "smartypants.go",
+    ],
+    importmap = "github.com/go-delve/delve/vendor/github.com/russross/blackfriday/v2",
+    importpath = "github.com/russross/blackfriday/v2",
+    visibility = ["//visibility:public"],
+    deps = ["//vendor/github.com/shurcooL/sanitized_anchor_name"],
+)

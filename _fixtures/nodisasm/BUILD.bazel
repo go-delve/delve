@@ -1,0 +1,17 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "nodisasm_lib",
+    srcs = [
+        "main.go",
+        "nodisasm_amd64.s",
+    ],
+    importpath = "github.com/go-delve/delve/_fixtures/nodisasm",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "nodisasm",
+    embed = [":nodisasm_lib"],
+    visibility = ["//visibility:public"],
+)

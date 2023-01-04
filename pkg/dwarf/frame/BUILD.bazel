@@ -1,0 +1,23 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "frame",
+    srcs = [
+        "entries.go",
+        "parser.go",
+        "table.go",
+    ],
+    importpath = "github.com/go-delve/delve/pkg/dwarf/frame",
+    visibility = ["//visibility:public"],
+    deps = ["//pkg/dwarf/util"],
+)
+
+go_test(
+    name = "frame_test",
+    srcs = [
+        "entries_test.go",
+        "parser_test.go",
+    ],
+    data = glob(["testdata/**"]),
+    embed = [":frame"],
+)

@@ -1,0 +1,9 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "trie",
+    srcs = ["trie.go"],
+    importmap = "github.com/go-delve/delve/vendor/github.com/derekparker/trie",
+    importpath = "github.com/derekparker/trie",
+    visibility = ["//visibility:public"],
+)

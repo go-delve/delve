@@ -1,0 +1,17 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "xmm0print_lib",
+    srcs = [
+        "main.go",
+        "main.s",
+    ],
+    importpath = "github.com/go-delve/delve/_fixtures/xmm0print",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "xmm0print",
+    embed = [":xmm0print_lib"],
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,19 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "cgostacktest_lib",
+    srcs = [
+        "hello.c",
+        "hello.h",
+        "main.go",
+    ],
+    cgo = True,
+    importpath = "github.com/go-delve/delve/_fixtures/cgostacktest",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "cgostacktest",
+    embed = [":cgostacktest_lib"],
+    visibility = ["//visibility:public"],
+)

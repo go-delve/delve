@@ -1,0 +1,18 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "ringbuf",
+    srcs = [
+        "doc.go",
+        "reader.go",
+        "ring.go",
+    ],
+    importmap = "github.com/go-delve/delve/vendor/github.com/cilium/ebpf/ringbuf",
+    importpath = "github.com/cilium/ebpf/ringbuf",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/github.com/cilium/ebpf",
+        "//vendor/github.com/cilium/ebpf/internal",
+        "//vendor/github.com/cilium/ebpf/internal/unix",
+    ],
+)

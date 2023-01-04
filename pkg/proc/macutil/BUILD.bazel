@@ -1,0 +1,11 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "macutil",
+    srcs = [
+        "rosetta_darwin.go",
+        "rosetta_other.go",
+    ],
+    importpath = "github.com/go-delve/delve/pkg/proc/macutil",
+    visibility = ["//visibility:public"],
+)

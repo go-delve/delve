@@ -1,0 +1,19 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "testvariablescgo_lib",
+    srcs = [
+        "test.c",
+        "testvariablescgo.go",
+    ],
+    cgo = True,
+    copts = ["-g -Wall -O0 -std=gnu99"],
+    importpath = "github.com/go-delve/delve/_fixtures/testvariablescgo",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "testvariablescgo",
+    embed = [":testvariablescgo_lib"],
+    visibility = ["//visibility:public"],
+)

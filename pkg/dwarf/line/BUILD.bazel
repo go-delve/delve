@@ -1,0 +1,27 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "line",
+    srcs = [
+        "line_parser.go",
+        "parse_util.go",
+        "state_machine.go",
+    ],
+    importpath = "github.com/go-delve/delve/pkg/dwarf/line",
+    visibility = ["//visibility:public"],
+    deps = ["//pkg/dwarf/util"],
+)
+
+go_test(
+    name = "line_test",
+    srcs = [
+        "line_parser_test.go",
+        "state_machine_test.go",
+    ],
+    embed = [":line"],
+    deps = [
+        "//pkg/dwarf/godwarf",
+        "//pkg/dwarf/util",
+        "//pkg/goversion",
+    ],
+)

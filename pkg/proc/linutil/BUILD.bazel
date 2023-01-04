@@ -1,0 +1,21 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "linutil",
+    srcs = [
+        "auxv.go",
+        "doc.go",
+        "dynamic.go",
+        "regs_amd64_arch.go",
+        "regs_arm64_arch.go",
+        "regs_i386_arch.go",
+    ],
+    importpath = "github.com/go-delve/delve/pkg/proc/linutil",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/dwarf/op",
+        "//pkg/dwarf/regnum",
+        "//pkg/proc",
+        "//pkg/proc/amd64util",
+    ],
+)

@@ -1,0 +1,15 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "plugin2_lib",
+    srcs = ["plugin2.go"],
+    importpath = "github.com/go-delve/delve/_fixtures/plugin2",
+    visibility = ["//visibility:private"],
+    deps = ["//_fixtures/internal/pluginsupport"],
+)
+
+go_binary(
+    name = "plugin2",
+    embed = [":plugin2_lib"],
+    visibility = ["//visibility:public"],
+)

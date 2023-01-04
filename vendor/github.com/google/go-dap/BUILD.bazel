@@ -1,0 +1,14 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go-dap",
+    srcs = [
+        "codec.go",
+        "doc.go",
+        "io.go",
+        "schematypes.go",
+    ],
+    importmap = "github.com/go-delve/delve/vendor/github.com/google/go-dap",
+    importpath = "github.com/google/go-dap",
+    visibility = ["//visibility:public"],
+)

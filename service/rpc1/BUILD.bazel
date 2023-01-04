@@ -1,0 +1,17 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "rpc1",
+    srcs = [
+        "client.go",
+        "server.go",
+    ],
+    importpath = "github.com/go-delve/delve/service/rpc1",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/proc",
+        "//service",
+        "//service/api",
+        "//service/debugger",
+    ],
+)

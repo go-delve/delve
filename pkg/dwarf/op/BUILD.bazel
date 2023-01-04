@@ -1,0 +1,19 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "op",
+    srcs = [
+        "op.go",
+        "opcodes.go",
+        "regs.go",
+    ],
+    importpath = "github.com/go-delve/delve/pkg/dwarf/op",
+    visibility = ["//visibility:public"],
+    deps = ["//pkg/dwarf/util"],
+)
+
+go_test(
+    name = "op_test",
+    srcs = ["op_test.go"],
+    embed = [":op"],
+)

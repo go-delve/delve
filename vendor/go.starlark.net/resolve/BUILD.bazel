@@ -1,0 +1,16 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "resolve",
+    srcs = [
+        "binding.go",
+        "resolve.go",
+    ],
+    importmap = "github.com/go-delve/delve/vendor/go.starlark.net/resolve",
+    importpath = "go.starlark.net/resolve",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/go.starlark.net/internal/spell",
+        "//vendor/go.starlark.net/syntax",
+    ],
+)

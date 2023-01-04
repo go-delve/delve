@@ -1,0 +1,17 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "colorize",
+    srcs = ["colorize.go"],
+    importpath = "github.com/go-delve/delve/pkg/terminal/colorize",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "colorize_test",
+    srcs = ["colorize_test.go"],
+    deps = [
+        ":colorize",
+        "//pkg/proc/test",
+    ],
+)

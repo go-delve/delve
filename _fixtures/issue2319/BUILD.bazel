@@ -1,0 +1,17 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "issue2319_lib",
+    srcs = [
+        "asm-linux-amd64.s",
+        "main.go",
+    ],
+    importpath = "github.com/go-delve/delve/_fixtures/issue2319",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "issue2319",
+    embed = [":issue2319_lib"],
+    visibility = ["//visibility:public"],
+)

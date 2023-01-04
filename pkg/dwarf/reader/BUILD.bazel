@@ -1,0 +1,15 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "reader",
+    srcs = [
+        "reader.go",
+        "variables.go",
+    ],
+    importpath = "github.com/go-delve/delve/pkg/dwarf/reader",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/dwarf/godwarf",
+        "//pkg/dwarf/op",
+    ],
+)

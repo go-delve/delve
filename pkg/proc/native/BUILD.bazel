@@ -1,0 +1,297 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "native",
+    srcs = [
+        "dump_linux.go",
+        "dump_linux_amd64.go",
+        "dump_linux_other.go",
+        "dump_other.go",
+        "dump_windows_amd64.go",
+        "exc.h",
+        "hwbreak_amd64.go",
+        "hwbreak_other.go",
+        "mach_exc.h",
+        "nonative_darwin.go",
+        "proc.go",
+        "proc_ebpf_linux.go",
+        "proc_freebsd.c",
+        "proc_freebsd.go",
+        "proc_freebsd.h",
+        "proc_linux.go",
+        "proc_no_ebpf_linux.go",
+        "proc_unix.go",
+        "proc_windows.go",
+        "ptrace_freebsd.go",
+        "ptrace_freebsd_amd64.go",
+        "ptrace_linux.go",
+        "ptrace_linux_386.go",
+        "ptrace_linux_64bit.go",
+        "ptrace_linux_amd64.go",
+        "register_linux_386.go",
+        "registers_freebsd_amd64.go",
+        "registers_linux_amd64.go",
+        "registers_linux_arm64.go",
+        "registers_windows.go",
+        "syscall_windows.go",
+        "syscall_windows_amd64.go",
+        "threads.go",
+        "threads_freebsd.go",
+        "threads_linux.go",
+        "threads_linux_386.go",
+        "threads_linux_amd64.go",
+        "threads_linux_arm64.go",
+        "threads_windows.go",
+        "threads_windows_amd64.go",
+        "zsyscall_windows.go",
+    ],
+    cgo = True,
+    clinkopts = select({
+        "@io_bazel_rules_go//go/platform:freebsd": [
+            "-lprocstat",
+            "-lutil",
+        ],
+        "//conditions:default": [],
+    }),
+    importpath = "github.com/go-delve/delve/pkg/proc/native",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/proc",
+    ] + select({
+        "@io_bazel_rules_go//go/platform:aix": [
+            "//vendor/github.com/mattn/go-isatty",
+        ],
+        "@io_bazel_rules_go//go/platform:android": [
+            "//pkg/proc/internal/ebpf",
+            "//vendor/github.com/mattn/go-isatty",
+        ],
+        "@io_bazel_rules_go//go/platform:darwin": [
+            "//pkg/proc/internal/ebpf",
+            "//vendor/github.com/mattn/go-isatty",
+        ],
+        "@io_bazel_rules_go//go/platform:dragonfly": [
+            "//vendor/github.com/mattn/go-isatty",
+        ],
+        "@io_bazel_rules_go//go/platform:freebsd": [
+            "//pkg/proc/internal/ebpf",
+            "//vendor/github.com/mattn/go-isatty",
+        ],
+        "@io_bazel_rules_go//go/platform:illumos": [
+            "//vendor/github.com/mattn/go-isatty",
+        ],
+        "@io_bazel_rules_go//go/platform:ios": [
+            "//pkg/proc/internal/ebpf",
+            "//vendor/github.com/mattn/go-isatty",
+        ],
+        "@io_bazel_rules_go//go/platform:js": [
+            "//vendor/github.com/mattn/go-isatty",
+        ],
+        "@io_bazel_rules_go//go/platform:linux": [
+            "//pkg/proc/internal/ebpf",
+            "//vendor/github.com/mattn/go-isatty",
+        ],
+        "@io_bazel_rules_go//go/platform:netbsd": [
+            "//vendor/github.com/mattn/go-isatty",
+        ],
+        "@io_bazel_rules_go//go/platform:openbsd": [
+            "//vendor/github.com/mattn/go-isatty",
+        ],
+        "@io_bazel_rules_go//go/platform:plan9": [
+            "//vendor/github.com/mattn/go-isatty",
+        ],
+        "@io_bazel_rules_go//go/platform:solaris": [
+            "//vendor/github.com/mattn/go-isatty",
+        ],
+        "@io_bazel_rules_go//go/platform:windows": [
+            "//pkg/proc/internal/ebpf",
+            "//vendor/golang.org/x/sys/windows",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "@io_bazel_rules_go//go/platform:android_386": [
+            "//pkg/dwarf/op",
+            "//pkg/dwarf/regnum",
+            "//pkg/elfwriter",
+            "//pkg/proc/amd64util",
+            "//pkg/proc/linutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:android_amd64": [
+            "//pkg/dwarf/op",
+            "//pkg/elfwriter",
+            "//pkg/proc/amd64util",
+            "//pkg/proc/linutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:android_arm": [
+            "//pkg/elfwriter",
+            "//pkg/proc/linutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:android_arm64": [
+            "//pkg/dwarf/op",
+            "//pkg/elfwriter",
+            "//pkg/proc/linutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:darwin_386": [
+            "//pkg/dwarf/op",
+            "//pkg/elfwriter",
+            "//pkg/proc/amd64util",
+        ],
+        "@io_bazel_rules_go//go/platform:darwin_amd64": [
+            "//pkg/dwarf/op",
+            "//pkg/elfwriter",
+            "//pkg/proc/amd64util",
+        ],
+        "@io_bazel_rules_go//go/platform:darwin_arm": [
+            "//pkg/dwarf/op",
+            "//pkg/elfwriter",
+            "//pkg/proc/amd64util",
+        ],
+        "@io_bazel_rules_go//go/platform:darwin_arm64": [
+            "//pkg/dwarf/op",
+            "//pkg/elfwriter",
+            "//pkg/proc/amd64util",
+        ],
+        "@io_bazel_rules_go//go/platform:dragonfly_amd64": [
+            "//pkg/proc/amd64util",
+        ],
+        "@io_bazel_rules_go//go/platform:freebsd_386": [
+            "//pkg/proc/amd64util",
+            "//pkg/proc/fbsdutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:freebsd_amd64": [
+            "//pkg/dwarf/op",
+            "//pkg/elfwriter",
+            "//pkg/proc/amd64util",
+            "//pkg/proc/fbsdutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:freebsd_arm": [
+            "//pkg/proc/amd64util",
+            "//pkg/proc/fbsdutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:freebsd_arm64": [
+            "//pkg/proc/amd64util",
+            "//pkg/proc/fbsdutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:illumos_amd64": [
+            "//pkg/proc/amd64util",
+        ],
+        "@io_bazel_rules_go//go/platform:ios_386": [
+            "//pkg/dwarf/op",
+            "//pkg/elfwriter",
+            "//pkg/proc/amd64util",
+        ],
+        "@io_bazel_rules_go//go/platform:ios_amd64": [
+            "//pkg/dwarf/op",
+            "//pkg/elfwriter",
+            "//pkg/proc/amd64util",
+        ],
+        "@io_bazel_rules_go//go/platform:ios_arm": [
+            "//pkg/dwarf/op",
+            "//pkg/elfwriter",
+            "//pkg/proc/amd64util",
+        ],
+        "@io_bazel_rules_go//go/platform:ios_arm64": [
+            "//pkg/dwarf/op",
+            "//pkg/elfwriter",
+            "//pkg/proc/amd64util",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_386": [
+            "//pkg/dwarf/op",
+            "//pkg/dwarf/regnum",
+            "//pkg/elfwriter",
+            "//pkg/proc/amd64util",
+            "//pkg/proc/linutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_amd64": [
+            "//pkg/dwarf/op",
+            "//pkg/elfwriter",
+            "//pkg/proc/amd64util",
+            "//pkg/proc/linutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_arm": [
+            "//pkg/elfwriter",
+            "//pkg/proc/linutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_arm64": [
+            "//pkg/dwarf/op",
+            "//pkg/elfwriter",
+            "//pkg/proc/linutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_mips": [
+            "//pkg/elfwriter",
+            "//pkg/proc/linutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_mips64": [
+            "//pkg/elfwriter",
+            "//pkg/proc/linutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_mips64le": [
+            "//pkg/elfwriter",
+            "//pkg/proc/linutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_mipsle": [
+            "//pkg/elfwriter",
+            "//pkg/proc/linutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_ppc64": [
+            "//pkg/elfwriter",
+            "//pkg/proc/linutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_ppc64le": [
+            "//pkg/elfwriter",
+            "//pkg/proc/linutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_riscv64": [
+            "//pkg/elfwriter",
+            "//pkg/proc/linutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_s390x": [
+            "//pkg/elfwriter",
+            "//pkg/proc/linutil",
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:netbsd_amd64": [
+            "//pkg/proc/amd64util",
+        ],
+        "@io_bazel_rules_go//go/platform:openbsd_amd64": [
+            "//pkg/proc/amd64util",
+        ],
+        "@io_bazel_rules_go//go/platform:plan9_amd64": [
+            "//pkg/proc/amd64util",
+        ],
+        "@io_bazel_rules_go//go/platform:solaris_amd64": [
+            "//pkg/proc/amd64util",
+        ],
+        "@io_bazel_rules_go//go/platform:windows_386": [
+            "//pkg/dwarf/op",
+        ],
+        "@io_bazel_rules_go//go/platform:windows_amd64": [
+            "//pkg/dwarf/op",
+            "//pkg/elfwriter",
+            "//pkg/proc/amd64util",
+            "//pkg/proc/winutil",
+        ],
+        "@io_bazel_rules_go//go/platform:windows_arm": [
+            "//pkg/dwarf/op",
+        ],
+        "//conditions:default": [],
+    }),
+)

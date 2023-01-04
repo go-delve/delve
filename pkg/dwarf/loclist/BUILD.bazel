@@ -1,0 +1,22 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "loclist",
+    srcs = [
+        "dwarf2_loclist.go",
+        "dwarf5_loclist.go",
+    ],
+    importpath = "github.com/go-delve/delve/pkg/dwarf/loclist",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/dwarf/godwarf",
+        "//pkg/dwarf/util",
+    ],
+)
+
+go_test(
+    name = "loclist_test",
+    srcs = ["loclist5_test.go"],
+    embed = [":loclist"],
+    deps = ["//pkg/dwarf/util"],
+)

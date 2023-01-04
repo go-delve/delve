@@ -1,0 +1,24 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "asm",
+    srcs = [
+        "alu.go",
+        "alu_string.go",
+        "doc.go",
+        "func.go",
+        "func_string.go",
+        "instruction.go",
+        "jump.go",
+        "jump_string.go",
+        "load_store.go",
+        "load_store_string.go",
+        "opcode.go",
+        "opcode_string.go",
+        "register.go",
+    ],
+    importmap = "github.com/go-delve/delve/vendor/github.com/cilium/ebpf/asm",
+    importpath = "github.com/cilium/ebpf/asm",
+    visibility = ["//visibility:public"],
+    deps = ["//vendor/github.com/cilium/ebpf/internal/unix"],
+)

@@ -1,0 +1,12 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "version",
+    srcs = [
+        "buildinfo.go",
+        "fixbuild.go",
+        "version.go",
+    ],
+    importpath = "github.com/go-delve/delve/pkg/version",
+    visibility = ["//visibility:public"],
+)

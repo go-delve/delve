@@ -1,0 +1,25 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "btf",
+    srcs = [
+        "btf.go",
+        "btf_types.go",
+        "btf_types_string.go",
+        "core.go",
+        "doc.go",
+        "ext_info.go",
+        "info.go",
+        "strings.go",
+        "syscalls.go",
+        "types.go",
+    ],
+    importmap = "github.com/go-delve/delve/vendor/github.com/cilium/ebpf/internal/btf",
+    importpath = "github.com/cilium/ebpf/internal/btf",
+    visibility = ["//vendor/github.com/cilium/ebpf:__subpackages__"],
+    deps = [
+        "//vendor/github.com/cilium/ebpf/asm",
+        "//vendor/github.com/cilium/ebpf/internal",
+        "//vendor/github.com/cilium/ebpf/internal/unix",
+    ],
+)

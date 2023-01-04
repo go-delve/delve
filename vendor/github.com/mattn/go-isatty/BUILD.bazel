@@ -1,0 +1,29 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "go-isatty",
+    srcs = [
+        "doc.go",
+        "isatty_bsd.go",
+        "isatty_linux.go",
+        "isatty_linux_ppc64x.go",
+        "isatty_others.go",
+        "isatty_solaris.go",
+        "isatty_windows.go",
+    ],
+    importmap = "github.com/go-delve/delve/vendor/github.com/mattn/go-isatty",
+    importpath = "github.com/mattn/go-isatty",
+    visibility = ["//visibility:public"],
+    deps = select({
+        "@io_bazel_rules_go//go/platform:linux_ppc64": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:linux_ppc64le": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "@io_bazel_rules_go//go/platform:solaris_amd64": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "//conditions:default": [],
+    }),
+)

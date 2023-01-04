@@ -1,0 +1,9 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "testhelper",
+    srcs = ["testhelper.go"],
+    cgo = True,
+    importpath = "github.com/go-delve/delve/pkg/proc/internal/ebpf/testhelper",
+    visibility = ["//pkg/proc:__subpackages__"],
+)

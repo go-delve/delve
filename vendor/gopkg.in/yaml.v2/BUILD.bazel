@@ -1,0 +1,23 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "yaml_v2",
+    srcs = [
+        "apic.go",
+        "decode.go",
+        "emitterc.go",
+        "encode.go",
+        "parserc.go",
+        "readerc.go",
+        "resolve.go",
+        "scannerc.go",
+        "sorter.go",
+        "writerc.go",
+        "yaml.go",
+        "yamlh.go",
+        "yamlprivateh.go",
+    ],
+    importmap = "github.com/go-delve/delve/vendor/gopkg.in/yaml.v2",
+    importpath = "gopkg.in/yaml.v2",
+    visibility = ["//visibility:public"],
+)

@@ -1,0 +1,36 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "liner",
+    srcs = [
+        "bsdinput.go",
+        "common.go",
+        "fallbackinput.go",
+        "input.go",
+        "input_darwin.go",
+        "input_linux.go",
+        "input_solaris.go",
+        "input_windows.go",
+        "line.go",
+        "output.go",
+        "output_solaris.go",
+        "output_unix.go",
+        "output_windows.go",
+        "signal_unix.go",
+        "signal_windows.go",
+        "unixmode.go",
+        "unixmode_solaris.go",
+        "width.go",
+    ],
+    importmap = "github.com/go-delve/delve/vendor/github.com/go-delve/liner",
+    importpath = "github.com/go-delve/liner",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/github.com/mattn/go-runewidth",
+    ] + select({
+        "@io_bazel_rules_go//go/platform:solaris": [
+            "//vendor/golang.org/x/sys/unix",
+        ],
+        "//conditions:default": [],
+    }),
+)

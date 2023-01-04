@@ -1,0 +1,17 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "break_lib",
+    srcs = [
+        "break_amd64.s",
+        "main.go",
+    ],
+    importpath = "github.com/go-delve/delve/_fixtures/break",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "break",
+    embed = [":break_lib"],
+    visibility = ["//visibility:public"],
+)

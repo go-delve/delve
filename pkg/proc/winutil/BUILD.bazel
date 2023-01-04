@@ -1,0 +1,16 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "winutil",
+    srcs = [
+        "regs_amd64_arch.go",
+        "regs_arm64_arch.go",
+    ],
+    importpath = "github.com/go-delve/delve/pkg/proc/winutil",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/dwarf/op",
+        "//pkg/dwarf/regnum",
+        "//pkg/proc",
+    ],
+)

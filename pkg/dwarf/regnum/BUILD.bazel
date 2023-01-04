@@ -1,0 +1,12 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "regnum",
+    srcs = [
+        "amd64.go",
+        "arm64.go",
+        "i386.go",
+    ],
+    importpath = "github.com/go-delve/delve/pkg/dwarf/regnum",
+    visibility = ["//visibility:public"],
+)

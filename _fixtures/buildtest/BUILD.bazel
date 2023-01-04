@@ -1,0 +1,20 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+go_library(
+    name = "buildtest_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/go-delve/delve/_fixtures/buildtest",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "buildtest",
+    embed = [":buildtest_lib"],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "buildtest_test",
+    srcs = ["main_test.go"],
+    embed = [":buildtest_lib"],
+)

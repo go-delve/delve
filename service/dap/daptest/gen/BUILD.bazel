@@ -1,0 +1,18 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "gen_lib",
+    srcs = ["main.go"],
+    importpath = "github.com/go-delve/delve/service/dap/daptest/gen",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//vendor/github.com/google/go-dap",
+        "//vendor/golang.org/x/tools/go/packages",
+    ],
+)
+
+go_binary(
+    name = "gen",
+    embed = [":gen_lib"],
+    visibility = ["//visibility:public"],
+)

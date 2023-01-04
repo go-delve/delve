@@ -1,0 +1,19 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "asmnilptr_lib",
+    srcs = [
+        "main.go",
+        "main_386.s",
+        "main_amd64.s",
+        "main_arm64.s",
+    ],
+    importpath = "github.com/go-delve/delve/_fixtures/asmnilptr",
+    visibility = ["//visibility:private"],
+)
+
+go_binary(
+    name = "asmnilptr",
+    embed = [":asmnilptr_lib"],
+    visibility = ["//visibility:public"],
+)

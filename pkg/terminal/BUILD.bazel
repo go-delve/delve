@@ -1,0 +1,59 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "terminal",
+    srcs = [
+        "command.go",
+        "config.go",
+        "disasmprint.go",
+        "docgen.go",
+        "groups.go",
+        "out.go",
+        "starlark.go",
+        "terminal.go",
+        "terminal_other.go",
+        "terminal_windows.go",
+    ],
+    importpath = "github.com/go-delve/delve/pkg/terminal",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/config",
+        "//pkg/locspec",
+        "//pkg/proc/debuginfod",
+        "//pkg/terminal/colorize",
+        "//pkg/terminal/starbind",
+        "//service",
+        "//service/api",
+        "//service/rpc2",
+        "//vendor/github.com/cosiner/argv",
+        "//vendor/github.com/derekparker/trie",
+        "//vendor/github.com/go-delve/liner",
+        "//vendor/github.com/mattn/go-isatty",
+    ] + select({
+        "@io_bazel_rules_go//go/platform:windows": [
+            "//vendor/github.com/mattn/go-colorable",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+go_test(
+    name = "terminal_test",
+    srcs = [
+        "command_test.go",
+        "starlark_test.go",
+        "terminal_test.go",
+    ],
+    embed = [":terminal"],
+    deps = [
+        "//pkg/config",
+        "//pkg/goversion",
+        "//pkg/logflags",
+        "//pkg/proc/test",
+        "//service",
+        "//service/api",
+        "//service/debugger",
+        "//service/rpc2",
+        "//service/rpccommon",
+    ],
+)

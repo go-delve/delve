@@ -1,0 +1,21 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_test")
+
+go_test(
+    name = "test_test",
+    srcs = [
+        "common_test.go",
+        "integration1_test.go",
+        "integration2_test.go",
+    ],
+    deps = [
+        "//pkg/goversion",
+        "//pkg/logflags",
+        "//pkg/proc/test",
+        "//service",
+        "//service/api",
+        "//service/debugger",
+        "//service/rpc1",
+        "//service/rpc2",
+        "//service/rpccommon",
+    ],
+)

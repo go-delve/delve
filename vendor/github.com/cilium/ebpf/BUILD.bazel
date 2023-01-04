@@ -1,0 +1,28 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "ebpf",
+    srcs = [
+        "attachtype_string.go",
+        "collection.go",
+        "doc.go",
+        "elf_reader.go",
+        "info.go",
+        "linker.go",
+        "map.go",
+        "marshalers.go",
+        "prog.go",
+        "syscalls.go",
+        "types.go",
+        "types_string.go",
+    ],
+    importmap = "github.com/go-delve/delve/vendor/github.com/cilium/ebpf",
+    importpath = "github.com/cilium/ebpf",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/github.com/cilium/ebpf/asm",
+        "//vendor/github.com/cilium/ebpf/internal",
+        "//vendor/github.com/cilium/ebpf/internal/btf",
+        "//vendor/github.com/cilium/ebpf/internal/unix",
+    ],
+)

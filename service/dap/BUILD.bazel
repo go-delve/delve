@@ -1,0 +1,49 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "dap",
+    srcs = [
+        "command.go",
+        "config.go",
+        "error_ids.go",
+        "handles.go",
+        "server.go",
+        "types.go",
+    ],
+    importpath = "github.com/go-delve/delve/service/dap",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/config",
+        "//pkg/gobuild",
+        "//pkg/goversion",
+        "//pkg/locspec",
+        "//pkg/logflags",
+        "//pkg/proc",
+        "//service",
+        "//service/api",
+        "//service/debugger",
+        "//service/internal/sameuser",
+        "//vendor/github.com/google/go-dap",
+        "//vendor/github.com/sirupsen/logrus",
+    ],
+)
+
+go_test(
+    name = "dap_test",
+    srcs = [
+        "config_test.go",
+        "server_test.go",
+    ],
+    embed = [":dap"],
+    deps = [
+        "//pkg/goversion",
+        "//pkg/logflags",
+        "//pkg/proc",
+        "//pkg/proc/test",
+        "//service",
+        "//service/api",
+        "//service/dap/daptest",
+        "//service/debugger",
+        "//vendor/github.com/google/go-dap",
+    ],
+)

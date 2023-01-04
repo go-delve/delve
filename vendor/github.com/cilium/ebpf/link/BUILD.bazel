@@ -1,0 +1,31 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "link",
+    srcs = [
+        "cgroup.go",
+        "doc.go",
+        "freplace.go",
+        "iter.go",
+        "kprobe.go",
+        "link.go",
+        "netns.go",
+        "perf_event.go",
+        "platform.go",
+        "program.go",
+        "raw_tracepoint.go",
+        "syscalls.go",
+        "tracepoint.go",
+        "uprobe.go",
+    ],
+    importmap = "github.com/go-delve/delve/vendor/github.com/cilium/ebpf/link",
+    importpath = "github.com/cilium/ebpf/link",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/github.com/cilium/ebpf",
+        "//vendor/github.com/cilium/ebpf/asm",
+        "//vendor/github.com/cilium/ebpf/internal",
+        "//vendor/github.com/cilium/ebpf/internal/btf",
+        "//vendor/github.com/cilium/ebpf/internal/unix",
+    ],
+)
