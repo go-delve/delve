@@ -1,0 +1,39 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
+
+go_library(
+    name = "dlv_lib",
+    srcs = [
+        "main.go",
+        "tools.go",
+    ],
+    importpath = "github.com/go-delve/delve/cmd/dlv",
+    visibility = ["//visibility:private"],
+    deps = [
+        "//cmd/dlv/cmds",
+        "//pkg/version",
+        "//vendor/github.com/sirupsen/logrus",
+        "//vendor/github.com/spf13/cobra/doc",
+    ],
+)
+
+go_binary(
+    name = "dlv",
+    embed = [":dlv_lib"],
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "dlv_test",
+    srcs = ["dlv_test.go"],
+    deps = [
+        "//pkg/goversion",
+        "//pkg/proc/test",
+        "//pkg/terminal",
+        "//service/dap",
+        "//service/dap/daptest",
+        "//service/debugger",
+        "//service/rpc2",
+        "//vendor/github.com/google/go-dap",
+        "//vendor/golang.org/x/tools/go/packages",
+    ],
+)

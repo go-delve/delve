@@ -1,0 +1,30 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "cmds",
+    srcs = ["commands.go"],
+    importpath = "github.com/go-delve/delve/cmd/dlv/cmds",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/config",
+        "//pkg/gobuild",
+        "//pkg/goversion",
+        "//pkg/logflags",
+        "//pkg/terminal",
+        "//pkg/version",
+        "//service",
+        "//service/api",
+        "//service/dap",
+        "//service/debugger",
+        "//service/rpc2",
+        "//service/rpccommon",
+        "//vendor/github.com/mattn/go-isatty",
+        "//vendor/github.com/spf13/cobra",
+    ],
+)
+
+go_test(
+    name = "cmds_test",
+    srcs = ["cmds_test.go"],
+    embed = [":cmds"],
+)
