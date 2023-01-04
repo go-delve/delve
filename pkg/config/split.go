@@ -84,7 +84,28 @@ func ConfigureSetSimple(rest string, cfgname string, field reflect.Value) error 
 			v := rest == "true"
 			return reflect.ValueOf(&v), nil
 		case reflect.String:
+			unquoted, err := strconv.Unquote(rest)
+			if err == nil {
+				rest = unquoted
+			}
 			return reflect.ValueOf(&rest), nil
+		case reflect.Interface:
+			// We special case this particular configuration key because historically we accept both a numerical value and a string value for it.
+			if cfgname == "source-list-line-color" {
+				n, err := strconv.Atoi(rest)
+				if err == nil {
+					if n < 0 {
+						return reflect.ValueOf(nil), fmt.Errorf("argument to %q must be a number greater than zero", cfgname)
+					}
+					return reflect.ValueOf(&n), nil
+				}
+				unquoted, err := strconv.Unquote(rest)
+				if err == nil {
+					rest = unquoted
+				}
+				return reflect.ValueOf(&rest), nil
+			}
+			fallthrough
 		default:
 			return reflect.ValueOf(nil), fmt.Errorf("unsupported type for configuration key %q", cfgname)
 		}
