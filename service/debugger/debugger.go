@@ -1928,10 +1928,6 @@ func (d *Debugger) FindLocation(goid int64, frame, deferredCall int, locStr stri
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	// if _, err := d.target.Valid(); err != nil {
-	// 	return nil, err
-	// }
-
 	loc, err := locspec.Parse(locStr)
 	if err != nil {
 		return nil, err
