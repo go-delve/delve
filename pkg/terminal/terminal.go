@@ -108,8 +108,9 @@ func New(client service.Client, conf *config.Config) *Term {
 		t.stdout.pw = &pagingWriter{w: getColorableWriter()}
 		t.stdout.colorEscapes = make(map[colorize.Style]string)
 		t.stdout.colorEscapes[colorize.NormalStyle] = terminalResetEscapeCode
-		t.updateColorScheme()
 	}
+
+	t.updateConfig()
 
 	if client != nil {
 		lcfg := t.loadConfig()
@@ -118,6 +119,12 @@ func New(client service.Client, conf *config.Config) *Term {
 
 	t.starlarkEnv = starbind.New(starlarkContext{t}, t.stdout)
 	return t
+}
+
+func (t *Term) updateConfig() {
+	// These are always called together.
+	t.updateColorScheme()
+	t.updateTab()
 }
 
 func (t *Term) updateColorScheme() {
@@ -137,6 +144,7 @@ func (t *Term) updateColorScheme() {
 	t.stdout.colorEscapes[colorize.NumberStyle] = conf.SourceListNumberColor
 	t.stdout.colorEscapes[colorize.CommentStyle] = wd(conf.SourceListCommentColor, ansiBrMagenta)
 	t.stdout.colorEscapes[colorize.ArrowStyle] = wd(conf.SourceListArrowColor, ansiYellow)
+	t.stdout.colorEscapes[colorize.TabStyle] = wd(conf.SourceListTabColor, ansiBrBlack)
 	switch x := conf.SourceListLineColor.(type) {
 	case string:
 		t.stdout.colorEscapes[colorize.LineNoStyle] = x
@@ -148,6 +156,10 @@ func (t *Term) updateColorScheme() {
 	case nil:
 		t.stdout.colorEscapes[colorize.LineNoStyle] = fmt.Sprintf(terminalHighlightEscapeCode, ansiBlue)
 	}
+}
+
+func (t *Term) updateTab() {
+	t.stdout.altTabString = t.conf.Tab
 }
 
 func (t *Term) SetTraceNonInteractive() {

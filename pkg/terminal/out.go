@@ -19,6 +19,7 @@ type transcriptWriter struct {
 	file         *bufio.Writer
 	fh           io.Closer
 	colorEscapes map[colorize.Style]string
+	altTabString string
 }
 
 func (w *transcriptWriter) Write(p []byte) (nn int, err error) {
@@ -38,12 +39,12 @@ func (w *transcriptWriter) Write(p []byte) (nn int, err error) {
 func (w *transcriptWriter) ColorizePrint(path string, reader io.ReadSeeker, startLine, endLine, arrowLine int) error {
 	var err error
 	if !w.fileOnly {
-		err = colorize.Print(w.pw.w, path, reader, startLine, endLine, arrowLine, w.colorEscapes)
+		err = colorize.Print(w.pw.w, path, reader, startLine, endLine, arrowLine, w.colorEscapes, w.altTabString)
 	}
 	if err == nil {
 		if w.file != nil {
 			reader.Seek(0, io.SeekStart)
-			return colorize.Print(w.file, path, reader, startLine, endLine, arrowLine, nil)
+			return colorize.Print(w.file, path, reader, startLine, endLine, arrowLine, nil, w.altTabString)
 		}
 	}
 	return err

@@ -77,6 +77,9 @@ type Config struct {
 	// Source list comment color, as a terminal escape sequence.
 	SourceListCommentColor string `yaml:"source-list-comment-color"`
 
+	// Source list tab color, as a terminal escape sequence.
+	SourceListTabColor string `yaml:"source-list-tab-color"`
+
 	// number of lines to list above and below cursor when printfile() is
 	// called (i.e. when execution stops, listCommand is used, etc)
 	SourceListLineCount *int `yaml:"source-list-line-count,omitempty"`
@@ -94,6 +97,11 @@ type Config struct {
 	//  - default (or the empty string): use disassembly for step-instruction,
 	//    source for everything else.
 	Position string `yaml:"position"`
+
+	// Tab changes what is printed when a '\t' is encountered in source code.
+	// This can be used to shorten the tabstop (e.g. "  ") or to print a more
+	// visual indent (e.g. ">__ ").
+	Tab string `yaml:"tab"`
 }
 
 func (c *Config) GetSourceListLineCount() int {
@@ -252,6 +260,10 @@ func writeDefaultConfig(f *os.File) error {
 # source-list-number-color: "\x1b[0m"
 # source-list-comment-color: "\x1b[95m"
 # source-list-arrow-color: "\x1b[93m"
+# source-list-tab-color: "\x1b[90m"
+
+# Uncomment to change what is printed instead of '\t'.
+# tab: "... "
 
 # Uncomment to change the number of lines printed above and below cursor when
 # listing source code.
