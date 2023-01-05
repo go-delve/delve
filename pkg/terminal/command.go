@@ -1787,7 +1787,12 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 		}
 		created = append(created, bp)
 
-		fmt.Fprintf(t.stdout, "%s set at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
+		_, err = t.client.GetState()
+		if isErrProcessExited(err) {
+			fmt.Fprintf(t.stdout, "%s set at %s %s:%d (pending)\n", formatBreakpointName(bp, true), loc.Function.Name(), loc.File, loc.Line)
+		} else {
+			fmt.Fprintf(t.stdout, "%s set at %s\n", formatBreakpointName(bp, true), t.formatBreakpointLocation(bp))
+		}
 	}
 
 	var shouldSetReturnBreakpoints bool

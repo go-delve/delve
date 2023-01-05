@@ -734,6 +734,13 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 			return locs[0].PCs
 		}
 	}
+	// If the process has already exited, set a suspended breakpoint so that
+	// it can be enabled later when the process is started again.
+	if ok, err := d.target.Valid(); !ok {
+		if _, ok := err.(proc.ErrProcessExited); ok {
+			suspended = true
+		}
+	}
 	createdBp, err := createLogicalBreakpoint(d, requestedBp, &setbp, suspended)
 
 	if err != nil {
@@ -1893,9 +1900,9 @@ func (d *Debugger) FindLocation(goid int64, frame, deferredCall int, locStr stri
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	if _, err := d.target.Valid(); err != nil {
-		return nil, err
-	}
+	// if _, err := d.target.Valid(); err != nil {
+	// 	return nil, err
+	// }
 
 	loc, err := locspec.Parse(locStr)
 	if err != nil {
@@ -1922,11 +1929,10 @@ func (d *Debugger) FindLocationSpec(goid int64, frame, deferredCall int, locStr 
 
 func (d *Debugger) findLocation(goid int64, frame, deferredCall int, locStr string, locSpec locspec.LocationSpec, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
 	locations := []api.Location{}
-	t := proc.ValidTargets{Group: d.target}
-	for t.Next() {
+	for _, t := range d.target.Targets() {
 		pid := t.Pid()
-		s, _ := proc.ConvertEvalScope(t.Target, goid, frame, deferredCall)
-		locs, err := locSpec.Find(t.Target, d.processArgs, s, locStr, includeNonExecutableLines, substitutePathRules)
+		s, _ := proc.ConvertEvalScope(t, goid, frame, deferredCall)
+		locs, err := locSpec.Find(t, d.processArgs, s, locStr, includeNonExecutableLines, substitutePathRules)
 		if err != nil {
 			return nil, err
 		}

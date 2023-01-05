@@ -1334,10 +1334,6 @@ func TestIssue355(t *testing.T) {
 		assertErrorOrExited(s, err, t, "SwitchGoroutine()")
 		s, err = c.Halt()
 		assertErrorOrExited(s, err, t, "Halt()")
-		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: -1})
-		if testBackend != "rr" {
-			assertError(err, t, "CreateBreakpoint()")
-		}
 		_, err = c.ClearBreakpoint(bp.ID)
 		if testBackend != "rr" {
 			assertError(err, t, "ClearBreakpoint()")
@@ -2956,6 +2952,40 @@ func TestPluginSuspendedBreakpoint(t *testing.T) {
 		cont("Continue 2", "plugintest.go", 27)
 		cont("Continue 3", "plugin1.go", 5)
 		cont("Continue 4", "plugin2.go", 9)
+	})
+}
+
+// Tests that breakpoint set after the process has exited will be hit when the process is restarted.
+func TestBreakpointAfterProcessExit(t *testing.T) {
+	withTestClient2("continuetestprog", t, func(c service.Client) {
+		state := <-c.Continue()
+		if !state.Exited {
+			t.Fatal("process should have exited")
+		}
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{ID: 2, FunctionName: "main.main", Line: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = c.Restart(false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		state = <-c.Continue()
+		if state.CurrentThread == nil {
+			t.Fatal("no current thread")
+		}
+		if state.CurrentThread.Breakpoint == nil {
+			t.Fatal("no breakpoint")
+		}
+		if state.CurrentThread.Breakpoint.ID != bp.ID {
+			t.Fatal("did not hit correct breakpoint")
+		}
+		if state.CurrentThread.Function == nil {
+			t.Fatal("no function")
+		}
+		if state.CurrentThread.Function.Name() != "main.main" {
+			t.Fatal("stopped at incorrect function")
+		}
 	})
 }
 

@@ -835,8 +835,6 @@ func Test1Issue355(t *testing.T) {
 		assertErrorOrExited(s, err, t, "SwitchGoroutine()")
 		s, err = c.Halt()
 		assertErrorOrExited(s, err, t, "Halt()")
-		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: -1})
-		assertError(err, t, "CreateBreakpoint()")
 		_, err = c.ClearBreakpoint(bp.ID)
 		assertError(err, t, "ClearBreakpoint()")
 		_, err = c.ListThreads()
