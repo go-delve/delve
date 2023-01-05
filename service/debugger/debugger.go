@@ -796,6 +796,38 @@ func createLogicalBreakpoint(d *Debugger, requestedBp *api.Breakpoint, setbp *pr
 
 	lbp.Set = *setbp
 
+	switch {
+	case lbp.Set.File != "":
+		lbp.File = lbp.Set.File
+		lbp.Line = lbp.Set.Line
+		pcln := d.target.Selected.BinInfo().AllPCsForFileLines(lbp.Set.File, []int{lbp.Set.Line})
+		pcs := pcln[lbp.Set.Line]
+		if len(pcs) > 0 {
+			fn := d.target.Selected.BinInfo().PCToFunc(pcs[0])
+			if fn != nil {
+				lbp.FunctionName = fn.Name
+			}
+		}
+	case lbp.Set.FunctionName != "":
+		fn := d.target.Selected.BinInfo().LookupFunc[lbp.Set.FunctionName]
+		if fn != nil {
+			lbp.FunctionName = fn.Name
+			lbp.File, lbp.Line, _ = d.target.Selected.BinInfo().PCToLine(fn.Entry)
+		}
+	case len(lbp.Set.PidAddrs) > 0:
+		for _, pidAddr := range lbp.Set.PidAddrs {
+			if pidAddr.Pid == d.target.Selected.Pid() {
+				f, l, fn := d.target.Selected.BinInfo().PCToLine(pidAddr.Addr)
+				lbp.File = f
+				lbp.Line = l
+				if fn != nil {
+					lbp.FunctionName = fn.Name
+				}
+				break
+			}
+		}
+	}
+
 	err = d.target.EnableBreakpoint(lbp)
 	if err != nil {
 		if suspended {
@@ -972,10 +1004,6 @@ func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 
 // clearBreakpoint clears a breakpoint, we can consume this function to avoid locking a goroutine
 func (d *Debugger) clearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
-	if _, err := d.target.Valid(); err != nil {
-		return nil, err
-	}
-
 	if requestedBp.ID <= 0 {
 		if len(d.target.Targets()) != 1 {
 			return nil, ErrNotImplementedWithMultitarget

@@ -806,7 +806,7 @@ func Test1ClientServer_FullStacktrace(t *testing.T) {
 func Test1Issue355(t *testing.T) {
 	// After the target process has terminated should return an error but not crash
 	withTestClient1("continuetestprog", t, func(c *rpc1.RPCClient) {
-		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: -1})
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: -1})
 		assertNoError(err, t, "CreateBreakpoint()")
 		ch := c.Continue()
 		state := <-ch
@@ -835,8 +835,6 @@ func Test1Issue355(t *testing.T) {
 		assertErrorOrExited(s, err, t, "SwitchGoroutine()")
 		s, err = c.Halt()
 		assertErrorOrExited(s, err, t, "Halt()")
-		_, err = c.ClearBreakpoint(bp.ID)
-		assertError(err, t, "ClearBreakpoint()")
 		_, err = c.ListThreads()
 		assertError(err, t, "ListThreads()")
 		_, err = c.GetThread(tid)
