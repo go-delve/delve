@@ -24,11 +24,13 @@ func (ce compositeEntry) Val(attr dwarf.Attr) interface{} {
 	return nil
 }
 
-// LoadAbstractOrigin loads the entry corresponding to the
-// DW_AT_abstract_origin of entry and returns a combination of entry and its
-// abstract origin.
-func LoadAbstractOrigin(entry *dwarf.Entry, aordr *dwarf.Reader) (Entry, dwarf.Offset) {
-	ao, ok := entry.Val(dwarf.AttrAbstractOrigin).(dwarf.Offset)
+// LoadAbstractOriginAndSpecification loads the entry corresponding to the
+// DW_AT_abstract_origin and/or DW_AT_specification of entry and returns a
+// combination of entry and its abstract origin. If a DIE has both a
+// specification and an abstract origin the specification will be ignored, the
+// DWARF standard is unclear on how this should be handled
+func LoadAbstractOriginAndSpecification(entry *dwarf.Entry, aordr *dwarf.Reader) (Entry, dwarf.Offset) {
+	ao, ok := getAbstractOriginOrSpecification(entry)
 	if !ok {
 		return entry, entry.Offset
 	}
@@ -43,13 +45,25 @@ func LoadAbstractOrigin(entry *dwarf.Entry, aordr *dwarf.Reader) (Entry, dwarf.O
 		}
 		r = append(r, e)
 
-		ao, ok = e.Val(dwarf.AttrAbstractOrigin).(dwarf.Offset)
+		ao, ok = getAbstractOriginOrSpecification(e)
 		if !ok {
 			break
 		}
 	}
 
 	return compositeEntry(r), entry.Offset
+}
+
+func getAbstractOriginOrSpecification(e *dwarf.Entry) (dwarf.Offset, bool) {
+	ao, ok := e.Val(dwarf.AttrAbstractOrigin).(dwarf.Offset)
+	if ok {
+		return ao, true
+	}
+	sp, ok := e.Val(dwarf.AttrSpecification).(dwarf.Offset)
+	if ok {
+		return sp, true
+	}
+	return dwarf.Offset(0), false
 }
 
 // Tree represents a tree of dwarf objects.
@@ -85,7 +99,7 @@ func LoadTree(off dwarf.Offset, dw *dwarf.Data, staticBase uint64) (*Tree, error
 	if err != nil {
 		return nil, err
 	}
-	r.resolveAbstractEntries(rdr)
+	r.resolveAbstractAndSpecificationEntries(rdr)
 
 	return r, nil
 }
@@ -228,10 +242,10 @@ func rangeContains(a, b [2]uint64) bool {
 	return a[0] <= b[0] && a[1] >= b[1]
 }
 
-func (n *Tree) resolveAbstractEntries(rdr *dwarf.Reader) {
-	n.Entry, n.Offset = LoadAbstractOrigin(n.Entry.(*dwarf.Entry), rdr)
+func (n *Tree) resolveAbstractAndSpecificationEntries(rdr *dwarf.Reader) {
+	n.Entry, n.Offset = LoadAbstractOriginAndSpecification(n.Entry.(*dwarf.Entry), rdr)
 	for _, child := range n.Children {
-		child.resolveAbstractEntries(rdr)
+		child.resolveAbstractAndSpecificationEntries(rdr)
 	}
 }
 
