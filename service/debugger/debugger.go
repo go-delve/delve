@@ -734,13 +734,6 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 			return locs[0].PCs
 		}
 	}
-	// If the process has already exited, set a suspended breakpoint so that
-	// it can be enabled later when the process is started again.
-	if ok, err := d.target.Valid(); !ok {
-		if _, ok := err.(proc.ErrProcessExited); ok {
-			suspended = true
-		}
-	}
 	createdBp, err := createLogicalBreakpoint(d, requestedBp, &setbp, suspended)
 
 	if err != nil {
@@ -796,34 +789,14 @@ func createLogicalBreakpoint(d *Debugger, requestedBp *api.Breakpoint, setbp *pr
 
 	lbp.Set = *setbp
 
-	switch {
-	case lbp.Set.File != "":
-		lbp.File = lbp.Set.File
-		lbp.Line = lbp.Set.Line
-		pcln := d.target.Selected.BinInfo().AllPCsForFileLines(lbp.Set.File, []int{lbp.Set.Line})
-		pcs := pcln[lbp.Set.Line]
-		if len(pcs) > 0 {
-			fn := d.target.Selected.BinInfo().PCToFunc(pcs[0])
+	if lbp.Set.Expr != nil {
+		addrs := lbp.Set.Expr(d.Target())
+		if len(addrs) > 0 {
+			f, l, fn := d.Target().BinInfo().PCToLine(addrs[0])
+			lbp.File = f
+			lbp.Line = l
 			if fn != nil {
 				lbp.FunctionName = fn.Name
-			}
-		}
-	case lbp.Set.FunctionName != "":
-		fn := d.target.Selected.BinInfo().LookupFunc[lbp.Set.FunctionName]
-		if fn != nil {
-			lbp.FunctionName = fn.Name
-			lbp.File, lbp.Line, _ = d.target.Selected.BinInfo().PCToLine(fn.Entry)
-		}
-	case len(lbp.Set.PidAddrs) > 0:
-		for _, pidAddr := range lbp.Set.PidAddrs {
-			if pidAddr.Pid == d.target.Selected.Pid() {
-				f, l, fn := d.target.Selected.BinInfo().PCToLine(pidAddr.Addr)
-				lbp.File = f
-				lbp.Line = l
-				if fn != nil {
-					lbp.FunctionName = fn.Name
-				}
-				break
 			}
 		}
 	}
@@ -1928,6 +1901,10 @@ func (d *Debugger) FindLocation(goid int64, frame, deferredCall int, locStr stri
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
+	if _, err := d.target.Valid(); err != nil {
+		return nil, err
+	}
+
 	loc, err := locspec.Parse(locStr)
 	if err != nil {
 		return nil, err
@@ -1953,10 +1930,11 @@ func (d *Debugger) FindLocationSpec(goid int64, frame, deferredCall int, locStr 
 
 func (d *Debugger) findLocation(goid int64, frame, deferredCall int, locStr string, locSpec locspec.LocationSpec, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
 	locations := []api.Location{}
-	for _, t := range d.target.Targets() {
+	t := proc.ValidTargets{Group: d.target}
+	for t.Next() {
 		pid := t.Pid()
-		s, _ := proc.ConvertEvalScope(t, goid, frame, deferredCall)
-		locs, err := locSpec.Find(t, d.processArgs, s, locStr, includeNonExecutableLines, substitutePathRules)
+		s, _ := proc.ConvertEvalScope(t.Target, goid, frame, deferredCall)
+		locs, err := locSpec.Find(t.Target, d.processArgs, s, locStr, includeNonExecutableLines, substitutePathRules)
 		if err != nil {
 			return nil, err
 		}

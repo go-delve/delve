@@ -2958,7 +2958,7 @@ func TestBreakpointAfterProcessExit(t *testing.T) {
 		if !state.Exited {
 			t.Fatal("process should have exited")
 		}
-		bp, err := c.CreateBreakpoint(&api.Breakpoint{ID: 2, FunctionName: "main.main", Line: 1})
+		bp, err := c.CreateBreakpointWithExpr(&api.Breakpoint{ID: 2, FunctionName: "main.main", Line: 1}, "main.main", nil, true)
 		if err != nil {
 			t.Fatal(err)
 		}
