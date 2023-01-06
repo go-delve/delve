@@ -432,13 +432,16 @@ func (t *Term) promptForInput() (string, error) {
 	return l, nil
 }
 
-func yesno(line *liner.State, question string) (bool, error) {
+func yesno(line *liner.State, question, defaultAnswer string) (bool, error) {
 	for {
 		answer, err := line.Prompt(question)
 		if err != nil {
 			return false, err
 		}
 		answer = strings.ToLower(strings.TrimSpace(answer))
+		if answer == "" {
+			answer = defaultAnswer
+		}
 		switch answer {
 		case "n", "no":
 			return false, nil
@@ -469,7 +472,7 @@ func (t *Term) handleExit() (int, error) {
 	if err != nil {
 		if isErrProcessExited(err) {
 			if t.client.IsMulticlient() {
-				answer, err := yesno(t.line, "Remote process has exited. Would you like to kill the headless instance? [Y/n] ")
+				answer, err := yesno(t.line, "Remote process has exited. Would you like to kill the headless instance? [Y/n] ", "yes")
 				if err != nil {
 					return 2, io.EOF
 				}
@@ -495,7 +498,7 @@ func (t *Term) handleExit() (int, error) {
 
 		doDetach := true
 		if t.client.IsMulticlient() {
-			answer, err := yesno(t.line, "Would you like to kill the headless instance? [Y/n] ")
+			answer, err := yesno(t.line, "Would you like to kill the headless instance? [Y/n] ", "yes")
 			if err != nil {
 				return 2, io.EOF
 			}
@@ -505,7 +508,7 @@ func (t *Term) handleExit() (int, error) {
 		if doDetach {
 			kill := true
 			if t.client.AttachedToExistingProcess() {
-				answer, err := yesno(t.line, "Would you like to kill the process? [Y/n] ")
+				answer, err := yesno(t.line, "Would you like to kill the process? [Y/n] ", "yes")
 				if err != nil {
 					return 2, io.EOF
 				}

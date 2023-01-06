@@ -1754,7 +1754,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 	if findLocErr != nil && shouldAskToSuspendBreakpoint(t) {
 		fmt.Fprintf(os.Stderr, "Command failed: %s\n", findLocErr.Error())
 		findLocErr = nil
-		answer, err := yesno(t.line, "Set a suspended breakpoint (Delve will try to set this breakpoint when a plugin is loaded) [Y/n]?")
+		answer, err := yesno(t.line, "Set a suspended breakpoint (Delve will try to set this breakpoint when a plugin is loaded) [Y/n]?", "yes")
 		if err != nil {
 			return nil, err
 		}
