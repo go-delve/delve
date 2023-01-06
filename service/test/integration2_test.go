@@ -996,7 +996,7 @@ func TestClientServer_FindLocations(t *testing.T) {
 		if strings.Contains(locsNoSubst[0].File, "\\") {
 			sep = "\\"
 		}
-		substRules := [][2]string{[2]string{strings.Replace(locsNoSubst[0].File, "locationsprog.go", "", 1), strings.Replace(locsNoSubst[0].File, "_fixtures"+sep+"locationsprog.go", "nonexistent", 1)}}
+		substRules := [][2]string{{strings.Replace(locsNoSubst[0].File, "locationsprog.go", "", 1), strings.Replace(locsNoSubst[0].File, "_fixtures"+sep+"locationsprog.go", "nonexistent", 1)}}
 		t.Logf("substitute rules: %q -> %q", substRules[0][0], substRules[0][1])
 		locsSubst, err := c.FindLocation(api.EvalScope{GoroutineID: -1}, "nonexistent/locationsprog.go:35", false, substRules)
 		if err != nil {
@@ -1305,7 +1305,7 @@ func TestIssue355(t *testing.T) {
 	// After the target process has terminated should return an error but not crash
 	protest.AllowRecording(t)
 	withTestClient2("continuetestprog", t, func(c service.Client) {
-		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: -1})
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: -1})
 		assertNoError(err, t, "CreateBreakpoint()")
 		ch := c.Continue()
 		state := <-ch
@@ -1334,14 +1334,6 @@ func TestIssue355(t *testing.T) {
 		assertErrorOrExited(s, err, t, "SwitchGoroutine()")
 		s, err = c.Halt()
 		assertErrorOrExited(s, err, t, "Halt()")
-		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: -1})
-		if testBackend != "rr" {
-			assertError(err, t, "CreateBreakpoint()")
-		}
-		_, err = c.ClearBreakpoint(bp.ID)
-		if testBackend != "rr" {
-			assertError(err, t, "ClearBreakpoint()")
-		}
 		_, err = c.ListThreads()
 		assertError(err, t, "ListThreads()")
 		_, err = c.GetThread(tid)
@@ -2956,6 +2948,48 @@ func TestPluginSuspendedBreakpoint(t *testing.T) {
 		cont("Continue 2", "plugintest.go", 27)
 		cont("Continue 3", "plugin1.go", 5)
 		cont("Continue 4", "plugin2.go", 9)
+	})
+}
+
+// Tests that breakpoint set after the process has exited will be hit when the process is restarted.
+func TestBreakpointAfterProcessExit(t *testing.T) {
+	withTestClient2("continuetestprog", t, func(c service.Client) {
+		state := <-c.Continue()
+		if !state.Exited {
+			t.Fatal("process should have exited")
+		}
+		bp, err := c.CreateBreakpointWithExpr(&api.Breakpoint{ID: 2, FunctionName: "main.main", Line: 1}, "main.main", nil, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = c.Restart(false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		state = <-c.Continue()
+		if state.CurrentThread == nil {
+			t.Fatal("no current thread")
+		}
+		if state.CurrentThread.Breakpoint == nil {
+			t.Fatal("no breakpoint")
+		}
+		if state.CurrentThread.Breakpoint.ID != bp.ID {
+			t.Fatal("did not hit correct breakpoint")
+		}
+		if state.CurrentThread.Function == nil {
+			t.Fatal("no function")
+		}
+		if state.CurrentThread.Function.Name() != "main.main" {
+			t.Fatal("stopped at incorrect function")
+		}
+		state = <-c.Continue()
+		if !state.Exited {
+			t.Fatal("process should have exited")
+		}
+		_, err = c.ClearBreakpoint(bp.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
 	})
 }
 

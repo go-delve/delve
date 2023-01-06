@@ -1753,14 +1753,18 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 	}
 	if findLocErr != nil && shouldAskToSuspendBreakpoint(t) {
 		fmt.Fprintf(os.Stderr, "Command failed: %s\n", findLocErr.Error())
-		findLocErr = nil
-		answer, err := yesno(t.line, "Set a suspended breakpoint (Delve will try to set this breakpoint when a plugin is loaded) [Y/n]?", "yes")
+		question := "Set a suspended breakpoint (Delve will try to set this breakpoint when a plugin is loaded) [Y/n]?"
+		if isErrProcessExited(findLocErr) {
+			question = "Set a suspended breakpoint (Delve will try to set this breakpoint when the process is restarted) [Y/n]?"
+		}
+		answer, err := yesno(t.line, question, "yes")
 		if err != nil {
 			return nil, err
 		}
 		if !answer {
 			return nil, nil
 		}
+		findLocErr = nil
 		bp, err := t.client.CreateBreakpointWithExpr(requestedBp, spec, t.substitutePathRules(), true)
 		if err != nil {
 			return nil, err
@@ -3220,5 +3224,6 @@ func (t *Term) formatBreakpointLocation(bp *api.Breakpoint) string {
 
 func shouldAskToSuspendBreakpoint(t *Term) bool {
 	fns, _ := t.client.ListFunctions(`^plugin\.Open$`)
-	return len(fns) > 0
+	_, err := t.client.GetState()
+	return len(fns) > 0 || isErrProcessExited(err)
 }

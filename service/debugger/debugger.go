@@ -789,6 +789,18 @@ func createLogicalBreakpoint(d *Debugger, requestedBp *api.Breakpoint, setbp *pr
 
 	lbp.Set = *setbp
 
+	if lbp.Set.Expr != nil {
+		addrs := lbp.Set.Expr(d.Target())
+		if len(addrs) > 0 {
+			f, l, fn := d.Target().BinInfo().PCToLine(addrs[0])
+			lbp.File = f
+			lbp.Line = l
+			if fn != nil {
+				lbp.FunctionName = fn.Name
+			}
+		}
+	}
+
 	err = d.target.EnableBreakpoint(lbp)
 	if err != nil {
 		if suspended {
@@ -965,10 +977,6 @@ func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 
 // clearBreakpoint clears a breakpoint, we can consume this function to avoid locking a goroutine
 func (d *Debugger) clearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
-	if _, err := d.target.Valid(); err != nil {
-		return nil, err
-	}
-
 	if requestedBp.ID <= 0 {
 		if len(d.target.Targets()) != 1 {
 			return nil, ErrNotImplementedWithMultitarget
