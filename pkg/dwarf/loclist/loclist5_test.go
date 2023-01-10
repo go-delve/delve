@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/go-delve/delve/pkg/dwarf/util"
+	"github.com/go-delve/delve/pkg/dwarf/leb128"
 )
 
 func TestLoclist5(t *testing.T) {
@@ -14,7 +14,7 @@ func TestLoclist5(t *testing.T) {
 	p32 := func(n uint32) { binary.Write(buf, binary.LittleEndian, n) }
 	p16 := func(n uint16) { binary.Write(buf, binary.LittleEndian, n) }
 	p8 := func(n uint8) { binary.Write(buf, binary.LittleEndian, n) }
-	uleb := func(n uint64) { util.EncodeULEB128(buf, n) }
+	uleb := func(n uint64) { leb128.EncodeUnsigned(buf, n) }
 
 	p32(0x0) // length (use 0 because it is ignored)
 	p16(0x5) // version

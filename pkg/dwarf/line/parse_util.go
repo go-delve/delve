@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 
+	"github.com/go-delve/delve/pkg/dwarf/leb128"
 	"github.com/go-delve/delve/pkg/dwarf/util"
 )
 
@@ -70,8 +71,8 @@ func readEntryFormat(buf *bytes.Buffer, logf func(string, ...interface{})) *form
 		formCodes:    make([]uint64, count),
 	}
 	for i := range r.contentTypes {
-		r.contentTypes[i], _ = util.DecodeULEB128(buf)
-		r.formCodes[i], _ = util.DecodeULEB128(buf)
+		r.contentTypes[i], _ = leb128.DecodeUnsigned(buf)
+		r.formCodes[i], _ = leb128.DecodeUnsigned(buf)
 	}
 	return r
 }
@@ -94,7 +95,7 @@ func (rdr *formReader) next(buf *bytes.Buffer) bool {
 
 	switch rdr.formCode {
 	case _DW_FORM_block:
-		n, _ := util.DecodeULEB128(buf)
+		n, _ := leb128.DecodeUnsigned(buf)
 		rdr.readBlock(buf, n)
 
 	case _DW_FORM_block1:
@@ -150,10 +151,10 @@ func (rdr *formReader) next(buf *bytes.Buffer) bool {
 		rdr.readBlock(buf, 16)
 
 	case _DW_FORM_sdata:
-		rdr.i64, _ = util.DecodeSLEB128(buf)
+		rdr.i64, _ = leb128.DecodeSigned(buf)
 
 	case _DW_FORM_udata, _DW_FORM_strx:
-		rdr.u64, _ = util.DecodeULEB128(buf)
+		rdr.u64, _ = leb128.DecodeUnsigned(buf)
 
 	case _DW_FORM_string:
 		rdr.str, _ = util.ParseString(buf)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/go-delve/delve/pkg/dwarf/leb128"
 	"github.com/go-delve/delve/pkg/dwarf/util"
 )
 
@@ -130,11 +131,11 @@ func PrettyPrint(out io.Writer, instructions []byte, regnumToName func(uint64) s
 			var regnum uint64
 			switch arg {
 			case 's':
-				n, _ := util.DecodeSLEB128(in)
+				n, _ := leb128.DecodeSigned(in)
 				regnum = uint64(n)
 				fmt.Fprintf(out, "%#x ", n)
 			case 'u':
-				n, _ := util.DecodeULEB128(in)
+				n, _ := leb128.DecodeUnsigned(in)
 				regnum = n
 				fmt.Fprintf(out, "%#x ", n)
 			case '1':
@@ -154,7 +155,7 @@ func PrettyPrint(out io.Writer, instructions []byte, regnumToName func(uint64) s
 				binary.Read(in, binary.LittleEndian, &x)
 				fmt.Fprintf(out, "%#x ", x)
 			case 'B':
-				sz, _ := util.DecodeULEB128(in)
+				sz, _ := leb128.DecodeUnsigned(in)
 				data := make([]byte, sz)
 				sz2, _ := in.Read(data)
 				data = data[:sz2]
@@ -189,7 +190,7 @@ func (ctxt *context) closeLoc(opcode0 Opcode, piece Piece) error {
 
 	switch opcode {
 	case DW_OP_piece:
-		sz, _ := util.DecodeULEB128(ctxt.buf)
+		sz, _ := leb128.DecodeUnsigned(ctxt.buf)
 		piece.Size = int(sz)
 		ctxt.pieces = append(ctxt.pieces, piece)
 		return nil
@@ -222,19 +223,19 @@ func addr(opcode Opcode, ctxt *context) error {
 
 func plusuconsts(opcode Opcode, ctxt *context) error {
 	slen := len(ctxt.stack)
-	num, _ := util.DecodeULEB128(ctxt.buf)
+	num, _ := leb128.DecodeUnsigned(ctxt.buf)
 	ctxt.stack[slen-1] = ctxt.stack[slen-1] + int64(num)
 	return nil
 }
 
 func consts(opcode Opcode, ctxt *context) error {
-	num, _ := util.DecodeSLEB128(ctxt.buf)
+	num, _ := leb128.DecodeSigned(ctxt.buf)
 	ctxt.stack = append(ctxt.stack, num)
 	return nil
 }
 
 func framebase(opcode Opcode, ctxt *context) error {
-	num, _ := util.DecodeSLEB128(ctxt.buf)
+	num, _ := leb128.DecodeSigned(ctxt.buf)
 	ctxt.stack = append(ctxt.stack, ctxt.FrameBase+num)
 	return nil
 }
@@ -242,7 +243,7 @@ func framebase(opcode Opcode, ctxt *context) error {
 func register(opcode Opcode, ctxt *context) error {
 	var regnum uint64
 	if opcode == DW_OP_regx {
-		regnum, _ = util.DecodeULEB128(ctxt.buf)
+		regnum, _ = leb128.DecodeUnsigned(ctxt.buf)
 	} else {
 		regnum = uint64(opcode - DW_OP_reg0)
 	}
@@ -252,11 +253,11 @@ func register(opcode Opcode, ctxt *context) error {
 func bregister(opcode Opcode, ctxt *context) error {
 	var regnum uint64
 	if opcode == DW_OP_bregx {
-		regnum, _ = util.DecodeULEB128(ctxt.buf)
+		regnum, _ = leb128.DecodeUnsigned(ctxt.buf)
 	} else {
 		regnum = uint64(opcode - DW_OP_breg0)
 	}
-	offset, _ := util.DecodeSLEB128(ctxt.buf)
+	offset, _ := leb128.DecodeSigned(ctxt.buf)
 	if ctxt.Reg(regnum) == nil {
 		return fmt.Errorf("register %d not available", regnum)
 	}
@@ -265,7 +266,7 @@ func bregister(opcode Opcode, ctxt *context) error {
 }
 
 func piece(opcode Opcode, ctxt *context) error {
-	sz, _ := util.DecodeULEB128(ctxt.buf)
+	sz, _ := leb128.DecodeUnsigned(ctxt.buf)
 
 	if len(ctxt.stack) == 0 {
 		// nothing on the stack means this piece is unavailable (padding,
@@ -340,7 +341,7 @@ func constns(opcode Opcode, ctxt *context) error {
 }
 
 func constu(opcode Opcode, ctxt *context) error {
-	num, _ := util.DecodeULEB128(ctxt.buf)
+	num, _ := leb128.DecodeUnsigned(ctxt.buf)
 	ctxt.stack = append(ctxt.stack, int64(num))
 	return nil
 }
@@ -516,7 +517,7 @@ func stackvalue(_ Opcode, ctxt *context) error {
 }
 
 func implicitvalue(_ Opcode, ctxt *context) error {
-	sz, _ := util.DecodeULEB128(ctxt.buf)
+	sz, _ := leb128.DecodeUnsigned(ctxt.buf)
 	block := make([]byte, sz)
 	n, _ := ctxt.buf.Read(block)
 	if uint64(n) != sz {

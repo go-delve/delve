@@ -6,6 +6,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/go-delve/delve/pkg/dwarf/leb128"
 	"github.com/go-delve/delve/pkg/dwarf/util"
 )
 
@@ -173,7 +174,7 @@ func parseIncludeDirs5(info *DebugLineInfo, buf *bytes.Buffer) bool {
 	if dirEntryFormReader == nil {
 		return false
 	}
-	dirCount, _ := util.DecodeULEB128(buf)
+	dirCount, _ := leb128.DecodeUnsigned(buf)
 	info.IncludeDirs = make([]string, 0, dirCount)
 	for i := uint64(0); i < dirCount; i++ {
 		dirEntryFormReader.reset()
@@ -242,9 +243,9 @@ func readFileEntry(info *DebugLineInfo, buf *bytes.Buffer, exitOnEmptyPath bool)
 		entry.Path = strings.ReplaceAll(entry.Path, "\\", "/")
 	}
 
-	entry.DirIdx, _ = util.DecodeULEB128(buf)
-	entry.LastModTime, _ = util.DecodeULEB128(buf)
-	entry.Length, _ = util.DecodeULEB128(buf)
+	entry.DirIdx, _ = leb128.DecodeUnsigned(buf)
+	entry.LastModTime, _ = leb128.DecodeUnsigned(buf)
+	entry.Length, _ = leb128.DecodeUnsigned(buf)
 	if !pathIsAbs(entry.Path) {
 		if entry.DirIdx < uint64(len(info.IncludeDirs)) {
 			entry.Path = path.Join(info.IncludeDirs[entry.DirIdx], entry.Path)
@@ -276,7 +277,7 @@ func parseFileEntries5(info *DebugLineInfo, buf *bytes.Buffer) bool {
 	if fileEntryFormReader == nil {
 		return false
 	}
-	fileCount, _ := util.DecodeULEB128(buf)
+	fileCount, _ := leb128.DecodeUnsigned(buf)
 	info.FileNames = make([]*FileEntry, 0, fileCount)
 	for i := 0; i < int(fileCount); i++ {
 		var (
