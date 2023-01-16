@@ -6,8 +6,8 @@ import (
 	"path"
 	"strings"
 
+	"github.com/go-delve/delve/pkg/dwarf"
 	"github.com/go-delve/delve/pkg/dwarf/leb128"
-	"github.com/go-delve/delve/pkg/dwarf/util"
 )
 
 // DebugLinePrologue prologue of .debug_line data.
@@ -152,7 +152,7 @@ func parseDebugLinePrologue(dbl *DebugLineInfo, buf *bytes.Buffer) {
 // parseIncludeDirs2 parses the directory table for DWARF version 2 through 4.
 func parseIncludeDirs2(info *DebugLineInfo, buf *bytes.Buffer) bool {
 	for {
-		str, err := util.ParseString(buf)
+		str, err := dwarf.ReadString(buf)
 		if err != nil {
 			if info.Logf != nil {
 				info.Logf("error reading string: %v", err)
@@ -186,7 +186,7 @@ func parseIncludeDirs5(info *DebugLineInfo, buf *bytes.Buffer) bool {
 					info.IncludeDirs = append(info.IncludeDirs, dirEntryFormReader.str)
 				case _DW_FORM_line_strp:
 					buf := bytes.NewBuffer(info.debugLineStr[dirEntryFormReader.u64:])
-					dir, _ := util.ParseString(buf)
+					dir, _ := dwarf.ReadString(buf)
 					info.IncludeDirs = append(info.IncludeDirs, dir)
 				default:
 					info.Logf("unsupported string form %#x", dirEntryFormReader.formCode)
@@ -228,7 +228,7 @@ func readFileEntry(info *DebugLineInfo, buf *bytes.Buffer, exitOnEmptyPath bool)
 	entry := new(FileEntry)
 
 	var err error
-	entry.Path, err = util.ParseString(buf)
+	entry.Path, err = dwarf.ReadString(buf)
 	if err != nil {
 		if info.Logf != nil {
 			info.Logf("error reading file entry: %v", err)
@@ -299,7 +299,7 @@ func parseFileEntries5(info *DebugLineInfo, buf *bytes.Buffer) bool {
 					p = fileEntryFormReader.str
 				case _DW_FORM_line_strp:
 					buf := bytes.NewBuffer(info.debugLineStr[fileEntryFormReader.u64:])
-					p, _ = util.ParseString(buf)
+					p, _ = dwarf.ReadString(buf)
 				default:
 					info.Logf("unsupported string form %#x", fileEntryFormReader.formCode)
 				}

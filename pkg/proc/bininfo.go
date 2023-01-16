@@ -23,13 +23,13 @@ import (
 	"sync"
 	"time"
 
+	pdwarf "github.com/go-delve/delve/pkg/dwarf"
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/line"
 	"github.com/go-delve/delve/pkg/dwarf/loclist"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
-	"github.com/go-delve/delve/pkg/dwarf/util"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc/debuginfod"
@@ -2029,7 +2029,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 
 	image.runtimeTypeToDIE = make(map[uint64]runtimeTypeDIE)
 
-	ctxt := newLoadDebugInfoMapsContext(bi, image, util.ReadUnitVersions(debugInfoBytes))
+	ctxt := newLoadDebugInfoMapsContext(bi, image, pdwarf.ReadUnitVersions(debugInfoBytes))
 
 	reader := image.DwarfReader()
 
@@ -2217,7 +2217,7 @@ func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContex
 				var addr uint64
 				if loc, ok := entry.Val(dwarf.AttrLocation).([]byte); ok {
 					if len(loc) == bi.Arch.PtrSize()+1 && op.Opcode(loc[0]) == op.DW_OP_addr {
-						addr, _ = util.ReadUintRaw(bytes.NewReader(loc[1:]), binary.LittleEndian, bi.Arch.PtrSize())
+						addr, _ = pdwarf.ReadUintRaw(bytes.NewReader(loc[1:]), binary.LittleEndian, bi.Arch.PtrSize())
 					}
 				}
 				if !cu.isgo {

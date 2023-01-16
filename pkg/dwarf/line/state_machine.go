@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/go-delve/delve/pkg/dwarf"
 	"github.com/go-delve/delve/pkg/dwarf/leb128"
-	"github.com/go-delve/delve/pkg/dwarf/util"
 )
 
 type Location struct {
@@ -503,7 +503,7 @@ func endsequence(sm *StateMachine, buf *bytes.Buffer) {
 }
 
 func setaddress(sm *StateMachine, buf *bytes.Buffer) {
-	addr, err := util.ReadUintRaw(buf, binary.LittleEndian, sm.ptrSize)
+	addr, err := dwarf.ReadUintRaw(buf, binary.LittleEndian, sm.ptrSize)
 	if err != nil {
 		panic(err)
 	}

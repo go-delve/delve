@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/go-delve/delve/pkg/dwarf"
 	"github.com/go-delve/delve/pkg/dwarf/leb128"
-	"github.com/go-delve/delve/pkg/dwarf/util"
 )
 
 type parsefunc func(*parseContext) parsefunc
@@ -154,7 +154,7 @@ func parseCIE(ctx *parseContext) parsefunc {
 	ctx.common.Version, _ = buf.ReadByte()
 
 	// parse augmentation
-	ctx.common.Augmentation, _ = util.ParseString(buf)
+	ctx.common.Augmentation, _ = dwarf.ReadString(buf)
 
 	if ctx.parsingEHFrame() {
 		if ctx.common.Augmentation == "eh" {
@@ -241,21 +241,21 @@ func (ctx *parseContext) readEncodedPtr(addr uint64, buf leb128.Reader, ptrEnc p
 
 	switch ptrEnc & 0xf {
 	case ptrEncAbs, ptrEncSigned:
-		ptr, _ = util.ReadUintRaw(buf, binary.LittleEndian, ctx.ptrSize)
+		ptr, _ = dwarf.ReadUintRaw(buf, binary.LittleEndian, ctx.ptrSize)
 	case ptrEncUleb:
 		ptr, _ = leb128.DecodeUnsigned(buf)
 	case ptrEncUdata2:
-		ptr, _ = util.ReadUintRaw(buf, binary.LittleEndian, 2)
+		ptr, _ = dwarf.ReadUintRaw(buf, binary.LittleEndian, 2)
 	case ptrEncSdata2:
-		ptr, _ = util.ReadUintRaw(buf, binary.LittleEndian, 2)
+		ptr, _ = dwarf.ReadUintRaw(buf, binary.LittleEndian, 2)
 		ptr = uint64(int16(ptr))
 	case ptrEncUdata4:
-		ptr, _ = util.ReadUintRaw(buf, binary.LittleEndian, 4)
+		ptr, _ = dwarf.ReadUintRaw(buf, binary.LittleEndian, 4)
 	case ptrEncSdata4:
-		ptr, _ = util.ReadUintRaw(buf, binary.LittleEndian, 4)
+		ptr, _ = dwarf.ReadUintRaw(buf, binary.LittleEndian, 4)
 		ptr = uint64(int32(ptr))
 	case ptrEncUdata8, ptrEncSdata8:
-		ptr, _ = util.ReadUintRaw(buf, binary.LittleEndian, 8)
+		ptr, _ = dwarf.ReadUintRaw(buf, binary.LittleEndian, 8)
 	case ptrEncSleb:
 		n, _ := leb128.DecodeSigned(buf)
 		ptr = uint64(n)

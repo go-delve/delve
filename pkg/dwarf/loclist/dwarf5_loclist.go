@@ -5,9 +5,9 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/go-delve/delve/pkg/dwarf"
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/leb128"
-	"github.com/go-delve/delve/pkg/dwarf/util"
 )
 
 // Dwarf5Reader parses and presents DWARF loclist information for DWARF version 5 and later.
@@ -24,7 +24,7 @@ func NewDwarf5Reader(data []byte) *Dwarf5Reader {
 	}
 	r := &Dwarf5Reader{data: data}
 
-	_, dwarf64, _, byteOrder := util.ReadDwarfLengthVersion(data)
+	_, dwarf64, _, byteOrder := dwarf.ReadDwarfLengthVersion(data)
 	r.byteOrder = byteOrder
 
 	data = data[6:]
@@ -161,18 +161,18 @@ func (it *loclistsIterator) next() bool {
 		it.onRange = false
 
 	case _DW_LLE_base_address:
-		it.base, it.err = util.ReadUintRaw(it.buf, it.rdr.byteOrder, it.rdr.ptrSz)
+		it.base, it.err = dwarf.ReadUintRaw(it.buf, it.rdr.byteOrder, it.rdr.ptrSz)
 		it.base += it.staticBase
 		it.onRange = false
 
 	case _DW_LLE_start_end:
-		it.start, it.err = util.ReadUintRaw(it.buf, it.rdr.byteOrder, it.rdr.ptrSz)
-		it.end, it.err = util.ReadUintRaw(it.buf, it.rdr.byteOrder, it.rdr.ptrSz)
+		it.start, it.err = dwarf.ReadUintRaw(it.buf, it.rdr.byteOrder, it.rdr.ptrSz)
+		it.end, it.err = dwarf.ReadUintRaw(it.buf, it.rdr.byteOrder, it.rdr.ptrSz)
 		it.readInstr()
 		it.onRange = true
 
 	case _DW_LLE_start_length:
-		it.start, it.err = util.ReadUintRaw(it.buf, it.rdr.byteOrder, it.rdr.ptrSz)
+		it.start, it.err = dwarf.ReadUintRaw(it.buf, it.rdr.byteOrder, it.rdr.ptrSz)
 		length, _ := leb128.DecodeUnsigned(it.buf)
 		it.readInstr()
 		it.end = it.start + length

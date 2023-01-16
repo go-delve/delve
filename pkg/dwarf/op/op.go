@@ -8,7 +8,7 @@ import (
 	"io"
 
 	"github.com/go-delve/delve/pkg/dwarf/leb128"
-	"github.com/go-delve/delve/pkg/dwarf/util"
+	"github.com/go-delve/delve/pkg/dwarf"
 )
 
 // Opcode represent a DWARF stack program instruction.
@@ -213,7 +213,7 @@ func callframecfa(opcode Opcode, ctxt *context) error {
 
 func addr(opcode Opcode, ctxt *context) error {
 	buf := ctxt.buf.Next(ctxt.ptrSize)
-	stack, err := util.ReadUintRaw(bytes.NewReader(buf), binary.LittleEndian, ctxt.ptrSize)
+	stack, err := dwarf.ReadUintRaw(bytes.NewReader(buf), binary.LittleEndian, ctxt.ptrSize)
 	if err != nil {
 		return err
 	}
@@ -297,11 +297,11 @@ func constnu(opcode Opcode, ctxt *context) error {
 		b, err = ctxt.buf.ReadByte()
 		n = uint64(b)
 	case DW_OP_const2u:
-		n, err = util.ReadUintRaw(ctxt.buf, binary.LittleEndian, 2)
+		n, err = dwarf.ReadUintRaw(ctxt.buf, binary.LittleEndian, 2)
 	case DW_OP_const4u:
-		n, err = util.ReadUintRaw(ctxt.buf, binary.LittleEndian, 4)
+		n, err = dwarf.ReadUintRaw(ctxt.buf, binary.LittleEndian, 4)
 	case DW_OP_const8u:
-		n, err = util.ReadUintRaw(ctxt.buf, binary.LittleEndian, 8)
+		n, err = dwarf.ReadUintRaw(ctxt.buf, binary.LittleEndian, 8)
 	default:
 		panic("internal error")
 	}
@@ -323,13 +323,13 @@ func constns(opcode Opcode, ctxt *context) error {
 		b, err = ctxt.buf.ReadByte()
 		n = uint64(int64(int8(b)))
 	case DW_OP_const2s:
-		n, err = util.ReadUintRaw(ctxt.buf, binary.LittleEndian, 2)
+		n, err = dwarf.ReadUintRaw(ctxt.buf, binary.LittleEndian, 2)
 		n = uint64(int64(int16(n)))
 	case DW_OP_const4s:
-		n, err = util.ReadUintRaw(ctxt.buf, binary.LittleEndian, 4)
+		n, err = dwarf.ReadUintRaw(ctxt.buf, binary.LittleEndian, 4)
 		n = uint64(int64(int32(n)))
 	case DW_OP_const8s:
-		n, err = util.ReadUintRaw(ctxt.buf, binary.LittleEndian, 8)
+		n, err = dwarf.ReadUintRaw(ctxt.buf, binary.LittleEndian, 8)
 	default:
 		panic("internal error")
 	}
@@ -561,7 +561,7 @@ func deref(op Opcode, ctxt *context) error {
 		return err
 	}
 
-	x, err := util.ReadUintRaw(bytes.NewReader(buf), binary.LittleEndian, sz)
+	x, err := dwarf.ReadUintRaw(bytes.NewReader(buf), binary.LittleEndian, sz)
 	if err != nil {
 		return err
 	}

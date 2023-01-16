@@ -1,4 +1,4 @@
-package util
+package dwarf
 
 import (
 	"bytes"
@@ -6,54 +6,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-
-	"github.com/go-delve/delve/pkg/dwarf/leb128"
 )
 
-// ByteReaderWithLen is a io.ByteReader with a Len method. This interface is
-// satisfied by both bytes.Buffer and bytes.Reader.
-//
-// Deprecated: use leb128.Reader.
-type ByteReaderWithLen interface {
-	io.ByteReader
-	io.Reader
-	Len() int
-}
-
-// DecodeULEB128 decodes an unsigned Little Endian Base 128
-// represented number.
-//
-// Deprecated: use leb128.DecodeUnsigned.
-func DecodeULEB128(buf ByteReaderWithLen) (uint64, uint32) {
-	return leb128.DecodeUnsigned(buf)
-}
-
-// DecodeSLEB128 decodes a signed Little Endian Base 128
-// represented number.
-//
-// Deprecated: use leb128.DecodeUnsigned.
-func DecodeSLEB128(buf ByteReaderWithLen) (int64, uint32) {
-	return leb128.DecodeSigned(buf)
-}
-
-// EncodeULEB128 encodes x to the unsigned Little Endian Base 128 format
-// into out.
-//
-// Deprecated: use leb128.EncodeUnsigned.
-func EncodeULEB128(out io.ByteWriter, x uint64) {
-	leb128.EncodeUnsigned(out, x)
-}
-
-// EncodeSLEB128 encodes x to the signed Little Endian Base 128 format
-// into out.
-//
-// Deprecated: use leb128.EncodeSigned.
-func EncodeSLEB128(out io.ByteWriter, x int64) {
-	leb128.EncodeSigned(out, x)
-}
-
-// ParseString reads a null-terminated string from data.
-func ParseString(data *bytes.Buffer) (string, error) {
+// ReadString reads a null-terminated string from data.
+func ReadString(data *bytes.Buffer) (string, error) {
 	str, err := data.ReadString(0x0)
 	if err != nil {
 		return "", err
