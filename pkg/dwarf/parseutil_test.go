@@ -1,13 +1,15 @@
-package util
+package dwarf_test
 
 import (
 	"bytes"
 	"testing"
+
+	"github.com/go-delve/delve/pkg/dwarf"
 )
 
-func TestParseString(t *testing.T) {
+func TestReadString(t *testing.T) {
 	bstr := bytes.NewBuffer([]byte{'h', 'i', 0x0, 0xFF, 0xCC})
-	str, _ := ParseString(bstr)
+	str, _ := dwarf.ReadString(bstr)
 
 	if str != "hi" {
 		t.Fatalf("String was not parsed correctly %#v", str)

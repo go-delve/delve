@@ -2,18 +2,16 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Buffered reading and decoding of DWARF data streams.
-
 //lint:file-ignore ST1021 imported file
 
-package util
+package godwarf
 
 import (
 	"debug/dwarf"
 	"fmt"
 )
 
-// Data buffer being decoded.
+// buf is data buffer being decoded.
 type buf struct {
 	dwarf  *dwarf.Data
 	format dataFormat
@@ -23,7 +21,7 @@ type buf struct {
 	Err    error
 }
 
-// Data format, other than byte order.  This affects the handling of
+// Data format, other than byte order. This affects the handling of
 // certain field formats.
 type dataFormat interface {
 	// DWARF version number.  Zero means unknown.
@@ -36,25 +34,27 @@ type dataFormat interface {
 	addrsize() int
 }
 
-// UnknownFormat is a struct for some parts of DWARF that have no data format, e.g., abbrevs.
-type UnknownFormat struct{}
+// unknownFormat is a struct for some parts of DWARF that have no data format, e.g., abbrevs.
+type unknownFormat struct{}
 
-func (u UnknownFormat) version() int {
+func (u unknownFormat) version() int {
 	return 0
 }
 
-func (u UnknownFormat) dwarf64() (bool, bool) {
+func (u unknownFormat) dwarf64() (bool, bool) {
 	return false, false
 }
 
-func (u UnknownFormat) addrsize() int {
+func (u unknownFormat) addrsize() int {
 	return 0
 }
 
-func MakeBuf(d *dwarf.Data, format dataFormat, name string, off dwarf.Offset, data []byte) buf {
+// makeBuf creates buf for reading and decoding of DWARF data streams.
+func makeBuf(d *dwarf.Data, format dataFormat, name string, off dwarf.Offset, data []byte) buf {
 	return buf{d, format, name, off, data, nil}
 }
 
+// Uint8 reads an uint8.
 func (b *buf) Uint8() uint8 {
 	if len(b.data) < 1 {
 		b.error("underflow")

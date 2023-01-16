@@ -17,7 +17,6 @@ import (
 	"strconv"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
-	"github.com/go-delve/delve/pkg/dwarf/util"
 )
 
 const (
@@ -827,7 +826,7 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 						// Empty exprloc. f.ByteOffset=0.
 						break
 					}
-					b := util.MakeBuf(d, util.UnknownFormat{}, "location", 0, loc)
+					b := makeBuf(d, unknownFormat{}, "location", 0, loc)
 					op_ := op.Opcode(b.Uint8())
 					switch op_ {
 					case op.DW_OP_plus_uconst:

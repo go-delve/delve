@@ -5,8 +5,8 @@ import (
 	"encoding/binary"
 	"errors"
 
+	"github.com/go-delve/delve/pkg/dwarf"
 	"github.com/go-delve/delve/pkg/dwarf/leb128"
-	"github.com/go-delve/delve/pkg/dwarf/util"
 )
 
 const (
@@ -157,7 +157,7 @@ func (rdr *formReader) next(buf *bytes.Buffer) bool {
 		rdr.u64, _ = leb128.DecodeUnsigned(buf)
 
 	case _DW_FORM_string:
-		rdr.str, _ = util.ParseString(buf)
+		rdr.str, _ = dwarf.ReadString(buf)
 
 	case _DW_FORM_strx3:
 		if buf.Len() < 3 {
