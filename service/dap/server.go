@@ -159,6 +159,12 @@ type Session struct {
 	// changeStateMu must be held for a request to protect itself from another goroutine
 	// changing the state of the running process at the same time.
 	changeStateMu sync.Mutex
+
+	//
+	stdout io.ReadWriter
+
+	//
+	stderr io.ReadWriter
 }
 
 // Config is all the information needed to start the debugger, handle
@@ -974,7 +980,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 
 		var cmd string
 		var out []byte
-		var err error
+
 		switch args.Mode {
 		case "debug":
 			cmd, out, err = gobuild.GoBuildCombinedOutput(args.Output, []string{args.Program}, args.BuildFlags)
@@ -1025,6 +1031,11 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	argsToLog.Cwd, _ = filepath.Abs(args.Cwd)
 	s.config.log.Debugf("launching binary '%s' with config: %s", debugbinary, prettyPrint(argsToLog))
 
+	if args.OutputModel == "remote" {
+		s.stderr = bytes.NewBufferString("")
+		s.stdout = bytes.NewBufferString("")
+	}
+
 	if args.NoDebug {
 		s.mu.Lock()
 		cmd, err := s.newNoDebugProcess(debugbinary, args.Args, s.config.Debugger.WorkingDir)
@@ -1039,6 +1050,32 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 
 		// Start the program on a different goroutine, so we can listen for disconnect request.
 		go func() {
+			// TODO: Support remote stop program, if the program can not be stopped
+			if args.OutputModel == "remote" {
+				wg := &sync.WaitGroup{}
+				readerFunc := func(reader io.Reader, category string, wg *sync.WaitGroup) {
+					// Display one line back after outputting one line
+					var scanner = bufio.NewScanner(reader)
+					for scanner.Scan() {
+						s.send(&dap.OutputEvent{
+							Event: *newEvent("output"),
+							Body: dap.OutputEventBody{
+								Output:   fmt.Sprintln(scanner.Text()),
+								Category: category,
+							}})
+					}
+
+					wg.Done()
+				}
+
+				wg.Add(1)
+				go readerFunc(s.stdout, "stdout", wg)
+				wg.Add(1)
+				go readerFunc(s.stderr, "stderr", wg)
+				// Wait for the input and output to be read
+				defer wg.Wait()
+			}
+
 			if err := cmd.Wait(); err != nil {
 				s.config.log.Debugf("program exited with error: %v", err)
 			}
@@ -1087,7 +1124,7 @@ func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd stri
 		return nil, fmt.Errorf("another launch request is in progress")
 	}
 	cmd := exec.Command(program, targetArgs...)
-	cmd.Stdout, cmd.Stderr, cmd.Stdin, cmd.Dir = os.Stdout, os.Stderr, os.Stdin, wd
+	cmd.Stdout, cmd.Stderr, cmd.Stdin, cmd.Dir = s.stdout, s.stderr, os.Stdin, wd
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
