@@ -1148,11 +1148,11 @@ func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd stri
 	cmd = exec.Command(program, targetArgs...)
 	cmd.Stdin, cmd.Dir = os.Stdin, wd
 
-	if s.stderrReader, err = cmd.StdoutPipe(); err != nil {
+	if s.stderrReader, err = cmd.StderrPipe(); err != nil {
 		return nil, err
 	}
 
-	if s.stdoutReader, err = cmd.StderrPipe(); err != nil {
+	if s.stdoutReader, err = cmd.StdoutPipe(); err != nil {
 		return nil, err
 	}
 
