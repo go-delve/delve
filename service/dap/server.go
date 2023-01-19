@@ -160,12 +160,24 @@ type Session struct {
 	// changing the state of the running process at the same time.
 	changeStateMu sync.Mutex
 
-	//
-	stdout io.ReadWriter
+	// outputModel specifies how to print the program's output.
+	outputModel outputModel
 
-	//
-	stderr io.ReadWriter
+	// stdoutReader the programs's stdout.
+	stdoutReader io.ReadCloser
+
+	// stderrReader the program's stderr.
+	stderrReader io.ReadCloser
 }
+
+type outputModel int8
+
+const (
+	// osStdMask os.Stdin and os.Stdout
+	osStdMask outputModel = 0x0001
+	// remoteMask Sending program output to the client.
+	remoteMask outputModel = 0x0010
+)
 
 // Config is all the information needed to start the debugger, handle
 // DAP connection traffic and signal to the server when it is time to stop.
@@ -1031,9 +1043,9 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	argsToLog.Cwd, _ = filepath.Abs(args.Cwd)
 	s.config.log.Debugf("launching binary '%s' with config: %s", debugbinary, prettyPrint(argsToLog))
 
+	s.outputModel |= osStdMask
 	if args.OutputModel == "remote" {
-		s.stderr = bytes.NewBufferString("")
-		s.stdout = bytes.NewBufferString("")
+		s.outputModel |= remoteMask
 	}
 
 	if args.NoDebug {
@@ -1051,34 +1063,43 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		// Start the program on a different goroutine, so we can listen for disconnect request.
 		go func() {
 			// TODO: Support remote stop program, if the program can not be stopped
-			if args.OutputModel == "remote" {
-				wg := &sync.WaitGroup{}
-				readerFunc := func(reader io.Reader, category string, wg *sync.WaitGroup) {
-					// Display one line back after outputting one line
-					var scanner = bufio.NewScanner(reader)
-					for scanner.Scan() {
+			wg := &sync.WaitGroup{}
+			readerFunc := func(reader io.Reader, category string, wg *sync.WaitGroup) {
+				// Display one line back after outputting one line
+				var scanner = bufio.NewScanner(reader)
+				for scanner.Scan() {
+					out := scanner.Text()
+					if s.outputModel&0x0001 != 0 {
+						if category == "stdout" {
+							fmt.Fprintln(os.Stdout, out)
+						} else {
+							fmt.Fprintln(os.Stderr, out)
+						}
+					}
+
+					if s.outputModel&0x0010 != 0 {
 						s.send(&dap.OutputEvent{
 							Event: *newEvent("output"),
 							Body: dap.OutputEventBody{
-								Output:   fmt.Sprintln(scanner.Text()),
+								Output:   fmt.Sprintln(out),
 								Category: category,
 							}})
 					}
-
-					wg.Done()
 				}
-
-				wg.Add(1)
-				go readerFunc(s.stdout, "stdout", wg)
-				wg.Add(1)
-				go readerFunc(s.stderr, "stderr", wg)
-				// Wait for the input and output to be read
-				defer wg.Wait()
+				wg.Done()
 			}
+
+			wg.Add(1)
+			go readerFunc(s.stdoutReader, "stdout", wg)
+			wg.Add(1)
+			go readerFunc(s.stderrReader, "stderr", wg)
+			// Wait for the input and output to be read
 
 			if err := cmd.Wait(); err != nil {
 				s.config.log.Debugf("program exited with error: %v", err)
 			}
+
+			wg.Wait()
 			close(s.noDebugProcess.exited)
 			s.logToConsole(proc.ErrProcessExited{Pid: cmd.ProcessState.Pid(), Status: cmd.ProcessState.ExitCode()}.Error())
 			s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
@@ -1119,15 +1140,26 @@ func (s *Session) getPackageDir(pkg string) string {
 
 // newNoDebugProcess is called from onLaunchRequest (run goroutine) and
 // requires holding mu lock. It prepares process exec.Cmd to be started.
-func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd string) (*exec.Cmd, error) {
+func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd string) (cmd *exec.Cmd, err error) {
 	if s.noDebugProcess != nil {
 		return nil, fmt.Errorf("another launch request is in progress")
 	}
-	cmd := exec.Command(program, targetArgs...)
-	cmd.Stdout, cmd.Stderr, cmd.Stdin, cmd.Dir = s.stdout, s.stderr, os.Stdin, wd
-	if err := cmd.Start(); err != nil {
+
+	cmd = exec.Command(program, targetArgs...)
+	cmd.Stdin, cmd.Dir = os.Stdin, wd
+
+	if s.stderrReader, err = cmd.StdoutPipe(); err != nil {
 		return nil, err
 	}
+
+	if s.stdoutReader, err = cmd.StderrPipe(); err != nil {
+		return nil, err
+	}
+
+	if err = cmd.Start(); err != nil {
+		return nil, err
+	}
+
 	s.noDebugProcess = &process{Cmd: cmd, exited: make(chan struct{})}
 	return cmd, nil
 }
