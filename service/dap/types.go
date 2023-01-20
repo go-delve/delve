@@ -148,7 +148,7 @@ type LaunchConfig struct {
 	// reference to other environment variables is not supported.
 	Env map[string]*string `json:"env,omitempty"`
 
-	OutputModel string `json:"outputModel,omitempty"`
+	OutputMode string `json:"outputMode,omitempty"`
 	LaunchAttachCommonConfig
 }
 

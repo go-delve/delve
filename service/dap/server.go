@@ -160,8 +160,8 @@ type Session struct {
 	// changing the state of the running process at the same time.
 	changeStateMu sync.Mutex
 
-	// outputModel specifies how to print the program's output.
-	outputModel outputModel
+	// outputMode specifies how to print the program's output.
+	outputMode outputMode
 
 	// stdoutReader the programs's stdout.
 	stdoutReader io.ReadCloser
@@ -170,13 +170,13 @@ type Session struct {
 	stderrReader io.ReadCloser
 }
 
-type outputModel int8
+type outputMode int8
 
 const (
-	// osStdMask os.Stdin and os.Stdout
-	osStdMask outputModel = 0x0001
-	// remoteMask Sending program output to the client.
-	remoteMask outputModel = 0x0010
+	// outputToStd os.Stdin and os.Stdout
+	outputToStd outputMode = 1 << iota
+	// outputToDAP Sending program output to the client.
+	outputToDAP
 )
 
 // Config is all the information needed to start the debugger, handle
@@ -1043,9 +1043,15 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	argsToLog.Cwd, _ = filepath.Abs(args.Cwd)
 	s.config.log.Debugf("launching binary '%s' with config: %s", debugbinary, prettyPrint(argsToLog))
 
-	s.outputModel |= osStdMask
-	if args.OutputModel == "remote" {
-		s.outputModel |= remoteMask
+	s.outputMode |= outputToStd
+	switch args.OutputMode {
+	case "remote":
+		s.outputMode |= outputToDAP
+	case "local", "":
+		// noting
+	default:
+		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
+			fmt.Sprintf("invalid debug configuration - unsupported 'outputMode' attribute %q", args.OutputMode))
 	}
 
 	if args.NoDebug {
@@ -1067,17 +1073,20 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			readerFunc := func(reader io.Reader, category string, wg *sync.WaitGroup) {
 				// Display one line back after outputting one line
 				var scanner = bufio.NewScanner(reader)
+				var stdWriter io.Writer
+				if category == "stdout" {
+					stdWriter = os.Stdout
+				} else {
+					stdWriter = os.Stderr
+				}
+
 				for scanner.Scan() {
 					out := scanner.Text()
-					if s.outputModel&0x0001 != 0 {
-						if category == "stdout" {
-							fmt.Fprintln(os.Stdout, out)
-						} else {
-							fmt.Fprintln(os.Stderr, out)
-						}
+					if s.outputMode&outputToStd != 0 {
+						fmt.Fprintln(stdWriter, out)
 					}
 
-					if s.outputModel&0x0010 != 0 {
+					if s.outputMode&outputToDAP != 0 {
 						s.send(&dap.OutputEvent{
 							Event: *newEvent("output"),
 							Body: dap.OutputEventBody{
