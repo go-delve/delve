@@ -1043,10 +1043,12 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	argsToLog.Cwd, _ = filepath.Abs(args.Cwd)
 	s.config.log.Debugf("launching binary '%s' with config: %s", debugbinary, prettyPrint(argsToLog))
 
+	var redirected = false
 	s.outputMode |= outputToStd
 	switch args.OutputMode {
 	case "remote":
 		s.outputMode |= outputToDAP
+		redirected = true
 	case "local", "":
 		// noting
 	default:
@@ -1056,7 +1058,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 
 	if args.NoDebug {
 		s.mu.Lock()
-		cmd, err := s.newNoDebugProcess(debugbinary, args.Args, s.config.Debugger.WorkingDir)
+		cmd, err := s.newNoDebugProcess(debugbinary, args.Args, s.config.Debugger.WorkingDir, redirected)
 		s.mu.Unlock()
 		if err != nil {
 			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
@@ -1070,40 +1072,41 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		go func() {
 			// TODO: Support remote stop program, if the program can not be stopped
 			wg := &sync.WaitGroup{}
-			readerFunc := func(reader io.Reader, category string, wg *sync.WaitGroup) {
-				// Display one line back after outputting one line
-				var scanner = bufio.NewScanner(reader)
-				var stdWriter io.Writer
-				if category == "stdout" {
-					stdWriter = os.Stdout
-				} else {
-					stdWriter = os.Stderr
-				}
-
-				for scanner.Scan() {
-					out := scanner.Text()
-					if s.outputMode&outputToStd != 0 {
-						fmt.Fprintln(stdWriter, out)
+			if redirected {
+				readerFunc := func(reader io.Reader, category string, wg *sync.WaitGroup) {
+					// Display one line back after outputting one line
+					var scanner = bufio.NewScanner(reader)
+					var stdWriter io.Writer
+					if category == "stdout" {
+						stdWriter = os.Stdout
+					} else {
+						stdWriter = os.Stderr
 					}
 
-					if s.outputMode&outputToDAP != 0 {
-						s.send(&dap.OutputEvent{
-							Event: *newEvent("output"),
-							Body: dap.OutputEventBody{
-								Output:   fmt.Sprintln(out),
-								Category: category,
-							}})
+					for scanner.Scan() {
+						out := scanner.Text()
+						if s.outputMode&outputToStd != 0 {
+							fmt.Fprintln(stdWriter, out)
+						}
+
+						if s.outputMode&outputToDAP != 0 {
+							s.send(&dap.OutputEvent{
+								Event: *newEvent("output"),
+								Body: dap.OutputEventBody{
+									Output:   fmt.Sprintln(out),
+									Category: category,
+								}})
+						}
 					}
+					wg.Done()
 				}
-				wg.Done()
+
+				wg.Add(1)
+				go readerFunc(s.stdoutReader, "stdout", wg)
+				wg.Add(1)
+				go readerFunc(s.stderrReader, "stderr", wg)
+				// Wait for the input and output to be read
 			}
-
-			wg.Add(1)
-			go readerFunc(s.stdoutReader, "stdout", wg)
-			wg.Add(1)
-			go readerFunc(s.stderrReader, "stderr", wg)
-			// Wait for the input and output to be read
-
 			if err := cmd.Wait(); err != nil {
 				s.config.log.Debugf("program exited with error: %v", err)
 			}
@@ -1149,7 +1152,7 @@ func (s *Session) getPackageDir(pkg string) string {
 
 // newNoDebugProcess is called from onLaunchRequest (run goroutine) and
 // requires holding mu lock. It prepares process exec.Cmd to be started.
-func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd string) (cmd *exec.Cmd, err error) {
+func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd string, redirected bool) (cmd *exec.Cmd, err error) {
 	if s.noDebugProcess != nil {
 		return nil, fmt.Errorf("another launch request is in progress")
 	}
@@ -1157,12 +1160,16 @@ func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd stri
 	cmd = exec.Command(program, targetArgs...)
 	cmd.Stdin, cmd.Dir = os.Stdin, wd
 
-	if s.stderrReader, err = cmd.StderrPipe(); err != nil {
-		return nil, err
-	}
+	if redirected {
+		if s.stderrReader, err = cmd.StderrPipe(); err != nil {
+			return nil, err
+		}
 
-	if s.stdoutReader, err = cmd.StdoutPipe(); err != nil {
-		return nil, err
+		if s.stdoutReader, err = cmd.StdoutPipe(); err != nil {
+			return nil, err
+		}
+	} else {
+		cmd.Stdout, cmd.Stderr = os.Stdin, os.Stderr
 	}
 
 	if err = cmd.Start(); err != nil {
