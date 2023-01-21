@@ -81,6 +81,7 @@ func ParseAll(data []byte, debugLineStr []byte, logfn func(string, ...interface{
 // DW_AT_comp_dir attribute of the associated compile unit.
 func Parse(compdir string, buf *bytes.Buffer, debugLineStr []byte, logfn func(string, ...interface{}), staticBase uint64, normalizeBackslash bool, ptrSize int) *DebugLineInfo {
 	dbl := new(DebugLineInfo)
+	dbl.endSeqIsValid = true
 	dbl.Logf = logfn
 	if logfn == nil {
 		dbl.Logf = func(string, ...interface{}) {}
