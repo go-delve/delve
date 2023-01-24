@@ -474,7 +474,7 @@ func (scope *EvalScope) LocalVariables(cfg LoadConfig) ([]*Variable, error) {
 
 // FunctionArguments returns the name, value, and type of all current function arguments.
 func (scope *EvalScope) FunctionArguments(cfg LoadConfig) ([]*Variable, error) {
-	vars, err := scope.Locals(0)
+	vars, err := scope.Locals(localsNoDeclLineCheck)
 	if err != nil {
 		return nil, err
 	}
