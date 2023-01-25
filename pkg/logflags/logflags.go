@@ -29,17 +29,24 @@ var minidump = false
 
 var logOut io.WriteCloser
 
-func makeLogger(flag bool, fields logrus.Fields) *logrus.Entry {
-	logger := logrus.New().WithFields(fields)
-	logger.Logger.Formatter = &textFormatter{}
+func makeFlaggableLogger(flag bool, fields Fields) Logger {
+	if flag {
+		return makeLogger(logrus.DebugLevel, fields)
+	}
+	return makeLogger(logrus.ErrorLevel, fields)
+}
+
+func makeLogger(level logrus.Level, fields Fields) Logger {
+	if lf := loggerFactory; lf != nil {
+		return lf(level, fields, logOut)
+	}
+	logger := logrus.New().WithFields(logrus.Fields(fields))
+	logger.Logger.Formatter = DefaultFormatter()
 	if logOut != nil {
 		logger.Logger.Out = logOut
 	}
-	logger.Logger.Level = logrus.DebugLevel
-	if !flag {
-		logger.Logger.Level = logrus.ErrorLevel
-	}
-	return logger
+	logger.Logger.Level = level
+	return &logrusLogger{logger}
 }
 
 // Any returns true if any logging is enabled.
@@ -54,8 +61,8 @@ func GdbWire() bool {
 }
 
 // GdbWireLogger returns a configured logger for the gdbserial wire protocol.
-func GdbWireLogger() *logrus.Entry {
-	return makeLogger(gdbWire, logrus.Fields{"layer": "gdbconn"})
+func GdbWireLogger() Logger {
+	return makeFlaggableLogger(gdbWire, Fields{"layer": "gdbconn"})
 }
 
 // Debugger returns true if the debugger package should log.
@@ -64,8 +71,8 @@ func Debugger() bool {
 }
 
 // DebuggerLogger returns a logger for the debugger package.
-func DebuggerLogger() *logrus.Entry {
-	return makeLogger(debugger, logrus.Fields{"layer": "debugger"})
+func DebuggerLogger() Logger {
+	return makeFlaggableLogger(debugger, Fields{"layer": "debugger"})
 }
 
 // LLDBServerOutput returns true if the output of the LLDB server should be
@@ -80,14 +87,27 @@ func DebugLineErrors() bool {
 	return debugLineErrors
 }
 
+// DebugLineLogger returns a logger for the dwarf/line package.
+func DebugLineLogger() Logger {
+	return makeFlaggableLogger(debugLineErrors, Fields{"layer": "dwarf-line"})
+}
+
 // RPC returns true if RPC messages should be logged.
 func RPC() bool {
 	return rpc
 }
 
 // RPCLogger returns a logger for RPC messages.
-func RPCLogger() *logrus.Entry {
-	return makeLogger(rpc, logrus.Fields{"layer": "rpc"})
+func RPCLogger() Logger {
+	if rpc {
+		return RPCLoggerWithLevel(logrus.DebugLevel)
+	}
+	return RPCLoggerWithLevel(logrus.ErrorLevel)
+}
+
+// RPCLoggerWithLevel returns a logger for RPC messages set to a specific minimal log level.
+func RPCLoggerWithLevel(level logrus.Level) Logger {
+	return makeLogger(level, Fields{"layer": "rpc"})
 }
 
 // DAP returns true if dap package should log.
@@ -96,8 +116,8 @@ func DAP() bool {
 }
 
 // DAPLogger returns a logger for dap package.
-func DAPLogger() *logrus.Entry {
-	return makeLogger(dap, logrus.Fields{"layer": "dap"})
+func DAPLogger() Logger {
+	return makeFlaggableLogger(dap, Fields{"layer": "dap"})
 }
 
 // FnCall returns true if the function call protocol should be logged.
@@ -105,8 +125,8 @@ func FnCall() bool {
 	return fnCall
 }
 
-func FnCallLogger() *logrus.Entry {
-	return makeLogger(fnCall, logrus.Fields{"layer": "proc", "kind": "fncall"})
+func FnCallLogger() Logger {
+	return makeFlaggableLogger(fnCall, Fields{"layer": "proc", "kind": "fncall"})
 }
 
 // Minidump returns true if the minidump loader should be logged.
@@ -114,8 +134,8 @@ func Minidump() bool {
 	return minidump
 }
 
-func MinidumpLogger() *logrus.Entry {
-	return makeLogger(minidump, logrus.Fields{"layer": "core", "kind": "minidump"})
+func MinidumpLogger() Logger {
+	return makeFlaggableLogger(minidump, Fields{"layer": "core", "kind": "minidump"})
 }
 
 // WriteDAPListeningMessage writes the "DAP server listening" message in dap mode.
@@ -139,16 +159,15 @@ func writeListeningMessage(server string, addr net.Addr) {
 	if tcpAddr == nil || tcpAddr.IP.IsLoopback() {
 		return
 	}
-	logger := RPCLogger()
-	logger.Logger.Level = logrus.WarnLevel
+	logger := RPCLoggerWithLevel(logrus.WarnLevel)
 	logger.Warnln("Listening for remote connections (connections are not authenticated nor encrypted)")
 }
 
 func WriteError(msg string) {
 	if logOut != nil {
-		fmt.Fprintln(logOut, msg)
+		_, _ = fmt.Fprintln(logOut, msg)
 	} else {
-		fmt.Fprintln(os.Stderr, msg)
+		_, _ = fmt.Fprintln(os.Stderr, msg)
 	}
 }
 
@@ -217,11 +236,16 @@ func Close() {
 	}
 }
 
-// textFormatter is a simplified version of logrus.TextFormatter that
+// DefaultFormatter provides a simplified version of logrus.TextFormatter that
 // doesn't make logs unreadable when they are output to a text file or to a
 // terminal that doesn't support colors.
-type textFormatter struct {
+func DefaultFormatter() logrus.Formatter {
+	return textFormatterInstance
 }
+
+type textFormatter struct{}
+
+var textFormatterInstance = &textFormatter{}
 
 func (f *textFormatter) Format(entry *logrus.Entry) ([]byte, error) {
 	var b *bytes.Buffer

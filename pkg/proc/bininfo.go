@@ -34,7 +34,6 @@ import (
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc/debuginfod"
 	"github.com/hashicorp/golang-lru/simplelru"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -111,7 +110,7 @@ type BinaryInfo struct {
 	// Go 1.17 register ABI is enabled.
 	regabi bool
 
-	logger *logrus.Entry
+	logger logflags.Logger
 }
 
 var (
@@ -944,7 +943,7 @@ func (image *Image) Close() error {
 	return err2
 }
 
-func (image *Image) setLoadError(logger *logrus.Entry, fmtstr string, args ...interface{}) {
+func (image *Image) setLoadError(logger logflags.Logger, fmtstr string, args ...interface{}) {
 	image.loadErrMu.Lock()
 	image.loadErr = fmt.Errorf(fmtstr, args...)
 	image.loadErrMu.Unlock()
@@ -1586,7 +1585,7 @@ func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.
 	}
 }
 
-func getSymbol(image *Image, logger *logrus.Entry, exe *elf.File, name string) *elf.Symbol {
+func getSymbol(image *Image, logger logflags.Logger, exe *elf.File, name string) *elf.Symbol {
 	symbols, err := exe.Symbols()
 	if err != nil {
 		image.setLoadError(logger, "could not parse ELF symbols: %v", err)
@@ -2069,11 +2068,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 			if hasLineInfo && lineInfoOffset >= 0 && lineInfoOffset < int64(len(debugLineBytes)) {
 				var logfn func(string, ...interface{})
 				if logflags.DebugLineErrors() {
-					logger := logrus.New().WithFields(logrus.Fields{"layer": "dwarf-line"})
-					logger.Logger.Level = logrus.DebugLevel
-					logfn = func(fmt string, args ...interface{}) {
-						logger.Printf(fmt, args)
-					}
+					logfn = logflags.DebugLineLogger().Printf
 				}
 				cu.lineInfo = line.Parse(compdir, bytes.NewBuffer(debugLineBytes[lineInfoOffset:]), image.debugLineStr, logfn, image.StaticBase, bi.GOOS == "windows", bi.Arch.PtrSize())
 			}
