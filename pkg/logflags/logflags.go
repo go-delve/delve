@@ -100,13 +100,13 @@ func RPC() bool {
 // RPCLogger returns a logger for RPC messages.
 func RPCLogger() Logger {
 	if rpc {
-		return RPCLoggerWithLevel(logrus.DebugLevel)
+		return rpcLoggerWithLevel(logrus.DebugLevel)
 	}
-	return RPCLoggerWithLevel(logrus.ErrorLevel)
+	return rpcLoggerWithLevel(logrus.ErrorLevel)
 }
 
-// RPCLoggerWithLevel returns a logger for RPC messages set to a specific minimal log level.
-func RPCLoggerWithLevel(level logrus.Level) Logger {
+// rpcLoggerWithLevel returns a logger for RPC messages set to a specific minimal log level.
+func rpcLoggerWithLevel(level logrus.Level) Logger {
 	return makeLogger(level, Fields{"layer": "rpc"})
 }
 
@@ -159,15 +159,15 @@ func writeListeningMessage(server string, addr net.Addr) {
 	if tcpAddr == nil || tcpAddr.IP.IsLoopback() {
 		return
 	}
-	logger := RPCLoggerWithLevel(logrus.WarnLevel)
+	logger := rpcLoggerWithLevel(logrus.WarnLevel)
 	logger.Warnln("Listening for remote connections (connections are not authenticated nor encrypted)")
 }
 
 func WriteError(msg string) {
 	if logOut != nil {
-		_, _ = fmt.Fprintln(logOut, msg)
+		fmt.Fprintln(logOut, msg)
 	} else {
-		_, _ = fmt.Fprintln(os.Stderr, msg)
+		fmt.Fprintln(os.Stderr, msg)
 	}
 }
 
