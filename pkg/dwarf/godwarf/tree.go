@@ -11,14 +11,22 @@ import (
 // entry specified by DW_AT_abstract_origin will be searched recursively.
 type Entry interface {
 	Val(dwarf.Attr) interface{}
+	AttrField(dwarf.Attr) *dwarf.Field
 }
 
 type compositeEntry []*dwarf.Entry
 
 func (ce compositeEntry) Val(attr dwarf.Attr) interface{} {
+	if f := ce.AttrField(attr); f != nil {
+		return f.Val
+	}
+	return nil
+}
+
+func (ce compositeEntry) AttrField(a dwarf.Attr) *dwarf.Field {
 	for _, e := range ce {
-		if r := e.Val(attr); r != nil {
-			return r
+		if f := e.AttrField(a); f != nil {
+			return f
 		}
 	}
 	return nil
