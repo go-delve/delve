@@ -29,23 +29,19 @@ var minidump = false
 
 var logOut io.WriteCloser
 
-func makeFlaggableLogger(flag bool, fields Fields) Logger {
-	if flag {
-		return makeLogger(logrus.DebugLevel, fields)
-	}
-	return makeLogger(logrus.ErrorLevel, fields)
-}
-
-func makeLogger(level logrus.Level, fields Fields) Logger {
+func makeLogger(flag bool, fields Fields) Logger {
 	if lf := loggerFactory; lf != nil {
-		return lf(level, fields, logOut)
+		return lf(flag, fields, logOut)
 	}
 	logger := logrus.New().WithFields(logrus.Fields(fields))
 	logger.Logger.Formatter = DefaultFormatter()
 	if logOut != nil {
 		logger.Logger.Out = logOut
 	}
-	logger.Logger.Level = level
+	logger.Logger.Level = logrus.ErrorLevel
+	if flag {
+		logger.Logger.Level = logrus.DebugLevel
+	}
 	return &logrusLogger{logger}
 }
 
@@ -62,7 +58,7 @@ func GdbWire() bool {
 
 // GdbWireLogger returns a configured logger for the gdbserial wire protocol.
 func GdbWireLogger() Logger {
-	return makeFlaggableLogger(gdbWire, Fields{"layer": "gdbconn"})
+	return makeLogger(gdbWire, Fields{"layer": "gdbconn"})
 }
 
 // Debugger returns true if the debugger package should log.
@@ -72,7 +68,7 @@ func Debugger() bool {
 
 // DebuggerLogger returns a logger for the debugger package.
 func DebuggerLogger() Logger {
-	return makeFlaggableLogger(debugger, Fields{"layer": "debugger"})
+	return makeLogger(debugger, Fields{"layer": "debugger"})
 }
 
 // LLDBServerOutput returns true if the output of the LLDB server should be
@@ -89,7 +85,7 @@ func DebugLineErrors() bool {
 
 // DebugLineLogger returns a logger for the dwarf/line package.
 func DebugLineLogger() Logger {
-	return makeFlaggableLogger(debugLineErrors, Fields{"layer": "dwarf-line"})
+	return makeLogger(debugLineErrors, Fields{"layer": "dwarf-line"})
 }
 
 // RPC returns true if RPC messages should be logged.
@@ -99,15 +95,12 @@ func RPC() bool {
 
 // RPCLogger returns a logger for RPC messages.
 func RPCLogger() Logger {
-	if rpc {
-		return rpcLoggerWithLevel(logrus.DebugLevel)
-	}
-	return rpcLoggerWithLevel(logrus.ErrorLevel)
+	return rpcLogger(rpc)
 }
 
-// rpcLoggerWithLevel returns a logger for RPC messages set to a specific minimal log level.
-func rpcLoggerWithLevel(level logrus.Level) Logger {
-	return makeLogger(level, Fields{"layer": "rpc"})
+// rpcLogger returns a logger for RPC messages set to a specific minimal log level.
+func rpcLogger(flag bool) Logger {
+	return makeLogger(flag, Fields{"layer": "rpc"})
 }
 
 // DAP returns true if dap package should log.
@@ -117,7 +110,7 @@ func DAP() bool {
 
 // DAPLogger returns a logger for dap package.
 func DAPLogger() Logger {
-	return makeFlaggableLogger(dap, Fields{"layer": "dap"})
+	return makeLogger(dap, Fields{"layer": "dap"})
 }
 
 // FnCall returns true if the function call protocol should be logged.
@@ -126,7 +119,7 @@ func FnCall() bool {
 }
 
 func FnCallLogger() Logger {
-	return makeFlaggableLogger(fnCall, Fields{"layer": "proc", "kind": "fncall"})
+	return makeLogger(fnCall, Fields{"layer": "proc", "kind": "fncall"})
 }
 
 // Minidump returns true if the minidump loader should be logged.
@@ -135,7 +128,7 @@ func Minidump() bool {
 }
 
 func MinidumpLogger() Logger {
-	return makeFlaggableLogger(minidump, Fields{"layer": "core", "kind": "minidump"})
+	return makeLogger(minidump, Fields{"layer": "core", "kind": "minidump"})
 }
 
 // WriteDAPListeningMessage writes the "DAP server listening" message in dap mode.
@@ -159,7 +152,7 @@ func writeListeningMessage(server string, addr net.Addr) {
 	if tcpAddr == nil || tcpAddr.IP.IsLoopback() {
 		return
 	}
-	logger := rpcLoggerWithLevel(logrus.WarnLevel)
+	logger := rpcLogger(true)
 	logger.Warnln("Listening for remote connections (connections are not authenticated nor encrypted)")
 }
 

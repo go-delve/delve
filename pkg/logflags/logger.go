@@ -47,7 +47,7 @@ type Logger interface {
 // SetLoggerFactory can be used to configure it.
 //
 // The given parameters fields and out can be both be nil.
-type LoggerFactory func(level logrus.Level, fields Fields, out io.Writer) Logger
+type LoggerFactory func(flag bool, fields Fields, out io.Writer) Logger
 
 var loggerFactory LoggerFactory
 
