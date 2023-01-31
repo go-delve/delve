@@ -43,7 +43,7 @@ type Logger interface {
 	Panicln(args ...interface{})
 }
 
-// LoggerFactory is used to create new logrus.FieldLogger instances.
+// LoggerFactory is used to create new Logger instances.
 // SetLoggerFactory can be used to configure it.
 //
 // The given parameters fields and out can be both be nil.
@@ -51,8 +51,8 @@ type LoggerFactory func(flag bool, fields Fields, out io.Writer) Logger
 
 var loggerFactory LoggerFactory
 
-// SetLoggerFactory will ensure that every logrus.FieldLogger created by this package, will be now created
-// by the given LoggerFactory. Default behavior will be a *logrus.Logger instance using DefaultFormatter.
+// SetLoggerFactory will ensure that every Logger created by this package, will be now created
+// by the given LoggerFactory. Default behavior will be a logrus based Logger instance using DefaultFormatter.
 func SetLoggerFactory(lf LoggerFactory) {
 	loggerFactory = lf
 }
