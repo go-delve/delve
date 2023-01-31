@@ -304,7 +304,7 @@ func buildFlags() []string {
 	var ldFlags string
 	buildSHA, err := getBuildSHA()
 	if err != nil {
-		log.Printf("error getting build SHA via git: %w", err)
+		log.Printf("error getting build SHA via git: %v", err)
 	} else {
 		ldFlags = "-X main.Build=" + buildSHA
 	}
