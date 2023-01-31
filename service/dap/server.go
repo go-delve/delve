@@ -11,12 +11,15 @@ package dap
 import (
 	"bufio"
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"go/constant"
 	"go/parser"
 	"io"
+	"log"
 	"math"
 	"net"
 	"os"
@@ -30,6 +33,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/go-delve/delve/pkg/gobuild"
@@ -1056,6 +1060,39 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			fmt.Sprintf("invalid debug configuration - unsupported 'outputMode' attribute %q", args.OutputMode))
 	}
 
+	readerFunc := func(reader io.Reader, category string) {
+		// Display one line back after outputting one line
+		var (
+			scanner   = bufio.NewScanner(reader)
+			stdWriter io.Writer
+		)
+
+		if category == "stdout" {
+			stdWriter = os.Stdout
+		} else {
+			stdWriter = os.Stderr
+		}
+
+		fmt.Println(category, "scan")
+		for scanner.Scan() {
+			out := scanner.Text()
+			if s.outputMode&outputToStd != 0 {
+				fmt.Fprintln(stdWriter, out)
+			}
+
+			if s.outputMode&outputToDAP != 0 {
+				s.send(&dap.OutputEvent{
+					Event: *newEvent("output"),
+					Body: dap.OutputEventBody{
+						Output:   fmt.Sprintln(out),
+						Category: category,
+					}})
+			}
+		}
+
+		fmt.Println(category, "done")
+	}
+
 	if args.NoDebug {
 		s.mu.Lock()
 		cmd, err := s.newNoDebugProcess(debugbinary, args.Args, s.config.Debugger.WorkingDir, redirected)
@@ -1073,38 +1110,17 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			// TODO: Support remote stop program, if the program can not be stopped
 			wg := &sync.WaitGroup{}
 			if redirected {
-				readerFunc := func(reader io.Reader, category string, wg *sync.WaitGroup) {
-					// Display one line back after outputting one line
-					var scanner = bufio.NewScanner(reader)
-					var stdWriter io.Writer
-					if category == "stdout" {
-						stdWriter = os.Stdout
-					} else {
-						stdWriter = os.Stderr
-					}
-
-					for scanner.Scan() {
-						out := scanner.Text()
-						if s.outputMode&outputToStd != 0 {
-							fmt.Fprintln(stdWriter, out)
-						}
-
-						if s.outputMode&outputToDAP != 0 {
-							s.send(&dap.OutputEvent{
-								Event: *newEvent("output"),
-								Body: dap.OutputEventBody{
-									Output:   fmt.Sprintln(out),
-									Category: category,
-								}})
-						}
-					}
+				wg.Add(1)
+				go func() {
+					readerFunc(s.stdoutReader, "stdout")
 					wg.Done()
-				}
+				}()
 
 				wg.Add(1)
-				go readerFunc(s.stdoutReader, "stdout", wg)
-				wg.Add(1)
-				go readerFunc(s.stderrReader, "stderr", wg)
+				go func() {
+					readerFunc(s.stderrReader, "stderr")
+					wg.Done()
+				}()
 				// Wait for the input and output to be read
 			}
 			if err := cmd.Wait(); err != nil {
@@ -1117,6 +1133,31 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		}()
 		return
+	}
+
+	if redirected {
+		redirects, err := generateStdioTempPipes()
+		if err != nil {
+			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
+				fmt.Sprintf("xxx", args.OutputMode))
+		}
+
+		s.config.Debugger.Redirects[1] = redirects[0]
+		s.config.Debugger.Redirects[2] = redirects[1]
+		go func() {
+			stdoutFile, err := os.OpenFile(redirects[0], os.O_RDONLY, os.ModeNamedPipe)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			stderrFile, err := os.OpenFile(redirects[1], os.O_RDONLY, os.ModeNamedPipe)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			go readerFunc(stdoutFile, "stdout")
+			go readerFunc(stderrFile, "stderr")
+		}()
 	}
 
 	func() {
@@ -3868,4 +3909,30 @@ func parseLogPoint(msg string) (bool, *logMessage, error) {
 		format: string(formatSlice),
 		args:   args,
 	}, nil
+}
+
+func generateStdioTempPipes() (res [2]string, err error) {
+	r := make([]byte, 4)
+	if _, err := rand.Read(r); err != nil {
+		return res, err
+	}
+
+	var (
+		prefix     = filepath.Join(os.TempDir(), hex.EncodeToString(r))
+		stdoutPath = prefix + "stdout"
+		stderrPath = prefix + "stderr"
+	)
+
+	if err := syscall.Mkfifo(stdoutPath, 0o600); err != nil {
+		return res, err
+	}
+
+	if err := syscall.Mkfifo(stderrPath, 0o600); err != nil {
+		os.Remove(stdoutPath)
+		return res, err
+	}
+
+	res[0] = stdoutPath
+	res[1] = stderrPath
+	return res, nil
 }
