@@ -28,7 +28,7 @@ func generateStdioTempPipes() (res [2]string, err error) {
 	}
 
 	if err := syscall.Mkfifo(stderrPath, 0o600); err != nil {
-		os.Remove(stdoutPath)
+		_ = os.Remove(stdoutPath)
 		return res, err
 	}
 

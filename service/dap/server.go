@@ -17,7 +17,6 @@ import (
 	"go/constant"
 	"go/parser"
 	"io"
-	"log"
 	"math"
 	"net"
 	"os"
@@ -1055,39 +1054,42 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	default:
 		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
 			fmt.Sprintf("invalid debug configuration - unsupported 'outputMode' attribute %q", args.OutputMode))
+		return
 	}
 
 	readerFunc := func(reader io.Reader, category string) {
-		// Display one line back after outputting one line
-		var (
-			scanner   = bufio.NewScanner(reader)
-			stdWriter io.Writer
-		)
-
+		var stdWriter io.Writer
 		if category == "stdout" {
 			stdWriter = os.Stdout
 		} else {
 			stdWriter = os.Stderr
 		}
 
-		fmt.Println(category, "scan")
-		for scanner.Scan() {
-			out := scanner.Text()
+		var out [1024]byte
+		for {
+			n, err := reader.Read(out[:])
+			if err != nil {
+				if errors.Is(io.EOF, err) {
+					return
+				}
+				s.config.log.Errorf("failed read by %s - %v ", category, err)
+				return
+			}
+			outs := string(out[:n])
+
 			if s.outputMode&outputToStd != 0 {
-				fmt.Fprintln(stdWriter, out)
+				fmt.Fprintf(stdWriter, outs)
 			}
 
 			if s.outputMode&outputToDAP != 0 {
 				s.send(&dap.OutputEvent{
 					Event: *newEvent("output"),
 					Body: dap.OutputEventBody{
-						Output:   fmt.Sprintln(out),
+						Output:   outs,
 						Category: category,
 					}})
 			}
 		}
-
-		fmt.Println(category, "done")
 	}
 
 	if args.NoDebug {
@@ -1104,7 +1106,6 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 
 		// Start the program on a different goroutine, so we can listen for disconnect request.
 		go func() {
-			// TODO: Support remote stop program, if the program can not be stopped
 			wg := &sync.WaitGroup{}
 			if redirected {
 				wg.Add(1)
@@ -1136,30 +1137,35 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		redirects, err := generateStdioTempPipes()
 		if err != nil {
 			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("xxx", args.OutputMode))
+				fmt.Sprintf("failed to generate stdio pipes - %v", err))
+			return
 		}
 
 		s.config.Debugger.Redirects[1] = redirects[0]
 		s.config.Debugger.Redirects[2] = redirects[1]
-		go func() {
+		go func() { // os.OpenFile() will block
 			stdoutFile, err := os.OpenFile(redirects[0], os.O_RDONLY, os.ModeNamedPipe)
 			if err != nil {
-				log.Fatal(err)
+				s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
+					fmt.Sprintf("failed to open stdout pipe - %v", err))
+				return
 			}
 
 			stderrFile, err := os.OpenFile(redirects[1], os.O_RDONLY, os.ModeNamedPipe)
 			if err != nil {
-				log.Fatal(err)
+				s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
+					fmt.Sprintf("failed to open stderr pipe - %v", err))
+				return
 			}
 
 			go func() {
 				readerFunc(stdoutFile, "stdout")
-				os.Remove(redirects[0])
+				_ = os.Remove(redirects[0])
 			}()
 
 			go func() {
 				readerFunc(stderrFile, "stderr")
-				os.Remove(redirects[1])
+				_ = os.Remove(redirects[1])
 			}()
 		}()
 	}
