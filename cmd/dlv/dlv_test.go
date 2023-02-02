@@ -204,7 +204,7 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 	return
 }
 
-func getDlvBin(t *testing.T) (string, string) {
+func getDlvBin(t *testing.T) string {
 	// In case this was set in the environment
 	// from getDlvBinEBPF lets clear it here so
 	// we can ensure we don't get build errors
@@ -217,17 +217,12 @@ func getDlvBin(t *testing.T) (string, string) {
 	return getDlvBinInternal(t, tags)
 }
 
-func getDlvBinEBPF(t *testing.T) (string, string) {
+func getDlvBinEBPF(t *testing.T) string {
 	return getDlvBinInternal(t, "-tags", "ebpf")
 }
 
-func getDlvBinInternal(t *testing.T, goflags ...string) (string, string) {
-	tmpdir, err := ioutil.TempDir("", "TestDlv")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	dlvbin := filepath.Join(tmpdir, "dlv.exe")
+func getDlvBinInternal(t *testing.T, goflags ...string) string {
+	dlvbin := filepath.Join(t.TempDir(), "dlv.exe")
 	args := append([]string{"build", "-o", dlvbin}, goflags...)
 	args = append(args, "github.com/go-delve/delve/cmd/dlv")
 
@@ -236,16 +231,15 @@ func getDlvBinInternal(t *testing.T, goflags ...string) (string, string) {
 		t.Fatalf("go build -o %v github.com/go-delve/delve/cmd/dlv: %v\n%s", dlvbin, err, string(out))
 	}
 
-	return dlvbin, tmpdir
+	return dlvbin
 }
 
 // TestOutput verifies that the debug executable is created in the correct path
 // and removed after exit.
 func TestOutput(t *testing.T) {
-	dlvbin, tmpdir := getDlvBin(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBin(t)
 
-	for _, output := range []string{"", "myownname", filepath.Join(tmpdir, "absolute.path")} {
+	for _, output := range []string{"", "myownname", filepath.Join(t.TempDir(), "absolute.path")} {
 		testOutput(t, dlvbin, output, []string{"exit"})
 
 		const hello = "hello world!"
@@ -260,8 +254,7 @@ func TestOutput(t *testing.T) {
 func TestContinue(t *testing.T) {
 	const listenAddr = "127.0.0.1:40573"
 
-	dlvbin, tmpdir := getDlvBin(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBin(t)
 
 	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
 	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--listen", listenAddr)
@@ -301,8 +294,7 @@ func TestChildProcessExitWhenNoDebugInfo(t *testing.T) {
 		t.Skip("test skipped, `ps` not found")
 	}
 
-	dlvbin, tmpdir := getDlvBin(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBin(t)
 
 	fix := protest.BuildFixture("http_server", noDebugFlags)
 
@@ -345,8 +337,7 @@ func TestChildProcessExitWhenNoDebugInfo(t *testing.T) {
 func TestRedirect(t *testing.T) {
 	const listenAddr = "127.0.0.1:40573"
 
-	dlvbin, tmpdir := getDlvBin(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBin(t)
 
 	catfixture := filepath.Join(protest.FindFixturesDir(), "cat.go")
 	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--listen", listenAddr, "-r", catfixture, catfixture)
@@ -439,12 +430,10 @@ func TestGeneratedDoc(t *testing.T) {
 	checkAutogenDoc(t, "Documentation/cli/README.md", "_scripts/gen-cli-docs.go", generatedBuf.Bytes())
 
 	// Checks gen-usage-docs.go
-	tempDir, err := ioutil.TempDir(os.TempDir(), "test-gen-doc")
-	assertNoError(err, t, "TempDir")
-	defer protest.SafeRemoveAll(tempDir)
+	tempDir := t.TempDir()
 	cmd := exec.Command("go", "run", "_scripts/gen-usage-docs.go", tempDir)
 	cmd.Dir = projectRoot()
-	err = cmd.Run()
+	err := cmd.Run()
 	assertNoError(err, t, "go run _scripts/gen-usage-docs.go")
 	entries, err := ioutil.ReadDir(tempDir)
 	assertNoError(err, t, "ReadDir")
@@ -476,8 +465,7 @@ func TestGeneratedDoc(t *testing.T) {
 }
 
 func TestExitInInit(t *testing.T) {
-	dlvbin, tmpdir := getDlvBin(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBin(t)
 
 	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
 	exitInit := filepath.Join(protest.FindFixturesDir(), "exit.init")
@@ -677,8 +665,7 @@ func TestTypecheckRPC(t *testing.T) {
 func TestDAPCmd(t *testing.T) {
 	const listenAddr = "127.0.0.1:40575"
 
-	dlvbin, tmpdir := getDlvBin(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBin(t)
 
 	cmd := exec.Command(dlvbin, "dap", "--log-output=dap", "--log", "--listen", listenAddr)
 	stdout, err := cmd.StdoutPipe()
@@ -727,8 +714,7 @@ func TestDAPCmd(t *testing.T) {
 func TestDAPCmdWithNoDebugBinary(t *testing.T) {
 	const listenAddr = "127.0.0.1:40579"
 
-	dlvbin, tmpdir := getDlvBin(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBin(t)
 
 	cmd := exec.Command(dlvbin, "dap", "--log", "--listen", listenAddr)
 	stdout, err := cmd.StdoutPipe()
@@ -793,8 +779,7 @@ func newDAPRemoteClient(t *testing.T, addr string, isDlvAttach bool, isMulti boo
 func TestRemoteDAPClient(t *testing.T) {
 	const listenAddr = "127.0.0.1:40576"
 
-	dlvbin, tmpdir := getDlvBin(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBin(t)
 
 	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
 	cmd := exec.Command(dlvbin, "debug", "--headless", "--log-output=dap", "--log", "--listen", listenAddr)
@@ -847,8 +832,7 @@ func closeDAPRemoteMultiClient(t *testing.T, c *daptest.Client, expectStatus str
 func TestRemoteDAPClientMulti(t *testing.T) {
 	const listenAddr = "127.0.0.1:40577"
 
-	dlvbin, tmpdir := getDlvBin(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBin(t)
 
 	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
 	cmd := exec.Command(dlvbin, "debug", "--headless", "--accept-multiclient", "--log-output=debugger", "--log", "--listen", listenAddr)
@@ -915,8 +899,7 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 func TestRemoteDAPClientAfterContinue(t *testing.T) {
 	const listenAddr = "127.0.0.1:40578"
 
-	dlvbin, tmpdir := getDlvBin(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBin(t)
 
 	fixture := protest.BuildFixture("loopprog", 0)
 	cmd := exec.Command(dlvbin, "exec", fixture.Path, "--headless", "--continue", "--accept-multiclient", "--log-output=debugger,dap", "--log", "--listen", listenAddr)
@@ -977,8 +960,7 @@ func TestDAPCmdWithClient(t *testing.T) {
 	}
 	defer listener.Close()
 
-	dlvbin, tmpdir := getDlvBin(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBin(t)
 
 	cmd := exec.Command(dlvbin, "dap", "--log-output=dap", "--log", "--client-addr", listener.Addr().String())
 	buf := &bytes.Buffer{}
@@ -1012,13 +994,12 @@ func TestDAPCmdWithClient(t *testing.T) {
 }
 
 func TestTrace(t *testing.T) {
-	dlvbin, tmpdir := getDlvBin(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBin(t)
 
 	expected := []byte("> goroutine(1): main.foo(99, 9801)\n>> goroutine(1): => (9900)\n")
 
 	fixtures := protest.FindFixturesDir()
-	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(tmpdir, "__debug"), filepath.Join(fixtures, "issue573.go"), "foo")
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "issue573.go"), "foo")
 	rdr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
 	defer rdr.Close()
@@ -1036,9 +1017,32 @@ func TestTrace(t *testing.T) {
 	cmd.Wait()
 }
 
+func TestTrace2(t *testing.T) {
+	dlvbin := getDlvBin(t)
+
+	expected := []byte("> goroutine(1): main.callme(2)\n>> goroutine(1): => (4)\n")
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "traceprog.go"), "callme")
+	rdr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	cmd.Dir = filepath.Join(fixtures, "buildtest")
+
+	assertNoError(cmd.Start(), t, "running trace")
+
+	output, err := ioutil.ReadAll(rdr)
+	assertNoError(err, t, "ReadAll")
+
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
+	}
+	assertNoError(cmd.Wait(), t, "cmd.Wait()")
+}
+
 func TestTraceMultipleGoroutines(t *testing.T) {
-	dlvbin, tmpdir := getDlvBin(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBin(t)
 
 	// TODO(derekparker) this test has to be a bit vague to avoid flakyness.
 	// I think a future improvement could be to use regexp captures to match the
@@ -1047,7 +1051,7 @@ func TestTraceMultipleGoroutines(t *testing.T) {
 	expected2 := []byte("=> (0)\n")
 
 	fixtures := protest.FindFixturesDir()
-	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(tmpdir, "__debug"), filepath.Join(fixtures, "goroutines-trace.go"), "callme")
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "goroutines-trace.go"), "callme")
 	rdr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
 	defer rdr.Close()
@@ -1077,8 +1081,7 @@ func TestTracePid(t *testing.T) {
 		}
 	}
 
-	dlvbin, tmpdir := getDlvBin(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBin(t)
 
 	expected := []byte("goroutine(1): main.A()\n>> goroutine(1): => ()\n")
 
@@ -1111,14 +1114,13 @@ func TestTracePid(t *testing.T) {
 }
 
 func TestTraceBreakpointExists(t *testing.T) {
-	dlvbin, tmpdir := getDlvBin(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBin(t)
 
 	fixtures := protest.FindFixturesDir()
 	// We always set breakpoints on some runtime functions at startup, so this would return with
 	// a breakpoints exists error.
 	// TODO: Perhaps we shouldn't be setting these default breakpoints in trace mode, however.
-	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(tmpdir, "__debug"), filepath.Join(fixtures, "issue573.go"), "runtime.*")
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "issue573.go"), "runtime.*")
 	rdr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
 	defer rdr.Close()
@@ -1138,11 +1140,10 @@ func TestTraceBreakpointExists(t *testing.T) {
 }
 
 func TestTracePrintStack(t *testing.T) {
-	dlvbin, tmpdir := getDlvBin(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBin(t)
 
 	fixtures := protest.FindFixturesDir()
-	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(tmpdir, "__debug"), "--stack", "2", filepath.Join(fixtures, "issue573.go"), "foo")
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), "--stack", "2", filepath.Join(fixtures, "issue573.go"), "foo")
 	rdr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
 	defer rdr.Close()
@@ -1178,13 +1179,12 @@ func TestTraceEBPF(t *testing.T) {
 		t.Skip("test must be run as root")
 	}
 
-	dlvbin, tmpdir := getDlvBinEBPF(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBinEBPF(t)
 
 	expected := []byte("> (1) main.foo(99, 9801)\n=> \"9900\"")
 
 	fixtures := protest.FindFixturesDir()
-	cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(tmpdir, "__debug"), filepath.Join(fixtures, "issue573.go"), "foo")
+	cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "issue573.go"), "foo")
 	rdr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
 	defer rdr.Close()
@@ -1218,8 +1218,7 @@ func TestTraceEBPF2(t *testing.T) {
 		t.Skip("test must be run as root")
 	}
 
-	dlvbin, tmpdir := getDlvBinEBPF(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBinEBPF(t)
 
 	expected := []byte(`> (1) main.callme(10)
 > (1) main.callme(9)
@@ -1245,7 +1244,7 @@ func TestTraceEBPF2(t *testing.T) {
 => "100"`)
 
 	fixtures := protest.FindFixturesDir()
-	cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(tmpdir, "__debug"), filepath.Join(fixtures, "ebpf_trace.go"), "main.callme")
+	cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "ebpf_trace.go"), "main.callme")
 	rdr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
 	defer rdr.Close()
@@ -1262,8 +1261,7 @@ func TestTraceEBPF2(t *testing.T) {
 }
 
 func TestDlvTestChdir(t *testing.T) {
-	dlvbin, tmpdir := getDlvBin(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBin(t)
 
 	fixtures := protest.FindFixturesDir()
 
@@ -1295,8 +1293,7 @@ func TestDlvTestChdir(t *testing.T) {
 }
 
 func TestVersion(t *testing.T) {
-	dlvbin, tmpdir := getDlvBin(t)
-	defer os.RemoveAll(tmpdir)
+	dlvbin := getDlvBin(t)
 
 	got, err := exec.Command(dlvbin, "version", "-v").CombinedOutput()
 	if err != nil {

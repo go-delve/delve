@@ -13,8 +13,8 @@ import (
 	"runtime"
 	"testing"
 
+	pdwarf "github.com/go-delve/delve/pkg/dwarf"
 	"github.com/go-delve/delve/pkg/dwarf/leb128"
-	"github.com/go-delve/delve/pkg/dwarf/util"
 )
 
 func slurpGzip(path string) ([]byte, error) {
@@ -139,7 +139,7 @@ func TestMultipleSequences(t *testing.T) {
 		instr.WriteByte(0)
 		leb128.EncodeUnsigned(instr, 9) // 1 + ptr_size
 		instr.WriteByte(DW_LINE_set_address)
-		util.WriteUint(instr, binary.LittleEndian, ptrSize, addr)
+		pdwarf.WriteUint(instr, binary.LittleEndian, ptrSize, addr)
 	}
 
 	write_DW_LNS_copy := func() {

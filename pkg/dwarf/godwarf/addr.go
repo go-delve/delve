@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 
-	"github.com/go-delve/delve/pkg/dwarf/util"
+	"github.com/go-delve/delve/pkg/dwarf"
 )
 
 // DebugAddrSection represents the debug_addr section of DWARFv5.
@@ -22,7 +22,7 @@ func ParseAddr(data []byte) *DebugAddrSection {
 		return nil
 	}
 	r := &DebugAddrSection{data: data}
-	_, dwarf64, _, byteOrder := util.ReadDwarfLengthVersion(data)
+	_, dwarf64, _, byteOrder := dwarf.ReadDwarfLengthVersion(data)
 	r.byteOrder = byteOrder
 	data = data[6:]
 	if dwarf64 {
@@ -56,5 +56,5 @@ func (addr *DebugAddr) Get(idx uint64) (uint64, error) {
 		return 0, errors.New("debug_addr section not present")
 	}
 	off := idx*uint64(addr.ptrSz) + addr.addrBase
-	return util.ReadUintRaw(bytes.NewReader(addr.data[off:]), addr.byteOrder, addr.ptrSz)
+	return dwarf.ReadUintRaw(bytes.NewReader(addr.data[off:]), addr.byteOrder, addr.ptrSz)
 }

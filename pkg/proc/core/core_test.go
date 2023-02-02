@@ -201,11 +201,7 @@ func TestSplicedReader(t *testing.T) {
 func withCoreFile(t *testing.T, name, args string) *proc.Target {
 	// This is all very fragile and won't work on hosts with non-default core patterns.
 	// Might be better to check in the binary and core?
-	tempDir, err := ioutil.TempDir("", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	test.PathsToRemove = append(test.PathsToRemove, tempDir)
+	tempDir := t.TempDir()
 	var buildFlags test.BuildFlags
 	if buildMode == "pie" {
 		buildFlags = test.BuildModePIE

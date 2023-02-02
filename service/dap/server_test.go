@@ -6739,7 +6739,7 @@ func (s *MultiClientCloseServerMock) verifyStopped(t *testing.T) {
 }
 
 // TestAttachRemoteMultiClientDisconnect tests that that remote attach doesn't take down
-// the server in multi-client mode unless terminateDebuggee is explicitely set.
+// the server in multi-client mode unless terminateDebuggee is explicitly set.
 func TestAttachRemoteMultiClientDisconnect(t *testing.T) {
 	closingClientSessionOnly := fmt.Sprintf(daptest.ClosingClient, "halted")
 	detachingAndTerminating := "Detaching and terminating target process"

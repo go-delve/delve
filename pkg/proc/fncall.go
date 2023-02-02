@@ -1248,9 +1248,17 @@ func debugCallProtocolReg(archName string, version int) (uint64, bool) {
 	}
 }
 
-type fakeEntry map[dwarf.Attr]interface{}
+type fakeEntry map[dwarf.Attr]*dwarf.Field
 
 func (e fakeEntry) Val(attr dwarf.Attr) interface{} {
+	if e[attr] == nil {
+		return nil
+	}
+
+	return e[attr].Val
+}
+
+func (e fakeEntry) AttrField(attr dwarf.Attr) *dwarf.Field {
 	return e[attr]
 }
 
@@ -1273,11 +1281,11 @@ func regabiMallocgcWorkaround(bi *BinaryInfo) ([]*godwarf.Tree, error) {
 		if err1 != nil {
 			return nil
 		}
-		var e fakeEntry = map[dwarf.Attr]interface{}{
-			dwarf.AttrName:     name,
-			dwarf.AttrType:     typ.Common().Offset,
-			dwarf.AttrLocation: []byte{byte(op.DW_OP_reg0) + byte(reg)},
-			dwarf.AttrVarParam: isret,
+		var e fakeEntry = map[dwarf.Attr]*dwarf.Field{
+			dwarf.AttrName:     &dwarf.Field{Attr: dwarf.AttrName, Val: name, Class: dwarf.ClassString},
+			dwarf.AttrType:     &dwarf.Field{Attr: dwarf.AttrType, Val: typ.Common().Offset, Class: dwarf.ClassReference},
+			dwarf.AttrLocation: &dwarf.Field{Attr: dwarf.AttrLocation, Val: []byte{byte(op.DW_OP_reg0) + byte(reg)}, Class: dwarf.ClassBlock},
+			dwarf.AttrVarParam: &dwarf.Field{Attr: dwarf.AttrVarParam, Val: isret, Class: dwarf.ClassFlag},
 		}
 
 		return &godwarf.Tree{
