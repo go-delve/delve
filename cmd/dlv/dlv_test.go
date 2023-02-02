@@ -1038,7 +1038,7 @@ func TestTrace2(t *testing.T) {
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
 	}
-	cmd.Wait()
+	assertNoError(cmd.Wait(), t, "cmd.Wait()")
 }
 
 func TestTraceMultipleGoroutines(t *testing.T) {
