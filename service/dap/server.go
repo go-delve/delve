@@ -1136,37 +1136,32 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	if redirected {
 		redirects, err := generateStdioTempPipes()
 		if err != nil {
-			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
+			s.sendShowUserErrorResponse(request.Request, InternalError, "Internal Error",
 				fmt.Sprintf("failed to generate stdio pipes - %v", err))
 			return
 		}
 
 		s.config.Debugger.Redirects[1] = redirects[0]
 		s.config.Debugger.Redirects[2] = redirects[1]
-		go func() { // os.OpenFile() will block
-			stdoutFile, err := os.OpenFile(redirects[0], os.O_RDONLY, os.ModeNamedPipe)
-			if err != nil {
-				s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
+		go func() {
+			if err = ReadRedirect(redirects[0], func(reader io.Reader) {
+				readerFunc(reader, "stdout")
+			}); err != nil {
+				s.sendShowUserErrorResponse(request.Request, InternalError, "Internal Error",
 					fmt.Sprintf("failed to open stdout pipe - %v", err))
 				return
 			}
 
-			stderrFile, err := os.OpenFile(redirects[1], os.O_RDONLY, os.ModeNamedPipe)
-			if err != nil {
+		}()
+
+		go func() {
+			if err = ReadRedirect(redirects[1], func(reader io.Reader) {
+				readerFunc(reader, "stderr")
+			}); err != nil {
 				s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
 					fmt.Sprintf("failed to open stderr pipe - %v", err))
 				return
 			}
-
-			go func() {
-				readerFunc(stdoutFile, "stdout")
-				_ = os.Remove(redirects[0])
-			}()
-
-			go func() {
-				readerFunc(stderrFile, "stderr")
-				_ = os.Remove(redirects[1])
-			}()
 		}()
 	}
 

@@ -6,6 +6,8 @@ package dap
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -35,4 +37,16 @@ func generateStdioTempPipes() (res [2]string, err error) {
 	res[0] = stdoutPath
 	res[1] = stderrPath
 	return res, nil
+}
+
+func ReadRedirect(path string, f func(reader io.Reader)) error {
+	fmt.Println("qq")
+	stdioFile, err := os.OpenFile(path, os.O_RDONLY, os.ModeNamedPipe)
+	if err != nil {
+		return err
+	}
+
+	f(stdioFile)
+	_ = os.Remove(path)
+	return nil
 }
