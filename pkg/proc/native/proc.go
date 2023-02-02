@@ -5,6 +5,7 @@ import (
 	"runtime"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/util"
 )
 
 // Process represents all of the information the debugger
@@ -324,7 +325,11 @@ func openRedirects(redirects [3]string, foreground bool) (stdin, stdout, stderr 
 			return dflt
 		}
 		var f *os.File
-		f, err = os.Create(path)
+		if pipe, ok := util.GetRedirectStrore().Load(path); ok {
+			f = pipe.Writer
+		} else {
+			f, err = os.Create(path)
+		}
 		if f != nil {
 			toclose = append(toclose, f)
 		}

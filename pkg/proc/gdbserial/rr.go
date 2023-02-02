@@ -14,7 +14,6 @@ import (
 
 	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/proc"
-	"github.com/go-delve/delve/pkg/util"
 )
 
 // RecordAsync configures rr to record the execution of the specified
@@ -86,13 +85,7 @@ func openRedirects(redirects [3]string, quiet bool) (stdin, stdout, stderr *os.F
 		}
 
 		var f *os.File
-
-		if pipe, ok := util.GetRedirectStrore().Load(path); ok {
-			f = pipe.Writer
-		} else {
-			f, err = os.Create(path)
-		}
-
+		f, err = os.Create(path)
 		if f != nil {
 			toclose = append(toclose, f)
 		}
