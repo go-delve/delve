@@ -168,6 +168,9 @@ type Session struct {
 
 	// stderrReader the program's stderr.
 	stderrReader io.ReadCloser
+
+	// wg the WaitGroup that needs to wait before sending a terminated event.
+	wg sync.WaitGroup
 }
 
 type outputMode int8
@@ -804,6 +807,13 @@ func (s *Session) handleRequest(request dap.Message) {
 }
 
 func (s *Session) send(message dap.Message) {
+	if event, ok := message.(*dap.OutputEvent); ok {
+		if event.GetEvent().Event == "terminated" {
+			// wait for all tasks(output redirects) to finish
+			s.wg.Wait()
+		}
+	}
+
 	jsonmsg, _ := json.Marshal(message)
 	s.config.log.Debug("[-> to client]", string(jsonmsg))
 	// TODO(polina): consider using a channel for all the sends and to have a dedicated
@@ -1106,18 +1116,17 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 
 		// Start the program on a different goroutine, so we can listen for disconnect request.
 		go func() {
-			wg := &sync.WaitGroup{}
 			if redirected {
-				wg.Add(1)
+				s.wg.Add(1)
 				go func() {
+					defer s.wg.Done()
 					readerFunc(s.stdoutReader, "stdout")
-					wg.Done()
 				}()
 
-				wg.Add(1)
+				s.wg.Add(1)
 				go func() {
+					defer s.wg.Done()
 					readerFunc(s.stderrReader, "stderr")
-					wg.Done()
 				}()
 				// Wait for the input and output to be read
 			}
@@ -1125,7 +1134,6 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 				s.config.log.Debugf("program exited with error: %v", err)
 			}
 
-			wg.Wait()
 			close(s.noDebugProcess.exited)
 			s.logToConsole(proc.ErrProcessExited{Pid: cmd.ProcessState.Pid(), Status: cmd.ProcessState.ExitCode()}.Error())
 			s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
@@ -1143,7 +1151,9 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 
 		s.config.Debugger.Redirects[1] = redirects[0]
 		s.config.Debugger.Redirects[2] = redirects[1]
+		s.wg.Add(1)
 		go func() {
+			defer s.wg.Done()
 			if err = ReadRedirect(redirects[0], func(reader io.Reader) {
 				readerFunc(reader, "stdout")
 			}); err != nil {
@@ -1153,8 +1163,9 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			}
 
 		}()
-
+		s.wg.Add(1)
 		go func() {
+			defer s.wg.Done()
 			if err = ReadRedirect(redirects[1], func(reader io.Reader) {
 				readerFunc(reader, "stderr")
 			}); err != nil {
