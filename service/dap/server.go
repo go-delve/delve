@@ -405,7 +405,7 @@ func (s *Session) Close() {
 	// can send client notifications.
 	// Unless Stop() was called after read loop in ServeDAPCodec()
 	// returned, this will result in a closed connection error
-	// on next read, breaking out the read loop andd
+	// on next read, breaking out the read loop and
 	// allowing the run goroutinee to exit.
 	// This connection is closed here and in serveDAPCodec().
 	// If this was a forced shutdown, external stop logic can close this first.
@@ -1775,7 +1775,7 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 			s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportTerminateDebuggee: true}}})
 			// TODO(polina): support SupportSuspendDebuggee when available
 		} else if s.config.Debugger.AttachPid > 0 {
-			// User can stop debugger with process or leave the processs running
+			// User can stop debugger with process or leave the process running
 			s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportTerminateDebuggee: true}}})
 		} // else program was launched and the only option will be to stop both
 	default:
@@ -2743,7 +2743,7 @@ func (s *Session) doCall(goid, frame int, expr string) (*api.DebuggerState, []*p
 	// After the call is done, the goroutine where we injected the call should
 	// return to the original stopped line with return values. However,
 	// it is not guaranteed to be selected due to the possibility of the
-	// of simultaenous breakpoints. Therefore, we check all threads.
+	// of simultaneous breakpoints. Therefore, we check all threads.
 	var retVars []*proc.Variable
 	found := false
 	for _, t := range state.Threads {
