@@ -732,10 +732,9 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		err = cmds.Call("continue", t)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			if strings.Contains(err.Error(), "exited") {
-				return 0
+			if !strings.Contains(err.Error(), "exited") {
+				return 1
 			}
-			return 1
 		}
 		return 0
 	}()
