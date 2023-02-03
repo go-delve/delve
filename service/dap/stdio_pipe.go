@@ -6,7 +6,6 @@ package dap
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -40,7 +39,6 @@ func generateStdioTempPipes() (res [2]string, err error) {
 }
 
 func ReadRedirect(path string, f func(reader io.Reader)) error {
-	fmt.Println("qq")
 	stdioFile, err := os.OpenFile(path, os.O_RDONLY, os.ModeNamedPipe)
 	if err != nil {
 		return err
