@@ -17,7 +17,8 @@ dlv replay [trace directory] [flags]
 ### Options
 
 ```
-  -h, --help   help for replay
+  -h, --help            help for replay
+  -p, --onprocess int   Pass onprocess pid to rr.
 ```
 
 ### Options inherited from parent commands
