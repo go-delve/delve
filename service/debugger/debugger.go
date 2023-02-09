@@ -30,6 +30,7 @@ import (
 	"github.com/go-delve/delve/pkg/proc/core"
 	"github.com/go-delve/delve/pkg/proc/gdbserial"
 	"github.com/go-delve/delve/pkg/proc/native"
+	"github.com/go-delve/delve/pkg/proc/redirect"
 	"github.com/go-delve/delve/service/api"
 	"github.com/sirupsen/logrus"
 )
@@ -139,6 +140,9 @@ type Config struct {
 
 	// Redirects specifies redirect rules for stdin, stdout and stderr
 	Redirects [3]string
+
+	// Redirects specifies redirect rules for stdin, stdout and stderr
+	Redirect redirect.Redirect
 
 	// DisableASLR disables ASLR
 	DisableASLR bool
@@ -263,9 +267,9 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 
 	switch d.config.Backend {
 	case "native":
-		return native.Launch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects)
+		return native.Launch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirect)
 	case "lldb":
-		return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects))
+		return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirect))
 	case "rr":
 		if d.target != nil {
 			// restart should not call us if the backend is 'rr'
@@ -307,9 +311,9 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 
 	case "default":
 		if runtime.GOOS == "darwin" {
-			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects))
+			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirect))
 		}
-		return native.Launch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects)
+		return native.Launch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirect)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", d.config.Backend)
 	}

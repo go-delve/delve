@@ -10,12 +10,19 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"github.com/go-delve/delve/pkg/proc/redirect"
 )
 
-func generateStdioTempPipes() (res [2]string, err error) {
+type redirector struct {
+	stdoutPath string
+	stderrPath string
+}
+
+func NewRedirector() (red *redirector, err error) {
 	r := make([]byte, 4)
 	if _, err := rand.Read(r); err != nil {
-		return res, err
+		return nil, err
 	}
 
 	var (
@@ -25,26 +32,54 @@ func generateStdioTempPipes() (res [2]string, err error) {
 	)
 
 	if err := syscall.Mkfifo(stdoutPath, 0o600); err != nil {
-		return res, err
+		return nil, err
 	}
 
 	if err := syscall.Mkfifo(stderrPath, 0o600); err != nil {
 		_ = os.Remove(stdoutPath)
-		return res, err
+		return nil, err
 	}
 
-	res[0] = stdoutPath
-	res[1] = stderrPath
-	return res, nil
+	return &redirector{
+		stdoutPath: stdoutPath,
+		stderrPath: stderrPath,
+	}, nil
 }
 
-func ReadRedirect(path string, f func(reader io.Reader)) error {
-	stdioFile, err := os.OpenFile(path, os.O_RDONLY, os.ModeNamedPipe)
+// RedirectFile
+func (r *redirector) RedirectReaderFile() (readerFile [3]*os.File, err error) {
+	return readerFile, redirect.ErrorNotImplemented
+}
+
+// RedirectWriterFile
+func (r *redirector) RedirectWriterFile() (writerFile [3]*os.File, err error) {
+	return writerFile, redirect.ErrorNotImplemented
+}
+
+// RedirectPath
+func (r *redirector) RedirectPath() (redirects [3]string, err error) {
+	// TODO support stdin
+	return [3]string{"", r.stdoutPath, r.stderrPath}, nil
+}
+
+// ReStart
+func (r *redirector) ReStart() error {
+	panic("not implemented") // TODO: Implement
+}
+
+func (r *redirector) ReadRedirect(stdType string, f func(reader io.Reader)) error {
+	path := r.stderrPath
+	if stdType == "stdout" {
+		path = r.stdoutPath
+	}
+
+	defer os.Remove(path)
+
+	stdoutFile, err := os.OpenFile(path, os.O_RDONLY, os.ModeNamedPipe)
 	if err != nil {
 		return err
 	}
 
-	f(stdioFile)
-	_ = os.Remove(path)
+	f(stdoutFile)
 	return nil
 }

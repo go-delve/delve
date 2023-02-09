@@ -5,44 +5,64 @@ package dap
 
 import (
 	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 
+	"github.com/go-delve/delve/pkg/proc/redirect"
 	"github.com/go-delve/delve/pkg/util"
 )
 
-func generateStdioTempPipes() (res [2]string, err error) {
+type redirector struct {
+	stdoutWriterFile *os.File
+	stderrWriterFile *os.File
+	stdoutReaderFile *os.File
+	stderrReaderFile *os.File
+}
+
+func NewRedirector() (red *redirector, err error) {
 	r := make([]byte, 4)
 	if _, err := rand.Read(r); err != nil {
-		return res, err
+		return nil, err
 	}
 
-	var (
-		prefix     = hex.EncodeToString(r)
-		stdoutPath = prefix + "stdout"
-		stderrPath = prefix + "stderr"
-	)
-
-	store := util.GetRedirectStrore()
 	stdoutReader, stdoutWriter, err := os.Pipe()
 	if err != nil {
-		return res, err
+		return nil, err
 	}
-
-	store.Store(stdoutPath, &util.Pipe{Reader: stdoutReader, Writer: stdoutWriter})
 
 	stderrReader, stderrWriter, err := os.Pipe()
 	if err != nil {
-		return res, err
+		return nil, err
 	}
 
-	store.Store(stderrPath, &util.Pipe{Reader: stderrReader, Writer: stderrWriter})
+	return &redirector{
+		stdoutWriterFile: stdoutWriter,
+		stderrWriterFile: stderrWriter,
+		stdoutReaderFile: stdoutReader,
+		stderrReaderFile: stderrReader,
+	}, nil
 
-	res[0] = stdoutPath
-	res[1] = stderrPath
-	return res, nil
+}
+
+// RedirectPath
+func (r *redirector) RedirectPath() (redirects [3]string, err error) {
+	return redirects, redirect.ErrorNotImplemented
+}
+
+// RedirectFile
+func (r *redirector) RedirectReaderFile() (readerFile [3]*os.File, err error) {
+	return [3]*os.File{nil, r.stdoutReaderFile, r.stderrReaderFile}, nil
+}
+
+// RedirectWriterFile
+func (r *redirector) RedirectWriterFile() (writerFile [3]*os.File, err error) {
+	return [3]*os.File{nil, r.stdoutWriterFile, r.stderrWriterFile}, nil
+}
+
+// ReStart
+func (r *redirector) ReStart() error {
+	panic("not implemented") // TODO: Implement
 }
 
 func ReadRedirect(path string, f func(reader io.Reader)) error {
@@ -52,5 +72,14 @@ func ReadRedirect(path string, f func(reader io.Reader)) error {
 	}
 
 	f(pipe.Reader)
+	return nil
+}
+
+func (r *redirector) ReadRedirect(stdType string, f func(reader io.Reader)) error {
+	if stdType == "stdout" {
+		f(r.stdoutReaderFile)
+	} else {
+		f(r.stderrReaderFile)
+	}
 	return nil
 }
