@@ -4795,7 +4795,7 @@ func TestListPackagesBuildInfo(t *testing.T) {
 			if fidx < 0 {
 				continue
 			}
-			if !strings.HasSuffix(strings.Replace(pkg.DirectoryPath, "\\", "/", -1), pkg.ImportPath[fidx:]) {
+			if !strings.HasSuffix(strings.ReplaceAll(pkg.DirectoryPath, "\\", "/"), pkg.ImportPath[fidx:]) {
 				t.Errorf("unexpected suffix: %q %q", pkg.ImportPath, pkg.DirectoryPath)
 			}
 		}
@@ -5872,7 +5872,7 @@ func TestNilPtrDerefInBreakInstr(t *testing.T) {
 
 	withTestProcess("asmnilptr/", t, func(p *proc.Target, fixture protest.Fixture) {
 		f := filepath.Join(fixture.BuildDir, asmfile)
-		f = strings.Replace(f, "\\", "/", -1)
+		f = strings.ReplaceAll(f, "\\", "/")
 		setFileBreakpoint(p, t, f, 5)
 		t.Logf("first continue")
 		assertNoError(p.Continue(), t, "Continue()")

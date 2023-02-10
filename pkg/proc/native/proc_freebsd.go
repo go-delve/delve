@@ -146,7 +146,7 @@ func initialize(dbp *nativeProcess) error {
 	comm, _ := C.find_command_name(C.int(dbp.pid))
 	defer C.free(unsafe.Pointer(comm))
 	comm_str := C.GoString(comm)
-	dbp.os.comm = strings.Replace(string(comm_str), "%", "%%", -1)
+	dbp.os.comm = strings.ReplaceAll(string(comm_str), "%", "%%")
 	return nil
 }
 

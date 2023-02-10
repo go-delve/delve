@@ -1899,8 +1899,8 @@ func (bi *BinaryInfo) macOSDebugFrameBugWorkaround() {
 
 // Do not call this function directly it isn't able to deal correctly with package paths
 func (bi *BinaryInfo) findType(name string) (godwarf.Type, error) {
-	name = strings.Replace(name, "interface{", "interface {", -1)
-	name = strings.Replace(name, "struct{", "struct {", -1)
+	name = strings.ReplaceAll(name, "interface{", "interface {")
+	name = strings.ReplaceAll(name, "struct{", "struct {")
 	ref, found := bi.types[name]
 	if !found {
 		return nil, reader.ErrTypeNotFound
@@ -2096,7 +2096,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 			}
 			gopkg, _ := entry.Val(godwarf.AttrGoPackageName).(string)
 			if cu.isgo && gopkg != "" {
-				bi.PackageMap[gopkg] = append(bi.PackageMap[gopkg], escapePackagePath(strings.Replace(cu.name, "\\", "/", -1)))
+				bi.PackageMap[gopkg] = append(bi.PackageMap[gopkg], escapePackagePath(strings.ReplaceAll(cu.name, "\\", "/")))
 			}
 			image.compileUnits = append(image.compileUnits, cu)
 			if entry.Children {
@@ -2515,7 +2515,7 @@ func escapePackagePath(pkg string) string {
 	if slash < 0 {
 		slash = 0
 	}
-	return pkg[:slash] + strings.Replace(pkg[slash:], ".", "%2e", -1)
+	return pkg[:slash] + strings.ReplaceAll(pkg[slash:], ".", "%2e")
 }
 
 // Looks up symbol (either functions or global variables) at address addr.
@@ -2566,7 +2566,7 @@ func (bi *BinaryInfo) ListPackagesBuildInfo(includeFiles bool) []*PackageBuildIn
 			continue
 		}
 
-		ip := strings.Replace(cu.name, "\\", "/", -1)
+		ip := strings.ReplaceAll(cu.name, "\\", "/")
 		if _, ok := m[ip]; !ok {
 			path := cu.lineInfo.FirstFile()
 			if ext := filepath.Ext(path); ext != ".go" && ext != ".s" {
