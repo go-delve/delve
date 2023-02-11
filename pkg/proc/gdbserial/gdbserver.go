@@ -84,7 +84,6 @@ import (
 	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 	"github.com/go-delve/delve/pkg/proc/linutil"
 	"github.com/go-delve/delve/pkg/proc/macutil"
-	"github.com/go-delve/delve/pkg/proc/redirect"
 	isatty "github.com/mattn/go-isatty"
 )
 
@@ -451,7 +450,7 @@ func getLdEnvVars() []string {
 // LLDBLaunch starts an instance of lldb-server and connects to it, asking
 // it to launch the specified target program with the specified arguments
 // (cmd) on the specified directory wd.
-func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []string, tty string, redirects redirect.Redirect) (*proc.Target, error) {
+func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []string, tty string, redirects proc.Redirect) (*proc.Target, error) {
 	if runtime.GOOS == "windows" {
 		return nil, ErrUnsupportedOS
 	}
@@ -484,20 +483,11 @@ func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs [
 		} else {
 			found := [3]bool{}
 			names := [3]string{"stdin", "stdout", "stderr"}
-			rds := [3]string{}
-			if paths, err := redirects.RedirectPath(); err != nil {
-				if !errors.Is(redirect.ErrorNotImplemented, err) {
-					return nil, err
-				}
-			} else {
-				rds = paths
-			}
-
-			for i := range rds {
-				if rds[i] != "" {
+			for i := range redirects.Paths {
+				if redirects.Paths[i] != "" {
 					found[i] = true
 					hasRedirects = true
-					args = append(args, fmt.Sprintf("--%s-path", names[i]), rds[i])
+					args = append(args, fmt.Sprintf("--%s-path", names[i]), redirects.Paths[i])
 				}
 			}
 

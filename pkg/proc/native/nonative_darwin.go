@@ -11,13 +11,12 @@ import (
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/amd64util"
 	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
-	"github.com/go-delve/delve/pkg/proc/redirect"
 )
 
 var ErrNativeBackendDisabled = errors.New("native backend disabled during compilation")
 
 // Launch returns ErrNativeBackendDisabled.
-func Launch(_ []string, _ string, _ proc.LaunchFlags, _ []string, _ string, _ redirect.Redirect) (*proc.Target, error) {
+func Launch(_ []string, _ string, _ proc.LaunchFlags, _ []string, _ string, _ proc.Redirect) (*proc.Target, error) {
 	return nil, ErrNativeBackendDisabled
 }
 

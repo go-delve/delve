@@ -12,7 +12,6 @@ import (
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/gdbserial"
-	"github.com/go-delve/delve/pkg/proc/redirect"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 )
 
@@ -31,7 +30,7 @@ func withTestRecording(name string, t testing.TB, fn func(grp *proc.TargetGroup,
 		t.Skip("test skipped, rr not found")
 	}
 	t.Log("recording")
-	p, tracedir, err := gdbserial.RecordAndReplay([]string{fixture.Path}, ".", true, []string{}, redirect.NewRedirectPath([3]string{}))
+	p, tracedir, err := gdbserial.RecordAndReplay([]string{fixture.Path}, ".", true, []string{}, proc.NewEmptyRedirectByPath())
 	if err != nil {
 		t.Fatal("Launch():", err)
 	}

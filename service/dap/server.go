@@ -1145,18 +1145,18 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 
 	if redirected {
-		redirector, err := NewRedirector()
+		redirects, err := NewRedirector()
 		if err != nil {
 			s.sendShowUserErrorResponse(request.Request, InternalError, "Internal Error",
 				fmt.Sprintf("failed to generate stdio pipes - %v", err))
 			return
 		}
 
-		s.config.Debugger.Redirect = redirector
+		s.config.Debugger.Redirect = redirects
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
-			if err = redirector.ReadRedirect("stdout", func(reader io.Reader) {
+			if err = ReadRedirect("stdout", redirects, func(reader io.Reader) {
 				readerFunc(reader, "stdout")
 			}); err != nil {
 				s.sendShowUserErrorResponse(request.Request, InternalError, "Internal Error",
@@ -1168,7 +1168,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		s.wg.Add(1)
 		go func() {
 			defer s.wg.Done()
-			if err = redirector.ReadRedirect("stderr", func(reader io.Reader) {
+			if err = ReadRedirect("stderr", redirects, func(reader io.Reader) {
 				readerFunc(reader, "stderr")
 			}); err != nil {
 				s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",

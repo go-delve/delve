@@ -22,7 +22,6 @@ import (
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 	"github.com/go-delve/delve/pkg/proc/linutil"
-	"github.com/go-delve/delve/pkg/proc/redirect"
 
 	isatty "github.com/mattn/go-isatty"
 )
@@ -63,7 +62,7 @@ func (os *osProcessDetails) Close() {
 // to be supplied to that process. `wd` is working directory of the program.
 // If the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []string, tty string, redirect redirect.Redirect) (*proc.Target, error) {
+func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []string, tty string, redirect proc.Redirect) (*proc.Target, error) {
 	var (
 		process *exec.Cmd
 		err     error

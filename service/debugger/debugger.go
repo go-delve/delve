@@ -30,7 +30,6 @@ import (
 	"github.com/go-delve/delve/pkg/proc/core"
 	"github.com/go-delve/delve/pkg/proc/gdbserial"
 	"github.com/go-delve/delve/pkg/proc/native"
-	"github.com/go-delve/delve/pkg/proc/redirect"
 	"github.com/go-delve/delve/service/api"
 	"github.com/sirupsen/logrus"
 )
@@ -139,10 +138,7 @@ type Config struct {
 	ExecuteKind ExecuteKind
 
 	// Redirects specifies redirect rules for stdin, stdout and stderr
-	Redirects [3]string
-
-	// Redirects specifies redirect rules for stdin, stdout and stderr
-	Redirect redirect.Redirect
+	Redirect proc.Redirect
 
 	// DisableASLR disables ASLR
 	DisableASLR bool
@@ -485,7 +481,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 	}
 	if resetArgs {
 		d.processArgs = append([]string{d.processArgs[0]}, newArgs...)
-		d.config.Redirects = newRedirects
+		d.config.Redirect = proc.NewRedirectByPath(newRedirects)
 	}
 	var p *proc.Target
 	var err error

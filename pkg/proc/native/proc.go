@@ -1,12 +1,10 @@
 package native
 
 import (
-	"errors"
 	"os"
 	"runtime"
 
 	"github.com/go-delve/delve/pkg/proc"
-	"github.com/go-delve/delve/pkg/proc/redirect"
 )
 
 // Process represents all of the information the debugger
@@ -308,7 +306,7 @@ func (dbp *nativeProcess) writeSoftwareBreakpoint(thread *nativeThread, addr uin
 	return err
 }
 
-func openRedirects(redirects redirect.Redirect, foreground bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
+func openRedirects(redirects proc.Redirect, foreground bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
 	var (
 		toclose = []*os.File{}
 	)
@@ -319,35 +317,19 @@ func openRedirects(redirects redirect.Redirect, foreground bool) (stdin, stdout,
 		}
 	}
 
-	writerFiles, err := redirects.RedirectWriterFile()
-	if err == nil {
-		stdin = writerFiles[0]
+	if redirects.Mode == proc.RedirectFileMode {
+		stdin = redirects.WriterFiles[0]
 		if stdin == nil && foreground {
 			stdin = os.Stdin
 		}
-		stdout = writerFiles[1]
-		stderr = writerFiles[2]
+		stdout = redirects.WriterFiles[1]
+		stderr = redirects.WriterFiles[2]
 
 		return stdin, stdout, stderr, closefn, nil
 	}
 
-	if !errors.Is(redirect.ErrorNotImplemented, err) {
-		return nil, nil, nil, nil, err
-	}
-
-	// RedirectWriterFile is not implemented.
-	// use redirect path.
-	redirectPath, err := redirects.RedirectPath()
-	if err != nil {
-		if !errors.Is(redirect.ErrorNotImplemented, err) {
-			return nil, nil, nil, nil, err
-		}
-
-		redirectPath = [3]string{}
-	}
-
-	if redirectPath[0] != "" {
-		stdin, err = os.Open(redirectPath[0])
+	if redirects.Paths[0] != "" {
+		stdin, err = os.Open(redirects.Paths[0])
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
@@ -368,12 +350,12 @@ func openRedirects(redirects redirect.Redirect, foreground bool) (stdin, stdout,
 		return f
 	}
 
-	stdout = create(redirectPath[1], os.Stdout)
+	stdout = create(redirects.Paths[1], os.Stdout)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
 
-	stderr = create(redirectPath[2], os.Stderr)
+	stderr = create(redirects.Paths[2], os.Stderr)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

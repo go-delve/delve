@@ -11,18 +11,13 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/go-delve/delve/pkg/proc/redirect"
+	"github.com/go-delve/delve/pkg/proc"
 )
 
-type redirector struct {
-	stdoutPath string
-	stderrPath string
-}
-
-func NewRedirector() (red *redirector, err error) {
+func NewRedirector() (redirect proc.Redirect, err error) {
 	r := make([]byte, 4)
 	if _, err := rand.Read(r); err != nil {
-		return nil, err
+		return redirect, err
 	}
 
 	var (
@@ -32,45 +27,21 @@ func NewRedirector() (red *redirector, err error) {
 	)
 
 	if err := syscall.Mkfifo(stdoutPath, 0o600); err != nil {
-		return nil, err
+		return redirect, err
 	}
 
 	if err := syscall.Mkfifo(stderrPath, 0o600); err != nil {
 		_ = os.Remove(stdoutPath)
-		return nil, err
+		return redirect, err
 	}
 
-	return &redirector{
-		stdoutPath: stdoutPath,
-		stderrPath: stderrPath,
-	}, nil
+	return proc.NewRedirectByPath([3]string{"", stdoutPath, stderrPath}), nil
 }
 
-// RedirectFile
-func (r *redirector) RedirectReaderFile() (readerFile [3]*os.File, err error) {
-	return readerFile, redirect.ErrorNotImplemented
-}
-
-// RedirectWriterFile
-func (r *redirector) RedirectWriterFile() (writerFile [3]*os.File, err error) {
-	return writerFile, redirect.ErrorNotImplemented
-}
-
-// RedirectPath
-func (r *redirector) RedirectPath() (redirects [3]string, err error) {
-	// TODO support stdin
-	return [3]string{"", r.stdoutPath, r.stderrPath}, nil
-}
-
-// ReStart
-func (r *redirector) ReStart() error {
-	panic("not implemented") // TODO: Implement
-}
-
-func (r *redirector) ReadRedirect(stdType string, f func(reader io.Reader)) error {
-	path := r.stderrPath
-	if stdType == "stdout" {
-		path = r.stdoutPath
+func ReadRedirect(stdType string, redirect proc.Redirect, f func(reader io.Reader)) error {
+	path := redirect.Paths[1]
+	if stdType == "stderr" {
+		path = redirect.Paths[2]
 	}
 
 	defer os.Remove(path)

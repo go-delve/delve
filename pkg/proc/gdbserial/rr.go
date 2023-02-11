@@ -2,7 +2,6 @@ package gdbserial
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -15,14 +14,13 @@ import (
 
 	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/proc"
-	"github.com/go-delve/delve/pkg/proc/redirect"
 )
 
 // RecordAsync configures rr to record the execution of the specified
 // program. Returns a run function which will actually record the program, a
 // stop function which will prematurely terminate the recording of the
 // program.
-func RecordAsync(cmd []string, wd string, quiet bool, redirects redirect.Redirect) (run func() (string, error), stop func() error, err error) {
+func RecordAsync(cmd []string, wd string, quiet bool, redirects proc.Redirect) (run func() (string, error), stop func() error, err error) {
 	if err := checkRRAvailable(); err != nil {
 		return nil, nil, err
 	}
@@ -65,7 +63,7 @@ func RecordAsync(cmd []string, wd string, quiet bool, redirects redirect.Redirec
 	return run, stop, nil
 }
 
-func openRedirects(redirects redirect.Redirect, quiet bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
+func openRedirects(redirects proc.Redirect, quiet bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
 	var (
 		toclose = []*os.File{}
 	)
@@ -76,35 +74,19 @@ func openRedirects(redirects redirect.Redirect, quiet bool) (stdin, stdout, stde
 		}
 	}
 
-	writerFiles, err := redirects.RedirectWriterFile()
-	if err == nil {
-		stdin = writerFiles[0]
-		if stdin == nil && quiet {
+	if redirects.Mode == proc.RedirectFileMode {
+		stdin = redirects.WriterFiles[0]
+		if stdin == nil {
 			stdin = os.Stdin
 		}
-		stdout = writerFiles[1]
-		stderr = writerFiles[2]
+		stdout = redirects.WriterFiles[1]
+		stderr = redirects.WriterFiles[2]
 
 		return stdin, stdout, stderr, closefn, nil
 	}
 
-	if !errors.Is(redirect.ErrorNotImplemented, err) {
-		return nil, nil, nil, nil, err
-	}
-
-	// RedirectWriterFile is not implemented.
-	// use redirect path.
-	redirectPath, err := redirects.RedirectPath()
-	if err != nil {
-		if !errors.Is(redirect.ErrorNotImplemented, err) {
-			return nil, nil, nil, nil, err
-		}
-
-		redirectPath = [3]string{}
-	}
-
-	if redirectPath[0] != "" {
-		stdin, err = os.Open(redirectPath[0])
+	if redirects.Paths[0] != "" {
+		stdin, err = os.Open(redirects.Paths[0])
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
@@ -125,12 +107,12 @@ func openRedirects(redirects redirect.Redirect, quiet bool) (stdin, stdout, stde
 		return f
 	}
 
-	stdout = create(redirectPath[1], os.Stdout)
+	stdout = create(redirects.Paths[1], os.Stdout)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
 
-	stderr = create(redirectPath[2], os.Stderr)
+	stderr = create(redirects.Paths[2], os.Stderr)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -140,7 +122,7 @@ func openRedirects(redirects redirect.Redirect, quiet bool) (stdin, stdout, stde
 
 // Record uses rr to record the execution of the specified program and
 // returns the trace directory's path.
-func Record(cmd []string, wd string, quiet bool, redirects redirect.Redirect) (tracedir string, err error) {
+func Record(cmd []string, wd string, quiet bool, redirects proc.Redirect) (tracedir string, err error) {
 	run, _, err := RecordAsync(cmd, wd, quiet, redirects)
 	if err != nil {
 		return "", err
@@ -307,7 +289,7 @@ func rrParseGdbCommand(line string) rrInit {
 }
 
 // RecordAndReplay acts like calling Record and then Replay.
-func RecordAndReplay(cmd []string, wd string, quiet bool, debugInfoDirs []string, redirects redirect.Redirect) (*proc.Target, string, error) {
+func RecordAndReplay(cmd []string, wd string, quiet bool, debugInfoDirs []string, redirects proc.Redirect) (*proc.Target, string, error) {
 	tracedir, err := Record(cmd, wd, quiet, redirects)
 	if tracedir == "" {
 		return nil, "", err
