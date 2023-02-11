@@ -807,13 +807,6 @@ func (s *Session) handleRequest(request dap.Message) {
 }
 
 func (s *Session) send(message dap.Message) {
-	if event, ok := message.(*dap.OutputEvent); ok {
-		if event.GetEvent().Event == "terminated" {
-			// wait for all tasks(output redirects) to finish
-			s.wg.Wait()
-		}
-	}
-
 	jsonmsg, _ := json.Marshal(message)
 	s.config.log.Debug("[-> to client]", string(jsonmsg))
 	// TODO(polina): consider using a channel for all the sends and to have a dedicated
@@ -1275,15 +1268,17 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 	defer s.mu.Unlock()
 
 	if s.debugger != nil && s.config.AcceptMulti && !request.Arguments.TerminateDebuggee {
-		// This is a multi-use server/debugger, so a disconnect request that doesn't
+		// this is a multi-use server/debugger, so a disconnect request that doesn't
 		// terminate the debuggee should clean up only the client connection and pointer to debugger,
 		// but not the entire server.
 		status := "halted"
 		if s.isRunningCmd() {
 			status = "running"
-		} else if s, err := s.debugger.State(false); processExited(s, err) {
+		} else if state, err := s.debugger.State(false); processExited(state, err) {
 			status = "exited"
+			s.wg.Wait()
 		}
+
 		s.logToConsole(fmt.Sprintf("Closing client session, but leaving multi-client DAP server at %s with debuggee %s", s.config.Listener.Addr().String(), status))
 		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
@@ -1317,6 +1312,7 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 	} else {
 		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 	}
+	s.wg.Wait()
 	// The debugging session has ended, so we send a terminated event.
 	s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 }
@@ -2876,6 +2872,7 @@ func (s *Session) doCall(goid, frame int, expr string) (*api.DebuggerState, []*p
 		GoroutineID:          int64(goid),
 	}, nil)
 	if processExited(state, err) {
+		s.wg.Wait()
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
 		s.send(e)
 		return nil, nil, errors.New("terminated")
