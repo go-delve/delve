@@ -1,11 +1,12 @@
 package native
 
 import (
+	"errors"
 	"os"
 	"runtime"
 
 	"github.com/go-delve/delve/pkg/proc"
-	"github.com/go-delve/delve/pkg/util"
+	"github.com/go-delve/delve/pkg/proc/redirect"
 )
 
 // Process represents all of the information the debugger
@@ -307,11 +308,46 @@ func (dbp *nativeProcess) writeSoftwareBreakpoint(thread *nativeThread, addr uin
 	return err
 }
 
-func openRedirects(redirects [3]string, foreground bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
-	toclose := []*os.File{}
+func openRedirects(redirects redirect.Redirect, foreground bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
+	var (
+		toclose = []*os.File{}
+	)
 
-	if redirects[0] != "" {
-		stdin, err = os.Open(redirects[0])
+	closefn = func() {
+		for _, f := range toclose {
+			_ = f.Close()
+		}
+	}
+
+	writerFiles, err := redirects.RedirectWriterFile()
+	if err == nil {
+		stdin = writerFiles[0]
+		if stdin == nil && foreground {
+			stdin = os.Stdin
+		}
+		stdout = writerFiles[1]
+		stderr = writerFiles[2]
+
+		return stdin, stdout, stderr, closefn, nil
+	}
+
+	if !errors.Is(redirect.ErrorNotImplemented, err) {
+		return nil, nil, nil, nil, err
+	}
+
+	// RedirectWriterFile is not implemented.
+	// use redirect path.
+	redirectPath, err := redirects.RedirectPath()
+	if err != nil {
+		if !errors.Is(redirect.ErrorNotImplemented, err) {
+			return nil, nil, nil, nil, err
+		}
+
+		redirectPath = [3]string{}
+	}
+
+	if redirectPath[0] != "" {
+		stdin, err = os.Open(redirectPath[0])
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
@@ -325,31 +361,21 @@ func openRedirects(redirects [3]string, foreground bool) (stdin, stdout, stderr 
 			return dflt
 		}
 		var f *os.File
-		if pipe, ok := util.GetRedirectStrore().Load(path); ok {
-			f = pipe.Writer
-		} else {
-			f, err = os.Create(path)
-		}
+		f, err = os.Create(path)
 		if f != nil {
 			toclose = append(toclose, f)
 		}
 		return f
 	}
 
-	stdout = create(redirects[1], os.Stdout)
+	stdout = create(redirectPath[1], os.Stdout)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
 
-	stderr = create(redirects[2], os.Stderr)
+	stderr = create(redirectPath[2], os.Stderr)
 	if err != nil {
 		return nil, nil, nil, nil, err
-	}
-
-	closefn = func() {
-		for _, f := range toclose {
-			_ = f.Close()
-		}
 	}
 
 	return stdin, stdout, stderr, closefn, nil

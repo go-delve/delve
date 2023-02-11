@@ -2,6 +2,7 @@ package gdbserial
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -14,13 +15,14 @@ import (
 
 	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/proc/redirect"
 )
 
 // RecordAsync configures rr to record the execution of the specified
 // program. Returns a run function which will actually record the program, a
 // stop function which will prematurely terminate the recording of the
 // program.
-func RecordAsync(cmd []string, wd string, quiet bool, redirects [3]string) (run func() (string, error), stop func() error, err error) {
+func RecordAsync(cmd []string, wd string, quiet bool, redirects redirect.Redirect) (run func() (string, error), stop func() error, err error) {
 	if err := checkRRAvailable(); err != nil {
 		return nil, nil, err
 	}
@@ -63,45 +65,10 @@ func RecordAsync(cmd []string, wd string, quiet bool, redirects [3]string) (run 
 	return run, stop, nil
 }
 
-func openRedirects(redirects [3]string, quiet bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
-	toclose := []*os.File{}
-
-	if redirects[0] != "" {
-		stdin, err = os.Open(redirects[0])
-		if err != nil {
-			return nil, nil, nil, nil, err
-		}
-		toclose = append(toclose, stdin)
-	} else {
-		stdin = os.Stdin
-	}
-
-	create := func(path string, dflt *os.File) *os.File {
-		if path == "" {
-			if quiet {
-				return nil
-			}
-			return dflt
-		}
-
-		var f *os.File
-		f, err = os.Create(path)
-		if f != nil {
-			toclose = append(toclose, f)
-		}
-
-		return f
-	}
-
-	stdout = create(redirects[1], os.Stdout)
-	if err != nil {
-		return nil, nil, nil, nil, err
-	}
-
-	stderr = create(redirects[2], os.Stderr)
-	if err != nil {
-		return nil, nil, nil, nil, err
-	}
+func openRedirects(redirects redirect.Redirect, quiet bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
+	var (
+		toclose = []*os.File{}
+	)
 
 	closefn = func() {
 		for _, f := range toclose {
@@ -109,12 +76,71 @@ func openRedirects(redirects [3]string, quiet bool) (stdin, stdout, stderr *os.F
 		}
 	}
 
+	writerFiles, err := redirects.RedirectWriterFile()
+	if err == nil {
+		stdin = writerFiles[0]
+		if stdin == nil && quiet {
+			stdin = os.Stdin
+		}
+		stdout = writerFiles[1]
+		stderr = writerFiles[2]
+
+		return stdin, stdout, stderr, closefn, nil
+	}
+
+	if !errors.Is(redirect.ErrorNotImplemented, err) {
+		return nil, nil, nil, nil, err
+	}
+
+	// RedirectWriterFile is not implemented.
+	// use redirect path.
+	redirectPath, err := redirects.RedirectPath()
+	if err != nil {
+		if !errors.Is(redirect.ErrorNotImplemented, err) {
+			return nil, nil, nil, nil, err
+		}
+
+		redirectPath = [3]string{}
+	}
+
+	if redirectPath[0] != "" {
+		stdin, err = os.Open(redirectPath[0])
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		toclose = append(toclose, stdin)
+	} else if quiet {
+		stdin = os.Stdin
+	}
+
+	create := func(path string, dflt *os.File) *os.File {
+		if path == "" {
+			return dflt
+		}
+		var f *os.File
+		f, err = os.Create(path)
+		if f != nil {
+			toclose = append(toclose, f)
+		}
+		return f
+	}
+
+	stdout = create(redirectPath[1], os.Stdout)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	stderr = create(redirectPath[2], os.Stderr)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
 	return stdin, stdout, stderr, closefn, nil
 }
 
 // Record uses rr to record the execution of the specified program and
 // returns the trace directory's path.
-func Record(cmd []string, wd string, quiet bool, redirects [3]string) (tracedir string, err error) {
+func Record(cmd []string, wd string, quiet bool, redirects redirect.Redirect) (tracedir string, err error) {
 	run, _, err := RecordAsync(cmd, wd, quiet, redirects)
 	if err != nil {
 		return "", err
@@ -281,7 +307,7 @@ func rrParseGdbCommand(line string) rrInit {
 }
 
 // RecordAndReplay acts like calling Record and then Replay.
-func RecordAndReplay(cmd []string, wd string, quiet bool, debugInfoDirs []string, redirects [3]string) (*proc.Target, string, error) {
+func RecordAndReplay(cmd []string, wd string, quiet bool, debugInfoDirs []string, redirects redirect.Redirect) (*proc.Target, string, error) {
 	tracedir, err := Record(cmd, wd, quiet, redirects)
 	if tracedir == "" {
 		return nil, "", err

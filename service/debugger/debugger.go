@@ -276,7 +276,7 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 			panic("internal error: call to Launch with rr backend and target already exists")
 		}
 
-		run, stop, err := gdbserial.RecordAsync(processArgs, wd, false, d.config.Redirects)
+		run, stop, err := gdbserial.RecordAsync(processArgs, wd, false, d.config.Redirect)
 		if err != nil {
 			return nil, err
 		}
@@ -509,7 +509,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 	}
 
 	if recorded {
-		run, stop, err2 := gdbserial.RecordAsync(d.processArgs, d.config.WorkingDir, false, d.config.Redirects)
+		run, stop, err2 := gdbserial.RecordAsync(d.processArgs, d.config.WorkingDir, false, d.config.Redirect)
 		if err2 != nil {
 			return nil, err2
 		}
