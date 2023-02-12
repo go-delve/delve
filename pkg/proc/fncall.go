@@ -152,6 +152,10 @@ func EvalExpressionWithCalls(grp *TargetGroup, g *G, expr string, retLoadCfg Loa
 	if !t.SupportsFunctionCalls() {
 		return errFuncCallUnsupportedBackend
 	}
+	producer := bi.Producer()
+	if producer == "" || !goversion.ProducerAfterOrEqual(bi.Producer(), 1, 12) {
+		return errFuncCallUnsupported
+	}
 
 	// check that the target goroutine is running
 	if g == nil {
@@ -641,9 +645,6 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 		return 0, nil, fmt.Errorf("DWARF read error: %v", err)
 	}
 
-	producer := bi.Producer()
-	trustArgOrder := producer != "" && goversion.ProducerAfterOrEqual(bi.Producer(), 1, 12)
-
 	if bi.regabi && fn.cu.optimized && fn.Name != "runtime.mallocgc" {
 		// Debug info for function arguments on optimized functions is currently
 		// too incomplete to attempt injecting calls to arbitrary optimized
@@ -672,7 +673,7 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 		if bi.regabi {
 			formalArg, err = funcCallArgRegABI(fn, bi, entry, argname, typ, &argFrameSize)
 		} else {
-			formalArg, err = funcCallArgOldABI(fn, bi, entry, argname, typ, trustArgOrder, &argFrameSize)
+			formalArg, err = funcCallArgOldABI(fn, bi, entry, argname, typ, &argFrameSize)
 		}
 		if err != nil {
 			return 0, nil, err
@@ -707,7 +708,7 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 	return argFrameSize, formalArgs, nil
 }
 
-func funcCallArgOldABI(fn *Function, bi *BinaryInfo, entry reader.Variable, argname string, typ godwarf.Type, trustArgOrder bool, pargFrameSize *int64) (*funcCallArg, error) {
+func funcCallArgOldABI(fn *Function, bi *BinaryInfo, entry reader.Variable, argname string, typ godwarf.Type, pargFrameSize *int64) (*funcCallArg, error) {
 	const CFA = 0x1000
 	var off int64
 
@@ -726,10 +727,6 @@ func funcCallArgOldABI(fn *Function, bi *BinaryInfo, entry reader.Variable, argn
 		off -= CFA
 	}
 	if err != nil {
-		if !trustArgOrder {
-			return nil, err
-		}
-
 		// With Go version 1.12 or later we can trust that the arguments appear
 		// in the same order as declared, which means we can calculate their
 		// address automatically.
