@@ -9,8 +9,9 @@ package native
 import "C"
 
 import (
-	"unsafe"
+	"runtime"
 	"syscall"
+	"unsafe"
 
 	sys "golang.org/x/sys/unix"
 )
@@ -60,11 +61,13 @@ func ptraceGetLwpInfo(wpid int) (info sys.PtraceLwpInfoStruct, err error) {
 
 // id may be a PID or an LWPID
 func ptraceReadData(id int, addr uintptr, data []byte) (n int, err error) {
+	defer runtime.KeepAlive(&data[0]) // PIN
 	return sys.PtraceIO(sys.PIOD_READ_D, id, addr, data, len(data))
 }
 
 // id may be a PID or an LWPID
 func ptraceWriteData(id int, addr uintptr, data []byte) (n int, err error) {
+	defer runtime.KeepAlive(&data[0]) // PIN
 	return sys.PtraceIO(sys.PIOD_WRITE_D, id, addr, data, len(data))
 }
 
