@@ -144,8 +144,9 @@ See also: "help on", "help cond" and "help clear"`},
 The memory location is specified with the same expression language used by 'print', for example:
 
 	watch v
+	watch -w *(*int)(0x1400007c018)
 
-will watch the address of variable 'v'.
+will watch the address of variable 'v' and writes to an int at addr '0x1400007c018'.
 
 Note that writes that do not change the value of the watched memory address might not be reported.
 
