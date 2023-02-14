@@ -56,7 +56,7 @@ func testProgPath(t *testing.T, name string) string {
 	}
 	sympath, err := filepath.EvalSymlinks(fp)
 	if err == nil {
-		fp = strings.Replace(sympath, "\\", "/", -1)
+		fp = strings.ReplaceAll(sympath, "\\", "/")
 	}
 	return fp
 }
