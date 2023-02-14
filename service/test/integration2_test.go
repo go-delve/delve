@@ -2000,19 +2000,6 @@ func TestClientServer_StepOutReturn(t *testing.T) {
 		stridx := 0
 		numidx := 1
 
-		if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 12) {
-			// in 1.11 and earlier the order of return values in DWARF is
-			// unspecified, in 1.11 and later it follows the order of definition
-			// specified by the user
-			for i := range ret {
-				if ret[i].Name == "str" {
-					stridx = i
-					numidx = 1 - i
-					break
-				}
-			}
-		}
-
 		if ret[stridx].Name != "str" {
 			t.Fatalf("(str) bad return value name %s", ret[stridx].Name)
 		}
@@ -2135,32 +2122,6 @@ func TestClientServerFunctionCall(t *testing.T) {
 		state = <-c.Continue()
 		if !state.Exited {
 			t.Fatalf("expected process to exit after call %v", state.CurrentThread)
-		}
-	})
-}
-
-func TestClientServerFunctionCallBadPos(t *testing.T) {
-	protest.MustSupportFunctionCalls(t, testBackend)
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 12) {
-		t.Skip("this is a safe point for Go 1.12")
-	}
-	withTestClient2("fncall", t, func(c service.Client) {
-		loc, err := c.FindLocation(api.EvalScope{GoroutineID: -1}, "fmt/print.go:649", false, nil)
-		assertNoError(err, t, "could not find location")
-
-		_, err = c.CreateBreakpoint(&api.Breakpoint{File: loc[0].File, Line: loc[0].Line})
-		assertNoError(err, t, "CreateBreakpoin")
-
-		state := <-c.Continue()
-		assertNoError(state.Err, t, "Continue()")
-
-		state = <-c.Continue()
-		assertNoError(state.Err, t, "Continue()")
-
-		c.SetReturnValuesLoadConfig(&normalLoadConfig)
-		state, err = c.Call(-1, "main.call1(main.zero, main.zero)", false)
-		if err == nil || err.Error() != "call not at safe point" {
-			t.Fatalf("wrong error or no error: %v", err)
 		}
 	})
 }

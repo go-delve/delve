@@ -2278,19 +2278,11 @@ func TestNextPanicAndDirectCall(t *testing.T) {
 	// Next should not step into a deferred function if it is called
 	// directly, only if it is called through a panic or a deferreturn.
 	// Here we test the case where the function is called by a panic
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
-		testseq("defercall", contNext, []nextTest{
-			{15, 16},
-			{16, 17},
-			{17, 18},
-			{18, 6}}, "main.callAndPanic2", t)
-	} else {
-		testseq("defercall", contNext, []nextTest{
-			{15, 16},
-			{16, 17},
-			{17, 18},
-			{18, 5}}, "main.callAndPanic2", t)
-	}
+	testseq("defercall", contNext, []nextTest{
+		{15, 16},
+		{16, 17},
+		{17, 18},
+		{18, 6}}, "main.callAndPanic2", t)
 }
 
 func TestStepCall(t *testing.T) {
@@ -2321,71 +2313,26 @@ func TestStepCallPtr(t *testing.T) {
 func TestStepReturnAndPanic(t *testing.T) {
 	// Tests that Step works correctly when returning from functions
 	// and when a deferred function is called when panic'ing.
-	switch {
-	case goversion.VersionAfterOrEqual(runtime.Version(), 1, 11):
-		testseq("defercall", contStep, []nextTest{
-			{17, 6},
-			{6, 7},
-			{7, 18},
-			{18, 6},
-			{6, 7}}, "", t)
-	case goversion.VersionAfterOrEqual(runtime.Version(), 1, 10):
-		testseq("defercall", contStep, []nextTest{
-			{17, 5},
-			{5, 6},
-			{6, 7},
-			{7, 18},
-			{18, 5},
-			{5, 6},
-			{6, 7}}, "", t)
-	case goversion.VersionAfterOrEqual(runtime.Version(), 1, 9):
-		testseq("defercall", contStep, []nextTest{
-			{17, 5},
-			{5, 6},
-			{6, 7},
-			{7, 17},
-			{17, 18},
-			{18, 5},
-			{5, 6},
-			{6, 7}}, "", t)
-	default:
-		testseq("defercall", contStep, []nextTest{
-			{17, 5},
-			{5, 6},
-			{6, 7},
-			{7, 18},
-			{18, 5},
-			{5, 6},
-			{6, 7}}, "", t)
-	}
+	testseq("defercall", contStep, []nextTest{
+		{17, 6},
+		{6, 7},
+		{7, 18},
+		{18, 6},
+		{6, 7}}, "", t)
 }
 
 func TestStepDeferReturn(t *testing.T) {
 	// Tests that Step works correctly when a deferred function is
 	// called during a return.
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
-		testseq("defercall", contStep, []nextTest{
-			{11, 6},
-			{6, 7},
-			{7, 12},
-			{12, 13},
-			{13, 6},
-			{6, 7},
-			{7, 13},
-			{13, 28}}, "", t)
-	} else {
-		testseq("defercall", contStep, []nextTest{
-			{11, 5},
-			{5, 6},
-			{6, 7},
-			{7, 12},
-			{12, 13},
-			{13, 5},
-			{5, 6},
-			{6, 7},
-			{7, 13},
-			{13, 28}}, "", t)
-	}
+	testseq("defercall", contStep, []nextTest{
+		{11, 6},
+		{6, 7},
+		{7, 12},
+		{12, 13},
+		{13, 6},
+		{6, 7},
+		{7, 13},
+		{13, 28}}, "", t)
 }
 
 func TestStepIgnorePrivateRuntime(t *testing.T) {
@@ -2410,27 +2357,8 @@ func TestStepIgnorePrivateRuntime(t *testing.T) {
 			{21, 14},
 			{14, 15},
 			{15, 22}}, "", t)
-	case goversion.VersionAfterOrEqual(runtime.Version(), 1, 10):
-		testseq("teststepprog", contStep, []nextTest{
-			{21, 13},
-			{13, 14},
-			{14, 15},
-			{15, 22}}, "", t)
-	case goversion.VersionAfterOrEqual(runtime.Version(), 1, 7):
-		testseq("teststepprog", contStep, []nextTest{
-			{21, 13},
-			{13, 14},
-			{14, 15},
-			{15, 14},
-			{14, 17},
-			{17, 22}}, "", t)
 	default:
-		testseq("teststepprog", contStep, []nextTest{
-			{21, 13},
-			{13, 14},
-			{14, 15},
-			{15, 17},
-			{17, 22}}, "", t)
+		panic("too old")
 	}
 }
 
@@ -2790,15 +2718,9 @@ func TestStepOutPanicAndDirectCall(t *testing.T) {
 	// StepOut should not step into a deferred function if it is called
 	// directly, only if it is called through a panic.
 	// Here we test the case where the function is called by a panic
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
-		testseq2(t, "defercall", "", []seqTest{
-			{contContinue, 17},
-			{contStepout, 6}})
-	} else {
-		testseq2(t, "defercall", "", []seqTest{
-			{contContinue, 17},
-			{contStepout, 5}})
-	}
+	testseq2(t, "defercall", "", []seqTest{
+		{contContinue, 17},
+		{contStepout, 6}})
 }
 
 func TestWorkDir(t *testing.T) {

@@ -1051,11 +1051,6 @@ func TestPackageRenames(t *testing.T) {
 		{"amap2", true, "interface {}(*map[go/ast.BadExpr]net/http.Request) *[{From: 2, To: 3}: *{Method: \"othermethod\", …", "", "interface {}", nil},
 	}
 
-	testcases1_8 := []varTest{
-		// before 1.9 embedded struct fields have fieldname == type
-		{"astruct2", true, `interface {}(*struct { github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType; X int }) *{github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType: github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType {X: 1, Y: 2}, X: 10}`, "", "interface {}", nil},
-	}
-
 	testcases1_9 := []varTest{
 		{"astruct2", true, `interface {}(*struct { github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType; X int }) *{SomeType: github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType {X: 1, Y: 2}, X: 10}`, "", "interface {}", nil},
 	}
@@ -1074,11 +1069,7 @@ func TestPackageRenames(t *testing.T) {
 		assertNoError(p.Continue(), t, "Continue() returned an error")
 		testPackageRenamesHelper(t, p, testcases)
 
-		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 9) {
-			testPackageRenamesHelper(t, p, testcases1_9)
-		} else {
-			testPackageRenamesHelper(t, p, testcases1_8)
-		}
+		testPackageRenamesHelper(t, p, testcases1_9)
 
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 13) {
 			testPackageRenamesHelper(t, p, testcases1_13)
