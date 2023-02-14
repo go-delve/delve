@@ -5,9 +5,9 @@ import (
 )
 
 // The mapping between hardware registers and DWARF registers is specified
-// in the DWARF for the ARM® Architecture page 7,
-// Table 1
-// http://infocenter.arm.com/help/topic/com.arm.doc.ihi0040b/IHI0040B_aadwarf.pdf
+// in the DWARF for the DWARF for the Arm® 64-bit Architecture (AArch64),
+// Section 4, Table 1
+// https://github.com/ARM-software/abi-aa/blob/main/aadwarf64/aadwarf64.rst#4arm-specific-dwarf-definitions
 
 const (
 	ARM64_X0         = 0  // X1 through X30 follow
