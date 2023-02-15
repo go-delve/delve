@@ -163,7 +163,7 @@ func writeListeningMessage(server string, addr net.Addr) {
 		return
 	}
 	logger := rpcLogger(true)
-	logger.Warnln("Listening for remote connections (connections are not authenticated nor encrypted)")
+	logger.Warn("Listening for remote connections (connections are not authenticated nor encrypted)")
 }
 
 func WriteError(msg string) {
