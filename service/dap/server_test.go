@@ -3680,7 +3680,7 @@ func TestLaunchSubstitutePath(t *testing.T) {
 // in the launch configuration to take care of the mapping.
 func TestAttachSubstitutePath(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("test skipped on windows, see https://delve.beta.teamcity.com/project/Delve_windows for details")
+		t.Skip("test skipped on Windows, see https://delve.teamcity.com/project/Delve_windows for details")
 	}
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		cmd := execFixture(t, fixture)
@@ -5694,7 +5694,7 @@ func TestLaunchRequestWithEnv(t *testing.T) {
 
 func TestAttachRequest(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("test skipped on windows, see https://delve.beta.teamcity.com/project/Delve_windows for details")
+		t.Skip("test skipped on Windows, see https://delve.teamcity.com/project/Delve_windows for details")
 	}
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		// Start the program to attach to
