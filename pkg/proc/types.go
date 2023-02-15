@@ -134,7 +134,7 @@ func runtimeTypeToDIE(_type *Variable, dataAddr uint64) (typ godwarf.Type, kind 
 
 // resolveParametricType returns the real type of t if t is a parametric
 // type, by reading the correct dictionary entry.
-func resolveParametricType(tgt *Target, bi *BinaryInfo, mem MemoryReadWriter, t godwarf.Type, dictAddr uint64) (godwarf.Type, error) {
+func resolveParametricType(bi *BinaryInfo, mem MemoryReadWriter, t godwarf.Type, dictAddr uint64) (godwarf.Type, error) {
 	ptyp, _ := t.(*godwarf.ParametricType)
 	if ptyp == nil {
 		return t, nil

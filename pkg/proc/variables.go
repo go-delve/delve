@@ -1188,7 +1188,7 @@ func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.
 		return nil, err
 	}
 
-	t, err = resolveParametricType(tgt, bi, mem, t, dictAddr)
+	t, err = resolveParametricType(bi, mem, t, dictAddr)
 	if err != nil {
 		// Log the error, keep going with t, which will be the shape type
 		logflags.DebuggerLogger().Errorf("could not resolve parametric type of %s", n)
