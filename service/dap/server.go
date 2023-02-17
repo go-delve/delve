@@ -3617,6 +3617,7 @@ func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange cha
 	}
 
 	if processExited(state, err) {
+		s.wg.Wait()
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		return
 	}

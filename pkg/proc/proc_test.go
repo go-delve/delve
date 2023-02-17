@@ -8,6 +8,7 @@ import (
 	"go/ast"
 	"go/constant"
 	"go/token"
+	"io"
 	"io/ioutil"
 	"math/rand"
 	"net"
@@ -20,6 +21,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"text/tabwriter"
 	"time"
@@ -43,6 +45,82 @@ var testBackend, buildMode string
 func init() {
 	runtime.GOMAXPROCS(4)
 	os.Setenv("GOMAXPROCS", "4")
+}
+
+func TestRedirect(t *testing.T) {
+	fixture := protest.BuildFixture("out_redirect", 0)
+	var (
+		p                *proc.Target
+		tracedir         string
+		err              error
+		redirect         proc.Redirect = proc.NewEmptyRedirectByPath()
+		errChan                        = make(chan error, 2)
+		canceFunc        func()
+		needCheck        = false
+		stdoutExpectFile = "out_redirect-stdout.txt"
+		stderrExpectFile = "out_redirect-stderr.txt"
+	)
+	switch testBackend {
+	case "native":
+		if runtime.GOOS == "linux" {
+			redirect, canceFunc, err = testGenRedireByPath(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
+			if err != nil {
+				break
+			}
+			needCheck = true
+		} else if runtime.GOOS == "windows" {
+			// TODO toad
+		}
+
+		p, err = native.Launch([]string{fixture.Path}, ".", 0, []string{}, "", redirect)
+	case "lldb":
+		if runtime.GOOS == "darwin" {
+			redirect, canceFunc, err = testGenRedireByPath(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
+			if err != nil {
+				break
+			}
+			needCheck = true
+		}
+		p, err = gdbserial.LLDBLaunch([]string{fixture.Path}, ".", 0, []string{}, "", redirect)
+	case "rr":
+		protest.MustHaveRecordingAllowed(t)
+		t.Log("recording")
+		if runtime.GOOS != "windows" {
+			redirect, canceFunc, err = testGenRedireByPath(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
+			if err != nil {
+				break
+			}
+			needCheck = true
+		}
+		p, tracedir, err = gdbserial.RecordAndReplay([]string{fixture.Path}, ".", true, []string{}, redirect)
+		t.Logf("replaying %q", tracedir)
+	default:
+		t.Fatal("unknown backend")
+	}
+	if err != nil {
+		// clear reader goroutine
+		if canceFunc != nil {
+			canceFunc()
+			_, _ = <-errChan, <-errChan
+		}
+		t.Fatal("Launch():", err)
+	}
+	_ = p.Continue()
+
+	if needCheck {
+		err1 := <-errChan
+		err2 := <-errChan
+		if err1 != nil {
+			t.Fatal("checkOut():", err1)
+		}
+		if err2 != nil {
+			t.Fatal("checkOut():", err2)
+		}
+	}
+
+	defer func() {
+		p.Detach(true)
+	}()
 }
 
 func TestMain(m *testing.M) {
@@ -103,13 +181,13 @@ func withTestProcessArgs(name string, t testing.TB, wd string, args []string, bu
 
 	switch testBackend {
 	case "native":
-		p, err = native.Launch(append([]string{fixture.Path}, args...), wd, 0, []string{}, "", [3]string{})
+		p, err = native.Launch(append([]string{fixture.Path}, args...), wd, 0, []string{}, "", proc.NewEmptyRedirectByPath())
 	case "lldb":
-		p, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), wd, 0, []string{}, "", [3]string{})
+		p, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), wd, 0, []string{}, "", proc.NewEmptyRedirectByPath())
 	case "rr":
 		protest.MustHaveRecordingAllowed(t)
 		t.Log("recording")
-		p, tracedir, err = gdbserial.RecordAndReplay(append([]string{fixture.Path}, args...), wd, true, []string{}, [3]string{})
+		p, tracedir, err = gdbserial.RecordAndReplay(append([]string{fixture.Path}, args...), wd, true, []string{}, proc.NewEmptyRedirectByPath())
 		t.Logf("replaying %q", tracedir)
 	default:
 		t.Fatal("unknown backend")
@@ -2219,9 +2297,9 @@ func TestUnsupportedArch(t *testing.T) {
 
 	switch testBackend {
 	case "native":
-		p, err = native.Launch([]string{outfile}, ".", 0, []string{}, "", [3]string{})
+		p, err = native.Launch([]string{outfile}, ".", 0, []string{}, "", proc.NewEmptyRedirectByPath())
 	case "lldb":
-		p, err = gdbserial.LLDBLaunch([]string{outfile}, ".", 0, []string{}, "", [3]string{})
+		p, err = gdbserial.LLDBLaunch([]string{outfile}, ".", 0, []string{}, "", proc.NewEmptyRedirectByPath())
 	default:
 		t.Skip("test not valid for this backend")
 	}
@@ -6023,4 +6101,65 @@ func TestStacktraceExtlinkMac(t *testing.T) {
 			t.Fatalf("bad stacktrace")
 		}
 	})
+}
+
+func testGenRedireByPath(t *testing.T, fixture protest.Fixture, stdoutExpectFile string, stderrExpectFile string, errChan chan error) (redirect proc.Redirect, canceFunc func(), err error) {
+	var (
+		stdoutPath = "./stdout"
+		stderrPath = "./stderr"
+	)
+
+	if err = syscall.Mkfifo(stdoutPath, 0o600); err != nil {
+		return redirect, nil, err
+	}
+
+	if err = syscall.Mkfifo(stderrPath, 0o600); err != nil {
+		os.Remove(stdoutPath)
+		return redirect, nil, err
+	}
+
+	redirect = proc.NewRedirectByPath([3]string{"", stdoutPath, stderrPath})
+	reader := func(mode string, path string, expectFile string) {
+		defer os.Remove(path)
+		fmt.Println(path)
+		outFile, err := os.OpenFile(path, os.O_RDONLY, os.ModeNamedPipe)
+		if err != nil {
+			errChan <- err
+			return
+		}
+
+		expect, err := os.ReadFile(filepath.Join(fixture.BuildDir, expectFile))
+		if err != nil {
+			errChan <- err
+			return
+		}
+
+		out, err := io.ReadAll(outFile)
+		if err != nil {
+			errChan <- err
+			return
+		}
+
+		if string(expect) == string(out) {
+			errChan <- fmt.Errorf("%s,Not as expected!\nexpect:%s\nout:%s", mode, expect, out)
+			return
+		}
+		errChan <- nil
+	}
+
+	canceFunc = func() {
+		stdout, err := os.OpenFile(stdoutPath, os.O_WRONLY, os.ModeNamedPipe)
+		if err == nil {
+			stdout.Close()
+		}
+		stderr, err := os.OpenFile(stderrPath, os.O_WRONLY, os.ModeNamedPipe)
+		if err == nil {
+			stderr.Close()
+		}
+	}
+
+	go reader("stdout", stdoutPath, stdoutExpectFile)
+	go reader("stderr", stderrPath, stderrExpectFile)
+
+	return redirect, canceFunc, nil
 }

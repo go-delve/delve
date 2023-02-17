@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-delve/delve/pkg/proc"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service/debugger"
 
@@ -84,7 +85,7 @@ func startServer(name string, buildFlags protest.BuildFlags, t *testing.T, redir
 			Packages:       []string{fixture.Source},
 			BuildFlags:     "", // build flags can be an empty string here because the only test that uses it, does not set special flags.
 			ExecuteKind:    debugger.ExecutingGeneratedFile,
-			Redirects:      redirects,
+			Redirect:       proc.NewRedirectByPath(redirects),
 		},
 	})
 	if err := server.Run(); err != nil {
