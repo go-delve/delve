@@ -43,8 +43,6 @@ import (
 	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/internal/sameuser"
 	"github.com/google/go-dap"
-
-	"github.com/sirupsen/logrus"
 )
 
 // Server implements a DAP server that can accept a single client for
@@ -188,7 +186,7 @@ type Config struct {
 	*service.Config
 
 	// log is used for structured logging.
-	log *logrus.Entry
+	log logflags.Logger
 	// StopTriggered is closed when the server is Stop()-ed.
 	// Can be used to safeguard against duplicate shutdown sequences.
 	StopTriggered chan struct{}

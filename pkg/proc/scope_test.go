@@ -293,7 +293,7 @@ func (varCheck *varCheck) checkInScope(line int, scope *proc.EvalScope, t *testi
 
 func (varCheck *varCheck) check(line int, v *proc.Variable, t *testing.T, ctxt string) {
 	typ := v.DwarfType.String()
-	typ = strings.Replace(typ, " ", "", -1)
+	typ = strings.ReplaceAll(typ, " ", "")
 	if typ != varCheck.typ {
 		t.Errorf("%d: wrong type for %s (%s), got %s, expected %s", line, v.Name, ctxt, typ, varCheck.typ)
 	}

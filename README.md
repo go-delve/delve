@@ -2,7 +2,7 @@
 
 [![license](http://img.shields.io/badge/license-MIT-blue.svg)](https://raw.githubusercontent.com/go-delve/delve/master/LICENSE)
 [![GoDoc](https://godoc.org/github.com/go-delve/delve?status.svg)](https://godoc.org/github.com/go-delve/delve)
-[![Build Status](https://delve.beta.teamcity.com/app/rest/builds/buildType:(id:Delve_AggregatorBuild)/statusIcon.svg)](https://delve.beta.teamcity.com/viewType.html?buildTypeId=Delve_AggregatorBuild&guest=1)
+[![Build Status](https://delve.teamcity.com/app/rest/builds/buildType:(id:Delve_AggregatorBuild)/statusIcon.svg)](https://delve.teamcity.com/viewType.html?buildTypeId=Delve_AggregatorBuild&guest=1)
 
 The GitHub issue tracker is for **bugs** only. Please use the [developer mailing list](https://groups.google.com/forum/#!forum/delve-dev) for any feature proposals and discussions.
 

@@ -1311,10 +1311,6 @@ func TestStaticcheck(t *testing.T) {
 	if err != nil {
 		t.Skip("staticcheck not installed")
 	}
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 20) {
-		//TODO(aarzilli): remove this when there is a version of staticcheck that can support go1.20
-		t.Skip("staticcheck does not support go1.20 currently")
-	}
 	// default checks minus SA1019 which complains about deprecated identifiers, which change between versions of Go.
 	args := []string{"-tests=false", "-checks=all,-SA1019,-ST1000,-ST1003,-ST1016,-S1021,-ST1023", "github.com/go-delve/delve/..."}
 	// * SA1019 is disabled because new deprecations get added on every version

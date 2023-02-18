@@ -34,7 +34,6 @@ import (
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc/debuginfod"
 	"github.com/hashicorp/golang-lru/simplelru"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -111,7 +110,7 @@ type BinaryInfo struct {
 	// Go 1.17 register ABI is enabled.
 	regabi bool
 
-	logger *logrus.Entry
+	logger logflags.Logger
 }
 
 var (
@@ -944,7 +943,7 @@ func (image *Image) Close() error {
 	return err2
 }
 
-func (image *Image) setLoadError(logger *logrus.Entry, fmtstr string, args ...interface{}) {
+func (image *Image) setLoadError(logger logflags.Logger, fmtstr string, args ...interface{}) {
 	image.loadErrMu.Lock()
 	image.loadErr = fmt.Errorf(fmtstr, args...)
 	image.loadErrMu.Unlock()
@@ -1586,7 +1585,7 @@ func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.
 	}
 }
 
-func getSymbol(image *Image, logger *logrus.Entry, exe *elf.File, name string) *elf.Symbol {
+func getSymbol(image *Image, logger logflags.Logger, exe *elf.File, name string) *elf.Symbol {
 	symbols, err := exe.Symbols()
 	if err != nil {
 		image.setLoadError(logger, "could not parse ELF symbols: %v", err)
@@ -1899,8 +1898,8 @@ func (bi *BinaryInfo) macOSDebugFrameBugWorkaround() {
 
 // Do not call this function directly it isn't able to deal correctly with package paths
 func (bi *BinaryInfo) findType(name string) (godwarf.Type, error) {
-	name = strings.Replace(name, "interface{", "interface {", -1)
-	name = strings.Replace(name, "struct{", "struct {", -1)
+	name = strings.ReplaceAll(name, "interface{", "interface {")
+	name = strings.ReplaceAll(name, "struct{", "struct {")
 	ref, found := bi.types[name]
 	if !found {
 		return nil, reader.ErrTypeNotFound
@@ -2069,11 +2068,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 			if hasLineInfo && lineInfoOffset >= 0 && lineInfoOffset < int64(len(debugLineBytes)) {
 				var logfn func(string, ...interface{})
 				if logflags.DebugLineErrors() {
-					logger := logrus.New().WithFields(logrus.Fields{"layer": "dwarf-line"})
-					logger.Logger.Level = logrus.DebugLevel
-					logfn = func(fmt string, args ...interface{}) {
-						logger.Printf(fmt, args)
-					}
+					logfn = logflags.DebugLineLogger().Printf
 				}
 				cu.lineInfo = line.Parse(compdir, bytes.NewBuffer(debugLineBytes[lineInfoOffset:]), image.debugLineStr, logfn, image.StaticBase, bi.GOOS == "windows", bi.Arch.PtrSize())
 			}
@@ -2096,7 +2091,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 			}
 			gopkg, _ := entry.Val(godwarf.AttrGoPackageName).(string)
 			if cu.isgo && gopkg != "" {
-				bi.PackageMap[gopkg] = append(bi.PackageMap[gopkg], escapePackagePath(strings.Replace(cu.name, "\\", "/", -1)))
+				bi.PackageMap[gopkg] = append(bi.PackageMap[gopkg], escapePackagePath(strings.ReplaceAll(cu.name, "\\", "/")))
 			}
 			image.compileUnits = append(image.compileUnits, cu)
 			if entry.Children {
@@ -2515,7 +2510,7 @@ func escapePackagePath(pkg string) string {
 	if slash < 0 {
 		slash = 0
 	}
-	return pkg[:slash] + strings.Replace(pkg[slash:], ".", "%2e", -1)
+	return pkg[:slash] + strings.ReplaceAll(pkg[slash:], ".", "%2e")
 }
 
 // Looks up symbol (either functions or global variables) at address addr.
@@ -2566,7 +2561,7 @@ func (bi *BinaryInfo) ListPackagesBuildInfo(includeFiles bool) []*PackageBuildIn
 			continue
 		}
 
-		ip := strings.Replace(cu.name, "\\", "/", -1)
+		ip := strings.ReplaceAll(cu.name, "\\", "/")
 		if _, ok := m[ip]; !ok {
 			path := cu.lineInfo.FirstFile()
 			if ext := filepath.Ext(path); ext != ".go" && ext != ".s" {

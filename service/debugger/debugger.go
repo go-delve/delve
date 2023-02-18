@@ -31,7 +31,6 @@ import (
 	"github.com/go-delve/delve/pkg/proc/gdbserial"
 	"github.com/go-delve/delve/pkg/proc/native"
 	"github.com/go-delve/delve/service/api"
-	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -70,7 +69,7 @@ type Debugger struct {
 	targetMutex sync.Mutex
 	target      *proc.TargetGroup
 
-	log *logrus.Entry
+	log logflags.Logger
 
 	running      bool
 	runningMutex sync.Mutex

@@ -195,7 +195,7 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	source = filepath.ToSlash(source)
 	sympath, err := filepath.EvalSymlinks(source)
 	if err == nil {
-		source = strings.Replace(sympath, "\\", "/", -1)
+		source = strings.ReplaceAll(sympath, "\\", "/")
 	}
 
 	absdir, _ := filepath.Abs(dir)
