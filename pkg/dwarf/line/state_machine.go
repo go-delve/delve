@@ -108,6 +108,7 @@ func newStateMachine(dbl *DebugLineInfo, instructions []byte, ptrSize int) *Stat
 	if len(dbl.FileNames) > 0 {
 		file = dbl.FileNames[0].Path
 	}
+	dbl.endSeqIsValid = true
 	sm := &StateMachine{
 		dbl:         dbl,
 		file:        file,
@@ -261,7 +262,7 @@ func (sm *StateMachine) PCToLine(pc uint64) (string, int, bool) {
 			if (sm.address > pc) && (pc >= sm.lastAddress) {
 				return sm.lastFile, sm.lastLine, true
 			}
-			if sm.address == pc {
+			if sm.address == pc && !sm.endSeq {
 				return sm.file, sm.line, true
 			}
 		}
@@ -272,7 +273,7 @@ func (sm *StateMachine) PCToLine(pc uint64) (string, int, bool) {
 			break
 		}
 	}
-	if sm.valid {
+	if sm.valid && !sm.endSeq {
 		return sm.file, sm.line, true
 	}
 	return "", 0, false
@@ -301,7 +302,7 @@ func (lineInfo *DebugLineInfo) LineToPCs(filename string, lineno int) []PCStmt {
 			}
 			break
 		}
-		if sm.line == lineno && sm.file == filename && sm.valid {
+		if sm.line == lineno && sm.file == filename && sm.valid && !sm.endSeq {
 			pcstmts = append(pcstmts, PCStmt{sm.address, sm.isStmt})
 		}
 	}
