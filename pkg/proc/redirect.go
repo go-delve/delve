@@ -20,6 +20,10 @@ func NewEmptyRedirectByPath() Redirect {
 	return Redirect{Mode: RedirectPathMode}
 }
 
+func NewEmptyRedirectByFile() Redirect {
+	return Redirect{Mode: RedirectFileMode}
+}
+
 func NewRedirectByPath(paths [3]string) Redirect {
 	return Redirect{Paths: paths, Mode: RedirectPathMode}
 }

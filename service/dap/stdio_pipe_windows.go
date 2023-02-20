@@ -12,11 +12,6 @@ import (
 )
 
 func NewRedirector() (redirect proc.Redirect, err error) {
-	r := make([]byte, 4)
-	if _, err := rand.Read(r); err != nil {
-		return redirect, err
-	}
-
 	stdoutReader, stdoutWriter, err := os.Pipe()
 	if err != nil {
 		return redirect, err
