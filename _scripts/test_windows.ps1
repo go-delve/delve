@@ -24,12 +24,12 @@ if ($arch -eq "amd64")
     {
         New-Item "$binDir\llvm-mingw" -ItemType Directory -ErrorAction SilentlyContinue
         $url = "https://github.com/mstorsjo/llvm-mingw/releases/download/$llvmVersion/$name.zip"
-        Invoke-WebRequest -UserAgent wget -Uri $url -OutFile "$env:TEMP\$name.zip"
+        Invoke-WebRequest -UserAgent wget -Uri $url -OutFile "$env:TEMP\$name.zip" -ErrorAction Stop
         Expand-Archive -Force -LiteralPath "$env:TEMP\$name.zip" -DestinationPath "$binDir\llvm-mingw\"
     }
     $env:PATH = "$binDir\llvm-mingw\$name\bin;$env:PATH"
 } else {
-    Write-Error "Unsupported architecture: $arch" -ErrorAction Stop
+    Throw "Unsupported architecture: $arch"
 }
 
 # Install Procdump
@@ -48,7 +48,7 @@ function GetGo($version) {
     {
         $file = "$version.windows-$arch.zip"
         $url = "https://dl.google.com/go/$file"
-        Invoke-WebRequest -UserAgent wget -Uri $url -OutFile "$env:TEMP\$file"
+        Invoke-WebRequest -UserAgent wget -Uri $url -OutFile "$env:TEMP\$file" -ErrorAction Stop
         Expand-Archive -Force -LiteralPath "$env:TEMP\$file" -DestinationPath "$env:TEMP\$version"
         New-Item $env:GOROOT -ItemType Directory
         Move-Item -Path "$env:TEMP\$version\go\*" -Destination $env:GOROOT -Force
@@ -57,7 +57,7 @@ function GetGo($version) {
 
 if ($version -eq "gotip") {
     #Exit 0
-    $latest = Invoke-WebRequest -Uri "https://golang.org/VERSION?m=text" -UseBasicParsing | Select-Object -ExpandProperty Content
+    $latest = Invoke-WebRequest -Uri "https://golang.org/VERSION?m=text" -UseBasicParsing | Select-Object -ExpandProperty Content -ErrorAction Stop
     GetGo $latest
     $env:GOROOT_BOOTSTRAP = $env:GOROOT
     $env:GOROOT = "$binDir\go\go-tip"
@@ -74,7 +74,7 @@ if ($version -eq "gotip") {
 } else {
     # Install Go
     Write-Host "Finding latest patch version for $version"
-    $versions = Invoke-WebRequest -Uri "https://golang.org/dl/?mode=json&include=all" -UseBasicParsing | foreach {$_.Content} | ConvertFrom-Json
+    $versions = Invoke-WebRequest -Uri "https://golang.org/dl/?mode=json&include=all" -UseBasicParsing | foreach {$_.Content} | ConvertFrom-Json -ErrorAction Stop
     $v = $versions | foreach {$_.version} | Select-String -Pattern "^$version($|\.)" | Sort-Object -Descending | Select-Object -First 1
     if ($v -eq $null) {
       $v = $versions | foreach {$_.version} | Select-String -Pattern "^$version(rc)" | Sort-Object -Descending | Select-Object -First 1
