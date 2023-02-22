@@ -9,7 +9,7 @@ if ($binDir -eq "") {
 }
 
 
-Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction SilentlyContinue
+Set-MpPreference -DisableRealtimeMonitoring $true -ErrorAction Stop
 
 # Install MinGW.
 if ($arch -eq "amd64")
@@ -22,14 +22,14 @@ if ($arch -eq "amd64")
     $name = "llvm-mingw-$llvmVersion-ucrt-aarch64"
     if (-Not(Test-Path "$binDir\llvm-mingw\$name"))
     {
-        New-Item "$binDir\llvm-mingw" -ItemType Directory -ErrorAction SilentlyContinue
+        New-Item "$binDir\llvm-mingw" -ItemType Directory
         $url = "https://github.com/mstorsjo/llvm-mingw/releases/download/$llvmVersion/$name.zip"
         Invoke-WebRequest -UserAgent wget -Uri $url -OutFile "$env:TEMP\$name.zip"
         Expand-Archive -Force -LiteralPath "$env:TEMP\$name.zip" -DestinationPath "$binDir\llvm-mingw\"
     }
     $env:PATH = "$binDir\llvm-mingw\$name\bin;$env:PATH"
 } else {
-    Write-Error "Unsupported architecture: $arch" -ErrorAction Stop
+    Throw "Unsupported architecture: $arch"
 }
 
 # Install Procdump
