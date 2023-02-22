@@ -198,7 +198,7 @@ func TestSplicedReader(t *testing.T) {
 	}
 }
 
-func withCoreFile(t *testing.T, name, args string) *proc.Target {
+func withCoreFile(t *testing.T, name, args string) *proc.TargetGroup {
 	// This is all very fragile and won't work on hosts with non-default core patterns.
 	// Might be better to check in the binary and core?
 	tempDir := t.TempDir()
@@ -251,8 +251,8 @@ func TestCore(t *testing.T) {
 	if runtime.GOOS == "linux" && os.Getenv("CI") == "true" && buildMode == "pie" {
 		t.Skip("disabled on linux, Github Actions, with PIE buildmode")
 	}
-	p := withCoreFile(t, "panic", "")
-	grp := proc.NewGroup(p)
+	grp := withCoreFile(t, "panic", "")
+	p := grp.Selected
 
 	recorded, _ := grp.Recorded()
 	if !recorded {
@@ -324,7 +324,8 @@ func TestCoreFpRegisters(t *testing.T) {
 		t.Skip("not supported in go1.10 and later")
 	}
 
-	p := withCoreFile(t, "fputest/", "panic")
+	grp := withCoreFile(t, "fputest/", "panic")
+	p := grp.Selected
 
 	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 	if err != nil || len(gs) == 0 {
@@ -407,7 +408,8 @@ func TestCoreWithEmptyString(t *testing.T) {
 	if runtime.GOOS == "linux" && os.Getenv("CI") == "true" && buildMode == "pie" {
 		t.Skip("disabled on linux, Github Actions, with PIE buildmode")
 	}
-	p := withCoreFile(t, "coreemptystring", "")
+	grp := withCoreFile(t, "coreemptystring", "")
+	p := grp.Selected
 
 	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 	assertNoError(err, t, "GoroutinesInfo")
@@ -452,10 +454,11 @@ func TestMinidump(t *testing.T) {
 	fix := test.BuildFixture("sleep", buildFlags)
 	mdmpPath := procdump(t, fix.Path)
 
-	p, err := OpenCore(mdmpPath, fix.Path, []string{})
+	grp, err := OpenCore(mdmpPath, fix.Path, []string{})
 	if err != nil {
 		t.Fatalf("OpenCore: %v", err)
 	}
+	p := grp.Selected
 	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 	if err != nil || len(gs) == 0 {
 		t.Fatalf("GoroutinesInfo() = %v, %v; wanted at least one goroutine", gs, err)
