@@ -3,6 +3,18 @@
 
 package proc_test
 
+import (
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"syscall"
+	"testing"
+
+	"github.com/go-delve/delve/pkg/proc"
+	protest "github.com/go-delve/delve/pkg/proc/test"
+)
+
 func testGenRedireByPath(t *testing.T, fixture protest.Fixture, stdoutExpectFile string, stderrExpectFile string, errChan chan error) (redirect proc.Redirect, canceFunc func(), err error) {
 	var (
 		stdoutPath = "./stdout"
