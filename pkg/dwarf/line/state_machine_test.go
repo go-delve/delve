@@ -10,7 +10,6 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"runtime"
 	"testing"
 
 	pdwarf "github.com/go-delve/delve/pkg/dwarf"
@@ -36,9 +35,6 @@ func TestGrafana(t *testing.T) {
 	// of grafana to the output generated using debug/dwarf.LineReader on the
 	// same section.
 
-	if runtime.GOOS == "windows" {
-		t.Skip("filepath.Join ruins this test on windows")
-	}
 	debugBytes, err := slurpGzip("_testdata/debug.grafana.debug.gz")
 	if err != nil {
 		t.Fatal(err)
