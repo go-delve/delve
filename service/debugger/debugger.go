@@ -161,30 +161,28 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		if len(d.processArgs) > 0 {
 			path = d.processArgs[0]
 		}
-		p, err := d.Attach(d.config.AttachPid, path)
+		var err error
+		d.target, err = d.Attach(d.config.AttachPid, path)
 		if err != nil {
 			err = go11DecodeErrorCheck(err)
 			err = noDebugErrorWarning(err)
 			return nil, attachErrorMessage(d.config.AttachPid, err)
 		}
-		d.target = proc.NewGroup(p)
 
 	case d.config.CoreFile != "":
-		var p *proc.Target
 		var err error
 		switch d.config.Backend {
 		case "rr":
 			d.log.Infof("opening trace %s", d.config.CoreFile)
-			p, err = gdbserial.Replay(d.config.CoreFile, false, false, d.config.DebugInfoDirectories)
+			d.target, err = gdbserial.Replay(d.config.CoreFile, false, false, d.config.DebugInfoDirectories)
 		default:
 			d.log.Infof("opening core file %s (executable %s)", d.config.CoreFile, d.processArgs[0])
-			p, err = core.OpenCore(d.config.CoreFile, d.processArgs[0], d.config.DebugInfoDirectories)
+			d.target, err = core.OpenCore(d.config.CoreFile, d.processArgs[0], d.config.DebugInfoDirectories)
 		}
 		if err != nil {
 			err = go11DecodeErrorCheck(err)
 			return nil, err
 		}
-		d.target = proc.NewGroup(p)
 		if err := d.checkGoVersion(); err != nil {
 			d.target.Detach(true)
 			return nil, err
@@ -192,7 +190,8 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 
 	default:
 		d.log.Infof("launching process with args: %v", d.processArgs)
-		p, err := d.Launch(d.processArgs, d.config.WorkingDir)
+		var err error
+		d.target, err = d.Launch(d.processArgs, d.config.WorkingDir)
 		if err != nil {
 			if _, ok := err.(*proc.ErrUnsupportedArch); !ok {
 				err = go11DecodeErrorCheck(err)
@@ -200,10 +199,6 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 				err = fmt.Errorf("could not launch process: %s", err)
 			}
 			return nil, err
-		}
-		if p != nil {
-			// if p == nil and err == nil then we are doing a recording, don't touch d.target
-			d.target = proc.NewGroup(p)
 		}
 		if err := d.checkGoVersion(); err != nil {
 			d.target.Detach(true)
@@ -245,7 +240,7 @@ func (d *Debugger) TargetGoVersion() string {
 }
 
 // Launch will start a process with the given args and working directory.
-func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error) {
+func (d *Debugger) Launch(processArgs []string, wd string) (*proc.TargetGroup, error) {
 	fullpath, err := verifyBinaryFormat(processArgs[0])
 	if err != nil {
 		return nil, err
@@ -285,7 +280,7 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 		go func() {
 			defer d.targetMutex.Unlock()
 
-			p, err := d.recordingRun(run)
+			grp, err := d.recordingRun(run)
 			if err != nil {
 				d.log.Errorf("could not record target: %v", err)
 				// this is ugly but we can't respond to any client requests at this
@@ -293,7 +288,7 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.Target, error)
 				os.Exit(1)
 			}
 			d.recordingDone()
-			d.target = proc.NewGroup(p)
+			d.target = grp
 			if err := d.checkGoVersion(); err != nil {
 				d.log.Error(err)
 				err := d.target.Detach(true)
@@ -332,7 +327,7 @@ func (d *Debugger) isRecording() bool {
 	return d.stopRecording != nil
 }
 
-func (d *Debugger) recordingRun(run func() (string, error)) (*proc.Target, error) {
+func (d *Debugger) recordingRun(run func() (string, error)) (*proc.TargetGroup, error) {
 	tracedir, err := run()
 	if err != nil && tracedir == "" {
 		return nil, err
@@ -342,7 +337,7 @@ func (d *Debugger) recordingRun(run func() (string, error)) (*proc.Target, error
 }
 
 // Attach will attach to the process specified by 'pid'.
-func (d *Debugger) Attach(pid int, path string) (*proc.Target, error) {
+func (d *Debugger) Attach(pid int, path string) (*proc.TargetGroup, error) {
 	switch d.config.Backend {
 	case "native":
 		return native.Attach(pid, d.config.DebugInfoDirectories)
@@ -360,7 +355,7 @@ func (d *Debugger) Attach(pid int, path string) (*proc.Target, error) {
 
 var errMacOSBackendUnavailable = errors.New("debugserver or lldb-server not found: install Xcode's command line tools or lldb-server")
 
-func betterGdbserialLaunchError(p *proc.Target, err error) (*proc.Target, error) {
+func betterGdbserialLaunchError(p *proc.TargetGroup, err error) (*proc.TargetGroup, error) {
 	if runtime.GOOS != "darwin" {
 		return p, err
 	}
@@ -482,7 +477,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 		d.processArgs = append([]string{d.processArgs[0]}, newArgs...)
 		d.config.Redirect = proc.NewRedirectByPath(newRedirects)
 	}
-	var p *proc.Target
+	var grp *proc.TargetGroup
 	var err error
 
 	if rebuild {
@@ -510,19 +505,20 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 		}
 
 		d.recordingStart(stop)
-		p, err = d.recordingRun(run)
+		grp, err = d.recordingRun(run)
 		d.recordingDone()
 	} else {
-		p, err = d.Launch(d.processArgs, d.config.WorkingDir)
+		grp, err = d.Launch(d.processArgs, d.config.WorkingDir)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("could not launch process: %s", err)
 	}
 
 	discarded := []api.DiscardedBreakpoint{}
-	d.target = proc.NewGroupRestart(p, d.target, func(oldBp *proc.LogicalBreakpoint, err error) {
+	proc.Restart(grp, d.target, func(oldBp *proc.LogicalBreakpoint, err error) {
 		discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: api.ConvertLogicalBreakpoint(oldBp), Reason: err.Error()})
 	})
+	d.target = grp
 	return discarded, nil
 }
 
@@ -1321,7 +1317,7 @@ func (d *Debugger) collectBreakpointInformation(apiThread *api.Thread, thread pr
 	bpi := &api.BreakpointInfo{}
 	apiThread.BreakpointInfo = bpi
 
-	tgt := d.target.TargetForThread(thread)
+	tgt := d.target.TargetForThread(thread.ThreadID())
 
 	if bp.Goroutine {
 		g, err := proc.GetG(thread)
@@ -2141,7 +2137,7 @@ func (d *Debugger) DumpStart(dest string) error {
 
 	//TODO(aarzilli): what do we do if the user switches to a different target after starting a dump but before it's finished?
 
-	if !d.target.Selected.CanDump {
+	if !d.target.CanDump {
 		d.targetMutex.Unlock()
 		return ErrCoreDumpNotSupported
 	}

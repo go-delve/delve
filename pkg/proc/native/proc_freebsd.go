@@ -55,7 +55,7 @@ func (os *osProcessDetails) Close() {}
 // to be supplied to that process. `wd` is working directory of the program.
 // If the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []string, tty string, redirects proc.Redirect) (*proc.Target, error) {
+func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []string, tty string, redirects proc.Redirect) (*proc.TargetGroup, error) {
 	var (
 		process *exec.Cmd
 		err     error
@@ -121,7 +121,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []str
 // Attach to an existing process with the given PID. Once attached, if
 // the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func Attach(pid int, debugInfoDirs []string) (*proc.Target, error) {
+func Attach(pid int, debugInfoDirs []string) (*proc.TargetGroup, error) {
 	dbp := newProcess(pid)
 
 	var err error
@@ -227,8 +227,8 @@ func findExecutable(path string, pid int) string {
 	return path
 }
 
-func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
-	return dbp.trapWaitInternal(pid, trapWaitNormal)
+func trapWait(procgrp *processGroup, pid int) (*nativeThread, error) {
+	return procgrp.procs[0].trapWaitInternal(pid, trapWaitNormal)
 }
 
 type trapWaitMode uint8
@@ -403,7 +403,11 @@ func (dbp *nativeProcess) resume() error {
 
 // Used by ContinueOnce
 // stop stops all running threads and sets breakpoints
-func (dbp *nativeProcess) stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
+func (procgrp *processGroup) stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
+	return procgrp.procs[0].stop(trapthread)
+}
+
+func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) {
 	if dbp.exited {
 		return nil, proc.ErrProcessExited{Pid: dbp.pid}
 	}

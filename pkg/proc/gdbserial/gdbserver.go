@@ -278,7 +278,7 @@ func newProcess(process *os.Process) *gdbProcess {
 }
 
 // Listen waits for a connection from the stub.
-func (p *gdbProcess) Listen(listener net.Listener, path string, pid int, debugInfoDirs []string, stopReason proc.StopReason) (*proc.Target, error) {
+func (p *gdbProcess) Listen(listener net.Listener, path string, pid int, debugInfoDirs []string, stopReason proc.StopReason) (*proc.TargetGroup, error) {
 	acceptChan := make(chan net.Conn)
 
 	go func() {
@@ -300,7 +300,7 @@ func (p *gdbProcess) Listen(listener net.Listener, path string, pid int, debugIn
 }
 
 // Dial attempts to connect to the stub.
-func (p *gdbProcess) Dial(addr string, path string, pid int, debugInfoDirs []string, stopReason proc.StopReason) (*proc.Target, error) {
+func (p *gdbProcess) Dial(addr string, path string, pid int, debugInfoDirs []string, stopReason proc.StopReason) (*proc.TargetGroup, error) {
 	for {
 		conn, err := net.Dial("tcp", addr)
 		if err == nil {
@@ -321,7 +321,7 @@ func (p *gdbProcess) Dial(addr string, path string, pid int, debugInfoDirs []str
 // program and the PID of the target process, both are optional, however
 // some stubs do not provide ways to determine path and pid automatically
 // and Connect will be unable to function without knowing them.
-func (p *gdbProcess) Connect(conn net.Conn, path string, pid int, debugInfoDirs []string, stopReason proc.StopReason) (*proc.Target, error) {
+func (p *gdbProcess) Connect(conn net.Conn, path string, pid int, debugInfoDirs []string, stopReason proc.StopReason) (*proc.TargetGroup, error) {
 	p.conn.conn = conn
 	p.conn.pid = pid
 	err := p.conn.handshake(p.regnames)
@@ -450,7 +450,7 @@ func getLdEnvVars() []string {
 // LLDBLaunch starts an instance of lldb-server and connects to it, asking
 // it to launch the specified target program with the specified arguments
 // (cmd) on the specified directory wd.
-func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []string, tty string, redirects proc.Redirect) (*proc.Target, error) {
+func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []string, tty string, redirects proc.Redirect) (*proc.TargetGroup, error) {
 	if runtime.GOOS == "windows" {
 		return nil, ErrUnsupportedOS
 	}
@@ -567,11 +567,11 @@ func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs [
 	p := newProcess(process.Process)
 	p.conn.isDebugserver = isDebugserver
 
-	var tgt *proc.Target
+	var grp *proc.TargetGroup
 	if listener != nil {
-		tgt, err = p.Listen(listener, cmd[0], 0, debugInfoDirs, proc.StopLaunched)
+		grp, err = p.Listen(listener, cmd[0], 0, debugInfoDirs, proc.StopLaunched)
 	} else {
-		tgt, err = p.Dial(port, cmd[0], 0, debugInfoDirs, proc.StopLaunched)
+		grp, err = p.Dial(port, cmd[0], 0, debugInfoDirs, proc.StopLaunched)
 	}
 	if p.conn.pid != 0 && foreground && isatty.IsTerminal(os.Stdin.Fd()) {
 		// Make the target process the controlling process of the tty if it is a foreground process.
@@ -580,7 +580,7 @@ func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs [
 			logflags.DebuggerLogger().Errorf("could not set controlling process: %v", err)
 		}
 	}
-	return tgt, err
+	return grp, err
 }
 
 // LLDBAttach starts an instance of lldb-server and connects to it, asking
@@ -588,7 +588,7 @@ func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs [
 // Path is path to the target's executable, path only needs to be specified
 // for some stubs that do not provide an automated way of determining it
 // (for example debugserver).
-func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, error) {
+func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.TargetGroup, error) {
 	if runtime.GOOS == "windows" {
 		return nil, ErrUnsupportedOS
 	}
@@ -633,13 +633,13 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.Target, err
 	p := newProcess(process.Process)
 	p.conn.isDebugserver = isDebugserver
 
-	var tgt *proc.Target
+	var grp *proc.TargetGroup
 	if listener != nil {
-		tgt, err = p.Listen(listener, path, pid, debugInfoDirs, proc.StopAttached)
+		grp, err = p.Listen(listener, path, pid, debugInfoDirs, proc.StopAttached)
 	} else {
-		tgt, err = p.Dial(port, path, pid, debugInfoDirs, proc.StopAttached)
+		grp, err = p.Dial(port, path, pid, debugInfoDirs, proc.StopAttached)
 	}
-	return tgt, err
+	return grp, err
 }
 
 // EntryPoint will return the process entry point address, useful for
@@ -673,7 +673,7 @@ func (p *gdbProcess) EntryPoint() (uint64, error) {
 // initialize uses qProcessInfo to load the inferior's PID and
 // executable path. This command is not supported by all stubs and not all
 // stubs will report both the PID and executable path.
-func (p *gdbProcess) initialize(path string, debugInfoDirs []string, stopReason proc.StopReason) (*proc.Target, error) {
+func (p *gdbProcess) initialize(path string, debugInfoDirs []string, stopReason proc.StopReason) (*proc.TargetGroup, error) {
 	var err error
 	if path == "" {
 		// If we are attaching to a running process and the user didn't specify
@@ -724,19 +724,18 @@ func (p *gdbProcess) initialize(path string, debugInfoDirs []string, stopReason 
 			return nil, err
 		}
 	}
-	tgt, err := proc.NewTarget(p, p.conn.pid, p.currentThread, proc.NewTargetConfig{
-		Path:                path,
+	grp, addTarget := proc.NewGroup(p, proc.NewTargetGroupConfig{
 		DebugInfoDirs:       debugInfoDirs,
 		DisableAsyncPreempt: runtime.GOOS == "darwin",
 		StopReason:          stopReason,
 		CanDump:             runtime.GOOS == "darwin",
-		ContinueOnce:        continueOnce,
 	})
+	_, err = addTarget(p, p.conn.pid, p.currentThread, path, stopReason)
 	if err != nil {
 		p.Detach(true)
 		return nil, err
 	}
-	return tgt, nil
+	return grp, nil
 }
 
 func queryProcessInfo(p *gdbProcess, pid int) (int, string, error) {
@@ -821,11 +820,7 @@ const (
 	debugServerTargetExcBreakpoint     = 0x96
 )
 
-func continueOnce(procs []proc.ProcessInternal, cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
-	if len(procs) != 1 {
-		panic("not implemented")
-	}
-	p := procs[0].(*gdbProcess)
+func (p *gdbProcess) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
 	if p.exited {
 		return nil, proc.StopExited, proc.ErrProcessExited{Pid: p.conn.pid}
 	}
@@ -1305,6 +1300,11 @@ func (p *gdbProcess) EraseBreakpoint(bp *proc.Breakpoint) error {
 		kind = bp.WatchType.Size()
 	}
 	return p.conn.clearBreakpoint(bp.Addr, watchTypeToBreakpointType(bp.WatchType), kind)
+}
+
+// FollowExec enables (or disables) follow exec mode
+func (p *gdbProcess) FollowExec(bool) error {
+	return errors.New("follow exec not supported")
 }
 
 type threadUpdater struct {

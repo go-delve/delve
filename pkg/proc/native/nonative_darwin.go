@@ -16,12 +16,12 @@ import (
 var ErrNativeBackendDisabled = errors.New("native backend disabled during compilation")
 
 // Launch returns ErrNativeBackendDisabled.
-func Launch(_ []string, _ string, _ proc.LaunchFlags, _ []string, _ string, _ proc.Redirect) (*proc.Target, error) {
+func Launch(_ []string, _ string, _ proc.LaunchFlags, _ []string, _ string, _ proc.Redirect) (*proc.TargetGroup, error) {
 	return nil, ErrNativeBackendDisabled
 }
 
 // Attach returns ErrNativeBackendDisabled.
-func Attach(_ int, _ []string) (*proc.Target, error) {
+func Attach(_ int, _ []string) (*proc.TargetGroup, error) {
 	return nil, ErrNativeBackendDisabled
 }
 
@@ -57,11 +57,11 @@ func (dbp *nativeProcess) resume() error {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
+func trapWait(procgrp *processGroup, pid int) (*nativeThread, error) {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *nativeProcess) stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
+func (*processGroup) stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
 	panic(ErrNativeBackendDisabled)
 }
 

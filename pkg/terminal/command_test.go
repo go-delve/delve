@@ -79,6 +79,7 @@ func (ft *FakeTerminal) ExecStarlark(starlarkProgram string) (outstr string, err
 }
 
 func (ft *FakeTerminal) MustExec(cmdstr string) string {
+	ft.t.Helper()
 	outstr, err := ft.Exec(cmdstr)
 	if err != nil {
 		ft.t.Errorf("output of %q: %q", cmdstr, outstr)

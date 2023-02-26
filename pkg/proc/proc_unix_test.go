@@ -36,8 +36,7 @@ func TestIssue419(t *testing.T) {
 	errChan := make(chan error, 2)
 
 	// SIGINT directed at the inferior should be passed along not swallowed by delve
-	withTestProcess("issue419", t, func(p *proc.Target, fixture protest.Fixture) {
-		grp := proc.NewGroup(p)
+	withTestProcess("issue419", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(grp.Continue(), t, "Continue()")
 		resumeChan := make(chan struct{}, 1)

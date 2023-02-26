@@ -23,7 +23,7 @@ type osProcessDetails struct {
 func (os *osProcessDetails) Close() {}
 
 // Launch creates and begins debugging a new process.
-func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ string, redirects proc.Redirect) (*proc.Target, error) {
+func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ string, redirects proc.Redirect) (*proc.TargetGroup, error) {
 	argv0Go := cmd[0]
 
 	env := proc.DisableAsyncPreemptEnv()
@@ -140,7 +140,7 @@ func findExePath(pid int) (string, error) {
 var debugPrivilegeRequested = false
 
 // Attach to an existing process with the given PID.
-func Attach(pid int, _ []string) (*proc.Target, error) {
+func Attach(pid int, _ []string) (*proc.TargetGroup, error) {
 	var aperr error
 	if !debugPrivilegeRequested {
 		debugPrivilegeRequested = true
@@ -427,7 +427,8 @@ func (dbp *nativeProcess) waitForDebugEvent(flags waitForDebugEventFlags) (threa
 	}
 }
 
-func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
+func trapWait(procgrp *processGroup, pid int) (*nativeThread, error) {
+	dbp := procgrp.procs[0]
 	var err error
 	var tid, exitCode int
 	dbp.execPtraceFunc(func() {
@@ -474,7 +475,8 @@ func (dbp *nativeProcess) resume() error {
 }
 
 // stop stops all running threads threads and sets breakpoints
-func (dbp *nativeProcess) stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
+func (procgrp *processGroup) stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
+	dbp := procgrp.procs[0]
 	if dbp.exited {
 		return nil, proc.ErrProcessExited{Pid: dbp.pid}
 	}

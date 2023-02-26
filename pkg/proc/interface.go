@@ -7,6 +7,11 @@ import (
 	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 )
 
+// ProcessGroup is a group of processes that are resumed at the same time.
+type ProcessGroup interface {
+	ContinueOnce(*ContinueOnceContext) (Thread, StopReason, error)
+}
+
 // Process represents the target of the debugger. This
 // target could be a system process, core file, etc.
 //
@@ -57,6 +62,9 @@ type ProcessInternal interface {
 
 	// StartCallInjection notifies the backend that we are about to inject a function call.
 	StartCallInjection() (func(), error)
+
+	// FollowExec enables (or disables) follow exec mode
+	FollowExec(bool) error
 }
 
 // RecordingManipulation is an interface for manipulating process recordings.

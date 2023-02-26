@@ -24,11 +24,11 @@ type nativeProcess struct {
 	// Thread used to read and write memory
 	memthread *nativeThread
 
-	os             *osProcessDetails
-	firstStart     bool
-	ptraceChan     chan func()
-	ptraceDoneChan chan interface{}
-	childProcess   bool // this process was launched, not attached to
+	os           *osProcessDetails
+	firstStart   bool
+	ptraceThread *ptraceThread
+	childProcess bool // this process was launched, not attached to
+	followExec   bool // automatically attach to new processes
 
 	// Controlling terminal file descriptor for
 	// this process.
@@ -45,17 +45,28 @@ type nativeProcess struct {
 // `handlePtraceFuncs`.
 func newProcess(pid int) *nativeProcess {
 	dbp := &nativeProcess{
-		pid:            pid,
-		threads:        make(map[int]*nativeThread),
-		breakpoints:    proc.NewBreakpointMap(),
-		firstStart:     true,
-		os:             new(osProcessDetails),
-		ptraceChan:     make(chan func()),
-		ptraceDoneChan: make(chan interface{}),
-		bi:             proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
+		pid:          pid,
+		threads:      make(map[int]*nativeThread),
+		breakpoints:  proc.NewBreakpointMap(),
+		firstStart:   true,
+		os:           new(osProcessDetails),
+		ptraceThread: newPtraceThread(),
+		bi:           proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
 	}
-	go dbp.handlePtraceFuncs()
 	return dbp
+}
+
+// newChildProcess is like newProcess but uses the same ptrace thread as dbp.
+func newChildProcess(dbp *nativeProcess, pid int) *nativeProcess {
+	return &nativeProcess{
+		pid:          pid,
+		threads:      make(map[int]*nativeThread),
+		breakpoints:  proc.NewBreakpointMap(),
+		firstStart:   true,
+		os:           new(osProcessDetails),
+		ptraceThread: dbp.ptraceThread.acquire(),
+		bi:           proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
+	}
 }
 
 // BinInfo will return the binary info struct associated with this process.
@@ -172,23 +183,58 @@ func (dbp *nativeProcess) EraseBreakpoint(bp *proc.Breakpoint) error {
 	return dbp.memthread.clearSoftwareBreakpoint(bp)
 }
 
-func continueOnce(procs []proc.ProcessInternal, cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
-	if len(procs) != 1 {
+type processGroup struct {
+	procs     []*nativeProcess
+	addTarget proc.AddTargetFunc
+}
+
+func (procgrp *processGroup) numValid() int {
+	n := 0
+	for _, p := range procgrp.procs {
+		if ok, _ := p.Valid(); ok {
+			n++
+		}
+	}
+	return n
+}
+
+func (procgrp *processGroup) procForThread(tid int) *nativeProcess {
+	for _, p := range procgrp.procs {
+		if p.threads[tid] != nil {
+			return p
+		}
+	}
+	return nil
+}
+
+func (procgrp *processGroup) add(p *nativeProcess, pid int, currentThread proc.Thread, path string, stopReason proc.StopReason) (*proc.Target, error) {
+	tgt, err := procgrp.addTarget(p, pid, currentThread, path, stopReason)
+	if err != nil {
+		return nil, err
+	}
+	procgrp.procs = append(procgrp.procs, p)
+	return tgt, nil
+}
+
+func (procgrp *processGroup) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
+	if len(procgrp.procs) != 1 && runtime.GOOS != "linux" {
 		panic("not implemented")
 	}
-	dbp := procs[0].(*nativeProcess)
-	if dbp.exited {
-		return nil, proc.StopExited, proc.ErrProcessExited{Pid: dbp.pid}
+	if procgrp.numValid() == 0 {
+		return nil, proc.StopExited, proc.ErrProcessExited{Pid: procgrp.procs[0].pid}
 	}
 
 	for {
-
-		if err := dbp.resume(); err != nil {
-			return nil, proc.StopUnknown, err
-		}
-
-		for _, th := range dbp.threads {
-			th.CurrentBreakpoint.Clear()
+		for _, dbp := range procgrp.procs {
+			if dbp.exited {
+				continue
+			}
+			if err := dbp.resume(); err != nil {
+				return nil, proc.StopUnknown, err
+			}
+			for _, th := range dbp.threads {
+				th.CurrentBreakpoint.Clear()
+			}
 		}
 
 		if cctx.ResumeChan != nil {
@@ -196,16 +242,29 @@ func continueOnce(procs []proc.ProcessInternal, cctx *proc.ContinueOnceContext) 
 			cctx.ResumeChan = nil
 		}
 
-		trapthread, err := dbp.trapWait(-1)
+		trapthread, err := trapWait(procgrp, -1)
 		if err != nil {
 			return nil, proc.StopUnknown, err
 		}
-		trapthread, err = dbp.stop(cctx, trapthread)
+		trapthread, err = procgrp.stop(cctx, trapthread)
 		if err != nil {
 			return nil, proc.StopUnknown, err
 		}
 		if trapthread != nil {
+			dbp := procgrp.procForThread(trapthread.ID)
 			dbp.memthread = trapthread
+			// refresh memthread for every other process
+			for _, p2 := range procgrp.procs {
+				if p2.exited || p2 == dbp {
+					continue
+				}
+				for _, th := range p2.threads {
+					p2.memthread = th
+					if th.SoftExc() {
+						break
+					}
+				}
+			}
 			return trapthread, proc.StopUnknown, nil
 		}
 	}
@@ -226,21 +285,26 @@ func (dbp *nativeProcess) FindBreakpoint(pc uint64, adjustPC bool) (*proc.Breakp
 	return nil, false
 }
 
-// initialize will ensure that all relevant information is loaded
-// so the process is ready to be debugged.
-func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc.Target, error) {
+func (dbp *nativeProcess) initializeBasic() error {
 	if err := initialize(dbp); err != nil {
-		return nil, err
+		return err
 	}
 	if err := dbp.updateThreadList(); err != nil {
-		return nil, err
+		return err
 	}
+	return nil
+}
+
+// initialize will ensure that all relevant information is loaded
+// so the process is ready to be debugged.
+func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc.TargetGroup, error) {
+	dbp.initializeBasic()
 	stopReason := proc.StopLaunched
 	if !dbp.childProcess {
 		stopReason = proc.StopAttached
 	}
-	tgt, err := proc.NewTarget(dbp, dbp.pid, dbp.memthread, proc.NewTargetConfig{
-		Path:          path,
+	procgrp := &processGroup{}
+	grp, addTarget := proc.NewGroup(procgrp, proc.NewTargetGroupConfig{
 		DebugInfoDirs: debugInfoDirs,
 
 		// We disable asyncpreempt for the following reasons:
@@ -253,20 +317,21 @@ func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc
 		//    See: https://go-review.googlesource.com/c/go/+/208126
 		DisableAsyncPreempt: runtime.GOOS == "windows" || (runtime.GOOS == "linux" && runtime.GOARCH == "arm64"),
 
-		StopReason:   stopReason,
-		CanDump:      runtime.GOOS == "linux" || (runtime.GOOS == "windows" && runtime.GOARCH == "amd64"),
-		ContinueOnce: continueOnce,
+		StopReason: stopReason,
+		CanDump:    runtime.GOOS == "linux" || (runtime.GOOS == "windows" && runtime.GOARCH == "amd64"),
 	})
+	procgrp.addTarget = addTarget
+	tgt, err := procgrp.add(dbp, dbp.pid, dbp.memthread, path, stopReason)
 	if err != nil {
 		return nil, err
 	}
 	if dbp.bi.Arch.Name == "arm64" {
 		dbp.iscgo = tgt.IsCgo()
 	}
-	return tgt, nil
+	return grp, nil
 }
 
-func (dbp *nativeProcess) handlePtraceFuncs() {
+func (pt *ptraceThread) handlePtraceFuncs() {
 	// We must ensure here that we are running on the same thread during
 	// while invoking the ptrace(2) syscall. This is due to the fact that ptrace(2) expects
 	// all commands after PTRACE_ATTACH to come from the same thread.
@@ -279,21 +344,20 @@ func (dbp *nativeProcess) handlePtraceFuncs() {
 		defer runtime.UnlockOSThread()
 	}
 
-	for fn := range dbp.ptraceChan {
+	for fn := range pt.ptraceChan {
 		fn()
-		dbp.ptraceDoneChan <- nil
+		pt.ptraceDoneChan <- nil
 	}
 }
 
 func (dbp *nativeProcess) execPtraceFunc(fn func()) {
-	dbp.ptraceChan <- fn
-	<-dbp.ptraceDoneChan
+	dbp.ptraceThread.ptraceChan <- fn
+	<-dbp.ptraceThread.ptraceDoneChan
 }
 
 func (dbp *nativeProcess) postExit() {
 	dbp.exited = true
-	close(dbp.ptraceChan)
-	close(dbp.ptraceDoneChan)
+	dbp.ptraceThread.release()
 	dbp.bi.Close()
 	if dbp.ctty != nil {
 		dbp.ctty.Close()
@@ -361,4 +425,33 @@ func openRedirects(redirects proc.Redirect, foreground bool) (stdin, stdout, std
 	}
 
 	return stdin, stdout, stderr, closefn, nil
+}
+
+type ptraceThread struct {
+	ptraceRefCnt   int
+	ptraceChan     chan func()
+	ptraceDoneChan chan interface{}
+}
+
+func newPtraceThread() *ptraceThread {
+	pt := &ptraceThread{
+		ptraceChan:     make(chan func()),
+		ptraceDoneChan: make(chan interface{}),
+		ptraceRefCnt:   1,
+	}
+	go pt.handlePtraceFuncs()
+	return pt
+}
+
+func (pt *ptraceThread) acquire() *ptraceThread {
+	pt.ptraceRefCnt++
+	return pt
+}
+
+func (pt *ptraceThread) release() {
+	pt.ptraceRefCnt--
+	if pt.ptraceRefCnt == 0 {
+		close(pt.ptraceChan)
+		close(pt.ptraceDoneChan)
+	}
 }
