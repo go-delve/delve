@@ -4,7 +4,6 @@
 package dap
 
 import (
-	"crypto/rand"
 	"io"
 	"os"
 
