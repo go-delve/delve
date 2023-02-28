@@ -11,7 +11,7 @@ unit tests. By default Delve will debug the tests in the current directory.
 Alternatively you can specify a package name, and Delve will debug the tests in
 that package instead. Double-dashes `--` can be used to pass arguments to the test program:
 
-dlv test [package] -- -test.run TestSometing -test.v -other-argument
+dlv test [package] -- -test.run TestSomething -test.v -other-argument
 
 See also: 'go help testflag'.
 

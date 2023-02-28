@@ -476,7 +476,7 @@ With the -hitcount option a condition on the breakpoint hit count can be set, th
 
 The -per-g-hitcount option works like -hitcount, but use per goroutine hitcount to compare with n.
 
-With the -clear option a condtion on the breakpoint can removed.
+With the -clear option a condition on the breakpoint can removed.
 	
 The '% n' form means we should stop at the breakpoint when the hitcount is a multiple of n.
 

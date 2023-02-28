@@ -122,7 +122,7 @@ breakpoints: "next" will continue until the next line of the program,
 unexported runtime functions).
 
 All of "next", "step" and "stepout" operate on the selected goroutine. The
-selected gorutine is described by the `SelectedGoroutine` field of
+selected goroutine is described by the `SelectedGoroutine` field of
 `DebuggerState`. Every time `Command` returns the selected goroutine will be
 reset to the goroutine that triggered the breakpoint.
 
@@ -203,7 +203,7 @@ There are several API entry points to evaluate variables in Delve:
 * RPCServer.ListPackageVars returns all global variables in all packages
 * PRCServer.ListLocalVars returns all local variables of a stack frame
 * RPCServer.ListFunctionArgs returns all function arguments of a stack frame
-* RPCServer.Eval evaluets an expression on a given stack frame
+* RPCServer.Eval evaluates an expression on a given stack frame
 
 All those API calls take a LoadConfig argument. The LoadConfig specifies how
 much of the variable's value should actually be loaded. Because of
