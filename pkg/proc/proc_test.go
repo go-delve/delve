@@ -830,15 +830,7 @@ func TestSwitchThread(t *testing.T) {
 }
 
 func TestCGONext(t *testing.T) {
-	// Test if one can do 'next' in a cgo binary
-	// On OSX with Go < 1.5 CGO is not supported due to: https://github.com/golang/go/issues/8973
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 5) {
-		skipOn(t, "upstream issue", "darwin")
-	}
 	protest.MustHaveCgo(t)
-
-	skipOn(t, "broken - cgo stacktraces", "darwin", "arm64")
-	skipOn(t, "broken - see https://github.com/go-delve/delve/issues/3158", "darwin", "amd64")
 
 	protest.AllowRecording(t)
 	withTestProcess("cgotest", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
