@@ -2,6 +2,7 @@ package dap
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -7366,4 +7367,109 @@ func TestDisassembleCgo(t *testing.T) {
 		)
 	},
 		protest.AllNonOptimized, true)
+}
+
+func TestRedirect(t *testing.T) {
+	runTest(t, "out_redirect", func(client *daptest.Client, fixture protest.Fixture) {
+		// 1 >> initialize, << initialize
+		client.InitializeRequest()
+		initResp := client.ExpectInitializeResponseAndCapabilities(t)
+		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
+		}
+
+		// 2 >> launch, << initialized, << launch
+		client.LaunchRequestWithArgs(map[string]interface{}{
+			"request":     "launch",
+			"mode":        "debug",
+			"program":     fixture.Path,
+			"stopOnEntry": stopOnEntry,
+			"outputMode":  "only-remote",
+		})
+		initEvent := client.ExpectInitializedEvent(t)
+		if initEvent.Seq != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0", initEvent)
+		}
+		launchResp := client.ExpectLaunchResponse(t)
+		if launchResp.Seq != 0 || launchResp.RequestSeq != 2 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=2", launchResp)
+		}
+
+		// 5 >> configurationDone, << stopped, << configurationDone
+		client.ConfigurationDoneRequest()
+
+		stopEvent := client.ExpectStoppedEvent(t)
+		if stopEvent.Seq != 0 ||
+			stopEvent.Body.Reason != "entry" ||
+			stopEvent.Body.ThreadId != 1 ||
+			!stopEvent.Body.AllThreadsStopped {
+			t.Errorf("\ngot %#v\nwant Seq=0, Body={Reason=\"entry\", ThreadId=1, AllThreadsStopped=true}", stopEvent)
+		}
+		cdResp := client.ExpectConfigurationDoneResponse(t)
+		if cdResp.Seq != 0 || cdResp.RequestSeq != 5 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=5", cdResp)
+		}
+
+		// wait for output and terminated
+		var (
+			stdout = bytes.NewBufferString("")
+			stderr = bytes.NewBufferString("")
+		)
+		for hasNext := true; hasNext; {
+			message := client.ExpectMessage(t)
+			switch m := message.(type) {
+			case *dap.OutputEvent:
+				switch m.Body.Category {
+				case "stdout":
+					stdout.WriteString(m.Body.Output)
+				case "stderr":
+					stderr.WriteString(m.Body.Output)
+				default:
+					t.Errorf("\ngot %#v\nwant Category='stdout' or 'stderr'", m)
+				}
+			case *dap.TerminatedEvent:
+				hasNext = false
+			default:
+				t.Errorf("\n got %#v, want *dap.OutputEvent or *dap.TerminateResponse", m)
+			}
+		}
+		var (
+			stdoutFilePath = filepath.Join(fixture.Path, "out_redirect-stdout.txt")
+			stderrFilePath = filepath.Join(fixture.Path, "out_redirect-stderr.txt")
+		)
+		// check output
+		expectStdout, err := os.ReadFile(stdoutFilePath)
+		if err != nil {
+			t.Errorf("\n failed to read file: %s", stdoutFilePath)
+		}
+
+		if string(expectStdout) != stdout.String() {
+			t.Errorf("\n got stdout:\n%s\nwant:%s", stdout.String(), string(expectStdout))
+		}
+
+		expectStderr, err := os.ReadFile(stderrFilePath)
+		if err != nil {
+			t.Errorf("\n failed to read file: %s", stderrFilePath)
+		}
+
+		if string(expectStderr) != stderr.String() {
+			t.Errorf("\n got stderr:\n%s\nwant:%s", stderr.String(), string(expectStderr))
+		}
+
+		// 7 >> disconnect, << disconnect
+		client.DisconnectRequest()
+		oep := client.ExpectOutputEventProcessExited(t, 0)
+		if oep.Seq != 0 || oep.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
+		}
+		oed := client.ExpectOutputEventDetaching(t)
+		if oed.Seq != 0 || oed.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+		}
+		dResp := client.ExpectDisconnectResponse(t)
+		if dResp.Seq != 0 || dResp.RequestSeq != 13 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13", dResp)
+		}
+		client.ExpectTerminatedEvent(t)
+	})
 }

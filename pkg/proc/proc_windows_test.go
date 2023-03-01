@@ -39,7 +39,7 @@ func testGenRedireByFile(t *testing.T, fixture protest.Fixture, stdoutExpectFile
 			return
 		}
 
-		if string(expect) == string(out) {
+		if string(expect) != string(out) {
 			errChan <- fmt.Errorf("%s,Not as expected!\nexpect:%s\nout:%s", mode, expect, out)
 			return
 		}
