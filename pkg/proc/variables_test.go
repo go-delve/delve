@@ -829,6 +829,9 @@ func TestEvalExpression(t *testing.T) {
 
 		// Conversions to ptr-to-ptr types
 		{`**(**runtime.hmap)(uintptr(&m1))`, false, `…`, `…`, "runtime.hmap", nil},
+
+		// Malformed values
+		{`badslice`, false, `(unreadable non-zero length array with nil base)`, `(unreadable non-zero length array with nil base)`, "[]int", nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())
