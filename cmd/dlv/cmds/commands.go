@@ -91,6 +91,8 @@ var (
 
 	conf        *config.Config
 	loadConfErr error
+
+	rrOnProcessPid int
 )
 
 const dlvCommandLongDesc = `Delve is a source level debugger for Go programs.
@@ -368,6 +370,10 @@ https://github.com/mozilla/rr
 				os.Exit(execute(0, []string{}, conf, args[0], debugger.ExecutingOther, args, buildFlags))
 			},
 		}
+
+		replayCommand.Flags().IntVarP(&rrOnProcessPid, "onprocess", "p", 0,
+			"Pass onprocess pid to rr.")
+
 		rootCommand.AddCommand(replayCommand)
 	}
 
@@ -981,6 +987,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 				TTY:                  tty,
 				Redirects:            redirects,
 				DisableASLR:          disableASLR,
+				RrOnProcessPid:       rrOnProcessPid,
 			},
 		})
 	default:
