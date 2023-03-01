@@ -1656,6 +1656,10 @@ func (v *Variable) loadArrayValues(recurseLevel int, cfg LoadConfig) {
 		v.Unreadable = errors.New("Negative array length")
 		return
 	}
+	if v.Base == 0 && v.Len > 0 {
+		v.Unreadable = errors.New("non-zero length array with nil base")
+		return
+	}
 
 	count := v.Len
 	// Cap number of elements
