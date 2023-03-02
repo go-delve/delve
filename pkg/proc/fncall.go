@@ -1211,8 +1211,8 @@ func findCallInjectionStateForThread(t *Target, thread Thread) (*G, *callInjecti
 func debugCallFunction(bi *BinaryInfo) (*Function, int) {
 	for version := maxDebugCallVersion; version >= 1; version-- {
 		name := debugCallFunctionNamePrefix2 + "V" + strconv.Itoa(version)
-		fn, ok := bi.LookupFunc[name]
-		if ok && fn != nil {
+		fn := bi.lookupOneFunc(name)
+		if fn != nil {
 			return fn, version
 		}
 	}

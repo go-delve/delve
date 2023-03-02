@@ -209,21 +209,33 @@ func TestExitAfterContinue(t *testing.T) {
 }
 
 func setFunctionBreakpoint(p *proc.Target, t testing.TB, fname string) *proc.Breakpoint {
-	_, f, l, _ := runtime.Caller(1)
-	f = filepath.Base(f)
-
+	t.Helper()
 	addrs, err := proc.FindFunctionLocation(p, fname, 0)
 	if err != nil {
-		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
+		t.Fatalf("FindFunctionLocation(%s): %v", fname, err)
 	}
 	if len(addrs) != 1 {
-		t.Fatalf("%s:%d: setFunctionBreakpoint(%s): too many results %v", f, l, fname, addrs)
+		t.Fatalf("setFunctionBreakpoint(%s): too many results %v", fname, addrs)
 	}
 	bp, err := p.SetBreakpoint(int(addrs[0]), addrs[0], proc.UserBreakpoint, nil)
 	if err != nil {
-		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
+		t.Fatalf("FindFunctionLocation(%s): %v", fname, err)
 	}
 	return bp
+}
+
+func setFunctionBreakpointAll(p *proc.Target, t testing.TB, fname string) {
+	t.Helper()
+	addrs, err := proc.FindFunctionLocation(p, fname, 0)
+	if err != nil {
+		t.Fatalf("FindFunctionLocation(%s): %v", fname, err)
+	}
+	for _, addr := range addrs {
+		_, err := p.SetBreakpoint(int(addr), addr, proc.UserBreakpoint, nil)
+		if err != nil {
+			t.Fatalf("FindFunctionLocation(%s): %v", fname, err)
+		}
+	}
 }
 
 func setFileBreakpoint(p *proc.Target, t testing.TB, path string, lineno int) *proc.Breakpoint {
@@ -1927,7 +1939,7 @@ func TestIssue332_Part2(t *testing.T) {
 		assertNoError(err, t, "Registers()")
 		pc := regs.PC()
 		pcAfterPrologue := findFunctionLocation(p, t, "main.changeMe")
-		if pcAfterPrologue == p.BinInfo().LookupFunc["main.changeMe"].Entry {
+		if pcAfterPrologue == p.BinInfo().LookupFunc()["main.changeMe"][0].Entry {
 			t.Fatalf("main.changeMe and main.changeMe:0 are the same (%x)", pcAfterPrologue)
 		}
 		if pc != pcAfterPrologue {
@@ -2252,7 +2264,7 @@ func TestIssue573(t *testing.T) {
 
 func TestTestvariables2Prologue(t *testing.T) {
 	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		addrEntry := p.BinInfo().LookupFunc["main.main"].Entry
+		addrEntry := p.BinInfo().LookupFunc()["main.main"][0].Entry
 		addrPrologue := findFunctionLocation(p, t, "main.main")
 		if addrEntry == addrPrologue {
 			t.Fatalf("Prologue detection failed on testvariables2.go/main.main")
@@ -3483,7 +3495,7 @@ func TestSystemstackOnRuntimeNewstack(t *testing.T) {
 		assertNoError(err, t, "GetG")
 		mainGoroutineID := g.ID
 
-		setFunctionBreakpoint(p, t, "runtime.newstack")
+		setFunctionBreakpointAll(p, t, "runtime.newstack")
 		for {
 			assertNoError(grp.Continue(), t, "second continue")
 			g, err = proc.GetG(p.CurrentThread())
@@ -3710,7 +3722,7 @@ func TestDisassembleGlobalVars(t *testing.T) {
 		t.Skip("On 386 linux when pie, symLookup can't look up global variables")
 	}
 	withTestProcess("teststepconcurrent", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		mainfn := p.BinInfo().LookupFunc["main.main"]
+		mainfn := p.BinInfo().LookupFunc()["main.main"][0]
 		regs, _ := p.CurrentThread().Registers()
 		text, err := proc.Disassemble(p.Memory(), regs, p.Breakpoints(), p.BinInfo(), mainfn.Entry, mainfn.End)
 		assertNoError(err, t, "Disassemble")
@@ -4140,7 +4152,7 @@ func TestStepOutReturn(t *testing.T) {
 
 func TestOptimizationCheck(t *testing.T) {
 	withTestProcess("continuetestprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		fn := p.BinInfo().LookupFunc["main.main"]
+		fn := p.BinInfo().LookupFunc()["main.main"][0]
 		if fn.Optimized() {
 			t.Fatalf("main.main is optimized")
 		}
@@ -4148,7 +4160,7 @@ func TestOptimizationCheck(t *testing.T) {
 
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 10) {
 		withTestProcessArgs("continuetestprog", t, ".", []string{}, protest.EnableOptimization|protest.EnableInlining, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-			fn := p.BinInfo().LookupFunc["main.main"]
+			fn := p.BinInfo().LookupFunc()["main.main"][0]
 			if !fn.Optimized() {
 				t.Fatalf("main.main is not optimized")
 			}
@@ -5818,7 +5830,7 @@ func TestCallInjectionFlagCorruption(t *testing.T) {
 	protest.MustSupportFunctionCalls(t, testBackend)
 
 	withTestProcessArgs("badflags", t, ".", []string{"0"}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		mainfn := p.BinInfo().LookupFunc["main.main"]
+		mainfn := p.BinInfo().LookupFunc()["main.main"][0]
 
 		// Find JNZ instruction on line :14
 		var addr uint64

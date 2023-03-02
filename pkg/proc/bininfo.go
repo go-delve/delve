@@ -60,8 +60,8 @@ type BinaryInfo struct {
 	Functions []Function
 	// Sources is a list of all source files found in debug_line.
 	Sources []string
-	// LookupFunc maps function names to a description of the function.
-	LookupFunc map[string]*Function
+	// lookupFunc maps function names to a description of the function.
+	lookupFunc map[string][]*Function
 	// lookupGenericFunc maps function names, with their type parameters removed, to functions.
 	// Functions that are not generic are not added to this map.
 	lookupGenericFunc map[string][]*Function
@@ -311,8 +311,8 @@ func allInlineCallRanges(tree *godwarf.Tree) []inlRange {
 
 // FindFunction returns the functions with name funcName.
 func (bi *BinaryInfo) FindFunction(funcName string) ([]*Function, error) {
-	if fn := bi.LookupFunc[funcName]; fn != nil {
-		return []*Function{fn}, nil
+	if fns := bi.LookupFunc()[funcName]; fns != nil {
+		return fns, nil
 	}
 	fns := bi.LookupGenericFunc()[funcName]
 	if len(fns) == 0 {
@@ -393,7 +393,7 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 }
 
 func findRetPC(t *Target, name string) ([]uint64, error) {
-	fn := t.BinInfo().LookupFunc[name]
+	fn := t.BinInfo().lookupOneFunc(name)
 	if fn == nil {
 		return nil, fmt.Errorf("could not find %s", name)
 	}
@@ -2111,11 +2111,8 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 	sort.Sort(functionsDebugInfoByEntry(bi.Functions))
 	sort.Sort(packageVarsByAddr(bi.packageVars))
 
-	bi.LookupFunc = make(map[string]*Function)
+	bi.lookupFunc = nil
 	bi.lookupGenericFunc = nil
-	for i := range bi.Functions {
-		bi.LookupFunc[bi.Functions[i].Name] = &bi.Functions[i]
-	}
 
 	for _, cu := range image.compileUnits {
 		if cu.lineInfo != nil {
@@ -2129,7 +2126,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 
 	if bi.regabi {
 		// prepare patch for runtime.mallocgc's DIE
-		fn := bi.LookupFunc["runtime.mallocgc"]
+		fn := bi.lookupOneFunc("runtime.mallocgc")
 		if fn != nil && fn.cu.image == image {
 			tree, err := image.getDwarfTree(fn.offset)
 			if err == nil {
@@ -2164,6 +2161,25 @@ func (bi *BinaryInfo) LookupGenericFunc() map[string][]*Function {
 		}
 	}
 	return bi.lookupGenericFunc
+}
+
+func (bi *BinaryInfo) LookupFunc() map[string][]*Function {
+	if bi.lookupFunc == nil {
+		bi.lookupFunc = make(map[string][]*Function)
+		for i := range bi.Functions {
+			name := bi.Functions[i].Name
+			bi.lookupFunc[name] = append(bi.lookupFunc[name], &bi.Functions[i])
+		}
+	}
+	return bi.lookupFunc
+}
+
+func (bi *BinaryInfo) lookupOneFunc(name string) *Function {
+	fns := bi.LookupFunc()[name]
+	if fns == nil {
+		return nil
+	}
+	return fns[0]
 }
 
 // loadDebugInfoMapsCompileUnit loads entry from a single compile unit.
