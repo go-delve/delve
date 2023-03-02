@@ -82,6 +82,7 @@ func openRedirects(redirects proc.Redirect, quiet bool) (stdin, stdout, stderr *
 		stdout = redirects.WriterFiles[1]
 		stderr = redirects.WriterFiles[2]
 
+		toclose = append(toclose, stdout, stderr)
 		return stdin, stdout, stderr, closefn, nil
 	}
 

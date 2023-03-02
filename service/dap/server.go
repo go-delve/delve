@@ -1266,7 +1266,7 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 	defer s.mu.Unlock()
 
 	if s.debugger != nil && s.config.AcceptMulti && !request.Arguments.TerminateDebuggee {
-		// this is a multi-use server/debugger, so a disconnect request that doesn't
+		// This is a multi-use server/debugger, so a disconnect request that doesn't
 		// terminate the debuggee should clean up only the client connection and pointer to debugger,
 		// but not the entire server.
 		status := "halted"
