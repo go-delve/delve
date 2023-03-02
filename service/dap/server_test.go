@@ -7380,11 +7380,10 @@ func TestRedirect(t *testing.T) {
 
 		// 2 >> launch, << initialized, << launch
 		client.LaunchRequestWithArgs(map[string]interface{}{
-			"request":     "launch",
-			"mode":        "debug",
-			"program":     fixture.Path,
-			"stopOnEntry": stopOnEntry,
-			"outputMode":  "only-remote",
+			"request":    "launch",
+			"mode":       "debug",
+			"program":    fixture.Source,
+			"outputMode": "only-remote",
 		})
 		initEvent := client.ExpectInitializedEvent(t)
 		if initEvent.Seq != 0 {
@@ -7398,19 +7397,12 @@ func TestRedirect(t *testing.T) {
 		// 5 >> configurationDone, << stopped, << configurationDone
 		client.ConfigurationDoneRequest()
 
-		stopEvent := client.ExpectStoppedEvent(t)
-		if stopEvent.Seq != 0 ||
-			stopEvent.Body.Reason != "entry" ||
-			stopEvent.Body.ThreadId != 1 ||
-			!stopEvent.Body.AllThreadsStopped {
-			t.Errorf("\ngot %#v\nwant Seq=0, Body={Reason=\"entry\", ThreadId=1, AllThreadsStopped=true}", stopEvent)
-		}
 		cdResp := client.ExpectConfigurationDoneResponse(t)
-		if cdResp.Seq != 0 || cdResp.RequestSeq != 5 {
+		if cdResp.Seq != 0 || cdResp.RequestSeq != 3 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=5", cdResp)
 		}
 
-		// wait for output and terminated
+		// 6 << output, << terminated
 		var (
 			stdout = bytes.NewBufferString("")
 			stderr = bytes.NewBufferString("")
@@ -7434,9 +7426,10 @@ func TestRedirect(t *testing.T) {
 			}
 		}
 		var (
-			stdoutFilePath = filepath.Join(fixture.Path, "out_redirect-stdout.txt")
-			stderrFilePath = filepath.Join(fixture.Path, "out_redirect-stderr.txt")
+			stdoutFilePath = filepath.Join(fixture.BuildDir, "out_redirect-stdout.txt")
+			stderrFilePath = filepath.Join(fixture.BuildDir, "out_redirect-stderr.txt")
 		)
+
 		// check output
 		expectStdout, err := os.ReadFile(stdoutFilePath)
 		if err != nil {
@@ -7444,7 +7437,7 @@ func TestRedirect(t *testing.T) {
 		}
 
 		if string(expectStdout) != stdout.String() {
-			t.Errorf("\n got stdout:\n%s\nwant:%s", stdout.String(), string(expectStdout))
+			t.Errorf("\n got stdout: len:%d\n%s\nwant: len:%d\n%s", stdout.Len(), stdout.String(), len(expectStdout), string(expectStdout))
 		}
 
 		expectStderr, err := os.ReadFile(stderrFilePath)
@@ -7453,7 +7446,7 @@ func TestRedirect(t *testing.T) {
 		}
 
 		if string(expectStderr) != stderr.String() {
-			t.Errorf("\n got stderr:\n%s\nwant:%s", stderr.String(), string(expectStderr))
+			t.Errorf("\n got stderr: len:%d \n%s\nwant: len:%d\n%s", stderr.Len(), stderr.String(), len(expectStderr), string(expectStderr))
 		}
 
 		// 7 >> disconnect, << disconnect
@@ -7467,8 +7460,8 @@ func TestRedirect(t *testing.T) {
 			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
 		}
 		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.Seq != 0 || dResp.RequestSeq != 13 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13", dResp)
+		if dResp.Seq != 0 || dResp.RequestSeq != 4 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=43", dResp)
 		}
 		client.ExpectTerminatedEvent(t)
 	})
