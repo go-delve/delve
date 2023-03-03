@@ -167,8 +167,8 @@ type Session struct {
 	// stderrReader the program's stderr.
 	stderrReader io.ReadCloser
 
-	// wg the WaitGroup that needs to wait before sending a terminated event.
-	wg sync.WaitGroup
+	// preTerminatedWG the WaitGroup that needs to wait before sending a terminated event.
+	preTerminatedWG sync.WaitGroup
 }
 
 type outputMode int8
@@ -1108,15 +1108,15 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		// Start the program on a different goroutine, so we can listen for disconnect request.
 		go func() {
 			if redirected {
-				s.wg.Add(1)
+				s.preTerminatedWG.Add(1)
 				go func() {
-					defer s.wg.Done()
+					defer s.preTerminatedWG.Done()
 					readerFunc(s.stdoutReader, "stdout")
 				}()
 
-				s.wg.Add(1)
+				s.preTerminatedWG.Add(1)
 				go func() {
-					defer s.wg.Done()
+					defer s.preTerminatedWG.Done()
 					readerFunc(s.stderrReader, "stderr")
 				}()
 				// Wait for the input and output to be read
@@ -1141,9 +1141,9 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		}
 
 		s.config.Debugger.Redirect = redirects
-		s.wg.Add(1)
+		s.preTerminatedWG.Add(1)
 		go func() {
-			defer s.wg.Done()
+			defer s.preTerminatedWG.Done()
 			if err = ReadRedirect("stdout", redirects, func(reader io.Reader) {
 				readerFunc(reader, "stdout")
 			}); err != nil {
@@ -1153,9 +1153,9 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			}
 
 		}()
-		s.wg.Add(1)
+		s.preTerminatedWG.Add(1)
 		go func() {
-			defer s.wg.Done()
+			defer s.preTerminatedWG.Done()
 			if err = ReadRedirect("stderr", redirects, func(reader io.Reader) {
 				readerFunc(reader, "stderr")
 			}); err != nil {
@@ -1271,7 +1271,7 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 			status = "running"
 		} else if state, err := s.debugger.State(false); processExited(state, err) {
 			status = "exited"
-			s.wg.Wait()
+			s.preTerminatedWG.Wait()
 		}
 
 		s.logToConsole(fmt.Sprintf("Closing client session, but leaving multi-client DAP server at %s with debuggee %s", s.config.Listener.Addr().String(), status))
@@ -1307,7 +1307,7 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 	} else {
 		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 	}
-	s.wg.Wait()
+	s.preTerminatedWG.Wait()
 	// The debugging session has ended, so we send a terminated event.
 	s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 }
@@ -2867,7 +2867,7 @@ func (s *Session) doCall(goid, frame int, expr string) (*api.DebuggerState, []*p
 		GoroutineID:          int64(goid),
 	}, nil)
 	if processExited(state, err) {
-		s.wg.Wait()
+		s.preTerminatedWG.Wait()
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
 		s.send(e)
 		return nil, nil, errors.New("terminated")
@@ -3612,7 +3612,7 @@ func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange cha
 	}
 
 	if processExited(state, err) {
-		s.wg.Wait()
+		s.preTerminatedWG.Wait()
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		return
 	}

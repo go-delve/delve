@@ -14,7 +14,7 @@ import (
 	protest "github.com/go-delve/delve/pkg/proc/test"
 )
 
-func testGenRedireByFile(t *testing.T, fixture protest.Fixture, stdoutExpectFile string, stderrExpectFile string, errChan chan error) (redirect proc.Redirect, canceFunc func(), err error) {
+func testGenRediretByFile(t *testing.T, fixture protest.Fixture, stdoutExpectFile string, stderrExpectFile string, errChan chan error) (redirect proc.Redirect, canceFunc func(), err error) {
 	stdoutReader, stdoutWriter, err := os.Pipe()
 	if err != nil {
 		return redirect, nil, err
@@ -57,6 +57,6 @@ func testGenRedireByFile(t *testing.T, fixture protest.Fixture, stdoutExpectFile
 	return redirect, canceFunc, nil
 }
 
-func testGenRedireByPath(t *testing.T, fixture protest.Fixture, stdoutExpectFile string, stderrExpectFile string, errChan chan error) (redirect proc.Redirect, canceFunc func(), err error) {
+func testGenRediretByPath(t *testing.T, fixture protest.Fixture, stdoutExpectFile string, stderrExpectFile string, errChan chan error) (redirect proc.Redirect, canceFunc func(), err error) {
 	return proc.NewEmptyRedirectByPath(), nil, nil
 }

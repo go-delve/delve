@@ -5943,7 +5943,7 @@ func TestRedirect(t *testing.T) {
 		err              error
 		redirect         proc.Redirect = proc.NewEmptyRedirectByPath()
 		errChan                        = make(chan error, 2)
-		canceFunc        func()
+		cancelFunc       func()
 		needCheck        = false
 		stdoutExpectFile = "out_redirect-stdout.txt"
 		stderrExpectFile = "out_redirect-stderr.txt"
@@ -5951,13 +5951,13 @@ func TestRedirect(t *testing.T) {
 	switch testBackend {
 	case "native":
 		if runtime.GOOS == "linux" {
-			redirect, canceFunc, err = testGenRedireByPath(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
+			redirect, cancelFunc, err = testGenRediretByPath(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
 			if err != nil {
 				break
 			}
 			needCheck = true
 		} else if runtime.GOOS == "windows" {
-			redirect, canceFunc, err = testGenRedireByFile(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
+			redirect, cancelFunc, err = testGenRediretByFile(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
 			if err != nil {
 				break
 			}
@@ -5967,7 +5967,7 @@ func TestRedirect(t *testing.T) {
 		grp, err = native.Launch([]string{fixture.Path}, ".", 0, []string{}, "", redirect)
 	case "lldb":
 		if runtime.GOOS == "darwin" {
-			redirect, canceFunc, err = testGenRedireByPath(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
+			redirect, cancelFunc, err = testGenRediretByPath(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
 			if err != nil {
 				break
 			}
@@ -5978,7 +5978,7 @@ func TestRedirect(t *testing.T) {
 		protest.MustHaveRecordingAllowed(t)
 		t.Log("recording")
 		if runtime.GOOS != "windows" {
-			redirect, canceFunc, err = testGenRedireByPath(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
+			redirect, cancelFunc, err = testGenRediretByPath(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
 			if err != nil {
 				break
 			}
@@ -5991,8 +5991,8 @@ func TestRedirect(t *testing.T) {
 	}
 	if err != nil {
 		// clear reader goroutine
-		if canceFunc != nil {
-			canceFunc()
+		if cancelFunc != nil {
+			cancelFunc()
 			_, _ = <-errChan, <-errChan
 		}
 		t.Fatal("Launch():", err)
