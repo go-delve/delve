@@ -1048,9 +1048,6 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	s.outputMode |= outputToStd
 	switch args.OutputMode {
 	case "remote":
-		s.outputMode |= outputToDAP
-		redirected = true
-	case "only-remote":
 		s.outputMode = outputToDAP
 		redirected = true
 	case "local", "":

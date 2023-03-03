@@ -7383,7 +7383,7 @@ func TestRedirect(t *testing.T) {
 			"request":    "launch",
 			"mode":       "debug",
 			"program":    fixture.Source,
-			"outputMode": "only-remote",
+			"outputMode": "remote",
 		})
 		initEvent := client.ExpectInitializedEvent(t)
 		if initEvent.Seq != 0 {
