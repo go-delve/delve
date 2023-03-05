@@ -2832,15 +2832,6 @@ func TestNextInDeferReturn(t *testing.T) {
 	})
 }
 
-func getg(goid int64, gs []*proc.G) *proc.G {
-	for _, g := range gs {
-		if g.ID == goid {
-			return g
-		}
-	}
-	return nil
-}
-
 func TestAttachDetach(t *testing.T) {
 	if testBackend == "lldb" && runtime.GOOS == "linux" {
 		bs, _ := ioutil.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
