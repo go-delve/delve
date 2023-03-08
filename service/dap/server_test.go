@@ -7407,7 +7407,9 @@ func TestRedirect(t *testing.T) {
 			stdout = bytes.NewBufferString("")
 			stderr = bytes.NewBufferString("")
 		)
-		for hasNext := true; hasNext; {
+
+	TerminnatedPoint:
+		for {
 			message := client.ExpectMessage(t)
 			switch m := message.(type) {
 			case *dap.OutputEvent:
@@ -7420,11 +7422,12 @@ func TestRedirect(t *testing.T) {
 					t.Errorf("\ngot %#v\nwant Category='stdout' or 'stderr'", m)
 				}
 			case *dap.TerminatedEvent:
-				hasNext = false
+				break TerminnatedPoint
 			default:
 				t.Errorf("\n got %#v, want *dap.OutputEvent or *dap.TerminateResponse", m)
 			}
 		}
+
 		var (
 			stdoutFilePath = filepath.Join(fixture.BuildDir, "out_redirect-stdout.txt")
 			stderrFilePath = filepath.Join(fixture.BuildDir, "out_redirect-stderr.txt")

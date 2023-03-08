@@ -370,59 +370,58 @@ func (dbp *nativeProcess) writeSoftwareBreakpoint(thread *nativeThread, addr uin
 	return err
 }
 
-func openRedirects(redirects proc.Redirect, foreground bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
+func openRedirects(redirects [3]proc.OutputRedirect, foreground bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
 	var (
 		toclose = []*os.File{}
 	)
+
+	if redirects[0].Path != "" {
+		stdin, err = os.Open(redirects[0].Path)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		toclose = append(toclose, stdin)
+	} else {
+		stdin = os.Stdin
+	}
+
+	create := func(redirect proc.OutputRedirect, dflt *os.File) (f *os.File) {
+		if redirect.Path != "" {
+			f, err = os.Create(redirect.Path)
+			if f != nil {
+				toclose = append(toclose, f)
+			}
+
+			return f
+		}
+
+		if redirect.File != nil {
+			toclose = append(toclose, redirect.File)
+
+			return redirect.File
+		}
+
+		if foreground {
+			return nil
+		}
+
+		return dflt
+	}
+
+	stdout = create(redirects[1], os.Stdout)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	stderr = create(redirects[2], os.Stderr)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
 
 	closefn = func() {
 		for _, f := range toclose {
 			_ = f.Close()
 		}
-	}
-
-	if redirects.Mode == proc.RedirectFileMode {
-		stdin = redirects.WriterFiles[0]
-		if stdin == nil && foreground {
-			stdin = os.Stdin
-		}
-		stdout = redirects.WriterFiles[1]
-		stderr = redirects.WriterFiles[2]
-		toclose = append(toclose, stdin, stderr)
-
-		return stdin, stdout, stderr, closefn, nil
-	}
-
-	if redirects.Paths[0] != "" {
-		stdin, err = os.Open(redirects.Paths[0])
-		if err != nil {
-			return nil, nil, nil, nil, err
-		}
-		toclose = append(toclose, stdin)
-	} else if foreground {
-		stdin = os.Stdin
-	}
-
-	create := func(path string, dflt *os.File) *os.File {
-		if path == "" {
-			return dflt
-		}
-		var f *os.File
-		f, err = os.Create(path)
-		if f != nil {
-			toclose = append(toclose, f)
-		}
-		return f
-	}
-
-	stdout = create(redirects.Paths[1], os.Stdout)
-	if err != nil {
-		return nil, nil, nil, nil, err
-	}
-
-	stderr = create(redirects.Paths[2], os.Stderr)
-	if err != nil {
-		return nil, nil, nil, nil, err
 	}
 
 	return stdin, stdout, stderr, closefn, nil

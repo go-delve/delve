@@ -137,7 +137,7 @@ type Config struct {
 	ExecuteKind ExecuteKind
 
 	// Redirects specifies redirect rules for stdin, stdout and stderr
-	Redirect proc.Redirect
+	Redirect [3]proc.OutputRedirect
 
 	// DisableASLR disables ASLR
 	DisableASLR bool

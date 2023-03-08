@@ -158,9 +158,6 @@ type Session struct {
 	// changing the state of the running process at the same time.
 	changeStateMu sync.Mutex
 
-	// outputMode specifies how to print the program's output.
-	outputMode outputMode
-
 	// stdoutReader the programs's stdout.
 	stdoutReader io.ReadCloser
 
@@ -170,15 +167,6 @@ type Session struct {
 	// preTerminatedWG the WaitGroup that needs to wait before sending a terminated event.
 	preTerminatedWG sync.WaitGroup
 }
-
-type outputMode int8
-
-const (
-	// outputToStd os.Stdin and os.Stdout
-	outputToStd outputMode = 1 << iota
-	// outputToDAP Sending program output to the client.
-	outputToDAP
-)
 
 // Config is all the information needed to start the debugger, handle
 // DAP connection traffic and signal to the server when it is time to stop.
@@ -1045,10 +1033,8 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	s.config.log.Debugf("launching binary '%s' with config: %s", debugbinary, prettyPrint(argsToLog))
 
 	var redirected = false
-	s.outputMode |= outputToStd
 	switch args.OutputMode {
 	case "remote":
-		s.outputMode = outputToDAP
 		redirected = true
 	case "local", "":
 		// noting
@@ -1058,31 +1044,22 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	readerFunc := func(reader io.Reader, category string) {
-		var stdWriter io.Writer
-		if category == "stdout" {
-			stdWriter = os.Stdout
-		} else {
-			stdWriter = os.Stderr
-		}
-
-		var out [1024]byte
-		for {
-			n, err := reader.Read(out[:])
-			if err != nil {
-				if errors.Is(io.EOF, err) {
+	redirectedFunc := func(stdoutReader io.ReadCloser, stderrReader io.ReadCloser) {
+		runReadFunc := func(reader io.ReadCloser, category string) {
+			defer s.preTerminatedWG.Done()
+			defer reader.Close()
+			// Read output from `reader` and send to client
+			var out [1024]byte
+			for {
+				n, err := reader.Read(out[:])
+				if err != nil {
+					if errors.Is(io.EOF, err) {
+						return
+					}
+					s.config.log.Errorf("failed read by %s - %v ", category, err)
 					return
 				}
-				s.config.log.Errorf("failed read by %s - %v ", category, err)
-				return
-			}
-			outs := string(out[:n])
-
-			if s.outputMode&outputToStd != 0 {
-				fmt.Fprintf(stdWriter, outs)
-			}
-
-			if s.outputMode&outputToDAP != 0 {
+				outs := string(out[:n])
 				s.send(&dap.OutputEvent{
 					Event: *newEvent("output"),
 					Body: dap.OutputEventBody{
@@ -1091,6 +1068,10 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 					}})
 			}
 		}
+
+		s.preTerminatedWG.Add(2)
+		go runReadFunc(stdoutReader, "stdout")
+		go runReadFunc(stderrReader, "stderr")
 	}
 
 	if args.NoDebug {
@@ -1108,19 +1089,9 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		// Start the program on a different goroutine, so we can listen for disconnect request.
 		go func() {
 			if redirected {
-				s.preTerminatedWG.Add(1)
-				go func() {
-					defer s.preTerminatedWG.Done()
-					readerFunc(s.stdoutReader, "stdout")
-				}()
-
-				s.preTerminatedWG.Add(1)
-				go func() {
-					defer s.preTerminatedWG.Done()
-					readerFunc(s.stderrReader, "stderr")
-				}()
-				// Wait for the input and output to be read
+				redirectedFunc(s.stdoutReader, s.stderrReader)
 			}
+
 			if err := cmd.Wait(); err != nil {
 				s.config.log.Debugf("program exited with error: %v", err)
 			}
@@ -1133,36 +1104,23 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 
 	if redirected {
-		redirects, err := NewRedirector()
+		redirects, err := proc.NewRedirector()
 		if err != nil {
 			s.sendShowUserErrorResponse(request.Request, InternalError, "Internal Error",
 				fmt.Sprintf("failed to generate stdio pipes - %v", err))
 			return
 		}
 
-		s.config.Debugger.Redirect = redirects
-		s.preTerminatedWG.Add(1)
-		go func() {
-			defer s.preTerminatedWG.Done()
-			if err = ReadRedirect("stdout", redirects, func(reader io.Reader) {
-				readerFunc(reader, "stdout")
-			}); err != nil {
-				s.sendShowUserErrorResponse(request.Request, InternalError, "Internal Error",
-					fmt.Sprintf("failed to open stdout pipe - %v", err))
-				return
-			}
+		s.config.Debugger.Redirect = redirects.Writer()
 
-		}()
-		s.preTerminatedWG.Add(1)
 		go func() {
-			defer s.preTerminatedWG.Done()
-			if err = ReadRedirect("stderr", redirects, func(reader io.Reader) {
-				readerFunc(reader, "stderr")
-			}); err != nil {
-				s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
-					fmt.Sprintf("failed to open stderr pipe - %v", err))
+			readers, err := redirects.Reader()
+			if err != nil {
+				s.sendShowUserErrorResponse(request.Request, InternalError, "Internal Error",
+					fmt.Sprintf("failed to open pipe - %v", err))
 				return
 			}
+			redirectedFunc(readers[0], readers[1])
 		}()
 	}
 

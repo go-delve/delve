@@ -8,6 +8,7 @@ import (
 	"go/ast"
 	"go/constant"
 	"go/token"
+	"io"
 	"io/ioutil"
 	"math/rand"
 	"net"
@@ -103,13 +104,13 @@ func withTestProcessArgs(name string, t testing.TB, wd string, args []string, bu
 
 	switch testBackend {
 	case "native":
-		grp, err = native.Launch(append([]string{fixture.Path}, args...), wd, 0, []string{}, "", proc.NewEmptyRedirectByPath())
+		grp, err = native.Launch(append([]string{fixture.Path}, args...), wd, 0, []string{}, "", proc.NewEmptyRedirect())
 	case "lldb":
-		grp, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), wd, 0, []string{}, "", proc.NewEmptyRedirectByPath())
+		grp, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), wd, 0, []string{}, "", proc.NewEmptyRedirect())
 	case "rr":
 		protest.MustHaveRecordingAllowed(t)
 		t.Log("recording")
-		grp, tracedir, err = gdbserial.RecordAndReplay(append([]string{fixture.Path}, args...), wd, true, []string{}, proc.NewEmptyRedirectByPath())
+		grp, tracedir, err = gdbserial.RecordAndReplay(append([]string{fixture.Path}, args...), wd, true, []string{}, proc.NewEmptyRedirect())
 		t.Logf("replaying %q", tracedir)
 	default:
 		t.Fatal("unknown backend")
@@ -2217,9 +2218,9 @@ func TestUnsupportedArch(t *testing.T) {
 
 	switch testBackend {
 	case "native":
-		p, err = native.Launch([]string{outfile}, ".", 0, []string{}, "", proc.NewEmptyRedirectByPath())
+		p, err = native.Launch([]string{outfile}, ".", 0, []string{}, "", proc.NewEmptyRedirect())
 	case "lldb":
-		p, err = gdbserial.LLDBLaunch([]string{outfile}, ".", 0, []string{}, "", proc.NewEmptyRedirectByPath())
+		p, err = gdbserial.LLDBLaunch([]string{outfile}, ".", 0, []string{}, "", proc.NewEmptyRedirect())
 	default:
 		t.Skip("test not valid for this backend")
 	}
@@ -5935,14 +5936,70 @@ func TestStacktraceExtlinkMac(t *testing.T) {
 	})
 }
 
+func testGenRedirect(t *testing.T, fixture protest.Fixture, stdoutExpectFile string, stderrExpectFile string, errChan chan error) (redirect [3]proc.OutputRedirect, cancelFunc func(), err error) {
+	redirector, err := proc.NewRedirector()
+	if err != nil {
+		return redirect, nil, err
+	}
+
+	redirect = redirector.Writer()
+	cancelFunc = func() {
+		for _, outputRedirect := range redirect {
+			if outputRedirect.File != nil {
+				_ = outputRedirect.File.Close()
+			}
+
+			if outputRedirect.Path != "" {
+				stdio, err := os.OpenFile(outputRedirect.Path, os.O_WRONLY, os.ModeNamedPipe)
+				if err == nil {
+					stdio.Close()
+				}
+			}
+		}
+	}
+
+	// redirector.Reader() will be blocked.
+	go func() {
+		reader := func(mode string, f io.ReadCloser, expectFile string) {
+			expect, err := os.ReadFile(filepath.Join(fixture.BuildDir, expectFile))
+			if err != nil {
+				errChan <- err
+				return
+			}
+
+			out, err := io.ReadAll(f)
+			if err != nil {
+				errChan <- err
+				return
+			}
+
+			if string(expect) != string(out) {
+				errChan <- fmt.Errorf("%s,Not as expected!\nexpect:%s\nout:%s", mode, expect, out)
+				return
+			}
+			errChan <- nil
+		}
+
+		readers, err := redirector.Reader()
+		if err != nil {
+			errChan <- err
+			return
+		}
+		go reader("stdout", readers[0], stdoutExpectFile)
+		go reader("stderr", readers[1], stderrExpectFile)
+	}()
+
+	return redirect, cancelFunc, nil
+}
+
 func TestRedirect(t *testing.T) {
 	fixture := protest.BuildFixture("out_redirect", 0)
 	var (
 		grp              *proc.TargetGroup
 		tracedir         string
 		err              error
-		redirect         proc.Redirect = proc.NewEmptyRedirectByPath()
-		errChan                        = make(chan error, 2)
+		redirect         [3]proc.OutputRedirect = proc.NewEmptyRedirect()
+		errChan                                 = make(chan error, 2)
 		cancelFunc       func()
 		needCheck        = false
 		stdoutExpectFile = "out_redirect-stdout.txt"
@@ -5951,13 +6008,13 @@ func TestRedirect(t *testing.T) {
 	switch testBackend {
 	case "native":
 		if runtime.GOOS == "linux" {
-			redirect, cancelFunc, err = testGenRediretByPath(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
+			redirect, cancelFunc, err = testGenRedirect(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
 			if err != nil {
 				break
 			}
 			needCheck = true
 		} else if runtime.GOOS == "windows" {
-			redirect, cancelFunc, err = testGenRediretByFile(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
+			redirect, cancelFunc, err = testGenRedirect(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
 			if err != nil {
 				break
 			}
@@ -5967,7 +6024,7 @@ func TestRedirect(t *testing.T) {
 		grp, err = native.Launch([]string{fixture.Path}, ".", 0, []string{}, "", redirect)
 	case "lldb":
 		if runtime.GOOS == "darwin" {
-			redirect, cancelFunc, err = testGenRediretByPath(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
+			redirect, cancelFunc, err = testGenRedirect(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
 			if err != nil {
 				break
 			}
@@ -5978,7 +6035,7 @@ func TestRedirect(t *testing.T) {
 		protest.MustHaveRecordingAllowed(t)
 		t.Log("recording")
 		if runtime.GOOS != "windows" {
-			redirect, cancelFunc, err = testGenRediretByPath(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
+			redirect, cancelFunc, err = testGenRedirect(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
 			if err != nil {
 				break
 			}

@@ -23,7 +23,7 @@ type osProcessDetails struct {
 func (os *osProcessDetails) Close() {}
 
 // Launch creates and begins debugging a new process.
-func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ string, redirects proc.Redirect) (*proc.TargetGroup, error) {
+func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ string, redirects [3]proc.OutputRedirect) (*proc.TargetGroup, error) {
 	argv0Go := cmd[0]
 
 	env := proc.DisableAsyncPreemptEnv()

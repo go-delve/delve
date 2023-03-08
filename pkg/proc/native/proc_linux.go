@@ -62,7 +62,7 @@ func (os *osProcessDetails) Close() {
 // to be supplied to that process. `wd` is working directory of the program.
 // If the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []string, tty string, redirect proc.Redirect) (*proc.TargetGroup, error) {
+func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []string, tty string, redirect [3]proc.OutputRedirect) (*proc.TargetGroup, error) {
 	var (
 		process *exec.Cmd
 		err     error

@@ -4,30 +4,24 @@ import "os"
 
 type Mode string
 
+type OutputRedirect struct {
+	Path string
+	File *os.File
+}
+
 const (
 	RedirectFileMode Mode = "file"
 	RedirectPathMode Mode = "path"
 )
 
-type Redirect struct {
-	WriterFiles [3]*os.File
-	ReaderFiles [3]*os.File
-	Paths       [3]string
-	Mode        Mode
+func NewEmptyRedirect() [3]OutputRedirect {
+	return [3]OutputRedirect{}
 }
 
-func NewEmptyRedirectByPath() Redirect {
-	return Redirect{Mode: RedirectPathMode}
+func NewRedirectByPath(paths [3]string) [3]OutputRedirect {
+	return [3]OutputRedirect{{Path: paths[0]}, {Path: paths[1]}, {Path: paths[2]}}
 }
 
-func NewEmptyRedirectByFile() Redirect {
-	return Redirect{Mode: RedirectFileMode}
-}
-
-func NewRedirectByPath(paths [3]string) Redirect {
-	return Redirect{Paths: paths, Mode: RedirectPathMode}
-}
-
-func NewRedirectByFile(readerFiles [3]*os.File, writerFiles [3]*os.File) Redirect {
-	return Redirect{ReaderFiles: readerFiles, WriterFiles: writerFiles, Mode: RedirectFileMode}
+func NewRedirectByFile(writerFiles [3]*os.File) [3]OutputRedirect {
+	return [3]OutputRedirect{{File: writerFiles[0]}, {File: writerFiles[1]}, {File: writerFiles[2]}}
 }
