@@ -401,10 +401,6 @@ func openRedirects(redirects [3]proc.OutputRedirect, foreground bool) (stdin, st
 			return redirect.File
 		}
 
-		if foreground {
-			return nil
-		}
-
 		return dflt
 	}
 
