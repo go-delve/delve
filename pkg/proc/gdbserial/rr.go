@@ -94,6 +94,10 @@ func openRedirects(redirects [3]proc.OutputRedirect, quiet bool) (stdin, stdout,
 			return redirect.File
 		}
 
+		if quiet {
+			return nil
+		}
+
 		return dflt
 	}
 
