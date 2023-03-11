@@ -2721,10 +2721,9 @@ func TestStepOutPanicAndDirectCall(t *testing.T) {
 }
 
 func TestWorkDir(t *testing.T) {
-	wd := os.TempDir()
-	// For Darwin `os.TempDir()` returns `/tmp` which is symlink to `/private/tmp`.
-	if runtime.GOOS == "darwin" {
-		wd = "/private/tmp"
+	wd, err := filepath.EvalSymlinks(os.TempDir())
+	if err != nil {
+		t.Fatal(err)
 	}
 	protest.AllowRecording(t)
 	withTestProcessArgs("workdir", t, wd, []string{}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {

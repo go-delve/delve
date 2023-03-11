@@ -3757,10 +3757,9 @@ func execFixture(t *testing.T, fixture protest.Fixture) *exec.Cmd {
 // working directory is the one used to run the program.
 func TestWorkingDir(t *testing.T) {
 	runTest(t, "workdir", func(client *daptest.Client, fixture protest.Fixture) {
-		wd := os.TempDir()
-		// For Darwin `os.TempDir()` returns `/tmp` which is symlink to `/private/tmp`.
-		if runtime.GOOS == "darwin" {
-			wd = "/private/tmp"
+		wd, err := filepath.EvalSymlinks(os.TempDir())
+		if err != nil {
+			t.Fatal(err)
 		}
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
