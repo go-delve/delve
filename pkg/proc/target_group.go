@@ -108,7 +108,6 @@ func (grp *TargetGroup) addTarget(p ProcessInternal, pid int, currentThread Thre
 	if grp.Selected == nil {
 		grp.Selected = t
 	}
-	t.Breakpoints().Logical = grp.LogicalBreakpoints
 	logger := logflags.DebuggerLogger()
 	for _, lbp := range grp.LogicalBreakpoints {
 		if lbp.LogicalID < 0 {

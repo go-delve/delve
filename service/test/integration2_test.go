@@ -23,6 +23,7 @@ import (
 
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
+	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
@@ -2967,6 +2968,26 @@ func TestClientServer_createBreakpointWithID(t *testing.T) {
 		assertNoError(err, t, "CreateBreakpoint()")
 		if bp2.ID != 3 {
 			t.Errorf("wrong ID for breakpoint %d", bp2.ID)
+		}
+	})
+}
+
+func TestClientServer_autoBreakpoints(t *testing.T) {
+	// Check that unrecoverd-panic and fatal-throw breakpoints are visible in
+	// the breakpoint list.
+	protest.AllowRecording(t)
+	withTestClient2("math", t, func(c service.Client) {
+		bps, err := c.ListBreakpoints(false)
+		assertNoError(err, t, "ListBreakpoints")
+		n := 0
+		for _, bp := range bps {
+			t.Log(bp)
+			if bp.Name == proc.UnrecoveredPanic || bp.Name == proc.FatalThrow {
+				n++
+			}
+		}
+		if n != 2 {
+			t.Error("automatic breakpoints not found")
 		}
 	})
 }
