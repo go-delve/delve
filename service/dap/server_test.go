@@ -7434,7 +7434,7 @@ func TestRedirect(t *testing.T) {
 		)
 
 		// check output
-		if string(expectStdout) != stdout.String() {
+		if expectStdout != stdout.String() {
 			t.Errorf("\n got stdout: len:%d\n%s\nwant: len:%d\n%s", stdout.Len(), stdout.String(), len(expectStdout), string(expectStdout))
 		}
 
