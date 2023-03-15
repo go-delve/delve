@@ -86,9 +86,7 @@ func openRedirects(redirects [3]proc.OutputRedirect, quiet bool) (stdin, stdout,
 			}
 
 			return f
-		}
-
-		if redirect.File != nil {
+		} else if redirect.File != nil {
 			toclose = append(toclose, redirect.File)
 
 			return redirect.File

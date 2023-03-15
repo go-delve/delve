@@ -7429,26 +7429,16 @@ func TestRedirect(t *testing.T) {
 		}
 
 		var (
-			stdoutFilePath = filepath.Join(fixture.BuildDir, "out_redirect-stdout.txt")
-			stderrFilePath = filepath.Join(fixture.BuildDir, "out_redirect-stderr.txt")
+			expectStdout = "hello world!\nhello world! error!"
+			expectStderr = "hello world!\nhello world!"
 		)
 
 		// check output
-		expectStdout, err := os.ReadFile(stdoutFilePath)
-		if err != nil {
-			t.Errorf("\n failed to read file: %s", stdoutFilePath)
-		}
-
 		if string(expectStdout) != stdout.String() {
 			t.Errorf("\n got stdout: len:%d\n%s\nwant: len:%d\n%s", stdout.Len(), stdout.String(), len(expectStdout), string(expectStdout))
 		}
 
-		expectStderr, err := os.ReadFile(stderrFilePath)
-		if err != nil {
-			t.Errorf("\n failed to read file: %s", stderrFilePath)
-		}
-
-		if string(expectStderr) != stderr.String() {
+		if expectStderr != stderr.String() {
 			t.Errorf("\n got stderr: len:%d \n%s\nwant: len:%d\n%s", stderr.Len(), stderr.String(), len(expectStderr), string(expectStderr))
 		}
 

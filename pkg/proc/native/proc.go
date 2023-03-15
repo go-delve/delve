@@ -381,7 +381,7 @@ func openRedirects(redirects [3]proc.OutputRedirect, foreground bool) (stdin, st
 			return nil, nil, nil, nil, err
 		}
 		toclose = append(toclose, stdin)
-	} else {
+	} else if foreground {
 		stdin = os.Stdin
 	}
 
@@ -393,9 +393,7 @@ func openRedirects(redirects [3]proc.OutputRedirect, foreground bool) (stdin, st
 			}
 
 			return f
-		}
-
-		if redirect.File != nil {
+		} else if redirect.File != nil {
 			toclose = append(toclose, redirect.File)
 
 			return redirect.File

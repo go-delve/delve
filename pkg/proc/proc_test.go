@@ -106,7 +106,7 @@ func withTestProcessArgs(name string, t testing.TB, wd string, args []string, bu
 	case "native":
 		grp, err = native.Launch(append([]string{fixture.Path}, args...), wd, 0, []string{}, "", proc.NewEmptyRedirect())
 	case "lldb":
-		grp, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), wd, 0, []string{}, "", proc.NewEmptyRedirect())
+		grp, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), wd, 0, []string{}, "", [3]string{})
 	case "rr":
 		protest.MustHaveRecordingAllowed(t)
 		t.Log("recording")
@@ -2220,7 +2220,7 @@ func TestUnsupportedArch(t *testing.T) {
 	case "native":
 		p, err = native.Launch([]string{outfile}, ".", 0, []string{}, "", proc.NewEmptyRedirect())
 	case "lldb":
-		p, err = gdbserial.LLDBLaunch([]string{outfile}, ".", 0, []string{}, "", proc.NewEmptyRedirect())
+		p, err = gdbserial.LLDBLaunch([]string{outfile}, ".", 0, []string{}, "", [3]string{})
 	default:
 		t.Skip("test not valid for this backend")
 	}
@@ -5936,7 +5936,7 @@ func TestStacktraceExtlinkMac(t *testing.T) {
 	})
 }
 
-func testGenRedirect(t *testing.T, fixture protest.Fixture, stdoutExpectFile string, stderrExpectFile string, errChan chan error) (redirect [3]proc.OutputRedirect, cancelFunc func(), err error) {
+func testGenRedirect(t *testing.T, fixture protest.Fixture, expectStdout string, expectStderr string, errChan chan error) (redirect [3]proc.OutputRedirect, cancelFunc func(), err error) {
 	redirector, err := proc.NewRedirector()
 	if err != nil {
 		return redirect, nil, err
@@ -5960,21 +5960,15 @@ func testGenRedirect(t *testing.T, fixture protest.Fixture, stdoutExpectFile str
 
 	// redirector.Reader() will be blocked.
 	go func() {
-		reader := func(mode string, f io.ReadCloser, expectFile string) {
-			expect, err := os.ReadFile(filepath.Join(fixture.BuildDir, expectFile))
-			if err != nil {
-				errChan <- err
-				return
-			}
-
+		reader := func(mode string, f io.ReadCloser, expectOut string) {
 			out, err := io.ReadAll(f)
 			if err != nil {
 				errChan <- err
 				return
 			}
 
-			if string(expect) != string(out) {
-				errChan <- fmt.Errorf("%s,Not as expected!\nexpect:%s\nout:%s", mode, expect, out)
+			if expectOut != string(out) {
+				errChan <- fmt.Errorf("%s,Not as expected!\nexpect:%s\nout:%s", mode, expectOut, out)
 				return
 			}
 			errChan <- nil
@@ -5985,8 +5979,8 @@ func testGenRedirect(t *testing.T, fixture protest.Fixture, stdoutExpectFile str
 			errChan <- err
 			return
 		}
-		go reader("stdout", readers[0], stdoutExpectFile)
-		go reader("stderr", readers[1], stderrExpectFile)
+		go reader("stdout", readers[0], expectStdout)
+		go reader("stderr", readers[1], expectStderr)
 	}()
 
 	return redirect, cancelFunc, nil
@@ -5995,26 +5989,26 @@ func testGenRedirect(t *testing.T, fixture protest.Fixture, stdoutExpectFile str
 func TestRedirect(t *testing.T) {
 	fixture := protest.BuildFixture("out_redirect", 0)
 	var (
-		grp              *proc.TargetGroup
-		tracedir         string
-		err              error
-		redirect         [3]proc.OutputRedirect = proc.NewEmptyRedirect()
-		errChan                                 = make(chan error, 2)
-		cancelFunc       func()
-		needCheck        = false
-		stdoutExpectFile = "out_redirect-stdout.txt"
-		stderrExpectFile = "out_redirect-stderr.txt"
+		grp          *proc.TargetGroup
+		tracedir     string
+		err          error
+		redirect     [3]proc.OutputRedirect = proc.NewEmptyRedirect()
+		errChan                             = make(chan error, 2)
+		cancelFunc   func()
+		needCheck    = false
+		expectStdout = "hello world!\nhello world! error!"
+		expectStderr = "hello world!\nhello world!"
 	)
 	switch testBackend {
 	case "native":
 		if runtime.GOOS == "linux" {
-			redirect, cancelFunc, err = testGenRedirect(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
+			redirect, cancelFunc, err = testGenRedirect(t, fixture, expectStdout, expectStderr, errChan)
 			if err != nil {
 				break
 			}
 			needCheck = true
 		} else if runtime.GOOS == "windows" {
-			redirect, cancelFunc, err = testGenRedirect(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
+			redirect, cancelFunc, err = testGenRedirect(t, fixture, expectStdout, expectStderr, errChan)
 			if err != nil {
 				break
 			}
@@ -6024,18 +6018,18 @@ func TestRedirect(t *testing.T) {
 		grp, err = native.Launch([]string{fixture.Path}, ".", 0, []string{}, "", redirect)
 	case "lldb":
 		if runtime.GOOS == "darwin" {
-			redirect, cancelFunc, err = testGenRedirect(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
+			redirect, cancelFunc, err = testGenRedirect(t, fixture, expectStdout, expectStderr, errChan)
 			if err != nil {
 				break
 			}
 			needCheck = true
 		}
-		grp, err = gdbserial.LLDBLaunch([]string{fixture.Path}, ".", 0, []string{}, "", redirect)
+		grp, err = gdbserial.LLDBLaunch([]string{fixture.Path}, ".", 0, []string{}, "", [3]string{redirect[0].Path, redirect[1].Path, redirect[2].Path})
 	case "rr":
 		protest.MustHaveRecordingAllowed(t)
 		t.Log("recording")
 		if runtime.GOOS != "windows" {
-			redirect, cancelFunc, err = testGenRedirect(t, fixture, stdoutExpectFile, stderrExpectFile, errChan)
+			redirect, cancelFunc, err = testGenRedirect(t, fixture, expectStdout, expectStderr, errChan)
 			if err != nil {
 				break
 			}

@@ -9,11 +9,6 @@ type OutputRedirect struct {
 	File *os.File
 }
 
-const (
-	RedirectFileMode Mode = "file"
-	RedirectPathMode Mode = "path"
-)
-
 func NewEmptyRedirect() [3]OutputRedirect {
 	return [3]OutputRedirect{}
 }
