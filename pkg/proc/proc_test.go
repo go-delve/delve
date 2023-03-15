@@ -5996,8 +5996,8 @@ func TestRedirect(t *testing.T) {
 		errChan                             = make(chan error, 2)
 		cancelFunc   func()
 		needCheck    = false
-		expectStdout = "hello world!\nhello world! error!"
-		expectStderr = "hello world!\nhello world!"
+		expectStdout = "hello world!\nhello world!"
+		expectStderr = "hello world!\nhello world! error!"
 	)
 	switch testBackend {
 	case "native":
