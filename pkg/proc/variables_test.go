@@ -50,7 +50,7 @@ func matchStringOrPrefix(output, target string) bool {
 	}
 }
 
-func assertVariable(t *testing.T, variable *proc.Variable, expected varTest) {
+func assertVariable(t testing.TB, variable *proc.Variable, expected varTest) {
 	if expected.preserveName {
 		if variable.Name != expected.name {
 			t.Fatalf("Expected %s got %s\n", expected.name, variable.Name)
@@ -511,7 +511,7 @@ func TestComplexSetting(t *testing.T) {
 	})
 }
 
-func TestEvalExpression(t *testing.T) {
+func getEvalExpressionTestCases() []varTest {
 	testcases := []varTest{
 		// slice/array/string subscript
 		{"s1[0]", false, "\"one\"", "\"one\"", "string", nil},
@@ -845,6 +845,11 @@ func TestEvalExpression(t *testing.T) {
 		}
 	}
 
+	return testcases
+}
+
+func TestEvalExpression(t *testing.T) {
+	testcases := getEvalExpressionTestCases()
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), t, "Continue() returned an error")
