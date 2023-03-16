@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"go/constant"
 	"reflect"
+	"strings"
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
+	"github.com/go-delve/delve/pkg/logflags"
 )
 
 // This code is partly adapted from runtime.gentraceback in
@@ -208,11 +210,36 @@ func (it *stackIterator) Next() bool {
 		return false
 	}
 
+	if logflags.Stack() {
+		logger := logflags.StackLogger()
+		w := &strings.Builder{}
+		fmt.Fprintf(w, "current pc = %#x CFA = %#x FrameBase = %#x ", it.pc, it.regs.CFA, it.regs.FrameBase)
+		for i := 0; i < it.regs.CurrentSize(); i++ {
+			reg := it.regs.Reg(uint64(i))
+			if reg == nil {
+				continue
+			}
+			name, _, _ := it.bi.Arch.DwarfRegisterToString(i, reg)
+			fmt.Fprintf(w, " %s = %#x", name, reg.Uint64Val)
+		}
+		logger.Debugf("%s", w.String())
+	}
+
 	callFrameRegs, ret, retaddr := it.advanceRegs()
 	it.frame = it.newStackframe(ret, retaddr)
 
+	if logflags.Stack() {
+		logger := logflags.StackLogger()
+		fnname := "?"
+		if it.frame.Call.Fn != nil {
+			fnname = it.frame.Call.Fn.Name
+		}
+		logger.Debugf("new frame %#x %s:%d at %s", it.frame.Call.PC, it.frame.Call.File, it.frame.Call.Line, fnname)
+	}
+
 	if it.opts&StacktraceSimple == 0 {
 		if it.bi.Arch.switchStack(it, &callFrameRegs) {
+			logflags.StackLogger().Debugf("stack switched")
 			return true
 		}
 	}
@@ -398,10 +425,17 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 		framectx = it.bi.Arch.fixFrameUnwindContext(fde.EstablishFrame(it.pc), it.pc, it.bi)
 	}
 
+	logger := logflags.StackLogger()
+
+	logger.Debugf("advanceRegs at %#x", it.pc)
+
 	cfareg, err := it.executeFrameRegRule(0, framectx.CFA, 0)
 	if cfareg == nil {
 		it.err = fmt.Errorf("CFA becomes undefined at PC %#x: %v", it.pc, err)
 		return op.DwarfRegisters{}, 0, 0
+	}
+	if logflags.Stack() {
+		logger.Debugf("\tCFA rule %s -> %#x", ruleString(&framectx.CFA, it.bi.Arch.RegnumToString), cfareg.Uint64Val)
 	}
 	it.regs.CFA = int64(cfareg.Uint64Val)
 
@@ -426,7 +460,16 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 	callFrameRegs.AddReg(callFrameRegs.SPRegNum, cfareg)
 
 	for i, regRule := range framectx.Regs {
+		if logflags.Stack() {
+			logger.Debugf("\t%s rule %s ", it.bi.Arch.RegnumToString(i), ruleString(&regRule, it.bi.Arch.RegnumToString))
+
+		}
 		reg, err := it.executeFrameRegRule(i, regRule, it.regs.CFA)
+		if reg != nil {
+			logger.Debugf("\t\t-> %#x", reg.Uint64Val)
+		} else {
+			logger.Debugf("\t\t-> nothing (%v)", err)
+		}
 		callFrameRegs.AddReg(i, reg)
 		if i == framectx.RetAddrReg {
 			if reg == nil {
@@ -700,4 +743,35 @@ func (d *Defer) DeferredFunc(p *Target) (file string, line int, fn *Function) {
 	}
 	file, line = bi.EntryLineForFunc(fn)
 	return file, line, fn
+}
+
+func ruleString(rule *frame.DWRule, regnumToString func(uint64) string) string {
+	switch rule.Rule {
+	case frame.RuleUndefined:
+		return "undefined"
+	case frame.RuleSameVal:
+		return "sameval"
+	case frame.RuleOffset:
+		return fmt.Sprintf("[cfa+%d]", rule.Offset)
+	case frame.RuleValOffset:
+		return fmt.Sprintf("cfa+%d", rule.Offset)
+	case frame.RuleRegister:
+		return fmt.Sprintf("R(%d)", rule.Reg)
+	case frame.RuleExpression:
+		w := &strings.Builder{}
+		op.PrettyPrint(w, rule.Expression, regnumToString)
+		return fmt.Sprintf("[expr(%s)]", w.String())
+	case frame.RuleValExpression:
+		w := &strings.Builder{}
+		op.PrettyPrint(w, rule.Expression, regnumToString)
+		return fmt.Sprintf("expr(%s)", w.String())
+	case frame.RuleArchitectural:
+		return "architectural"
+	case frame.RuleCFA:
+		return fmt.Sprintf("R(%d)+%d", rule.Reg, rule.Offset)
+	case frame.RuleFramePointer:
+		return fmt.Sprintf("[R(%d)] framepointer", rule.Reg)
+	default:
+		return fmt.Sprintf("unknown_rule(%d)", rule.Rule)
+	}
 }
