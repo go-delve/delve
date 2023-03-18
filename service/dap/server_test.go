@@ -7429,8 +7429,8 @@ func TestRedirect(t *testing.T) {
 		}
 
 		var (
-			expectStdout = "hello world!\nhello world! error!"
-			expectStderr = "hello world!\nhello world!"
+			expectStdout = "hello world!\nhello world!"
+			expectStderr = "hello world!\nhello world! error!"
 		)
 
 		// check output

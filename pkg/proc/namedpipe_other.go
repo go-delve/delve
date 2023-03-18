@@ -9,14 +9,16 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"syscall"
 )
 
-type stdioRedirector struct {
-	Paths [3]string
+type StdioRedirector struct {
+	Paths     [3]string
+	needClear int32
 }
 
-func NewRedirector() (redirect *stdioRedirector, err error) {
+func NewRedirector() (redirect *StdioRedirector, err error) {
 	r := make([]byte, 4)
 	if _, err := rand.Read(r); err != nil {
 		return redirect, err
@@ -37,11 +39,11 @@ func NewRedirector() (redirect *stdioRedirector, err error) {
 		return redirect, err
 	}
 
-	return &stdioRedirector{Paths: [3]string{"", stdoutPath, stderrPath}}, nil 
+	return &StdioRedirector{Paths: [3]string{"", stdoutPath, stderrPath}}, nil
 }
 
 // Writer return [3]{stdin,stdout,stderr}
-func (s *stdioRedirector) Writer() [3]OutputRedirect {
+func (s *StdioRedirector) Writer() [3]OutputRedirect {
 	return NewRedirectByPath(s.Paths)
 }
 
@@ -61,9 +63,12 @@ func newWarpClose(file *os.File, path string) io.ReadCloser {
 
 // Reader return []{stdout,stderr}.
 // Delete the file when the Close interface is called.
-// OpenFile(path,os.O_RDONLY,os.ModeNamedPipe) will be blocked. 
+// OpenFile(path,os.O_RDONLY,os.ModeNamedPipe) will be blocked.
 // The Reader should be called asynchronously.
-func (s *stdioRedirector) Reader() (reader [2]io.ReadCloser, err error) {
+func (s *StdioRedirector) Reader() (reader [2]io.ReadCloser, err error) {
+	atomic.StoreInt32(&s.needClear, 1)
+	defer atomic.StoreInt32(&s.needClear, 0)
+
 	stdoutFile, err := os.OpenFile(s.Paths[1], os.O_RDONLY, os.ModeNamedPipe)
 	if err != nil {
 		return reader, err
@@ -78,4 +83,26 @@ func (s *stdioRedirector) Reader() (reader [2]io.ReadCloser, err error) {
 	reader[1] = newWarpClose(stderrFile, s.Paths[2])
 
 	return reader, nil
+}
+
+// Clean up resources created by redirects.
+// When the s.Reader() method is blocked by os.OpenFile(only-read),
+// it opens the file in write mode and call file.Close().
+func (s *StdioRedirector) Clean() error {
+	if atomic.LoadInt32(&s.needClear) == 1 {
+		stdoutFile, err := os.OpenFile(s.Paths[1], os.O_WRONLY, os.ModeNamedPipe)
+		if err != nil {
+			return err
+		}
+
+		stderrFile, err := os.OpenFile(s.Paths[2], os.O_WRONLY, os.ModeNamedPipe)
+		if err != nil {
+			return err
+		}
+
+		stderrFile.Close()
+		stdoutFile.Close()
+	}
+
+	return nil
 }

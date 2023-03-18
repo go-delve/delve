@@ -1103,8 +1103,9 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
+	var redirects *proc.StdioRedirector
 	if redirected {
-		redirects, err := proc.NewRedirector()
+		redirects, err = proc.NewRedirector()
 		if err != nil {
 			s.sendShowUserErrorResponse(request.Request, InternalError, "Internal Error",
 				fmt.Sprintf("failed to generate stdio pipes - %v", err))
@@ -1112,8 +1113,9 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		}
 
 		s.config.Debugger.Redirect = redirects.Writer()
-
+		s.preTerminatedWG.Add(1)
 		go func() {
+			defer s.preTerminatedWG.Done()
 			readers, err := redirects.Reader()
 			if err != nil {
 				s.sendShowUserErrorResponse(request.Request, InternalError, "Internal Error",
@@ -1131,6 +1133,12 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	}()
 	if err != nil {
 		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
+		if redirected && redirects != nil {
+			// On startup failure, clean up the resources created for the redirect.
+			if clearErr := redirects.Clean(); clearErr != nil {
+				s.config.log.Warnf("failed to clear redirects - %v", clearErr)
+			}
+		}
 		return
 	}
 	// Enable StepBack controls on supported backends
@@ -1160,6 +1168,7 @@ func (s *Session) getPackageDir(pkg string) string {
 func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd string, redirected bool) (cmd *exec.Cmd, err error) {
 	if s.noDebugProcess != nil {
 		return nil, fmt.Errorf("another launch request is in progress")
+
 	}
 
 	cmd = exec.Command(program, targetArgs...)
