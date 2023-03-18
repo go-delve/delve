@@ -42,7 +42,7 @@ func (s *StdioRedirector) Reader() (reader [2]io.ReadCloser, err error) {
 	return reader, nil
 }
 
-// Clean
-func (s *StdioRedirector) Clean() error {
+// Clear
+func (s *StdioRedirector) Clear() error {
 	return nil
 }
