@@ -18,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-delve/delve/pkg/proc"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service/debugger"
 
