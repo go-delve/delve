@@ -1135,7 +1135,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 		if redirected && redirects != nil {
 			// On startup failure, clean up the resources created for the redirect.
-			if clearErr := redirects.Clean(); clearErr != nil {
+			if clearErr := redirects.Clear(); clearErr != nil {
 				s.config.log.Warnf("failed to clear redirects - %v", clearErr)
 			}
 		}

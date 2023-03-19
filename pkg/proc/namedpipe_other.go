@@ -85,10 +85,10 @@ func (s *StdioRedirector) Reader() (reader [2]io.ReadCloser, err error) {
 	return reader, nil
 }
 
-// Clean up resources created by redirects.
+// Clear Clean up resources created by redirects.
 // When the s.Reader() method is blocked by os.OpenFile(only-read),
 // it opens the file in write mode and call file.Close().
-func (s *StdioRedirector) Clean() error {
+func (s *StdioRedirector) Clear() error {
 	if atomic.LoadInt32(&s.needClear) == 1 {
 		stdoutFile, err := os.OpenFile(s.Paths[1], os.O_WRONLY, os.ModeNamedPipe)
 		if err != nil {
