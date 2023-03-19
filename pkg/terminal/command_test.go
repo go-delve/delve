@@ -559,19 +559,6 @@ func TestOnPrefixLocals(t *testing.T) {
 	})
 }
 
-func countOccurrences(s, needle string) int {
-	count := 0
-	for {
-		idx := strings.Index(s, needle)
-		if idx < 0 {
-			break
-		}
-		count++
-		s = s[idx+len(needle):]
-	}
-	return count
-}
-
 func listIsAt(t *testing.T, term *FakeTerminal, listcmd string, cur, start, end int) {
 	t.Helper()
 	outstr := term.MustExec(listcmd)

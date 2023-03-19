@@ -354,7 +354,7 @@ func skipPadding(r io.ReadSeeker, pad int64) error {
 }
 
 func buildMemory(core, exeELF *elf.File, exe io.ReaderAt, notes []*note) proc.MemoryReader {
-	memory := &splicedMemory{}
+	memory := &SplicedMemory{}
 
 	// For now, assume all file mappings are to the exe.
 	for _, note := range notes {

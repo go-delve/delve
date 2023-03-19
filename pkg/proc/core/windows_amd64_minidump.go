@@ -21,7 +21,7 @@ func readAMD64Minidump(minidumpPath, exePath string) (*process, proc.Thread, err
 		return nil, nil, err
 	}
 
-	memory := &splicedMemory{}
+	memory := &SplicedMemory{}
 
 	for i := range mdmp.MemoryRanges {
 		m := &mdmp.MemoryRanges[i]

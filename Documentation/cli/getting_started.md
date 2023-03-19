@@ -14,15 +14,14 @@ otherwise it optionally accepts a package path.
 For example given this project layout:
 
 ```
-.
-├── github.com/me/foo
+github.com/me/foo
 ├── cmd
-│   └── foo
-│       └── main.go
-├── pkg
-│   └── baz
-│       ├── bar.go
-│       └── bar_test.go
+│   └── foo
+│       └── main.go
+└── pkg
+    └── baz
+        ├── bar.go
+        └── bar_test.go
 ```
 
 If you are in the directory `github.com/me/foo/cmd/foo` you can simply run `dlv debug`

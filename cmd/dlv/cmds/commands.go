@@ -92,6 +92,8 @@ var (
 
 	conf        *config.Config
 	loadConfErr error
+
+	rrOnProcessPid int
 )
 
 const dlvCommandLongDesc = `Delve is a source level debugger for Go programs.
@@ -279,7 +281,7 @@ unit tests. By default Delve will debug the tests in the current directory.
 Alternatively you can specify a package name, and Delve will debug the tests in
 that package instead. Double-dashes ` + "`--`" + ` can be used to pass arguments to the test program:
 
-dlv test [package] -- -test.run TestSometing -test.v -other-argument
+dlv test [package] -- -test.run TestSomething -test.v -other-argument
 
 See also: 'go help testflag'.`,
 		Run: testCmd,
@@ -369,6 +371,10 @@ https://github.com/mozilla/rr
 				os.Exit(execute(0, []string{}, conf, args[0], debugger.ExecutingOther, args, buildFlags))
 			},
 		}
+
+		replayCommand.Flags().IntVarP(&rrOnProcessPid, "onprocess", "p", 0,
+			"Pass onprocess pid to rr.")
+
 		rootCommand.AddCommand(replayCommand)
 	}
 
@@ -982,6 +988,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 				TTY:                  tty,
 				Redirect:             proc.NewRedirectByPath(redirects),
 				DisableASLR:          disableASLR,
+				RrOnProcessPid:       rrOnProcessPid,
 			},
 		})
 	default:

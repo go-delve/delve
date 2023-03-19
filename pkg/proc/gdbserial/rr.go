@@ -132,12 +132,21 @@ func Record(cmd []string, wd string, quiet bool, redirects [3]proc.OutputRedirec
 
 // Replay starts an instance of rr in replay mode, with the specified trace
 // directory, and connects to it.
-func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string) (*proc.TargetGroup, error) {
+func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string, rrOnProcessPid int) (*proc.TargetGroup, error) {
 	if err := checkRRAvailable(); err != nil {
 		return nil, err
 	}
 
-	rrcmd := exec.Command("rr", "replay", "--dbgport=0", tracedir)
+	args := []string{
+		"replay",
+		"--dbgport=0",
+	}
+	if rrOnProcessPid != 0 {
+		args = append(args, fmt.Sprintf("--onprocess=%d", rrOnProcessPid))
+	}
+	args = append(args, tracedir)
+
+	rrcmd := exec.Command("rr", args...)
 	rrcmd.Stdout = os.Stdout
 	stderr, err := rrcmd.StderrPipe()
 	if err != nil {
@@ -292,7 +301,7 @@ func RecordAndReplay(cmd []string, wd string, quiet bool, debugInfoDirs []string
 	if tracedir == "" {
 		return nil, "", err
 	}
-	t, err := Replay(tracedir, quiet, true, debugInfoDirs)
+	t, err := Replay(tracedir, quiet, true, debugInfoDirs, 0)
 	return t, tracedir, err
 }
 

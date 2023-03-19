@@ -134,7 +134,7 @@ func TestSplicedReader(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			mem := &splicedMemory{}
+			mem := &SplicedMemory{}
 			for _, region := range test.regions {
 				r := bytes.NewReader(region.data)
 				mem.Add(&offsetReaderAt{r, 0}, region.off, region.length)
@@ -149,7 +149,7 @@ func TestSplicedReader(t *testing.T) {
 
 	// Test some ReadMemory errors
 
-	mem := &splicedMemory{}
+	mem := &SplicedMemory{}
 	for _, region := range []region{
 		{[]byte{0xa1, 0xa2, 0xa3, 0xa4}, 0x1000, 4},
 		{[]byte{0xb1, 0xb2, 0xb3, 0xb4}, 0x1004, 4},

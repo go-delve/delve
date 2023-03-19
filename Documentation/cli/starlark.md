@@ -178,7 +178,7 @@ def command_echo_expr(a, b, c):
 	print("a", a, "b", b, "c", c)
 ```
 
-The first commnad, `echo`, takes its arguments as a single string, while for `echo_expr` it will be possible to pass starlark expression as arguments:
+The first command, `echo`, takes its arguments as a single string, while for `echo_expr` it will be possible to pass starlark expression as arguments:
 
 ```
 (dlv) echo 2+2, 2-1, 2*3

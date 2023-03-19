@@ -50,7 +50,7 @@ func matchStringOrPrefix(output, target string) bool {
 	}
 }
 
-func assertVariable(t *testing.T, variable *proc.Variable, expected varTest) {
+func assertVariable(t testing.TB, variable *proc.Variable, expected varTest) {
 	if expected.preserveName {
 		if variable.Name != expected.name {
 			t.Fatalf("Expected %s got %s\n", expected.name, variable.Name)
@@ -511,7 +511,7 @@ func TestComplexSetting(t *testing.T) {
 	})
 }
 
-func TestEvalExpression(t *testing.T) {
+func getEvalExpressionTestCases() []varTest {
 	testcases := []varTest{
 		// slice/array/string subscript
 		{"s1[0]", false, "\"one\"", "\"one\"", "string", nil},
@@ -795,6 +795,7 @@ func TestEvalExpression(t *testing.T) {
 		// pretty printing special types
 		{"tim1", false, `time.Time(1977-05-25T18:00:00Z)…`, `time.Time(1977-05-25T18:00:00Z)…`, "time.Time", nil},
 		{"tim2", false, `time.Time(2022-06-07T02:03:04-06:00)…`, `time.Time(2022-06-07T02:03:04-06:00)…`, "time.Time", nil},
+		{"tim3", false, `time.Time {…`, `time.Time {…`, "time.Time", nil},
 
 		// issue #3034 - map access with long string key
 		{`m6["very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"]`, false, `123`, `123`, "int", nil},
@@ -829,6 +830,9 @@ func TestEvalExpression(t *testing.T) {
 
 		// Conversions to ptr-to-ptr types
 		{`**(**runtime.hmap)(uintptr(&m1))`, false, `…`, `…`, "runtime.hmap", nil},
+
+		// Malformed values
+		{`badslice`, false, `(unreadable non-zero length array with nil base)`, `(unreadable non-zero length array with nil base)`, "[]int", nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())
@@ -841,6 +845,11 @@ func TestEvalExpression(t *testing.T) {
 		}
 	}
 
+	return testcases
+}
+
+func TestEvalExpression(t *testing.T) {
+	testcases := getEvalExpressionTestCases()
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), t, "Continue() returned an error")

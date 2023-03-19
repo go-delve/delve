@@ -133,7 +133,7 @@ Because many architectures have SIMD registers that can be used by the applicati
 
 * `REGNAME.intN` returns the register REGNAME as an array of intN elements.
 * `REGNAME.uintN` returns the register REGNAME as an array of uintN elements.
-* `REGNAME.floatN` returns the register REGNAME as an array fo floatN elements.
+* `REGNAME.floatN` returns the register REGNAME as an array of floatN elements.
 
 In all cases N must be a power of 2.
 

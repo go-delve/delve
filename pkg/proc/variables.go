@@ -1656,6 +1656,10 @@ func (v *Variable) loadArrayValues(recurseLevel int, cfg LoadConfig) {
 		v.Unreadable = errors.New("Negative array length")
 		return
 	}
+	if v.Base == 0 && v.Len > 0 {
+		v.Unreadable = errors.New("non-zero length array with nil base")
+		return
+	}
 
 	count := v.Len
 	// Cap number of elements
@@ -2591,6 +2595,10 @@ func (v *Variable) formatTime() {
 	} else {
 		// the full signed 64-bit wall seconds since Jan 1 year 1 is stored in ext
 		var t time.Time
+		if ext > int64(maxAddSeconds/time.Second)*1000 {
+			// avoid doing the add loop below if it will take too much time
+			return
+		}
 		for ext > int64(maxAddSeconds/time.Second) {
 			t = t.Add(maxAddSeconds)
 			ext -= int64(maxAddSeconds / time.Second)

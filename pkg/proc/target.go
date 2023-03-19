@@ -193,6 +193,7 @@ func (grp *TargetGroup) newTarget(p ProcessInternal, pid int, currentThread Thre
 	g, _ := GetG(currentThread)
 	t.selectedGoroutine = g
 
+	t.Breakpoints().Logical = grp.LogicalBreakpoints
 	t.createUnrecoveredPanicBreakpoint()
 	t.createFatalThrowBreakpoint()
 	t.createPluginOpenBreakpoint()
