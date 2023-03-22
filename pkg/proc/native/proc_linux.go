@@ -827,10 +827,11 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 		return errors.New("too many arguments in traced function, max is 12 input+return")
 	}
 
-	fn, ok := dbp.bi.LookupFunc[fnName]
-	if !ok {
+	fns := dbp.bi.LookupFunc()[fnName]
+	if len(fns) != 1 {
 		return fmt.Errorf("could not find function: %s", fnName)
 	}
+	fn := fns[0]
 
 	offset, err := dbp.BinInfo().GStructOffset(dbp.Memory())
 	if err != nil {

@@ -49,7 +49,7 @@ func AMD64Arch(goos string) *Arch {
 func amd64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryInfo) *frame.FrameContext {
 	a := bi.Arch
 	if a.sigreturnfn == nil {
-		a.sigreturnfn = bi.LookupFunc["runtime.sigreturn"]
+		a.sigreturnfn = bi.lookupOneFunc("runtime.sigreturn")
 	}
 
 	if fctxt == nil || (a.sigreturnfn != nil && pc >= a.sigreturnfn.Entry && pc < a.sigreturnfn.End) {
@@ -96,7 +96,7 @@ func amd64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Binary
 	}
 
 	if a.crosscall2fn == nil {
-		a.crosscall2fn = bi.LookupFunc["crosscall2"]
+		a.crosscall2fn = bi.lookupOneFunc("crosscall2")
 	}
 
 	if a.crosscall2fn != nil && pc >= a.crosscall2fn.Entry && pc < a.crosscall2fn.End {

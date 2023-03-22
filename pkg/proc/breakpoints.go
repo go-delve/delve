@@ -674,8 +674,13 @@ func (t *Target) setBreakpointInternal(logicalID int, addr uint64, kind Breakpoi
 		if breaklet != nil && breaklet.Cond == nil {
 			breaklet.Cond = lbp.Cond
 		}
-		lbp.File = bp.File
-		lbp.Line = bp.Line
+		if lbp.File == "" && lbp.Line == 0 {
+			lbp.File = bp.File
+			lbp.Line = bp.Line
+		} else if bp.File != lbp.File || bp.Line != lbp.Line {
+			lbp.File = "<multiple locations>"
+			lbp.Line = 0
+		}
 		fn := t.BinInfo().PCToFunc(bp.Addr)
 		if fn != nil {
 			lbp.FunctionName = fn.NameWithoutTypeParams()

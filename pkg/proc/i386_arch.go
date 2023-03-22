@@ -43,7 +43,7 @@ func I386Arch(goos string) *Arch {
 func i386FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryInfo) *frame.FrameContext {
 	i := bi.Arch
 	if i.sigreturnfn == nil {
-		i.sigreturnfn = bi.LookupFunc["runtime.sigreturn"]
+		i.sigreturnfn = bi.lookupOneFunc("runtime.sigreturn")
 	}
 
 	if fctxt == nil || (i.sigreturnfn != nil && pc >= i.sigreturnfn.Entry && pc < i.sigreturnfn.End) {
@@ -90,7 +90,7 @@ func i386FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryI
 	}
 
 	if i.crosscall2fn == nil {
-		i.crosscall2fn = bi.LookupFunc["crosscall2"]
+		i.crosscall2fn = bi.lookupOneFunc("crosscall2")
 	}
 
 	// TODO(chainhelen), need to check whether there is a bad frame descriptor like amd64.

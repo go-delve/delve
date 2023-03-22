@@ -153,7 +153,7 @@ func TestDwarfExprRegisters(t *testing.T) {
 
 	bi, _ := fakeBinaryInfo(t, dwb)
 
-	mainfn := bi.LookupFunc["main.main"]
+	mainfn := bi.LookupFunc()["main.main"][0]
 	mem := newFakeMemory(fakeCFA(), uint64(0), uint64(testCases["b"]))
 	regs := linutil.AMD64Registers{Regs: &linutil.AMD64PtraceRegs{}}
 	regs.Regs.Rax = uint64(testCases["a"])
@@ -215,7 +215,7 @@ func TestDwarfExprComposite(t *testing.T) {
 
 	bi, _ := fakeBinaryInfo(t, dwb)
 
-	mainfn := bi.LookupFunc["main.main"]
+	mainfn := bi.LookupFunc()["main.main"][0]
 
 	mem := newFakeMemory(fakeCFA(), uint64(0), uint64(0), uint16(testCases["pair.v"]), []byte(stringVal))
 	var regs linutil.AMD64Registers
@@ -289,7 +289,7 @@ func TestDwarfExprLoclist(t *testing.T) {
 
 	bi, _ := fakeBinaryInfo(t, dwb)
 
-	mainfn := bi.LookupFunc["main.main"]
+	mainfn := bi.LookupFunc()["main.main"][0]
 
 	mem := newFakeMemory(fakeCFA(), uint16(before), uint16(after))
 	const PC = 0x40100
@@ -326,7 +326,7 @@ func TestIssue1419(t *testing.T) {
 
 	bi, _ := fakeBinaryInfo(t, dwb)
 
-	mainfn := bi.LookupFunc["main.main"]
+	mainfn := bi.LookupFunc()["main.main"][0]
 
 	mem := newFakeMemory(fakeCFA())
 
