@@ -1920,15 +1920,7 @@ func TestScopesRequestsOptimized(t *testing.T) {
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
 
-					startLineno := 66
-					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
-						// Go1.15 on windows inserts a NOP after the call to
-						// runtime.Breakpoint and marks it same line as the
-						// runtime.Breakpoint call, making this flaky, so skip the line check.
-						startLineno = -1
-					}
-
-					checkStackFramesExact(t, stack, "main.foobar", startLineno, 1000, 4, 4)
+					checkStackFramesExact(t, stack, "main.foobar", -1, 1000, 4, 4)
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
