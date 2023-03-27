@@ -760,6 +760,9 @@ func alignAddr(addr, align int64) int64 {
 }
 
 func escapeCheck(v *Variable, name string, stack stack) error {
+	if v.Unreadable != nil {
+		return fmt.Errorf("escape check for %s failed, variable unreadable: %v", name, v.Unreadable)
+	}
 	switch v.Kind {
 	case reflect.Ptr:
 		var w *Variable

@@ -6043,3 +6043,13 @@ func TestFollowExec(t *testing.T) {
 		}
 	})
 }
+
+func TestEscapeCheckUnreadable(t *testing.T) {
+	// A failure in escapeCheck to dereference a field should not cause
+	// infinite recursion. See issue #3310.
+	withTestProcessArgs("reflecttypefncall", t, ".", []string{}, protest.AllNonOptimized, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture.Source, 9)
+		assertNoError(grp.Continue(), t, "Continue")
+		proc.EvalExpressionWithCalls(grp, p.SelectedGoroutine(), "value.Type()", normalLoadConfig, true)
+	})
+}
