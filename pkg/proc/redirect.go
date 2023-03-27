@@ -2,8 +2,6 @@ package proc
 
 import "os"
 
-type Mode string
-
 type OutputRedirect struct {
 	Path string
 	File *os.File
