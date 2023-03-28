@@ -285,7 +285,7 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 		nextDeferOk := true
 		if breaklet.Kind&NextDeferBreakpoint != 0 {
 			var err error
-			frames, err := ThreadStacktrace(thread, 2)
+			frames, err := ThreadStacktrace(tgt, thread, 2)
 			if err == nil {
 				nextDeferOk, _ = isPanicCall(frames)
 				if !nextDeferOk {
@@ -297,7 +297,7 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 
 	case WatchOutOfScopeBreakpoint:
 		if breaklet.checkPanicCall {
-			frames, err := ThreadStacktrace(thread, 2)
+			frames, err := ThreadStacktrace(tgt, thread, 2)
 			if err == nil {
 				ipc, _ := isPanicCall(frames)
 				active = active && ipc

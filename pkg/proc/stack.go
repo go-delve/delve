@@ -93,7 +93,7 @@ func (frame *Stackframe) FramePointerOffset() int64 {
 
 // ThreadStacktrace returns the stack trace for thread.
 // Note the locations in the array are return addresses not call addresses.
-func ThreadStacktrace(thread Thread, depth int) ([]Stackframe, error) {
+func ThreadStacktrace(tgt *Target, thread Thread, depth int) ([]Stackframe, error) {
 	g, _ := GetG(thread)
 	if g == nil {
 		regs, err := thread.Registers()
@@ -103,13 +103,13 @@ func ThreadStacktrace(thread Thread, depth int) ([]Stackframe, error) {
 		so := thread.BinInfo().PCToImage(regs.PC())
 		dwarfRegs := *(thread.BinInfo().Arch.RegistersToDwarfRegisters(so.StaticBase, regs))
 		dwarfRegs.ChangeFunc = thread.SetReg
-		it := newStackIterator(thread.BinInfo(), thread.ProcessMemory(), dwarfRegs, 0, nil, 0)
+		it := newStackIterator(tgt, thread.BinInfo(), thread.ProcessMemory(), dwarfRegs, 0, nil, 0)
 		return it.stacktrace(depth)
 	}
-	return g.Stacktrace(depth, 0)
+	return GoroutineStacktrace(tgt, g, depth, 0)
 }
 
-func (g *G) stackIterator(opts StacktraceOptions) (*stackIterator, error) {
+func goroutineStackIterator(tgt *Target, g *G, opts StacktraceOptions) (*stackIterator, error) {
 	bi := g.variable.bi
 	if g.Thread != nil {
 		regs, err := g.Thread.Registers()
@@ -120,13 +120,13 @@ func (g *G) stackIterator(opts StacktraceOptions) (*stackIterator, error) {
 		dwarfRegs := *(bi.Arch.RegistersToDwarfRegisters(so.StaticBase, regs))
 		dwarfRegs.ChangeFunc = g.Thread.SetReg
 		return newStackIterator(
-			bi, g.variable.mem,
+			tgt, bi, g.variable.mem,
 			dwarfRegs,
 			g.stack.hi, g, opts), nil
 	}
 	so := g.variable.bi.PCToImage(g.PC)
 	return newStackIterator(
-		bi, g.variable.mem,
+		tgt, bi, g.variable.mem,
 		bi.Arch.addrAndStackRegsToDwarfRegisters(so.StaticBase, g.PC, g.SP, g.BP, g.LR),
 		g.stack.hi, g, opts), nil
 }
@@ -147,10 +147,10 @@ const (
 	StacktraceG
 )
 
-// Stacktrace returns the stack trace for a goroutine.
+// GoroutineStacktrace returns the stack trace for a goroutine.
 // Note the locations in the array are return addresses not call addresses.
-func (g *G) Stacktrace(depth int, opts StacktraceOptions) ([]Stackframe, error) {
-	it, err := g.stackIterator(opts)
+func GoroutineStacktrace(tgt *Target, g *G, depth int, opts StacktraceOptions) ([]Stackframe, error) {
+	it, err := goroutineStackIterator(tgt, g, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -175,13 +175,14 @@ func (n NullAddrError) Error() string {
 // required to iterate and walk the program
 // stack.
 type stackIterator struct {
-	pc    uint64
-	top   bool
-	atend bool
-	frame Stackframe
-	bi    *BinaryInfo
-	mem   MemoryReadWriter
-	err   error
+	pc     uint64
+	top    bool
+	atend  bool
+	frame  Stackframe
+	target *Target
+	bi     *BinaryInfo
+	mem    MemoryReadWriter
+	err    error
 
 	stackhi     uint64
 	systemstack bool
@@ -196,12 +197,12 @@ type stackIterator struct {
 	opts StacktraceOptions
 }
 
-func newStackIterator(bi *BinaryInfo, mem MemoryReadWriter, regs op.DwarfRegisters, stackhi uint64, g *G, opts StacktraceOptions) *stackIterator {
+func newStackIterator(tgt *Target, bi *BinaryInfo, mem MemoryReadWriter, regs op.DwarfRegisters, stackhi uint64, g *G, opts StacktraceOptions) *stackIterator {
 	systemstack := true
 	if g != nil {
 		systemstack = g.SystemStack
 	}
-	return &stackIterator{pc: regs.PC(), regs: regs, top: true, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, systemstack: systemstack, g: g, opts: opts}
+	return &stackIterator{pc: regs.PC(), regs: regs, top: true, target: tgt, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, systemstack: systemstack, g: g, opts: opts}
 }
 
 // Next points the iterator to the next stack frame.
@@ -235,6 +236,24 @@ func (it *stackIterator) Next() bool {
 			fnname = it.frame.Call.Fn.Name
 		}
 		logger.Debugf("new frame %#x %s:%d at %s", it.frame.Call.PC, it.frame.Call.File, it.frame.Call.Line, fnname)
+	}
+
+	if it.frame.Current.Fn != nil && it.frame.Current.Fn.Name == "runtime.sigtrampgo" && it.target != nil {
+		regs, err := it.readSigtrampgoContext()
+		if err != nil {
+			logflags.DebuggerLogger().Errorf("could not read runtime.sigtrampgo context: %v", err)
+		} else {
+			so := it.bi.PCToImage(regs.PC())
+			regs.StaticBase = so.StaticBase
+			it.pc = regs.PC()
+			it.regs = *regs
+			it.top = false
+			if it.g != nil && it.g.ID != 0 {
+				it.systemstack = !(uint64(it.regs.SP()) >= it.g.stack.lo && uint64(it.regs.SP()) < it.g.stack.hi)
+			}
+			logflags.StackLogger().Debugf("sigtramp context read")
+			return true
+		}
 	}
 
 	if it.opts&StacktraceSimple == 0 {

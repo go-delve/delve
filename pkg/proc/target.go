@@ -396,20 +396,18 @@ func (t *Target) createUnrecoveredPanicBreakpoint() {
 
 // createFatalThrowBreakpoint creates the a breakpoint as runtime.fatalthrow.
 func (t *Target) createFatalThrowBreakpoint() {
-	fatalpcs, err := FindFunctionLocation(t.Process, "runtime.throw", 0)
-	if err == nil {
-		bp, err := t.SetBreakpoint(fatalThrowID, fatalpcs[0], UserBreakpoint, nil)
+	setFatalThrow := func(pcs []uint64, err error) {
 		if err == nil {
-			bp.Logical.Name = FatalThrow
+			bp, err := t.SetBreakpoint(fatalThrowID, pcs[0], UserBreakpoint, nil)
+			if err == nil {
+				bp.Logical.Name = FatalThrow
+			}
 		}
 	}
-	fatalpcs, err = FindFunctionLocation(t.Process, "runtime.fatal", 0)
-	if err == nil {
-		bp, err := t.SetBreakpoint(fatalThrowID, fatalpcs[0], UserBreakpoint, nil)
-		if err == nil {
-			bp.Logical.Name = FatalThrow
-		}
-	}
+	setFatalThrow(FindFunctionLocation(t.Process, "runtime.throw", 0))
+	setFatalThrow(FindFunctionLocation(t.Process, "runtime.fatal", 0))
+	setFatalThrow(FindFunctionLocation(t.Process, "runtime.winthrow", 0))
+	setFatalThrow(FindFunctionLocation(t.Process, "runtime.fatalsignal", 0))
 }
 
 // createPluginOpenBreakpoint creates a breakpoint at the return instruction

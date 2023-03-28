@@ -90,9 +90,9 @@ func ConvertEvalScope(dbp *Target, gid int64, frame, deferCall int) (*EvalScope,
 
 	var locs []Stackframe
 	if g != nil {
-		locs, err = g.Stacktrace(frame+1, opts)
+		locs, err = GoroutineStacktrace(dbp, g, frame+1, opts)
 	} else {
-		locs, err = ThreadStacktrace(ct, frame+1)
+		locs, err = ThreadStacktrace(dbp, ct, frame+1)
 	}
 	if err != nil {
 		return nil, err
@@ -145,7 +145,7 @@ func FrameToScope(t *Target, thread MemoryReadWriter, g *G, frames ...Stackframe
 
 // ThreadScope returns an EvalScope for the given thread.
 func ThreadScope(t *Target, thread Thread) (*EvalScope, error) {
-	locations, err := ThreadStacktrace(thread, 1)
+	locations, err := ThreadStacktrace(t, thread, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +157,7 @@ func ThreadScope(t *Target, thread Thread) (*EvalScope, error) {
 
 // GoroutineScope returns an EvalScope for the goroutine running on the given thread.
 func GoroutineScope(t *Target, thread Thread) (*EvalScope, error) {
-	locations, err := ThreadStacktrace(thread, 1)
+	locations, err := ThreadStacktrace(t, thread, 1)
 	if err != nil {
 		return nil, err
 	}
