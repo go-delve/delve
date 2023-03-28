@@ -19,6 +19,8 @@ var autoLoadConfig = api.LoadConfig{MaxVariableRecurse: 1, MaxStringLen: 1024, M
 // decoding JSON) into a starlark.Value.
 func (env *Env) interfaceToStarlarkValue(v interface{}) starlark.Value {
 	switch v := v.(type) {
+	case bool:
+		return starlark.Bool(bool(v))
 	case uint8:
 		return starlark.MakeUint64(uint64(v))
 	case uint16:
@@ -231,6 +233,9 @@ func (env *Env) variableValueToStarlarkValue(v *api.Variable, top bool) (starlar
 	case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint, reflect.Uintptr:
 		n, _ := strconv.ParseUint(v.Value, 0, 64)
 		return starlark.MakeUint64(n), nil
+	case reflect.Bool:
+		n, _ := strconv.ParseBool(v.Value)
+		return starlark.Bool(n), nil
 	case reflect.Float32, reflect.Float64:
 		switch v.Value {
 		case "+Inf":
