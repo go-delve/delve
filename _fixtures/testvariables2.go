@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"go/constant"
 	"math"
-	"reflect"
 	"os"
+	"reflect"
 	"runtime"
 	"time"
 	"unsafe"
@@ -367,7 +367,7 @@ func main() {
 	w5.W5 = w5
 
 	os.Setenv("TZ", "UTC")
-	tim1 := time.Unix(233431200, 0)
+	tim1 := time.Unix(233431200, 0).UTC()
 	loc, _ := time.LoadLocation("Mexico/BajaSur")
 	tim2, _ := time.ParseInLocation("2006-01-02 15:04:05", "2022-06-07 02:03:04", loc)
 	typedstringvar := String("blah")
