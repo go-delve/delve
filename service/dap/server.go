@@ -1103,27 +1103,24 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	var redirects *proc.StdioRedirector
+	var clear func()
 	if redirected {
-		redirects, err = proc.NewRedirector()
+		var readers [2]io.ReadCloser
+		readers, s.config.Debugger.Redirect, err = proc.NamedPipe()
 		if err != nil {
 			s.sendShowUserErrorResponse(request.Request, InternalError, "Internal Error",
 				fmt.Sprintf("failed to generate stdio pipes - %v", err))
 			return
 		}
 
-		s.config.Debugger.Redirect = redirects.Writer()
-		s.preTerminatedWG.Add(1)
-		go func() {
-			defer s.preTerminatedWG.Done()
-			readers, err := redirects.Reader()
-			if err != nil {
-				s.sendShowUserErrorResponse(request.Request, InternalError, "Internal Error",
-					fmt.Sprintf("failed to open pipe - %v", err))
-				return
+		redirectedFunc(readers[0], readers[1])
+		clear = func() {
+			for index := range readers {
+				if closeErr := readers[index].Close(); closeErr != nil {
+					s.config.log.Warnf("failed to clear redirects - %v", closeErr)
+				}
 			}
-			redirectedFunc(readers[0], readers[1])
-		}()
+		}
 	}
 
 	func() {
@@ -1133,11 +1130,8 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	}()
 	if err != nil {
 		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
-		if redirected && redirects != nil {
-			// On startup failure, clean up the resources created for the redirect.
-			if clearErr := redirects.Clear(); clearErr != nil {
-				s.config.log.Warnf("failed to clear redirects - %v", clearErr)
-			}
+		if redirected {
+			clear()
 		}
 		return
 	}

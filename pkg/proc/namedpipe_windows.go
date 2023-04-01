@@ -8,41 +8,16 @@ import (
 	"os"
 )
 
-type StdioRedirector struct {
-	writers [3]*os.File
-	readers [3]*os.File
-}
-
-func NewRedirector() (redirect *StdioRedirector, err error) {
-	stdoutReader, stdoutWriter, err := os.Pipe()
+func NamedPipe() (reader [2]io.ReadCloser, output [3]OutputRedirect, err error) {
+	reader[0], output[1].File, err = os.Pipe()
 	if err != nil {
-		return redirect, err
+		return reader, output, err
 	}
 
-	stderrReader, stderrWriter, err := os.Pipe()
+	reader[1], output[2].File, err = os.Pipe()
 	if err != nil {
-		return redirect, err
+		return reader, output, err
 	}
 
-	return &StdioRedirector{
-		writers: [3]*os.File{nil, stdoutWriter, stderrWriter},
-		readers: [3]*os.File{nil, stdoutReader, stderrReader},
-	}, err
-}
-
-// Writer return [3]{stdin,stdout,stderr}
-func (s *StdioRedirector) Writer() [3]OutputRedirect {
-	return NewRedirectByFile(s.writers)
-}
-
-// Reader return  [2]{stdout,stderr}
-func (s *StdioRedirector) Reader() (reader [2]io.ReadCloser, err error) {
-	reader[0] = s.readers[1]
-	reader[1] = s.readers[2]
-	return reader, nil
-}
-
-// Clear
-func (s *StdioRedirector) Clear() error {
-	return nil
+	return reader, output, nil
 }

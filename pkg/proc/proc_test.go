@@ -5928,28 +5928,17 @@ func TestStacktraceExtlinkMac(t *testing.T) {
 }
 
 func testGenRedirect(t *testing.T, fixture protest.Fixture, expectStdout string, expectStderr string, errChan chan error) (redirect [3]proc.OutputRedirect, cancelFunc func(), err error) {
-	redirector, err := proc.NewRedirector()
+	readers, redirect, err := proc.NamedPipe()
 	if err != nil {
 		return redirect, nil, err
 	}
 
-	redirect = redirector.Writer()
 	cancelFunc = func() {
-		for _, outputRedirect := range redirect {
-			if outputRedirect.File != nil {
-				_ = outputRedirect.File.Close()
-			}
-
-			if outputRedirect.Path != "" {
-				stdio, err := os.OpenFile(outputRedirect.Path, os.O_WRONLY, os.ModeNamedPipe)
-				if err == nil {
-					stdio.Close()
-				}
-			}
+		for _, reader := range readers {
+			_ = reader.Close()
 		}
 	}
 
-	// redirector.Reader() will be blocked.
 	go func() {
 		reader := func(mode string, f io.ReadCloser, expectOut string) {
 			out, err := io.ReadAll(f)
@@ -5965,11 +5954,6 @@ func testGenRedirect(t *testing.T, fixture protest.Fixture, expectStdout string,
 			errChan <- nil
 		}
 
-		readers, err := redirector.Reader()
-		if err != nil {
-			errChan <- err
-			return
-		}
 		go reader("stdout", readers[0], expectStdout)
 		go reader("stderr", readers[1], expectStderr)
 	}()
