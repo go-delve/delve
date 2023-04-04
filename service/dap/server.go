@@ -1171,7 +1171,6 @@ func (s *Session) getPackageDir(pkg string) string {
 func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd string, redirected bool) (cmd *exec.Cmd, err error) {
 	if s.noDebugProcess != nil {
 		return nil, fmt.Errorf("another launch request is in progress")
-
 	}
 
 	cmd = exec.Command(program, targetArgs...)
