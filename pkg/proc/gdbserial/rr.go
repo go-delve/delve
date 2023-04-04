@@ -20,7 +20,7 @@ import (
 // program. Returns a run function which will actually record the program, a
 // stop function which will prematurely terminate the recording of the
 // program.
-func RecordAsync(cmd []string, wd string, quiet bool, redirects [3]proc.OutputRedirect) (run func() (string, error), stop func() error, err error) {
+func RecordAsync(cmd []string, wd string, quiet bool, stdin string, stdout proc.OutputRedirect, stderr proc.OutputRedirect) (run func() (string, error), stop func() error, err error) {
 	if err := checkRRAvailable(); err != nil {
 		return nil, nil, err
 	}
@@ -35,7 +35,7 @@ func RecordAsync(cmd []string, wd string, quiet bool, redirects [3]proc.OutputRe
 	args = append(args, cmd...)
 	rrcmd := exec.Command("rr", args...)
 	var closefn func()
-	rrcmd.Stdin, rrcmd.Stdout, rrcmd.Stderr, closefn, err = openRedirects(redirects, quiet)
+	rrcmd.Stdin, rrcmd.Stdout, rrcmd.Stderr, closefn, err = openRedirects(stdin, stdout, stderr, quiet)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -63,13 +63,13 @@ func RecordAsync(cmd []string, wd string, quiet bool, redirects [3]proc.OutputRe
 	return run, stop, nil
 }
 
-func openRedirects(redirects [3]proc.OutputRedirect, quiet bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
+func openRedirects(stdinPath string, stdoutOR proc.OutputRedirect, stderrOR proc.OutputRedirect, quiet bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
 	var (
 		toclose = []*os.File{}
 	)
 
-	if redirects[0].Path != "" {
-		stdin, err = os.Open(redirects[0].Path)
+	if stdinPath != "" {
+		stdin, err = os.Open(stdinPath)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
@@ -99,12 +99,12 @@ func openRedirects(redirects [3]proc.OutputRedirect, quiet bool) (stdin, stdout,
 		return dflt
 	}
 
-	stdout = create(redirects[1], os.Stdout)
+	stdout = create(stdoutOR, os.Stdout)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
 
-	stderr = create(redirects[2], os.Stderr)
+	stderr = create(stderrOR, os.Stderr)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -120,8 +120,8 @@ func openRedirects(redirects [3]proc.OutputRedirect, quiet bool) (stdin, stdout,
 
 // Record uses rr to record the execution of the specified program and
 // returns the trace directory's path.
-func Record(cmd []string, wd string, quiet bool, redirects [3]proc.OutputRedirect) (tracedir string, err error) {
-	run, _, err := RecordAsync(cmd, wd, quiet, redirects)
+func Record(cmd []string, wd string, quiet bool, stdin string, stdout proc.OutputRedirect, stderr proc.OutputRedirect) (tracedir string, err error) {
+	run, _, err := RecordAsync(cmd, wd, quiet, stdin, stdout, stderr)
 	if err != nil {
 		return "", err
 	}
@@ -296,8 +296,8 @@ func rrParseGdbCommand(line string) rrInit {
 }
 
 // RecordAndReplay acts like calling Record and then Replay.
-func RecordAndReplay(cmd []string, wd string, quiet bool, debugInfoDirs []string, redirects [3]proc.OutputRedirect) (*proc.TargetGroup, string, error) {
-	tracedir, err := Record(cmd, wd, quiet, redirects)
+func RecordAndReplay(cmd []string, wd string, quiet bool, debugInfoDirs []string, stdin string, stdout proc.OutputRedirect, stderr proc.OutputRedirect) (*proc.TargetGroup, string, error) {
+	tracedir, err := Record(cmd, wd, quiet, stdin, stdout, stderr)
 	if tracedir == "" {
 		return nil, "", err
 	}

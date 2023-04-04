@@ -1105,13 +1105,22 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 
 	var clear func()
 	if redirected {
-		var readers [2]io.ReadCloser
-		readers, s.config.Debugger.Redirect, err = proc.NamedPipe()
-		if err != nil {
-			s.sendShowUserErrorResponse(request.Request, InternalError, "Internal Error",
-				fmt.Sprintf("failed to generate stdio pipes - %v", err))
-			return
+		var (
+			readers         [2]io.ReadCloser
+			outputRedirects [2]proc.OutputRedirect
+		)
+
+		for i := 0; i < 2; i++ {
+			readers[i], outputRedirects[i], err = proc.NamedPipe()
+			if err != nil {
+				s.sendShowUserErrorResponse(request.Request, InternalError, "Internal Error",
+					fmt.Sprintf("failed to generate stdio pipes - %v", err))
+				return
+			}
 		}
+
+		s.config.Debugger.Stdout = outputRedirects[0]
+		s.config.Debugger.Stderr = outputRedirects[1]
 
 		redirectedFunc(readers[0], readers[1])
 		clear = func() {

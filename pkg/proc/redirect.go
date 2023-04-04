@@ -7,8 +7,8 @@ type OutputRedirect struct {
 	File *os.File
 }
 
-func NewEmptyRedirect() [3]OutputRedirect {
-	return [3]OutputRedirect{}
+func NewEmptyRedirect() [2]OutputRedirect {
+	return [2]OutputRedirect{}
 }
 
 func NewRedirectByPath(paths [3]string) [3]OutputRedirect {

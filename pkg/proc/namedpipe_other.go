@@ -9,14 +9,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sync/atomic"
 	"syscall"
 )
 
 type openOnRead struct {
-	p      string
-	rd     io.ReadCloser
-	status int32 // 0: initialization 1: file is opened 2: file is closed
+	path string
+	rd   io.ReadCloser
 }
 
 func (oor *openOnRead) Read(p []byte) (n int, err error) {
@@ -24,12 +22,7 @@ func (oor *openOnRead) Read(p []byte) (n int, err error) {
 		return oor.rd.Read(p)
 	}
 
-	// try from "into" to "open"
-	if !atomic.CompareAndSwapInt32(&oor.status, 0, 1) {
-		return 0, io.EOF
-	}
-
-	fh, err := os.OpenFile(oor.p, os.O_RDONLY, os.ModeNamedPipe)
+	fh, err := os.OpenFile(oor.path, os.O_RDONLY, os.ModeNamedPipe)
 	if err != nil {
 		return 0, err
 	}
@@ -39,46 +32,28 @@ func (oor *openOnRead) Read(p []byte) (n int, err error) {
 }
 
 func (oor *openOnRead) Close() error {
-	defer os.Remove(oor.p)
+	defer os.Remove(oor.path)
 
-	// try from "init" to "close".
-	if !atomic.CompareAndSwapInt32(&oor.status, 0, 2) {
-		// try from "open" to "close"
-		if atomic.CompareAndSwapInt32(&oor.status, 1, 2) {
-			// Make the "oor.Read()" function stop blocking
-			_, err := os.OpenFile(oor.p, os.O_WRONLY, os.ModeNamedPipe)
-			if err != nil {
-				return err
-			}
-		}
+	fh, _ := os.OpenFile(oor.path, os.O_WRONLY|syscall.O_NONBLOCK, 0)
+	if fh != nil {
+		fh.Close()
 	}
 
 	return oor.rd.Close()
 }
 
-func NamedPipe() (reader [2]io.ReadCloser, output [3]OutputRedirect, err error) {
+func NamedPipe() (reader io.ReadCloser, output OutputRedirect, err error) {
 	r := make([]byte, 4)
 	if _, err = rand.Read(r); err != nil {
 		return reader, output, err
 	}
 
-	var (
-		prefix     = filepath.Join(os.TempDir(), hex.EncodeToString(r))
-		stdoutPath = prefix + "stdout"
-		stderrPath = prefix + "stderr"
-	)
+	var path = filepath.Join(os.TempDir(), hex.EncodeToString(r))
 
-	if err = syscall.Mkfifo(stdoutPath, 0o600); err != nil {
+	if err = syscall.Mkfifo(path, 0o600); err != nil {
+		_ = os.Remove(path)
 		return reader, output, err
 	}
 
-	if err := syscall.Mkfifo(stderrPath, 0o600); err != nil {
-		_ = os.Remove(stdoutPath)
-		return reader, output, err
-	}
-
-	reader[0] = &openOnRead{p: stdoutPath}
-	reader[1] = &openOnRead{p: stderrPath}
-
-	return reader, NewRedirectByPath([3]string{"", stdoutPath, stderrPath}), nil
+	return &openOnRead{path: path}, OutputRedirect{Path: path}, nil
 }

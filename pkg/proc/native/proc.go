@@ -370,13 +370,13 @@ func (dbp *nativeProcess) writeSoftwareBreakpoint(thread *nativeThread, addr uin
 	return err
 }
 
-func openRedirects(redirects [3]proc.OutputRedirect, foreground bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
+func openRedirects(stdinPath string, stdoutOR proc.OutputRedirect, stderrOR proc.OutputRedirect, foreground bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
 	var (
 		toclose = []*os.File{}
 	)
 
-	if redirects[0].Path != "" {
-		stdin, err = os.Open(redirects[0].Path)
+	if stdinPath != "" {
+		stdin, err = os.Open(stdinPath)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
@@ -402,12 +402,12 @@ func openRedirects(redirects [3]proc.OutputRedirect, foreground bool) (stdin, st
 		return dflt
 	}
 
-	stdout = create(redirects[1], os.Stdout)
+	stdout = create(stdoutOR, os.Stdout)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
 
-	stderr = create(redirects[2], os.Stderr)
+	stderr = create(stderrOR, os.Stderr)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

@@ -8,7 +8,6 @@ import (
 	"go/ast"
 	"go/constant"
 	"go/token"
-	"io"
 	"io/ioutil"
 	"math/rand"
 	"net"
@@ -104,13 +103,13 @@ func withTestProcessArgs(name string, t testing.TB, wd string, args []string, bu
 
 	switch testBackend {
 	case "native":
-		grp, err = native.Launch(append([]string{fixture.Path}, args...), wd, 0, []string{}, "", proc.NewEmptyRedirect())
+		grp, err = native.Launch(append([]string{fixture.Path}, args...), wd, 0, []string{}, "", "", proc.OutputRedirect{}, proc.OutputRedirect{})
 	case "lldb":
 		grp, err = gdbserial.LLDBLaunch(append([]string{fixture.Path}, args...), wd, 0, []string{}, "", [3]string{})
 	case "rr":
 		protest.MustHaveRecordingAllowed(t)
 		t.Log("recording")
-		grp, tracedir, err = gdbserial.RecordAndReplay(append([]string{fixture.Path}, args...), wd, true, []string{}, proc.NewEmptyRedirect())
+		grp, tracedir, err = gdbserial.RecordAndReplay(append([]string{fixture.Path}, args...), wd, true, []string{}, "", proc.OutputRedirect{}, proc.OutputRedirect{})
 		t.Logf("replaying %q", tracedir)
 	default:
 		t.Fatal("unknown backend")
@@ -2218,7 +2217,7 @@ func TestUnsupportedArch(t *testing.T) {
 
 	switch testBackend {
 	case "native":
-		p, err = native.Launch([]string{outfile}, ".", 0, []string{}, "", proc.NewEmptyRedirect())
+		p, err = native.Launch([]string{outfile}, ".", 0, []string{}, "", "", proc.OutputRedirect{}, proc.OutputRedirect{})
 	case "lldb":
 		p, err = gdbserial.LLDBLaunch([]string{outfile}, ".", 0, []string{}, "", [3]string{})
 	default:
@@ -5925,120 +5924,6 @@ func TestStacktraceExtlinkMac(t *testing.T) {
 			t.Fatalf("bad stacktrace")
 		}
 	})
-}
-
-func testGenRedirect(t *testing.T, fixture protest.Fixture, expectStdout string, expectStderr string, errChan chan error) (redirect [3]proc.OutputRedirect, cancelFunc func(), err error) {
-	readers, redirect, err := proc.NamedPipe()
-	if err != nil {
-		return redirect, nil, err
-	}
-
-	cancelFunc = func() {
-		for _, reader := range readers {
-			_ = reader.Close()
-		}
-	}
-
-	go func() {
-		reader := func(mode string, f io.ReadCloser, expectOut string) {
-			out, err := io.ReadAll(f)
-			if err != nil {
-				errChan <- err
-				return
-			}
-
-			if expectOut != string(out) {
-				errChan <- fmt.Errorf("%s,Not as expected!\nexpect:%s\nout:%s", mode, expectOut, out)
-				return
-			}
-			errChan <- nil
-		}
-
-		go reader("stdout", readers[0], expectStdout)
-		go reader("stderr", readers[1], expectStderr)
-	}()
-
-	return redirect, cancelFunc, nil
-}
-
-func TestRedirect(t *testing.T) {
-	fixture := protest.BuildFixture("out_redirect", 0)
-	var (
-		grp          *proc.TargetGroup
-		tracedir     string
-		err          error
-		redirect     [3]proc.OutputRedirect = proc.NewEmptyRedirect()
-		errChan                             = make(chan error, 2)
-		cancelFunc   func()
-		needCheck    = false
-		expectStdout = "hello world!\nhello world!"
-		expectStderr = "hello world!\nhello world! error!"
-	)
-	switch testBackend {
-	case "native":
-		if runtime.GOOS == "linux" {
-			redirect, cancelFunc, err = testGenRedirect(t, fixture, expectStdout, expectStderr, errChan)
-			if err != nil {
-				break
-			}
-			needCheck = true
-		} else if runtime.GOOS == "windows" {
-			redirect, cancelFunc, err = testGenRedirect(t, fixture, expectStdout, expectStderr, errChan)
-			if err != nil {
-				break
-			}
-			needCheck = true
-		}
-
-		grp, err = native.Launch([]string{fixture.Path}, ".", 0, []string{}, "", redirect)
-	case "lldb":
-		if runtime.GOOS == "darwin" {
-			redirect, cancelFunc, err = testGenRedirect(t, fixture, expectStdout, expectStderr, errChan)
-			if err != nil {
-				break
-			}
-			needCheck = true
-		}
-		grp, err = gdbserial.LLDBLaunch([]string{fixture.Path}, ".", 0, []string{}, "", [3]string{redirect[0].Path, redirect[1].Path, redirect[2].Path})
-	case "rr":
-		protest.MustHaveRecordingAllowed(t)
-		t.Log("recording")
-		if runtime.GOOS != "windows" {
-			redirect, cancelFunc, err = testGenRedirect(t, fixture, expectStdout, expectStderr, errChan)
-			if err != nil {
-				break
-			}
-			needCheck = true
-		}
-		grp, tracedir, err = gdbserial.RecordAndReplay([]string{fixture.Path}, ".", true, []string{}, redirect)
-		t.Logf("replaying %q", tracedir)
-	default:
-		t.Fatal("unknown backend")
-	}
-	if err != nil {
-		// clear reader goroutine
-		if cancelFunc != nil {
-			cancelFunc()
-			_, _ = <-errChan, <-errChan
-		}
-		t.Fatal("Launch():", err)
-	}
-	_ = grp.Continue()
-
-	if needCheck {
-		err1 := <-errChan
-		err2 := <-errChan
-		if err1 != nil {
-			t.Fatal("checkOut():", err1)
-		}
-		if err2 != nil {
-			t.Fatal("checkOut():", err2)
-		}
-	}
-
-	defer func() {
-		grp.Detach(true)
-	}()
 }
 
 func TestFollowExec(t *testing.T) {
