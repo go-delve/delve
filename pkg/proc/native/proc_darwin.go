@@ -42,7 +42,7 @@ func (os *osProcessDetails) Close() {}
 // custom fork/exec process in order to take advantage of
 // PT_SIGEXC on Darwin which will turn Unix signals into
 // Mach exceptions.
-func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ string, _ [3]proc.OutputRedirect) (*proc.TargetGroup, error) {
+func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ string, _ string, _ proc.OutputRedirect, _ proc.OutputRedirect) (*proc.TargetGroup, error) {
 	argv0Go, err := filepath.Abs(cmd[0])
 	if err != nil {
 		return nil, err
