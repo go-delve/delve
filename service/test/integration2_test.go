@@ -2993,3 +2993,29 @@ func TestClientServer_autoBreakpoints(t *testing.T) {
 		}
 	})
 }
+
+func TestClientServer_breakpointOnFuncWithABIWrapper(t *testing.T) {
+	// Setting a breakpoint on an assembly function that has an ABI
+	// compatibility wrapper should end up setting a breakpoint on the real
+	// function (also setting a breakpoint on the wrapper is fine).
+	// Issue #3296
+	protest.AllowRecording(t)
+	withTestClient2("math", t, func(c service.Client) {
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "runtime.schedinit"})
+		assertNoError(err, t, "CreateBreakpoin()")
+		t.Log(bp)
+
+		found := false
+		for _, pc := range bp.Addrs {
+			text, err := c.DisassemblePC(api.EvalScope{}, pc, api.IntelFlavour)
+			assertNoError(err, t, fmt.Sprint("DisassemblePC", pc))
+			t.Log("First instruction for", pc, text[0])
+			if strings.HasSuffix(text[0].Loc.File, "runtime/proc.go") {
+				found = true
+			}
+		}
+		if !found {
+			t.Error("breakpoint not set on the runtime/proc.go function")
+		}
+	})
+}

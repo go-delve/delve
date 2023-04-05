@@ -450,7 +450,8 @@ func (loc *NormalLocationSpec) findFuncCandidates(bi *proc.BinaryInfo, limit int
 		}
 		candidateFuncs[fname] = struct{}{}
 	}
-	for _, f := range bi.LookupFunc {
+	for _, fns := range bi.LookupFunc() {
+		f := fns[0]
 		if len(candidateFuncs) >= limit {
 			break
 		}

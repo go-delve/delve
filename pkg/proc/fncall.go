@@ -760,6 +760,9 @@ func alignAddr(addr, align int64) int64 {
 }
 
 func escapeCheck(v *Variable, name string, stack stack) error {
+	if v.Unreadable != nil {
+		return fmt.Errorf("escape check for %s failed, variable unreadable: %v", name, v.Unreadable)
+	}
 	switch v.Kind {
 	case reflect.Ptr:
 		var w *Variable
@@ -1211,8 +1214,8 @@ func findCallInjectionStateForThread(t *Target, thread Thread) (*G, *callInjecti
 func debugCallFunction(bi *BinaryInfo) (*Function, int) {
 	for version := maxDebugCallVersion; version >= 1; version-- {
 		name := debugCallFunctionNamePrefix2 + "V" + strconv.Itoa(version)
-		fn, ok := bi.LookupFunc[name]
-		if ok && fn != nil {
+		fn := bi.lookupOneFunc(name)
+		if fn != nil {
 			return fn, version
 		}
 	}
