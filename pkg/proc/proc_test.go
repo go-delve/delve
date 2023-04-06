@@ -1360,6 +1360,7 @@ func TestFrameEvaluation(t *testing.T) {
 		assertNoError(err, t, "GetG()")
 
 		frames, err := g.Stacktrace(40, 0)
+		assertNoError(err, t, "Stacktrace()")
 		t.Logf("Goroutine %d %#v", g.ID, g.Thread)
 		logStacktrace(t, p, frames)
 
