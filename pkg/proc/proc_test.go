@@ -5917,7 +5917,7 @@ func TestGnuDebuglink(t *testing.T) {
 	for i := range normalBinInfo.Functions {
 		normalFn := normalBinInfo.Functions[i]
 		debuglinkFn := debuglinkBinInfo.Functions[i]
-		if normalFn.Entry != debuglinkFn.Entry || normalFn.Name != normalFn.Name {
+		if normalFn.Entry != debuglinkFn.Entry || normalFn.Name != debuglinkFn.Name {
 			t.Fatalf("function definition mismatch")
 		}
 	}
