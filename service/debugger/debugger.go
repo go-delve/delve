@@ -478,6 +478,11 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 		return nil, ErrCanNotRestart
 	}
 
+	if !resetArgs && (d.config.Stdout.File != nil || d.config.Stderr.File != nil) {
+		return nil, ErrCanNotRestart
+
+	}
+
 	if err := d.detach(true); err != nil {
 		return nil, err
 	}

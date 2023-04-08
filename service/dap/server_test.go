@@ -7408,7 +7408,7 @@ func TestRedirect(t *testing.T) {
 			stderr = bytes.NewBufferString("")
 		)
 
-	terminnatedPoint:
+	terminatedPoint:
 		for {
 			message := client.ExpectMessage(t)
 			switch m := message.(type) {
@@ -7422,7 +7422,7 @@ func TestRedirect(t *testing.T) {
 					t.Errorf("\ngot %#v\nwant Category='stdout' or 'stderr'", m)
 				}
 			case *dap.TerminatedEvent:
-				break terminnatedPoint
+				break terminatedPoint
 			default:
 				t.Errorf("\n got %#v, want *dap.OutputEvent or *dap.TerminateResponse", m)
 			}
