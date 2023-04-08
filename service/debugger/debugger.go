@@ -1849,25 +1849,30 @@ func (d *Debugger) convertDefers(defers []*proc.Defer) []api.Defer {
 		ddf, ddl, ddfn := defers[i].DeferredFunc(d.target.Selected)
 		drf, drl, drfn := d.target.Selected.BinInfo().PCToLine(defers[i].DeferPC)
 
-		r[i] = api.Defer{
-			DeferredLoc: api.ConvertLocation(proc.Location{
-				PC:   ddfn.Entry,
-				File: ddf,
-				Line: ddl,
-				Fn:   ddfn,
-			}),
-			DeferLoc: api.ConvertLocation(proc.Location{
-				PC:   defers[i].DeferPC,
-				File: drf,
-				Line: drl,
-				Fn:   drfn,
-			}),
-			SP: defers[i].SP,
-		}
-
 		if defers[i].Unreadable != nil {
 			r[i].Unreadable = defers[i].Unreadable.Error()
+		} else {
+			var entry uint64 = defers[i].DeferPC
+			if ddfn != nil {
+				entry = ddfn.Entry
+			}
+			r[i] = api.Defer{
+				DeferredLoc: api.ConvertLocation(proc.Location{
+					PC:   entry,
+					File: ddf,
+					Line: ddl,
+					Fn:   ddfn,
+				}),
+				DeferLoc: api.ConvertLocation(proc.Location{
+					PC:   defers[i].DeferPC,
+					File: drf,
+					Line: drl,
+					Fn:   drfn,
+				}),
+				SP: defers[i].SP,
+			}
 		}
+
 	}
 
 	return r
