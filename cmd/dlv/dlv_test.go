@@ -225,7 +225,10 @@ func getDlvBinInternal(t *testing.T, goflags ...string) string {
 	dlvbin := filepath.Join(t.TempDir(), "dlv.exe")
 	args := []string{"run", "_scripts/make.go", "build", "-o", dlvbin}
 	args = append(args, goflags...)
-	out, err := exec.Command("go", args...).CombinedOutput()
+	cmd := exec.Command("go", args...)
+	cmd.Dir = projectRoot()
+	out, err := cmd.CombinedOutput()
+
 	if err != nil {
 		t.Fatalf("go run _scripts/make.go build -o %v: %v\n%s", dlvbin, err, string(out))
 	}

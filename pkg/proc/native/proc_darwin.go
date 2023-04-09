@@ -185,18 +185,6 @@ func Attach(pid int, _ []string) (*proc.TargetGroup, error) {
 	return tgt, nil
 }
 
-func findExecutable(path string, pid int) string {
-	if path == "" {
-		cs := C.CString(string(make([]byte, C.PROC_PIDPATHINFO_MAXSIZE)))
-		defer C.free(unsafe.Pointer(cs))
-
-		C.proc_pidpath(C.int(pid), unsafe.Pointer(cs), C.PROC_PIDPATHINFO_MAXSIZE)
-
-		path = C.GoString(cs)
-	}
-	return path
-}
-
 // Kill kills the process.
 func (dbp *nativeProcess) kill() (err error) {
 	if dbp.exited {
