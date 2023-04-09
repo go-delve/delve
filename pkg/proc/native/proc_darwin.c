@@ -99,20 +99,13 @@ get_macho_header_offset(task_t task) {
 	address = 0x0;
 
 	kret = mach_vm_region(task, &address, &size, VM_REGION_BASIC_INFO_64,
-										(vm_region_info_64_t)&info, &infoCnt, &object_name);
+						  (vm_region_info_64_t)&info, &infoCnt, &object_name);
 	// Return 0 if we cannot find the address, since we implicitly use this to denote
 	// that we do not have the entrypoint in bininfo
 	if (kret != KERN_SUCCESS) return 0;
 
 	// address will then contain the start address of the section after __PAGEZERO, i.e. the mach-o header
 	return address;
-}
-
-char *
-find_executable(int pid) {
-	static char pathbuf[PATH_MAX];
-	proc_pidpath(pid, pathbuf, PATH_MAX);
-	return pathbuf;
 }
 
 kern_return_t

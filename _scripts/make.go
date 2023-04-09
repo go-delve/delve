@@ -338,7 +338,6 @@ func testFlags() []string {
 	}
 	if runtime.GOOS == "darwin" {
 		testFlags = append(testFlags, "-exec="+wd+"/_scripts/testsign")
-		testFlags = append(testFlags, prepareMacnative())
 	}
 	return testFlags
 }

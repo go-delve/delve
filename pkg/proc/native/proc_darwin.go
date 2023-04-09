@@ -311,7 +311,12 @@ func (dbp *nativeProcess) addThread(port int, attach bool) (*nativeThread, error
 
 func findExecutable(path string, pid int) string {
 	if path == "" {
-		path = C.GoString(C.find_executable(C.int(pid)))
+		cs := C.CString(string(make([]byte, C.PROC_PIDPATHINFO_MAXSIZE)))
+		defer C.free(unsafe.Pointer(cs))
+
+		C.proc_pidpath(C.int(pid), unsafe.Pointer(cs), C.PROC_PIDPATHINFO_MAXSIZE)
+
+		path = C.GoString(cs)
 	}
 	return path
 }
