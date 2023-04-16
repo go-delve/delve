@@ -185,6 +185,7 @@ type LaunchAttachCommonConfig struct {
 	// This setting is useful when working in a file system with symbolic links,
 	// running remote debugging, or debugging an executable compiled externally.
 	// The debug adapter will replace the local path with the remote path in all of the calls.
+	// See also Documentation/cli/substitutepath.md.
 	SubstitutePath []SubstitutePath `json:"substitutePath,omitempty"`
 }
 

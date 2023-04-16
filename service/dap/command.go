@@ -47,20 +47,22 @@ Type "help" followed by the name of a command for more information about it.`
 	
 	dlv config -list
 	
-	Show all configuration parameters.
+		Show all configuration parameters.
 
-	config -list <parameter>
+	dlv config -list <parameter>
 	
-	Show value of a configuration parameter.
+		Show value of a configuration parameter.
 	
 	dlv config <parameter> <value>
 	
-	Changes the value of a configuration parameter.
+		Changes the value of a configuration parameter.
 	
 	dlv config substitutePath <from> <to>
 	dlv config substitutePath <from>
+	dlv config substitutePath -clear
 	
-	Adds or removes a path substitution rule.`
+		Adds or removes a path substitution rule. If -clear is used all substitutePath rules are removed.
+		See also Documentation/cli/substitutepath.md.`
 	msgSources = `Print list of source files.
 
 	dlv sources [<regex>]

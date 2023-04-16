@@ -51,7 +51,7 @@ type BinaryInfo struct {
 	// GOOS operating system this binary is executing on.
 	GOOS string
 
-	debugInfoDirectories []string
+	DebugInfoDirectories []string
 
 	// BuildID of this binary.
 	BuildID string
@@ -676,7 +676,7 @@ func (bi *BinaryInfo) LoadBinaryInfo(path string, entryPoint uint64, debugInfoDi
 		bi.lastModified = fi.ModTime()
 	}
 
-	bi.debugInfoDirectories = debugInfoDirs
+	bi.DebugInfoDirectories = debugInfoDirs
 
 	return bi.AddImage(path, entryPoint)
 }
@@ -1396,7 +1396,7 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 	if err != nil {
 		var sepFile *os.File
 		var serr error
-		sepFile, dwarfFile, serr = bi.openSeparateDebugInfo(image, elfFile, bi.debugInfoDirectories)
+		sepFile, dwarfFile, serr = bi.openSeparateDebugInfo(image, elfFile, bi.DebugInfoDirectories)
 		if serr != nil {
 			return serr
 		}

@@ -4024,6 +4024,9 @@ Type 'dlv help' followed by a command for full documentation.
 					checkEval(t, got, msgConfig, noChildren)
 
 					// Test config.
+					client.EvaluateRequest("dlv config", 1000, "repl")
+					client.ExpectErrorResponse(t)
+
 					client.EvaluateRequest("dlv config -list", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
 					checkEval(t, got, formatConfig(50, false, false, "", false, [][2]string{}), noChildren)

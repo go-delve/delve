@@ -230,13 +230,23 @@ Changes the value of a configuration parameter.
 
 	config substitute-path <from> <to>
 	config substitute-path <from>
+	config substitute-path -clear
 
-Adds or removes a path substitution rule.
+Adds or removes a path substitution rule, if -clear is used all
+substitute-path rules are removed. Without arguments shows the current list
+of substitute-path rules.
+See also [Documentation/cli/substitutepath.md](//github.com/go-delve/delve/tree/master/Documentation/cli/substitutepath.md) for how the rules are applied.
 
 	config alias <command> <alias>
 	config alias <alias>
 
 Defines <alias> as an alias to <command> or removes an alias.
+
+	config debug-info-directories -add <path>
+	config debug-info-directories -rm <path>
+	config debug-info-directories -clear
+
+Adds, removes or clears debug-info-directories.
 
 
 ## continue

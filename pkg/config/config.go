@@ -278,6 +278,7 @@ aliases:
 # between compilation and debugging.
 # Note that substitution rules will not be used for paths passed to "break" and "trace"
 # commands.
+# See also Documentation/cli/substitutepath.md.
 substitute-path:
   # - {from: path, to: path}
   
