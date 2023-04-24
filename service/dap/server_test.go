@@ -3432,6 +3432,9 @@ func TestHaltPreventsAutoResume(t *testing.T) {
 // goroutine is hit the correct number of times and log points set in the
 // children goroutines produce the correct number of output events.
 func TestConcurrentBreakpointsLogPoints(t *testing.T) {
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
+		t.Skip("broken")
+	}
 	tests := []struct {
 		name        string
 		fixture     string

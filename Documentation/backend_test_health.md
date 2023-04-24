@@ -21,6 +21,7 @@ Tests skipped by each supported backend:
 	* 1 broken
 	* 3 see https://github.com/go-delve/delve/issues/2768
 	* 1 upstream issue
-* windows/arm64 skipped = 2
+* windows/arm64 skipped = 5
+	* 3 broken
 	* 1 broken - cgo stacktraces
 	* 1 broken - step concurrent

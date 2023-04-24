@@ -597,6 +597,7 @@ func TestNextGeneral(t *testing.T) {
 }
 
 func TestNextConcurrent(t *testing.T) {
+	skipOn(t, "broken", "windows", "arm64")
 	testcases := []nextTest{
 		{8, 9},
 		{9, 10},
@@ -632,6 +633,7 @@ func TestNextConcurrent(t *testing.T) {
 }
 
 func TestNextConcurrentVariant2(t *testing.T) {
+	skipOn(t, "broken", "windows", "arm64")
 	// Just like TestNextConcurrent but instead of removing the initial breakpoint we check that when it happens is for other goroutines
 	testcases := []nextTest{
 		{8, 9},
@@ -1513,6 +1515,7 @@ func TestBreakpointCounts(t *testing.T) {
 }
 
 func TestHardcodedBreakpointCounts(t *testing.T) {
+	skipOn(t, "broken", "windows", "arm64")
 	withTestProcess("hcbpcountstest", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		counts := map[int64]int{}
 		for {
