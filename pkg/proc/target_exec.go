@@ -173,22 +173,7 @@ func (grp *TargetGroup) Continue() error {
 				if err := conditionErrors(grp); err != nil {
 					return err
 				}
-				if grp.GetDirection() == Forward {
-					text, err := disassembleCurrentInstruction(dbp, curthread, 0)
-					if err != nil {
-						return err
-					}
-					var fn *Function
-					if loc, _ := curthread.Location(); loc != nil {
-						fn = loc.Fn
-					}
-					// here we either set a breakpoint into the destination of the CALL
-					// instruction or we determined that the called function is hidden,
-					// either way we need to resume execution
-					if err = setStepIntoBreakpoint(dbp, fn, text, sameGoroutineCondition(dbp.SelectedGoroutine())); err != nil {
-						return err
-					}
-				} else {
+				if grp.GetDirection() == Backward {
 					if err := dbp.ClearSteppingBreakpoints(); err != nil {
 						return err
 					}
@@ -797,12 +782,45 @@ func setStepIntoBreakpoints(dbp *Target, curfn *Function, text []AsmInstruction,
 			}
 		} else {
 			// Non-absolute call instruction, set a StepBreakpoint here
-			if _, err := allowDuplicateBreakpoint(dbp.SetBreakpoint(0, instr.Loc.PC, StepBreakpoint, sameGCond)); err != nil {
+			bp, err := allowDuplicateBreakpoint(dbp.SetBreakpoint(0, instr.Loc.PC, StepBreakpoint, sameGCond))
+			if err != nil {
 				return err
 			}
+			breaklet := bp.Breaklets[len(bp.Breaklets)-1]
+			breaklet.callback = stepIntoCallback
 		}
 	}
 	return nil
+}
+
+// stepIntoCallback is a callback called when a StepBreakpoint is hit, it
+// disassembles the current instruction to figure out its destination and
+// sets a breakpoint on it.
+func stepIntoCallback(curthread Thread, p *Target) (bool, error) {
+	if p.recman.GetDirection() != Forward {
+		// This should never happen, step into breakpoints with callbacks are only
+		// set when moving forward and direction changes are forbidden while
+		// breakpoints are set.
+		return true, nil
+	}
+
+	text, err := disassembleCurrentInstruction(p, curthread, 0)
+	if err != nil {
+		return false, err
+	}
+	var fn *Function
+	if loc, _ := curthread.Location(); loc != nil {
+		fn = loc.Fn
+	}
+	g, _ := GetG(curthread)
+	// here we either set a breakpoint into the destination of the CALL
+	// instruction or we determined that the called function is hidden,
+	// either way we need to resume execution
+	if err = setStepIntoBreakpoint(p, fn, text, sameGoroutineCondition(g)); err != nil {
+		return false, err
+	}
+
+	return false, nil
 }
 
 func setStepIntoBreakpointsReverse(dbp *Target, text []AsmInstruction, topframe Stackframe, sameGCond ast.Expr) error {
