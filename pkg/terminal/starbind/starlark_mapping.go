@@ -730,6 +730,56 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 		}
 		return env.interfaceToStarlarkValue(rpcRet), nil
 	})
+	r["follow_exec"] = starlark.NewBuiltin("follow_exec", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		if err := isCancelled(thread); err != nil {
+			return starlark.None, decorateError(thread, err)
+		}
+		var rpcArgs rpc2.FollowExecIn
+		var rpcRet rpc2.FollowExecOut
+		if len(args) > 0 && args[0] != starlark.None {
+			err := unmarshalStarlarkValue(args[0], &rpcArgs.Enable, "Enable")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		if len(args) > 1 && args[1] != starlark.None {
+			err := unmarshalStarlarkValue(args[1], &rpcArgs.Regex, "Regex")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		for _, kv := range kwargs {
+			var err error
+			switch kv[0].(starlark.String) {
+			case "Enable":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Enable, "Enable")
+			case "Regex":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Regex, "Regex")
+			default:
+				err = fmt.Errorf("unknown argument %q", kv[0])
+			}
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		err := env.ctx.Client().CallAPI("FollowExec", &rpcArgs, &rpcRet)
+		if err != nil {
+			return starlark.None, err
+		}
+		return env.interfaceToStarlarkValue(rpcRet), nil
+	})
+	r["follow_exec_enabled"] = starlark.NewBuiltin("follow_exec_enabled", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		if err := isCancelled(thread); err != nil {
+			return starlark.None, decorateError(thread, err)
+		}
+		var rpcArgs rpc2.FollowExecEnabledIn
+		var rpcRet rpc2.FollowExecEnabledOut
+		err := env.ctx.Client().CallAPI("FollowExecEnabled", &rpcArgs, &rpcRet)
+		if err != nil {
+			return starlark.None, err
+		}
+		return env.interfaceToStarlarkValue(rpcRet), nil
+	})
 	r["function_return_locations"] = starlark.NewBuiltin("function_return_locations", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if err := isCancelled(thread); err != nil {
 			return starlark.None, decorateError(thread, err)
@@ -1230,6 +1280,18 @@ func (env *Env) starlarkPredeclare() starlark.StringDict {
 			}
 		}
 		err := env.ctx.Client().CallAPI("ListSources", &rpcArgs, &rpcRet)
+		if err != nil {
+			return starlark.None, err
+		}
+		return env.interfaceToStarlarkValue(rpcRet), nil
+	})
+	r["targets"] = starlark.NewBuiltin("targets", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		if err := isCancelled(thread); err != nil {
+			return starlark.None, decorateError(thread, err)
+		}
+		var rpcArgs rpc2.ListTargetsIn
+		var rpcRet rpc2.ListTargetsOut
+		err := env.ctx.Client().CallAPI("ListTargets", &rpcArgs, &rpcRet)
 		if err != nil {
 			return starlark.None, err
 		}

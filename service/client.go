@@ -185,6 +185,14 @@ type Client interface {
 	// CoreDumpCancel cancels a core dump in progress
 	CoreDumpCancel() error
 
+	// ListTargets returns the list of connected targets
+	ListTargets() ([]api.Target, error)
+	// FollowExec enables or disables the follow exec mode. In follow exec mode
+	// Delve will automatically debug child processes launched by the target
+	// process
+	FollowExec(bool, string) error
+	FollowExecEnabled() bool
+
 	// Disconnect closes the connection to the server without sending a Detach request first.
 	// If cont is true a continue command will be sent instead.
 	Disconnect(cont bool) error

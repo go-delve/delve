@@ -354,6 +354,11 @@ func (grp *TargetGroup) FollowExec(v bool, regex string) error {
 	return nil
 }
 
+// FollowExecEnabled returns true if follow exec is enabled
+func (grp *TargetGroup) FollowExecEnabled() bool {
+	return grp.followExecEnabled
+}
+
 // ValidTargets iterates through all valid targets in Group.
 type ValidTargets struct {
 	*Target

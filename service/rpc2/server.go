@@ -1033,3 +1033,49 @@ func (s *RPCServer) BuildID(arg BuildIDIn, out *BuildIDOut) error {
 	out.BuildID = s.debugger.BuildID()
 	return nil
 }
+
+type ListTargetsIn struct {
+}
+
+type ListTargetsOut struct {
+	Targets []api.Target
+}
+
+// ListTargets returns the list of targets we are currently attached to.
+func (s *RPCServer) ListTargets(arg ListTargetsIn, out *ListTargetsOut) error {
+	s.debugger.LockTarget()
+	defer s.debugger.UnlockTarget()
+	out.Targets = []api.Target{}
+	for _, tgt := range s.debugger.TargetGroup().Targets() {
+		if _, err := tgt.Valid(); err == nil {
+			out.Targets = append(out.Targets, *api.ConvertTarget(tgt, s.debugger.ConvertThreadBreakpoint))
+		}
+	}
+	return nil
+}
+
+type FollowExecIn struct {
+	Enable bool
+	Regex  string
+}
+
+type FollowExecOut struct {
+}
+
+// FollowExec enables or disables follow exec mode.
+func (s *RPCServer) FollowExec(arg FollowExecIn, out *FollowExecOut) error {
+	return s.debugger.FollowExec(arg.Enable, arg.Regex)
+}
+
+type FollowExecEnabledIn struct {
+}
+
+type FollowExecEnabledOut struct {
+	Enabled bool
+}
+
+// FollowExecEnabled returns true if follow exec mode is enabled.
+func (s *RPCServer) FollowExecEnabled(arg FollowExecEnabledIn, out *FollowExecEnabledOut) error {
+	out.Enabled = s.debugger.FollowExecEnabled()
+	return nil
+}

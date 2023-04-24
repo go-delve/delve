@@ -429,10 +429,12 @@ func ConvertRegisters(in *op.DwarfRegisters, dwarfRegisterToString func(int, *op
 	return
 }
 
+// ConvertImage convers proc.Image to api.Image.
 func ConvertImage(image *proc.Image) Image {
 	return Image{Path: image.Path, Address: image.StaticBase}
 }
 
+// ConvertDumpState converts proc.DumpState to api.DumpState.
 func ConvertDumpState(dumpState *proc.DumpState) *DumpState {
 	dumpState.Mutex.Lock()
 	defer dumpState.Mutex.Unlock()
@@ -448,4 +450,13 @@ func ConvertDumpState(dumpState *proc.DumpState) *DumpState {
 		r.Err = dumpState.Err.Error()
 	}
 	return r
+}
+
+// ConvertTarget converts a proc.Target into a api.Target.
+func ConvertTarget(tgt *proc.Target, convertThreadBreakpoint func(proc.Thread) *Breakpoint) *Target {
+	//TODO(aarzilli): copy command line here
+	return &Target{
+		Pid:           tgt.Pid(),
+		CurrentThread: ConvertThread(tgt.CurrentThread(), convertThreadBreakpoint(tgt.CurrentThread())),
+	}
 }
