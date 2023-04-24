@@ -318,7 +318,7 @@ func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc
 		DisableAsyncPreempt: runtime.GOOS == "windows" || (runtime.GOOS == "linux" && runtime.GOARCH == "arm64"),
 
 		StopReason: stopReason,
-		CanDump:    runtime.GOOS == "linux" || (runtime.GOOS == "windows" && runtime.GOARCH == "amd64"),
+		CanDump:    runtime.GOOS == "linux" || runtime.GOOS == "freebsd" || (runtime.GOOS == "windows" && runtime.GOARCH == "amd64"),
 	})
 	procgrp.addTarget = addTarget
 	tgt, err := procgrp.add(dbp, dbp.pid, dbp.memthread, path, stopReason)
