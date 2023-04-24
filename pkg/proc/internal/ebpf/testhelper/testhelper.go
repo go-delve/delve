@@ -3,6 +3,7 @@
 
 package testhelper
 
+// #include <stdbool.h>
 // #include "../bpf/include/function_vals.bpf.h"
 import "C"
 
