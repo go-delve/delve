@@ -399,9 +399,14 @@ To only display goroutines where the specified location contains (or does not co
 	goroutines -w (userloc|curloc|goloc|startloc) expr
 	goroutines -without (userloc|curloc|goloc|startloc) expr
 	goroutines -wo (userloc|curloc|goloc|startloc) expr
+
+	Where:
+	userloc: filter by the location of the topmost stackframe in user code
+	curloc: filter by the location of the topmost stackframe (including frames inside private runtime functions)
+	goloc: filter by the location of the go instruction that created the goroutine
+	startloc: filter by the location of the start function
 	
 To only display goroutines that have (or do not have) the specified label key and value, use:
-	
 
 	goroutines -with label key=value
 	goroutines -without label key=value
@@ -425,6 +430,15 @@ To only display user (or runtime) goroutines, use:
 GROUPING
 
 	goroutines -group (userloc|curloc|goloc|startloc|running|user)
+
+	Where:
+	userloc: groups goroutines by the location of the topmost stackframe in user code
+	curloc: groups goroutines by the location of the topmost stackframe
+	goloc: groups goroutines by the location of the go instruction that created the goroutine
+	startloc: groups goroutines by the location of the start function
+	running: groups goroutines by weather they are running or not
+	user: groups goroutines by weather they are user or runtime goroutines
+
 
 Groups goroutines by the given location, running status or user classification, up to 5 goroutines per group will be displayed as well as the total number of goroutines in the group.
 
