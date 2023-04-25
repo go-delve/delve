@@ -436,7 +436,7 @@ GROUPING
 	curloc: groups goroutines by the location of the topmost stackframe
 	goloc: groups goroutines by the location of the go instruction that created the goroutine
 	startloc: groups goroutines by the location of the start function
-	running: groups goroutines by weather they are running or not
+	running: groups goroutines by whether they are running or not
 	user: groups goroutines by weather they are user or runtime goroutines
 
 
