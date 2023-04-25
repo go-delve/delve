@@ -1839,7 +1839,7 @@ func (v *Variable) writeZero() error {
 	return err
 }
 
-// writeInterface writes the empty interface of type typeAddr and data as the data field.
+// writeEmptyInterface writes the empty interface of type typeAddr and data as the data field.
 func (v *Variable) writeEmptyInterface(typeAddr uint64, data *Variable) error {
 	dstType, dstData, _ := v.readInterface()
 	if v.Unreadable != nil {
