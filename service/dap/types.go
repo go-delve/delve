@@ -106,7 +106,7 @@ type LaunchConfig struct {
 	//    "buildFlags": "-tags=integration -mod=vendor -cover -v"
 	BuildFlags string `json:"buildFlags,omitempty"`
 
-	// Output path for the binary of the debugee.
+	// Output path for the binary of the debuggee.
 	// Relative path is interpreted as the path relative to
 	// the Delve's current working directory.
 	// This is deleted after the debug session ends.
@@ -191,7 +191,7 @@ type LaunchAttachCommonConfig struct {
 // SubstitutePath defines a mapping from a local path to the remote path.
 // Both 'from' and 'to' must be specified and non-null.
 // Empty values can be used to add or remove absolute path prefixes when mapping.
-// For example, mapping with empy 'to' can be used to work with binaries with trimmed paths.
+// For example, mapping with empty 'to' can be used to work with binaries with trimmed paths.
 type SubstitutePath struct {
 	// The local path to be replaced when passing paths to the debugger.
 	From string `json:"from,omitempty"`

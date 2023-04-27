@@ -83,7 +83,7 @@ func main() {
 	messages := []string{}
 	scope := pkgs[0].Types.Scope()
 	for _, name := range scope.Names() {
-		// Find only types that are embedding go-dap.Respose message.
+		// Find only types that are embedding go-dap.Response message.
 		obj := scope.Lookup(name)
 		if !obj.Exported() {
 			continue // skip unexported

@@ -547,7 +547,7 @@ func (c *RPCClient) FollowExec(v bool, regex string) error {
 	return err
 }
 
-// FollowExecEnabled returns true if follow exex mode is enabled.
+// FollowExecEnabled returns true if follow exec mode is enabled.
 func (c *RPCClient) FollowExecEnabled() bool {
 	out := &FollowExecEnabledOut{}
 	_ = c.call("FollowExecEnabled", FollowExecEnabledIn{}, out)
