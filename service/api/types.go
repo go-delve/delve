@@ -448,7 +448,7 @@ const (
 	ReverseStep = "reverseStep"
 	// StepOut continues to the return address of the current function
 	StepOut = "stepOut"
-	// ReverseStepOut continues backward to the calle rof the current function.
+	// ReverseStepOut continues backward to the caller of the current function.
 	ReverseStepOut = "reverseStepOut"
 	// StepInstruction continues for exactly 1 cpu instruction.
 	StepInstruction = "stepInstruction"

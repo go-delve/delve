@@ -203,7 +203,7 @@ type process struct {
 // impact handling of subsequent requests.
 // The fields with cfgName tag can be updated through an evaluation request.
 type launchAttachArgs struct {
-	// stopOnEntry is set to automatically stop the debugee after start.
+	// stopOnEntry is set to automatically stop the debuggee after start.
 	stopOnEntry bool
 	// StackTraceDepth is the maximum length of the returned list of stack frames.
 	StackTraceDepth int `cfgName:"stackTraceDepth"`
@@ -236,7 +236,7 @@ var defaultArgs = launchAttachArgs{
 	substitutePathServerToClient: [][2]string{},
 }
 
-// dapClientCapabilites captures arguments from intitialize request that
+// dapClientCapabilites captures arguments from initialize request that
 // impact handling of subsequent requests.
 type dapClientCapabilites struct {
 	supportsVariableType         bool
@@ -362,7 +362,7 @@ func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) error {
 // connection. It shuts down the underlying debugger and kills the target
 // process if it was launched by it or stops the noDebug process.
 // This method mustn't be called more than once.
-// StopTriggered notifies other goroutines that stop is in progreess.
+// StopTriggered notifies other goroutines that stop is in progress.
 func (s *Server) Stop() {
 	s.config.log.Debug("DAP server stopping...")
 	defer s.config.log.Debug("DAP server stopped")
@@ -404,7 +404,7 @@ func (s *Session) Close() {
 	// Unless Stop() was called after read loop in ServeDAPCodec()
 	// returned, this will result in a closed connection error
 	// on next read, breaking out the read loop and
-	// allowing the run goroutinee to exit.
+	// allowing the run goroutines to exit.
 	// This connection is closed here and in serveDAPCodec().
 	// If this was a forced shutdown, external stop logic can close this first.
 	// If this was a client loop exit (on error or disconnect), serveDAPCodec()
@@ -417,13 +417,13 @@ func (s *Session) Close() {
 // signals that client sent a disconnect request or there was connection
 // failure or closure. Since the server currently services only one
 // client, this is used as a signal to stop the entire server.
-// The function safeguards agaist closing the channel more
+// The function safeguards against closing the channel more
 // than once and can be called multiple times. It is not thread-safe
 // and is currently only called from the run goroutine.
 func (c *Config) triggerServerStop() {
 	// Avoid accidentally closing the channel twice and causing a panic, when
 	// this function is called more than once because stop was triggered
-	// by multiple conditions simultenously.
+	// by multiple conditions simultaneously.
 	if c.DisconnectChan != nil {
 		close(c.DisconnectChan)
 		c.DisconnectChan = nil
@@ -1428,7 +1428,7 @@ func (s *Session) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakp
 		}
 	}, func(i int) (*bpLocation, error) {
 		want := request.Arguments.Breakpoints[i]
-		// Set the function breakpoint breakpoint
+		// Set the function breakpoint
 		spec, err := locspec.Parse(want.Name)
 		if err != nil {
 			return nil, err
@@ -1865,7 +1865,7 @@ func (s *Session) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int6
 // stepUntilStopAndNotify is a wrapper around runUntilStopAndNotify that
 // first switches selected goroutine. allowNextStateChange is
 // a channel that will be closed to signal that an
-// asynchornous command has completed setup or was interrupted
+// asynchronous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
 func (s *Session) stepUntilStopAndNotify(command string, threadId int, granularity dap.SteppingGranularity, allowNextStateChange chan struct{}) {
 	defer closeIfOpen(allowNextStateChange)
@@ -2500,7 +2500,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 		if v.DwarfType != nil && len(v.Children) > 0 && v.Children[0].Addr != 0 && v.Children[0].Kind != reflect.Invalid {
 			if v.Children[0].OnlyAddr { // Not loaded
 				if v.Addr == 0 {
-					// This is equvalent to the following with the cli:
+					// This is equivalent to the following with the cli:
 					//    (dlv) p &a7
 					//    (**main.FooBar)(0xc0000a3918)
 					//
@@ -2887,7 +2887,7 @@ func (s *Session) onSetVariableRequest(request *dap.SetVariableRequest) {
 	}
 
 	if useFnCall {
-		// TODO(hyangah): function call injection currentlly allows to assign return values of
+		// TODO(hyangah): function call injection currently allows to assign return values of
 		// a function call to variables. So, curious users would find set variable
 		// on string would accept expression like `fn()`.
 		if state, retVals, err := s.doCall(goid, frame, fmt.Sprintf("%v=%v", evaluateName, arg.Value)); err != nil {
@@ -2928,7 +2928,7 @@ func (s *Session) onSetVariableRequest(request *dap.SetVariableRequest) {
 	// to update the variable/watch sections if necessary.
 	//
 	// More complicated situation is when the set variable involves call
-	// injection - after the injected call is completed, the debugee can
+	// injection - after the injected call is completed, the debuggee can
 	// be in a completely different state (see the note in doCall) due to
 	// how the call injection is implemented. Ideally, we need to also refresh
 	// the stack frames but that is complicated. For now we don't try to actively
@@ -3463,7 +3463,7 @@ func (s *Session) resumeOnce(command string, allowNextStateChange chan struct{})
 // termination, error, breakpoint, etc, when an appropriate
 // event needs to be sent to the client. allowNextStateChange is
 // a channel that will be closed to signal that an
-// asynchornous command has completed setup or was interrupted
+// asynchronous command has completed setup or was interrupted
 // due to an error, so the server is ready to receive new requests.
 func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange chan struct{}) {
 	state, err := s.runUntilStop(command, allowNextStateChange)

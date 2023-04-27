@@ -1360,7 +1360,7 @@ func TestIssue355(t *testing.T) {
 }
 
 func TestDisasm(t *testing.T) {
-	// Tests that disassembling by PC, range, and current PC all yeld similar results
+	// Tests that disassembling by PC, range, and current PC all yield similar results
 	// Tests that disassembly by current PC will return a disassembly containing the instruction at PC
 	// Tests that stepping on a calculated CALL instruction will yield a disassembly that contains the
 	// effective destination of the CALL instruction
@@ -1962,7 +1962,7 @@ func TestClientServerConsistentExit(t *testing.T) {
 
 		// Ensure future commands also return the correct exit status.
 		// Previously there was a bug where the command which prompted the
-		// process to exit (continue, next, etc...) would return the corrent
+		// process to exit (continue, next, etc...) would return the current
 		// exit status but subsequent commands would return an incorrect exit
 		// status of 0. To test this we simply repeat the 'next' command and
 		// ensure we get the correct response again.

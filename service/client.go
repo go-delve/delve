@@ -47,7 +47,7 @@ type Client interface {
 	ReverseStep() (*api.DebuggerState, error)
 	// StepOut continues to the return address of the current function.
 	StepOut() (*api.DebuggerState, error)
-	// ReverseStepOut continues backward to the calle rof the current function.
+	// ReverseStepOut continues backward to the caller of the current function.
 	ReverseStepOut() (*api.DebuggerState, error)
 	// Call resumes process execution while making a function call.
 	Call(goroutineID int64, expr string, unsafe bool) (*api.DebuggerState, error)

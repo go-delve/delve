@@ -2099,7 +2099,7 @@ func TestVariablesLoading(t *testing.T) {
 							checkChildren(t, c1sa, "c1.sa", 3)
 							ref = checkVarRegex(t, c1sa, 0, `\[0\]`, `c1\.sa\[0\]`, `\*\(\*main\.astruct\)\(0x[0-9a-f]+\)`, `\*main\.astruct`, hasChildren)
 							if ref > 0 {
-								// Auto-loading of fully missing struc children happens here
+								// Auto-loading of fully missing struct children happens here
 								client.VariablesRequest(ref)
 								c1sa0 := client.ExpectVariablesResponse(t)
 								checkChildren(t, c1sa0, "c1.sa[0]", 1)
@@ -4161,7 +4161,7 @@ func TestVariableValueTruncation(t *testing.T) {
 
 					// Compound map keys may be truncated even further
 					// As the keys are always inside of a map container,
-					// this applies to variables requests only, not evalute requests.
+					// this applies to variables requests only, not evaluate requests.
 
 					// key - compound, value - scalar (inlined key:value display) => truncate key if too long
 					ref := checkVarExact(t, locals, -1, "m5", "m5", "map[main.C]int [{s: "+longstr+"}: 1, ]", "map[main.C]int", hasChildren)
@@ -6717,7 +6717,7 @@ func (s *MultiClientCloseServerMock) acceptNewClient(t *testing.T) *daptest.Clie
 func (s *MultiClientCloseServerMock) stop(t *testing.T) {
 	close(s.forceStop)
 	// If the server doesn't have an active session,
-	// closing it would leak the debbuger with the target because
+	// closing it would leak the debugger with the target because
 	// they are part of dap.Session.
 	// We must take it down manually as if we are in rpccommon::ServerImpl::Stop.
 	if s.debugger.IsRunning() {
@@ -6733,7 +6733,7 @@ func (s *MultiClientCloseServerMock) verifyStopped(t *testing.T) {
 	verifyServerStopped(t, s.impl)
 }
 
-// TestAttachRemoteMultiClientDisconnect tests that that remote attach doesn't take down
+// TestAttachRemoteMultiClientDisconnect tests that remote attach doesn't take down
 // the server in multi-client mode unless terminateDebuggee is explicitly set.
 func TestAttachRemoteMultiClientDisconnect(t *testing.T) {
 	closingClientSessionOnly := fmt.Sprintf(daptest.ClosingClient, "halted")
@@ -7039,7 +7039,7 @@ func TestDisassemble(t *testing.T) {
 						t.Errorf("\ngot %#v\nwant instructions[1].Address = %s", dr, pc)
 					}
 
-					// Request zero instrutions.
+					// Request zero instructions.
 					client.DisassembleRequest(pc, 0, 0)
 					dr = client.ExpectDisassembleResponse(t)
 					if len(dr.Body.Instructions) != 0 {

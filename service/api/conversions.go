@@ -429,7 +429,7 @@ func ConvertRegisters(in *op.DwarfRegisters, dwarfRegisterToString func(int, *op
 	return
 }
 
-// ConvertImage convers proc.Image to api.Image.
+// ConvertImage converts proc.Image to api.Image.
 func ConvertImage(image *proc.Image) Image {
 	return Image{Path: image.Path, Address: image.StaticBase}
 }
