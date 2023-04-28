@@ -2485,6 +2485,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 			value += fmt.Sprintf(" - FAILED TO LOAD: %s", err)
 		} else {
 			v.Children = vLoaded.Children
+			v.Value = vLoaded.Value
 			value = api.ConvertVar(v).SinglelineString()
 		}
 		return value
