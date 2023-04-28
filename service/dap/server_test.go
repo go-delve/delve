@@ -726,7 +726,7 @@ func TestPreSetBreakpoint(t *testing.T) {
 		if len(tResp.Body.Threads) < 2 { // 1 main + runtime
 			t.Errorf("\ngot  %#v\nwant len(Threads)>1", tResp.Body.Threads)
 		}
-		reMain, _ := regexp.Compile(`\* \[Go 1\] main.Increment \(Thread [0-9]+\)`)
+		reMain := regexp.MustCompile(`\* \[Go 1\] main.Increment \(Thread [0-9]+\)`)
 		wantMain := dap.Thread{Id: 1, Name: "* [Go 1] main.Increment (Thread ...)"}
 		wantRuntime := dap.Thread{Id: 2, Name: "[Go 2] runtime.gopark"}
 		for _, got := range tResp.Body.Threads {
@@ -5227,7 +5227,7 @@ func TestLaunchDebugRequest(t *testing.T) {
 	<-done
 	os.Stderr = rescueStderr
 
-	rmErrRe, _ := regexp.Compile(`could not remove .*\n`)
+	rmErrRe := regexp.MustCompile(`could not remove .*\n`)
 	rmErr := rmErrRe.FindString(string(err))
 	if rmErr != "" {
 		// On Windows, a file in use cannot be removed, resulting in "Access is denied".
@@ -6809,7 +6809,7 @@ func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 				// Both launch and attach requests should go through for additional error checking
 				client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 100})
 				er := client.ExpectVisibleErrorResponse(t)
-				msgRe, _ := regexp.Compile("Failed to attach: debug session already in progress at [0-9]+:[0-9]+ - use remote mode to connect to a server with an active debug session")
+				msgRe := regexp.MustCompile("Failed to attach: debug session already in progress at [0-9]+:[0-9]+ - use remote mode to connect to a server with an active debug session")
 				if er.Body.Error.Id != FailedToAttach || msgRe.MatchString(er.Body.Error.Format) {
 					t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToAttach, msgRe)
 				}
@@ -6818,7 +6818,7 @@ func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 					t.Run(mode, func(t *testing.T) {
 						client.LaunchRequestWithArgs(map[string]interface{}{"mode": mode})
 						er := client.ExpectVisibleErrorResponse(t)
-						msgRe, _ := regexp.Compile("Failed to launch: debug session already in progress at [0-9]+:[0-9]+ - use remote attach mode to connect to a server with an active debug session")
+						msgRe := regexp.MustCompile("Failed to launch: debug session already in progress at [0-9]+:[0-9]+ - use remote attach mode to connect to a server with an active debug session")
 						if er.Body.Error.Id != FailedToLaunch || msgRe.MatchString(er.Body.Error.Format) {
 							t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToLaunch, msgRe)
 						}
