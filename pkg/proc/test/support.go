@@ -237,34 +237,12 @@ func RunTestsWithFixtures(m *testing.M) int {
 var recordingAllowed = map[string]bool{}
 var recordingAllowedMu sync.Mutex
 
-// testName returns the name of the test being run using runtime.Caller.
-// On go1.8 t.Name() could be called instead, this is a workaround to
-// support <=go1.7
-func testName(t testing.TB) string {
-	for i := 1; i < 10; i++ {
-		pc, _, _, ok := runtime.Caller(i)
-		if !ok {
-			break
-		}
-		fn := runtime.FuncForPC(pc)
-		if fn == nil {
-			continue
-		}
-		name := fn.Name()
-		v := strings.Split(name, ".")
-		if strings.HasPrefix(v[len(v)-1], "Test") {
-			return name
-		}
-	}
-	return "unknown"
-}
-
 // AllowRecording allows the calling test to be used with a recording of the
 // fixture.
 func AllowRecording(t testing.TB) {
 	recordingAllowedMu.Lock()
 	defer recordingAllowedMu.Unlock()
-	name := testName(t)
+	name := t.Name()
 	t.Logf("enabling recording for %s", name)
 	recordingAllowed[name] = true
 }
@@ -292,7 +270,7 @@ func AllowRecording(t testing.TB) {
 func MustHaveRecordingAllowed(t testing.TB) {
 	recordingAllowedMu.Lock()
 	defer recordingAllowedMu.Unlock()
-	name := testName(t)
+	name := t.Name()
 	if !recordingAllowed[name] {
 		t.Skipf("recording not allowed for %s", name)
 	}
