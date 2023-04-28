@@ -1395,7 +1395,7 @@ func (d *Debugger) Sources(filter string) ([]string, error) {
 	t := proc.ValidTargets{Group: d.target}
 	for t.Next() {
 		for _, f := range t.BinInfo().Sources {
-			if regex.Match([]byte(f)) {
+			if regex.MatchString(f) {
 				files = append(files, f)
 			}
 		}
@@ -1464,7 +1464,7 @@ func (d *Debugger) Types(filter string) ([]string, error) {
 		}
 
 		for _, typ := range types {
-			if regex.Match([]byte(typ)) {
+			if regex.MatchString(typ) {
 				r = append(r, typ)
 			}
 		}
@@ -1497,7 +1497,7 @@ func (d *Debugger) PackageVariables(filter string, cfg proc.LoadConfig) ([]*proc
 	}
 	pvr := pv[:0]
 	for i := range pv {
-		if regex.Match([]byte(pv[i].Name)) {
+		if regex.MatchString(pv[i].Name) {
 			pvr = append(pvr, pv[i])
 		}
 	}
