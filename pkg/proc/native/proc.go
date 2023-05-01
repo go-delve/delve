@@ -371,9 +371,7 @@ func (dbp *nativeProcess) writeSoftwareBreakpoint(thread *nativeThread, addr uin
 }
 
 func openRedirects(stdinPath string, stdoutOR proc.OutputRedirect, stderrOR proc.OutputRedirect, foreground bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
-	var (
-		toclose = []*os.File{}
-	)
+	toclose := []*os.File{}
 
 	if stdinPath != "" {
 		stdin, err = os.Open(stdinPath)
