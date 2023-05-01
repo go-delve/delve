@@ -64,9 +64,7 @@ func RecordAsync(cmd []string, wd string, quiet bool, stdin string, stdout proc.
 }
 
 func openRedirects(stdinPath string, stdoutOR proc.OutputRedirect, stderrOR proc.OutputRedirect, quiet bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
-	var (
-		toclose = []*os.File{}
-	)
+	toclose := []*os.File{}
 
 	if stdinPath != "" {
 		stdin, err = os.Open(stdinPath)
