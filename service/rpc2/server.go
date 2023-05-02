@@ -1079,3 +1079,20 @@ func (s *RPCServer) FollowExecEnabled(arg FollowExecEnabledIn, out *FollowExecEn
 	out.Enabled = s.debugger.FollowExecEnabled()
 	return nil
 }
+
+type DebugInfoDirectoriesIn struct {
+	Set  bool
+	List []string
+}
+
+type DebugInfoDirectoriesOut struct {
+	List []string
+}
+
+func (s *RPCServer) DebugInfoDirectories(arg DebugInfoDirectoriesIn, out *DebugInfoDirectoriesOut) error {
+	if arg.Set {
+		s.debugger.SetDebugInfoDirectories(arg.List)
+	}
+	out.List = s.debugger.DebugInfoDirectories()
+	return nil
+}

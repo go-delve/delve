@@ -2273,6 +2273,21 @@ func (d *Debugger) FollowExecEnabled() bool {
 	return d.target.FollowExecEnabled()
 }
 
+func (d *Debugger) SetDebugInfoDirectories(v []string) {
+	d.recordMutex.Lock()
+	defer d.recordMutex.Unlock()
+	it := proc.ValidTargets{Group: d.target}
+	for it.Next() {
+		it.BinInfo().DebugInfoDirectories = v
+	}
+}
+
+func (d *Debugger) DebugInfoDirectories() []string {
+	d.recordMutex.Lock()
+	defer d.recordMutex.Unlock()
+	return d.target.Selected.BinInfo().DebugInfoDirectories
+}
+
 func go11DecodeErrorCheck(err error) error {
 	if _, isdecodeerr := err.(dwarf.DecodeError); !isdecodeerr {
 		return err

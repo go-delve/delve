@@ -1,9 +1,10 @@
 package terminal
 
 import (
+	"errors"
 	"fmt"
-	"os"
 	"reflect"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/go-delve/delve/pkg/config"
@@ -33,7 +34,7 @@ func configureCmd(t *Term, ctx callContext, args string) error {
 
 func configureList(t *Term) error {
 	w := new(tabwriter.Writer)
-	w.Init(os.Stdout, 0, 8, 1, ' ', 0)
+	w.Init(t.stdout, 0, 8, 1, ' ', 0)
 	config.ConfigureList(w, t.conf, "yaml")
 	return w.Flush()
 }
@@ -47,8 +48,11 @@ func configureSet(t *Term, args string) error {
 		rest = v[1]
 	}
 
-	if cfgname == "alias" {
+	switch cfgname {
+	case "alias":
 		return configureSetAlias(t, rest)
+	case "debug-info-directories":
+		return configureSetDebugInfoDirectories(t, rest)
 	}
 
 	field := config.ConfigureFindFieldByName(t.conf, cfgname, "yaml")
@@ -64,8 +68,22 @@ func configureSet(t *Term, args string) error {
 }
 
 func configureSetSubstitutePath(t *Term, rest string) error {
+	if strings.TrimSpace(rest) == "-clear" {
+		t.conf.SubstitutePath = t.conf.SubstitutePath[:0]
+		return nil
+	}
 	argv := config.SplitQuotedFields(rest, '"')
+	if len(argv) == 2 && argv[0] == "-clear" {
+		argv = argv[1:]
+	}
 	switch len(argv) {
+	case 0:
+		w := new(tabwriter.Writer)
+		w.Init(t.stdout, 0, 8, 1, ' ', 0)
+		for i := range t.conf.SubstitutePath {
+			fmt.Fprintf(w, "%q\t→\t%q\n", t.conf.SubstitutePath[i].From, t.conf.SubstitutePath[i].To)
+		}
+		w.Flush()
 	case 1: // delete substitute-path rule
 		for i := range t.conf.SubstitutePath {
 			if t.conf.SubstitutePath[i].From == argv[0] {
@@ -110,5 +128,48 @@ func configureSetAlias(t *Term, rest string) error {
 		t.conf.Aliases[cmd] = append(t.conf.Aliases[cmd], alias)
 	}
 	t.cmds.Merge(t.conf.Aliases)
+	return nil
+}
+
+func configureSetDebugInfoDirectories(t *Term, rest string) error {
+	v := config.Split2PartsBySpace(rest)
+
+	if t.client != nil {
+		did, err := t.client.GetDebugInfoDirectories()
+		if err == nil {
+			t.conf.DebugInfoDirectories = did
+		}
+	}
+
+	switch v[0] {
+	case "-clear":
+		t.conf.DebugInfoDirectories = t.conf.DebugInfoDirectories[:0]
+	case "-add":
+		if len(v) < 2 {
+			return errors.New("not enough arguments to \"config debug-info-directories\"")
+		}
+		t.conf.DebugInfoDirectories = append(t.conf.DebugInfoDirectories, v[1])
+	case "-rm":
+		if len(v) < 2 {
+			return errors.New("not enough arguments to \"config debug-info-directories\"")
+		}
+		found := false
+		for i := range t.conf.DebugInfoDirectories {
+			if t.conf.DebugInfoDirectories[i] == v[1] {
+				found = true
+				t.conf.DebugInfoDirectories = append(t.conf.DebugInfoDirectories[:i], t.conf.DebugInfoDirectories[i+1:]...)
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("could not find %q in debug-info-directories", v[1])
+		}
+	default:
+		return errors.New("wrong argument to \"config debug-info-directories\"")
+	}
+
+	if t.client != nil {
+		t.client.SetDebugInfoDirectories(t.conf.DebugInfoDirectories)
+	}
 	return nil
 }

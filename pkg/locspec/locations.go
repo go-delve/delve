@@ -479,47 +479,99 @@ func (loc *NormalLocationSpec) findFuncCandidates(bi *proc.BinaryInfo, limit int
 	return r
 }
 
-func crossPlatformPath(path string) string {
-	if runtime.GOOS == "windows" {
-		return strings.ToLower(path)
+// isAbs returns true if path looks like an absolute path.
+func isAbs(path string) bool {
+	// Unix-like absolute path
+	if strings.HasPrefix(path, "/") {
+		return true
 	}
-	return path
+	return windowsAbsPath(path)
+}
+
+func windowsAbsPath(path string) bool {
+	// Windows UNC absolute path
+	if strings.HasPrefix(path, `\\`) {
+		return true
+	}
+	// DOS absolute paths
+	if len(path) < 3 || path[1] != ':' {
+		return false
+	}
+	return path[2] == '/' || path[2] == '\\'
+}
+
+func hasPathSeparatorSuffix(path string) bool {
+	return strings.HasSuffix(path, "/") || strings.HasSuffix(path, "\\")
+}
+
+func hasPathSeparatorPrefix(path string) bool {
+	return strings.HasPrefix(path, "/") || strings.HasPrefix(path, "\\")
 }
 
 // SubstitutePath applies the specified path substitution rules to path.
 func SubstitutePath(path string, rules [][2]string) string {
-	path = crossPlatformPath(path)
-	// On windows paths returned from headless server are as c:/dir/dir
-	// though os.PathSeparator is '\\'
-
-	separator := "/"                  // make it default
-	if strings.Contains(path, "\\") { // dependent on the path
-		separator = "\\"
+	// Look for evidence that we are dealing with windows somewhere, if we are use case-insensitive matching
+	caseInsensitive := windowsAbsPath(path)
+	if !caseInsensitive {
+		for i := range rules {
+			if windowsAbsPath(rules[i][0]) || windowsAbsPath(rules[i][1]) {
+				caseInsensitive = true
+				break
+			}
+		}
 	}
 	for _, r := range rules {
-		from := crossPlatformPath(r[0])
-		to := r[1]
+		from, to := r[0], r[1]
 
-		// If we have an exact match, use it directly.
+		// if we have an exact match, use it directly.
 		if path == from {
 			return to
 		}
 
-		// Otherwise check if it's a directory prefix.
-		if from != "" && !strings.HasSuffix(from, separator) {
-			from = from + separator
-		}
-		if to != "" && !strings.HasSuffix(to, separator) {
-			to = to + separator
+		match := false
+		var rest string
+		if from == "" {
+			match = !isAbs(path)
+			rest = path
+		} else {
+			if caseInsensitive {
+				match = strings.HasPrefix(strings.ToLower(path), strings.ToLower(from))
+				if match {
+					path = strings.ToLower(path)
+					from = strings.ToLower(from)
+				}
+			} else {
+				match = strings.HasPrefix(path, from)
+			}
+			if match {
+				// make sure the match ends on something that looks like a path separator boundary
+				rest = path[len(from):]
+				match = hasPathSeparatorSuffix(from) || hasPathSeparatorPrefix(rest)
+			}
 		}
 
-		// Expand relative paths with the specified prefix
-		if from == "" && !filepath.IsAbs(path) {
-			return strings.Replace(path, from, to, 1)
-		}
+		if match {
+			if to == "" {
+				// make sure we return a relative path, regardless of whether 'from' consumed a final / or not
+				if hasPathSeparatorPrefix(rest) {
+					return rest[1:]
+				}
+				return rest
+			}
 
-		if from != "" && strings.HasPrefix(path, from) {
-			return strings.Replace(path, from, to, 1)
+			toEndsWithSlash := hasPathSeparatorSuffix(to)
+			restStartsWithSlash := hasPathSeparatorPrefix(rest)
+
+			switch {
+			case toEndsWithSlash && restStartsWithSlash:
+				return to[:len(to)-1] + rest
+			case toEndsWithSlash && !restStartsWithSlash:
+				return to + rest
+			case !toEndsWithSlash && restStartsWithSlash:
+				return to + rest
+			case !toEndsWithSlash && !restStartsWithSlash:
+				return to + "/" + rest
+			}
 		}
 	}
 	return path
