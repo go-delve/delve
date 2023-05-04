@@ -2917,6 +2917,7 @@ func TestAttachDetach(t *testing.T) {
 		assertNoError(err, t, "Page request after detach")
 		bs, err := ioutil.ReadAll(resp.Body)
 		assertNoError(err, t, "Reading /nobp page")
+		defer resp.Body.Close()
 		if out := string(bs); !strings.Contains(out, "hello, world!") {
 			t.Fatalf("/nobp page does not contain \"hello, world!\": %q", out)
 		}
