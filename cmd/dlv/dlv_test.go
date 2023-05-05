@@ -374,6 +374,7 @@ func TestGeneratedDoc(t *testing.T) {
 	checkAutogenDoc(t, "pkg/terminal/starbind/starlark_mapping.go", "'go generate' inside pkg/terminal/starbind", runScript("_scripts/gen-starlark-bindings.go", "go", "-"))
 	checkAutogenDoc(t, "Documentation/cli/starlark.md", "'go generate' inside pkg/terminal/starbind", runScript("_scripts/gen-starlark-bindings.go", "doc/dummy", "Documentation/cli/starlark.md"))
 	checkAutogenDoc(t, "Documentation/faq.md", "'go run _scripts/gen-faq-toc.go Documentation/faq.md Documentation/faq.md'", runScript("_scripts/gen-faq-toc.go", "Documentation/faq.md", "-"))
+	checkAutogenDoc(t, "service/rpccommon/suitablemethods.go", "'go generate' inside service/rpccommon", runScript("_scripts/gen-suitablemethods.go", "-"))
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
 		checkAutogenDoc(t, "_scripts/rtype-out.txt", "go run _scripts/rtype.go report _scripts/rtype-out.txt", runScript("_scripts/rtype.go", "report"))
 		runScript("_scripts/rtype.go", "check")
@@ -1346,7 +1347,7 @@ func TestVersion(t *testing.T) {
 	want1 := []byte("mod\tgithub.com/go-delve/delve")
 	want2 := []byte("dep\tgithub.com/google/go-dap")
 	if !bytes.Contains(got, want1) || !bytes.Contains(got, want2) {
-		t.Errorf("got %s\nwant %v and %v in the output", got, want1, want2)
+		t.Errorf("got %s\nwant %s and %s in the output", got, want1, want2)
 	}
 }
 
@@ -1461,4 +1462,15 @@ func TestUnixDomainSocket(t *testing.T) {
 
 	client.Detach(true)
 	cmd.Wait()
+}
+
+func TestDeadcodeEliminated(t *testing.T) {
+	dlvbin := protest.GetDlvBinary(t)
+	buf, err := exec.Command("go", "tool", "nm", dlvbin).CombinedOutput()
+	if err != nil {
+		t.Fatalf("error executing go tool nm %s: %v", dlvbin, err)
+	}
+	if strings.Contains(string(buf), "MethodByName") {
+		t.Fatal("output of go tool nm contains MethodByName")
+	}
 }
