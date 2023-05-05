@@ -336,7 +336,7 @@ func NewSession(conn io.ReadWriteCloser, config *Config, debugger *debugger.Debu
 
 // If user-specified options are provided via Launch/AttachRequest,
 // we override the defaults for optional args.
-func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) error {
+func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) {
 	s.args.stopOnEntry = args.StopOnEntry
 	if depth := args.StackTraceDepth; depth > 0 {
 		s.args.StackTraceDepth = depth
@@ -355,7 +355,6 @@ func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) error {
 		s.args.substitutePathClientToServer = clientToServer
 		s.args.substitutePathServerToClient = serverToClient
 	}
-	return nil
 }
 
 // Stop stops the DAP debugger service, closes the listener and the client
@@ -1000,10 +999,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 	s.config.ProcessArgs = append([]string{debugbinary}, args.Args...)
 
-	if err := s.setLaunchAttachArgs(args.LaunchAttachCommonConfig); err != nil {
-		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
-		return
-	}
+	s.setLaunchAttachArgs(args.LaunchAttachCommonConfig)
 
 	if args.Cwd == "" {
 		if args.Mode == "test" {
@@ -1782,10 +1778,7 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 		return
 	}
 
-	if err := s.setLaunchAttachArgs(args.LaunchAttachCommonConfig); err != nil {
-		s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach", err.Error())
-		return
-	}
+	s.setLaunchAttachArgs(args.LaunchAttachCommonConfig)
 
 	// Notify the client that the debugger is ready to start accepting
 	// configuration requests for setting breakpoints, etc. The client
@@ -2142,11 +2135,7 @@ func (s *Session) onVariablesRequest(request *dap.VariablesRequest) {
 		children = append(children, named...)
 	}
 	if request.Arguments.Filter == "indexed" || request.Arguments.Filter == "" {
-		indexed, err := s.childrenToDAPVariables(v)
-		if err != nil {
-			s.sendErrorResponse(request.Request, UnableToLookupVariable, "Unable to lookup variable", err.Error())
-			return
-		}
+		indexed := s.childrenToDAPVariables(v)
 		children = append(children, indexed...)
 	}
 	response := &dap.VariablesResponse{
@@ -2192,7 +2181,7 @@ func getIndexedVariableCount(v *proc.Variable) int {
 }
 
 // childrenToDAPVariables returns the DAP presentation of the referenced variable's children.
-func (s *Session) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Variable, error) {
+func (s *Session) childrenToDAPVariables(v *fullyQualifiedVariable) []dap.Variable {
 	// TODO(polina): consider convertVariableToString instead of convertVariable
 	// and avoid unnecessary creation of variable handles when this is called to
 	// compute evaluate names when this is called from onSetVariableRequest.
@@ -2340,7 +2329,7 @@ func (s *Session) childrenToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 			}
 		}
 	}
-	return children, nil
+	return children
 }
 
 func getNamedVariableCount(v *proc.Variable) int {
@@ -2833,10 +2822,7 @@ func (s *Session) onReverseContinueRequest(request *dap.ReverseContinueRequest, 
 
 // computeEvaluateName finds the named child, and computes its evaluate name.
 func (s *Session) computeEvaluateName(v *fullyQualifiedVariable, cname string) (string, error) {
-	children, err := s.childrenToDAPVariables(v)
-	if err != nil {
-		return "", err
-	}
+	children := s.childrenToDAPVariables(v)
 	for _, c := range children {
 		if c.Name == cname {
 			if c.EvaluateName != "" {
