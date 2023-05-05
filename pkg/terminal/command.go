@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/cosiner/argv"
 	"github.com/go-delve/delve/pkg/config"
@@ -2756,6 +2757,10 @@ func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 }
 
 func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, args string, hasReturnValue bool) {
+	if t.conf.TraceShowTimestamp {
+		fmt.Fprintf(t.stdout, "%s ", time.Now().Format(time.RFC3339Nano))
+	}
+
 	if th.Breakpoint.Tracepoint {
 		fmt.Fprintf(t.stdout, "> goroutine(%d): %s%s(%s)\n", th.GoroutineID, bpname, fn.Name(), args)
 		printBreakpointInfo(t, th, !hasReturnValue)

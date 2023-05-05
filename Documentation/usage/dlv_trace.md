@@ -28,6 +28,7 @@ dlv trace [package] regexp [flags]
   -p, --pid int         Pid to attach to.
   -s, --stack int       Show stack trace with given depth. (Ignored with --ebpf)
   -t, --test            Trace a test binary.
+      --timestamp       Show timestamp in the output
 ```
 
 ### Options inherited from parent commands

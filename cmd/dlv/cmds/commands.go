@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/gobuild"
@@ -78,11 +79,12 @@ var (
 	// rootCommand is the root of the command tree.
 	rootCommand *cobra.Command
 
-	traceAttachPid  int
-	traceExecFile   string
-	traceTestBinary bool
-	traceStackDepth int
-	traceUseEBPF    bool
+	traceAttachPid     int
+	traceExecFile      string
+	traceTestBinary    bool
+	traceStackDepth    int
+	traceUseEBPF       bool
+	traceShowTimestamp bool
 
 	// redirect specifications for target process
 	redirects []string
@@ -307,6 +309,7 @@ only see the output of the trace operations you can redirect stdout.`,
 	traceCommand.Flags().StringVarP(&traceExecFile, "exec", "e", "", "Binary file to exec and trace.")
 	traceCommand.Flags().BoolVarP(&traceTestBinary, "test", "t", false, "Trace a test binary.")
 	traceCommand.Flags().BoolVarP(&traceUseEBPF, "ebpf", "", false, "Trace using eBPF (experimental).")
+	traceCommand.Flags().BoolVarP(&traceShowTimestamp, "timestamp", "", false, "Show timestamp in the output")
 	traceCommand.Flags().IntVarP(&traceStackDepth, "stack", "s", 0, "Show stack trace with given depth. (Ignored with --ebpf)")
 	traceCommand.Flags().String("output", "debug", "Output path for the binary.")
 	rootCommand.AddCommand(traceCommand)
@@ -694,7 +697,10 @@ func traceCmd(cmd *cobra.Command, args []string) {
 			return 1
 		}
 		cmds := terminal.DebugCommands(client)
-		t := terminal.New(client, nil)
+		cfg := &config.Config{
+			TraceShowTimestamp: traceShowTimestamp,
+		}
+		t := terminal.New(client, cfg)
 		t.SetTraceNonInteractive()
 		t.RedirectTo(os.Stderr)
 		defer t.Close()
@@ -723,6 +729,11 @@ func traceCmd(cmd *cobra.Command, args []string) {
 									params.WriteString(p.Value)
 								}
 							}
+
+							if traceShowTimestamp {
+								fmt.Fprintf(os.Stderr, "%s ", time.Now().Format(time.RFC3339Nano))
+							}
+
 							if t.IsRet {
 								for _, p := range t.ReturnParams {
 									fmt.Fprintf(os.Stderr, "=> %#v\n", p.Value)
