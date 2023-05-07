@@ -279,12 +279,7 @@ func MustHaveRecordingAllowed(t testing.TB) {
 // SafeRemoveAll removes dir and its contents but only as long as dir does
 // not contain directories.
 func SafeRemoveAll(dir string) {
-	dh, err := os.Open(dir)
-	if err != nil {
-		return
-	}
-	defer dh.Close()
-	fis, err := dh.Readdir(-1)
+	fis, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
