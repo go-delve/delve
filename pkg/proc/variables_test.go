@@ -558,6 +558,7 @@ func getEvalExpressionTestCases() []varTest {
 		{"ch1", true, "chan int 4/11", "chan int 4/11", "chan int", nil},
 		{"chnil", true, "chan int nil", "chan int nil", "chan int", nil},
 		{"ch1+1", false, "", "", "", fmt.Errorf("can not convert 1 constant to chan int")},
+		{"int3chan.buf", false, "*[5]main.ThreeInts [{a: 1, b: 0, c: 0},{a: 2, b: 0, c: 0},{a: 3, b: 0, c: 0},{a: 0, b: 0, c: 0},{a: 0, b: 0, c: 0}]", "(*[5]main.ThreeInts)(…", "*[5]main.ThreeInts", nil},
 
 		// maps
 		{"m1[\"Malone\"]", false, "main.astruct {A: 2, B: 3}", "main.astruct {A: 2, B: 3}", "main.astruct", nil},
