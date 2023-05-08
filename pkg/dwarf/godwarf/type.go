@@ -180,7 +180,8 @@ func (t *QualType) stringIntl(recCheck recCheck) string {
 	return t.Qual + " " + t.Type.stringIntl(recCheck)
 }
 
-func (t *QualType) Size() int64 { return sizeAlignToSize(t.sizeAlignIntl(make(recCheck))) }
+func (t *QualType) Size() int64  { return sizeAlignToSize(t.sizeAlignIntl(make(recCheck))) }
+func (t *QualType) Align() int64 { return sizeAlignToAlign(t.sizeAlignIntl(make(recCheck))) }
 
 func (t *QualType) sizeAlignIntl(recCheck recCheck) (int64, int64) {
 	release := recCheck.acquire(t.CommonType.Offset)
@@ -457,7 +458,8 @@ func (t *TypedefType) String() string { return t.stringIntl(nil) }
 
 func (t *TypedefType) stringIntl(recCheck recCheck) string { return t.Name }
 
-func (t *TypedefType) Size() int64 { sz, _ := t.sizeAlignIntl(make(recCheck)); return sz }
+func (t *TypedefType) Size() int64  { return sizeAlignToSize(t.sizeAlignIntl(make(recCheck))) }
+func (t *TypedefType) Align() int64 { return sizeAlignToAlign(t.sizeAlignIntl(make(recCheck))) }
 
 func (t *TypedefType) sizeAlignIntl(recCheck recCheck) (int64, int64) {
 	release := recCheck.acquire(t.CommonType.Offset)
