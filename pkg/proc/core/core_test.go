@@ -504,12 +504,7 @@ func procdump(t *testing.T, exePath string) string {
 		t.Fatalf("possible error running procdump64, output: %q, error: %v", string(out), err)
 	}
 
-	dh, err := os.Open(exeDir)
-	if err != nil {
-		t.Fatalf("could not open executable file directory %q: %v", exeDir, err)
-	}
-	defer dh.Close()
-	fis, err := dh.Readdir(-1)
+	fis, err := os.ReadDir(exeDir)
 	if err != nil {
 		t.Fatalf("could not read executable file directory %q: %v", exeDir, err)
 	}
