@@ -102,6 +102,10 @@ type Config struct {
 	// This can be used to shorten the tabstop (e.g. "  ") or to print a more
 	// visual indent (e.g. ">__ ").
 	Tab string `yaml:"tab"`
+
+	// TraceShowTimestamp controls whether to show timestamp in the trace
+	// output.
+	TraceShowTimestamp bool `yaml:"trace-show-timestamp"`
 }
 
 func (c *Config) GetSourceListLineCount() int {
