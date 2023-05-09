@@ -454,9 +454,9 @@ func ConvertDumpState(dumpState *proc.DumpState) *DumpState {
 
 // ConvertTarget converts a proc.Target into a api.Target.
 func ConvertTarget(tgt *proc.Target, convertThreadBreakpoint func(proc.Thread) *Breakpoint) *Target {
-	//TODO(aarzilli): copy command line here
 	return &Target{
 		Pid:           tgt.Pid(),
+		CmdLine:       tgt.CmdLine,
 		CurrentThread: ConvertThread(tgt.CurrentThread(), convertThreadBreakpoint(tgt.CurrentThread())),
 	}
 }

@@ -41,7 +41,8 @@ type Target struct {
 	proc   ProcessInternal
 	recman RecordingManipulationInternal
 
-	pid int
+	pid     int
+	CmdLine string
 
 	// StopReason describes the reason why the target process is stopped.
 	// A process could be stopped for multiple simultaneous reasons, in which
@@ -160,7 +161,7 @@ func DisableAsyncPreemptEnv() []string {
 
 // newTarget returns an initialized Target object.
 // The p argument can optionally implement the RecordingManipulation interface.
-func (grp *TargetGroup) newTarget(p ProcessInternal, pid int, currentThread Thread, path string) (*Target, error) {
+func (grp *TargetGroup) newTarget(p ProcessInternal, pid int, currentThread Thread, path, cmdline string) (*Target, error) {
 	entryPoint, err := p.EntryPoint()
 	if err != nil {
 		return nil, err
@@ -182,6 +183,7 @@ func (grp *TargetGroup) newTarget(p ProcessInternal, pid int, currentThread Thre
 		fncallForG:    make(map[int64]*callInjection),
 		currentThread: currentThread,
 		pid:           pid,
+		CmdLine:       cmdline,
 	}
 
 	if recman, ok := p.(RecordingManipulationInternal); ok {

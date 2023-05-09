@@ -172,6 +172,17 @@ func assertLineNumber(p *proc.Target, t *testing.T, lineno int, descr string) (s
 	return f, l
 }
 
+func assertFunctionName(p *proc.Target, t *testing.T, fnname string, descr string) {
+	pc := currentPC(p, t)
+	f, l, fn := p.BinInfo().PCToLine(pc)
+	if fn == nil {
+		t.Fatalf("%s expected function %s got %s:%d", descr, fnname, f, l)
+	}
+	if fn.Name != fnname {
+		t.Fatalf("%s expected function %s got %s %s:%d", descr, fnname, fn.Name, f, l)
+	}
+}
+
 func TestExit(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("continuetestprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
@@ -6115,6 +6126,46 @@ func TestStepShadowConcurrentBreakpoint(t *testing.T) {
 		}
 		if stacktraceme2calls != 100 {
 			t.Errorf("wrong number of calls to stacktraceme2 found: %d", stacktraceme2calls)
+		}
+	})
+}
+
+func TestFollowExecRegexFilter(t *testing.T) {
+	skipUnlessOn(t, "follow exec only supported on linux", "linux")
+	withTestProcessArgs("spawn", t, ".", []string{"spawn", "3"}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		grp.LogicalBreakpoints[1] = &proc.LogicalBreakpoint{LogicalID: 1, Set: proc.SetBreakpoint{FunctionName: "main.traceme1"}, HitCount: make(map[int64]uint64)}
+		grp.LogicalBreakpoints[2] = &proc.LogicalBreakpoint{LogicalID: 2, Set: proc.SetBreakpoint{FunctionName: "main.traceme2"}, HitCount: make(map[int64]uint64)}
+		grp.LogicalBreakpoints[3] = &proc.LogicalBreakpoint{LogicalID: 3, Set: proc.SetBreakpoint{FunctionName: "main.traceme3"}, HitCount: make(map[int64]uint64)}
+
+		assertNoError(grp.EnableBreakpoint(grp.LogicalBreakpoints[1]), t, "EnableBreakpoint(main.traceme1)")
+		assertNoError(grp.EnableBreakpoint(grp.LogicalBreakpoints[3]), t, "EnableBreakpoint(main.traceme3)")
+
+		assertNoError(grp.FollowExec(true, "spawn.* child C1"), t, "FollowExec")
+
+		assertNoError(grp.Continue(), t, "Continue 1")
+		assertFunctionName(grp.Selected, t, "main.traceme1", "Program did not continue to the expected location (1)")
+		assertNoError(grp.Continue(), t, "Continue 2")
+		assertFunctionName(grp.Selected, t, "main.traceme2", "Program did not continue to the expected location (2)")
+		assertNoError(grp.Continue(), t, "Continue 3")
+		assertFunctionName(grp.Selected, t, "main.traceme3", "Program did not continue to the expected location (3)")
+		err := grp.Continue()
+		if err != nil {
+			_, isexited := err.(proc.ErrProcessExited)
+			if !isexited {
+				assertNoError(err, t, "Continue 4")
+			}
+		} else {
+			t.Fatal("process did not exit after 4 continues")
+		}
+	})
+}
+
+func TestReadTargetArguments(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcessArgs("restartargs", t, ".", []string{"one", "two", "three"}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		t.Logf("command line: %q\n", p.CmdLine)
+		if !strings.HasSuffix(p.CmdLine, " one two three") {
+			t.Fatalf("wrong command line")
 		}
 	})
 }
