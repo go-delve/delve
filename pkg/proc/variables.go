@@ -1207,6 +1207,11 @@ func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.
 			}
 		}
 		if cmem != nil {
+			paddingBytes := int(t.Common().ByteSize) - len(cmem.data)
+			if paddingBytes > 0 && paddingBytes < bi.Arch.ptrSize {
+				padding := make([]byte, paddingBytes)
+				cmem.data = append(cmem.data, padding...)
+			}
 			mem = cmem
 		}
 	}
