@@ -230,7 +230,7 @@ package name and Delve will compile that package instead, and begin a new debug
 session.`,
 		Run: debugCmd,
 	}
-	debugCommand.Flags().String("output", "./__debug_bin", "Output path for the binary.")
+	debugCommand.Flags().String("output", "", "Output path for the binary.")
 	debugCommand.Flags().BoolVar(&continueOnStart, "continue", false, "Continue the debugged process on start.")
 	debugCommand.Flags().StringVar(&tty, "tty", "", "TTY to use for the target program")
 	rootCommand.AddCommand(debugCommand)
@@ -287,7 +287,7 @@ dlv test [package] -- -test.run TestSomething -test.v -other-argument
 See also: 'go help testflag'.`,
 		Run: testCmd,
 	}
-	testCommand.Flags().String("output", "debug.test", "Output path for the binary.")
+	testCommand.Flags().String("output", "", "Output path for the binary.")
 	rootCommand.AddCommand(testCommand)
 
 	// 'trace' subcommand.
@@ -311,7 +311,7 @@ only see the output of the trace operations you can redirect stdout.`,
 	traceCommand.Flags().BoolVarP(&traceUseEBPF, "ebpf", "", false, "Trace using eBPF (experimental).")
 	traceCommand.Flags().BoolVarP(&traceShowTimestamp, "timestamp", "", false, "Show timestamp in the output")
 	traceCommand.Flags().IntVarP(&traceStackDepth, "stack", "s", 0, "Show stack trace with given depth. (Ignored with --ebpf)")
-	traceCommand.Flags().String("output", "debug", "Output path for the binary.")
+	traceCommand.Flags().String("output", "", "Output path for the binary.")
 	rootCommand.AddCommand(traceCommand)
 
 	coreCommand := &cobra.Command{
@@ -528,10 +528,21 @@ func dapCmd(cmd *cobra.Command, args []string) {
 }
 
 func buildBinary(cmd *cobra.Command, args []string, isTest bool) (string, bool) {
-	debugname, err := filepath.Abs(cmd.Flag("output").Value.String())
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		return "", false
+	outputFlag := cmd.Flag("output").Value.String()
+	var debugname string
+	var err error
+	if outputFlag == "" {
+		if isTest {
+			debugname = gobuild.DefaultDebugBinaryPath("debug.test")
+		} else {
+			debugname = gobuild.DefaultDebugBinaryPath("__debug_bin")
+		}
+	} else {
+		debugname, err = filepath.Abs(outputFlag)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			return "", false
+		}
 	}
 
 	if isTest {
@@ -540,6 +551,9 @@ func buildBinary(cmd *cobra.Command, args []string, isTest bool) (string, bool) 
 		err = gobuild.GoBuild(debugname, args, buildFlags)
 	}
 	if err != nil {
+		if outputFlag == "" {
+			gobuild.Remove(debugname)
+		}
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return "", false
 	}

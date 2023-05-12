@@ -24,7 +24,7 @@ dlv trace [package] regexp [flags]
       --ebpf            Trace using eBPF (experimental).
   -e, --exec string     Binary file to exec and trace.
   -h, --help            help for trace
-      --output string   Output path for the binary. (default "debug")
+      --output string   Output path for the binary.
   -p, --pid int         Pid to attach to.
   -s, --stack int       Show stack trace with given depth. (Ignored with --ebpf)
   -t, --test            Trace a test binary.

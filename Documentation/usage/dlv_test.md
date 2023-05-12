@@ -23,7 +23,7 @@ dlv test [package] [flags]
 
 ```
   -h, --help            help for test
-      --output string   Output path for the binary. (default "debug.test")
+      --output string   Output path for the binary.
 ```
 
 ### Options inherited from parent commands

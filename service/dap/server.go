@@ -859,10 +859,6 @@ func (s *Session) setClientCapabilities(args dap.InitializeRequestArguments) {
 	s.clientCapabilities.supportsVariableType = args.SupportsVariableType
 }
 
-// Default output file pathname for the compiled binary in debug or test modes.
-// This is relative to the current working directory of the server.
-const defaultDebugBinary string = "./__debug_bin"
-
 func cleanExeName(name string) string {
 	if runtime.GOOS == "windows" && filepath.Ext(name) != ".exe" {
 		return name + ".exe"
@@ -957,8 +953,10 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	// Prepare the debug executable filename, building it if necessary
 	debugbinary := args.Program
 	if args.Mode == "debug" || args.Mode == "test" {
+		deleteOnError := false
 		if args.Output == "" {
-			args.Output = cleanExeName(defaultDebugBinary)
+			deleteOnError = true
+			args.Output = gobuild.DefaultDebugBinaryPath("__debug_bin")
 		} else {
 			args.Output = cleanExeName(args.Output)
 		}
@@ -981,6 +979,9 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		args.DlvCwd, _ = filepath.Abs(args.DlvCwd)
 		s.config.log.Debugf("building from %q: [%s]", args.DlvCwd, cmd)
 		if err != nil {
+			if deleteOnError {
+				gobuild.Remove(args.Output)
+			}
 			s.send(&dap.OutputEvent{
 				Event: *newEvent("output"),
 				Body: dap.OutputEventBody{
@@ -1049,6 +1050,9 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		s.debugger, err = debugger.New(&s.config.Debugger, s.config.ProcessArgs)
 	}()
 	if err != nil {
+		if s.binaryToRemove != "" {
+			gobuild.Remove(s.binaryToRemove)
+		}
 		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
 		return
 	}
