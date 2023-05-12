@@ -818,16 +818,18 @@ func connectCmd(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 		return
 	}
-	defer logflags.Close()
 	if loadConfErr != nil {
 		logflags.DebuggerLogger().Errorf("%v", loadConfErr)
 	}
 	addr := args[0]
 	if addr == "" {
 		fmt.Fprint(os.Stderr, "An empty address was provided. You must provide an address as the first argument.\n")
+		logflags.Close()
 		os.Exit(1)
 	}
-	os.Exit(connect(addr, nil, conf, debugger.ExecutingOther))
+	ec := connect(addr, nil, conf, debugger.ExecutingOther)
+	logflags.Close()
+	os.Exit(ec)
 }
 
 // waitForDisconnectSignal is a blocking function that waits for either
