@@ -42,7 +42,7 @@ func (oor *openOnRead) Close() error {
 	return oor.rd.Close()
 }
 
-func NamedPipe() (reader io.ReadCloser, output OutputRedirect, err error) {
+func Redirector() (reader io.ReadCloser, output OutputRedirect, err error) {
 	r := make([]byte, 4)
 	if _, err = rand.Read(r); err != nil {
 		return reader, output, err

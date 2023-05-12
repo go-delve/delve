@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-func NamedPipe() (reader io.ReadCloser, output OutputRedirect, err error) {
+func Redirector() (reader io.ReadCloser, output OutputRedirect, err error) {
 	reader, output.File, err = os.Pipe()
 
 	return reader, output, err
