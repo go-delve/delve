@@ -1111,7 +1111,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		)
 
 		for i := 0; i < 2; i++ {
-			readers[i], outputRedirects[i], err = proc.NamedPipe()
+			readers[i], outputRedirects[i], err = proc.Redirector()
 			if err != nil {
 				s.sendShowUserErrorResponse(request.Request, InternalError, "Internal Error",
 					fmt.Sprintf("failed to generate stdio pipes - %v", err))
