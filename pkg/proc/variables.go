@@ -1198,20 +1198,15 @@ func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.
 	if pieces != nil {
 		var cmem *compositeMemory
 		if tgt != nil {
-			addr, cmem, err = tgt.newCompositeMemory(mem, regs, pieces, descr)
+			addr, cmem, err = tgt.newCompositeMemory(mem, regs, pieces, descr, t.Common().ByteSize)
 		} else {
-			cmem, err = newCompositeMemory(mem, bi.Arch, regs, pieces)
+			cmem, err = newCompositeMemory(mem, bi.Arch, regs, pieces, t.Common().ByteSize)
 			if cmem != nil {
 				cmem.base = fakeAddressUnresolv
 				addr = int64(cmem.base)
 			}
 		}
 		if cmem != nil {
-			paddingBytes := int(t.Common().ByteSize) - len(cmem.data)
-			if paddingBytes > 0 && paddingBytes < bi.Arch.ptrSize {
-				padding := make([]byte, paddingBytes)
-				cmem.data = append(cmem.data, padding...)
-			}
 			mem = cmem
 		}
 	}
