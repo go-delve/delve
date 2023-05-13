@@ -900,6 +900,13 @@ func (bi *BinaryInfo) typeToImage(typ godwarf.Type) *Image {
 	return bi.Images[typ.Common().Index]
 }
 
+func (bi *BinaryInfo) runtimeTypeTypename() string {
+	if goversion.ProducerAfterOrEqual(bi.Producer(), 1, 21) {
+		return "internal/abi.Type"
+	}
+	return "runtime._type"
+}
+
 var errBinaryInfoClose = errors.New("multiple errors closing executable files")
 
 // Close closes all internal readers.
@@ -2130,10 +2137,11 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 		if fn != nil && fn.cu.image == image {
 			tree, err := image.getDwarfTree(fn.offset)
 			if err == nil {
-				tree.Children, err = regabiMallocgcWorkaround(bi)
+				children, err := regabiMallocgcWorkaround(bi)
 				if err != nil {
-					bi.logger.Errorf("could not patch runtime.mallogc: %v", err)
+					bi.logger.Errorf("could not patch runtime.mallocgc: %v", err)
 				} else {
+					tree.Children = children
 					image.runtimeMallocgcTree = tree
 				}
 			}

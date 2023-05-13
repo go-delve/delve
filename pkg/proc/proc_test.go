@@ -4647,7 +4647,10 @@ func TestCgoStacktrace2(t *testing.T) {
 	// If a panic happens during cgo execution the stacktrace should show the C
 	// function that caused the problem.
 	withTestProcess("cgosigsegvstack", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		grp.Continue()
+		err := grp.Continue()
+		if _, exited := err.(proc.ErrProcessExited); exited {
+			t.Fatal("process exited")
+		}
 		frames, err := proc.ThreadStacktrace(p.CurrentThread(), 100)
 		assertNoError(err, t, "Stacktrace()")
 		logStacktrace(t, p, frames)
@@ -5099,6 +5102,7 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 		candg := []*proc.G{}
 		bestg := []*proc.G{}
 		for _, g := range gs {
+			t.Logf("stacktracing goroutine %d (%v)\n", g.ID, g.CurrentLoc)
 			frames, err := g.Stacktrace(20, 0)
 			assertNoError(err, t, "Stacktrace")
 			for _, frame := range frames {

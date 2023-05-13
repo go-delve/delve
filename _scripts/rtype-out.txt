@@ -15,7 +15,7 @@ type bmap struct {
 }
 
 type eface struct {
-	_type *_type
+	_type *_type|*internal/abi.Type
 	data unsafe.Pointer
 }
 
@@ -50,7 +50,7 @@ type iface struct {
 }
 
 type itab struct {
-	_type *_type
+	_type *_type|*internal/abi.Type
 }
 
 type moduledata struct {

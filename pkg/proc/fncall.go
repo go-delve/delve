@@ -1263,6 +1263,8 @@ func (e fakeEntry) AttrField(attr dwarf.Attr) *dwarf.Field {
 }
 
 func regabiMallocgcWorkaround(bi *BinaryInfo) ([]*godwarf.Tree, error) {
+	ptrToRuntimeType := "*" + bi.runtimeTypeTypename()
+
 	var err1 error
 
 	t := func(name string) godwarf.Type {
@@ -1298,7 +1300,7 @@ func regabiMallocgcWorkaround(bi *BinaryInfo) ([]*godwarf.Tree, error) {
 	case "amd64":
 		r := []*godwarf.Tree{
 			m("size", t("uintptr"), regnum.AMD64_Rax, false),
-			m("typ", t("*runtime._type"), regnum.AMD64_Rbx, false),
+			m("typ", t(ptrToRuntimeType), regnum.AMD64_Rbx, false),
 			m("needzero", t("bool"), regnum.AMD64_Rcx, false),
 			m("~r1", t("unsafe.Pointer"), regnum.AMD64_Rax, true),
 		}
@@ -1306,7 +1308,7 @@ func regabiMallocgcWorkaround(bi *BinaryInfo) ([]*godwarf.Tree, error) {
 	case "arm64":
 		r := []*godwarf.Tree{
 			m("size", t("uintptr"), regnum.ARM64_X0, false),
-			m("typ", t("*runtime._type"), regnum.ARM64_X0+1, false),
+			m("typ", t(ptrToRuntimeType), regnum.ARM64_X0+1, false),
 			m("needzero", t("bool"), regnum.ARM64_X0+2, false),
 			m("~r1", t("unsafe.Pointer"), regnum.ARM64_X0, true),
 		}
