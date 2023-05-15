@@ -212,7 +212,7 @@ func TestSetVariable(t *testing.T) {
 			assertNoError(err, t, "EvalVariable()")
 			assertVariable(t, variable, varTest{tc.name, true, tc.startVal, "", tc.typ, nil})
 
-			assertNoError(setVariable(p, tc.name, tc.expr), t, "SetVariable()")
+			assertNoError(setVariable(p, tc.name, tc.expr), t, fmt.Sprintf("SetVariable(%q, %q)", tc.name, tc.expr))
 
 			variable, err = evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 			assertNoError(err, t, "EvalVariable()")
@@ -856,6 +856,7 @@ func TestEvalExpression(t *testing.T) {
 		assertNoError(grp.Continue(), t, "Continue() returned an error")
 		for i, tc := range testcases {
 			t.Run(strconv.Itoa(i), func(t *testing.T) {
+				t.Logf("%q", tc.name)
 				variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 				if err != nil && err.Error() == "evaluating methods not supported on this version of Go" {
 					// this type of eval is unsupported with the current version of Go.

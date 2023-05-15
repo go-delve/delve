@@ -122,6 +122,8 @@ func runtimeTypeToDIE(_type *Variable, dataAddr uint64) (typ godwarf.Type, kind 
 				if rtdie.kind == -1 {
 					if kindField := _type.loadFieldNamed("kind"); kindField != nil && kindField.Value != nil {
 						rtdie.kind, _ = constant.Int64Val(kindField.Value)
+					} else if kindField := _type.loadFieldNamed("Kind_"); kindField != nil && kindField.Value != nil {
+						rtdie.kind, _ = constant.Int64Val(kindField.Value)
 					}
 				}
 				return typ, rtdie.kind, nil
@@ -146,7 +148,7 @@ func resolveParametricType(bi *BinaryInfo, mem MemoryReadWriter, t godwarf.Type,
 	if err != nil {
 		return ptyp.TypedefType.Type, err
 	}
-	runtimeType, err := bi.findType("runtime._type")
+	runtimeType, err := bi.findType(bi.runtimeTypeTypename())
 	if err != nil {
 		return ptyp.TypedefType.Type, err
 	}
@@ -189,13 +191,16 @@ func dwarfToRuntimeType(bi *BinaryInfo, mem MemoryReadWriter, typ godwarf.Type) 
 
 	typeAddr = uint64(md.types) + off
 
-	rtyp, err := bi.findType("runtime._type")
+	rtyp, err := bi.findType(bi.runtimeTypeTypename())
 	if err != nil {
 		return 0, 0, false, err
 	}
 	_type := newVariable("", typeAddr, rtyp, bi, mem)
 	kindv := _type.loadFieldNamed("kind")
-	if kindv.Unreadable != nil || kindv.Kind != reflect.Uint {
+	if kindv == nil || kindv.Unreadable != nil || kindv.Kind != reflect.Uint {
+		kindv = _type.loadFieldNamed("Kind_")
+	}
+	if kindv == nil || kindv.Unreadable != nil || kindv.Kind != reflect.Uint {
 		return 0, 0, false, fmt.Errorf("unreadable interface type: %v", kindv.Unreadable)
 	}
 	typeKind, _ = constant.Uint64Val(kindv.Value)

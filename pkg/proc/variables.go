@@ -671,7 +671,7 @@ func newVariable(name string, addr uint64, dwarfType godwarf.Type, bi *BinaryInf
 		v.stride = 1
 		v.fieldType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 1, Name: "byte", ReflectKind: reflect.Uint8}, BitSize: 8, BitOffset: 0}}
 		if v.Addr != 0 {
-			v.Base, v.Len, v.Unreadable = readStringInfo(v.mem, v.bi.Arch, v.Addr)
+			v.Base, v.Len, v.Unreadable = readStringInfo(v.mem, v.bi.Arch, v.Addr, t)
 		}
 	case *godwarf.SliceType:
 		v.Kind = reflect.Slice
@@ -1455,30 +1455,38 @@ func convertToEface(srcv, dstv *Variable) error {
 	return dstv.writeEmptyInterface(typeAddr, srcv)
 }
 
-func readStringInfo(mem MemoryReadWriter, arch *Arch, addr uint64) (uint64, int64, error) {
+func readStringInfo(mem MemoryReadWriter, arch *Arch, addr uint64, typ *godwarf.StringType) (uint64, int64, error) {
 	// string data structure is always two ptrs in size. Addr, followed by len
 	// http://research.swtch.com/godata
 
 	mem = cacheMemory(mem, addr, arch.PtrSize()*2)
 
-	// read len
-	strlen, err := readIntRaw(mem, addr+uint64(arch.PtrSize()), int64(arch.PtrSize()))
-	if err != nil {
-		return 0, 0, fmt.Errorf("could not read string len %s", err)
-	}
-	if strlen < 0 {
-		return 0, 0, fmt.Errorf("invalid length: %d", strlen)
+	var strlen int64
+	var outaddr uint64
+	var err error
+
+	for _, field := range typ.StructType.Field {
+		switch field.Name {
+		case "len":
+			strlen, err = readIntRaw(mem, addr+uint64(field.ByteOffset), int64(arch.PtrSize()))
+			if err != nil {
+				return 0, 0, fmt.Errorf("could not read string len %s", err)
+			}
+			if strlen < 0 {
+				return 0, 0, fmt.Errorf("invalid length: %d", strlen)
+			}
+		case "str":
+			outaddr, err = readUintRaw(mem, addr+uint64(field.ByteOffset), int64(arch.PtrSize()))
+			if err != nil {
+				return 0, 0, fmt.Errorf("could not read string pointer %s", err)
+			}
+			if addr == 0 {
+				return 0, 0, nil
+			}
+		}
 	}
 
-	// read addr
-	addr, err = readUintRaw(mem, addr, int64(arch.PtrSize()))
-	if err != nil {
-		return 0, 0, fmt.Errorf("could not read string pointer %s", err)
-	}
-	if addr == 0 {
-		return 0, 0, nil
-	}
-	return addr, strlen, nil
+	return outaddr, strlen, nil
 }
 
 func readStringValue(mem MemoryReadWriter, addr uint64, strlen int64, cfg LoadConfig) (string, error) {
@@ -2248,7 +2256,7 @@ func (v *Variable) readInterface() (_type, data *Variable, isnil bool) {
 
 	// +rtype -field iface.tab *itab
 	// +rtype -field iface.data unsafe.Pointer
-	// +rtype -field eface._type *_type
+	// +rtype -field eface._type *_type|*internal/abi.Type
 	// +rtype -field eface.data unsafe.Pointer
 
 	for _, f := range ityp.Field {
@@ -2259,7 +2267,7 @@ func (v *Variable) readInterface() (_type, data *Variable, isnil bool) {
 			isnil = tab.Addr == 0
 			if !isnil {
 				var err error
-				_type, err = tab.structMember("_type") // +rtype *_type
+				_type, err = tab.structMember("_type") // +rtype *_type|*internal/abi.Type
 				if err != nil {
 					v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
 					return
