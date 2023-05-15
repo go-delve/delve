@@ -1198,9 +1198,9 @@ func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.
 	if pieces != nil {
 		var cmem *compositeMemory
 		if tgt != nil {
-			addr, cmem, err = tgt.newCompositeMemory(mem, regs, pieces, descr)
+			addr, cmem, err = tgt.newCompositeMemory(mem, regs, pieces, descr, t.Common().ByteSize)
 		} else {
-			cmem, err = newCompositeMemory(mem, bi.Arch, regs, pieces)
+			cmem, err = newCompositeMemory(mem, bi.Arch, regs, pieces, t.Common().ByteSize)
 			if cmem != nil {
 				cmem.base = fakeAddressUnresolv
 				addr = int64(cmem.base)

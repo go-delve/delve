@@ -454,7 +454,7 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 		v.Kind = ip.Kind
 
 		cachedMem := CreateLoadedCachedMemory(ip.Data)
-		compMem, _ := CreateCompositeMemory(cachedMem, t.BinInfo().Arch, op.DwarfRegisters{}, ip.Pieces)
+		compMem, _ := CreateCompositeMemory(cachedMem, t.BinInfo().Arch, op.DwarfRegisters{}, ip.Pieces, ip.RealType.Common().ByteSize)
 		v.mem = compMem
 
 		// Load the value here so that we don't have to export
@@ -506,7 +506,7 @@ const (
 // This caching is primarily done so that registerized variables don't get a
 // different address every time they are evaluated, which would be confusing
 // and leak memory.
-func (t *Target) newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters, pieces []op.Piece, descr *locationExpr) (int64, *compositeMemory, error) {
+func (t *Target) newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters, pieces []op.Piece, descr *locationExpr, size int64) (int64, *compositeMemory, error) {
 	var key string
 	if regs.CFA != 0 && len(pieces) > 0 {
 		// key is created by concatenating the location expression with the CFA,
@@ -521,7 +521,7 @@ func (t *Target) newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters
 		}
 	}
 
-	cmem, err := newCompositeMemory(mem, t.BinInfo().Arch, regs, pieces)
+	cmem, err := newCompositeMemory(mem, t.BinInfo().Arch, regs, pieces, size)
 	if err != nil {
 		return 0, cmem, err
 	}
