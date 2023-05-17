@@ -693,7 +693,10 @@ func TestIssue827(t *testing.T) {
 	withTestTerminal("notify-v2", t, func(term *FakeTerminal) {
 		go func() {
 			time.Sleep(1 * time.Second)
-			http.Get("http://127.0.0.1:8888/test")
+			resp, err := http.Get("http://127.0.0.1:8888/test")
+			if err == nil {
+				resp.Body.Close()
+			}
 			time.Sleep(1 * time.Second)
 			term.client.Halt()
 		}()

@@ -741,7 +741,10 @@ func TestNextNetHTTP(t *testing.T) {
 				}
 				time.Sleep(50 * time.Millisecond)
 			}
-			http.Get("http://127.0.0.1:9191")
+			resp, err := http.Get("http://127.0.0.1:9191")
+			if err == nil {
+				resp.Body.Close()
+			}
 		}()
 		if err := grp.Continue(); err != nil {
 			t.Fatal(err)
@@ -2913,7 +2916,10 @@ func TestAttachDetach(t *testing.T) {
 	assertNoError(err, t, "Attach")
 	go func() {
 		time.Sleep(1 * time.Second)
-		http.Get("http://127.0.0.1:9191")
+		resp, err := http.Get("http://127.0.0.1:9191")
+		if err == nil {
+			resp.Body.Close()
+		}
 	}()
 
 	assertNoError(p.Continue(), t, "Continue")
