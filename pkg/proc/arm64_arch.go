@@ -211,8 +211,8 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 			it.top = false
 			it.systemstack = false
 			// The return value is stored in the LR register which is saved at 24(SP).
-			it.frame.addrret = uint64(int64(it.regs.SP()) + int64(it.bi.Arch.PtrSize()*3))
-			it.frame.Ret, _ = readUintRaw(it.mem, it.frame.addrret, int64(it.bi.Arch.PtrSize()))
+			addrret := uint64(int64(it.regs.SP()) + int64(it.bi.Arch.PtrSize()*3))
+			it.frame.Ret, _ = readUintRaw(it.mem, addrret, int64(it.bi.Arch.PtrSize()))
 			it.pc = it.frame.Ret
 
 			return true

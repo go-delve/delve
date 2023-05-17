@@ -162,8 +162,8 @@ func amd64SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 		it.systemstack = false
 
 		// advances to the next frame in the call stack
-		it.frame.addrret = uint64(int64(it.regs.SP()) + int64(it.bi.Arch.PtrSize()))
-		it.frame.Ret, _ = readUintRaw(it.mem, it.frame.addrret, int64(it.bi.Arch.PtrSize()))
+		addrret := uint64(int64(it.regs.SP()) + int64(it.bi.Arch.PtrSize()))
+		it.frame.Ret, _ = readUintRaw(it.mem, addrret, int64(it.bi.Arch.PtrSize()))
 		it.pc = it.frame.Ret
 
 		it.top = false
