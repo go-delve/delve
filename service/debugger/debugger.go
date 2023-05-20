@@ -1683,9 +1683,16 @@ func formatLoc(loc proc.Location) string {
 	return fmt.Sprintf("%s:%d in %s", loc.File, loc.Line, fnname)
 }
 
-// GroupGoroutines divides goroutines in gs into groups as specified by groupBy and groupByArg.
-// A maximum of maxGoroutinesPerGroup are saved in each group, but the total
-// number of goroutines in each group is recorded.
+// GroupGoroutines divides goroutines in gs into groups as specified by
+// group.{GroupBy,GroupByKey}. A maximum of group.MaxGroupMembers are saved in
+// each group, but the total number of goroutines in each group is recorded. If
+// group.MaxGroups is set, then at most that many groups are returned. If some
+// groups end up being dropped because of this limit, the tooManyGroups return
+// value is set.
+//
+// The first return value represents the goroutines that have been included in
+// one of the returned groups (subject to the MaxGroupMembers and MaxGroups
+// limits). The second return value represents the groups.
 func (d *Debugger) GroupGoroutines(gs []*proc.G, group *api.GoroutineGroupingOptions) ([]*proc.G, []api.GoroutineGroup, bool) {
 	if group.GroupBy == api.GoroutineFieldNone {
 		return gs, nil, false
