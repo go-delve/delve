@@ -62,8 +62,10 @@ github.com/spf13/pflag
 ## explicit
 go.starlark.net/internal/compile
 go.starlark.net/internal/spell
+go.starlark.net/lib/time
 go.starlark.net/resolve
 go.starlark.net/starlark
+go.starlark.net/starlarkstruct
 go.starlark.net/syntax
 # golang.org/x/arch v0.0.0-20190927153633-4e8777c89be4
 ## explicit
