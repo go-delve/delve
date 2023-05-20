@@ -111,7 +111,7 @@ The `Value` field will return the value of the target variable converted to a st
 
 For example, given this variable in the target program:
 
-```
+```go
 type astruct struct {
 	A int
 	B int
@@ -143,7 +143,7 @@ For more examples see the [linked list example](#Print-all-elements-of-a-linked-
 
 Create a `goroutine_start_line` command that prints the starting line of each goroutine, sets `gsl` as an alias:
 
-```
+```python
 def command_goroutine_start_line(args):
 	gs = goroutines().Goroutines
 	for g in gs:
@@ -174,7 +174,7 @@ Use it like this:
 
 After evaluating this script:
 
-```
+```python
 def command_echo(args):
 	print(args)
 
@@ -195,7 +195,7 @@ a 4 b 1 c 6
 
 Set a breakpoint on all private methods of package `main`:
 
-```
+```python
 def main():
 	for f in functions().Funcs:
 		v = f.split('.')
@@ -211,7 +211,7 @@ def main():
 
 Create a command, `switch_to_main_goroutine`, that searches for a goroutine running a function in the main package and switches to it:
 
-```
+```python
 def command_switch_to_main_goroutine(args):
 	for g in goroutines().Goroutines:
 		if g.currentLoc.function != None and g.currentLoc.function.name.startswith("main."):
@@ -224,7 +224,7 @@ def command_switch_to_main_goroutine(args):
 
 Create a command, "goexcl", that lists all goroutines excluding the ones stopped on a specified function.
 
-```
+```python
 def command_goexcl(args):
 	"""Prints all goroutines not stopped in the function passed as argument."""
 	excluded = 0
@@ -255,7 +255,7 @@ prints all goroutines that are not stopped inside `main.somefunc`.
 
 Repeatedly call continue and restart until the target hits a breakpoint.
 
-```
+```python
 def command_flaky(args):
 	"Repeatedly runs program until a breakpoint is hit"
 	while True:
@@ -266,7 +266,7 @@ def command_flaky(args):
 
 ## Print all elements of a linked list
 
-```
+```python
 def command_linked_list(args):
 	"""Prints the contents of a linked list.
 	
@@ -287,7 +287,7 @@ Prints up to max_depth elements of the linked list variable 'var_name' using 'ne
 
 ## Find an array element matching a predicate
 
-```
+```python
 def command_find_array(arr, pred):
 	"""Calls pred for each element of the array or slice 'arr' returns the index of the first element for which pred returns true.
 	
@@ -309,7 +309,7 @@ Example use (find the first element of slice 's2' with field A equal to 5):
 
 ## Rerunning a program until it fails or hits a breakpoint
 
-```
+```python
 def command_flaky(args):
 	"Continues and restarts the target program repeatedly (re-recording it on the rr backend), until a breakpoint is hit"
 	count = 1
@@ -320,4 +320,20 @@ def command_flaky(args):
 		count = count+1
 		restart(Rerecord=True)
 
+```
+
+## Passing a struct as an argument
+
+Struct literals can be passed to built-ins as Starlark dictionaries. For example, the following snippet passes
+in an [api.EvalScope](https://pkg.go.dev/github.com/go-delve/delve/service/api#EvalScope)
+and [api.LoadConfig](https://pkg.go.dev/github.com/go-delve/delve/service/api#LoadConfig)
+to the `eval` built-in. `None` can be passed for optional arguments, and
+trailing optional arguments can be elided completely.
+
+```python
+var = eval(
+        {"GoroutineID": 42, "Frame": 5},
+        "myVar",
+        {"FollowPointers":True, "MaxVariableRecurse":2, "MaxStringLen":100, "MaxArrayValues":10, "MaxStructFields":100}
+      )
 ```
