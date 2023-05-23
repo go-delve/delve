@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	startime "go.starlark.net/lib/time"
 	"go.starlark.net/resolve"
 	"go.starlark.net/starlark"
 
@@ -66,6 +67,9 @@ func New(ctx Context, out EchoWriter) *Env {
 
 	env.ctx = ctx
 	env.out = out
+
+	// Make the "time" module available to Starlark scripts.
+	starlark.Universe["time"] = startime.Module
 
 	env.env = env.starlarkPredeclare()
 	env.env[dlvCommandBuiltinName] = starlark.NewBuiltin(dlvCommandBuiltinName, func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
