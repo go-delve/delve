@@ -42,7 +42,7 @@ const (
 	encImaginaryFloat = 0x09
 )
 
-const cyclicalTypeStop = "<cyclical>" // guard value printed for types with a cyclical definition, to avoid inifinite recursion in Type.String
+const cyclicalTypeStop = "<cyclical>" // guard value printed for types with a cyclical definition, to avoid infinite recursion in Type.String
 
 type recCheck map[dwarf.Offset]struct{}
 
