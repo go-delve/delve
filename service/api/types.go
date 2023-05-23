@@ -407,7 +407,7 @@ type DebuggerCommand struct {
 	// UnsafeCall disables parameter escape checking for function calls.
 	// Go objects can be allocated on the stack or on the heap. Heap objects
 	// can be used by any goroutine; stack objects can only be used by the
-	// goroutine that owns the stack they are allocated on and can not surivive
+	// goroutine that owns the stack they are allocated on and can not survive
 	// the stack frame of allocation.
 	// The Go compiler will use escape analysis to determine whether to
 	// allocate an object on the stack or the heap.

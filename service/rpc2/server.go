@@ -253,7 +253,7 @@ type CreateBreakpointOut struct {
 }
 
 // CreateBreakpoint creates a new breakpoint. The client is expected to populate `CreateBreakpointIn`
-// with an `api.Breakpoint` struct describing where to set the breakpoing. For more information on
+// with an `api.Breakpoint` struct describing where to set the breakpoint. For more information on
 // how to properly request a breakpoint via the `api.Breakpoint` struct see the documentation for
 // `debugger.CreateBreakpoint` here: https://pkg.go.dev/github.com/go-delve/delve/service/debugger#Debugger.CreateBreakpoint.
 func (s *RPCServer) CreateBreakpoint(arg CreateBreakpointIn, out *CreateBreakpointOut) error {
