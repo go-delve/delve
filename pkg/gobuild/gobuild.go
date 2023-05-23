@@ -60,6 +60,24 @@ func GoTestBuildCombinedOutput(debugname string, pkgs []string, buildflags strin
 	return gocommandCombinedOutput("test", args...)
 }
 
+func buildArgs(args []string) []string {
+	flags := make([]string, 0, len(args))
+	for i := 0; i < len(args); {
+		if args[i] == "-C" { // -C /path
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				flags = append([]string{args[i], args[i+1]}, flags...)
+				i++
+			}
+		} else if strings.HasPrefix(args[i], "-C=") { // -C=/path
+			flags = append([]string{args[i]}, flags...)
+		} else {
+			flags = append(flags, args[i])
+		}
+		i++
+	}
+	return flags
+}
+
 func goBuildArgs(debugname string, pkgs []string, buildflags string, isTest bool) []string {
 	args := []string{"-o", debugname}
 	if isTest {
@@ -70,7 +88,7 @@ func goBuildArgs(debugname string, pkgs []string, buildflags string, isTest bool
 		args = append(args, config.SplitQuotedFields(buildflags, '\'')...)
 	}
 	args = append(args, pkgs...)
-	return args
+	return buildArgs(args)
 }
 
 func gocommandRun(command string, args ...string) error {
