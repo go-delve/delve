@@ -556,14 +556,14 @@ func (c *Client) ReadMemoryRequest() {
 }
 
 // DisassembleRequest sends a 'disassemble' request.
-func (c *Client) DisassembleRequest(memoryReference string, instructionOffset, inctructionCount int) {
+func (c *Client) DisassembleRequest(memoryReference string, instructionOffset, instructionCount int) {
 	c.send(&dap.DisassembleRequest{
 		Request: *c.newRequest("disassemble"),
 		Arguments: dap.DisassembleArguments{
 			MemoryReference:   memoryReference,
 			Offset:            0,
 			InstructionOffset: instructionOffset,
-			InstructionCount:  inctructionCount,
+			InstructionCount:  instructionCount,
 			ResolveSymbols:    false,
 		},
 	})

@@ -284,7 +284,7 @@ func TestSessionStop(t *testing.T) {
 			defer client.Close()
 			<-acceptDone
 			if err != nil {
-				t.Fatalf("cannot accept client requireed for testing: %v", err)
+				t.Fatalf("cannot accept client required for testing: %v", err)
 			}
 			session := NewSession(conn, &Config{
 				Config:        &service.Config{DisconnectChan: make(chan struct{})},
@@ -962,7 +962,7 @@ func checkStackFramesNamed(testName string, t *testing.T, got *dap.StackTraceRes
 
 // checkScope is a helper for verifying the values within a ScopesResponse.
 //
-//	i - index of the scope within ScopesRespose.Body.Scopes array
+//	i - index of the scope within ScopesResponse.Body.Scopes array
 //	name - name of the scope
 //	varRef - reference to retrieve variables of this scope. If varRef is negative, the reference is not checked.
 func checkScope(t *testing.T, got *dap.ScopesResponse, i int, name string, varRef int) {
@@ -1668,7 +1668,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
 					if len(scopes.Body.Scopes) > 1 {
-						t.Errorf("\ngot  %#v\nwant len(scopes)=1 (Argumes & Locals)", scopes)
+						t.Errorf("\ngot  %#v\nwant len(scopes)=1 (Arguments & Locals)", scopes)
 					}
 					checkScope(t, scopes, 0, "Locals", localsScope)
 
@@ -2109,7 +2109,7 @@ func TestVariablesLoading(t *testing.T) {
 						}
 					}
 
-					// Fully missing struct auto-loaded when hitting LoadConfig.MaxVariableRecurse (also tests evaluteName corner case)
+					// Fully missing struct auto-loaded when hitting LoadConfig.MaxVariableRecurse (also tests evaluateName corner case)
 					ref = checkVarRegex(t, locals, -1, "aas", "aas", `\[\]main\.a len: 1, cap: 1, \[{aas: \[\]main\.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]}\]`, `\[\]main\.a`, hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
@@ -2146,7 +2146,7 @@ func TestVariablesLoading(t *testing.T) {
 						checkChildren(t, tm, "tm", 1)
 						ref = checkVarExact(t, tm, 0, "v", "tm.v", "[]map[string]main.astruct len: 1, cap: 1, [[...]]", "[]map[string]main.astruct", hasChildren)
 						if ref > 0 {
-							// Auto-loading of fully missing map chidlren happens here, but they get trancated at MaxArrayValuess
+							// Auto-loading of fully missing map chidlren happens here, but they get truncated at MaxArrayValuess
 							client.VariablesRequest(ref)
 							tmV := client.ExpectVariablesResponse(t)
 							checkChildren(t, tmV, "tm.v", 1)
@@ -4650,7 +4650,7 @@ func testNextParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 			// ok
 		case *dap.TerminatedEvent:
 			// This is very unlikely to happen. But in theory if all sayhi
-			// gouritines are run serially, there will never be a second parked
+			// goroutines are run serially, there will never be a second parked
 			// sayhi goroutine when another breaks and we will keep trying
 			// until process termination.
 			return -1
@@ -5772,7 +5772,7 @@ func TestPauseAndContinue(t *testing.T) {
 	})
 }
 
-func TestUnupportedCommandResponses(t *testing.T) {
+func TestUnsupportedCommandResponses(t *testing.T) {
 	var got *dap.ErrorResponse
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		seqCnt := 1

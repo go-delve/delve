@@ -71,7 +71,7 @@ import (
 // a dummy/error response to avoid blocking.
 //
 // This is the only goroutine that sends a stop-server signal
-// via config.DisconnecChan when encountering a client connection
+// via config.DisconnectChan when encountering a client connection
 // error or responding to a (synchronous) DAP disconnect request.
 // Once stop is triggered, the goroutine exits.
 //
@@ -124,7 +124,7 @@ type Session struct {
 	// exceptionErr tracks the runtime error that last occurred.
 	exceptionErr error
 	// clientCapabilities tracks special settings for handling debug session requests.
-	clientCapabilities dapClientCapabilites
+	clientCapabilities dapClientCapabilities
 
 	// mu synchronizes access to objects set on start-up (from run goroutine)
 	// and stopped on teardown (from main goroutine)
@@ -236,9 +236,9 @@ var defaultArgs = launchAttachArgs{
 	substitutePathServerToClient: [][2]string{},
 }
 
-// dapClientCapabilites captures arguments from initialize request that
+// dapClientCapabilities captures arguments from initialize request that
 // impact handling of subsequent requests.
-type dapClientCapabilites struct {
+type dapClientCapabilities struct {
 	supportsVariableType         bool
 	supportsVariablePaging       bool
 	supportsRunInTerminalRequest bool
@@ -1072,7 +1072,7 @@ func (s *Session) getPackageDir(pkg string) string {
 	cmd := exec.Command("go", "list", "-f", "{{.Dir}}", pkg)
 	out, err := cmd.Output()
 	if err != nil {
-		s.config.log.Debugf("failed to determin package directory for %v: %v\n%s", pkg, err, out)
+		s.config.log.Debugf("failed to determine package directory for %v: %v\n%s", pkg, err, out)
 		return "."
 	}
 	return string(bytes.TrimSpace(out))
@@ -2594,7 +2594,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 	return value, variablesReference
 }
 
-// onEvaluateRequest handles 'evalute' requests.
+// onEvaluateRequest handles 'evaluate' requests.
 // This is a mandatory request to support.
 // Support the following expressions:
 //
@@ -3127,7 +3127,7 @@ func alignPCs(bi *proc.BinaryInfo, start, end uint64) (uint64, uint64) {
 	// Handle start values:
 	fn := bi.PCToFunc(start)
 	if fn != nil {
-		// start is in a funcition.
+		// start is in a function.
 		start = fn.Entry
 	} else if b, pc := checkOutOfAddressSpace(start, bi); b {
 		start = pc
@@ -3142,7 +3142,7 @@ func alignPCs(bi *proc.BinaryInfo, start, end uint64) (uint64, uint64) {
 
 	// Handle end values:
 	if fn := bi.PCToFunc(end); fn != nil {
-		// end is in a funcition.
+		// end is in a function.
 		end = fn.End
 	} else if b, pc := checkOutOfAddressSpace(end, bi); b {
 		end = pc
