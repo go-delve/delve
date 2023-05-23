@@ -50,7 +50,7 @@ func TestRangeContains(t *testing.T) {
 	for _, tc := range tcs {
 		if rangeContains(tc.a, tc.b) != tc.tgt {
 			if tc.tgt {
-				t.Errorf("range %v does not contan %v (but should)", tc.a, tc.b)
+				t.Errorf("range %v does not contain %v (but should)", tc.a, tc.b)
 			} else {
 				t.Errorf("range %v does contain %v (but shouldn't)", tc.a, tc.b)
 			}
@@ -81,7 +81,7 @@ func TestRangesContains(t *testing.T) {
 	for _, tc := range tcs {
 		if rangesContains(tc.rngs1, tc.rngs2) != tc.tgt {
 			if tc.tgt {
-				t.Errorf("ranges %v does not contan %v (but should)", tc.rngs1, tc.rngs2)
+				t.Errorf("ranges %v does not contain %v (but should)", tc.rngs1, tc.rngs2)
 			} else {
 				t.Errorf("ranges %v does contain %v (but shouldn't)", tc.rngs1, tc.rngs2)
 			}

@@ -2840,7 +2840,7 @@ func TestNextInDeferReturn(t *testing.T) {
 	// runtime.deferreturn updates the G struct in a way that for one
 	// instruction leaves the curg._defer field non-nil but with curg._defer.fn
 	// field being nil.
-	// We need to deal with this without panicing.
+	// We need to deal with this without panicking.
 	protest.AllowRecording(t)
 	withTestProcess("defercall", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "runtime.deferreturn")
@@ -3735,7 +3735,7 @@ func TestHaltKeepsSteppingBreakpoints(t *testing.T) {
 
 func TestDisassembleGlobalVars(t *testing.T) {
 	skipOn(t, "broken - global variable symbolication", "arm64") // On ARM64 symLookup can't look up variables due to how they are loaded, see issue #1778
-	// On 386 linux when pie, the genered code use __x86.get_pc_thunk to ensure position-independent.
+	// On 386 linux when pie, the generated code use __x86.get_pc_thunk to ensure position-independent.
 	// Locate global variable by
 	//    `CALL __x86.get_pc_thunk.ax(SB) 0xb0f7f
 	//     LEAL 0xc0a19(AX), AX`
