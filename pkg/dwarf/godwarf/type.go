@@ -17,7 +17,6 @@ import (
 	"strconv"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
-	"github.com/go-delve/delve/pkg/dwarf/util"
 )
 
 const (
@@ -43,7 +42,7 @@ const (
 	encImaginaryFloat = 0x09
 )
 
-const cyclicalTypeStop = "<cyclical>" // guard value printed for types with a cyclical definition, to avoid inifinite recursion in Type.String
+const cyclicalTypeStop = "<cyclical>" // guard value printed for types with a cyclical definition, to avoid infinite recursion in Type.String
 
 type recCheck map[dwarf.Offset]struct{}
 
@@ -181,7 +180,8 @@ func (t *QualType) stringIntl(recCheck recCheck) string {
 	return t.Qual + " " + t.Type.stringIntl(recCheck)
 }
 
-func (t *QualType) Size() int64 { return sizeAlignToSize(t.sizeAlignIntl(make(recCheck))) }
+func (t *QualType) Size() int64  { return sizeAlignToSize(t.sizeAlignIntl(make(recCheck))) }
+func (t *QualType) Align() int64 { return sizeAlignToAlign(t.sizeAlignIntl(make(recCheck))) }
 
 func (t *QualType) sizeAlignIntl(recCheck recCheck) (int64, int64) {
 	release := recCheck.acquire(t.CommonType.Offset)
@@ -458,7 +458,8 @@ func (t *TypedefType) String() string { return t.stringIntl(nil) }
 
 func (t *TypedefType) stringIntl(recCheck recCheck) string { return t.Name }
 
-func (t *TypedefType) Size() int64 { sz, _ := t.sizeAlignIntl(make(recCheck)); return sz }
+func (t *TypedefType) Size() int64  { return sizeAlignToSize(t.sizeAlignIntl(make(recCheck))) }
+func (t *TypedefType) Align() int64 { return sizeAlignToAlign(t.sizeAlignIntl(make(recCheck))) }
 
 func (t *TypedefType) sizeAlignIntl(recCheck recCheck) (int64, int64) {
 	release := recCheck.acquire(t.CommonType.Offset)
@@ -827,7 +828,7 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 						// Empty exprloc. f.ByteOffset=0.
 						break
 					}
-					b := util.MakeBuf(d, util.UnknownFormat{}, "location", 0, loc)
+					b := makeBuf(d, unknownFormat{}, "location", 0, loc)
 					op_ := op.Opcode(b.Uint8())
 					switch op_ {
 					case op.DW_OP_plus_uconst:

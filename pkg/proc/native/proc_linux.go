@@ -62,7 +62,7 @@ func (os *osProcessDetails) Close() {
 // to be supplied to that process. `wd` is working directory of the program.
 // If the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []string, tty string, redirects [3]string) (*proc.Target, error) {
+func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []string, tty string, redirects [3]string) (*proc.TargetGroup, error) {
 	var (
 		process *exec.Cmd
 		err     error
@@ -141,7 +141,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []str
 // Attach to an existing process with the given PID. Once attached, if
 // the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func Attach(pid int, debugInfoDirs []string) (*proc.Target, error) {
+func Attach(pid int, debugInfoDirs []string) (*proc.TargetGroup, error) {
 	dbp := newProcess(pid)
 
 	var err error
@@ -169,7 +169,7 @@ func Attach(pid int, debugInfoDirs []string) (*proc.Target, error) {
 	return tgt, nil
 }
 
-func initialize(dbp *nativeProcess) error {
+func initialize(dbp *nativeProcess) (string, error) {
 	comm, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/comm", dbp.pid))
 	if err == nil {
 		// removes newline character
@@ -179,22 +179,22 @@ func initialize(dbp *nativeProcess) error {
 	if comm == nil || len(comm) <= 0 {
 		stat, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/stat", dbp.pid))
 		if err != nil {
-			return fmt.Errorf("could not read proc stat: %v", err)
+			return "", fmt.Errorf("could not read proc stat: %v", err)
 		}
 		expr := fmt.Sprintf("%d\\s*\\((.*)\\)", dbp.pid)
 		rexp, err := regexp.Compile(expr)
 		if err != nil {
-			return fmt.Errorf("regexp compile error: %v", err)
+			return "", fmt.Errorf("regexp compile error: %v", err)
 		}
 		match := rexp.FindSubmatch(stat)
 		if match == nil {
-			return fmt.Errorf("no match found using regexp '%s' in /proc/%d/stat", expr, dbp.pid)
+			return "", fmt.Errorf("no match found using regexp '%s' in /proc/%d/stat", expr, dbp.pid)
 		}
 		comm = match[1]
 	}
 	dbp.os.comm = strings.ReplaceAll(string(comm), "%", "%%")
 
-	return nil
+	return getCmdLine(dbp.pid), nil
 }
 
 func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
@@ -237,11 +237,21 @@ func (dbp *nativeProcess) requestManualStop() (err error) {
 	return sys.Kill(dbp.pid, sys.SIGTRAP)
 }
 
+const (
+	ptraceOptionsNormal     = syscall.PTRACE_O_TRACECLONE
+	ptraceOptionsFollowExec = syscall.PTRACE_O_TRACECLONE | syscall.PTRACE_O_TRACEVFORK | syscall.PTRACE_O_TRACEEXEC
+)
+
 // Attach to a newly created thread, and store that thread in our list of
 // known threads.
 func (dbp *nativeProcess) addThread(tid int, attach bool) (*nativeThread, error) {
 	if thread, ok := dbp.threads[tid]; ok {
 		return thread, nil
+	}
+
+	ptraceOptions := ptraceOptionsNormal
+	if dbp.followExec {
+		ptraceOptions = ptraceOptionsFollowExec
 	}
 
 	var err error
@@ -263,12 +273,12 @@ func (dbp *nativeProcess) addThread(tid int, attach bool) (*nativeThread, error)
 		}
 	}
 
-	dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
+	dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, ptraceOptions) })
 	if err == syscall.ESRCH {
 		if _, _, err = dbp.waitFast(tid); err != nil {
 			return nil, fmt.Errorf("error while waiting after adding thread: %d %s", tid, err)
 		}
-		dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, syscall.PTRACE_O_TRACECLONE) })
+		dbp.execPtraceFunc(func() { err = syscall.PtraceSetOptions(tid, ptraceOptions) })
 		if err == syscall.ESRCH {
 			return nil, err
 		}
@@ -318,8 +328,8 @@ func findExecutable(path string, pid int) string {
 	return path
 }
 
-func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
-	return dbp.trapWaitInternal(pid, 0)
+func trapWait(procgrp *processGroup, pid int) (*nativeThread, error) {
+	return trapWaitInternal(procgrp, pid, 0)
 }
 
 type trapWaitOptions uint8
@@ -330,14 +340,21 @@ const (
 	trapWaitDontCallExitGuard
 )
 
-func (dbp *nativeProcess) trapWaitInternal(pid int, options trapWaitOptions) (*nativeThread, error) {
+func trapWaitInternal(procgrp *processGroup, pid int, options trapWaitOptions) (*nativeThread, error) {
+	var waitdbp *nativeProcess = nil
+	if len(procgrp.procs) == 1 {
+		// Note that waitdbp is only used to call (*nativeProcess).wait which will
+		// behave correctly if waitdbp == nil.
+		waitdbp = procgrp.procs[0]
+	}
+
 	halt := options&trapWaitHalt != 0
 	for {
 		wopt := 0
 		if options&trapWaitNohang != 0 {
 			wopt = sys.WNOHANG
 		}
-		wpid, status, err := dbp.wait(pid, wopt)
+		wpid, status, err := waitdbp.wait(pid, wopt)
 		if err != nil {
 			return nil, fmt.Errorf("wait err %s %d", err, pid)
 		}
@@ -347,14 +364,27 @@ func (dbp *nativeProcess) trapWaitInternal(pid int, options trapWaitOptions) (*n
 			}
 			continue
 		}
-		th, ok := dbp.threads[wpid]
-		if ok {
-			th.Status = (*waitStatus)(status)
+		dbp := procgrp.procForThread(wpid)
+		var th *nativeThread
+		if dbp != nil {
+			var ok bool
+			th, ok = dbp.threads[wpid]
+			if ok {
+				th.Status = (*waitStatus)(status)
+			}
+		} else {
+			dbp = procgrp.procs[0]
 		}
 		if status.Exited() {
 			if wpid == dbp.pid {
 				dbp.postExit()
-				return nil, proc.ErrProcessExited{Pid: wpid, Status: status.ExitStatus()}
+				if procgrp.numValid() == 0 {
+					return nil, proc.ErrProcessExited{Pid: wpid, Status: status.ExitStatus()}
+				}
+				if halt {
+					return nil, nil
+				}
+				continue
 			}
 			delete(dbp.threads, wpid)
 			continue
@@ -363,15 +393,24 @@ func (dbp *nativeProcess) trapWaitInternal(pid int, options trapWaitOptions) (*n
 			// Signaled means the thread was terminated due to a signal.
 			if wpid == dbp.pid {
 				dbp.postExit()
-				return nil, proc.ErrProcessExited{Pid: wpid, Status: -int(status.Signal())}
+				if procgrp.numValid() == 0 {
+					return nil, proc.ErrProcessExited{Pid: wpid, Status: -int(status.Signal())}
+				}
+				if halt {
+					return nil, nil
+				}
+				continue
 			}
 			// does this ever happen?
 			delete(dbp.threads, wpid)
 			continue
 		}
-		if status.StopSignal() == sys.SIGTRAP && status.TrapCause() == sys.PTRACE_EVENT_CLONE {
+		if status.StopSignal() == sys.SIGTRAP && (status.TrapCause() == sys.PTRACE_EVENT_CLONE || status.TrapCause() == sys.PTRACE_EVENT_VFORK) {
 			// A traced thread has cloned a new thread, grab the pid and
 			// add it to our list of traced threads.
+			// If TrapCause() is sys.PTRACE_EVENT_VFORK this is actually a new
+			// process, but treat it as a normal thread until exec happens, so that
+			// we can initialize the new process normally.
 			var cloned uint
 			dbp.execPtraceFunc(func() { cloned, err = sys.PtraceGetEventMsg(wpid) })
 			if err != nil {
@@ -410,6 +449,38 @@ func (dbp *nativeProcess) trapWaitInternal(pid int, options trapWaitOptions) (*n
 			}
 			continue
 		}
+		if status.StopSignal() == sys.SIGTRAP && (status.TrapCause() == sys.PTRACE_EVENT_EXEC) {
+			// A thread called exec and we now have a new process. Retrieve the
+			// thread ID of the exec'ing thread with PtraceGetEventMsg to remove it
+			// and create a new nativeProcess object to track the new process.
+			var tid uint
+			dbp.execPtraceFunc(func() { tid, err = sys.PtraceGetEventMsg(wpid) })
+			if err == nil {
+				delete(dbp.threads, int(tid))
+			}
+			dbp = newChildProcess(procgrp.procs[0], wpid)
+			dbp.followExec = true
+			cmdline, _ := dbp.initializeBasic()
+			tgt, err := procgrp.add(dbp, dbp.pid, dbp.memthread, findExecutable("", dbp.pid), proc.StopLaunched, cmdline)
+			if err != nil {
+				_ = dbp.Detach(false)
+				return nil, err
+			}
+			if halt {
+				return nil, nil
+			}
+			if tgt != nil {
+				// If tgt is nil we decided we are not interested in debugging this
+				// process, and we have already detached from it.
+				err = dbp.threads[dbp.pid].Continue()
+				if err != nil {
+					return nil, err
+				}
+			}
+			//TODO(aarzilli): if we want to give users the ability to stop the target
+			//group on exec here is where we should return
+			continue
+		}
 		if th == nil {
 			// Sometimes we get an unknown thread, ignore it?
 			continue
@@ -439,7 +510,10 @@ func (dbp *nativeProcess) trapWaitInternal(pid int, options trapWaitOptions) (*n
 			// do the same thing we do if a thread quit
 			if wpid == dbp.pid {
 				dbp.postExit()
-				return nil, proc.ErrProcessExited{Pid: wpid, Status: status.ExitStatus()}
+				if procgrp.numValid() == 0 {
+					return nil, proc.ErrProcessExited{Pid: wpid, Status: status.ExitStatus()}
+				}
+				continue
 			}
 			delete(dbp.threads, wpid)
 		}
@@ -476,7 +550,7 @@ func (dbp *nativeProcess) waitFast(pid int) (int, *sys.WaitStatus, error) {
 
 func (dbp *nativeProcess) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	var s sys.WaitStatus
-	if (pid != dbp.pid) || (options != 0) {
+	if (dbp == nil) || (pid != dbp.pid) || (options != 0) {
 		wpid, err := sys.Wait4(pid, &s, sys.WALL|options, nil)
 		return wpid, &s, err
 	}
@@ -506,12 +580,12 @@ func (dbp *nativeProcess) wait(pid, options int) (int, *sys.WaitStatus, error) {
 	}
 }
 
-func (dbp *nativeProcess) exitGuard(err error) error {
+func exitGuard(dbp *nativeProcess, procgrp *processGroup, err error) error {
 	if err != sys.ESRCH {
 		return err
 	}
 	if status(dbp.pid, dbp.os.comm) == statusZombie {
-		_, err := dbp.trapWaitInternal(-1, trapWaitDontCallExitGuard)
+		_, err := trapWaitInternal(procgrp, -1, trapWaitDontCallExitGuard)
 		return err
 	}
 
@@ -538,21 +612,27 @@ func (dbp *nativeProcess) resume() error {
 }
 
 // stop stops all running threads and sets breakpoints
-func (dbp *nativeProcess) stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
-	if dbp.exited {
-		return nil, proc.ErrProcessExited{Pid: dbp.pid}
+func (procgrp *processGroup) stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
+	if procgrp.numValid() == 0 {
+		return nil, proc.ErrProcessExited{Pid: procgrp.procs[0].pid}
 	}
 
-	for _, th := range dbp.threads {
-		th.os.setbp = false
+	for _, dbp := range procgrp.procs {
+		if dbp.exited {
+			continue
+		}
+		for _, th := range dbp.threads {
+			th.os.setbp = false
+		}
 	}
 	trapthread.os.setbp = true
 
 	// check if any other thread simultaneously received a SIGTRAP
 	for {
-		th, err := dbp.trapWaitInternal(-1, trapWaitNohang)
+		th, err := trapWaitInternal(procgrp, -1, trapWaitNohang)
 		if err != nil {
-			return nil, dbp.exitGuard(err)
+			p := procgrp.procForThread(th.ID)
+			return nil, exitGuard(p, procgrp, err)
 		}
 		if th == nil {
 			break
@@ -560,10 +640,20 @@ func (dbp *nativeProcess) stop(cctx *proc.ContinueOnceContext, trapthread *nativ
 	}
 
 	// stop all threads that are still running
-	for _, th := range dbp.threads {
-		if th.os.running {
-			if err := th.stop(); err != nil {
-				return nil, dbp.exitGuard(err)
+	for _, dbp := range procgrp.procs {
+		if dbp.exited {
+			continue
+		}
+		for _, th := range dbp.threads {
+			if th.os.running {
+				if err := th.stop(); err != nil {
+					if err == sys.ESRCH {
+						// thread exited
+						delete(dbp.threads, th.ID)
+					} else {
+						return nil, exitGuard(dbp, procgrp, err)
+					}
+				}
 			}
 		}
 	}
@@ -571,26 +661,60 @@ func (dbp *nativeProcess) stop(cctx *proc.ContinueOnceContext, trapthread *nativ
 	// wait for all threads to stop
 	for {
 		allstopped := true
-		for _, th := range dbp.threads {
-			if th.os.running {
-				allstopped = false
-				break
+		for _, dbp := range procgrp.procs {
+			if dbp.exited {
+				continue
+			}
+			for _, th := range dbp.threads {
+				if th.os.running {
+					allstopped = false
+					break
+				}
 			}
 		}
 		if allstopped {
 			break
 		}
-		_, err := dbp.trapWaitInternal(-1, trapWaitHalt)
+		_, err := trapWaitInternal(procgrp, -1, trapWaitHalt)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if err := linutil.ElfUpdateSharedObjects(dbp); err != nil {
-		return nil, err
+	switchTrapthread := false
+
+	for _, dbp := range procgrp.procs {
+		if dbp.exited {
+			continue
+		}
+		err := stop1(cctx, dbp, trapthread, &switchTrapthread)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	switchTrapthread := false
+	if switchTrapthread {
+		trapthreadID := trapthread.ID
+		trapthread = nil
+		for _, dbp := range procgrp.procs {
+			if dbp.exited {
+				continue
+			}
+			for _, th := range dbp.threads {
+				if th.os.setbp && th.ThreadID() != trapthreadID {
+					return th, nil
+				}
+			}
+		}
+	}
+
+	return trapthread, nil
+}
+
+func stop1(cctx *proc.ContinueOnceContext, dbp *nativeProcess, trapthread *nativeThread, switchTrapthread *bool) error {
+	if err := linutil.ElfUpdateSharedObjects(dbp); err != nil {
+		return err
+	}
 
 	// set breakpoints on SIGTRAP threads
 	var err1 error
@@ -649,27 +773,13 @@ func (dbp *nativeProcess) stop(cctx *proc.ContinueOnceContext, trapthread *nativ
 						// Will switch to a different thread for trapthread because we don't
 						// want pkg/proc to believe that this thread was stopped by a
 						// hardcoded breakpoint.
-						switchTrapthread = true
+						*switchTrapthread = true
 					}
 				}
 			}
 		}
 	}
-	if err1 != nil {
-		return nil, err1
-	}
-
-	if switchTrapthread {
-		trapthreadID := trapthread.ID
-		trapthread = nil
-		for _, th := range dbp.threads {
-			if th.os.setbp && th.ThreadID() != trapthreadID {
-				return th, nil
-			}
-		}
-	}
-
-	return trapthread, nil
+	return err1
 }
 
 func (dbp *nativeProcess) detach(kill bool) error {
@@ -721,10 +831,11 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 		return errors.New("too many arguments in traced function, max is 12 input+return")
 	}
 
-	fn, ok := dbp.bi.LookupFunc[fnName]
-	if !ok {
+	fns := dbp.bi.LookupFunc()[fnName]
+	if len(fns) != 1 {
 		return fmt.Errorf("could not find function: %s", fnName)
 	}
+	fn := fns[0]
 
 	offset, err := dbp.BinInfo().GStructOffset(dbp.Memory())
 	if err != nil {
@@ -788,6 +899,39 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 	return dbp.os.ebpf.AttachUprobe(dbp.pid, debugname, off)
 }
 
+// FollowExec enables (or disables) follow exec mode
+func (dbp *nativeProcess) FollowExec(v bool) error {
+	dbp.followExec = v
+	ptraceOptions := ptraceOptionsNormal
+	if dbp.followExec {
+		ptraceOptions = ptraceOptionsFollowExec
+	}
+	var err error
+	dbp.execPtraceFunc(func() {
+		for tid := range dbp.threads {
+			err = syscall.PtraceSetOptions(tid, ptraceOptions)
+			if err != nil {
+				return
+			}
+		}
+	})
+	return err
+}
+
 func killProcess(pid int) error {
 	return sys.Kill(pid, sys.SIGINT)
+}
+
+func getCmdLine(pid int) string {
+	buf, _ := ioutil.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+	args := strings.SplitN(string(buf), "\x00", -1)
+	for i := range args {
+		if strings.Contains(args[i], " ") {
+			args[i] = strconv.Quote(args[i])
+		}
+	}
+	if len(args) > 0 && args[len(args)-1] == "" {
+		args = args[:len(args)-1]
+	}
+	return strings.Join(args, " ")
 }

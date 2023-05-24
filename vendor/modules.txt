@@ -7,6 +7,7 @@ github.com/cilium/ebpf/internal/btf
 github.com/cilium/ebpf/internal/unix
 github.com/cilium/ebpf/link
 github.com/cilium/ebpf/ringbuf
+github.com/cilium/ebpf/rlimit
 # github.com/cosiner/argv v0.1.0
 ## explicit
 github.com/cosiner/argv
@@ -61,8 +62,10 @@ github.com/spf13/pflag
 ## explicit
 go.starlark.net/internal/compile
 go.starlark.net/internal/spell
+go.starlark.net/lib/time
 go.starlark.net/resolve
 go.starlark.net/starlark
+go.starlark.net/starlarkstruct
 go.starlark.net/syntax
 # golang.org/x/arch v0.0.0-20190927153633-4e8777c89be4
 ## explicit
@@ -91,8 +94,6 @@ golang.org/x/tools/internal/gocommand
 golang.org/x/tools/internal/packagesinternal
 golang.org/x/tools/internal/typeparams
 golang.org/x/tools/internal/typesinternal
-# golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1
-## explicit
 # gopkg.in/yaml.v2 v2.4.0
 ## explicit
 gopkg.in/yaml.v2

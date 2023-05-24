@@ -19,6 +19,7 @@ type transcriptWriter struct {
 	file         *bufio.Writer
 	fh           io.Closer
 	colorEscapes map[colorize.Style]string
+	altTabString string
 }
 
 func (w *transcriptWriter) Write(p []byte) (nn int, err error) {
@@ -38,12 +39,12 @@ func (w *transcriptWriter) Write(p []byte) (nn int, err error) {
 func (w *transcriptWriter) ColorizePrint(path string, reader io.ReadSeeker, startLine, endLine, arrowLine int) error {
 	var err error
 	if !w.fileOnly {
-		err = colorize.Print(w.pw.w, path, reader, startLine, endLine, arrowLine, w.colorEscapes)
+		err = colorize.Print(w.pw.w, path, reader, startLine, endLine, arrowLine, w.colorEscapes, w.altTabString)
 	}
 	if err == nil {
 		if w.file != nil {
 			reader.Seek(0, io.SeekStart)
-			return colorize.Print(w.file, path, reader, startLine, endLine, arrowLine, nil)
+			return colorize.Print(w.file, path, reader, startLine, endLine, arrowLine, nil, w.altTabString)
 		}
 	}
 	return err
@@ -99,6 +100,8 @@ type pagingWriter struct {
 	pager    string
 	lastnl   bool
 	cancel   func()
+
+	lines, columns int
 }
 
 type pagingWriterMode uint8
@@ -107,9 +110,6 @@ const (
 	pagingWriterNormal pagingWriterMode = iota
 	pagingWriterMaybe
 	pagingWriterPaging
-
-	pagingWriterMaxLines    = 30
-	pagingWriterColsPerLine = 100
 )
 
 func (w *pagingWriter) Write(p []byte) (nn int, err error) {
@@ -140,7 +140,7 @@ func (w *pagingWriter) Write(p []byte) (nn int, err error) {
 			w.cmdStdin.Write(w.buf)
 			w.buf = nil
 			w.mode = pagingWriterPaging
-			return w.cmdStdin.Write(p)
+			return len(p), nil
 		} else {
 			if len(p) > 0 {
 				w.lastnl = p[len(p)-1] == '\n'
@@ -201,17 +201,17 @@ func (w *pagingWriter) PageMaybe(cancel func()) {
 	}
 	w.lastnl = true
 	w.cancel = cancel
+	w.getWindowSize()
 }
 
 func (w *pagingWriter) largeOutput() bool {
-	if len(w.buf) > pagingWriterMaxLines*pagingWriterColsPerLine {
-		return true
-	}
-	nl := 0
+	lines := 0
+	lineStart := 0
 	for i := range w.buf {
-		if w.buf[i] == '\n' {
-			nl++
-			if nl > pagingWriterMaxLines {
+		if i-lineStart > w.columns || w.buf[i] == '\n' {
+			lineStart = i
+			lines++
+			if lines > w.lines {
 				return true
 			}
 		}

@@ -96,7 +96,7 @@ type Breaklet struct {
 	// the return value will determine if the breaklet should be considered
 	// active.
 	// The callback can have side-effects.
-	callback func(th Thread) bool
+	callback func(th Thread, p *Target) (bool, error)
 
 	// For WatchOutOfScopeBreakpoints and StackResizeBreakpoints the watchpoint
 	// field contains the watchpoint related to this out of scope sentinel.
@@ -294,12 +294,6 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 			}
 		}
 		active = active && nextDeferOk
-		if active {
-			bpstate.Stepping = true
-			if breaklet.Kind == StepBreakpoint {
-				bpstate.SteppingInto = true
-			}
-		}
 
 	case WatchOutOfScopeBreakpoint:
 		if breaklet.checkPanicCall {
@@ -319,9 +313,23 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 
 	if active {
 		if breaklet.callback != nil {
-			active = breaklet.callback(thread)
+			var err error
+			active, err = breaklet.callback(thread, tgt)
+			if err != nil && bpstate.CondError == nil {
+				bpstate.CondError = err
+			}
 		}
 		bpstate.Active = active
+	}
+
+	if bpstate.Active {
+		switch breaklet.Kind {
+		case NextBreakpoint, NextDeferBreakpoint:
+			bpstate.Stepping = true
+		case StepBreakpoint:
+			bpstate.Stepping = true
+			bpstate.SteppingInto = true
+		}
 	}
 }
 
@@ -674,8 +682,13 @@ func (t *Target) setBreakpointInternal(logicalID int, addr uint64, kind Breakpoi
 		if breaklet != nil && breaklet.Cond == nil {
 			breaklet.Cond = lbp.Cond
 		}
-		lbp.File = bp.File
-		lbp.Line = bp.Line
+		if lbp.File == "" && lbp.Line == 0 {
+			lbp.File = bp.File
+			lbp.Line = bp.Line
+		} else if bp.File != lbp.File || bp.Line != lbp.Line {
+			lbp.File = "<multiple locations>"
+			lbp.Line = 0
+		}
 		fn := t.BinInfo().PCToFunc(bp.Addr)
 		if fn != nil {
 			lbp.FunctionName = fn.NameWithoutTypeParams()

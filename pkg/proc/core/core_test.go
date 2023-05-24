@@ -134,7 +134,7 @@ func TestSplicedReader(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			mem := &splicedMemory{}
+			mem := &SplicedMemory{}
 			for _, region := range test.regions {
 				r := bytes.NewReader(region.data)
 				mem.Add(&offsetReaderAt{r, 0}, region.off, region.length)
@@ -149,7 +149,7 @@ func TestSplicedReader(t *testing.T) {
 
 	// Test some ReadMemory errors
 
-	mem := &splicedMemory{}
+	mem := &SplicedMemory{}
 	for _, region := range []region{
 		{[]byte{0xa1, 0xa2, 0xa3, 0xa4}, 0x1000, 4},
 		{[]byte{0xb1, 0xb2, 0xb3, 0xb4}, 0x1004, 4},
@@ -198,14 +198,10 @@ func TestSplicedReader(t *testing.T) {
 	}
 }
 
-func withCoreFile(t *testing.T, name, args string) *proc.Target {
+func withCoreFile(t *testing.T, name, args string) *proc.TargetGroup {
 	// This is all very fragile and won't work on hosts with non-default core patterns.
 	// Might be better to check in the binary and core?
-	tempDir, err := ioutil.TempDir("", "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	test.PathsToRemove = append(test.PathsToRemove, tempDir)
+	tempDir := t.TempDir()
 	var buildFlags test.BuildFlags
 	if buildMode == "pie" {
 		buildFlags = test.BuildModePIE
@@ -255,8 +251,8 @@ func TestCore(t *testing.T) {
 	if runtime.GOOS == "linux" && os.Getenv("CI") == "true" && buildMode == "pie" {
 		t.Skip("disabled on linux, Github Actions, with PIE buildmode")
 	}
-	p := withCoreFile(t, "panic", "")
-	grp := proc.NewGroup(p)
+	grp := withCoreFile(t, "panic", "")
+	p := grp.Selected
 
 	recorded, _ := grp.Recorded()
 	if !recorded {
@@ -328,7 +324,8 @@ func TestCoreFpRegisters(t *testing.T) {
 		t.Skip("not supported in go1.10 and later")
 	}
 
-	p := withCoreFile(t, "fputest/", "panic")
+	grp := withCoreFile(t, "fputest/", "panic")
+	p := grp.Selected
 
 	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 	if err != nil || len(gs) == 0 {
@@ -411,7 +408,8 @@ func TestCoreWithEmptyString(t *testing.T) {
 	if runtime.GOOS == "linux" && os.Getenv("CI") == "true" && buildMode == "pie" {
 		t.Skip("disabled on linux, Github Actions, with PIE buildmode")
 	}
-	p := withCoreFile(t, "coreemptystring", "")
+	grp := withCoreFile(t, "coreemptystring", "")
+	p := grp.Selected
 
 	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 	assertNoError(err, t, "GoroutinesInfo")
@@ -456,10 +454,11 @@ func TestMinidump(t *testing.T) {
 	fix := test.BuildFixture("sleep", buildFlags)
 	mdmpPath := procdump(t, fix.Path)
 
-	p, err := OpenCore(mdmpPath, fix.Path, []string{})
+	grp, err := OpenCore(mdmpPath, fix.Path, []string{})
 	if err != nil {
 		t.Fatalf("OpenCore: %v", err)
 	}
+	p := grp.Selected
 	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 	if err != nil || len(gs) == 0 {
 		t.Fatalf("GoroutinesInfo() = %v, %v; wanted at least one goroutine", gs, err)
@@ -505,12 +504,7 @@ func procdump(t *testing.T, exePath string) string {
 		t.Fatalf("possible error running procdump64, output: %q, error: %v", string(out), err)
 	}
 
-	dh, err := os.Open(exeDir)
-	if err != nil {
-		t.Fatalf("could not open executable file directory %q: %v", exeDir, err)
-	}
-	defer dh.Close()
-	fis, err := dh.Readdir(-1)
+	fis, err := os.ReadDir(exeDir)
 	if err != nil {
 		t.Fatalf("could not read executable file directory %q: %v", exeDir, err)
 	}

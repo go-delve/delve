@@ -3,6 +3,39 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.20.2] 2023-04-05
+
+### Added
+
+- New flag --rr-onprocess-pid to replay command (#3281, @jcpowermac)
+- Added documentation for watching arbitrary address (#3268, @felixge)
+- Allow extracting a DWARF entry field (#3258, @brancz)
+- Add SetLoggerFactory to terminal/logflags package (#3257, @blaubaer)
+- New config option for tab printing when printing source code (#3243, @thockin)
+- Added documentation for debugging Go runtime with Delve (#3234, @aarzilli)
+
+### Fixed
+
+- Fix printing boolean values in Starlark scripts (#3314, @vitalif)
+- Fix infinite recursion in escapeCheck (#3311, @aarzilli)
+- Support multiple functions with same name (#3297, @aarzilli)
+- Handle end_seq in dwarf/line correctly (#3277, @derekparker)
+- Fix calls into SYS_PROCESS_VM_READV/WRITEV syscalls (#3273, @aarzilli)
+- Fix exit status for trace subcommand (#3263, @derekparker)
+- Fix stripping DYLD_INSERT_LIBRARIES on macOS (#3245, @aviramha)
+- Fix handling of list colors via config (#3240, @derekparker)
+- Fixes to FreeBSD backend (#3224, @aarzilli)
+
+### Changed
+
+- Add limit to maximum time.Time we try and format (#3294, @aarzilli)
+- Add fuzzing tests to expression evaluator and variable loader (#3293, @aarzilli)
+- Removed some support for Go 1.12 and earlier (#3271, @aarzilli)
+- Moved util functions to dwarf package (#3252, @alexandear)
+- Attempt to load DW_AT_specification if present (#3247, @brancz)
+- Match go test behavior when dlv test gets list of go files (#3232, @aarzilli)
+- Populate Value field in pointer Variable (#3229, @andreimatei)
+
 ## [1.20.1] 2022-12-12
 
 ### Fixed

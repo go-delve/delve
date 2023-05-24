@@ -60,7 +60,7 @@ func ARM64Arch(goos string) *Arch {
 func arm64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryInfo) *frame.FrameContext {
 	a := bi.Arch
 	if a.sigreturnfn == nil {
-		a.sigreturnfn = bi.LookupFunc["runtime.sigreturn"]
+		a.sigreturnfn = bi.lookupOneFunc("runtime.sigreturn")
 	}
 
 	if fctxt == nil || (a.sigreturnfn != nil && pc >= a.sigreturnfn.Entry && pc < a.sigreturnfn.End) {
@@ -107,7 +107,7 @@ func arm64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Binary
 	}
 
 	if a.crosscall2fn == nil {
-		a.crosscall2fn = bi.LookupFunc["crosscall2"]
+		a.crosscall2fn = bi.lookupOneFunc("crosscall2")
 	}
 
 	if a.crosscall2fn != nil && pc >= a.crosscall2fn.Entry && pc < a.crosscall2fn.End {
@@ -211,8 +211,8 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 			it.top = false
 			it.systemstack = false
 			// The return value is stored in the LR register which is saved at 24(SP).
-			it.frame.addrret = uint64(int64(it.regs.SP()) + int64(it.bi.Arch.PtrSize()*3))
-			it.frame.Ret, _ = readUintRaw(it.mem, it.frame.addrret, int64(it.bi.Arch.PtrSize()))
+			addrret := uint64(int64(it.regs.SP()) + int64(it.bi.Arch.PtrSize()*3))
+			it.frame.Ret, _ = readUintRaw(it.mem, addrret, int64(it.bi.Arch.PtrSize()))
 			it.pc = it.frame.Ret
 
 			return true

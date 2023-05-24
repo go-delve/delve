@@ -98,17 +98,17 @@ type compositeMemory struct {
 
 // CreateCompositeMemory created a new composite memory type using the provided MemoryReadWriter as the
 // underlying memory buffer.
-func CreateCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters, pieces []op.Piece) (*compositeMemory, error) {
+func CreateCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters, pieces []op.Piece, size int64) (*compositeMemory, error) {
 	// This is basically a small wrapper to avoid having to change all callers
 	// of newCompositeMemory since it existed first.
-	cm, err := newCompositeMemory(mem, arch, regs, pieces)
+	cm, err := newCompositeMemory(mem, arch, regs, pieces, size)
 	if cm != nil {
 		cm.base = fakeAddressUnresolv
 	}
 	return cm, err
 }
 
-func newCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters, pieces []op.Piece) (*compositeMemory, error) {
+func newCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters, pieces []op.Piece, size int64) (*compositeMemory, error) {
 	cmem := &compositeMemory{realmem: mem, arch: arch, regs: regs, pieces: pieces, data: []byte{}}
 	for i := range pieces {
 		piece := &pieces[i]
@@ -146,6 +146,11 @@ func newCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters
 		default:
 			panic("unsupported piece kind")
 		}
+	}
+	paddingBytes := int(size) - len(cmem.data)
+	if paddingBytes > 0 && paddingBytes < arch.ptrSize {
+		padding := make([]byte, paddingBytes)
+		cmem.data = append(cmem.data, padding...)
 	}
 	return cmem, nil
 }

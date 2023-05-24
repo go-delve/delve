@@ -9,7 +9,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/go-delve/delve/pkg/dwarf/util"
+	"github.com/go-delve/delve/pkg/dwarf"
+	"github.com/go-delve/delve/pkg/dwarf/leb128"
 )
 
 type parsefunc func(*parseContext) parsefunc
@@ -123,10 +124,10 @@ func parseFDE(ctx *parseContext) parsefunc {
 	ctx.entries = append(ctx.entries, ctx.frame)
 
 	if ctx.parsingEHFrame() && len(ctx.frame.CIE.Augmentation) > 0 {
-		// If we are parsing a .eh_frame and we saw an agumentation string then we
+		// If we are parsing a .eh_frame and we saw an augmentation string then we
 		// need to read the augmentation data, which are encoded as a ULEB128
 		// size followed by 'size' bytes.
-		n, _ := util.DecodeULEB128(reader)
+		n, _ := leb128.DecodeUnsigned(reader)
 		reader.Seek(int64(n), io.SeekCurrent)
 	}
 
@@ -153,7 +154,7 @@ func parseCIE(ctx *parseContext) parsefunc {
 	ctx.common.Version, _ = buf.ReadByte()
 
 	// parse augmentation
-	ctx.common.Augmentation, _ = util.ParseString(buf)
+	ctx.common.Augmentation, _ = dwarf.ReadString(buf)
 
 	if ctx.parsingEHFrame() {
 		if ctx.common.Augmentation == "eh" {
@@ -165,23 +166,23 @@ func parseCIE(ctx *parseContext) parsefunc {
 	}
 
 	// parse code alignment factor
-	ctx.common.CodeAlignmentFactor, _ = util.DecodeULEB128(buf)
+	ctx.common.CodeAlignmentFactor, _ = leb128.DecodeUnsigned(buf)
 
 	// parse data alignment factor
-	ctx.common.DataAlignmentFactor, _ = util.DecodeSLEB128(buf)
+	ctx.common.DataAlignmentFactor, _ = leb128.DecodeSigned(buf)
 
 	// parse return address register
 	if ctx.parsingEHFrame() && ctx.common.Version == 1 {
 		b, _ := buf.ReadByte()
 		ctx.common.ReturnAddressRegister = uint64(b)
 	} else {
-		ctx.common.ReturnAddressRegister, _ = util.DecodeULEB128(buf)
+		ctx.common.ReturnAddressRegister, _ = leb128.DecodeUnsigned(buf)
 	}
 
 	ctx.common.ptrEncAddr = ptrEncAbs
 
 	if ctx.parsingEHFrame() && len(ctx.common.Augmentation) > 0 {
-		_, _ = util.DecodeULEB128(buf) // augmentation data length
+		_, _ = leb128.DecodeUnsigned(buf) // augmentation data length
 		for i := 1; i < len(ctx.common.Augmentation); i++ {
 			switch ctx.common.Augmentation[i] {
 			case 'L':
@@ -231,7 +232,7 @@ func parseCIE(ctx *parseContext) parsefunc {
 // The parameter addr is the address that the current byte of 'buf' will be
 // mapped to when the executable file containing the eh_frame section being
 // parse is loaded in memory.
-func (ctx *parseContext) readEncodedPtr(addr uint64, buf util.ByteReaderWithLen, ptrEnc ptrEnc) uint64 {
+func (ctx *parseContext) readEncodedPtr(addr uint64, buf leb128.Reader, ptrEnc ptrEnc) uint64 {
 	if ptrEnc == ptrEncOmit {
 		return 0
 	}
@@ -240,23 +241,23 @@ func (ctx *parseContext) readEncodedPtr(addr uint64, buf util.ByteReaderWithLen,
 
 	switch ptrEnc & 0xf {
 	case ptrEncAbs, ptrEncSigned:
-		ptr, _ = util.ReadUintRaw(buf, binary.LittleEndian, ctx.ptrSize)
+		ptr, _ = dwarf.ReadUintRaw(buf, binary.LittleEndian, ctx.ptrSize)
 	case ptrEncUleb:
-		ptr, _ = util.DecodeULEB128(buf)
+		ptr, _ = leb128.DecodeUnsigned(buf)
 	case ptrEncUdata2:
-		ptr, _ = util.ReadUintRaw(buf, binary.LittleEndian, 2)
+		ptr, _ = dwarf.ReadUintRaw(buf, binary.LittleEndian, 2)
 	case ptrEncSdata2:
-		ptr, _ = util.ReadUintRaw(buf, binary.LittleEndian, 2)
+		ptr, _ = dwarf.ReadUintRaw(buf, binary.LittleEndian, 2)
 		ptr = uint64(int16(ptr))
 	case ptrEncUdata4:
-		ptr, _ = util.ReadUintRaw(buf, binary.LittleEndian, 4)
+		ptr, _ = dwarf.ReadUintRaw(buf, binary.LittleEndian, 4)
 	case ptrEncSdata4:
-		ptr, _ = util.ReadUintRaw(buf, binary.LittleEndian, 4)
+		ptr, _ = dwarf.ReadUintRaw(buf, binary.LittleEndian, 4)
 		ptr = uint64(int32(ptr))
 	case ptrEncUdata8, ptrEncSdata8:
-		ptr, _ = util.ReadUintRaw(buf, binary.LittleEndian, 8)
+		ptr, _ = dwarf.ReadUintRaw(buf, binary.LittleEndian, 8)
 	case ptrEncSleb:
-		n, _ := util.DecodeSLEB128(buf)
+		n, _ := leb128.DecodeSigned(buf)
 		ptr = uint64(n)
 	}
 

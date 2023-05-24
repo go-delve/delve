@@ -1571,7 +1571,14 @@ func (scope *EvalScope) evalPointerDeref(node *ast.StarExpr) (*Variable, error) 
 		xev.Children[0].OnlyAddr = false
 		return &(xev.Children[0]), nil
 	}
-	rv := xev.maybeDereference()
+	xev.loadPtr()
+	if xev.Unreadable != nil {
+		val, ok := constant.Uint64Val(xev.Value)
+		if ok && val == 0 {
+			return nil, fmt.Errorf("couldn't read pointer: %w", xev.Unreadable)
+		}
+	}
+	rv := &xev.Children[0]
 	if rv.Addr == 0 {
 		return nil, fmt.Errorf("nil pointer dereference")
 	}
@@ -2273,8 +2280,8 @@ func (v *Variable) findMethod(mname string) (*Variable, error) {
 
 		//TODO(aarzilli): support generic functions?
 
-		if fn, ok := v.bi.LookupFunc[fmt.Sprintf("%s.%s.%s", pkg, receiver, mname)]; ok {
-			r, err := functionToVariable(fn, v.bi, v.mem)
+		if fns := v.bi.LookupFunc()[fmt.Sprintf("%s.%s.%s", pkg, receiver, mname)]; len(fns) == 1 {
+			r, err := functionToVariable(fns[0], v.bi, v.mem)
 			if err != nil {
 				return nil, err
 			}
@@ -2286,8 +2293,8 @@ func (v *Variable) findMethod(mname string) (*Variable, error) {
 			return r, nil
 		}
 
-		if fn, ok := v.bi.LookupFunc[fmt.Sprintf("%s.(*%s).%s", pkg, receiver, mname)]; ok {
-			r, err := functionToVariable(fn, v.bi, v.mem)
+		if fns := v.bi.LookupFunc()[fmt.Sprintf("%s.(*%s).%s", pkg, receiver, mname)]; len(fns) == 1 {
+			r, err := functionToVariable(fns[0], v.bi, v.mem)
 			if err != nil {
 				return nil, err
 			}

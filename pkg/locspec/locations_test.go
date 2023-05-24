@@ -1,7 +1,6 @@
 package locspec
 
 import (
-	"runtime"
 	"testing"
 )
 
@@ -69,16 +68,13 @@ func TestFunctionLocationParsing(t *testing.T) {
 }
 
 func assertSubstitutePathEqual(t *testing.T, expected string, substituted string) {
+	t.Helper()
 	if expected != substituted {
-		t.Fatalf("Expected substitutedPath to be %s got %s instead", expected, substituted)
+		t.Errorf("Expected substitutedPath to be %s got %s instead", expected, substituted)
 	}
 }
 
 func TestSubstitutePathUnix(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Skipping unix SubstitutePath test in windows")
-	}
-
 	// Relative paths mapping
 	assertSubstitutePathEqual(t, "/my/asb/folder/relative/path", SubstitutePath("relative/path", [][2]string{{"", "/my/asb/folder/"}}))
 	assertSubstitutePathEqual(t, "/already/abs/path", SubstitutePath("/already/abs/path", [][2]string{{"", "/my/asb/folder/"}}))
@@ -99,25 +95,97 @@ func TestSubstitutePathUnix(t *testing.T) {
 }
 
 func TestSubstitutePathWindows(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("Skipping windows SubstitutePath test in unix")
-	}
-
 	// Relative paths mapping
 	assertSubstitutePathEqual(t, "c:\\my\\asb\\folder\\relative\\path", SubstitutePath("relative\\path", [][2]string{{"", "c:\\my\\asb\\folder\\"}}))
-	assertSubstitutePathEqual(t, "f:\\already\\abs\\path", SubstitutePath("F:\\already\\abs\\path", [][2]string{{"", "c:\\my\\asb\\folder\\"}}))
+	assertSubstitutePathEqual(t, "F:\\already\\abs\\path", SubstitutePath("F:\\already\\abs\\path", [][2]string{{"", "c:\\my\\asb\\folder\\"}}))
 	assertSubstitutePathEqual(t, "relative\\path", SubstitutePath("C:\\my\\asb\\folder\\relative\\path", [][2]string{{"c:\\my\\asb\\folder\\", ""}}))
-	assertSubstitutePathEqual(t, "f:\\another\\folder\\relative\\path", SubstitutePath("F:\\another\\folder\\relative\\path", [][2]string{{"c:\\my\\asb\\folder\\", ""}}))
+	assertSubstitutePathEqual(t, "F:\\another\\folder\\relative\\path", SubstitutePath("F:\\another\\folder\\relative\\path", [][2]string{{"c:\\my\\asb\\folder\\", ""}}))
 	assertSubstitutePathEqual(t, "my\\path", SubstitutePath("relative\\path\\my\\path", [][2]string{{"relative\\path", ""}}))
 	assertSubstitutePathEqual(t, "c:\\abs\\my\\path", SubstitutePath("c:\\abs\\my\\path", [][2]string{{"abs\\my", ""}}))
 
 	// Absolute paths mapping
 	assertSubstitutePathEqual(t, "c:\\new\\mapping\\path", SubstitutePath("D:\\original\\path", [][2]string{{"d:\\original", "c:\\new\\mapping"}}))
-	assertSubstitutePathEqual(t, "f:\\no\\change\\path", SubstitutePath("F:\\no\\change\\path", [][2]string{{"d:\\original", "c:\\new\\mapping"}}))
+	assertSubstitutePathEqual(t, "F:\\no\\change\\path", SubstitutePath("F:\\no\\change\\path", [][2]string{{"d:\\original", "c:\\new\\mapping"}}))
 	assertSubstitutePathEqual(t, "c:\\folder\\should_not_be_replaced\\path", SubstitutePath("c:\\folder\\should_not_be_replaced\\path", [][2]string{{"should_not_be_replaced", ""}}))
 
 	// Mix absolute and relative mapping
 	assertSubstitutePathEqual(t, "c:\\new\\mapping\\path", SubstitutePath("D:\\original\\path", [][2]string{{"", "c:\\my\\asb\\folder\\"}, {"c:\\my\\asb\\folder\\", ""}, {"d:\\original", "c:\\new\\mapping"}}))
 	assertSubstitutePathEqual(t, "c:\\my\\asb\\folder\\path\\", SubstitutePath("path\\", [][2]string{{"d:\\original", "c:\\new\\mapping"}, {"", "c:\\my\\asb\\folder\\"}, {"c:\\my\\asb\\folder\\", ""}}))
 	assertSubstitutePathEqual(t, "path", SubstitutePath("C:\\my\\asb\\folder\\path", [][2]string{{"d:\\original", "c:\\new\\mapping"}, {"c:\\my\\asb\\folder\\", ""}, {"", "c:\\my\\asb\\folder\\"}}))
+}
+
+type tRule struct {
+	from string
+	to   string
+}
+
+type tCase struct {
+	rules []tRule
+	path  string
+	res   string
+}
+
+func platformCases() []tCase {
+	casesUnix := []tCase{
+		// Should not depend on separator at the end of rule path
+		{[]tRule{{"/tmp/path", "/new/path2"}}, "/tmp/path/file.go", "/new/path2/file.go"},
+		{[]tRule{{"/tmp/path/", "/new/path2/"}}, "/tmp/path/file.go", "/new/path2/file.go"},
+		{[]tRule{{"/tmp/path/", "/new/path2"}}, "/tmp/path/file.go", "/new/path2/file.go"},
+		{[]tRule{{"/tmp/path", "/new/path2/"}}, "/tmp/path/file.go", "/new/path2/file.go"},
+		// Should apply to directory prefixes
+		{[]tRule{{"/tmp/path", "/new/path2"}}, "/tmp/path-2/file.go", "/tmp/path-2/file.go"},
+		// Should apply to exact matches
+		{[]tRule{{"/tmp/path/file.go", "/new/path2/file2.go"}}, "/tmp/path/file.go", "/new/path2/file2.go"},
+		// First matched rule should be used
+		{[]tRule{
+			{"/tmp/path1", "/new/path1"},
+			{"/tmp/path2", "/new/path2"},
+			{"/tmp/path2", "/new/path3"}}, "/tmp/path2/file.go", "/new/path2/file.go"},
+	}
+	casesLinux := []tCase{
+		// Should be case-sensitive
+		{[]tRule{{"/tmp/path", "/new/path2"}}, "/TmP/path/file.go", "/TmP/path/file.go"},
+	}
+	casesFreebsd := []tCase{
+		// Should be case-sensitive
+		{[]tRule{{"/tmp/path", "/new/path2"}}, "/TmP/path/file.go", "/TmP/path/file.go"},
+	}
+	casesDarwin := []tCase{
+		// Can be either case-sensitive or case-insensitive depending on
+		// filesystem settings, we always treat it as case-sensitive.
+		{[]tRule{{"/tmp/path", "/new/path2"}}, "/TmP/PaTh/file.go", "/TmP/PaTh/file.go"},
+	}
+	casesWindows := []tCase{
+		// Should not depend on separator at the end of rule path
+		{[]tRule{{`c:\tmp\path`, `d:\new\path2`}}, `c:\tmp\path\file.go`, `d:\new\path2\file.go`},
+		{[]tRule{{`c:\tmp\path\`, `d:\new\path2\`}}, `c:\tmp\path\file.go`, `d:\new\path2\file.go`},
+		{[]tRule{{`c:\tmp\path`, `d:\new\path2\`}}, `c:\tmp\path\file.go`, `d:\new\path2\file.go`},
+		{[]tRule{{`c:\tmp\path\`, `d:\new\path2`}}, `c:\tmp\path\file.go`, `d:\new\path2/file.go`},
+		// Should apply to directory prefixes
+		{[]tRule{{`c:\tmp\path`, `d:\new\path2`}}, `c:\tmp\path-2\file.go`, `c:\tmp\path-2\file.go`},
+		// Should apply to exact matches
+		{[]tRule{{`c:\tmp\path\file.go`, `d:\new\path2\file2.go`}}, `c:\tmp\path\file.go`, `d:\new\path2\file2.go`},
+		// Should be case-insensitive
+		{[]tRule{{`c:\tmp\path`, `d:\new\path2`}}, `C:\TmP\PaTh\file.go`, `d:\new\path2\file.go`},
+	}
+
+	r := append(casesUnix, casesLinux...)
+	r = append(r, casesFreebsd...)
+	r = append(r, casesDarwin...)
+	r = append(r, casesWindows...)
+
+	return r
+}
+
+func TestSubstitutePath(t *testing.T) {
+	for _, c := range platformCases() {
+		subRules := [][2]string{}
+		for _, r := range c.rules {
+			subRules = append(subRules, [2]string{r.from, r.to})
+		}
+		res := SubstitutePath(c.path, subRules)
+		if c.res != res {
+			t.Errorf("terminal.SubstitutePath(%q) => %q, want %q", c.path, res, c.res)
+		}
+	}
 }

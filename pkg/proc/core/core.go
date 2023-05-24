@@ -14,7 +14,7 @@ import (
 // ErrNoThreads core file did not contain any threads.
 var ErrNoThreads = errors.New("no threads found in core file")
 
-// A splicedMemory represents a memory space formed from multiple regions,
+// A SplicedMemory represents a memory space formed from multiple regions,
 // each of which may override previously regions. For example, in the following
 // core, the program text was loaded at 0x400000:
 // Start               End                 Page Offset
@@ -29,7 +29,7 @@ var ErrNoThreads = errors.New("no threads found in core file")
 //
 // This can be represented in a SplicedMemory by adding the original region,
 // then putting the RW mapping on top of it.
-type splicedMemory struct {
+type SplicedMemory struct {
 	readers []readerEntry
 }
 
@@ -40,7 +40,7 @@ type readerEntry struct {
 }
 
 // Add adds a new region to the SplicedMemory, which may override existing regions.
-func (r *splicedMemory) Add(reader proc.MemoryReader, off, length uint64) {
+func (r *SplicedMemory) Add(reader proc.MemoryReader, off, length uint64) {
 	if length == 0 {
 		return
 	}
@@ -100,7 +100,7 @@ func (r *splicedMemory) Add(reader proc.MemoryReader, off, length uint64) {
 }
 
 // ReadMemory implements MemoryReader.ReadMemory.
-func (r *splicedMemory) ReadMemory(buf []byte, addr uint64) (n int, err error) {
+func (r *SplicedMemory) ReadMemory(buf []byte, addr uint64) (n int, err error) {
 	started := false
 	for _, entry := range r.readers {
 		if entry.offset+entry.length <= addr {
@@ -201,10 +201,10 @@ var openFns = []openFn{readLinuxOrPlatformIndependentCore, readAMD64Minidump}
 // any of the supported formats.
 var ErrUnrecognizedFormat = errors.New("unrecognized core format")
 
-// OpenCore will open the core file and return a Process struct.
+// OpenCore will open the core file and return a *proc.TargetGroup.
 // If the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.Target, error) {
+func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.TargetGroup, error) {
 	var p *process
 	var currentThread proc.Thread
 	var err error
@@ -222,14 +222,13 @@ func OpenCore(corePath, exePath string, debugInfoDirs []string) (*proc.Target, e
 		return nil, ErrNoThreads
 	}
 
-	return proc.NewTarget(p, p.pid, currentThread, proc.NewTargetConfig{
-		Path:                exePath,
+	grp, addTarget := proc.NewGroup(p, proc.NewTargetGroupConfig{
 		DebugInfoDirs:       debugInfoDirs,
 		DisableAsyncPreempt: false,
-		StopReason:          proc.StopAttached,
 		CanDump:             false,
-		ContinueOnce:        continueOnce,
 	})
+	_, err = addTarget(p, p.pid, currentThread, exePath, proc.StopAttached, "")
+	return grp, err
 }
 
 // BinInfo will return the binary info.
@@ -308,6 +307,11 @@ func (p *process) ReadMemory(data []byte, addr uint64) (n int, err error) {
 // to the memory of a core process.
 func (p *process) WriteMemory(addr uint64, data []byte) (int, error) {
 	return 0, ErrWriteCore
+}
+
+// FollowExec enables (or disables) follow exec mode
+func (p *process) FollowExec(bool) error {
+	return nil
 }
 
 // ProcessMemory returns the memory of this thread's process.
@@ -419,7 +423,7 @@ func (p *process) ClearInternalBreakpoints() error {
 	return nil
 }
 
-func continueOnce(procs []proc.ProcessInternal, cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
+func (*process) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
 	return nil, proc.StopUnknown, ErrContinueCore
 }
 

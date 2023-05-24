@@ -20,7 +20,7 @@ func NewCompositeMemory(p *Target, pieces []op.Piece, base uint64) (*compositeMe
 	dwarfregs := arch.RegistersToDwarfRegisters(0, regs)
 	dwarfregs.ChangeFunc = p.CurrentThread().SetReg
 
-	mem, err := newCompositeMemory(p.Memory(), arch, *dwarfregs, pieces)
+	mem, err := newCompositeMemory(p.Memory(), arch, *dwarfregs, pieces, 0)
 	if mem != nil {
 		mem.base = base
 	}

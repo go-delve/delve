@@ -20,7 +20,7 @@ dlv debug [package] [flags]
 ```
       --continue        Continue the debugged process on start.
   -h, --help            help for debug
-      --output string   Output path for the binary. (default "./__debug_bin")
+      --output string   Output path for the binary.
       --tty string      TTY to use for the target program
 ```
 

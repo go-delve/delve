@@ -806,7 +806,7 @@ func Test1ClientServer_FullStacktrace(t *testing.T) {
 func Test1Issue355(t *testing.T) {
 	// After the target process has terminated should return an error but not crash
 	withTestClient1("continuetestprog", t, func(c *rpc1.RPCClient) {
-		bp, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: -1})
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi", Line: -1})
 		assertNoError(err, t, "CreateBreakpoint()")
 		ch := c.Continue()
 		state := <-ch
@@ -835,10 +835,6 @@ func Test1Issue355(t *testing.T) {
 		assertErrorOrExited(s, err, t, "SwitchGoroutine()")
 		s, err = c.Halt()
 		assertErrorOrExited(s, err, t, "Halt()")
-		_, err = c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main", Line: -1})
-		assertError(err, t, "CreateBreakpoint()")
-		_, err = c.ClearBreakpoint(bp.ID)
-		assertError(err, t, "ClearBreakpoint()")
 		_, err = c.ListThreads()
 		assertError(err, t, "ListThreads()")
 		_, err = c.GetThread(tid)
@@ -862,7 +858,7 @@ func Test1Issue355(t *testing.T) {
 }
 
 func Test1Disasm(t *testing.T) {
-	// Tests that disassembling by PC, range, and current PC all yeld similar results
+	// Tests that disassembling by PC, range, and current PC all yield similar results
 	// Tests that disassembly by current PC will return a disassembly containing the instruction at PC
 	// Tests that stepping on a calculated CALL instruction will yield a disassembly that contains the
 	// effective destination of the CALL instruction

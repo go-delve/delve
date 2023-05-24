@@ -81,6 +81,9 @@ func ConfigureSetSimple(rest string, cfgname string, field reflect.Value) error 
 			}
 			return reflect.ValueOf(&n), nil
 		case reflect.Bool:
+			if rest != "true" && rest != "false" {
+				return reflect.ValueOf(nil), fmt.Errorf("argument to %q must be true or false", cfgname)
+			}
 			v := rest == "true"
 			return reflect.ValueOf(&v), nil
 		case reflect.String:

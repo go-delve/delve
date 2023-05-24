@@ -38,19 +38,16 @@ const (
 type Target struct {
 	Process
 
-	proc         ProcessInternal
-	recman       RecordingManipulationInternal
-	continueOnce ContinueOnceFunc
+	proc   ProcessInternal
+	recman RecordingManipulationInternal
 
-	pid int
+	pid     int
+	CmdLine string
 
 	// StopReason describes the reason why the target process is stopped.
 	// A process could be stopped for multiple simultaneous reasons, in which
 	// case only one will be reported.
 	StopReason StopReason
-
-	// CanDump is true if core dumping is supported.
-	CanDump bool
 
 	// currentThread is the thread that will be used by next/step/stepout and to evaluate variables if no goroutine is selected.
 	currentThread Thread
@@ -148,18 +145,6 @@ const (
 	StopWatchpoint                     // The target process hit one or more watchpoints
 )
 
-type ContinueOnceFunc func([]ProcessInternal, *ContinueOnceContext) (trapthread Thread, stopReason StopReason, err error)
-
-// NewTargetConfig contains the configuration for a new Target object,
-type NewTargetConfig struct {
-	Path                string     // path of the main executable
-	DebugInfoDirs       []string   // Directories to search for split debug info
-	DisableAsyncPreempt bool       // Go 1.14 asynchronous preemption should be disabled
-	StopReason          StopReason // Initial stop reason
-	CanDump             bool       // Can create core dumps (must implement ProcessInternal.MemoryMap)
-	ContinueOnce        ContinueOnceFunc
-}
-
 // DisableAsyncPreemptEnv returns a process environment (like os.Environ)
 // where asyncpreemptoff is set to 1.
 func DisableAsyncPreemptEnv() []string {
@@ -174,15 +159,15 @@ func DisableAsyncPreemptEnv() []string {
 	return env
 }
 
-// NewTarget returns an initialized Target object.
+// newTarget returns an initialized Target object.
 // The p argument can optionally implement the RecordingManipulation interface.
-func NewTarget(p ProcessInternal, pid int, currentThread Thread, cfg NewTargetConfig) (*Target, error) {
+func (grp *TargetGroup) newTarget(p ProcessInternal, pid int, currentThread Thread, path, cmdline string) (*Target, error) {
 	entryPoint, err := p.EntryPoint()
 	if err != nil {
 		return nil, err
 	}
 
-	err = p.BinInfo().LoadBinaryInfo(cfg.Path, entryPoint, cfg.DebugInfoDirs)
+	err = p.BinInfo().LoadBinaryInfo(path, entryPoint, grp.cfg.DebugInfoDirs)
 	if err != nil {
 		return nil, err
 	}
@@ -196,11 +181,9 @@ func NewTarget(p ProcessInternal, pid int, currentThread Thread, cfg NewTargetCo
 		Process:       p,
 		proc:          p,
 		fncallForG:    make(map[int64]*callInjection),
-		StopReason:    cfg.StopReason,
 		currentThread: currentThread,
-		CanDump:       cfg.CanDump,
 		pid:           pid,
-		continueOnce:  cfg.ContinueOnce,
+		CmdLine:       cmdline,
 	}
 
 	if recman, ok := p.(RecordingManipulationInternal); ok {
@@ -212,6 +195,7 @@ func NewTarget(p ProcessInternal, pid int, currentThread Thread, cfg NewTargetCo
 	g, _ := GetG(currentThread)
 	t.selectedGoroutine = g
 
+	t.Breakpoints().Logical = grp.LogicalBreakpoints
 	t.createUnrecoveredPanicBreakpoint()
 	t.createFatalThrowBreakpoint()
 	t.createPluginOpenBreakpoint()
@@ -219,7 +203,7 @@ func NewTarget(p ProcessInternal, pid int, currentThread Thread, cfg NewTargetCo
 	t.gcache.init(p.BinInfo())
 	t.fakeMemoryRegistryMap = make(map[string]*compositeMemory)
 
-	if cfg.DisableAsyncPreempt {
+	if grp.cfg.DisableAsyncPreempt {
 		setAsyncPreemptOff(t, 1)
 	}
 
@@ -470,7 +454,7 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 		v.Kind = ip.Kind
 
 		cachedMem := CreateLoadedCachedMemory(ip.Data)
-		compMem, _ := CreateCompositeMemory(cachedMem, t.BinInfo().Arch, op.DwarfRegisters{}, ip.Pieces)
+		compMem, _ := CreateCompositeMemory(cachedMem, t.BinInfo().Arch, op.DwarfRegisters{}, ip.Pieces, ip.RealType.Common().ByteSize)
 		v.mem = compMem
 
 		// Load the value here so that we don't have to export
@@ -522,7 +506,7 @@ const (
 // This caching is primarily done so that registerized variables don't get a
 // different address every time they are evaluated, which would be confusing
 // and leak memory.
-func (t *Target) newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters, pieces []op.Piece, descr *locationExpr) (int64, *compositeMemory, error) {
+func (t *Target) newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters, pieces []op.Piece, descr *locationExpr, size int64) (int64, *compositeMemory, error) {
 	var key string
 	if regs.CFA != 0 && len(pieces) > 0 {
 		// key is created by concatenating the location expression with the CFA,
@@ -537,7 +521,7 @@ func (t *Target) newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters
 		}
 	}
 
-	cmem, err := newCompositeMemory(mem, t.BinInfo().Arch, regs, pieces)
+	cmem, err := newCompositeMemory(mem, t.BinInfo().Arch, regs, pieces, size)
 	if err != nil {
 		return 0, cmem, err
 	}
@@ -605,7 +589,7 @@ func (t *Target) dwrapUnwrap(fn *Function) *Function {
 	return fn
 }
 
-func (t *Target) pluginOpenCallback(Thread) bool {
+func (t *Target) pluginOpenCallback(Thread, *Target) (bool, error) {
 	logger := logflags.DebuggerLogger()
 	for _, lbp := range t.Breakpoints().Logical {
 		if isSuspended(t, lbp) {
@@ -617,7 +601,7 @@ func (t *Target) pluginOpenCallback(Thread) bool {
 			}
 		}
 	}
-	return false
+	return false, nil
 }
 
 func isSuspended(t *Target, lbp *LogicalBreakpoint) bool {

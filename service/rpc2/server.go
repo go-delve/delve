@@ -253,7 +253,7 @@ type CreateBreakpointOut struct {
 }
 
 // CreateBreakpoint creates a new breakpoint. The client is expected to populate `CreateBreakpointIn`
-// with an `api.Breakpoint` struct describing where to set the breakpoing. For more information on
+// with an `api.Breakpoint` struct describing where to set the breakpoint. For more information on
 // how to properly request a breakpoint via the `api.Breakpoint` struct see the documentation for
 // `debugger.CreateBreakpoint` here: https://pkg.go.dev/github.com/go-delve/delve/service/debugger#Debugger.CreateBreakpoint.
 func (s *RPCServer) CreateBreakpoint(arg CreateBreakpointIn, out *CreateBreakpointOut) error {
@@ -1031,5 +1031,68 @@ type BuildIDOut struct {
 
 func (s *RPCServer) BuildID(arg BuildIDIn, out *BuildIDOut) error {
 	out.BuildID = s.debugger.BuildID()
+	return nil
+}
+
+type ListTargetsIn struct {
+}
+
+type ListTargetsOut struct {
+	Targets []api.Target
+}
+
+// ListTargets returns the list of targets we are currently attached to.
+func (s *RPCServer) ListTargets(arg ListTargetsIn, out *ListTargetsOut) error {
+	s.debugger.LockTarget()
+	defer s.debugger.UnlockTarget()
+	out.Targets = []api.Target{}
+	for _, tgt := range s.debugger.TargetGroup().Targets() {
+		if _, err := tgt.Valid(); err == nil {
+			out.Targets = append(out.Targets, *api.ConvertTarget(tgt, s.debugger.ConvertThreadBreakpoint))
+		}
+	}
+	return nil
+}
+
+type FollowExecIn struct {
+	Enable bool
+	Regex  string
+}
+
+type FollowExecOut struct {
+}
+
+// FollowExec enables or disables follow exec mode.
+func (s *RPCServer) FollowExec(arg FollowExecIn, out *FollowExecOut) error {
+	return s.debugger.FollowExec(arg.Enable, arg.Regex)
+}
+
+type FollowExecEnabledIn struct {
+}
+
+type FollowExecEnabledOut struct {
+	Enabled bool
+}
+
+// FollowExecEnabled returns true if follow exec mode is enabled.
+func (s *RPCServer) FollowExecEnabled(arg FollowExecEnabledIn, out *FollowExecEnabledOut) error {
+	out.Enabled = s.debugger.FollowExecEnabled()
+	return nil
+}
+
+type DebugInfoDirectoriesIn struct {
+	Set  bool
+	List []string
+}
+
+type DebugInfoDirectoriesOut struct {
+	List []string
+}
+
+func (s *RPCServer) DebugInfoDirectories(arg DebugInfoDirectoriesIn, out *DebugInfoDirectoriesOut) error {
+	if arg.Set {
+		s.debugger.SetDebugInfoDirectories(arg.List)
+	}
+	out.List = s.debugger.DebugInfoDirectories()
 	return nil
 }

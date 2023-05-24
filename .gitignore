@@ -3,6 +3,7 @@
 tags
 .dbg_history
 **/**/dlv
+!cmd/dlv/
 .vagrant
 **/*.swp
 localtests

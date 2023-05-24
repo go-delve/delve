@@ -64,7 +64,6 @@ type traceProgramSpecs struct {
 type traceMapSpecs struct {
 	ArgMap *ebpf.MapSpec `ebpf:"arg_map"`
 	Events *ebpf.MapSpec `ebpf:"events"`
-	Heap   *ebpf.MapSpec `ebpf:"heap"`
 }
 
 // traceObjects contains all objects after they have been loaded into the kernel.
@@ -88,14 +87,12 @@ func (o *traceObjects) Close() error {
 type traceMaps struct {
 	ArgMap *ebpf.Map `ebpf:"arg_map"`
 	Events *ebpf.Map `ebpf:"events"`
-	Heap   *ebpf.Map `ebpf:"heap"`
 }
 
 func (m *traceMaps) Close() error {
 	return _TraceClose(
 		m.ArgMap,
 		m.Events,
-		m.Heap,
 	)
 }
 

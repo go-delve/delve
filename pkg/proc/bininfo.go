@@ -23,18 +23,17 @@ import (
 	"sync"
 	"time"
 
+	pdwarf "github.com/go-delve/delve/pkg/dwarf"
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/line"
 	"github.com/go-delve/delve/pkg/dwarf/loclist"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
-	"github.com/go-delve/delve/pkg/dwarf/util"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc/debuginfod"
 	"github.com/hashicorp/golang-lru/simplelru"
-	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -52,7 +51,7 @@ type BinaryInfo struct {
 	// GOOS operating system this binary is executing on.
 	GOOS string
 
-	debugInfoDirectories []string
+	DebugInfoDirectories []string
 
 	// BuildID of this binary.
 	BuildID string
@@ -61,8 +60,8 @@ type BinaryInfo struct {
 	Functions []Function
 	// Sources is a list of all source files found in debug_line.
 	Sources []string
-	// LookupFunc maps function names to a description of the function.
-	LookupFunc map[string]*Function
+	// lookupFunc maps function names to a description of the function.
+	lookupFunc map[string][]*Function
 	// lookupGenericFunc maps function names, with their type parameters removed, to functions.
 	// Functions that are not generic are not added to this map.
 	lookupGenericFunc map[string][]*Function
@@ -111,7 +110,7 @@ type BinaryInfo struct {
 	// Go 1.17 register ABI is enabled.
 	regabi bool
 
-	logger *logrus.Entry
+	logger logflags.Logger
 }
 
 var (
@@ -312,8 +311,8 @@ func allInlineCallRanges(tree *godwarf.Tree) []inlRange {
 
 // FindFunction returns the functions with name funcName.
 func (bi *BinaryInfo) FindFunction(funcName string) ([]*Function, error) {
-	if fn := bi.LookupFunc[funcName]; fn != nil {
-		return []*Function{fn}, nil
+	if fns := bi.LookupFunc()[funcName]; fns != nil {
+		return fns, nil
 	}
 	fns := bi.LookupGenericFunc()[funcName]
 	if len(fns) == 0 {
@@ -394,7 +393,7 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 }
 
 func findRetPC(t *Target, name string) ([]uint64, error) {
-	fn := t.BinInfo().LookupFunc[name]
+	fn := t.BinInfo().lookupOneFunc(name)
 	if fn == nil {
 		return nil, fmt.Errorf("could not find %s", name)
 	}
@@ -677,7 +676,7 @@ func (bi *BinaryInfo) LoadBinaryInfo(path string, entryPoint uint64, debugInfoDi
 		bi.lastModified = fi.ModTime()
 	}
 
-	bi.debugInfoDirectories = debugInfoDirs
+	bi.DebugInfoDirectories = debugInfoDirs
 
 	return bi.AddImage(path, entryPoint)
 }
@@ -901,6 +900,13 @@ func (bi *BinaryInfo) typeToImage(typ godwarf.Type) *Image {
 	return bi.Images[typ.Common().Index]
 }
 
+func (bi *BinaryInfo) runtimeTypeTypename() string {
+	if goversion.ProducerAfterOrEqual(bi.Producer(), 1, 21) {
+		return "internal/abi.Type"
+	}
+	return "runtime._type"
+}
+
 var errBinaryInfoClose = errors.New("multiple errors closing executable files")
 
 // Close closes all internal readers.
@@ -944,7 +950,7 @@ func (image *Image) Close() error {
 	return err2
 }
 
-func (image *Image) setLoadError(logger *logrus.Entry, fmtstr string, args ...interface{}) {
+func (image *Image) setLoadError(logger logflags.Logger, fmtstr string, args ...interface{}) {
 	image.loadErrMu.Lock()
 	image.loadErr = fmt.Errorf(fmtstr, args...)
 	image.loadErrMu.Unlock()
@@ -1397,7 +1403,7 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 	if err != nil {
 		var sepFile *os.File
 		var serr error
-		sepFile, dwarfFile, serr = bi.openSeparateDebugInfo(image, elfFile, bi.debugInfoDirectories)
+		sepFile, dwarfFile, serr = bi.openSeparateDebugInfo(image, elfFile, bi.DebugInfoDirectories)
 		if serr != nil {
 			return serr
 		}
@@ -1586,7 +1592,7 @@ func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.
 	}
 }
 
-func getSymbol(image *Image, logger *logrus.Entry, exe *elf.File, name string) *elf.Symbol {
+func getSymbol(image *Image, logger logflags.Logger, exe *elf.File, name string) *elf.Symbol {
 	symbols, err := exe.Symbols()
 	if err != nil {
 		image.setLoadError(logger, "could not parse ELF symbols: %v", err)
@@ -1899,8 +1905,8 @@ func (bi *BinaryInfo) macOSDebugFrameBugWorkaround() {
 
 // Do not call this function directly it isn't able to deal correctly with package paths
 func (bi *BinaryInfo) findType(name string) (godwarf.Type, error) {
-	name = strings.Replace(name, "interface{", "interface {", -1)
-	name = strings.Replace(name, "struct{", "struct {", -1)
+	name = strings.ReplaceAll(name, "interface{", "interface {")
+	name = strings.ReplaceAll(name, "struct{", "struct {")
 	ref, found := bi.types[name]
 	if !found {
 		return nil, reader.ErrTypeNotFound
@@ -2029,7 +2035,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 
 	image.runtimeTypeToDIE = make(map[uint64]runtimeTypeDIE)
 
-	ctxt := newLoadDebugInfoMapsContext(bi, image, util.ReadUnitVersions(debugInfoBytes))
+	ctxt := newLoadDebugInfoMapsContext(bi, image, pdwarf.ReadUnitVersions(debugInfoBytes))
 
 	reader := image.DwarfReader()
 
@@ -2069,11 +2075,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 			if hasLineInfo && lineInfoOffset >= 0 && lineInfoOffset < int64(len(debugLineBytes)) {
 				var logfn func(string, ...interface{})
 				if logflags.DebugLineErrors() {
-					logger := logrus.New().WithFields(logrus.Fields{"layer": "dwarf-line"})
-					logger.Logger.Level = logrus.DebugLevel
-					logfn = func(fmt string, args ...interface{}) {
-						logger.Printf(fmt, args)
-					}
+					logfn = logflags.DebugLineLogger().Printf
 				}
 				cu.lineInfo = line.Parse(compdir, bytes.NewBuffer(debugLineBytes[lineInfoOffset:]), image.debugLineStr, logfn, image.StaticBase, bi.GOOS == "windows", bi.Arch.PtrSize())
 			}
@@ -2096,7 +2098,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 			}
 			gopkg, _ := entry.Val(godwarf.AttrGoPackageName).(string)
 			if cu.isgo && gopkg != "" {
-				bi.PackageMap[gopkg] = append(bi.PackageMap[gopkg], escapePackagePath(strings.Replace(cu.name, "\\", "/", -1)))
+				bi.PackageMap[gopkg] = append(bi.PackageMap[gopkg], escapePackagePath(strings.ReplaceAll(cu.name, "\\", "/")))
 			}
 			image.compileUnits = append(image.compileUnits, cu)
 			if entry.Children {
@@ -2116,11 +2118,8 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 	sort.Sort(functionsDebugInfoByEntry(bi.Functions))
 	sort.Sort(packageVarsByAddr(bi.packageVars))
 
-	bi.LookupFunc = make(map[string]*Function)
+	bi.lookupFunc = nil
 	bi.lookupGenericFunc = nil
-	for i := range bi.Functions {
-		bi.LookupFunc[bi.Functions[i].Name] = &bi.Functions[i]
-	}
 
 	for _, cu := range image.compileUnits {
 		if cu.lineInfo != nil {
@@ -2134,14 +2133,15 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 
 	if bi.regabi {
 		// prepare patch for runtime.mallocgc's DIE
-		fn := bi.LookupFunc["runtime.mallocgc"]
+		fn := bi.lookupOneFunc("runtime.mallocgc")
 		if fn != nil && fn.cu.image == image {
 			tree, err := image.getDwarfTree(fn.offset)
 			if err == nil {
-				tree.Children, err = regabiMallocgcWorkaround(bi)
+				children, err := regabiMallocgcWorkaround(bi)
 				if err != nil {
-					bi.logger.Errorf("could not patch runtime.mallogc: %v", err)
+					bi.logger.Errorf("could not patch runtime.mallocgc: %v", err)
 				} else {
+					tree.Children = children
 					image.runtimeMallocgcTree = tree
 				}
 			}
@@ -2169,6 +2169,25 @@ func (bi *BinaryInfo) LookupGenericFunc() map[string][]*Function {
 		}
 	}
 	return bi.lookupGenericFunc
+}
+
+func (bi *BinaryInfo) LookupFunc() map[string][]*Function {
+	if bi.lookupFunc == nil {
+		bi.lookupFunc = make(map[string][]*Function)
+		for i := range bi.Functions {
+			name := bi.Functions[i].Name
+			bi.lookupFunc[name] = append(bi.lookupFunc[name], &bi.Functions[i])
+		}
+	}
+	return bi.lookupFunc
+}
+
+func (bi *BinaryInfo) lookupOneFunc(name string) *Function {
+	fns := bi.LookupFunc()[name]
+	if fns == nil {
+		return nil
+	}
+	return fns[0]
 }
 
 // loadDebugInfoMapsCompileUnit loads entry from a single compile unit.
@@ -2217,7 +2236,7 @@ func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContex
 				var addr uint64
 				if loc, ok := entry.Val(dwarf.AttrLocation).([]byte); ok {
 					if len(loc) == bi.Arch.PtrSize()+1 && op.Opcode(loc[0]) == op.DW_OP_addr {
-						addr, _ = util.ReadUintRaw(bytes.NewReader(loc[1:]), binary.LittleEndian, bi.Arch.PtrSize())
+						addr, _ = pdwarf.ReadUintRaw(bytes.NewReader(loc[1:]), binary.LittleEndian, bi.Arch.PtrSize())
 					}
 				}
 				if !cu.isgo {
@@ -2515,7 +2534,7 @@ func escapePackagePath(pkg string) string {
 	if slash < 0 {
 		slash = 0
 	}
-	return pkg[:slash] + strings.Replace(pkg[slash:], ".", "%2e", -1)
+	return pkg[:slash] + strings.ReplaceAll(pkg[slash:], ".", "%2e")
 }
 
 // Looks up symbol (either functions or global variables) at address addr.
@@ -2566,7 +2585,7 @@ func (bi *BinaryInfo) ListPackagesBuildInfo(includeFiles bool) []*PackageBuildIn
 			continue
 		}
 
-		ip := strings.Replace(cu.name, "\\", "/", -1)
+		ip := strings.ReplaceAll(cu.name, "\\", "/")
 		if _, ok := m[ip]; !ok {
 			path := cu.lineInfo.FirstFile()
 			if ext := filepath.Ext(path); ext != ".go" && ext != ".s" {

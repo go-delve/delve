@@ -284,7 +284,7 @@ func TestSessionStop(t *testing.T) {
 			defer client.Close()
 			<-acceptDone
 			if err != nil {
-				t.Fatalf("cannot accept client requireed for testing: %v", err)
+				t.Fatalf("cannot accept client required for testing: %v", err)
 			}
 			session := NewSession(conn, &Config{
 				Config:        &service.Config{DisconnectChan: make(chan struct{})},
@@ -726,7 +726,7 @@ func TestPreSetBreakpoint(t *testing.T) {
 		if len(tResp.Body.Threads) < 2 { // 1 main + runtime
 			t.Errorf("\ngot  %#v\nwant len(Threads)>1", tResp.Body.Threads)
 		}
-		reMain, _ := regexp.Compile(`\* \[Go 1\] main.Increment \(Thread [0-9]+\)`)
+		reMain := regexp.MustCompile(`\* \[Go 1\] main.Increment \(Thread [0-9]+\)`)
 		wantMain := dap.Thread{Id: 1, Name: "* [Go 1] main.Increment (Thread ...)"}
 		wantRuntime := dap.Thread{Id: 2, Name: "[Go 2] runtime.gopark"}
 		for _, got := range tResp.Body.Threads {
@@ -962,7 +962,7 @@ func checkStackFramesNamed(testName string, t *testing.T, got *dap.StackTraceRes
 
 // checkScope is a helper for verifying the values within a ScopesResponse.
 //
-//	i - index of the scope within ScopesRespose.Body.Scopes array
+//	i - index of the scope within ScopesResponse.Body.Scopes array
 //	name - name of the scope
 //	varRef - reference to retrieve variables of this scope. If varRef is negative, the reference is not checked.
 func checkScope(t *testing.T, got *dap.ScopesResponse, i int, name string, varRef int) {
@@ -1668,7 +1668,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
 					if len(scopes.Body.Scopes) > 1 {
-						t.Errorf("\ngot  %#v\nwant len(scopes)=1 (Argumes & Locals)", scopes)
+						t.Errorf("\ngot  %#v\nwant len(scopes)=1 (Arguments & Locals)", scopes)
 					}
 					checkScope(t, scopes, 0, "Locals", localsScope)
 
@@ -1920,15 +1920,7 @@ func TestScopesRequestsOptimized(t *testing.T) {
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
 
-					startLineno := 66
-					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
-						// Go1.15 on windows inserts a NOP after the call to
-						// runtime.Breakpoint and marks it same line as the
-						// runtime.Breakpoint call, making this flaky, so skip the line check.
-						startLineno = -1
-					}
-
-					checkStackFramesExact(t, stack, "main.foobar", startLineno, 1000, 4, 4)
+					checkStackFramesExact(t, stack, "main.foobar", -1, 1000, 4, 4)
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
@@ -2107,7 +2099,7 @@ func TestVariablesLoading(t *testing.T) {
 							checkChildren(t, c1sa, "c1.sa", 3)
 							ref = checkVarRegex(t, c1sa, 0, `\[0\]`, `c1\.sa\[0\]`, `\*\(\*main\.astruct\)\(0x[0-9a-f]+\)`, `\*main\.astruct`, hasChildren)
 							if ref > 0 {
-								// Auto-loading of fully missing struc children happens here
+								// Auto-loading of fully missing struct children happens here
 								client.VariablesRequest(ref)
 								c1sa0 := client.ExpectVariablesResponse(t)
 								checkChildren(t, c1sa0, "c1.sa[0]", 1)
@@ -2117,7 +2109,7 @@ func TestVariablesLoading(t *testing.T) {
 						}
 					}
 
-					// Fully missing struct auto-loaded when hitting LoadConfig.MaxVariableRecurse (also tests evaluteName corner case)
+					// Fully missing struct auto-loaded when hitting LoadConfig.MaxVariableRecurse (also tests evaluateName corner case)
 					ref = checkVarRegex(t, locals, -1, "aas", "aas", `\[\]main\.a len: 1, cap: 1, \[{aas: \[\]main\.a len: 1, cap: 1, \[\(\*main\.a\)\(0x[0-9a-f]+\)\]}\]`, `\[\]main\.a`, hasChildren)
 					if ref > 0 {
 						client.VariablesRequest(ref)
@@ -2154,7 +2146,7 @@ func TestVariablesLoading(t *testing.T) {
 						checkChildren(t, tm, "tm", 1)
 						ref = checkVarExact(t, tm, 0, "v", "tm.v", "[]map[string]main.astruct len: 1, cap: 1, [[...]]", "[]map[string]main.astruct", hasChildren)
 						if ref > 0 {
-							// Auto-loading of fully missing map chidlren happens here, but they get trancated at MaxArrayValuess
+							// Auto-loading of fully missing map chidlren happens here, but they get truncated at MaxArrayValuess
 							client.VariablesRequest(ref)
 							tmV := client.ExpectVariablesResponse(t)
 							checkChildren(t, tmV, "tm.v", 1)
@@ -3432,6 +3424,9 @@ func TestHaltPreventsAutoResume(t *testing.T) {
 // goroutine is hit the correct number of times and log points set in the
 // children goroutines produce the correct number of output events.
 func TestConcurrentBreakpointsLogPoints(t *testing.T) {
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
+		t.Skip("broken")
+	}
 	tests := []struct {
 		name        string
 		fixture     string
@@ -3680,7 +3675,7 @@ func TestLaunchSubstitutePath(t *testing.T) {
 // in the launch configuration to take care of the mapping.
 func TestAttachSubstitutePath(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("test skipped on windows, see https://delve.beta.teamcity.com/project/Delve_windows for details")
+		t.Skip("test skipped on Windows, see https://delve.teamcity.com/project/Delve_windows for details")
 	}
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		cmd := execFixture(t, fixture)
@@ -4029,6 +4024,9 @@ Type 'dlv help' followed by a command for full documentation.
 					checkEval(t, got, msgConfig, noChildren)
 
 					// Test config.
+					client.EvaluateRequest("dlv config", 1000, "repl")
+					client.ExpectErrorResponse(t)
+
 					client.EvaluateRequest("dlv config -list", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
 					checkEval(t, got, formatConfig(50, false, false, "", false, [][2]string{}), noChildren)
@@ -4166,7 +4164,7 @@ func TestVariableValueTruncation(t *testing.T) {
 
 					// Compound map keys may be truncated even further
 					// As the keys are always inside of a map container,
-					// this applies to variables requests only, not evalute requests.
+					// this applies to variables requests only, not evaluate requests.
 
 					// key - compound, value - scalar (inlined key:value display) => truncate key if too long
 					ref := checkVarExact(t, locals, -1, "m5", "m5", "map[main.C]int [{s: "+longstr+"}: 1, ]", "map[main.C]int", hasChildren)
@@ -4652,7 +4650,7 @@ func testNextParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 			// ok
 		case *dap.TerminatedEvent:
 			// This is very unlikely to happen. But in theory if all sayhi
-			// gouritines are run serially, there will never be a second parked
+			// goroutines are run serially, there will never be a second parked
 			// sayhi goroutine when another breaks and we will keep trying
 			// until process termination.
 			return -1
@@ -5232,7 +5230,7 @@ func TestLaunchDebugRequest(t *testing.T) {
 	<-done
 	os.Stderr = rescueStderr
 
-	rmErrRe, _ := regexp.Compile(`could not remove .*\n`)
+	rmErrRe := regexp.MustCompile(`could not remove .*\n`)
 	rmErr := rmErrRe.FindString(string(err))
 	if rmErr != "" {
 		// On Windows, a file in use cannot be removed, resulting in "Access is denied".
@@ -5694,7 +5692,7 @@ func TestLaunchRequestWithEnv(t *testing.T) {
 
 func TestAttachRequest(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("test skipped on windows, see https://delve.beta.teamcity.com/project/Delve_windows for details")
+		t.Skip("test skipped on Windows, see https://delve.teamcity.com/project/Delve_windows for details")
 	}
 	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
 		// Start the program to attach to
@@ -5774,7 +5772,7 @@ func TestPauseAndContinue(t *testing.T) {
 	})
 }
 
-func TestUnupportedCommandResponses(t *testing.T) {
+func TestUnsupportedCommandResponses(t *testing.T) {
 	var got *dap.ErrorResponse
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		seqCnt := 1
@@ -6722,7 +6720,7 @@ func (s *MultiClientCloseServerMock) acceptNewClient(t *testing.T) *daptest.Clie
 func (s *MultiClientCloseServerMock) stop(t *testing.T) {
 	close(s.forceStop)
 	// If the server doesn't have an active session,
-	// closing it would leak the debbuger with the target because
+	// closing it would leak the debugger with the target because
 	// they are part of dap.Session.
 	// We must take it down manually as if we are in rpccommon::ServerImpl::Stop.
 	if s.debugger.IsRunning() {
@@ -6738,8 +6736,8 @@ func (s *MultiClientCloseServerMock) verifyStopped(t *testing.T) {
 	verifyServerStopped(t, s.impl)
 }
 
-// TestAttachRemoteMultiClientDisconnect tests that that remote attach doesn't take down
-// the server in multi-client mode unless terminateDebuggee is explicitely set.
+// TestAttachRemoteMultiClientDisconnect tests that remote attach doesn't take down
+// the server in multi-client mode unless terminateDebuggee is explicitly set.
 func TestAttachRemoteMultiClientDisconnect(t *testing.T) {
 	closingClientSessionOnly := fmt.Sprintf(daptest.ClosingClient, "halted")
 	detachingAndTerminating := "Detaching and terminating target process"
@@ -6814,7 +6812,7 @@ func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 				// Both launch and attach requests should go through for additional error checking
 				client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 100})
 				er := client.ExpectVisibleErrorResponse(t)
-				msgRe, _ := regexp.Compile("Failed to attach: debug session already in progress at [0-9]+:[0-9]+ - use remote mode to connect to a server with an active debug session")
+				msgRe := regexp.MustCompile("Failed to attach: debug session already in progress at [0-9]+:[0-9]+ - use remote mode to connect to a server with an active debug session")
 				if er.Body.Error.Id != FailedToAttach || msgRe.MatchString(er.Body.Error.Format) {
 					t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToAttach, msgRe)
 				}
@@ -6823,7 +6821,7 @@ func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 					t.Run(mode, func(t *testing.T) {
 						client.LaunchRequestWithArgs(map[string]interface{}{"mode": mode})
 						er := client.ExpectVisibleErrorResponse(t)
-						msgRe, _ := regexp.Compile("Failed to launch: debug session already in progress at [0-9]+:[0-9]+ - use remote attach mode to connect to a server with an active debug session")
+						msgRe := regexp.MustCompile("Failed to launch: debug session already in progress at [0-9]+:[0-9]+ - use remote attach mode to connect to a server with an active debug session")
 						if er.Body.Error.Id != FailedToLaunch || msgRe.MatchString(er.Body.Error.Format) {
 							t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToLaunch, msgRe)
 						}
@@ -7044,7 +7042,7 @@ func TestDisassemble(t *testing.T) {
 						t.Errorf("\ngot %#v\nwant instructions[1].Address = %s", dr, pc)
 					}
 
-					// Request zero instrutions.
+					// Request zero instructions.
 					client.DisassembleRequest(pc, 0, 0)
 					dr = client.ExpectDisassembleResponse(t)
 					if len(dr.Body.Instructions) != 0 {

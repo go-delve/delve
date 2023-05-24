@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/cosiner/argv"
 	"github.com/go-delve/delve/pkg/config"
@@ -144,8 +145,9 @@ See also: "help on", "help cond" and "help clear"`},
 The memory location is specified with the same expression language used by 'print', for example:
 
 	watch v
+	watch -w *(*int)(0x1400007c018)
 
-will watch the address of variable 'v'.
+will watch the address of variable 'v' and writes to an int at addr '0x1400007c018'.
 
 Note that writes that do not change the value of the watched memory address might not be reported.
 
@@ -248,9 +250,14 @@ To only display goroutines where the specified location contains (or does not co
 	goroutines -w (userloc|curloc|goloc|startloc) expr
 	goroutines -without (userloc|curloc|goloc|startloc) expr
 	goroutines -wo (userloc|curloc|goloc|startloc) expr
+
+	Where:
+	userloc: filter by the location of the topmost stackframe in user code
+	curloc: filter by the location of the topmost stackframe (including frames inside private runtime functions)
+	goloc: filter by the location of the go instruction that created the goroutine
+	startloc: filter by the location of the start function
 	
 To only display goroutines that have (or do not have) the specified label key and value, use:
-	
 
 	goroutines -with label key=value
 	goroutines -without label key=value
@@ -274,6 +281,15 @@ To only display user (or runtime) goroutines, use:
 GROUPING
 
 	goroutines -group (userloc|curloc|goloc|startloc|running|user)
+
+	Where:
+	userloc: groups goroutines by the location of the topmost stackframe in user code
+	curloc: groups goroutines by the location of the topmost stackframe
+	goloc: groups goroutines by the location of the go instruction that created the goroutine
+	startloc: groups goroutines by the location of the start function
+	running: groups goroutines by whether they are running or not
+	user: groups goroutines by weather they are user or runtime goroutines
+
 
 Groups goroutines by the given location, running status or user classification, up to 5 goroutines per group will be displayed as well as the total number of goroutines in the group.
 
@@ -475,7 +491,7 @@ With the -hitcount option a condition on the breakpoint hit count can be set, th
 
 The -per-g-hitcount option works like -hitcount, but use per goroutine hitcount to compare with n.
 
-With the -clear option a condtion on the breakpoint can removed.
+With the -clear option a condition on the breakpoint can removed.
 	
 The '% n' form means we should stop at the breakpoint when the hitcount is a multiple of n.
 
@@ -501,13 +517,23 @@ Changes the value of a configuration parameter.
 
 	config substitute-path <from> <to>
 	config substitute-path <from>
+	config substitute-path -clear
 
-Adds or removes a path substitution rule.
+Adds or removes a path substitution rule, if -clear is used all
+substitute-path rules are removed. Without arguments shows the current list
+of substitute-path rules.
+See also Documentation/cli/substitutepath.md for how the rules are applied.
 
 	config alias <command> <alias>
 	config alias <alias>
 
-Defines <alias> as an alias to <command> or removes an alias.`},
+Defines <alias> as an alias to <command> or removes an alias.
+
+	config debug-info-directories -add <path>
+	config debug-info-directories -rm <path>
+	config debug-info-directories -clear
+
+Adds, removes or clears debug-info-directories.`},
 
 		{aliases: []string{"edit", "ed"}, cmdFn: edit, helpMsg: `Open where you are in $DELVE_EDITOR or $EDITOR
 
@@ -558,6 +584,20 @@ The core dump is always written in ELF, even on systems (windows, macOS) where t
 Output of Delve's command is appended to the specified output file. If '-t' is specified and the output file exists it is truncated. If '-x' is specified output to stdout is suppressed instead.
 
 Using the -off option disables the transcript.`},
+
+		{aliases: []string{"target"}, cmdFn: target, helpMsg: `Manages child process debugging.
+
+	target follow-exec [-on [regex]] [-off]
+
+Enables or disables follow exec mode. When follow exec mode Delve will automatically attach to new child processes executed by the target process. An optional regular expression can be passed to 'target follow-exec', only child processes with a command line matching the regular expression will be followed.
+
+	target list
+
+List currently attached processes.
+
+	target switch [pid]
+
+Switches to the specified process.`},
 	}
 
 	addrecorded := client == nil
@@ -1211,6 +1251,7 @@ func parseOptionalCount(arg string) (int64, error) {
 }
 
 func restartLive(t *Term, ctx callContext, args string) error {
+	t.oldPid = 0
 	resetArgs, newArgv, newRedirects, err := parseNewArgv(args)
 	if err != nil {
 		return err
@@ -1753,14 +1794,18 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 	}
 	if findLocErr != nil && shouldAskToSuspendBreakpoint(t) {
 		fmt.Fprintf(os.Stderr, "Command failed: %s\n", findLocErr.Error())
-		findLocErr = nil
-		answer, err := yesno(t.line, "Set a suspended breakpoint (Delve will try to set this breakpoint when a plugin is loaded) [Y/n]?")
+		question := "Set a suspended breakpoint (Delve will try to set this breakpoint when a plugin is loaded) [Y/n]?"
+		if isErrProcessExited(findLocErr) {
+			question = "Set a suspended breakpoint (Delve will try to set this breakpoint when the process is restarted) [Y/n]?"
+		}
+		answer, err := yesno(t.line, question, "yes")
 		if err != nil {
 			return nil, err
 		}
 		if !answer {
 			return nil, nil
 		}
+		findLocErr = nil
 		bp, err := t.client.CreateBreakpointWithExpr(requestedBp, spec, t.substitutePathRules(), true)
 		if err != nil {
 			return nil, err
@@ -2517,6 +2562,12 @@ func printcontext(t *Term, state *api.DebuggerState) {
 		return
 	}
 
+	if state.Pid != t.oldPid {
+		if t.oldPid != 0 {
+			fmt.Fprintf(t.stdout, "Switch target process from %d to %d (%s)\n", t.oldPid, state.Pid, state.TargetCommandLine)
+		}
+		t.oldPid = state.Pid
+	}
 	for i := range state.Threads {
 		if (state.CurrentThread != nil) && (state.Threads[i].ID == state.CurrentThread.ID) {
 			continue
@@ -2706,6 +2757,10 @@ func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 }
 
 func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, args string, hasReturnValue bool) {
+	if t.conf.TraceShowTimestamp {
+		fmt.Fprintf(t.stdout, "%s ", time.Now().Format(time.RFC3339Nano))
+	}
+
 	if th.Breakpoint.Tracepoint {
 		fmt.Fprintf(t.stdout, "> goroutine(%d): %s%s(%s)\n", th.GoroutineID, bpname, fn.Name(), args)
 		printBreakpointInfo(t, th, !hasReturnValue)
@@ -3172,6 +3227,71 @@ func transcript(t *Term, ctx callContext, args string) error {
 	return nil
 }
 
+func target(t *Term, ctx callContext, args string) error {
+	argv := config.Split2PartsBySpace(args)
+	switch argv[0] {
+	case "list":
+		tgts, err := t.client.ListTargets()
+		if err != nil {
+			return err
+		}
+		w := new(tabwriter.Writer)
+		w.Init(t.stdout, 4, 4, 2, ' ', 0)
+		for _, tgt := range tgts {
+			selected := ""
+			if tgt.Pid == t.oldPid {
+				selected = "*"
+			}
+			fmt.Fprintf(w, "%s\t%d\t%s\n", selected, tgt.Pid, tgt.CmdLine)
+		}
+		w.Flush()
+		return nil
+	case "follow-exec":
+		if len(argv) == 1 {
+			return errors.New("not enough arguments")
+		}
+		argv = config.Split2PartsBySpace(argv[1])
+		switch argv[0] {
+		case "-on":
+			var regex string
+			if len(argv) == 2 {
+				regex = argv[1]
+			}
+			t.client.FollowExec(true, regex)
+		case "-off":
+			if len(argv) > 1 {
+				return errors.New("too many arguments")
+			}
+			t.client.FollowExec(false, "")
+		default:
+			return fmt.Errorf("unknown argument %q to 'target follow-exec'", argv[0])
+		}
+		return nil
+	case "switch":
+		tgts, err := t.client.ListTargets()
+		if err != nil {
+			return err
+		}
+		pid, err := strconv.Atoi(argv[1])
+		if err != nil {
+			return err
+		}
+		found := false
+		for _, tgt := range tgts {
+			if tgt.Pid == pid {
+				found = true
+				t.client.SwitchThread(tgt.CurrentThread.ID)
+			}
+		}
+		if !found {
+			return fmt.Errorf("could not find target %d", pid)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unknown command 'target %s'", argv[0])
+	}
+}
+
 func formatBreakpointName(bp *api.Breakpoint, upcase bool) string {
 	thing := "breakpoint"
 	if bp.Tracepoint {
@@ -3220,5 +3340,6 @@ func (t *Term) formatBreakpointLocation(bp *api.Breakpoint) string {
 
 func shouldAskToSuspendBreakpoint(t *Term) bool {
 	fns, _ := t.client.ListFunctions(`^plugin\.Open$`)
-	return len(fns) > 0
+	_, err := t.client.GetState()
+	return len(fns) > 0 || isErrProcessExited(err) || t.client.FollowExecEnabled()
 }

@@ -299,17 +299,6 @@ func TestConfigureSetSubstitutePath(t *testing.T) {
 		},
 		// Test invalid input.
 		{
-			name: "error on empty args",
-			args: args{
-				args: &launchAttachArgs{
-					substitutePathClientToServer: [][2]string{},
-					substitutePathServerToClient: [][2]string{},
-				},
-				rest: "  \n\r   ",
-			},
-			wantErr: true,
-		},
-		{
 			name: "error on delete nonexistent rule",
 			args: args{
 				args: &launchAttachArgs{

@@ -23,8 +23,8 @@ func TestScopeWithEscapedVariable(t *testing.T) {
 		return
 	}
 
-	withTestProcess("scopeescapevareval", t, func(p *proc.Target, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue")
+	withTestProcess("scopeescapevareval", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), t, "Continue")
 
 		// On the breakpoint there are two 'a' variables in scope, the one that
 		// isn't shadowed is a variable that escapes to the heap and figures in
@@ -72,7 +72,7 @@ func TestScope(t *testing.T) {
 
 	scopeChecks := getScopeChecks(scopetestPath, t)
 
-	withTestProcess("scopetest", t, func(p *proc.Target, fixture protest.Fixture) {
+	withTestProcess("scopetest", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		for i := range scopeChecks {
 			setFileBreakpoint(p, t, fixture.Source, scopeChecks[i].line)
 		}
@@ -80,7 +80,7 @@ func TestScope(t *testing.T) {
 		t.Logf("%d breakpoints set", len(scopeChecks))
 
 		for {
-			if err := p.Continue(); err != nil {
+			if err := grp.Continue(); err != nil {
 				if _, exited := err.(proc.ErrProcessExited); exited {
 					break
 				}
@@ -293,7 +293,7 @@ func (varCheck *varCheck) checkInScope(line int, scope *proc.EvalScope, t *testi
 
 func (varCheck *varCheck) check(line int, v *proc.Variable, t *testing.T, ctxt string) {
 	typ := v.DwarfType.String()
-	typ = strings.Replace(typ, " ", "", -1)
+	typ = strings.ReplaceAll(typ, " ", "")
 	if typ != varCheck.typ {
 		t.Errorf("%d: wrong type for %s (%s), got %s, expected %s", line, v.Name, ctxt, typ, varCheck.typ)
 	}

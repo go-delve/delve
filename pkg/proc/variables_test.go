@@ -50,7 +50,7 @@ func matchStringOrPrefix(output, target string) bool {
 	}
 }
 
-func assertVariable(t *testing.T, variable *proc.Variable, expected varTest) {
+func assertVariable(t testing.TB, variable *proc.Variable, expected varTest) {
 	if expected.preserveName {
 		if variable.Name != expected.name {
 			t.Fatalf("Expected %s got %s\n", expected.name, variable.Name)
@@ -140,8 +140,8 @@ func TestVariableEvaluation2(t *testing.T) {
 	}
 
 	protest.AllowRecording(t)
-	withTestProcess("testvariables", t, func(p *proc.Target, fixture protest.Fixture) {
-		err := p.Continue()
+	withTestProcess("testvariables", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		err := grp.Continue()
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
@@ -198,8 +198,8 @@ func TestSetVariable(t *testing.T) {
 		{"s3", "[]int", "[]int len: 3, cap: 3, [3,4,5]", "arr1[:]", "[]int len: 4, cap: 4, [0,1,2,3]"},
 	}
 
-	withTestProcess("testvariables2", t, func(p *proc.Target, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue()")
+	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), t, "Continue()")
 
 		for _, tc := range testcases {
 			if tc.name == "iface1" && tc.expr == "parr" {
@@ -212,7 +212,7 @@ func TestSetVariable(t *testing.T) {
 			assertNoError(err, t, "EvalVariable()")
 			assertVariable(t, variable, varTest{tc.name, true, tc.startVal, "", tc.typ, nil})
 
-			assertNoError(setVariable(p, tc.name, tc.expr), t, "SetVariable()")
+			assertNoError(setVariable(p, tc.name, tc.expr), t, fmt.Sprintf("SetVariable(%q, %q)", tc.name, tc.expr))
 
 			variable, err = evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 			assertNoError(err, t, "EvalVariable()")
@@ -267,8 +267,8 @@ func TestVariableEvaluationShort(t *testing.T) {
 	}
 
 	protest.AllowRecording(t)
-	withTestProcess("testvariables", t, func(p *proc.Target, fixture protest.Fixture) {
-		err := p.Continue()
+	withTestProcess("testvariables", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		err := grp.Continue()
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
@@ -323,8 +323,8 @@ func TestMultilineVariableEvaluation(t *testing.T) {
 	}
 
 	protest.AllowRecording(t)
-	withTestProcess("testvariables", t, func(p *proc.Target, fixture protest.Fixture) {
-		err := p.Continue()
+	withTestProcess("testvariables", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		err := grp.Continue()
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
@@ -399,8 +399,8 @@ func TestLocalVariables(t *testing.T) {
 	}
 
 	protest.AllowRecording(t)
-	withTestProcess("testvariables", t, func(p *proc.Target, fixture protest.Fixture) {
-		err := p.Continue()
+	withTestProcess("testvariables", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		err := grp.Continue()
 		assertNoError(err, t, "Continue() returned an error")
 
 		for _, tc := range testcases {
@@ -436,7 +436,7 @@ func TestLocalVariables(t *testing.T) {
 
 func TestEmbeddedStruct(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestProcess("testvariables2", t, func(p *proc.Target, fixture protest.Fixture) {
+	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		testcases := []varTest{
 			{"b.val", true, "-314", "-314", "int", nil},
 			{"b.A.val", true, "-314", "-314", "int", nil},
@@ -460,7 +460,7 @@ func TestEmbeddedStruct(t *testing.T) {
 			{"w4.F", false, ``, ``, "", errors.New("w4 has no member F")},
 			{"w5.F", false, ``, ``, "", errors.New("w5 has no member F")},
 		}
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(grp.Continue(), t, "Continue()")
 
 		ver, _ := goversion.Parse(runtime.Version())
 		if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
@@ -491,8 +491,8 @@ func TestEmbeddedStruct(t *testing.T) {
 }
 
 func TestComplexSetting(t *testing.T) {
-	withTestProcess("testvariables", t, func(p *proc.Target, fixture protest.Fixture) {
-		err := p.Continue()
+	withTestProcess("testvariables", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		err := grp.Continue()
 		assertNoError(err, t, "Continue() returned an error")
 
 		h := func(setExpr, value string) {
@@ -511,7 +511,7 @@ func TestComplexSetting(t *testing.T) {
 	})
 }
 
-func TestEvalExpression(t *testing.T) {
+func getEvalExpressionTestCases() []varTest {
 	testcases := []varTest{
 		// slice/array/string subscript
 		{"s1[0]", false, "\"one\"", "\"one\"", "string", nil},
@@ -558,6 +558,7 @@ func TestEvalExpression(t *testing.T) {
 		{"ch1", true, "chan int 4/11", "chan int 4/11", "chan int", nil},
 		{"chnil", true, "chan int nil", "chan int nil", "chan int", nil},
 		{"ch1+1", false, "", "", "", fmt.Errorf("can not convert 1 constant to chan int")},
+		{"int3chan.buf", false, "*[5]main.ThreeInts [{a: 1, b: 0, c: 0},{a: 2, b: 0, c: 0},{a: 3, b: 0, c: 0},{a: 0, b: 0, c: 0},{a: 0, b: 0, c: 0}]", "(*[5]main.ThreeInts)(…", "*[5]main.ThreeInts", nil},
 
 		// maps
 		{"m1[\"Malone\"]", false, "main.astruct {A: 2, B: 3}", "main.astruct {A: 2, B: 3}", "main.astruct", nil},
@@ -795,6 +796,7 @@ func TestEvalExpression(t *testing.T) {
 		// pretty printing special types
 		{"tim1", false, `time.Time(1977-05-25T18:00:00Z)…`, `time.Time(1977-05-25T18:00:00Z)…`, "time.Time", nil},
 		{"tim2", false, `time.Time(2022-06-07T02:03:04-06:00)…`, `time.Time(2022-06-07T02:03:04-06:00)…`, "time.Time", nil},
+		{"tim3", false, `time.Time {…`, `time.Time {…`, "time.Time", nil},
 
 		// issue #3034 - map access with long string key
 		{`m6["very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"]`, false, `123`, `123`, "int", nil},
@@ -829,6 +831,9 @@ func TestEvalExpression(t *testing.T) {
 
 		// Conversions to ptr-to-ptr types
 		{`**(**runtime.hmap)(uintptr(&m1))`, false, `…`, `…`, "runtime.hmap", nil},
+
+		// Malformed values
+		{`badslice`, false, `(unreadable non-zero length array with nil base)`, `(unreadable non-zero length array with nil base)`, "[]int", nil},
 	}
 
 	ver, _ := goversion.Parse(runtime.Version())
@@ -841,11 +846,17 @@ func TestEvalExpression(t *testing.T) {
 		}
 	}
 
+	return testcases
+}
+
+func TestEvalExpression(t *testing.T) {
+	testcases := getEvalExpressionTestCases()
 	protest.AllowRecording(t)
-	withTestProcess("testvariables2", t, func(p *proc.Target, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), t, "Continue() returned an error")
 		for i, tc := range testcases {
 			t.Run(strconv.Itoa(i), func(t *testing.T) {
+				t.Logf("%q", tc.name)
 				variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 				if err != nil && err.Error() == "evaluating methods not supported on this version of Go" {
 					// this type of eval is unsupported with the current version of Go.
@@ -872,8 +883,8 @@ func TestEvalExpression(t *testing.T) {
 
 func TestEvalAddrAndCast(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestProcess("testvariables2", t, func(p *proc.Target, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), t, "Continue() returned an error")
 		c1addr, err := evalVariableWithCfg(p, "&c1", pnormalLoadConfig)
 		assertNoError(err, t, "EvalExpression(&c1)")
 		c1addrstr := api.ConvertVar(c1addr).SinglelineString()
@@ -899,8 +910,8 @@ func TestEvalAddrAndCast(t *testing.T) {
 
 func TestMapEvaluation(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestProcess("testvariables2", t, func(p *proc.Target, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), t, "Continue() returned an error")
 		m1v, err := evalVariableWithCfg(p, "m1", pnormalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
 		m1 := api.ConvertVar(m1v)
@@ -941,8 +952,8 @@ func TestMapEvaluation(t *testing.T) {
 
 func TestUnsafePointer(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestProcess("testvariables2", t, func(p *proc.Target, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), t, "Continue() returned an error")
 		up1v, err := evalVariableWithCfg(p, "up1", pnormalLoadConfig)
 		assertNoError(err, t, "EvalVariable(up1)")
 		up1 := api.ConvertVar(up1v)
@@ -979,8 +990,8 @@ func TestIssue426(t *testing.T) {
 	// Serialization of type expressions (go/ast.Expr) containing anonymous structs or interfaces
 	// differs from the serialization used by the linker to produce DWARF type information
 	protest.AllowRecording(t)
-	withTestProcess("testvariables2", t, func(p *proc.Target, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), t, "Continue() returned an error")
 		for _, testcase := range testcases {
 			v, err := evalVariableWithCfg(p, testcase.name, pnormalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", testcase.name))
@@ -1051,11 +1062,6 @@ func TestPackageRenames(t *testing.T) {
 		{"amap2", true, "interface {}(*map[go/ast.BadExpr]net/http.Request) *[{From: 2, To: 3}: *{Method: \"othermethod\", …", "", "interface {}", nil},
 	}
 
-	testcases1_8 := []varTest{
-		// before 1.9 embedded struct fields have fieldname == type
-		{"astruct2", true, `interface {}(*struct { github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType; X int }) *{github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType: github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType {X: 1, Y: 2}, X: 10}`, "", "interface {}", nil},
-	}
-
 	testcases1_9 := []varTest{
 		{"astruct2", true, `interface {}(*struct { github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType; X int }) *{SomeType: github.com/go-delve/delve/_fixtures/internal/dir1/pkg.SomeType {X: 1, Y: 2}, X: 10}`, "", "interface {}", nil},
 	}
@@ -1070,15 +1076,11 @@ func TestPackageRenames(t *testing.T) {
 	}
 
 	protest.AllowRecording(t)
-	withTestProcess("pkgrenames", t, func(p *proc.Target, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+	withTestProcess("pkgrenames", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), t, "Continue() returned an error")
 		testPackageRenamesHelper(t, p, testcases)
 
-		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 9) {
-			testPackageRenamesHelper(t, p, testcases1_9)
-		} else {
-			testPackageRenamesHelper(t, p, testcases1_8)
-		}
+		testPackageRenamesHelper(t, p, testcases1_9)
 
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 13) {
 			testPackageRenamesHelper(t, p, testcases1_13)
@@ -1110,8 +1112,8 @@ func TestConstants(t *testing.T) {
 		// Not supported on 1.9 or earlier
 		t.Skip("constants added in go 1.10")
 	}
-	withTestProcess("consts", t, func(p *proc.Target, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue")
+	withTestProcess("consts", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), t, "Continue")
 		for _, testcase := range testcases {
 			variable, err := evalVariableWithCfg(p, testcase.name, pnormalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", testcase.name))
@@ -1121,9 +1123,9 @@ func TestConstants(t *testing.T) {
 }
 
 func TestIssue1075(t *testing.T) {
-	withTestProcess("clientdo", t, func(p *proc.Target, fixture protest.Fixture) {
+	withTestProcess("clientdo", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "net/http.(*Client).Do")
-		assertNoError(p.Continue(), t, "Continue()")
+		assertNoError(grp.Continue(), t, "Continue()")
 		for i := 0; i < 10; i++ {
 			scope, err := proc.GoroutineScope(p, p.CurrentThread())
 			assertNoError(err, t, fmt.Sprintf("GoroutineScope (%d)", i))
@@ -1265,13 +1267,13 @@ func TestCallFunction(t *testing.T) {
 		{`regabistacktest("one", "two", "three", "four", "five", 4)`, []string{`:string:"onetwo"`, `:string:"twothree"`, `:string:"threefour"`, `:string:"fourfive"`, `:string:"fiveone"`, ":uint8:8"}, nil},
 		{`regabistacktest2(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)`, []string{":int:3", ":int:5", ":int:7", ":int:9", ":int:11", ":int:13", ":int:15", ":int:17", ":int:19", ":int:11"}, nil},
 		{`issue2698.String()`, []string{`:string:"1 2 3 4"`}, nil},
+		{`issue3364.String()`, []string{`:string:"1 2"`}, nil},
 		{`regabistacktest3(rast3, 5)`, []string{`:[10]string:[10]string ["onetwo","twothree","threefour","fourfive","fivesix","sixseven","sevenheight","heightnine","nineten","tenone"]`, ":uint8:15"}, nil},
 		{`floatsum(1, 2)`, []string{":float64:3"}, nil},
 	}
 
-	withTestProcessArgs("fncall", t, ".", nil, protest.AllNonOptimized, func(p *proc.Target, fixture protest.Fixture) {
-		grp := proc.NewGroup(p)
-		testCallFunctionSetBreakpoint(t, p, fixture)
+	withTestProcessArgs("fncall", t, ".", nil, protest.AllNonOptimized, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		testCallFunctionSetBreakpoint(t, p, grp, fixture)
 
 		assertNoError(grp.Continue(), t, "Continue()")
 		for _, tc := range testcases {
@@ -1312,7 +1314,7 @@ func TestCallFunction(t *testing.T) {
 	})
 }
 
-func testCallFunctionSetBreakpoint(t *testing.T, p *proc.Target, fixture protest.Fixture) {
+func testCallFunctionSetBreakpoint(t *testing.T, p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 	buf, err := ioutil.ReadFile(fixture.Source)
 	assertNoError(err, t, "ReadFile")
 	for i, line := range strings.Split(string(buf), "\n") {
@@ -1399,8 +1401,8 @@ func testCallFunction(t *testing.T, grp *proc.TargetGroup, p *proc.Target, tc te
 
 func TestIssue1531(t *testing.T) {
 	// Go 1.12 introduced a change to the map representation where empty cells can be marked with 1 instead of just 0.
-	withTestProcess("issue1531", t, func(p *proc.Target, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue()")
+	withTestProcess("issue1531", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), t, "Continue()")
 
 		hasKeys := func(mv *proc.Variable, keys ...string) {
 			n := 0
@@ -1462,9 +1464,9 @@ func assertCurrentLocationFunction(p *proc.Target, t *testing.T, fnname string) 
 func TestPluginVariables(t *testing.T) {
 	pluginFixtures := protest.WithPlugins(t, protest.AllNonOptimized, "plugin1/", "plugin2/")
 
-	withTestProcessArgs("plugintest2", t, ".", []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, protest.AllNonOptimized, func(p *proc.Target, fixture protest.Fixture) {
+	withTestProcessArgs("plugintest2", t, ".", []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, protest.AllNonOptimized, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, fixture.Source, 41)
-		assertNoError(p.Continue(), t, "Continue 1")
+		assertNoError(grp.Continue(), t, "Continue 1")
 
 		bp := setFunctionBreakpoint(p, t, "github.com/go-delve/delve/_fixtures/plugin2.TypesTest")
 		t.Logf("bp.Addr = %#x", bp.Addr)
@@ -1474,7 +1476,7 @@ func TestPluginVariables(t *testing.T) {
 			t.Logf("%#x %s\n", image.StaticBase, image.Path)
 		}
 
-		assertNoError(p.Continue(), t, "Continue 2")
+		assertNoError(grp.Continue(), t, "Continue 2")
 
 		// test that PackageVariables returns variables from the executable and plugins
 		scope, err := evalScope(p)
@@ -1504,15 +1506,15 @@ func TestPluginVariables(t *testing.T) {
 
 		// test that the concrete type -> interface{} conversion works across plugins (mostly tests proc.dwarfToRuntimeType)
 		assertNoError(setVariable(p, "plugin2.A", "main.ExeGlobal"), t, "setVariable(plugin2.A = main.ExeGlobal)")
-		assertNoError(p.Continue(), t, "Continue 3")
+		assertNoError(grp.Continue(), t, "Continue 3")
 		assertCurrentLocationFunction(p, t, "github.com/go-delve/delve/_fixtures/plugin2.aIsNotNil")
 		vstr, err := evalVariableWithCfg(p, "str", pnormalLoadConfig)
 		assertNoError(err, t, "Eval(str)")
 		assertVariable(t, vstr, varTest{"str", true, `"success"`, ``, `string`, nil})
 
-		assertNoError(p.StepOut(), t, "StepOut")
-		assertNoError(p.StepOut(), t, "StepOut")
-		assertNoError(p.Next(), t, "Next")
+		assertNoError(grp.StepOut(), t, "StepOut")
+		assertNoError(grp.StepOut(), t, "StepOut")
+		assertNoError(grp.Next(), t, "Next")
 
 		// read interface variable, inside executable code, with a concrete type defined in a plugin
 		vb, err := evalVariableWithCfg(p, "b", pnormalLoadConfig)
@@ -1543,8 +1545,8 @@ func TestCgoEval(t *testing.T) {
 	}
 
 	protest.AllowRecording(t)
-	withTestProcess("testvariablescgo/", t, func(p *proc.Target, fixture protest.Fixture) {
-		assertNoError(p.Continue(), t, "Continue() returned an error")
+	withTestProcess("testvariablescgo/", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), t, "Continue() returned an error")
 		for _, tc := range testcases {
 			variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 			if err != nil && err.Error() == "evaluating methods not supported on this version of Go" {
@@ -1590,9 +1592,9 @@ func TestEvalExpressionGenerics(t *testing.T) {
 		},
 	}
 
-	withTestProcess("testvariables_generic", t, func(p *proc.Target, fixture protest.Fixture) {
+	withTestProcess("testvariables_generic", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		for i, tcs := range testcases {
-			assertNoError(p.Continue(), t, fmt.Sprintf("Continue() returned an error (%d)", i))
+			assertNoError(grp.Continue(), t, fmt.Sprintf("Continue() returned an error (%d)", i))
 			for _, tc := range tcs {
 				variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 				if tc.err == nil {
@@ -1607,6 +1609,69 @@ func TestEvalExpressionGenerics(t *testing.T) {
 					}
 				}
 			}
+		}
+	})
+}
+
+// Test the behavior when reading dangling pointers produced by unsafe code.
+func TestBadUnsafePtr(t *testing.T) {
+	withTestProcess("testunsafepointers", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), t, "Continue()")
+
+		// danglingPtrPtr is a pointer with value 0x42, which is an unreadable
+		// address.
+		danglingPtrPtr, err := evalVariableWithCfg(p, "danglingPtrPtr", pnormalLoadConfig)
+		assertNoError(err, t, "eval returned an error")
+		t.Logf("danglingPtrPtr (%s): unreadable: %v. addr: 0x%x, value: %v",
+			danglingPtrPtr.TypeString(), danglingPtrPtr.Unreadable, danglingPtrPtr.Addr, danglingPtrPtr.Value)
+		assertNoError(danglingPtrPtr.Unreadable, t, "danglingPtrPtr is unreadable")
+		if val := danglingPtrPtr.Value; val == nil {
+			t.Fatal("Value not set danglingPtrPtr")
+		}
+		val, ok := constant.Uint64Val(danglingPtrPtr.Value)
+		if !ok {
+			t.Fatalf("Value not uint64: %v", danglingPtrPtr.Value)
+		}
+		if val != 0x42 {
+			t.Fatalf("expected value to be 0x42, got 0x%x", val)
+		}
+		if len(danglingPtrPtr.Children) != 1 {
+			t.Fatalf("expected 1 child, got: %d", len(danglingPtrPtr.Children))
+		}
+
+		badPtr, err := evalVariableWithCfg(p, "*danglingPtrPtr", pnormalLoadConfig)
+		assertNoError(err, t, "error evaluating *danglingPtrPtr")
+		t.Logf("badPtr: (%s): unreadable: %v. addr: 0x%x, value: %v",
+			badPtr.TypeString(), badPtr.Unreadable, badPtr.Addr, badPtr.Value)
+		if badPtr.Unreadable == nil {
+			t.Fatalf("badPtr should be unreadable")
+		}
+		if badPtr.Addr != 0x42 {
+			t.Fatalf("expected danglingPtr to point to 0x42, got 0x%x", badPtr.Addr)
+		}
+		if len(badPtr.Children) != 1 {
+			t.Fatalf("expected 1 child, got: %d", len(badPtr.Children))
+		}
+		badPtrChild := badPtr.Children[0]
+		t.Logf("badPtr.Child (%s): unreadable: %v. addr: 0x%x, value: %v",
+			badPtrChild.TypeString(), badPtrChild.Unreadable, badPtrChild.Addr, badPtrChild.Value)
+		// We expect the dummy child variable to be marked as unreadable.
+		if badPtrChild.Unreadable == nil {
+			t.Fatalf("expected x to be unreadable, but got value: %v", badPtrChild.Value)
+		}
+
+		// Evaluating **danglingPtrPtr fails.
+		_, err = evalVariableWithCfg(p, "**danglingPtrPtr", pnormalLoadConfig)
+		if err == nil {
+			t.Fatalf("expected error doing **danglingPtrPtr")
+		}
+		expErr := "couldn't read pointer"
+		if !strings.Contains(err.Error(), expErr) {
+			t.Fatalf("expected \"%s\", got: \"%s\"", expErr, err)
+		}
+		nexpErr := "nil pointer dereference"
+		if strings.Contains(err.Error(), nexpErr) {
+			t.Fatalf("shouldn't have gotten \"%s\", but got: \"%s\"", nexpErr, err)
 		}
 	})
 }

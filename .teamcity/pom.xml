@@ -22,7 +22,7 @@
     </repository>
     <repository>
       <id>teamcity-server</id>
-      <url>https://delve.beta.teamcity.com/app/dsl-plugins-repository</url>
+      <url>https://delve.teamcity.com/app/dsl-plugins-repository</url>
       <snapshots>
         <enabled>true</enabled>
       </snapshots>

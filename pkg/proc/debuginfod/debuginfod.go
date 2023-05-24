@@ -12,7 +12,7 @@ func execFind(args ...string) (string, error) {
 		return "", err
 	}
 	cmd := exec.Command(debuginfodFind, args...)
-	out, err := cmd.CombinedOutput()
+	out, err := cmd.Output() // ignore stderr
 	if err != nil {
 		return "", err
 	}

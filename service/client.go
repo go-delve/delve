@@ -47,7 +47,7 @@ type Client interface {
 	ReverseStep() (*api.DebuggerState, error)
 	// StepOut continues to the return address of the current function.
 	StepOut() (*api.DebuggerState, error)
-	// ReverseStepOut continues backward to the calle rof the current function.
+	// ReverseStepOut continues backward to the caller of the current function.
 	ReverseStepOut() (*api.DebuggerState, error)
 	// Call resumes process execution while making a function call.
 	Call(goroutineID int64, expr string, unsafe bool) (*api.DebuggerState, error)
@@ -185,9 +185,23 @@ type Client interface {
 	// CoreDumpCancel cancels a core dump in progress
 	CoreDumpCancel() error
 
+	// ListTargets returns the list of connected targets
+	ListTargets() ([]api.Target, error)
+	// FollowExec enables or disables the follow exec mode. In follow exec mode
+	// Delve will automatically debug child processes launched by the target
+	// process
+	FollowExec(bool, string) error
+	FollowExecEnabled() bool
+
 	// Disconnect closes the connection to the server without sending a Detach request first.
 	// If cont is true a continue command will be sent instead.
 	Disconnect(cont bool) error
+
+	// SetDebugInfoDirectories sets directories used to search for debug symbols
+	SetDebugInfoDirectories([]string) error
+
+	// GetDebugInfoDirectories returns the list of directories used to search for debug symbols
+	GetDebugInfoDirectories() ([]string, error)
 
 	// CallAPI allows calling an arbitrary rpc method (used by starlark bindings)
 	CallAPI(method string, args, reply interface{}) error

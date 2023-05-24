@@ -3,7 +3,10 @@ package proc
 import (
 	"bytes"
 	"fmt"
+	"regexp"
 	"strings"
+
+	"github.com/go-delve/delve/pkg/logflags"
 )
 
 // TargetGroup represents a group of target processes being debugged that
@@ -12,11 +15,20 @@ import (
 // enabled and the backend supports it, otherwise the group will always
 // contain a single target process.
 type TargetGroup struct {
-	targets  []*Target
-	Selected *Target
+	procgrp ProcessGroup
+
+	targets           []*Target
+	Selected          *Target
+	followExecEnabled bool
+	followExecRegex   *regexp.Regexp
 
 	RecordingManipulation
 	recman RecordingManipulationInternal
+
+	// StopReason describes the reason why the selected target process is stopped.
+	// A process could be stopped for multiple simultaneous reasons, in which
+	// case only one will be reported.
+	StopReason StopReason
 
 	// KeepSteppingBreakpoints determines whether certain stop reasons (e.g. manual halts)
 	// will keep the stepping breakpoints instead of clearing them.
@@ -24,54 +36,105 @@ type TargetGroup struct {
 
 	LogicalBreakpoints map[int]*LogicalBreakpoint
 
-	continueOnce ContinueOnceFunc
-	cctx         *ContinueOnceContext
+	cctx    *ContinueOnceContext
+	cfg     NewTargetGroupConfig
+	CanDump bool
 }
+
+// NewTargetGroupConfig contains the configuration for a new TargetGroup object,
+type NewTargetGroupConfig struct {
+	DebugInfoDirs       []string   // Directories to search for split debug info
+	DisableAsyncPreempt bool       // Go 1.14 asynchronous preemption should be disabled
+	StopReason          StopReason // Initial stop reason
+	CanDump             bool       // Can create core dumps (must implement ProcessInternal.MemoryMap)
+}
+
+type AddTargetFunc func(ProcessInternal, int, Thread, string, StopReason, string) (*Target, error)
 
 // NewGroup creates a TargetGroup containing the specified Target.
-func NewGroup(t *Target) *TargetGroup {
-	if t.partOfGroup {
-		panic("internal error: target is already part of a group")
+func NewGroup(procgrp ProcessGroup, cfg NewTargetGroupConfig) (*TargetGroup, AddTargetFunc) {
+	grp := &TargetGroup{
+		procgrp:            procgrp,
+		cctx:               &ContinueOnceContext{},
+		LogicalBreakpoints: make(map[int]*LogicalBreakpoint),
+		StopReason:         cfg.StopReason,
+		cfg:                cfg,
+		CanDump:            cfg.CanDump,
 	}
-	t.partOfGroup = true
-	if t.Breakpoints().Logical == nil {
-		t.Breakpoints().Logical = make(map[int]*LogicalBreakpoint)
-	}
-	return &TargetGroup{
-		RecordingManipulation: t.recman,
-		targets:               []*Target{t},
-		Selected:              t,
-		cctx:                  &ContinueOnceContext{},
-		recman:                t.recman,
-		LogicalBreakpoints:    t.Breakpoints().Logical,
-		continueOnce:          t.continueOnce,
-	}
+	return grp, grp.addTarget
 }
 
-// NewGroupRestart creates a new group of targets containing t and
-// sets breakpoints and other attributes from oldgrp.
+// Restart copies breakpoints and follow exec status from oldgrp into grp.
 // Breakpoints that can not be set will be discarded, if discard is not nil
 // it will be called for each discarded breakpoint.
-func NewGroupRestart(t *Target, oldgrp *TargetGroup, discard func(*LogicalBreakpoint, error)) *TargetGroup {
-	grp := NewGroup(t)
-	grp.LogicalBreakpoints = oldgrp.LogicalBreakpoints
-	t.Breakpoints().Logical = grp.LogicalBreakpoints
-	for _, bp := range grp.LogicalBreakpoints {
-		if bp.LogicalID < 0 || !bp.Enabled {
+func Restart(grp, oldgrp *TargetGroup, discard func(*LogicalBreakpoint, error)) {
+	for _, bp := range oldgrp.LogicalBreakpoints {
+		if _, ok := grp.LogicalBreakpoints[bp.LogicalID]; ok {
 			continue
 		}
+		grp.LogicalBreakpoints[bp.LogicalID] = bp
 		bp.TotalHitCount = 0
 		bp.HitCount = make(map[int64]uint64)
 		bp.Set.PidAddrs = nil // breakpoints set through a list of addresses can not be restored after a restart
-		err := grp.EnableBreakpoint(bp)
-		if err != nil {
-			if discard != nil {
-				discard(bp, err)
+		if bp.Enabled {
+			err := grp.EnableBreakpoint(bp)
+			if err != nil {
+				if discard != nil {
+					discard(bp, err)
+				}
+				delete(grp.LogicalBreakpoints, bp.LogicalID)
 			}
-			delete(grp.LogicalBreakpoints, bp.LogicalID)
 		}
 	}
-	return grp
+	if oldgrp.followExecEnabled {
+		rgx := ""
+		if oldgrp.followExecRegex != nil {
+			rgx = oldgrp.followExecRegex.String()
+		}
+		grp.FollowExec(true, rgx)
+	}
+}
+
+func (grp *TargetGroup) addTarget(p ProcessInternal, pid int, currentThread Thread, path string, stopReason StopReason, cmdline string) (*Target, error) {
+	logger := logflags.DebuggerLogger()
+	t, err := grp.newTarget(p, pid, currentThread, path, cmdline)
+	if err != nil {
+		return nil, err
+	}
+	t.StopReason = stopReason
+	if grp.followExecRegex != nil && len(grp.targets) > 0 {
+		if !grp.followExecRegex.MatchString(cmdline) {
+			logger.Debugf("Detaching from child target %d %q", t.Pid(), t.CmdLine)
+			t.detach(false)
+			return nil, nil
+		}
+	}
+	logger.Debugf("Adding target %d %q", t.Pid(), t.CmdLine)
+	if t.partOfGroup {
+		panic("internal error: target is already part of group")
+	}
+	t.partOfGroup = true
+	if grp.RecordingManipulation == nil {
+		grp.RecordingManipulation = t.recman
+		grp.recman = t.recman
+	}
+	if grp.Selected == nil {
+		grp.Selected = t
+	}
+	t.Breakpoints().Logical = grp.LogicalBreakpoints
+	for _, lbp := range grp.LogicalBreakpoints {
+		if lbp.LogicalID < 0 {
+			continue
+		}
+		err := enableBreakpointOnTarget(t, lbp)
+		if err != nil {
+			logger.Debugf("could not enable breakpoint %d on new target %d: %v", lbp.LogicalID, t.Pid(), err)
+		} else {
+			logger.Debugf("breakpoint %d enabled on new target %d: %v", lbp.LogicalID, t.Pid(), err)
+		}
+	}
+	grp.targets = append(grp.targets, t)
+	return t, nil
 }
 
 // Targets returns a slice of all targets in the group, including the
@@ -95,10 +158,22 @@ func (grp *TargetGroup) Valid() (bool, error) {
 	return false, err0
 }
 
+func (grp *TargetGroup) numValid() int {
+	r := 0
+	for _, t := range grp.targets {
+		ok, _ := t.Valid()
+		if ok {
+			r++
+		}
+	}
+	return r
+}
+
 // Detach detaches all targets in the group.
 func (grp *TargetGroup) Detach(kill bool) error {
 	var errs []string
-	for _, t := range grp.targets {
+	for i := len(grp.targets) - 1; i >= 0; i-- {
+		t := grp.targets[i]
 		isvalid, _ := t.Valid()
 		if !isvalid {
 			continue
@@ -144,12 +219,10 @@ func (grp *TargetGroup) ThreadList() []Thread {
 }
 
 // TargetForThread returns the target containing the given thread.
-func (grp *TargetGroup) TargetForThread(thread Thread) *Target {
+func (grp *TargetGroup) TargetForThread(tid int) *Target {
 	for _, t := range grp.targets {
-		for _, th := range t.ThreadList() {
-			if th == thread {
-				return t
-			}
+		if _, ok := t.FindThread(tid); ok {
+			return t
 		}
 	}
 	return nil
@@ -274,6 +347,36 @@ func (grp *TargetGroup) DisableBreakpoint(lbp *LogicalBreakpoint) error {
 	return nil
 }
 
+// FollowExec enables or disables follow exec mode. When follow exec mode is
+// enabled new processes spawned by the target process are automatically
+// added to the target group.
+// If regex is not the empty string only processes whose command line
+// matches regex will be added to the target group.
+func (grp *TargetGroup) FollowExec(v bool, regex string) error {
+	grp.followExecRegex = nil
+	if regex != "" && v {
+		var err error
+		grp.followExecRegex, err = regexp.Compile(regex)
+		if err != nil {
+			return err
+		}
+	}
+	it := ValidTargets{Group: grp}
+	for it.Next() {
+		err := it.proc.FollowExec(v)
+		if err != nil {
+			return err
+		}
+	}
+	grp.followExecEnabled = v
+	return nil
+}
+
+// FollowExecEnabled returns true if follow exec is enabled
+func (grp *TargetGroup) FollowExecEnabled() bool {
+	return grp.followExecEnabled
+}
+
 // ValidTargets iterates through all valid targets in Group.
 type ValidTargets struct {
 	*Target
@@ -294,4 +397,10 @@ func (it *ValidTargets) Next() bool {
 	it.start = len(it.Group.targets)
 	it.Target = nil
 	return false
+}
+
+// Reset returns the iterator to the start of the group.
+func (it *ValidTargets) Reset() {
+	it.Target = nil
+	it.start = 0
 }

@@ -1,4 +1,7 @@
 #include <sys/types.h>
+#include <sys/user.h>
+#include <libutil.h>
+#include <libprocstat.h>
 
 char * find_command_name(int pid);
 char * find_executable(int pid);

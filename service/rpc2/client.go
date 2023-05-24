@@ -530,6 +530,40 @@ func (c *RPCClient) CoreDumpCancel() error {
 	return c.call("DumpCancel", DumpCancelIn{}, out)
 }
 
+// ListTargets returns the current list of debug targets.
+func (c *RPCClient) ListTargets() ([]api.Target, error) {
+	out := &ListTargetsOut{}
+	err := c.call("ListTargets", ListTargetsIn{}, out)
+	return out.Targets, err
+}
+
+// FollowExec enabled or disabled follow exec mode. When follow exec is
+// enabled Delve will automatically attach to new subprocesses with a
+// command line matched by regex, if regex is nil all new subprocesses are
+// automatically debugged.
+func (c *RPCClient) FollowExec(v bool, regex string) error {
+	out := &FollowExecOut{}
+	err := c.call("FollowExec", FollowExecIn{Enable: v, Regex: regex}, out)
+	return err
+}
+
+// FollowExecEnabled returns true if follow exec mode is enabled.
+func (c *RPCClient) FollowExecEnabled() bool {
+	out := &FollowExecEnabledOut{}
+	_ = c.call("FollowExecEnabled", FollowExecEnabledIn{}, out)
+	return out.Enabled
+}
+
+func (c *RPCClient) SetDebugInfoDirectories(v []string) error {
+	return c.call("DebugInfoDirectories", DebugInfoDirectoriesIn{Set: true, List: v}, &DebugInfoDirectoriesOut{})
+}
+
+func (c *RPCClient) GetDebugInfoDirectories() ([]string, error) {
+	out := &DebugInfoDirectoriesOut{}
+	err := c.call("DebugInfoDirectories", DebugInfoDirectoriesIn{Set: false, List: nil}, out)
+	return out.List, err
+}
+
 func (c *RPCClient) call(method string, args, reply interface{}) error {
 	return c.client.Call("RPCServer."+method, args, reply)
 }

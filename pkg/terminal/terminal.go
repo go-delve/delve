@@ -58,6 +58,7 @@ type Term struct {
 	stdout   *transcriptWriter
 	InitFile string
 	displays []displayEntry
+	oldPid   int
 
 	historyFile *os.File
 
@@ -108,16 +109,26 @@ func New(client service.Client, conf *config.Config) *Term {
 		t.stdout.pw = &pagingWriter{w: getColorableWriter()}
 		t.stdout.colorEscapes = make(map[colorize.Style]string)
 		t.stdout.colorEscapes[colorize.NormalStyle] = terminalResetEscapeCode
-		t.updateColorScheme()
 	}
+
+	t.updateConfig()
 
 	if client != nil {
 		lcfg := t.loadConfig()
 		client.SetReturnValuesLoadConfig(&lcfg)
+		if state, err := client.GetState(); err == nil {
+			t.oldPid = state.Pid
+		}
 	}
 
 	t.starlarkEnv = starbind.New(starlarkContext{t}, t.stdout)
 	return t
+}
+
+func (t *Term) updateConfig() {
+	// These are always called together.
+	t.updateColorScheme()
+	t.updateTab()
 }
 
 func (t *Term) updateColorScheme() {
@@ -137,6 +148,7 @@ func (t *Term) updateColorScheme() {
 	t.stdout.colorEscapes[colorize.NumberStyle] = conf.SourceListNumberColor
 	t.stdout.colorEscapes[colorize.CommentStyle] = wd(conf.SourceListCommentColor, ansiBrMagenta)
 	t.stdout.colorEscapes[colorize.ArrowStyle] = wd(conf.SourceListArrowColor, ansiYellow)
+	t.stdout.colorEscapes[colorize.TabStyle] = wd(conf.SourceListTabColor, ansiBrBlack)
 	switch x := conf.SourceListLineColor.(type) {
 	case string:
 		t.stdout.colorEscapes[colorize.LineNoStyle] = x
@@ -148,6 +160,10 @@ func (t *Term) updateColorScheme() {
 	case nil:
 		t.stdout.colorEscapes[colorize.LineNoStyle] = fmt.Sprintf(terminalHighlightEscapeCode, ansiBlue)
 	}
+}
+
+func (t *Term) updateTab() {
+	t.stdout.altTabString = t.conf.Tab
 }
 
 func (t *Term) SetTraceNonInteractive() {
@@ -420,13 +436,16 @@ func (t *Term) promptForInput() (string, error) {
 	return l, nil
 }
 
-func yesno(line *liner.State, question string) (bool, error) {
+func yesno(line *liner.State, question, defaultAnswer string) (bool, error) {
 	for {
 		answer, err := line.Prompt(question)
 		if err != nil {
 			return false, err
 		}
 		answer = strings.ToLower(strings.TrimSpace(answer))
+		if answer == "" {
+			answer = defaultAnswer
+		}
 		switch answer {
 		case "n", "no":
 			return false, nil
@@ -457,7 +476,7 @@ func (t *Term) handleExit() (int, error) {
 	if err != nil {
 		if isErrProcessExited(err) {
 			if t.client.IsMulticlient() {
-				answer, err := yesno(t.line, "Remote process has exited. Would you like to kill the headless instance? [Y/n] ")
+				answer, err := yesno(t.line, "Remote process has exited. Would you like to kill the headless instance? [Y/n] ", "yes")
 				if err != nil {
 					return 2, io.EOF
 				}
@@ -483,7 +502,7 @@ func (t *Term) handleExit() (int, error) {
 
 		doDetach := true
 		if t.client.IsMulticlient() {
-			answer, err := yesno(t.line, "Would you like to kill the headless instance? [Y/n] ")
+			answer, err := yesno(t.line, "Would you like to kill the headless instance? [Y/n] ", "yes")
 			if err != nil {
 				return 2, io.EOF
 			}
@@ -493,7 +512,7 @@ func (t *Term) handleExit() (int, error) {
 		if doDetach {
 			kill := true
 			if t.client.AttachedToExistingProcess() {
-				answer, err := yesno(t.line, "Would you like to kill the process? [Y/n] ")
+				answer, err := yesno(t.line, "Would you like to kill the process? [Y/n] ", "yes")
 				if err != nil {
 					return 2, io.EOF
 				}

@@ -4,7 +4,7 @@ Delve exposes a [DAP](https://microsoft.github.io/debug-adapter-protocol/overvie
 
 This interface is served over a streaming TCP socket using `dlv` server in one of the two headless modes:
 1. [`dlv dap`](../../usage/dlv_dap.md) - starts a single-use DAP-only server that waits for a client to specify launch/attach configuration for starting the debug session.
-2. `dlv --headless <command> <debugee>` - starts a general server, enters a debug session for the specified debuggee and waits for a [JSON-RPC](../json-rpc/README.md) or a [DAP](https://microsoft.github.io/debug-adapter-protocol/overview) remote-attach client to begin interactive debugging. Can be used in multi-client mode with the following options:
+2. `dlv --headless <command> <debuggee>` - starts a general server, enters a debug session for the specified debuggee and waits for a [JSON-RPC](../json-rpc/README.md) or a [DAP](https://microsoft.github.io/debug-adapter-protocol/overview) remote-attach client to begin interactive debugging. Can be used in multi-client mode with the following options:
    *  `--accept-multiclient` - use to support connections from multiple clients
    *  `--continue` - use to resume debuggee execution as soon as server session starts
 
@@ -73,7 +73,7 @@ Not all of the configurations are supported by each of the two available DAP ser
 
 ### Single-Client Mode
 
-When used with `dlv dap` or `dlv --headless --accept-multiclient=false` (default), the DAP server will shut itself down at the end of the debug session, when the client sends a [disconnect request](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Disconnect). If the debuggee was launched, it will be taken down as well. If the debugee was attached to, `terminateDebuggee` option will be respected.
+When used with `dlv dap` or `dlv --headless --accept-multiclient=false` (default), the DAP server will shut itself down at the end of the debug session, when the client sends a [disconnect request](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Disconnect). If the debuggee was launched, it will be taken down as well. If the debuggee was attached to, `terminateDebuggee` option will be respected.
 
 When the program terminates, we send a [terminated event](https://microsoft.github.io/debug-adapter-protocol/specification#Events_Terminated), which is expected to trigger a [disconnect request](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Disconnect) from the client for a session and a server shutdown. The [restart request](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Restart) is not yet supported. 
 
@@ -83,7 +83,7 @@ Pressing Ctrl-C on the terminal where a headless server is running sends SIGINT 
 
 ### Multi-Client Mode
 
-When used with `dlv --headless --accept-multiclient=true`, the DAP server will honor the multi-client mode when a client [disconnects](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Disconnect)) or client connection fails. The server will remain running and ready for a new client connection, and the debuggee will remain in whatever state it was at the time of disconnect - running or halted. Once [`suspendDebuggee`](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Disconnect) option is supported by frontends like VS Code ([vscode/issues/134412](https://github.com/microsoft/vscode/issues/134412)), we will update the server to offer this as a way to specify debuggee state on disconnect.
+When used with `dlv --headless --accept-multiclient=true`, the DAP server will honor the multi-client mode when a client [disconnects](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Disconnect) or client connection fails. The server will remain running and ready for a new client connection, and the debuggee will remain in whatever state it was at the time of disconnect - running or halted. Once [`suspendDebuggee`](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Disconnect) option is supported by frontends like VS Code ([vscode/issues/134412](https://github.com/microsoft/vscode/issues/134412)), we will update the server to offer this as a way to specify debuggee state on disconnect.
 
 The client may request full shutdown of the server and the debuggee with [`terminateDebuggee`](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Disconnect) option.
 

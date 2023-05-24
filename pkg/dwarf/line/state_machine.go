@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/go-delve/delve/pkg/dwarf/util"
+	"github.com/go-delve/delve/pkg/dwarf"
+	"github.com/go-delve/delve/pkg/dwarf/leb128"
 )
 
 type Location struct {
@@ -107,6 +108,7 @@ func newStateMachine(dbl *DebugLineInfo, instructions []byte, ptrSize int) *Stat
 	if len(dbl.FileNames) > 0 {
 		file = dbl.FileNames[0].Path
 	}
+	dbl.endSeqIsValid = true
 	sm := &StateMachine{
 		dbl:         dbl,
 		file:        file,
@@ -260,7 +262,7 @@ func (sm *StateMachine) PCToLine(pc uint64) (string, int, bool) {
 			if (sm.address > pc) && (pc >= sm.lastAddress) {
 				return sm.lastFile, sm.lastLine, true
 			}
-			if sm.address == pc {
+			if sm.address == pc && !sm.endSeq {
 				return sm.file, sm.line, true
 			}
 		}
@@ -271,7 +273,7 @@ func (sm *StateMachine) PCToLine(pc uint64) (string, int, bool) {
 			break
 		}
 	}
-	if sm.valid {
+	if sm.valid && !sm.endSeq {
 		return sm.file, sm.line, true
 	}
 	return "", 0, false
@@ -300,7 +302,7 @@ func (lineInfo *DebugLineInfo) LineToPCs(filename string, lineno int) []PCStmt {
 			}
 			break
 		}
-		if sm.line == lineno && sm.file == filename && sm.valid {
+		if sm.line == lineno && sm.file == filename && sm.valid && !sm.endSeq {
 			pcstmts = append(pcstmts, PCStmt{sm.address, sm.isStmt})
 		}
 	}
@@ -409,7 +411,7 @@ func (sm *StateMachine) next() error {
 			// in the prologue and do nothing with them
 			opnum := sm.dbl.Prologue.StdOpLengths[b-1]
 			for i := 0; i < int(opnum); i++ {
-				util.DecodeSLEB128(sm.buf)
+				leb128.DecodeSigned(sm.buf)
 			}
 			fmt.Printf("unknown opcode %d(0x%x), %d arguments, file %s, line %d, address 0x%x\n", b, b, opnum, sm.file, sm.line, sm.address)
 		}
@@ -432,7 +434,7 @@ func execSpecialOpcode(sm *StateMachine, instr byte) {
 }
 
 func execExtendedOpcode(sm *StateMachine, buf *bytes.Buffer) {
-	_, _ = util.DecodeULEB128(buf)
+	_, _ = leb128.DecodeUnsigned(buf)
 	b, _ := buf.ReadByte()
 	if fn, ok := extendedopcodes[b]; ok {
 		fn(sm, buf)
@@ -444,18 +446,18 @@ func copyfn(sm *StateMachine, buf *bytes.Buffer) {
 }
 
 func advancepc(sm *StateMachine, buf *bytes.Buffer) {
-	addr, _ := util.DecodeULEB128(buf)
+	addr, _ := leb128.DecodeUnsigned(buf)
 	sm.address += addr * uint64(sm.dbl.Prologue.MinInstrLength)
 }
 
 func advanceline(sm *StateMachine, buf *bytes.Buffer) {
-	line, _ := util.DecodeSLEB128(buf)
+	line, _ := leb128.DecodeSigned(buf)
 	sm.line += int(line)
 	sm.lastDelta = int(line)
 }
 
 func setfile(sm *StateMachine, buf *bytes.Buffer) {
-	i, _ := util.DecodeULEB128(buf)
+	i, _ := leb128.DecodeUnsigned(buf)
 	if sm.dbl.Prologue.Version < 5 {
 		// in DWARF v5 files are indexed starting from 0, in v4 and prior the index starts at 1
 		i--
@@ -473,7 +475,7 @@ func setfile(sm *StateMachine, buf *bytes.Buffer) {
 }
 
 func setcolumn(sm *StateMachine, buf *bytes.Buffer) {
-	c, _ := util.DecodeULEB128(buf)
+	c, _ := leb128.DecodeUnsigned(buf)
 	sm.column = uint(c)
 }
 
@@ -502,7 +504,7 @@ func endsequence(sm *StateMachine, buf *bytes.Buffer) {
 }
 
 func setaddress(sm *StateMachine, buf *bytes.Buffer) {
-	addr, err := util.ReadUintRaw(buf, binary.LittleEndian, sm.ptrSize)
+	addr, err := dwarf.ReadUintRaw(buf, binary.LittleEndian, sm.ptrSize)
 	if err != nil {
 		panic(err)
 	}
@@ -510,7 +512,7 @@ func setaddress(sm *StateMachine, buf *bytes.Buffer) {
 }
 
 func setdiscriminator(sm *StateMachine, buf *bytes.Buffer) {
-	_, _ = util.DecodeULEB128(buf)
+	_, _ = leb128.DecodeUnsigned(buf)
 }
 
 func definefile(sm *StateMachine, buf *bytes.Buffer) {
@@ -528,6 +530,6 @@ func epiloguebegin(sm *StateMachine, buf *bytes.Buffer) {
 }
 
 func setisa(sm *StateMachine, buf *bytes.Buffer) {
-	c, _ := util.DecodeULEB128(buf)
+	c, _ := leb128.DecodeUnsigned(buf)
 	sm.isa = c
 }

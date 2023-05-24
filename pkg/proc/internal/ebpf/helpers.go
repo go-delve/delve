@@ -18,6 +18,7 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/ringbuf"
+	"github.com/cilium/ebpf/rlimit"
 )
 
 //lint:file-ignore U1000 some fields are used by the C program
@@ -109,6 +110,9 @@ func LoadEBPFTracingProgram(path string) (*EBPFContext, error) {
 		objs traceObjects
 	)
 
+	if err = rlimit.RemoveMemlock(); err != nil {
+		return nil, err
+	}
 	ctx.executable, err = link.OpenExecutable(path)
 	if err != nil {
 		return nil, err

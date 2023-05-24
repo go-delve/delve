@@ -17,7 +17,6 @@ import (
 
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
-	"github.com/sirupsen/logrus"
 )
 
 type gdbConn struct {
@@ -49,7 +48,7 @@ type gdbConn struct {
 
 	useXcmd bool // forces writeMemory to use the 'X' command
 
-	log *logrus.Entry
+	log logflags.Logger
 }
 
 var ErrTooManyAttempts = errors.New("too many transmit attempts")

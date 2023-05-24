@@ -58,11 +58,11 @@ func TestPrint(t *testing.T) {
 	// ensures the AST analysis behaves as expected,
 	// please update `printed` if `terminal/colorize.Print` changes.
 	buf := &bytes.Buffer{}
-	colorize.Print(buf, "main.go", bytes.NewBuffer(dat), 1, 30, 10, colors)
+	colorize.Print(buf, "main.go", bytes.NewBuffer(dat), 1, 30, 10, colors, "")
 
 	const printToStdout = false
 	if printToStdout {
-		colorize.Print(os.Stdout, "main.go", bytes.NewBuffer(dat), 1, 30, 10, colors)
+		colorize.Print(os.Stdout, "main.go", bytes.NewBuffer(dat), 1, 30, 10, colors, "")
 	}
 
 	b := bytes.ReplaceAll(buf.Bytes(), []byte("\r\n"), []byte("\n"))

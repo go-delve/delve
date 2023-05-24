@@ -124,6 +124,9 @@ type Variable struct {
 	// number of elements to skip when loading a map
 	mapSkip int
 
+	// Children lists the variables sub-variables. What constitutes a child
+	// depends on the variable's type. For pointers, there's one child
+	// representing the pointed-to variable.
 	Children []Variable
 
 	loaded     bool
@@ -668,7 +671,7 @@ func newVariable(name string, addr uint64, dwarfType godwarf.Type, bi *BinaryInf
 		v.stride = 1
 		v.fieldType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 1, Name: "byte", ReflectKind: reflect.Uint8}, BitSize: 8, BitOffset: 0}}
 		if v.Addr != 0 {
-			v.Base, v.Len, v.Unreadable = readStringInfo(v.mem, v.bi.Arch, v.Addr)
+			v.Base, v.Len, v.Unreadable = readStringInfo(v.mem, v.bi.Arch, v.Addr, t)
 		}
 	case *godwarf.SliceType:
 		v.Kind = reflect.Slice
@@ -1185,7 +1188,7 @@ func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.
 		return nil, err
 	}
 
-	t, err = resolveParametricType(tgt, bi, mem, t, dictAddr)
+	t, err = resolveParametricType(bi, mem, t, dictAddr)
 	if err != nil {
 		// Log the error, keep going with t, which will be the shape type
 		logflags.DebuggerLogger().Errorf("could not resolve parametric type of %s", n)
@@ -1195,9 +1198,9 @@ func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.
 	if pieces != nil {
 		var cmem *compositeMemory
 		if tgt != nil {
-			addr, cmem, err = tgt.newCompositeMemory(mem, regs, pieces, descr)
+			addr, cmem, err = tgt.newCompositeMemory(mem, regs, pieces, descr, t.Common().ByteSize)
 		} else {
-			cmem, err = newCompositeMemory(mem, bi.Arch, regs, pieces)
+			cmem, err = newCompositeMemory(mem, bi.Arch, regs, pieces, t.Common().ByteSize)
 			if cmem != nil {
 				cmem.base = fakeAddressUnresolv
 				addr = int64(cmem.base)
@@ -1244,6 +1247,40 @@ func (v *Variable) maybeDereference() *Variable {
 	}
 }
 
+// loadPtr assumes that v is a pointer and loads its value. v also gets a child
+// variable, representing the pointed-to value. If v is already loaded,
+// loadPtr() is a no-op.
+func (v *Variable) loadPtr() {
+	if len(v.Children) > 0 {
+		// We've already loaded this variable.
+		return
+	}
+
+	t := v.RealType.(*godwarf.PtrType)
+	v.Len = 1
+
+	var child *Variable
+	if v.Unreadable == nil {
+		ptrval, err := readUintRaw(v.mem, v.Addr, t.ByteSize)
+		if err == nil {
+			child = v.newVariable("", ptrval, t.Type, DereferenceMemory(v.mem))
+		} else {
+			// We failed to read the pointer value; mark v as unreadable.
+			v.Unreadable = err
+		}
+	}
+
+	if v.Unreadable != nil {
+		// Pointers get a child even if their value can't be read, to
+		// maintain backwards compatibility.
+		child = v.newVariable("", 0 /* addr */, t.Type, DereferenceMemory(v.mem))
+		child.Unreadable = fmt.Errorf("parent pointer unreadable: %w", v.Unreadable)
+	}
+
+	v.Children = []Variable{*child}
+	v.Value = constant.MakeUint64(v.Children[0].Addr)
+}
+
 func loadValues(vars []*Variable, cfg LoadConfig) {
 	for i := range vars {
 		vars[i].loadValueInternal(0, cfg)
@@ -1263,8 +1300,7 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 	v.loaded = true
 	switch v.Kind {
 	case reflect.Ptr, reflect.UnsafePointer:
-		v.Len = 1
-		v.Children = []Variable{*v.maybeDereference()}
+		v.loadPtr()
 		if cfg.FollowPointers {
 			// Don't increase the recursion level when dereferencing pointers
 			// unless this is a pointer to interface (which could cause an infinite loop)
@@ -1419,30 +1455,38 @@ func convertToEface(srcv, dstv *Variable) error {
 	return dstv.writeEmptyInterface(typeAddr, srcv)
 }
 
-func readStringInfo(mem MemoryReadWriter, arch *Arch, addr uint64) (uint64, int64, error) {
+func readStringInfo(mem MemoryReadWriter, arch *Arch, addr uint64, typ *godwarf.StringType) (uint64, int64, error) {
 	// string data structure is always two ptrs in size. Addr, followed by len
 	// http://research.swtch.com/godata
 
 	mem = cacheMemory(mem, addr, arch.PtrSize()*2)
 
-	// read len
-	strlen, err := readIntRaw(mem, addr+uint64(arch.PtrSize()), int64(arch.PtrSize()))
-	if err != nil {
-		return 0, 0, fmt.Errorf("could not read string len %s", err)
-	}
-	if strlen < 0 {
-		return 0, 0, fmt.Errorf("invalid length: %d", strlen)
+	var strlen int64
+	var outaddr uint64
+	var err error
+
+	for _, field := range typ.StructType.Field {
+		switch field.Name {
+		case "len":
+			strlen, err = readIntRaw(mem, addr+uint64(field.ByteOffset), int64(arch.PtrSize()))
+			if err != nil {
+				return 0, 0, fmt.Errorf("could not read string len %s", err)
+			}
+			if strlen < 0 {
+				return 0, 0, fmt.Errorf("invalid length: %d", strlen)
+			}
+		case "str":
+			outaddr, err = readUintRaw(mem, addr+uint64(field.ByteOffset), int64(arch.PtrSize()))
+			if err != nil {
+				return 0, 0, fmt.Errorf("could not read string pointer %s", err)
+			}
+			if addr == 0 {
+				return 0, 0, nil
+			}
+		}
 	}
 
-	// read addr
-	addr, err = readUintRaw(mem, addr, int64(arch.PtrSize()))
-	if err != nil {
-		return 0, 0, fmt.Errorf("could not read string pointer %s", err)
-	}
-	if addr == 0 {
-		return 0, 0, nil
-	}
-	return addr, strlen, nil
+	return outaddr, strlen, nil
 }
 
 func readStringValue(mem MemoryReadWriter, addr uint64, strlen int64, cfg LoadConfig) (string, error) {
@@ -1618,6 +1662,10 @@ func (v *Variable) loadArrayValues(recurseLevel int, cfg LoadConfig) {
 	if v.Len < 0 {
 		//lint:ignore ST1005 backwards compatibility
 		v.Unreadable = errors.New("Negative array length")
+		return
+	}
+	if v.Base == 0 && v.Len > 0 {
+		v.Unreadable = errors.New("non-zero length array with nil base")
 		return
 	}
 
@@ -1799,7 +1847,7 @@ func (v *Variable) writeZero() error {
 	return err
 }
 
-// writeInterface writes the empty interface of type typeAddr and data as the data field.
+// writeEmptyInterface writes the empty interface of type typeAddr and data as the data field.
 func (v *Variable) writeEmptyInterface(typeAddr uint64, data *Variable) error {
 	dstType, dstData, _ := v.readInterface()
 	if v.Unreadable != nil {
@@ -2208,7 +2256,7 @@ func (v *Variable) readInterface() (_type, data *Variable, isnil bool) {
 
 	// +rtype -field iface.tab *itab
 	// +rtype -field iface.data unsafe.Pointer
-	// +rtype -field eface._type *_type
+	// +rtype -field eface._type *_type|*internal/abi.Type
 	// +rtype -field eface.data unsafe.Pointer
 
 	for _, f := range ityp.Field {
@@ -2219,7 +2267,7 @@ func (v *Variable) readInterface() (_type, data *Variable, isnil bool) {
 			isnil = tab.Addr == 0
 			if !isnil {
 				var err error
-				_type, err = tab.structMember("_type") // +rtype *_type
+				_type, err = tab.structMember("_type") // +rtype *_type|*internal/abi.Type
 				if err != nil {
 					v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
 					return
@@ -2555,6 +2603,10 @@ func (v *Variable) formatTime() {
 	} else {
 		// the full signed 64-bit wall seconds since Jan 1 year 1 is stored in ext
 		var t time.Time
+		if ext > int64(maxAddSeconds/time.Second)*1000 {
+			// avoid doing the add loop below if it will take too much time
+			return
+		}
 		for ext > int64(maxAddSeconds/time.Second) {
 			t = t.Add(maxAddSeconds)
 			ext -= int64(maxAddSeconds / time.Second)

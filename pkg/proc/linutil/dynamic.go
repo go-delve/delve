@@ -38,7 +38,7 @@ func readUintRaw(reader io.Reader, order binary.ByteOrder, ptrSize int) (uint64,
 		}
 		return n, nil
 	}
-	return 0, fmt.Errorf("not supprted ptr size %d", ptrSize)
+	return 0, fmt.Errorf("not supported ptr size %d", ptrSize)
 }
 
 // dynamicSearchDebug searches for the DT_DEBUG entry in the .dynamic section
