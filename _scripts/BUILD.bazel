@@ -5,7 +5,6 @@ go_library(
     srcs = [
         "gen-backend_test_health.go",
         "gen-faq-toc.go",
-        "gen-opcodes.go",
         "gen-starlark-bindings.go",
         "gen-travis.go",
         "make.go",

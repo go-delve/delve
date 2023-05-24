@@ -9,7 +9,10 @@ go_library(
     ],
     importpath = "github.com/go-delve/delve/pkg/dwarf/line",
     visibility = ["//visibility:public"],
-    deps = ["//pkg/dwarf/util"],
+    deps = [
+        "//pkg/dwarf",
+        "//pkg/dwarf/leb128",
+    ],
 )
 
 go_test(
@@ -20,8 +23,9 @@ go_test(
     ],
     embed = [":line"],
     deps = [
+        "//pkg/dwarf",
         "//pkg/dwarf/godwarf",
-        "//pkg/dwarf/util",
+        "//pkg/dwarf/leb128",
         "//pkg/goversion",
     ],
 )

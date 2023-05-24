@@ -1,0 +1,14 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "dwarf",
+    srcs = ["parseutil.go"],
+    importpath = "github.com/go-delve/delve/pkg/dwarf",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "dwarf_test",
+    srcs = ["parseutil_test.go"],
+    deps = [":dwarf"],
+)

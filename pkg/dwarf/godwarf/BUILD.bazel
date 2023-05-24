@@ -4,6 +4,7 @@ go_library(
     name = "godwarf",
     srcs = [
         "addr.go",
+        "buf.go",
         "sections.go",
         "tree.go",
         "type.go",
@@ -11,8 +12,8 @@ go_library(
     importpath = "github.com/go-delve/delve/pkg/dwarf/godwarf",
     visibility = ["//visibility:public"],
     deps = [
+        "//pkg/dwarf",
         "//pkg/dwarf/op",
-        "//pkg/dwarf/util",
     ],
 )
 

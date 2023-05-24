@@ -24,7 +24,6 @@ go_library(
         "//service/debugger",
         "//service/internal/sameuser",
         "//vendor/github.com/google/go-dap",
-        "//vendor/github.com/sirupsen/logrus",
     ],
 )
 

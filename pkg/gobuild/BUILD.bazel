@@ -2,8 +2,14 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 
 go_library(
     name = "gobuild",
-    srcs = ["gobuild.go"],
+    srcs = [
+        "defaultexe.go",
+        "gobuild.go",
+    ],
     importpath = "github.com/go-delve/delve/pkg/gobuild",
     visibility = ["//visibility:public"],
-    deps = ["//pkg/config"],
+    deps = [
+        "//pkg/config",
+        "//pkg/logflags",
+    ],
 )

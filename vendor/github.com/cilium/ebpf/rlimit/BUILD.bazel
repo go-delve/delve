@@ -1,0 +1,13 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "rlimit",
+    srcs = ["rlimit.go"],
+    importmap = "github.com/go-delve/delve/vendor/github.com/cilium/ebpf/rlimit",
+    importpath = "github.com/cilium/ebpf/rlimit",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/github.com/cilium/ebpf/internal",
+        "//vendor/github.com/cilium/ebpf/internal/unix",
+    ],
+)

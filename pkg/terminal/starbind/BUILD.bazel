@@ -15,6 +15,7 @@ go_library(
         "//service/api",
         "//service/rpc2",
         "//vendor/github.com/go-delve/liner",
+        "//vendor/go.starlark.net/lib/time",
         "//vendor/go.starlark.net/resolve",
         "//vendor/go.starlark.net/starlark",
         "//vendor/go.starlark.net/syntax",

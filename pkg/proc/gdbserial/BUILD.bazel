@@ -21,7 +21,6 @@ go_library(
         "//pkg/proc/linutil",
         "//pkg/proc/macutil",
         "//vendor/github.com/mattn/go-isatty",
-        "//vendor/github.com/sirupsen/logrus",
     ] + select({
         "@io_bazel_rules_go//go/platform:android": [
             "//vendor/golang.org/x/sys/unix",

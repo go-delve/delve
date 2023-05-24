@@ -15,6 +15,5 @@ go_library(
         "//service/internal/sameuser",
         "//service/rpc1",
         "//service/rpc2",
-        "//vendor/github.com/sirupsen/logrus",
     ],
 )

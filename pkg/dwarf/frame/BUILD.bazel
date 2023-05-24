@@ -9,7 +9,10 @@ go_library(
     ],
     importpath = "github.com/go-delve/delve/pkg/dwarf/frame",
     visibility = ["//visibility:public"],
-    deps = ["//pkg/dwarf/util"],
+    deps = [
+        "//pkg/dwarf",
+        "//pkg/dwarf/leb128",
+    ],
 )
 
 go_test(

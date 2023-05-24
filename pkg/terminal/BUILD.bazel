@@ -9,6 +9,8 @@ go_library(
         "docgen.go",
         "groups.go",
         "out.go",
+        "out_unix.go",
+        "out_windows.go",
         "starlark.go",
         "terminal.go",
         "terminal_other.go",

@@ -1,0 +1,14 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "time",
+    srcs = ["time.go"],
+    importmap = "github.com/go-delve/delve/vendor/go.starlark.net/lib/time",
+    importpath = "go.starlark.net/lib/time",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//vendor/go.starlark.net/starlark",
+        "//vendor/go.starlark.net/starlarkstruct",
+        "//vendor/go.starlark.net/syntax",
+    ],
+)

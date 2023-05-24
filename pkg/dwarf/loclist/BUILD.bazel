@@ -9,8 +9,9 @@ go_library(
     importpath = "github.com/go-delve/delve/pkg/dwarf/loclist",
     visibility = ["//visibility:public"],
     deps = [
+        "//pkg/dwarf",
         "//pkg/dwarf/godwarf",
-        "//pkg/dwarf/util",
+        "//pkg/dwarf/leb128",
     ],
 )
 
@@ -18,5 +19,5 @@ go_test(
     name = "loclist_test",
     srcs = ["loclist5_test.go"],
     embed = [":loclist"],
-    deps = ["//pkg/dwarf/util"],
+    deps = ["//pkg/dwarf/leb128"],
 )

@@ -30,6 +30,7 @@ go_library(
             "//vendor/github.com/cilium/ebpf",
             "//vendor/github.com/cilium/ebpf/link",
             "//vendor/github.com/cilium/ebpf/ringbuf",
+            "//vendor/github.com/cilium/ebpf/rlimit",
         ],
         "@io_bazel_rules_go//go/platform:darwin_386": [
             "//vendor/github.com/cilium/ebpf",
@@ -49,9 +50,6 @@ go_library(
         "@io_bazel_rules_go//go/platform:illumos_amd64": [
             "//vendor/github.com/cilium/ebpf",
         ],
-        "@io_bazel_rules_go//go/platform:ios_386": [
-            "//vendor/github.com/cilium/ebpf",
-        ],
         "@io_bazel_rules_go//go/platform:ios_amd64": [
             "//vendor/github.com/cilium/ebpf",
         ],
@@ -62,6 +60,7 @@ go_library(
             "//vendor/github.com/cilium/ebpf",
             "//vendor/github.com/cilium/ebpf/link",
             "//vendor/github.com/cilium/ebpf/ringbuf",
+            "//vendor/github.com/cilium/ebpf/rlimit",
         ],
         "@io_bazel_rules_go//go/platform:netbsd_386": [
             "//vendor/github.com/cilium/ebpf",

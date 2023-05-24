@@ -11,7 +11,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/dwarf/godwarf",
+        "//pkg/dwarf/leb128",
         "//pkg/dwarf/op",
-        "//pkg/dwarf/util",
     ],
 )

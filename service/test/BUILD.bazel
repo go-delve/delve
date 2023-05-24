@@ -10,6 +10,7 @@ go_test(
     deps = [
         "//pkg/goversion",
         "//pkg/logflags",
+        "//pkg/proc",
         "//pkg/proc/test",
         "//service",
         "//service/api",

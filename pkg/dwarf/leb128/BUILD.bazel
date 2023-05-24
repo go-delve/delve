@@ -1,0 +1,21 @@
+load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "leb128",
+    srcs = [
+        "decode.go",
+        "doc.go",
+        "encode.go",
+    ],
+    importpath = "github.com/go-delve/delve/pkg/dwarf/leb128",
+    visibility = ["//visibility:public"],
+)
+
+go_test(
+    name = "leb128_test",
+    srcs = [
+        "decode_test.go",
+        "encode_test.go",
+    ],
+    embed = [":leb128"],
+)

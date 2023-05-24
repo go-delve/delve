@@ -3,12 +3,14 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "native",
     srcs = [
+        "dump_freebsd.go",
         "dump_linux.go",
         "dump_linux_amd64.go",
         "dump_linux_other.go",
         "dump_other.go",
         "dump_windows_amd64.go",
         "exc.h",
+        "followexec_other.go",
         "hwbreak_amd64.go",
         "hwbreak_other.go",
         "mach_exc.h",
@@ -103,6 +105,7 @@ go_library(
             "//vendor/github.com/mattn/go-isatty",
         ],
         "@io_bazel_rules_go//go/platform:windows": [
+            "//pkg/logflags",
             "//pkg/proc/internal/ebpf",
             "//vendor/golang.org/x/sys/windows",
         ],
@@ -158,6 +161,7 @@ go_library(
             "//pkg/proc/amd64util",
         ],
         "@io_bazel_rules_go//go/platform:freebsd_386": [
+            "//pkg/elfwriter",
             "//pkg/proc/amd64util",
             "//pkg/proc/fbsdutil",
             "//vendor/golang.org/x/sys/unix",
@@ -170,11 +174,13 @@ go_library(
             "//vendor/golang.org/x/sys/unix",
         ],
         "@io_bazel_rules_go//go/platform:freebsd_arm": [
+            "//pkg/elfwriter",
             "//pkg/proc/amd64util",
             "//pkg/proc/fbsdutil",
             "//vendor/golang.org/x/sys/unix",
         ],
         "@io_bazel_rules_go//go/platform:freebsd_arm64": [
+            "//pkg/elfwriter",
             "//pkg/proc/amd64util",
             "//pkg/proc/fbsdutil",
             "//vendor/golang.org/x/sys/unix",
@@ -182,17 +188,7 @@ go_library(
         "@io_bazel_rules_go//go/platform:illumos_amd64": [
             "//pkg/proc/amd64util",
         ],
-        "@io_bazel_rules_go//go/platform:ios_386": [
-            "//pkg/dwarf/op",
-            "//pkg/elfwriter",
-            "//pkg/proc/amd64util",
-        ],
         "@io_bazel_rules_go//go/platform:ios_amd64": [
-            "//pkg/dwarf/op",
-            "//pkg/elfwriter",
-            "//pkg/proc/amd64util",
-        ],
-        "@io_bazel_rules_go//go/platform:ios_arm": [
             "//pkg/dwarf/op",
             "//pkg/elfwriter",
             "//pkg/proc/amd64util",

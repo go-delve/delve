@@ -19,7 +19,6 @@ go_library(
         "//pkg/proc/gdbserial",
         "//pkg/proc/native",
         "//service/api",
-        "//vendor/github.com/sirupsen/logrus",
     ],
 )
 
