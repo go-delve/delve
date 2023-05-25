@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -2451,13 +2452,24 @@ func (c *Commands) sourceCommand(t *Term, ctx callContext, args string) error {
 		return fmt.Errorf("wrong number of arguments: source <filename>")
 	}
 
+	if args == "-" {
+		return t.starlarkEnv.REPL()
+	}
+
+	if runtime.GOOS != "windows" && strings.HasPrefix(args, "~") {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			if args == "~" {
+				args = home
+			} else if strings.HasPrefix(args, "~/") {
+				args = filepath.Join(home, args[2:])
+			}
+		}
+	}
+
 	if filepath.Ext(args) == ".star" {
 		_, err := t.starlarkEnv.Execute(args, nil, "main", nil)
 		return err
-	}
-
-	if args == "-" {
-		return t.starlarkEnv.REPL()
 	}
 
 	return c.executeFile(t, args)
