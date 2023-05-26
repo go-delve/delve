@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/go-delve/delve/pkg/dwarf/leb128"
 	"github.com/go-delve/delve/pkg/dwarf"
+	"github.com/go-delve/delve/pkg/dwarf/leb128"
 )
 
 // Opcode represent a DWARF stack program instruction.
@@ -67,6 +67,7 @@ func ExecuteStackProgram(regs DwarfRegisters, instructions []byte, ptrSize int, 
 		stack:          make([]int64, 0, 3),
 		DwarfRegisters: regs,
 		ptrSize:        ptrSize,
+		readMemory:     readMemory,
 	}
 
 	for tick := 0; tick < len(instructions)*arbitraryExecutionLimitFactor; tick++ {
