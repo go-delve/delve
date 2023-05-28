@@ -15,6 +15,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.13 // indirect
 	github.com/sirupsen/logrus v1.6.0
 	github.com/spf13/cobra v1.1.3
+	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
 	go.starlark.net v0.0.0-20220816155156-cfacd8902214
 	golang.org/x/arch v0.0.0-20190927153633-4e8777c89be4
