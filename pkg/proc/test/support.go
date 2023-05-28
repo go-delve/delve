@@ -364,8 +364,9 @@ var hasCgo = func() bool {
 	if strings.TrimSpace(string(out)) != "1" {
 		return false
 	}
-	_, err = exec.LookPath("gcc")
-	return err == nil
+	_, err1 := exec.LookPath("gcc")
+	_, err2 := exec.LookPath("clang")
+	return (err1 == nil) || (err2 == nil)
 }()
 
 func MustHaveCgo(t *testing.T) {
