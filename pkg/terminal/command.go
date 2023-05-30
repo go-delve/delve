@@ -2876,6 +2876,20 @@ func exitCommand(t *Term, ctx callContext, args string) error {
 		if !t.client.IsMulticlient() {
 			return errors.New("not connected to an --accept-multiclient server")
 		}
+		bps, _ := t.client.ListBreakpoints(false)
+		hasUserBreakpoints := false
+		for _, bp := range bps {
+			if bp.ID >= 0 {
+				hasUserBreakpoints = true
+				break
+			}
+		}
+		if hasUserBreakpoints {
+			yes, _ := yesno(t.line, "There are breakpoints set, do you wish to quit and continue without clearing breakpoints? [Y/n] ", "yes")
+			if !yes {
+				return nil
+			}
+		}
 		t.quitContinue = true
 	}
 	return ExitRequestError{}
