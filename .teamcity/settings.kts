@@ -192,6 +192,7 @@ class TestBuild(val os: String, val arch: String, version: String, buildId: Abso
                         --env TEAMCITY_VERSION=${'$'}TEAMCITY_VERSION
                         --env CI=true
                         --privileged
+                        --platform linux/$dockerArch
                         $dockerArch/ubuntu:20.04
                         /delve/_scripts/test_linux.sh ${"go$version"} $arch
                     """.trimIndent()
