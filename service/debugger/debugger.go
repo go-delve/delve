@@ -732,11 +732,49 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 			return locs[0].PCs
 		}
 	}
-	createdBp, err := createLogicalBreakpoint(d, requestedBp, &setbp, suspended)
 
+	id := requestedBp.ID
+
+	if id <= 0 {
+		d.breakpointIDCounter++
+		id = d.breakpointIDCounter
+	} else {
+		d.breakpointIDCounter = id
+	}
+
+	lbp := &proc.LogicalBreakpoint{LogicalID: id, HitCount: make(map[int64]uint64), Enabled: true}
+	d.target.LogicalBreakpoints[id] = lbp
+
+	err = copyLogicalBreakpointInfo(lbp, requestedBp)
 	if err != nil {
 		return nil, err
 	}
+
+	lbp.Set = setbp
+
+	if lbp.Set.Expr != nil {
+		addrs := lbp.Set.Expr(d.Target())
+		if len(addrs) > 0 {
+			f, l, fn := d.Target().BinInfo().PCToLine(addrs[0])
+			lbp.File = f
+			lbp.Line = l
+			if fn != nil {
+				lbp.FunctionName = fn.Name
+			}
+		}
+	}
+
+	err = d.target.EnableBreakpoint(lbp)
+	if err != nil {
+		if suspended {
+			logflags.DebuggerLogger().Debugf("could not enable new breakpoint: %v (breakpoint will be suspended)", err)
+		} else {
+			delete(d.target.LogicalBreakpoints, lbp.LogicalID)
+			return nil, err
+		}
+	}
+
+	createdBp := d.convertBreakpoint(lbp)
 	d.log.Infof("created breakpoint: %#v", createdBp)
 	return createdBp, nil
 }
@@ -763,53 +801,6 @@ func (d *Debugger) ConvertThreadBreakpoint(thread proc.Thread) *api.Breakpoint {
 		return d.convertBreakpoint(b.Breakpoint.Logical)
 	}
 	return nil
-}
-
-// createLogicalBreakpoint creates one physical breakpoint for each address
-// in addrs and associates all of them with the same logical breakpoint.
-func createLogicalBreakpoint(d *Debugger, requestedBp *api.Breakpoint, setbp *proc.SetBreakpoint, suspended bool) (*api.Breakpoint, error) {
-	id := requestedBp.ID
-
-	if id <= 0 {
-		d.breakpointIDCounter++
-		id = d.breakpointIDCounter
-	} else {
-		d.breakpointIDCounter = id
-	}
-
-	lbp := &proc.LogicalBreakpoint{LogicalID: id, HitCount: make(map[int64]uint64), Enabled: true}
-	d.target.LogicalBreakpoints[id] = lbp
-
-	err := copyLogicalBreakpointInfo(lbp, requestedBp)
-	if err != nil {
-		return nil, err
-	}
-
-	lbp.Set = *setbp
-
-	if lbp.Set.Expr != nil {
-		addrs := lbp.Set.Expr(d.Target())
-		if len(addrs) > 0 {
-			f, l, fn := d.Target().BinInfo().PCToLine(addrs[0])
-			lbp.File = f
-			lbp.Line = l
-			if fn != nil {
-				lbp.FunctionName = fn.Name
-			}
-		}
-	}
-
-	err = d.target.EnableBreakpoint(lbp)
-	if err != nil {
-		if suspended {
-			logflags.DebuggerLogger().Debugf("could not enable new breakpoint: %v (breakpoint will be suspended)", err)
-		} else {
-			delete(d.target.LogicalBreakpoints, lbp.LogicalID)
-			return nil, err
-		}
-	}
-
-	return d.convertBreakpoint(lbp), nil
 }
 
 func (d *Debugger) CreateEBPFTracepoint(fnName string) error {
@@ -970,11 +961,6 @@ func parseHitCondition(hitCond string) (token.Token, int, error) {
 func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-	return d.clearBreakpoint(requestedBp)
-}
-
-// clearBreakpoint clears a breakpoint, we can consume this function to avoid locking a goroutine
-func (d *Debugger) clearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
 	if requestedBp.ID <= 0 {
 		if len(d.target.Targets()) != 1 {
 			return nil, ErrNotImplementedWithMultitarget
