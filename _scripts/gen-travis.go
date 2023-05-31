@@ -26,7 +26,7 @@ var minVersion = goVersion{Major: goversion.MinSupportedVersionOfGoMajor, Minor:
 func (v goVersion) dec() goVersion {
 	v.Minor--
 	if v.Minor < 0 {
-		panic("TODO: fill the maximum minor version number for v.Maxjor here")
+		panic("TODO: fill the maximum minor version number for v.Major here")
 	}
 	return v
 }
