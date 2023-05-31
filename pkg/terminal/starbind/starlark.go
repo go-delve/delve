@@ -141,12 +141,13 @@ func (env *Env) printFunc() func(_ *starlark.Thread, msg string) {
 // Source can be either a []byte, a string or a io.Reader. If source is nil
 // Execute will execute the file specified by 'path'.
 // After the file is executed if a function named mainFnName exists it will be called, passing args to it.
-func (env *Env) Execute(path string, source interface{}, mainFnName string, args []interface{}) (starlark.Value, error) {
+func (env *Env) Execute(path string, source interface{}, mainFnName string, args []interface{}) (_ starlark.Value, _err error) {
 	defer func() {
 		err := recover()
 		if err == nil {
 			return
 		}
+		_err = fmt.Errorf("panic executing starlark script: %v", err)
 		fmt.Fprintf(env.out, "panic executing starlark script: %v\n", err)
 		for i := 0; ; i++ {
 			pc, file, line, ok := runtime.Caller(i)

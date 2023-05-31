@@ -158,3 +158,70 @@ func TestStarlarkVariable(t *testing.T) {
 		}
 	})
 }
+
+// Test that pointer variables that were not loaded don't lead to crashes when
+// used in Starlark scripts.
+func TestStarlarkVariablePointerNotLoaded(t *testing.T) {
+	withTestTerminal("testvariables_pointers_not_loaded", t, func(term *FakeTerminal) {
+		term.MustExec("continue")
+
+		// We're going to partially load some variables through the eval()
+		// builtin. Then we're going to attempt to evaluate expressions which
+		// try to access a field from a pointer variable that wasn't loaded
+		// (i.e. a ptrVariableAsStarlarkValue with no children). The tests will
+		// verify that we get an error. This is a regression test; we used to
+		// panic.
+		for _, tc := range []struct{ name, script, expErr string }{
+			{
+				// In this test, we'll load v. v will have a child (i.e.
+				// v.Children[0]), but because v is nil, v.Children[0] will not
+				// be loaded. We'll turn v.Children[0] into a
+				// ptrVariableAsStarlarkValue, and attempt to access a field on
+				// it.
+				//
+				// v                   -> structAsStarlarkValue<api.Variable<**int>>
+				// v.Children[0]       -> structAsStarlarkValue<api.Variable<*int>>
+				// v.Children[0].Value -> ptrVariableAsStarlarkValue<*int> ; this pointer variable has not been loaded
+				name: "partial load because of nil ptr",
+				script: `
+v = eval(
+		None, "ptrPtr", None
+	).Variable
+v.Children[0].Value.XXX
+`,
+				expErr: "*int has no .XXX field or method",
+			},
+			{
+				// In this test, MaxStructFields = 10 and MaxVariableRecurse = 0
+				// will cause us to load v, and v.Children[0] (in the sense that
+				// v.Children[0] has a child), but _not_ load
+				// v.Children[0].Children[0] (because the recursion limit is
+				// exhausted by the descent into the top-level struct, so we
+				// don't load what hides under the interface).
+				//
+				// v                               -> structAsStarlarkValue<api.Variable<StructWithInterface>>
+				// v.Children[0]                   -> structAsStarlarkValue<api.Variable<interface{}>>
+				// v.Children[0].Children[0]       -> structAsStarlarkValue<api.Variable<*int>>
+				// v.Children[0].Children[0].Value -> ptrVariableAsStarlarkValue<*int> ; this pointer variable has not been loaded
+				name: "partial load because of recursion limit",
+				script: `
+v = eval(
+		None, "ba", {"MaxVariableRecurse": 0, "MaxStructFields": 10}
+	).Variable;
+v.Children[0].Children[0].Value.XXX
+`,
+				expErr: "*int has no .XXX field or method",
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				_, err := term.ExecStarlark(tc.script)
+				if err == nil {
+					t.Fatalf("expected error %q, got success", tc.expErr)
+				}
+				if !strings.Contains(err.Error(), tc.expErr) {
+					t.Fatalf("expected error %q, got \"%s\"", tc.expErr, err)
+				}
+			})
+		}
+	})
+}
