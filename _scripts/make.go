@@ -144,7 +144,7 @@ func checkCert() bool {
 		return false
 	}
 	if err != nil {
-		fmt.Printf("An error occoured when generating and installing a new certificate: %v\n", err)
+		fmt.Printf("An error occurred when generating and installing a new certificate: %v\n", err)
 		return false
 	}
 	os.Setenv("CERT", "dlv-cert")
