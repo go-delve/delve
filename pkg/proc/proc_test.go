@@ -3612,7 +3612,11 @@ func TestDeclLine(t *testing.T) {
 		setFileBreakpoint(p, t, fixture.Source, 9)
 		setFileBreakpoint(p, t, fixture.Source, 10)
 		setFileBreakpoint(p, t, fixture.Source, 11)
-		setFileBreakpoint(p, t, fixture.Source, 14)
+		b := setFunctionBreakpoint(p, t, "main.f1")
+		if b.Line != 14 {
+			// Line 14 is hard-coded below.
+			t.Fatalf("expected \"main.f1\" breakpoint to be set on line 14, but got line: %d", b.Line)
+		}
 
 		assertNoError(grp.Continue(), t, "Continue 1")
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
@@ -3635,6 +3639,9 @@ func TestDeclLine(t *testing.T) {
 		testDeclLineCount(t, p, 11, []string{"a", "b"})
 
 		assertNoError(grp.Continue(), t, "Continue 5")
+		// On line 14, we expect the function's arguments to be available, even
+		// though their DW_AT_decl_line declares higher line numbers. The decl_line
+		// is supposed to be ignored for the visibility of arguments.
 		testDeclLineCount(t, p, 14, []string{"a", "b"})
 	})
 }
