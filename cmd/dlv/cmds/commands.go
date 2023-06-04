@@ -303,7 +303,8 @@ to know what functions your process is executing.
 
 The output of the trace sub command is printed to stderr, so if you would like to
 only see the output of the trace operations you can redirect stdout.`,
-		Run: traceCmd,
+		Run: func(cmd *cobra.Command, args []string) {
+			os.Exit(traceCmd(cmd, args, conf)) }, 
 	}
 	traceCommand.Flags().IntVarP(&traceAttachPid, "pid", "p", 0, "Pid to attach to.")
 	traceCommand.Flags().StringVarP(&traceExecFile, "exec", "e", "", "Binary file to exec and trace.")
@@ -574,7 +575,7 @@ func debugCmd(cmd *cobra.Command, args []string) {
 	os.Exit(status)
 }
 
-func traceCmd(cmd *cobra.Command, args []string) {
+func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 	status := func() int {
 		err := logflags.Setup(log, logOutput, logDest)
 		defer logflags.Close()
@@ -648,6 +649,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 				WorkingDir:     workingDir,
 				Backend:        backend,
 				CheckGoVersion: checkGoVersion,
+				DebugInfoDirectories: conf.DebugInfoDirectories,
 			},
 		})
 		if err := server.Run(); err != nil {
@@ -769,7 +771,7 @@ func traceCmd(cmd *cobra.Command, args []string) {
 		}
 		return 0
 	}()
-	os.Exit(status)
+	return status
 }
 
 func isBreakpointExistsErr(err error) bool {
