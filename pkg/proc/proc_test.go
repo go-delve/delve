@@ -3221,11 +3221,37 @@ func TestAttachStripped(t *testing.T) {
 
 	t.Logf("error is %v", err)
 
-	if err == nil {
-		p.Detach(true)
+	if err != nil {
+		cmd.Process.Kill()
 		t.Fatalf("expected error after attach, got nothing")
 	} else {
-		cmd.Process.Kill()
+		go func() {
+			// Wait for program to start listening.
+			for {
+				conn, err := net.Dial("tcp", "127.0.0.1:9191")
+				if err == nil {
+					conn.Close()
+					break
+				}
+				time.Sleep(50 * time.Millisecond)
+			}
+			resp, err := http.Get("http://127.0.0.1:9191")
+			if err == nil {
+				resp.Body.Close()
+			}
+		}()
+		t.Logf("continue")
+		err = p.Continue()
+		if err != nil {
+			t.Errorf("error while continuing: %#v", err)
+		}
+		t.Logf("continue returned")
+		err = p.Next()
+		if err != nil {
+			t.Errorf("error while nexting: %#v", err)
+		}
+		t.Logf("next returned")
+		p.Detach(true)
 	}
 	os.Remove(fixture.Path)
 }

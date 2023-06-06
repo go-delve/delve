@@ -535,7 +535,7 @@ func (g *G) StartLoc(tgt *Target) Location {
 	if fn == nil {
 		return Location{PC: g.StartPC}
 	}
-	f, l := fn.cu.lineInfo.PCToLine(fn.Entry, fn.Entry)
+	f, l, _ := tgt.BinInfo().PCToLine(fn.Entry)
 	return Location{PC: fn.Entry, File: f, Line: l, Fn: fn}
 }
 

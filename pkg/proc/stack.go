@@ -253,6 +253,9 @@ func (it *stackIterator) Err() error {
 // frameBase calculates the frame base pseudo-register for DWARF for fn and
 // the current frame.
 func (it *stackIterator) frameBase(fn *Function) int64 {
+	if fn.cu.image.Stripped() {
+		return 0
+	}
 	dwarfTree, err := fn.cu.image.getDwarfTree(fn.offset)
 	if err != nil {
 		return 0
@@ -695,6 +698,6 @@ func (d *Defer) DeferredFunc(p *Target) (file string, line int, fn *Function) {
 	if fn == nil {
 		return "", 0, nil
 	}
-	file, line = fn.cu.lineInfo.PCToLine(fn.Entry, fn.Entry)
+	file, line, _ = bi.PCToLine(fn.Entry)
 	return file, line, fn
 }
