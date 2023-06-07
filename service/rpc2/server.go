@@ -657,7 +657,7 @@ type ListGoroutinesOut struct {
 // be grouped with the specified criterion.
 // If the value of arg.GroupBy is GoroutineLabel goroutines will
 // be grouped by the value of the label with key GroupByKey.
-// For each group a maximum of MaxExamples example goroutines are
+// For each group a maximum of MaxGroupMembers example goroutines are
 // returned, as well as the total number of goroutines in the group.
 func (s *RPCServer) ListGoroutines(arg ListGoroutinesIn, out *ListGoroutinesOut) error {
 	//TODO(aarzilli): if arg contains a running goroutines filter (not negated)
