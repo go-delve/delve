@@ -6812,8 +6812,8 @@ func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 				// Both launch and attach requests should go through for additional error checking
 				client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 100})
 				er := client.ExpectVisibleErrorResponse(t)
-				msgRe := regexp.MustCompile("Failed to attach: debug session already in progress at [0-9]+:[0-9]+ - use remote mode to connect to a server with an active debug session")
-				if er.Body.Error.Id != FailedToAttach || msgRe.MatchString(er.Body.Error.Format) {
+				msgRe := regexp.MustCompile("Failed to attach: debug session already in progress at .+ - use remote mode to connect to a server with an active debug session")
+				if er.Body.Error.Id != FailedToAttach || !msgRe.MatchString(er.Body.Error.Format) {
 					t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToAttach, msgRe)
 				}
 				tests := []string{"debug", "test", "exec", "replay", "core"}
@@ -6821,8 +6821,8 @@ func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 					t.Run(mode, func(t *testing.T) {
 						client.LaunchRequestWithArgs(map[string]interface{}{"mode": mode})
 						er := client.ExpectVisibleErrorResponse(t)
-						msgRe := regexp.MustCompile("Failed to launch: debug session already in progress at [0-9]+:[0-9]+ - use remote attach mode to connect to a server with an active debug session")
-						if er.Body.Error.Id != FailedToLaunch || msgRe.MatchString(er.Body.Error.Format) {
+						msgRe := regexp.MustCompile("Failed to launch: debug session already in progress at .+ - use remote attach mode to connect to a server with an active debug session")
+						if er.Body.Error.Id != FailedToLaunch || !msgRe.MatchString(er.Body.Error.Format) {
 							t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToLaunch, msgRe)
 						}
 					})
