@@ -73,7 +73,7 @@ func (c *Client) ExpectMessage(t *testing.T) dap.Message {
 func (c *Client) ExpectInvisibleErrorResponse(t *testing.T) *dap.ErrorResponse {
 	t.Helper()
 	er := c.ExpectErrorResponse(t)
-	if er.Body.Error.ShowUser {
+	if er.Body.Error != nil && er.Body.Error.ShowUser {
 		t.Errorf("\ngot %#v\nwant ShowUser=false", er)
 	}
 	return er
@@ -82,7 +82,7 @@ func (c *Client) ExpectInvisibleErrorResponse(t *testing.T) *dap.ErrorResponse {
 func (c *Client) ExpectVisibleErrorResponse(t *testing.T) *dap.ErrorResponse {
 	t.Helper()
 	er := c.ExpectErrorResponse(t)
-	if !er.Body.Error.ShowUser {
+	if er.Body.Error == nil || !er.Body.Error.ShowUser {
 		t.Errorf("\ngot %#v\nwant ShowUser=true", er)
 	}
 	return er
@@ -91,6 +91,10 @@ func (c *Client) ExpectVisibleErrorResponse(t *testing.T) *dap.ErrorResponse {
 func (c *Client) ExpectErrorResponseWith(t *testing.T, id int, message string, showUser bool) *dap.ErrorResponse {
 	t.Helper()
 	er := c.ExpectErrorResponse(t)
+	if er.Body.Error == nil {
+		t.Errorf("got nil, want Id=%d Format=%q ShowUser=%v", id, message, showUser)
+		return er
+	}
 	if matched, _ := regexp.MatchString(message, er.Body.Error.Format); !matched || er.Body.Error.Id != id || er.Body.Error.ShowUser != showUser {
 		t.Errorf("got %#v, want Id=%d Format=%q ShowUser=%v", er, id, message, showUser)
 	}
@@ -277,7 +281,9 @@ func (c *Client) DisconnectRequest() {
 // `terminateDebuggee`.
 func (c *Client) DisconnectRequestWithKillOption(kill bool) {
 	request := &dap.DisconnectRequest{Request: *c.newRequest("disconnect")}
-	request.Arguments.TerminateDebuggee = kill
+	request.Arguments = &dap.DisconnectArguments{
+		TerminateDebuggee: kill,
+	}
 	c.send(request)
 }
 

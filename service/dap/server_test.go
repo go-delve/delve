@@ -324,6 +324,10 @@ func TestForceStopWhileStopping(t *testing.T) {
 	verifyServerStopped(t, server)
 }
 
+func checkErrorMessageId(er *dap.ErrorMessage, id int) bool {
+	return er != nil && er.Id == id
+}
+
 // TestLaunchStopOnEntry emulates the message exchange that can be observed with
 // VS Code for the most basic launch debug session with "stopOnEntry" enabled:
 //
@@ -429,21 +433,21 @@ func TestLaunchStopOnEntry(t *testing.T) {
 		// 8 >> stackTrace, << error
 		client.StackTraceRequest(1, 0, 20)
 		stResp := client.ExpectInvisibleErrorResponse(t)
-		if stResp.Seq != 0 || stResp.RequestSeq != 8 || stResp.Body.Error.Format != "Unable to produce stack trace: unknown goroutine 1" {
+		if stResp.Seq != 0 || stResp.RequestSeq != 8 || stResp.Body.Error == nil || stResp.Body.Error.Format != "Unable to produce stack trace: unknown goroutine 1" {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8 Format=\"Unable to produce stack trace: unknown goroutine 1\"", stResp)
 		}
 
 		// 9 >> stackTrace, << error
 		client.StackTraceRequest(1, 0, 20)
 		stResp = client.ExpectInvisibleErrorResponse(t)
-		if stResp.Seq != 0 || stResp.RequestSeq != 9 || stResp.Body.Error.Id != UnableToProduceStackTrace {
+		if stResp.Seq != 0 || stResp.RequestSeq != 9 || !checkErrorMessageId(stResp.Body.Error, UnableToProduceStackTrace) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Id=%d", stResp, UnableToProduceStackTrace)
 		}
 
 		// 10 >> evaluate, << error
 		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
 		erResp := client.ExpectInvisibleErrorResponse(t)
-		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Id != UnableToEvaluateExpression {
+		if erResp.Seq != 0 || erResp.RequestSeq != 10 || !checkErrorMessageId(erResp.Body.Error, UnableToEvaluateExpression) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=%d", erResp, UnableToEvaluateExpression)
 		}
 
@@ -576,7 +580,7 @@ func TestAttachStopOnEntry(t *testing.T) {
 		// 10 >> evaluate, << error
 		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
 		erResp := client.ExpectInvisibleErrorResponse(t)
-		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Id != UnableToEvaluateExpression {
+		if erResp.Seq != 0 || erResp.RequestSeq != 10 || !checkErrorMessageId(erResp.Body.Error, UnableToEvaluateExpression) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=%d", erResp, UnableToEvaluateExpression)
 		}
 
@@ -749,7 +753,7 @@ func TestPreSetBreakpoint(t *testing.T) {
 				if got.Id != id || got.Name != name {
 					t.Errorf("\ngot  %#v\nwant Id=%d Name=%s", got, id, name)
 				}
-				if (sourceName != "" && got.Source.Name != sourceName) || (line > 0 && got.Line != line) {
+				if (sourceName != "" && (got.Source == nil || got.Source.Name != sourceName)) || (line > 0 && got.Line != line) {
 					t.Errorf("\ngot  %#v\nwant Source.Name=%s Line=%d", got, sourceName, line)
 				}
 			}
@@ -3337,7 +3341,7 @@ func checkLogMessage(t *testing.T, oe *dap.OutputEvent, goid int, text, path str
 	if oe.Body.Category != "stdout" || !strings.HasPrefix(oe.Body.Output, prefix) || !strings.HasSuffix(oe.Body.Output, text+"\n") {
 		t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"%s: %s\\n\"", oe, prefix, text)
 	}
-	if oe.Body.Line != line || oe.Body.Source.Path != path {
+	if oe.Body.Line != line || oe.Body.Source == nil || oe.Body.Source.Path != path {
 		t.Errorf("got output event = %#v, \nwant Line=%d Source.Path=%s", oe, line, path)
 	}
 }
@@ -4957,7 +4961,7 @@ func TestPanicBreakpointOnContinue(t *testing.T) {
 							if frame.PresentationHint != "subtle" {
 								t.Errorf("\ngot Body.StackFrames[%d]=%#v\nwant Source.PresentationHint=\"subtle\"", i, frame)
 							}
-						} else if frame.Source.PresentationHint != "" {
+						} else if frame.Source != nil && frame.Source.PresentationHint != "" {
 							t.Errorf("\ngot Body.StackFrames[%d]=%#v\nwant Source.PresentationHint=\"\"", i, frame)
 						}
 
@@ -6231,8 +6235,8 @@ func TestBadLaunchRequests(t *testing.T) {
 			if response.Message != "Failed to launch" {
 				t.Errorf("Message got %q, want \"Failed to launch\"", response.Message)
 			}
-			if response.Body.Error.Id != FailedToLaunch {
-				t.Errorf("Id got %d, want %d", response.Body.Error.Id, FailedToLaunch)
+			if !checkErrorMessageId(response.Body.Error, FailedToLaunch) {
+				t.Errorf("Id got %v, want Id=%d", response.Body.Error, FailedToLaunch)
 			}
 			seqCnt++
 		}
@@ -6432,8 +6436,8 @@ func TestBadAttachRequest(t *testing.T) {
 			if response.Message != "Failed to attach" {
 				t.Errorf("Message got %q, want \"Failed to attach\"", response.Message)
 			}
-			if response.Body.Error.Id != FailedToAttach {
-				t.Errorf("Id got %d, want %d", response.Body.Error.Id, FailedToAttach)
+			if !checkErrorMessageId(response.Body.Error, FailedToAttach) {
+				t.Errorf("Id got %v, want %d", response.Body.Error, FailedToAttach)
 			}
 			seqCnt++
 		}
@@ -6497,8 +6501,8 @@ func TestBadAttachRequest(t *testing.T) {
 		if er.Body.Error.Format != "Internal Error: runtime error: index out of range [0] with length 0" {
 			t.Errorf("Message got %q, want \"Internal Error: runtime error: index out of range [0] with length 0\"", er.Message)
 		}
-		if er.Body.Error.Id != InternalError {
-			t.Errorf("Id got %d, want %d", er.Body.Error.Id, InternalError)
+		if !checkErrorMessageId(er.Body.Error, InternalError) {
+			t.Errorf("Id got %v, want Id=%d", er.Body.Error, InternalError)
 		}
 
 		// Bad "backend"
@@ -6813,7 +6817,7 @@ func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 				client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 100})
 				er := client.ExpectVisibleErrorResponse(t)
 				msgRe := regexp.MustCompile("Failed to attach: debug session already in progress at [0-9]+:[0-9]+ - use remote mode to connect to a server with an active debug session")
-				if er.Body.Error.Id != FailedToAttach || msgRe.MatchString(er.Body.Error.Format) {
+				if !checkErrorMessageId(er.Body.Error, FailedToAttach) || msgRe.MatchString(er.Body.Error.Format) {
 					t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToAttach, msgRe)
 				}
 				tests := []string{"debug", "test", "exec", "replay", "core"}
@@ -6822,7 +6826,7 @@ func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 						client.LaunchRequestWithArgs(map[string]interface{}{"mode": mode})
 						er := client.ExpectVisibleErrorResponse(t)
 						msgRe := regexp.MustCompile("Failed to launch: debug session already in progress at [0-9]+:[0-9]+ - use remote attach mode to connect to a server with an active debug session")
-						if er.Body.Error.Id != FailedToLaunch || msgRe.MatchString(er.Body.Error.Format) {
+						if !checkErrorMessageId(er.Body.Error, FailedToLaunch) || msgRe.MatchString(er.Body.Error.Format) {
 							t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToLaunch, msgRe)
 						}
 					})
@@ -6849,8 +6853,8 @@ func TestBadInitializeRequest(t *testing.T) {
 		if response.Message != "Failed to initialize" {
 			t.Errorf("Message got %q, want \"Failed to launch\"", response.Message)
 		}
-		if response.Body.Error.Id != FailedToInitialize {
-			t.Errorf("Id got %d, want %d", response.Body.Error.Id, FailedToInitialize)
+		if !checkErrorMessageId(response.Body.Error, FailedToInitialize) {
+			t.Errorf("Id got %v, want Id=%d", response.Body.Error, FailedToInitialize)
 		}
 		if response.Body.Error.Format != err {
 			t.Errorf("\ngot  %q\nwant %q", response.Body.Error.Format, err)
