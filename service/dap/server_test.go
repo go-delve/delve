@@ -328,6 +328,10 @@ func checkErrorMessageId(er *dap.ErrorMessage, id int) bool {
 	return er != nil && er.Id == id
 }
 
+func checkErrorMessageFormat(er *dap.ErrorMessage, fmt string) bool {
+	return er != nil && er.Format == fmt
+}
+
 // TestLaunchStopOnEntry emulates the message exchange that can be observed with
 // VS Code for the most basic launch debug session with "stopOnEntry" enabled:
 //
@@ -433,7 +437,7 @@ func TestLaunchStopOnEntry(t *testing.T) {
 		// 8 >> stackTrace, << error
 		client.StackTraceRequest(1, 0, 20)
 		stResp := client.ExpectInvisibleErrorResponse(t)
-		if stResp.Seq != 0 || stResp.RequestSeq != 8 || stResp.Body.Error == nil || stResp.Body.Error.Format != "Unable to produce stack trace: unknown goroutine 1" {
+		if stResp.Seq != 0 || stResp.RequestSeq != 8 || !checkErrorMessageFormat(stResp.Body.Error, "Unable to produce stack trace: unknown goroutine 1") {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8 Format=\"Unable to produce stack trace: unknown goroutine 1\"", stResp)
 		}
 
@@ -1617,7 +1621,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 
 					client.ScopesRequest(1111)
 					erres := client.ExpectInvisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to list locals: unknown frame id 1111" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to list locals: unknown frame id 1111") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to list locals: unknown frame id 1111\"", erres)
 					}
 
@@ -1632,7 +1636,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 
 					client.VariablesRequest(7777)
 					erres = client.ExpectInvisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to lookup variable: unknown reference 7777" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to lookup variable: unknown reference 7777") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to lookup variable: unknown reference 7777\"", erres)
 					}
 				},
@@ -3959,27 +3963,27 @@ func TestEvaluateRequest(t *testing.T) {
 					// Next frame
 					client.EvaluateRequest("a1", 1002, "any context but watch")
 					erres := client.ExpectVisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: could not find symbol value for a1") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
 					}
 					client.EvaluateRequest("a1", 1002, "watch")
 					erres = client.ExpectInvisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: could not find symbol value for a1") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
 					}
 					client.EvaluateRequest("a1", 1002, "repl")
 					erres = client.ExpectInvisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: could not find symbol value for a1") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
 					}
 					client.EvaluateRequest("a1", 1002, "hover")
 					erres = client.ExpectInvisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: could not find symbol value for a1") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
 					}
 					client.EvaluateRequest("a1", 1002, "clipboard")
 					erres = client.ExpectVisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: could not find symbol value for a1") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
 					}
 				},
@@ -4295,7 +4299,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 					client.ExpectEvaluateResponse(t)
 					client.EvaluateRequest("call callstacktrace()", 1001, "not watch")
 					erres := client.ExpectVisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: call is only supported with topmost stack frame" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: call is only supported with topmost stack frame") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: call is only supported with topmost stack frame\"", erres)
 					}
 
@@ -4306,14 +4310,14 @@ func TestEvaluateCallRequest(t *testing.T) {
 						t.Errorf("\ngot %#v\nwant Reason=\"hardcoded breakpoint\"", s)
 					}
 					erres = client.ExpectVisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: call stopped" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: call stopped") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: call stopped\"", erres)
 					}
 
 					// A call during a call causes an error
 					client.EvaluateRequest("call callstacktrace()", 1000, "not watch")
 					erres = client.ExpectVisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: cannot call function while another function call is already in progress" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: cannot call function while another function call is already in progress") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: cannot call function while another function call is already in progress\"", erres)
 					}
 
@@ -4331,7 +4335,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 					client.EvaluateRequest("call makeclos(nil)", 1000, "not watch")
 					stopped := client.ExpectStoppedEvent(t)
 					erres = client.ExpectVisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: call stopped" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: call stopped") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: call stopped\"", erres)
 					}
 					checkStop(t, client, stopped.Body.ThreadId, "main.makeclos", 88)
@@ -4405,7 +4409,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 					// Call error
 					client.EvaluateRequest("call call1(one)", 1000, "watch")
 					erres := client.ExpectInvisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: not enough arguments" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: not enough arguments") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: not enough arguments\"", erres)
 					}
 
@@ -4421,7 +4425,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 					// Call can exit.
 					client.EvaluateRequest("call callexit()", 1000, "this context will be ignored")
 					client.ExpectTerminatedEvent(t)
-					if res := client.ExpectVisibleErrorResponse(t); !strings.Contains(res.Body.Error.Format, "terminated") {
+					if res := client.ExpectVisibleErrorResponse(t); res.Body.Error == nil || !strings.Contains(res.Body.Error.Format, "terminated") {
 						t.Errorf("\ngot %#v\nwant Format=.*terminated.*", res)
 					}
 				},
@@ -5381,7 +5385,7 @@ func TestNoDebug_AcceptNoRequestsButDisconnect(t *testing.T) {
 		// Anything other than disconnect should get rejected
 		var ExpectNoDebugError = func(cmd string) {
 			er := client.ExpectErrorResponse(t)
-			if er.Body.Error.Format != fmt.Sprintf("noDebug mode: unable to process '%s' request", cmd) {
+			if !checkErrorMessageFormat(er.Body.Error, fmt.Sprintf("noDebug mode: unable to process '%s' request", cmd)) {
 				t.Errorf("\ngot %#v\nwant 'noDebug mode: unable to process '%s' request'", er, cmd)
 			}
 		}
@@ -5881,7 +5885,7 @@ func (h *helperForSetVariable) failSetVariable0(ref int, name, value, wantErrInf
 		h.c.ExpectStoppedEvent(h.t)
 	}
 	resp := h.c.ExpectErrorResponse(h.t)
-	if got := resp.Body.Error.Format; !stringContainsCaseInsensitive(got, wantErrInfo) {
+	if got := resp.Body.Error; !stringContainsCaseInsensitive(got.Format, wantErrInfo) {
 		h.t.Errorf("got %#v, want error string containing %v", got, wantErrInfo)
 	}
 }
@@ -6244,8 +6248,8 @@ func TestBadLaunchRequests(t *testing.T) {
 		checkFailedToLaunchWithMessage := func(response *dap.ErrorResponse, errmsg string) {
 			t.Helper()
 			checkFailedToLaunch(response)
-			if response.Body.Error.Format != errmsg {
-				t.Errorf("\ngot  %q\nwant %q", response.Body.Error.Format, errmsg)
+			if !checkErrorMessageFormat(response.Body.Error, errmsg) {
+				t.Errorf("\ngot  %v\nwant Format=%q", response.Body.Error, errmsg)
 			}
 		}
 
@@ -6445,8 +6449,8 @@ func TestBadAttachRequest(t *testing.T) {
 		checkFailedToAttachWithMessage := func(response *dap.ErrorResponse, errmsg string) {
 			t.Helper()
 			checkFailedToAttach(response)
-			if response.Body.Error.Format != errmsg {
-				t.Errorf("\ngot  %q\nwant %q", response.Body.Error.Format, errmsg)
+			if !checkErrorMessageFormat(response.Body.Error, errmsg) {
+				t.Errorf("\ngot  %v\nwant Format=%q", response.Body.Error, errmsg)
 			}
 		}
 
@@ -6498,7 +6502,7 @@ func TestBadAttachRequest(t *testing.T) {
 		if er.Command != "" {
 			t.Errorf("Command got %q, want \"attach\"", er.Command)
 		}
-		if er.Body.Error.Format != "Internal Error: runtime error: index out of range [0] with length 0" {
+		if !checkErrorMessageFormat(er.Body.Error, "Internal Error: runtime error: index out of range [0] with length 0") {
 			t.Errorf("Message got %q, want \"Internal Error: runtime error: index out of range [0] with length 0\"", er.Message)
 		}
 		if !checkErrorMessageId(er.Body.Error, InternalError) {
@@ -6817,8 +6821,8 @@ func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 				client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 100})
 				er := client.ExpectVisibleErrorResponse(t)
 				msgRe := regexp.MustCompile("Failed to attach: debug session already in progress at [0-9]+:[0-9]+ - use remote mode to connect to a server with an active debug session")
-				if !checkErrorMessageId(er.Body.Error, FailedToAttach) || msgRe.MatchString(er.Body.Error.Format) {
-					t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToAttach, msgRe)
+				if er.Body.Error == nil || er.Body.Error.Id != FailedToAttach || msgRe.MatchString(er.Body.Error.Format) {
+					t.Errorf("got %#v, want Id=%d Format=%q", er.Body.Error, FailedToAttach, msgRe)
 				}
 				tests := []string{"debug", "test", "exec", "replay", "core"}
 				for _, mode := range tests {
@@ -6826,8 +6830,8 @@ func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 						client.LaunchRequestWithArgs(map[string]interface{}{"mode": mode})
 						er := client.ExpectVisibleErrorResponse(t)
 						msgRe := regexp.MustCompile("Failed to launch: debug session already in progress at [0-9]+:[0-9]+ - use remote attach mode to connect to a server with an active debug session")
-						if !checkErrorMessageId(er.Body.Error, FailedToLaunch) || msgRe.MatchString(er.Body.Error.Format) {
-							t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToLaunch, msgRe)
+						if er.Body.Error == nil || er.Body.Error.Id != FailedToLaunch || msgRe.MatchString(er.Body.Error.Format) {
+							t.Errorf("got %#v, want Id=%d Format=%q", er.Body.Error, FailedToLaunch, msgRe)
 						}
 					})
 				}
@@ -6856,7 +6860,7 @@ func TestBadInitializeRequest(t *testing.T) {
 		if !checkErrorMessageId(response.Body.Error, FailedToInitialize) {
 			t.Errorf("Id got %v, want Id=%d", response.Body.Error, FailedToInitialize)
 		}
-		if response.Body.Error.Format != err {
+		if !checkErrorMessageFormat(response.Body.Error, err) {
 			t.Errorf("\ngot  %q\nwant %q", response.Body.Error.Format, err)
 		}
 
@@ -6917,7 +6921,7 @@ func TestBadlyFormattedMessageToServer(t *testing.T) {
 		// an error response.
 		client.UnknownRequest()
 		err := client.ExpectErrorResponse(t)
-		if err.Body.Error.Format != "Internal Error: Request command 'unknown' is not supported (seq: 1)" || err.RequestSeq != 1 {
+		if !checkErrorMessageFormat(err.Body.Error, "Internal Error: Request command 'unknown' is not supported (seq: 1)") || err.RequestSeq != 1 {
 			t.Errorf("got %v, want  RequestSeq=1 Error=\"Internal Error: Request command 'unknown' is not supported (seq: 1)\"", err)
 		}
 
