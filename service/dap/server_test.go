@@ -324,14 +324,6 @@ func TestForceStopWhileStopping(t *testing.T) {
 	verifyServerStopped(t, server)
 }
 
-func checkErrorMessageId(er *dap.ErrorMessage, id int) bool {
-	return er != nil && er.Id == id
-}
-
-func checkErrorMessageFormat(er *dap.ErrorMessage, fmt string) bool {
-	return er != nil && er.Format == fmt
-}
-
 // TestLaunchStopOnEntry emulates the message exchange that can be observed with
 // VS Code for the most basic launch debug session with "stopOnEntry" enabled:
 //
@@ -7372,4 +7364,14 @@ func TestDisassembleCgo(t *testing.T) {
 		)
 	},
 		protest.AllNonOptimized, true)
+}
+
+// Helper functions for checking ErrorMessage field values.
+
+func checkErrorMessageId(er *dap.ErrorMessage, id int) bool {
+	return er != nil && er.Id == id
+}
+
+func checkErrorMessageFormat(er *dap.ErrorMessage, fmt string) bool {
+	return er != nil && er.Format == fmt
 }
