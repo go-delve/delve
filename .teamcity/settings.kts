@@ -177,7 +177,7 @@ class TestBuild(val os: String, val arch: String, version: String, buildId: Abso
                     }
                 }
                 val dockerPlatformArch = when (arch) {
-                    "arm64" -> "arm64/v8"
+                    "arm64" -> "arm64v8"
                     else -> {
                         dockerArch
                     }
