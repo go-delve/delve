@@ -763,8 +763,7 @@ func (bi *BinaryInfo) PCToLine(pc uint64) (string, int, *Function) {
 		return "", 0, nil
 	}
 	if fn.cu.lineInfo == nil {
-		f, l, gfn := fn.cu.image.symTable.PCToLine(pc)
-		fn := &Function{cu: fn.cu, Name: gfn.Name, Entry: gfn.Entry, End: gfn.End}
+		f, l, _ := fn.cu.image.symTable.PCToLine(pc)
 		return f, l, fn
 	}
 	f, ln := fn.cu.lineInfo.PCToLine(fn.Entry, pc)
@@ -1441,6 +1440,7 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 		var serr error
 		sepFile, dwarfFile, serr = bi.openSeparateDebugInfo(image, elfFile, bi.DebugInfoDirectories)
 		if serr != nil {
+			fmt.Fprintln(os.Stderr, "Warning: no debug info found, some functionality will be missing such as stack traces and variable evaluation.")
 			symTable, err := readPcLnTableElf(elfFile, path)
 			if err != nil {
 				return fmt.Errorf("could not create symbol table from  %s ", path)
