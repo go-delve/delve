@@ -2,6 +2,7 @@ package proc
 
 import (
 	"errors"
+
 	"github.com/go-delve/delve/pkg/dwarf/op"
 )
 
@@ -17,7 +18,7 @@ type Thread interface {
 	// variable returned may or may not change to reflect the new CPU status
 	// when the thread is resumed or the registers are changed by calling
 	// SetPC/SetSP/etc.
-	// To insure that the the returned variable won't change call the Copy
+	// To insure that the returned variable won't change call the Copy
 	// method of Registers.
 	Registers() (Registers, error)
 

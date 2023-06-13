@@ -3,6 +3,7 @@ package dap
 import (
 	"bytes"
 	"fmt"
+	"strings"
 
 	"github.com/go-delve/delve/pkg/config"
 )
@@ -44,8 +45,19 @@ func configureSet(sargs *launchAttachArgs, args string) (bool, string, error) {
 }
 
 func configureSetSubstitutePath(args *launchAttachArgs, rest string) error {
+	if strings.TrimSpace(rest) == "-clear" {
+		args.substitutePathClientToServer = args.substitutePathClientToServer[:0]
+		args.substitutePathServerToClient = args.substitutePathServerToClient[:0]
+		return nil
+	}
 	argv := config.SplitQuotedFields(rest, '"')
+	if len(argv) == 2 && argv[0] == "-clear" {
+		argv = argv[1:]
+	}
 	switch len(argv) {
+	case 0:
+		// do nothing, let caller show the current list of substitute path rules
+		return nil
 	case 1: // delete substitute-path rule
 		for i := range args.substitutePathClientToServer {
 			if args.substitutePathClientToServer[i][0] == argv[0] {
@@ -69,7 +81,7 @@ func configureSetSubstitutePath(args *launchAttachArgs, rest string) error {
 		args.substitutePathServerToClient = append(args.substitutePathServerToClient, [2]string{argv[1], argv[0]})
 
 	default:
-		return fmt.Errorf("too many arguments to \"config substitute-path\"")
+		return fmt.Errorf("too many arguments to \"config substitutePath\"")
 	}
 	return nil
 }

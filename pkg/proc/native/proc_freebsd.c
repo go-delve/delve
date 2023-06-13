@@ -2,11 +2,7 @@
 #include <sys/mount.h>
 #include <sys/queue.h>
 #include <sys/sysctl.h>
-#include <sys/user.h>
-#include <sys/types.h>
 
-#include <libprocstat.h>
-#include <libutil.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>

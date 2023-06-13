@@ -142,12 +142,12 @@ func Attach(pid int, debugInfoDirs []string) (*proc.TargetGroup, error) {
 	return tgt, nil
 }
 
-func initialize(dbp *nativeProcess) error {
+func initialize(dbp *nativeProcess) (string, error) {
 	comm, _ := C.find_command_name(C.int(dbp.pid))
 	defer C.free(unsafe.Pointer(comm))
 	comm_str := C.GoString(comm)
 	dbp.os.comm = strings.ReplaceAll(string(comm_str), "%", "%%")
-	return nil
+	return getCmdLine(dbp.pid), nil
 }
 
 // kill kills the target process.
@@ -225,6 +225,24 @@ func findExecutable(path string, pid int) string {
 		path = C.GoString(cstr)
 	}
 	return path
+}
+
+func getCmdLine(pid int) string {
+	ps := C.procstat_open_sysctl()
+	kp := C.kinfo_getproc(C.int(pid))
+	argv := C.procstat_getargv(ps, kp, 0)
+	goargv := []string{}
+	for {
+		arg := *argv
+		if arg == nil {
+			break
+		}
+		argv = (**C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(argv)) + unsafe.Sizeof(*argv)))
+		goargv = append(goargv, C.GoString(arg))
+	}
+	C.free(unsafe.Pointer(kp))
+	C.procstat_close(ps)
+	return strings.Join(goargv, " ")
 }
 
 func trapWait(procgrp *processGroup, pid int) (*nativeThread, error) {

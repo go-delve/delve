@@ -51,7 +51,7 @@ type BinaryInfo struct {
 	// GOOS operating system this binary is executing on.
 	GOOS string
 
-	debugInfoDirectories []string
+	DebugInfoDirectories []string
 
 	// BuildID of this binary.
 	BuildID string
@@ -676,7 +676,7 @@ func (bi *BinaryInfo) LoadBinaryInfo(path string, entryPoint uint64, debugInfoDi
 		bi.lastModified = fi.ModTime()
 	}
 
-	bi.debugInfoDirectories = debugInfoDirs
+	bi.DebugInfoDirectories = debugInfoDirs
 
 	return bi.AddImage(path, entryPoint)
 }
@@ -898,6 +898,13 @@ func (bi *BinaryInfo) imageToModuleData(image *Image, mds []moduleData) *moduleD
 // typeToImage returns the image containing the give type.
 func (bi *BinaryInfo) typeToImage(typ godwarf.Type) *Image {
 	return bi.Images[typ.Common().Index]
+}
+
+func (bi *BinaryInfo) runtimeTypeTypename() string {
+	if goversion.ProducerAfterOrEqual(bi.Producer(), 1, 21) {
+		return "internal/abi.Type"
+	}
+	return "runtime._type"
 }
 
 var errBinaryInfoClose = errors.New("multiple errors closing executable files")
@@ -1396,7 +1403,7 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 	if err != nil {
 		var sepFile *os.File
 		var serr error
-		sepFile, dwarfFile, serr = bi.openSeparateDebugInfo(image, elfFile, bi.debugInfoDirectories)
+		sepFile, dwarfFile, serr = bi.openSeparateDebugInfo(image, elfFile, bi.DebugInfoDirectories)
 		if serr != nil {
 			return serr
 		}
@@ -2130,10 +2137,11 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 		if fn != nil && fn.cu.image == image {
 			tree, err := image.getDwarfTree(fn.offset)
 			if err == nil {
-				tree.Children, err = regabiMallocgcWorkaround(bi)
+				children, err := regabiMallocgcWorkaround(bi)
 				if err != nil {
-					bi.logger.Errorf("could not patch runtime.mallogc: %v", err)
+					bi.logger.Errorf("could not patch runtime.mallocgc: %v", err)
 				} else {
+					tree.Children = children
 					image.runtimeMallocgcTree = tree
 				}
 			}

@@ -449,7 +449,7 @@ func PrettyExamineMemory(address uintptr, memArea []byte, isLittleEndian bool, f
 		cols = 8
 		colFormat = fmt.Sprintf("0x%%0%dx", colBytes*2) // Always keep one leading '0x' for hex.
 	default:
-		return fmt.Sprintf("not supprted format %q\n", string(format))
+		return fmt.Sprintf("not supported format %q\n", string(format))
 	}
 	colFormat += "\t"
 

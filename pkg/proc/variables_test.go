@@ -212,7 +212,7 @@ func TestSetVariable(t *testing.T) {
 			assertNoError(err, t, "EvalVariable()")
 			assertVariable(t, variable, varTest{tc.name, true, tc.startVal, "", tc.typ, nil})
 
-			assertNoError(setVariable(p, tc.name, tc.expr), t, "SetVariable()")
+			assertNoError(setVariable(p, tc.name, tc.expr), t, fmt.Sprintf("SetVariable(%q, %q)", tc.name, tc.expr))
 
 			variable, err = evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 			assertNoError(err, t, "EvalVariable()")
@@ -558,6 +558,7 @@ func getEvalExpressionTestCases() []varTest {
 		{"ch1", true, "chan int 4/11", "chan int 4/11", "chan int", nil},
 		{"chnil", true, "chan int nil", "chan int nil", "chan int", nil},
 		{"ch1+1", false, "", "", "", fmt.Errorf("can not convert 1 constant to chan int")},
+		{"int3chan.buf", false, "*[5]main.ThreeInts [{a: 1, b: 0, c: 0},{a: 2, b: 0, c: 0},{a: 3, b: 0, c: 0},{a: 0, b: 0, c: 0},{a: 0, b: 0, c: 0}]", "(*[5]main.ThreeInts)(…", "*[5]main.ThreeInts", nil},
 
 		// maps
 		{"m1[\"Malone\"]", false, "main.astruct {A: 2, B: 3}", "main.astruct {A: 2, B: 3}", "main.astruct", nil},
@@ -855,6 +856,7 @@ func TestEvalExpression(t *testing.T) {
 		assertNoError(grp.Continue(), t, "Continue() returned an error")
 		for i, tc := range testcases {
 			t.Run(strconv.Itoa(i), func(t *testing.T) {
+				t.Logf("%q", tc.name)
 				variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 				if err != nil && err.Error() == "evaluating methods not supported on this version of Go" {
 					// this type of eval is unsupported with the current version of Go.
@@ -1265,6 +1267,7 @@ func TestCallFunction(t *testing.T) {
 		{`regabistacktest("one", "two", "three", "four", "five", 4)`, []string{`:string:"onetwo"`, `:string:"twothree"`, `:string:"threefour"`, `:string:"fourfive"`, `:string:"fiveone"`, ":uint8:8"}, nil},
 		{`regabistacktest2(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)`, []string{":int:3", ":int:5", ":int:7", ":int:9", ":int:11", ":int:13", ":int:15", ":int:17", ":int:19", ":int:11"}, nil},
 		{`issue2698.String()`, []string{`:string:"1 2 3 4"`}, nil},
+		{`issue3364.String()`, []string{`:string:"1 2"`}, nil},
 		{`regabistacktest3(rast3, 5)`, []string{`:[10]string:[10]string ["onetwo","twothree","threefour","fourfive","fivesix","sixseven","sevenheight","heightnine","nineten","tenone"]`, ":uint8:15"}, nil},
 		{`floatsum(1, 2)`, []string{":float64:3"}, nil},
 	}

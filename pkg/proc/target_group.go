@@ -2,8 +2,8 @@ package proc
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/go-delve/delve/pkg/logflags"
@@ -20,6 +20,7 @@ type TargetGroup struct {
 	targets           []*Target
 	Selected          *Target
 	followExecEnabled bool
+	followExecRegex   *regexp.Regexp
 
 	RecordingManipulation
 	recman RecordingManipulationInternal
@@ -48,7 +49,7 @@ type NewTargetGroupConfig struct {
 	CanDump             bool       // Can create core dumps (must implement ProcessInternal.MemoryMap)
 }
 
-type AddTargetFunc func(ProcessInternal, int, Thread, string, StopReason) (*Target, error)
+type AddTargetFunc func(ProcessInternal, int, Thread, string, StopReason, string) (*Target, error)
 
 // NewGroup creates a TargetGroup containing the specified Target.
 func NewGroup(procgrp ProcessGroup, cfg NewTargetGroupConfig) (*TargetGroup, AddTargetFunc) {
@@ -86,17 +87,29 @@ func Restart(grp, oldgrp *TargetGroup, discard func(*LogicalBreakpoint, error)) 
 		}
 	}
 	if oldgrp.followExecEnabled {
-		grp.FollowExec(true, "")
+		rgx := ""
+		if oldgrp.followExecRegex != nil {
+			rgx = oldgrp.followExecRegex.String()
+		}
+		grp.FollowExec(true, rgx)
 	}
 }
 
-func (grp *TargetGroup) addTarget(p ProcessInternal, pid int, currentThread Thread, path string, stopReason StopReason) (*Target, error) {
-	t, err := grp.newTarget(p, pid, currentThread, path)
+func (grp *TargetGroup) addTarget(p ProcessInternal, pid int, currentThread Thread, path string, stopReason StopReason, cmdline string) (*Target, error) {
+	logger := logflags.DebuggerLogger()
+	t, err := grp.newTarget(p, pid, currentThread, path, cmdline)
 	if err != nil {
 		return nil, err
 	}
 	t.StopReason = stopReason
-	//TODO(aarzilli): check if the target's command line matches the regex
+	if grp.followExecRegex != nil && len(grp.targets) > 0 {
+		if !grp.followExecRegex.MatchString(cmdline) {
+			logger.Debugf("Detaching from child target %d %q", t.Pid(), t.CmdLine)
+			t.detach(false)
+			return nil, nil
+		}
+	}
+	logger.Debugf("Adding target %d %q", t.Pid(), t.CmdLine)
 	if t.partOfGroup {
 		panic("internal error: target is already part of group")
 	}
@@ -108,7 +121,7 @@ func (grp *TargetGroup) addTarget(p ProcessInternal, pid int, currentThread Thre
 	if grp.Selected == nil {
 		grp.Selected = t
 	}
-	logger := logflags.DebuggerLogger()
+	t.Breakpoints().Logical = grp.LogicalBreakpoints
 	for _, lbp := range grp.LogicalBreakpoints {
 		if lbp.LogicalID < 0 {
 			continue
@@ -340,8 +353,13 @@ func (grp *TargetGroup) DisableBreakpoint(lbp *LogicalBreakpoint) error {
 // If regex is not the empty string only processes whose command line
 // matches regex will be added to the target group.
 func (grp *TargetGroup) FollowExec(v bool, regex string) error {
-	if regex != "" {
-		return errors.New("regex not implemented")
+	grp.followExecRegex = nil
+	if regex != "" && v {
+		var err error
+		grp.followExecRegex, err = regexp.Compile(regex)
+		if err != nil {
+			return err
+		}
 	}
 	it := ValidTargets{Group: grp}
 	for it.Next() {
@@ -352,6 +370,11 @@ func (grp *TargetGroup) FollowExec(v bool, regex string) error {
 	}
 	grp.followExecEnabled = v
 	return nil
+}
+
+// FollowExecEnabled returns true if follow exec is enabled
+func (grp *TargetGroup) FollowExecEnabled() bool {
+	return grp.followExecEnabled
 }
 
 // ValidTargets iterates through all valid targets in Group.

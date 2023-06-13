@@ -207,12 +207,14 @@ func (procgrp *processGroup) procForThread(tid int) *nativeProcess {
 	return nil
 }
 
-func (procgrp *processGroup) add(p *nativeProcess, pid int, currentThread proc.Thread, path string, stopReason proc.StopReason) (*proc.Target, error) {
-	tgt, err := procgrp.addTarget(p, pid, currentThread, path, stopReason)
+func (procgrp *processGroup) add(p *nativeProcess, pid int, currentThread proc.Thread, path string, stopReason proc.StopReason, cmdline string) (*proc.Target, error) {
+	tgt, err := procgrp.addTarget(p, pid, currentThread, path, stopReason, cmdline)
 	if err != nil {
 		return nil, err
 	}
-	procgrp.procs = append(procgrp.procs, p)
+	if tgt != nil {
+		procgrp.procs = append(procgrp.procs, p)
+	}
 	return tgt, nil
 }
 
@@ -285,20 +287,24 @@ func (dbp *nativeProcess) FindBreakpoint(pc uint64, adjustPC bool) (*proc.Breakp
 	return nil, false
 }
 
-func (dbp *nativeProcess) initializeBasic() error {
-	if err := initialize(dbp); err != nil {
-		return err
+func (dbp *nativeProcess) initializeBasic() (string, error) {
+	cmdline, err := initialize(dbp)
+	if err != nil {
+		return "", err
 	}
 	if err := dbp.updateThreadList(); err != nil {
-		return err
+		return "", err
 	}
-	return nil
+	return cmdline, nil
 }
 
 // initialize will ensure that all relevant information is loaded
 // so the process is ready to be debugged.
 func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc.TargetGroup, error) {
-	dbp.initializeBasic()
+	cmdline, err := dbp.initializeBasic()
+	if err != nil {
+		return nil, err
+	}
 	stopReason := proc.StopLaunched
 	if !dbp.childProcess {
 		stopReason = proc.StopAttached
@@ -318,10 +324,10 @@ func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc
 		DisableAsyncPreempt: runtime.GOOS == "windows" || (runtime.GOOS == "linux" && runtime.GOARCH == "arm64"),
 
 		StopReason: stopReason,
-		CanDump:    runtime.GOOS == "linux" || (runtime.GOOS == "windows" && runtime.GOARCH == "amd64"),
+		CanDump:    runtime.GOOS == "linux" || runtime.GOOS == "freebsd" || (runtime.GOOS == "windows" && runtime.GOARCH == "amd64"),
 	})
 	procgrp.addTarget = addTarget
-	tgt, err := procgrp.add(dbp, dbp.pid, dbp.memthread, path, stopReason)
+	tgt, err := procgrp.add(dbp, dbp.pid, dbp.memthread, path, stopReason, cmdline)
 	if err != nil {
 		return nil, err
 	}

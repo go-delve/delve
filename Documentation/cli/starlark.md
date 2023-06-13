@@ -29,6 +29,7 @@ raw_command(Name, ThreadID, GoroutineID, ReturnInfoLoadConfig, Expr, UnsafeCall)
 create_breakpoint(Breakpoint, LocExpr, SubstitutePathRules, Suspended) | Equivalent to API call [CreateBreakpoint](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.CreateBreakpoint)
 create_ebpf_tracepoint(FunctionName) | Equivalent to API call [CreateEBPFTracepoint](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.CreateEBPFTracepoint)
 create_watchpoint(Scope, Expr, Type) | Equivalent to API call [CreateWatchpoint](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.CreateWatchpoint)
+debug_info_directories(Set, List) | Equivalent to API call [DebugInfoDirectories](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.DebugInfoDirectories)
 detach(Kill) | Equivalent to API call [Detach](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Detach)
 disassemble(Scope, StartPC, EndPC, Flavour) | Equivalent to API call [Disassemble](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Disassemble)
 dump_cancel() | Equivalent to API call [DumpCancel](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.DumpCancel)
@@ -37,6 +38,8 @@ dump_wait(Wait) | Equivalent to API call [DumpWait](https://godoc.org/github.com
 eval(Scope, Expr, Cfg) | Equivalent to API call [Eval](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Eval)
 examine_memory(Address, Length) | Equivalent to API call [ExamineMemory](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ExamineMemory)
 find_location(Scope, Loc, IncludeNonExecutableLines, SubstitutePathRules) | Equivalent to API call [FindLocation](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.FindLocation)
+follow_exec(Enable, Regex) | Equivalent to API call [FollowExec](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.FollowExec)
+follow_exec_enabled() | Equivalent to API call [FollowExecEnabled](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.FollowExecEnabled)
 function_return_locations(FnName) | Equivalent to API call [FunctionReturnLocations](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.FunctionReturnLocations)
 get_breakpoint(Id, Name) | Equivalent to API call [GetBreakpoint](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.GetBreakpoint)
 get_buffered_tracepoints() | Equivalent to API call [GetBufferedTracepoints](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.GetBufferedTracepoints)
@@ -54,6 +57,7 @@ package_vars(Filter, Cfg) | Equivalent to API call [ListPackageVars](https://god
 packages_build_info(IncludeFiles) | Equivalent to API call [ListPackagesBuildInfo](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListPackagesBuildInfo)
 registers(ThreadID, IncludeFp, Scope) | Equivalent to API call [ListRegisters](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListRegisters)
 sources(Filter) | Equivalent to API call [ListSources](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListSources)
+targets() | Equivalent to API call [ListTargets](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListTargets)
 threads() | Equivalent to API call [ListThreads](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListThreads)
 types(Filter) | Equivalent to API call [ListTypes](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListTypes)
 process_pid() | Equivalent to API call [ProcessPid](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ProcessPid)
@@ -69,6 +73,8 @@ write_file(path, contents) | Writes string to a file
 cur_scope() | Returns the current evaluation scope
 default_load_config() | Returns the current default load configuration
 <!-- END MAPPING TABLE -->
+
+In addition to these built-ins, the [time](https://pkg.go.dev/go.starlark.net/lib/time#pkg-variables) library from the starlark-go project is also available to scripts.
 
 ## Should I use raw_command or dlv_command?
 
@@ -107,7 +113,7 @@ The `Value` field will return the value of the target variable converted to a st
 
 For example, given this variable in the target program:
 
-```
+```go
 type astruct struct {
 	A int
 	B int
@@ -139,7 +145,7 @@ For more examples see the [linked list example](#Print-all-elements-of-a-linked-
 
 Create a `goroutine_start_line` command that prints the starting line of each goroutine, sets `gsl` as an alias:
 
-```
+```python
 def command_goroutine_start_line(args):
 	gs = goroutines().Goroutines
 	for g in gs:
@@ -170,7 +176,7 @@ Use it like this:
 
 After evaluating this script:
 
-```
+```python
 def command_echo(args):
 	print(args)
 
@@ -191,7 +197,7 @@ a 4 b 1 c 6
 
 Set a breakpoint on all private methods of package `main`:
 
-```
+```python
 def main():
 	for f in functions().Funcs:
 		v = f.split('.')
@@ -207,7 +213,7 @@ def main():
 
 Create a command, `switch_to_main_goroutine`, that searches for a goroutine running a function in the main package and switches to it:
 
-```
+```python
 def command_switch_to_main_goroutine(args):
 	for g in goroutines().Goroutines:
 		if g.currentLoc.function != None and g.currentLoc.function.name.startswith("main."):
@@ -220,7 +226,7 @@ def command_switch_to_main_goroutine(args):
 
 Create a command, "goexcl", that lists all goroutines excluding the ones stopped on a specified function.
 
-```
+```python
 def command_goexcl(args):
 	"""Prints all goroutines not stopped in the function passed as argument."""
 	excluded = 0
@@ -251,7 +257,7 @@ prints all goroutines that are not stopped inside `main.somefunc`.
 
 Repeatedly call continue and restart until the target hits a breakpoint.
 
-```
+```python
 def command_flaky(args):
 	"Repeatedly runs program until a breakpoint is hit"
 	while True:
@@ -262,7 +268,7 @@ def command_flaky(args):
 
 ## Print all elements of a linked list
 
-```
+```python
 def command_linked_list(args):
 	"""Prints the contents of a linked list.
 	
@@ -283,7 +289,7 @@ Prints up to max_depth elements of the linked list variable 'var_name' using 'ne
 
 ## Find an array element matching a predicate
 
-```
+```python
 def command_find_array(arr, pred):
 	"""Calls pred for each element of the array or slice 'arr' returns the index of the first element for which pred returns true.
 	
@@ -305,7 +311,7 @@ Example use (find the first element of slice 's2' with field A equal to 5):
 
 ## Rerunning a program until it fails or hits a breakpoint
 
-```
+```python
 def command_flaky(args):
 	"Continues and restarts the target program repeatedly (re-recording it on the rr backend), until a breakpoint is hit"
 	count = 1
@@ -316,4 +322,20 @@ def command_flaky(args):
 		count = count+1
 		restart(Rerecord=True)
 
+```
+
+## Passing a struct as an argument
+
+Struct literals can be passed to built-ins as Starlark dictionaries. For example, the following snippet passes
+in an [api.EvalScope](https://pkg.go.dev/github.com/go-delve/delve/service/api#EvalScope)
+and [api.LoadConfig](https://pkg.go.dev/github.com/go-delve/delve/service/api#LoadConfig)
+to the `eval` built-in. `None` can be passed for optional arguments, and
+trailing optional arguments can be elided completely.
+
+```python
+var = eval(
+        {"GoroutineID": 42, "Frame": 5},
+        "myVar",
+        {"FollowPointers":True, "MaxVariableRecurse":2, "MaxStringLen":100, "MaxArrayValues":10, "MaxStructFields":100}
+      )
 ```

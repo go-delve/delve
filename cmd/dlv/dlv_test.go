@@ -239,7 +239,7 @@ func getDlvBinInternal(t *testing.T, goflags ...string) string {
 func TestOutput(t *testing.T) {
 	dlvbin := getDlvBin(t)
 
-	for _, output := range []string{"", "myownname", filepath.Join(t.TempDir(), "absolute.path")} {
+	for _, output := range []string{"__debug_bin", "myownname", filepath.Join(t.TempDir(), "absolute.path")} {
 		testOutput(t, dlvbin, output, []string{"exit"})
 
 		const hello = "hello world!"
@@ -1326,4 +1326,40 @@ func TestStaticcheck(t *testing.T) {
 	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64")
 	out, _ := cmd.CombinedOutput()
 	checkAutogenDoc(t, "_scripts/staticcheck-out.txt", fmt.Sprintf("staticcheck %s > _scripts/staticcheck-out.txt", strings.Join(args, " ")), out)
+}
+
+func TestDefaultBinary(t *testing.T) {
+	// Check that when delve is run twice in the same directory simultaneously
+	// it will pick different default output binary paths.
+	dlvbin := getDlvBin(t)
+	fixture := filepath.Join(protest.FindFixturesDir(), "testargs.go")
+
+	startOne := func() (io.WriteCloser, func() error, *bytes.Buffer) {
+		cmd := exec.Command(dlvbin, "debug", "--allow-non-terminal-interactive=true", fixture, "--", "test")
+		stdin, _ := cmd.StdinPipe()
+		stdoutBuf := new(bytes.Buffer)
+		cmd.Stdout = stdoutBuf
+
+		assertNoError(cmd.Start(), t, "dlv debug")
+		return stdin, cmd.Wait, stdoutBuf
+	}
+
+	stdin1, wait1, stdoutBuf1 := startOne()
+	defer stdin1.Close()
+
+	stdin2, wait2, stdoutBuf2 := startOne()
+	defer stdin2.Close()
+
+	fmt.Fprintf(stdin1, "continue\nquit\n")
+	fmt.Fprintf(stdin2, "continue\nquit\n")
+
+	wait1()
+	wait2()
+
+	out1, out2 := stdoutBuf1.String(), stdoutBuf2.String()
+	t.Logf("%q", out1)
+	t.Logf("%q", out2)
+	if out1 == out2 {
+		t.Errorf("outputs match")
+	}
 }

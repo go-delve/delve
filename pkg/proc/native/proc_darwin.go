@@ -489,4 +489,4 @@ func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
 	panic("not implemented")
 }
 
-func initialize(dbp *nativeProcess) error { return nil }
+func initialize(dbp *nativeProcess) (string, error) { return "", nil }

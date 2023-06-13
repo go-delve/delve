@@ -7,6 +7,7 @@ github.com/cilium/ebpf/internal/btf
 github.com/cilium/ebpf/internal/unix
 github.com/cilium/ebpf/link
 github.com/cilium/ebpf/ringbuf
+github.com/cilium/ebpf/rlimit
 # github.com/cosiner/argv v0.1.0
 ## explicit
 github.com/cosiner/argv
@@ -21,7 +22,7 @@ github.com/derekparker/trie
 # github.com/go-delve/liner v1.2.3-0.20220127212407-d32d89dd2a5d
 ## explicit
 github.com/go-delve/liner
-# github.com/google/go-dap v0.7.0
+# github.com/google/go-dap v0.9.1
 ## explicit
 github.com/google/go-dap
 # github.com/hashicorp/golang-lru v0.5.4
@@ -61,8 +62,10 @@ github.com/spf13/pflag
 ## explicit
 go.starlark.net/internal/compile
 go.starlark.net/internal/spell
+go.starlark.net/lib/time
 go.starlark.net/resolve
 go.starlark.net/starlark
+go.starlark.net/starlarkstruct
 go.starlark.net/syntax
 # golang.org/x/arch v0.0.0-20190927153633-4e8777c89be4
 ## explicit

@@ -58,6 +58,7 @@ type Term struct {
 	stdout   *transcriptWriter
 	InitFile string
 	displays []displayEntry
+	oldPid   int
 
 	historyFile *os.File
 
@@ -115,6 +116,9 @@ func New(client service.Client, conf *config.Config) *Term {
 	if client != nil {
 		lcfg := t.loadConfig()
 		client.SetReturnValuesLoadConfig(&lcfg)
+		if state, err := client.GetState(); err == nil {
+			t.oldPid = state.Pid
+		}
 	}
 
 	t.starlarkEnv = starbind.New(starlarkContext{t}, t.stdout)

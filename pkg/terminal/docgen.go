@@ -27,6 +27,10 @@ func replaceDocPath(s string) string {
 				break
 			}
 		}
+		// If we captured a trailing dot, backtrack.
+		if s[end-1] == '.' {
+			end--
+		}
 
 		text := s[start:end]
 		s = s[:start] + fmt.Sprintf("[%s](//github.com/go-delve/delve/tree/master/%s)", text, text) + s[end:]

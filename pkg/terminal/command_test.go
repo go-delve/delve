@@ -693,7 +693,10 @@ func TestIssue827(t *testing.T) {
 	withTestTerminal("notify-v2", t, func(term *FakeTerminal) {
 		go func() {
 			time.Sleep(1 * time.Second)
-			http.Get("http://127.0.0.1:8888/test")
+			resp, err := http.Get("http://127.0.0.1:8888/test")
+			if err == nil {
+				resp.Body.Close()
+			}
 			time.Sleep(1 * time.Second)
 			term.client.Halt()
 		}()
@@ -714,37 +717,67 @@ func findCmdName(c *Commands, cmdstr string, prefix cmdPrefix) string {
 	return ""
 }
 
+func assertNoError(t *testing.T, err error, str string) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("%s: %v", str, err)
+	}
+}
+
+func assertNoErrorConfigureCmd(t *testing.T, term *Term, cmdstr string) {
+	t.Helper()
+	err := configureCmd(term, callContext{}, cmdstr)
+	assertNoError(t, err, fmt.Sprintf("error executing configureCmd(%s)", cmdstr))
+}
+
+func assertSubstitutePath(t *testing.T, sp config.SubstitutePathRules, v ...string) {
+	t.Helper()
+	if len(sp) != len(v)/2 {
+		t.Fatalf("wrong number of substitute path rules (expected: %d): %#v", len(v)/2, sp)
+	}
+	for i := range sp {
+		if sp[i].From != v[i*2] || sp[i].To != v[i*2+1] {
+			t.Fatalf("wrong substitute path rule %#v expected (from: %q to %q)", sp[i], v[i*2], v[i*2+1])
+		}
+	}
+}
+
+func assertDebugInfoDirs(t *testing.T, got []string, tgt ...string) {
+	if len(got) != len(tgt) {
+		t.Fatalf("wrong number of debug info directories (got %d expected %d)", len(got), len(tgt))
+	}
+	for i := range got {
+		if got[i] != tgt[i] {
+			t.Fatalf("debug info directories mismatch got: %v expected: %v", got, tgt)
+		}
+	}
+}
+
 func TestConfig(t *testing.T) {
+	var buf bytes.Buffer
 	var term Term
 	term.conf = &config.Config{}
 	term.cmds = DebugCommands(nil)
+	term.stdout = &transcriptWriter{pw: &pagingWriter{w: &buf}}
 
 	err := configureCmd(&term, callContext{}, "nonexistent-parameter 10")
 	if err == nil {
 		t.Fatalf("expected error executing configureCmd(nonexistent-parameter)")
 	}
 
-	err = configureCmd(&term, callContext{}, "max-string-len 10")
-	if err != nil {
-		t.Fatalf("error executing configureCmd(max-string-len): %v", err)
-	}
+	assertNoErrorConfigureCmd(t, &term, "max-string-len 10")
 	if term.conf.MaxStringLen == nil {
 		t.Fatalf("expected MaxStringLen 10, got nil")
 	}
 	if *term.conf.MaxStringLen != 10 {
 		t.Fatalf("expected MaxStringLen 10, got: %d", *term.conf.MaxStringLen)
 	}
-	err = configureCmd(&term, callContext{}, "show-location-expr   true")
-	if err != nil {
-		t.Fatalf("error executing configureCmd(show-location-expr   true)")
-	}
+	assertNoErrorConfigureCmd(t, &term, "show-location-expr   true")
 	if term.conf.ShowLocationExpr != true {
 		t.Fatalf("expected ShowLocationExpr true, got false")
 	}
-	err = configureCmd(&term, callContext{}, "max-variable-recurse 4")
-	if err != nil {
-		t.Fatalf("error executing configureCmd(max-variable-recurse): %v", err)
-	}
+
+	assertNoErrorConfigureCmd(t, &term, "max-variable-recurse 4")
 	if term.conf.MaxVariableRecurse == nil {
 		t.Fatalf("expected MaxVariableRecurse 4, got nil")
 	}
@@ -752,26 +785,13 @@ func TestConfig(t *testing.T) {
 		t.Fatalf("expected MaxVariableRecurse 4, got: %d", *term.conf.MaxVariableRecurse)
 	}
 
-	err = configureCmd(&term, callContext{}, "substitute-path a b")
-	if err != nil {
-		t.Fatalf("error executing configureCmd(substitute-path a b): %v", err)
-	}
-	if len(term.conf.SubstitutePath) != 1 || (term.conf.SubstitutePath[0] != config.SubstitutePathRule{From: "a", To: "b"}) {
-		t.Fatalf("unexpected SubstitutePathRules after insert %v", term.conf.SubstitutePath)
-	}
+	assertNoErrorConfigureCmd(t, &term, "substitute-path a b")
+	assertSubstitutePath(t, term.conf.SubstitutePath, "a", "b")
 
-	err = configureCmd(&term, callContext{}, "substitute-path a")
-	if err != nil {
-		t.Fatalf("error executing configureCmd(substitute-path a): %v", err)
-	}
-	if len(term.conf.SubstitutePath) != 0 {
-		t.Fatalf("unexpected SubstitutePathRules after delete %v", term.conf.SubstitutePath)
-	}
+	assertNoErrorConfigureCmd(t, &term, "substitute-path a")
+	assertSubstitutePath(t, term.conf.SubstitutePath)
 
-	err = configureCmd(&term, callContext{}, "alias print blah")
-	if err != nil {
-		t.Fatalf("error executing configureCmd(alias print blah): %v", err)
-	}
+	assertNoErrorConfigureCmd(t, &term, "alias print blah")
 	if len(term.conf.Aliases["print"]) != 1 {
 		t.Fatalf("aliases not changed after configure command %v", term.conf.Aliases)
 	}
@@ -779,16 +799,62 @@ func TestConfig(t *testing.T) {
 		t.Fatalf("new alias not found")
 	}
 
-	err = configureCmd(&term, callContext{}, "alias blah")
-	if err != nil {
-		t.Fatalf("error executing configureCmd(alias blah): %v", err)
-	}
+	assertNoErrorConfigureCmd(t, &term, "alias blah")
 	if len(term.conf.Aliases["print"]) != 0 {
 		t.Fatalf("alias not removed after configure command %v", term.conf.Aliases)
 	}
 	if findCmdName(term.cmds, "blah", noPrefix) != "" {
 		t.Fatalf("new alias found after delete")
 	}
+
+	err = configureCmd(&term, callContext{}, "show-location-expr")
+	if err == nil {
+		t.Fatalf("no error form configureCmd(show-location-expr)")
+	}
+	if !term.conf.ShowLocationExpr {
+		t.Fatalf("ShowLocationExpr not set to true")
+	}
+
+	assertNoErrorConfigureCmd(t, &term, "show-location-expr false")
+	if term.conf.ShowLocationExpr {
+		t.Fatalf("ShowLocationExpr set to true")
+	}
+
+	assertNoErrorConfigureCmd(t, &term, "substitute-path a b")
+	assertNoErrorConfigureCmd(t, &term, "substitute-path c d")
+	assertSubstitutePath(t, term.conf.SubstitutePath, "a", "b", "c", "d")
+
+	buf.Reset()
+	assertNoErrorConfigureCmd(t, &term, "substitute-path")
+	t.Logf("current substitute-path: %q", buf.String())
+	if buf.String() != "\"a\" → \"b\"\n\"c\" → \"d\"\n" {
+		t.Fatalf("wrong substitute-path value")
+	}
+
+	assertNoErrorConfigureCmd(t, &term, "substitute-path -clear c")
+	assertSubstitutePath(t, term.conf.SubstitutePath, "a", "b")
+
+	assertNoErrorConfigureCmd(t, &term, "substitute-path -clear")
+	assertSubstitutePath(t, term.conf.SubstitutePath)
+
+	assertNoErrorConfigureCmd(t, &term, "substitute-path \"\" something")
+	assertSubstitutePath(t, term.conf.SubstitutePath, "", "something")
+
+	assertNoErrorConfigureCmd(t, &term, "substitute-path somethingelse \"\"")
+	assertSubstitutePath(t, term.conf.SubstitutePath, "", "something", "somethingelse", "")
+
+	assertDebugInfoDirs(t, term.conf.DebugInfoDirectories)
+
+	assertNoErrorConfigureCmd(t, &term, "debug-info-directories -add a")
+	assertDebugInfoDirs(t, term.conf.DebugInfoDirectories, "a")
+	assertNoErrorConfigureCmd(t, &term, "debug-info-directories -add b")
+	assertDebugInfoDirs(t, term.conf.DebugInfoDirectories, "a", "b")
+	assertNoErrorConfigureCmd(t, &term, "debug-info-directories -add c")
+	assertDebugInfoDirs(t, term.conf.DebugInfoDirectories, "a", "b", "c")
+	assertNoErrorConfigureCmd(t, &term, "debug-info-directories -rm b")
+	assertDebugInfoDirs(t, term.conf.DebugInfoDirectories, "a", "c")
+	assertNoErrorConfigureCmd(t, &term, "debug-info-directories -clear")
+	assertDebugInfoDirs(t, term.conf.DebugInfoDirectories)
 }
 
 func TestIssue1090(t *testing.T) {

@@ -130,7 +130,7 @@ func Record(cmd []string, wd string, quiet bool, stdin string, stdout proc.Outpu
 
 // Replay starts an instance of rr in replay mode, with the specified trace
 // directory, and connects to it.
-func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string, rrOnProcessPid int) (*proc.TargetGroup, error) {
+func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string, rrOnProcessPid int, cmdline string) (*proc.TargetGroup, error) {
 	if err := checkRRAvailable(); err != nil {
 		return nil, err
 	}
@@ -174,7 +174,7 @@ func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string,
 			safeRemoveAll(p.tracedir)
 		}
 	}
-	tgt, err := p.Dial(init.port, init.exe, 0, debugInfoDirs, proc.StopLaunched)
+	tgt, err := p.Dial(init.port, init.exe, cmdline, 0, debugInfoDirs, proc.StopLaunched)
 	if err != nil {
 		rrcmd.Process.Kill()
 		return nil, err
@@ -299,19 +299,14 @@ func RecordAndReplay(cmd []string, wd string, quiet bool, debugInfoDirs []string
 	if tracedir == "" {
 		return nil, "", err
 	}
-	t, err := Replay(tracedir, quiet, true, debugInfoDirs, 0)
+	t, err := Replay(tracedir, quiet, true, debugInfoDirs, 0, strings.Join(cmd, " "))
 	return t, tracedir, err
 }
 
 // safeRemoveAll removes dir and its contents but only as long as dir does
 // not contain directories.
 func safeRemoveAll(dir string) {
-	dh, err := os.Open(dir)
-	if err != nil {
-		return
-	}
-	defer dh.Close()
-	fis, err := dh.Readdir(-1)
+	fis, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}

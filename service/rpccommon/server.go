@@ -32,7 +32,7 @@ import (
 type ServerImpl struct {
 	// config is all the information necessary to start the debugger and server.
 	config *service.Config
-	// listener is used to serve HTTP.
+	// listener is used to serve JSON-RPC.
 	listener net.Listener
 	// stopChan is used to stop the listener goroutine.
 	stopChan chan struct{}
@@ -103,9 +103,8 @@ func (s *ServerImpl) Stop() error {
 	return s.debugger.Detach(kill)
 }
 
-// Run starts a debugger and exposes it with an HTTP server. The debugger
-// itself can be stopped with the `detach` API. Run blocks until the HTTP
-// server stops.
+// Run starts a debugger and exposes it with an JSON-RPC server. The debugger
+// itself can be stopped with the `detach` API.
 func (s *ServerImpl) Run() error {
 	var err error
 

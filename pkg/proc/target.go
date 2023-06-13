@@ -41,7 +41,8 @@ type Target struct {
 	proc   ProcessInternal
 	recman RecordingManipulationInternal
 
-	pid int
+	pid     int
+	CmdLine string
 
 	// StopReason describes the reason why the target process is stopped.
 	// A process could be stopped for multiple simultaneous reasons, in which
@@ -160,7 +161,7 @@ func DisableAsyncPreemptEnv() []string {
 
 // newTarget returns an initialized Target object.
 // The p argument can optionally implement the RecordingManipulation interface.
-func (grp *TargetGroup) newTarget(p ProcessInternal, pid int, currentThread Thread, path string) (*Target, error) {
+func (grp *TargetGroup) newTarget(p ProcessInternal, pid int, currentThread Thread, path, cmdline string) (*Target, error) {
 	entryPoint, err := p.EntryPoint()
 	if err != nil {
 		return nil, err
@@ -182,6 +183,7 @@ func (grp *TargetGroup) newTarget(p ProcessInternal, pid int, currentThread Thre
 		fncallForG:    make(map[int64]*callInjection),
 		currentThread: currentThread,
 		pid:           pid,
+		CmdLine:       cmdline,
 	}
 
 	if recman, ok := p.(RecordingManipulationInternal); ok {
@@ -452,7 +454,7 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 		v.Kind = ip.Kind
 
 		cachedMem := CreateLoadedCachedMemory(ip.Data)
-		compMem, _ := CreateCompositeMemory(cachedMem, t.BinInfo().Arch, op.DwarfRegisters{}, ip.Pieces)
+		compMem, _ := CreateCompositeMemory(cachedMem, t.BinInfo().Arch, op.DwarfRegisters{}, ip.Pieces, ip.RealType.Common().ByteSize)
 		v.mem = compMem
 
 		// Load the value here so that we don't have to export
@@ -504,7 +506,7 @@ const (
 // This caching is primarily done so that registerized variables don't get a
 // different address every time they are evaluated, which would be confusing
 // and leak memory.
-func (t *Target) newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters, pieces []op.Piece, descr *locationExpr) (int64, *compositeMemory, error) {
+func (t *Target) newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters, pieces []op.Piece, descr *locationExpr, size int64) (int64, *compositeMemory, error) {
 	var key string
 	if regs.CFA != 0 && len(pieces) > 0 {
 		// key is created by concatenating the location expression with the CFA,
@@ -519,7 +521,7 @@ func (t *Target) newCompositeMemory(mem MemoryReadWriter, regs op.DwarfRegisters
 		}
 	}
 
-	cmem, err := newCompositeMemory(mem, t.BinInfo().Arch, regs, pieces)
+	cmem, err := newCompositeMemory(mem, t.BinInfo().Arch, regs, pieces, size)
 	if err != nil {
 		return 0, cmem, err
 	}
@@ -587,7 +589,7 @@ func (t *Target) dwrapUnwrap(fn *Function) *Function {
 	return fn
 }
 
-func (t *Target) pluginOpenCallback(Thread) bool {
+func (t *Target) pluginOpenCallback(Thread, *Target) (bool, error) {
 	logger := logflags.DebuggerLogger()
 	for _, lbp := range t.Breakpoints().Logical {
 		if isSuspended(t, lbp) {
@@ -599,7 +601,7 @@ func (t *Target) pluginOpenCallback(Thread) bool {
 			}
 		}
 	}
-	return false
+	return false, nil
 }
 
 func isSuspended(t *Target, lbp *LogicalBreakpoint) bool {

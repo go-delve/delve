@@ -17,7 +17,7 @@ func i386AsmDecode(asmInst *AsmInstruction, mem []byte, regs *op.DwarfRegisters,
 
 // Possible stacksplit prologues are inserted by stacksplit in
 // $GOROOT/src/cmd/internal/obj/x86/obj6.go.
-// If 386 on linux when pie, the stacksplit prologue beigin with `call __x86.get_pc_thunk.` sometime.
+// If 386 on linux when pie, the stacksplit prologue begin with `call __x86.get_pc_thunk.` sometime.
 var prologuesI386 []opcodeSeq
 
 func init() {

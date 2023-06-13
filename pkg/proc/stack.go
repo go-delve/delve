@@ -39,8 +39,6 @@ type Stackframe struct {
 	stackHi uint64
 	// Return address for this stack frame (as read from the stack frame itself).
 	Ret uint64
-	// Address to the memory location containing the return address
-	addrret uint64
 	// Err is set if an error occurred during stacktrace
 	Err error
 	// SystemStack is true if this frame belongs to a system stack.
@@ -275,7 +273,7 @@ func (it *stackIterator) newStackframe(ret, retaddr uint64) Stackframe {
 	} else {
 		it.regs.FrameBase = it.frameBase(fn)
 	}
-	r := Stackframe{Current: Location{PC: it.pc, File: f, Line: l, Fn: fn}, Regs: it.regs, Ret: ret, addrret: retaddr, stackHi: it.stackhi, SystemStack: it.systemstack, lastpc: it.pc}
+	r := Stackframe{Current: Location{PC: it.pc, File: f, Line: l, Fn: fn}, Regs: it.regs, Ret: ret, stackHi: it.stackhi, SystemStack: it.systemstack, lastpc: it.pc}
 	if r.Regs.Reg(it.regs.PCRegNum) == nil {
 		r.Regs.AddReg(it.regs.PCRegNum, op.DwarfRegisterFromUint64(it.pc))
 	}
@@ -366,7 +364,6 @@ func (it *stackIterator) appendInlineCalls(frames []Stackframe, frame Stackframe
 			Regs:        frame.Regs,
 			stackHi:     frame.stackHi,
 			Ret:         frame.Ret,
-			addrret:     frame.addrret,
 			Err:         frame.Err,
 			SystemStack: frame.SystemStack,
 			Inlined:     true,

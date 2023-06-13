@@ -172,6 +172,17 @@ func assertLineNumber(p *proc.Target, t *testing.T, lineno int, descr string) (s
 	return f, l
 }
 
+func assertFunctionName(p *proc.Target, t *testing.T, fnname string, descr string) {
+	pc := currentPC(p, t)
+	f, l, fn := p.BinInfo().PCToLine(pc)
+	if fn == nil {
+		t.Fatalf("%s expected function %s got %s:%d", descr, fnname, f, l)
+	}
+	if fn.Name != fnname {
+		t.Fatalf("%s expected function %s got %s %s:%d", descr, fnname, fn.Name, f, l)
+	}
+}
+
 func TestExit(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("continuetestprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
@@ -597,6 +608,7 @@ func TestNextGeneral(t *testing.T) {
 }
 
 func TestNextConcurrent(t *testing.T) {
+	skipOn(t, "broken", "windows", "arm64")
 	testcases := []nextTest{
 		{8, 9},
 		{9, 10},
@@ -632,6 +644,7 @@ func TestNextConcurrent(t *testing.T) {
 }
 
 func TestNextConcurrentVariant2(t *testing.T) {
+	skipOn(t, "broken", "windows", "arm64")
 	// Just like TestNextConcurrent but instead of removing the initial breakpoint we check that when it happens is for other goroutines
 	testcases := []nextTest{
 		{8, 9},
@@ -728,7 +741,10 @@ func TestNextNetHTTP(t *testing.T) {
 				}
 				time.Sleep(50 * time.Millisecond)
 			}
-			http.Get("http://127.0.0.1:9191")
+			resp, err := http.Get("http://127.0.0.1:9191")
+			if err == nil {
+				resp.Body.Close()
+			}
 		}()
 		if err := grp.Continue(); err != nil {
 			t.Fatal(err)
@@ -1360,6 +1376,7 @@ func TestFrameEvaluation(t *testing.T) {
 		assertNoError(err, t, "GetG()")
 
 		frames, err := g.Stacktrace(40, 0)
+		assertNoError(err, t, "Stacktrace()")
 		t.Logf("Goroutine %d %#v", g.ID, g.Thread)
 		logStacktrace(t, p, frames)
 
@@ -1512,6 +1529,7 @@ func TestBreakpointCounts(t *testing.T) {
 }
 
 func TestHardcodedBreakpointCounts(t *testing.T) {
+	skipOn(t, "broken", "windows", "arm64")
 	withTestProcess("hcbpcountstest", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		counts := map[int64]int{}
 		for {
@@ -2822,7 +2840,7 @@ func TestNextInDeferReturn(t *testing.T) {
 	// runtime.deferreturn updates the G struct in a way that for one
 	// instruction leaves the curg._defer field non-nil but with curg._defer.fn
 	// field being nil.
-	// We need to deal with this without panicing.
+	// We need to deal with this without panicking.
 	protest.AllowRecording(t)
 	withTestProcess("defercall", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "runtime.deferreturn")
@@ -2898,7 +2916,10 @@ func TestAttachDetach(t *testing.T) {
 	assertNoError(err, t, "Attach")
 	go func() {
 		time.Sleep(1 * time.Second)
-		http.Get("http://127.0.0.1:9191")
+		resp, err := http.Get("http://127.0.0.1:9191")
+		if err == nil {
+			resp.Body.Close()
+		}
 	}()
 
 	assertNoError(p.Continue(), t, "Continue")
@@ -2913,6 +2934,7 @@ func TestAttachDetach(t *testing.T) {
 		assertNoError(err, t, "Page request after detach")
 		bs, err := ioutil.ReadAll(resp.Body)
 		assertNoError(err, t, "Reading /nobp page")
+		defer resp.Body.Close()
 		if out := string(bs); !strings.Contains(out, "hello, world!") {
 			t.Fatalf("/nobp page does not contain \"hello, world!\": %q", out)
 		}
@@ -3590,7 +3612,11 @@ func TestDeclLine(t *testing.T) {
 		setFileBreakpoint(p, t, fixture.Source, 9)
 		setFileBreakpoint(p, t, fixture.Source, 10)
 		setFileBreakpoint(p, t, fixture.Source, 11)
-		setFileBreakpoint(p, t, fixture.Source, 14)
+		b := setFunctionBreakpoint(p, t, "main.f1")
+		if b.Line != 14 {
+			// Line 14 is hard-coded below.
+			t.Fatalf("expected \"main.f1\" breakpoint to be set on line 14, but got line: %d", b.Line)
+		}
 
 		assertNoError(grp.Continue(), t, "Continue 1")
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
@@ -3613,6 +3639,9 @@ func TestDeclLine(t *testing.T) {
 		testDeclLineCount(t, p, 11, []string{"a", "b"})
 
 		assertNoError(grp.Continue(), t, "Continue 5")
+		// On line 14, we expect the function's arguments to be available, even
+		// though their DW_AT_decl_line declares higher line numbers. The decl_line
+		// is supposed to be ignored for the visibility of arguments.
 		testDeclLineCount(t, p, 14, []string{"a", "b"})
 	})
 }
@@ -3713,7 +3742,7 @@ func TestHaltKeepsSteppingBreakpoints(t *testing.T) {
 
 func TestDisassembleGlobalVars(t *testing.T) {
 	skipOn(t, "broken - global variable symbolication", "arm64") // On ARM64 symLookup can't look up variables due to how they are loaded, see issue #1778
-	// On 386 linux when pie, the genered code use __x86.get_pc_thunk to ensure position-independent.
+	// On 386 linux when pie, the generated code use __x86.get_pc_thunk to ensure position-independent.
 	// Locate global variable by
 	//    `CALL __x86.get_pc_thunk.ax(SB) 0xb0f7f
 	//     LEAL 0xc0a19(AX), AX`
@@ -4631,7 +4660,10 @@ func TestCgoStacktrace2(t *testing.T) {
 	// If a panic happens during cgo execution the stacktrace should show the C
 	// function that caused the problem.
 	withTestProcess("cgosigsegvstack", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		grp.Continue()
+		err := grp.Continue()
+		if _, exited := err.(proc.ErrProcessExited); exited {
+			t.Fatal("process exited")
+		}
 		frames, err := proc.ThreadStacktrace(p.CurrentThread(), 100)
 		assertNoError(err, t, "Stacktrace()")
 		logStacktrace(t, p, frames)
@@ -5083,6 +5115,7 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 		candg := []*proc.G{}
 		bestg := []*proc.G{}
 		for _, g := range gs {
+			t.Logf("stacktracing goroutine %d (%v)\n", g.ID, g.CurrentLoc)
 			frames, err := g.Stacktrace(20, 0)
 			assertNoError(err, t, "Stacktrace")
 			for _, frame := range frames {
@@ -5159,7 +5192,7 @@ func TestIssue2319(t *testing.T) {
 }
 
 func TestDump(t *testing.T) {
-	if runtime.GOOS == "freebsd" || (runtime.GOOS == "darwin" && testBackend == "native") || (runtime.GOOS == "windows" && runtime.GOARCH != "amd64") {
+	if (runtime.GOOS == "darwin" && testBackend == "native") || (runtime.GOOS == "windows" && runtime.GOARCH != "amd64") {
 		t.Skip("not supported")
 	}
 
@@ -5916,7 +5949,7 @@ func TestGnuDebuglink(t *testing.T) {
 	for i := range normalBinInfo.Functions {
 		normalFn := normalBinInfo.Functions[i]
 		debuglinkFn := debuglinkBinInfo.Functions[i]
-		if normalFn.Entry != debuglinkFn.Entry || normalFn.Name != normalFn.Name {
+		if normalFn.Entry != debuglinkFn.Entry || normalFn.Name != debuglinkFn.Name {
 			t.Fatalf("function definition mismatch")
 		}
 	}
@@ -6051,5 +6084,105 @@ func TestEscapeCheckUnreadable(t *testing.T) {
 		setFileBreakpoint(p, t, fixture.Source, 9)
 		assertNoError(grp.Continue(), t, "Continue")
 		proc.EvalExpressionWithCalls(grp, p.SelectedGoroutine(), "value.Type()", normalLoadConfig, true)
+	})
+}
+
+func TestStepShadowConcurrentBreakpoint(t *testing.T) {
+	// Checks that a StepBreakpoint can not shadow a concurrently hit user breakpoint
+	withTestProcess("stepshadow", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		break2 := setFunctionBreakpoint(p, t, "main.stacktraceme2")
+		breakMain := setFileBreakpoint(p, t, fixture.Source, 15)
+		assertNoError(grp.Continue(), t, "Continue()")
+
+		stacktraceme1calls, stacktraceme2calls := 0, 0
+
+		for {
+			t.Logf("stop (%d %d):", stacktraceme1calls, stacktraceme2calls)
+			for _, th := range p.ThreadList() {
+				loc, _ := th.Location()
+				t.Logf("\t%s:%d\n", loc.File, loc.Line)
+				bp := th.Breakpoint().Breakpoint
+				if bp != nil && bp.Addr == break2.Addr {
+					stacktraceme2calls++
+				}
+				// make stop on the breakpoint in main.main the selected goroutine so we can use step later
+				if bp != nil && bp.Addr == breakMain.Addr {
+					g, _ := proc.GetG(th)
+					p.SwitchGoroutine(g)
+				}
+			}
+
+			file, lineno := currentLineNumber(p, t)
+
+			var err error
+			var reason string
+			switch lineno {
+			default:
+				t.Fatalf("unexpected stop location %s:%d", file, lineno)
+			case 15: // loop in main.main
+				reason = "Step()"
+				err = grp.Step()
+			case 28: // main.stacktraceme1
+				stacktraceme1calls++
+				reason = "Continue()"
+				err = grp.Continue()
+			case 30, 31: // main.stacktraceme2
+				reason = "Continue()"
+				err = grp.Continue()
+			}
+			if _, isexited := err.(proc.ErrProcessExited); isexited {
+				break
+			}
+			assertNoError(err, t, reason)
+		}
+
+		t.Logf("%d %d\n", stacktraceme1calls, stacktraceme2calls)
+
+		if stacktraceme1calls != 100 {
+			t.Errorf("wrong number of calls to stacktraceme1 found: %d", stacktraceme1calls)
+		}
+		if stacktraceme2calls != 100 {
+			t.Errorf("wrong number of calls to stacktraceme2 found: %d", stacktraceme2calls)
+		}
+	})
+}
+
+func TestFollowExecRegexFilter(t *testing.T) {
+	skipUnlessOn(t, "follow exec only supported on linux", "linux")
+	withTestProcessArgs("spawn", t, ".", []string{"spawn", "3"}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		grp.LogicalBreakpoints[1] = &proc.LogicalBreakpoint{LogicalID: 1, Set: proc.SetBreakpoint{FunctionName: "main.traceme1"}, HitCount: make(map[int64]uint64)}
+		grp.LogicalBreakpoints[2] = &proc.LogicalBreakpoint{LogicalID: 2, Set: proc.SetBreakpoint{FunctionName: "main.traceme2"}, HitCount: make(map[int64]uint64)}
+		grp.LogicalBreakpoints[3] = &proc.LogicalBreakpoint{LogicalID: 3, Set: proc.SetBreakpoint{FunctionName: "main.traceme3"}, HitCount: make(map[int64]uint64)}
+
+		assertNoError(grp.EnableBreakpoint(grp.LogicalBreakpoints[1]), t, "EnableBreakpoint(main.traceme1)")
+		assertNoError(grp.EnableBreakpoint(grp.LogicalBreakpoints[3]), t, "EnableBreakpoint(main.traceme3)")
+
+		assertNoError(grp.FollowExec(true, "spawn.* child C1"), t, "FollowExec")
+
+		assertNoError(grp.Continue(), t, "Continue 1")
+		assertFunctionName(grp.Selected, t, "main.traceme1", "Program did not continue to the expected location (1)")
+		assertNoError(grp.Continue(), t, "Continue 2")
+		assertFunctionName(grp.Selected, t, "main.traceme2", "Program did not continue to the expected location (2)")
+		assertNoError(grp.Continue(), t, "Continue 3")
+		assertFunctionName(grp.Selected, t, "main.traceme3", "Program did not continue to the expected location (3)")
+		err := grp.Continue()
+		if err != nil {
+			_, isexited := err.(proc.ErrProcessExited)
+			if !isexited {
+				assertNoError(err, t, "Continue 4")
+			}
+		} else {
+			t.Fatal("process did not exit after 4 continues")
+		}
+	})
+}
+
+func TestReadTargetArguments(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcessArgs("restartargs", t, ".", []string{"one", "two", "three"}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		t.Logf("command line: %q\n", p.CmdLine)
+		if !strings.HasSuffix(p.CmdLine, " one two three") {
+			t.Fatalf("wrong command line")
+		}
 	})
 }

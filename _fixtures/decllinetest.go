@@ -11,6 +11,9 @@ func main() {
 	f1(a, b)
 }
 
-func f1(a, b int) {
+func f1(
+	a int,
+	b int,
+) {
 	fmt.Printf("%d %d\n", a, b)
 }

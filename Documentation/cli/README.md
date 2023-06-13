@@ -91,6 +91,7 @@ Command | Description
 [list](#list) | Show source code.
 [source](#source) | Executes a file containing a list of delve commands
 [sources](#sources) | Print list of source files.
+[target](#target) | Manages child process debugging.
 [transcript](#transcript) | Appends command output to a file.
 [types](#types) | Print list of types
 
@@ -229,13 +230,23 @@ Changes the value of a configuration parameter.
 
 	config substitute-path <from> <to>
 	config substitute-path <from>
+	config substitute-path -clear
 
-Adds or removes a path substitution rule.
+Adds or removes a path substitution rule, if -clear is used all
+substitute-path rules are removed. Without arguments shows the current list
+of substitute-path rules.
+See also [Documentation/cli/substitutepath.md](//github.com/go-delve/delve/tree/master/Documentation/cli/substitutepath.md) for how the rules are applied.
 
 	config alias <command> <alias>
 	config alias <alias>
 
 Defines <alias> as an alias to <command> or removes an alias.
+
+	config debug-info-directories -add <path>
+	config debug-info-directories -rm <path>
+	config debug-info-directories -clear
+
+Adds, removes or clears debug-info-directories.
 
 
 ## continue
@@ -398,9 +409,14 @@ To only display goroutines where the specified location contains (or does not co
 	goroutines -w (userloc|curloc|goloc|startloc) expr
 	goroutines -without (userloc|curloc|goloc|startloc) expr
 	goroutines -wo (userloc|curloc|goloc|startloc) expr
+
+	Where:
+	userloc: filter by the location of the topmost stackframe in user code
+	curloc: filter by the location of the topmost stackframe (including frames inside private runtime functions)
+	goloc: filter by the location of the go instruction that created the goroutine
+	startloc: filter by the location of the start function
 	
 To only display goroutines that have (or do not have) the specified label key and value, use:
-	
 
 	goroutines -with label key=value
 	goroutines -without label key=value
@@ -424,6 +440,15 @@ To only display user (or runtime) goroutines, use:
 GROUPING
 
 	goroutines -group (userloc|curloc|goloc|startloc|running|user)
+
+	Where:
+	userloc: groups goroutines by the location of the topmost stackframe in user code
+	curloc: groups goroutines by the location of the topmost stackframe
+	goloc: groups goroutines by the location of the go instruction that created the goroutine
+	startloc: groups goroutines by the location of the start function
+	running: groups goroutines by whether they are running or not
+	user: groups goroutines by weather they are user or runtime goroutines
+
 
 Groups goroutines by the given location, running status or user classification, up to 5 goroutines per group will be displayed as well as the total number of goroutines in the group.
 
@@ -526,7 +551,7 @@ Print contents of CPU registers.
 
 	regs [-a]
 
-Argument -a shows more registers. Individual registers can also be displayed by 'print' and 'display'. See [Documentation/cli/expr.md.](//github.com/go-delve/delve/tree/master/Documentation/cli/expr.md.)
+Argument -a shows more registers. Individual registers can also be displayed by 'print' and 'display'. See [Documentation/cli/expr.md](//github.com/go-delve/delve/tree/master/Documentation/cli/expr.md).
 
 
 ## restart
@@ -622,6 +647,22 @@ Aliases: si
 Step out of the current function.
 
 Aliases: so
+
+## target
+Manages child process debugging.
+
+	target follow-exec [-on [regex]] [-off]
+
+Enables or disables follow exec mode. When follow exec mode Delve will automatically attach to new child processes executed by the target process. An optional regular expression can be passed to 'target follow-exec', only child processes with a command line matching the regular expression will be followed.
+
+	target list
+
+List currently attached processes.
+
+	target switch [pid]
+
+Switches to the specified process.
+
 
 ## thread
 Switch to the specified thread.

@@ -278,7 +278,7 @@ func newProcess(process *os.Process) *gdbProcess {
 }
 
 // Listen waits for a connection from the stub.
-func (p *gdbProcess) Listen(listener net.Listener, path string, pid int, debugInfoDirs []string, stopReason proc.StopReason) (*proc.TargetGroup, error) {
+func (p *gdbProcess) Listen(listener net.Listener, path, cmdline string, pid int, debugInfoDirs []string, stopReason proc.StopReason) (*proc.TargetGroup, error) {
 	acceptChan := make(chan net.Conn)
 
 	go func() {
@@ -292,7 +292,7 @@ func (p *gdbProcess) Listen(listener net.Listener, path string, pid int, debugIn
 		if conn == nil {
 			return nil, errors.New("could not connect")
 		}
-		return p.Connect(conn, path, pid, debugInfoDirs, stopReason)
+		return p.Connect(conn, path, cmdline, pid, debugInfoDirs, stopReason)
 	case status := <-p.waitChan:
 		listener.Close()
 		return nil, fmt.Errorf("stub exited while waiting for connection: %v", status)
@@ -300,11 +300,11 @@ func (p *gdbProcess) Listen(listener net.Listener, path string, pid int, debugIn
 }
 
 // Dial attempts to connect to the stub.
-func (p *gdbProcess) Dial(addr string, path string, pid int, debugInfoDirs []string, stopReason proc.StopReason) (*proc.TargetGroup, error) {
+func (p *gdbProcess) Dial(addr string, path, cmdline string, pid int, debugInfoDirs []string, stopReason proc.StopReason) (*proc.TargetGroup, error) {
 	for {
 		conn, err := net.Dial("tcp", addr)
 		if err == nil {
-			return p.Connect(conn, path, pid, debugInfoDirs, stopReason)
+			return p.Connect(conn, path, cmdline, pid, debugInfoDirs, stopReason)
 		}
 		select {
 		case status := <-p.waitChan:
@@ -321,7 +321,7 @@ func (p *gdbProcess) Dial(addr string, path string, pid int, debugInfoDirs []str
 // program and the PID of the target process, both are optional, however
 // some stubs do not provide ways to determine path and pid automatically
 // and Connect will be unable to function without knowing them.
-func (p *gdbProcess) Connect(conn net.Conn, path string, pid int, debugInfoDirs []string, stopReason proc.StopReason) (*proc.TargetGroup, error) {
+func (p *gdbProcess) Connect(conn net.Conn, path, cmdline string, pid int, debugInfoDirs []string, stopReason proc.StopReason) (*proc.TargetGroup, error) {
 	p.conn.conn = conn
 	p.conn.pid = pid
 	err := p.conn.handshake(p.regnames)
@@ -345,7 +345,7 @@ func (p *gdbProcess) Connect(conn net.Conn, path string, pid int, debugInfoDirs 
 		p.gcmdok = false
 	}
 
-	tgt, err := p.initialize(path, debugInfoDirs, stopReason)
+	tgt, err := p.initialize(path, cmdline, debugInfoDirs, stopReason)
 	if err != nil {
 		return nil, err
 	}
@@ -569,9 +569,9 @@ func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs [
 
 	var grp *proc.TargetGroup
 	if listener != nil {
-		grp, err = p.Listen(listener, cmd[0], 0, debugInfoDirs, proc.StopLaunched)
+		grp, err = p.Listen(listener, cmd[0], strings.Join(cmd, " "), 0, debugInfoDirs, proc.StopLaunched)
 	} else {
-		grp, err = p.Dial(port, cmd[0], 0, debugInfoDirs, proc.StopLaunched)
+		grp, err = p.Dial(port, cmd[0], strings.Join(cmd, " "), 0, debugInfoDirs, proc.StopLaunched)
 	}
 	if p.conn.pid != 0 && foreground && isatty.IsTerminal(os.Stdin.Fd()) {
 		// Make the target process the controlling process of the tty if it is a foreground process.
@@ -635,9 +635,9 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.TargetGroup
 
 	var grp *proc.TargetGroup
 	if listener != nil {
-		grp, err = p.Listen(listener, path, pid, debugInfoDirs, proc.StopAttached)
+		grp, err = p.Listen(listener, path, "", pid, debugInfoDirs, proc.StopAttached)
 	} else {
-		grp, err = p.Dial(port, path, pid, debugInfoDirs, proc.StopAttached)
+		grp, err = p.Dial(port, path, "", pid, debugInfoDirs, proc.StopAttached)
 	}
 	return grp, err
 }
@@ -673,7 +673,7 @@ func (p *gdbProcess) EntryPoint() (uint64, error) {
 // initialize uses qProcessInfo to load the inferior's PID and
 // executable path. This command is not supported by all stubs and not all
 // stubs will report both the PID and executable path.
-func (p *gdbProcess) initialize(path string, debugInfoDirs []string, stopReason proc.StopReason) (*proc.TargetGroup, error) {
+func (p *gdbProcess) initialize(path, cmdline string, debugInfoDirs []string, stopReason proc.StopReason) (*proc.TargetGroup, error) {
 	var err error
 	if path == "" {
 		// If we are attaching to a running process and the user didn't specify
@@ -730,7 +730,7 @@ func (p *gdbProcess) initialize(path string, debugInfoDirs []string, stopReason 
 		StopReason:          stopReason,
 		CanDump:             runtime.GOOS == "darwin",
 	})
-	_, err = addTarget(p, p.conn.pid, p.currentThread, path, stopReason)
+	_, err = addTarget(p, p.conn.pid, p.currentThread, path, stopReason, cmdline)
 	if err != nil {
 		p.Detach(true)
 		return nil, err

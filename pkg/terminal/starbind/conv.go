@@ -453,10 +453,15 @@ func (v ptrVariableAsStarlarkValue) Attr(name string) (starlark.Value, error) {
 }
 
 func (v ptrVariableAsStarlarkValue) AttrNames() []string {
+	if len(v.v.Children) == 0 {
+		// The pointer variable was not loaded; we don't know the field names.
+		return nil
+	}
 	if v.v.Children[0].Kind != reflect.Struct {
 		return nil
 	}
-	// autodereference
+	// autodereference: present the field names of the pointed-to struct as the
+	// fields of this pointer variable.
 	x := structVariableAsStarlarkValue{&v.v.Children[0], v.env}
 	return x.AttrNames()
 }
