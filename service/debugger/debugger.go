@@ -604,7 +604,7 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig, withBreakpointInfo bool) (
 	for t.Next() {
 		for _, bp := range t.Breakpoints().WatchOutOfScope {
 			abp := api.ConvertLogicalBreakpoint(bp.Logical)
-			api.ConvertPhysicalBreakpoints(abp, []int{t.Pid()}, []*proc.Breakpoint{bp})
+			api.ConvertPhysicalBreakpoints(abp, bp.Logical, []int{t.Pid()}, []*proc.Breakpoint{bp})
 			state.WatchOutOfScope = append(state.WatchOutOfScope, abp)
 		}
 	}
@@ -731,6 +731,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 			}
 			return locs[0].PCs
 		}
+		setbp.ExprString = locExpr
 	}
 
 	id := requestedBp.ID
@@ -792,7 +793,7 @@ func (d *Debugger) convertBreakpoint(lbp *proc.LogicalBreakpoint) *api.Breakpoin
 			}
 		}
 	}
-	api.ConvertPhysicalBreakpoints(abp, pids, bps)
+	api.ConvertPhysicalBreakpoints(abp, lbp, pids, bps)
 	return abp
 }
 
@@ -1026,7 +1027,7 @@ func (d *Debugger) Breakpoints(all bool) []*api.Breakpoint {
 				} else {
 					abp = &api.Breakpoint{}
 				}
-				api.ConvertPhysicalBreakpoints(abp, []int{t.Pid()}, []*proc.Breakpoint{bp})
+				api.ConvertPhysicalBreakpoints(abp, bp.Logical, []int{t.Pid()}, []*proc.Breakpoint{bp})
 				abp.VerboseDescr = bp.VerboseDescr()
 				abps = append(abps, abp)
 			}
