@@ -698,6 +698,6 @@ func (d *Defer) DeferredFunc(p *Target) (file string, line int, fn *Function) {
 	if fn == nil {
 		return "", 0, nil
 	}
-	file, line, _ = bi.PCToLine(fn.Entry)
+	file, line = bi.EntryLineForFunc(fn)
 	return file, line, fn
 }

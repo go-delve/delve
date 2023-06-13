@@ -71,24 +71,6 @@ func topframe(g *G, thread Thread) (Stackframe, Stackframe, error) {
 	var frames []Stackframe
 	var err error
 
-	var pc uint64
-	var bi *BinaryInfo
-	if g == nil {
-		regs, err := thread.Registers()
-		if err != nil {
-			return Stackframe{}, Stackframe{}, err
-		}
-		pc = regs.PC()
-		bi = thread.BinInfo()
-	} else {
-		pc = g.PC
-		bi = g.variable.bi
-	}
-	f, l, fn := bi.PCToLine(pc)
-	if fn != nil && fn.cu.image.Stripped() {
-		return Stackframe{Current: Location{PC: pc, File: f, Line: l, Fn: fn}}, Stackframe{}, nil
-	}
-
 	if g == nil {
 		frames, err = ThreadStacktrace(thread, 1)
 	} else {

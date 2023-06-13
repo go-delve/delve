@@ -333,7 +333,7 @@ func FindFunctionLocation(p Process, funcName string, lineOffset int) ([]uint64,
 
 	if lineOffset > 0 {
 		fn := origfns[0]
-		filename, lineno, _ := bi.PCToLine(fn.Entry)
+		filename, lineno := bi.EntryLineForFunc(fn)
 		return FindFileLocation(p, filename, lineno+lineOffset)
 	}
 
@@ -371,7 +371,7 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 			if !sameline {
 				return pc, nil
 			}
-			_, entryLine, _ := p.BinInfo().PCToLine(fn.Entry)
+			_, entryLine := p.BinInfo().EntryLineForFunc(fn)
 			if entryLine == line {
 				return pc, nil
 			}
@@ -756,17 +756,26 @@ func (bi *BinaryInfo) Types() ([]string, error) {
 	return types, nil
 }
 
+func (bi *BinaryInfo) EntryLineForFunc(fn *Function) (string, int) {
+	return bi.pcToLine(fn, fn.Entry)
+}
+
+func (bi *BinaryInfo) pcToLine(fn *Function, pc uint64) (string, int) {
+	if fn.cu.lineInfo == nil {
+		f, l, _ := fn.cu.image.symTable.PCToLine(pc)
+		return f, l
+	}
+	f, l := fn.cu.lineInfo.PCToLine(fn.Entry, pc)
+	return f, l
+}
+
 // PCToLine converts an instruction address to a file/line/function.
 func (bi *BinaryInfo) PCToLine(pc uint64) (string, int, *Function) {
 	fn := bi.PCToFunc(pc)
 	if fn == nil {
 		return "", 0, nil
 	}
-	if fn.cu.lineInfo == nil {
-		f, l, _ := fn.cu.image.symTable.PCToLine(pc)
-		return f, l, fn
-	}
-	f, ln := fn.cu.lineInfo.PCToLine(fn.Entry, pc)
+	f, ln := bi.pcToLine(fn, pc)
 	return f, ln, fn
 }
 
