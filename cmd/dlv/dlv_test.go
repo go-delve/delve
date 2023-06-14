@@ -1157,6 +1157,54 @@ func TestTraceEBPF2(t *testing.T) {
 	cmd.Wait()
 }
 
+func TestTraceEBPF3(t *testing.T) {
+	if os.Getenv("CI") == "true" {
+		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
+	}
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("not implemented on non linux/amd64 systems")
+	}
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+		t.Skip("requires at least Go 1.16 to run test")
+	}
+	usr, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usr.Uid != "0" {
+		t.Skip("test must be run as root")
+	}
+
+	dlvbin := getDlvBinEBPF(t)
+
+	expected := []byte(`> (1) main.tracedFunction(0)
+> (1) main.tracedFunction(1)
+> (1) main.tracedFunction(2)
+> (1) main.tracedFunction(3)
+> (1) main.tracedFunction(4)
+> (1) main.tracedFunction(5)
+> (1) main.tracedFunction(6)
+> (1) main.tracedFunction(7)
+> (1) main.tracedFunction(8)
+> (1) main.tracedFunction(9)`)
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "ebpf_trace2.go"), "main.traced")
+	rdr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	assertNoError(cmd.Start(), t, "running trace")
+
+	output, err := ioutil.ReadAll(rdr)
+	assertNoError(err, t, "ReadAll")
+
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
+	}
+	cmd.Wait()
+}
+
 func TestDlvTestChdir(t *testing.T) {
 	dlvbin := getDlvBin(t)
 
