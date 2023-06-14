@@ -12,6 +12,9 @@ func (gcache *goroutineCache) init(bi *BinaryInfo) {
 
 	exeimage := bi.Images[0]
 	rdr := exeimage.DwarfReader()
+	if rdr == nil {
+		return
+	}
 
 	gcache.allglenAddr, _ = rdr.AddrFor("runtime.allglen", exeimage.StaticBase, bi.Arch.PtrSize())
 

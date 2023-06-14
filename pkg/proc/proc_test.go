@@ -3165,69 +3165,18 @@ func TestShadowedFlag(t *testing.T) {
 	})
 }
 
-func TestAttachStripped(t *testing.T) {
-	if testBackend == "lldb" && runtime.GOOS == "linux" {
-		bs, _ := ioutil.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
-		if bs == nil || strings.TrimSpace(string(bs)) != "0" {
-			t.Logf("can not run TestAttachStripped: %v\n", bs)
-			return
-		}
-	}
-	if testBackend == "rr" {
-		return
-	}
-	if runtime.GOOS == "darwin" {
-		t.Log("-s does not produce stripped executables on macOS")
-		return
-	}
-	if buildMode != "" {
-		t.Skip("not enabled with buildmode=PIE")
-	}
-	fixture := protest.BuildFixture("testnextnethttp", protest.LinkStrip)
-	cmd := exec.Command(fixture.Path)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	assertNoError(cmd.Start(), t, "starting fixture")
-
-	// wait for testnextnethttp to start listening
-	t0 := time.Now()
-	for {
-		conn, err := net.Dial("tcp", "127.0.0.1:9191")
-		if err == nil {
-			conn.Close()
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-		if time.Since(t0) > 10*time.Second {
-			t.Fatal("fixture did not start")
-		}
-	}
-
-	var p *proc.TargetGroup
-	var err error
-
-	switch testBackend {
-	case "native":
-		p, err = native.Attach(cmd.Process.Pid, []string{})
-	case "lldb":
-		path := ""
-		if runtime.GOOS == "darwin" {
-			path = fixture.Path
-		}
-		p, err = gdbserial.LLDBAttach(cmd.Process.Pid, path, []string{})
-	default:
-		t.Fatalf("unknown backend %q", testBackend)
-	}
-
-	t.Logf("error is %v", err)
-
-	if err == nil {
-		p.Detach(true)
-		t.Fatalf("expected error after attach, got nothing")
-	} else {
-		cmd.Process.Kill()
-	}
-	os.Remove(fixture.Path)
+func TestDebugStripped(t *testing.T) {
+	// Currently only implemented for Linux ELF executables.
+	// TODO(derekparker): Add support for Mach-O and PE.
+	skipUnlessOn(t, "linux only", "linux")
+	withTestProcessArgs("testnextprog", t, "", []string{}, protest.LinkStrip, func(p *proc.Target, grp *proc.TargetGroup, f protest.Fixture) {
+		setFunctionBreakpoint(p, t, "main.main")
+		assertNoError(grp.Continue(), t, "Continue")
+		assertCurrentLocationFunction(p, t, "main.main")
+		assertLineNumber(p, t, 37, "first continue")
+		assertNoError(grp.Next(), t, "Next")
+		assertLineNumber(p, t, 38, "after next")
+	})
 }
 
 func TestIssue844(t *testing.T) {

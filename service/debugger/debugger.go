@@ -1315,6 +1315,13 @@ func (d *Debugger) collectBreakpointInformation(apiThread *api.Thread, thread pr
 
 	tgt := d.target.TargetForThread(thread.ThreadID())
 
+	// If we're dealing with a stripped binary don't attempt to load more
+	// information, we won't be able to.
+	img := tgt.BinInfo().PCToImage(bp.Addr)
+	if img != nil && img.Stripped() {
+		return nil
+	}
+
 	if bp.Goroutine {
 		g, err := proc.GetG(thread)
 		if err != nil {

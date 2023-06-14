@@ -554,7 +554,7 @@ func (t *Target) setEBPFTracepointOnFunc(fn *Function, goidOffset int64) error {
 	if t.BinInfo().Producer() != "" && goversion.ProducerAfterOrEqual(t.BinInfo().Producer(), 1, 15) {
 		variablesFlags |= reader.VariablesTrustDeclLine
 	}
-	_, l, _ := t.BinInfo().PCToLine(fn.Entry)
+	_, l := t.BinInfo().EntryLineForFunc(fn)
 
 	var args []ebpf.UProbeArgMap
 	varEntries := reader.Variables(dwarfTree, fn.Entry, l, variablesFlags)
