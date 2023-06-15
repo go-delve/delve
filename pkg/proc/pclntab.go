@@ -61,10 +61,9 @@ func readPcLnTableElf(exe *elf.File, path string) (*gosym.Table, error) {
 	// Find .gopclntab by magic number even if there is no section label
 	magic := magicNumber(bi.GoVersion)
 	pclntabIndex := bytes.Index(tableData, magic)
-	if pclntabIndex < 0 {
-		return nil, fmt.Errorf("could not find magic number in %s ", path)
+	if pclntabIndex >= 0 {
+		tableData = tableData[pclntabIndex:]
 	}
-	tableData = tableData[pclntabIndex:]
 	addr := exe.Section(".text").Addr
 	lineTable := gosym.NewLineTable(tableData, addr)
 	symTable, err := gosym.NewTable([]byte{}, lineTable)

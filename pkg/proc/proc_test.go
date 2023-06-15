@@ -3169,6 +3169,7 @@ func TestDebugStripped(t *testing.T) {
 	// Currently only implemented for Linux ELF executables.
 	// TODO(derekparker): Add support for Mach-O and PE.
 	skipUnlessOn(t, "linux only", "linux")
+	skipOn(t, "does not work with PIE", "pie")
 	withTestProcessArgs("testnextprog", t, "", []string{}, protest.LinkStrip, func(p *proc.Target, grp *proc.TargetGroup, f protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(grp.Continue(), t, "Continue")
