@@ -1443,16 +1443,19 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 
 	bi.loadBuildID(image, elfFile)
 	var debugInfoBytes []byte
-	image.dwarf, err = elfFile.DWARF()
-	if err != nil {
+	var dwerr error
+	image.dwarf, dwerr = elfFile.DWARF()
+	if dwerr != nil {
 		var sepFile *os.File
 		var serr error
 		sepFile, dwarfFile, serr = bi.openSeparateDebugInfo(image, elfFile, bi.DebugInfoDirectories)
 		if serr != nil {
-			fmt.Fprintln(os.Stderr, "Warning: no debug info found, some functionality will be missing such as stack traces and variable evaluation.")
+			if len(bi.Images) <= 1 {
+				fmt.Fprintln(os.Stderr, "Warning: no debug info found, some functionality will be missing such as stack traces and variable evaluation.")
+			}
 			symTable, err := readPcLnTableElf(elfFile, path)
 			if err != nil {
-				return fmt.Errorf("could not create symbol table from  %s ", path)
+				return fmt.Errorf("could not read debug info (%v) and could not read go symbol table (%v)", dwerr, err)
 			}
 			image.symTable = symTable
 			for _, f := range image.symTable.Funcs {
