@@ -609,15 +609,15 @@ func (fn *Function) AllPCs(excludeFile string, excludeLine int) ([]uint64, error
 		return fn.cu.lineInfo.AllPCsBetween(fn.Entry, fn.End-1, excludeFile, excludeLine)
 	}
 	var pcs []uint64
-	fnFile, lastLine, _ := fn.cu.image.symTable.PCToLine(fn.Entry)
-	for pc := fn.Entry; pc < fn.End; pc++ {
+	fnFile, lastLine, _ := fn.cu.image.symTable.PCToLine(fn.Entry - fn.cu.image.StaticBase)
+	for pc := fn.Entry - fn.cu.image.StaticBase; pc < fn.End-fn.cu.image.StaticBase; pc++ {
 		f, line, pcfn := fn.cu.image.symTable.PCToLine(pc)
 		if pcfn == nil {
 			continue
 		}
 		if f == fnFile && line > lastLine {
 			lastLine = line
-			pcs = append(pcs, pc)
+			pcs = append(pcs, pc+fn.cu.image.StaticBase)
 		}
 	}
 	return pcs, nil
@@ -762,7 +762,7 @@ func (bi *BinaryInfo) EntryLineForFunc(fn *Function) (string, int) {
 
 func (bi *BinaryInfo) pcToLine(fn *Function, pc uint64) (string, int) {
 	if fn.cu.lineInfo == nil {
-		f, l, _ := fn.cu.image.symTable.PCToLine(pc)
+		f, l, _ := fn.cu.image.symTable.PCToLine(pc - fn.cu.image.StaticBase)
 		return f, l
 	}
 	f, l := fn.cu.lineInfo.PCToLine(fn.Entry, pc)
@@ -1461,7 +1461,7 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 			for _, f := range image.symTable.Funcs {
 				cu := &compileUnit{}
 				cu.image = image
-				fn := Function{Name: f.Name, Entry: f.Entry, End: f.End, cu: cu}
+				fn := Function{Name: f.Name, Entry: f.Entry + image.StaticBase, End: f.End + image.StaticBase, cu: cu}
 				bi.Functions = append(bi.Functions, fn)
 			}
 			for f := range image.symTable.Files {
