@@ -773,6 +773,15 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 			return nil, err
 		}
 	}
+	if lbp.Set.FunctionName == "" && lbp.FunctionName != "" {
+		lbp.Set.FunctionName = lbp.FunctionName
+	}
+	if lbp.Set.File == "" && lbp.File != "" {
+		lbp.Set.File = lbp.File
+	}
+	if lbp.Set.Line == 0 && lbp.Line != 0 {
+		lbp.Set.Line = lbp.Line
+	}
 
 	createdBp := d.convertBreakpoint(lbp)
 	d.log.Infof("created breakpoint: %#v", createdBp)
