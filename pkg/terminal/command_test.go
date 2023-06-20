@@ -1419,3 +1419,29 @@ func TestCreateBreakpointByLocExpr(t *testing.T) {
 		}
 	})
 }
+
+func TestRestartBreakpoints(t *testing.T) {
+	// Tests that breakpoints set using just a line number and with a line
+	// offset are preserved after restart. See issue #3423.
+	withTestTerminal("continuetestprog", t, func(term *FakeTerminal) {
+		term.MustExec("break main.main")
+		term.MustExec("continue")
+		term.MustExec("break 9")
+		term.MustExec("break +1")
+		out := term.MustExec("breakpoints")
+		t.Log("breakpoints before:\n", out)
+		term.MustExec("restart")
+		out = term.MustExec("breakpoints")
+		t.Log("breakpoints after:\n", out)
+		bps, err := term.client.ListBreakpoints(false)
+		assertNoError(t, err, "ListBreakpoints")
+		for _, bp := range bps {
+			if bp.ID < 0 {
+				continue
+			}
+			if bp.Addr == 0 {
+				t.Fatalf("breakpoint %d has address 0", bp.ID)
+			}
+		}
+	})
+}

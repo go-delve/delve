@@ -1634,7 +1634,7 @@ func clearAll(t *Term, ctx callContext, args string) error {
 
 	var locPCs map[uint64]struct{}
 	if args != "" {
-		locs, err := t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, args, true, t.substitutePathRules())
+		locs, _, err := t.client.FindLocation(api.EvalScope{GoroutineID: -1, Frame: 0}, args, true, t.substitutePathRules())
 		if err != nil {
 			return err
 		}
@@ -1790,14 +1790,16 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 	}
 
 	requestedBp.Tracepoint = tracepoint
-	locs, findLocErr := t.client.FindLocation(ctx.Scope, spec, true, t.substitutePathRules())
+	locs, substSpec, findLocErr := t.client.FindLocation(ctx.Scope, spec, true, t.substitutePathRules())
 	if findLocErr != nil && requestedBp.Name != "" {
 		requestedBp.Name = ""
 		spec = argstr
 		var err2 error
-		locs, err2 = t.client.FindLocation(ctx.Scope, spec, true, t.substitutePathRules())
+		var substSpec2 string
+		locs, substSpec2, err2 = t.client.FindLocation(ctx.Scope, spec, true, t.substitutePathRules())
 		if err2 == nil {
 			findLocErr = nil
+			substSpec = substSpec2
 		}
 	}
 	if findLocErr != nil && shouldAskToSuspendBreakpoint(t) {
@@ -1823,6 +1825,9 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 	}
 	if findLocErr != nil {
 		return nil, findLocErr
+	}
+	if substSpec != "" {
+		spec = substSpec
 	}
 
 	created := []*api.Breakpoint{}
@@ -2431,7 +2436,7 @@ func getLocation(t *Term, ctx callContext, args string, showContext bool) (file 
 		return loc.File, loc.Line, true, nil
 
 	default:
-		locs, err := t.client.FindLocation(ctx.Scope, args, false, t.substitutePathRules())
+		locs, _, err := t.client.FindLocation(ctx.Scope, args, false, t.substitutePathRules())
 		if err != nil {
 			return "", 0, false, err
 		}
@@ -2505,7 +2510,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 
 	switch cmd {
 	case "":
-		locs, err := t.client.FindLocation(ctx.Scope, "+0", true, t.substitutePathRules())
+		locs, _, err := t.client.FindLocation(ctx.Scope, "+0", true, t.substitutePathRules())
 		if err != nil {
 			return err
 		}
@@ -2525,7 +2530,7 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 		}
 		disasm, disasmErr = t.client.DisassembleRange(ctx.Scope, uint64(startpc), uint64(endpc), flavor)
 	case "-l":
-		locs, err := t.client.FindLocation(ctx.Scope, rest, true, t.substitutePathRules())
+		locs, _, err := t.client.FindLocation(ctx.Scope, rest, true, t.substitutePathRules())
 		if err != nil {
 			return err
 		}

@@ -737,7 +737,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 			return nil, err
 		}
 		setbp.Expr = func(t *proc.Target) []uint64 {
-			locs, err := loc.Find(t, d.processArgs, nil, locExpr, false, substitutePathRules)
+			locs, _, err := loc.Find(t, d.processArgs, nil, locExpr, false, substitutePathRules)
 			if err != nil || len(locs) != 1 {
 				logflags.DebuggerLogger().Debugf("could not evaluate breakpoint expression %q: %v (number of results %d)", locExpr, err, len(locs))
 				return nil
@@ -1921,17 +1921,17 @@ func (d *Debugger) CurrentPackage() (string, error) {
 }
 
 // FindLocation will find the location specified by 'locStr'.
-func (d *Debugger) FindLocation(goid int64, frame, deferredCall int, locStr string, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
+func (d *Debugger) FindLocation(goid int64, frame, deferredCall int, locStr string, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, string, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
 	if _, err := d.target.Valid(); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	loc, err := locspec.Parse(locStr)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	return d.findLocation(goid, frame, deferredCall, locStr, loc, includeNonExecutableLines, substitutePathRules)
@@ -1949,18 +1949,23 @@ func (d *Debugger) FindLocationSpec(goid int64, frame, deferredCall int, locStr 
 		return nil, err
 	}
 
-	return d.findLocation(goid, frame, deferredCall, locStr, locSpec, includeNonExecutableLines, substitutePathRules)
+	locs, _, err := d.findLocation(goid, frame, deferredCall, locStr, locSpec, includeNonExecutableLines, substitutePathRules)
+	return locs, err
 }
 
-func (d *Debugger) findLocation(goid int64, frame, deferredCall int, locStr string, locSpec locspec.LocationSpec, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, error) {
+func (d *Debugger) findLocation(goid int64, frame, deferredCall int, locStr string, locSpec locspec.LocationSpec, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, string, error) {
 	locations := []api.Location{}
 	t := proc.ValidTargets{Group: d.target}
+	subst := ""
 	for t.Next() {
 		pid := t.Pid()
 		s, _ := proc.ConvertEvalScope(t.Target, goid, frame, deferredCall)
-		locs, err := locSpec.Find(t.Target, d.processArgs, s, locStr, includeNonExecutableLines, substitutePathRules)
+		locs, s1, err := locSpec.Find(t.Target, d.processArgs, s, locStr, includeNonExecutableLines, substitutePathRules)
+		if s1 != "" {
+			subst = s1
+		}
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		for i := range locs {
 			if locs[i].PC == 0 {
@@ -1977,7 +1982,7 @@ func (d *Debugger) findLocation(goid int64, frame, deferredCall int, locStr stri
 		}
 		locations = append(locations, locs...)
 	}
-	return locations, nil
+	return locations, subst, nil
 }
 
 // Disassemble code between startPC and endPC.
