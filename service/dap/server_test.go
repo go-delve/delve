@@ -992,7 +992,7 @@ func checkChildren(t *testing.T, got *dap.VariablesResponse, parentName string, 
 
 // checkVar is a helper for verifying the values within a VariablesResponse.
 //
-//	i - index of the variable within VariablesRespose.Body.Variables array (-1 will search all vars for a match)
+//	i - index of the variable within VariablesResponse.Body.Variables array (-1 will search all vars for a match)
 //	name - name of the variable
 //	evalName - fully qualified variable name or alternative expression to load this variable
 //	value - the value of the variable
