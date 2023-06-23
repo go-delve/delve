@@ -66,7 +66,7 @@ func TestDebugger_LaunchInvalidFormat(t *testing.T) {
 		t.Fatalf("expected error but none was generated")
 	}
 	if err != api.ErrNotExecutable {
-		t.Fatalf("expected error \"%s\" got \"%v\"", api.ErrNotExecutable, err)
+		t.Fatalf("expected error %q got \"%v\"", api.ErrNotExecutable, err)
 	}
 }
 

@@ -219,7 +219,7 @@ v.Children[0].Children[0].Value.XXX
 					t.Fatalf("expected error %q, got success", tc.expErr)
 				}
 				if !strings.Contains(err.Error(), tc.expErr) {
-					t.Fatalf("expected error %q, got \"%s\"", tc.expErr, err)
+					t.Fatalf("expected error %q, got %q", tc.expErr, err)
 				}
 			})
 		}
