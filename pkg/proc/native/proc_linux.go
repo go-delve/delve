@@ -844,6 +844,10 @@ func stop1(cctx *proc.ContinueOnceContext, dbp *nativeProcess, trapthread *nativ
 	return err1
 }
 
+func (procgrp *processGroup) detachChild(dbp *nativeProcess) error {
+	return procgrp.Detach(dbp.pid, false)
+}
+
 func (dbp *nativeProcess) detach(kill bool) error {
 	for threadID := range dbp.threads {
 		err := ptraceDetach(threadID, 0)
