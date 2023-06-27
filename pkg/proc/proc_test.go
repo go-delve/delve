@@ -778,8 +778,8 @@ func TestRuntimeBreakpoint(t *testing.T) {
 	})
 }
 
-func returnAddress(thread proc.Thread) (uint64, error) {
-	locations, err := proc.ThreadStacktrace(thread, 2)
+func returnAddress(tgt *proc.Target, thread proc.Thread) (uint64, error) {
+	locations, err := proc.ThreadStacktrace(tgt, thread, 2)
 	if err != nil {
 		return 0, err
 	}
@@ -797,7 +797,7 @@ func TestFindReturnAddress(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		addr, err := returnAddress(p.CurrentThread())
+		addr, err := returnAddress(p, p.CurrentThread())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -816,7 +816,7 @@ func TestFindReturnAddressTopOfStackFn(t *testing.T) {
 		if err := grp.Continue(); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := returnAddress(p.CurrentThread()); err == nil {
+		if _, err := returnAddress(p, p.CurrentThread()); err == nil {
 			t.Fatal("expected error to be returned")
 		}
 	})
@@ -913,7 +913,7 @@ func TestStacktrace(t *testing.T) {
 
 		for i := range stacks {
 			assertNoError(grp.Continue(), t, "Continue()")
-			locations, err := proc.ThreadStacktrace(p.CurrentThread(), 40)
+			locations, err := proc.ThreadStacktrace(p, p.CurrentThread(), 40)
 			assertNoError(err, t, "Stacktrace()")
 
 			if len(locations) != len(stacks[i])+2 {
@@ -941,7 +941,7 @@ func TestStacktrace2(t *testing.T) {
 	withTestProcess("retstack", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), t, "Continue()")
 
-		locations, err := proc.ThreadStacktrace(p.CurrentThread(), 40)
+		locations, err := proc.ThreadStacktrace(p, p.CurrentThread(), 40)
 		assertNoError(err, t, "Stacktrace()")
 		if !stackMatch([]loc{{-1, "main.f"}, {16, "main.main"}}, locations, false) {
 			for i := range locations {
@@ -951,7 +951,7 @@ func TestStacktrace2(t *testing.T) {
 		}
 
 		assertNoError(grp.Continue(), t, "Continue()")
-		locations, err = proc.ThreadStacktrace(p.CurrentThread(), 40)
+		locations, err = proc.ThreadStacktrace(p, p.CurrentThread(), 40)
 		assertNoError(err, t, "Stacktrace()")
 		if !stackMatch([]loc{{-1, "main.g"}, {17, "main.main"}}, locations, false) {
 			for i := range locations {
@@ -1016,7 +1016,7 @@ func TestStacktraceGoroutine(t *testing.T) {
 		mainCount := 0
 
 		for i, g := range gs {
-			locations, err := g.Stacktrace(40, 0)
+			locations, err := proc.GoroutineStacktrace(p, g, 40, 0)
 			if err != nil {
 				// On windows we do not have frame information for goroutines doing system calls.
 				t.Logf("Could not retrieve goroutine stack for goid=%d: %v", g.ID, err)
@@ -1174,7 +1174,7 @@ func TestIssue239(t *testing.T) {
 }
 
 func findFirstNonRuntimeFrame(p *proc.Target) (proc.Stackframe, error) {
-	frames, err := proc.ThreadStacktrace(p.CurrentThread(), 10)
+	frames, err := proc.ThreadStacktrace(p, p.CurrentThread(), 10)
 	if err != nil {
 		return proc.Stackframe{}, err
 	}
@@ -1328,7 +1328,7 @@ func TestFrameEvaluation(t *testing.T) {
 		found := make([]bool, 10)
 		for _, g := range gs {
 			frame := -1
-			frames, err := g.Stacktrace(40, 0)
+			frames, err := proc.GoroutineStacktrace(p, g, 40, 0)
 			if err != nil {
 				t.Logf("could not stacktrace goroutine %d: %v\n", g.ID, err)
 				continue
@@ -1375,7 +1375,7 @@ func TestFrameEvaluation(t *testing.T) {
 		g, err := proc.GetG(p.CurrentThread())
 		assertNoError(err, t, "GetG()")
 
-		frames, err := g.Stacktrace(40, 0)
+		frames, err := proc.GoroutineStacktrace(p, g, 40, 0)
 		assertNoError(err, t, "Stacktrace()")
 		t.Logf("Goroutine %d %#v", g.ID, g.Thread)
 		logStacktrace(t, p, frames)
@@ -1916,7 +1916,7 @@ func TestIssue332_Part1(t *testing.T) {
 		setFileBreakpoint(p, t, fixture.Source, 8)
 		assertNoError(grp.Continue(), t, "Continue()")
 		assertNoError(grp.Next(), t, "first Next()")
-		locations, err := proc.ThreadStacktrace(p.CurrentThread(), 2)
+		locations, err := proc.ThreadStacktrace(p, p.CurrentThread(), 2)
 		assertNoError(err, t, "Stacktrace()")
 		if locations[0].Call.Fn == nil {
 			t.Fatalf("Not on a function")
@@ -1943,7 +1943,7 @@ func TestIssue332_Part2(t *testing.T) {
 		// step until we enter changeMe
 		for {
 			assertNoError(grp.Step(), t, "Step()")
-			locations, err := proc.ThreadStacktrace(p.CurrentThread(), 2)
+			locations, err := proc.ThreadStacktrace(p, p.CurrentThread(), 2)
 			assertNoError(err, t, "Stacktrace()")
 			if locations[0].Call.Fn == nil {
 				t.Fatalf("Not on a function")
@@ -2117,7 +2117,7 @@ func TestIssue462(t *testing.T) {
 		}()
 
 		assertNoError(grp.Continue(), t, "Continue()")
-		_, err := proc.ThreadStacktrace(p.CurrentThread(), 40)
+		_, err := proc.ThreadStacktrace(p, p.CurrentThread(), 40)
 		assertNoError(err, t, "Stacktrace()")
 	})
 }
@@ -2148,7 +2148,7 @@ func TestNextParked(t *testing.T) {
 				if g.Thread != nil {
 					continue
 				}
-				frames, _ := g.Stacktrace(5, 0)
+				frames, _ := proc.GoroutineStacktrace(p, g, 5, 0)
 				for _, frame := range frames {
 					// line 11 is the line where wg.Done is called
 					if frame.Current.Fn != nil && frame.Current.Fn.Name == "main.sayhi" && frame.Current.Line < 11 {
@@ -2200,7 +2200,7 @@ func TestStepParked(t *testing.T) {
 		}
 
 		t.Logf("Parked g is: %v\n", parkedg)
-		frames, _ := parkedg.Stacktrace(20, 0)
+		frames, _ := proc.GoroutineStacktrace(p, parkedg, 20, 0)
 		for _, frame := range frames {
 			name := ""
 			if frame.Call.Fn != nil {
@@ -2464,7 +2464,7 @@ func TestStepConcurrentDirect(t *testing.T) {
 					// loop exited
 					break
 				}
-				frames, err := proc.ThreadStacktrace(p.CurrentThread(), 20)
+				frames, err := proc.ThreadStacktrace(p, p.CurrentThread(), 20)
 				if err != nil {
 					t.Errorf("Could not get stacktrace of goroutine %d\n", p.SelectedGoroutine().ID)
 				} else {
@@ -3307,9 +3307,10 @@ func TestCgoStacktrace(t *testing.T) {
 			t.Skip("disabled on macOS with go before version 1.8")
 		}
 	}
-
 	skipOn(t, "broken - cgo stacktraces", "386")
-	skipOn(t, "broken - cgo stacktraces", "windows", "arm64")
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 21) {
+		skipOn(t, "broken - cgo stacktraces", "windows", "arm64")
+	}
 	protest.MustHaveCgo(t)
 
 	// Tests that:
@@ -3351,7 +3352,7 @@ func TestCgoStacktrace(t *testing.T) {
 				}
 			}
 
-			frames, err := g.Stacktrace(100, 0)
+			frames, err := proc.GoroutineStacktrace(p, g, 100, 0)
 			assertNoError(err, t, fmt.Sprintf("Stacktrace at iteration step %d", itidx))
 
 			logStacktrace(t, p, frames)
@@ -3381,7 +3382,7 @@ func TestCgoStacktrace(t *testing.T) {
 			}
 
 			// also check that ThreadStacktrace produces the same list of frames
-			threadFrames, err := proc.ThreadStacktrace(p.CurrentThread(), 100)
+			threadFrames, err := proc.ThreadStacktrace(p, p.CurrentThread(), 100)
 			assertNoError(err, t, fmt.Sprintf("ThreadStacktrace at iteration step %d", itidx))
 
 			if len(threadFrames) != len(frames) {
@@ -3443,7 +3444,7 @@ func TestSystemstackStacktrace(t *testing.T) {
 		assertNoError(grp.Continue(), t, "second continue")
 		g, err := proc.GetG(p.CurrentThread())
 		assertNoError(err, t, "GetG")
-		frames, err := g.Stacktrace(100, 0)
+		frames, err := proc.GoroutineStacktrace(p, g, 100, 0)
 		assertNoError(err, t, "stacktrace")
 		logStacktrace(t, p, frames)
 		m := stacktraceCheck(t, []string{"!runtime.startpanic_m", "runtime.gopanic", "main.main"}, frames)
@@ -3476,7 +3477,7 @@ func TestSystemstackOnRuntimeNewstack(t *testing.T) {
 				break
 			}
 		}
-		frames, err := g.Stacktrace(100, 0)
+		frames, err := proc.GoroutineStacktrace(p, g, 100, 0)
 		assertNoError(err, t, "stacktrace")
 		logStacktrace(t, p, frames)
 		m := stacktraceCheck(t, []string{"!runtime.newstack", "main.main"}, frames)
@@ -3495,7 +3496,7 @@ func TestIssue1034(t *testing.T) {
 	withTestProcess("cgostacktest/", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(grp.Continue(), t, "Continue()")
-		frames, err := p.SelectedGoroutine().Stacktrace(10, 0)
+		frames, err := proc.GoroutineStacktrace(p, p.SelectedGoroutine(), 10, 0)
 		assertNoError(err, t, "Stacktrace")
 		scope := proc.FrameToScope(p, p.Memory(), nil, frames[2:]...)
 		args, _ := scope.FunctionArguments(normalLoadConfig)
@@ -3819,7 +3820,7 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 
 		// first inlined call
 		assertNoError(grp.Continue(), t, "Continue")
-		frames, err := proc.ThreadStacktrace(p.CurrentThread(), 20)
+		frames, err := proc.ThreadStacktrace(p, p.CurrentThread(), 20)
 		assertNoError(err, t, "ThreadStacktrace")
 		t.Logf("Stacktrace:\n")
 		for i := range frames {
@@ -3846,7 +3847,7 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 
 		// second inlined call
 		assertNoError(grp.Continue(), t, "Continue")
-		frames, err = proc.ThreadStacktrace(p.CurrentThread(), 20)
+		frames, err = proc.ThreadStacktrace(p, p.CurrentThread(), 20)
 		assertNoError(err, t, "ThreadStacktrace (2)")
 		t.Logf("Stacktrace 2:\n")
 		for i := range frames {
@@ -4161,7 +4162,7 @@ func TestIssue1264(t *testing.T) {
 func TestReadDefer(t *testing.T) {
 	withTestProcess("deferstack", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), t, "Continue")
-		frames, err := p.SelectedGoroutine().Stacktrace(10, proc.StacktraceReadDefers)
+		frames, err := proc.GoroutineStacktrace(p, p.SelectedGoroutine(), 10, proc.StacktraceReadDefers)
 		assertNoError(err, t, "Stacktrace")
 
 		logStacktrace(t, p, frames)
@@ -4372,7 +4373,7 @@ func TestIssue1469(t *testing.T) {
 				t.Logf("too many threads running goroutine %d", gid)
 				for _, thread := range gid2thread[gid] {
 					t.Logf("\tThread %d", thread.ThreadID())
-					frames, err := proc.ThreadStacktrace(thread, 20)
+					frames, err := proc.ThreadStacktrace(p, thread, 20)
 					if err != nil {
 						t.Logf("\t\tcould not get stacktrace %v", err)
 					}
@@ -4603,9 +4604,12 @@ func TestIssue1615(t *testing.T) {
 }
 
 func TestCgoStacktrace2(t *testing.T) {
-	skipOn(t, "upstream issue", "windows")
-	skipOn(t, "broken", "386")
-	skipOn(t, "broken", "arm64")
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 21) {
+		skipOn(t, "upstream issue", "windows")
+		skipOn(t, "broken", "arm64")
+		skipOn(t, "broken", "386")
+	}
+	skipOn(t, "broken - cgo stacktraces", "darwin", "arm64")
 	protest.MustHaveCgo(t)
 	// If a panic happens during cgo execution the stacktrace should show the C
 	// function that caused the problem.
@@ -4614,7 +4618,7 @@ func TestCgoStacktrace2(t *testing.T) {
 		if _, exited := err.(proc.ErrProcessExited); exited {
 			t.Fatal("process exited")
 		}
-		frames, err := proc.ThreadStacktrace(p.CurrentThread(), 100)
+		frames, err := proc.ThreadStacktrace(p, p.CurrentThread(), 100)
 		assertNoError(err, t, "Stacktrace()")
 		logStacktrace(t, p, frames)
 		m := stacktraceCheck(t, []string{"C.sigsegv", "C.testfn", "main.main"}, frames)
@@ -4725,7 +4729,7 @@ func TestIssue1795(t *testing.T) {
 		assertNoError(grp.Continue(), t, "Continue()")
 		assertLineNumber(p, t, 12, "wrong line number after Continue (1),")
 		assertNoError(grp.Continue(), t, "Continue()")
-		frames, err := proc.ThreadStacktrace(p.CurrentThread(), 40)
+		frames, err := proc.ThreadStacktrace(p, p.CurrentThread(), 40)
 		assertNoError(err, t, "ThreadStacktrace()")
 		logStacktrace(t, p, frames)
 		if err := checkFrame(frames[0], "regexp.(*Regexp).doExecute", "", 0, false); err != nil {
@@ -5066,7 +5070,7 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 		bestg := []*proc.G{}
 		for _, g := range gs {
 			t.Logf("stacktracing goroutine %d (%v)\n", g.ID, g.CurrentLoc)
-			frames, err := g.Stacktrace(20, 0)
+			frames, err := proc.GoroutineStacktrace(p, g, 20, 0)
 			assertNoError(err, t, "Stacktrace")
 			for _, frame := range frames {
 				if frame.Call.Fn != nil && frame.Call.Fn.Name == "main.coroutine" {
@@ -5237,9 +5241,9 @@ func TestDump(t *testing.T) {
 				t.Errorf("Goroutine mismatch\nlive:\t%s\ncore:\t%s", convertGoroutine(gos[i]), convertGoroutine(cgos[i]))
 			}
 
-			frames, err := gos[i].Stacktrace(20, 0)
+			frames, err := proc.GoroutineStacktrace(p, gos[i], 20, 0)
 			assertNoError(err, t, fmt.Sprintf("Stacktrace for goroutine %d - live process", gos[i].ID))
-			cframes, err := cgos[i].Stacktrace(20, 0)
+			cframes, err := proc.GoroutineStacktrace(c, cgos[i], 20, 0)
 			assertNoError(err, t, fmt.Sprintf("Stacktrace for goroutine %d - core dump", gos[i].ID))
 
 			if len(frames) != len(cframes) {
@@ -5912,7 +5916,7 @@ func TestStacktraceExtlinkMac(t *testing.T) {
 	withTestProcess("issue3194", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(grp.Continue(), t, "First Continue()")
-		frames, err := proc.ThreadStacktrace(p.CurrentThread(), 10)
+		frames, err := proc.ThreadStacktrace(p, p.CurrentThread(), 10)
 		assertNoError(err, t, "ThreadStacktrace")
 		logStacktrace(t, p, frames)
 		if len(frames) < 2 || frames[0].Call.Fn.Name != "main.main" || frames[1].Call.Fn.Name != "runtime.main" {

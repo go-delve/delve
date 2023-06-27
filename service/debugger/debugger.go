@@ -1331,7 +1331,7 @@ func (d *Debugger) collectBreakpointInformation(apiThread *api.Thread, thread pr
 	}
 
 	if bp.Stacktrace > 0 {
-		rawlocs, err := proc.ThreadStacktrace(thread, bp.Stacktrace)
+		rawlocs, err := proc.ThreadStacktrace(tgt, thread, bp.Stacktrace)
 		if err != nil {
 			return err
 		}
@@ -1757,9 +1757,9 @@ func (d *Debugger) Stacktrace(goroutineID int64, depth int, opts api.StacktraceO
 	}
 
 	if g == nil {
-		return proc.ThreadStacktrace(d.target.Selected.CurrentThread(), depth)
+		return proc.ThreadStacktrace(d.target.Selected, d.target.Selected.CurrentThread(), depth)
 	} else {
-		return g.Stacktrace(depth, proc.StacktraceOptions(opts))
+		return proc.GoroutineStacktrace(d.target.Selected, g, depth, proc.StacktraceOptions(opts))
 	}
 }
 
