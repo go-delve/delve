@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"debug/dwarf"
 	"debug/elf"
+	"debug/gosym"
 	"debug/macho"
 	"debug/pe"
 	"encoding/binary"
@@ -332,7 +333,7 @@ func FindFunctionLocation(p Process, funcName string, lineOffset int) ([]uint64,
 
 	if lineOffset > 0 {
 		fn := origfns[0]
-		filename, lineno := fn.cu.lineInfo.PCToLine(fn.Entry, fn.Entry)
+		filename, lineno := bi.EntryLineForFunc(fn)
 		return FindFileLocation(p, filename, lineno+lineOffset)
 	}
 
@@ -364,14 +365,16 @@ func FindFunctionLocation(p Process, funcName string, lineOffset int) ([]uint64,
 // If sameline is set FirstPCAfterPrologue will always return an
 // address associated with the same line as fn.Entry.
 func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error) {
-	pc, _, line, ok := fn.cu.lineInfo.PrologueEndPC(fn.Entry, fn.End)
-	if ok {
-		if !sameline {
-			return pc, nil
-		}
-		_, entryLine := fn.cu.lineInfo.PCToLine(fn.Entry, fn.Entry)
-		if entryLine == line {
-			return pc, nil
+	if fn.cu.lineInfo != nil {
+		pc, _, line, ok := fn.cu.lineInfo.PrologueEndPC(fn.Entry, fn.End)
+		if ok {
+			if !sameline {
+				return pc, nil
+			}
+			_, entryLine := p.BinInfo().EntryLineForFunc(fn)
+			if entryLine == line {
+				return pc, nil
+			}
 		}
 	}
 
@@ -380,7 +383,7 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 		return fn.Entry, err
 	}
 
-	if pc == fn.Entry {
+	if pc == fn.Entry && fn.cu.lineInfo != nil {
 		// Look for the first instruction with the stmt flag set, so that setting a
 		// breakpoint with file:line and with the function name always result on
 		// the same instruction being selected.
@@ -601,6 +604,25 @@ func (fn *Function) PrologueEndPC() uint64 {
 	return pc
 }
 
+func (fn *Function) AllPCs(excludeFile string, excludeLine int) ([]uint64, error) {
+	if !fn.cu.image.Stripped() {
+		return fn.cu.lineInfo.AllPCsBetween(fn.Entry, fn.End-1, excludeFile, excludeLine)
+	}
+	var pcs []uint64
+	fnFile, lastLine, _ := fn.cu.image.symTable.PCToLine(fn.Entry - fn.cu.image.StaticBase)
+	for pc := fn.Entry - fn.cu.image.StaticBase; pc < fn.End-fn.cu.image.StaticBase; pc++ {
+		f, line, pcfn := fn.cu.image.symTable.PCToLine(pc)
+		if pcfn == nil {
+			continue
+		}
+		if f == fnFile && line > lastLine {
+			lastLine = line
+			pcs = append(pcs, pc+fn.cu.image.StaticBase)
+		}
+	}
+	return pcs, nil
+}
+
 // From $GOROOT/src/runtime/traceback.go:597
 // exportedRuntime reports whether the function is an exported runtime function.
 // It is only for runtime functions, so ASCII A-Z is fine.
@@ -719,6 +741,9 @@ func (bi *BinaryInfo) LastModified() time.Time {
 
 // DwarfReader returns a reader for the dwarf data
 func (so *Image) DwarfReader() *reader.Reader {
+	if so.dwarf == nil {
+		return nil
+	}
 	return reader.New(so.dwarf)
 }
 
@@ -731,13 +756,26 @@ func (bi *BinaryInfo) Types() ([]string, error) {
 	return types, nil
 }
 
+func (bi *BinaryInfo) EntryLineForFunc(fn *Function) (string, int) {
+	return bi.pcToLine(fn, fn.Entry)
+}
+
+func (bi *BinaryInfo) pcToLine(fn *Function, pc uint64) (string, int) {
+	if fn.cu.lineInfo == nil {
+		f, l, _ := fn.cu.image.symTable.PCToLine(pc - fn.cu.image.StaticBase)
+		return f, l
+	}
+	f, l := fn.cu.lineInfo.PCToLine(fn.Entry, pc)
+	return f, l
+}
+
 // PCToLine converts an instruction address to a file/line/function.
 func (bi *BinaryInfo) PCToLine(pc uint64) (string, int, *Function) {
 	fn := bi.PCToFunc(pc)
 	if fn == nil {
 		return "", 0, nil
 	}
-	f, ln := fn.cu.lineInfo.PCToLine(fn.Entry, pc)
+	f, ln := bi.pcToLine(fn, pc)
 	return f, ln, fn
 }
 
@@ -810,6 +848,8 @@ type Image struct {
 	debugAddr    *godwarf.DebugAddrSection
 	debugLineStr []byte
 
+	symTable *gosym.Table
+
 	typeCache map[dwarf.Offset]godwarf.Type
 
 	compileUnits []*compileUnit // compileUnits is sorted by increasing DWARF offset
@@ -833,6 +873,10 @@ func (image *Image) registerRuntimeTypeToDIE(entry *dwarf.Entry, ardr *reader.Re
 			image.runtimeTypeToDIE[off] = runtimeTypeDIE{entry.Offset, -1}
 		}
 	}
+}
+
+func (image *Image) Stripped() bool {
+	return image.dwarf == nil
 }
 
 // AddImage adds the specified image to bi, loading data asynchronously.
@@ -1399,13 +1443,31 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 
 	bi.loadBuildID(image, elfFile)
 	var debugInfoBytes []byte
-	image.dwarf, err = elfFile.DWARF()
-	if err != nil {
+	var dwerr error
+	image.dwarf, dwerr = elfFile.DWARF()
+	if dwerr != nil {
 		var sepFile *os.File
 		var serr error
 		sepFile, dwarfFile, serr = bi.openSeparateDebugInfo(image, elfFile, bi.DebugInfoDirectories)
 		if serr != nil {
-			return serr
+			if len(bi.Images) <= 1 {
+				fmt.Fprintln(os.Stderr, "Warning: no debug info found, some functionality will be missing such as stack traces and variable evaluation.")
+			}
+			symTable, err := readPcLnTableElf(elfFile, path)
+			if err != nil {
+				return fmt.Errorf("could not read debug info (%v) and could not read go symbol table (%v)", dwerr, err)
+			}
+			image.symTable = symTable
+			for _, f := range image.symTable.Funcs {
+				cu := &compileUnit{}
+				cu.image = image
+				fn := Function{Name: f.Name, Entry: f.Entry + image.StaticBase, End: f.End + image.StaticBase, cu: cu}
+				bi.Functions = append(bi.Functions, fn)
+			}
+			for f := range image.symTable.Files {
+				bi.Sources = append(bi.Sources, f)
+			}
+			return nil
 		}
 		image.sepDebugCloser = sepFile
 		image.dwarf, err = dwarfFile.DWARF()

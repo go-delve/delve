@@ -33,7 +33,7 @@ func (t *Target) setStackWatchBreakpoints(scope *EvalScope, watchpoint *Breakpoi
 		return true, nil
 	}
 
-	topframe, retframe, err := topframe(scope.g, nil)
+	topframe, retframe, err := topframe(t, scope.g, nil)
 	if err != nil {
 		return err
 	}

@@ -413,6 +413,7 @@ names selected from this list:
 	dap		Log all DAP messages
 	fncall		Log function call protocol
 	minidump	Log minidump loading
+	stack           Log stacktracer
 
 Additionally --log-dest can be used to specify where the logs should be
 written. 

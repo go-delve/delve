@@ -513,7 +513,7 @@ func (s *Session) address() string {
 // until it encounters an error or EOF, when it sends
 // a disconnect signal and returns.
 func (s *Session) ServeDAPCodec() {
-	// Close conn, but not the debugger in case we are in AcceptMuli mode.
+	// Close conn, but not the debugger in case we are in AcceptMulti mode.
 	// If not, debugger will be shut down in Stop().
 	defer s.conn.Close()
 	reader := bufio.NewReader(s.conn)

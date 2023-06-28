@@ -26,7 +26,6 @@ import (
 	"github.com/go-delve/delve/pkg/terminal"
 	"github.com/go-delve/delve/service/dap"
 	"github.com/go-delve/delve/service/dap/daptest"
-	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/rpc2"
 	godap "github.com/google/go-dap"
 	"golang.org/x/tools/go/packages"
@@ -280,57 +279,6 @@ func TestContinue(t *testing.T) {
 		t.Fatalf("error detaching from headless instance: %v", err)
 	}
 	cmd.Wait()
-}
-
-// TestChildProcessExitWhenNoDebugInfo verifies that the child process exits when dlv launch the binary without debug info
-func TestChildProcessExitWhenNoDebugInfo(t *testing.T) {
-	noDebugFlags := protest.LinkStrip
-	// -s doesn't strip symbols on Mac, use -w instead
-	if runtime.GOOS == "darwin" {
-		noDebugFlags = protest.LinkDisableDWARF
-	}
-
-	if _, err := exec.LookPath("ps"); err != nil {
-		t.Skip("test skipped, `ps` not found")
-	}
-
-	dlvbin := getDlvBin(t)
-
-	fix := protest.BuildFixture("http_server", noDebugFlags)
-
-	// dlv exec the binary file and expect error.
-	out, err := exec.Command(dlvbin, "exec", "--headless", "--log", fix.Path).CombinedOutput()
-	t.Log(string(out))
-	if err == nil {
-		t.Fatalf("Expected err when launching the binary without debug info, but got nil")
-	}
-	//  Test only for dlv's prefix of the error like "could not launch process: could not open debug info"
-	if !strings.Contains(string(out), "could not launch process") || !strings.Contains(string(out), debugger.NoDebugWarning) {
-		t.Fatalf("Expected logged error 'could not launch process: ... - %s'", debugger.NoDebugWarning)
-	}
-
-	// search the running process named fix.Name
-	cmd := exec.Command("ps", "-aux")
-	stdout, err := cmd.StdoutPipe()
-	assertNoError(err, t, "stdout pipe")
-	defer stdout.Close()
-
-	assertNoError(cmd.Start(), t, "start `ps -aux`")
-
-	var foundFlag bool
-	scan := bufio.NewScanner(stdout)
-	for scan.Scan() {
-		t.Log(scan.Text())
-		if strings.Contains(scan.Text(), fix.Name) {
-			foundFlag = true
-			break
-		}
-	}
-	cmd.Wait()
-
-	if foundFlag {
-		t.Fatalf("Expected child process exited, but found it running")
-	}
 }
 
 // TestRedirect verifies that redirecting stdin works
@@ -707,57 +655,6 @@ func TestDAPCmd(t *testing.T) {
 			t.Errorf("got %q, want \"EOF\"\n", err)
 		}
 	}
-	client.Close()
-	cmd.Wait()
-}
-
-func TestDAPCmdWithNoDebugBinary(t *testing.T) {
-	const listenAddr = "127.0.0.1:40579"
-
-	dlvbin := getDlvBin(t)
-
-	cmd := exec.Command(dlvbin, "dap", "--log", "--listen", listenAddr)
-	stdout, err := cmd.StdoutPipe()
-	assertNoError(err, t, "stdout pipe")
-	defer stdout.Close()
-	stderr, err := cmd.StderrPipe()
-	assertNoError(err, t, "stderr pipe")
-	defer stderr.Close()
-	assertNoError(cmd.Start(), t, "start dap instance")
-
-	scanOut := bufio.NewScanner(stdout)
-	scanErr := bufio.NewScanner(stderr)
-	// Wait for the debug server to start
-	scanOut.Scan()
-	listening := "DAP server listening at: " + listenAddr
-	if scanOut.Text() != listening {
-		cmd.Process.Kill() // release the port
-		t.Fatalf("Unexpected stdout:\ngot  %q\nwant %q", scanOut.Text(), listening)
-	}
-	go func() { // Capture logging
-		for scanErr.Scan() {
-			t.Log(scanErr.Text())
-		}
-	}()
-
-	// Exec the stripped debuggee and expect things to fail
-	noDebugFlags := protest.LinkStrip
-	// -s doesn't strip symbols on Mac, use -w instead
-	if runtime.GOOS == "darwin" {
-		noDebugFlags = protest.LinkDisableDWARF
-	}
-	fixture := protest.BuildFixture("increment", noDebugFlags)
-	go func() {
-		for scanOut.Scan() {
-			t.Errorf("Unexpected stdout: %s", scanOut.Text())
-		}
-	}()
-	client := daptest.NewClient(listenAddr)
-	client.LaunchRequest("exec", fixture.Path, false)
-	client.ExpectErrorResponse(t)
-	client.DisconnectRequest()
-	client.ExpectDisconnectResponse(t)
-	client.ExpectTerminatedEvent(t)
 	client.Close()
 	cmd.Wait()
 }
@@ -1245,6 +1142,54 @@ func TestTraceEBPF2(t *testing.T) {
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "ebpf_trace.go"), "main.callme")
+	rdr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	assertNoError(cmd.Start(), t, "running trace")
+
+	output, err := ioutil.ReadAll(rdr)
+	assertNoError(err, t, "ReadAll")
+
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
+	}
+	cmd.Wait()
+}
+
+func TestTraceEBPF3(t *testing.T) {
+	if os.Getenv("CI") == "true" {
+		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
+	}
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("not implemented on non linux/amd64 systems")
+	}
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+		t.Skip("requires at least Go 1.16 to run test")
+	}
+	usr, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usr.Uid != "0" {
+		t.Skip("test must be run as root")
+	}
+
+	dlvbin := getDlvBinEBPF(t)
+
+	expected := []byte(`> (1) main.tracedFunction(0)
+> (1) main.tracedFunction(1)
+> (1) main.tracedFunction(2)
+> (1) main.tracedFunction(3)
+> (1) main.tracedFunction(4)
+> (1) main.tracedFunction(5)
+> (1) main.tracedFunction(6)
+> (1) main.tracedFunction(7)
+> (1) main.tracedFunction(8)
+> (1) main.tracedFunction(9)`)
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "ebpf_trace2.go"), "main.traced")
 	rdr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
 	defer rdr.Close()

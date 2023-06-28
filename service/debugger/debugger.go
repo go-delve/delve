@@ -1328,6 +1328,13 @@ func (d *Debugger) collectBreakpointInformation(apiThread *api.Thread, thread pr
 
 	tgt := d.target.TargetForThread(thread.ThreadID())
 
+	// If we're dealing with a stripped binary don't attempt to load more
+	// information, we won't be able to.
+	img := tgt.BinInfo().PCToImage(bp.Addr)
+	if img != nil && img.Stripped() {
+		return nil
+	}
+
 	if bp.Goroutine {
 		g, err := proc.GetG(thread)
 		if err != nil {
@@ -1337,7 +1344,7 @@ func (d *Debugger) collectBreakpointInformation(apiThread *api.Thread, thread pr
 	}
 
 	if bp.Stacktrace > 0 {
-		rawlocs, err := proc.ThreadStacktrace(thread, bp.Stacktrace)
+		rawlocs, err := proc.ThreadStacktrace(tgt, thread, bp.Stacktrace)
 		if err != nil {
 			return err
 		}
@@ -1763,9 +1770,9 @@ func (d *Debugger) Stacktrace(goroutineID int64, depth int, opts api.StacktraceO
 	}
 
 	if g == nil {
-		return proc.ThreadStacktrace(d.target.Selected.CurrentThread(), depth)
+		return proc.ThreadStacktrace(d.target.Selected, d.target.Selected.CurrentThread(), depth)
 	} else {
-		return g.Stacktrace(depth, proc.StacktraceOptions(opts))
+		return proc.GoroutineStacktrace(d.target.Selected, g, depth, proc.StacktraceOptions(opts))
 	}
 }
 

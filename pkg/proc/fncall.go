@@ -1053,7 +1053,7 @@ func readStackVariable(t *Target, thread Thread, regs Registers, off uint64, typ
 func fakeFunctionEntryScope(scope *EvalScope, fn *Function, cfa int64, sp uint64) error {
 	scope.PC = fn.Entry
 	scope.Fn = fn
-	scope.File, scope.Line, _ = scope.BinInfo.PCToLine(fn.Entry)
+	scope.File, scope.Line = scope.BinInfo.EntryLineForFunc(fn)
 
 	scope.Regs.CFA = cfa
 	scope.Regs.Reg(scope.Regs.SPRegNum).Uint64Val = sp

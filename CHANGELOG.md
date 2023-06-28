@@ -3,6 +3,39 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.21.0] 2023-06-23
+
+### Added
+
+- Go 1.21 support (#3370, #3401, @aarzilli)
+- Basic debug functionality for stripped executables (#3408, #3421, @derekparker)
+- Core dumping on FreeBSD (#3305, @aarzilli)
+- Ability to automatically attach to child processes when they are spawned (linux-only) (#3286, #3346, @aarzilli)
+- Starlark scripts can now use the time module (#3375, @andreimatei)
+- Online help for starlark interpreter (#3388, @aarzilli)
+- `dlv trace` has a new option, `--timestamp`, that prints timestamps before every trace event (#3358, @spacewander)
+
+### Fixed
+
+- Stepping could hide normal breakpoint hits occurring simultaneously, in rare circumstances (#3287, @aarzilli)
+- Internal error when defer locations can not be resolved (#3329, @aarzilli)
+- Channels of certain types could be displayed incorrectly (#3362, @aarzilli)
+- Formatted time wouldn't always be displayed when using DAP (#3349, @suzmue)
+- Function call injection when parameters are in registers (#3365, @ZekeLu)
+- Panic in Starlark interface when using partially loaded variables (#3386, @andreimatei)
+- Use debug info directories configuration in `dlv trace` (#3405, @nozzy123nozzy)
+- Updated DAP version (#3414, @suzmue)
+
+### Changed
+
+- Improved eBPF tracepoints (#3325, #3353, #3417, @chenhengqi, @derekparker)
+- The name of the default output binary is now randomizes, which fixes some weird behavior when multiple instances of Delve are run simultaneously in the same directory (#3366, @aarzilli)
+- Stderr of debuginfod-find is now suppressed (#3381, @fche)
+- Better documentation for substitute-path (#3335, @aarzilli)
+- `quit -c` will ask for confirmation when breakpoints still exist (#3398, @aarzilli)
+- Miscellaneous improvements to documentation and tests (#3326, #3327, #3340, #3341, #3357, #3378, #3376, #3399, #3374, #3426, @alexandear, @cuishuang, @alexsaezm, @andreimatei)
+
+
 ## [1.20.2] 2023-04-05
 
 ### Added

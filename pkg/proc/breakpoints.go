@@ -285,7 +285,7 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 		nextDeferOk := true
 		if breaklet.Kind&NextDeferBreakpoint != 0 {
 			var err error
-			frames, err := ThreadStacktrace(thread, 2)
+			frames, err := ThreadStacktrace(tgt, thread, 2)
 			if err == nil {
 				nextDeferOk, _ = isPanicCall(frames)
 				if !nextDeferOk {
@@ -297,7 +297,7 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 
 	case WatchOutOfScopeBreakpoint:
 		if breaklet.checkPanicCall {
-			frames, err := ThreadStacktrace(thread, 2)
+			frames, err := ThreadStacktrace(tgt, thread, 2)
 			if err == nil {
 				ipc, _ := isPanicCall(frames)
 				active = active && ipc
@@ -554,7 +554,7 @@ func (t *Target) setEBPFTracepointOnFunc(fn *Function, goidOffset int64) error {
 	if t.BinInfo().Producer() != "" && goversion.ProducerAfterOrEqual(t.BinInfo().Producer(), 1, 15) {
 		variablesFlags |= reader.VariablesTrustDeclLine
 	}
-	_, l, _ := t.BinInfo().PCToLine(fn.Entry)
+	_, l := t.BinInfo().EntryLineForFunc(fn)
 
 	var args []ebpf.UProbeArgMap
 	varEntries := reader.Variables(dwarfTree, fn.Entry, l, variablesFlags)

@@ -61,6 +61,7 @@ type EBPFContext struct {
 	bpfRingBuf *ringbuf.Reader
 	executable *link.Executable
 	bpfArgMap  *ebpf.Map
+	links      []link.Link
 
 	parsedBpfEvents []RawUProbeParams
 	m               sync.Mutex
@@ -70,13 +71,19 @@ func (ctx *EBPFContext) Close() {
 	if ctx.objs != nil {
 		ctx.objs.Close()
 	}
+	if ctx.links != nil {
+		for _, l := range ctx.links {
+			l.Close()
+		}
+	}
 }
 
 func (ctx *EBPFContext) AttachUprobe(pid int, name string, offset uint64) error {
 	if ctx.executable == nil {
 		return errors.New("no eBPF program loaded")
 	}
-	_, err := ctx.executable.Uprobe(name, ctx.objs.tracePrograms.UprobeDlvTrace, &link.UprobeOptions{PID: pid, Offset: offset})
+	l, err := ctx.executable.Uprobe(name, ctx.objs.tracePrograms.UprobeDlvTrace, &link.UprobeOptions{PID: pid, Offset: offset})
+	ctx.links = append(ctx.links, l)
 	return err
 }
 
