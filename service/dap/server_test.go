@@ -2,6 +2,7 @@ package dap
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -7364,6 +7365,98 @@ func TestDisassembleCgo(t *testing.T) {
 		)
 	},
 		protest.AllNonOptimized, true)
+}
+
+
+func TestRedirect(t *testing.T) {
+	runTest(t, "out_redirect", func(client *daptest.Client, fixture protest.Fixture) {
+		// 1 >> initialize, << initialize
+		client.InitializeRequest()
+		initResp := client.ExpectInitializeResponseAndCapabilities(t)
+		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
+		}
+
+		// 2 >> launch, << initialized, << launch
+		client.LaunchRequestWithArgs(map[string]interface{}{
+			"request":    "launch",
+			"mode":       "debug",
+			"program":    fixture.Source,
+			"outputMode": "remote",
+		})
+		initEvent := client.ExpectInitializedEvent(t)
+		if initEvent.Seq != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0", initEvent)
+		}
+		launchResp := client.ExpectLaunchResponse(t)
+		if launchResp.Seq != 0 || launchResp.RequestSeq != 2 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=2", launchResp)
+		}
+
+		// 5 >> configurationDone, << stopped, << configurationDone
+		client.ConfigurationDoneRequest()
+
+		cdResp := client.ExpectConfigurationDoneResponse(t)
+		if cdResp.Seq != 0 || cdResp.RequestSeq != 3 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=5", cdResp)
+		}
+
+		// 6 << output, << terminated
+		var (
+			stdout = bytes.NewBufferString("")
+			stderr = bytes.NewBufferString("")
+		)
+
+	terminatedPoint:
+		for {
+			message := client.ExpectMessage(t)
+			switch m := message.(type) {
+			case *dap.OutputEvent:
+				switch m.Body.Category {
+				case "stdout":
+					stdout.WriteString(m.Body.Output)
+				case "stderr":
+					stderr.WriteString(m.Body.Output)
+				default:
+					t.Errorf("\ngot %#v\nwant Category='stdout' or 'stderr'", m)
+				}
+			case *dap.TerminatedEvent:
+				break terminatedPoint
+			default:
+				t.Errorf("\n got %#v, want *dap.OutputEvent or *dap.TerminateResponse", m)
+			}
+		}
+
+		var (
+			expectStdout = "hello world!\nhello world!"
+			expectStderr = "hello world!\nhello world! error!"
+		)
+
+		// check output
+		if expectStdout != stdout.String() {
+			t.Errorf("\n got stdout: len:%d\n%s\nwant: len:%d\n%s", stdout.Len(), stdout.String(), len(expectStdout), string(expectStdout))
+		}
+
+		if expectStderr != stderr.String() {
+			t.Errorf("\n got stderr: len:%d \n%s\nwant: len:%d\n%s", stderr.Len(), stderr.String(), len(expectStderr), string(expectStderr))
+		}
+
+		// 7 >> disconnect, << disconnect
+		client.DisconnectRequest()
+		oep := client.ExpectOutputEventProcessExited(t, 0)
+		if oep.Seq != 0 || oep.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
+		}
+		oed := client.ExpectOutputEventDetaching(t)
+		if oed.Seq != 0 || oed.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+		}
+		dResp := client.ExpectDisconnectResponse(t)
+		if dResp.Seq != 0 || dResp.RequestSeq != 4 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=43", dResp)
+		}
+		client.ExpectTerminatedEvent(t)
+	})
 }
 
 // Helper functions for checking ErrorMessage field values.

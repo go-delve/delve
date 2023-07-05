@@ -157,6 +157,15 @@ type Session struct {
 	// changeStateMu must be held for a request to protect itself from another goroutine
 	// changing the state of the running process at the same time.
 	changeStateMu sync.Mutex
+
+	// stdoutReader the programs's stdout.
+	stdoutReader io.ReadCloser
+
+	// stderrReader the program's stderr.
+	stderrReader io.ReadCloser
+
+	// preTerminatedWG the WaitGroup that needs to wait before sending a terminated event.
+	preTerminatedWG sync.WaitGroup
 }
 
 // Config is all the information needed to start the debugger, handle
@@ -969,7 +978,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 
 		var cmd string
 		var out []byte
-		var err error
+
 		switch args.Mode {
 		case "debug":
 			cmd, out, err = gobuild.GoBuildCombinedOutput(args.Output, []string{args.Program}, args.BuildFlags)
@@ -1020,9 +1029,51 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	argsToLog.Cwd, _ = filepath.Abs(args.Cwd)
 	s.config.log.Debugf("launching binary '%s' with config: %s", debugbinary, prettyPrint(argsToLog))
 
+	var redirected = false
+	switch args.OutputMode {
+	case "remote":
+		redirected = true
+	case "local", "":
+		// noting
+	default:
+		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
+			fmt.Sprintf("invalid debug configuration - unsupported 'outputMode' attribute %q", args.OutputMode))
+		return
+	}
+
+	redirectedFunc := func(stdoutReader io.ReadCloser, stderrReader io.ReadCloser) {
+		runReadFunc := func(reader io.ReadCloser, category string) {
+			defer s.preTerminatedWG.Done()
+			defer reader.Close()
+			// Read output from `reader` and send to client
+			var out [1024]byte
+			for {
+				n, err := reader.Read(out[:])
+				if err != nil {
+					if errors.Is(io.EOF, err) {
+						return
+					}
+					s.config.log.Errorf("failed read by %s - %v ", category, err)
+					return
+				}
+				outs := string(out[:n])
+				s.send(&dap.OutputEvent{
+					Event: *newEvent("output"),
+					Body: dap.OutputEventBody{
+						Output:   outs,
+						Category: category,
+					}})
+			}
+		}
+
+		s.preTerminatedWG.Add(2)
+		go runReadFunc(stdoutReader, "stdout")
+		go runReadFunc(stderrReader, "stderr")
+	}
+
 	if args.NoDebug {
 		s.mu.Lock()
-		cmd, err := s.newNoDebugProcess(debugbinary, args.Args, s.config.Debugger.WorkingDir)
+		cmd, err := s.newNoDebugProcess(debugbinary, args.Args, s.config.Debugger.WorkingDir, redirected)
 		s.mu.Unlock()
 		if err != nil {
 			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
@@ -1034,14 +1085,48 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 
 		// Start the program on a different goroutine, so we can listen for disconnect request.
 		go func() {
+			if redirected {
+				redirectedFunc(s.stdoutReader, s.stderrReader)
+			}
+
 			if err := cmd.Wait(); err != nil {
 				s.config.log.Debugf("program exited with error: %v", err)
 			}
+
 			close(s.noDebugProcess.exited)
 			s.logToConsole(proc.ErrProcessExited{Pid: cmd.ProcessState.Pid(), Status: cmd.ProcessState.ExitCode()}.Error())
 			s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		}()
 		return
+	}
+
+	var clear func()
+	if redirected {
+		var (
+			readers         [2]io.ReadCloser
+			outputRedirects [2]proc.OutputRedirect
+		)
+
+		for i := 0; i < 2; i++ {
+			readers[i], outputRedirects[i], err = proc.Redirector()
+			if err != nil {
+				s.sendShowUserErrorResponse(request.Request, InternalError, "Internal Error",
+					fmt.Sprintf("failed to generate stdio pipes - %v", err))
+				return
+			}
+		}
+
+		s.config.Debugger.Stdout = outputRedirects[0]
+		s.config.Debugger.Stderr = outputRedirects[1]
+
+		redirectedFunc(readers[0], readers[1])
+		clear = func() {
+			for index := range readers {
+				if closeErr := readers[index].Close(); closeErr != nil {
+					s.config.log.Warnf("failed to clear redirects - %v", closeErr)
+				}
+			}
+		}
 	}
 
 	func() {
@@ -1054,6 +1139,9 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			gobuild.Remove(s.binaryToRemove)
 		}
 		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
+		if redirected {
+			clear()
+		}
 		return
 	}
 	// Enable StepBack controls on supported backends
@@ -1080,15 +1168,30 @@ func (s *Session) getPackageDir(pkg string) string {
 
 // newNoDebugProcess is called from onLaunchRequest (run goroutine) and
 // requires holding mu lock. It prepares process exec.Cmd to be started.
-func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd string) (*exec.Cmd, error) {
+func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd string, redirected bool) (cmd *exec.Cmd, err error) {
 	if s.noDebugProcess != nil {
 		return nil, fmt.Errorf("another launch request is in progress")
 	}
-	cmd := exec.Command(program, targetArgs...)
-	cmd.Stdout, cmd.Stderr, cmd.Stdin, cmd.Dir = os.Stdout, os.Stderr, os.Stdin, wd
-	if err := cmd.Start(); err != nil {
+
+	cmd = exec.Command(program, targetArgs...)
+	cmd.Stdin, cmd.Dir = os.Stdin, wd
+
+	if redirected {
+		if s.stderrReader, err = cmd.StderrPipe(); err != nil {
+			return nil, err
+		}
+
+		if s.stdoutReader, err = cmd.StdoutPipe(); err != nil {
+			return nil, err
+		}
+	} else {
+		cmd.Stdout, cmd.Stderr = os.Stdin, os.Stderr
+	}
+
+	if err = cmd.Start(); err != nil {
 		return nil, err
 	}
+
 	s.noDebugProcess = &process{Cmd: cmd, exited: make(chan struct{})}
 	return cmd, nil
 }
@@ -1135,9 +1238,11 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 		status := "halted"
 		if s.isRunningCmd() {
 			status = "running"
-		} else if s, err := s.debugger.State(false); processExited(s, err) {
+		} else if state, err := s.debugger.State(false); processExited(state, err) {
 			status = "exited"
+			s.preTerminatedWG.Wait()
 		}
+
 		s.logToConsole(fmt.Sprintf("Closing client session, but leaving multi-client DAP server at %s with debuggee %s", s.config.Listener.Addr().String(), status))
 		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
@@ -1171,6 +1276,7 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 	} else {
 		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 	}
+	s.preTerminatedWG.Wait()
 	// The debugging session has ended, so we send a terminated event.
 	s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 }
@@ -2724,6 +2830,7 @@ func (s *Session) doCall(goid, frame int, expr string) (*api.DebuggerState, []*p
 		GoroutineID:          int64(goid),
 	}, nil)
 	if processExited(state, err) {
+		s.preTerminatedWG.Wait()
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
 		s.send(e)
 		return nil, nil, errors.New("terminated")
@@ -3470,6 +3577,7 @@ func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange cha
 	}
 
 	if processExited(state, err) {
+		s.preTerminatedWG.Wait()
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		return
 	}

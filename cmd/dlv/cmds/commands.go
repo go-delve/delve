@@ -20,6 +20,7 @@ import (
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
+	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/terminal"
 	"github.com/go-delve/delve/pkg/version"
 	"github.com/go-delve/delve/service"
@@ -1015,7 +1016,9 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 				DebugInfoDirectories: conf.DebugInfoDirectories,
 				CheckGoVersion:       checkGoVersion,
 				TTY:                  tty,
-				Redirects:            redirects,
+				Stdin:                redirects[0],
+				Stdout:               proc.OutputRedirect{Path: redirects[1]},
+				Stderr:               proc.OutputRedirect{Path: redirects[2]},
 				DisableASLR:          disableASLR,
 				RrOnProcessPid:       rrOnProcessPid,
 			},
