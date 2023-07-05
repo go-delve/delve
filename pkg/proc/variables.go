@@ -1422,7 +1422,7 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 	case reflect.Func:
 		v.readFunctionPtr()
 	default:
-		v.Unreadable = fmt.Errorf("unknown or unsupported kind: \"%s\"", v.Kind.String())
+		v.Unreadable = fmt.Errorf("unknown or unsupported kind: %q", v.Kind.String())
 	}
 }
 
