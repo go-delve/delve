@@ -372,7 +372,7 @@ func TestBreakpointInSeparateGoRoutine(t *testing.T) {
 	})
 }
 
-func TestBreakpointWithNonExistantFunction(t *testing.T) {
+func TestBreakpointWithNonExistentFunction(t *testing.T) {
 	withTestProcess("testprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		_, err := p.SetBreakpoint(0, 0, proc.UserBreakpoint, nil)
 		if err == nil {
@@ -2402,7 +2402,7 @@ func TestIssue561(t *testing.T) {
 	})
 }
 
-func TestGoroutineLables(t *testing.T) {
+func TestGoroutineLabels(t *testing.T) {
 	withTestProcess("goroutineLabels", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), t, "Continue()")
 		g, err := proc.GetG(p.CurrentThread())

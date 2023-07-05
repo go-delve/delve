@@ -279,7 +279,7 @@ func FindFileLocation(p Process, filename string, lineno int) ([]uint64, error) 
 	return selectedPCs, nil
 }
 
-// inlRnage is the range of an inlined call
+// inlRange is the range of an inlined call
 type inlRange struct {
 	off   dwarf.Offset
 	depth uint32
