@@ -90,9 +90,9 @@ func ConvertEvalScope(dbp *Target, gid int64, frame, deferCall int) (*EvalScope,
 
 	var locs []Stackframe
 	if g != nil {
-		locs, err = g.Stacktrace(frame+1, opts)
+		locs, err = GoroutineStacktrace(dbp, g, frame+1, opts)
 	} else {
-		locs, err = ThreadStacktrace(ct, frame+1)
+		locs, err = ThreadStacktrace(dbp, ct, frame+1)
 	}
 	if err != nil {
 		return nil, err
@@ -145,7 +145,7 @@ func FrameToScope(t *Target, thread MemoryReadWriter, g *G, frames ...Stackframe
 
 // ThreadScope returns an EvalScope for the given thread.
 func ThreadScope(t *Target, thread Thread) (*EvalScope, error) {
-	locations, err := ThreadStacktrace(thread, 1)
+	locations, err := ThreadStacktrace(t, thread, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +157,7 @@ func ThreadScope(t *Target, thread Thread) (*EvalScope, error) {
 
 // GoroutineScope returns an EvalScope for the goroutine running on the given thread.
 func GoroutineScope(t *Target, thread Thread) (*EvalScope, error) {
-	locations, err := ThreadStacktrace(thread, 1)
+	locations, err := ThreadStacktrace(t, thread, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -363,7 +363,7 @@ func (scope *EvalScope) setValue(dstv, srcv *Variable, srcExpr string) error {
 
 	if srcv.Unreadable != nil {
 		//lint:ignore ST1005 backwards compatibility
-		return fmt.Errorf("Expression \"%s\" is unreadable: %v", srcExpr, srcv.Unreadable)
+		return fmt.Errorf("Expression %q is unreadable: %v", srcExpr, srcv.Unreadable)
 	}
 
 	// Numerical types
@@ -437,12 +437,12 @@ func (scope *EvalScope) SetVariable(name, value string) error {
 
 	if xv.Addr == 0 {
 		//lint:ignore ST1005 backwards compatibility
-		return fmt.Errorf("Can not assign to \"%s\"", name)
+		return fmt.Errorf("Can not assign to %q", name)
 	}
 
 	if xv.Unreadable != nil {
 		//lint:ignore ST1005 backwards compatibility
-		return fmt.Errorf("Expression \"%s\" is unreadable: %v", name, xv.Unreadable)
+		return fmt.Errorf("Expression %q is unreadable: %v", name, xv.Unreadable)
 	}
 
 	t, err = parser.ParseExpr(value)
@@ -1400,7 +1400,7 @@ func (scope *EvalScope) evalTypeAssert(node *ast.TypeAssertExpr) (*Variable, err
 		return nil, err
 	}
 	if xv.Kind != reflect.Interface {
-		return nil, fmt.Errorf("expression \"%s\" not an interface", exprToString(node.X))
+		return nil, fmt.Errorf("expression %q not an interface", exprToString(node.X))
 	}
 	xv.loadInterface(0, false, loadFullValue)
 	if xv.Unreadable != nil {
@@ -1451,7 +1451,7 @@ func (scope *EvalScope) evalIndex(node *ast.IndexExpr) (*Variable, error) {
 		return nil, err
 	}
 
-	cantindex := fmt.Errorf("expression \"%s\" (%s) does not support indexing", exprToString(node.X), xev.TypeString())
+	cantindex := fmt.Errorf("expression %q (%s) does not support indexing", exprToString(node.X), xev.TypeString())
 
 	switch xev.Kind {
 	case reflect.Ptr:
@@ -1469,7 +1469,7 @@ func (scope *EvalScope) evalIndex(node *ast.IndexExpr) (*Variable, error) {
 
 	case reflect.Slice, reflect.Array, reflect.String:
 		if xev.Base == 0 {
-			return nil, fmt.Errorf("can not index \"%s\"", exprToString(node.X))
+			return nil, fmt.Errorf("can not index %q", exprToString(node.X))
 		}
 		n, err := idxev.asInt()
 		if err != nil {
@@ -1508,7 +1508,7 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 		}
 		low, err = lowv.asInt()
 		if err != nil {
-			return nil, fmt.Errorf("can not convert \"%s\" to int: %v", exprToString(node.Low), err)
+			return nil, fmt.Errorf("can not convert %q to int: %v", exprToString(node.Low), err)
 		}
 	}
 
@@ -1521,14 +1521,14 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 		}
 		high, err = highv.asInt()
 		if err != nil {
-			return nil, fmt.Errorf("can not convert \"%s\" to int: %v", exprToString(node.High), err)
+			return nil, fmt.Errorf("can not convert %q to int: %v", exprToString(node.High), err)
 		}
 	}
 
 	switch xev.Kind {
 	case reflect.Slice, reflect.Array, reflect.String:
 		if xev.Base == 0 {
-			return nil, fmt.Errorf("can not slice \"%s\"", exprToString(node.X))
+			return nil, fmt.Errorf("can not slice %q", exprToString(node.X))
 		}
 		return xev.reslice(low, high)
 	case reflect.Map:
@@ -1547,7 +1547,7 @@ func (scope *EvalScope) evalReslice(node *ast.SliceExpr) (*Variable, error) {
 		}
 		fallthrough
 	default:
-		return nil, fmt.Errorf("can not slice \"%s\" (type %s)", exprToString(node.X), xev.TypeString())
+		return nil, fmt.Errorf("can not slice %q (type %s)", exprToString(node.X), xev.TypeString())
 	}
 }
 
@@ -1559,7 +1559,7 @@ func (scope *EvalScope) evalPointerDeref(node *ast.StarExpr) (*Variable, error) 
 	}
 
 	if xev.Kind != reflect.Ptr {
-		return nil, fmt.Errorf("expression \"%s\" (%s) can not be dereferenced", exprToString(node.X), xev.TypeString())
+		return nil, fmt.Errorf("expression %q (%s) can not be dereferenced", exprToString(node.X), xev.TypeString())
 	}
 
 	if xev == nilVariable {
@@ -1592,7 +1592,7 @@ func (scope *EvalScope) evalAddrOf(node *ast.UnaryExpr) (*Variable, error) {
 		return nil, err
 	}
 	if xev.Addr == 0 || xev.DwarfType == nil {
-		return nil, fmt.Errorf("can not take address of \"%s\"", exprToString(node.X))
+		return nil, fmt.Errorf("can not take address of %q", exprToString(node.X))
 	}
 
 	return xev.pointerToVariable(), nil
@@ -1660,7 +1660,7 @@ func (scope *EvalScope) evalUnary(node *ast.UnaryExpr) (*Variable, error) {
 		return nil, errOperationOnSpecialFloat
 	}
 	if xv.Value == nil {
-		return nil, fmt.Errorf("operator %s can not be applied to \"%s\"", node.Op.String(), exprToString(node.X))
+		return nil, fmt.Errorf("operator %s can not be applied to %q", node.Op.String(), exprToString(node.X))
 	}
 	rc, err := constantUnaryOp(node.Op, xv.Value)
 	if err != nil {
@@ -1708,7 +1708,7 @@ func negotiateType(op token.Token, xv, yv *Variable) (godwarf.Type, error) {
 
 	if xv.DwarfType != nil && yv.DwarfType != nil {
 		if xv.DwarfType.String() != yv.DwarfType.String() {
-			return nil, fmt.Errorf("mismatched types \"%s\" and \"%s\"", xv.DwarfType.String(), yv.DwarfType.String())
+			return nil, fmt.Errorf("mismatched types %q and %q", xv.DwarfType.String(), yv.DwarfType.String())
 		}
 		return xv.DwarfType, nil
 	} else if xv.DwarfType != nil && yv.DwarfType == nil {
@@ -1813,11 +1813,11 @@ func (scope *EvalScope) evalBinary(node *ast.BinaryExpr) (*Variable, error) {
 			yv.loadValue(loadFullValueLongerStrings)
 		}
 		if xv.Value == nil {
-			return nil, fmt.Errorf("operator %s can not be applied to \"%s\"", node.Op.String(), exprToString(node.X))
+			return nil, fmt.Errorf("operator %s can not be applied to %q", node.Op.String(), exprToString(node.X))
 		}
 
 		if yv.Value == nil {
-			return nil, fmt.Errorf("operator %s can not be applied to \"%s\"", node.Op.String(), exprToString(node.Y))
+			return nil, fmt.Errorf("operator %s can not be applied to %q", node.Op.String(), exprToString(node.Y))
 		}
 
 		rc, err := constantBinaryOp(op, xv.Value, yv.Value)

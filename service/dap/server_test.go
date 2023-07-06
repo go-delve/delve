@@ -2,6 +2,7 @@ package dap
 
 import (
 	"bufio"
+	"bytes"
 	"flag"
 	"fmt"
 	"io"
@@ -429,21 +430,21 @@ func TestLaunchStopOnEntry(t *testing.T) {
 		// 8 >> stackTrace, << error
 		client.StackTraceRequest(1, 0, 20)
 		stResp := client.ExpectInvisibleErrorResponse(t)
-		if stResp.Seq != 0 || stResp.RequestSeq != 8 || stResp.Body.Error.Format != "Unable to produce stack trace: unknown goroutine 1" {
+		if stResp.Seq != 0 || stResp.RequestSeq != 8 || !checkErrorMessageFormat(stResp.Body.Error, "Unable to produce stack trace: unknown goroutine 1") {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8 Format=\"Unable to produce stack trace: unknown goroutine 1\"", stResp)
 		}
 
 		// 9 >> stackTrace, << error
 		client.StackTraceRequest(1, 0, 20)
 		stResp = client.ExpectInvisibleErrorResponse(t)
-		if stResp.Seq != 0 || stResp.RequestSeq != 9 || stResp.Body.Error.Id != UnableToProduceStackTrace {
+		if stResp.Seq != 0 || stResp.RequestSeq != 9 || !checkErrorMessageId(stResp.Body.Error, UnableToProduceStackTrace) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Id=%d", stResp, UnableToProduceStackTrace)
 		}
 
 		// 10 >> evaluate, << error
 		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
 		erResp := client.ExpectInvisibleErrorResponse(t)
-		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Id != UnableToEvaluateExpression {
+		if erResp.Seq != 0 || erResp.RequestSeq != 10 || !checkErrorMessageId(erResp.Body.Error, UnableToEvaluateExpression) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=%d", erResp, UnableToEvaluateExpression)
 		}
 
@@ -576,7 +577,7 @@ func TestAttachStopOnEntry(t *testing.T) {
 		// 10 >> evaluate, << error
 		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
 		erResp := client.ExpectInvisibleErrorResponse(t)
-		if erResp.Seq != 0 || erResp.RequestSeq != 10 || erResp.Body.Error.Id != UnableToEvaluateExpression {
+		if erResp.Seq != 0 || erResp.RequestSeq != 10 || !checkErrorMessageId(erResp.Body.Error, UnableToEvaluateExpression) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=%d", erResp, UnableToEvaluateExpression)
 		}
 
@@ -749,7 +750,7 @@ func TestPreSetBreakpoint(t *testing.T) {
 				if got.Id != id || got.Name != name {
 					t.Errorf("\ngot  %#v\nwant Id=%d Name=%s", got, id, name)
 				}
-				if (sourceName != "" && got.Source.Name != sourceName) || (line > 0 && got.Line != line) {
+				if (sourceName != "" && (got.Source == nil || got.Source.Name != sourceName)) || (line > 0 && got.Line != line) {
 					t.Errorf("\ngot  %#v\nwant Source.Name=%s Line=%d", got, sourceName, line)
 				}
 			}
@@ -992,7 +993,7 @@ func checkChildren(t *testing.T, got *dap.VariablesResponse, parentName string, 
 
 // checkVar is a helper for verifying the values within a VariablesResponse.
 //
-//	i - index of the variable within VariablesRespose.Body.Variables array (-1 will search all vars for a match)
+//	i - index of the variable within VariablesResponse.Body.Variables array (-1 will search all vars for a match)
 //	name - name of the variable
 //	evalName - fully qualified variable name or alternative expression to load this variable
 //	value - the value of the variable
@@ -1613,7 +1614,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 
 					client.ScopesRequest(1111)
 					erres := client.ExpectInvisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to list locals: unknown frame id 1111" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to list locals: unknown frame id 1111") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to list locals: unknown frame id 1111\"", erres)
 					}
 
@@ -1628,7 +1629,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 
 					client.VariablesRequest(7777)
 					erres = client.ExpectInvisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to lookup variable: unknown reference 7777" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to lookup variable: unknown reference 7777") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to lookup variable: unknown reference 7777\"", erres)
 					}
 				},
@@ -3337,7 +3338,7 @@ func checkLogMessage(t *testing.T, oe *dap.OutputEvent, goid int, text, path str
 	if oe.Body.Category != "stdout" || !strings.HasPrefix(oe.Body.Output, prefix) || !strings.HasSuffix(oe.Body.Output, text+"\n") {
 		t.Errorf("got output event = %#v, \nwant Category=\"stdout\" Output=\"%s: %s\\n\"", oe, prefix, text)
 	}
-	if oe.Body.Line != line || oe.Body.Source.Path != path {
+	if oe.Body.Line != line || oe.Body.Source == nil || oe.Body.Source.Path != path {
 		t.Errorf("got output event = %#v, \nwant Line=%d Source.Path=%s", oe, line, path)
 	}
 }
@@ -3955,27 +3956,27 @@ func TestEvaluateRequest(t *testing.T) {
 					// Next frame
 					client.EvaluateRequest("a1", 1002, "any context but watch")
 					erres := client.ExpectVisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: could not find symbol value for a1") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
 					}
 					client.EvaluateRequest("a1", 1002, "watch")
 					erres = client.ExpectInvisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: could not find symbol value for a1") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
 					}
 					client.EvaluateRequest("a1", 1002, "repl")
 					erres = client.ExpectInvisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: could not find symbol value for a1") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
 					}
 					client.EvaluateRequest("a1", 1002, "hover")
 					erres = client.ExpectInvisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: could not find symbol value for a1") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
 					}
 					client.EvaluateRequest("a1", 1002, "clipboard")
 					erres = client.ExpectVisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: could not find symbol value for a1" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: could not find symbol value for a1") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: could not find symbol value for a1\"", erres)
 					}
 				},
@@ -4291,7 +4292,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 					client.ExpectEvaluateResponse(t)
 					client.EvaluateRequest("call callstacktrace()", 1001, "not watch")
 					erres := client.ExpectVisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: call is only supported with topmost stack frame" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: call is only supported with topmost stack frame") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: call is only supported with topmost stack frame\"", erres)
 					}
 
@@ -4302,14 +4303,14 @@ func TestEvaluateCallRequest(t *testing.T) {
 						t.Errorf("\ngot %#v\nwant Reason=\"hardcoded breakpoint\"", s)
 					}
 					erres = client.ExpectVisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: call stopped" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: call stopped") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: call stopped\"", erres)
 					}
 
 					// A call during a call causes an error
 					client.EvaluateRequest("call callstacktrace()", 1000, "not watch")
 					erres = client.ExpectVisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: cannot call function while another function call is already in progress" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: cannot call function while another function call is already in progress") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: cannot call function while another function call is already in progress\"", erres)
 					}
 
@@ -4327,7 +4328,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 					client.EvaluateRequest("call makeclos(nil)", 1000, "not watch")
 					stopped := client.ExpectStoppedEvent(t)
 					erres = client.ExpectVisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: call stopped" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: call stopped") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: call stopped\"", erres)
 					}
 					checkStop(t, client, stopped.Body.ThreadId, "main.makeclos", 88)
@@ -4401,7 +4402,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 					// Call error
 					client.EvaluateRequest("call call1(one)", 1000, "watch")
 					erres := client.ExpectInvisibleErrorResponse(t)
-					if erres.Body.Error.Format != "Unable to evaluate expression: not enough arguments" {
+					if !checkErrorMessageFormat(erres.Body.Error, "Unable to evaluate expression: not enough arguments") {
 						t.Errorf("\ngot %#v\nwant Format=\"Unable to evaluate expression: not enough arguments\"", erres)
 					}
 
@@ -4417,7 +4418,7 @@ func TestEvaluateCallRequest(t *testing.T) {
 					// Call can exit.
 					client.EvaluateRequest("call callexit()", 1000, "this context will be ignored")
 					client.ExpectTerminatedEvent(t)
-					if res := client.ExpectVisibleErrorResponse(t); !strings.Contains(res.Body.Error.Format, "terminated") {
+					if res := client.ExpectVisibleErrorResponse(t); res.Body.Error == nil || !strings.Contains(res.Body.Error.Format, "terminated") {
 						t.Errorf("\ngot %#v\nwant Format=.*terminated.*", res)
 					}
 				},
@@ -4957,7 +4958,7 @@ func TestPanicBreakpointOnContinue(t *testing.T) {
 							if frame.PresentationHint != "subtle" {
 								t.Errorf("\ngot Body.StackFrames[%d]=%#v\nwant Source.PresentationHint=\"subtle\"", i, frame)
 							}
-						} else if frame.Source.PresentationHint != "" {
+						} else if frame.Source != nil && frame.Source.PresentationHint != "" {
 							t.Errorf("\ngot Body.StackFrames[%d]=%#v\nwant Source.PresentationHint=\"\"", i, frame)
 						}
 
@@ -5377,7 +5378,7 @@ func TestNoDebug_AcceptNoRequestsButDisconnect(t *testing.T) {
 		// Anything other than disconnect should get rejected
 		var ExpectNoDebugError = func(cmd string) {
 			er := client.ExpectErrorResponse(t)
-			if er.Body.Error.Format != fmt.Sprintf("noDebug mode: unable to process '%s' request", cmd) {
+			if !checkErrorMessageFormat(er.Body.Error, fmt.Sprintf("noDebug mode: unable to process '%s' request", cmd)) {
 				t.Errorf("\ngot %#v\nwant 'noDebug mode: unable to process '%s' request'", er, cmd)
 			}
 		}
@@ -5877,7 +5878,7 @@ func (h *helperForSetVariable) failSetVariable0(ref int, name, value, wantErrInf
 		h.c.ExpectStoppedEvent(h.t)
 	}
 	resp := h.c.ExpectErrorResponse(h.t)
-	if got := resp.Body.Error.Format; !stringContainsCaseInsensitive(got, wantErrInfo) {
+	if got := resp.Body.Error; !stringContainsCaseInsensitive(got.Format, wantErrInfo) {
 		h.t.Errorf("got %#v, want error string containing %v", got, wantErrInfo)
 	}
 }
@@ -6231,8 +6232,8 @@ func TestBadLaunchRequests(t *testing.T) {
 			if response.Message != "Failed to launch" {
 				t.Errorf("Message got %q, want \"Failed to launch\"", response.Message)
 			}
-			if response.Body.Error.Id != FailedToLaunch {
-				t.Errorf("Id got %d, want %d", response.Body.Error.Id, FailedToLaunch)
+			if !checkErrorMessageId(response.Body.Error, FailedToLaunch) {
+				t.Errorf("Id got %v, want Id=%d", response.Body.Error, FailedToLaunch)
 			}
 			seqCnt++
 		}
@@ -6240,8 +6241,8 @@ func TestBadLaunchRequests(t *testing.T) {
 		checkFailedToLaunchWithMessage := func(response *dap.ErrorResponse, errmsg string) {
 			t.Helper()
 			checkFailedToLaunch(response)
-			if response.Body.Error.Format != errmsg {
-				t.Errorf("\ngot  %q\nwant %q", response.Body.Error.Format, errmsg)
+			if !checkErrorMessageFormat(response.Body.Error, errmsg) {
+				t.Errorf("\ngot  %v\nwant Format=%q", response.Body.Error, errmsg)
 			}
 		}
 
@@ -6432,8 +6433,8 @@ func TestBadAttachRequest(t *testing.T) {
 			if response.Message != "Failed to attach" {
 				t.Errorf("Message got %q, want \"Failed to attach\"", response.Message)
 			}
-			if response.Body.Error.Id != FailedToAttach {
-				t.Errorf("Id got %d, want %d", response.Body.Error.Id, FailedToAttach)
+			if !checkErrorMessageId(response.Body.Error, FailedToAttach) {
+				t.Errorf("Id got %v, want %d", response.Body.Error, FailedToAttach)
 			}
 			seqCnt++
 		}
@@ -6441,8 +6442,8 @@ func TestBadAttachRequest(t *testing.T) {
 		checkFailedToAttachWithMessage := func(response *dap.ErrorResponse, errmsg string) {
 			t.Helper()
 			checkFailedToAttach(response)
-			if response.Body.Error.Format != errmsg {
-				t.Errorf("\ngot  %q\nwant %q", response.Body.Error.Format, errmsg)
+			if !checkErrorMessageFormat(response.Body.Error, errmsg) {
+				t.Errorf("\ngot  %v\nwant Format=%q", response.Body.Error, errmsg)
 			}
 		}
 
@@ -6494,11 +6495,11 @@ func TestBadAttachRequest(t *testing.T) {
 		if er.Command != "" {
 			t.Errorf("Command got %q, want \"attach\"", er.Command)
 		}
-		if er.Body.Error.Format != "Internal Error: runtime error: index out of range [0] with length 0" {
+		if !checkErrorMessageFormat(er.Body.Error, "Internal Error: runtime error: index out of range [0] with length 0") {
 			t.Errorf("Message got %q, want \"Internal Error: runtime error: index out of range [0] with length 0\"", er.Message)
 		}
-		if er.Body.Error.Id != InternalError {
-			t.Errorf("Id got %d, want %d", er.Body.Error.Id, InternalError)
+		if !checkErrorMessageId(er.Body.Error, InternalError) {
+			t.Errorf("Id got %v, want Id=%d", er.Body.Error, InternalError)
 		}
 
 		// Bad "backend"
@@ -6813,8 +6814,8 @@ func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 				client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 100})
 				er := client.ExpectVisibleErrorResponse(t)
 				msgRe := regexp.MustCompile("Failed to attach: debug session already in progress at .+ - use remote mode to connect to a server with an active debug session")
-				if er.Body.Error.Id != FailedToAttach || !msgRe.MatchString(er.Body.Error.Format) {
-					t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToAttach, msgRe)
+				if er.Body.Error == nil || er.Body.Error.Id != FailedToAttach || !msgRe.MatchString(er.Body.Error.Format) {
+					t.Errorf("got %#v, want Id=%d Format=%q", er.Body.Error, FailedToAttach, msgRe)
 				}
 				tests := []string{"debug", "test", "exec", "replay", "core"}
 				for _, mode := range tests {
@@ -6822,8 +6823,8 @@ func TestLaunchAttachErrorWhenDebugInProgress(t *testing.T) {
 						client.LaunchRequestWithArgs(map[string]interface{}{"mode": mode})
 						er := client.ExpectVisibleErrorResponse(t)
 						msgRe := regexp.MustCompile("Failed to launch: debug session already in progress at .+ - use remote attach mode to connect to a server with an active debug session")
-						if er.Body.Error.Id != FailedToLaunch || !msgRe.MatchString(er.Body.Error.Format) {
-							t.Errorf("got %#v, want Id=%d Format=%q", er, FailedToLaunch, msgRe)
+						if er.Body.Error == nil || er.Body.Error.Id != FailedToLaunch || !msgRe.MatchString(er.Body.Error.Format) {
+							t.Errorf("got %#v, want Id=%d Format=%q", er.Body.Error, FailedToLaunch, msgRe)
 						}
 					})
 				}
@@ -6849,10 +6850,10 @@ func TestBadInitializeRequest(t *testing.T) {
 		if response.Message != "Failed to initialize" {
 			t.Errorf("Message got %q, want \"Failed to launch\"", response.Message)
 		}
-		if response.Body.Error.Id != FailedToInitialize {
-			t.Errorf("Id got %d, want %d", response.Body.Error.Id, FailedToInitialize)
+		if !checkErrorMessageId(response.Body.Error, FailedToInitialize) {
+			t.Errorf("Id got %v, want Id=%d", response.Body.Error, FailedToInitialize)
 		}
-		if response.Body.Error.Format != err {
+		if !checkErrorMessageFormat(response.Body.Error, err) {
 			t.Errorf("\ngot  %q\nwant %q", response.Body.Error.Format, err)
 		}
 
@@ -6913,7 +6914,7 @@ func TestBadlyFormattedMessageToServer(t *testing.T) {
 		// an error response.
 		client.UnknownRequest()
 		err := client.ExpectErrorResponse(t)
-		if err.Body.Error.Format != "Internal Error: Request command 'unknown' is not supported (seq: 1)" || err.RequestSeq != 1 {
+		if !checkErrorMessageFormat(err.Body.Error, "Internal Error: Request command 'unknown' is not supported (seq: 1)") || err.RequestSeq != 1 {
 			t.Errorf("got %v, want  RequestSeq=1 Error=\"Internal Error: Request command 'unknown' is not supported (seq: 1)\"", err)
 		}
 
@@ -7364,4 +7365,105 @@ func TestDisassembleCgo(t *testing.T) {
 		)
 	},
 		protest.AllNonOptimized, true)
+}
+
+func TestRedirect(t *testing.T) {
+	runTest(t, "out_redirect", func(client *daptest.Client, fixture protest.Fixture) {
+		// 1 >> initialize, << initialize
+		client.InitializeRequest()
+		initResp := client.ExpectInitializeResponseAndCapabilities(t)
+		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
+		}
+
+		// 2 >> launch, << initialized, << launch
+		client.LaunchRequestWithArgs(map[string]interface{}{
+			"request":    "launch",
+			"mode":       "debug",
+			"program":    fixture.Source,
+			"outputMode": "remote",
+		})
+		initEvent := client.ExpectInitializedEvent(t)
+		if initEvent.Seq != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0", initEvent)
+		}
+		launchResp := client.ExpectLaunchResponse(t)
+		if launchResp.Seq != 0 || launchResp.RequestSeq != 2 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=2", launchResp)
+		}
+
+		// 5 >> configurationDone, << stopped, << configurationDone
+		client.ConfigurationDoneRequest()
+
+		cdResp := client.ExpectConfigurationDoneResponse(t)
+		if cdResp.Seq != 0 || cdResp.RequestSeq != 3 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=5", cdResp)
+		}
+
+		// 6 << output, << terminated
+		var (
+			stdout = bytes.NewBufferString("")
+			stderr = bytes.NewBufferString("")
+		)
+
+	terminatedPoint:
+		for {
+			message := client.ExpectMessage(t)
+			switch m := message.(type) {
+			case *dap.OutputEvent:
+				switch m.Body.Category {
+				case "stdout":
+					stdout.WriteString(m.Body.Output)
+				case "stderr":
+					stderr.WriteString(m.Body.Output)
+				default:
+					t.Errorf("\ngot %#v\nwant Category='stdout' or 'stderr'", m)
+				}
+			case *dap.TerminatedEvent:
+				break terminatedPoint
+			default:
+				t.Errorf("\n got %#v, want *dap.OutputEvent or *dap.TerminateResponse", m)
+			}
+		}
+
+		var (
+			expectStdout = "hello world!\nhello world!"
+			expectStderr = "hello world!\nhello world! error!"
+		)
+
+		// check output
+		if expectStdout != stdout.String() {
+			t.Errorf("\n got stdout: len:%d\n%s\nwant: len:%d\n%s", stdout.Len(), stdout.String(), len(expectStdout), string(expectStdout))
+		}
+
+		if expectStderr != stderr.String() {
+			t.Errorf("\n got stderr: len:%d \n%s\nwant: len:%d\n%s", stderr.Len(), stderr.String(), len(expectStderr), string(expectStderr))
+		}
+
+		// 7 >> disconnect, << disconnect
+		client.DisconnectRequest()
+		oep := client.ExpectOutputEventProcessExited(t, 0)
+		if oep.Seq != 0 || oep.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
+		}
+		oed := client.ExpectOutputEventDetaching(t)
+		if oed.Seq != 0 || oed.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+		}
+		dResp := client.ExpectDisconnectResponse(t)
+		if dResp.Seq != 0 || dResp.RequestSeq != 4 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=43", dResp)
+		}
+		client.ExpectTerminatedEvent(t)
+	})
+}
+
+// Helper functions for checking ErrorMessage field values.
+
+func checkErrorMessageId(er *dap.ErrorMessage, id int) bool {
+	return er != nil && er.Id == id
+}
+
+func checkErrorMessageFormat(er *dap.ErrorMessage, fmt string) bool {
+	return er != nil && er.Format == fmt
 }

@@ -56,6 +56,89 @@ func TestFDEForPC(t *testing.T) {
 	}
 }
 
+func TestAppend(t *testing.T) {
+	equal := func(x, y FrameDescriptionEntries) bool {
+		if len(x) != len(y) {
+			return false
+		}
+		for i := range x {
+			if x[i].Begin() != y[i].Begin() || x[i].End() != y[i].End() {
+				return false
+			}
+		}
+		return true
+	}
+	var appendTests = []struct {
+		name string
+		f1   FrameDescriptionEntries
+		f2   FrameDescriptionEntries
+		want FrameDescriptionEntries
+	}{
+		{
+			name: "nil",
+			f1:   nil,
+			f2:   nil,
+			want: nil,
+		},
+
+		{
+			name: "one",
+			f1: FrameDescriptionEntries{
+				&FrameDescriptionEntry{begin: 10, size: 40},
+			},
+			f2: FrameDescriptionEntries{
+				&FrameDescriptionEntry{begin: 10, size: 40},
+			},
+			want: FrameDescriptionEntries{
+				&FrameDescriptionEntry{begin: 10, size: 40},
+			},
+		},
+		{
+			name: "1 item",
+			f1: FrameDescriptionEntries{
+				&FrameDescriptionEntry{begin: 10, size: 40},
+				&FrameDescriptionEntry{begin: 10, size: 40},
+				&FrameDescriptionEntry{begin: 50, size: 50},
+			},
+			f2: FrameDescriptionEntries{
+				&FrameDescriptionEntry{begin: 10, size: 40},
+				&FrameDescriptionEntry{begin: 50, size: 50},
+			},
+			want: FrameDescriptionEntries{
+				&FrameDescriptionEntry{begin: 10, size: 40},
+				&FrameDescriptionEntry{begin: 50, size: 50},
+			},
+		},
+		{
+			name: "many",
+			f1: FrameDescriptionEntries{
+				&FrameDescriptionEntry{begin: 10, size: 40},
+				&FrameDescriptionEntry{begin: 100, size: 100},
+				&FrameDescriptionEntry{begin: 50, size: 50},
+				&FrameDescriptionEntry{begin: 50, size: 50},
+				&FrameDescriptionEntry{begin: 300, size: 10},
+				&FrameDescriptionEntry{begin: 300, size: 10},
+			},
+			f2: FrameDescriptionEntries{
+				&FrameDescriptionEntry{begin: 10, size: 40},
+				&FrameDescriptionEntry{begin: 100, size: 100},
+				&FrameDescriptionEntry{begin: 100, size: 100},
+			},
+			want: FrameDescriptionEntries{
+				&FrameDescriptionEntry{begin: 10, size: 40},
+				&FrameDescriptionEntry{begin: 50, size: 50},
+				&FrameDescriptionEntry{begin: 100, size: 100},
+				&FrameDescriptionEntry{begin: 300, size: 10},
+			},
+		},
+	}
+	for _, test := range appendTests {
+		if got := test.f1.Append(test.f2); !equal(got, test.want) {
+			t.Errorf("%v.Append(%v) = %v, want %v", test.f1, test.f2, got, test.want)
+		}
+	}
+}
+
 func BenchmarkFDEForPC(b *testing.B) {
 	f, err := os.Open("testdata/frame")
 	if err != nil {

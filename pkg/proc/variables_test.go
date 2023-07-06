@@ -500,7 +500,7 @@ func TestComplexSetting(t *testing.T) {
 			variable, err := evalVariableWithCfg(p, "c128", pnormalLoadConfig)
 			assertNoError(err, t, "EvalVariable()")
 			if s := api.ConvertVar(variable).SinglelineString(); s != value {
-				t.Fatalf("Wrong value of c128: \"%s\", expected \"%s\" after setting it to \"%s\"", s, value, setExpr)
+				t.Fatalf("Wrong value of c128: %q, expected %q after setting it to %q", s, value, setExpr)
 			}
 		}
 
@@ -771,9 +771,9 @@ func getEvalExpressionTestCases() []varTest {
 		{"main.afunc2", true, `main.afunc2`, `main.afunc2`, `func()`, nil},
 
 		{"s2[0].Error", false, "main.(*astruct).Error", "main.(*astruct).Error", "func() string", nil},
-		{"s2[0].NonPointerRecieverMethod", false, "main.astruct.NonPointerRecieverMethod", "main.astruct.NonPointerRecieverMethod", "func()", nil},
+		{"s2[0].NonPointerReceiverMethod", false, "main.astruct.NonPointerReceiverMethod", "main.astruct.NonPointerReceiverMethod", "func()", nil},
 		{"as2.Error", false, "main.(*astruct).Error", "main.(*astruct).Error", "func() string", nil},
-		{"as2.NonPointerRecieverMethod", false, "main.astruct.NonPointerRecieverMethod", "main.astruct.NonPointerRecieverMethod", "func()", nil},
+		{"as2.NonPointerReceiverMethod", false, "main.astruct.NonPointerReceiverMethod", "main.astruct.NonPointerReceiverMethod", "func()", nil},
 
 		{`iface2map.(data)`, false, "…", "…", "map[string]interface {}", nil},
 
@@ -890,7 +890,7 @@ func TestEvalAddrAndCast(t *testing.T) {
 		c1addrstr := api.ConvertVar(c1addr).SinglelineString()
 		t.Logf("&c1 → %s", c1addrstr)
 		if !strings.HasPrefix(c1addrstr, "(*main.cstruct)(0x") {
-			t.Fatalf("Invalid value of EvalExpression(&c1) \"%s\"", c1addrstr)
+			t.Fatalf("Invalid value of EvalExpression(&c1) %q", c1addrstr)
 		}
 
 		aaddr, err := evalVariableWithCfg(p, "&(c1.pb.a)", pnormalLoadConfig)
@@ -898,7 +898,7 @@ func TestEvalAddrAndCast(t *testing.T) {
 		aaddrstr := api.ConvertVar(aaddr).SinglelineString()
 		t.Logf("&(c1.pb.a) → %s", aaddrstr)
 		if !strings.HasPrefix(aaddrstr, "(*main.astruct)(0x") {
-			t.Fatalf("invalid value of EvalExpression(&(c1.pb.a)) \"%s\"", aaddrstr)
+			t.Fatalf("invalid value of EvalExpression(&(c1.pb.a)) %q", aaddrstr)
 		}
 
 		a, err := evalVariableWithCfg(p, "*"+aaddrstr, pnormalLoadConfig)
@@ -1667,11 +1667,11 @@ func TestBadUnsafePtr(t *testing.T) {
 		}
 		expErr := "couldn't read pointer"
 		if !strings.Contains(err.Error(), expErr) {
-			t.Fatalf("expected \"%s\", got: \"%s\"", expErr, err)
+			t.Fatalf("expected %q, got: %q", expErr, err)
 		}
 		nexpErr := "nil pointer dereference"
 		if strings.Contains(err.Error(), nexpErr) {
-			t.Fatalf("shouldn't have gotten \"%s\", but got: \"%s\"", nexpErr, err)
+			t.Fatalf("shouldn't have gotten %q, but got: %q", nexpErr, err)
 		}
 	})
 }

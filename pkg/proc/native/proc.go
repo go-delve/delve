@@ -376,11 +376,11 @@ func (dbp *nativeProcess) writeSoftwareBreakpoint(thread *nativeThread, addr uin
 	return err
 }
 
-func openRedirects(redirects [3]string, foreground bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
+func openRedirects(stdinPath string, stdoutOR proc.OutputRedirect, stderrOR proc.OutputRedirect, foreground bool) (stdin, stdout, stderr *os.File, closefn func(), err error) {
 	toclose := []*os.File{}
 
-	if redirects[0] != "" {
-		stdin, err = os.Open(redirects[0])
+	if stdinPath != "" {
+		stdin, err = os.Open(stdinPath)
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
@@ -389,24 +389,29 @@ func openRedirects(redirects [3]string, foreground bool) (stdin, stdout, stderr 
 		stdin = os.Stdin
 	}
 
-	create := func(path string, dflt *os.File) *os.File {
-		if path == "" {
-			return dflt
+	create := func(redirect proc.OutputRedirect, dflt *os.File) (f *os.File) {
+		if redirect.Path != "" {
+			f, err = os.Create(redirect.Path)
+			if f != nil {
+				toclose = append(toclose, f)
+			}
+
+			return f
+		} else if redirect.File != nil {
+			toclose = append(toclose, redirect.File)
+
+			return redirect.File
 		}
-		var f *os.File
-		f, err = os.Create(path)
-		if f != nil {
-			toclose = append(toclose, f)
-		}
-		return f
+
+		return dflt
 	}
 
-	stdout = create(redirects[1], os.Stdout)
+	stdout = create(stdoutOR, os.Stdout)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
 
-	stderr = create(redirects[2], os.Stderr)
+	stderr = create(stderrOR, os.Stderr)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}

@@ -69,7 +69,7 @@ func Parse(locStr string) (LocationSpec, error) {
 
 	malformed := func(reason string) error {
 		//lint:ignore ST1005 backwards compatibility
-		return fmt.Errorf("Malformed breakpoint location \"%s\" at %d: %s", locStr, len(locStr)-len(rest), reason)
+		return fmt.Errorf("Malformed breakpoint location %q at %d: %s", locStr, len(locStr)-len(rest), reason)
 	}
 
 	if len(rest) <= 0 {
@@ -109,7 +109,7 @@ func Parse(locStr string) (LocationSpec, error) {
 func parseLocationSpecDefault(locStr, rest string) (LocationSpec, error) {
 	malformed := func(reason string) error {
 		//lint:ignore ST1005 backwards compatibility
-		return fmt.Errorf("Malformed breakpoint location \"%s\" at %d: %s", locStr, len(locStr)-len(rest), reason)
+		return fmt.Errorf("Malformed breakpoint location %q at %d: %s", locStr, len(locStr)-len(rest), reason)
 	}
 
 	v := strings.Split(rest, ":")
@@ -365,7 +365,7 @@ func (ale AmbiguousLocationError) Error() string {
 	} else {
 		candidates = ale.CandidatesString
 	}
-	return fmt.Sprintf("Location \"%s\" ambiguous: %s…", ale.Location, strings.Join(candidates, ", "))
+	return fmt.Sprintf("Location %q ambiguous: %s…", ale.Location, strings.Join(candidates, ", "))
 }
 
 // Find will return a list of locations that match the given location spec.
@@ -396,7 +396,7 @@ func (loc *NormalLocationSpec) Find(t *proc.Target, processArgs []string, scope 
 
 	if matching := len(candidateFiles) + len(candidateFuncs); matching == 0 {
 		if scope == nil {
-			return nil, fmt.Errorf("location \"%s\" not found", locStr)
+			return nil, fmt.Errorf("location %q not found", locStr)
 		}
 		// if no result was found this locations string could be an
 		// expression that the user forgot to prefix with '*', try treating it as
@@ -404,7 +404,7 @@ func (loc *NormalLocationSpec) Find(t *proc.Target, processArgs []string, scope 
 		addrSpec := &AddrLocationSpec{AddrExpr: locStr}
 		locs, err := addrSpec.Find(t, processArgs, scope, locStr, includeNonExecutableLines, nil)
 		if err != nil {
-			return nil, fmt.Errorf("location \"%s\" not found", locStr)
+			return nil, fmt.Errorf("location %q not found", locStr)
 		}
 		return locs, nil
 	} else if matching > 1 {

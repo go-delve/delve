@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"go/ast"
 	"go/format"
 	"go/token"
 	"go/types"
@@ -99,9 +100,11 @@ type binding struct {
 
 	argNames []string
 	argTypes []string
+
+	docStr string
 }
 
-func processServerMethods(serverMethods []*types.Func) []binding {
+func processServerMethods(serverMethods []*types.Func, funcDeclByPos map[token.Pos]*ast.FuncDecl) []binding {
 	bindings := make([]binding, len(serverMethods))
 	for i, fn := range serverMethods {
 		sig, _ := fn.Type().(*types.Signature)
@@ -133,6 +136,22 @@ func processServerMethods(serverMethods []*types.Func) []binding {
 			retType = "rpc2.StateOut"
 		}
 
+		docStr := ""
+
+		if decl := funcDeclByPos[fn.Pos()]; decl != nil && decl.Doc != nil {
+			docs := []string{}
+			for _, cmnt := range decl.Doc.List {
+				docs = append(docs, strings.TrimPrefix(strings.TrimPrefix(cmnt.Text, "//"), " "))
+			}
+
+			// fix name of the function in the first line of the documentation
+			if fields := strings.SplitN(docs[0], " ", 2); len(fields) == 2 && fields[0] == fn.Name() {
+				docs[0] = name + " " + fields[1]
+			}
+
+			docStr = strings.Join(docs, "\n")
+		}
+
 		bindings[i] = binding{
 			name:     name,
 			fn:       fn,
@@ -140,6 +159,7 @@ func processServerMethods(serverMethods []*types.Func) []binding {
 			retType:  retType,
 			argNames: argNames,
 			argTypes: argTypes,
+			docStr:   docStr,
 		}
 	}
 	return bindings
@@ -159,8 +179,9 @@ func genMapping(bindings []binding) []byte {
 	fmt.Fprintf(buf, "// DO NOT EDIT: auto-generated using _scripts/gen-starlark-bindings.go\n\n")
 	fmt.Fprintf(buf, "package starbind\n\n")
 	fmt.Fprintf(buf, "import ( \"go.starlark.net/starlark\" \n \"github.com/go-delve/delve/service/api\" \n \"github.com/go-delve/delve/service/rpc2\" \n \"fmt\" )\n\n")
-	fmt.Fprintf(buf, "func (env *Env) starlarkPredeclare() starlark.StringDict {\n")
-	fmt.Fprintf(buf, "r := starlark.StringDict{}\n\n")
+	fmt.Fprintf(buf, "func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {\n")
+	fmt.Fprintf(buf, "r := starlark.StringDict{}\n")
+	fmt.Fprintf(buf, "doc := make(map[string]string)\n\n")
 
 	for _, binding := range bindings {
 		fmt.Fprintf(buf, "r[%q] = starlark.NewBuiltin(%q, func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {", binding.name, binding.name)
@@ -209,9 +230,24 @@ func genMapping(bindings []binding) []byte {
 		fmt.Fprintf(buf, "return env.interfaceToStarlarkValue(rpcRet), nil\n")
 
 		fmt.Fprintf(buf, "})\n")
+
+		// builtin documentation
+		docstr := new(strings.Builder)
+		fmt.Fprintf(docstr, "builtin %s(", binding.name)
+		for i, argname := range binding.argNames {
+			if i != 0 {
+				fmt.Fprintf(docstr, ", ")
+			}
+			fmt.Fprintf(docstr, argname)
+		}
+		fmt.Fprintf(docstr, ")")
+		if binding.docStr != "" {
+			fmt.Fprintf(docstr, "\n\n%s", binding.docStr)
+		}
+		fmt.Fprintf(buf, "doc[%q] = %q\n", binding.name, docstr.String())
 	}
 
-	fmt.Fprintf(buf, "return r\n")
+	fmt.Fprintf(buf, "return r, doc\n")
 	fmt.Fprintf(buf, "}\n")
 
 	return buf.Bytes()
@@ -301,14 +337,23 @@ func main() {
 	}
 
 	var serverMethods []*types.Func
+	funcDeclByPos := make(map[token.Pos]*ast.FuncDecl)
 	packages.Visit(pkgs, func(pkg *packages.Package) bool {
 		if pkg.PkgPath == "github.com/go-delve/delve/service/rpc2" {
 			serverMethods = getSuitableMethods(pkg.Types, "RPCServer")
 		}
+		for _, file := range pkg.Syntax {
+			ast.Inspect(file, func(n ast.Node) bool {
+				if n, ok := n.(*ast.FuncDecl); ok {
+					funcDeclByPos[n.Name.Pos()] = n
+				}
+				return true
+			})
+		}
 		return true
 	}, nil)
 
-	bindings := processServerMethods(serverMethods)
+	bindings := processServerMethods(serverMethods, funcDeclByPos)
 
 	switch kind {
 	case "go":

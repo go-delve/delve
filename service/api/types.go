@@ -571,8 +571,9 @@ type Checkpoint struct {
 
 // Image represents a loaded shared object (go plugin or shared library)
 type Image struct {
-	Path    string
-	Address uint64
+	Path      string
+	Address   uint64
+	LoadError string
 }
 
 // Ancestor represents a goroutine ancestor

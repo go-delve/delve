@@ -26,6 +26,7 @@ var rpc = false
 var dap = false
 var fnCall = false
 var minidump = false
+var stack = false
 
 var logOut io.WriteCloser
 
@@ -131,6 +132,15 @@ func MinidumpLogger() Logger {
 	return makeLogger(minidump, Fields{"layer": "core", "kind": "minidump"})
 }
 
+// Stack returns true if the stacktracer should be logged.
+func Stack() bool {
+	return stack
+}
+
+func StackLogger() Logger {
+	return makeLogger(stack, Fields{"layer": "core", "kind": "stack"})
+}
+
 // WriteDAPListeningMessage writes the "DAP server listening" message in dap mode.
 func WriteDAPListeningMessage(addr net.Addr) {
 	writeListeningMessage("DAP", addr)
@@ -215,6 +225,8 @@ func Setup(logFlag bool, logstr, logDest string) error {
 			fnCall = true
 		case "minidump":
 			minidump = true
+		case "stack":
+			stack = true
 		default:
 			fmt.Fprintf(os.Stderr, "Warning: unknown log output value %q, run 'dlv help log' for usage.\n", logcmd)
 		}

@@ -497,7 +497,7 @@ func (g *G) Defer() *Defer {
 // UserCurrent returns the location the users code is at,
 // or was at before entering a runtime function.
 func (g *G) UserCurrent() Location {
-	it, err := g.stackIterator(0)
+	it, err := goroutineStackIterator(nil, g, 0)
 	if err != nil {
 		return g.CurrentLoc
 	}
@@ -535,7 +535,7 @@ func (g *G) StartLoc(tgt *Target) Location {
 	if fn == nil {
 		return Location{PC: g.StartPC}
 	}
-	f, l := fn.cu.lineInfo.PCToLine(fn.Entry, fn.Entry)
+	f, l := tgt.BinInfo().EntryLineForFunc(fn)
 	return Location{PC: fn.Entry, File: f, Line: l, Fn: fn}
 }
 
@@ -1422,7 +1422,7 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 	case reflect.Func:
 		v.readFunctionPtr()
 	default:
-		v.Unreadable = fmt.Errorf("unknown or unsupported kind: \"%s\"", v.Kind.String())
+		v.Unreadable = fmt.Errorf("unknown or unsupported kind: %q", v.Kind.String())
 	}
 }
 

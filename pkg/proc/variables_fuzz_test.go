@@ -127,7 +127,7 @@ func doFuzzEvalExpressionSetup(f *testing.F) {
 
 	// 3. Run all the test cases on the core file, register which memory addresses are read
 
-	frames, err := c.SelectedGoroutine().Stacktrace(2, 0)
+	frames, err := proc.GoroutineStacktrace(c, c.SelectedGoroutine(), 2, 0)
 	assertNoError(err, f, "Stacktrace")
 
 	mem := c.Memory()

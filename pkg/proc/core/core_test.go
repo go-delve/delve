@@ -245,8 +245,8 @@ func logRegisters(t *testing.T, regs proc.Registers, arch *proc.Arch) {
 }
 
 func TestCore(t *testing.T) {
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		return
+	if runtime.GOOS != "linux" || runtime.GOARCH == "386" {
+		t.Skip("unsupported")
 	}
 	if runtime.GOOS == "linux" && os.Getenv("CI") == "true" && buildMode == "pie" {
 		t.Skip("disabled on linux, Github Actions, with PIE buildmode")
@@ -268,7 +268,7 @@ func TestCore(t *testing.T) {
 	var panickingStack []proc.Stackframe
 	for _, g := range gs {
 		t.Logf("Goroutine %d", g.ID)
-		stack, err := g.Stacktrace(10, 0)
+		stack, err := proc.GoroutineStacktrace(p, g, 10, 0)
 		if err != nil {
 			t.Errorf("Stacktrace() on goroutine %v = %v", g, err)
 		}
@@ -315,8 +315,11 @@ func TestCore(t *testing.T) {
 }
 
 func TestCoreFpRegisters(t *testing.T) {
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		return
+	if runtime.GOOS != "linux" || runtime.GOARCH == "386" {
+		t.Skip("unsupported")
+	}
+	if runtime.GOARCH != "amd64" {
+		t.Skip("test requires amd64")
 	}
 	// in go1.10 the crash is executed on a different thread and registers are
 	// no longer available in the core dump.
@@ -334,7 +337,7 @@ func TestCoreFpRegisters(t *testing.T) {
 
 	var regs proc.Registers
 	for _, thread := range p.ThreadList() {
-		frames, err := proc.ThreadStacktrace(thread, 10)
+		frames, err := proc.ThreadStacktrace(p, thread, 10)
 		if err != nil {
 			t.Errorf("ThreadStacktrace for %x = %v", thread.ThreadID(), err)
 			continue
@@ -402,8 +405,8 @@ func TestCoreFpRegisters(t *testing.T) {
 }
 
 func TestCoreWithEmptyString(t *testing.T) {
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		return
+	if runtime.GOOS != "linux" || runtime.GOARCH == "386" {
+		t.Skip("unsupported")
 	}
 	if runtime.GOOS == "linux" && os.Getenv("CI") == "true" && buildMode == "pie" {
 		t.Skip("disabled on linux, Github Actions, with PIE buildmode")
@@ -417,7 +420,7 @@ func TestCoreWithEmptyString(t *testing.T) {
 	var mainFrame *proc.Stackframe
 mainSearch:
 	for _, g := range gs {
-		stack, err := g.Stacktrace(10, 0)
+		stack, err := proc.GoroutineStacktrace(p, g, 10, 0)
 		assertNoError(err, t, "Stacktrace()")
 		for _, frame := range stack {
 			if frame.Current.Fn != nil && frame.Current.Fn.Name == "main.main" {
@@ -466,7 +469,7 @@ func TestMinidump(t *testing.T) {
 	t.Logf("%d goroutines", len(gs))
 	foundMain, foundTime := false, false
 	for _, g := range gs {
-		stack, err := g.Stacktrace(10, 0)
+		stack, err := proc.GoroutineStacktrace(p, g, 10, 0)
 		if err != nil {
 			t.Errorf("Stacktrace() on goroutine %v = %v", g, err)
 		}

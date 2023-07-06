@@ -91,18 +91,21 @@ func (fdes FrameDescriptionEntries) Append(otherFDEs FrameDescriptionEntries) Fr
 	sort.SliceStable(r, func(i, j int) bool {
 		return r[i].Begin() < r[j].Begin()
 	})
-	// remove duplicates
-	uniqFDEs := fdes[:0]
-	for _, fde := range fdes {
-		if len(uniqFDEs) > 0 {
-			last := uniqFDEs[len(uniqFDEs)-1]
-			if last.Begin() == fde.Begin() && last.End() == fde.End() {
-				continue
-			}
-		}
-		uniqFDEs = append(uniqFDEs, fde)
+	if len(r) < 2 { // fast path, no duplicates
+		return r
 	}
-	return r
+
+	// remove duplicates
+	slow := 1
+	for fast := 1; fast < len(r); fast++ {
+		if r[fast].Begin() != r[fast-1].Begin() || r[fast].End() != r[fast-1].End() {
+			if slow != fast {
+				r[slow] = r[fast]
+			}
+			slow++
+		}
+	}
+	return r[:slow]
 }
 
 // ptrEnc represents a pointer encoding value, used during eh_frame decoding

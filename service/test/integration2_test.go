@@ -85,7 +85,9 @@ func startServer(name string, buildFlags protest.BuildFlags, t *testing.T, redir
 			Packages:       []string{fixture.Source},
 			BuildFlags:     "", // build flags can be an empty string here because the only test that uses it, does not set special flags.
 			ExecuteKind:    debugger.ExecutingGeneratedFile,
-			Redirects:      redirects,
+			Stdin:          redirects[0],
+			Stdout:         proc.OutputRedirect{Path: redirects[1]},
+			Stderr:         proc.OutputRedirect{Path: redirects[2]},
 		},
 	})
 	if err := server.Run(); err != nil {

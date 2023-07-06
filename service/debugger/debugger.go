@@ -136,8 +136,14 @@ type Config struct {
 	// ExecuteKind contains the kind of the executed program.
 	ExecuteKind ExecuteKind
 
-	// Redirects specifies redirect rules for stdin, stdout and stderr
-	Redirects [3]string
+	// Stdin Redirect file path for stdin
+	Stdin string
+
+	// Redirects specifies redirect rules for stdout
+	Stdout proc.OutputRedirect
+
+	// Redirects specifies redirect rules for stderr
+	Stderr proc.OutputRedirect
 
 	// DisableASLR disables ASLR
 	DisableASLR bool
@@ -259,16 +265,16 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.TargetGroup, e
 
 	switch d.config.Backend {
 	case "native":
-		return native.Launch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects)
+		return native.Launch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Stdin, d.config.Stdout, d.config.Stderr)
 	case "lldb":
-		return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects))
+		return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, [3]string{d.config.Stdin, d.config.Stdout.Path, d.config.Stderr.Path}))
 	case "rr":
 		if d.target != nil {
 			// restart should not call us if the backend is 'rr'
 			panic("internal error: call to Launch with rr backend and target already exists")
 		}
 
-		run, stop, err := gdbserial.RecordAsync(processArgs, wd, false, d.config.Redirects)
+		run, stop, err := gdbserial.RecordAsync(processArgs, wd, false, d.config.Stdin, d.config.Stdout, d.config.Stderr)
 		if err != nil {
 			return nil, err
 		}
@@ -303,9 +309,9 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.TargetGroup, e
 
 	case "default":
 		if runtime.GOOS == "darwin" {
-			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects))
+			return betterGdbserialLaunchError(gdbserial.LLDBLaunch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, [3]string{d.config.Stdin, d.config.Stdout.Path, d.config.Stderr.Path}))
 		}
-		return native.Launch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Redirects)
+		return native.Launch(processArgs, wd, launchFlags, d.config.DebugInfoDirectories, d.config.TTY, d.config.Stdin, d.config.Stdout, d.config.Stderr)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", d.config.Backend)
 	}
@@ -472,12 +478,19 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 		return nil, ErrCanNotRestart
 	}
 
+	if !resetArgs && (d.config.Stdout.File != nil || d.config.Stderr.File != nil) {
+		return nil, ErrCanNotRestart
+
+	}
+
 	if err := d.detach(true); err != nil {
 		return nil, err
 	}
 	if resetArgs {
 		d.processArgs = append([]string{d.processArgs[0]}, newArgs...)
-		d.config.Redirects = newRedirects
+		d.config.Stdin = newRedirects[0]
+		d.config.Stdout = proc.OutputRedirect{Path: newRedirects[1]}
+		d.config.Stderr = proc.OutputRedirect{Path: newRedirects[2]}
 	}
 	var grp *proc.TargetGroup
 	var err error
@@ -501,7 +514,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 	}
 
 	if recorded {
-		run, stop, err2 := gdbserial.RecordAsync(d.processArgs, d.config.WorkingDir, false, d.config.Redirects)
+		run, stop, err2 := gdbserial.RecordAsync(d.processArgs, d.config.WorkingDir, false, d.config.Stdin, d.config.Stdout, d.config.Stderr)
 		if err2 != nil {
 			return nil, err2
 		}
@@ -1315,6 +1328,13 @@ func (d *Debugger) collectBreakpointInformation(apiThread *api.Thread, thread pr
 
 	tgt := d.target.TargetForThread(thread.ThreadID())
 
+	// If we're dealing with a stripped binary don't attempt to load more
+	// information, we won't be able to.
+	img := tgt.BinInfo().PCToImage(bp.Addr)
+	if img != nil && img.Stripped() {
+		return nil
+	}
+
 	if bp.Goroutine {
 		g, err := proc.GetG(thread)
 		if err != nil {
@@ -1324,7 +1344,7 @@ func (d *Debugger) collectBreakpointInformation(apiThread *api.Thread, thread pr
 	}
 
 	if bp.Stacktrace > 0 {
-		rawlocs, err := proc.ThreadStacktrace(thread, bp.Stacktrace)
+		rawlocs, err := proc.ThreadStacktrace(tgt, thread, bp.Stacktrace)
 		if err != nil {
 			return err
 		}
@@ -1750,9 +1770,9 @@ func (d *Debugger) Stacktrace(goroutineID int64, depth int, opts api.StacktraceO
 	}
 
 	if g == nil {
-		return proc.ThreadStacktrace(d.target.Selected.CurrentThread(), depth)
+		return proc.ThreadStacktrace(d.target.Selected, d.target.Selected.CurrentThread(), depth)
 	} else {
-		return g.Stacktrace(depth, proc.StacktraceOptions(opts))
+		return proc.GoroutineStacktrace(d.target.Selected, g, depth, proc.StacktraceOptions(opts))
 	}
 }
 
