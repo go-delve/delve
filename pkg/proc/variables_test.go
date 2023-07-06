@@ -771,9 +771,9 @@ func getEvalExpressionTestCases() []varTest {
 		{"main.afunc2", true, `main.afunc2`, `main.afunc2`, `func()`, nil},
 
 		{"s2[0].Error", false, "main.(*astruct).Error", "main.(*astruct).Error", "func() string", nil},
-		{"s2[0].NonPointerRecieverMethod", false, "main.astruct.NonPointerRecieverMethod", "main.astruct.NonPointerRecieverMethod", "func()", nil},
+		{"s2[0].NonPointerReceiverMethod", false, "main.astruct.NonPointerReceiverMethod", "main.astruct.NonPointerReceiverMethod", "func()", nil},
 		{"as2.Error", false, "main.(*astruct).Error", "main.(*astruct).Error", "func() string", nil},
-		{"as2.NonPointerRecieverMethod", false, "main.astruct.NonPointerRecieverMethod", "main.astruct.NonPointerRecieverMethod", "func()", nil},
+		{"as2.NonPointerReceiverMethod", false, "main.astruct.NonPointerReceiverMethod", "main.astruct.NonPointerReceiverMethod", "func()", nil},
 
 		{`iface2map.(data)`, false, "…", "…", "map[string]interface {}", nil},
 

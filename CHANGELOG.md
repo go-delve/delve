@@ -765,7 +765,7 @@ This project adheres to Semantic Versioning.
 - Fix behavior of next/step/stepout in several edge-cases (invalid return addresses, no current goroutine, after process exists, inside unknown code, inside assembly files) (@aarzilli)
 - Make sure the debugged executable we generated is deleted after exit (@alexbrainman)
 - Make sure rr trace directories are deleted when we delete the executable and after tests (@aarzilli)
-- Return errors for commands sent after the target process exited instead of panicing (@derekparker)
+- Return errors for commands sent after the target process exited instead of panicking (@derekparker)
 - Fixed typo in clear-checkpoint documentation (@iamzhout)
 
 ### Changed
@@ -811,7 +811,7 @@ This project adheres to Semantic Versioning.
 - Windows: Handle delayed events (@aarzilli)
 - Fix Println call to be Printf (@derekparker)
 - Fix build on OSX (@koichi)
-- Mark malformed maps as unreadable instead of panicing (@aarzilli)
+- Mark malformed maps as unreadable instead of panicking (@aarzilli)
 - Fixed broken benchmarks (@derekparker)
 - Improve reliability of certain tests (@aarzilli)
 
