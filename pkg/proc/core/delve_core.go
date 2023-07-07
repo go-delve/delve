@@ -100,10 +100,10 @@ func threadsFromDelveNotes(p *process, notes []*note) (proc.Thread, error) {
 				readerr = fmt.Errorf("maximum len exceeded (%d) reading %s", len, kind)
 				return nil
 			}
-			buf := make([]byte, len)
 			if readerr != nil {
 				return nil
 			}
+			buf := make([]byte, len)
 			_, readerr = body.Read(buf)
 			return buf
 		}

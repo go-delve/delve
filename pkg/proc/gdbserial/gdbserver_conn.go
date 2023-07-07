@@ -1286,7 +1286,7 @@ func (conn *gdbConn) exec(cmd []byte, context string) ([]byte, error) {
 	return conn.recv(cmd, context, false)
 }
 
-var hexdigit = []byte{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'}
+const hexdigit = "0123456789abcdef"
 
 func (conn *gdbConn) send(cmd []byte) error {
 	if len(cmd) == 0 || cmd[0] != '$' {
@@ -1344,9 +1344,11 @@ func (conn *gdbConn) recv(cmd []byte, context string, binary bool) (resp []byte,
 		if logflags.GdbWire() {
 			out := resp
 			partial := false
-			if idx := bytes.Index(out, []byte{'\n'}); idx >= 0 && !binary {
-				out = resp[:idx]
-				partial = true
+			if !binary {
+				if idx := bytes.Index(out, []byte{'\n'}); idx >= 0 {
+					out = resp[:idx]
+					partial = true
+				}
 			}
 			if len(out) > gdbWireMaxLen {
 				out = out[:gdbWireMaxLen]
