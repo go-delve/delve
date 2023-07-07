@@ -1018,6 +1018,7 @@ type SetBreakpoint struct {
 	File         string
 	Line         int
 	Expr         func(*Target) []uint64
+	ExprString   string
 	PidAddrs     []PidAddr
 }
 

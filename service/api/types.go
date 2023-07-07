@@ -92,6 +92,8 @@ type Breakpoint struct {
 	// FunctionName is the name of the function at the current breakpoint, and
 	// may not always be available.
 	FunctionName string `json:"functionName,omitempty"`
+	// ExprString is the string that will be used to set a suspended breakpoint.
+	ExprString string
 
 	// Breakpoint condition
 	Cond string

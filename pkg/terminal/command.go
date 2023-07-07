@@ -1702,8 +1702,15 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 		enabled := "(enabled)"
 		if bp.Disabled {
 			enabled = "(disabled)"
+		} else if bp.ExprString != "" {
+			enabled = "(suspended)"
 		}
-		fmt.Fprintf(t.stdout, "%s %s at %v (%d)\n", formatBreakpointName(bp, true), enabled, t.formatBreakpointLocation(bp), bp.TotalHitCount)
+		fmt.Fprintf(t.stdout, "%s %s", formatBreakpointName(bp, true), enabled)
+		if bp.ExprString != "" {
+			fmt.Fprintf(t.stdout, " at %s\n", bp.ExprString)
+		} else {
+			fmt.Fprintf(t.stdout, " at %v (%d)\n", t.formatBreakpointLocation(bp), bp.TotalHitCount)
+		}
 
 		attrs := formatBreakpointAttrs("\t", bp, false)
 
@@ -3277,7 +3284,12 @@ func target(t *Term, ctx callContext, args string) error {
 		return nil
 	case "follow-exec":
 		if len(argv) == 1 {
-			return errors.New("not enough arguments")
+			if t.client.FollowExecEnabled() {
+				fmt.Fprintf(t.stdout, "Follow exec is enabled.\n")
+			} else {
+				fmt.Fprintf(t.stdout, "Follow exec is disabled.\n")
+			}
+			return nil
 		}
 		argv = config.Split2PartsBySpace(argv[1])
 		switch argv[0] {
@@ -3316,6 +3328,8 @@ func target(t *Term, ctx callContext, args string) error {
 			return fmt.Errorf("could not find target %d", pid)
 		}
 		return nil
+	case "":
+		return errors.New("not enough arguments for 'target'")
 	default:
 		return fmt.Errorf("unknown command 'target %s'", argv[0])
 	}
