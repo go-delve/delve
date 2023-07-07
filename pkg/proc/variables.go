@@ -1305,10 +1305,21 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 			// Don't increase the recursion level when dereferencing pointers
 			// unless this is a pointer to interface (which could cause an infinite loop)
 			nextLvl := recurseLevel
+			checkLvl := false
 			if v.Children[0].Kind == reflect.Interface {
 				nextLvl++
+			} else if ptyp, isptr := v.RealType.(*godwarf.PtrType); isptr {
+				_, elemTypIsPtr := resolveTypedef(ptyp.Type).(*godwarf.PtrType)
+				if elemTypIsPtr {
+					nextLvl++
+					checkLvl = true
+				}
 			}
-			v.Children[0].loadValueInternal(nextLvl, cfg)
+			if checkLvl && recurseLevel > cfg.MaxVariableRecurse {
+				v.Children[0].OnlyAddr = true
+			} else {
+				v.Children[0].loadValueInternal(nextLvl, cfg)
+			}
 		} else {
 			v.Children[0].OnlyAddr = true
 		}

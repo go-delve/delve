@@ -741,6 +741,8 @@ func getEvalExpressionTestCases() []varTest {
 		{"emptymap", false, `map[string]string []`, `map[string]string []`, "map[string]string", nil},
 		{"mnil", false, `map[string]main.astruct nil`, `map[string]main.astruct nil`, "map[string]main.astruct", nil},
 
+		{"ptrinf2", false, `**(main.pptr)(…`, `(main.pptr)(…`, "main.pptr", nil},
+
 		// conversions between string/[]byte/[]rune (issue #548)
 		{"runeslice", true, `[]int32 len: 4, cap: 4, [116,232,115,116]`, `[]int32 len: 4, cap: 4, [...]`, "[]int32", nil},
 		{"byteslice", true, `[]uint8 len: 5, cap: 5, [116,195,168,115,116]`, `[]uint8 len: 5, cap: 5, [...]`, "[]uint8", nil},

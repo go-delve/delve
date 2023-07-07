@@ -151,6 +151,8 @@ type ThreeInts struct {
 
 var _ I = (*W2)(nil)
 
+type pptr *pptr
+
 func main() {
 	i1 := 1
 	i2 := 2
@@ -387,6 +389,9 @@ func main() {
 	int3chan <- ThreeInts{a: 1}
 	int3chan <- ThreeInts{a: 2}
 	int3chan <- ThreeInts{a: 3}
+
+	var ptrinf2 pptr
+	ptrinf2 = &ptrinf2
 
 	var amb1 = 1
 	runtime.Breakpoint()
