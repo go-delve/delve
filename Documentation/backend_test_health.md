@@ -13,11 +13,22 @@ Tests skipped by each supported backend:
 	* 4 not implemented
 * linux/386/pie skipped = 1
 	* 1 broken
+* linux/ppc64le skipped = 1
+	* 1 broken - cgo stacktraces
+* linux/ppc64le/native skipped = 1
+	* 1 broken in linux ppc64le
+* linux/ppc64le/native/pie skipped = 11
+	* 11 broken - pie mode
 * pie skipped = 2
 	* 2 upstream issue - https://github.com/golang/go/issues/29322
+* ppc64le skipped = 11
+	* 6 broken
+	* 1 broken - global variable symbolication
+	* 4 not implemented
 * windows skipped = 4
 	* 1 broken
 	* 3 see https://github.com/go-delve/delve/issues/2768
-* windows/arm64 skipped = 4
+* windows/arm64 skipped = 5
 	* 3 broken
+	* 1 broken - cgo stacktraces
 	* 1 broken - step concurrent

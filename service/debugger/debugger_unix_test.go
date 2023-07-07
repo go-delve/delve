@@ -36,6 +36,9 @@ func TestDebugger_LaunchNoExecutablePerm(t *testing.T) {
 	if runtime.GOARCH == "arm64" && runtime.GOOS == "linux" {
 		os.Setenv("GOARCH", "amd64")
 	}
+	if runtime.GOARCH == "ppc64le" && runtime.GOOS == "linux" {
+		os.Setenv("GOARCH", "amd64")
+	}
 	os.Setenv("GOOS", switchOS[runtime.GOOS])
 	exepath := filepath.Join(buildtestdir, debugname)
 	defer os.Remove(exepath)

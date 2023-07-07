@@ -1,5 +1,5 @@
-//go:build (linux && amd64) || (linux && arm64)
-// +build linux,amd64 linux,arm64
+//go:build (linux && amd64) || (linux && arm64) || (linux && ppc64le)
+// +build linux,amd64 linux,arm64 linux,ppc64le
 
 package native
 

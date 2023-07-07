@@ -76,3 +76,11 @@ else
 	exit $x
 fi
 
+export GOARCH=ppc64le
+go run _scripts/make.go --tags exp.linuxppc64le
+x=$?
+if [ "$version" = "gotip" ]; then
+	exit 0
+else
+	exit $x
+fi

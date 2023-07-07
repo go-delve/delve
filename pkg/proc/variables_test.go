@@ -1462,6 +1462,7 @@ func assertCurrentLocationFunction(p *proc.Target, t *testing.T, fnname string) 
 }
 
 func TestPluginVariables(t *testing.T) {
+	skipOn(t, "broken", "ppc64le")
 	pluginFixtures := protest.WithPlugins(t, protest.AllNonOptimized, "plugin1/", "plugin2/")
 
 	withTestProcessArgs("plugintest2", t, ".", []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, protest.AllNonOptimized, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
@@ -1542,6 +1543,10 @@ func TestCgoEval(t *testing.T) {
 
 	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
 		t.Skip("cgo doesn't work on darwin/arm64")
+	}
+
+	if runtime.GOARCH == "ppc64le" {
+		t.Skip("skipped on ppc64le: broken")
 	}
 
 	protest.AllowRecording(t)

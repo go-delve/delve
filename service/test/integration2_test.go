@@ -946,6 +946,9 @@ func TestClientServer_traceContinue2(t *testing.T) {
 }
 
 func TestClientServer_FindLocations(t *testing.T) {
+	if runtime.GOARCH == "ppc64le" && buildMode == "pie" {
+		t.Skip("pie mode broken on ppc64le")
+	}
 	withTestClient2("locationsprog", t, func(c service.Client) {
 		someFunctionCallAddr := findLocationHelper(t, c, "locationsprog.go:26", false, 1, 0)[0]
 		someFunctionLine1 := findLocationHelper(t, c, "locationsprog.go:27", false, 1, 0)[0]
@@ -1210,6 +1213,9 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
 		t.Skip("cgo doesn't work on darwin/arm64")
 	}
+	if runtime.GOARCH == "ppc64le" && buildMode == "pie" {
+		t.Skip("pie mode broken on ppc64le")
+	}
 
 	lenient := false
 	if runtime.GOOS == "windows" {
@@ -1362,6 +1368,9 @@ func TestIssue355(t *testing.T) {
 }
 
 func TestDisasm(t *testing.T) {
+	if runtime.GOARCH == "ppc64le" {
+		t.Skip("skipped on ppc64le: broken")
+	}
 	// Tests that disassembling by PC, range, and current PC all yield similar results
 	// Tests that disassembly by current PC will return a disassembly containing the instruction at PC
 	// Tests that stepping on a calculated CALL instruction will yield a disassembly that contains the
@@ -2858,6 +2867,9 @@ func assertLine(t *testing.T, state *api.DebuggerState, file string, lineno int)
 }
 
 func TestPluginSuspendedBreakpoint(t *testing.T) {
+	if runtime.GOARCH == "ppc64le" {
+		t.Skip("skipped on ppc64le: broken")
+	}
 	// Tests that breakpoints created in a suspended state will be enabled automatically when a plugin is loaded.
 	pluginFixtures := protest.WithPlugins(t, protest.AllNonOptimized, "plugin1/", "plugin2/")
 	dir, err := filepath.Abs(protest.FindFixturesDir())
