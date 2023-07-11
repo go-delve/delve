@@ -525,7 +525,7 @@ func (s *Session) ServeDAPCodec() {
 		// potentially got some new DAP request that we do not yet have
 		// decoding support for, so we can respond with an ErrorResponse.
 		//
-		// Other errors, such as unmarshalling errors, will log the error and cause the server to trigger
+		// Other errors, such as unmarshaling errors, will log the error and cause the server to trigger
 		// a stop.
 		if err != nil {
 			s.config.log.Debug("DAP error: ", err)
@@ -588,7 +588,7 @@ func (s *Session) handleRequest(request dap.Message) {
 		return
 	}
 
-	// These requests, can be handled regardless of whether the targret is running
+	// These requests, can be handled regardless of whether the target is running
 	switch request := request.(type) {
 	case *dap.InitializeRequest: // Required
 		s.onInitializeRequest(request)
