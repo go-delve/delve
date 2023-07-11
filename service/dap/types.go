@@ -239,7 +239,7 @@ type AttachConfig struct {
 	LaunchAttachCommonConfig
 }
 
-// unmarshalLaunchAttachArgs wraps unmarshalling of launch/attach request's
+// unmarshalLaunchAttachArgs wraps unmarshaling of launch/attach request's
 // arguments attribute. Upon unmarshal failure, it returns an error massaged
 // to be suitable for end-users.
 func unmarshalLaunchAttachArgs(input json.RawMessage, config interface{}) error {
