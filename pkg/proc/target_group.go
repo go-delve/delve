@@ -97,18 +97,21 @@ func Restart(grp, oldgrp *TargetGroup, discard func(*LogicalBreakpoint, error)) 
 
 func (grp *TargetGroup) addTarget(p ProcessInternal, pid int, currentThread Thread, path string, stopReason StopReason, cmdline string) (*Target, error) {
 	logger := logflags.DebuggerLogger()
+	if len(grp.targets) > 0 {
+		if !grp.followExecEnabled {
+			logger.Debugf("Detaching from child target (follow-exec disabled) %d %q", pid, cmdline)
+			return nil, nil
+		}
+		if grp.followExecRegex != nil && !grp.followExecRegex.MatchString(cmdline) {
+			logger.Debugf("Detaching from child target (follow-exec regex not matched) %d %q", pid, cmdline)
+			return nil, nil
+		}
+	}
 	t, err := grp.newTarget(p, pid, currentThread, path, cmdline)
 	if err != nil {
 		return nil, err
 	}
 	t.StopReason = stopReason
-	if grp.followExecRegex != nil && len(grp.targets) > 0 {
-		if !grp.followExecRegex.MatchString(cmdline) {
-			logger.Debugf("Detaching from child target %d %q", t.Pid(), t.CmdLine)
-			t.detach(false)
-			return nil, nil
-		}
-	}
 	logger.Debugf("Adding target %d %q", t.Pid(), t.CmdLine)
 	if t.partOfGroup {
 		panic("internal error: target is already part of group")
@@ -178,7 +181,7 @@ func (grp *TargetGroup) Detach(kill bool) error {
 		if !isvalid {
 			continue
 		}
-		err := t.detach(kill)
+		err := grp.detachTarget(t, kill)
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("could not detach process %d: %v", t.Pid(), err))
 		}
@@ -187,6 +190,28 @@ func (grp *TargetGroup) Detach(kill bool) error {
 		return fmt.Errorf("%s", strings.Join(errs, "\n"))
 	}
 	return nil
+}
+
+// detachTarget will detach the target from the underlying process.
+// This means the debugger will no longer receive events from the process
+// we were previously debugging.
+// If kill is true then the process will be killed when we detach.
+func (grp *TargetGroup) detachTarget(t *Target, kill bool) error {
+	if !kill {
+		if t.asyncPreemptChanged {
+			setAsyncPreemptOff(t, t.asyncPreemptOff)
+		}
+		for _, bp := range t.Breakpoints().M {
+			if bp != nil {
+				err := t.ClearBreakpoint(bp.Addr)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+	t.StopReason = StopUnknown
+	return grp.procgrp.Detach(t.Pid(), kill)
 }
 
 // HasSteppingBreakpoints returns true if any of the targets has stepping breakpoints set.

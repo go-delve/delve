@@ -79,7 +79,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []str
 	dbp := newProcess(0)
 	defer func() {
 		if err != nil && dbp.pid != 0 {
-			_ = dbp.Detach(true)
+			_ = detachWithoutGroup(dbp, true)
 		}
 	}()
 	dbp.execPtraceFunc(func() {
@@ -146,7 +146,7 @@ func Attach(pid int, waitFor *proc.WaitFor, debugInfoDirs []string) (*proc.Targe
 
 	tgt, err := dbp.initialize(findExecutable("", dbp.pid), debugInfoDirs)
 	if err != nil {
-		dbp.Detach(false)
+		detachWithoutGroup(dbp, false)
 		return nil, err
 	}
 	return tgt, nil
@@ -186,7 +186,7 @@ func initialize(dbp *nativeProcess) (string, error) {
 }
 
 // kill kills the target process.
-func (dbp *nativeProcess) kill() (err error) {
+func (procgrp *processGroup) kill(dbp *nativeProcess) (err error) {
 	if dbp.exited {
 		return nil
 	}
@@ -425,7 +425,8 @@ func (dbp *nativeProcess) exitGuard(err error) error {
 }
 
 // Used by ContinueOnce
-func (dbp *nativeProcess) resume() error {
+func (procgrp *processGroup) resume() error {
+	dbp := procgrp.procs[0]
 	// all threads stopped over a breakpoint are made to step over it
 	for _, thread := range dbp.threads {
 		if thread.CurrentBreakpoint.Breakpoint != nil {

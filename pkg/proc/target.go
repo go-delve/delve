@@ -323,28 +323,6 @@ func (p *Target) SwitchThread(tid int) error {
 	return fmt.Errorf("thread %d does not exist", tid)
 }
 
-// detach will detach the target from the underlying process.
-// This means the debugger will no longer receive events from the process
-// we were previously debugging.
-// If kill is true then the process will be killed when we detach.
-func (t *Target) detach(kill bool) error {
-	if !kill {
-		if t.asyncPreemptChanged {
-			setAsyncPreemptOff(t, t.asyncPreemptOff)
-		}
-		for _, bp := range t.Breakpoints().M {
-			if bp != nil {
-				err := t.ClearBreakpoint(bp.Addr)
-				if err != nil {
-					return err
-				}
-			}
-		}
-	}
-	t.StopReason = StopUnknown
-	return t.proc.Detach(kill)
-}
-
 // setAsyncPreemptOff enables or disables async goroutine preemption by
 // writing the value 'v' to runtime.debug.asyncpreemptoff.
 // A value of '1' means off, a value of '0' means on.

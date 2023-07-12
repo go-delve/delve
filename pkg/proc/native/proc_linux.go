@@ -85,7 +85,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []str
 	dbp := newProcess(0)
 	defer func() {
 		if err != nil && dbp.pid != 0 {
-			_ = dbp.Detach(true)
+			_ = detachWithoutGroup(dbp, true)
 		}
 	}()
 	dbp.execPtraceFunc(func() {
@@ -165,7 +165,7 @@ func Attach(pid int, waitFor *proc.WaitFor, debugInfoDirs []string) (*proc.Targe
 
 	tgt, err := dbp.initialize(findExecutable("", dbp.pid), debugInfoDirs)
 	if err != nil {
-		_ = dbp.Detach(false)
+		_ = detachWithoutGroup(dbp, false)
 		return nil, err
 	}
 
@@ -261,7 +261,7 @@ func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
 }
 
 // kill kills the target process.
-func (dbp *nativeProcess) kill() error {
+func (procgrp *processGroup) kill(dbp *nativeProcess) error {
 	if dbp.exited {
 		return nil
 	}
@@ -519,7 +519,6 @@ func trapWaitInternal(procgrp *processGroup, pid int, options trapWaitOptions) (
 			cmdline, _ := dbp.initializeBasic()
 			tgt, err := procgrp.add(dbp, dbp.pid, dbp.memthread, findExecutable("", dbp.pid), proc.StopLaunched, cmdline)
 			if err != nil {
-				_ = dbp.Detach(false)
 				return nil, err
 			}
 			if halt {
@@ -648,20 +647,28 @@ func exitGuard(dbp *nativeProcess, procgrp *processGroup, err error) error {
 	return err
 }
 
-func (dbp *nativeProcess) resume() error {
+func (procgrp *processGroup) resume() error {
 	// all threads stopped over a breakpoint are made to step over it
-	for _, thread := range dbp.threads {
-		if thread.CurrentBreakpoint.Breakpoint != nil {
-			if err := thread.StepInstruction(); err != nil {
-				return err
+	for _, dbp := range procgrp.procs {
+		if valid, _ := dbp.Valid(); valid {
+			for _, thread := range dbp.threads {
+				if thread.CurrentBreakpoint.Breakpoint != nil {
+					if err := thread.StepInstruction(); err != nil {
+						return err
+					}
+					thread.CurrentBreakpoint.Clear()
+				}
 			}
-			thread.CurrentBreakpoint.Clear()
 		}
 	}
 	// everything is resumed
-	for _, thread := range dbp.threads {
-		if err := thread.resume(); err != nil && err != sys.ESRCH {
-			return err
+	for _, dbp := range procgrp.procs {
+		if valid, _ := dbp.Valid(); valid {
+			for _, thread := range dbp.threads {
+				if err := thread.resume(); err != nil && err != sys.ESRCH {
+					return err
+				}
+			}
 		}
 	}
 	return nil

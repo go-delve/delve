@@ -11,6 +11,7 @@ import (
 // ProcessGroup is a group of processes that are resumed at the same time.
 type ProcessGroup interface {
 	ContinueOnce(*ContinueOnceContext) (Thread, StopReason, error)
+	Detach(int, bool) error
 }
 
 // Process represents the target of the debugger. This
@@ -43,7 +44,6 @@ type ProcessInternal interface {
 	// also returns an error describing why the Process is invalid (either
 	// ErrProcessExited or ErrProcessDetached).
 	Valid() (bool, error)
-	Detach(bool) error
 
 	// RequestManualStop attempts to stop all the process' threads.
 	RequestManualStop(cctx *ContinueOnceContext) error

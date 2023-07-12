@@ -748,7 +748,7 @@ func (p *gdbProcess) initialize(path, cmdline string, debugInfoDirs []string, st
 	})
 	_, err = addTarget(p, p.conn.pid, p.currentThread, path, stopReason, cmdline)
 	if err != nil {
-		p.Detach(true)
+		p.Detach(p.conn.pid, true)
 		return nil, err
 	}
 	return grp, nil
@@ -1058,7 +1058,9 @@ func (p *gdbProcess) getCtrlC(cctx *proc.ContinueOnceContext) bool {
 
 // Detach will detach from the target process,
 // if 'kill' is true it will also kill the process.
-func (p *gdbProcess) Detach(kill bool) error {
+// The _pid argument is unused as follow exec
+// mode is not implemented with this backend.
+func (p *gdbProcess) Detach(_pid int, kill bool) error {
 	if kill && !p.exited {
 		err := p.conn.kill()
 		if err != nil {
