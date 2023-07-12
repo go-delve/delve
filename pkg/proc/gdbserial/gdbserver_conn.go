@@ -200,7 +200,7 @@ func (conn *gdbConn) qSupported(multiprocess bool) (features map[string]bool, er
 	resp := strings.Split(string(respBuf), ";")
 	features = make(map[string]bool)
 	for _, stubfeature := range resp {
-		if len(stubfeature) <= 0 {
+		if len(stubfeature) == 0 {
 			continue
 		} else if equal := strings.Index(stubfeature, "="); equal >= 0 {
 			if stubfeature[:equal] == "PacketSize" {

@@ -101,7 +101,7 @@ func (b *Builder) TagOpen(tag dwarf.Tag, name string) dwarf.Offset {
 
 // SetHasChildren sets the current DIE as having children (even if none are added).
 func (b *Builder) SetHasChildren() {
-	if len(b.tagStack) <= 0 {
+	if len(b.tagStack) == 0 {
 		panic("NoChildren with no open tags")
 	}
 	b.tagStack[len(b.tagStack)-1].children = true
@@ -109,7 +109,7 @@ func (b *Builder) SetHasChildren() {
 
 // TagClose closes the current DIE.
 func (b *Builder) TagClose() {
-	if len(b.tagStack) <= 0 {
+	if len(b.tagStack) == 0 {
 		panic("TagClose with no open tags")
 	}
 	tag := b.tagStack[len(b.tagStack)-1]

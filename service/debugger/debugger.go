@@ -1414,7 +1414,7 @@ func (d *Debugger) Sources(filter string) ([]string, error) {
 }
 
 func uniq(s []string) []string {
-	if len(s) <= 0 {
+	if len(s) == 0 {
 		return s
 	}
 	src, dst := 1, 1

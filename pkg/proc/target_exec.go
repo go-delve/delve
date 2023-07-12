@@ -899,7 +899,7 @@ func removePCsBetween(pcs []uint64, start, end uint64) []uint64 {
 }
 
 func setStepIntoBreakpoint(dbp *Target, curfn *Function, text []AsmInstruction, cond ast.Expr) error {
-	if len(text) <= 0 {
+	if len(text) == 0 {
 		return nil
 	}
 

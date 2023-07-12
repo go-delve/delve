@@ -1127,7 +1127,7 @@ func isCallInjectionStop(t *Target, thread Thread, loc *Location) bool {
 		off = -int64(len(thread.BinInfo().Arch.breakpointInstruction))
 	}
 	text, err := disassembleCurrentInstruction(t, thread, off)
-	if err != nil || len(text) <= 0 {
+	if err != nil || len(text) == 0 {
 		return false
 	}
 	return text[0].IsHardBreak()

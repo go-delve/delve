@@ -348,7 +348,7 @@ func constu(opcode Opcode, ctxt *context) error {
 }
 
 func dup(_ Opcode, ctxt *context) error {
-	if len(ctxt.stack) <= 0 {
+	if len(ctxt.stack) == 0 {
 		return ErrStackUnderflow
 	}
 	ctxt.stack = append(ctxt.stack, ctxt.stack[len(ctxt.stack)-1])
@@ -356,7 +356,7 @@ func dup(_ Opcode, ctxt *context) error {
 }
 
 func drop(_ Opcode, ctxt *context) error {
-	if len(ctxt.stack) <= 0 {
+	if len(ctxt.stack) == 0 {
 		return ErrStackUnderflow
 	}
 	ctxt.stack = ctxt.stack[:len(ctxt.stack)-1]
@@ -541,7 +541,7 @@ func deref(op Opcode, ctxt *context) error {
 		sz = int(n)
 	}
 
-	if len(ctxt.stack) <= 0 {
+	if len(ctxt.stack) == 0 {
 		return ErrStackUnderflow
 	}
 
@@ -549,7 +549,7 @@ func deref(op Opcode, ctxt *context) error {
 	ctxt.stack = ctxt.stack[:len(ctxt.stack)-1]
 
 	if op == DW_OP_xderef || op == DW_OP_xderef_size {
-		if len(ctxt.stack) <= 0 {
+		if len(ctxt.stack) == 0 {
 			return ErrStackUnderflow
 		}
 		// the second element on the stack is the "address space identifier" which we don't do anything with
