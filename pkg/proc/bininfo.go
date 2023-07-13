@@ -2539,7 +2539,7 @@ func (bi *BinaryInfo) loadDebugInfoMapsInlinedCalls(ctxt *loadDebugInfoMapsConte
 }
 
 func uniq(s []string) []string {
-	if len(s) <= 0 {
+	if len(s) == 0 {
 		return s
 	}
 	src, dst := 1, 1

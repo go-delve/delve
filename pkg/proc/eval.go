@@ -292,7 +292,7 @@ func (scope *EvalScope) Locals(flags localsFlags) ([]*Variable, error) {
 		depths = append(depths, depth)
 	}
 
-	if len(vars) <= 0 {
+	if len(vars) == 0 {
 		return vars, nil
 	}
 

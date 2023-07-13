@@ -83,7 +83,7 @@ func firstPCAfterPrologueDisassembly(p Process, fn *Function, sameline bool) (ui
 		return fn.Entry, err
 	}
 
-	if len(text) <= 0 {
+	if len(text) == 0 {
 		return fn.Entry, nil
 	}
 

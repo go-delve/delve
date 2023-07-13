@@ -72,7 +72,7 @@ func Parse(locStr string) (LocationSpec, error) {
 		return fmt.Errorf("Malformed breakpoint location %q at %d: %s", locStr, len(locStr)-len(rest), reason)
 	}
 
-	if len(rest) <= 0 {
+	if len(rest) == 0 {
 		return nil, malformed("empty string")
 	}
 
@@ -578,7 +578,7 @@ func SubstitutePath(path string, rules [][2]string) string {
 }
 
 func addressesToLocation(addrs []uint64) api.Location {
-	if len(addrs) <= 0 {
+	if len(addrs) == 0 {
 		return api.Location{}
 	}
 	return api.Location{PC: addrs[0], PCs: addrs}
