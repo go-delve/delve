@@ -359,12 +359,6 @@ func (t *thread) BinInfo() *proc.BinaryInfo {
 	return t.p.bi
 }
 
-// StepInstruction will only return an error for core files,
-// you cannot execute a core file.
-func (t *thread) StepInstruction() error {
-	return ErrContinueCore
-}
-
 // SetCurrentBreakpoint will always just return nil
 // for core files, as there are no breakpoints in core files.
 func (t *thread) SetCurrentBreakpoint(adjustPC bool) error {
@@ -429,7 +423,7 @@ func (*process) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, proc.
 
 // StepInstruction will always return an error
 // as you cannot control execution of a core file.
-func (p *process) StepInstruction() error {
+func (p *process) StepInstruction(int) error {
 	return ErrContinueCore
 }
 

@@ -123,7 +123,7 @@ func (t *nativeThread) resume() error {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (t *nativeThread) singleStep() error {
+func (*processGroup) singleStep(*nativeThread) error {
 	panic(ErrNativeBackendDisabled)
 }
 

@@ -145,7 +145,7 @@ func (grp *TargetGroup) Continue() error {
 			if callErrThis != nil && callErr == nil {
 				callErr = callErrThis
 			}
-			hcbpErrThis := dbp.handleHardcodedBreakpoints(trapthread, threads)
+			hcbpErrThis := dbp.handleHardcodedBreakpoints(grp, trapthread, threads)
 			if hcbpErrThis != nil && hcbpErr == nil {
 				hcbpErr = hcbpErrThis
 			}
@@ -396,10 +396,10 @@ func disassembleCurrentInstruction(p Process, thread Thread, off int64) ([]AsmIn
 // function is neither fnname1 or fnname2.
 // This function is used to step out of runtime.Breakpoint as well as
 // runtime.debugCallV1.
-func stepInstructionOut(dbp *Target, curthread Thread, fnname1, fnname2 string) error {
+func stepInstructionOut(grp *TargetGroup, dbp *Target, curthread Thread, fnname1, fnname2 string) error {
 	defer dbp.ClearCaches()
 	for {
-		if err := curthread.StepInstruction(); err != nil {
+		if err := grp.procgrp.StepInstruction(curthread.ThreadID()); err != nil {
 			return err
 		}
 		loc, err := curthread.Location()
@@ -577,7 +577,7 @@ func (grp *TargetGroup) StepInstruction() (err error) {
 	if ok, err := dbp.Valid(); !ok {
 		return err
 	}
-	err = thread.StepInstruction()
+	err = grp.procgrp.StepInstruction(thread.ThreadID())
 	if err != nil {
 		return err
 	}
@@ -1285,7 +1285,7 @@ func (t *Target) clearHardcodedBreakpoints() {
 // program's text) and sets a fake breakpoint on them with logical id
 // hardcodedBreakpointID.
 // It checks trapthread and all threads that have SoftExc returning true.
-func (t *Target) handleHardcodedBreakpoints(trapthread Thread, threads []Thread) error {
+func (t *Target) handleHardcodedBreakpoints(grp *TargetGroup, trapthread Thread, threads []Thread) error {
 	mem := t.Memory()
 	arch := t.BinInfo().Arch
 	recorded, _ := t.recman.Recorded()
@@ -1366,7 +1366,7 @@ func (t *Target) handleHardcodedBreakpoints(trapthread Thread, threads []Thread)
 			// runtime.Breakpoint.
 			// On go < 1.8 it was sufficient to single-step twice on go1.8 a change
 			// to the compiler requires 4 steps.
-			if err := stepInstructionOut(t, thread, "runtime.breakpoint", "runtime.Breakpoint"); err != nil {
+			if err := stepInstructionOut(grp, t, thread, "runtime.breakpoint", "runtime.Breakpoint"); err != nil {
 				return err
 			}
 			setHardcodedBreakpoint(thread, loc)

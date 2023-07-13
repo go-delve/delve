@@ -430,7 +430,7 @@ func (procgrp *processGroup) resume() error {
 	// all threads stopped over a breakpoint are made to step over it
 	for _, thread := range dbp.threads {
 		if thread.CurrentBreakpoint.Breakpoint != nil {
-			if err := thread.StepInstruction(); err != nil {
+			if err := procgrp.stepInstruction(thread); err != nil {
 				return err
 			}
 			thread.CurrentBreakpoint.Clear()

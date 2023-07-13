@@ -504,7 +504,7 @@ func (procgrp *processGroup) resume() error {
 	dbp := procgrp.procs[0]
 	for _, thread := range dbp.threads {
 		if thread.CurrentBreakpoint.Breakpoint != nil {
-			if err := thread.StepInstruction(); err != nil {
+			if err := procgrp.stepInstruction(thread); err != nil {
 				return err
 			}
 			thread.CurrentBreakpoint.Clear()

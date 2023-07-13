@@ -27,7 +27,6 @@ type Thread interface {
 	BinInfo() *BinaryInfo
 	// ProcessMemory returns the process memory.
 	ProcessMemory() MemoryReadWriter
-	StepInstruction() error
 	// SetCurrentBreakpoint updates the current breakpoint of this thread, if adjustPC is true also checks for breakpoints that were just hit (this should only be passed true after a thread resume)
 	SetCurrentBreakpoint(adjustPC bool) error
 	// SoftExc returns true if this thread received a software exception during the last resume.

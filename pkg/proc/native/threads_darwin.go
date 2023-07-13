@@ -51,7 +51,7 @@ func (t *nativeThread) stop() (err error) {
 	return
 }
 
-func (t *nativeThread) singleStep() error {
+func (procgrp *processGroup) singleStep(t *nativeThread) error {
 	kret := C.single_step(t.os.threadAct)
 	if kret != C.KERN_SUCCESS {
 		return fmt.Errorf("could not single step")
@@ -142,24 +142,4 @@ func (t *nativeThread) withDebugRegisters(f func(*amd64util.DebugRegisters) erro
 // SoftExc returns true if this thread received a software exception during the last resume.
 func (t *nativeThread) SoftExc() bool {
 	return false
-}
-
-// Continue the execution of this thread.
-//
-// If we are currently at a breakpoint, we'll clear it
-// first and then resume execution. Thread will continue until
-// it hits a breakpoint or is signaled.
-func (t *nativeThread) Continue() error {
-	pc, err := t.PC()
-	if err != nil {
-		return err
-	}
-	// Check whether we are stopped at a breakpoint, and
-	// if so, single step over it before continuing.
-	if _, ok := t.dbp.FindBreakpoint(pc, false); ok {
-		if err := t.StepInstruction(); err != nil {
-			return err
-		}
-	}
-	return t.resume()
 }
