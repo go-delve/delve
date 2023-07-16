@@ -8,7 +8,6 @@ import (
 	"go/ast"
 	"go/token"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"golang.org/x/arch/ppc64/ppc64asm"
@@ -918,7 +917,7 @@ func setStepIntoBreakpoint(dbp *Target, curfn *Function, text []AsmInstruction, 
 
 	pc := instr.DestLoc.PC
 	fn := instr.DestLoc.Fn
-	if runtime.GOARCH == "ppc64le" && instr.Inst.OpcodeEquals(uint64(ppc64asm.BCLRL)) {
+	if dbp.BinInfo().Arch.Name == "ppc64le" && instr.Inst.OpcodeEquals(uint64(ppc64asm.BCLRL)) {
 		regs, err := dbp.CurrentThread().Registers()
 		if err != nil {
 			return err
