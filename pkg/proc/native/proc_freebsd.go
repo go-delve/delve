@@ -3,6 +3,7 @@ package native
 // #cgo LDFLAGS: -lprocstat
 // #include <stdlib.h>
 // #include "proc_freebsd.h"
+// #include <sys/sysctl.h>
 import "C"
 import (
 	"fmt"
@@ -14,6 +15,7 @@ import (
 
 	sys "golang.org/x/sys/unix"
 
+	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 
@@ -121,7 +123,15 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []str
 // Attach to an existing process with the given PID. Once attached, if
 // the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func Attach(pid int, debugInfoDirs []string) (*proc.TargetGroup, error) {
+func Attach(pid int, waitFor *proc.WaitFor, debugInfoDirs []string) (*proc.TargetGroup, error) {
+	if waitFor.Valid() {
+		var err error
+		pid, err = WaitFor(waitFor)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	dbp := newProcess(pid)
 
 	var err error
@@ -140,6 +150,31 @@ func Attach(pid int, debugInfoDirs []string) (*proc.TargetGroup, error) {
 		return nil, err
 	}
 	return tgt, nil
+}
+
+func waitForSearchProcess(pfx string, seen map[int]struct{}) (int, error) {
+	log := logflags.DebuggerLogger()
+	ps := C.procstat_open_sysctl()
+	defer C.procstat_close(ps)
+	var cnt C.uint
+	procs := C.procstat_getprocs(ps, C.KERN_PROC_PROC, 0, &cnt)
+	defer C.procstat_freeprocs(ps, procs)
+	proc := procs
+	for i := 0; i < int(cnt); i++ {
+		if _, isseen := seen[int(proc.ki_pid)]; isseen {
+			continue
+		}
+		seen[int(proc.ki_pid)] = struct{}{}
+
+		argv := strings.Join(getCmdLineInternal(ps, proc), " ")
+		log.Debugf("waitfor: new process %q", argv)
+		if strings.HasPrefix(argv, pfx) {
+			return int(proc.ki_pid), nil
+		}
+
+		proc = (*C.struct_kinfo_proc)(unsafe.Pointer(uintptr(unsafe.Pointer(proc)) + unsafe.Sizeof(*proc)))
+	}
+	return 0, nil
 }
 
 func initialize(dbp *nativeProcess) (string, error) {
@@ -230,7 +265,17 @@ func findExecutable(path string, pid int) string {
 func getCmdLine(pid int) string {
 	ps := C.procstat_open_sysctl()
 	kp := C.kinfo_getproc(C.int(pid))
+	goargv := getCmdLineInternal(ps, kp)
+	C.free(unsafe.Pointer(kp))
+	C.procstat_close(ps)
+	return strings.Join(goargv, " ")
+}
+
+func getCmdLineInternal(ps *C.struct_procstat, kp *C.struct_kinfo_proc) []string {
 	argv := C.procstat_getargv(ps, kp, 0)
+	if argv == nil {
+		return nil
+	}
 	goargv := []string{}
 	for {
 		arg := *argv
@@ -240,9 +285,8 @@ func getCmdLine(pid int) string {
 		argv = (**C.char)(unsafe.Pointer(uintptr(unsafe.Pointer(argv)) + unsafe.Sizeof(*argv)))
 		goargv = append(goargv, C.GoString(arg))
 	}
-	C.free(unsafe.Pointer(kp))
-	C.procstat_close(ps)
-	return strings.Join(goargv, " ")
+	C.procstat_freeargv(ps)
+	return goargv
 }
 
 func trapWait(procgrp *processGroup, pid int) (*nativeThread, error) {

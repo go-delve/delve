@@ -136,8 +136,15 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 	return tgt, err
 }
 
+func waitForSearchProcess(string, map[int]struct{}) (int, error) {
+	return 0, proc.ErrWaitForNotImplemented
+}
+
 // Attach to an existing process with the given PID.
-func Attach(pid int, _ []string) (*proc.TargetGroup, error) {
+func Attach(pid int, waitFor *proc.WaitFor, _ []string) (*proc.TargetGroup, error) {
+	if waitFor.Valid() {
+		return nil, proc.ErrWaitForNotImplemented
+	}
 	if err := macutil.CheckRosetta(); err != nil {
 		return nil, err
 	}

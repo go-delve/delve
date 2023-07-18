@@ -16,7 +16,7 @@ uninstall:
 	@go run _scripts/make.go uninstall
 
 test: vet
-	@go run _scripts/make.go test
+	@go run _scripts/make.go test -v
 
 vet:
 	@go vet $$(go list ./... | grep -v native)

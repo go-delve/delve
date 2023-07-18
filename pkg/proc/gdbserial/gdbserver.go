@@ -588,7 +588,7 @@ func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs [
 // Path is path to the target's executable, path only needs to be specified
 // for some stubs that do not provide an automated way of determining it
 // (for example debugserver).
-func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.TargetGroup, error) {
+func LLDBAttach(pid int, path string, waitFor *proc.WaitFor, debugInfoDirs []string) (*proc.TargetGroup, error) {
 	if runtime.GOOS == "windows" {
 		return nil, ErrUnsupportedOS
 	}
@@ -609,12 +609,28 @@ func LLDBAttach(pid int, path string, debugInfoDirs []string) (*proc.TargetGroup
 		if err != nil {
 			return nil, err
 		}
-		args := []string{"-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port), "--attach=" + strconv.Itoa(pid)}
+		args := []string{"-R", fmt.Sprintf("127.0.0.1:%d", listener.Addr().(*net.TCPAddr).Port)}
+
+		if waitFor.Valid() {
+			duration := int(waitFor.Duration.Seconds())
+			if duration == 0 && waitFor.Duration != 0 {
+				// If duration is below the (second) resolution of debugserver pass 1
+				// second (0 means infinite).
+				duration = 1
+			}
+			args = append(args, "--waitfor="+waitFor.Name, fmt.Sprintf("--waitfor-interval=%d", waitFor.Interval.Microseconds()), fmt.Sprintf("--waitfor-duration=%d", duration))
+		} else {
+			args = append(args, "--attach="+strconv.Itoa(pid))
+		}
+
 		if canUnmaskSignals(debugserverExecutable) {
 			args = append(args, "--unmask-signals")
 		}
 		process = commandLogger(debugserverExecutable, args...)
 	} else {
+		if waitFor.Valid() {
+			return nil, proc.ErrWaitForNotImplemented
+		}
 		if _, err = exec.LookPath("lldb-server"); err != nil {
 			return nil, &ErrBackendUnavailable{}
 		}

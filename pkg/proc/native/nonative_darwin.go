@@ -21,8 +21,12 @@ func Launch(_ []string, _ string, _ proc.LaunchFlags, _ []string, _ string, _ st
 }
 
 // Attach returns ErrNativeBackendDisabled.
-func Attach(_ int, _ []string) (*proc.TargetGroup, error) {
+func Attach(_ int, _ *proc.WaitFor, _ []string) (*proc.TargetGroup, error) {
 	return nil, ErrNativeBackendDisabled
+}
+
+func waitForSearchProcess(string, map[int]struct{}) (int, error) {
+	return 0, proc.ErrWaitForNotImplemented
 }
 
 // waitStatus is a synonym for the platform-specific WaitStatus

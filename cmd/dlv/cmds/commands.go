@@ -96,6 +96,10 @@ var (
 	loadConfErr error
 
 	rrOnProcessPid int
+
+	attachWaitFor         string
+	attachWaitForInterval float64
+	attachWaitForDuration float64
 )
 
 const dlvCommandLongDesc = `Delve is a source level debugger for Go programs.
@@ -162,7 +166,7 @@ begin a new debug session.  When exiting the debug session you will have the
 option to let the process continue or kill it.
 `,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 {
+			if len(args) == 0 && attachWaitFor == "" {
 				return errors.New("you must provide a PID")
 			}
 			return nil
@@ -170,6 +174,9 @@ option to let the process continue or kill it.
 		Run: attachCmd,
 	}
 	attachCommand.Flags().BoolVar(&continueOnStart, "continue", false, "Continue the debugged process on start.")
+	attachCommand.Flags().StringVar(&attachWaitFor, "waitfor", "", "Wait for a process with a name beginning with this prefix")
+	attachCommand.Flags().Float64Var(&attachWaitForInterval, "waitfor-interval", 1, "Interval between checks of the process list, in millisecond")
+	attachCommand.Flags().Float64Var(&attachWaitForDuration, "waitfor-duration", 0, "Total time to wait for a process")
 	rootCommand.AddCommand(attachCommand)
 
 	// 'connect' subcommand.
@@ -305,7 +312,8 @@ to know what functions your process is executing.
 The output of the trace sub command is printed to stderr, so if you would like to
 only see the output of the trace operations you can redirect stdout.`,
 		Run: func(cmd *cobra.Command, args []string) {
-			os.Exit(traceCmd(cmd, args, conf)) }, 
+			os.Exit(traceCmd(cmd, args, conf))
+		},
 	}
 	traceCommand.Flags().IntVarP(&traceAttachPid, "pid", "p", 0, "Pid to attach to.")
 	traceCommand.Flags().StringVarP(&traceExecFile, "exec", "e", "", "Binary file to exec and trace.")
@@ -647,10 +655,10 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 			ProcessArgs: processArgs,
 			APIVersion:  2,
 			Debugger: debugger.Config{
-				AttachPid:      traceAttachPid,
-				WorkingDir:     workingDir,
-				Backend:        backend,
-				CheckGoVersion: checkGoVersion,
+				AttachPid:            traceAttachPid,
+				WorkingDir:           workingDir,
+				Backend:              backend,
+				CheckGoVersion:       checkGoVersion,
 				DebugInfoDirectories: conf.DebugInfoDirectories,
 			},
 		})
@@ -818,12 +826,17 @@ func getPackageDir(pkg []string) string {
 }
 
 func attachCmd(cmd *cobra.Command, args []string) {
-	pid, err := strconv.Atoi(args[0])
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Invalid pid: %s\n", args[0])
-		os.Exit(1)
+	var pid int
+	if len(args) > 0 {
+		var err error
+		pid, err = strconv.Atoi(args[0])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid pid: %s\n", args[0])
+			os.Exit(1)
+		}
+		args = args[1:]
 	}
-	os.Exit(execute(pid, args[1:], conf, "", debugger.ExecutingOther, args, buildFlags))
+	os.Exit(execute(pid, args, conf, "", debugger.ExecutingOther, args, buildFlags))
 }
 
 func coreCmd(cmd *cobra.Command, args []string) {
@@ -1005,22 +1018,25 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 			CheckLocalConnUser: checkLocalConnUser,
 			DisconnectChan:     disconnectChan,
 			Debugger: debugger.Config{
-				AttachPid:            attachPid,
-				WorkingDir:           workingDir,
-				Backend:              backend,
-				CoreFile:             coreFile,
-				Foreground:           headless && tty == "",
-				Packages:             dlvArgs,
-				BuildFlags:           buildFlags,
-				ExecuteKind:          kind,
-				DebugInfoDirectories: conf.DebugInfoDirectories,
-				CheckGoVersion:       checkGoVersion,
-				TTY:                  tty,
-				Stdin:                redirects[0],
-				Stdout:               proc.OutputRedirect{Path: redirects[1]},
-				Stderr:               proc.OutputRedirect{Path: redirects[2]},
-				DisableASLR:          disableASLR,
-				RrOnProcessPid:       rrOnProcessPid,
+				AttachPid:             attachPid,
+				WorkingDir:            workingDir,
+				Backend:               backend,
+				CoreFile:              coreFile,
+				Foreground:            headless && tty == "",
+				Packages:              dlvArgs,
+				BuildFlags:            buildFlags,
+				ExecuteKind:           kind,
+				DebugInfoDirectories:  conf.DebugInfoDirectories,
+				CheckGoVersion:        checkGoVersion,
+				TTY:                   tty,
+				Stdin:                 redirects[0],
+				Stdout:                proc.OutputRedirect{Path: redirects[1]},
+				Stderr:                proc.OutputRedirect{Path: redirects[2]},
+				DisableASLR:           disableASLR,
+				RrOnProcessPid:        rrOnProcessPid,
+				AttachWaitFor:         attachWaitFor,
+				AttachWaitForInterval: attachWaitForInterval,
+				AttachWaitForDuration: attachWaitForDuration,
 			},
 		})
 	default:

@@ -19,6 +19,7 @@ import (
 
 	sys "golang.org/x/sys/unix"
 
+	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 	"github.com/go-delve/delve/pkg/proc/linutil"
@@ -141,7 +142,15 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []str
 // Attach to an existing process with the given PID. Once attached, if
 // the DWARF information cannot be found in the binary, Delve will look
 // for external debug files in the directories passed in.
-func Attach(pid int, debugInfoDirs []string) (*proc.TargetGroup, error) {
+func Attach(pid int, waitFor *proc.WaitFor, debugInfoDirs []string) (*proc.TargetGroup, error) {
+	if waitFor.Valid() {
+		var err error
+		pid, err = WaitFor(waitFor)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	dbp := newProcess(pid)
 
 	var err error
@@ -167,6 +176,53 @@ func Attach(pid int, debugInfoDirs []string) (*proc.TargetGroup, error) {
 		return nil, err
 	}
 	return tgt, nil
+}
+
+func isProcDir(name string) bool {
+	for _, ch := range name {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func waitForSearchProcess(pfx string, seen map[int]struct{}) (int, error) {
+	log := logflags.DebuggerLogger()
+	des, err := os.ReadDir("/proc")
+	if err != nil {
+		log.Errorf("error reading proc: %v", err)
+		return 0, nil
+	}
+	for _, de := range des {
+		if !de.IsDir() {
+			continue
+		}
+		name := de.Name()
+		if !isProcDir(name) {
+			continue
+		}
+		pid, _ := strconv.Atoi(name)
+		if _, isseen := seen[pid]; isseen {
+			continue
+		}
+		seen[pid] = struct{}{}
+		buf, err := os.ReadFile(filepath.Join("/proc", name, "cmdline"))
+		if err != nil {
+			// probably we just don't have permissions
+			continue
+		}
+		for i := range buf {
+			if buf[i] == 0 {
+				buf[i] = ' '
+			}
+		}
+		log.Debugf("waitfor: new process %q", string(buf))
+		if strings.HasPrefix(string(buf), pfx) {
+			return pid, nil
+		}
+	}
+	return 0, nil
 }
 
 func initialize(dbp *nativeProcess) (string, error) {

@@ -2,6 +2,7 @@ package proc
 
 import (
 	"sync"
+	"time"
 
 	"github.com/go-delve/delve/pkg/elfwriter"
 	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
@@ -141,4 +142,11 @@ func (cctx *ContinueOnceContext) GetManualStopRequested() bool {
 	cctx.StopMu.Lock()
 	defer cctx.StopMu.Unlock()
 	return cctx.manualStopRequested
+}
+
+// WaitFor is passed to native.Attach and gdbserver.LLDBAttach to wait for a
+// process to start before attaching.
+type WaitFor struct {
+	Name               string
+	Interval, Duration time.Duration
 }

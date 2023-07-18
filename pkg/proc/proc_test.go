@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"text/tabwriter"
 	"time"
@@ -2912,13 +2913,13 @@ func TestAttachDetach(t *testing.T) {
 
 	switch testBackend {
 	case "native":
-		p, err = native.Attach(cmd.Process.Pid, []string{})
+		p, err = native.Attach(cmd.Process.Pid, nil, []string{})
 	case "lldb":
 		path := ""
 		if runtime.GOOS == "darwin" {
 			path = fixture.Path
 		}
-		p, err = gdbserial.LLDBAttach(cmd.Process.Pid, path, []string{})
+		p, err = gdbserial.LLDBAttach(cmd.Process.Pid, path, nil, []string{})
 	default:
 		err = fmt.Errorf("unknown backend %q", testBackend)
 	}
@@ -6167,4 +6168,92 @@ func TestReadTargetArguments(t *testing.T) {
 			t.Fatalf("wrong command line")
 		}
 	})
+}
+
+func testWaitForSetup(t *testing.T, mu *sync.Mutex, started *bool) (*exec.Cmd, *proc.WaitFor) {
+	var buildFlags protest.BuildFlags
+	if buildMode == "pie" {
+		buildFlags |= protest.BuildModePIE
+	}
+	fixture := protest.BuildFixture("loopprog", buildFlags)
+
+	cmd := exec.Command(fixture.Path)
+
+	go func() {
+		time.Sleep(2 * time.Second)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		assertNoError(cmd.Start(), t, "starting fixture")
+		mu.Lock()
+		*started = true
+		mu.Unlock()
+	}()
+
+	waitFor := &proc.WaitFor{Name: fixture.Path, Interval: 100 * time.Millisecond, Duration: 10 * time.Second}
+
+	return cmd, waitFor
+}
+
+func TestWaitFor(t *testing.T) {
+	skipOn(t, "waitfor implementation is delegated to debugserver", "darwin")
+
+	var mu sync.Mutex
+	started := false
+
+	cmd, waitFor := testWaitForSetup(t, &mu, &started)
+
+	pid, err := native.WaitFor(waitFor)
+	assertNoError(err, t, "waitFor.Wait()")
+	if pid != cmd.Process.Pid {
+		t.Errorf("pid mismatch, expected %d got %d", pid, cmd.Process.Pid)
+	}
+
+	cmd.Process.Kill()
+	cmd.Wait()
+}
+
+func TestWaitForAttach(t *testing.T) {
+	if testBackend == "lldb" && runtime.GOOS == "linux" {
+		bs, _ := ioutil.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
+		if bs == nil || strings.TrimSpace(string(bs)) != "0" {
+			t.Logf("can not run TestAttachDetach: %v\n", bs)
+			return
+		}
+	}
+	if testBackend == "rr" {
+		return
+	}
+
+	var mu sync.Mutex
+	started := false
+
+	cmd, waitFor := testWaitForSetup(t, &mu, &started)
+
+	var p *proc.TargetGroup
+	var err error
+
+	switch testBackend {
+	case "native":
+		p, err = native.Attach(0, waitFor, []string{})
+	case "lldb":
+		path := ""
+		if runtime.GOOS == "darwin" {
+			path = waitFor.Name
+		}
+		p, err = gdbserial.LLDBAttach(0, path, waitFor, []string{})
+	default:
+		err = fmt.Errorf("unknown backend %q", testBackend)
+	}
+
+	assertNoError(err, t, "Attach")
+
+	mu.Lock()
+	if !started {
+		t.Fatalf("attach succeeded but started is false")
+	}
+	mu.Unlock()
+
+	p.Detach(true)
+
+	cmd.Wait()
 }

@@ -654,3 +654,9 @@ func (*dummyRecordingManipulation) ClearCheckpoint(int) error { return ErrNotRec
 func (*dummyRecordingManipulation) Restart(*ContinueOnceContext, string) (Thread, error) {
 	return nil, ErrNotRecorded
 }
+
+var ErrWaitForNotImplemented = errors.New("waitfor not implemented")
+
+func (waitFor *WaitFor) Valid() bool {
+	return waitFor != nil && waitFor.Name != ""
+}
