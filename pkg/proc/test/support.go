@@ -310,12 +310,17 @@ func MustSupportFunctionCalls(t *testing.T, testBackend string) {
 	if runtime.GOOS == "darwin" && os.Getenv("TRAVIS") == "true" && runtime.GOARCH == "amd64" {
 		t.Skip("function call injection tests are failing on macOS on Travis-CI (see #1802)")
 	}
-	if runtime.GOARCH == "386" || runtime.GOARCH == "ppc64le" {
+	if runtime.GOARCH == "386"  {
 		t.Skip(fmt.Errorf("%s does not support FunctionCall for now", runtime.GOARCH))
 	}
 	if runtime.GOARCH == "arm64" {
 		if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 19) || runtime.GOOS == "windows" {
 			t.Skip("this version of Go does not support function calls")
+		}
+	}
+	if runtime.GOARCH == "ppc64le" {
+		if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 20)  {
+			t.Skip("On PPC64LE Lesser than Go1.21 does not support function calls")
 		}
 	}
 }

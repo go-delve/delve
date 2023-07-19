@@ -35,9 +35,13 @@ func PPC64LEArch(goos string) *Arch {
 		usesLR:                           true,
 		PCRegNum:                         regnum.PPC64LE_PC,
 		SPRegNum:                         regnum.PPC64LE_SP,
+		ContextRegNum:                    regnum.PPC64LE_R0 + 11,
+		//ContextRegNum:                    regnum.PPC64LE_R0 + 20,
 		LRRegNum:                         regnum.PPC64LE_LR,
 		asmRegisters:                     ppc64leAsmRegisters,
 		RegisterNameToDwarf:              nameToDwarfFunc(regnum.PPC64LENameToDwarf),
+		debugCallMinStackSize:            320,
+		maxRegArgBytes:                   8*8 + 13*8,
 	}
 }
 
@@ -47,6 +51,7 @@ func ppc64leFixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Bina
 		a.sigreturnfn = bi.lookupOneFunc("runtime.sigreturn")
 	}
 	if fctxt == nil || (a.sigreturnfn != nil && pc >= a.sigreturnfn.Entry && pc < a.sigreturnfn.End) {
+		//fmt.Println("nil frame context")
 		return &frame.FrameContext{
 			RetAddrReg: regnum.PPC64LE_LR,
 			Regs: map[uint64]frame.DWRule{
@@ -163,8 +168,10 @@ func ppc64leSwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) boo
 		off, _ := readIntRaw(it.mem,
 			callFrameRegs.SP()+ppc64cgocallSPOffsetSaveSlot,
 			int64(it.bi.Arch.PtrSize()))
+		//fmt.Printf("OFFSET: %x\n", off)
 		oldsp := callFrameRegs.SP()
 		newsp := uint64(int64(it.stackhi) - off)
+		//fmt.Printf("oldsp %x newsp %x\n", oldsp, newsp)
 
 		// runtime.asmcgocall can also be called from inside the system stack,
 		// in that case no stack switch actually happens

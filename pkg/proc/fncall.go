@@ -47,7 +47,7 @@ const (
 )
 
 var (
-	errFuncCallUnsupported        = errors.New("function calls not supported by this version of Go")
+	errFuncCallUnsupported        = errors.New("**function calls not supported by this version of Go")
 	errFuncCallUnsupportedBackend = errors.New("backend does not support function calls")
 	errFuncCallInProgress         = errors.New("cannot call function while another function call is already in progress")
 	errNoGoroutine                = errors.New("no goroutine selected")
@@ -151,18 +151,22 @@ func EvalExpressionWithCalls(grp *TargetGroup, g *G, expr string, retLoadCfg Loa
 	t := grp.Selected
 	bi := t.BinInfo()
 	if !t.SupportsFunctionCalls() {
+		//println("exits at line 153")
 		return errFuncCallUnsupportedBackend
 	}
 	producer := bi.Producer()
 	if producer == "" || !goversion.ProducerAfterOrEqual(bi.Producer(), 1, 12) {
+		//println("exits at line 158")
 		return errFuncCallUnsupported
 	}
 
 	// check that the target goroutine is running
 	if g == nil {
+		//println("nil go routine")
 		return errNoGoroutine
 	}
 	if g.Status != Grunning || g.Thread == nil {
+		//println(" go routine not running")
 		return errGoroutineNotRunning
 	}
 
@@ -172,11 +176,13 @@ func EvalExpressionWithCalls(grp *TargetGroup, g *G, expr string, retLoadCfg Loa
 
 	dbgcallfn, _ := debugCallFunction(bi)
 	if dbgcallfn == nil {
+		//println("exits at line 178")
 		return errFuncCallUnsupported
 	}
 
 	scope, err := GoroutineScope(t, g.Thread)
 	if err != nil {
+		//println(" go routine scope error")
 		return err
 	}
 
@@ -194,6 +200,7 @@ func EvalExpressionWithCalls(grp *TargetGroup, g *G, expr string, retLoadCfg Loa
 
 	endCallInjection, err := t.proc.StartCallInjection()
 	if err != nil {
+		//println(" start call injection  error")
 		return err
 	}
 
@@ -210,6 +217,7 @@ func EvalExpressionWithCalls(grp *TargetGroup, g *G, expr string, retLoadCfg Loa
 	if contReq.cont {
 		return grp.Continue()
 	}
+		//println(" before finish eval expression calls")
 
 	return finishEvalExpressionWithCalls(t, g, contReq, ok)
 }
@@ -294,6 +302,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 
 	dbgcallfn, dbgcallversion := debugCallFunction(bi)
 	if dbgcallfn == nil {
+		//println("exits at line 304")
 		return nil, errFuncCallUnsupported
 	}
 
@@ -311,6 +320,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	}
 	protocolReg, ok := debugCallProtocolReg(bi.Arch.Name, dbgcallversion)
 	if !ok {
+		//println("exits at line 322")
 		return nil, errFuncCallUnsupported
 	}
 	if bi.Arch.RegistersToDwarfRegisters(0, regs).Reg(protocolReg) == nil {
@@ -365,6 +375,37 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 		if err != nil {
 			return nil, err
 		}
+	   case "ppc64le":
+                // debugCallV2 on arm64 needs a special call sequence, callOP can not be used
+                sp := regs.SP()
+                sp -= 4 * uint64(bi.Arch.PtrSize())
+                if err := setSP(thread, sp); err != nil {
+                        return nil, err
+                }
+                if err := writePointer(bi, scope.Mem, sp, regs.LR()); err != nil {
+                        return nil, err
+                }
+                if err := setLR(thread, regs.PC()); err != nil {
+                        return nil, err
+                }
+		//println("asking for frame size ", fncall.argFrameSize)
+                if err := writePointer(bi, scope.Mem, sp-uint64(4*bi.Arch.PtrSize()), uint64(fncall.argFrameSize)); err != nil {
+                        return nil, err
+                }
+                regs, err = thread.Registers()
+                if err != nil {
+                        return nil, err
+                }
+                regs, err = regs.Copy()
+                if err != nil {
+                        return nil, err
+                }
+                fncall.savedRegs = regs
+                err = setPC(thread, dbgcallfn.Entry)
+                if err != nil {
+                        return nil, err
+                }
+
 	}
 
 	fncallLog("function call initiated %v frame size %d goroutine %d (thread %d)", fncall.fn, fncall.argFrameSize, scope.g.ID, thread.ThreadID())
@@ -373,7 +414,8 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	p.fncallForG[scope.g.ID].startThreadID = thread.ThreadID()
 
 	spoff := int64(scope.Regs.Uint64Val(scope.Regs.SPRegNum)) - int64(scope.g.stack.hi)
-	bpoff := int64(scope.Regs.Uint64Val(scope.Regs.BPRegNum)) - int64(scope.g.stack.hi)
+	var bpoff int64
+	bpoff = int64(scope.Regs.Uint64Val(scope.Regs.BPRegNum)) - int64(scope.g.stack.hi)
 	fboff := scope.Regs.FrameBase - int64(scope.g.stack.hi)
 
 	for {
@@ -394,12 +436,12 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 
 		// adjust the value of registers inside scope
 		pcreg, bpreg, spreg := scope.Regs.Reg(scope.Regs.PCRegNum), scope.Regs.Reg(scope.Regs.BPRegNum), scope.Regs.Reg(scope.Regs.SPRegNum)
+		scope.Regs.AddReg(scope.Regs.BPRegNum, bpreg)
+		scope.Regs.Reg(scope.Regs.BPRegNum).Uint64Val = uint64(bpoff + int64(scope.g.stack.hi))
 		scope.Regs.ClearRegisters()
 		scope.Regs.AddReg(scope.Regs.PCRegNum, pcreg)
-		scope.Regs.AddReg(scope.Regs.BPRegNum, bpreg)
 		scope.Regs.AddReg(scope.Regs.SPRegNum, spreg)
 		scope.Regs.Reg(scope.Regs.SPRegNum).Uint64Val = uint64(spoff + int64(scope.g.stack.hi))
-		scope.Regs.Reg(scope.Regs.BPRegNum).Uint64Val = uint64(bpoff + int64(scope.g.stack.hi))
 		scope.Regs.FrameBase = fboff + int64(scope.g.stack.hi)
 		scope.Regs.CFA = scope.frameOffset + int64(scope.g.stack.hi)
 
@@ -484,6 +526,12 @@ func callOP(bi *BinaryInfo, thread Thread, regs Registers, callAddr uint64) erro
 		}
 		return setPC(thread, callAddr)
 	case "arm64":
+              if err := setLR(thread, regs.PC()); err != nil {
+                        return err
+                }
+                return setPC(thread, callAddr)
+
+	case "ppc64le":
 		if err := setLR(thread, regs.PC()); err != nil {
 			return err
 		}
@@ -536,12 +584,14 @@ func funcCallEvalFuncExpr(scope *EvalScope, fncall *functionCallState, allowCall
 	fncall.closureAddr = fnvar.closureAddr
 
 	fncall.argFrameSize, fncall.formalArgs, err = funcCallArgs(fncall.fn, bi, false)
+	//println("arg frame size ", fncall.argFrameSize)
+	//println("fn name", exprToString(fncall.expr.Fun))
 	if err != nil {
 		return err
 	}
 
 	argnum := len(fncall.expr.Args)
-
+//println("num of arguments", argnum) 
 	// If the function variable has a child then that child is the method
 	// receiver. However, if the method receiver is not being used (e.g.
 	// func (_ X) Foo()) then it will not actually be listed as a formal
@@ -551,6 +601,7 @@ func funcCallEvalFuncExpr(scope *EvalScope, fncall *functionCallState, allowCall
 		argnum++
 		fncall.receiver = &fnvar.Children[0]
 		fncall.receiver.Name = exprToString(fncall.expr.Fun)
+		//println("fncall rec name ",fncall.receiver.Name)
 	}
 
 	if argnum > len(fncall.formalArgs) {
@@ -638,14 +689,16 @@ func funcCallCopyOneArg(scope *EvalScope, fncall *functionCallState, actualArg *
 
 	var formalArgVar *Variable
 	if formalArg.dwarfEntry != nil {
+		//println(" i m here 678")
 		var err error
 		formalArgVar, err = extractVarInfoFromEntry(scope.target, formalScope.BinInfo, formalScope.image(), formalScope.Regs, formalScope.Mem, formalArg.dwarfEntry, 0)
-		if err != nil {
+		  if err != nil {
 			return err
 		}
 	} else {
 		formalArgVar = newVariable(formalArg.name, uint64(formalArg.off+int64(formalScope.Regs.CFA)), formalArg.typ, scope.BinInfo, scope.Mem)
 	}
+	//println("setting actual arg name ", actualArg.Name)
 	if err := scope.setValue(formalArgVar, actualArg, actualArg.Name); err != nil {
 		return err
 	}
@@ -730,6 +783,7 @@ func funcCallArgOldABI(fn *Function, bi *BinaryInfo, entry reader.Variable, argn
 	if err != nil {
 		err = fmt.Errorf("could not get argument location of %s: %v", argname, err)
 	} else {
+		//println("using old ABI")
 		var pieces []op.Piece
 		off, pieces, err = op.ExecuteStackProgram(op.DwarfRegisters{CFA: CFA, FrameBase: CFA}, locprog, bi.Arch.PtrSize(), nil)
 		if err != nil {
@@ -763,7 +817,7 @@ func funcCallArgRegABI(fn *Function, bi *BinaryInfo, entry reader.Variable, argn
 	// Conservatively calculate the full stack argument space for ABI0.
 	*pargFrameSize = alignAddr(*pargFrameSize, typ.Align())
 	*pargFrameSize += typ.Size()
-
+	//println("setting pargFrameSize to ",*pargFrameSize," type size:", typ.Size())
 	isret, _ := entry.Val(dwarf.AttrVarParam).(bool)
 	return &funcCallArg{name: argname, typ: typ, dwarfEntry: entry.Tree, isret: isret}, nil
 }
@@ -864,6 +918,8 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		archoff := uint64(0)
 		if bi.Arch.Name == "arm64" {
 			archoff = 8
+		} else if bi.Arch.Name == "ppc64le" {
+			archoff = 40
 		}
 		// get error from top of the stack and return it to user
 		errvar, err := readStackVariable(p, thread, regs, archoff, "string", loadFullValue)
@@ -912,7 +968,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		cfa := regs.SP()
 		oldpc := regs.PC()
 		var oldlr uint64
-		if bi.Arch.Name == "arm64" {
+		if bi.Arch.Name == "arm64" || bi.Arch.Name == "ppc64le" {
 			oldlr = regs.LR()
 		}
 		callOP(bi, thread, regs, fncall.fn.Entry)
@@ -926,6 +982,9 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 				setSP(thread, cfa)
 				setPC(thread, oldpc)
 			case "arm64":
+				setLR(thread, oldlr)
+				setPC(thread, oldpc)
+			case "ppc64le":
 				setLR(thread, oldlr)
 				setPC(thread, oldpc)
 			default:
@@ -1006,7 +1065,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		if threadg, _ := GetG(thread); threadg != nil {
 			callScope.callCtx.stacks = append(callScope.callCtx.stacks, threadg.stack)
 		}
-		if bi.Arch.Name == "arm64" {
+		if bi.Arch.Name == "arm64" || bi.Arch.Name == "ppc64le" {
 			oldlr, err := readUintRaw(thread.ProcessMemory(), regs.SP(), int64(bi.Arch.PtrSize()))
 			if err != nil {
 				fncall.err = fmt.Errorf("could not restore LR: %v", err)
@@ -1023,6 +1082,8 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		archoff := uint64(0)
 		if bi.Arch.Name == "arm64" {
 			archoff = 8
+		} else if bi.Arch.Name == "ppc64le" {
+			archoff = 32
 		}
 		fncall.panicvar, err = readStackVariable(p, thread, regs, archoff, "interface {}", callScope.callCtx.retLoadCfg)
 		if err != nil {
@@ -1068,6 +1129,7 @@ func fakeFunctionEntryScope(scope *EvalScope, fn *Function, cfa int64, sp uint64
 	scope.PC = fn.Entry
 	scope.Fn = fn
 	scope.File, scope.Line = scope.BinInfo.EntryLineForFunc(fn)
+
 
 	scope.Regs.CFA = cfa
 	scope.Regs.Reg(scope.Regs.SPRegNum).Uint64Val = sp
@@ -1141,7 +1203,7 @@ func isCallInjectionStop(t *Target, thread Thread, loc *Location) bool {
 		off = -int64(len(thread.BinInfo().Arch.breakpointInstruction))
 	}
 	text, err := disassembleCurrentInstruction(t, thread, off)
-	if err != nil || len(text) == 0 {
+	if err != nil || len(text) <= 0 {
 		return false
 	}
 	return text[0].IsHardBreak()
@@ -1236,6 +1298,7 @@ func findCallInjectionStateForThread(t *Target, thread Thread) (*G, *callInjecti
 func debugCallFunction(bi *BinaryInfo) (*Function, int) {
 	for version := maxDebugCallVersion; version >= 1; version-- {
 		name := debugCallFunctionNamePrefix2 + "V" + strconv.Itoa(version)
+		//println("looking for name ",name)
 		fn := bi.lookupOneFunc(name)
 		if fn != nil {
 			return fn, version
@@ -1265,6 +1328,8 @@ func debugCallProtocolReg(archName string, version int) (uint64, bool) {
 			return regnum.ARM64_X0 + 20, true
 		}
 		return 0, false
+	case "ppc64le":
+		return regnum.PPC64LE_R0 + 20, true
 	default:
 		return 0, false
 	}
@@ -1335,6 +1400,15 @@ func regabiMallocgcWorkaround(bi *BinaryInfo) ([]*godwarf.Tree, error) {
 			m("~r1", t("unsafe.Pointer"), regnum.ARM64_X0, true),
 		}
 		return r, err1
+         case "ppc64le":
+                r := []*godwarf.Tree{
+                        m("size", t("uintptr"), regnum.PPC64LE_R0+3, false),
+                        m("typ", t(ptrToRuntimeType), regnum.PPC64LE_R0+4, false),
+                        m("needzero", t("bool"), regnum.PPC64LE_R0+5, false),
+                        m("~r1", t("unsafe.Pointer"), regnum.PPC64LE_R0+3,true),
+                }
+                return r, err1
+
 	default:
 		// do nothing
 		return nil, nil

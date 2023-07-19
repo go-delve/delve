@@ -6,7 +6,6 @@ import (
 	"unsafe"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
-	"github.com/go-delve/delve/pkg/dwarf/regnum"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/linutil"
 	sys "golang.org/x/sys/unix"
@@ -63,25 +62,31 @@ func (t *nativeThread) setPC(pc uint64) error {
 }
 
 // SetReg changes the value of the specified register.
-func (t *nativeThread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
-	ir, err := registers(t)
+func (thread *nativeThread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
+	ir, err := registers(thread)
 	if err != nil {
 		return err
 	}
 	r := ir.(*linutil.PPC64LERegisters)
+	//println("reg num passed in setreg, ",regNum)
 
-	switch regNum {
-	case regnum.PPC64LE_PC:
-		r.Regs.Nip = reg.Uint64Val
-	case regnum.PPC64LE_SP:
-		r.Regs.Gpr[1] = reg.Uint64Val
-	case regnum.PPC64LE_LR:
-		r.Regs.Link = reg.Uint64Val
-	default:
-		panic("SetReg")
+	fpchanged, err := r.SetReg(regNum, reg)
+	if err != nil {
+		return err
 	}
-
-	t.dbp.execPtraceFunc(func() { err = ptraceSetGRegs(t.ID, r.Regs) })
+	thread.dbp.execPtraceFunc(func() {
+		err = ptraceSetGRegs(thread.ID, r.Regs)
+		if err != syscall.Errno(0) && err != nil {
+			return
+		}
+		if fpchanged && r.Fpregset != nil {
+			iov := sys.Iovec{Base: &r.Fpregset[0], Len: uint64(len(r.Fpregset))}
+			_, _, err = syscall.Syscall6(syscall.SYS_PTRACE, sys.PTRACE_SETREGSET, uintptr(thread.ID), uintptr(elf.NT_FPREGSET), uintptr(unsafe.Pointer(&iov)), 0, 0)
+		}
+	})
+	if err == syscall.Errno(0) {
+		err = nil
+	}
 	return err
 }
 

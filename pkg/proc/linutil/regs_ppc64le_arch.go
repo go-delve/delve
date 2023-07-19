@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/regnum"
 )
 
 // PPC64LERegisters implements the proc.Registers interface for the native/linux
@@ -160,6 +162,44 @@ func (r *PPC64LERegisters) Copy() (proc.Registers, error) {
 		copy(rr.Fpregset, r.Fpregset)
 	}
 	return &rr, nil
+}
+
+func (r *PPC64LERegisters) SetReg(regNum uint64, reg *op.DwarfRegister) (fpchanged bool, err error) {
+	switch regNum {
+	case regnum.PPC64LE_PC:
+		r.Regs.Nip = reg.Uint64Val
+		return false, nil
+	case regnum.PPC64LE_LR:
+		r.Regs.Link = reg.Uint64Val
+		return false, nil
+	case regnum.PPC64LE_SP:
+		r.Regs.Gpr[1] = reg.Uint64Val
+		return false, nil
+	default:
+		switch {
+		case regNum >= regnum.PPC64LE_R0 && regNum <= regnum.PPC64LE_R0+31:
+			r.Regs.Gpr[regNum-regnum.PPC64LE_R0] = reg.Uint64Val
+			return false, nil
+
+		case regNum >= regnum.PPC64LE_F0 && regNum <= regnum.PPC64LE_F0+31:
+			//println("i come here")
+			if r.loadFpRegs != nil {
+				err := r.loadFpRegs(r)
+				r.loadFpRegs = nil
+				if err != nil {
+					return false, err
+				}
+			}
+
+			i := regNum - regnum.PPC64LE_V0
+			reg.FillBytes()
+			copy(r.Fpregset[16*i:], reg.Bytes)
+			return true, nil
+
+		default:
+			return false, fmt.Errorf("changing register %d not implemented", regNum)
+		}
+	}
 }
 
 type PPC64LEPtraceFpRegs struct {
