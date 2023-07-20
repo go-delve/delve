@@ -705,7 +705,8 @@ type FindLocationIn struct {
 }
 
 type FindLocationOut struct {
-	Locations []api.Location
+	Locations         []api.Location
+	SubstituteLocExpr string // if this isn't an empty string it should be passed as the location expression for CreateBreakpoint instead of the original location expression
 }
 
 // FindLocation returns concrete location information described by a location expression.
@@ -723,7 +724,7 @@ type FindLocationOut struct {
 // NOTE: this function does not actually set breakpoints.
 func (c *RPCServer) FindLocation(arg FindLocationIn, out *FindLocationOut) error {
 	var err error
-	out.Locations, err = c.debugger.FindLocation(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall, arg.Loc, arg.IncludeNonExecutableLines, arg.SubstitutePathRules)
+	out.Locations, out.SubstituteLocExpr, err = c.debugger.FindLocation(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall, arg.Loc, arg.IncludeNonExecutableLines, arg.SubstitutePathRules)
 	return err
 }
 
