@@ -126,6 +126,7 @@ func (r *PPC64LERegisters) Slice(floatingPoint bool) ([]proc.Register, error) {
 		{"Dsisr", r.Regs.Dsisr},
 		{"Result", r.Regs.Result},
 	}
+	//println("Slice in ppc64le!!")
 	out := make([]proc.Register, 0, len(regs)+len(r.Fpregs))
 	for _, reg := range regs {
 		out = proc.AppendUint64Register(out, reg.k, reg.v)
@@ -133,9 +134,11 @@ func (r *PPC64LERegisters) Slice(floatingPoint bool) ([]proc.Register, error) {
 	var floatLoadError error
 	if floatingPoint {
 		if r.loadFpRegs != nil {
+			//println("loadfpregs is not nil")
 			floatLoadError = r.loadFpRegs(r)
 			r.loadFpRegs = nil
 		}
+		//println("appending r.Fpregs")
 		out = append(out, r.Fpregs...)
 	}
 	return out, floatLoadError
@@ -181,6 +184,8 @@ func (r *PPC64LERegisters) SetReg(regNum uint64, reg *op.DwarfRegister) (fpchang
 			r.Regs.Gpr[regNum-regnum.PPC64LE_R0] = reg.Uint64Val
 			return false, nil
 
+			// archana
+		//case regNum >= regnum.PPC64LE_V0 && regNum <= regnum.PPC64LE_V0+31:
 		case regNum >= regnum.PPC64LE_F0 && regNum <= regnum.PPC64LE_F0+31:
 			//println("i come here")
 			if r.loadFpRegs != nil {
@@ -191,9 +196,13 @@ func (r *PPC64LERegisters) SetReg(regNum uint64, reg *op.DwarfRegister) (fpchang
 				}
 			}
 
-			i := regNum - regnum.PPC64LE_V0
+			//println(" called loadFpregs regs load val regnum is ", regNum)
+//			i := regNum - regnum.PPC64LE_F0
+			i := regNum - regnum.PPC64LE_VS0
+			//println("i before FillBytes",i)
 			reg.FillBytes()
-			copy(r.Fpregset[16*i:], reg.Bytes)
+			copy(r.Fpregset[8*i:], reg.Bytes)
+			//println(" reg bytes inside float", reg.Bytes)
 			return true, nil
 
 		default:
@@ -207,8 +216,12 @@ type PPC64LEPtraceFpRegs struct {
 }
 
 func (fpregs *PPC64LEPtraceFpRegs) Decode() (regs []proc.Register) {
-	for i := 0; i < len(fpregs.Fp); i += 16 {
-		regs = proc.AppendBytesRegister(regs, fmt.Sprintf("V%d", i/16), fpregs.Fp[i:i+16])
+	//println("len in Decode ", len(fpregs.Fp))
+	for i := 0; i < len(fpregs.Fp); i += 8 {
+		//regs = proc.AppendBytesRegister(regs, fmt.Sprintf("F%d", i/16), fpregs.Fp[i:i+16])
+	//	regs = proc.AppendBytesRegister(regs, fmt.Sprintf("V%d", i/16), fpregs.Fp[i:i+16])
+		regs = proc.AppendBytesRegister(regs, fmt.Sprintf("VS%d", i/8), fpregs.Fp[i:i+8])
+	//println("name ",i/8)
 	}
 	return
 }

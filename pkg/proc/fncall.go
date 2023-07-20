@@ -47,7 +47,7 @@ const (
 )
 
 var (
-	errFuncCallUnsupported        = errors.New("**function calls not supported by this version of Go")
+	errFuncCallUnsupported        = errors.New("function calls not supported by this version of Go")
 	errFuncCallUnsupportedBackend = errors.New("backend does not support function calls")
 	errFuncCallInProgress         = errors.New("cannot call function while another function call is already in progress")
 	errNoGoroutine                = errors.New("no goroutine selected")
@@ -151,22 +151,18 @@ func EvalExpressionWithCalls(grp *TargetGroup, g *G, expr string, retLoadCfg Loa
 	t := grp.Selected
 	bi := t.BinInfo()
 	if !t.SupportsFunctionCalls() {
-		//println("exits at line 153")
 		return errFuncCallUnsupportedBackend
 	}
 	producer := bi.Producer()
 	if producer == "" || !goversion.ProducerAfterOrEqual(bi.Producer(), 1, 12) {
-		//println("exits at line 158")
 		return errFuncCallUnsupported
 	}
 
 	// check that the target goroutine is running
 	if g == nil {
-		//println("nil go routine")
 		return errNoGoroutine
 	}
 	if g.Status != Grunning || g.Thread == nil {
-		//println(" go routine not running")
 		return errGoroutineNotRunning
 	}
 
@@ -176,13 +172,11 @@ func EvalExpressionWithCalls(grp *TargetGroup, g *G, expr string, retLoadCfg Loa
 
 	dbgcallfn, _ := debugCallFunction(bi)
 	if dbgcallfn == nil {
-		//println("exits at line 178")
 		return errFuncCallUnsupported
 	}
 
 	scope, err := GoroutineScope(t, g.Thread)
 	if err != nil {
-		//println(" go routine scope error")
 		return err
 	}
 
@@ -200,7 +194,6 @@ func EvalExpressionWithCalls(grp *TargetGroup, g *G, expr string, retLoadCfg Loa
 
 	endCallInjection, err := t.proc.StartCallInjection()
 	if err != nil {
-		//println(" start call injection  error")
 		return err
 	}
 
@@ -217,7 +210,6 @@ func EvalExpressionWithCalls(grp *TargetGroup, g *G, expr string, retLoadCfg Loa
 	if contReq.cont {
 		return grp.Continue()
 	}
-		//println(" before finish eval expression calls")
 
 	return finishEvalExpressionWithCalls(t, g, contReq, ok)
 }
@@ -302,7 +294,6 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 
 	dbgcallfn, dbgcallversion := debugCallFunction(bi)
 	if dbgcallfn == nil {
-		//println("exits at line 304")
 		return nil, errFuncCallUnsupported
 	}
 
@@ -320,7 +311,6 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	}
 	protocolReg, ok := debugCallProtocolReg(bi.Arch.Name, dbgcallversion)
 	if !ok {
-		//println("exits at line 322")
 		return nil, errFuncCallUnsupported
 	}
 	if bi.Arch.RegistersToDwarfRegisters(0, regs).Reg(protocolReg) == nil {
@@ -388,7 +378,6 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
                 if err := setLR(thread, regs.PC()); err != nil {
                         return nil, err
                 }
-		//println("asking for frame size ", fncall.argFrameSize)
                 if err := writePointer(bi, scope.Mem, sp-uint64(4*bi.Arch.PtrSize()), uint64(fncall.argFrameSize)); err != nil {
                         return nil, err
                 }
@@ -414,8 +403,8 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	p.fncallForG[scope.g.ID].startThreadID = thread.ThreadID()
 
 	spoff := int64(scope.Regs.Uint64Val(scope.Regs.SPRegNum)) - int64(scope.g.stack.hi)
-	var bpoff int64
-	bpoff = int64(scope.Regs.Uint64Val(scope.Regs.BPRegNum)) - int64(scope.g.stack.hi)
+	//var bpoff int64
+	bpoff := int64(scope.Regs.Uint64Val(scope.Regs.BPRegNum)) - int64(scope.g.stack.hi)
 	fboff := scope.Regs.FrameBase - int64(scope.g.stack.hi)
 
 	for {
@@ -584,14 +573,11 @@ func funcCallEvalFuncExpr(scope *EvalScope, fncall *functionCallState, allowCall
 	fncall.closureAddr = fnvar.closureAddr
 
 	fncall.argFrameSize, fncall.formalArgs, err = funcCallArgs(fncall.fn, bi, false)
-	//println("arg frame size ", fncall.argFrameSize)
-	//println("fn name", exprToString(fncall.expr.Fun))
 	if err != nil {
 		return err
 	}
 
 	argnum := len(fncall.expr.Args)
-//println("num of arguments", argnum) 
 	// If the function variable has a child then that child is the method
 	// receiver. However, if the method receiver is not being used (e.g.
 	// func (_ X) Foo()) then it will not actually be listed as a formal
@@ -601,7 +587,6 @@ func funcCallEvalFuncExpr(scope *EvalScope, fncall *functionCallState, allowCall
 		argnum++
 		fncall.receiver = &fnvar.Children[0]
 		fncall.receiver.Name = exprToString(fncall.expr.Fun)
-		//println("fncall rec name ",fncall.receiver.Name)
 	}
 
 	if argnum > len(fncall.formalArgs) {
@@ -689,7 +674,6 @@ func funcCallCopyOneArg(scope *EvalScope, fncall *functionCallState, actualArg *
 
 	var formalArgVar *Variable
 	if formalArg.dwarfEntry != nil {
-		//println(" i m here 678")
 		var err error
 		formalArgVar, err = extractVarInfoFromEntry(scope.target, formalScope.BinInfo, formalScope.image(), formalScope.Regs, formalScope.Mem, formalArg.dwarfEntry, 0)
 		  if err != nil {
@@ -698,7 +682,6 @@ func funcCallCopyOneArg(scope *EvalScope, fncall *functionCallState, actualArg *
 	} else {
 		formalArgVar = newVariable(formalArg.name, uint64(formalArg.off+int64(formalScope.Regs.CFA)), formalArg.typ, scope.BinInfo, scope.Mem)
 	}
-	//println("setting actual arg name ", actualArg.Name)
 	if err := scope.setValue(formalArgVar, actualArg, actualArg.Name); err != nil {
 		return err
 	}
@@ -778,12 +761,10 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 func funcCallArgOldABI(fn *Function, bi *BinaryInfo, entry reader.Variable, argname string, typ godwarf.Type, pargFrameSize *int64) (*funcCallArg, error) {
 	const CFA = 0x1000
 	var off int64
-
 	locprog, _, err := bi.locationExpr(entry, dwarf.AttrLocation, fn.Entry)
 	if err != nil {
 		err = fmt.Errorf("could not get argument location of %s: %v", argname, err)
 	} else {
-		//println("using old ABI")
 		var pieces []op.Piece
 		off, pieces, err = op.ExecuteStackProgram(op.DwarfRegisters{CFA: CFA, FrameBase: CFA}, locprog, bi.Arch.PtrSize(), nil)
 		if err != nil {
@@ -817,7 +798,6 @@ func funcCallArgRegABI(fn *Function, bi *BinaryInfo, entry reader.Variable, argn
 	// Conservatively calculate the full stack argument space for ABI0.
 	*pargFrameSize = alignAddr(*pargFrameSize, typ.Align())
 	*pargFrameSize += typ.Size()
-	//println("setting pargFrameSize to ",*pargFrameSize," type size:", typ.Size())
 	isret, _ := entry.Val(dwarf.AttrVarParam).(bool)
 	return &funcCallArg{name: argname, typ: typ, dwarfEntry: entry.Tree, isret: isret}, nil
 }
@@ -1298,7 +1278,6 @@ func findCallInjectionStateForThread(t *Target, thread Thread) (*G, *callInjecti
 func debugCallFunction(bi *BinaryInfo) (*Function, int) {
 	for version := maxDebugCallVersion; version >= 1; version-- {
 		name := debugCallFunctionNamePrefix2 + "V" + strconv.Itoa(version)
-		//println("looking for name ",name)
 		fn := bi.lookupOneFunc(name)
 		if fn != nil {
 			return fn, version
