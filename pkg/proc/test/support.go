@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/go-delve/delve/pkg/goversion"
-
 )
 
 // EnableRace allows to configure whether the race detector is enabled on target process.

@@ -403,7 +403,6 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 	p.fncallForG[scope.g.ID].startThreadID = thread.ThreadID()
 
 	spoff := int64(scope.Regs.Uint64Val(scope.Regs.SPRegNum)) - int64(scope.g.stack.hi)
-	//var bpoff int64
 	bpoff := int64(scope.Regs.Uint64Val(scope.Regs.BPRegNum)) - int64(scope.g.stack.hi)
 	fboff := scope.Regs.FrameBase - int64(scope.g.stack.hi)
 
@@ -578,6 +577,7 @@ func funcCallEvalFuncExpr(scope *EvalScope, fncall *functionCallState, allowCall
 	}
 
 	argnum := len(fncall.expr.Args)
+
 	// If the function variable has a child then that child is the method
 	// receiver. However, if the method receiver is not being used (e.g.
 	// func (_ X) Foo()) then it will not actually be listed as a formal

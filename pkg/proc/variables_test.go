@@ -1289,7 +1289,6 @@ func TestCallFunction(t *testing.T) {
 
 	withTestProcessArgs("fncall", t, ".", nil, protest.AllNonOptimized, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		testCallFunctionSetBreakpoint(t, p, grp, fixture)
-		i:=1
 		assertNoError(grp.Continue(), t, "Continue()")
 	
 		for _, tc := range testcases {
