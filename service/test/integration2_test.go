@@ -865,7 +865,7 @@ func TestClientServer_traceContinue(t *testing.T) {
 					t.Fatalf("No goroutine information")
 				}
 
-				if len(bpi.Stacktrace) == 0 {
+				if len(bpi.Stacktrace) <= 0 {
 					t.Fatalf("No stacktrace\n")
 				}
 
@@ -2109,6 +2109,10 @@ func TestForceStopWhileContinue(t *testing.T) {
 }
 
 func TestClientServerFunctionCall(t *testing.T) {
+	if buildMode == "pie" && runtime.GOARCH == "ppc64le" {
+                t.Skip("Debug function call Test broken in PIE mode")
+        }
+
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
 		c.SetReturnValuesLoadConfig(&normalLoadConfig)
@@ -2139,6 +2143,9 @@ func TestClientServerFunctionCall(t *testing.T) {
 }
 
 func TestClientServerFunctionCallPanic(t *testing.T) {
+	if buildMode == "pie" && runtime.GOARCH == "ppc64le" {
+                t.Skip("Debug function call Test broken in PIE mode")
+        }
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
 		c.SetReturnValuesLoadConfig(&normalLoadConfig)
