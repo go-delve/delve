@@ -63,12 +63,12 @@ func (v *Variable) writeTo(buf io.Writer, top, newlines, includeType bool, inden
 		if v.Type == "" || len(v.Children) == 0 {
 			fmt.Fprint(buf, "nil")
 		} else if v.Children[0].OnlyAddr && v.Children[0].Addr != 0 {
-			if strings.Contains(v.Type, "/") {
-				fmt.Fprintf(buf, "(%q)(%#x)", v.Type, v.Children[0].Addr)
-			} else {
-				fmt.Fprintf(buf, "(%s)(%#x)", v.Type, v.Children[0].Addr)
-			}
+			v.writePointerTo(buf)
 		} else {
+			if top && newlines && v.Children[0].Addr != 0 {
+				v.writePointerTo(buf)
+				fmt.Fprint(buf, "\n")
+			}
 			fmt.Fprint(buf, "*")
 			v.Children[0].writeTo(buf, false, newlines, includeType, indent, fmtstr)
 		}
@@ -142,6 +142,14 @@ func (v *Variable) writeTo(buf io.Writer, top, newlines, includeType bool, inden
 		}
 	default:
 		v.writeBasicType(buf, fmtstr)
+	}
+}
+
+func (v *Variable) writePointerTo(buf io.Writer) {
+	if strings.Contains(v.Type, "/") {
+		fmt.Fprintf(buf, "(%q)(%#x)", v.Type, v.Children[0].Addr)
+	} else {
+		fmt.Fprintf(buf, "(%s)(%#x)", v.Type, v.Children[0].Addr)
 	}
 }
 
