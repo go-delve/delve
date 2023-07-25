@@ -451,6 +451,11 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 		v.Addr = ip.Addr
 		v.Kind = ip.Kind
 
+		if v.RealType == nil {
+			v.Unreadable = errors.New("type not supported by ebpf")
+			return v
+		}
+
 		cachedMem := CreateLoadedCachedMemory(ip.Data)
 		compMem, _ := CreateCompositeMemory(cachedMem, t.BinInfo().Arch, op.DwarfRegisters{}, ip.Pieces, ip.RealType.Common().ByteSize)
 		v.mem = compMem
