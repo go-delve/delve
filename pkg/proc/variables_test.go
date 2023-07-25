@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/constant"
 	"io/ioutil"
+	"regexp"
 	"runtime"
 	"sort"
 	"strconv"
@@ -45,9 +46,14 @@ func matchStringOrPrefix(output, target string) bool {
 		prefix := target[:len(target)-len("…")]
 		b := strings.HasPrefix(output, prefix)
 		return b
-	} else {
-		return output == target
 	}
+
+	if strings.HasPrefix(target, "/") && strings.HasSuffix(target, "/") {
+		rx := regexp.MustCompile(target[1 : len(target)-1])
+		return rx.MatchString(output)
+	}
+
+	return output == target
 }
 
 func assertVariable(t testing.TB, variable *proc.Variable, expected varTest) {
@@ -309,7 +315,7 @@ func TestMultilineVariableEvaluation(t *testing.T) {
 		{"a4", true, "[2]int [1,2]", "", "[2]int", nil},
 		{"a5", true, "[]int len: 5, cap: 5, [1,2,3,4,5]", "", "[]int", nil},
 		{"a6", true, "main.FooBar {Baz: 8, Bur: \"word\"}", "", "main.FooBar", nil},
-		{"a7", true, "*main.FooBar {Baz: 5, Bur: \"strum\"}", "", "*main.FooBar", nil},
+		{"a7", true, `/^\(\*main\.FooBar\)\(.*?\)\n\*main\.FooBar \{Baz: 5, Bur: "strum"\}$/`, "", "*main.FooBar", nil},
 		{"a8", true, "main.FooBar2 {Bur: 10, Baz: \"feh\"}", "", "main.FooBar2", nil},
 		{"a9", true, "*main.FooBar nil", "", "*main.FooBar", nil},
 		{"a8", true, "main.FooBar2 {Bur: 10, Baz: \"feh\"}", "", "main.FooBar2", nil}, // reread variable after member
@@ -331,7 +337,7 @@ func TestMultilineVariableEvaluation(t *testing.T) {
 			variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 			assertNoError(err, t, "EvalVariable() returned an error")
 			if ms := api.ConvertVar(variable).MultilineString("", ""); !matchStringOrPrefix(ms, tc.value) {
-				t.Fatalf("Expected %s got %s (variable %s)\n", tc.value, ms, variable.Name)
+				t.Fatalf("Expected %s got %q (variable %s)\n", tc.value, ms, variable.Name)
 			}
 		}
 	})
