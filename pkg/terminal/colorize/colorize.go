@@ -134,13 +134,13 @@ func Print(out io.Writer, path string, reader io.Reader, startLine, endLine, arr
 
 		tokposval := nval.FieldByName("TokPos")
 		tokval := nval.FieldByName("Tok")
-		if tokposval != (reflect.Value{}) && tokval != (reflect.Value{}) {
+		if tokposval.IsValid() && tokval.IsValid() {
 			emit(tokval.Interface().(token.Token), tokposval.Interface().(token.Pos), token.NoPos)
 		}
 
 		for _, kwname := range []string{"Case", "Begin", "Defer", "For", "Func", "Go", "Interface", "Map", "Return", "Select", "Struct", "Switch"} {
 			kwposval := nval.FieldByName(kwname)
-			if kwposval != (reflect.Value{}) {
+			if kwposval.IsValid() {
 				kwpos, ok := kwposval.Interface().(token.Pos)
 				if ok && kwpos != token.NoPos {
 					emit(token.ILLEGAL, kwpos, token.NoPos)
