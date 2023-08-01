@@ -181,7 +181,7 @@ func (v structAsStarlarkValue) Attr(name string) (starlark.Value, error) {
 		return r, err
 	}
 	r := v.v.FieldByName(name)
-	if r == (reflect.Value{}) {
+	if !r.IsValid() {
 		return starlark.None, fmt.Errorf("no field named %q in %T", name, v.v.Interface())
 	}
 	return v.env.interfaceToStarlarkValue(r.Interface()), nil
@@ -681,7 +681,7 @@ func unmarshalStarlarkValueIntl(val starlark.Value, dst reflect.Value, path stri
 			}
 			fieldName := string(k.(starlark.String))
 			dstfield := dst.FieldByName(fieldName)
-			if dstfield == (reflect.Value{}) {
+			if !dstfield.IsValid() {
 				return converr(fmt.Sprintf("unknown field %s", fieldName))
 			}
 			valfield, _, _ := val.Get(starlark.String(fieldName))
