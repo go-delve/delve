@@ -41,7 +41,7 @@ func PPC64LEArch(goos string) *Arch {
 		asmRegisters:                     ppc64leAsmRegisters,
 		RegisterNameToDwarf:              nameToDwarfFunc(regnum.PPC64LENameToDwarf),
 		debugCallMinStackSize:            320,
-		maxRegArgBytes:                   8*8 + 13*8,
+		maxRegArgBytes:                   13*8 + 13*8,
 		//maxRegArgBytes:                   16*8 + 16*8,
 	}
 }

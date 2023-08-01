@@ -336,10 +336,16 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 		if err := writePointer(bi, scope.Mem, regs.SP()-3*uint64(bi.Arch.PtrSize()), uint64(fncall.argFrameSize)); err != nil {
 			return nil, err
 		}
-	case "arm64":
+	case "arm64","ppc64le":
 		// debugCallV2 on arm64 needs a special call sequence, callOP can not be used
 		sp := regs.SP()
-		sp -= 2 * uint64(bi.Arch.PtrSize())
+		var spOffset  uint64
+		if bi.Arch.Name == "arm64" {
+			spOffset = 2 * uint64(bi.Arch.PtrSize())
+		} else {
+			spOffset = 4 * uint64(bi.Arch.PtrSize())
+		}
+		sp -= spOffset 
 		if err := setSP(thread, sp); err != nil {
 			return nil, err
 		}
@@ -349,7 +355,7 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 		if err := setLR(thread, regs.PC()); err != nil {
 			return nil, err
 		}
-		if err := writePointer(bi, scope.Mem, sp-uint64(2*bi.Arch.PtrSize()), uint64(fncall.argFrameSize)); err != nil {
+		if err := writePointer(bi, scope.Mem, sp-spOffset, uint64(fncall.argFrameSize)); err != nil {
 			return nil, err
 		}
 		regs, err = thread.Registers()
@@ -365,35 +371,6 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 		if err != nil {
 			return nil, err
 		}
-	   case "ppc64le":
-                // debugCallV2 on arm64 needs a special call sequence, callOP can not be used
-                sp := regs.SP()
-                sp -= 4 * uint64(bi.Arch.PtrSize())
-                if err := setSP(thread, sp); err != nil {
-                        return nil, err
-                }
-                if err := writePointer(bi, scope.Mem, sp, regs.LR()); err != nil {
-                        return nil, err
-                }
-                if err := setLR(thread, regs.PC()); err != nil {
-                        return nil, err
-                }
-                if err := writePointer(bi, scope.Mem, sp-uint64(4*bi.Arch.PtrSize()), uint64(fncall.argFrameSize)); err != nil {
-                        return nil, err
-                }
-                regs, err = thread.Registers()
-                if err != nil {
-                        return nil, err
-                }
-                regs, err = regs.Copy()
-                if err != nil {
-                        return nil, err
-                }
-                fncall.savedRegs = regs
-                err = setPC(thread, dbgcallfn.Entry)
-                if err != nil {
-                        return nil, err
-                }
 
 	}
 
@@ -424,12 +401,12 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 
 		// adjust the value of registers inside scope
 		pcreg, bpreg, spreg := scope.Regs.Reg(scope.Regs.PCRegNum), scope.Regs.Reg(scope.Regs.BPRegNum), scope.Regs.Reg(scope.Regs.SPRegNum)
-		scope.Regs.AddReg(scope.Regs.BPRegNum, bpreg)
-		scope.Regs.Reg(scope.Regs.BPRegNum).Uint64Val = uint64(bpoff + int64(scope.g.stack.hi))
 		scope.Regs.ClearRegisters()
 		scope.Regs.AddReg(scope.Regs.PCRegNum, pcreg)
+		scope.Regs.AddReg(scope.Regs.BPRegNum, bpreg)
 		scope.Regs.AddReg(scope.Regs.SPRegNum, spreg)
 		scope.Regs.Reg(scope.Regs.SPRegNum).Uint64Val = uint64(spoff + int64(scope.g.stack.hi))
+		scope.Regs.Reg(scope.Regs.BPRegNum).Uint64Val = uint64(bpoff + int64(scope.g.stack.hi))
 		scope.Regs.FrameBase = fboff + int64(scope.g.stack.hi)
 		scope.Regs.CFA = scope.frameOffset + int64(scope.g.stack.hi)
 
@@ -513,17 +490,12 @@ func callOP(bi *BinaryInfo, thread Thread, regs Registers, callAddr uint64) erro
 			return err
 		}
 		return setPC(thread, callAddr)
-	case "arm64":
+	case "arm64","ppc64le":
               if err := setLR(thread, regs.PC()); err != nil {
                         return err
                 }
                 return setPC(thread, callAddr)
 
-	case "ppc64le":
-		if err := setLR(thread, regs.PC()); err != nil {
-			return err
-		}
-		return setPC(thread, callAddr)
 	default:
 		panic("not implemented")
 	}
@@ -577,7 +549,6 @@ func funcCallEvalFuncExpr(scope *EvalScope, fncall *functionCallState, allowCall
 	}
 
 	argnum := len(fncall.expr.Args)
-
 	// If the function variable has a child then that child is the method
 	// receiver. However, if the method receiver is not being used (e.g.
 	// func (_ X) Foo()) then it will not actually be listed as a formal
@@ -961,10 +932,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 			case "amd64":
 				setSP(thread, cfa)
 				setPC(thread, oldpc)
-			case "arm64":
-				setLR(thread, oldlr)
-				setPC(thread, oldpc)
-			case "ppc64le":
+			case "arm64","ppc64le":
 				setLR(thread, oldlr)
 				setPC(thread, oldpc)
 			default:
@@ -1183,7 +1151,7 @@ func isCallInjectionStop(t *Target, thread Thread, loc *Location) bool {
 		off = -int64(len(thread.BinInfo().Arch.breakpointInstruction))
 	}
 	text, err := disassembleCurrentInstruction(t, thread, off)
-	if err != nil || len(text) <= 0 {
+	if err != nil || len(text) == 0 {
 		return false
 	}
 	return text[0].IsHardBreak()
@@ -1302,13 +1270,11 @@ func debugCallProtocolReg(archName string, version int) (uint64, bool) {
 			return 0, false
 		}
 		return protocolReg, true
-	case "arm64":
+	case "arm64","ppc64le":
 		if version == 2 {
 			return regnum.ARM64_X0 + 20, true
 		}
 		return 0, false
-	case "ppc64le":
-		return regnum.PPC64LE_R0 + 20, true
 	default:
 		return 0, false
 	}

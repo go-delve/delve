@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/go-delve/delve/pkg/goversion"
+
 )
 
 // EnableRace allows to configure whether the race detector is enabled on target process.
@@ -321,7 +322,6 @@ func MustSupportFunctionCalls(t *testing.T, testBackend string) {
 
 	if runtime.GOARCH == "ppc64le" {
 		if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 20)  {
-			//t.Skip("On PPC64LE Building with PIE mode or if version of Go lesser than 1.20 does not support function calls")
 			t.Skip("On PPC64LE Building with Go lesser than 1.20 does not support function calls")
 		}
 	}

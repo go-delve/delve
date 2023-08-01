@@ -17,16 +17,13 @@ const (
 	PPC64LE_F0        = PPC64LE_FIRST_FPR
 	PPC64LE_LAST_FPR  = 63
 	// Vector (Altivec/VMX) registers: from V0 to V31
-	//PPC64LE_FIRST_VMX = 64
 	PPC64LE_FIRST_VMX = 77
 	PPC64LE_V0        = PPC64LE_FIRST_VMX
-	//PPC64LE_LAST_VMX  = 95
 	PPC64LE_LAST_VMX  = 108
 	// Vector Scalar (VSX) registers: from VS32 to VS63
-	//PPC64LE_FIRST_VSX = 96
+	// On ppc64le these are mapped to F0 to F31
 	PPC64LE_FIRST_VSX = 32
 	PPC64LE_VS0       = PPC64LE_FIRST_VSX
-	//PPC64LE_LAST_VSX  = 160
 	PPC64LE_LAST_VSX  = 63
 	// Condition Registers: from CR0 to CR7
 	PPC64LE_CR0 = 0
