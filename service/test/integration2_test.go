@@ -865,7 +865,7 @@ func TestClientServer_traceContinue(t *testing.T) {
 					t.Fatalf("No goroutine information")
 				}
 
-				if len(bpi.Stacktrace) <= 0 {
+				if len(bpi.Stacktrace) == 0 {
 					t.Fatalf("No stacktrace\n")
 				}
 

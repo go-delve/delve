@@ -996,7 +996,6 @@ func findStarFile(name string) string {
 }
 
 func TestIssue1598(t *testing.T) {
-
 	if buildMode == "pie" && runtime.GOARCH == "ppc64le" {
                 t.Skip("Debug function call Test broken in PIE mode")
         }

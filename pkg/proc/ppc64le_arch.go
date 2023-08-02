@@ -52,7 +52,6 @@ func ppc64leFixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Bina
 		a.sigreturnfn = bi.lookupOneFunc("runtime.sigreturn")
 	}
 	if fctxt == nil || (a.sigreturnfn != nil && pc >= a.sigreturnfn.Entry && pc < a.sigreturnfn.End) {
-		//fmt.Println("nil frame context")
 		return &frame.FrameContext{
 			RetAddrReg: regnum.PPC64LE_LR,
 			Regs: map[uint64]frame.DWRule{
