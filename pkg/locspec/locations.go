@@ -508,6 +508,49 @@ func hasPathSeparatorPrefix(path string) bool {
 	return strings.HasPrefix(path, "/") || strings.HasPrefix(path, "\\")
 }
 
+func pickSeparator(to string) string {
+	var sep byte
+	for i := range to {
+		if to[i] == '/' || to[i] == '\\' {
+			if sep == 0 {
+				sep = to[i]
+			} else if sep != to[i] {
+				return ""
+			}
+		}
+	}
+	return string(sep)
+}
+
+func joinPath(to, rest string) string {
+	sep := pickSeparator(to)
+
+	switch sep {
+	case "/":
+		rest = strings.ReplaceAll(rest, "\\", sep)
+	case "\\":
+		rest = strings.ReplaceAll(rest, "/", sep)
+	default:
+		sep = "/"
+	}
+
+	toEndsWithSlash := hasPathSeparatorSuffix(to)
+	restStartsWithSlash := hasPathSeparatorPrefix(rest)
+
+	switch {
+	case toEndsWithSlash && restStartsWithSlash:
+		return to[:len(to)-1] + rest
+	case toEndsWithSlash && !restStartsWithSlash:
+		return to + rest
+	case !toEndsWithSlash && restStartsWithSlash:
+		return to + rest
+	case !toEndsWithSlash && !restStartsWithSlash:
+		fallthrough
+	default:
+		return to + sep + rest
+	}
+}
+
 // SubstitutePath applies the specified path substitution rules to path.
 func SubstitutePath(path string, rules [][2]string) string {
 	// Look for evidence that we are dealing with windows somewhere, if we are use case-insensitive matching
@@ -559,19 +602,7 @@ func SubstitutePath(path string, rules [][2]string) string {
 				return rest
 			}
 
-			toEndsWithSlash := hasPathSeparatorSuffix(to)
-			restStartsWithSlash := hasPathSeparatorPrefix(rest)
-
-			switch {
-			case toEndsWithSlash && restStartsWithSlash:
-				return to[:len(to)-1] + rest
-			case toEndsWithSlash && !restStartsWithSlash:
-				return to + rest
-			case !toEndsWithSlash && restStartsWithSlash:
-				return to + rest
-			case !toEndsWithSlash && !restStartsWithSlash:
-				return to + "/" + rest
-			}
+			return joinPath(to, rest)
 		}
 	}
 	return path

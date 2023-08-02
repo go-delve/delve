@@ -160,7 +160,7 @@ func platformCases() []tCase {
 		{[]tRule{{`c:\tmp\path`, `d:\new\path2`}}, `c:\tmp\path\file.go`, `d:\new\path2\file.go`},
 		{[]tRule{{`c:\tmp\path\`, `d:\new\path2\`}}, `c:\tmp\path\file.go`, `d:\new\path2\file.go`},
 		{[]tRule{{`c:\tmp\path`, `d:\new\path2\`}}, `c:\tmp\path\file.go`, `d:\new\path2\file.go`},
-		{[]tRule{{`c:\tmp\path\`, `d:\new\path2`}}, `c:\tmp\path\file.go`, `d:\new\path2/file.go`},
+		{[]tRule{{`c:\tmp\path\`, `d:\new\path2`}}, `c:\tmp\path\file.go`, `d:\new\path2\file.go`},
 		// Should apply to directory prefixes
 		{[]tRule{{`c:\tmp\path`, `d:\new\path2`}}, `c:\tmp\path-2\file.go`, `c:\tmp\path-2\file.go`},
 		// Should apply to exact matches
@@ -168,11 +168,15 @@ func platformCases() []tCase {
 		// Should be case-insensitive
 		{[]tRule{{`c:\tmp\path`, `d:\new\path2`}}, `C:\TmP\PaTh\file.go`, `d:\new\path2\file.go`},
 	}
+	casesCross := []tCase{
+		{[]tRule{{"C:\\some\\repo", "/go/src/github.com/some/repo/"}}, `c:\some\repo\folder\file.go`, "/go/src/github.com/some/repo/folder/file.go"},
+	}
 
 	r := append(casesUnix, casesLinux...)
 	r = append(r, casesFreebsd...)
 	r = append(r, casesDarwin...)
 	r = append(r, casesWindows...)
+	r = append(r, casesCross...)
 
 	return r
 }
