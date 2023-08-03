@@ -321,8 +321,8 @@ func MustSupportFunctionCalls(t *testing.T, testBackend string) {
 	}
 
 	if runtime.GOARCH == "ppc64le" {
-		if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 20)  {
-			t.Skip("On PPC64LE Building with Go lesser than 1.20 does not support function calls")
+		if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 22)  {
+			t.Skip("On PPC64LE Building with Go lesser than 1.22 does not support function calls")
 		}
 	}
 }

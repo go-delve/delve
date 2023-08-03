@@ -1294,7 +1294,6 @@ func TestCallFunction(t *testing.T) {
 		for _, tc := range testcases {
 			testCallFunction(t, grp, p, tc)
 		}
-		
 
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 12) {
 			for _, tc := range testcases112 {
