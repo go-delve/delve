@@ -664,8 +664,9 @@ func unmarshalStarlarkValueIntl(val starlark.Value, dst reflect.Value, path stri
 		if dst.Kind() != reflect.Slice {
 			return converr()
 		}
+		dst.Set(reflect.MakeSlice(dst.Type(), val.Len(), val.Len()))
 		for i := 0; i < val.Len(); i++ {
-			cur := reflect.New(dst.Type().Elem())
+			cur := dst.Index(i).Addr()
 			err := unmarshalStarlarkValueIntl(val.Index(i), cur, path)
 			if err != nil {
 				return err
