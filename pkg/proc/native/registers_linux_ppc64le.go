@@ -68,7 +68,6 @@ func (thread *nativeThread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
 		return err
 	}
 	r := ir.(*linutil.PPC64LERegisters)
-	//println("reg num passed in ptrace setreg, ",regNum)
 
 	fpchanged, err := r.SetReg(regNum, reg)
 	if err != nil {

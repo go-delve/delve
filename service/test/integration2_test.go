@@ -2110,8 +2110,8 @@ func TestForceStopWhileContinue(t *testing.T) {
 
 func TestClientServerFunctionCall(t *testing.T) {
 	if buildMode == "pie" && runtime.GOARCH == "ppc64le" {
-                t.Skip("Debug function call Test broken in PIE mode")
-        }
+		t.Skip("Debug function call Test broken in PIE mode")
+	}
 
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
@@ -2144,8 +2144,8 @@ func TestClientServerFunctionCall(t *testing.T) {
 
 func TestClientServerFunctionCallPanic(t *testing.T) {
 	if buildMode == "pie" && runtime.GOARCH == "ppc64le" {
-                t.Skip("Debug function call Test broken in PIE mode")
-        }
+		t.Skip("Debug function call Test broken in PIE mode")
+	}
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestClient2("fncall", t, func(c service.Client) {
 		c.SetReturnValuesLoadConfig(&normalLoadConfig)

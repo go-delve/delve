@@ -336,16 +336,16 @@ func evalFunctionCall(scope *EvalScope, node *ast.CallExpr) (*Variable, error) {
 		if err := writePointer(bi, scope.Mem, regs.SP()-3*uint64(bi.Arch.PtrSize()), uint64(fncall.argFrameSize)); err != nil {
 			return nil, err
 		}
-	case "arm64","ppc64le":
+	case "arm64", "ppc64le":
 		// debugCallV2 on arm64 needs a special call sequence, callOP can not be used
 		sp := regs.SP()
-		var spOffset  uint64
+		var spOffset uint64
 		if bi.Arch.Name == "arm64" {
 			spOffset = 2 * uint64(bi.Arch.PtrSize())
 		} else {
 			spOffset = 4 * uint64(bi.Arch.PtrSize())
 		}
-		sp -= spOffset 
+		sp -= spOffset
 		if err := setSP(thread, sp); err != nil {
 			return nil, err
 		}
@@ -490,11 +490,11 @@ func callOP(bi *BinaryInfo, thread Thread, regs Registers, callAddr uint64) erro
 			return err
 		}
 		return setPC(thread, callAddr)
-	case "arm64","ppc64le":
-              if err := setLR(thread, regs.PC()); err != nil {
-                        return err
-                }
-                return setPC(thread, callAddr)
+	case "arm64", "ppc64le":
+		if err := setLR(thread, regs.PC()); err != nil {
+			return err
+		}
+		return setPC(thread, callAddr)
 
 	default:
 		panic("not implemented")
@@ -549,6 +549,7 @@ func funcCallEvalFuncExpr(scope *EvalScope, fncall *functionCallState, allowCall
 	}
 
 	argnum := len(fncall.expr.Args)
+
 	// If the function variable has a child then that child is the method
 	// receiver. However, if the method receiver is not being used (e.g.
 	// func (_ X) Foo()) then it will not actually be listed as a formal
@@ -732,6 +733,7 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 func funcCallArgOldABI(fn *Function, bi *BinaryInfo, entry reader.Variable, argname string, typ godwarf.Type, pargFrameSize *int64) (*funcCallArg, error) {
 	const CFA = 0x1000
 	var off int64
+
 	locprog, _, err := bi.locationExpr(entry, dwarf.AttrLocation, fn.Entry)
 	if err != nil {
 		err = fmt.Errorf("could not get argument location of %s: %v", argname, err)
@@ -769,6 +771,7 @@ func funcCallArgRegABI(fn *Function, bi *BinaryInfo, entry reader.Variable, argn
 	// Conservatively calculate the full stack argument space for ABI0.
 	*pargFrameSize = alignAddr(*pargFrameSize, typ.Align())
 	*pargFrameSize += typ.Size()
+
 	isret, _ := entry.Val(dwarf.AttrVarParam).(bool)
 	return &funcCallArg{name: argname, typ: typ, dwarfEntry: entry.Tree, isret: isret}, nil
 }
@@ -932,7 +935,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 			case "amd64":
 				setSP(thread, cfa)
 				setPC(thread, oldpc)
-			case "arm64","ppc64le":
+			case "arm64", "ppc64le":
 				setLR(thread, oldlr)
 				setPC(thread, oldpc)
 			default:
@@ -1077,8 +1080,6 @@ func fakeFunctionEntryScope(scope *EvalScope, fn *Function, cfa int64, sp uint64
 	scope.PC = fn.Entry
 	scope.Fn = fn
 	scope.File, scope.Line = scope.BinInfo.EntryLineForFunc(fn)
-
-
 	scope.Regs.CFA = cfa
 	scope.Regs.Reg(scope.Regs.SPRegNum).Uint64Val = sp
 	scope.Regs.Reg(scope.Regs.PCRegNum).Uint64Val = fn.Entry
@@ -1270,7 +1271,7 @@ func debugCallProtocolReg(archName string, version int) (uint64, bool) {
 			return 0, false
 		}
 		return protocolReg, true
-	case "arm64","ppc64le":
+	case "arm64", "ppc64le":
 		if version == 2 {
 			return regnum.ARM64_X0 + 20, true
 		}
@@ -1345,14 +1346,14 @@ func regabiMallocgcWorkaround(bi *BinaryInfo) ([]*godwarf.Tree, error) {
 			m("~r1", t("unsafe.Pointer"), regnum.ARM64_X0, true),
 		}
 		return r, err1
-         case "ppc64le":
-                r := []*godwarf.Tree{
-                        m("size", t("uintptr"), regnum.PPC64LE_R0+3, false),
-                        m("typ", t(ptrToRuntimeType), regnum.PPC64LE_R0+4, false),
-                        m("needzero", t("bool"), regnum.PPC64LE_R0+5, false),
-                        m("~r1", t("unsafe.Pointer"), regnum.PPC64LE_R0+3,true),
-                }
-                return r, err1
+	case "ppc64le":
+		r := []*godwarf.Tree{
+			m("size", t("uintptr"), regnum.PPC64LE_R0+3, false),
+			m("typ", t(ptrToRuntimeType), regnum.PPC64LE_R0+4, false),
+			m("needzero", t("bool"), regnum.PPC64LE_R0+5, false),
+			m("~r1", t("unsafe.Pointer"), regnum.PPC64LE_R0+3, true),
+		}
+		return r, err1
 
 	default:
 		// do nothing

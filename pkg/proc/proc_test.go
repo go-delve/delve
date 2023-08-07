@@ -4312,7 +4312,7 @@ func TestReadDeferArgs(t *testing.T) {
 
 func TestIssue1374(t *testing.T) {
 	// Continue did not work when stopped at a breakpoint immediately after calling CallFunction.
-        skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
+	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestProcess("issue1374", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
@@ -4539,7 +4539,7 @@ func testCallConcurrentCheckReturns(p *proc.Target, t *testing.T, gid1, gid2 int
 }
 
 func TestCallConcurrent(t *testing.T) {
-        skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
+	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestProcess("teststepconcurrent", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
@@ -4936,7 +4936,7 @@ func TestIssue1925(t *testing.T) {
 	// In particular the stepInstructionOut function called at the end of a
 	// 'call' procedure should clean the G cache like every other function
 	// altering the state of the target process.
-        skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
+	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), t, "Continue()")

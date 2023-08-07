@@ -3,9 +3,9 @@ package linutil
 import (
 	"fmt"
 
-	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/regnum"
+	"github.com/go-delve/delve/pkg/proc"
 )
 
 // PPC64LERegisters implements the proc.Registers interface for the native/linux
@@ -189,7 +189,7 @@ func (r *PPC64LERegisters) SetReg(regNum uint64, reg *op.DwarfRegister) (fpchang
 					return false, err
 				}
 			}
-			// On ppc64le, PPC64LE_VS0 .. PPC64LE_VS31 are mapped onto 
+			// On ppc64le, PPC64LE_VS0 .. PPC64LE_VS31 are mapped onto
 			// PPC64LE_F0 .. PPC64LE_F31
 			i := regNum - regnum.PPC64LE_VS0
 			reg.FillBytes()
