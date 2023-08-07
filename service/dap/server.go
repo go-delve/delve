@@ -329,7 +329,8 @@ func NewSession(conn io.ReadWriteCloser, config *Config, debugger *debugger.Debu
 	}
 	config.log.Debugf("DAP connection %d started", sessionCount)
 	if config.StopTriggered == nil {
-		config.log.Fatal("Session must be configured with StopTriggered")
+		config.log.Error("Session must be configured with StopTriggered")
+		os.Exit(1)
 	}
 	return &Session{
 		config:            config,
@@ -453,8 +454,8 @@ func (c *Config) triggerServerStop() {
 // we need to take that into consideration.
 func (s *Server) Run() {
 	if s.listener == nil {
-		s.config.log.Fatal("Misconfigured server: no Listener is configured.")
-		return
+		s.config.log.Error("Misconfigured server: no Listener is configured.")
+		os.Exit(1)
 	}
 
 	go func() {
@@ -492,8 +493,8 @@ func (s *Server) runSession(conn io.ReadWriteCloser) {
 // until a launch/attach request is received over the connection.
 func (s *Server) RunWithClient(conn net.Conn) {
 	if s.listener != nil {
-		s.config.log.Fatal("RunWithClient must not be used when the Server is configured with a Listener")
-		return
+		s.config.log.Error("RunWithClient must not be used when the Server is configured with a Listener")
+		os.Exit(1)
 	}
 	s.config.log.Debugf("Connected to the client at %s", conn.RemoteAddr())
 	go s.runSession(conn)
