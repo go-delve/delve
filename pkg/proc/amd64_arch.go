@@ -200,8 +200,16 @@ func amd64SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 
 		return true
 
-	case "runtime.goexit", "runtime.rt0_go", "runtime.mcall":
+	case "runtime.goexit", "runtime.rt0_go":
 		// Look for "top of stack" functions.
+		it.atend = true
+		return true
+
+	case "runtime.mcall":
+		if it.systemstack && it.g != nil {
+			it.switchToGoroutineStack()
+			return true
+		}
 		it.atend = true
 		return true
 
