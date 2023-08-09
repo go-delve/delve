@@ -5,6 +5,8 @@ Tests skipped by each supported backend:
 	* 3 not implemented
 * arm64 skipped = 1
 	* 1 broken - global variable symbolication
+* darwin skipped = 1
+	* 1 waitfor implementation is delegated to debugserver
 * darwin/arm64 skipped = 2
 	* 2 broken - cgo stacktraces
 * darwin/lldb skipped = 1

@@ -104,6 +104,15 @@ type Config struct {
 	// AttachPid is the PID of an existing process to which the debugger should
 	// attach.
 	AttachPid int
+	// If AttachWaitFor is set the debugger will wait for a process with a name
+	// starting with WaitFor and attach to it.
+	AttachWaitFor string
+	// AttachWaitForInterval is the time (in milliseconds) that the debugger
+	// waits between checks for WaitFor.
+	AttachWaitForInterval float64
+	// AttachWaitForDuration is the time (in milliseconds) that the debugger
+	// waits for WaitFor.
+	AttachWaitForDuration float64
 
 	// CoreFile specifies the path to the core dump to open.
 	CoreFile string
@@ -163,14 +172,22 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 
 	// Create the process by either attaching or launching.
 	switch {
-	case d.config.AttachPid > 0:
+	case d.config.AttachPid > 0 || d.config.AttachWaitFor != "":
 		d.log.Infof("attaching to pid %d", d.config.AttachPid)
 		path := ""
 		if len(d.processArgs) > 0 {
 			path = d.processArgs[0]
 		}
+		var waitFor *proc.WaitFor
+		if d.config.AttachWaitFor != "" {
+			waitFor = &proc.WaitFor{
+				Name:     d.config.AttachWaitFor,
+				Interval: time.Duration(d.config.AttachWaitForInterval * float64(time.Millisecond)),
+				Duration: time.Duration(d.config.AttachWaitForDuration * float64(time.Millisecond)),
+			}
+		}
 		var err error
-		d.target, err = d.Attach(d.config.AttachPid, path)
+		d.target, err = d.Attach(d.config.AttachPid, path, waitFor)
 		if err != nil {
 			err = go11DecodeErrorCheck(err)
 			err = noDebugErrorWarning(err)
@@ -345,17 +362,17 @@ func (d *Debugger) recordingRun(run func() (string, error)) (*proc.TargetGroup, 
 }
 
 // Attach will attach to the process specified by 'pid'.
-func (d *Debugger) Attach(pid int, path string) (*proc.TargetGroup, error) {
+func (d *Debugger) Attach(pid int, path string, waitFor *proc.WaitFor) (*proc.TargetGroup, error) {
 	switch d.config.Backend {
 	case "native":
-		return native.Attach(pid, d.config.DebugInfoDirectories)
+		return native.Attach(pid, waitFor, d.config.DebugInfoDirectories)
 	case "lldb":
-		return betterGdbserialLaunchError(gdbserial.LLDBAttach(pid, path, d.config.DebugInfoDirectories))
+		return betterGdbserialLaunchError(gdbserial.LLDBAttach(pid, path, waitFor, d.config.DebugInfoDirectories))
 	case "default":
 		if runtime.GOOS == "darwin" {
-			return betterGdbserialLaunchError(gdbserial.LLDBAttach(pid, path, d.config.DebugInfoDirectories))
+			return betterGdbserialLaunchError(gdbserial.LLDBAttach(pid, path, waitFor, d.config.DebugInfoDirectories))
 		}
-		return native.Attach(pid, d.config.DebugInfoDirectories)
+		return native.Attach(pid, waitFor, d.config.DebugInfoDirectories)
 	default:
 		return nil, fmt.Errorf("unknown backend %q", d.config.Backend)
 	}

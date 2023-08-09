@@ -1,8 +1,10 @@
 package native
 
 import (
+	"errors"
 	"os"
 	"runtime"
+	"time"
 
 	"github.com/go-delve/delve/pkg/proc"
 )
@@ -67,6 +69,23 @@ func newChildProcess(dbp *nativeProcess, pid int) *nativeProcess {
 		ptraceThread: dbp.ptraceThread.acquire(),
 		bi:           proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
 	}
+}
+
+// WaitFor waits for a process as specified by waitFor.
+func WaitFor(waitFor *proc.WaitFor) (int, error) {
+	t0 := time.Now()
+	seen := make(map[int]struct{})
+	for (waitFor.Duration == 0) || (time.Since(t0) < waitFor.Duration) {
+		pid, err := waitForSearchProcess(waitFor.Name, seen)
+		if err != nil {
+			return 0, err
+		}
+		if pid != 0 {
+			return pid, nil
+		}
+		time.Sleep(waitFor.Interval)
+	}
+	return 0, errors.New("waitfor duration expired")
 }
 
 // BinInfo will return the binary info struct associated with this process.

@@ -18,8 +18,11 @@ dlv attach pid [executable] [flags]
 ### Options
 
 ```
-      --continue   Continue the debugged process on start.
-  -h, --help       help for attach
+      --continue                 Continue the debugged process on start.
+  -h, --help                     help for attach
+      --waitfor string           Wait for a process with a name beginning with this prefix
+      --waitfor-duration float   Total time to wait for a process
+      --waitfor-interval float   Interval between checks of the process list, in millisecond (default 1)
 ```
 
 ### Options inherited from parent commands

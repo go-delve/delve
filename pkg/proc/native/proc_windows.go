@@ -3,6 +3,7 @@ package native
 import (
 	"fmt"
 	"os"
+	"strings"
 	"syscall"
 	"unicode/utf16"
 	"unsafe"
@@ -89,7 +90,7 @@ func initialize(dbp *nativeProcess) (string, error) {
 		return "", proc.ErrProcessExited{Pid: dbp.pid, Status: exitCode}
 	}
 
-	cmdline := dbp.getCmdLine()
+	cmdline := getCmdLine(dbp.os.hProcess)
 
 	// Suspend all threads so that the call to _ContinueDebugEvent will
 	// not resume the target.
@@ -145,7 +146,7 @@ func findExePath(pid int) (string, error) {
 var debugPrivilegeRequested = false
 
 // Attach to an existing process with the given PID.
-func Attach(pid int, _ []string) (*proc.TargetGroup, error) {
+func Attach(pid int, waitFor *proc.WaitFor, _ []string) (*proc.TargetGroup, error) {
 	var aperr error
 	if !debugPrivilegeRequested {
 		debugPrivilegeRequested = true
@@ -154,6 +155,14 @@ func Attach(pid int, _ []string) (*proc.TargetGroup, error) {
 		// Since this privilege is not needed to debug processes owned by the
 		// current user, do not complain about this unless attach actually fails.
 		aperr = acquireDebugPrivilege()
+	}
+
+	if waitFor.Valid() {
+		var err error
+		pid, err = WaitFor(waitFor)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	dbp := newProcess(pid)
@@ -212,6 +221,43 @@ func acquireDebugPrivilege() error {
 	}
 
 	return nil
+}
+
+func waitForSearchProcess(pfx string, seen map[int]struct{}) (int, error) {
+	log := logflags.DebuggerLogger()
+	handle, err := sys.CreateToolhelp32Snapshot(sys.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return 0, fmt.Errorf("could not get process list: %v", err)
+	}
+	defer sys.CloseHandle(handle)
+
+	var entry sys.ProcessEntry32
+	entry.Size = uint32(unsafe.Sizeof(entry))
+	err = sys.Process32First(handle, &entry)
+	if err != nil {
+		return 0, fmt.Errorf("could not get process list: %v", err)
+	}
+
+	for err = sys.Process32First(handle, &entry); err == nil; err = sys.Process32Next(handle, &entry) {
+		if _, isseen := seen[int(entry.ProcessID)]; isseen {
+			continue
+		}
+		seen[int(entry.ProcessID)] = struct{}{}
+
+		hProcess, err := sys.OpenProcess(sys.PROCESS_QUERY_INFORMATION|sys.PROCESS_VM_READ, false, entry.ProcessID)
+		if err != nil {
+			continue
+		}
+		cmdline := getCmdLine(syscall.Handle(hProcess))
+		sys.CloseHandle(hProcess)
+
+		log.Debugf("waitfor: new process %q", cmdline)
+		if strings.HasPrefix(cmdline, pfx) {
+			return int(entry.ProcessID), nil
+		}
+	}
+
+	return 0, nil
 }
 
 // kill kills the process.
@@ -695,22 +741,22 @@ type _NTUnicodeString struct {
 	Buffer        uintptr
 }
 
-func (dbp *nativeProcess) getCmdLine() string {
+func getCmdLine(hProcess syscall.Handle) string {
 	logger := logflags.DebuggerLogger()
 	var info _PROCESS_BASIC_INFORMATION
-	err := sys.NtQueryInformationProcess(sys.Handle(dbp.os.hProcess), sys.ProcessBasicInformation, unsafe.Pointer(&info), uint32(unsafe.Sizeof(info)), nil)
+	err := sys.NtQueryInformationProcess(sys.Handle(hProcess), sys.ProcessBasicInformation, unsafe.Pointer(&info), uint32(unsafe.Sizeof(info)), nil)
 	if err != nil {
 		logger.Errorf("NtQueryInformationProcess: %v", err)
 		return ""
 	}
 	var peb _PEB
-	err = _ReadProcessMemory(dbp.os.hProcess, info.PebBaseAddress, (*byte)(unsafe.Pointer(&peb)), unsafe.Sizeof(peb), nil)
+	err = _ReadProcessMemory(hProcess, info.PebBaseAddress, (*byte)(unsafe.Pointer(&peb)), unsafe.Sizeof(peb), nil)
 	if err != nil {
 		logger.Errorf("Reading PEB: %v", err)
 		return ""
 	}
 	var upp _RTL_USER_PROCESS_PARAMETERS
-	err = _ReadProcessMemory(dbp.os.hProcess, peb.ProcessParameters, (*byte)(unsafe.Pointer(&upp)), unsafe.Sizeof(upp), nil)
+	err = _ReadProcessMemory(hProcess, peb.ProcessParameters, (*byte)(unsafe.Pointer(&upp)), unsafe.Sizeof(upp), nil)
 	if err != nil {
 		logger.Errorf("Reading ProcessParameters: %v", err)
 		return ""
@@ -720,7 +766,7 @@ func (dbp *nativeProcess) getCmdLine() string {
 		return ""
 	}
 	buf := make([]byte, upp.CommandLine.Length)
-	err = _ReadProcessMemory(dbp.os.hProcess, upp.CommandLine.Buffer, &buf[0], uintptr(len(buf)), nil)
+	err = _ReadProcessMemory(hProcess, upp.CommandLine.Buffer, &buf[0], uintptr(len(buf)), nil)
 	if err != nil {
 		logger.Errorf("Reading CommandLine: %v", err)
 		return ""

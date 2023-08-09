@@ -87,7 +87,7 @@ func TestSignalDeath(t *testing.T) {
 	assertNoError(err, t, "StdoutPipe")
 	cmd.Stderr = os.Stderr
 	assertNoError(cmd.Start(), t, "starting fixture")
-	p, err := native.Attach(cmd.Process.Pid, []string{})
+	p, err := native.Attach(cmd.Process.Pid, nil, []string{})
 	assertNoError(err, t, "Attach")
 	stdout.Close() // target will receive SIGPIPE later on
 	err = p.Continue()
