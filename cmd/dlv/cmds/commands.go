@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/go-delve/delve/cmd/dlv/cmds/helphelpers"
 	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/goversion"
@@ -276,6 +277,7 @@ or later, -gcflags="-N -l" on earlier versions of Go.`,
 			fmt.Println("This command is deprecated, please use 'debug' instead.")
 			os.Exit(0)
 		},
+		Hidden: true,
 	}
 	rootCommand.AddCommand(runCommand)
 
@@ -451,6 +453,8 @@ File redirects can also be changed using the 'restart' command.
 	})
 
 	rootCommand.DisableAutoGenTag = true
+
+	configUsageFunc(rootCommand)
 
 	return rootCommand
 }
@@ -1098,4 +1102,20 @@ func parseRedirects(redirects []string) ([3]string, error) {
 		r[idx] = redirect
 	}
 	return r, nil
+}
+
+func configUsageFunc(cmd *cobra.Command) {
+	for _, subcmd := range cmd.Commands() {
+		configUsageFunc(subcmd)
+	}
+
+	if cmd.Run == nil && cmd.Name() != "dlv" {
+		return
+	}
+
+	usage := cmd.UsageFunc()
+	cmd.SetUsageFunc(func(cmd *cobra.Command) error {
+		helphelpers.Prepare(cmd)
+		return usage(cmd)
+	})
 }
