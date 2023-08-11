@@ -57,7 +57,7 @@ function GetGo($version) {
 
 if ($version -eq "gotip") {
     #Exit 0
-    $latest = Invoke-WebRequest -Uri "https://golang.org/VERSION?m=text" -UseBasicParsing | Select-Object -ExpandProperty Content -ErrorAction Stop
+    $latest = (Invoke-WebRequest -Uri "https://golang.org/VERSION?m=text" -UseBasicParsing | Select-Object -ExpandProperty Content -ErrorAction Stop).Split([Environment]::NewLine) | select -first 1
     GetGo $latest
     $env:GOROOT_BOOTSTRAP = $env:GOROOT
     $env:GOROOT = "$binDir\go\go-tip"
