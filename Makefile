@@ -19,7 +19,7 @@ test: vet
 	@go run _scripts/make.go test -v
 
 vet:
-	@go vet $$(go list ./... | grep -v native)
+	@go vet -tags exp.linuxppc64le $$(go list -tags exp.linuxppc64le ./... | grep -v native)
 
 test-proc-run:
 	@go run _scripts/make.go test -s proc -r $(RUN)
