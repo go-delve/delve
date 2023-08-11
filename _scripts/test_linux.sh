@@ -22,7 +22,7 @@ function getgo {
 
 if [ "$version" = "gotip" ]; then
 	echo Building Go from tip
-	getgo $(curl https://go.dev/VERSION?m=text)
+	getgo $(curl https://go.dev/VERSION?m=text | head -1)
 	export GOROOT_BOOTSTRAP=$GOROOT
 	export GOROOT=/usr/local/go/go-tip
 	git clone https://go.googlesource.com/go /usr/local/go/go-tip
