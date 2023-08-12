@@ -1051,7 +1051,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			for {
 				n, err := reader.Read(out[:])
 				if err != nil {
-					if errors.Is(io.EOF, err) {
+					if err == io.EOF {
 						return
 					}
 					s.config.log.Errorf("failed read by %s - %v ", category, err)
