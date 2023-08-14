@@ -662,7 +662,7 @@ func LLDBAttach(pid int, path string, waitFor *proc.WaitFor, debugInfoDirs []str
 // debugging PIEs.
 func (p *gdbProcess) EntryPoint() (uint64, error) {
 	var entryPoint uint64
-	if p.bi.GOOS == "darwin" && p.bi.Arch.Name == "arm64" {
+	if p.bi.GOOS == "darwin" {
 		// There is no auxv on darwin, however, we can get the location of the mach-o
 		// header from the debugserver by going through the loaded libraries, which includes
 		// the exe itself

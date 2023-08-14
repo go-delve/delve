@@ -1805,11 +1805,17 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 	}
 
 	if entryPoint != 0 {
-		// This is a little bit hacky. We use the entryPoint variable, but it
-		// actually holds the address of the mach-o header. We can use this
-		// to calculate the offset to the non-aslr location of the mach-o header
-		// (which is 0x100000000)
-		image.StaticBase = entryPoint - 0x100000000
+		machoOff := uint64(0x100000000)
+		for _, ld := range exe.Loads {
+			if seg, _ := ld.(*macho.Segment); seg != nil {
+				if seg.Name == "__TEXT" {
+					machoOff = seg.Addr
+					break
+				}
+			}
+		}
+		logflags.DebuggerLogger().Debugf("entryPoint %#x machoOff %#x", entryPoint, machoOff)
+		image.StaticBase = entryPoint - machoOff
 	}
 
 	image.closer = exe
