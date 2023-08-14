@@ -61,13 +61,24 @@ func GoTestBuildCombinedOutput(debugname string, pkgs []string, buildflags strin
 }
 
 func goBuildArgs(debugname string, pkgs []string, buildflags string, isTest bool) []string {
-	args := []string{"-o", debugname}
+	var args []string
+
+	bfv := config.SplitQuotedFields(buildflags, '\'')
+	if len(bfv) >= 2 && bfv[0] == "-C" {
+		args = append(args, bfv[:2]...)
+		bfv = bfv[2:]
+	} else if len(bfv) >= 1 && strings.HasPrefix(bfv[0], "-C=") {
+		args = append(args, bfv[0])
+		bfv = bfv[1:]
+	}
+
+	args = append(args, "-o", debugname)
 	if isTest {
 		args = append([]string{"-c"}, args...)
 	}
 	args = append(args, "-gcflags", "all=-N -l")
 	if buildflags != "" {
-		args = append(args, config.SplitQuotedFields(buildflags, '\'')...)
+		args = append(args, bfv...)
 	}
 	args = append(args, pkgs...)
 	return args
