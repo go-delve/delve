@@ -24,20 +24,19 @@ func Compatible(producer string, warnonly bool) error {
 	if ver.IsDevel() {
 		return nil
 	}
-	verstr := fmt.Sprintf("%d.%d.%d", ver.Major, ver.Minor, ver.Rev)
-	if !ver.AfterOrEqual(GoVersion{MinSupportedVersionOfGoMajor, MinSupportedVersionOfGoMinor, -1, 0, 0, ""}) {
+	if !ver.AfterOrEqual(GoVersion{MinSupportedVersionOfGoMajor, MinSupportedVersionOfGoMinor, betaRev(0), "", ""}) {
 		if warnonly {
-			logflags.WriteError(fmt.Sprintf(goTooOldWarn, verstr))
+			logflags.WriteError(fmt.Sprintf(goTooOldWarn, ver.String()))
 			return nil
 		}
-		return fmt.Errorf(goTooOldErr, verstr)
+		return fmt.Errorf(goTooOldErr, ver.String())
 	}
-	if ver.AfterOrEqual(GoVersion{MaxSupportedVersionOfGoMajor, MaxSupportedVersionOfGoMinor + 1, -1, 0, 0, ""}) {
+	if ver.AfterOrEqual(GoVersion{MaxSupportedVersionOfGoMajor, MaxSupportedVersionOfGoMinor + 1, betaRev(0), "", ""}) {
 		if warnonly {
-			logflags.WriteError(fmt.Sprintf(dlvTooOldWarn, verstr))
+			logflags.WriteError(fmt.Sprintf(dlvTooOldWarn, ver.String()))
 			return nil
 		}
-		return fmt.Errorf(dlvTooOldErr, verstr)
+		return fmt.Errorf(dlvTooOldErr, ver.String())
 	}
 	return nil
 }
