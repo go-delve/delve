@@ -1098,10 +1098,10 @@ func TestTraceEBPF(t *testing.T) {
 	output, err := ioutil.ReadAll(rdr)
 	assertNoError(err, t, "ReadAll")
 
+	cmd.Wait()
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
 	}
-	cmd.Wait()
 }
 
 func TestTraceEBPF2(t *testing.T) {
@@ -1158,10 +1158,10 @@ func TestTraceEBPF2(t *testing.T) {
 	output, err := ioutil.ReadAll(rdr)
 	assertNoError(err, t, "ReadAll")
 
+	cmd.Wait()
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
 	}
-	cmd.Wait()
 }
 
 func TestTraceEBPF3(t *testing.T) {
@@ -1206,10 +1206,10 @@ func TestTraceEBPF3(t *testing.T) {
 	output, err := ioutil.ReadAll(rdr)
 	assertNoError(err, t, "ReadAll")
 
+	cmd.Wait()
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
 	}
-	cmd.Wait()
 }
 
 func TestTraceEBPF4(t *testing.T) {
@@ -1254,10 +1254,10 @@ func TestTraceEBPF4(t *testing.T) {
 	output, err := ioutil.ReadAll(rdr)
 	assertNoError(err, t, "ReadAll")
 
+	cmd.Wait()
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
 	}
-	cmd.Wait()
 }
 
 func TestDlvTestChdir(t *testing.T) {
