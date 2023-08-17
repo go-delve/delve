@@ -444,9 +444,21 @@ func (grp *TargetGroup) Step() (err error) {
 
 // sameGoroutineCondition returns an expression that evaluates to true when
 // the current goroutine is g.
-func sameGoroutineCondition(g *G) ast.Expr {
+func sameGoroutineCondition(bi *BinaryInfo, g *G, threadID int) ast.Expr {
 	if g == nil {
-		return nil
+		if len(bi.Images[0].compileUnits) == 0 {
+			// It's unclear what the right behavior is here. We are probably
+			// debugging a process without debug info, this means we can't properly
+			// create a same goroutine condition (we don't have a description for the
+			// runtime.g type). If we don't set the condition then 'next' (and step,
+			// stepout) will work for single-threaded programs (in limited
+			// circumstances) but fail in presence of any concurrency.
+			// If we set a thread ID condition even single threaded programs can fail
+			// due to goroutine migration, but sometimes it will work even with
+			// concurrency.
+			return nil
+		}
+		return astutil.Eql(astutil.PkgVar("runtime", "threadid"), astutil.Int(int64(threadID)))
 	}
 	return astutil.Eql(astutil.Sel(astutil.PkgVar("runtime", "curg"), "goid"), astutil.Int(int64(g.ID)))
 }
@@ -492,7 +504,7 @@ func (grp *TargetGroup) StepOut() error {
 		return grp.Continue()
 	}
 
-	sameGCond := sameGoroutineCondition(selg)
+	sameGCond := sameGoroutineCondition(dbp.BinInfo(), selg, curthread.ThreadID())
 
 	if backward {
 		if err := stepOutReverse(dbp, topframe, retframe, sameGCond); err != nil {
@@ -544,7 +556,7 @@ func (grp *TargetGroup) StepInstruction() (err error) {
 		if g.Thread == nil {
 			// Step called on parked goroutine
 			if _, err := dbp.SetBreakpoint(0, g.PC, NextBreakpoint,
-				sameGoroutineCondition(dbp.SelectedGoroutine())); err != nil {
+				sameGoroutineCondition(dbp.BinInfo(), dbp.SelectedGoroutine(), thread.ThreadID())); err != nil {
 				return err
 			}
 			return grp.Continue()
@@ -637,7 +649,7 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 		}
 	}
 
-	sameGCond := sameGoroutineCondition(selg)
+	sameGCond := sameGoroutineCondition(dbp.BinInfo(), selg, curthread.ThreadID())
 
 	var firstPCAfterPrologue uint64
 
@@ -667,10 +679,7 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 		return err
 	}
 
-	var sameFrameCond ast.Expr
-	if sameGCond != nil {
-		sameFrameCond = astutil.And(sameGCond, frameoffCondition(&topframe))
-	}
+	sameFrameCond := astutil.And(sameGCond, frameoffCondition(&topframe))
 
 	if stepInto && !backward {
 		err := setStepIntoBreakpoints(dbp, topframe.Current.Fn, text, topframe, sameGCond)
@@ -818,7 +827,7 @@ func stepIntoCallback(curthread Thread, p *Target) (bool, error) {
 	// here we either set a breakpoint into the destination of the CALL
 	// instruction or we determined that the called function is hidden,
 	// either way we need to resume execution
-	if err = setStepIntoBreakpoint(p, fn, text, sameGoroutineCondition(g)); err != nil {
+	if err = setStepIntoBreakpoint(p, fn, text, sameGoroutineCondition(p.BinInfo(), g, curthread.ThreadID())); err != nil {
 		return false, err
 	}
 
@@ -1241,9 +1250,12 @@ type onNextGoroutineWalker struct {
 }
 
 func (w *onNextGoroutineWalker) Visit(n ast.Node) ast.Visitor {
-	if binx, isbin := n.(*ast.BinaryExpr); isbin && binx.Op == token.EQL && exprToString(binx.X) == "runtime.curg.goid" {
-		w.ret, w.err = evalBreakpointCondition(w.tgt, w.thread, n.(ast.Expr))
-		return nil
+	if binx, isbin := n.(*ast.BinaryExpr); isbin && binx.Op == token.EQL {
+		x := exprToString(binx.X)
+		if x == "runtime.curg.goid" || x == "runtime.threadid" {
+			w.ret, w.err = evalBreakpointCondition(w.tgt, w.thread, n.(ast.Expr))
+			return nil
+		}
 	}
 	return w
 }

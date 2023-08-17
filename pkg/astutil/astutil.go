@@ -30,11 +30,17 @@ func Int(n int64) *ast.BasicLit {
 }
 
 // And returns an expression evaluating 'x && y'.
-func And(x, y ast.Expr) *ast.BinaryExpr {
+func And(x, y ast.Expr) ast.Expr {
+	if x == nil || y == nil {
+		return nil
+	}
 	return &ast.BinaryExpr{Op: token.LAND, X: x, Y: y}
 }
 
 // Or returns an expression evaluating 'x || y'.
-func Or(x, y ast.Expr) *ast.BinaryExpr {
+func Or(x, y ast.Expr) ast.Expr {
+	if x == nil || y == nil {
+		return nil
+	}
 	return &ast.BinaryExpr{Op: token.LOR, X: x, Y: y}
 }
