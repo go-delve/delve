@@ -124,8 +124,8 @@ func (a *Arch) DerefTLS() bool {
 // getAsmRegister returns the value of the asm register asmreg using the asmRegisters table of arch.
 // The interpretation of asmreg is architecture specific and defined by the disassembler.
 // A mask value of 0 inside asmRegisters is equivalent to ^uint64(0).
-func (arch *Arch) getAsmRegister(regs *op.DwarfRegisters, asmreg int) (uint64, error) {
-	hwreg, ok := arch.asmRegisters[asmreg]
+func (a *Arch) getAsmRegister(regs *op.DwarfRegisters, asmreg int) (uint64, error) {
+	hwreg, ok := a.asmRegisters[asmreg]
 	if !ok {
 		return 0, ErrUnknownRegister
 	}

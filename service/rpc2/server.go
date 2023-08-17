@@ -684,8 +684,8 @@ type AttachedToExistingProcessOut struct {
 }
 
 // AttachedToExistingProcess returns whether we attached to a running process or not
-func (c *RPCServer) AttachedToExistingProcess(arg AttachedToExistingProcessIn, out *AttachedToExistingProcessOut) error {
-	if c.config.Debugger.AttachPid != 0 {
+func (s *RPCServer) AttachedToExistingProcess(arg AttachedToExistingProcessIn, out *AttachedToExistingProcessOut) error {
+	if s.config.Debugger.AttachPid != 0 {
 		out.Answer = true
 	}
 	return nil
@@ -722,9 +722,9 @@ type FindLocationOut struct {
 //	* *<address> returns the location corresponding to the specified address
 //
 // NOTE: this function does not actually set breakpoints.
-func (c *RPCServer) FindLocation(arg FindLocationIn, out *FindLocationOut) error {
+func (s *RPCServer) FindLocation(arg FindLocationIn, out *FindLocationOut) error {
 	var err error
-	out.Locations, out.SubstituteLocExpr, err = c.debugger.FindLocation(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall, arg.Loc, arg.IncludeNonExecutableLines, arg.SubstitutePathRules)
+	out.Locations, out.SubstituteLocExpr, err = s.debugger.FindLocation(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall, arg.Loc, arg.IncludeNonExecutableLines, arg.SubstitutePathRules)
 	return err
 }
 
@@ -745,15 +745,15 @@ type DisassembleOut struct {
 // Scope is used to mark the instruction the specified goroutine is stopped at.
 //
 // Disassemble will also try to calculate the destination address of an absolute indirect CALL if it happens to be the instruction the selected goroutine is stopped at.
-func (c *RPCServer) Disassemble(arg DisassembleIn, out *DisassembleOut) error {
+func (s *RPCServer) Disassemble(arg DisassembleIn, out *DisassembleOut) error {
 	var err error
-	insts, err := c.debugger.Disassemble(arg.Scope.GoroutineID, arg.StartPC, arg.EndPC)
+	insts, err := s.debugger.Disassemble(arg.Scope.GoroutineID, arg.StartPC, arg.EndPC)
 	if err != nil {
 		return err
 	}
 	out.Disassemble = make(api.AsmInstructions, len(insts))
 	for i := range insts {
-		out.Disassemble[i] = api.ConvertAsmInstruction(insts[i], c.debugger.AsmInstructionText(&insts[i], proc.AssemblyFlavour(arg.Flavour)))
+		out.Disassemble[i] = api.ConvertAsmInstruction(insts[i], s.debugger.AsmInstructionText(&insts[i], proc.AssemblyFlavour(arg.Flavour)))
 	}
 	return nil
 }

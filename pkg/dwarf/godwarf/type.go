@@ -102,7 +102,7 @@ type BasicType struct {
 	BitOffset int64
 }
 
-func (b *BasicType) Basic() *BasicType { return b }
+func (t *BasicType) Basic() *BasicType { return t }
 
 func (t *BasicType) String() string { return t.stringIntl(nil) }
 

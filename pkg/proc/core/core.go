@@ -277,18 +277,18 @@ func (p *process) SupportsBPF() bool {
 	return false
 }
 
-func (dbp *process) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProbeArgMap) error {
+func (p *process) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProbeArgMap) error {
 	panic("not implemented")
 }
 
 // StartCallInjection notifies the backend that we are about to inject a function call.
 func (p *process) StartCallInjection() (func(), error) { return func() {}, nil }
 
-func (dbp *process) EnableURetProbes() error {
+func (p *process) EnableURetProbes() error {
 	panic("not implemented")
 }
 
-func (dbp *process) DisableURetProbes() error {
+func (p *process) DisableURetProbes() error {
 	panic("not implemented")
 }
 
@@ -492,6 +492,6 @@ func (p *process) DumpProcessNotes(notes []elfwriter.Note, threadDone func()) (t
 	return false, notes, nil
 }
 
-func (dbp *process) GetBufferedTracepoints() []ebpf.RawUProbeParams {
+func (p *process) GetBufferedTracepoints() []ebpf.RawUProbeParams {
 	return nil
 }

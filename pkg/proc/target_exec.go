@@ -1248,8 +1248,8 @@ func (w *onNextGoroutineWalker) Visit(n ast.Node) ast.Visitor {
 	return w
 }
 
-func (tgt *Target) clearHardcodedBreakpoints() {
-	threads := tgt.ThreadList()
+func (t *Target) clearHardcodedBreakpoints() {
+	threads := t.ThreadList()
 	for _, thread := range threads {
 		if thread.Breakpoint().Breakpoint != nil && thread.Breakpoint().LogicalID() == hardcodedBreakpointID {
 			thread.Breakpoint().Active = false
@@ -1263,10 +1263,10 @@ func (tgt *Target) clearHardcodedBreakpoints() {
 // program's text) and sets a fake breakpoint on them with logical id
 // hardcodedBreakpointID.
 // It checks trapthread and all threads that have SoftExc returning true.
-func (tgt *Target) handleHardcodedBreakpoints(trapthread Thread, threads []Thread) error {
-	mem := tgt.Memory()
-	arch := tgt.BinInfo().Arch
-	recorded, _ := tgt.recman.Recorded()
+func (t *Target) handleHardcodedBreakpoints(trapthread Thread, threads []Thread) error {
+	mem := t.Memory()
+	arch := t.BinInfo().Arch
+	recorded, _ := t.recman.Recorded()
 
 	isHardcodedBreakpoint := func(thread Thread, pc uint64) uint64 {
 		for _, bpinstr := range [][]byte{arch.BreakpointInstruction(), arch.AltBreakpointInstruction()} {
@@ -1310,7 +1310,7 @@ func (tgt *Target) handleHardcodedBreakpoints(trapthread Thread, threads []Threa
 		hcbp.Logical = &LogicalBreakpoint{}
 		hcbp.Logical.Name = HardcodedBreakpoint
 		hcbp.Breaklets = []*Breaklet{{Kind: UserBreakpoint, LogicalID: hardcodedBreakpointID}}
-		tgt.StopReason = StopHardcodedBreakpoint
+		t.StopReason = StopHardcodedBreakpoint
 	}
 
 	for _, thread := range threads {
@@ -1330,7 +1330,7 @@ func (tgt *Target) handleHardcodedBreakpoints(trapthread Thread, threads []Threa
 
 		switch {
 		case loc.Fn.Name == "runtime.breakpoint":
-			if recorded, _ := tgt.recman.Recorded(); recorded {
+			if recorded, _ := t.recman.Recorded(); recorded {
 				setHardcodedBreakpoint(thread, loc)
 				continue
 			}
@@ -1344,11 +1344,11 @@ func (tgt *Target) handleHardcodedBreakpoints(trapthread Thread, threads []Threa
 			// runtime.Breakpoint.
 			// On go < 1.8 it was sufficient to single-step twice on go1.8 a change
 			// to the compiler requires 4 steps.
-			if err := stepInstructionOut(tgt, thread, "runtime.breakpoint", "runtime.Breakpoint"); err != nil {
+			if err := stepInstructionOut(t, thread, "runtime.breakpoint", "runtime.Breakpoint"); err != nil {
 				return err
 			}
 			setHardcodedBreakpoint(thread, loc)
-		case g == nil || tgt.fncallForG[g.ID] == nil:
+		case g == nil || t.fncallForG[g.ID] == nil:
 			if isHardcodedBreakpoint(thread, loc.PC) > 0 {
 				stepOverBreak(thread, loc.PC)
 				setHardcodedBreakpoint(thread, loc)

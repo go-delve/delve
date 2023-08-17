@@ -237,7 +237,7 @@ func (check *scopeCheck) Parse(descr string, t *testing.T) {
 	}
 }
 
-func (scopeCheck *scopeCheck) checkLocalsAndArgs(p *proc.Target, t *testing.T) (*proc.EvalScope, bool) {
+func (check *scopeCheck) checkLocalsAndArgs(p *proc.Target, t *testing.T) (*proc.EvalScope, bool) {
 	scope, err := proc.GoroutineScope(p, p.CurrentThread())
 	assertNoError(err, t, "GoroutineScope()")
 
@@ -249,16 +249,16 @@ func (scopeCheck *scopeCheck) checkLocalsAndArgs(p *proc.Target, t *testing.T) (
 	assertNoError(err, t, "LocalVariables()")
 
 	for _, arg := range args {
-		scopeCheck.checkVar(arg, t)
+		check.checkVar(arg, t)
 	}
 
 	for _, local := range locals {
-		scopeCheck.checkVar(local, t)
+		check.checkVar(local, t)
 	}
 
-	for i := range scopeCheck.varChecks {
-		if !scopeCheck.varChecks[i].ok {
-			t.Errorf("%d: variable %s not found", scopeCheck.line, scopeCheck.varChecks[i].name)
+	for i := range check.varChecks {
+		if !check.varChecks[i].ok {
+			t.Errorf("%d: variable %s not found", check.line, check.varChecks[i].name)
 			ok = false
 		}
 	}
