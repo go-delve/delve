@@ -186,7 +186,7 @@ func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 		iparam.Addr = FakeAddressBase
 
 		switch iparam.Kind {
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr, reflect.Bool:
 			iparam.RealType = &godwarf.IntType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 8}}}
 		case reflect.String:
 			strLen := binary.LittleEndian.Uint64(val[8:])
