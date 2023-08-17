@@ -36,34 +36,34 @@ type AMD64PtraceFpRegs struct {
 }
 
 // Decode decodes an XSAVE area to a list of name/value pairs of registers.
-func (xsave *AMD64Xstate) Decode() []proc.Register {
+func (xstate *AMD64Xstate) Decode() []proc.Register {
 	var regs []proc.Register
 	// x87 registers
-	regs = proc.AppendUint64Register(regs, "CW", uint64(xsave.Cwd))
-	regs = proc.AppendUint64Register(regs, "SW", uint64(xsave.Swd))
-	regs = proc.AppendUint64Register(regs, "TW", uint64(xsave.Ftw))
-	regs = proc.AppendUint64Register(regs, "FOP", uint64(xsave.Fop))
-	regs = proc.AppendUint64Register(regs, "FIP", xsave.Rip)
-	regs = proc.AppendUint64Register(regs, "FDP", xsave.Rdp)
+	regs = proc.AppendUint64Register(regs, "CW", uint64(xstate.Cwd))
+	regs = proc.AppendUint64Register(regs, "SW", uint64(xstate.Swd))
+	regs = proc.AppendUint64Register(regs, "TW", uint64(xstate.Ftw))
+	regs = proc.AppendUint64Register(regs, "FOP", uint64(xstate.Fop))
+	regs = proc.AppendUint64Register(regs, "FIP", xstate.Rip)
+	regs = proc.AppendUint64Register(regs, "FDP", xstate.Rdp)
 
-	for i := 0; i < len(xsave.StSpace); i += 4 {
+	for i := 0; i < len(xstate.StSpace); i += 4 {
 		var buf bytes.Buffer
-		binary.Write(&buf, binary.LittleEndian, uint64(xsave.StSpace[i+1])<<32|uint64(xsave.StSpace[i]))
-		binary.Write(&buf, binary.LittleEndian, uint16(xsave.StSpace[i+2]))
+		binary.Write(&buf, binary.LittleEndian, uint64(xstate.StSpace[i+1])<<32|uint64(xstate.StSpace[i]))
+		binary.Write(&buf, binary.LittleEndian, uint16(xstate.StSpace[i+2]))
 		regs = proc.AppendBytesRegister(regs, fmt.Sprintf("ST(%d)", i/4), buf.Bytes())
 	}
 
 	// SSE registers
-	regs = proc.AppendUint64Register(regs, "MXCSR", uint64(xsave.Mxcsr))
-	regs = proc.AppendUint64Register(regs, "MXCSR_MASK", uint64(xsave.MxcrMask))
+	regs = proc.AppendUint64Register(regs, "MXCSR", uint64(xstate.Mxcsr))
+	regs = proc.AppendUint64Register(regs, "MXCSR_MASK", uint64(xstate.MxcrMask))
 
-	for i := 0; i < len(xsave.XmmSpace); i += 16 {
+	for i := 0; i < len(xstate.XmmSpace); i += 16 {
 		n := i / 16
-		regs = proc.AppendBytesRegister(regs, fmt.Sprintf("XMM%d", n), xsave.XmmSpace[i:i+16])
-		if xsave.AvxState {
-			regs = proc.AppendBytesRegister(regs, fmt.Sprintf("YMM%d", n), xsave.YmmSpace[i:i+16])
-			if xsave.Avx512State {
-				regs = proc.AppendBytesRegister(regs, fmt.Sprintf("ZMM%d", n), xsave.ZmmSpace[n*32:(n+1)*32])
+		regs = proc.AppendBytesRegister(regs, fmt.Sprintf("XMM%d", n), xstate.XmmSpace[i:i+16])
+		if xstate.AvxState {
+			regs = proc.AppendBytesRegister(regs, fmt.Sprintf("YMM%d", n), xstate.YmmSpace[i:i+16])
+			if xstate.Avx512State {
+				regs = proc.AppendBytesRegister(regs, fmt.Sprintf("ZMM%d", n), xstate.ZmmSpace[n*32:(n+1)*32])
 			}
 		}
 	}

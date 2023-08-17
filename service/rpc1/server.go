@@ -292,8 +292,8 @@ func (s *RPCServer) ListGoroutines(arg interface{}, goroutines *[]*api.Goroutine
 	return nil
 }
 
-func (c *RPCServer) AttachedToExistingProcess(arg interface{}, answer *bool) error {
-	if c.config.Debugger.AttachPid != 0 {
+func (s *RPCServer) AttachedToExistingProcess(arg interface{}, answer *bool) error {
+	if s.config.Debugger.AttachPid != 0 {
 		*answer = true
 	}
 	return nil
@@ -304,9 +304,9 @@ type FindLocationArgs struct {
 	Loc   string
 }
 
-func (c *RPCServer) FindLocation(args FindLocationArgs, answer *[]api.Location) error {
+func (s *RPCServer) FindLocation(args FindLocationArgs, answer *[]api.Location) error {
 	var err error
-	*answer, _, err = c.debugger.FindLocation(args.Scope.GoroutineID, args.Scope.Frame, args.Scope.DeferredCall, args.Loc, false, nil)
+	*answer, _, err = s.debugger.FindLocation(args.Scope.GoroutineID, args.Scope.Frame, args.Scope.DeferredCall, args.Loc, false, nil)
 	return err
 }
 
@@ -316,15 +316,15 @@ type DisassembleRequest struct {
 	Flavour        api.AssemblyFlavour
 }
 
-func (c *RPCServer) Disassemble(args DisassembleRequest, answer *api.AsmInstructions) error {
+func (s *RPCServer) Disassemble(args DisassembleRequest, answer *api.AsmInstructions) error {
 	var err error
-	insts, err := c.debugger.Disassemble(args.Scope.GoroutineID, args.StartPC, args.EndPC)
+	insts, err := s.debugger.Disassemble(args.Scope.GoroutineID, args.StartPC, args.EndPC)
 	if err != nil {
 		return err
 	}
 	*answer = make(api.AsmInstructions, len(insts))
 	for i := range insts {
-		(*answer)[i] = api.ConvertAsmInstruction(insts[i], c.debugger.AsmInstructionText(&insts[i], proc.AssemblyFlavour(args.Flavour)))
+		(*answer)[i] = api.ConvertAsmInstruction(insts[i], s.debugger.AsmInstructionText(&insts[i], proc.AssemblyFlavour(args.Flavour)))
 	}
 	return nil
 }

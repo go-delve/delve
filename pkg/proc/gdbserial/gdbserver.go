@@ -77,6 +77,8 @@ import (
 	"sync"
 	"time"
 
+	isatty "github.com/mattn/go-isatty"
+
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/elfwriter"
 	"github.com/go-delve/delve/pkg/logflags"
@@ -84,7 +86,6 @@ import (
 	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 	"github.com/go-delve/delve/pkg/proc/linutil"
 	"github.com/go-delve/delve/pkg/proc/macutil"
-	isatty "github.com/mattn/go-isatty"
 )
 
 const (
@@ -375,11 +376,11 @@ func (p *gdbProcess) SupportsBPF() bool {
 	return false
 }
 
-func (dbp *gdbProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
+func (p *gdbProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
 	return nil
 }
 
-func (dbp *gdbProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProbeArgMap) error {
+func (p *gdbProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf.UProbeArgMap) error {
 	panic("not implemented")
 }
 
@@ -1977,7 +1978,7 @@ func (regs *gdbRegisters) byName(name string) uint64 {
 	return binary.LittleEndian.Uint64(reg.value)
 }
 
-func (r *gdbRegisters) FloatLoadError() error {
+func (regs *gdbRegisters) FloatLoadError() error {
 	return nil
 }
 
