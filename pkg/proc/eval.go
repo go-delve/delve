@@ -31,12 +31,13 @@ const goDictionaryName = ".dict"
 // current location (PC), and canonical frame address.
 type EvalScope struct {
 	Location
-	Regs    op.DwarfRegisters
-	Mem     MemoryReadWriter // Target's memory
-	g       *G
-	BinInfo *BinaryInfo
-	target  *Target
-	loadCfg *LoadConfig
+	Regs     op.DwarfRegisters
+	Mem      MemoryReadWriter // Target's memory
+	g        *G
+	threadID int
+	BinInfo  *BinaryInfo
+	target   *Target
+	loadCfg  *LoadConfig
 
 	frameOffset int64
 
@@ -78,6 +79,7 @@ func ConvertEvalScope(dbp *Target, gid int64, frame, deferCall int) (*EvalScope,
 		return nil, err
 	}
 	ct := dbp.CurrentThread()
+	threadID := ct.ThreadID()
 	g, err := FindGoroutine(dbp, gid)
 	if err != nil {
 		return nil, err
@@ -90,6 +92,9 @@ func ConvertEvalScope(dbp *Target, gid int64, frame, deferCall int) (*EvalScope,
 
 	var locs []Stackframe
 	if g != nil {
+		if g.Thread != nil {
+			threadID = g.Thread.ThreadID()
+		}
 		locs, err = GoroutineStacktrace(dbp, g, frame+1, opts)
 	} else {
 		locs, err = ThreadStacktrace(dbp, ct, frame+1)
@@ -115,7 +120,7 @@ func ConvertEvalScope(dbp *Target, gid int64, frame, deferCall int) (*EvalScope,
 		return d.EvalScope(dbp, ct)
 	}
 
-	return FrameToScope(dbp, dbp.Memory(), g, locs[frame:]...), nil
+	return FrameToScope(dbp, dbp.Memory(), g, threadID, locs[frame:]...), nil
 }
 
 // FrameToScope returns a new EvalScope for frames[0].
@@ -123,7 +128,7 @@ func ConvertEvalScope(dbp *Target, gid int64, frame, deferCall int) (*EvalScope,
 // frames[0].Regs.SP() and frames[1].Regs.CFA will be cached.
 // Otherwise all memory between frames[0].Regs.SP() and frames[0].Regs.CFA
 // will be cached.
-func FrameToScope(t *Target, thread MemoryReadWriter, g *G, frames ...Stackframe) *EvalScope {
+func FrameToScope(t *Target, thread MemoryReadWriter, g *G, threadID int, frames ...Stackframe) *EvalScope {
 	// Creates a cacheMem that will preload the entire stack frame the first
 	// time any local variable is read.
 	// Remember that the stack grows downward in memory.
@@ -138,7 +143,7 @@ func FrameToScope(t *Target, thread MemoryReadWriter, g *G, frames ...Stackframe
 		thread = cacheMemory(thread, minaddr, int(maxaddr-minaddr))
 	}
 
-	s := &EvalScope{Location: frames[0].Call, Regs: frames[0].Regs, Mem: thread, g: g, BinInfo: t.BinInfo(), target: t, frameOffset: frames[0].FrameOffset()}
+	s := &EvalScope{Location: frames[0].Call, Regs: frames[0].Regs, Mem: thread, g: g, BinInfo: t.BinInfo(), target: t, frameOffset: frames[0].FrameOffset(), threadID: threadID}
 	s.PC = frames[0].lastpc
 	return s
 }
@@ -152,7 +157,7 @@ func ThreadScope(t *Target, thread Thread) (*EvalScope, error) {
 	if len(locations) < 1 {
 		return nil, errors.New("could not decode first frame")
 	}
-	return FrameToScope(t, thread.ProcessMemory(), nil, locations...), nil
+	return FrameToScope(t, thread.ProcessMemory(), nil, thread.ThreadID(), locations...), nil
 }
 
 // GoroutineScope returns an EvalScope for the goroutine running on the given thread.
@@ -168,7 +173,11 @@ func GoroutineScope(t *Target, thread Thread) (*EvalScope, error) {
 	if err != nil {
 		return nil, err
 	}
-	return FrameToScope(t, thread.ProcessMemory(), g, locations...), nil
+	threadID := 0
+	if g.Thread != nil {
+		threadID = g.Thread.ThreadID()
+	}
+	return FrameToScope(t, thread.ProcessMemory(), g, threadID, locations...), nil
 }
 
 // EvalExpression returns the value of the given expression.
@@ -634,7 +643,7 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 				if scope.g == nil {
 					typ, err := scope.BinInfo.findType("runtime.g")
 					if err != nil {
-						return nil, fmt.Errorf("blah: %v", err)
+						return nil, fmt.Errorf("could not find runtime.g: %v", err)
 					}
 					gvar := newVariable("curg", fakeAddressUnresolv, typ, scope.BinInfo, scope.Mem)
 					gvar.loaded = true
@@ -646,6 +655,8 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 				return scope.g.variable.clone(), nil
 			} else if maybePkg.Name == "runtime" && node.Sel.Name == "frameoff" {
 				return newConstant(constant.MakeInt64(scope.frameOffset), scope.Mem), nil
+			} else if maybePkg.Name == "runtime" && node.Sel.Name == "threadid" {
+				return newConstant(constant.MakeInt64(int64(scope.threadID)), scope.Mem), nil
 			} else if v, err := scope.findGlobal(maybePkg.Name, node.Sel.Name); err == nil {
 				return v, nil
 			}

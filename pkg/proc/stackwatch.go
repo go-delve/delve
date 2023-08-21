@@ -38,7 +38,7 @@ func (t *Target) setStackWatchBreakpoints(scope *EvalScope, watchpoint *Breakpoi
 		return err
 	}
 
-	sameGCond := sameGoroutineCondition(scope.g)
+	sameGCond := sameGoroutineCondition(scope.BinInfo, scope.g, 0)
 	retFrameCond := astutil.And(sameGCond, frameoffCondition(&retframe))
 
 	var deferpc uint64

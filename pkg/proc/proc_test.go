@@ -1199,7 +1199,7 @@ func evalVariableOrError(p *proc.Target, symbol string) (*proc.Variable, error) 
 		var frame proc.Stackframe
 		frame, err = findFirstNonRuntimeFrame(p)
 		if err == nil {
-			scope = proc.FrameToScope(p, p.Memory(), nil, frame)
+			scope = proc.FrameToScope(p, p.Memory(), nil, 0, frame)
 		}
 	} else {
 		scope, err = proc.GoroutineScope(p, p.CurrentThread())
@@ -3101,7 +3101,7 @@ func TestIssue871(t *testing.T) {
 			var frame proc.Stackframe
 			frame, err = findFirstNonRuntimeFrame(p)
 			if err == nil {
-				scope = proc.FrameToScope(p, p.Memory(), nil, frame)
+				scope = proc.FrameToScope(p, p.Memory(), nil, 0, frame)
 			}
 		} else {
 			scope, err = proc.GoroutineScope(p, p.CurrentThread())
@@ -3514,7 +3514,7 @@ func TestIssue1034(t *testing.T) {
 		assertNoError(grp.Continue(), t, "Continue()")
 		frames, err := proc.GoroutineStacktrace(p, p.SelectedGoroutine(), 10, 0)
 		assertNoError(err, t, "Stacktrace")
-		scope := proc.FrameToScope(p, p.Memory(), nil, frames[2:]...)
+		scope := proc.FrameToScope(p, p.Memory(), nil, 0, frames[2:]...)
 		args, _ := scope.FunctionArguments(normalLoadConfig)
 		assertNoError(err, t, "FunctionArguments()")
 		if len(args) > 0 {
@@ -5277,8 +5277,8 @@ func TestDump(t *testing.T) {
 					t.Errorf("Frame mismatch %d.%d\nlive:\t%s\ncore:\t%s", gos[i].ID, j, convertFrame(p.BinInfo().Arch, &frames[j]), convertFrame(p.BinInfo().Arch, &cframes[j]))
 				}
 				if frames[j].Call.Fn != nil && frames[j].Call.Fn.Name == "main.main" {
-					scope = proc.FrameToScope(p, p.Memory(), gos[i], frames[j:]...)
-					cscope = proc.FrameToScope(c, c.Memory(), cgos[i], cframes[j:]...)
+					scope = proc.FrameToScope(p, p.Memory(), gos[i], 0, frames[j:]...)
+					cscope = proc.FrameToScope(c, c.Memory(), cgos[i], 0, cframes[j:]...)
 				}
 			}
 		}
