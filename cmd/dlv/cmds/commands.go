@@ -677,9 +677,8 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 		signal.Notify(ch, syscall.SIGINT)
 
 		go func() {
-			for range ch {
-				client.Halt()
-			}
+			<-ch
+			client.Halt()
 		}()
 
 		funcs, err := client.ListFunctions(regexp)
