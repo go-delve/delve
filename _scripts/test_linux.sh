@@ -3,17 +3,21 @@ set -e
 set -x
 
 apt-get -qq update
-apt-get install -y dwz wget make git gcc curl jq lsof
-
-dwz --version
+apt-get install -y gcc curl jq lsof
 
 version=$1
 arch=$2
 
+
+if [ "$arch" != "ppc64le" ]; then
+	apt-get install -y dwz
+	dwz --version
+fi
+
 function getgo {
 	export GOROOT=/usr/local/go/$1
 	if [ ! -d "$GOROOT" ]; then
-		wget -q https://dl.google.com/go/"$1".linux-"${arch}".tar.gz
+		curl -sO https://dl.google.com/go/"$1".linux-"${arch}".tar.gz
 		mkdir -p /usr/local/go
 		tar -C /usr/local/go -xzf "$1".linux-"${arch}".tar.gz
 		mv -f /usr/local/go/go "$GOROOT"
@@ -25,6 +29,7 @@ if [ "$version" = "gotip" ]; then
 	getgo $(curl https://go.dev/VERSION?m=text | head -1)
 	export GOROOT_BOOTSTRAP=$GOROOT
 	export GOROOT=/usr/local/go/go-tip
+	apt-get install -y git
 	git clone https://go.googlesource.com/go /usr/local/go/go-tip
 	cd /usr/local/go/go-tip/src
 	./make.bash
@@ -44,7 +49,9 @@ GOPATH=$(pwd)/go
 export GOPATH
 export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
 go version
-go install honnef.co/go/tools/cmd/staticcheck@2023.1 || true
+if [ "$arch" != "ppc64le" ]; then
+	go install honnef.co/go/tools/cmd/staticcheck@2023.1 || true
+fi
 
 uname -a
 echo "$PATH"
@@ -68,7 +75,7 @@ if [ "$arch" = "386" ]; then
 fi
 
 set +e
-make test
+go run _scripts/make.go test
 x=$?
 if [ "$version" = "gotip" ]; then
 	exit 0

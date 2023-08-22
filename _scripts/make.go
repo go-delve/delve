@@ -398,7 +398,9 @@ func testStandard() {
 		dopie := false
 		switch runtime.GOOS {
 		case "linux":
-			dopie = true
+			if runtime.GOARCH != "ppc64le" {
+				dopie = true
+			}
 		case "windows":
 			// windows/arm64 always uses pie buildmode, no need to test everything again.
 			// only on Go 1.15 or later, with CGO_ENABLED and gcc found in path
@@ -412,6 +414,11 @@ func testStandard() {
 						dopie = true
 					}
 				}
+			}
+		case "darwin":
+			if runtime.GOARCH == "amd64" {
+				// arm64 can only build in pie mode
+				dopie = true
 			}
 		}
 		if dopie {

@@ -5941,6 +5941,7 @@ func TestStacktraceExtlinkMac(t *testing.T) {
 	// Tests stacktrace for programs built using external linker.
 	// See issue #3194
 	skipUnlessOn(t, "darwin only", "darwin")
+	skipOn(t, "broken on darwin/amd64/pie", "darwin", "amd64", "pie")
 	withTestProcess("issue3194", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(grp.Continue(), t, "First Continue()")
