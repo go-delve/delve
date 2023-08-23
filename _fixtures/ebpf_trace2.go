@@ -12,7 +12,7 @@ func main() {
 	}
 	for i = 5; i < 10; i++ {
 		tracedFunction(i)
-		time.Sleep(time.Second)
+		time.Sleep(time.Millisecond)
 	}
 }
 
