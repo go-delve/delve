@@ -613,17 +613,6 @@ func (scope *EvalScope) image() *Image {
 	return scope.BinInfo.funcToImage(scope.Fn)
 }
 
-// DwarfReader returns the DwarfReader containing the
-// Dwarf information for the target process.
-func (scope *EvalScope) DwarfReader() *reader.Reader {
-	return scope.image().DwarfReader()
-}
-
-// PtrSize returns the size of a pointer.
-func (scope *EvalScope) PtrSize() int {
-	return scope.BinInfo.Arch.PtrSize()
-}
-
 func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 	switch node := t.(type) {
 	case *ast.CallExpr:
