@@ -672,6 +672,15 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 		}
 		client := rpc2.NewClientFromConn(clientConn)
 		defer client.Detach(true)
+
+		ch := make(chan os.Signal, 1)
+		signal.Notify(ch, syscall.SIGINT)
+
+		go func() {
+			<-ch
+			client.Halt()
+		}()
+
 		funcs, err := client.ListFunctions(regexp)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
