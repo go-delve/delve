@@ -228,7 +228,7 @@ If called with the locspec argument it will delete all the breakpoints matching 
 toggle <breakpoint name or id>`},
 		{aliases: []string{"goroutines", "grs"}, group: goroutineCmds, cmdFn: c.goroutines, helpMsg: `List program goroutines.
 
-	goroutines [-u|-r|-g|-s] [-t [depth]] [-l] [-with loc expr] [-without loc expr] [-group argument] [-exec command]
+	goroutines [-u|-r|-g|-s] [-t [depth]] [-l] [-with loc expr] [-without loc expr] [-group argument] [-chan expr] [-exec command]
 
 Print out info for every goroutine. The flag controls what information is shown along with each goroutine:
 
@@ -279,6 +279,14 @@ To only display user (or runtime) goroutines, use:
 	goroutines -with user
 	goroutines -without user
 
+CHANNELS
+	
+To only show goroutines waiting to send to or receive from a specific channel use:
+
+	goroutines -chan expr
+	
+Note that 'expr' must not contain spaces.
+
 GROUPING
 
 	goroutines -group (userloc|curloc|goloc|startloc|running|user)
@@ -318,7 +326,7 @@ Called with more arguments it will execute a command on the specified goroutine.
 	breakpoints [-a]
 
 Specifying -a prints all physical breakpoint, including internal breakpoints.`},
-		{aliases: []string{"print", "p"}, group: dataCmds, allowedPrefixes: onPrefix | deferredPrefix, cmdFn: printVar, helpMsg: `Evaluate an expression.
+		{aliases: []string{"print", "p"}, group: dataCmds, allowedPrefixes: onPrefix | deferredPrefix, cmdFn: c.printVar, helpMsg: `Evaluate an expression.
 
 	[goroutine <n>] [frame <m>] print [%format] <expression>
 
@@ -902,7 +910,7 @@ func (c *Commands) goroutines(t *Term, ctx callContext, argstr string) error {
 			fmt.Fprintf(t.stdout, "interrupted\n")
 			return nil
 		}
-		gs, groups, start, tooManyGroups, err = t.client.ListGoroutinesWithFilter(start, batchSize, filters, &group)
+		gs, groups, start, tooManyGroups, err = t.client.ListGoroutinesWithFilter(start, batchSize, filters, &group, &api.EvalScope{GoroutineID: -1, Frame: c.frame})
 		if err != nil {
 			return err
 		}
@@ -2090,7 +2098,9 @@ func parseFormatArg(args string) (fmtstr, argsOut string) {
 	return v[0], v[1]
 }
 
-func printVar(t *Term, ctx callContext, args string) error {
+const maxPrintVarChanGoroutines = 100
+
+func (c *Commands) printVar(t *Term, ctx callContext, args string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("not enough arguments")
 	}
@@ -2105,6 +2115,22 @@ func printVar(t *Term, ctx callContext, args string) error {
 	}
 
 	fmt.Fprintln(t.stdout, val.MultilineString("", fmtstr))
+
+	if val.Kind == reflect.Chan {
+		fmt.Fprintln(t.stdout)
+		gs, _, _, _, err := t.client.ListGoroutinesWithFilter(0, maxPrintVarChanGoroutines, []api.ListGoroutinesFilter{{Kind: api.GoroutineWaitingOnChannel, Arg: fmt.Sprintf("*(*%q)(%#x)", val.Type, val.Addr)}}, nil, &ctx.Scope)
+		if err != nil {
+			fmt.Fprintf(t.stdout, "Error reading channel wait queue: %v", err)
+		} else {
+			fmt.Fprintln(t.stdout, "Goroutines waiting on this channel:")
+			state, err := t.client.GetState()
+			if err != nil {
+				fmt.Fprintf(t.stdout, "Error printing channel wait queue: %v", err)
+			}
+			var done bool
+			c.printGoroutines(t, ctx, "", gs, api.FglUserCurrent, 0, 0, "", &done, state)
+		}
+	}
 	return nil
 }
 

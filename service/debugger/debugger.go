@@ -1688,6 +1688,8 @@ func matchGoroutineFilter(tgt *proc.Target, g *proc.G, filter *api.ListGoroutine
 		val = g.Thread != nil
 	case api.GoroutineUser:
 		val = !g.System(tgt)
+	case api.GoroutineWaitingOnChannel:
+		val = true // handled elsewhere
 	}
 	if filter.Negated {
 		val = !val
@@ -2323,6 +2325,31 @@ func (d *Debugger) DebugInfoDirectories() []string {
 	d.recordMutex.Lock()
 	defer d.recordMutex.Unlock()
 	return d.target.Selected.BinInfo().DebugInfoDirectories
+}
+
+// ChanGoroutines returns the list of goroutines waiting on the channel specified by expr.
+func (d *Debugger) ChanGoroutines(goid int64, frame, deferredCall int, expr string, start, count int) ([]*proc.G, error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+	s, err := proc.ConvertEvalScope(d.target.Selected, goid, frame, deferredCall)
+	if err != nil {
+		return nil, err
+	}
+
+	goids, err := s.ChanGoroutines(expr, start, count)
+	if err != nil {
+		return nil, err
+	}
+
+	gs := make([]*proc.G, len(goids))
+	for i := range goids {
+		g, err := proc.FindGoroutine(d.target.Selected, goids[i])
+		if g == nil {
+			g = &proc.G{Unreadable: err}
+		}
+		gs[i] = g
+	}
+	return gs, nil
 }
 
 func go11DecodeErrorCheck(err error) error {

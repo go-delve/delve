@@ -2577,7 +2577,7 @@ func TestGoroutinesGrouping(t *testing.T) {
 	withTestClient2("goroutinegroup", t, func(c service.Client) {
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue")
-		_, ggrp, _, _, err := c.ListGoroutinesWithFilter(0, 0, nil, &api.GoroutineGroupingOptions{GroupBy: api.GoroutineLabel, GroupByKey: "name", MaxGroupMembers: 5, MaxGroups: 10})
+		_, ggrp, _, _, err := c.ListGoroutinesWithFilter(0, 0, nil, &api.GoroutineGroupingOptions{GroupBy: api.GoroutineLabel, GroupByKey: "name", MaxGroupMembers: 5, MaxGroups: 10}, nil)
 		assertNoError(err, t, "ListGoroutinesWithFilter (group by label)")
 		t.Logf("%#v\n", ggrp)
 		if len(ggrp) < 5 {
@@ -2590,7 +2590,7 @@ func TestGoroutinesGrouping(t *testing.T) {
 				break
 			}
 		}
-		gs, _, _, _, err := c.ListGoroutinesWithFilter(0, 0, []api.ListGoroutinesFilter{{Kind: api.GoroutineLabel, Arg: "name="}}, nil)
+		gs, _, _, _, err := c.ListGoroutinesWithFilter(0, 0, []api.ListGoroutinesFilter{{Kind: api.GoroutineLabel, Arg: "name="}}, nil, nil)
 		assertNoError(err, t, "ListGoroutinesWithFilter (filter unnamed)")
 		if len(gs) != unnamedCount {
 			t.Errorf("wrong number of goroutines returned by filter: %d (expected %d)\n", len(gs), unnamedCount)
@@ -3028,6 +3028,73 @@ func TestClientServer_breakpointOnFuncWithABIWrapper(t *testing.T) {
 		}
 		if !found {
 			t.Error("breakpoint not set on the runtime/proc.go function")
+		}
+	})
+}
+
+var waitReasonStrings = [...]string{
+	"",
+	"GC assist marking",
+	"IO wait",
+	"chan receive (nil chan)",
+	"chan send (nil chan)",
+	"dumping heap",
+	"garbage collection",
+	"garbage collection scan",
+	"panicwait",
+	"select",
+	"select (no cases)",
+	"GC assist wait",
+	"GC sweep wait",
+	"GC scavenge wait",
+	"chan receive",
+	"chan send",
+	"finalizer wait",
+	"force gc (idle)",
+	"semacquire",
+	"sleep",
+	"sync.Cond.Wait",
+	"timer goroutine (idle)",
+	"trace reader (blocked)",
+	"wait for GC cycle",
+	"GC worker (idle)",
+	"preempted",
+	"debug call",
+}
+
+func TestClientServer_chanGoroutines(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestClient2("changoroutines", t, func(c service.Client) {
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue()")
+
+		countRecvSend := func(gs []*api.Goroutine) (recvq, sendq int) {
+			for _, g := range gs {
+				t.Logf("\tID: %d WaitReason: %s\n", g.ID, waitReasonStrings[g.WaitReason])
+				switch waitReasonStrings[g.WaitReason] {
+				case "chan send":
+					sendq++
+				case "chan receive":
+					recvq++
+				}
+			}
+			return
+		}
+
+		gs, _, _, _, err := c.ListGoroutinesWithFilter(0, 100, []api.ListGoroutinesFilter{{Kind: api.GoroutineWaitingOnChannel, Arg: "blockingchan1"}}, nil, &api.EvalScope{GoroutineID: -1})
+		assertNoError(err, t, "ListGoroutinesWithFilter(blockingchan1)")
+		t.Logf("blockingchan1 gs:")
+		recvq, sendq := countRecvSend(gs)
+		if len(gs) != 2 || recvq != 0 || sendq != 2 {
+			t.Error("wrong number of goroutines for blockingchan1")
+		}
+
+		gs, _, _, _, err = c.ListGoroutinesWithFilter(0, 100, []api.ListGoroutinesFilter{{Kind: api.GoroutineWaitingOnChannel, Arg: "blockingchan2"}}, nil, &api.EvalScope{GoroutineID: -1})
+		assertNoError(err, t, "ListGoroutinesWithFilter(blockingchan2)")
+		t.Logf("blockingchan2 gs:")
+		recvq, sendq = countRecvSend(gs)
+		if len(gs) != 1 || recvq != 1 || sendq != 0 {
+			t.Error("wrong number of goroutines for blockingchan2")
 		}
 	})
 }

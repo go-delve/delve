@@ -383,16 +383,16 @@ func (c *RPCClient) ListFunctionArgs(scope api.EvalScope, cfg api.LoadConfig) ([
 
 func (c *RPCClient) ListGoroutines(start, count int) ([]*api.Goroutine, int, error) {
 	var out ListGoroutinesOut
-	err := c.call("ListGoroutines", ListGoroutinesIn{start, count, nil, api.GoroutineGroupingOptions{}}, &out)
+	err := c.call("ListGoroutines", ListGoroutinesIn{start, count, nil, api.GoroutineGroupingOptions{}, nil}, &out)
 	return out.Goroutines, out.Nextg, err
 }
 
-func (c *RPCClient) ListGoroutinesWithFilter(start, count int, filters []api.ListGoroutinesFilter, group *api.GoroutineGroupingOptions) ([]*api.Goroutine, []api.GoroutineGroup, int, bool, error) {
+func (c *RPCClient) ListGoroutinesWithFilter(start, count int, filters []api.ListGoroutinesFilter, group *api.GoroutineGroupingOptions, scope *api.EvalScope) ([]*api.Goroutine, []api.GoroutineGroup, int, bool, error) {
 	if group == nil {
 		group = &api.GoroutineGroupingOptions{}
 	}
 	var out ListGoroutinesOut
-	err := c.call("ListGoroutines", ListGoroutinesIn{start, count, filters, *group}, &out)
+	err := c.call("ListGoroutines", ListGoroutinesIn{start, count, filters, *group, scope}, &out)
 	return out.Goroutines, out.Groups, out.Nextg, out.TooManyGroups, err
 }
 

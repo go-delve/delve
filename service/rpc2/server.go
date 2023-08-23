@@ -534,7 +534,8 @@ func (s *RPCServer) Eval(arg EvalIn, out *EvalOut) error {
 	if cfg == nil {
 		cfg = &api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
 	}
-	v, err := s.debugger.EvalVariableInScope(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall, arg.Expr, *api.LoadConfigToProc(cfg))
+	pcfg := *api.LoadConfigToProc(cfg)
+	v, err := s.debugger.EvalVariableInScope(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall, arg.Expr, pcfg)
 	if err != nil {
 		return err
 	}
@@ -617,6 +618,8 @@ type ListGoroutinesIn struct {
 
 	Filters []api.ListGoroutinesFilter
 	api.GoroutineGroupingOptions
+
+	EvalScope *api.EvalScope
 }
 
 type ListGoroutinesOut struct {
@@ -663,7 +666,37 @@ func (s *RPCServer) ListGoroutines(arg ListGoroutinesIn, out *ListGoroutinesOut)
 	//TODO(aarzilli): if arg contains a running goroutines filter (not negated)
 	// and start == 0 and count == 0 then we can optimize this by just looking
 	// at threads directly.
-	gs, nextg, err := s.debugger.Goroutines(arg.Start, arg.Count)
+
+	var gs []*proc.G
+	var nextg int
+	var err error
+	var gsLoaded bool
+
+	for _, filter := range arg.Filters {
+		if filter.Kind == api.GoroutineWaitingOnChannel {
+			if filter.Negated {
+				return errors.New("channel filter can not be negated")
+			}
+			if arg.Count == 0 {
+				return errors.New("count == 0 not allowed with a channel filter")
+			}
+			if arg.EvalScope == nil {
+				return errors.New("channel filter without eval scope")
+			}
+			gs, err = s.debugger.ChanGoroutines(arg.EvalScope.GoroutineID, arg.EvalScope.Frame, arg.EvalScope.DeferredCall, filter.Arg, arg.Start, arg.Count)
+			if len(gs) == arg.Count {
+				nextg = arg.Start + len(gs)
+			} else {
+				nextg = -1
+			}
+			gsLoaded = true
+			break
+		}
+	}
+
+	if !gsLoaded {
+		gs, nextg, err = s.debugger.Goroutines(arg.Start, arg.Count)
+	}
 	if err != nil {
 		return err
 	}

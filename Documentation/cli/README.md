@@ -386,7 +386,7 @@ Aliases: gr
 ## goroutines
 List program goroutines.
 
-	goroutines [-u|-r|-g|-s] [-t [depth]] [-l] [-with loc expr] [-without loc expr] [-group argument] [-exec command]
+	goroutines [-u|-r|-g|-s] [-t [depth]] [-l] [-with loc expr] [-without loc expr] [-group argument] [-chan expr] [-exec command]
 
 Print out info for every goroutine. The flag controls what information is shown along with each goroutine:
 
@@ -436,6 +436,14 @@ To only display user (or runtime) goroutines, use:
 
 	goroutines -with user
 	goroutines -without user
+
+CHANNELS
+	
+To only show goroutines waiting to send to or receive from a specific channel use:
+
+	goroutines -chan expr
+	
+Note that 'expr' must not contain spaces.
 
 GROUPING
 
