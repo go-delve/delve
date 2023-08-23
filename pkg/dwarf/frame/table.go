@@ -18,18 +18,46 @@ type DWRule struct {
 
 // FrameContext wrapper of FDE context
 type FrameContext struct {
-	loc           uint64
-	order         binary.ByteOrder
-	address       uint64
-	CFA           DWRule
-	Regs          map[uint64]DWRule
-	initialRegs   map[uint64]DWRule
-	prevRegs      map[uint64]DWRule
-	buf           *bytes.Buffer
-	cie           *CommonInformationEntry
-	RetAddrReg    uint64
-	codeAlignment uint64
-	dataAlignment int64
+	loc             uint64
+	order           binary.ByteOrder
+	address         uint64
+	CFA             DWRule
+	Regs            map[uint64]DWRule
+	initialRegs     map[uint64]DWRule
+	buf             *bytes.Buffer
+	cie             *CommonInformationEntry
+	RetAddrReg      uint64
+	codeAlignment   uint64
+	dataAlignment   int64
+	rememberedState *stateStack
+}
+
+type rowState struct {
+	cfa  DWRule
+	regs map[uint64]DWRule
+}
+
+// stateStack is a stack where `DW_CFA_remember_state` pushes
+// its CFA and registers state and `DW_CFA_restore_state`
+// pops them.
+type stateStack struct {
+	items []rowState
+}
+
+func newStateStack() *stateStack {
+	return &stateStack{
+		items: make([]rowState, 0),
+	}
+}
+
+func (stack *stateStack) push(state rowState) {
+	stack.items = append(stack.items, state)
+}
+
+func (stack *stateStack) pop() rowState {
+	restored := stack.items[len(stack.items)-1]
+	stack.items = stack.items[0 : len(stack.items)-1]
+	return restored
 }
 
 // Instructions used to recreate the table from the .debug_frame data.
@@ -119,14 +147,14 @@ func executeCIEInstructions(cie *CommonInformationEntry) *FrameContext {
 	initialInstructions := make([]byte, len(cie.InitialInstructions))
 	copy(initialInstructions, cie.InitialInstructions)
 	frame := &FrameContext{
-		cie:           cie,
-		Regs:          make(map[uint64]DWRule),
-		RetAddrReg:    cie.ReturnAddressRegister,
-		initialRegs:   make(map[uint64]DWRule),
-		prevRegs:      make(map[uint64]DWRule),
-		codeAlignment: cie.CodeAlignmentFactor,
-		dataAlignment: cie.DataAlignmentFactor,
-		buf:           bytes.NewBuffer(initialInstructions),
+		cie:             cie,
+		Regs:            make(map[uint64]DWRule),
+		RetAddrReg:      cie.ReturnAddressRegister,
+		initialRegs:     make(map[uint64]DWRule),
+		codeAlignment:   cie.CodeAlignmentFactor,
+		dataAlignment:   cie.DataAlignmentFactor,
+		buf:             bytes.NewBuffer(initialInstructions),
+		rememberedState: newStateStack(),
 	}
 
 	frame.executeDwarfProgram()
@@ -308,11 +336,18 @@ func register(frame *FrameContext) {
 }
 
 func rememberstate(frame *FrameContext) {
-	frame.prevRegs = frame.Regs
+	clonedRegs := make(map[uint64]DWRule, len(frame.Regs))
+	for k, v := range frame.Regs {
+		clonedRegs[k] = v
+	}
+	frame.rememberedState.push(rowState{cfa: frame.CFA, regs: clonedRegs})
 }
 
 func restorestate(frame *FrameContext) {
-	frame.Regs = frame.prevRegs
+	restored := frame.rememberedState.pop()
+
+	frame.CFA = restored.cfa
+	frame.Regs = restored.regs
 }
 
 func restoreextended(frame *FrameContext) {
