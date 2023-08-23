@@ -1143,6 +1143,15 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 				return starlark.None, decorateError(thread, err)
 			}
 		}
+		if len(args) > 4 && args[4] != starlark.None {
+			err := unmarshalStarlarkValue(args[4], &rpcArgs.EvalScope, "EvalScope")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		} else {
+			scope := env.ctx.Scope()
+			rpcArgs.EvalScope = &scope
+		}
 		for _, kv := range kwargs {
 			var err error
 			switch kv[0].(starlark.String) {
@@ -1154,6 +1163,8 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Filters, "Filters")
 			case "GoroutineGroupingOptions":
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.GoroutineGroupingOptions, "GoroutineGroupingOptions")
+			case "EvalScope":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.EvalScope, "EvalScope")
 			default:
 				err = fmt.Errorf("unknown argument %q", kv[0])
 			}
@@ -1167,7 +1178,7 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 		}
 		return env.interfaceToStarlarkValue(rpcRet), nil
 	})
-	doc["goroutines"] = "builtin goroutines(Start, Count, Filters, GoroutineGroupingOptions)\n\ngoroutines lists all goroutines.\nIf Count is specified ListGoroutines will return at the first Count\ngoroutines and an index in Nextg, that can be passed as the Start\nparameter, to get more goroutines from ListGoroutines.\nPassing a value of Start that wasn't returned by ListGoroutines will skip\nan undefined number of goroutines.\n\nIf arg.Filters are specified the list of returned goroutines is filtered\napplying the specified filters.\nFor example:\n\n\tListGoroutinesFilter{ Kind: ListGoroutinesFilterUserLoc, Negated: false, Arg: \"afile.go\" }\n\nwill only return goroutines whose UserLoc contains \"afile.go\" as a substring.\nMore specifically a goroutine matches a location filter if the specified\nlocation, formatted like this:\n\n\tfilename:lineno in function\n\ncontains Arg[0] as a substring.\n\nFilters can also be applied to goroutine labels:\n\n\tListGoroutineFilter{ Kind: ListGoroutinesFilterLabel, Negated: false, Arg: \"key=value\" }\n\nthis filter will only return goroutines that have a key=value label.\n\nIf arg.GroupBy is not GoroutineFieldNone then the goroutines will\nbe grouped with the specified criterion.\nIf the value of arg.GroupBy is GoroutineLabel goroutines will\nbe grouped by the value of the label with key GroupByKey.\nFor each group a maximum of MaxGroupMembers example goroutines are\nreturned, as well as the total number of goroutines in the group."
+	doc["goroutines"] = "builtin goroutines(Start, Count, Filters, GoroutineGroupingOptions, EvalScope)\n\ngoroutines lists all goroutines.\nIf Count is specified ListGoroutines will return at the first Count\ngoroutines and an index in Nextg, that can be passed as the Start\nparameter, to get more goroutines from ListGoroutines.\nPassing a value of Start that wasn't returned by ListGoroutines will skip\nan undefined number of goroutines.\n\nIf arg.Filters are specified the list of returned goroutines is filtered\napplying the specified filters.\nFor example:\n\n\tListGoroutinesFilter{ Kind: ListGoroutinesFilterUserLoc, Negated: false, Arg: \"afile.go\" }\n\nwill only return goroutines whose UserLoc contains \"afile.go\" as a substring.\nMore specifically a goroutine matches a location filter if the specified\nlocation, formatted like this:\n\n\tfilename:lineno in function\n\ncontains Arg[0] as a substring.\n\nFilters can also be applied to goroutine labels:\n\n\tListGoroutineFilter{ Kind: ListGoroutinesFilterLabel, Negated: false, Arg: \"key=value\" }\n\nthis filter will only return goroutines that have a key=value label.\n\nIf arg.GroupBy is not GoroutineFieldNone then the goroutines will\nbe grouped with the specified criterion.\nIf the value of arg.GroupBy is GoroutineLabel goroutines will\nbe grouped by the value of the label with key GroupByKey.\nFor each group a maximum of MaxGroupMembers example goroutines are\nreturned, as well as the total number of goroutines in the group."
 	r["local_vars"] = starlark.NewBuiltin("local_vars", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if err := isCancelled(thread); err != nil {
 			return starlark.None, decorateError(thread, err)

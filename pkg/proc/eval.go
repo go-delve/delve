@@ -214,6 +214,89 @@ func (scope *EvalScope) EvalExpression(expr string, cfg LoadConfig) (*Variable, 
 	return ev, nil
 }
 
+// ChanGoroutines returns the list of goroutines waiting to receive from or
+// send to the channel.
+func (scope *EvalScope) ChanGoroutines(expr string, start, count int) ([]int64, error) {
+	t, err := parser.ParseExpr(expr)
+	if err != nil {
+		return nil, err
+	}
+	v, err := scope.evalAST(t)
+	if err != nil {
+		return nil, err
+	}
+	if v.Kind != reflect.Chan {
+		return nil, nil
+	}
+
+	structMemberMulti := func(v *Variable, names ...string) *Variable {
+		for _, name := range names {
+			var err error
+			v, err = v.structMember(name)
+			if err != nil {
+				return nil
+			}
+		}
+		return v
+	}
+
+	waitqFirst := func(qname string) *Variable {
+		qvar := structMemberMulti(v, qname, "first")
+		if qvar == nil {
+			return nil
+		}
+		return qvar.maybeDereference()
+	}
+
+	var goids []int64
+
+	waitqToGoIDSlice := func(qvar *Variable) error {
+		if qvar == nil {
+			return nil
+		}
+		for {
+			if qvar.Addr == 0 {
+				return nil
+			}
+			if len(goids) > count {
+				return nil
+			}
+			goidVar := structMemberMulti(qvar, "g", "goid")
+			if goidVar == nil {
+				return nil
+			}
+			goidVar.loadValue(loadSingleValue)
+			if goidVar.Unreadable != nil {
+				return goidVar.Unreadable
+			}
+			goid, _ := constant.Int64Val(goidVar.Value)
+			if start > 0 {
+				start--
+			} else {
+				goids = append(goids, goid)
+			}
+
+			nextVar, err := qvar.structMember("next")
+			if err != nil {
+				return err
+			}
+			qvar = nextVar.maybeDereference()
+		}
+	}
+
+	recvqVar := waitqFirst("recvq")
+	err = waitqToGoIDSlice(recvqVar)
+	if err != nil {
+		return nil, err
+	}
+	sendqVar := waitqFirst("sendq")
+	err = waitqToGoIDSlice(sendqVar)
+	if err != nil {
+		return nil, err
+	}
+	return goids, nil
+}
+
 func isAssignment(err error) (int, bool) {
 	el, isScannerErr := err.(scanner.ErrorList)
 	if isScannerErr && el[0].Msg == "expected '==', found '='" {

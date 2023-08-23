@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -98,6 +99,13 @@ func ParseGoroutineArgs(argstr string) ([]ListGoroutinesFilter, GoroutineGroupin
 				i++
 			}
 			batchSize = 0 // grouping only works well if run on all goroutines
+
+		case "-chan":
+			i++
+			if i >= len(args) {
+				return nil, GoroutineGroupingOptions{}, 0, 0, 0, 0, "", errors.New("not enough arguments after -chan")
+			}
+			filters = append(filters, ListGoroutinesFilter{Kind: GoroutineWaitingOnChannel, Arg: args[i]})
 
 		case "-exec":
 			flags |= PrintGoroutinesExec

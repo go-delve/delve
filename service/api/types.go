@@ -635,14 +635,15 @@ type ListGoroutinesFilter struct {
 type GoroutineField uint8
 
 const (
-	GoroutineFieldNone  GoroutineField = iota
-	GoroutineCurrentLoc                // the goroutine's CurrentLoc
-	GoroutineUserLoc                   // the goroutine's UserLoc
-	GoroutineGoLoc                     // the goroutine's GoStatementLoc
-	GoroutineStartLoc                  // the goroutine's StartLoc
-	GoroutineLabel                     // the goroutine's label
-	GoroutineRunning                   // the goroutine is running
-	GoroutineUser                      // the goroutine is a user goroutine
+	GoroutineFieldNone        GoroutineField = iota
+	GoroutineCurrentLoc                      // the goroutine's CurrentLoc
+	GoroutineUserLoc                         // the goroutine's UserLoc
+	GoroutineGoLoc                           // the goroutine's GoStatementLoc
+	GoroutineStartLoc                        // the goroutine's StartLoc
+	GoroutineLabel                           // the goroutine's label
+	GoroutineRunning                         // the goroutine is running
+	GoroutineUser                            // the goroutine is a user goroutine
+	GoroutineWaitingOnChannel                // the goroutine is waiting on the channel specified by the argument
 )
 
 // GoroutineGroup represents a group of goroutines in the return value of

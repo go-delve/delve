@@ -120,7 +120,7 @@ type Client interface {
 	// ListGoroutines lists all goroutines.
 	ListGoroutines(start, count int) ([]*api.Goroutine, int, error)
 	// ListGoroutinesWithFilter lists goroutines matching the filters
-	ListGoroutinesWithFilter(start, count int, filters []api.ListGoroutinesFilter, group *api.GoroutineGroupingOptions) ([]*api.Goroutine, []api.GoroutineGroup, int, bool, error)
+	ListGoroutinesWithFilter(start, count int, filters []api.ListGoroutinesFilter, group *api.GoroutineGroupingOptions, scope *api.EvalScope) ([]*api.Goroutine, []api.GoroutineGroup, int, bool, error)
 
 	// Stacktrace returns stacktrace
 	Stacktrace(goroutineID int64, depth int, opts api.StacktraceOptions, cfg *api.LoadConfig) ([]api.Stackframe, error)
