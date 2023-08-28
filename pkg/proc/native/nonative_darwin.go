@@ -57,7 +57,7 @@ func (dbp *nativeProcess) requestManualStop() (err error) {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *nativeProcess) resume() error {
+func (*processGroup) resume() error {
 	panic(ErrNativeBackendDisabled)
 }
 
@@ -73,7 +73,7 @@ func (dbp *nativeProcess) updateThreadList() error {
 	panic(ErrNativeBackendDisabled)
 }
 
-func (dbp *nativeProcess) kill() (err error) {
+func (*processGroup) kill(dbp *nativeProcess) (err error) {
 	panic(ErrNativeBackendDisabled)
 }
 

@@ -96,17 +96,24 @@ func (dbp *nativeProcess) BinInfo() *proc.BinaryInfo {
 // StartCallInjection notifies the backend that we are about to inject a function call.
 func (dbp *nativeProcess) StartCallInjection() (func(), error) { return func() {}, nil }
 
+// detachWithoutGroup is a helper function to detach from a process which we
+// haven't added to a process group yet.
+func detachWithoutGroup(dbp *nativeProcess, kill bool) error {
+	grp := &processGroup{procs: []*nativeProcess{dbp}}
+	return grp.Detach(dbp.pid, kill)
+}
+
 // Detach from the process being debugged, optionally killing it.
-func (dbp *nativeProcess) Detach(kill bool) (err error) {
+func (procgrp *processGroup) Detach(pid int, kill bool) (err error) {
+	dbp := procgrp.procForPid(pid)
 	if dbp.exited {
 		return nil
 	}
 	if kill && dbp.childProcess {
-		err := dbp.kill()
+		err := procgrp.kill(dbp)
 		if err != nil {
 			return err
 		}
-		dbp.bi.Close()
 		return nil
 	}
 	dbp.execPtraceFunc(func() {
@@ -226,8 +233,25 @@ func (procgrp *processGroup) procForThread(tid int) *nativeProcess {
 	return nil
 }
 
+func (procgrp *processGroup) procForPid(pid int) *nativeProcess {
+	for _, p := range procgrp.procs {
+		if p.pid == pid {
+			return p
+		}
+	}
+	return nil
+}
+
 func (procgrp *processGroup) add(p *nativeProcess, pid int, currentThread proc.Thread, path string, stopReason proc.StopReason, cmdline string) (*proc.Target, error) {
 	tgt, err := procgrp.addTarget(p, pid, currentThread, path, stopReason, cmdline)
+	if tgt == nil {
+		i := len(procgrp.procs)
+		procgrp.procs = append(procgrp.procs, p)
+		procgrp.Detach(p.pid, false)
+		if i == len(procgrp.procs)-1 {
+			procgrp.procs = procgrp.procs[:i]
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -246,15 +270,15 @@ func (procgrp *processGroup) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.
 	}
 
 	for {
+		err := procgrp.resume()
+		if err != nil {
+			return nil, proc.StopUnknown, err
+		}
 		for _, dbp := range procgrp.procs {
-			if dbp.exited {
-				continue
-			}
-			if err := dbp.resume(); err != nil {
-				return nil, proc.StopUnknown, err
-			}
-			for _, th := range dbp.threads {
-				th.CurrentBreakpoint.Clear()
+			if valid, _ := dbp.Valid(); valid {
+				for _, th := range dbp.threads {
+					th.CurrentBreakpoint.Clear()
+				}
 			}
 		}
 
@@ -377,6 +401,7 @@ func (pt *ptraceThread) handlePtraceFuncs() {
 		fn()
 		pt.ptraceDoneChan <- nil
 	}
+	close(pt.ptraceDoneChan)
 }
 
 func (dbp *nativeProcess) execPtraceFunc(fn func()) {
@@ -473,6 +498,5 @@ func (pt *ptraceThread) release() {
 	pt.ptraceRefCnt--
 	if pt.ptraceRefCnt == 0 {
 		close(pt.ptraceChan)
-		close(pt.ptraceDoneChan)
 	}
 }

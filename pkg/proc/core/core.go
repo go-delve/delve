@@ -454,7 +454,7 @@ func (p *process) Memory() proc.MemoryReadWriter {
 // Detach will always return nil and have no
 // effect as you cannot detach from a core file
 // and have it continue execution or exit.
-func (p *process) Detach(bool) error {
+func (p *process) Detach(int, bool) error {
 	return nil
 }
 

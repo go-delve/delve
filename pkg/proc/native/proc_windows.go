@@ -65,7 +65,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 
 	tgt, err := dbp.initialize(argv0Go, []string{})
 	if err != nil {
-		dbp.Detach(true)
+		detachWithoutGroup(dbp, true)
 		return nil, err
 	}
 	return tgt, nil
@@ -183,7 +183,7 @@ func Attach(pid int, waitFor *proc.WaitFor, _ []string) (*proc.TargetGroup, erro
 	}
 	tgt, err := dbp.initialize(exepath, []string{})
 	if err != nil {
-		dbp.Detach(true)
+		detachWithoutGroup(dbp, true)
 		return nil, err
 	}
 	return tgt, nil
@@ -261,7 +261,7 @@ func waitForSearchProcess(pfx string, seen map[int]struct{}) (int, error) {
 }
 
 // kill kills the process.
-func (dbp *nativeProcess) kill() error {
+func (procgrp *processGroup) kill(dbp *nativeProcess) error {
 	if dbp.exited {
 		return nil
 	}
@@ -496,15 +496,12 @@ func trapWait(procgrp *processGroup, pid int) (*nativeThread, error) {
 	return th, nil
 }
 
-func (dbp *nativeProcess) wait(pid, options int) (int, *sys.WaitStatus, error) {
-	return 0, nil, fmt.Errorf("not implemented: wait")
-}
-
 func (dbp *nativeProcess) exitGuard(err error) error {
 	return err
 }
 
-func (dbp *nativeProcess) resume() error {
+func (procgrp *processGroup) resume() error {
+	dbp := procgrp.procs[0]
 	for _, thread := range dbp.threads {
 		if thread.CurrentBreakpoint.Breakpoint != nil {
 			if err := thread.StepInstruction(); err != nil {

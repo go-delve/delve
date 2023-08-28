@@ -71,7 +71,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 	dbp := newProcess(0)
 	defer func() {
 		if err != nil && dbp.pid != 0 {
-			_ = dbp.Detach(true)
+			_ = detachWithoutGroup(dbp, true)
 		}
 	}()
 	var pid int
@@ -172,14 +172,14 @@ func Attach(pid int, waitFor *proc.WaitFor, _ []string) (*proc.TargetGroup, erro
 
 	tgt, err := dbp.initialize("", []string{})
 	if err != nil {
-		dbp.Detach(false)
+		detachWithoutGroup(dbp, false)
 		return nil, err
 	}
 	return tgt, nil
 }
 
 // Kill kills the process.
-func (dbp *nativeProcess) kill() (err error) {
+func (procgrp *processGroup) kill(dbp *nativeProcess) (err error) {
 	if dbp.exited {
 		return nil
 	}
@@ -418,6 +418,10 @@ func (dbp *nativeProcess) exitGuard(err error) error {
 		return proc.ErrProcessExited{Pid: dbp.pid, Status: status.ExitStatus()}
 	}
 	return err
+}
+
+func (procgrp *processGroup) resume() error {
+	return procgrp.procs[0].resume()
 }
 
 func (dbp *nativeProcess) resume() error {
