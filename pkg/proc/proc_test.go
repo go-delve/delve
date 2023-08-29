@@ -4565,7 +4565,7 @@ func TestCallConcurrent(t *testing.T) {
 
 		gid2 := p.SelectedGoroutine().ID
 		t.Logf("starting second injection in %d / %d", p.SelectedGoroutine().ID, p.CurrentThread().ThreadID())
-		assertNoError(proc.EvalExpressionWithCalls(grp, p.SelectedGoroutine(), "Foo(10, 2)", normalLoadConfig, false), t, "EvalExpressioniWithCalls")
+		assertNoError(proc.EvalExpressionWithCalls(grp, p.SelectedGoroutine(), "Foo(10, 2)", normalLoadConfig, false), t, "EvalExpressionWithCalls")
 
 		for {
 			returned += testCallConcurrentCheckReturns(p, t, gid1, gid2)

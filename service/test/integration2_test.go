@@ -2987,7 +2987,7 @@ func TestClientServer_createBreakpointWithID(t *testing.T) {
 }
 
 func TestClientServer_autoBreakpoints(t *testing.T) {
-	// Check that unrecoverd-panic and fatal-throw breakpoints are visible in
+	// Check that unrecovered-panic and fatal-throw breakpoints are visible in
 	// the breakpoint list.
 	protest.AllowRecording(t)
 	withTestClient2("math", t, func(c service.Client) {
