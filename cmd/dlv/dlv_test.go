@@ -995,7 +995,7 @@ func TestTracePid(t *testing.T) {
 	assertNoError(targetCmd.Start(), t, "execute issue2023")
 
 	if targetCmd.Process == nil || targetCmd.Process.Pid == 0 {
-		t.Fatal("expected target process runninng")
+		t.Fatal("expected target process running")
 	}
 	defer targetCmd.Process.Kill()
 

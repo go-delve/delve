@@ -50,7 +50,7 @@ const (
 	FloatIsNormal floatSpecial = iota
 	// FloatIsNaN means the float is a special NaN value.
 	FloatIsNaN
-	// FloatIsPosInf means the float is a special positive inifitiy value.
+	// FloatIsPosInf means the float is a special positive infinity value.
 	FloatIsPosInf
 	// FloatIsNegInf means the float is a special negative infinity value.
 	FloatIsNegInf

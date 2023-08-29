@@ -2248,7 +2248,7 @@ func (d *Debugger) DumpWait(wait time.Duration) *proc.DumpState {
 	return &d.dumpState
 }
 
-// DumpCancel canels a dump in progress
+// DumpCancel cancels a dump in progress
 func (d *Debugger) DumpCancel() error {
 	d.dumpState.Mutex.Lock()
 	d.dumpState.Canceled = true

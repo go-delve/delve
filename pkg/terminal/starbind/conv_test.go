@@ -7,7 +7,7 @@ import (
 
 func TestConv(t *testing.T) {
 	script := `
-# A list global that we'll unmarhsal into a slice.
+# A list global that we'll unmarshal into a slice.
 x = [1,2]
 `
 	globals, err := starlark.ExecFile(&starlark.Thread{}, "test.star", script, nil)

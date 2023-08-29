@@ -102,7 +102,7 @@ func (it *stackIterator) readSigtrampgoContext() (*op.DwarfRegisters, error) {
 		case "arm64":
 			return sigtrampContextDarwinARM64(it.mem, addr)
 		default:
-			return nil, errors.New("not implemnted")
+			return nil, errors.New("not implemented")
 		}
 	default:
 		return nil, errors.New("not implemented")
