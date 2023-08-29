@@ -1104,16 +1104,16 @@ func TestPackageRenames(t *testing.T) {
 
 func TestConstants(t *testing.T) {
 	testcases := []varTest{
-		{"a", true, "constTwo (2)", "", "main.ConstType", nil},
-		{"b", true, "constThree (3)", "", "main.ConstType", nil},
-		{"c", true, "bitZero|bitOne (3)", "", "main.BitFieldType", nil},
-		{"d", true, "33", "", "main.BitFieldType", nil},
-		{"e", true, "10", "", "main.ConstType", nil},
-		{"f", true, "0", "", "main.BitFieldType", nil},
-		{"bitZero", true, "1", "", "main.BitFieldType", nil},
-		{"bitOne", true, "2", "", "main.BitFieldType", nil},
-		{"constTwo", true, "2", "", "main.ConstType", nil},
-		{"pkg.SomeConst", false, "2", "", "int", nil},
+		{"a", true, "constTwo (2)", "0x2", "main.ConstType", nil},
+		{"b", true, "constThree (3)", "0x3", "main.ConstType", nil},
+		{"c", true, "bitZero|bitOne (3)", "0x3", "main.BitFieldType", nil},
+		{"d", true, "33", "0x21", "main.BitFieldType", nil},
+		{"e", true, "10", "0xa", "main.ConstType", nil},
+		{"f", true, "0", "0x0", "main.BitFieldType", nil},
+		{"bitZero", true, "1", "0x1", "main.BitFieldType", nil},
+		{"bitOne", true, "2", "0x2", "main.BitFieldType", nil},
+		{"constTwo", true, "2", "0x2", "main.ConstType", nil},
+		{"pkg.SomeConst", false, "2", "0x2", "int", nil},
 	}
 	ver, _ := goversion.Parse(runtime.Version())
 	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
@@ -1126,6 +1126,11 @@ func TestConstants(t *testing.T) {
 			variable, err := evalVariableWithCfg(p, testcase.name, pnormalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", testcase.name))
 			assertVariable(t, variable, testcase)
+			cv := api.ConvertVar(variable)
+			str := cv.SinglelineStringFormatted("%#x")
+			if str != testcase.alternate {
+				t.Errorf("for %s expected %q got %q when formatting in hexadecimal", testcase.name, testcase.alternate, str)
+			}
 		}
 	})
 }

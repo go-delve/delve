@@ -2593,7 +2593,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 
 	switch v.Kind {
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		n, _ := strconv.ParseUint(api.ConvertVar(v).Value, 10, 64)
+		n, _ := strconv.ParseUint(api.ExtractIntValue(api.ConvertVar(v).Value), 10, 64)
 		value = fmt.Sprintf("%s = %#x", value, n)
 	case reflect.UnsafePointer:
 		// Skip child reference
