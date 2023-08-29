@@ -173,7 +173,7 @@ func (v *Variable) writeBasicType(buf io.Writer, fmtstr string) {
 			buf.Write([]byte(v.Value))
 			return
 		}
-		n, _ := strconv.ParseInt(v.Value, 10, 64)
+		n, _ := strconv.ParseInt(ExtractIntValue(v.Value), 10, 64)
 		fmt.Fprintf(buf, fmtstr, n)
 
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
@@ -181,7 +181,7 @@ func (v *Variable) writeBasicType(buf io.Writer, fmtstr string) {
 			buf.Write([]byte(v.Value))
 			return
 		}
-		n, _ := strconv.ParseUint(v.Value, 10, 64)
+		n, _ := strconv.ParseUint(ExtractIntValue(v.Value), 10, 64)
 		fmt.Fprintf(buf, fmtstr, n)
 
 	case reflect.Float32, reflect.Float64:
@@ -213,6 +213,17 @@ func (v *Variable) writeBasicType(buf io.Writer, fmtstr string) {
 		}
 		fmt.Fprintf(buf, fmtstr, v.Value)
 	}
+}
+
+func ExtractIntValue(s string) string {
+	if s == "" || s[len(s)-1] != ')' {
+		return s
+	}
+	open := strings.LastIndex(s, "(")
+	if open < 0 {
+		return s
+	}
+	return s[open+1 : len(s)-1]
 }
 
 func (v *Variable) writeSliceTo(buf io.Writer, newlines, includeType bool, indent, fmtstr string) {
