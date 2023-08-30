@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/cilium/ebpf/internal"
+	"github.com/cilium/ebpf/internal/sys"
 	"github.com/cilium/ebpf/internal/unix"
 )
 
@@ -36,14 +37,23 @@ func init() {
 }
 
 func detectMemcgAccounting() error {
-	// Reduce the limit to zero and store the previous limit. This should always succeed.
+	// Retrieve the original limit to prevent lowering Max, since
+	// doing so is a permanent operation when running unprivileged.
 	var oldLimit unix.Rlimit
+	if err := unix.Prlimit(0, unix.RLIMIT_MEMLOCK, nil, &oldLimit); err != nil {
+		return fmt.Errorf("getting original memlock rlimit: %s", err)
+	}
+
+	// Drop the current limit to zero, maintaining the old Max value.
+	// This is always permitted by the kernel for unprivileged users.
+	// Retrieve a new copy of the old limit tuple to minimize the chances
+	// of failing the restore operation below.
 	zeroLimit := unix.Rlimit{Cur: 0, Max: oldLimit.Max}
 	if err := unix.Prlimit(0, unix.RLIMIT_MEMLOCK, &zeroLimit, &oldLimit); err != nil {
 		return fmt.Errorf("lowering memlock rlimit: %s", err)
 	}
 
-	attr := internal.BPFMapCreateAttr{
+	attr := sys.MapCreateAttr{
 		MapType:    2, /* Array */
 		KeySize:    4,
 		ValueSize:  4,
@@ -54,7 +64,7 @@ func detectMemcgAccounting() error {
 	// the rlimit on pre-5.11 kernels, but against the memory cgroup budget on
 	// kernels 5.11 and over. If this call succeeds with the process' memlock
 	// rlimit set to 0, we can reasonably assume memcg accounting is supported.
-	fd, mapErr := internal.BPFMapCreate(&attr)
+	fd, mapErr := sys.MapCreate(&attr)
 
 	// Restore old limits regardless of what happened.
 	if err := unix.Prlimit(0, unix.RLIMIT_MEMLOCK, &oldLimit, nil); err != nil {

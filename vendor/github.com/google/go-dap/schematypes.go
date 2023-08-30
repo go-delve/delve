@@ -2124,4 +2124,3 @@ var eventCtor = map[string]messageCtor{
 	"invalidated":    func() Message { return &InvalidatedEvent{} },
 	"memory":         func() Message { return &MemoryEvent{} },
 }
- 
