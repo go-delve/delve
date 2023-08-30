@@ -55,7 +55,7 @@ func ptraceGetLwpList(pid int) (tids []int32) {
 
 // Get info of the thread that caused wpid's process to stop.
 func ptraceGetLwpInfo(wpid int) (info sys.PtraceLwpInfoStruct, err error) {
-	err = sys.PtraceLwpInfo(wpid, uintptr(unsafe.Pointer(&info)))
+	err = sys.PtraceLwpInfo(wpid, &info)
 	return info, err
 }
 

@@ -5,32 +5,24 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"runtime"
+	"os"
 	"sync"
+	"time"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/internal"
+	"github.com/cilium/ebpf/internal/epoll"
 	"github.com/cilium/ebpf/internal/unix"
 )
 
 var (
-	ErrClosed  = errors.New("ringbuf reader was closed")
+	ErrClosed  = os.ErrClosed
+	errEOR     = errors.New("end of ring")
 	errDiscard = errors.New("sample discarded")
 	errBusy    = errors.New("sample not committed yet")
 )
 
-func addToEpoll(epollfd, fd int) error {
-
-	event := unix.EpollEvent{
-		Events: unix.EPOLLIN,
-		Fd:     int32(fd),
-	}
-
-	if err := unix.EpollCtl(epollfd, unix.EPOLL_CTL_ADD, fd, &event); err != nil {
-		return fmt.Errorf("can't add fd to epoll: %w", err)
-	}
-	return nil
-}
+var ringbufHeaderSize = binary.Size(ringbufHeader{})
 
 // ringbufHeader from 'struct bpf_ringbuf_hdr' in kernel/bpf/ringbuf.c
 type ringbufHeader struct {
@@ -54,23 +46,29 @@ type Record struct {
 	RawSample []byte
 }
 
-func readRecord(rd *ringbufEventRing) (r Record, err error) {
+// Read a record from an event ring.
+//
+// buf must be at least ringbufHeaderSize bytes long.
+func readRecord(rd *ringbufEventRing, rec *Record, buf []byte) error {
 	rd.loadConsumer()
-	var header ringbufHeader
-	err = binary.Read(rd, internal.NativeEndian, &header)
-	if err == io.EOF {
-		return Record{}, err
+
+	buf = buf[:ringbufHeaderSize]
+	if _, err := io.ReadFull(rd, buf); err == io.EOF {
+		return errEOR
+	} else if err != nil {
+		return fmt.Errorf("read event header: %w", err)
 	}
 
-	if err != nil {
-		return Record{}, fmt.Errorf("can't read event header: %w", err)
+	header := ringbufHeader{
+		internal.NativeEndian.Uint32(buf[0:4]),
+		internal.NativeEndian.Uint32(buf[4:8]),
 	}
 
 	if header.isBusy() {
 		// the next sample in the ring is not committed yet so we
 		// exit without storing the reader/consumer position
 		// and start again from the same position.
-		return Record{}, fmt.Errorf("%w", errBusy)
+		return errBusy
 	}
 
 	/* read up to 8 byte alignment */
@@ -85,174 +83,144 @@ func readRecord(rd *ringbufEventRing) (r Record, err error) {
 		rd.skipRead(dataLenAligned)
 		rd.storeConsumer()
 
-		return Record{}, fmt.Errorf("%w", errDiscard)
+		return errDiscard
 	}
 
-	data := make([]byte, dataLenAligned)
+	if cap(rec.RawSample) < int(dataLenAligned) {
+		rec.RawSample = make([]byte, dataLenAligned)
+	} else {
+		rec.RawSample = rec.RawSample[:dataLenAligned]
+	}
 
-	if _, err := io.ReadFull(rd, data); err != nil {
-		return Record{}, fmt.Errorf("can't read sample: %w", err)
+	if _, err := io.ReadFull(rd, rec.RawSample); err != nil {
+		return fmt.Errorf("read sample: %w", err)
 	}
 
 	rd.storeConsumer()
-
-	return Record{RawSample: data[:header.dataLen()]}, nil
+	rec.RawSample = rec.RawSample[:header.dataLen()]
+	return nil
 }
 
 // Reader allows reading bpf_ringbuf_output
 // from user space.
 type Reader struct {
+	poller *epoll.Poller
+
 	// mu protects read/write access to the Reader structure
-	mu sync.Mutex
-
-	ring *ringbufEventRing
-
-	epollFd     int
+	mu          sync.Mutex
+	ring        *ringbufEventRing
 	epollEvents []unix.EpollEvent
-
-	closeFd int
-	// Ensure we only close once
-	closeOnce sync.Once
+	header      []byte
+	haveData    bool
+	deadline    time.Time
 }
 
 // NewReader creates a new BPF ringbuf reader.
-func NewReader(ringbufMap *ebpf.Map) (r *Reader, err error) {
+func NewReader(ringbufMap *ebpf.Map) (*Reader, error) {
 	if ringbufMap.Type() != ebpf.RingBuf {
 		return nil, fmt.Errorf("invalid Map type: %s", ringbufMap.Type())
 	}
 
 	maxEntries := int(ringbufMap.MaxEntries())
 	if maxEntries == 0 || (maxEntries&(maxEntries-1)) != 0 {
-		return nil, fmt.Errorf("Ringbuffer map size %d is zero or not a power of two", maxEntries)
+		return nil, fmt.Errorf("ringbuffer map size %d is zero or not a power of two", maxEntries)
 	}
 
-	epollFd, err := unix.EpollCreate1(unix.EPOLL_CLOEXEC)
+	poller, err := epoll.New()
 	if err != nil {
-		return nil, fmt.Errorf("can't create epoll fd: %w", err)
+		return nil, err
 	}
 
-	var (
-		fds  = []int{epollFd}
-		ring *ringbufEventRing
-	)
+	if err := poller.Add(ringbufMap.FD(), 0); err != nil {
+		poller.Close()
+		return nil, err
+	}
 
-	defer func() {
-		if err != nil {
-			// close epollFd and closeFd
-			for _, fd := range fds {
-				unix.Close(fd)
-			}
-			if ring != nil {
-				ring.Close()
-			}
-		}
-	}()
-
-	ring, err = newRingBufEventRing(ringbufMap.FD(), maxEntries)
+	ring, err := newRingBufEventRing(ringbufMap.FD(), maxEntries)
 	if err != nil {
+		poller.Close()
 		return nil, fmt.Errorf("failed to create ringbuf ring: %w", err)
 	}
 
-	if err := addToEpoll(epollFd, ringbufMap.FD()); err != nil {
-		return nil, err
-	}
-
-	closeFd, err := unix.Eventfd(0, unix.O_CLOEXEC|unix.O_NONBLOCK)
-	if err != nil {
-		return nil, err
-	}
-	fds = append(fds, closeFd)
-
-	if err := addToEpoll(epollFd, closeFd); err != nil {
-		return nil, err
-	}
-
-	r = &Reader{
-		ring:    ring,
-		epollFd: epollFd,
-		// Allocate extra event for closeFd
-		epollEvents: make([]unix.EpollEvent, 2),
-		closeFd:     closeFd,
-	}
-	runtime.SetFinalizer(r, (*Reader).Close)
-	return r, nil
+	return &Reader{
+		poller:      poller,
+		ring:        ring,
+		epollEvents: make([]unix.EpollEvent, 1),
+		header:      make([]byte, ringbufHeaderSize),
+	}, nil
 }
 
 // Close frees resources used by the reader.
 //
 // It interrupts calls to Read.
 func (r *Reader) Close() error {
-	var err error
-	r.closeOnce.Do(func() {
-		runtime.SetFinalizer(r, nil)
-
-		// Interrupt Read() via the closeFd event fd.
-		var value [8]byte
-		internal.NativeEndian.PutUint64(value[:], 1)
-
-		if _, err = unix.Write(r.closeFd, value[:]); err != nil {
-			err = fmt.Errorf("can't write event fd: %w", err)
-			return
+	if err := r.poller.Close(); err != nil {
+		if errors.Is(err, os.ErrClosed) {
+			return nil
 		}
-
-		// Acquire the lock. This ensures that Read isn't running.
-		r.mu.Lock()
-		defer r.mu.Unlock()
-
-		unix.Close(r.epollFd)
-		unix.Close(r.closeFd)
-		r.epollFd, r.closeFd = -1, -1
-
-		if r.ring != nil {
-			r.ring.Close()
-		}
-		r.ring = nil
-
-	})
-	if err != nil {
-		return fmt.Errorf("close Reader: %w", err)
+		return err
 	}
+
+	// Acquire the lock. This ensures that Read isn't running.
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.ring != nil {
+		r.ring.Close()
+		r.ring = nil
+	}
+
 	return nil
+}
+
+// SetDeadline controls how long Read and ReadInto will block waiting for samples.
+//
+// Passing a zero time.Time will remove the deadline.
+func (r *Reader) SetDeadline(t time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.deadline = t
 }
 
 // Read the next record from the BPF ringbuf.
 //
-// Calling Close interrupts the function.
+// Returns os.ErrClosed if Close is called on the Reader, or os.ErrDeadlineExceeded
+// if a deadline was set.
 func (r *Reader) Read() (Record, error) {
+	var rec Record
+	return rec, r.ReadInto(&rec)
+}
+
+// ReadInto is like Read except that it allows reusing Record and associated buffers.
+func (r *Reader) ReadInto(rec *Record) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	if r.epollFd == -1 {
-		return Record{}, fmt.Errorf("%w", ErrClosed)
+	if r.ring == nil {
+		return fmt.Errorf("ringbuffer: %w", ErrClosed)
 	}
 
 	for {
-		nEvents, err := unix.EpollWait(r.epollFd, r.epollEvents, -1)
-		if temp, ok := err.(temporaryError); ok && temp.Temporary() {
-			// Retry the syscall if we we're interrupted, see https://github.com/golang/go/issues/20400
-			continue
-		}
-
-		if err != nil {
-			return Record{}, err
-		}
-
-		for _, event := range r.epollEvents[:nEvents] {
-			if int(event.Fd) == r.closeFd {
-				return Record{}, fmt.Errorf("%w", ErrClosed)
+		if !r.haveData {
+			_, err := r.poller.Wait(r.epollEvents[:cap(r.epollEvents)], r.deadline)
+			if err != nil {
+				return err
 			}
+			r.haveData = true
 		}
 
-		record, err := readRecord(r.ring)
+		for {
+			err := readRecord(r.ring, rec, r.header)
+			if err == errBusy || err == errDiscard {
+				continue
+			}
+			if err == errEOR {
+				r.haveData = false
+				break
+			}
 
-		if errors.Is(err, errBusy) || errors.Is(err, errDiscard) {
-			continue
+			return err
 		}
-
-		return record, err
 	}
-}
-
-type temporaryError interface {
-	Temporary() bool
 }
