@@ -3063,7 +3063,6 @@ var waitReasonStrings = [...]string{
 }
 
 func TestClientServer_chanGoroutines(t *testing.T) {
-	protest.AllowRecording(t)
 	withTestClient2("changoroutines", t, func(c service.Client) {
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
