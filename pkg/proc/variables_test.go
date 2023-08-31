@@ -180,6 +180,7 @@ func TestVariableEvaluation2(t *testing.T) {
 }
 
 func TestSetVariable(t *testing.T) {
+	const errorPrefix = "ERROR:"
 	var testcases = []struct {
 		name     string
 		typ      string // type of <name>
@@ -202,6 +203,7 @@ func TestSetVariable(t *testing.T) {
 
 		{"s3", "[]int", `[]int len: 0, cap: 6, []`, "s4[2:5]", "[]int len: 3, cap: 3, [3,4,5]"},
 		{"s3", "[]int", "[]int len: 3, cap: 3, [3,4,5]", "arr1[:]", "[]int len: 4, cap: 4, [0,1,2,3]"},
+		{"str1", "string", `"01234567890"`, `"new value"`, errorPrefix + "literal string can not be allocated because function calls are not allowed without using 'call'"},
 	}
 
 	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
@@ -218,11 +220,23 @@ func TestSetVariable(t *testing.T) {
 			assertNoError(err, t, "EvalVariable()")
 			assertVariable(t, variable, varTest{tc.name, true, tc.startVal, "", tc.typ, nil})
 
-			assertNoError(setVariable(p, tc.name, tc.expr), t, fmt.Sprintf("SetVariable(%q, %q)", tc.name, tc.expr))
+			err = setVariable(p, tc.name, tc.expr)
 
-			variable, err = evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
-			assertNoError(err, t, "EvalVariable()")
-			assertVariable(t, variable, varTest{tc.name, true, tc.finalVal, "", tc.typ, nil})
+			if strings.HasPrefix(tc.finalVal, errorPrefix) {
+				experr := tc.finalVal[len(errorPrefix):]
+				if err == nil {
+					t.Fatalf("expected error %q but didn't get an error", experr)
+				}
+				if err.Error() != experr {
+					t.Fatalf("expected error %q got %v", experr, err)
+				}
+			} else {
+				assertNoError(err, t, fmt.Sprintf("SetVariable(%q, %q)", tc.name, tc.expr))
+				variable, err = evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
+				assertNoError(err, t, "EvalVariable()")
+				assertVariable(t, variable, varTest{tc.name, true, tc.finalVal, "", tc.typ, nil})
+			}
+
 		}
 	})
 }
@@ -792,11 +806,11 @@ func getEvalExpressionTestCases() []varTest {
 		{"bytearray[0] * bytearray[0]", false, "144", "144", "uint8", nil},
 
 		// function call / typecast errors
-		{"unknownthing(1, 2)", false, "", "", "", errors.New("function calls not allowed without using 'call'")},
-		{"(unknownthing)(1, 2)", false, "", "", "", errors.New("function calls not allowed without using 'call'")},
+		{"unknownthing(1, 2)", false, "", "", "", errors.New("could not find symbol value for unknownthing")},
+		{"(unknownthing)(1, 2)", false, "", "", "", errors.New("could not find symbol value for unknownthing")},
 		{"afunc(2)", false, "", "", "", errors.New("function calls not allowed without using 'call'")},
 		{"(afunc)(2)", false, "", "", "", errors.New("function calls not allowed without using 'call'")},
-		{"(*afunc)(2)", false, "", "", "", errors.New("could not evaluate function or type (*afunc): expression \"afunc\" (func()) can not be dereferenced")},
+		{"(*afunc)(2)", false, "", "", "", errors.New("expression \"afunc\" (func()) can not be dereferenced")},
 		{"unknownthing(2)", false, "", "", "", errors.New("could not evaluate function or type unknownthing: could not find symbol value for unknownthing")},
 		{"(*unknownthing)(2)", false, "", "", "", errors.New("could not evaluate function or type (*unknownthing): could not find symbol value for unknownthing")},
 		{"(*strings.Split)(2)", false, "", "", "", errors.New("could not evaluate function or type (*strings.Split): could not find symbol value for strings")},
@@ -1171,7 +1185,8 @@ func TestCallFunction(t *testing.T) {
 		{"callpanic()", []string{`~panic:interface {}:interface {}(string) "callpanic panicked"`}, nil},
 		{`stringsJoin(nil, "")`, []string{`:string:""`}, nil},
 		{`stringsJoin(stringslice, comma)`, []string{`:string:"one,two,three"`}, nil},
-		{`stringsJoin(s1, comma)`, nil, errors.New(`error evaluating "s1" as argument v in function main.stringsJoin: could not find symbol value for s1`)},
+		{`stringsJoin(stringslice, "~~")`, []string{`:string:"one~~two~~three"`}, nil},
+		{`stringsJoin(s1, comma)`, nil, errors.New(`error evaluating "s1" as argument 1 in function stringsJoin: could not find symbol value for s1`)},
 		{`stringsJoin(intslice, comma)`, nil, errors.New("can not convert value of type []int to []string")},
 		{`noreturncall(2)`, nil, nil},
 
@@ -1220,7 +1235,7 @@ func TestCallFunction(t *testing.T) {
 		{`onetwothree(intcallpanic(2))`, []string{`:[]int:[]int len: 3, cap: 3, [3,4,5]`}, nil},
 		{`onetwothree(intcallpanic(0))`, []string{`~panic:interface {}:interface {}(string) "panic requested"`}, nil},
 		{`onetwothree(intcallpanic(2)+1)`, []string{`:[]int:[]int len: 3, cap: 3, [4,5,6]`}, nil},
-		{`onetwothree(intcallpanic("not a number"))`, nil, errors.New("error evaluating \"intcallpanic(\\\"not a number\\\")\" as argument n in function main.onetwothree: can not convert \"not a number\" constant to int")},
+		{`onetwothree(intcallpanic("not a number"))`, nil, errors.New("can not convert \"not a number\" constant to int")},
 
 		// Variable setting tests
 		{`pa2 = getAStructPtr(8); pa2`, []string{`pa2:*main.astruct:*main.astruct {X: 8}`}, nil},
@@ -1271,11 +1286,11 @@ func TestCallFunction(t *testing.T) {
 	}
 
 	var testcasesBefore114After112 = []testCaseCallFunction{
-		{`strings.Join(s1, comma)`, nil, errors.New(`error evaluating "s1" as argument a in function strings.Join: could not find symbol value for s1`)},
+		{`strings.Join(s1, comma)`, nil, errors.New(`error evaluating "s1" as argument 1 in function strings.Join: could not find symbol value for s1`)},
 	}
 
 	var testcases114 = []testCaseCallFunction{
-		{`strings.Join(s1, comma)`, nil, errors.New(`error evaluating "s1" as argument elems in function strings.Join: could not find symbol value for s1`)},
+		{`strings.Join(s1, comma)`, nil, errors.New(`error evaluating "s1" as argument 1 in function strings.Join: could not find symbol value for s1`)},
 	}
 
 	var testcases117 = []testCaseCallFunction{

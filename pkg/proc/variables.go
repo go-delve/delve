@@ -1685,6 +1685,9 @@ func (v *Variable) loadArrayValues(recurseLevel int, cfg LoadConfig) {
 	if count > int64(cfg.MaxArrayValues) {
 		count = int64(cfg.MaxArrayValues)
 	}
+	if v.Base+uint64(v.stride*count) < v.Base {
+		v.Unreadable = fmt.Errorf("bad array base address %#x", v.Base)
+	}
 
 	if v.stride < maxArrayStridePrefetch {
 		v.mem = cacheMemory(v.mem, v.Base, int(v.stride*count))
@@ -1724,7 +1727,7 @@ func (v *Variable) readComplex(size int64) {
 		return
 	}
 
-	ftyp := fakeBasicType("float", int(fs*8))
+	ftyp := godwarf.FakeBasicType("float", int(fs*8))
 
 	realvar := v.newVariable("real", v.Addr, ftyp, v.mem)
 	imagvar := v.newVariable("imaginary", v.Addr+uint64(fs), ftyp, v.mem)
