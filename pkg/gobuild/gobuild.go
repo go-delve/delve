@@ -41,8 +41,11 @@ func GoBuild(debugname string, pkgs []string, buildflags string) error {
 
 // GoBuildCombinedOutput builds non-test files in 'pkgs' with the specified 'buildflags'
 // and writes the output at 'debugname'.
-func GoBuildCombinedOutput(debugname string, pkgs []string, buildflags string) (string, []byte, error) {
-	args := goBuildArgs(debugname, pkgs, buildflags, false)
+func GoBuildCombinedOutput(debugname string, pkgs []string, buildflags interface{}) (string, []byte, error) {
+	args, err := goBuildArgs2(debugname, pkgs, buildflags, false)
+	if err != nil {
+		return "", nil, err
+	}
 	return gocommandCombinedOutput("build", args...)
 }
 
@@ -55,8 +58,11 @@ func GoTestBuild(debugname string, pkgs []string, buildflags string) error {
 
 // GoTestBuildCombinedOutput builds test files 'pkgs' with the specified 'buildflags'
 // and writes the output at 'debugname'.
-func GoTestBuildCombinedOutput(debugname string, pkgs []string, buildflags string) (string, []byte, error) {
-	args := goBuildArgs(debugname, pkgs, buildflags, true)
+func GoTestBuildCombinedOutput(debugname string, pkgs []string, buildflags interface{}) (string, []byte, error) {
+	args, err := goBuildArgs2(debugname, pkgs, buildflags, true)
+	if err != nil {
+		return "", nil, err
+	}
 	return gocommandCombinedOutput("test", args...)
 }
 
@@ -82,6 +88,27 @@ func goBuildArgs(debugname string, pkgs []string, buildflags string, isTest bool
 	}
 	args = append(args, pkgs...)
 	return args
+}
+
+// goBuildArgs2 is like goBuildArgs, but takes either string or []string.
+func goBuildArgs2(debugname string, pkgs []string, buildflags interface{}, isTest bool) ([]string, error) {
+	var args []string
+	switch buildflags := buildflags.(type) {
+	case string:
+		return goBuildArgs(debugname, pkgs, buildflags, isTest), nil
+	case nil:
+	case []string:
+		args = append(args, buildflags...)
+	default:
+		return nil, fmt.Errorf("invalid buildflags type %T", buildflags)
+	}
+
+	args = append(args, "-o", debugname)
+	if isTest {
+		args = append([]string{"-c"}, args...)
+	}
+	args = append(args, "-gcflags", "all=-N -l")
+	return append(args, pkgs...), nil
 }
 
 func gocommandRun(command string, args ...string) error {

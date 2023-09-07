@@ -5594,6 +5594,18 @@ func TestLaunchRequestWithBuildFlags(t *testing.T) {
 	})
 }
 
+func TestLaunchRequestWithBuildFlags2(t *testing.T) {
+	runTest(t, "buildflagtest", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSession(t, client, "launch", func() {
+			// We reuse the harness that builds, but ignore the built binary,
+			// only relying on the source to be built in response to LaunchRequest.
+			client.LaunchRequestWithArgs(map[string]interface{}{
+				"mode": "debug", "program": fixture.Source, "output": "__mybin",
+				"buildFlags": []string{"-ldflags", "-X main.Hello=World"}})
+		})
+	})
+}
+
 func TestLaunchRequestWithEnv(t *testing.T) {
 	// testenv fixture will lookup SOMEVAR with
 	//   x, y := os.Lookup("SOMEVAR")
@@ -6304,7 +6316,7 @@ func TestBadLaunchRequests(t *testing.T) {
 		// Bad "buildFlags"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "buildFlags": 123})
 		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
-			"Failed to launch: invalid debug configuration - cannot unmarshal number into \"buildFlags\" of type string")
+			"Failed to launch: invalid debug configuration - cannot unmarshal number into \"buildFlags\" of type []string or string")
 
 		// Bad "backend"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "backend": 123})

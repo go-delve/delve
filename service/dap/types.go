@@ -102,9 +102,15 @@ type LaunchConfig struct {
 	// Relative paths used in BuildFlags will be interpreted as paths
 	// relative to Delve's current working directory.
 	//
-	// It is like `dlv --build-flags`. For example,
-	//    "buildFlags": "-tags=integration -mod=vendor -cover -v"
-	BuildFlags string `json:"buildFlags,omitempty"`
+	// It should be a string like `dlv --build-flags`, or
+	// an array of strings that is augmented when invoking the go build or
+	// test command through os/exec.Command API.
+	// For example, both forms are acceptible.
+	//    "buildFlags": "-tags=integration -ldflags='-X main.Hello=World'"
+	// or
+	//    "buildFlags": ["-tags=integration", "-ldflags=-X main.Hello=World"]
+	// Using other types is an error.
+	BuildFlags BuildFlags `json:"buildFlags,omitempty"`
 
 	// Output path for the binary of the debuggee.
 	// Relative path is interpreted as the path relative to
@@ -267,4 +273,31 @@ func prettyPrint(config interface{}) string {
 		return fmt.Sprintf("%#v", config)
 	}
 	return string(pretty)
+}
+
+// BuildFlags is either string or []string.
+type BuildFlags struct {
+	value interface{}
+}
+
+func (s *BuildFlags) UnmarshalJSON(b []byte) error {
+	if v := string(b); v == "" || v == "null" {
+		s.value = nil
+		return nil
+	}
+	var strs []string
+	if err := json.Unmarshal(b, &strs); err == nil {
+		s.value = strs
+		return nil
+	}
+	var str string
+	if err := json.Unmarshal(b, &str); err != nil {
+		s.value = nil
+		if uerr, ok := err.(*json.UnmarshalTypeError); ok {
+			return fmt.Errorf(`cannot unmarshal %v into "buildFlags" of type []string or string`, uerr.Value)
+		}
+		return err
+	}
+	s.value = str
+	return nil
 }
