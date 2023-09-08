@@ -510,30 +510,36 @@ func SysctlKinfoProcSlice(name string, args ...int) ([]KinfoProc, error) {
 		return nil, err
 	}
 
-	// Find size.
-	n := uintptr(0)
-	if err := sysctl(mib, nil, &n, nil, 0); err != nil {
-		return nil, err
-	}
-	if n == 0 {
-		return nil, nil
-	}
-	if n%SizeofKinfoProc != 0 {
-		return nil, fmt.Errorf("sysctl() returned a size of %d, which is not a multiple of %d", n, SizeofKinfoProc)
-	}
+	for {
+		// Find size.
+		n := uintptr(0)
+		if err := sysctl(mib, nil, &n, nil, 0); err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			return nil, nil
+		}
+		if n%SizeofKinfoProc != 0 {
+			return nil, fmt.Errorf("sysctl() returned a size of %d, which is not a multiple of %d", n, SizeofKinfoProc)
+		}
 
-	// Read into buffer of that size.
-	buf := make([]KinfoProc, n/SizeofKinfoProc)
-	if err := sysctl(mib, (*byte)(unsafe.Pointer(&buf[0])), &n, nil, 0); err != nil {
-		return nil, err
-	}
-	if n%SizeofKinfoProc != 0 {
-		return nil, fmt.Errorf("sysctl() returned a size of %d, which is not a multiple of %d", n, SizeofKinfoProc)
-	}
+		// Read into buffer of that size.
+		buf := make([]KinfoProc, n/SizeofKinfoProc)
+		if err := sysctl(mib, (*byte)(unsafe.Pointer(&buf[0])), &n, nil, 0); err != nil {
+			if err == ENOMEM {
+				// Process table grew. Try again.
+				continue
+			}
+			return nil, err
+		}
+		if n%SizeofKinfoProc != 0 {
+			return nil, fmt.Errorf("sysctl() returned a size of %d, which is not a multiple of %d", n, SizeofKinfoProc)
+		}
 
-	// The actual call may return less than the original reported required
-	// size so ensure we deal with that.
-	return buf[:n/SizeofKinfoProc], nil
+		// The actual call may return less than the original reported required
+		// size so ensure we deal with that.
+		return buf[:n/SizeofKinfoProc], nil
+	}
 }
 
 //sys	sendfile(infd int, outfd int, offset int64, len *int64, hdtr unsafe.Pointer, flags int) (err error)
@@ -613,6 +619,7 @@ func SysctlKinfoProcSlice(name string, args ...int) ([]KinfoProc, error) {
 //sys	Rmdir(path string) (err error)
 //sys	Seek(fd int, offset int64, whence int) (newoffset int64, err error) = SYS_LSEEK
 //sys	Select(nfd int, r *FdSet, w *FdSet, e *FdSet, timeout *Timeval) (n int, err error)
+//sys	Setattrlist(path string, attrlist *Attrlist, attrBuf []byte, options int) (err error)
 //sys	Setegid(egid int) (err error)
 //sysnb	Seteuid(euid int) (err error)
 //sysnb	Setgid(gid int) (err error)
@@ -622,7 +629,6 @@ func SysctlKinfoProcSlice(name string, args ...int) ([]KinfoProc, error) {
 //sys	Setprivexec(flag int) (err error)
 //sysnb	Setregid(rgid int, egid int) (err error)
 //sysnb	Setreuid(ruid int, euid int) (err error)
-//sysnb	Setrlimit(which int, lim *Rlimit) (err error)
 //sysnb	Setsid() (pid int, err error)
 //sysnb	Settimeofday(tp *Timeval) (err error)
 //sysnb	Setuid(uid int) (err error)
@@ -676,7 +682,6 @@ func SysctlKinfoProcSlice(name string, args ...int) ([]KinfoProc, error) {
 // Kqueue_from_portset_np
 // Kqueue_portset
 // Getattrlist
-// Setattrlist
 // Getdirentriesattr
 // Searchfs
 // Delete
