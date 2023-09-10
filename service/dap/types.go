@@ -167,6 +167,10 @@ type LaunchAttachCommonConfig struct {
 	// Default is 50.
 	StackTraceDepth int `json:"stackTraceDepth,omitempty"`
 
+	// Boolean value to indicate whether package paths should be dropped
+	// from function names in the call stack view.
+	HidePackagePaths bool `json:"hidePackagePaths,omitempty"`
+
 	// Boolean value to indicate whether global package variables
 	// should be shown in the variables pane or not.
 	ShowGlobalVariables bool `json:"showGlobalVariables,omitempty"`

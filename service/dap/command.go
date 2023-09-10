@@ -146,6 +146,14 @@ func (s *Session) evaluateConfig(_, _ int, expr string) (string, error) {
 					Areas: []dap.InvalidatedAreas{"threads"},
 				},
 			})
+		case "hidePackagePaths":
+			// Stack related data has become invalidated.
+			s.send(&dap.InvalidatedEvent{
+				Event: *newEvent("invalidated"),
+				Body: dap.InvalidatedEventBody{
+					Areas: []dap.InvalidatedAreas{"stacks"},
+				},
+			})
 		}
 		res += "\nUpdated"
 	}

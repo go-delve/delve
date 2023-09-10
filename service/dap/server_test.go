@@ -1269,6 +1269,53 @@ func TestStackTraceRequest(t *testing.T) {
 	})
 }
 
+func TestFunctionNameFormattingInStackTrace(t *testing.T) {
+	tests := []struct {
+		hidePackagePaths bool
+		wantFunctionName string
+	}{
+		{false, "pkg.(*SomeType).AnotherMethod (in github.com/go-delve/delve/_fixtures/internal/dir0)"},
+		{true, "pkg.(*SomeType).AnotherMethod"},
+	}
+
+	for _, tt := range tests {
+		runTest(t, "consts", func(client *daptest.Client, fixture protest.Fixture) {
+			runDebugSessionWithBPs(t, client, "launch",
+				// Launch
+				func() {
+					client.LaunchRequestWithArgs(map[string]interface{}{
+						"mode": "exec", "program": fixture.Path, "hidePackagePaths": tt.hidePackagePaths,
+					})
+				},
+				// Breakpoints are set within the program
+				fixture.Source, []int{},
+				[]onBreakpoint{{
+					// Stop at line 36
+					execute: func() {
+						if runtime.GOARCH == "386" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
+							client.StepInRequest(1)
+							client.ExpectStepInResponse(t)
+							client.ExpectStoppedEvent(t)
+						}
+						client.StackTraceRequest(1, 0, 20)
+						stack := client.ExpectStackTraceResponse(t)
+						checkStackFramesExact(t, stack, "main.main", 36, 1000, 3, 3)
+
+						// Step into pkg.AnotherMethod()
+						client.StepInRequest(1)
+						client.ExpectStepInResponse(t)
+						client.ExpectStoppedEvent(t)
+
+						client.StackTraceRequest(1, 0, 20)
+						stack = client.ExpectStackTraceResponse(t)
+						checkStackFramesExact(t, stack, tt.wantFunctionName, 13, 1000, 4, 4)
+					},
+					disconnect: true,
+				}})
+		})
+	}
+}
+
 func TestSelectedThreadsRequest(t *testing.T) {
 	runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
@@ -3988,15 +4035,16 @@ func TestEvaluateRequest(t *testing.T) {
 	})
 }
 
-func formatConfig(depth int, showGlobals, showRegisters bool, goroutineFilters string, hideSystemGoroutines bool, substitutePath [][2]string) string {
+func formatConfig(depth int, hidePackagePaths, showGlobals, showRegisters bool, goroutineFilters string, hideSystemGoroutines bool, substitutePath [][2]string) string {
 	formatStr := `stackTraceDepth	%d
+hidePackagePaths	%v
 showGlobalVariables	%v
 showRegisters	%v
 goroutineFilters	%q
 hideSystemGoroutines	%v
 substitutePath	%v
 `
-	return fmt.Sprintf(formatStr, depth, showGlobals, showRegisters, goroutineFilters, hideSystemGoroutines, substitutePath)
+	return fmt.Sprintf(formatStr, depth, hidePackagePaths, showGlobals, showRegisters, goroutineFilters, hideSystemGoroutines, substitutePath)
 }
 
 func TestEvaluateCommandRequest(t *testing.T) {
@@ -4033,7 +4081,7 @@ Type 'dlv help' followed by a command for full documentation.
 
 					client.EvaluateRequest("dlv config -list", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, formatConfig(50, false, false, "", false, [][2]string{}), noChildren)
+					checkEval(t, got, formatConfig(50, false, false, false, "", false, [][2]string{}), noChildren)
 
 					// Read and modify showGlobalVariables.
 					client.EvaluateRequest("dlv config -list showGlobalVariables", 1000, "repl")
@@ -4054,7 +4102,7 @@ Type 'dlv help' followed by a command for full documentation.
 
 					client.EvaluateRequest("dlv config -list", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, formatConfig(50, true, false, "", false, [][2]string{}), noChildren)
+					checkEval(t, got, formatConfig(50, false, true, false, "", false, [][2]string{}), noChildren)
 
 					client.ScopesRequest(1000)
 					scopes = client.ExpectScopesResponse(t)
@@ -5547,7 +5595,7 @@ func TestLaunchTestRequest(t *testing.T) {
 				testFile, []int{14},
 				[]onBreakpoint{{
 					execute: func() {
-						checkStop(t, client, -1, "github.com/go-delve/delve/_fixtures/buildtest.TestCurrentDirectory", 14)
+						checkStop(t, client, -1, "buildtest.TestCurrentDirectory (in github.com/go-delve/delve/_fixtures)", 14)
 						client.VariablesRequest(1001) // Locals
 						locals := client.ExpectVariablesResponse(t)
 						checkChildren(t, locals, "Locals", 1)

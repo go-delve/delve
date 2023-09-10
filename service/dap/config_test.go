@@ -18,14 +18,14 @@ func TestListConfig(t *testing.T) {
 			args: args{
 				args: &launchAttachArgs{},
 			},
-			want: formatConfig(0, false, false, "", false, [][2]string{}),
+			want: formatConfig(0, false, false, false, "", false, [][2]string{}),
 		},
 		{
 			name: "default values",
 			args: args{
 				args: &defaultArgs,
 			},
-			want: formatConfig(50, false, false, "", false, [][2]string{}),
+			want: formatConfig(50, false, false, false, "", false, [][2]string{}),
 		},
 		{
 			name: "custom values",
@@ -37,7 +37,7 @@ func TestListConfig(t *testing.T) {
 					substitutePathServerToClient: [][2]string{{"world", "hello"}},
 				},
 			},
-			want: formatConfig(35, true, false, "", false, [][2]string{{"hello", "world"}}),
+			want: formatConfig(35, false, true, false, "", false, [][2]string{{"hello", "world"}}),
 		},
 	}
 	for _, tt := range tests {

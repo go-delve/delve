@@ -31,6 +31,7 @@ In addition to the general [DAP spec](https://microsoft.github.io/debug-adapter-
     substitutePath<br>
     stopOnEntry<br>
     stackTraceDepth<br>
+    hidePackagePaths<br>
     showGlobalVariables<br>
     showRegisters<br>
     hideSystemGoroutines<br>
