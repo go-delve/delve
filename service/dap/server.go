@@ -1684,7 +1684,17 @@ func fnName(loc *proc.Location) string {
 	if loc.Fn == nil {
 		return "???"
 	}
-	return loc.Fn.Name
+	fullSymbol := loc.Fn.Name
+	packagePath := loc.Fn.PackageName()
+	lastSlash := strings.LastIndex(packagePath, "/")
+	if lastSlash >= 0 {
+		// strip everything until the last slash from the package path
+		return fullSymbol[lastSlash+1:]
+	}
+
+	// We either have no package name at all, or it doesn't contain a slash:
+	// return name unchanged
+	return fullSymbol
 }
 
 func fnPackageName(loc *proc.Location) string {

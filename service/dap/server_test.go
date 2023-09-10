@@ -1269,6 +1269,71 @@ func TestStackTraceRequest(t *testing.T) {
 	})
 }
 
+func TestFunctionNameFormattingInStackTrace(t *testing.T) {
+	runTest(t, "consts", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]interface{}{
+					"mode": "exec", "program": fixture.Path,
+				})
+			},
+			// Breakpoints are set within the program
+			fixture.Source, []int{},
+			[]onBreakpoint{{
+				// Stop at line 36
+				execute: func() {
+					if runtime.GOARCH == "386" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
+						client.StepInRequest(1)
+						client.ExpectStepInResponse(t)
+						client.ExpectStoppedEvent(t)
+					}
+					client.StackTraceRequest(1, 0, 20)
+					stack := client.ExpectStackTraceResponse(t)
+					checkStackFramesExact(t, stack, "main.main", 36, 1000, 3, 3)
+
+					// Step into pkg.AnotherMethod()
+					client.StepInRequest(1)
+					client.ExpectStepInResponse(t)
+					client.ExpectStoppedEvent(t)
+
+					client.StackTraceRequest(1, 0, 20)
+					stack = client.ExpectStackTraceResponse(t)
+					checkStackFramesExact(t, stack, "pkg.(*SomeType).AnotherMethod", 13, 1000, 4, 4)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+func Test_fnName(t *testing.T) {
+	tests := []struct {
+		symbol string
+		want   string
+	}{
+		{
+			symbol: "pkg.functionName",
+			want:   "pkg.functionName",
+		},
+		{
+			symbol: "github.com/some/long/package/path/pkg.(*SomeType).Method",
+			want:   "pkg.(*SomeType).Method",
+		},
+		{
+			symbol: "github.com/some/path/pkg.typeparametric[go.shape.struct { example.com/blah/otherpkg.x int }]",
+			want:   "pkg.typeparametric[go.shape.struct { example.com/blah/otherpkg.x int }]",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.symbol, func(t *testing.T) {
+			loc := proc.Location{Fn: &proc.Function{Name: tt.symbol}}
+			if got := fnName(&loc); got != tt.want {
+				t.Errorf("fnName() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSelectedThreadsRequest(t *testing.T) {
 	runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
@@ -5547,7 +5612,7 @@ func TestLaunchTestRequest(t *testing.T) {
 				testFile, []int{14},
 				[]onBreakpoint{{
 					execute: func() {
-						checkStop(t, client, -1, "github.com/go-delve/delve/_fixtures/buildtest.TestCurrentDirectory", 14)
+						checkStop(t, client, -1, "buildtest.TestCurrentDirectory", 14)
 						client.VariablesRequest(1001) // Locals
 						locals := client.ExpectVariablesResponse(t)
 						checkChildren(t, locals, "Locals", 1)
