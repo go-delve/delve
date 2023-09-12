@@ -168,7 +168,7 @@ type LaunchAttachCommonConfig struct {
 	StackTraceDepth int `json:"stackTraceDepth,omitempty"`
 
 	// Boolean value to indicate whether package paths should be dropped
-	// from function names in the call stack view.
+	// from stack frame names in the call stack view.
 	HidePackagePaths bool `json:"hidePackagePaths,omitempty"`
 
 	// Boolean value to indicate whether global package variables
