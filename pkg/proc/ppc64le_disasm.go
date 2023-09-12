@@ -22,7 +22,7 @@ func init() {
 	var unixGetG = opcodeSeq{uint64(ppc64asm.LD)}
 	var prologue opcodeSeq
 	prologuesPPC64LE = make([]opcodeSeq, 0, 3)
-	prologue = make(opcodeSeq,0,1)
+	prologue = make(opcodeSeq, 0, 1)
 	for _, getG := range []opcodeSeq{unixGetG} {
 		for _, stacksplit := range []opcodeSeq{tinyStacksplit, smallStacksplit, bigStacksplit} {
 			prologue = append(prologue, getG...)
@@ -30,12 +30,12 @@ func init() {
 			prologuesPPC64LE = append(prologuesPPC64LE, prologue)
 		}
 	}
-	// On PIE mode special prologue is generated two instructions before the function entry point that correlates to call target 
+	// On PIE mode special prologue is generated two instructions before the function entry point that correlates to call target
 	// address, Teach delve to recognize this sequence to appropriately adjust PC address so that the breakpoint is actually hit
 	// while doing step
-			TOCprologue := make(opcodeSeq, 0, len(adjustTOCPrologueOnPIE))
-			TOCprologue = append(TOCprologue, adjustTOCPrologueOnPIE...)
-			prologuesPPC64LE = append(prologuesPPC64LE, TOCprologue)
+	TOCprologue := make(opcodeSeq, 0, len(adjustTOCPrologueOnPIE))
+	TOCprologue = append(TOCprologue, adjustTOCPrologueOnPIE...)
+	prologuesPPC64LE = append(prologuesPPC64LE, TOCprologue)
 }
 
 func ppc64leAsmDecode(asmInst *AsmInstruction, mem []byte, regs *op.DwarfRegisters, memrw MemoryReadWriter, bi *BinaryInfo) error {
