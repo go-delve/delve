@@ -17,17 +17,25 @@ func init() {
 	var tinyStacksplit = opcodeSeq{uint64(ppc64asm.ADDI), uint64(ppc64asm.CMPLD), uint64(ppc64asm.BC)}
 	var smallStacksplit = opcodeSeq{uint64(ppc64asm.ADDI), uint64(ppc64asm.CMPLD), uint64(ppc64asm.BC)}
 	var bigStacksplit = opcodeSeq{uint64(ppc64asm.ADDI), uint64(ppc64asm.CMPLD), uint64(ppc64asm.BC), uint64(ppc64asm.STD), uint64(ppc64asm.STD), uint64(ppc64asm.MFSPR)}
+	var adjustTOCPrologueOnPIE = opcodeSeq{uint64(ppc64asm.ADDIS), uint64(ppc64asm.ADDI)}
 
 	var unixGetG = opcodeSeq{uint64(ppc64asm.LD)}
+	var prologue opcodeSeq
 	prologuesPPC64LE = make([]opcodeSeq, 0, 3)
+	prologue = make(opcodeSeq,0,1)
 	for _, getG := range []opcodeSeq{unixGetG} {
 		for _, stacksplit := range []opcodeSeq{tinyStacksplit, smallStacksplit, bigStacksplit} {
-			prologue := make(opcodeSeq, 0, len(getG)+len(stacksplit))
 			prologue = append(prologue, getG...)
 			prologue = append(prologue, stacksplit...)
 			prologuesPPC64LE = append(prologuesPPC64LE, prologue)
 		}
 	}
+	// On PIE mode special prologue is generated two instructions before the function entry point that correlates to call target 
+	// address, Teach delve to recognize this sequence to appropriately adjust PC address so that the breakpoint is actually hit
+	// while doing step
+			TOCprologue := make(opcodeSeq, 0, len(adjustTOCPrologueOnPIE))
+			TOCprologue = append(TOCprologue, adjustTOCPrologueOnPIE...)
+			prologuesPPC64LE = append(prologuesPPC64LE, TOCprologue)
 }
 
 func ppc64leAsmDecode(asmInst *AsmInstruction, mem []byte, regs *op.DwarfRegisters, memrw MemoryReadWriter, bi *BinaryInfo) error {
