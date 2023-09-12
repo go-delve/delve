@@ -1274,7 +1274,7 @@ func TestFunctionNameFormattingInStackTrace(t *testing.T) {
 		hidePackagePaths bool
 		wantFunctionName string
 	}{
-		{false, "pkg.(*SomeType).AnotherMethod (in github.com/go-delve/delve/_fixtures/internal/dir0)"},
+		{false, "pkg.(*SomeType).AnotherMethod (in github.com/go-delve/delve/_fixtures/internal/dir0/pkg)"},
 		{true, "pkg.(*SomeType).AnotherMethod"},
 	}
 

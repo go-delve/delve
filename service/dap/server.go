@@ -1689,15 +1689,21 @@ func fnName(loc *proc.Location, hidePackagePaths bool) string {
 	if loc.Fn == nil {
 		return "???"
 	}
-	name := loc.Fn.Name
-	if idx := strings.LastIndex(name, "/"); idx != -1 {
+	fullSymbol := loc.Fn.Name
+	packagePath := loc.Fn.PackageName()
+	lastSlash := strings.LastIndex(packagePath, "/")
+	if lastSlash >= 0 {
+		name := fullSymbol[lastSlash+1:]
 		if hidePackagePaths {
-			return name[idx+1:]
+			return name
 		} else {
-			return fmt.Sprintf("%s (in %s)", name[idx+1:], name[:idx])
+			return fmt.Sprintf("%s (in %s)", name, packagePath)
 		}
 	}
-	return name
+
+	// We either have no package name at all, or it doesn't contain a slash:
+	// return name unchanged
+	return fullSymbol
 }
 
 func fnPackageName(loc *proc.Location) string {
