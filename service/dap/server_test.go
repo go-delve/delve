@@ -5595,7 +5595,7 @@ func TestLaunchTestRequest(t *testing.T) {
 				testFile, []int{14},
 				[]onBreakpoint{{
 					execute: func() {
-						checkStop(t, client, -1, "buildtest.TestCurrentDirectory (in github.com/go-delve/delve/_fixtures)", 14)
+						checkStop(t, client, -1, "buildtest.TestCurrentDirectory (in github.com/go-delve/delve/_fixtures/buildtest)", 14)
 						client.VariablesRequest(1001) // Locals
 						locals := client.ExpectVariablesResponse(t)
 						checkChildren(t, locals, "Locals", 1)
