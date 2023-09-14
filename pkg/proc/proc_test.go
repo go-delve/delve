@@ -905,7 +905,6 @@ func (l1 *loc) match(l2 proc.Stackframe) bool {
 }
 
 func TestStacktrace(t *testing.T) {
-	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	stacks := [][]loc{
 		{{4, "main.stacktraceme"}, {8, "main.func1"}, {16, "main.main"}},
 		{{4, "main.stacktraceme"}, {8, "main.func1"}, {12, "main.func2"}, {17, "main.main"}},
@@ -990,7 +989,6 @@ func stackMatch(stack []loc, locations []proc.Stackframe, skipRuntime bool) bool
 
 func TestStacktraceGoroutine(t *testing.T) {
 	skipOn(t, "broken - cgo stacktraces", "darwin", "arm64")
-	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 
 	mainStack := []loc{{14, "main.stacktraceme"}, {29, "main.main"}}
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
@@ -1315,7 +1313,6 @@ func TestVariableEvaluation(t *testing.T) {
 }
 
 func TestFrameEvaluation(t *testing.T) {
-	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	protest.AllowRecording(t)
 	lenient := false
 	if runtime.GOOS == "windows" {
@@ -2308,7 +2305,6 @@ func TestNextDeferReturnAndDirectCall(t *testing.T) {
 }
 
 func TestNextPanicAndDirectCall(t *testing.T) {
-	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	// Next should not step into a deferred function if it is called
 	// directly, only if it is called through a panic or a deferreturn.
 	// Here we test the case where the function is called by a panic
@@ -2326,7 +2322,6 @@ func TestStepCall(t *testing.T) {
 }
 
 func TestStepCallPtr(t *testing.T) {
-	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	// Tests that Step works correctly when calling functions with a
 	// function pointer.
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) && !protest.RegabiSupported() {
@@ -2336,17 +2331,26 @@ func TestStepCallPtr(t *testing.T) {
 			{6, 7},
 			{7, 11}}, "", t)
 	} else {
-		testseq("teststepprog", contStep, []nextTest{
-			{9, 10},
-			{10, 5},
-			{5, 6},
-			{6, 7},
-			{7, 11}}, "", t)
+		if runtime.GOOS == "linux" && runtime.GOARCH == "ppc64le" && buildMode == "pie"  {
+			testseq("teststepprog", contStep, []nextTest{
+				{9, 10},
+				{10, 5},
+				{5, 6},
+				{6, 7},
+				{7, 10},
+				{10, 11}}, "", t)
+		} else {
+			testseq("teststepprog", contStep, []nextTest{
+				{9, 10},
+				{10, 5},
+				{5, 6},
+				{6, 7},
+				{7, 11}}, "", t)
+		}
 	}
 }
 
 func TestStepReturnAndPanic(t *testing.T) {
-	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	// Tests that Step works correctly when returning from functions
 	// and when a deferred function is called when panic'ing.
 	testseq("defercall", contStep, []nextTest{
@@ -2358,7 +2362,6 @@ func TestStepReturnAndPanic(t *testing.T) {
 }
 
 func TestStepDeferReturn(t *testing.T) {
-	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	// Tests that Step works correctly when a deferred function is
 	// called during a return.
 	testseq("defercall", contStep, []nextTest{
@@ -2373,7 +2376,6 @@ func TestStepDeferReturn(t *testing.T) {
 }
 
 func TestStepIgnorePrivateRuntime(t *testing.T) {
-	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	// Tests that Step will ignore calls to private runtime functions
 	// (such as runtime.convT2E in this case)
 	switch {
@@ -2752,7 +2754,6 @@ func TestIssue594(t *testing.T) {
 }
 
 func TestStepOutPanicAndDirectCall(t *testing.T) {
-	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	// StepOut should not step into a deferred function if it is called
 	// directly, only if it is called through a panic.
 	// Here we test the case where the function is called by a panic
@@ -5569,7 +5570,6 @@ func TestManualStopWhileStopped(t *testing.T) {
 }
 
 func TestDwrapStartLocation(t *testing.T) {
-	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	// Tests that the start location of a goroutine is unwrapped in Go 1.17 and later.
 	withTestProcess("goroutinestackprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.stacktraceme")
@@ -6071,7 +6071,6 @@ func TestEscapeCheckUnreadable(t *testing.T) {
 }
 
 func TestStepShadowConcurrentBreakpoint(t *testing.T) {
-	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 	// Checks that a StepBreakpoint can not shadow a concurrently hit user breakpoint
 	withTestProcess("stepshadow", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		break2 := setFunctionBreakpoint(p, t, "main.stacktraceme2")
