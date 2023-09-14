@@ -1316,6 +1316,53 @@ func TestFunctionNameFormattingInStackTrace(t *testing.T) {
 	}
 }
 
+func Test_fnName(t *testing.T) {
+	tests := []struct {
+		symbol           string
+		hidePackagePaths bool
+		want             string
+	}{
+		{
+			symbol:           "pkg.functionName",
+			hidePackagePaths: false,
+			want:             "pkg.functionName",
+		},
+		{
+			symbol:           "pkg.functionName",
+			hidePackagePaths: true,
+			want:             "pkg.functionName",
+		},
+		{
+			symbol:           "github.com/some/long/package/path/pkg.(*SomeType).Method",
+			hidePackagePaths: false,
+			want:             "pkg.(*SomeType).Method (in github.com/some/long/package/path/pkg)",
+		},
+		{
+			symbol:           "github.com/some/long/package/path/pkg.(*SomeType).Method",
+			hidePackagePaths: true,
+			want:             "pkg.(*SomeType).Method",
+		},
+		{
+			symbol:           "github.com/some/path/pkg.typeparametric[go.shape.struct { example.com/blah/otherpkg.x int }]",
+			hidePackagePaths: false,
+			want:             "pkg.typeparametric[go.shape.struct { example.com/blah/otherpkg.x int }] (in github.com/some/path/pkg)",
+		},
+		{
+			symbol:           "github.com/some/path/pkg.typeparametric[go.shape.struct { example.com/blah/otherpkg.x int }]",
+			hidePackagePaths: true,
+			want:             "pkg.typeparametric[go.shape.struct { example.com/blah/otherpkg.x int }]",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.symbol, func(t *testing.T) {
+			loc := proc.Location{Fn: &proc.Function{Name: tt.symbol}}
+			if got := fnName(&loc, tt.hidePackagePaths); got != tt.want {
+				t.Errorf("fnName() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSelectedThreadsRequest(t *testing.T) {
 	runTest(t, "goroutinestackprog", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
