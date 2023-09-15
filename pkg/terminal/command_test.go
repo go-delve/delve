@@ -1445,3 +1445,31 @@ func TestRestartBreakpoints(t *testing.T) {
 		}
 	})
 }
+
+func TestListPackages(t *testing.T) {
+	test.AllowRecording(t)
+	withTestTerminal("goroutinestackprog", t, func(term *FakeTerminal) {
+		out := term.MustExec("packages")
+		t.Logf("> packages\n%s", out)
+		seen := map[string]bool{}
+		for _, p := range strings.Split(strings.TrimSpace(out), "\n") {
+			seen[p] = true
+		}
+		if !seen["main"] || !seen["runtime"] {
+			t.Error("output omits 'main' and 'runtime'")
+		}
+
+		out = term.MustExec("packages runtime")
+		t.Logf("> packages runtime\n%s", out)
+
+		for _, p := range strings.Split(strings.TrimSpace(out), "\n") {
+			if !strings.Contains(p, "runtime") {
+				t.Errorf("output includes unexpected %q", p)
+			}
+			seen[p] = true
+		}
+		if !seen["runtime"] {
+			t.Error("output omits 'runtime'")
+		}
+	})
+}

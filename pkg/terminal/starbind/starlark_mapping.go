@@ -1275,11 +1275,19 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 				return starlark.None, decorateError(thread, err)
 			}
 		}
+		if len(args) > 1 && args[1] != starlark.None {
+			err := unmarshalStarlarkValue(args[1], &rpcArgs.Filter, "Filter")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
 		for _, kv := range kwargs {
 			var err error
 			switch kv[0].(starlark.String) {
 			case "IncludeFiles":
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.IncludeFiles, "IncludeFiles")
+			case "Filter":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Filter, "Filter")
 			default:
 				err = fmt.Errorf("unknown argument %q", kv[0])
 			}
@@ -1293,7 +1301,7 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 		}
 		return env.interfaceToStarlarkValue(rpcRet), nil
 	})
-	doc["packages_build_info"] = "builtin packages_build_info(IncludeFiles)\n\npackages_build_info returns the list of packages used by the program along with\nthe directory where each package was compiled and optionally the list of\nfiles constituting the package.\nNote that the directory path is a best guess and may be wrong is a tool\nother than cmd/go is used to perform the build."
+	doc["packages_build_info"] = "builtin packages_build_info(IncludeFiles, Filter)\n\npackages_build_info returns the list of packages used by the program along with\nthe directory where each package was compiled and optionally the list of\nfiles constituting the package.\nNote that the directory path is a best guess and may be wrong is a tool\nother than cmd/go is used to perform the build."
 	r["registers"] = starlark.NewBuiltin("registers", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if err := isCancelled(thread); err != nil {
 			return starlark.None, decorateError(thread, err)

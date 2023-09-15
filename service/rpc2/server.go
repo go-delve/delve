@@ -3,6 +3,7 @@ package rpc2
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"sort"
 	"time"
 
@@ -912,12 +913,13 @@ func (s *RPCServer) ListDynamicLibraries(in ListDynamicLibrariesIn, out *ListDyn
 	return nil
 }
 
-// ListPackagesBuildInfoIn holds the arguments of ListPackages.
+// ListPackagesBuildInfoIn holds the arguments of ListPackagesBuildInfo.
 type ListPackagesBuildInfoIn struct {
 	IncludeFiles bool
+	Filter       string // if not empty, returns only packages matching the regexp.
 }
 
-// ListPackagesBuildInfoOut holds the return values of ListPackages.
+// ListPackagesBuildInfoOut holds the return values of ListPackagesBuildInfo.
 type ListPackagesBuildInfoOut struct {
 	List []api.PackageBuildInfo
 }
@@ -928,9 +930,20 @@ type ListPackagesBuildInfoOut struct {
 // Note that the directory path is a best guess and may be wrong is a tool
 // other than cmd/go is used to perform the build.
 func (s *RPCServer) ListPackagesBuildInfo(in ListPackagesBuildInfoIn, out *ListPackagesBuildInfoOut) error {
+	var pattern *regexp.Regexp
+	if in.Filter != "" {
+		p, err := regexp.Compile(in.Filter)
+		if err != nil {
+			return fmt.Errorf("invalid Filter pattern: %v", err)
+		}
+		pattern = p
+	}
 	pkgs := s.debugger.ListPackagesBuildInfo(in.IncludeFiles)
 	out.List = make([]api.PackageBuildInfo, 0, len(pkgs))
 	for _, pkg := range pkgs {
+		if pattern != nil && !pattern.MatchString(pkg.ImportPath) {
+			continue
+		}
 		var files []string
 
 		if len(pkg.Files) > 0 {
