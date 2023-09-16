@@ -222,6 +222,11 @@ type launchAttachArgs struct {
 	ShowRegisters bool `cfgName:"showRegisters"`
 	// GoroutineFilters are the filters used when loading goroutines.
 	GoroutineFilters string `cfgName:"goroutineFilters"`
+	// ShowPprofLabels is an array of keys of pprof labels to show as a
+	// goroutine name in the threads view. If the array has one element, only
+	// that label's value will be shown; otherwise, each of the labels will be
+	// shown as "key:value". To show all labels, specify the single element "*".
+	ShowPprofLabels []string `cfgName:"showPprofLabels"`
 	// HideSystemGoroutines indicates if system goroutines should be removed from threads
 	// responses.
 	HideSystemGoroutines bool `cfgName:"hideSystemGoroutines"`
@@ -241,6 +246,7 @@ var defaultArgs = launchAttachArgs{
 	HideSystemGoroutines:         false,
 	ShowRegisters:                false,
 	GoroutineFilters:             "",
+	ShowPprofLabels:              []string{},
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
 }
@@ -353,6 +359,7 @@ func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) {
 	s.args.ShowRegisters = args.ShowRegisters
 	s.args.HideSystemGoroutines = args.HideSystemGoroutines
 	s.args.GoroutineFilters = args.GoroutineFilters
+	s.args.ShowPprofLabels = args.ShowPprofLabels
 	if paths := args.SubstitutePath; len(paths) > 0 {
 		clientToServer := make([][2]string, 0, len(paths))
 		serverToClient := make([][2]string, 0, len(paths))
@@ -1815,10 +1822,41 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 			if g.Thread != nil && g.Thread.ThreadID() != 0 {
 				thread = fmt.Sprintf(" (Thread %d)", g.Thread.ThreadID())
 			}
+			var labels strings.Builder
+			writeLabelsForKeys := func(keys []string) {
+				for _, k := range keys {
+					labelValue := g.Labels()[k]
+					if labelValue != "" {
+						labels.WriteByte(' ')
+						labels.WriteString(k)
+						labels.WriteByte(':')
+						labels.WriteString(labelValue)
+					}
+				}
+			}
+			if len(s.args.ShowPprofLabels) == 1 {
+				labelKey := s.args.ShowPprofLabels[0]
+				if labelKey == "*" {
+					keys := make([]string, 0, len(g.Labels()))
+					for k := range g.Labels() {
+						keys = append(keys, k)
+					}
+					sort.Strings(keys)
+					writeLabelsForKeys(keys)
+				} else {
+					labelValue := g.Labels()[labelKey]
+					if labelValue != "" {
+						labels.WriteByte(' ')
+						labels.WriteString(labelValue)
+					}
+				}
+			} else {
+				writeLabelsForKeys(s.args.ShowPprofLabels)
+			}
 			// File name and line number are communicated via `stackTrace`
 			// so no need to include them here.
 			loc := g.UserCurrent()
-			threads[i].Name = fmt.Sprintf("%s[Go %d] %s%s", selected, g.ID, fnName(&loc), thread)
+			threads[i].Name = fmt.Sprintf("%s[Go %d%s] %s%s", selected, g.ID, labels.String(), fnName(&loc), thread)
 			threads[i].Id = int(g.ID)
 		}
 	}

@@ -37,6 +37,15 @@ func configureSet(sargs *launchAttachArgs, args string) (bool, string, error) {
 		return true, config.ConfigureListByName(sargs, cfgname, "cfgName"), nil
 	}
 
+	if cfgname == "showPprofLabels" {
+		err := configureSetShowPprofLabels(sargs, rest)
+		if err != nil {
+			return false, "", err
+		}
+		// Print the updated labels
+		return true, config.ConfigureListByName(sargs, cfgname, "cfgName"), nil
+	}
+
 	err := config.ConfigureSetSimple(rest, cfgname, field)
 	if err != nil {
 		return false, "", err
@@ -82,6 +91,40 @@ func configureSetSubstitutePath(args *launchAttachArgs, rest string) error {
 
 	default:
 		return fmt.Errorf("too many arguments to \"config substitutePath\"")
+	}
+	return nil
+}
+
+func configureSetShowPprofLabels(args *launchAttachArgs, rest string) error {
+	if strings.TrimSpace(rest) == "-clear" {
+		args.ShowPprofLabels = args.ShowPprofLabels[:0]
+		return nil
+	}
+	delete := false
+	argv := config.SplitQuotedFields(rest, '"')
+	if len(argv) == 2 && argv[0] == "-clear" {
+		argv = argv[1:]
+		delete = true
+	}
+	switch len(argv) {
+	case 0:
+		// do nothing, let caller show the current list of labels
+		return nil
+	case 1:
+		if delete {
+			for i := range args.ShowPprofLabels {
+				if args.ShowPprofLabels[i] == argv[0] {
+					copy(args.ShowPprofLabels[i:], args.ShowPprofLabels[i+1:])
+					args.ShowPprofLabels = args.ShowPprofLabels[:len(args.ShowPprofLabels)-1]
+					return nil
+				}
+			}
+			return fmt.Errorf("could not find label %q", argv[0])
+		} else {
+			args.ShowPprofLabels = append(args.ShowPprofLabels, argv[0])
+		}
+	default:
+		return fmt.Errorf("too many arguments to \"config showPprofLabels\"")
 	}
 	return nil
 }

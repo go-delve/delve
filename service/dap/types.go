@@ -190,6 +190,12 @@ type LaunchAttachCommonConfig struct {
 	// https://github.com/go-delve/delve/blob/master/Documentation/cli/README.md#goroutines
 	GoroutineFilters string `json:"goroutineFilters,omitempty"`
 
+	// Array of string values indicating the keys of pprof labels to show as a
+	// goroutine name in the threads view. If the array has one element, only
+	// that label's value will be shown; otherwise, each of the labels will be
+	// shown as "key:value". To show all labels, specify the single element "*".
+	ShowPprofLabels []string `json:"showPprofLabels,omitempty"`
+
 	// An array of mappings from a local path (client) to the remote path (debugger).
 	// This setting is useful when working in a file system with symbolic links,
 	// running remote debugging, or debugging an executable compiled externally.

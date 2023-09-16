@@ -33,6 +33,7 @@ In addition to the general [DAP spec](https://microsoft.github.io/debug-adapter-
     stackTraceDepth<br>
     showGlobalVariables<br>
     showRegisters<br>
+    showPprofLabels<br>
     hideSystemGoroutines<br>
     goroutineFilters
     </tr>

@@ -1413,6 +1413,68 @@ func TestSelectedThreadsRequest(t *testing.T) {
 	})
 }
 
+func TestGoroutineLabels(t *testing.T) {
+	tests := []struct {
+		showPprofLabelsConfig   []string
+		expectedPrefixWithLabel string
+	}{
+		{[]string{}, "* [Go 1]"},
+		{[]string{"k1"}, "* [Go 1 v1]"},
+		{[]string{"k2"}, "* [Go 1 v2]"},
+		{[]string{"k2", "k1"}, "* [Go 1 k2:v2 k1:v1]"}, // When passing keys explicitly, we show them in the given order
+		{[]string{"unknown"}, "* [Go 1]"},
+		{[]string{"unknown", "k1"}, "* [Go 1 k1:v1]"},
+		{[]string{"*"}, "* [Go 1 k1:v1 k2:v2]"}, // Special case for showing all labels; labels are shown sorted by key
+	}
+	for _, tc := range tests {
+		runTest(t, "goroutineLabels", func(client *daptest.Client, fixture protest.Fixture) {
+			runDebugSessionWithBPs(t, client, "launch",
+				// Launch
+				func() {
+					client.LaunchRequestWithArgs(map[string]interface{}{
+						"mode":                 "exec",
+						"program":              fixture.Path,
+						"hideSystemGoroutines": true,
+						"showPprofLabels":      tc.showPprofLabelsConfig,
+						"stopOnEntry":          !stopOnEntry,
+					})
+				},
+				// Breakpoints are set within the program
+				"", []int{},
+				[]onBreakpoint{{
+					execute: func() {
+						client.ThreadsRequest()
+						tr := client.ExpectThreadsResponse(t)
+						if len(tr.Body.Threads) != 1 {
+							t.Errorf("got %d threads, expected 1\n", len(tr.Body.Threads))
+						}
+						// The first breakpoint is before the call to pprof.Do; no labels yet:
+						expectedPrefix := "* [Go 1]"
+						if !strings.HasPrefix(tr.Body.Threads[0].Name, expectedPrefix) {
+							t.Errorf("got %s, expected %s\n", tr.Body.Threads[0].Name, expectedPrefix)
+						}
+
+						client.ContinueRequest(1)
+						client.ExpectContinueResponse(t)
+						client.ExpectStoppedEvent(t)
+						checkStop(t, client, 1, "main.f", 21)
+						client.ThreadsRequest()
+						tr = client.ExpectThreadsResponse(t)
+						if len(tr.Body.Threads) != 1 {
+							t.Errorf("got %d threads, expected 1\n", len(tr.Body.Threads))
+						}
+						// The second breakpoint is inside pprof.Do, so there are labels:
+						if !strings.HasPrefix(tr.Body.Threads[0].Name, tc.expectedPrefixWithLabel) {
+							t.Errorf("got %s, expected %s\n", tr.Body.Threads[0].Name, tc.expectedPrefixWithLabel)
+						}
+					},
+					disconnect: true,
+				}},
+			)
+		})
+	}
+}
+
 func TestHideSystemGoroutinesRequest(t *testing.T) {
 	tests := []struct{ hideSystemGoroutines bool }{
 		{hideSystemGoroutines: true},
@@ -4065,15 +4127,16 @@ func TestEvaluateRequest(t *testing.T) {
 	})
 }
 
-func formatConfig(depth int, showGlobals, showRegisters bool, goroutineFilters string, hideSystemGoroutines bool, substitutePath [][2]string) string {
+func formatConfig(depth int, showGlobals, showRegisters bool, goroutineFilters string, showPprofLabels []string, hideSystemGoroutines bool, substitutePath [][2]string) string {
 	formatStr := `stackTraceDepth	%d
 showGlobalVariables	%v
 showRegisters	%v
 goroutineFilters	%q
+showPprofLabels	%v
 hideSystemGoroutines	%v
 substitutePath	%v
 `
-	return fmt.Sprintf(formatStr, depth, showGlobals, showRegisters, goroutineFilters, hideSystemGoroutines, substitutePath)
+	return fmt.Sprintf(formatStr, depth, showGlobals, showRegisters, goroutineFilters, showPprofLabels, hideSystemGoroutines, substitutePath)
 }
 
 func TestEvaluateCommandRequest(t *testing.T) {
@@ -4110,7 +4173,7 @@ Type 'dlv help' followed by a command for full documentation.
 
 					client.EvaluateRequest("dlv config -list", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, formatConfig(50, false, false, "", false, [][2]string{}), noChildren)
+					checkEval(t, got, formatConfig(50, false, false, "", []string{}, false, [][2]string{}), noChildren)
 
 					// Read and modify showGlobalVariables.
 					client.EvaluateRequest("dlv config -list showGlobalVariables", 1000, "repl")
@@ -4131,7 +4194,7 @@ Type 'dlv help' followed by a command for full documentation.
 
 					client.EvaluateRequest("dlv config -list", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, formatConfig(50, true, false, "", false, [][2]string{}), noChildren)
+					checkEval(t, got, formatConfig(50, true, false, "", []string{}, false, [][2]string{}), noChildren)
 
 					client.ScopesRequest(1000)
 					scopes = client.ExpectScopesResponse(t)
