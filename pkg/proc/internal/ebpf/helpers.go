@@ -71,10 +71,8 @@ func (ctx *EBPFContext) Close() {
 	if ctx.objs != nil {
 		ctx.objs.Close()
 	}
-	if ctx.links != nil {
-		for _, l := range ctx.links {
-			l.Close()
-		}
+	for _, l := range ctx.links {
+		l.Close()
 	}
 }
 
