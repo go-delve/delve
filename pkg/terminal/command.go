@@ -356,6 +356,11 @@ If regex is specified only the functions matching it will be returned.`},
 	types [<regex>]
 
 If regex is specified only the types matching it will be returned.`},
+		{aliases: []string{"packages"}, cmdFn: packages, helpMsg: `Print list of packages.
+
+	packages [<regex>]
+
+If regex is specified only the packages matching it will be returned.`},
 		{aliases: []string{"args"}, allowedPrefixes: onPrefix | deferredPrefix, group: dataCmds, cmdFn: args, helpMsg: `Print function arguments.
 
 	[goroutine <n>] [frame <m>] args [-v] [<regex>]
@@ -2222,6 +2227,18 @@ func (t *Term) printSortedStrings(v []string, err error) error {
 
 func sources(t *Term, ctx callContext, args string) error {
 	return t.printSortedStrings(t.client.ListSources(args))
+}
+
+func packages(t *Term, ctx callContext, args string) error {
+	info, err := t.client.ListPackagesBuildInfo(args, false)
+	if err != nil {
+		return err
+	}
+	pkgs := make([]string, 0, len(info))
+	for _, i := range info {
+		pkgs = append(pkgs, i.ImportPath)
+	}
+	return t.printSortedStrings(pkgs, nil)
 }
 
 func funcs(t *Term, ctx callContext, args string) error {

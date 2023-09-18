@@ -108,6 +108,8 @@ type Client interface {
 	ListFunctions(filter string) ([]string, error)
 	// ListTypes lists all types in the process matching filter.
 	ListTypes(filter string) ([]string, error)
+	// ListPackagesBuildInfo lists all packages in the process matching filter.
+	ListPackagesBuildInfo(filter string, includeFiles bool) ([]api.PackageBuildInfo, error)
 	// ListLocalVariables lists all local variables in scope.
 	ListLocalVariables(scope api.EvalScope, cfg api.LoadConfig) ([]api.Variable, error)
 	// ListFunctionArgs lists all arguments to the current function.

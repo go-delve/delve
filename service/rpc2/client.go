@@ -357,6 +357,12 @@ func (c *RPCClient) ListPackageVariables(filter string, cfg api.LoadConfig) ([]a
 	return out.Variables, err
 }
 
+func (c *RPCClient) ListPackagesBuildInfo(filter string, includeFiles bool) ([]api.PackageBuildInfo, error) {
+	var out ListPackagesBuildInfoOut
+	err := c.call("ListPackagesBuildInfo", ListPackagesBuildInfoIn{Filter: filter, IncludeFiles: includeFiles}, &out)
+	return out.List, err
+}
+
 func (c *RPCClient) ListLocalVariables(scope api.EvalScope, cfg api.LoadConfig) ([]api.Variable, error) {
 	var out ListLocalVarsOut
 	err := c.call("ListLocalVars", ListLocalVarsIn{scope, cfg}, &out)

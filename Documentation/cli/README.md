@@ -89,6 +89,7 @@ Command | Description
 [help](#help) | Prints the help message.
 [libraries](#libraries) | List loaded dynamic libraries
 [list](#list) | Show source code.
+[packages](#packages) | Print list of packages.
 [source](#source) | Executes a file containing a list of delve commands
 [sources](#sources) | Print list of source files.
 [target](#target) | Manages child process debugging.
@@ -537,6 +538,14 @@ To convert a breakpoint into a tracepoint use:
 The command 'on <bp> cond <cond-arguments>' is equivalent to 'cond <bp> <cond-arguments>'.
 
 The command 'on x -edit' can be used to edit the list of commands executed when the breakpoint is hit.
+
+
+## packages
+Print list of packages.
+
+	packages [<regex>]
+
+If regex is specified only the packages matching it will be returned.
 
 
 ## print

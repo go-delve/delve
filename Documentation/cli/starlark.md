@@ -54,7 +54,7 @@ functions(Filter) | Equivalent to API call [ListFunctions](https://godoc.org/git
 goroutines(Start, Count, Filters, GoroutineGroupingOptions, EvalScope) | Equivalent to API call [ListGoroutines](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListGoroutines)
 local_vars(Scope, Cfg) | Equivalent to API call [ListLocalVars](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListLocalVars)
 package_vars(Filter, Cfg) | Equivalent to API call [ListPackageVars](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListPackageVars)
-packages_build_info(IncludeFiles) | Equivalent to API call [ListPackagesBuildInfo](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListPackagesBuildInfo)
+packages_build_info(IncludeFiles, Filter) | Equivalent to API call [ListPackagesBuildInfo](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListPackagesBuildInfo)
 registers(ThreadID, IncludeFp, Scope) | Equivalent to API call [ListRegisters](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListRegisters)
 sources(Filter) | Equivalent to API call [ListSources](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListSources)
 targets() | Equivalent to API call [ListTargets](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ListTargets)
