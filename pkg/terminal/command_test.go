@@ -122,7 +122,7 @@ func withTestTerminalBuildFlags(name string, t testing.TB, buildFlags test.Build
 	if testBackend == "rr" {
 		test.MustHaveRecordingAllowed(t)
 	}
-	os.Setenv("TERM", "dumb")
+	t.Setenv("TERM", "dumb")
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("couldn't start listener: %s\n", err)

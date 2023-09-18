@@ -5719,16 +5719,9 @@ func TestLaunchRequestWithEnv(t *testing.T) {
 	} {
 
 		t.Run(tc.name, func(t *testing.T) {
-			// cleanup
-			defer func() {
-				os.Unsetenv("SOMEVAR")
-				os.Unsetenv("SOMEVAR2")
-				os.Unsetenv("SOMEVAR3")
-			}()
-
 			for k, v := range tc.initEnv {
 				if v != nil {
-					os.Setenv(k, *v)
+					t.Setenv(k, *v)
 				}
 			}
 
