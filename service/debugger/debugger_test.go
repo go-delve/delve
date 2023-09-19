@@ -34,13 +34,6 @@ func TestDebugger_LaunchNoMain(t *testing.T) {
 }
 
 func TestDebugger_LaunchInvalidFormat(t *testing.T) {
-	goos := os.Getenv("GOOS")
-	goarch := os.Getenv("GOARCH")
-	defer func() {
-		// restore environment values
-		os.Setenv("GOOS", goos)
-		os.Setenv("GOARCH", goarch)
-	}()
 	fixturesDir := protest.FindFixturesDir()
 	buildtestdir := filepath.Join(fixturesDir, "buildtest")
 	debugname := "debug"
@@ -51,12 +44,12 @@ func TestDebugger_LaunchInvalidFormat(t *testing.T) {
 		"linux":   "windows",
 	}
 	if runtime.GOARCH == "arm64" && runtime.GOOS == "linux" {
-		os.Setenv("GOARCH", "amd64")
+		t.Setenv("GOARCH", "amd64")
 	}
 	if runtime.GOARCH == "ppc64le" && runtime.GOOS == "linux" {
-		os.Setenv("GOARCH", "amd64")
+		t.Setenv("GOARCH", "amd64")
 	}
-	os.Setenv("GOOS", switchOS[runtime.GOOS])
+	t.Setenv("GOOS", switchOS[runtime.GOOS])
 	exepath := filepath.Join(buildtestdir, debugname)
 	if err := gobuild.GoBuild(debugname, []string{buildtestdir}, fmt.Sprintf("-o %s", exepath)); err != nil {
 		t.Fatalf("go build error %v", err)

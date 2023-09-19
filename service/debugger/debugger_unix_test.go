@@ -20,10 +20,6 @@ import (
 )
 
 func TestDebugger_LaunchNoExecutablePerm(t *testing.T) {
-	defer func() {
-		os.Setenv("GOOS", runtime.GOOS)
-		os.Setenv("GOARCH", runtime.GOARCH)
-	}()
 	fixturesDir := protest.FindFixturesDir()
 	buildtestdir := filepath.Join(fixturesDir, "buildtest")
 	debugname := "debug"
@@ -34,12 +30,12 @@ func TestDebugger_LaunchNoExecutablePerm(t *testing.T) {
 		"linux":   "windows",
 	}
 	if runtime.GOARCH == "arm64" && runtime.GOOS == "linux" {
-		os.Setenv("GOARCH", "amd64")
+		t.Setenv("GOARCH", "amd64")
 	}
 	if runtime.GOARCH == "ppc64le" && runtime.GOOS == "linux" {
-		os.Setenv("GOARCH", "amd64")
+		t.Setenv("GOARCH", "amd64")
 	}
-	os.Setenv("GOOS", switchOS[runtime.GOOS])
+	t.Setenv("GOOS", switchOS[runtime.GOOS])
 	exepath := filepath.Join(buildtestdir, debugname)
 	defer os.Remove(exepath)
 	if err := gobuild.GoBuild(debugname, []string{buildtestdir}, fmt.Sprintf("-o %s", exepath)); err != nil {
@@ -65,8 +61,8 @@ func TestDebugger_LaunchWithTTY(t *testing.T) {
 		}
 	}
 	// Ensure no env meddling is leftover from previous tests.
-	os.Setenv("GOOS", runtime.GOOS)
-	os.Setenv("GOARCH", runtime.GOARCH)
+	t.Setenv("GOOS", runtime.GOOS)
+	t.Setenv("GOARCH", runtime.GOARCH)
 
 	p, tty, err := pty.Open()
 	if err != nil {

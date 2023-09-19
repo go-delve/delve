@@ -208,7 +208,7 @@ func getDlvBin(t *testing.T) string {
 	// from getDlvBinEBPF lets clear it here so
 	// we can ensure we don't get build errors
 	// depending on the test ordering.
-	os.Setenv("CGO_LDFLAGS", ldFlags)
+	t.Setenv("CGO_LDFLAGS", ldFlags)
 	var tags string
 	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
 		tags = "-tags=exp.winarm64"

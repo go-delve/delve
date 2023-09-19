@@ -231,7 +231,7 @@ func main() {
 
 func TestRestart_rebuild(t *testing.T) {
 	// In the original fixture file the env var tested for is SOMEVAR.
-	os.Setenv("SOMEVAR", "bah")
+	t.Setenv("SOMEVAR", "bah")
 
 	withTestClient2Extended("testenv", t, 0, [3]string{}, nil, func(c service.Client, f protest.Fixture) {
 		<-c.Continue()
@@ -258,7 +258,7 @@ func TestRestart_rebuild(t *testing.T) {
 
 		// First set our new env var and ensure later that the
 		// modified source code picks it up.
-		os.Setenv("SOMEMODIFIEDVAR", "foobar")
+		t.Setenv("SOMEMODIFIEDVAR", "foobar")
 
 		// Restart the program, rebuilding from source.
 		_, err = c.Restart(true)
@@ -2194,9 +2194,7 @@ func TestAncestors(t *testing.T) {
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
 		t.Skip("not supported on Go <= 1.10")
 	}
-	savedGodebug := os.Getenv("GODEBUG")
-	os.Setenv("GODEBUG", "tracebackancestors=100")
-	defer os.Setenv("GODEBUG", savedGodebug)
+	t.Setenv("GODEBUG", "tracebackancestors=100")
 	withTestClient2("testnextprog", t, func(c service.Client) {
 		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.testgoroutine", Line: -1})
 		assertNoError(err, t, "CreateBreakpoint")

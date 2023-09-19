@@ -2981,7 +2981,7 @@ func TestPackageWithPathVar(t *testing.T) {
 
 func TestEnvironment(t *testing.T) {
 	protest.AllowRecording(t)
-	os.Setenv("SOMEVAR", "bah")
+	t.Setenv("SOMEVAR", "bah")
 	withTestProcess("testenv", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), t, "Continue()")
 		v := evalVariable(p, t, "x")
@@ -3047,7 +3047,7 @@ func TestIssue877(t *testing.T) {
 		t.Skip("broken")
 	}
 	const envval = "/usr/local/lib"
-	os.Setenv("DYLD_LIBRARY_PATH", envval)
+	t.Setenv("DYLD_LIBRARY_PATH", envval)
 	withTestProcess("issue877", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), t, "Continue()")
 		v := evalVariable(p, t, "dyldenv")
@@ -4479,12 +4479,7 @@ func TestListImages(t *testing.T) {
 }
 
 func TestAncestors(t *testing.T) {
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
-		t.Skip("not supported on Go <= 1.10")
-	}
-	savedGodebug := os.Getenv("GODEBUG")
-	os.Setenv("GODEBUG", "tracebackancestors=100")
-	defer os.Setenv("GODEBUG", savedGodebug)
+	t.Setenv("GODEBUG", "tracebackancestors=100")
 	withTestProcess("testnextprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.testgoroutine")
 		assertNoError(grp.Continue(), t, "Continue()")
