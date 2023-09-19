@@ -17,8 +17,8 @@ require (
 	github.com/spf13/pflag v1.0.5
 	go.starlark.net v0.0.0-20220816155156-cfacd8902214
 	golang.org/x/arch v0.0.0-20190927153633-4e8777c89be4
-	golang.org/x/sys v0.6.0
-	golang.org/x/tools v0.2.0
+	golang.org/x/sys v0.12.0
+	golang.org/x/tools v0.13.0
 	gopkg.in/yaml.v2 v2.4.0
 )
 
@@ -32,5 +32,5 @@ require (
 	github.com/shurcooL/sanitized_anchor_name v1.0.0 // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
 	golang.org/x/exp v0.0.0-20230224173230-c95f2b4c22f2 // indirect
-	golang.org/x/mod v0.6.0 // indirect
+	golang.org/x/mod v0.12.0 // indirect
 )

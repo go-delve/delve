@@ -493,6 +493,11 @@ func (scope *EvalScope) setValue(dstv, srcv *Variable, srcExpr string) error {
 		if err := allocString(scope, srcv); err != nil {
 			return err
 		}
+		if cm, ok := dstv.mem.(*compositeMemory); ok {
+			// allocString can change the current thread, recover it so that the
+			// registers are set on the correct thread.
+			cm.regs.ChangeFunc = scope.callCtx.p.CurrentThread().SetReg
+		}
 		return dstv.writeString(uint64(srcv.Len), uint64(srcv.Base))
 	}
 

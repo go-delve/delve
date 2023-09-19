@@ -571,14 +571,19 @@ type funcCallArg struct {
 
 // funcCallEvalArgs evaluates the arguments of the function call, copying
 // them into the argument frame starting at argFrameAddr.
-func funcCallEvalArgs(scope *EvalScope, fncall *functionCallState, formalScope *EvalScope) error {
-	if scope.g == nil {
+func funcCallEvalArgs(callScope *EvalScope, fncall *functionCallState, thread Thread) error {
+	if callScope.g == nil {
 		// this should never happen
 		return errNoGoroutine
 	}
 
+	formalScope, err := GoroutineScope(callScope.target, thread)
+	if err != nil {
+		return err
+	}
+
 	if fncall.receiver != nil {
-		err := funcCallCopyOneArg(scope, fncall, fncall.receiver, &fncall.formalArgs[0], formalScope)
+		err := funcCallCopyOneArg(callScope, fncall, fncall.receiver, &fncall.formalArgs[0], formalScope)
 		if err != nil {
 			return err
 		}
@@ -588,7 +593,7 @@ func funcCallEvalArgs(scope *EvalScope, fncall *functionCallState, formalScope *
 	for i := range fncall.formalArgs {
 		formalArg := &fncall.formalArgs[i]
 
-		actualArg, err := scope.evalAST(fncall.expr.Args[i])
+		actualArg, err := callScope.evalAST(fncall.expr.Args[i])
 		if err != nil {
 			if _, ispanic := err.(fncallPanicErr); ispanic {
 				return err
@@ -597,7 +602,14 @@ func funcCallEvalArgs(scope *EvalScope, fncall *functionCallState, formalScope *
 		}
 		actualArg.Name = exprToString(fncall.expr.Args[i])
 
-		err = funcCallCopyOneArg(scope, fncall, actualArg, formalArg, formalScope)
+		// evalAST can cause the current thread to change, recover it
+		thread = callScope.callCtx.p.CurrentThread()
+		formalScope, err = GoroutineScope(callScope.target, thread)
+		if err != nil {
+			return err
+		}
+
+		err = funcCallCopyOneArg(callScope, fncall, actualArg, formalArg, formalScope)
 		if err != nil {
 			return err
 		}
@@ -842,7 +854,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 				fnname = loc.Fn.Name
 			}
 		}
-		fncallLog("function call interrupt gid=%d (original) thread=%d regval=%#x (PC=%#x in %s)", callScope.g.ID, thread.ThreadID(), regval, pc, fnname)
+		fncallLog("function call interrupt gid=%d (original) thread=%d regval=%#x (PC=%#x in %s %s:%d)", callScope.g.ID, thread.ThreadID(), regval, pc, fnname, loc.File, loc.Line)
 	}
 
 	switch regval {
@@ -880,6 +892,10 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 				break
 			}
 			//TODO: double check that function call size isn't too big
+
+			// funcCallEvalFuncExpr can start a function call injection itself, we
+			// need to recover the correct thread here.
+			thread = p.CurrentThread()
 		}
 
 		// instead of evaluating the arguments we start first by pushing the call
@@ -898,14 +914,8 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 			oldlr = regs.LR()
 		}
 		callOP(bi, thread, regs, fncall.fn.Entry)
-		formalScope, err := GoroutineScope(callScope.target, thread)
-		if formalScope != nil && formalScope.Regs.CFA != int64(cfa) {
-			// This should never happen, checking just to avoid hard to figure out disasters.
-			err = fmt.Errorf("mismatch in CFA %#x (calculated) %#x (expected)", formalScope.Regs.CFA, int64(cfa))
-		}
-		if err == nil {
-			err = funcCallEvalArgs(callScope, fncall, formalScope)
-		}
+		err = funcCallEvalArgs(callScope, fncall, thread)
+		thread = p.CurrentThread() // call evaluation in funcCallEvalArgs can cause the current thread to change
 
 		if err != nil {
 			// rolling back the call, note: this works because we called regs.Copy() above
@@ -937,6 +947,7 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 		if err := setSP(thread, sp); err != nil {
 			fncall.err = fmt.Errorf("could not restore SP: %v", err)
 		}
+		fncallLog("stepping thread %d", thread.ThreadID())
 		if err := stepInstructionOut(p, thread, debugCallName, debugCallName); err != nil {
 			fncall.err = fmt.Errorf("could not step out of %s: %v", debugCallName, err)
 		}
@@ -1141,6 +1152,10 @@ func callInjectionProtocol(t *Target, threads []Thread) (done bool, err error) {
 		// we aren't injecting any calls, no need to check the threads.
 		return false, nil
 	}
+	currentThread := t.currentThread
+	defer func() {
+		t.currentThread = currentThread
+	}()
 	for _, thread := range threads {
 		loc, err := thread.Location()
 		if err != nil {
@@ -1149,6 +1164,9 @@ func callInjectionProtocol(t *Target, threads []Thread) (done bool, err error) {
 		if !isCallInjectionStop(t, thread, loc) {
 			continue
 		}
+
+		regs, _ := thread.Registers()
+		fncallLog("call injection found thread=%d %s %s:%d PC=%#x SP=%#x", thread.ThreadID(), loc.Fn.Name, loc.File, loc.Line, regs.PC(), regs.SP())
 
 		g, callinj, err := findCallInjectionStateForThread(t, thread)
 		if err != nil {
@@ -1161,6 +1179,7 @@ func callInjectionProtocol(t *Target, threads []Thread) (done bool, err error) {
 		}
 
 		fncallLog("step for injection on goroutine %d (current) thread=%d (location %s)", g.ID, thread.ThreadID(), loc.Fn.Name)
+		t.currentThread = thread
 		callinj.continueCompleted <- g
 		contReq, ok := <-callinj.continueRequest
 		if !contReq.cont {

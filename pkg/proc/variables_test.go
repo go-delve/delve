@@ -1392,7 +1392,11 @@ func testCallFunction(t *testing.T, grp *proc.TargetGroup, p *proc.Target, tc te
 	}
 
 	if len(retvals) != len(tc.outs) {
-		t.Fatalf("call %q: wrong number of return parameters (%#v)", tc.expr, retvals)
+		t.Logf("call %q: wrong number of return parameters (%#v)", tc.expr, retvals)
+		for i := range retvals {
+			t.Logf("%d: %#v", i, retvals[i])
+		}
+		t.Fatal("previous errors")
 	}
 
 	for i := range retvals {
