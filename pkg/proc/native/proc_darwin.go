@@ -109,7 +109,8 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 		}
 	}
 
-	if err := dbp.resume(); err != nil {
+	procgrp := &processGroup{procs: []*nativeProcess{dbp}}
+	if err := procgrp.resume(); err != nil {
 		return nil, err
 	}
 
@@ -367,7 +368,7 @@ func (dbp *nativeProcess) trapWait(pid int) (*nativeThread, error) {
 				dbp.firstStart = false
 				return th, nil
 			}
-			if err := th.Continue(); err != nil {
+			if err := th.resume(); err != nil {
 				return nil, err
 			}
 			continue
@@ -421,14 +422,11 @@ func (dbp *nativeProcess) exitGuard(err error) error {
 }
 
 func (procgrp *processGroup) resume() error {
-	return procgrp.procs[0].resume()
-}
-
-func (dbp *nativeProcess) resume() error {
+	dbp := procgrp.procs[0]
 	// all threads stopped over a breakpoint are made to step over it
 	for _, thread := range dbp.threads {
 		if thread.CurrentBreakpoint.Breakpoint != nil {
-			if err := thread.StepInstruction(); err != nil {
+			if err := procgrp.stepInstruction(thread); err != nil {
 				return err
 			}
 			thread.CurrentBreakpoint.Clear()

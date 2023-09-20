@@ -88,7 +88,8 @@ type functionCallState struct {
 }
 
 type callContext struct {
-	p *Target
+	grp *TargetGroup
+	p   *Target
 
 	// checkEscape is true if the escape check should be performed.
 	// See service/api.DebuggerCommand.UnsafeCall in service/api/types.go.
@@ -183,6 +184,7 @@ func EvalExpressionWithCalls(grp *TargetGroup, g *G, expr string, retLoadCfg Loa
 	continueCompleted := make(chan *G)
 
 	scope.callCtx = &callContext{
+		grp:               grp,
 		p:                 t,
 		checkEscape:       checkEscape,
 		retLoadCfg:        retLoadCfg,
@@ -948,7 +950,8 @@ func funcCallStep(callScope *EvalScope, fncall *functionCallState, thread Thread
 			fncall.err = fmt.Errorf("could not restore SP: %v", err)
 		}
 		fncallLog("stepping thread %d", thread.ThreadID())
-		if err := stepInstructionOut(p, thread, debugCallName, debugCallName); err != nil {
+		
+		if err := stepInstructionOut(callScope.callCtx.grp, p, thread, debugCallName, debugCallName); err != nil {
 			fncall.err = fmt.Errorf("could not step out of %s: %v", debugCallName, err)
 		}
 		if bi.Arch.Name == "amd64" {

@@ -23,7 +23,7 @@ type osSpecificDetails struct {
 	setbp              bool
 }
 
-func (t *nativeThread) singleStep() error {
+func (procgrp *processGroup) singleStep(t *nativeThread) error {
 	context := newContext()
 	context.SetFlags(_CONTEXT_ALL)
 

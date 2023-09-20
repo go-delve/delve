@@ -22,13 +22,17 @@ type nativeThread struct {
 	common         proc.CommonThread
 }
 
+func (procgrp *processGroup) StepInstruction(threadID int) error {
+	return procgrp.stepInstruction(procgrp.procForThread(threadID).threads[threadID])
+}
+
 // StepInstruction steps a single instruction.
 //
 // Executes exactly one instruction and then returns.
 // If the thread is at a breakpoint, we first clear it,
 // execute the instruction, and then replace the breakpoint.
 // Otherwise we simply execute the next instruction.
-func (t *nativeThread) StepInstruction() (err error) {
+func (procgrp *processGroup) stepInstruction(t *nativeThread) (err error) {
 	t.singleStepping = true
 	defer func() {
 		t.singleStepping = false
@@ -63,7 +67,7 @@ func (t *nativeThread) StepInstruction() (err error) {
 		}()
 	}
 
-	err = t.singleStep()
+	err = procgrp.singleStep(t)
 	if err != nil {
 		if _, exited := err.(proc.ErrProcessExited); exited {
 			return err

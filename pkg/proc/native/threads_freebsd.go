@@ -17,7 +17,7 @@ type osSpecificDetails struct {
 	registers sys.Reg
 }
 
-func (t *nativeThread) singleStep() (err error) {
+func (procgrp *processGroup) singleStep(t *nativeThread) (err error) {
 	t.dbp.execPtraceFunc(func() { err = ptraceSetStep(t.ID) })
 	if err != nil {
 		return err

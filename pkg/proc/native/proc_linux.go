@@ -490,7 +490,7 @@ func trapWaitInternal(procgrp *processGroup, pid int, options trapWaitOptions) (
 				dbp.threads[int(wpid)].os.running = false
 				return nil, nil
 			}
-			if err = th.Continue(); err != nil {
+			if err = th.resume(); err != nil {
 				if err == sys.ESRCH {
 					// thread died while we were adding it
 					delete(dbp.threads, th.ID)
@@ -498,7 +498,7 @@ func trapWaitInternal(procgrp *processGroup, pid int, options trapWaitOptions) (
 				}
 				return nil, fmt.Errorf("could not continue new thread %d %s", cloned, err)
 			}
-			if err = dbp.threads[int(wpid)].Continue(); err != nil {
+			if err = dbp.threads[int(wpid)].resume(); err != nil {
 				if err != sys.ESRCH {
 					return nil, fmt.Errorf("could not continue existing thread %d %s", wpid, err)
 				}
@@ -527,7 +527,7 @@ func trapWaitInternal(procgrp *processGroup, pid int, options trapWaitOptions) (
 			if tgt != nil {
 				// If tgt is nil we decided we are not interested in debugging this
 				// process, and we have already detached from it.
-				err = dbp.threads[dbp.pid].Continue()
+				err = dbp.threads[dbp.pid].resume()
 				if err != nil {
 					return nil, err
 				}
@@ -653,7 +653,7 @@ func (procgrp *processGroup) resume() error {
 		if valid, _ := dbp.Valid(); valid {
 			for _, thread := range dbp.threads {
 				if thread.CurrentBreakpoint.Breakpoint != nil {
-					if err := thread.StepInstruction(); err != nil {
+					if err := procgrp.stepInstruction(thread); err != nil {
 						return err
 					}
 					thread.CurrentBreakpoint.Clear()

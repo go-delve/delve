@@ -324,7 +324,7 @@ func TestStep(t *testing.T) {
 		regs := getRegisters(p, t)
 		rip := regs.PC()
 
-		err := p.CurrentThread().StepInstruction()
+		err := grp.StepInstruction()
 		assertNoError(err, t, "Step()")
 
 		regs = getRegisters(p, t)
@@ -5765,7 +5765,7 @@ func TestSetYMMRegister(t *testing.T) {
 			0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
 			0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
 			0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44}))
-		assertNoError(p.CurrentThread().StepInstruction(), t, "SetpInstruction")
+		assertNoError(grp.StepInstruction(), t, "SetpInstruction")
 
 		xmm0 := getReg("after")
 

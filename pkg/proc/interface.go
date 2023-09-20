@@ -11,6 +11,7 @@ import (
 // ProcessGroup is a group of processes that are resumed at the same time.
 type ProcessGroup interface {
 	ContinueOnce(*ContinueOnceContext) (Thread, StopReason, error)
+	StepInstruction(int) error
 	Detach(int, bool) error
 }
 

@@ -852,7 +852,7 @@ func (p *gdbProcess) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, 
 		// step threads stopped at any breakpoint over their breakpoint
 		for _, thread := range p.threads {
 			if thread.CurrentBreakpoint.Breakpoint != nil {
-				if err := thread.StepInstruction(); err != nil {
+				if err := thread.stepInstruction(); err != nil {
 					return nil, proc.StopUnknown, err
 				}
 			}
@@ -1486,6 +1486,10 @@ func (p *gdbProcess) WriteMemory(addr uint64, data []byte) (written int, err err
 	return p.conn.writeMemory(addr, data)
 }
 
+func (p *gdbProcess) StepInstruction(threadID int) error {
+	return p.threads[threadID].stepInstruction()
+}
+
 func (t *gdbThread) ProcessMemory() proc.MemoryReadWriter {
 	return t.p
 }
@@ -1543,7 +1547,7 @@ func (t *gdbThread) Common() *proc.CommonThread {
 }
 
 // StepInstruction will step exactly 1 CPU instruction.
-func (t *gdbThread) StepInstruction() error {
+func (t *gdbThread) stepInstruction() error {
 	pc := t.regs.PC()
 	if bp, atbp := t.p.breakpoints.M[pc]; atbp && bp.WatchType == 0 {
 		err := t.p.conn.clearBreakpoint(pc, swBreakpoint, t.p.breakpointKind)
