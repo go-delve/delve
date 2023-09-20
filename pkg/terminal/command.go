@@ -1914,14 +1914,21 @@ func tracepoint(t *Term, ctx callContext, args string) error {
 	return err
 }
 
-func runEditor(args ...string) error {
+func getEditorName() (string, error) {
 	var editor string
 	if editor = os.Getenv("DELVE_EDITOR"); editor == "" {
 		if editor = os.Getenv("EDITOR"); editor == "" {
-			return fmt.Errorf("Neither DELVE_EDITOR or EDITOR is set")
+			return "", fmt.Errorf("Neither DELVE_EDITOR or EDITOR is set")
 		}
 	}
+	return editor, nil
+}
 
+func runEditor(args ...string) error {
+	editor, err := getEditorName()
+	if err != nil {
+		return err
+	}
 	cmd := exec.Command(editor, args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
@@ -1934,7 +1941,18 @@ func edit(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
-	return runEditor(fmt.Sprintf("+%d", lineno), file)
+	editor, err := getEditorName()
+	if err != nil {
+		return err
+	}
+	switch editor {
+	case "hx":
+		return runEditor(fmt.Sprintf("%s:%d", file, lineno))
+	case "vi", "vim", "nvim":
+		return runEditor(fmt.Sprintf("+%d", lineno), file)
+	default:
+		return runEditor(fmt.Sprintf("+%d", lineno), file)
+	}
 }
 
 func watchpoint(t *Term, ctx callContext, args string) error {
