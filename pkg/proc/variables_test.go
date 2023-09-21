@@ -1158,6 +1158,8 @@ type testCaseCallFunction struct {
 }
 
 func TestCallFunction(t *testing.T) {
+	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
+
 	protest.MustSupportFunctionCalls(t, testBackend)
 	protest.AllowRecording(t)
 
@@ -1289,6 +1291,7 @@ func TestCallFunction(t *testing.T) {
 		testCallFunctionSetBreakpoint(t, p, grp, fixture)
 
 		assertNoError(grp.Continue(), t, "Continue()")
+
 		for _, tc := range testcases {
 			testCallFunction(t, grp, p, tc)
 		}

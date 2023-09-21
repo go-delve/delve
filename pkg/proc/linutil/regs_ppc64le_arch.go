@@ -3,6 +3,8 @@ package linutil
 import (
 	"fmt"
 
+	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/regnum"
 	"github.com/go-delve/delve/pkg/proc"
 )
 
@@ -162,13 +164,51 @@ func (r *PPC64LERegisters) Copy() (proc.Registers, error) {
 	return &rr, nil
 }
 
+func (r *PPC64LERegisters) SetReg(regNum uint64, reg *op.DwarfRegister) (fpchanged bool, err error) {
+	switch regNum {
+	case regnum.PPC64LE_PC:
+		r.Regs.Nip = reg.Uint64Val
+		return false, nil
+	case regnum.PPC64LE_LR:
+		r.Regs.Link = reg.Uint64Val
+		return false, nil
+	case regnum.PPC64LE_SP:
+		r.Regs.Gpr[1] = reg.Uint64Val
+		return false, nil
+	default:
+		switch {
+		case regNum >= regnum.PPC64LE_R0 && regNum <= regnum.PPC64LE_R0+31:
+			r.Regs.Gpr[regNum-regnum.PPC64LE_R0] = reg.Uint64Val
+			return false, nil
+
+		case regNum >= regnum.PPC64LE_F0 && regNum <= regnum.PPC64LE_F0+31:
+			if r.loadFpRegs != nil {
+				err := r.loadFpRegs(r)
+				r.loadFpRegs = nil
+				if err != nil {
+					return false, err
+				}
+			}
+			// On ppc64le, PPC64LE_VS0 .. PPC64LE_VS31 are mapped onto
+			// PPC64LE_F0 .. PPC64LE_F31
+			i := regNum - regnum.PPC64LE_VS0
+			reg.FillBytes()
+			copy(r.Fpregset[8*i:], reg.Bytes)
+			return true, nil
+
+		default:
+			return false, fmt.Errorf("changing register %d not implemented", regNum)
+		}
+	}
+}
+
 type PPC64LEPtraceFpRegs struct {
 	Fp []byte
 }
 
 func (fpregs *PPC64LEPtraceFpRegs) Decode() (regs []proc.Register) {
-	for i := 0; i < len(fpregs.Fp); i += 16 {
-		regs = proc.AppendBytesRegister(regs, fmt.Sprintf("V%d", i/16), fpregs.Fp[i:i+16])
+	for i := 0; i < len(fpregs.Fp); i += 8 {
+		regs = proc.AppendBytesRegister(regs, fmt.Sprintf("VS%d", i/8), fpregs.Fp[i:i+8])
 	}
 	return
 }

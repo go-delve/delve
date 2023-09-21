@@ -20,6 +20,8 @@ Tests skipped by each supported backend:
 	* 1 broken - cgo stacktraces
 * linux/ppc64le/native skipped = 1
 	* 1 broken in linux ppc64le
+* linux/ppc64le/native/pie skipped = 3
+	* 3 broken - pie mode
 * pie skipped = 2
 	* 2 upstream issue - https://github.com/golang/go/issues/29322
 * ppc64le skipped = 11
