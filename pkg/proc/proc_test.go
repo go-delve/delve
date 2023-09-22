@@ -8,7 +8,7 @@ import (
 	"go/ast"
 	"go/constant"
 	"go/token"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"net"
 	"net/http"
@@ -2331,7 +2331,7 @@ func TestStepCallPtr(t *testing.T) {
 			{6, 7},
 			{7, 11}}, "", t)
 	} else {
-		if runtime.GOOS == "linux" && runtime.GOARCH == "ppc64le" && buildMode == "pie"  {
+		if runtime.GOOS == "linux" && runtime.GOARCH == "ppc64le" && buildMode == "pie" {
 			testseq("teststepprog", contStep, []nextTest{
 				{9, 10},
 				{10, 5},
@@ -2876,7 +2876,7 @@ func TestNextInDeferReturn(t *testing.T) {
 
 func TestAttachDetach(t *testing.T) {
 	if testBackend == "lldb" && runtime.GOOS == "linux" {
-		bs, _ := ioutil.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
+		bs, _ := os.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
 		if bs == nil || strings.TrimSpace(string(bs)) != "0" {
 			t.Logf("can not run TestAttachDetach: %v\n", bs)
 			return
@@ -2944,7 +2944,7 @@ func TestAttachDetach(t *testing.T) {
 		// seems to be a bug with debugserver.
 		resp, err := http.Get("http://127.0.0.1:9191/nobp")
 		assertNoError(err, t, "Page request after detach")
-		bs, err := ioutil.ReadAll(resp.Body)
+		bs, err := io.ReadAll(resp.Body)
 		assertNoError(err, t, "Reading /nobp page")
 		defer resp.Body.Close()
 		if out := string(bs); !strings.Contains(out, "hello, world!") {
@@ -5897,10 +5897,10 @@ func TestGnuDebuglink(t *testing.T) {
 
 	// build math.go and make a copy of the executable
 	fixture := protest.BuildFixture("math", 0)
-	buf, err := ioutil.ReadFile(fixture.Path)
+	buf, err := os.ReadFile(fixture.Path)
 	assertNoError(err, t, "ReadFile")
 	debuglinkPath := fixture.Path + "-gnu_debuglink"
-	assertNoError(ioutil.WriteFile(debuglinkPath, buf, 0666), t, "WriteFile")
+	assertNoError(os.WriteFile(debuglinkPath, buf, 0666), t, "WriteFile")
 	defer os.Remove(debuglinkPath)
 
 	run := func(exe string, args ...string) {
@@ -6216,7 +6216,7 @@ func TestWaitFor(t *testing.T) {
 func TestWaitForAttach(t *testing.T) {
 	skipOn(t, "flaky", "freebsd")
 	if testBackend == "lldb" && runtime.GOOS == "linux" {
-		bs, _ := ioutil.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
+		bs, _ := os.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
 		if bs == nil || strings.TrimSpace(string(bs)) != "0" {
 			t.Logf("can not run TestAttachDetach: %v\n", bs)
 			return

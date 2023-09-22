@@ -2,7 +2,7 @@ package frame
 
 import (
 	"encoding/binary"
-	"io/ioutil"
+	"io"
 	"os"
 	"testing"
 	"unsafe"
@@ -146,7 +146,7 @@ func BenchmarkFDEForPC(b *testing.B) {
 	}
 	defer f.Close()
 
-	data, err := ioutil.ReadAll(f)
+	data, err := io.ReadAll(f)
 	if err != nil {
 		b.Fatal(err)
 	}

@@ -1,7 +1,7 @@
 package gobuild
 
 import (
-	"io/ioutil"
+	"os"
 	"runtime"
 
 	"github.com/go-delve/delve/pkg/logflags"
@@ -14,7 +14,7 @@ func DefaultDebugBinaryPath(name string) string {
 	if runtime.GOOS == "windows" {
 		pattern += "*.exe"
 	}
-	f, err := ioutil.TempFile(".", pattern)
+	f, err := os.CreateTemp(".", pattern)
 	if err != nil {
 		logflags.DebuggerLogger().Errorf("could not create temporary file for build output: %v", err)
 		if runtime.GOOS == "windows" {

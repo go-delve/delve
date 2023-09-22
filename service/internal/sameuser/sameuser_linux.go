@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -19,7 +18,7 @@ import (
 // for testing
 var (
 	uid      = os.Getuid()
-	readFile = ioutil.ReadFile
+	readFile = os.ReadFile
 )
 
 type errConnectionNotFound struct {

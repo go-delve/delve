@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"math/rand"
 	"net"
@@ -5278,7 +5277,7 @@ func TestLaunchDebugRequest(t *testing.T) {
 	var err []byte
 
 	go func() {
-		err, _ = ioutil.ReadAll(r)
+		err, _ = io.ReadAll(r)
 		t.Log(string(err))
 		close(done)
 	}()

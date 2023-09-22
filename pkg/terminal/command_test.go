@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -1357,16 +1356,16 @@ func TestTranscript(t *testing.T) {
 		if !strings.HasPrefix(out, "> main.main()") {
 			t.Fatalf("Wrong output for next: <%s>", out)
 		}
-		fh, err := ioutil.TempFile("", "test-transcript-*")
+		fh, err := os.CreateTemp("", "test-transcript-*")
 		if err != nil {
-			t.Fatalf("TempFile: %v", err)
+			t.Fatalf("CreateTemp: %v", err)
 		}
 		name := fh.Name()
 		fh.Close()
 		t.Logf("output to %q", name)
 
 		slurp := func() string {
-			b, err := ioutil.ReadFile(name)
+			b, err := os.ReadFile(name)
 			if err != nil {
 				t.Fatalf("could not read transcript file: %v", err)
 			}

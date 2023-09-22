@@ -5,7 +5,7 @@ import (
 	"debug/elf"
 	"encoding/binary"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 
 	"github.com/go-delve/delve/pkg/elfwriter"
@@ -46,7 +46,7 @@ func (p *nativeProcess) DumpProcessNotes(notes []elfwriter.Note, threadDone func
 	copy(prpsinfo.Fname[:], fname)
 	prpsinfo.Fname[len(fname)] = 0
 
-	if cmdline, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/cmdline", p.pid)); err == nil {
+	if cmdline, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", p.pid)); err == nil {
 		for len(cmdline) > 0 && cmdline[len(cmdline)-1] == '\n' {
 			cmdline = cmdline[:len(cmdline)-1]
 		}
@@ -72,7 +72,7 @@ func (p *nativeProcess) DumpProcessNotes(notes []elfwriter.Note, threadDone func
 		Data: tobytes(prpsinfo),
 	})
 
-	auxvbuf, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/auxv", p.pid))
+	auxvbuf, err := os.ReadFile(fmt.Sprintf("/proc/%d/auxv", p.pid))
 	if err == nil {
 		notes = append(notes, elfwriter.Note{
 			Type: _NT_AUXV,

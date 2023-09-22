@@ -7,7 +7,7 @@ import (
 	"debug/pe"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -191,7 +191,7 @@ func loadBenchmarkData(tb testing.TB) DebugLines {
 		tb.Fatal("Could not find test data", p, err)
 	}
 
-	data, err := ioutil.ReadFile(p)
+	data, err := os.ReadFile(p)
 	if err != nil {
 		tb.Fatal("Could not read test data", err)
 	}
@@ -311,7 +311,7 @@ func TestDebugLineC(t *testing.T) {
 		t.Fatal("Could not find test data", p, err)
 	}
 
-	data, err := ioutil.ReadFile(p)
+	data, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatal("Could not read test data", err)
 	}
@@ -360,7 +360,7 @@ func TestDebugLineDwarf4(t *testing.T) {
 	if err != nil {
 		t.Fatal("Could not open test data (zlib)", err)
 	}
-	data, err := ioutil.ReadAll(r)
+	data, err := io.ReadAll(r)
 	if err != nil {
 		t.Fatal("Could not read test data", err)
 	}
