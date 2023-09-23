@@ -2331,7 +2331,7 @@ func TestStepCallPtr(t *testing.T) {
 			{6, 7},
 			{7, 11}}, "", t)
 	} else {
-		if runtime.GOOS == "linux" && runtime.GOARCH == "ppc64le" && buildMode == "pie"  {
+		if runtime.GOOS == "linux" && runtime.GOARCH == "ppc64le" && buildMode == "pie" {
 			testseq("teststepprog", contStep, []nextTest{
 				{9, 10},
 				{10, 5},
@@ -3179,8 +3179,9 @@ func TestShadowedFlag(t *testing.T) {
 
 func TestDebugStripped(t *testing.T) {
 	// Currently only implemented for Linux ELF executables.
-	// TODO(derekparker): Add support for Mach-O and PE.
-	skipUnlessOn(t, "linux only", "linux")
+	// TODO(derekparker): Add support for PE.
+	skipOn(t, "not working on windows", "windows")
+	skipOn(t, "not working on freebsd", "freebsd")
 	skipOn(t, "not working on linux/386 with PIE", "linux", "386", "pie")
 	skipOn(t, "not working on linux/ppc64le when -gcflags=-N -l is passed", "linux", "ppc64le")
 	withTestProcessArgs("testnextprog", t, "", []string{}, protest.LinkStrip, func(p *proc.Target, grp *proc.TargetGroup, f protest.Fixture) {
