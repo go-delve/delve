@@ -61,6 +61,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 	}
 
 	argv0 := C.CString(argv0Go)
+	defer C.free(unsafe.Pointer(argv0))
 	argvSlice := make([]*C.char, 0, len(cmd)+1)
 	for _, arg := range cmd {
 		argvSlice = append(argvSlice, C.CString(arg))
@@ -76,8 +77,10 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 	}()
 	var pid int
 	dbp.execPtraceFunc(func() {
+		wd := C.CString(wd)
+		defer C.free(unsafe.Pointer(wd))
 		ret := C.fork_exec(argv0, &argvSlice[0], C.int(len(argvSlice)),
-			C.CString(wd),
+			wd,
 			&dbp.os.task, &dbp.os.portSet, &dbp.os.exceptionPort,
 			&dbp.os.notificationPort)
 		pid = int(ret)
