@@ -1822,9 +1822,27 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 	if !supportedDarwinArch[exe.Cpu] {
 		return &ErrUnsupportedArch{os: "darwin", cpuArch: exe.Cpu}
 	}
-	image.dwarf, err = exe.DWARF()
-	if err != nil {
-		return err
+	var dwerr error
+	image.dwarf, dwerr = exe.DWARF()
+	if dwerr != nil {
+		if len(bi.Images) <= 1 {
+			fmt.Fprintln(os.Stderr, "Warning: no debug info found, some functionality will be missing such as stack traces and variable evaluation.")
+		}
+		symTable, err := readPcLnTableMacho(exe, path)
+		if err != nil {
+			return fmt.Errorf("could not read debug info (%v) and could not read go symbol table (%v)", dwerr, err)
+		}
+		image.symTable = symTable
+		for _, f := range image.symTable.Funcs {
+			cu := &compileUnit{}
+			cu.image = image
+			fn := Function{Name: f.Name, Entry: f.Entry + image.StaticBase, End: f.End + image.StaticBase, cu: cu}
+			bi.Functions = append(bi.Functions, fn)
+		}
+		for f := range image.symTable.Files {
+			bi.Sources = append(bi.Sources, f)
+		}
+		return nil
 	}
 	debugInfoBytes, err := godwarf.GetDebugSectionMacho(exe, "info")
 	if err != nil {
