@@ -15,7 +15,6 @@ import (
 	"go/token"
 	"hash/crc32"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
@@ -1352,7 +1351,7 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 
 		if debugFilePath != "" {
 			// CRC check
-			buf, err := ioutil.ReadFile(debugFilePath)
+			buf, err := os.ReadFile(debugFilePath)
 			if err == nil {
 				computedCRC := crc32.ChecksumIEEE(buf)
 				if crc != computedCRC {
@@ -1567,7 +1566,7 @@ func (bi *BinaryInfo) getDebugLink(exe *elf.File) (debugLink string, crc uint32)
 	}
 
 	br := gnuDebugLink.Open()
-	buf, err := ioutil.ReadAll(br)
+	buf, err := io.ReadAll(br)
 	if err != nil {
 		bi.logger.Warnf("can't read .gnu_debuglink: %v", err)
 		return

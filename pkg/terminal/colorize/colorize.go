@@ -6,7 +6,6 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
-	"io/ioutil"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -29,7 +28,7 @@ const (
 // Print prints to out a syntax highlighted version of the text read from
 // reader, between lines startLine and endLine.
 func Print(out io.Writer, path string, reader io.Reader, startLine, endLine, arrowLine int, colorEscapes map[Style]string, altTabStr string) error {
-	buf, err := ioutil.ReadAll(reader)
+	buf, err := io.ReadAll(reader)
 	if err != nil {
 		return err
 	}

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"go/format"
 	"go/types"
-	"io/ioutil"
 	"os"
 	"text/template"
 
@@ -111,7 +110,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Generated invalid go code: %v\n", err)
 		os.Exit(1)
 	}
-	if err := ioutil.WriteFile(*oFlag, formatted, 0644); err != nil {
+	if err := os.WriteFile(*oFlag, formatted, 0o644); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to write: %v\n", err)
 		os.Exit(1)
 	}

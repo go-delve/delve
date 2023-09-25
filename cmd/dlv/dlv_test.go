@@ -9,7 +9,6 @@ import (
 	"go/token"
 	"go/types"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -341,7 +340,7 @@ func checkAutogenDoc(t *testing.T, filename, gencommand string, generated []byte
 }
 
 func slurpFile(t *testing.T, filename string) []byte {
-	saved, err := ioutil.ReadFile(filename)
+	saved, err := os.ReadFile(filename)
 	if err != nil {
 		t.Fatalf("Could not read %s: %v", filename, err)
 	}
@@ -390,7 +389,7 @@ func TestGeneratedDoc(t *testing.T) {
 	cmd.Dir = projectRoot()
 	err := cmd.Run()
 	assertNoError(err, t, "go run _scripts/gen-usage-docs.go")
-	entries, err := ioutil.ReadDir(tempDir)
+	entries, err := os.ReadDir(tempDir)
 	assertNoError(err, t, "ReadDir")
 	for _, doc := range entries {
 		docFilename := "Documentation/usage/" + doc.Name()
@@ -912,7 +911,7 @@ func TestTrace(t *testing.T) {
 
 	assertNoError(cmd.Start(), t, "running trace")
 
-	output, err := ioutil.ReadAll(rdr)
+	output, err := io.ReadAll(rdr)
 	assertNoError(err, t, "ReadAll")
 
 	if !bytes.Contains(output, expected) {
@@ -936,7 +935,7 @@ func TestTrace2(t *testing.T) {
 
 	assertNoError(cmd.Start(), t, "running trace")
 
-	output, err := ioutil.ReadAll(rdr)
+	output, err := io.ReadAll(rdr)
 	assertNoError(err, t, "ReadAll")
 
 	if !bytes.Contains(output, expected) {
@@ -964,7 +963,7 @@ func TestTraceMultipleGoroutines(t *testing.T) {
 
 	assertNoError(cmd.Start(), t, "running trace")
 
-	output, err := ioutil.ReadAll(rdr)
+	output, err := io.ReadAll(rdr)
 	assertNoError(err, t, "ReadAll")
 
 	if !bytes.Contains(output, expected) {
@@ -978,7 +977,7 @@ func TestTraceMultipleGoroutines(t *testing.T) {
 
 func TestTracePid(t *testing.T) {
 	if runtime.GOOS == "linux" {
-		bs, _ := ioutil.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
+		bs, _ := os.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
 		if bs == nil || strings.TrimSpace(string(bs)) != "0" {
 			t.Logf("can not run TestAttachDetach: %v\n", bs)
 			return
@@ -1007,7 +1006,7 @@ func TestTracePid(t *testing.T) {
 
 	assertNoError(cmd.Start(), t, "running trace")
 
-	output, err := ioutil.ReadAll(rdr)
+	output, err := io.ReadAll(rdr)
 	assertNoError(err, t, "ReadAll")
 
 	if !bytes.Contains(output, expected) {
@@ -1035,7 +1034,7 @@ func TestTraceBreakpointExists(t *testing.T) {
 
 	defer cmd.Wait()
 
-	output, err := ioutil.ReadAll(rdr)
+	output, err := io.ReadAll(rdr)
 	assertNoError(err, t, "ReadAll")
 
 	if bytes.Contains(output, []byte("Breakpoint exists")) {
@@ -1057,7 +1056,7 @@ func TestTracePrintStack(t *testing.T) {
 
 	defer cmd.Wait()
 
-	output, err := ioutil.ReadAll(rdr)
+	output, err := io.ReadAll(rdr)
 	assertNoError(err, t, "ReadAll")
 
 	if !bytes.Contains(output, []byte("Stack:")) && !bytes.Contains(output, []byte("main.main")) {
@@ -1095,7 +1094,7 @@ func TestTraceEBPF(t *testing.T) {
 
 	assertNoError(cmd.Start(), t, "running trace")
 
-	output, err := ioutil.ReadAll(rdr)
+	output, err := io.ReadAll(rdr)
 	assertNoError(err, t, "ReadAll")
 
 	cmd.Wait()
@@ -1155,7 +1154,7 @@ func TestTraceEBPF2(t *testing.T) {
 
 	assertNoError(cmd.Start(), t, "running trace")
 
-	output, err := ioutil.ReadAll(rdr)
+	output, err := io.ReadAll(rdr)
 	assertNoError(err, t, "ReadAll")
 
 	cmd.Wait()
@@ -1203,7 +1202,7 @@ func TestTraceEBPF3(t *testing.T) {
 
 	assertNoError(cmd.Start(), t, "running trace")
 
-	output, err := ioutil.ReadAll(rdr)
+	output, err := io.ReadAll(rdr)
 	assertNoError(err, t, "ReadAll")
 
 	cmd.Wait()
@@ -1251,7 +1250,7 @@ func TestTraceEBPF4(t *testing.T) {
 
 	assertNoError(cmd.Start(), t, "running trace")
 
-	output, err := ioutil.ReadAll(rdr)
+	output, err := io.ReadAll(rdr)
 	assertNoError(err, t, "ReadAll")
 
 	cmd.Wait()

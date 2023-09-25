@@ -12,7 +12,6 @@ import (
 	"go/parser"
 	"go/scanner"
 	"io"
-	"io/ioutil"
 	"math"
 	"os"
 	"os/exec"
@@ -3006,7 +3005,7 @@ func (c *Commands) onCmd(t *Term, ctx callContext, argstr string) error {
 	ctx.Breakpoint = bp
 
 	if args[1] == "-edit" {
-		f, err := ioutil.TempFile("", "dlv-on-cmd-")
+		f, err := os.CreateTemp("", "dlv-on-cmd-")
 		if err != nil {
 			return err
 		}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
+	"os"
 	"runtime"
 	"sort"
 	"strings"
@@ -108,7 +108,7 @@ func New(ctx Context, out EchoWriter) *Env {
 		if !ok {
 			return nil, decorateError(thread, fmt.Errorf("argument of read_file was not a string"))
 		}
-		buf, err := ioutil.ReadFile(string(path))
+		buf, err := os.ReadFile(string(path))
 		if err != nil {
 			return nil, decorateError(thread, err)
 		}
@@ -124,7 +124,7 @@ func New(ctx Context, out EchoWriter) *Env {
 		if !ok {
 			return nil, decorateError(thread, fmt.Errorf("first argument of write_file was not a string"))
 		}
-		err := ioutil.WriteFile(string(path), []byte(args[1].String()), 0640)
+		err := os.WriteFile(string(path), []byte(args[1].String()), 0o640)
 		return starlark.None, decorateError(thread, err)
 	})
 	builtindoc(writeFileBuiltinName, "(Path, Text)", "writes text to the specified file.")

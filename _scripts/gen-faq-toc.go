@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"regexp"
@@ -34,7 +33,7 @@ const (
 )
 
 func spliceDocs(docpath string, docs []byte, outpath string) {
-	docbuf, err := ioutil.ReadFile(docpath)
+	docbuf, err := os.ReadFile(docpath)
 	if err != nil {
 		log.Fatalf("could not read doc file: %v", err)
 	}
@@ -59,7 +58,7 @@ func spliceDocs(docpath string, docs []byte, outpath string) {
 	outbuf.Write([]byte(footer))
 
 	if outpath != "-" {
-		err = ioutil.WriteFile(outpath, outbuf.Bytes(), 0664)
+		err = os.WriteFile(outpath, outbuf.Bytes(), 0o664)
 		must(err, "could not write documentation file: %v", err)
 	} else {
 		os.Stdout.Write(outbuf.Bytes())

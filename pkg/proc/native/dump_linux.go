@@ -2,7 +2,7 @@ package native
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"strconv"
 	"strings"
 
@@ -12,10 +12,10 @@ import (
 func (p *nativeProcess) MemoryMap() ([]proc.MemoryMapEntry, error) {
 	const VmFlagsPrefix = "VmFlags:"
 
-	smapsbuf, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/smaps", p.pid))
+	smapsbuf, err := os.ReadFile(fmt.Sprintf("/proc/%d/smaps", p.pid))
 	if err != nil {
 		// Older versions of Linux don't have smaps but have maps which is in a similar format.
-		smapsbuf, err = ioutil.ReadFile(fmt.Sprintf("/proc/%d/maps", p.pid))
+		smapsbuf, err = os.ReadFile(fmt.Sprintf("/proc/%d/maps", p.pid))
 		if err != nil {
 			return nil, err
 		}

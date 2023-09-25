@@ -6,7 +6,6 @@ import (
 	"debug/elf"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -226,14 +225,14 @@ func waitForSearchProcess(pfx string, seen map[int]struct{}) (int, error) {
 }
 
 func initialize(dbp *nativeProcess) (string, error) {
-	comm, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/comm", dbp.pid))
+	comm, err := os.ReadFile(fmt.Sprintf("/proc/%d/comm", dbp.pid))
 	if err == nil {
 		// removes newline character
 		comm = bytes.TrimSuffix(comm, []byte("\n"))
 	}
 
 	if comm == nil || len(comm) <= 0 {
-		stat, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/stat", dbp.pid))
+		stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", dbp.pid))
 		if err != nil {
 			return "", fmt.Errorf("could not read proc stat: %v", err)
 		}
@@ -869,7 +868,7 @@ func (dbp *nativeProcess) detach(kill bool) error {
 // EntryPoint will return the process entry point address, useful for
 // debugging PIEs.
 func (dbp *nativeProcess) EntryPoint() (uint64, error) {
-	auxvbuf, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/auxv", dbp.pid))
+	auxvbuf, err := os.ReadFile(fmt.Sprintf("/proc/%d/auxv", dbp.pid))
 	if err != nil {
 		return 0, fmt.Errorf("could not read auxiliary vector: %v", err)
 	}
@@ -986,7 +985,7 @@ func killProcess(pid int) error {
 }
 
 func getCmdLine(pid int) string {
-	buf, _ := ioutil.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+	buf, _ := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
 	args := strings.SplitN(string(buf), "\x00", -1)
 	for i := range args {
 		if strings.Contains(args[i], " ") {
