@@ -1,5 +1,4 @@
 //go:build darwin && !macnative
-// +build darwin,!macnative
 
 package native
 
