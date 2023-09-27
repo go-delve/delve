@@ -25,6 +25,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/cenkalti/backoff/v3"
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/regnum"
@@ -733,14 +734,17 @@ func TestNextNetHTTP(t *testing.T) {
 	}
 	withTestProcess("testnextnethttp", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		go func() {
-			// Wait for program to start listening.
-			for {
+			b := backoff.NewExponentialBackOff()
+			b.InitialInterval = 50 * time.Millisecond
+			if err := backoff.Retry(func() error { // Wait for program to start listening.
 				conn, err := net.Dial("tcp", "127.0.0.1:9191")
-				if err == nil {
-					conn.Close()
-					break
+				if err != nil {
+					return err
 				}
-				time.Sleep(50 * time.Millisecond)
+				_ = conn.Close()
+				return nil
+			}, b); err != nil {
+				panic("program did not start listening in time: " + err.Error())
 			}
 			resp, err := http.Get("http://127.0.0.1:9191")
 			if err == nil {
@@ -2895,18 +2899,18 @@ func TestAttachDetach(t *testing.T) {
 	cmd.Stderr = os.Stderr
 	assertNoError(cmd.Start(), t, "starting fixture")
 
-	// wait for testnextnethttp to start listening
-	t0 := time.Now()
-	for {
+	b := backoff.NewExponentialBackOff()
+	b.InitialInterval = 50 * time.Millisecond
+	b.MaxElapsedTime = 10 * time.Second
+	if err := backoff.Retry(func() error { // wait for testnextnethttp to start listening
 		conn, err := net.Dial("tcp", "127.0.0.1:9191")
-		if err == nil {
-			conn.Close()
-			break
+		if err != nil {
+			return err
 		}
-		time.Sleep(50 * time.Millisecond)
-		if time.Since(t0) > 10*time.Second {
-			t.Fatal("fixture did not start")
-		}
+		_ = conn.Close()
+		return nil
+	}, backoff.NewExponentialBackOff()); err != nil {
+		t.Fatal("fixture did not start")
 	}
 
 	var p *proc.TargetGroup

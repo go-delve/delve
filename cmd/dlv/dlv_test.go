@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cenkalti/backoff/v3"
 	"github.com/go-delve/delve/pkg/goversion"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/pkg/terminal"
@@ -160,17 +161,10 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 	assertNoError(cmd.Start(), t, "dlv debug with output")
 
 	// Give delve some time to compile and write the binary.
-	foundIt := false
-	for wait := 0; wait < 30; wait++ {
-		_, err = os.Stat(debugbin)
-		if err == nil {
-			foundIt = true
-			break
-		}
-
-		time.Sleep(1 * time.Second)
-	}
-	if !foundIt {
+	if err := backoff.Retry(func() error {
+		_, err := os.Stat(debugbin)
+		return err
+	}, backoff.NewExponentialBackOff()); err != nil {
 		t.Errorf("running %q: file not created: %v", delveCmds, err)
 	}
 

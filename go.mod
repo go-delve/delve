@@ -3,6 +3,7 @@ module github.com/go-delve/delve
 go 1.17
 
 require (
+	github.com/cenkalti/backoff/v3 v3.2.2
 	github.com/cilium/ebpf v0.11.0
 	github.com/cosiner/argv v0.1.0
 	github.com/creack/pty v1.1.9

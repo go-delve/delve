@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cenkalti/backoff/v3"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service/debugger"
 
@@ -2483,17 +2484,19 @@ func TestDetachLeaveRunning(t *testing.T) {
 	defer cmd.Process.Kill()
 
 	// wait for testnextnethttp to start listening
-	t0 := time.Now()
-	for {
+	b := backoff.NewExponentialBackOff()
+	b.InitialInterval = 50 * time.Millisecond
+	b.MaxElapsedTime = 10 * time.Second
+	if err := backoff.Retry(func() error { // wait for testnextnethttp to start listening
 		conn, err := net.Dial("tcp", "127.0.0.1:9191")
-		if err == nil {
-			conn.Close()
-			break
+		if err != nil {
+			return err
 		}
-		time.Sleep(50 * time.Millisecond)
-		if time.Since(t0) > 10*time.Second {
-			t.Fatal("fixture did not start")
-		}
+
+		_ = conn.Close()
+		return nil
+	}, b); err != nil {
+		t.Fatalf("fixture did not start: %v", err)
 	}
 
 	server := rpccommon.NewServer(&service.Config{
