@@ -3,6 +3,43 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.21.1] 2023-10-3
+
+### Added
+
+- Support for linux/ppc64le (@alexsaezm)
+- Enable debugging stripped mach-o (MacOS) binaries (@pgavlin)
+- Enable function call injection for linux/ppc64le (@archanaravindar)
+- Improved support for editors in 'edit' command (@derekparker)
+- Early 1.22 support (@aarzilli)
+- Add 'packages' command to list packages in compiled binary (@hyangah)
+- Support debugging PIE binaries on linux/ppc64le (@archanaravindar)
+- Add ability to list goroutines waiting on channel (@aarzilli)
+- Add support for more argument / return type parsing in ebpf tracing backend (@derekparker)
+- Add waitfor option to 'attach' command (@aarzilli)
+
+### Fixed
+
+- Fix memory leak in native Darwin backend CGO usage (@thechampagne)
+- Fix hexadecimal printing of variables with symbolic const values (@aarzilli)
+- Handle ctrl-c during tracing executing (@derekparker)
+- Use a stack for restore/remember opcodes in DWARF CFI (@javierhonduco)
+- Pass user specified '-C' argument first in gobuild flags (@aarzilli)
+- Fix stacktraces on freebsd/amd64/go1.20 (@aarzilli)
+- Fix PIE support on macOS (@aarzilli)
+- Fix starlark slice unmarshaling (@andreimatei)
+- Restore breakpoints set with line offsets on restart (@aarzilli)
+- Check recursion level when printing pointers (@aarzilli)
+- Fix FrameDescriptionEntrie's append bug removing duplicates (@gocurr)
+- Read context from sigtrampgo fixing cgo stack traces on 1.21
+
+### Changed
+
+- Replace deprecated io/ioutil usage (@alexandear)
+- Accept string list as launch requests buildFlags in DAP server (@hyangah)
+- Strip package paths from symbols in callstack in DAP response (@stefanhaller)
+- Update cilium/ebpf package (@aarzilli)
+
 ## [1.21.0] 2023-06-23
 
 ### Added
