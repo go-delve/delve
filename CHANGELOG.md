@@ -31,7 +31,7 @@ This project adheres to Semantic Versioning.
 - Restore breakpoints set with line offsets on restart (@aarzilli)
 - Check recursion level when printing pointers (@aarzilli)
 - Fix FrameDescriptionEntrie's append bug removing duplicates (@gocurr)
-- Read context from sigtrampgo fixing cgo stack traces on 1.21
+- Read context from sigtrampgo fixing cgo stack traces on 1.21 (@aarzilli)
 
 ### Changed
 
