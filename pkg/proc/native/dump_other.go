@@ -1,5 +1,4 @@
 //go:build darwin || (windows && arm64)
-// +build darwin windows,arm64
 
 package native
 
