@@ -2519,6 +2519,15 @@ func (s *Session) getTypeIfSupported(v *proc.Variable) string {
 	if !s.clientCapabilities.supportsVariableType {
 		return ""
 	}
+	switch v.Kind {
+	case reflect.Interface:
+		if len(v.Children) > 0 {
+			vapi := api.ConvertVar(v)
+			if vapi.Children[0].Kind != reflect.Invalid {
+				return fmt.Sprintf("%s(%s)", vapi.Type, vapi.Children[0].Type)
+			}
+		}
+	}
 	return v.TypeString()
 }
 
