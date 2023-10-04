@@ -368,7 +368,7 @@ func (t *Target) createUnrecoveredPanicBreakpoint() {
 		panicpcs, err = FindFunctionLocation(t.Process, "runtime.fatalpanic", 0)
 	}
 	if err == nil {
-		bp, err := t.SetBreakpoint(unrecoveredPanicID, panicpcs[0], UserBreakpoint, nil)
+		bp, err := t.SetBreakpoint(unrecoveredPanicID, panicpcs[0], UserBreakpoint, nil, 0)
 		if err == nil {
 			bp.Logical.Name = UnrecoveredPanic
 			bp.Logical.Variables = []string{"runtime.curg._panic.arg"}
@@ -380,7 +380,7 @@ func (t *Target) createUnrecoveredPanicBreakpoint() {
 func (t *Target) createFatalThrowBreakpoint() {
 	setFatalThrow := func(pcs []uint64, err error) {
 		if err == nil {
-			bp, err := t.SetBreakpoint(fatalThrowID, pcs[0], UserBreakpoint, nil)
+			bp, err := t.SetBreakpoint(fatalThrowID, pcs[0], UserBreakpoint, nil, 0)
 			if err == nil {
 				bp.Logical.Name = FatalThrow
 			}
@@ -398,7 +398,7 @@ func (t *Target) createFatalThrowBreakpoint() {
 func (t *Target) createPluginOpenBreakpoint() {
 	retpcs, _ := findRetPC(t, "plugin.Open")
 	for _, retpc := range retpcs {
-		bp, err := t.SetBreakpoint(0, retpc, PluginOpenBreakpoint, nil)
+		bp, err := t.SetBreakpoint(0, retpc, PluginOpenBreakpoint, nil, 0)
 		if err != nil {
 			t.BinInfo().logger.Errorf("could not set plugin.Open breakpoint: %v", err)
 		} else {

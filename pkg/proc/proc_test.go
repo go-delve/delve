@@ -229,7 +229,7 @@ func setFunctionBreakpoint(p *proc.Target, t testing.TB, fname string) *proc.Bre
 	if len(addrs) != 1 {
 		t.Fatalf("setFunctionBreakpoint(%s): too many results %v", fname, addrs)
 	}
-	bp, err := p.SetBreakpoint(int(addrs[0]), addrs[0], proc.UserBreakpoint, nil)
+	bp, err := p.SetBreakpoint(int(addrs[0]), addrs[0], proc.UserBreakpoint, nil, 0)
 	if err != nil {
 		t.Fatalf("FindFunctionLocation(%s): %v", fname, err)
 	}
@@ -243,7 +243,7 @@ func setFunctionBreakpointAll(p *proc.Target, t testing.TB, fname string) {
 		t.Fatalf("FindFunctionLocation(%s): %v", fname, err)
 	}
 	for _, addr := range addrs {
-		_, err := p.SetBreakpoint(int(addr), addr, proc.UserBreakpoint, nil)
+		_, err := p.SetBreakpoint(int(addr), addr, proc.UserBreakpoint, nil, 0)
 		if err != nil {
 			t.Fatalf("FindFunctionLocation(%s): %v", fname, err)
 		}
@@ -261,7 +261,7 @@ func setFileBreakpoint(p *proc.Target, t testing.TB, path string, lineno int) *p
 	if len(addrs) != 1 {
 		t.Fatalf("%s:%d: setFileLineBreakpoint(%s, %d): too many (or not enough) results %v", f, l, path, lineno, addrs)
 	}
-	bp, err := p.SetBreakpoint(int(addrs[0]), addrs[0], proc.UserBreakpoint, nil)
+	bp, err := p.SetBreakpoint(int(addrs[0]), addrs[0], proc.UserBreakpoint, nil, 0)
 	if err != nil {
 		t.Fatalf("%s:%d: SetBreakpoint: %v", f, l, err)
 	}
@@ -375,7 +375,7 @@ func TestBreakpointInSeparateGoRoutine(t *testing.T) {
 
 func TestBreakpointWithNonExistentFunction(t *testing.T) {
 	withTestProcess("testprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		_, err := p.SetBreakpoint(0, 0, proc.UserBreakpoint, nil)
+		_, err := p.SetBreakpoint(0, 0, proc.UserBreakpoint, nil, 0)
 		if err == nil {
 			t.Fatal("Should not be able to break at non existent function")
 		}
@@ -1759,6 +1759,34 @@ func TestCondBreakpoint(t *testing.T) {
 		n, _ := constant.Int64Val(nvar.Value)
 		if n != 7 {
 			t.Fatalf("Stopped on wrong goroutine %d\n", n)
+		}
+	})
+}
+
+func TestCondBreakpointWithFrame(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcess("condframe", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture.Source, 12)
+		bp.UserBreaklet().FrameCond = 1
+		bp.UserBreaklet().Cond = &ast.BinaryExpr{
+			Op: token.EQL,
+			X:  &ast.Ident{Name: "i"},
+			Y:  &ast.BasicLit{Kind: token.INT, Value: "3"},
+		}
+
+		assertNoError(grp.Continue(), t, "Continue()")
+
+		g := p.SelectedGoroutine()
+		scope, err := proc.ConvertEvalScope(p, g.ID, int(bp.UserBreaklet().FrameCond), 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		v, err := scope.EvalExpression("i", normalLoadConfig)
+		vval, _ := constant.Int64Val(v.Value)
+
+		if vval != 3 {
+			t.Fatalf("Incorrect value for frame variable: %v", vval)
 		}
 	})
 }
@@ -3833,7 +3861,7 @@ func TestInlinedStacktraceAndVariables(t *testing.T) {
 		}
 		for _, pc := range pcs {
 			t.Logf("setting breakpoint at %#x\n", pc)
-			_, err := p.SetBreakpoint(0, pc, proc.UserBreakpoint, nil)
+			_, err := p.SetBreakpoint(0, pc, proc.UserBreakpoint, nil, 0)
 			assertNoError(err, t, fmt.Sprintf("SetBreakpoint(%#x)", pc))
 		}
 
@@ -3997,7 +4025,7 @@ func TestInlineBreakpoint(t *testing.T) {
 		if fn.Name != expectedFn {
 			t.Fatalf("incorrect function returned, expected %s, got %s", expectedFn, fn.Name)
 		}
-		_, err = p.SetBreakpoint(0, pcs[0], proc.UserBreakpoint, nil)
+		_, err = p.SetBreakpoint(0, pcs[0], proc.UserBreakpoint, nil, 0)
 		if err != nil {
 			t.Fatalf("unable to set breakpoint: %v", err)
 		}
@@ -5646,7 +5674,7 @@ func TestWatchpointStack(t *testing.T) {
 		// instruction preceding the return address, this does not matter for this
 		// test.
 
-		_, err = p.SetBreakpoint(0, retaddr, proc.UserBreakpoint, nil)
+		_, err = p.SetBreakpoint(0, retaddr, proc.UserBreakpoint, nil, 0)
 		assertNoError(err, t, "SetBreakpoint")
 
 		if len(p.Breakpoints().M) != clearlen+watchbpnum {
@@ -5865,7 +5893,7 @@ func TestCallInjectionFlagCorruption(t *testing.T) {
 		}
 
 		// Create breakpoint
-		_, err = p.SetBreakpoint(0, addr, proc.UserBreakpoint, nil)
+		_, err = p.SetBreakpoint(0, addr, proc.UserBreakpoint, nil, 0)
 		assertNoError(err, t, "SetBreakpoint")
 
 		// Continue to breakpoint

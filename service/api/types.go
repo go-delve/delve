@@ -97,6 +97,9 @@ type Breakpoint struct {
 
 	// Breakpoint condition
 	Cond string
+	// FrameCond, if non-zero, specifies the frame which the condition should be
+	// evaluated in.
+	FrameCond uint64
 	// Breakpoint hit count condition.
 	// Supported hit count conditions are "NUMBER" and "OP NUMBER".
 	HitCond string

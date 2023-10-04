@@ -53,7 +53,7 @@ func (t *Target) setStackWatchBreakpoints(scope *EvalScope, watchpoint *Breakpoi
 		}
 	}
 	if deferpc != 0 && deferpc != topframe.Current.PC {
-		deferbp, err := t.SetBreakpoint(0, deferpc, WatchOutOfScopeBreakpoint, sameGCond)
+		deferbp, err := t.SetBreakpoint(0, deferpc, WatchOutOfScopeBreakpoint, sameGCond, 0)
 		if err != nil {
 			return err
 		}
@@ -63,7 +63,7 @@ func (t *Target) setStackWatchBreakpoints(scope *EvalScope, watchpoint *Breakpoi
 		deferbreaklet.callback = woos
 	}
 
-	retbp, err := t.SetBreakpoint(0, retframe.Current.PC, WatchOutOfScopeBreakpoint, retFrameCond)
+	retbp, err := t.SetBreakpoint(0, retframe.Current.PC, WatchOutOfScopeBreakpoint, retFrameCond, 0)
 	if err != nil {
 		return err
 	}
@@ -82,7 +82,7 @@ func (t *Target) setStackWatchBreakpoints(scope *EvalScope, watchpoint *Breakpoi
 		}
 		for i, instr := range callerText {
 			if instr.Loc.PC == retframe.Current.PC && i > 0 {
-				retbp2, err := t.SetBreakpoint(0, callerText[i-1].Loc.PC, WatchOutOfScopeBreakpoint, retFrameCond)
+				retbp2, err := t.SetBreakpoint(0, callerText[i-1].Loc.PC, WatchOutOfScopeBreakpoint, retFrameCond, 0)
 				if err != nil {
 					return err
 				}
@@ -104,7 +104,7 @@ func (t *Target) setStackWatchBreakpoints(scope *EvalScope, watchpoint *Breakpoi
 		return errors.New("runtime.copystack has too many return instructions")
 	}
 
-	rszbp, err := t.SetBreakpoint(0, retpcs[0], StackResizeBreakpoint, sameGCond)
+	rszbp, err := t.SetBreakpoint(0, retpcs[0], StackResizeBreakpoint, sameGCond, 0)
 	if err != nil {
 		return err
 	}

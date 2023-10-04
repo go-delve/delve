@@ -876,6 +876,7 @@ func (d *Debugger) amendBreakpoint(amend *api.Breakpoint) error {
 	for t.Next() {
 		for _, bp := range t.Breakpoints().M {
 			if bp.LogicalID() == amend.ID {
+				bp.UserBreaklet().FrameCond = original.FrameCond
 				bp.UserBreaklet().Cond = original.Cond
 			}
 		}
@@ -925,6 +926,7 @@ func copyLogicalBreakpointInfo(lbp *proc.LogicalBreakpoint, requested *api.Break
 	lbp.Cond = nil
 	if requested.Cond != "" {
 		var err error
+		lbp.FrameCond = requested.FrameCond
 		lbp.Cond, err = parser.ParseExpr(requested.Cond)
 		if err != nil {
 			return err

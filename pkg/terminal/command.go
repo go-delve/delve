@@ -3099,6 +3099,18 @@ func conditionCmd(t *Term, ctx callContext, argstr string) error {
 		return t.client.AmendBreakpoint(bp)
 	}
 
+	cond := args[1]
+	var frame uint64
+	if strings.HasPrefix(args[1], "-frame") {
+		frameargs := strings.SplitN(args[1], " ", 3)
+		cond = frameargs[2]
+		var err error
+		frame, err = strconv.ParseUint(frameargs[1], 10, strconv.IntSize)
+		if err != nil {
+			return err
+		}
+	}
+
 	if args[0] == "-clear" {
 		bp, err := getBreakpointByIDOrName(t, args[1])
 		if err != nil {
@@ -3117,7 +3129,8 @@ func conditionCmd(t *Term, ctx callContext, argstr string) error {
 	if err != nil {
 		return err
 	}
-	bp.Cond = args[1]
+	bp.Cond = cond
+	bp.FrameCond = frame
 
 	return t.client.AmendBreakpoint(bp)
 }

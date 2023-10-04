@@ -326,7 +326,7 @@ func enableBreakpointOnTarget(p *Target, lbp *LogicalBreakpoint) error {
 	}
 
 	for _, addr := range addrs {
-		_, err = p.SetBreakpoint(lbp.LogicalID, addr, UserBreakpoint, nil)
+		_, err = p.SetBreakpoint(lbp.LogicalID, addr, UserBreakpoint, nil, 0)
 		if err != nil {
 			if _, isexists := err.(BreakpointExistsError); isexists {
 				continue

@@ -76,6 +76,8 @@ type Breaklet struct {
 
 	// Cond: if not nil the breakpoint will be triggered only if evaluating Cond returns true
 	Cond ast.Expr
+	// FrameCond is the frame the condition will be evaluated against
+	FrameCond uint64
 
 	// DeferReturns: when kind == NextDeferBreakpoint this breakpoint
 	// will also check if the caller is runtime.gopanic or if the return
@@ -258,7 +260,7 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 	var condErr error
 	active := true
 	if breaklet.Cond != nil {
-		active, condErr = evalBreakpointCondition(tgt, thread, breaklet.Cond)
+		active, condErr = evalBreakpointCondition(tgt, thread, breaklet.Cond, breaklet.FrameCond)
 	}
 
 	if condErr != nil && bpstate.CondError == nil {
@@ -436,7 +438,7 @@ func (bp *Breakpoint) UserBreaklet() *Breaklet {
 	return nil
 }
 
-func evalBreakpointCondition(tgt *Target, thread Thread, cond ast.Expr) (bool, error) {
+func evalBreakpointCondition(tgt *Target, thread Thread, cond ast.Expr, frameCond uint64) (bool, error) {
 	if cond == nil {
 		return true, nil
 	}
@@ -446,6 +448,10 @@ func evalBreakpointCondition(tgt *Target, thread Thread, cond ast.Expr) (bool, e
 		if err != nil {
 			return true, err
 		}
+	}
+	scope, err = ConvertEvalScope(tgt, scope.g.ID, int(frameCond), 0)
+	if err != nil {
+		return true, fmt.Errorf("unable to convert eval scope to specified frame: %v", err)
 	}
 	v, err := scope.evalAST(cond)
 	if err != nil {
@@ -492,8 +498,8 @@ func NewBreakpointMap() BreakpointMap {
 
 // SetBreakpoint sets a breakpoint at addr, and stores it in the process wide
 // break point table.
-func (t *Target) SetBreakpoint(logicalID int, addr uint64, kind BreakpointKind, cond ast.Expr) (*Breakpoint, error) {
-	return t.setBreakpointInternal(logicalID, addr, kind, 0, cond)
+func (t *Target) SetBreakpoint(logicalID int, addr uint64, kind BreakpointKind, cond ast.Expr, frameCond uint64) (*Breakpoint, error) {
+	return t.setBreakpointInternal(logicalID, addr, kind, 0, cond, frameCond)
 }
 
 // SetEBPFTracepoint will attach a uprobe to the function
@@ -633,7 +639,7 @@ func (t *Target) SetWatchpoint(logicalID int, scope *EvalScope, expr string, wty
 		return nil, errors.New("can not watch stack allocated variable for reads")
 	}
 
-	bp, err := t.setBreakpointInternal(logicalID, xv.Addr, UserBreakpoint, wtype.withSize(uint8(sz)), cond)
+	bp, err := t.setBreakpointInternal(logicalID, xv.Addr, UserBreakpoint, wtype.withSize(uint8(sz)), cond, 0)
 	if err != nil {
 		return bp, err
 	}
@@ -650,7 +656,7 @@ func (t *Target) SetWatchpoint(logicalID int, scope *EvalScope, expr string, wty
 	return bp, nil
 }
 
-func (t *Target) setBreakpointInternal(logicalID int, addr uint64, kind BreakpointKind, wtype WatchType, cond ast.Expr) (*Breakpoint, error) {
+func (t *Target) setBreakpointInternal(logicalID int, addr uint64, kind BreakpointKind, wtype WatchType, cond ast.Expr, frameCond uint64) (*Breakpoint, error) {
 	if valid, err := t.Valid(); !valid {
 		recorded, _ := t.recman.Recorded()
 		if !recorded {
@@ -658,7 +664,7 @@ func (t *Target) setBreakpointInternal(logicalID int, addr uint64, kind Breakpoi
 		}
 	}
 	bpmap := t.Breakpoints()
-	newBreaklet := &Breaklet{Kind: kind, Cond: cond}
+	newBreaklet := &Breaklet{Kind: kind, Cond: cond, FrameCond: frameCond}
 	if kind == UserBreakpoint {
 		newBreaklet.LogicalID = logicalID
 	}
@@ -1008,6 +1014,8 @@ type LogicalBreakpoint struct {
 
 	// Cond: if not nil the breakpoint will be triggered only if evaluating Cond returns true
 	Cond ast.Expr
+	// FrameCond is the frame the condition will be evaluated against
+	FrameCond uint64
 
 	UserData interface{} // Any additional information about the breakpoint
 }
