@@ -9,6 +9,7 @@ import (
 	"go/constant"
 	"go/token"
 	"math"
+	"math/bits"
 	"reflect"
 	"sort"
 	"strconv"
@@ -2428,7 +2429,7 @@ func (v *Variable) registerVariableTypeConv(newtyp string) (*Variable, error) {
 						break
 					}
 				}
-				if n == 0 || popcnt(uint64(n)) != 1 {
+				if n == 0 || bits.OnesCount64(uint64(n)) != 1 {
 					return nil, fmt.Errorf("unknown CPU register type conversion to %q", newtyp)
 				}
 				n = n / 8
@@ -2445,23 +2446,6 @@ func (v *Variable) registerVariableTypeConv(newtyp string) (*Variable, error) {
 	v.DwarfType = fakeArrayType(uint64(len(v.Children)), &godwarf.VoidType{CommonType: godwarf.CommonType{ByteSize: int64(n)}})
 	v.RealType = v.DwarfType
 	return v, nil
-}
-
-// popcnt is the number of bits set to 1 in x.
-// It's the same as math/bits.OnesCount64, copied here so that we can build
-// on versions of go that don't have math/bits.
-func popcnt(x uint64) int {
-	const m0 = 0x5555555555555555 // 01010101 ...
-	const m1 = 0x3333333333333333 // 00110011 ...
-	const m2 = 0x0f0f0f0f0f0f0f0f // 00001111 ...
-	const m = 1<<64 - 1
-	x = x>>1&(m0&m) + x&(m0&m)
-	x = x>>2&(m1&m) + x&(m1&m)
-	x = (x>>4 + x) & (m2 & m)
-	x += x >> 8
-	x += x >> 16
-	x += x >> 32
-	return int(x) & (1<<7 - 1)
 }
 
 func isCgoType(bi *BinaryInfo, typ godwarf.Type) bool {
@@ -2506,7 +2490,7 @@ func (cm constantsMap) Get(typ godwarf.Type) *constantType {
 		sort.Sort(constantValuesByValue(ctyp.values))
 		for i := range ctyp.values {
 			ctyp.values[i].name = strings.TrimPrefix(ctyp.values[i].name, typepkg)
-			if popcnt(uint64(ctyp.values[i].value)) == 1 {
+			if bits.OnesCount64(uint64(ctyp.values[i].value)) == 1 {
 				ctyp.values[i].singleBit = true
 			}
 		}

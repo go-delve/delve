@@ -2,6 +2,7 @@ package godwarf
 
 import (
 	"fmt"
+	"math/bits"
 	"reflect"
 )
 
@@ -25,7 +26,7 @@ func FakeSliceType(fieldType Type) Type {
 // float32, etc)
 func FakeBasicType(name string, bitSize int) Type {
 	byteSize := bitSize / 8
-	szr := popcnt(uint64(byteSize^(byteSize-1))) - 1 // position of rightmost 1 bit, minus 1
+	szr := bits.OnesCount64(uint64(byteSize^(byteSize-1))) - 1 // position of rightmost 1 bit, minus 1
 
 	basic := func(kind reflect.Kind) BasicType {
 		return BasicType{
@@ -51,21 +52,4 @@ func FakeBasicType(name string, bitSize int) Type {
 	default:
 		panic("unsupported")
 	}
-}
-
-// popcnt is the number of bits set to 1 in x.
-// It's the same as math/bits.OnesCount64, copied here so that we can build
-// on versions of go that don't have math/bits.
-func popcnt(x uint64) int {
-	const m0 = 0x5555555555555555 // 01010101 ...
-	const m1 = 0x3333333333333333 // 00110011 ...
-	const m2 = 0x0f0f0f0f0f0f0f0f // 00001111 ...
-	const m = 1<<64 - 1
-	x = x>>1&(m0&m) + x&(m0&m)
-	x = x>>2&(m1&m) + x&(m1&m)
-	x = (x>>4 + x) & (m2 & m)
-	x += x >> 8
-	x += x >> 16
-	x += x >> 32
-	return int(x) & (1<<7 - 1)
 }

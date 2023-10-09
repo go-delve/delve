@@ -229,7 +229,7 @@ func (s scopeToEvalLookup) FindTypeExpr(expr ast.Expr) (godwarf.Type, error) {
 	return s.BinInfo.findTypeExpr(expr)
 }
 
-func (scope scopeToEvalLookup) HasLocal(haystack string) bool {
+func (scope scopeToEvalLookup) HasLocal(name string) bool {
 	if scope.Fn == nil {
 		return false
 	}
@@ -246,12 +246,12 @@ func (scope scopeToEvalLookup) HasLocal(haystack string) bool {
 
 	varEntries := reader.Variables(dwarfTree, scope.PC, scope.Line, flags)
 	for _, entry := range varEntries {
-		name, _ := entry.Val(dwarf.AttrName).(string)
-		if name == haystack {
+		curname, _ := entry.Val(dwarf.AttrName).(string)
+		if curname == name {
 			return true
 		}
-		if len(name) > 0 && name[0] == '&' {
-			if name[1:] == haystack {
+		if len(curname) > 0 && curname[0] == '&' {
+			if curname[1:] == name {
 				return true
 			}
 		}
@@ -777,14 +777,14 @@ func (scope *EvalScope) image() *Image {
 
 // evalStack stores the stack machine used to evaluate a program made of
 // evalop.Ops.
-// When an opcode sets doContinue execution of the program will be suspended
+// When an opcode sets callInjectionContinue execution of the program will be suspended
 // and the call injection protocol will be executed instead.
 type evalStack struct {
-	stack      []*Variable          // current stack of Variable values
-	fncalls    []*functionCallState // stack of call injections currently being executed
-	opidx      int                  // program counter for the stack program
-	doContinue bool                 // when set program execution suspends and the call injection protocol is executed instead
-	err        error
+	stack                 []*Variable          // current stack of Variable values
+	fncalls               []*functionCallState // stack of call injections currently being executed
+	opidx                 int                  // program counter for the stack program
+	callInjectionContinue bool                 // when set program execution suspends and the call injection protocol is executed instead
+	err                   error
 }
 
 func (s *evalStack) push(v *Variable) {
@@ -841,9 +841,9 @@ func (scope *EvalScope) eval(ops []evalop.Op) (*Variable, error) {
 	// funcCallSteps executes the call injection protocol until more input from
 	// the stack program is needed (i.e. until the call injection either needs
 	// to copy function arguments, terminates or fails.
-	// Scope and curthread are updated every time the target program stops.
+	// Scope and curthread are updated every time the target program stops).
 	funcCallSteps := func() {
-		for stack.doContinue {
+		for stack.callInjectionContinue {
 			scope.callCtx.injectionThread = nil
 			g := scope.callCtx.doContinue()
 			// Go 1.15 will move call injection execution to a different goroutine,
@@ -871,7 +871,7 @@ func (scope *EvalScope) eval(ops []evalop.Op) (*Variable, error) {
 			scope.Regs.CFA = scope.frameOffset + int64(scope.g.stack.hi)
 			curthread = g.Thread
 
-			stack.doContinue = false
+			stack.callInjectionContinue = false
 			finished := funcCallStep(scope, stack, g.Thread)
 			if finished {
 				funcCallFinish(scope, stack)
@@ -880,11 +880,13 @@ func (scope *EvalScope) eval(ops []evalop.Op) (*Variable, error) {
 	}
 
 	for stack.opidx < len(ops) && stack.err == nil {
-		stack.doContinue = false
-		scope.evalOne(stack, ops, curthread)
+		stack.callInjectionContinue = false
+		scope.executeOp(stack, ops, curthread)
 		// If the instruction we just executed requests the call injection
-		// protocol by setting doContinue we switch to it.
-		funcCallSteps()
+		// protocol by setting callInjectionContinue we switch to it.
+		if stack.callInjectionContinue {
+			funcCallSteps()
+		}
 	}
 
 	// If there is an error we must undo all currently executing call
@@ -911,7 +913,7 @@ func (scope *EvalScope) eval(ops []evalop.Op) (*Variable, error) {
 				panic("not implemented")
 			}
 		}
-		stack.doContinue = true
+		stack.callInjectionContinue = true
 		prevlen := len(stack.fncalls)
 		funcCallSteps()
 		if len(stack.fncalls) == prevlen {
@@ -924,7 +926,7 @@ func (scope *EvalScope) eval(ops []evalop.Op) (*Variable, error) {
 	case 0:
 		// ok
 	case 1:
-		r = stack.stack[len(stack.stack)-1]
+		r = stack.peek()
 	default:
 		if stack.err == nil {
 			stack.err = fmt.Errorf("internal debugger error: wrong stack size at end %d", len(stack.stack))
@@ -933,8 +935,8 @@ func (scope *EvalScope) eval(ops []evalop.Op) (*Variable, error) {
 	return r, stack.err
 }
 
-// evalOne executed the opcode at ops[stack.opidx] and increments stack.opidx.
-func (scope *EvalScope) evalOne(stack *evalStack, ops []evalop.Op, curthread Thread) {
+// executeOp executes the opcode at ops[stack.opidx] and increments stack.opidx.
+func (scope *EvalScope) executeOp(stack *evalStack, ops []evalop.Op, curthread Thread) {
 	defer func() {
 		err := recover()
 		if err != nil {
@@ -966,7 +968,7 @@ func (scope *EvalScope) evalOne(stack *evalStack, ops []evalop.Op, curthread Thr
 		stack.push(newConstant(constant.MakeInt64(int64(scope.threadID)), scope.Mem))
 
 	case *evalop.PushConst:
-		stack.push(newConstant(op.C, scope.Mem))
+		stack.push(newConstant(op.Value, scope.Mem))
 
 	case *evalop.PushLocal:
 		vars, err := scope.Locals(0)
@@ -1101,10 +1103,10 @@ func (scope *EvalScope) evalOne(stack *evalStack, ops []evalop.Op, curthread Thr
 
 	case *evalop.CallInjectionComplete:
 		stack.fncallPeek().undoInjection = nil
-		stack.doContinue = true
+		stack.callInjectionContinue = true
 
 	case *evalop.CallInjectionAllocString:
-		stack.doContinue = scope.allocString(op.Phase, stack, curthread)
+		stack.callInjectionContinue = scope.allocString(op.Phase, stack, curthread)
 
 	case *evalop.SetValue:
 		lhv := stack.pop()

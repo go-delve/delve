@@ -402,7 +402,7 @@ func (scope *EvalScope) evalCallInjectionStart(op *evalop.CallInjectionStart, st
 
 	stack.fncallPush(&fncall)
 	stack.push(newConstant(constant.MakeBool(fncall.fn == nil || fncall.receiver != nil || fncall.closureAddr != 0), scope.Mem))
-	stack.doContinue = true
+	stack.callInjectionContinue = true
 }
 
 func funcCallFinish(scope *EvalScope, stack *evalStack) {
@@ -811,7 +811,7 @@ func funcCallStep(callScope *EvalScope, stack *evalStack, thread Thread) bool {
 
 	switch regval {
 	case debugCallRegPrecheckFailed: // 8
-		stack.doContinue = true
+		stack.callInjectionContinue = true
 		archoff := uint64(0)
 		if bi.Arch.Name == "arm64" {
 			archoff = 8
@@ -862,7 +862,7 @@ func funcCallStep(callScope *EvalScope, stack *evalStack, thread Thread) bool {
 
 	case debugCallRegReadReturn: // 1
 		// read return arguments from stack
-		stack.doContinue = true
+		stack.callInjectionContinue = true
 		if fncall.panicvar != nil || fncall.err != nil {
 			break
 		}
@@ -914,7 +914,7 @@ func funcCallStep(callScope *EvalScope, stack *evalStack, thread Thread) bool {
 
 	case debugCallRegReadPanic: // 2
 		// read panic value from stack
-		stack.doContinue = true
+		stack.callInjectionContinue = true
 		archoff := uint64(0)
 		if bi.Arch.Name == "arm64" {
 			archoff = 8
@@ -931,7 +931,7 @@ func funcCallStep(callScope *EvalScope, stack *evalStack, thread Thread) bool {
 	default:
 		// Got an unknown protocol register value, this is probably bad but the safest thing
 		// possible is to ignore it and hope it didn't matter.
-		stack.doContinue = true
+		stack.callInjectionContinue = true
 		fncallLog("unknown value of protocol register %#x", regval)
 	}
 

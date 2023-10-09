@@ -34,6 +34,7 @@ type evalLookup interface {
 	LookupRegisterName(string) (int, bool)
 }
 
+// Compile compiles the expression t into a list of instructions.
 func Compile(lookup evalLookup, t ast.Expr) ([]Op, error) {
 	ctx := &compileCtx{evalLookup: lookup, allowCalls: true}
 	err := ctx.compileAST(t)
@@ -48,6 +49,8 @@ func Compile(lookup evalLookup, t ast.Expr) ([]Op, error) {
 	return ctx.ops, nil
 }
 
+// CompileSet compiles he expressino setting lhe to rhe into a list of
+// instructions.
 func CompileSet(lookup evalLookup, lhe, rhe ast.Expr) ([]Op, error) {
 	ctx := &compileCtx{evalLookup: lookup, allowCalls: true}
 	err := ctx.compileAST(rhe)
@@ -56,10 +59,7 @@ func CompileSet(lookup evalLookup, lhe, rhe ast.Expr) ([]Op, error) {
 	}
 
 	if isStringLiteral(rhe) {
-		err = ctx.compileAllocLiteralString()
-		if err != nil {
-			return nil, err
-		}
+		ctx.compileAllocLiteralString()
 	}
 
 	err = ctx.compileAST(lhe)
@@ -67,7 +67,7 @@ func CompileSet(lookup evalLookup, lhe, rhe ast.Expr) ([]Op, error) {
 		return nil, err
 	}
 
-	ctx.addOp(&SetValue{lhe: lhe, Rhe: rhe})
+	ctx.pushOp(&SetValue{lhe: lhe, Rhe: rhe})
 
 	err = ctx.depthCheck(0)
 	if err != nil {
@@ -77,17 +77,24 @@ func CompileSet(lookup evalLookup, lhe, rhe ast.Expr) ([]Op, error) {
 
 }
 
-func (ctx *compileCtx) compileAllocLiteralString() error {
-	ctx.addOp(&CallInjectionAllocString{Phase: 0})
-	ctx.addOp(&CallInjectionAllocString{Phase: 1})
-	ctx.addOp(&CallInjectionAllocString{Phase: 2})
-	return nil
+func (ctx *compileCtx) compileAllocLiteralString() {
+	ctx.pushOp(&CallInjectionAllocString{Phase: 0})
+	ctx.pushOp(&CallInjectionAllocString{Phase: 1})
+	ctx.pushOp(&CallInjectionAllocString{Phase: 2})
 }
 
-func (ctx *compileCtx) addOp(op Op) {
+func (ctx *compileCtx) pushOp(op Op) {
 	ctx.ops = append(ctx.ops, op)
 }
 
+// depthCheck validates the list of instructions produced by Compile and
+// CompileSet by peforming a stack depth check.
+// It calculates the depth of the stack at every instruction in ctx.ops and
+// checks that they have enough arguments to execute. For instructions that
+// can be reached through multiple paths (because of a jump) it checks that
+// all paths reach the instruction with the same stack depth.
+// Finally it checks that the stack depth after all instructions have
+// executed is equal to endDepth.
 func (ctx *compileCtx) depthCheck(endDepth int) error {
 	depth := make([]int, len(ctx.ops)+1) // depth[i] is the depth of the stack before i-th instruction
 	for i := range depth {
@@ -143,20 +150,20 @@ func (ctx *compileCtx) compileAST(t ast.Expr) error {
 		case *ast.Ident:
 			switch {
 			case x.Name == "runtime" && node.Sel.Name == "curg":
-				ctx.addOp(&PushCurg{})
+				ctx.pushOp(&PushCurg{})
 
 			case x.Name == "runtime" && node.Sel.Name == "frameoff":
-				ctx.addOp(&PushFrameoff{})
+				ctx.pushOp(&PushFrameoff{})
 
 			case x.Name == "runtime" && node.Sel.Name == "threadid":
-				ctx.addOp(&PushThreadID{})
+				ctx.pushOp(&PushThreadID{})
 
 			case ctx.HasLocal(x.Name):
-				ctx.addOp(&PushLocal{x.Name})
-				ctx.addOp(&Select{node.Sel.Name})
+				ctx.pushOp(&PushLocal{x.Name})
+				ctx.pushOp(&Select{node.Sel.Name})
 
 			case ctx.HasGlobal(x.Name, node.Sel.Name):
-				ctx.addOp(&PushPackageVar{x.Name, node.Sel.Name})
+				ctx.pushOp(&PushPackageVar{x.Name, node.Sel.Name})
 
 			default:
 				return ctx.compileUnary(node.X, &Select{node.Sel.Name})
@@ -168,7 +175,7 @@ func (ctx *compileCtx) compileAST(t ast.Expr) error {
 				return err
 			}
 			if ctx.HasGlobal(s, node.Sel.Name) {
-				ctx.addOp(&PushPackageVar{s, node.Sel.Name})
+				ctx.pushOp(&PushPackageVar{s, node.Sel.Name})
 				return nil
 			}
 			return ctx.compileUnary(node.X, &Select{node.Sel.Name})
@@ -222,11 +229,11 @@ func (ctx *compileCtx) compileAST(t ast.Expr) error {
 		}
 		if sop != nil {
 			sop.Target = len(ctx.ops)
-			ctx.addOp(&BoolToConst{})
+			ctx.pushOp(&BoolToConst{})
 		}
 
 	case *ast.BasicLit:
-		ctx.addOp(&PushConst{constant.MakeFromLiteral(node.Value, node.Kind, 0)})
+		ctx.pushOp(&PushConst{constant.MakeFromLiteral(node.Value, node.Kind, 0)})
 
 	default:
 		return fmt.Errorf("expression %T not implemented", t)
@@ -333,7 +340,7 @@ func (ctx *compileCtx) compileTypeCast(node *ast.CallExpr, ambiguousErr error) e
 		}
 	}
 
-	ctx.addOp(&TypeCast{DwarfType: styp, Node: node})
+	ctx.pushOp(&TypeCast{DwarfType: styp, Node: node})
 	return nil
 }
 
@@ -344,24 +351,24 @@ func (ctx *compileCtx) compileBuiltinCall(builtin string, args []ast.Expr) error
 			return err
 		}
 	}
-	ctx.addOp(&BuiltinCall{builtin, args})
+	ctx.pushOp(&BuiltinCall{builtin, args})
 	return nil
 }
 
 func (ctx *compileCtx) compileIdent(node *ast.Ident) error {
 	switch {
 	case ctx.HasLocal(node.Name):
-		ctx.addOp(&PushLocal{node.Name})
+		ctx.pushOp(&PushLocal{node.Name})
 	case ctx.HasGlobal("", node.Name):
-		ctx.addOp(&PushPackageVar{"", node.Name})
+		ctx.pushOp(&PushPackageVar{"", node.Name})
 	case node.Name == "true" || node.Name == "false":
-		ctx.addOp(&PushConst{constant.MakeBool(node.Name == "true")})
+		ctx.pushOp(&PushConst{constant.MakeBool(node.Name == "true")})
 	case node.Name == "nil":
-		ctx.addOp(&PushNil{})
+		ctx.pushOp(&PushNil{})
 	default:
 		found := false
 		if regnum, ok := ctx.LookupRegisterName(node.Name); ok {
-			ctx.addOp(&PushRegister{regnum, node.Name})
+			ctx.pushOp(&PushRegister{regnum, node.Name})
 			found = true
 		}
 		if !found {
@@ -376,7 +383,7 @@ func (ctx *compileCtx) compileUnary(expr ast.Expr, op Op) error {
 	if err != nil {
 		return err
 	}
-	ctx.addOp(op)
+	ctx.pushOp(op)
 	return nil
 }
 
@@ -393,10 +400,10 @@ func (ctx *compileCtx) compileTypeAssert(node *ast.TypeAssertExpr) error {
 		if err != nil {
 			return err
 		}
-		ctx.addOp(&TypeAssert{typ, node})
+		ctx.pushOp(&TypeAssert{typ, node})
 		return nil
 	}
-	ctx.addOp(&TypeAssert{nil, node})
+	ctx.pushOp(&TypeAssert{nil, node})
 	return nil
 }
 
@@ -406,13 +413,13 @@ func (ctx *compileCtx) compileBinary(a, b ast.Expr, sop *Jump, op Op) error {
 		return err
 	}
 	if sop != nil {
-		ctx.addOp(sop)
+		ctx.pushOp(sop)
 	}
 	err = ctx.compileAST(b)
 	if err != nil {
 		return err
 	}
-	ctx.addOp(op)
+	ctx.pushOp(op)
 	return nil
 }
 
@@ -437,10 +444,10 @@ func (ctx *compileCtx) compileReslice(node *ast.SliceExpr) error {
 			return err
 		}
 	} else {
-		ctx.addOp(&PushConst{constant.MakeInt64(0)})
+		ctx.pushOp(&PushConst{constant.MakeInt64(0)})
 	}
 
-	ctx.addOp(&Reslice{Node: node, HasHigh: hasHigh})
+	ctx.pushOp(&Reslice{Node: node, HasHigh: hasHigh})
 	return nil
 }
 
@@ -471,15 +478,15 @@ func (ctx *compileCtx) compileFunctionCall(node *ast.CallExpr) error {
 	} else {
 		hasFunc = true
 	}
-	ctx.addOp(&CallInjectionStart{HasFunc: hasFunc, id: id, Node: node})
+	ctx.pushOp(&CallInjectionStart{HasFunc: hasFunc, id: id, Node: node})
 
 	// CallInjectionStart pushes true on the stack if it needs the function argument re-evaluated
 	var jmpif *Jump
 	if hasFunc {
 		jmpif = &Jump{When: JumpIfFalse, Pop: true}
-		ctx.addOp(jmpif)
+		ctx.pushOp(jmpif)
 	}
-	ctx.addOp(&Pop{})
+	ctx.pushOp(&Pop{})
 	err = ctx.compileAST(node.Fun)
 	if err != nil {
 		return err
@@ -488,24 +495,20 @@ func (ctx *compileCtx) compileFunctionCall(node *ast.CallExpr) error {
 		jmpif.Target = len(ctx.ops)
 	}
 
-	ctx.addOp(&CallInjectionSetTarget{id: id})
+	ctx.pushOp(&CallInjectionSetTarget{id: id})
 
 	for i, arg := range node.Args {
 		err := ctx.compileAST(arg)
 		if err != nil {
 			return fmt.Errorf("error evaluating %q as argument %d in function %s: %v", exprToString(arg), i+1, exprToString(node.Fun), err)
 		}
-		//TODO: if we can prove that arg is a literal string do this, otherwise do not do it
 		if isStringLiteral(arg) {
-			err = ctx.compileAllocLiteralString()
-			if err != nil {
-				return err
-			}
+			ctx.compileAllocLiteralString()
 		}
-		ctx.addOp(&CallInjectionCopyArg{id: id, ArgNum: i, ArgExpr: arg})
+		ctx.pushOp(&CallInjectionCopyArg{id: id, ArgNum: i, ArgExpr: arg})
 	}
 
-	ctx.addOp(&CallInjectionComplete{id: id})
+	ctx.pushOp(&CallInjectionComplete{id: id})
 
 	return nil
 }

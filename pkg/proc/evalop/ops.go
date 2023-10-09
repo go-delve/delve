@@ -32,7 +32,7 @@ func (*PushThreadID) depthCheck() (npop, npush int) { return 0, 1 }
 
 // PushConst pushes a constant on the stack.
 type PushConst struct {
-	C constant.Value
+	Value constant.Value
 }
 
 func (*PushConst) depthCheck() (npop, npush int) { return 0, 1 }

@@ -42,7 +42,7 @@ func TestEvalSwitchExhaustiveness(t *testing.T) {
 		if decl == nil {
 			continue
 		}
-		if decl.Name.Name != "evalOne" {
+		if decl.Name.Name != "executeOp" {
 			continue
 		}
 		ast.Inspect(decl, func(n ast.Node) bool {
