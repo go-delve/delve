@@ -1945,6 +1945,8 @@ func edit(t *Term, ctx callContext, args string) error {
 		return err
 	}
 	switch editor {
+	case "code":
+		return runEditor("--goto", fmt.Sprintf("%s:%d", file, lineno))
 	case "hx":
 		return runEditor(fmt.Sprintf("%s:%d", file, lineno))
 	case "vi", "vim", "nvim":
