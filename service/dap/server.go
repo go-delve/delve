@@ -1050,6 +1050,15 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			var out [1024]byte
 			for {
 				n, err := reader.Read(out[:])
+				if n > 0 {
+					outs := string(out[:n])
+					s.send(&dap.OutputEvent{
+						Event: *newEvent("output"),
+						Body: dap.OutputEventBody{
+							Output:   outs,
+							Category: category,
+						}})
+				}
 				if err != nil {
 					if err == io.EOF {
 						return
@@ -1057,13 +1066,6 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 					s.config.log.Errorf("failed read by %s - %v ", category, err)
 					return
 				}
-				outs := string(out[:n])
-				s.send(&dap.OutputEvent{
-					Event: *newEvent("output"),
-					Body: dap.OutputEventBody{
-						Output:   outs,
-						Category: category,
-					}})
 			}
 		}
 
@@ -1186,7 +1188,7 @@ func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd stri
 			return nil, err
 		}
 	} else {
-		cmd.Stdout, cmd.Stderr = os.Stdin, os.Stderr
+		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	}
 
 	if err = cmd.Start(); err != nil {
