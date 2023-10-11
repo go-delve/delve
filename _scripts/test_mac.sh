@@ -16,7 +16,7 @@ if [ "$GOVERSION" = "gotip" ]; then
     	cd $TMPDIR/go-tip
     	git pull origin
     else
-    	git clone https://go.googlesource.com/go $TMPDIR/go-tip
+    	git clone --depth=1 https://go.googlesource.com/go $TMPDIR/go-tip
     fi
     export GOROOT_BOOTSTRAP=$TMPDIR/go
     export GOROOT=$TMPDIR/go-tip

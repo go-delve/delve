@@ -30,7 +30,7 @@ if [ "$version" = "gotip" ]; then
 	export GOROOT_BOOTSTRAP=$GOROOT
 	export GOROOT=/usr/local/go/go-tip
 	apt-get install -y git
-	git clone https://go.googlesource.com/go /usr/local/go/go-tip
+	git clone --depth=1 https://go.googlesource.com/go /usr/local/go/go-tip
 	cd /usr/local/go/go-tip/src
 	./make.bash
 	cd -

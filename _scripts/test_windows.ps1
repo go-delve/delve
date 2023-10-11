@@ -63,7 +63,7 @@ if ($version -eq "gotip") {
     $env:GOROOT = "$binDir\go\go-tip"
     Write-Host "Building Go with GOROOT_BOOTSTRAP $env:GOROOT_BOOTSTRAP"
     if (-Not(Test-Path $env:GOROOT)) {
-        git clone "https://go.googlesource.com/go" "$binDir\go\go-tip"
+        git clone --depth=1 "https://go.googlesource.com/go" "$binDir\go\go-tip"
         Push-Location -Path "$binDir\go\go-tip\src"
     } else {
         Push-Location -Path "$binDir\go\go-tip\src"
