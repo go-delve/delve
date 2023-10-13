@@ -95,8 +95,9 @@ const (
 	_OUTPUT_DEBUG_STRING_EVENT  = 8
 	_RIP_EVENT                  = 9
 
-	// DEBUG_ONLY_THIS_PROCESS tracks https://msdn.microsoft.com/en-us/library/windows/desktop/ms684863(v=vs.85).aspx
+	// DEBUG_ONLY_THIS_PROCESS and _DEBUG_PROCESS tracks https://msdn.microsoft.com/en-us/library/windows/desktop/ms684863(v=vs.85).aspx
 	_DEBUG_ONLY_THIS_PROCESS = 0x00000002
+	_DEBUG_PROCESS           = 0x00000001
 
 	_EXCEPTION_BREAKPOINT  = 0x80000003
 	_EXCEPTION_SINGLE_STEP = 0x80000004

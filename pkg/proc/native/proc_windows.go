@@ -36,7 +36,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 		return nil, err
 	}
 
-	creationFlags := uint32(_DEBUG_ONLY_THIS_PROCESS)
+	creationFlags := uint32(_DEBUG_PROCESS)
 	if flags&proc.LaunchForeground == 0 {
 		creationFlags |= syscall.CREATE_NEW_PROCESS_GROUP
 	}
@@ -72,22 +72,19 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, _ []string, _ strin
 }
 
 func initialize(dbp *nativeProcess) (string, error) {
+	// we need a fake procgrp to call waitForDebugEvent
+	procgrp := &processGroup{procs: []*nativeProcess{dbp}}
 	// It should not actually be possible for the
 	// call to waitForDebugEvent to fail, since Windows
 	// will always fire a CREATE_PROCESS_DEBUG_EVENT event
 	// immediately after launching under DEBUG_ONLY_THIS_PROCESS.
 	// Attaching with DebugActiveProcess has similar effect.
 	var err error
-	var tid, exitCode int
 	dbp.execPtraceFunc(func() {
-		tid, exitCode, err = dbp.waitForDebugEvent(waitBlocking)
+		_, err = procgrp.waitForDebugEvent(waitBlocking)
 	})
 	if err != nil {
 		return "", err
-	}
-	if tid == 0 {
-		dbp.postExit()
-		return "", proc.ErrProcessExited{Pid: dbp.pid, Status: exitCode}
 	}
 
 	cmdline := getCmdLine(dbp.os.hProcess)
@@ -278,7 +275,7 @@ func (procgrp *processGroup) kill(dbp *nativeProcess) error {
 	_ = syscall.TerminateProcess(dbp.os.hProcess, 1)
 
 	dbp.execPtraceFunc(func() {
-		dbp.waitForDebugEvent(waitBlocking | waitDontHandleExceptions)
+		procgrp.waitForDebugEvent(waitBlocking | waitDontHandleExceptions)
 	})
 
 	p.Wait()
@@ -345,9 +342,8 @@ const (
 
 const _MS_VC_EXCEPTION = 0x406D1388 // part of VisualC protocol to set thread names
 
-func (dbp *nativeProcess) waitForDebugEvent(flags waitForDebugEventFlags) (threadID, exitCode int, err error) {
+func (procgrp *processGroup) waitForDebugEvent(flags waitForDebugEventFlags) (threadID int, err error) {
 	var debugEvent _DEBUG_EVENT
-	shouldExit := false
 	for {
 		continueStatus := uint32(_DBG_CONTINUE)
 		var milliseconds uint32 = 0
@@ -357,7 +353,7 @@ func (dbp *nativeProcess) waitForDebugEvent(flags waitForDebugEventFlags) (threa
 		// Wait for a debug event...
 		err := _WaitForDebugEvent(&debugEvent, milliseconds)
 		if err != nil {
-			return 0, 0, err
+			return 0, err
 		}
 
 		// ... handle each event kind ...
@@ -369,26 +365,52 @@ func (dbp *nativeProcess) waitForDebugEvent(flags waitForDebugEventFlags) (threa
 			if hFile != 0 && hFile != syscall.InvalidHandle {
 				err = syscall.CloseHandle(hFile)
 				if err != nil {
-					return 0, 0, err
+					return 0, err
 				}
 			}
+			var dbp *nativeProcess
+			if procgrp.addTarget == nil {
+				// This is a fake process group and waitForDebugEvent has been called
+				// just after attach/launch, finish configuring the root process.
+				dbp = procgrp.procs[0]
+			} else {
+				// Add new child process
+				dbp = newChildProcess(procgrp.procs[0], int(debugEvent.ProcessId))
+			}
+
 			dbp.os.entryPoint = uint64(debugInfo.BaseOfImage)
 			dbp.os.hProcess = debugInfo.Process
 			_, err = dbp.addThread(debugInfo.Thread, int(debugEvent.ThreadId), false,
 				flags&waitSuspendNewThreads != 0, debugInfo.StartAddress == dbgUiRemoteBreakin.Addr())
 			if err != nil {
-				return 0, 0, err
+				return 0, err
+			}
+
+			if procgrp.addTarget != nil {
+				exe, err := findExePath(dbp.pid)
+				if err != nil {
+					return 0, err
+				}
+				tgt, err := procgrp.add(dbp, dbp.pid, dbp.memthread, exe, proc.StopLaunched, getCmdLine(dbp.os.hProcess))
+				if err != nil {
+					return 0, err
+				}
+				if tgt == nil {
+					continue
+				}
 			}
 			break
 		case _CREATE_THREAD_DEBUG_EVENT:
 			debugInfo := (*_CREATE_THREAD_DEBUG_INFO)(unionPtr)
+			dbp := procgrp.procForPid(int(debugEvent.ProcessId))
 			_, err = dbp.addThread(debugInfo.Thread, int(debugEvent.ThreadId), false,
 				flags&waitSuspendNewThreads != 0, debugInfo.StartAddress == dbgUiRemoteBreakin.Addr())
 			if err != nil {
-				return 0, 0, err
+				return 0, err
 			}
 			break
 		case _EXIT_THREAD_DEBUG_EVENT:
+			dbp := procgrp.procForPid(int(debugEvent.ProcessId))
 			delete(dbp.threads, int(debugEvent.ThreadId))
 			break
 		case _OUTPUT_DEBUG_STRING_EVENT:
@@ -400,7 +422,7 @@ func (dbp *nativeProcess) waitForDebugEvent(flags waitForDebugEventFlags) (threa
 			if hFile != 0 && hFile != syscall.InvalidHandle {
 				err = syscall.CloseHandle(hFile)
 				if err != nil {
-					return 0, 0, err
+					return 0, err
 				}
 			}
 			break
@@ -415,6 +437,7 @@ func (dbp *nativeProcess) waitForDebugEvent(flags waitForDebugEventFlags) (threa
 			}
 			exception := (*_EXCEPTION_DEBUG_INFO)(unionPtr)
 			tid := int(debugEvent.ThreadId)
+			dbp := procgrp.procForPid(int(debugEvent.ProcessId))
 
 			switch code := exception.ExceptionRecord.ExceptionCode; code {
 			case _EXCEPTION_BREAKPOINT:
@@ -444,13 +467,13 @@ func (dbp *nativeProcess) waitForDebugEvent(flags waitForDebugEventFlags) (threa
 					if th := dbp.threads[tid]; th != nil {
 						th.os.setbp = true
 					}
-					return tid, 0, nil
+					return tid, nil
 				} else {
 					continueStatus = _DBG_CONTINUE
 				}
 			case _EXCEPTION_SINGLE_STEP:
 				dbp.os.breakThread = tid
-				return tid, 0, nil
+				return tid, nil
 			case _MS_VC_EXCEPTION:
 				// This exception is sent to set the thread name in VisualC, we should
 				// mask it or it might crash the program.
@@ -460,39 +483,37 @@ func (dbp *nativeProcess) waitForDebugEvent(flags waitForDebugEventFlags) (threa
 			}
 		case _EXIT_PROCESS_DEBUG_EVENT:
 			debugInfo := (*_EXIT_PROCESS_DEBUG_INFO)(unionPtr)
-			exitCode = int(debugInfo.ExitCode)
-			shouldExit = true
+			dbp := procgrp.procForPid(int(debugEvent.ProcessId))
+			dbp.postExit()
+			if procgrp.numValid() == 0 {
+				err = _ContinueDebugEvent(debugEvent.ProcessId, debugEvent.ThreadId, continueStatus)
+				if err != nil {
+					return 0, err
+				}
+				return 0, proc.ErrProcessExited{Pid: dbp.pid, Status: int(debugInfo.ExitCode)}
+			}
 		default:
-			return 0, 0, fmt.Errorf("unknown debug event code: %d", debugEvent.DebugEventCode)
+			return 0, fmt.Errorf("unknown debug event code: %d", debugEvent.DebugEventCode)
 		}
 
 		// .. and then continue unless we received an event that indicated we should break into debugger.
 		err = _ContinueDebugEvent(debugEvent.ProcessId, debugEvent.ThreadId, continueStatus)
 		if err != nil {
-			return 0, 0, err
-		}
-
-		if shouldExit {
-			return 0, exitCode, nil
+			return 0, err
 		}
 	}
 }
 
 func trapWait(procgrp *processGroup, pid int) (*nativeThread, error) {
-	dbp := procgrp.procs[0]
 	var err error
-	var tid, exitCode int
-	dbp.execPtraceFunc(func() {
-		tid, exitCode, err = dbp.waitForDebugEvent(waitBlocking)
+	var tid int
+	procgrp.procs[0].execPtraceFunc(func() {
+		tid, err = procgrp.waitForDebugEvent(waitBlocking)
 	})
 	if err != nil {
 		return nil, err
 	}
-	if tid == 0 {
-		dbp.postExit()
-		return nil, proc.ErrProcessExited{Pid: dbp.pid, Status: exitCode}
-	}
-	th := dbp.threads[tid]
+	th := procgrp.procForThread(tid).threads[tid]
 	return th, nil
 }
 
@@ -501,38 +522,51 @@ func (dbp *nativeProcess) exitGuard(err error) error {
 }
 
 func (procgrp *processGroup) resume() error {
-	dbp := procgrp.procs[0]
-	for _, thread := range dbp.threads {
-		if thread.CurrentBreakpoint.Breakpoint != nil {
-			if err := procgrp.stepInstruction(thread); err != nil {
-				return err
+	for _, dbp := range procgrp.procs {
+		if valid, _ := dbp.Valid(); !valid {
+			continue
+		}
+		for _, thread := range dbp.threads {
+			if thread.CurrentBreakpoint.Breakpoint != nil {
+				if err := procgrp.stepInstruction(thread); err != nil {
+					return err
+				}
+				thread.CurrentBreakpoint.Clear()
 			}
-			thread.CurrentBreakpoint.Clear()
 		}
 	}
 
-	for _, thread := range dbp.threads {
-		_, err := _ResumeThread(thread.os.hThread)
-		if err != nil {
-			return err
+	for _, dbp := range procgrp.procs {
+		if valid, _ := dbp.Valid(); !valid {
+			continue
 		}
+		for _, thread := range dbp.threads {
+			_, err := _ResumeThread(thread.os.hThread)
+			if err != nil {
+				return err
+			}
+		}
+		dbp.os.running = true
 	}
-	dbp.os.running = true
 
 	return nil
 }
 
 // stop stops all running threads threads and sets breakpoints
 func (procgrp *processGroup) stop(cctx *proc.ContinueOnceContext, trapthread *nativeThread) (*nativeThread, error) {
-	dbp := procgrp.procs[0]
-	if dbp.exited {
-		return nil, proc.ErrProcessExited{Pid: dbp.pid}
+	if procgrp.numValid() == 0 {
+		return nil, proc.ErrProcessExited{Pid: procgrp.procs[0].pid}
 	}
 
-	dbp.os.running = false
-	for _, th := range dbp.threads {
-		th.os.setbp = false
+	trapproc := procgrp.procForThread(trapthread.ID)
+	trapproc.os.running = false
+
+	for _, dbp := range procgrp.procs {
+		for _, th := range dbp.threads {
+			th.os.setbp = false
+		}
 	}
+
 	trapthread.os.setbp = true
 
 	// While the debug event that stopped the target was being propagated
@@ -550,28 +584,21 @@ func (procgrp *processGroup) stop(cctx *proc.ContinueOnceContext, trapthread *na
 		return nil, err
 	}
 
-	context := newContext()
-
-	for _, thread := range dbp.threads {
-		thread.os.delayErr = nil
-		if !thread.os.dbgUiRemoteBreakIn {
-			// Wait before reporting the error, the thread could be removed when we
-			// call waitForDebugEvent in the next loop.
-			_, thread.os.delayErr = _SuspendThread(thread.os.hThread)
-			if thread.os.delayErr == nil {
-				// This call will block until the thread has stopped.
-				_ = thread.getContext(context)
-			}
+	for _, dbp := range procgrp.procs {
+		if valid, _ := dbp.Valid(); !valid {
+			continue
 		}
+		dbp.suspendAllThreads()
 	}
 
+	lastEventProc := trapproc
 	for {
 		var err error
 		var tid int
-		dbp.execPtraceFunc(func() {
-			err = _ContinueDebugEvent(uint32(dbp.pid), uint32(dbp.os.breakThread), _DBG_CONTINUE)
+		lastEventProc.execPtraceFunc(func() {
+			err = _ContinueDebugEvent(uint32(lastEventProc.pid), uint32(lastEventProc.os.breakThread), _DBG_CONTINUE)
 			if err == nil {
-				tid, _, _ = dbp.waitForDebugEvent(waitSuspendNewThreads)
+				tid, _ = procgrp.waitForDebugEvent(waitSuspendNewThreads)
 			}
 		})
 		if err != nil {
@@ -580,16 +607,18 @@ func (procgrp *processGroup) stop(cctx *proc.ContinueOnceContext, trapthread *na
 		if tid == 0 {
 			break
 		}
+		dbp := procgrp.procForThread(tid)
 		err = dbp.threads[tid].SetCurrentBreakpoint(true)
 		if err != nil {
 			return nil, err
 		}
+		lastEventProc = dbp
 	}
 
 	// Check if trapthread still exist, if the process is dying it could have
 	// been removed while we were stopping the other threads.
 	trapthreadFound := false
-	for _, thread := range dbp.threads {
+	for _, thread := range trapproc.threads {
 		if thread.ID == trapthread.ID {
 			trapthreadFound = true
 		}
@@ -604,7 +633,7 @@ func (procgrp *processGroup) stop(cctx *proc.ContinueOnceContext, trapthread *na
 		wasDbgUiRemoteBreakIn := trapthread.os.dbgUiRemoteBreakIn
 		// trapthread exited during stop, pick another one
 		trapthread = nil
-		for _, thread := range dbp.threads {
+		for _, thread := range trapproc.threads {
 			if thread.CurrentBreakpoint.Breakpoint != nil && thread.os.delayErr == nil {
 				trapthread = thread
 				break
@@ -613,13 +642,42 @@ func (procgrp *processGroup) stop(cctx *proc.ContinueOnceContext, trapthread *na
 		if trapthread == nil && wasDbgUiRemoteBreakIn {
 			// If this was triggered by a manual stop request we should stop
 			// regardless, pick a thread.
-			for _, thread := range dbp.threads {
+			for _, thread := range trapproc.threads {
 				return thread, nil
 			}
 		}
 	}
 
 	return trapthread, nil
+}
+
+func (dbp *nativeProcess) suspendAllThreads() {
+	context := newContext()
+	for _, thread := range dbp.threads {
+		thread.os.delayErr = nil
+		if !thread.os.dbgUiRemoteBreakIn {
+			// Wait before reporting the error, the thread could be removed when we
+			// call waitForDebugEvent in the next loop.
+			_, thread.os.delayErr = _SuspendThread(thread.os.hThread)
+			if thread.os.delayErr == nil {
+				// This call will block until the thread has stopped.
+				_ = thread.getContext(context)
+			}
+		}
+	}
+}
+
+func (procgrp *processGroup) detachChild(dbp *nativeProcess) error {
+	for _, thread := range dbp.threads {
+		_, err := _ResumeThread(thread.os.hThread)
+		if err != nil {
+			return err
+		}
+	}
+	err := _DebugActiveProcessStop(uint32(dbp.pid))
+	dbp.detached = true
+	dbp.postExit()
+	return err
 }
 
 func (dbp *nativeProcess) detach(kill bool) error {
@@ -773,6 +831,12 @@ func getCmdLine(hProcess syscall.Handle) string {
 		utf16buf[i/2] = uint16(buf[i+1])<<8 + uint16(buf[i])
 	}
 	return string(utf16.Decode(utf16buf))
+}
+
+// FollowExec enables (or disables) follow exec mode
+func (dbp *nativeProcess) FollowExec(v bool) error {
+	dbp.followExec = v
+	return nil
 }
 
 func killProcess(pid int) error {

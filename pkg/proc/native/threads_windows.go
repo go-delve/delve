@@ -59,24 +59,22 @@ func (procgrp *processGroup) singleStep(t *nativeThread) error {
 	}
 
 	for {
-		var tid, exitCode int
+		var tid int
 		t.dbp.execPtraceFunc(func() {
-			tid, exitCode, err = t.dbp.waitForDebugEvent(waitBlocking | waitSuspendNewThreads)
+			tid, err = procgrp.waitForDebugEvent(waitBlocking | waitSuspendNewThreads)
 		})
 		if err != nil {
 			return err
 		}
-		if tid == 0 {
-			t.dbp.postExit()
-			return proc.ErrProcessExited{Pid: t.dbp.pid, Status: exitCode}
-		}
 
-		if t.dbp.os.breakThread == t.ID {
+		ep := procgrp.procForThread(tid)
+
+		if ep.pid == t.dbp.pid && tid == t.ID {
 			break
 		}
 
-		t.dbp.execPtraceFunc(func() {
-			err = _ContinueDebugEvent(uint32(t.dbp.pid), uint32(t.dbp.os.breakThread), _DBG_CONTINUE)
+		ep.execPtraceFunc(func() {
+			err = _ContinueDebugEvent(uint32(ep.pid), uint32(ep.os.breakThread), _DBG_CONTINUE)
 		})
 	}
 

@@ -5956,7 +5956,8 @@ func TestStacktraceExtlinkMac(t *testing.T) {
 }
 
 func TestFollowExec(t *testing.T) {
-	skipUnlessOn(t, "follow exec only supported on linux", "linux")
+	skipOn(t, "follow exec not implemented on freebsd", "freebsd")
+	skipOn(t, "follow exec not implemented on macOS", "darwin")
 	withTestProcessArgs("spawn", t, ".", []string{"spawn", "3"}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		grp.LogicalBreakpoints[1] = &proc.LogicalBreakpoint{LogicalID: 1, Set: proc.SetBreakpoint{FunctionName: "main.traceme1"}, HitCount: make(map[int64]uint64)}
 		grp.LogicalBreakpoints[2] = &proc.LogicalBreakpoint{LogicalID: 2, Set: proc.SetBreakpoint{FunctionName: "main.traceme2"}, HitCount: make(map[int64]uint64)}
@@ -6132,7 +6133,8 @@ func TestStepShadowConcurrentBreakpoint(t *testing.T) {
 }
 
 func TestFollowExecRegexFilter(t *testing.T) {
-	skipUnlessOn(t, "follow exec only supported on linux", "linux")
+	skipOn(t, "follow exec not implemented on freebsd", "freebsd")
+	skipOn(t, "follow exec not implemented on macOS", "darwin")
 	withTestProcessArgs("spawn", t, ".", []string{"spawn", "3"}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		grp.LogicalBreakpoints[1] = &proc.LogicalBreakpoint{LogicalID: 1, Set: proc.SetBreakpoint{FunctionName: "main.traceme1"}, HitCount: make(map[int64]uint64)}
 		grp.LogicalBreakpoints[2] = &proc.LogicalBreakpoint{LogicalID: 2, Set: proc.SetBreakpoint{FunctionName: "main.traceme2"}, HitCount: make(map[int64]uint64)}

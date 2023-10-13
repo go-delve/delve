@@ -247,7 +247,7 @@ func (procgrp *processGroup) add(p *nativeProcess, pid int, currentThread proc.T
 	if tgt == nil {
 		i := len(procgrp.procs)
 		procgrp.procs = append(procgrp.procs, p)
-		procgrp.Detach(p.pid, false)
+		procgrp.detachChild(p)
 		if i == len(procgrp.procs)-1 {
 			procgrp.procs = procgrp.procs[:i]
 		}
@@ -262,7 +262,7 @@ func (procgrp *processGroup) add(p *nativeProcess, pid int, currentThread proc.T
 }
 
 func (procgrp *processGroup) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, proc.StopReason, error) {
-	if len(procgrp.procs) != 1 && runtime.GOOS != "linux" {
+	if len(procgrp.procs) != 1 && runtime.GOOS != "linux" && runtime.GOOS != "windows" {
 		panic("not implemented")
 	}
 	if procgrp.numValid() == 0 {
