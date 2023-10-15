@@ -1,11 +1,25 @@
 package native
 
-// #cgo LDFLAGS: -lprocstat
-// #include <stdlib.h>
-// #include "proc_freebsd.h"
-// #include <sys/sysctl.h>
+/*
+#cgo LDFLAGS: -lprocstat
+
+#include <sys/types.h>
+#include <sys/sysctl.h>
+#include <sys/user.h>
+
+#include <limits.h>
+#include <stdlib.h>
+
+#include <libprocstat.h>
+#include <libutil.h>
+
+uintptr_t elf_aux_info_ptr(Elf_Auxinfo *aux_info) {
+	return (uintptr_t)aux_info->a_un.a_ptr;
+}
+*/
 import "C"
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"os/signal"
@@ -178,10 +192,15 @@ func waitForSearchProcess(pfx string, seen map[int]struct{}) (int, error) {
 }
 
 func initialize(dbp *nativeProcess) (string, error) {
-	comm, _ := C.find_command_name(C.int(dbp.pid))
-	defer C.free(unsafe.Pointer(comm))
-	comm_str := C.GoString(comm)
-	dbp.os.comm = strings.ReplaceAll(string(comm_str), "%", "%%")
+	kp, err := C.kinfo_getproc(C.int(dbp.pid))
+	if err != nil {
+		return "", fmt.Errorf("kinfo_getproc failed: %v", err)
+	}
+	defer C.free(unsafe.Pointer(kp))
+
+	comm := C.GoString(&kp.ki_comm[0])
+	dbp.os.comm = strings.ReplaceAll(string(comm), "%", "%%")
+
 	return getCmdLine(dbp.pid), nil
 }
 
@@ -252,14 +271,29 @@ func (dbp *nativeProcess) updateThreadList() error {
 	return nil
 }
 
-// Used by Attach
 func findExecutable(path string, pid int) string {
-	if path == "" {
-		cstr := C.find_executable(C.int(pid))
-		defer C.free(unsafe.Pointer(cstr))
-		path = C.GoString(cstr)
+	if path != "" {
+		return path
 	}
-	return path
+
+	ps := C.procstat_open_sysctl()
+	if ps == nil {
+		panic("procstat_open_sysctl failed")
+	}
+	defer C.procstat_close(ps)
+
+	kp := C.kinfo_getproc(C.int(pid))
+	if kp == nil {
+		panic("kinfo_getproc failed")
+	}
+	defer C.free(unsafe.Pointer(kp))
+
+	var pathname [C.PATH_MAX]C.char
+	if C.procstat_getpathname(ps, kp, (*C.char)(unsafe.Pointer(&pathname[0])), C.PATH_MAX) != 0 {
+		panic("procstat_getpathname failed")
+	}
+
+	return C.GoString(&pathname[0])
 }
 
 func getCmdLine(pid int) string {
@@ -397,11 +431,14 @@ func (dbp *nativeProcess) trapWaitInternal(pid int, mode trapWaitMode) (*nativeT
 	}
 }
 
-// Helper function used here and in threads_freebsd.go
-// Return the status code
-func status(pid int) rune {
-	status := rune(C.find_status(C.int(pid)))
-	return status
+// status returns the status code for the given process.
+func status(pid int) int {
+	kp, err := C.kinfo_getproc(C.int(pid))
+	if err != nil {
+		return -1
+	}
+	defer C.free(unsafe.Pointer(kp))
+	return int(kp.ki_stat)
 }
 
 // Only used in this file
@@ -543,11 +580,37 @@ func (dbp *nativeProcess) detach(kill bool) error {
 	return ptraceDetach(dbp.pid)
 }
 
-// Used by PostInitializationSetup
-// EntryPoint will return the process entry point address, useful for debugging PIEs.
+// EntryPoint returns the entry point address of the process.
 func (dbp *nativeProcess) EntryPoint() (uint64, error) {
-	ep, err := C.get_entry_point(C.int(dbp.pid))
-	return uint64(ep), err
+	ps, err := C.procstat_open_sysctl()
+	if err != nil {
+		return 0, fmt.Errorf("procstat_open_sysctl failed: %v", err)
+	}
+	defer C.procstat_close(ps)
+
+	var count C.uint
+	kipp, err := C.procstat_getprocs(ps, C.KERN_PROC_PID, C.int(dbp.pid), &count)
+	if err != nil {
+		return 0, fmt.Errorf("procstat_getprocs failed: %v", err)
+	}
+	defer C.procstat_freeprocs(ps, kipp)
+	if count == 0 {
+		return 0, errors.New("procstat_getprocs returned no processes")
+	}
+
+	auxv, err := C.procstat_getauxv(ps, kipp, &count)
+	if err != nil {
+		return 0, fmt.Errorf("procstat_getauxv failed: %v", err)
+	}
+	defer C.procstat_freeauxv(ps, auxv)
+
+	for i := 0; i < int(count); i++ {
+		if auxv.a_type == C.AT_ENTRY {
+			return uint64(C.elf_aux_info_ptr(auxv)), nil
+		}
+		auxv = (*C.Elf_Auxinfo)(unsafe.Pointer(uintptr(unsafe.Pointer(auxv)) + unsafe.Sizeof(*auxv)))
+	}
+	return 0, errors.New("entry point not found")
 }
 
 func (dbp *nativeProcess) SupportsBPF() bool {
@@ -568,7 +631,6 @@ func (dbp *nativeProcess) ptraceCont(sig int) error {
 	return err
 }
 
-// Usedy by Detach
 func killProcess(pid int) error {
 	return sys.Kill(pid, sys.SIGINT)
 }
