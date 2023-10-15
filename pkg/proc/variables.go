@@ -1191,7 +1191,7 @@ func extractVarInfoFromEntry(tgt *Target, bi *BinaryInfo, image *Image, regs op.
 	t, err = resolveParametricType(bi, mem, t, dictAddr)
 	if err != nil {
 		// Log the error, keep going with t, which will be the shape type
-		logflags.DebuggerLogger().Errorf("could not resolve parametric type of %s", n)
+		logflags.DebuggerLogger().Errorf("could not resolve parametric type of %s: %v", n, err)
 	}
 
 	addr, pieces, descr, err := bi.Location(entry, dwarf.AttrLocation, regs.PC(), regs, mem)
