@@ -49,7 +49,7 @@ func Compile(lookup evalLookup, t ast.Expr) ([]Op, error) {
 	return ctx.ops, nil
 }
 
-// CompileSet compiles he expressino setting lhe to rhe into a list of
+// CompileSet compiles the expression setting lhe to rhe into a list of
 // instructions.
 func CompileSet(lookup evalLookup, lhe, rhe ast.Expr) ([]Op, error) {
 	ctx := &compileCtx{evalLookup: lookup, allowCalls: true}
