@@ -1,6 +1,6 @@
 //go:build !go1.18
 
-package proc
+package evalop
 
 import "go/ast"
 
