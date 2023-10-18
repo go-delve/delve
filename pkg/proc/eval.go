@@ -967,6 +967,13 @@ func (scope *EvalScope) executeOp(stack *evalStack, ops []evalop.Op, curthread T
 	case *evalop.PushThreadID:
 		stack.push(newConstant(constant.MakeInt64(int64(scope.threadID)), scope.Mem))
 
+	case *evalop.UpdateScopeFrame:
+		newscope, err := ConvertEvalScope(scope.target, scope.g.ID, int(op.Frame), 0)
+		if err != nil {
+			stack.err = err
+		}
+		*scope = *newscope
+
 	case *evalop.PushConst:
 		stack.push(newConstant(op.Value, scope.Mem))
 

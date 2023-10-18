@@ -24,6 +24,13 @@ type PushFrameoff struct {
 
 func (*PushFrameoff) depthCheck() (npop, npush int) { return 0, 1 }
 
+// UpdateScopeFrame pushes the desired frame for the scope onto the stack.
+type UpdateScopeFrame struct {
+	Frame int64
+}
+
+func (*UpdateScopeFrame) depthCheck() (npop, npush int) { return 0, 0 }
+
 // PushThreadID pushes the ID of the current thread on the stack.
 type PushThreadID struct {
 }

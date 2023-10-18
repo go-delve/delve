@@ -1242,6 +1242,19 @@ func TestHitCondBreakpoint(t *testing.T) {
 	})
 }
 
+func TestCondBreakpointWithFrame(t *testing.T) {
+	withTestTerminal("condframe", t, func(term *FakeTerminal) {
+		term.MustExec("break bp1 callme2")
+		term.MustExec("condition bp1 runtime.frame(1).i == 3")
+		term.MustExec("continue")
+		out := term.MustExec("frame 1 print i")
+		t.Logf("%q", out)
+		if !strings.Contains(out, "3\n") {
+			t.Fatalf("wrong value of i")
+		}
+	})
+}
+
 func TestClearCondBreakpoint(t *testing.T) {
 	withTestTerminal("break", t, func(term *FakeTerminal) {
 		term.MustExec("break main.main:4")

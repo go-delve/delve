@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
+	"go/parser"
 	"go/token"
 	"io"
 	"math/rand"
@@ -1770,6 +1771,36 @@ func TestCondBreakpoint(t *testing.T) {
 	})
 }
 
+func TestCondBreakpointWithFrame(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcess("condframe", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture.Source, 12)
+		parsed, err := parser.ParseExpr("runtime.frame(1).i == 3")
+		if err != nil {
+			t.Fatalf("failed to parse expression: %v", err)
+		}
+		bp.UserBreaklet().Cond = parsed
+
+		assertNoError(grp.Continue(), t, "Continue()")
+
+		g := p.SelectedGoroutine()
+		scope, err := proc.ConvertEvalScope(p, g.ID, 1, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		v, err := scope.EvalExpression("i", normalLoadConfig)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		vval, _ := constant.Int64Val(v.Value)
+		if vval != 3 {
+			t.Fatalf("Incorrect value for frame variable: %v", vval)
+		}
+	})
+}
+
 func TestCondBreakpointError(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("parallel_next", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
@@ -3381,7 +3412,7 @@ func TestCgoStacktrace(t *testing.T) {
 			logStacktrace(t, p, frames)
 
 			m := stacktraceCheck(t, tc, frames)
-			mismatch := (m == nil)
+			mismatch := m == nil
 
 			for i, j := range m {
 				if strings.HasPrefix(tc[i], "C.hellow") {
@@ -5085,7 +5116,7 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 			}
 			pc := currentPC(p, t)
 			f, l, fn := p.BinInfo().PCToLine(pc)
-			var fnname string = "???"
+			var fnname = "???"
 			if fn != nil {
 				fnname = fn.Name
 			}

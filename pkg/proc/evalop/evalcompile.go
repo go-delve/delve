@@ -88,7 +88,7 @@ func (ctx *compileCtx) pushOp(op Op) {
 }
 
 // depthCheck validates the list of instructions produced by Compile and
-// CompileSet by peforming a stack depth check.
+// CompileSet by performing a stack depth check.
 // It calculates the depth of the stack at every instruction in ctx.ops and
 // checks that they have enough arguments to execute. For instructions that
 // can be reached through multiple paths (because of a jump) it checks that
@@ -169,6 +169,31 @@ func (ctx *compileCtx) compileAST(t ast.Expr) error {
 				return ctx.compileUnary(node.X, &Select{node.Sel.Name})
 			}
 
+		case *ast.CallExpr:
+			ident, ok := x.Fun.(*ast.SelectorExpr)
+			if ok {
+				f, ok := ident.X.(*ast.Ident)
+				if ok && f.Name == "runtime" && ident.Sel.Name == "frame" {
+					switch arg := x.Args[0].(type) {
+					case *ast.BasicLit:
+						fr, err := strconv.ParseInt(arg.Value, 10, 8)
+						if err != nil {
+							return err
+						}
+						// Update scope to requested frame.
+						ctx.pushOp(&UpdateScopeFrame{Frame: fr})
+						// Push local onto the stack to be evaluated in the new frame context.
+						ctx.pushOp(&PushLocal{Name: node.Sel.Name})
+						// Restore the frame.
+						ctx.pushOp(&UpdateScopeFrame{Frame: 0})
+						return nil
+					default:
+						return fmt.Errorf("expected integer value for frame, got %v", arg)
+					}
+				}
+			}
+			return ctx.compileUnary(node.X, &Select{node.Sel.Name})
+
 		case *ast.BasicLit: // try to accept "package/path".varname syntax for package variables
 			s, err := strconv.Unquote(x.Value)
 			if err != nil {
@@ -237,7 +262,6 @@ func (ctx *compileCtx) compileAST(t ast.Expr) error {
 
 	default:
 		return fmt.Errorf("expression %T not implemented", t)
-
 	}
 	return nil
 }
