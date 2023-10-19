@@ -133,7 +133,7 @@ type Index struct {
 
 func (*Index) depthCheck() (npop, npush int) { return 2, 1 }
 
-// Jump looks at the topmost stack variable and if it satisifies the
+// Jump looks at the topmost stack variable and if it satisfies the
 // condition specified by When it jumps to the stack machine instruction at
 // Target+1.
 // If Pop is set the topmost stack variable is also popped.
