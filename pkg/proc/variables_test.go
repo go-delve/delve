@@ -681,6 +681,13 @@ func getEvalExpressionTestCases() []varTest {
 		{"real(cpx1)", false, "1", "1", "", nil},
 		{"imag(3i)", false, "3", "3", "", nil},
 		{"real(4)", false, "4", "4", "", nil},
+		{"max(1, 2, 3)", false, "3", "3", "", nil},
+		{`max("one", "two", "three")`, false, `"two"`, `"two"`, "", nil},
+		{`min("one", "two", "three")`, false, `"one"`, `"one"`, "", nil},
+		{"max(s1[0], s1[1], s1[2])", false, `"two"`, `"two"`, "string", nil},
+		{"min(s1[0], s1[1], s1[2])", false, `"one"`, `"one"`, "string", nil},
+		{`max(s1[0], "two", s1[2])`, false, `"two"`, `"two"`, "", nil},
+		{`min(s1[0], "two", s1[2])`, false, `"one"`, `"one"`, "string", nil},
 
 		// nil
 		{"nil", false, "nil", "nil", "", nil},
