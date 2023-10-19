@@ -88,7 +88,7 @@ func (ctx *compileCtx) pushOp(op Op) {
 }
 
 // depthCheck validates the list of instructions produced by Compile and
-// CompileSet by peforming a stack depth check.
+// CompileSet by performing a stack depth check.
 // It calculates the depth of the stack at every instruction in ctx.ops and
 // checks that they have enough arguments to execute. For instructions that
 // can be reached through multiple paths (because of a jump) it checks that
