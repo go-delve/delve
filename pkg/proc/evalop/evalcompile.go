@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
+	"go/parser"
 	"go/printer"
+	"go/scanner"
 	"go/token"
 	"strconv"
 	"strings"
@@ -34,8 +36,8 @@ type evalLookup interface {
 	LookupRegisterName(string) (int, bool)
 }
 
-// Compile compiles the expression t into a list of instructions.
-func Compile(lookup evalLookup, t ast.Expr) ([]Op, error) {
+// CompileAST compiles the expression t into a list of instructions.
+func CompileAST(lookup evalLookup, t ast.Expr) ([]Op, error) {
 	ctx := &compileCtx{evalLookup: lookup, allowCalls: true}
 	err := ctx.compileAST(t)
 	if err != nil {
@@ -49,11 +51,44 @@ func Compile(lookup evalLookup, t ast.Expr) ([]Op, error) {
 	return ctx.ops, nil
 }
 
-// CompileSet compiles the expression setting lhe to rhe into a list of
+// Compile compiles the expression expr into a list of instructions.
+// If canSet is true expressions like "x = y" are also accepted.
+func Compile(lookup evalLookup, expr string, canSet bool) ([]Op, error) {
+	t, err := parser.ParseExpr(expr)
+	if err != nil {
+		if canSet {
+			eqOff, isAs := isAssignment(err)
+			if isAs {
+				return CompileSet(lookup, expr[:eqOff], expr[eqOff+1:])
+			}
+		}
+		return nil, err
+	}
+	return CompileAST(lookup, t)
+}
+
+func isAssignment(err error) (int, bool) {
+	el, isScannerErr := err.(scanner.ErrorList)
+	if isScannerErr && el[0].Msg == "expected '==', found '='" {
+		return el[0].Pos.Offset, true
+	}
+	return 0, false
+}
+
+// CompileSet compiles the expression setting lhexpr to rhexpr into a list of
 // instructions.
-func CompileSet(lookup evalLookup, lhe, rhe ast.Expr) ([]Op, error) {
+func CompileSet(lookup evalLookup, lhexpr, rhexpr string) ([]Op, error) {
+	lhe, err := parser.ParseExpr(lhexpr)
+	if err != nil {
+		return nil, err
+	}
+	rhe, err := parser.ParseExpr(rhexpr)
+	if err != nil {
+		return nil, err
+	}
+
 	ctx := &compileCtx{evalLookup: lookup, allowCalls: true}
-	err := ctx.compileAST(rhe)
+	err = ctx.compileAST(rhe)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +109,6 @@ func CompileSet(lookup evalLookup, lhe, rhe ast.Expr) ([]Op, error) {
 		return ctx.ops, err
 	}
 	return ctx.ops, nil
-
 }
 
 func (ctx *compileCtx) compileAllocLiteralString() {

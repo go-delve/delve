@@ -27,15 +27,14 @@ import (
 // The protocol is described in $GOROOT/src/runtime/asm_amd64.s in the
 // comments for function runtime·debugCallVn.
 //
-// The main entry point is EvalExpressionWithCalls which will start a goroutine to
-// evaluate the provided expression.
-// This goroutine can either return immediately, if no function calls were
-// needed, or write a continue request to the scope.callCtx.continueRequest
-// channel. When this happens EvalExpressionWithCalls will call Continue and
-// return.
+// The main entry point is EvalExpressionWithCalls which will set up an
+// evalStack object to evaluate the provided expression.
+// This object can either finish immediately, if no function calls were
+// needed, or return with callInjectionContinue set. When this happens
+// EvalExpressionWithCalls will call Continue and return.
 //
-// The Continue loop will write to scope.callCtx.continueCompleted when it
-// hits a breakpoint in the call injection protocol.
+// The Continue loop will call evalStack.resume when it hits a breakpoint in
+// the call injection protocol.
 //
 // The work of setting up the function call and executing the protocol is
 // done by:
@@ -110,15 +109,6 @@ type callContext struct {
 	// retLoadCfg is the load configuration used to load return values
 	retLoadCfg LoadConfig
 
-	// Write to continueRequest to request a call to Continue from the
-	// debugger's main goroutine.
-	// Read from continueCompleted to wait for the target process to stop at
-	// one of the interaction point of the function call protocol.
-	// To signal that evaluation is completed a value will be written to
-	// continueRequest having cont == false and the return values in ret.
-	continueRequest   chan<- continueRequest
-	continueCompleted <-chan *G
-
 	// injectionThread is the thread to use for nested call injections if the
 	// original injection goroutine isn't running (because we are in Go 1.15)
 	injectionThread Thread
@@ -128,32 +118,10 @@ type callContext struct {
 	stacks []stack
 }
 
-type continueRequest struct {
-	cont bool
-	err  error
-	ret  *Variable
-}
-
 type callInjection struct {
-	// if continueCompleted is not nil it means we are in the process of
-	// executing an injected function call, see comments throughout
-	// pkg/proc/fncall.go for a description of how this works.
-	continueCompleted chan<- *G
-	continueRequest   <-chan continueRequest
-	startThreadID     int
-	endCallInjection  func()
-}
-
-func (callCtx *callContext) doContinue() *G {
-	callCtx.continueRequest <- continueRequest{cont: true}
-	return <-callCtx.continueCompleted
-}
-
-func (callCtx *callContext) doReturn(ret *Variable, err error) {
-	if callCtx == nil {
-		return
-	}
-	callCtx.continueRequest <- continueRequest{cont: false, ret: ret, err: err}
+	evalStack        *evalStack
+	startThreadID    int
+	endCallInjection func()
 }
 
 // EvalExpressionWithCalls is like EvalExpression but allows function calls in 'expr'.
@@ -178,7 +146,7 @@ func EvalExpressionWithCalls(grp *TargetGroup, g *G, expr string, retLoadCfg Loa
 		return errGoroutineNotRunning
 	}
 
-	if callinj := t.fncallForG[g.ID]; callinj != nil && callinj.continueCompleted != nil {
+	if callinj := t.fncallForG[g.ID]; callinj != nil && callinj.evalStack != nil {
 		return errFuncCallInProgress
 	}
 
@@ -192,72 +160,69 @@ func EvalExpressionWithCalls(grp *TargetGroup, g *G, expr string, retLoadCfg Loa
 		return err
 	}
 
-	continueRequest := make(chan continueRequest)
-	continueCompleted := make(chan *G)
-
 	scope.callCtx = &callContext{
-		grp:               grp,
-		p:                 t,
-		checkEscape:       checkEscape,
-		retLoadCfg:        retLoadCfg,
-		continueRequest:   continueRequest,
-		continueCompleted: continueCompleted,
+		grp:         grp,
+		p:           t,
+		checkEscape: checkEscape,
+		retLoadCfg:  retLoadCfg,
 	}
+	scope.loadCfg = &retLoadCfg
 
 	endCallInjection, err := t.proc.StartCallInjection()
 	if err != nil {
 		return err
 	}
 
-	t.fncallForG[g.ID] = &callInjection{
-		continueCompleted: continueCompleted,
-		continueRequest:   continueRequest,
-		startThreadID:     0,
-		endCallInjection:  endCallInjection,
+	ops, err := evalop.Compile(scopeToEvalLookup{scope}, expr, true)
+	if err != nil {
+		return err
 	}
 
-	go scope.EvalExpression(expr, retLoadCfg)
+	stack := &evalStack{}
 
-	contReq, ok := <-continueRequest
-	if contReq.cont {
+	t.fncallForG[g.ID] = &callInjection{
+		evalStack:        stack,
+		startThreadID:    0,
+		endCallInjection: endCallInjection,
+	}
+
+	stack.eval(scope, ops)
+	if stack.callInjectionContinue {
 		return grp.Continue()
 	}
 
-	return finishEvalExpressionWithCalls(t, g, contReq, ok)
+	return finishEvalExpressionWithCalls(t, g, stack)
 }
 
-func finishEvalExpressionWithCalls(t *Target, g *G, contReq continueRequest, ok bool) error {
+func finishEvalExpressionWithCalls(t *Target, g *G, stack *evalStack) error {
 	fncallLog("stashing return values for %d in thread=%d", g.ID, g.Thread.ThreadID())
 	g.Thread.Common().CallReturn = true
-	var err error
-	if !ok {
-		err = errors.New("internal error EvalExpressionWithCalls didn't return anything")
-	} else if contReq.err != nil {
-		if fpe, ispanic := contReq.err.(fncallPanicErr); ispanic {
+	ret, err := stack.result(&stack.scope.callCtx.retLoadCfg)
+	if err != nil {
+		if fpe, ispanic := stack.err.(fncallPanicErr); ispanic {
+			err = nil
 			g.Thread.Common().returnValues = []*Variable{fpe.panicVar}
-		} else {
-			err = contReq.err
 		}
-	} else if contReq.ret == nil {
+	} else if ret == nil {
 		g.Thread.Common().returnValues = nil
-	} else if contReq.ret.Addr == 0 && contReq.ret.DwarfType == nil && contReq.ret.Kind == reflect.Invalid {
+	} else if ret.Addr == 0 && ret.DwarfType == nil && ret.Kind == reflect.Invalid {
 		// this is a variable returned by a function call with multiple return values
-		r := make([]*Variable, len(contReq.ret.Children))
-		for i := range contReq.ret.Children {
-			r[i] = &contReq.ret.Children[i]
+		r := make([]*Variable, len(ret.Children))
+		for i := range ret.Children {
+			r[i] = &ret.Children[i]
 		}
 		g.Thread.Common().returnValues = r
 	} else {
-		g.Thread.Common().returnValues = []*Variable{contReq.ret}
+		g.Thread.Common().returnValues = []*Variable{ret}
 	}
 
-	close(t.fncallForG[g.ID].continueCompleted)
 	callinj := t.fncallForG[g.ID]
 	for goid := range t.fncallForG {
 		if t.fncallForG[goid] == callinj {
 			delete(t.fncallForG, goid)
 		}
 	}
+	callinj.evalStack = nil
 	callinj.endCallInjection()
 	return err
 }
@@ -1163,10 +1128,9 @@ func callInjectionProtocol(t *Target, threads []Thread) (done bool, err error) {
 
 		fncallLog("step for injection on goroutine %d (current) thread=%d (location %s)", g.ID, thread.ThreadID(), loc.Fn.Name)
 		t.currentThread = thread
-		callinj.continueCompleted <- g
-		contReq, ok := <-callinj.continueRequest
-		if !contReq.cont {
-			err := finishEvalExpressionWithCalls(t, g, contReq, ok)
+		callinj.evalStack.resume(g)
+		if !callinj.evalStack.callInjectionContinue {
+			err := finishEvalExpressionWithCalls(t, g, callinj.evalStack)
 			if err != nil {
 				return done, err
 			}
@@ -1187,7 +1151,7 @@ func findCallInjectionStateForThread(t *Target, thread Thread) (*G, *callInjecti
 	}
 	callinj := t.fncallForG[g.ID]
 	if callinj != nil {
-		if callinj.continueCompleted == nil {
+		if callinj.evalStack == nil {
 			return nil, nil, notfound()
 		}
 		return g, callinj, nil
@@ -1199,7 +1163,7 @@ func findCallInjectionStateForThread(t *Target, thread Thread) (*G, *callInjecti
 	// thread.
 
 	for goid, callinj := range t.fncallForG {
-		if callinj != nil && callinj.continueCompleted != nil && callinj.startThreadID != 0 && callinj.startThreadID == thread.ThreadID() {
+		if callinj != nil && callinj.evalStack != nil && callinj.startThreadID != 0 && callinj.startThreadID == thread.ThreadID() {
 			t.fncallForG[g.ID] = callinj
 			fncallLog("goroutine %d is the goroutine executing the call injection started in goroutine %d", g.ID, goid)
 			return g, callinj, nil

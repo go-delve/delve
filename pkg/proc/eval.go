@@ -9,7 +9,6 @@ import (
 	"go/constant"
 	"go/parser"
 	"go/printer"
-	"go/scanner"
 	"go/token"
 	"reflect"
 	"runtime/debug"
@@ -43,17 +42,9 @@ type EvalScope struct {
 	frameOffset int64
 
 	// When the following pointer is not nil this EvalScope was created
-	// by CallFunction and the expression evaluation is executing on a
-	// different goroutine from the debugger's main goroutine.
-	// Under this circumstance the expression evaluator can make function
-	// calls by setting up the runtime.debugCallV1 call and then writing a
-	// value to the continueRequest channel.
-	// When a value is written to continueRequest the debugger's main goroutine
-	// will call Continue, when the runtime in the target process sends us a
-	// request in the function call protocol the debugger's main goroutine will
-	// write a value to the continueCompleted channel.
-	// The goroutine executing the expression evaluation shall signal that the
-	// evaluation is complete by closing the continueRequest channel.
+	// by EvalExpressionWithCalls and function call injection are allowed.
+	// See the top comment in fncall.go for a description of how the call
+	// injection protocol is handled.
 	callCtx *callContext
 
 	dictAddr uint64 // dictionary address for instantiated generic functions
@@ -183,41 +174,24 @@ func GoroutineScope(t *Target, thread Thread) (*EvalScope, error) {
 
 // EvalExpression returns the value of the given expression.
 func (scope *EvalScope) EvalExpression(expr string, cfg LoadConfig) (*Variable, error) {
-	if scope.callCtx != nil {
-		// makes sure that the other goroutine won't wait forever if we make a mistake
-		defer close(scope.callCtx.continueRequest)
-	}
-	t, err := parser.ParseExpr(expr)
-	if eqOff, isAs := isAssignment(err); scope.callCtx != nil && isAs {
-		lexpr := expr[:eqOff]
-		rexpr := expr[eqOff+1:]
-		err := scope.SetVariable(lexpr, rexpr)
-		scope.callCtx.doReturn(nil, err)
-		return nil, err
-	}
+	ops, err := evalop.Compile(scopeToEvalLookup{scope}, expr, false)
 	if err != nil {
-		scope.callCtx.doReturn(nil, err)
 		return nil, err
 	}
 
-	ops, err := evalop.Compile(scopeToEvalLookup{scope}, t)
-	if err != nil {
-		scope.callCtx.doReturn(nil, err)
-		return nil, err
-	}
+	stack := &evalStack{}
 
 	scope.loadCfg = &cfg
-
-	ev, err := scope.eval(ops)
+	stack.eval(scope, ops)
+	ev, err := stack.result(&cfg)
 	if err != nil {
-		scope.callCtx.doReturn(nil, err)
 		return nil, err
 	}
+
 	ev.loadValue(cfg)
 	if ev.Name == "" {
 		ev.Name = expr
 	}
-	scope.callCtx.doReturn(ev, nil)
 	return ev, nil
 }
 
@@ -389,14 +363,6 @@ func (scope *EvalScope) ChanGoroutines(expr string, start, count int) ([]int64, 
 		return nil, err
 	}
 	return goids, nil
-}
-
-func isAssignment(err error) (int, bool) {
-	el, isScannerErr := err.(scanner.ErrorList)
-	if isScannerErr && el[0].Msg == "expected '==', found '='" {
-		return el[0].Pos.Offset, true
-	}
-	return 0, false
 }
 
 // Locals returns all variables in 'scope'.
@@ -611,21 +577,14 @@ func (scope *EvalScope) setValue(dstv, srcv *Variable, srcExpr string) error {
 
 // SetVariable sets the value of the named variable
 func (scope *EvalScope) SetVariable(name, value string) error {
-	lhe, err := parser.ParseExpr(name)
-	if err != nil {
-		return err
-	}
-	rhe, err := parser.ParseExpr(value)
+	ops, err := evalop.CompileSet(scopeToEvalLookup{scope}, name, value)
 	if err != nil {
 		return err
 	}
 
-	ops, err := evalop.CompileSet(scopeToEvalLookup{scope}, lhe, rhe)
-	if err != nil {
-		return err
-	}
-
-	_, err = scope.eval(ops)
+	stack := &evalStack{}
+	stack.eval(scope, ops)
+	_, err = stack.result(nil)
 	return err
 }
 
@@ -782,9 +741,15 @@ func (scope *EvalScope) image() *Image {
 type evalStack struct {
 	stack                 []*Variable          // current stack of Variable values
 	fncalls               []*functionCallState // stack of call injections currently being executed
+	ops                   []evalop.Op          // program being executed
 	opidx                 int                  // program counter for the stack program
 	callInjectionContinue bool                 // when set program execution suspends and the call injection protocol is executed instead
 	err                   error
+
+	spoff, bpoff, fboff int64
+	scope               *EvalScope
+	curthread           Thread
+	lastRetiredFncall   *functionCallState
 }
 
 func (s *evalStack) push(v *Variable) {
@@ -820,83 +785,105 @@ func (s *evalStack) pushErr(v *Variable, err error) {
 	s.stack = append(s.stack, v)
 }
 
-func (scope *EvalScope) eval(ops []evalop.Op) (*Variable, error) {
+// eval evaluates ops. When it returns if callInjectionContinue is set the
+// target program should be resumed to execute the call injection protocol.
+// Otherwise the result of the evaluation can be retrieved using
+// stack.result.
+func (stack *evalStack) eval(scope *EvalScope, ops []evalop.Op) {
 	if logflags.FnCall() {
 		fncallLog("eval program:\n%s", evalop.Listing(nil, ops))
 	}
-	stack := &evalStack{}
 
-	var spoff, bpoff, fboff int64
+	stack.ops = ops
+	stack.scope = scope
 
 	if scope.g != nil {
-		spoff = int64(scope.Regs.Uint64Val(scope.Regs.SPRegNum)) - int64(scope.g.stack.hi)
-		bpoff = int64(scope.Regs.Uint64Val(scope.Regs.BPRegNum)) - int64(scope.g.stack.hi)
-		fboff = scope.Regs.FrameBase - int64(scope.g.stack.hi)
+		stack.spoff = int64(scope.Regs.Uint64Val(scope.Regs.SPRegNum)) - int64(scope.g.stack.hi)
+		stack.bpoff = int64(scope.Regs.Uint64Val(scope.Regs.BPRegNum)) - int64(scope.g.stack.hi)
+		stack.fboff = scope.Regs.FrameBase - int64(scope.g.stack.hi)
 	}
-	var curthread Thread
+
 	if scope.g != nil && scope.g.Thread != nil {
-		curthread = scope.g.Thread
+		stack.curthread = scope.g.Thread
 	}
 
-	// funcCallSteps executes the call injection protocol until more input from
-	// the stack program is needed (i.e. until the call injection either needs
-	// to copy function arguments, terminates or fails.
-	// Scope and curthread are updated every time the target program stops).
-	funcCallSteps := func() {
-		for stack.callInjectionContinue {
-			scope.callCtx.injectionThread = nil
-			g := scope.callCtx.doContinue()
-			// Go 1.15 will move call injection execution to a different goroutine,
-			// but we want to keep evaluation on the original goroutine.
-			if g.ID == scope.g.ID {
-				scope.g = g
-			} else {
-				// We are in Go 1.15 and we switched to a new goroutine, the original
-				// goroutine is now parked and therefore does not have a thread
-				// associated.
-				scope.g.Thread = nil
-				scope.g.Status = Gwaiting
-				scope.callCtx.injectionThread = g.Thread
-			}
+	stack.run()
+}
 
-			// adjust the value of registers inside scope
-			pcreg, bpreg, spreg := scope.Regs.Reg(scope.Regs.PCRegNum), scope.Regs.Reg(scope.Regs.BPRegNum), scope.Regs.Reg(scope.Regs.SPRegNum)
-			scope.Regs.ClearRegisters()
-			scope.Regs.AddReg(scope.Regs.PCRegNum, pcreg)
-			scope.Regs.AddReg(scope.Regs.BPRegNum, bpreg)
-			scope.Regs.AddReg(scope.Regs.SPRegNum, spreg)
-			scope.Regs.Reg(scope.Regs.SPRegNum).Uint64Val = uint64(spoff + int64(scope.g.stack.hi))
-			scope.Regs.Reg(scope.Regs.BPRegNum).Uint64Val = uint64(bpoff + int64(scope.g.stack.hi))
-			scope.Regs.FrameBase = fboff + int64(scope.g.stack.hi)
-			scope.Regs.CFA = scope.frameOffset + int64(scope.g.stack.hi)
-			curthread = g.Thread
-
-			stack.callInjectionContinue = false
-			finished := funcCallStep(scope, stack, g.Thread)
-			if finished {
-				funcCallFinish(scope, stack)
-			}
-		}
+// resume resumes evaluation of stack.ops. When it returns if
+// callInjectionContinue is set the target program should be resumed to
+// execute the call injection protocol. Otherwise the result of the
+// evaluation can be retrieved using stack.result.
+func (stack *evalStack) resume(g *G) {
+	stack.callInjectionContinue = false
+	scope := stack.scope
+	// Go 1.15 will move call injection execution to a different goroutine,
+	// but we want to keep evaluation on the original goroutine.
+	if g.ID == scope.g.ID {
+		scope.g = g
+	} else {
+		// We are in Go 1.15 and we switched to a new goroutine, the original
+		// goroutine is now parked and therefore does not have a thread
+		// associated.
+		scope.g.Thread = nil
+		scope.g.Status = Gwaiting
+		scope.callCtx.injectionThread = g.Thread
 	}
 
-	for stack.opidx < len(ops) && stack.err == nil {
+	// adjust the value of registers inside scope
+	pcreg, bpreg, spreg := scope.Regs.Reg(scope.Regs.PCRegNum), scope.Regs.Reg(scope.Regs.BPRegNum), scope.Regs.Reg(scope.Regs.SPRegNum)
+	scope.Regs.ClearRegisters()
+	scope.Regs.AddReg(scope.Regs.PCRegNum, pcreg)
+	scope.Regs.AddReg(scope.Regs.BPRegNum, bpreg)
+	scope.Regs.AddReg(scope.Regs.SPRegNum, spreg)
+	scope.Regs.Reg(scope.Regs.SPRegNum).Uint64Val = uint64(stack.spoff + int64(scope.g.stack.hi))
+	scope.Regs.Reg(scope.Regs.BPRegNum).Uint64Val = uint64(stack.bpoff + int64(scope.g.stack.hi))
+	scope.Regs.FrameBase = stack.fboff + int64(scope.g.stack.hi)
+	scope.Regs.CFA = scope.frameOffset + int64(scope.g.stack.hi)
+	stack.curthread = g.Thread
+
+	finished := funcCallStep(scope, stack, g.Thread)
+	if finished {
+		funcCallFinish(scope, stack)
+	}
+
+	if stack.callInjectionContinue {
+		// not done with call injection, stay in this mode
+		stack.scope.callCtx.injectionThread = nil
+		return
+	}
+
+	// call injection protocol suspended or concluded, resume normal opcode execution
+	stack.run()
+}
+
+func (stack *evalStack) run() {
+	scope, curthread := stack.scope, stack.curthread
+	for stack.opidx < len(stack.ops) && stack.err == nil {
 		stack.callInjectionContinue = false
-		scope.executeOp(stack, ops, curthread)
+		stack.executeOp()
 		// If the instruction we just executed requests the call injection
 		// protocol by setting callInjectionContinue we switch to it.
 		if stack.callInjectionContinue {
-			funcCallSteps()
+			scope.callCtx.injectionThread = nil
+			return
 		}
+	}
+
+	if stack.err == nil && len(stack.fncalls) > 0 {
+		stack.err = fmt.Errorf("internal debugger error: eval program finished without error but %d call injections still active", len(stack.fncalls))
+		return
 	}
 
 	// If there is an error we must undo all currently executing call
 	// injections before returning.
 
-	if stack.err == nil && len(stack.fncalls) > 0 {
-		return nil, fmt.Errorf("internal debugger error: eval program finished without error but %d call injections still active", len(stack.fncalls))
-	}
-	for len(stack.fncalls) > 0 {
+	if len(stack.fncalls) > 0 {
 		fncall := stack.fncallPeek()
+		if fncall == stack.lastRetiredFncall {
+			stack.err = fmt.Errorf("internal debugger error: could not undo injected call during error recovery, original error: %v", stack.err)
+			return
+		}
 		if fncall.undoInjection != nil {
 			// setTargetExecuted is set if evalop.CallInjectionSetTarget has been
 			// executed but evalop.CallInjectionComplete hasn't, we must undo the callOP
@@ -913,14 +900,15 @@ func (scope *EvalScope) eval(ops []evalop.Op) (*Variable, error) {
 				panic("not implemented")
 			}
 		}
+		stack.lastRetiredFncall = fncall
+		// Resume target to undo one call
 		stack.callInjectionContinue = true
-		prevlen := len(stack.fncalls)
-		funcCallSteps()
-		if len(stack.fncalls) == prevlen {
-			return nil, fmt.Errorf("internal debugger error: could not undo injected call during error recovery, original error: %v", stack.err)
-		}
+		scope.callCtx.injectionThread = nil
+		return
 	}
+}
 
+func (stack *evalStack) result(cfg *LoadConfig) (*Variable, error) {
 	var r *Variable
 	switch len(stack.stack) {
 	case 0:
@@ -932,11 +920,15 @@ func (scope *EvalScope) eval(ops []evalop.Op) (*Variable, error) {
 			stack.err = fmt.Errorf("internal debugger error: wrong stack size at end %d", len(stack.stack))
 		}
 	}
+	if r != nil && cfg != nil && stack.err == nil {
+		r.loadValue(*cfg)
+	}
 	return r, stack.err
 }
 
-// executeOp executes the opcode at ops[stack.opidx] and increments stack.opidx.
-func (scope *EvalScope) executeOp(stack *evalStack, ops []evalop.Op, curthread Thread) {
+// executeOp executes the opcode at stack.ops[stack.opidx] and increments stack.opidx.
+func (stack *evalStack) executeOp() {
+	scope, ops, curthread := stack.scope, stack.ops, stack.curthread
 	defer func() {
 		err := recover()
 		if err != nil {
@@ -1121,11 +1113,13 @@ func (scope *EvalScope) executeOp(stack *evalStack, ops []evalop.Op, curthread T
 }
 
 func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
-	ops, err := evalop.Compile(scopeToEvalLookup{scope}, t)
+	ops, err := evalop.CompileAST(scopeToEvalLookup{scope}, t)
 	if err != nil {
 		return nil, err
 	}
-	return scope.eval(ops)
+	stack := &evalStack{}
+	stack.eval(scope, ops)
+	return stack.result(nil)
 }
 
 func exprToString(t ast.Expr) string {
