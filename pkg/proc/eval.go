@@ -1498,6 +1498,8 @@ var supportedBuiltins = map[string]func([]*Variable, []ast.Expr) (*Variable, err
 	"complex": complexBuiltin,
 	"imag":    imagBuiltin,
 	"real":    realBuiltin,
+	"min":     minBuiltin,
+	"max":     maxBuiltin,
 }
 
 func capBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
@@ -1660,6 +1662,57 @@ func realBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 	}
 
 	return newConstant(constant.Real(arg.Value), arg.mem), nil
+}
+
+func minBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
+	return minmaxBuiltin("min", token.LSS, args, nodeargs)
+}
+
+func maxBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
+	return minmaxBuiltin("max", token.GTR, args, nodeargs)
+}
+
+func minmaxBuiltin(name string, op token.Token, args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
+	var best *Variable
+
+	for i := range args {
+		if args[i].Kind == reflect.String {
+			args[i].loadValue(loadFullValueLongerStrings)
+		} else {
+			args[i].loadValue(loadFullValue)
+		}
+
+		if args[i].Unreadable != nil {
+			return nil, fmt.Errorf("could not load %q: %v", exprToString(nodeargs[i]), args[i].Unreadable)
+		}
+		if args[i].FloatSpecial != 0 {
+			return nil, errOperationOnSpecialFloat
+		}
+
+		if best == nil {
+			best = args[i]
+			continue
+		}
+
+		_, err := negotiateType(op, args[i], best)
+		if err != nil {
+			return nil, err
+		}
+
+		v, err := compareOp(op, args[i], best)
+		if err != nil {
+			return nil, err
+		}
+
+		if v {
+			best = args[i]
+		}
+	}
+
+	if best == nil {
+		return nil, fmt.Errorf("not enough arguments to %s", name)
+	}
+	return best, nil
 }
 
 // Evaluates expressions <subexpr>.<field name> where subexpr is not a package name
