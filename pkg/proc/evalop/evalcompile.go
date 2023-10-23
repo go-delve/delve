@@ -159,7 +159,7 @@ func (ctx *compileCtx) compileAST(t ast.Expr) error {
 				ctx.pushOp(&PushThreadID{})
 
 			case ctx.HasLocal(x.Name):
-				ctx.pushOp(&PushLocal{x.Name})
+				ctx.pushOp(&PushLocal{Name: x.Name})
 				ctx.pushOp(&Select{node.Sel.Name})
 
 			case ctx.HasGlobal(x.Name, node.Sel.Name):
@@ -180,12 +180,8 @@ func (ctx *compileCtx) compileAST(t ast.Expr) error {
 						if err != nil {
 							return err
 						}
-						// Update scope to requested frame.
-						ctx.pushOp(&UpdateScopeFrame{Frame: fr})
 						// Push local onto the stack to be evaluated in the new frame context.
-						ctx.pushOp(&PushLocal{Name: node.Sel.Name})
-						// Restore the frame.
-						ctx.pushOp(&UpdateScopeFrame{Frame: 0})
+						ctx.pushOp(&PushLocal{Name: node.Sel.Name, Frame: fr})
 						return nil
 					default:
 						return fmt.Errorf("expected integer value for frame, got %v", arg)
@@ -382,7 +378,7 @@ func (ctx *compileCtx) compileBuiltinCall(builtin string, args []ast.Expr) error
 func (ctx *compileCtx) compileIdent(node *ast.Ident) error {
 	switch {
 	case ctx.HasLocal(node.Name):
-		ctx.pushOp(&PushLocal{node.Name})
+		ctx.pushOp(&PushLocal{Name: node.Name})
 	case ctx.HasGlobal("", node.Name):
 		ctx.pushOp(&PushPackageVar{"", node.Name})
 	case node.Name == "true" || node.Name == "false":
