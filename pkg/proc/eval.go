@@ -976,6 +976,10 @@ func (scope *EvalScope) executeOp(stack *evalStack, ops []evalop.Op, curthread T
 		if op.Frame != 0 {
 			var frameScope *EvalScope
 			frameScope, err = ConvertEvalScope(scope.target, scope.g.ID, int(op.Frame), 0)
+			if err != nil {
+				stack.err = err
+				return
+			}
 			vars, err = frameScope.Locals(0)
 		} else {
 			vars, err = scope.Locals(0)
