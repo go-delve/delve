@@ -193,7 +193,7 @@ func (ctx *compileCtx) compileAST(t ast.Expr) error {
 				ctx.pushOp(&PushThreadID{})
 
 			case ctx.HasLocal(x.Name):
-				ctx.pushOp(&PushLocal{x.Name})
+				ctx.pushOp(&PushLocal{Name: x.Name})
 				ctx.pushOp(&Select{node.Sel.Name})
 
 			case ctx.HasGlobal(x.Name, node.Sel.Name):
@@ -202,6 +202,27 @@ func (ctx *compileCtx) compileAST(t ast.Expr) error {
 			default:
 				return ctx.compileUnary(node.X, &Select{node.Sel.Name})
 			}
+
+		case *ast.CallExpr:
+			ident, ok := x.Fun.(*ast.SelectorExpr)
+			if ok {
+				f, ok := ident.X.(*ast.Ident)
+				if ok && f.Name == "runtime" && ident.Sel.Name == "frame" {
+					switch arg := x.Args[0].(type) {
+					case *ast.BasicLit:
+						fr, err := strconv.ParseInt(arg.Value, 10, 8)
+						if err != nil {
+							return err
+						}
+						// Push local onto the stack to be evaluated in the new frame context.
+						ctx.pushOp(&PushLocal{Name: node.Sel.Name, Frame: fr})
+						return nil
+					default:
+						return fmt.Errorf("expected integer value for frame, got %v", arg)
+					}
+				}
+			}
+			return ctx.compileUnary(node.X, &Select{node.Sel.Name})
 
 		case *ast.BasicLit: // try to accept "package/path".varname syntax for package variables
 			s, err := strconv.Unquote(x.Value)
@@ -271,7 +292,6 @@ func (ctx *compileCtx) compileAST(t ast.Expr) error {
 
 	default:
 		return fmt.Errorf("expression %T not implemented", t)
-
 	}
 	return nil
 }
@@ -392,7 +412,7 @@ func (ctx *compileCtx) compileBuiltinCall(builtin string, args []ast.Expr) error
 func (ctx *compileCtx) compileIdent(node *ast.Ident) error {
 	switch {
 	case ctx.HasLocal(node.Name):
-		ctx.pushOp(&PushLocal{node.Name})
+		ctx.pushOp(&PushLocal{Name: node.Name})
 	case ctx.HasGlobal("", node.Name):
 		ctx.pushOp(&PushPackageVar{"", node.Name})
 	case node.Name == "true" || node.Name == "false":

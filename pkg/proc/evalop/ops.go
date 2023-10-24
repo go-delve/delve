@@ -39,7 +39,8 @@ func (*PushConst) depthCheck() (npop, npush int) { return 0, 1 }
 
 // PushLocal pushes the local variable with the given name on the stack.
 type PushLocal struct {
-	Name string
+	Name  string
+	Frame int64
 }
 
 func (*PushLocal) depthCheck() (npop, npush int) { return 0, 1 }

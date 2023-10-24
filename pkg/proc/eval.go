@@ -963,7 +963,19 @@ func (stack *evalStack) executeOp() {
 		stack.push(newConstant(op.Value, scope.Mem))
 
 	case *evalop.PushLocal:
-		vars, err := scope.Locals(0)
+		var vars []*Variable
+		var err error
+		if op.Frame != 0 {
+			var frameScope *EvalScope
+			frameScope, err = ConvertEvalScope(scope.target, scope.g.ID, int(op.Frame), 0)
+			if err != nil {
+				stack.err = err
+				return
+			}
+			vars, err = frameScope.Locals(0)
+		} else {
+			vars, err = scope.Locals(0)
+		}
 		if err != nil {
 			stack.err = err
 			return
