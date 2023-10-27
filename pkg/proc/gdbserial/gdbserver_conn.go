@@ -650,8 +650,20 @@ func (conn *gdbConn) step(th *gdbThread, tu *threadUpdater, ignoreFaultSignal bo
 			if ignoreFaultSignal { // we attempting to read the TLS, a fault here should be ignored
 				return nil
 			}
+			if conn.isDebugserver {
+				// For some reason trying to deliver a signal in vCont step makes
+				// debugserver lockup (no errors, it just gets stuck), store the signal
+				// to deliver it later with the vCont;c
+				th.sig = sig
+				return nil
+			}
 		case _SIGILL, _SIGBUS, _SIGFPE:
-			// propagate these signals to inferior immediately
+			if conn.isDebugserver {
+				// See comment above
+				th.sig = sig
+				return nil
+			}
+			// otherwise propagate these signals to inferior immediately
 		case interruptSignal, breakpointSignal, stopSignal:
 			return nil
 		case childSignal: // stop on debugserver but SIGCHLD on lldb-server/linux

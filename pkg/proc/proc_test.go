@@ -5044,7 +5044,13 @@ func TestRefreshCurThreadSelGAfterContinueOnceError(t *testing.T) {
 		setFileBreakpoint(p, t, fixture.Source, 4)
 		assertNoError(grp.Continue(), t, "Continue() (first)")
 		if grp.Continue() == nil {
-			t.Fatalf("Second continue did not return an error")
+			pc := currentPC(p, t)
+			f, l, fn := p.BinInfo().PCToLine(pc)
+			t.Logf("Second continue did not return an error %s:%d %#v", f, l, fn)
+			if fn != nil && fn.Name == "runtime.fatalpanic" {
+				// this is also ok, it just means this debugserver supports --unmask-signals and it's working as intented.
+				return
+			}
 		}
 		g := p.SelectedGoroutine()
 		if g.CurrentLoc.Line != 9 {

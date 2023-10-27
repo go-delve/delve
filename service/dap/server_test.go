@@ -4874,12 +4874,12 @@ func TestBadAccess(t *testing.T) {
 					expectStoppedOnError := func(errorPrefix string) {
 						t.Helper()
 						se := client.ExpectStoppedEvent(t)
-						if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || se.Body.Description != "runtime error" || !strings.HasPrefix(se.Body.Text, errorPrefix) {
+						if se.Body.ThreadId != 1 || se.Body.Reason != "exception" || (se.Body.Description != "runtime error" && se.Body.Description != "panic") || !strings.Contains(se.Body.Text, errorPrefix) {
 							t.Errorf("\ngot  %#v\nwant ThreadId=1 Reason=\"exception\" Description=\"runtime error\" Text=\"%s\"", se, errorPrefix)
 						}
 						client.ExceptionInfoRequest(1)
 						eInfo := client.ExpectExceptionInfoResponse(t)
-						if eInfo.Body.ExceptionId != "runtime error" || !strings.HasPrefix(eInfo.Body.Description, errorPrefix) {
+						if (eInfo.Body.ExceptionId != "runtime error" && eInfo.Body.ExceptionId != "panic") || !strings.Contains(eInfo.Body.Description, errorPrefix) {
 							t.Errorf("\ngot  %#v\nwant ExceptionId=\"runtime error\" Text=\"%s\"", eInfo, errorPrefix)
 						}
 					}
@@ -4887,6 +4887,13 @@ func TestBadAccess(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 					expectStoppedOnError("invalid memory address or nil pointer dereference")
+
+					client.StackTraceRequest(1, 0, 2)
+					st := client.ExpectStackTraceResponse(t)
+					if len(st.Body.StackFrames) > 0 && st.Body.StackFrames[0].Name == "runtime.fatalpanic" {
+						// this debugserver has --unmask-signals and it works correctly
+						return
+					}
 
 					client.NextRequest(1)
 					client.ExpectNextResponse(t)
