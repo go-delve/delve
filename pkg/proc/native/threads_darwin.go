@@ -93,8 +93,8 @@ func (t *nativeThread) Stopped() bool {
 }
 
 func (t *nativeThread) WriteMemory(addr uint64, data []byte) (int, error) {
-	if t.dbp.exited {
-		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
+	if ok, err := t.dbp.Valid(); !ok {
+		return 0, err
 	}
 	if len(data) == 0 {
 		return 0, nil
@@ -111,8 +111,8 @@ func (t *nativeThread) WriteMemory(addr uint64, data []byte) (int, error) {
 }
 
 func (t *nativeThread) ReadMemory(buf []byte, addr uint64) (int, error) {
-	if t.dbp.exited {
-		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
+	if ok, err := t.dbp.Valid(); !ok {
+		return 0, err
 	}
 	if len(buf) == 0 {
 		return 0, nil

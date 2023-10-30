@@ -5,8 +5,6 @@ import (
 	"syscall"
 
 	sys "golang.org/x/sys/windows"
-
-	"github.com/go-delve/delve/pkg/proc"
 )
 
 const enableHardwareBreakpoints = false // see https://github.com/go-delve/delve/issues/2768
@@ -106,8 +104,8 @@ func (procgrp *processGroup) singleStep(t *nativeThread) error {
 }
 
 func (t *nativeThread) WriteMemory(addr uint64, data []byte) (int, error) {
-	if t.dbp.exited {
-		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
+	if ok, err := t.dbp.Valid(); !ok {
+		return 0, err
 	}
 	if len(data) == 0 {
 		return 0, nil
@@ -123,8 +121,8 @@ func (t *nativeThread) WriteMemory(addr uint64, data []byte) (int, error) {
 var ErrShortRead = errors.New("short read")
 
 func (t *nativeThread) ReadMemory(buf []byte, addr uint64) (int, error) {
-	if t.dbp.exited {
-		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
+	if ok, err := t.dbp.Valid(); !ok {
+		return 0, err
 	}
 	if len(buf) == 0 {
 		return 0, nil
