@@ -452,6 +452,10 @@ func (p *process) Detach(int, bool) error {
 	return nil
 }
 
+func (p *process) Close() error {
+	return nil
+}
+
 // Valid returns whether the process is active. Always returns true
 // for core files as it cannot exit or be otherwise detached from.
 func (p *process) Valid() (bool, error) {

@@ -189,7 +189,7 @@ func (grp *TargetGroup) Detach(kill bool) error {
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "\n"))
 	}
-	return nil
+	return grp.procgrp.Close()
 }
 
 // detachTarget will detach the target from the underlying process.
