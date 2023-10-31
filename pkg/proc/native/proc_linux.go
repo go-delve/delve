@@ -899,7 +899,7 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 
 	fns := dbp.bi.LookupFunc()[fnName]
 	if len(fns) != 1 {
-		return fmt.Errorf("could not find function: %s", fnName)
+		return &proc.ErrFunctionNotFound{FuncName: fnName}
 	}
 	fn := fns[0]
 
