@@ -206,7 +206,7 @@ func initialize(dbp *nativeProcess) (string, error) {
 
 // kill kills the target process.
 func (procgrp *processGroup) kill(dbp *nativeProcess) (err error) {
-	if dbp.exited {
+	if ok, _ := dbp.Valid(); !ok {
 		return nil
 	}
 	dbp.execPtraceFunc(func() {
@@ -508,8 +508,8 @@ func (procgrp *processGroup) stop(cctx *proc.ContinueOnceContext, trapthread *na
 }
 
 func (dbp *nativeProcess) stop(trapthread *nativeThread) (*nativeThread, error) {
-	if dbp.exited {
-		return nil, proc.ErrProcessExited{Pid: dbp.pid}
+	if ok, err := dbp.Valid(); !ok {
+		return nil, err
 	}
 
 	var err error

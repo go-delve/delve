@@ -77,8 +77,8 @@ func (t *nativeThread) restoreRegisters(savedRegs proc.Registers) error {
 }
 
 func (t *nativeThread) WriteMemory(addr uint64, data []byte) (written int, err error) {
-	if t.dbp.exited {
-		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
+	if ok, err := t.dbp.Valid(); !ok {
+		return 0, err
 	}
 	if len(data) == 0 {
 		return 0, nil
@@ -88,8 +88,8 @@ func (t *nativeThread) WriteMemory(addr uint64, data []byte) (written int, err e
 }
 
 func (t *nativeThread) ReadMemory(data []byte, addr uint64) (n int, err error) {
-	if t.dbp.exited {
-		return 0, proc.ErrProcessExited{Pid: t.dbp.pid}
+	if ok, err := t.dbp.Valid(); !ok {
+		return 0, err
 	}
 	if len(data) == 0 {
 		return 0, nil

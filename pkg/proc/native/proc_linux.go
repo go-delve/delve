@@ -261,7 +261,7 @@ func (dbp *nativeProcess) GetBufferedTracepoints() []ebpf.RawUProbeParams {
 
 // kill kills the target process.
 func (procgrp *processGroup) kill(dbp *nativeProcess) error {
-	if dbp.exited {
+	if ok, _ := dbp.Valid(); !ok {
 		return nil
 	}
 	if !dbp.threads[dbp.pid].Stopped() {
@@ -680,7 +680,7 @@ func (procgrp *processGroup) stop(cctx *proc.ContinueOnceContext, trapthread *na
 	}
 
 	for _, dbp := range procgrp.procs {
-		if dbp.exited {
+		if ok, _ := dbp.Valid(); !ok {
 			continue
 		}
 		for _, th := range dbp.threads {
@@ -703,7 +703,7 @@ func (procgrp *processGroup) stop(cctx *proc.ContinueOnceContext, trapthread *na
 
 	// stop all threads that are still running
 	for _, dbp := range procgrp.procs {
-		if dbp.exited {
+		if ok, _ := dbp.Valid(); !ok {
 			continue
 		}
 		for _, th := range dbp.threads {
@@ -724,7 +724,7 @@ func (procgrp *processGroup) stop(cctx *proc.ContinueOnceContext, trapthread *na
 	for {
 		allstopped := true
 		for _, dbp := range procgrp.procs {
-			if dbp.exited {
+			if ok, _ := dbp.Valid(); !ok {
 				continue
 			}
 			for _, th := range dbp.threads {
@@ -746,7 +746,7 @@ func (procgrp *processGroup) stop(cctx *proc.ContinueOnceContext, trapthread *na
 	switchTrapthread := false
 
 	for _, dbp := range procgrp.procs {
-		if dbp.exited {
+		if ok, _ := dbp.Valid(); !ok {
 			continue
 		}
 		err := stop1(cctx, dbp, trapthread, &switchTrapthread)
@@ -759,7 +759,7 @@ func (procgrp *processGroup) stop(cctx *proc.ContinueOnceContext, trapthread *na
 		trapthreadID := trapthread.ID
 		trapthread = nil
 		for _, dbp := range procgrp.procs {
-			if dbp.exited {
+			if ok, _ := dbp.Valid(); !ok {
 				continue
 			}
 			for _, th := range dbp.threads {

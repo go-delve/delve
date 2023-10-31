@@ -106,7 +106,7 @@ func detachWithoutGroup(dbp *nativeProcess, kill bool) error {
 // Detach from the process being debugged, optionally killing it.
 func (procgrp *processGroup) Detach(pid int, kill bool) (err error) {
 	dbp := procgrp.procForPid(pid)
-	if dbp.exited {
+	if ok, _ := dbp.Valid(); !ok {
 		return nil
 	}
 	if kill && dbp.childProcess {
@@ -170,8 +170,8 @@ func (dbp *nativeProcess) Breakpoints() *proc.BreakpointMap {
 // RequestManualStop sets the `manualStopRequested` flag and
 // sends SIGSTOP to all threads.
 func (dbp *nativeProcess) RequestManualStop(cctx *proc.ContinueOnceContext) error {
-	if dbp.exited {
-		return proc.ErrProcessExited{Pid: dbp.pid}
+	if ok, err := dbp.Valid(); !ok {
+		return err
 	}
 	return dbp.requestManualStop()
 }
@@ -300,7 +300,7 @@ func (procgrp *processGroup) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.
 			dbp.memthread = trapthread
 			// refresh memthread for every other process
 			for _, p2 := range procgrp.procs {
-				if p2.exited || p2 == dbp {
+				if p2.exited || p2.detached || p2 == dbp {
 					continue
 				}
 				for _, th := range p2.threads {

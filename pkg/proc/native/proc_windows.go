@@ -259,7 +259,7 @@ func waitForSearchProcess(pfx string, seen map[int]struct{}) (int, error) {
 
 // kill kills the process.
 func (procgrp *processGroup) kill(dbp *nativeProcess) error {
-	if dbp.exited {
+	if ok, _ := dbp.Valid(); !ok {
 		return nil
 	}
 
