@@ -1471,26 +1471,27 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 			inlFuncs := make(map[string]*Function)
 			for _, f := range image.symTable.Funcs {
 				fnEntry := f.Entry + image.StaticBase
-				inlCalls, err := image.symTable.GetInlineTree(&f, goFuncVal, prog.Vaddr, prog.ReaderAt)
-				if err != nil {
-					return err
-				}
-				for _, inlfn := range inlCalls {
-					newInlinedCall := InlinedCall{cu: cu, LowPC: fnEntry + uint64(inlfn.ParentPC)}
-					if fn, ok := inlFuncs[inlfn.Name]; ok {
-						fn.InlinedCalls = append(fn.InlinedCalls, newInlinedCall)
-					} else {
+				if prog != nil {
+					inlCalls, err := image.symTable.GetInlineTree(&f, goFuncVal, prog.Vaddr, prog.ReaderAt)
+					if err != nil {
+						return err
+					}
+					for _, inlfn := range inlCalls {
+						newInlinedCall := InlinedCall{cu: cu, LowPC: fnEntry + uint64(inlfn.ParentPC)}
+						if fn, ok := inlFuncs[inlfn.Name]; ok {
+							fn.InlinedCalls = append(fn.InlinedCalls, newInlinedCall)
+							continue
+						}
 						inlFuncs[inlfn.Name] = &Function{
 							Name:  inlfn.Name,
 							Entry: 0, End: 0,
 							cu: cu,
 							InlinedCalls: []InlinedCall{
 								newInlinedCall,
-							}}
+							},
+						}
 					}
 				}
-				cu := &compileUnit{}
-				cu.image = image
 				fn := Function{Name: f.Name, Entry: fnEntry, End: f.End + image.StaticBase, cu: cu}
 				bi.Functions = append(bi.Functions, fn)
 			}
