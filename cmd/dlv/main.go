@@ -15,11 +15,16 @@ func main() {
 	if Build != "" {
 		version.DelveVersion.Build = Build
 	}
+
 	const cgoCflagsEnv = "CGO_CFLAGS"
 	if os.Getenv(cgoCflagsEnv) == "" {
-		os.Setenv(cgoCflagsEnv, "-O0 -g")
+		err := os.Setenv(cgoCflagsEnv, "-O0 -g")
+		if err != nil {
+			logrus.WithFields(logrus.Fields{"layer": "dlv"}).Warnf("CGO_CFLAGS could not be set, Cgo code could be optimized: %v", err)
+		}
 	} else {
 		logrus.WithFields(logrus.Fields{"layer": "dlv"}).Warnln("CGO_CFLAGS already set, Cgo code could be optimized.")
 	}
-	cmds.New(false).Execute()
+
+	_ = cmds.New(false).Execute()
 }

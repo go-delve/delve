@@ -180,17 +180,17 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 
 	// ignore "dlv debug" command error, it returns
 	// errors even after successful debug session.
-	cmd.Wait()
+	_ = cmd.Wait()
 	stdout, stderr = stdoutBuf.Bytes(), stderrBuf.Bytes()
 
 	_, err = os.Stat(debugbin)
 	if err == nil {
 		// Sometimes delve on Windows can't remove the built binary before
 		// exiting and gets an "Access is denied" error when trying.
-		// See: https://travis-ci.com/go-delve/delve/jobs/296325131)
+		// See: https://travis-ci.com/go-delve/delve/jobs/296325131.
 		// We have added a delay to gobuild.Remove, but to avoid any test
 		// flakiness, we guard against this failure here as well.
-		if runtime.GOOS != "windows" || !strings.Contains(err.Error(), "Access is denied") {
+		if runtime.GOOS != "windows" {
 			t.Errorf("running %q: file %v was not deleted\nstdout is %q, stderr is %q", delveCmds, debugbin, stdout, stderr)
 		}
 		return
@@ -204,7 +204,7 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 
 func getDlvBin(t *testing.T) string {
 	// In case this was set in the environment
-	// from getDlvBinEBPF lets clear it here so
+	// from getDlvBinEBPF lets clear it here, so
 	// we can ensure we don't get build errors
 	// depending on the test ordering.
 	t.Setenv("CGO_LDFLAGS", ldFlags)
@@ -427,7 +427,7 @@ func TestExitInInit(t *testing.T) {
 	cmd.Dir = buildtestdir
 	out, err := cmd.CombinedOutput()
 	t.Logf("%q %v\n", string(out), err)
-	// dlv will exit anyway because stdin is not a tty but it will print the
+	// dlv will exit anyway because stdin is not a tty, but it will print the
 	// prompt once if the init file didn't call exit successfully.
 	if strings.Contains(string(out), "(dlv)") {
 		t.Fatal("init did not cause dlv to exit")
@@ -1352,8 +1352,8 @@ func TestDefaultBinary(t *testing.T) {
 	fmt.Fprintf(stdin1, "continue\nquit\n")
 	fmt.Fprintf(stdin2, "continue\nquit\n")
 
-	wait1()
-	wait2()
+	_ = wait1()
+	_ = wait2()
 
 	out1, out2 := stdoutBuf1.String(), stdoutBuf2.String()
 	t.Logf("%q", out1)
