@@ -107,11 +107,22 @@ func (t *Trie) Remove(key string) {
 		rs   = []rune(key)
 		node = findNode(t.Root(), []rune(key))
 	)
+
+	if node == nil {
+		return
+	}
+
 	t.mu.Lock()
 
 	t.size--
 	for n := node.Parent(); n != nil; n = n.Parent() {
 		i++
+
+		if n == t.root {
+			t.root = &Node{children: make(map[rune]*Node)}
+			break
+		}
+
 		if len(n.Children()) > 1 {
 			r := rs[len(rs)-i]
 			n.RemoveChild(r)

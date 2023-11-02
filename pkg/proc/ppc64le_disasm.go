@@ -54,7 +54,7 @@ func ppc64leAsmDecode(asmInst *AsmInstruction, mem []byte, regs *op.DwarfRegiste
 	case ppc64asm.BL, ppc64asm.BLA, ppc64asm.BCL, ppc64asm.BCLA, ppc64asm.BCLRL, ppc64asm.BCCTRL, ppc64asm.BCTARL:
 		// Pages 38-40 Book I v3.0
 		asmInst.Kind = CallInstruction
-	case ppc64asm.RFEBB, ppc64asm.RFID, ppc64asm.HRFID, ppc64asm.RFI, ppc64asm.RFCI, ppc64asm.RFDI, ppc64asm.RFMCI, ppc64asm.RFGI, ppc64asm.BCLR:
+	case ppc64asm.RFEBB, ppc64asm.RFID, ppc64asm.HRFID, ppc64asm.BCLR:
 		asmInst.Kind = RetInstruction
 	case ppc64asm.B, ppc64asm.BA, ppc64asm.BC, ppc64asm.BCA, ppc64asm.BCCTR, ppc64asm.BCTAR:
 		// Pages 38-40 Book I v3.0
