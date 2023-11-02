@@ -2,6 +2,7 @@ package moduledata
 
 import (
 	"debug/elf"
+	"github.com/go-delve/delve/pkg/goversion"
 	"os"
 	"os/exec"
 	"runtime"
@@ -11,6 +12,9 @@ import (
 func TestGetGoFuncValue(t *testing.T) {
 	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
 		t.Skipf("skipping since not linux/amd64")
+	}
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 20) {
+		t.Skip("temporarily disabled on Go versions < 1.20")
 	}
 	bin := "getgofuncvaltestbin"
 
