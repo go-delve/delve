@@ -3220,7 +3220,7 @@ func TestDebugStripped(t *testing.T) {
 	// TODO(derekparker): Add support for PE.
 	skipOn(t, "not working on windows", "windows")
 	skipOn(t, "not working on freebsd", "freebsd")
-	skipOn(t, "not working on linux/386 with PIE", "linux", "386", "pie")
+	skipOn(t, "not working on linux/386", "linux", "386")
 	skipOn(t, "not working on linux/ppc64le when -gcflags=-N -l is passed", "linux", "ppc64le")
 	withTestProcessArgs("testnextprog", t, "", []string{}, protest.LinkStrip, func(p *proc.Target, grp *proc.TargetGroup, f protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
