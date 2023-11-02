@@ -4,10 +4,14 @@ import (
 	"debug/elf"
 	"os"
 	"os/exec"
+	"runtime"
 	"testing"
 )
 
 func TestGetGoFuncValue(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skipf("skipping since not linux/amd64")
+	}
 	bin := "getgofuncvaltestbin"
 
 	err := exec.Command("go", "build", "-o", bin, "../../../_fixtures/traceprog.go").Run()

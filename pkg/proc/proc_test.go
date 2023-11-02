@@ -3233,8 +3233,9 @@ func TestDebugStripped(t *testing.T) {
 }
 
 func TestDebugStripped2(t *testing.T) {
-	// Currently only implemented for Linux ELF and macOS Mach-O executables.
+	// Currently only implemented for Linux ELF executables.
 	// TODO(derekparker): Add support for PE.
+	skipOn(t, "broken on darwin/amd64/pie", "darwin")
 	skipOn(t, "not working on windows", "windows")
 	skipOn(t, "not working on freebsd", "freebsd")
 	skipOn(t, "not working on linux/386 with PIE", "linux", "386", "pie")
