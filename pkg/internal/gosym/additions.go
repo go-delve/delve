@@ -6,7 +6,6 @@ package gosym
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"regexp"
@@ -72,7 +71,7 @@ func parsePrerelease(v string) (t, rest string, ok bool) {
 	return v[:i], v[i:], true
 }
 
-// This is a modified copy of pkgsite/internal/stdlib:VersionForTag.
+// GoTagToSemver is a modified copy of pkgsite/internal/stdlib:VersionForTag.
 func GoTagToSemver(tag string) string {
 	if tag == "" {
 		return ""
@@ -356,7 +355,7 @@ func (t *LineTable) InlineTree(f *Func, goFuncValue, baseAddr uint64, progReader
 		return nil, nil
 	}
 	if f.inlineTreeOffset == ^uint32(0) {
-		return nil, errors.New("error inlTreeOffset\n")
+		return nil, nil
 	}
 	var offset int64
 	if t.version >= ver118 {

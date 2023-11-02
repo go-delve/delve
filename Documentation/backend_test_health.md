@@ -5,7 +5,8 @@ Tests skipped by each supported backend:
 	* 3 not implemented
 * arm64 skipped = 1
 	* 1 broken - global variable symbolication
-* darwin skipped = 3
+* darwin skipped = 4
+	* 1 broken on darwin/amd64/pie
 	* 2 follow exec not implemented on macOS
 	* 1 waitfor implementation is delegated to debugserver
 * darwin/arm64 skipped = 2

@@ -16,10 +16,7 @@ import (
 	"strings"
 )
 
-/*
- * Symbols
- */
-// A Sym represents a single symbol table entry.
+// Sym represents a single symbol table entry.
 type Sym struct {
 	Value  uint64
 	Type   byte
@@ -174,9 +171,6 @@ type Obj struct {
 	Paths []Sym // meta
 }
 
-/*
- * Symbol tables
- */
 // Table represents a Go symbol table. It stores all of the
 // symbols decoded from the program and provides methods to translate
 // between symbols, names, and addresses.
@@ -723,9 +717,6 @@ func (o *Obj) alineFromLine(path string, line int) (int, error) {
 	return 0, UnknownFileError(path)
 }
 
-/*
- * Errors
- */
 // UnknownFileError represents a failure to find the specific file in
 // the symbol table.
 type UnknownFileError string
