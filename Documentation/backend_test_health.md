@@ -5,25 +5,24 @@ Tests skipped by each supported backend:
 	* 3 not implemented
 * arm64 skipped = 1
 	* 1 broken - global variable symbolication
-* darwin skipped = 4
-	* 1 broken on darwin/amd64/pie
+* darwin skipped = 3
 	* 2 follow exec not implemented on macOS
 	* 1 waitfor implementation is delegated to debugserver
 * darwin/arm64 skipped = 2
 	* 2 broken - cgo stacktraces
 * darwin/lldb skipped = 1
 	* 1 upstream issue
-* freebsd skipped = 10
+* freebsd skipped = 9
 	* 2 flaky
 	* 2 follow exec not implemented on freebsd
 	* 4 not implemented
-	* 2 not working on freebsd
-* linux/386/pie skipped = 3
+	* 1 not working on freebsd
+* linux/386/pie skipped = 2
 	* 1 broken
-	* 2 not working on linux/386 with PIE
-* linux/ppc64le skipped = 3
+	* 1 not working on linux/386 with PIE
+* linux/ppc64le skipped = 2
 	* 1 broken - cgo stacktraces
-	* 2 not working on linux/ppc64le when -gcflags=-N -l is passed
+	* 1 not working on linux/ppc64le when -gcflags=-N -l is passed
 * linux/ppc64le/native skipped = 1
 	* 1 broken in linux ppc64le
 * linux/ppc64le/native/pie skipped = 3
@@ -34,9 +33,9 @@ Tests skipped by each supported backend:
 	* 6 broken
 	* 1 broken - global variable symbolication
 	* 4 not implemented
-* windows skipped = 6
+* windows skipped = 5
 	* 1 broken
-	* 2 not working on windows
+	* 1 not working on windows
 	* 3 see https://github.com/go-delve/delve/issues/2768
 * windows/arm64 skipped = 5
 	* 3 broken
