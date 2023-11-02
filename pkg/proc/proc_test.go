@@ -3236,9 +3236,6 @@ func TestDebugStripped2(t *testing.T) {
 	// Currently only implemented for Linux ELF executables.
 	// TODO(derekparker): Add support for Mach-O and PE.
 	skipUnlessOn(t, "linux/amd64 only", "linux", "amd64")
-	ver, _ := goversion.Parse(runtime.Version())
-	if ver.Major > 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 20, Rev: -1}) {
-	}
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 20) {
 		t.Skip("temporarily disabled on Go versions < 1.20")
 	}
