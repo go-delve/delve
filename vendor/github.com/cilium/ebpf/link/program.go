@@ -25,6 +25,10 @@ type RawAttachProgramOptions struct {
 // You should use one of the higher level abstractions available in this
 // package if possible.
 func RawAttachProgram(opts RawAttachProgramOptions) error {
+	if err := haveProgAttach(); err != nil {
+		return err
+	}
+
 	var replaceFd uint32
 	if opts.Replace != nil {
 		replaceFd = uint32(opts.Replace.FD())
@@ -39,12 +43,8 @@ func RawAttachProgram(opts RawAttachProgramOptions) error {
 	}
 
 	if err := sys.ProgAttach(&attr); err != nil {
-		if haveFeatErr := haveProgAttach(); haveFeatErr != nil {
-			return haveFeatErr
-		}
 		return fmt.Errorf("can't attach program: %w", err)
 	}
-
 	return nil
 }
 
@@ -59,15 +59,16 @@ type RawDetachProgramOptions struct {
 // You should use one of the higher level abstractions available in this
 // package if possible.
 func RawDetachProgram(opts RawDetachProgramOptions) error {
+	if err := haveProgAttach(); err != nil {
+		return err
+	}
+
 	attr := sys.ProgDetachAttr{
 		TargetFd:    uint32(opts.Target),
 		AttachBpfFd: uint32(opts.Program.FD()),
 		AttachType:  uint32(opts.Attach),
 	}
 	if err := sys.ProgDetach(&attr); err != nil {
-		if haveFeatErr := haveProgAttach(); haveFeatErr != nil {
-			return haveFeatErr
-		}
 		return fmt.Errorf("can't detach program: %w", err)
 	}
 

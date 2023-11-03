@@ -186,8 +186,7 @@ func (r *Reader) SetDeadline(t time.Time) {
 // Read the next record from the BPF ringbuf.
 //
 // Returns os.ErrClosed if Close is called on the Reader, or os.ErrDeadlineExceeded
-// if a deadline was set and no valid entry was present. A producer might use BPF_RB_NO_WAKEUP
-// which may cause the deadline to expire but a valid entry will be present.
+// if a deadline was set.
 func (r *Reader) Read() (Record, error) {
 	var rec Record
 	return rec, r.ReadInto(&rec)
@@ -205,11 +204,6 @@ func (r *Reader) ReadInto(rec *Record) error {
 	for {
 		if !r.haveData {
 			_, err := r.poller.Wait(r.epollEvents[:cap(r.epollEvents)], r.deadline)
-			if errors.Is(err, os.ErrDeadlineExceeded) && !r.ring.isEmpty() {
-				// Ignoring this for reading a valid entry after timeout
-				// This can occur if the producer submitted to the ring buffer with BPF_RB_NO_WAKEUP
-				err = nil
-			}
 			if err != nil {
 				return err
 			}
@@ -218,8 +212,6 @@ func (r *Reader) ReadInto(rec *Record) error {
 
 		for {
 			err := readRecord(r.ring, rec, r.header)
-			// Not using errors.Is which is quite a bit slower
-			// For a tight loop it might make a difference
 			if err == errBusy || err == errDiscard {
 				continue
 			}
@@ -227,6 +219,7 @@ func (r *Reader) ReadInto(rec *Record) error {
 				r.haveData = false
 				break
 			}
+
 			return err
 		}
 	}

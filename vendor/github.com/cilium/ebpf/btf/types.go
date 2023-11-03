@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"reflect"
 	"strings"
 
 	"github.com/cilium/ebpf/asm"
@@ -12,9 +13,7 @@ import (
 	"github.com/cilium/ebpf/internal/sys"
 )
 
-// Mirrors MAX_RESOLVE_DEPTH in libbpf.
-// https://github.com/libbpf/libbpf/blob/e26b84dc330c9644c07428c271ab491b0f01f4e1/src/btf.c#L761
-const maxResolveDepth = 32
+const maxTypeDepth = 32
 
 // TypeID identifies a type in a BTF section.
 type TypeID = sys.TypeID
@@ -277,6 +276,21 @@ func (e *Enum) copy() Type {
 	cpy.Values = make([]EnumValue, len(e.Values))
 	copy(cpy.Values, e.Values)
 	return &cpy
+}
+
+// has64BitValues returns true if the Enum contains a value larger than 32 bits.
+// Kernels before 6.0 have enum values that overrun u32 replaced with zeroes.
+//
+// 64-bit enums have their Enum.Size attributes correctly set to 8, but if we
+// use the size attribute as a heuristic during BTF marshaling, we'll emit
+// ENUM64s to kernels that don't support them.
+func (e *Enum) has64BitValues() bool {
+	for _, v := range e.Values {
+		if v.Value > math.MaxUint32 {
+			return true
+		}
+	}
+	return false
 }
 
 // FwdKind is the type of forward declaration.
@@ -591,7 +605,7 @@ func Sizeof(typ Type) (int, error) {
 		elem int64
 	)
 
-	for i := 0; i < maxResolveDepth; i++ {
+	for i := 0; i < maxTypeDepth; i++ {
 		switch v := typ.(type) {
 		case *Array:
 			if n > 0 && int64(v.Nelems) > math.MaxInt64/n {
@@ -759,11 +773,11 @@ func inflateRawTypes(rawTypes []rawType, rawStrings *stringTable, base *Spec) ([
 	}
 
 	var fixups []fixupDef
-	fixup := func(id TypeID, typ *Type) {
+	fixup := func(id TypeID, typ *Type) bool {
 		if id < firstTypeID {
 			if baseType, err := base.TypeByID(id); err == nil {
 				*typ = baseType
-				return
+				return true
 			}
 		}
 
@@ -771,10 +785,31 @@ func inflateRawTypes(rawTypes []rawType, rawStrings *stringTable, base *Spec) ([
 		if idx < len(types) {
 			// We've already inflated this type, fix it up immediately.
 			*typ = types[idx]
-			return
+			return true
 		}
 
 		fixups = append(fixups, fixupDef{id, typ})
+		return false
+	}
+
+	type assertion struct {
+		id   TypeID
+		typ  *Type
+		want reflect.Type
+	}
+
+	var assertions []assertion
+	fixupAndAssert := func(id TypeID, typ *Type, want reflect.Type) error {
+		if !fixup(id, typ) {
+			assertions = append(assertions, assertion{id, typ, want})
+			return nil
+		}
+
+		// The type has already been fixed up, check the type immediately.
+		if reflect.TypeOf(*typ) != want {
+			return fmt.Errorf("type ID %d: expected %s, got %T", id, want, *typ)
+		}
+		return nil
 	}
 
 	type bitfieldFixupDef struct {
@@ -935,7 +970,9 @@ func inflateRawTypes(rawTypes []rawType, rawStrings *stringTable, base *Spec) ([
 
 		case kindFunc:
 			fn := &Func{name, nil, raw.Linkage()}
-			fixup(raw.Type(), &fn.Type)
+			if err := fixupAndAssert(raw.Type(), &fn.Type, reflect.TypeOf((*FuncProto)(nil))); err != nil {
+				return nil, err
+			}
 			typ = fn
 
 		case kindFuncProto:
@@ -1044,6 +1081,12 @@ func inflateRawTypes(rawTypes []rawType, rawStrings *stringTable, base *Spec) ([
 		}
 	}
 
+	for _, assertion := range assertions {
+		if reflect.TypeOf(*assertion.typ) != assertion.want {
+			return nil, fmt.Errorf("type ID %d: expected %s, got %T", assertion.id, assertion.want, *assertion.typ)
+		}
+	}
+
 	for _, dt := range declTags {
 		switch t := dt.Type.(type) {
 		case *Var, *Typedef:
@@ -1057,12 +1100,7 @@ func inflateRawTypes(rawTypes []rawType, rawStrings *stringTable, base *Spec) ([
 			}
 
 		case *Func:
-			fp, ok := t.Type.(*FuncProto)
-			if !ok {
-				return nil, fmt.Errorf("type %s: %s is not a FuncProto", dt, t.Type)
-			}
-
-			if dt.Index >= len(fp.Params) {
+			if dt.Index >= len(t.Type.(*FuncProto).Params) {
 				return nil, fmt.Errorf("type %s: index %d exceeds params of %s", dt, dt.Index, t)
 			}
 
@@ -1098,7 +1136,7 @@ func newEssentialName(name string) essentialName {
 // UnderlyingType skips qualifiers and Typedefs.
 func UnderlyingType(typ Type) Type {
 	result := typ
-	for depth := 0; depth <= maxResolveDepth; depth++ {
+	for depth := 0; depth <= maxTypeDepth; depth++ {
 		switch v := (result).(type) {
 		case qualifier:
 			result = v.qualify()
@@ -1117,7 +1155,7 @@ func UnderlyingType(typ Type) Type {
 // Returns the zero value and false if there is no T or if the type is nested
 // too deeply.
 func as[T Type](typ Type) (T, bool) {
-	for depth := 0; depth <= maxResolveDepth; depth++ {
+	for depth := 0; depth <= maxTypeDepth; depth++ {
 		switch v := (typ).(type) {
 		case T:
 			return v, true

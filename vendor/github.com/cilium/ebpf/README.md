@@ -2,7 +2,7 @@
 
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/cilium/ebpf)](https://pkg.go.dev/github.com/cilium/ebpf)
 
-![HoneyGopher](docs/ebpf/ebpf-go.png)
+![HoneyGopher](.github/images/cilium-ebpf.png)
 
 ebpf-go is a pure Go library that provides utilities for loading, compiling, and
 debugging eBPF programs. It has minimal external dependencies and is intended to

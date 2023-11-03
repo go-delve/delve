@@ -81,8 +81,6 @@ func LoadCollectionSpecFromReader(rd io.ReaderAt) (*CollectionSpec, error) {
 
 	// Collect all the sections we're interested in. This includes relocations
 	// which we parse later.
-	//
-	// Keep the documentation at docs/ebpf/loading/elf-sections.md up-to-date.
 	for i, sec := range f.Sections {
 		idx := elf.SectionIndex(i)
 
@@ -696,6 +694,10 @@ func (ec *elfCode) loadMaps() error {
 				spec.Extra = bytes.NewReader(extra)
 			}
 
+			if err := spec.clampPerfEventArraySize(); err != nil {
+				return fmt.Errorf("map %s: %w", mapName, err)
+			}
+
 			ec.maps[mapName] = &spec
 		}
 	}
@@ -750,13 +752,17 @@ func (ec *elfCode) loadBTFMaps() error {
 			}
 
 			// Each Var representing a BTF map definition contains a Struct.
-			mapStruct, ok := btf.UnderlyingType(v.Type).(*btf.Struct)
+			mapStruct, ok := v.Type.(*btf.Struct)
 			if !ok {
 				return fmt.Errorf("expected struct, got %s", v.Type)
 			}
 
 			mapSpec, err := mapSpecFromBTF(sec, &vs, mapStruct, ec.btf, name, false)
 			if err != nil {
+				return fmt.Errorf("map %v: %w", name, err)
+			}
+
+			if err := mapSpec.clampPerfEventArraySize(); err != nil {
 				return fmt.Errorf("map %v: %w", name, err)
 			}
 
@@ -779,7 +785,7 @@ func (ec *elfCode) loadBTFMaps() error {
 
 // mapSpecFromBTF produces a MapSpec based on a btf.Struct def representing
 // a BTF map definition. The name and spec arguments will be copied to the
-// resulting MapSpec, and inner must be true on any recursive invocations.
+// resulting MapSpec, and inner must be true on any resursive invocations.
 func mapSpecFromBTF(es *elfSection, vs *btf.VarSecinfo, def *btf.Struct, spec *btf.Spec, name string, inner bool) (*MapSpec, error) {
 	var (
 		key, value         btf.Type
@@ -1144,7 +1150,7 @@ func (ec *elfCode) loadKconfigSection() error {
 		KeySize:    uint32(4),
 		ValueSize:  ds.Size,
 		MaxEntries: 1,
-		Flags:      unix.BPF_F_RDONLY_PROG,
+		Flags:      unix.BPF_F_RDONLY_PROG | unix.BPF_F_MMAPABLE,
 		Freeze:     true,
 		Key:        &btf.Int{Size: 4},
 		Value:      ds,
@@ -1262,7 +1268,6 @@ func getProgType(sectionName string) (ProgramType, AttachType, uint32, string) {
 		{"seccomp", SocketFilter, AttachNone, 0},
 		{"kprobe.multi", Kprobe, AttachTraceKprobeMulti, 0},
 		{"kretprobe.multi", Kprobe, AttachTraceKprobeMulti, 0},
-		// Document all prefixes in docs/ebpf/concepts/elf-sections.md.
 	}
 
 	for _, t := range types {

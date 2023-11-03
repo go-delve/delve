@@ -16,7 +16,6 @@ import (
 	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/internal"
 	"github.com/cilium/ebpf/internal/sys"
-	"github.com/cilium/ebpf/internal/sysenc"
 	"github.com/cilium/ebpf/internal/unix"
 )
 
@@ -278,7 +277,7 @@ func newProgramWithOptions(spec *ProgramSpec, opts ProgramOptions) (*Program, er
 	if err != nil {
 		return nil, fmt.Errorf("fixing up kfuncs: %w", err)
 	}
-	defer handles.Close()
+	defer handles.close()
 
 	if len(handles) > 0 {
 		fdArray := handles.fdArray()
@@ -764,14 +763,14 @@ retry:
 	return attr.Retval, total, nil
 }
 
-func unmarshalProgram(buf sysenc.Buffer) (*Program, error) {
-	var id uint32
-	if err := buf.Unmarshal(&id); err != nil {
-		return nil, err
+func unmarshalProgram(buf []byte) (*Program, error) {
+	if len(buf) != 4 {
+		return nil, errors.New("program id requires 4 byte value")
 	}
 
 	// Looking up an entry in a nested map or prog array returns an id,
 	// not an fd.
+	id := internal.NativeEndian.Uint32(buf)
 	return NewProgramFromID(ProgramID(id))
 }
 
@@ -922,12 +921,7 @@ func findProgramTargetInKernel(name string, progType ProgramType, attachType Att
 	}
 
 	id, err := spec.TypeID(target)
-	if err != nil {
-		module.Close()
-		return nil, 0, err
-	}
-
-	return module, id, nil
+	return module, id, err
 }
 
 // findTargetInKernel attempts to find a named type in the current kernel.
@@ -1005,9 +999,7 @@ func findTargetInProgram(prog *Program, name string, progType ProgramType, attac
 
 	var typeName string
 	switch (match{progType, attachType}) {
-	case match{Extension, AttachNone},
-		match{Tracing, AttachTraceFEntry},
-		match{Tracing, AttachTraceFExit}:
+	case match{Extension, AttachNone}:
 		typeName = name
 	default:
 		return 0, errUnrecognizedAttachType

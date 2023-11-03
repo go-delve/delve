@@ -16,9 +16,9 @@ import (
 // ExtInfos contains ELF section metadata.
 type ExtInfos struct {
 	// The slices are sorted by offset in ascending order.
-	funcInfos       map[string]FuncInfos
-	lineInfos       map[string]LineInfos
-	relocationInfos map[string]CORERelocationInfos
+	funcInfos       map[string][]funcInfo
+	lineInfos       map[string][]lineInfo
+	relocationInfos map[string][]coreRelocationInfo
 }
 
 // loadExtInfosFromELF parses ext infos from the .BTF.ext section in an ELF.
@@ -34,11 +34,11 @@ func loadExtInfosFromELF(file *internal.SafeELFFile, spec *Spec) (*ExtInfos, err
 		return nil, fmt.Errorf("compressed ext_info is not supported")
 	}
 
-	return loadExtInfos(section.ReaderAt, file.ByteOrder, spec)
+	return loadExtInfos(section.ReaderAt, file.ByteOrder, spec, spec.strings)
 }
 
 // loadExtInfos parses bare ext infos.
-func loadExtInfos(r io.ReaderAt, bo binary.ByteOrder, spec *Spec) (*ExtInfos, error) {
+func loadExtInfos(r io.ReaderAt, bo binary.ByteOrder, spec *Spec, strings *stringTable) (*ExtInfos, error) {
 	// Open unbuffered section reader. binary.Read() calls io.ReadFull on
 	// the header structs, resulting in one syscall per header.
 	headerRd := io.NewSectionReader(r, 0, math.MaxInt64)
@@ -53,12 +53,12 @@ func loadExtInfos(r io.ReaderAt, bo binary.ByteOrder, spec *Spec) (*ExtInfos, er
 	}
 
 	buf := internal.NewBufferedSectionReader(r, extHeader.funcInfoStart(), int64(extHeader.FuncInfoLen))
-	btfFuncInfos, err := parseFuncInfos(buf, bo, spec.strings)
+	btfFuncInfos, err := parseFuncInfos(buf, bo, strings)
 	if err != nil {
 		return nil, fmt.Errorf("parsing BTF function info: %w", err)
 	}
 
-	funcInfos := make(map[string]FuncInfos, len(btfFuncInfos))
+	funcInfos := make(map[string][]funcInfo, len(btfFuncInfos))
 	for section, bfis := range btfFuncInfos {
 		funcInfos[section], err = newFuncInfos(bfis, spec)
 		if err != nil {
@@ -67,14 +67,14 @@ func loadExtInfos(r io.ReaderAt, bo binary.ByteOrder, spec *Spec) (*ExtInfos, er
 	}
 
 	buf = internal.NewBufferedSectionReader(r, extHeader.lineInfoStart(), int64(extHeader.LineInfoLen))
-	btfLineInfos, err := parseLineInfos(buf, bo, spec.strings)
+	btfLineInfos, err := parseLineInfos(buf, bo, strings)
 	if err != nil {
 		return nil, fmt.Errorf("parsing BTF line info: %w", err)
 	}
 
-	lineInfos := make(map[string]LineInfos, len(btfLineInfos))
+	lineInfos := make(map[string][]lineInfo, len(btfLineInfos))
 	for section, blis := range btfLineInfos {
-		lineInfos[section], err = newLineInfos(blis, spec.strings)
+		lineInfos[section], err = newLineInfos(blis, strings)
 		if err != nil {
 			return nil, fmt.Errorf("section %s: line infos: %w", section, err)
 		}
@@ -86,14 +86,14 @@ func loadExtInfos(r io.ReaderAt, bo binary.ByteOrder, spec *Spec) (*ExtInfos, er
 
 	var btfCORERelos map[string][]bpfCORERelo
 	buf = internal.NewBufferedSectionReader(r, extHeader.coreReloStart(coreHeader), int64(coreHeader.COREReloLen))
-	btfCORERelos, err = parseCORERelos(buf, bo, spec.strings)
+	btfCORERelos, err = parseCORERelos(buf, bo, strings)
 	if err != nil {
 		return nil, fmt.Errorf("parsing CO-RE relocation info: %w", err)
 	}
 
-	coreRelos := make(map[string]CORERelocationInfos, len(btfCORERelos))
+	coreRelos := make(map[string][]coreRelocationInfo, len(btfCORERelos))
 	for section, brs := range btfCORERelos {
-		coreRelos[section], err = newRelocationInfos(brs, spec, spec.strings)
+		coreRelos[section], err = newRelocationInfos(brs, spec, strings)
 		if err != nil {
 			return nil, fmt.Errorf("section %s: CO-RE relocations: %w", section, err)
 		}
@@ -111,31 +111,21 @@ func (ei *ExtInfos) Assign(insns asm.Instructions, section string) {
 	lineInfos := ei.lineInfos[section]
 	reloInfos := ei.relocationInfos[section]
 
-	AssignMetadataToInstructions(insns, funcInfos, lineInfos, reloInfos)
-}
-
-// Assign per-instruction metadata to the instructions in insns.
-func AssignMetadataToInstructions(
-	insns asm.Instructions,
-	funcInfos FuncInfos,
-	lineInfos LineInfos,
-	reloInfos CORERelocationInfos,
-) {
 	iter := insns.Iterate()
 	for iter.Next() {
-		if len(funcInfos.infos) > 0 && funcInfos.infos[0].offset == iter.Offset {
-			*iter.Ins = WithFuncMetadata(*iter.Ins, funcInfos.infos[0].fn)
-			funcInfos.infos = funcInfos.infos[1:]
+		if len(funcInfos) > 0 && funcInfos[0].offset == iter.Offset {
+			*iter.Ins = WithFuncMetadata(*iter.Ins, funcInfos[0].fn)
+			funcInfos = funcInfos[1:]
 		}
 
-		if len(lineInfos.infos) > 0 && lineInfos.infos[0].offset == iter.Offset {
-			*iter.Ins = iter.Ins.WithSource(lineInfos.infos[0].line)
-			lineInfos.infos = lineInfos.infos[1:]
+		if len(lineInfos) > 0 && lineInfos[0].offset == iter.Offset {
+			*iter.Ins = iter.Ins.WithSource(lineInfos[0].line)
+			lineInfos = lineInfos[1:]
 		}
 
-		if len(reloInfos.infos) > 0 && reloInfos.infos[0].offset == iter.Offset {
-			iter.Ins.Metadata.Set(coreRelocationMeta{}, reloInfos.infos[0].relo)
-			reloInfos.infos = reloInfos.infos[1:]
+		if len(reloInfos) > 0 && reloInfos[0].offset == iter.Offset {
+			iter.Ins.Metadata.Set(coreRelocationMeta{}, reloInfos[0].relo)
+			reloInfos = reloInfos[1:]
 		}
 	}
 }
@@ -333,11 +323,6 @@ func parseExtInfoRecordSize(r io.Reader, bo binary.ByteOrder) (uint32, error) {
 	return recordSize, nil
 }
 
-// FuncInfos contains a sorted list of func infos.
-type FuncInfos struct {
-	infos []funcInfo
-}
-
 // The size of a FuncInfo in BTF wire format.
 var FuncInfoSize = uint32(binary.Size(bpfFuncInfo{}))
 
@@ -374,37 +359,19 @@ func newFuncInfo(fi bpfFuncInfo, spec *Spec) (*funcInfo, error) {
 	}, nil
 }
 
-func newFuncInfos(bfis []bpfFuncInfo, spec *Spec) (FuncInfos, error) {
-	fis := FuncInfos{
-		infos: make([]funcInfo, 0, len(bfis)),
-	}
+func newFuncInfos(bfis []bpfFuncInfo, spec *Spec) ([]funcInfo, error) {
+	fis := make([]funcInfo, 0, len(bfis))
 	for _, bfi := range bfis {
 		fi, err := newFuncInfo(bfi, spec)
 		if err != nil {
-			return FuncInfos{}, fmt.Errorf("offset %d: %w", bfi.InsnOff, err)
+			return nil, fmt.Errorf("offset %d: %w", bfi.InsnOff, err)
 		}
-		fis.infos = append(fis.infos, *fi)
+		fis = append(fis, *fi)
 	}
-	sort.Slice(fis.infos, func(i, j int) bool {
-		return fis.infos[i].offset <= fis.infos[j].offset
+	sort.Slice(fis, func(i, j int) bool {
+		return fis[i].offset <= fis[j].offset
 	})
 	return fis, nil
-}
-
-// LoadFuncInfos parses BTF func info in kernel wire format.
-func LoadFuncInfos(reader io.Reader, bo binary.ByteOrder, recordNum uint32, spec *Spec) (FuncInfos, error) {
-	fis, err := parseFuncInfoRecords(
-		reader,
-		bo,
-		FuncInfoSize,
-		recordNum,
-		false,
-	)
-	if err != nil {
-		return FuncInfos{}, fmt.Errorf("parsing BTF func info: %w", err)
-	}
-
-	return newFuncInfos(fis, spec)
 }
 
 // marshal into the BTF wire format.
@@ -442,7 +409,7 @@ func parseFuncInfos(r io.Reader, bo binary.ByteOrder, strings *stringTable) (map
 			return nil, err
 		}
 
-		records, err := parseFuncInfoRecords(r, bo, recordSize, infoHeader.NumInfo, true)
+		records, err := parseFuncInfoRecords(r, bo, recordSize, infoHeader.NumInfo)
 		if err != nil {
 			return nil, fmt.Errorf("section %v: %w", secName, err)
 		}
@@ -454,7 +421,7 @@ func parseFuncInfos(r io.Reader, bo binary.ByteOrder, strings *stringTable) (map
 // parseFuncInfoRecords parses a stream of func_infos into a funcInfos.
 // These records appear after a btf_ext_info_sec header in the func_info
 // sub-section of .BTF.ext.
-func parseFuncInfoRecords(r io.Reader, bo binary.ByteOrder, recordSize uint32, recordNum uint32, offsetInBytes bool) ([]bpfFuncInfo, error) {
+func parseFuncInfoRecords(r io.Reader, bo binary.ByteOrder, recordSize uint32, recordNum uint32) ([]bpfFuncInfo, error) {
 	var out []bpfFuncInfo
 	var fi bpfFuncInfo
 
@@ -468,15 +435,13 @@ func parseFuncInfoRecords(r io.Reader, bo binary.ByteOrder, recordSize uint32, r
 			return nil, fmt.Errorf("can't read function info: %v", err)
 		}
 
-		if offsetInBytes {
-			if fi.InsnOff%asm.InstructionSize != 0 {
-				return nil, fmt.Errorf("offset %v is not aligned with instruction size", fi.InsnOff)
-			}
-
-			// ELF tracks offset in bytes, the kernel expects raw BPF instructions.
-			// Convert as early as possible.
-			fi.InsnOff /= asm.InstructionSize
+		if fi.InsnOff%asm.InstructionSize != 0 {
+			return nil, fmt.Errorf("offset %v is not aligned with instruction size", fi.InsnOff)
 		}
+
+		// ELF tracks offset in bytes, the kernel expects raw BPF instructions.
+		// Convert as early as possible.
+		fi.InsnOff /= asm.InstructionSize
 
 		out = append(out, fi)
 	}
@@ -515,11 +480,6 @@ func (li *Line) String() string {
 	return li.line
 }
 
-// LineInfos contains a sorted list of line infos.
-type LineInfos struct {
-	infos []lineInfo
-}
-
 type lineInfo struct {
 	line   *Line
 	offset asm.RawInstructionOffset
@@ -538,22 +498,6 @@ type bpfLineInfo struct {
 	FileNameOff uint32
 	LineOff     uint32
 	LineCol     uint32
-}
-
-// LoadLineInfos parses BTF line info in kernel wire format.
-func LoadLineInfos(reader io.Reader, bo binary.ByteOrder, recordNum uint32, spec *Spec) (LineInfos, error) {
-	lis, err := parseLineInfoRecords(
-		reader,
-		bo,
-		LineInfoSize,
-		recordNum,
-		false,
-	)
-	if err != nil {
-		return LineInfos{}, fmt.Errorf("parsing BTF line info: %w", err)
-	}
-
-	return newLineInfos(lis, spec.strings)
 }
 
 func newLineInfo(li bpfLineInfo, strings *stringTable) (*lineInfo, error) {
@@ -581,19 +525,17 @@ func newLineInfo(li bpfLineInfo, strings *stringTable) (*lineInfo, error) {
 	}, nil
 }
 
-func newLineInfos(blis []bpfLineInfo, strings *stringTable) (LineInfos, error) {
-	lis := LineInfos{
-		infos: make([]lineInfo, 0, len(blis)),
-	}
+func newLineInfos(blis []bpfLineInfo, strings *stringTable) ([]lineInfo, error) {
+	lis := make([]lineInfo, 0, len(blis))
 	for _, bli := range blis {
 		li, err := newLineInfo(bli, strings)
 		if err != nil {
-			return LineInfos{}, fmt.Errorf("offset %d: %w", bli.InsnOff, err)
+			return nil, fmt.Errorf("offset %d: %w", bli.InsnOff, err)
 		}
-		lis.infos = append(lis.infos, *li)
+		lis = append(lis, *li)
 	}
-	sort.Slice(lis.infos, func(i, j int) bool {
-		return lis.infos[i].offset <= lis.infos[j].offset
+	sort.Slice(lis, func(i, j int) bool {
+		return lis[i].offset <= lis[j].offset
 	})
 	return lis, nil
 }
@@ -653,7 +595,7 @@ func parseLineInfos(r io.Reader, bo binary.ByteOrder, strings *stringTable) (map
 			return nil, err
 		}
 
-		records, err := parseLineInfoRecords(r, bo, recordSize, infoHeader.NumInfo, true)
+		records, err := parseLineInfoRecords(r, bo, recordSize, infoHeader.NumInfo)
 		if err != nil {
 			return nil, fmt.Errorf("section %v: %w", secName, err)
 		}
@@ -665,7 +607,7 @@ func parseLineInfos(r io.Reader, bo binary.ByteOrder, strings *stringTable) (map
 // parseLineInfoRecords parses a stream of line_infos into a lineInfos.
 // These records appear after a btf_ext_info_sec header in the line_info
 // sub-section of .BTF.ext.
-func parseLineInfoRecords(r io.Reader, bo binary.ByteOrder, recordSize uint32, recordNum uint32, offsetInBytes bool) ([]bpfLineInfo, error) {
+func parseLineInfoRecords(r io.Reader, bo binary.ByteOrder, recordSize uint32, recordNum uint32) ([]bpfLineInfo, error) {
 	var out []bpfLineInfo
 	var li bpfLineInfo
 
@@ -679,15 +621,13 @@ func parseLineInfoRecords(r io.Reader, bo binary.ByteOrder, recordSize uint32, r
 			return nil, fmt.Errorf("can't read line info: %v", err)
 		}
 
-		if offsetInBytes {
-			if li.InsnOff%asm.InstructionSize != 0 {
-				return nil, fmt.Errorf("offset %v is not aligned with instruction size", li.InsnOff)
-			}
-
-			// ELF tracks offset in bytes, the kernel expects raw BPF instructions.
-			// Convert as early as possible.
-			li.InsnOff /= asm.InstructionSize
+		if li.InsnOff%asm.InstructionSize != 0 {
+			return nil, fmt.Errorf("offset %v is not aligned with instruction size", li.InsnOff)
 		}
+
+		// ELF tracks offset in bytes, the kernel expects raw BPF instructions.
+		// Convert as early as possible.
+		li.InsnOff /= asm.InstructionSize
 
 		out = append(out, li)
 	}
@@ -719,11 +659,6 @@ func (cr *CORERelocation) String() string {
 func CORERelocationMetadata(ins *asm.Instruction) *CORERelocation {
 	relo, _ := ins.Metadata.Get(coreRelocationMeta{}).(*CORERelocation)
 	return relo
-}
-
-// CORERelocationInfos contains a sorted list of co:re relocation infos.
-type CORERelocationInfos struct {
-	infos []coreRelocationInfo
 }
 
 type coreRelocationInfo struct {
@@ -758,19 +693,17 @@ func newRelocationInfo(relo bpfCORERelo, spec *Spec, strings *stringTable) (*cor
 	}, nil
 }
 
-func newRelocationInfos(brs []bpfCORERelo, spec *Spec, strings *stringTable) (CORERelocationInfos, error) {
-	rs := CORERelocationInfos{
-		infos: make([]coreRelocationInfo, 0, len(brs)),
-	}
+func newRelocationInfos(brs []bpfCORERelo, spec *Spec, strings *stringTable) ([]coreRelocationInfo, error) {
+	rs := make([]coreRelocationInfo, 0, len(brs))
 	for _, br := range brs {
 		relo, err := newRelocationInfo(br, spec, strings)
 		if err != nil {
-			return CORERelocationInfos{}, fmt.Errorf("offset %d: %w", br.InsnOff, err)
+			return nil, fmt.Errorf("offset %d: %w", br.InsnOff, err)
 		}
-		rs.infos = append(rs.infos, *relo)
+		rs = append(rs, *relo)
 	}
-	sort.Slice(rs.infos, func(i, j int) bool {
-		return rs.infos[i].offset < rs.infos[j].offset
+	sort.Slice(rs, func(i, j int) bool {
+		return rs[i].offset < rs[j].offset
 	})
 	return rs, nil
 }

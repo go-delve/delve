@@ -40,12 +40,10 @@ func (hs handles) fdArray() []int32 {
 	return fda
 }
 
-func (hs *handles) Close() error {
-	var errs []error
-	for _, h := range *hs {
-		errs = append(errs, h.Close())
+func (hs handles) close() {
+	for _, h := range hs {
+		h.Close()
 	}
-	return errors.Join(errs...)
 }
 
 // splitSymbols splits insns into subsections delimited by Symbol Instructions.
@@ -233,13 +231,7 @@ func fixupAndValidate(insns asm.Instructions) error {
 // fixupKfuncs loops over all instructions in search for kfunc calls.
 // If at least one is found, the current kernels BTF and module BTFis are searched to set Instruction.Constant
 // and Instruction.Offset to the correct values.
-func fixupKfuncs(insns asm.Instructions) (_ handles, err error) {
-	closeOnError := func(c io.Closer) {
-		if err != nil {
-			c.Close()
-		}
-	}
-
+func fixupKfuncs(insns asm.Instructions) (handles, error) {
 	iter := insns.Iterate()
 	for iter.Next() {
 		ins := iter.Ins
@@ -258,8 +250,6 @@ fixups:
 	}
 
 	fdArray := make(handles, 0)
-	defer closeOnError(&fdArray)
-
 	for {
 		ins := iter.Ins
 
@@ -286,16 +276,16 @@ fixups:
 			return nil, err
 		}
 
-		idx, err := fdArray.add(module)
-		if err != nil {
-			return nil, err
-		}
-
 		if err := btf.CheckTypeCompatibility(kfm.Type, target.(*btf.Func).Type); err != nil {
 			return nil, &incompatibleKfuncError{kfm.Name, err}
 		}
 
 		id, err := spec.TypeID(target)
+		if err != nil {
+			return nil, err
+		}
+
+		idx, err := fdArray.add(module)
 		if err != nil {
 			return nil, err
 		}
