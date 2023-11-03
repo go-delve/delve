@@ -6,10 +6,10 @@ import (
 )
 
 // Prepare prepares cmd flag set for the invocation of its usage function by
-// hiding flags that we want cobra to parse but we don't want to show to the
+// hiding flags that we want cobra to parse, but we don't want to show to the
 // user.
 // We do this because not all flags associated with the root command are
-// valid for all subcommands but we don't want to move them out of the root
+// valid for all subcommands, but we don't want to move them out of the root
 // command and into subcommands, since that would change how cobra parses
 // the command line.
 //

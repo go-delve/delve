@@ -120,7 +120,7 @@ func New(docCall bool) *cobra.Command {
 	conf, loadConfErr = config.LoadConfig()
 	// Delay reporting errors about configuration loading delayed until after the
 	// server is started so that the "server listening at" message is always
-	// the first thing emitted. Also logflags hasn't been setup yet at this point.
+	// the first thing emitted. Also, logflags hasn't been set up yet at this point.
 	buildFlagsDefault := ""
 	if runtime.GOOS == "windows" {
 		ver, _ := goversion.Installed()
@@ -501,7 +501,7 @@ func dapCmd(cmd *cobra.Command, args []string) {
 		}
 
 		disconnectChan := make(chan struct{})
-		config := &service.Config{
+		cfg := &service.Config{
 			DisconnectChan: disconnectChan,
 			Debugger: debugger.Config{
 				Backend:              backend,
@@ -519,7 +519,7 @@ func dapCmd(cmd *cobra.Command, args []string) {
 				fmt.Printf("couldn't start listener: %s\n", err)
 				return 1
 			}
-			config.Listener = listener
+			cfg.Listener = listener
 		} else { // with a predetermined client.
 			var err error
 			conn, err = net.Dial("tcp", dapClientAddr)
@@ -529,7 +529,7 @@ func dapCmd(cmd *cobra.Command, args []string) {
 			}
 		}
 
-		server := dap.NewServer(config)
+		server := dap.NewServer(cfg)
 		defer server.Stop()
 		if conn == nil {
 			server.Run()
@@ -838,7 +838,7 @@ func getPackageDir(pkg []string) string {
 	return listout.Dir
 }
 
-func attachCmd(cmd *cobra.Command, args []string) {
+func attachCmd(_ *cobra.Command, args []string) {
 	var pid int
 	if len(args) > 0 {
 		var err error
@@ -852,11 +852,11 @@ func attachCmd(cmd *cobra.Command, args []string) {
 	os.Exit(execute(pid, args, conf, "", debugger.ExecutingOther, args, buildFlags))
 }
 
-func coreCmd(cmd *cobra.Command, args []string) {
+func coreCmd(_ *cobra.Command, args []string) {
 	os.Exit(execute(0, []string{args[0]}, conf, args[1], debugger.ExecutingOther, args, buildFlags))
 }
 
-func connectCmd(cmd *cobra.Command, args []string) {
+func connectCmd(_ *cobra.Command, args []string) {
 	if err := logflags.Setup(log, logOutput, logDest); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
@@ -871,7 +871,7 @@ func connectCmd(cmd *cobra.Command, args []string) {
 		logflags.Close()
 		os.Exit(1)
 	}
-	ec := connect(addr, nil, conf, debugger.ExecutingOther)
+	ec := connect(addr, nil, conf)
 	logflags.Close()
 	os.Exit(ec)
 }
@@ -909,7 +909,7 @@ func splitArgs(cmd *cobra.Command, args []string) ([]string, []string) {
 	return args, []string{}
 }
 
-func connect(addr string, clientConn net.Conn, conf *config.Config, kind debugger.ExecuteKind) int {
+func connect(addr string, clientConn net.Conn, conf *config.Config) int {
 	// Create and start a terminal - attach to running instance
 	var client *rpc2.RPCClient
 	if clientConn != nil {
@@ -1058,7 +1058,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	}
 
 	if err := server.Run(); err != nil {
-		if err == api.ErrNotExecutable {
+		if errors.Is(err, api.ErrNotExecutable) {
 			switch kind {
 			case debugger.ExecutingGeneratedFile:
 				fmt.Fprintln(os.Stderr, "Can not debug non-main package")
@@ -1089,7 +1089,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 		return status
 	}
 
-	return connect(listener.Addr().String(), clientConn, conf, kind)
+	return connect(listener.Addr().String(), clientConn, conf)
 }
 
 func parseRedirects(redirects []string) ([3]string, error) {
