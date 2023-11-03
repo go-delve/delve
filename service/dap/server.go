@@ -379,7 +379,7 @@ func (s *Server) Stop() {
 
 	if s.listener != nil {
 		// If run goroutine is blocked on accept, this will unblock it.
-		_ = s.listener.Close()
+		s.listener.Close()
 	}
 
 	s.sessionMu.Lock()
@@ -399,7 +399,7 @@ func (s *Session) Close() {
 
 	if s.debugger != nil {
 		killProcess := s.debugger.AttachPid() == 0
-		_ = s.stopDebugSession(killProcess)
+		s.stopDebugSession(killProcess)
 	} else if s.noDebugProcess != nil {
 		s.stopNoDebugProcess()
 	}
@@ -419,7 +419,7 @@ func (s *Session) Close() {
 	// If this was a client loop exit (on error or disconnect), serveDAPCodec()
 	// will be first.
 	// Duplicate close calls return an error, but are not fatal.
-	_ = s.conn.Close()
+	s.conn.Close()
 }
 
 // triggerServerStop closes DisconnectChan if not nil, which
@@ -1472,7 +1472,7 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 
 	// Clear breakpoints.
 	// Any breakpoint that existed before this request but was not amended must be deleted.
-	_ = s.clearBreakpoints(existingBps, createdBps)
+	s.clearBreakpoints(existingBps, createdBps)
 
 	// Add new breakpoints.
 	for i := 0; i < totalBps; i++ {

@@ -209,7 +209,7 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 			return nil, err
 		}
 		if err := d.checkGoVersion(); err != nil {
-			_ = d.target.Detach(true)
+			d.target.Detach(true)
 			return nil, err
 		}
 
@@ -226,7 +226,7 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 			return nil, err
 		}
 		if err := d.checkGoVersion(); err != nil {
-			_ = d.target.Detach(true)
+			d.target.Detach(true)
 			return nil, err
 		}
 	}
@@ -1328,7 +1328,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 	}
 	if bp := state.CurrentThread.Breakpoint; bp != nil && isBpHitCondNotSatisfiable(bp) {
 		bp.Disabled = true
-		_ = d.amendBreakpoint(bp)
+		d.amendBreakpoint(bp)
 	}
 	return state, err
 }
@@ -2411,7 +2411,7 @@ func verifyBinaryFormat(exePath string) (string, error) {
 	if err != nil {
 		return "", api.ErrNotExecutable
 	}
-	_ = exe.Close()
+	exe.Close()
 	return fullpath, nil
 }
 
