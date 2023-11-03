@@ -516,11 +516,7 @@ func (s *Session) address() string {
 func (s *Session) ServeDAPCodec() {
 	// Close conn, but not the debugger in case we are in AcceptMulti mode.
 	// If not, debugger will be shut down in Stop().
-	var (
-		err               error
-		request           dap.Message
-		triggerServerStop bool
-	)
+	var triggerServerStop bool
 	defer s.conn.Close()
 	defer func() {
 		if triggerServerStop {
@@ -529,7 +525,7 @@ func (s *Session) ServeDAPCodec() {
 	}()
 	reader := bufio.NewReader(s.conn)
 	for {
-		request, err = dap.ReadProtocolMessage(reader)
+		request, err := dap.ReadProtocolMessage(reader)
 		// Handle dap.DecodeProtocolMessageFieldError errors gracefully by responding with an ErrorResponse.
 		// For example:
 		// -- "Request command 'foo' is not supported" means we
