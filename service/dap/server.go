@@ -539,12 +539,11 @@ func (s *Session) ServeDAPCodec() {
 		// Other errors, such as unmarshalling errors, will log the error and cause the server to trigger
 		// a stop.
 		if err != nil {
-			triggerServerStop = !s.config.AcceptMulti
-
 			s.config.log.Debug("DAP error: ", err)
 			select {
 			case <-s.config.StopTriggered:
 			default:
+				triggerServerStop = !s.config.AcceptMulti
 				if err != io.EOF { // EOF means client closed connection
 					var decodeErr *dap.DecodeProtocolMessageFieldError
 					if errors.As(err, &decodeErr) {
