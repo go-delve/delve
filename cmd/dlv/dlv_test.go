@@ -180,7 +180,7 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 
 	// ignore "dlv debug" command error, it returns
 	// errors even after successful debug session.
-	_ = cmd.Wait()
+	cmd.Wait()
 	stdout, stderr = stdoutBuf.Bytes(), stderrBuf.Bytes()
 
 	_, err = os.Stat(debugbin)
@@ -308,7 +308,7 @@ func TestRedirect(t *testing.T) {
 
 	// and detach from and kill the headless instance
 	client := rpc2.NewClient(listenAddr)
-	_ = client.Detach(true)
+	client.Detach(true)
 	cmd.Wait()
 }
 
@@ -1352,8 +1352,8 @@ func TestDefaultBinary(t *testing.T) {
 	fmt.Fprintf(stdin1, "continue\nquit\n")
 	fmt.Fprintf(stdin2, "continue\nquit\n")
 
-	_ = wait1()
-	_ = wait2()
+	wait1()
+	wait2()
 
 	out1, out2 := stdoutBuf1.String(), stdoutBuf2.String()
 	t.Logf("%q", out1)
