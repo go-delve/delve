@@ -1722,3 +1722,23 @@ func TestBadUnsafePtr(t *testing.T) {
 		}
 	})
 }
+
+func TestCapturedVariable(t *testing.T) {
+	// Checks that variables captured by a closure (that are not pointers) are
+	// readable. See issue #3548.
+	// This was broken in Go 1.21 due to a compiler bug.
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 21) && !goversion.VersionAfterOrEqual(runtime.Version(), 1, 22) {
+		t.Skip("broken")
+	}
+	withTestProcess("issue3548", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture.Source, 32)
+		assertNoError(grp.Continue(), t, "Continue()")
+		v := evalVariable(p, t, "c")
+		assertVariable(t, v, varTest{
+			name:         "c",
+			preserveName: true,
+			value:        "struct { main.name string; main.thing main.Thing } {name: \"Success\", thing: main.Thing {str: \"hello\"}}",
+			varType:      "struct { main.name string; main.thing main.Thing }",
+		})
+	})
+}
