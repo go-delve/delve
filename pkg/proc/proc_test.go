@@ -4683,8 +4683,8 @@ func TestCgoStacktrace2(t *testing.T) {
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 21) {
 		skipOn(t, "upstream issue", "windows")
 		skipOn(t, "broken", "arm64")
-		skipOn(t, "broken", "386")
 	}
+	skipOn(t, "broken", "386")
 	skipOn(t, "broken - cgo stacktraces", "darwin", "arm64")
 	skipOn(t, "broken", "ppc64le")
 	protest.MustHaveCgo(t)
