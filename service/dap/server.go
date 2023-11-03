@@ -517,12 +517,13 @@ func (s *Session) ServeDAPCodec() {
 	// Close conn, but not the debugger in case we are in AcceptMulti mode.
 	// If not, debugger will be shut down in Stop().
 	var (
-		err     error
-		request dap.Message
+		err               error
+		request           dap.Message
+		triggerServerStop bool
 	)
 	defer s.conn.Close()
 	defer func() {
-		if err != nil && !s.config.AcceptMulti {
+		if triggerServerStop {
 			s.config.triggerServerStop()
 		}
 	}()
@@ -538,6 +539,8 @@ func (s *Session) ServeDAPCodec() {
 		// Other errors, such as unmarshalling errors, will log the error and cause the server to trigger
 		// a stop.
 		if err != nil {
+			triggerServerStop = !s.config.AcceptMulti
+
 			s.config.log.Debug("DAP error: ", err)
 			select {
 			case <-s.config.StopTriggered:
