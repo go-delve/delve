@@ -3216,11 +3216,11 @@ func TestShadowedFlag(t *testing.T) {
 }
 
 func TestDebugStripped(t *testing.T) {
-	// Currently only implemented for Linux ELF executables.
+	// Currently only implemented for Linux ELF and macOS Mach-O executables.
 	// TODO(derekparker): Add support for PE.
 	skipOn(t, "not working on windows", "windows")
 	skipOn(t, "not working on freebsd", "freebsd")
-	skipOn(t, "not working on linux/386 with PIE", "linux", "386", "pie")
+	skipOn(t, "not working on linux/386", "linux", "386")
 	skipOn(t, "not working on linux/ppc64le when -gcflags=-N -l is passed", "linux", "ppc64le")
 	withTestProcessArgs("testnextprog", t, "", []string{}, protest.LinkStrip, func(p *proc.Target, grp *proc.TargetGroup, f protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
@@ -3229,6 +3229,24 @@ func TestDebugStripped(t *testing.T) {
 		assertLineNumber(p, t, 37, "first continue")
 		assertNoError(grp.Next(), t, "Next")
 		assertLineNumber(p, t, 38, "after next")
+	})
+}
+
+func TestDebugStripped2(t *testing.T) {
+	// Currently only implemented for Linux ELF executables.
+	// TODO(derekparker): Add support for Mach-O and PE.
+	skipUnlessOn(t, "linux/amd64 only", "linux", "amd64")
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 20) {
+		t.Skip("temporarily disabled on Go versions < 1.20")
+	}
+	withTestProcessArgs("inlinestripped", t, "", []string{}, protest.EnableInlining|protest.LinkStrip, func(p *proc.Target, grp *proc.TargetGroup, f protest.Fixture) {
+		setFunctionBreakpointAll(p, t, "fmt.Println")
+
+		for i, line := range []int{12, 13, 14} {
+			assertNoError(grp.Continue(), t, "Continue")
+			assertCurrentLocationFunction(p, t, "main.main")
+			assertLineNumber(p, t, line, fmt.Sprintf("continue %d", i))
+		}
 	})
 }
 

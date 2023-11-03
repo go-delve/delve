@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"debug/dwarf"
 	"debug/elf"
-	"debug/gosym"
 	"debug/macho"
 	"debug/pe"
 	"encoding/binary"
@@ -31,6 +30,8 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/internal/gosym"
+	"github.com/go-delve/delve/pkg/internal/moduledata"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc/debuginfod"
 	"github.com/hashicorp/golang-lru/simplelru"
@@ -1455,20 +1456,54 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 			if len(bi.Images) <= 1 {
 				fmt.Fprintln(os.Stderr, "Warning: no debug info found, some functionality will be missing such as stack traces and variable evaluation.")
 			}
-			symTable, err := readPcLnTableElf(elfFile, path)
+			cu := &compileUnit{}
+			cu.image = image
+			symTable, pcLnTabAddr, err := readPcLnTableElf(elfFile, path)
 			if err != nil {
 				return fmt.Errorf("could not read debug info (%v) and could not read go symbol table (%v)", dwerr, err)
 			}
 			image.symTable = symTable
+			goFuncVal, err := moduledata.GetGoFuncValue(elfFile, pcLnTabAddr)
+			if err != nil {
+				return err
+			}
+			prog := gosym.ProgContaining(elfFile, goFuncVal)
+			inlFuncs := make(map[string]*Function)
 			for _, f := range image.symTable.Funcs {
-				cu := &compileUnit{}
-				cu.image = image
-				fn := Function{Name: f.Name, Entry: f.Entry + image.StaticBase, End: f.End + image.StaticBase, cu: cu}
+				fnEntry := f.Entry + image.StaticBase
+				if prog != nil {
+					inlCalls, err := image.symTable.GetInlineTree(&f, goFuncVal, prog.Vaddr, prog.ReaderAt)
+					if err != nil {
+						return err
+					}
+					for _, inlfn := range inlCalls {
+						newInlinedCall := InlinedCall{cu: cu, LowPC: fnEntry + uint64(inlfn.ParentPC)}
+						if fn, ok := inlFuncs[inlfn.Name]; ok {
+							fn.InlinedCalls = append(fn.InlinedCalls, newInlinedCall)
+							continue
+						}
+						inlFuncs[inlfn.Name] = &Function{
+							Name:  inlfn.Name,
+							Entry: 0, End: 0,
+							cu: cu,
+							InlinedCalls: []InlinedCall{
+								newInlinedCall,
+							},
+						}
+					}
+				}
+				fn := Function{Name: f.Name, Entry: fnEntry, End: f.End + image.StaticBase, cu: cu}
 				bi.Functions = append(bi.Functions, fn)
 			}
+			for i := range inlFuncs {
+				bi.Functions = append(bi.Functions, *inlFuncs[i])
+			}
+			sort.Sort(functionsDebugInfoByEntry(bi.Functions))
 			for f := range image.symTable.Files {
 				bi.Sources = append(bi.Sources, f)
 			}
+			sort.Strings(bi.Sources)
+			bi.Sources = uniq(bi.Sources)
 			return nil
 		}
 		image.sepDebugCloser = sepFile

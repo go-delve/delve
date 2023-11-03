@@ -17,9 +17,10 @@ Tests skipped by each supported backend:
 	* 2 follow exec not implemented on freebsd
 	* 4 not implemented
 	* 1 not working on freebsd
-* linux/386/pie skipped = 2
+* linux/386 skipped = 1
+	* 1 not working on linux/386
+* linux/386/pie skipped = 1
 	* 1 broken
-	* 1 not working on linux/386 with PIE
 * linux/ppc64le skipped = 2
 	* 1 broken - cgo stacktraces
 	* 1 not working on linux/ppc64le when -gcflags=-N -l is passed
