@@ -25,6 +25,7 @@ package compile
 //	toplevel	Funcode
 //	numfuncs	varint
 //	funcs		[]Funcode
+//	recursion	varint (0 or 1)
 //	<strings>	[]byte		# concatenation of all referenced strings
 //	EOF
 //
@@ -130,6 +131,7 @@ func (prog *Program) Encode() []byte {
 	for _, fn := range prog.Functions {
 		e.function(fn)
 	}
+	e.int(b2i(prog.Recursion))
 
 	// Patch in the offset of the string data section.
 	binary.LittleEndian.PutUint32(e.p[4:8], uint32(len(e.p)))
@@ -270,6 +272,7 @@ func DecodeProgram(data []byte) (_ *Program, err error) {
 	for i := range funcs {
 		funcs[i] = d.function()
 	}
+	recursion := d.int() != 0
 
 	prog := &Program{
 		Loads:     loads,
@@ -278,6 +281,7 @@ func DecodeProgram(data []byte) (_ *Program, err error) {
 		Globals:   globals,
 		Functions: funcs,
 		Toplevel:  toplevel,
+		Recursion: recursion,
 	}
 	toplevel.Prog = prog
 	for _, f := range funcs {

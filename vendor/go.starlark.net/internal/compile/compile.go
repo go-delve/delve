@@ -23,7 +23,6 @@
 //
 // Operands, logically uint32s, are encoded using little-endian 7-bit
 // varints, the top bit indicating that more bytes follow.
-//
 package compile // import "go.starlark.net/internal/compile"
 
 import (
@@ -47,7 +46,7 @@ var Disassemble = false
 const debug = false // make code generation verbose, for debugging the compiler
 
 // Increment this to force recompilation of saved bytecode files.
-const Version = 12
+const Version = 14
 
 type Opcode uint8
 
@@ -100,18 +99,19 @@ const (
 	FALSE     // - FALSE False
 	MANDATORY // - MANDATORY Mandatory	     [sentinel value for required kwonly args]
 
-	ITERPUSH    //       iterable ITERPUSH    -  [pushes the iterator stack]
-	ITERPOP     //              - ITERPOP     -    [pops the iterator stack]
-	NOT         //          value NOT         bool
-	RETURN      //          value RETURN      -
-	SETINDEX    //        a i new SETINDEX    -
-	INDEX       //            a i INDEX       elem
-	SETDICT     // dict key value SETDICT     -
-	SETDICTUNIQ // dict key value SETDICTUNIQ -
-	APPEND      //      list elem APPEND      -
-	SLICE       //   x lo hi step SLICE       slice
-	INPLACE_ADD //            x y INPLACE_ADD z      where z is x+y or x.extend(y)
-	MAKEDICT    //              - MAKEDICT    dict
+	ITERPUSH     //       iterable ITERPUSH     -  [pushes the iterator stack]
+	ITERPOP      //              - ITERPOP      -    [pops the iterator stack]
+	NOT          //          value NOT          bool
+	RETURN       //          value RETURN       -
+	SETINDEX     //        a i new SETINDEX     -
+	INDEX        //            a i INDEX        elem
+	SETDICT      // dict key value SETDICT      -
+	SETDICTUNIQ  // dict key value SETDICTUNIQ  -
+	APPEND       //      list elem APPEND       -
+	SLICE        //   x lo hi step SLICE        slice
+	INPLACE_ADD  //            x y INPLACE_ADD  z      where z is x+y or x.extend(y)
+	INPLACE_PIPE //            x y INPLACE_PIPE z      where z is x|y
+	MAKEDICT     //              - MAKEDICT     dict
 
 	// --- opcodes with an argument must go below this line ---
 
@@ -177,6 +177,7 @@ var opcodeNames = [...]string{
 	IN:           "in",
 	INDEX:        "index",
 	INPLACE_ADD:  "inplace_add",
+	INPLACE_PIPE: "inplace_pipe",
 	ITERJMP:      "iterjmp",
 	ITERPOP:      "iterpop",
 	ITERPUSH:     "iterpush",
@@ -250,6 +251,7 @@ var stackEffect = [...]int8{
 	IN:           -1,
 	INDEX:        -1,
 	INPLACE_ADD:  -1,
+	INPLACE_PIPE: -1,
 	ITERJMP:      variableStackEffect,
 	ITERPOP:      0,
 	ITERPUSH:     -1,
@@ -314,6 +316,7 @@ type Program struct {
 	Functions []*Funcode
 	Globals   []Binding // for error messages and tracing
 	Toplevel  *Funcode  // module initialization function
+	Recursion bool      // disable recursion check for functions in this file
 }
 
 // The type of a bytes literal value, to distinguish from text string.
@@ -483,17 +486,20 @@ func bindings(bindings []*resolve.Binding) []Binding {
 }
 
 // Expr compiles an expression to a program whose toplevel function evaluates it.
-func Expr(expr syntax.Expr, name string, locals []*resolve.Binding) *Program {
+// The options must be consistent with those used when parsing expr.
+func Expr(opts *syntax.FileOptions, expr syntax.Expr, name string, locals []*resolve.Binding) *Program {
 	pos := syntax.Start(expr)
 	stmts := []syntax.Stmt{&syntax.ReturnStmt{Result: expr}}
-	return File(stmts, pos, name, locals, nil)
+	return File(opts, stmts, pos, name, locals, nil)
 }
 
 // File compiles the statements of a file into a program.
-func File(stmts []syntax.Stmt, pos syntax.Position, name string, locals, globals []*resolve.Binding) *Program {
+// The options must be consistent with those used when parsing stmts.
+func File(opts *syntax.FileOptions, stmts []syntax.Stmt, pos syntax.Position, name string, locals, globals []*resolve.Binding) *Program {
 	pcomp := &pcomp{
 		prog: &Program{
-			Globals: bindings(globals),
+			Globals:   bindings(globals),
+			Recursion: opts.Recursion,
 		},
 		names:     make(map[string]uint32),
 		constants: make(map[interface{}]uint32),
@@ -1145,11 +1151,16 @@ func (fcomp *fcomp) stmt(stmt syntax.Stmt) {
 
 			fcomp.expr(stmt.RHS)
 
-			if stmt.Op == syntax.PLUS_EQ {
-				// Allow the runtime to optimize list += iterable.
+			// In-place x+=y and x|=y have special semantics:
+			// the resulting x aliases the original x.
+			switch stmt.Op {
+			case syntax.PLUS_EQ:
 				fcomp.setPos(stmt.OpPos)
 				fcomp.emit(INPLACE_ADD)
-			} else {
+			case syntax.PIPE_EQ:
+				fcomp.setPos(stmt.OpPos)
+				fcomp.emit(INPLACE_PIPE)
+			default:
 				fcomp.binop(stmt.OpPos, stmt.Op-syntax.PLUS_EQ+syntax.PLUS)
 			}
 			set()

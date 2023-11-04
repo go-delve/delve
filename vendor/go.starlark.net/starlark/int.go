@@ -190,20 +190,36 @@ func (i Int) Hash() (uint32, error) {
 	}
 	return 12582917 * uint32(lo+3), nil
 }
-func (x Int) CompareSameType(op syntax.Token, v Value, depth int) (bool, error) {
-	y := v.(Int)
-	xSmall, xBig := x.get()
-	ySmall, yBig := y.get()
-	if xBig != nil || yBig != nil {
-		return threeway(op, x.bigInt().Cmp(y.bigInt())), nil
+
+// Cmp implements comparison of two Int values.
+// Required by the TotallyOrdered interface.
+func (i Int) Cmp(v Value, depth int) (int, error) {
+	j := v.(Int)
+	iSmall, iBig := i.get()
+	jSmall, jBig := j.get()
+	if iBig != nil || jBig != nil {
+		return i.bigInt().Cmp(j.bigInt()), nil
 	}
-	return threeway(op, signum64(xSmall-ySmall)), nil
+	return signum64(iSmall - jSmall), nil // safe: int32 operands
 }
 
 // Float returns the float value nearest i.
 func (i Int) Float() Float {
 	iSmall, iBig := i.get()
 	if iBig != nil {
+		// Fast path for hardware int-to-float conversions.
+		if iBig.IsUint64() {
+			return Float(iBig.Uint64())
+		} else if iBig.IsInt64() {
+			return Float(iBig.Int64())
+		} else {
+			// Fast path for very big ints.
+			const maxFiniteLen = 1023 + 1 // max exponent value + implicit mantissa bit
+			if iBig.BitLen() > maxFiniteLen {
+				return Float(math.Inf(iBig.Sign()))
+			}
+		}
+
 		f, _ := new(big.Float).SetInt(iBig).Float64()
 		return Float(f)
 	}

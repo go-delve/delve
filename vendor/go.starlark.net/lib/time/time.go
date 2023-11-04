@@ -6,6 +6,7 @@
 package time // import "go.starlark.net/lib/time"
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -29,7 +30,7 @@ import (
 //     parse_duration(d) - Parses the given duration string. For more details, refer to
 //                         https://pkg.go.dev/time#ParseDuration.
 //
-//     parseTime(x, format, location) - Parses the given time string using a specific time format and location.
+//     parse_time(x, format, location) - Parses the given time string using a specific time format and location.
 //                                      The expected arguments are a time string (mandatory), a time format
 //                                      (optional, set to RFC3339 by default, e.g. "2021-03-22T23:20:50.52Z")
 //                                      and a name of location (optional, set to UTC by default). For more details,
@@ -68,10 +69,28 @@ var Module = &starlarkstruct.Module{
 	},
 }
 
-// NowFunc is a function that generates the current time. Intentionally exported
+// NowFunc is a function that reports the current time. Intentionally exported
 // so that it can be overridden, for example by applications that require their
 // Starlark scripts to be fully deterministic.
+//
+// Deprecated: avoid updating this global variable
+// and instead use SetNow on each thread to set its clock function.
 var NowFunc = time.Now
+
+const contextKey = "time.now"
+
+// SetNow sets the thread's optional clock function.
+// If non-nil, it will be used in preference to NowFunc when the
+// thread requests the current time by executing a call to time.now.
+func SetNow(thread *starlark.Thread, nowFunc func() (time.Time, error)) {
+	thread.SetLocal(contextKey, nowFunc)
+}
+
+// Now returns the clock function previously associated with this thread.
+func Now(thread *starlark.Thread) func() (time.Time, error) {
+	nowFunc, _ := thread.Local(contextKey).(func() (time.Time, error))
+	return nowFunc
+}
 
 func parseDuration(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var d Duration
@@ -129,7 +148,19 @@ func fromTimestamp(thread *starlark.Thread, _ *starlark.Builtin, args starlark.T
 }
 
 func now(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	return Time(NowFunc()), nil
+	nowErrFunc := Now(thread)
+	if nowErrFunc != nil {
+		t, err := nowErrFunc()
+		if err != nil {
+			return nil, err
+		}
+		return Time(t), nil
+	}
+	nowFunc := NowFunc
+	if nowFunc == nil {
+		return nil, errors.New("time.now() is not available")
+	}
+	return Time(nowFunc()), nil
 }
 
 // Duration is a Starlark representation of a duration.
@@ -209,16 +240,15 @@ func (d Duration) AttrNames() []string {
 	}
 }
 
-// CompareSameType implements comparison of two Duration values. required by
-// starlark.Comparable interface.
-func (d Duration) CompareSameType(op syntax.Token, v starlark.Value, depth int) (bool, error) {
-	cmp := 0
+// Cmp implements comparison of two Duration values. required by
+// starlark.TotallyOrdered interface.
+func (d Duration) Cmp(v starlark.Value, depth int) (int, error) {
 	if x, y := d, v.(Duration); x < y {
-		cmp = -1
+		return -1, nil
 	} else if x > y {
-		cmp = 1
+		return 1, nil
 	}
-	return threeway(op, cmp), nil
+	return 0, nil
 }
 
 // Binary implements binary operators, which satisfies the starlark.HasBinary
@@ -348,7 +378,7 @@ func (t Time) Hash() (uint32, error) {
 
 // Truth returns the truth value of an object required by starlark.Value
 // interface.
-func (t Time) Truth() starlark.Bool { return starlark.Bool(time.Time(t).IsZero()) }
+func (t Time) Truth() starlark.Bool { return !starlark.Bool(time.Time(t).IsZero()) }
 
 // Attr gets a value for a string attribute, implementing dot expression support
 // in starklark. required by starlark.HasAttrs interface.
@@ -392,18 +422,17 @@ func (t Time) AttrNames() []string {
 	)
 }
 
-// CompareSameType implements comparison of two Time values. required by
-// starlark.Comparable interface.
-func (t Time) CompareSameType(op syntax.Token, yV starlark.Value, depth int) (bool, error) {
+// Cmp implements comparison of two Time values. Required by
+// starlark.TotallyOrdered interface.
+func (t Time) Cmp(yV starlark.Value, depth int) (int, error) {
 	x := time.Time(t)
 	y := time.Time(yV.(Time))
-	cmp := 0
 	if x.Before(y) {
-		cmp = -1
+		return -1, nil
 	} else if x.After(y) {
-		cmp = 1
+		return 1, nil
 	}
-	return threeway(op, cmp), nil
+	return 0, nil
 }
 
 // Binary implements binary operators, which satisfies the starlark.HasBinary
@@ -484,24 +513,4 @@ func builtinAttrNames(methods map[string]builtinMethod) []string {
 	}
 	sort.Strings(names)
 	return names
-}
-
-// Threeway interprets a three-way comparison value cmp (-1, 0, +1)
-// as a boolean comparison (e.g. x < y).
-func threeway(op syntax.Token, cmp int) bool {
-	switch op {
-	case syntax.EQL:
-		return cmp == 0
-	case syntax.NEQ:
-		return cmp != 0
-	case syntax.LE:
-		return cmp <= 0
-	case syntax.LT:
-		return cmp < 0
-	case syntax.GE:
-		return cmp >= 0
-	case syntax.GT:
-		return cmp > 0
-	}
-	panic(op)
 }
