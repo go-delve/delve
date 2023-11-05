@@ -546,7 +546,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 		return nil, fmt.Errorf("could not launch process: %s", err)
 	}
 
-	var discarded []api.DiscardedBreakpoint
+	discarded := []api.DiscardedBreakpoint{}
 	proc.Restart(grp, d.target, func(oldBp *proc.LogicalBreakpoint, err error) {
 		discarded = append(discarded, api.DiscardedBreakpoint{Breakpoint: api.ConvertLogicalBreakpoint(oldBp), Reason: err.Error()})
 	})
@@ -809,8 +809,8 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 
 func (d *Debugger) convertBreakpoint(lbp *proc.LogicalBreakpoint) *api.Breakpoint {
 	abp := api.ConvertLogicalBreakpoint(lbp)
-	var bps []*proc.Breakpoint
-	var pids []int
+	bps := []*proc.Breakpoint{}
+	pids := []int{}
 	t := proc.ValidTargets{Group: d.target}
 	for t.Next() {
 		for _, bp := range t.Breakpoints().M {
@@ -1043,7 +1043,7 @@ func (d *Debugger) Breakpoints(all bool) []*api.Breakpoint {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	var abps []*api.Breakpoint
+	abps := []*api.Breakpoint{}
 	if all {
 		t := proc.ValidTargets{Group: d.target}
 		for t.Next() {
@@ -1414,7 +1414,7 @@ func (d *Debugger) Sources(filter string) ([]string, error) {
 		return nil, fmt.Errorf("invalid filter argument: %s", err.Error())
 	}
 
-	var files []string
+	files := []string{}
 	t := proc.ValidTargets{Group: d.target}
 	for t.Next() {
 		for _, f := range t.BinInfo().Sources {
@@ -1453,7 +1453,7 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 		return nil, fmt.Errorf("invalid filter argument: %s", err.Error())
 	}
 
-	var funcs []string
+	funcs := []string{}
 	t := proc.ValidTargets{Group: d.target}
 	for t.Next() {
 		for _, f := range t.BinInfo().Functions {
@@ -1477,7 +1477,7 @@ func (d *Debugger) Types(filter string) ([]string, error) {
 		return nil, fmt.Errorf("invalid filter argument: %s", err.Error())
 	}
 
-	var r []string
+	r := []string{}
 
 	t := proc.ValidTargets{Group: d.target}
 	for t.Next() {
@@ -1644,7 +1644,7 @@ func (d *Debugger) FilterGoroutines(gs []*proc.G, filters []api.ListGoroutinesFi
 	}
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-	var r []*proc.G
+	r := []*proc.G{}
 	for _, g := range gs {
 		ok := true
 		for i := range filters {
@@ -1758,8 +1758,8 @@ func (d *Debugger) GroupGoroutines(gs []*proc.G, group *api.GoroutineGroupingOpt
 	sort.Strings(keys)
 
 	tooManyGroups := false
-	var gsout []*proc.G
-	var groups []api.GoroutineGroup
+	gsout := []*proc.G{}
+	groups := []api.GoroutineGroup{}
 	for _, key := range keys {
 		if group.MaxGroups > 0 && len(groups) >= group.MaxGroups {
 			tooManyGroups = true
@@ -1971,7 +1971,7 @@ func (d *Debugger) FindLocationSpec(goid int64, frame, deferredCall int, locStr 
 }
 
 func (d *Debugger) findLocation(goid int64, frame, deferredCall int, locStr string, locSpec locspec.LocationSpec, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, string, error) {
-	var locations []api.Location
+	locations := []api.Location{}
 	t := proc.ValidTargets{Group: d.target}
 	subst := ""
 	for t.Next() {
