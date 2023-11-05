@@ -465,9 +465,9 @@ func (s *RPCServer) ListRegisters(arg ListRegistersIn, out *ListRegistersOut) er
 	var err error
 
 	if arg.Scope != nil {
-		regs, err = s.debugger.ScopeRegisters(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall, arg.IncludeFp)
+		regs, err = s.debugger.ScopeRegisters(arg.Scope.GoroutineID, arg.Scope.Frame, arg.Scope.DeferredCall)
 	} else {
-		regs, err = s.debugger.ThreadRegisters(arg.ThreadID, arg.IncludeFp)
+		regs, err = s.debugger.ThreadRegisters(arg.ThreadID)
 	}
 	if err != nil {
 		return err

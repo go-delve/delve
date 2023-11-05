@@ -218,7 +218,7 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		var err error
 		d.target, err = d.Launch(d.processArgs, d.config.WorkingDir)
 		if err != nil {
-			if _, ok := err.(*proc.ErrUnsupportedArch); !ok {
+			if !errors.Is(err, &proc.ErrUnsupportedArch{}) {
 				err = go11DecodeErrorCheck(err)
 				err = noDebugErrorWarning(err)
 				err = fmt.Errorf("could not launch process: %s", err)
@@ -308,8 +308,8 @@ func (d *Debugger) Launch(processArgs []string, wd string) (*proc.TargetGroup, e
 			grp, err := d.recordingRun(run)
 			if err != nil {
 				d.log.Errorf("could not record target: %v", err)
-				// this is ugly but we can't respond to any client requests at this
-				// point so it's better if we die.
+				// this is ugly, but we can't respond to any client requests at this
+				// point, so it's better if we die.
 				os.Exit(1)
 			}
 			d.recordingDone()
@@ -384,7 +384,7 @@ func betterGdbserialLaunchError(p *proc.TargetGroup, err error) (*proc.TargetGro
 	if runtime.GOOS != "darwin" {
 		return p, err
 	}
-	if _, isUnavailable := err.(*gdbserial.ErrBackendUnavailable); !isUnavailable {
+	if !errors.Is(err, &gdbserial.ErrBackendUnavailable{}) {
 		return p, err
 	}
 
@@ -593,7 +593,8 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig, withBreakpointInfo bool) (
 
 	exited := false
 	if _, err := tgt.Valid(); err != nil {
-		_, exited = err.(proc.ErrProcessExited)
+		var errProcessExited proc.ErrProcessExited
+		exited = errors.As(err, &errProcessExited)
 	}
 
 	state = &api.DebuggerState{
@@ -742,10 +743,6 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 		if requestedBp.Addr != 0 {
 			setbp.PidAddrs = []proc.PidAddr{{Pid: d.target.Selected.Pid(), Addr: requestedBp.Addr}}
 		}
-	}
-
-	if err != nil {
-		return nil, err
 	}
 
 	if locExpr != "" {
@@ -951,7 +948,7 @@ func parseHitCondition(hitCond string) (token.Token, int, error) {
 	// A hit condition can be in the following formats:
 	// - "number"
 	// - "OP number"
-	hitConditionRegex := regexp.MustCompile(`((=|>|<|%|!)+|)( |)((\d|_)+)`)
+	hitConditionRegex := regexp.MustCompile(`(([=><%!])+|)( |)((\d|_)+)`)
 
 	match := hitConditionRegex.FindStringSubmatch(strings.TrimSpace(hitCond))
 	if match == nil || len(match) != 6 {
@@ -1305,12 +1302,13 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 	}
 
 	if err != nil {
-		if pe, ok := err.(proc.ErrProcessExited); ok && command.Name != api.SwitchGoroutine && command.Name != api.SwitchThread {
+		var errProcessExited proc.ErrProcessExited
+		if errors.As(err, &errProcessExited) && command.Name != api.SwitchGoroutine && command.Name != api.SwitchThread {
 			state := &api.DebuggerState{}
 			state.Pid = d.target.Selected.Pid()
 			state.Exited = true
-			state.ExitStatus = pe.Status
-			state.Err = pe
+			state.ExitStatus = errProcessExited.Status
+			state.Err = errProcessExited
 			return state, nil
 		}
 		return nil, err
@@ -1530,7 +1528,7 @@ func (d *Debugger) PackageVariables(filter string, cfg proc.LoadConfig) ([]*proc
 }
 
 // ThreadRegisters returns registers of the specified thread.
-func (d *Debugger) ThreadRegisters(threadID int, floatingPoint bool) (*op.DwarfRegisters, error) {
+func (d *Debugger) ThreadRegisters(threadID int) (*op.DwarfRegisters, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1546,7 +1544,7 @@ func (d *Debugger) ThreadRegisters(threadID int, floatingPoint bool) (*op.DwarfR
 }
 
 // ScopeRegisters returns registers for the specified scope.
-func (d *Debugger) ScopeRegisters(goid int64, frame, deferredCall int, floatingPoint bool) (*op.DwarfRegisters, error) {
+func (d *Debugger) ScopeRegisters(goid int64, frame, deferredCall int) (*op.DwarfRegisters, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1587,7 +1585,7 @@ func (d *Debugger) FunctionArguments(goid int64, frame, deferredCall int, cfg pr
 }
 
 // Function returns the current function.
-func (d *Debugger) Function(goid int64, frame, deferredCall int, cfg proc.LoadConfig) (*proc.Function, error) {
+func (d *Debugger) Function(goid int64, frame, deferredCall int) (*proc.Function, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1775,7 +1773,7 @@ func (d *Debugger) GroupGoroutines(gs []*proc.G, group *api.GoroutineGroupingOpt
 
 // Stacktrace returns a list of Stackframes for the given goroutine. The
 // length of the returned list will be min(stack_len, depth).
-// If 'full' is true, then local vars, function args, etc will be returned as well.
+// If 'full' is true, then local vars, function args, etc. will be returned as well.
 func (d *Debugger) Stacktrace(goroutineID int64, depth int, opts api.StacktraceOptions) ([]proc.Stackframe, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
@@ -1893,7 +1891,7 @@ func (d *Debugger) convertDefers(defers []*proc.Defer) []api.Defer {
 		if defers[i].Unreadable != nil {
 			r[i].Unreadable = defers[i].Unreadable.Error()
 		} else {
-			var entry uint64 = defers[i].DeferPC
+			var entry = defers[i].DeferPC
 			if ddfn != nil {
 				entry = ddfn.Entry
 			}
@@ -2164,7 +2162,7 @@ func (d *Debugger) StopRecording() error {
 	return d.stopRecording()
 }
 
-// StopReason returns the reason the reason why the target process is stopped.
+// StopReason returns the reason why the target process is stopped.
 // A process could be stopped for multiple simultaneous reasons, in which
 // case only one will be reported.
 func (d *Debugger) StopReason() proc.StopReason {
@@ -2353,7 +2351,7 @@ func (d *Debugger) ChanGoroutines(goid int64, frame, deferredCall int, expr stri
 }
 
 func go11DecodeErrorCheck(err error) error {
-	if _, isdecodeerr := err.(dwarf.DecodeError); !isdecodeerr {
+	if !errors.Is(err, dwarf.DecodeError{}) {
 		return err
 	}
 
@@ -2368,7 +2366,7 @@ func go11DecodeErrorCheck(err error) error {
 const NoDebugWarning string = "debuggee must not be built with 'go run' or -ldflags='-s -w', which strip debug info"
 
 func noDebugErrorWarning(err error) error {
-	if _, isdecodeerr := err.(dwarf.DecodeError); isdecodeerr || strings.Contains(err.Error(), "could not open debug info") {
+	if errors.Is(err, dwarf.DecodeError{}) || strings.Contains(err.Error(), "could not open debug info") {
 		return fmt.Errorf("%s - %s", err.Error(), NoDebugWarning)
 	}
 	return err
