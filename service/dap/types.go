@@ -105,7 +105,7 @@ type LaunchConfig struct {
 	// It should be a string like `dlv --build-flags`, or
 	// an array of strings that is augmented when invoking the go build or
 	// test command through os/exec.Command API.
-	// For example, both forms are acceptible.
+	// For example, both forms are acceptable.
 	//    "buildFlags": "-tags=integration -ldflags='-X main.Hello=World'"
 	// or
 	//    "buildFlags": ["-tags=integration", "-ldflags=-X main.Hello=World"]

@@ -157,7 +157,7 @@ int get_goroutine_id(function_parameter_list_t *parsed_args) {
 
 __always_inline
 void parse_params(struct pt_regs *ctx, unsigned int n_params, function_parameter_t params[6]) {
-    // Since we cannot loop in eBPF programs let's take adavantage of the
+    // Since we cannot loop in eBPF programs let's take advantage of the
     // fact that in C switch cases will pass through automatically.
     switch (n_params) {
     case 6:

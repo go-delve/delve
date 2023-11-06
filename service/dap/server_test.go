@@ -3530,7 +3530,7 @@ func TestConcurrentBreakpointsLogPoints(t *testing.T) {
 				client.ExpectConfigurationDoneResponse(t)
 
 				// There may be up to 1 breakpoint and any number of log points that are
-				// hit concurrently. We should get a stopped event everytime the breakpoint
+				// hit concurrently. We should get a stopped event every time the breakpoint
 				// is hit and an output event for each log point hit.
 				var oeCount, seCount int
 				for oeCount < 10 || seCount < 10 {
