@@ -116,7 +116,7 @@ The substitute-path feature can be used to solve this problem, see `help config`
 
 The `sources` command could also be useful in troubleshooting this problem, it shows the list of file paths that has been embedded by the compiler into the executable.
 
-For more informations on path substitution see [path substitution](cli/substitutepath.md).
+For more information on path substitution see [path substitution](cli/substitutepath.md).
 
 If you still think this is a bug in Delve and not a configuration problem, open an [issue](https://github.com/go-delve/delve/issues), filling the issue template and including the logs produced by delve with the options `--log --log-output=rpc,dap`.
 

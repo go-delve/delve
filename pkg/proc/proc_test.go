@@ -5066,7 +5066,7 @@ func TestRefreshCurThreadSelGAfterContinueOnceError(t *testing.T) {
 			f, l, fn := p.BinInfo().PCToLine(pc)
 			t.Logf("Second continue did not return an error %s:%d %#v", f, l, fn)
 			if fn != nil && fn.Name == "runtime.fatalpanic" {
-				// this is also ok, it just means this debugserver supports --unmask-signals and it's working as intented.
+				// this is also ok, it just means this debugserver supports --unmask-signals and it's working as intended.
 				return
 			}
 		}

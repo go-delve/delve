@@ -478,7 +478,7 @@ func frameoffCondition(frame *Stackframe) ast.Expr {
 }
 
 // StepOut resumes the processes in the group, continuing the selected target
-// until until the current goroutine exits the function currently being
+// until the current goroutine exits the function currently being
 // executed or a deferred function is executed
 func (grp *TargetGroup) StepOut() error {
 	backward := grp.GetDirection() == Backward

@@ -2063,7 +2063,7 @@ func (bi *BinaryInfo) findTypeExpr(expr ast.Expr) (godwarf.Type, error) {
 	}
 	bi.expandPackagesInType(expr)
 	if snode, ok := expr.(*ast.StarExpr); ok {
-		// Pointer types only appear in the dwarf informations when
+		// Pointer types only appear in the dwarf information when
 		// a pointer to the type is used in the target program, here
 		// we create a pointer type on the fly so that the user can
 		// specify a pointer to any variable used in the target program

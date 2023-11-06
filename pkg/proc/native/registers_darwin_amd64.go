@@ -298,7 +298,7 @@ func registers(thread *nativeThread) (proc.Registers, error) {
 	}
 	kret = C.get_identity(C.mach_port_name_t(thread.os.threadAct), &identity)
 	if kret != C.KERN_SUCCESS {
-		return nil, fmt.Errorf("could not get thread identity informations")
+		return nil, fmt.Errorf("could not get thread identity information")
 	}
 	/*
 		thread_identifier_info::thread_handle contains the base of the

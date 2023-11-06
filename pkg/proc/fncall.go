@@ -87,7 +87,7 @@ type functionCallState struct {
 	// called function panics.
 	panicvar *Variable
 	// undoInjection is set after evalop.CallInjectionSetTarget runs and cleared by evalCallInjectionComplete
-	// it contains informations on how to undo a function call injection without running it
+	// it contains information on how to undo a function call injection without running it
 	undoInjection *undoInjection
 
 	protocolReg   uint64

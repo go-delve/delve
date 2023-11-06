@@ -947,7 +947,7 @@ func TestTrace2(t *testing.T) {
 func TestTraceMultipleGoroutines(t *testing.T) {
 	dlvbin := getDlvBin(t)
 
-	// TODO(derekparker) this test has to be a bit vague to avoid flakyness.
+	// TODO(derekparker) this test has to be a bit vague to avoid flakiness.
 	// I think a future improvement could be to use regexp captures to match the
 	// goroutine IDs at function entry and exit.
 	expected := []byte("main.callme(0, \"five\")\n")

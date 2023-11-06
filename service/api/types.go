@@ -179,7 +179,7 @@ type Thread struct {
 
 	// Breakpoint this thread is stopped at
 	Breakpoint *Breakpoint `json:"breakPoint,omitempty"`
-	// Informations requested by the current breakpoint
+	// Information requested by the current breakpoint
 	BreakpointInfo *BreakpointInfo `json:"breakPointInfo,omitempty"`
 
 	// ReturnValues contains the return values of the function we just stepped out of
@@ -422,7 +422,7 @@ type DebuggerCommand struct {
 	UnsafeCall bool `json:"unsafeCall,omitempty"`
 }
 
-// BreakpointInfo contains informations about the current breakpoint
+// BreakpointInfo contains information about the current breakpoint
 type BreakpointInfo struct {
 	Stacktrace []Stackframe `json:"stacktrace,omitempty"`
 	Goroutine  *Goroutine   `json:"goroutine,omitempty"`
