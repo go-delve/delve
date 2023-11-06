@@ -1,5 +1,3 @@
-//go:build go1.12
-
 package version
 
 import (
