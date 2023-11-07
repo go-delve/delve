@@ -2781,7 +2781,7 @@ func printcontextThread(t *Term, th *api.Thread) {
 		bpname = fmt.Sprintf("[Breakpoint %d] ", th.Breakpoint.ID)
 	}
 
-	if th.Breakpoint.Tracepoint || th.Breakpoint.TraceReturn || th.Breakpoint.TraceFollow{
+	if th.Breakpoint.Tracepoint || th.Breakpoint.TraceReturn {
 		// we may need a special indented print here for TraceFollow
 		printTracepoint(t, th, bpname, fn, args, hasReturnValue)
 		return

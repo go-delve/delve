@@ -684,74 +684,120 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 		}()
 		if traceFollowCalls {
 			funcs_children, err := client.ListFunctionsDeep(regexp)
-		} else  {
-			funcs, err := client.ListFunctions(regexp)
-		}
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 1
-		}
-		success := false
-		for i := range funcs {
-			if traceUseEBPF {
-				if traceFollowCalls {
-					err := client.CreateEBPFTracepoint(funcs_children[i].fn)
-				} else {
-					err := client.CreateEBPFTracepoint(funcs[i])
-				}
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
-				} else {
-					success = true
-				}
-			} else {
-				} else {
-					success = true
-				}
-			} else {
-				if traceFollowCalls {
-					 _, err = client.CreateBreakpoint(&api.Breakpoint{
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				return 1
+			}
+			success := false
+		   	for i := range funcs_children {
+                                if traceUseEBPF {
+                                        err := client.CreateEBPFTracepoint(funcs_children[i].fn)
+                                        if err != nil {
+                                                fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs_children[i].fn, err)
+                                        } else {
+                                                success = true
+                                        }
+                                } else {
+                                       _, err = client.CreateBreakpoint(&api.Breakpoint{
                                                 FunctionName: funcs_children[i].fn,
                                                 Tracepoint:   true,
-						TraceDepth:   funcs_children[i].depth,
+                                                TraceDepth:   funcs_children[i].depth,
                                                 Line:         -1,
                                                 Stacktrace:   traceStackDepth,
                                                 LoadArgs:     &terminal.ShortLoadConfig,
-                                        })
+                                                })
 
-				} else {
-				// Fall back to breakpoint based tracing if we get an error.
-					_, err = client.CreateBreakpoint(&api.Breakpoint{
-						FunctionName: funcs[i],
-						Tracepoint:   true,
-						Line:         -1,
-						Stacktrace:   traceStackDepth,
-						LoadArgs:     &terminal.ShortLoadConfig,
-					})
-				}
-				if err != nil && !isBreakpointExistsErr(err) {
-					fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
-					continue
-				} else {
-					success = true
-				}
-				addrs, err := client.FunctionReturnLocations(funcs[i])
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
-					continue
-				}
-				for i := range addrs {
-					_, err = client.CreateBreakpoint(&api.Breakpoint{
-						Addr:        addrs[i],
-						TraceReturn: true,
-						Stacktrace:  traceStackDepth,
-						Line:        -1,
-						LoadArgs:    &terminal.ShortLoadConfig,
-					})
-					if err != nil && !isBreakpointExistsErr(err) {
+                                 }
+				 if err != nil && !isBreakpointExistsErr(err) {
+                                            fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs_children[i].fn, err)
+                                            continue
+                                 } else {
+                                            success = true
+                                 }
+                                 addrs, err := client.FunctionReturnLocations(funcs_children[i].fn)
+                                if err != nil {
+                                         fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs_children[i].fn, err)
+                                         continue
+                                }
+                                for i := range addrs {
+                                         _, err = client.CreateBreakpoint(&api.Breakpoint{
+                                         Addr:        addrs[i],
+                                         TraceReturn: true,
+                                         Stacktrace:  traceStackDepth,
+                                         Line:        -1,
+                                         LoadArgs:    &terminal.ShortLoadConfig,
+                                        })
+                                        if err != nil && !isBreakpointExistsErr(err) {
+                                                fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
+                                        } else {
+                                                success = true
+                                        }
+                                }
+			}
+		} else  {
+			funcs, err := client.ListFunctions(regexp)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				return 1
+			}
+			success := false
+			for i := range funcs {
+				if traceUseEBPF {
+					if traceFollowCalls {
+						err := client.CreateEBPFTracepoint(funcs_children[i].fn)
+					} else {
+						err := client.CreateEBPFTracepoint(funcs[i])
+					}
+					if err != nil {
 						fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
 					} else {
 						success = true
+					}
+				} else {
+					if traceFollowCalls {
+						 _, err = client.CreateBreakpoint(&api.Breakpoint{
+                                	                FunctionName: funcs_children[i].fn,
+                                        	        Tracepoint:   true,
+							TraceDepth:   funcs_children[i].depth,
+                                            	    	Line:         -1,
+                                                	Stacktrace:   traceStackDepth,
+                                               		LoadArgs:     &terminal.ShortLoadConfig,
+                                        	})
+
+					} else {
+					// Fall back to breakpoint based tracing if we get an error.
+						_, err = client.CreateBreakpoint(&api.Breakpoint{
+							FunctionName: funcs[i],
+							Tracepoint:   true,
+							Line:         -1,
+							Stacktrace:   traceStackDepth,
+							LoadArgs:     &terminal.ShortLoadConfig,
+						})
+					}
+					if err != nil && !isBreakpointExistsErr(err) {
+						fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
+						continue
+					} else {
+						success = true
+					}
+					addrs, err := client.FunctionReturnLocations(funcs[i])
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
+						continue
+					}
+					for i := range addrs {
+						_, err = client.CreateBreakpoint(&api.Breakpoint{
+							Addr:        addrs[i],
+							TraceReturn: true,
+							Stacktrace:  traceStackDepth,
+							Line:        -1,
+							LoadArgs:    &terminal.ShortLoadConfig,
+						})
+						if err != nil && !isBreakpointExistsErr(err) {
+							fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
+						} else {
+							success = true
+						}
 					}
 				}
 			}
