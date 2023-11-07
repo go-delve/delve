@@ -1475,6 +1475,40 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 	return funcs, nil
 }
 
+// Functions returns a list of functions in the target process.
+func (d *Debugger) FunctionsDeep(filter string) ([]string, error) {
+        d.targetMutex.Lock()
+        defer d.targetMutex.Unlock()
+
+        regex, err := regexp.Compile(filter)
+        if err != nil {
+                return nil, fmt.Errorf("invalid filter argument: %s", err.Error())
+        }
+
+        funcs := []string{}
+        t := proc.ValidTargets{Group: d.target}
+        for t.Next() {
+                for _, f := range t.BinInfo().Functions {
+                        if regex.MatchString(f.Name) {
+				funcs = append(funcs, f.Name)
+				text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
+				if err != nil {
+					fmt.Errorf("disassemble failed")
+					return nil, err
+				}
+				for _, instr := range text {
+					if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil && !instr.DestLoc.Fn.PrivateRuntime() {
+                        			funcs = append(funcs,instr.DestLoc.Fn.Name)
+					}
+				}
+                        }
+                }
+        }
+        sort.Strings(funcs)
+        funcs = uniq(funcs)
+        return funcs, nil
+}
+
 // Types returns all type information in the binary.
 func (d *Debugger) Types(filter string) ([]string, error) {
 	d.targetMutex.Lock()

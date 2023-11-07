@@ -744,6 +744,7 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 			<-ch
 			client.Halt()
 		}()
+<<<<<<< HEAD
 		funcs, err := client.ListFunctions(regexp, traceFollowCalls)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
