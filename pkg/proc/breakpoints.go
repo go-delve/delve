@@ -994,7 +994,9 @@ type LogicalBreakpoint struct {
 	Set SetBreakpoint
 
 	Tracepoint  bool // Tracepoint flag
+	TraceFollow bool // Trace children flag
 	TraceReturn bool
+	TraceDepth  int  // Trace function depth 
 	Goroutine   bool     // Retrieve goroutine information
 	Stacktrace  int      // Number of stack frames to retrieve
 	Variables   []string // Variables to evaluate
