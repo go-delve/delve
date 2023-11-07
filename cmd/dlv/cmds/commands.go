@@ -87,6 +87,7 @@ var (
 	traceStackDepth    int
 	traceUseEBPF       bool
 	traceShowTimestamp bool
+	traceFollowCalls   bool
 
 	// redirect specifications for target process
 	redirects []string
@@ -324,6 +325,7 @@ only see the output of the trace operations you can redirect stdout.`,
 	traceCommand.Flags().BoolVarP(&traceShowTimestamp, "timestamp", "", false, "Show timestamp in the output")
 	traceCommand.Flags().IntVarP(&traceStackDepth, "stack", "s", 0, "Show stack trace with given depth. (Ignored with --ebpf)")
 	traceCommand.Flags().String("output", "", "Output path for the binary.")
+	traceCommand.Flags().BoolVarP(&traceFollowCalls, "follow-calls", "", false, "Trace all children of the function")
 	rootCommand.AddCommand(traceCommand)
 
 	coreCommand := &cobra.Command{
@@ -680,8 +682,11 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 			<-ch
 			client.Halt()
 		}()
-
-		funcs, err := client.ListFunctions(regexp)
+		if traceFollowCalls {
+			funcs_children, err := client.ListFunctionsDeep(regexp)
+		} else  {
+			funcs, err := client.ListFunctions(regexp)
+		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
@@ -689,21 +694,41 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 		success := false
 		for i := range funcs {
 			if traceUseEBPF {
-				err := client.CreateEBPFTracepoint(funcs[i])
+				if traceFollowCalls {
+					err := client.CreateEBPFTracepoint(funcs_children[i].fn)
+				} else {
+					err := client.CreateEBPFTracepoint(funcs[i])
+				}
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
 				} else {
 					success = true
 				}
 			} else {
+				} else {
+					success = true
+				}
+			} else {
+				if traceFollowCalls {
+					 _, err = client.CreateBreakpoint(&api.Breakpoint{
+                                                FunctionName: funcs_children[i].fn,
+                                                Tracepoint:   true,
+						TraceDepth:   funcs_children[i].depth,
+                                                Line:         -1,
+                                                Stacktrace:   traceStackDepth,
+                                                LoadArgs:     &terminal.ShortLoadConfig,
+                                        })
+
+				} else {
 				// Fall back to breakpoint based tracing if we get an error.
-				_, err = client.CreateBreakpoint(&api.Breakpoint{
-					FunctionName: funcs[i],
-					Tracepoint:   true,
-					Line:         -1,
-					Stacktrace:   traceStackDepth,
-					LoadArgs:     &terminal.ShortLoadConfig,
-				})
+					_, err = client.CreateBreakpoint(&api.Breakpoint{
+						FunctionName: funcs[i],
+						Tracepoint:   true,
+						Line:         -1,
+						Stacktrace:   traceStackDepth,
+						LoadArgs:     &terminal.ShortLoadConfig,
+					})
+				}
 				if err != nil && !isBreakpointExistsErr(err) {
 					fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
 					continue

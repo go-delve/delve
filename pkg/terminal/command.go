@@ -2781,7 +2781,8 @@ func printcontextThread(t *Term, th *api.Thread) {
 		bpname = fmt.Sprintf("[Breakpoint %d] ", th.Breakpoint.ID)
 	}
 
-	if th.Breakpoint.Tracepoint || th.Breakpoint.TraceReturn {
+	if th.Breakpoint.Tracepoint || th.Breakpoint.TraceReturn || th.Breakpoint.TraceFollow{
+		// we may need a special indented print here for TraceFollow
 		printTracepoint(t, th, bpname, fn, args, hasReturnValue)
 		return
 	}
@@ -2875,6 +2876,7 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 
 	if th.Breakpoint.Tracepoint {
 		fmt.Fprintf(t.stdout, "> goroutine(%d): %s%s(%s)\n", th.GoroutineID, bpname, fn.Name(), args)
+		// Print indentation acc to th.TraceDepth
 		printBreakpointInfo(t, th, !hasReturnValue)
 	}
 	if th.Breakpoint.TraceReturn {
@@ -2882,6 +2884,7 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 		for _, v := range th.ReturnValues {
 			retVals = append(retVals, v.SinglelineString())
 		}
+		// Print return indentation acc to th.TraceDepth
 		fmt.Fprintf(t.stdout, ">> goroutine(%d): => (%s)\n", th.GoroutineID, strings.Join(retVals, ","))
 	}
 	if th.Breakpoint.TraceReturn || !hasReturnValue {
