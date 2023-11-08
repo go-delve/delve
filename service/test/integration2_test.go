@@ -40,6 +40,8 @@ var normalLoadConfig = api.LoadConfig{
 var testBackend, buildMode string
 
 func TestMain(m *testing.M) {
+	runtime.GOMAXPROCS(2)
+
 	flag.StringVar(&testBackend, "backend", "", "selects backend")
 	flag.StringVar(&buildMode, "test-buildmode", "", "selects build mode")
 	var logOutput string

@@ -35,10 +35,6 @@ func assertError(err error, t *testing.T, s string) {
 	}
 }
 
-func init() {
-	runtime.GOMAXPROCS(2)
-}
-
 type nextTest struct {
 	begin, end int
 }

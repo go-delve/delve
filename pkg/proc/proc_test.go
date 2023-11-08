@@ -42,12 +42,10 @@ import (
 var normalLoadConfig = proc.LoadConfig{true, 1, 64, 64, -1, 0}
 var testBackend, buildMode string
 
-func init() {
+func TestMain(m *testing.M) {
 	runtime.GOMAXPROCS(4)
 	os.Setenv("GOMAXPROCS", "4")
-}
 
-func TestMain(m *testing.M) {
 	flag.StringVar(&testBackend, "backend", "", "selects backend")
 	flag.StringVar(&buildMode, "test-buildmode", "", "selects build mode")
 	var logConf string

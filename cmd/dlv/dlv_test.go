@@ -33,10 +33,6 @@ import (
 var testBackend string
 var ldFlags string
 
-func init() {
-	ldFlags = os.Getenv("CGO_LDFLAGS")
-}
-
 func TestMain(m *testing.M) {
 	flag.StringVar(&testBackend, "backend", "", "selects backend")
 	flag.Parse()
@@ -49,6 +45,7 @@ func TestMain(m *testing.M) {
 			}
 		}
 	}
+	ldFlags = os.Getenv("CGO_LDFLAGS")
 	os.Exit(protest.RunTestsWithFixtures(m))
 }
 
