@@ -2282,7 +2282,7 @@ func packages(t *Term, ctx callContext, args string) error {
 }
 
 func funcs(t *Term, ctx callContext, args string) error {
-	return t.printSortedStrings(t.client.ListFunctions(args))
+	return t.printSortedStrings(t.client.ListFunctions(args,0))
 }
 
 func types(t *Term, ctx callContext, args string) error {
@@ -3475,7 +3475,7 @@ func (t *Term) formatBreakpointLocation(bp *api.Breakpoint) string {
 }
 
 func shouldAskToSuspendBreakpoint(t *Term) bool {
-	fns, _ := t.client.ListFunctions(`^plugin\.Open$`)
+	fns, _ := t.client.ListFunctions(`^plugin\.Open$`,0)
 	_, err := t.client.GetState()
 	return len(fns) > 0 || isErrProcessExited(err) || t.client.FollowExecEnabled()
 }

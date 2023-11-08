@@ -105,7 +105,7 @@ type Client interface {
 	// ListSources lists all source files in the process matching filter.
 	ListSources(filter string) ([]string, error)
 	// ListFunctions lists all functions in the process matching filter.
-	ListFunctions(filter string) ([]string, error)
+	ListFunctions(filter string, TraceFollow int) ([]string, error)
 	// ListTypes lists all types in the process matching filter.
 	ListTypes(filter string) ([]string, error)
 	// ListPackagesBuildInfo lists all packages in the process matching filter.

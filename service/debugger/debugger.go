@@ -1477,7 +1477,7 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 }
 
 // Functions returns a list of functions in the target process.
-func (d *Debugger) FunctionsDeep(filter string) ([]string, error) {
+func (d *Debugger) FunctionsDeep(filter string, FollowCalls int) ([]string, error) {
         d.targetMutex.Lock()
         defer d.targetMutex.Unlock()
 
@@ -1487,10 +1487,19 @@ func (d *Debugger) FunctionsDeep(filter string) ([]string, error) {
         }
 
         funcs := []string{}
+	depth := make(map[string]int)
+	visited := make(map[string]bool)
+
         t := proc.ValidTargets{Group: d.target}
         for t.Next() {
                 for _, f := range t.BinInfo().Functions {
                         if regex.MatchString(f.Name) {
+				depth[f.Name]++
+				if visited[f.Name] == false {
+					visited[f.Name]=true 
+				} else {
+					continue 
+				}
 				funcs = append(funcs, f.Name)
 				text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
 				if err != nil {
@@ -1498,8 +1507,13 @@ func (d *Debugger) FunctionsDeep(filter string) ([]string, error) {
 					return nil, err
 				}
 				for _, instr := range text {
-					if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil && !instr.DestLoc.Fn.PrivateRuntime() {
-                        			funcs = append(funcs,instr.DestLoc.Fn.Name)
+					if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
+						cf := instr.DestLoc.Fn
+						depth[cf.Name]++
+						if depth[cf.Name] <= FollowCalls || !visited[cf.Name] {
+							visited[cf.Name] = true 
+                        				funcs = append(funcs,instr.DestLoc.Fn.Name)
+						}
 					}
 				}
                         }
