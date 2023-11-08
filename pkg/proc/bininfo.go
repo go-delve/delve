@@ -649,7 +649,7 @@ func (fn *Function) exportedRuntime() bool {
 }
 
 // unexportedRuntime reports whether the function is a private runtime function.
-func (fn *Function) PrivateRuntime() bool {
+func (fn *Function) privateRuntime() bool {
 	name := fn.Name
 	const n = len("runtime.")
 	return len(name) > n && name[:n] == "runtime." && !('A' <= name[n] && name[n] <= 'Z')

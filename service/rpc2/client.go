@@ -347,9 +347,9 @@ func (c *RPCClient) ListSources(filter string) ([]string, error) {
 	return sources.Sources, err
 }
 
-func (c *RPCClient) ListFunctions(filter string) ([]string, error) {
+func (c *RPCClient) ListFunctions(filter string, TraceFollow int) ([]string, error) {
 	funcs := new(ListFunctionsOut)
-	err := c.call("ListFunctions", ListFunctionsIn{filter}, funcs)
+	err := c.call("ListFunctions", ListFunctionsIn{filter, TraceFollow}, funcs)
 	return funcs.Funcs, err
 }
 

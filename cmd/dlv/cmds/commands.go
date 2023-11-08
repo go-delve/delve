@@ -704,9 +704,14 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 
 			processArgs = append([]string{debugname}, targetArgs...)
 		}
+<<<<<<< HEAD
 		if dlvArgsLen >= 3 && traceFollowCalls <= 0 {
 			fmt.Fprintln(os.Stderr, "Need to specify a trace depth of atleast 1")
 			return 1
+=======
+		if dlvArgsLen >= 2 && traceFollowCalls <= 1 {
+			fmt.Fprintln(os.Stderr, "Need to specify a trace depth of atleast 1")
+>>>>>>> 8340fed4 (modified function to add children to funcs array)
 		}
 
 		// Make a local in-memory connection that client and server use to communicate
@@ -745,6 +750,9 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 			client.Halt()
 		}()
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 8340fed4 (modified function to add children to funcs array)
 		funcs, err := client.ListFunctions(regexp, traceFollowCalls)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -761,6 +769,7 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 				}
 			} else {
 				// Fall back to breakpoint based tracing if we get an error.
+<<<<<<< HEAD
 				var stackdepth int
 				// Default size of stackdepth to trace function calls and descendants=20
 				stackdepth = traceStackDepth
@@ -777,6 +786,15 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 					RootFuncName:     regexp,
 				})
 
+=======
+				_, err = client.CreateBreakpoint(&api.Breakpoint{
+					FunctionName: funcs[i],
+					Tracepoint:   true,
+					Line:         -1,
+					Stacktrace:   traceStackDepth,
+					LoadArgs:     &terminal.ShortLoadConfig,
+				})
+>>>>>>> 8340fed4 (modified function to add children to funcs array)
 				if err != nil && !isBreakpointExistsErr(err) {
 					fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
 					continue
@@ -790,6 +808,7 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 				}
 				for i := range addrs {
 					_, err = client.CreateBreakpoint(&api.Breakpoint{
+<<<<<<< HEAD
 						Addr:             addrs[i],
 						TraceReturn:      true,
 						Stacktrace:       stackdepth,
@@ -797,6 +816,13 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 						LoadArgs:         &terminal.ShortLoadConfig,
 						TraceFollowCalls: traceFollowCalls,
 						RootFuncName:     regexp,
+=======
+						Addr:        addrs[i],
+						TraceReturn: true,
+						Stacktrace:  traceStackDepth,
+						Line:        -1,
+						LoadArgs:    &terminal.ShortLoadConfig,
+>>>>>>> 8340fed4 (modified function to add children to funcs array)
 					})
 					if err != nil && !isBreakpointExistsErr(err) {
 						fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)

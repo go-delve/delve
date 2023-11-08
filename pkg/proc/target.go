@@ -566,7 +566,7 @@ func (t *Target) dwrapUnwrap(fn *Function) *Function {
 		return fn
 	}
 	for _, instr := range text {
-		if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil && !instr.DestLoc.Fn.PrivateRuntime() {
+		if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil && !instr.DestLoc.Fn.privateRuntime() {
 			t.BinInfo().dwrapUnwrapCache[fn.Entry] = instr.DestLoc.Fn
 			return instr.DestLoc.Fn
 		}
