@@ -6362,7 +6362,10 @@ func TestNextGenericMethodThroughInterface(t *testing.T) {
 func TestIssue3545(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcessArgs("nilptr", t, "", []string{}, protest.EnableOptimization, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		assertNoError(grp.Continue(), t, "Continue")
+		err := grp.Continue()
+		if err != nil && err.Error() == "bad access" {
+			grp.Continue()
+		}
 		locations, err := proc.ThreadStacktrace(p, p.CurrentThread(), 40)
 		assertNoError(err, t, "Stacktrace()")
 		var foundMain bool
@@ -6373,6 +6376,9 @@ func TestIssue3545(t *testing.T) {
 				}
 				foundMain = true
 			}
+		}
+		if !foundMain {
+			t.Fatal("did not find main.main in stack trace")
 		}
 	})
 }
