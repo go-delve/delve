@@ -117,7 +117,7 @@ func arm64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Binary
 		fctxt.CFA = rule
 	}
 
-	// We assume that RBP is the frame pointer and we want to keep it updated,
+	// We assume that RBP is the frame pointer, and we want to keep it updated,
 	// so that we can use it to unwind the stack even when we encounter frames
 	// without descriptor entries.
 	// If there isn't a rule already we emit one.
