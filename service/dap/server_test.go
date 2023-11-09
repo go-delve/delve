@@ -2502,7 +2502,7 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 					client.VariablesRequest(globalsScope)
 					globals := client.ExpectVariablesResponse(t)
 					checkChildren(t, globals, "Globals", 1)
-					ref := checkVarExact(t, globals, 0, "SomeVar", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeVar", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType {X: 0}", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType", hasChildren)
+					ref := checkVarExact(t, globals, 0, "SomeVar", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeVar", "pkg.SomeType {X: 0}", "github.com/go-delve/delve/_fixtures/internal/dir0/pkg.SomeType", hasChildren)
 
 					if ref > 0 {
 						client.VariablesRequest(ref)
