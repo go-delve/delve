@@ -280,11 +280,9 @@ const (
 	maxStringLenInCallRetVars = 1 << 10 // 1024
 )
 
-var (
-	// Max number of goroutines that we will return.
-	// This is a var for testing
-	maxGoroutines = 1 << 10
-)
+// Max number of goroutines that we will return.
+// This is a var for testing
+var maxGoroutines = 1 << 10
 
 // NewServer creates a new DAP Server. It takes an opened Listener
 // via config and assumes its ownership. config.DisconnectChan has to be set;
@@ -817,7 +815,8 @@ func (s *Session) logToConsole(msg string) {
 		Body: dap.OutputEventBody{
 			Output:   msg + "\n",
 			Category: "console",
-		}})
+		},
+	})
 }
 
 func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
@@ -889,7 +888,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	var args = defaultLaunchConfig // narrow copy for initializing non-zero default values
+	args := defaultLaunchConfig // narrow copy for initializing non-zero default values
 	if err := unmarshalLaunchAttachArgs(request.Arguments, &args); err != nil {
 		s.sendShowUserErrorResponse(request.Request,
 			FailedToLaunch, "Failed to launch", fmt.Sprintf("invalid debug configuration - %v", err))
@@ -1002,7 +1001,8 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 				Body: dap.OutputEventBody{
 					Output:   fmt.Sprintf("Build Error: %s\n%s (%s)\n", cmd, strings.TrimSpace(string(out)), err.Error()),
 					Category: "stderr",
-				}})
+				},
+			})
 			// Users are used to checking the Debug Console for build errors.
 			// No need to bother them with a visible pop-up.
 			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
@@ -1035,7 +1035,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	argsToLog.Cwd, _ = filepath.Abs(args.Cwd)
 	s.config.log.Debugf("launching binary '%s' with config: %s", debugbinary, prettyPrint(argsToLog))
 
-	var redirected = false
+	redirected := false
 	switch args.OutputMode {
 	case "remote":
 		redirected = true
@@ -1062,7 +1062,8 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 						Body: dap.OutputEventBody{
 							Output:   outs,
 							Category: category,
-						}})
+						},
+					})
 				}
 				if err != nil {
 					if err == io.EOF {
@@ -1687,7 +1688,8 @@ func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneReque
 func (s *Session) onContinueRequest(request *dap.ContinueRequest, allowNextStateChange chan struct{}) {
 	s.send(&dap.ContinueResponse{
 		Response: *newResponse(request.Request),
-		Body:     dap.ContinueResponseBody{AllThreadsContinued: true}})
+		Body:     dap.ContinueResponseBody{AllThreadsContinued: true},
+	})
 	s.runUntilStopAndNotify(api.Continue, allowNextStateChange)
 }
 
@@ -1762,7 +1764,8 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 				Body: dap.OutputEventBody{
 					Output:   fmt.Sprintf("Unable to retrieve goroutines: %s\n", err.Error()),
 					Category: "stderr",
-				}})
+				},
+			})
 		}
 		threads = []dap.Thread{{Id: 1, Name: "Dummy"}}
 	} else if len(gs) == 0 {
@@ -1836,7 +1839,7 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 //   - "remote" -- attaches client to a debugger already attached to a process.
 //     Required args: none (host/port are used externally to connect)
 func (s *Session) onAttachRequest(request *dap.AttachRequest) {
-	var args = defaultAttachConfig // narrow copy for initializing non-zero default values
+	args := defaultAttachConfig // narrow copy for initializing non-zero default values
 	if err := unmarshalLaunchAttachArgs(request.Arguments, &args); err != nil {
 		s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach", fmt.Sprintf("invalid debug configuration - %v", err))
 		return
@@ -2597,7 +2600,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 
 	// Some of the types might be fully or partially not loaded based on LoadConfig.
 	// Those that are fully missing (e.g. due to hitting MaxVariableRecurse), can be reloaded in place.
-	var reloadVariable = func(v *proc.Variable, qualifiedNameOrExpr string) (value string) {
+	reloadVariable := func(v *proc.Variable, qualifiedNameOrExpr string) (value string) {
 		// We might be loading variables from the frame that's not topmost, so use
 		// frame-independent address-based expression, not fully-qualified name as per
 		// https://github.com/go-delve/delve/blob/master/Documentation/api/ClientHowto.md#looking-into-variables.
@@ -3531,6 +3534,7 @@ func newEvent(event string) *dap.Event {
 
 const BetterBadAccessError = `invalid memory address or nil pointer dereference [signal SIGSEGV: segmentation violation]
 Unable to propagate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)`
+
 const BetterNextWhileNextingError = `Unable to step while the previous step is interrupted by a breakpoint.
 Use 'Continue' to resume the original step command.`
 

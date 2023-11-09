@@ -31,12 +31,16 @@ import (
 	"github.com/google/go-dap"
 )
 
-const stopOnEntry bool = true
-const hasChildren bool = true
-const noChildren bool = false
+const (
+	stopOnEntry bool = true
+	hasChildren bool = true
+	noChildren  bool = false
+)
 
-const localsScope = 1000
-const globalsScope = 1001
+const (
+	localsScope  = 1000
+	globalsScope = 1001
+)
 
 var testBackend string
 
@@ -288,7 +292,8 @@ func TestSessionStop(t *testing.T) {
 			}
 			session := NewSession(conn, &Config{
 				Config:        &service.Config{DisconnectChan: make(chan struct{})},
-				StopTriggered: make(chan struct{})}, nil)
+				StopTriggered: make(chan struct{}),
+			}, nil)
 			serveDAPCodecDone := make(chan struct{})
 			go func() {
 				session.ServeDAPCodec()
@@ -812,7 +817,8 @@ func TestPreSetBreakpoint(t *testing.T) {
 //	wantFrames - number of frames returned (length of StackTraceResponse.Body.StackFrames array).
 //	wantTotalFrames - total number of stack frames available (StackTraceResponse.Body.TotalFrames).
 func checkStackFramesExact(t *testing.T, got *dap.StackTraceResponse,
-	wantStartName string, wantStartLine interface{}, wantStartID, wantFrames, wantTotalFrames int) {
+	wantStartName string, wantStartLine interface{}, wantStartID, wantFrames, wantTotalFrames int,
+) {
 	t.Helper()
 	checkStackFramesNamed("", t, got, wantStartName, wantStartLine, wantStartID, wantFrames, wantTotalFrames, true)
 }
@@ -883,7 +889,8 @@ func TestFilterGoroutines(t *testing.T) {
 				client.LaunchRequestWithArgs(map[string]interface{}{
 					"mode":        "exec",
 					"program":     fixture.Path,
-					"stopOnEntry": !stopOnEntry})
+					"stopOnEntry": !stopOnEntry,
+				})
 			},
 			// Set breakpoints
 			fixture.Source, []int{30},
@@ -920,17 +927,19 @@ func TestFilterGoroutines(t *testing.T) {
 				},
 				disconnect: false,
 			}})
-
 	})
 }
 
 func checkStackFramesHasMore(t *testing.T, got *dap.StackTraceResponse,
-	wantStartName string, wantStartLine, wantStartID, wantFrames, wantTotalFrames int) {
+	wantStartName string, wantStartLine, wantStartID, wantFrames, wantTotalFrames int,
+) {
 	t.Helper()
 	checkStackFramesNamed("", t, got, wantStartName, wantStartLine, wantStartID, wantFrames, wantTotalFrames, false)
 }
+
 func checkStackFramesNamed(testName string, t *testing.T, got *dap.StackTraceResponse,
-	wantStartName string, wantStartLine interface{}, wantStartID, wantFrames, wantTotalFrames int, totalExact bool) {
+	wantStartName string, wantStartLine interface{}, wantStartID, wantFrames, wantTotalFrames int, totalExact bool,
+) {
 	t.Helper()
 	if totalExact && got.Body.TotalFrames != wantTotalFrames {
 		t.Errorf("%s\ngot  %#v\nwant TotalFrames=%d", testName, got.Body.TotalFrames, wantTotalFrames)
@@ -1202,7 +1211,6 @@ func TestStackTraceRequest(t *testing.T) {
 					client.StackTraceRequest(1, 0, 0)
 					stResp = client.ExpectStackTraceResponse(t)
 					checkStackFramesExact(t, stResp, "main.main", 18, startHandle, 3, 3)
-
 				},
 				disconnect: false,
 			}})
@@ -1382,7 +1390,6 @@ func TestSelectedThreadsRequest(t *testing.T) {
 					oe := client.ExpectOutputEvent(t)
 					if !strings.HasPrefix(oe.Body.Output, "Too many goroutines") {
 						t.Errorf("got %#v, expected Output=\"Too many goroutines...\"\n", oe)
-
 					}
 					tr := client.ExpectThreadsResponse(t)
 
@@ -1403,7 +1410,6 @@ func TestSelectedThreadsRequest(t *testing.T) {
 				},
 				disconnect: true,
 			}})
-
 	})
 }
 
@@ -2288,7 +2294,7 @@ func TestVariablesLoading(t *testing.T) {
 					client.StackTraceRequest(1, 0, 0)
 					client.ExpectStackTraceResponse(t)
 
-					var loadvars = func(frame int) {
+					loadvars := func(frame int) {
 						client.ScopesRequest(frame)
 						scopes := client.ExpectScopesResponse(t)
 						localsRef := 0
@@ -3311,7 +3317,6 @@ func TestSetFunctionBreakpoints(t *testing.T) {
 						t.Errorf("got %#v, want Reason=\"function breakpoint\", ThreadId=1", se)
 					}
 					checkStop(t, client, 1, "main.anotherFunction", 26)
-
 				},
 				disconnect: true,
 			}})
@@ -3613,7 +3618,6 @@ func TestSetBreakpointWhileRunning(t *testing.T) {
 						t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", se)
 					}
 					checkStop(t, client, 1, "main.sayhi", 9)
-
 				},
 				disconnect: true,
 			}})
@@ -3668,7 +3672,6 @@ func TestSetFunctionBreakpointWhileRunning(t *testing.T) {
 						t.Errorf("\ngot  %#v\nwant Reason='breakpoint' AllThreadsStopped=true ThreadId=1", se)
 					}
 					checkStop(t, client, 1, "main.main", 16)
-
 				},
 				disconnect: true,
 			}})
@@ -3805,7 +3808,6 @@ func substitutePathTestHelper(t *testing.T, fixture protest.Fixture, client *dap
 		// Set breakpoints
 		filepath.Join(nonexistentDir, "loopprog.go"), []int{8},
 		[]onBreakpoint{{
-
 			execute: func() {
 				checkStop(t, client, 1, "main.loop", 8)
 			},
@@ -4719,7 +4721,7 @@ func testNextParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 	client.SetBreakpointsRequest(fixture.Source, []int{8})
 	client.ExpectSetBreakpointsResponse(t)
 
-	var parkedGoid = -1
+	parkedGoid := -1
 	for parkedGoid < 0 {
 		client.ContinueRequest(1)
 		client.ExpectContinueResponse(t)
@@ -4849,6 +4851,7 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 			}})
 	})
 }
+
 func checkStopOnNextWhileNextingError(t *testing.T, client *daptest.Client, threadID int) {
 	t.Helper()
 	oe := client.ExpectOutputEvent(t)
@@ -5046,7 +5049,6 @@ func TestPanicBreakpointOnContinue(t *testing.T) {
 						} else if frame.Source != nil && frame.Source.PresentationHint != "" {
 							t.Errorf("\ngot Body.StackFrames[%d]=%#v\nwant Source.PresentationHint=\"\"", i, frame)
 						}
-
 					}
 				},
 				disconnect: true,
@@ -5131,7 +5133,6 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 					if eInfo.Body.ExceptionId != "fatal error" || !strings.HasPrefix(eInfo.Body.Description, errorPrefix) {
 						t.Errorf("\ngot  %#v\nwant ExceptionId=\"runtime error\" Text=%s", eInfo, errorPrefix)
 					}
-
 				},
 				disconnect: true,
 			}})
@@ -5307,7 +5308,8 @@ func TestLaunchDebugRequest(t *testing.T) {
 		// only relying on the source to be built in response to LaunchRequest.
 		runDebugSession(t, client, "launch", func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "debug", "program": fixture.Source, "output": tmpBin})
+				"mode": "debug", "program": fixture.Source, "output": tmpBin,
+			})
 		})
 	})
 	// Wait for the test to finish to capture all stderr
@@ -5343,20 +5345,23 @@ func TestLaunchRequestDefaults(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, "launch", func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "" /*"debug" by default*/, "program": fixture.Source, "output": "__mybin"})
+				"mode": "" /*"debug" by default*/, "program": fixture.Source, "output": "__mybin",
+			})
 		})
 	})
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, "launch", func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				/*"mode":"debug" by default*/ "program": fixture.Source, "output": "__mybin"})
+				/*"mode":"debug" by default*/ "program": fixture.Source, "output": "__mybin",
+			})
 		})
 	})
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, "launch", func() {
 			// Use the temporary output binary.
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "debug", "program": fixture.Source})
+				"mode": "debug", "program": fixture.Source,
+			})
 		})
 	})
 }
@@ -5373,7 +5378,8 @@ func TestLaunchRequestOutputPath(t *testing.T) {
 			func() {
 				client.LaunchRequestWithArgs(map[string]interface{}{
 					"mode": "debug", "program": fixture.Source, "output": inrel,
-					"cwd": filepath.Dir(wd)})
+					"cwd": filepath.Dir(wd),
+				})
 			},
 			// Set breakpoints
 			fixture.Source, []int{12},
@@ -5421,7 +5427,8 @@ func TestNoDebug_GoodExitStatus(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runNoDebugSession(t, client, func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"noDebug": true, "mode": "debug", "program": fixture.Source, "output": "__mybin"})
+				"noDebug": true, "mode": "debug", "program": fixture.Source, "output": "__mybin",
+			})
 		}, 0)
 	})
 }
@@ -5430,7 +5437,8 @@ func TestNoDebug_BadExitStatus(t *testing.T) {
 	runTest(t, "issue1101", func(client *daptest.Client, fixture protest.Fixture) {
 		runNoDebugSession(t, client, func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"noDebug": true, "mode": "exec", "program": fixture.Path})
+				"noDebug": true, "mode": "exec", "program": fixture.Path,
+			})
 		}, 2)
 	})
 }
@@ -5458,11 +5466,12 @@ func TestNoDebug_AcceptNoRequestsButDisconnect(t *testing.T) {
 		client.InitializeRequest()
 		client.ExpectInitializeResponseAndCapabilities(t)
 		client.LaunchRequestWithArgs(map[string]interface{}{
-			"noDebug": true, "mode": "exec", "program": fixture.Path})
+			"noDebug": true, "mode": "exec", "program": fixture.Path,
+		})
 		client.ExpectLaunchResponse(t)
 
 		// Anything other than disconnect should get rejected
-		var ExpectNoDebugError = func(cmd string) {
+		ExpectNoDebugError := func(cmd string) {
 			er := client.ExpectErrorResponse(t)
 			if !checkErrorMessageFormat(er.Body.Error, fmt.Sprintf("noDebug mode: unable to process '%s' request", cmd)) {
 				t.Errorf("\ngot %#v\nwant 'noDebug mode: unable to process '%s' request'", er, cmd)
@@ -5531,7 +5540,8 @@ func TestLaunchRequestWithRelativeBuildPath(t *testing.T) {
 	dlvwd, _ := os.Getwd()
 	runDebugSession(t, client, "launch", func() {
 		client.LaunchRequestWithArgs(map[string]interface{}{
-			"mode": "debug", "program": program, "cwd": filepath.Dir(dlvwd)})
+			"mode": "debug", "program": program, "cwd": filepath.Dir(dlvwd),
+		})
 	})
 	<-serverStopped
 }
@@ -5550,7 +5560,8 @@ func TestLaunchRequestWithRelativeExecPath(t *testing.T) {
 		defer os.Remove(symlink)
 		runDebugSession(t, client, "launch", func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
-				"mode": "exec", "program": symlink})
+				"mode": "exec", "program": symlink,
+			})
 		})
 	})
 }
@@ -5640,7 +5651,8 @@ func TestLaunchTestRequest(t *testing.T) {
 								checkVarExact(t, locals, i, "wd", "wd", fmt.Sprintf("%q", tc.wantWD), "string", noChildren)
 							}
 						}
-					}}})
+					},
+				}})
 
 			<-serverStopped
 		})
@@ -5656,7 +5668,8 @@ func TestLaunchRequestWithArgs(t *testing.T) {
 		runDebugSession(t, client, "launch", func() {
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "exec", "program": fixture.Path,
-				"args": []string{"test", "pass flag"}})
+				"args": []string{"test", "pass flag"},
+			})
 		})
 	})
 }
@@ -5672,7 +5685,8 @@ func TestLaunchRequestWithBuildFlags(t *testing.T) {
 			// only relying on the source to be built in response to LaunchRequest.
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "debug", "program": fixture.Source, "output": "__mybin",
-				"buildFlags": "-ldflags '-X main.Hello=World'"})
+				"buildFlags": "-ldflags '-X main.Hello=World'",
+			})
 		})
 	})
 }
@@ -5684,7 +5698,8 @@ func TestLaunchRequestWithBuildFlags2(t *testing.T) {
 			// only relying on the source to be built in response to LaunchRequest.
 			client.LaunchRequestWithArgs(map[string]interface{}{
 				"mode": "debug", "program": fixture.Source, "output": "__mybin",
-				"buildFlags": []string{"-ldflags", "-X main.Hello=World"}})
+				"buildFlags": []string{"-ldflags", "-X main.Hello=World"},
+			})
 		})
 	})
 }
@@ -5747,7 +5762,6 @@ func TestLaunchRequestWithEnv(t *testing.T) {
 			wantY:     true,
 		},
 	} {
-
 		t.Run(tc.name, func(t *testing.T) {
 			for k, v := range tc.initEnv {
 				if v != nil {
@@ -5794,7 +5808,8 @@ func TestAttachRequest(t *testing.T) {
 			// Attach
 			func() {
 				client.AttachRequest(map[string]interface{}{
-					/*"mode": "local" by default*/ "processId": cmd.Process.Pid, "stopOnEntry": false})
+					/*"mode": "local" by default*/ "processId": cmd.Process.Pid, "stopOnEntry": false,
+				})
 				client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
 			},
 			// Set breakpoints
@@ -7126,7 +7141,7 @@ func TestDisassemble(t *testing.T) {
 					}
 
 					// Request invalid instructions.
-					var checkInvalidInstruction = func(instructions []dap.DisassembledInstruction, count int, address uint64) {
+					checkInvalidInstruction := func(instructions []dap.DisassembledInstruction, count int, address uint64) {
 						if len(instructions) != count {
 							t.Errorf("\ngot %#v\nwant len(instructions) = %d", dr, count)
 						}
