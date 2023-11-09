@@ -500,15 +500,13 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 				it.err = err
 			} else {
 				ret = reg.Uint64Val
-				if it.frame.Call.Fn != nil {
-					if it.frame.Call.Fn.Name == "runtime.sigpanic" && it.bi.Arch.usesLR {
-						buf := make([]byte, 8)
-						_, err := it.mem.ReadMemory(buf, uint64(it.regs.CFA))
-						if err != nil {
-							it.err = err
-						}
-						binary.Read(bytes.NewReader(buf), binary.LittleEndian, &ret)
+				if it.frame.Call.Fn != nil && it.frame.Call.Fn.Name == "runtime.sigpanic" && it.bi.Arch.usesLR {
+					buf := make([]byte, 8)
+					_, err := it.mem.ReadMemory(buf, uint64(it.regs.CFA))
+					if err != nil {
+						it.err = err
 					}
+					binary.Read(bytes.NewReader(buf), binary.LittleEndian, &ret)
 				}
 			}
 			retaddr = uint64(it.regs.CFA + regRule.Offset)
