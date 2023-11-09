@@ -1475,6 +1475,32 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 	return funcs, nil
 }
 
+var (
+	depth= make(map[string]int) 
+)
+
+func traverse(t proc.ValidTargets, f *proc.Function, funcs []string, FollowCalls int) ([]string, error) {
+	if depth[f.Name] > FollowCalls {
+		return funcs, nil
+	}
+	funcs=append(funcs, f.Name) 
+ 	text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
+        if err != nil {
+             fmt.Errorf("disassemble failed")
+             return nil, err
+        }
+        for _, instr := range text {
+             if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
+                        cf := instr.DestLoc.Fn
+                        depth[cf.Name]=depth[f.Name]+1
+                        if depth[cf.Name] <= FollowCalls {
+				funcs, _ =traverse(t, cf, funcs, FollowCalls)
+			}
+             }
+	}
+ return funcs, nil
+
+}
 // Functions returns a list of functions in the target process.
 func (d *Debugger) FunctionsDeep(filter string, FollowCalls int) ([]string, error) {
         d.targetMutex.Lock()
@@ -1486,36 +1512,19 @@ func (d *Debugger) FunctionsDeep(filter string, FollowCalls int) ([]string, erro
         }
 
         funcs := []string{}
-	depth := make(map[string]int)
-	visited := make(map[string]bool)
+	//depth = make(map[string]int)
 
         t := proc.ValidTargets{Group: d.target}
         for t.Next() {
                 for _, f := range t.BinInfo().Functions {
                         if regex.MatchString(f.Name) {
-				depth[f.Name]++
-				if visited[f.Name] == false {
-					visited[f.Name]=true 
-				} else {
-					continue 
-				}
-				funcs = append(funcs, f.Name)
-				text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
-				if err != nil {
-					fmt.Errorf("disassemble failed")
-					return nil, err
-				}
-				for _, instr := range text {
-					if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
-						cf := instr.DestLoc.Fn
-						depth[cf.Name]++
-						if depth[cf.Name] <= FollowCalls || !visited[cf.Name] {
-							visited[cf.Name] = true 
-                        				funcs = append(funcs,instr.DestLoc.Fn.Name)
-						}
-					}
-				}
-                        }
+				depth[f.Name]=1
+				funcs, err =traverse(t, &f, funcs, FollowCalls) 
+        			if err != nil {
+             				fmt.Errorf("traverse failed")
+             				return nil, err
+	     			}
+			}
                 }
         }
         sort.Strings(funcs)
