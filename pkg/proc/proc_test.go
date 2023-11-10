@@ -6358,3 +6358,27 @@ func TestNextGenericMethodThroughInterface(t *testing.T) {
 		})
 	}
 }
+
+func TestIssue3545(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcessArgs("nilptr", t, "", []string{}, protest.EnableOptimization, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		err := grp.Continue()
+		if err != nil && err.Error() == "bad access" {
+			grp.Continue()
+		}
+		locations, err := proc.ThreadStacktrace(p, p.CurrentThread(), 40)
+		assertNoError(err, t, "Stacktrace()")
+		var foundMain bool
+		for _, loc := range locations {
+			if loc.Call.Fn != nil && loc.Call.Fn.Name == "main.main" {
+				if foundMain {
+					t.Fatal("main.main found more than once in the stacktrace")
+				}
+				foundMain = true
+			}
+		}
+		if !foundMain {
+			t.Fatal("did not find main.main in stack trace")
+		}
+	})
+}

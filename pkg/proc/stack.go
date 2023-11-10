@@ -1,7 +1,9 @@
 package proc
 
 import (
+	"bytes"
 	"debug/dwarf"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"go/constant"
@@ -481,7 +483,6 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 	for i, regRule := range framectx.Regs {
 		if logflags.Stack() {
 			logger.Debugf("\t%s rule %s ", it.bi.Arch.RegnumToString(i), ruleString(&regRule, it.bi.Arch.RegnumToString))
-
 		}
 		reg, err := it.executeFrameRegRule(i, regRule, it.regs.CFA)
 		if reg != nil {
@@ -499,6 +500,22 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 				it.err = err
 			} else {
 				ret = reg.Uint64Val
+				// On systems which use a link register to store the return address of a function,
+				// certain leaf functions may not have correct DWARF information present in the
+				// .debug_frame FDE when unwinding after a fatal signal. This is due to the fact
+				// that runtime.sigpanic inserts a frame to make it look like the function which
+				// triggered the signal called runtime.sigpanic directly, making the value of the
+				// link register unreliable. Instead, treat it as a non-leaf function and read the
+				// return address from the stack. For more details, see:
+				// https://github.com/golang/go/issues/63862#issuecomment-1802672629.
+				if it.frame.Call.Fn != nil && it.frame.Call.Fn.Name == "runtime.sigpanic" && it.bi.Arch.usesLR {
+					buf := make([]byte, 8)
+					_, err := it.mem.ReadMemory(buf, uint64(it.regs.CFA))
+					if err != nil {
+						it.err = err
+					}
+					binary.Read(bytes.NewReader(buf), binary.LittleEndian, &ret)
+				}
 			}
 			retaddr = uint64(it.regs.CFA + regRule.Offset)
 		}
