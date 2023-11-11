@@ -35,10 +35,11 @@ Tests skipped by each supported backend:
 	* 6 broken
 	* 1 broken - global variable symbolication
 	* 4 not implemented
-* windows skipped = 5
+* windows skipped = 6
 	* 1 broken
 	* 1 not working on windows
 	* 3 see https://github.com/go-delve/delve/issues/2768
+	* 1 unsupported in windows
 * windows/arm64 skipped = 5
 	* 3 broken
 	* 1 broken - cgo stacktraces

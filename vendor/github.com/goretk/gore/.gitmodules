@@ -1,0 +1,3 @@
+[submodule "testdata/gold"]
+	path = testdata/gold
+	url = https://github.com/goretk/testdata.git
