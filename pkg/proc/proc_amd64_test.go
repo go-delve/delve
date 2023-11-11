@@ -1,6 +1,7 @@
 package proc_test
 
 import (
+	"go/constant"
 	"path/filepath"
 	"runtime"
 	"testing"
