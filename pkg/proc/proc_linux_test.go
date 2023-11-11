@@ -1,9 +1,12 @@
 package proc_test
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/go-delve/delve/pkg/proc"
