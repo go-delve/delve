@@ -1,9 +1,10 @@
 package proc_test
 
 import (
+	"testing"
+
 	"github.com/go-delve/delve/pkg/proc"
 	protest "github.com/go-delve/delve/pkg/proc/test"
-	"testing"
 )
 
 func TestStacktraceExtlinkMac(t *testing.T) {

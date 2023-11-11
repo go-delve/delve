@@ -1,5 +1,14 @@
 package proc_test
 
+import (
+	"path/filepath"
+	"runtime"
+	"testing"
+
+	"github.com/go-delve/delve/pkg/proc"
+	protest "github.com/go-delve/delve/pkg/proc/test"
+)
+
 func TestStepInstructionOnBreakpoint(t *testing.T) {
 	// StepInstruction should step one instruction forward when
 	// PC is on a 1 byte instruction with a software breakpoint.

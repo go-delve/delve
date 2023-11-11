@@ -1,5 +1,12 @@
 package proc
 
+import (
+	"testing"
+
+	"github.com/go-delve/delve/pkg/proc"
+	protest "github.com/go-delve/delve/pkg/proc/test"
+)
+
 func TestSetYMMRegister(t *testing.T) {
 	// Checks that setting a XMM register works. This checks that the
 	// workaround for a bug in debugserver works.
