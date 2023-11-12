@@ -28,7 +28,6 @@ import (
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
-	"github.com/go-delve/delve/pkg/dwarf/regnum"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
@@ -875,7 +874,6 @@ func TestCGONext(t *testing.T) {
 	}
 	protest.MustHaveCgo(t)
 
-	skipOn(t, "broken - cgo stacktraces", "darwin", "arm64")
 	skipOn(t, "broken - see https://github.com/go-delve/delve/issues/3158", "darwin", "amd64")
 
 	protest.AllowRecording(t)
@@ -996,8 +994,6 @@ func stackMatch(stack []loc, locations []proc.Stackframe, skipRuntime bool) bool
 }
 
 func TestStacktraceGoroutine(t *testing.T) {
-	skipOn(t, "broken - cgo stacktraces", "darwin", "arm64")
-
 	mainStack := []loc{{14, "main.stacktraceme"}, {29, "main.main"}}
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) {
 		mainStack[0].line = 15
@@ -1072,7 +1068,6 @@ func TestStacktraceGoroutine(t *testing.T) {
 }
 
 func TestKill(t *testing.T) {
-	skipOn(t, "N/A", "lldb") // k command presumably works but leaves the process around?
 	withTestProcess("testprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		if err := grp.Detach(true); err != nil {
 			t.Fatal(err)
@@ -2701,26 +2696,6 @@ func TestStepOutDeferReturnAndDirectCall(t *testing.T) {
 		{contStepout, 28}})
 }
 
-func TestStepInstructionOnBreakpoint(t *testing.T) {
-	if runtime.GOARCH != "amd64" {
-		t.Skipf("skipping since not amd64")
-	}
-	// StepInstruction should step one instruction forward when
-	// PC is on a 1 byte instruction with a software breakpoint.
-	protest.AllowRecording(t)
-	withTestProcess("break/", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		setFileBreakpoint(p, t, filepath.ToSlash(filepath.Join(fixture.BuildDir, "break_amd64.s")), 4)
-
-		assertNoError(grp.Continue(), t, "Continue()")
-
-		pc := getRegisters(p, t).PC()
-		assertNoError(grp.StepInstruction(), t, "StepInstruction()")
-		if pc == getRegisters(p, t).PC() {
-			t.Fatal("Could not step a single instruction")
-		}
-	})
-}
-
 func TestStepOnCallPtrInstr(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("teststepprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
@@ -4295,18 +4270,6 @@ func TestReadDefer(t *testing.T) {
 	})
 }
 
-func TestNextUnknownInstr(t *testing.T) {
-	skipUnlessOn(t, "amd64 only", "amd64")
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 10) {
-		t.Skip("versions of Go before 1.10 can't assemble the instruction VPUNPCKLWD")
-	}
-	withTestProcess("nodisasm/", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		setFunctionBreakpoint(p, t, "main.asmFunc")
-		assertNoError(grp.Continue(), t, "Continue()")
-		assertNoError(grp.Next(), t, "Next()")
-	})
-}
-
 func TestReadDeferArgs(t *testing.T) {
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) {
 		// When regabi is enabled in Go 1.17 and later, reading arguments of
@@ -4705,42 +4668,6 @@ func TestCgoStacktrace2(t *testing.T) {
 	})
 }
 
-func TestIssue1656(t *testing.T) {
-	skipUnlessOn(t, "amd64 only", "amd64")
-	withTestProcess("issue1656/", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		setFileBreakpoint(p, t, filepath.ToSlash(filepath.Join(fixture.BuildDir, "main.s")), 5)
-		assertNoError(grp.Continue(), t, "Continue()")
-		t.Logf("step1\n")
-		assertNoError(grp.Step(), t, "Step()")
-		assertLineNumber(p, t, 8, "wrong line number after first step")
-		t.Logf("step2\n")
-		assertNoError(grp.Step(), t, "Step()")
-		assertLineNumber(p, t, 9, "wrong line number after second step")
-	})
-}
-
-func TestBreakpointConfusionOnResume(t *testing.T) {
-	// Checks that SetCurrentBreakpoint, (*Thread).StepInstruction and
-	// native.(*Thread).singleStep all agree on which breakpoint the thread is
-	// stopped at.
-	// This test checks for a regression introduced when fixing Issue #1656
-	skipUnlessOn(t, "amd64 only", "amd64")
-	withTestProcess("nopbreakpoint/", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		maindots := filepath.ToSlash(filepath.Join(fixture.BuildDir, "main.s"))
-		maindotgo := filepath.ToSlash(filepath.Join(fixture.BuildDir, "main.go"))
-		setFileBreakpoint(p, t, maindots, 5) // line immediately after the NOP
-		assertNoError(grp.Continue(), t, "First Continue")
-		assertLineNumber(p, t, 5, "not on main.s:5")
-		setFileBreakpoint(p, t, maindots, 4)   // sets a breakpoint on the NOP line, which will be one byte before the breakpoint we currently are stopped at.
-		setFileBreakpoint(p, t, maindotgo, 18) // set one extra breakpoint so that we can recover execution and check the global variable g
-		assertNoError(grp.Continue(), t, "Second Continue")
-		gvar := evalVariable(p, t, "g")
-		if n, _ := constant.Int64Val(gvar.Value); n != 1 {
-			t.Fatalf("wrong value of global variable 'g': %v (expected 1)", gvar.Value)
-		}
-	})
-}
-
 func TestIssue1736(t *testing.T) {
 	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), t, "Continue()")
@@ -5048,33 +4975,6 @@ func TestStepIntoWrapperForEmbeddedPointer(t *testing.T) {
 			{contNext, 29}})
 
 	}
-}
-
-func TestRefreshCurThreadSelGAfterContinueOnceError(t *testing.T) {
-	// Issue #2078:
-	// Tests that on macOS/lldb the current thread/selected goroutine are
-	// refreshed after ContinueOnce returns an error due to a segmentation
-	// fault.
-
-	skipUnlessOn(t, "N/A", "darwin", "lldb")
-
-	withTestProcess("issue2078", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		setFileBreakpoint(p, t, fixture.Source, 4)
-		assertNoError(grp.Continue(), t, "Continue() (first)")
-		if grp.Continue() == nil {
-			pc := currentPC(p, t)
-			f, l, fn := p.BinInfo().PCToLine(pc)
-			t.Logf("Second continue did not return an error %s:%d %#v", f, l, fn)
-			if fn != nil && fn.Name == "runtime.fatalpanic" {
-				// this is also ok, it just means this debugserver supports --unmask-signals and it's working as intended.
-				return
-			}
-		}
-		g := p.SelectedGoroutine()
-		if g.CurrentLoc.Line != 9 {
-			t.Fatalf("wrong current location %s:%d (expected :9)", g.CurrentLoc.File, g.CurrentLoc.Line)
-		}
-	})
 }
 
 func TestStepoutOneliner(t *testing.T) {
@@ -5806,45 +5706,6 @@ func TestSetOnFunctions(t *testing.T) {
 	})
 }
 
-func TestSetYMMRegister(t *testing.T) {
-	skipUnlessOn(t, "N/A", "darwin", "amd64")
-	// Checks that setting a XMM register works. This checks that the
-	// workaround for a bug in debugserver works.
-	// See issue #2767.
-	withTestProcess("setymmreg/", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		setFunctionBreakpoint(p, t, "main.asmFunc")
-		assertNoError(grp.Continue(), t, "Continue()")
-
-		getReg := func(pos string) *op.DwarfRegister {
-			regs := getRegisters(p, t)
-
-			arch := p.BinInfo().Arch
-			dregs := arch.RegistersToDwarfRegisters(0, regs)
-
-			r := dregs.Reg(regnum.AMD64_XMM0)
-			t.Logf("%s: %#v", pos, r)
-			return r
-		}
-
-		getReg("before")
-
-		p.CurrentThread().SetReg(regnum.AMD64_XMM0, op.DwarfRegisterFromBytes([]byte{
-			0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
-			0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
-			0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44,
-			0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x44}))
-		assertNoError(grp.StepInstruction(), t, "SetpInstruction")
-
-		xmm0 := getReg("after")
-
-		for i := range xmm0.Bytes {
-			if xmm0.Bytes[i] != 0x44 {
-				t.Fatalf("wrong register value")
-			}
-		}
-	})
-}
-
 func TestNilPtrDerefInBreakInstr(t *testing.T) {
 	// Checks that having a breakpoint on the exact instruction that causes a
 	// nil pointer dereference does not cause problems.
@@ -5895,125 +5756,6 @@ func TestStepIntoAutogeneratedSkip(t *testing.T) {
 		assertNoError(grp.Continue(), t, "Continue()")
 		assertNoError(grp.Step(), t, "Step")
 		assertLineNumber(p, t, 12, "After step")
-	})
-}
-
-func TestCallInjectionFlagCorruption(t *testing.T) {
-	// debugCallV2 has a bug in amd64 where its tail corrupts the FLAGS register by running an ADD instruction.
-	// Since this problem exists in many versions of Go, instead of fixing
-	// debugCallV2, we work around this problem by restoring FLAGS, one extra
-	// time, after stepping out of debugCallV2.
-	// Fixes issue https://github.com/go-delve/delve/issues/2985
-	skipUnlessOn(t, "not relevant", "amd64")
-	protest.MustSupportFunctionCalls(t, testBackend)
-
-	withTestProcessArgs("badflags", t, ".", []string{"0"}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		mainfn := p.BinInfo().LookupFunc()["main.main"][0]
-
-		// Find JNZ instruction on line :14
-		var addr uint64
-		text, err := proc.Disassemble(p.Memory(), nil, p.Breakpoints(), p.BinInfo(), mainfn.Entry, mainfn.End)
-		assertNoError(err, t, "Disassemble")
-		for _, instr := range text {
-			if instr.Loc.Line != 14 {
-				continue
-			}
-			if proc.IsJNZ(instr.Inst) {
-				addr = instr.Loc.PC
-			}
-		}
-		if addr == 0 {
-			t.Fatalf("Could not find JNZ instruction at line :14")
-		}
-
-		// Create breakpoint
-		_, err = p.SetBreakpoint(0, addr, proc.UserBreakpoint, nil)
-		assertNoError(err, t, "SetBreakpoint")
-
-		// Continue to breakpoint
-		assertNoError(grp.Continue(), t, "Continue()")
-		assertLineNumber(p, t, 14, "expected line :14")
-
-		// Save RFLAGS register
-		rflagsBeforeCall := p.BinInfo().Arch.RegistersToDwarfRegisters(0, getRegisters(p, t)).Uint64Val(regnum.AMD64_Rflags)
-		t.Logf("rflags before = %#x", rflagsBeforeCall)
-
-		// Inject call to main.g()
-		assertNoError(proc.EvalExpressionWithCalls(grp, p.SelectedGoroutine(), "g()", normalLoadConfig, true), t, "Call")
-
-		// Check RFLAGS register after the call
-		rflagsAfterCall := p.BinInfo().Arch.RegistersToDwarfRegisters(0, getRegisters(p, t)).Uint64Val(regnum.AMD64_Rflags)
-		t.Logf("rflags after = %#x", rflagsAfterCall)
-
-		if rflagsBeforeCall != rflagsAfterCall {
-			t.Errorf("mismatched rflags value")
-		}
-
-		// Single step and check where we end up
-		assertNoError(grp.Step(), t, "Step()")
-		assertLineNumber(p, t, 17, "expected line :17") // since we passed "0" as argument we should be going into the false branch at line :17
-	})
-}
-
-func TestGnuDebuglink(t *testing.T) {
-	skipUnlessOn(t, "N/A", "linux")
-
-	// build math.go and make a copy of the executable
-	fixture := protest.BuildFixture("math", 0)
-	buf, err := os.ReadFile(fixture.Path)
-	assertNoError(err, t, "ReadFile")
-	debuglinkPath := fixture.Path + "-gnu_debuglink"
-	assertNoError(os.WriteFile(debuglinkPath, buf, 0666), t, "WriteFile")
-	defer os.Remove(debuglinkPath)
-
-	run := func(exe string, args ...string) {
-		cmd := exec.Command(exe, args...)
-		out, err := cmd.CombinedOutput()
-		assertNoError(err, t, fmt.Sprintf("%s %q: %s", cmd, strings.Join(args, " "), out))
-	}
-
-	// convert the executable copy to use .gnu_debuglink
-	debuglinkDwoPath := debuglinkPath + ".dwo"
-	run("objcopy", "--only-keep-debug", debuglinkPath, debuglinkDwoPath)
-	defer os.Remove(debuglinkDwoPath)
-	run("objcopy", "--strip-debug", debuglinkPath)
-	run("objcopy", "--add-gnu-debuglink="+debuglinkDwoPath, debuglinkPath)
-
-	// open original executable
-	normalBinInfo := proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH)
-	assertNoError(normalBinInfo.LoadBinaryInfo(fixture.Path, 0, []string{"/debugdir"}), t, "LoadBinaryInfo (normal exe)")
-
-	// open .gnu_debuglink executable
-	debuglinkBinInfo := proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH)
-	assertNoError(debuglinkBinInfo.LoadBinaryInfo(debuglinkPath, 0, []string{"/debugdir"}), t, "LoadBinaryInfo (gnu_debuglink exe)")
-
-	if len(normalBinInfo.Functions) != len(debuglinkBinInfo.Functions) {
-		t.Fatalf("function list mismatch")
-	}
-
-	for i := range normalBinInfo.Functions {
-		normalFn := normalBinInfo.Functions[i]
-		debuglinkFn := debuglinkBinInfo.Functions[i]
-		if normalFn.Entry != debuglinkFn.Entry || normalFn.Name != debuglinkFn.Name {
-			t.Fatalf("function definition mismatch")
-		}
-	}
-}
-
-func TestStacktraceExtlinkMac(t *testing.T) {
-	// Tests stacktrace for programs built using external linker.
-	// See issue #3194
-	skipUnlessOn(t, "darwin only", "darwin")
-	skipOn(t, "broken on darwin/amd64/pie", "darwin", "amd64", "pie")
-	withTestProcess("issue3194", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		setFunctionBreakpoint(p, t, "main.main")
-		assertNoError(grp.Continue(), t, "First Continue()")
-		frames, err := proc.ThreadStacktrace(p, p.CurrentThread(), 10)
-		assertNoError(err, t, "ThreadStacktrace")
-		logStacktrace(t, p, frames)
-		if len(frames) < 2 || frames[0].Call.Fn.Name != "main.main" || frames[1].Call.Fn.Name != "runtime.main" {
-			t.Fatalf("bad stacktrace")
-		}
 	})
 }
 
