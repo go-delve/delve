@@ -127,7 +127,7 @@ func newCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters
 			cmem.data = append(cmem.data, reg[:piece.Size]...)
 		case op.AddrPiece:
 			buf := make([]byte, piece.Size)
-			mem.ReadMemory(buf, uint64(piece.Val))
+			mem.ReadMemory(buf, piece.Val)
 			cmem.data = append(cmem.data, buf...)
 		case op.ImmPiece:
 			buf := piece.Bytes
@@ -191,7 +191,7 @@ func (mem *compositeMemory) WriteMemory(addr uint64, data []byte) (int, error) {
 					return donesz, err
 				}
 			case op.AddrPiece:
-				n, err := mem.realmem.WriteMemory(uint64(piece.Val), pieceMem)
+				n, err := mem.realmem.WriteMemory(piece.Val, pieceMem)
 				if err != nil {
 					return donesz + n, err
 				}

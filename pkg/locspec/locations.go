@@ -311,7 +311,7 @@ func (loc *AddrLocationSpec) Find(t *proc.Target, _ []string, scope *proc.EvalSc
 		addr, _ := constant.Uint64Val(v.Value)
 		return []api.Location{{PC: addr}}, "", nil
 	case reflect.Func:
-		fn := scope.BinInfo.PCToFunc(uint64(v.Base))
+		fn := scope.BinInfo.PCToFunc(v.Base)
 		pc, err := proc.FirstPCAfterPrologue(t, fn, false)
 		if err != nil {
 			return nil, "", err

@@ -914,7 +914,7 @@ func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
 
 // moduleDataToImage finds the image corresponding to the given module data object.
 func (bi *BinaryInfo) moduleDataToImage(md *moduleData) *Image {
-	fn := bi.PCToFunc(uint64(md.text))
+	fn := bi.PCToFunc(md.text)
 	if fn != nil {
 		return bi.funcToImage(fn)
 	}

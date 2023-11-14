@@ -959,7 +959,7 @@ func (v *Variable) parseG() (*G, error) {
 		SP:         uint64(sp),
 		BP:         uint64(bp),
 		LR:         uint64(lr),
-		Status:     uint64(status),
+		Status:     status,
 		WaitSince:  waitSince,
 		WaitReason: waitReason,
 		CurrentLoc: Location{PC: uint64(pc), File: f, Line: l, Fn: fn},
@@ -1454,7 +1454,7 @@ func convertToEface(srcv, dstv *Variable) error {
 			return srcv.Unreadable
 		}
 		_type = _type.maybeDereference()
-		dstv.writeEmptyInterface(uint64(_type.Addr), data)
+		dstv.writeEmptyInterface(_type.Addr, data)
 		return nil
 	}
 	typeAddr, typeKind, runtimeTypeFound, err := dwarfToRuntimeType(srcv.bi, srcv.mem, srcv.RealType)
@@ -1738,13 +1738,13 @@ func (v *Variable) readComplex(size int64) {
 }
 
 func (v *Variable) writeComplex(real, imag float64, size int64) error {
-	err := v.writeFloatRaw(real, int64(size/2))
+	err := v.writeFloatRaw(real, size/2)
 	if err != nil {
 		return err
 	}
 	imagaddr := *v
 	imagaddr.Addr += uint64(size / 2)
-	return imagaddr.writeFloatRaw(imag, int64(size/2))
+	return imagaddr.writeFloatRaw(imag, size/2)
 }
 
 func readIntRaw(mem MemoryReadWriter, addr uint64, size int64) (int64, error) {
@@ -1781,7 +1781,7 @@ func (v *Variable) writeUint(value uint64, size int64) error {
 	case 4:
 		binary.LittleEndian.PutUint32(val, uint32(value))
 	case 8:
-		binary.LittleEndian.PutUint64(val, uint64(value))
+		binary.LittleEndian.PutUint64(val, value)
 	}
 
 	_, err := v.mem.WriteMemory(v.Addr, val)
@@ -1805,7 +1805,7 @@ func readUintRaw(mem MemoryReadWriter, addr uint64, size int64) (uint64, error) 
 	case 4:
 		n = uint64(binary.LittleEndian.Uint32(val))
 	case 8:
-		n = uint64(binary.LittleEndian.Uint64(val))
+		n = binary.LittleEndian.Uint64(val)
 	}
 
 	return n, nil
@@ -1841,7 +1841,7 @@ func (v *Variable) writeFloatRaw(f float64, size int64) error {
 		n := float32(f)
 		binary.Write(buf, binary.LittleEndian, n)
 	case 8:
-		n := float64(f)
+		n := f
 		binary.Write(buf, binary.LittleEndian, n)
 	}
 
@@ -1878,7 +1878,7 @@ func (v *Variable) writeSlice(len, cap int64, base uint64) error {
 		switch f.Name {
 		case sliceArrayFieldName:
 			arrv, _ := v.toField(f)
-			if err := arrv.writeUint(uint64(base), arrv.RealType.Size()); err != nil {
+			if err := arrv.writeUint(base, arrv.RealType.Size()); err != nil {
 				return err
 			}
 		case sliceLenFieldName:
@@ -1897,8 +1897,8 @@ func (v *Variable) writeSlice(len, cap int64, base uint64) error {
 }
 
 func (v *Variable) writeString(len, base uint64) error {
-	writePointer(v.bi, v.mem, uint64(v.Addr), base)
-	writePointer(v.bi, v.mem, uint64(v.Addr)+uint64(v.bi.Arch.PtrSize()), len)
+	writePointer(v.bi, v.mem, v.Addr, base)
+	writePointer(v.bi, v.mem, v.Addr+uint64(v.bi.Arch.PtrSize()), len)
 	return nil
 }
 
@@ -1931,7 +1931,7 @@ func (v *Variable) readFunctionPtr() {
 	}
 
 	v.Base = val
-	fn := v.bi.PCToFunc(uint64(v.Base))
+	fn := v.bi.PCToFunc(v.Base)
 	if fn == nil {
 		v.Unreadable = fmt.Errorf("could not find function for %#v", v.Base)
 		return
@@ -2406,7 +2406,7 @@ func (v *Variable) registerVariableTypeConv(newtyp string) (*Variable, error) {
 			child.Kind = reflect.Uint32
 			n = 4
 		case "uint64":
-			child = newConstant(constant.MakeUint64(uint64(binary.LittleEndian.Uint64(v.reg.Bytes[i:]))), v.mem)
+			child = newConstant(constant.MakeUint64(binary.LittleEndian.Uint64(v.reg.Bytes[i:])), v.mem)
 			child.Kind = reflect.Uint64
 			n = 8
 		case "float32":

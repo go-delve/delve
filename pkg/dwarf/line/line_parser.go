@@ -132,16 +132,16 @@ func parseDebugLinePrologue(dbl *DebugLineInfo, buf *bytes.Buffer) {
 	}
 
 	p.Length = binary.LittleEndian.Uint32(buf.Next(4))
-	p.MinInstrLength = uint8(buf.Next(1)[0])
+	p.MinInstrLength = buf.Next(1)[0]
 	if p.Version >= 4 {
-		p.MaxOpPerInstr = uint8(buf.Next(1)[0])
+		p.MaxOpPerInstr = buf.Next(1)[0]
 	} else {
 		p.MaxOpPerInstr = 1
 	}
-	p.InitialIsStmt = uint8(buf.Next(1)[0])
+	p.InitialIsStmt = buf.Next(1)[0]
 	p.LineBase = int8(buf.Next(1)[0])
-	p.LineRange = uint8(buf.Next(1)[0])
-	p.OpcodeBase = uint8(buf.Next(1)[0])
+	p.LineRange = buf.Next(1)[0]
+	p.OpcodeBase = buf.Next(1)[0]
 
 	p.StdOpLengths = make([]uint8, p.OpcodeBase-1)
 	binary.Read(buf, binary.LittleEndian, &p.StdOpLengths)

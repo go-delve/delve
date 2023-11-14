@@ -553,7 +553,7 @@ func (scope *EvalScope) setValue(dstv, srcv *Variable, srcExpr string) error {
 		if srcv.Base == 0 && srcv.Len > 0 && srcv.Flags&VariableConstant != 0 {
 			return errFuncCallNotAllowedStrAlloc
 		}
-		return dstv.writeString(uint64(srcv.Len), uint64(srcv.Base))
+		return dstv.writeString(uint64(srcv.Len), srcv.Base)
 	}
 
 	// slice assignment (this is not handled by the writeCopy below so that
@@ -564,7 +564,7 @@ func (scope *EvalScope) setValue(dstv, srcv *Variable, srcExpr string) error {
 
 	// allow any integer to be converted to any pointer
 	if t, isptr := dstv.RealType.(*godwarf.PtrType); isptr {
-		return dstv.writeUint(uint64(srcv.Children[0].Addr), int64(t.ByteSize))
+		return dstv.writeUint(srcv.Children[0].Addr, t.ByteSize)
 	}
 
 	// byte-by-byte copying for everything else, but the source must be addressable
@@ -1251,7 +1251,7 @@ func (scope *EvalScope) evalTypeCast(op *evalop.TypeCast, stack *evalStack) {
 			stack.push(v)
 			return
 		case reflect.Ptr:
-			v.Value = constant.MakeUint64(uint64(argv.Children[0].Addr))
+			v.Value = constant.MakeUint64(argv.Children[0].Addr)
 			stack.push(v)
 			return
 		}
@@ -2552,7 +2552,7 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 		return nil, fmt.Errorf("index out of bounds")
 	}
 
-	base := v.Base + uint64(int64(low)*v.stride)
+	base := v.Base + uint64(low*v.stride)
 	len := high - low
 
 	if high-low < 0 {

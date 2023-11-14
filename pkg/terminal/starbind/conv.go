@@ -20,7 +20,7 @@ var autoLoadConfig = api.LoadConfig{MaxVariableRecurse: 1, MaxStringLen: 1024, M
 func (env *Env) interfaceToStarlarkValue(v interface{}) starlark.Value {
 	switch v := v.(type) {
 	case bool:
-		return starlark.Bool(bool(v))
+		return starlark.Bool(v)
 	case uint8:
 		return starlark.MakeUint64(uint64(v))
 	case uint16:

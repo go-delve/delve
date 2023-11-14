@@ -780,7 +780,7 @@ func (p *gdbProcess) Recorded() (bool, string) {
 
 // Pid returns the process ID.
 func (p *gdbProcess) Pid() int {
-	return int(p.conn.pid)
+	return p.conn.pid
 }
 
 // Valid returns true if we are not detached

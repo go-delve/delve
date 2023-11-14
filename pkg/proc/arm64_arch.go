@@ -174,7 +174,7 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 			// Entering the system stack.
 			it.regs.Reg(callFrameRegs.SPRegNum).Uint64Val = it.g0_sched_sp
 			// Reads the previous value of g0.sched.sp that runtime.cgocallback_gofunc saved on the stack.
-			it.g0_sched_sp, _ = readUintRaw(it.mem, uint64(it.regs.SP()+prevG0schedSPOffsetSaveSlot), int64(it.bi.Arch.PtrSize()))
+			it.g0_sched_sp, _ = readUintRaw(it.mem, it.regs.SP()+prevG0schedSPOffsetSaveSlot, int64(it.bi.Arch.PtrSize()))
 			it.top = false
 			callFrameRegs, ret, retaddr := it.advanceRegs()
 			frameOnSystemStack := it.newStackframe(ret, retaddr)
@@ -195,7 +195,7 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 			// switches from the goroutine stack to the system stack.
 			// Since we are unwinding the stack from callee to caller we have to switch
 			// from the system stack to the goroutine stack.
-			off, _ := readIntRaw(it.mem, uint64(it.regs.SP()+arm64cgocallSPOffsetSaveSlot),
+			off, _ := readIntRaw(it.mem, it.regs.SP()+arm64cgocallSPOffsetSaveSlot,
 				int64(it.bi.Arch.PtrSize()))
 			oldsp := it.regs.SP()
 			newsp := uint64(int64(it.stackhi) - off)
@@ -239,20 +239,20 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 			bpoff = 22
 			lroff = 23
 		}
-		newsp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*24), int64(it.bi.Arch.PtrSize()))
-		newbp, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*bpoff), int64(it.bi.Arch.PtrSize()))
-		newlr, _ := readUintRaw(it.mem, uint64(it.regs.SP()+8*lroff), int64(it.bi.Arch.PtrSize()))
+		newsp, _ := readUintRaw(it.mem, it.regs.SP()+8*24, int64(it.bi.Arch.PtrSize()))
+		newbp, _ := readUintRaw(it.mem, it.regs.SP()+8*bpoff, int64(it.bi.Arch.PtrSize()))
+		newlr, _ := readUintRaw(it.mem, it.regs.SP()+8*lroff, int64(it.bi.Arch.PtrSize()))
 		if it.regs.Reg(it.regs.BPRegNum) != nil {
-			it.regs.Reg(it.regs.BPRegNum).Uint64Val = uint64(newbp)
+			it.regs.Reg(it.regs.BPRegNum).Uint64Val = newbp
 		} else {
 			reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+8*bpoff)
 			it.regs.AddReg(it.regs.BPRegNum, reg)
 		}
-		it.regs.Reg(it.regs.LRRegNum).Uint64Val = uint64(newlr)
+		it.regs.Reg(it.regs.LRRegNum).Uint64Val = newlr
 		if linux {
-			it.regs.Reg(it.regs.SPRegNum).Uint64Val = uint64(newbp)
+			it.regs.Reg(it.regs.SPRegNum).Uint64Val = newbp
 		} else {
-			it.regs.Reg(it.regs.SPRegNum).Uint64Val = uint64(newsp)
+			it.regs.Reg(it.regs.SPRegNum).Uint64Val = newsp
 		}
 		it.pc = newlr
 		return true
@@ -299,7 +299,7 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 		// switches from the goroutine stack to the system stack.
 		// Since we are unwinding the stack from callee to caller we have to switch
 		// from the system stack to the goroutine stack.
-		off, _ := readIntRaw(it.mem, uint64(callFrameRegs.SP()+arm64cgocallSPOffsetSaveSlot), int64(it.bi.Arch.PtrSize()))
+		off, _ := readIntRaw(it.mem, callFrameRegs.SP()+arm64cgocallSPOffsetSaveSlot, int64(it.bi.Arch.PtrSize()))
 		oldsp := callFrameRegs.SP()
 		newsp := uint64(int64(it.stackhi) - off)
 
@@ -334,7 +334,7 @@ func arm64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool 
 		callFrameRegs.Reg(callFrameRegs.SPRegNum).Uint64Val = it.g0_sched_sp
 		// reads the previous value of g0.sched.sp that runtime.cgocallback_gofunc saved on the stack
 
-		it.g0_sched_sp, _ = readUintRaw(it.mem, uint64(callFrameRegs.SP()+prevG0schedSPOffsetSaveSlot), int64(it.bi.Arch.PtrSize()))
+		it.g0_sched_sp, _ = readUintRaw(it.mem, callFrameRegs.SP()+prevG0schedSPOffsetSaveSlot, int64(it.bi.Arch.PtrSize()))
 		it.systemstack = true
 		return false
 	}

@@ -67,7 +67,7 @@ func DecodeSigned(buf Reader) (int64, uint32) {
 		}
 		length++
 
-		result |= int64((int64(b) & 0x7f) << shift)
+		result |= (int64(b) & 0x7f) << shift
 		shift += 7
 		if b&0x80 == 0 {
 			break

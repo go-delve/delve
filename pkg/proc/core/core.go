@@ -340,7 +340,7 @@ func (t *thread) Breakpoint() *proc.BreakpointState {
 
 // ThreadID returns the ID for this thread.
 func (t *thread) ThreadID() int {
-	return int(t.th.pid())
+	return t.th.pid()
 }
 
 // Registers returns the current value of the registers for this thread.
