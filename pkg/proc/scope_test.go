@@ -187,7 +187,7 @@ func (check *scopeCheck) Parse(descr string, t *testing.T) {
 		}
 		varcheck.name = strings.TrimSpace(decl[:space])
 		varcheck.typ = strings.TrimSpace(decl[space+1:])
-		if strings.Index(varcheck.typ, " ") >= 0 {
+		if strings.Contains(varcheck.typ, " ") {
 			t.Fatalf("could not parse scope comment %q (%q)", descr, decl)
 		}
 
