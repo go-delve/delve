@@ -423,7 +423,7 @@ func (sm *StateMachine) next() error {
 
 func execSpecialOpcode(sm *StateMachine, instr byte) {
 	var (
-		opcode  = uint8(instr)
+		opcode  = instr
 		decoded = opcode - sm.dbl.Prologue.OpcodeBase
 	)
 

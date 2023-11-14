@@ -186,10 +186,10 @@ func (m *MemoryRange) ReadMemory(buf []byte, addr uint64) (int, error) {
 	if len(buf) == 0 {
 		return 0, nil
 	}
-	if (uint64(addr) < m.Addr) || (uint64(addr)+uint64(len(buf)) > m.Addr+uint64(len(m.Data))) {
+	if (addr < m.Addr) || (addr+uint64(len(buf)) > m.Addr+uint64(len(m.Data))) {
 		return 0, io.EOF
 	}
-	copy(buf, m.Data[uint64(addr)-m.Addr:])
+	copy(buf, m.Data[addr-m.Addr:])
 	return len(buf), nil
 }
 

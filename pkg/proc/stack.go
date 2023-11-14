@@ -251,7 +251,7 @@ func (it *stackIterator) Next() bool {
 			it.regs = *regs
 			it.top = false
 			if it.g != nil && it.g.ID != 0 {
-				it.systemstack = !(uint64(it.regs.SP()) >= it.g.stack.lo && uint64(it.regs.SP()) < it.g.stack.hi)
+				it.systemstack = !(it.regs.SP() >= it.g.stack.lo && it.regs.SP() < it.g.stack.hi)
 			}
 			logflags.StackLogger().Debugf("sigtramp context read")
 			return true

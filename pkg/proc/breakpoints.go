@@ -704,7 +704,7 @@ func (t *Target) setBreakpointInternal(logicalID int, addr uint64, kind Breakpoi
 		return bp, nil
 	}
 
-	f, l, fn := t.BinInfo().PCToLine(uint64(addr))
+	f, l, fn := t.BinInfo().PCToLine(addr)
 
 	fnName := ""
 	if fn != nil {

@@ -208,7 +208,7 @@ func callframecfa(opcode Opcode, ctxt *context) error {
 	if ctxt.CFA == 0 {
 		return errors.New("could not retrieve CFA for current PC")
 	}
-	ctxt.stack = append(ctxt.stack, int64(ctxt.CFA))
+	ctxt.stack = append(ctxt.stack, ctxt.CFA)
 	return nil
 }
 
@@ -373,7 +373,7 @@ func pick(opcode Opcode, ctxt *context) error {
 	default:
 		panic("internal error")
 	}
-	idx := len(ctxt.stack) - 1 - int(uint8(n))
+	idx := len(ctxt.stack) - 1 - int(n)
 	if idx < 0 || idx >= len(ctxt.stack) {
 		return ErrStackIndexOutOfBounds
 	}

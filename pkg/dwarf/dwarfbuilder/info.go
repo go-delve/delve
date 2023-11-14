@@ -167,8 +167,8 @@ func (b *Builder) Attr(attr dwarf.Attr, val interface{}) dwarf.Offset {
 		binary.Write(&b.loc, binary.LittleEndian, uint64(0))
 
 		for _, locentry := range x {
-			binary.Write(&b.loc, binary.LittleEndian, uint64(locentry.Lowpc))
-			binary.Write(&b.loc, binary.LittleEndian, uint64(locentry.Highpc))
+			binary.Write(&b.loc, binary.LittleEndian, locentry.Lowpc)
+			binary.Write(&b.loc, binary.LittleEndian, locentry.Highpc)
 			binary.Write(&b.loc, binary.LittleEndian, uint16(len(locentry.Loc)))
 			b.loc.Write(locentry.Loc)
 		}

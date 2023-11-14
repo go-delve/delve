@@ -58,7 +58,7 @@ func New(w WriteCloserSeeker, fhdr *elf.FileHeader) *Writer {
 	}
 
 	// e_ident
-	r.Write([]byte{0x7f, 'E', 'L', 'F', byte(fhdr.Class), byte(fhdr.Data), byte(fhdr.Version), byte(fhdr.OSABI), byte(fhdr.ABIVersion), 0, 0, 0, 0, 0, 0, 0})
+	r.Write([]byte{0x7f, 'E', 'L', 'F', byte(fhdr.Class), byte(fhdr.Data), byte(fhdr.Version), byte(fhdr.OSABI), fhdr.ABIVersion, 0, 0, 0, 0, 0, 0, 0})
 
 	r.u16(uint16(fhdr.Type))    // e_type
 	r.u16(uint16(fhdr.Machine)) // e_machine

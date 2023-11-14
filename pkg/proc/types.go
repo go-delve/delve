@@ -114,7 +114,7 @@ func runtimeTypeToDIE(_type *Variable, dataAddr uint64) (typ godwarf.Type, kind 
 	if md != nil {
 		so := bi.moduleDataToImage(md)
 		if so != nil {
-			if rtdie, ok := so.runtimeTypeToDIE[uint64(_type.Addr-md.types)]; ok {
+			if rtdie, ok := so.runtimeTypeToDIE[_type.Addr-md.types]; ok {
 				typ, err := godwarf.ReadType(so.dwarf, so.index, rtdie.offset, so.typeCache)
 				if err != nil {
 					return nil, 0, fmt.Errorf("invalid interface type: %v", err)
@@ -189,7 +189,7 @@ func dwarfToRuntimeType(bi *BinaryInfo, mem MemoryReadWriter, typ godwarf.Type) 
 		}
 	}
 
-	typeAddr = uint64(md.types) + off
+	typeAddr = md.types + off
 
 	rtyp, err := bi.findType(bi.runtimeTypeTypename())
 	if err != nil {

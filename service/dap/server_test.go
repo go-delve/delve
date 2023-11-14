@@ -7353,7 +7353,7 @@ func TestFindInstructions(t *testing.T) {
 		{
 			name: "request out of bounds",
 			args: args{
-				addr:   uint64(uint64(startPC + 2*(numInstructions-1))),
+				addr:   uint64(startPC + 2*(numInstructions-1)),
 				offset: 1,
 				count:  numInstructions,
 			},
@@ -7512,11 +7512,11 @@ func TestRedirect(t *testing.T) {
 
 		// check output
 		if expectStdout != stdout.String() {
-			t.Errorf("\n got stdout: len:%d\n%s\nwant: len:%d\n%s", stdout.Len(), stdout.String(), len(expectStdout), string(expectStdout))
+			t.Errorf("\n got stdout: len:%d\n%s\nwant: len:%d\n%s", stdout.Len(), stdout.String(), len(expectStdout), expectStdout)
 		}
 
 		if expectStderr != stderr.String() {
-			t.Errorf("\n got stderr: len:%d \n%s\nwant: len:%d\n%s", stderr.Len(), stderr.String(), len(expectStderr), string(expectStderr))
+			t.Errorf("\n got stderr: len:%d \n%s\nwant: len:%d\n%s", stderr.Len(), stderr.String(), len(expectStderr), expectStderr)
 		}
 
 		// 7 >> disconnect, << disconnect

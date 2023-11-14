@@ -892,7 +892,7 @@ func (conn *gdbConn) queryProcessInfo(pid int) (map[string]string, error) {
 		case "name":
 			name := make([]byte, len(value)/2)
 			for i := 0; i < len(value); i += 2 {
-				n, _ := strconv.ParseUint(string(value[i:i+2]), 16, 8)
+				n, _ := strconv.ParseUint(value[i:i+2], 16, 8)
 				name[i/2] = byte(n)
 			}
 			pi[key] = string(name)

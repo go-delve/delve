@@ -87,7 +87,7 @@ func (rdr *Dwarf2Reader) oneAddr() uint64 {
 		}
 		return uint64(addr)
 	case 8:
-		addr := uint64(binary.LittleEndian.Uint64(rdr.read(rdr.ptrSz)))
+		addr := binary.LittleEndian.Uint64(rdr.read(rdr.ptrSz))
 		return addr
 	default:
 		panic("bad address size")

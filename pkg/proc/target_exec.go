@@ -470,7 +470,7 @@ func sameGoroutineCondition(bi *BinaryInfo, g *G, threadID int) ast.Expr {
 		}
 		return astutil.Eql(astutil.PkgVar("runtime", "threadid"), astutil.Int(int64(threadID)))
 	}
-	return astutil.Eql(astutil.Sel(astutil.PkgVar("runtime", "curg"), "goid"), astutil.Int(int64(g.ID)))
+	return astutil.Eql(astutil.Sel(astutil.PkgVar("runtime", "curg"), "goid"), astutil.Int(g.ID))
 }
 
 func frameoffCondition(frame *Stackframe) ast.Expr {
@@ -1316,7 +1316,7 @@ func (t *Target) handleHardcodedBreakpoints(grp *TargetGroup, trapthread Thread,
 			return
 		}
 		if bpsize := isHardcodedBreakpoint(thread, pc); bpsize > 0 {
-			setPC(thread, pc+uint64(bpsize))
+			setPC(thread, pc+bpsize)
 		}
 	}
 

@@ -65,10 +65,10 @@ func newFakeMemory(base uint64, contents ...interface{}) *fakeMemory {
 }
 
 func (mem *fakeMemory) ReadMemory(data []byte, addr uint64) (int, error) {
-	if uint64(addr) < mem.base {
+	if addr < mem.base {
 		return 0, fmt.Errorf("read out of bounds %d %#x", len(data), addr)
 	}
-	start := uint64(addr) - mem.base
+	start := addr - mem.base
 	end := uint64(len(data)) + start
 	if end > uint64(len(mem.data)) {
 		panic(fmt.Errorf("read out of bounds %d %#x", len(data), addr))
@@ -78,10 +78,10 @@ func (mem *fakeMemory) ReadMemory(data []byte, addr uint64) (int, error) {
 }
 
 func (mem *fakeMemory) WriteMemory(addr uint64, data []byte) (int, error) {
-	if uint64(addr) < mem.base {
+	if addr < mem.base {
 		return 0, fmt.Errorf("write out of bounds %d %#x", len(data), addr)
 	}
-	start := uint64(addr) - mem.base
+	start := addr - mem.base
 	end := uint64(len(data)) + start
 	if end > uint64(len(mem.data)) {
 		panic(fmt.Errorf("write out of bounds %d %#x", len(data), addr))
@@ -217,7 +217,7 @@ func TestDwarfExprComposite(t *testing.T) {
 
 	mainfn := bi.LookupFunc()["main.main"][0]
 
-	mem := newFakeMemory(fakeCFA(), uint64(0), uint64(0), uint16(testCases["pair.v"]), []byte(stringVal))
+	mem := newFakeMemory(fakeCFA(), uint64(0), uint64(0), testCases["pair.v"], []byte(stringVal))
 	var regs linutil.AMD64Registers
 	regs.Regs = &linutil.AMD64PtraceRegs{}
 	regs.Regs.Rax = uint64(len(stringVal))

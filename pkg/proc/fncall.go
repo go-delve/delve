@@ -483,7 +483,7 @@ func funcCallEvalFuncExpr(scope *EvalScope, stack *evalStack, fncall *functionCa
 	if fnvar.Base == 0 {
 		return errors.New("nil pointer dereference")
 	}
-	fncall.fn = bi.PCToFunc(uint64(fnvar.Base))
+	fncall.fn = bi.PCToFunc(fnvar.Base)
 	if fncall.fn == nil {
 		return fmt.Errorf("could not find DIE for function %q", exprToString(fncall.expr.Fun))
 	}
@@ -558,7 +558,7 @@ func funcCallCopyOneArg(scope *EvalScope, fncall *functionCallState, actualArg *
 			return err
 		}
 	} else {
-		formalArgVar = newVariable(formalArg.name, uint64(formalArg.off+int64(formalScope.Regs.CFA)), formalArg.typ, scope.BinInfo, scope.Mem)
+		formalArgVar = newVariable(formalArg.name, uint64(formalArg.off+formalScope.Regs.CFA), formalArg.typ, scope.BinInfo, scope.Mem)
 	}
 	if err := scope.setValue(formalArgVar, actualArg, actualArg.Name); err != nil {
 		return err
@@ -684,7 +684,7 @@ func funcCallArgRegABI(fn *Function, bi *BinaryInfo, entry reader.Variable, argn
 
 // alignAddr rounds up addr to a multiple of align. Align must be a power of 2.
 func alignAddr(addr, align int64) int64 {
-	return (addr + int64(align-1)) &^ int64(align-1)
+	return (addr + align - 1) &^ (align - 1)
 }
 
 func escapeCheck(v *Variable, name string, stack stack) error {
@@ -733,7 +733,7 @@ func escapeCheck(v *Variable, name string, stack stack) error {
 }
 
 func escapeCheckPointer(addr uint64, name string, stack stack) error {
-	if uint64(addr) >= stack.lo && uint64(addr) < stack.hi {
+	if addr >= stack.lo && addr < stack.hi {
 		return fmt.Errorf("stack object passed to escaping pointer: %s", name)
 	}
 	return nil

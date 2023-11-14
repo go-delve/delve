@@ -63,7 +63,7 @@ func resolveCallArgARM64(inst *arm64asm.Inst, instAddr uint64, currentGoroutine 
 			return nil
 		}
 	case arm64asm.PCRel:
-		pc = uint64(instAddr) + uint64(arg)
+		pc = instAddr + uint64(arg)
 	default:
 		return nil
 	}

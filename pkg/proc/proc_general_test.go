@@ -44,7 +44,7 @@ type memRead struct {
 
 func (dm *dummyMem) ReadMemory(buf []byte, addr uint64) (int, error) {
 	dm.t.Logf("read addr=%#x size=%#x\n", addr, len(buf))
-	dm.reads = append(dm.reads, memRead{uint64(addr), len(buf)})
+	dm.reads = append(dm.reads, memRead{addr, len(buf)})
 	a := int64(addr) - int64(dm.base)
 	if a < 0 {
 		panic("reading below base")
