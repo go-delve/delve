@@ -1495,6 +1495,9 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, FollowCalls int)
         for _, instr := range text {
              if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
                         cf := instr.DestLoc.Fn
+			if cf.Name == f.Name {
+				continue 
+			}
                 //        depth[cf.Name]=depth[f.Name]+1
                         //if depth[cf.Name] <= FollowCalls {
                         if depth <= FollowCalls {
