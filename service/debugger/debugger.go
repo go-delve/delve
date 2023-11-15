@@ -1479,10 +1479,11 @@ var (
 	depth= make(map[string]int) 
 )
 
-func traverse(t proc.ValidTargets, f *proc.Function, funcs []string, FollowCalls int) ([]string, error) {
+func traverse(t proc.ValidTargets, f *proc.Function, FollowCalls int) ([]string, error) {
 	if depth[f.Name] > FollowCalls {
-		return funcs, nil
+		return nil, nil
 	}
+        funcs := []string{}
 	funcs=append(funcs, f.Name) 
  	text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
         if err != nil {
@@ -1494,7 +1495,12 @@ func traverse(t proc.ValidTargets, f *proc.Function, funcs []string, FollowCalls
                         cf := instr.DestLoc.Fn
                         depth[cf.Name]=depth[f.Name]+1
                         if depth[cf.Name] <= FollowCalls {
-				funcs, _ =traverse(t, cf, funcs, FollowCalls)
+				children, err :=traverse(t, cf, FollowCalls)
+				funcs = append(funcs, children...)
+				if err != nil  {
+					fmt.Errorf("traverse failed")
+					return nil, err
+				}
 			}
              }
 	}
@@ -1519,7 +1525,8 @@ func (d *Debugger) FunctionsDeep(filter string, FollowCalls int) ([]string, erro
                 for _, f := range t.BinInfo().Functions {
                         if regex.MatchString(f.Name) {
 				depth[f.Name]=1
-				funcs, err =traverse(t, &f, funcs, FollowCalls) 
+				newfuncs, err :=traverse(t, &f, FollowCalls) 
+				funcs=append(funcs, newfuncs...)
         			if err != nil {
              				fmt.Errorf("traverse failed")
              				return nil, err
