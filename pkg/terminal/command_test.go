@@ -1488,3 +1488,29 @@ func TestListPackages(t *testing.T) {
 		}
 	})
 }
+
+func TestSubstitutePathAndList(t *testing.T) {
+	// checks that substitute path rules do not remain cached after a -clear.
+	// See issue #3565.
+	if runtime.GOOS == "windows" {
+		t.Skip("test is not valid on windows due to path separators")
+	}
+	withTestTerminal("math", t, func(term *FakeTerminal) {
+		term.MustExec("break main.main")
+		term.MustExec("continue")
+		fixturesDir, _ := filepath.Abs(test.FindFixturesDir())
+		term.MustExec("config substitute-path " + fixturesDir + " /blah")
+		out, _ := term.Exec("list")
+		t.Logf("list output %s", out)
+		if !strings.Contains(out, "/blah/math.go") {
+			t.Fatalf("bad output")
+		}
+		term.MustExec("config substitute-path -clear")
+		term.MustExec("config substitute-path " + fixturesDir + " /blah2")
+		out, _ = term.Exec("list")
+		t.Logf("list output %s", out)
+		if !strings.Contains(out, "/blah2/math.go") {
+			t.Fatalf("bad output")
+		}
+	})
+}
