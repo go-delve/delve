@@ -3054,11 +3054,6 @@ func TestIssue877(t *testing.T) {
 	if runtime.GOOS != "darwin" && testBackend == "lldb" {
 		return
 	}
-	if os.Getenv("TRAVIS") == "true" && runtime.GOOS == "darwin" {
-		// Something changed on Travis side that makes the Go compiler fail if
-		// DYLD_LIBRARY_PATH is set.
-		t.Skip("broken")
-	}
 	const envval = "/usr/local/lib"
 	t.Setenv("DYLD_LIBRARY_PATH", envval)
 	withTestProcess("issue877", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {

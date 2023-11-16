@@ -130,7 +130,7 @@ This option can only be specified if testset is basic or a single package.`)
 
 func checkCert() bool {
 	// If we're on OSX make sure the proper CERT env var is set.
-	if os.Getenv("TRAVIS") == "true" || runtime.GOOS != "darwin" || os.Getenv("CERT") != "" {
+	if runtime.GOOS != "darwin" || os.Getenv("CERT") != "" {
 		return true
 	}
 
@@ -328,9 +328,6 @@ func testFlags() []string {
 	}
 	if NOTimeout {
 		testFlags = append(testFlags, "-timeout", "0")
-	} else if os.Getenv("TRAVIS") == "true" {
-		// Make test timeout shorter than Travis' own timeout so that Go can report which test hangs.
-		testFlags = append(testFlags, "-timeout", "9m")
 	}
 	if len(os.Getenv("TEAMCITY_VERSION")) > 0 {
 		testFlags = append(testFlags, "-json")
@@ -343,20 +340,6 @@ func testFlags() []string {
 
 func testCmd(cmd *cobra.Command, args []string) {
 	checkCertCmd(nil, nil)
-
-	if os.Getenv("TRAVIS") == "true" && runtime.GOOS == "darwin" {
-		fmt.Println("Building with native backend")
-		execute("go", "build", "-tags=macnative", buildFlags(), DelveMainPackagePath)
-
-		fmt.Println("\nBuilding without native backend")
-		execute("go", "build", buildFlags(), DelveMainPackagePath)
-
-		fmt.Println("\nTesting")
-		os.Setenv("PROCTEST", "lldb")
-		env := []string{}
-		executeq(env, "sudo", "-E", "go", "test", testFlags(), allPackages())
-		return
-	}
 
 	if TestSet == "" && TestBackend == "" && TestBuildMode == "" {
 		if TestRegex != "" {
