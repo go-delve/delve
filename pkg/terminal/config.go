@@ -11,6 +11,7 @@ import (
 )
 
 func configureCmd(t *Term, ctx callContext, args string) error {
+	t.substitutePathRulesCache = nil
 	switch args {
 	case "-list":
 		return configureList(t)
