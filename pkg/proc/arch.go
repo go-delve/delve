@@ -55,6 +55,8 @@ type Arch struct {
 	// maxRegArgBytes is extra padding for ABI1 call injections, equivalent to
 	// the maximum space occupied by register arguments.
 	maxRegArgBytes int
+	// argumentRegs are function call injection registers for runtimeOptimizedWorkaround
+	argumentRegs []int
 
 	// asmRegisters maps assembly register numbers to dwarf registers.
 	asmRegisters map[int]asmRegister

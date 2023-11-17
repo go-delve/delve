@@ -573,15 +573,19 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 		return 0, nil, fmt.Errorf("DWARF read error: %v", err)
 	}
 
-	if bi.regabi && fn.cu.optimized && fn.Name != "runtime.mallocgc" {
-		// Debug info for function arguments on optimized functions is currently
-		// too incomplete to attempt injecting calls to arbitrary optimized
-		// functions.
-		// Prior to regabi we could do this because the ABI was simple enough to
-		// manually encode it in Delve.
-		// Runtime.mallocgc is an exception, we specifically patch it's DIE to be
-		// correct for call injection purposes.
-		return 0, nil, fmt.Errorf("can not call optimized function %s when regabi is in use", fn.Name)
+	if bi.regabi && fn.cu.optimized {
+		if runtimeWhitelist[fn.Name] {
+			runtimeOptimizedWorkaround(bi, fn.cu.image, dwarfTree)
+		} else {
+			// Debug info for function arguments on optimized functions is currently
+			// too incomplete to attempt injecting calls to arbitrary optimized
+			// functions.
+			// Prior to regabi we could do this because the ABI was simple enough to
+			// manually encode it in Delve.
+			// Runtime.mallocgc is an exception, we specifically patch it's DIE to be
+			// correct for call injection purposes.
+			return 0, nil, fmt.Errorf("can not call optimized function %s when regabi is in use", fn.Name)
+		}
 	}
 
 	varEntries := reader.Variables(dwarfTree, fn.Entry, int(^uint(0)>>1), reader.VariablesSkipInlinedSubroutines)
@@ -1214,82 +1218,53 @@ func debugCallProtocolReg(archName string, version int) (uint64, bool) {
 	}
 }
 
-type fakeEntry map[dwarf.Attr]*dwarf.Field
-
-func (e fakeEntry) Val(attr dwarf.Attr) interface{} {
-	if e[attr] == nil {
-		return nil
-	}
-
-	return e[attr].Val
+// runtimeWhitelist is a list of functions in the runtime that we can call
+// (through call injection) even if they are optimized.
+var runtimeWhitelist = map[string]bool{
+	"runtime.mallocgc": true,
 }
 
-func (e fakeEntry) AttrField(attr dwarf.Attr) *dwarf.Field {
-	return e[attr]
-}
-
-func regabiMallocgcWorkaround(bi *BinaryInfo) ([]*godwarf.Tree, error) {
-	ptrToRuntimeType := "*" + bi.runtimeTypeTypename()
-
-	var err1 error
-
-	t := func(name string) godwarf.Type {
-		if err1 != nil {
-			return nil
-		}
-		typ, err := bi.findType(name)
-		if err != nil {
-			err1 = err
-			return nil
-		}
-		return typ
+// runtimeOptimizedWorkaround modifies the input DIE so that arguments and
+// return variables have the appropriate registers for call injection.
+// This function can not be called on arbitrary DIEs, it is only valid for
+// the functions specified in runtimeWhitelist.
+// In particular this will fail if any of the arguments of the function
+// passed in input does not fit in an integer CPU register.
+func runtimeOptimizedWorkaround(bi *BinaryInfo, image *Image, in *godwarf.Tree) {
+	if image.workaroundCache == nil {
+		image.workaroundCache = make(map[dwarf.Offset]*godwarf.Tree)
 	}
-
-	m := func(name string, typ godwarf.Type, reg int, isret bool) *godwarf.Tree {
-		if err1 != nil {
-			return nil
-		}
-		var e fakeEntry = map[dwarf.Attr]*dwarf.Field{
-			dwarf.AttrName:     &dwarf.Field{Attr: dwarf.AttrName, Val: name, Class: dwarf.ClassString},
-			dwarf.AttrType:     &dwarf.Field{Attr: dwarf.AttrType, Val: typ.Common().Offset, Class: dwarf.ClassReference},
-			dwarf.AttrLocation: &dwarf.Field{Attr: dwarf.AttrLocation, Val: []byte{byte(op.DW_OP_reg0) + byte(reg)}, Class: dwarf.ClassBlock},
-			dwarf.AttrVarParam: &dwarf.Field{Attr: dwarf.AttrVarParam, Val: isret, Class: dwarf.ClassFlag},
-		}
-
-		return &godwarf.Tree{
-			Entry: e,
-			Tag:   dwarf.TagFormalParameter,
-		}
+	if image.workaroundCache[in.Offset] == in {
+		return
 	}
+	image.workaroundCache[in.Offset] = in
 
-	switch bi.Arch.Name {
-	case "amd64":
-		r := []*godwarf.Tree{
-			m("size", t("uintptr"), regnum.AMD64_Rax, false),
-			m("typ", t(ptrToRuntimeType), regnum.AMD64_Rbx, false),
-			m("needzero", t("bool"), regnum.AMD64_Rcx, false),
-			m("~r1", t("unsafe.Pointer"), regnum.AMD64_Rax, true),
-		}
-		return r, err1
-	case "arm64":
-		r := []*godwarf.Tree{
-			m("size", t("uintptr"), regnum.ARM64_X0, false),
-			m("typ", t(ptrToRuntimeType), regnum.ARM64_X0+1, false),
-			m("needzero", t("bool"), regnum.ARM64_X0+2, false),
-			m("~r1", t("unsafe.Pointer"), regnum.ARM64_X0, true),
-		}
-		return r, err1
-	case "ppc64le":
-		r := []*godwarf.Tree{
-			m("size", t("uintptr"), regnum.PPC64LE_R0+3, false),
-			m("typ", t(ptrToRuntimeType), regnum.PPC64LE_R0+4, false),
-			m("needzero", t("bool"), regnum.PPC64LE_R0+5, false),
-			m("~r1", t("unsafe.Pointer"), regnum.PPC64LE_R0+3, true),
-		}
-		return r, err1
+	curArg, curRet := 0, 0
+	for _, child := range in.Children {
+		if child.Tag == dwarf.TagFormalParameter {
+			childEntry, ok := child.Entry.(*dwarf.Entry)
+			if !ok {
+				panic("internal error: bad DIE for runtimeOptimizedWorkaround")
+			}
+			isret, _ := child.Entry.Val(dwarf.AttrVarParam).(bool)
 
-	default:
-		// do nothing
-		return nil, nil
+			var reg int
+			if isret {
+				reg = bi.Arch.argumentRegs[curRet]
+				curRet++
+			} else {
+				reg = bi.Arch.argumentRegs[curArg]
+				curArg++
+			}
+
+			newlocfield := dwarf.Field{Attr: dwarf.AttrLocation, Val: []byte{byte(op.DW_OP_reg0) + byte(reg)}, Class: dwarf.ClassBlock}
+
+			locfield := childEntry.AttrField(dwarf.AttrLocation)
+			if locfield != nil {
+				*locfield = newlocfield
+			} else {
+				childEntry.Field = append(childEntry.Field, newlocfield)
+			}
+		}
 	}
 }
