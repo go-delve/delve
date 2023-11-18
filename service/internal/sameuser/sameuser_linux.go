@@ -111,18 +111,18 @@ func CanAccept(listenAddr, localAddr, remoteAddr net.Addr) bool {
 	if !ok || !laddr.IP.IsLoopback() {
 		return true
 	}
-	remoteaAddrTCP := remoteAddr.(*net.TCPAddr)
+	remoteAddrTCP := remoteAddr.(*net.TCPAddr)
 	localAddrTCP := localAddr.(*net.TCPAddr)
 
-	same, err := sameUserForRemoteAddr(localAddrTCP, remoteaAddrTCP)
+	same, err := sameUserForRemoteAddr(localAddrTCP, remoteAddrTCP)
 	if err != nil {
 		log.Printf("cannot check remote address: %v", err)
 	}
 	if !same {
 		if logflags.Any() {
-			log.Printf("closing connection from different user (%v): connections to localhost are only accepted from the same UNIX user for security reasons", remoteaAddrTCP)
+			log.Printf("closing connection from different user (%v): connections to localhost are only accepted from the same UNIX user for security reasons", remoteAddrTCP)
 		} else {
-			fmt.Fprintf(os.Stderr, "closing connection from different user (%v): connections to localhost are only accepted from the same UNIX user for security reasons\n", remoteaAddrTCP)
+			fmt.Fprintf(os.Stderr, "closing connection from different user (%v): connections to localhost are only accepted from the same UNIX user for security reasons\n", remoteAddrTCP)
 		}
 		return false
 	}
