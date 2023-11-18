@@ -758,24 +758,9 @@ func (conn *gdbConn) parseStopPacket(resp []byte, threadID string, tu *threadUpd
 		var metype int
 		var medata = make([]uint64, 0, 10)
 
-		buf := resp[3:]
-		for buf != nil {
-			colon := bytes.Index(buf, []byte{':'})
-			if colon < 0 {
-				break
-			}
-			key := buf[:colon]
-			buf = buf[colon+1:]
-
-			semicolon := bytes.Index(buf, []byte{';'})
-			var value []byte
-			if semicolon < 0 {
-				value = buf
-				buf = nil
-			} else {
-				value = buf[:semicolon]
-				buf = buf[semicolon+1:]
-			}
+		csp := colonSemicolonParser{buf: resp[3:]}
+		for csp.next() {
+			key, value := csp.key, csp.value
 
 			switch string(key) {
 			case "thread":
@@ -872,21 +857,9 @@ func (conn *gdbConn) queryProcessInfo(pid int) (map[string]string, error) {
 
 	pi := make(map[string]string)
 
-	for len(resp) > 0 {
-		semicolon := bytes.Index(resp, []byte{';'})
-		keyval := resp
-		if semicolon >= 0 {
-			keyval = resp[:semicolon]
-			resp = resp[semicolon+1:]
-		}
-
-		colon := bytes.Index(keyval, []byte{':'})
-		if colon < 0 {
-			continue
-		}
-
-		key := string(keyval[:colon])
-		value := string(keyval[colon+1:])
+	csp := colonSemicolonParser{buf: resp}
+	for csp.next() {
+		key, value := string(csp.key), string(csp.value)
 
 		switch key {
 		case "name":
@@ -1235,24 +1208,9 @@ func (conn *gdbConn) memoryRegionInfo(addr uint64) (*memoryRegionInfo, error) {
 
 	mri := &memoryRegionInfo{}
 
-	buf := resp
-	for len(buf) > 0 {
-		colon := bytes.Index(buf, []byte{':'})
-		if colon < 0 {
-			break
-		}
-		key := buf[:colon]
-		buf = buf[colon+1:]
-
-		semicolon := bytes.Index(buf, []byte{';'})
-		var value []byte
-		if semicolon < 0 {
-			value = buf
-			buf = nil
-		} else {
-			value = buf[:semicolon]
-			buf = buf[semicolon+1:]
-		}
+	csp := colonSemicolonParser{buf: resp}
+	for csp.next() {
+		key, value := csp.key, csp.value
 
 		switch string(key) {
 		case "start":
@@ -1548,4 +1506,34 @@ func checksum(packet []byte) (sum uint8) {
 		sum += packet[i]
 	}
 	return sum
+}
+
+// colonSemicolonParser parses a string in the form:
+//
+//	key1:value1;key2:value2;...;keyN:valueN
+type colonSemicolonParser struct {
+	buf        []byte
+	key, value []byte
+}
+
+func (csp *colonSemicolonParser) next() bool {
+	if len(csp.buf) == 0 {
+		return false
+	}
+	colon := bytes.IndexByte(csp.buf, ':')
+	if colon < 0 {
+		return false
+	}
+	csp.key = csp.buf[:colon]
+	csp.buf = csp.buf[colon+1:]
+
+	semicolon := bytes.IndexByte(csp.buf, ';')
+	if semicolon < 0 {
+		csp.value = csp.buf
+		csp.buf = nil
+	} else {
+		csp.value = csp.buf[:semicolon]
+		csp.buf = csp.buf[semicolon+1:]
+	}
+	return true
 }
