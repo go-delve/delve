@@ -857,8 +857,8 @@ type Image struct {
 
 	compileUnits []*compileUnit // compileUnits is sorted by increasing DWARF offset
 
-	dwarfTreeCache      *simplelru.LRU
-	runtimeMallocgcTree *godwarf.Tree // patched version of runtime.mallocgc's DIE
+	dwarfTreeCache  *simplelru.LRU
+	workaroundCache map[dwarf.Offset]*godwarf.Tree
 
 	// runtimeTypeToDIE maps between the offset of a runtime._type in
 	// runtime.moduledata.types and the offset of the DIE in debug_info. This
@@ -1012,8 +1012,8 @@ func (image *Image) LoadError() error {
 }
 
 func (image *Image) getDwarfTree(off dwarf.Offset) (*godwarf.Tree, error) {
-	if image.runtimeMallocgcTree != nil && off == image.runtimeMallocgcTree.Offset {
-		return image.runtimeMallocgcTree, nil
+	if image.workaroundCache[off] != nil {
+		return image.workaroundCache[off], nil
 	}
 	if r, ok := image.dwarfTreeCache.Get(off); ok {
 		return r.(*godwarf.Tree), nil
@@ -2256,23 +2256,6 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 	}
 	sort.Strings(bi.Sources)
 	bi.Sources = uniq(bi.Sources)
-
-	if bi.regabi {
-		// prepare patch for runtime.mallocgc's DIE
-		fn := bi.lookupOneFunc("runtime.mallocgc")
-		if fn != nil && fn.cu.image == image {
-			tree, err := image.getDwarfTree(fn.offset)
-			if err == nil {
-				children, err := regabiMallocgcWorkaround(bi)
-				if err != nil {
-					bi.logger.Errorf("could not patch runtime.mallocgc: %v", err)
-				} else {
-					tree.Children = children
-					image.runtimeMallocgcTree = tree
-				}
-			}
-		}
-	}
 
 	if cont != nil {
 		cont()

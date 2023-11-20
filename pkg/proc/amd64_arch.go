@@ -43,6 +43,7 @@ func AMD64Arch(goos string) *Arch {
 		RegnumToString:                   regnum.AMD64ToName,
 		debugCallMinStackSize:            256,
 		maxRegArgBytes:                   9*8 + 15*8,
+		argumentRegs:                     []int{regnum.AMD64_Rax, regnum.AMD64_Rbx, regnum.AMD64_Rcx},
 	}
 }
 
