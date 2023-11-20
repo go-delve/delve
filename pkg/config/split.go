@@ -47,11 +47,12 @@ func SplitQuotedFields(in string, quote rune) []string {
 			}
 
 		case inQuote:
-			if ch == quote {
+			switch ch {
+			case quote:
 				state = inField
-			} else if ch == '\\' {
+			case '\\':
 				state = inQuoteEscaped
-			} else {
+			default:
 				buf.WriteRune(ch)
 			}
 
