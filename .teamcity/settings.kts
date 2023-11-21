@@ -167,6 +167,7 @@ class TestBuild(val os: String, val arch: String, val version: String, buildId: 
 
     vcs {
         root(DslContext.settingsRoot)
+        branchFilter = if (version == "tip") "-:pull/*" else "+:*"
     }
 
     failureConditions {
