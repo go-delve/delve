@@ -1094,11 +1094,19 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 				return starlark.None, decorateError(thread, err)
 			}
 		}
+		if len(args) > 1 && args[1] != starlark.None {
+			err := unmarshalStarlarkValue(args[1], &rpcArgs.FollowCalls, "FollowCalls")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
 		for _, kv := range kwargs {
 			var err error
 			switch kv[0].(starlark.String) {
 			case "Filter":
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Filter, "Filter")
+			case "FollowCalls":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.FollowCalls, "FollowCalls")
 			default:
 				err = fmt.Errorf("unknown argument %q", kv[0])
 			}
@@ -1112,7 +1120,7 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 		}
 		return env.interfaceToStarlarkValue(rpcRet), nil
 	})
-	doc["functions"] = "builtin functions(Filter)\n\nfunctions lists all functions in the process matching filter."
+	doc["functions"] = "builtin functions(Filter, FollowCalls)\n\nfunctions lists all functions in the process matching filter."
 	r["goroutines"] = starlark.NewBuiltin("goroutines", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if err := isCancelled(thread); err != nil {
 			return starlark.None, decorateError(thread, err)
