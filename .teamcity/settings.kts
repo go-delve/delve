@@ -1,4 +1,7 @@
-import jetbrains.buildServer.configs.kotlin.v2019_2.*
+import jetbrains.buildServer.configs.kotlin.v2019_2.AbsoluteId
+import jetbrains.buildServer.configs.kotlin.v2019_2.BuildType
+import jetbrains.buildServer.configs.kotlin.v2019_2.DslContext
+import jetbrains.buildServer.configs.kotlin.v2019_2.Project
 import jetbrains.buildServer.configs.kotlin.v2019_2.buildFeatures.PullRequests
 import jetbrains.buildServer.configs.kotlin.v2019_2.buildFeatures.commitStatusPublisher
 import jetbrains.buildServer.configs.kotlin.v2019_2.buildFeatures.golang
@@ -8,7 +11,9 @@ import jetbrains.buildServer.configs.kotlin.v2019_2.buildSteps.exec
 import jetbrains.buildServer.configs.kotlin.v2019_2.buildSteps.powerShell
 import jetbrains.buildServer.configs.kotlin.v2019_2.failureConditions.BuildFailureOnMetric
 import jetbrains.buildServer.configs.kotlin.v2019_2.failureConditions.failOnMetricChange
+import jetbrains.buildServer.configs.kotlin.v2019_2.project
 import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.vcs
+import jetbrains.buildServer.configs.kotlin.v2019_2.version
 
 /*
 The settings script is an entry point for defining a TeamCity
@@ -66,9 +71,12 @@ project {
         test.os
     }.distinct().forEach { os ->
         subProject(OSProject(os, tests.filter { test ->
-            test.os == os
+            test.os == os && test.version != "tip"
         }))
     }
+    subProject(TipProject(tests.filter { test ->
+        test.version == "tip"
+    }))
     buildType(AggregatorBuild(tests))
     params {
         param("teamcity.ui.settings.readOnly", "true")
@@ -122,6 +130,15 @@ class AggregatorBuild(tests: Collection<BuildType>) : BuildType({
     }
 })
 
+class TipProject(tests: List<TestBuild>) : Project({
+    id = AbsoluteId("Delve_tip")
+    name = "Tip"
+
+    tests.forEach { test ->
+        buildType(test)
+    }
+})
+
 class OSProject(os: String, tests: List<TestBuild>) : Project({
     id = AbsoluteId("Delve_$os")
     name = os.capitalize()
@@ -144,12 +161,13 @@ class ArchProject(os: String, arch: String, tests: List<TestBuild>) : Project({
     }
 })
 
-class TestBuild(val os: String, val arch: String, version: String, buildId: AbsoluteId) : BuildType({
+class TestBuild(val os: String, val arch: String, val version: String, buildId: AbsoluteId) : BuildType({
     id = buildId
-    name = version
+    name = if (version == "tip") arch else version
 
     vcs {
         root(DslContext.settingsRoot)
+        branchFilter = if (version == "tip") "-:pull/*" else "+:*"
     }
 
     failureConditions {
