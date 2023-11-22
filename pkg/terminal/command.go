@@ -2869,13 +2869,21 @@ func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 	}
 }
 
+	var (
+     	depth= make(map[int64]int)
+	)
 func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, args string, hasReturnValue bool) {
+
 	if t.conf.TraceShowTimestamp {
 		fmt.Fprintf(t.stdout, "%s ", time.Now().Format(time.RFC3339Nano))
 	}
 
 	if th.Breakpoint.Tracepoint {
-		fmt.Fprintf(t.stdout, "> goroutine(%d): %s%s(%s)\n", th.GoroutineID, bpname, fn.Name(), args)
+		idx := strings.Index(fn.Name(), "runtime.morestack_noctxt")
+		if (idx == -1) {
+			depth[th.GoroutineID]++
+		}
+		fmt.Fprintf(t.stdout, "> (depth:%d) goroutine(%d): %s%s(%s)\n", depth[th.GoroutineID], th.GoroutineID, bpname, fn.Name(), args)
 		// Print indentation acc to th.TraceDepth
 		printBreakpointInfo(t, th, !hasReturnValue)
 	}
@@ -2885,7 +2893,12 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 			retVals = append(retVals, v.SinglelineString())
 		}
 		// Print return indentation acc to th.TraceDepth
-		fmt.Fprintf(t.stdout, ">> goroutine(%d): => (%s)\n", th.GoroutineID, strings.Join(retVals, ","))
+
+		fmt.Fprintf(t.stdout, ">> (depth:%d) goroutine(%d): => (%s)\n", depth[th.GoroutineID], th.GoroutineID, strings.Join(retVals, ","))
+		idx := strings.Index(fn.Name(), "runtime.morestack_noctxt")
+		if (idx == -1) {
+			depth[th.GoroutineID]--
+		}
 	}
 	if th.Breakpoint.TraceReturn || !hasReturnValue {
 		if th.BreakpointInfo != nil && th.BreakpointInfo.Stacktrace != nil {
