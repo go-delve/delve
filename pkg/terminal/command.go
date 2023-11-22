@@ -2331,11 +2331,7 @@ func packages(t *Term, ctx callContext, args string) error {
 }
 
 func funcs(t *Term, ctx callContext, args string) error {
-<<<<<<< HEAD
 	return t.printSortedStrings(t.client.ListFunctions(args, 0))
-=======
-	return t.printSortedStrings(t.client.ListFunctions(args,0))
->>>>>>> 750d8a4a (rebase to master: modified function to add children to funcs array)
 }
 
 func types(t *Term, ctx callContext, args string) error {
@@ -2922,7 +2918,11 @@ func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 	}
 }
 
+	var (
+     	depth= make(map[int64]int)
+	)
 func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, args string, hasReturnValue bool) {
+
 	if t.conf.TraceShowTimestamp {
 		fmt.Fprintf(t.stdout, "%s ", time.Now().Format(time.RFC3339Nano))
 	}
