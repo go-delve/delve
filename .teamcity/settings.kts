@@ -163,11 +163,23 @@ class ArchProject(os: String, arch: String, tests: List<TestBuild>) : Project({
 
 class TestBuild(val os: String, val arch: String, val version: String, buildId: AbsoluteId) : BuildType({
     id = buildId
-    name = if (version == "tip") arch else version
+    name = if (version == "tip") "${arch}_tip" else version
 
     vcs {
         root(DslContext.settingsRoot)
         branchFilter = if (version == "tip") "-:pull/*" else "+:*"
+    }
+
+    if (version == "tip") {
+        triggers {
+            schedule {
+                schedulingPolicy = daily {
+                    hour = 23
+                }
+                withPendingChangesOnly = true
+                triggerBuild = always()
+            }
+        }
     }
 
     failureConditions {
