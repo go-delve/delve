@@ -163,7 +163,7 @@ class ArchProject(os: String, arch: String, tests: List<TestBuild>) : Project({
 
 class TestBuild(val os: String, val arch: String, val version: String, buildId: AbsoluteId) : BuildType({
     id = buildId
-    name = if (version == "tip") "${arch}_tip" else version
+    name = if (version == "tip") "${os}_${arch}_tip" else version
 
     vcs {
         root(DslContext.settingsRoot)
