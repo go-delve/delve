@@ -2416,17 +2416,18 @@ func (s *Session) childrenToDAPVariables(v *fullyQualifiedVariable) []dap.Variab
 			c := &v.Children[i]
 			cfqname := fmt.Sprintf("%s.%s", v.fullyQualifiedNameOrExpr, c.Name)
 
-			if strings.HasPrefix(c.Name, "~") || strings.HasPrefix(c.Name, ".") {
+			switch {
+			case strings.HasPrefix(c.Name, "~") || strings.HasPrefix(c.Name, "."):
 				cfqname = ""
-			} else if v.isScope && v.fullyQualifiedNameOrExpr == "" {
+			case v.isScope && v.fullyQualifiedNameOrExpr == "":
 				cfqname = c.Name
-			} else if v.fullyQualifiedNameOrExpr == "" {
+			case v.fullyQualifiedNameOrExpr == "":
 				cfqname = ""
-			} else if v.Kind == reflect.Interface {
+			case v.Kind == reflect.Interface:
 				cfqname = fmt.Sprintf("%s.(%s)", v.fullyQualifiedNameOrExpr, c.Name) // c is data
-			} else if v.Kind == reflect.Ptr {
+			case v.Kind == reflect.Ptr:
 				cfqname = fmt.Sprintf("(*%v)", v.fullyQualifiedNameOrExpr) // c is the nameless pointer value
-			} else if v.Kind == reflect.Complex64 || v.Kind == reflect.Complex128 {
+			case v.Kind == reflect.Complex64 || v.Kind == reflect.Complex128:
 				cfqname = "" // complex children are not struct fields and can't be accessed directly
 			}
 			cvalue, cvarref := s.convertVariable(c, cfqname)

@@ -5210,11 +5210,12 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 
 	cmdRequest()
 	client.ExpectInitializedEvent(t)
-	if cmd == "launch" {
+	switch cmd {
+	case "launch":
 		client.ExpectLaunchResponse(t)
-	} else if cmd == "attach" {
+	case "attach":
 		client.ExpectAttachResponse(t)
-	} else {
+	default:
 		panic("expected launch or attach command")
 	}
 

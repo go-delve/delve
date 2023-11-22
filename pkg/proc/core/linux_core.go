@@ -280,11 +280,12 @@ func readNote(r io.ReadSeeker, machineType elf.Machine) (*note, error) {
 	descReader := bytes.NewReader(desc)
 	switch note.Type {
 	case elf.NT_PRSTATUS:
-		if machineType == _EM_X86_64 {
+		switch machineType {
+		case _EM_X86_64:
 			note.Desc = &linuxPrStatusAMD64{}
-		} else if machineType == _EM_AARCH64 {
+		case _EM_AARCH64:
 			note.Desc = &linuxPrStatusARM64{}
-		} else {
+		default:
 			return nil, fmt.Errorf("unsupported machine type")
 		}
 		if err := binary.Read(descReader, binary.LittleEndian, note.Desc); err != nil {
