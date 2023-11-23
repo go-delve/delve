@@ -3204,12 +3204,15 @@ func TestDebugStripped(t *testing.T) {
 
 func TestDebugStripped2(t *testing.T) {
 	// Currently only implemented for Linux ELF executables.
-	// TODO(derekparker): Add support for Mach-O and PE.
-	skipUnlessOn(t, "linux/amd64 only", "linux", "amd64")
+	// TODO(derekparker): Add support for PE.
+	skipOn(t, "not working on windows", "windows")
+	skipOn(t, "not working on freebsd", "freebsd")
+	skipOn(t, "not working on linux/386", "linux", "386")
+	skipOn(t, "not working on linux/ppc64le when -gcflags=-N -l is passed", "linux", "ppc64le")
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 20) {
 		t.Skip("temporarily disabled on Go versions < 1.20")
 	}
-	withTestProcessArgs("inlinestripped", t, "", []string{}, protest.EnableInlining|protest.LinkStrip, func(p *proc.Target, grp *proc.TargetGroup, f protest.Fixture) {
+	withTestProcessArgs("inlinestripped", t, "", []string{}, protest.EnableInlining|protest.LinkStrip|protest.LinkDisableDWARF, func(p *proc.Target, grp *proc.TargetGroup, f protest.Fixture) {
 		setFunctionBreakpointAll(p, t, "fmt.Println")
 
 		for i, line := range []int{12, 13, 14} {
