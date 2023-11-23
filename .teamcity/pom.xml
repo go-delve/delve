@@ -77,13 +77,13 @@
   <dependencies>
     <dependency>
       <groupId>org.jetbrains.teamcity</groupId>
-      <artifactId>configs-dsl-kotlin</artifactId>
+      <artifactId>configs-dsl-kotlin-latest</artifactId>
       <version>${teamcity.dsl.version}</version>
       <scope>compile</scope>
     </dependency>
     <dependency>
       <groupId>org.jetbrains.teamcity</groupId>
-      <artifactId>configs-dsl-kotlin-plugins</artifactId>
+      <artifactId>configs-dsl-kotlin-plugins-latest</artifactId>
       <version>1.0-SNAPSHOT</version>
       <type>pom</type>
       <scope>compile</scope>
