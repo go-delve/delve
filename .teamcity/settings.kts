@@ -78,7 +78,9 @@ project {
     subProject(TipProject(tests.filter { test ->
         test.version == "tip"
     }))
-    buildType(AggregatorBuild(tests))
+    buildType(AggregatorBuild(tests.filter { test ->
+        test.version != "tip"
+    }))
     params {
         param("teamcity.ui.settings.readOnly", "true")
     }
