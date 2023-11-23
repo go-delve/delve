@@ -1,20 +1,20 @@
-import jetbrains.buildServer.configs.kotlin.v2019_2.AbsoluteId
-import jetbrains.buildServer.configs.kotlin.v2019_2.BuildType
-import jetbrains.buildServer.configs.kotlin.v2019_2.DslContext
-import jetbrains.buildServer.configs.kotlin.v2019_2.Project
-import jetbrains.buildServer.configs.kotlin.v2019_2.buildFeatures.PullRequests
-import jetbrains.buildServer.configs.kotlin.v2019_2.buildFeatures.commitStatusPublisher
-import jetbrains.buildServer.configs.kotlin.v2019_2.buildFeatures.golang
-import jetbrains.buildServer.configs.kotlin.v2019_2.buildFeatures.pullRequests
-import jetbrains.buildServer.configs.kotlin.v2019_2.buildSteps.dockerCommand
-import jetbrains.buildServer.configs.kotlin.v2019_2.buildSteps.exec
-import jetbrains.buildServer.configs.kotlin.v2019_2.buildSteps.powerShell
-import jetbrains.buildServer.configs.kotlin.v2019_2.failureConditions.BuildFailureOnMetric
-import jetbrains.buildServer.configs.kotlin.v2019_2.failureConditions.failOnMetricChange
-import jetbrains.buildServer.configs.kotlin.v2019_2.project
-import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.schedule
-import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.vcs
-import jetbrains.buildServer.configs.kotlin.v2019_2.version
+import jetbrains.buildServer.configs.kotlin.AbsoluteId
+import jetbrains.buildServer.configs.kotlin.BuildType
+import jetbrains.buildServer.configs.kotlin.DslContext
+import jetbrains.buildServer.configs.kotlin.Project
+import jetbrains.buildServer.configs.kotlin.buildFeatures.PullRequests
+import jetbrains.buildServer.configs.kotlin.buildFeatures.commitStatusPublisher
+import jetbrains.buildServer.configs.kotlin.buildFeatures.golang
+import jetbrains.buildServer.configs.kotlin.buildFeatures.pullRequests
+import jetbrains.buildServer.configs.kotlin.buildSteps.dockerCommand
+import jetbrains.buildServer.configs.kotlin.buildSteps.exec
+import jetbrains.buildServer.configs.kotlin.buildSteps.powerShell
+import jetbrains.buildServer.configs.kotlin.failureConditions.BuildFailureOnMetric
+import jetbrains.buildServer.configs.kotlin.failureConditions.failOnMetricChange
+import jetbrains.buildServer.configs.kotlin.project
+import jetbrains.buildServer.configs.kotlin.triggers.schedule
+import jetbrains.buildServer.configs.kotlin.triggers.vcs
+import jetbrains.buildServer.configs.kotlin.version
 
 /*
 The settings script is an entry point for defining a TeamCity
@@ -38,7 +38,7 @@ To debug in IntelliJ Idea, open the 'Maven Projects' tool window (View
 'Debug' option is available in the context menu for the task.
 */
 
-version = "2020.2"
+version = "2023.05"
 
 val targets = arrayOf(
         "linux/amd64/1.19",
@@ -78,7 +78,9 @@ project {
     subProject(TipProject(tests.filter { test ->
         test.version == "tip"
     }))
-    buildType(AggregatorBuild(tests))
+    buildType(AggregatorBuild(tests.filter { test ->
+        test.version != "tip"
+    }))
     params {
         param("teamcity.ui.settings.readOnly", "true")
     }
