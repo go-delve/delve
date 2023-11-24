@@ -812,7 +812,7 @@ func TestPreSetBreakpoint(t *testing.T) {
 //	wantFrames - number of frames returned (length of StackTraceResponse.Body.StackFrames array).
 //	wantTotalFrames - total number of stack frames available (StackTraceResponse.Body.TotalFrames).
 func checkStackFramesExact(t *testing.T, got *dap.StackTraceResponse,
-	wantStartName string, wantStartLine, wantStartID, wantFrames, wantTotalFrames int) {
+	wantStartName string, wantStartLine interface{}, wantStartID, wantFrames, wantTotalFrames int) {
 	t.Helper()
 	checkStackFramesNamed("", t, got, wantStartName, wantStartLine, wantStartID, wantFrames, wantTotalFrames, true)
 }
@@ -930,7 +930,7 @@ func checkStackFramesHasMore(t *testing.T, got *dap.StackTraceResponse,
 	checkStackFramesNamed("", t, got, wantStartName, wantStartLine, wantStartID, wantFrames, wantTotalFrames, false)
 }
 func checkStackFramesNamed(testName string, t *testing.T, got *dap.StackTraceResponse,
-	wantStartName string, wantStartLine, wantStartID, wantFrames, wantTotalFrames int, totalExact bool) {
+	wantStartName string, wantStartLine interface{}, wantStartID, wantFrames, wantTotalFrames int, totalExact bool) {
 	t.Helper()
 	if totalExact && got.Body.TotalFrames != wantTotalFrames {
 		t.Errorf("%s\ngot  %#v\nwant TotalFrames=%d", testName, got.Body.TotalFrames, wantTotalFrames)
@@ -949,9 +949,26 @@ func checkStackFramesNamed(testName string, t *testing.T, got *dap.StackTraceRes
 		}
 		// Verify the name and line corresponding to the first returned frame (if any).
 		// This is useful when the first frame is the frame corresponding to the breakpoint at
-		// a predefined line. Line values < 0 are a signal to skip the check (which can be useful
-		// for frames in the third-party code, where we do not control the lines).
-		if wantFrames > 0 && wantStartLine > 0 && got.Body.StackFrames[0].Line != wantStartLine {
+		// a predefined line.
+
+		startLineOk := true
+
+		switch wantStartLine := wantStartLine.(type) {
+		case int:
+			if wantStartLine > 0 {
+				startLineOk = got.Body.StackFrames[0].Line == wantStartLine
+			}
+		case []int:
+			startLineOk = false
+			for _, ln := range wantStartLine {
+				if got.Body.StackFrames[0].Line == ln {
+					startLineOk = true
+					break
+				}
+			}
+		}
+
+		if wantFrames > 0 && !startLineOk {
 			t.Errorf("%s\ngot  Line=%d\nwant %d", testName, got.Body.StackFrames[0].Line, wantStartLine)
 		}
 		if wantFrames > 0 && wantStartName != "" && got.Body.StackFrames[0].Name != wantStartName {
@@ -1454,15 +1471,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
 
-					startLineno := 66
-					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
-						// Go1.15 on windows inserts a NOP after the call to
-						// runtime.Breakpoint and marks it same line as the
-						// runtime.Breakpoint call, making this flaky, so skip the line check.
-						startLineno = -1
-					}
-
-					checkStackFramesExact(t, stack, "main.foobar", startLineno, 1000, 4, 4)
+					checkStackFramesExact(t, stack, "main.foobar", []int{65, 66}, 1000, 4, 4)
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
@@ -2338,10 +2347,12 @@ func TestVariablesLoading(t *testing.T) {
 					// variables in any frame, not just topmost.
 					loadvars(1000 /*first topmost frame*/)
 					// step into another function
-					client.StepInRequest(1)
-					client.ExpectStepInResponse(t)
+					client.SetFunctionBreakpointsRequest([]dap.FunctionBreakpoint{{Name: "main.barfoo"}})
+					client.ExpectSetFunctionBreakpointsResponse(t)
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
 					client.ExpectStoppedEvent(t)
-					checkStop(t, client, 1, "main.barfoo", 24)
+					checkStop(t, client, 1, "main.barfoo", -1)
 					loadvars(1001 /*second frame here is same as topmost above*/)
 				},
 				disconnect: true,
@@ -3902,7 +3913,7 @@ func TestEvaluateRequest(t *testing.T) {
 			fixture.Source, []int{}, // Breakpoint set in the program
 			[]onBreakpoint{{ // Stop at first breakpoint
 				execute: func() {
-					checkStop(t, client, 1, "main.foobar", 66)
+					checkStop(t, client, 1, "main.foobar", []int{65, 66})
 
 					// Variable lookup
 					client.EvaluateRequest("a2", 1000, "this context will be ignored")
@@ -4073,7 +4084,7 @@ func TestEvaluateCommandRequest(t *testing.T) {
 			fixture.Source, []int{}, // Breakpoint set in the program
 			[]onBreakpoint{{ // Stop at first breakpoint
 				execute: func() {
-					checkStop(t, client, 1, "main.foobar", 66)
+					checkStop(t, client, 1, "main.foobar", []int{65, 66})
 
 					// Request help.
 					const dlvHelp = `The following commands are available:
@@ -5164,7 +5175,7 @@ func TestFatalThrowBreakpoint(t *testing.T) {
 // The details have been tested by other tests,
 // so this is just a sanity check.
 // Skips line check if line is -1.
-func checkStop(t *testing.T, client *daptest.Client, thread int, fname string, line int) {
+func checkStop(t *testing.T, client *daptest.Client, thread int, fname string, line interface{}) {
 	t.Helper()
 	client.ThreadsRequest()
 	client.ExpectThreadsResponse(t)
@@ -5983,15 +5994,7 @@ func TestSetVariable(t *testing.T) {
 				execute: func() {
 					tester := &helperForSetVariable{t, client}
 
-					startLineno := 66 // after runtime.Breakpoint
-					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
-						// Go1.15 on windows inserts a NOP after the call to
-						// runtime.Breakpoint and marks it same line as the
-						// runtime.Breakpoint call, making this flaky, so skip the line check.
-						startLineno = -1
-					}
-
-					checkStop(t, client, 1, "main.foobar", startLineno)
+					checkStop(t, client, 1, "main.foobar", []int{65, 66})
 
 					// Local variables
 					locals := tester.variables(localsScope)
@@ -6160,20 +6163,12 @@ func TestSetVariableWithCall(t *testing.T) {
 					"mode": "exec", "program": fixture.Path, "showGlobalVariables": true,
 				})
 			},
-			fixture.Source, []int{66, 67},
+			fixture.Source, []int{},
 			[]onBreakpoint{{
 				execute: func() {
 					tester := &helperForSetVariable{t, client}
 
-					startLineno := 66
-					if runtime.GOOS == "windows" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 15) {
-						// Go1.15 on windows inserts a NOP after the call to
-						// runtime.Breakpoint and marks it same line as the
-						// runtime.Breakpoint call, making this flaky, so skip the line check.
-						startLineno = -1
-					}
-
-					checkStop(t, client, 1, "main.foobar", startLineno)
+					checkStop(t, client, 1, "main.foobar", []int{65, 66})
 
 					// Local variables
 					locals := tester.variables(localsScope)
@@ -6196,16 +6191,16 @@ func TestSetVariableWithCall(t *testing.T) {
 
 					tester.expectSetVariable(a6Ref, "Bur", `"sentence"`)
 					tester.evaluate("a6", `main.FooBar {Baz: 8, Bur: "sentence"}`, hasChildren)
-				},
-			}, {
-				// Stop at second breakpoint and set a1.
-				execute: func() {
-					tester := &helperForSetVariable{t, client}
 
+					// stop inside main.barfoo
+					client.ContinueRequest(1)
+					client.ExpectContinueResponse(t)
+					client.ExpectStoppedEvent(t)
 					checkStop(t, client, 1, "main.barfoo", -1)
+
 					// Test: set string 'a1' in main.barfoo.
 					// This shouldn't affect 'a1' in main.foobar - we will check that in the next breakpoint.
-					locals := tester.variables(localsScope)
+					locals = tester.variables(localsScope)
 					checkVarExact(t, locals, -1, "a1", "a1", `"bur"`, "string", noChildren)
 					tester.expectSetVariable(localsScope, "a1", `"fur"`)
 					tester.evaluate("a1", `"fur"`, noChildren)
