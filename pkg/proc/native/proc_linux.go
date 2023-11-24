@@ -563,9 +563,23 @@ func trapWaitInternal(procgrp *processGroup, pid int, options trapWaitOptions) (
 			}
 			// do the same thing we do if a thread quit
 			if wpid == dbp.pid {
+				exitStatus := 0
+				if procgrp.numValid() == 1 {
+					// try to recover the real exit status using waitpid
+					for {
+						wpid2, status2, err := dbp.wait(-1, sys.WNOHANG)
+						if wpid2 <= 0 || err != nil {
+							break
+						}
+						if status2.Exited() {
+							exitStatus = status2.ExitStatus()
+						}
+					}
+
+				}
 				dbp.postExit()
 				if procgrp.numValid() == 0 {
-					return nil, proc.ErrProcessExited{Pid: wpid, Status: status.ExitStatus()}
+					return nil, proc.ErrProcessExited{Pid: wpid, Status: exitStatus}
 				}
 				continue
 			}
@@ -693,8 +707,7 @@ func (procgrp *processGroup) stop(cctx *proc.ContinueOnceContext, trapthread *na
 	for {
 		th, err := trapWaitInternal(procgrp, -1, trapWaitNohang)
 		if err != nil {
-			p := procgrp.procForThread(th.ID)
-			return nil, exitGuard(p, procgrp, err)
+			return nil, exitGuard(procgrp.procs[0], procgrp, err)
 		}
 		if th == nil {
 			break
