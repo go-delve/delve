@@ -1896,17 +1896,33 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 				fmt.Sprintf("debug session already in progress at %s - use remote mode to connect to a server with an active debug session", s.address()))
 			return
 		}
-		if args.ProcessID == 0 {
-			s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach",
-				"The 'processId' attribute is missing in debug configuration")
+		if args.AttachWaitFor != "" && args.ProcessID != 0 {
+			s.sendShowUserErrorResponse(
+				request.Request,
+				FailedToAttach,
+				"Failed to attach",
+				"'processId' and 'waitFor' are mutually exclusive, and can't be specified at the same time")
+			return
+		} else if args.AttachWaitFor != "" {
+			s.config.Debugger.AttachWaitFor = args.AttachWaitFor
+			// Keep the default value the same as waitfor-interval.
+			s.config.Debugger.AttachWaitForInterval = 1
+			s.config.log.Debugf("Waiting for a process with a name beginning with this prefix: %s", args.AttachWaitFor)
+		} else if args.ProcessID != 0 {
+			s.config.Debugger.AttachPid = args.ProcessID
+			s.config.log.Debugf("Attaching to pid %d", args.ProcessID)
+		} else {
+			s.sendShowUserErrorResponse(
+				request.Request,
+				FailedToAttach,
+				"Failed to attach",
+				"The 'processId' or 'waitFor' attribute is missing in debug configuration")
 			return
 		}
-		s.config.Debugger.AttachPid = args.ProcessID
 		if args.Backend == "" {
 			args.Backend = "default"
 		}
 		s.config.Debugger.Backend = args.Backend
-		s.config.log.Debugf("attaching to pid %d", args.ProcessID)
 		var err error
 		func() {
 			s.mu.Lock()

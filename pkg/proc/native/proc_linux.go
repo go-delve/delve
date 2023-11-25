@@ -216,7 +216,7 @@ func waitForSearchProcess(pfx string, seen map[int]struct{}) (int, error) {
 				buf[i] = ' '
 			}
 		}
-		log.Debugf("waitfor: new process %q", string(buf))
+		log.Debugf("waitfor: new process:\n\tpid=%d\n\tcmdline=%q", pid, string(buf))
 		if strings.HasPrefix(string(buf), pfx) {
 			return pid, nil
 		}

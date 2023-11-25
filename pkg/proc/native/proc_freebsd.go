@@ -181,7 +181,7 @@ func waitForSearchProcess(pfx string, seen map[int]struct{}) (int, error) {
 		seen[int(proc.ki_pid)] = struct{}{}
 
 		argv := strings.Join(getCmdLineInternal(ps, proc), " ")
-		log.Debugf("waitfor: new process %q", argv)
+		log.Debugf("waitfor: new process:\n\tpid=%d\n\tcmdline=%q", int(proc.ki_pid), argv)
 		if strings.HasPrefix(argv, pfx) {
 			return int(proc.ki_pid), nil
 		}

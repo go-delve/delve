@@ -248,7 +248,7 @@ func waitForSearchProcess(pfx string, seen map[int]struct{}) (int, error) {
 		cmdline := getCmdLine(syscall.Handle(hProcess))
 		sys.CloseHandle(hProcess)
 
-		log.Debugf("waitfor: new process %q", cmdline)
+		log.Debugf("waitfor: new process:\n\tpid=%d\n\tcmdline=%q", int(entry.ProcessID), cmdline)
 		if strings.HasPrefix(cmdline, pfx) {
 			return int(entry.ProcessID), nil
 		}
