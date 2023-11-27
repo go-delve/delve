@@ -221,6 +221,8 @@ func (grp *TargetGroup) Continue() error {
 				dbp.StopReason = StopWatchpoint
 			}
 			return conditionErrors(grp)
+		case stopReason == StopLaunched:
+			return nil
 		default:
 			// not a manual stop, not on runtime.Breakpoint, not on a breakpoint, just repeat
 		}
@@ -1342,6 +1344,9 @@ func (t *Target) handleHardcodedBreakpoints(grp *TargetGroup, trapthread Thread,
 		if (thread.ThreadID() != trapthread.ThreadID()) && !thread.SoftExc() {
 			continue
 		}
+		if (thread.ThreadID() == trapthread.ThreadID()) && grp.cctx.GetManualStopRequested() {
+			continue
+		}
 
 		loc, err := thread.Location()
 		if err != nil || loc.Fn == nil {
@@ -1371,7 +1376,11 @@ func (t *Target) handleHardcodedBreakpoints(grp *TargetGroup, trapthread Thread,
 			}
 			setHardcodedBreakpoint(thread, loc)
 		case g == nil || t.fncallForG[g.ID] == nil:
-			if isHardcodedBreakpoint(thread, loc.PC) > 0 {
+			// Check that PC is inside a function (not the entry point) and the
+			// preceding instruction is a hardcoded breakpoint.
+			// We explicitly check for entry points of functions because the space
+			// between functions is usually filled with hardcoded breakpoints.
+			if (loc.Fn == nil || loc.Fn.Entry != loc.PC) && isHardcodedBreakpoint(thread, loc.PC) > 0 {
 				stepOverBreak(thread, loc.PC)
 				setHardcodedBreakpoint(thread, loc)
 			}
