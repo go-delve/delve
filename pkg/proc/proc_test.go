@@ -3690,7 +3690,7 @@ func TestIssue1101(t *testing.T) {
 				// Also it seems that sometimes on linux/386 we will not receive the
 				// exit status. This happens if the process exits at the same time as it
 				// receives a signal.
-				t.Fatalf("process exited status %d (expected 2)", pexit.Status)
+				t.Fatalf("process exited status %d (expected 2) (last command = %s) (%#v)", pexit.Status, lastCmd, pexit)
 			}
 		} else {
 			assertNoError(exitErr, t, lastCmd)
