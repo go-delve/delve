@@ -198,15 +198,28 @@ func (c *Client) ExpectOutputEventClosingClient(t *testing.T, status string) *da
 	return c.ExpectOutputEventRegex(t, fmt.Sprintf(ClosingClient, status))
 }
 
-func (c *Client) CheckStopLocation(t *testing.T, thread int, name string, line int) {
+func (c *Client) CheckStopLocation(t *testing.T, thread int, name string, line interface{}) {
 	t.Helper()
 	c.StackTraceRequest(thread, 0, 20)
 	st := c.ExpectStackTraceResponse(t)
 	if len(st.Body.StackFrames) < 1 {
 		t.Errorf("\ngot  %#v\nwant len(stackframes) => 1", st)
 	} else {
-		if line != -1 && st.Body.StackFrames[0].Line != line {
-			t.Errorf("\ngot  %#v\nwant Line=%d", st, line)
+		switch line := line.(type) {
+		case int:
+			if line != -1 && st.Body.StackFrames[0].Line != line {
+				t.Errorf("\ngot  %#v\nwant Line=%d", st, line)
+			}
+		case []int:
+			found := false
+			for _, line := range line {
+				if st.Body.StackFrames[0].Line == line {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("\ngot  %#v\nwant Line=%v", st, line)
+			}
 		}
 		if st.Body.StackFrames[0].Name != name {
 			t.Errorf("\ngot  %#v\nwant Name=%q", st, name)
