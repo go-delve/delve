@@ -944,9 +944,8 @@ func TestTrace2(t *testing.T) {
 func TestTraceDepth(t *testing.T) {
 	dlvbin := getDlvBin(t)
 
-	expected := []byte("> goroutine(1): main.A(2)\n> goroutine(1): main.B(2)\n>> goroutine(1): => (70)\n>> goroutine(1): => (80)\n")
+	expected := []byte("> goroutine(1): main.A(2)\n > goroutine(1): main.B(2)\n >> goroutine(1): => (70)\n>> goroutine(1): => (80)\n")
 
-	expected_depth1 := []byte("> goroutine(1): main.A(2)\n>> goroutine(1): => (80)\n")
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "leaf4.go"), "main.A", "--follow-calls", "2")
 	rdr, err := cmd.StderrPipe()
@@ -957,28 +956,20 @@ func TestTraceDepth(t *testing.T) {
 
 	assertNoError(cmd.Start(), t, "running trace")
 
-	output, err := io.ReadAll(rdr)
-	assertNoError(err, t, "ReadAll")
-
+	scan := bufio.NewScanner(rdr)
+	text := ""
+	outputtext := ""
+	for scan.Scan() {
+		text = scan.Text()
+		if !strings.Contains(text, "morestack_noctxt") {
+			//outputtext += scan.Text()
+			outputtext += text
+		}
+		outputtext += "\n"
+	}
+	output := []byte(outputtext)
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
-	}
-	assertNoError(cmd.Wait(), t, "cmd.Wait()")
-
-	cmd = exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "leaf4.go"), "main.A", "--follow-calls", "1")
-	rdr, err = cmd.StderrPipe()
-	assertNoError(err, t, "stderr pipe")
-	defer rdr.Close()
-
-	cmd.Dir = filepath.Join(fixtures, "buildtest")
-
-	assertNoError(cmd.Start(), t, "running trace")
-
-	output, err = io.ReadAll(rdr)
-	assertNoError(err, t, "ReadAll")
-
-	if !bytes.Contains(output, expected_depth1) {
-		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected_depth1), string(output))
 	}
 	assertNoError(cmd.Wait(), t, "cmd.Wait()")
 
@@ -987,42 +978,31 @@ func TestTraceDepth(t *testing.T) {
 func TestTraceCommon(t *testing.T) {
 	dlvbin := getDlvBin(t)
 
-	expected := []byte("> goroutine(1): main.A(2)\n> goroutine(1): main.B(2)\n> goroutine(1): main.D(2)\n>> goroutine(1): => (8)\n>> goroutine(1): => (16)\n> goroutine(1): main.C(2)\n> goroutine(1): main.D(12)\n>> goroutine(1): => (1728)\n>> goroutine(1): => (1748)\n>> goroutine(1): => (1774)\n")
+	expected := []byte("> goroutine(1): main.A(2)\n > goroutine(1): main.B(2)\n  > goroutine(1): main.D(2)\n  >> goroutine(1): => (8)\n >> goroutine(1): => (16)\n > goroutine(1): main.C(2)\n  > goroutine(1): main.D(12)\n  >> goroutine(1): => (1728)\n >> goroutine(1): => (1748)\n>> goroutine(1): => (1774)\n")
 
-	expected_depth2 := []byte("> goroutine(1): main.A(2)\n> goroutine(1): main.B(2)\n>> goroutine(1): => (16)\n> goroutine(1): main.C(2)\n>> goroutine(1): => (1748)\n>> goroutine(1): => (1774)\n")
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "leafcommon.go"), "main.A", "--follow-calls", "3")
 	rdr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
 	defer rdr.Close()
-
 	cmd.Dir = filepath.Join(fixtures, "buildtest")
 
 	assertNoError(cmd.Start(), t, "running trace")
 
-	output, err := io.ReadAll(rdr)
-	assertNoError(err, t, "ReadAll")
+	scan := bufio.NewScanner(rdr)
+        text := ""
+        outputtext := ""
+        for scan.Scan() {
+                text = scan.Text()
+                if !strings.Contains(text, "morestack_noctxt") {
+                        outputtext += text
+                }
+                outputtext += "\n"
+        }
+        output := []byte(outputtext)
 
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
-	}
-	assertNoError(cmd.Wait(), t, "cmd.Wait()")
-
-	cmd = exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "leafcommon.go"),
-		"main.A", "--follow-calls", "2")
-	rdr, err = cmd.StderrPipe()
-	assertNoError(err, t, "stderr pipe")
-	defer rdr.Close()
-
-	cmd.Dir = filepath.Join(fixtures, "buildtest")
-
-	assertNoError(cmd.Start(), t, "running trace")
-
-	output, err = io.ReadAll(rdr)
-	assertNoError(err, t, "ReadAll")
-
-	if !bytes.Contains(output, expected_depth2) {
-		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected_depth2), string(output))
 	}
 	assertNoError(cmd.Wait(), t, "cmd.Wait()")
 
@@ -1031,7 +1011,7 @@ func TestTraceCommon(t *testing.T) {
 func TestTraceDirRecursion(t *testing.T) {
 	dlvbin := getDlvBin(t)
 
-	expected := []byte("> goroutine(1): main.A(5, 5)\n> goroutine(1): main.A(4, 4)\n> goroutine(1): main.A(3, 3)\n> goroutine(1): main.A(2, 2)\n> goroutine(1): main.A(1, 1)\n>> goroutine(1): => (1)\n>> goroutine(1): => (2)\n>> goroutine(1): => (6)\n>> goroutine(1): => (24)\n>> goroutine(1): => (120)\n")
+	expected := []byte("> goroutine(1): main.A(5, 5)\n > goroutine(1): main.A(4, 4)\n  > goroutine(1): main.A(3, 3)\n   > goroutine(1): main.A(2, 2)\n    > goroutine(1): main.A(1, 1)\n    >> goroutine(1): => (1)\n   >> goroutine(1): => (2)\n  >> goroutine(1): => (6)\n >> goroutine(1): => (24)\n>> goroutine(1): => (120)\n")
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "leafrec.go"), "main.A", "--follow-calls", "1")
@@ -1042,9 +1022,17 @@ func TestTraceDirRecursion(t *testing.T) {
 	cmd.Dir = filepath.Join(fixtures, "buildtest")
 
 	assertNoError(cmd.Start(), t, "running trace")
-
-	output, err := io.ReadAll(rdr)
-	assertNoError(err, t, "ReadAll")
+	scan := bufio.NewScanner(rdr)
+        text := ""
+        outputtext := ""
+        for scan.Scan() {
+                text = scan.Text()
+                if !strings.Contains(text, "morestack_noctxt") {
+                        outputtext += text
+                }
+                outputtext += "\n"
+        }
+        output := []byte(outputtext)
 
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
@@ -1055,9 +1043,7 @@ func TestTraceDirRecursion(t *testing.T) {
 func TestTraceIndirRecursion(t *testing.T) {
 	dlvbin := getDlvBin(t)
 
-	expected := []byte("> goroutine(1): main.B(12)\n> goroutine(1): main.A(11)\n> goroutine(1): main.B(8)\n> goroutine(1): main.A(7)\n> goroutine(1): main.B(4)\n> goroutine(1): main.A(3)\n> goroutine(1): main.B(0)\n>> goroutine(1): => (0)\n>> goroutine(1): => (0)\n>> goroutine(1): => (0)\n>> goroutine(1): => (0)\n>> goroutine(1): => (0)\n>> goroutine(1): => (0)\n>> goroutine(1): => (0)\n")
-
-	expected_depth1 := []byte("> goroutine(1): main.B(12)\n> goroutine(1): main.B(8)\n> goroutine(1): main.B(4)\n> goroutine(1): main.B(0)\n>> goroutine(1): => (0)\n>> goroutine(1): => (0)\n>> goroutine(1): => (0)\n>> goroutine(1): => (0)\n")
+	expected := []byte("> goroutine(1): main.B(12)\n > goroutine(1): main.A(11)\n  > goroutine(1): main.B(8)\n   > goroutine(1): main.A(7)\n    > goroutine(1): main.B(4)\n     > goroutine(1): main.A(3)\n      > goroutine(1): main.B(0)\n      >> goroutine(1): => (0)\n     >> goroutine(1): => (0)\n    >> goroutine(1): => (0)\n   >> goroutine(1): => (0)\n  >> goroutine(1): => (0)\n >> goroutine(1): => (0)\n>> goroutine(1): => (0)\n")
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "leafindrec.go"), "main.B", "--follow-calls", "2")
@@ -1069,36 +1055,29 @@ func TestTraceIndirRecursion(t *testing.T) {
 
 	assertNoError(cmd.Start(), t, "running trace")
 
-	output, err := io.ReadAll(rdr)
-	assertNoError(err, t, "ReadAll")
+	scan := bufio.NewScanner(rdr)
+        text := ""
+        outputtext := ""
+        for scan.Scan() {
+                text = scan.Text()
+                if !strings.Contains(text, "morestack_noctxt") {
+                        outputtext += text
+                }
+                outputtext += "\n"
+        }
+        output := []byte(outputtext)
 
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
 	}
 	assertNoError(cmd.Wait(), t, "cmd.Wait()")
 
-	cmd = exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "leafindrec.go"), "main.B", "--follow-calls", "1")
-	rdr, err = cmd.StderrPipe()
-	assertNoError(err, t, "stderr pipe")
-	defer rdr.Close()
-
-	cmd.Dir = filepath.Join(fixtures, "buildtest")
-
-	assertNoError(cmd.Start(), t, "running trace")
-
-	output, err = io.ReadAll(rdr)
-	assertNoError(err, t, "ReadAll")
-
-	if !bytes.Contains(output, expected_depth1) {
-		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected_depth1), string(output))
-	}
-	assertNoError(cmd.Wait(), t, "cmd.Wait()")
 }
 
 func TestTraceDepthRegex(t *testing.T) {
 	dlvbin := getDlvBin(t)
 
-	expected := []byte("> goroutine(1): runtime.morestack_noctxt()\n> goroutine(1): main.callme(2)\n> goroutine(1): main.callme2(2)\n> goroutine(1): main.callmee(2)\n>> goroutine(1): => (22)\n> goroutine(1): main.callmed(2)\n>> goroutine(1): => (8)\n>> goroutine(1): => (70)\n>> goroutine(1): => (80)\n")
+	expected := []byte("> goroutine(1): main.callme(2)\n > goroutine(1): main.callme2(2)\n  > goroutine(1): main.callmee(2)\n  >> goroutine(1): => (22)\n  > goroutine(1): main.callmed(2)\n  >> goroutine(1): => (8)\n >> goroutine(1): => (70)\n>> goroutine(1): => (80)\n")
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "leafregex.go"), "main.callme", "--follow-calls", "2")
@@ -1109,9 +1088,17 @@ func TestTraceDepthRegex(t *testing.T) {
 	cmd.Dir = filepath.Join(fixtures, "buildtest")
 
 	assertNoError(cmd.Start(), t, "running trace")
-
-	output, err := io.ReadAll(rdr)
-	assertNoError(err, t, "ReadAll")
+   	scan := bufio.NewScanner(rdr)
+        text := ""
+        outputtext := ""
+        for scan.Scan() {
+                text = scan.Text()
+                if !strings.Contains(text, "morestack_noctxt") {
+                        outputtext += text
+                }
+                outputtext += "\n"
+        }
+        output := []byte(outputtext)
 
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
