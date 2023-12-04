@@ -222,6 +222,11 @@ type launchAttachArgs struct {
 	ShowRegisters bool `cfgName:"showRegisters"`
 	// GoroutineFilters are the filters used when loading goroutines.
 	GoroutineFilters string `cfgName:"goroutineFilters"`
+	// ShowPprofLabels is an array of keys of pprof labels to show as a
+	// goroutine name in the threads view. If the array has one element, only
+	// that label's value will be shown; otherwise, each of the labels will be
+	// shown as "key:value". To show all labels, specify the single element "*".
+	ShowPprofLabels []string `cfgName:"showPprofLabels"`
 	// HideSystemGoroutines indicates if system goroutines should be removed from threads
 	// responses.
 	HideSystemGoroutines bool `cfgName:"hideSystemGoroutines"`
@@ -241,6 +246,7 @@ var defaultArgs = launchAttachArgs{
 	HideSystemGoroutines:         false,
 	ShowRegisters:                false,
 	GoroutineFilters:             "",
+	ShowPprofLabels:              []string{},
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
 }
@@ -280,11 +286,9 @@ const (
 	maxStringLenInCallRetVars = 1 << 10 // 1024
 )
 
-var (
-	// Max number of goroutines that we will return.
-	// This is a var for testing
-	maxGoroutines = 1 << 10
-)
+// Max number of goroutines that we will return.
+// This is a var for testing
+var maxGoroutines = 1 << 10
 
 // NewServer creates a new DAP Server. It takes an opened Listener
 // via config and assumes its ownership. config.DisconnectChan has to be set;
@@ -355,6 +359,7 @@ func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) {
 	s.args.ShowRegisters = args.ShowRegisters
 	s.args.HideSystemGoroutines = args.HideSystemGoroutines
 	s.args.GoroutineFilters = args.GoroutineFilters
+	s.args.ShowPprofLabels = args.ShowPprofLabels
 	if paths := args.SubstitutePath; len(paths) > 0 {
 		clientToServer := make([][2]string, 0, len(paths))
 		serverToClient := make([][2]string, 0, len(paths))
@@ -817,7 +822,8 @@ func (s *Session) logToConsole(msg string) {
 		Body: dap.OutputEventBody{
 			Output:   msg + "\n",
 			Category: "console",
-		}})
+		},
+	})
 }
 
 func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
@@ -889,7 +895,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	var args = defaultLaunchConfig // narrow copy for initializing non-zero default values
+	args := defaultLaunchConfig // narrow copy for initializing non-zero default values
 	if err := unmarshalLaunchAttachArgs(request.Arguments, &args); err != nil {
 		s.sendShowUserErrorResponse(request.Request,
 			FailedToLaunch, "Failed to launch", fmt.Sprintf("invalid debug configuration - %v", err))
@@ -1002,7 +1008,8 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 				Body: dap.OutputEventBody{
 					Output:   fmt.Sprintf("Build Error: %s\n%s (%s)\n", cmd, strings.TrimSpace(string(out)), err.Error()),
 					Category: "stderr",
-				}})
+				},
+			})
 			// Users are used to checking the Debug Console for build errors.
 			// No need to bother them with a visible pop-up.
 			s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
@@ -1035,7 +1042,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	argsToLog.Cwd, _ = filepath.Abs(args.Cwd)
 	s.config.log.Debugf("launching binary '%s' with config: %s", debugbinary, prettyPrint(argsToLog))
 
-	var redirected = false
+	redirected := false
 	switch args.OutputMode {
 	case "remote":
 		redirected = true
@@ -1062,7 +1069,8 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 						Body: dap.OutputEventBody{
 							Output:   outs,
 							Category: category,
-						}})
+						},
+					})
 				}
 				if err != nil {
 					if err == io.EOF {
@@ -1687,7 +1695,8 @@ func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneReque
 func (s *Session) onContinueRequest(request *dap.ContinueRequest, allowNextStateChange *syncflag) {
 	s.send(&dap.ContinueResponse{
 		Response: *newResponse(request.Request),
-		Body:     dap.ContinueResponseBody{AllThreadsContinued: true}})
+		Body:     dap.ContinueResponseBody{AllThreadsContinued: true},
+	})
 	s.runUntilStopAndNotify(api.Continue, allowNextStateChange)
 }
 
@@ -1762,7 +1771,8 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 				Body: dap.OutputEventBody{
 					Output:   fmt.Sprintf("Unable to retrieve goroutines: %s\n", err.Error()),
 					Category: "stderr",
-				}})
+				},
+			})
 		}
 		threads = []dap.Thread{{Id: 1, Name: "Dummy"}}
 	} else if len(gs) == 0 {
@@ -1812,10 +1822,41 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 			if g.Thread != nil && g.Thread.ThreadID() != 0 {
 				thread = fmt.Sprintf(" (Thread %d)", g.Thread.ThreadID())
 			}
+			var labels strings.Builder
+			writeLabelsForKeys := func(keys []string) {
+				for _, k := range keys {
+					labelValue := g.Labels()[k]
+					if labelValue != "" {
+						labels.WriteByte(' ')
+						labels.WriteString(k)
+						labels.WriteByte(':')
+						labels.WriteString(labelValue)
+					}
+				}
+			}
+			if len(s.args.ShowPprofLabels) == 1 {
+				labelKey := s.args.ShowPprofLabels[0]
+				if labelKey == "*" {
+					keys := make([]string, 0, len(g.Labels()))
+					for k := range g.Labels() {
+						keys = append(keys, k)
+					}
+					sort.Strings(keys)
+					writeLabelsForKeys(keys)
+				} else {
+					labelValue := g.Labels()[labelKey]
+					if labelValue != "" {
+						labels.WriteByte(' ')
+						labels.WriteString(labelValue)
+					}
+				}
+			} else {
+				writeLabelsForKeys(s.args.ShowPprofLabels)
+			}
 			// File name and line number are communicated via `stackTrace`
 			// so no need to include them here.
 			loc := g.UserCurrent()
-			threads[i].Name = fmt.Sprintf("%s[Go %d] %s%s", selected, g.ID, fnName(&loc), thread)
+			threads[i].Name = fmt.Sprintf("%s[Go %d%s] %s%s", selected, g.ID, labels.String(), fnName(&loc), thread)
 			threads[i].Id = int(g.ID)
 		}
 	}
@@ -1836,7 +1877,7 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 //   - "remote" -- attaches client to a debugger already attached to a process.
 //     Required args: none (host/port are used externally to connect)
 func (s *Session) onAttachRequest(request *dap.AttachRequest) {
-	var args = defaultAttachConfig // narrow copy for initializing non-zero default values
+	args := defaultAttachConfig // narrow copy for initializing non-zero default values
 	if err := unmarshalLaunchAttachArgs(request.Arguments, &args); err != nil {
 		s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach", fmt.Sprintf("invalid debug configuration - %v", err))
 		return
@@ -2597,7 +2638,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 
 	// Some of the types might be fully or partially not loaded based on LoadConfig.
 	// Those that are fully missing (e.g. due to hitting MaxVariableRecurse), can be reloaded in place.
-	var reloadVariable = func(v *proc.Variable, qualifiedNameOrExpr string) (value string) {
+	reloadVariable := func(v *proc.Variable, qualifiedNameOrExpr string) (value string) {
 		// We might be loading variables from the frame that's not topmost, so use
 		// frame-independent address-based expression, not fully-qualified name as per
 		// https://github.com/go-delve/delve/blob/master/Documentation/api/ClientHowto.md#looking-into-variables.
@@ -3531,6 +3572,7 @@ func newEvent(event string) *dap.Event {
 
 const BetterBadAccessError = `invalid memory address or nil pointer dereference [signal SIGSEGV: segmentation violation]
 Unable to propagate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)`
+
 const BetterNextWhileNextingError = `Unable to step while the previous step is interrupted by a breakpoint.
 Use 'Continue' to resume the original step command.`
 

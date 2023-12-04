@@ -62,7 +62,14 @@ Type "help" followed by the name of a command for more information about it.`
 	dlv config substitutePath -clear
 	
 		Adds or removes a path substitution rule. If -clear is used all substitutePath rules are removed.
-		See also Documentation/cli/substitutepath.md.`
+		See also Documentation/cli/substitutepath.md.
+
+	dlv config showPprofLabels <label>
+	dlv config showPprofLabels -clear <label>
+	dlv config showPprofLabels -clear
+
+		Adds or removes a label key to show in the callstack view. If -clear is used without an argument,
+		all labels are removed.`
 	msgSources = `Print list of source files.
 
 	dlv sources [<regex>]
@@ -138,7 +145,7 @@ func (s *Session) evaluateConfig(_, _ int, expr string) (string, error) {
 					Areas: []dap.InvalidatedAreas{"variables"},
 				},
 			})
-		case "goroutineFilters", "hideSystemGoroutines":
+		case "goroutineFilters", "hideSystemGoroutines", "showPprofLabels":
 			// Thread related data has become invalidated.
 			s.send(&dap.InvalidatedEvent{
 				Event: *newEvent("invalidated"),

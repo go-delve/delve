@@ -18,14 +18,14 @@ func TestListConfig(t *testing.T) {
 			args: args{
 				args: &launchAttachArgs{},
 			},
-			want: formatConfig(0, false, false, "", false, [][2]string{}),
+			want: formatConfig(0, false, false, "", []string{}, false, [][2]string{}),
 		},
 		{
 			name: "default values",
 			args: args{
 				args: &defaultArgs,
 			},
-			want: formatConfig(50, false, false, "", false, [][2]string{}),
+			want: formatConfig(50, false, false, "", []string{}, false, [][2]string{}),
 		},
 		{
 			name: "custom values",
@@ -33,11 +33,13 @@ func TestListConfig(t *testing.T) {
 				args: &launchAttachArgs{
 					StackTraceDepth:              35,
 					ShowGlobalVariables:          true,
+					GoroutineFilters:             "SomeFilter",
+					ShowPprofLabels:              []string{"SomeLabel"},
 					substitutePathClientToServer: [][2]string{{"hello", "world"}},
 					substitutePathServerToClient: [][2]string{{"world", "hello"}},
 				},
 			},
-			want: formatConfig(35, true, false, "", false, [][2]string{{"hello", "world"}}),
+			want: formatConfig(35, true, false, "SomeFilter", []string{"SomeLabel"}, false, [][2]string{{"hello", "world"}}),
 		},
 	}
 	for _, tt := range tests {
