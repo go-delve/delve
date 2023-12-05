@@ -964,8 +964,8 @@ func TestTraceDepth(t *testing.T) {
 		if !strings.Contains(text, "morestack_noctxt") {
 			//outputtext += scan.Text()
 			outputtext += text
+			outputtext += "\n"
 		}
-		outputtext += "\n"
 	}
 	output := []byte(outputtext)
 	if !bytes.Contains(output, expected) {
@@ -990,16 +990,16 @@ func TestTraceCommon(t *testing.T) {
 	assertNoError(cmd.Start(), t, "running trace")
 
 	scan := bufio.NewScanner(rdr)
-        text := ""
-        outputtext := ""
-        for scan.Scan() {
-                text = scan.Text()
-                if !strings.Contains(text, "morestack_noctxt") {
-                        outputtext += text
-                }
-                outputtext += "\n"
-        }
-        output := []byte(outputtext)
+	text := ""
+	outputtext := ""
+	for scan.Scan() {
+		text = scan.Text()
+		if !strings.Contains(text, "morestack_noctxt") {
+			outputtext += text
+			outputtext += "\n"
+		}
+	}
+	output := []byte(outputtext)
 
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
@@ -1023,16 +1023,16 @@ func TestTraceDirRecursion(t *testing.T) {
 
 	assertNoError(cmd.Start(), t, "running trace")
 	scan := bufio.NewScanner(rdr)
-        text := ""
-        outputtext := ""
-        for scan.Scan() {
-                text = scan.Text()
-                if !strings.Contains(text, "morestack_noctxt") {
-                        outputtext += text
-                }
-                outputtext += "\n"
-        }
-        output := []byte(outputtext)
+	text := ""
+	outputtext := ""
+	for scan.Scan() {
+		text = scan.Text()
+		if !strings.Contains(text, "morestack_noctxt") {
+			outputtext += text
+			outputtext += "\n"
+		}
+	}
+	output := []byte(outputtext)
 
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
@@ -1056,16 +1056,16 @@ func TestTraceIndirRecursion(t *testing.T) {
 	assertNoError(cmd.Start(), t, "running trace")
 
 	scan := bufio.NewScanner(rdr)
-        text := ""
-        outputtext := ""
-        for scan.Scan() {
-                text = scan.Text()
-                if !strings.Contains(text, "morestack_noctxt") {
-                        outputtext += text
-                }
-                outputtext += "\n"
-        }
-        output := []byte(outputtext)
+	text := ""
+	outputtext := ""
+	for scan.Scan() {
+		text = scan.Text()
+		if !strings.Contains(text, "morestack_noctxt") {
+			outputtext += text
+			outputtext += "\n"
+		}
+	}
+	output := []byte(outputtext)
 
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
@@ -1088,17 +1088,17 @@ func TestTraceDepthRegex(t *testing.T) {
 	cmd.Dir = filepath.Join(fixtures, "buildtest")
 
 	assertNoError(cmd.Start(), t, "running trace")
-   	scan := bufio.NewScanner(rdr)
-        text := ""
-        outputtext := ""
-        for scan.Scan() {
-                text = scan.Text()
-                if !strings.Contains(text, "morestack_noctxt") {
-                        outputtext += text
-                }
-                outputtext += "\n"
-        }
-        output := []byte(outputtext)
+	scan := bufio.NewScanner(rdr)
+	text := ""
+	outputtext := ""
+	for scan.Scan() {
+		text = scan.Text()
+		if !strings.Contains(text, "morestack_noctxt") {
+			outputtext += text
+			outputtext += "\n"
+		}
+	}
+	output := []byte(outputtext)
 
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
