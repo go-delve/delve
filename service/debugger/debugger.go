@@ -1475,74 +1475,66 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 	return funcs, nil
 }
 
-//var (
-//	depth= make(map[string]int) 
-//)
-
 func traverse(t proc.ValidTargets, f *proc.Function, depth int, FollowCalls int) ([]string, error) {
-	//if depth[f.Name] > FollowCalls {
 	if depth > FollowCalls {
 		return nil, nil
 	}
-        funcs := []string{}
-	funcs=append(funcs, f.Name) 
- 	text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
-        if err != nil {
-             fmt.Errorf("disassemble failed")
-             return nil, err
-        }
-                        depth=depth+1
-        for _, instr := range text {
-             if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
-                        cf := instr.DestLoc.Fn
+	funcs := []string{}
+	funcs = append(funcs, f.Name)
+	text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
+	if err != nil {
+		fmt.Errorf("disassemble failed")
+		return nil, err
+	}
+	depth = depth + 1
+	for _, instr := range text {
+		if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
+			cf := instr.DestLoc.Fn
 			if cf.Name == f.Name {
-				continue 
+				continue
 			}
-                //        depth[cf.Name]=depth[f.Name]+1
-                        //if depth[cf.Name] <= FollowCalls {
-                        if depth <= FollowCalls {
-				children, err :=traverse(t, cf, depth, FollowCalls)
+			if depth <= FollowCalls {
+				children, err := traverse(t, cf, depth, FollowCalls)
 				funcs = append(funcs, children...)
-				if err != nil  {
+				if err != nil {
 					fmt.Errorf("traverse failed")
 					return nil, err
 				}
 			}
-             }
+		}
 	}
- return funcs, nil
+	return funcs, nil
 
 }
-// Functions returns a list of functions in the target process.
+
+// FunctionsDeep returns a list of functions and it's children upto required depth indicated by FollowCalls in the target process.
 func (d *Debugger) FunctionsDeep(filter string, FollowCalls int) ([]string, error) {
-        d.targetMutex.Lock()
-        defer d.targetMutex.Unlock()
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 
-        regex, err := regexp.Compile(filter)
-        if err != nil {
-                return nil, fmt.Errorf("invalid filter argument: %s", err.Error())
-        }
+	regex, err := regexp.Compile(filter)
+	if err != nil {
+		return nil, fmt.Errorf("invalid filter argument: %s", err.Error())
+	}
 
-        funcs := []string{}
-	//depth = make(map[string]int)
+	funcs := []string{}
 
-        t := proc.ValidTargets{Group: d.target}
-        for t.Next() {
-                for _, f := range t.BinInfo().Functions {
-                        if regex.MatchString(f.Name) {
-				//depth[f.Name]=1
-				newfuncs, err :=traverse(t, &f,1, FollowCalls) 
-				funcs=append(funcs, newfuncs...)
-        			if err != nil {
-             				fmt.Errorf("traverse failed")
-             				return nil, err
-	     			}
+	t := proc.ValidTargets{Group: d.target}
+	for t.Next() {
+		for _, f := range t.BinInfo().Functions {
+			if regex.MatchString(f.Name) {
+				newfuncs, err := traverse(t, &f, 1, FollowCalls)
+				funcs = append(funcs, newfuncs...)
+				if err != nil {
+					fmt.Errorf("traverse failed")
+					return nil, err
+				}
 			}
-                }
-        }
-        sort.Strings(funcs)
-        funcs = uniq(funcs)
-        return funcs, nil
+		}
+	}
+	sort.Strings(funcs)
+	funcs = uniq(funcs)
+	return funcs, nil
 }
 
 // Types returns all type information in the binary.

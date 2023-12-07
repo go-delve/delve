@@ -2918,9 +2918,10 @@ func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 	}
 }
 
-	var (
-     	depth= make(map[int64]int)
-	)
+var (
+	depth = make(map[int64]int)
+)
+
 func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, args string, hasReturnValue bool) {
 
 	if t.conf.TraceShowTimestamp {

@@ -578,7 +578,7 @@ func (s *RPCServer) ListSources(arg ListSourcesIn, out *ListSourcesOut) error {
 }
 
 type ListFunctionsIn struct {
-	Filter string
+	Filter      string
 	FollowCalls int
 }
 

@@ -265,7 +265,7 @@ func (t *Term) Run() (int, error) {
 
 	fns := trie.New()
 	cmds := trie.New()
-	funcs, _ := t.client.ListFunctions("",0)
+	funcs, _ := t.client.ListFunctions("", 0)
 	for _, fn := range funcs {
 		fns.Add(fn, nil)
 	}
