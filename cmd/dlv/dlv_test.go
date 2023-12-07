@@ -956,13 +956,13 @@ func TestTraceDepth(t *testing.T) {
 
 	assertNoError(cmd.Start(), t, "running trace")
 
+	// Parse output to ignore calls to morestack_noctxt for comparison
 	scan := bufio.NewScanner(rdr)
 	text := ""
 	outputtext := ""
 	for scan.Scan() {
 		text = scan.Text()
 		if !strings.Contains(text, "morestack_noctxt") {
-			//outputtext += scan.Text()
 			outputtext += text
 			outputtext += "\n"
 		}
@@ -989,6 +989,7 @@ func TestTraceCommon(t *testing.T) {
 
 	assertNoError(cmd.Start(), t, "running trace")
 
+	// Parse output to ignore calls to morestack_noctxt for comparison
 	scan := bufio.NewScanner(rdr)
 	text := ""
 	outputtext := ""
@@ -1022,6 +1023,7 @@ func TestTraceDirRecursion(t *testing.T) {
 	cmd.Dir = filepath.Join(fixtures, "buildtest")
 
 	assertNoError(cmd.Start(), t, "running trace")
+	// Parse output to ignore calls to morestack_noctxt for comparison
 	scan := bufio.NewScanner(rdr)
 	text := ""
 	outputtext := ""
@@ -1055,6 +1057,7 @@ func TestTraceIndirRecursion(t *testing.T) {
 
 	assertNoError(cmd.Start(), t, "running trace")
 
+	// Parse output to ignore calls to morestack_noctxt for comparison
 	scan := bufio.NewScanner(rdr)
 	text := ""
 	outputtext := ""
@@ -1088,6 +1091,7 @@ func TestTraceDepthRegex(t *testing.T) {
 	cmd.Dir = filepath.Join(fixtures, "buildtest")
 
 	assertNoError(cmd.Start(), t, "running trace")
+	// Parse output to ignore calls to morestack_noctxt for comparison
 	scan := bufio.NewScanner(rdr)
 	text := ""
 	outputtext := ""
