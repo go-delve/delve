@@ -2782,7 +2782,6 @@ func printcontextThread(t *Term, th *api.Thread) {
 	}
 
 	if th.Breakpoint.Tracepoint || th.Breakpoint.TraceReturn {
-		// we may need a special indented print here for TraceFollow
 		printTracepoint(t, th, bpname, fn, args, hasReturnValue)
 		return
 	}
@@ -2874,7 +2873,6 @@ var (
 )
 
 func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, args string, hasReturnValue bool) {
-
 	if t.conf.TraceShowTimestamp {
 		fmt.Fprintf(t.stdout, "%s ", time.Now().Format(time.RFC3339Nano))
 	}
@@ -2886,10 +2884,10 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 			depth[th.GoroutineID]++
 		}
 		for i := 1; i < depth[th.GoroutineID]; i++ {
+		// Print indentation according to Trace Depth of the goroutine
 			fmt.Fprintf(t.stdout, " ")
 		}
 		fmt.Fprintf(t.stdout, "> goroutine(%d): %s%s(%s)\n", th.GoroutineID, bpname, fn.Name(), args)
-		// Print indentation according to Trace Depth of the goroutine
 		printBreakpointInfo(t, th, !hasReturnValue)
 	}
 	if th.Breakpoint.TraceReturn {
@@ -2897,8 +2895,8 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 		for _, v := range th.ReturnValues {
 			retVals = append(retVals, v.SinglelineString())
 		}
-		// Print return indentation according to Trace Depth of the goroutine
 		for i := 1; i < depth[th.GoroutineID]; i++ {
+		// Print return indentation according to Trace Depth of the goroutine
 			fmt.Fprintf(t.stdout, " ")
 		}
 		fmt.Fprintf(t.stdout, ">> goroutine(%d): => (%s)\n", th.GoroutineID, strings.Join(retVals, ","))
