@@ -1483,7 +1483,7 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, FollowCalls int)
 	funcs = append(funcs, f.Name)
 	text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
 	if err != nil {
-		fmt.Errorf("disassemble failed")
+		fmt.Errorf("disassemble failed with error %s",err.Error())
 		return nil, err
 	}
 	depth = depth + 1
@@ -1497,7 +1497,7 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, FollowCalls int)
 				children, err := traverse(t, cf, depth, FollowCalls)
 				funcs = append(funcs, children...)
 				if err != nil {
-					fmt.Errorf("traverse failed")
+					fmt.Errorf("traverse failed with error %s", err.Error())
 					return nil, err
 				}
 			}
@@ -1526,7 +1526,7 @@ func (d *Debugger) FunctionsDeep(filter string, FollowCalls int) ([]string, erro
 				newfuncs, err := traverse(t, &f, 1, FollowCalls)
 				funcs = append(funcs, newfuncs...)
 				if err != nil {
-					fmt.Errorf("traverse failed")
+					fmt.Errorf("traverse failed with error %s",err.Error())
 					return nil, err
 				}
 			}
