@@ -24,15 +24,15 @@ github.com/creack/pty
 # github.com/derekparker/trie v0.0.0-20230829180723-39f4de51ef7d
 ## explicit; go 1.19
 github.com/derekparker/trie
+# github.com/go-delve/gore v0.11.5
+## explicit; go 1.21
+github.com/go-delve/gore
 # github.com/go-delve/liner v1.2.3-0.20220127212407-d32d89dd2a5d
 ## explicit
 github.com/go-delve/liner
 # github.com/google/go-dap v0.11.0
 ## explicit; go 1.13
 github.com/google/go-dap
-# github.com/goretk/gore v0.11.3
-## explicit; go 1.21
-github.com/goretk/gore
 # github.com/hashicorp/golang-lru v1.0.2
 ## explicit; go 1.12
 github.com/hashicorp/golang-lru/simplelru
