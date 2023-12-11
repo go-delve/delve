@@ -13,14 +13,14 @@ github.com/derekparker/trie v0.0.0-20230829180723-39f4de51ef7d h1:hUWoLdw5kvo2xC
 github.com/derekparker/trie v0.0.0-20230829180723-39f4de51ef7d/go.mod h1:C7Es+DLenIpPc9J6IYw4jrK0h7S9bKj4DNl8+KxGEXU=
 github.com/frankban/quicktest v1.14.5 h1:dfYrrRyLtiqT9GyKXgdh+k4inNeTvmGbuSgZ3lx3GhA=
 github.com/frankban/quicktest v1.14.5/go.mod h1:4ptaffx2x8+WTWXmUCuVU6aPUX1/Mz7zb5vbUoiM6w0=
+github.com/go-delve/gore v0.11.5 h1:pcMZDA5G3k3tJEm4+szgqF4FeXLySy6NRbQ9Yx4wTaA=
+github.com/go-delve/gore v0.11.5/go.mod h1:6RBVnEUxVGkztpRY0UDUnEzS4GqETQjWrw8rhegmN4I=
 github.com/go-delve/liner v1.2.3-0.20220127212407-d32d89dd2a5d h1:pxjSLshkZJGLVm0wv20f/H0oTWiq/egkoJQ2ja6LEvo=
 github.com/go-delve/liner v1.2.3-0.20220127212407-d32d89dd2a5d/go.mod h1:biJCRbqp51wS+I92HMqn5H8/A0PAhxn2vyOT+JqhiGI=
 github.com/google/go-cmp v0.5.9 h1:O2Tfq5qg4qc4AmwVlvv0oLiVAGB7enBSJ2x2DqQFi38=
 github.com/google/go-cmp v0.5.9/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
 github.com/google/go-dap v0.11.0 h1:SpAZJL41rOOvd85PuLCCLE1dteTQOyKNnn0H3DBHywo=
 github.com/google/go-dap v0.11.0/go.mod h1:HAeyoSd2WIfTfg+0GRXcFrb+RnojAtGNh+k+XTIxJDE=
-github.com/goretk/gore v0.11.3 h1:Igk+aBl3sVEp0j6paNMaNs9hXeqC5GO9YHDqVBqiWiA=
-github.com/goretk/gore v0.11.3/go.mod h1:MMkaJmF/reDsujtnLvSJBFdA5b/aZXcVKfKmMjLR+qo=
 github.com/hashicorp/golang-lru v1.0.2 h1:dV3g9Z/unq5DpblPpw+Oqcv4dU/1omnb4Ok8iPY6p1c=
 github.com/hashicorp/golang-lru v1.0.2/go.mod h1:iADmTwqILo4mZ8BN3D2Q6+9jd8WM5uGBxy+E8yxSoD4=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
