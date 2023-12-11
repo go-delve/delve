@@ -770,21 +770,23 @@ func getEvalExpressionTestCases() []varTest {
 
 		{"ptrinf2", false, `**(main.pptr)(…`, `(main.pptr)(…`, "main.pptr", nil},
 
-		// conversions between string/[]byte/[]rune (issue #548)
+		// conversions between string/[]byte/[]rune (issue #548, #3595, #3539)
 		{"runeslice", true, `[]int32 len: 4, cap: 4, [116,232,115,116]`, `[]int32 len: 4, cap: 4, [...]`, "[]int32", nil},
 		{"byteslice", true, `[]uint8 len: 5, cap: 5, [116,195,168,115,116]`, `[]uint8 len: 5, cap: 5, [...]`, "[]uint8", nil},
-		{"[]byte(str1)", false, `[]uint8 len: 11, cap: 11, [48,49,50,51,52,53,54,55,56,57,48]`, `[]uint8 len: 11, cap: 11, [48,49,50,51,52,53,54,55,56,57,48]`, "[]uint8", nil},
-		{"[]uint8(str1)", false, `[]uint8 len: 11, cap: 11, [48,49,50,51,52,53,54,55,56,57,48]`, `[]uint8 len: 11, cap: 11, [48,49,50,51,52,53,54,55,56,57,48]`, "[]uint8", nil},
+		{"[]byte(str1)", false, `[]uint8 len: 11, cap: 11, [48,49,50,51,52,53,54,55,56,57,48]`, `[]uint8 len: 11, cap: 11, nil`, "[]uint8", nil},
+		{"[]uint8(str1)", false, `[]uint8 len: 11, cap: 11, [48,49,50,51,52,53,54,55,56,57,48]`, `[]uint8 len: 11, cap: 11, nil`, "[]uint8", nil},
 		{"[]rune(str1)", false, `[]int32 len: 11, cap: 11, [48,49,50,51,52,53,54,55,56,57,48]`, `[]int32 len: 11, cap: 11, [48,49,50,51,52,53,54,55,56,57,48]`, "[]int32", nil},
 		{"[]int32(str1)", false, `[]int32 len: 11, cap: 11, [48,49,50,51,52,53,54,55,56,57,48]`, `[]int32 len: 11, cap: 11, [48,49,50,51,52,53,54,55,56,57,48]`, "[]int32", nil},
-		{"string(byteslice)", false, `"tèst"`, `""`, "string", nil},
-		{"[]int32(string(byteslice))", false, `[]int32 len: 4, cap: 4, [116,232,115,116]`, `[]int32 len: 0, cap: 0, nil`, "[]int32", nil},
-		{"string(runeslice)", false, `"tèst"`, `""`, "string", nil},
-		{"[]byte(string(runeslice))", false, `[]uint8 len: 5, cap: 5, [116,195,168,115,116]`, `[]uint8 len: 0, cap: 0, nil`, "[]uint8", nil},
+		{"string(byteslice)", false, `"tèst"`, `"tèst"`, "string", nil},
+		{"[]int32(string(byteslice))", false, `[]int32 len: 4, cap: 4, [116,232,115,116]`, `[]int32 len: 4, cap: 4, [116,232,115,116]`, "[]int32", nil},
+		{"string(runeslice)", false, `"tèst"`, `"tèst"`, "string", nil},
+		{"[]byte(string(runeslice))", false, `[]uint8 len: 5, cap: 5, [116,195,168,115,116]`, `[]uint8 len: 5, cap: 5, [116,195,168,115,116]`, "[]uint8", nil},
 		{"*(*[5]byte)(uintptr(&byteslice[0]))", false, `[5]uint8 [116,195,168,115,116]`, `[5]uint8 [...]`, "[5]uint8", nil},
-		{"string(bytearray)", false, `"tèst"`, `""`, "string", nil},
-		{"string(runearray)", false, `"tèst"`, `""`, "string", nil},
+		{"string(bytearray)", false, `"tèst"`, `"tèst"`, "string", nil},
+		{"string(runearray)", false, `"tèst"`, `"tèst"`, "string", nil},
 		{"string(str1)", false, `"01234567890"`, `"01234567890"`, "string", nil},
+		{"len([]byte(longstr))", false, `137`, `137`, "", nil},
+		{"len(string(longbyteslice))", false, `137`, `137`, "", nil},
 
 		// access to channel field members
 		{"ch1.qcount", false, "4", "4", "uint", nil},
@@ -831,7 +833,7 @@ func getEvalExpressionTestCases() []varTest {
 		{`m6["very long string 0123456789a0123456789b0123456789c0123456789d0123456789e0123456789f0123456789g012345678h90123456789i0123456789j0123456789"]`, false, `123`, `123`, "int", nil},
 
 		// issue #1423 - special typecasts everywhere
-		{`string(byteslice) == "tèst"`, false, `true`, `false`, "", nil},
+		{`string(byteslice) == "tèst"`, false, `true`, `true`, "", nil},
 
 		// issue #3138 - typecast to *interface{} breaking
 		{`*(*interface {})(uintptr(&iface1))`, false, `interface {}(*main.astruct) *{A: 1, B: 2}`, `interface {}(*main.astruct)…`, "interface {}", nil},
