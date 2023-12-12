@@ -1514,3 +1514,24 @@ func TestSubstitutePathAndList(t *testing.T) {
 		}
 	})
 }
+
+func TestDisplay(t *testing.T) {
+	// Tests that display command works. See issue #3595.
+	type testCase struct{ in, tgt string }
+	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
+		term.MustExec("continue")
+
+		for _, tc := range []testCase{
+			{"string(byteslice)", `0: string(byteslice) = "tèst"`},
+			{"string(byteslice[1:])", `0: string(byteslice[1:]) = "èst"`},
+			{"%s string(byteslice)", `0: string(byteslice) = tèst`},
+		} {
+			out := term.MustExec("display -a " + tc.in)
+			t.Logf("%q -> %q", tc.in, out)
+			if !strings.Contains(out, tc.tgt) {
+				t.Errorf("wrong output for 'display -a %s':\n\tgot: %q\n\texpected: %q", tc.in, out, tc.tgt)
+			}
+			term.MustExec("display -d 0")
+		}
+	})
+}

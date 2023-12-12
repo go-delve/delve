@@ -1316,18 +1316,20 @@ func (scope *EvalScope) evalTypeCast(op *evalop.TypeCast, stack *evalStack) {
 	if scope.loadCfg != nil {
 		cfg = *scope.loadCfg
 	}
-	argv.loadValue(cfg)
-	if argv.Unreadable != nil {
-		stack.err = argv.Unreadable
-		return
-	}
 
 	switch ttyp := typ.(type) {
 	case *godwarf.SliceType:
 		switch ttyp.ElemType.Common().ReflectKind {
 		case reflect.Uint8:
+			// string -> []uint8
 			if argv.Kind != reflect.String {
 				stack.err = converr
+				return
+			}
+			cfg.MaxStringLen = cfg.MaxArrayValues
+			argv.loadValue(cfg)
+			if argv.Unreadable != nil {
+				stack.err = argv.Unreadable
 				return
 			}
 			for i, ch := range []byte(constant.StringVal(argv.Value)) {
@@ -1336,14 +1338,20 @@ func (scope *EvalScope) evalTypeCast(op *evalop.TypeCast, stack *evalStack) {
 				e.Value = constant.MakeInt64(int64(ch))
 				v.Children = append(v.Children, *e)
 			}
-			v.Len = int64(len(v.Children))
+			v.Len = argv.Len
 			v.Cap = v.Len
 			stack.push(v)
 			return
 
 		case reflect.Int32:
+			// string -> []rune
 			if argv.Kind != reflect.String {
 				stack.err = converr
+				return
+			}
+			argv.loadValue(cfg)
+			if argv.Unreadable != nil {
+				stack.err = argv.Unreadable
 				return
 			}
 			for i, ch := range constant.StringVal(argv.Value) {
@@ -1361,12 +1369,18 @@ func (scope *EvalScope) evalTypeCast(op *evalop.TypeCast, stack *evalStack) {
 	case *godwarf.StringType:
 		switch argv.Kind {
 		case reflect.String:
-			s := constant.StringVal(argv.Value)
-			v.Value = constant.MakeString(s)
-			v.Len = int64(len(s))
-			stack.push(v)
+			// string -> string
+			argv.DwarfType = v.DwarfType
+			argv.RealType = v.RealType
+			stack.push(argv)
 			return
 		case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint, reflect.Uintptr:
+			// integer -> string
+			argv.loadValue(cfg)
+			if argv.Unreadable != nil {
+				stack.err = argv.Unreadable
+				return
+			}
 			b, _ := constant.Int64Val(argv.Value)
 			s := string(rune(b))
 			v.Value = constant.MakeString(s)
@@ -1382,8 +1396,15 @@ func (scope *EvalScope) evalTypeCast(op *evalop.TypeCast, stack *evalStack) {
 			}
 			switch elemType := elem.(type) {
 			case *godwarf.UintType:
+				// []uint8 -> string
 				if elemType.Name != "uint8" && elemType.Name != "byte" {
 					stack.err = converr
+					return
+				}
+				cfg.MaxArrayValues = cfg.MaxStringLen
+				argv.loadValue(cfg)
+				if argv.Unreadable != nil {
+					stack.err = argv.Unreadable
 					return
 				}
 				bytes := make([]byte, len(argv.Children))
@@ -1392,10 +1413,18 @@ func (scope *EvalScope) evalTypeCast(op *evalop.TypeCast, stack *evalStack) {
 					bytes[i] = byte(n)
 				}
 				v.Value = constant.MakeString(string(bytes))
+				v.Len = argv.Len
 
 			case *godwarf.IntType:
+				// []rune -> string
 				if elemType.Name != "int32" && elemType.Name != "rune" {
 					stack.err = converr
+					return
+				}
+				cfg.MaxArrayValues = cfg.MaxStringLen
+				argv.loadValue(cfg)
+				if argv.Unreadable != nil {
+					stack.err = argv.Unreadable
 					return
 				}
 				runes := make([]rune, len(argv.Children))
@@ -1404,12 +1433,14 @@ func (scope *EvalScope) evalTypeCast(op *evalop.TypeCast, stack *evalStack) {
 					runes[i] = rune(n)
 				}
 				v.Value = constant.MakeString(string(runes))
+				// The following line is wrong but the only way to get the correct value
+				// would be to decode the entire slice.
+				v.Len = int64(len(constant.StringVal(v.Value)))
 
 			default:
 				stack.err = converr
 				return
 			}
-			v.Len = int64(len(constant.StringVal(v.Value)))
 			stack.push(v)
 			return
 		}
