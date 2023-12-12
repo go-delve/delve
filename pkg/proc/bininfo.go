@@ -33,7 +33,7 @@ import (
 	"github.com/go-delve/delve/pkg/internal/gosym"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc/debuginfod"
-	"github.com/goretk/gore"
+	"github.com/go-delve/gore"
 	"github.com/hashicorp/golang-lru/simplelru"
 )
 
