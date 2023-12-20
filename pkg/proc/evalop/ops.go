@@ -164,8 +164,13 @@ type Jump struct {
 }
 
 func (jmpif *Jump) depthCheck() (npop, npush int) {
-	if jmpif.Pop {
-		return 1, 0
+	switch jmpif.When {
+	case JumpIfTrue, JumpIfFalse, JumpIfAllocStringChecksFail:
+		if jmpif.Pop {
+			return 1, 0
+		} else {
+			return 1, 1
+		}
 	}
 	return 0, 0
 }
@@ -177,6 +182,8 @@ const (
 	JumpIfFalse JumpCond = iota
 	JumpIfTrue
 	JumpIfAllocStringChecksFail
+	JumpAlways
+	JumpIfPinningDone
 )
 
 // Binary pops two variables from the stack, applies the specified binary
@@ -199,6 +206,13 @@ type Pop struct {
 }
 
 func (*Pop) depthCheck() (npop, npush int) { return 1, 0 }
+
+// Roll removes the n-th element of the stack and pushes it back in at the top
+type Roll struct {
+	N int
+}
+
+func (*Roll) depthCheck() (npop, npush int) { return 1, 1 }
 
 // BuiltinCall pops len(Args) argument from the stack, calls the specified
 // builtin on them and pushes the result back on the stack.
@@ -240,11 +254,30 @@ type CallInjectionCopyArg struct {
 func (*CallInjectionCopyArg) depthCheck() (npop, npush int) { return 1, 0 }
 
 // CallInjectionComplete resumes target execution so that the injected call can run.
+// If DoPinning is true it stops after the call is completed without undoing
+// the call injection frames so that address pinning for the return value
+// can be performed, see CallInjectionComplete2.
 type CallInjectionComplete struct {
+	id        int
+	DoPinning bool
+}
+
+func (op *CallInjectionComplete) depthCheck() (npop, npush int) {
+	if op.DoPinning {
+		return 0, 0
+	} else {
+		return 0, 1
+	}
+}
+
+// CallInjectionComplete2 if DoPinning was passed to CallInjectionComplete
+// this will finish the call injection protocol and push the evaluation
+// result on the stack.
+type CallInjectionComplete2 struct {
 	id int
 }
 
-func (*CallInjectionComplete) depthCheck() (npop, npush int) { return 0, 1 }
+func (*CallInjectionComplete2) depthCheck() (npop, npush int) { return 0, 1 }
 
 // CallInjectionStartSpecial starts call injection for a function with a
 // name and arguments known at compile time.
@@ -272,3 +305,22 @@ type SetValue struct {
 }
 
 func (*SetValue) depthCheck() (npop, npush int) { return 2, 0 }
+
+// SetDebugPinner pops one variable from the stack and uses it as the saved debug pinner.
+type SetDebugPinner struct {
+}
+
+func (*SetDebugPinner) depthCheck() (npop, npush int) { return 1, 0 }
+
+// PushDebugPinner pushes the debug pinner on the stack.
+type PushDebugPinner struct {
+}
+
+func (*PushDebugPinner) depthCheck() (npop, npush int) { return 0, 1 }
+
+// PushPinAddress pushes an address to pin on the stack (as an
+// unsafe.Pointer) and removes it from the list of addresses to pin.
+type PushPinAddress struct {
+}
+
+func (*PushPinAddress) depthCheck() (npop, npush int) { return 0, 1 }
