@@ -1946,3 +1946,15 @@ func TestClassicMap(t *testing.T) {
 		}
 	})
 }
+
+func TestCallFunctionRegisterArg(t *testing.T) {
+	protest.MustSupportFunctionCalls(t, testBackend)
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
+		t.Skip("not supported")
+	}
+	withTestProcessArgs("issue3310", t, ".", []string{}, protest.AllNonOptimized, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture.Source, 12)
+		assertNoError(grp.Continue(), t, "Continue()")
+		assertNoError(proc.EvalExpressionWithCalls(grp, p.SelectedGoroutine(), "value.Type()", pnormalLoadConfig, true), t, "EvalExpressionWithCalls")
+	})
+}
