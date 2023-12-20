@@ -1041,6 +1041,10 @@ func (stack *evalStack) executeOp() {
 		}
 		stack.push(v)
 
+	case *evalop.PushLen:
+		v := stack.peek()
+		stack.push(newConstant(constant.MakeInt64(v.Len), scope.Mem))
+
 	case *evalop.Select:
 		scope.evalStructSelector(op, stack)
 
@@ -1108,8 +1112,11 @@ func (stack *evalStack) executeOp() {
 		stack.fncallPeek().undoInjection = nil
 		stack.callInjectionContinue = true
 
-	case *evalop.CallInjectionAllocString:
-		stack.callInjectionContinue = scope.allocString(op.Phase, stack, curthread)
+	case *evalop.CallInjectionStartSpecial:
+		stack.callInjectionContinue = scope.callInjectionStartSpecial(stack, op, curthread)
+
+	case *evalop.ConvertAllocToString:
+		scope.convertAllocToString(stack)
 
 	case *evalop.SetValue:
 		lhv := stack.pop()
@@ -1151,6 +1158,17 @@ func (scope *EvalScope) evalJump(op *evalop.Jump, stack *evalStack) {
 		v = true
 	case evalop.JumpIfFalse:
 		v = false
+	case evalop.JumpIfAllocStringChecksFail:
+		if !(x.Kind == reflect.String && x.Addr == 0 && (x.Flags&VariableConstant) != 0 && x.Len > 0) {
+			stack.opidx = op.Target - 1
+			return
+		}
+		if scope.callCtx == nil {
+			// do not complain here, setValue will if no other errors happen
+			stack.opidx = op.Target - 1
+			return
+		}
+		return
 	}
 
 	if x.Kind != reflect.Bool {
