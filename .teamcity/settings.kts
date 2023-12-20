@@ -41,25 +41,25 @@ To debug in IntelliJ Idea, open the 'Maven Projects' tool window (View
 version = "2023.05"
 
 val targets = arrayOf(
-        "linux/amd64/1.19",
         "linux/amd64/1.20",
         "linux/amd64/1.21",
+        "linux/amd64/1.22",
         "linux/amd64/tip",
 
-        "linux/386/1.21",
+        "linux/386/1.22",
 
-        "linux/arm64/1.21",
+        "linux/arm64/1.22",
         "linux/arm64/tip",
 
-        "linux/ppc64le/1.21",
+        "linux/ppc64le/1.22",
 
-        "windows/amd64/1.21",
+        "windows/amd64/1.22",
         "windows/amd64/tip",
 
-        "mac/amd64/1.21",
+        "mac/amd64/1.22",
         "mac/amd64/tip",
 
-        "mac/arm64/1.21",
+        "mac/arm64/1.22",
         "mac/arm64/tip"
 )
 
