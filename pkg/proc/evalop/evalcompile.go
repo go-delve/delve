@@ -112,9 +112,38 @@ func CompileSet(lookup evalLookup, lhexpr, rhexpr string) ([]Op, error) {
 }
 
 func (ctx *compileCtx) compileAllocLiteralString() {
-	ctx.pushOp(&CallInjectionAllocString{Phase: 0})
-	ctx.pushOp(&CallInjectionAllocString{Phase: 1})
-	ctx.pushOp(&CallInjectionAllocString{Phase: 2})
+	jmp := &Jump{When: JumpIfAllocStringChecksFail}
+	ctx.pushOp(jmp)
+
+	ctx.compileSpecialCall("runtime.mallocgc", []ast.Expr{
+		&ast.BasicLit{Kind: token.INT, Value: "0"},
+		&ast.Ident{Name: "nil"},
+		&ast.Ident{Name: "false"},
+	}, []Op{
+		&PushLen{},
+		&PushNil{},
+		&PushConst{constant.MakeBool(false)},
+	})
+
+	ctx.pushOp(&ConvertAllocToString{})
+	jmp.Target = len(ctx.ops)
+}
+
+func (ctx *compileCtx) compileSpecialCall(fnname string, argAst []ast.Expr, args []Op) {
+	id := ctx.curCall
+	ctx.curCall++
+	ctx.pushOp(&CallInjectionStartSpecial{
+		id:     id,
+		FnName: fnname,
+		ArgAst: argAst})
+	ctx.pushOp(&CallInjectionSetTarget{id: id})
+
+	for i := range args {
+		ctx.pushOp(args[i])
+		ctx.pushOp(&CallInjectionCopyArg{id: id, ArgNum: i})
+	}
+
+	ctx.pushOp(&CallInjectionComplete{id: id})
 }
 
 func (ctx *compileCtx) pushOp(op Op) {
