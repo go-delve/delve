@@ -34,6 +34,7 @@ import (
 	"github.com/go-delve/delve/pkg/internal/gosym"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc/debuginfod"
+	"github.com/go-delve/delve/pkg/proc/evalop"
 	"github.com/hashicorp/golang-lru/simplelru"
 )
 
@@ -110,7 +111,8 @@ type BinaryInfo struct {
 	// Go 1.17 register ABI is enabled.
 	regabi bool
 
-	logger logflags.Logger
+	debugPinnerFn *Function
+	logger        logflags.Logger
 }
 
 var (
@@ -2574,11 +2576,21 @@ func (bi *BinaryInfo) LookupFunc() map[string][]*Function {
 }
 
 func (bi *BinaryInfo) lookupOneFunc(name string) *Function {
+	if name == evalop.DebugPinnerFunctionName && bi.debugPinnerFn != nil {
+		return bi.debugPinnerFn
+	}
 	fns := bi.LookupFunc()[name]
 	if fns == nil {
 		return nil
 	}
+	if name == evalop.DebugPinnerFunctionName {
+		bi.debugPinnerFn = fns[0]
+	}
 	return fns[0]
+}
+
+func (bi *BinaryInfo) hasDebugPinner() bool {
+	return bi.lookupOneFunc(evalop.DebugPinnerFunctionName) != nil
 }
 
 // loadDebugInfoMapsCompileUnit loads entry from a single compile unit.

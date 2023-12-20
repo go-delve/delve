@@ -43,14 +43,25 @@ func (m *memCache) contains(addr uint64, size int) bool {
 	return addr >= m.cacheAddr && end <= m.cacheAddr+uint64(len(m.cache))
 }
 
+func (m *memCache) load() error {
+	if m.loaded {
+		return nil
+	}
+	_, err := m.mem.ReadMemory(m.cache, m.cacheAddr)
+	if err != nil {
+		return err
+	}
+	m.loaded = true
+	return nil
+}
+
 func (m *memCache) ReadMemory(data []byte, addr uint64) (n int, err error) {
 	if m.contains(addr, len(data)) {
 		if !m.loaded {
-			_, err := m.mem.ReadMemory(m.cache, m.cacheAddr)
+			err := m.load()
 			if err != nil {
 				return 0, err
 			}
-			m.loaded = true
 		}
 		copy(data, m.cache[addr-m.cacheAddr:])
 		return len(data), nil

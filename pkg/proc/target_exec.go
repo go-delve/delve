@@ -159,7 +159,7 @@ func (grp *TargetGroup) Continue() error {
 					log.Debugf("\t%d PC=%#x", th.ThreadID(), regs.PC())
 				}
 			}
-			callInjectionDoneThis, callErrThis := callInjectionProtocol(dbp, threads)
+			callInjectionDoneThis, callErrThis := callInjectionProtocol(dbp, trapthread, threads)
 			callInjectionDone = callInjectionDone || callInjectionDoneThis
 			if callInjectionDoneThis {
 				dbp.StopReason = StopCallReturned

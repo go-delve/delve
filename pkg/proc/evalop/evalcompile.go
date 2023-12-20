@@ -18,7 +18,8 @@ import (
 )
 
 var (
-	ErrFuncCallNotAllowed = errors.New("function calls not allowed without using 'call'")
+	ErrFuncCallNotAllowed   = errors.New("function calls not allowed without using 'call'")
+	DebugPinnerFunctionName = "runtime.debugPinnerV1"
 )
 
 type compileCtx struct {
@@ -26,6 +27,8 @@ type compileCtx struct {
 	ops        []Op
 	allowCalls bool
 	curCall    int
+	flags      Flags
+	firstCall  bool
 }
 
 type evalLookup interface {
@@ -33,13 +36,23 @@ type evalLookup interface {
 	HasBuiltin(string) bool
 }
 
+// Flags describes flags used to control Compile and CompileAST
+type Flags uint8
+
+const (
+	CanSet         Flags = 1 << iota // Assignment is allowed
+	HasDebugPinner                   // runtime.debugPinner is available
+)
+
 // CompileAST compiles the expression t into a list of instructions.
-func CompileAST(lookup evalLookup, t ast.Expr) ([]Op, error) {
-	ctx := &compileCtx{evalLookup: lookup, allowCalls: true}
+func CompileAST(lookup evalLookup, t ast.Expr, flags Flags) ([]Op, error) {
+	ctx := &compileCtx{evalLookup: lookup, allowCalls: true, flags: flags, firstCall: true}
 	err := ctx.compileAST(t)
 	if err != nil {
 		return nil, err
 	}
+
+	ctx.compileDebugUnpin()
 
 	err = ctx.depthCheck(1)
 	if err != nil {
@@ -50,18 +63,18 @@ func CompileAST(lookup evalLookup, t ast.Expr) ([]Op, error) {
 
 // Compile compiles the expression expr into a list of instructions.
 // If canSet is true expressions like "x = y" are also accepted.
-func Compile(lookup evalLookup, expr string, canSet bool) ([]Op, error) {
+func Compile(lookup evalLookup, expr string, flags Flags) ([]Op, error) {
 	t, err := parser.ParseExpr(expr)
 	if err != nil {
-		if canSet {
+		if flags&CanSet != 0 {
 			eqOff, isAs := isAssignment(err)
 			if isAs {
-				return CompileSet(lookup, expr[:eqOff], expr[eqOff+1:])
+				return CompileSet(lookup, expr[:eqOff], expr[eqOff+1:], flags)
 			}
 		}
 		return nil, err
 	}
-	return CompileAST(lookup, t)
+	return CompileAST(lookup, t, flags)
 }
 
 func isAssignment(err error) (int, bool) {
@@ -74,7 +87,7 @@ func isAssignment(err error) (int, bool) {
 
 // CompileSet compiles the expression setting lhexpr to rhexpr into a list of
 // instructions.
-func CompileSet(lookup evalLookup, lhexpr, rhexpr string) ([]Op, error) {
+func CompileSet(lookup evalLookup, lhexpr, rhexpr string, flags Flags) ([]Op, error) {
 	lhe, err := parser.ParseExpr(lhexpr)
 	if err != nil {
 		return nil, err
@@ -84,7 +97,7 @@ func CompileSet(lookup evalLookup, lhexpr, rhexpr string) ([]Op, error) {
 		return nil, err
 	}
 
-	ctx := &compileCtx{evalLookup: lookup, allowCalls: true}
+	ctx := &compileCtx{evalLookup: lookup, allowCalls: true, flags: flags, firstCall: true}
 	err = ctx.compileAST(rhe)
 	if err != nil {
 		return nil, err
@@ -120,13 +133,17 @@ func (ctx *compileCtx) compileAllocLiteralString() {
 		&PushLen{},
 		&PushNil{},
 		&PushConst{constant.MakeBool(false)},
-	})
+	}, true)
 
 	ctx.pushOp(&ConvertAllocToString{})
 	jmp.Target = len(ctx.ops)
 }
 
-func (ctx *compileCtx) compileSpecialCall(fnname string, argAst []ast.Expr, args []Op) {
+func (ctx *compileCtx) compileSpecialCall(fnname string, argAst []ast.Expr, args []Op, doPinning bool) {
+	if doPinning {
+		ctx.compileGetDebugPinner()
+	}
+
 	id := ctx.curCall
 	ctx.curCall++
 	ctx.pushOp(&CallInjectionStartSpecial{
@@ -136,11 +153,40 @@ func (ctx *compileCtx) compileSpecialCall(fnname string, argAst []ast.Expr, args
 	ctx.pushOp(&CallInjectionSetTarget{id: id})
 
 	for i := range args {
-		ctx.pushOp(args[i])
+		if args[i] != nil {
+			ctx.pushOp(args[i])
+		}
 		ctx.pushOp(&CallInjectionCopyArg{id: id, ArgNum: i})
 	}
 
-	ctx.pushOp(&CallInjectionComplete{id: id})
+	doPinning = doPinning && (ctx.flags&HasDebugPinner != 0)
+
+	ctx.pushOp(&CallInjectionComplete{id: id, DoPinning: doPinning})
+
+	if doPinning {
+		ctx.compilePinningLoop(id)
+	}
+}
+
+func (ctx *compileCtx) compileGetDebugPinner() {
+	if ctx.firstCall && ctx.flags&HasDebugPinner != 0 {
+		ctx.compileSpecialCall(DebugPinnerFunctionName, []ast.Expr{}, []Op{}, false)
+		ctx.pushOp(&SetDebugPinner{})
+		ctx.firstCall = false
+	}
+}
+
+func (ctx *compileCtx) compileDebugUnpin() {
+	if !ctx.firstCall && ctx.flags&HasDebugPinner != 0 {
+		ctx.compileSpecialCall("runtime.(*Pinner).Unpin", []ast.Expr{
+			&ast.Ident{Name: "debugPinner"},
+		}, []Op{
+			&PushDebugPinner{},
+		}, false)
+		ctx.pushOp(&Pop{})
+		ctx.pushOp(&PushNil{})
+		ctx.pushOp(&SetDebugPinner{})
+	}
 }
 
 func (ctx *compileCtx) pushOp(op Op) {
@@ -172,6 +218,8 @@ func (ctx *compileCtx) depthCheck(endDepth int) error {
 		}
 	}
 
+	debugPinnerSeen := false
+
 	for i, op := range ctx.ops {
 		npop, npush := op.depthCheck()
 		if depth[i] < npop {
@@ -179,8 +227,15 @@ func (ctx *compileCtx) depthCheck(endDepth int) error {
 		}
 		d := depth[i] - npop + npush
 		checkAndSet(i+1, d)
-		if jmp, _ := op.(*Jump); jmp != nil {
-			checkAndSet(jmp.Target, d)
+		switch op := op.(type) {
+		case *Jump:
+			checkAndSet(op.Target, d)
+		case *CallInjectionStartSpecial:
+			debugPinnerSeen = true
+		case *CallInjectionComplete:
+			if op.DoPinning && !debugPinnerSeen {
+				err = fmt.Errorf("internal debugger error: pinning call injection seen before call to %s at instrution %d", DebugPinnerFunctionName, i)
+			}
 		}
 		if err != nil {
 			return err
@@ -521,6 +576,16 @@ func (ctx *compileCtx) compileFunctionCall(node *ast.CallExpr) error {
 	id := ctx.curCall
 	ctx.curCall++
 
+	if ctx.flags&HasDebugPinner != 0 {
+		return ctx.compileFunctionCallWithPinning(node, id)
+	}
+
+	return ctx.compileFunctionCallNoPinning(node, id)
+}
+
+// compileFunctionCallNoPinning compiles a function call when runtime.debugPinner is
+// not available in the target.
+func (ctx *compileCtx) compileFunctionCallNoPinning(node *ast.CallExpr, id int) error {
 	oldAllowCalls := ctx.allowCalls
 	oldOps := ctx.ops
 	ctx.allowCalls = false
@@ -568,6 +633,61 @@ func (ctx *compileCtx) compileFunctionCall(node *ast.CallExpr) error {
 	ctx.pushOp(&CallInjectionComplete{id: id})
 
 	return nil
+}
+
+// compileFunctionCallWithPinning compiles a function call when runtime.debugPinner
+// is available in the target.
+func (ctx *compileCtx) compileFunctionCallWithPinning(node *ast.CallExpr, id int) error {
+	ctx.compileGetDebugPinner()
+
+	err := ctx.compileAST(node.Fun)
+	if err != nil {
+		return err
+	}
+
+	for i, arg := range node.Args {
+		err := ctx.compileAST(arg)
+		if isStringLiteral(arg) {
+			ctx.compileAllocLiteralString()
+		}
+		if err != nil {
+			return fmt.Errorf("error evaluating %q as argument %d in function %s: %v", exprToString(arg), i+1, exprToString(node.Fun), err)
+		}
+	}
+
+	ctx.pushOp(&Roll{len(node.Args)})
+	ctx.pushOp(&CallInjectionStart{HasFunc: true, id: id, Node: node})
+	ctx.pushOp(&Pop{})
+	ctx.pushOp(&CallInjectionSetTarget{id: id})
+
+	for i := len(node.Args) - 1; i >= 0; i-- {
+		arg := node.Args[i]
+		ctx.pushOp(&CallInjectionCopyArg{id: id, ArgNum: i, ArgExpr: arg})
+	}
+
+	ctx.pushOp(&CallInjectionComplete{id: id, DoPinning: true})
+
+	ctx.compilePinningLoop(id)
+
+	return nil
+}
+
+func (ctx *compileCtx) compilePinningLoop(id int) {
+	loopStart := len(ctx.ops)
+	jmp := &Jump{When: JumpIfPinningDone}
+	ctx.pushOp(jmp)
+	ctx.pushOp(&PushPinAddress{})
+	ctx.compileSpecialCall("runtime.(*Pinner).Pin", []ast.Expr{
+		&ast.Ident{Name: "debugPinner"},
+		&ast.Ident{Name: "pinAddress"},
+	}, []Op{
+		&PushDebugPinner{},
+		nil,
+	}, false)
+	ctx.pushOp(&Pop{})
+	ctx.pushOp(&Jump{When: JumpAlways, Target: loopStart})
+	jmp.Target = len(ctx.ops)
+	ctx.pushOp(&CallInjectionComplete2{id: id})
 }
 
 func Listing(depth []int, ops []Op) string {

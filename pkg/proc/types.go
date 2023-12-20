@@ -206,7 +206,10 @@ func dwarfToRuntimeType(bi *BinaryInfo, mem MemoryReadWriter, typ godwarf.Type) 
 	if kindv == nil || kindv.Unreadable != nil || kindv.Kind != reflect.Uint {
 		kindv = _type.loadFieldNamed("Kind_")
 	}
-	if kindv == nil || kindv.Unreadable != nil || kindv.Kind != reflect.Uint {
+	if kindv == nil {
+		return 0, 0, false, fmt.Errorf("unreadable interace type (no kind field)")
+	}
+	if kindv.Unreadable != nil || kindv.Kind != reflect.Uint {
 		return 0, 0, false, fmt.Errorf("unreadable interface type: %v", kindv.Unreadable)
 	}
 	typeKind, _ = constant.Uint64Val(kindv.Value)
