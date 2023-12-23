@@ -1117,7 +1117,7 @@ func TestPackageRenames(t *testing.T) {
 			testPackageRenamesHelper(t, p, testcases1_13)
 		}
 
-		if runtime.GOARCH == "386" {
+		if runtime.GOARCH == "386" && !goversion.VersionAfterOrEqual(runtime.Version(), 1, 22) {
 			testPackageRenamesHelper(t, p, testcases_i386)
 		} else {
 			testPackageRenamesHelper(t, p, testcases_64bit)
