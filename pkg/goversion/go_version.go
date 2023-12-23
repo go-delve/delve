@@ -209,7 +209,7 @@ func Installed() (GoVersion, bool) {
 // or go version) is major.minor or a later version, or a development
 // version.
 func VersionAfterOrEqual(version string, major, minor int) bool {
-	return VersionAfterOrEqualRev(version, major, minor, -1)
+	return VersionAfterOrEqualRev(version, major, minor, betaEnd)
 }
 
 // VersionAfterOrEqualRev checks that version (as returned by runtime.Version()
