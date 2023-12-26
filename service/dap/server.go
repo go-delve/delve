@@ -181,26 +181,22 @@ type Config struct {
 }
 
 type connection struct {
+	mu     sync.Mutex
+	closed bool
 	io.ReadWriteCloser
-	closed chan struct{}
 }
 
 func (c *connection) Close() error {
-	select {
-	case <-c.closed:
-	default:
-		close(c.closed)
-	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.closed = true
 	return c.ReadWriteCloser.Close()
 }
 
 func (c *connection) isClosed() bool {
-	select {
-	case <-c.closed:
-		return true
-	default:
-		return false
-	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closed
 }
 
 type process struct {
@@ -339,7 +335,7 @@ func NewSession(conn io.ReadWriteCloser, config *Config, debugger *debugger.Debu
 	return &Session{
 		config:            config,
 		id:                sessionCount,
-		conn:              &connection{conn, make(chan struct{})},
+		conn:              &connection{ReadWriteCloser: conn},
 		stackFrameHandles: newHandlesMap(),
 		variableHandles:   newVariablesHandlesMap(),
 		args:              defaultArgs,
