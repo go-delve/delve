@@ -3192,9 +3192,6 @@ func TestDebugStripped(t *testing.T) {
 	skipOn(t, "not working on freebsd", "freebsd")
 	skipOn(t, "not working on linux/386", "linux", "386")
 	skipOn(t, "not working on linux/ppc64le when -gcflags=-N -l is passed", "linux", "ppc64le")
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 22) {
-		t.Skip("broken")
-	}
 	withTestProcessArgs("testnextprog", t, "", []string{}, protest.LinkStrip, func(p *proc.Target, grp *proc.TargetGroup, f protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(grp.Continue(), t, "Continue")
@@ -3212,12 +3209,6 @@ func TestDebugStripped2(t *testing.T) {
 	skipOn(t, "not working on freebsd", "freebsd")
 	skipOn(t, "not working on linux/386", "linux", "386")
 	skipOn(t, "not working on linux/ppc64le when -gcflags=-N -l is passed", "linux", "ppc64le")
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 22) {
-		t.Skip("broken")
-	}
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 20) {
-		t.Skip("temporarily disabled on Go versions < 1.20")
-	}
 	withTestProcessArgs("inlinestripped", t, "", []string{}, protest.EnableInlining|protest.LinkStrip|protest.LinkDisableDWARF, func(p *proc.Target, grp *proc.TargetGroup, f protest.Fixture) {
 		setFunctionBreakpointAll(p, t, "fmt.Println")
 
