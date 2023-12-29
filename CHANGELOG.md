@@ -3,6 +3,30 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.22.0] 2023-12-29
+
+### Added
+
+- Support for Go 1.22 (#3583, @aarzilli)
+- Support for min and max builtins (#3530, @aarzilli)
+- Expression evaluator can now reference previous frames (#3534, @derekparker)
+- Better support for stripped binaries (#3549, #3577, #3597, @derekparker)
+- Remove package paths from types returned by DAP (#3535, @stefanhaller)
+- Show pprof labels in DAP (#3501, @stefanhaller)
+
+### Fixed
+
+- Fixes for signal routing with debugserver (#3541, @aarzilli)
+- Clear substitute path rules cache every time the `config` command is used (#3567, @aarzilli)
+- Fixes handling of hardcoded breakpoints after a manual stop (#3582, @aarzilli)
+- Occasional close on closed channel panic in DAP (#3573, @aarzilli)
+- Correctly reports exit code on Linux when a we receive a signal close to the program's exit (#3585, @aarzilli)
+
+### Changed
+
+- Type casts from slice to string and vice versa will now use the load configuration for the target type, which is more intuitive (#3596, @aarzilli)
+- Miscellaneous impreovements to documentation (#3531, #3555, #3556, #3562, #3564, #3575, #3576, @alexandear, @testwill)
+
 ## [1.21.2] 2023-10-30
 
 ### Added
