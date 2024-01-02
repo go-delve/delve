@@ -165,6 +165,8 @@ func ElfUpdateSharedObjects(p proc.Process) error {
 
 	libs := []string{}
 
+	first := true
+
 	for {
 		if r_map == 0 {
 			break
@@ -176,8 +178,13 @@ func ElfUpdateSharedObjects(p proc.Process) error {
 		if err != nil {
 			return err
 		}
-		bi.AddImage(lm.name, lm.addr)
+		if !first || lm.addr != 0 {
+			// First entry is the executable, we don't need to add it, and doing so
+			// can cause duplicate entries due to base address mismatches.
+			bi.AddImage(lm.name, lm.addr)
+		}
 		libs = append(libs, lm.name)
+		first = false
 		r_map = lm.next
 	}
 
