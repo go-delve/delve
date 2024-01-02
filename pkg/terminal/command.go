@@ -2138,6 +2138,8 @@ func (c *Commands) printVar(t *Term, ctx callContext, args string) error {
 		return err
 	}
 
+	t.stdout.pw.PageMaybe(nil)
+
 	fmt.Fprintln(t.stdout, val.MultilineString("", fmtstr))
 
 	if val.Kind == reflect.Chan {
@@ -2208,6 +2210,7 @@ func (t *Term) printFilteredVariables(varType string, vars []api.Variable, filte
 		return err
 	}
 	match := false
+	t.stdout.pw.PageMaybe(nil)
 	for _, v := range vars {
 		if reg == nil || reg.Match([]byte(v.Name)) {
 			match = true
