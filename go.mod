@@ -8,7 +8,7 @@ require (
 	github.com/creack/pty v1.1.20
 	github.com/derekparker/trie v0.0.0-20230829180723-39f4de51ef7d
 	github.com/go-delve/gore v0.11.6
-	github.com/go-delve/liner v1.2.3-0.20220127212407-d32d89dd2a5d
+	github.com/go-delve/liner v1.2.3-0.20231231155935-4726ab1d7f62
 	github.com/google/go-dap v0.11.0
 	github.com/hashicorp/golang-lru v1.0.2
 	github.com/mattn/go-colorable v0.1.13
