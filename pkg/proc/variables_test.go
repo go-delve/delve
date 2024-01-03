@@ -553,8 +553,8 @@ func getEvalExpressionTestCases() []varTest {
 		{"str1[11]", false, "", "", "byte", fmt.Errorf("index out of bounds")},
 
 		// slice/array/string reslicing
-		{"a1[2:4]", false, "[]string len: 2, cap: 2, [\"three\",\"four\"]", "[]string len: 2, cap: 2, [...]", "[]string", nil},
-		{"s1[2:4]", false, "[]string len: 2, cap: 2, [\"three\",\"four\"]", "[]string len: 2, cap: 2, [...]", "[]string", nil},
+		{"a1[2:4]", false, "[]string len: 2, cap: 2, [\"three\",\"four\"]", "[]string len: 2, cap: 2, [\"three\",\"four\"]", "[]string", nil},
+		{"s1[2:4]", false, "[]string len: 2, cap: 2, [\"three\",\"four\"]", "[]string len: 2, cap: 2, [\"three\",\"four\"]", "[]string", nil},
 		{"str1[2:4]", false, "\"23\"", "\"23\"", "string", nil},
 		{"str1[0:11]", false, "\"01234567890\"", "\"01234567890\"", "string", nil},
 		{"str1[:3]", false, "\"012\"", "\"012\"", "string", nil},
@@ -562,6 +562,7 @@ func getEvalExpressionTestCases() []varTest {
 		{"str1[0:12]", false, "", "", "string", fmt.Errorf("index out of bounds")},
 		{"str1[5:3]", false, "", "", "string", fmt.Errorf("index out of bounds")},
 		{"str1[11:]", false, "\"\"", "\"\"", "string", nil},
+		{"longbyteslice[:70]", false, "[]uint8 len: 70, cap: 70, [118,101,114,121,32,108,111,110,103,32,115,116,114,105,110,103,32,48,49,50,51,52,53,54,55,56,57,97,48,49,50,51,52,53,54,55,56,57,98,48,49,50,51,52,53,54,55,56,57,99,48,49,50,51,52,53,54,55,56,57,100,48,49,50,51,52,53,54,55,56]", "[]uint8 len: 70, cap: 70, [118,101,114,121,32,108,111,110,103,32,115,116,114,105,110,103,32,48,49,50,51,52,53,54,55,56,57,97,48,49,50,51,52,53,54,55,56,57,98,48,49,50,51,52,53,54,55,56,57,99,48,49,50,51,52,53,54,55,56,57,100,48,49,50,51,52,53,54,55,56]", "[]uint8", nil},
 
 		// NaN and Inf floats
 		{"pinf", false, "+Inf", "+Inf", "float64", nil},
@@ -1579,7 +1580,7 @@ func TestCgoEval(t *testing.T) {
 		{"v", true, "*0", "(*int)(…", "*int", nil},
 		{"v[1]", false, "1", "1", "int", nil},
 		{"v[90]", false, "90", "90", "int", nil},
-		{"v[:5]", false, "[]int len: 5, cap: 5, [0,1,2,3,4]", "[]int len: 5, cap: 5, [...]", "[]int", nil},
+		{"v[:5]", false, "[]int len: 5, cap: 5, [0,1,2,3,4]", "[]int len: 5, cap: 5, [0,1,2,3,4]", "[]int", nil},
 		{"v_align_check", true, "*align_check {a: 0, b: 0}", "(*struct align_check)(…", "*struct align_check", nil},
 		{"v_align_check[1]", false, "align_check {a: 1, b: 1}", "align_check {a: 1, b: 1}", "align_check", nil},
 		{"v_align_check[90]", false, "align_check {a: 90, b: 90}", "align_check {a: 90, b: 90}", "align_check", nil},

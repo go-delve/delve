@@ -1905,7 +1905,7 @@ func (scope *EvalScope) evalReslice(op *evalop.Reslice, stack *evalStack) {
 			stack.err = fmt.Errorf("can not slice %q", exprToString(op.Node.X))
 			return
 		}
-		stack.pushErr(xev.reslice(low, high))
+		stack.pushErr(xev.reslice(low, high, op.TrustLen))
 		return
 	case reflect.Map:
 		if op.Node.High != nil {
@@ -1922,7 +1922,7 @@ func (scope *EvalScope) evalReslice(op *evalop.Reslice, stack *evalStack) {
 		return
 	case reflect.Ptr:
 		if xev.Flags&VariableCPtr != 0 {
-			stack.pushErr(xev.reslice(low, high))
+			stack.pushErr(xev.reslice(low, high, op.TrustLen))
 			return
 		}
 		fallthrough
@@ -2551,7 +2551,7 @@ func (v *Variable) LoadResliced(start int, cfg LoadConfig) (newV *Variable, err 
 		if high > v.Len {
 			high = v.Len
 		}
-		newV, err = v.reslice(low, high)
+		newV, err = v.reslice(low, high, false)
 		if err != nil {
 			return nil, err
 		}
@@ -2567,7 +2567,7 @@ func (v *Variable) LoadResliced(start int, cfg LoadConfig) (newV *Variable, err 
 	return newV, nil
 }
 
-func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
+func (v *Variable) reslice(low int64, high int64, trustLen bool) (*Variable, error) {
 	wrong := false
 	cptrNeedsFakeSlice := false
 	if v.Flags&VariableCPtr == 0 {
@@ -2607,6 +2607,9 @@ func (v *Variable) reslice(low int64, high int64) (*Variable, error) {
 	r.stride = v.stride
 	r.fieldType = v.fieldType
 	r.Flags = v.Flags
+	if trustLen {
+		r.Flags |= variableTrustLen
+	}
 	r.reg = v.reg
 
 	return r, nil

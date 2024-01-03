@@ -114,9 +114,11 @@ func (*TypeCast) depthCheck() (npop, npush int) { return 1, 1 }
 // If HasHigh is set it pops three variables, low, high and v, and pushes
 // v[low:high].
 // Otherwise it pops two variables, low and v, and pushes v[low:].
+// If TrustLen is set when the variable resulting from the reslice is loaded it will be fully loaded.
 type Reslice struct {
-	HasHigh bool
-	Node    *ast.SliceExpr
+	HasHigh  bool
+	TrustLen bool
+	Node     *ast.SliceExpr
 }
 
 func (op *Reslice) depthCheck() (npop, npush int) {

@@ -86,6 +86,9 @@ const (
 	VariableCPtr
 	// VariableCPURegister means this variable is a CPU register.
 	VariableCPURegister
+	// variableTrustLen means that when this variable is loaded its length
+	// should be trusted and used instead of MaxArrayValues
+	variableTrustLen
 )
 
 // Variable represents a variable. It contains the address, name,
@@ -1683,7 +1686,7 @@ func (v *Variable) loadArrayValues(recurseLevel int, cfg LoadConfig) {
 
 	count := v.Len
 	// Cap number of elements
-	if count > int64(cfg.MaxArrayValues) {
+	if (v.Flags&variableTrustLen == 0) && (count > int64(cfg.MaxArrayValues)) {
 		count = int64(cfg.MaxArrayValues)
 	}
 	if v.Base+uint64(v.stride*count) < v.Base {
