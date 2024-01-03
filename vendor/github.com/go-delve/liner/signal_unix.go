@@ -8,8 +8,9 @@ import (
 )
 
 func handleCtrlZ() {
-	p, err := os.FindProcess(os.Getpid())
+	pid := os.Getpid()
+	pgrp, err := syscall.Getpgid(pid)
 	if err == nil {
-		p.Signal(syscall.SIGTSTP)
+		syscall.Kill(-pgrp, syscall.SIGTSTP)
 	}
 }
