@@ -7489,6 +7489,7 @@ func TestFindInstructions(t *testing.T) {
 func TestDisassembleCgo(t *testing.T) {
 	// Test that disassembling a program containing cgo code does not create problems.
 	// See issue #3040
+	protest.MustHaveCgo(t)
 	runTestBuildFlags(t, "cgodisass", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch

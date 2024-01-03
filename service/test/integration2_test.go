@@ -2789,6 +2789,9 @@ func TestNonGoDebug(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip()
 	}
+	if objcopyPath, _ := exec.LookPath("cc"); objcopyPath == "" {
+		t.Skip("no C compiler in path")
+	}
 	dir := protest.FindFixturesDir()
 	path := protest.TempFile("testc")
 	cmd := exec.Command("cc", "-g", "-o", path, filepath.Join(dir, "test.c"))

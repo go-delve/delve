@@ -2,11 +2,15 @@
 set -e
 set -x
 
-apt-get -qq update
-apt-get install -y gcc curl jq lsof
-
 version=$1
 arch=$2
+
+apt-get -qq update
+if [ "$arch" = "ppc64le" ]; then
+	apt-get install --no-upgrade -y wget jq
+else
+	apt-get install --no-upgrade -y gcc wget jq lsof
+fi
 
 
 if [ "$arch" != "ppc64le" ]; then
@@ -17,7 +21,7 @@ fi
 function getgo {
 	export GOROOT=/usr/local/go/$1
 	if [ ! -d "$GOROOT" ]; then
-		curl -sO https://dl.google.com/go/"$1".linux-"${arch}".tar.gz
+		wget -q https://dl.google.com/go/"$1".linux-"${arch}".tar.gz
 		mkdir -p /usr/local/go
 		tar -C /usr/local/go -xzf "$1".linux-"${arch}".tar.gz
 		mv -f /usr/local/go/go "$GOROOT"
@@ -26,7 +30,7 @@ function getgo {
 
 if [ "$version" = "gotip" ]; then
 	echo Building Go from tip
-	getgo $(curl https://go.dev/VERSION?m=text | head -1)
+	getgo $(wget -q -O - https://go.dev/VERSION?m=text | head -1)
 	export GOROOT_BOOTSTRAP=$GOROOT
 	export GOROOT=/usr/local/go/go-tip
 	apt-get install -y git
@@ -37,9 +41,9 @@ if [ "$version" = "gotip" ]; then
 else
 	echo Finding latest patch version for $version
 	echo "Go $version on $arch"
-	version=$(curl 'https://go.dev/dl/?mode=json&include=all' | jq '.[].version' --raw-output | egrep ^$version'($|\.|beta|rc)' | sort -rV | head -1)
+	version=$(wget -q -O - 'https://go.dev/dl/?mode=json&include=all' | jq '.[].version' --raw-output | egrep ^$version'($|\.|beta|rc)' | sort -rV | head -1)
 	if [ "x$version" = "x" ]; then
-		version=$(curl 'https://go.dev/dl/?mode=json&include=all' | jq '.[].version' --raw-output | egrep ^$version'($|\.)' | sort -rV | head -1)
+		version=$(wget -q -O - 'https://go.dev/dl/?mode=json&include=all' | jq '.[].version' --raw-output | egrep ^$version'($|\.)' | sort -rV | head -1)
 	fi
 	getgo $version
 fi

@@ -14,7 +14,15 @@ import (
 	protest "github.com/go-delve/delve/pkg/proc/test"
 )
 
+func mustHaveObjcopy(t *testing.T) {
+	t.Helper()
+	if objcopyPath, _ := exec.LookPath("objcopy"); objcopyPath == "" {
+		t.Skip("no objcopy in path")
+	}
+}
+
 func TestLoadingExternalDebugInfo(t *testing.T) {
+	mustHaveObjcopy(t)
 	fixture := protest.BuildFixture("locationsprog", 0)
 	defer os.Remove(fixture.Path)
 	stripAndCopyDebugInfo(fixture, t)
@@ -26,6 +34,7 @@ func TestLoadingExternalDebugInfo(t *testing.T) {
 }
 
 func TestGnuDebuglink(t *testing.T) {
+	mustHaveObjcopy(t)
 	// build math.go and make a copy of the executable
 	fixture := protest.BuildFixture("math", 0)
 	buf, err := os.ReadFile(fixture.Path)
