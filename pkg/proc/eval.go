@@ -966,10 +966,9 @@ func (stack *evalStack) executeOp() {
 		var vars []*Variable
 		var err error
 		if op.Frame != 0 {
-			var frameScope *EvalScope
-			frameScope, err = ConvertEvalScope(scope.target, scope.g.ID, int(op.Frame), 0)
-			if err != nil {
-				stack.err = err
+			frameScope, err2 := ConvertEvalScope(scope.target, -1, int(op.Frame), 0)
+			if err2 != nil {
+				stack.err = err2
 				return
 			}
 			vars, err = frameScope.Locals(0)
