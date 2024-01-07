@@ -14,13 +14,6 @@ Delve can evaluate a subset of go expression language, specifically the followin
 - Calls to builtin functions: `cap`, `len`, `complex`, `imag` and `real`
 - Type assertion on interface variables (i.e. `somevar.(concretetype)`)
 
-# Special Variables
-
-Delve defines two special variables:
-
-* `runtime.curg` evaluates to the 'g' struct for the current goroutine, in particular `runtime.curg.goid` is the goroutine id of the current goroutine.
-* `runtime.frameoff` is the offset of the frame's base address from the bottom of the stack.
-
 # Nesting limit
 
 When delve evaluates a memory address it will automatically return the value of nested struct members, array and slice items and dereference pointers.
@@ -118,8 +111,20 @@ Packages with the same name can be disambiguated by using the full package path.
 
 Char pointers are always treated as NUL terminated strings, both indexing and the slice operator can be applied to them. Other C pointers can also be used similarly to Go slices, with indexing and the slice operator. In both of these cases it is up to the user to respect array bounds.
 
+# Special Features
 
-# CPU Registers
+## Special Variables
+
+Delve defines two special variables:
+
+* `runtime.curg` evaluates to the 'g' struct for the current goroutine, in particular `runtime.curg.goid` is the goroutine id of the current goroutine.
+* `runtime.frameoff` is the offset of the frame's base address from the bottom of the stack.
+
+## Access to variables from previous frames
+
+Variables from previous frames (i.e. stack frames other than the top of the stack) can be referred using the following notation `runtime.frame(n).name` which is the variable called 'name' on the n-th frame from the top of the stack.
+
+## CPU Registers
 
 The name of a CPU register, in all uppercase letters, will resolve to the value of that CPU register in the current frame. For example on AMD64 the expression `RAX` will evaluate to the value of the RAX register. 
 
