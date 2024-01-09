@@ -2918,14 +2918,34 @@ func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 	}
 }
 
-var (
-	depth = make(map[int64]int)
-)
-
 func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, args string, hasReturnValue bool) {
 	if t.conf.TraceShowTimestamp {
 		fmt.Fprintf(t.stdout, "%s ", time.Now().Format(time.RFC3339Nano))
 	}
+	wantindex := -1
+	mainindex := -1
+	rootindex := -1
+	stack := th.BreakpointInfo.Stacktrace
+	for i := range stack {
+		//fmt.Printf(" i=%d pc=%x fname=%s\n", i,stack[i].PC, stack[i].Function.Name())
+		curi := len(stack) - 1 - i
+		if stack[curi].Function.Name() == "main.main" {
+			mainindex = curi
+		}
+
+		if stack[curi].Function.Name() == th.Breakpoint.RootFuncName {
+			rootindex = curi
+		}
+
+		if fn.Name() == stack[curi].Function.Name() {
+			//                        fmt.Printf(" i %d equal %s %s\n",curi,fn.Name(), stack[i].Function.Name())
+			wantindex = curi
+		}
+	}
+	sdepth := mainindex - wantindex
+	//fmt.Printf("follow calls depth %d\n",th.Breakpoint.TraceFollowCalls)
+	//fmt.Printf("Root func name %s\n",th.Breakpoint.RootFuncName)
+	//fmt.Printf("want index %d rootindex %d\n", wantindex, rootindex)
 
 	var sdepth, rootindex int
 	depthPrefix := ""

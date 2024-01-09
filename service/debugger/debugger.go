@@ -444,6 +444,7 @@ func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
 		for _, instruction := range instructions {
 			if instruction.IsRet() {
 				addrs = append(addrs, instruction.Loc.PC)
+				//fmt.Printf("appending PC %x to return breakpoint list\n",instruction.Loc.PC)
 			}
 		}
 		addrs = append(addrs, proc.FindDeferReturnCalls(instructions)...)
@@ -915,6 +916,8 @@ func copyLogicalBreakpointInfo(lbp *proc.LogicalBreakpoint, requested *api.Break
 	lbp.LoadArgs = api.LoadConfigToProc(requested.LoadArgs)
 	lbp.LoadLocals = api.LoadConfigToProc(requested.LoadLocals)
 	lbp.UserData = requested.UserData
+	lbp.RootFuncName = requested.RootFuncName
+	lbp.TraceFollowCalls = requested.TraceFollowCalls
 	lbp.Cond = nil
 	if requested.Cond != "" {
 		var err error
@@ -1476,11 +1479,22 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 }
 
 func traverse(t proc.ValidTargets, f *proc.Function, depth int, FollowCalls int) ([]string, error) {
+
+	idx := strings.Index(f.Name, "runtime.")
+	idx2 := strings.Index(f.Name, "runtime.defer")
+	// Treat morestack_noctxt as a special case
+	if idx != -1 && idx2 == -1 {
+		//	fmt.Printf("not going down the runtime rabit hole %s!\n",f.Name)
+		return nil, nil
+	}
+
 	if depth > FollowCalls {
+		//	fmt.Printf("depth > followcalls return\n")
 		return nil, nil
 	}
 	funcs := []string{}
 	funcs = append(funcs, f.Name)
+	//fmt.Printf("appending func %s in traverse\n",f.Name)
 	text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
 	if err != nil {
 		return nil, fmt.Errorf("disassemble failed with error %s", err.Error())
@@ -1490,15 +1504,20 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, FollowCalls int)
 		if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
 			cf := instr.DestLoc.Fn
 			if cf.Name == f.Name {
+				//			fmt.Printf("cf and f are same \n", f.Name)
 				continue
 			}
 			if depth <= FollowCalls {
+				//	fmt.Printf("traversing child of func %s in traverse\n",cf.Name)
 				children, err := traverse(t, cf, depth, FollowCalls)
 				funcs = append(funcs, children...)
 				if err != nil {
-					return nil, fmt.Errorf("traverse failed with error %s", err.Error())
+					return nil, fmt.Errorf("disassemble failed with error %s", err.Error())
 				}
-			}
+			} /* else {
+				fmt.Printf("depth high return %s\n",cf.Name)
+			}*/
+
 		}
 	}
 	return funcs, nil
@@ -1516,7 +1535,6 @@ func (d *Debugger) FunctionsDeep(filter string, FollowCalls int) ([]string, erro
 	}
 
 	funcs := []string{}
-
 	t := proc.ValidTargets{Group: d.target}
 	for t.Next() {
 		for _, f := range t.BinInfo().Functions {

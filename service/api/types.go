@@ -133,6 +133,11 @@ type Breakpoint struct {
 	Disabled bool `json:"disabled"`
 
 	UserData interface{} `json:"-"`
+
+	// Root of function from where tracing needs to be done
+	RootFuncName string
+	// Depth of tracing
+	TraceFollowCalls int
 }
 
 // ValidBreakpointName returns an error if
