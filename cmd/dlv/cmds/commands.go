@@ -701,13 +701,27 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 				}
 			} else {
 				// Fall back to breakpoint based tracing if we get an error.
-				_, err = client.CreateBreakpoint(&api.Breakpoint{
-					FunctionName: funcs[i],
-					Tracepoint:   true,
-					Line:         -1,
-					Stacktrace:   traceStackDepth,
-					LoadArgs:     &terminal.ShortLoadConfig,
-				})
+				if traceFollowCalls > 0 {
+					_, err = client.CreateBreakpoint(&api.Breakpoint{
+						FunctionName:     funcs[i],
+						Tracepoint:       true,
+						Line:             -1,
+						Stacktrace:       20,
+						LoadArgs:         &terminal.ShortLoadConfig,
+						TraceFollowCalls: traceFollowCalls,
+						RootFuncName:     regexp,
+					})
+				} else {
+					_, err = client.CreateBreakpoint(&api.Breakpoint{
+						FunctionName:     funcs[i],
+						Tracepoint:       true,
+						Line:             -1,
+						Stacktrace:       traceStackDepth,
+						LoadArgs:         &terminal.ShortLoadConfig,
+						TraceFollowCalls: traceFollowCalls,
+						RootFuncName:     regexp,
+					})
+				}
 				if err != nil && !isBreakpointExistsErr(err) {
 					fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
 					continue
@@ -720,13 +734,27 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 					continue
 				}
 				for i := range addrs {
-					_, err = client.CreateBreakpoint(&api.Breakpoint{
-						Addr:        addrs[i],
-						TraceReturn: true,
-						Stacktrace:  traceStackDepth,
-						Line:        -1,
-						LoadArgs:    &terminal.ShortLoadConfig,
-					})
+					if traceFollowCalls > 0 {
+						_, err = client.CreateBreakpoint(&api.Breakpoint{
+							Addr:             addrs[i],
+							TraceReturn:      true,
+							Stacktrace:       20,
+							Line:             -1,
+							LoadArgs:         &terminal.ShortLoadConfig,
+							TraceFollowCalls: traceFollowCalls,
+							RootFuncName:     regexp,
+						})
+					} else {
+						_, err = client.CreateBreakpoint(&api.Breakpoint{
+							Addr:             addrs[i],
+							TraceReturn:      true,
+							Stacktrace:       traceStackDepth,
+							Line:             -1,
+							LoadArgs:         &terminal.ShortLoadConfig,
+							TraceFollowCalls: traceFollowCalls,
+							RootFuncName:     regexp,
+						})
+					}
 					if err != nil && !isBreakpointExistsErr(err) {
 						fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
 					} else {
