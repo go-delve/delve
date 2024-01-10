@@ -97,11 +97,18 @@ func (grp *TargetGroup) Continue() error {
 
 		it := ValidTargets{Group: grp}
 		for it.Next() {
+			// Both selectedGoroutine and current thread are stale here, since we can
+			// only set their definitive value *after* evaluating breakpoint
+			// conditions here we give them temporary non-stale values.
+			it.selectedGoroutine = nil
+			curthread := it.currentThread
 			for _, thread := range it.ThreadList() {
 				if thread.Breakpoint().Breakpoint != nil {
+					it.currentThread = thread
 					thread.Breakpoint().Breakpoint.checkCondition(it.Target, thread, thread.Breakpoint())
 				}
 			}
+			it.currentThread = curthread
 		}
 
 		if contOnceErr != nil {
