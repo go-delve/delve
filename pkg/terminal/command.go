@@ -2625,7 +2625,7 @@ func libraries(t *Term, ctx callContext, args string) error {
 	for i := range libs {
 		fmt.Fprintf(t.stdout, "%"+strconv.Itoa(d)+"d. %#x %s\n", i, libs[i].Address, libs[i].Path)
 		if libs[i].LoadError != "" {
-			fmt.Fprintf(t.stdout, "    Load error: %s", libs[i].LoadError)
+			fmt.Fprintf(t.stdout, "    Load error: %s\n", libs[i].LoadError)
 		}
 	}
 	return nil
