@@ -4,7 +4,6 @@ package native
 
 import (
 	"errors"
-	"sync"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/proc"
@@ -45,10 +44,6 @@ func killProcess(pid int) error {
 }
 
 func registers(thread *nativeThread) (proc.Registers, error) {
-	panic(ErrNativeBackendDisabled)
-}
-
-func (dbp *nativeProcess) loadProcessInformation(wg *sync.WaitGroup) {
 	panic(ErrNativeBackendDisabled)
 }
 
