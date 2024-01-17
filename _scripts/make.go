@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -54,7 +55,7 @@ func NewMakeCommands() *cobra.Command {
 			} else {
 				execute("go", "build", "-ldflags", "-extldflags -static", tagFlags(), buildFlags(), DelveMainPackagePath)
 			}
-			if runtime.GOOS == "darwin" && os.Getenv("CERT") != "" && canMacnative() {
+			if runtime.GOOS == "darwin" && os.Getenv("CERT") != "" && canMacnative() && !isCodesigned("./dlv") {
 				codesign("./dlv")
 			}
 		},
@@ -70,7 +71,7 @@ func NewMakeCommands() *cobra.Command {
 		Short: "Installs delve",
 		Run: func(cmd *cobra.Command, args []string) {
 			execute("go", "install", tagFlags(), buildFlags(), DelveMainPackagePath)
-			if runtime.GOOS == "darwin" && os.Getenv("CERT") != "" && canMacnative() {
+			if runtime.GOOS == "darwin" && os.Getenv("CERT") != "" && canMacnative() && !isCodesigned(installedExecutablePath()) {
 				codesign(installedExecutablePath())
 			}
 		},
@@ -223,6 +224,15 @@ func getoutput(cmd string, args ...interface{}) string {
 		os.Exit(1)
 	}
 	return string(out)
+}
+
+func isCodesigned(path string) bool {
+	x := exec.Command("codesign", "--verify", path)
+	x.Stdout = io.Discard
+	x.Stderr = io.Discard
+	x.Env = os.Environ()
+	err := x.Run()
+	return err == nil && x.ProcessState != nil && x.ProcessState.Success()
 }
 
 func codesign(path string) {
