@@ -6121,3 +6121,28 @@ func TestIssue3545(t *testing.T) {
 		}
 	})
 }
+
+func TestPanicLine(t *testing.T) {
+	withTestProcess("panicline", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		err := grp.Continue()
+		if runtime.GOOS == "darwin" && err != nil && err.Error() == "bad access" {
+			// not supported
+			return
+		}
+		assertNoError(err, t, "Continue()")
+		frames, err := proc.ThreadStacktrace(p, p.CurrentThread(), 20)
+		assertNoError(err, t, "ThreadStacktrace")
+		logStacktrace(t, p, frames)
+
+		found := false
+		for _, frame := range frames {
+			if strings.HasSuffix(frame.Call.File, "panicline.go") && frame.Call.Line == 7 {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("could not find panicline.go:6")
+		}
+	})
+}

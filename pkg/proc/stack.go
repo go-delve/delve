@@ -180,6 +180,7 @@ type stackIterator struct {
 	pc     uint64
 	top    bool
 	atend  bool
+	sigret bool
 	frame  Stackframe
 	target *Target
 	bi     *BinaryInfo
@@ -270,6 +271,7 @@ func (it *stackIterator) Next() bool {
 		return true
 	}
 
+	it.sigret = it.frame.Current.Fn != nil && it.frame.Current.Fn.Name == "runtime.sigpanic"
 	it.top = false
 	it.pc = it.frame.Ret
 	it.regs = callFrameRegs
@@ -329,7 +331,7 @@ func (it *stackIterator) newStackframe(ret, retaddr uint64) Stackframe {
 		r.Regs.AddReg(it.regs.PCRegNum, op.DwarfRegisterFromUint64(it.pc))
 	}
 	r.Call = r.Current
-	if !it.top && r.Current.Fn != nil && it.pc != r.Current.Fn.Entry {
+	if !it.top && r.Current.Fn != nil && it.pc != r.Current.Fn.Entry && !it.sigret {
 		// if the return address is the entry point of the function that
 		// contains it then this is some kind of fake return frame (for example
 		// runtime.sigreturn) that didn't actually call the current frame,
