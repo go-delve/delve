@@ -1482,42 +1482,35 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, FollowCalls int)
 
 	idx := strings.Index(f.Name, "runtime.")
 	idx2 := strings.Index(f.Name, "runtime.defer")
-	// Treat morestack_noctxt as a special case
 	if idx != -1 && idx2 == -1 {
-		//	fmt.Printf("not going down the runtime rabit hole %s!\n",f.Name)
+		// Except defer functions do not traverse runtime.* functions
 		return nil, nil
 	}
 
 	if depth > FollowCalls {
-		//	fmt.Printf("depth > followcalls return\n")
+		// If we already reached desired depth, return
 		return nil, nil
 	}
 	funcs := []string{}
 	funcs = append(funcs, f.Name)
-	//fmt.Printf("appending func %s in traverse\n",f.Name)
 	text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
 	if err != nil {
 		return nil, fmt.Errorf("disassemble failed with error %s", err.Error())
 	}
-	depth = depth + 1
+	depth++
 	for _, instr := range text {
 		if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
 			cf := instr.DestLoc.Fn
 			if cf.Name == f.Name {
-				//			fmt.Printf("cf and f are same \n", f.Name)
 				continue
 			}
 			if depth <= FollowCalls {
-				//	fmt.Printf("traversing child of func %s in traverse\n",cf.Name)
 				children, err := traverse(t, cf, depth, FollowCalls)
 				funcs = append(funcs, children...)
 				if err != nil {
 					return nil, fmt.Errorf("disassemble failed with error %s", err.Error())
 				}
-			} /* else {
-				fmt.Printf("depth high return %s\n",cf.Name)
-			}*/
-
+			}
 		}
 	}
 	return funcs, nil
