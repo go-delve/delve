@@ -648,6 +648,7 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 		}
 		if dlvArgsLen >= 2 && traceFollowCalls <= 1 {
 			fmt.Fprintln(os.Stderr, "Need to specify a trace depth of atleast 1")
+			return 1
 		}
 
 		// Make a local in-memory connection that client and server use to communicate
@@ -701,27 +702,22 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 				}
 			} else {
 				// Fall back to breakpoint based tracing if we get an error.
+				var stackdepth int
 				if traceFollowCalls > 0 {
-					_, err = client.CreateBreakpoint(&api.Breakpoint{
-						FunctionName:     funcs[i],
-						Tracepoint:       true,
-						Line:             -1,
-						Stacktrace:       20,
-						LoadArgs:         &terminal.ShortLoadConfig,
-						TraceFollowCalls: traceFollowCalls,
-						RootFuncName:     regexp,
-					})
+					stackdepth = 20
 				} else {
-					_, err = client.CreateBreakpoint(&api.Breakpoint{
-						FunctionName:     funcs[i],
-						Tracepoint:       true,
-						Line:             -1,
-						Stacktrace:       traceStackDepth,
-						LoadArgs:         &terminal.ShortLoadConfig,
-						TraceFollowCalls: traceFollowCalls,
-						RootFuncName:     regexp,
-					})
+					stackdepth = traceStackDepth
 				}
+				_, err = client.CreateBreakpoint(&api.Breakpoint{
+					FunctionName:     funcs[i],
+					Tracepoint:       true,
+					Line:             -1,
+					Stacktrace:       stackdepth,
+					LoadArgs:         &terminal.ShortLoadConfig,
+					TraceFollowCalls: traceFollowCalls,
+					RootFuncName:     regexp,
+				})
+
 				if err != nil && !isBreakpointExistsErr(err) {
 					fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
 					continue
@@ -734,27 +730,21 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 					continue
 				}
 				for i := range addrs {
+					var stackdepth int
 					if traceFollowCalls > 0 {
-						_, err = client.CreateBreakpoint(&api.Breakpoint{
-							Addr:             addrs[i],
-							TraceReturn:      true,
-							Stacktrace:       20,
-							Line:             -1,
-							LoadArgs:         &terminal.ShortLoadConfig,
-							TraceFollowCalls: traceFollowCalls,
-							RootFuncName:     regexp,
-						})
+						stackdepth = 20
 					} else {
-						_, err = client.CreateBreakpoint(&api.Breakpoint{
-							Addr:             addrs[i],
-							TraceReturn:      true,
-							Stacktrace:       traceStackDepth,
-							Line:             -1,
-							LoadArgs:         &terminal.ShortLoadConfig,
-							TraceFollowCalls: traceFollowCalls,
-							RootFuncName:     regexp,
-						})
+						stackdepth = traceStackDepth
 					}
+					_, err = client.CreateBreakpoint(&api.Breakpoint{
+						Addr:             addrs[i],
+						TraceReturn:      true,
+						Stacktrace:       stackdepth,
+						Line:             -1,
+						LoadArgs:         &terminal.ShortLoadConfig,
+						TraceFollowCalls: traceFollowCalls,
+						RootFuncName:     regexp,
+					})
 					if err != nil && !isBreakpointExistsErr(err) {
 						fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
 					} else {

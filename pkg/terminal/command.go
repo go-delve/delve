@@ -2875,13 +2875,7 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 	rootindex := -1
 	stack := th.BreakpointInfo.Stacktrace
 	for i := range stack {
-		//fmt.Printf(" i=%d pc=%x fname=%s\n", i,stack[i].PC, stack[i].Function.Name())
 		curi := len(stack) - 1 - i
-		/*
-		   if stack[curi].Function.Name()=="main.main" {
-		           mainindex=curi
-		   }*/
-
 		if stack[curi].Function.Name() == th.Breakpoint.RootFuncName {
 			if rootindex == -1 {
 				rootindex = curi
@@ -2889,19 +2883,14 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 		}
 
 		if fn.Name() == stack[curi].Function.Name() {
-			//                        fmt.Printf(" i %d equal %s %s\n",curi,fn.Name(), stack[i].Function.Name())
 			wantindex = curi
 		}
 	}
-	//sdepth:=mainindex-wantindex
+	// compute relative depth from root function passed as regexp in follow-calls in the stack
 	sdepth := rootindex - wantindex + 1
-	//fmt.Printf("follow calls depth %d\n",th.Breakpoint.TraceFollowCalls)
-	//fmt.Printf("Root func name %s\n",th.Breakpoint.RootFuncName)
 
 	if th.Breakpoint.Tracepoint {
 		if sdepth <= th.Breakpoint.TraceFollowCalls && wantindex <= rootindex && rootindex != -1 {
-			//fmt.Printf("sdepth %d actual depth %d\n", sdepth, rootindex-wantindex+1)
-			//if sdepth <= th.Breakpoint.TraceFollowCalls   {
 			for i := 1; i < sdepth; i++ {
 				// Print indentation according to Trace Depth of the goroutine
 				fmt.Fprintf(t.stdout, " ")
@@ -2918,8 +2907,6 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 			retVals = append(retVals, v.SinglelineString())
 		}
 		if sdepth <= th.Breakpoint.TraceFollowCalls && wantindex <= rootindex && rootindex != -1 {
-			//fmt.Printf("sdepth %d actual depth %d\n", sdepth, rootindex-wantindex+1)
-			//if sdepth <= th.Breakpoint.TraceFollowCalls {
 			for i := 1; i < sdepth; i++ {
 				// Print return indentation according to Trace Depth of the goroutine
 				fmt.Fprintf(t.stdout, " ")
