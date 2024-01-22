@@ -214,6 +214,12 @@ type Roll struct {
 
 func (*Roll) depthCheck() (npop, npush int) { return 1, 1 }
 
+// Dup duplicates the topmost stack entry
+type Dup struct {
+}
+
+func (*Dup) depthCheck() (npop, npush int) { return 1, 2 }
+
 // BuiltinCall pops len(Args) argument from the stack, calls the specified
 // builtin on them and pushes the result back on the stack.
 type BuiltinCall struct {
@@ -333,3 +339,11 @@ type PushBreakpointHitCount struct {
 }
 
 func (*PushBreakpointHitCount) depthCheck() (npop, npush int) { return 0, 1 }
+
+// PushRuntimeType pushes the *runtime._type corresponding to the
+// godwarf.Type.
+type PushRuntimeType struct {
+	Type godwarf.Type
+}
+
+func (*PushRuntimeType) depthCheck() (npop, npush int) { return 0, 1 }
