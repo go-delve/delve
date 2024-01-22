@@ -228,6 +228,10 @@ func (scope scopeToEvalLookup) HasBuiltin(name string) bool {
 	return supportedBuiltins[name] != nil
 }
 
+func (scope scopeToEvalLookup) PtrSize() int {
+	return scope.BinInfo.Arch.ptrSize
+}
+
 // ChanGoroutines returns the list of goroutines waiting to receive from or
 // send to the channel.
 func (scope *EvalScope) ChanGoroutines(expr string, start, count int) ([]int64, error) {
@@ -1178,6 +1182,10 @@ func (stack *evalStack) executeOp() {
 		copy(stack.stack[len(stack.stack)-op.N-1:], stack.stack[len(stack.stack)-op.N:])
 		stack.stack[len(stack.stack)-1] = rolled
 
+	case *evalop.Dup:
+		x := stack.stack[len(stack.stack)-1]
+		stack.push(x)
+
 	case *evalop.BuiltinCall:
 		vars := make([]*Variable, len(op.Args))
 		for i := len(op.Args) - 1; i >= 0; i-- {
@@ -1256,6 +1264,20 @@ func (stack *evalStack) executeOp() {
 
 	case *evalop.PushBreakpointHitCount:
 		stack.push(newVariable(evalop.BreakpointHitCountVarNameQualified, fakeAddressUnresolv, godwarf.FakeSliceType(godwarf.FakeBasicType("uint", 64)), scope.BinInfo, scope.Mem))
+
+	case *evalop.PushRuntimeType:
+		typeAddr, err := dieToRuntimeType(scope.BinInfo, scope.Mem, op.Type)
+		if err != nil {
+			stack.err = err
+			break
+		}
+		rttyp, err := scope.BinInfo.findType(scope.BinInfo.runtimeTypeTypename())
+		if err != nil {
+			stack.err = err
+			break
+		}
+		v := newVariable("", typeAddr, rttyp, scope.BinInfo, scope.Mem)
+		stack.push(v.pointerToVariable())
 
 	default:
 		stack.err = fmt.Errorf("internal debugger error: unknown eval opcode: %#v", op)
@@ -1432,13 +1454,18 @@ func (scope *EvalScope) evalTypeCast(op *evalop.TypeCast, stack *evalStack) {
 
 	// compatible underlying types
 	if typeCastCompatibleTypes(argv.RealType, typ) {
-		if ptyp, isptr := typ.(*godwarf.PtrType); argv.Kind == reflect.Ptr && argv.loaded && len(argv.Children) > 0 && isptr {
+		ptyp, isptr := typ.(*godwarf.PtrType)
+		_, isvoid := argv.DwarfType.(*godwarf.VoidType)
+		if (argv.Kind == reflect.Ptr || isvoid) && argv.loaded && len(argv.Children) > 0 && isptr {
 			cv := argv.Children[0]
 			argv.Children[0] = *newVariable(cv.Name, cv.Addr, ptyp.Type, cv.bi, cv.mem)
 			argv.Children[0].OnlyAddr = true
 		}
 		argv.RealType = typ
 		argv.DwarfType = op.DwarfType
+		if isptr {
+			argv.Kind = reflect.Ptr // could be converting from unsafe.Pointer
+		}
 		stack.push(argv)
 		return
 	}

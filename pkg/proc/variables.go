@@ -1098,6 +1098,9 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 		return v.clone(), nil
 	}
 	vname := v.Name
+	if v.Name == "" {
+		vname = v.DwarfType.String()
+	}
 	if v.loaded && (v.Flags&VariableFakeAddress) != 0 {
 		for i := range v.Children {
 			if v.Children[i].Name == memberName {

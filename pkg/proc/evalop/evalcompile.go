@@ -18,6 +18,7 @@ import (
 
 var (
 	ErrFuncCallNotAllowed = errors.New("function calls not allowed without using 'call'")
+	errFuncCallNotAllowedLitAlloc = errors.New("literal can not be allocated because function calls are not allowed without using 'call'")
 )
 
 const (
@@ -40,6 +41,7 @@ type compileCtx struct {
 type evalLookup interface {
 	FindTypeExpr(ast.Expr) (godwarf.Type, error)
 	HasBuiltin(string) bool
+	PtrSize() int
 }
 
 // Flags describes flags used to control Compile and CompileAST
@@ -109,9 +111,7 @@ func CompileSet(lookup evalLookup, lhexpr, rhexpr string, flags Flags) ([]Op, er
 		return nil, err
 	}
 
-	if isStringLiteralThatNeedsAlloc(rhe) {
-		ctx.compileAllocLiteralString()
-	}
+	ctx.maybeMaterialize(rhe)
 
 	err = ctx.compileAST(lhe, false)
 	if err != nil {
@@ -403,6 +403,77 @@ func (ctx *compileCtx) compileAST(t ast.Expr, toplevel bool) error {
 	case *ast.BasicLit:
 		ctx.pushOp(&PushConst{constant.MakeFromLiteral(node.Value, node.Kind, 0)})
 
+	case *ast.CompositeLit:
+		notimplerr := fmt.Errorf("expression %T not implemented", t)
+		if ctx.flags&HasDebugPinner == 0 {
+			return notimplerr
+		}
+		dtyp, err := ctx.FindTypeExpr(node.Type)
+		if err != nil {
+			return err
+		}
+		typ := godwarf.ResolveTypedef(dtyp)
+		switch typ := typ.(type) {
+		case *godwarf.StructType:
+			if !ctx.allowCalls {
+				return errFuncCallNotAllowedLitAlloc
+			}
+
+			ctx.compileSpecialCall("runtime.mallocgc", []ast.Expr{
+				&ast.BasicLit{Kind: token.INT, Value: "1"},
+				node.Type,
+				&ast.Ident{Name: "true"},
+			}, []Op{
+				&PushConst{Value: constant.MakeInt64(1)},
+				&PushRuntimeType{dtyp},
+				&PushConst{Value: constant.MakeBool(true)},
+			}, specialCallDoPinning)
+			ctx.pushOp(&TypeCast{
+				DwarfType: godwarf.FakePointerType(dtyp, int64(ctx.PtrSize())),
+				Node: &ast.CallExpr{
+					Fun:  node.Type,
+					Args: []ast.Expr{&ast.Ident{Name: "new allocation"}}}})
+			ctx.pushOp(&PointerDeref{&ast.StarExpr{X: &ast.Ident{Name: "new allocation"}}})
+
+			for i, elt := range node.Elts {
+				ctx.pushOp(&Dup{})
+
+				var rhe ast.Expr
+				switch elt := elt.(type) {
+				case *ast.KeyValueExpr:
+					ctx.pushOp(&Select{Name: elt.Key.(*ast.Ident).Name})
+					rhe = elt.Value
+					err := ctx.compileAST(elt.Value, false)
+					if err != nil {
+						return err
+					}
+					ctx.maybeMaterialize(elt.Value)
+				default:
+					ctx.pushOp(&Select{Name: typ.Field[i].Name})
+					rhe = elt
+					err := ctx.compileAST(elt, false)
+					if err != nil {
+						return err
+					}
+					ctx.maybeMaterialize(elt)
+				}
+				ctx.pushOp(&Roll{1})
+				ctx.pushOp(&SetValue{Rhe: rhe})
+			}
+
+		case *godwarf.SliceType:
+			return notimplerr
+
+		case *godwarf.MapType:
+			return notimplerr
+
+		case *godwarf.ArrayType:
+			return notimplerr
+
+		default:
+			return notimplerr
+		}
+
 	default:
 		return fmt.Errorf("expression %T not implemented", t)
 	}
@@ -665,9 +736,7 @@ func (ctx *compileCtx) compileFunctionCallNoPinning(node *ast.CallExpr, id int) 
 		if err != nil {
 			return fmt.Errorf("error evaluating %q as argument %d in function %s: %v", astutil.ExprToString(arg), i+1, astutil.ExprToString(node.Fun), err)
 		}
-		if isStringLiteralThatNeedsAlloc(arg) {
-			ctx.compileAllocLiteralString()
-		}
+		ctx.maybeMaterialize(arg)
 		ctx.pushOp(&CallInjectionCopyArg{id: id, ArgNum: i, ArgExpr: arg})
 	}
 
@@ -734,6 +803,14 @@ func (ctx *compileCtx) compilePinningLoop(id int) {
 	ctx.pushOp(&Jump{When: JumpAlways, Target: loopStart})
 	jmp.Target = len(ctx.ops)
 	ctx.pushOp(&CallInjectionComplete2{id: id})
+}
+
+// If expr will produce a string literal allocate the string into the target
+// program's address space.
+func (ctx *compileCtx) maybeMaterialize(expr ast.Expr) {
+	if isStringLiteralThatNeedsAlloc(expr) {
+		ctx.compileAllocLiteralString()
+	}
 }
 
 func Listing(depth []int, ops []Op) string {
