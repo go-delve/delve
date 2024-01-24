@@ -1576,7 +1576,7 @@ func (s *Session) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakp
 		if len(locs) == 0 {
 			return nil, err
 		}
-		if len(locs) > 0 {
+		if len(locs) > 1 {
 			s.config.log.Debugf("multiple locations found for %s", want.Name)
 		}
 
