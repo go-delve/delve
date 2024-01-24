@@ -15,7 +15,7 @@ func assertNoError(err error, t testing.TB, s string) {
 }
 
 func TestEvalSwitchExhaustiveness(t *testing.T) {
-	// Checks that the switch statement in (*EvalScope).evalOne of
+	// Checks that the switch statement in (*EvalScope).executeOp of
 	// pkg/proc/eval.go exhaustively covers all implementations of the
 	// evalop.Op interface.
 
@@ -69,7 +69,7 @@ func TestEvalSwitchExhaustiveness(t *testing.T) {
 
 	for op := range ops {
 		if !ops[op] {
-			t.Errorf("evalop.Op %s not used in evalOne", op)
+			t.Errorf("evalop.Op %s not used in executeOp", op)
 		}
 	}
 }
