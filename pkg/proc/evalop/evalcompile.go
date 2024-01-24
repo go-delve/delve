@@ -483,6 +483,7 @@ func (ctx *compileCtx) compileReslice(node *ast.SliceExpr) error {
 		return err
 	}
 
+	trustLen := true
 	hasHigh := false
 	if node.High != nil {
 		hasHigh = true
@@ -490,6 +491,10 @@ func (ctx *compileCtx) compileReslice(node *ast.SliceExpr) error {
 		if err != nil {
 			return err
 		}
+		_, isbasiclit := node.High.(*ast.BasicLit)
+		trustLen = trustLen && isbasiclit
+	} else {
+		trustLen = false
 	}
 
 	if node.Low != nil {
@@ -497,11 +502,13 @@ func (ctx *compileCtx) compileReslice(node *ast.SliceExpr) error {
 		if err != nil {
 			return err
 		}
+		_, isbasiclit := node.Low.(*ast.BasicLit)
+		trustLen = trustLen && isbasiclit
 	} else {
 		ctx.pushOp(&PushConst{constant.MakeInt64(0)})
 	}
 
-	ctx.pushOp(&Reslice{Node: node, HasHigh: hasHigh})
+	ctx.pushOp(&Reslice{Node: node, HasHigh: hasHigh, TrustLen: trustLen})
 	return nil
 }
 
