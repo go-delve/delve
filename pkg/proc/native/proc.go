@@ -130,6 +130,10 @@ func (procgrp *processGroup) Detach(pid int, kill bool) (err error) {
 	return
 }
 
+func (procgrp *processGroup) Close() error {
+	return nil
+}
+
 // Valid returns whether the process is still attached to and
 // has not exited.
 func (dbp *nativeProcess) Valid() (bool, error) {

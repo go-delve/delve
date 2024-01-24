@@ -13,6 +13,7 @@ type ProcessGroup interface {
 	ContinueOnce(*ContinueOnceContext) (Thread, StopReason, error)
 	StepInstruction(int) error
 	Detach(int, bool) error
+	Close() error
 }
 
 // Process represents the target of the debugger. This

@@ -2831,11 +2831,12 @@ func TestRestart_PreserveFunctionBreakpoint(t *testing.T) {
 	// even if the function changed position in the source file.
 
 	dir := protest.FindFixturesDir()
+	outpath := filepath.Join(dir, "testfnpos.go")
+	defer os.Remove(outpath)
 
 	copy := func(inpath string) {
 		buf, err := os.ReadFile(inpath)
 		assertNoError(err, t, fmt.Sprintf("Reading %q", inpath))
-		outpath := filepath.Join(dir, "testfnpos.go")
 		assertNoError(os.WriteFile(outpath, buf, 0o666), t, fmt.Sprintf("Creating %q", outpath))
 	}
 

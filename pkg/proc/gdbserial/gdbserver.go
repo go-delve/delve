@@ -1082,6 +1082,10 @@ func (p *gdbProcess) Detach(_pid int, kill bool) error {
 		p.process = nil
 	}
 	p.detached = true
+	return nil
+}
+
+func (p *gdbProcess) Close() error {
 	if p.onDetach != nil {
 		p.onDetach()
 	}
