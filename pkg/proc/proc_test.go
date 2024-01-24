@@ -3192,6 +3192,10 @@ func TestDebugStripped(t *testing.T) {
 	skipOn(t, "not working on freebsd", "freebsd")
 	skipOn(t, "not working on linux/386", "linux", "386")
 	skipOn(t, "not working on linux/ppc64le when -gcflags=-N -l is passed", "linux", "ppc64le")
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.IsDevel() {
+		t.Skip("not supported")
+	}
 	withTestProcessArgs("testnextprog", t, "", []string{}, protest.LinkStrip, func(p *proc.Target, grp *proc.TargetGroup, f protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(grp.Continue(), t, "Continue")
@@ -3209,6 +3213,10 @@ func TestDebugStripped2(t *testing.T) {
 	skipOn(t, "not working on freebsd", "freebsd")
 	skipOn(t, "not working on linux/386", "linux", "386")
 	skipOn(t, "not working on linux/ppc64le when -gcflags=-N -l is passed", "linux", "ppc64le")
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.IsDevel() {
+		t.Skip("not supported")
+	}
 	withTestProcessArgs("inlinestripped", t, "", []string{}, protest.EnableInlining|protest.LinkStrip|protest.LinkDisableDWARF, func(p *proc.Target, grp *proc.TargetGroup, f protest.Fixture) {
 		setFunctionBreakpointAll(p, t, "fmt.Println")
 
