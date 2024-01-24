@@ -24,7 +24,7 @@ github.com/creack/pty
 # github.com/derekparker/trie v0.0.0-20230829180723-39f4de51ef7d
 ## explicit; go 1.19
 github.com/derekparker/trie
-# github.com/go-delve/gore v0.11.6
+# github.com/go-delve/gore v0.11.7
 ## explicit; go 1.21
 github.com/go-delve/gore
 # github.com/go-delve/liner v1.2.3-0.20231231155935-4726ab1d7f62
