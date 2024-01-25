@@ -363,9 +363,9 @@ func setAsyncPreemptOff(p *Target, v int64) {
 
 // createUnrecoveredPanicBreakpoint creates the unrecoverable-panic breakpoint.
 func (t *Target) createUnrecoveredPanicBreakpoint() {
-	panicpcs, err := FindFunctionLocation(t.Process, "runtime.startpanic", 0)
+	panicpcs, err := FindFunctionLocation(t.Process, "runtime.startpanic", 0) // < go1.11
 	if _, isFnNotFound := err.(*ErrFunctionNotFound); isFnNotFound {
-		panicpcs, err = FindFunctionLocation(t.Process, "runtime.fatalpanic", 0)
+		panicpcs, err = FindFunctionLocation(t.Process, "runtime.fatalpanic", 0) // >= go1.11
 	}
 	if err == nil {
 		bp, err := t.SetBreakpoint(unrecoveredPanicID, panicpcs[0], UserBreakpoint, nil)

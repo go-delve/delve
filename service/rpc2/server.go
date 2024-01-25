@@ -132,9 +132,38 @@ func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback)
 		cb.Return(nil, err)
 		return
 	}
+
+	maybeHandlePanicThrowBreakpoint(st.CurrentThread, s.debugger)
+
 	var out CommandOut
 	out.State = *st
 	cb.Return(out, nil)
+}
+
+func maybeHandlePanicThrowBreakpoint(curThread *api.Thread, debugger *debugger.Debugger) {
+	curbp := curThread.Breakpoint
+	if curbp == nil {
+		return
+	}
+
+	switch curbp.Name {
+	case proc.FatalThrow:
+		fmt.Println("fatal error occured in your program, execution is paused.")
+	case proc.UnrecoveredPanic:
+		var stacktrace string
+		frames, err := debugger.Stacktrace(curThread.GoroutineID, 3, api.StacktraceSimple)
+		if err == nil {
+			// skip 2 frames until we are outside runtime.gopanic
+			stacktrace = fmt.Sprintf(
+				"source: %s (%s:%d)",
+				frames[2].Current.Fn.Name,
+				frames[2].Current.File,
+				frames[2].Current.Line,
+			)
+		}
+
+		fmt.Println("your program panicked, execution is paused. "+stacktrace+"\n")
+	}
 }
 
 type GetBufferedTracepointsIn struct {
