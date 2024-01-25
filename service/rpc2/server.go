@@ -162,7 +162,7 @@ func maybeHandlePanicThrowBreakpoint(curThread *api.Thread, debugger *debugger.D
 			)
 		}
 
-		fmt.Println("your program panicked, execution is paused. "+stacktrace+"\n")
+		fmt.Println("your program panicked, execution is paused. "+stacktrace)
 	}
 }
 
