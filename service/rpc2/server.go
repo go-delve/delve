@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
@@ -19,6 +20,8 @@ type RPCServer struct {
 	config *service.Config
 	// debugger is a debugger service.
 	debugger *debugger.Debugger
+	// activeClientCounter tracks how many client we have so far.
+	activeClientCounter atomic.Int32
 }
 
 func NewServer(config *service.Config, debugger *debugger.Debugger) *RPCServer {
@@ -133,7 +136,11 @@ func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback)
 		return
 	}
 
-	maybeHandlePanicThrowBreakpoint(st.CurrentThread, s.debugger)
+	// don't show the error if we're not on accept-multi mode as we can assume that
+	// the user will have their client connected at all times.
+	if s.config.AcceptMulti {
+		maybeHandlePanicThrowBreakpoint(st.CurrentThread, s.debugger)
+	}
 
 	var out CommandOut
 	out.State = *st
