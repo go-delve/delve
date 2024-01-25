@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"unicode"
 	"unicode/utf8"
 
@@ -44,6 +45,8 @@ type ServerImpl struct {
 	s2 *rpc2.RPCServer
 	// maps of served methods, one for each supported API.
 	methodMaps []map[string]*methodType
+	// activeClientCounter tracks how many client we have so far.
+	activeClientCounter atomic.Int32
 	log        logflags.Logger
 }
 
@@ -122,7 +125,7 @@ func (s *ServerImpl) Run() error {
 	}
 
 	s.s1 = rpc1.NewServer(s.config, s.debugger)
-	s.s2 = rpc2.NewServer(s.config, s.debugger)
+	s.s2 = rpc2.NewServer(s.config, s.debugger, &s.activeClientCounter)
 
 	rpcServer := &RPCServer{s}
 
@@ -277,7 +280,9 @@ func suitableMethods(rcvr interface{}, methods map[string]*methodType, log logfl
 }
 
 func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
+	s.activeClientCounter.Add(1)
 	defer func() {
+		s.activeClientCounter.Add(-1)
 		if !s.config.AcceptMulti && s.config.DisconnectChan != nil {
 			close(s.config.DisconnectChan)
 		}
@@ -412,6 +417,7 @@ func (cb *RPCCallback) Return(out interface{}, err error) {
 		outbytes, _ := json.Marshal(out)
 		cb.s.log.Debugf("(async %d) -> %T%s error: %q", cb.req.Seq, out, outbytes, errmsg)
 	}
+
 	cb.s.sendResponse(cb.sending, &cb.req, &resp, out, cb.codec, errmsg)
 }
 

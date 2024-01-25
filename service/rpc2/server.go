@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
@@ -19,10 +20,12 @@ type RPCServer struct {
 	config *service.Config
 	// debugger is a debugger service.
 	debugger *debugger.Debugger
+	// activeClientCounter tracks how many active clients we have right now.
+	activeClientCounter *atomic.Int32
 }
 
-func NewServer(config *service.Config, debugger *debugger.Debugger) *RPCServer {
-	return &RPCServer{config, debugger}
+func NewServer(config *service.Config, debugger *debugger.Debugger, activeClientCounter *atomic.Int32) *RPCServer {
+	return &RPCServer{config, debugger, activeClientCounter}
 }
 
 type ProcessPidIn struct {
@@ -132,9 +135,46 @@ func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback)
 		cb.Return(nil, err)
 		return
 	}
+
+	// don't show the error if we're not on accept-multi mode as we can assume that
+	// the user will have their client connected at all times.
+	if s.config.AcceptMulti {
+		maybeHandlePanicThrowBreakpoint(st.CurrentThread, s.debugger)
+
+		if s.activeClientCounter.Load() == 0 {
+			fmt.Println("execution is paused, connect your client to resume execution.")
+		}
+	}
+
 	var out CommandOut
 	out.State = *st
 	cb.Return(out, nil)
+}
+
+func maybeHandlePanicThrowBreakpoint(curThread *api.Thread, debugger *debugger.Debugger) {
+	curbp := curThread.Breakpoint
+	if curbp == nil {
+		return
+	}
+
+	switch curbp.Name {
+	case proc.FatalThrow:
+		fmt.Println("fatal error occured in your program, execution is paused.")
+	case proc.UnrecoveredPanic:
+		var stacktrace string
+		frames, err := debugger.Stacktrace(curThread.GoroutineID, 3, api.StacktraceSimple)
+		if err == nil {
+			// skip 2 frames until we are outside runtime.gopanic
+			stacktrace = fmt.Sprintf(
+				"source: %s (%s:%d)",
+				frames[2].Current.Fn.Name,
+				frames[2].Current.File,
+				frames[2].Current.Line,
+			)
+		}
+
+		fmt.Println("your program panicked, execution is paused. "+stacktrace)
+	}
 }
 
 type GetBufferedTracepointsIn struct {
