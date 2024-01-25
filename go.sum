@@ -13,8 +13,8 @@ github.com/derekparker/trie v0.0.0-20230829180723-39f4de51ef7d h1:hUWoLdw5kvo2xC
 github.com/derekparker/trie v0.0.0-20230829180723-39f4de51ef7d/go.mod h1:C7Es+DLenIpPc9J6IYw4jrK0h7S9bKj4DNl8+KxGEXU=
 github.com/frankban/quicktest v1.14.5 h1:dfYrrRyLtiqT9GyKXgdh+k4inNeTvmGbuSgZ3lx3GhA=
 github.com/frankban/quicktest v1.14.5/go.mod h1:4ptaffx2x8+WTWXmUCuVU6aPUX1/Mz7zb5vbUoiM6w0=
-github.com/go-delve/gore v0.11.6 h1:MyP7xTNQO+dDiLBKxI/DKgkn74cMBjHZZxS8grtJ6G8=
-github.com/go-delve/gore v0.11.6/go.mod h1:6RBVnEUxVGkztpRY0UDUnEzS4GqETQjWrw8rhegmN4I=
+github.com/go-delve/gore v0.11.7 h1:l8mU4Z4OPzolThKgA8mgbCB5MQtY2IwhGKuqMtbudYc=
+github.com/go-delve/gore v0.11.7/go.mod h1:6RBVnEUxVGkztpRY0UDUnEzS4GqETQjWrw8rhegmN4I=
 github.com/go-delve/liner v1.2.3-0.20231231155935-4726ab1d7f62 h1:IGtvsNyIuRjl04XAOFGACozgUD7A82UffYxZt4DWbvA=
 github.com/go-delve/liner v1.2.3-0.20231231155935-4726ab1d7f62/go.mod h1:biJCRbqp51wS+I92HMqn5H8/A0PAhxn2vyOT+JqhiGI=
 github.com/google/go-cmp v0.5.9 h1:O2Tfq5qg4qc4AmwVlvv0oLiVAGB7enBSJ2x2DqQFi38=
