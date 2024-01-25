@@ -79,6 +79,12 @@ type Config struct {
 	// Source list tab color, as a terminal escape sequence.
 	SourceListTabColor string `yaml:"source-list-tab-color"`
 
+	// Color for function names in the stack trace.
+	StackTraceFunctionColor string `yaml:"stacktrace-function-color"`
+
+	// Color for the base name in paths in the stack trace.
+	StackTraceBasenameColor string `yaml:"stacktrace-basename-color"`
+
 	// number of lines to list above and below cursor when printfile() is
 	// called (i.e. when execution stops, listCommand is used, etc)
 	SourceListLineCount *int `yaml:"source-list-line-count,omitempty"`

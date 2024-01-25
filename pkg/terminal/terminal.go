@@ -60,6 +60,8 @@ type Term struct {
 	displays []displayEntry
 	oldPid   int
 
+	stackTraceColors api.StackTraceColors
+
 	historyFile *os.File
 
 	starlarkEnv *starbind.Env
@@ -160,6 +162,17 @@ func (t *Term) updateColorScheme() {
 	case nil:
 		t.stdout.colorEscapes[colorize.LineNoStyle] = fmt.Sprintf(terminalHighlightEscapeCode, ansiBlue)
 	}
+
+	wd2 := func(s, defaultStr string) string {
+		if s == "" {
+			return defaultStr
+		}
+		return s
+	}
+
+	t.stackTraceColors.FunctionColor = wd2(conf.StackTraceFunctionColor, "\033[1m")
+	t.stackTraceColors.BasenameColor = wd2(conf.StackTraceBasenameColor, "\033[1m")
+	t.stackTraceColors.NormalColor = terminalResetEscapeCode
 }
 
 func (t *Term) updateTab() {

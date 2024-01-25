@@ -3458,7 +3458,7 @@ func (s *Session) stacktrace(goroutineID int64, g *proc.G) (string, error) {
 	fmt.Fprintln(&buf, "Stack:")
 	userLoc := g.UserCurrent()
 	userFuncPkg := fnPackageName(&userLoc)
-	api.PrintStack(s.toClientPath, &buf, apiFrames, "\t", false, func(s api.Stackframe) bool {
+	api.PrintStack(s.toClientPath, &buf, apiFrames, "\t", false, api.StackTraceColors{}, func(s api.Stackframe) bool {
 		// Include all stack frames if the stack trace is for a system goroutine,
 		// otherwise, skip runtime stack frames.
 		if userFuncPkg == "runtime" {
