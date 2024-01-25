@@ -423,6 +423,10 @@ func (t *Term) formatPath(path string) string {
 }
 
 func (t *Term) promptForInput() (string, error) {
+	if t.stdout.colorEscapes != nil && t.conf.PromptColor != "" {
+		fmt.Fprint(os.Stdout, t.conf.PromptColor)
+		defer fmt.Fprint(os.Stdout, terminalResetEscapeCode)
+	}
 	l, err := t.line.Prompt(t.prompt)
 	if err != nil {
 		return "", err
