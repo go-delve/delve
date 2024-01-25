@@ -20,6 +20,7 @@ type RPCServer struct {
 	config *service.Config
 	// debugger is a debugger service.
 	debugger *debugger.Debugger
+	// activeClientCounter tracks how many active clients we have right now.
 	activeClientCounter *atomic.Int32
 }
 
@@ -144,8 +145,6 @@ func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback)
 			fmt.Println("execution is paused, connect your client to resume execution.")
 		}
 	}
-
-
 
 	var out CommandOut
 	out.State = *st
