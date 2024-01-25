@@ -1424,3 +1424,34 @@ func TestFatalThrowMessage(t *testing.T) {
 	}
 	cmd.Wait()
 }
+
+// TestNoConnectionMsg verifies that dlv server outputs the right message when no client is connected.
+func TestNoConnectionMsg(t *testing.T) {
+	const listenAddr = "127.0.0.1:40573"
+
+	dlvbin := getDlvBin(t)
+
+	fixturePath := filepath.Join(protest.FindFixturesDir(), "panic.go")
+	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--listen", listenAddr, fixturePath)
+	stdout, err := cmd.StdoutPipe()
+	assertNoError(err, t, "stdout pipe")
+	defer stdout.Close()
+
+	assertNoError(cmd.Start(), t, "start headless instance")
+
+	scan := bufio.NewScanner(stdout)
+	// wait for the debugger to start
+	for scan.Scan() {
+		t.Log(scan.Text())
+		if scan.Text() == "execution is paused, connect your client to resume execution." {
+			break
+		}
+	}
+
+	// and detach from and kill the headless instance
+	client := rpc2.NewClient(listenAddr)
+	if err := client.Detach(true); err != nil {
+		t.Fatalf("error detaching from headless instance: %v", err)
+	}
+	cmd.Wait()
+}

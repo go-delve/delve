@@ -20,12 +20,11 @@ type RPCServer struct {
 	config *service.Config
 	// debugger is a debugger service.
 	debugger *debugger.Debugger
-	// activeClientCounter tracks how many client we have so far.
-	activeClientCounter atomic.Int32
+	activeClientCounter *atomic.Int32
 }
 
-func NewServer(config *service.Config, debugger *debugger.Debugger) *RPCServer {
-	return &RPCServer{config, debugger}
+func NewServer(config *service.Config, debugger *debugger.Debugger, activeClientCounter *atomic.Int32) *RPCServer {
+	return &RPCServer{config, debugger, activeClientCounter}
 }
 
 type ProcessPidIn struct {
@@ -140,7 +139,13 @@ func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback)
 	// the user will have their client connected at all times.
 	if s.config.AcceptMulti {
 		maybeHandlePanicThrowBreakpoint(st.CurrentThread, s.debugger)
+
+		if s.activeClientCounter.Load() == 0 {
+			fmt.Println("execution is paused, connect your client to resume execution.")
+		}
 	}
+
+
 
 	var out CommandOut
 	out.State = *st
