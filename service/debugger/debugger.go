@@ -1513,6 +1513,15 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, FollowCalls int)
 			}
 		}
 	}
+	for _, fbinary := range t.BinInfo().Functions {
+		if strings.HasPrefix(fbinary.Name, f.Name) && fbinary.Name != f.Name {
+			children, err := traverse(t, &fbinary, depth, FollowCalls)
+			funcs = append(funcs, children...)
+			if err != nil {
+				return nil, fmt.Errorf("disassemble failed with error %s", err.Error())
+			}
+		}
+	}
 	return funcs, nil
 
 }
