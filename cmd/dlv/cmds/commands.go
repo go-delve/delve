@@ -137,7 +137,7 @@ func New(docCall bool) *cobra.Command {
 		Long:  dlvCommandLongDesc,
 	}
 
-	rootCommand.PersistentFlags().StringVarP(&addr, "listen", "l", "127.0.0.1:0", "Debugging server listen address.")
+	rootCommand.PersistentFlags().StringVarP(&addr, "listen", "l", "127.0.0.1:0", "Debugging server listen address. Prefix with 'unix:' to use a unix domain socket.")
 
 	rootCommand.PersistentFlags().BoolVarP(&log, "log", "", false, "Enable debugging server logging.")
 	rootCommand.PersistentFlags().StringVarP(&logOutput, "log-output", "", "", `Comma separated list of components that should produce debug output (see 'dlv help log')`)
@@ -184,7 +184,7 @@ option to let the process continue or kill it.
 	connectCommand := &cobra.Command{
 		Use:   "connect addr",
 		Short: "Connect to a headless debug server with a terminal client.",
-		Long:  "Connect to a running headless debug server with a terminal client.",
+		Long:  "Connect to a running headless debug server with a terminal client. Prefix with 'unix:' to use a unix domain socket.",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return errors.New("you must provide an address as the first argument")
@@ -514,7 +514,7 @@ func dapCmd(cmd *cobra.Command, args []string) {
 		}
 		var conn net.Conn
 		if dapClientAddr == "" {
-			listener, err := net.Listen("tcp", addr)
+			listener, err := netListen(addr)
 			if err != nil {
 				fmt.Printf("couldn't start listener: %s\n", err)
 				return 1
@@ -912,11 +912,10 @@ func splitArgs(cmd *cobra.Command, args []string) ([]string, []string) {
 func connect(addr string, clientConn net.Conn, conf *config.Config) int {
 	// Create and start a terminal - attach to running instance
 	var client *rpc2.RPCClient
-	if clientConn != nil {
-		client = rpc2.NewClientFromConn(clientConn)
-	} else {
-		client = rpc2.NewClient(addr)
+	if clientConn == nil {
+		clientConn = netDial(addr)
 	}
+	client = rpc2.NewClientFromConn(clientConn)
 	if client.IsMulticlient() {
 		state, _ := client.GetStateNonBlocking()
 		// The error return of GetState will usually be the ErrProcessExited,
@@ -1002,7 +1001,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 
 	// Make a TCP listener
 	if headless {
-		listener, err = net.Listen("tcp", addr)
+		listener, err = netListen(addr)
 	} else {
 		listener, clientConn = service.ListenerPipe()
 	}
@@ -1127,4 +1126,27 @@ func configUsageFunc(cmd *cobra.Command) {
 		helphelpers.Prepare(cmd)
 		return usage(cmd)
 	})
+}
+
+const unixAddrPrefix = "unix:"
+
+func netListen(addr string) (net.Listener, error) {
+	if strings.HasPrefix(addr, unixAddrPrefix) {
+		return net.Listen("unix", addr[len(unixAddrPrefix):])
+	}
+	return net.Listen("tcp", addr)
+}
+
+func netDial(addr string) net.Conn {
+	var conn net.Conn
+	var err error
+	if strings.HasPrefix(addr, unixAddrPrefix) {
+		conn, err = net.Dial("unix", addr[len(unixAddrPrefix):])
+	} else {
+		conn, err = net.Dial("tcp", addr)
+	}
+	if err != nil {
+		logflags.RPCLogger().Errorf("error dialing %s: %v", addr, err)
+	}
+	return conn
 }

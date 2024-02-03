@@ -42,7 +42,7 @@ dlv dap [flags]
 ```
       --check-go-version    Exits if the version of Go in use is not compatible (too old or too new) with the version of Delve. (default true)
       --disable-aslr        Disables address space randomization
-  -l, --listen string       Debugging server listen address. (default "127.0.0.1:0")
+  -l, --listen string       Debugging server listen address. Prefix with 'unix:' to use a unix domain socket. (default "127.0.0.1:0")
       --log                 Enable debugging server logging.
       --log-dest string     Writes logs to the specified file or file descriptor (see 'dlv help log').
       --log-output string   Comma separated list of components that should produce debug output (see 'dlv help log')

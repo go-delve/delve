@@ -32,7 +32,7 @@ are:
       --disable-aslr                     Disables address space randomization
       --headless                         Run debug server only, in headless mode. Server will accept both JSON-RPC or DAP client connections.
       --init string                      Init file, executed by the terminal client.
-  -l, --listen string                    Debugging server listen address. (default "127.0.0.1:0")
+  -l, --listen string                    Debugging server listen address. Prefix with 'unix:' to use a unix domain socket. (default "127.0.0.1:0")
       --log                              Enable debugging server logging.
       --log-dest string                  Writes logs to the specified file or file descriptor (see 'dlv help log').
       --log-output string                Comma separated list of components that should produce debug output (see 'dlv help log')
