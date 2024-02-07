@@ -2871,6 +2871,29 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 	if t.conf.TraceShowTimestamp {
 		fmt.Fprintf(t.stdout, "%s ", time.Now().Format(time.RFC3339Nano))
 	}
+	// Simple Trace; no stack required to calculate depth of functions
+	if th.Breakpoint.TraceFollowCalls <= 0 {
+		if th.Breakpoint.Tracepoint {
+			fmt.Fprintf(t.stdout, "> goroutine(%d): %s%s(%s)\n", th.GoroutineID, bpname, fn.Name(), args)
+			printBreakpointInfo(t, th, !hasReturnValue)
+		}
+		if th.Breakpoint.TraceReturn {
+			retVals := make([]string, 0, len(th.ReturnValues))
+			for _, v := range th.ReturnValues {
+				retVals = append(retVals, v.SinglelineString())
+			}
+			fmt.Fprintf(t.stdout, ">> goroutine(%d): => (%s)\n", th.GoroutineID, strings.Join(retVals, ","))
+		}
+		if th.Breakpoint.TraceReturn || !hasReturnValue {
+			if th.BreakpointInfo != nil && th.BreakpointInfo.Stacktrace != nil {
+				fmt.Fprintf(t.stdout, "\tStack:\n")
+				printStack(t, t.stdout, th.BreakpointInfo.Stacktrace, "\t\t", false)
+			}
+		}
+		return
+	}
+
+	// Trace Follow Calls; stack is required to calculate depth of functions
 	wantindex := -1
 	rootindex := -1
 	stack := th.BreakpointInfo.Stacktrace

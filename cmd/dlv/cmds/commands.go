@@ -325,7 +325,7 @@ only see the output of the trace operations you can redirect stdout.`,
 	traceCommand.Flags().BoolVarP(&traceShowTimestamp, "timestamp", "", false, "Show timestamp in the output")
 	traceCommand.Flags().IntVarP(&traceStackDepth, "stack", "s", 0, "Show stack trace with given depth. (Ignored with --ebpf)")
 	traceCommand.Flags().String("output", "", "Output path for the binary.")
-	traceCommand.Flags().IntVarP(&traceFollowCalls, "follow-calls", "", 1, "Trace all children of the function to the required depth")
+	traceCommand.Flags().IntVarP(&traceFollowCalls, "follow-calls", "", 0, "Trace all children of the function to the required depth")
 	rootCommand.AddCommand(traceCommand)
 
 	coreCommand := &cobra.Command{
