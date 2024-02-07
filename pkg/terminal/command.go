@@ -2639,7 +2639,7 @@ func digits(n int) int {
 }
 
 func printStack(t *Term, out io.Writer, stack []api.Stackframe, ind string, offsets bool) {
-	api.PrintStack(t.formatPath, out, stack, ind, offsets, func(api.Stackframe) bool { return true })
+	api.PrintStack(t.formatPath, out, stack, ind, offsets, t.stackTraceColors, func(api.Stackframe) bool { return true })
 }
 
 func printcontext(t *Term, state *api.DebuggerState) {
