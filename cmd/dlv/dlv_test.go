@@ -1359,3 +1359,65 @@ func TestDefaultBinary(t *testing.T) {
 		t.Errorf("outputs match")
 	}
 }
+
+func TestUnixDomainSocket(t *testing.T) {
+	tmpdir := os.TempDir()
+	if tmpdir == "" {
+		return
+	}
+
+	listenPath := filepath.Join(tmpdir, "delve_test")
+
+	var err error
+
+	cmd := exec.Command("go", "run", "_scripts/make.go", "build")
+	cmd.Dir = projectRoot()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("makefile error: %v\noutput %s\n", err, string(out))
+	}
+
+	dlvbin := filepath.Join(cmd.Dir, "dlv")
+	defer os.Remove(dlvbin)
+
+	fixtures := protest.FindFixturesDir()
+
+	buildtestdir := filepath.Join(fixtures, "buildtest")
+
+	cmd = exec.Command(dlvbin, "debug", "--headless=true", "--listen=unix:"+listenPath, "--api-version=2", "--backend="+testBackend, "--log", "--log-output=debugger,rpc")
+	cmd.Dir = buildtestdir
+	stderr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer stderr.Close()
+
+	assertNoError(cmd.Start(), t, "dlv debug")
+
+	scan := bufio.NewScanner(stderr)
+	// wait for the debugger to start
+	for scan.Scan() {
+		text := scan.Text()
+		t.Log(text)
+		if strings.Contains(text, "API server pid = ") {
+			break
+		}
+	}
+	go func() {
+		for scan.Scan() {
+			t.Log(scan.Text())
+			// keep pipe empty
+		}
+	}()
+
+	conn, err := net.Dial("unix", listenPath)
+	assertNoError(err, t, "dialing")
+
+	client := rpc2.NewClientFromConn(conn)
+	state := <-client.Continue()
+
+	if !state.Exited {
+		t.Fatal("Program did not exit")
+	}
+
+	client.Detach(true)
+	cmd.Wait()
+}

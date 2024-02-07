@@ -4,7 +4,7 @@ Connect to a headless debug server with a terminal client.
 
 ### Synopsis
 
-Connect to a running headless debug server with a terminal client.
+Connect to a running headless debug server with a terminal client. Prefix with 'unix:' to use a unix domain socket.
 
 ```
 dlv connect addr [flags]
