@@ -76,6 +76,9 @@ type Config struct {
 	// Source list comment color, as a terminal escape sequence.
 	SourceListCommentColor string `yaml:"source-list-comment-color"`
 
+	// Color for the prompt line.
+	PromptColor string `yaml:"prompt-color"`
+
 	// Source list tab color, as a terminal escape sequence.
 	SourceListTabColor string `yaml:"source-list-tab-color"`
 
