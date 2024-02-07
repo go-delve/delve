@@ -2931,7 +2931,6 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 		if th.BreakpointInfo == nil || th.BreakpointInfo.Stacktrace == nil {
 			return
 		}
-
 		stack := th.BreakpointInfo.Stacktrace
 		for i := len(stack) - 1; i >= 0; i-- {
 			if stack[i].Function.Name() == th.Breakpoint.RootFuncName {
