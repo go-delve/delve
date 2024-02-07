@@ -5901,6 +5901,51 @@ func TestAttachRequest(t *testing.T) {
 	})
 }
 
+func TestAttachWaitForRequest(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		// The value of /proc/[pid]/cmdline might be wrong on FreeBSD: zero or the same as the parent process.
+		t.Skip("test skipped on freebsd")
+	}
+	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
+		cmd := exec.Command(fixture.Path)
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		cmd.Stderr = os.Stderr
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		// Wait for output.
+		// This will give the target process time to initialize the runtime before we attach,
+		// so we can rely on having goroutines when they are requested on attach.
+		scanOut := bufio.NewScanner(stdout)
+		scanOut.Scan()
+		if scanOut.Text() != "past main" {
+			t.Errorf("expected loopprog.go to output \"past main\"")
+		}
+
+		t.Logf("The process id of program %q is %d", cmd.Path, cmd.Process.Pid)
+
+		client.InitializeRequest()
+		client.ExpectInitializeResponseAndCapabilities(t)
+		client.AttachRequest(map[string]interface{}{
+			"mode":        "local",
+			"waitFor":     fixture.Path,
+			"stopOnEntry": true,
+		})
+		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
+		client.ExpectInitializedEvent(t)
+		client.ExpectAttachResponse(t)
+		client.DisconnectRequestWithKillOption(true)
+		client.ExpectOutputEvent(t)
+		client.ExpectDisconnectResponse(t)
+		client.ExpectTerminatedEvent(t)
+
+		runtime.KeepAlive(stdout)
+	})
+}
+
 // Since we are in async mode while running, we might receive thee messages after pause request
 // in either order.
 func expectPauseResponseAndStoppedEvent(t *testing.T, client *daptest.Client) {
@@ -6621,24 +6666,28 @@ func TestBadAttachRequest(t *testing.T) {
 
 		client.AttachRequest(map[string]interface{}{"mode": ""}) // empty mode defaults to "local" (not an error)
 		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
-			"Failed to attach: The 'processId' attribute is missing in debug configuration")
+			"Failed to attach: The 'processId' or 'waitFor' attribute is missing in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{}) // no mode defaults to "local" (not an error)
 		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
-			"Failed to attach: The 'processId' attribute is missing in debug configuration")
+			"Failed to attach: The 'processId' or 'waitFor' attribute is missing in debug configuration")
 
 		// Bad "processId"
 		client.AttachRequest(map[string]interface{}{"mode": "local"})
 		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
-			"Failed to attach: The 'processId' attribute is missing in debug configuration")
+			"Failed to attach: The 'processId' or 'waitFor' attribute is missing in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": nil})
 		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
-			"Failed to attach: The 'processId' attribute is missing in debug configuration")
+			"Failed to attach: The 'processId' or 'waitFor' attribute is missing in debug configuration")
 
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 0})
 		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
-			"Failed to attach: The 'processId' attribute is missing in debug configuration")
+			"Failed to attach: The 'processId' or 'waitFor' attribute is missing in debug configuration")
+
+		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 1, "waitFor": "loopprog"})
+		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
+			"Failed to attach: 'processId' and 'waitFor' are mutually exclusive, and can't be specified at the same time")
 
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": "1"})
 		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
