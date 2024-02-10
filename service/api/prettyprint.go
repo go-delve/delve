@@ -176,6 +176,15 @@ func (v *Variable) writeTo(buf io.Writer, flags prettyFlags, indent, fmtstr stri
 			fmt.Fprint(buf, "nil")
 		} else {
 			fmt.Fprintf(buf, "%s", v.Value)
+			if flags.newlines() && len(v.Children) > 0 {
+				fmt.Fprintf(buf, " {\n")
+				for i := range v.Children {
+					fmt.Fprintf(buf, "%s%s%s %s = ", indent, indentString, v.Children[i].Name, v.Children[i].typeStr(flags))
+					v.Children[i].writeTo(buf, flags.set(prettyTop, false).set(prettyIncludeType, false), indent+indentString, fmtstr)
+					fmt.Fprintf(buf, "\n")
+				}
+				fmt.Fprintf(buf, "%s}", indent)
+			}
 		}
 	default:
 		v.writeBasicType(buf, fmtstr)

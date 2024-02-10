@@ -6170,3 +6170,40 @@ func TestPanicLine(t *testing.T) {
 		}
 	})
 }
+
+func TestReadClosure(t *testing.T) {
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
+		t.Skip("not implemented")
+	}
+	withTestProcess("closurecontents", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		avalues := []int64{0, 3, 9, 27}
+		for i := 0; i < 4; i++ {
+			assertNoError(grp.Continue(), t, "Continue()")
+			accV := evalVariable(p, t, "acc")
+			t.Log(api.ConvertVar(accV).MultilineString("", ""))
+			if len(accV.Children) != 2 {
+				t.Error("wrong number of children")
+			} else {
+				found := 0
+				for j := range accV.Children {
+					v := &accV.Children[j]
+					switch v.Name {
+					case "scale":
+						found++
+						if val, _ := constant.Int64Val(v.Value); val != 3 {
+							t.Error("wrong value for scale")
+						}
+					case "a":
+						found++
+						if val, _ := constant.Int64Val(v.Value); val != avalues[i] {
+							t.Errorf("wrong value for a: %d", val)
+						}
+					}
+				}
+				if found != 2 {
+					t.Error("wrong captured variables")
+				}
+			}
+		}
+	})
+}

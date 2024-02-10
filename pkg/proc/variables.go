@@ -1389,8 +1389,15 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 					break
 				}
 				f, _ := v.toField(field)
+				f.Name = field.Name
+				if t.StructName == "" && len(f.Name) > 0 && f.Name[0] == '&' && f.Kind == reflect.Ptr {
+					// This struct is a closure struct and the field is actually a variable
+					// captured by reference.
+					f = f.maybeDereference()
+					f.Flags |= VariableEscaped
+					f.Name = field.Name[1:]
+				}
 				v.Children = append(v.Children, *f)
-				v.Children[i].Name = field.Name
 				v.Children[i].loadValueInternal(recurseLevel+1, cfg)
 			}
 		}
@@ -1435,7 +1442,7 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 			v.FloatSpecial = FloatIsNaN
 		}
 	case reflect.Func:
-		v.readFunctionPtr()
+		v.loadFunctionPtr(recurseLevel, cfg)
 	default:
 		v.Unreadable = fmt.Errorf("unknown or unsupported kind: %q", v.Kind.String())
 	}
@@ -1915,7 +1922,7 @@ func (v *Variable) writeCopy(srcv *Variable) error {
 	return err
 }
 
-func (v *Variable) readFunctionPtr() {
+func (v *Variable) loadFunctionPtr(recurseLevel int, cfg LoadConfig) {
 	// dereference pointer to find function pc
 	v.closureAddr = v.funcvalAddr()
 	if v.Unreadable != nil {
@@ -1941,6 +1948,14 @@ func (v *Variable) readFunctionPtr() {
 	}
 
 	v.Value = constant.MakeString(fn.Name)
+	cst := fn.closureStructType(v.bi)
+	v.Len = int64(len(cst.Field))
+
+	if recurseLevel <= cfg.MaxVariableRecurse {
+		v2 := v.newVariable("", v.closureAddr, cst, v.mem)
+		v2.loadValueInternal(recurseLevel, cfg)
+		v.Children = v2.Children
+	}
 }
 
 // funcvalAddr reads the address of the funcval contained in a function variable.
