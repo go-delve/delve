@@ -1076,7 +1076,11 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 	var status int
 	if headless {
 		if continueOnStart {
-			client := rpc2.NewClient(listener.Addr().String())
+			addr := listener.Addr().String()
+			if _, isuds := listener.(*net.UnixListener); isuds {
+				addr = "unix:" + addr
+			}
+			client := rpc2.NewClientFromConn(netDial(addr))
 			client.Disconnect(true) // true = continue after disconnect
 		}
 		waitForDisconnectSignal(disconnectChan)
