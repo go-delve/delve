@@ -42,10 +42,11 @@ func sameUserForHexLocalAddr(filename, localAddr, remoteAddr string) (bool, erro
 			retransmit                    int
 			remoteUID                     uint
 		)
-		// Note that we must use %d where the kernel format uses %5u:
-		// %u is not understood by the fmt package (%U is something else),
-		// %5d cuts off longer uids (e.g. 149098 on gLinux).
-		n, err := fmt.Sscanf(line, "%4d: %s %s %02X %s %s %08X %d",
+		// Note that we must use %d where the kernel format uses %4d or %5u:
+		// - %4d fails to parse for large number of entries (len(sl) > 4)
+		// - %u is not understood by the fmt package (%U is something else)
+		// - %5d cuts off longer uids (e.g. 149098 on gLinux)
+		n, err := fmt.Sscanf(line, "%d: %s %s %02X %s %s %08X %d",
 			&sl, &readLocalAddr, &readRemoteAddr, &state, &queue, &timer, &retransmit, &remoteUID)
 		if n != 8 || err != nil {
 			continue // invalid line (e.g. header line)
