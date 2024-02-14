@@ -45,12 +45,8 @@ type hmap struct {
 }
 
 type iface struct {
-	tab *itab
+	tab *itab|*internal/abi.ITab
 	data unsafe.Pointer
-}
-
-type itab struct {
-	_type *_type|*internal/abi.Type
 }
 
 type moduledata struct {

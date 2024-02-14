@@ -2272,7 +2272,7 @@ func (v *Variable) readInterface() (_type, data *Variable, isnil bool) {
 
 	ityp := resolveTypedef(&v.RealType.(*godwarf.InterfaceType).TypedefType).(*godwarf.StructType)
 
-	// +rtype -field iface.tab *itab
+	// +rtype -field iface.tab *itab|*internal/abi.ITab
 	// +rtype -field iface.data unsafe.Pointer
 	// +rtype -field eface._type *_type|*internal/abi.Type
 	// +rtype -field eface.data unsafe.Pointer
@@ -2280,15 +2280,18 @@ func (v *Variable) readInterface() (_type, data *Variable, isnil bool) {
 	for _, f := range ityp.Field {
 		switch f.Name {
 		case "tab": // for runtime.iface
-			tab, _ := v.toField(f) // +rtype *itab
+			tab, _ := v.toField(f) // +rtype *itab|*internal/abi.ITab
 			tab = tab.maybeDereference()
 			isnil = tab.Addr == 0
 			if !isnil {
 				var err error
-				_type, err = tab.structMember("_type") // +rtype *_type|*internal/abi.Type
+				_type, err = tab.structMember("Type") // +rtype *internal/abi.Type
 				if err != nil {
-					v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
-					return
+					_type, err = tab.structMember("_type") // +rtype *_type|*internal/abi.Type
+					if err != nil {
+						v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
+						return
+					}
 				}
 			}
 		case "_type": // for runtime.eface
