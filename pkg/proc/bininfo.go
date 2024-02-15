@@ -1458,25 +1458,30 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 			}
 			cu := &compileUnit{}
 			cu.image = image
-			symTable, _, err := readPcLnTableElf(elfFile, path)
+			symTable, symTabAddr, err := readPcLnTableElf(elfFile, path)
 			if err != nil {
 				return fmt.Errorf("could not read debug info (%v) and could not read go symbol table (%v)", dwerr, err)
 			}
 			image.symTable = symTable
-			gorefile, err := gore.Open(path)
+			noPtrSectionData, err := elfFile.Section(".noptrdata").Data()
 			if err != nil {
 				return err
 			}
-			md, err := gorefile.Moduledata()
+			md, err := parseModuleData(noPtrSectionData, symTabAddr)
 			if err != nil {
 				return err
 			}
-			prog := gosym.ProgContaining(elfFile, md.GoFuncValue())
+			roDataAddr := elfFile.Section(".rodata").Addr
+			goFuncVal, err := findGoFuncVal(md, roDataAddr)
+			if err != nil {
+				return err
+			}
+			prog := gosym.ProgContaining(elfFile, goFuncVal)
 			inlFuncs := make(map[string]*Function)
 			for _, f := range image.symTable.Funcs {
 				fnEntry := f.Entry + image.StaticBase
 				if prog != nil {
-					inlCalls, err := image.symTable.GetInlineTree(&f, md.GoFuncValue(), prog.Vaddr, prog.ReaderAt)
+					inlCalls, err := image.symTable.GetInlineTree(&f, goFuncVal, prog.Vaddr, prog.ReaderAt)
 					if err != nil {
 						return err
 					}
@@ -1547,6 +1552,34 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 		go bi.setGStructOffsetElf(image, dwarfFile, wg)
 	}
 	return nil
+}
+
+func findGoFuncVal(moduleData []byte, roDataAddr uint64) (uint64, error) {
+	buf := new(bytes.Buffer)
+	err := binary.Write(buf, binary.LittleEndian, &roDataAddr)
+	if err != nil {
+		return 0, err
+	}
+	off := bytes.Index(moduleData, buf.Bytes()[:8])
+	if off == -1 {
+		return 0, errors.New("could not find rodata struct member")
+	}
+	// TODO(derekparker) document these offsets and support 32-bit
+	gofuncval := binary.LittleEndian.Uint64(moduleData[off+24 : off+32])
+	return gofuncval, nil
+}
+
+func parseModuleData(dataSection []byte, tableAddr uint64) ([]byte, error) {
+	buf := new(bytes.Buffer)
+	err := binary.Write(buf, binary.LittleEndian, &tableAddr)
+	if err != nil {
+		return nil, err
+	}
+	off := bytes.Index(dataSection, buf.Bytes()[:4])
+	if off == -1 {
+		return nil, errors.New("could not find moduledata")
+	}
+	return dataSection[off : off+0x300], nil
 }
 
 // _STT_FUNC is a code object, see /usr/include/elf.h for a full definition.
