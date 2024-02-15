@@ -24,7 +24,5 @@ package main
         }
 
         func main() {
-                for {
-                        F0()
-                }
+                F0()
         }
