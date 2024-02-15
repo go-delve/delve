@@ -646,7 +646,7 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 
 			processArgs = append([]string{debugname}, targetArgs...)
 		}
-		if dlvArgsLen >= 2 && traceFollowCalls <= 1 {
+		if dlvArgsLen >= 3 && traceFollowCalls <= 0 {
 			fmt.Fprintln(os.Stderr, "Need to specify a trace depth of atleast 1")
 			return 1
 		}
