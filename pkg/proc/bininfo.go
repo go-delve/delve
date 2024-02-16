@@ -1472,7 +1472,7 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 				return err
 			}
 			roDataAddr := elfFile.Section(".rodata").Addr
-			goFuncVal, err := findGoFuncVal(md, roDataAddr)
+			goFuncVal, err := findGoFuncVal(md, roDataAddr, bi.Arch.ptrSize)
 			if err != nil {
 				return err
 			}
@@ -1554,18 +1554,37 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 	return nil
 }
 
-func findGoFuncVal(moduleData []byte, roDataAddr uint64) (uint64, error) {
+func findGoFuncVal(moduleData []byte, roDataAddr uint64, ptrsize int) (uint64, error) {
 	buf := new(bytes.Buffer)
 	err := binary.Write(buf, binary.LittleEndian, &roDataAddr)
 	if err != nil {
 		return 0, err
 	}
-	off := bytes.Index(moduleData, buf.Bytes()[:8])
-	if off == -1 {
+	// Here we search for the value of `go.func.*` by searching through the raw bytes of the
+	// runtime.moduledata structure. Since we don't know the value that we are looking for,
+	// we use a known value, in this case the address of the .rodata section.
+	// This is because in the layout of the struct, the rodata member is right next to
+	// the value we need, making the math trivial once we find that member.
+	// We use `bytes.LastIndex` specifically because the `types` struct member can also
+	// contain the address of the .rodata section, so this pointer can appear multiple times
+	// in the raw bytes.
+	// Yes, this is very ill-advised low-level hackery but it works fine until
+	// https://github.com/golang/go/issues/58474#issuecomment-1785681472 happens.
+	// This code path also only runs in stripped binaries, so the whole implementation is
+	// best effort anyways.
+	rodata := bytes.LastIndex(moduleData, buf.Bytes()[:ptrsize])
+	if rodata == -1 {
 		return 0, errors.New("could not find rodata struct member")
 	}
-	// TODO(derekparker) document these offsets and support 32-bit
-	gofuncval := binary.LittleEndian.Uint64(moduleData[off+24 : off+32])
+	// Layout of struct members is:
+	// type moduledata struct {
+	// 	...
+	// 	rodata uintptr
+	// 	gofunc uintptr
+	// 	...
+	// }
+	// So do some pointer arithmetic to get the value we need.
+	gofuncval := binary.LittleEndian.Uint64(moduleData[rodata+(1*ptrsize) : rodata+(2*ptrsize)])
 	return gofuncval, nil
 }
 
