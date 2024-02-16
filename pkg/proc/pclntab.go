@@ -35,24 +35,24 @@ func readPcLnTableElf(exe *elf.File, path string) (*gosym.Table, uint64, error) 
 	return symTable, section.Addr, nil
 }
 
-func readPcLnTableMacho(exe *macho.File, path string) (*gosym.Table, error) {
+func readPcLnTableMacho(exe *macho.File, path string) (*gosym.Table, uint64, error) {
 	// Default section label is __gopclntab
 	sectionLabel := "__gopclntab"
 
 	section := exe.Section(sectionLabel)
 	if section == nil {
-		return nil, fmt.Errorf("could not read section __gopclntab")
+		return nil, 0, fmt.Errorf("could not read section __gopclntab")
 	}
 	tableData, err := section.Data()
 	if err != nil {
-		return nil, fmt.Errorf("found section but could not read __gopclntab")
+		return nil, 0, fmt.Errorf("found section but could not read __gopclntab")
 	}
 
 	addr := exe.Section("__text").Addr
 	lineTable := gosym.NewLineTable(tableData, addr)
 	symTable, err := gosym.NewTable([]byte{}, lineTable)
 	if err != nil {
-		return nil, fmt.Errorf("could not create symbol table from  %s ", path)
+		return nil, 0, fmt.Errorf("could not create symbol table from  %s ", path)
 	}
-	return symTable, nil
+	return symTable, section.Addr, nil
 }

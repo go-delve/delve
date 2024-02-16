@@ -33,7 +33,6 @@ import (
 	"github.com/go-delve/delve/pkg/internal/gosym"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc/debuginfod"
-	"github.com/go-delve/gore"
 	"github.com/hashicorp/golang-lru/simplelru"
 )
 
@@ -1918,27 +1917,32 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 		if len(bi.Images) <= 1 {
 			fmt.Fprintln(os.Stderr, "Warning: no debug info found, some functionality will be missing such as stack traces and variable evaluation.")
 		}
-		symTable, err := readPcLnTableMacho(exe, path)
+		symTable, symTabAddr, err := readPcLnTableMacho(exe, path)
 		if err != nil {
 			return fmt.Errorf("could not read debug info (%v) and could not read go symbol table (%v)", dwerr, err)
 		}
 		image.symTable = symTable
 		cu := &compileUnit{}
 		cu.image = image
-		gorefile, err := gore.Open(path)
+		noPtrSectionData, err := exe.Section("__noptrdata").Data()
 		if err != nil {
 			return err
 		}
-		md, err := gorefile.Moduledata()
+		md, err := parseModuleData(noPtrSectionData, symTabAddr)
 		if err != nil {
 			return err
 		}
-		seg := gosym.SegmentContaining(exe, md.GoFuncValue())
+		roDataAddr := exe.Section("__rodata").Addr
+		goFuncVal, err := findGoFuncVal(md, roDataAddr, bi.Arch.ptrSize)
+		if err != nil {
+			return err
+		}
+		seg := gosym.SegmentContaining(exe, goFuncVal)
 		inlFuncs := make(map[string]*Function)
 		for _, f := range image.symTable.Funcs {
 			fnEntry := f.Entry + image.StaticBase
 			if seg != nil {
-				inlCalls, err := image.symTable.GetInlineTree(&f, md.GoFuncValue(), seg.Addr, seg.ReaderAt)
+				inlCalls, err := image.symTable.GetInlineTree(&f, goFuncVal, seg.Addr, seg.ReaderAt)
 				if err != nil {
 					return err
 				}
