@@ -3,6 +3,27 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.22.1] 2024-02-21
+
+### Added
+
+- `--listen` and `connect` now support Unix Domain Sockets (#3655, ##3658, @aarzilli)
+- Paging for commands `print`, `vars`, `args` and `locals` (#3620, @aarzilli)
+- Syntax highlighting for stacktraces and options to change the color of Delve's prompt (#3649, #3648, @aarzilli)
+- Wait-for option for DAP's attach mode (#3656, @muggle-nil)
+
+### Fixed
+
+- Bug where Ctrl-Z was not sent to other processes in the same group as Delve (#3619, @aarzilli)
+- Parsing of `/proc/net/tcp` when it has 10000 or more entries (#3660, @michaelmerg)
+- Rare error when valuating expressions containing `runtime.frame(n)` inside breakpoint conditions (#3624, @aarzilli)
+- Line number reported for the stack frame that caused a panic (#3638, @aarzilli)
+- Building when dlv's executable already exists on macOS with a signing key already installed (#3639, @ardnew)
+
+### Changed
+
+- When evaluating an expression containing a reslice operation with constant bounds the entire resulting slice will be loaded (#3623, @aarzilli)
+
 ## [1.22.0] 2023-12-29
 
 ### Added
