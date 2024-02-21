@@ -33,7 +33,6 @@ import (
 	"github.com/go-delve/delve/pkg/internal/gosym"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc/debuginfod"
-	"github.com/go-delve/gore"
 	"github.com/hashicorp/golang-lru/simplelru"
 )
 
@@ -1458,25 +1457,30 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 			}
 			cu := &compileUnit{}
 			cu.image = image
-			symTable, _, err := readPcLnTableElf(elfFile, path)
+			symTable, symTabAddr, err := readPcLnTableElf(elfFile, path)
 			if err != nil {
 				return fmt.Errorf("could not read debug info (%v) and could not read go symbol table (%v)", dwerr, err)
 			}
 			image.symTable = symTable
-			gorefile, err := gore.Open(path)
+			noPtrSectionData, err := elfFile.Section(".noptrdata").Data()
 			if err != nil {
 				return err
 			}
-			md, err := gorefile.Moduledata()
+			md, err := parseModuleData(noPtrSectionData, symTabAddr)
 			if err != nil {
 				return err
 			}
-			prog := gosym.ProgContaining(elfFile, md.GoFuncValue())
+			roDataAddr := elfFile.Section(".rodata").Addr
+			goFuncVal, err := findGoFuncVal(md, roDataAddr, bi.Arch.ptrSize)
+			if err != nil {
+				return err
+			}
+			prog := gosym.ProgContaining(elfFile, goFuncVal)
 			inlFuncs := make(map[string]*Function)
 			for _, f := range image.symTable.Funcs {
 				fnEntry := f.Entry + image.StaticBase
 				if prog != nil {
-					inlCalls, err := image.symTable.GetInlineTree(&f, md.GoFuncValue(), prog.Vaddr, prog.ReaderAt)
+					inlCalls, err := image.symTable.GetInlineTree(&f, goFuncVal, prog.Vaddr, prog.ReaderAt)
 					if err != nil {
 						return err
 					}
@@ -1547,6 +1551,53 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 		go bi.setGStructOffsetElf(image, dwarfFile, wg)
 	}
 	return nil
+}
+
+func findGoFuncVal(moduleData []byte, roDataAddr uint64, ptrsize int) (uint64, error) {
+	buf := new(bytes.Buffer)
+	err := binary.Write(buf, binary.LittleEndian, &roDataAddr)
+	if err != nil {
+		return 0, err
+	}
+	// Here we search for the value of `go.func.*` by searching through the raw bytes of the
+	// runtime.moduledata structure. Since we don't know the value that we are looking for,
+	// we use a known value, in this case the address of the .rodata section.
+	// This is because in the layout of the struct, the rodata member is right next to
+	// the value we need, making the math trivial once we find that member.
+	// We use `bytes.LastIndex` specifically because the `types` struct member can also
+	// contain the address of the .rodata section, so this pointer can appear multiple times
+	// in the raw bytes.
+	// Yes, this is very ill-advised low-level hackery but it works fine until
+	// https://github.com/golang/go/issues/58474#issuecomment-1785681472 happens.
+	// This code path also only runs in stripped binaries, so the whole implementation is
+	// best effort anyways.
+	rodata := bytes.LastIndex(moduleData, buf.Bytes()[:ptrsize])
+	if rodata == -1 {
+		return 0, errors.New("could not find rodata struct member")
+	}
+	// Layout of struct members is:
+	// type moduledata struct {
+	// 	...
+	// 	rodata uintptr
+	// 	gofunc uintptr
+	// 	...
+	// }
+	// So do some pointer arithmetic to get the value we need.
+	gofuncval := binary.LittleEndian.Uint64(moduleData[rodata+(1*ptrsize) : rodata+(2*ptrsize)])
+	return gofuncval, nil
+}
+
+func parseModuleData(dataSection []byte, tableAddr uint64) ([]byte, error) {
+	buf := new(bytes.Buffer)
+	err := binary.Write(buf, binary.LittleEndian, &tableAddr)
+	if err != nil {
+		return nil, err
+	}
+	off := bytes.Index(dataSection, buf.Bytes()[:4])
+	if off == -1 {
+		return nil, errors.New("could not find moduledata")
+	}
+	return dataSection[off : off+0x300], nil
 }
 
 // _STT_FUNC is a code object, see /usr/include/elf.h for a full definition.
@@ -1866,27 +1917,32 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 		if len(bi.Images) <= 1 {
 			fmt.Fprintln(os.Stderr, "Warning: no debug info found, some functionality will be missing such as stack traces and variable evaluation.")
 		}
-		symTable, err := readPcLnTableMacho(exe, path)
+		symTable, symTabAddr, err := readPcLnTableMacho(exe, path)
 		if err != nil {
 			return fmt.Errorf("could not read debug info (%v) and could not read go symbol table (%v)", dwerr, err)
 		}
 		image.symTable = symTable
 		cu := &compileUnit{}
 		cu.image = image
-		gorefile, err := gore.Open(path)
+		noPtrSectionData, err := exe.Section("__noptrdata").Data()
 		if err != nil {
 			return err
 		}
-		md, err := gorefile.Moduledata()
+		md, err := parseModuleData(noPtrSectionData, symTabAddr)
 		if err != nil {
 			return err
 		}
-		seg := gosym.SegmentContaining(exe, md.GoFuncValue())
+		roDataAddr := exe.Section("__rodata").Addr
+		goFuncVal, err := findGoFuncVal(md, roDataAddr, bi.Arch.ptrSize)
+		if err != nil {
+			return err
+		}
+		seg := gosym.SegmentContaining(exe, goFuncVal)
 		inlFuncs := make(map[string]*Function)
 		for _, f := range image.symTable.Funcs {
 			fnEntry := f.Entry + image.StaticBase
 			if seg != nil {
-				inlCalls, err := image.symTable.GetInlineTree(&f, md.GoFuncValue(), seg.Addr, seg.ReaderAt)
+				inlCalls, err := image.symTable.GetInlineTree(&f, goFuncVal, seg.Addr, seg.ReaderAt)
 				if err != nil {
 					return err
 				}
