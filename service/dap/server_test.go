@@ -2715,7 +2715,7 @@ func findPcReg(regs []dap.Variable) int {
 }
 
 func isPcReg(reg dap.Variable) bool {
-	pcRegNames := []string{"rip", "pc", "eip"}
+	pcRegNames := []string{"rip", "pc", "eip", "era"}
 	for _, name := range pcRegNames {
 		if name == strings.TrimSpace(reg.Name) {
 			return true
