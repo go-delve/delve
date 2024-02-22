@@ -51,7 +51,10 @@ func NewMakeCommands() *cobra.Command {
 				envflags = append(envflags, "GOOS="+OS)
 			}
 			if len(envflags) > 0 {
-				executeEnv(envflags, "go", "build", "-ldflags", "-extldflags -static", tagFlags(), buildFlags(), DelveMainPackagePath)
+				envflags = append(envflags, "-mod=vendor")
+			}
+			if len(envflags) > 0 {
+				executeEnv(envflags, "go", "build", "-mod=vendor", "-ldflags", "-extldflags -static", tagFlags(), buildFlags(), DelveMainPackagePath)
 			} else {
 				execute("go", "build", "-ldflags", "-extldflags -static", tagFlags(), buildFlags(), DelveMainPackagePath)
 			}
