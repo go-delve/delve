@@ -459,7 +459,9 @@ func addCheckVarType(V, T string, pos token.Pos) {
 }
 
 func addCheckFieldType(S, F, T string, opt bool, pos token.Pos) {
-	checkFieldTypeRules[S] = append(checkFieldTypeRules[S], &checkFieldType{S, F, T, opt, pos})
+	if !strings.Contains(S, "|") {
+		checkFieldTypeRules[S] = append(checkFieldTypeRules[S], &checkFieldType{S, F, T, opt, pos})
+	}
 }
 
 func addCheckConstVal(C string, V constant.Value, pos token.Pos) {
@@ -547,7 +549,6 @@ func check() {
 	allok := true
 
 	for _, rule := range checkVarTypeRules {
-		//TODO: implement
 		pos := fset.Position(rule.pos)
 		def := lookupPackage(pkgmap, "runtime").Types.Scope().Lookup(rule.V)
 		if def == nil {

@@ -1164,6 +1164,13 @@ var waitReasonStrings = [...]string{
 	"GC worker (idle)",
 	"preempted",
 	"debug call",
+	"GC mark termination",
+	"stopping the world",
+	"flushing proc caches",
+	"trace goroutine status",
+	"trace proc status",
+	"page trace flush",
+	"coroutine",
 }
 
 func writeGoroutineLong(t *Term, w io.Writer, g *api.Goroutine, prefix string) {
