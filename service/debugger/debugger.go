@@ -1255,13 +1255,25 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 		if err := d.target.ChangeDirection(proc.Forward); err != nil {
 			return nil, err
 		}
-		err = d.target.StepInstruction(command.SkipCalls)
+		err = d.target.StepInstruction(false)
 	case api.ReverseStepInstruction:
 		d.log.Debug("reverse single stepping")
 		if err := d.target.ChangeDirection(proc.Backward); err != nil {
 			return nil, err
 		}
-		err = d.target.StepInstruction(command.SkipCalls)
+		err = d.target.StepInstruction(false)
+	case api.NextInstruction:
+		d.log.Debug("single stepping")
+		if err := d.target.ChangeDirection(proc.Forward); err != nil {
+			return nil, err
+		}
+		err = d.target.StepInstruction(true)
+	case api.ReverseNextInstruction:
+		d.log.Debug("reverse single stepping")
+		if err := d.target.ChangeDirection(proc.Backward); err != nil {
+			return nil, err
+		}
+		err = d.target.StepInstruction(true)
 	case api.StepOut:
 		d.log.Debug("step out")
 		if err := d.target.ChangeDirection(proc.Forward); err != nil {

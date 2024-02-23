@@ -598,15 +598,11 @@ func (grp *TargetGroup) StepInstruction(skipCalls bool) (err error) {
 		if err != nil {
 			return err
 		}
-		err = grp.StepOut()
-		if err != nil {
-			return err
-		}
-	} else {
-		err = grp.procgrp.StepInstruction(thread.ThreadID())
-		if err != nil {
-			return err
-		}
+		return grp.StepOut()
+	}
+	err = grp.procgrp.StepInstruction(thread.ThreadID())
+	if err != nil {
+		return err
 	}
 	thread.Breakpoint().Clear()
 	err = thread.SetCurrentBreakpoint(false)

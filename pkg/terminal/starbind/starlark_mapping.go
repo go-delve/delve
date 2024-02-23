@@ -271,13 +271,7 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 			}
 		}
 		if len(args) > 5 && args[5] != starlark.None {
-			err := unmarshalStarlarkValue(args[5], &rpcArgs.SkipCalls, "SkipCalls")
-			if err != nil {
-				return starlark.None, decorateError(thread, err)
-			}
-		}
-		if len(args) > 6 && args[6] != starlark.None {
-			err := unmarshalStarlarkValue(args[6], &rpcArgs.UnsafeCall, "UnsafeCall")
+			err := unmarshalStarlarkValue(args[5], &rpcArgs.UnsafeCall, "UnsafeCall")
 			if err != nil {
 				return starlark.None, decorateError(thread, err)
 			}
@@ -295,8 +289,6 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.ReturnInfoLoadConfig, "ReturnInfoLoadConfig")
 			case "Expr":
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Expr, "Expr")
-			case "SkipCalls":
-				err = unmarshalStarlarkValue(kv[1], &rpcArgs.SkipCalls, "SkipCalls")
 			case "UnsafeCall":
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.UnsafeCall, "UnsafeCall")
 			default:
@@ -312,7 +304,7 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 		}
 		return env.interfaceToStarlarkValue(rpcRet), nil
 	})
-	doc["raw_command"] = "builtin raw_command(Name, ThreadID, GoroutineID, ReturnInfoLoadConfig, Expr, SkipCalls, UnsafeCall)\n\nraw_command interrupts, continues and steps through the program."
+	doc["raw_command"] = "builtin raw_command(Name, ThreadID, GoroutineID, ReturnInfoLoadConfig, Expr, UnsafeCall)\n\nraw_command interrupts, continues and steps through the program."
 	r["create_breakpoint"] = starlark.NewBuiltin("create_breakpoint", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if err := isCancelled(thread); err != nil {
 			return starlark.None, decorateError(thread, err)

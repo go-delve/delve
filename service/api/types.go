@@ -405,8 +405,6 @@ type DebuggerCommand struct {
 	ReturnInfoLoadConfig *LoadConfig
 	// Expr is the expression argument for a Call command
 	Expr string `json:"expr,omitempty"`
-	// SkipCalls is true if 'step-instruction' commands should step over function calls
-	SkipCalls bool
 
 	// UnsafeCall disables parameter escape checking for function calls.
 	// Go objects can be allocated on the stack or on the heap. Heap objects
@@ -458,8 +456,12 @@ const (
 	ReverseStepOut = "reverseStepOut"
 	// StepInstruction continues for exactly 1 cpu instruction.
 	StepInstruction = "stepInstruction"
+	// NextInstruction continues for 1 cpu instruction, skipping over CALL instructions.
+	NextInstruction = "nextInstruction"
 	// ReverseStepInstruction reverses execution for exactly 1 cpu instruction.
 	ReverseStepInstruction = "reverseStepInstruction"
+	// ReverseNextInstruction reverses execution for 1 cpu instruction, skipping over CALL instructions.
+	ReverseNextInstruction = "reverseNextInstruction"
 	// Next continues to the next source line, not entering function calls.
 	Next = "next"
 	// ReverseNext continues backward to the previous line of source code, not entering function calls.
