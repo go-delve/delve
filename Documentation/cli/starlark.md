@@ -25,7 +25,7 @@ cancel_next() | Equivalent to API call [CancelNext](https://godoc.org/github.com
 checkpoint(Where) | Equivalent to API call [Checkpoint](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Checkpoint)
 clear_breakpoint(Id, Name) | Equivalent to API call [ClearBreakpoint](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ClearBreakpoint)
 clear_checkpoint(ID) | Equivalent to API call [ClearCheckpoint](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.ClearCheckpoint)
-raw_command(Name, ThreadID, GoroutineID, ReturnInfoLoadConfig, Expr, UnsafeCall) | Equivalent to API call [Command](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Command)
+raw_command(Name, ThreadID, GoroutineID, ReturnInfoLoadConfig, Expr, SkipCalls, UnsafeCall) | Equivalent to API call [Command](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.Command)
 create_breakpoint(Breakpoint, LocExpr, SubstitutePathRules, Suspended) | Equivalent to API call [CreateBreakpoint](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.CreateBreakpoint)
 create_ebpf_tracepoint(FunctionName) | Equivalent to API call [CreateEBPFTracepoint](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.CreateEBPFTracepoint)
 create_watchpoint(Scope, Expr, Type) | Equivalent to API call [CreateWatchpoint](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.CreateWatchpoint)
