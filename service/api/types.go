@@ -405,6 +405,8 @@ type DebuggerCommand struct {
 	ReturnInfoLoadConfig *LoadConfig
 	// Expr is the expression argument for a Call command
 	Expr string `json:"expr,omitempty"`
+	// SkipCalls is true if 'step-instruction' commands should step over function calls
+	SkipCalls bool
 
 	// UnsafeCall disables parameter escape checking for function calls.
 	// Go objects can be allocated on the stack or on the heap. Heap objects

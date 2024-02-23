@@ -1334,7 +1334,7 @@ func TestIssue355(t *testing.T) {
 		assertErrorOrExited(s, err, t, "Next()")
 		s, err = c.Step()
 		assertErrorOrExited(s, err, t, "Step()")
-		s, err = c.StepInstruction()
+		s, err = c.StepInstruction(false)
 		assertErrorOrExited(s, err, t, "StepInstruction()")
 		s, err = c.SwitchThread(tid)
 		assertErrorOrExited(s, err, t, "SwitchThread()")
@@ -1452,7 +1452,7 @@ func TestDisasm(t *testing.T) {
 			if count > 20 {
 				t.Fatal("too many step instructions executed without finding a call instruction")
 			}
-			state, err := c.StepInstruction()
+			state, err := c.StepInstruction(false)
 			assertNoError(err, t, fmt.Sprintf("StepInstruction() %d", count))
 
 			d3, err = c.DisassemblePC(api.EvalScope{GoroutineID: -1}, state.CurrentThread.PC, api.IntelFlavour)
@@ -3102,6 +3102,22 @@ func TestClientServer_chanGoroutines(t *testing.T) {
 		recvq, sendq = countRecvSend(gs)
 		if len(gs) != 1 || recvq != 1 || sendq != 0 {
 			t.Error("wrong number of goroutines for blockingchan2")
+		}
+	})
+}
+
+func TestNextInstruction(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestClient2("testprog", t, func(c service.Client) {
+		fp := testProgPath(t, "testprog")
+		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 19})
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue()")
+
+		state, err = c.StepInstruction(true)
+		assertNoError(err, t, "Step()")
+		if state.CurrentThread.Line != 20 {
+			t.Fatalf("expected line %d got %d", 20, state.CurrentThread.Line)
 		}
 	})
 }

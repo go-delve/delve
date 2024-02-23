@@ -315,7 +315,7 @@ func TestHalt(t *testing.T) {
 	})
 }
 
-func TestStep(t *testing.T) {
+func TestStepInstruction(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("testprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.helloworld")
@@ -324,13 +324,26 @@ func TestStep(t *testing.T) {
 		regs := getRegisters(p, t)
 		rip := regs.PC()
 
-		err := grp.StepInstruction()
+		err := grp.StepInstruction(false)
 		assertNoError(err, t, "Step()")
 
 		regs = getRegisters(p, t)
 		if rip >= regs.PC() {
 			t.Errorf("Expected %#v to be greater than %#v", regs.PC(), rip)
 		}
+	})
+}
+
+func TestNextInstruction(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcess("testprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture.Source, 19)
+		assertNoError(grp.Continue(), t, "Continue()")
+
+		err := grp.StepInstruction(true)
+		assertNoError(err, t, "Step()")
+
+		assertLineNumber(p, t, 20, "next-instruction did not step over call")
 	})
 }
 
@@ -2719,7 +2732,7 @@ func TestStepOnCallPtrInstr(t *testing.T) {
 				found = true
 				break
 			}
-			assertNoError(grp.StepInstruction(), t, "StepInstruction()")
+			assertNoError(grp.StepInstruction(false), t, "StepInstruction()")
 		}
 
 		if !found {
@@ -3095,7 +3108,7 @@ func TestStepInstructionNoGoroutine(t *testing.T) {
 	withTestProcess("increment", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		// Call StepInstruction immediately after launching the program, it should
 		// work even though no goroutine is selected.
-		assertNoError(grp.StepInstruction(), t, "StepInstruction")
+		assertNoError(grp.StepInstruction(false), t, "StepInstruction")
 	})
 }
 

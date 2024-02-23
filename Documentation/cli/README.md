@@ -13,6 +13,7 @@ Command | Description
 [call](#call) | Resumes process, injecting a function call (EXPERIMENTAL!!!)
 [continue](#continue) | Run until breakpoint or program termination.
 [next](#next) | Step over to next source line.
+[next-instruction](#next-instruction) | Single step a single cpu instruction, skipping function calls.
 [rebuild](#rebuild) | Rebuild the target executable and restarts it. It does not work if the executable was not built by delve.
 [restart](#restart) | Restart process.
 [rev](#rev) | Reverses the execution of the target program for the command specified.
@@ -523,6 +524,11 @@ Optional [count] argument allows you to skip multiple lines.
 
 Aliases: n
 
+## next-instruction
+Single step a single cpu instruction, skipping function calls.
+
+Aliases: ni nexti
+
 ## on
 Executes a command when a breakpoint is hit.
 
@@ -658,7 +664,7 @@ Aliases: s
 ## step-instruction
 Single step a single cpu instruction.
 
-Aliases: si
+Aliases: si stepi
 
 ## stepout
 Step out of the current function.

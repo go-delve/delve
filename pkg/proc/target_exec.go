@@ -196,7 +196,7 @@ func (grp *TargetGroup) Continue() error {
 					if err := dbp.ClearSteppingBreakpoints(); err != nil {
 						return err
 					}
-					return grp.StepInstruction()
+					return grp.StepInstruction(false)
 				}
 			} else {
 				curthread.Common().returnValues = curbp.Breakpoint.returnInfo.Collect(dbp, curthread)
@@ -455,7 +455,7 @@ func (grp *TargetGroup) Step() (err error) {
 
 	if bpstate := grp.Selected.CurrentThread().Breakpoint(); bpstate.Breakpoint != nil && bpstate.Active && bpstate.SteppingInto && grp.GetDirection() == Backward {
 		grp.Selected.ClearSteppingBreakpoints()
-		return grp.StepInstruction()
+		return grp.StepInstruction(false)
 	}
 
 	return grp.Continue()
@@ -567,7 +567,7 @@ func (grp *TargetGroup) StepOut() error {
 // one instruction. This method affects only the thread
 // associated with the selected goroutine. All other
 // threads will remain stopped.
-func (grp *TargetGroup) StepInstruction() (err error) {
+func (grp *TargetGroup) StepInstruction(skipCalls bool) (err error) {
 	dbp := grp.Selected
 	thread := dbp.CurrentThread()
 	g := dbp.SelectedGoroutine()
@@ -586,9 +586,27 @@ func (grp *TargetGroup) StepInstruction() (err error) {
 	if ok, err := dbp.Valid(); !ok {
 		return err
 	}
-	err = grp.procgrp.StepInstruction(thread.ThreadID())
+	var isCall bool
+	instr, err := disassembleCurrentInstruction(dbp, thread, 0)
 	if err != nil {
 		return err
+	}
+	isCall = len(instr) > 0 && instr[0].IsCall()
+	if skipCalls && isCall {
+		// Step into call.
+		err = grp.procgrp.StepInstruction(thread.ThreadID())
+		if err != nil {
+			return err
+		}
+		err = grp.StepOut()
+		if err != nil {
+			return err
+		}
+	} else {
+		err = grp.procgrp.StepInstruction(thread.ThreadID())
+		if err != nil {
+			return err
+		}
 	}
 	thread.Breakpoint().Clear()
 	err = thread.SetCurrentBreakpoint(false)
