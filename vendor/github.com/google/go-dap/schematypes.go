@@ -201,7 +201,7 @@ type TerminatedEvent struct {
 }
 
 type TerminatedEventBody struct {
-	Restart interface{} `json:"restart,omitempty"`
+	Restart json.RawMessage `json:"restart,omitempty"`
 }
 
 // ThreadEvent: The event indicates that a thread has started or exited.
@@ -224,14 +224,14 @@ type OutputEvent struct {
 }
 
 type OutputEventBody struct {
-	Category           string      `json:"category,omitempty"`
-	Output             string      `json:"output"`
-	Group              string      `json:"group,omitempty"`
-	VariablesReference int         `json:"variablesReference,omitempty"`
-	Source             *Source     `json:"source,omitempty"`
-	Line               int         `json:"line,omitempty"`
-	Column             int         `json:"column,omitempty"`
-	Data               interface{} `json:"data,omitempty"`
+	Category           string          `json:"category,omitempty"`
+	Output             string          `json:"output"`
+	Group              string          `json:"group,omitempty"`
+	VariablesReference int             `json:"variablesReference,omitempty"`
+	Source             *Source         `json:"source,omitempty"`
+	Line               int             `json:"line,omitempty"`
+	Column             int             `json:"column,omitempty"`
+	Data               json.RawMessage `json:"data,omitempty"`
 }
 
 // BreakpointEvent: The event indicates that some information about a breakpoint has changed.
@@ -388,12 +388,12 @@ type RunInTerminalRequest struct {
 
 // RunInTerminalRequestArguments: Arguments for `runInTerminal` request.
 type RunInTerminalRequestArguments struct {
-	Kind                        string                 `json:"kind,omitempty"`
-	Title                       string                 `json:"title,omitempty"`
-	Cwd                         string                 `json:"cwd"`
-	Args                        []string               `json:"args"`
-	Env                         map[string]interface{} `json:"env,omitempty"`
-	ArgsCanBeInterpretedByShell bool                   `json:"argsCanBeInterpretedByShell,omitempty"`
+	Kind                        string         `json:"kind,omitempty"`
+	Title                       string         `json:"title,omitempty"`
+	Cwd                         string         `json:"cwd"`
+	Args                        []string       `json:"args"`
+	Env                         map[string]any `json:"env,omitempty"`
+	ArgsCanBeInterpretedByShell bool           `json:"argsCanBeInterpretedByShell,omitempty"`
 }
 
 // RunInTerminalResponse: Response to `runInTerminal` request.
@@ -419,8 +419,8 @@ type StartDebuggingRequest struct {
 
 // StartDebuggingRequestArguments: Arguments for `startDebugging` request.
 type StartDebuggingRequestArguments struct {
-	Configuration map[string]interface{} `json:"configuration"`
-	Request       string                 `json:"request"`
+	Configuration map[string]any `json:"configuration"`
+	Request       string         `json:"request"`
 }
 
 // StartDebuggingResponse: Response to `startDebugging` request. This is just an acknowledgement, so no body field is required.
@@ -518,12 +518,7 @@ type AttachResponse struct {
 type RestartRequest struct {
 	Request
 
-	Arguments *RestartArguments `json:"arguments,omitempty"`
-}
-
-// RestartArguments: Arguments for `restart` request.
-type RestartArguments struct {
-	Arguments interface{} `json:"arguments,omitempty"`
+	Arguments json.RawMessage `json:"arguments"`
 }
 
 // RestartResponse: Response to `restart` request. This is just an acknowledgement, so no body field is required.
@@ -713,7 +708,7 @@ type DataBreakpointInfoResponse struct {
 }
 
 type DataBreakpointInfoResponseBody struct {
-	DataId      interface{}                `json:"dataId"`
+	DataId      any                        `json:"dataId"`
 	Description string                     `json:"description"`
 	AccessTypes []DataBreakpointAccessType `json:"accessTypes,omitempty"`
 	CanPersist  bool                       `json:"canPersist,omitempty"`
@@ -1511,16 +1506,16 @@ type ErrorMessage struct {
 //
 // To avoid an unnecessary proliferation of additional attributes with similar semantics but different names, we recommend to re-use attributes from the 'recommended' list below first, and only introduce new attributes if nothing appropriate could be found.
 type Module struct {
-	Id             interface{} `json:"id"`
-	Name           string      `json:"name"`
-	Path           string      `json:"path,omitempty"`
-	IsOptimized    bool        `json:"isOptimized,omitempty"`
-	IsUserCode     bool        `json:"isUserCode,omitempty"`
-	Version        string      `json:"version,omitempty"`
-	SymbolStatus   string      `json:"symbolStatus,omitempty"`
-	SymbolFilePath string      `json:"symbolFilePath,omitempty"`
-	DateTimeStamp  string      `json:"dateTimeStamp,omitempty"`
-	AddressRange   string      `json:"addressRange,omitempty"`
+	Id             any    `json:"id"`
+	Name           string `json:"name"`
+	Path           string `json:"path,omitempty"`
+	IsOptimized    bool   `json:"isOptimized,omitempty"`
+	IsUserCode     bool   `json:"isUserCode,omitempty"`
+	Version        string `json:"version,omitempty"`
+	SymbolStatus   string `json:"symbolStatus,omitempty"`
+	SymbolFilePath string `json:"symbolFilePath,omitempty"`
+	DateTimeStamp  string `json:"dateTimeStamp,omitempty"`
+	AddressRange   string `json:"addressRange,omitempty"`
 }
 
 // ColumnDescriptor: A `ColumnDescriptor` specifies what module attribute to show in a column of the modules view, how to format it,
@@ -1549,29 +1544,29 @@ type Thread struct {
 // Source: A `Source` is a descriptor for source code.
 // It is returned from the debug adapter as part of a `StackFrame` and it is used by clients when specifying breakpoints.
 type Source struct {
-	Name             string      `json:"name,omitempty"`
-	Path             string      `json:"path,omitempty"`
-	SourceReference  int         `json:"sourceReference,omitempty"`
-	PresentationHint string      `json:"presentationHint,omitempty"`
-	Origin           string      `json:"origin,omitempty"`
-	Sources          []Source    `json:"sources,omitempty"`
-	AdapterData      interface{} `json:"adapterData,omitempty"`
-	Checksums        []Checksum  `json:"checksums,omitempty"`
+	Name             string          `json:"name,omitempty"`
+	Path             string          `json:"path,omitempty"`
+	SourceReference  int             `json:"sourceReference,omitempty"`
+	PresentationHint string          `json:"presentationHint,omitempty"`
+	Origin           string          `json:"origin,omitempty"`
+	Sources          []Source        `json:"sources,omitempty"`
+	AdapterData      json.RawMessage `json:"adapterData,omitempty"`
+	Checksums        []Checksum      `json:"checksums,omitempty"`
 }
 
 // StackFrame: A Stackframe contains the source location.
 type StackFrame struct {
-	Id                          int         `json:"id"`
-	Name                        string      `json:"name"`
-	Source                      *Source     `json:"source,omitempty"`
-	Line                        int         `json:"line"`
-	Column                      int         `json:"column"`
-	EndLine                     int         `json:"endLine,omitempty"`
-	EndColumn                   int         `json:"endColumn,omitempty"`
-	CanRestart                  bool        `json:"canRestart,omitempty"`
-	InstructionPointerReference string      `json:"instructionPointerReference,omitempty"`
-	ModuleId                    interface{} `json:"moduleId,omitempty"`
-	PresentationHint            string      `json:"presentationHint,omitempty"`
+	Id                          int     `json:"id"`
+	Name                        string  `json:"name"`
+	Source                      *Source `json:"source,omitempty"`
+	Line                        int     `json:"line"`
+	Column                      int     `json:"column"`
+	EndLine                     int     `json:"endLine,omitempty"`
+	EndColumn                   int     `json:"endColumn,omitempty"`
+	CanRestart                  bool    `json:"canRestart,omitempty"`
+	InstructionPointerReference string  `json:"instructionPointerReference,omitempty"`
+	ModuleId                    any     `json:"moduleId,omitempty"`
+	PresentationHint            string  `json:"presentationHint,omitempty"`
 }
 
 // Scope: A `Scope` is a named container for variables. Optionally a scope can map to a source or a range within a source.

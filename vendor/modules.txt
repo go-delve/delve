@@ -27,8 +27,8 @@ github.com/derekparker/trie
 # github.com/go-delve/liner v1.2.3-0.20231231155935-4726ab1d7f62
 ## explicit
 github.com/go-delve/liner
-# github.com/google/go-dap v0.11.0
-## explicit; go 1.13
+# github.com/google/go-dap v0.12.0
+## explicit; go 1.18
 github.com/google/go-dap
 # github.com/hashicorp/golang-lru v1.0.2
 ## explicit; go 1.12
