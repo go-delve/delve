@@ -592,14 +592,6 @@ func (grp *TargetGroup) StepInstruction(skipCalls bool) (err error) {
 		return err
 	}
 	isCall = len(instr) > 0 && instr[0].IsCall()
-	if skipCalls && isCall {
-		// Step into call.
-		err = grp.procgrp.StepInstruction(thread.ThreadID())
-		if err != nil {
-			return err
-		}
-		return grp.StepOut()
-	}
 	err = grp.procgrp.StepInstruction(thread.ThreadID())
 	if err != nil {
 		return err
@@ -613,6 +605,11 @@ func (grp *TargetGroup) StepInstruction(skipCalls bool) (err error) {
 		dbp.selectedGoroutine = tg
 	}
 	dbp.StopReason = StopNextFinished
+
+	if skipCalls && isCall {
+		return grp.StepOut()
+	}
+
 	return nil
 }
 
