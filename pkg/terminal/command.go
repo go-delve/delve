@@ -186,7 +186,8 @@ For example:
 	continue encoding/json.Marshal
 `},
 		{aliases: []string{"step", "s"}, group: runCmds, cmdFn: c.step, allowedPrefixes: revPrefix, helpMsg: "Single step through program."},
-		{aliases: []string{"step-instruction", "si"}, group: runCmds, allowedPrefixes: revPrefix, cmdFn: c.stepInstruction, helpMsg: "Single step a single cpu instruction."},
+		{aliases: []string{"step-instruction", "si", "stepi"}, group: runCmds, allowedPrefixes: revPrefix, cmdFn: c.stepInstruction, helpMsg: "Single step a single cpu instruction."},
+		{aliases: []string{"next-instruction", "ni", "nexti"}, group: runCmds, allowedPrefixes: revPrefix, cmdFn: c.nextInstruction, helpMsg: "Single step a single cpu instruction, skipping function calls."},
 		{aliases: []string{"next", "n"}, group: runCmds, cmdFn: c.next, allowedPrefixes: revPrefix, helpMsg: `Step over to next source line.
 
 	next [count]
@@ -1511,24 +1512,34 @@ func (c *Commands) step(t *Term, ctx callContext, args string) error {
 
 var errNotOnFrameZero = errors.New("not on topmost frame")
 
+// stepInstruction implements the step-instruction (stepi) command.
 func (c *Commands) stepInstruction(t *Term, ctx callContext, args string) error {
+	return stepInstruction(t, ctx, c.frame, false)
+}
+
+// nextInstruction implements the next-instruction (nexti) command.
+func (c *Commands) nextInstruction(t *Term, ctx callContext, args string) error {
+	return stepInstruction(t, ctx, c.frame, true)
+}
+
+func stepInstruction(t *Term, ctx callContext, frame int, skipCalls bool) error {
 	if err := scopePrefixSwitch(t, ctx); err != nil {
 		return err
 	}
-	if c.frame != 0 {
+	if frame != 0 {
 		return errNotOnFrameZero
 	}
 
 	defer t.onStop()
 
-	var fn func() (*api.DebuggerState, error)
+	var fn func(bool) (*api.DebuggerState, error)
 	if ctx.Prefix == revPrefix {
 		fn = t.client.ReverseStepInstruction
 	} else {
 		fn = t.client.StepInstruction
 	}
 
-	state, err := exitedToError(fn())
+	state, err := exitedToError(fn(skipCalls))
 	if err != nil {
 		printcontextNoState(t)
 		return err

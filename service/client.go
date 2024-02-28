@@ -53,9 +53,9 @@ type Client interface {
 	Call(goroutineID int64, expr string, unsafe bool) (*api.DebuggerState, error)
 
 	// StepInstruction will step a single cpu instruction.
-	StepInstruction() (*api.DebuggerState, error)
+	StepInstruction(skipCalls bool) (*api.DebuggerState, error)
 	// ReverseStepInstruction will reverse step a single cpu instruction.
-	ReverseStepInstruction() (*api.DebuggerState, error)
+	ReverseStepInstruction(skipCalls bool) (*api.DebuggerState, error)
 	// SwitchThread switches the current thread context.
 	SwitchThread(threadID int) (*api.DebuggerState, error)
 	// SwitchGoroutine switches the current goroutine (and the current thread as well)

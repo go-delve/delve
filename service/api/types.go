@@ -456,8 +456,12 @@ const (
 	ReverseStepOut = "reverseStepOut"
 	// StepInstruction continues for exactly 1 cpu instruction.
 	StepInstruction = "stepInstruction"
+	// NextInstruction continues for 1 cpu instruction, skipping over CALL instructions.
+	NextInstruction = "nextInstruction"
 	// ReverseStepInstruction reverses execution for exactly 1 cpu instruction.
 	ReverseStepInstruction = "reverseStepInstruction"
+	// ReverseNextInstruction reverses execution for 1 cpu instruction, skipping over CALL instructions.
+	ReverseNextInstruction = "reverseNextInstruction"
 	// Next continues to the next source line, not entering function calls.
 	Next = "next"
 	// ReverseNext continues backward to the previous line of source code, not entering function calls.

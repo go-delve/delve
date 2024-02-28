@@ -22,7 +22,7 @@ func TestStepInstructionOnBreakpoint(t *testing.T) {
 		assertNoError(grp.Continue(), t, "Continue()")
 
 		pc := getRegisters(p, t).PC()
-		assertNoError(grp.StepInstruction(), t, "StepInstruction()")
+		assertNoError(grp.StepInstruction(false), t, "StepInstruction()")
 		if pc == getRegisters(p, t).PC() {
 			t.Fatal("Could not step a single instruction")
 		}

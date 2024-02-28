@@ -183,15 +183,23 @@ func (c *RPCClient) Call(goroutineID int64, expr string, unsafe bool) (*api.Debu
 	return &out.State, err
 }
 
-func (c *RPCClient) StepInstruction() (*api.DebuggerState, error) {
+func (c *RPCClient) StepInstruction(skipCalls bool) (*api.DebuggerState, error) {
 	var out CommandOut
-	err := c.call("Command", api.DebuggerCommand{Name: api.StepInstruction}, &out)
+	name := api.StepInstruction
+	if skipCalls {
+		name = api.NextInstruction
+	}
+	err := c.call("Command", api.DebuggerCommand{Name: name}, &out)
 	return &out.State, err
 }
 
-func (c *RPCClient) ReverseStepInstruction() (*api.DebuggerState, error) {
+func (c *RPCClient) ReverseStepInstruction(skipCalls bool) (*api.DebuggerState, error) {
 	var out CommandOut
-	err := c.call("Command", api.DebuggerCommand{Name: api.ReverseStepInstruction}, &out)
+	name := api.ReverseStepInstruction
+	if skipCalls {
+		name = api.ReverseNextInstruction
+	}
+	err := c.call("Command", api.DebuggerCommand{Name: name}, &out)
 	return &out.State, err
 }
 
