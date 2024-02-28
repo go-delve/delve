@@ -2777,6 +2777,8 @@ func printcontextThread(t *Term, th *api.Thread) {
 		bpname = fmt.Sprintf("watchpoint on [%s] ", th.Breakpoint.WatchExpr)
 	} else if th.Breakpoint.Name != "" {
 		bpname = fmt.Sprintf("[%s] ", th.Breakpoint.Name)
+	} else if !th.Breakpoint.Tracepoint {
+		bpname = fmt.Sprintf("[Breakpoint %d] ", th.Breakpoint.ID)
 	}
 
 	if th.Breakpoint.Tracepoint || th.Breakpoint.TraceReturn {

@@ -1366,7 +1366,7 @@ func TestTranscript(t *testing.T) {
 	withTestTerminal("math", t, func(term *FakeTerminal) {
 		term.MustExec("break main.main")
 		out := term.MustExec("continue")
-		if !strings.HasPrefix(out, "> main.main()") {
+		if !strings.HasPrefix(out, "> [Breakpoint 1] main.main()") {
 			t.Fatalf("Wrong output for next: <%s>", out)
 		}
 		fh, err := os.CreateTemp("", "test-transcript-*")
