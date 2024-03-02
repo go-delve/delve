@@ -118,10 +118,6 @@ func (it *loclistsIterator) next() bool {
 
 	case _DW_LLE_base_addressx:
 		baseIdx, _ := leb128.DecodeUnsigned(it.buf)
-		if err != nil {
-			it.err = err
-			return false
-		}
 		it.base, it.err = it.debugAddr.Get(baseIdx)
 		it.base += it.staticBase
 		it.onRange = false
