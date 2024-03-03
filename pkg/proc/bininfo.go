@@ -1455,63 +1455,10 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 			if len(bi.Images) <= 1 {
 				fmt.Fprintln(os.Stderr, "Warning: no debug info found, some functionality will be missing such as stack traces and variable evaluation.")
 			}
-			cu := &compileUnit{}
-			cu.image = image
-			symTable, symTabAddr, err := readPcLnTableElf(elfFile, path)
+			err := loadBinaryInfoGoRuntimeElf(bi, image, path, elfFile)
 			if err != nil {
 				return fmt.Errorf("could not read debug info (%v) and could not read go symbol table (%v)", dwerr, err)
 			}
-			image.symTable = symTable
-			noPtrSectionData, err := elfFile.Section(".noptrdata").Data()
-			if err != nil {
-				return err
-			}
-			md, err := parseModuleData(noPtrSectionData, symTabAddr)
-			if err != nil {
-				return err
-			}
-			roDataAddr := elfFile.Section(".rodata").Addr
-			goFuncVal, err := findGoFuncVal(md, roDataAddr, bi.Arch.ptrSize)
-			if err != nil {
-				return err
-			}
-			prog := gosym.ProgContaining(elfFile, goFuncVal)
-			inlFuncs := make(map[string]*Function)
-			for _, f := range image.symTable.Funcs {
-				fnEntry := f.Entry + image.StaticBase
-				if prog != nil {
-					inlCalls, err := image.symTable.GetInlineTree(&f, goFuncVal, prog.Vaddr, prog.ReaderAt)
-					if err != nil {
-						return err
-					}
-					for _, inlfn := range inlCalls {
-						newInlinedCall := InlinedCall{cu: cu, LowPC: fnEntry + uint64(inlfn.ParentPC)}
-						if fn, ok := inlFuncs[inlfn.Name]; ok {
-							fn.InlinedCalls = append(fn.InlinedCalls, newInlinedCall)
-							continue
-						}
-						inlFuncs[inlfn.Name] = &Function{
-							Name:  inlfn.Name,
-							Entry: 0, End: 0,
-							cu: cu,
-							InlinedCalls: []InlinedCall{
-								newInlinedCall,
-							},
-						}
-					}
-				}
-				fn := Function{Name: f.Name, Entry: fnEntry, End: f.End + image.StaticBase, cu: cu}
-				bi.Functions = append(bi.Functions, fn)
-			}
-			for i := range inlFuncs {
-				bi.Functions = append(bi.Functions, *inlFuncs[i])
-			}
-			sort.Sort(functionsDebugInfoByEntry(bi.Functions))
-			for f := range image.symTable.Files {
-				bi.Sources = append(bi.Sources, f)
-			}
-			sort.Strings(bi.Sources)
-			bi.Sources = uniq(bi.Sources)
 			return nil
 		}
 		image.sepDebugCloser = sepFile
@@ -1917,63 +1864,10 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 		if len(bi.Images) <= 1 {
 			fmt.Fprintln(os.Stderr, "Warning: no debug info found, some functionality will be missing such as stack traces and variable evaluation.")
 		}
-		symTable, symTabAddr, err := readPcLnTableMacho(exe, path)
+		err := loadBinaryInfoGoRuntimeMacho(bi, image, path, exe)
 		if err != nil {
 			return fmt.Errorf("could not read debug info (%v) and could not read go symbol table (%v)", dwerr, err)
 		}
-		image.symTable = symTable
-		cu := &compileUnit{}
-		cu.image = image
-		noPtrSectionData, err := exe.Section("__noptrdata").Data()
-		if err != nil {
-			return err
-		}
-		md, err := parseModuleData(noPtrSectionData, symTabAddr)
-		if err != nil {
-			return err
-		}
-		roDataAddr := exe.Section("__rodata").Addr
-		goFuncVal, err := findGoFuncVal(md, roDataAddr, bi.Arch.ptrSize)
-		if err != nil {
-			return err
-		}
-		seg := gosym.SegmentContaining(exe, goFuncVal)
-		inlFuncs := make(map[string]*Function)
-		for _, f := range image.symTable.Funcs {
-			fnEntry := f.Entry + image.StaticBase
-			if seg != nil {
-				inlCalls, err := image.symTable.GetInlineTree(&f, goFuncVal, seg.Addr, seg.ReaderAt)
-				if err != nil {
-					return err
-				}
-				for _, inlfn := range inlCalls {
-					newInlinedCall := InlinedCall{cu: cu, LowPC: fnEntry + uint64(inlfn.ParentPC)}
-					if fn, ok := inlFuncs[inlfn.Name]; ok {
-						fn.InlinedCalls = append(fn.InlinedCalls, newInlinedCall)
-						continue
-					}
-					inlFuncs[inlfn.Name] = &Function{
-						Name:  inlfn.Name,
-						Entry: 0, End: 0,
-						cu: cu,
-						InlinedCalls: []InlinedCall{
-							newInlinedCall,
-						},
-					}
-				}
-			}
-			fn := Function{Name: f.Name, Entry: fnEntry, End: f.End + image.StaticBase, cu: cu}
-			bi.Functions = append(bi.Functions, fn)
-		}
-		for i := range inlFuncs {
-			bi.Functions = append(bi.Functions, *inlFuncs[i])
-		}
-		sort.Sort(functionsDebugInfoByEntry(bi.Functions))
-		for f := range image.symTable.Files {
-			bi.Sources = append(bi.Sources, f)
-		}
-		sort.Strings(bi.Sources)
-		bi.Sources = uniq(bi.Sources)
 		return nil
 	}
 	debugInfoBytes, err := godwarf.GetDebugSectionMacho(exe, "info")
@@ -2125,6 +2019,132 @@ func (bi *BinaryInfo) macOSDebugFrameBugWorkaround() {
 			bi.frameEntries[i].Translate(delta)
 		}
 	}
+}
+
+// GO RUNTIME INFO ////////////////////////////////////////////////////////////
+
+// loadBinaryInfoGoRuntimeElf loads information from the Go runtime sections
+// of an ELF binary, it is only called when debug info has been stripped.
+func loadBinaryInfoGoRuntimeElf(bi *BinaryInfo, image *Image, path string, elfFile *elf.File) (err error) {
+	// This is a best-effort procedure, it can go wrong in unexpected ways, so
+	// recover all panics.
+	defer func() {
+		ierr := recover()
+		if ierr != nil {
+			err = fmt.Errorf("error loading binary info from Go runtime: %v", ierr)
+		}
+	}()
+
+	cu := &compileUnit{}
+	cu.image = image
+	symTable, symTabAddr, err := readPcLnTableElf(elfFile, path)
+	if err != nil {
+		return err
+	}
+	image.symTable = symTable
+	noPtrSectionData, err := elfFile.Section(".noptrdata").Data()
+	if err != nil {
+		return err
+	}
+	md, err := parseModuleData(noPtrSectionData, symTabAddr)
+	if err != nil {
+		return err
+	}
+	roDataAddr := elfFile.Section(".rodata").Addr
+	goFuncVal, err := findGoFuncVal(md, roDataAddr, bi.Arch.ptrSize)
+	if err != nil {
+		return err
+	}
+	prog := gosym.ProgContaining(elfFile, goFuncVal)
+	var progAddr uint64
+	var progReaderAt io.ReaderAt
+	if prog != nil {
+		progAddr = prog.Vaddr
+		progReaderAt = prog.ReaderAt
+	}
+	return loadBinaryInfoGoRuntimeCommon(bi, image, cu, goFuncVal, progAddr, progReaderAt)
+}
+
+// loadBinaryInfoGoRuntimeMacho loads information from the Go runtime sections
+// of an Macho-o binary, it is only called when debug info has been stripped.
+func loadBinaryInfoGoRuntimeMacho(bi *BinaryInfo, image *Image, path string, exe *macho.File) (err error) {
+	// This is a best-effort procedure, it can go wrong in unexpected ways, so
+	// recover all panics.
+	defer func() {
+		ierr := recover()
+		if ierr != nil {
+			err = fmt.Errorf("error loading binary info from Go runtime: %v", ierr)
+		}
+	}()
+
+	cu := &compileUnit{}
+	cu.image = image
+	symTable, symTabAddr, err := readPcLnTableMacho(exe, path)
+	if err != nil {
+		return err
+	}
+	image.symTable = symTable
+	noPtrSectionData, err := exe.Section("__noptrdata").Data()
+	if err != nil {
+		return err
+	}
+	md, err := parseModuleData(noPtrSectionData, symTabAddr)
+	if err != nil {
+		return err
+	}
+	roDataAddr := exe.Section("__rodata").Addr
+	goFuncVal, err := findGoFuncVal(md, roDataAddr, bi.Arch.ptrSize)
+	if err != nil {
+		return err
+	}
+	seg := gosym.SegmentContaining(exe, goFuncVal)
+	var segAddr uint64
+	var segReaderAt io.ReaderAt
+	if seg != nil {
+		segAddr = seg.Addr
+		segReaderAt = seg.ReaderAt
+	}
+	return loadBinaryInfoGoRuntimeCommon(bi, image, cu, goFuncVal, segAddr, segReaderAt)
+}
+
+func loadBinaryInfoGoRuntimeCommon(bi *BinaryInfo, image *Image, cu *compileUnit, goFuncVal uint64, goFuncSegAddr uint64, goFuncReader io.ReaderAt) error {
+	inlFuncs := make(map[string]*Function)
+	for _, f := range image.symTable.Funcs {
+		fnEntry := f.Entry + image.StaticBase
+		if goFuncReader != nil {
+			inlCalls, err := image.symTable.GetInlineTree(&f, goFuncVal, goFuncSegAddr, goFuncReader)
+			if err != nil {
+				return err
+			}
+			for _, inlfn := range inlCalls {
+				newInlinedCall := InlinedCall{cu: cu, LowPC: fnEntry + uint64(inlfn.ParentPC)}
+				if fn, ok := inlFuncs[inlfn.Name]; ok {
+					fn.InlinedCalls = append(fn.InlinedCalls, newInlinedCall)
+					continue
+				}
+				inlFuncs[inlfn.Name] = &Function{
+					Name:  inlfn.Name,
+					Entry: 0, End: 0,
+					cu: cu,
+					InlinedCalls: []InlinedCall{
+						newInlinedCall,
+					},
+				}
+			}
+		}
+		fn := Function{Name: f.Name, Entry: fnEntry, End: f.End + image.StaticBase, cu: cu}
+		bi.Functions = append(bi.Functions, fn)
+	}
+	for i := range inlFuncs {
+		bi.Functions = append(bi.Functions, *inlFuncs[i])
+	}
+	sort.Sort(functionsDebugInfoByEntry(bi.Functions))
+	for f := range image.symTable.Files {
+		bi.Sources = append(bi.Sources, f)
+	}
+	sort.Strings(bi.Sources)
+	bi.Sources = uniq(bi.Sources)
+	return nil
 }
 
 // Do not call this function directly it isn't able to deal correctly with package paths
