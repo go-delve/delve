@@ -359,7 +359,7 @@ func (ctx *compileCtx) compileTypeCastOrFuncCall(node *ast.CallExpr) error {
 		default:
 			return ctx.compileFunctionCall(node)
 		}
-	case *astIndexListExpr:
+	case *ast.IndexListExpr:
 		return ctx.compileTypeCast(node, nil)
 	default:
 		// All other expressions must be function calls
