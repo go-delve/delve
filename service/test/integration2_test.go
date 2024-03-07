@@ -799,19 +799,11 @@ func TestClientServer_infoLocals(t *testing.T) {
 }
 
 func matchFunctions(t *testing.T, funcs []string, expected []string, depth int) {
-	mismatch := false
-	var i int
-	for i = range funcs {
-		t.Logf("expected %s functions %s\n", expected[i], funcs[i])
+	for i := range funcs {
 		if funcs[i] != expected[i] {
-			mismatch = true
-			break
+			t.Fatalf("Function %s  not found in ListFunctions --follow-calls=%d output", expected[i], depth)
 		}
 	}
-	if mismatch {
-		t.Fatalf("Function %s  not found in ListFunctions --follow-calls=%d output", expected[i], depth)
-	}
-
 }
 
 func TestTraceFollowCallsCommand(t *testing.T) {
@@ -831,7 +823,7 @@ func TestTraceFollowCallsCommand(t *testing.T) {
 		depth = 4
 		functions, err = c.ListFunctions("main.callme", depth)
 		assertNoError(err, t, "ListFunctions()")
-		expected = []string{"main.callme", "main.callme2","main.callmed","main.callmee"}
+		expected = []string{"main.callme", "main.callme2", "main.callmed", "main.callmee"}
 		matchFunctions(t, functions, expected, depth)
 
 		depth = 5

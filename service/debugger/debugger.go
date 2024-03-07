@@ -1455,7 +1455,7 @@ func uniq(s []string) []string {
 }
 
 // Functions returns a list of functions in the target process.
-func (d *Debugger) Functions(filter string) ([]string, error) {
+func (d *Debugger) Functions(filter string, followCalls int) ([]string, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1469,7 +1469,15 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 	for t.Next() {
 		for _, f := range t.BinInfo().Functions {
 			if regex.MatchString(f.Name) {
-				funcs = append(funcs, f.Name)
+				if followCalls > 0 {
+					newfuncs, err := traverse(t, &f, 1, followCalls)
+					if err != nil {
+						return nil, fmt.Errorf("traverse failed with error %w", err)
+					}
+					funcs = append(funcs, newfuncs...)
+				} else {
+					funcs = append(funcs, f.Name)
+				}
 			}
 		}
 	}
@@ -1495,7 +1503,7 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, FollowCalls int)
 	funcs = append(funcs, f.Name)
 	text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
 	if err != nil {
-		return nil, fmt.Errorf("disassemble failed with error %s", err.Error())
+		return nil, fmt.Errorf("disassemble failed with error %w", err)
 	}
 	depth++
 	for _, instr := range text {
@@ -1506,52 +1514,26 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, FollowCalls int)
 			}
 			if depth <= FollowCalls {
 				children, err := traverse(t, cf, depth, FollowCalls)
-				funcs = append(funcs, children...)
 				if err != nil {
-					return nil, fmt.Errorf("disassemble failed with error %s", err.Error())
+					return nil, fmt.Errorf("traverse failed with error %w", err)
 				}
+				funcs = append(funcs, children...)
 			}
 		}
 	}
+	// The following code is needed to include defer function calls as they are invoked via funcname.func1 type
+	// naming, so check if funcname is a prefix in candidate function to include such functions
 	for _, fbinary := range t.BinInfo().Functions {
 		if strings.HasPrefix(fbinary.Name, f.Name) && fbinary.Name != f.Name {
 			children, err := traverse(t, &fbinary, depth, FollowCalls)
-			funcs = append(funcs, children...)
 			if err != nil {
-				return nil, fmt.Errorf("disassemble failed with error %s", err.Error())
+				return nil, fmt.Errorf("traverse failed with error %w", err)
 			}
+			funcs = append(funcs, children...)
 		}
 	}
 	return funcs, nil
 
-}
-
-// FunctionsDeep returns a list of functions and it's children upto required depth indicated by FollowCalls in the target process.
-func (d *Debugger) FunctionsDeep(filter string, FollowCalls int) ([]string, error) {
-	d.targetMutex.Lock()
-	defer d.targetMutex.Unlock()
-
-	regex, err := regexp.Compile(filter)
-	if err != nil {
-		return nil, fmt.Errorf("invalid filter argument: %s", err.Error())
-	}
-
-	funcs := []string{}
-	t := proc.ValidTargets{Group: d.target}
-	for t.Next() {
-		for _, f := range t.BinInfo().Functions {
-			if regex.MatchString(f.Name) {
-				newfuncs, err := traverse(t, &f, 1, FollowCalls)
-				funcs = append(funcs, newfuncs...)
-				if err != nil {
-					return nil, fmt.Errorf("traverse failed with error %s", err.Error())
-				}
-			}
-		}
-	}
-	sort.Strings(funcs)
-	funcs = uniq(funcs)
-	return funcs, nil
 }
 
 // Types returns all type information in the binary.
