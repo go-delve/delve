@@ -24,6 +24,7 @@ const (
 	VariablesSkipInlinedSubroutines
 	VariablesTrustDeclLine
 	VariablesNoDeclLineCheck
+	VariablesOnlyCaptured
 )
 
 // Variables returns a list of variables contained inside 'root'.

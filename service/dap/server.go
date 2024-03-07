@@ -2746,7 +2746,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 				variablesReference = maybeCreateVariableHandle(v)
 			}
 		}
-	case reflect.Struct:
+	case reflect.Struct, reflect.Func:
 		if v.Len > int64(len(v.Children)) { // Not fully loaded
 			if len(v.Children) == 0 { // Fully missing
 				value = reloadVariable(v, qualifiedNameOrExpr)
@@ -2771,7 +2771,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 			v.Children[1].Kind = reflect.Float64
 		}
 		fallthrough
-	default: // Complex, Scalar, Chan, Func
+	default: // Complex, Scalar, Chan
 		if len(v.Children) > 0 {
 			variablesReference = maybeCreateVariableHandle(v)
 		}

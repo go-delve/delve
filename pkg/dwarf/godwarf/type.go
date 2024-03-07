@@ -27,6 +27,7 @@ const (
 	AttrGoRuntimeType   dwarf.Attr = 0x2904
 	AttrGoPackageName   dwarf.Attr = 0x2905
 	AttrGoDictIndex     dwarf.Attr = 0x2906
+	AttrGoClosureOffset dwarf.Attr = 0x2907
 )
 
 // Basic type encodings -- the value for AttrEncoding in a TagBaseType Entry.
