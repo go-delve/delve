@@ -590,11 +590,7 @@ type ListFunctionsOut struct {
 func (s *RPCServer) ListFunctions(arg ListFunctionsIn, out *ListFunctionsOut) error {
 	var fns []string
 	var err error
-	if arg.FollowCalls > 0 {
-		fns, err = s.debugger.FunctionsDeep(arg.Filter, arg.FollowCalls)
-	} else {
-		fns, err = s.debugger.Functions(arg.Filter)
-	}
+	fns, err = s.debugger.Functions(arg.Filter, arg.FollowCalls)
 	if err != nil {
 		return err
 	}

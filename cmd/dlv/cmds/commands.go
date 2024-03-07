@@ -730,12 +730,6 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 					continue
 				}
 				for i := range addrs {
-					var stackdepth int
-					if traceFollowCalls > 0 {
-						stackdepth = 20
-					} else {
-						stackdepth = traceStackDepth
-					}
 					_, err = client.CreateBreakpoint(&api.Breakpoint{
 						Addr:             addrs[i],
 						TraceReturn:      true,

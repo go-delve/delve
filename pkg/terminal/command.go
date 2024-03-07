@@ -2861,6 +2861,7 @@ func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 		}
 	}
 	if bpi.Stacktrace != nil {
+		// TraceFollowCalls and Stacktrace are mutually exclusive as they pollute each others outputs
 		if th.Breakpoint.TraceFollowCalls <= 0 {
 			tracepointnl()
 			fmt.Fprintf(t.stdout, "\tStack:\n")
@@ -2873,72 +2874,68 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 	if t.conf.TraceShowTimestamp {
 		fmt.Fprintf(t.stdout, "%s ", time.Now().Format(time.RFC3339Nano))
 	}
-	// Simple Trace; no stack required to calculate depth of functions
-	if th.Breakpoint.TraceFollowCalls <= 0 {
-		if th.Breakpoint.Tracepoint {
-			fmt.Fprintf(t.stdout, "> goroutine(%d): %s%s(%s)\n", th.GoroutineID, bpname, fn.Name(), args)
-			printBreakpointInfo(t, th, !hasReturnValue)
-		}
-		if th.Breakpoint.TraceReturn {
-			retVals := make([]string, 0, len(th.ReturnValues))
-			for _, v := range th.ReturnValues {
-				retVals = append(retVals, v.SinglelineString())
-			}
-			fmt.Fprintf(t.stdout, ">> goroutine(%d): => (%s)\n", th.GoroutineID, strings.Join(retVals, ","))
-		}
-		if th.Breakpoint.TraceReturn || !hasReturnValue {
-			if th.BreakpointInfo != nil && th.BreakpointInfo.Stacktrace != nil {
-				fmt.Fprintf(t.stdout, "\tStack:\n")
-				printStack(t, t.stdout, th.BreakpointInfo.Stacktrace, "\t\t", false)
-			}
-		}
-		return
-	}
 
-	// Trace Follow Calls; stack is required to calculate depth of functions
-	wantindex := -1
-	rootindex := -1
-	if th.BreakpointInfo == nil || th.BreakpointInfo.Stacktrace == nil {
-		return
-	}
-
-	stack := th.BreakpointInfo.Stacktrace
-	for i := range stack {
-		curi := len(stack) - 1 - i
-		if stack[curi].Function.Name() == th.Breakpoint.RootFuncName {
-			if rootindex == -1 {
-				rootindex = curi
-			}
+	var sdepth, wantindex, rootindex int
+	depthPrefix := ""
+	if th.Breakpoint.TraceFollowCalls > 0 {
+		// Trace Follow Calls; stack is required to calculate depth of functions
+		wantindex = -1
+		rootindex = -1
+		if th.BreakpointInfo == nil || th.BreakpointInfo.Stacktrace == nil {
+			return
 		}
 
-		if fn.Name() == stack[curi].Function.Name() {
-			wantindex = curi
+		stack := th.BreakpointInfo.Stacktrace
+		for i := range stack {
+			curi := len(stack) - 1 - i
+			if stack[curi].Function.Name() == th.Breakpoint.RootFuncName {
+				if rootindex == -1 {
+					rootindex = curi
+				}
+			}
+
+			if fn.Name() == stack[curi].Function.Name() {
+				wantindex = curi
+			}
 		}
+		// compute relative depth from root function passed as regexp in follow-calls in the stack
+		sdepth = rootindex - wantindex + 1
 	}
-	// compute relative depth from root function passed as regexp in follow-calls in the stack
-	sdepth := rootindex - wantindex + 1
 
 	if th.Breakpoint.Tracepoint {
-		if sdepth <= th.Breakpoint.TraceFollowCalls && wantindex <= rootindex && rootindex != -1 {
-			for i := 1; i < sdepth; i++ {
-				// Print indentation according to Trace Depth of the goroutine
-				fmt.Fprintf(t.stdout, " ")
+		if th.Breakpoint.TraceFollowCalls > 0 {
+			if sdepth <= th.Breakpoint.TraceFollowCalls && wantindex <= rootindex && rootindex != -1 {
+				for i := 1; i < sdepth; i++ {
+					// Print indentation according to Trace Depth of the goroutine
+					//	fmt.Fprintf(t.stdout, " ")
+					depthPrefix += " "
+				}
+				depthPrefix += fmt.Sprintf("%d", sdepth)
+				fmt.Fprintf(t.stdout, "%s> goroutine(%d): %s%s(%s)\n", depthPrefix, th.GoroutineID, bpname, fn.Name(), args)
 			}
-			fmt.Fprintf(t.stdout, "%d> goroutine(%d): %s%s(%s)\n", sdepth, th.GoroutineID, bpname, fn.Name(), args)
+		} else {
+			fmt.Fprintf(t.stdout, "%s> goroutine(%d): %s%s(%s)\n", depthPrefix, th.GoroutineID, bpname, fn.Name(), args)
 		}
 		printBreakpointInfo(t, th, !hasReturnValue)
 	}
+	depthPrefix = ""
 	if th.Breakpoint.TraceReturn {
 		retVals := make([]string, 0, len(th.ReturnValues))
 		for _, v := range th.ReturnValues {
 			retVals = append(retVals, v.SinglelineString())
 		}
-		if sdepth <= th.Breakpoint.TraceFollowCalls && wantindex <= rootindex && rootindex != -1 {
-			for i := 1; i < sdepth; i++ {
-				// Print return indentation according to Trace Depth of the goroutine
-				fmt.Fprintf(t.stdout, " ")
+		if th.Breakpoint.TraceFollowCalls > 0 {
+			if sdepth <= th.Breakpoint.TraceFollowCalls && wantindex <= rootindex && rootindex != -1 {
+				for i := 1; i < sdepth; i++ {
+					// Print return indentation according to Trace Depth of the goroutine
+					//	fmt.Fprintf(t.stdout, " ")
+					depthPrefix += " "
+				}
+				depthPrefix += fmt.Sprintf("%d", sdepth)
+				fmt.Fprintf(t.stdout, "%s>> goroutine(%d):(%s) => (%s)\n", depthPrefix, th.GoroutineID, fn.Name(), strings.Join(retVals, ","))
 			}
-			fmt.Fprintf(t.stdout, "%d>> goroutine(%d):(%s) => (%s)\n", sdepth, th.GoroutineID,fn.Name(), strings.Join(retVals, ","))
+		} else {
+			fmt.Fprintf(t.stdout, "%s>> goroutine(%d): => (%s)\n", depthPrefix, th.GoroutineID, strings.Join(retVals, ","))
 		}
 	}
 	if th.Breakpoint.TraceFollowCalls > 0 {
