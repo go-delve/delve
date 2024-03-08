@@ -703,10 +703,10 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 			} else {
 				// Fall back to breakpoint based tracing if we get an error.
 				var stackdepth int
-				if traceFollowCalls > 0 {
+				// Default size of stackdepth to trace function calls and descendants=20
+				stackdepth = traceStackDepth
+				if traceFollowCalls > 0 && stackdepth == 0 {
 					stackdepth = 20
-				} else {
-					stackdepth = traceStackDepth
 				}
 				_, err = client.CreateBreakpoint(&api.Breakpoint{
 					FunctionName:     funcs[i],
