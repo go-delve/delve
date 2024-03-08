@@ -444,6 +444,7 @@ func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
 		for _, instruction := range instructions {
 			if instruction.IsRet() {
 				addrs = append(addrs, instruction.Loc.PC)
+				//fmt.Printf("appending PC %x to return breakpoint list\n",instruction.Loc.PC)
 			}
 		}
 		addrs = append(addrs, proc.FindDeferReturnCalls(instructions)...)
@@ -916,6 +917,8 @@ func copyLogicalBreakpointInfo(lbp *proc.LogicalBreakpoint, requested *api.Break
 	lbp.LoadArgs = api.LoadConfigToProc(requested.LoadArgs)
 	lbp.LoadLocals = api.LoadConfigToProc(requested.LoadLocals)
 	lbp.UserData = requested.UserData
+	lbp.RootFuncName = requested.RootFuncName
+	lbp.TraceFollowCalls = requested.TraceFollowCalls
 	lbp.Cond = nil
 	if requested.Cond != "" {
 		var err error
@@ -1453,7 +1456,7 @@ func uniq(s []string) []string {
 }
 
 // Functions returns a list of functions in the target process.
-func (d *Debugger) Functions(filter string) ([]string, error) {
+func (d *Debugger) Functions(filter string, followCalls int) ([]string, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1467,13 +1470,71 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 	for t.Next() {
 		for _, f := range t.BinInfo().Functions {
 			if regex.MatchString(f.Name) {
-				funcs = append(funcs, f.Name)
+				if followCalls > 0 {
+					newfuncs, err := traverse(t, &f, 1, followCalls)
+					if err != nil {
+						return nil, fmt.Errorf("traverse failed with error %w", err)
+					}
+					funcs = append(funcs, newfuncs...)
+				} else {
+					funcs = append(funcs, f.Name)
+				}
 			}
 		}
 	}
 	sort.Strings(funcs)
 	funcs = uniq(funcs)
 	return funcs, nil
+}
+
+func traverse(t proc.ValidTargets, f *proc.Function, depth int, FollowCalls int) ([]string, error) {
+
+	idx := strings.Index(f.Name, "runtime.")
+	idx2 := strings.Index(f.Name, "runtime.defer")
+	if idx != -1 && idx2 == -1 {
+		// Except defer functions do not traverse runtime.* functions
+		return nil, nil
+	}
+
+	if depth > FollowCalls {
+		// If we already reached desired depth, return
+		return nil, nil
+	}
+	funcs := []string{}
+	funcs = append(funcs, f.Name)
+	text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
+	if err != nil {
+		return nil, fmt.Errorf("disassemble failed with error %w", err)
+	}
+	depth++
+	for _, instr := range text {
+		if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
+			cf := instr.DestLoc.Fn
+			if cf.Name == f.Name {
+				continue
+			}
+			if depth <= FollowCalls {
+				children, err := traverse(t, cf, depth, FollowCalls)
+				if err != nil {
+					return nil, fmt.Errorf("traverse failed with error %w", err)
+				}
+				funcs = append(funcs, children...)
+			}
+		}
+	}
+	// The following code is needed to include defer function calls as they are invoked via funcname.func1 type
+	// naming, so check if funcname is a prefix in candidate function to include such functions
+	for _, fbinary := range t.BinInfo().Functions {
+		if strings.HasPrefix(fbinary.Name, f.Name) && fbinary.Name != f.Name {
+			children, err := traverse(t, &fbinary, depth, FollowCalls)
+			if err != nil {
+				return nil, fmt.Errorf("traverse failed with error %w", err)
+			}
+			funcs = append(funcs, children...)
+		}
+	}
+	return funcs, nil
+
 }
 
 // Types returns all type information in the binary.
