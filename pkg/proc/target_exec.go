@@ -1042,18 +1042,19 @@ func setStepIntoNewProcBreakpoint(p *Target, sameGCond ast.Expr) {
 		logflags.DebuggerLogger().Error("could not find " + runtimeRunqput + " call in " + runtimeNewprocFunc1)
 		return
 	}
-	var pcs []uint64
+	var pc uint64
 	for _, pcstmt := range rnf[0].cu.lineInfo.LineToPCs(callfile, callline) {
 		if pcstmt.Stmt {
-			pcs = append(pcs, pcstmt.PC)
+			pc = pcstmt.PC
+			break
 		}
 	}
-	if len(pcs) < 1 {
-		logflags.DebuggerLogger().Errorf("could not set newproc breakpoint: wrong number of locations for "+runtimeRunqput+" call (%d)", len(pcs))
+	if pc == 0 {
+		logflags.DebuggerLogger().Errorf("could not set newproc breakpoint: location not found for " + runtimeRunqput + " call")
 		return
 	}
 
-	bp, err := p.SetBreakpoint(0, pcs[0], StepIntoNewProcBreakpoint, sameGCond)
+	bp, err := p.SetBreakpoint(0, pc, StepIntoNewProcBreakpoint, sameGCond)
 	if err != nil {
 		logflags.DebuggerLogger().Errorf("could not set StepIntoNewProcBreakpoint: %v", err)
 		return
