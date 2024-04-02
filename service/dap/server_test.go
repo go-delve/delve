@@ -6134,7 +6134,7 @@ func TestSetVariable(t *testing.T) {
 
 					// Args of foobar(baz string, bar FooBar)
 					checkVarExact(t, locals, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
-					tester.failSetVariable(localsScope, "bar", `main.FooBar {Baz: 42, Bur: "ipsum"}`, "*ast.CompositeLit not implemented")
+					tester.failSetVariable(localsScope, "bar", `main.FooBar {Baz: 42, Bur: "ipsum"}`, "can not set variables of type struct")
 
 					// Nested field.
 					barRef := checkVarExact(t, locals, 1, "bar", "bar", `main.FooBar {Baz: 10, Bur: "lorem"}`, "main.FooBar", hasChildren)
@@ -6160,7 +6160,7 @@ func TestSetVariable(t *testing.T) {
 					tester.expectSetVariable(a4Ref, "[1]", "-7")
 					tester.evaluate("a4", "[2]int [1,-7]", hasChildren)
 
-					tester.failSetVariable(localsScope, "a4", "[2]int{3, 4}", "not implemented")
+					tester.failSetVariable(localsScope, "a4", "[2]int{3, 4}", "composite literals of [2]int not supported")
 
 					// slice of int
 					a5Ref := checkVarExact(t, locals, -1, "a5", "a5", "[]int len: 5, cap: 5, [1,2,3,4,5]", "[]int", hasChildren)
@@ -6258,7 +6258,7 @@ func TestSetVariable(t *testing.T) {
 					tester.evaluate(elem1.EvaluateName, "main.astruct {A: -9999, B: 10000}", hasChildren)
 
 					// map: struct -> int
-					m3Ref := checkVarExact(t, locals, -1, "m3", "m3", "map[main.astruct]int [{A: 1, B: 1}: 42, {A: 2, B: 2}: 43, ]", "map[main.astruct]int", hasChildren)
+					m3Ref := checkVarExact(t, locals, -1, "m3", "m3", "map[main.astruct]int [{A: 1, B: 1}: 42, {A: 2, B: 2}: 43, {A: 1, B: 0}: 44, {A: 0, B: 1}: 45, {A: 0, B: 0}: 46, ]", "map[main.astruct]int", hasChildren)
 					tester.expectSetVariable(m3Ref, "main.astruct {A: 1, B: 1}", "8888")
 					// note: updating keys is possible, but let's not promise anything.
 					tester.evaluateRegex("m3", `.*\[\{A: 1, B: 1\}: 8888,.*`, hasChildren)

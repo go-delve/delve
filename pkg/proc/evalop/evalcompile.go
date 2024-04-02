@@ -10,6 +10,7 @@ import (
 	"go/printer"
 	"go/scanner"
 	"go/token"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -289,6 +290,9 @@ func (ctx *compileCtx) compileAST(t ast.Expr) error {
 
 	case *ast.BasicLit:
 		ctx.pushOp(&PushConst{constant.MakeFromLiteral(node.Value, node.Kind, 0)})
+
+	case *ast.CompositeLit:
+		return ctx.compileCompositeLit(node)
 
 	default:
 		return fmt.Errorf("expression %T not implemented", t)
@@ -570,6 +574,126 @@ func (ctx *compileCtx) compileFunctionCall(node *ast.CallExpr) error {
 	}
 
 	ctx.pushOp(&CallInjectionComplete{id: id})
+
+	return nil
+}
+
+func (ctx *compileCtx) compileCompositeLit(node *ast.CompositeLit) error {
+	typ, err := ctx.FindTypeExpr(node.Type)
+	if err != nil {
+		return err
+	}
+
+	switch typ := typ.(type) {
+	case *godwarf.StructType:
+		return ctx.compileStructLit(typ, node.Elts)
+	default:
+		return fmt.Errorf("composite literals of %v not supported", typ)
+	}
+}
+
+func (ctx *compileCtx) compileStructLit(typ *godwarf.StructType, elements []ast.Expr) error {
+	if len(elements) > len(typ.Field) {
+		return fmt.Errorf("wrong number of fields for %v: want %v, got %v", typ, len(typ.Field), len(elements))
+	}
+
+	fields := map[string]int{}
+	for i, f := range typ.Field {
+		fields[f.Name] = i
+	}
+
+	var isNamed, isPos bool
+	values := make([]ast.Expr, len(typ.Field))
+	for i, el := range elements {
+		kv, ok := el.(*ast.KeyValueExpr)
+		if ok {
+			isNamed = true
+		} else {
+			isPos = true
+		}
+		if isNamed && isPos {
+			return errors.New("cannot mix positional and named values in a composite literal")
+		}
+
+		if isPos {
+			values[i] = el
+			continue
+		}
+
+		ident, ok := kv.Key.(*ast.Ident)
+		if !ok {
+			return fmt.Errorf("expression %T not supported as a composite literal key for a struct type", kv.Key)
+		}
+
+		i, ok := fields[ident.Name]
+		if !ok {
+			return fmt.Errorf("%s is not a field of %v", ident.Name, typ)
+		}
+		if values[i] != nil {
+			return fmt.Errorf("%s has already been set", ident.Name)
+		}
+		values[i] = kv.Value
+	}
+	if isPos && len(elements) < len(typ.Field) {
+		return fmt.Errorf("wrong number of fields for %v: want %v, got %v", typ, len(typ.Field), len(elements))
+	}
+
+	// push values
+	for i, v := range values {
+		if v != nil {
+			err := ctx.compileAST(v)
+			if err != nil {
+				return err
+			}
+			continue
+		}
+
+		// Add the default value for the field
+		switch typ.Field[i].Type.Common().ReflectKind {
+		case reflect.Bool:
+			ctx.pushOp(&PushConst{constant.MakeBool(false)})
+
+		case reflect.Int,
+			reflect.Int8,
+			reflect.Int16,
+			reflect.Int32,
+			reflect.Int64,
+			reflect.Uint,
+			reflect.Uint8,
+			reflect.Uint16,
+			reflect.Uint32,
+			reflect.Uint64,
+			reflect.Uintptr,
+			reflect.Float32,
+			reflect.Float64,
+			reflect.Complex64,
+			reflect.Complex128:
+			ctx.pushOp(&PushConst{constant.MakeInt64(0)})
+
+		case reflect.Chan,
+			reflect.Func,
+			reflect.Interface,
+			reflect.Map,
+			reflect.Pointer,
+			reflect.Slice:
+			ctx.pushOp(&PushNil{})
+
+		case reflect.String:
+			ctx.pushOp(&PushConst{constant.MakeString("")})
+
+		case reflect.Struct:
+			err := ctx.compileStructLit(typ.Field[i].Type.(*godwarf.StructType), nil)
+			if err != nil {
+				return err
+			}
+
+		default:
+			// TODO reflect.UnsafePointer, reflect.Array
+			return fmt.Errorf("unsupported struct literal field type %v", typ.Field[i])
+		}
+	}
+
+	ctx.pushOp(&CompositeLit{typ, len(values)})
 
 	return nil
 }

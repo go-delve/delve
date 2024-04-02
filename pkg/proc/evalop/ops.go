@@ -251,3 +251,10 @@ type SetValue struct {
 }
 
 func (*SetValue) depthCheck() (npop, npush int) { return 2, 0 }
+
+type CompositeLit struct {
+	DwarfType godwarf.Type
+	Count     int
+}
+
+func (v *CompositeLit) depthCheck() (npop, npush int) { return v.Count, 1 }

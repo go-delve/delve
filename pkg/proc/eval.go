@@ -1047,6 +1047,9 @@ func (stack *evalStack) executeOp() {
 	case *evalop.TypeAssert:
 		scope.evalTypeAssert(op, stack)
 
+	case *evalop.CompositeLit:
+		scope.evalCompositeLit(op, stack)
+
 	case *evalop.PointerDeref:
 		scope.evalPointerDeref(op, stack)
 
@@ -1780,6 +1783,26 @@ func (scope *EvalScope) evalStructSelector(op *evalop.Select, stack *evalStack) 
 		return
 	}
 	stack.pushErr(xv.structMember(op.Name))
+}
+
+func (scope *EvalScope) evalCompositeLit(op *evalop.CompositeLit, stack *evalStack) {
+	typ, ok := op.DwarfType.(*godwarf.StructType)
+	if !ok {
+		stack.err = fmt.Errorf("composite literals of %v not supported", op.DwarfType)
+		return
+	}
+
+	val := newVariable("", 0x0, op.DwarfType, scope.BinInfo, scope.Mem)
+	val.Len = int64(op.Count)
+	val.Children = make([]Variable, op.Count)
+	for i := 0; i < op.Count; i++ {
+		j := op.Count - i - 1
+		value := stack.pop()
+		value.Name = typ.Field[j].Name
+		val.Children[j] = *value
+	}
+
+	stack.push(val)
 }
 
 // Evaluates expressions <subexpr>.(<type>)

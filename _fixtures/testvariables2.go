@@ -250,7 +250,7 @@ func main() {
 	}
 	var mnil map[string]astruct = nil
 	m2 := map[int]*astruct{1: &astruct{10, 11}}
-	m3 := map[astruct]int{{1, 1}: 42, {2, 2}: 43}
+	m3 := map[astruct]int{{1, 1}: 42, {2, 2}: 43, {1, 0}: 44, {0, 1}: 45, {}: 46}
 	m4 := map[astruct]astruct{{1, 1}: {11, 11}, {2, 2}: {22, 22}}
 	upnil := unsafe.Pointer(nil)
 	up1 := unsafe.Pointer(&i1)

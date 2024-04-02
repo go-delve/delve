@@ -752,6 +752,18 @@ func getEvalExpressionTestCases() []varTest {
 		{"string(byteslice[0])", false, `"t"`, `"t"`, "string", nil},
 		{"string(runeslice[0])", false, `"t"`, `"t"`, "string", nil},
 
+		// composite literals
+		{"main.astruct{1, 2}", false, "main.astruct {A: 1, B: 2}", "main.astruct {A: 1, B: 2}", "main.astruct", nil},
+		{"main.astruct{A: 1, B: 2}", false, "main.astruct {A: 1, B: 2}", "main.astruct {A: 1, B: 2}", "main.astruct", nil},
+		{"main.astruct{A: 1, 2}", false, "", "", "", fmt.Errorf("cannot mix positional and named values in a composite literal")},
+		{"main.astruct{A: 1}", false, "main.astruct {A: 1, B: 0}", "main.astruct {A: 1, B: 0}", "main.astruct", nil},
+		{"main.astruct{2}", false, "", "", "", fmt.Errorf("wrong number of fields for struct main.astruct: want 2, got 1")},
+		{"main.astruct{1, 2, 3}", false, "", "", "", fmt.Errorf("wrong number of fields for struct main.astruct: want 2, got 3")},
+		{"m3[main.astruct{A: 1, B: 1}]", false, "42", "42", "int", nil},
+		{"m3[main.astruct{A: 1}]", false, "44", "44", "int", nil},
+		{"m3[main.astruct{B: 1}]", false, "45", "45", "int", nil},
+		{"m3[main.astruct{}]", false, "46", "46", "int", nil},
+
 		// misc
 		{"i1", true, "1", "1", "int", nil},
 		{"mainMenu", true, `main.Menu len: 3, cap: 3, [{Name: "home", Route: "/", Active: 1},{Name: "About", Route: "/about", Active: 1},{Name: "Login", Route: "/login", Active: 1}]`, `main.Menu len: 3, cap: 3, [...]`, "main.Menu", nil},
