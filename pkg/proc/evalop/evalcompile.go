@@ -591,6 +591,8 @@ func (ctx *compileCtx) compileCompositeLit(node *ast.CompositeLit) error {
 		return ctx.compileArrayOrSliceLit(typ, typ.Type, typ.Count, node.Elts)
 	case *godwarf.SliceType:
 		return ctx.compileArrayOrSliceLit(typ, typ.ElemType, -1, node.Elts)
+	case *godwarf.MapType:
+		return ctx.compileMapLit(typ, node.Elts)
 	default:
 		return fmt.Errorf("composite literals of %v not supported", typ)
 	}
@@ -716,6 +718,30 @@ func (ctx *compileCtx) compileArrayOrSliceLit(typ, elTyp godwarf.Type, count int
 	}
 
 	ctx.pushOp(&CompositeLit{typ, len(values)})
+
+	return nil
+}
+
+func (ctx *compileCtx) compileMapLit(typ *godwarf.MapType, elements []ast.Expr) error {
+	for _, el := range elements {
+		kv, ok := el.(*ast.KeyValueExpr)
+		if !ok {
+			// should not happen
+			panic(fmt.Errorf("map literal contains a %T!?", el))
+		}
+
+		// parse the key and value
+		err := ctx.compileAST(kv.Key)
+		if err != nil {
+			return err
+		}
+		err = ctx.compileAST(kv.Value)
+		if err != nil {
+			return err
+		}
+	}
+
+	ctx.pushOp(&CompositeLit{typ, len(elements) * 2})
 
 	return nil
 }

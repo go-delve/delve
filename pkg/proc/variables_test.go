@@ -774,6 +774,8 @@ func getEvalExpressionTestCases() []varTest {
 		{"[]int{0: 1, 2}", false, "[]int len: 2, cap: 2, [1,2]", "[]int len: 2, cap: 2, [1,2]", "[]int", nil},
 		{"[]int{3: 1, 2}", false, "[]int len: 5, cap: 5, [0,0,0,1,2]", "[]int len: 5, cap: 5, [0,0,0,1,2]", "[]int", nil},
 
+		{"map[int]int{1: 2}", false, "map[int]int [1: 2, ]", "map[int]int [1: 2, ]", "map[int]int", nil},
+
 		// misc
 		{"i1", true, "1", "1", "int", nil},
 		{"mainMenu", true, `main.Menu len: 3, cap: 3, [{Name: "home", Route: "/", Active: 1},{Name: "About", Route: "/about", Active: 1},{Name: "Login", Route: "/login", Active: 1}]`, `main.Menu len: 3, cap: 3, [...]`, "main.Menu", nil},

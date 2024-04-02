@@ -1787,28 +1787,33 @@ func (scope *EvalScope) evalStructSelector(op *evalop.Select, stack *evalStack) 
 
 func (scope *EvalScope) evalCompositeLit(op *evalop.CompositeLit, stack *evalStack) {
 	// TODO Validate types of children
+
 	val := newVariable("", 0x0, op.DwarfType, scope.BinInfo, scope.Mem)
+	val.Len = int64(op.Count)
+	val.Cap = int64(op.Count)
+	val.Children = make([]Variable, op.Count)
+
+	// in reverse order, since it's a LIFO stack
+	for i := 0; i < op.Count; i++ {
+		j := op.Count - i - 1
+		val.Children[j] = *stack.pop()
+	}
 
 	switch typ := op.DwarfType.(type) {
 	case *godwarf.StructType:
-		val.Len = int64(op.Count)
-		val.Children = make([]Variable, op.Count)
-		for i := 0; i < op.Count; i++ {
-			j := op.Count - i - 1
-			value := stack.pop()
-			value.Name = typ.Field[j].Name
-			val.Children[j] = *value
+		// apply field names
+		for i := range val.Children {
+			val.Children[i].Name = typ.Field[i].Name
 		}
+
+	case *godwarf.MapType:
+		// adjust the length/cap
+		val.Len /= 2
+		val.Cap /= 2
 
 	case *godwarf.ArrayType,
 		*godwarf.SliceType:
-		val.Len = int64(op.Count)
-		val.Cap = int64(op.Count)
-		val.Children = make([]Variable, op.Count)
-		for i := 0; i < op.Count; i++ {
-			j := op.Count - i - 1
-			val.Children[j] = *stack.pop()
-		}
+		// nothing to do here
 
 	default:
 		stack.err = fmt.Errorf("composite literals of %v not supported", op.DwarfType)
