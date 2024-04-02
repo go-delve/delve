@@ -587,16 +587,16 @@ func (ctx *compileCtx) compileCompositeLit(node *ast.CompositeLit) error {
 	switch typ := typ.(type) {
 	case *godwarf.StructType:
 		return ctx.compileStructLit(typ, node.Elts)
+	case *godwarf.ArrayType:
+		return ctx.compileArrayOrSliceLit(typ, typ.Type, typ.Count, node.Elts)
+	case *godwarf.SliceType:
+		return ctx.compileArrayOrSliceLit(typ, typ.ElemType, -1, node.Elts)
 	default:
 		return fmt.Errorf("composite literals of %v not supported", typ)
 	}
 }
 
 func (ctx *compileCtx) compileStructLit(typ *godwarf.StructType, elements []ast.Expr) error {
-	if len(elements) > len(typ.Field) {
-		return fmt.Errorf("wrong number of fields for %v: want %v, got %v", typ, len(typ.Field), len(elements))
-	}
-
 	fields := map[string]int{}
 	for i, f := range typ.Field {
 		fields[f.Name] = i
@@ -616,6 +616,9 @@ func (ctx *compileCtx) compileStructLit(typ *godwarf.StructType, elements []ast.
 		}
 
 		if isPos {
+			if i >= len(typ.Field) {
+				return fmt.Errorf("too many values for %v: want %v, got %v", typ, len(typ.Field), len(elements))
+			}
 			values[i] = el
 			continue
 		}
@@ -630,12 +633,12 @@ func (ctx *compileCtx) compileStructLit(typ *godwarf.StructType, elements []ast.
 			return fmt.Errorf("%s is not a field of %v", ident.Name, typ)
 		}
 		if values[i] != nil {
-			return fmt.Errorf("%s has already been set", ident.Name)
+			return fmt.Errorf("duplicate field %s in struct literal", ident.Name)
 		}
 		values[i] = kv.Value
 	}
 	if isPos && len(elements) < len(typ.Field) {
-		return fmt.Errorf("wrong number of fields for %v: want %v, got %v", typ, len(typ.Field), len(elements))
+		return fmt.Errorf("too few values for %v: want %v, got %v", typ, len(typ.Field), len(elements))
 	}
 
 	// push values
@@ -648,54 +651,120 @@ func (ctx *compileCtx) compileStructLit(typ *godwarf.StructType, elements []ast.
 			continue
 		}
 
-		// Add the default value for the field
-		switch typ.Field[i].Type.Common().ReflectKind {
-		case reflect.Bool:
-			ctx.pushOp(&PushConst{constant.MakeBool(false)})
-
-		case reflect.Int,
-			reflect.Int8,
-			reflect.Int16,
-			reflect.Int32,
-			reflect.Int64,
-			reflect.Uint,
-			reflect.Uint8,
-			reflect.Uint16,
-			reflect.Uint32,
-			reflect.Uint64,
-			reflect.Uintptr,
-			reflect.Float32,
-			reflect.Float64,
-			reflect.Complex64,
-			reflect.Complex128:
-			ctx.pushOp(&PushConst{constant.MakeInt64(0)})
-
-		case reflect.Chan,
-			reflect.Func,
-			reflect.Interface,
-			reflect.Map,
-			reflect.Pointer,
-			reflect.Slice:
-			ctx.pushOp(&PushNil{})
-
-		case reflect.String:
-			ctx.pushOp(&PushConst{constant.MakeString("")})
-
-		case reflect.Struct:
-			err := ctx.compileStructLit(typ.Field[i].Type.(*godwarf.StructType), nil)
-			if err != nil {
-				return err
-			}
-
-		default:
-			// TODO reflect.UnsafePointer, reflect.Array
-			return fmt.Errorf("unsupported struct literal field type %v", typ.Field[i])
+		// add the default value for the field
+		err := ctx.pushZero(typ.Field[i].Type)
+		if err != nil {
+			return err
 		}
 	}
 
 	ctx.pushOp(&CompositeLit{typ, len(values)})
 
 	return nil
+}
+
+func (ctx *compileCtx) compileArrayOrSliceLit(typ, elTyp godwarf.Type, count int64, elements []ast.Expr) error {
+	var values []ast.Expr
+	if count >= 0 {
+		values = make([]ast.Expr, count)
+	}
+
+	i := -1
+	for _, el := range elements {
+		i++
+		if kv, ok := el.(*ast.KeyValueExpr); ok {
+			lit, ok := kv.Key.(*ast.BasicLit)
+			if !ok {
+				return fmt.Errorf("unsupported non-constant index for array or slice literal")
+			}
+			cv := constant.MakeFromLiteral(lit.Value, lit.Kind, 0)
+			j, ok := constant.Int64Val(cv)
+			if !ok {
+				return fmt.Errorf("cannot use a %v as an index for a array or slice literal", cv.Kind())
+			}
+			i = int(j)
+			el = kv.Value
+		}
+
+		if count >= 0 && i >= int(count) {
+			return fmt.Errorf("index %d out of bounds for array or slice literal", i)
+		} else if len(values) <= i {
+			values = append(values, make([]ast.Expr, i-len(values)+1)...)
+		}
+
+		if values[i] != nil {
+			return fmt.Errorf("duplicate index %d in array or slice literal", i)
+		}
+		values[i] = el
+	}
+
+	// push values
+	for _, v := range values {
+		if v != nil {
+			err := ctx.compileAST(v)
+			if err != nil {
+				return err
+			}
+			continue
+		}
+
+		// add the default value for the field
+		err := ctx.pushZero(elTyp)
+		if err != nil {
+			return err
+		}
+	}
+
+	ctx.pushOp(&CompositeLit{typ, len(values)})
+
+	return nil
+}
+
+func (ctx *compileCtx) pushZero(typ godwarf.Type) error {
+	// add the default value for the field
+	switch typ.Common().ReflectKind {
+	case reflect.Bool:
+		ctx.pushOp(&PushConst{constant.MakeBool(false)})
+		return nil
+
+	case reflect.Int,
+		reflect.Int8,
+		reflect.Int16,
+		reflect.Int32,
+		reflect.Int64,
+		reflect.Uint,
+		reflect.Uint8,
+		reflect.Uint16,
+		reflect.Uint32,
+		reflect.Uint64,
+		reflect.Uintptr,
+		reflect.Float32,
+		reflect.Float64,
+		reflect.Complex64,
+		reflect.Complex128:
+		ctx.pushOp(&PushConst{constant.MakeInt64(0)})
+		return nil
+
+	case reflect.Chan,
+		reflect.Func,
+		reflect.Interface,
+		reflect.Map,
+		reflect.Pointer,
+		reflect.Slice:
+		ctx.pushOp(&PushNil{})
+		return nil
+
+	case reflect.String:
+		ctx.pushOp(&PushConst{constant.MakeString("")})
+		return nil
+
+	case reflect.Struct:
+		return ctx.compileStructLit(typ.(*godwarf.StructType), nil)
+
+	default:
+		// TODO reflect.UnsafePointer, reflect.Array
+		return fmt.Errorf("unsupported struct literal field type %v", typ)
+	}
 }
 
 func Listing(depth []int, ops []Op) string {

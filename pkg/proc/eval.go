@@ -1786,20 +1786,33 @@ func (scope *EvalScope) evalStructSelector(op *evalop.Select, stack *evalStack) 
 }
 
 func (scope *EvalScope) evalCompositeLit(op *evalop.CompositeLit, stack *evalStack) {
-	typ, ok := op.DwarfType.(*godwarf.StructType)
-	if !ok {
+	// TODO Validate types of children
+	val := newVariable("", 0x0, op.DwarfType, scope.BinInfo, scope.Mem)
+
+	switch typ := op.DwarfType.(type) {
+	case *godwarf.StructType:
+		val.Len = int64(op.Count)
+		val.Children = make([]Variable, op.Count)
+		for i := 0; i < op.Count; i++ {
+			j := op.Count - i - 1
+			value := stack.pop()
+			value.Name = typ.Field[j].Name
+			val.Children[j] = *value
+		}
+
+	case *godwarf.ArrayType,
+		*godwarf.SliceType:
+		val.Len = int64(op.Count)
+		val.Cap = int64(op.Count)
+		val.Children = make([]Variable, op.Count)
+		for i := 0; i < op.Count; i++ {
+			j := op.Count - i - 1
+			val.Children[j] = *stack.pop()
+		}
+
+	default:
 		stack.err = fmt.Errorf("composite literals of %v not supported", op.DwarfType)
 		return
-	}
-
-	val := newVariable("", 0x0, op.DwarfType, scope.BinInfo, scope.Mem)
-	val.Len = int64(op.Count)
-	val.Children = make([]Variable, op.Count)
-	for i := 0; i < op.Count; i++ {
-		j := op.Count - i - 1
-		value := stack.pop()
-		value.Name = typ.Field[j].Name
-		val.Children[j] = *value
 	}
 
 	stack.push(val)
