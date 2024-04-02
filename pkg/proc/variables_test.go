@@ -760,21 +760,27 @@ func getEvalExpressionTestCases() []varTest {
 		{"main.astruct{2}", false, "", "", "", fmt.Errorf("too few values for struct main.astruct: want 2, got 1")},
 		{"main.astruct{1, 2, 3}", false, "", "", "", fmt.Errorf("too many values for struct main.astruct: want 2, got 3")},
 
-		{"m3[main.astruct{A: 1, B: 1}]", false, "42", "42", "int", nil},
-		{"m3[main.astruct{A: 1}]", false, "44", "44", "int", nil},
-		{"m3[main.astruct{B: 1}]", false, "45", "45", "int", nil},
-		{"m3[main.astruct{}]", false, "46", "46", "int", nil},
-
 		{"[2]int{}", false, "[2]int [0,0]", "[2]int [0,0]", "[2]int", nil},
 		{"[2]int{1, 2}", false, "[2]int [1,2]", "[2]int [1,2]", "[2]int", nil},
 		{"[5]int{3: 1, 2}", false, "[5]int [0,0,0,1,2]", "[5]int [0,0,0,1,2]", "[5]int", nil},
 		{"[0]int{}", false, "[0]int []", "[0]int []", "[0]int", nil},
+
 		{"[]int{}", false, "[]int len: 0, cap: 0, nil", "[]int len: 0, cap: 0, nil", "[]int", nil},
 		{"[]int{1, 2}", false, "[]int len: 2, cap: 2, [1,2]", "[]int len: 2, cap: 2, [1,2]", "[]int", nil},
 		{"[]int{0: 1, 2}", false, "[]int len: 2, cap: 2, [1,2]", "[]int len: 2, cap: 2, [1,2]", "[]int", nil},
 		{"[]int{3: 1, 2}", false, "[]int len: 5, cap: 5, [0,0,0,1,2]", "[]int len: 5, cap: 5, [0,0,0,1,2]", "[]int", nil},
 
 		{"map[int]int{1: 2}", false, "map[int]int [1: 2, ]", "map[int]int [1: 2, ]", "map[int]int", nil},
+
+		{"m3[main.astruct{A: 1, B: 1}]", false, "42", "42", "int", nil},
+		{"m3[main.astruct{A: 1}]", false, "44", "44", "int", nil},
+		{"m3[main.astruct{B: 1}]", false, "45", "45", "int", nil},
+		{"m3[main.astruct{}]", false, "46", "46", "int", nil},
+
+		{"m8[[2]int{1, 1}]", false, "42", "42", "int", nil},
+		{"m8[[2]int{0: 1}]", false, "44", "44", "int", nil},
+		{"m8[[2]int{1: 1}]", false, "45", "45", "int", nil},
+		{"m8[[2]int{}]", false, "46", "46", "int", nil},
 
 		// misc
 		{"i1", true, "1", "1", "int", nil},
