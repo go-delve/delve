@@ -3216,11 +3216,19 @@ func TestDebugStripped(t *testing.T) {
 		assertLineNumber(p, t, 37, "first continue")
 		assertNoError(grp.Next(), t, "Next")
 		assertLineNumber(p, t, 38, "after next")
+
+		// Assert that commands like "args", "locals", etc... will
+		// return an error instead of panic.
+		s, err := proc.ThreadScope(p, p.CurrentThread())
+		assertNoError(err, t, "ThreadScope")
+		_, err = s.Locals(0)
+		if err == nil {
+			t.Error("expected an error to be returned from scope.Locals in stripped binary")
+		}
 	})
 }
 
 func TestDebugStripped2(t *testing.T) {
-	// Currently only implemented for Linux ELF executables.
 	// TODO(derekparker): Add support for PE.
 	skipOn(t, "not working on windows", "windows")
 	skipOn(t, "not working on freebsd", "freebsd")

@@ -371,6 +371,10 @@ func (scope *EvalScope) Locals(flags localsFlags) ([]*Variable, error) {
 		return nil, errors.New("unable to find function context")
 	}
 
+	if scope.image().Stripped() {
+		return nil, errors.New("unable to find locals: no debug information present in binary")
+	}
+
 	trustArgOrder := (flags&localsTrustArgOrder != 0) && scope.BinInfo.Producer() != "" && goversion.ProducerAfterOrEqual(scope.BinInfo.Producer(), 1, 12) && scope.Fn != nil && (scope.PC == scope.Fn.Entry)
 
 	dwarfTree, err := scope.image().getDwarfTree(scope.Fn.offset)
