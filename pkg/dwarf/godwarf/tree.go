@@ -2,6 +2,7 @@ package godwarf
 
 import (
 	"debug/dwarf"
+	"errors"
 	"fmt"
 	"sort"
 )
@@ -90,6 +91,9 @@ type Tree struct {
 // range of addresses that is not covered by its parent LoadTree will fix
 // the parent entry.
 func LoadTree(off dwarf.Offset, dw *dwarf.Data, staticBase uint64) (*Tree, error) {
+	if dw == nil {
+		return nil, errors.New("unable to load DWARF tree: no DWARF information present")
+	}
 	rdr := dw.Reader()
 	rdr.Seek(off)
 
