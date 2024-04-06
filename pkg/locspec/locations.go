@@ -361,7 +361,6 @@ func (ale AmbiguousLocationError) Error() string {
 		for i := range ale.CandidatesLocation {
 			candidates = append(candidates, ale.CandidatesLocation[i].Function.Name())
 		}
-
 	} else {
 		candidates = ale.CandidatesString
 	}

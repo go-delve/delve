@@ -1435,6 +1435,39 @@ func TestCreateBreakpointByLocExpr(t *testing.T) {
 	})
 }
 
+func TestCreateBreakpointWithCondition(t *testing.T) {
+	withTestTerminal("break", t, func(term *FakeTerminal) {
+		term.MustExec("break bp1 main.main:4 if i == 3")
+		listIsAt(t, term, "continue", 7, -1, -1)
+		out := term.MustExec("print i")
+		t.Logf("%q", out)
+		if !strings.Contains(out, "3\n") {
+			t.Fatalf("wrong value of i")
+		}
+	})
+}
+
+func TestCreateBreakpointWithCondition2(t *testing.T) {
+	withTestTerminal("break", t, func(term *FakeTerminal) {
+		term.MustExec("continue main.main:4")
+		term.MustExec("break if i == 3")
+		listIsAt(t, term, "continue", 7, -1, -1)
+		out := term.MustExec("print i")
+		t.Logf("%q", out)
+		if !strings.Contains(out, "3\n") {
+			t.Fatalf("wrong value of i")
+		}
+	})
+}
+
+func TestCreateBreakpointWithCondition3(t *testing.T) {
+	withTestTerminal("test if path/main", t, func(term *FakeTerminal) {
+		// We should not attempt to parse this as a condition.
+		term.MustExec(`break _fixtures/test if path/main.go:4`)
+		listIsAt(t, term, "continue", 4, -1, -1)
+	})
+}
+
 func TestRestartBreakpoints(t *testing.T) {
 	// Tests that breakpoints set using just a line number and with a line
 	// offset are preserved after restart. See issue #3423.
