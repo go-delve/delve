@@ -321,12 +321,12 @@ type Variable struct {
 	// Function variables will store the name of the function in this field
 	Value string `json:"value"`
 
-	// Number of elements in an array or a slice, number of keys for a map, number of struct members for a struct, length of strings
+	// Number of elements in an array or a slice, number of keys for a map, number of struct members for a struct, length of strings, number of captured variables for functions
 	Len int64 `json:"len"`
 	// Cap value for slices
 	Cap int64 `json:"cap"`
 
-	// Array and slice elements, member fields of structs, key/value pairs of maps, value of complex numbers
+	// Array and slice elements, member fields of structs, key/value pairs of maps, value of complex numbers, captured variables of functions.
 	// The Name field in this slice will always be the empty string except for structs (when it will be the field name) and for complex numbers (when it will be "real" and "imaginary")
 	// For maps each map entry will have to items in this slice, even numbered items will represent map keys and odd numbered items will represent their values
 	// This field's length is capped at proc.maxArrayValues for slices and arrays and 2*proc.maxArrayValues for maps, in the circumstances where the cap takes effect len(Children) != Len

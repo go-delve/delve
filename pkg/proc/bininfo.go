@@ -503,6 +503,8 @@ type Function struct {
 
 	// InlinedCalls lists all inlined calls to this function
 	InlinedCalls []InlinedCall
+	// closureStructType is the cached struct type for closures for this function
+	closureStructTypeCached *godwarf.StructType
 }
 
 // instRange returns the indexes in fn.Name of the type parameter
@@ -637,6 +639,45 @@ func (fn *Function) privateRuntime() bool {
 	name := fn.Name
 	const n = len("runtime.")
 	return len(name) > n && name[:n] == "runtime." && !('A' <= name[n] && name[n] <= 'Z')
+}
+
+func (fn *Function) closureStructType(bi *BinaryInfo) *godwarf.StructType {
+	if fn.closureStructTypeCached != nil {
+		return fn.closureStructTypeCached
+	}
+	dwarfTree, err := fn.cu.image.getDwarfTree(fn.offset)
+	if err != nil {
+		return nil
+	}
+	st := &godwarf.StructType{
+		Kind: "struct",
+	}
+	vars := reader.Variables(dwarfTree, 0, 0, reader.VariablesNoDeclLineCheck|reader.VariablesSkipInlinedSubroutines)
+	for _, v := range vars {
+		off, ok := v.Val(godwarf.AttrGoClosureOffset).(int64)
+		if ok {
+			n, _ := v.Val(dwarf.AttrName).(string)
+			typ, err := v.Type(fn.cu.image.dwarf, fn.cu.image.index, fn.cu.image.typeCache)
+			if err == nil {
+				sz := typ.Common().ByteSize
+				st.Field = append(st.Field, &godwarf.StructField{
+					Name:       n,
+					Type:       typ,
+					ByteOffset: off,
+					ByteSize:   sz,
+					BitOffset:  off * 8,
+					BitSize:    sz * 8,
+				})
+			}
+		}
+	}
+
+	if len(st.Field) > 0 {
+		lf := st.Field[len(st.Field)-1]
+		st.ByteSize = lf.ByteOffset + lf.Type.Common().ByteSize
+	}
+	fn.closureStructTypeCached = st
+	return st
 }
 
 type constantsMap map[dwarfRef]*constantType
