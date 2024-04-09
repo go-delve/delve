@@ -619,7 +619,7 @@ func check() {
 	for _, C := range Cs {
 		rules := checkConstValRules[C]
 		pos := fset.Position(rules[0].pos)
-		def := lookupPackage(pkgmap, "runtime").Types.Scope().Lookup(C)
+		def := findConst(pkgmap, C)
 		if def == nil {
 			fmt.Fprintf(os.Stderr, "%s:%d: could not find constant %s\n", pos.Filename, pos.Line, C)
 			allok = false
@@ -650,6 +650,21 @@ func fieldTypeByName(typ *types.Struct, name string) types.Type {
 		field := typ.Field(i)
 		if field.Name() == name {
 			return field.Type()
+		}
+	}
+	return nil
+}
+
+func findConst(pkgmap map[string]*packages.Package, Cs string) types.Object {
+	for _, C := range strings.Split(Cs, "|") {
+		pkg := lookupPackage(pkgmap, "runtime")
+		if dot := strings.Index(C, "."); dot >= 0 {
+			pkg = lookupPackage(pkgmap, C[:dot])
+			C = C[dot+1:]
+		}
+		def := pkg.Types.Scope().Lookup(C)
+		if def != nil {
+			return def
 		}
 	}
 	return nil

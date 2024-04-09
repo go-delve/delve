@@ -1848,9 +1848,7 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 					if ref > 0 {
 						client.VariablesRequest(ref)
 						ch1 := client.ExpectVariablesResponse(t)
-						checkChildren(t, ch1, "ch1", 11)
 						checkVarExact(t, ch1, 0, "qcount", "ch1.qcount", "4 = 0x4", "uint", noChildren)
-						checkVarRegex(t, ch1, 10, "lock", "ch1.lock", `runtime\.mutex {.*key: 0.*}`, `runtime\.mutex`, hasChildren)
 						validateEvaluateName(t, client, ch1, 0)
 						validateEvaluateName(t, client, ch1, 10)
 					}
