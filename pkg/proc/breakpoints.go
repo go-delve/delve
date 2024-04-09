@@ -135,7 +135,11 @@ const (
 	// been loaded and we should try to enable suspended breakpoints.
 	PluginOpenBreakpoint
 
-	steppingMask = NextBreakpoint | NextDeferBreakpoint | StepBreakpoint
+	// StepIntoNewProc is a breakpoint used to step into a newly created
+	// goroutine.
+	StepIntoNewProcBreakpoint
+
+	steppingMask = NextBreakpoint | NextDeferBreakpoint | StepBreakpoint | StepIntoNewProcBreakpoint
 )
 
 // WatchType is the watchpoint type
@@ -210,6 +214,8 @@ func (bp *Breakpoint) VerboseDescr() []string {
 			r = append(r, fmt.Sprintf("StackResizeBreakpoint Cond=%q", exprToString(breaklet.Cond)))
 		case PluginOpenBreakpoint:
 			r = append(r, "PluginOpenBreakpoint")
+		case StepIntoNewProcBreakpoint:
+			r = append(r, "StepIntoNewProcBreakpoint")
 		default:
 			r = append(r, fmt.Sprintf("Unknown %d", breaklet.Kind))
 		}
@@ -304,7 +310,7 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 			}
 		}
 
-	case StackResizeBreakpoint, PluginOpenBreakpoint:
+	case StackResizeBreakpoint, PluginOpenBreakpoint, StepIntoNewProcBreakpoint:
 		// no further checks
 
 	default:

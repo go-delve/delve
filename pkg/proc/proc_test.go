@@ -549,6 +549,10 @@ func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *te
 				// do nothing
 			}
 
+			if err := p.CurrentThread().Breakpoint().CondError; err != nil {
+				t.Logf("breakpoint condition error: %v", err)
+			}
+
 			f, ln = currentLineNumber(p, t)
 			regs, _ = p.CurrentThread().Registers()
 			pc := regs.PC()
@@ -6213,5 +6217,20 @@ func TestReadClosure(t *testing.T) {
 				}
 			}
 		}
+	})
+}
+
+func TestStepIntoGoroutine(t *testing.T) {
+	testseq2(t, "goroutinestackprog", "", []seqTest{
+		{contContinue, 23},
+		{contStep, 7},
+		{contNothing, func(p *proc.Target) {
+			vari := api.ConvertVar(evalVariable(p, t, "i"))
+			varis := vari.SinglelineString()
+			t.Logf("i = %s", varis)
+			if varis != "0" {
+				t.Fatalf("wrong value for variable i: %s", vari.SinglelineString())
+			}
+		}},
 	})
 }
