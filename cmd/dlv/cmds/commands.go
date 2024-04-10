@@ -936,7 +936,9 @@ func connect(addr string, clientConn net.Conn, conf *config.Config) int {
 	// Create and start a terminal - attach to running instance
 	var client *rpc2.RPCClient
 	if clientConn == nil {
-		clientConn = netDial(addr)
+		if clientConn = netDial(addr); clientConn == nil {
+			return 1 // already logged
+		}
 	}
 	client = rpc2.NewClientFromConn(clientConn)
 	if client.IsMulticlient() {
