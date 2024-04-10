@@ -183,6 +183,12 @@ option to let the process continue or kill it.
 			return nil
 		},
 		Run: attachCmd,
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 1 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return nil, cobra.ShellCompDirectiveDefault
+		},
 	}
 	attachCommand.Flags().BoolVar(&continueOnStart, "continue", false, "Continue the debugged process on start.")
 	attachCommand.Flags().StringVar(&attachWaitFor, "waitfor", "", "Wait for a process with a name beginning with this prefix")
@@ -204,7 +210,8 @@ option to let the process continue or kill it.
 			}
 			return nil
 		},
-		Run: connectCmd,
+		Run:               connectCmd,
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 	rootCommand.AddCommand(connectCommand)
 
@@ -233,7 +240,8 @@ execution is resumed at the start of the debug session.
 The --client-addr flag is a special flag that makes the server initiate a debug session
 by dialing in to the host:port where a DAP client is waiting. This server process
 will exit when the debug session ends.`,
-		Run: dapCmd,
+		Run:               dapCmd,
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 	dapCommand.Flags().StringVar(&dapClientAddr, "client-addr", "", "host:port where the DAP client is waiting for the DAP server to dial in")
 	must(dapCommand.RegisterFlagCompletionFunc("client-addr", cobra.NoFileCompletions))
@@ -251,7 +259,8 @@ By default, with no arguments, Delve will compile the 'main' package in the
 current directory, and begin to debug it. Alternatively you can specify a
 package name and Delve will compile that package instead, and begin a new debug
 session.`,
-		Run: debugCmd,
+		Run:               debugCmd,
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 	debugCommand.Flags().String("output", "", "Output path for the binary.")
 	must(debugCommand.MarkFlagFilename("output"))
@@ -279,6 +288,12 @@ or later, -gcflags="-N -l" on earlier versions of Go.`,
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			os.Exit(execute(0, args, conf, "", debugger.ExecutingExistingFile, args, buildFlags))
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return nil, cobra.ShellCompDirectiveDefault
 		},
 	}
 	execCommand.Flags().StringVar(&tty, "tty", "", "TTY to use for the target program")
@@ -312,7 +327,8 @@ that package instead. Double-dashes ` + "`--`" + ` can be used to pass arguments
 dlv test [package] -- -test.run TestSomething -test.v -other-argument
 
 See also: 'go help testflag'.`,
-		Run: testCmd,
+		Run:               testCmd,
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 	testCommand.Flags().String("output", "", "Output path for the binary.")
 	must(testCommand.MarkFlagFilename("output"))
@@ -334,6 +350,7 @@ only see the output of the trace operations you can redirect stdout.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			os.Exit(traceCmd(cmd, args, conf))
 		},
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 	traceCommand.Flags().IntVarP(&traceAttachPid, "pid", "p", 0, "Pid to attach to.")
 	must(traceCommand.RegisterFlagCompletionFunc("pid", cobra.NoFileCompletions))
@@ -365,6 +382,12 @@ Currently supports linux/amd64 and linux/arm64 core files, windows/amd64 minidum
 			return nil
 		},
 		Run: coreCmd,
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) > 2 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return nil, cobra.ShellCompDirectiveDefault
+		},
 	}
 	// -c is unused and exists so delve can be used with coredumpctl
 	core := false
@@ -383,6 +406,7 @@ Currently supports linux/amd64 and linux/arm64 core files, windows/amd64 minidum
 				fmt.Printf("Build Details: %s\n", version.BuildInfo())
 			}
 		},
+		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 	versionCommand.Flags().BoolVarP(&versionVerbose, "verbose", "v", false, "print verbose version info")
 	rootCommand.AddCommand(versionCommand)
@@ -405,6 +429,12 @@ https://github.com/mozilla/rr
 			Run: func(cmd *cobra.Command, args []string) {
 				backend = "rr"
 				os.Exit(execute(0, []string{}, conf, args[0], debugger.ExecutingOther, args, buildFlags))
+			},
+			ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+				if len(args) > 2 {
+					return nil, cobra.ShellCompDirectiveNoFileComp
+				}
+				return nil, cobra.ShellCompDirectiveDefault
 			},
 		}
 
