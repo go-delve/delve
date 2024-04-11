@@ -15,10 +15,10 @@ import (
 // some extra flags defined here.
 // See equivalent declaration in $GOROOT/src/reflect/type.go
 const (
-	kindDirectIface = 1 << 5 // +rtype kindDirectIface
-	kindGCProg      = 1 << 6 // +rtype kindGCProg
+	kindDirectIface = 1 << 5 // +rtype kindDirectIface|internal/abi.KindDirectIface
+	kindGCProg      = 1 << 6 // +rtype kindGCProg|internal/abi.KindGCProg
 	kindNoPointers  = 1 << 7
-	kindMask        = (1 << 5) - 1 // +rtype kindMask
+	kindMask        = (1 << 5) - 1 // +rtype kindMask|internal/abi.KindMask
 )
 
 type runtimeTypeDIE struct {
