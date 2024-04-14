@@ -1858,6 +1858,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 	if findLocErr != nil {
 		r := regexp.MustCompile(`^if | if `)
 		if match := r.FindStringIndex(argstr); match != nil {
+			requestedBp.Name = ""
 			cond = argstr[match[1]:]
 			argstr = argstr[:match[0]]
 			args = config.Split2PartsBySpace(argstr)

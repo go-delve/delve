@@ -1438,8 +1438,12 @@ func TestCreateBreakpointByLocExpr(t *testing.T) {
 func TestCreateBreakpointWithCondition(t *testing.T) {
 	withTestTerminal("break", t, func(term *FakeTerminal) {
 		term.MustExec("break bp1 main.main:4 if i == 3")
+		out := term.MustExec("breakpoints")
+		if !strings.Contains(out, "Breakpoint bp1") {
+			t.Fatal("incorrect breakpoint name")
+		}
 		listIsAt(t, term, "continue", 7, -1, -1)
-		out := term.MustExec("print i")
+		out = term.MustExec("print i")
 		t.Logf("%q", out)
 		if !strings.Contains(out, "3\n") {
 			t.Fatalf("wrong value of i")
@@ -1451,8 +1455,12 @@ func TestCreateBreakpointWithCondition2(t *testing.T) {
 	withTestTerminal("break", t, func(term *FakeTerminal) {
 		term.MustExec("continue main.main:4")
 		term.MustExec("break if i == 3")
+		out := term.MustExec("breakpoints")
+		if strings.Contains(out, "Breakpoint if") {
+			t.Fatal("incorrect breakpoint name, should be ID")
+		}
 		listIsAt(t, term, "continue", 7, -1, -1)
-		out := term.MustExec("print i")
+		out = term.MustExec("print i")
 		t.Logf("%q", out)
 		if !strings.Contains(out, "3\n") {
 			t.Fatalf("wrong value of i")
