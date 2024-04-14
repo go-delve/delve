@@ -723,6 +723,7 @@ type stopPacket struct {
 	sig       uint8
 	reason    string
 	watchAddr uint64
+	watchReg  int
 }
 
 // Mach exception codes used to decode metype/medata keys in stop packets (necessary to support watchpoints with debugserver).
@@ -750,13 +751,14 @@ func (conn *gdbConn) parseStopPacket(resp []byte, threadID string, tu *threadUpd
 			return false, stopPacket{}, fmt.Errorf("malformed stop packet: %s", string(resp))
 		}
 		sp.sig = uint8(sig)
+		sp.watchReg = -1
 
 		if logflags.GdbWire() && gdbWireFullStopPacket {
 			conn.log.Debugf("full stop packet: %s", string(resp))
 		}
 
 		var metype int
-		var medata = make([]uint64, 0, 10)
+		medata := make([]uint64, 0, 10)
 
 		csp := colonSemicolonParser{buf: resp[3:]}
 		for csp.next() {
@@ -796,8 +798,12 @@ func (conn *gdbConn) parseStopPacket(resp []byte, threadID string, tu *threadUpd
 				sp.watchAddr = medata[1] // this should be zero if this is really a single step stop and non-zero for watchpoints
 			}
 		case "arm64":
-			if metype == _EXC_BREAKPOINT && len(medata) >= 2 && medata[0] == _EXC_ARM_DA_DEBUG {
-				sp.watchAddr = medata[1]
+			if metype == _EXC_BREAKPOINT && len(medata) >= 2 && (medata[0] == _EXC_ARM_DA_DEBUG || medata[0] == _EXC_I386_SGL) {
+				if medata[1] <= 6 {
+					sp.watchReg = int(medata[1])
+				} else {
+					sp.watchAddr = medata[1]
+				}
 			}
 		}
 

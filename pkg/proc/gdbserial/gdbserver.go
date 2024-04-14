@@ -182,6 +182,7 @@ type gdbThread struct {
 	sig               uint8  // signal received by thread after last stop
 	setbp             bool   // thread was stopped because of a breakpoint
 	watchAddr         uint64 // if > 0 this is the watchpoint address
+	watchReg          int    // if < 0 there are no active watchpoints returned
 	common            proc.CommonThread
 }
 
@@ -896,6 +897,7 @@ continueLoop:
 			// reason the thread returned by resume() stopped.
 			trapthread.sig = sp.sig
 			trapthread.watchAddr = sp.watchAddr
+			trapthread.watchReg = sp.watchReg
 		}
 
 		var shouldStop, shouldExitErr bool
@@ -1427,12 +1429,14 @@ func (p *gdbProcess) updateThreadList(tu *threadUpdater) error {
 				}
 				return err
 			}
-			th.setbp = (sp.reason == "breakpoint" || (sp.reason == "" && sp.sig == breakpointSignal) || (sp.watchAddr > 0))
+			th.setbp = (sp.reason == "breakpoint" || (sp.reason == "" && sp.sig == breakpointSignal) || (sp.watchAddr > 0) || (sp.watchReg >= 0))
 			th.sig = sp.sig
 			th.watchAddr = sp.watchAddr
+			th.watchReg = sp.watchReg
 		} else {
 			th.sig = 0
 			th.watchAddr = 0
+			th.watchReg = -1
 		}
 	}
 
@@ -1927,6 +1931,14 @@ func (t *gdbThread) SetCurrentBreakpoint(adjustPC bool) error {
 			return fmt.Errorf("could not find watchpoint at address %#x", t.watchAddr)
 		}
 		return nil
+	}
+	if t.watchReg >= 0 {
+		for _, bp := range t.p.Breakpoints().M {
+			if bp.WatchType != 0 && bp.HWBreakIndex == uint8(t.watchReg) {
+				t.CurrentBreakpoint.Breakpoint = bp
+				return nil
+			}
+		}
 	}
 	regs, err := t.Registers()
 	if err != nil {

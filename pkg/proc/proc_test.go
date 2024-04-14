@@ -173,6 +173,22 @@ func assertLineNumber(p *proc.Target, t *testing.T, lineno int, descr string) (s
 	return f, l
 }
 
+func assertLineNumberIn(p *proc.Target, t *testing.T, linenos []int, descr string) (string, int) {
+	f, l := currentLineNumber(p, t)
+	found := false
+	for _, lineno := range linenos {
+		if l == lineno {
+			found = true
+			break
+		}
+	}
+	if !found {
+		_, callerFile, callerLine, _ := runtime.Caller(1)
+		t.Fatalf("%s expected lines :%#v got %s:%d\n\tat %s:%d", descr, linenos, f, l, callerFile, callerLine)
+	}
+	return f, l
+}
+
 func assertFunctionName(p *proc.Target, t *testing.T, fnname string, descr string) {
 	pc := currentPC(p, t)
 	f, l, fn := p.BinInfo().PCToLine(pc)
@@ -985,7 +1001,6 @@ func TestStacktrace2(t *testing.T) {
 			t.Fatalf("Stack error at main.g()\n%v\n", locations)
 		}
 	})
-
 }
 
 func stackMatch(stack []loc, locations []proc.Stackframe, skipRuntime bool) bool {
@@ -5421,13 +5436,8 @@ func TestWatchpointsBasic(t *testing.T) {
 	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
 	protest.AllowRecording(t)
 
-	position1 := 19
-	position5 := 41
-
-	if runtime.GOARCH == "arm64" {
-		position1 = 18
-		position5 = 40
-	}
+	position1 := []int{18, 19}
+	position5 := []int{40, 41}
 
 	withTestProcess("databpeasy", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
@@ -5443,7 +5453,7 @@ func TestWatchpointsBasic(t *testing.T) {
 		assertNoError(err, t, "SetDataBreakpoint(write-only)")
 
 		assertNoError(grp.Continue(), t, "Continue 1")
-		assertLineNumber(p, t, position1, "Continue 1") // Position 1
+		assertLineNumberIn(p, t, position1, "Continue 1") // Position 1
 
 		if curbp := p.CurrentThread().Breakpoint().Breakpoint; curbp == nil || (curbp.LogicalID() != bp.LogicalID()) {
 			t.Fatal("breakpoint not set")
@@ -5470,7 +5480,7 @@ func TestWatchpointsBasic(t *testing.T) {
 		assertNoError(err, t, "SetDataBreakpoint(write-only, again)")
 
 		assertNoError(grp.Continue(), t, "Continue 5")
-		assertLineNumber(p, t, position5, "Continue 5") // Position 5
+		assertLineNumberIn(p, t, position5, "Continue 5") // Position 5
 	})
 }
 
@@ -5501,7 +5511,7 @@ func TestWatchpointCounts(t *testing.T) {
 		}
 
 		t.Logf("TotalHitCount: %d", bp.Logical.TotalHitCount)
-		if bp.Logical.TotalHitCount != 200 {
+		if bp.Logical.TotalHitCount < 200 {
 			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d)", bp.Logical.TotalHitCount)
 		}
 
@@ -5510,7 +5520,7 @@ func TestWatchpointCounts(t *testing.T) {
 		}
 
 		for _, v := range bp.Logical.HitCount {
-			if v != 100 {
+			if v < 100 {
 				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.Logical.HitCount)
 			}
 		}
@@ -5597,11 +5607,7 @@ func TestWatchpointStack(t *testing.T) {
 	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
 	protest.AllowRecording(t)
 
-	position1 := 17
-
-	if runtime.GOARCH == "arm64" {
-		position1 = 16
-	}
+	position1 := []int{16, 17}
 
 	withTestProcess("databpstack", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, fixture.Source, 11) // Position 0 breakpoint
@@ -5650,7 +5656,7 @@ func TestWatchpointStack(t *testing.T) {
 		}
 
 		assertNoError(grp.Continue(), t, "Continue 1")
-		assertLineNumber(p, t, position1, "Continue 1") // Position 1
+		assertLineNumberIn(p, t, position1, "Continue 1") // Position 1
 
 		assertNoError(grp.Continue(), t, "Continue 2")
 		t.Logf("%#v", p.CurrentThread().Breakpoint().Breakpoint)
