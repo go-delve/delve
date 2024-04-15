@@ -1163,12 +1163,9 @@ func (scope *EvalScope) evalJump(op *evalop.Jump, stack *evalStack) {
 	case evalop.JumpIfFalse:
 		v = false
 	case evalop.JumpIfAllocStringChecksFail:
-		if !(x.Kind == reflect.String && x.Addr == 0 && (x.Flags&VariableConstant) != 0 && x.Len > 0) {
-			stack.opidx = op.Target - 1
-			return
-		}
-		if scope.callCtx == nil {
-			// do not complain here, setValue will if no other errors happen
+		stringChecksFailed := x.Kind != reflect.String || x.Addr != 0 || x.Flags&VariableConstant == 0 || x.Len <= 0
+		nilCallCtx := scope.callCtx == nil // do not complain here, setValue will if no other errors happen
+		if stringChecksFailed || nilCallCtx {
 			stack.opidx = op.Target - 1
 			return
 		}
