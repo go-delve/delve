@@ -266,7 +266,6 @@ func TestUnattendedBreakpoint(t *testing.T) {
 
 	scan := bufio.NewScanner(stderr)
 	for scan.Scan() {
-		fmt.Println(scan.Text())
 		t.Log(scan.Text())
 		if strings.Contains(scan.Text(), "execution is paused because your program is panicking") {
 			break

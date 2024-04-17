@@ -98,7 +98,7 @@ func (s *ServerImpl) Stop() error {
 		s.listener.Close()
 	}
 	if s.debugger.IsRunning() {
-		s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+		s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil, nil)
 	}
 	kill := s.config.Debugger.AttachPid == 0
 	return s.debugger.Detach(kill)
@@ -399,7 +399,7 @@ func (s *ServerImpl) sendResponse(sending *sync.Mutex, req *rpc.Request, resp *r
 	}
 }
 
-func (cb *RPCCallback) Return(out interface{}, err error) bool {
+func (cb *RPCCallback) Return(out interface{}, err error) {
 	select {
 	case <-cb.setupDone:
 		// already closed
@@ -417,11 +417,14 @@ func (cb *RPCCallback) Return(out interface{}, err error) bool {
 	}
 
 	if hasDisconnected := cb.hasDisconnected(); hasDisconnected {
-		return false
+		return
 	}
 
 	cb.s.sendResponse(cb.sending, &cb.req, &resp, out, cb.codec, errmsg)
-	return true
+}
+
+func (cb *RPCCallback) DisconnectChan() chan struct{} {
+	return cb.disconnectChan
 }
 
 func (cb *RPCCallback) hasDisconnected() bool {

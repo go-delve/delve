@@ -1159,9 +1159,7 @@ func (d *Debugger) IsRunning() bool {
 }
 
 // Command handles commands which control the debugger lifecycle
-func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struct{}) (*api.DebuggerState, error) {
-	var err error
-
+func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struct{}, clientStatusCh chan struct{}) (state *api.DebuggerState, err error) {
 	if command.Name == api.Halt {
 		// RequestManualStop does not invoke any ptrace syscalls, so it's safe to
 		// access the process directly.
@@ -1189,6 +1187,24 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 
 	if command.Name != api.SwitchGoroutine && command.Name != api.SwitchThread && command.Name != api.Halt {
 		d.target.ResumeNotify(resumeNotify)
+
+		if clientStatusCh != nil {
+			defer func() {
+				select {
+				case <-clientStatusCh:
+					// the channel will be closed if the client that sends the command has left
+					// i.e. closed the connection.
+				default:
+					return
+				}
+
+				// defer is executed in lifo order, so we can't access the state through d.State()
+				// as d.setRunning(false) is not yet executed.
+				if state != nil {
+					d.dumpGoroutineStack(state.CurrentThread)
+				}
+			}()
+		}
 	} else if resumeNotify != nil {
 		close(resumeNotify)
 	}
@@ -1321,7 +1337,8 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 		}
 		return nil, err
 	}
-	state, stateErr := d.state(api.LoadConfigToProc(command.ReturnInfoLoadConfig), withBreakpointInfo)
+	var stateErr error
+	state, stateErr = d.state(api.LoadConfigToProc(command.ReturnInfoLoadConfig), withBreakpointInfo)
 	if stateErr != nil {
 		return state, stateErr
 	}
@@ -1785,7 +1802,10 @@ func (d *Debugger) GroupGoroutines(gs []*proc.G, group *api.GoroutineGroupingOpt
 func (d *Debugger) Stacktrace(goroutineID int64, depth int, opts api.StacktraceOptions) ([]proc.Stackframe, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
+	return d.stacktrace(goroutineID, depth, opts)
+}
 
+func (d *Debugger) stacktrace(goroutineID int64, depth int, opts api.StacktraceOptions) ([]proc.Stackframe, error) {
 	if _, err := d.target.Valid(); err != nil {
 		return nil, err
 	}
@@ -2425,4 +2445,44 @@ var attachErrorMessage = attachErrorMessageDefault
 
 func attachErrorMessageDefault(pid int, err error) error {
 	return fmt.Errorf("could not attach to pid %d: %s", pid, err)
+}
+
+func (d *Debugger) dumpGoroutineStack(currentThread *api.Thread) {
+	const defaultStackTraceDepth = 50
+	frames, err := d.stacktrace(currentThread.GoroutineID, defaultStackTraceDepth, 0)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "err", err)
+		return
+	}
+
+	apiFrames, err := d.convertStacktrace(frames, nil)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "err", err)
+		return
+	}
+
+	bp := currentThread.Breakpoint
+	if bp == nil {
+		fmt.Fprintln(os.Stderr, "bp", bp)
+		return
+	}
+
+	switch bp.Name {
+	case proc.FatalThrow, proc.UnrecoveredPanic:
+		fmt.Fprintln(os.Stderr, "\n** execution is paused because your program is panicking **")
+	default:
+		fmt.Fprintln(os.Stderr, "\n** execution is paused because a breakpoint is hit **")
+	}
+
+	fmt.Fprintf(os.Stderr, "To continue the execution please connect your client to the debugger.")
+	fmt.Fprintln(os.Stderr, "\nStack trace:")
+
+	formatPathFunc := func(s string) string {
+		return s
+	}
+	includeFunc := func(f api.Stackframe) bool {
+		// todo(fata): do not include the final panic/fatal function if bp.Name is fatalthrow/panic
+		return true
+	}
+	api.PrintStack(formatPathFunc, os.Stderr, apiFrames, "", false, api.StackTraceColors{}, includeFunc)
 }

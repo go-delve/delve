@@ -3,7 +3,6 @@ package rpc2
 import (
 	"errors"
 	"fmt"
-	"os"
 	"regexp"
 	"sort"
 	"time"
@@ -128,7 +127,7 @@ type CommandOut struct {
 
 // Command interrupts, continues and steps through the program.
 func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback) {
-	st, err := s.debugger.Command(&command, cb.SetupDoneChan())
+	st, err := s.debugger.Command(&command, cb.SetupDoneChan(), cb.DisconnectChan())
 	if err != nil {
 		cb.Return(nil, err)
 		return
@@ -136,46 +135,7 @@ func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback)
 
 	var out CommandOut
 	out.State = *st
-	if clientIsConnected := cb.Return(out, nil); s.config.Headless && !clientIsConnected {
-		s.dumpGoroutineStack(st.CurrentThread)
-	}
-}
-
-func (s *RPCServer) dumpGoroutineStack(currentThread *api.Thread) {
-	const defaultStackTraceDepth = 50
-	frames, err := s.debugger.Stacktrace(currentThread.GoroutineID, defaultStackTraceDepth, 0)
-	if err != nil {
-		return
-	}
-
-	apiFrames, err := s.debugger.ConvertStacktrace(frames, nil)
-	if err != nil {
-		return
-	}
-
-	formatPathFunc := func(s string) string {
-		return s
-	}
-	includeFunc := func(api.Stackframe) bool {
-		return true
-	}
-
-	bp := currentThread.Breakpoint
-	if bp == nil {
-		return
-	}
-
-	switch bp.Name {
-	case proc.FatalThrow, proc.UnrecoveredPanic:
-		fmt.Fprintln(os.Stderr, "\n** execution is paused because your program is panicking **")
-	default:
-		fmt.Fprintln(os.Stderr, "\n** execution is paused because a breakpoint is hit **")
-	}
-
-	fmt.Fprintf(os.Stderr, "To continue the execution please connect your debugger to %s.\n", s.config.Listener.Addr())
-	fmt.Fprintln(os.Stderr, "\nStack trace:")
-	api.PrintStack(formatPathFunc, os.Stderr, apiFrames, "", false, api.StackTraceColors{}, includeFunc)
-
+	cb.Return(out, nil)
 }
 
 type GetBufferedTracepointsIn struct {
