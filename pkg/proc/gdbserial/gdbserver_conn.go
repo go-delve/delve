@@ -733,9 +733,10 @@ type stopPacket struct {
 //	https://opensource.apple.com/source/xnu/xnu-4570.1.46/osfmk/mach/i386/exception.h.auto.html
 //	https://opensource.apple.com/source/xnu/xnu-4570.1.46/osfmk/mach/arm/exception.h.auto.html
 const (
-	_EXC_BREAKPOINT   = 6     // mach exception type for hardware breakpoints
-	_EXC_I386_SGL     = 1     // mach exception code for single step on x86, for some reason this is also used for watchpoints
-	_EXC_ARM_DA_DEBUG = 0x102 // mach exception code for debug fault on arm/arm64
+	_EXC_BREAKPOINT     = 6     // mach exception type for hardware breakpoints
+	_EXC_I386_SGL       = 1     // mach exception code for single step on x86, for some reason this is also used for watchpoints
+	_EXC_ARM_DA_DEBUG   = 0x102 // mach exception code for debug fault on arm/arm64
+	_EXC_ARM_BREAKPOINT = 1     // mach exception code for breakpoint on arm/arm64
 )
 
 // executes 'vCont' (continue/step) command
@@ -798,8 +799,12 @@ func (conn *gdbConn) parseStopPacket(resp []byte, threadID string, tu *threadUpd
 				sp.watchAddr = medata[1] // this should be zero if this is really a single step stop and non-zero for watchpoints
 			}
 		case "arm64":
-			if metype == _EXC_BREAKPOINT && len(medata) >= 2 && (medata[0] == _EXC_ARM_DA_DEBUG || medata[0] == _EXC_I386_SGL) {
-				if medata[1] <= 6 {
+			if metype == _EXC_BREAKPOINT && len(medata) >= 2 && (medata[0] == _EXC_ARM_DA_DEBUG || medata[0] == _EXC_ARM_BREAKPOINT) {
+				// The arm64 specification allows for up to 16 debug registers.
+				// The registers are zero indexed, thus a value less than 16 will
+				// be a hardware breakpoint register index.
+				// See: https://developer.arm.com/documentation/102120/0101/Debug-exceptions
+				if medata[1] < 16 {
 					sp.watchReg = int(medata[1])
 				} else {
 					sp.watchAddr = medata[1]

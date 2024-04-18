@@ -1925,9 +1925,19 @@ func (t *gdbThread) SetCurrentBreakpoint(adjustPC bool) error {
 	// adjustPC is ignored, it is the stub's responsibility to set the PC
 	// address correctly after hitting a breakpoint.
 	t.CurrentBreakpoint.Clear()
+	// t.watchAddr on certain mach kernel versions could contain the address of a
+	// software breakpoint, hardcoded breakpoint (e.g. runtime.Breakpoint) or a
+	// hardware watchpoint. The mach exception produced by the kernel *should* disambiguate
+	// but it doesn't.
 	if t.watchAddr > 0 {
 		t.CurrentBreakpoint.Breakpoint = t.p.Breakpoints().M[t.watchAddr]
 		if t.CurrentBreakpoint.Breakpoint == nil {
+			fn := t.BinInfo().PCToFunc(t.watchAddr)
+			if fn != nil && (fn.Name == "runtime.breakpoint" || strings.Contains(fn.Name, "debugCall")) {
+				t.watchAddr = 0
+				// This is a hardcoded breakpoint, ignore.
+				return nil
+			}
 			return fmt.Errorf("could not find watchpoint at address %#x", t.watchAddr)
 		}
 		return nil
