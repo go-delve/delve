@@ -1936,6 +1936,9 @@ func (t *gdbThread) SetCurrentBreakpoint(adjustPC bool) error {
 			_, err := t.p.ReadMemory(buf, t.watchAddr)
 			if err == nil && bytes.Equal(t.regs.arch.BreakpointInstruction(), buf) {
 				// This is a hardcoded breakpoint, ignore.
+				// TODO(deparker): There's an optimization here since we will do this
+				// again at a higher level to determine if we've stopped at a hardcoded breakpoint.
+				// We could set some state here so that we don't do extra work later.
 				t.watchAddr = 0
 				return nil
 			}
