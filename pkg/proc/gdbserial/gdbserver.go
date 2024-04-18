@@ -1932,10 +1932,11 @@ func (t *gdbThread) SetCurrentBreakpoint(adjustPC bool) error {
 	if t.watchAddr > 0 {
 		t.CurrentBreakpoint.Breakpoint = t.p.Breakpoints().M[t.watchAddr]
 		if t.CurrentBreakpoint.Breakpoint == nil {
-			fn := t.BinInfo().PCToFunc(t.watchAddr)
-			if fn != nil && (fn.Name == "runtime.breakpoint" || strings.Contains(fn.Name, "debugCall")) {
-				t.watchAddr = 0
+			buf := make([]byte, len(t.regs.arch.BreakpointInstruction()))
+			_, err := t.p.ReadMemory(buf, t.watchAddr)
+			if err == nil && bytes.Equal(t.regs.arch.BreakpointInstruction(), buf) {
 				// This is a hardcoded breakpoint, ignore.
+				t.watchAddr = 0
 				return nil
 			}
 			return fmt.Errorf("could not find watchpoint at address %#x", t.watchAddr)
