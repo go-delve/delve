@@ -1932,9 +1932,9 @@ func (t *gdbThread) SetCurrentBreakpoint(adjustPC bool) error {
 	if t.watchAddr > 0 {
 		t.CurrentBreakpoint.Breakpoint = t.p.Breakpoints().M[t.watchAddr]
 		if t.CurrentBreakpoint.Breakpoint == nil {
-			buf := make([]byte, len(t.regs.arch.BreakpointInstruction()))
+			buf := make([]byte, t.BinInfo().Arch.BreakpointSize())
 			_, err := t.p.ReadMemory(buf, t.watchAddr)
-			if err == nil && bytes.Equal(t.regs.arch.BreakpointInstruction(), buf) {
+			if err == nil && bytes.Equal(t.BinInfo().Arch.BreakpointInstruction(), buf) {
 				// This is a hardcoded breakpoint, ignore.
 				// TODO(deparker): There's an optimization here since we will do this
 				// again at a higher level to determine if we've stopped at a hardcoded breakpoint.
