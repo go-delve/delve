@@ -216,7 +216,8 @@ type rrInit struct {
 }
 
 const (
-	rrGdbCommandPrefix = "  gdb "
+	rrGdbCommandLegacyPrefix = "  gdb "
+	rrGdbCommandPrefix = "  'gdb' "
 	rrGdbLaunchPrefix  = "Launch gdb with"
 	targetCmd          = "target extended-remote "
 )
@@ -233,8 +234,13 @@ func rrStderrParser(stderr io.ReadCloser, initch chan<- rrInit, quiet bool) {
 			return
 		}
 
-		if strings.HasPrefix(line, rrGdbCommandPrefix) {
-			initch <- rrParseGdbCommand(line[len(rrGdbCommandPrefix):])
+		var flags string
+		var foundPrefix bool
+		if flags, foundPrefix = strings.CutPrefix(line, rrGdbCommandPrefix); !foundPrefix {
+			flags, foundPrefix = strings.CutPrefix(line, rrGdbCommandLegacyPrefix)
+		}
+		if foundPrefix {
+			initch <- rrParseGdbCommand(flags)
 			close(initch)
 			break
 		}
