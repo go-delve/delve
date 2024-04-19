@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"go/ast"
 	"go/constant"
-	"go/token"
 	"reflect"
 	"sort"
 	"strconv"
@@ -532,13 +531,14 @@ type funcCallArg struct {
 func funcCallCopyOneArg(scope *EvalScope, fncall *functionCallState, actualArg *Variable, formalArg *funcCallArg, thread Thread) error {
 	if scope.callCtx.checkEscape {
 		//TODO(aarzilli): only apply the escapeCheck to leaking parameters.
-		if err := escapeCheck(actualArg, formalArg.name, scope.g.stack); err != nil {
-			return fmt.Errorf("cannot use %s as argument %s in function %s: %v", actualArg.Name, formalArg.name, fncall.fn.Name, err)
-		}
-		for _, stack := range scope.callCtx.stacks {
-			if err := escapeCheck(actualArg, formalArg.name, stack); err != nil {
-				return fmt.Errorf("cannot use %s as argument %s in function %s: %v", actualArg.Name, formalArg.name, fncall.fn.Name, err)
+		err := allPointers(actualArg, formalArg.name, func(addr uint64, name string) error {
+			if !pointerEscapes(addr, scope.g.stack, scope.callCtx.stacks) {
+				return fmt.Errorf("cannot use %s as argument %s in function %s: stack object passed to escaping pointer: %s", actualArg.Name, formalArg.name, fncall.fn.Name, name)
 			}
+			return nil
+		})
+		if err != nil {
+			return err
 		}
 	}
 
@@ -691,7 +691,8 @@ func alignAddr(addr, align int64) int64 {
 	return (addr + align - 1) &^ (align - 1)
 }
 
-func escapeCheck(v *Variable, name string, stack stack) error {
+// allPointers calls f on every pointer contained in v
+func allPointers(v *Variable, name string, f func(addr uint64, name string) error) error {
 	if v.Unreadable != nil {
 		return fmt.Errorf("escape check for %s failed, variable unreadable: %v", name, v.Unreadable)
 	}
@@ -704,31 +705,31 @@ func escapeCheck(v *Variable, name string, stack stack) error {
 		} else {
 			w = v.maybeDereference()
 		}
-		return escapeCheckPointer(w.Addr, name, stack)
+		return f(w.Addr, name)
 	case reflect.Chan, reflect.String, reflect.Slice:
-		return escapeCheckPointer(v.Base, name, stack)
+		return f(v.Base, name)
 	case reflect.Map:
 		sv := v.clone()
 		sv.RealType = resolveTypedef(&(v.RealType.(*godwarf.MapType).TypedefType))
 		sv = sv.maybeDereference()
-		return escapeCheckPointer(sv.Addr, name, stack)
+		return f(sv.Addr, name)
 	case reflect.Struct:
 		t := v.RealType.(*godwarf.StructType)
 		for _, field := range t.Field {
 			fv, _ := v.toField(field)
-			if err := escapeCheck(fv, fmt.Sprintf("%s.%s", name, field.Name), stack); err != nil {
+			if err := allPointers(fv, fmt.Sprintf("%s.%s", name, field.Name), f); err != nil {
 				return err
 			}
 		}
 	case reflect.Array:
 		for i := int64(0); i < v.Len; i++ {
 			sv, _ := v.sliceAccess(int(i))
-			if err := escapeCheck(sv, fmt.Sprintf("%s[%d]", name, i), stack); err != nil {
+			if err := allPointers(sv, fmt.Sprintf("%s[%d]", name, i), f); err != nil {
 				return err
 			}
 		}
 	case reflect.Func:
-		if err := escapeCheckPointer(v.funcvalAddr(), name, stack); err != nil {
+		if err := f(v.funcvalAddr(), name); err != nil {
 			return err
 		}
 	}
@@ -736,11 +737,16 @@ func escapeCheck(v *Variable, name string, stack stack) error {
 	return nil
 }
 
-func escapeCheckPointer(addr uint64, name string, stack stack) error {
+func pointerEscapes(addr uint64, stack stack, stacks []stack) bool {
 	if addr >= stack.lo && addr < stack.hi {
-		return fmt.Errorf("stack object passed to escaping pointer: %s", name)
+		return false
 	}
-	return nil
+	for _, stack := range stacks {
+		if addr >= stack.lo && addr < stack.hi {
+			return false
+		}
+	}
+	return true
 }
 
 const (
@@ -986,92 +992,45 @@ func fakeFunctionEntryScope(scope *EvalScope, fn *Function, cfa int64, sp uint64
 	return nil
 }
 
-func (scope *EvalScope) allocString(phase int, stack *evalStack, curthread Thread) bool {
-	switch phase {
-	case 0:
-		x := stack.peek()
-		if !(x.Kind == reflect.String && x.Addr == 0 && (x.Flags&VariableConstant) != 0 && x.Len > 0) {
-			stack.opidx += 2 // skip the next two allocString phases, we don't need to do an allocation
-			return false
-		}
-		if scope.callCtx == nil {
-			// do not complain here, setValue will if no other errors happen
-			stack.opidx += 2
-			return false
-		}
-		mallocv, err := scope.findGlobal("runtime", "mallocgc")
-		if mallocv == nil {
-			stack.err = err
-			return false
-		}
-		stack.push(mallocv)
-		scope.evalCallInjectionStart(&evalop.CallInjectionStart{HasFunc: true, Node: &ast.CallExpr{
-			Fun: &ast.SelectorExpr{
-				X:   &ast.Ident{Name: "runtime"},
-				Sel: &ast.Ident{Name: "mallocgc"},
-			},
-			Args: []ast.Expr{
-				&ast.BasicLit{Kind: token.INT, Value: "0"},
-				&ast.Ident{Name: "nil"},
-				&ast.Ident{Name: "false"},
-			},
-		}}, stack)
-		if stack.err == nil {
-			stack.pop() // return value of evalop.CallInjectionStart
-		}
-		return true
-
-	case 1:
-		fncall := stack.fncallPeek()
-		savedLoadCfg := scope.callCtx.retLoadCfg
-		scope.callCtx.retLoadCfg = loadFullValue
-		defer func() {
-			scope.callCtx.retLoadCfg = savedLoadCfg
-		}()
-
-		scope.evalCallInjectionSetTarget(nil, stack, curthread)
-
-		strvar := stack.peek()
-
-		stack.err = funcCallCopyOneArg(scope, fncall, newConstant(constant.MakeInt64(strvar.Len), scope.Mem), &fncall.formalArgs[0], curthread)
-		if stack.err != nil {
-			return false
-		}
-		stack.err = funcCallCopyOneArg(scope, fncall, nilVariable, &fncall.formalArgs[1], curthread)
-		if stack.err != nil {
-			return false
-		}
-		stack.err = funcCallCopyOneArg(scope, fncall, newConstant(constant.MakeBool(false), scope.Mem), &fncall.formalArgs[2], curthread)
-		if stack.err != nil {
-			return false
-		}
-		return true
-
-	case 2:
-		mallocv := stack.pop()
-		v := stack.pop()
-		if mallocv.Unreadable != nil {
-			stack.err = mallocv.Unreadable
-			return false
-		}
-
-		if mallocv.DwarfType.String() != "*void" {
-			stack.err = fmt.Errorf("unexpected return type for mallocgc call: %v", mallocv.DwarfType.String())
-			return false
-		}
-
-		if len(mallocv.Children) != 1 {
-			stack.err = errors.New("internal error, could not interpret return value of mallocgc call")
-			return false
-		}
-
-		v.Base = mallocv.Children[0].Addr
-		_, stack.err = scope.Mem.WriteMemory(v.Base, []byte(constant.StringVal(v.Value)))
-		stack.push(v)
+func (scope *EvalScope) callInjectionStartSpecial(stack *evalStack, op *evalop.CallInjectionStartSpecial, curthread Thread) bool {
+	fnv, err := scope.findGlobalInternal(op.FnName)
+	if fnv == nil {
+		stack.err = err
 		return false
 	}
+	stack.push(fnv)
+	scope.evalCallInjectionStart(&evalop.CallInjectionStart{HasFunc: true, Node: &ast.CallExpr{
+		Fun:  &ast.Ident{Name: op.FnName},
+		Args: op.ArgAst,
+	}}, stack)
+	if stack.err == nil {
+		stack.pop() // return value of evalop.CallInjectionStart
+		return true
+	}
+	return false
+}
 
-	panic("unreachable")
+func (scope *EvalScope) convertAllocToString(stack *evalStack) {
+	mallocv := stack.pop()
+	v := stack.pop()
+	if mallocv.Unreadable != nil {
+		stack.err = mallocv.Unreadable
+		return
+	}
+
+	if mallocv.DwarfType.String() != "*void" {
+		stack.err = fmt.Errorf("unexpected return type for mallocgc call: %v", mallocv.DwarfType.String())
+		return
+	}
+
+	if len(mallocv.Children) != 1 {
+		stack.err = errors.New("internal error, could not interpret return value of mallocgc call")
+		return
+	}
+
+	v.Base = mallocv.Children[0].Addr
+	_, stack.err = scope.Mem.WriteMemory(v.Base, []byte(constant.StringVal(v.Value)))
+	stack.push(v)
 }
 
 func isCallInjectionStop(t *Target, thread Thread, loc *Location) bool {

@@ -66,6 +66,13 @@ type PushPackageVar struct {
 
 func (*PushPackageVar) depthCheck() (npop, npush int) { return 0, 1 }
 
+// PushLen pushes the length of the variable at the top of the stack into
+// the stack.
+type PushLen struct {
+}
+
+func (*PushLen) depthCheck() (npop, npush int) { return 1, 2 }
+
 // Select replaces the topmost stack variable v with v.Name.
 type Select struct {
 	Name string
@@ -160,6 +167,7 @@ type JumpCond uint8
 const (
 	JumpIfFalse JumpCond = iota
 	JumpIfTrue
+	JumpIfAllocStringChecksFail
 )
 
 // Binary pops two variables from the stack, applies the specified binary
@@ -229,20 +237,24 @@ type CallInjectionComplete struct {
 
 func (*CallInjectionComplete) depthCheck() (npop, npush int) { return 0, 1 }
 
-// CallInjectionAllocString uses the call injection protocol to allocate the
-// value of a string literal somewhere on the target's memory so that it can
-// be assigned to a variable (or passed to a function).
-// There are three phases to CallInjectionAllocString, distinguished by the
-// Phase field. They must always appear in sequence in the program:
-//
-//	CallInjectionAllocString{Phase: 0}
-//	CallInjectionAllocString{Phase: 1}
-//	CallInjectionAllocString{Phase: 2}
-type CallInjectionAllocString struct {
-	Phase int
+// CallInjectionStartSpecial starts call injection for a function with a
+// name and arguments known at compile time.
+type CallInjectionStartSpecial struct {
+	id     int
+	FnName string
+	ArgAst []ast.Expr
 }
 
-func (op *CallInjectionAllocString) depthCheck() (npop, npush int) { return 1, 1 }
+func (*CallInjectionStartSpecial) depthCheck() (npop, npush int) { return 0, 1 }
+
+// ConvertAllocToString pops two variables from the stack, a constant string
+// and the return value of runtime.mallocgc (mallocv), copies the contents
+// of the string at the address in mallocv and pushes on the stack a new
+// string value that uses the backing storage of mallocv.
+type ConvertAllocToString struct {
+}
+
+func (*ConvertAllocToString) depthCheck() (npop, npush int) { return 2, 1 }
 
 // SetValue pops to variables from the stack, lhv and rhv, and sets lhv to
 // rhv.
