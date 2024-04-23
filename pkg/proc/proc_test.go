@@ -10,7 +10,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"os"
@@ -5061,7 +5061,6 @@ func TestRequestManualStopWhileStopped(t *testing.T) {
 
 func TestStepOutPreservesGoroutine(t *testing.T) {
 	// Checks that StepOut preserves the currently selected goroutine.
-	rand.Seed(time.Now().Unix())
 	withTestProcess("issue2113", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), t, "Continue()")
 
@@ -5102,10 +5101,10 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 		}
 		var pickg *proc.G
 		if len(bestg) > 0 {
-			pickg = bestg[rand.Intn(len(bestg))]
+			pickg = bestg[rand.IntN(len(bestg))]
 			t.Logf("selected goroutine %d (best)\n", pickg.ID)
 		} else {
-			pickg = candg[rand.Intn(len(candg))]
+			pickg = candg[rand.IntN(len(candg))]
 			t.Logf("selected goroutine %d\n", pickg.ID)
 
 		}

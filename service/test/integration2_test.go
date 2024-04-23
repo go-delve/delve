@@ -3,7 +3,7 @@ package service_test
 import (
 	"flag"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
@@ -1593,8 +1593,7 @@ func TestIssue419(t *testing.T) {
 	withTestClient2("issue419", t, func(c service.Client) {
 		go func() {
 			defer close(finish)
-			rand.Seed(time.Now().Unix())
-			d := time.Duration(rand.Intn(4) + 1)
+			d := time.Duration(rand.IntN(4) + 1)
 			time.Sleep(d * time.Second)
 			t.Logf("halt")
 			_, err := c.Halt()

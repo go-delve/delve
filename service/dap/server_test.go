@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"os"
 	"os/exec"
@@ -4838,7 +4838,6 @@ func testNextParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 // and checks that StepOut preserves the currently selected goroutine.
 func TestStepOutPreservesGoroutine(t *testing.T) {
 	// Checks that StepOut preserves the currently selected goroutine.
-	rand.Seed(time.Now().Unix())
 	runTest(t, "issue2113", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
@@ -4881,10 +4880,10 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 					}
 					var goroutineId int
 					if len(bestg) > 0 {
-						goroutineId = bestg[rand.Intn(len(bestg))]
+						goroutineId = bestg[rand.IntN(len(bestg))]
 						t.Logf("selected goroutine %d (best)\n", goroutineId)
 					} else if len(candg) > 0 {
-						goroutineId = candg[rand.Intn(len(candg))]
+						goroutineId = candg[rand.IntN(len(candg))]
 						t.Logf("selected goroutine %d\n", goroutineId)
 
 					}

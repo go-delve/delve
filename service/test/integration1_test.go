@@ -2,7 +2,7 @@ package service_test
 
 import (
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"net"
 	"path/filepath"
 	"runtime"
@@ -1024,8 +1024,7 @@ func Test1Issue419(t *testing.T) {
 	// try to read 'runtime.g' and debug/dwarf.Data.Type is not thread safe
 	withTestClient1("issue419", t, func(c *rpc1.RPCClient) {
 		go func() {
-			rand.Seed(time.Now().Unix())
-			d := time.Duration(rand.Intn(4) + 1)
+			d := time.Duration(rand.IntN(4) + 1)
 			time.Sleep(d * time.Second)
 			_, err := c.Halt()
 			assertNoError(err, t, "RequestManualStop()")
