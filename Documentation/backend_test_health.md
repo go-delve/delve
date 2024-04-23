@@ -29,6 +29,11 @@ Tests skipped by each supported backend:
 	* 1 broken in linux ppc64le
 * linux/ppc64le/native/pie skipped = 3
 	* 3 broken - pie mode
+* loong64 skipped = 8
+	* 1 broken
+	* 3 broken - cgo stacktraces
+	* 1 broken - global variable symbolication
+	* 3 not implemented
 * pie skipped = 2
 	* 2 upstream issue - https://github.com/golang/go/issues/29322
 * ppc64le skipped = 11
