@@ -896,7 +896,7 @@ func TestDAPCmdWithClient(t *testing.T) {
 func TestTrace(t *testing.T) {
 	dlvbin := getDlvBin(t)
 
-	expected := []byte("> goroutine(1): main.foo(99, 9801)\n>> goroutine(1): => (9900)\n")
+	expected := []byte("> goroutine(1): main.foo(99, 9801)\n>> goroutine(1): main.foo => (9900)\n")
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "issue573.go"), "foo")
@@ -920,7 +920,7 @@ func TestTrace(t *testing.T) {
 func TestTrace2(t *testing.T) {
 	dlvbin := getDlvBin(t)
 
-	expected := []byte("> goroutine(1): main.callme(2)\n>> goroutine(1): => (4)\n")
+	expected := []byte("> goroutine(1): main.callme(2)\n>> goroutine(1): main.callme => (4)\n")
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "traceprog.go"), "callme")
@@ -948,7 +948,7 @@ func TestTraceMultipleGoroutines(t *testing.T) {
 	// I think a future improvement could be to use regexp captures to match the
 	// goroutine IDs at function entry and exit.
 	expected := []byte("main.callme(0, \"five\")\n")
-	expected2 := []byte("=> (0)\n")
+	expected2 := []byte("main.callme => (0)\n")
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "goroutines-trace.go"), "callme")
@@ -983,7 +983,7 @@ func TestTracePid(t *testing.T) {
 
 	dlvbin := getDlvBin(t)
 
-	expected := []byte("goroutine(1): main.A()\n>> goroutine(1): => ()\n")
+	expected := []byte("goroutine(1): main.A()\n>> goroutine(1): main.A => ()\n")
 
 	// make process run
 	fix := protest.BuildFixture("issue2023", 0)
