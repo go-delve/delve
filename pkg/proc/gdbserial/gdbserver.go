@@ -852,7 +852,13 @@ func (p *gdbProcess) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, 
 	if p.conn.direction == proc.Forward {
 		// step threads stopped at any breakpoint over their breakpoint
 		for _, thread := range p.threads {
-			if thread.CurrentBreakpoint.Breakpoint != nil {
+			// Do not single step over a breakpoint if it is a watchpoint. The PC will already have advanced and we
+			// won't experience the same stutter effect as with a breakpoint. Also, there is a bug in certain versions
+			// of the MacOS mach kernel where single stepping when we have hardware watchpoints set will cause the
+			// kernel to send a spurious mach exception.
+			// See: https://github.com/llvm/llvm-project/blob/b9f2c16b50f68c978e90190f46a7c0db3f39e98c/lldb/source/Plugins/Process/Utility/StopInfoMachException.cpp#L814
+			// TODO(deparker): We can skip single stepping in the case of thread.BinInfo().Arch.BreakInstrMovesPC().
+			if thread.CurrentBreakpoint.Breakpoint != nil && thread.CurrentBreakpoint.WatchType == 0 {
 				if err := thread.stepInstruction(); err != nil {
 					return nil, proc.StopUnknown, err
 				}
@@ -1917,6 +1923,8 @@ func (t *gdbThread) reloadGAlloc() error {
 
 func (t *gdbThread) clearBreakpointState() {
 	t.setbp = false
+	t.watchAddr = 0
+	t.watchReg = -1
 	t.CurrentBreakpoint.Clear()
 }
 
@@ -1934,7 +1942,8 @@ func (t *gdbThread) SetCurrentBreakpoint(adjustPC bool) error {
 		if t.CurrentBreakpoint.Breakpoint == nil {
 			buf := make([]byte, t.BinInfo().Arch.BreakpointSize())
 			_, err := t.p.ReadMemory(buf, t.watchAddr)
-			if err == nil && bytes.Equal(t.BinInfo().Arch.BreakpointInstruction(), buf) {
+			isHardcodedBreakpoint := err == nil && (bytes.Equal(t.BinInfo().Arch.BreakpointInstruction(), buf) || bytes.Equal(t.BinInfo().Arch.AltBreakpointInstruction(), buf))
+			if isHardcodedBreakpoint {
 				// This is a hardcoded breakpoint, ignore.
 				// TODO(deparker): There's an optimization here since we will do this
 				// again at a higher level to determine if we've stopped at a hardcoded breakpoint.

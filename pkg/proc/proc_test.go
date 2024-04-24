@@ -3,6 +3,7 @@ package proc_test
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -5503,7 +5504,7 @@ func TestWatchpointCounts(t *testing.T) {
 
 		for {
 			if err := grp.Continue(); err != nil {
-				if _, exited := err.(proc.ErrProcessExited); exited {
+				if errors.As(err, &proc.ErrProcessExited{}) {
 					break
 				}
 				assertNoError(err, t, "Continue()")
@@ -5511,7 +5512,7 @@ func TestWatchpointCounts(t *testing.T) {
 		}
 
 		t.Logf("TotalHitCount: %d", bp.Logical.TotalHitCount)
-		if bp.Logical.TotalHitCount < 200 {
+		if bp.Logical.TotalHitCount != 200 {
 			t.Fatalf("Wrong TotalHitCount for the breakpoint (%d)", bp.Logical.TotalHitCount)
 		}
 
@@ -5520,7 +5521,7 @@ func TestWatchpointCounts(t *testing.T) {
 		}
 
 		for _, v := range bp.Logical.HitCount {
-			if v < 100 {
+			if v != 100 {
 				t.Fatalf("Wrong HitCount for breakpoint (%v)", bp.Logical.HitCount)
 			}
 		}

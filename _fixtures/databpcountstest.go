@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -12,7 +11,6 @@ var globalvar1 int
 func demo(id int, wait *sync.WaitGroup) {
 	for i := 0; i < 100; i++ {
 		sleep := rand.Intn(10) + 1
-		fmt.Printf("id: %d step: %d sleeping %d\n", id, i, sleep)
 		globalvar1 = globalvar1 + 1
 		time.Sleep(time.Duration(sleep) * time.Millisecond)
 	}

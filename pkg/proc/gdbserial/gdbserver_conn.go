@@ -804,6 +804,8 @@ func (conn *gdbConn) parseStopPacket(resp []byte, threadID string, tu *threadUpd
 				// The registers are zero indexed, thus a value less than 16 will
 				// be a hardware breakpoint register index.
 				// See: https://developer.arm.com/documentation/102120/0101/Debug-exceptions
+				// TODO(deparker): we can ask debugserver for the number of hardware breakpoints
+				// directly.
 				if medata[1] < 16 {
 					sp.watchReg = int(medata[1])
 				} else {
@@ -816,9 +818,7 @@ func (conn *gdbConn) parseStopPacket(resp []byte, threadID string, tu *threadUpd
 
 	case 'W', 'X':
 		// process exited, next two character are exit code
-
 		semicolon := bytes.Index(resp, []byte{';'})
-
 		if semicolon < 0 {
 			semicolon = len(resp)
 		}
