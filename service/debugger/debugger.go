@@ -1518,7 +1518,7 @@ func filter(fname string) bool {
 }
 func traverse(t proc.ValidTargets, f *proc.Function, depth int, FollowCalls int) ([]string, error) {
 
-	if filter(f.Name) == false {
+	if !filter(f.Name) {
 		return nil, nil
 	}
 
@@ -1533,7 +1533,7 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, FollowCalls int)
 		mapnode.Func = f
 		TraceMap[f.Name] = mapnode
 	}
-	if mapnode.visited == false {
+	if !mapnode.visited {
 		// Condition to avoid adding duplicates to funcs list
 		funcs = append(funcs, f.Name)
 		mapnode.visited = true
@@ -1545,7 +1545,7 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, FollowCalls int)
 	}
 	Budget := FollowCalls - (depth + 1)
 	deferdepth := 0
-	if TraceMap[f.Name].cached == false {
+	if !TraceMap[f.Name].cached {
 		// Condition to avoid repeated disassembly of the same functions
 		text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
 		if err != nil {
@@ -1554,7 +1554,7 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, FollowCalls int)
 		for _, instr := range text {
 			if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
 				cf := instr.DestLoc.Fn
-				if filter(cf.Name) == false {
+				if !filter(cf.Name) {
 					continue
 				}
 				childnode := TraceMap[cf.Name]
@@ -1578,7 +1578,7 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, FollowCalls int)
 					}
 				}
 
-				if strings.Index(cf.Name, "runtime.deferreturn") != -1 {
+				if strings.Contains(cf.Name, "runtime.deferreturn") {
 					if childnode.Depth+1 <= FollowCalls {
 						// flag to track defer functions
 						deferdepth = childnode.Depth + 1
