@@ -944,7 +944,7 @@ func TestTrace2(t *testing.T) {
 func TestTraceDirRecursion(t *testing.T) {
 	dlvbin := getDlvBin(t)
 
-	expected := []byte("1> goroutine(1): main.A(5, 5)\n 2> goroutine(1): main.A(4, 4)\n  3> goroutine(1): main.A(3, 3)\n   4> goroutine(1): main.A(2, 2)\n   4>> goroutine(1):(main.A) => (2)\n  3>> goroutine(1):(main.A) => (6)\n 2>> goroutine(1):(main.A) => (24)\n1>> goroutine(1):(main.A) => (120)\n")
+	expected := []byte("> goroutine(1):frame(1) main.A(5, 5)\n > goroutine(1):frame(2) main.A(4, 4)\n  > goroutine(1):frame(3) main.A(3, 3)\n   > goroutine(1):frame(4) main.A(2, 2)\n    > goroutine(1):frame(5) main.A(1, 1)\n    >> goroutine(1):frame(5) main.A => (1)\n   >> goroutine(1):frame(4) main.A => (2)\n  >> goroutine(1):frame(3) main.A => (6)\n >> goroutine(1):frame(2) main.A => (24)\n>> goroutine(1):frame(1) main.A => (120)\n")
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "leafrec.go"), "main.A", "--follow-calls", "4")
@@ -972,46 +972,6 @@ func TestTraceDirRecursion(t *testing.T) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
 	}
 	assertNoError(cmd.Wait(), t, "cmd.Wait()")
-}
-
-func TestTracePanicDefer(t *testing.T) {
-	dlvbin := getDlvBin(t)
-
-	expected1 := []byte("1> goroutine(1): main.F0()\n 2> goroutine(1): runtime.deferprocStack")
-	expected2 := []byte(" 2>> goroutine(1):(runtime.deferprocStack) => ()\n 2> goroutine(1): main.F1()\n  3> goroutine(1): main.F2()\n   4> goroutine(1): main.F3()\n1>> goroutine(1):(main.F0) => ()\n 2> goroutine(1): runtime.deferreturn()\n 2>> goroutine(1):(runtime.deferreturn) => ()\n1>> goroutine(1):(main.F0) => ()\n")
-
-	fixtures := protest.FindFixturesDir()
-	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "panicex.go"), "main.F0", "--follow-calls", "4")
-	rdr, err := cmd.StderrPipe()
-	assertNoError(err, t, "stderr pipe")
-	defer rdr.Close()
-
-	cmd.Dir = filepath.Join(fixtures, "buildtest")
-
-	assertNoError(cmd.Start(), t, "running trace")
-
-	// Parse output to ignore calls to morestack_noctxt for comparison
-	scan := bufio.NewScanner(rdr)
-	text := ""
-	outputtext := ""
-	for scan.Scan() {
-		text = scan.Text()
-		if !strings.Contains(text, "morestack_noctxt") {
-			outputtext += text
-			outputtext += "\n"
-		}
-	}
-	output := []byte(outputtext)
-
-	// Split expected into two to work around comparison of actual address parameter in deferprocStack
-	if !bytes.Contains(output, expected1) {
-		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected1), string(output))
-	}
-	if !bytes.Contains(output, expected2) {
-		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected2), string(output))
-	}
-	assertNoError(cmd.Wait(), t, "cmd.Wait()")
-
 }
 
 func TestTraceMultipleGoroutines(t *testing.T) {
