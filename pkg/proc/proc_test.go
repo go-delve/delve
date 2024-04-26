@@ -5490,6 +5490,9 @@ func TestWatchpointCounts(t *testing.T) {
 	skipOn(t, "not implemented", "386")
 	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
 	skipOn(t, "not implemented", "ppc64le")
+	if _, isTeamCityTest := os.LookupEnv("TEAMCITY_VERSION"); isTeamCityTest {
+		skipOn(t, "CI is running a version of macOS that is too old (11.2)", "darwin", "arm64")
+	}
 	protest.AllowRecording(t)
 
 	withTestProcess("databpcountstest", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
@@ -5606,6 +5609,9 @@ func TestWatchpointStack(t *testing.T) {
 	skipOn(t, "not implemented", "386")
 	skipOn(t, "not implemented", "ppc64le")
 	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
+	if _, isTeamCityTest := os.LookupEnv("TEAMCITY_VERSION"); isTeamCityTest {
+		skipOn(t, "CI is running a version of macOS that is too old (11.2)", "darwin", "arm64")
+	}
 	protest.AllowRecording(t)
 
 	position1 := []int{16, 17}
