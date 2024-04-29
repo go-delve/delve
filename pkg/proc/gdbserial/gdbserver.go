@@ -877,12 +877,11 @@ func (p *gdbProcess) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, 
 	var trapthread *gdbThread
 	var tu = threadUpdater{p: p}
 	var atstart bool
-	var sp stopPacket
+	var trapThreadRegs map[uint64]uint64
 continueLoop:
 	for {
 		tu.Reset()
-		var err error
-		sp, err = p.conn.resume(cctx, p.threads, &tu)
+		sp, err := p.conn.resume(cctx, p.threads, &tu)
 		threadID = sp.threadID
 		if err != nil {
 			if _, exited := err.(proc.ErrProcessExited); exited {
@@ -915,12 +914,13 @@ continueLoop:
 			return nil, proc.StopExited, proc.ErrProcessExited{Pid: p.conn.pid}
 		}
 		if shouldStop {
+			trapThreadRegs = sp.regs
 			break continueLoop
 		}
 	}
 
 	p.clearThreadRegisters()
-	trapthread.reloadRegisters(sp.regs)
+	trapthread.reloadRegisters(trapThreadRegs)
 
 	stopReason := proc.StopUnknown
 	if atstart {
@@ -1428,13 +1428,10 @@ func (p *gdbProcess) updateThreadList(tu *threadUpdater, jstopInfo map[int]stopP
 	}
 
 	for _, th := range p.threads {
-		var haveStopInfo bool
-		var tsp stopPacket
-		var err error
 		_, hasThread := jstopInfo[th.ID]
 		shouldQueryStopInfo := (jstopInfo != nil && hasThread) || p.threadStopInfo
 		if shouldQueryStopInfo {
-			tsp, err = p.conn.threadStopInfo(th.strID)
+			tsp, err := p.conn.threadStopInfo(th.strID)
 			if err != nil {
 				if isProtocolErrorUnsupported(err) {
 					p.threadStopInfo = false
@@ -1442,9 +1439,6 @@ func (p *gdbProcess) updateThreadList(tu *threadUpdater, jstopInfo map[int]stopP
 				}
 				return err
 			}
-			haveStopInfo = true
-		}
-		if haveStopInfo {
 			th.setbp = (tsp.reason == "breakpoint" || (tsp.reason == "" && tsp.sig == breakpointSignal) || (tsp.watchAddr > 0) || (tsp.watchReg >= 0))
 			th.sig = tsp.sig
 			th.watchAddr = tsp.watchAddr
@@ -1728,6 +1722,8 @@ func (t *gdbThread) reloadRegisters(regs map[uint64]uint64) error {
 			switch r.Bitsize / 8 {
 			case 8:
 				binary.BigEndian.PutUint64(t.regs.regs[r.Name].value, val)
+			case 4:
+				binary.BigEndian.PutUint32(t.regs.regs[r.Name].value, uint32(val))
 			}
 		}
 	}
