@@ -1431,7 +1431,7 @@ func (p *gdbProcess) updateThreadList(tu *threadUpdater, jstopInfo map[int]stopP
 		_, hasThread := jstopInfo[th.ID]
 		shouldQueryStopInfo := (jstopInfo != nil && hasThread) || p.threadStopInfo
 		if shouldQueryStopInfo {
-			tsp, err := p.conn.threadStopInfo(th.strID)
+			sp, err := p.conn.threadStopInfo(th.strID)
 			if err != nil {
 				if isProtocolErrorUnsupported(err) {
 					p.threadStopInfo = false
@@ -1439,10 +1439,10 @@ func (p *gdbProcess) updateThreadList(tu *threadUpdater, jstopInfo map[int]stopP
 				}
 				return err
 			}
-			th.setbp = (tsp.reason == "breakpoint" || (tsp.reason == "" && tsp.sig == breakpointSignal) || (tsp.watchAddr > 0) || (tsp.watchReg >= 0))
-			th.sig = tsp.sig
-			th.watchAddr = tsp.watchAddr
-			th.watchReg = tsp.watchReg
+			th.setbp = (sp.reason == "breakpoint" || (sp.reason == "" && sp.sig == breakpointSignal) || (sp.watchAddr > 0) || (sp.watchReg >= 0))
+			th.sig = sp.sig
+			th.watchAddr = sp.watchAddr
+			th.watchReg = sp.watchReg
 		} else {
 			th.sig = 0
 			th.watchAddr = 0
