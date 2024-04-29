@@ -182,6 +182,7 @@ type gdbThread struct {
 	sig               uint8  // signal received by thread after last stop
 	setbp             bool   // thread was stopped because of a breakpoint
 	watchAddr         uint64 // if > 0 this is the watchpoint address
+	watchReg          int    // if < 0 there are no active watchpoints returned
 	common            proc.CommonThread
 }
 
@@ -851,7 +852,13 @@ func (p *gdbProcess) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, 
 	if p.conn.direction == proc.Forward {
 		// step threads stopped at any breakpoint over their breakpoint
 		for _, thread := range p.threads {
-			if thread.CurrentBreakpoint.Breakpoint != nil {
+			// Do not single step over a breakpoint if it is a watchpoint. The PC will already have advanced and we
+			// won't experience the same stutter effect as with a breakpoint. Also, there is a bug in certain versions
+			// of the MacOS mach kernel where single stepping when we have hardware watchpoints set will cause the
+			// kernel to send a spurious mach exception.
+			// See: https://github.com/llvm/llvm-project/blob/b9f2c16b50f68c978e90190f46a7c0db3f39e98c/lldb/source/Plugins/Process/Utility/StopInfoMachException.cpp#L814
+			// TODO(deparker): We can skip single stepping in the case of thread.BinInfo().Arch.BreakInstrMovesPC().
+			if thread.CurrentBreakpoint.Breakpoint != nil && thread.CurrentBreakpoint.WatchType == 0 {
 				if err := thread.stepInstruction(); err != nil {
 					return nil, proc.StopUnknown, err
 				}
@@ -896,6 +903,7 @@ continueLoop:
 			// reason the thread returned by resume() stopped.
 			trapthread.sig = sp.sig
 			trapthread.watchAddr = sp.watchAddr
+			trapthread.watchReg = sp.watchReg
 		}
 
 		var shouldStop, shouldExitErr bool
@@ -1427,12 +1435,14 @@ func (p *gdbProcess) updateThreadList(tu *threadUpdater) error {
 				}
 				return err
 			}
-			th.setbp = (sp.reason == "breakpoint" || (sp.reason == "" && sp.sig == breakpointSignal) || (sp.watchAddr > 0))
+			th.setbp = (sp.reason == "breakpoint" || (sp.reason == "" && sp.sig == breakpointSignal) || (sp.watchAddr > 0) || (sp.watchReg >= 0))
 			th.sig = sp.sig
 			th.watchAddr = sp.watchAddr
+			th.watchReg = sp.watchReg
 		} else {
 			th.sig = 0
 			th.watchAddr = 0
+			th.watchReg = -1
 		}
 	}
 
@@ -1913,6 +1923,8 @@ func (t *gdbThread) reloadGAlloc() error {
 
 func (t *gdbThread) clearBreakpointState() {
 	t.setbp = false
+	t.watchAddr = 0
+	t.watchReg = -1
 	t.CurrentBreakpoint.Clear()
 }
 
@@ -1921,12 +1933,35 @@ func (t *gdbThread) SetCurrentBreakpoint(adjustPC bool) error {
 	// adjustPC is ignored, it is the stub's responsibility to set the PC
 	// address correctly after hitting a breakpoint.
 	t.CurrentBreakpoint.Clear()
+	// t.watchAddr on certain mach kernel versions could contain the address of a
+	// software breakpoint, hardcoded breakpoint (e.g. runtime.Breakpoint) or a
+	// hardware watchpoint. The mach exception produced by the kernel *should* disambiguate
+	// but it doesn't.
 	if t.watchAddr > 0 {
 		t.CurrentBreakpoint.Breakpoint = t.p.Breakpoints().M[t.watchAddr]
 		if t.CurrentBreakpoint.Breakpoint == nil {
+			buf := make([]byte, t.BinInfo().Arch.BreakpointSize())
+			_, err := t.p.ReadMemory(buf, t.watchAddr)
+			isHardcodedBreakpoint := err == nil && (bytes.Equal(t.BinInfo().Arch.BreakpointInstruction(), buf) || bytes.Equal(t.BinInfo().Arch.AltBreakpointInstruction(), buf))
+			if isHardcodedBreakpoint {
+				// This is a hardcoded breakpoint, ignore.
+				// TODO(deparker): There's an optimization here since we will do this
+				// again at a higher level to determine if we've stopped at a hardcoded breakpoint.
+				// We could set some state here so that we don't do extra work later.
+				t.watchAddr = 0
+				return nil
+			}
 			return fmt.Errorf("could not find watchpoint at address %#x", t.watchAddr)
 		}
 		return nil
+	}
+	if t.watchReg >= 0 {
+		for _, bp := range t.p.Breakpoints().M {
+			if bp.WatchType != 0 && bp.HWBreakIndex == uint8(t.watchReg) {
+				t.CurrentBreakpoint.Breakpoint = bp
+				return nil
+			}
+		}
 	}
 	regs, err := t.Registers()
 	if err != nil {

@@ -1011,7 +1011,6 @@ func TestClientServer_FindLocations(t *testing.T) {
 		if locsNoSubst[0].PC != locsSubst[0].PC {
 			t.Fatalf("FindLocation with substitute rules mismatch %#v %#v", locsNoSubst[0], locsSubst[0])
 		}
-
 	})
 
 	withTestClient2("testnextdefer", t, func(c service.Client) {
@@ -2623,7 +2622,6 @@ func TestLongStringArg(t *testing.T) {
 			t.Logf("%#v\n", var2)
 			if var2.Value != val2 {
 				t.Fatalf("wrong value for variable: %q", var2.Value)
-
 			}
 			return var1.Addr
 		}

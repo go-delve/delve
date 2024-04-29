@@ -1876,7 +1876,6 @@ func (bi *BinaryInfo) parseDebugFramePE(image *Image, exe *pe.File, debugInfoByt
 // loadBinaryInfoMacho specifically loads information from a Mach-O binary.
 func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint uint64, wg *sync.WaitGroup) error {
 	exe, err := macho.Open(path)
-
 	if err != nil {
 		return err
 	}
