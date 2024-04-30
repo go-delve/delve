@@ -1428,8 +1428,10 @@ func (p *gdbProcess) updateThreadList(tu *threadUpdater, jstopInfo map[int]stopP
 	}
 
 	for _, th := range p.threads {
-		_, hasThread := jstopInfo[th.ID]
-		shouldQueryStopInfo := (jstopInfo != nil && hasThread) || p.threadStopInfo
+		shouldQueryStopInfo := p.threadStopInfo
+		if jstopInfo != nil {
+			_, shouldQueryStopInfo = jstopInfo[th.ID]
+		}
 		if shouldQueryStopInfo {
 			sp, err := p.conn.threadStopInfo(th.strID)
 			if err != nil {
