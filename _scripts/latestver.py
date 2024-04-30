@@ -1,6 +1,6 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 import json
-import urllib
+import urllib.request
 import sys
 import re
 
@@ -19,9 +19,9 @@ def splitver(x):
 	return v
 
 ver = sys.argv[1]
-d = json.loads(urllib.urlopen('https://go.dev/dl/?mode=json&include=all').read())
+d = json.loads(urllib.request.urlopen('https://go.dev/dl/?mode=json&include=all').read())
 ds = sorted(d, reverse=True, key=lambda it: splitver(it['version'][2:]))
 for x in ds:
 	if x['version'][:len(ver)] == ver:
-		print x['version']
+		print(x['version'])
 		exit(0)

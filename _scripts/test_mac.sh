@@ -25,7 +25,7 @@ if [ "$GOVERSION" = "gotip" ]; then
     cd -
 else
     echo Finding latest patch version for $GOVERSION
-    GOVERSION=$(python _scripts/latestver.py $GOVERSION)
+    GOVERSION=$(python3 _scripts/latestver.py $GOVERSION)
     echo Go $GOVERSION on $ARCH
     cd $TMPDIR
     curl -sSL "https://storage.googleapis.com/golang/$GOVERSION.darwin-$ARCH.tar.gz" | tar -xz
