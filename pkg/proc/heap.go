@@ -119,7 +119,6 @@ type arena struct {
 }
 
 func (s *HeapScope) readHeap(scope *EvalScope) error {
-	ptrSize := s.bi.Arch.PtrSize()
 	rdr := s.bi.Images[0].DwarfReader()
 	if rdr == nil {
 		return errors.New("error dwarf reader is nil")
@@ -134,201 +133,23 @@ func (s *HeapScope) readHeap(scope *EvalScope) error {
 
 	mheap := tmp.toRegion()
 
-	var arenas []arena
-
-	if mheap.HasField("spans") {
-		// go 1.9 or 1.10. There is a single arena.
-		arenas = append(arenas, s.readArena19(mheap))
-	} else {
-		// go 1.11+. Has multiple arenas.
-		tmp, err = scope.findGlobal("runtime", "heapArenaBytes")
-		if err != nil {
-			return err
-		}
-		arenaSize, _ := constant.Int64Val(tmp.Value)
-		if arenaSize%heapInfoSize != 0 {
-			return errors.New("arenaSize not a multiple of heapInfoSize")
-		}
-		arenaBaseOffset, err := s.getArenaBaseOffset(scope)
-		if err != nil {
-			return err
-		}
-		if ptrSize == 4 && arenaBaseOffset != 0 {
-			return errors.New("arenaBaseOffset must be 0 for 32-bit inferior")
-		}
-
-		level1Table := mheap.Field("arenas")
-		level1size := level1Table.ArrayLen()
-		for level1 := int64(0); level1 < level1size; level1++ {
-			ptr := level1Table.ArrayIndex(level1)
-			if ptr.Address() == 0 {
-				continue
-			}
-			level2table := ptr.Deref()
-			level2size := level2table.ArrayLen()
-			for level2 := int64(0); level2 < level2size; level2++ {
-				ptr = level2table.ArrayIndex(level2)
-				if ptr.Address() == 0 {
-					continue
-				}
-				a := ptr.Deref()
-
-				min := Address(arenaSize*(level2+level1*level2size) - arenaBaseOffset)
-				max := min.Add(arenaSize)
-
-				arenas = append(arenas, s.readArena(a, min, max))
-			}
-		}
-	}
-
-	return s.readSpans(scope, mheap, arenas)
+	return s.readSpans(scope, mheap)
 }
 
-func (s *HeapScope) getArenaBaseOffset(scope *EvalScope) (int64, error) {
-	if x, err := scope.findGlobal("runtime", "arenaBaseOffsetUintptr"); err == nil { // go1.15+
-		// arenaBaseOffset changed sign in 1.15. Callers treat this
-		// value as it was specified in 1.14, so we negate it here.
-		xv, _ := constant.Int64Val(x.Value)
-		return -xv, nil
-	}
-	x, err := scope.findGlobal("runtime", "arenaBaseOffset")
-	if err != nil {
-		return 0, err
-	}
-	xv, _ := constant.Int64Val(x.Value)
-	return xv, nil
-}
-
-// Read the global arena. Go 1.9 or 1.10 only, which has a single arena. Record
-// heap pointers and return the arena size summary.
-func (s *HeapScope) readArena19(mheap *region) arena {
-	ptrSize := int64(s.bi.Arch.PtrSize())
-	logPtrSize := s.bi.Arch.LogPtrSize()
-
-	arenaStart := Address(mheap.Field("arena_start").Uintptr())
-	arenaUsed := Address(mheap.Field("arena_used").Uintptr())
-	arenaEnd := Address(mheap.Field("arena_end").Uintptr())
-	bitmapEnd := Address(mheap.Field("bitmap").Uintptr())
-	bitmapStart := bitmapEnd.Add(-int64(mheap.Field("bitmap_mapped").Uintptr()))
-	spanTableStart := mheap.Field("spans").SliceIndex(0).a
-	spanTableEnd := spanTableStart.Add(mheap.Field("spans").SliceCap() * ptrSize)
-
-	// Copy pointer bits to heap info.
-	// Note that the pointer bits are stored backwards.
-	for a := arenaStart; a < arenaUsed; a = a.Add(ptrSize) {
-		off := a.Sub(arenaStart) >> logPtrSize
-
-		bme, _ := readUintRaw(s.mem, uint64(bitmapEnd.Add(-(off>>2)-1)), 1)
-		if uint8(bme)>>uint(off&3)&1 != 0 {
-			s.setHeapPtr(a)
+func (s *HeapScope) readSpans(scope *EvalScope, mheap *region) error {
+	rtConstant := func(name string) int64 {
+		x, _ := scope.findGlobal("runtime", name)
+		if x != nil {
+			v, _ := constant.Int64Val(x.Value)
+			return v
 		}
+		return 0
 	}
-
-	return arena{
-		heapMin:      arenaStart,
-		heapMax:      arenaEnd,
-		bitmapMin:    bitmapStart,
-		bitmapMax:    bitmapEnd,
-		spanTableMin: spanTableStart,
-		spanTableMax: spanTableEnd,
-	}
-}
-
-// Read a single heapArena. Go 1.11+, which has multiple areans. Record heap
-// pointers and return the arena size summary.
-func (s *HeapScope) readArena(a *region, min, max Address) arena {
-	ptrSize := s.bi.Arch.PtrSize()
-
-	var bitmap *region
-	if a.HasField("bitmap") { // Before go 1.22
-		bitmap = a.Field("bitmap")
-		if oneBitBitmap := a.HasField("noMorePtrs"); oneBitBitmap { // Starting in go 1.20
-			s.readOneBitBitmap(bitmap, min)
-		} else {
-			s.readMultiBitBitmap(bitmap, min)
-		}
-	} else if a.HasField("heapArenaPtrScalar") && a.Field("heapArenaPtrScalar").HasField("bitmap") { // go 1.22 without allocation headers
-		// TODO: This configuration only existed between CL 537978 and CL
-		// 538217 and was never released. Prune support.
-		bitmap = a.Field("heapArenaPtrScalar").Field("bitmap")
-		s.readOneBitBitmap(bitmap, min)
-	} else { // go 1.22 with allocation headers
-		panic("unimplemented")
-	}
-
-	spans := a.Field("spans")
-	arena := arena{
-		heapMin:      min,
-		heapMax:      max,
-		spanTableMin: spans.a,
-		spanTableMax: spans.a.Add(spans.ArrayLen() * int64(ptrSize)),
-	}
-	if bitmap.a != 0 {
-		arena.bitmapMin = bitmap.a
-		arena.bitmapMax = bitmap.a.Add(bitmap.ArrayLen())
-	}
-	return arena
-}
-
-// Read a one-bit bitmap (Go 1.20+), recording the heap pointers.
-func (s *HeapScope) readOneBitBitmap(bitmap *region, min Address) {
-	ptrSize := int64(s.bi.Arch.PtrSize())
-	n := bitmap.ArrayLen()
-	for i := int64(0); i < n; i++ {
-		// The array uses 1 bit per word of heap. See mbitmap.go for
-		// more information.
-		m := bitmap.ArrayIndex(i).Uintptr()
-		bits := 8 * ptrSize
-		for j := int64(0); j < bits; j++ {
-			if m>>uint(j)&1 != 0 {
-				s.setHeapPtr(min.Add((i*bits + j) * ptrSize))
-			}
-		}
-	}
-}
-
-// Read a multi-bit bitmap (Go 1.11-1.20), recording the heap pointers.
-func (s *HeapScope) readMultiBitBitmap(bitmap *region, min Address) {
-	ptrSize := int64(s.bi.Arch.PtrSize())
-	n := bitmap.ArrayLen()
-	for i := int64(0); i < n; i++ {
-		// The nth byte is composed of 4 object bits and 4 live/dead
-		// bits. We ignore the 4 live/dead bits, which are on the
-		// high order side of the byte.
-		//
-		// See mbitmap.go for more information on the format of
-		// the bitmap field of heapArena.
-		m := bitmap.ArrayIndex(i).Uint8()
-		for j := int64(0); j < 4; j++ {
-			if m>>uint(j)&1 != 0 {
-				s.setHeapPtr(min.Add((i*4 + j) * ptrSize))
-			}
-		}
-	}
-}
-
-func (s *HeapScope) readSpans(scope *EvalScope, mheap *region, arenas []arena) error {
-	rtConstant := func(name string) (int64, error) {
-		tmp, err := scope.findGlobal("runtime", name)
-		if err != nil {
-			return 0, err
-		}
-		v, _ := constant.Int64Val(tmp.Value)
-		return v, nil
-	}
-	pageSize, err := rtConstant("_PageSize")
-	if err != nil {
-		return err
-	}
+	pageSize := rtConstant("_PageSize")
 	// Span types
-	tmp, _ := rtConstant("_MSpanInUse")
-	spanInUse := uint8(tmp)
+	spanInUse := uint8(rtConstant("_MSpanInUse"))
 	if spanInUse == 0 {
-		tmp, err = rtConstant("mSpanInUse")
-		if err != nil {
-			return err
-		}
-		spanInUse = uint8(tmp)
+		spanInUse = uint8(rtConstant("mSpanInUse"))
 	}
 
 	// Process spans.
@@ -362,14 +183,9 @@ func (s *HeapScope) readSpans(scope *EvalScope, mheap *region, arenas []arena) e
 			}
 
 			// Process special records.
-			kindSpecialFinalizer, err := rtConstant("_KindSpecialFinalizer")
-			if err != nil {
-				return err
-			}
 			for special := sp.Field("specials"); special.Address() != 0; special = special.Field("next") {
 				special = special.Deref() // *special to special
-
-				if special.Field("kind").Uint8() != uint8(kindSpecialFinalizer) {
+				if special.Field("kind").Uint8() != uint8(rtConstant("_KindSpecialFinalizer")) {
 					// All other specials (just profile records) can't point into the heap.
 					continue
 				}

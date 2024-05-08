@@ -2420,7 +2420,12 @@ func objref(t *Term, ctx callContext, args string) error {
 	if args == "" {
 		args = "objref.out"
 	}
-	return t.client.ObjectReference(args)
+	err := t.client.ObjectReference(args)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(t.stdout, "successly output to '%s'\n", args)
+	return nil
 }
 
 func stackCommand(t *Term, ctx callContext, args string) error {
