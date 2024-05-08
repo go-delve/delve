@@ -14,7 +14,8 @@ import (
 // transcriptWriter writes to a pagingWriter and also, optionally, to a
 // buffered file.
 type transcriptWriter struct {
-	fileOnly     bool
+	fileOnly, echo bool
+
 	pw           *pagingWriter
 	file         *bufio.Writer
 	fh           io.Closer
@@ -52,7 +53,7 @@ func (w *transcriptWriter) ColorizePrint(path string, reader io.ReadSeeker, star
 
 // Echo outputs str only to the optional transcript file.
 func (w *transcriptWriter) Echo(str string) {
-	if w.file != nil {
+	if w.echo && w.file != nil {
 		w.file.WriteString(str)
 	}
 }
@@ -80,13 +81,14 @@ func (w *transcriptWriter) CloseTranscript() error {
 // TranscribeTo starts transcribing the output to the specified file. If
 // fileOnly is true the output will only go to the file, output to the
 // io.Writer will be suppressed.
-func (w *transcriptWriter) TranscribeTo(fh io.WriteCloser, fileOnly bool) {
+func (w *transcriptWriter) TranscribeTo(fh io.WriteCloser, fileOnly, echo bool) {
 	if w.file == nil {
 		w.CloseTranscript()
 	}
 	w.fh = fh
 	w.file = bufio.NewWriter(fh)
 	w.fileOnly = fileOnly
+	w.echo = echo
 }
 
 // pagingWriter writes to w. If PageMaybe is called, after a large amount of
