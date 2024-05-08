@@ -328,3 +328,11 @@ func (s *RPCServer) Disassemble(args DisassembleRequest, answer *api.AsmInstruct
 	}
 	return nil
 }
+
+func (s *RPCServer) ObjectReference(arg api.ObjectReferenceArgs) error {
+	err := s.debugger.ObjectReference(arg.FileName)
+	if err != nil {
+		return err
+	}
+	return nil
+}

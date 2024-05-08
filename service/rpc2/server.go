@@ -1143,3 +1143,13 @@ func (s *RPCServer) DebugInfoDirectories(arg DebugInfoDirectoriesIn, out *DebugI
 	out.List = s.debugger.DebugInfoDirectories()
 	return nil
 }
+
+type ObjectReferenceIn struct {
+	FileName string
+}
+
+type ObjectReferenceOut struct{}
+
+func (s *RPCServer) ObjectReference(arg ObjectReferenceIn, out *ObjectReferenceOut) error {
+	return s.debugger.ObjectReference(arg.FileName)
+}

@@ -112,6 +112,8 @@ type Client interface {
 	ListPackagesBuildInfo(filter string, includeFiles bool) ([]api.PackageBuildInfo, error)
 	// ListLocalVariables lists all local variables in scope.
 	ListLocalVariables(scope api.EvalScope, cfg api.LoadConfig) ([]api.Variable, error)
+	// ObjectReference outputs all GC-reachable object reference relationships to a file in pprof protobuf format.
+	ObjectReference(filename string) error
 	// ListFunctionArgs lists all arguments to the current function.
 	ListFunctionArgs(scope api.EvalScope, cfg api.LoadConfig) ([]api.Variable, error)
 	// ListThreadRegisters lists registers and their values, for the given thread.

@@ -1581,6 +1581,14 @@ func (d *Debugger) LocalVariables(goid int64, frame, deferredCall int, cfg proc.
 	return s.LocalVariables(cfg)
 }
 
+// ObjectReference outputs all GC-reachable object reference relationships to a file in pprof protobuf format.
+func (d *Debugger) ObjectReference(filename string) (err error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+	err = d.target.Selected.ObjectReference(filename)
+	return err
+}
+
 // FunctionArguments returns the arguments to the current function.
 func (d *Debugger) FunctionArguments(goid int64, frame, deferredCall int, cfg proc.LoadConfig) ([]*proc.Variable, error) {
 	d.targetMutex.Lock()

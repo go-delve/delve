@@ -627,6 +627,11 @@ type DumpState struct {
 	Err string
 }
 
+// ObjectReferenceArgs describes the file name which to output object reference relationships.
+type ObjectReferenceArgs struct {
+	FileName string
+}
+
 // ListGoroutinesFilter describes a filtering condition for the
 // ListGoroutines API call.
 type ListGoroutinesFilter struct {

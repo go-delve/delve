@@ -2,6 +2,7 @@ package proc
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/go-delve/delve/pkg/dwarf/frame"
@@ -88,6 +89,17 @@ const (
 // PtrSize returns the size of a pointer for the architecture.
 func (a *Arch) PtrSize() int {
 	return a.ptrSize
+}
+
+func (a *Arch) LogPtrSize() int {
+	switch a.ptrSize {
+	case 8:
+		return 3
+	case 4:
+		return 2
+	default:
+		panic("invalid ptrSize: " + strconv.Itoa(a.ptrSize))
+	}
 }
 
 // MaxInstructionLength is the maximum size in bytes of an instruction.

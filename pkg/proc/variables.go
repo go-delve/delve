@@ -2337,7 +2337,13 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 		return
 	}
 
-	typ, kind, err := runtimeTypeToDIE(_type, data.Addr)
+	mds, err := loadModuleData(v.bi, _type.mem)
+	if err != nil {
+		v.Unreadable = fmt.Errorf("error loading module data: %v", err)
+		return
+	}
+
+	typ, kind, err := runtimeTypeToDIE(_type, data.Addr, mds)
 	if err != nil {
 		v.Unreadable = err
 		return

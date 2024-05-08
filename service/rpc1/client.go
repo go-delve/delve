@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/rpc"
 	"net/rpc/jsonrpc"
-
 	"sync"
 
 	"github.com/go-delve/delve/service/api"
@@ -317,4 +316,11 @@ func (c *RPCClient) DisassemblePC(scope api.EvalScope, pc uint64, flavour api.As
 
 func (c *RPCClient) call(method string, args, reply interface{}) error {
 	return c.client.Call("RPCServer."+method, args, reply)
+}
+
+func (c *RPCClient) ObjectReference(filename string) error {
+	arg := api.ObjectReferenceArgs{
+		FileName: filename,
+	}
+	return c.call("ObjectReference", arg, nil)
 }
