@@ -7,7 +7,6 @@ import (
 	"regexp"
 
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
-	"github.com/go-delve/delve/pkg/logflags"
 )
 
 // TODO:
@@ -76,7 +75,10 @@ func (m *FallbackMemory) ReadMemory(buf []byte, addr uint64) (n int, err error) 
 
 // todo:
 // 1. 尽量识别所有能识别的类型
-func (s *ObjRefScope) findObject(addr Address, typ godwarf.Type) (v *ReferenceVariable) {
+func (s *ObjRefScope) findObject(addr Address, typ godwarf.Type, mem MemoryReadWriter) (v *ReferenceVariable) {
+	if addr == 0 {
+		return nil
+	}
 	h := s.findHeapInfo(addr)
 	if h == nil {
 		// Not in Go heap
@@ -118,15 +120,17 @@ func (s *ObjRefScope) findObject(addr Address, typ godwarf.Type) (v *ReferenceVa
 		if a >= addr && a < addr.Add(typ.Size()) {
 			continue
 		}
-		if !s.isPtrFromHeap(a) {
+		if !h.IsPtr(a, int64(s.bi.Arch.PtrSize())) {
 			continue
 		}
-		ptr, _ := readUintRaw(s.mem, uint64(a), int64(s.bi.Arch.PtrSize()))
-		if ptr > 0 {
-			if sv := s.findObject(Address(ptr), &godwarf.VoidType{CommonType: godwarf.CommonType{ByteSize: int64(0)}}); sv != nil {
-				v.size += sv.size
-				v.count += sv.count
-			}
+		ptr, err := readUintRaw(mem, uint64(a), int64(s.bi.Arch.PtrSize()))
+		if err != nil {
+			return nil
+		}
+		sv := s.findObject(Address(ptr), &godwarf.VoidType{CommonType: godwarf.CommonType{ByteSize: int64(0)}}, mem)
+		if sv != nil {
+			v.size += sv.size
+			v.count += sv.count
 		}
 	}
 	return v
@@ -170,138 +174,161 @@ func (s *ObjRefScope) record(x *ReferenceVariable) {
 	s.pb.addReference(indexes, x.count, x.size)
 }
 
-func (s *ObjRefScope) fillRefs(x *ReferenceVariable, inStack bool) {
+func (s *ObjRefScope) fillRefs(x *ReferenceVariable, inStack bool, mem MemoryReadWriter) {
 	if inStack {
 		s.referenceLink = append(s.referenceLink, x)
 		defer func() { s.referenceLink = s.referenceLink[:len(s.referenceLink)-1] }()
 	}
 	switch typ := x.RealType.(type) {
 	case *godwarf.PtrType:
-		ptrval, _ := readUintRaw(s.mem, x.Addr, int64(s.bi.Arch.PtrSize()))
-		if ptrval != 0 {
-			if y := s.findObject(Address(ptrval), resolveTypedef(typ.Type)); y != nil {
-				s.fillRefs(y, false)
-				// flatten reference
-				x.size += y.size
-				x.count += y.count
-			}
+		ptrval, err := readUintRaw(mem, x.Addr, int64(s.bi.Arch.PtrSize()))
+		if err != nil {
+			return
+		}
+		if y := s.findObject(Address(ptrval), resolveTypedef(typ.Type), DereferenceMemory(mem)); y != nil {
+			s.fillRefs(y, false, DereferenceMemory(mem))
+			// flatten reference
+			x.size += y.size
+			x.count += y.count
 		}
 	case *godwarf.VoidType:
 		return
 	case *godwarf.ChanType:
-		ptrval, _ := readUintRaw(s.mem, x.Addr, int64(s.bi.Arch.PtrSize()))
-		if ptrval != 0 {
-			if y := s.findObject(Address(ptrval), resolveTypedef(typ.Type.(*godwarf.PtrType).Type)); y != nil {
-				x.size += y.size
-				x.count += y.count
-
-				structType, ok := y.RealType.(*godwarf.StructType)
-				if !ok {
-					logflags.DebuggerLogger().Errorf("bad channel type %v", y.RealType.String())
-					return
-				}
-				chanLen, _ := readUintRaw(s.mem, uint64(Address(ptrval).Add(structType.Field[1].ByteOffset)), int64(s.bi.Arch.PtrSize()))
-
-				if chanLen > 0 {
-					for _, field := range structType.Field {
-						if field.Name == "buf" {
-							zptrval, _ := readUintRaw(s.mem, uint64(Address(y.Addr).Add(field.ByteOffset)), int64(s.bi.Arch.PtrSize()))
-							if zptrval != 0 {
-								if z := s.findObject(Address(zptrval), fakeArrayType(chanLen, typ.ElemType)); z != nil {
-									s.fillRefs(z, false)
-									x.size += z.size
-									x.count += z.count
-								}
-							}
-							break
-						}
-					}
-				}
-			}
-		}
-	case *godwarf.MapType:
-		// todo: optimize implementation
-		ptrval, _ := readUintRaw(s.mem, x.Addr, int64(s.bi.Arch.PtrSize()))
-		if ptrval != 0 {
-			if y := s.findObject(Address(ptrval), resolveTypedef(typ.Type.(*godwarf.PtrType).Type)); y != nil {
-				x.size += y.size
-				x.count += y.count
-
-				xv := newVariable("", x.Addr, x.RealType, s.bi, s.mem)
-				it := xv.mapIterator()
-				if it == nil {
-					return
-				}
-				var idx int
-				for it.next() {
-					tmp := it.key()
-					if key := s.directBucketObject(Address(tmp.Addr), resolveTypedef(tmp.RealType)); key != nil {
-						if !isPrimitiveType(key.RealType) {
-							key.Name = fmt.Sprintf("key%d", idx)
-							s.fillRefs(key, true)
-							s.record(key)
-						} else {
-							x.size += key.size
-							x.count += key.count
-						}
-					}
-					if it.values.fieldType.Size() > 0 {
-						tmp = it.value()
-					} else {
-						tmp = xv.newVariable("", it.values.Addr, it.values.fieldType, s.mem)
-					}
-					if val := s.directBucketObject(Address(tmp.Addr), resolveTypedef(tmp.RealType)); val != nil {
-						if !isPrimitiveType(val.RealType) {
-							val.Name = fmt.Sprintf("val%d", idx)
-							s.fillRefs(val, true)
-							s.record(val)
-						} else {
-							x.size += val.size
-							x.count += val.count
-						}
-					}
-					idx++
-				}
-			}
-		}
-	case *godwarf.StringType:
-		strAddr, strLen, _ := readStringInfo(s.mem, s.bi.Arch, x.Addr, typ)
-		if strLen > 0 {
-			if y := s.findObject(Address(strAddr), fakeArrayType(uint64(strLen), &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 1, Name: "byte", ReflectKind: reflect.Uint8}, BitSize: 8, BitOffset: 0}})); y != nil {
-				x.size += y.size
-				x.count += y.count
-			}
-		}
-	case *godwarf.SliceType:
-		base, _ := readUintRaw(s.mem, x.Addr, int64(s.bi.Arch.PtrSize()))
-		if base != 0 {
-			cap_, _ := readUintRaw(s.mem, uint64(Address(x.Addr).Add(int64(s.bi.Arch.PtrSize())*2)), int64(s.bi.Arch.PtrSize()))
-			if y := s.findObject(Address(base), fakeArrayType(cap_, typ.ElemType)); y != nil {
-				s.fillRefs(y, false)
-				x.size += y.size
-				x.count += y.count
-			}
-		}
-	case *godwarf.InterfaceType:
-		xv := newVariable("", x.Addr, x.RealType, s.bi, s.mem)
-		_type, data, isnil := xv.readInterface()
-		if isnil || data == nil {
-			return
-		}
-		rtyp, _, err := runtimeTypeToDIE(_type, data.Addr, s.mds)
+		ptrval, err := readUintRaw(mem, x.Addr, int64(s.bi.Arch.PtrSize()))
 		if err != nil {
 			return
 		}
-		realtyp := resolveTypedef(rtyp)
-		if ptrType, isPtr := realtyp.(*godwarf.PtrType); isPtr {
-			ptrval, _ := readUintRaw(s.mem, data.Addr, int64(s.bi.Arch.PtrSize()))
-			if ptrval != 0 {
-				if y := s.findObject(Address(ptrval), resolveTypedef(ptrType.Type)); y != nil {
-					s.fillRefs(y, false)
-					x.size += y.size
-					x.count += y.count
+		if y := s.findObject(Address(ptrval), resolveTypedef(typ.Type.(*godwarf.PtrType).Type), DereferenceMemory(mem)); y != nil {
+			x.size += y.size
+			x.count += y.count
+
+			structType, ok := y.RealType.(*godwarf.StructType)
+			if !ok {
+				return
+			}
+			var zptrval, chanLen uint64
+			for _, field := range structType.Field {
+				switch field.Name {
+				case "buf":
+					zptrval, err = readUintRaw(DereferenceMemory(mem), uint64(Address(y.Addr).Add(field.ByteOffset)), int64(s.bi.Arch.PtrSize()))
+					if err != nil {
+						return
+					}
+				case "dataqsiz":
+					chanLen, _ = readUintRaw(DereferenceMemory(mem), uint64(Address(y.Addr).Add(field.ByteOffset)), int64(s.bi.Arch.PtrSize()))
 				}
 			}
+			if z := s.findObject(Address(zptrval), fakeArrayType(chanLen, typ.ElemType), DereferenceMemory(mem)); z != nil {
+				s.fillRefs(z, false, DereferenceMemory(mem))
+				x.size += z.size
+				x.count += z.count
+			}
+		}
+	case *godwarf.MapType:
+		ptrval, err := readUintRaw(mem, x.Addr, int64(s.bi.Arch.PtrSize()))
+		if err != nil {
+			return
+		}
+		if y := s.findObject(Address(ptrval), resolveTypedef(typ.Type.(*godwarf.PtrType).Type), DereferenceMemory(mem)); y != nil {
+			x.size += y.size
+			x.count += y.count
+
+			xv := newVariable("", x.Addr, x.RealType, s.bi, mem)
+			it := xv.mapIterator()
+			if it == nil {
+				return
+			}
+			var idx int
+			for it.next() {
+				tmp := it.key()
+				if key := s.directBucketObject(Address(tmp.Addr), resolveTypedef(tmp.RealType)); key != nil {
+					if !isPrimitiveType(key.RealType) {
+						key.Name = fmt.Sprintf("key%d", idx)
+						s.fillRefs(key, true, DereferenceMemory(mem))
+						s.record(key)
+					} else {
+						x.size += key.size
+						x.count += key.count
+					}
+				}
+				if it.values.fieldType.Size() > 0 {
+					tmp = it.value()
+				} else {
+					tmp = xv.newVariable("", it.values.Addr, it.values.fieldType, DereferenceMemory(mem))
+				}
+				if val := s.directBucketObject(Address(tmp.Addr), resolveTypedef(tmp.RealType)); val != nil {
+					if !isPrimitiveType(val.RealType) {
+						val.Name = fmt.Sprintf("val%d", idx)
+						s.fillRefs(val, true, DereferenceMemory(mem))
+						s.record(val)
+					} else {
+						x.size += val.size
+						x.count += val.count
+					}
+				}
+				idx++
+			}
+		}
+	case *godwarf.StringType:
+		strAddr, strLen, err := readStringInfo(mem, s.bi.Arch, x.Addr, typ)
+		if err != nil {
+			return
+		}
+		if y := s.findObject(Address(strAddr), fakeArrayType(uint64(strLen), &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 1, Name: "byte", ReflectKind: reflect.Uint8}, BitSize: 8, BitOffset: 0}}), DereferenceMemory(mem)); y != nil {
+			x.size += y.size
+			x.count += y.count
+		}
+	case *godwarf.SliceType:
+		// mem = cacheMemory(mem, x.Addr, int(typ.Size()))
+		var base, cap_ uint64
+		var err error
+		for _, f := range typ.Field {
+			switch f.Name {
+			case sliceArrayFieldName:
+				base, err = readUintRaw(mem, uint64(int64(x.Addr)+f.ByteOffset), f.Type.Size())
+				if err != nil {
+					return
+				}
+			case sliceCapFieldName:
+				cap_, _ = readUintRaw(mem, uint64(int64(x.Addr)+f.ByteOffset), f.Type.Size())
+			}
+		}
+		if y := s.findObject(Address(base), fakeArrayType(cap_, typ.ElemType), DereferenceMemory(mem)); y != nil {
+			s.fillRefs(y, false, DereferenceMemory(mem))
+			x.size += y.size
+			x.count += y.count
+		}
+	case *godwarf.InterfaceType:
+		xv := newVariable("", x.Addr, x.RealType, s.bi, mem)
+		_type, data, _ := xv.readInterface()
+		if data == nil {
+			return
+		}
+		ptrval, err := readUintRaw(mem, data.Addr, int64(s.bi.Arch.PtrSize()))
+		if err != nil || ptrval == 0 {
+			return
+		}
+		if _type != nil {
+			rtyp, kind, err := runtimeTypeToDIE(_type, data.Addr, s.mds)
+			if err == nil {
+				if kind&kindDirectIface == 0 {
+					if _, isptr := resolveTypedef(rtyp).(*godwarf.PtrType); !isptr {
+						rtyp = pointerTo(rtyp, s.bi.Arch)
+					}
+				}
+				if ptrType, isPtr := resolveTypedef(rtyp).(*godwarf.PtrType); isPtr {
+					if y := s.findObject(Address(ptrval), resolveTypedef(ptrType.Type), DereferenceMemory(mem)); y != nil {
+						s.fillRefs(y, false, DereferenceMemory(mem))
+						x.size += y.size
+						x.count += y.count
+					}
+					return
+				}
+			}
+		}
+		if y := s.findObject(Address(ptrval), new(godwarf.VoidType), DereferenceMemory(mem)); y != nil {
+			x.size += y.size
+			x.count += y.count
 		}
 	case *godwarf.StructType:
 		typ = s.specialStructTypes(typ)
@@ -319,7 +346,7 @@ func (s *ObjRefScope) fillRefs(x *ReferenceVariable, inStack bool) {
 				Name:     field.Name,
 				RealType: resolveTypedef(field.Type),
 			}
-			s.fillRefs(y, true)
+			s.fillRefs(y, true, mem)
 			s.record(y)
 		}
 	case *godwarf.ArrayType:
@@ -337,32 +364,36 @@ func (s *ObjRefScope) fillRefs(x *ReferenceVariable, inStack bool) {
 				Name:     fmt.Sprintf("[%d]", i),
 				RealType: eType,
 			}
-			s.fillRefs(y, true)
+			s.fillRefs(y, true, mem)
 			s.record(y)
 		}
 	case *godwarf.FuncType:
-		closureAddr, _ := readUintRaw(s.mem, x.Addr, int64(s.bi.Arch.PtrSize()))
-		if closureAddr != 0 {
-			funcAddr, _ := readUintRaw(s.mem, closureAddr, int64(s.bi.Arch.PtrSize()))
-			if funcAddr != 0 {
-				fn := s.bi.PCToFunc(funcAddr)
-				if fn == nil {
-					// 要查找堆对象
-					return
-				}
+		closureAddr, err := readUintRaw(mem, x.Addr, int64(s.bi.Arch.PtrSize()))
+		if err != nil || closureAddr == 0 {
+			return
+		}
+		funcAddr, err := readUintRaw(DereferenceMemory(mem), closureAddr, int64(s.bi.Arch.PtrSize()))
+		if err == nil && funcAddr != 0 {
+			if fn := s.bi.PCToFunc(funcAddr); fn != nil {
 				cst := fn.closureStructType(s.bi)
-				if closure := s.findObject(Address(closureAddr), cst); closure != nil {
-					s.fillRefs(closure, false)
+				if closure := s.findObject(Address(closureAddr), cst, DereferenceMemory(mem)); closure != nil {
+					s.fillRefs(closure, false, DereferenceMemory(mem))
 					x.size += closure.size
 					x.count += closure.count
 				}
+				return
 			}
+		}
+		if closure := s.findObject(Address(closureAddr), new(godwarf.VoidType), DereferenceMemory(mem)); closure != nil {
+			x.size += closure.size
+			x.count += closure.count
 		}
 	default:
 	}
+	return
 }
 
-var atomicPointerRegex = regexp.MustCompile(`^sync/atomic.Pointer\[.*\]$`)
+var atomicPointerRegex = regexp.MustCompile(`^sync/atomic\.Pointer\[.*\]$`)
 
 func (s *ObjRefScope) specialStructTypes(st *godwarf.StructType) *godwarf.StructType {
 	switch {
@@ -397,8 +428,8 @@ func (t *Target) ObjectReference(filename string) error {
 		return err
 	}
 
-	heapScope := &HeapScope{mem: t.Memory(), bi: t.BinInfo()}
-	err = heapScope.readHeap(scope)
+	heapScope := &HeapScope{mem: t.Memory(), bi: t.BinInfo(), scope: scope}
+	err = heapScope.readHeap()
 	if err != nil {
 		return err
 	}
@@ -436,7 +467,7 @@ func (t *Target) ObjectReference(filename string) error {
 							RealType: l.RealType,
 						}
 						ors.HeapScope.mem = &FallbackMemory{l.mem}
-						ors.fillRefs(root, true)
+						ors.fillRefs(root, true, l.mem)
 						ors.record(root)
 					}
 				}
@@ -450,15 +481,12 @@ func (t *Target) ObjectReference(filename string) error {
 	pvs, _ := scope.PackageVariables(loadSingleValue)
 	for _, pv := range pvs {
 		if pv.Addr != 0 {
-			//if strings.Contains(pv.Name, "pollmanager") {
-			//	continue
-			//}
 			root := &ReferenceVariable{
 				Addr:     pv.Addr,
 				Name:     pv.Name,
 				RealType: pv.RealType,
 			}
-			ors.fillRefs(root, true)
+			ors.fillRefs(root, true, t.Memory())
 			ors.record(root)
 		}
 	}
@@ -472,7 +500,7 @@ func (t *Target) ObjectReference(filename string) error {
 					Name:     child.Name,
 					RealType: child.RealType,
 				}
-				ors.fillRefs(root, true)
+				ors.fillRefs(root, true, t.Memory())
 				ors.record(root)
 			}
 		}
