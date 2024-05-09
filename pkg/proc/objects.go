@@ -44,6 +44,8 @@ type ReferenceVariable struct {
 	size int64
 	// node count
 	count int64
+
+	prev *ReferenceVariable
 }
 
 type ObjRefScope struct {
@@ -51,26 +53,8 @@ type ObjRefScope struct {
 
 	pb *profileBuilder
 
-	referenceLink []*ReferenceVariable
-
 	gr           *G
 	stackVisited map[Address]bool
-}
-
-// for testing
-type FallbackMemory struct {
-	MemoryReadWriter
-}
-
-func (m *FallbackMemory) ReadMemory(buf []byte, addr uint64) (n int, err error) {
-	n, err = m.MemoryReadWriter.ReadMemory(buf, addr)
-	if err == nil {
-		return
-	}
-	if cmem, ok := m.MemoryReadWriter.(*compositeMemory); ok {
-		return cmem.realmem.ReadMemory(buf, addr)
-	}
-	return
 }
 
 // todo:
@@ -136,6 +120,7 @@ func (s *ObjRefScope) findObject(addr Address, typ godwarf.Type, mem MemoryReadW
 	return v
 }
 
+// TODO:  还是有问题
 func (s *ObjRefScope) isValidAddr(v *ReferenceVariable, addr Address) bool {
 	if v.inStack {
 		// stack variable
@@ -150,6 +135,8 @@ func (s *ObjRefScope) directBucketObject(addr Address, typ godwarf.Type) (v *Ref
 	v = &ReferenceVariable{
 		Addr:     uint64(addr),
 		RealType: resolveTypedef(typ),
+		heapBase: uint64(addr),
+		heapSize: typ.Size(),
 	}
 	v.size = typ.Size()
 	return v
@@ -160,25 +147,18 @@ func (s *ObjRefScope) record(x *ReferenceVariable) {
 		return
 	}
 	var indexes []uint64
-	if x.Index == 0 {
-		x.Index = uint64(s.pb.stringIndex(x.Name))
-	}
-	indexes = append(indexes, x.Index)
-	for i := len(s.referenceLink) - 1; i >= 0; i-- {
-		y := s.referenceLink[i]
-		if y.Index == 0 {
-			y.Index = uint64(s.pb.stringIndex(y.Name))
+	tmp := x
+	for tmp != nil {
+		if tmp.Index == 0 {
+			tmp.Index = uint64(s.pb.stringIndex(tmp.Name))
 		}
-		indexes = append(indexes, y.Index)
+		indexes = append(indexes, tmp.Index)
+		tmp = tmp.prev
 	}
 	s.pb.addReference(indexes, x.count, x.size)
 }
 
-func (s *ObjRefScope) fillRefs(x *ReferenceVariable, inStack bool, mem MemoryReadWriter) {
-	if inStack {
-		s.referenceLink = append(s.referenceLink, x)
-		defer func() { s.referenceLink = s.referenceLink[:len(s.referenceLink)-1] }()
-	}
+func (s *ObjRefScope) findRef(prev, x *ReferenceVariable, mem MemoryReadWriter) {
 	switch typ := x.RealType.(type) {
 	case *godwarf.PtrType:
 		ptrval, err := readUintRaw(mem, x.Addr, int64(s.bi.Arch.PtrSize()))
@@ -186,7 +166,7 @@ func (s *ObjRefScope) fillRefs(x *ReferenceVariable, inStack bool, mem MemoryRea
 			return
 		}
 		if y := s.findObject(Address(ptrval), resolveTypedef(typ.Type), DereferenceMemory(mem)); y != nil {
-			s.fillRefs(y, false, DereferenceMemory(mem))
+			s.findRef(prev, y, DereferenceMemory(mem))
 			// flatten reference
 			x.size += y.size
 			x.count += y.count
@@ -219,7 +199,7 @@ func (s *ObjRefScope) fillRefs(x *ReferenceVariable, inStack bool, mem MemoryRea
 				}
 			}
 			if z := s.findObject(Address(zptrval), fakeArrayType(chanLen, typ.ElemType), DereferenceMemory(mem)); z != nil {
-				s.fillRefs(z, false, DereferenceMemory(mem))
+				s.findRef(prev, z, DereferenceMemory(mem))
 				x.size += z.size
 				x.count += z.count
 			}
@@ -244,7 +224,8 @@ func (s *ObjRefScope) fillRefs(x *ReferenceVariable, inStack bool, mem MemoryRea
 				if key := s.directBucketObject(Address(tmp.Addr), resolveTypedef(tmp.RealType)); key != nil {
 					if !isPrimitiveType(key.RealType) {
 						key.Name = fmt.Sprintf("key%d", idx)
-						s.fillRefs(key, true, DereferenceMemory(mem))
+						key.prev = prev
+						s.findRef(key, key, DereferenceMemory(mem))
 						s.record(key)
 					} else {
 						x.size += key.size
@@ -259,7 +240,8 @@ func (s *ObjRefScope) fillRefs(x *ReferenceVariable, inStack bool, mem MemoryRea
 				if val := s.directBucketObject(Address(tmp.Addr), resolveTypedef(tmp.RealType)); val != nil {
 					if !isPrimitiveType(val.RealType) {
 						val.Name = fmt.Sprintf("val%d", idx)
-						s.fillRefs(val, true, DereferenceMemory(mem))
+						val.prev = prev
+						s.findRef(val, val, DereferenceMemory(mem))
 						s.record(val)
 					} else {
 						x.size += val.size
@@ -294,7 +276,7 @@ func (s *ObjRefScope) fillRefs(x *ReferenceVariable, inStack bool, mem MemoryRea
 			}
 		}
 		if y := s.findObject(Address(base), fakeArrayType(cap_, typ.ElemType), DereferenceMemory(mem)); y != nil {
-			s.fillRefs(y, false, DereferenceMemory(mem))
+			s.findRef(prev, y, DereferenceMemory(mem))
 			x.size += y.size
 			x.count += y.count
 		}
@@ -318,7 +300,7 @@ func (s *ObjRefScope) fillRefs(x *ReferenceVariable, inStack bool, mem MemoryRea
 				}
 				if ptrType, isPtr := resolveTypedef(rtyp).(*godwarf.PtrType); isPtr {
 					if y := s.findObject(Address(ptrval), resolveTypedef(ptrType.Type), DereferenceMemory(mem)); y != nil {
-						s.fillRefs(y, false, DereferenceMemory(mem))
+						s.findRef(prev, y, DereferenceMemory(mem))
 						x.size += y.size
 						x.count += y.count
 					}
@@ -345,8 +327,12 @@ func (s *ObjRefScope) fillRefs(x *ReferenceVariable, inStack bool, mem MemoryRea
 				Addr:     uint64(fieldAddr),
 				Name:     field.Name,
 				RealType: resolveTypedef(field.Type),
+				inStack:  x.inStack,
+				heapBase: x.heapBase,
+				heapSize: x.heapSize,
 			}
-			s.fillRefs(y, true, mem)
+			y.prev = prev
+			s.findRef(y, y, mem)
 			s.record(y)
 		}
 	case *godwarf.ArrayType:
@@ -363,8 +349,12 @@ func (s *ObjRefScope) fillRefs(x *ReferenceVariable, inStack bool, mem MemoryRea
 				Addr:     uint64(elemAddr),
 				Name:     fmt.Sprintf("[%d]", i),
 				RealType: eType,
+				inStack:  x.inStack,
+				heapBase: x.heapBase,
+				heapSize: x.heapSize,
 			}
-			s.fillRefs(y, true, mem)
+			y.prev = prev
+			s.findRef(y, y, mem)
 			s.record(y)
 		}
 	case *godwarf.FuncType:
@@ -377,7 +367,7 @@ func (s *ObjRefScope) fillRefs(x *ReferenceVariable, inStack bool, mem MemoryRea
 			if fn := s.bi.PCToFunc(funcAddr); fn != nil {
 				cst := fn.closureStructType(s.bi)
 				if closure := s.findObject(Address(closureAddr), cst, DereferenceMemory(mem)); closure != nil {
-					s.fillRefs(closure, false, DereferenceMemory(mem))
+					s.findRef(prev, closure, DereferenceMemory(mem))
 					x.size += closure.size
 					x.count += closure.count
 				}
@@ -465,9 +455,9 @@ func (t *Target) ObjectReference(filename string) error {
 							Addr:     l.Addr,
 							Name:     sf[i].Current.Fn.Name + "." + l.Name,
 							RealType: l.RealType,
+							inStack:  true,
 						}
-						ors.HeapScope.mem = &FallbackMemory{l.mem}
-						ors.fillRefs(root, true, l.mem)
+						ors.findRef(root, root, l.mem)
 						ors.record(root)
 					}
 				}
@@ -475,7 +465,6 @@ func (t *Target) ObjectReference(filename string) error {
 		}
 	}
 
-	ors.mem = t.Memory()
 	ors.gr = nil
 	ors.stackVisited = nil
 	pvs, _ := scope.PackageVariables(loadSingleValue)
@@ -485,8 +474,10 @@ func (t *Target) ObjectReference(filename string) error {
 				Addr:     pv.Addr,
 				Name:     pv.Name,
 				RealType: pv.RealType,
+				heapBase: pv.Addr,
+				heapSize: pv.RealType.Size(),
 			}
-			ors.fillRefs(root, true, t.Memory())
+			ors.findRef(root, root, t.Memory())
 			ors.record(root)
 		}
 	}
@@ -499,8 +490,10 @@ func (t *Target) ObjectReference(filename string) error {
 					Addr:     child.Addr,
 					Name:     child.Name,
 					RealType: child.RealType,
+					heapBase: child.Addr,
+					heapSize: child.RealType.Size(),
 				}
-				ors.fillRefs(root, true, t.Memory())
+				ors.findRef(root, root, t.Memory())
 				ors.record(root)
 			}
 		}
