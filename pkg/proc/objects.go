@@ -104,15 +104,14 @@ func (s *ObjRefScope) findObject(addr Address, typ godwarf.Type, mem MemoryReadW
 		if a >= addr && a < addr.Add(typ.Size()) {
 			continue
 		}
-		if !h.IsPtr(a, int64(s.bi.Arch.PtrSize())) {
+		if !s.isPtrFromHeap(a) {
 			continue
 		}
 		ptr, err := readUintRaw(mem, uint64(a), int64(s.bi.Arch.PtrSize()))
 		if err != nil {
-			return nil
+			continue
 		}
-		sv := s.findObject(Address(ptr), &godwarf.VoidType{CommonType: godwarf.CommonType{ByteSize: int64(0)}}, mem)
-		if sv != nil {
+		if sv := s.findObject(Address(ptr), new(godwarf.VoidType), mem); sv != nil {
 			v.size += sv.size
 			v.count += sv.count
 		}
