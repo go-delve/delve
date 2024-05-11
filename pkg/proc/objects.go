@@ -59,10 +59,7 @@ type ObjRefScope struct {
 
 // todo:
 // 1. 尽量识别所有能识别的类型
-func (s *ObjRefScope) findObject(addr Address, typ godwarf.Type, mem MemoryReadWriter) (v *ReferenceVariable) {
-	if addr == 0 {
-		return nil
-	}
+func (s *ObjRefScope) findObject(prev *ReferenceVariable, addr Address, typ godwarf.Type, mem MemoryReadWriter) (v *ReferenceVariable) {
 	h := s.findHeapInfo(addr)
 	if h == nil {
 		// Not in Go heap
@@ -97,13 +94,54 @@ func (s *ObjRefScope) findObject(addr Address, typ godwarf.Type, mem MemoryReadW
 	}
 	v.heapSize, v.size = h.size, h.size
 	v.count += 1
-	// mark each unknown type pointer
+	if addr > base || typ.Size() < h.size {
+		s.finalMark = append(s.finalMark, func() {
+			var size, count int64
+			for i := int64(0); i < h.size; i += int64(s.bi.Arch.PtrSize()) {
+				a := base.Add(i)
+				// explicit traversal known type
+				if a >= addr && a < addr.Add(typ.Size()) {
+					continue
+				}
+				if !s.isPtrFromHeap(a) {
+					continue
+				}
+				ptr, err := readUintRaw(mem, uint64(a), int64(s.bi.Arch.PtrSize()))
+				if err != nil {
+					continue
+				}
+				size_, count_ := s.markObject(Address(ptr), mem)
+				size += size_
+				count += count_
+			}
+			s.record(&ReferenceVariable{
+				Name:  v.Name,
+				size:  size,
+				count: count,
+				prev:  prev,
+			})
+		})
+	}
+	return v
+}
+
+func (s *HeapScope) markObject(addr Address, mem MemoryReadWriter) (size, count int64) {
+	h := s.findHeapInfo(addr)
+	if h == nil {
+		return
+	}
+	base := h.base.Add(addr.Sub(h.base) / h.size * h.size)
+	// Check if object is marked.
+	h = s.findHeapInfo(base)
+	// Find mark bit
+	b := uint64(base) % heapInfoSize / 8
+	if h.mark&(uint64(1)<<b) != 0 { // already found
+		return
+	}
+	h.mark |= uint64(1) << b
+	size, count = h.size, 1
 	for i := int64(0); i < h.size; i += int64(s.bi.Arch.PtrSize()) {
 		a := base.Add(i)
-		// explicit traversal known type
-		if a >= addr && a < addr.Add(typ.Size()) {
-			continue
-		}
 		if !s.isPtrFromHeap(a) {
 			continue
 		}
@@ -111,12 +149,11 @@ func (s *ObjRefScope) findObject(addr Address, typ godwarf.Type, mem MemoryReadW
 		if err != nil {
 			continue
 		}
-		if sv := s.findObject(Address(ptr), new(godwarf.VoidType), mem); sv != nil {
-			v.size += sv.size
-			v.count += sv.count
-		}
+		size_, count_ := s.markObject(Address(ptr), mem)
+		size += size_
+		count += count_
 	}
-	return v
+	return
 }
 
 // TODO:  还是有问题
@@ -148,6 +185,10 @@ func (s *ObjRefScope) record(x *ReferenceVariable) {
 	var indexes []uint64
 	tmp := x
 	for tmp != nil {
+		if tmp.Name == "" {
+			tmp = tmp.prev
+			continue
+		}
 		if tmp.Index == 0 {
 			tmp.Index = uint64(s.pb.stringIndex(tmp.Name))
 		}
@@ -164,7 +205,7 @@ func (s *ObjRefScope) findRef(prev, x *ReferenceVariable, mem MemoryReadWriter) 
 		if err != nil {
 			return
 		}
-		if y := s.findObject(Address(ptrval), resolveTypedef(typ.Type), DereferenceMemory(mem)); y != nil {
+		if y := s.findObject(prev, Address(ptrval), resolveTypedef(typ.Type), DereferenceMemory(mem)); y != nil {
 			s.findRef(prev, y, DereferenceMemory(mem))
 			// flatten reference
 			x.size += y.size
@@ -177,7 +218,7 @@ func (s *ObjRefScope) findRef(prev, x *ReferenceVariable, mem MemoryReadWriter) 
 		if err != nil {
 			return
 		}
-		if y := s.findObject(Address(ptrval), resolveTypedef(typ.Type.(*godwarf.PtrType).Type), DereferenceMemory(mem)); y != nil {
+		if y := s.findObject(prev, Address(ptrval), resolveTypedef(typ.Type.(*godwarf.PtrType).Type), DereferenceMemory(mem)); y != nil {
 			x.size += y.size
 			x.count += y.count
 
@@ -197,7 +238,7 @@ func (s *ObjRefScope) findRef(prev, x *ReferenceVariable, mem MemoryReadWriter) 
 					chanLen, _ = readUintRaw(DereferenceMemory(mem), uint64(Address(y.Addr).Add(field.ByteOffset)), int64(s.bi.Arch.PtrSize()))
 				}
 			}
-			if z := s.findObject(Address(zptrval), fakeArrayType(chanLen, typ.ElemType), DereferenceMemory(mem)); z != nil {
+			if z := s.findObject(prev, Address(zptrval), fakeArrayType(chanLen, typ.ElemType), DereferenceMemory(mem)); z != nil {
 				s.findRef(prev, z, DereferenceMemory(mem))
 				x.size += z.size
 				x.count += z.count
@@ -208,7 +249,7 @@ func (s *ObjRefScope) findRef(prev, x *ReferenceVariable, mem MemoryReadWriter) 
 		if err != nil {
 			return
 		}
-		if y := s.findObject(Address(ptrval), resolveTypedef(typ.Type.(*godwarf.PtrType).Type), DereferenceMemory(mem)); y != nil {
+		if y := s.findObject(prev, Address(ptrval), resolveTypedef(typ.Type.(*godwarf.PtrType).Type), DereferenceMemory(mem)); y != nil {
 			x.size += y.size
 			x.count += y.count
 
@@ -255,7 +296,7 @@ func (s *ObjRefScope) findRef(prev, x *ReferenceVariable, mem MemoryReadWriter) 
 		if err != nil {
 			return
 		}
-		if y := s.findObject(Address(strAddr), fakeArrayType(uint64(strLen), &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 1, Name: "byte", ReflectKind: reflect.Uint8}, BitSize: 8, BitOffset: 0}}), DereferenceMemory(mem)); y != nil {
+		if y := s.findObject(prev, Address(strAddr), fakeArrayType(uint64(strLen), &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 1, Name: "byte", ReflectKind: reflect.Uint8}, BitSize: 8, BitOffset: 0}}), DereferenceMemory(mem)); y != nil {
 			x.size += y.size
 			x.count += y.count
 		}
@@ -274,7 +315,7 @@ func (s *ObjRefScope) findRef(prev, x *ReferenceVariable, mem MemoryReadWriter) 
 				cap_, _ = readUintRaw(mem, uint64(int64(x.Addr)+f.ByteOffset), f.Type.Size())
 			}
 		}
-		if y := s.findObject(Address(base), fakeArrayType(cap_, typ.ElemType), DereferenceMemory(mem)); y != nil {
+		if y := s.findObject(prev, Address(base), fakeArrayType(cap_, typ.ElemType), DereferenceMemory(mem)); y != nil {
 			s.findRef(prev, y, DereferenceMemory(mem))
 			x.size += y.size
 			x.count += y.count
@@ -298,7 +339,7 @@ func (s *ObjRefScope) findRef(prev, x *ReferenceVariable, mem MemoryReadWriter) 
 					}
 				}
 				if ptrType, isPtr := resolveTypedef(rtyp).(*godwarf.PtrType); isPtr {
-					if y := s.findObject(Address(ptrval), resolveTypedef(ptrType.Type), DereferenceMemory(mem)); y != nil {
+					if y := s.findObject(prev, Address(ptrval), resolveTypedef(ptrType.Type), DereferenceMemory(mem)); y != nil {
 						s.findRef(prev, y, DereferenceMemory(mem))
 						x.size += y.size
 						x.count += y.count
@@ -307,7 +348,7 @@ func (s *ObjRefScope) findRef(prev, x *ReferenceVariable, mem MemoryReadWriter) 
 				}
 			}
 		}
-		if y := s.findObject(Address(ptrval), new(godwarf.VoidType), DereferenceMemory(mem)); y != nil {
+		if y := s.findObject(prev, Address(ptrval), new(godwarf.VoidType), DereferenceMemory(mem)); y != nil {
 			x.size += y.size
 			x.count += y.count
 		}
@@ -365,7 +406,7 @@ func (s *ObjRefScope) findRef(prev, x *ReferenceVariable, mem MemoryReadWriter) 
 		if err == nil && funcAddr != 0 {
 			if fn := s.bi.PCToFunc(funcAddr); fn != nil {
 				cst := fn.closureStructType(s.bi)
-				if closure := s.findObject(Address(closureAddr), cst, DereferenceMemory(mem)); closure != nil {
+				if closure := s.findObject(prev, Address(closureAddr), cst, DereferenceMemory(mem)); closure != nil {
 					s.findRef(prev, closure, DereferenceMemory(mem))
 					x.size += closure.size
 					x.count += closure.count
@@ -373,11 +414,12 @@ func (s *ObjRefScope) findRef(prev, x *ReferenceVariable, mem MemoryReadWriter) 
 				return
 			}
 		}
-		if closure := s.findObject(Address(closureAddr), new(godwarf.VoidType), DereferenceMemory(mem)); closure != nil {
+		if closure := s.findObject(prev, Address(closureAddr), new(godwarf.VoidType), DereferenceMemory(mem)); closure != nil {
 			x.size += closure.size
 			x.count += closure.count
 		}
 	default:
+		// TODO
 	}
 	return
 }
@@ -496,6 +538,10 @@ func (t *Target) ObjectReference(filename string) error {
 				ors.record(root)
 			}
 		}
+	}
+
+	for _, mark := range heapScope.finalMark {
+		mark()
 	}
 
 	ors.pb.flush()

@@ -42,6 +42,8 @@ type HeapScope struct {
 	mem   MemoryReadWriter
 	bi    *BinaryInfo
 	scope *EvalScope
+
+	finalMark []func()
 }
 
 // setHeapPtr records that the memory at heap address a contains a pointer.
