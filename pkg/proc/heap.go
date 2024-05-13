@@ -155,19 +155,20 @@ func (s *HeapScope) readHeap() error {
 
 		level1Table := mheap.Field("arenas")
 		level1size := level1Table.ArrayLen()
+		to := &region{}
 		for level1 := int64(0); level1 < level1size; level1++ {
-			ptr := level1Table.ArrayIndex(level1)
-			if ptr.Address() == 0 {
+			level1Table.ArrayIndex(level1, to)
+			if to.Address() == 0 {
 				continue
 			}
-			level2table := ptr.Deref()
+			level2table := to.Deref()
 			level2size := level2table.ArrayLen()
 			for level2 := int64(0); level2 < level2size; level2++ {
-				ptr = level2table.ArrayIndex(level2)
-				if ptr.Address() == 0 {
+				level2table.ArrayIndex(level2, to)
+				if to.Address() == 0 {
 					continue
 				}
-				a := ptr.Deref()
+				a := to.Deref()
 
 				min := Address(arenaSize*(level2+level1*level2size) - arenaBaseOffset)
 				max := min.Add(arenaSize)
@@ -267,10 +268,12 @@ func (s *HeapScope) readArena(a *region, min, max Address) arena {
 func (s *HeapScope) readOneBitBitmap(bitmap *region, min Address) {
 	ptrSize := int64(s.bi.Arch.PtrSize())
 	n := bitmap.ArrayLen()
+	to := &region{}
 	for i := int64(0); i < n; i++ {
 		// The array uses 1 bit per word of heap. See mbitmap.go for
 		// more information.
-		m := bitmap.ArrayIndex(i).Uintptr()
+		bitmap.ArrayIndex(i, to)
+		m := to.Uintptr()
 		bits := 8 * ptrSize
 		for j := int64(0); j < bits; j++ {
 			if m>>uint(j)&1 != 0 {
@@ -284,6 +287,7 @@ func (s *HeapScope) readOneBitBitmap(bitmap *region, min Address) {
 func (s *HeapScope) readMultiBitBitmap(bitmap *region, min Address) {
 	ptrSize := int64(s.bi.Arch.PtrSize())
 	n := bitmap.ArrayLen()
+	to := &region{}
 	for i := int64(0); i < n; i++ {
 		// The nth byte is composed of 4 object bits and 4 live/dead
 		// bits. We ignore the 4 live/dead bits, which are on the
@@ -291,7 +295,8 @@ func (s *HeapScope) readMultiBitBitmap(bitmap *region, min Address) {
 		//
 		// See mbitmap.go for more information on the format of
 		// the bitmap field of heapArena.
-		m := bitmap.ArrayIndex(i).Uint8()
+		bitmap.ArrayIndex(i, to)
+		m := to.Uint8()
 		for j := int64(0); j < 4; j++ {
 			if m>>uint(j)&1 != 0 {
 				s.setHeapPtr(min.Add((i*4 + j) * ptrSize))
@@ -307,16 +312,18 @@ func (s *HeapScope) readSpans(mheap *region, arenas []arena) error {
 	if spanInUse == 0 {
 		spanInUse = uint8(s.rtConstant("mSpanInUse"))
 	}
+	kindSpecialFinalizer := uint8(s.rtConstant("_KindSpecialFinalizer"))
 
 	// Process spans.
 	if pageSize%heapInfoSize != 0 {
 		return fmt.Errorf("page size not a multiple of %d", heapInfoSize)
 	}
-	allspans := mheap.Field("allspans")
-
-	n := allspans.SliceLen()
+	allspans := mheap.Field("allspans").Array()
+	n := allspans.ArrayLen()
+	to := &region{}
 	for i := int64(0); i < n; i++ {
-		sp := allspans.SliceIndex(i).Deref()
+		allspans.ArrayIndex(i, to)
+		sp := to.Deref()
 		min := Address(sp.Field("startAddr").Uintptr())
 		elemSize := int64(sp.Field("elemsize").Uintptr())
 		nPages := int64(sp.Field("npages").Uintptr())
@@ -341,7 +348,7 @@ func (s *HeapScope) readSpans(mheap *region, arenas []arena) error {
 			// Process special records.
 			for special := sp.Field("specials"); special.Address() != 0; special = special.Field("next") {
 				special = special.Deref() // *special to special
-				if special.Field("kind").Uint8() != uint8(s.rtConstant("_KindSpecialFinalizer")) {
+				if special.Field("kind").Uint8() != kindSpecialFinalizer {
 					// All other specials (just profile records) can't point into the heap.
 					continue
 				}

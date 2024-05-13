@@ -194,8 +194,7 @@ func (r *region) SliceIndex(n int64) *region {
 	case *godwarf.SliceType:
 		ptrSize := int64(r.bi.Arch.PtrSize())
 		p, _ := readUintRaw(r.mem, uint64(r.a), ptrSize)
-		re := &region{bi: r.bi, a: Address(p).Add(n * t.ElemType.Size()), typ: resolveTypedef(t.ElemType)}
-		re.mem = cacheMemory(r.mem, uint64(re.a), int(re.typ.Size()))
+		re := &region{bi: r.bi, a: Address(p).Add(n * t.ElemType.Size()), typ: resolveTypedef(t.ElemType), mem: r.mem}
 		return re
 	default:
 		panic("can't index a non-slice")
@@ -233,8 +232,7 @@ func (r *region) Field(fn string) *region {
 	case *godwarf.StructType:
 		for _, f := range t.Field {
 			if f.Name == fn {
-				re := &region{bi: r.bi, a: r.a.Add(f.ByteOffset), typ: resolveTypedef(f.Type)}
-				re.mem = cacheMemory(r.mem, uint64(re.a), int(re.typ.Size()))
+				re := &region{bi: r.bi, a: r.a.Add(f.ByteOffset), typ: resolveTypedef(f.Type), mem: r.mem}
 				return re
 			}
 		}
@@ -254,6 +252,20 @@ func (r *region) HasField(fn string) bool {
 	return false
 }
 
+func (r *region) Array() *region {
+	switch t := r.typ.(type) {
+	case *godwarf.SliceType:
+		ptrSize := int64(r.bi.Arch.PtrSize())
+		p, _ := readUintRaw(r.mem, uint64(r.a), ptrSize)
+		c, _ := readUintRaw(r.mem, uint64(r.a.Add(ptrSize)), ptrSize)
+		re := &region{bi: r.bi, a: Address(p), typ: fakeArrayType(c, resolveTypedef(t.ElemType))}
+		re.mem = cacheMemory(r.mem, p, int(re.typ.Size()))
+		return re
+	default:
+		panic("can't deref a non-slice")
+	}
+}
+
 func (r *region) ArrayLen() int64 {
 	switch t := r.typ.(type) {
 	case *godwarf.ArrayType:
@@ -263,15 +275,17 @@ func (r *region) ArrayLen() int64 {
 	}
 }
 
-func (r *region) ArrayIndex(i int64) *region {
+func (r *region) ArrayIndex(i int64, to *region) {
 	switch t := r.typ.(type) {
 	case *godwarf.ArrayType:
 		if i < 0 || i >= t.Count {
 			panic("array index out of bounds")
 		}
-		re := &region{bi: r.bi, a: r.a.Add(i * t.Type.Size()), typ: resolveTypedef(t.Type)}
-		re.mem = cacheMemory(r.mem, uint64(re.a), int(re.typ.Size()))
-		return re
+		to.mem = r.mem
+		to.bi = r.bi
+		to.a = r.a.Add(i * t.Type.Size())
+		to.typ = resolveTypedef(t.Type)
+		return
 	default:
 		panic("can't ArrayLen a non-array")
 	}
