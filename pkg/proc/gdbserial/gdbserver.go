@@ -1431,10 +1431,6 @@ func (p *gdbProcess) updateThreadList(tu *threadUpdater, jstopInfo map[int]stopP
 	}
 
 	for _, th := range p.threads {
-		th.clearBreakpointState()
-	}
-
-	for _, th := range p.threads {
 		queryThreadInfo := true
 		if jstopInfo != nil {
 			// TODO(derekparker): Use jstopInfo directly, if present, instead of
@@ -1454,6 +1450,8 @@ func (p *gdbProcess) updateThreadList(tu *threadUpdater, jstopInfo map[int]stopP
 			th.sig = sp.sig
 			th.watchAddr = sp.watchAddr
 			th.watchReg = sp.watchReg
+		} else {
+			th.clearBreakpointState()
 		}
 	}
 
