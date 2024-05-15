@@ -726,7 +726,7 @@ func (p *gdbProcess) initialize(path, cmdline string, debugInfoDirs []string, st
 		}
 	}
 
-	err = p.updateThreadList(&threadUpdater{p: p})
+	err = p.updateThreadList(&threadUpdater{p: p}, nil)
 	if err != nil {
 		p.conn.conn.Close()
 		p.bi.Close()
@@ -877,6 +877,7 @@ func (p *gdbProcess) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.Thread, 
 	var trapthread *gdbThread
 	var tu = threadUpdater{p: p}
 	var atstart bool
+	var trapThreadRegs map[uint64]uint64
 continueLoop:
 	for {
 		tu.Reset()
@@ -895,7 +896,7 @@ continueLoop:
 		// NOTE: because debugserver will sometimes send two stop packets after a
 		// continue it is important that this is the very first thing we do after
 		// resume(). See comment in threadStopInfo for an explanation.
-		p.updateThreadList(&tu)
+		p.updateThreadList(&tu, sp.jstopInfo)
 
 		trapthread = p.findThreadByStrID(threadID)
 		if trapthread != nil && !p.threadStopInfo {
@@ -913,11 +914,16 @@ continueLoop:
 			return nil, proc.StopExited, proc.ErrProcessExited{Pid: p.conn.pid}
 		}
 		if shouldStop {
+			trapThreadRegs = sp.regs
 			break continueLoop
 		}
 	}
 
 	p.clearThreadRegisters()
+	// TODO(deparker): Can we support this optimization for the RR backend?
+	if p.conn.isDebugserver {
+		trapthread.reloadRegisters(trapThreadRegs)
+	}
 
 	stopReason := proc.StopUnknown
 	if atstart {
@@ -1000,7 +1006,6 @@ func (p *gdbProcess) handleThreadSignals(cctx *proc.ContinueOnceContext, trapthr
 		// Unfortunately debugserver can not convert them into signals for the
 		// process so we must stop here.
 		case debugServerTargetExcBadAccess, debugServerTargetExcBadInstruction, debugServerTargetExcArithmetic, debugServerTargetExcEmulation, debugServerTargetExcSoftware, debugServerTargetExcBreakpoint:
-
 			trapthreadCandidate = th
 			shouldStop = true
 
@@ -1127,7 +1132,7 @@ func (p *gdbProcess) Restart(cctx *proc.ContinueOnceContext, pos string) (proc.T
 		return nil, err
 	}
 
-	err = p.updateThreadList(&threadUpdater{p: p})
+	err = p.updateThreadList(&threadUpdater{p: p}, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1405,7 +1410,7 @@ func (tu *threadUpdater) Finish() {
 // Some stubs will return the list of running threads in the stop packet, if
 // this happens the threadUpdater will know that we have already updated the
 // thread list and the first step of updateThreadList will be skipped.
-func (p *gdbProcess) updateThreadList(tu *threadUpdater) error {
+func (p *gdbProcess) updateThreadList(tu *threadUpdater, jstopInfo map[int]stopPacket) error {
 	if !tu.done {
 		first := true
 		for {
@@ -1426,7 +1431,13 @@ func (p *gdbProcess) updateThreadList(tu *threadUpdater) error {
 	}
 
 	for _, th := range p.threads {
-		if p.threadStopInfo {
+		queryThreadInfo := true
+		if jstopInfo != nil {
+			// TODO(derekparker): Use jstopInfo directly, if present, instead of
+			// issuing another stop info request.
+			_, queryThreadInfo = jstopInfo[th.ID]
+		}
+		if p.threadStopInfo && queryThreadInfo {
 			sp, err := p.conn.threadStopInfo(th.strID)
 			if err != nil {
 				if isProtocolErrorUnsupported(err) {
@@ -1440,9 +1451,7 @@ func (p *gdbProcess) updateThreadList(tu *threadUpdater) error {
 			th.watchAddr = sp.watchAddr
 			th.watchReg = sp.watchReg
 		} else {
-			th.sig = 0
-			th.watchAddr = 0
-			th.watchReg = -1
+			th.clearBreakpointState()
 		}
 	}
 
@@ -1537,7 +1546,7 @@ func (t *gdbThread) ThreadID() int {
 // Registers returns the CPU registers for this thread.
 func (t *gdbThread) Registers() (proc.Registers, error) {
 	if t.regs.regs == nil {
-		if err := t.reloadRegisters(); err != nil {
+		if err := t.reloadRegisters(nil); err != nil {
 			return nil, err
 		}
 	}
@@ -1689,25 +1698,42 @@ func (regs *gdbRegisters) gdbRegisterNew(reginfo *gdbRegisterInfo) gdbRegister {
 // It will also load the address of the thread's G.
 // Loading the address of G can be done in one of two ways reloadGAlloc, if
 // the stub can allocate memory, or reloadGAtPC, if the stub can't.
-func (t *gdbThread) reloadRegisters() error {
+func (t *gdbThread) reloadRegisters(regs map[uint64]uint64) error {
 	if t.regs.regs == nil {
 		t.regs.init(t.p.conn.regsInfo, t.p.bi.Arch, t.p.regnames)
 	}
 
-	if t.p.gcmdok {
-		if err := t.p.conn.readRegisters(t.strID, t.regs.buf); err != nil {
-			gdberr, isProt := err.(*GdbProtocolError)
-			if isProtocolErrorUnsupported(err) || (t.p.conn.isDebugserver && isProt && gdberr.code == "E74") {
-				t.p.gcmdok = false
-			} else {
-				return err
+	if regs == nil {
+		if t.p.gcmdok {
+			if err := t.p.conn.readRegisters(t.strID, t.regs.buf); err != nil {
+				gdberr, isProt := err.(*GdbProtocolError)
+				if isProtocolErrorUnsupported(err) || (t.p.conn.isDebugserver && isProt && gdberr.code == "E74") {
+					t.p.gcmdok = false
+				} else {
+					return err
+				}
 			}
 		}
-	}
-	if !t.p.gcmdok {
-		for _, reginfo := range t.p.conn.regsInfo {
-			if err := t.p.conn.readRegister(t.strID, reginfo.Regnum, t.regs.regs[reginfo.Name].value); err != nil {
-				return err
+		if !t.p.gcmdok {
+			for _, reginfo := range t.p.conn.regsInfo {
+				if err := t.p.conn.readRegister(t.strID, reginfo.Regnum, t.regs.regs[reginfo.Name].value); err != nil {
+					return err
+				}
+			}
+		}
+	} else {
+		for _, r := range t.p.conn.regsInfo {
+			if val, ok := regs[uint64(r.Regnum)]; ok {
+				switch r.Bitsize / 8 {
+				case 8:
+					binary.BigEndian.PutUint64(t.regs.regs[r.Name].value, val)
+				case 4:
+					binary.BigEndian.PutUint32(t.regs.regs[r.Name].value, uint32(val))
+				}
+			} else {
+				if err := t.p.conn.readRegister(t.strID, r.Regnum, t.regs.regs[r.Name].value); err != nil {
+					return err
+				}
 			}
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"debug/macho"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"errors"
@@ -724,6 +725,16 @@ type stopPacket struct {
 	reason    string
 	watchAddr uint64
 	watchReg  int
+	jstopInfo map[int]stopPacket
+	regs      map[uint64]uint64
+}
+
+type jsonStopPacket struct {
+	Tid    int      `json:"tid"`
+	Signal int      `json:"signal"`
+	Metype int      `json:"metype"`
+	Medata []uint64 `json:"medata"`
+	Reason string   `json:"reason"`
 }
 
 // Mach exception codes used to decode metype/medata keys in stop packets (necessary to support watchpoints with debugserver).
@@ -753,6 +764,7 @@ func (conn *gdbConn) parseStopPacket(resp []byte, threadID string, tu *threadUpd
 		}
 		sp.sig = uint8(sig)
 		sp.watchReg = -1
+		sp.regs = make(map[uint64]uint64)
 
 		if logflags.GdbWire() && gdbWireFullStopPacket {
 			conn.log.Debugf("full stop packet: %s", string(resp))
@@ -761,9 +773,44 @@ func (conn *gdbConn) parseStopPacket(resp []byte, threadID string, tu *threadUpd
 		var metype int
 		medata := make([]uint64, 0, 10)
 
+		parseMachException := func(sp *stopPacket, metype int, medata []uint64) {
+			// Debugserver does not report watchpoint stops in the standard way preferring
+			// instead the semi-undocumented metype/medata keys.
+			// These values also have different meanings depending on the CPU architecture.
+			switch conn.goarch {
+			case "amd64":
+				if metype == _EXC_BREAKPOINT && len(medata) >= 2 && medata[0] == _EXC_I386_SGL {
+					sp.watchAddr = medata[1] // this should be zero if this is really a single step stop and non-zero for watchpoints
+				}
+			case "arm64":
+				if metype == _EXC_BREAKPOINT && len(medata) >= 2 && (medata[0] == _EXC_ARM_DA_DEBUG || medata[0] == _EXC_ARM_BREAKPOINT) {
+					// The arm64 specification allows for up to 16 debug registers.
+					// The registers are zero indexed, thus a value less than 16 will
+					// be a hardware breakpoint register index.
+					// See: https://developer.arm.com/documentation/102120/0101/Debug-exceptions
+					// TODO(deparker): we can ask debugserver for the number of hardware breakpoints
+					// directly.
+					if medata[1] < 16 {
+						sp.watchReg = int(medata[1])
+					} else {
+						sp.watchAddr = medata[1]
+					}
+				}
+			}
+		}
+
 		csp := colonSemicolonParser{buf: resp[3:]}
 		for csp.next() {
 			key, value := csp.key, csp.value
+
+			if reg, err := strconv.ParseUint(string(key), 16, 64); err == nil {
+				// This is a register.
+				v, err := strconv.ParseUint(string(value), 16, 64)
+				if err != nil {
+					return false, stopPacket{}, fmt.Errorf("malformed stop packet: %s", string(resp))
+				}
+				sp.regs[reg] = v
+			}
 
 			switch string(key) {
 			case "thread":
@@ -787,32 +834,30 @@ func (conn *gdbConn) parseStopPacket(resp []byte, threadID string, tu *threadUpd
 				// mach exception data (debugserver extension)
 				d, _ := strconv.ParseUint(string(value), 16, 64)
 				medata = append(medata, d)
-			}
-		}
-
-		// Debugserver does not report watchpoint stops in the standard way preferring
-		// instead the semi-undocumented metype/medata keys.
-		// These values also have different meanings depending on the CPU architecture.
-		switch conn.goarch {
-		case "amd64":
-			if metype == _EXC_BREAKPOINT && len(medata) >= 2 && medata[0] == _EXC_I386_SGL {
-				sp.watchAddr = medata[1] // this should be zero if this is really a single step stop and non-zero for watchpoints
-			}
-		case "arm64":
-			if metype == _EXC_BREAKPOINT && len(medata) >= 2 && (medata[0] == _EXC_ARM_DA_DEBUG || medata[0] == _EXC_ARM_BREAKPOINT) {
-				// The arm64 specification allows for up to 16 debug registers.
-				// The registers are zero indexed, thus a value less than 16 will
-				// be a hardware breakpoint register index.
-				// See: https://developer.arm.com/documentation/102120/0101/Debug-exceptions
-				// TODO(deparker): we can ask debugserver for the number of hardware breakpoints
-				// directly.
-				if medata[1] < 16 {
-					sp.watchReg = int(medata[1])
-				} else {
-					sp.watchAddr = medata[1]
+			case "jstopinfo":
+				jstopinfo, err := hex.DecodeString(string(value))
+				if err != nil {
+					return false, stopPacket{}, fmt.Errorf("malformed stop packet: %s (wrong jstopinfo)", string(resp))
+				}
+				parsedJstopInfo := []jsonStopPacket{}
+				if err := json.Unmarshal(jstopinfo, &parsedJstopInfo); err != nil {
+					return false, stopPacket{}, fmt.Errorf("malformed stop packet: %s (wrong jstopinfo)", string(resp))
+				}
+				sp.jstopInfo = make(map[int]stopPacket)
+				for _, jsp := range parsedJstopInfo {
+					threadID := fmt.Sprintf("%d", jsp.Tid)
+					newStopPacket := stopPacket{
+						threadID: threadID,
+						reason:   jsp.Reason,
+						sig:      uint8(jsp.Signal),
+					}
+					parseMachException(&newStopPacket, jsp.Metype, jsp.Medata)
+					sp.jstopInfo[jsp.Tid] = newStopPacket
 				}
 			}
 		}
+
+		parseMachException(&sp, metype, medata)
 
 		return false, sp, nil
 
