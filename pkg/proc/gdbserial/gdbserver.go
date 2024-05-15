@@ -1437,6 +1437,8 @@ func (p *gdbProcess) updateThreadList(tu *threadUpdater, jstopInfo map[int]stopP
 	for _, th := range p.threads {
 		queryThreadInfo := true
 		if jstopInfo != nil {
+			// TODO(derekparker): Use jstopInfo directly, if present, instead of
+			// issuing another stop info request.
 			_, queryThreadInfo = jstopInfo[th.ID]
 		}
 		if p.threadStopInfo && queryThreadInfo {
