@@ -896,11 +896,7 @@ continueLoop:
 		// NOTE: because debugserver will sometimes send two stop packets after a
 		// continue it is important that this is the very first thing we do after
 		// resume(). See comment in threadStopInfo for an explanation.
-		var jstopinfo map[int]stopPacket
-		if p.conn.isDebugserver { // TODO(deparker): Can we support this on RR backend?
-			jstopinfo = sp.jstopInfo
-		}
-		p.updateThreadList(&tu, jstopinfo)
+		p.updateThreadList(&tu, sp.jstopInfo)
 
 		trapthread = p.findThreadByStrID(threadID)
 		if trapthread != nil && !p.threadStopInfo {
