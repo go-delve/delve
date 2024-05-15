@@ -1726,13 +1726,18 @@ func (t *gdbThread) reloadRegisters(regs map[uint64]uint64) error {
 			}
 		}
 	} else {
-		for _, r := range t.regs.regsInfo {
-			val := regs[uint64(r.Regnum)]
-			switch r.Bitsize / 8 {
-			case 8:
-				binary.BigEndian.PutUint64(t.regs.regs[r.Name].value, val)
-			case 4:
-				binary.BigEndian.PutUint32(t.regs.regs[r.Name].value, uint32(val))
+		for _, r := range t.p.conn.regsInfo {
+			if val, ok := regs[uint64(r.Regnum)]; ok {
+				switch r.Bitsize / 8 {
+				case 8:
+					binary.BigEndian.PutUint64(t.regs.regs[r.Name].value, val)
+				case 4:
+					binary.BigEndian.PutUint32(t.regs.regs[r.Name].value, uint32(val))
+				}
+			} else {
+				if err := t.p.conn.readRegister(t.strID, r.Regnum, t.regs.regs[r.Name].value); err != nil {
+					return err
+				}
 			}
 		}
 	}
