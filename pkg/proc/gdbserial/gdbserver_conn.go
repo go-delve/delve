@@ -985,7 +985,10 @@ func (conn *gdbConn) queryThreads(first bool) (threads []string, err error) {
 }
 
 func (conn *gdbConn) selectThread(kind byte, threadID string, context string) error {
-	if conn.threadSuffixSupported {
+	if conn.threadSuffixSupported && kind != 'c' {
+		// kind == 'c' is still allowed because 'rr' is weird about it's support
+		// for thread suffixes and the specification for it doesn't really say how
+		// it should be used with packets 'bc' and 'bs'.
 		panic("selectThread when thread suffix is supported")
 	}
 	conn.outbuf.Reset()
@@ -1189,9 +1192,15 @@ func (conn *gdbConn) qRRCmd(args ...string) (string, error) {
 	}
 	conn.outbuf.Reset()
 	fmt.Fprint(&conn.outbuf, "$qRRCmd")
-	for _, arg := range args {
+	for i, arg := range args {
 		fmt.Fprint(&conn.outbuf, ":")
-		writeAsciiBytes(&conn.outbuf, []byte(arg))
+		if i == 0 && conn.threadSuffixSupported {
+			// newer versions of RR require the command to be followed by a thread id
+			// and the command name to be unescaped.
+			fmt.Fprintf(&conn.outbuf, "%s:-1", arg)
+		} else {
+			writeAsciiBytes(&conn.outbuf, []byte(arg))
+		}
 	}
 	resp, err := conn.exec(conn.outbuf.Bytes(), "qRRCmd")
 	if err != nil {
