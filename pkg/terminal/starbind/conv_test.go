@@ -1,8 +1,9 @@
 package starbind
 
 import (
-	"go.starlark.net/starlark"
 	"testing"
+
+	"go.starlark.net/starlark"
 )
 
 func TestConv(t *testing.T) {
@@ -10,7 +11,7 @@ func TestConv(t *testing.T) {
 # A list global that we'll unmarshal into a slice.
 x = [1,2]
 `
-	globals, err := starlark.ExecFile(&starlark.Thread{}, "test.star", script, nil)
+	globals, err := execFileOptions(nil, &starlark.Thread{}, "test.star", script, nil)
 	starlarkVal, ok := globals["x"]
 	if !ok {
 		t.Fatal("missing global 'x'")
