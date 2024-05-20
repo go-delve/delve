@@ -377,5 +377,4 @@ func TestDebugLineDwarf4(t *testing.T) {
 			}
 		}
 	}
-
 }

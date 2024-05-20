@@ -3228,7 +3228,6 @@ func (s *Session) onDisassembleRequest(request *dap.DisassembleRequest) {
 			instructions[i] = invalidInstruction
 			instructions[i].Address = fmt.Sprintf("%#x", uint64(math.MaxUint64))
 			continue
-
 		}
 		instruction := api.ConvertAsmInstruction(procInstructions[i-offset], s.debugger.AsmInstructionText(&procInstructions[i-offset], proc.GoFlavour))
 		instructions[i] = dap.DisassembledInstruction{
@@ -3734,7 +3733,6 @@ func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange *sy
 			stopped.Body.Reason = "pause"
 			stopped.Body.HitBreakpointIds = []int{}
 		}
-
 	} else {
 		s.exceptionErr = err
 		s.config.log.Error("runtime error: ", err)

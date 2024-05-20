@@ -429,7 +429,6 @@ func sigtrampContextFromExceptionPointers(mem MemoryReader, addr uint64) (uint64
 		return 0, err
 	}
 	return ((*exceptionpointers)(unsafe.Pointer(&buf[0]))).context, nil
-
 }
 
 func sigtrampContextWindowsAMD64(mem MemoryReader, addr uint64) (*op.DwarfRegisters, error) {

@@ -427,7 +427,6 @@ func ConvertRegisters(in *op.DwarfRegisters, dwarfRegisterToString func(int, *op
 			return a.DwarfNumber < b.DwarfNumber
 		}
 		return an < bn
-
 	})
 	return
 }

@@ -242,7 +242,6 @@ func (t *Term) sigintGuard(ch <-chan os.Signal, multiClient bool) {
 			default:
 				fmt.Fprintln(t.stdout, "only p or q allowed")
 			}
-
 		} else {
 			fmt.Fprintf(t.stdout, "received SIGINT, stopping process (will not forward signal)\n")
 			_, err := t.client.Halt()

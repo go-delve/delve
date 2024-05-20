@@ -266,7 +266,6 @@ func (ctx *compileCtx) compileAST(t ast.Expr) error {
 
 		default:
 			return ctx.compileUnary(node.X, &Select{node.Sel.Name})
-
 		}
 
 	case *ast.TypeAssertExpr: // <expression>.(<type>)

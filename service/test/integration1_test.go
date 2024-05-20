@@ -511,7 +511,6 @@ func Test1ClientServer_traceContinue(t *testing.T) {
 			if state.Err != nil {
 				t.Fatalf("Unexpected error during continue: %v\n", state.Err)
 			}
-
 		}
 
 		if count != 3 {
@@ -550,7 +549,6 @@ func Test1ClientServer_traceContinue2(t *testing.T) {
 			if state.Err != nil {
 				t.Fatalf("Unexpected error during continue: %v\n", state.Err)
 			}
-
 		}
 
 		if countMain != 1 {

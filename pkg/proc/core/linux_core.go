@@ -368,7 +368,6 @@ func buildMemory(core, exeELF *elf.File, exe io.ReaderAt, notes []*note) proc.Me
 				}
 				memory.Add(r, entry.Start, entry.End-entry.Start)
 			}
-
 		}
 	}
 

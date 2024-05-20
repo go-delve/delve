@@ -63,7 +63,6 @@ func (c *Commands) WriteMarkdown(w io.Writer) {
 			fmt.Fprintf(w, "[%s](#%s) | %s\n", cmd.aliases[0], cmd.aliases[0], h)
 		}
 		fmt.Fprint(w, "\n")
-
 	}
 
 	for _, cmd := range c.cmds {

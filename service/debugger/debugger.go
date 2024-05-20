@@ -1919,7 +1919,6 @@ func (d *Debugger) convertDefers(defers []*proc.Defer) []api.Defer {
 				SP: defers[i].SP,
 			}
 		}
-
 	}
 
 	return r

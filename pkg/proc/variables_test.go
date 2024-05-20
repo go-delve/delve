@@ -236,7 +236,6 @@ func TestSetVariable(t *testing.T) {
 				assertNoError(err, t, "EvalVariable()")
 				assertVariable(t, variable, varTest{tc.name, true, tc.finalVal, "", tc.typ, nil})
 			}
-
 		}
 	})
 }
