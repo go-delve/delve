@@ -1784,7 +1784,6 @@ func (t *gdbThread) writeRegisters() error {
 		} else {
 			return err
 		}
-
 	}
 	for _, r := range t.regs.regs {
 		if r.ignoreOnWrite {

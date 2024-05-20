@@ -3325,7 +3325,6 @@ func logStacktrace(t *testing.T, p *proc.Target, frames []proc.Stackframe) {
 		fmt.Fprintf(w, "%#x\t%#x\t%#x\t%#x\t%#x\t%s\t%s:%d\t%s\t%s\t\n",
 			frame.Call.PC, frame.FrameOffset(), frame.FramePointerOffset(), frame.Current.PC, frame.Ret,
 			name, filepath.Base(frame.Call.File), frame.Call.Line, topmostdefer, defers)
-
 	}
 	w.Flush()
 }
@@ -5011,7 +5010,8 @@ func TestStepIntoWrapperForEmbeddedPointer(t *testing.T) {
 			{contStep, 22},
 			{contNext, 23},
 			{contNext, 23},
-			{contNext, 29}})
+			{contNext, 29},
+		})
 	} else {
 		testseq2(t, "ifaceembcall", "", []seqTest{
 			{contContinue, 28}, // main.main, the line calling iface.PtrReceiver()
@@ -5021,8 +5021,8 @@ func TestStepIntoWrapperForEmbeddedPointer(t *testing.T) {
 			{contContinueToBreakpoint, 29}, // main.main, the line calling iface.NonPtrReceiver()
 			{contStep, 22},
 			{contNext, 23},
-			{contNext, 29}})
-
+			{contNext, 29},
+		})
 	}
 }
 
@@ -5123,7 +5123,6 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 		} else {
 			pickg = candg[rand.Intn(len(candg))]
 			t.Logf("selected goroutine %d\n", pickg.ID)
-
 		}
 		goid := pickg.ID
 		assertNoError(p.SwitchGoroutine(pickg), t, "SwitchGoroutine")

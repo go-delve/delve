@@ -207,7 +207,6 @@ func FindFileLocation(p Process, filename string, lineno int) ([]uint64, error) 
 	selectedPCs := []uint64{}
 
 	for fn, pcs := range pcByFunc {
-
 		// 3. for each concrete function split instruction between the inlined functions it contains
 
 		if strings.Contains(fn.Name, "·dwrap·") || fn.trampoline {
@@ -1399,7 +1398,6 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 					bi.logger.Errorf("gnu_debuglink CRC check failed for %s (want %x got %x)", debugFilePath, crc, computedCRC)
 					debugFilePath = ""
 				}
-
 			}
 		}
 	}

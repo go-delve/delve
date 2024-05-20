@@ -238,7 +238,6 @@ func TestMultipleSequences(t *testing.T) {
 		if curline != testCase.line {
 			t.Errorf("Wrong line returned for %#x: got %d expected %d", testCase.pc, curline, testCase.line)
 		}
-
 	}
 
 	// Test that AllPCsBetween is correct for all three sequences

@@ -38,7 +38,6 @@ func loadModuleData(bi *BinaryInfo, mem MemoryReadWriter) ([]moduleData, error) 
 			if err != nil {
 				return nil, err
 			}
-
 		}
 
 		var err error

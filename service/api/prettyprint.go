@@ -488,7 +488,6 @@ func (v *Variable) writeSliceOrArrayTo(buf io.Writer, flags prettyFlags, indent,
 // `format` specifies the data format (or data type), `size` specifies size of each data,
 // like 4byte integer, 1byte character, etc. `count` specifies the number of values.
 func PrettyExamineMemory(address uintptr, memArea []byte, isLittleEndian bool, format byte, size int) string {
-
 	var (
 		cols      int
 		colFormat string

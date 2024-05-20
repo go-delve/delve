@@ -4886,7 +4886,6 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 					} else if len(candg) > 0 {
 						goroutineId = candg[rand.Intn(len(candg))]
 						t.Logf("selected goroutine %d\n", goroutineId)
-
 					}
 
 					if goroutineId != 0 {

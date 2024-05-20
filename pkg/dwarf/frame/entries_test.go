@@ -38,8 +38,8 @@ func TestFDEForPC(t *testing.T) {
 		{300, frames[3]},
 		{309, frames[3]},
 		{310, nil},
-		{400, nil}} {
-
+		{400, nil},
+	} {
 		out, err := frames.FDEForPC(test.pc)
 		if test.fde != nil {
 			if err != nil {

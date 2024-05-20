@@ -1354,7 +1354,6 @@ func stepOutReverse(p *Target, topframe, retframe Stackframe, sameGCond ast.Expr
 		if ok, pc := isDeferReturnCall(frames, deferReturns); ok && pc != 0 {
 			callpc = pc
 		}
-
 	}
 
 	_, err = allowDuplicateBreakpoint(p.SetBreakpoint(0, callpc, NextBreakpoint, sameGCond))

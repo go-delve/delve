@@ -370,7 +370,6 @@ func TestLocationCovers(t *testing.T) {
 	if fmt.Sprintf("%x", ranges) != "[[40100 40700] [40700 41000]]" {
 		t.Error("wrong value returned by LocationCover")
 	}
-
 }
 
 func TestIssue1636_InlineWithoutOrigin(t *testing.T) {

@@ -35,7 +35,6 @@ func TestGoroutineCreationLocation(t *testing.T) {
 					t.Fatalf("goroutine creation line incorrect: %v", createdLocation.Line)
 				}
 			}
-
 		}
 
 		p.ClearBreakpoint(bp.Addr)
