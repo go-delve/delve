@@ -116,7 +116,7 @@ func rep(rl *liner.State, thread *starlark.Thread, globals starlark.StringDict, 
 	if expr := soleExpr(f); expr != nil {
 		//TODO: check for 'exit'
 		// eval
-		v, err := starlark.EvalExpr(thread, expr, globals)
+		v, err := evalExprOptions(nil, thread, expr, globals)
 		if err != nil {
 			printError(err)
 			return nil
@@ -194,7 +194,7 @@ func MakeLoad() func(thread *starlark.Thread, module string) (starlark.StringDic
 
 			// Load it.
 			thread := &starlark.Thread{Name: "exec " + module, Load: thread.Load}
-			globals, err := starlark.ExecFile(thread, module, nil, nil)
+			globals, err := execFileOptions(nil, thread, module, nil, nil)
 			e = &entry{globals, err}
 
 			// Update the cache.
