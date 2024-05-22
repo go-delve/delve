@@ -78,7 +78,7 @@ jobs:
           - go: {{index .GoVersions 2}}
             os: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v1
         with:
           go-version: ${{"{{"}}matrix.go{{"}}"}}
