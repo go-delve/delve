@@ -15,6 +15,11 @@ import (
 	"github.com/go-delve/delve/pkg/proc"
 )
 
+const (
+	delveRecordFlagsEnvVar = "DELVE_RR_RECORD_FLAGS"
+	delveReplayFlagsEnvVar = "DELVE_RR_REPLAY_FLAGS"
+)
+
 // RecordAsync configures rr to record the execution of the specified
 // program. Returns a run function which will actually record the program, a
 // stop function which will prematurely terminate the recording of the
@@ -31,6 +36,7 @@ func RecordAsync(cmd []string, wd string, quiet bool, stdin string, stdout proc.
 
 	args := make([]string, 0, len(cmd)+2)
 	args = append(args, "record", "--print-trace-dir=3")
+	args = append(args, config.SplitQuotedFields(os.Getenv(delveRecordFlagsEnvVar), '"')...)
 	args = append(args, cmd...)
 	rrcmd := exec.Command("rr", args...)
 	var closefn func()
@@ -141,6 +147,7 @@ func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string,
 	if rrOnProcessPid != 0 {
 		args = append(args, fmt.Sprintf("--onprocess=%d", rrOnProcessPid))
 	}
+	args = append(args, config.SplitQuotedFields(os.Getenv(delveReplayFlagsEnvVar), '\'')...)
 	args = append(args, tracedir)
 
 	rrcmd := exec.Command("rr", args...)

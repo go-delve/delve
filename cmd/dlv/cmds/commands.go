@@ -456,6 +456,11 @@ are:
 	lldb		Uses lldb-server or debugserver.
 	rr		Uses mozilla rr (https://github.com/mozilla/rr).
 
+Some backends can be configured using environment variables:
+
+* DELVE_DEBUGSERVER_PATH specifies the path of the debugserver executable for the lldb backend
+* DELVE_RR_RECORD_FLAGS specifies additional flags used when calling 'rr record'
+* DELVE_RR_REPLAY_FLAGS specifies additional flags used when calling 'rr replay'
 `})
 
 	rootCommand.AddCommand(&cobra.Command{
