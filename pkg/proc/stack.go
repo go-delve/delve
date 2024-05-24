@@ -197,6 +197,8 @@ type stackIterator struct {
 	g0_sched_sp        uint64 // value of g0.sched.sp (see comments around its use)
 	g0_sched_sp_loaded bool   // g0_sched_sp was loaded from g0
 
+	count int
+
 	opts StacktraceOptions
 }
 
@@ -353,17 +355,11 @@ func (it *stackIterator) stacktrace(depth int) ([]Stackframe, error) {
 	if depth < 0 {
 		return nil, errors.New("negative maximum stack depth")
 	}
-	if it.opts&StacktraceG != 0 && it.g != nil {
-		it.switchToGoroutineStack()
-		it.top = true
-	}
 	frames := make([]Stackframe, 0, depth+1)
-	for it.Next() {
-		frames = it.appendInlineCalls(frames, it.Frame())
-		if len(frames) >= depth+1 {
-			break
-		}
-	}
+	it.stacktraceFunc(func(frame Stackframe) bool {
+		frames = append(frames, frame)
+		return len(frames) < depth+1
+	})
 	if err := it.Err(); err != nil {
 		if len(frames) == 0 {
 			return nil, err
@@ -373,22 +369,37 @@ func (it *stackIterator) stacktrace(depth int) ([]Stackframe, error) {
 	return frames, nil
 }
 
-func (it *stackIterator) appendInlineCalls(frames []Stackframe, frame Stackframe) []Stackframe {
+func (it *stackIterator) stacktraceFunc(callback func(Stackframe) bool) {
+	if it.opts&StacktraceG != 0 && it.g != nil {
+		it.switchToGoroutineStack()
+		it.top = true
+	}
+	for it.Next() {
+		if !it.appendInlineCalls(callback, it.Frame()) {
+			break
+		}
+	}
+}
+
+func (it *stackIterator) appendInlineCalls(callback func(Stackframe) bool, frame Stackframe) bool {
 	if frame.Call.Fn == nil {
-		return append(frames, frame)
+		it.count++
+		return callback(frame)
 	}
 	if frame.Call.Fn.cu.lineInfo == nil {
-		return append(frames, frame)
+		it.count++
+		return callback(frame)
 	}
 
 	callpc := frame.Call.PC
-	if len(frames) > 0 {
+	if it.count > 0 {
 		callpc--
 	}
 
 	dwarfTree, err := frame.Call.Fn.cu.image.getDwarfTree(frame.Call.Fn.offset)
 	if err != nil {
-		return append(frames, frame)
+		it.count++
+		return callback(frame)
 	}
 
 	for _, entry := range reader.InlineStack(dwarfTree, callpc) {
@@ -406,7 +417,8 @@ func (it *stackIterator) appendInlineCalls(frames []Stackframe, frame Stackframe
 		}
 
 		inlfn := &Function{Name: fnname, Entry: frame.Call.Fn.Entry, End: frame.Call.Fn.End, offset: entry.Offset, cu: frame.Call.Fn.cu}
-		frames = append(frames, Stackframe{
+		it.count++
+		callback(Stackframe{
 			Current: frame.Current,
 			Call: Location{
 				frame.Call.PC,
@@ -427,7 +439,8 @@ func (it *stackIterator) appendInlineCalls(frames []Stackframe, frame Stackframe
 		frame.Call.Line = int(line)
 	}
 
-	return append(frames, frame)
+	it.count++
+	return callback(frame)
 }
 
 // advanceRegs calculates the DwarfRegisters for a next stack frame
@@ -618,6 +631,8 @@ type Defer struct {
 	link    *Defer // Next deferred function
 	argSz   int64  // Always 0 in Go >=1.17
 
+	rangefunc []*Defer // See explanation in $GOROOT/src/runtime/panic.go, comment to function runtime.deferrangefunc (this is the equivalent of the rangefunc variable and head fields, combined)
+
 	variable   *Variable
 	Unreadable error
 }
@@ -644,7 +659,7 @@ func (g *G) readDefers(frames []Stackframe) {
 		}
 
 		if frames[i].TopmostDefer == nil {
-			frames[i].TopmostDefer = curdefer
+			frames[i].TopmostDefer = curdefer.topdefer()
 		}
 
 		if frames[i].SystemStack || curdefer.SP >= uint64(frames[i].Regs.CFA) {
@@ -660,13 +675,19 @@ func (g *G) readDefers(frames []Stackframe) {
 			// compared with deferred frames.
 			i++
 		} else {
-			frames[i].Defers = append(frames[i].Defers, curdefer)
+			if len(curdefer.rangefunc) > 0 {
+				frames[i].Defers = append(frames[i].Defers, curdefer.rangefunc...)
+			} else {
+				frames[i].Defers = append(frames[i].Defers, curdefer)
+			}
 			curdefer = curdefer.Next()
 		}
 	}
 }
 
-func (d *Defer) load() {
+const maxRangeFuncDefers = 10
+
+func (d *Defer) load(canrecur bool) {
 	v := d.variable // +rtype _defer
 	v.loadValue(LoadConfig{false, 1, 0, 0, -1, 0})
 	if v.Unreadable != nil {
@@ -701,6 +722,34 @@ func (d *Defer) load() {
 	if linkvar.Addr != 0 {
 		d.link = &Defer{variable: linkvar}
 	}
+
+	if canrecur {
+		h := v
+		for _, fieldname := range []string{"head", "u", "value"} {
+			if h == nil {
+				return
+			}
+			h = h.loadFieldNamed(fieldname)
+		}
+		if h != nil {
+			h := h.newVariable("", h.Addr, pointerTo(linkvar.DwarfType, h.bi.Arch), h.mem).maybeDereference()
+			if h.Addr != 0 {
+				hd := &Defer{variable: h}
+				for {
+					hd.load(false)
+					d.rangefunc = append(d.rangefunc, hd)
+					if hd.link == nil {
+						break
+					}
+					if len(d.rangefunc) > maxRangeFuncDefers {
+						// We don't have a way to know for sure that we haven't gone completely off-road while loading this list so limit it to an arbitrary maximum size.
+						break
+					}
+					hd = hd.link
+				}
+			}
+		}
+	}
 }
 
 // errSPDecreased is used when (*Defer).Next detects a corrupted linked
@@ -715,11 +764,18 @@ func (d *Defer) Next() *Defer {
 	if d.link == nil {
 		return nil
 	}
-	d.link.load()
+	d.link.load(true)
 	if d.link.SP < d.SP {
 		d.link.Unreadable = errSPDecreased
 	}
 	return d.link
+}
+
+func (d *Defer) topdefer() *Defer {
+	if len(d.rangefunc) > 0 {
+		return d.rangefunc[0]
+	}
+	return d
 }
 
 // EvalScope returns an EvalScope relative to the argument frame of this deferred call.
@@ -812,4 +868,90 @@ func ruleString(rule *frame.DWRule, regnumToString func(uint64) string) string {
 	default:
 		return fmt.Sprintf("unknown_rule(%d)", rule.Rule)
 	}
+}
+
+// rangeFuncStackTrace, if the topmost frame of the stack is a the body of a
+// range-over-func statement, returns a slice containing the stack of range
+// bodies on the stack, the frame of the function containing them and
+// finally the function that called it.
+//
+// For example, given:
+//
+//	func f() {
+//		for _ := range iterator1 {
+//			for _ := range iterator2 {
+//				fmt.Println() // <- YOU ARE HERE
+//			}
+//		}
+//	}
+//
+// It will return the following frames:
+//
+// 0. f-range2()
+// 1. f-range1()
+// 2. f()
+// 3. function that called f()
+//
+// If the topmost frame of the stack is *not* the body closure of a
+// range-over-func statement then nothing is returned.
+func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
+	if g == nil {
+		return nil, nil
+	}
+	it, err := goroutineStackIterator(tgt, g, StacktraceSimple)
+	if err != nil {
+		return nil, err
+	}
+	frames := []Stackframe{}
+	stage := 0
+	var rangeParent *Function
+	nonMonotonicSP := false
+	it.stacktraceFunc(func(fr Stackframe) bool {
+		//TODO(range-over-func): this is a heuristic, we should use .closureptr instead
+
+		if len(frames) > 0 {
+			prev := &frames[len(frames)-1]
+			if fr.Regs.SP() <= prev.Regs.SP() {
+				nonMonotonicSP = true
+				return false
+			}
+		}
+
+		switch stage {
+		case 0:
+			frames = append(frames, fr)
+			rangeParent = fr.Call.Fn.extra(tgt.BinInfo()).rangeParent
+			stage++
+			if rangeParent == nil {
+				frames = nil
+				stage = 3
+				return false
+			}
+		case 1:
+			if fr.Call.Fn.offset == rangeParent.offset {
+				frames = append(frames, fr)
+				stage++
+			} else if fr.Call.Fn.extra(tgt.BinInfo()).rangeParent == rangeParent {
+				frames = append(frames, fr)
+			}
+		case 2:
+			frames = append(frames, fr)
+			stage++
+			return false
+		case 3:
+			return false
+		}
+		return true
+	})
+	if it.Err() != nil {
+		return nil, err
+	}
+	if nonMonotonicSP {
+		return nil, errors.New("corrupted stack (SP not monotonically decreasing)")
+	}
+	if stage != 3 {
+		return nil, errors.New("could not find range-over-func closure parent on the stack")
+	}
+	g.readDefers(frames)
+	return frames, nil
 }

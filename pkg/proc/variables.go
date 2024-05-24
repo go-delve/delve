@@ -494,7 +494,7 @@ func (g *G) Defer() *Defer {
 		return nil
 	}
 	d := &Defer{variable: dvar}
-	d.load()
+	d.load(true)
 	return d
 }
 
@@ -1948,7 +1948,7 @@ func (v *Variable) loadFunctionPtr(recurseLevel int, cfg LoadConfig) {
 	}
 
 	v.Value = constant.MakeString(fn.Name)
-	cst := fn.closureStructType(v.bi)
+	cst := fn.extra(v.bi).closureStructType
 	v.Len = int64(len(cst.Field))
 
 	if recurseLevel <= cfg.MaxVariableRecurse {
