@@ -25,7 +25,10 @@ import (
 
 var errOperationOnSpecialFloat = errors.New("operations on non-finite floats not implemented")
 
-const goDictionaryName = ".dict"
+const (
+	goDictionaryName = ".dict"
+	goClosurePtr     = ".closureptr"
+)
 
 // EvalScope is the scope for variable evaluation. Contains the thread,
 // current location (PC), and canonical frame address.
@@ -48,6 +51,9 @@ type EvalScope struct {
 	callCtx *callContext
 
 	dictAddr uint64 // dictionary address for instantiated generic functions
+
+	enclosingRangeScopes []*EvalScope
+	rangeFrames          []Stackframe
 }
 
 type localsFlags uint8
@@ -290,8 +296,89 @@ func (scope *EvalScope) ChanGoroutines(expr string, start, count int) ([]int64, 
 	return goids, nil
 }
 
-// Locals returns all variables in 'scope'.
-func (scope *EvalScope) Locals(flags localsFlags) ([]*Variable, error) {
+// Locals returns all variables in 'scope' named wantedName, or all of them
+// if wantedName is "".
+// If scope is the scope for a range-over-func closure body it will merge in
+// the scopes of the enclosing functions.
+func (scope *EvalScope) Locals(flags localsFlags, wantedName string) ([]*Variable, error) {
+	var scopes [][]*Variable
+	filter := func(vars []*Variable) []*Variable {
+		if wantedName == "" || vars == nil {
+			return vars
+		}
+		vars2 := []*Variable{}
+		for _, v := range vars {
+			if v.Name == wantedName {
+				vars2 = append(vars2, v)
+			}
+		}
+		return vars2
+	}
+
+	vars0, err := scope.simpleLocals(flags, wantedName)
+	if err != nil {
+		return nil, err
+	}
+	vars0 = filter(vars0)
+	if scope.Fn.extra(scope.BinInfo).rangeParent == nil || scope.target == nil || scope.g == nil {
+		return vars0, nil
+	}
+	if wantedName != "" && len(vars0) > 0 {
+		return vars0, nil
+	}
+
+	scopes = append(scopes, vars0)
+
+	if scope.rangeFrames == nil {
+		scope.rangeFrames, err = rangeFuncStackTrace(scope.target, scope.g)
+		if err != nil {
+			return nil, err
+		}
+		scope.rangeFrames = scope.rangeFrames[1:]
+		scope.enclosingRangeScopes = make([]*EvalScope, len(scope.rangeFrames))
+	}
+	for i, scope2 := range scope.enclosingRangeScopes {
+		if i == len(scope.enclosingRangeScopes)-1 {
+			// Last one is the caller frame, we shouldn't check it
+			break
+		}
+		if scope2 == nil {
+			scope2 = FrameToScope(scope.target, scope.target.Memory(), scope.g, scope.threadID, scope.rangeFrames[i:]...)
+			scope.enclosingRangeScopes[i] = scope2
+		}
+		vars, err := scope2.simpleLocals(flags, wantedName)
+		if err != nil {
+			return nil, err
+		}
+		vars = filter(vars)
+		scopes = append(scopes, vars)
+		if wantedName != "" && len(vars) > 0 {
+			return vars, nil
+		}
+	}
+
+	vars := []*Variable{}
+	for i := len(scopes) - 1; i >= 0; i-- {
+		vars = append(vars, scopes[i]...)
+	}
+
+	// Apply shadowning
+	lvn := map[string]*Variable{}
+	for _, v := range vars {
+		if otherv := lvn[v.Name]; otherv != nil {
+			otherv.Flags |= VariableShadowed
+		}
+		lvn[v.Name] = v
+	}
+	return vars, nil
+}
+
+// simpleLocals returns all local variables in 'scope'.
+// This function does not try to merge the scopes of range-over-func closure
+// bodies with their enclosing function, for that use (*EvalScope).Locals or
+// (*EvalScope).FindLocal instead.
+// If wantedName is specified only variables called wantedName or "&"+wantedName are returned.
+func (scope *EvalScope) simpleLocals(flags localsFlags, wantedName string) ([]*Variable, error) {
 	if scope.Fn == nil {
 		return nil, errors.New("unable to find function context")
 	}
@@ -341,8 +428,25 @@ func (scope *EvalScope) Locals(flags localsFlags) ([]*Variable, error) {
 	vars := make([]*Variable, 0, len(varEntries))
 	depths := make([]int, 0, len(varEntries))
 	for _, entry := range varEntries {
-		if name, _ := entry.Val(dwarf.AttrName).(string); name == goDictionaryName {
-			continue
+		name, _ := entry.Val(dwarf.AttrName).(string)
+		switch {
+		case wantedName != "":
+			if name != wantedName && name != "&"+wantedName {
+				continue
+			}
+		default:
+			if name == goDictionaryName || name == goClosurePtr || strings.HasPrefix(name, "#state") || strings.HasPrefix(name, "&#state") || strings.HasPrefix(name, "#next") || strings.HasPrefix(name, "&#next") || strings.HasPrefix(name, "#yield") {
+				continue
+			}
+		}
+		if scope.Fn.rangeParentName() != "" {
+			// Skip return values and closure variables for range-over-func closure bodies
+			if strings.HasPrefix(name, "~") {
+				continue
+			}
+			if entry.Val(godwarf.AttrGoClosureOffset) != nil {
+				continue
+			}
 		}
 		val, err := extractVarInfoFromEntry(scope.target, scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry.Tree, scope.dictAddr)
 		if err != nil {
@@ -519,7 +623,7 @@ func (scope *EvalScope) SetVariable(name, value string) error {
 
 // LocalVariables returns all local variables from the current function scope.
 func (scope *EvalScope) LocalVariables(cfg LoadConfig) ([]*Variable, error) {
-	vars, err := scope.Locals(0)
+	vars, err := scope.Locals(0, "")
 	if err != nil {
 		return nil, err
 	}
@@ -533,7 +637,7 @@ func (scope *EvalScope) LocalVariables(cfg LoadConfig) ([]*Variable, error) {
 
 // FunctionArguments returns the name, value, and type of all current function arguments.
 func (scope *EvalScope) FunctionArguments(cfg LoadConfig) ([]*Variable, error) {
-	vars, err := scope.Locals(0)
+	vars, err := scope.Locals(0, "")
 	if err != nil {
 		return nil, err
 	}
@@ -1042,9 +1146,9 @@ func (stack *evalStack) pushLocal(scope *EvalScope, name string, frame int64) (f
 			stack.err = err2
 			return
 		}
-		vars, err = frameScope.Locals(0)
+		vars, err = frameScope.Locals(0, name)
 	} else {
-		vars, err = scope.Locals(0)
+		vars, err = scope.Locals(0, name)
 	}
 	if err != nil {
 		stack.err = err

@@ -18,7 +18,7 @@ func (it *stackIterator) readSigtrampgoContext() (*op.DwarfRegisters, error) {
 	bi := it.bi
 
 	findvar := func(name string) *Variable {
-		vars, _ := scope.Locals(0)
+		vars, _ := scope.Locals(0, name)
 		for i := range vars {
 			if vars[i].Name == name {
 				return vars[i]

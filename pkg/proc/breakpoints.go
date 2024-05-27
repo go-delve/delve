@@ -960,7 +960,7 @@ func (rbpi *returnBreakpointInfo) Collect(t *Target, thread Thread) []*Variable 
 		return returnInfoError("could not read function entry", err, thread.ProcessMemory())
 	}
 
-	vars, err := scope.Locals(0)
+	vars, err := scope.Locals(0, "")
 	if err != nil {
 		return returnInfoError("could not evaluate return variables", err, thread.ProcessMemory())
 	}
