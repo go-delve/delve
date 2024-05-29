@@ -820,9 +820,9 @@ func getEvalExpressionTestCases() []varTest {
 		{"afunc(2)", false, "", "", "", errors.New("function calls not allowed without using 'call'")},
 		{"(afunc)(2)", false, "", "", "", errors.New("function calls not allowed without using 'call'")},
 		{"(*afunc)(2)", false, "", "", "", errors.New("expression \"afunc\" (func()) can not be dereferenced")},
-		{"unknownthing(2)", false, "", "", "", errors.New("could not evaluate function or type unknownthing: could not find symbol value for unknownthing")},
-		{"(*unknownthing)(2)", false, "", "", "", errors.New("could not evaluate function or type (*unknownthing): could not find symbol value for unknownthing")},
-		{"(*strings.Split)(2)", false, "", "", "", errors.New("could not evaluate function or type (*strings.Split): could not find symbol value for strings")},
+		{"unknownthing(2)", false, "", "", "", errors.New("could not find symbol value for unknownthing")},
+		{"(*unknownthing)(2)", false, "", "", "", errors.New("could not find symbol value for unknownthing")},
+		{"(*strings.Split)(2)", false, "", "", "", errors.New("could not find symbol value for strings")},
 
 		// pretty printing special types
 		{"tim1", false, `time.Time(1977-05-25T18:00:00Z)…`, `time.Time(1977-05-25T18:00:00Z)…`, "time.Time", nil},
@@ -1195,7 +1195,7 @@ func TestCallFunction(t *testing.T) {
 		{`stringsJoin(nil, "")`, []string{`:string:""`}, nil},
 		{`stringsJoin(stringslice, comma)`, []string{`:string:"one,two,three"`}, nil},
 		{`stringsJoin(stringslice, "~~")`, []string{`:string:"one~~two~~three"`}, nil},
-		{`stringsJoin(s1, comma)`, nil, errors.New(`error evaluating "s1" as argument 1 in function stringsJoin: could not find symbol value for s1`)},
+		{`stringsJoin(s1, comma)`, nil, errors.New(`could not find symbol value for s1`)},
 		{`stringsJoin(intslice, comma)`, nil, errors.New("can not convert value of type []int to []string")},
 		{`noreturncall(2)`, nil, nil},
 
@@ -1295,11 +1295,11 @@ func TestCallFunction(t *testing.T) {
 	}
 
 	var testcasesBefore114After112 = []testCaseCallFunction{
-		{`strings.Join(s1, comma)`, nil, errors.New(`error evaluating "s1" as argument 1 in function strings.Join: could not find symbol value for s1`)},
+		{`strings.Join(s1, comma)`, nil, errors.New(`could not find symbol value for s1`)},
 	}
 
 	var testcases114 = []testCaseCallFunction{
-		{`strings.Join(s1, comma)`, nil, errors.New(`error evaluating "s1" as argument 1 in function strings.Join: could not find symbol value for s1`)},
+		{`strings.Join(s1, comma)`, nil, errors.New(`could not find symbol value for s1`)},
 	}
 
 	var testcases117 = []testCaseCallFunction{

@@ -143,6 +143,7 @@ func dataAtAddr(thread proc.MemoryReadWriter, addr uint64) ([]byte, error) {
 }
 
 func assertNoError(err error, t testing.TB, s string) {
+	t.Helper()
 	if err != nil {
 		_, file, line, _ := runtime.Caller(1)
 		fname := filepath.Base(file)
@@ -1254,6 +1255,7 @@ func evalVariableOrError(p *proc.Target, symbol string) (*proc.Variable, error) 
 }
 
 func evalVariable(p *proc.Target, t testing.TB, symbol string) *proc.Variable {
+	t.Helper()
 	v, err := evalVariableOrError(p, symbol)
 	if err != nil {
 		_, file, line, _ := runtime.Caller(1)
