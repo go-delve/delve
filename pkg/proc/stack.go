@@ -49,6 +49,8 @@ type Stackframe struct {
 	SystemStack bool
 	// Inlined is true if this frame is actually an inlined call.
 	Inlined bool
+	// hasInlines is true if this frame is a concrete function that is executing inlined calls (i.e. if there is at least one inlined call frame on top of this one).
+	hasInlines bool
 	// Bottom is true if this is the bottom of the stack
 	Bottom bool
 
@@ -403,6 +405,7 @@ func (it *stackIterator) appendInlineCalls(callback func(Stackframe) bool, frame
 	}
 
 	for _, entry := range reader.InlineStack(dwarfTree, callpc) {
+		frame.hasInlines = true
 		fnname, okname := entry.Val(dwarf.AttrName).(string)
 		fileidx, okfileidx := entry.Val(dwarf.AttrCallFile).(int64)
 		line, okline := entry.Val(dwarf.AttrCallLine).(int64)

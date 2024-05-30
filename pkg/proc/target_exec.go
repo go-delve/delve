@@ -14,6 +14,7 @@ import (
 	"golang.org/x/arch/ppc64/ppc64asm"
 
 	"github.com/go-delve/delve/pkg/astutil"
+	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/logflags"
 )
@@ -779,7 +780,7 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 		if inlinedStepOut {
 			frame = retframe
 		}
-		pcs, err = removeInlinedCalls(pcs, frame, bi)
+		pcs, err = removeInlinedCalls(pcs, &frame, bi)
 		if err != nil {
 			return err
 		}
@@ -843,8 +844,22 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 	// Set step-out breakpoints for range-over-func body closures
 	if !stepInto && selg != nil && topframe.Current.Fn.extra(bi).rangeParent != nil {
 		for _, fr := range rangeFrames[:len(rangeFrames)-1] {
-			if !fr.Inlined {
-				dbp.SetBreakpoint(0, fr.Current.PC, NextBreakpoint, astutil.And(sameGCond, frameoffCondition(&fr)))
+			retframecond := astutil.And(sameGCond, frameoffCondition(&fr))
+			if !fr.hasInlines {
+				dbp.SetBreakpoint(0, fr.Current.PC, NextBreakpoint, retframecond)
+			} else {
+				// fr.Current.PC does not belong to fr.Call.Fn, because there are inlined calls, therefore set a breakpoint on every statement of fr.Call.Fn
+				pcs, err := fr.Current.Fn.AllPCs("", 0)
+				if err != nil {
+					return err
+				}
+				pcs, err = removeInlinedCalls(pcs, &fr, bi)
+				if err != nil {
+					return err
+				}
+				for _, pc := range pcs {
+					dbp.SetBreakpoint(0, pc, NextBreakpoint, retframecond)
+				}
 			}
 		}
 		topframe, retframe = rangeFrames[len(rangeFrames)-2], rangeFrames[len(rangeFrames)-1]
@@ -976,56 +991,89 @@ func FindDeferReturnCalls(text []AsmInstruction) []uint64 {
 }
 
 // Removes instructions belonging to inlined calls of topframe from pcs.
-func removeInlinedCalls(pcs []uint64, topframe Stackframe, bi *BinaryInfo) ([]uint64, error) {
+// Inlined calls that belong to range-over-func bodies are not removed.
+func removeInlinedCalls(pcs []uint64, topframe *Stackframe, bi *BinaryInfo) ([]uint64, error) {
 	// TODO(derekparker) it should be possible to still use some internal
 	// runtime information to do this.
 	if topframe.Call.Fn == nil || topframe.Call.Fn.cu.image.Stripped() {
 		return pcs, nil
 	}
 
-	topframeRangeParentName := ""
+	topframeRangeParentName := topframe.Call.Fn.Name
 	if topframe.Call.Fn.extra(bi).rangeParent != nil {
 		topframeRangeParentName = topframe.Call.Fn.extra(bi).rangeParent.Name
 	}
 
-	dwarfTree, err := topframe.Call.Fn.cu.image.getDwarfTree(topframe.Call.Fn.offset)
+	dwarfTree, err := topframe.Current.Fn.cu.image.getDwarfTree(topframe.Current.Fn.offset)
 	if err != nil {
 		return pcs, err
 	}
-	for _, e := range reader.InlineStack(dwarfTree, 0) {
-		// keep all PCs that belong to topframe
-		if e.Offset == topframe.Call.Fn.offset {
-			continue
-		}
-		// also keep all PCs that belong to a range-over-func body closure that
-		// belongs to the same function as topframe or to the range parent of
-		// topframe.
-		fnname, _ := e.Val(dwarf.AttrName).(string)
-		ridx := rangeParentName(fnname)
-		var rpn string
-		if ridx == -1 {
-			rpn = fnname
-		} else {
-			rpn = fnname[:ridx]
-		}
-		if rpn == topframeRangeParentName {
-			continue
-		}
-		for _, rng := range e.Ranges {
-			pcs = removePCsBetween(pcs, rng[0], rng[1])
+	color := make([]removePC, len(pcs))
+	removeInlinedCallsColor(topframe, topframeRangeParentName, pcs, color, dwarfTree)
+	out := make([]uint64, 0, len(pcs))
+	for i := range pcs {
+		if color[i] != removePCRemove {
+			out = append(out, pcs[i])
 		}
 	}
-	return pcs, nil
+	return out, nil
 }
 
-func removePCsBetween(pcs []uint64, start, end uint64) []uint64 {
-	out := pcs[:0]
-	for _, pc := range pcs {
-		if pc < start || pc >= end {
-			out = append(out, pc)
+type removePC uint8
+
+const (
+	removePCUnknown removePC = iota
+	removePCRemove
+	removePCKeep
+)
+
+// removeInlinedCallsColor sets color[i] to removePCRemove or removePCKeep
+// depending on whether pcs[i] should be removed by removeInlinedCalls.
+// This determination is made by checking, for each PC, what is the topmost
+// inlined call.
+func removeInlinedCallsColor(topframe *Stackframe, topframeRangeParentName string, pcs []uint64, color []removePC, e *godwarf.Tree) {
+	switch e.Tag {
+	case dwarf.TagSubprogram, dwarf.TagInlinedSubroutine, dwarf.TagLexDwarfBlock:
+		// ok
+	default:
+		return
+	}
+
+	for _, child := range e.Children {
+		removeInlinedCallsColor(topframe, topframeRangeParentName, pcs, color, child)
+	}
+
+	switch e.Tag {
+	case dwarf.TagInlinedSubroutine:
+		c := removePCRemove
+		if e.Offset == topframe.Call.Fn.offset {
+			c = removePCKeep
+		} else {
+			fnname, _ := e.Val(dwarf.AttrName).(string)
+			ridx := rangeParentName(fnname)
+			var rpn string
+			if ridx == -1 {
+				rpn = fnname
+			} else {
+				rpn = fnname[:ridx]
+			}
+			if rpn == topframeRangeParentName {
+				c = removePCKeep
+			}
+		}
+		for _, rng := range e.Ranges {
+			colorPCsBetween(pcs, color, c, rng[0], rng[1])
 		}
 	}
-	return out
+}
+
+// colorPCsBetween sets color[i] to c if start <= pcs[i] < end
+func colorPCsBetween(pcs []uint64, color []removePC, c removePC, start, end uint64) {
+	for i, pc := range pcs {
+		if color[i] == removePCUnknown && pc >= start && pc < end {
+			color[i] = c
+		}
+	}
 }
 
 func setStepIntoBreakpoint(dbp *Target, curfn *Function, text []AsmInstruction, cond ast.Expr) error {
