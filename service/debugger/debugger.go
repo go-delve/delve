@@ -1188,23 +1188,6 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 	if command.Name != api.SwitchGoroutine && command.Name != api.SwitchThread && command.Name != api.Halt {
 		d.target.ResumeNotify(resumeNotify)
 
-		if clientStatusCh != nil {
-			defer func() {
-				select {
-				case <-clientStatusCh:
-					// the channel will be closed if the client that sends the command has left
-					// i.e. closed the connection.
-				default:
-					return
-				}
-
-				// defer is executed in lifo order, so we can't access the state through d.State()
-				// as d.setRunning(false) is not yet executed.
-				if state != nil {
-					d.dumpGoroutineStack(state.CurrentThread)
-				}
-			}()
-		}
 	} else if resumeNotify != nil {
 		close(resumeNotify)
 	}
@@ -1355,6 +1338,8 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 		bp.Disabled = true
 		d.amendBreakpoint(bp)
 	}
+
+	d.maybePrintUnattendedBreakpointWarning(state.CurrentThread, clientStatusCh)
 	return state, err
 }
 
@@ -2447,7 +2432,15 @@ func attachErrorMessageDefault(pid int, err error) error {
 	return fmt.Errorf("could not attach to pid %d: %s", pid, err)
 }
 
-func (d *Debugger) dumpGoroutineStack(currentThread *api.Thread) {
+func (d *Debugger) maybePrintUnattendedBreakpointWarning(currentThread *api.Thread, clientStatusCh <-chan struct{}) {
+	select {
+	case <-clientStatusCh:
+		// the channel will be closed if the client that sends the command has left
+		// i.e. closed the connection.
+	default:
+		return
+	}
+
 	const defaultStackTraceDepth = 50
 	frames, err := d.stacktrace(currentThread.GoroutineID, defaultStackTraceDepth, 0)
 	if err != nil {

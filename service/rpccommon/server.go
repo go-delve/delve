@@ -416,7 +416,7 @@ func (cb *RPCCallback) Return(out interface{}, err error) {
 		cb.s.log.Debugf("(async %d) -> %T%s error: %q", cb.req.Seq, out, outbytes, errmsg)
 	}
 
-	if hasDisconnected := cb.hasDisconnected(); hasDisconnected {
+	if cb.hasDisconnected() {
 		return
 	}
 
