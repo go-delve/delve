@@ -166,9 +166,6 @@ type Session struct {
 
 	// preTerminatedWG the WaitGroup that needs to wait before sending a terminated event.
 	preTerminatedWG sync.WaitGroup
-
-	// disconnectCh will be closed when the underlying connection is closed (hit EOF).
-	disconnectCh chan struct{}
 }
 
 // Config is all the information needed to start the debugger, handle
@@ -184,22 +181,33 @@ type Config struct {
 }
 
 type connection struct {
-	mu     sync.Mutex
-	closed bool
+	mu         sync.Mutex
+	closedChan chan struct{}
 	io.ReadWriteCloser
+}
+
+func newConnection(conn io.ReadWriteCloser) *connection {
+	return &connection{ReadWriteCloser: conn, closedChan: make(chan struct{})}
 }
 
 func (c *connection) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.closed = true
+
+	close(c.closedChan)
 	return c.ReadWriteCloser.Close()
 }
 
 func (c *connection) isClosed() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.closed
+
+	select {
+	case <-c.closedChan:
+		return true
+	default:
+		return false
+	}
 }
 
 type process struct {
@@ -338,7 +346,7 @@ func NewSession(conn io.ReadWriteCloser, config *Config, debugger *debugger.Debu
 	return &Session{
 		config:            config,
 		id:                sessionCount,
-		conn:              &connection{ReadWriteCloser: conn},
+		conn:              newConnection(conn),
 		stackFrameHandles: newHandlesMap(),
 		variableHandles:   newVariablesHandlesMap(),
 		args:              defaultArgs,
@@ -526,11 +534,6 @@ func (s *Session) ServeDAPCodec() {
 		if triggerServerStop {
 			s.config.triggerServerStop()
 		}
-	}()
-
-	s.disconnectCh = make(chan struct{})
-	defer func() {
-		close(s.disconnectCh)
 	}()
 
 	reader := bufio.NewReader(s.conn)
@@ -2057,7 +2060,7 @@ func (s *Session) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int6
 // due to an error, so the server is ready to receive new requests.
 func (s *Session) stepUntilStopAndNotify(command string, threadId int, granularity dap.SteppingGranularity, allowNextStateChange *syncflag) {
 	defer allowNextStateChange.raise()
-	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: int64(threadId)}, nil, s.disconnectCh)
+	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: int64(threadId)}, nil, s.conn.closedChan)
 	if err != nil {
 		s.config.log.Errorf("Error switching goroutines while stepping: %v", err)
 		// If we encounter an error, we will have to send a stopped event
@@ -2923,7 +2926,7 @@ func (s *Session) doCall(goid, frame int, expr string) (*api.DebuggerState, []*p
 		Expr:                 expr,
 		UnsafeCall:           false,
 		GoroutineID:          int64(goid),
-	}, nil, s.disconnectCh)
+	}, nil, s.conn.closedChan)
 	if processExited(state, err) {
 		s.preTerminatedWG.Wait()
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
@@ -3654,7 +3657,7 @@ func (s *Session) resumeOnce(command string, allowNextStateChange *syncflag) (bo
 		state, err := s.debugger.State(false)
 		return false, state, err
 	}
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone, s.disconnectCh)
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone, s.conn.closedChan)
 	return true, state, err
 }
 
