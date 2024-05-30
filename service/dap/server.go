@@ -181,6 +181,8 @@ type Config struct {
 }
 
 type connection struct {
+	mu         sync.Mutex
+	closed     bool
 	closedChan chan struct{}
 	io.ReadWriteCloser
 }
@@ -190,17 +192,20 @@ func newConnection(conn io.ReadWriteCloser) *connection {
 }
 
 func (c *connection) Close() error {
-	close(c.closedChan)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.closed {
+		close(c.closedChan)
+	}
+	c.closed = true
 	return c.ReadWriteCloser.Close()
 }
 
 func (c *connection) isClosed() bool {
-	select {
-	case <-c.closedChan:
-		return true
-	default:
-		return false
-	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closed
 }
 
 type process struct {
@@ -2751,7 +2756,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 				variablesReference = maybeCreateVariableHandle(v)
 			}
 		}
-	case reflect.Struct, reflect.Func:
+	case reflect.Struct:
 		if v.Len > int64(len(v.Children)) { // Not fully loaded
 			if len(v.Children) == 0 { // Fully missing
 				value = reloadVariable(v, qualifiedNameOrExpr)
@@ -2776,7 +2781,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 			v.Children[1].Kind = reflect.Float64
 		}
 		fallthrough
-	default: // Complex, Scalar, Chan
+	default: // Complex, Scalar, Chan, Func
 		if len(v.Children) > 0 {
 			variablesReference = maybeCreateVariableHandle(v)
 		}
@@ -3233,6 +3238,7 @@ func (s *Session) onDisassembleRequest(request *dap.DisassembleRequest) {
 			instructions[i] = invalidInstruction
 			instructions[i].Address = fmt.Sprintf("%#x", uint64(math.MaxUint64))
 			continue
+
 		}
 		instruction := api.ConvertAsmInstruction(procInstructions[i-offset], s.debugger.AsmInstructionText(&procInstructions[i-offset], proc.GoFlavour))
 		instructions[i] = dap.DisassembledInstruction{
@@ -3738,6 +3744,7 @@ func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange *sy
 			stopped.Body.Reason = "pause"
 			stopped.Body.HitBreakpointIds = []int{}
 		}
+
 	} else {
 		s.exceptionErr = err
 		s.config.log.Error("runtime error: ", err)
