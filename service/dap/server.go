@@ -181,7 +181,6 @@ type Config struct {
 }
 
 type connection struct {
-	mu         sync.Mutex
 	closedChan chan struct{}
 	io.ReadWriteCloser
 }
@@ -191,17 +190,11 @@ func newConnection(conn io.ReadWriteCloser) *connection {
 }
 
 func (c *connection) Close() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	close(c.closedChan)
 	return c.ReadWriteCloser.Close()
 }
 
 func (c *connection) isClosed() bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	select {
 	case <-c.closedChan:
 		return true
