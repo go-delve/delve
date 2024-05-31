@@ -132,7 +132,6 @@ func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback)
 		cb.Return(nil, err)
 		return
 	}
-
 	var out CommandOut
 	out.State = *st
 	cb.Return(out, nil)

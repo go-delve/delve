@@ -533,7 +533,6 @@ func (s *Session) ServeDAPCodec() {
 			s.config.triggerServerStop()
 		}
 	}()
-
 	reader := bufio.NewReader(s.conn)
 	for {
 		request, err := dap.ReadProtocolMessage(reader)
@@ -2756,7 +2755,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 				variablesReference = maybeCreateVariableHandle(v)
 			}
 		}
-	case reflect.Struct:
+	case reflect.Struct, reflect.Func:
 		if v.Len > int64(len(v.Children)) { // Not fully loaded
 			if len(v.Children) == 0 { // Fully missing
 				value = reloadVariable(v, qualifiedNameOrExpr)
@@ -2781,7 +2780,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 			v.Children[1].Kind = reflect.Float64
 		}
 		fallthrough
-	default: // Complex, Scalar, Chan, Func
+	default: // Complex, Scalar, Chan
 		if len(v.Children) > 0 {
 			variablesReference = maybeCreateVariableHandle(v)
 		}
@@ -3238,7 +3237,6 @@ func (s *Session) onDisassembleRequest(request *dap.DisassembleRequest) {
 			instructions[i] = invalidInstruction
 			instructions[i].Address = fmt.Sprintf("%#x", uint64(math.MaxUint64))
 			continue
-
 		}
 		instruction := api.ConvertAsmInstruction(procInstructions[i-offset], s.debugger.AsmInstructionText(&procInstructions[i-offset], proc.GoFlavour))
 		instructions[i] = dap.DisassembledInstruction{
@@ -3744,7 +3742,6 @@ func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange *sy
 			stopped.Body.Reason = "pause"
 			stopped.Body.HitBreakpointIds = []int{}
 		}
-
 	} else {
 		s.exceptionErr = err
 		s.config.log.Error("runtime error: ", err)

@@ -1187,7 +1187,6 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 
 	if command.Name != api.SwitchGoroutine && command.Name != api.SwitchThread && command.Name != api.Halt {
 		d.target.ResumeNotify(resumeNotify)
-
 	} else if resumeNotify != nil {
 		close(resumeNotify)
 	}
@@ -1320,8 +1319,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 		}
 		return nil, err
 	}
-	var stateErr error
-	state, stateErr = d.state(api.LoadConfigToProc(command.ReturnInfoLoadConfig), withBreakpointInfo)
+	state, stateErr := d.state(api.LoadConfigToProc(command.ReturnInfoLoadConfig), withBreakpointInfo)
 	if stateErr != nil {
 		return state, stateErr
 	}
