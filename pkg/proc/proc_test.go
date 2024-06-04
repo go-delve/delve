@@ -488,118 +488,126 @@ func testseq2(t *testing.T, program string, initialLocation string, testcases []
 
 func testseq2Args(wd string, args []string, buildFlags protest.BuildFlags, t *testing.T, program string, initialLocation string, testcases []seqTest) {
 	protest.AllowRecording(t)
+	t.Helper()
 	withTestProcessArgs(program, t, wd, args, buildFlags, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		checkBreakpointClear := true
 		var bp *proc.Breakpoint
 		if initialLocation != "" {
 			bp = setFunctionBreakpoint(p, t, initialLocation)
 		} else if testcases[0].cf == contContinue {
 			bp = setFileBreakpoint(p, t, fixture.Source, testcases[0].pos.(int))
+		} else if testcases[0].cf == contNothing {
+			// Do nothing
+			checkBreakpointClear = false
 		} else {
 			panic("testseq2 can not set initial breakpoint")
 		}
 		if traceTestseq2 {
 			t.Logf("initial breakpoint %v", bp)
 		}
-		regs, err := p.CurrentThread().Registers()
-		assertNoError(err, t, "Registers")
 
-		f, ln := currentLineNumber(p, t)
-		for i, tc := range testcases {
-			switch tc.cf {
-			case contNext:
-				if traceTestseq2 {
-					t.Log("next")
-				}
-				assertNoError(grp.Next(), t, "Next() returned an error")
-			case contStep:
-				if traceTestseq2 {
-					t.Log("step")
-				}
-				assertNoError(grp.Step(), t, "Step() returned an error")
-			case contStepout:
-				if traceTestseq2 {
-					t.Log("stepout")
-				}
-				assertNoError(grp.StepOut(), t, "StepOut() returned an error")
-			case contContinue:
-				if traceTestseq2 {
-					t.Log("continue")
-				}
-				assertNoError(grp.Continue(), t, "Continue() returned an error")
-				if i == 0 {
-					if traceTestseq2 {
-						t.Log("clearing initial breakpoint")
-					}
-					err := p.ClearBreakpoint(bp.Addr)
-					assertNoError(err, t, "ClearBreakpoint() returned an error")
-				}
-			case contReverseNext:
-				if traceTestseq2 {
-					t.Log("reverse-next")
-				}
-				assertNoError(grp.ChangeDirection(proc.Backward), t, "direction switch")
-				assertNoError(grp.Next(), t, "reverse Next() returned an error")
-				assertNoError(grp.ChangeDirection(proc.Forward), t, "direction switch")
-			case contReverseStep:
-				if traceTestseq2 {
-					t.Log("reverse-step")
-				}
-				assertNoError(grp.ChangeDirection(proc.Backward), t, "direction switch")
-				assertNoError(grp.Step(), t, "reverse Step() returned an error")
-				assertNoError(grp.ChangeDirection(proc.Forward), t, "direction switch")
-			case contReverseStepout:
-				if traceTestseq2 {
-					t.Log("reverse-stepout")
-				}
-				assertNoError(grp.ChangeDirection(proc.Backward), t, "direction switch")
-				assertNoError(grp.StepOut(), t, "reverse StepOut() returned an error")
-				assertNoError(grp.ChangeDirection(proc.Forward), t, "direction switch")
-			case contContinueToBreakpoint:
-				bp := setFileBreakpoint(p, t, fixture.Source, tc.pos.(int))
-				if traceTestseq2 {
-					t.Log("continue")
-				}
-				assertNoError(grp.Continue(), t, "Continue() returned an error")
-				err := p.ClearBreakpoint(bp.Addr)
-				assertNoError(err, t, "ClearBreakpoint() returned an error")
-			case contNothing:
-				// do nothing
-			}
+		testseq2intl(t, fixture, grp, p, bp, testcases)
 
-			if err := p.CurrentThread().Breakpoint().CondError; err != nil {
-				t.Logf("breakpoint condition error: %v", err)
-			}
-
-			f, ln = currentLineNumber(p, t)
-			regs, _ = p.CurrentThread().Registers()
-			pc := regs.PC()
-
-			if traceTestseq2 {
-				t.Logf("at %#x %s:%d", pc, f, ln)
-				fmt.Printf("at %#x %s:%d\n", pc, f, ln)
-			}
-			switch pos := tc.pos.(type) {
-			case int:
-				if pos >= 0 && ln != pos {
-					t.Fatalf("Program did not continue to correct next location expected %d was %s:%d (%#x) (testcase %d)", pos, filepath.Base(f), ln, pc, i)
-				}
-			case string:
-				v := strings.Split(pos, ":")
-				tgtln, _ := strconv.Atoi(v[1])
-				if !strings.HasSuffix(f, v[0]) || (ln != tgtln) {
-					t.Fatalf("Program did not continue to correct next location, expected %s was %s:%d (%#x) (testcase %d)", pos, filepath.Base(f), ln, pc, i)
-				}
-			case func(*proc.Target):
-				pos(p)
-			default:
-				panic(fmt.Errorf("unexpected type %T", pos))
-			}
-		}
-
-		if countBreakpoints(p) != 0 {
+		if countBreakpoints(p) != 0 && checkBreakpointClear {
 			t.Fatal("Not all breakpoints were cleaned up", len(p.Breakpoints().M))
 		}
 	})
+}
+
+func testseq2intl(t *testing.T, fixture protest.Fixture, grp *proc.TargetGroup, p *proc.Target, bp *proc.Breakpoint, testcases []seqTest) {
+	f, ln := currentLineNumber(p, t)
+	for i, tc := range testcases {
+		switch tc.cf {
+		case contNext:
+			if traceTestseq2 {
+				t.Log("next")
+			}
+			assertNoError(grp.Next(), t, "Next() returned an error")
+		case contStep:
+			if traceTestseq2 {
+				t.Log("step")
+			}
+			assertNoError(grp.Step(), t, "Step() returned an error")
+		case contStepout:
+			if traceTestseq2 {
+				t.Log("stepout")
+			}
+			assertNoError(grp.StepOut(), t, "StepOut() returned an error")
+		case contContinue:
+			if traceTestseq2 {
+				t.Log("continue")
+			}
+			assertNoError(grp.Continue(), t, "Continue() returned an error")
+			if i == 0 {
+				if traceTestseq2 {
+					t.Log("clearing initial breakpoint")
+				}
+				err := p.ClearBreakpoint(bp.Addr)
+				assertNoError(err, t, "ClearBreakpoint() returned an error")
+			}
+		case contReverseNext:
+			if traceTestseq2 {
+				t.Log("reverse-next")
+			}
+			assertNoError(grp.ChangeDirection(proc.Backward), t, "direction switch")
+			assertNoError(grp.Next(), t, "reverse Next() returned an error")
+			assertNoError(grp.ChangeDirection(proc.Forward), t, "direction switch")
+		case contReverseStep:
+			if traceTestseq2 {
+				t.Log("reverse-step")
+			}
+			assertNoError(grp.ChangeDirection(proc.Backward), t, "direction switch")
+			assertNoError(grp.Step(), t, "reverse Step() returned an error")
+			assertNoError(grp.ChangeDirection(proc.Forward), t, "direction switch")
+		case contReverseStepout:
+			if traceTestseq2 {
+				t.Log("reverse-stepout")
+			}
+			assertNoError(grp.ChangeDirection(proc.Backward), t, "direction switch")
+			assertNoError(grp.StepOut(), t, "reverse StepOut() returned an error")
+			assertNoError(grp.ChangeDirection(proc.Forward), t, "direction switch")
+		case contContinueToBreakpoint:
+			bp := setFileBreakpoint(p, t, fixture.Source, tc.pos.(int))
+			if traceTestseq2 {
+				t.Log("continue")
+			}
+			assertNoError(grp.Continue(), t, "Continue() returned an error")
+			err := p.ClearBreakpoint(bp.Addr)
+			assertNoError(err, t, "ClearBreakpoint() returned an error")
+		case contNothing:
+			// do nothing
+		}
+
+		if err := p.CurrentThread().Breakpoint().CondError; err != nil {
+			t.Logf("breakpoint condition error: %v", err)
+		}
+
+		f, ln = currentLineNumber(p, t)
+		regs, _ := p.CurrentThread().Registers()
+		pc := regs.PC()
+		_, _, fn := p.BinInfo().PCToLine(pc)
+
+		if traceTestseq2 {
+			t.Logf("at %#x (%s) %s:%d", pc, fn.Name, f, ln)
+			//fmt.Printf("at %#x %s:%d\n", pc, f, ln)
+		}
+		switch pos := tc.pos.(type) {
+		case int:
+			if pos >= 0 && ln != pos {
+				t.Fatalf("Program did not continue to correct next location expected %d was %s:%d (%#x) (testcase %d)", pos, filepath.Base(f), ln, pc, i)
+			}
+		case string:
+			v := strings.Split(pos, ":")
+			tgtln, _ := strconv.Atoi(v[1])
+			if !strings.HasSuffix(f, v[0]) || (ln != tgtln) {
+				t.Fatalf("Program did not continue to correct next location, expected %s was %s:%d (%#x) (testcase %d)", pos, filepath.Base(f), ln, pc, i)
+			}
+		case func(*proc.Target):
+			pos(p)
+		default:
+			panic(fmt.Errorf("unexpected type %T", pos))
+		}
+	}
 }
 
 func TestNextGeneral(t *testing.T) {
@@ -6244,5 +6252,431 @@ func TestStepIntoGoroutine(t *testing.T) {
 				t.Fatalf("wrong value for variable i: %s", vari.SinglelineString())
 			}
 		}},
+	})
+}
+
+func TestRangeOverFuncNext(t *testing.T) {
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
+		t.Skip("N/A")
+	}
+
+	funcBreak := func(t *testing.T, fnname string) seqTest {
+		return seqTest{
+			contNothing,
+			func(p *proc.Target) {
+				setFunctionBreakpoint(p, t, fnname)
+			}}
+	}
+
+	notAtEntryPoint := func(t *testing.T) seqTest {
+		return seqTest{contNothing, func(p *proc.Target) {
+			pc := currentPC(p, t)
+			fn := p.BinInfo().PCToFunc(pc)
+			if pc == fn.Entry {
+				t.Fatalf("current PC is entry point")
+			}
+		}}
+	}
+
+	nx := func(n int) seqTest {
+		return seqTest{contNext, n}
+	}
+
+	withTestProcessArgs("rangeoverfunc", t, ".", []string{}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+
+		t.Run("TestTrickyIterAll1", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestTrickyIterAll"),
+				{contContinue, 24}, // TestTrickyIterAll
+				nx(25),
+				nx(26),
+				nx(27), // for _, x := range ...
+				nx(27), // for _, x := range ... (TODO: this probably shouldn't be here but it's also very hard to skip stopping here a second time)
+				nx(28), // i += x
+				nx(29), // if i >= 36 {
+				nx(32),
+				nx(27), // for _, x := range ...
+				notAtEntryPoint(t),
+				nx(28), // i += x
+				nx(29), // if i >= 36 {
+				nx(30), // break
+				nx(32),
+				nx(34), // fmt.Println
+			})
+		})
+
+		t.Run("TestTrickyIterAll2", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestTrickyIterAll2"),
+				{contContinue, 37}, // TestTrickyIterAll2
+				nx(38),
+				nx(39),
+				nx(40), // for _, x := range...
+				nx(40),
+				nx(41),
+				nx(42),
+				nx(40),
+				notAtEntryPoint(t),
+				nx(41),
+				nx(42),
+				nx(42), // different function from the one above...
+				nx(43),
+			})
+		})
+
+		t.Run("TestBreak1", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestBreak1"),
+				{contContinue, 46}, // TestBreak1
+				nx(47),
+				nx(48), // for _, x := range... (x == -1)
+				nx(48),
+				nx(49), // if x == -4
+
+				nx(52), // for _, y := range... (y == 1)
+				nx(52),
+				nx(53), // if y == 3
+				nx(56), // result = append(result, y)
+				nx(57),
+				nx(52), // for _, y := range... (y == 2)
+				notAtEntryPoint(t),
+				nx(53), // if y == 3
+				nx(56), // result = append(result, y)
+				nx(57),
+				nx(52), // for _, y := range... (y == 3)
+				nx(53), // if y == 3
+				nx(54), // break
+				nx(57),
+				nx(58), // result = append(result, x)
+				nx(59),
+
+				nx(48), // for _, x := range... (x == -2)
+				nx(49), // if x == -4
+				nx(52), // for _, y := range... (y == 1)
+				nx(52),
+				nx(53), // if y == 3
+				nx(56), // result = append(result, y)
+				nx(57),
+				nx(52), // for _, y := range... (y == 2)
+				notAtEntryPoint(t),
+				nx(53), // if y == 3
+				nx(56), // result = append(result, y)
+				nx(57),
+				nx(52), // for _, y := range... (y == 3)
+				nx(53), // if y == 3
+				nx(54), // break
+				nx(57),
+				nx(58), // result = append(result, x)
+				nx(59),
+
+				nx(48), // for _, x := range... (x == -4)
+				nx(49), // if x == -4
+				nx(50), // break
+				nx(59),
+				nx(60),
+				nx(61),
+			})
+		})
+
+		t.Run("TestBreak2", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestBreak2"),
+
+				{contContinue, 63}, // TestBreak2
+				nx(64),
+				nx(65),
+
+				nx(66), // for _, x := range (x == -1)
+				nx(66),
+				nx(67), // for _, y := range (y == 1)
+				nx(67),
+				nx(68), // if y == 3
+				nx(71), // if x == -4
+				nx(74), // result = append(result, y)
+				nx(75),
+
+				nx(67), // for _, y := range (y == 2)
+				nx(68), // if y == 3
+				nx(71), // if x == -4
+				nx(74), // result = append(result, y)
+				nx(75),
+
+				nx(67), // for _, y := range (y == 3)
+				nx(68), // if y == 3
+				nx(69), // break
+				nx(75),
+				nx(76), // result = append(result, x)
+				nx(77),
+
+				nx(66), // for _, x := range (x == -2)
+				nx(67), // for _, y := range (y == 1)
+				nx(67),
+				nx(68), // if y == 3
+				nx(71), // if x == -4
+				nx(74), // result = append(result, y)
+				nx(75),
+
+				nx(67), // for _, y := range (y == 2)
+				nx(68), // if y == 3
+				nx(71), // if x == -4
+				nx(74), // result = append(result, y)
+				nx(75),
+
+				nx(67), // for _, y := range (y == 3)
+				nx(68), // if y == 3
+				nx(69), // break
+				nx(75),
+				nx(76), // result = append(result, x)
+				nx(77),
+
+				nx(66), // for _, x := range (x == -4)
+				nx(67), // for _, y := range (y == 1)
+				nx(67),
+				nx(68), // if y == 3
+				nx(71), // if x == -4
+				nx(72), // break outer
+				nx(75),
+				nx(77),
+				nx(78),
+				nx(79),
+			})
+		})
+
+		t.Run("TestMultiCont0", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestMultiCont0"),
+				{contContinue, 81},
+				nx(82),
+				nx(84),
+				nx(85), // for _, w := range (w == 1000)
+				nx(85),
+				nx(86), // result = append(result, w)
+				nx(87), // if w == 2000
+				nx(90), // for _, x := range (x == 100)
+				nx(90),
+				nx(91), // for _, y := range (y == 10)
+				nx(91),
+				nx(92), // result = append(result, y)
+
+				nx(93), // for _, z := range (z == 1)
+				nx(93),
+				nx(94), // if z&1 == 1
+				nx(95), // continue
+
+				nx(93), // for _, z := range (z == 2)
+				nx(94), // if z&1 == 1
+				nx(97), // result = append(result, z)
+				nx(98), // if z >= 4 {
+				nx(101),
+
+				nx(93), // for _, z := range (z == 3)
+				nx(94), // if z&1 == 1
+				nx(95), // continue
+
+				nx(93), // for _, z := range (z == 4)
+				nx(94), // if z&1 == 1
+				nx(97), // result = append(result, z)
+				nx(98), // if z >= 4 {
+				nx(99), // continue W
+				nx(101),
+				nx(103),
+				nx(105),
+
+				nx(85), // for _, w := range (w == 2000)
+				nx(86), // result = append(result, w)
+				nx(87), // if w == 2000
+				nx(88), // break
+				nx(106),
+				nx(107), // fmt.Println
+			})
+		})
+
+		t.Run("TestPanickyIterator1", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestPanickyIterator1"),
+				{contContinue, 110},
+				nx(111),
+				nx(112),
+				nx(116), // for _, z := range (z == 1)
+				nx(116),
+				nx(117), // result = append(result, z)
+				nx(118), // if z == 4
+				nx(121),
+
+				nx(116), // for _, z := range (z == 2)
+				nx(117), // result = append(result, z)
+				nx(118), // if z == 4
+				nx(121),
+
+				nx(116), // for _, z := range (z == 3)
+				nx(117), // result = append(result, z)
+				nx(118), // if z == 4
+				nx(121),
+
+				nx(116), // for _, z := range (z == 4)
+				nx(117), // result = append(result, z)
+				nx(118), // if z == 4
+				nx(119), // break
+
+				nx(112), // defer func()
+				nx(113), // r := recover()
+				nx(114), // fmt.Println
+			})
+		})
+
+		t.Run("TestPanickyIterator2", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestPanickyIterator2"),
+				{contContinue, 125},
+				nx(126),
+				nx(127),
+				nx(131), // for _, x := range (x == 100)
+				nx(131),
+				nx(132),
+				nx(133),
+				nx(135), // for _, y := range (y == 10)
+				nx(135),
+				nx(136), // result = append(result, y)
+				nx(139), // for k, z := range (k == 0, z == 1)
+				nx(139),
+				nx(140), // result = append(result, z)
+				nx(141), // if k == 1
+				nx(144),
+
+				nx(139), // for k, z := range (k == 1, z == 2)
+				nx(140), // result = append(result, z)
+				nx(141), // if k == 1
+				nx(142), // break Y
+				nx(135),
+				nx(145),
+				nx(127), // defer func()
+				nx(128), // r := recover()
+				nx(129), // fmt.Println
+			})
+		})
+
+		t.Run("TestPanickyIteratorWithNewDefer", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestPanickyIteratorWithNewDefer"),
+				{contContinue, 149},
+				nx(150),
+				nx(151),
+				nx(155), // for _, x := range (x == 100)
+				nx(155),
+				nx(156),
+				nx(157),
+				nx(159), // for _, y := range (y == 10)
+				nx(159),
+				nx(160),
+				nx(163), // result = append(result, y)
+				nx(166), // for k, z := range (k == 0, z == 1)
+				nx(166),
+				nx(167), // result = append(result, z)
+				nx(168), // if k == 1
+				nx(171),
+
+				nx(166), // for k, z := range (k == 0, z == 1)
+				nx(167), // result = append(result, z)
+				nx(168), // if k == 1
+				nx(169), // break Y
+				nx(159),
+				nx(172),
+				nx(160), // defer func()
+				nx(161), // fmt.Println
+			})
+		})
+
+		t.Run("TestLongReturn", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestLongReturn"),
+				{contContinue, 181},
+				nx(182), // for _, x := range (x == 1)
+				nx(182),
+				nx(183), // for _, y := range (y == 10)
+				nx(183),
+				nx(184), // if y == 10
+				nx(185), // return
+				nx(187),
+				nx(189),
+				nx(178), // into TestLongReturnWrapper, fmt.Println
+			})
+		})
+
+		t.Run("TestGotoA1", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestGotoA1"),
+				{contContinue, 192},
+				nx(193),
+				nx(194), // for _, x := range (x == -1)
+				nx(194),
+				nx(195), // result = append(result, x)
+				nx(196), // if x == -4
+				nx(199), // for _, y := range (y == 1)
+				nx(199),
+				nx(200), // if y == 3
+				nx(203), // result = append(result, y)
+				nx(204),
+
+				nx(199), // for _, y := range (y == 2)
+				nx(200), // if y == 3
+				nx(203), // result = append(result, y)
+				nx(204),
+
+				nx(199), // for _, y := range (y == 3)
+				nx(200), // if y == 3
+				nx(201), // goto A
+				nx(204),
+				nx(206), // result = append(result, x)
+				nx(207),
+
+				nx(194), // for _, x := range (x == -4)
+				nx(195), // result = append(result, x)
+				nx(196), // if x == -4
+				nx(197), // break
+				nx(207),
+				nx(208), // fmt.Println
+			})
+		})
+
+		t.Run("TestGotoB1", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestGotoB1"),
+				{contContinue, 211},
+				nx(212),
+				nx(213), // for _, x := range (x == -1)
+				nx(213),
+				nx(214), // result = append(result, x)
+				nx(215), // if x == -4
+				nx(218), // for _, y := range (y == 1)
+				nx(218),
+				nx(219), // if y == 3
+				nx(222), // result = append(result, y)
+				nx(223),
+
+				nx(218), // for _, y := range (y == 2)
+				nx(219), // if y == 3
+				nx(222), // result = append(result, y)
+				nx(223),
+
+				nx(218), // for _, y := range (y == 3)
+				nx(219), // if y == 3
+				nx(220), // goto B
+				nx(223),
+				nx(225),
+				nx(227), // result = append(result, 999)
+				nx(228), // fmt.Println
+			})
+		})
+	})
+}
+
+func TestRangeOverFuncStepOut(t *testing.T) {
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
+		t.Skip("N/A")
+	}
+
+	testseq2(t, "rangeoverfunc", "", []seqTest{
+		{contContinue, 97},
+		{contStepout, 237},
 	})
 }

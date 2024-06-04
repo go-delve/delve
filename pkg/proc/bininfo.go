@@ -501,9 +501,24 @@ type Function struct {
 	trampoline bool // DW_AT_trampoline attribute set to true
 
 	// InlinedCalls lists all inlined calls to this function
-	InlinedCalls []InlinedCall
+	InlinedCalls         []InlinedCall
+	rangeParentNameCache int // see rangeParentName
+	// extraCache contains informations about this function that is only needed for
+	// some operations and is expensive to compute or store for every function.
+	extraCache *functionExtra
+}
+
+type functionExtra struct {
 	// closureStructType is the cached struct type for closures for this function
-	closureStructTypeCached *godwarf.StructType
+	closureStructType *godwarf.StructType
+
+	// rangeParent is set when this function is a range-over-func body closure
+	// and points to the function that the closure was generated from.
+	rangeParent *Function
+	// rangeBodies is the list of range-over-func body closures for this
+	// function. Only one between rangeParent and rangeBodies should be set at
+	// any given time.
+	rangeBodies []*Function
 }
 
 // instRange returns the indexes in fn.Name of the type parameter
@@ -640,43 +655,104 @@ func (fn *Function) privateRuntime() bool {
 	return len(name) > n && name[:n] == "runtime." && !('A' <= name[n] && name[n] <= 'Z')
 }
 
-func (fn *Function) closureStructType(bi *BinaryInfo) *godwarf.StructType {
-	if fn.closureStructTypeCached != nil {
-		return fn.closureStructTypeCached
+func rangeParentName(fnname string) int {
+	const rangeSuffix = "-range"
+	ridx := strings.Index(fnname, rangeSuffix)
+	if ridx <= 0 {
+		return -1
 	}
-	dwarfTree, err := fn.cu.image.getDwarfTree(fn.offset)
-	if err != nil {
-		return nil
+	ok := true
+	for i := ridx + len(rangeSuffix); i < len(fnname); i++ {
+		if fnname[i] < '0' || fnname[i] > '9' {
+			ok = false
+			break
+		}
 	}
-	st := &godwarf.StructType{
-		Kind: "struct",
+	if !ok {
+		return -1
 	}
-	vars := reader.Variables(dwarfTree, 0, 0, reader.VariablesNoDeclLineCheck|reader.VariablesSkipInlinedSubroutines)
-	for _, v := range vars {
-		off, ok := v.Val(godwarf.AttrGoClosureOffset).(int64)
-		if ok {
-			n, _ := v.Val(dwarf.AttrName).(string)
-			typ, err := v.Type(fn.cu.image.dwarf, fn.cu.image.index, fn.cu.image.typeCache)
-			if err == nil {
-				sz := typ.Common().ByteSize
-				st.Field = append(st.Field, &godwarf.StructField{
-					Name:       n,
-					Type:       typ,
-					ByteOffset: off,
-					ByteSize:   sz,
-					BitOffset:  off * 8,
-					BitSize:    sz * 8,
-				})
+	return ridx
+}
+
+// rangeParentName, if this function is a range-over-func body closure
+// returns the name of the parent function, otherwise returns ""
+func (fn *Function) rangeParentName() string {
+	if fn.rangeParentNameCache == 0 {
+		ridx := rangeParentName(fn.Name)
+		fn.rangeParentNameCache = ridx
+	}
+	if fn.rangeParentNameCache < 0 {
+		return ""
+	}
+	return fn.Name[:fn.rangeParentNameCache]
+}
+
+// extra loads informations about fn that is expensive to compute and we
+// only need for a minority of the functions.
+func (fn *Function) extra(bi *BinaryInfo) *functionExtra {
+	if fn.extraCache != nil {
+		return fn.extraCache
+	}
+
+	if fn.cu.image.Stripped() {
+		fn.extraCache = &functionExtra{}
+		return fn.extraCache
+	}
+
+	fn.extraCache = &functionExtra{}
+
+	// Calculate closureStructType
+	{
+		dwarfTree, err := fn.cu.image.getDwarfTree(fn.offset)
+		if err != nil {
+			return nil
+		}
+		st := &godwarf.StructType{
+			Kind: "struct",
+		}
+		vars := reader.Variables(dwarfTree, 0, 0, reader.VariablesNoDeclLineCheck|reader.VariablesSkipInlinedSubroutines)
+		for _, v := range vars {
+			off, ok := v.Val(godwarf.AttrGoClosureOffset).(int64)
+			if ok {
+				n, _ := v.Val(dwarf.AttrName).(string)
+				typ, err := v.Type(fn.cu.image.dwarf, fn.cu.image.index, fn.cu.image.typeCache)
+				if err == nil {
+					sz := typ.Common().ByteSize
+					st.Field = append(st.Field, &godwarf.StructField{
+						Name:       n,
+						Type:       typ,
+						ByteOffset: off,
+						ByteSize:   sz,
+						BitOffset:  off * 8,
+						BitSize:    sz * 8,
+					})
+				}
+			}
+		}
+
+		if len(st.Field) > 0 {
+			lf := st.Field[len(st.Field)-1]
+			st.ByteSize = lf.ByteOffset + lf.Type.Common().ByteSize
+		}
+		fn.extraCache.closureStructType = st
+	}
+
+	// Find rangeParent for this function (if it is a range-over-func body closure)
+	if rangeParentName := fn.rangeParentName(); rangeParentName != "" {
+		fn.extraCache.rangeParent = bi.lookupOneFunc(rangeParentName)
+	}
+
+	// Find range-over-func bodies of this function
+	if fn.extraCache.rangeParent == nil {
+		for i := range bi.Functions {
+			fn2 := &bi.Functions[i]
+			if strings.HasPrefix(fn2.Name, fn.Name) && fn2.rangeParentName() == fn.Name {
+				fn.extraCache.rangeBodies = append(fn.extraCache.rangeBodies, fn2)
 			}
 		}
 	}
 
-	if len(st.Field) > 0 {
-		lf := st.Field[len(st.Field)-1]
-		st.ByteSize = lf.ByteOffset + lf.Type.Common().ByteSize
-	}
-	fn.closureStructTypeCached = st
-	return st
+	return fn.extraCache
 }
 
 type constantsMap map[dwarfRef]*constantType
