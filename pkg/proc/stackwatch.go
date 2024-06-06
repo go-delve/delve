@@ -29,7 +29,7 @@ func (t *Target) setStackWatchBreakpoints(scope *EvalScope, watchpoint *Breakpoi
 	// Watchpoint Out-of-scope Sentinel
 
 	woos := func(_ Thread, _ *Target) (bool, error) {
-		watchpointOutOfScope(t, watchpoint)
+		t.Breakpoints().WatchOutOfScope = append(t.Breakpoints().WatchOutOfScope, watchpoint)
 		return true, nil
 	}
 
@@ -139,20 +139,6 @@ func (t *Target) clearStackWatchBreakpoints(watchpoint *Breakpoint) error {
 		}
 	}
 	return nil
-}
-
-// watchpointOutOfScope is called when the watchpoint goes out of scope. It
-// is used as a breaklet callback function.
-// Its responsibility is to delete the watchpoint and make sure that the
-// user is notified of the watchpoint going out of scope.
-func watchpointOutOfScope(t *Target, watchpoint *Breakpoint) {
-	t.Breakpoints().WatchOutOfScope = append(t.Breakpoints().WatchOutOfScope, watchpoint)
-	err := t.ClearBreakpoint(watchpoint.Addr)
-	if err != nil {
-		log := logflags.DebuggerLogger()
-		log.Errorf("could not clear out-of-scope watchpoint: %v", err)
-	}
-	delete(t.Breakpoints().Logical, watchpoint.LogicalID())
 }
 
 // adjustStackWatchpoint is called when the goroutine of watchpoint resizes

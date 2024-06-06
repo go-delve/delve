@@ -6680,3 +6680,51 @@ func TestRangeOverFuncStepOut(t *testing.T) {
 		{contStepout, 237},
 	})
 }
+
+func TestStackwatchClearBug(t *testing.T) {
+	skipOn(t, "not implemented", "freebsd")
+	skipOn(t, "not implemented", "386")
+	skipOn(t, "not implemented", "ppc64le")
+	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
+
+	showbps := func(bps *proc.BreakpointMap) {
+		for _, bp := range bps.M {
+			t.Logf("\t%s\n", bp)
+		}
+	}
+
+	withTestProcess("stackwatchbug", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture.Source, 9)
+		bpsBefore := p.Breakpoints()
+
+		assertNoError(grp.Continue(), t, "Continue 0")
+
+		scope, err := proc.GoroutineScope(p, p.CurrentThread())
+		assertNoError(err, t, "GoroutineScope")
+
+		for _, s := range []string{"vars[0]", "vars[3]", "vars[2]", "vars[1]"} {
+			_, err := p.SetWatchpoint(0, scope, s, proc.WatchWrite, nil)
+			assertNoError(err, t, "SetWatchpoint(write-only)")
+		}
+
+		t.Logf("After setting watchpoints:")
+		showbps(p.Breakpoints())
+
+		assertNoError(grp.Continue(), t, "Continue 1")
+		assertNoError(grp.Continue(), t, "Continue 2")
+		assertNoError(grp.Continue(), t, "Continue 3")
+		assertNoError(grp.Continue(), t, "Continue 4")
+		f, l := currentLineNumber(p, t)
+		t.Logf("at %s:%d", f, l)
+		if l != 19 {
+			t.Error("Wrong position after fourth continue")
+		}
+
+		bpsAfter := p.Breakpoints()
+		t.Logf("After watchpoint goes out of scope:")
+		showbps(bpsAfter)
+		if len(bpsBefore.M) != len(bpsAfter.M) {
+			t.Errorf("wrong number of breakpoints")
+		}
+	})
+}
