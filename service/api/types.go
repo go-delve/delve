@@ -134,9 +134,9 @@ type Breakpoint struct {
 
 	UserData interface{} `json:"-"`
 
-	// Root of function from where tracing needs to be done
+	// RootFuncName is the Root function from where tracing needs to be done
 	RootFuncName string
-	// Depth of tracing
+	// TraceFollowCalls indicates the Depth of tracing
 	TraceFollowCalls int
 }
 

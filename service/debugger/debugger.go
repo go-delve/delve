@@ -1,7 +1,6 @@
 package debugger
 
 import (
-	"container/list"
 	"debug/dwarf"
 	"debug/elf"
 	"debug/macho"
@@ -1487,153 +1486,68 @@ func (d *Debugger) Functions(filter string, followCalls int) ([]string, error) {
 	return funcs, nil
 }
 
-type TraceFunc struct {
-	// Function to be traced
-	Func     *proc.Function
-	// To keep track of depth in callgraph relative to root function
-	Depth    int
-	// To guard against adding duplicates to list of functions to be traced
-	visited  bool
-	// To avoid disassembling function multiple times
-	dis      bool
-	// To quickly access child functions
-	children []*proc.Function
+func filterRuntimeFuncs(fname string) bool {
+	return !((strings.HasPrefix(fname, "runtime.") || strings.HasPrefix(fname, "runtime/internal")) && fname != "runtime.deferreturn" && fname != "runtime.gorecover" && fname != "runtime.gopanic")
+
 }
-type TraceFuncptr *TraceFunc
 
-var TraceMap = make(map[string]TraceFuncptr)
-
-func filter(fname string) bool {
-	idx := strings.Index(fname, "runtime.")
-	idx2 := strings.Index(fname, "runtime.defer")
-	idx3 := strings.Index(fname, "runtime.gorecover")
-	idx4 := strings.Index(fname, "runtime.gopanic") 
-	// Avoid runtime/internal functions to figure in the trace function list as they dont have a stack associated
-	idx5 := strings.Index(fname, "runtime/internal")
-	if (idx != -1 || idx5 != -1) && idx2 == -1 && idx3 == -1 && idx4 == -1 {
-		// Except certain special functions do not traverse runtime.* functions
-		return false
+func traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int) ([]string, error) {
+	type TraceFunc struct {
+		Func    *proc.Function
+		Depth   int
+		visited bool
 	}
-	return true
-}
+	type TraceFuncptr *TraceFunc
 
-func dequeue(queue *list.List) TraceFuncptr {
-	element := queue.Front()
-	queue.Remove(element)
-	data := element.Value
-	F, ok := data.(TraceFuncptr)
-	if !ok {
-		fmt.Printf("Type error\n")
-		os.Exit(1)
-	}
-	return F
-}
-
-func traverse(t proc.ValidTargets, f *proc.Function, depth int, FollowCalls int) ([]string, error) {
-
-	var queue *list.List
-	queue = list.New()
-	queue.Init()
-
+	TraceMap := make(map[string]TraceFuncptr)
+	queue := make([]TraceFuncptr, 0, 40)
 	funcs := []string{}
-
-	rootnode := &TraceFunc{Func: new(proc.Function), Depth: depth, children: []*proc.Function{}, visited: false, dis: false}
+	rootnode := &TraceFunc{Func: new(proc.Function), Depth: depth, visited: false}
 	rootnode.Func = f
 
+	// cache function details in a map for reuse
 	TraceMap[f.Name] = rootnode
-	queue.PushBack(TraceMap[f.Name])
-	for queue.Len() > 0 {
-		parent := dequeue(queue)
-		if parent.Depth > FollowCalls {
+	queue = append(queue, rootnode)
+	for len(queue) > 0 {
+		parent := queue[0]
+		queue = queue[1:]
+		if parent == nil {
+			panic("attempting to open file Delve cannot parse")
+		}
+		if parent.Depth > followCalls {
 			continue
 		}
 		if !parent.visited {
-			// Guard to avoid adding duplicates to funcs
 			funcs = append(funcs, parent.Func.Name)
 			parent.visited = true
-		}
-		if parent.Depth+1 > FollowCalls {
-			// Skip disassembling and computing children if we are going to cross FollowCalls
+		} else if parent.visited {
 			continue
 		}
-		deferdepth := 0
-		var deferparent TraceFuncptr = nil
-		if !parent.dis {
-			f := parent.Func
-			text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
-			if err != nil {
-				return nil, fmt.Errorf("disassemble failed with error %w", err)
-			}
-			for _, instr := range text {
-				if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
-					cf := instr.DestLoc.Fn
-					if !filter(cf.Name) {
-						continue
-					}
-					childnode := TraceMap[cf.Name]
-					if childnode == nil {
-						childnode = &TraceFunc{Func: new(proc.Function), Depth: parent.Depth + 1, children: []*proc.Function{}, visited: false, dis: false}
-						childnode.Func = cf
-						TraceMap[cf.Name] = childnode
-						parent.children = append(parent.children, cf)
-					} else {
-						if childnode.Depth > parent.Depth+1 {
-							// can go even further deep
-							childnode.Depth = parent.Depth + 1
-							parent.children = append(parent.children, cf)
-						}
-					}
 
-					if strings.Contains(cf.Name, "runtime.deferreturn") {
-						if deferparent == nil && childnode.Depth+1 <= FollowCalls {
-							// keep track of defer function inorder to trace defer calls
-							deferdepth = childnode.Depth
-							deferparent = parent
-						}
-					}
-
-				}
-			}
-			parent.dis = true
+		if parent.Depth+1 > followCalls {
+			// Avoid diassembling if we already cross the follow-calls depth
+			continue
 		}
-		for _, cf := range parent.children {
-			if cf.Name == parent.Func.Name {
-				//recursive functions
-				continue
-			}
-			childnode := TraceMap[cf.Name]
-			if childnode == nil {
-				// childnodes should have already been computed in the above loop
-				fmt.Printf("unexpected error child nil \n")
-				os.Exit(1)
-			}
-			if childnode.Depth < parent.Depth+1 {
-				// This path has already been explored no need to revisit
-				continue
-			}
-			if childnode.Depth <= FollowCalls {
-				queue.PushBack(TraceMap[cf.Name])
-			}
+		f := parent.Func
+		text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
+		if err != nil {
+			return nil, fmt.Errorf("disassemble failed with error %w", err)
 		}
-
-		if deferdepth > 0 {
-			for _, fbinary := range t.BinInfo().Functions {
-				if deferdepth <= FollowCalls && strings.HasPrefix(fbinary.Name, deferparent.Func.Name) && fbinary.Name != deferparent.Func.Name {
-					if filter(fbinary.Name) {
-						defernode := TraceMap[fbinary.Name]
-						if defernode == nil {
-							defernode = &TraceFunc{Func: new(proc.Function), Depth: deferdepth, children: []*proc.Function{}, visited: false, dis: false}
-							*(defernode.Func) = fbinary
-							TraceMap[fbinary.Name] = defernode
-						} else if defernode.visited {
-							continue
-						}
-						// Enqueueing defernode to traverse deferred function call
-						queue.PushBack(defernode)
-					}
+		for _, instr := range text {
+			if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
+				cf := instr.DestLoc.Fn
+				if !filterRuntimeFuncs(cf.Name) {
+					continue
 				}
+				childnode := TraceMap[cf.Name]
+				if childnode == nil {
+					childnode = &TraceFunc{Func: new(proc.Function), Depth: parent.Depth + 1, visited: false}
+					childnode.Func = cf
+					TraceMap[cf.Name] = childnode
+					queue = append(queue, childnode)
+				}
+
 			}
-			deferdepth = 0
 		}
 	}
 	return funcs, nil

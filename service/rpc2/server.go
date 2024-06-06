@@ -588,9 +588,7 @@ type ListFunctionsOut struct {
 
 // ListFunctions lists all functions in the process matching filter.
 func (s *RPCServer) ListFunctions(arg ListFunctionsIn, out *ListFunctionsOut) error {
-	var fns []string
-	var err error
-	fns, err = s.debugger.Functions(arg.Filter, arg.FollowCalls)
+	fns, err := s.debugger.Functions(arg.Filter, arg.FollowCalls)
 	if err != nil {
 		return err
 	}

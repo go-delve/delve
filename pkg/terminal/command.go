@@ -2925,12 +2925,14 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 
 	var sdepth, rootindex int
 	depthPrefix := ""
+	tracePrefix := ""
 	if th.Breakpoint.TraceFollowCalls > 0 {
 		// Trace Follow Calls; stack is required to calculate depth of functions
 		rootindex = -1
 		if th.BreakpointInfo == nil || th.BreakpointInfo.Stacktrace == nil {
 			return
 		}
+
 		stack := th.BreakpointInfo.Stacktrace
 		for i := len(stack) - 1; i >= 0; i-- {
 			if stack[i].Function.Name() == th.Breakpoint.RootFuncName {
@@ -2940,40 +2942,30 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 				}
 			}
 		}
-		// compute relative depth from root function passed as regexp in follow-calls in the stack
 		sdepth = rootindex + 1
+		tracePrefix = fmt.Sprintf("goroutine(%d):frame(%d)", th.GoroutineID, sdepth)
+		if sdepth > 0 {
+			depthPrefix = strings.Repeat(" ", sdepth-1)
+		}
+	} else {
+		tracePrefix = fmt.Sprintf("goroutine(%d):", th.GoroutineID)
 	}
 
 	if th.Breakpoint.Tracepoint {
-		if th.Breakpoint.TraceFollowCalls > 0 {
-			if rootindex >= 0 {
-				for i := 1; i < sdepth; i++ {
-					// Add indentation according to Trace Depth of the goroutine
-					depthPrefix += " "
-				}
-				fmt.Fprintf(t.stdout, "%s> goroutine(%d):frame(%d) %s%s(%s)\n", depthPrefix, th.GoroutineID, sdepth, bpname, fn.Name(), args)
-			}
-		} else {
-			fmt.Fprintf(t.stdout, "%s> goroutine(%d): %s%s(%s)\n", depthPrefix, th.GoroutineID, bpname, fn.Name(), args)
+		// Print trace only if there was a match on the function while TraceFollowCalls is on or if it's a regular trace
+		if rootindex != -1 || th.Breakpoint.TraceFollowCalls <= 0 {
+			fmt.Fprintf(t.stdout, "%s> %s %s%s(%s)\n", depthPrefix, tracePrefix, bpname, fn.Name(), args)
 		}
 		printBreakpointInfo(t, th, !hasReturnValue)
 	}
-	depthPrefix = ""
 	if th.Breakpoint.TraceReturn {
 		retVals := make([]string, 0, len(th.ReturnValues))
 		for _, v := range th.ReturnValues {
 			retVals = append(retVals, v.SinglelineString())
 		}
-		if th.Breakpoint.TraceFollowCalls > 0 {
-			if rootindex >= 0 {
-				for i := 1; i < sdepth; i++ {
-					// Add return indentation according to Trace Depth of the goroutine
-					depthPrefix += " "
-				}
-				fmt.Fprintf(t.stdout, "%s>> goroutine(%d):frame(%d) %s => (%s)\n", depthPrefix, th.GoroutineID, sdepth, fn.Name(), strings.Join(retVals, ","))
-			}
-		} else {
-			fmt.Fprintf(t.stdout, "%s>> goroutine(%d): %s => (%s)\n", depthPrefix, th.GoroutineID, fn.Name(), strings.Join(retVals, ","))
+		// Print trace only if there was a match on the function while TraceFollowCalls is on or if it's a regular trace
+		if rootindex != -1 || th.Breakpoint.TraceFollowCalls <= 0 {
+			fmt.Fprintf(t.stdout, "%s>> %s %s => (%s)\n", depthPrefix, tracePrefix, fn.Name(), strings.Join(retVals, ","))
 		}
 	}
 	if th.Breakpoint.TraceFollowCalls > 0 {

@@ -64,9 +64,9 @@ type Breakpoint struct {
 	// breakpoint is hit as a return breakpoint.
 	returnInfo *returnBreakpointInfo
 
-	// Name of root function from where tracing needs to be done
+	// RootFuncName is the name of the root function from where tracing needs to be done
 	RootFuncName string
-	// depth of tracing
+	// TraceFollowCalls indicates the depth of tracing
 	TraceFollowCalls int
 }
 
