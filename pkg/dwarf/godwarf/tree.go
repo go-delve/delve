@@ -211,13 +211,6 @@ func normalizeRanges(rngs [][2]uint64) [][2]uint64 {
 	return out
 }
 
-func max(a, b uint64) uint64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 // fuseRanges fuses rngs2 into rngs1, it's the equivalent of
 //
 //	normalizeRanges(append(rngs1, rngs2))
