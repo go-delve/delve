@@ -1486,11 +1486,6 @@ func (d *Debugger) Functions(filter string, followCalls int) ([]string, error) {
 	return funcs, nil
 }
 
-func filterRuntimeFuncs(fname string) bool {
-	return !((strings.HasPrefix(fname, "runtime.") || strings.HasPrefix(fname, "runtime/internal")) && fname != "runtime.deferreturn" && fname != "runtime.gorecover" && fname != "runtime.gopanic")
-
-}
-
 func traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int) ([]string, error) {
 	type TraceFunc struct {
 		Func    *proc.Function
@@ -1536,12 +1531,12 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int)
 		for _, instr := range text {
 			if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
 				cf := instr.DestLoc.Fn
-				if !filterRuntimeFuncs(cf.Name) {
+				if ((strings.HasPrefix(cf.Name, "runtime.") || strings.HasPrefix(cf.Name, "runtime/internal")) && cf.Name != "runtime.deferreturn" && cf.Name != "runtime.gorecover" && cf.Name != "runtime.gopanic") {
 					continue
 				}
 				childnode := TraceMap[cf.Name]
 				if childnode == nil {
-					childnode = &TraceFunc{Func: new(proc.Function), Depth: parent.Depth + 1, visited: false}
+					childnode = &TraceFunc{Func: nil, Depth: parent.Depth + 1, visited: false}
 					childnode.Func = cf
 					TraceMap[cf.Name] = childnode
 					queue = append(queue, childnode)
