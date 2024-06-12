@@ -110,6 +110,14 @@ func (grp *TargetGroup) Continue() error {
 				}
 			}
 			it.currentThread = curthread
+			// Clear watchpoints that have gone out of scope
+			for _, watchpoint := range it.Breakpoints().WatchOutOfScope {
+				err := it.ClearBreakpoint(watchpoint.Addr)
+				if err != nil {
+					logflags.DebuggerLogger().Errorf("could not clear out-of-scope watchpoint: %v", err)
+				}
+				delete(it.Breakpoints().Logical, watchpoint.LogicalID())
+			}
 		}
 
 		if contOnceErr != nil {

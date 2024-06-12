@@ -1,9 +1,9 @@
 Tests skipped by each supported backend:
 
-* 386 skipped = 7
+* 386 skipped = 8
 	* 1 broken
 	* 3 broken - cgo stacktraces
-	* 3 not implemented
+	* 4 not implemented
 * arm64 skipped = 1
 	* 1 broken - global variable symbolication
 * darwin skipped = 3
@@ -13,10 +13,10 @@ Tests skipped by each supported backend:
 	* 1 broken - cgo stacktraces
 * darwin/lldb skipped = 1
 	* 1 upstream issue
-* freebsd skipped = 10
+* freebsd skipped = 11
 	* 2 flaky
 	* 2 follow exec not implemented on freebsd
-	* 4 not implemented
+	* 5 not implemented
 	* 2 not working on freebsd
 * linux/386 skipped = 2
 	* 2 not working on linux/386
@@ -31,14 +31,14 @@ Tests skipped by each supported backend:
 	* 3 broken - pie mode
 * pie skipped = 2
 	* 2 upstream issue - https://github.com/golang/go/issues/29322
-* ppc64le skipped = 11
+* ppc64le skipped = 12
 	* 6 broken
 	* 1 broken - global variable symbolication
-	* 4 not implemented
-* windows skipped = 6
+	* 5 not implemented
+* windows skipped = 7
 	* 1 broken
 	* 2 not working on windows
-	* 3 see https://github.com/go-delve/delve/issues/2768
+	* 4 see https://github.com/go-delve/delve/issues/2768
 * windows/arm64 skipped = 5
 	* 3 broken
 	* 1 broken - cgo stacktraces
