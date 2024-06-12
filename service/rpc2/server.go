@@ -127,7 +127,7 @@ type CommandOut struct {
 
 // Command interrupts, continues and steps through the program.
 func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback) {
-	st, err := s.debugger.Command(&command, cb.SetupDoneChan())
+	st, err := s.debugger.Command(&command, cb.SetupDoneChan(), cb.DisconnectChan())
 	if err != nil {
 		cb.Return(nil, err)
 		return

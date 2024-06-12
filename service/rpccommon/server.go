@@ -48,11 +48,12 @@ type ServerImpl struct {
 }
 
 type RPCCallback struct {
-	s         *ServerImpl
-	sending   *sync.Mutex
-	codec     rpc.ServerCodec
-	req       rpc.Request
-	setupDone chan struct{}
+	s              *ServerImpl
+	sending        *sync.Mutex
+	codec          rpc.ServerCodec
+	req            rpc.Request
+	setupDone      chan struct{}
+	disconnectChan chan struct{}
 }
 
 var _ service.RPCCallback = &RPCCallback{}
@@ -97,7 +98,7 @@ func (s *ServerImpl) Stop() error {
 		s.listener.Close()
 	}
 	if s.debugger.IsRunning() {
-		s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil)
+		s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil, nil)
 	}
 	kill := s.config.Debugger.AttachPid == 0
 	return s.debugger.Detach(kill)
@@ -277,7 +278,9 @@ func suitableMethods(rcvr interface{}, methods map[string]*methodType, log logfl
 }
 
 func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
+	clientDisconnectChan := make(chan struct{})
 	defer func() {
+		close(clientDisconnectChan)
 		if !s.config.AcceptMulti && s.config.DisconnectChan != nil {
 			close(s.config.DisconnectChan)
 		}
@@ -361,7 +364,7 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 				s.log.Debugf("(async %d) <- %s(%T%s)", req.Seq, req.ServiceMethod, argv.Interface(), argvbytes)
 			}
 			function := mtype.method.Func
-			ctl := &RPCCallback{s, sending, codec, req, make(chan struct{})}
+			ctl := &RPCCallback{s, sending, codec, req, make(chan struct{}), clientDisconnectChan}
 			go func() {
 				defer func() {
 					if ierr := recover(); ierr != nil {
@@ -412,7 +415,26 @@ func (cb *RPCCallback) Return(out interface{}, err error) {
 		outbytes, _ := json.Marshal(out)
 		cb.s.log.Debugf("(async %d) -> %T%s error: %q", cb.req.Seq, out, outbytes, errmsg)
 	}
+
+	if cb.hasDisconnected() {
+		return
+	}
+
 	cb.s.sendResponse(cb.sending, &cb.req, &resp, out, cb.codec, errmsg)
+}
+
+func (cb *RPCCallback) DisconnectChan() chan struct{} {
+	return cb.disconnectChan
+}
+
+func (cb *RPCCallback) hasDisconnected() bool {
+	select {
+	case <-cb.disconnectChan:
+		return true
+	default:
+	}
+
+	return false
 }
 
 func (cb *RPCCallback) SetupDoneChan() chan struct{} {

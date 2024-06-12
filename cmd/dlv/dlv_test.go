@@ -251,6 +251,35 @@ func TestOutput(t *testing.T) {
 	}
 }
 
+// TestUnattendedBreakpoint tests whether dlv will print a message to stderr when the client that sends continue is disconnected
+// or not.
+func TestUnattendedBreakpoint(t *testing.T) {
+	const listenAddr = "127.0.0.1:40573"
+
+	fixturePath := filepath.Join(protest.FindFixturesDir(), "panic.go")
+	cmd := exec.Command(getDlvBin(t), "debug", "--continue", "--headless", "--accept-multiclient", "--listen", listenAddr, fixturePath)
+	stderr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stdout pipe")
+	defer stderr.Close()
+
+	assertNoError(cmd.Start(), t, "start headless instance")
+
+	scan := bufio.NewScanner(stderr)
+	for scan.Scan() {
+		t.Log(scan.Text())
+		if strings.Contains(scan.Text(), "execution is paused because your program is panicking") {
+			break
+		}
+	}
+
+	// and detach from and kill the headless instance
+	client := rpc2.NewClient(listenAddr)
+	if err := client.Detach(true); err != nil {
+		t.Fatalf("error detaching from headless instance: %v", err)
+	}
+	cmd.Wait()
+}
+
 // TestContinue verifies that the debugged executable starts immediately with --continue
 func TestContinue(t *testing.T) {
 	const listenAddr = "127.0.0.1:40573"
