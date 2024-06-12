@@ -494,6 +494,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 
 	if !resetArgs && (d.config.Stdout.File != nil || d.config.Stderr.File != nil) {
 		return nil, ErrCanNotRestart
+
 	}
 
 	if err := d.detach(true); err != nil {
@@ -915,6 +916,8 @@ func copyLogicalBreakpointInfo(lbp *proc.LogicalBreakpoint, requested *api.Break
 	lbp.LoadArgs = api.LoadConfigToProc(requested.LoadArgs)
 	lbp.LoadLocals = api.LoadConfigToProc(requested.LoadLocals)
 	lbp.UserData = requested.UserData
+	lbp.RootFuncName = requested.RootFuncName
+	lbp.TraceFollowCalls = requested.TraceFollowCalls
 	lbp.Cond = nil
 	if requested.Cond != "" {
 		var err error
@@ -1452,7 +1455,7 @@ func uniq(s []string) []string {
 }
 
 // Functions returns a list of functions in the target process.
-func (d *Debugger) Functions(filter string) ([]string, error) {
+func (d *Debugger) Functions(filter string, followCalls int) ([]string, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
@@ -1466,12 +1469,82 @@ func (d *Debugger) Functions(filter string) ([]string, error) {
 	for t.Next() {
 		for _, f := range t.BinInfo().Functions {
 			if regex.MatchString(f.Name) {
-				funcs = append(funcs, f.Name)
+				if followCalls > 0 {
+					newfuncs, err := traverse(t, &f, 1, followCalls)
+					if err != nil {
+						return nil, fmt.Errorf("traverse failed with error %w", err)
+					}
+					funcs = append(funcs, newfuncs...)
+				} else {
+					funcs = append(funcs, f.Name)
+				}
 			}
 		}
 	}
 	sort.Strings(funcs)
 	funcs = uniq(funcs)
+	return funcs, nil
+}
+
+func traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int) ([]string, error) {
+	type TraceFunc struct {
+		Func    *proc.Function
+		Depth   int
+		visited bool
+	}
+	type TraceFuncptr *TraceFunc
+
+	TraceMap := make(map[string]TraceFuncptr)
+	queue := make([]TraceFuncptr, 0, 40)
+	funcs := []string{}
+	rootnode := &TraceFunc{Func: new(proc.Function), Depth: depth, visited: false}
+	rootnode.Func = f
+
+	// cache function details in a map for reuse
+	TraceMap[f.Name] = rootnode
+	queue = append(queue, rootnode)
+	for len(queue) > 0 {
+		parent := queue[0]
+		queue = queue[1:]
+		if parent == nil {
+			panic("attempting to open file Delve cannot parse")
+		}
+		if parent.Depth > followCalls {
+			continue
+		}
+		if !parent.visited {
+			funcs = append(funcs, parent.Func.Name)
+			parent.visited = true
+		} else if parent.visited {
+			continue
+		}
+
+		if parent.Depth+1 > followCalls {
+			// Avoid diassembling if we already cross the follow-calls depth
+			continue
+		}
+		f := parent.Func
+		text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
+		if err != nil {
+			return nil, fmt.Errorf("disassemble failed with error %w", err)
+		}
+		for _, instr := range text {
+			if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
+				cf := instr.DestLoc.Fn
+				if ((strings.HasPrefix(cf.Name, "runtime.") || strings.HasPrefix(cf.Name, "runtime/internal")) && cf.Name != "runtime.deferreturn" && cf.Name != "runtime.gorecover" && cf.Name != "runtime.gopanic") {
+					continue
+				}
+				childnode := TraceMap[cf.Name]
+				if childnode == nil {
+					childnode = &TraceFunc{Func: nil, Depth: parent.Depth + 1, visited: false}
+					childnode.Func = cf
+					TraceMap[cf.Name] = childnode
+					queue = append(queue, childnode)
+				}
+
+			}
+		}
+	}
 	return funcs, nil
 }
 
@@ -1922,6 +1995,7 @@ func (d *Debugger) convertDefers(defers []*proc.Defer) []api.Defer {
 				SP: defers[i].SP,
 			}
 		}
+
 	}
 
 	return r

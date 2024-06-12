@@ -798,6 +798,42 @@ func TestClientServer_infoLocals(t *testing.T) {
 	})
 }
 
+func matchFunctions(t *testing.T, funcs []string, expected []string, depth int) {
+	for i := range funcs {
+		if funcs[i] != expected[i] {
+			t.Fatalf("Function %s  not found in ListFunctions --follow-calls=%d output", expected[i], depth)
+		}
+	}
+}
+
+func TestTraceFollowCallsCommand(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestClient2("testtracefns", t, func(c service.Client) {
+		depth := 3
+		functions, err := c.ListFunctions("main.A", depth)
+		assertNoError(err, t, "ListFunctions()")
+		expected := []string{"main.A", "main.B", "main.C", "main.D"}
+		matchFunctions(t, functions, expected, depth)
+
+		functions, err = c.ListFunctions("main.first", depth)
+		assertNoError(err, t, "ListFunctions()")
+		expected = []string{"main.first", "main.second"}
+		matchFunctions(t, functions, expected, depth)
+
+		depth = 4
+		functions, err = c.ListFunctions("main.callme", depth)
+		assertNoError(err, t, "ListFunctions()")
+		expected = []string{"main.callme", "main.callme2", "main.callmed", "main.callmee"}
+		matchFunctions(t, functions, expected, depth)
+
+		depth = 6
+		functions, err = c.ListFunctions("main.F0", depth)
+		assertNoError(err, t, "ListFunctions()")
+		expected = []string{"main.F0", "main.F0.func1", "main.F1", "main.F2", "main.F3", "main.F4", "runtime.deferreturn", "runtime.gopanic", "runtime.gorecover"}
+		matchFunctions(t, functions, expected, depth)
+	})
+}
+
 func TestClientServer_infoArgs(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestClient2("testnextprog", t, func(c service.Client) {

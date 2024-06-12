@@ -63,6 +63,11 @@ type Breakpoint struct {
 	// ReturnInfo describes how to collect return variables when this
 	// breakpoint is hit as a return breakpoint.
 	returnInfo *returnBreakpointInfo
+
+	// RootFuncName is the name of the root function from where tracing needs to be done
+	RootFuncName string
+	// TraceFollowCalls indicates the depth of tracing
+	TraceFollowCalls int
 }
 
 // Breaklet represents one of multiple breakpoints that can overlap on a
@@ -1016,6 +1021,10 @@ type LogicalBreakpoint struct {
 	Cond ast.Expr
 
 	UserData interface{} // Any additional information about the breakpoint
+	// Name of root function from where tracing needs to be done
+	RootFuncName string
+	// depth of tracing
+	TraceFollowCalls int
 }
 
 // SetBreakpoint describes how a breakpoint should be set.

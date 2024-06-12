@@ -263,8 +263,8 @@ func (s *RPCServer) ListSources(filter string, sources *[]string) error {
 	return nil
 }
 
-func (s *RPCServer) ListFunctions(filter string, funcs *[]string) error {
-	fns, err := s.debugger.Functions(filter)
+func (s *RPCServer) ListFunctions(filter string, followCalls int, funcs *[]string) error {
+	fns, err := s.debugger.Functions(filter, followCalls)
 	if err != nil {
 		return err
 	}

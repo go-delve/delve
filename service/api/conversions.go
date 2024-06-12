@@ -19,21 +19,23 @@ import (
 // ConvertLogicalBreakpoint converts a proc.LogicalBreakpoint into an API breakpoint.
 func ConvertLogicalBreakpoint(lbp *proc.LogicalBreakpoint) *Breakpoint {
 	b := &Breakpoint{
-		ID:            lbp.LogicalID,
-		FunctionName:  lbp.FunctionName,
-		File:          lbp.File,
-		Line:          lbp.Line,
-		Name:          lbp.Name,
-		Tracepoint:    lbp.Tracepoint,
-		TraceReturn:   lbp.TraceReturn,
-		Stacktrace:    lbp.Stacktrace,
-		Goroutine:     lbp.Goroutine,
-		Variables:     lbp.Variables,
-		LoadArgs:      LoadConfigFromProc(lbp.LoadArgs),
-		LoadLocals:    LoadConfigFromProc(lbp.LoadLocals),
-		TotalHitCount: lbp.TotalHitCount,
-		Disabled:      !lbp.Enabled,
-		UserData:      lbp.UserData,
+		ID:               lbp.LogicalID,
+		FunctionName:     lbp.FunctionName,
+		File:             lbp.File,
+		Line:             lbp.Line,
+		Name:             lbp.Name,
+		Tracepoint:       lbp.Tracepoint,
+		TraceReturn:      lbp.TraceReturn,
+		Stacktrace:       lbp.Stacktrace,
+		Goroutine:        lbp.Goroutine,
+		Variables:        lbp.Variables,
+		LoadArgs:         LoadConfigFromProc(lbp.LoadArgs),
+		LoadLocals:       LoadConfigFromProc(lbp.LoadLocals),
+		TotalHitCount:    lbp.TotalHitCount,
+		Disabled:         !lbp.Enabled,
+		UserData:         lbp.UserData,
+		RootFuncName:     lbp.RootFuncName,
+		TraceFollowCalls: lbp.TraceFollowCalls,
 	}
 
 	b.HitCount = map[string]uint64{}

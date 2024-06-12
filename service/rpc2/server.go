@@ -578,7 +578,8 @@ func (s *RPCServer) ListSources(arg ListSourcesIn, out *ListSourcesOut) error {
 }
 
 type ListFunctionsIn struct {
-	Filter string
+	Filter      string
+	FollowCalls int
 }
 
 type ListFunctionsOut struct {
@@ -587,7 +588,7 @@ type ListFunctionsOut struct {
 
 // ListFunctions lists all functions in the process matching filter.
 func (s *RPCServer) ListFunctions(arg ListFunctionsIn, out *ListFunctionsOut) error {
-	fns, err := s.debugger.Functions(arg.Filter)
+	fns, err := s.debugger.Functions(arg.Filter, arg.FollowCalls)
 	if err != nil {
 		return err
 	}

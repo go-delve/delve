@@ -970,6 +970,39 @@ func TestTrace2(t *testing.T) {
 	assertNoError(cmd.Wait(), t, "cmd.Wait()")
 }
 
+func TestTraceDirRecursion(t *testing.T) {
+	dlvbin := getDlvBin(t)
+
+	expected := []byte("> goroutine(1):frame(1) main.A(5, 5)\n > goroutine(1):frame(2) main.A(4, 4)\n  > goroutine(1):frame(3) main.A(3, 3)\n   > goroutine(1):frame(4) main.A(2, 2)\n    > goroutine(1):frame(5) main.A(1, 1)\n    >> goroutine(1):frame(5) main.A => (1)\n   >> goroutine(1):frame(4) main.A => (2)\n  >> goroutine(1):frame(3) main.A => (6)\n >> goroutine(1):frame(2) main.A => (24)\n>> goroutine(1):frame(1) main.A => (120)\n")
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "leafrec.go"), "main.A", "--follow-calls", "4")
+	rdr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	cmd.Dir = filepath.Join(fixtures, "buildtest")
+
+	assertNoError(cmd.Start(), t, "running trace")
+	// Parse output to ignore calls to morestack_noctxt for comparison
+	scan := bufio.NewScanner(rdr)
+	text := ""
+	outputtext := ""
+	for scan.Scan() {
+		text = scan.Text()
+		if !strings.Contains(text, "morestack_noctxt") {
+			outputtext += text
+			outputtext += "\n"
+		}
+	}
+	output := []byte(outputtext)
+
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
+	}
+	assertNoError(cmd.Wait(), t, "cmd.Wait()")
+}
+
 func TestTraceMultipleGoroutines(t *testing.T) {
 	dlvbin := getDlvBin(t)
 

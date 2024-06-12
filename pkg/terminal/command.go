@@ -2331,7 +2331,7 @@ func packages(t *Term, ctx callContext, args string) error {
 }
 
 func funcs(t *Term, ctx callContext, args string) error {
-	return t.printSortedStrings(t.client.ListFunctions(args))
+	return t.printSortedStrings(t.client.ListFunctions(args, 0))
 }
 
 func types(t *Term, ctx callContext, args string) error {
@@ -2908,11 +2908,13 @@ func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 			fmt.Fprintf(t.stdout, "\t%s: %s\n", v.Name, v.MultilineString("\t", ""))
 		}
 	}
-
 	if bpi.Stacktrace != nil {
-		tracepointnl()
-		fmt.Fprintf(t.stdout, "\tStack:\n")
-		printStack(t, t.stdout, bpi.Stacktrace, "\t\t", false)
+		// TraceFollowCalls and Stacktrace are mutually exclusive as they pollute each others outputs
+		if th.Breakpoint.TraceFollowCalls <= 0 {
+			tracepointnl()
+			fmt.Fprintf(t.stdout, "\tStack:\n")
+			printStack(t, t.stdout, bpi.Stacktrace, "\t\t", false)
+		}
 	}
 }
 
@@ -2921,8 +2923,39 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 		fmt.Fprintf(t.stdout, "%s ", time.Now().Format(time.RFC3339Nano))
 	}
 
+	var sdepth, rootindex int
+	depthPrefix := ""
+	tracePrefix := ""
+	if th.Breakpoint.TraceFollowCalls > 0 {
+		// Trace Follow Calls; stack is required to calculate depth of functions
+		rootindex = -1
+		if th.BreakpointInfo == nil || th.BreakpointInfo.Stacktrace == nil {
+			return
+		}
+
+		stack := th.BreakpointInfo.Stacktrace
+		for i := len(stack) - 1; i >= 0; i-- {
+			if stack[i].Function.Name() == th.Breakpoint.RootFuncName {
+				if rootindex == -1 {
+					rootindex = i
+					break
+				}
+			}
+		}
+		sdepth = rootindex + 1
+		tracePrefix = fmt.Sprintf("goroutine(%d):frame(%d)", th.GoroutineID, sdepth)
+		if sdepth > 0 {
+			depthPrefix = strings.Repeat(" ", sdepth-1)
+		}
+	} else {
+		tracePrefix = fmt.Sprintf("goroutine(%d):", th.GoroutineID)
+	}
+
 	if th.Breakpoint.Tracepoint {
-		fmt.Fprintf(t.stdout, "> goroutine(%d): %s%s(%s)\n", th.GoroutineID, bpname, fn.Name(), args)
+		// Print trace only if there was a match on the function while TraceFollowCalls is on or if it's a regular trace
+		if rootindex != -1 || th.Breakpoint.TraceFollowCalls <= 0 {
+			fmt.Fprintf(t.stdout, "%s> %s %s%s(%s)\n", depthPrefix, tracePrefix, bpname, fn.Name(), args)
+		}
 		printBreakpointInfo(t, th, !hasReturnValue)
 	}
 	if th.Breakpoint.TraceReturn {
@@ -2930,7 +2963,14 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 		for _, v := range th.ReturnValues {
 			retVals = append(retVals, v.SinglelineString())
 		}
-		fmt.Fprintf(t.stdout, ">> goroutine(%d): %s => (%s)\n", th.GoroutineID, fn.Name(), strings.Join(retVals, ","))
+		// Print trace only if there was a match on the function while TraceFollowCalls is on or if it's a regular trace
+		if rootindex != -1 || th.Breakpoint.TraceFollowCalls <= 0 {
+			fmt.Fprintf(t.stdout, "%s>> %s %s => (%s)\n", depthPrefix, tracePrefix, fn.Name(), strings.Join(retVals, ","))
+		}
+	}
+	if th.Breakpoint.TraceFollowCalls > 0 {
+		// As of now traceFollowCalls and Stacktrace are mutually exclusive options
+		return
 	}
 	if th.Breakpoint.TraceReturn || !hasReturnValue {
 		if th.BreakpointInfo != nil && th.BreakpointInfo.Stacktrace != nil {
@@ -3520,7 +3560,7 @@ func (t *Term) formatBreakpointLocation(bp *api.Breakpoint) string {
 }
 
 func shouldAskToSuspendBreakpoint(t *Term) bool {
-	fns, _ := t.client.ListFunctions(`^plugin\.Open$`)
+	fns, _ := t.client.ListFunctions(`^plugin\.Open$`, 0)
 	_, err := t.client.GetState()
 	return len(fns) > 0 || isErrProcessExited(err) || t.client.FollowExecEnabled()
 }
