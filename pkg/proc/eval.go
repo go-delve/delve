@@ -203,81 +203,6 @@ func (s scopeToEvalLookup) FindTypeExpr(expr ast.Expr) (godwarf.Type, error) {
 	return s.BinInfo.findTypeExpr(expr)
 }
 
-func (scope scopeToEvalLookup) HasLocal(name string) bool {
-	if scope.Fn == nil {
-		return false
-	}
-
-	flags := reader.VariablesOnlyVisible
-	if scope.BinInfo.Producer() != "" && goversion.ProducerAfterOrEqual(scope.BinInfo.Producer(), 1, 15) {
-		flags |= reader.VariablesTrustDeclLine
-	}
-
-	dwarfTree, err := scope.image().getDwarfTree(scope.Fn.offset)
-	if err != nil {
-		return false
-	}
-
-	varEntries := reader.Variables(dwarfTree, scope.PC, scope.Line, flags)
-	for _, entry := range varEntries {
-		curname, _ := entry.Val(dwarf.AttrName).(string)
-		if curname == name {
-			return true
-		}
-		if len(curname) > 0 && curname[0] == '&' {
-			if curname[1:] == name {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func (scope scopeToEvalLookup) HasGlobal(pkgName, varName string) bool {
-	hasGlobalInternal := func(name string) bool {
-		for _, pkgvar := range scope.BinInfo.packageVars {
-			if pkgvar.name == name || strings.HasSuffix(pkgvar.name, "/"+name) {
-				return true
-			}
-		}
-		for _, fn := range scope.BinInfo.Functions {
-			if fn.Name == name || strings.HasSuffix(fn.Name, "/"+name) {
-				return true
-			}
-		}
-		for _, ctyp := range scope.BinInfo.consts {
-			for _, cval := range ctyp.values {
-				if cval.fullName == name || strings.HasSuffix(cval.fullName, "/"+name) {
-					return true
-				}
-			}
-		}
-		return false
-	}
-
-	if pkgName == "" {
-		if scope.Fn == nil {
-			return false
-		}
-		return hasGlobalInternal(scope.Fn.PackageName() + "." + varName)
-	}
-
-	for _, pkgPath := range scope.BinInfo.PackageMap[pkgName] {
-		if hasGlobalInternal(pkgPath + "." + varName) {
-			return true
-		}
-	}
-	return hasGlobalInternal(pkgName + "." + varName)
-}
-
-func (scope scopeToEvalLookup) LookupRegisterName(name string) (int, bool) {
-	s := validRegisterName(name)
-	if s == "" {
-		return 0, false
-	}
-	return scope.BinInfo.Arch.RegisterNameToDwarf(s)
-}
-
 func (scope scopeToEvalLookup) HasBuiltin(name string) bool {
 	return supportedBuiltins[name] != nil
 }
@@ -680,7 +605,20 @@ func (scope *EvalScope) findGlobal(pkgName, varName string) (*Variable, error) {
 	if err != nil || v != nil {
 		return v, err
 	}
-	return nil, fmt.Errorf("could not find symbol value for %s.%s", pkgName, varName)
+	return nil, &errCouldNotFindSymbol{fmt.Sprintf("%s.%s", pkgName, varName)}
+}
+
+type errCouldNotFindSymbol struct {
+	name string
+}
+
+func (e *errCouldNotFindSymbol) Error() string {
+	return fmt.Sprintf("could not find symbol %s", e.name)
+}
+
+func isSymbolNotFound(e error) bool {
+	var e2 *errCouldNotFindSymbol
+	return errors.As(e, &e2)
 }
 
 func (scope *EvalScope) findGlobalInternal(name string) (*Variable, error) {
@@ -967,30 +905,7 @@ func (stack *evalStack) executeOp() {
 		stack.push(newConstant(op.Value, scope.Mem))
 
 	case *evalop.PushLocal:
-		var vars []*Variable
-		var err error
-		if op.Frame != 0 {
-			frameScope, err2 := ConvertEvalScope(scope.target, -1, int(op.Frame), 0)
-			if err2 != nil {
-				stack.err = err2
-				return
-			}
-			vars, err = frameScope.Locals(0)
-		} else {
-			vars, err = scope.Locals(0)
-		}
-		if err != nil {
-			stack.err = err
-			return
-		}
-		found := false
-		for i := range vars {
-			if vars[i].Name == op.Name && vars[i].Flags&VariableShadowed == 0 {
-				stack.push(vars[i])
-				found = true
-				break
-			}
-		}
+		found := stack.pushLocal(scope, op.Name, op.Frame)
 		if !found {
 			stack.err = fmt.Errorf("could not find symbol value for %s", op.Name)
 		}
@@ -998,52 +913,36 @@ func (stack *evalStack) executeOp() {
 	case *evalop.PushNil:
 		stack.push(nilVariable)
 
-	case *evalop.PushRegister:
-		reg := scope.Regs.Reg(uint64(op.Regnum))
-		if reg == nil {
-			stack.err = fmt.Errorf("could not find symbol value for %s", op.Regname)
-			return
-		}
-		reg.FillBytes()
-
-		var typ godwarf.Type
-		if len(reg.Bytes) <= 8 {
-			typ = godwarf.FakeBasicType("uint", 64)
-		} else {
-			var err error
-			typ, err = scope.BinInfo.findType("string")
-			if err != nil {
-				stack.err = err
-				return
-			}
-		}
-
-		v := newVariable(op.Regname, 0, typ, scope.BinInfo, scope.Mem)
-		if v.Kind == reflect.String {
-			v.Len = int64(len(reg.Bytes) * 2)
-			v.Base = fakeAddressUnresolv
-		}
-		v.Addr = fakeAddressUnresolv
-		v.Flags = VariableCPURegister
-		v.reg = reg
-		stack.push(v)
-
-	case *evalop.PushPackageVar:
-		pkgName := op.PkgName
-		replaceName := false
-		if pkgName == "" {
-			replaceName = true
-			pkgName = scope.Fn.PackageName()
-		}
-		v, err := scope.findGlobal(pkgName, op.Name)
-		if err != nil {
+	case *evalop.PushPackageVarOrSelect:
+		v, err := scope.findGlobal(op.Name, op.Sel)
+		if err != nil && !isSymbolNotFound(err) {
 			stack.err = err
 			return
 		}
-		if replaceName {
-			v.Name = op.Name
+		if v != nil {
+			stack.push(v)
+		} else {
+			if op.NameIsString {
+				stack.err = fmt.Errorf("%q (type string) is not a struct", op.Name)
+				return
+			}
+			found := stack.pushIdent(scope, op.Name)
+			if stack.err != nil {
+				return
+			}
+			if found {
+				scope.evalStructSelector(&evalop.Select{Name: op.Sel}, stack)
+			} else {
+				stack.err = fmt.Errorf("could not find symbol value for %s", op.Name)
+			}
+
 		}
-		stack.push(v)
+
+	case *evalop.PushIdent:
+		found := stack.pushIdent(scope, op.Name)
+		if !found {
+			stack.err = fmt.Errorf("could not find symbol value for %s", op.Name)
+		}
 
 	case *evalop.PushLen:
 		v := stack.peek()
@@ -1132,6 +1031,98 @@ func (stack *evalStack) executeOp() {
 	}
 
 	stack.opidx++
+}
+
+func (stack *evalStack) pushLocal(scope *EvalScope, name string, frame int64) (found bool) {
+	var vars []*Variable
+	var err error
+	if frame != 0 {
+		frameScope, err2 := ConvertEvalScope(scope.target, -1, int(frame), 0)
+		if err2 != nil {
+			stack.err = err2
+			return
+		}
+		vars, err = frameScope.Locals(0)
+	} else {
+		vars, err = scope.Locals(0)
+	}
+	if err != nil {
+		stack.err = err
+		return
+	}
+	found = false
+	for i := range vars {
+		if vars[i].Name == name && vars[i].Flags&VariableShadowed == 0 {
+			stack.push(vars[i])
+			found = true
+			break
+		}
+	}
+	return found
+}
+
+func (stack *evalStack) pushIdent(scope *EvalScope, name string) (found bool) {
+	found = stack.pushLocal(scope, name, 0)
+	if found || stack.err != nil {
+		return found
+	}
+	v, err := scope.findGlobal(scope.Fn.PackageName(), name)
+	if err != nil && !isSymbolNotFound(err) {
+		stack.err = err
+		return false
+	}
+	if v != nil {
+		v.Name = name
+		stack.push(v)
+		return true
+	}
+
+	switch name {
+	case "true", "false":
+		stack.push(newConstant(constant.MakeBool(name == "true"), scope.Mem))
+		return true
+	case "nil":
+		stack.push(nilVariable)
+		return true
+	}
+
+	regname := validRegisterName(name)
+	if regname == "" {
+		return false
+	}
+	regnum, ok := scope.BinInfo.Arch.RegisterNameToDwarf(regname)
+	if !ok {
+		return false
+	}
+
+	reg := scope.Regs.Reg(uint64(regnum))
+	if reg == nil {
+		return
+	}
+	reg.FillBytes()
+
+	var typ godwarf.Type
+	if len(reg.Bytes) <= 8 {
+		typ = godwarf.FakeBasicType("uint", 64)
+	} else {
+		var err error
+		typ, err = scope.BinInfo.findType("string")
+		if err != nil {
+			stack.err = err
+			return false
+		}
+	}
+
+	v = newVariable(regname, 0, typ, scope.BinInfo, scope.Mem)
+	if v.Kind == reflect.String {
+		v.Len = int64(len(reg.Bytes) * 2)
+		v.Base = fakeAddressUnresolv
+	}
+	v.Addr = fakeAddressUnresolv
+	v.Flags = VariableCPURegister
+	v.reg = reg
+	stack.push(v)
+	return true
 }
 
 func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {

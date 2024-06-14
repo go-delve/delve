@@ -30,10 +30,7 @@ type compileCtx struct {
 
 type evalLookup interface {
 	FindTypeExpr(ast.Expr) (godwarf.Type, error)
-	HasLocal(string) bool
-	HasGlobal(string, string) bool
 	HasBuiltin(string) bool
-	LookupRegisterName(string) (int, bool)
 }
 
 // CompileAST compiles the expression t into a list of instructions.
@@ -221,15 +218,8 @@ func (ctx *compileCtx) compileAST(t ast.Expr) error {
 			case x.Name == "runtime" && node.Sel.Name == "threadid":
 				ctx.pushOp(&PushThreadID{})
 
-			case ctx.HasLocal(x.Name):
-				ctx.pushOp(&PushLocal{Name: x.Name})
-				ctx.pushOp(&Select{node.Sel.Name})
-
-			case ctx.HasGlobal(x.Name, node.Sel.Name):
-				ctx.pushOp(&PushPackageVar{x.Name, node.Sel.Name})
-
 			default:
-				return ctx.compileUnary(node.X, &Select{node.Sel.Name})
+				ctx.pushOp(&PushPackageVarOrSelect{Name: x.Name, Sel: node.Sel.Name})
 			}
 
 		case *ast.CallExpr:
@@ -258,11 +248,7 @@ func (ctx *compileCtx) compileAST(t ast.Expr) error {
 			if err != nil {
 				return err
 			}
-			if ctx.HasGlobal(s, node.Sel.Name) {
-				ctx.pushOp(&PushPackageVar{s, node.Sel.Name})
-				return nil
-			}
-			return ctx.compileUnary(node.X, &Select{node.Sel.Name})
+			ctx.pushOp(&PushPackageVarOrSelect{Name: s, Sel: node.Sel.Name, NameIsString: true})
 
 		default:
 			return ctx.compileUnary(node.X, &Select{node.Sel.Name})
@@ -367,13 +353,10 @@ func (ctx *compileCtx) compileTypeCastOrFuncCall(node *ast.CallExpr) error {
 		}
 		return ctx.compileFunctionCall(node)
 	case *ast.Ident:
-		if ctx.HasBuiltin(n.Name) {
-			return ctx.compileFunctionCall(node)
+		if typ, _ := ctx.FindTypeExpr(n); typ != nil {
+			return ctx.compileTypeCast(node, fmt.Errorf("could not find symbol value for %s", n.Name))
 		}
-		if ctx.HasGlobal("", n.Name) || ctx.HasLocal(n.Name) {
-			return ctx.compileFunctionCall(node)
-		}
-		return ctx.compileTypeCast(node, fmt.Errorf("could not find symbol value for %s", n.Name))
+		return ctx.compileFunctionCall(node)
 	case *ast.IndexExpr:
 		// Ambiguous, could be a parametric type
 		switch n.X.(type) {
@@ -438,25 +421,7 @@ func (ctx *compileCtx) compileBuiltinCall(builtin string, args []ast.Expr) error
 }
 
 func (ctx *compileCtx) compileIdent(node *ast.Ident) error {
-	switch {
-	case ctx.HasLocal(node.Name):
-		ctx.pushOp(&PushLocal{Name: node.Name})
-	case ctx.HasGlobal("", node.Name):
-		ctx.pushOp(&PushPackageVar{"", node.Name})
-	case node.Name == "true" || node.Name == "false":
-		ctx.pushOp(&PushConst{constant.MakeBool(node.Name == "true")})
-	case node.Name == "nil":
-		ctx.pushOp(&PushNil{})
-	default:
-		found := false
-		if regnum, ok := ctx.LookupRegisterName(node.Name); ok {
-			ctx.pushOp(&PushRegister{regnum, node.Name})
-			found = true
-		}
-		if !found {
-			return fmt.Errorf("could not find symbol value for %s", node.Name)
-		}
-	}
+	ctx.pushOp(&PushIdent{node.Name})
 	return nil
 }
 

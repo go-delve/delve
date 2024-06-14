@@ -45,26 +45,29 @@ type PushLocal struct {
 
 func (*PushLocal) depthCheck() (npop, npush int) { return 0, 1 }
 
+// PushIdent pushes a local or global variable or a predefined identifier
+// (true, false, etc) or the value of a register on the stack.
+type PushIdent struct {
+	Name string
+}
+
+func (*PushIdent) depthCheck() (npop, npush int) { return 0, 1 }
+
+// PushPackageVarOrSelect pushes the value of Name.Sel on the stack, which
+// could either be a global variable (with the package name specified), or a
+// field of a local variable.
+type PushPackageVarOrSelect struct {
+	Name, Sel    string
+	NameIsString bool
+}
+
+func (*PushPackageVarOrSelect) depthCheck() (npop, npush int) { return 0, 1 }
+
 // PushNil pushes an untyped nil on the stack.
 type PushNil struct {
 }
 
 func (*PushNil) depthCheck() (npop, npush int) { return 0, 1 }
-
-// PushRegister pushes the CPU register Regnum on the stack.
-type PushRegister struct {
-	Regnum  int
-	Regname string
-}
-
-func (*PushRegister) depthCheck() (npop, npush int) { return 0, 1 }
-
-// PushPackageVar pushes a package variable on the stack.
-type PushPackageVar struct {
-	PkgName, Name string // if PkgName == "" use current function's package
-}
-
-func (*PushPackageVar) depthCheck() (npop, npush int) { return 0, 1 }
 
 // PushLen pushes the length of the variable at the top of the stack into
 // the stack.
