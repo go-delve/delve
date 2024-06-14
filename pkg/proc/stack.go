@@ -911,7 +911,7 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 
 		if len(frames) > 0 {
 			prev := &frames[len(frames)-1]
-			if fr.Regs.SP() <= prev.Regs.SP() {
+			if fr.Regs.SP() < prev.Regs.SP() {
 				nonMonotonicSP = true
 				return false
 			}
