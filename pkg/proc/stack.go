@@ -690,7 +690,7 @@ func (g *G) readDefers(frames []Stackframe) {
 			frames[i].TopmostDefer = curdefer.topdefer()
 		}
 
-		if frames[i].SystemStack || curdefer.SP >= uint64(frames[i].Regs.CFA) {
+		if frames[i].SystemStack || frames[i].Inlined || curdefer.SP >= uint64(frames[i].Regs.CFA) {
 			// frames[i].Regs.CFA is the value that SP had before the function of
 			// frames[i] was called.
 			// This means that when curdefer.SP == frames[i].Regs.CFA then curdefer
@@ -900,8 +900,8 @@ func ruleString(rule *frame.DWRule, regnumToString func(uint64) string) string {
 
 // rangeFuncStackTrace, if the topmost frame of the stack is a the body of a
 // range-over-func statement, returns a slice containing the stack of range
-// bodies on the stack, the frame of the function containing them and
-// finally the function that called it.
+// bodies on the stack, interleaved with their return frames, the frame of
+// the function containing them and finally the function that called it.
 //
 // For example, given:
 //
@@ -916,9 +916,11 @@ func ruleString(rule *frame.DWRule, regnumToString func(uint64) string) string {
 // It will return the following frames:
 //
 // 0. f-range2()
-// 1. f-range1()
-// 2. f()
-// 3. function that called f()
+// 1. function that called f-range2
+// 2. f-range1()
+// 3. function that called f-range1
+// 4. f()
+// 5. function that called f()
 //
 // If the topmost frame of the stack is *not* the body closure of a
 // range-over-func statement then nothing is returned.
@@ -931,7 +933,17 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 		return nil, err
 	}
 	frames := []Stackframe{}
-	stage := 0
+
+	const (
+		startStage = iota
+		normalStage
+		lastFrameStage
+		doneStage
+	)
+
+	stage := startStage
+	addRetFrame := false
+
 	var rangeParent *Function
 	nonMonotonicSP := false
 	var closurePtr int64
@@ -941,6 +953,7 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 		if fr.closurePtr != 0 {
 			closurePtr = fr.closurePtr
 		}
+		addRetFrame = true
 	}
 
 	closurePtrOk := func(fr *Stackframe) bool {
@@ -976,33 +989,40 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 			}
 		}
 
+		if addRetFrame {
+			addRetFrame = false
+			frames = append(frames, fr)
+		}
+
 		switch stage {
-		case 0:
+		case startStage:
 			appendFrame(fr)
 			rangeParent = fr.Call.Fn.extra(tgt.BinInfo()).rangeParent
-			stage++
+			stage = normalStage
 			if rangeParent == nil || closurePtr == 0 {
 				frames = nil
-				stage = 3
+				addRetFrame = false
+				stage = doneStage
 				return false
 			}
-		case 1:
+		case normalStage:
 			if fr.Call.Fn.offset == rangeParent.offset && closurePtrOk(&fr) {
-				appendFrame(fr)
-				stage++
+				frames = append(frames, fr)
+				stage = lastFrameStage
 			} else if fr.Call.Fn.extra(tgt.BinInfo()).rangeParent == rangeParent && closurePtrOk(&fr) {
 				appendFrame(fr)
 				if closurePtr == 0 {
 					frames = nil
-					stage = 3
+					addRetFrame = false
+					stage = doneStage
 					return false
 				}
 			}
-		case 2:
+		case lastFrameStage:
 			frames = append(frames, fr)
-			stage++
+			stage = doneStage
 			return false
-		case 3:
+		case doneStage:
 			return false
 		}
 		return true
@@ -1013,8 +1033,11 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 	if nonMonotonicSP {
 		return nil, errors.New("corrupted stack (SP not monotonically decreasing)")
 	}
-	if stage != 3 {
+	if stage != doneStage {
 		return nil, errors.New("could not find range-over-func closure parent on the stack")
+	}
+	if len(frames)%2 != 0 {
+		return nil, errors.New("incomplete range-over-func stacktrace")
 	}
 	g.readDefers(frames)
 	return frames, nil

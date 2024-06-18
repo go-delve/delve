@@ -6299,25 +6299,6 @@ func TestRangeOverFuncNext(t *testing.T) {
 		return seqTest{contNext, n}
 	}
 
-	nx2 := func(t *testing.T, n int) seqTest {
-		return seqTest{contNothing, func(grp *proc.TargetGroup, p *proc.Target) {
-			_, ln1 := currentLineNumber(p, t)
-			assertNoError(grp.Next(), t, "Next() returned an error")
-			f, ln2 := currentLineNumber(p, t)
-			if ln2 == n {
-				return
-			}
-			if ln2 != ln1 {
-				t.Fatalf("Program did not continue to correct next location (expected %d or %d) was %s:%d", ln1, n, f, ln2)
-			}
-			assertNoError(grp.Next(), t, "Next() returned an error")
-			f, ln2 = currentLineNumber(p, t)
-			if ln2 != n {
-				t.Fatalf("Program did not continue to correct next location (expected %d) was %s:%d", n, f, ln2)
-			}
-		}}
-	}
-
 	assertLocals := func(t *testing.T, varnames ...string) seqTest {
 		return seqTest{
 			contNothing,
@@ -6659,20 +6640,20 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(118), // if z == 4
 				nx(121),
 
-				nx(116),     // for _, z := range (z == 2)
-				nx2(t, 117), // result = append(result, z)
-				nx(118),     // if z == 4
+				nx(116), // for _, z := range (z == 2)
+				nx(117), // result = append(result, z)
+				nx(118), // if z == 4
 				nx(121),
 
-				nx(116),     // for _, z := range (z == 3)
-				nx2(t, 117), // result = append(result, z)
-				nx(118),     // if z == 4
+				nx(116), // for _, z := range (z == 3)
+				nx(117), // result = append(result, z)
+				nx(118), // if z == 4
 				nx(121),
 
-				nx(116),     // for _, z := range (z == 4)
-				nx2(t, 117), // result = append(result, z)
-				nx(118),     // if z == 4
-				nx(119),     // break
+				nx(116), // for _, z := range (z == 4)
+				nx(117), // result = append(result, z)
+				nx(118), // if z == 4
+				nx(119), // break
 
 				nx(112), // defer func()
 				nx(113), // r := recover()
@@ -6773,14 +6754,14 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(203), // result = append(result, y)
 				nx(204),
 
-				nx(199),     // for _, y := range (y == 2)
-				nx2(t, 200), // if y == 3
-				nx(203),     // result = append(result, y)
+				nx(199), // for _, y := range (y == 2)
+				nx(200), // if y == 3
+				nx(203), // result = append(result, y)
 				nx(204),
 
-				nx(199),     // for _, y := range (y == 3)
-				nx2(t, 200), // if y == 3
-				nx(201),     // goto A
+				nx(199), // for _, y := range (y == 3)
+				nx(200), // if y == 3
+				nx(201), // goto A
 				nx(204),
 				nx(206), // result = append(result, x)
 				nx(207),
@@ -6809,14 +6790,14 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(222), // result = append(result, y)
 				nx(223),
 
-				nx(218),     // for _, y := range (y == 2)
-				nx2(t, 219), // if y == 3
-				nx(222),     // result = append(result, y)
+				nx(218), // for _, y := range (y == 2)
+				nx(219), // if y == 3
+				nx(222), // result = append(result, y)
 				nx(223),
 
-				nx(218),     // for _, y := range (y == 3)
-				nx2(t, 219), // if y == 3
-				nx(220),     // goto B
+				nx(218), // for _, y := range (y == 3)
+				nx(219), // if y == 3
+				nx(220), // goto B
 				nx(223),
 				nx(225),
 				nx(227), // result = append(result, 999)
