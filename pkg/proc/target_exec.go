@@ -847,8 +847,10 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 
 	// Set step-out breakpoints for range-over-func body closures
 	if !stepInto && selg != nil && topframe.Current.Fn.extra(bi).rangeParent != nil && len(rangeFrames) > 0 {
-		for _, fr := range rangeFrames[:len(rangeFrames)-1] {
-			retframecond := astutil.And(sameGCond, frameoffCondition(&fr))
+		// Set step-out breakpoint for every range-over-func body currently on the stack so that we stop on them.
+		for i := 2; i < len(rangeFrames); i += 2 {
+			fr := &rangeFrames[i]
+			retframecond := astutil.And(sameGCond, frameoffCondition(fr))
 			if !fr.hasInlines {
 				dbp.SetBreakpoint(0, fr.Current.PC, NextBreakpoint, retframecond)
 			} else {
@@ -857,7 +859,7 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 				if err != nil {
 					return err
 				}
-				pcs, err = removeInlinedCalls(pcs, &fr, bi)
+				pcs, err = removeInlinedCalls(pcs, fr, bi)
 				if err != nil {
 					return err
 				}
@@ -866,6 +868,24 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 				}
 			}
 		}
+
+		// Set a step-out breakpoint for the first range-over-func body on the
+		// stack, this breakpoint will never cause a stop because the associated
+		// callback always returns false.
+		// Its purpose is to inactivate all the breakpoints for the current
+		// range-over-func body function so that if the iterator re-calls it we
+		// don't end up inside the prologue.
+		if !rangeFrames[0].Inlined {
+			bp, err := dbp.SetBreakpoint(0, rangeFrames[1].Call.PC, NextBreakpoint, astutil.And(sameGCond, frameoffCondition(&rangeFrames[1])))
+			if err == nil {
+				bplet := bp.Breaklets[len(bp.Breaklets)-1]
+				bplet.callback = func(th Thread, p *Target) (bool, error) {
+					rangeFrameInactivateNextBreakpoints(p, rangeFrames[0].Call.Fn)
+					return false, nil
+				}
+			}
+		}
+
 		topframe, retframe = rangeFrames[len(rangeFrames)-2], rangeFrames[len(rangeFrames)-1]
 	}
 
@@ -1656,4 +1676,27 @@ func (t *Target) handleHardcodedBreakpoints(grp *TargetGroup, trapthread Thread,
 		}
 	}
 	return nil
+}
+
+func rangeFrameInactivateNextBreakpoints(p *Target, fn *Function) {
+	pc, err := FirstPCAfterPrologue(p, fn, false)
+	if err != nil {
+		logflags.DebuggerLogger().Errorf("Error inactivating next breakpoints after exiting a range-over-func body: %v", err)
+		return
+	}
+
+	for _, bp := range p.Breakpoints().M {
+		if bp.Addr < fn.Entry || bp.Addr >= fn.End || bp.Addr == pc {
+			continue
+		}
+		for _, bplet := range bp.Breaklets {
+			if bplet.Kind != NextBreakpoint {
+				continue
+			}
+			// We set to NextInactivatedBreakpoint instead of deleting them because
+			// we can't delete breakpoints (or breakpointlets) while breakpoint
+			// conditions are being evaluated.
+			bplet.Kind = NextInactivatedBreakpoint
+		}
+	}
 }
