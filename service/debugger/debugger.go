@@ -1340,7 +1340,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 		d.amendBreakpoint(bp)
 	}
 
-	d.maybePrintUnattendedBreakpointWarning(state.CurrentThread, clientStatusCh)
+	d.maybePrintUnattendedBreakpointWarning(d.target.Selected.StopReason, state.CurrentThread, clientStatusCh)
 	return state, err
 }
 
@@ -1531,7 +1531,7 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int)
 		for _, instr := range text {
 			if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
 				cf := instr.DestLoc.Fn
-				if ((strings.HasPrefix(cf.Name, "runtime.") || strings.HasPrefix(cf.Name, "runtime/internal")) && cf.Name != "runtime.deferreturn" && cf.Name != "runtime.gorecover" && cf.Name != "runtime.gopanic") {
+				if (strings.HasPrefix(cf.Name, "runtime.") || strings.HasPrefix(cf.Name, "runtime/internal")) && cf.Name != "runtime.deferreturn" && cf.Name != "runtime.gorecover" && cf.Name != "runtime.gopanic" {
 					continue
 				}
 				childnode := TraceMap[cf.Name]
@@ -2504,7 +2504,7 @@ func attachErrorMessageDefault(pid int, err error) error {
 	return fmt.Errorf("could not attach to pid %d: %s", pid, err)
 }
 
-func (d *Debugger) maybePrintUnattendedBreakpointWarning(currentThread *api.Thread, clientStatusCh <-chan struct{}) {
+func (d *Debugger) maybePrintUnattendedBreakpointWarning(stopReason proc.StopReason, currentThread *api.Thread, clientStatusCh <-chan struct{}) {
 	select {
 	case <-clientStatusCh:
 		// the channel will be closed if the client that sends the command has left
@@ -2528,8 +2528,14 @@ func (d *Debugger) maybePrintUnattendedBreakpointWarning(currentThread *api.Thre
 
 	bp := currentThread.Breakpoint
 	if bp == nil {
-		fmt.Fprintln(os.Stderr, "bp", bp)
-		return
+		switch stopReason {
+		case proc.StopManual:
+			// print nothing
+			return
+		default:
+			fmt.Fprintln(os.Stderr, "Stop reason: "+stopReason.String())
+			return
+		}
 	}
 
 	switch bp.Name {
