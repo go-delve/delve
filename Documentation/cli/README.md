@@ -354,7 +354,7 @@ Examine memory:
 	examinemem [-fmt <format>] [-count|-len <count>] [-size <size>] <address>
 	examinemem [-fmt <format>] [-count|-len <count>] [-size <size>] -x <expression>
 
-Format represents the data format and the value is one of this list (default hex): bin(binary), oct(octal), dec(decimal), hex(hexadecimal).
+Format represents the data format and the value is one of this list (default hex): bin(binary), oct(octal), dec(decimal), hex(hexadecimal) and raw.
 Length is the number of bytes (default 1) and must be less than or equal to 1000.
 Address is the memory location of the target to examine. Please note '-len' is deprecated by '-count and -size'.
 Expression can be an integer expression or pointer value of the memory location to examine.
@@ -741,10 +741,10 @@ Aliases: t
 ## transcript
 Appends command output to a file.
 
-	transcript [-t] [-x] <output file>
+	transcript [-t] [-x] [-n] <output file>
 	transcript -off
 
-Output of Delve's command is appended to the specified output file. If '-t' is specified and the output file exists it is truncated. If '-x' is specified output to stdout is suppressed instead.
+Output of Delve's command is appended to the specified output file. If '-t' is specified and the output file exists it is truncated. If '-x' is specified output to stdout is suppressed. If [-n] input echo to the transcript file is disabled.
 
 Using the -off option disables the transcript.
 

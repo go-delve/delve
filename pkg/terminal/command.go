@@ -586,7 +586,7 @@ Examine memory:
 	examinemem [-fmt <format>] [-count|-len <count>] [-size <size>] <address>
 	examinemem [-fmt <format>] [-count|-len <count>] [-size <size>] -x <expression>
 
-Format represents the data format and the value is one of this list (default hex): bin(binary), oct(octal), dec(decimal), hex(hexadecimal).
+Format represents the data format and the value is one of this list (default hex): bin(binary), oct(octal), dec(decimal), hex(hexadecimal) and raw.
 Length is the number of bytes (default 1) and must be less than or equal to 1000.
 Address is the memory location of the target to examine. Please note '-len' is deprecated by '-count and -size'.
 Expression can be an integer expression or pointer value of the memory location to examine.
@@ -615,10 +615,10 @@ The core dump is always written in ELF, even on systems (windows, macOS) where t
 
 		{aliases: []string{"transcript"}, cmdFn: transcript, helpMsg: `Appends command output to a file.
 
-	transcript [-t] [-x] <output file>
+	transcript [-t] [-x] [-n] <output file>
 	transcript -off
 
-Output of Delve's command is appended to the specified output file. If '-t' is specified and the output file exists it is truncated. If '-x' is specified output to stdout is suppressed instead.
+Output of Delve's command is appended to the specified output file. If '-t' is specified and the output file exists it is truncated. If '-x' is specified output to stdout is suppressed. If [-n] input echo to the transcript file is disabled.
 
 Using the -off option disables the transcript.`},
 
@@ -2057,9 +2057,10 @@ func examineMemoryCmd(t *Term, ctx callContext, argstr string) error {
 
 	// Default value
 	priFmt := byte('x')
-	count := 1
-	size := 1
+	count := int64(1)
+	size := int64(1)
 	isExpr := false
+	rawout := false
 
 	// nextArg returns the next argument that is not an empty string, if any, and
 	// advances the args slice to the position after that.
@@ -2085,19 +2086,23 @@ loop:
 			if arg == "" {
 				return fmt.Errorf("expected argument after -fmt")
 			}
-			fmtMapToPriFmt := map[string]byte{
-				"oct":         'o',
-				"octal":       'o',
-				"hex":         'x',
-				"hexadecimal": 'x',
-				"dec":         'd',
-				"decimal":     'd',
-				"bin":         'b',
-				"binary":      'b',
-			}
-			priFmt, ok = fmtMapToPriFmt[arg]
-			if !ok {
-				return fmt.Errorf("%q is not a valid format", arg)
+			if arg == "raw" {
+				rawout = true
+			} else {
+				fmtMapToPriFmt := map[string]byte{
+					"oct":         'o',
+					"octal":       'o',
+					"hex":         'x',
+					"hexadecimal": 'x',
+					"dec":         'd',
+					"decimal":     'd',
+					"bin":         'b',
+					"binary":      'b',
+				}
+				priFmt, ok = fmtMapToPriFmt[arg]
+				if !ok {
+					return fmt.Errorf("%q is not a valid format", arg)
+				}
 			}
 		case "-count", "-len":
 			arg := nextArg()
@@ -2105,7 +2110,7 @@ loop:
 				return fmt.Errorf("expected argument after -count/-len")
 			}
 			var err error
-			count, err = strconv.Atoi(arg)
+			count, err = strconv.ParseInt(arg, 0, 64)
 			if err != nil || count <= 0 {
 				return fmt.Errorf("count/len must be a positive integer")
 			}
@@ -2115,7 +2120,7 @@ loop:
 				return fmt.Errorf("expected argument after -size")
 			}
 			var err error
-			size, err = strconv.Atoi(arg)
+			size, err = strconv.ParseInt(arg, 0, 64)
 			if err != nil || size <= 0 || size > 8 {
 				return fmt.Errorf("size must be a positive integer (<=8)")
 			}
@@ -2129,11 +2134,6 @@ loop:
 			args = []string{cmd}
 			break loop // only one arg left to be evaluated as a uint
 		}
-	}
-
-	// TODO, maybe configured by user.
-	if count*size > 1000 {
-		return fmt.Errorf("read memory range (count*size) must be less than or equal to 1000 bytes")
 	}
 
 	if len(args) == 0 {
@@ -2169,12 +2169,28 @@ loop:
 		}
 	}
 
-	memArea, isLittleEndian, err := t.client.ExamineMemory(address, count*size)
-	if err != nil {
-		return err
-	}
 	t.stdout.pw.PageMaybe(nil)
-	fmt.Fprint(t.stdout, api.PrettyExamineMemory(uintptr(address), memArea, isLittleEndian, priFmt, size))
+
+	start := address
+	remsz := int(count * size)
+
+	for remsz > 0 {
+		reqsz := rpc2.ExamineMemoryLengthLimit
+		if reqsz > remsz {
+			reqsz = remsz
+		}
+		memArea, isLittleEndian, err := t.client.ExamineMemory(start, reqsz)
+		if err != nil {
+			return err
+		}
+		if rawout {
+			t.stdout.Write(memArea)
+		} else {
+			fmt.Fprint(t.stdout, api.PrettyExamineMemory(uintptr(start), memArea, isLittleEndian, priFmt, int(size)))
+		}
+		start += uint64(reqsz)
+		remsz -= reqsz
+	}
 	return nil
 }
 
@@ -3395,9 +3411,12 @@ func transcript(t *Term, ctx callContext, args string) error {
 	truncate := false
 	fileOnly := false
 	disable := false
+	echo := true
 	path := ""
 	for _, arg := range argv {
 		switch arg {
+		case "-n":
+			echo = false
 		case "-x":
 			fileOnly = true
 		case "-t":
@@ -3437,7 +3456,7 @@ func transcript(t *Term, ctx callContext, args string) error {
 		return err
 	}
 
-	t.stdout.TranscribeTo(fh, fileOnly)
+	t.stdout.TranscribeTo(fh, fileOnly, echo)
 	return nil
 }
 
