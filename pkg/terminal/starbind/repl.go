@@ -34,6 +34,7 @@ package starbind
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -186,7 +187,7 @@ func MakeLoad() func(thread *starlark.Thread, module string) (starlark.StringDic
 		if e == nil {
 			if ok {
 				// request for package whose loading is in progress
-				return nil, fmt.Errorf("cycle in load graph")
+				return nil, errors.New("cycle in load graph")
 			}
 
 			// Add a placeholder to indicate "load in progress".

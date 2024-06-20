@@ -60,7 +60,7 @@ func (drs *DebugRegisters) breakpoint(idx uint8) (addr uint64, read, write bool,
 // nothing.
 func (drs *DebugRegisters) SetBreakpoint(idx uint8, addr uint64, read, write bool, sz int) error {
 	if int(idx) >= len(drs.pAddrs) {
-		return fmt.Errorf("hardware breakpoints exhausted")
+		return errors.New("hardware breakpoints exhausted")
 	}
 	curaddr, curread, curwrite, cursz := drs.breakpoint(idx)
 	if curaddr != 0 {

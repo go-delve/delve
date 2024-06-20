@@ -1237,7 +1237,7 @@ func findFirstNonRuntimeFrame(p *proc.Target) (proc.Stackframe, error) {
 			return frame, nil
 		}
 	}
-	return proc.Stackframe{}, fmt.Errorf("non-runtime frame not found")
+	return proc.Stackframe{}, errors.New("non-runtime frame not found")
 }
 
 func evalVariableOrError(p *proc.Target, symbol string) (*proc.Variable, error) {
@@ -3842,9 +3842,9 @@ func checkFrame(frame proc.Stackframe, fnname, file string, line int, inlined bo
 	}
 	if frame.Inlined != inlined {
 		if inlined {
-			return fmt.Errorf("not inlined")
+			return errors.New("not inlined")
 		}
-		return fmt.Errorf("inlined")
+		return errors.New("inlined")
 	}
 	return nil
 }

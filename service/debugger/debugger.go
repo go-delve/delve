@@ -523,7 +523,7 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 			}
 		default:
 			// We cannot build a process that we didn't start, because we don't know how it was built.
-			return nil, fmt.Errorf("cannot rebuild a binary")
+			return nil, errors.New("cannot rebuild a binary")
 		}
 	}
 
@@ -2016,7 +2016,7 @@ func (d *Debugger) CurrentPackage() (string, error) {
 		return "", err
 	}
 	if loc.Fn == nil {
-		return "", fmt.Errorf("unable to determine current package due to unspecified function location")
+		return "", errors.New("unable to determine current package due to unspecified function location")
 	}
 	return loc.Fn.PackageName(), nil
 }
@@ -2443,7 +2443,7 @@ func go11DecodeErrorCheck(err error) error {
 		return err
 	}
 
-	return fmt.Errorf("executables built by Go 1.11 or later need Delve built by Go 1.11 or later")
+	return errors.New("executables built by Go 1.11 or later need Delve built by Go 1.11 or later")
 }
 
 const NoDebugWarning string = "debuggee must not be built with 'go run' or -ldflags='-s -w', which strip debug info"

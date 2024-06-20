@@ -3,6 +3,7 @@ package terminal
 //lint:file-ignore ST1005 errors here can be capitalized
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/rpc"
@@ -359,7 +360,7 @@ func (t *Term) Run() (int, error) {
 				fmt.Fprintln(t.stdout, "exit")
 				return t.handleExit()
 			}
-			return 1, fmt.Errorf("Prompt for input failed.\n")
+			return 1, errors.New("Prompt for input failed.\n")
 		}
 		t.stdout.Echo(t.prompt + cmdstr + "\n")
 

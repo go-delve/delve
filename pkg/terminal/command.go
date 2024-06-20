@@ -850,7 +850,7 @@ func threads(t *Term, ctx callContext, args string) error {
 
 func thread(t *Term, ctx callContext, args string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("you must specify a thread")
+		return errors.New("you must specify a thread")
 	}
 	tid, err := strconv.Atoi(args)
 	if err != nil {
@@ -1265,7 +1265,7 @@ func restartRecorded(t *Term, ctx callContext, args string) error {
 			}
 		} else {
 			if len(v) > 1 {
-				return fmt.Errorf("too many arguments to restart")
+				return errors.New("too many arguments to restart")
 			}
 			restartPos = v[0]
 		}
@@ -1341,7 +1341,7 @@ func parseNewArgv(args string) (resetArgs bool, newArgv []string, newRedirects [
 	}
 	if w[0] == "-noargs" {
 		if len(w) > 1 {
-			return false, nil, [3]string{}, fmt.Errorf("too many arguments to restart")
+			return false, nil, [3]string{}, errors.New("too many arguments to restart")
 		}
 		return true, nil, [3]string{}, nil
 	}
@@ -1663,7 +1663,7 @@ func (c *Commands) call(t *Term, ctx callContext, args string) error {
 
 func clear(t *Term, ctx callContext, args string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("not enough arguments")
+		return errors.New("not enough arguments")
 	}
 	id, err := strconv.Atoi(args)
 	var bp *api.Breakpoint
@@ -1722,7 +1722,7 @@ func clearAll(t *Term, ctx callContext, args string) error {
 
 func toggle(t *Term, ctx callContext, args string) error {
 	if args == "" {
-		return fmt.Errorf("not enough arguments")
+		return errors.New("not enough arguments")
 	}
 	id, err := strconv.Atoi(args)
 	var bp *api.Breakpoint
@@ -1843,7 +1843,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 				spec = argstr
 			}
 		default:
-			return fmt.Errorf("address required")
+			return errors.New("address required")
 		}
 		return nil
 	}
@@ -1984,7 +1984,7 @@ func getEditorName() (string, error) {
 	var editor string
 	if editor = os.Getenv("DELVE_EDITOR"); editor == "" {
 		if editor = os.Getenv("EDITOR"); editor == "" {
-			return "", fmt.Errorf("Neither DELVE_EDITOR or EDITOR is set")
+			return "", errors.New("Neither DELVE_EDITOR or EDITOR is set")
 		}
 	}
 	return editor, nil
@@ -2083,7 +2083,7 @@ loop:
 		case "-fmt":
 			arg := nextArg()
 			if arg == "" {
-				return fmt.Errorf("expected argument after -fmt")
+				return errors.New("expected argument after -fmt")
 			}
 			fmtMapToPriFmt := map[string]byte{
 				"oct":         'o',
@@ -2102,22 +2102,22 @@ loop:
 		case "-count", "-len":
 			arg := nextArg()
 			if arg == "" {
-				return fmt.Errorf("expected argument after -count/-len")
+				return errors.New("expected argument after -count/-len")
 			}
 			var err error
 			count, err = strconv.Atoi(arg)
 			if err != nil || count <= 0 {
-				return fmt.Errorf("count/len must be a positive integer")
+				return errors.New("count/len must be a positive integer")
 			}
 		case "-size":
 			arg := nextArg()
 			if arg == "" {
-				return fmt.Errorf("expected argument after -size")
+				return errors.New("expected argument after -size")
 			}
 			var err error
 			size, err = strconv.Atoi(arg)
 			if err != nil || size <= 0 || size > 8 {
-				return fmt.Errorf("size must be a positive integer (<=8)")
+				return errors.New("size must be a positive integer (<=8)")
 			}
 		case "-x":
 			isExpr = true
@@ -2133,11 +2133,11 @@ loop:
 
 	// TODO, maybe configured by user.
 	if count*size > 1000 {
-		return fmt.Errorf("read memory range (count*size) must be less than or equal to 1000 bytes")
+		return errors.New("read memory range (count*size) must be less than or equal to 1000 bytes")
 	}
 
 	if len(args) == 0 {
-		return fmt.Errorf("no address specified")
+		return errors.New("no address specified")
 	}
 
 	if isExpr {
@@ -2193,7 +2193,7 @@ const maxPrintVarChanGoroutines = 100
 
 func (c *Commands) printVar(t *Term, ctx callContext, args string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("not enough arguments")
+		return errors.New("not enough arguments")
 	}
 	if ctx.Prefix == onPrefix {
 		ctx.Breakpoint.Variables = append(ctx.Breakpoint.Variables, args)
@@ -2229,7 +2229,7 @@ func (c *Commands) printVar(t *Term, ctx callContext, args string) error {
 
 func whatisCommand(t *Term, ctx callContext, args string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("not enough arguments")
+		return errors.New("not enough arguments")
 	}
 	val, err := t.client.EvalVariable(ctx.Scope, args, ShortLoadConfig)
 	if err != nil {
@@ -2258,7 +2258,7 @@ func setVar(t *Term, ctx callContext, args string) error {
 	// HACK: in go '=' is not an operator, we detect the error and try to recover from it by splitting the input string
 	_, err := parser.ParseExpr(args)
 	if err == nil {
-		return fmt.Errorf("syntax error '=' not found")
+		return errors.New("syntax error '=' not found")
 	}
 
 	el, ok := err.(scanner.ErrorList)
@@ -2353,7 +2353,7 @@ func args(t *Term, ctx callContext, args string) error {
 	filter, cfg := parseVarArguments(args, t)
 	if ctx.Prefix == onPrefix {
 		if filter != "" {
-			return fmt.Errorf("filter not supported on breakpoint")
+			return errors.New("filter not supported on breakpoint")
 		}
 		ctx.Breakpoint.LoadArgs = &cfg
 		return nil
@@ -2369,7 +2369,7 @@ func locals(t *Term, ctx callContext, args string) error {
 	filter, cfg := parseVarArguments(args, t)
 	if ctx.Prefix == onPrefix {
 		if filter != "" {
-			return fmt.Errorf("filter not supported on breakpoint")
+			return errors.New("filter not supported on breakpoint")
 		}
 		ctx.Breakpoint.LoadLocals = &cfg
 		return nil
@@ -2483,7 +2483,7 @@ func parseStackArgs(argstr string) (stackArgs, error) {
 			case "-mode":
 				i++
 				if i >= len(args) {
-					return stackArgs{}, fmt.Errorf("expected normal, simple or fromg after -mode")
+					return stackArgs{}, errors.New("expected normal, simple or fromg after -mode")
 				}
 				switch args[i] {
 				case "normal":
@@ -2494,7 +2494,7 @@ func parseStackArgs(argstr string) (stackArgs, error) {
 				case "fromg":
 					r.opts |= api.StacktraceG | api.StacktraceSimple
 				default:
-					return stackArgs{}, fmt.Errorf("expected normal, simple or fromg after -mode")
+					return stackArgs{}, errors.New("expected normal, simple or fromg after -mode")
 				}
 			case "-a":
 				i++
@@ -2513,7 +2513,7 @@ func parseStackArgs(argstr string) (stackArgs, error) {
 			default:
 				n, err := strconv.Atoi(args[i])
 				if err != nil {
-					return stackArgs{}, fmt.Errorf("depth must be a number")
+					return stackArgs{}, errors.New("depth must be a number")
 				}
 				r.depth = n
 			}
@@ -2592,7 +2592,7 @@ func listCommand(t *Term, ctx callContext, args string) error {
 
 func (c *Commands) sourceCommand(t *Term, ctx callContext, args string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("wrong number of arguments: source <filename>")
+		return errors.New("wrong number of arguments: source <filename>")
 	}
 
 	if args == "-" {
@@ -3183,7 +3183,7 @@ func conditionCmd(t *Term, ctx callContext, argstr string) error {
 	args := config.Split2PartsBySpace(argstr)
 
 	if len(args) < 2 {
-		return fmt.Errorf("not enough arguments")
+		return errors.New("not enough arguments")
 	}
 
 	hitCondPerG := args[0] == "-per-g-hitcount"
@@ -3198,7 +3198,7 @@ func conditionCmd(t *Term, ctx callContext, argstr string) error {
 
 		args = config.Split2PartsBySpace(args[1])
 		if len(args) < 2 {
-			return fmt.Errorf("not enough arguments")
+			return errors.New("not enough arguments")
 		}
 
 		bp, err := getBreakpointByIDOrName(t, args[0])
@@ -3341,7 +3341,7 @@ func display(t *Term, ctx callContext, args string) error {
 		args = strings.TrimSpace(args[len(addOption):])
 		fmtstr, args := parseFormatArg(args)
 		if args == "" {
-			return fmt.Errorf("not enough arguments")
+			return errors.New("not enough arguments")
 		}
 		t.addDisplay(args, fmtstr)
 		t.printDisplay(len(t.displays) - 1)
@@ -3355,14 +3355,14 @@ func display(t *Term, ctx callContext, args string) error {
 		return t.removeDisplay(n)
 
 	default:
-		return fmt.Errorf("wrong arguments")
+		return errors.New("wrong arguments")
 	}
 	return nil
 }
 
 func dump(t *Term, ctx callContext, args string) error {
 	if args == "" {
-		return fmt.Errorf("not enough arguments")
+		return errors.New("not enough arguments")
 	}
 	dumpState, err := t.client.CoreDumpStart(args)
 	if err != nil {

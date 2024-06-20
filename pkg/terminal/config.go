@@ -18,7 +18,7 @@ func configureCmd(t *Term, ctx callContext, args string) error {
 	case "-save":
 		return config.SaveConfig(t.conf)
 	case "":
-		return fmt.Errorf("wrong number of arguments to \"config\"")
+		return errors.New("wrong number of arguments to \"config\"")
 	default:
 		err := configureSet(t, args)
 		if err != nil {
@@ -103,7 +103,7 @@ func configureSetSubstitutePath(t *Term, rest string) error {
 		}
 		t.conf.SubstitutePath = append(t.conf.SubstitutePath, config.SubstitutePathRule{From: argv[0], To: argv[1]})
 	default:
-		return fmt.Errorf("too many arguments to \"config substitute-path\"")
+		return errors.New("too many arguments to \"config substitute-path\"")
 	}
 	return nil
 }

@@ -262,7 +262,7 @@ func (ctx *compileCtx) compileAST(t ast.Expr) error {
 
 	case *ast.SliceExpr:
 		if node.Slice3 {
-			return fmt.Errorf("3-index slice expressions not supported")
+			return errors.New("3-index slice expressions not supported")
 		}
 		return ctx.compileReslice(node)
 

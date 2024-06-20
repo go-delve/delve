@@ -41,7 +41,7 @@ func (reader *Reader) AddrFor(name string, staticBase uint64, ptrSize int) (uint
 	}
 	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
 	if !ok {
-		return 0, fmt.Errorf("type assertion failed")
+		return 0, errors.New("type assertion failed")
 	}
 	addr, _, err := op.ExecuteStackProgram(op.DwarfRegisters{StaticBase: staticBase}, instructions, ptrSize, nil)
 	if err != nil {
@@ -58,7 +58,7 @@ var ErrTypeNotFound = errors.New("no type entry found, use 'types' for a list of
 func (reader *Reader) SeekToType(entry *dwarf.Entry, resolveTypedefs bool, resolvePointerTypes bool) (*dwarf.Entry, error) {
 	offset, ok := entry.Val(dwarf.AttrType).(dwarf.Offset)
 	if !ok {
-		return nil, fmt.Errorf("entry does not have a type attribute")
+		return nil, errors.New("entry does not have a type attribute")
 	}
 
 	// Seek to the first type offset
@@ -187,7 +187,7 @@ func (reader *Reader) InstructionsForEntry(entry *dwarf.Entry) ([]byte, error) {
 	if entry.Tag == dwarf.TagMember {
 		instructions, ok := entry.Val(dwarf.AttrDataMemberLoc).([]byte)
 		if !ok {
-			return nil, fmt.Errorf("member data has no data member location attribute")
+			return nil, errors.New("member data has no data member location attribute")
 		}
 		// clone slice to prevent stomping on the dwarf data
 		return append([]byte{}, instructions...), nil
@@ -196,7 +196,7 @@ func (reader *Reader) InstructionsForEntry(entry *dwarf.Entry) ([]byte, error) {
 	// non-member
 	instructions, ok := entry.Val(dwarf.AttrLocation).([]byte)
 	if !ok {
-		return nil, fmt.Errorf("entry has no location attribute")
+		return nil, errors.New("entry has no location attribute")
 	}
 
 	// clone slice to prevent stomping on the dwarf data

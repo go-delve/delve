@@ -387,7 +387,7 @@ func (scope *EvalScope) Locals(flags localsFlags) ([]*Variable, error) {
 			declLine := v.DeclLine
 			v = v.maybeDereference()
 			if v.Addr == 0 && v.Unreadable == nil {
-				v.Unreadable = fmt.Errorf("no address for escaped variable")
+				v.Unreadable = errors.New("no address for escaped variable")
 			}
 			v.Name = name[1:]
 			v.Flags |= VariableEscaped
@@ -1918,13 +1918,13 @@ func (scope *EvalScope) evalReslice(op *evalop.Reslice, stack *evalStack) {
 		return
 	case reflect.Map:
 		if op.Node.High != nil {
-			stack.err = fmt.Errorf("second slice argument must be empty for maps")
+			stack.err = errors.New("second slice argument must be empty for maps")
 			return
 		}
 		xev.mapSkip += int(low)
 		xev.mapIterator() // reads map length
 		if int64(xev.mapSkip) >= xev.Len {
-			stack.err = fmt.Errorf("map index out of bounds")
+			stack.err = errors.New("map index out of bounds")
 			return
 		}
 		stack.push(xev)
@@ -1951,7 +1951,7 @@ func (scope *EvalScope) evalPointerDeref(op *evalop.PointerDeref, stack *evalSta
 	}
 
 	if xev == nilVariable {
-		stack.err = fmt.Errorf("nil can not be dereferenced")
+		stack.err = errors.New("nil can not be dereferenced")
 		return
 	}
 
@@ -1971,7 +1971,7 @@ func (scope *EvalScope) evalPointerDeref(op *evalop.PointerDeref, stack *evalSta
 	}
 	rv := &xev.Children[0]
 	if rv.Addr == 0 {
-		stack.err = fmt.Errorf("nil pointer dereference")
+		stack.err = errors.New("nil pointer dereference")
 		return
 	}
 	stack.push(rv)
@@ -2085,7 +2085,7 @@ func negotiateType(op token.Token, xv, yv *Variable) (godwarf.Type, error) {
 			// ok
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			if constant.Sign(yv.Value) < 0 {
-				return nil, fmt.Errorf("shift count must not be negative")
+				return nil, errors.New("shift count must not be negative")
 			}
 		default:
 			return nil, fmt.Errorf("shift count type %s, must be unsigned integer", yv.Kind.String())
@@ -2253,7 +2253,7 @@ func compareOp(op token.Token, xv *Variable, yv *Variable) (bool, error) {
 			yv.loadValue(loadFullValueLongerStrings)
 		}
 		if int64(len(constant.StringVal(xv.Value))) != xv.Len || int64(len(constant.StringVal(yv.Value))) != yv.Len {
-			return false, fmt.Errorf("string too long for comparison")
+			return false, errors.New("string too long for comparison")
 		}
 		return constantCompare(op, xv.Value, yv.Value)
 	}
@@ -2288,7 +2288,7 @@ func compareOp(op token.Token, xv *Variable, yv *Variable) (bool, error) {
 		eql = xv.Children[0].Addr == yv.Children[0].Addr
 	case reflect.Array:
 		if int64(len(xv.Children)) != xv.Len || int64(len(yv.Children)) != yv.Len {
-			return false, fmt.Errorf("array too long for comparison")
+			return false, errors.New("array too long for comparison")
 		}
 		eql, err = equalChildren(xv, yv, true)
 	case reflect.Struct:
@@ -2296,7 +2296,7 @@ func compareOp(op token.Token, xv *Variable, yv *Variable) (bool, error) {
 			return false, nil
 		}
 		if int64(len(xv.Children)) != xv.Len || int64(len(yv.Children)) != yv.Len {
-			return false, fmt.Errorf("structure too deep for comparison")
+			return false, errors.New("structure too deep for comparison")
 		}
 		eql, err = equalChildren(xv, yv, false)
 	case reflect.Slice, reflect.Map, reflect.Func, reflect.Chan:
@@ -2483,13 +2483,13 @@ func (v *Variable) sliceAccess(idx int) (*Variable, error) {
 		wrong = idx < 0
 	}
 	if wrong {
-		return nil, fmt.Errorf("index out of bounds")
+		return nil, errors.New("index out of bounds")
 	}
 	if v.loaded {
 		if v.Kind == reflect.String {
 			s := constant.StringVal(v.Value)
 			if idx >= len(s) {
-				return nil, fmt.Errorf("index out of bounds")
+				return nil, errors.New("index out of bounds")
 			}
 			r := v.newVariable("", v.Base+uint64(int64(idx)*v.stride), v.fieldType, v.mem)
 			r.loaded = true
@@ -2497,7 +2497,7 @@ func (v *Variable) sliceAccess(idx int) (*Variable, error) {
 			return r, nil
 		} else {
 			if idx >= len(v.Children) {
-				return nil, fmt.Errorf("index out of bounds")
+				return nil, errors.New("index out of bounds")
 			}
 			return &v.Children[idx], nil
 		}
@@ -2548,7 +2548,7 @@ func (v *Variable) mapAccess(idx *Variable) (*Variable, error) {
 		return nil, v.Unreadable
 	}
 	// go would return zero for the map value type here, we do not have the ability to create zeroes
-	return nil, fmt.Errorf("key not found")
+	return nil, errors.New("key not found")
 }
 
 // LoadResliced returns a new array, slice or map that starts at index start and contains
@@ -2570,7 +2570,7 @@ func (v *Variable) LoadResliced(start int, cfg LoadConfig) (newV *Variable, err 
 		newV.loaded = false
 		newV.mapSkip = start
 	default:
-		return nil, fmt.Errorf("variable to reslice is not an array, slice, or map")
+		return nil, errors.New("variable to reslice is not an array, slice, or map")
 	}
 	newV.loadValue(cfg)
 	return newV, nil
@@ -2589,14 +2589,14 @@ func (v *Variable) reslice(low int64, high int64, trustLen bool) (*Variable, err
 		cptrNeedsFakeSlice = v.Kind != reflect.String
 	}
 	if wrong {
-		return nil, fmt.Errorf("index out of bounds")
+		return nil, errors.New("index out of bounds")
 	}
 
 	base := v.Base + uint64(low*v.stride)
 	len := high - low
 
 	if high-low < 0 {
-		return nil, fmt.Errorf("index out of bounds")
+		return nil, errors.New("index out of bounds")
 	}
 
 	typ := v.DwarfType

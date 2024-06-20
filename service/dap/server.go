@@ -1191,7 +1191,7 @@ func (s *Session) getPackageDir(pkg string) string {
 // requires holding mu lock. It prepares process exec.Cmd to be started.
 func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd string, redirected bool) (cmd *exec.Cmd, err error) {
 	if s.noDebugProcess != nil {
-		return nil, fmt.Errorf("another launch request is in progress")
+		return nil, errors.New("another launch request is in progress")
 	}
 
 	cmd = exec.Command(program, targetArgs...)
@@ -1467,7 +1467,7 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 
 		var err error
 		if _, ok := createdBps[want.name]; ok {
-			err = fmt.Errorf("breakpoint already exists")
+			err = errors.New("breakpoint already exists")
 		} else {
 			got.Disabled = false
 			got.Cond = want.condition
@@ -1496,7 +1496,7 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 		wantLoc, err := locFunc(i)
 		if err == nil {
 			if _, ok := createdBps[want.name]; ok {
-				err = fmt.Errorf("breakpoint already exists")
+				err = errors.New("breakpoint already exists")
 			} else {
 				bp := &api.Breakpoint{
 					Name:    want.name,
@@ -1572,7 +1572,7 @@ func (s *Session) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakp
 		}
 
 		if want.Name[0] == '.' {
-			return nil, fmt.Errorf("breakpoint names that are relative paths are not supported")
+			return nil, errors.New("breakpoint names that are relative paths are not supported")
 		}
 		// Find the location of the function name. CreateBreakpoint requires the name to include the base
 		// (e.g. main.functionName is supported but not functionName).
@@ -2900,7 +2900,7 @@ func (s *Session) doCall(goid, frame int, expr string) (*api.DebuggerState, []*p
 	// and the user will get an unexpected result or an unexpected symbol error.
 	// We prevent this but disallowing any frames other than topmost.
 	if frame > 0 {
-		return nil, nil, fmt.Errorf("call is only supported with topmost stack frame")
+		return nil, nil, errors.New("call is only supported with topmost stack frame")
 	}
 	stateBeforeCall, err := s.debugger.State( /*nowait*/ true)
 	if err != nil {
@@ -3266,7 +3266,7 @@ func findInstructions(procInstructions []proc.AsmInstruction, addr uint64, instr
 		return procInstructions[i].Loc.PC >= addr
 	})
 	if ref == len(procInstructions) || procInstructions[ref].Loc.PC != addr {
-		return nil, -1, fmt.Errorf("could not find memory reference")
+		return nil, -1, errors.New("could not find memory reference")
 	}
 	// offset is the number of instructions that should appear before the first instruction
 	// returned by findInstructions.
@@ -3945,7 +3945,7 @@ func parseLogPoint(msg string) (bool, *logMessage, error) {
 				if braceCount--; braceCount == 0 {
 					argStr := strings.TrimSpace(string(argSlice))
 					if len(argStr) == 0 {
-						return false, nil, fmt.Errorf("empty evaluation string")
+						return false, nil, errors.New("empty evaluation string")
 					}
 					args = append(args, argStr)
 					formatSlice = append(formatSlice, '%', 's')
@@ -3961,7 +3961,7 @@ func parseLogPoint(msg string) (bool, *logMessage, error) {
 
 		switch r {
 		case '}':
-			return false, nil, fmt.Errorf("invalid log point format, unexpected '}'")
+			return false, nil, errors.New("invalid log point format, unexpected '}'")
 		case '{':
 			if braceCount++; braceCount == 1 {
 				isArg, argSlice = true, []rune{}
@@ -3971,7 +3971,7 @@ func parseLogPoint(msg string) (bool, *logMessage, error) {
 		formatSlice = append(formatSlice, r)
 	}
 	if isArg {
-		return false, nil, fmt.Errorf("invalid log point format")
+		return false, nil, errors.New("invalid log point format")
 	}
 	if len(formatSlice) == 0 {
 		return false, nil, nil
