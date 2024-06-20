@@ -3,7 +3,6 @@
 // This package is incomplete, only features needed to write core files are
 // implemented, notably missing:
 // - program headers at the beginning of the file
-
 package elfwriter
 
 import (
