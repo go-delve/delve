@@ -1,6 +1,5 @@
 // This package contains utility functions used by pkg/proc to generate
 // ast.Expr expressions.
-
 package astutil
 
 import (
