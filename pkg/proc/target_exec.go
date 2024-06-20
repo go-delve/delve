@@ -37,7 +37,7 @@ func (grp *TargetGroup) Next() (err error) {
 		return err
 	}
 	if grp.HasSteppingBreakpoints() {
-		return fmt.Errorf("next while nexting")
+		return errors.New("next while nexting")
 	}
 
 	if err = next(grp.Selected, false, false); err != nil {
@@ -308,7 +308,7 @@ func conditionErrors(grp *TargetGroup) error {
 				if condErr == nil {
 					condErr = bp.CondError
 				} else {
-					return fmt.Errorf("multiple errors evaluating conditions")
+					return errors.New("multiple errors evaluating conditions")
 				}
 			}
 		}
@@ -454,7 +454,7 @@ func (grp *TargetGroup) Step() (err error) {
 		return err
 	}
 	if grp.HasSteppingBreakpoints() {
-		return fmt.Errorf("next while nexting")
+		return errors.New("next while nexting")
 	}
 
 	if err = next(grp.Selected, true, false); err != nil {
@@ -504,7 +504,7 @@ func (grp *TargetGroup) StepOut() error {
 		return err
 	}
 	if grp.HasSteppingBreakpoints() {
-		return fmt.Errorf("next while nexting")
+		return errors.New("next while nexting")
 	}
 
 	dbp := grp.Selected

@@ -1,6 +1,7 @@
 package locspec
 
 import (
+	"errors"
 	"fmt"
 	"go/constant"
 	"path"
@@ -272,7 +273,7 @@ func packageMatch(specPkg, symPkg string, packageMap map[string][]string) bool {
 func (loc *RegexLocationSpec) Find(t *proc.Target, _ []string, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool, _ [][2]string) ([]api.Location, string, error) {
 	if scope == nil {
 		//TODO(aarzilli): this needs only the list of function we should make it work
-		return nil, "", fmt.Errorf("could not determine location (scope is nil)")
+		return nil, "", errors.New("could not determine location (scope is nil)")
 	}
 	funcs := scope.BinInfo.Functions
 	matches, err := regexFilterFuncs(loc.FuncRegex, funcs)
@@ -294,7 +295,7 @@ func (loc *AddrLocationSpec) Find(t *proc.Target, _ []string, scope *proc.EvalSc
 	if scope == nil {
 		addr, err := strconv.ParseInt(loc.AddrExpr, 0, 64)
 		if err != nil {
-			return nil, "", fmt.Errorf("could not determine current location (scope is nil)")
+			return nil, "", errors.New("could not determine current location (scope is nil)")
 		}
 		return []api.Location{{PC: uint64(addr)}}, "", nil
 	}
@@ -416,7 +417,7 @@ func (loc *NormalLocationSpec) Find(t *proc.Target, processArgs []string, scope 
 	if len(candidateFiles) == 1 {
 		if loc.LineOffset < 0 {
 			//lint:ignore ST1005 backwards compatibility
-			return nil, "", fmt.Errorf("Malformed breakpoint location, no line offset specified")
+			return nil, "", errors.New("Malformed breakpoint location, no line offset specified")
 		}
 		addrs, err = proc.FindFileLocation(t, candidateFiles[0], loc.LineOffset)
 		if includeNonExecutableLines {
@@ -617,7 +618,7 @@ func addressesToLocation(addrs []uint64) api.Location {
 // Find returns the location after adding the offset amount to the current line number.
 func (loc *OffsetLocationSpec) Find(t *proc.Target, _ []string, scope *proc.EvalScope, _ string, includeNonExecutableLines bool, _ [][2]string) ([]api.Location, string, error) {
 	if scope == nil {
-		return nil, "", fmt.Errorf("could not determine current location (scope is nil)")
+		return nil, "", errors.New("could not determine current location (scope is nil)")
 	}
 	file, line, fn := scope.BinInfo.PCToLine(scope.PC)
 	if loc.Offset == 0 {
@@ -628,7 +629,7 @@ func (loc *OffsetLocationSpec) Find(t *proc.Target, _ []string, scope *proc.Eval
 		return []api.Location{{PC: scope.PC}}, subst, nil
 	}
 	if fn == nil {
-		return nil, "", fmt.Errorf("could not determine current location")
+		return nil, "", errors.New("could not determine current location")
 	}
 	subst := fmt.Sprintf("%s:%d", file, line+loc.Offset)
 	addrs, err := proc.FindFileLocation(t, file, line+loc.Offset)
@@ -643,11 +644,11 @@ func (loc *OffsetLocationSpec) Find(t *proc.Target, _ []string, scope *proc.Eval
 // Find will return the location at the given line in the current file.
 func (loc *LineLocationSpec) Find(t *proc.Target, _ []string, scope *proc.EvalScope, _ string, includeNonExecutableLines bool, _ [][2]string) ([]api.Location, string, error) {
 	if scope == nil {
-		return nil, "", fmt.Errorf("could not determine current location (scope is nil)")
+		return nil, "", errors.New("could not determine current location (scope is nil)")
 	}
 	file, _, fn := scope.BinInfo.PCToLine(scope.PC)
 	if fn == nil {
-		return nil, "", fmt.Errorf("could not determine current location")
+		return nil, "", errors.New("could not determine current location")
 	}
 	subst := fmt.Sprintf("%s:%d", file, loc.Line)
 	addrs, err := proc.FindFileLocation(t, file, loc.Line)

@@ -2,6 +2,7 @@ package starbind
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -86,7 +87,7 @@ func New(ctx Context, out EchoWriter) *Env {
 		for i := range args {
 			a, ok := args[i].(starlark.String)
 			if !ok {
-				return nil, fmt.Errorf("argument of dlv_command is not a string")
+				return nil, errors.New("argument of dlv_command is not a string")
 			}
 			argstrs[i] = string(a)
 		}
@@ -100,11 +101,11 @@ func New(ctx Context, out EchoWriter) *Env {
 
 	env.env[readFileBuiltinName] = starlark.NewBuiltin(readFileBuiltinName, func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if len(args) != 1 {
-			return nil, decorateError(thread, fmt.Errorf("wrong number of arguments"))
+			return nil, decorateError(thread, errors.New("wrong number of arguments"))
 		}
 		path, ok := args[0].(starlark.String)
 		if !ok {
-			return nil, decorateError(thread, fmt.Errorf("argument of read_file was not a string"))
+			return nil, decorateError(thread, errors.New("argument of read_file was not a string"))
 		}
 		buf, err := os.ReadFile(string(path))
 		if err != nil {
@@ -116,11 +117,11 @@ func New(ctx Context, out EchoWriter) *Env {
 
 	env.env[writeFileBuiltinName] = starlark.NewBuiltin(writeFileBuiltinName, func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if len(args) != 2 {
-			return nil, decorateError(thread, fmt.Errorf("wrong number of arguments"))
+			return nil, decorateError(thread, errors.New("wrong number of arguments"))
 		}
 		path, ok := args[0].(starlark.String)
 		if !ok {
-			return nil, decorateError(thread, fmt.Errorf("first argument of write_file was not a string"))
+			return nil, decorateError(thread, errors.New("first argument of write_file was not a string"))
 		}
 		err := os.WriteFile(string(path), []byte(args[1].String()), 0o640)
 		return starlark.None, decorateError(thread, err)

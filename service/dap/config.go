@@ -2,6 +2,7 @@ package dap
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -90,7 +91,7 @@ func configureSetSubstitutePath(args *launchAttachArgs, rest string) error {
 		args.substitutePathServerToClient = append(args.substitutePathServerToClient, [2]string{argv[1], argv[0]})
 
 	default:
-		return fmt.Errorf("too many arguments to \"config substitutePath\"")
+		return errors.New("too many arguments to \"config substitutePath\"")
 	}
 	return nil
 }
@@ -124,7 +125,7 @@ func configureSetShowPprofLabels(args *launchAttachArgs, rest string) error {
 			args.ShowPprofLabels = append(args.ShowPprofLabels, argv[0])
 		}
 	default:
-		return fmt.Errorf("too many arguments to \"config showPprofLabels\"")
+		return errors.New("too many arguments to \"config showPprofLabels\"")
 	}
 	return nil
 }

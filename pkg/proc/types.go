@@ -131,7 +131,7 @@ func runtimeTypeToDIE(_type *Variable, dataAddr uint64) (typ godwarf.Type, kind 
 		}
 	}
 
-	return nil, 0, fmt.Errorf("could not resolve interface type")
+	return nil, 0, errors.New("could not resolve interface type")
 }
 
 // resolveParametricType returns the real type of t if t is a parametric

@@ -278,7 +278,7 @@ func (n *Tree) Type(dw *dwarf.Data, index int, typeCache map[dwarf.Offset]Type) 
 	if n.typ == nil {
 		offset, ok := n.Val(dwarf.AttrType).(dwarf.Offset)
 		if !ok {
-			return nil, fmt.Errorf("malformed variable DIE (offset)")
+			return nil, errors.New("malformed variable DIE (offset)")
 		}
 
 		var err error

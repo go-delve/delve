@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"debug/elf"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -147,7 +148,7 @@ func readLinuxOrPlatformIndependentCore(corePath, exePath string) (*process, pro
 		case _EM_AARCH64:
 			bi = proc.NewBinaryInfo("linux", "arm64")
 		default:
-			return nil, nil, fmt.Errorf("unsupported machine type")
+			return nil, nil, errors.New("unsupported machine type")
 		}
 	}
 
@@ -286,7 +287,7 @@ func readNote(r io.ReadSeeker, machineType elf.Machine) (*note, error) {
 		case _EM_AARCH64:
 			note.Desc = &linuxPrStatusARM64{}
 		default:
-			return nil, fmt.Errorf("unsupported machine type")
+			return nil, errors.New("unsupported machine type")
 		}
 		if err := binary.Read(descReader, binary.LittleEndian, note.Desc); err != nil {
 			return nil, fmt.Errorf("reading NT_PRSTATUS: %v", err)

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -113,7 +114,7 @@ func (s *ServerImpl) Run() error {
 		s.config.APIVersion = 1
 	}
 	if s.config.APIVersion > 2 {
-		return fmt.Errorf("unknown API version")
+		return errors.New("unknown API version")
 	}
 
 	// Create and start the debugger
@@ -455,7 +456,7 @@ func (s *RPCServer) SetApiVersion(args api.SetAPIVersionIn, out *api.SetAPIVersi
 		args.APIVersion = 1
 	}
 	if args.APIVersion > 2 {
-		return fmt.Errorf("unknown API version")
+		return errors.New("unknown API version")
 	}
 	s.s.config.APIVersion = args.APIVersion
 	return nil

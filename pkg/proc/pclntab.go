@@ -3,6 +3,7 @@ package proc
 import (
 	"debug/elf"
 	"debug/macho"
+	"errors"
 	"fmt"
 
 	"github.com/go-delve/delve/pkg/internal/gosym"
@@ -18,12 +19,12 @@ func readPcLnTableElf(exe *elf.File, path string) (*gosym.Table, uint64, error) 
 		sectionLabel = ".data.rel.ro.gopclntab"
 		section = exe.Section(sectionLabel)
 		if section == nil {
-			return nil, 0, fmt.Errorf("could not read section .gopclntab")
+			return nil, 0, errors.New("could not read section .gopclntab")
 		}
 	}
 	tableData, err := section.Data()
 	if err != nil {
-		return nil, 0, fmt.Errorf("found section but could not read .gopclntab")
+		return nil, 0, errors.New("found section but could not read .gopclntab")
 	}
 
 	addr := exe.Section(".text").Addr
@@ -41,11 +42,11 @@ func readPcLnTableMacho(exe *macho.File, path string) (*gosym.Table, uint64, err
 
 	section := exe.Section(sectionLabel)
 	if section == nil {
-		return nil, 0, fmt.Errorf("could not read section __gopclntab")
+		return nil, 0, errors.New("could not read section __gopclntab")
 	}
 	tableData, err := section.Data()
 	if err != nil {
-		return nil, 0, fmt.Errorf("found section but could not read __gopclntab")
+		return nil, 0, errors.New("found section but could not read __gopclntab")
 	}
 
 	addr := exe.Section("__text").Addr

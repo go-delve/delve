@@ -93,7 +93,7 @@ func (v sliceAsStarlarkValue) Freeze() {
 }
 
 func (v sliceAsStarlarkValue) Hash() (uint32, error) {
-	return 0, fmt.Errorf("not hashable")
+	return 0, errors.New("not hashable")
 }
 
 func (v sliceAsStarlarkValue) String() string {
@@ -155,7 +155,7 @@ func (v structAsStarlarkValue) Freeze() {
 }
 
 func (v structAsStarlarkValue) Hash() (uint32, error) {
-	return 0, fmt.Errorf("not hashable")
+	return 0, errors.New("not hashable")
 }
 
 func (v structAsStarlarkValue) String() string {
@@ -290,7 +290,7 @@ func (v structVariableAsStarlarkValue) Freeze() {
 }
 
 func (v structVariableAsStarlarkValue) Hash() (uint32, error) {
-	return 0, fmt.Errorf("not hashable")
+	return 0, errors.New("not hashable")
 }
 
 func (v structVariableAsStarlarkValue) String() string {
@@ -350,7 +350,7 @@ func (v sliceVariableAsStarlarkValue) Freeze() {
 }
 
 func (v sliceVariableAsStarlarkValue) Hash() (uint32, error) {
-	return 0, fmt.Errorf("not hashable")
+	return 0, errors.New("not hashable")
 }
 
 func (v sliceVariableAsStarlarkValue) String() string {
@@ -416,7 +416,7 @@ func (v ptrVariableAsStarlarkValue) Freeze() {
 }
 
 func (v ptrVariableAsStarlarkValue) Hash() (uint32, error) {
-	return 0, fmt.Errorf("not hashable")
+	return 0, errors.New("not hashable")
 }
 
 func (v ptrVariableAsStarlarkValue) String() string {
@@ -500,7 +500,7 @@ func (v mapVariableAsStarlarkValue) Freeze() {
 }
 
 func (v mapVariableAsStarlarkValue) Hash() (uint32, error) {
-	return 0, fmt.Errorf("not hashable")
+	return 0, errors.New("not hashable")
 }
 
 func (v mapVariableAsStarlarkValue) String() string {

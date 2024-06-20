@@ -1169,7 +1169,7 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 func readVarEntry(entry *godwarf.Tree, image *Image) (name string, typ godwarf.Type, err error) {
 	name, ok := entry.Val(dwarf.AttrName).(string)
 	if !ok {
-		return "", nil, fmt.Errorf("malformed variable DIE (name)")
+		return "", nil, errors.New("malformed variable DIE (name)")
 	}
 
 	typ, err = entry.Type(image.dwarf, image.index, image.typeCache)
@@ -1840,7 +1840,7 @@ func (v *Variable) readFloatRaw(size int64) (float64, error) {
 		return n, nil
 	}
 
-	return 0.0, fmt.Errorf("could not read float")
+	return 0.0, errors.New("could not read float")
 }
 
 func (v *Variable) writeFloatRaw(f float64, size int64) error {
@@ -1981,7 +1981,7 @@ func (v *Variable) loadMap(recurseLevel int, cfg LoadConfig) {
 
 	for skip := 0; skip < v.mapSkip; skip++ {
 		if ok := it.next(); !ok {
-			v.Unreadable = fmt.Errorf("map index out of bounds")
+			v.Unreadable = errors.New("map index out of bounds")
 			return
 		}
 	}
@@ -2043,7 +2043,7 @@ func (v *Variable) mapIterator() *mapIterator {
 
 	maptype, ok := sv.RealType.(*godwarf.StructType)
 	if !ok {
-		v.Unreadable = fmt.Errorf("wrong real type for map")
+		v.Unreadable = errors.New("wrong real type for map")
 		return nil
 	}
 
@@ -2184,7 +2184,7 @@ func (it *mapIterator) nextBucket() bool {
 
 	// sanity checks
 	if it.tophashes == nil || it.keys == nil || it.values == nil {
-		it.v.Unreadable = fmt.Errorf("malformed map type")
+		it.v.Unreadable = errors.New("malformed map type")
 		return false
 	}
 
@@ -2333,7 +2333,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 	}
 
 	if data == nil {
-		v.Unreadable = fmt.Errorf("invalid interface type")
+		v.Unreadable = errors.New("invalid interface type")
 		return
 	}
 
