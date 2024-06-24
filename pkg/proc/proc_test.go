@@ -3257,7 +3257,7 @@ func TestDebugStripped(t *testing.T) {
 		// return an error instead of panic.
 		s, err := proc.ThreadScope(p, p.CurrentThread())
 		assertNoError(err, t, "ThreadScope")
-		_, err = s.Locals(0)
+		_, err = s.Locals(0, "")
 		if err == nil {
 			t.Error("expected an error to be returned from scope.Locals in stripped binary")
 		}
@@ -3645,7 +3645,7 @@ func testDeclLineCount(t *testing.T, p *proc.Target, lineno int, tgtvars []strin
 	assertLineNumber(p, t, lineno, "Program did not continue to correct next location")
 	scope, err := proc.GoroutineScope(p, p.CurrentThread())
 	assertNoError(err, t, fmt.Sprintf("GoroutineScope (:%d)", lineno))
-	vars, err := scope.Locals(0)
+	vars, err := scope.Locals(0, "")
 	assertNoError(err, t, fmt.Sprintf("Locals (:%d)", lineno))
 	if len(vars) != len(tgtvars) {
 		t.Fatalf("wrong number of variables %d (:%d)", len(vars), lineno)
@@ -6310,6 +6310,60 @@ func TestRangeOverFuncNext(t *testing.T) {
 		}}
 	}
 
+	assertLocals := func(t *testing.T, varnames ...string) seqTest {
+		return seqTest{
+			contNothing,
+			func(p *proc.Target) {
+				scope, err := proc.GoroutineScope(p, p.CurrentThread())
+				assertNoError(err, t, "GoroutineScope")
+				vars, err := scope.Locals(0, "")
+				assertNoError(err, t, "Locals")
+
+				gotnames := make([]string, len(vars))
+				for i := range vars {
+					gotnames[i] = vars[i].Name
+				}
+
+				ok := true
+				if len(vars) != len(varnames) {
+					ok = false
+				} else {
+					for i := range vars {
+						if vars[i].Name != varnames[i] {
+							ok = false
+							break
+						}
+					}
+				}
+				if !ok {
+					t.Errorf("Wrong variable names, expected %q, got %q", varnames, gotnames)
+				}
+			},
+		}
+	}
+
+	assertEval := func(t *testing.T, exprvals ...string) seqTest {
+		return seqTest{
+			contNothing,
+			func(p *proc.Target) {
+				scope, err := proc.GoroutineScope(p, p.CurrentThread())
+				assertNoError(err, t, "GoroutineScope")
+				for i := 0; i < len(exprvals); i += 2 {
+					expr, tgt := exprvals[i], exprvals[i+1]
+					v, err := scope.EvalExpression(expr, normalLoadConfig)
+					if err != nil {
+						t.Errorf("Could not evaluate %q: %v", expr, err)
+					} else {
+						out := api.ConvertVar(v).SinglelineString()
+						if out != tgt {
+							t.Errorf("Wrong value for %q, got %q expected %q", expr, out, tgt)
+						}
+					}
+				}
+			},
+		}
+	}
+
 	withTestProcessArgs("rangeoverfunc", t, ".", []string{}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 
 		t.Run("TestTrickyIterAll1", func(t *testing.T) {
@@ -6319,13 +6373,22 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(25),
 				nx(26),
 				nx(27), // for _, x := range ...
+				assertLocals(t, "trickItAll", "i"),
+				assertEval(t, "i", "0"),
 				nx(27), // for _, x := range ... (TODO: this probably shouldn't be here but it's also very hard to skip stopping here a second time)
 				nx(28), // i += x
+				assertLocals(t, "trickItAll", "i", "x"),
+				assertEval(t,
+					"i", "0",
+					"x", "30"),
 				nx(29), // if i >= 36 {
 				nx(32),
 				nx(27), // for _, x := range ...
 				notAtEntryPoint(t),
 				nx(28), // i += x
+				assertEval(t,
+					"i", "30",
+					"x", "7"),
 				nx(29), // if i >= 36 {
 				nx(30), // break
 				nx(32),
@@ -6360,26 +6423,45 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(48), // for _, x := range... (x == -1)
 				nx(48),
 				nx(49), // if x == -4
+				assertLocals(t, "result", "x"),
+				assertEval(t,
+					"result", "[]int len: 0, cap: 0, nil",
+					"x", "-1"),
 
 				nx(52), // for _, y := range... (y == 1)
 				nx(52),
 				nx(53), // if y == 3
+				assertLocals(t, "result", "x", "y"),
+				assertEval(t,
+					"result", "[]int len: 0, cap: 0, nil",
+					"x", "-1",
+					"y", "1"),
 				nx(56), // result = append(result, y)
 				nx(57),
 				nx(52), // for _, y := range... (y == 2)
 				notAtEntryPoint(t),
 				nx(53), // if y == 3
+				assertEval(t,
+					"x", "-1",
+					"y", "2"),
 				nx(56), // result = append(result, y)
 				nx(57),
 				nx(52), // for _, y := range... (y == 3)
 				nx(53), // if y == 3
+				assertEval(t,
+					"x", "-1",
+					"y", "3"),
 				nx(54), // break
 				nx(57),
 				nx(58), // result = append(result, x)
 				nx(59),
 
 				nx(48), // for _, x := range... (x == -2)
+				notAtEntryPoint(t),
 				nx(49), // if x == -4
+				assertEval(t,
+					"result", "[]int len: 3, cap: 4, [1,2,-1]",
+					"x", "-2"),
 				nx(52), // for _, y := range... (y == 1)
 				nx(52),
 				nx(53), // if y == 3
@@ -6398,6 +6480,9 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(59),
 
 				nx(48), // for _, x := range... (x == -4)
+				assertEval(t,
+					"result", "[]int len: 6, cap: 8, [1,2,-1,1,2,-2]",
+					"x", "-4"),
 				nx(49), // if x == -4
 				nx(50), // break
 				nx(59),
@@ -6479,31 +6564,51 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(85), // for _, w := range (w == 1000)
 				nx(85),
 				nx(86), // result = append(result, w)
+				assertEval(t,
+					"w", "1000",
+					"result", "[]int len: 0, cap: 0, nil"),
 				nx(87), // if w == 2000
+				assertLocals(t, "result", "w"),
+				assertEval(t, "result", "[]int len: 1, cap: 1, [1000]"),
 				nx(90), // for _, x := range (x == 100)
 				nx(90),
 				nx(91), // for _, y := range (y == 10)
 				nx(91),
 				nx(92), // result = append(result, y)
+				assertLocals(t, "result", "w", "x", "y"),
+				assertEval(t,
+					"w", "1000",
+					"x", "100",
+					"y", "10"),
 
 				nx(93), // for _, z := range (z == 1)
 				nx(93),
 				nx(94), // if z&1 == 1
+				assertLocals(t, "result", "w", "x", "y", "z"),
+				assertEval(t,
+					"w", "1000",
+					"x", "100",
+					"y", "10",
+					"z", "1"),
 				nx(95), // continue
 
 				nx(93), // for _, z := range (z == 2)
 				nx(94), // if z&1 == 1
+				assertEval(t, "z", "2"),
 				nx(97), // result = append(result, z)
 				nx(98), // if z >= 4 {
 				nx(101),
 
 				nx(93), // for _, z := range (z == 3)
 				nx(94), // if z&1 == 1
+				assertEval(t, "z", "3"),
 				nx(95), // continue
 
 				nx(93), // for _, z := range (z == 4)
 				nx(94), // if z&1 == 1
+				assertEval(t, "z", "4"),
 				nx(97), // result = append(result, z)
+				assertEval(t, "result", "[]int len: 3, cap: 4, [1000,10,2]"),
 				nx(98), // if z >= 4 {
 				nx(99), // continue W
 				nx(101),
@@ -6513,6 +6618,9 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(85), // for _, w := range (w == 2000)
 				nx(86), // result = append(result, w)
 				nx(87), // if w == 2000
+				assertEval(t,
+					"w", "2000",
+					"result", "[]int len: 5, cap: 8, [1000,10,2,4,2000]"),
 				nx(88), // break
 				nx(106),
 				nx(107), // fmt.Println

@@ -855,7 +855,7 @@ func funcCallStep(callScope *EvalScope, stack *evalStack, thread Thread) bool {
 			flags |= localsTrustArgOrder
 		}
 
-		fncall.retvars, err = retScope.Locals(flags)
+		fncall.retvars, err = retScope.Locals(flags, "")
 		if err != nil {
 			fncall.err = fmt.Errorf("could not get return values: %v", err)
 			break
