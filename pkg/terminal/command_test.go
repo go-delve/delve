@@ -901,7 +901,7 @@ func TestPrintContextParkedGoroutine(t *testing.T) {
 		frameout := strings.Split(term.MustExec("frame 0"), "\n")
 		t.Logf("frame 0 -> %q", frameout)
 		if strings.Contains(frameout[0], "stacktraceme") {
-			t.Fatal("bad output for `frame 0` command on a parked goorutine")
+			t.Fatal("bad output for `frame 0` command on a parked goroutine")
 		}
 
 		listout := strings.Split(term.MustExec("list"), "\n")

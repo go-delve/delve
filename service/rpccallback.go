@@ -9,7 +9,7 @@ type RPCCallback interface {
 	// receive other requests.
 	SetupDoneChan() chan struct{}
 
-	// DisconnectChan returns a channel that should be clised to signal that
+	// DisconnectChan returns a channel that should be closed to signal that
 	// the client that initially issued the command has been disconnected.
 	DisconnectChan() chan struct{}
 }
