@@ -3522,7 +3522,7 @@ func formatBreakpointName(bp *api.Breakpoint, upcase bool) string {
 		thing = "watchpoint"
 	}
 	if upcase {
-		thing = strings.Title(thing)
+		thing = strings.ToUpper(string(thing[0])) + thing[1:]
 	}
 	id := bp.Name
 	if id == "" {
