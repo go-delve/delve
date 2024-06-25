@@ -89,7 +89,7 @@ func (ctxt *loadDebugInfoMapsContext) lookupAbstractOrigin(bi *BinaryInfo, off d
 	return r
 }
 
-// runtimeTypeToDIE returns the DIE corresponding to the runtime._type.
+// RuntimeTypeToDIE returns the DIE corresponding to the runtime._type.
 // This is done in three different ways depending on the version of go.
 //   - Before go1.7 the type name is retrieved directly from the runtime._type
 //     and looked up in debug_info
@@ -98,17 +98,12 @@ func (ctxt *loadDebugInfoMapsContext) lookupAbstractOrigin(bi *BinaryInfo, off d
 //     debug_info
 //   - After go1.11 the runtimeTypeToDIE map is used to look up the address of
 //     the type and map it directly to a DIE.
-func runtimeTypeToDIE(_type *Variable, dataAddr uint64) (typ godwarf.Type, kind int64, err error) {
+func RuntimeTypeToDIE(_type *Variable, dataAddr uint64, mds []ModuleData) (typ godwarf.Type, kind int64, err error) {
 	bi := _type.bi
 
 	_type = _type.maybeDereference()
 
 	// go 1.11 implementation: use extended attribute in debug_info
-
-	mds, err := loadModuleData(bi, _type.mem)
-	if err != nil {
-		return nil, 0, fmt.Errorf("error loading module data: %v", err)
-	}
 
 	md := findModuleDataForType(bi, mds, _type.Addr, _type.mem)
 	if md != nil {
@@ -154,7 +149,12 @@ func resolveParametricType(bi *BinaryInfo, mem MemoryReadWriter, t godwarf.Type,
 	}
 	_type := newVariable("", rtypeAddr, runtimeType, bi, mem)
 
-	typ, _, err := runtimeTypeToDIE(_type, 0)
+	mds, err := LoadModuleData(bi, _type.mem)
+	if err != nil {
+		return ptyp.TypedefType.Type, fmt.Errorf("error loading module data: %v", err)
+	}
+
+	typ, _, err := RuntimeTypeToDIE(_type, 0, mds)
 	if err != nil {
 		return ptyp.TypedefType.Type, err
 	}
@@ -175,7 +175,7 @@ func dwarfToRuntimeType(bi *BinaryInfo, mem MemoryReadWriter, typ godwarf.Type) 
 		return 0, 0, false, nil
 	}
 
-	mds, err := loadModuleData(bi, mem)
+	mds, err := LoadModuleData(bi, mem)
 	if err != nil {
 		return 0, 0, false, err
 	}

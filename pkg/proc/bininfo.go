@@ -1028,7 +1028,7 @@ func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
 }
 
 // moduleDataToImage finds the image corresponding to the given module data object.
-func (bi *BinaryInfo) moduleDataToImage(md *moduleData) *Image {
+func (bi *BinaryInfo) moduleDataToImage(md *ModuleData) *Image {
 	fn := bi.PCToFunc(md.text)
 	if fn != nil {
 		return bi.funcToImage(fn)
@@ -1047,7 +1047,7 @@ func (bi *BinaryInfo) moduleDataToImage(md *moduleData) *Image {
 }
 
 // imageToModuleData finds the module data in mds corresponding to the given image.
-func (bi *BinaryInfo) imageToModuleData(image *Image, mds []moduleData) *moduleData {
+func (bi *BinaryInfo) imageToModuleData(image *Image, mds []ModuleData) *ModuleData {
 	for _, md := range mds {
 		im2 := bi.moduleDataToImage(&md)
 		if im2 != nil && im2.index == image.index {

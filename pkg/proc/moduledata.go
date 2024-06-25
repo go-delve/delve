@@ -1,13 +1,13 @@
 package proc
 
-// delve counterpart to runtime.moduledata
-type moduleData struct {
+// ModuleData counterpart to runtime.moduleData
+type ModuleData struct {
 	text, etext   uint64
 	types, etypes uint64
 	typemapVar    *Variable
 }
 
-func loadModuleData(bi *BinaryInfo, mem MemoryReadWriter) ([]moduleData, error) {
+func LoadModuleData(bi *BinaryInfo, mem MemoryReadWriter) ([]ModuleData, error) {
 	// +rtype -var firstmoduledata moduledata
 	// +rtype -field moduledata.text uintptr
 	// +rtype -field moduledata.types uintptr
@@ -19,7 +19,7 @@ func loadModuleData(bi *BinaryInfo, mem MemoryReadWriter) ([]moduleData, error) 
 		return nil, err
 	}
 
-	r := []moduleData{}
+	r := []ModuleData{}
 
 	for md.Addr != 0 {
 		const (
@@ -51,7 +51,7 @@ func loadModuleData(bi *BinaryInfo, mem MemoryReadWriter) ([]moduleData, error) 
 			return ret
 		}
 
-		r = append(r, moduleData{
+		r = append(r, ModuleData{
 			types: touint(typesField), etypes: touint(etypesField),
 			text: touint(textField), etext: touint(etextField),
 			typemapVar: vars[typemapField],
@@ -69,7 +69,7 @@ func loadModuleData(bi *BinaryInfo, mem MemoryReadWriter) ([]moduleData, error) 
 	return r, nil
 }
 
-func findModuleDataForType(bi *BinaryInfo, mds []moduleData, typeAddr uint64, mem MemoryReadWriter) *moduleData {
+func findModuleDataForType(bi *BinaryInfo, mds []ModuleData, typeAddr uint64, mem MemoryReadWriter) *ModuleData {
 	for i := range mds {
 		if typeAddr >= mds[i].types && typeAddr < mds[i].etypes {
 			return &mds[i]
