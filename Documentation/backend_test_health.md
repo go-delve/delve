@@ -1,9 +1,10 @@
 Tests skipped by each supported backend:
 
-* 386 skipped = 8
+* 386 skipped = 9
 	* 1 broken
 	* 3 broken - cgo stacktraces
 	* 4 not implemented
+	* 1 not working due to optimizations
 * arm64 skipped = 1
 	* 1 broken - global variable symbolication
 * darwin skipped = 3

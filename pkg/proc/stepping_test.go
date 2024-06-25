@@ -1762,3 +1762,27 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 		})
 	})
 }
+
+func TestStepIntoCoroutine(t *testing.T) {
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
+		t.Skip("N/A")
+	}
+	skipOn(t, "not working due to optimizations", "386")
+	withTestProcessArgs("backwardsiter", t, ".", []string{}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		testseq2intl(t, fixture, grp, p, nil, []seqTest{
+			{contContinueToBreakpoint, 20}, // fmt.Println(next()) -- first call
+			{contStep, 9},                  // func(yield)
+			{contNext, 10},                 // for...
+			{contNext, 11},                 // if !yield
+			{contStep, 20},                 // fmt.Println(next()) -- first call (returning from next)
+			{contNext, 21},                 // fmt.Println(next()) -- second call
+			{contStep, 11},                 // if !yield
+			{contNext, 10},                 // for...
+			{contNext, 11},                 // if !yield
+			{contStep, 21},                 // fmt.Println(next()) -- second call (returning from next)
+			{contNext, 22},                 // fmt.Println(next()) -- third call
+			{contNext, 23},                 // stop()
+			{contStep, 11},                 // if !yield
+		})
+	})
+}
