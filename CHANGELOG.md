@@ -46,7 +46,7 @@ This project adheres to Semantic Versioning.
 ### Changed
 
 - Type casts from slice to string and vice versa will now use the load configuration for the target type, which is more intuitive (#3596, @aarzilli)
-- Miscellaneous impreovements to documentation (#3531, #3555, #3556, #3562, #3564, #3575, #3576, @alexandear, @testwill)
+- Miscellaneous improvements to documentation (#3531, #3555, #3556, #3562, #3564, #3575, #3576, @alexandear, @testwill)
 
 ## [1.21.2] 2023-10-30
 
@@ -207,7 +207,7 @@ This project adheres to Semantic Versioning.
 - Add support for empty string in substitutePath (@RuijieC-dev)
 - Support gnu_debuglink section (@aarzilli)
 - Support exact matches in SubstitutePath (@eandre)
-- Add ability to show disassembly instead of source code (@aazilli)
+- Add ability to show disassembly instead of source code (@aarzilli)
 - Add -per-g-hitcount to breakpoint conditions (@yangxikun)
 
 ### Fixed
@@ -218,7 +218,7 @@ This project adheres to Semantic Versioning.
 - Do not panic reading bad G struct (@aarzilli)
 - Fix parsing DWARFv5 file table (@derekparker)
 - Improve trace subcommand output (@derekparker)
-- Fix documentation for examinemem (@aaarzilli)
+- Fix documentation for examinemem (@aarzilli)
 - Fix step instruction on 1 byte instruction with software breakpoint (@qmuntal)
 - Fix handling of function entry / return in ebpf tracing backend (@derekparker)
 - Fix size of ebpf type for fn_addr (@derekparker)
@@ -389,7 +389,7 @@ This project adheres to Semantic Versioning.
 ### Fixed
 
 * Correctly check for 1.17 and regabi (@aarzilli)
-* Print config output strings quouted (@aarzilli, @krobelus)
+* Print config output strings quoted (@aarzilli, @krobelus)
 * Update check for system goroutines (@suzmue)
 * DAP: Halt before detach in Stop (@polinasok)
 * DAP: Do not send halt request if debuggee is not running (@suzmue)

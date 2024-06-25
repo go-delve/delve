@@ -503,7 +503,7 @@ type Function struct {
 	// InlinedCalls lists all inlined calls to this function
 	InlinedCalls         []InlinedCall
 	rangeParentNameCache int // see rangeParentName
-	// extraCache contains informations about this function that is only needed for
+	// extraCache contains information about this function that is only needed for
 	// some operations and is expensive to compute or store for every function.
 	extraCache *functionExtra
 }
@@ -687,7 +687,7 @@ func (fn *Function) rangeParentName() string {
 	return fn.Name[:fn.rangeParentNameCache]
 }
 
-// extra loads informations about fn that is expensive to compute and we
+// extra loads information about fn that is expensive to compute and we
 // only need for a minority of the functions.
 func (fn *Function) extra(bi *BinaryInfo) *functionExtra {
 	if fn.extraCache != nil {

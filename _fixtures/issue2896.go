@@ -6,7 +6,7 @@ type Vehicle interface {
 	Run()
 }
 
-// BMWS1000RR defines the motocycle bmw s1000rr
+// BMWS1000RR defines the motorcycle bmw s1000rr
 type BMWS1000RR struct {
 }
 

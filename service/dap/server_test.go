@@ -2286,7 +2286,7 @@ func TestVariablesLoading(t *testing.T) {
 						checkChildren(t, tm, "tm", 1)
 						ref = checkVarExact(t, tm, 0, "v", "tm.v", "[]map[string]main.astruct len: 1, cap: 1, [[...]]", "[]map[string]main.astruct", hasChildren)
 						if ref > 0 {
-							// Auto-loading of fully missing map chidlren happens here, but they get truncated at MaxArrayValues
+							// Auto-loading of fully missing map children happens here, but they get truncated at MaxArrayValues
 							client.VariablesRequest(ref)
 							tmV := client.ExpectVariablesResponse(t)
 							checkChildren(t, tmV, "tm.v", 1)
@@ -2315,7 +2315,7 @@ func TestVariablesLoading(t *testing.T) {
 							checkChildren(t, tm, "tm", 1)
 							ref = checkVarExact(t, tm, 0, "v", "", "[]map[string]main.astruct len: 1, cap: 1, [[...]]", "[]map[string]main.astruct", hasChildren)
 							if ref > 0 {
-								// Auto-loading of fully missing map chidlren happens here, but they get trancated at MaxArrayValues
+								// Auto-loading of fully missing map children happens here, but they get truncated at MaxArrayValues
 								client.VariablesRequest(ref)
 								tmV := client.ExpectVariablesResponse(t)
 								checkChildren(t, tmV, "tm.v", 1)
