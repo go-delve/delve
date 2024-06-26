@@ -1082,7 +1082,7 @@ func TestTraceBreakpointExists(t *testing.T) {
 	// We always set breakpoints on some runtime functions at startup, so this would return with
 	// a breakpoints exists error.
 	// TODO: Perhaps we shouldn't be setting these default breakpoints in trace mode, however.
-	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "issue573.go"), "runtime.*")
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "issue573.go"), "runtime.*panic")
 	rdr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
 	defer rdr.Close()
