@@ -35,7 +35,12 @@ type memCache struct {
 }
 
 func (m *memCache) contains(addr uint64, size int) bool {
-	return addr >= m.cacheAddr && addr <= (m.cacheAddr+uint64(len(m.cache)-size))
+	end := addr + uint64(size)
+	if end < addr {
+		// overflow
+		return false
+	}
+	return addr >= m.cacheAddr && end <= m.cacheAddr+uint64(len(m.cache))
 }
 
 func (m *memCache) ReadMemory(data []byte, addr uint64) (n int, err error) {
@@ -67,6 +72,10 @@ func cacheMemory(mem MemoryReadWriter, addr uint64, size int) MemoryReadWriter {
 		return mem
 	}
 	if size <= 0 {
+		return mem
+	}
+	if addr+uint64(size) < addr {
+		// overflow
 		return mem
 	}
 	switch cacheMem := mem.(type) {
