@@ -53,9 +53,6 @@ type BinaryInfo struct {
 
 	DebugInfoDirectories []string
 
-	// BuildID of this binary.
-	BuildID string
-
 	// Functions is a list of all DW_TAG_subprogram entries in debug_info, sorted by entry point
 	Functions []Function
 	// Sources is a list of all source files found in debug_line.
@@ -952,6 +949,7 @@ func (bi *BinaryInfo) PCToImage(pc uint64) *Image {
 type Image struct {
 	Path       string
 	StaticBase uint64
+	BuildID    string
 	addr       uint64
 
 	index int // index of this object in BinaryInfo.SharedObjects
@@ -1437,10 +1435,10 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 		}
 	}
 
-	if debugFilePath == "" && len(bi.BuildID) > 2 {
+	if debugFilePath == "" && len(image.BuildID) > 2 {
 		// Build ID method: look for a file named .build-id/nn/nnnnnnnn.debug in
 		// every debug info directory.
-		find(nil, fmt.Sprintf(".build-id/%s/%s.debug", bi.BuildID[:2], bi.BuildID[2:]))
+		find(nil, fmt.Sprintf(".build-id/%s/%s.debug", image.BuildID[:2], image.BuildID[2:]))
 	}
 
 	if debugFilePath == "" {
@@ -1478,11 +1476,11 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 		}
 	}
 
-	if debugFilePath == "" && len(bi.BuildID) > 2 {
+	if debugFilePath == "" && len(image.BuildID) > 2 {
 		// Previous versions of delve looked for the build id in every debug info
 		// directory that contained the build-id substring. This behavior deviates
 		// from the ones specified by GDB but we keep it for backwards compatibility.
-		find(func(dir string) bool { return strings.Contains(dir, "build-id") }, fmt.Sprintf("%s/%s.debug", bi.BuildID[:2], bi.BuildID[2:]))
+		find(func(dir string) bool { return strings.Contains(dir, "build-id") }, fmt.Sprintf("%s/%s.debug", image.BuildID[:2], image.BuildID[2:]))
 	}
 
 	if debugFilePath == "" {
@@ -1497,7 +1495,7 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 	// has debuginfod so that we can use that in order to find any relevant debug information.
 	if debugFilePath == "" {
 		var err error
-		debugFilePath, err = debuginfod.GetDebuginfo(bi.BuildID)
+		debugFilePath, err = debuginfod.GetDebuginfo(image.BuildID)
 		if err != nil {
 			return nil, nil, ErrNoDebugInfoFound
 		}
@@ -1708,7 +1706,7 @@ func (bi *BinaryInfo) loadBuildID(image *Image, file *elf.File) {
 		bi.logger.Warnf("can't read build-id desc: %v", err)
 		return
 	}
-	bi.BuildID = hex.EncodeToString(descBinary)
+	image.BuildID = hex.EncodeToString(descBinary)
 }
 
 func (bi *BinaryInfo) getDebugLink(exe *elf.File) (debugLink string, crc uint32) {

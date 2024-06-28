@@ -2346,7 +2346,12 @@ func (d *Debugger) TargetGroup() *proc.TargetGroup {
 }
 
 func (d *Debugger) BuildID() string {
-	return d.target.Selected.BinInfo().BuildID
+	loc, err := d.target.Selected.CurrentThread().Location()
+	if err != nil {
+		return ""
+	}
+	img := d.target.Selected.BinInfo().PCToImage(loc.PC)
+	return img.BuildID
 }
 
 func (d *Debugger) AttachPid() int {
