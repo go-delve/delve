@@ -6817,6 +6817,532 @@ func TestRangeOverFuncStepOut(t *testing.T) {
 	})
 }
 
+func TestRangeOverFuncNextInlined(t *testing.T) {
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
+		t.Skip("N/A")
+	}
+
+	funcBreak := func(t *testing.T, fnname string) seqTest {
+		return seqTest{
+			contNothing,
+			func(p *proc.Target) {
+				setFunctionBreakpoint(p, t, fnname)
+			}}
+	}
+
+	nx := func(n int) seqTest {
+		return seqTest{contNext, n}
+	}
+
+	assertLocals := func(t *testing.T, varnames ...string) seqTest {
+		return seqTest{
+			contNothing,
+			func(p *proc.Target) {
+				scope, err := proc.GoroutineScope(p, p.CurrentThread())
+				assertNoError(err, t, "GoroutineScope")
+				vars, err := scope.Locals(0, "")
+				assertNoError(err, t, "Locals")
+
+				gotnames := make([]string, len(vars))
+				for i := range vars {
+					gotnames[i] = vars[i].Name
+				}
+
+				ok := true
+				if len(vars) != len(varnames) {
+					ok = false
+				} else {
+					for i := range vars {
+						if vars[i].Name != varnames[i] {
+							ok = false
+							break
+						}
+					}
+				}
+				if !ok {
+					t.Errorf("Wrong variable names, expected %q, got %q", varnames, gotnames)
+				}
+			},
+		}
+	}
+
+	assertEval := func(t *testing.T, exprvals ...string) seqTest {
+		return seqTest{
+			contNothing,
+			func(p *proc.Target) {
+				scope, err := proc.GoroutineScope(p, p.CurrentThread())
+				assertNoError(err, t, "GoroutineScope")
+				for i := 0; i < len(exprvals); i += 2 {
+					expr, tgt := exprvals[i], exprvals[i+1]
+					v, err := scope.EvalExpression(expr, normalLoadConfig)
+					if err != nil {
+						t.Errorf("Could not evaluate %q: %v", expr, err)
+					} else {
+						out := api.ConvertVar(v).SinglelineString()
+						if out != tgt {
+							t.Errorf("Wrong value for %q, got %q expected %q", expr, out, tgt)
+						}
+					}
+				}
+			},
+		}
+	}
+
+	withTestProcessArgs("rangeoverfunc", t, ".", []string{}, protest.EnableInlining, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+
+		t.Run("TestTrickyIterAll1", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestTrickyIterAll"),
+				{contContinue, 24}, // TestTrickyIterAll
+				nx(25),
+				nx(26),
+				nx(27), // for _, x := range ...
+				assertLocals(t, "trickItAll", "i"),
+				assertEval(t, "i", "0"),
+				nx(27), // for _, x := range ... (TODO: this probably shouldn't be here but it's also very hard to skip stopping here a second time)
+				nx(28), // i += x
+				assertLocals(t, "trickItAll", "i", "x"),
+				assertEval(t,
+					"i", "0",
+					"x", "30"),
+				nx(29), // if i >= 36 {
+				nx(32),
+				nx(27), // for _, x := range ...
+				nx(28), // i += x
+				assertEval(t,
+					"i", "30",
+					"x", "7"),
+				nx(29), // if i >= 36 {
+				nx(30), // break
+				nx(27),
+				nx(32),
+				nx(34), // fmt.Println
+			})
+		})
+
+		t.Run("TestTrickyIterAll2", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestTrickyIterAll2"),
+				{contContinue, 37}, // TestTrickyIterAll2
+				nx(38),
+				nx(39),
+				nx(40), // for _, x := range...
+				nx(41),
+				nx(42),
+				nx(40),
+				nx(41),
+				nx(42),
+				nx(40),
+				nx(42),
+				nx(43),
+			})
+		})
+
+		t.Run("TestBreak1", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestBreak1"),
+				{contContinue, 46}, // TestBreak1
+				nx(47),
+				nx(48), // for _, x := range... (x == -1)
+				nx(48),
+				nx(49), // if x == -4
+				assertLocals(t, "result", "x"),
+				assertEval(t,
+					"result", "[]int len: 0, cap: 0, nil",
+					"x", "-1"),
+
+				nx(52), // for _, y := range... (y == 1)
+				nx(52),
+				nx(53), // if y == 3
+				assertLocals(t, "result", "x", "y"),
+				assertEval(t,
+					"result", "[]int len: 0, cap: 0, nil",
+					"x", "-1",
+					"y", "1"),
+				nx(56), // result = append(result, y)
+				nx(57),
+				nx(52), // for _, y := range... (y == 2)
+				nx(53), // if y == 3
+				assertEval(t,
+					"x", "-1",
+					"y", "2"),
+				nx(56), // result = append(result, y)
+				nx(57),
+				nx(52), // for _, y := range... (y == 3)
+				nx(53), // if y == 3
+				assertEval(t,
+					"x", "-1",
+					"y", "3"),
+				nx(54), // break
+				nx(52),
+				nx(57),
+				nx(58), // result = append(result, x)
+				nx(59),
+
+				nx(48), // for _, x := range... (x == -2)
+				nx(49), // if x == -4
+				assertEval(t,
+					"result", "[]int len: 3, cap: 4, [1,2,-1]",
+					"x", "-2"),
+				nx(52), // for _, y := range... (y == 1)
+				nx(52),
+				nx(53), // if y == 3
+				nx(56), // result = append(result, y)
+				nx(57),
+				nx(52), // for _, y := range... (y == 2)
+				nx(53), // if y == 3
+				nx(56), // result = append(result, y)
+				nx(57),
+				nx(52), // for _, y := range... (y == 3)
+				nx(53), // if y == 3
+				nx(54), // break
+				nx(52),
+				nx(57),
+				nx(58), // result = append(result, x)
+				nx(59),
+
+				nx(48), // for _, x := range... (x == -4)
+				assertEval(t,
+					"result", "[]int len: 6, cap: 8, [1,2,-1,1,2,-2]",
+					"x", "-4"),
+				nx(49), // if x == -4
+				nx(50), // break
+				nx(48),
+				nx(59),
+				nx(60),
+				nx(61),
+			})
+		})
+
+		t.Run("TestBreak2", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestBreak2"),
+
+				{contContinue, 63}, // TestBreak2
+				nx(64),
+				nx(65),
+
+				nx(66), // for _, x := range (x == -1)
+				nx(66),
+				nx(67), // for _, y := range (y == 1)
+				nx(67),
+				nx(68), // if y == 3
+				nx(71), // if x == -4
+				nx(74), // result = append(result, y)
+				nx(75),
+
+				nx(67), // for _, y := range (y == 2)
+				nx(68), // if y == 3
+				nx(71), // if x == -4
+				nx(74), // result = append(result, y)
+				nx(75),
+
+				nx(67), // for _, y := range (y == 3)
+				nx(68), // if y == 3
+				nx(69), // break
+				nx(67),
+				nx(75),
+				nx(76), // result = append(result, x)
+				nx(77),
+
+				nx(66), // for _, x := range (x == -2)
+				nx(67), // for _, y := range (y == 1)
+				nx(67),
+				nx(68), // if y == 3
+				nx(71), // if x == -4
+				nx(74), // result = append(result, y)
+				nx(75),
+
+				nx(67), // for _, y := range (y == 2)
+				nx(68), // if y == 3
+				nx(71), // if x == -4
+				nx(74), // result = append(result, y)
+				nx(75),
+
+				nx(67), // for _, y := range (y == 3)
+				nx(68), // if y == 3
+				nx(69), // break
+				nx(67),
+				nx(75),
+				nx(76), // result = append(result, x)
+				nx(77),
+
+				nx(66), // for _, x := range (x == -4)
+				nx(67), // for _, y := range (y == 1)
+				nx(67),
+				nx(68), // if y == 3
+				nx(71), // if x == -4
+				nx(72), // break outer
+				nx(67),
+				nx(75),
+				nx(66),
+				nx(77),
+				nx(78),
+				nx(79),
+			})
+		})
+
+		t.Run("TestMultiCont0", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestMultiCont0"),
+				{contContinue, 81},
+				nx(82),
+				nx(84),
+				nx(85), // for _, w := range (w == 1000)
+				nx(85),
+				nx(86), // result = append(result, w)
+				assertEval(t,
+					"w", "1000",
+					"result", "[]int len: 0, cap: 0, nil"),
+				nx(87), // if w == 2000
+				assertLocals(t, "result", "w"),
+				assertEval(t, "result", "[]int len: 1, cap: 1, [1000]"),
+				nx(90), // for _, x := range (x == 100)
+				nx(90),
+				nx(91), // for _, y := range (y == 10)
+				nx(91),
+				nx(92), // result = append(result, y)
+				assertLocals(t, "result", "w", "x", "y"),
+				assertEval(t,
+					"w", "1000",
+					"x", "100",
+					"y", "10"),
+
+				nx(93), // for _, z := range (z == 1)
+				nx(93),
+				nx(94), // if z&1 == 1
+				assertLocals(t, "result", "w", "x", "y", "z"),
+				assertEval(t,
+					"w", "1000",
+					"x", "100",
+					"y", "10",
+					"z", "1"),
+				nx(95), // continue
+
+				nx(93), // for _, z := range (z == 2)
+				nx(94), // if z&1 == 1
+				assertEval(t, "z", "2"),
+				nx(97), // result = append(result, z)
+				nx(98), // if z >= 4 {
+				nx(101),
+
+				nx(93), // for _, z := range (z == 3)
+				nx(94), // if z&1 == 1
+				assertEval(t, "z", "3"),
+				nx(95), // continue
+
+				nx(93), // for _, z := range (z == 4)
+				nx(94), // if z&1 == 1
+				assertEval(t, "z", "4"),
+				nx(97), // result = append(result, z)
+				assertEval(t, "result", "[]int len: 3, cap: 4, [1000,10,2]"),
+				nx(98), // if z >= 4 {
+				nx(99), // continue W
+				nx(93),
+				nx(101),
+				nx(91),
+				nx(103),
+				nx(90),
+				nx(105),
+
+				nx(85), // for _, w := range (w == 2000)
+				nx(86), // result = append(result, w)
+				nx(87), // if w == 2000
+				assertEval(t,
+					"w", "2000",
+					"result", "[]int len: 5, cap: 8, [1000,10,2,4,2000]"),
+				nx(88), // break
+				nx(85),
+				nx(106),
+				nx(107), // fmt.Println
+			})
+		})
+
+		t.Run("TestPanickyIterator1", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestPanickyIterator1"),
+				{contContinue, 110},
+				nx(111),
+				nx(112),
+				nx(116), // for _, z := range (z == 1)
+				nx(116),
+				nx(117), // result = append(result, z)
+				nx(118), // if z == 4
+				nx(121),
+
+				nx(116), // for _, z := range (z == 2)
+				nx(117), // result = append(result, z)
+				nx(118), // if z == 4
+				nx(121),
+
+				nx(116), // for _, z := range (z == 3)
+				nx(117), // result = append(result, z)
+				nx(118), // if z == 4
+				nx(121),
+
+				nx(116), // for _, z := range (z == 4)
+				nx(117), // result = append(result, z)
+				nx(118), // if z == 4
+				nx(119), // break
+
+				nx(112), // defer func()
+				nx(113), // r := recover()
+				nx(114), // fmt.Println
+			})
+		})
+
+		t.Run("TestPanickyIterator2", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestPanickyIterator2"),
+				{contContinue, 125},
+				nx(126),
+				nx(127),
+				nx(131), // for _, x := range (x == 100)
+				nx(131),
+				nx(132),
+				nx(133),
+				nx(135), // for _, y := range (y == 10)
+				nx(135),
+				nx(136), // result = append(result, y)
+				nx(139), // for k, z := range (k == 0, z == 1)
+				nx(139),
+				nx(140), // result = append(result, z)
+				nx(141), // if k == 1
+				nx(144),
+
+				nx(139), // for k, z := range (k == 1, z == 2)
+				nx(140), // result = append(result, z)
+				nx(141), // if k == 1
+				nx(142), // break Y
+				nx(135),
+				nx(145),
+				nx(127), // defer func()
+				nx(128), // r := recover()
+				nx(129), // fmt.Println
+			})
+		})
+
+		t.Run("TestPanickyIteratorWithNewDefer", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestPanickyIteratorWithNewDefer"),
+				{contContinue, 149},
+				nx(150),
+				nx(151),
+				nx(155), // for _, x := range (x == 100)
+				nx(155),
+				nx(156),
+				nx(157),
+				nx(159), // for _, y := range (y == 10)
+				nx(159),
+				nx(160),
+				nx(163), // result = append(result, y)
+				nx(166), // for k, z := range (k == 0, z == 1)
+				nx(166),
+				nx(167), // result = append(result, z)
+				nx(168), // if k == 1
+				nx(171),
+
+				nx(166), // for k, z := range (k == 0, z == 1)
+				nx(167), // result = append(result, z)
+				nx(168), // if k == 1
+				nx(169), // break Y
+				nx(159),
+				nx(172),
+				nx(160), // defer func()
+				nx(161), // fmt.Println
+			})
+		})
+
+		t.Run("TestLongReturn", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestLongReturn"),
+				{contContinue, 181},
+				nx(182), // for _, x := range (x == 1)
+				nx(182),
+				nx(183), // for _, y := range (y == 10)
+				nx(183),
+				nx(184), // if y == 10
+				nx(185), // return
+				nx(183),
+				nx(187),
+				nx(182),
+				nx(189),
+				nx(178), // into TestLongReturnWrapper, fmt.Println
+			})
+		})
+
+		t.Run("TestGotoA1", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestGotoA1"),
+				{contContinue, 192},
+				nx(193),
+				nx(194), // for _, x := range (x == -1)
+				nx(194),
+				nx(195), // result = append(result, x)
+				nx(196), // if x == -4
+				nx(199), // for _, y := range (y == 1)
+				nx(199),
+				nx(200), // if y == 3
+				nx(203), // result = append(result, y)
+				nx(204),
+
+				nx(199), // for _, y := range (y == 2)
+				nx(200), // if y == 3
+				nx(203), // result = append(result, y)
+				nx(204),
+
+				nx(199), // for _, y := range (y == 3)
+				nx(200), // if y == 3
+				nx(201), // goto A
+				nx(199),
+				nx(204),
+				nx(206), // result = append(result, x)
+				nx(207),
+
+				nx(194), // for _, x := range (x == -4)
+				nx(195), // result = append(result, x)
+				nx(196), // if x == -4
+				nx(197), // break
+				nx(194),
+				nx(207),
+				nx(208), // fmt.Println
+			})
+		})
+
+		t.Run("TestGotoB1", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestGotoB1"),
+				{contContinue, 211},
+				nx(212),
+				nx(213), // for _, x := range (x == -1)
+				nx(213),
+				nx(214), // result = append(result, x)
+				nx(215), // if x == -4
+				nx(218), // for _, y := range (y == 1)
+				nx(218),
+				nx(219), // if y == 3
+				nx(222), // result = append(result, y)
+				nx(223),
+
+				nx(218), // for _, y := range (y == 2)
+				nx(219), // if y == 3
+				nx(222), // result = append(result, y)
+				nx(223),
+
+				nx(218), // for _, y := range (y == 3)
+				nx(219), // if y == 3
+				nx(220), // goto B
+				nx(218),
+				nx(223),
+				nx(213),
+				nx(225),
+				nx(227), // result = append(result, 999)
+				nx(228), // fmt.Println
+			})
+		})
+	})
+}
+
 func TestStackwatchClearBug(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "386")

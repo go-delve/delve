@@ -33,15 +33,15 @@ const (
 // returned. If the VariablesSkipInlinedSubroutines is set, variables from
 // inlined subroutines will be skipped.
 func Variables(root *godwarf.Tree, pc uint64, line int, flags VariablesFlags) []Variable {
-	return variablesInternal(nil, root, 0, pc, line, flags)
+	return variablesInternal(nil, root, 0, pc, line, flags, true)
 }
 
 // variablesInternal appends to 'v' variables from 'root'. The function calls
 // itself with an incremented scope for all sub-blocks in 'root'.
-func variablesInternal(v []Variable, root *godwarf.Tree, depth int, pc uint64, line int, flags VariablesFlags) []Variable {
+func variablesInternal(v []Variable, root *godwarf.Tree, depth int, pc uint64, line int, flags VariablesFlags, first bool) []Variable {
 	switch root.Tag {
 	case dwarf.TagInlinedSubroutine:
-		if flags&VariablesSkipInlinedSubroutines != 0 {
+		if !first && flags&VariablesSkipInlinedSubroutines != 0 {
 			return v
 		}
 		fallthrough
@@ -50,7 +50,7 @@ func variablesInternal(v []Variable, root *godwarf.Tree, depth int, pc uint64, l
 		// pc (or if we don't care about visibility).
 		if (flags&VariablesOnlyVisible == 0) || root.ContainsPC(pc) {
 			for _, child := range root.Children {
-				v = variablesInternal(v, child, depth+1, pc, line, flags)
+				v = variablesInternal(v, child, depth+1, pc, line, flags, false)
 			}
 		}
 		return v

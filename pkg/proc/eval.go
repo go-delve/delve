@@ -394,7 +394,7 @@ func (scope *EvalScope) simpleLocals(flags localsFlags, wantedName string) ([]*V
 		return nil, err
 	}
 
-	variablesFlags := reader.VariablesOnlyVisible
+	variablesFlags := reader.VariablesOnlyVisible | reader.VariablesSkipInlinedSubroutines
 	if flags&localsNoDeclLineCheck != 0 {
 		variablesFlags = reader.VariablesNoDeclLineCheck
 	}
