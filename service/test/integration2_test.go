@@ -3153,3 +3153,17 @@ func TestNextInstruction(t *testing.T) {
 		}
 	})
 }
+
+func TestBreakpointVariablesWithoutG(t *testing.T) {
+	// Tests that evaluating variables on a breakpoint that is hit on a thread
+	// without a goroutine does not cause an error.
+	withTestClient2("math", t, func(c service.Client) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{
+			FunctionName: "runtime.mallocgc",
+			LoadArgs:     &normalLoadConfig,
+		})
+		assertNoError(err, t, "CreateBreakpoint")
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue()")
+	})
+}
