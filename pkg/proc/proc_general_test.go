@@ -30,6 +30,26 @@ func TestIssue554(t *testing.T) {
 	}
 }
 
+func TestIssue3760(t *testing.T) {
+	// unsigned integer overflow if len(m.cache) < size
+	mem := memCache{true, 0x20, make([]byte, 100), nil}
+	if mem.contains(0x20, 200) {
+		t.Fatalf("should be false")
+	}
+	// test overflow of end addr
+	mem = memCache{true, 0xfffffffffffffff0, make([]byte, 15), nil}
+	if !mem.contains(0xfffffffffffffff0, 15) {
+		t.Fatalf("should contain it")
+	}
+	if mem.contains(0xfffffffffffffff0, 16) {
+		t.Fatalf("shoud be false")
+	}
+	cm := cacheMemory(nil, 0xffffffffffffffff, 1)
+	if cm != nil {
+		t.Fatalf("should be nil")
+	}
+}
+
 type dummyMem struct {
 	t     *testing.T
 	mem   []byte
