@@ -147,7 +147,9 @@ const (
 	// NextInactivatedBreakpoint a NextBreakpoint that has been inactivated, see rangeFrameInactivateNextBreakpoints
 	NextInactivatedBreakpoint
 
-	steppingMask = NextBreakpoint | NextDeferBreakpoint | StepBreakpoint | StepIntoNewProcBreakpoint | NextInactivatedBreakpoint
+	StepIntoRangeOverFuncBodyBreakpoint
+
+	steppingMask = NextBreakpoint | NextDeferBreakpoint | StepBreakpoint | StepIntoNewProcBreakpoint | NextInactivatedBreakpoint | StepIntoRangeOverFuncBodyBreakpoint
 )
 
 // WatchType is the watchpoint type
@@ -226,6 +228,8 @@ func (bp *Breakpoint) VerboseDescr() []string {
 			r = append(r, "StepIntoNewProcBreakpoint")
 		case NextInactivatedBreakpoint:
 			r = append(r, "NextInactivatedBreakpoint")
+		case StepIntoRangeOverFuncBodyBreakpoint:
+			r = append(r, "StepIntoRangeOverFuncBodyBreakpoint Cond=%q", exprToString(breaklet.Cond))
 		default:
 			r = append(r, fmt.Sprintf("Unknown %d", breaklet.Kind))
 		}
@@ -320,7 +324,7 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 			}
 		}
 
-	case StackResizeBreakpoint, PluginOpenBreakpoint, StepIntoNewProcBreakpoint:
+	case StackResizeBreakpoint, PluginOpenBreakpoint, StepIntoNewProcBreakpoint, StepIntoRangeOverFuncBodyBreakpoint:
 		// no further checks
 
 	case NextInactivatedBreakpoint:
@@ -348,6 +352,9 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 		case StepBreakpoint:
 			bpstate.Stepping = true
 			bpstate.SteppingInto = true
+		case StepIntoRangeOverFuncBodyBreakpoint:
+			bpstate.Stepping = true
+			bpstate.SteppingIntoRangeOverFuncBody = true
 		}
 	}
 }
@@ -921,7 +928,8 @@ type BreakpointState struct {
 	Stepping bool
 	// SteppingInto is true if one of the active stepping breaklets has Kind ==
 	// StepBreakpoint.
-	SteppingInto bool
+	SteppingInto                  bool
+	SteppingIntoRangeOverFuncBody bool
 	// CondError contains any error encountered while evaluating the
 	// breakpoint's condition.
 	CondError error
