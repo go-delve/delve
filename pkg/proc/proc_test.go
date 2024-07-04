@@ -3270,6 +3270,7 @@ func TestDebugStripped2(t *testing.T) {
 	skipOn(t, "not working on freebsd", "freebsd")
 	skipOn(t, "not working on linux/386", "linux", "386")
 	skipOn(t, "not working on linux/ppc64le when -gcflags=-N -l is passed", "linux", "ppc64le")
+	skipOn(t, "not working on linux/riscv64", "linux", "riscv64")
 	ver, _ := goversion.Parse(runtime.Version())
 	if ver.IsDevel() {
 		t.Skip("not supported")
@@ -3417,6 +3418,7 @@ func TestCgoStacktrace(t *testing.T) {
 	skipOn(t, "broken - cgo stacktraces", "386")
 	skipOn(t, "broken - cgo stacktraces", "windows", "arm64")
 	skipOn(t, "broken - cgo stacktraces", "linux", "ppc64le")
+	skipOn(t, "broken - cgo stacktraces", "linux", "riscv64")
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 21) {
 		skipOn(t, "broken - cgo stacktraces", "windows", "arm64")
 	}
@@ -3805,6 +3807,7 @@ func TestHaltKeepsSteppingBreakpoints(t *testing.T) {
 func TestDisassembleGlobalVars(t *testing.T) {
 	skipOn(t, "broken - global variable symbolication", "arm64")   // On ARM64 symLookup can't look up variables due to how they are loaded, see issue #1778
 	skipOn(t, "broken - global variable symbolication", "ppc64le") // See comment on ARM64 above.
+	skipOn(t, "broken - global variable symbolication", "riscv64")
 	// On 386 linux when pie, the generated code use __x86.get_pc_thunk to ensure position-independent.
 	// Locate global variable by
 	//    `CALL __x86.get_pc_thunk.ax(SB) 0xb0f7f
@@ -4152,6 +4155,7 @@ func TestIssue951(t *testing.T) {
 
 func TestDWZCompression(t *testing.T) {
 	skipOn(t, "broken", "ppc64le")
+	skipOn(t, "broken", "riscv64")
 	// If dwz is not available in the system, skip this test
 	if _, err := exec.LookPath("dwz"); err != nil {
 		t.Skip("dwz not installed")
@@ -4714,6 +4718,7 @@ func TestCgoStacktrace2(t *testing.T) {
 	skipOn(t, "broken", "386")
 	skipOn(t, "broken - cgo stacktraces", "darwin", "arm64")
 	skipOn(t, "broken", "ppc64le")
+	skipOn(t, "broken", "riscv64")
 	protest.MustHaveCgo(t)
 	// If a panic happens during cgo execution the stacktrace should show the C
 	// function that caused the problem.
@@ -5449,6 +5454,7 @@ func TestWatchpointsBasic(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "386")
 	skipOn(t, "not implemented", "ppc64le")
+	skipOn(t, "not implemented", "riscv64")
 	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
 	protest.AllowRecording(t)
 
@@ -5505,6 +5511,7 @@ func TestWatchpointCounts(t *testing.T) {
 	skipOn(t, "not implemented", "386")
 	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
 	skipOn(t, "not implemented", "ppc64le")
+	skipOn(t, "not implemented", "riscv64")
 	if _, isTeamCityTest := os.LookupEnv("TEAMCITY_VERSION"); isTeamCityTest {
 		skipOn(t, "CI is running a version of macOS that is too old (11.2)", "darwin", "arm64")
 	}
@@ -5623,6 +5630,7 @@ func TestWatchpointStack(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "386")
 	skipOn(t, "not implemented", "ppc64le")
+	skipOn(t, "not implemented", "riscv64")
 	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
 	if _, isTeamCityTest := os.LookupEnv("TEAMCITY_VERSION"); isTeamCityTest {
 		skipOn(t, "CI is running a version of macOS that is too old (11.2)", "darwin", "arm64")
@@ -5781,6 +5789,8 @@ func TestNilPtrDerefInBreakInstr(t *testing.T) {
 		asmfile = "main_386.s"
 	case "ppc64le":
 		asmfile = "main_ppc64le.s"
+	case "riscv64":
+		asmfile = "main_riscv64.s"
 	default:
 		t.Fatalf("assembly file for %s not provided", runtime.GOARCH)
 	}

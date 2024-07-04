@@ -1,4 +1,4 @@
-//go:build (linux && 386) || (darwin && arm64) || (windows && arm64) || (linux && ppc64le)
+//go:build (linux && 386) || (darwin && arm64) || (windows && arm64) || (linux && ppc64le) || (linux && riscv64)
 
 package native
 

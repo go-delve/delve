@@ -51,6 +51,8 @@ func NewMakeCommands() *cobra.Command {
 				envflags = append(envflags, "GOOS="+OS)
 			}
 			if len(envflags) > 0 {
+				// Add -mod=vendor to envflags due to riscv arch package has not upstream yet.
+				envflags = append(envflags, "-mod=vendor")
 				executeEnv(envflags, "go", "build", "-ldflags", "-extldflags -static", tagFlags(), buildFlags(), DelveMainPackagePath)
 			} else {
 				execute("go", "build", "-ldflags", "-extldflags -static", tagFlags(), buildFlags(), DelveMainPackagePath)
@@ -112,7 +114,7 @@ This option can only be specified if testset is basic or a single package.`)
 	test.PersistentFlags().StringVarP(&TestBuildMode, "test-build-mode", "m", "", `Runs tests compiling with the specified build mode, one of either:
 	normal		normal buildmode (default)
 	pie		PIE buildmode
-	
+
 This option can only be specified if testset is basic or a single package.`)
 	test.PersistentFlags().BoolVarP(&TestIncludePIE, "pie", "", true, "Standard testing should include PIE")
 
