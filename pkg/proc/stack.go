@@ -103,7 +103,6 @@ func (frame *Stackframe) FramePointerOffset() int64 {
 // contains returns true if off is between CFA and SP
 func (frame *Stackframe) contains(off int64) bool {
 	p := uint64(off + int64(frame.stackHi))
-	//TODO: check that this is the right order!!!
 	return frame.Regs.SP() < p && p <= uint64(frame.Regs.CFA)
 }
 
@@ -937,14 +936,14 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 	nonMonotonicSP := false
 	var closurePtr int64
 
-	ap := func(fr Stackframe) {
+	appendFrame := func(fr Stackframe) {
 		frames = append(frames, fr)
 		if fr.closurePtr != 0 {
 			closurePtr = fr.closurePtr
 		}
 	}
 
-	closureptrok := func(fr *Stackframe) bool {
+	closurePtrOk := func(fr *Stackframe) bool {
 		if fr.SystemStack {
 			return false
 		}
@@ -979,7 +978,7 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 
 		switch stage {
 		case 0:
-			ap(fr)
+			appendFrame(fr)
 			rangeParent = fr.Call.Fn.extra(tgt.BinInfo()).rangeParent
 			stage++
 			if rangeParent == nil || closurePtr == 0 {
@@ -988,11 +987,11 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 				return false
 			}
 		case 1:
-			if fr.Call.Fn.offset == rangeParent.offset && closureptrok(&fr) {
-				ap(fr)
+			if fr.Call.Fn.offset == rangeParent.offset && closurePtrOk(&fr) {
+				appendFrame(fr)
 				stage++
-			} else if fr.Call.Fn.extra(tgt.BinInfo()).rangeParent == rangeParent && closureptrok(&fr) {
-				ap(fr)
+			} else if fr.Call.Fn.extra(tgt.BinInfo()).rangeParent == rangeParent && closurePtrOk(&fr) {
+				appendFrame(fr)
 				if closurePtr == 0 {
 					frames = nil
 					stage = 3

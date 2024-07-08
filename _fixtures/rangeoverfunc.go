@@ -270,7 +270,7 @@ func (ti *TrickyIterator) iterAll(s []int) Seq2[int, int] {
 		// it make the closure escape to the heap which breaks the .closureptr
 		// heuristic. Eventually we will need to figure out what to do when that
 		// happens.
-		// ti.yield = yield
+		// ti.yield = yield // Save yield for future abuse
 		for i, v := range s {
 			if !yield(i, v) {
 				return
