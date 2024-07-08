@@ -40,7 +40,7 @@ func (ce compositeEntry) AttrField(a dwarf.Attr) *dwarf.Field {
 // DWARF standard is unclear on how this should be handled
 func LoadAbstractOriginAndSpecification(entry *dwarf.Entry, aordr *dwarf.Reader) (Entry, dwarf.Offset) {
 	ao, ok := getAbstractOriginOrSpecification(entry)
-	if !ok {
+	if !ok || ao == entry.Offset {
 		return entry, entry.Offset
 	}
 
@@ -55,7 +55,7 @@ func LoadAbstractOriginAndSpecification(entry *dwarf.Entry, aordr *dwarf.Reader)
 		r = append(r, e)
 
 		ao, ok = getAbstractOriginOrSpecification(e)
-		if !ok {
+		if !ok || ao == entry.Offset {
 			break
 		}
 	}
