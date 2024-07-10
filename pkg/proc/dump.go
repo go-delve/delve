@@ -273,7 +273,7 @@ func (t *Target) dumpThreadNotes(notes []elfwriter.Note, state *DumpState, th Th
 
 	for _, reg := range regsv {
 		binary.Write(buf, binary.LittleEndian, uint16(len(reg.Name)))
-		buf.Write([]byte(reg.Name))
+		buf.WriteString(reg.Name)
 		if reg.Reg.Bytes != nil {
 			binary.Write(buf, binary.LittleEndian, uint16(len(reg.Reg.Bytes)))
 			buf.Write(reg.Reg.Bytes)

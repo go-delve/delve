@@ -258,7 +258,7 @@ func rrStderrParser(stderr io.ReadCloser, initch chan<- rrInit, quiet bool) {
 		}
 
 		if !quiet {
-			os.Stderr.Write([]byte(line))
+			os.Stderr.WriteString(line)
 		}
 	}
 
