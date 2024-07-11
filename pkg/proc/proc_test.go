@@ -594,7 +594,6 @@ func testseq2intl(t *testing.T, fixture protest.Fixture, grp *proc.TargetGroup, 
 				fnname = fn.Name
 			}
 			t.Logf("at %#x (%s) %s:%d", pc, fnname, f, ln)
-			//fmt.Printf("at %#x %s:%d\n", pc, f, ln)
 		}
 		switch pos := tc.pos.(type) {
 		case int:

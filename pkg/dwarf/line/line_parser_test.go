@@ -6,7 +6,6 @@ import (
 	"debug/macho"
 	"debug/pe"
 	"flag"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -272,7 +271,7 @@ func runTestPCToLine(t testing.TB, lineInfos DebugLines, entries []pctolineEntry
 		file, line := lineInfos[0].PCToLine(basePC, pc)
 		if pc == entries[i].pc {
 			if i%samples == 0 && log {
-				fmt.Printf("match %x / %x (%v)\n", pc, entries[len(entries)-1].pc, time.Since(t0)/samples)
+				t.Logf("match %x / %x (%v)\n", pc, entries[len(entries)-1].pc, time.Since(t0)/samples)
 				t0 = time.Now()
 			}
 
