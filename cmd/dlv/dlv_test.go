@@ -123,7 +123,7 @@ func TestBuild(t *testing.T) {
 		}
 	}()
 
-	client := rpc2.NewClient(listenAddr)
+	client := rpc2.NewTestClient(t, listenAddr)
 	state := <-client.Continue()
 
 	if !state.Exited {
@@ -273,7 +273,7 @@ func TestUnattendedBreakpoint(t *testing.T) {
 	}
 
 	// and detach from and kill the headless instance
-	client := rpc2.NewClient(listenAddr)
+	client := rpc2.NewTestClient(t, listenAddr)
 	if err := client.Detach(true); err != nil {
 		t.Fatalf("error detaching from headless instance: %v", err)
 	}
@@ -305,7 +305,7 @@ func TestContinue(t *testing.T) {
 	}
 
 	// and detach from and kill the headless instance
-	client := rpc2.NewClient(listenAddr)
+	client := rpc2.NewTestClient(t, listenAddr)
 	if err := client.Detach(true); err != nil {
 		t.Fatalf("error detaching from headless instance: %v", err)
 	}
@@ -336,7 +336,7 @@ func TestRedirect(t *testing.T) {
 	}
 
 	// and detach from and kill the headless instance
-	client := rpc2.NewClient(listenAddr)
+	client := rpc2.NewTestClient(t, listenAddr)
 	client.Detach(true)
 	cmd.Wait()
 }
@@ -673,7 +673,7 @@ func TestDAPCmd(t *testing.T) {
 	}()
 
 	// Connect a client and request shutdown.
-	client := daptest.NewClient(listenAddr)
+	client := daptest.NewClient(t, listenAddr)
 	client.DisconnectRequest()
 	client.ExpectDisconnectResponse(t)
 	client.ExpectTerminatedEvent(t)
@@ -692,7 +692,7 @@ func TestDAPCmd(t *testing.T) {
 }
 
 func newDAPRemoteClient(t *testing.T, addr string, isDlvAttach bool, isMulti bool) *daptest.Client {
-	c := daptest.NewClient(addr)
+	c := daptest.NewClient(t, addr)
 	c.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
 	if isDlvAttach || isMulti {
 		c.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
@@ -786,7 +786,7 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 	}()
 
 	// Client 0 connects but with the wrong attach request
-	dapclient0 := daptest.NewClient(listenAddr)
+	dapclient0 := daptest.NewClient(t, listenAddr)
 	dapclient0.AttachRequest(map[string]interface{}{"mode": "local"})
 	dapclient0.ExpectErrorResponse(t)
 
@@ -809,13 +809,13 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 	closeDAPRemoteMultiClient(t, dapclient2, "exited")
 
 	// Attach to exited processes is an error
-	dapclient3 := daptest.NewClient(listenAddr)
+	dapclient3 := daptest.NewClient(t, listenAddr)
 	dapclient3.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
 	dapclient3.ExpectErrorResponseWith(t, dap.FailedToAttach, `Process \d+ has exited with status 0`, true)
 	closeDAPRemoteMultiClient(t, dapclient3, "exited")
 
 	// But rpc clients can still connect and restart
-	rpcclient := rpc2.NewClient(listenAddr)
+	rpcclient := rpc2.NewTestClient(t, listenAddr)
 	if _, err := rpcclient.Restart(false); err != nil {
 		t.Errorf("error restarting with rpc client: %v", err)
 	}

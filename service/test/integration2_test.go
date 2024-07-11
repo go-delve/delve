@@ -2095,10 +2095,10 @@ func TestAcceptMulticlient(t *testing.T) {
 		<-disconnectChan
 		server.Stop()
 	}()
-	client1 := rpc2.NewClient(listener.Addr().String())
+	client1 := rpc2.NewTestClient(t, listener.Addr().String())
 	client1.Disconnect(false)
 
-	client2 := rpc2.NewClient(listener.Addr().String())
+	client2 := rpc2.NewTestClient(t, listener.Addr().String())
 	state := <-client2.Continue()
 	if state.CurrentThread.Function.Name() != "main.main" {
 		t.Fatalf("bad state after continue: %v\n", state)
@@ -2133,7 +2133,7 @@ func TestForceStopWhileContinue(t *testing.T) {
 		server.Stop()
 	}()
 
-	client := rpc2.NewClient(listener.Addr().String())
+	client := rpc2.NewTestClient(t, listener.Addr().String())
 	client.Disconnect(true /*continue*/)
 	time.Sleep(10 * time.Millisecond) // give server time to start running
 	close(disconnectChan)             // stop the server

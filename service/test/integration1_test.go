@@ -51,7 +51,7 @@ func withTestClient1Extended(name string, t *testing.T, fn func(c *rpc1.RPCClien
 	if err := server.Run(); err != nil {
 		t.Fatal(err)
 	}
-	client := rpc1.NewClient(listener.Addr().String())
+	client := rpc1.NewTestClient(t, listener.Addr().String())
 	defer func() {
 		client.Detach(true)
 	}()

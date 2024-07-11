@@ -8,7 +8,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net"
 	"path/filepath"
 	"reflect"
@@ -31,11 +30,11 @@ type Client struct {
 
 // NewClient creates a new Client over a TCP connection.
 // Call Close() to close the connection.
-func NewClient(addr string) *Client {
-	fmt.Println("Connecting to server at:", addr)
+func NewClient(t *testing.T, addr string) *Client {
+	t.Logf("Connecting to server at: %s", addr)
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
-		log.Fatal("dialing:", err)
+		t.Fatalf("dialing: %v", err)
 	}
 	return NewClientFromConn(conn)
 }

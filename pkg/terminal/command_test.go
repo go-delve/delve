@@ -140,7 +140,7 @@ func withTestTerminalBuildFlags(name string, t testing.TB, buildFlags test.Build
 	if err := server.Run(); err != nil {
 		t.Fatal(err)
 	}
-	client := rpc2.NewClient(listener.Addr().String())
+	client := rpc2.NewTestClient(t, listener.Addr().String())
 	defer func() {
 		client.Detach(true)
 	}()

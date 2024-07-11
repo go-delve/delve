@@ -77,7 +77,7 @@ func runTestBuildFlags(t *testing.T, name string, test func(c *daptest.Client, f
 
 func startDAPServerWithClient(t *testing.T, defaultDebugInfoDirs bool, serverStopped chan struct{}) *daptest.Client {
 	server, _ := startDAPServer(t, defaultDebugInfoDirs, serverStopped)
-	client := daptest.NewClient(server.config.Listener.Addr().String())
+	client := daptest.NewClient(t, server.config.Listener.Addr().String())
 	return client
 }
 
@@ -184,7 +184,7 @@ func TestStopNoTarget(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			serverStopped := make(chan struct{})
 			server, forceStop := startDAPServer(t, false, serverStopped)
-			client := daptest.NewClient(server.config.Listener.Addr().String())
+			client := daptest.NewClient(t, server.config.Listener.Addr().String())
 			defer client.Close()
 
 			client.InitializeRequest()
@@ -211,7 +211,7 @@ func TestStopWithTarget(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			serverStopped := make(chan struct{})
 			server, forceStop := startDAPServer(t, false, serverStopped)
-			client := daptest.NewClient(server.config.Listener.Addr().String())
+			client := daptest.NewClient(t, server.config.Listener.Addr().String())
 			defer client.Close()
 
 			client.InitializeRequest()
@@ -284,7 +284,7 @@ func TestSessionStop(t *testing.T) {
 				close(acceptDone)
 			}()
 			time.Sleep(10 * time.Millisecond) // give time to start listening
-			client := daptest.NewClient(listener.Addr().String())
+			client := daptest.NewClient(t, listener.Addr().String())
 			defer client.Close()
 			<-acceptDone
 			if err != nil {
@@ -315,7 +315,7 @@ func TestSessionStop(t *testing.T) {
 func TestForceStopWhileStopping(t *testing.T) {
 	serverStopped := make(chan struct{})
 	server, forceStop := startDAPServer(t, false, serverStopped)
-	client := daptest.NewClient(server.config.Listener.Addr().String())
+	client := daptest.NewClient(t, server.config.Listener.Addr().String())
 
 	client.InitializeRequest()
 	client.ExpectInitializeResponseAndCapabilities(t)
@@ -6782,7 +6782,7 @@ func attachDebuggerWithTargetHalted(t *testing.T, fixture string) (*exec.Cmd, *d
 func runTestWithDebugger(t *testing.T, dbg *debugger.Debugger, test func(c *daptest.Client)) {
 	serverStopped := make(chan struct{})
 	server, _ := startDAPServer(t, false, serverStopped)
-	client := daptest.NewClient(server.listener.Addr().String())
+	client := daptest.NewClient(t, server.listener.Addr().String())
 	time.Sleep(100 * time.Millisecond) // Give time for connection to be set as dap.Session
 	server.sessionMu.Lock()
 	if server.session == nil {
@@ -6913,7 +6913,7 @@ func NewMultiClientCloseServerMock(t *testing.T, fixture string) *MultiClientClo
 }
 
 func (s *MultiClientCloseServerMock) acceptNewClient(t *testing.T) *daptest.Client {
-	client := daptest.NewClient(s.impl.listener.Addr().String())
+	client := daptest.NewClient(t, s.impl.listener.Addr().String())
 	time.Sleep(100 * time.Millisecond) // Give time for connection to be set as dap.Session
 	s.impl.sessionMu.Lock()
 	if s.impl.session == nil {

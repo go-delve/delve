@@ -3,11 +3,10 @@ package rpc1
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net/rpc"
 	"net/rpc/jsonrpc"
-
 	"sync"
+	"testing"
 
 	"github.com/go-delve/delve/service/api"
 )
@@ -22,11 +21,12 @@ type RPCClient struct {
 
 var errAPIUnsupported = errors.New("unsupported")
 
-// NewClient creates a new RPCClient.
-func NewClient(addr string) *RPCClient {
+// NewTestClient creates a new RPCClient.
+// Should be used only for tests.
+func NewTestClient(t testing.TB, addr string) *RPCClient {
 	client, err := jsonrpc.Dial("tcp", addr)
 	if err != nil {
-		log.Fatal("dialing:", err)
+		t.Fatalf("dialing: %v", err)
 	}
 	return &RPCClient{
 		addr:   addr,

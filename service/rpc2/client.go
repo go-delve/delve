@@ -2,10 +2,10 @@ package rpc2
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"testing"
 	"time"
 
 	"github.com/go-delve/delve/service"
@@ -22,11 +22,12 @@ type RPCClient struct {
 // Ensure the implementation satisfies the interface.
 var _ service.Client = &RPCClient{}
 
-// NewClient creates a new RPCClient.
-func NewClient(addr string) *RPCClient {
+// NewTestClient dials the given address and returns a new RPCClient.
+// Should be used only for tests.
+func NewTestClient(t testing.TB, addr string) *RPCClient {
 	client, err := jsonrpc.Dial("tcp", addr)
 	if err != nil {
-		log.Fatal("dialing:", err)
+		t.Fatalf("dialing: %v", err)
 	}
 	return newFromRPCClient(client)
 }
