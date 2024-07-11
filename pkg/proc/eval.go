@@ -1039,7 +1039,6 @@ func (stack *evalStack) executeOp() {
 			} else {
 				stack.err = fmt.Errorf("could not find symbol value for %s", op.Name)
 			}
-
 		}
 
 	case *evalop.PushIdent:

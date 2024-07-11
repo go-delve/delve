@@ -6305,7 +6305,6 @@ func TestRangeOverFuncNext(t *testing.T) {
 			f, ln2 = currentLineNumber(p, t)
 			if ln2 != n {
 				t.Fatalf("Program did not continue to correct next location (expected %d) was %s:%d", n, f, ln2)
-
 			}
 		}}
 	}
@@ -6365,7 +6364,6 @@ func TestRangeOverFuncNext(t *testing.T) {
 	}
 
 	withTestProcessArgs("rangeoverfunc", t, ".", []string{}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-
 		t.Run("TestTrickyIterAll1", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
 				funcBreak(t, "main.TestTrickyIterAll"),
@@ -6889,7 +6887,6 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 	}
 
 	withTestProcessArgs("rangeoverfunc", t, ".", []string{}, protest.EnableInlining, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-
 		t.Run("TestTrickyIterAll1", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
 				funcBreak(t, "main.TestTrickyIterAll"),

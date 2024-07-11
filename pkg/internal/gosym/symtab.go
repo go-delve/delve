@@ -140,7 +140,6 @@ func (T *Table) GetInlineTree(f *Func, goFuncVal, baseaddr uint64, progReader io
 	//goFuncValue := FuncSymName(strver)
 	//return T.go12line.InlineTree(f,goFuncValue,baseaddr,progReader)
 	return T.go12line.InlineTree(f, goFuncVal, baseaddr, progReader)
-
 }
 func ProgContaining(elfFile *elf.File, addr uint64) *elf.Prog {
 	for _, p := range elfFile.Progs {
