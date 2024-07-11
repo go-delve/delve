@@ -73,6 +73,17 @@ func configureSetSubstitutePath(t *Term, rest string) error {
 		t.conf.SubstitutePath = t.conf.SubstitutePath[:0]
 		return nil
 	}
+	if strings.TrimSpace(rest) == "-guess" {
+		rules, err := t.client.GuessSubstitutePath()
+		if err != nil {
+			return err
+		}
+		t.conf.SubstitutePath = t.conf.SubstitutePath[:0]
+		for _, rule := range rules {
+			t.conf.SubstitutePath = append(t.conf.SubstitutePath, config.SubstitutePathRule{From: rule[0], To: rule[1]})
+		}
+		rest = "" // print the result
+	}
 	argv := config.SplitQuotedFields(rest, '"')
 	if len(argv) == 2 && argv[0] == "-clear" {
 		argv = argv[1:]
