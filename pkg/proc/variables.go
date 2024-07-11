@@ -1479,7 +1479,7 @@ func convertToEface(srcv, dstv *Variable) error {
 
 func readStringInfo(mem MemoryReadWriter, arch *Arch, addr uint64, typ *godwarf.StringType) (uint64, int64, error) {
 	// string data structure is always two ptrs in size. Addr, followed by len
-	// http://research.swtch.com/godata
+	// https://research.swtch.com/godata
 
 	mem = cacheMemory(mem, addr, arch.PtrSize()*2)
 

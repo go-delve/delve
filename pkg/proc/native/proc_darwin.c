@@ -159,7 +159,7 @@ mach_port_wait(mach_port_t port_set, task_t *task, int nonblocking) {
 	switch (msg.hdr.msgh_id) {
 		case 2401: { // Exception
 			// 2401 is the exception_raise event, defined in:
-			// http://opensource.apple.com/source/xnu/xnu-2422.1.72/osfmk/mach/exc.defs?txt
+			// https://opensource.apple.com/source/xnu/xnu-2422.1.72/osfmk/mach/exc.defs?txt
 			// compile this file with mig to get the C version of the description
 			
 			mach_msg_body_t *bod = (mach_msg_body_t*)(&msg.hdr + 1);

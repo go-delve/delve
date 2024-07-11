@@ -36,7 +36,7 @@ const _NT_AUXV elf.NType = 0x6
 const _NT_FPREGSET elf.NType = 0x2
 
 // Fetch architecture using exeELF.Machine from core file
-// Refer http://man7.org/linux/man-pages/man5/elf.5.html
+// Refer https://man7.org/linux/man-pages/man5/elf.5.html
 const (
 	_EM_AARCH64          = 183
 	_EM_X86_64           = 62
@@ -89,9 +89,9 @@ func linuxThreadsFromNotes(p *process, notes []*note, machineType elf.Machine) p
 // readLinuxOrPlatformIndependentCore reads a core file from corePath
 // corresponding to the executable at exePath. For details on the Linux ELF
 // core format, see:
-// http://www.gabriel.urdhr.fr/2015/05/29/core-file/,
-// http://uhlo.blogspot.fr/2012/05/brief-look-into-core-dumps.html,
-// elf_core_dump in http://lxr.free-electrons.com/source/fs/binfmt_elf.c,
+// https://www.gabriel.urdhr.fr/2015/05/29/core-file/,
+// https://uhlo.blogspot.com/2012/05/brief-look-into-core-dumps.html,
+// elf_core_dump in https://elixir.bootlin.com/linux/v4.20.17/source/fs/binfmt_elf.c,
 // and, if absolutely desperate, readelf.c from the binutils source.
 func readLinuxOrPlatformIndependentCore(corePath, exePath string) (*process, proc.Thread, error) {
 	coreFile, err := elf.Open(corePath)
@@ -256,7 +256,7 @@ func readNotes(core *elf.File, machineType elf.Machine) ([]*note, bool, error) {
 // readNote reads a single note from r, decoding the descriptor if possible.
 func readNote(r io.ReadSeeker, machineType elf.Machine) (*note, error) {
 	// Notes are laid out as described in the SysV ABI:
-	// http://www.sco.com/developers/gabi/latest/ch5.pheader.html#note_section
+	// https://www.sco.com/developers/gabi/latest/ch5.pheader.html#note_section
 	note := &note{}
 	hdr := &elfNotesHdr{}
 
@@ -406,7 +406,7 @@ func findEntryPoint(notes []*note, ptrSize int) uint64 {
 // LinuxPrPsInfo has various structures from the ELF spec and the Linux kernel.
 // AMD64 specific primarily because of unix.PtraceRegs, but also
 // because some of the fields are word sized.
-// See http://lxr.free-electrons.com/source/include/uapi/linux/elfcore.h
+// See https://elixir.bootlin.com/linux/v4.20.17/source/include/uapi/linux/elfcore.h
 type linuxPrPsInfo struct {
 	State                uint8
 	Sname                int8
