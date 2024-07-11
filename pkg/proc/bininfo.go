@@ -1906,18 +1906,18 @@ func (bi *BinaryInfo) setGStructOffsetPE(entryPoint uint64, peFile *pe.File) {
 		producer := bi.Producer()
 		if producer != "" && goversion.ProducerAfterOrEqual(producer, 1, 20) {
 			// Use runtime.tls_g as pointer to offset from GS to G struct:
-			// https://golang.org/src/runtime/sys_windows_amd64.s
+			// https://go.dev/src/runtime/sys_windows_amd64.s
 			bi.gStructOffset = readtls_g()
 			bi.gStructOffsetIsPtr = true
 		} else {
 			// Use ArbitraryUserPointer (0x28) as pointer to pointer
 			// to G struct per:
-			// https://golang.org/src/runtime/cgo/gcc_windows_amd64.c
+			// https://go.dev/src/runtime/cgo/gcc_windows_amd64.c
 			bi.gStructOffset = 0x28
 		}
 	case _IMAGE_FILE_MACHINE_ARM64:
 		// Use runtime.tls_g as pointer to offset from R18 to G struct:
-		// https://golang.org/src/runtime/sys_windows_arm64.s
+		// https://go.dev/src/runtime/sys_windows_arm64.s
 		bi.gStructOffset = readtls_g()
 		bi.gStructOffsetIsPtr = true
 	}
