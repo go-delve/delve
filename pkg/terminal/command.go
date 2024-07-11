@@ -3123,6 +3123,7 @@ func (c *Commands) onCmd(t *Term, ctx callContext, argstr string) error {
 			return err
 		}
 		defer func() {
+			_ = f.Close()
 			_ = os.Remove(f.Name())
 		}()
 		attrs := formatBreakpointAttrs("", ctx.Breakpoint, true)
