@@ -1975,6 +1975,18 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 
 	s.setLaunchAttachArgs(args.LaunchAttachCommonConfig)
 
+	if len(args.LaunchAttachCommonConfig.SubstitutePath) == 0 && len(args.ClientMod2Dir) > 0 && s.debugger != nil {
+		server2Client := s.debugger.GuessSubstitutePath(args.ClientMod2Dir)
+		clientToServer := make([][2]string, 0, len(server2Client))
+		serverToClient := make([][2]string, 0, len(server2Client))
+		for serverDir, clientDir := range server2Client {
+			serverToClient = append(serverToClient, [2]string{serverDir, clientDir})
+			clientToServer = append(clientToServer, [2]string{clientDir, serverDir})
+		}
+		s.args.substitutePathClientToServer = clientToServer
+		s.args.substitutePathServerToClient = serverToClient
+	}
+
 	// Notify the client that the debugger is ready to start accepting
 	// configuration requests for setting breakpoints, etc. The client
 	// will end the configuration sequence with 'configurationDone'.

@@ -252,6 +252,10 @@ type AttachConfig struct {
 	// Wait for a process with a name beginning with this prefix.
 	AttachWaitFor string `json:"waitFor,omitempty"`
 
+	// ClientMod2Dir is a map from module paths to client directories, used to
+	// automatically guess SubstitutePath if it is not specified explicitly.
+	ClientMod2Dir map[string]string
+
 	LaunchAttachCommonConfig
 }
 
