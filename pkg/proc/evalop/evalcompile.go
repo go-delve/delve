@@ -218,6 +218,9 @@ func (ctx *compileCtx) compileAST(t ast.Expr) error {
 			case x.Name == "runtime" && node.Sel.Name == "threadid":
 				ctx.pushOp(&PushThreadID{})
 
+			case x.Name == "runtime" && node.Sel.Name == "rangeParentOffset":
+				ctx.pushOp(&PushRangeParentOffset{})
+
 			default:
 				ctx.pushOp(&PushPackageVarOrSelect{Name: x.Name, Sel: node.Sel.Name})
 			}

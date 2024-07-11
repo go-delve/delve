@@ -6267,11 +6267,21 @@ func TestRangeOverFuncNext(t *testing.T) {
 		t.Skip("N/A")
 	}
 
+	var bp *proc.Breakpoint
+
 	funcBreak := func(t *testing.T, fnname string) seqTest {
 		return seqTest{
 			contNothing,
 			func(p *proc.Target) {
-				setFunctionBreakpoint(p, t, fnname)
+				bp = setFunctionBreakpoint(p, t, fnname)
+			}}
+	}
+
+	clearBreak := func(t *testing.T) seqTest {
+		return seqTest{
+			contNothing,
+			func(p *proc.Target) {
+				assertNoError(p.ClearBreakpoint(bp.Addr), t, "ClearBreakpoint")
 			}}
 	}
 
@@ -6357,6 +6367,19 @@ func TestRangeOverFuncNext(t *testing.T) {
 							t.Errorf("Wrong value for %q, got %q expected %q", expr, out, tgt)
 						}
 					}
+				}
+			},
+		}
+	}
+
+	assertFunc := func(t *testing.T, fname string) seqTest {
+		return seqTest{
+			contNothing,
+			func(p *proc.Target) {
+				pc := currentPC(p, t)
+				fn := p.BinInfo().PCToFunc(pc)
+				if fn.Name != fname {
+					t.Errorf("Wrong function name, expected %s got %s", fname, fn.Name)
 				}
 			},
 		}
@@ -6800,6 +6823,33 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(228), // fmt.Println
 			})
 		})
+
+		t.Run("TestRecur", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestRecur"),
+				{contContinue, 231},
+				clearBreak(t),
+				nx(232), // result := []int{}
+				assertEval(t, "n", "3"),
+				nx(233), // if n > 0 {
+				nx(234), // TestRecur
+
+				nx(236), // for _, x := range (x == 10)
+				assertFunc(t, "main.TestRecur"),
+				assertEval(t, "n", "3"),
+				nx(236),
+				assertFunc(t, "main.TestRecur-range1"),
+				assertEval(t, "x", "10", "n", "3"),
+				nx(237), // result = ...
+				nx(238), // if n == 3
+				nx(239), // TestRecur(0)
+				nx(241),
+
+				nx(236), // for _, x := range (x == 20)
+				nx(237), // result = ...
+				assertEval(t, "x", "20", "n", "3"),
+			})
+		})
 	})
 }
 
@@ -6810,7 +6860,7 @@ func TestRangeOverFuncStepOut(t *testing.T) {
 
 	testseq2(t, "rangeoverfunc", "", []seqTest{
 		{contContinue, 97},
-		{contStepout, 237},
+		{contStepout, 251},
 	})
 }
 
@@ -6819,11 +6869,21 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 		t.Skip("N/A")
 	}
 
+	var bp *proc.Breakpoint
+
 	funcBreak := func(t *testing.T, fnname string) seqTest {
 		return seqTest{
 			contNothing,
 			func(p *proc.Target) {
-				setFunctionBreakpoint(p, t, fnname)
+				bp = setFunctionBreakpoint(p, t, fnname)
+			}}
+	}
+
+	clearBreak := func(t *testing.T) seqTest {
+		return seqTest{
+			contNothing,
+			func(p *proc.Target) {
+				assertNoError(p.ClearBreakpoint(bp.Addr), t, "ClearBreakpoint")
 			}}
 	}
 
@@ -6880,6 +6940,19 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 							t.Errorf("Wrong value for %q, got %q expected %q", expr, out, tgt)
 						}
 					}
+				}
+			},
+		}
+	}
+
+	assertFunc := func(t *testing.T, fname string) seqTest {
+		return seqTest{
+			contNothing,
+			func(p *proc.Target) {
+				pc := currentPC(p, t)
+				fn := p.BinInfo().PCToFunc(pc)
+				if fn.Name != fname {
+					t.Errorf("Wrong function name, expected %s got %s", fname, fn.Name)
 				}
 			},
 		}
@@ -7334,6 +7407,33 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 				nx(225),
 				nx(227), // result = append(result, 999)
 				nx(228), // fmt.Println
+			})
+		})
+
+		t.Run("TestRecur", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestRecur"),
+				{contContinue, 231},
+				clearBreak(t),
+				nx(232), // result := []int{}
+				assertEval(t, "n", "3"),
+				nx(233), // if n > 0 {
+				nx(234), // TestRecur
+
+				nx(236), // for _, x := range (x == 10)
+				assertFunc(t, "main.TestRecur"),
+				assertEval(t, "n", "3"),
+				nx(236),
+				assertFunc(t, "main.TestRecur-range1"),
+				assertEval(t, "x", "10", "n", "3"),
+				nx(237), // result = ...
+				nx(238), // if n == 3
+				nx(239), // TestRecur(0)
+				nx(241),
+
+				nx(236), // for _, x := range (x == 20)
+				nx(237), // result = ...
+				assertEval(t, "x", "20", "n", "3"),
 			})
 		})
 	})

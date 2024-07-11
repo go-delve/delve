@@ -228,6 +228,20 @@ B:
 	fmt.Println(result)
 }
 
+func TestRecur(n int) {
+	result := []int{}
+	if n > 0 {
+		TestRecur(n - 1)
+	}
+	for _, x := range OfSliceIndex([]int{10, 20, 30}) {
+		result = append(result, x)
+		if n == 3 {
+			TestRecur(0)
+		}
+	}
+	fmt.Println(result)
+}
+
 func main() {
 	TestTrickyIterAll()
 	TestTrickyIterAll2()
@@ -240,47 +254,28 @@ func main() {
 	TestLongReturnWrapper()
 	TestGotoA1()
 	TestGotoB1()
+	TestRecur(3)
 }
 
 type Seq[T any] func(yield func(T) bool)
 type Seq2[T1, T2 any] func(yield func(T1, T2) bool)
 
 type TrickyIterator struct {
-	yield func(int, int) bool
-}
-
-func (ti *TrickyIterator) iterEcho(s []int) Seq2[int, int] {
-	return func(yield func(int, int) bool) {
-		for i, v := range s {
-			if !yield(i, v) {
-				ti.yield = yield
-				return
-			}
-			if ti.yield != nil && !ti.yield(i, v) {
-				return
-			}
-		}
-		ti.yield = yield
-		return
-	}
+	yield func()
 }
 
 func (ti *TrickyIterator) iterAll(s []int) Seq2[int, int] {
 	return func(yield func(int, int) bool) {
-		ti.yield = yield // Save yield for future abuse
+		// NOTE: storing the yield func in the iterator has been removed because
+		// it make the closure escape to the heap which breaks the .closureptr
+		// heuristic. Eventually we will need to figure out what to do when that
+		// happens.
+		// ti.yield = yield // Save yield for future abuse
 		for i, v := range s {
 			if !yield(i, v) {
 				return
 			}
 		}
-		return
-	}
-}
-
-func (ti *TrickyIterator) iterZero(s []int) Seq2[int, int] {
-	return func(yield func(int, int) bool) {
-		ti.yield = yield // Save yield for future abuse
-		// Don't call it at all, maybe it won't escape
 		return
 	}
 }

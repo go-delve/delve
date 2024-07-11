@@ -67,6 +67,10 @@ const (
 	// If localsNoDeclLineCheck the declaration line isn't checked at
 	// all to determine if the variable is in scope.
 	localsNoDeclLineCheck
+
+	// If localsOnlyRangeBodyClosures is set simpleLocals only returns
+	// variables containing the range body closure.
+	localsOnlyRangeBodyClosures
 )
 
 // ConvertEvalScope returns a new EvalScope in the context of the
@@ -330,12 +334,10 @@ func (scope *EvalScope) Locals(flags localsFlags, wantedName string) ([]*Variabl
 	scopes = append(scopes, vars0)
 
 	if scope.rangeFrames == nil {
-		scope.rangeFrames, err = rangeFuncStackTrace(scope.target, scope.g)
+		err := scope.setupRangeFrames()
 		if err != nil {
 			return nil, err
 		}
-		scope.rangeFrames = scope.rangeFrames[1:]
-		scope.enclosingRangeScopes = make([]*EvalScope, len(scope.rangeFrames))
 	}
 	for i, scope2 := range scope.enclosingRangeScopes {
 		if i == len(scope.enclosingRangeScopes)-1 {
@@ -373,6 +375,17 @@ func (scope *EvalScope) Locals(flags localsFlags, wantedName string) ([]*Variabl
 	return vars, nil
 }
 
+func (scope *EvalScope) setupRangeFrames() error {
+	var err error
+	scope.rangeFrames, err = rangeFuncStackTrace(scope.target, scope.g)
+	if err != nil {
+		return err
+	}
+	scope.rangeFrames = scope.rangeFrames[1:]
+	scope.enclosingRangeScopes = make([]*EvalScope, len(scope.rangeFrames))
+	return nil
+}
+
 // simpleLocals returns all local variables in 'scope'.
 // This function does not try to merge the scopes of range-over-func closure
 // bodies with their enclosing function, for that use (*EvalScope).Locals or
@@ -406,23 +419,7 @@ func (scope *EvalScope) simpleLocals(flags localsFlags, wantedName string) ([]*V
 
 	// look for dictionary entry
 	if scope.dictAddr == 0 {
-		for _, entry := range varEntries {
-			name, _ := entry.Val(dwarf.AttrName).(string)
-			if name == goDictionaryName {
-				dictVar, err := extractVarInfoFromEntry(scope.target, scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry.Tree, 0)
-				if err != nil {
-					logflags.DebuggerLogger().Errorf("could not load %s variable: %v", name, err)
-				} else if dictVar.Unreadable != nil {
-					logflags.DebuggerLogger().Errorf("could not load %s variable: %v", name, dictVar.Unreadable)
-				} else {
-					scope.dictAddr, err = readUintRaw(dictVar.mem, dictVar.Addr, int64(scope.BinInfo.Arch.PtrSize()))
-					if err != nil {
-						logflags.DebuggerLogger().Errorf("could not load %s variable: %v", name, err)
-					}
-				}
-				break
-			}
-		}
+		scope.dictAddr = readLocalPtrVar(dwarfTree, goDictionaryName, scope.target, scope.BinInfo, scope.image(), scope.Regs, scope.Mem)
 	}
 
 	vars := make([]*Variable, 0, len(varEntries))
@@ -434,19 +431,18 @@ func (scope *EvalScope) simpleLocals(flags localsFlags, wantedName string) ([]*V
 			if name != wantedName && name != "&"+wantedName {
 				continue
 			}
+		case flags&localsOnlyRangeBodyClosures != 0:
+			if !strings.HasPrefix(name, "#yield") && !strings.HasPrefix(name, "&#yield") {
+				continue
+			}
 		default:
-			if name == goDictionaryName || name == goClosurePtr || strings.HasPrefix(name, "#state") || strings.HasPrefix(name, "&#state") || strings.HasPrefix(name, "#next") || strings.HasPrefix(name, "&#next") || strings.HasPrefix(name, "#yield") {
+			if name == goDictionaryName || name == goClosurePtr || strings.HasPrefix(name, "#yield") || strings.HasPrefix(name, "&#yield") {
 				continue
 			}
 		}
-		if scope.Fn.rangeParentName() != "" {
-			// Skip return values and closure variables for range-over-func closure bodies
-			if strings.HasPrefix(name, "~") {
-				continue
-			}
-			if entry.Val(godwarf.AttrGoClosureOffset) != nil {
-				continue
-			}
+		if scope.Fn.rangeParentName() != "" && (strings.HasPrefix(name, "~") || entry.Val(godwarf.AttrGoClosureOffset) != nil) {
+			// Skip unnamed parameters and closure variables for range-over-func closure bodies
+			continue
 		}
 		val, err := extractVarInfoFromEntry(scope.target, scope.BinInfo, scope.image(), scope.Regs, scope.Mem, entry.Tree, scope.dictAddr)
 		if err != nil {
@@ -517,6 +513,31 @@ func afterLastArgAddr(vars []*Variable) uint64 {
 		v := vars[i]
 		if (v.Flags&VariableArgument != 0) || (v.Flags&VariableReturnArgument != 0) {
 			return v.Addr + uint64(v.DwarfType.Size())
+		}
+	}
+	return 0
+}
+
+// readLocalPtrVar reads the value of the local pointer variable vname. This
+// is a low level helper function, it does not support nested scopes, range
+// resolution across range bodies, type parameters, &c...
+func readLocalPtrVar(dwarfTree *godwarf.Tree, vname string, tgt *Target, bi *BinaryInfo, image *Image, regs op.DwarfRegisters, mem MemoryReadWriter) uint64 {
+	for _, entry := range dwarfTree.Children {
+		name, _ := entry.Val(dwarf.AttrName).(string)
+		if name == vname {
+			v, err := extractVarInfoFromEntry(tgt, bi, image, regs, mem, entry, 0)
+			if err != nil {
+				logflags.DebuggerLogger().Errorf("could not load %s variable: %v", name, err)
+			} else if v.Unreadable != nil {
+				logflags.DebuggerLogger().Errorf("could not load %s variable: %v", name, v.Unreadable)
+			} else {
+				r, err := readUintRaw(v.mem, v.Addr, int64(bi.Arch.PtrSize()))
+				if err != nil {
+					logflags.DebuggerLogger().Errorf("could not load %s variable: %v", name, err)
+				}
+				return r
+			}
+			break
 		}
 	}
 	return 0
@@ -887,6 +908,8 @@ func (stack *evalStack) resume(g *G) {
 	scope.Regs.FrameBase = stack.fboff + int64(scope.g.stack.hi)
 	scope.Regs.CFA = scope.frameOffset + int64(scope.g.stack.hi)
 	stack.curthread = g.Thread
+	scope.rangeFrames = nil
+	scope.enclosingRangeScopes = nil
 
 	finished := funcCallStep(scope, stack, g.Thread)
 	if finished {
@@ -1001,6 +1024,16 @@ func (stack *evalStack) executeOp() {
 
 	case *evalop.PushFrameoff:
 		stack.push(newConstant(constant.MakeInt64(scope.frameOffset), scope.Mem))
+
+	case *evalop.PushRangeParentOffset:
+		if scope.rangeFrames == nil {
+			stack.err = scope.setupRangeFrames()
+		}
+		if len(scope.rangeFrames) > 0 {
+			stack.push(newConstant(constant.MakeInt64(scope.rangeFrames[len(scope.rangeFrames)-2].FrameOffset()), scope.Mem))
+		} else {
+			stack.push(newConstant(constant.MakeInt64(0), scope.Mem))
+		}
 
 	case *evalop.PushThreadID:
 		stack.push(newConstant(constant.MakeInt64(int64(scope.threadID)), scope.Mem))

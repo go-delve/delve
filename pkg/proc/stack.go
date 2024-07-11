@@ -65,6 +65,11 @@ type Stackframe struct {
 	// Use this value to determine active lexical scopes for the stackframe.
 	lastpc uint64
 
+	// closurePtr is the value of .closureptr, if present. This variable is
+	// used to correlated range-over-func closure bodies with their enclosing
+	// function.
+	closurePtr int64
+
 	// TopmostDefer is the defer that would be at the top of the stack when a
 	// panic unwind would get to this call frame, in other words it's the first
 	// deferred function that will  be called if the runtime unwinds past this
@@ -93,6 +98,12 @@ func (frame *Stackframe) FramePointerOffset() int64 {
 		return int64(frame.Regs.BP())
 	}
 	return int64(frame.Regs.BP()) - int64(frame.stackHi)
+}
+
+// contains returns true if off is between CFA and SP
+func (frame *Stackframe) contains(off int64) bool {
+	p := uint64(off + int64(frame.stackHi))
+	return frame.Regs.SP() < p && p <= uint64(frame.Regs.CFA)
 }
 
 // ThreadStacktrace returns the stack trace for thread.
@@ -350,6 +361,19 @@ func (it *stackIterator) newStackframe(ret, retaddr uint64) Stackframe {
 			r.Call.File, r.Call.Line = r.Current.Fn.cu.lineInfo.PCToLine(r.Current.Fn.Entry, it.pc-1)
 		}
 	}
+	if fn != nil && !fn.cu.image.Stripped() && !r.SystemStack && it.g != nil {
+		dwarfTree, _ := fn.cu.image.getDwarfTree(fn.offset)
+		if dwarfTree != nil {
+			c := readLocalPtrVar(dwarfTree, goClosurePtr, it.target, it.bi, fn.cu.image, r.Regs, it.mem)
+			if c != 0 {
+				if c >= it.g.stack.lo && c < it.g.stack.hi {
+					r.closurePtr = int64(c) - int64(it.g.stack.hi)
+				} else {
+					r.closurePtr = int64(c)
+				}
+			}
+		}
+	}
 	return r
 }
 
@@ -436,6 +460,7 @@ func (it *stackIterator) appendInlineCalls(callback func(Stackframe) bool, frame
 			SystemStack: frame.SystemStack,
 			Inlined:     true,
 			lastpc:      frame.lastpc,
+			closurePtr:  frame.closurePtr,
 		})
 
 		frame.Call.File = filepath
@@ -909,9 +934,40 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 	stage := 0
 	var rangeParent *Function
 	nonMonotonicSP := false
-	it.stacktraceFunc(func(fr Stackframe) bool {
-		//TODO(range-over-func): this is a heuristic, we should use .closureptr instead
+	var closurePtr int64
 
+	appendFrame := func(fr Stackframe) {
+		frames = append(frames, fr)
+		if fr.closurePtr != 0 {
+			closurePtr = fr.closurePtr
+		}
+	}
+
+	closurePtrOk := func(fr *Stackframe) bool {
+		if fr.SystemStack {
+			return false
+		}
+		if closurePtr < 0 {
+			// closure is stack allocated, check that it is on this frame
+			return fr.contains(closurePtr)
+		}
+		// otherwise closurePtr is a heap allocated variable, so we need to check
+		// all closure body variables in scope in this frame
+		scope := FrameToScope(tgt, it.mem, it.g, 0, *fr)
+		yields, _ := scope.simpleLocals(localsNoDeclLineCheck|localsOnlyRangeBodyClosures, "")
+		for _, yield := range yields {
+			if yield.Kind != reflect.Func {
+				continue
+			}
+			addr := yield.funcvalAddr()
+			if int64(addr) == closurePtr {
+				return true
+			}
+		}
+		return false
+	}
+
+	it.stacktraceFunc(func(fr Stackframe) bool {
 		if len(frames) > 0 {
 			prev := &frames[len(frames)-1]
 			if fr.Regs.SP() < prev.Regs.SP() {
@@ -922,20 +978,25 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 
 		switch stage {
 		case 0:
-			frames = append(frames, fr)
+			appendFrame(fr)
 			rangeParent = fr.Call.Fn.extra(tgt.BinInfo()).rangeParent
 			stage++
-			if rangeParent == nil {
+			if rangeParent == nil || closurePtr == 0 {
 				frames = nil
 				stage = 3
 				return false
 			}
 		case 1:
-			if fr.Call.Fn.offset == rangeParent.offset {
-				frames = append(frames, fr)
+			if fr.Call.Fn.offset == rangeParent.offset && closurePtrOk(&fr) {
+				appendFrame(fr)
 				stage++
-			} else if fr.Call.Fn.extra(tgt.BinInfo()).rangeParent == rangeParent {
-				frames = append(frames, fr)
+			} else if fr.Call.Fn.extra(tgt.BinInfo()).rangeParent == rangeParent && closurePtrOk(&fr) {
+				appendFrame(fr)
+				if closurePtr == 0 {
+					frames = nil
+					stage = 3
+					return false
+				}
 			}
 		case 2:
 			frames = append(frames, fr)

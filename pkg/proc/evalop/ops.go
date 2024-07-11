@@ -30,6 +30,12 @@ type PushThreadID struct {
 
 func (*PushThreadID) depthCheck() (npop, npush int) { return 0, 1 }
 
+// PushRangeParentOffset pushes the frame offset of the range-over-func closure body parent.
+type PushRangeParentOffset struct {
+}
+
+func (*PushRangeParentOffset) depthCheck() (npop, npush int) { return 0, 1 }
+
 // PushConst pushes a constant on the stack.
 type PushConst struct {
 	Value constant.Value

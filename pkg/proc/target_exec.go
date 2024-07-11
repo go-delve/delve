@@ -827,14 +827,18 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 		if rangeParent == nil {
 			rangeParent = topframe.Call.Fn
 		}
+		rpoff := topframe.FrameOffset()
+		if len(rangeFrames) > 0 {
+			rpoff = rangeFrames[len(rangeFrames)-2].FrameOffset()
+		}
+		rpc := astutil.And(sameGCond, astutil.Eql(astutil.PkgVar("runtime", "rangeParentOffset"), astutil.Int(rpoff)))
 		for _, fn := range rangeParent.extra(bi).rangeBodies {
 			if fn.Entry != 0 {
 				pc, err := FirstPCAfterPrologue(dbp, fn, false)
 				if err != nil {
 					return err
 				}
-				// TODO: this breakpoint must have a condition on .closureptr (https://go-review.googlesource.com/c/go/+/586975)
-				if _, err := allowDuplicateBreakpoint(dbp.SetBreakpoint(0, pc, NextBreakpoint, sameGCond)); err != nil {
+				if _, err := allowDuplicateBreakpoint(dbp.SetBreakpoint(0, pc, NextBreakpoint, rpc)); err != nil {
 					return err
 				}
 			}
@@ -842,7 +846,7 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 	}
 
 	// Set step-out breakpoints for range-over-func body closures
-	if !stepInto && selg != nil && topframe.Current.Fn.extra(bi).rangeParent != nil {
+	if !stepInto && selg != nil && topframe.Current.Fn.extra(bi).rangeParent != nil && len(rangeFrames) > 0 {
 		for _, fr := range rangeFrames[:len(rangeFrames)-1] {
 			retframecond := astutil.And(sameGCond, frameoffCondition(&fr))
 			if !fr.hasInlines {
