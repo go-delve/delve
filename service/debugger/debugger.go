@@ -494,7 +494,6 @@ func (d *Debugger) Restart(rerecord bool, pos string, resetArgs bool, newArgs []
 
 	if !resetArgs && (d.config.Stdout.File != nil || d.config.Stderr.File != nil) {
 		return nil, ErrCanNotRestart
-
 	}
 
 	if err := d.detach(true); err != nil {
@@ -1547,7 +1546,6 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int)
 					TraceMap[cf.Name] = childnode
 					queue = append(queue, childnode)
 				}
-
 			}
 		}
 	}
@@ -2001,7 +1999,6 @@ func (d *Debugger) convertDefers(defers []*proc.Defer) []api.Defer {
 				SP: defers[i].SP,
 			}
 		}
-
 	}
 
 	return r
