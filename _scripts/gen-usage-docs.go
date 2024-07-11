@@ -24,7 +24,9 @@ func main() {
 
 	cmdnames := []string{}
 	for _, subcmd := range root.Commands() {
-		cmdnames = append(cmdnames, subcmd.Name())
+		if !subcmd.Hidden {
+			cmdnames = append(cmdnames, subcmd.Name())
+		}
 	}
 	helphelpers.Prepare(root)
 	doc.GenMarkdownTree(root, usageDir)

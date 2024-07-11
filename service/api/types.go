@@ -677,3 +677,10 @@ type Target struct {
 	CmdLine       string
 	CurrentThread *Thread
 }
+
+// GuessSubstitutePathIn are the input parameters used to guess a substitute-path configuration automatically.
+type GuessSubstitutePathIn struct {
+	ImportPathOfMainPackage string
+	ClientGOROOT            string
+	ClientModuleDirectories map[string]string
+}

@@ -22,6 +22,12 @@ var EnableRace = flag.Bool("racetarget", false, "Enables race detector on inferi
 
 var runningWithFixtures bool
 
+var ldFlags string
+
+func init() {
+	ldFlags = os.Getenv("CGO_LDFLAGS")
+}
+
 // Fixture is a test binary.
 type Fixture struct {
 	// Name is the short name of the fixture.
@@ -391,4 +397,63 @@ func RegabiSupported() bool {
 	default:
 		return false
 	}
+}
+
+func ProjectRoot() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+
+	gopaths := strings.FieldsFunc(os.Getenv("GOPATH"), func(r rune) bool { return r == os.PathListSeparator })
+	for _, curpath := range gopaths {
+		// Detects "gopath mode" when GOPATH contains several paths ex. "d:\\dir\\gopath;f:\\dir\\gopath2"
+		if strings.Contains(wd, curpath) {
+			return filepath.Join(curpath, "src", "github.com", "go-delve", "delve")
+		}
+	}
+	val, err := exec.Command("go", "list", "-mod=", "-m", "-f", "{{ .Dir }}").Output()
+	if err != nil {
+		panic(err) // the Go tool was tested to work earlier
+	}
+	return strings.TrimSuffix(string(val), "\n")
+}
+
+func GetDlvBinary(t *testing.T) string {
+	// In case this was set in the environment
+	// from getDlvBinEBPF lets clear it here, so
+	// we can ensure we don't get build errors
+	// depending on the test ordering.
+	t.Setenv("CGO_LDFLAGS", ldFlags)
+	var tags []string
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
+		tags = []string{"-tags=exp.winarm64"}
+	}
+	if runtime.GOOS == "linux" && runtime.GOARCH == "ppc64le" {
+		tags = []string{"-tags=exp.linuxppc64le"}
+	}
+	if runtime.GOOS == "linux" && runtime.GOARCH == "riscv64" {
+		tags = []string{"-tags=exp.linuxriscv64"}
+	}
+	return getDlvBinInternal(t, tags...)
+}
+
+func GetDlvBinaryEBPF(t *testing.T) string {
+	return getDlvBinInternal(t, "-tags", "ebpf")
+}
+
+func getDlvBinInternal(t *testing.T, goflags ...string) string {
+	dlvbin := filepath.Join(t.TempDir(), "dlv.exe")
+	args := append([]string{"build", "-o", dlvbin}, goflags...)
+	args = append(args, "github.com/go-delve/delve/cmd/dlv")
+
+	wd, _ := os.Getwd()
+	fmt.Printf("at %s %s\n", wd, goflags)
+
+	out, err := exec.Command("go", args...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("go build -o %v github.com/go-delve/delve/cmd/dlv: %v\n%s", dlvbin, err, string(out))
+	}
+
+	return dlvbin
 }

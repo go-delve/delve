@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/go-delve/delve/service/api"
 )
 
 // Launch debug sessions support the following modes:
@@ -251,6 +253,11 @@ type AttachConfig struct {
 
 	// Wait for a process with a name beginning with this prefix.
 	AttachWaitFor string `json:"waitFor,omitempty"`
+
+	// GuessSubstitutePath is used to automatically guess SubstitutePath if it
+	// is not specified explicitly. It should be copied from the output of
+	// 'dlv substitute-path-guess-helper'.
+	GuessSubstitutePath *api.GuessSubstitutePathIn `json:"guessSubstitutePath,omitempty"`
 
 	LaunchAttachCommonConfig
 }

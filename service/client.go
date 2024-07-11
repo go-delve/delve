@@ -205,6 +205,9 @@ type Client interface {
 	// GetDebugInfoDirectories returns the list of directories used to search for debug symbols
 	GetDebugInfoDirectories() ([]string, error)
 
+	// GuessSubstitutePath tries to guess a substitute-path configuration for the client
+	GuessSubstitutePath() ([][2]string, error)
+
 	// CallAPI allows calling an arbitrary rpc method (used by starlark bindings)
 	CallAPI(method string, args, reply interface{}) error
 }
