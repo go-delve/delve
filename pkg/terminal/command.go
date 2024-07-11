@@ -3127,7 +3127,7 @@ func (c *Commands) onCmd(t *Term, ctx callContext, argstr string) error {
 			_ = os.Remove(f.Name())
 		}()
 		attrs := formatBreakpointAttrs("", ctx.Breakpoint, true)
-		_, err = f.Write([]byte(strings.Join(attrs, "\n")))
+		_, err = f.WriteString(strings.Join(attrs, "\n"))
 		if err != nil {
 			return err
 		}

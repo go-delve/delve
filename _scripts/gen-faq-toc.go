@@ -50,12 +50,12 @@ func spliceDocs(docpath string, docs []byte, outpath string) {
 	footer := v[1]
 
 	outbuf := bytes.NewBuffer(make([]byte, 0, len(header)+len(docs)+len(footer)+len(startOfToc)+len(endOfToc)+1))
-	outbuf.Write([]byte(header))
-	outbuf.Write([]byte(startOfToc))
+	outbuf.WriteString(header)
+	outbuf.WriteString(startOfToc)
 	outbuf.WriteByte('\n')
 	outbuf.Write(docs)
-	outbuf.Write([]byte(endOfToc))
-	outbuf.Write([]byte(footer))
+	outbuf.WriteString(endOfToc)
+	outbuf.WriteString(footer)
 
 	if outpath != "-" {
 		err = os.WriteFile(outpath, outbuf.Bytes(), 0o664)
