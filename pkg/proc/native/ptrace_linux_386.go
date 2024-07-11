@@ -43,7 +43,7 @@ func ptraceGetRegset(tid int) (regset amd64util.AMD64Xstate, err error) {
 }
 
 // ptraceGetTls return the addr of tls by PTRACE_GET_THREAD_AREA for specify thread.
-// See http://man7.org/linux/man-pages/man2/ptrace.2.html for detail about PTRACE_GET_THREAD_AREA.
+// See https://man7.org/linux/man-pages/man2/ptrace.2.html for detail about PTRACE_GET_THREAD_AREA.
 // struct user_desc at https://golang.org/src/runtime/sys_linux_386.s
 //
 //	type UserDesc struct {
