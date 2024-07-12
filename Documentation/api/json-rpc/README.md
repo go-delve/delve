@@ -7,11 +7,11 @@ Note that this JSON-RPC interface is served over a streaming socket, *not* over 
 # API versions
 
 Delve currently supports two versions of its API. By default a headless instance of `dlv` will serve APIv1 for backward compatibility with old clients, however new clients should use APIv2 as new features will only be made available through version 2. To select APIv2 use `--api-version=2` command line argument. 
-Clients can also select APIv2 by sending a [SetApiVersion](https://godoc.org/github.com/go-delve/delve/service/rpccommon#RPCServer.SetApiVersion) request specifying `APIVersion = 2` after connecting to the headless instance.
+Clients can also select APIv2 by sending a [SetApiVersion](https://pkg.go.dev/github.com/go-delve/delve/service/rpccommon#RPCServer.SetApiVersion) request specifying `APIVersion = 2` after connecting to the headless instance.
 
 # API version 2 documentation
 
-All the methods of the type `service/rpc2.RPCServer` can be called using JSON-RPC, the documentation for these calls is [available on godoc](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer). 
+All the methods of the type `service/rpc2.RPCServer` can be called using JSON-RPC, the documentation for these calls is [available on godoc](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer).
 
 Note that all exposed methods take one single input parameter (usually called `args`) of a struct type and also return a result of a struct type. Also note that the method name should be prefixed with `RPCServer.` in JSON-RPC.
 

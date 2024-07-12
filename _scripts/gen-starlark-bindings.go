@@ -260,7 +260,7 @@ func genDocs(bindings []binding) []byte {
 
 	for _, binding := range bindings {
 		argNames := strings.Join(binding.argNames, ", ")
-		fmt.Fprintf(&buf, "%s(%s) | Equivalent to API call [%s](https://godoc.org/github.com/go-delve/delve/service/rpc2#RPCServer.%s)\n", binding.name, argNames, binding.fn.Name(), binding.fn.Name())
+		fmt.Fprintf(&buf, "%s(%s) | Equivalent to API call [%s](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.%s)\n", binding.name, argNames, binding.fn.Name(), binding.fn.Name())
 	}
 
 	fmt.Fprintf(&buf, "dlv_command(command) | Executes the specified command as if typed at the dlv_prompt\n")
