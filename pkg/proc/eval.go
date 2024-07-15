@@ -340,12 +340,8 @@ func (scope *EvalScope) Locals(flags localsFlags, wantedName string) ([]*Variabl
 		}
 	}
 	for i, scope2 := range scope.enclosingRangeScopes {
-		if i == len(scope.enclosingRangeScopes)-1 {
-			// Last one is the caller frame, we shouldn't check it
-			break
-		}
 		if scope2 == nil {
-			scope2 = FrameToScope(scope.target, scope.target.Memory(), scope.g, scope.threadID, scope.rangeFrames[i:]...)
+			scope2 = FrameToScope(scope.target, scope.target.Memory(), scope.g, scope.threadID, scope.rangeFrames[2*i:]...)
 			scope.enclosingRangeScopes[i] = scope2
 		}
 		vars, err := scope2.simpleLocals(flags, wantedName)
@@ -381,8 +377,8 @@ func (scope *EvalScope) setupRangeFrames() error {
 	if err != nil {
 		return err
 	}
-	scope.rangeFrames = scope.rangeFrames[1:]
-	scope.enclosingRangeScopes = make([]*EvalScope, len(scope.rangeFrames))
+	scope.rangeFrames = scope.rangeFrames[2:] // skip the first frame and its return frame
+	scope.enclosingRangeScopes = make([]*EvalScope, len(scope.rangeFrames)/2)
 	return nil
 }
 

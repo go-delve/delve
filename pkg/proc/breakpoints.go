@@ -144,7 +144,10 @@ const (
 	// goroutine.
 	StepIntoNewProcBreakpoint
 
-	steppingMask = NextBreakpoint | NextDeferBreakpoint | StepBreakpoint | StepIntoNewProcBreakpoint
+	// NextInactivatedBreakpoint a NextBreakpoint that has been inactivated, see rangeFrameInactivateNextBreakpoints
+	NextInactivatedBreakpoint
+
+	steppingMask = NextBreakpoint | NextDeferBreakpoint | StepBreakpoint | StepIntoNewProcBreakpoint | NextInactivatedBreakpoint
 )
 
 // WatchType is the watchpoint type
@@ -221,6 +224,8 @@ func (bp *Breakpoint) VerboseDescr() []string {
 			r = append(r, "PluginOpenBreakpoint")
 		case StepIntoNewProcBreakpoint:
 			r = append(r, "StepIntoNewProcBreakpoint")
+		case NextInactivatedBreakpoint:
+			r = append(r, "NextInactivatedBreakpoint")
 		default:
 			r = append(r, fmt.Sprintf("Unknown %d", breaklet.Kind))
 		}
@@ -317,6 +322,9 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 
 	case StackResizeBreakpoint, PluginOpenBreakpoint, StepIntoNewProcBreakpoint:
 		// no further checks
+
+	case NextInactivatedBreakpoint:
+		active = false
 
 	default:
 		bpstate.CondError = fmt.Errorf("internal error unknown breakpoint kind %v", breaklet.Kind)
@@ -816,6 +824,29 @@ func (t *Target) ClearSteppingBreakpoints() error {
 	for _, bp := range bpmap.M {
 		for i := range bp.Breaklets {
 			if bp.Breaklets[i].Kind&steppingMask != 0 {
+				bp.Breaklets[i] = nil
+			}
+		}
+		cleared, err := t.finishClearBreakpoint(bp)
+		if err != nil {
+			return err
+		}
+		if cleared {
+			for _, thread := range threads {
+				if thread.Breakpoint().Breakpoint == bp {
+					thread.Breakpoint().Clear()
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (t *Target) clearInactivatedSteppingBreakpoint() error {
+	threads := t.ThreadList()
+	for _, bp := range t.Breakpoints().M {
+		for i := range bp.Breaklets {
+			if bp.Breaklets[i].Kind == NextInactivatedBreakpoint {
 				bp.Breaklets[i] = nil
 			}
 		}
