@@ -43,7 +43,7 @@ version = "2023.05"
 val targets = arrayOf(
         "linux/amd64/1.21",
         "linux/amd64/1.22",
-        "linux/amd64/1.23"
+        "linux/amd64/1.23",
         "linux/amd64/tip",
 
         "linux/386/1.23",
