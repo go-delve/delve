@@ -3,6 +3,37 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.23.0] 2024-07-16
+
+Deprecation notice: starting with the next version of Delve version 1 of the API will be removed. Version 2 was added in version 0.12.0 in 2017 and has been the recommended way to connect to Delve since.
+
+### Added
+
+- Support for Go 1.23, particularly the new range-over-func statement (#3663, #3697, #3736, #3738, #3750, #3755, #3763, #3778, @aarzilli)
+- `next-instruction` command (#3671, @derekparker)
+- Support reading captured variables of closure functions (#3682, @aarzilli)
+- Breakpoint command `break` now allows adding a condition the a breakpoint with a postfix notation (`break <name> <locspec> if <condition>`) (#3693, #3702, @derekparker)
+- When the `step` command is executed on `go funccall()` statements it will stop on the newly created goroutine (#3686, @aarzilli)
+- Invocation of [rr](https://github.com/rr-debugger/rr/) when it is used as a backend can be now controlled with environment variables `$DELVE_RR_RECORD_FLAGS` and `$DELVE_RR_REPLAY_FLAGS` (#3726, @aarzilli)
+- Added new suboption `--follow-calls` to trace command (#3594, @archanaravindar)
+
+### Fixed
+
+- Better behavior on stripped files (#3678, #3695, @aarzilli, @derekparker)
+- Support rr version 5.7.0 and later (#3705, #3718, @howardjohn, @aarzilli)
+- Watchpoints on newer versions of macOS (#3703, @derekparker)
+- Bug related to watchpoints going out of scope (#3742, @aarzilli)
+- Bug invoking debuginfod-find (#3762, @derekparker)
+- Miscellaneus fixes (#3707, #3761, #3759, #3767, @scop, @jayantxie, @aarzilli, @zdyj3170101136)
+
+### Changed
+
+- Improved auto-completions for shells (#3696, #3699, @scop)
+- Print more informations on tracepoint stops (#3675, #3712, @derekparker, @archanaravindar)
+- Improved performance of the default macOS backend (#3715, @derekparker)
+- When a breakpoint is hit on a headless instance of Delve while no clients are connected a message will be printed to stdout (#3632,#3747, @fatanugraha, @aarzilli)
+- Miscellaneous code and documentation improvements (#3676, #3677, #3698, #3716, #3727, #3722, #3730, #3731, #3753, #3752, #3756, #3757, #3741, #3773, #3775, #3770, #3769, #3772, #3779, #3774, @alexandear, @aarzilli, @abbasudo, @jayantxie)
+
 ## [1.22.1] 2024-02-21
 
 ### Added
