@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"go/constant"
 	"os"
+	"reflect"
 	"regexp"
 	"runtime"
 	"sort"
@@ -98,6 +99,99 @@ func (tc *varTest) alternateVarTest() varTest {
 	r := *tc
 	r.value = r.alternate
 	return r
+}
+
+func setVariable(p *proc.Target, symbol, value string) error {
+	scope, err := proc.GoroutineScope(p, p.CurrentThread())
+	if err != nil {
+		return err
+	}
+	return scope.SetVariable(symbol, value)
+}
+
+func TestVariableEvaluation(t *testing.T) {
+	protest.AllowRecording(t)
+	testcases := []struct {
+		name        string
+		st          reflect.Kind
+		value       interface{}
+		length, cap int64
+		childrenlen int
+	}{
+		{"a1", reflect.String, "foofoofoofoofoofoo", 18, 0, 0},
+		{"a11", reflect.Array, nil, 3, -1, 3},
+		{"a12", reflect.Slice, nil, 2, 2, 2},
+		{"a13", reflect.Slice, nil, 3, 3, 3},
+		{"a2", reflect.Int, int64(6), 0, 0, 0},
+		{"a3", reflect.Float64, float64(7.23), 0, 0, 0},
+		{"a4", reflect.Array, nil, 2, -1, 2},
+		{"a5", reflect.Slice, nil, 5, 5, 5},
+		{"a6", reflect.Struct, nil, 2, 0, 2},
+		{"a7", reflect.Ptr, nil, 1, 0, 1},
+		{"a8", reflect.Struct, nil, 2, 0, 2},
+		{"a9", reflect.Ptr, nil, 1, 0, 1},
+		{"baz", reflect.String, "bazburzum", 9, 0, 0},
+		{"neg", reflect.Int, int64(-1), 0, 0, 0},
+		{"f32", reflect.Float32, float64(float32(1.2)), 0, 0, 0},
+		{"c64", reflect.Complex64, complex128(complex64(1 + 2i)), 0, 0, 0},
+		{"c128", reflect.Complex128, complex128(2 + 3i), 0, 0, 0},
+		{"a6.Baz", reflect.Int, int64(8), 0, 0, 0},
+		{"a7.Baz", reflect.Int, int64(5), 0, 0, 0},
+		{"a8.Baz", reflect.String, "feh", 3, 0, 0},
+		{"a8", reflect.Struct, nil, 2, 0, 2},
+		{"i32", reflect.Array, nil, 2, -1, 2},
+		{"b1", reflect.Bool, true, 0, 0, 0},
+		{"b2", reflect.Bool, false, 0, 0, 0},
+		{"f", reflect.Func, "main.barfoo", 0, 0, 0},
+		{"ba", reflect.Slice, nil, 200, 200, 64},
+	}
+
+	withTestProcess("testvariables", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), t, "Continue() returned an error")
+
+		for _, tc := range testcases {
+			v := evalVariable(p, t, tc.name)
+
+			if v.Kind != tc.st {
+				t.Fatalf("%s simple type: expected: %s got: %s", tc.name, tc.st, v.Kind.String())
+			}
+			if v.Value == nil && tc.value != nil {
+				t.Fatalf("%s value: expected: %v got: %v", tc.name, tc.value, v.Value)
+			} else {
+				switch v.Kind {
+				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+					x, _ := constant.Int64Val(v.Value)
+					if y, ok := tc.value.(int64); !ok || x != y {
+						t.Fatalf("%s value: expected: %v got: %v", tc.name, tc.value, v.Value)
+					}
+				case reflect.Float32, reflect.Float64:
+					x, _ := constant.Float64Val(v.Value)
+					if y, ok := tc.value.(float64); !ok || x != y {
+						t.Fatalf("%s value: expected: %v got: %v", tc.name, tc.value, v.Value)
+					}
+				case reflect.Complex64, reflect.Complex128:
+					xr, _ := constant.Float64Val(constant.Real(v.Value))
+					xi, _ := constant.Float64Val(constant.Imag(v.Value))
+					if y, ok := tc.value.(complex128); !ok || complex(xr, xi) != y {
+						t.Fatalf("%s value: expected: %v got: %v", tc.name, tc.value, v.Value)
+					}
+				case reflect.String:
+					if y, ok := tc.value.(string); !ok || constant.StringVal(v.Value) != y {
+						t.Fatalf("%s value: expected: %v got: %v", tc.name, tc.value, v.Value)
+					}
+				}
+			}
+			if v.Len != tc.length {
+				t.Fatalf("%s len: expected: %d got: %d", tc.name, tc.length, v.Len)
+			}
+			if v.Cap != tc.cap {
+				t.Fatalf("%s cap: expected: %d got: %d", tc.name, tc.cap, v.Cap)
+			}
+			if len(v.Children) != tc.childrenlen {
+				t.Fatalf("%s children len: expected %d got: %d", tc.name, tc.childrenlen, len(v.Children))
+			}
+		}
+	})
 }
 
 func TestVariableEvaluation2(t *testing.T) {
