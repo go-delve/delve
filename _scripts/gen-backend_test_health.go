@@ -13,13 +13,12 @@ import (
 	"strings"
 )
 
-func main() {
-	f, err := parser.ParseFile(new(token.FileSet), "pkg/proc/proc_test.go", nil, 0)
+func process(path string, skipped map[string]map[string]int) {
+	f, err := parser.ParseFile(new(token.FileSet), path, nil, 0)
 	if err != nil {
 		log.Fatalf("could not compile proc_test.go: %v", err)
 	}
 	ntests := 0
-	skipped := make(map[string]map[string]int)
 	ast.Inspect(f, func(node ast.Node) bool {
 		switch node := node.(type) {
 		case *ast.File:
@@ -62,10 +61,17 @@ func main() {
 		}
 		return false
 	})
+}
+
+func main() {
+	skipped := make(map[string]map[string]int)
+	process("pkg/proc/proc_test.go", skipped)
+	process("pkg/proc/stepping_test.go", skipped)
 	var fh io.WriteCloser
 	if len(os.Args) > 1 && os.Args[1] == "-" {
 		fh = os.Stdout
 	} else {
+		var err error
 		fh, err = os.Create("./Documentation/backend_test_health.md")
 		if err != nil {
 			log.Fatalf("could not create backend_test_health.md: %v", err)
@@ -92,7 +98,7 @@ func main() {
 			fmt.Fprintf(fh, "\t* %d %s\n", skipped[cond][reason], reason)
 		}
 	}
-	err = fh.Close()
+	err := fh.Close()
 	if err != nil {
 		log.Fatalf("could not close output file: %v", err)
 	}
