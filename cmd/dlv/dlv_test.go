@@ -224,7 +224,7 @@ func getDlvBinEBPF(t *testing.T) string {
 
 func getDlvBinInternal(t *testing.T, goflags ...string) string {
 	dlvbin := filepath.Join(t.TempDir(), "dlv.exe")
-	args := append([]string{"build", "-o", dlvbin}, goflags...)
+	args := append([]string{"build", "-mod=vendor", "-o", dlvbin}, goflags...)
 	args = append(args, "github.com/go-delve/delve/cmd/dlv")
 
 	out, err := exec.Command("go", args...).CombinedOutput()
@@ -411,7 +411,7 @@ func TestGeneratedDoc(t *testing.T) {
 
 	// Checks gen-usage-docs.go
 	tempDir := t.TempDir()
-	cmd := exec.Command("go", "run", "_scripts/gen-usage-docs.go", tempDir)
+	cmd := exec.Command("go", "run", "-mod=vendor", "_scripts/gen-usage-docs.go", tempDir)
 	cmd.Dir = projectRoot()
 	err := cmd.Run()
 	assertNoError(err, t, "go run _scripts/gen-usage-docs.go")
