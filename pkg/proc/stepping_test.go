@@ -772,7 +772,6 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(27), // for _, x := range ...
 				assertLocals(t, "trickItAll", "i"),
 				assertEval(t, "i", "0"),
-				nx(27), // for _, x := range ... (TODO: this probably shouldn't be here but it's also very hard to skip stopping here a second time)
 				nx(28), // i += x
 				assertLocals(t, "trickItAll", "i", "x"),
 				assertEval(t,
@@ -800,7 +799,6 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(38),
 				nx(39),
 				nx(40), // for _, x := range...
-				nx(40),
 				nx(41),
 				nx(42),
 				nx(40),
@@ -818,7 +816,6 @@ func TestRangeOverFuncNext(t *testing.T) {
 				{contContinue, 46}, // TestBreak1
 				nx(47),
 				nx(48), // for _, x := range... (x == -1)
-				nx(48),
 				nx(49), // if x == -4
 				assertLocals(t, "result", "x"),
 				assertEval(t,
@@ -826,7 +823,6 @@ func TestRangeOverFuncNext(t *testing.T) {
 					"x", "-1"),
 
 				nx(52), // for _, y := range... (y == 1)
-				nx(52),
 				nx(53), // if y == 3
 				assertLocals(t, "result", "x", "y"),
 				assertEval(t,
@@ -860,7 +856,6 @@ func TestRangeOverFuncNext(t *testing.T) {
 					"result", "[]int len: 3, cap: 4, [1,2,-1]",
 					"x", "-2"),
 				nx(52), // for _, y := range... (y == 1)
-				nx(52),
 				nx(53), // if y == 3
 				nx(56), // result = append(result, y)
 				nx(57),
@@ -897,9 +892,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(65),
 
 				nx(66), // for _, x := range (x == -1)
-				nx(66),
 				nx(67), // for _, y := range (y == 1)
-				nx(67),
 				nx(68), // if y == 3
 				nx(71), // if x == -4
 				nx(74), // result = append(result, y)
@@ -920,7 +913,6 @@ func TestRangeOverFuncNext(t *testing.T) {
 
 				nx(66), // for _, x := range (x == -2)
 				nx(67), // for _, y := range (y == 1)
-				nx(67),
 				nx(68), // if y == 3
 				nx(71), // if x == -4
 				nx(74), // result = append(result, y)
@@ -941,7 +933,6 @@ func TestRangeOverFuncNext(t *testing.T) {
 
 				nx(66), // for _, x := range (x == -4)
 				nx(67), // for _, y := range (y == 1)
-				nx(67),
 				nx(68), // if y == 3
 				nx(71), // if x == -4
 				nx(72), // break outer
@@ -959,7 +950,6 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(82),
 				nx(84),
 				nx(85), // for _, w := range (w == 1000)
-				nx(85),
 				nx(86), // result = append(result, w)
 				assertEval(t,
 					"w", "1000",
@@ -968,9 +958,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 				assertLocals(t, "result", "w"),
 				assertEval(t, "result", "[]int len: 1, cap: 1, [1000]"),
 				nx(90), // for _, x := range (x == 100)
-				nx(90),
 				nx(91), // for _, y := range (y == 10)
-				nx(91),
 				nx(92), // result = append(result, y)
 				assertLocals(t, "result", "w", "x", "y"),
 				assertEval(t,
@@ -979,7 +967,6 @@ func TestRangeOverFuncNext(t *testing.T) {
 					"y", "10"),
 
 				nx(93), // for _, z := range (z == 1)
-				nx(93),
 				nx(94), // if z&1 == 1
 				assertLocals(t, "result", "w", "x", "y", "z"),
 				assertEval(t,
@@ -1031,7 +1018,6 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(111),
 				nx(112),
 				nx(116), // for _, z := range (z == 1)
-				nx(116),
 				nx(117), // result = append(result, z)
 				nx(118), // if z == 4
 				nx(121),
@@ -1064,14 +1050,11 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(126),
 				nx(127),
 				nx(131), // for _, x := range (x == 100)
-				nx(131),
 				nx(132),
 				nx(133),
 				nx(135), // for _, y := range (y == 10)
-				nx(135),
 				nx(136), // result = append(result, y)
 				nx(139), // for k, z := range (k == 0, z == 1)
-				nx(139),
 				nx(140), // result = append(result, z)
 				nx(141), // if k == 1
 				nx(144),
@@ -1095,15 +1078,12 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(150),
 				nx(151),
 				nx(155), // for _, x := range (x == 100)
-				nx(155),
 				nx(156),
 				nx(157),
 				nx(159), // for _, y := range (y == 10)
-				nx(159),
 				nx(160),
 				nx(163), // result = append(result, y)
 				nx(166), // for k, z := range (k == 0, z == 1)
-				nx(166),
 				nx(167), // result = append(result, z)
 				nx(168), // if k == 1
 				nx(171),
@@ -1124,9 +1104,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 				funcBreak(t, "main.TestLongReturn"),
 				{contContinue, 181},
 				nx(182), // for _, x := range (x == 1)
-				nx(182),
 				nx(183), // for _, y := range (y == 10)
-				nx(183),
 				nx(184), // if y == 10
 				nx(185), // return
 				nx(187),
@@ -1141,11 +1119,9 @@ func TestRangeOverFuncNext(t *testing.T) {
 				{contContinue, 192},
 				nx(193),
 				nx(194), // for _, x := range (x == -1)
-				nx(194),
 				nx(195), // result = append(result, x)
 				nx(196), // if x == -4
 				nx(199), // for _, y := range (y == 1)
-				nx(199),
 				nx(200), // if y == 3
 				nx(203), // result = append(result, y)
 				nx(204),
@@ -1177,11 +1153,9 @@ func TestRangeOverFuncNext(t *testing.T) {
 				{contContinue, 211},
 				nx(212),
 				nx(213), // for _, x := range (x == -1)
-				nx(213),
 				nx(214), // result = append(result, x)
 				nx(215), // if x == -4
 				nx(218), // for _, y := range (y == 1)
-				nx(218),
 				nx(219), // if y == 3
 				nx(222), // result = append(result, y)
 				nx(223),
@@ -1213,11 +1187,10 @@ func TestRangeOverFuncNext(t *testing.T) {
 
 				nx(236), // for _, x := range (x == 10)
 				assertFunc(t, "main.TestRecur"),
+				nx(237), // result = ...
 				assertEval(t, "n", "3"),
-				nx(236),
 				assertFunc(t, "main.TestRecur-range1"),
 				assertEval(t, "x", "10", "n", "3"),
-				nx(237), // result = ...
 				nx(238), // if n == 3
 				nx(239), // TestRecur(0)
 				nx(241),
@@ -1345,7 +1318,6 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 				nx(27), // for _, x := range ...
 				assertLocals(t, "trickItAll", "i"),
 				assertEval(t, "i", "0"),
-				nx(27), // for _, x := range ... (TODO: this probably shouldn't be here but it's also very hard to skip stopping here a second time)
 				nx(28), // i += x
 				assertLocals(t, "trickItAll", "i", "x"),
 				assertEval(t,
@@ -1390,7 +1362,6 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 				{contContinue, 46}, // TestBreak1
 				nx(47),
 				nx(48), // for _, x := range... (x == -1)
-				nx(48),
 				nx(49), // if x == -4
 				assertLocals(t, "result", "x"),
 				assertEval(t,
@@ -1398,7 +1369,6 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 					"x", "-1"),
 
 				nx(52), // for _, y := range... (y == 1)
-				nx(52),
 				nx(53), // if y == 3
 				assertLocals(t, "result", "x", "y"),
 				assertEval(t,
@@ -1431,7 +1401,6 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 					"result", "[]int len: 3, cap: 4, [1,2,-1]",
 					"x", "-2"),
 				nx(52), // for _, y := range... (y == 1)
-				nx(52),
 				nx(53), // if y == 3
 				nx(56), // result = append(result, y)
 				nx(57),
@@ -1469,9 +1438,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 				nx(65),
 
 				nx(66), // for _, x := range (x == -1)
-				nx(66),
 				nx(67), // for _, y := range (y == 1)
-				nx(67),
 				nx(68), // if y == 3
 				nx(71), // if x == -4
 				nx(74), // result = append(result, y)
@@ -1493,7 +1460,6 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 
 				nx(66), // for _, x := range (x == -2)
 				nx(67), // for _, y := range (y == 1)
-				nx(67),
 				nx(68), // if y == 3
 				nx(71), // if x == -4
 				nx(74), // result = append(result, y)
@@ -1515,7 +1481,6 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 
 				nx(66), // for _, x := range (x == -4)
 				nx(67), // for _, y := range (y == 1)
-				nx(67),
 				nx(68), // if y == 3
 				nx(71), // if x == -4
 				nx(72), // break outer
@@ -1535,7 +1500,6 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 				nx(82),
 				nx(84),
 				nx(85), // for _, w := range (w == 1000)
-				nx(85),
 				nx(86), // result = append(result, w)
 				assertEval(t,
 					"w", "1000",
@@ -1544,9 +1508,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 				assertLocals(t, "result", "w"),
 				assertEval(t, "result", "[]int len: 1, cap: 1, [1000]"),
 				nx(90), // for _, x := range (x == 100)
-				nx(90),
 				nx(91), // for _, y := range (y == 10)
-				nx(91),
 				nx(92), // result = append(result, y)
 				assertLocals(t, "result", "w", "x", "y"),
 				assertEval(t,
@@ -1555,7 +1517,6 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 					"y", "10"),
 
 				nx(93), // for _, z := range (z == 1)
-				nx(93),
 				nx(94), // if z&1 == 1
 				assertLocals(t, "result", "w", "x", "y", "z"),
 				assertEval(t,
@@ -1611,7 +1572,6 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 				nx(111),
 				nx(112),
 				nx(116), // for _, z := range (z == 1)
-				nx(116),
 				nx(117), // result = append(result, z)
 				nx(118), // if z == 4
 				nx(121),
@@ -1644,14 +1604,11 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 				nx(126),
 				nx(127),
 				nx(131), // for _, x := range (x == 100)
-				nx(131),
 				nx(132),
 				nx(133),
 				nx(135), // for _, y := range (y == 10)
-				nx(135),
 				nx(136), // result = append(result, y)
 				nx(139), // for k, z := range (k == 0, z == 1)
-				nx(139),
 				nx(140), // result = append(result, z)
 				nx(141), // if k == 1
 				nx(144),
@@ -1675,15 +1632,12 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 				nx(150),
 				nx(151),
 				nx(155), // for _, x := range (x == 100)
-				nx(155),
 				nx(156),
 				nx(157),
 				nx(159), // for _, y := range (y == 10)
-				nx(159),
 				nx(160),
 				nx(163), // result = append(result, y)
 				nx(166), // for k, z := range (k == 0, z == 1)
-				nx(166),
 				nx(167), // result = append(result, z)
 				nx(168), // if k == 1
 				nx(171),
@@ -1704,9 +1658,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 				funcBreak(t, "main.TestLongReturn"),
 				{contContinue, 181},
 				nx(182), // for _, x := range (x == 1)
-				nx(182),
 				nx(183), // for _, y := range (y == 10)
-				nx(183),
 				nx(184), // if y == 10
 				nx(185), // return
 				nx(183),
@@ -1723,11 +1675,9 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 				{contContinue, 192},
 				nx(193),
 				nx(194), // for _, x := range (x == -1)
-				nx(194),
 				nx(195), // result = append(result, x)
 				nx(196), // if x == -4
 				nx(199), // for _, y := range (y == 1)
-				nx(199),
 				nx(200), // if y == 3
 				nx(203), // result = append(result, y)
 				nx(204),
@@ -1761,11 +1711,9 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 				{contContinue, 211},
 				nx(212),
 				nx(213), // for _, x := range (x == -1)
-				nx(213),
 				nx(214), // result = append(result, x)
 				nx(215), // if x == -4
 				nx(218), // for _, y := range (y == 1)
-				nx(218),
 				nx(219), // if y == 3
 				nx(222), // result = append(result, y)
 				nx(223),
@@ -1800,10 +1748,9 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 				nx(236), // for _, x := range (x == 10)
 				assertFunc(t, "main.TestRecur"),
 				assertEval(t, "n", "3"),
-				nx(236),
+				nx(237), // result = ...
 				assertFunc(t, "main.TestRecur-range1"),
 				assertEval(t, "x", "10", "n", "3"),
-				nx(237), // result = ...
 				nx(238), // if n == 3
 				nx(239), // TestRecur(0)
 				nx(241),
