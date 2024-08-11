@@ -202,7 +202,8 @@ func (grp *TargetGroup) Continue() error {
 
 		switch {
 		case curbp.Active && curbp.Stepping:
-			if curbp.SteppingInto {
+			switch {
+			case curbp.SteppingInto:
 				// See description of proc.(*Process).next for the meaning of StepBreakpoints
 				if err := conditionErrors(grp); err != nil {
 					return err
@@ -213,7 +214,18 @@ func (grp *TargetGroup) Continue() error {
 					}
 					return grp.StepInstruction(false)
 				}
-			} else {
+			case curbp.SteppingIntoRangeOverFuncBody:
+				if err := conditionErrors(grp); err != nil {
+					return err
+				}
+				if err := dbp.ClearSteppingBreakpoints(); err != nil {
+					return err
+				}
+				if err := next(dbp, false, false); err != nil {
+					return err
+				}
+				// Target execution continues...
+			default:
 				curthread.Common().returnValues = curbp.Breakpoint.returnInfo.Collect(dbp, curthread)
 				if err := dbp.ClearSteppingBreakpoints(); err != nil {
 					return err
@@ -843,7 +855,11 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 				if err != nil {
 					return err
 				}
-				if _, err := allowDuplicateBreakpoint(dbp.SetBreakpoint(0, pc, NextBreakpoint, rpc)); err != nil {
+				kind := NextBreakpoint
+				if f, ln := bi.pcToLine(fn, pc); f == topframe.Current.File && ln == topframe.Current.Line {
+					kind = StepIntoRangeOverFuncBodyBreakpoint
+				}
+				if _, err := allowDuplicateBreakpoint(dbp.SetBreakpoint(0, pc, kind, rpc)); err != nil {
 					return err
 				}
 			}
