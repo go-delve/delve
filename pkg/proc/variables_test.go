@@ -718,6 +718,8 @@ func getEvalExpressionTestCases() []varTest {
 		{"1 + 2i", false, "(1 + 2i)", "(1 + 2i)", "", nil},
 		{"true", false, "true", "true", "", nil},
 		{"\"test\"", false, "\"test\"", "\"test\"", "", nil},
+		{"1/2", false, "0", "0", "", nil},
+		{"zeropoint4 > 1/2", false, "true", "true", "", nil},
 
 		// binary operators
 		{"i2 + i3", false, "5", "5", "int", nil},

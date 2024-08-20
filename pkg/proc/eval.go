@@ -2295,12 +2295,27 @@ func (scope *EvalScope) evalBinary(binop *evalop.Binary, stack *evalStack) {
 	}
 
 	op := node.Op
-	if typ != nil && (op == token.QUO) {
-		_, isint := typ.(*godwarf.IntType)
-		_, isuint := typ.(*godwarf.UintType)
-		if isint || isuint {
-			// forces integer division if the result type is integer
-			op = token.QUO_ASSIGN
+	if op == token.QUO {
+		if typ != nil {
+			_, isint := typ.(*godwarf.IntType)
+			_, isuint := typ.(*godwarf.UintType)
+			if isint || isuint {
+				// forces integer division if the result type is integer
+				op = token.QUO_ASSIGN
+			}
+		} else {
+			if xv.Value != nil && yv.Value != nil && xv.Value.Kind() == constant.Int && yv.Value.Kind() == constant.Int {
+				// See issue #3793 and the specification at https://go.dev/ref/spec#Constant_expressions
+				// in particular:
+				//
+				// "If the untyped operands of a binary operation (other than a shift)
+				// are of different kinds, the result is of the operand's kind that
+				// appears later in this list: integer, rune, floating-point, complex"
+				//
+				// However the go/constant package says that to get an integer result
+				// from a division token.QUO_ASSIGN must be used.
+				op = token.QUO_ASSIGN
+			}
 		}
 	}
 
