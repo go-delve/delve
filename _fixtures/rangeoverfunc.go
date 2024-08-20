@@ -79,7 +79,7 @@ outer:
 }
 
 func TestMultiCont0() {
-	var result []int
+	var result []int = make([]int, 0, 10)
 
 W:
 	for _, w := range OfSliceIndex([]int{1000, 2000}) {
