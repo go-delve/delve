@@ -2712,7 +2712,11 @@ func (v *Variable) reslice(low int64, high int64, trustLen bool) (*Variable, err
 	wrong := false
 	cptrNeedsFakeSlice := false
 	if v.Flags&VariableCPtr == 0 {
-		wrong = low < 0 || low > v.Len || high < 0 || high > v.Len
+		if v.Kind == reflect.Slice {
+			wrong = low < 0 || low > v.Cap || high < 0 || high > v.Cap
+		} else {
+			wrong = low < 0 || low > v.Len || high < 0 || high > v.Len
+		}
 	} else {
 		wrong = low < 0 || high < 0
 		if high == 0 {
@@ -2742,7 +2746,11 @@ func (v *Variable) reslice(low int64, high int64, trustLen bool) (*Variable, err
 	}
 
 	r := v.newVariable("", 0, typ, mem)
-	r.Cap = len
+	if v.Flags&VariableCPtr == 0 {
+		r.Cap = v.Cap - low
+	} else {
+		r.Cap = len
+	}
 	r.Len = len
 	r.Base = base
 	r.stride = v.stride
