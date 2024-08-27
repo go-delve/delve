@@ -953,10 +953,10 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(86), // result = append(result, w)
 				assertEval(t,
 					"w", "1000",
-					"result", "[]int len: 0, cap: 0, nil"),
+					"result", "[]int len: 0, cap: 10, []"),
 				nx(87), // if w == 2000
 				assertLocals(t, "result", "w"),
-				assertEval(t, "result", "[]int len: 1, cap: 1, [1000]"),
+				assertEval(t, "result", "[]int len: 1, cap: 10, [1000]"),
 				nx(90), // for _, x := range (x == 100)
 				nx(91), // for _, y := range (y == 10)
 				nx(92), // result = append(result, y)
@@ -992,7 +992,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(94), // if z&1 == 1
 				assertEval(t, "z", "4"),
 				nx(97), // result = append(result, z)
-				assertEval(t, "result", "[]int len: 3, cap: 4, [1000,10,2]"),
+				assertEval(t, "result", "[]int len: 3, cap: 10, [1000,10,2]"),
 				nx(98), // if z >= 4 {
 				nx(99), // continue W
 				nx(101),
@@ -1004,7 +1004,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(87), // if w == 2000
 				assertEval(t,
 					"w", "2000",
-					"result", "[]int len: 5, cap: 8, [1000,10,2,4,2000]"),
+					"result", "[]int len: 5, cap: 10, [1000,10,2,4,2000]"),
 				nx(88), // break
 				nx(106),
 				nx(107), // fmt.Println
@@ -1503,10 +1503,10 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 				nx(86), // result = append(result, w)
 				assertEval(t,
 					"w", "1000",
-					"result", "[]int len: 0, cap: 0, nil"),
+					"result", "[]int len: 0, cap: 10, []"),
 				nx(87), // if w == 2000
 				assertLocals(t, "result", "w"),
-				assertEval(t, "result", "[]int len: 1, cap: 1, [1000]"),
+				assertEval(t, "result", "[]int len: 1, cap: 10, [1000]"),
 				nx(90), // for _, x := range (x == 100)
 				nx(91), // for _, y := range (y == 10)
 				nx(92), // result = append(result, y)
@@ -1542,7 +1542,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 				nx(94), // if z&1 == 1
 				assertEval(t, "z", "4"),
 				nx(97), // result = append(result, z)
-				assertEval(t, "result", "[]int len: 3, cap: 4, [1000,10,2]"),
+				assertEval(t, "result", "[]int len: 3, cap: 10, [1000,10,2]"),
 				nx(98), // if z >= 4 {
 				nx(99), // continue W
 				nx(93),
@@ -1557,7 +1557,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 				nx(87), // if w == 2000
 				assertEval(t,
 					"w", "2000",
-					"result", "[]int len: 5, cap: 8, [1000,10,2,4,2000]"),
+					"result", "[]int len: 5, cap: 10, [1000,10,2,4,2000]"),
 				nx(88), // break
 				nx(85),
 				nx(106),
