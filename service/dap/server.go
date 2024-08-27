@@ -114,11 +114,11 @@ type Session struct {
 
 	// stackFrameHandles maps frames of each goroutine to unique ids across all goroutines.
 	// Reset at every stop.
-	stackFrameHandles *handlesMap
+	stackFrameHandles *handlesMap[stackFrame]
 	// variableHandles maps compound variables to unique references within their stack frame.
 	// Reset at every stop.
 	// See also comment for convertVariable.
-	variableHandles *variablesHandlesMap
+	variableHandles *handlesMap[*fullyQualifiedVariable]
 	// args tracks special settings for handling debug session requests.
 	args launchAttachArgs
 	// exceptionErr tracks the runtime error that last occurred.
@@ -345,8 +345,8 @@ func NewSession(conn io.ReadWriteCloser, config *Config, debugger *debugger.Debu
 		config:            config,
 		id:                sessionCount,
 		conn:              newConnection(conn),
-		stackFrameHandles: newHandlesMap(),
-		variableHandles:   newVariablesHandlesMap(),
+		stackFrameHandles: newHandlesMap[stackFrame](),
+		variableHandles:   newHandlesMap[*fullyQualifiedVariable](),
 		args:              defaultArgs,
 		exceptionErr:      nil,
 		debugger:          debugger,
@@ -2194,8 +2194,8 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 		return
 	}
 
-	goid := sf.(stackFrame).goroutineID
-	frame := sf.(stackFrame).frameIndex
+	goid := sf.goroutineID
+	frame := sf.frameIndex
 
 	// Check if the function is optimized.
 	fn, err := s.debugger.Function(int64(goid), frame, 0)
@@ -2818,8 +2818,8 @@ func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 	// no frame is specified (e.g. when stopped on entry or no call stack frame is expanded)
 	goid, frame := -1, 0
 	if sf, ok := s.stackFrameHandles.get(request.Arguments.FrameId); ok {
-		goid = sf.(stackFrame).goroutineID
-		frame = sf.(stackFrame).frameIndex
+		goid = sf.goroutineID
+		frame = sf.frameIndex
 	}
 
 	response := &dap.EvaluateResponse{Response: *newResponse(request.Request)}
