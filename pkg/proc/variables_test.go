@@ -119,12 +119,12 @@ func TestVariableEvaluation(t *testing.T) {
 		childrenlen int
 	}{
 		{"a1", reflect.String, "foofoofoofoofoofoo", 18, 0, 0},
-		{"a11", reflect.Array, nil, 3, -1, 3},
+		{"a11", reflect.Array, nil, 3, 3, 3},
 		{"a12", reflect.Slice, nil, 2, 2, 2},
 		{"a13", reflect.Slice, nil, 3, 3, 3},
 		{"a2", reflect.Int, int64(6), 0, 0, 0},
 		{"a3", reflect.Float64, float64(7.23), 0, 0, 0},
-		{"a4", reflect.Array, nil, 2, -1, 2},
+		{"a4", reflect.Array, nil, 2, 2, 2},
 		{"a5", reflect.Slice, nil, 5, 5, 5},
 		{"a6", reflect.Struct, nil, 2, 0, 2},
 		{"a7", reflect.Ptr, nil, 1, 0, 1},
@@ -139,7 +139,7 @@ func TestVariableEvaluation(t *testing.T) {
 		{"a7.Baz", reflect.Int, int64(5), 0, 0, 0},
 		{"a8.Baz", reflect.String, "feh", 3, 0, 0},
 		{"a8", reflect.Struct, nil, 2, 0, 2},
-		{"i32", reflect.Array, nil, 2, -1, 2},
+		{"i32", reflect.Array, nil, 2, 2, 2},
 		{"b1", reflect.Bool, true, 0, 0, 0},
 		{"b2", reflect.Bool, false, 0, 0, 0},
 		{"f", reflect.Func, "main.barfoo", 0, 0, 0},
@@ -295,8 +295,8 @@ func TestSetVariable(t *testing.T) {
 		{"iface1", "interface {}", "interface {} nil", "iface2", "interface {}(string) \"test\""},
 		{"iface1", "interface {}", "interface {}(string) \"test\"", "parr", "interface {}(*[4]int) *[0,1,2,3]"},
 
-		{"s3", "[]int", `[]int len: 0, cap: 6, []`, "s4[2:5]", "[]int len: 3, cap: 3, [3,4,5]"},
-		{"s3", "[]int", "[]int len: 3, cap: 3, [3,4,5]", "arr1[:]", "[]int len: 4, cap: 4, [0,1,2,3]"},
+		{"s3", "[]int", `[]int len: 0, cap: 6, []`, "s4[2:5]", "[]int len: 3, cap: 8, [3,4,5]"},
+		{"s3", "[]int", "[]int len: 3, cap: 8, [3,4,5]", "arr1[:]", "[]int len: 4, cap: 4, [0,1,2,3]"},
 		{"str1", "string", `"01234567890"`, `"new value"`, errorPrefix + "literal string can not be allocated because function calls are not allowed without using 'call'"},
 	}
 
@@ -646,8 +646,8 @@ func getEvalExpressionTestCases() []varTest {
 		{"str1[11]", false, "", "", "byte", errors.New("index out of bounds")},
 
 		// slice/array/string reslicing
-		{"a1[2:4]", false, "[]string len: 2, cap: 2, [\"three\",\"four\"]", "[]string len: 2, cap: 2, [\"three\",\"four\"]", "[]string", nil},
-		{"s1[2:4]", false, "[]string len: 2, cap: 2, [\"three\",\"four\"]", "[]string len: 2, cap: 2, [\"three\",\"four\"]", "[]string", nil},
+		{"a1[2:4]", false, "[]string len: 2, cap: 3, [\"three\",\"four\"]", "[]string len: 2, cap: 3, [\"three\",\"four\"]", "[]string", nil},
+		{"s1[2:4]", false, "[]string len: 2, cap: 3, [\"three\",\"four\"]", "[]string len: 2, cap: 3, [\"three\",\"four\"]", "[]string", nil},
 		{"str1[2:4]", false, "\"23\"", "\"23\"", "string", nil},
 		{"str1[0:11]", false, "\"01234567890\"", "\"01234567890\"", "string", nil},
 		{"str1[:3]", false, "\"012\"", "\"012\"", "string", nil},
@@ -655,7 +655,8 @@ func getEvalExpressionTestCases() []varTest {
 		{"str1[0:12]", false, "", "", "string", errors.New("index out of bounds")},
 		{"str1[5:3]", false, "", "", "string", errors.New("index out of bounds")},
 		{"str1[11:]", false, "\"\"", "\"\"", "string", nil},
-		{"longbyteslice[:70]", false, "[]uint8 len: 70, cap: 70, [118,101,114,121,32,108,111,110,103,32,115,116,114,105,110,103,32,48,49,50,51,52,53,54,55,56,57,97,48,49,50,51,52,53,54,55,56,57,98,48,49,50,51,52,53,54,55,56,57,99,48,49,50,51,52,53,54,55,56,57,100,48,49,50,51,52,53,54,55,56]", "[]uint8 len: 70, cap: 70, [118,101,114,121,32,108,111,110,103,32,115,116,114,105,110,103,32,48,49,50,51,52,53,54,55,56,57,97,48,49,50,51,52,53,54,55,56,57,98,48,49,50,51,52,53,54,55,56,57,99,48,49,50,51,52,53,54,55,56,57,100,48,49,50,51,52,53,54,55,56]", "[]uint8", nil},
+		{"longbyteslice[:70]", false, "[]uint8 len: 70, cap: 144, [118,101,114,121,32,108,111,110,103,32,115,116,114,105,110,103,32,48,49,50,51,52,53,54,55,56,57,97,48,49,50,51,52,53,54,55,56,57,98,48,49,50,51,52,53,54,55,56,57,99,48,49,50,51,52,53,54,55,56,57,100,48,49,50,51,52,53,54,55,56]", "[]uint8 len: 70, cap: 144, [118,101,114,121,32,108,111,110,103,32,115,116,114,105,110,103,32,48,49,50,51,52,53,54,55,56,57,97,48,49,50,51,52,53,54,55,56,57,98,48,49,50,51,52,53,54,55,56,57,99,48,49,50,51,52,53,54,55,56,57,100,48,49,50,51,52,53,54,55,56]", "[]uint8", nil},
+		{"longbyteslice[:3][:5]", false, "[]uint8 len: 5, cap: 144, [118,101,114,121,32]", "[]uint8 len: 5, cap: 144, [118,101,114,121,32]", "[]uint8", nil},
 
 		// NaN and Inf floats
 		{"pinf", false, "+Inf", "+Inf", "float64", nil},

@@ -690,7 +690,7 @@ func newVariable(name string, addr uint64, dwarfType godwarf.Type, bi *BinaryInf
 		v.Kind = reflect.Array
 		v.Base = v.Addr
 		v.Len = t.Count
-		v.Cap = -1
+		v.Cap = t.Count
 		v.fieldType = t.Type
 		v.stride = 0
 
