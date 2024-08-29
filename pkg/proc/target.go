@@ -260,6 +260,7 @@ func (t *Target) SupportsFunctionCalls() bool {
 func (t *Target) ClearCaches() {
 	t.clearFakeMemory()
 	t.gcache.Clear()
+	t.BinInfo().moduleDataCache = nil
 	for _, thread := range t.ThreadList() {
 		thread.Common().g = nil
 	}

@@ -104,6 +104,8 @@ type BinaryInfo struct {
 	// dwrapUnwrapCache caches unwrapping of defer wrapper functions (dwrap)
 	dwrapUnwrapCache map[uint64]*Function
 
+	moduleDataCache []ModuleData
+
 	// Go 1.17 register ABI is enabled.
 	regabi bool
 
