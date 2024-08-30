@@ -145,6 +145,14 @@ func TestStarlarkVariable(t *testing.T) {
 			{`v = eval(cur_scope(), "as1").Variable; print(v.Value.A)`, "1"},
 			{`v = eval(None, "as1", default_load_config()).Variable; print(v.Value.A)`, "1"},
 
+			// named constant values
+			{`v = eval(None, "enum1").Variable; print(v.Value)`, "255"},
+			{`v = eval(None, "enum2").Variable; print(v.Value)`, "hi"},
+			{`v = eval(None, "enum3").Variable; print(v.Value)`, "42"},
+			{`v = eval(None, "enum4").Variable; print(v.Value)`, "9001"},
+			{`v = eval(None, "enum5").Variable; print(v.Value)`, "True"},
+			{`v = eval(None, "enum6").Variable; print(v.Value)`, "3.14"},
+
 			// From starlark.md's examples
 			{`v = eval(None, "s2").Variable; print(v.Value[0])`, "main.astruct {A: 1, B: 2}"},
 			{`v = eval(None, "s2").Variable; print(v.Value[1].A)`, "3"},
