@@ -2594,7 +2594,7 @@ func TestGlobalScopeAndVariables(t *testing.T) {
 	})
 }
 
-// TestRegisterScopeAndVariables launches the program with showRegisters
+// TestRegistersScopeAndVariables launches the program with showRegisters
 // arg set, executes to a breakpoint in the main package and tests that the registers
 // got loaded. It then steps into a function in another package and tests that
 // the registers were updated by checking PC.
