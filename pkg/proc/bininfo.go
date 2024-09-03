@@ -1971,6 +1971,7 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 		return &ErrUnsupportedArch{os: "darwin", cpuArch: exe.Cpu}
 	}
 	var dwerr error
+	macOSShortSectionNamesWorkaround(exe)
 	image.dwarf, dwerr = exe.DWARF()
 	if dwerr != nil {
 		if len(bi.Images) <= 1 {
@@ -2129,6 +2130,38 @@ func (bi *BinaryInfo) macOSDebugFrameBugWorkaround() {
 	for i := range bi.frameEntries {
 		if bi.frameEntries[i].CIE.CIE_id == ^uint32(0) {
 			bi.frameEntries[i].Translate(delta)
+		}
+	}
+}
+
+// macOSShortSectionNamesWorkaround works around a bug in Go 1.23 (and
+// earlier).
+// Section names in Macho-O executables are limited to 16 characters, which
+// means that some DWARF sections with long names will be truncated. Go 1.23
+// and prior do not take into account this making the DWARF info sometimes
+// unreadable.
+// This bug only manifests on macOS 15 because the C toolchain of prior
+// versions of the operating system did not emit problematic DWARF sections.
+// See also https://github.com/go-delve/delve/issues/3797
+func macOSShortSectionNamesWorkaround(exe *macho.File) {
+	for _, sec := range exe.Sections {
+		if sec == nil {
+			continue
+		}
+		for _, longname := range []string{
+			"__debug_str_offsets",
+			"__zdebug_line_str",
+			"__zdebug_loclists",
+			"__zdebug_pubnames",
+			"__zdebug_pubtypes",
+			"__zdebug_rnglists",
+			"__zdebug_str_offsets",
+		} {
+			if sec.Name == longname[:16] {
+				logflags.DebuggerLogger().Debugf("expanding section name %q to %q", sec.Name, longname)
+				sec.Name = longname
+				break
+			}
 		}
 	}
 }
