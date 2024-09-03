@@ -9,9 +9,9 @@ const startHandle = 1000
 // opacity and allowing simplification of complex identifiers.
 // Based on
 // https://github.com/microsoft/vscode-debugadapter-node/blob/master/adapter/src/handles.ts
-type handlesMap struct {
+type handlesMap[T any] struct {
 	nextHandle  int
-	handleToVal map[int]interface{}
+	handleToVal map[int]T
 }
 
 type fullyQualifiedVariable struct {
@@ -29,47 +29,23 @@ type fullyQualifiedVariable struct {
 	startIndex int
 }
 
-func newHandlesMap() *handlesMap {
-	return &handlesMap{startHandle, make(map[int]interface{})}
+func newHandlesMap[T any]() *handlesMap[T] {
+	return &handlesMap[T]{startHandle, make(map[int]T)}
 }
 
-func (hs *handlesMap) reset() {
+func (hs *handlesMap[T]) reset() {
 	hs.nextHandle = startHandle
-	hs.handleToVal = make(map[int]interface{})
+	hs.handleToVal = make(map[int]T)
 }
 
-func (hs *handlesMap) create(value interface{}) int {
+func (hs *handlesMap[T]) create(value T) int {
 	next := hs.nextHandle
 	hs.nextHandle++
 	hs.handleToVal[next] = value
 	return next
 }
 
-func (hs *handlesMap) get(handle int) (interface{}, bool) {
+func (hs *handlesMap[T]) get(handle int) (T, bool) {
 	v, ok := hs.handleToVal[handle]
 	return v, ok
-}
-
-type variablesHandlesMap struct {
-	m *handlesMap
-}
-
-func newVariablesHandlesMap() *variablesHandlesMap {
-	return &variablesHandlesMap{newHandlesMap()}
-}
-
-func (hs *variablesHandlesMap) create(value *fullyQualifiedVariable) int {
-	return hs.m.create(value)
-}
-
-func (hs *variablesHandlesMap) get(handle int) (*fullyQualifiedVariable, bool) {
-	v, ok := hs.m.get(handle)
-	if !ok {
-		return nil, false
-	}
-	return v.(*fullyQualifiedVariable), true
-}
-
-func (hs *variablesHandlesMap) reset() {
-	hs.m.reset()
 }
