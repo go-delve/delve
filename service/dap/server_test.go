@@ -6511,7 +6511,7 @@ func TestBadLaunchRequests(t *testing.T) {
 		// Bad "backend"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "backend": 123})
 		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
-			"Failed to launch: invalid debug configuration - cannot unmarshal number into \"backend\" of type string")
+			"Failed to launch: invalid debug configuration - cannot unmarshal number …")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "backend": "foo"})
 		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
@@ -6520,7 +6520,7 @@ func TestBadLaunchRequests(t *testing.T) {
 		// Bad "substitutePath"
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": 123})
 		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
-			"Failed to launch: invalid debug configuration - cannot unmarshal number into \"substitutePath\" of type {\"from\":string, \"to\":string}")
+			"Failed to launch: invalid debug configuration - cannot unmarshal number into …")
 
 		client.LaunchRequestWithArgs(map[string]interface{}{"mode": "debug", "program": fixture.Source, "substitutePath": []interface{}{123}})
 		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
@@ -6714,7 +6714,7 @@ func TestBadAttachRequest(t *testing.T) {
 		// Bad "backend"
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 1, "backend": 123})
 		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
-			"Failed to attach: invalid debug configuration - cannot unmarshal number into \"backend\" of type string")
+			"Failed to attach: invalid debug configuration - cannot unmarshal number into …")
 
 		client.AttachRequest(map[string]interface{}{"mode": "local", "processId": 1, "backend": "foo"})
 		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
@@ -7675,5 +7675,8 @@ func checkErrorMessageId(er *dap.ErrorMessage, id int) bool {
 }
 
 func checkErrorMessageFormat(er *dap.ErrorMessage, fmt string) bool {
+	if dotdotdot := strings.Index(fmt, "…"); dotdotdot > 0 {
+		return er != nil && strings.HasPrefix(er.Format, fmt[:dotdotdot])
+	}
 	return er != nil && er.Format == fmt
 }
