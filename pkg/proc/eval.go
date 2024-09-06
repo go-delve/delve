@@ -390,7 +390,9 @@ func (scope *EvalScope) setupRangeFrames() error {
 	if err != nil {
 		return err
 	}
-	scope.rangeFrames = scope.rangeFrames[2:] // skip the first frame and its return frame
+	if len(scope.rangeFrames) > 0 {
+		scope.rangeFrames = scope.rangeFrames[2:] // skip the first frame and its return frame
+	}
 	scope.enclosingRangeScopes = make([]*EvalScope, len(scope.rangeFrames)/2)
 	return nil
 }

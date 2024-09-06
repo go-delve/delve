@@ -463,13 +463,20 @@ type compileUnit struct {
 	entry     *dwarf.Entry        // debug_info entry describing this compile unit
 	isgo      bool                // true if this is the go compile unit
 	lineInfo  *line.DebugLineInfo // debug_line segment associated with this compile unit
-	optimized bool                // this compile unit is optimized
+	optimized optimizedFlags      // this compile unit is optimized
 	producer  string              // producer attribute
 
 	offset dwarf.Offset // offset of the entry describing the compile unit
 
 	image *Image // parent image of this compilation unit.
 }
+
+type optimizedFlags uint8
+
+const (
+	optimizedInlined optimizedFlags = 1 << iota
+	optimizedOptimized
+)
 
 type fileLine struct {
 	file string
@@ -605,7 +612,7 @@ func (fn *Function) NameWithoutTypeParams() string {
 
 // Optimized returns true if the function was optimized by the compiler.
 func (fn *Function) Optimized() bool {
-	return fn.cu.optimized
+	return fn.cu.optimized != 0
 }
 
 // PrologueEndPC returns the PC just after the function prologue
@@ -2472,9 +2479,18 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 			if cu.isgo && cu.producer != "" {
 				semicolon := strings.Index(cu.producer, ";")
 				if semicolon < 0 {
-					cu.optimized = goversion.ProducerAfterOrEqual(cu.producer, 1, 10)
+					cu.optimized = 0
+					if goversion.ProducerAfterOrEqual(cu.producer, 1, 10) {
+						cu.optimized = optimizedInlined | optimizedOptimized
+					}
 				} else {
-					cu.optimized = !strings.Contains(cu.producer[semicolon:], "-N") || !strings.Contains(cu.producer[semicolon:], "-l")
+					cu.optimized = optimizedInlined | optimizedOptimized
+					if strings.Contains(cu.producer[semicolon:], "-N") {
+						cu.optimized &^= optimizedOptimized
+					}
+					if strings.Contains(cu.producer[semicolon:], "-l") {
+						cu.optimized &^= optimizedInlined
+					}
 					const regabi = " regabi"
 					if i := strings.Index(cu.producer[semicolon:], regabi); i > 0 {
 						i += semicolon

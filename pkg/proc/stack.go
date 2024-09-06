@@ -948,6 +948,10 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 	nonMonotonicSP := false
 	var closurePtr int64
 
+	optimized := func(fn *Function) bool {
+		return fn.cu.optimized&optimizedOptimized != 0
+	}
+
 	appendFrame := func(fr Stackframe) {
 		frames = append(frames, fr)
 		if fr.closurePtr != 0 {
@@ -959,6 +963,9 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 	closurePtrOk := func(fr *Stackframe) bool {
 		if fr.SystemStack {
 			return false
+		}
+		if closurePtr == 0 && optimized(fr.Call.Fn) {
+			return true
 		}
 		if closurePtr < 0 {
 			// closure is stack allocated, check that it is on this frame
@@ -994,12 +1001,30 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 			frames = append(frames, fr)
 		}
 
+		if fr.Call.Fn == nil {
+			if stage == startStage {
+				frames = nil
+				addRetFrame = false
+				stage = doneStage
+				return false
+			} else {
+				return true
+			}
+		}
+
 		switch stage {
 		case startStage:
 			appendFrame(fr)
 			rangeParent = fr.Call.Fn.extra(tgt.BinInfo()).rangeParent
 			stage = normalStage
-			if rangeParent == nil || closurePtr == 0 {
+			stop := false
+			if rangeParent == nil {
+				stop = true
+			}
+			if !optimized(fr.Call.Fn) && closurePtr == 0 {
+				stop = true
+			}
+			if stop {
 				frames = nil
 				addRetFrame = false
 				stage = doneStage
@@ -1011,7 +1036,7 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 				stage = lastFrameStage
 			} else if fr.Call.Fn.extra(tgt.BinInfo()).rangeParent == rangeParent && closurePtrOk(&fr) {
 				appendFrame(fr)
-				if closurePtr == 0 {
+				if !optimized(fr.Call.Fn) && closurePtr == 0 {
 					frames = nil
 					addRetFrame = false
 					stage = doneStage
