@@ -999,7 +999,14 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 			appendFrame(fr)
 			rangeParent = fr.Call.Fn.extra(tgt.BinInfo()).rangeParent
 			stage = normalStage
-			if rangeParent == nil || closurePtr == 0 {
+			stop := false
+			if rangeParent == nil {
+				stop = true
+			}
+			if !fr.Call.Fn.Optimized() && closurePtr == 0 {
+				stop = true
+			}
+			if stop {
 				frames = nil
 				addRetFrame = false
 				stage = doneStage
@@ -1011,7 +1018,7 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 				stage = lastFrameStage
 			} else if fr.Call.Fn.extra(tgt.BinInfo()).rangeParent == rangeParent && closurePtrOk(&fr) {
 				appendFrame(fr)
-				if closurePtr == 0 {
+				if !fr.Call.Fn.Optimized() && closurePtr == 0 {
 					frames = nil
 					addRetFrame = false
 					stage = doneStage
