@@ -149,9 +149,15 @@ func resolveParametricType(bi *BinaryInfo, mem MemoryReadWriter, t godwarf.Type,
 	}
 	_type := newVariable("", rtypeAddr, runtimeType, bi, mem)
 
-	mds, err := LoadModuleData(bi, _type.mem)
-	if err != nil {
-		return ptyp.TypedefType.Type, fmt.Errorf("error loading module data: %v", err)
+	var mds []ModuleData
+	if bi.moduleDataCache != nil {
+		mds = bi.moduleDataCache
+	} else {
+		mds, err = LoadModuleData(bi, _type.mem)
+		if err != nil {
+			return ptyp.TypedefType.Type, fmt.Errorf("error loading module data: %v", err)
+		}
+		bi.moduleDataCache = mds
 	}
 
 	typ, _, err := RuntimeTypeToDIE(_type, 0, mds)
