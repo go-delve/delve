@@ -71,6 +71,10 @@ const (
 	// If localsOnlyRangeBodyClosures is set simpleLocals only returns
 	// variables containing the range body closure.
 	localsOnlyRangeBodyClosures
+
+	// If localsIsRangeBody is set DW_AT_formal_parameter variables will be
+	// considered local variables.
+	localsIsRangeBody
 )
 
 // ConvertEvalScope returns a new EvalScope in the context of the
@@ -319,7 +323,12 @@ func (scope *EvalScope) Locals(flags localsFlags, wantedName string) ([]*Variabl
 		return vars2
 	}
 
-	vars0, err := scope.simpleLocals(flags, wantedName)
+	rangeBodyFlags := localsFlags(0)
+	if scope.Fn != nil && scope.Fn.rangeParentName() != "" {
+		rangeBodyFlags = localsFlags(localsIsRangeBody)
+	}
+
+	vars0, err := scope.simpleLocals(flags|rangeBodyFlags, wantedName)
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +353,11 @@ func (scope *EvalScope) Locals(flags localsFlags, wantedName string) ([]*Variabl
 			scope2 = FrameToScope(scope.target, scope.target.Memory(), scope.g, scope.threadID, scope.rangeFrames[2*i:]...)
 			scope.enclosingRangeScopes[i] = scope2
 		}
-		vars, err := scope2.simpleLocals(flags, wantedName)
+		rangeBodyFlags := localsFlags(localsIsRangeBody)
+		if i == len(scope.enclosingRangeScopes)-1 {
+			rangeBodyFlags = 0
+		}
+		vars, err := scope2.simpleLocals(flags|rangeBodyFlags, wantedName)
 		if err != nil {
 			return nil, err
 		}
@@ -377,7 +390,9 @@ func (scope *EvalScope) setupRangeFrames() error {
 	if err != nil {
 		return err
 	}
-	scope.rangeFrames = scope.rangeFrames[2:] // skip the first frame and its return frame
+	if len(scope.rangeFrames) > 0 {
+		scope.rangeFrames = scope.rangeFrames[2:] // skip the first frame and its return frame
+	}
 	scope.enclosingRangeScopes = make([]*EvalScope, len(scope.rangeFrames)/2)
 	return nil
 }
@@ -455,7 +470,7 @@ func (scope *EvalScope) simpleLocals(flags localsFlags, wantedName string) ([]*V
 		}
 		vars = append(vars, val)
 		depth := entry.Depth
-		if entry.Tag == dwarf.TagFormalParameter {
+		if (flags&localsIsRangeBody == 0) && (entry.Tag == dwarf.TagFormalParameter) {
 			if depth <= 1 {
 				depth = 0
 			}

@@ -1836,8 +1836,31 @@ func TestCapturedVariable(t *testing.T) {
 		assertVariable(t, v, varTest{
 			name:         "c",
 			preserveName: true,
-			value:        "struct { main.name string; main.thing main.Thing } {name: \"Success\", thing: main.Thing {str: \"hello\"}}",
-			varType:      "struct { main.name string; main.thing main.Thing }",
+
+			value:   "struct { main.name string; main.thing main.Thing } {name: \"Success\", thing: main.Thing {str: \"hello\"}}",
+			varType: "struct { main.name string; main.thing main.Thing }",
 		})
 	})
+}
+
+func TestSetupRangeFramesCrash(t *testing.T) {
+	// See issue #3806
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
+		t.Skip("N/A")
+	}
+
+	for _, options := range []protest.BuildFlags{0, protest.EnableInlining | protest.EnableOptimization} {
+		withTestProcessArgs("setiterator", t, ".", []string{}, options, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+			setFileBreakpoint(p, t, fixture.Source, 48)
+			assertNoError(grp.Continue(), t, "Continue")
+			scope, err := evalScope(p)
+			assertNoError(err, t, "EvalScope")
+			v, err := scope.LocalVariables(normalLoadConfig)
+			assertNoError(err, t, "LocalVariables")
+			t.Logf("%#v", v)
+			if len(v) != 1 {
+				t.Fatalf("wrong number of variables")
+			}
+		})
+	}
 }

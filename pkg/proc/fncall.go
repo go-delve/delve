@@ -573,7 +573,7 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 		return 0, nil, fmt.Errorf("DWARF read error: %v", err)
 	}
 
-	if bi.regabi && fn.cu.optimized {
+	if bi.regabi && fn.Optimized() {
 		if runtimeWhitelist[fn.Name] {
 			runtimeOptimizedWorkaround(bi, fn.cu.image, dwarfTree)
 		} else {
