@@ -297,6 +297,9 @@ func (p *gdbProcess) Listen(listener net.Listener, path, cmdline string, pid int
 		return p.Connect(conn, path, cmdline, pid, debugInfoDirs, stopReason)
 	case status := <-p.waitChan:
 		listener.Close()
+		if err := checkRosettaExpensive(); err != nil {
+			return nil, err
+		}
 		return nil, fmt.Errorf("stub exited while waiting for connection: %v", status)
 	}
 }
@@ -310,6 +313,9 @@ func (p *gdbProcess) Dial(addr string, path, cmdline string, pid int, debugInfoD
 		}
 		select {
 		case status := <-p.waitChan:
+			if err := checkRosettaExpensive(); err != nil {
+				return nil, err
+			}
 			return nil, fmt.Errorf("stub exited while attempting to connect: %v", status)
 		default:
 		}
@@ -2225,6 +2231,28 @@ func machTargetExcToError(sig uint8) error {
 		return errors.New("software exception")
 	case 0x96:
 		return errors.New("breakpoint exception")
+	}
+	return nil
+}
+
+func checkRosettaExpensive() error {
+	if runtime.GOOS != "darwin" {
+		return nil
+	}
+	if runtime.GOARCH != "arm64" {
+		return nil
+	}
+
+	// Additionally check the output of 'uname -m' if it's x86_64 it means that
+	// the shell we are running on is being emulated by Rosetta even though our
+	// process isn't. In this condition debugserver will crash.
+	out, err := exec.Command("uname", "-m").Output()
+	if err != nil {
+		return nil
+	}
+	s := strings.TrimSpace(string(out))
+	if s == "x86_64" {
+		return errors.New("can not run under Rosetta, check that the terminal/shell in use is right for your CPU architecture")
 	}
 	return nil
 }
