@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.23.1] 2024-09-23
+
+Telemetry notice: starting with version 1.24.0 Delve will begin collecting opt-in telemetry data using the same mechanism used by the toolchain, see https://github.com/golang/go/issues/68384, https://go.dev/doc/telemetry#background, https://github.com/go-delve/delve/issues/3815.
+
+### Fixed
+
+- Debugging on macOS Sequoia (#3799, @aarzilli)
+- Various bugs with range-over-func loops (#3808, #3788, @aarzilli)
+- Reslice operator did not allow reslicing up to the slice's cap (#3796, @Jille)
+- Starlark access to named constants (#3802, @arvidfm)
+
+
 ## [1.23.0] 2024-07-16
 
 Deprecation notice: starting with the next version of Delve version 1 of the API will be removed. Version 2 was added in version 0.12.0 in 2017 and has been the recommended way to connect to Delve since.
