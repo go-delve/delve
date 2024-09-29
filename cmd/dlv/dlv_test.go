@@ -30,8 +30,10 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-var testBackend string
-var ldFlags string
+var (
+	testBackend string
+	ldFlags     string
+)
 
 func init() {
 	ldFlags = os.Getenv("CGO_LDFLAGS")
@@ -396,11 +398,11 @@ func diffMaybe(t *testing.T, filename string, generated []byte) {
 // updated.
 func TestGeneratedDoc(t *testing.T) {
 	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
-		//TODO(qmuntal): investigate further when the Windows ARM64 backend is more stable.
+		// TODO(qmuntal): investigate further when the Windows ARM64 backend is more stable.
 		t.Skip("skipping test on Windows in CI")
 	}
 	if runtime.GOOS == "linux" && runtime.GOARCH == "ppc64le" {
-		//TODO(alexsaezm): finish CI integration
+		// TODO(alexsaezm): finish CI integration
 		t.Skip("skipping test on Linux/PPC64LE in CI")
 	}
 	// Checks gen-cli-docs.go
@@ -901,6 +903,53 @@ func TestDAPCmdWithClient(t *testing.T) {
 	conn, err := listener.Accept()
 	if err != nil {
 		cmd.Process.Kill() // release the port
+		t.Fatalf("Failed to get connection: %v", err)
+	}
+	t.Log("dlv dap process dialed in successfully")
+
+	client := daptest.NewClientFromConn(conn)
+	client.InitializeRequest()
+	client.ExpectInitializeResponse(t)
+
+	// Close the connection.
+	if err := conn.Close(); err != nil {
+		cmd.Process.Kill()
+		t.Fatalf("Failed to get connection: %v", err)
+	}
+
+	// Connection close should trigger dlv-reverse command's normal exit.
+	if err := cmd.Wait(); err != nil {
+		cmd.Process.Kill()
+		t.Fatalf("command failed: %v\n%s\n%v", err, buf.Bytes(), cmd.Process.Pid)
+	}
+}
+
+// TestDAPCmdWithUnixClient tests dlv dap --client-addr can be started with unix domain socket and shut down.
+func TestDAPCmdWithUnixClient(t *testing.T) {
+	tmpdir := os.TempDir()
+	if tmpdir == "" {
+		return
+	}
+
+	listenPath := filepath.Join(tmpdir, "dap_test")
+	listener, err := net.Listen("unix", listenPath)
+	if err != nil {
+		t.Fatalf("cannot setup listener required for testing: %v", err)
+	}
+	defer listener.Close()
+
+	dlvbin := getDlvBin(t)
+
+	cmd := exec.Command(dlvbin, "dap", "--log-output=dap", "--log", "--client-addr=unix:"+listener.Addr().String())
+	buf := &bytes.Buffer{}
+	cmd.Stdin = buf
+	cmd.Stdout = buf
+	assertNoError(cmd.Start(), t, "start dlv dap process with --client-addr flag")
+
+	// Wait for the connection.
+	conn, err := listener.Accept()
+	if err != nil {
+		cmd.Process.Kill() // release the socket file
 		t.Fatalf("Failed to get connection: %v", err)
 	}
 	t.Log("dlv dap process dialed in successfully")

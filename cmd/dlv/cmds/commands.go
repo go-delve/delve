@@ -244,7 +244,7 @@ will exit when the debug session ends.`,
 		Run:               dapCmd,
 		ValidArgsFunction: cobra.NoFileCompletions,
 	}
-	dapCommand.Flags().StringVar(&dapClientAddr, "client-addr", "", "host:port where the DAP client is waiting for the DAP server to dial in")
+	dapCommand.Flags().StringVar(&dapClientAddr, "client-addr", "", "Address where the DAP client is waiting for the DAP server to dial in. Prefix with 'unix:' to use a unix domain socket.")
 	must(dapCommand.RegisterFlagCompletionFunc("client-addr", cobra.NoFileCompletions))
 
 	// TODO(polina): support --tty when dlv dap allows to launch a program from command-line
@@ -398,7 +398,7 @@ Currently supports linux/amd64 and linux/arm64 core files, windows/amd64 minidum
 	rootCommand.AddCommand(coreCommand)
 
 	// 'version' subcommand.
-	var versionVerbose = false
+	var versionVerbose bool
 	versionCommand := &cobra.Command{
 		Use:   "version",
 		Short: "Prints version.",
@@ -463,7 +463,8 @@ Some backends can be configured using environment variables:
 * DELVE_DEBUGSERVER_PATH specifies the path of the debugserver executable for the lldb backend
 * DELVE_RR_RECORD_FLAGS specifies additional flags used when calling 'rr record'
 * DELVE_RR_REPLAY_FLAGS specifies additional flags used when calling 'rr replay'
-`})
+`,
+	})
 
 	rootCommand.AddCommand(&cobra.Command{
 		Use:   "log",
@@ -581,12 +582,7 @@ func dapCmd(cmd *cobra.Command, args []string) {
 			}
 			cfg.Listener = listener
 		} else { // with a predetermined client.
-			var err error
-			conn, err = net.Dial("tcp", dapClientAddr)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to connect to the DAP client: %v\n", err)
-				return 1
-			}
+			conn = netDial(dapClientAddr)
 		}
 
 		server := dap.NewServer(cfg)
@@ -672,7 +668,7 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 		var processArgs []string
 
 		dlvArgs, targetArgs := splitArgs(cmd, args)
-		var dlvArgsLen = len(dlvArgs)
+		dlvArgsLen := len(dlvArgs)
 		switch dlvArgsLen {
 		case 0:
 			fmt.Fprintf(os.Stderr, "you must supply a regexp for functions to trace\n")

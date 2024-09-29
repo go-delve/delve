@@ -33,7 +33,7 @@ dlv dap [flags]
 ### Options
 
 ```
-      --client-addr string   host:port where the DAP client is waiting for the DAP server to dial in
+      --client-addr string   Address where the DAP client is waiting for the DAP server to dial in. Prefix with 'unix:' to use a unix domain socket.
   -h, --help                 help for dap
 ```
 
