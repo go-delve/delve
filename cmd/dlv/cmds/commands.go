@@ -398,7 +398,7 @@ Currently supports linux/amd64 and linux/arm64 core files, windows/amd64 minidum
 	rootCommand.AddCommand(coreCommand)
 
 	// 'version' subcommand.
-	var versionVerbose bool
+	var versionVerbose = false
 	versionCommand := &cobra.Command{
 		Use:   "version",
 		Short: "Prints version.",
@@ -668,7 +668,7 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 		var processArgs []string
 
 		dlvArgs, targetArgs := splitArgs(cmd, args)
-		dlvArgsLen := len(dlvArgs)
+		var dlvArgsLen = len(dlvArgs)
 		switch dlvArgsLen {
 		case 0:
 			fmt.Fprintf(os.Stderr, "you must supply a regexp for functions to trace\n")
