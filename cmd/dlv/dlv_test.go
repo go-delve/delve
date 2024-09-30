@@ -30,10 +30,8 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-var (
-	testBackend string
-	ldFlags     string
-)
+var testBackend string
+var ldFlags string
 
 func init() {
 	ldFlags = os.Getenv("CGO_LDFLAGS")
@@ -398,11 +396,11 @@ func diffMaybe(t *testing.T, filename string, generated []byte) {
 // updated.
 func TestGeneratedDoc(t *testing.T) {
 	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
-		// TODO(qmuntal): investigate further when the Windows ARM64 backend is more stable.
+		//TODO(qmuntal): investigate further when the Windows ARM64 backend is more stable.
 		t.Skip("skipping test on Windows in CI")
 	}
 	if runtime.GOOS == "linux" && runtime.GOARCH == "ppc64le" {
-		// TODO(alexsaezm): finish CI integration
+		//TODO(alexsaezm): finish CI integration
 		t.Skip("skipping test on Linux/PPC64LE in CI")
 	}
 	// Checks gen-cli-docs.go
