@@ -1211,12 +1211,11 @@ func TestBreakpointCounts(t *testing.T) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 12)
 
 		for {
-			if err := grp.Continue(); err != nil {
-				if _, exited := err.(proc.ErrProcessExited); exited {
-					break
-				}
-				assertNoError(err, t, "Continue()")
+			err := grp.Continue()
+			if errors.As(err, &proc.ErrProcessExited{}) {
+				break
 			}
+			assertNoError(err, t, "Continue()")
 		}
 
 		t.Logf("TotalHitCount: %d", bp.Logical.TotalHitCount)
@@ -1241,12 +1240,11 @@ func TestHardcodedBreakpointCounts(t *testing.T) {
 	withTestProcess("hcbpcountstest", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		counts := map[int64]int{}
 		for {
-			if err := grp.Continue(); err != nil {
-				if _, exited := err.(proc.ErrProcessExited); exited {
-					break
-				}
-				assertNoError(err, t, "Continue()")
+			err := grp.Continue()
+			if errors.As(err, &proc.ErrProcessExited{}) {
+				break
 			}
+			assertNoError(err, t, "Continue()")
 
 			for _, th := range p.ThreadList() {
 				bp := th.Breakpoint().Breakpoint
@@ -1298,12 +1296,11 @@ func TestBreakpointCountsWithDetection(t *testing.T) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 12)
 
 		for {
-			if err := grp.Continue(); err != nil {
-				if _, exited := err.(proc.ErrProcessExited); exited {
-					break
-				}
-				assertNoError(err, t, "Continue()")
+			err := grp.Continue()
+			if errors.As(err, &proc.ErrProcessExited{}) {
+				break
 			}
+			assertNoError(err, t, "Continue()")
 			for _, th := range p.ThreadList() {
 				if bp := th.Breakpoint(); bp.Breakpoint == nil {
 					continue
@@ -1526,16 +1523,16 @@ func TestCondBreakpointError(t *testing.T) {
 
 		err = grp.Continue()
 		if err != nil {
-			if _, exited := err.(proc.ErrProcessExited); !exited {
+			if !errors.As(err, &proc.ErrProcessExited{}) {
 				t.Fatalf("Unexpected error on second Continue(): %v", err)
 			}
-		} else {
-			nvar := evalVariable(p, t, "n")
+			return
+		}
+		nvar := evalVariable(p, t, "n")
 
-			n, _ := constant.Int64Val(nvar.Value)
-			if n != 7 {
-				t.Fatalf("Stopped on wrong goroutine %d\n", n)
-			}
+		n, _ := constant.Int64Val(nvar.Value)
+		if n != 7 {
+			t.Fatalf("Stopped on wrong goroutine %d\n", n)
 		}
 	})
 }
@@ -1732,10 +1729,8 @@ func TestIssue414(t *testing.T) {
 			} else {
 				err = grp.Next()
 			}
-			if err != nil {
-				if _, exited := err.(proc.ErrProcessExited); exited {
-					break
-				}
+			if errors.As(err, &proc.ErrProcessExited{}) {
+				break
 			}
 			assertNoError(err, t, "Step()")
 		}
@@ -1804,13 +1799,12 @@ func TestCmdLineArgs(t *testing.T) {
 		if bp.Breakpoint != nil && bp.Logical.Name == proc.UnrecoveredPanic {
 			t.Fatalf("testing args failed on unrecovered-panic breakpoint: %v", bp)
 		}
-		exit, exited := err.(proc.ErrProcessExited)
-		if !exited {
+		var exit proc.ErrProcessExited
+		if !errors.As(err, &exit) {
 			t.Fatalf("Process did not exit: %v", err)
-		} else {
-			if exit.Status != 0 {
-				t.Fatalf("process exited with invalid status %d", exit.Status)
-			}
+		}
+		if exit.Status != 0 {
+			t.Fatalf("process exited with invalid status %d", exit.Status)
 		}
 	}
 
@@ -4442,14 +4436,10 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 		logState()
 
 		err = grp.StepOut()
-		if err != nil {
-			_, isexited := err.(proc.ErrProcessExited)
-			if !isexited {
-				assertNoError(err, t, "StepOut()")
-			} else {
-				return
-			}
+		if errors.As(err, &proc.ErrProcessExited{}) {
+			return
 		}
+		assertNoError(err, t, "StepOut()")
 
 		logState()
 
@@ -4817,12 +4807,11 @@ func TestWatchpointCounts(t *testing.T) {
 		assertNoError(err, t, "SetWatchpoint(write-only)")
 
 		for {
-			if err := grp.Continue(); err != nil {
-				if errors.As(err, &proc.ErrProcessExited{}) {
-					break
-				}
-				assertNoError(err, t, "Continue()")
+			err := grp.Continue()
+			if errors.As(err, &proc.ErrProcessExited{}) {
+				break
 			}
+			assertNoError(err, t, "Continue()")
 		}
 
 		t.Logf("TotalHitCount: %d", bp.Logical.TotalHitCount)
@@ -5137,13 +5126,10 @@ func TestFollowExec(t *testing.T) {
 		for {
 			t.Log("Continuing")
 			err := grp.Continue()
-			if err != nil {
-				_, isexited := err.(proc.ErrProcessExited)
-				if isexited {
-					break
-				}
-				assertNoError(err, t, "Continue")
+			if errors.As(err, &proc.ErrProcessExited{}) {
+				break
 			}
+			assertNoError(err, t, "Continue")
 
 			if first {
 				first = false
@@ -5313,12 +5299,11 @@ func TestFollowExecRegexFilter(t *testing.T) {
 		assertNoError(grp.Continue(), t, "Continue 3")
 		assertFunctionName(grp.Selected, t, "main.traceme3", "Program did not continue to the expected location (3)")
 		err := grp.Continue()
-		if err != nil {
-			_, isexited := err.(proc.ErrProcessExited)
-			if !isexited {
-				assertNoError(err, t, "Continue 4")
-			}
-		} else {
+		if errors.As(err, &proc.ErrProcessExited{}) {
+			return
+		}
+		assertNoError(err, t, "Continue 4")
+		if err == nil {
 			t.Fatal("process did not exit after 4 continues")
 		}
 	})

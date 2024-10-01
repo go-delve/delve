@@ -1,6 +1,7 @@
 package gdbserial_test
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -76,7 +77,7 @@ func TestRestartAfterExit(t *testing.T) {
 		loc, err := p.CurrentThread().Location()
 		assertNoError(err, t, "CurrentThread().Location()")
 		err = grp.Continue()
-		if _, isexited := err.(proc.ErrProcessExited); err == nil || !isexited {
+		if !errors.As(err, &proc.ErrProcessExited{}) {
 			t.Fatalf("program did not exit: %v", err)
 		}
 
@@ -89,7 +90,7 @@ func TestRestartAfterExit(t *testing.T) {
 			t.Fatalf("stopped at %d (expected %d)", loc2.Line, loc.Line)
 		}
 		err = grp.Continue()
-		if _, isexited := err.(proc.ErrProcessExited); err == nil || !isexited {
+		if !errors.As(err, &proc.ErrProcessExited{}) {
 			t.Fatalf("program did not exit (after exit): %v", err)
 		}
 	})
@@ -113,7 +114,7 @@ func TestRestartDuringStop(t *testing.T) {
 			t.Fatalf("stopped at %d (expected %d)", loc2.Line, loc.Line)
 		}
 		err = grp.Continue()
-		if _, isexited := err.(proc.ErrProcessExited); err == nil || !isexited {
+		if !errors.As(err, &proc.ErrProcessExited{}) {
 			t.Fatalf("program did not exit (after exit): %v", err)
 		}
 	})
