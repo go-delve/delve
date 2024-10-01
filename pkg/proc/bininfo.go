@@ -16,6 +16,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -2297,7 +2298,7 @@ func loadBinaryInfoGoRuntimeCommon(bi *BinaryInfo, image *Image, cu *compileUnit
 		bi.Sources = append(bi.Sources, f)
 	}
 	sort.Strings(bi.Sources)
-	bi.Sources = uniq(bi.Sources)
+	bi.Sources = slices.Compact(bi.Sources)
 	return nil
 }
 
@@ -2536,7 +2537,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 		}
 	}
 	sort.Strings(bi.Sources)
-	bi.Sources = uniq(bi.Sources)
+	bi.Sources = slices.Compact(bi.Sources)
 
 	if cont != nil {
 		cont()
@@ -2858,21 +2859,6 @@ func (bi *BinaryInfo) loadDebugInfoMapsInlinedCalls(ctxt *loadDebugInfoMapsConte
 		}
 		reader.SkipChildren()
 	}
-}
-
-func uniq(s []string) []string {
-	if len(s) == 0 {
-		return s
-	}
-	src, dst := 1, 1
-	for src < len(s) {
-		if s[src] != s[dst-1] {
-			s[dst] = s[src]
-			dst++
-		}
-		src++
-	}
-	return s[:dst]
 }
 
 func (bi *BinaryInfo) expandPackagesInType(expr ast.Expr) {
