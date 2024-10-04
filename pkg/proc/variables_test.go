@@ -912,14 +912,14 @@ func getEvalExpressionTestCases() []varTest {
 		{"bytearray[0] * bytearray[0]", false, "144", "144", "uint8", nil},
 
 		// function call / typecast errors
-		{"unknownthing(1, 2)", false, "", "", "", errors.New("could not find symbol value for unknownthing")},
-		{"(unknownthing)(1, 2)", false, "", "", "", errors.New("could not find symbol value for unknownthing")},
+		{"unknownthing(1, 2)", false, "", "", "", altErrors("function calls not allowed without using 'call'", "could not find symbol value for unknownthing")},
+		{"(unknownthing)(1, 2)", false, "", "", "", altErrors("function calls not allowed without using 'call'", "could not find symbol value for unknownthing")},
 		{"afunc(2)", false, "", "", "", errors.New("function calls not allowed without using 'call'")},
 		{"(afunc)(2)", false, "", "", "", errors.New("function calls not allowed without using 'call'")},
-		{"(*afunc)(2)", false, "", "", "", errors.New("expression \"afunc\" (func()) can not be dereferenced")},
-		{"unknownthing(2)", false, "", "", "", errors.New("could not find symbol value for unknownthing")},
-		{"(*unknownthing)(2)", false, "", "", "", errors.New("could not find symbol value for unknownthing")},
-		{"(*strings.Split)(2)", false, "", "", "", errors.New("could not find symbol value for strings")},
+		{"(*afunc)(2)", false, "", "", "", errors.New("*")},
+		{"unknownthing(2)", false, "", "", "", altErrors("function calls not allowed without using 'call'", "could not find symbol value for unknownthing")},
+		{"(*unknownthing)(2)", false, "", "", "", altErrors("function calls not allowed without using 'call'", "could not find symbol value for unknownthing")},
+		{"(*strings.Split)(2)", false, "", "", "", altErrors("function calls not allowed without using 'call'", "could not find symbol value for strings")},
 
 		// pretty printing special types
 		{"tim1", false, `time.Time(1977-05-25T18:00:00Z)…`, `time.Time(1977-05-25T18:00:00Z)…`, "time.Time", nil},
@@ -977,6 +977,18 @@ func getEvalExpressionTestCases() []varTest {
 	return testcases
 }
 
+func altErrors(errs ...string) *altError {
+	return &altError{errs}
+}
+
+type altError struct {
+	errs []string
+}
+
+func (err *altError) Error() string {
+	return "[multiple alternatives]"
+}
+
 func TestEvalExpression(t *testing.T) {
 	testcases := getEvalExpressionTestCases()
 	protest.AllowRecording(t)
@@ -1000,8 +1012,22 @@ func TestEvalExpression(t *testing.T) {
 					if err == nil {
 						t.Fatalf("Expected error %s, got no error (%s)", tc.err.Error(), tc.name)
 					}
-					if tc.err.Error() != err.Error() {
-						t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+					switch e := tc.err.(type) {
+					case *altError:
+						ok := false
+						for _, tgtErr := range e.errs {
+							if tgtErr == err.Error() {
+								ok = true
+								break
+							}
+						}
+						if !ok {
+							t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+						}
+					default:
+						if tc.err.Error() != "*" && tc.err.Error() != err.Error() {
+							t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+						}
 					}
 				}
 			})
@@ -1272,9 +1298,10 @@ func TestIssue1075(t *testing.T) {
 }
 
 type testCaseCallFunction struct {
-	expr string   // call expression to evaluate
-	outs []string // list of return parameters in this format: <param name>:<param type>:<param value>
-	err  error    // if not nil should return an error
+	expr     string   // call expression to evaluate
+	outs     []string // list of return parameters in this format: <param name>:<param type>:<param value>
+	err      error    // if not nil should return an error
+	pinCount int      // where debugPinner is supported this is the number of pins created during the function call injection
 }
 
 func TestCallFunction(t *testing.T) {
@@ -1286,126 +1313,126 @@ func TestCallFunction(t *testing.T) {
 	var testcases = []testCaseCallFunction{
 		// Basic function call injection tests
 
-		{"call1(one, two)", []string{":int:3"}, nil},
-		{"call1(one+two, 4)", []string{":int:7"}, nil},
-		{"callpanic()", []string{`~panic:interface {}:interface {}(string) "callpanic panicked"`}, nil},
-		{`stringsJoin(nil, "")`, []string{`:string:""`}, nil},
-		{`stringsJoin(stringslice, comma)`, []string{`:string:"one,two,three"`}, nil},
-		{`stringsJoin(stringslice, "~~")`, []string{`:string:"one~~two~~three"`}, nil},
-		{`stringsJoin(s1, comma)`, nil, errors.New(`could not find symbol value for s1`)},
-		{`stringsJoin(intslice, comma)`, nil, errors.New("can not convert value of type []int to []string")},
-		{`noreturncall(2)`, nil, nil},
+		{"call1(one, two)", []string{":int:3"}, nil, 0},
+		{"call1(one+two, 4)", []string{":int:7"}, nil, 0},
+		{"callpanic()", []string{`~panic:interface {}:interface {}(string) "callpanic panicked"`}, nil, 0},
+		{`stringsJoin(nil, "")`, []string{`:string:""`}, nil, 0},
+		{`stringsJoin(stringslice, comma)`, []string{`:string:"one,two,three"`}, nil, 1},
+		{`stringsJoin(stringslice, "~~")`, []string{`:string:"one~~two~~three"`}, nil, 2},
+		{`stringsJoin(s1, comma)`, nil, errors.New(`could not find symbol value for s1`), 1},
+		{`stringsJoin(intslice, comma)`, nil, errors.New("can not convert value of type []int to []string"), 1},
+		{`noreturncall(2)`, nil, nil, 0},
 
 		// Expression tests
-		{`square(2) + 1`, []string{":int:5"}, nil},
-		{`intcallpanic(1) + 1`, []string{":int:2"}, nil},
-		{`intcallpanic(0) + 1`, []string{`~panic:interface {}:interface {}(string) "panic requested"`}, nil},
-		{`onetwothree(5)[1] + 2`, []string{":int:9"}, nil},
+		{`square(2) + 1`, []string{":int:5"}, nil, 0},
+		{`intcallpanic(1) + 1`, []string{":int:2"}, nil, 0},
+		{`intcallpanic(0) + 1`, []string{`~panic:interface {}:interface {}(string) "panic requested"`}, nil, 0},
+		{`onetwothree(5)[1] + 2`, []string{":int:9"}, nil, 1},
 
 		// Call types tests (methods, function pointers, etc.)
 		// The following set of calls was constructed using https://docs.google.com/document/d/1bMwCey-gmqZVTpRax-ESeVuZGmjwbocYs1iHplK-cjo/pub as a reference
 
-		{`a.VRcvr(1)`, []string{`:string:"1 + 3 = 4"`}, nil}, // direct call of a method with value receiver / on a value
+		{`a.VRcvr(1)`, []string{`:string:"1 + 3 = 4"`}, nil, 1}, // direct call of a method with value receiver / on a value
 
-		{`a.PRcvr(2)`, []string{`:string:"2 - 3 = -1"`}, nil},  // direct call of a method with pointer receiver / on a value
-		{`pa.VRcvr(3)`, []string{`:string:"3 + 6 = 9"`}, nil},  // direct call of a method with value receiver / on a pointer
-		{`pa.PRcvr(4)`, []string{`:string:"4 - 6 = -2"`}, nil}, // direct call of a method with pointer receiver / on a pointer
+		{`a.PRcvr(2)`, []string{`:string:"2 - 3 = -1"`}, nil, 1},  // direct call of a method with pointer receiver / on a value
+		{`pa.VRcvr(3)`, []string{`:string:"3 + 6 = 9"`}, nil, 1},  // direct call of a method with value receiver / on a pointer
+		{`pa.PRcvr(4)`, []string{`:string:"4 - 6 = -2"`}, nil, 1}, // direct call of a method with pointer receiver / on a pointer
 
-		{`vable_pa.VRcvr(6)`, []string{`:string:"6 + 6 = 12"`}, nil}, // indirect call of method on interface / containing value with value method
-		{`pable_pa.PRcvr(7)`, []string{`:string:"7 - 6 = 1"`}, nil},  // indirect call of method on interface / containing pointer with value method
-		{`vable_a.VRcvr(5)`, []string{`:string:"5 + 3 = 8"`}, nil},   // indirect call of method on interface / containing pointer with pointer method
+		{`vable_pa.VRcvr(6)`, []string{`:string:"6 + 6 = 12"`}, nil, 1}, // indirect call of method on interface / containing value with value method
+		{`pable_pa.PRcvr(7)`, []string{`:string:"7 - 6 = 1"`}, nil, 1},  // indirect call of method on interface / containing pointer with value method
+		{`vable_a.VRcvr(5)`, []string{`:string:"5 + 3 = 8"`}, nil, 1},   // indirect call of method on interface / containing pointer with pointer method
 
-		{`pa.nonexistent()`, nil, errors.New("pa has no member nonexistent")},
-		{`a.nonexistent()`, nil, errors.New("a has no member nonexistent")},
-		{`vable_pa.nonexistent()`, nil, errors.New("vable_pa has no member nonexistent")},
-		{`vable_a.nonexistent()`, nil, errors.New("vable_a has no member nonexistent")},
-		{`pable_pa.nonexistent()`, nil, errors.New("pable_pa has no member nonexistent")},
+		{`pa.nonexistent()`, nil, errors.New("pa has no member nonexistent"), 0},
+		{`a.nonexistent()`, nil, errors.New("a has no member nonexistent"), 0},
+		{`vable_pa.nonexistent()`, nil, errors.New("vable_pa has no member nonexistent"), 0},
+		{`vable_a.nonexistent()`, nil, errors.New("vable_a has no member nonexistent"), 0},
+		{`pable_pa.nonexistent()`, nil, errors.New("pable_pa has no member nonexistent"), 0},
 
-		{`fn2glob(10, 20)`, []string{":int:30"}, nil},               // indirect call of func value / set to top-level func
-		{`fn2clos(11)`, []string{`:string:"1 + 6 + 11 = 18"`}, nil}, // indirect call of func value / set to func literal
-		{`fn2clos(12)`, []string{`:string:"2 + 6 + 12 = 20"`}, nil},
-		{`fn2valmeth(13)`, []string{`:string:"13 + 6 = 19"`}, nil}, // indirect call of func value / set to value method
-		{`fn2ptrmeth(14)`, []string{`:string:"14 - 6 = 8"`}, nil},  // indirect call of func value / set to pointer method
+		{`fn2glob(10, 20)`, []string{":int:30"}, nil, 0},               // indirect call of func value / set to top-level func
+		{`fn2clos(11)`, []string{`:string:"1 + 6 + 11 = 18"`}, nil, 1}, // indirect call of func value / set to func literal
+		{`fn2clos(12)`, []string{`:string:"2 + 6 + 12 = 20"`}, nil, 1},
+		{`fn2valmeth(13)`, []string{`:string:"13 + 6 = 19"`}, nil, 1}, // indirect call of func value / set to value method
+		{`fn2ptrmeth(14)`, []string{`:string:"14 - 6 = 8"`}, nil, 1},  // indirect call of func value / set to pointer method
 
-		{"fn2nil()", nil, errors.New("nil pointer dereference")},
+		{"fn2nil()", nil, errors.New("nil pointer dereference"), 0},
 
-		{"ga.PRcvr(2)", []string{`:string:"2 - 0 = 2"`}, nil},
+		{"ga.PRcvr(2)", []string{`:string:"2 - 0 = 2"`}, nil, 1},
 
-		{"x.CallMe()", nil, nil},
-		{"x2.CallMe(5)", []string{":int:25"}, nil},
+		{"x.CallMe()", nil, nil, 0},
+		{"x2.CallMe(5)", []string{":int:25"}, nil, 0},
 
-		{"\"delve\".CallMe()", nil, errors.New("\"delve\" (type string) is not a struct")},
+		{"\"delve\".CallMe()", nil, errors.New("\"delve\" (type string) is not a struct"), 0},
 
 		// Nested function calls tests
 
-		{`onetwothree(intcallpanic(2))`, []string{`:[]int:[]int len: 3, cap: 3, [3,4,5]`}, nil},
-		{`onetwothree(intcallpanic(0))`, []string{`~panic:interface {}:interface {}(string) "panic requested"`}, nil},
-		{`onetwothree(intcallpanic(2)+1)`, []string{`:[]int:[]int len: 3, cap: 3, [4,5,6]`}, nil},
-		{`onetwothree(intcallpanic("not a number"))`, nil, errors.New("can not convert \"not a number\" constant to int")},
+		{`onetwothree(intcallpanic(2))`, []string{`:[]int:[]int len: 3, cap: 3, [3,4,5]`}, nil, 1},
+		{`onetwothree(intcallpanic(0))`, []string{`~panic:interface {}:interface {}(string) "panic requested"`}, nil, 0},
+		{`onetwothree(intcallpanic(2)+1)`, []string{`:[]int:[]int len: 3, cap: 3, [4,5,6]`}, nil, 1},
+		{`onetwothree(intcallpanic("not a number"))`, nil, errors.New("can not convert \"not a number\" constant to int"), 1},
 
 		// Variable setting tests
-		{`pa2 = getAStructPtr(8); pa2`, []string{`pa2:*main.astruct:*main.astruct {X: 8}`}, nil},
+		{`pa2 = getAStructPtr(8); pa2`, []string{`pa2:*main.astruct:*main.astruct {X: 8}`}, nil, 1},
 
 		// Escape tests
 
-		{"escapeArg(&a2)", nil, errors.New("cannot use &a2 as argument pa2 in function main.escapeArg: stack object passed to escaping pointer: pa2")},
+		{"escapeArg(&a2)", nil, errors.New("cannot use &a2 as argument pa2 in function main.escapeArg: stack object passed to escaping pointer: pa2"), 0},
 
 		// Issue 1577
-		{"1+2", []string{`::3`}, nil},
-		{`"de"+"mo"`, []string{`::"demo"`}, nil},
+		{"1+2", []string{`::3`}, nil, 0},
+		{`"de"+"mo"`, []string{`::"demo"`}, nil, 0},
 
 		// Issue 3176
-		{`ref.String()[0]`, []string{`:byte:98`}, nil},
-		{`ref.String()[20]`, nil, errors.New("index out of bounds")},
+		{`ref.String()[0]`, []string{`:byte:98`}, nil, 1},
+		{`ref.String()[20]`, nil, errors.New("index out of bounds"), 1},
 	}
 
 	var testcases112 = []testCaseCallFunction{
 		// string allocation requires trusted argument order, which we don't have in Go 1.11
-		{`stringsJoin(stringslice, ",")`, []string{`:string:"one,two,three"`}, nil},
-		{`str = "a new string"; str`, []string{`str:string:"a new string"`}, nil},
+		{`stringsJoin(stringslice, ",")`, []string{`:string:"one,two,three"`}, nil, 2},
+		{`str = "a new string"; str`, []string{`str:string:"a new string"`}, nil, 1},
 
 		// support calling optimized functions
-		{`strings.Join(nil, "")`, []string{`:string:""`}, nil},
-		{`strings.Join(stringslice, comma)`, []string{`:string:"one,two,three"`}, nil},
-		{`strings.Join(intslice, comma)`, nil, errors.New("can not convert value of type []int to []string")},
-		{`strings.Join(stringslice, ",")`, []string{`:string:"one,two,three"`}, nil},
-		{`strings.LastIndexByte(stringslice[1], 'w')`, []string{":int:1"}, nil},
-		{`strings.LastIndexByte(stringslice[1], 'o')`, []string{":int:2"}, nil},
-		{`d.Base.Method()`, []string{`:int:4`}, nil},
-		{`d.Method()`, []string{`:int:4`}, nil},
+		{`strings.Join(nil, "")`, []string{`:string:""`}, nil, 0},
+		{`strings.Join(stringslice, comma)`, []string{`:string:"one,two,three"`}, nil, 1},
+		{`strings.Join(intslice, comma)`, nil, errors.New("can not convert value of type []int to []string"), 1},
+		{`strings.Join(stringslice, ",")`, []string{`:string:"one,two,three"`}, nil, 2},
+		{`strings.LastIndexByte(stringslice[1], 'w')`, []string{":int:1"}, nil, 0},
+		{`strings.LastIndexByte(stringslice[1], 'o')`, []string{":int:2"}, nil, 0},
+		{`d.Base.Method()`, []string{`:int:4`}, nil, 0},
+		{`d.Method()`, []string{`:int:4`}, nil, 0},
 	}
 
 	var testcases113 = []testCaseCallFunction{
-		{`curriedAdd(2)(3)`, []string{`:int:5`}, nil},
+		{`curriedAdd(2)(3)`, []string{`:int:5`}, nil, 1},
 
 		// Method calls on a value returned by a function
 
-		{`getAStruct(3).VRcvr(1)`, []string{`:string:"1 + 3 = 4"`}, nil}, // direct call of a method with value receiver / on a value
+		{`getAStruct(3).VRcvr(1)`, []string{`:string:"1 + 3 = 4"`}, nil, 1}, // direct call of a method with value receiver / on a value
 
-		{`getAStruct(3).PRcvr(2)`, nil, errors.New("cannot use getAStruct(3).PRcvr as argument pa in function main.(*astruct).PRcvr: stack object passed to escaping pointer: pa")}, // direct call of a method with pointer receiver / on a value
-		{`getAStructPtr(6).VRcvr(3)`, []string{`:string:"3 + 6 = 9"`}, nil},  // direct call of a method with value receiver / on a pointer
-		{`getAStructPtr(6).PRcvr(4)`, []string{`:string:"4 - 6 = -2"`}, nil}, // direct call of a method with pointer receiver / on a pointer
+		{`getAStruct(3).PRcvr(2)`, nil, errors.New("could not set call receiver: cannot use getAStruct(3).PRcvr as argument pa in function main.(*astruct).PRcvr: stack object passed to escaping pointer: pa"), 0}, // direct call of a method with pointer receiver / on a value
+		{`getAStructPtr(6).VRcvr(3)`, []string{`:string:"3 + 6 = 9"`}, nil, 2},  // direct call of a method with value receiver / on a pointer
+		{`getAStructPtr(6).PRcvr(4)`, []string{`:string:"4 - 6 = -2"`}, nil, 2}, // direct call of a method with pointer receiver / on a pointer
 
-		{`getVRcvrableFromAStruct(3).VRcvr(6)`, []string{`:string:"6 + 3 = 9"`}, nil},     // indirect call of method on interface / containing value with value method
-		{`getPRcvrableFromAStructPtr(6).PRcvr(7)`, []string{`:string:"7 - 6 = 1"`}, nil},  // indirect call of method on interface / containing pointer with value method
-		{`getVRcvrableFromAStructPtr(6).VRcvr(5)`, []string{`:string:"5 + 6 = 11"`}, nil}, // indirect call of method on interface / containing pointer with pointer method
+		{`getVRcvrableFromAStruct(3).VRcvr(6)`, []string{`:string:"6 + 3 = 9"`}, nil, 3},     // indirect call of method on interface / containing value with value method
+		{`getPRcvrableFromAStructPtr(6).PRcvr(7)`, []string{`:string:"7 - 6 = 1"`}, nil, 3},  // indirect call of method on interface / containing pointer with value method
+		{`getVRcvrableFromAStructPtr(6).VRcvr(5)`, []string{`:string:"5 + 6 = 11"`}, nil, 3}, // indirect call of method on interface / containing pointer with pointer method
 	}
 
 	var testcasesBefore114After112 = []testCaseCallFunction{
-		{`strings.Join(s1, comma)`, nil, errors.New(`could not find symbol value for s1`)},
+		{`strings.Join(s1, comma)`, nil, errors.New(`could not find symbol value for s1`), 1},
 	}
 
 	var testcases114 = []testCaseCallFunction{
-		{`strings.Join(s1, comma)`, nil, errors.New(`could not find symbol value for s1`)},
+		{`strings.Join(s1, comma)`, nil, errors.New(`could not find symbol value for s1`), 1},
 	}
 
 	var testcases117 = []testCaseCallFunction{
-		{`regabistacktest("one", "two", "three", "four", "five", 4)`, []string{`:string:"onetwo"`, `:string:"twothree"`, `:string:"threefour"`, `:string:"fourfive"`, `:string:"fiveone"`, ":uint8:8"}, nil},
-		{`regabistacktest2(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)`, []string{":int:3", ":int:5", ":int:7", ":int:9", ":int:11", ":int:13", ":int:15", ":int:17", ":int:19", ":int:11"}, nil},
-		{`issue2698.String()`, []string{`:string:"1 2 3 4"`}, nil},
-		{`issue3364.String()`, []string{`:string:"1 2"`}, nil},
-		{`regabistacktest3(rast3, 5)`, []string{`:[10]string:[10]string ["onetwo","twothree","threefour","fourfive","fivesix","sixseven","sevenheight","heightnine","nineten","tenone"]`, ":uint8:15"}, nil},
-		{`floatsum(1, 2)`, []string{":float64:3"}, nil},
+		{`regabistacktest("one", "two", "three", "four", "five", 4)`, []string{`:string:"onetwo"`, `:string:"twothree"`, `:string:"threefour"`, `:string:"fourfive"`, `:string:"fiveone"`, ":uint8:8"}, nil, 10},
+		{`regabistacktest2(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)`, []string{":int:3", ":int:5", ":int:7", ":int:9", ":int:11", ":int:13", ":int:15", ":int:17", ":int:19", ":int:11"}, nil, 0},
+		{`issue2698.String()`, []string{`:string:"1 2 3 4"`}, nil, 1},
+		{`issue3364.String()`, []string{`:string:"1 2"`}, nil, 1},
+		{`regabistacktest3(rast3, 5)`, []string{`:[10]string:[10]string ["onetwo","twothree","threefour","fourfive","fivesix","sixseven","sevenheight","heightnine","nineten","tenone"]`, ":uint8:15"}, nil, 10},
+		{`floatsum(1, 2)`, []string{":float64:3"}, nil, 0},
 	}
 
 	withTestProcessArgs("fncall", t, ".", nil, protest.AllNonOptimized, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
@@ -1447,7 +1474,7 @@ func TestCallFunction(t *testing.T) {
 		}
 
 		// LEAVE THIS AS THE LAST ITEM, IT BREAKS THE TARGET PROCESS!!!
-		testCallFunction(t, grp, p, testCaseCallFunction{"-unsafe escapeArg(&a2)", nil, nil})
+		testCallFunction(t, grp, p, testCaseCallFunction{"-unsafe escapeArg(&a2)", nil, nil, 0})
 	})
 }
 
@@ -1463,6 +1490,12 @@ func testCallFunctionSetBreakpoint(t *testing.T, p *proc.Target, grp *proc.Targe
 }
 
 func testCallFunction(t *testing.T, grp *proc.TargetGroup, p *proc.Target, tc testCaseCallFunction) {
+	t.Run(tc.expr, func(t *testing.T) {
+		testCallFunctionIntl(t, grp, p, tc)
+	})
+}
+
+func testCallFunctionIntl(t *testing.T, grp *proc.TargetGroup, p *proc.Target, tc testCaseCallFunction) {
 	const unsafePrefix = "-unsafe "
 
 	var callExpr, varExpr string
@@ -1493,7 +1526,11 @@ func testCallFunction(t *testing.T, grp *proc.TargetGroup, p *proc.Target, tc te
 	}
 
 	if err != nil {
-		t.Fatalf("call %q: error %q", tc.expr, err.Error())
+		if strings.HasPrefix(err.Error(), "internal debugger error") {
+			t.Fatalf("call %q: error %s", tc.expr, err.Error())
+		} else {
+			t.Fatalf("call %q: error %q", tc.expr, err.Error())
+		}
 	}
 
 	retvalsVar := p.CurrentThread().Common().ReturnValues(pnormalLoadConfig)
@@ -1536,6 +1573,13 @@ func testCallFunction(t *testing.T, grp *proc.TargetGroup, p *proc.Target, tc te
 		}
 		if cvs := retvals[i].SinglelineString(); cvs != tgtValue {
 			t.Fatalf("call %q, output parameter %d: expected value %q, got %q", tc.expr, i, tgtValue, cvs)
+		}
+	}
+
+	if p.BinInfo().HasDebugPinner() {
+		t.Logf("\t(pins = %d)", proc.DebugPinCount())
+		if proc.DebugPinCount() != tc.pinCount {
+			t.Fatalf("call %q, expected pin count %d, got %d", tc.expr, tc.pinCount, proc.DebugPinCount())
 		}
 	}
 }

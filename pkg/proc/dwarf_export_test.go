@@ -30,3 +30,14 @@ func NewCompositeMemory(p *Target, pieces []op.Piece, base uint64) (*compositeMe
 func IsJNZ(inst archInst) bool {
 	return inst.(*x86Inst).Op == x86asm.JNE
 }
+
+// HasDebugPinner returns true if the target has runtime.debugPinner.
+func (bi *BinaryInfo) HasDebugPinner() bool {
+	return bi.hasDebugPinner()
+}
+
+// DebugPinCount returns the number of addresses pinned during the last
+// function call injection.
+func DebugPinCount() int {
+	return debugPinCount
+}
