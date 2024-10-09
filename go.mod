@@ -16,7 +16,7 @@ require (
 	github.com/spf13/cobra v1.7.0
 	github.com/spf13/pflag v1.0.5
 	go.starlark.net v0.0.0-20231101134539-556fd59b42f6
-	golang.org/x/arch v0.6.0
+	golang.org/x/arch v0.11.0
 	golang.org/x/sys v0.17.0
 	golang.org/x/tools v0.14.0
 	gopkg.in/yaml.v3 v3.0.1
