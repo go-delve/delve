@@ -131,6 +131,7 @@ var (
 		elf.EM_AARCH64: true,
 		elf.EM_386:     true,
 		elf.EM_PPC64:   true,
+		elf.EM_RISCV:   true,
 	}
 
 	supportedWindowsArch = map[_PEMachine]bool{
@@ -814,6 +815,8 @@ func NewBinaryInfo(goos, goarch string) *BinaryInfo {
 		r.Arch = ARM64Arch(goos)
 	case "ppc64le":
 		r.Arch = PPC64LEArch(goos)
+	case "riscv64":
+		r.Arch = RISCV64Arch(goos)
 	}
 	return r
 }
@@ -1812,7 +1815,7 @@ func (bi *BinaryInfo) setGStructOffsetElf(image *Image, exe *elf.File, wg *sync.
 
 		bi.gStructOffset = tlsg.Value + uint64(bi.Arch.PtrSize()*2) + ((tls.Vaddr - uint64(bi.Arch.PtrSize()*2)) & (tls.Align - 1))
 
-	case elf.EM_PPC64:
+	case elf.EM_PPC64, elf.EM_RISCV:
 		_ = getSymbol(image, bi.logger, exe, "runtime.tls_g")
 
 	default:

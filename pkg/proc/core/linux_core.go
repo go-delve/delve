@@ -40,6 +40,7 @@ const _NT_FPREGSET elf.NType = 0x2
 const (
 	_EM_AARCH64          = 183
 	_EM_X86_64           = 62
+	_EM_RISCV            = 243
 	_ARM_FP_HEADER_START = 512
 )
 
@@ -49,6 +50,8 @@ func linuxThreadsFromNotes(p *process, notes []*note, machineType elf.Machine) p
 	var currentThread proc.Thread
 	var lastThreadAMD *linuxAMD64Thread
 	var lastThreadARM *linuxARM64Thread
+	var lastThreadRISCV *linuxRISCV64Thread
+
 	for _, note := range notes {
 		switch note.Type {
 		case elf.NT_PRSTATUS:
@@ -66,11 +69,22 @@ func linuxThreadsFromNotes(p *process, notes []*note, machineType elf.Machine) p
 				if currentThread == nil {
 					currentThread = p.Threads[int(t.Pid)]
 				}
+			} else if machineType == _EM_RISCV {
+				t := note.Desc.(*linuxPrStatusRISCV64)
+				lastThreadRISCV = &linuxRISCV64Thread{linutil.RISCV64Registers{Regs: &t.Reg}, t}
+				p.Threads[int(t.Pid)] = &thread{lastThreadRISCV, p, proc.CommonThread{}}
+				if currentThread == nil {
+					currentThread = p.Threads[int(t.Pid)]
+				}
 			}
 		case _NT_FPREGSET:
 			if machineType == _EM_AARCH64 {
 				if lastThreadARM != nil {
 					lastThreadARM.regs.Fpregs = note.Desc.(*linutil.ARM64PtraceFpRegs).Decode()
+				}
+			} else if machineType == _EM_RISCV {
+				if lastThreadRISCV != nil {
+					lastThreadRISCV.regs.Fpregs = note.Desc.(*linutil.RISCV64PtraceFpRegs).Decode()
 				}
 			}
 		case _NT_X86_XSTATE:
@@ -147,6 +161,8 @@ func readLinuxOrPlatformIndependentCore(corePath, exePath string) (*process, pro
 			bi = proc.NewBinaryInfo("linux", "amd64")
 		case _EM_AARCH64:
 			bi = proc.NewBinaryInfo("linux", "arm64")
+		case _EM_RISCV:
+			bi = proc.NewBinaryInfo("linux", "riscv64")
 		default:
 			return nil, nil, errors.New("unsupported machine type")
 		}
@@ -181,6 +197,11 @@ type linuxARM64Thread struct {
 	t    *linuxPrStatusARM64
 }
 
+type linuxRISCV64Thread struct {
+	regs linutil.RISCV64Registers
+	t    *linuxPrStatusRISCV64
+}
+
 func (t *linuxAMD64Thread) registers() (proc.Registers, error) {
 	var r linutil.AMD64Registers
 	r.Regs = t.regs.Regs
@@ -195,11 +216,22 @@ func (t *linuxARM64Thread) registers() (proc.Registers, error) {
 	return &r, nil
 }
 
+func (t *linuxRISCV64Thread) registers() (proc.Registers, error) {
+	var r linutil.RISCV64Registers
+	r.Regs = t.regs.Regs
+	r.Fpregs = t.regs.Fpregs
+	return &r, nil
+}
+
 func (t *linuxAMD64Thread) pid() int {
 	return int(t.t.Pid)
 }
 
 func (t *linuxARM64Thread) pid() int {
+	return int(t.t.Pid)
+}
+
+func (t *linuxRISCV64Thread) pid() int {
 	return int(t.t.Pid)
 }
 
@@ -286,6 +318,8 @@ func readNote(r io.ReadSeeker, machineType elf.Machine) (*note, error) {
 			note.Desc = &linuxPrStatusAMD64{}
 		case _EM_AARCH64:
 			note.Desc = &linuxPrStatusARM64{}
+		case _EM_RISCV:
+			note.Desc = &linuxPrStatusRISCV64{}
 		default:
 			return nil, errors.New("unsupported machine type")
 		}
@@ -328,6 +362,13 @@ func readNote(r io.ReadSeeker, machineType elf.Machine) (*note, error) {
 		if machineType == _EM_AARCH64 {
 			fpregs := &linutil.ARM64PtraceFpRegs{}
 			rdr := bytes.NewReader(desc[:_ARM_FP_HEADER_START])
+			if err := binary.Read(rdr, binary.LittleEndian, fpregs.Byte()); err != nil {
+				return nil, err
+			}
+			note.Desc = fpregs
+		} else if machineType == _EM_RISCV {
+			fpregs := &linutil.RISCV64PtraceFpRegs{}
+			rdr := bytes.NewReader(desc)
 			if err := binary.Read(rdr, binary.LittleEndian, fpregs.Byte()); err != nil {
 				return nil, err
 			}
@@ -443,6 +484,19 @@ type linuxPrStatusARM64 struct {
 	Pid, Ppid, Pgrp, Sid         int32
 	Utime, Stime, CUtime, CStime linuxCoreTimeval
 	Reg                          linutil.ARM64PtraceRegs
+	Fpvalid                      int32
+}
+
+// LinuxPrStatusRISCV64 is a copy of the prstatus kernel struct.
+type linuxPrStatusRISCV64 struct {
+	Siginfo                      linuxSiginfo
+	Cursig                       uint16
+	_                            [2]uint8
+	Sigpend                      uint64
+	Sighold                      uint64
+	Pid, Ppid, Pgrp, Sid         int32
+	Utime, Stime, CUtime, CStime linuxCoreTimeval
+	Reg                          linutil.RISCV64PtraceRegs
 	Fpvalid                      int32
 }
 

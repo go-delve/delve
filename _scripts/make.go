@@ -112,7 +112,7 @@ This option can only be specified if testset is basic or a single package.`)
 	test.PersistentFlags().StringVarP(&TestBuildMode, "test-build-mode", "m", "", `Runs tests compiling with the specified build mode, one of either:
 	normal		normal buildmode (default)
 	pie		PIE buildmode
-	
+
 This option can only be specified if testset is basic or a single package.`)
 	test.PersistentFlags().BoolVarP(&TestIncludePIE, "pie", "", true, "Standard testing should include PIE")
 
