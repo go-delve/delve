@@ -112,16 +112,16 @@ Sets a breakpoint.
 
 Locspec is a location specifier in the form of:
 
-  * *<address> Specifies the location of memory address address. address can be specified as a decimal, hexadecimal or octal number
-  * <filename>:<line> Specifies the line in filename. filename can be the partial path to a file or even just the base name as long as the expression remains unambiguous.
-  * <line> Specifies the line in the current file
-  * +<offset> Specifies the line offset lines after the current one
-  * -<offset> Specifies the line offset lines before the current one
-  * <function>[:<line>] Specifies the line inside function.
-      The full syntax for function is <package>.(*<receiver type>).<function name> however the only required element is the function name,
+  * `*<address>` Specifies the location of memory address address. address can be specified as a decimal, hexadecimal or octal number
+  * `<filename>:<line>` Specifies the line in filename. filename can be the partial path to a file or even just the base name as long as the expression remains unambiguous.
+  * `<line>` Specifies the line in the current file
+  * `+<offset>` Specifies the line offset lines after the current one
+  * `-<offset>` Specifies the line offset lines before the current one
+  * `<function>[:<line>]` Specifies the line inside function.
+      The full syntax for function is `<package>.(*<receiver type>).<function name>` however the only required element is the function name,
       everything else can be omitted as long as the expression remains unambiguous. For setting a breakpoint on an init function (ex: main.init),
-      the <filename>:<line> syntax should be used to break in the correct init function at the correct location.
-  * /<regex>/ Specifies the location of all the functions matching regex
+      the `<filename>:<line>` syntax should be used to break in the correct init function at the correct location.
+  * `/<regex>/` Specifies the location of all the functions matching regex
 
 If locspec is omitted a breakpoint will be set on the current line.
 
@@ -265,7 +265,7 @@ See also [Documentation/cli/substitutepath.md](//github.com/go-delve/delve/tree/
 	config alias <command> <alias>
 	config alias <alias>
 
-Defines <alias> as an alias to <command> or removes an alias.
+Defines `<alias>` as an alias to `<command>` or removes an alias.
 
 	config debug-info-directories -add <path>
 	config debug-info-directories -rm <path>
@@ -326,7 +326,7 @@ Move the current frame down.
 	down [<m>]
 	down [<m>] <command>
 
-Move the current frame down by <m>. The second form runs the command on the given frame.
+Move the current frame down by `<m>`. The second form runs the command on the given frame.
 
 
 ## dump
@@ -564,9 +564,9 @@ To convert a breakpoint into a tracepoint use:
 	
 	on <breakpoint name or id> trace
 
-The command 'on <bp> cond <cond-arguments>' is equivalent to 'cond <bp> <cond-arguments>'.
+The command `on <bp> cond <cond-arguments>` is equivalent to `cond <bp> <cond-arguments>`.
 
-The command 'on x -edit' can be used to edit the list of commands executed when the breakpoint is hit.
+The command `on x -edit` can be used to edit the list of commands executed when the breakpoint is hit.
 
 
 ## packages
@@ -724,7 +724,7 @@ Print out info for every traced thread.
 ## toggle
 Toggles on or off a breakpoint.
 
-toggle <breakpoint name or id>
+`toggle <breakpoint name or id>`
 
 
 ## trace
@@ -763,7 +763,7 @@ Move the current frame up.
 	up [<m>]
 	up [<m>] <command>
 
-Move the current frame up by <m>. The second form runs the command on the given frame.
+Move the current frame up by `<m>`. The second form runs the command on the given frame.
 
 
 ## vars
