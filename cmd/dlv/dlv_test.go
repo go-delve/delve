@@ -61,45 +61,18 @@ func assertNoError(err error, t testing.TB, s string) {
 	}
 }
 
-func projectRoot() string {
-	wd, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-
-	gopaths := strings.FieldsFunc(os.Getenv("GOPATH"), func(r rune) bool { return r == os.PathListSeparator })
-	for _, curpath := range gopaths {
-		// Detects "gopath mode" when GOPATH contains several paths ex. "d:\\dir\\gopath;f:\\dir\\gopath2"
-		if strings.Contains(wd, curpath) {
-			return filepath.Join(curpath, "src", "github.com", "go-delve", "delve")
-		}
-	}
-	val, err := exec.Command("go", "list", "-mod=", "-m", "-f", "{{ .Dir }}").Output()
-	if err != nil {
-		panic(err) // the Go tool was tested to work earlier
-	}
-	return strings.TrimSuffix(string(val), "\n")
-}
-
 func TestBuild(t *testing.T) {
 	const listenAddr = "127.0.0.1:40573"
 	var err error
 
-	cmd := exec.Command("go", "run", "_scripts/make.go", "build")
-	cmd.Dir = projectRoot()
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("makefile error: %v\noutput %s\n", err, string(out))
-	}
-
-	dlvbin := filepath.Join(cmd.Dir, "dlv")
+	dlvbin := protest.GetDlvBinary(t)
 	defer os.Remove(dlvbin)
 
 	fixtures := protest.FindFixturesDir()
 
 	buildtestdir := filepath.Join(fixtures, "buildtest")
 
-	cmd = exec.Command(dlvbin, "debug", "--headless=true", "--listen="+listenAddr, "--api-version=2", "--backend="+testBackend, "--log", "--log-output=debugger,rpc")
+	cmd := exec.Command(dlvbin, "debug", "--headless=true", "--listen="+listenAddr, "--api-version=2", "--backend="+testBackend, "--log", "--log-output=debugger,rpc")
 	cmd.Dir = buildtestdir
 	stderr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
@@ -344,7 +317,7 @@ func TestRedirect(t *testing.T) {
 const checkAutogenDocLongOutput = false
 
 func checkAutogenDoc(t *testing.T, filename, gencommand string, generated []byte) {
-	saved := slurpFile(t, filepath.Join(projectRoot(), filename))
+	saved := slurpFile(t, filepath.Join(protest.ProjectRoot(), filename))
 
 	saved = bytes.ReplaceAll(saved, []byte("\r\n"), []byte{'\n'})
 	generated = bytes.ReplaceAll(generated, []byte("\r\n"), []byte{'\n'})
@@ -382,7 +355,7 @@ func diffMaybe(t *testing.T, filename string, generated []byte) {
 		return
 	}
 	cmd := exec.Command("diff", filename, "-")
-	cmd.Dir = projectRoot()
+	cmd.Dir = protest.ProjectRoot()
 	stdin, _ := cmd.StdinPipe()
 	go func() {
 		stdin.Write(generated)
@@ -415,7 +388,7 @@ func TestGeneratedDoc(t *testing.T) {
 	// Checks gen-usage-docs.go
 	tempDir := t.TempDir()
 	cmd := exec.Command("go", "run", "_scripts/gen-usage-docs.go", tempDir)
-	cmd.Dir = projectRoot()
+	cmd.Dir = protest.ProjectRoot()
 	err := cmd.Run()
 	assertNoError(err, t, "go run _scripts/gen-usage-docs.go")
 	entries, err := os.ReadDir(tempDir)
@@ -429,7 +402,7 @@ func TestGeneratedDoc(t *testing.T) {
 		a := []string{"run"}
 		a = append(a, args...)
 		cmd := exec.Command("go", a...)
-		cmd.Dir = projectRoot()
+		cmd.Dir = protest.ProjectRoot()
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("could not run script %v: %v (output: %q)", args, err, string(out))
@@ -1433,7 +1406,7 @@ func TestStaticcheck(t *testing.T) {
 	//   where we don't do this it is a deliberate style choice.
 	// * ST1023 "Redundant type in variable declaration" same as S1021.
 	cmd := exec.Command("staticcheck", args...)
-	cmd.Dir = projectRoot()
+	cmd.Dir = protest.ProjectRoot()
 	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64")
 	out, _ := cmd.CombinedOutput()
 	checkAutogenDoc(t, "_scripts/staticcheck-out.txt", fmt.Sprintf("staticcheck %s > _scripts/staticcheck-out.txt", strings.Join(args, " ")), out)
@@ -1485,21 +1458,14 @@ func TestUnixDomainSocket(t *testing.T) {
 
 	var err error
 
-	cmd := exec.Command("go", "run", "_scripts/make.go", "build")
-	cmd.Dir = projectRoot()
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("makefile error: %v\noutput %s\n", err, string(out))
-	}
-
-	dlvbin := filepath.Join(cmd.Dir, "dlv")
+	dlvbin := protest.GetDlvBinary(t)
 	defer os.Remove(dlvbin)
 
 	fixtures := protest.FindFixturesDir()
 
 	buildtestdir := filepath.Join(fixtures, "buildtest")
 
-	cmd = exec.Command(dlvbin, "debug", "--headless=true", "--listen=unix:"+listenPath, "--api-version=2", "--backend="+testBackend, "--log", "--log-output=debugger,rpc")
+	cmd := exec.Command(dlvbin, "debug", "--headless=true", "--listen=unix:"+listenPath, "--api-version=2", "--backend="+testBackend, "--log", "--log-output=debugger,rpc")
 	cmd.Dir = buildtestdir
 	stderr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")

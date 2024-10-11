@@ -256,10 +256,13 @@ Changes the value of a configuration parameter.
 	config substitute-path <from> <to>
 	config substitute-path <from>
 	config substitute-path -clear
+	config substitute-path -guess
 
 Adds or removes a path substitution rule, if -clear is used all
 substitute-path rules are removed. Without arguments shows the current list
 of substitute-path rules.
+The -guess option causes Delve to try to guess your substitute-path
+configuration automatically.
 See also [Documentation/cli/substitutepath.md](//github.com/go-delve/delve/tree/master/Documentation/cli/substitutepath.md) for how the rules are applied.
 
 	config alias <command> <alias>

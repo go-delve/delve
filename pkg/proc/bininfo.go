@@ -665,6 +665,13 @@ func (fn *Function) privateRuntime() bool {
 	return len(name) > n && name[:n] == "runtime." && !('A' <= name[n] && name[n] <= 'Z')
 }
 
+func (fn *Function) CompilationUnitName() string {
+	if fn.cu == nil {
+		return ""
+	}
+	return fn.cu.name
+}
+
 func rangeParentName(fnname string) int {
 	const rangeSuffix = "-range"
 	ridx := strings.Index(fnname, rangeSuffix)

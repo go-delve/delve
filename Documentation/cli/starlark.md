@@ -44,6 +44,7 @@ function_return_locations(FnName) | Equivalent to API call [FunctionReturnLocati
 get_breakpoint(Id, Name) | Equivalent to API call [GetBreakpoint](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.GetBreakpoint)
 get_buffered_tracepoints() | Equivalent to API call [GetBufferedTracepoints](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.GetBufferedTracepoints)
 get_thread(Id) | Equivalent to API call [GetThread](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.GetThread)
+guess_substitute_path(Args) | Equivalent to API call [GuessSubstitutePath](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.GuessSubstitutePath)
 is_multiclient() | Equivalent to API call [IsMulticlient](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.IsMulticlient)
 last_modified() | Equivalent to API call [LastModified](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.LastModified)
 breakpoints(All) | Equivalent to API call [ListBreakpoints](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.ListBreakpoints)

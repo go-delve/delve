@@ -392,3 +392,37 @@ func RegabiSupported() bool {
 		return false
 	}
 }
+
+func ProjectRoot() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+
+	gopaths := strings.FieldsFunc(os.Getenv("GOPATH"), func(r rune) bool { return r == os.PathListSeparator })
+	for _, curpath := range gopaths {
+		// Detects "gopath mode" when GOPATH contains several paths ex. "d:\\dir\\gopath;f:\\dir\\gopath2"
+		if strings.Contains(wd, curpath) {
+			return filepath.Join(curpath, "src", "github.com", "go-delve", "delve")
+		}
+	}
+	val, err := exec.Command("go", "list", "-mod=", "-m", "-f", "{{ .Dir }}").Output()
+	if err != nil {
+		panic(err) // the Go tool was tested to work earlier
+	}
+	return strings.TrimSuffix(string(val), "\n")
+}
+
+func GetDlvBinary(t *testing.T) string {
+	cmd := exec.Command("go", "run", "_scripts/make.go", "build")
+	cmd.Dir = ProjectRoot()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("makefile error: %v\noutput %s\n", err, string(out))
+	}
+
+	if runtime.GOOS == "windows" {
+		return filepath.Join(cmd.Dir, "dlv.exe")
+	}
+	return filepath.Join(cmd.Dir, "dlv")
+}
