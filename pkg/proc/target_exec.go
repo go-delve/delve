@@ -9,6 +9,7 @@ import (
 	"go/constant"
 	"go/token"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"golang.org/x/arch/ppc64/ppc64asm"
@@ -1685,7 +1686,9 @@ func (t *Target) handleHardcodedBreakpoints(grp *TargetGroup, trapthread Thread,
 			stepOverBreak(thread, loc.PC)
 			// In linux-arm64, PtraceSingleStep seems cannot step over BRK instruction
 			// (linux-arm64 feature or kernel bug maybe).
-			if !arch.BreakInstrMovesPC() {
+			// RISC-V use ebreak as hardcoded breakpoint in Go, however we use c.ebreak
+			// in delve to support breakpoints in cgo.
+			if !arch.BreakInstrMovesPC() && runtime.GOARCH != "riscv64" {
 				setPC(thread, loc.PC+uint64(arch.BreakpointSize()))
 			}
 			// Single-step current thread until we exit runtime.breakpoint and

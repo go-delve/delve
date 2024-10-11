@@ -1,4 +1,4 @@
-//go:build linux && !amd64 && !arm64 && !386 && !(ppc64le && exp.linuxppc64le)
+//go:build linux && !amd64 && !arm64 && !386 && !(ppc64le && exp.linuxppc64le) && !riscv64
 
 // This file is used to detect build on unsupported GOOS/GOARCH combinations.
 
