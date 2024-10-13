@@ -351,7 +351,7 @@ func readNote(r io.ReadSeeker, machineType elf.Machine) (*note, error) {
 	case _NT_X86_XSTATE:
 		if machineType == _EM_X86_64 {
 			var fpregs amd64util.AMD64Xstate
-			if err := amd64util.AMD64XstateRead(desc, true, &fpregs); err != nil {
+			if err := amd64util.AMD64XstateRead(desc, true, &fpregs, 0); err != nil {
 				return nil, err
 			}
 			note.Desc = &fpregs
