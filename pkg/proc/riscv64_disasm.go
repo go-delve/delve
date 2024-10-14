@@ -116,35 +116,6 @@ func resolveCallArgRISCV64(inst *riscv64asm.Inst, instAddr uint64, currentGorout
 	return &Location{PC: pc, File: file, Line: line, Fn: fn}
 }
 
-// Possible stacksplit prologues are inserted by stacksplit in
-// $GOROOT/src/cmd/internal/obj/riscv/obj.go.
-var prologuesRISCV64 []opcodeSeq
-
-func init() {
-	var tinyStacksplit = opcodeSeq{uint64(riscv64asm.ADDI)}
-	var smallStacksplit = opcodeSeq{}
-	var bigStacksplit = opcodeSeq{uint64(riscv64asm.LUI),
-		uint64(riscv64asm.ADDIW),
-		uint64(riscv64asm.BLTU),
-		uint64(riscv64asm.LUI),
-		uint64(riscv64asm.ADDIW),
-		uint64(riscv64asm.ADD)}
-
-	var unixGetG = opcodeSeq{uint64(riscv64asm.LD)}
-	var tailPrologues = opcodeSeq{uint64(riscv64asm.BLTU),
-		uint64(riscv64asm.JAL),
-		uint64(riscv64asm.JAL)}
-
-	prologuesRISCV64 = make([]opcodeSeq, 0, 3)
-	for _, stacksplit := range []opcodeSeq{tinyStacksplit, smallStacksplit, bigStacksplit} {
-		prologue := make(opcodeSeq, 0, len(unixGetG)+len(stacksplit)+len(tailPrologues))
-		prologue = append(prologue, unixGetG...)
-		prologue = append(prologue, stacksplit...)
-		prologue = append(prologue, tailPrologues...)
-		prologuesRISCV64 = append(prologuesRISCV64, prologue)
-	}
-}
-
 type riscv64ArchInst riscv64asm.Inst
 
 func (inst *riscv64ArchInst) Text(flavour AssemblyFlavour, pc uint64, symLookup func(uint64) (string, uint64)) string {
