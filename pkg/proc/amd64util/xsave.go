@@ -79,7 +79,6 @@ const (
 	_XSAVE_HEADER_LEN              = 64
 	_XSAVE_EXTENDED_REGION_START   = 576
 	_XSAVE_SSE_REGION_LEN          = 416
-	_XSAVE_AVX512_ZMM_REGION_START = 1152
 )
 
 // AMD64XstateRead reads a byte array containing an XSAVE area into regset.
@@ -87,7 +86,8 @@ const (
 // contents of the legacy region of the XSAVE area.
 // See Section 13.1 (and following) of Intel® 64 and IA-32 Architectures
 // Software Developer’s Manual, Volume 1: Basic Architecture.
-func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate) error {
+// If xstateZMMHi256Offset is zero, it will be guessed.
+func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate, xstateZMMHi256Offset int) error {
 	if _XSAVE_HEADER_START+_XSAVE_HEADER_LEN >= len(xstateargs) {
 		return nil
 	}
@@ -120,7 +120,19 @@ func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate) er
 		return nil
 	}
 
-	avx512state := xstateargs[_XSAVE_AVX512_ZMM_REGION_START:]
+	if xstateZMMHi256Offset == 0 {
+		// Guess ZMM_Hi256 component offset
+		// ref: https://github.com/bminor/binutils-gdb/blob/df89bdf0baf106c3b0a9fae53e4e48607a7f3f87/gdb/i387-tdep.c#L916
+		if xstate_bv&(1<<9) != 0 && len(xstateargs) == 2440 {
+			// AMD CPUs supporting PKRU
+			xstateZMMHi256Offset = 896
+		} else {
+			// Intel CPUs supporting AVX512
+			xstateZMMHi256Offset = 1152
+		}
+	}
+
+	avx512state := xstateargs[xstateZMMHi256Offset:]
 	regset.Avx512State = true
 	copy(regset.ZmmSpace[:], avx512state[:len(regset.ZmmSpace)])
 
@@ -180,7 +192,7 @@ func (xstate *AMD64Xstate) SetXmmRegister(n int, value []byte) error {
 	// Copy bytes [32, 64) to Xsave area
 
 	zmmval := rest
-	zmmpos := _XSAVE_AVX512_ZMM_REGION_START + (n * 32)
+	zmmpos := AMD64XstateZMMHi256Offset() + (n * 32)
 	if zmmpos >= len(xstate.Xsave) {
 		return fmt.Errorf("could not set XMM%d: bytes 32..%d not in XSAVE area", n, 32+len(zmmval))
 	}
