@@ -83,23 +83,15 @@ func projectRoot() string {
 
 func TestBuild(t *testing.T) {
 	const listenAddr = "127.0.0.1:40573"
-	var err error
 
-	cmd := exec.Command("go", "run", "_scripts/make.go", "build")
-	cmd.Dir = projectRoot()
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("makefile error: %v\noutput %s\n", err, string(out))
-	}
-
-	dlvbin := filepath.Join(cmd.Dir, "dlv")
+	dlvbin := getDlvBin(t)
 	defer os.Remove(dlvbin)
 
 	fixtures := protest.FindFixturesDir()
 
 	buildtestdir := filepath.Join(fixtures, "buildtest")
 
-	cmd = exec.Command(dlvbin, "debug", "--headless=true", "--listen="+listenAddr, "--api-version=2", "--backend="+testBackend, "--log", "--log-output=debugger,rpc")
+	cmd := exec.Command(dlvbin, "debug", "--headless=true", "--listen="+listenAddr, "--api-version=2", "--backend="+testBackend, "--log", "--log-output=debugger,rpc")
 	cmd.Dir = buildtestdir
 	stderr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
@@ -214,6 +206,9 @@ func getDlvBin(t *testing.T) string {
 	}
 	if runtime.GOOS == "linux" && runtime.GOARCH == "ppc64le" {
 		tags = "-tags=exp.linuxppc64le"
+	}
+	if runtime.GOOS == "linux" && runtime.GOARCH == "riscv64" {
+		tags = "-tags=exp.linuxriscv64"
 	}
 	return getDlvBinInternal(t, tags)
 }
@@ -1483,23 +1478,14 @@ func TestUnixDomainSocket(t *testing.T) {
 
 	listenPath := filepath.Join(tmpdir, "delve_test")
 
-	var err error
-
-	cmd := exec.Command("go", "run", "_scripts/make.go", "build")
-	cmd.Dir = projectRoot()
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("makefile error: %v\noutput %s\n", err, string(out))
-	}
-
-	dlvbin := filepath.Join(cmd.Dir, "dlv")
+	dlvbin := getDlvBin(t)
 	defer os.Remove(dlvbin)
 
 	fixtures := protest.FindFixturesDir()
 
 	buildtestdir := filepath.Join(fixtures, "buildtest")
 
-	cmd = exec.Command(dlvbin, "debug", "--headless=true", "--listen=unix:"+listenPath, "--api-version=2", "--backend="+testBackend, "--log", "--log-output=debugger,rpc")
+	cmd := exec.Command(dlvbin, "debug", "--headless=true", "--listen=unix:"+listenPath, "--api-version=2", "--backend="+testBackend, "--log", "--log-output=debugger,rpc")
 	cmd.Dir = buildtestdir
 	stderr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
