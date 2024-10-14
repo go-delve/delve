@@ -57,10 +57,10 @@ type windowsAMD64Thread struct {
 	th *minidump.Thread
 }
 
-func (th *windowsAMD64Thread) pid() int {
+func (th *windowsAMD64Thread) ThreadID() int {
 	return int(th.th.ID)
 }
 
-func (th *windowsAMD64Thread) registers() (proc.Registers, error) {
+func (th *windowsAMD64Thread) Registers() (proc.Registers, error) {
 	return winutil.NewAMD64Registers(&th.th.Context, th.th.TEB), nil
 }
