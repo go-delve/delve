@@ -48,56 +48,50 @@ const elfErrorBadMagicNumber = "bad magic number"
 
 func linuxThreadsFromNotes(p *process, notes []*note, machineType elf.Machine) proc.Thread {
 	var currentThread proc.Thread
-	var lastThreadAMD *linuxAMD64Thread
-	var lastThreadARM *linuxARM64Thread
-	var lastThreadRISCV *linuxRISCV64Thread
+	var lastThread osThread
 
 	for _, note := range notes {
 		switch note.Type {
 		case elf.NT_PRSTATUS:
-			if machineType == _EM_X86_64 {
+			switch machineType {
+			case _EM_X86_64:
 				t := note.Desc.(*linuxPrStatusAMD64)
-				lastThreadAMD = &linuxAMD64Thread{linutil.AMD64Registers{Regs: &t.Reg}, t}
-				p.Threads[int(t.Pid)] = &thread{lastThreadAMD, p, proc.CommonThread{}}
-				if currentThread == nil {
-					currentThread = p.Threads[int(t.Pid)]
-				}
-			} else if machineType == _EM_AARCH64 {
+				lastThread = &linuxAMD64Thread{linutil.AMD64Registers{Regs: &t.Reg}, t}
+			case _EM_AARCH64:
 				t := note.Desc.(*linuxPrStatusARM64)
-				lastThreadARM = &linuxARM64Thread{linutil.ARM64Registers{Regs: &t.Reg}, t}
-				p.Threads[int(t.Pid)] = &thread{lastThreadARM, p, proc.CommonThread{}}
-				if currentThread == nil {
-					currentThread = p.Threads[int(t.Pid)]
-				}
-			} else if machineType == _EM_RISCV {
+				lastThread = &linuxARM64Thread{linutil.ARM64Registers{Regs: &t.Reg}, t}
+			case _EM_RISCV:
 				t := note.Desc.(*linuxPrStatusRISCV64)
-				lastThreadRISCV = &linuxRISCV64Thread{linutil.RISCV64Registers{Regs: &t.Reg}, t}
-				p.Threads[int(t.Pid)] = &thread{lastThreadRISCV, p, proc.CommonThread{}}
-				if currentThread == nil {
-					currentThread = p.Threads[int(t.Pid)]
-				}
+				lastThread = &linuxRISCV64Thread{linutil.RISCV64Registers{Regs: &t.Reg}, t}
+			default:
+				continue
+			}
+			p.Threads[lastThread.ThreadID()] = &thread{lastThread, p, proc.CommonThread{}}
+			if currentThread == nil {
+				currentThread = p.Threads[lastThread.ThreadID()]
 			}
 		case _NT_FPREGSET:
-			if machineType == _EM_AARCH64 {
-				if lastThreadARM != nil {
-					lastThreadARM.regs.Fpregs = note.Desc.(*linutil.ARM64PtraceFpRegs).Decode()
-				}
-			} else if machineType == _EM_RISCV {
-				if lastThreadRISCV != nil {
-					lastThreadRISCV.regs.Fpregs = note.Desc.(*linutil.RISCV64PtraceFpRegs).Decode()
-				}
+			switch th := lastThread.(type) {
+			case *linuxARM64Thread:
+				th.regs.Fpregs = note.Desc.(*linutil.ARM64PtraceFpRegs).Decode()
+			case *linuxRISCV64Thread:
+				th.regs.Fpregs = note.Desc.(*linutil.RISCV64PtraceFpRegs).Decode()
 			}
 		case _NT_X86_XSTATE:
-			if machineType == _EM_X86_64 {
-				if lastThreadAMD != nil {
-					lastThreadAMD.regs.Fpregs = note.Desc.(*amd64util.AMD64Xstate).Decode()
-				}
+			if lastThread != nil {
+				lastThread.(*linuxAMD64Thread).regs.Fpregs = note.Desc.(*amd64util.AMD64Xstate).Decode()
 			}
 		case elf.NT_PRPSINFO:
 			p.pid = int(note.Desc.(*linuxPrPsInfo).Pid)
 		}
 	}
 	return currentThread
+}
+
+var supportedLinuxMachines = map[elf.Machine]string{
+	_EM_X86_64:  "amd64",
+	_EM_AARCH64: "arm64",
+	_EM_RISCV:   "riscv64",
 }
 
 // readLinuxOrPlatformIndependentCore reads a core file from corePath
@@ -155,17 +149,10 @@ func readLinuxOrPlatformIndependentCore(corePath, exePath string) (*process, pro
 			return nil, nil, err
 		}
 		bi = proc.NewBinaryInfo(goos, goarch)
+	} else if goarch, ok := supportedLinuxMachines[machineType]; ok {
+		bi = proc.NewBinaryInfo("linux", goarch)
 	} else {
-		switch machineType {
-		case _EM_X86_64:
-			bi = proc.NewBinaryInfo("linux", "amd64")
-		case _EM_AARCH64:
-			bi = proc.NewBinaryInfo("linux", "arm64")
-		case _EM_RISCV:
-			bi = proc.NewBinaryInfo("linux", "riscv64")
-		default:
-			return nil, nil, errors.New("unsupported machine type")
-		}
+		return nil, nil, errors.New("unsupported machine type")
 	}
 
 	entryPoint := findEntryPoint(notes, bi.Arch.PtrSize())
@@ -202,36 +189,36 @@ type linuxRISCV64Thread struct {
 	t    *linuxPrStatusRISCV64
 }
 
-func (t *linuxAMD64Thread) registers() (proc.Registers, error) {
+func (t *linuxAMD64Thread) Registers() (proc.Registers, error) {
 	var r linutil.AMD64Registers
 	r.Regs = t.regs.Regs
 	r.Fpregs = t.regs.Fpregs
 	return &r, nil
 }
 
-func (t *linuxARM64Thread) registers() (proc.Registers, error) {
+func (t *linuxARM64Thread) Registers() (proc.Registers, error) {
 	var r linutil.ARM64Registers
 	r.Regs = t.regs.Regs
 	r.Fpregs = t.regs.Fpregs
 	return &r, nil
 }
 
-func (t *linuxRISCV64Thread) registers() (proc.Registers, error) {
+func (t *linuxRISCV64Thread) Registers() (proc.Registers, error) {
 	var r linutil.RISCV64Registers
 	r.Regs = t.regs.Regs
 	r.Fpregs = t.regs.Fpregs
 	return &r, nil
 }
 
-func (t *linuxAMD64Thread) pid() int {
+func (t *linuxAMD64Thread) ThreadID() int {
 	return int(t.t.Pid)
 }
 
-func (t *linuxARM64Thread) pid() int {
+func (t *linuxARM64Thread) ThreadID() int {
 	return int(t.t.Pid)
 }
 
-func (t *linuxRISCV64Thread) pid() int {
+func (t *linuxRISCV64Thread) ThreadID() int {
 	return int(t.t.Pid)
 }
 
@@ -360,25 +347,27 @@ func readNote(r io.ReadSeeker, machineType elf.Machine) (*note, error) {
 		note.Desc = desc
 	case _NT_FPREGSET:
 		if machineType == _EM_AARCH64 {
-			fpregs := &linutil.ARM64PtraceFpRegs{}
-			rdr := bytes.NewReader(desc[:_ARM_FP_HEADER_START])
-			if err := binary.Read(rdr, binary.LittleEndian, fpregs.Byte()); err != nil {
-				return nil, err
-			}
-			note.Desc = fpregs
+			err = readFpregsetNote(note, &linutil.ARM64PtraceFpRegs{}, desc[:_ARM_FP_HEADER_START])
 		} else if machineType == _EM_RISCV {
-			fpregs := &linutil.RISCV64PtraceFpRegs{}
-			rdr := bytes.NewReader(desc)
-			if err := binary.Read(rdr, binary.LittleEndian, fpregs.Byte()); err != nil {
-				return nil, err
-			}
-			note.Desc = fpregs
+			err = readFpregsetNote(note, &linutil.RISCV64PtraceFpRegs{}, desc)
+		}
+		if err != nil {
+			return nil, err
 		}
 	}
 	if err := skipPadding(r, 4); err != nil {
 		return nil, fmt.Errorf("aligning after desc: %v", err)
 	}
 	return note, nil
+}
+
+func readFpregsetNote(note *note, fpregs interface{ Byte() []byte }, desc []byte) error {
+	rdr := bytes.NewReader(desc)
+	if err := binary.Read(rdr, binary.LittleEndian, fpregs.Byte()); err != nil {
+		return err
+	}
+	note.Desc = fpregs
+	return nil
 }
 
 // skipPadding moves r to the next multiple of pad.

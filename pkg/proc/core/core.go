@@ -168,14 +168,14 @@ type process struct {
 
 // thread represents a thread in the core file being debugged.
 type thread struct {
-	th     osThread
+	osThread
 	p      *process
 	common proc.CommonThread
 }
 
 type osThread interface {
-	registers() (proc.Registers, error)
-	pid() int
+	Registers() (proc.Registers, error)
+	ThreadID() int
 }
 
 var (
@@ -322,7 +322,7 @@ func (t *thread) ProcessMemory() proc.MemoryReadWriter {
 // Location returns the location of this thread based on
 // the value of the instruction pointer register.
 func (t *thread) Location() (*proc.Location, error) {
-	regs, err := t.th.registers()
+	regs, err := t.Registers()
 	if err != nil {
 		return nil, err
 	}
@@ -336,16 +336,6 @@ func (t *thread) Location() (*proc.Location, error) {
 // there are no breakpoints when debugging core files.
 func (t *thread) Breakpoint() *proc.BreakpointState {
 	return &proc.BreakpointState{}
-}
-
-// ThreadID returns the ID for this thread.
-func (t *thread) ThreadID() int {
-	return t.th.pid()
-}
-
-// Registers returns the current value of the registers for this thread.
-func (t *thread) Registers() (proc.Registers, error) {
-	return t.th.registers()
 }
 
 // RestoreRegisters will only return an error for core files,
