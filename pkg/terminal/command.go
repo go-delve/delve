@@ -141,11 +141,11 @@ If locspec is omitted a breakpoint will be set on the current line.
 
 If you would like to assign a name to the breakpoint you can do so with the form:
 
-  break mybpname main.go:4
+	break mybpname main.go:4
 
 Finally, you can assign a condition to the newly created breakpoint by using the 'if' postfix form, like so:
 
-  break main.go:55 if i == 5
+	break main.go:55 if i == 5
 
 Alternatively you can set a condition on a breakpoint after created by using the 'on' command.
 
@@ -248,7 +248,7 @@ Current limitations:
 If called with the locspec argument it will delete all the breakpoints matching the locspec. If locspec is omitted all breakpoints are deleted.`},
 		{aliases: []string{"toggle"}, group: breakCmds, cmdFn: toggle, helpMsg: `Toggles on or off a breakpoint.
 
-toggle <breakpoint name or id>`},
+	toggle <breakpoint name or id>`},
 		{aliases: []string{"goroutines", "grs"}, group: goroutineCmds, cmdFn: c.goroutines, helpMsg: `List program goroutines.
 
 	goroutines [-u|-r|-g|-s] [-t [depth]] [-l] [-with loc expr] [-without loc expr] [-group argument] [-chan expr] [-exec command]
