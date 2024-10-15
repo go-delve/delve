@@ -179,9 +179,7 @@ func parseFuncLocationSpec(in string) *FuncLocationSpec {
 		v = strings.Split(in, ".")
 	} else {
 		v = strings.Split(in[pathend:], ".")
-		if len(v) > 0 {
-			v[0] = in[:pathend] + v[0]
-		}
+		v[0] = in[:pathend] + v[0]
 	}
 
 	var spec FuncLocationSpec
