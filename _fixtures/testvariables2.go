@@ -34,6 +34,11 @@ type astruct struct {
 	B int
 }
 
+type largestruct struct {
+	name string
+	v    [256]byte
+}
+
 type astructName1 astruct
 type astructName2 astruct
 
@@ -267,6 +272,7 @@ func main() {
 	m2 := map[int]*astruct{1: &astruct{10, 11}}
 	m3 := map[astruct]int{{1, 1}: 42, {2, 2}: 43}
 	m4 := map[astruct]astruct{{1, 1}: {11, 11}, {2, 2}: {22, 22}}
+	mlarge := map[largestruct]largestruct{largestruct{name: "one"}: largestruct{name: "oneval"}}
 	upnil := unsafe.Pointer(nil)
 	up1 := unsafe.Pointer(&i1)
 	i4 := 800
@@ -427,5 +433,5 @@ func main() {
 	longslice := make([]int, 100, 100)
 
 	runtime.Breakpoint()
-	fmt.Println(i1, i2, i3, p1, pp1, amb1, s1, s3, a0, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, m4, m5, upnil, up1, i4, i5, i6, err1, err2, errnil, iface1, iface2, ifacenil, arr1, parr, cpx1, const1, iface3, iface4, recursive1, recursive1.x, iface5, iface2fn1, iface2fn2, bencharr, benchparr, mapinf, mainMenu, b, b2, sd, anonstruct1, anonstruct2, anoniface1, anonfunc, mapanonstruct1, ifacearr, efacearr, ni8, ni16, ni32, ni64, pinf, ninf, nan, zsvmap, zsslice, zsvar, tm, rettm, errtypednil, emptyslice, emptymap, byteslice, bytestypeslice, runeslice, bytearray, bytetypearray, runearray, longstr, nilstruct, as2, as2.NonPointerReceiverMethod, s4, iface2map, issue1578, ll, unread, w2, w3, w4, w5, longarr, longslice, val, m6, m7, cl, tim1, tim2, typedstringvar, namedA1, namedA2, astructName1(namedA2), badslice, tim3, int3chan, longbyteslice, enum1, enum2, enum3, enum4, enum5, enum6, zeropoint4)
+	fmt.Println(i1, i2, i3, p1, pp1, amb1, s1, s3, a0, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, m4, m5, upnil, up1, i4, i5, i6, err1, err2, errnil, iface1, iface2, ifacenil, arr1, parr, cpx1, const1, iface3, iface4, recursive1, recursive1.x, iface5, iface2fn1, iface2fn2, bencharr, benchparr, mapinf, mainMenu, b, b2, sd, anonstruct1, anonstruct2, anoniface1, anonfunc, mapanonstruct1, ifacearr, efacearr, ni8, ni16, ni32, ni64, pinf, ninf, nan, zsvmap, zsslice, zsvar, tm, rettm, errtypednil, emptyslice, emptymap, byteslice, bytestypeslice, runeslice, bytearray, bytetypearray, runearray, longstr, nilstruct, as2, as2.NonPointerReceiverMethod, s4, iface2map, issue1578, ll, unread, w2, w3, w4, w5, longarr, longslice, val, m6, m7, cl, tim1, tim2, typedstringvar, namedA1, namedA2, astructName1(namedA2), badslice, tim3, int3chan, longbyteslice, enum1, enum2, enum3, enum4, enum5, enum6, zeropoint4, mlarge)
 }

@@ -683,6 +683,7 @@ func getEvalExpressionTestCases() []varTest {
 		{"m3[as1]", false, "42", "42", "int", nil},
 		{"mnil[\"Malone\"]", false, "", "", "", errors.New("key not found")},
 		{"m1[80:]", false, "", "", "", errors.New("map index out of bounds")},
+		{"mlarge", false, "map[main.largestruct]main.largestruct [{name: \"one\", v: [256]uint8 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+192 more]}: {name: \"oneval\", v: [256]uint8 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+192 more]}, ]", "map[main.largestruct]main.largestruct [...]", "map[main.largestruct]main.largestruct", nil},
 
 		// interfaces
 		{"err1", true, "error(*main.astruct) *{A: 1, B: 2}", "error(*main.astruct) 0x…", "error", nil},
@@ -957,21 +958,15 @@ func getEvalExpressionTestCases() []varTest {
 		{`*(*uint)(unsafe.Pointer(p1))`, false, `1`, `1`, "uint", nil},
 		{`*(*uint)(unsafe.Pointer(&i1))`, false, `1`, `1`, "uint", nil},
 
-		// Conversions to ptr-to-ptr types
-		{`**(**runtime.hmap)(uintptr(&m1))`, false, `…`, `…`, "runtime.hmap", nil},
-
 		// Malformed values
 		{`badslice`, false, `(unreadable non-zero length array with nil base)`, `(unreadable non-zero length array with nil base)`, "[]int", nil},
 	}
 
-	ver, _ := goversion.Parse(runtime.Version())
-	if ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 7, Rev: -1}) {
-		for i := range testcases {
-			if testcases[i].name == "iface3" {
-				testcases[i].value = "interface {}(*map[string]go/constant.Value) *[]"
-				testcases[i].alternate = "interface {}(*map[string]go/constant.Value) 0x…"
-			}
-		}
+	// Conversions to ptr-to-ptr types
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) {
+		testcases = append(testcases, varTest{`**(**maps.Map)(uintptr(&m1))`, false, `…`, `…`, "internal/runtime/maps.Map", nil})
+	} else {
+		testcases = append(testcases, varTest{`**(**runtime.hmap)(uintptr(&m1))`, false, `…`, `…`, "runtime.hmap", nil})
 	}
 
 	return testcases
@@ -1204,16 +1199,9 @@ func TestPackageRenames(t *testing.T) {
 
 		{`"dir0/pkg".A`, false, "0", "", "int", nil},
 		{`"dir1/pkg".A`, false, "1", "", "int", nil},
-	}
 
-	testcases_i386 := []varTest{
 		{"amap", true, "interface {}(map[go/ast.BadExpr]net/http.Request) [{From: 2, To: 3}: {Method: \"othermethod\", …", "", "interface {}", nil},
 		{"amap2", true, "interface {}(*map[go/ast.BadExpr]net/http.Request) *[{From: 2, To: 3}: {Method: \"othermethod\", …", "", "interface {}", nil},
-	}
-
-	testcases_64bit := []varTest{
-		{"amap", true, "interface {}(map[go/ast.BadExpr]net/http.Request) [{From: 2, To: 3}: *{Method: \"othermethod\", …", "", "interface {}", nil},
-		{"amap2", true, "interface {}(*map[go/ast.BadExpr]net/http.Request) *[{From: 2, To: 3}: *{Method: \"othermethod\", …", "", "interface {}", nil},
 	}
 
 	testcases1_9 := []varTest{
@@ -1238,12 +1226,6 @@ func TestPackageRenames(t *testing.T) {
 
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 13) {
 			testPackageRenamesHelper(t, p, testcases1_13)
-		}
-
-		if runtime.GOARCH == "386" && !goversion.VersionAfterOrEqual(runtime.Version(), 1, 22) {
-			testPackageRenamesHelper(t, p, testcases_i386)
-		} else {
-			testPackageRenamesHelper(t, p, testcases_64bit)
 		}
 	})
 }
@@ -1907,4 +1889,75 @@ func TestSetupRangeFramesCrash(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestClassicMap(t *testing.T) {
+	// This test replicates some of the tests in TestEvalExpression to check
+	// that we still support non-swiss maps on versions of Go where the default
+	// map backend is swisstables.
+	protest.AllowRecording(t)
+
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) {
+		t.Skip("N/A")
+	}
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 27) {
+		panic("test expired, please remove")
+	}
+	t.Setenv("GOEXPERIMENT", "noswissmap")
+
+	testcases := []varTest{
+		{"m1[\"Malone\"]", false, "main.astruct {A: 2, B: 3}", "main.astruct {A: 2, B: 3}", "main.astruct", nil},
+		{"m2[1].B", false, "11", "11", "int", nil},
+		{"m2[c1.sa[2].B-4].A", false, "10", "10", "int", nil},
+		{"m2[*p1].B", false, "11", "11", "int", nil},
+		{"m3[as1]", false, "42", "42", "int", nil},
+		{"mlarge", false, "map[main.largestruct]main.largestruct [{name: \"one\", v: [256]uint8 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+192 more]}: {name: \"oneval\", v: [256]uint8 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+192 more]}, ]", "map[main.largestruct]main.largestruct [...]", "map[main.largestruct]main.largestruct", nil},
+		{"mnil[\"Malone\"]", false, "", "", "", errors.New("key not found")},
+		{"m1[80:]", false, "", "", "", errors.New("map index out of bounds")},
+		{"mnil", true, "map[string]main.astruct nil", "map[string]main.astruct nil", "map[string]main.astruct", nil},
+		{"m1 == nil", false, "false", "false", "", nil},
+		{"mnil == m1", false, "", "", "", errors.New("can not compare map variables")},
+		{"mnil == nil", false, "true", "true", "", nil},
+		{"m2", true, "map[int]*main.astruct [1: *{A: 10, B: 11}, ]", "map[int]*main.astruct [...]", "map[int]*main.astruct", nil},
+	}
+
+	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), t, "Continue() returned an error")
+		for _, tc := range testcases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Logf("%q", tc.name)
+				variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
+				if tc.err == nil {
+					assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
+					assertVariable(t, variable, tc)
+					variable, err := evalVariableWithCfg(p, tc.name, pshortLoadConfig)
+					assertNoError(err, t, fmt.Sprintf("EvalExpression(%s, pshortLoadConfig) returned an error", tc.name))
+					assertVariable(t, variable, tc.alternateVarTest())
+				} else {
+
+					if err == nil {
+						t.Fatalf("Expected error %s, got no error (%s)", tc.err.Error(), tc.name)
+					}
+					switch e := tc.err.(type) {
+					case *altError:
+						ok := false
+						for _, tgtErr := range e.errs {
+							if tgtErr == err.Error() {
+								ok = true
+								break
+							}
+						}
+						if !ok {
+							t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+						}
+					default:
+						if tc.err.Error() != "*" && tc.err.Error() != err.Error() {
+							t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+						}
+					}
+
+				}
+			})
+		}
+	})
 }
