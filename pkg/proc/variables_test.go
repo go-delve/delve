@@ -1908,3 +1908,73 @@ func TestSetupRangeFramesCrash(t *testing.T) {
 		})
 	}
 }
+
+func TestSwissMap(t *testing.T) {
+	protest.AllowRecording(t)
+
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) {
+		t.Skip("N/A")
+	}
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 26) {
+		// Remember to change this to a test of the classic maps (assuming they still exist) when swisstable becomes the default
+		t.Fatal("update me")
+	}
+	t.Setenv("GOEXPERIMENT", "swissmap")
+
+	testcases := []varTest{
+		{"m1[\"Malone\"]", false, "main.astruct {A: 2, B: 3}", "main.astruct {A: 2, B: 3}", "main.astruct", nil},
+		{"m2[1].B", false, "11", "11", "int", nil},
+		{"m2[c1.sa[2].B-4].A", false, "10", "10", "int", nil},
+		{"m2[*p1].B", false, "11", "11", "int", nil},
+		{"m3[as1]", false, "42", "42", "int", nil},
+		{"mnil[\"Malone\"]", false, "", "", "", errors.New("key not found")},
+		{"m1[80:]", false, "", "", "", errors.New("map index out of bounds")},
+		{"mnil", true, "map[string]main.astruct nil", "map[string]main.astruct nil", "map[string]main.astruct", nil},
+		{"m1 == nil", false, "false", "false", "", nil},
+		{"mnil == m1", false, "", "", "", errors.New("can not compare map variables")},
+		{"mnil == nil", false, "true", "true", "", nil},
+		{"m2", true, "map[int]*main.astruct [1: *{A: 10, B: 11}, ]", "map[int]*main.astruct [...]", "map[int]*main.astruct", nil},
+	}
+
+	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), t, "Continue() returned an error")
+		for _, tc := range testcases {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Logf("%q", tc.name)
+				variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
+				if tc.err == nil {
+					assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
+					assertVariable(t, variable, tc)
+					variable, err := evalVariableWithCfg(p, tc.name, pshortLoadConfig)
+					assertNoError(err, t, fmt.Sprintf("EvalExpression(%s, pshortLoadConfig) returned an error", tc.name))
+					assertVariable(t, variable, tc.alternateVarTest())
+				} else {
+
+					if err == nil {
+						t.Fatalf("Expected error %s, got no error (%s)", tc.err.Error(), tc.name)
+					}
+					switch e := tc.err.(type) {
+					case *altError:
+						ok := false
+						for _, tgtErr := range e.errs {
+							if tgtErr == err.Error() {
+								ok = true
+								break
+							}
+						}
+						if !ok {
+							t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+						}
+					default:
+						if tc.err.Error() != "*" && tc.err.Error() != err.Error() {
+							t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+						}
+					}
+
+				}
+			})
+		}
+	})
+
+	//TODO: test setting a map to nil
+}
