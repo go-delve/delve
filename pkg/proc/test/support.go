@@ -158,7 +158,7 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	if flags&BuildModeExternalLinker != 0 {
 		buildFlags = append(buildFlags, "-ldflags=-linkmode=external")
 	}
-	if ver.IsDevel() || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 11, Rev: -1}) {
+	if ver.IsOldDevel() || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 11, Rev: -1}) {
 		if flags&EnableDWZCompression != 0 {
 			buildFlags = append(buildFlags, "-ldflags=-compressdwarf=false")
 		}

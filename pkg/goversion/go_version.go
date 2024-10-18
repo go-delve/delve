@@ -19,8 +19,9 @@ type GoVersion struct {
 }
 
 const (
-	betaStart = -1000
-	betaEnd   = -2000
+	betaStart      = -1000
+	betaEnd        = -2000
+	versionedDevel = -3000
 )
 
 func betaRev(beta int) int {
@@ -40,8 +41,27 @@ func Parse(ver string) (GoVersion, bool) {
 	var r GoVersion
 	var err1, err2, err3 error
 
-	if strings.HasPrefix(ver, "devel") {
-		return GoVersion{-1, 0, 0, "", ""}, true
+	const devel = "devel"
+
+	if strings.HasPrefix(ver, devel) {
+		ver = strings.TrimSpace(ver[len(devel):])
+		if !strings.HasPrefix(ver, "go") {
+			// old development build: devel +COMMIT DATE ARCH
+			return GoVersion{-1, 0, 0, "", ""}, true
+		}
+
+		// new development build: devel goX.Y-COMMIT DATE ARCH
+		ver = strings.Split(ver[2:], "-")[0]
+		v := strings.SplitN(ver, ".", 2)
+		if len(v) != 2 {
+			return GoVersion{-1, 0, 0, "", ""}, true
+		}
+		major, err1 := strconv.Atoi(v[0])
+		minor, err2 := strconv.Atoi(v[1])
+		if err1 != nil || err2 != nil {
+			return GoVersion{-1, 0, 0, "", ""}, true
+		}
+		return GoVersion{major, minor, versionedDevel, "", ""}, true
 	}
 
 	if strings.HasPrefix(ver, "go") {
@@ -159,10 +179,15 @@ func (v *GoVersion) AfterOrEqual(b GoVersion) bool {
 	return true
 }
 
-// IsDevel returns whether the GoVersion
-// is a development version.
-func (v *GoVersion) IsDevel() bool {
+// IsOldDevel returns whether the GoVersion is an old-style development
+// build of Go, i.e. without an associated minor and major version.
+func (v *GoVersion) IsOldDevel() bool {
 	return v.Major < 0
+}
+
+// IsDevelBuild returns whether the GoVersion is a development build
+func (v *GoVersion) IsDevelBuild() bool {
+	return v.Major < 0 || v.Rev == versionedDevel
 }
 
 func (v *GoVersion) String() string {
@@ -209,7 +234,7 @@ func Installed() (GoVersion, bool) {
 // or go version) is major.minor or a later version, or a development
 // version.
 func VersionAfterOrEqual(version string, major, minor int) bool {
-	return VersionAfterOrEqualRev(version, major, minor, betaEnd)
+	return VersionAfterOrEqualRev(version, major, minor, versionedDevel)
 }
 
 // VersionAfterOrEqualRev checks that version (as returned by runtime.Version()
@@ -217,7 +242,7 @@ func VersionAfterOrEqual(version string, major, minor int) bool {
 // version.
 func VersionAfterOrEqualRev(version string, major, minor, rev int) bool {
 	ver, _ := Parse(version)
-	if ver.IsDevel() {
+	if ver.IsOldDevel() {
 		return true
 	}
 	return ver.AfterOrEqual(GoVersion{major, minor, rev, "", ""})
@@ -229,7 +254,7 @@ const producerVersionPrefix = "Go cmd/compile "
 // major.minor or a later version, or a development version.
 func ProducerAfterOrEqual(producer string, major, minor int) bool {
 	ver := ParseProducer(producer)
-	if ver.IsDevel() {
+	if ver.IsOldDevel() {
 		return true
 	}
 	return ver.AfterOrEqual(GoVersion{major, minor, 0, "", ""})
