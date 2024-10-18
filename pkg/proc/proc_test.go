@@ -2780,7 +2780,7 @@ func TestDebugStripped(t *testing.T) {
 	skipOn(t, "not working on linux/386", "linux", "386")
 	skipOn(t, "not working on linux/ppc64le when -gcflags=-N -l is passed", "linux", "ppc64le")
 	ver, _ := goversion.Parse(runtime.Version())
-	if ver.IsDevel() {
+	if ver.IsDevelBuild() {
 		t.Skip("not supported")
 	}
 	withTestProcessArgs("testnextprog", t, "", []string{}, protest.LinkStrip, func(p *proc.Target, grp *proc.TargetGroup, f protest.Fixture) {
@@ -2810,7 +2810,7 @@ func TestDebugStripped2(t *testing.T) {
 	skipOn(t, "not working on linux/ppc64le when -gcflags=-N -l is passed", "linux", "ppc64le")
 	skipOn(t, "not working on linux/riscv64", "linux", "riscv64")
 	ver, _ := goversion.Parse(runtime.Version())
-	if ver.IsDevel() {
+	if ver.IsDevelBuild() {
 		t.Skip("not supported")
 	}
 	if ver.Major > 0 && ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 22, Rev: -1}) {

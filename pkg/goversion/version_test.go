@@ -54,7 +54,7 @@ func TestParseVersionStringAfterOrEqual(t *testing.T) {
 	if !ok {
 		t.Fatalf("Could not parse devel version string")
 	}
-	if !ver.IsDevel() {
+	if !ver.IsOldDevel() {
 		t.Fatalf("Devel version string not correctly recognized")
 	}
 
@@ -77,6 +77,7 @@ func TestParseVersionStringEqual(t *testing.T) {
 	versionEqual(t, "go1.16.4b7", GoVersion{1, 16, 4, "", ""})
 	versionEqual(t, "go1.21.1-something", GoVersion{1, 21, 1, "", "something"})
 	versionEqual(t, "devel +17efbfc Tue Jul 28 17:39:19 2015 +0000 linux/amd64", GoVersion{Major: -1})
+	versionEqual(t, "devel go1.24-1bb6f19a25 Mon Oct 14 15:17:20 2024 -0400 linux/amd64", GoVersion{1, 24, versionedDevel, "", ""})
 }
 
 func TestRoundtrip(t *testing.T) {
