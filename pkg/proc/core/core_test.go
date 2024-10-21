@@ -213,8 +213,13 @@ func withCoreFile(t *testing.T, name, args string) *proc.TargetGroup {
 	case err != nil || len(cores) > 1:
 		t.Fatalf("Got %v, wanted one file named core* in %v", cores, tempDir)
 	case len(cores) == 0:
-		t.Skipf("core file was not produced, could not run test")
-		return nil
+		cores = []string{fix.Path + ".dump"}
+		err := exec.Command("coredumpctl", "--output="+cores[0], "dump", fix.Path).Run()
+		if err != nil {
+			t.Skipf("core file was not produced, could not run test, coredumpctl error: %v", err)
+			return nil
+		}
+		test.PathsToRemove = append(test.PathsToRemove, cores[0])
 	}
 	corePath := cores[0]
 

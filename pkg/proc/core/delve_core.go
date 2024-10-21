@@ -130,11 +130,11 @@ type delveThread struct {
 	regs *delveRegisters
 }
 
-func (th *delveThread) pid() int {
+func (th *delveThread) ThreadID() int {
 	return int(th.id)
 }
 
-func (th *delveThread) registers() (proc.Registers, error) {
+func (th *delveThread) Registers() (proc.Registers, error) {
 	return th.regs, nil
 }
 
