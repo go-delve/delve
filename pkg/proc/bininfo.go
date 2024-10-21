@@ -2081,7 +2081,7 @@ func (bi *BinaryInfo) macOSDebugFrameBugWorkaround() {
 		}
 	} else {
 		prod := goversion.ParseProducer(bi.Producer())
-		if !prod.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 19, Rev: 3}) && !prod.IsDevel() {
+		if !prod.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 19, Rev: 3}) && !prod.IsOldDevel() {
 			bi.logger.Infof("debug_frame workaround not needed (version %q on %s)", bi.Producer(), bi.Arch.Name)
 			return
 		}
