@@ -38,6 +38,16 @@ func replaceDocPath(s string) string {
 	}
 }
 
+func fixLessThan(s string) string {
+	v := strings.Split(s, "\n")
+	for i := range v {
+		if len(v[i]) == 0 || v[i][0] != '\t' {
+			v[i] = strings.ReplaceAll(v[i], "<", "&lt;")
+		}
+	}
+	return strings.Join(v, "\n")
+}
+
 func (c *Commands) WriteMarkdown(w io.Writer) {
 	fmt.Fprint(w, "# Configuration and Command History\n\n")
 	fmt.Fprint(w, "If `$XDG_CONFIG_HOME` is set, then configuration and command history files are located in `$XDG_CONFIG_HOME/dlv`. ")
@@ -66,7 +76,7 @@ func (c *Commands) WriteMarkdown(w io.Writer) {
 	}
 
 	for _, cmd := range c.cmds {
-		fmt.Fprintf(w, "## %s\n%s\n\n", cmd.aliases[0], replaceDocPath(cmd.helpMsg))
+		fmt.Fprintf(w, "## %s\n%s\n\n", cmd.aliases[0], fixLessThan(replaceDocPath(cmd.helpMsg)))
 		if len(cmd.aliases) > 1 {
 			fmt.Fprint(w, "Aliases:")
 			for _, alias := range cmd.aliases[1:] {
