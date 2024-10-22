@@ -56,6 +56,14 @@
 //  - a type defined in the runtime package, without the 'runtime.' prefix
 //  - anytype to match all possible types
 //  - an expression of the form T1|T2 where both T1 and T2 can be arbitrary type expressions
+//
+// GO VERSION RESTRICTIONS
+//
+// A rtype comment of this form:
+//
+// // +rtype go1.24 ...
+//
+// Will only be applied to versions of Go following version 1.24.0
 
 package main
 
@@ -70,6 +78,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -78,6 +87,7 @@ import (
 )
 
 const magicCommentPrefix = "+rtype"
+const gover = "go1."
 
 var fset = &token.FileSet{}
 var checkVarTypeRules = []*checkVarType{}
@@ -97,6 +107,7 @@ type rtypeCmnt struct {
 type checkVarType struct {
 	V, T string // V must have type T
 	pos  token.Pos
+	firstMinor
 }
 
 func (c *checkVarType) String() string {
@@ -111,6 +122,7 @@ type checkFieldType struct {
 	S, F, T string // S.F must have type T
 	opt     bool
 	pos     token.Pos
+	firstMinor
 }
 
 func (c *checkFieldType) String() string {
@@ -122,6 +134,13 @@ type checkConstVal struct {
 	C   string // const C = V
 	V   constant.Value
 	pos token.Pos
+	firstMinor
+}
+
+type firstMinor int
+
+func (firstMinor firstMinor) versionOk(curminor int) bool {
+	return curminor >= int(firstMinor)
 }
 
 func (c *checkConstVal) String() string {
@@ -255,31 +274,38 @@ func process(pkg *packages.Package, rtcmnt *rtypeCmnt, cmntmap ast.CommentMap, r
 	tinfo := pkg.TypesInfo
 	fields := strings.Split(rtcmnt.txt, " ")
 
+	firstMinor := 0
+
+	if strings.HasPrefix(fields[1], gover) {
+		firstMinor, _ = strconv.Atoi(fields[1][len(gover):])
+		fields = fields[1:]
+	}
+
 	switch fields[1] {
 	case "-var":
 		// -var V T
 		// requests that variable V is of type T
-		addCheckVarType(fields[2], fields[3], rtcmnt.slash)
+		addCheckVarType(fields[2], fields[3], rtcmnt.slash, firstMinor)
 	case "-field":
 		// -field S.F T
 		// requests that field F of type S is of type T
 		v := strings.Split(fields[2], ".")
-		addCheckFieldType(v[0], v[1], fields[3], false, rtcmnt.slash)
+		addCheckFieldType(v[0], v[1], fields[3], false, rtcmnt.slash, firstMinor)
 	default:
 		ok := false
 		if ident := isProcVariableDecl(rtcmnt.stmt, tinfo); ident != nil {
 			if len(fields) == 2 {
-				processProcVariableUses(rtcmnt.toplevel, tinfo, ident, cmntmap, rtcmnts, fields[1])
+				processProcVariableUses(rtcmnt.toplevel, tinfo, ident, cmntmap, rtcmnts, fields[1], firstMinor)
 				ok = true
 			} else if len(fields) == 3 && fields[1] == "-opt" {
-				processProcVariableUses(rtcmnt.toplevel, tinfo, ident, cmntmap, rtcmnts, fields[2])
+				processProcVariableUses(rtcmnt.toplevel, tinfo, ident, cmntmap, rtcmnts, fields[2], firstMinor)
 				ok = true
 			}
 		} else if ident := isConstDecl(rtcmnt.toplevel, rtcmnt.node); len(fields) == 2 && ident != nil {
-			addCheckConstVal(fields[1], constValue(tinfo.Defs[ident]), rtcmnt.slash)
+			addCheckConstVal(fields[1], constValue(tinfo.Defs[ident]), rtcmnt.slash, firstMinor)
 			ok = true
 		} else if F := isStringCaseClause(rtcmnt.stmt); F != "" && len(fields) == 4 && fields[1] == "-fieldof" {
-			addCheckFieldType(fields[2], F, fields[3], false, rtcmnt.slash)
+			addCheckFieldType(fields[2], F, fields[3], false, rtcmnt.slash, firstMinor)
 			ok = true
 		}
 		if !ok {
@@ -359,7 +385,7 @@ func isStringCaseClause(stmt ast.Stmt) string {
 // processProcVariableUses scans the body of the function declaration 'decl'
 // looking for uses of 'procVarIdent' which is assumed to be an identifier
 // for a *proc.Variable variable.
-func processProcVariableUses(decl ast.Node, tinfo *types.Info, procVarIdent *ast.Ident, cmntmap ast.CommentMap, rtcmnts []*rtypeCmnt, S string) {
+func processProcVariableUses(decl ast.Node, tinfo *types.Info, procVarIdent *ast.Ident, cmntmap ast.CommentMap, rtcmnts []*rtypeCmnt, S string, firstMinor int) {
 	if len(S) > 0 && S[0] == '*' {
 		S = S[1:]
 	}
@@ -435,7 +461,7 @@ func processProcVariableUses(decl ast.Node, tinfo *types.Info, procVarIdent *ast
 				}
 			}
 			F, _ := strconv.Unquote(arg0.Value)
-			addCheckFieldType(S, F, typ, opt, fncall.Pos())
+			addCheckFieldType(S, F, typ, opt, fncall.Pos(), firstMinor)
 			//printNode(fset, fncall)
 		default:
 			pos := fset.Position(n.Pos())
@@ -454,18 +480,18 @@ func findComment(slash token.Pos, rtcmnts []*rtypeCmnt) int {
 	return -1
 }
 
-func addCheckVarType(V, T string, pos token.Pos) {
-	checkVarTypeRules = append(checkVarTypeRules, &checkVarType{V, T, pos})
+func addCheckVarType(V, T string, pos token.Pos, firstMinor_ int) {
+	checkVarTypeRules = append(checkVarTypeRules, &checkVarType{V, T, pos, firstMinor(firstMinor_)})
 }
 
-func addCheckFieldType(S, F, T string, opt bool, pos token.Pos) {
+func addCheckFieldType(S, F, T string, opt bool, pos token.Pos, firstMinor_ int) {
 	if !strings.Contains(S, "|") {
-		checkFieldTypeRules[S] = append(checkFieldTypeRules[S], &checkFieldType{S, F, T, opt, pos})
+		checkFieldTypeRules[S] = append(checkFieldTypeRules[S], &checkFieldType{S, F, T, opt, pos, firstMinor(firstMinor_)})
 	}
 }
 
-func addCheckConstVal(C string, V constant.Value, pos token.Pos) {
-	checkConstValRules[C] = append(checkConstValRules[C], &checkConstVal{C, V, pos})
+func addCheckConstVal(C string, V constant.Value, pos token.Pos, firstMinor_ int) {
+	checkConstValRules[C] = append(checkConstValRules[C], &checkConstVal{C, V, pos, firstMinor(firstMinor_)})
 }
 
 // report writes a report of all rules derived from the proc package to stdout.
@@ -548,7 +574,7 @@ func check() {
 	pkgmap := map[string]*packages.Package{}
 	allok := true
 
-	for _, rule := range checkVarTypeRules {
+	for _, rule := range versionOkFilter(checkVarTypeRules) {
 		pos := fset.Position(rule.pos)
 		def := lookupPackage(pkgmap, "runtime").Types.Scope().Lookup(rule.V)
 		if def == nil {
@@ -569,7 +595,10 @@ func check() {
 	}
 	sort.Strings(Ss)
 	for _, S := range Ss {
-		rules := checkFieldTypeRules[S]
+		rules := versionOkFilter(checkFieldTypeRules[S])
+		if len(rules) == 0 {
+			continue
+		}
 		pos := fset.Position(rules[0].pos)
 
 		def := lookupTypeDef(pkgmap, S)
@@ -617,7 +646,10 @@ func check() {
 	}
 	sort.Strings(Cs)
 	for _, C := range Cs {
-		rules := checkConstValRules[C]
+		rules := versionOkFilter(checkConstValRules[C])
+		if len(rules) == 0 {
+			continue
+		}
 		pos := fset.Position(rules[0].pos)
 		def := findConst(pkgmap, C)
 		if def == nil {
@@ -713,6 +745,17 @@ func relative(s string) string {
 	r, err := filepath.Rel(wd, s)
 	if err != nil {
 		return s
+	}
+	return r
+}
+
+func versionOkFilter[T interface{ versionOk(int) bool }](rules []T) []T {
+	curminor, _ := strconv.Atoi(strings.Split(runtime.Version()[len(gover):], ".")[0])
+	r := []T{}
+	for _, rule := range rules {
+		if rule.versionOk(curminor) {
+			rules = append(rules, rule)
+		}
 	}
 	return r
 }

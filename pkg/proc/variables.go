@@ -1344,7 +1344,7 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 			v.loadMap(recurseLevel, cfg)
 		} else {
 			// loads length so that the client knows that the map isn't empty
-			v.mapIterator()
+			v.mapIterator(0)
 		}
 
 	case reflect.String:
@@ -1971,11 +1971,10 @@ func (v *Variable) funcvalAddr() uint64 {
 }
 
 func (v *Variable) loadMap(recurseLevel int, cfg LoadConfig) {
-	it := v.mapIterator()
+	it := v.mapIterator(uint64(cfg.MaxMapBuckets))
 	if it == nil {
 		return
 	}
-	it.maxNumBuckets = uint64(cfg.MaxMapBuckets)
 
 	if v.Len == 0 || int64(v.mapSkip) >= v.Len || cfg.MaxArrayValues == 0 {
 		return
@@ -1992,12 +1991,7 @@ func (v *Variable) loadMap(recurseLevel int, cfg LoadConfig) {
 	errcount := 0
 	for it.next() {
 		key := it.key()
-		var val *Variable
-		if it.values.fieldType.Size() > 0 {
-			val = it.value()
-		} else {
-			val = v.newVariable("", it.values.Addr, it.values.fieldType, DereferenceMemory(v.mem))
-		}
+		val := it.value()
 		key.loadValueInternal(recurseLevel+1, cfg)
 		val.loadValueInternal(recurseLevel+1, cfg)
 		if key.Unreadable != nil || val.Unreadable != nil {
@@ -2012,259 +2006,6 @@ func (v *Variable) loadMap(recurseLevel int, cfg LoadConfig) {
 			break
 		}
 	}
-}
-
-type mapIterator struct {
-	v          *Variable
-	numbuckets uint64
-	oldmask    uint64
-	buckets    *Variable
-	oldbuckets *Variable
-	b          *Variable
-	bidx       uint64
-
-	tophashes *Variable
-	keys      *Variable
-	values    *Variable
-	overflow  *Variable
-
-	maxNumBuckets uint64 // maximum number of buckets to scan
-
-	idx int64
-
-	hashTophashEmptyOne uint64 // Go 1.12 and later has two sentinel tophash values for an empty cell, this is the second one (the first one hashTophashEmptyZero, the same as Go 1.11 and earlier)
-	hashMinTopHash      uint64 // minimum value of tophash for a cell that isn't either evacuated or empty
-}
-
-// Code derived from go/src/runtime/hashmap.go
-func (v *Variable) mapIterator() *mapIterator {
-	sv := v.clone()
-	sv.RealType = resolveTypedef(&(sv.RealType.(*godwarf.MapType).TypedefType))
-	sv = sv.maybeDereference()
-	v.Base = sv.Addr
-
-	maptype, ok := sv.RealType.(*godwarf.StructType)
-	if !ok {
-		v.Unreadable = errors.New("wrong real type for map")
-		return nil
-	}
-
-	it := &mapIterator{v: v, bidx: 0, b: nil, idx: 0}
-
-	if sv.Addr == 0 {
-		it.numbuckets = 0
-		return it
-	}
-
-	v.mem = cacheMemory(v.mem, v.Base, int(v.RealType.Size()))
-
-	for _, f := range maptype.Field {
-		var err error
-		field, _ := sv.toField(f)
-		switch f.Name {
-		case "count": // +rtype -fieldof hmap int
-			v.Len, err = field.asInt()
-		case "B": // +rtype -fieldof hmap uint8
-			var b uint64
-			b, err = field.asUint()
-			it.numbuckets = 1 << b
-			it.oldmask = (1 << (b - 1)) - 1
-		case "buckets": // +rtype -fieldof hmap unsafe.Pointer
-			it.buckets = field.maybeDereference()
-		case "oldbuckets": // +rtype -fieldof hmap unsafe.Pointer
-			it.oldbuckets = field.maybeDereference()
-		}
-		if err != nil {
-			v.Unreadable = err
-			return nil
-		}
-	}
-
-	if it.buckets.Kind != reflect.Struct || it.oldbuckets.Kind != reflect.Struct {
-		v.Unreadable = errMapBucketsNotStruct
-		return nil
-	}
-
-	it.hashTophashEmptyOne = hashTophashEmptyZero
-	it.hashMinTopHash = hashMinTopHashGo111
-	if producer := v.bi.Producer(); producer != "" && goversion.ProducerAfterOrEqual(producer, 1, 12) {
-		it.hashTophashEmptyOne = hashTophashEmptyOne
-		it.hashMinTopHash = hashMinTopHashGo112
-	}
-
-	return it
-}
-
-var errMapBucketContentsNotArray = errors.New("malformed map type: keys, values or tophash of a bucket is not an array")
-var errMapBucketContentsInconsistentLen = errors.New("malformed map type: inconsistent array length in bucket")
-var errMapBucketsNotStruct = errors.New("malformed map type: buckets, oldbuckets or overflow field not a struct")
-
-func (it *mapIterator) nextBucket() bool {
-	if it.overflow != nil && it.overflow.Addr > 0 {
-		it.b = it.overflow
-	} else {
-		it.b = nil
-
-		if it.maxNumBuckets > 0 && it.bidx >= it.maxNumBuckets {
-			return false
-		}
-
-		for it.bidx < it.numbuckets {
-			it.b = it.buckets.clone()
-			it.b.Addr += uint64(it.buckets.DwarfType.Size()) * it.bidx
-
-			if it.oldbuckets.Addr <= 0 {
-				break
-			}
-
-			// if oldbuckets is not nil we are iterating through a map that is in
-			// the middle of a grow.
-			// if the bucket we are looking at hasn't been filled in we iterate
-			// instead through its corresponding "oldbucket" (i.e. the bucket the
-			// elements of this bucket are coming from) but only if this is the first
-			// of the two buckets being created from the same oldbucket (otherwise we
-			// would print some keys twice)
-
-			oldbidx := it.bidx & it.oldmask
-			oldb := it.oldbuckets.clone()
-			oldb.Addr += uint64(it.oldbuckets.DwarfType.Size()) * oldbidx
-
-			if it.mapEvacuated(oldb) {
-				break
-			}
-
-			if oldbidx == it.bidx {
-				it.b = oldb
-				break
-			}
-
-			// oldbucket origin for current bucket has not been evacuated but we have already
-			// iterated over it so we should just skip it
-			it.b = nil
-			it.bidx++
-		}
-
-		if it.b == nil {
-			return false
-		}
-		it.bidx++
-	}
-
-	if it.b.Addr <= 0 {
-		return false
-	}
-
-	it.b.mem = cacheMemory(it.b.mem, it.b.Addr, int(it.b.RealType.Size()))
-
-	it.tophashes = nil
-	it.keys = nil
-	it.values = nil
-	it.overflow = nil
-
-	for _, f := range it.b.DwarfType.(*godwarf.StructType).Field {
-		field, err := it.b.toField(f)
-		if err != nil {
-			it.v.Unreadable = err
-			return false
-		}
-		if field.Unreadable != nil {
-			it.v.Unreadable = field.Unreadable
-			return false
-		}
-
-		switch f.Name {
-		case "tophash": // +rtype -fieldof bmap [8]uint8
-			it.tophashes = field
-		case "keys":
-			it.keys = field
-		case "values":
-			it.values = field
-		case "overflow":
-			it.overflow = field.maybeDereference()
-		}
-	}
-
-	// sanity checks
-	if it.tophashes == nil || it.keys == nil || it.values == nil {
-		it.v.Unreadable = errors.New("malformed map type")
-		return false
-	}
-
-	if it.tophashes.Kind != reflect.Array || it.keys.Kind != reflect.Array || it.values.Kind != reflect.Array {
-		it.v.Unreadable = errMapBucketContentsNotArray
-		return false
-	}
-
-	if it.tophashes.Len != it.keys.Len {
-		it.v.Unreadable = errMapBucketContentsInconsistentLen
-		return false
-	}
-
-	if it.values.fieldType.Size() > 0 && it.tophashes.Len != it.values.Len {
-		// if the type of the value is zero-sized (i.e. struct{}) then the values
-		// array's length is zero.
-		it.v.Unreadable = errMapBucketContentsInconsistentLen
-		return false
-	}
-
-	if it.overflow.Kind != reflect.Struct {
-		it.v.Unreadable = errMapBucketsNotStruct
-		return false
-	}
-
-	return true
-}
-
-func (it *mapIterator) next() bool {
-	for {
-		if it.b == nil || it.idx >= it.tophashes.Len {
-			r := it.nextBucket()
-			if !r {
-				return false
-			}
-			it.idx = 0
-		}
-		tophash, _ := it.tophashes.sliceAccess(int(it.idx))
-		h, err := tophash.asUint()
-		if err != nil {
-			it.v.Unreadable = fmt.Errorf("unreadable tophash: %v", err)
-			return false
-		}
-		it.idx++
-		if h != hashTophashEmptyZero && h != it.hashTophashEmptyOne {
-			return true
-		}
-	}
-}
-
-func (it *mapIterator) key() *Variable {
-	k, _ := it.keys.sliceAccess(int(it.idx - 1))
-	return k
-}
-
-func (it *mapIterator) value() *Variable {
-	v, _ := it.values.sliceAccess(int(it.idx - 1))
-	return v
-}
-
-func (it *mapIterator) mapEvacuated(b *Variable) bool {
-	if b.Addr == 0 {
-		return true
-	}
-	for _, f := range b.DwarfType.(*godwarf.StructType).Field {
-		if f.Name != "tophash" {
-			continue
-		}
-		tophashes, _ := b.toField(f)
-		tophash0var, _ := tophashes.sliceAccess(0)
-		tophash0, err := tophash0var.asUint()
-		if err != nil {
-			return true
-		}
-		//TODO: this needs to be > hashTophashEmptyOne for go >= 1.12
-		return tophash0 > it.hashTophashEmptyOne && tophash0 < it.hashMinTopHash
-	}
-	return true
 }
 
 func (v *Variable) readInterface() (_type, data *Variable, isnil bool) {
