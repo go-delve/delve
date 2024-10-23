@@ -1,14 +1,20 @@
-package amd64util
+//go:build amd64 || 386
+
+package cpuid
 
 import (
 	"sync"
 )
+
+const _XSTATE_MAX_KNOWN_SIZE = 2969
+
 
 var xstateMaxSize int
 var loadXstateMaxSizeOnce sync.Once
 
 func cpuid(axIn, cxIn uint32) (axOut, bxOut, cxOut, dxOut uint32)
 
+// AMD64XstateMaxSize returns the maximum size of the xstate area.
 func AMD64XstateMaxSize() int {
 	loadXstateMaxSizeOnce.Do(func() {
 		// See Intel 64 and IA-32 Architecture Software Developer's Manual, Vol. 1
