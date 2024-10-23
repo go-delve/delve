@@ -1410,9 +1410,6 @@ func TestVersion(t *testing.T) {
 }
 
 func TestStaticcheck(t *testing.T) {
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
-		t.Skip("staticcheck does not support go1.23 yet")
-	}
 	_, err := exec.LookPath("staticcheck")
 	if err != nil {
 		t.Skip("staticcheck not installed")

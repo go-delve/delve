@@ -54,7 +54,7 @@ export GOPATH
 export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
 go version
 if [ "$arch" != "ppc64le" ]; then
-	go install honnef.co/go/tools/cmd/staticcheck@2023.1.6 || true
+	go install honnef.co/go/tools/cmd/staticcheck@2024.1.1 || true
 fi
 
 uname -a
