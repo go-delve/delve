@@ -1,11 +1,8 @@
 package api
 
 import (
-	"bytes"
 	"fmt"
 	"go/constant"
-	"go/printer"
-	"go/token"
 	"reflect"
 	"sort"
 	"strconv"
@@ -32,7 +29,7 @@ func ConvertLogicalBreakpoint(lbp *proc.LogicalBreakpoint) *Breakpoint {
 		LoadArgs:         LoadConfigFromProc(lbp.LoadArgs),
 		LoadLocals:       LoadConfigFromProc(lbp.LoadLocals),
 		TotalHitCount:    lbp.TotalHitCount,
-		Disabled:         !lbp.Enabled,
+		Disabled:         !lbp.Enabled(),
 		UserData:         lbp.UserData,
 		RootFuncName:     lbp.RootFuncName,
 		TraceFollowCalls: lbp.TraceFollowCalls,
@@ -43,14 +40,10 @@ func ConvertLogicalBreakpoint(lbp *proc.LogicalBreakpoint) *Breakpoint {
 		b.HitCount[strconv.FormatInt(idx, 10)] = lbp.HitCount[idx]
 	}
 
-	if lbp.HitCond != nil {
-		b.HitCond = fmt.Sprintf("%s %d", lbp.HitCond.Op.String(), lbp.HitCond.Val)
-		b.HitCondPerG = lbp.HitCondPerG
-	}
+	b.HitCond = lbp.HitCond()
+	b.HitCondPerG = lbp.HitCondPerG
 
-	var buf bytes.Buffer
-	printer.Fprint(&buf, token.NewFileSet(), lbp.Cond)
-	b.Cond = buf.String()
+	b.Cond = lbp.Cond()
 
 	return b
 }

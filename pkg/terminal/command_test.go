@@ -1231,7 +1231,6 @@ func TestHitCondBreakpoint(t *testing.T) {
 		if !strings.Contains(out, "2\n") {
 			t.Fatalf("wrong value of j")
 		}
-		term.MustExec("toggle bp1")
 		listIsAt(t, term, "continue", 16, -1, -1)
 		// second g hit
 		out = term.MustExec("print j")

@@ -1,12 +1,14 @@
 package proc
 
 import (
+	"bytes"
 	"debug/dwarf"
 	"errors"
 	"fmt"
 	"go/ast"
 	"go/constant"
 	"go/parser"
+	"go/printer"
 	"go/token"
 	"reflect"
 
@@ -211,7 +213,7 @@ func (bp *Breakpoint) VerboseDescr() []string {
 	for _, breaklet := range bp.Breaklets {
 		switch breaklet.Kind {
 		case UserBreakpoint:
-			r = append(r, fmt.Sprintf("User Cond=%q HitCond=%v", exprToString(breaklet.Cond), lbp.HitCond))
+			r = append(r, fmt.Sprintf("User Cond=%q HitCond=%v", exprToString(breaklet.Cond), lbp.hitCond))
 		case NextBreakpoint:
 			r = append(r, fmt.Sprintf("Next Cond=%q", exprToString(breaklet.Cond)))
 		case NextDeferBreakpoint:
@@ -360,7 +362,7 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 
 // checkHitCond evaluates bp's hit condition on thread.
 func checkHitCond(lbp *LogicalBreakpoint, goroutineID int64) bool {
-	if lbp == nil || lbp.HitCond == nil {
+	if lbp == nil || lbp.hitCond == nil {
 		return true
 	}
 	hitCount := int(lbp.TotalHitCount)
@@ -368,21 +370,21 @@ func checkHitCond(lbp *LogicalBreakpoint, goroutineID int64) bool {
 		hitCount = int(lbp.HitCount[goroutineID])
 	}
 	// Evaluate the breakpoint condition.
-	switch lbp.HitCond.Op {
+	switch lbp.hitCond.Op {
 	case token.EQL:
-		return hitCount == lbp.HitCond.Val
+		return hitCount == lbp.hitCond.Val
 	case token.NEQ:
-		return hitCount != lbp.HitCond.Val
+		return hitCount != lbp.hitCond.Val
 	case token.GTR:
-		return hitCount > lbp.HitCond.Val
+		return hitCount > lbp.hitCond.Val
 	case token.LSS:
-		return hitCount < lbp.HitCond.Val
+		return hitCount < lbp.hitCond.Val
 	case token.GEQ:
-		return hitCount >= lbp.HitCond.Val
+		return hitCount >= lbp.hitCond.Val
 	case token.LEQ:
-		return hitCount <= lbp.HitCond.Val
+		return hitCount <= lbp.hitCond.Val
 	case token.REM:
-		return hitCount%lbp.HitCond.Val == 0
+		return hitCount%lbp.hitCond.Val == 0
 	}
 	return false
 }
@@ -699,13 +701,14 @@ func (t *Target) setBreakpointInternal(logicalID int, addr uint64, kind Breakpoi
 		if lbp == nil {
 			lbp = &LogicalBreakpoint{LogicalID: logicalID}
 			lbp.HitCount = make(map[int64]uint64)
-			lbp.Enabled = true
+			lbp.enabled = true
+			lbp.condSatisfiable = true
 			bpmap.Logical[logicalID] = lbp
 		}
 		bp.Logical = lbp
 		breaklet := bp.UserBreaklet()
 		if breaklet != nil && breaklet.Cond == nil {
-			breaklet.Cond = lbp.Cond
+			breaklet.Cond = lbp.cond
 		}
 		if lbp.File == "" && lbp.Line == 0 {
 			lbp.File = bp.File
@@ -1032,7 +1035,7 @@ type LogicalBreakpoint struct {
 	FunctionName string
 	File         string
 	Line         int
-	Enabled      bool
+	enabled      bool
 
 	Set SetBreakpoint
 
@@ -1048,15 +1051,18 @@ type LogicalBreakpoint struct {
 	TotalHitCount uint64           // Number of times a breakpoint has been reached
 	HitCondPerG   bool             // Use per goroutine hitcount as HitCond operand, instead of total hitcount
 
-	// HitCond: if not nil the breakpoint will be triggered only if the evaluated HitCond returns
+	// hitCond: if not nil the breakpoint will be triggered only if the evaluated HitCond returns
 	// true with the TotalHitCount.
-	HitCond *struct {
+	hitCond *struct {
 		Op  token.Token
 		Val int
 	}
 
-	// Cond: if not nil the breakpoint will be triggered only if evaluating Cond returns true
-	Cond ast.Expr
+	// cond: if not nil the breakpoint will be triggered only if evaluating Cond returns true
+	cond ast.Expr
+
+	// condSatisfiable is true when 'cond && hitCond' can potentially be true.
+	condSatisfiable bool
 
 	UserData interface{} // Any additional information about the breakpoint
 	// Name of root function from where tracing needs to be done
@@ -1078,4 +1084,36 @@ type SetBreakpoint struct {
 type PidAddr struct {
 	Pid  int
 	Addr uint64
+}
+
+// Enabled returns true if the breakpoint is enabled.
+func (lbp *LogicalBreakpoint) Enabled() bool {
+	return lbp.enabled
+}
+
+// HitCond returns the hit condition.
+func (lbp *LogicalBreakpoint) HitCond() string {
+	if lbp.hitCond == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s %d", lbp.hitCond.Op.String(), lbp.hitCond.Val)
+}
+
+func (lbp *LogicalBreakpoint) Cond() string {
+	var buf bytes.Buffer
+	printer.Fprint(&buf, token.NewFileSet(), lbp.cond)
+	return buf.String()
+}
+
+func breakpointConditionSatisfiable(lbp *LogicalBreakpoint) bool {
+	if lbp.hitCond == nil || lbp.HitCondPerG {
+		return true
+	}
+	switch lbp.hitCond.Op {
+	case token.EQL, token.LEQ:
+		return int(lbp.TotalHitCount) < lbp.hitCond.Val
+	case token.LSS:
+		return int(lbp.TotalHitCount) < lbp.hitCond.Val-1
+	}
+	return true
 }
