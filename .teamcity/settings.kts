@@ -53,7 +53,7 @@ val targets = arrayOf(
 
         "linux/ppc64le/1.23",
 
-        "linux/riscv64/1.23",
+        "linux/riscv64/tip",
 
         "windows/amd64/1.23",
         "windows/amd64/tip",
