@@ -2,6 +2,7 @@ package goversion
 
 import (
 	"fmt"
+	"runtime"
 
 	"github.com/go-delve/delve/pkg/logflags"
 )
@@ -23,6 +24,13 @@ func Compatible(producer string, warnonly bool) error {
 	ver := ParseProducer(producer)
 	if ver.IsOldDevel() {
 		return nil
+	}
+	if runtime.GOARCH == "riscv64" && !ver.AfterOrEqual(GoVersion{1, 24, versionedDevel, "", ""}) {
+		if warnonly {
+			logflags.WriteError(fmt.Sprintf(goTooOldWarn, ver.String()))
+			return nil
+		}
+		return fmt.Errorf(goTooOldErr, ver.String())
 	}
 	if !ver.AfterOrEqual(GoVersion{MinSupportedVersionOfGoMajor, MinSupportedVersionOfGoMinor, betaRev(0), "", ""}) {
 		if warnonly {
