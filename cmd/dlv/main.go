@@ -6,12 +6,17 @@ import (
 	"github.com/go-delve/delve/cmd/dlv/cmds"
 	"github.com/go-delve/delve/pkg/version"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/telemetry"
 )
 
 // Build is the git sha of this binaries build.
 var Build string
 
 func main() {
+	telemetry.Start(telemetry.Config{
+		ReportCrashes: true,
+	})
+
 	if Build != "" {
 		version.DelveVersion.Build = Build
 	}
