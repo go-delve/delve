@@ -51,6 +51,8 @@ val targets = arrayOf(
         "linux/arm64/1.23",
         "linux/arm64/tip",
 
+        "linux/loong64/tip",
+
         "linux/ppc64le/1.23",
 
         "linux/riscv64/tip",
@@ -269,6 +271,7 @@ class TestBuild(val os: String, val arch: String, val version: String, buildId: 
         when (arch) {
             "386", "amd64" -> equals("teamcity.agent.jvm.os.arch", if (os == "mac") "x86_64" else "amd64")
             "arm64" -> equals("teamcity.agent.jvm.os.arch", "aarch64")
+            "loong64" -> equals("teamcity.agent.jvm.os.arch", "loongarch64")
             "ppc64le" -> equals("teamcity.agent.jvm.os.arch", "ppc64le")
             "riscv64" -> equals("teamcity.agent.jvm.os.arch", "riscv64")
         }
