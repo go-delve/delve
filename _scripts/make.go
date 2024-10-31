@@ -130,6 +130,9 @@ This option can only be specified if testset is basic or a single package.`)
 }
 
 func checkCert() bool {
+	if os.Getenv("NOCERT") != "" {
+		return false
+	}
 	// If we're on OSX make sure the proper CERT env var is set.
 	if runtime.GOOS != "darwin" || os.Getenv("CERT") != "" {
 		return true
@@ -326,7 +329,7 @@ func buildFlags() []string {
 	} else {
 		ldFlags = "-X main.Build=" + buildSHA
 	}
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" && os.Getenv("CERT") != "" {
 		ldFlags = "-s " + ldFlags
 	}
 	return []string{fmt.Sprintf("-ldflags=%s", ldFlags)}

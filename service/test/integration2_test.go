@@ -3167,3 +3167,135 @@ func TestBreakpointVariablesWithoutG(t *testing.T) {
 		assertNoError(state.Err, t, "Continue()")
 	})
 }
+
+func TestGuessSubstitutePath(t *testing.T) {
+	t.Setenv("NOCERT", "1")
+	slashnorm := func(s string) string {
+		if runtime.GOOS != "windows" {
+			return s
+		}
+		return strings.ReplaceAll(s, "\\", "/")
+	}
+
+	guess := func(t *testing.T, goflags string) [][2]string {
+		oldgoflags := os.Getenv("GOFLAGS")
+		os.Setenv("GOFLAGS", goflags)
+		defer os.Setenv("GOFLAGS", oldgoflags)
+
+		dlvbin := protest.GetDlvBinary(t)
+		defer os.Remove(dlvbin)
+
+		listener, clientConn := service.ListenerPipe()
+		defer listener.Close()
+		server := rpccommon.NewServer(&service.Config{
+			Listener:    listener,
+			ProcessArgs: []string{dlvbin, "help"},
+			Debugger: debugger.Config{
+				Backend:        testBackend,
+				CheckGoVersion: true,
+				BuildFlags:     "", // build flags can be an empty string here because the only test that uses it, does not set special flags.
+				ExecuteKind:    debugger.ExecutingExistingFile,
+			},
+		})
+		if err := server.Run(); err != nil {
+			t.Fatal(err)
+		}
+
+		client := rpc2.NewClientFromConn(clientConn)
+		defer client.Detach(true)
+
+		switch runtime.GOARCH {
+		case "ppc64le":
+			os.Setenv("GOFLAGS", "-tags=exp.linuxppc64le")
+		case "riscv64":
+			os.Setenv("GOFLAGS", "-tags=exp.linuxriscv64")
+		}
+
+		gsp, err := client.GuessSubstitutePath()
+		assertNoError(err, t, "GuessSubstitutePath")
+		return gsp
+	}
+
+	delvePath := protest.ProjectRoot()
+	var nmods int = -1
+
+	t.Run("Normal", func(t *testing.T) {
+		gsp := guess(t, "")
+		t.Logf("Normal build: %d", len(gsp))
+		if len(gsp) == 0 {
+			t.Fatalf("not enough modules")
+		}
+		found := false
+		for _, e := range gsp {
+			t.Logf("\t%s -> %s", e[0], e[1])
+			if e[0] != slashnorm(e[1]) {
+				t.Fatalf("mismatch %q %q", e[0], e[1])
+			}
+			if e[1] == delvePath {
+				found = true
+			}
+		}
+		nmods = len(gsp)
+		if !found {
+			t.Fatalf("could not find main module path %q", delvePath)
+		}
+
+		if os.Getenv("CI") == "true" {
+			return
+		}
+	})
+
+	t.Run("Modules", func(t *testing.T) {
+		gsp := guess(t, "-mod=mod")
+		t.Logf("Modules build: %d", len(gsp))
+		if len(gsp) != nmods && nmods != -1 {
+			t.Fatalf("not enough modules")
+		}
+		found := false
+		for _, e := range gsp {
+			t.Logf("\t%s -> %s", e[0], e[1])
+			if e[0] == slashnorm(delvePath) && e[1] == delvePath {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("could not find main module path %q", delvePath)
+		}
+	})
+
+	t.Run("Trimpath", func(t *testing.T) {
+		gsp := guess(t, "-trimpath")
+		t.Logf("Trimpath build: %d", len(gsp))
+		if len(gsp) != nmods && nmods != -1 {
+			t.Fatalf("not enough modules")
+		}
+		found := false
+		for _, e := range gsp {
+			t.Logf("\t%s -> %s", e[0], e[1])
+			if e[0] == "github.com/go-delve/delve" && e[1] == delvePath {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("could not find main module path %q", delvePath)
+		}
+	})
+
+	t.Run("ModulesTrimpath", func(t *testing.T) {
+		gsp := guess(t, "-trimpath -mod=mod")
+		t.Logf("Modules+Trimpath build: %d", len(gsp))
+		if len(gsp) != nmods && nmods != -1 {
+			t.Fatalf("not enough modules")
+		}
+		found := false
+		for _, e := range gsp {
+			t.Logf("\t%s -> %s", e[0], e[1])
+			if e[0] == "github.com/go-delve/delve" && e[1] == delvePath {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("could not find main module path %q", delvePath)
+		}
+	})
+}

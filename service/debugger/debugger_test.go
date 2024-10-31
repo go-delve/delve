@@ -1,6 +1,7 @@
 package debugger
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,9 +10,19 @@ import (
 	"testing"
 
 	"github.com/go-delve/delve/pkg/gobuild"
+	"github.com/go-delve/delve/pkg/logflags"
+	"github.com/go-delve/delve/pkg/proc"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service/api"
 )
+
+func TestMain(m *testing.M) {
+	var logConf string
+	flag.StringVar(&logConf, "log", "", "configures logging")
+	flag.Parse()
+	logflags.Setup(logConf != "", logConf, "")
+	os.Exit(protest.RunTestsWithFixtures(m))
+}
 
 func TestDebugger_LaunchNoMain(t *testing.T) {
 	fixturesDir := protest.FindFixturesDir()
@@ -99,4 +110,46 @@ func TestDebugger_LaunchCurrentDir(t *testing.T) {
 	if err != nil && !strings.Contains(err.Error(), "unknown backend") {
 		t.Fatal(err)
 	}
+}
+
+func guessSubstitutePathHelper(t *testing.T, args *api.GuessSubstitutePathIn, fnpaths [][2]string, tgt map[string]string) {
+	const base = 0x40000
+	t.Helper()
+	bins := [][]proc.Function{[]proc.Function{}}
+	for i, fnpath := range fnpaths {
+		bins[0] = append(bins[0], proc.Function{Name: fnpath[0], Entry: uint64(base + i)})
+	}
+	out := guessSubstitutePath(args, bins, func(_ int, fn *proc.Function) string {
+		return fnpaths[fn.Entry-base][1]
+	})
+	t.Logf("%#v\n", out)
+	if len(out) != len(tgt) {
+		t.Errorf("wrong number of entries")
+		return
+	}
+	for k := range out {
+		if out[k] != tgt[k] {
+			t.Errorf("mismatch for directory %q", k)
+			return
+		}
+	}
+}
+
+func TestGuessSubstitutePathMinimalMain(t *testing.T) {
+	// When the main module only contains a single package check that its mapping still works
+	guessSubstitutePathHelper(t,
+		&api.GuessSubstitutePathIn{
+			ImportPathOfMainPackage: "github.com/ccampo133/go-docker-alpine-remote-debug",
+			ClientGOROOT:            "/user/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.23.0.linux-amd64",
+			ClientModuleDirectories: map[string]string{
+				"github.com/ccampo133/go-docker-alpine-remote-debug": "/user/gohome/go-docker-alpine-remote-debug",
+			},
+		},
+		[][2]string{
+			{"main.main", "/app/main.go"},
+			{"main.hello", "/app/main.go"},
+			{"runtime.main", "/usr/local/go/src/runtime/main.go"}},
+		map[string]string{
+			"/usr/local/go": "/user/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.23.0.linux-amd64",
+			"/app":          "/user/gohome/go-docker-alpine-remote-debug"})
 }

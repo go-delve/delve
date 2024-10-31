@@ -1,11 +1,16 @@
 package rpc2
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
 	"net/rpc"
 	"net/rpc/jsonrpc"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-delve/delve/service"
@@ -575,6 +580,86 @@ func (c *RPCClient) SetDebugInfoDirectories(v []string) error {
 func (c *RPCClient) GetDebugInfoDirectories() ([]string, error) {
 	out := &DebugInfoDirectoriesOut{}
 	err := c.call("DebugInfoDirectories", DebugInfoDirectoriesIn{Set: false, List: nil}, out)
+	return out.List, err
+}
+
+type goListEntry struct {
+	Dir        string
+	ImportPath string
+	Name       string
+	Module     *goListModule
+}
+
+type goListModule struct {
+	Path string
+}
+
+// MakeGuessSusbtitutePathIn returns a mapping from modules to client
+// directories using "go list".
+func MakeGuessSusbtitutePathIn() (*api.GuessSubstitutePathIn, error) {
+	cmd := exec.Command("go", "list", "--json", "all")
+	buf, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+	importPathOfMainPackage := ""
+	importPathOfMainPackageOk := true
+	mod2dir := make(map[string]string)
+	d := json.NewDecoder(bytes.NewReader(buf))
+	for d.More() {
+		var e goListEntry
+		err := d.Decode(&e)
+		if err != nil {
+			return nil, err
+		}
+		if e.Module == nil {
+			continue
+		}
+		if !strings.HasPrefix(e.ImportPath, e.Module.Path) {
+			continue
+		}
+		pkgWithoutModule := e.ImportPath[len(e.Module.Path):]
+		elems := 0
+		for _, c := range pkgWithoutModule {
+			if c == '/' {
+				elems++
+			}
+		}
+		dir := e.Dir
+		for i := 0; i < elems; i++ {
+			dir = filepath.Dir(dir)
+		}
+		if mod2dir[e.Module.Path] != "" && mod2dir[e.Module.Path] != dir {
+			return nil, fmt.Errorf("could not determine path for module %s (got %q and %q)", e.Module.Path, mod2dir[e.Module.Path], dir)
+		}
+		mod2dir[e.Module.Path] = dir
+		if e.Name == "main" {
+			if importPathOfMainPackage != "" && importPathOfMainPackage != e.ImportPath {
+				importPathOfMainPackageOk = false
+			}
+			importPathOfMainPackage = e.ImportPath
+		}
+	}
+	buf, err = exec.Command("go", "env", "GOROOT").Output()
+	if err != nil {
+		return nil, err
+	}
+	clientGoroot := strings.TrimSpace(string(buf))
+	if !importPathOfMainPackageOk {
+		// There were multiple main packages
+		importPathOfMainPackage = ""
+	}
+	return &api.GuessSubstitutePathIn{ClientGOROOT: clientGoroot, ImportPathOfMainPackage: importPathOfMainPackage, ClientModuleDirectories: mod2dir}, nil
+}
+
+func (c *RPCClient) GuessSubstitutePath() ([][2]string, error) {
+	in, err := MakeGuessSusbtitutePathIn()
+	if err != nil {
+		return nil, err
+	}
+
+	out := &GuessSubstitutePathOut{}
+	err = c.call("GuessSubstitutePath", GuessSubstitutePathIn{*in}, out)
 	return out.List, err
 }
 

@@ -1146,3 +1146,19 @@ func (s *RPCServer) DebugInfoDirectories(arg DebugInfoDirectoriesIn, out *DebugI
 	out.List = s.debugger.DebugInfoDirectories()
 	return nil
 }
+
+type GuessSubstitutePathIn struct {
+	Args api.GuessSubstitutePathIn
+}
+
+type GuessSubstitutePathOut struct {
+	List [][2]string
+}
+
+func (s *RPCServer) GuessSubstitutePath(arg GuessSubstitutePathIn, out *GuessSubstitutePathOut) error {
+	m := s.debugger.GuessSubstitutePath(&arg.Args)
+	for k, v := range m {
+		out.List = append(out.List, [2]string{k, v})
+	}
+	return nil
+}

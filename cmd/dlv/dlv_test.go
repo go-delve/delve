@@ -31,11 +31,6 @@ import (
 )
 
 var testBackend string
-var ldFlags string
-
-func init() {
-	ldFlags = os.Getenv("CGO_LDFLAGS")
-}
 
 func TestMain(m *testing.M) {
 	flag.StringVar(&testBackend, "backend", "", "selects backend")
@@ -61,30 +56,10 @@ func assertNoError(err error, t testing.TB, s string) {
 	}
 }
 
-func projectRoot() string {
-	wd, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-
-	gopaths := strings.FieldsFunc(os.Getenv("GOPATH"), func(r rune) bool { return r == os.PathListSeparator })
-	for _, curpath := range gopaths {
-		// Detects "gopath mode" when GOPATH contains several paths ex. "d:\\dir\\gopath;f:\\dir\\gopath2"
-		if strings.Contains(wd, curpath) {
-			return filepath.Join(curpath, "src", "github.com", "go-delve", "delve")
-		}
-	}
-	val, err := exec.Command("go", "list", "-mod=", "-m", "-f", "{{ .Dir }}").Output()
-	if err != nil {
-		panic(err) // the Go tool was tested to work earlier
-	}
-	return strings.TrimSuffix(string(val), "\n")
-}
-
 func TestBuild(t *testing.T) {
 	const listenAddr = "127.0.0.1:40573"
 
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 	defer os.Remove(dlvbin)
 
 	fixtures := protest.FindFixturesDir()
@@ -194,46 +169,10 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 	return
 }
 
-func getDlvBin(t *testing.T) string {
-	// In case this was set in the environment
-	// from getDlvBinEBPF lets clear it here, so
-	// we can ensure we don't get build errors
-	// depending on the test ordering.
-	t.Setenv("CGO_LDFLAGS", ldFlags)
-	var tags string
-	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
-		tags = "-tags=exp.winarm64"
-	}
-	if runtime.GOOS == "linux" && runtime.GOARCH == "ppc64le" {
-		tags = "-tags=exp.linuxppc64le"
-	}
-	if runtime.GOOS == "linux" && runtime.GOARCH == "riscv64" {
-		tags = "-tags=exp.linuxriscv64"
-	}
-	return getDlvBinInternal(t, tags)
-}
-
-func getDlvBinEBPF(t *testing.T) string {
-	return getDlvBinInternal(t, "-tags", "ebpf")
-}
-
-func getDlvBinInternal(t *testing.T, goflags ...string) string {
-	dlvbin := filepath.Join(t.TempDir(), "dlv.exe")
-	args := append([]string{"build", "-o", dlvbin}, goflags...)
-	args = append(args, "github.com/go-delve/delve/cmd/dlv")
-
-	out, err := exec.Command("go", args...).CombinedOutput()
-	if err != nil {
-		t.Fatalf("go build -o %v github.com/go-delve/delve/cmd/dlv: %v\n%s", dlvbin, err, string(out))
-	}
-
-	return dlvbin
-}
-
 // TestOutput verifies that the debug executable is created in the correct path
 // and removed after exit.
 func TestOutput(t *testing.T) {
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	for _, output := range []string{"__debug_bin", "myownname", filepath.Join(t.TempDir(), "absolute.path")} {
 		testOutput(t, dlvbin, output, []string{"exit"})
@@ -252,7 +191,7 @@ func TestUnattendedBreakpoint(t *testing.T) {
 	const listenAddr = "127.0.0.1:40573"
 
 	fixturePath := filepath.Join(protest.FindFixturesDir(), "panic.go")
-	cmd := exec.Command(getDlvBin(t), "debug", "--continue", "--headless", "--accept-multiclient", "--listen", listenAddr, fixturePath)
+	cmd := exec.Command(protest.GetDlvBinary(t), "debug", "--continue", "--headless", "--accept-multiclient", "--listen", listenAddr, fixturePath)
 	stderr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stdout pipe")
 	defer stderr.Close()
@@ -279,7 +218,7 @@ func TestUnattendedBreakpoint(t *testing.T) {
 func TestContinue(t *testing.T) {
 	const listenAddr = "127.0.0.1:40573"
 
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
 	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--listen", listenAddr)
@@ -311,7 +250,7 @@ func TestContinue(t *testing.T) {
 func TestRedirect(t *testing.T) {
 	const listenAddr = "127.0.0.1:40573"
 
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	catfixture := filepath.Join(protest.FindFixturesDir(), "cat.go")
 	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--listen", listenAddr, "-r", catfixture, catfixture)
@@ -339,7 +278,7 @@ func TestRedirect(t *testing.T) {
 const checkAutogenDocLongOutput = false
 
 func checkAutogenDoc(t *testing.T, filename, gencommand string, generated []byte) {
-	saved := slurpFile(t, filepath.Join(projectRoot(), filename))
+	saved := slurpFile(t, filepath.Join(protest.ProjectRoot(), filename))
 
 	saved = bytes.ReplaceAll(saved, []byte("\r\n"), []byte{'\n'})
 	generated = bytes.ReplaceAll(generated, []byte("\r\n"), []byte{'\n'})
@@ -377,7 +316,7 @@ func diffMaybe(t *testing.T, filename string, generated []byte) {
 		return
 	}
 	cmd := exec.Command("diff", filename, "-")
-	cmd.Dir = projectRoot()
+	cmd.Dir = protest.ProjectRoot()
 	stdin, _ := cmd.StdinPipe()
 	go func() {
 		stdin.Write(generated)
@@ -410,7 +349,7 @@ func TestGeneratedDoc(t *testing.T) {
 	// Checks gen-usage-docs.go
 	tempDir := t.TempDir()
 	cmd := exec.Command("go", "run", "_scripts/gen-usage-docs.go", tempDir)
-	cmd.Dir = projectRoot()
+	cmd.Dir = protest.ProjectRoot()
 	err := cmd.Run()
 	assertNoError(err, t, "go run _scripts/gen-usage-docs.go")
 	entries, err := os.ReadDir(tempDir)
@@ -424,7 +363,7 @@ func TestGeneratedDoc(t *testing.T) {
 		a := []string{"run"}
 		a = append(a, args...)
 		cmd := exec.Command("go", a...)
-		cmd.Dir = projectRoot()
+		cmd.Dir = protest.ProjectRoot()
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("could not run script %v: %v (output: %q)", args, err, string(out))
@@ -443,7 +382,7 @@ func TestGeneratedDoc(t *testing.T) {
 }
 
 func TestExitInInit(t *testing.T) {
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
 	exitInit := filepath.Join(protest.FindFixturesDir(), "exit.init")
@@ -643,7 +582,7 @@ func TestTypecheckRPC(t *testing.T) {
 func TestDAPCmd(t *testing.T) {
 	const listenAddr = "127.0.0.1:40575"
 
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	cmd := exec.Command(dlvbin, "dap", "--log-output=dap", "--log", "--listen", listenAddr)
 	stdout, err := cmd.StdoutPipe()
@@ -706,7 +645,7 @@ func newDAPRemoteClient(t *testing.T, addr string, isDlvAttach bool, isMulti boo
 func TestRemoteDAPClient(t *testing.T) {
 	const listenAddr = "127.0.0.1:40576"
 
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
 	cmd := exec.Command(dlvbin, "debug", "--headless", "--log-output=dap", "--log", "--listen", listenAddr)
@@ -759,7 +698,7 @@ func closeDAPRemoteMultiClient(t *testing.T, c *daptest.Client, expectStatus str
 func TestRemoteDAPClientMulti(t *testing.T) {
 	const listenAddr = "127.0.0.1:40577"
 
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
 	cmd := exec.Command(dlvbin, "debug", "--headless", "--accept-multiclient", "--log-output=debugger", "--log", "--listen", listenAddr)
@@ -826,7 +765,7 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 func TestRemoteDAPClientAfterContinue(t *testing.T) {
 	const listenAddr = "127.0.0.1:40578"
 
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	fixture := protest.BuildFixture("loopprog", 0)
 	cmd := exec.Command(dlvbin, "exec", fixture.Path, "--headless", "--continue", "--accept-multiclient", "--log-output=debugger,dap", "--log", "--listen", listenAddr)
@@ -887,7 +826,7 @@ func TestDAPCmdWithClient(t *testing.T) {
 	}
 	defer listener.Close()
 
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	cmd := exec.Command(dlvbin, "dap", "--log-output=dap", "--log", "--client-addr", listener.Addr().String())
 	buf := &bytes.Buffer{}
@@ -934,7 +873,7 @@ func TestDAPCmdWithUnixClient(t *testing.T) {
 	}
 	defer listener.Close()
 
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	cmd := exec.Command(dlvbin, "dap", "--log-output=dap", "--log", "--client-addr=unix:"+listener.Addr().String())
 	buf := &bytes.Buffer{}
@@ -968,7 +907,7 @@ func TestDAPCmdWithUnixClient(t *testing.T) {
 }
 
 func TestTrace(t *testing.T) {
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	expected := []byte("> goroutine(1): main.foo(99, 9801)\n>> goroutine(1): main.foo => (9900)\n")
 
@@ -992,7 +931,7 @@ func TestTrace(t *testing.T) {
 }
 
 func TestTrace2(t *testing.T) {
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	expected := []byte("> goroutine(1): main.callme(2)\n>> goroutine(1): main.callme => (4)\n")
 
@@ -1016,7 +955,7 @@ func TestTrace2(t *testing.T) {
 }
 
 func TestTraceDirRecursion(t *testing.T) {
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	expected := []byte("> goroutine(1):frame(1) main.A(5, 5)\n > goroutine(1):frame(2) main.A(4, 4)\n  > goroutine(1):frame(3) main.A(3, 3)\n   > goroutine(1):frame(4) main.A(2, 2)\n    > goroutine(1):frame(5) main.A(1, 1)\n    >> goroutine(1):frame(5) main.A => (1)\n   >> goroutine(1):frame(4) main.A => (2)\n  >> goroutine(1):frame(3) main.A => (6)\n >> goroutine(1):frame(2) main.A => (24)\n>> goroutine(1):frame(1) main.A => (120)\n")
 
@@ -1049,7 +988,7 @@ func TestTraceDirRecursion(t *testing.T) {
 }
 
 func TestTraceMultipleGoroutines(t *testing.T) {
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	// TODO(derekparker) this test has to be a bit vague to avoid flakiness.
 	// I think a future improvement could be to use regexp captures to match the
@@ -1088,7 +1027,7 @@ func TestTracePid(t *testing.T) {
 		}
 	}
 
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	expected := []byte("goroutine(1): main.A()\n>> goroutine(1): main.A => ()\n")
 
@@ -1121,7 +1060,7 @@ func TestTracePid(t *testing.T) {
 }
 
 func TestTraceBreakpointExists(t *testing.T) {
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	fixtures := protest.FindFixturesDir()
 	// We always set breakpoints on some runtime functions at startup, so this would return with
@@ -1147,7 +1086,7 @@ func TestTraceBreakpointExists(t *testing.T) {
 }
 
 func TestTracePrintStack(t *testing.T) {
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), "--stack", "2", filepath.Join(fixtures, "issue573.go"), "foo")
@@ -1186,7 +1125,7 @@ func TestTraceEBPF(t *testing.T) {
 		t.Skip("test must be run as root")
 	}
 
-	dlvbin := getDlvBinEBPF(t)
+	dlvbin := protest.GetDlvBinaryEBPF(t)
 
 	expected := []byte("> (1) main.foo(99, 9801)\n=> \"9900\"")
 
@@ -1225,7 +1164,7 @@ func TestTraceEBPF2(t *testing.T) {
 		t.Skip("test must be run as root")
 	}
 
-	dlvbin := getDlvBinEBPF(t)
+	dlvbin := protest.GetDlvBinaryEBPF(t)
 
 	expected := []byte(`> (1) main.callme(10)
 > (1) main.callme(9)
@@ -1285,7 +1224,7 @@ func TestTraceEBPF3(t *testing.T) {
 		t.Skip("test must be run as root")
 	}
 
-	dlvbin := getDlvBinEBPF(t)
+	dlvbin := protest.GetDlvBinaryEBPF(t)
 
 	expected := []byte(`> (1) main.tracedFunction(0)
 > (1) main.tracedFunction(1)
@@ -1333,7 +1272,7 @@ func TestTraceEBPF4(t *testing.T) {
 		t.Skip("test must be run as root")
 	}
 
-	dlvbin := getDlvBinEBPF(t)
+	dlvbin := protest.GetDlvBinaryEBPF(t)
 
 	expected := []byte(`> (1) main.tracedFunction(0, true, 97)
 > (1) main.tracedFunction(1, false, 98)
@@ -1364,7 +1303,7 @@ func TestTraceEBPF4(t *testing.T) {
 }
 
 func TestDlvTestChdir(t *testing.T) {
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	fixtures := protest.FindFixturesDir()
 
@@ -1396,7 +1335,7 @@ func TestDlvTestChdir(t *testing.T) {
 }
 
 func TestVersion(t *testing.T) {
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 
 	got, err := exec.Command(dlvbin, "version", "-v").CombinedOutput()
 	if err != nil {
@@ -1425,7 +1364,7 @@ func TestStaticcheck(t *testing.T) {
 	//   where we don't do this it is a deliberate style choice.
 	// * ST1023 "Redundant type in variable declaration" same as S1021.
 	cmd := exec.Command("staticcheck", args...)
-	cmd.Dir = projectRoot()
+	cmd.Dir = protest.ProjectRoot()
 	cmd.Env = append(os.Environ(), "GOOS=linux", "GOARCH=amd64")
 	out, _ := cmd.CombinedOutput()
 	checkAutogenDoc(t, "_scripts/staticcheck-out.txt", fmt.Sprintf("staticcheck %s > _scripts/staticcheck-out.txt", strings.Join(args, " ")), out)
@@ -1434,7 +1373,7 @@ func TestStaticcheck(t *testing.T) {
 func TestDefaultBinary(t *testing.T) {
 	// Check that when delve is run twice in the same directory simultaneously
 	// it will pick different default output binary paths.
-	dlvbin := getDlvBin(t)
+	dlvbin := protest.GetDlvBinary(t)
 	fixture := filepath.Join(protest.FindFixturesDir(), "testargs.go")
 
 	startOne := func() (io.WriteCloser, func() error, *bytes.Buffer) {
@@ -1475,7 +1414,9 @@ func TestUnixDomainSocket(t *testing.T) {
 
 	listenPath := filepath.Join(tmpdir, "delve_test")
 
-	dlvbin := getDlvBin(t)
+	var err error
+
+	dlvbin := protest.GetDlvBinary(t)
 	defer os.Remove(dlvbin)
 
 	fixtures := protest.FindFixturesDir()

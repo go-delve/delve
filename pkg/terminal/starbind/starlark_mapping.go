@@ -956,6 +956,37 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 		return env.interfaceToStarlarkValue(rpcRet), nil
 	})
 	doc["get_thread"] = "builtin get_thread(Id)\n\nget_thread gets a thread by its ID."
+	r["guess_substitute_path"] = starlark.NewBuiltin("guess_substitute_path", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		if err := isCancelled(thread); err != nil {
+			return starlark.None, decorateError(thread, err)
+		}
+		var rpcArgs rpc2.GuessSubstitutePathIn
+		var rpcRet rpc2.GuessSubstitutePathOut
+		if len(args) > 0 && args[0] != starlark.None {
+			err := unmarshalStarlarkValue(args[0], &rpcArgs.Args, "Args")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		for _, kv := range kwargs {
+			var err error
+			switch kv[0].(starlark.String) {
+			case "Args":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Args, "Args")
+			default:
+				err = fmt.Errorf("unknown argument %q", kv[0])
+			}
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
+		err := env.ctx.Client().CallAPI("GuessSubstitutePath", &rpcArgs, &rpcRet)
+		if err != nil {
+			return starlark.None, err
+		}
+		return env.interfaceToStarlarkValue(rpcRet), nil
+	})
+	doc["guess_substitute_path"] = "builtin guess_substitute_path(Args)"
 	r["is_multiclient"] = starlark.NewBuiltin("is_multiclient", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if err := isCancelled(thread); err != nil {
 			return starlark.None, decorateError(thread, err)
