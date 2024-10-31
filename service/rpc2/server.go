@@ -981,7 +981,7 @@ const ExamineMemoryLengthLimit = 1 << 16
 
 func (s *RPCServer) ExamineMemory(arg ExamineMemoryIn, out *ExaminedMemoryOut) error {
 	if arg.Length > ExamineMemoryLengthLimit {
-		return errors.New("len must be less than or equal to 1000")
+		return fmt.Errorf("len must be less than or equal to %d", ExamineMemoryLengthLimit)
 	}
 	Mem, err := s.debugger.ExamineMemory(arg.Address, arg.Length)
 	if err != nil {
