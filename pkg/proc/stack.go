@@ -964,7 +964,7 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 		if fr.SystemStack {
 			return false
 		}
-		if closurePtr == 0 && optimized(fr.Call.Fn) {
+		if closurePtr == 0 && optimized(fr.Call.Fn) || frames[len(frames)-1].Inlined {
 			return true
 		}
 		if closurePtr < 0 {
@@ -1021,7 +1021,7 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 			if rangeParent == nil {
 				stop = true
 			}
-			if !optimized(fr.Call.Fn) && closurePtr == 0 {
+			if !optimized(fr.Call.Fn) && !fr.Inlined && closurePtr == 0 {
 				stop = true
 			}
 			if stop {
@@ -1042,6 +1042,11 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 					stage = doneStage
 					return false
 				}
+			} else if frames[len(frames)-1].Inlined && !fr.Inlined && closurePtr == 0 {
+				frames = nil
+				addRetFrame = false
+				stage = doneStage
+				return false
 			}
 		case lastFrameStage:
 			frames = append(frames, fr)
