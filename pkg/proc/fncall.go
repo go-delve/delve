@@ -981,7 +981,10 @@ func callInjectionComplete2(callScope *EvalScope, bi *BinaryInfo, fncall *functi
 func (scope *EvalScope) evalCallInjectionSetTarget(op *evalop.CallInjectionSetTarget, stack *evalStack, thread Thread) {
 	fncall := stack.fncallPeek()
 	if !fncall.hasDebugPinner && (fncall.fn == nil || fncall.receiver != nil || fncall.closureAddr != 0) {
-		funcCallEvalFuncExpr(scope, stack, fncall)
+		stack.err = funcCallEvalFuncExpr(scope, stack, fncall)
+		if stack.err != nil {
+			return
+		}
 	}
 	stack.pop() // target function, consumed by funcCallEvalFuncExpr either above or in evalop.CallInjectionStart
 
