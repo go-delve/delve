@@ -74,11 +74,11 @@ func (xstate *AMD64Xstate) Decode() []proc.Register {
 const (
 	_XSTATE_MAX_KNOWN_SIZE = 2969
 
-	_XSAVE_XMM_REGION_START        = 160
-	_XSAVE_HEADER_START            = 512
-	_XSAVE_HEADER_LEN              = 64
-	_XSAVE_EXTENDED_REGION_START   = 576
-	_XSAVE_SSE_REGION_LEN          = 416
+	_XSAVE_XMM_REGION_START      = 160
+	_XSAVE_HEADER_START          = 512
+	_XSAVE_HEADER_LEN            = 64
+	_XSAVE_EXTENDED_REGION_START = 576
+	_XSAVE_SSE_REGION_LEN        = 416
 )
 
 // AMD64XstateRead reads a byte array containing an XSAVE area into regset.
