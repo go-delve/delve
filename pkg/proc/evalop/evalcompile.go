@@ -234,7 +234,7 @@ func (ctx *compileCtx) depthCheck(endDepth int) error {
 			debugPinnerSeen = true
 		case *CallInjectionComplete:
 			if op.DoPinning && !debugPinnerSeen {
-				err = fmt.Errorf("internal debugger error: pinning call injection seen before call to %s at instrution %d", DebugPinnerFunctionName, i)
+				err = fmt.Errorf("internal debugger error: pinning call injection seen before call to %s at instruction %d", DebugPinnerFunctionName, i)
 			}
 		}
 		if err != nil {

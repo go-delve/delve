@@ -42,7 +42,7 @@ func TestIssue3760(t *testing.T) {
 		t.Fatalf("should contain it")
 	}
 	if mem.contains(0xfffffffffffffff0, 16) {
-		t.Fatalf("shoud be false")
+		t.Fatalf("should be false")
 	}
 	cm := cacheMemory(nil, 0xffffffffffffffff, 1)
 	if cm != nil {
