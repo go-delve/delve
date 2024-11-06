@@ -1319,6 +1319,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 			state.Exited = true
 			state.ExitStatus = errProcessExited.Status
 			state.Err = errProcessExited
+			d.maybePrintUnattendedStopWarning(proc.StopExited, state.CurrentThread, clientStatusCh)
 			return state, nil
 		}
 		return nil, err
@@ -1341,7 +1342,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 		d.amendBreakpoint(bp)
 	}
 
-	d.maybePrintUnattendedBreakpointWarning(d.target.Selected.StopReason, state.CurrentThread, clientStatusCh)
+	d.maybePrintUnattendedStopWarning(d.target.Selected.StopReason, state.CurrentThread, clientStatusCh)
 	return state, err
 }
 
@@ -2499,13 +2500,24 @@ func attachErrorMessageDefault(pid int, err error) error {
 	return fmt.Errorf("could not attach to pid %d: %s", pid, err)
 }
 
-func (d *Debugger) maybePrintUnattendedBreakpointWarning(stopReason proc.StopReason, currentThread *api.Thread, clientStatusCh <-chan struct{}) {
+func (d *Debugger) maybePrintUnattendedStopWarning(stopReason proc.StopReason, currentThread *api.Thread, clientStatusCh <-chan struct{}) {
 	select {
 	case <-clientStatusCh:
 		// the channel will be closed if the client that sends the command has left
 		// i.e. closed the connection.
 	default:
 		return
+	}
+
+	if currentThread == nil || currentThread.Breakpoint == nil {
+		switch stopReason {
+		case proc.StopManual:
+			// print nothing
+			return
+		default:
+			fmt.Fprintln(os.Stderr, "Stop reason: "+stopReason.String())
+			return
+		}
 	}
 
 	const defaultStackTraceDepth = 50
@@ -2522,17 +2534,6 @@ func (d *Debugger) maybePrintUnattendedBreakpointWarning(stopReason proc.StopRea
 	}
 
 	bp := currentThread.Breakpoint
-	if bp == nil {
-		switch stopReason {
-		case proc.StopManual:
-			// print nothing
-			return
-		default:
-			fmt.Fprintln(os.Stderr, "Stop reason: "+stopReason.String())
-			return
-		}
-	}
-
 	switch bp.Name {
 	case proc.FatalThrow, proc.UnrecoveredPanic:
 		fmt.Fprintln(os.Stderr, "\n** execution is paused because your program is panicking **")
