@@ -1,28 +1,29 @@
 # Installation
 The following instructions are known to work on Linux, macOS, Windows and FreeBSD.
 
-Clone the git repository and build:
+With Go version 1.16 or later:
+
+```
+# Install the latest release:
+$ go install github.com/go-delve/delve/cmd/dlv@latest
+
+# Install from tree head:
+$ go install github.com/go-delve/delve/cmd/dlv@master
+
+# Install a specific version or pseudo-version:
+$ go install github.com/go-delve/delve/cmd/dlv@v1.7.3
+$ go install github.com/go-delve/delve/cmd/dlv@v1.7.4-0.20211208103735-2f13672765fe
+```
+
+See [Versions](https://go.dev/ref/mod#versions) and [Pseudo-versions](https://go.dev/ref/mod#pseudo-versions) for how to format the version suffixes.
+
+Alternatively, clone the git repository and build:
 
 ```
 $ git clone https://github.com/go-delve/delve
 $ cd delve
 $ go install github.com/go-delve/delve/cmd/dlv
 ```
-
-Alternatively, on Go version 1.16 or later:
-
-```
-# Install the latest release:
-$ go install github.com/go-delve/delve/cmd/dlv@latest
-
-# Install at tree head:
-$ go install github.com/go-delve/delve/cmd/dlv@master
-
-# Install at a specific version or pseudo-version:
-$ go install github.com/go-delve/delve/cmd/dlv@v1.7.3
-$ go install github.com/go-delve/delve/cmd/dlv@v1.7.4-0.20211208103735-2f13672765fe
-```
-See [Versions](https://go.dev/ref/mod#versions) and [Pseudo-versions](https://go.dev/ref/mod#pseudo-versions) for how to format the version suffixes.
 
 See `go help install` for details on where the `dlv` executable is saved.
 
