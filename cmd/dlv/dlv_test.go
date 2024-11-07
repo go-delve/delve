@@ -1414,8 +1414,6 @@ func TestUnixDomainSocket(t *testing.T) {
 
 	listenPath := filepath.Join(tmpdir, "delve_test")
 
-	var err error
-
 	dlvbin := protest.GetDlvBinary(t)
 	defer os.Remove(dlvbin)
 

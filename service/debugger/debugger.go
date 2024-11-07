@@ -1937,7 +1937,6 @@ func (d *Debugger) convertStacktrace(rawlocs []proc.Stackframe, cfg *proc.LoadCo
 			frame.Err = rawlocs[i].Err.Error()
 		}
 		if cfg != nil && rawlocs[i].Current.Fn != nil {
-			var err error
 			scope := proc.FrameToScope(d.target.Selected, d.target.Selected.Memory(), nil, 0, rawlocs[i:]...)
 			locals, err := scope.LocalVariables(*cfg)
 			if err != nil {

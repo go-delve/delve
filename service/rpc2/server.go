@@ -201,7 +201,6 @@ func (s *RPCServer) Stacktrace(arg StacktraceIn, out *StacktraceOut) error {
 	if arg.Defers {
 		arg.Opts |= api.StacktraceReadDefers
 	}
-	var err error
 	rawlocs, err := s.debugger.Stacktrace(arg.Id, arg.Depth, arg.Opts)
 	if err != nil {
 		return err
@@ -781,7 +780,6 @@ type DisassembleOut struct {
 //
 // Disassemble will also try to calculate the destination address of an absolute indirect CALL if it happens to be the instruction the selected goroutine is stopped at.
 func (s *RPCServer) Disassemble(arg DisassembleIn, out *DisassembleOut) error {
-	var err error
 	insts, err := s.debugger.Disassemble(arg.Scope.GoroutineID, arg.StartPC, arg.EndPC)
 	if err != nil {
 		return err
@@ -828,7 +826,6 @@ type ListCheckpointsOut struct {
 }
 
 func (s *RPCServer) ListCheckpoints(arg ListCheckpointsIn, out *ListCheckpointsOut) error {
-	var err error
 	cps, err := s.debugger.Checkpoints()
 	if err != nil {
 		return err
