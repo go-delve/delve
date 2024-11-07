@@ -94,7 +94,7 @@ golang.org/x/sync/errgroup
 golang.org/x/sys/execabs
 golang.org/x/sys/unix
 golang.org/x/sys/windows
-# golang.org/x/telemetry v0.0.0-20241028140143-9c0d19e65ba0
+# golang.org/x/telemetry v0.0.0-20241106142447-58a1122356f5
 ## explicit; go 1.21
 golang.org/x/telemetry
 golang.org/x/telemetry/counter
