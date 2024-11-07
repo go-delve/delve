@@ -3178,9 +3178,7 @@ func TestGuessSubstitutePath(t *testing.T) {
 	}
 
 	guess := func(t *testing.T, goflags string) [][2]string {
-		oldgoflags := os.Getenv("GOFLAGS")
-		os.Setenv("GOFLAGS", goflags)
-		defer os.Setenv("GOFLAGS", oldgoflags)
+		t.Setenv("GOFLAGS", goflags)
 
 		dlvbin := protest.GetDlvBinary(t)
 		defer os.Remove(dlvbin)
@@ -3206,9 +3204,9 @@ func TestGuessSubstitutePath(t *testing.T) {
 
 		switch runtime.GOARCH {
 		case "ppc64le":
-			os.Setenv("GOFLAGS", "-tags=exp.linuxppc64le")
+			t.Setenv("GOFLAGS", "-tags=exp.linuxppc64le")
 		case "riscv64":
-			os.Setenv("GOFLAGS", "-tags=exp.linuxriscv64")
+			t.Setenv("GOFLAGS", "-tags=exp.linuxriscv64")
 		}
 
 		gsp, err := client.GuessSubstitutePath()
