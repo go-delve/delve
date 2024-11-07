@@ -51,7 +51,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	logflags.Setup(logOutput != "", logOutput, "")
-	os.Exit(protest.RunTestsWithFixtures(m))
+	protest.RunTestsWithFixtures(m)
 }
 
 func withTestClient2(name string, t *testing.T, fn func(c service.Client)) {

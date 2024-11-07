@@ -41,7 +41,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	logflags.Setup(logConf != "", logConf, "")
-	os.Exit(test.RunTestsWithFixtures(m))
+	test.RunTestsWithFixtures(m)
 }
 
 type FakeTerminal struct {

@@ -28,7 +28,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "unknown build mode %q", buildMode)
 		os.Exit(1)
 	}
-	os.Exit(test.RunTestsWithFixtures(m))
+	test.RunTestsWithFixtures(m)
 }
 
 func assertNoError(err error, t testing.TB, s string) {

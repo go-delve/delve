@@ -44,7 +44,7 @@ func TestMain(m *testing.M) {
 			}
 		}
 	}
-	os.Exit(protest.RunTestsWithFixtures(m))
+	protest.RunTestsWithFixtures(m)
 }
 
 func assertNoError(err error, t testing.TB, s string) {

@@ -25,7 +25,7 @@ var userTestFile string
 func TestMain(m *testing.M) {
 	flag.StringVar(&userTestFile, "user", "", "runs line parsing test on one extra file")
 	flag.Parse()
-	os.Exit(m.Run())
+	m.Run()
 }
 
 func grabDebugLineSection(p string, t *testing.T) []byte {
