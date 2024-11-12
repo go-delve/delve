@@ -1316,7 +1316,6 @@ func (s *Session) stopDebugSession(killProcess bool) error {
 	if s.debugger == nil {
 		return nil
 	}
-	var err error
 	var exited error
 	// Halting will stop any debugger command that's pending on another
 	// per-request goroutine. Tell auto-resumer not to resume, so the

@@ -304,7 +304,6 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 	case StepBreakpoint, NextBreakpoint, NextDeferBreakpoint:
 		nextDeferOk := true
 		if breaklet.Kind&NextDeferBreakpoint != 0 {
-			var err error
 			frames, err := ThreadStacktrace(tgt, thread, 2)
 			if err == nil {
 				nextDeferOk, _ = isPanicCall(frames)
