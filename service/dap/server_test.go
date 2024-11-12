@@ -54,7 +54,7 @@ func TestMain(m *testing.M) {
 	flag.Parse()
 	logflags.Setup(logOutput != "", logOutput, "")
 	protest.DefaultTestBackend(&testBackend)
-	os.Exit(protest.RunTestsWithFixtures(m))
+	protest.RunTestsWithFixtures(m)
 }
 
 // name is for _fixtures/<name>.go

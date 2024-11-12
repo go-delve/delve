@@ -4,7 +4,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -21,7 +20,7 @@ func TestMain(m *testing.M) {
 	flag.StringVar(&logConf, "log", "", "configures logging")
 	flag.Parse()
 	logflags.Setup(logConf != "", logConf, "")
-	os.Exit(protest.RunTestsWithFixtures(m))
+	protest.RunTestsWithFixtures(m)
 }
 
 func withTestRecording(name string, t testing.TB, fn func(grp *proc.TargetGroup, fixture protest.Fixture)) {

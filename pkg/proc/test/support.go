@@ -212,14 +212,14 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	return fixtures[fk]
 }
 
-// RunTestsWithFixtures will pre-compile test fixtures before running test
-// methods. Test binaries are deleted before exiting.
-func RunTestsWithFixtures(m *testing.M) int {
+// RunTestsWithFixtures sets the flag runningWithFixtures to compile fixtures on demand and runs tests with m.Run().
+// After the tests are run, it removes the fixtures and paths from PathsToRemove.
+func RunTestsWithFixtures(m *testing.M) {
 	runningWithFixtures = true
 	defer func() {
 		runningWithFixtures = false
 	}()
-	status := m.Run()
+	m.Run()
 
 	// Remove the fixtures.
 	for _, f := range fixtures {
@@ -237,7 +237,6 @@ func RunTestsWithFixtures(m *testing.M) int {
 			os.Remove(p)
 		}
 	}
-	return status
 }
 
 var recordingAllowed = map[string]bool{}

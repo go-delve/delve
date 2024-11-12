@@ -58,7 +58,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	logflags.Setup(logConf != "", logConf, "")
-	os.Exit(protest.RunTestsWithFixtures(m))
+	protest.RunTestsWithFixtures(m)
 }
 
 func matchSkipConditions(conditions ...string) bool {
