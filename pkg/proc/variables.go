@@ -1661,6 +1661,10 @@ func (v *Variable) loadSliceInfo(t *godwarf.SliceType) {
 		}
 	}
 
+	if v.Addr == fakeAddressUnresolv && v.fieldType == nil {
+		return
+	}
+
 	v.stride = v.fieldType.Size()
 	if t, ok := v.fieldType.(*godwarf.PtrType); ok {
 		v.stride = t.ByteSize
