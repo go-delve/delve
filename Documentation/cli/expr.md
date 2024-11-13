@@ -119,6 +119,7 @@ Delve defines two special variables:
 
 * `runtime.curg` evaluates to the 'g' struct for the current goroutine, in particular `runtime.curg.goid` is the goroutine id of the current goroutine.
 * `runtime.frameoff` is the offset of the frame's base address from the bottom of the stack.
+* `delve.bphitcount[X]` is the total hitcount for breakpoint X, which can be either an ID or the breakpoint name as a string.
 
 ## Access to variables from previous frames
 

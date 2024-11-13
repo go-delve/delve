@@ -71,6 +71,7 @@ func NewGroup(procgrp ProcessGroup, cfg NewTargetGroupConfig) (*TargetGroup, Add
 // Breakpoints that can not be set will be discarded, if discard is not nil
 // it will be called for each discarded breakpoint.
 func Restart(grp, oldgrp *TargetGroup, discard func(*LogicalBreakpoint, error)) {
+	toenable := []*LogicalBreakpoint{}
 	for _, bp := range oldgrp.LogicalBreakpoints {
 		if _, ok := grp.LogicalBreakpoints[bp.LogicalID]; ok {
 			continue
@@ -80,14 +81,17 @@ func Restart(grp, oldgrp *TargetGroup, discard func(*LogicalBreakpoint, error)) 
 		bp.HitCount = make(map[int64]uint64)
 		bp.Set.PidAddrs = nil // breakpoints set through a list of addresses can not be restored after a restart
 		if bp.enabled {
-			bp.condSatisfiable = breakpointConditionSatisfiable(bp)
-			err := grp.enableBreakpoint(bp)
-			if err != nil {
-				if discard != nil {
-					discard(bp, err)
-				}
-				delete(grp.LogicalBreakpoints, bp.LogicalID)
+			toenable = append(toenable, bp)
+		}
+	}
+	for _, bp := range toenable {
+		bp.condSatisfiable = breakpointConditionSatisfiable(grp.LogicalBreakpoints, bp)
+		err := grp.enableBreakpoint(bp)
+		if err != nil {
+			if discard != nil {
+				discard(bp, err)
 			}
+			delete(grp.LogicalBreakpoints, bp.LogicalID)
 		}
 	}
 	if oldgrp.followExecEnabled {
@@ -265,7 +269,7 @@ func (grp *TargetGroup) SetBreakpointEnabled(lbp *LogicalBreakpoint, enabled boo
 		err = grp.disableBreakpoint(lbp)
 	case !lbp.enabled && enabled:
 		lbp.enabled = true
-		lbp.condSatisfiable = breakpointConditionSatisfiable(lbp)
+		lbp.condSatisfiable = breakpointConditionSatisfiable(grp.LogicalBreakpoints, lbp)
 		err = grp.enableBreakpoint(lbp)
 	}
 	return
@@ -424,12 +428,14 @@ func (grp *TargetGroup) ChangeBreakpointCondition(lbp *LogicalBreakpoint, cond, 
 		lbp.HitCondPerG = hitCondPerG
 	}
 
+	lbp.condUsesHitCounts = breakpointConditionUsesHitCounts(lbp)
+
 	if lbp.enabled {
 		switch {
-		case lbp.condSatisfiable && !breakpointConditionSatisfiable(lbp):
+		case lbp.condSatisfiable && !breakpointConditionSatisfiable(grp.LogicalBreakpoints, lbp):
 			lbp.condSatisfiable = false
 			grp.disableBreakpoint(lbp)
-		case !lbp.condSatisfiable && breakpointConditionSatisfiable(lbp):
+		case !lbp.condSatisfiable && breakpointConditionSatisfiable(grp.LogicalBreakpoints, lbp):
 			lbp.condSatisfiable = true
 			grp.enableBreakpoint(lbp)
 		}
@@ -483,9 +489,15 @@ func parseHitCondition(hitCond string) (token.Token, int, error) {
 func (grp *TargetGroup) manageUnsatisfiableBreakpoints() error {
 	for _, lbp := range grp.LogicalBreakpoints {
 		if lbp.enabled {
-			if lbp.condSatisfiable && !breakpointConditionSatisfiable(lbp) {
+			if lbp.condSatisfiable && !breakpointConditionSatisfiable(grp.LogicalBreakpoints, lbp) {
 				lbp.condSatisfiable = false
 				err := grp.disableBreakpoint(lbp)
+				if err != nil {
+					return err
+				}
+			} else if lbp.condUsesHitCounts && !lbp.condSatisfiable && breakpointConditionSatisfiable(grp.LogicalBreakpoints, lbp) {
+				lbp.condSatisfiable = true
+				err := grp.enableBreakpoint(lbp)
 				if err != nil {
 					return err
 				}

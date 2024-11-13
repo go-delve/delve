@@ -508,7 +508,7 @@ The command 'on x -edit' can be used to edit the list of commands executed when 
 
 Specifies that the breakpoint, tracepoint or watchpoint should break only if the boolean expression is true.
 
-See Documentation/cli/expr.md for a description of supported expressions.
+See Documentation/cli/expr.md for a description of supported expressions and Documentation/cli/cond.md for a description of how breakpoint conditions are evaluated.
 
 With the -hitcount option a condition on the breakpoint hit count can be set, the following operators are supported
 

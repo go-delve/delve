@@ -324,3 +324,10 @@ type PushPinAddress struct {
 }
 
 func (*PushPinAddress) depthCheck() (npop, npush int) { return 0, 1 }
+
+// PushBreakpointHitCount pushes a special array containing the hit counts
+// of breakpoints.
+type PushBreakpointHitCount struct {
+}
+
+func (*PushBreakpointHitCount) depthCheck() (npop, npush int) { return 0, 1 }

@@ -340,3 +340,25 @@ var = eval(
         {"FollowPointers":True, "MaxVariableRecurse":2, "MaxStringLen":100, "MaxArrayValues":10, "MaxStructFields":100}
       )
 ```
+
+## Chain breakpoints
+
+Chain a number of breakpoints such that breakpoint n+1 is only hit after breakpoint n is hit:
+
+```python
+def command_breakchain(*args):
+	v = args.split(" ")
+	
+	bp = get_breakpoint(int(v[0]), "").Breakpoint
+	bp.HitCond = "== 1"
+	amend_breakpoint(bp)
+	
+	for i in range(1, len(v)):
+		bp = get_breakpoint(int(v[i]), "").Breakpoint
+		if i != len(v)-1:
+			bp.HitCond = "== 1"
+		bp.Cond = "delve.bphitcount[" + v[i-1] + "] > 0"
+		amend_breakpoint(bp)
+```
+
+To be used as `chain 1 2 3` where `1`, `2`, and `3` are IDs of breakpoints to chain together.
