@@ -18,7 +18,7 @@ require (
 	go.starlark.net v0.0.0-20231101134539-556fd59b42f6
 	golang.org/x/arch v0.11.0
 	golang.org/x/sys v0.26.0
-	golang.org/x/telemetry v0.0.0-20241028140143-9c0d19e65ba0
+	golang.org/x/telemetry v0.0.0-20241106142447-58a1122356f5
 	golang.org/x/tools v0.14.0
 	gopkg.in/yaml.v3 v3.0.1
 )
