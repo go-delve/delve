@@ -18,6 +18,8 @@ type AMD64Xstate struct {
 	YmmSpace    [256]byte
 	Avx512State bool // contains AVX512 state
 	ZmmSpace    [512]byte
+
+	zmmHi256offset int
 }
 
 // AMD64PtraceFpRegs tracks user_fpregs_struct in /usr/include/x86_64-linux-gnu/sys/user.h
@@ -72,14 +74,23 @@ func (xstate *AMD64Xstate) Decode() []proc.Register {
 }
 
 const (
-	_XSTATE_MAX_KNOWN_SIZE = 2969
-
 	_XSAVE_XMM_REGION_START      = 160
 	_XSAVE_HEADER_START          = 512
 	_XSAVE_HEADER_LEN            = 64
 	_XSAVE_EXTENDED_REGION_START = 576
 	_XSAVE_SSE_REGION_LEN        = 416
+	_I386_LINUX_XSAVE_XCR0_OFFSET = 464
 )
+
+// xstate_bv is a type representing the xcr0 and xstate_bv bitmaps as
+// described in section 13.1 and 13.3 of the Intel® 64 and IA-32 Architectures
+// Software Developer’s Manual, Volume 1
+type xstate_bv uint64
+
+func (s xstate_bv) hasAVX() bool       { return s&(1<<2) != 0 }
+func (s xstate_bv) hasZMM_Hi256() bool { return s&(1<<6) != 0 }
+func (s xstate_bv) hasHi16_ZMM() bool  { return s&(1<<7) != 0 } //lint:ignore U1000 future use
+func (s xstate_bv) hasPKRU() bool      { return s&(1<<9) != 0 }
 
 // AMD64XstateRead reads a byte array containing an XSAVE area into regset.
 // If readLegacy is true regset.PtraceFpRegs will be filled with the
@@ -97,17 +108,19 @@ func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate, xs
 			return err
 		}
 	}
+	xcr0 := xstate_bv(binary.LittleEndian.Uint64(xstateargs[_I386_LINUX_XSAVE_XCR0_OFFSET:][:8]))
 	xsaveheader := xstateargs[_XSAVE_HEADER_START : _XSAVE_HEADER_START+_XSAVE_HEADER_LEN]
-	xstate_bv := binary.LittleEndian.Uint64(xsaveheader[0:8])
+	xstate_bv := xstate_bv(binary.LittleEndian.Uint64(xsaveheader[0:8]))
 	xcomp_bv := binary.LittleEndian.Uint64(xsaveheader[8:16])
+
+	fmt.Printf("xcr0: %#x xstate_bv: %#x\n", xcr0, xstate_bv)
 
 	if xcomp_bv&(1<<63) != 0 {
 		// compact format not supported
 		return nil
 	}
 
-	if xstate_bv&(1<<2) == 0 {
-		// AVX state not present
+	if !xstate_bv.hasAVX() {
 		return nil
 	}
 
@@ -115,15 +128,14 @@ func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate, xs
 	regset.AvxState = true
 	copy(regset.YmmSpace[:], avxstate[:len(regset.YmmSpace)])
 
-	if xstate_bv&(1<<6) == 0 {
-		// AVX512 state not present
+	if !xstate_bv.hasZMM_Hi256() {
 		return nil
 	}
 
 	if xstateZMMHi256Offset == 0 {
 		// Guess ZMM_Hi256 component offset
 		// ref: https://github.com/bminor/binutils-gdb/blob/df89bdf0baf106c3b0a9fae53e4e48607a7f3f87/gdb/i387-tdep.c#L916
-		if xstate_bv&(1<<9) != 0 && len(xstateargs) == 2440 {
+		if xcr0.hasPKRU() && len(xstateargs) == 2440 {
 			// AMD CPUs supporting PKRU
 			xstateZMMHi256Offset = 896
 		} else {
@@ -132,11 +144,13 @@ func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate, xs
 		}
 	}
 
+	regset.zmmHi256offset = xstateZMMHi256Offset
+
 	avx512state := xstateargs[xstateZMMHi256Offset:]
 	regset.Avx512State = true
 	copy(regset.ZmmSpace[:], avx512state[:len(regset.ZmmSpace)])
 
-	// TODO(aarzilli): if xstate_bv&(1<<7) is set then xstateargs[1664:2688]
+	// TODO(aarzilli): if xstate_bv.hasHi16_ZMM() is set then xstateargs[1664:2688]
 	// contains ZMM16 through ZMM31, those aren't just the higher 256bits, it's
 	// the full register so each is 64 bytes (512bits)
 
@@ -192,7 +206,7 @@ func (xstate *AMD64Xstate) SetXmmRegister(n int, value []byte) error {
 	// Copy bytes [32, 64) to Xsave area
 
 	zmmval := rest
-	zmmpos := AMD64XstateZMMHi256Offset() + (n * 32)
+	zmmpos := xstate.zmmHi256offset + (n * 32) //TODO: change this!!!
 	if zmmpos >= len(xstate.Xsave) {
 		return fmt.Errorf("could not set XMM%d: bytes 32..%d not in XSAVE area", n, 32+len(zmmval))
 	}
