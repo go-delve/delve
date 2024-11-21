@@ -1101,6 +1101,7 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 		}
 		return nil, fmt.Errorf("%s has no member %s", vname, memberName)
 	}
+	closure := false
 	switch v.Kind {
 	case reflect.Chan:
 		v = v.clone()
@@ -1109,6 +1110,19 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 		v.loadInterface(0, false, LoadConfig{})
 		if len(v.Children) > 0 {
 			v = &v.Children[0]
+		}
+	case reflect.Func:
+		v.loadFunctionPtr(0, LoadConfig{MaxVariableRecurse: -1})
+		if v.Unreadable != nil {
+			return nil, v.Unreadable
+		}
+		if v.closureAddr != 0 {
+			fn := v.bi.PCToFunc(v.Base)
+			if fn != nil {
+				cst := fn.extra(v.bi).closureStructType
+				v = v.newVariable(v.Name, v.closureAddr, cst, v.mem)
+				closure = true
+			}
 		}
 	}
 
@@ -1135,6 +1149,13 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 			for _, field := range t.Field {
 				if field.Name == memberName {
 					return structVar.toField(field)
+				}
+				if len(queue) == 0 && field.Name == "&"+memberName && closure {
+					f, err := structVar.toField(field)
+					if err != nil {
+						return nil, err
+					}
+					return f.maybeDereference(), nil
 				}
 				isEmbeddedStructMember :=
 					field.Embedded ||
