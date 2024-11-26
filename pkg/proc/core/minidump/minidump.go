@@ -333,11 +333,11 @@ func Open(path string, logfn func(fmt string, args ...interface{})) (*Minidump, 
 	}
 
 	if logfn != nil {
-		logfn("Minidump Header\n")
-		logfn("Num Streams: %d\n", mdmp.streamNum)
-		logfn("Streams offset: %#x\n", mdmp.streamOff)
-		logfn("File flags: %s\n", fileFlagsToString(mdmp.Flags))
-		logfn("Offset after header %#x\n", buf.off)
+		logfn("Minidump Header")
+		logfn("Num Streams: %d", mdmp.streamNum)
+		logfn("Streams offset: %#x", mdmp.streamOff)
+		logfn("File flags: %s", fileFlagsToString(mdmp.Flags))
+		logfn("Offset after header %#x", buf.off)
 	}
 
 	readDirectory(&mdmp, buf)
@@ -359,7 +359,7 @@ func Open(path string, logfn func(fmt string, args ...interface{})) (*Minidump, 
 		arch := Arch(sb.u16())
 
 		if logfn != nil {
-			logfn("Found processor architecture %s\n", arch.String())
+			logfn("Found processor architecture %s", arch.String())
 		}
 
 		if arch != CpuArchitectureAMD64 {
@@ -370,21 +370,21 @@ func Open(path string, logfn func(fmt string, args ...interface{})) (*Minidump, 
 	for i := range mdmp.Streams {
 		stream := &mdmp.Streams[i]
 		if logfn != nil {
-			logfn("Stream %d: type:%s off:%#x size:%#x\n", i, stream.Type, stream.Offset, len(stream.RawData))
+			logfn("Stream %d: type:%s off:%#x size:%#x", i, stream.Type, stream.Offset, len(stream.RawData))
 		}
 		switch stream.Type {
 		case ThreadListStream:
 			readThreadList(&mdmp, streamBuf(stream, buf, "thread list"))
 			if logfn != nil {
 				for i := range mdmp.Threads {
-					logfn("\tID:%#x TEB:%#x\n", mdmp.Threads[i].ID, mdmp.Threads[i].TEB)
+					logfn("\tID:%#x TEB:%#x", mdmp.Threads[i].ID, mdmp.Threads[i].TEB)
 				}
 			}
 		case ModuleListStream:
 			readModuleList(&mdmp, streamBuf(stream, buf, "module list"))
 			if logfn != nil {
 				for i := range mdmp.Modules {
-					logfn("\tName:%q BaseOfImage:%#x SizeOfImage:%#x\n", mdmp.Modules[i].Name, mdmp.Modules[i].BaseOfImage, mdmp.Modules[i].SizeOfImage)
+					logfn("\tName:%q BaseOfImage:%#x SizeOfImage:%#x", mdmp.Modules[i].Name, mdmp.Modules[i].BaseOfImage, mdmp.Modules[i].SizeOfImage)
 				}
 			}
 		case ExceptionStream:
@@ -398,15 +398,15 @@ func Open(path string, logfn func(fmt string, args ...interface{})) (*Minidump, 
 		case MiscInfoStream:
 			readMiscInfo(&mdmp, streamBuf(stream, buf, "misc info"))
 			if logfn != nil {
-				logfn("\tPid: %#x\n", mdmp.Pid)
+				logfn("\tPid: %#x", mdmp.Pid)
 			}
 		case CommentStreamW:
 			if logfn != nil {
-				logfn("\t%q\n", decodeUTF16(stream.RawData))
+				logfn("\t%q", decodeUTF16(stream.RawData))
 			}
 		case CommentStreamA:
 			if logfn != nil {
-				logfn("\t%s\n", string(stream.RawData))
+				logfn("\t%s", string(stream.RawData))
 			}
 		}
 		if buf.err != nil {
@@ -618,7 +618,7 @@ func readMemory64List(mdmp *Minidump, buf *minidumpBuf, logfn func(fmt string, a
 		mdmp.addMemory(addr, buf.buf[baseOff:end])
 
 		if logfn != nil {
-			logfn("\tMemory %d addr:%#x size:%#x FileOffset:%#x\n", i, addr, sz, baseOff)
+			logfn("\tMemory %d addr:%#x size:%#x FileOffset:%#x", i, addr, sz, baseOff)
 		}
 
 		baseOff = end
@@ -652,7 +652,7 @@ func readMemoryInfoList(mdmp *Minidump, buf *minidumpBuf, logfn func(fmt string,
 		memInfo.Type = MemoryType(buf.u32())
 
 		if logfn != nil {
-			logfn("\tMemoryInfo %d Addr:%#x Size:%#x %s %s %s\n", i, memInfo.Addr, memInfo.Size, memInfo.State, memInfo.Protection, memInfo.Type)
+			logfn("\tMemoryInfo %d Addr:%#x Size:%#x %s %s %s", i, memInfo.Addr, memInfo.Size, memInfo.State, memInfo.Protection, memInfo.Type)
 		}
 
 		buf.off = startOff + sizeOfEntry
