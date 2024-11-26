@@ -373,6 +373,17 @@ func (procgrp *processGroup) waitForDebugEvent(flags waitForDebugEventFlags) (th
 				// This is a fake process group and waitForDebugEvent has been called
 				// just after attach/launch, finish configuring the root process.
 				dbp = procgrp.procs[0]
+				if debugEvent.ProcessId != uint32(dbp.pid) {
+					// When launching a new process while we are in detached state also
+					// creates a conhost.exe child process. This is that process and we
+					// need to detach from it.
+					// See issue #3864.
+					err := _DebugActiveProcessStop(debugEvent.ProcessId)
+					if err != nil {
+						return 0, err
+					}
+					continue
+				}
 			} else {
 				// Add new child process
 				dbp = newChildProcess(procgrp.procs[0], int(debugEvent.ProcessId))
