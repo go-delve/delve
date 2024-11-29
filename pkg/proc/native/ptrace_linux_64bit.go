@@ -1,4 +1,4 @@
-//go:build (linux && amd64) || (linux && arm64) || (linux && ppc64le) || (linux && riscv64)
+//go:build (linux && amd64) || (linux && arm64) || (linux && ppc64le) || (linux && riscv64) || (linux && loong64)
 
 package native
 

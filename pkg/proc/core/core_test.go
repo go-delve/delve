@@ -252,6 +252,9 @@ func TestCore(t *testing.T) {
 	if runtime.GOOS != "linux" || runtime.GOARCH == "386" {
 		t.Skip("unsupported")
 	}
+	if runtime.GOOS != "linux" || runtime.GOARCH == "loong64" {
+		t.Skip("could not read runtime.sigtrampgo context")
+	}
 	if runtime.GOOS == "linux" && os.Getenv("CI") == "true" && buildMode == "pie" {
 		t.Skip("disabled on linux, Github Actions, with PIE buildmode")
 	}
@@ -411,6 +414,9 @@ func TestCoreFpRegisters(t *testing.T) {
 func TestCoreWithEmptyString(t *testing.T) {
 	if runtime.GOOS != "linux" || runtime.GOARCH == "386" {
 		t.Skip("unsupported")
+	}
+	if runtime.GOOS != "linux" || runtime.GOARCH == "loong64" {
+		t.Skip("could not read runtime.sigtrampgo context")
 	}
 	if runtime.GOOS == "linux" && os.Getenv("CI") == "true" && buildMode == "pie" {
 		t.Skip("disabled on linux, Github Actions, with PIE buildmode")
