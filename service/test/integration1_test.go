@@ -908,7 +908,7 @@ func Test1Disasm(t *testing.T) {
 		// look for static call to afunction() on line 29
 		found := false
 		for i := range d3 {
-			if d3[i].Loc.Line == 29 && (strings.HasPrefix(d3[i].Text, "call") || strings.HasPrefix(d3[i].Text, "CALL")) && d3[i].DestLoc != nil && d3[i].DestLoc.Function != nil && d3[i].DestLoc.Function.Name() == "main.afunction" {
+			if d3[i].Loc.Line == 29 && (strings.HasPrefix(d3[i].Text, "call") || strings.HasPrefix(d3[i].Text, "CALL") || strings.HasPrefix(d3[i].Text, "bl")) && d3[i].DestLoc != nil && d3[i].DestLoc.Function != nil && d3[i].DestLoc.Function.Name() == "main.afunction" {
 				found = true
 				break
 			}
@@ -958,7 +958,7 @@ func Test1Disasm(t *testing.T) {
 				t.Fatal("Calling StepInstruction() repeatedly did not find the call instruction")
 			}
 
-			if strings.HasPrefix(curinstr.Text, "call") || strings.HasPrefix(curinstr.Text, "CALL") {
+			if strings.HasPrefix(curinstr.Text, "call") || strings.HasPrefix(curinstr.Text, "CALL") || strings.HasPrefix(curinstr.Text, "jirl") || strings.HasPrefix(curinstr.Text, "bl") {
 				t.Logf("call: %v", curinstr)
 				if curinstr.DestLoc == nil || curinstr.DestLoc.Function == nil {
 					t.Fatalf("Call instruction does not have destination: %v", curinstr)

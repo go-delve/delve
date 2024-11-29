@@ -372,7 +372,11 @@ func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc
 		//	  with gdb once AsyncPreempt was enabled. While implementing the port,
 		//	  few tests failed while it was enabled, but cannot be warrantied that
 		//	  disabling it fixed the issues.
-		DisableAsyncPreempt: runtime.GOOS == "windows" || (runtime.GOOS == "linux" && runtime.GOARCH == "arm64") || (runtime.GOOS == "linux" && runtime.GOARCH == "ppc64le"),
+		//  - on linux/loong64 asyncpreempt can sometimes restart a sequence of
+		//    instructions, if the sequence happens to contain a breakpoint it will
+		//    look like the breakpoint was hit twice when it was "logically" only
+		//    executed once.
+		DisableAsyncPreempt: runtime.GOOS == "windows" || (runtime.GOOS == "linux" && runtime.GOARCH == "arm64") || (runtime.GOOS == "linux" && runtime.GOARCH == "ppc64le") || (runtime.GOOS == "linux" && runtime.GOARCH == "loong64"),
 
 		StopReason: stopReason,
 		CanDump:    runtime.GOOS == "linux" || runtime.GOOS == "freebsd" || (runtime.GOOS == "windows" && runtime.GOARCH == "amd64"),
@@ -382,7 +386,7 @@ func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc
 	if err != nil {
 		return nil, err
 	}
-	if dbp.bi.Arch.Name == "arm64" || dbp.bi.Arch.Name == "ppc64le" || dbp.bi.Arch.Name == "riscv64" {
+	if dbp.bi.Arch.Name == "arm64" || dbp.bi.Arch.Name == "ppc64le" || dbp.bi.Arch.Name == "riscv64" || dbp.bi.Arch.Name == "loong64" {
 		dbp.iscgo = tgt.IsCgo()
 	}
 	return grp, nil
