@@ -63,6 +63,9 @@ func TestDebugger_LaunchInvalidFormat(t *testing.T) {
 	if runtime.GOARCH == "riscv64" && runtime.GOOS == "linux" {
 		t.Setenv("GOARCH", "amd64")
 	}
+	if runtime.GOARCH == "loong64" && runtime.GOOS == "linux" {
+		t.Setenv("GOARCH", "amd64")
+	}
 	t.Setenv("GOOS", switchOS[runtime.GOOS])
 	exepath := filepath.Join(buildtestdir, debugname)
 	if err := gobuild.GoBuild(debugname, []string{buildtestdir}, fmt.Sprintf("-o %s", exepath)); err != nil {
