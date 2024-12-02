@@ -5479,28 +5479,30 @@ func TestReadClosure(t *testing.T) {
 			accV := evalVariable(p, t, "acc")
 			t.Log(api.ConvertVar(accV).MultilineString("", ""))
 			if len(accV.Children) != 2 {
-				t.Error("wrong number of children")
-			} else {
-				found := 0
-				for j := range accV.Children {
-					v := &accV.Children[j]
-					switch v.Name {
-					case "scale":
-						found++
-						if val, _ := constant.Int64Val(v.Value); val != 3 {
-							t.Error("wrong value for scale")
-						}
-					case "a":
-						found++
-						if val, _ := constant.Int64Val(v.Value); val != avalues[i] {
-							t.Errorf("wrong value for a: %d", val)
-						}
+				t.Fatal("wrong number of children")
+			}
+			found := 0
+			for j := range accV.Children {
+				v := &accV.Children[j]
+				switch v.Name {
+				case "scale":
+					found++
+					if val, _ := constant.Int64Val(v.Value); val != 3 {
+						t.Error("wrong value for scale")
+					}
+				case "a":
+					found++
+					if val, _ := constant.Int64Val(v.Value); val != avalues[i] {
+						t.Errorf("wrong value for a: %d", val)
 					}
 				}
-				if found != 2 {
-					t.Error("wrong captured variables")
-				}
 			}
+			if found != 2 {
+				t.Error("wrong captured variables")
+			}
+
+			assertVariable(t, evalVariable(p, t, "acc.scale"), varTest{name: "acc.scale", preserveName: true, value: "3", varType: "int"})
+			assertVariable(t, evalVariable(p, t, "acc.a"), varTest{name: "acc.a", preserveName: true, value: fmt.Sprintf("%d", avalues[i]), varType: "int"})
 		}
 	})
 }
