@@ -226,7 +226,7 @@ func genMapping(bindings []binding) []byte {
 
 		fmt.Fprintf(buf, "err := env.ctx.Client().CallAPI(%q, &rpcArgs, &rpcRet)\n", binding.fn.Name())
 		fmt.Fprintf(buf, "if err != nil { return starlark.None, err }\n")
-		fmt.Fprintf(buf, "return env.interfaceToStarlarkValue(rpcRet), nil\n")
+		fmt.Fprintf(buf, "return env.interfaceToStarlarkValue(&rpcRet), nil\n")
 
 		fmt.Fprintf(buf, "})\n")
 

@@ -16,6 +16,7 @@ func TestStarlarkExamples(t *testing.T) {
 		t.Run("echo_expr", func(t *testing.T) { testStarlarkEchoExpr(t, term) })
 		t.Run("find_array", func(t *testing.T) { testStarlarkFindArray(t, term) })
 		t.Run("map_iteration", func(t *testing.T) { testStarlarkMapIteration(t, term) })
+		t.Run("amend_breakpoint", func(t *testing.T) { testStarlarkAmendBreakpoint(t, term) })
 	})
 }
 
@@ -35,6 +36,19 @@ func testStarlarkExampleCreateBreakpointmain(t *testing.T, term *FakeTerminal) {
 	t.Logf("breakpoints: %q", out2p2)
 	if !strings.Contains(out2p2, "main.afunc1") {
 		t.Fatalf("create_breakpoint_runtime_func example failed")
+	}
+	bps, err := term.client.ListBreakpoints(false)
+	if err != nil {
+		t.Fatalf("Could not clear breakpoints: %v\n", err)
+	}
+	for _, bp := range bps {
+		if bp.ID <= 0 {
+			continue
+		}
+		_, err = term.client.ClearBreakpoint(bp.ID)
+		if err != nil {
+			t.Fatalf("Could not clear breakpoints: %v\n", err)
+		}
 	}
 }
 
@@ -116,6 +130,15 @@ func testStarlarkMapIteration(t *testing.T, term *FakeTerminal) {
 		t.Fatalf("testStarlarkMapIteration example failed")
 	}
 	t.Logf("%s", out)
+}
+
+func testStarlarkAmendBreakpoint(t *testing.T, term *FakeTerminal) {
+	term.MustExec("break afuncbreak main.afunc")
+	out := term.MustExec("source " + findStarFile("amend_breakpoint"))
+	t.Logf("%s", out)
+	if !strings.Contains(out, "Stacktrace:2") || !strings.Contains(out, `HitCond:"== 2"`) {
+		t.Fatalf("wrong output")
+	}
 }
 
 func TestStarlarkVariable(t *testing.T) {
