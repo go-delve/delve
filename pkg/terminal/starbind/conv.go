@@ -57,6 +57,11 @@ func (env *Env) interfaceToStarlarkValue(v interface{}) starlark.Value {
 		return starlark.None
 	case error:
 		return starlark.String(v.Error())
+	case reflect.Value:
+		if v.Type().Kind() == reflect.Struct {
+			return structAsStarlarkValue{v, env}
+		}
+		return env.interfaceToStarlarkValue(v.Interface())
 	default:
 		vval := reflect.ValueOf(v)
 		switch vval.Type().Kind() {
@@ -185,9 +190,48 @@ func (v structAsStarlarkValue) Attr(name string) (starlark.Value, error) {
 	}
 	r := v.v.FieldByName(name)
 	if !r.IsValid() {
-		return starlark.None, fmt.Errorf("no field named %q in %T", name, v.v.Interface())
+		return starlark.None, starlark.NoSuchAttrError(fmt.Sprintf("no field named %q in %T", name, v.v.Interface()))
 	}
-	return v.env.interfaceToStarlarkValue(r.Interface()), nil
+	return v.env.interfaceToStarlarkValue(r), nil
+}
+
+func (v structAsStarlarkValue) SetField(name string, value starlark.Value) (err error) {
+	defer func() {
+		// reflect.Value.SetInt, SetFloat, etc panic
+		ierr := recover()
+		if ierr == nil {
+			return
+		}
+		err, _ = ierr.(error)
+		if err == nil {
+			panic(ierr)
+		}
+		err = fmt.Errorf("can not assign to %T.%q: %v", v.v.Interface(), name, err)
+	}()
+	if r, err := v.valueAttr(name); err != nil || r != nil {
+		return starlark.NoSuchAttrError(fmt.Sprintf("no field named %s in %T", name, v.v.Interface()))
+	}
+	r := v.v.FieldByName(name)
+	if !r.IsValid() {
+		return starlark.NoSuchAttrError(fmt.Sprintf("no field named %q in %T", name, v.v.Interface()))
+	}
+	switch value := value.(type) {
+	case starlark.Int:
+		n, ok := value.Int64()
+		if !ok {
+			return fmt.Errorf("can not assign big integer to %T.%q", v.v.Interface(), name)
+		}
+		r.SetInt(n)
+	case starlark.Float:
+		r.SetFloat(float64(value))
+	case starlark.String:
+		r.SetString(value.GoString())
+	case starlark.Bool:
+		r.SetBool(bool(value))
+	default:
+		return fmt.Errorf("can not assign value of type %T to %T.%q", value, v.v.Interface(), name)
+	}
+	return nil
 }
 
 func (v structAsStarlarkValue) valueAttr(name string) (starlark.Value, error) {
