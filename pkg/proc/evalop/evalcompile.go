@@ -18,8 +18,12 @@ import (
 )
 
 var (
-	ErrFuncCallNotAllowed   = errors.New("function calls not allowed without using 'call'")
-	DebugPinnerFunctionName = "runtime.debugPinnerV1"
+	ErrFuncCallNotAllowed = errors.New("function calls not allowed without using 'call'")
+)
+
+const (
+	BreakpointHitCountVarName = "bphitcount"
+	DebugPinnerFunctionName   = "runtime.debugPinnerV1"
 )
 
 type compileCtx struct {
@@ -275,6 +279,9 @@ func (ctx *compileCtx) compileAST(t ast.Expr) error {
 
 			case x.Name == "runtime" && node.Sel.Name == "rangeParentOffset":
 				ctx.pushOp(&PushRangeParentOffset{})
+
+			case x.Name == "runtime" && node.Sel.Name == BreakpointHitCountVarName:
+				ctx.pushOp(&PushBreakpointHitCount{})
 
 			default:
 				ctx.pushOp(&PushPackageVarOrSelect{Name: x.Name, Sel: node.Sel.Name})
