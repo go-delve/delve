@@ -7,8 +7,6 @@ import (
 	"debug/pe"
 	"errors"
 	"fmt"
-	"go/parser"
-	"go/token"
 	"io"
 	"os"
 	"os/exec"
@@ -18,7 +16,6 @@ import (
 	"runtime"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -768,10 +765,10 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 		d.breakpointIDCounter = id
 	}
 
-	lbp := &proc.LogicalBreakpoint{LogicalID: id, HitCount: make(map[int64]uint64), Enabled: true}
+	lbp := &proc.LogicalBreakpoint{LogicalID: id, HitCount: make(map[int64]uint64)}
 	d.target.LogicalBreakpoints[id] = lbp
 
-	err = copyLogicalBreakpointInfo(lbp, requestedBp)
+	err = d.copyLogicalBreakpointInfo(lbp, requestedBp)
 	if err != nil {
 		return nil, err
 	}
@@ -790,7 +787,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 		}
 	}
 
-	err = d.target.EnableBreakpoint(lbp)
+	err = d.target.SetBreakpointEnabled(lbp, true)
 	if err != nil {
 		if suspended {
 			logflags.DebuggerLogger().Debugf("could not enable new breakpoint: %v (breakpoint will be suspended)", err)
@@ -847,34 +844,18 @@ func (d *Debugger) amendBreakpoint(amend *api.Breakpoint) error {
 	if original == nil {
 		return fmt.Errorf("no breakpoint with ID %d", amend.ID)
 	}
-	enabledBefore := original.Enabled
-	err := copyLogicalBreakpointInfo(original, amend)
+	if d.isWatchpoint(original) && amend.Disabled {
+		return errors.New("can not disable watchpoints")
+	}
+	err := d.copyLogicalBreakpointInfo(original, amend)
 	if err != nil {
 		return err
 	}
-	original.Enabled = !amend.Disabled
-
-	switch {
-	case enabledBefore && !original.Enabled:
-		if d.isWatchpoint(original) {
-			return errors.New("can not disable watchpoints")
-		}
-		err = d.target.DisableBreakpoint(original)
-	case !enabledBefore && original.Enabled:
-		err = d.target.EnableBreakpoint(original)
-	}
+	err = d.target.SetBreakpointEnabled(original, !amend.Disabled)
 	if err != nil {
 		return err
 	}
 
-	t := proc.ValidTargets{Group: d.target}
-	for t.Next() {
-		for _, bp := range t.Breakpoints().M {
-			if bp.LogicalID() == amend.ID {
-				bp.UserBreaklet().Cond = original.Cond
-			}
-		}
-	}
 	return nil
 }
 
@@ -907,7 +888,7 @@ func (d *Debugger) CancelNext() error {
 	return d.target.ClearSteppingBreakpoints()
 }
 
-func copyLogicalBreakpointInfo(lbp *proc.LogicalBreakpoint, requested *api.Breakpoint) error {
+func (d *Debugger) copyLogicalBreakpointInfo(lbp *proc.LogicalBreakpoint, requested *api.Breakpoint) error {
 	lbp.Name = requested.Name
 	lbp.Tracepoint = requested.Tracepoint
 	lbp.TraceReturn = requested.TraceReturn
@@ -919,70 +900,8 @@ func copyLogicalBreakpointInfo(lbp *proc.LogicalBreakpoint, requested *api.Break
 	lbp.UserData = requested.UserData
 	lbp.RootFuncName = requested.RootFuncName
 	lbp.TraceFollowCalls = requested.TraceFollowCalls
-	lbp.Cond = nil
-	if requested.Cond != "" {
-		var err error
-		lbp.Cond, err = parser.ParseExpr(requested.Cond)
-		if err != nil {
-			return err
-		}
-	}
 
-	lbp.HitCond = nil
-	if requested.HitCond != "" {
-		opTok, val, err := parseHitCondition(requested.HitCond)
-		if err != nil {
-			return err
-		}
-		lbp.HitCond = &struct {
-			Op  token.Token
-			Val int
-		}{opTok, val}
-		lbp.HitCondPerG = requested.HitCondPerG
-	}
-
-	return nil
-}
-
-func parseHitCondition(hitCond string) (token.Token, int, error) {
-	// A hit condition can be in the following formats:
-	// - "number"
-	// - "OP number"
-	hitConditionRegex := regexp.MustCompile(`(([=><%!])+|)( |)((\d|_)+)`)
-
-	match := hitConditionRegex.FindStringSubmatch(strings.TrimSpace(hitCond))
-	if match == nil || len(match) != 6 {
-		return 0, 0, fmt.Errorf("unable to parse breakpoint hit condition: %q\nhit conditions should be of the form \"number\" or \"OP number\"", hitCond)
-	}
-
-	opStr := match[1]
-	var opTok token.Token
-	switch opStr {
-	case "==", "":
-		opTok = token.EQL
-	case ">=":
-		opTok = token.GEQ
-	case "<=":
-		opTok = token.LEQ
-	case ">":
-		opTok = token.GTR
-	case "<":
-		opTok = token.LSS
-	case "%":
-		opTok = token.REM
-	case "!=":
-		opTok = token.NEQ
-	default:
-		return 0, 0, fmt.Errorf("unable to parse breakpoint hit condition: %q\ninvalid operator: %q", hitCond, opStr)
-	}
-
-	numStr := match[4]
-	val, parseErr := strconv.Atoi(numStr)
-	if parseErr != nil {
-		return 0, 0, fmt.Errorf("unable to parse breakpoint hit condition: %q\ninvalid number: %q", hitCond, numStr)
-	}
-
-	return opTok, val, nil
+	return d.target.ChangeBreakpointCondition(lbp, requested.Cond, requested.HitCond, requested.HitCondPerG)
 }
 
 // ClearBreakpoint clears a breakpoint.
@@ -1000,7 +919,7 @@ func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 	lbp := d.target.LogicalBreakpoints[requestedBp.ID]
 	clearedBp := d.convertBreakpoint(lbp)
 
-	err := d.target.DisableBreakpoint(lbp)
+	err := d.target.SetBreakpointEnabled(lbp, false)
 	if err != nil {
 		return nil, err
 	}
@@ -1009,33 +928,6 @@ func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 
 	d.log.Infof("cleared breakpoint: %#v", clearedBp)
 	return clearedBp, nil
-}
-
-// isBpHitCondNotSatisfiable returns true if the breakpoint bp has a hit
-// condition that is no more satisfiable.
-// The hit condition is considered no more satisfiable if it can no longer be
-// hit again, for example with {Op: "==", Val: 1} and TotalHitCount == 1.
-func isBpHitCondNotSatisfiable(bp *api.Breakpoint) bool {
-	if bp.HitCond == "" {
-		return false
-	}
-
-	tok, val, err := parseHitCondition(bp.HitCond)
-	if err != nil {
-		return false
-	}
-	switch tok {
-	case token.EQL, token.LEQ:
-		if int(bp.TotalHitCount) >= val {
-			return true
-		}
-	case token.LSS:
-		if int(bp.TotalHitCount) >= val-1 {
-			return true
-		}
-	}
-
-	return false
 }
 
 // Breakpoints returns the list of current breakpoints.
@@ -1336,10 +1228,6 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 				}
 			}
 		}
-	}
-	if bp := state.CurrentThread.Breakpoint; bp != nil && isBpHitCondNotSatisfiable(bp) {
-		bp.Disabled = true
-		d.amendBreakpoint(bp)
 	}
 
 	d.maybePrintUnattendedStopWarning(d.target.Selected.StopReason, state.CurrentThread, clientStatusCh)

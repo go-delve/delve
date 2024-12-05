@@ -625,66 +625,46 @@ func TestClientServer_disableHitCondLSSBreakpoint(t *testing.T) {
 			Line:    7,
 			HitCond: "< 3",
 		})
-		if err != nil {
-			t.Fatalf("Unexpected error: %v", err)
+		assertNoError(err, t, "CreateBreakpoint")
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 8})
+		assertNoError(err, t, "CreateBreakpoint")
+
+		if len(bp.Addrs) == 0 {
+			t.Fatalf("no addresses for breakpoint")
 		}
 
-		state := <-c.Continue()
-		if state.Err != nil {
-			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
+		continueTo := func(ln int, ival string) {
+			state := <-c.Continue()
+			assertNoError(state.Err, t, fmt.Sprintf("Unexpected error: %v, state: %#v", state.Err, state))
+
+			f, l := state.CurrentThread.File, state.CurrentThread.Line
+			if f != fp || l != ln {
+				t.Fatalf("Program did not hit breakpoint %s:%d", f, l)
+			}
+
+			if ival == "" {
+				return
+			}
+
+			ivar, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "i", normalLoadConfig)
+			assertNoError(err, t, "EvalVariable")
+
+			t.Logf("ivar: %s", ivar.SinglelineString())
+
+			if ivar.Value != ival {
+				t.Fatalf("Wrong variable value: %s", ivar.Value)
+			}
 		}
 
-		f, l := state.CurrentThread.File, state.CurrentThread.Line
-		if f != "break.go" && l != 7 {
-			t.Fatal("Program did not hit breakpoint")
-		}
-
-		ivar, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "i", normalLoadConfig)
-		assertNoError(err, t, "EvalVariable")
-
-		t.Logf("ivar: %s", ivar.SinglelineString())
-
-		if ivar.Value != "1" {
-			t.Fatalf("Wrong variable value: %s", ivar.Value)
-		}
-
-		bp, err := c.GetBreakpoint(hitCondBp.ID)
-		assertNoError(err, t, "GetBreakpoint()")
-
-		if bp.Disabled {
-			t.Fatalf(
-				"Hit condition %s is still satisfiable but breakpoint has been disabled",
-				bp.HitCond,
-			)
-		}
-
-		state = <-c.Continue()
-		if state.Err != nil {
-			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
-		}
-
-		f, l = state.CurrentThread.File, state.CurrentThread.Line
-		if f != "break.go" && l != 7 {
-			t.Fatal("Program did not hit breakpoint")
-		}
-
-		ivar, err = c.EvalVariable(api.EvalScope{GoroutineID: -1}, "i", normalLoadConfig)
-		assertNoError(err, t, "EvalVariable")
-
-		t.Logf("ivar: %s", ivar.SinglelineString())
-
-		if ivar.Value != "2" {
-			t.Fatalf("Wrong variable value: %s", ivar.Value)
-		}
+		continueTo(7, "1")
+		continueTo(7, "2")
+		continueTo(8, "")
 
 		bp, err = c.GetBreakpoint(hitCondBp.ID)
 		assertNoError(err, t, "GetBreakpoint()")
 
-		if !bp.Disabled {
-			t.Fatalf(
-				"Hit condition %s is no more satisfiable but breakpoint has not been disabled",
-				bp.HitCond,
-			)
+		if len(bp.Addrs) != 0 {
+			t.Fatalf("Hit condition %s is no longer satisfiable but breakpoint has not been disabled", bp.HitCond)
 		}
 	})
 }
@@ -697,17 +677,19 @@ func TestClientServer_disableHitEQLCondBreakpoint(t *testing.T) {
 			Line:    7,
 			HitCond: "== 3",
 		})
-		if err != nil {
-			t.Fatalf("Unexpected error: %v", err)
+		assertNoError(err, t, "CreateBreakpoint")
+		bp, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 8})
+		assertNoError(err, t, "CreateBreakpoint")
+
+		if len(bp.Addrs) == 0 {
+			t.Fatalf("no addresses for breakpoint")
 		}
 
 		state := <-c.Continue()
-		if state.Err != nil {
-			t.Fatalf("Unexpected error: %v, state: %#v", state.Err, state)
-		}
+		assertNoError(state.Err, t, "Continue")
 
 		f, l := state.CurrentThread.File, state.CurrentThread.Line
-		if f != "break.go" && l != 7 {
+		if f != fp || l != 7 {
 			t.Fatal("Program did not hit breakpoint")
 		}
 
@@ -720,14 +702,18 @@ func TestClientServer_disableHitEQLCondBreakpoint(t *testing.T) {
 			t.Fatalf("Wrong variable value: %s", ivar.Value)
 		}
 
-		bp, err := c.GetBreakpoint(hitCondBp.ID)
+		state = <-c.Continue()
+		assertNoError(state.Err, t, "Continue")
+
+		if state.CurrentThread.File != fp || state.CurrentThread.Line != 8 {
+			t.Fatal("Program did not hit breakpoint")
+		}
+
+		bp, err = c.GetBreakpoint(hitCondBp.ID)
 		assertNoError(err, t, "GetBreakpoint()")
 
-		if !bp.Disabled {
-			t.Fatalf(
-				"Hit condition %s is no more satisfiable but breakpoint has not been disabled",
-				bp.HitCond,
-			)
+		if len(bp.Addrs) != 0 {
+			t.Fatalf("Hit condition %s is no more satisfiable but breakpoint has not been disabled", bp.HitCond)
 		}
 	})
 }

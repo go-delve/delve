@@ -78,6 +78,11 @@ func (grp *TargetGroup) Continue() error {
 		}
 	}()
 	for {
+		err := grp.manageUnsatisfiableBreakpoints()
+		if err != nil {
+			return err
+		}
+
 		if grp.cctx.CheckAndClearManualStopRequest() {
 			grp.finishManualStop()
 			return nil
