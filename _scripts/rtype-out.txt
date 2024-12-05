@@ -63,6 +63,8 @@ const emptyOne = 1
 
 const emptyRest = 0
 
+const internal/runtime/maps.ctrlEmpty = 128
+
 const kindDirectIface|internal/abi.KindDirectIface = 32
 
 const kindGCProg|internal/abi.KindGCProg = 64

@@ -1840,7 +1840,7 @@ func lenBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 		}
 		return newConstant(arg.Children[0].Value, arg.mem), nil
 	case reflect.Map:
-		it := arg.mapIterator()
+		it := arg.mapIterator(0)
 		if arg.Unreadable != nil {
 			return nil, arg.Unreadable
 		}
@@ -2152,7 +2152,7 @@ func (scope *EvalScope) evalReslice(op *evalop.Reslice, stack *evalStack) {
 			return
 		}
 		xev.mapSkip += int(low)
-		xev.mapIterator() // reads map length
+		xev.mapIterator(0) // reads map length
 		if int64(xev.mapSkip) >= xev.Len {
 			stack.err = errors.New("map index out of bounds")
 			return
@@ -2755,7 +2755,7 @@ func (v *Variable) sliceAccess(idx int) (*Variable, error) {
 }
 
 func (v *Variable) mapAccess(idx *Variable) (*Variable, error) {
-	it := v.mapIterator()
+	it := v.mapIterator(0)
 	if it == nil {
 		return nil, fmt.Errorf("can not access unreadable map: %v", v.Unreadable)
 	}
