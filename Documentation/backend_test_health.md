@@ -23,6 +23,9 @@ Tests skipped by each supported backend:
 	* 2 not working on linux/386
 * linux/386/pie skipped = 1
 	* 1 broken
+* linux/loong64 skipped = 2
+	* 1 broken - cgo stacktraces
+	* 1 not working on linux/loong64
 * linux/ppc64le skipped = 3
 	* 1 broken - cgo stacktraces
 	* 2 not working on linux/ppc64le when -gcflags=-N -l is passed
@@ -33,6 +36,10 @@ Tests skipped by each supported backend:
 * linux/riscv64 skipped = 2
 	* 1 broken - cgo stacktraces
 	* 1 not working on linux/riscv64
+* loong64 skipped = 7
+	* 2 broken
+	* 1 broken - global variable symbolication
+	* 4 not implemented
 * pie skipped = 2
 	* 2 upstream issue - https://github.com/golang/go/issues/29322
 * ppc64le skipped = 12
