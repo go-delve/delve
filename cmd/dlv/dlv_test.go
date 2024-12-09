@@ -60,7 +60,6 @@ func TestBuild(t *testing.T) {
 	const listenAddr = "127.0.0.1:40573"
 
 	dlvbin := protest.GetDlvBinary(t)
-	defer os.Remove(dlvbin)
 
 	fixtures := protest.FindFixturesDir()
 
@@ -1421,7 +1420,6 @@ func TestUnixDomainSocket(t *testing.T) {
 	listenPath := filepath.Join(tmpdir, "delve_test")
 
 	dlvbin := protest.GetDlvBinary(t)
-	defer os.Remove(dlvbin)
 
 	fixtures := protest.FindFixturesDir()
 
