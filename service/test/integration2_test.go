@@ -3169,7 +3169,6 @@ func TestGuessSubstitutePath(t *testing.T) {
 		defer os.Setenv("GOFLAGS", oldgoflags)
 
 		dlvbin := protest.GetDlvBinary(t)
-		defer os.Remove(dlvbin)
 
 		listener, clientConn := service.ListenerPipe()
 		defer listener.Close()
