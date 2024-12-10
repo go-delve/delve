@@ -569,13 +569,30 @@ func (g *G) Labels() map[string]string {
 			labelMapType, _ := g.variable.bi.findType("runtime/pprof.labelMap")
 			if labelMapType != nil {
 				labelMap := newVariable("", address.Addr, labelMapType, g.variable.bi, g.variable.mem)
-				labelMap.loadValue(loadFullValue)
 				labels = map[string]string{}
-				for i := range labelMap.Children {
-					if i%2 == 0 {
-						k := labelMap.Children[i]
-						v := labelMap.Children[i+1]
-						labels[constant.StringVal(k.Value)] = constant.StringVal(v.Value)
+				switch labelMap.Kind {
+				case reflect.Map:
+					labelMap.loadValue(loadFullValue)
+					for i := range labelMap.Children {
+						if i%2 == 0 {
+							k := labelMap.Children[i]
+							v := labelMap.Children[i+1]
+							labels[constant.StringVal(k.Value)] = constant.StringVal(v.Value)
+						}
+					}
+				case reflect.Struct:
+					labelMap, _ = labelMap.structMember("list")
+					if labelMap != nil {
+						for i := int64(0); i < labelMap.Len; i++ {
+							v, err := labelMap.sliceAccess(int(i))
+							if err != nil {
+								break
+							}
+							v.loadValue(loadFullValue)
+							if len(v.Children) == 2 {
+								labels[constant.StringVal(v.Children[0].Value)] = constant.StringVal(v.Children[1].Value)
+							}
+						}
 					}
 				}
 			}
