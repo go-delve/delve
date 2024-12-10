@@ -3194,6 +3194,8 @@ func TestGuessSubstitutePath(t *testing.T) {
 			os.Setenv("GOFLAGS", "-tags=exp.linuxppc64le")
 		case "riscv64":
 			os.Setenv("GOFLAGS", "-tags=exp.linuxriscv64")
+		case "loong64":
+			os.Setenv("GOFLAGS", "-tags=exp.linuxloong64")
 		}
 
 		gsp, err := client.GuessSubstitutePath()
