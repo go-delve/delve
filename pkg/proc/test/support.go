@@ -437,6 +437,9 @@ func GetDlvBinary(t *testing.T) string {
 	if runtime.GOOS == "linux" && runtime.GOARCH == "riscv64" {
 		tags = []string{"-tags=exp.linuxriscv64"}
 	}
+	if runtime.GOOS == "linux" && runtime.GOARCH == "loong64" {
+		tags = []string{"-tags=exp.linuxloong64"}
+	}
 	return getDlvBinInternal(t, tags...)
 }
 
