@@ -2,6 +2,7 @@ package proc
 
 import (
 	"bytes"
+	"cmp"
 	"debug/dwarf"
 	"encoding/binary"
 	"errors"
@@ -11,7 +12,7 @@ import (
 	"math"
 	"math/bits"
 	"reflect"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -140,6 +141,10 @@ type Variable struct {
 
 	LocationExpr *locationExpr // location expression
 	DeclLine     int64         // line number of this variable's declaration
+
+	// the depth of the lexical block in which this variable was declared.
+	// Used for sorting.
+	depth int
 }
 
 // LoadConfig controls how variables are loaded from the targets memory.
@@ -2278,7 +2283,9 @@ func (cm constantsMap) Get(typ godwarf.Type) *constantType {
 	typepkg := packageName(typ.String()) + "."
 	if !ctyp.initialized {
 		ctyp.initialized = true
-		sort.Sort(constantValuesByValue(ctyp.values))
+		slices.SortFunc(ctyp.values, func(a, b constantValue) int {
+			return cmp.Compare(a.value, b.value)
+		})
 		for i := range ctyp.values {
 			ctyp.values[i].name = strings.TrimPrefix(ctyp.values[i].name, typepkg)
 			if bits.OnesCount64(uint64(ctyp.values[i].value)) == 1 {
@@ -2318,31 +2325,6 @@ func (ctyp *constantType) describe(n int64) string {
 	}
 	return ""
 }
-
-type variablesByDepthAndDeclLine struct {
-	vars   []*Variable
-	depths []int
-}
-
-func (v *variablesByDepthAndDeclLine) Len() int { return len(v.vars) }
-
-func (v *variablesByDepthAndDeclLine) Less(i int, j int) bool {
-	if v.depths[i] == v.depths[j] {
-		return v.vars[i].DeclLine < v.vars[j].DeclLine
-	}
-	return v.depths[i] < v.depths[j]
-}
-
-func (v *variablesByDepthAndDeclLine) Swap(i int, j int) {
-	v.depths[i], v.depths[j] = v.depths[j], v.depths[i]
-	v.vars[i], v.vars[j] = v.vars[j], v.vars[i]
-}
-
-type constantValuesByValue []constantValue
-
-func (v constantValuesByValue) Len() int               { return len(v) }
-func (v constantValuesByValue) Less(i int, j int) bool { return v[i].value < v[j].value }
-func (v constantValuesByValue) Swap(i int, j int)      { v[i], v[j] = v[j], v[i] }
 
 const (
 	timeTimeWallHasMonotonicBit uint64 = (1 << 63) // hasMonotonic bit of time.Time.wall

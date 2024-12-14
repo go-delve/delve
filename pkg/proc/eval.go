@@ -2,6 +2,7 @@ package proc
 
 import (
 	"bytes"
+	"cmp"
 	"debug/dwarf"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"go/token"
 	"reflect"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strings"
 
@@ -442,7 +444,6 @@ func (scope *EvalScope) simpleLocals(flags localsFlags, wantedName string) ([]*V
 	}
 
 	vars := make([]*Variable, 0, len(varEntries))
-	depths := make([]int, 0, len(varEntries))
 	for _, entry := range varEntries {
 		name, _ := entry.Val(dwarf.AttrName).(string)
 		switch {
@@ -489,14 +490,19 @@ func (scope *EvalScope) simpleLocals(flags localsFlags, wantedName string) ([]*V
 				val.Flags |= VariableArgument
 			}
 		}
-		depths = append(depths, depth)
+		val.depth = depth
 	}
 
 	if len(vars) == 0 {
 		return vars, nil
 	}
 
-	sort.Stable(&variablesByDepthAndDeclLine{vars, depths})
+	slices.SortStableFunc(vars, func(a, b *Variable) int {
+		if a.depth == b.depth {
+			return cmp.Compare(a.DeclLine, b.DeclLine)
+		}
+		return cmp.Compare(a.depth, b.depth)
+	})
 
 	lvn := map[string]*Variable{} // lvn[n] is the last variable we saw named n
 

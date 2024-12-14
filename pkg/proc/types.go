@@ -38,24 +38,6 @@ func pointerTo(typ godwarf.Type, arch *Arch) godwarf.Type {
 	}
 }
 
-type functionsDebugInfoByEntry []Function
-
-func (v functionsDebugInfoByEntry) Len() int           { return len(v) }
-func (v functionsDebugInfoByEntry) Less(i, j int) bool { return v[i].Entry < v[j].Entry }
-func (v functionsDebugInfoByEntry) Swap(i, j int)      { v[i], v[j] = v[j], v[i] }
-
-type compileUnitsByOffset []*compileUnit
-
-func (v compileUnitsByOffset) Len() int               { return len(v) }
-func (v compileUnitsByOffset) Less(i int, j int) bool { return v[i].offset < v[j].offset }
-func (v compileUnitsByOffset) Swap(i int, j int)      { v[i], v[j] = v[j], v[i] }
-
-type packageVarsByAddr []packageVar
-
-func (v packageVarsByAddr) Len() int               { return len(v) }
-func (v packageVarsByAddr) Less(i int, j int) bool { return v[i].addr < v[j].addr }
-func (v packageVarsByAddr) Swap(i int, j int)      { v[i], v[j] = v[j], v[i] }
-
 type loadDebugInfoMapsContext struct {
 	ardr                *reader.Reader
 	abstractOriginTable map[dwarf.Offset]int
