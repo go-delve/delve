@@ -8,9 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
-	"github.com/go-delve/delve/service/rpc1"
-	"github.com/go-delve/delve/service/rpc2"
 )
 
 func assertNoError(err error, t *testing.T, s string) {
@@ -65,15 +64,8 @@ type BreakpointLister interface {
 	ListBreakpoints() ([]*api.Breakpoint, error)
 }
 
-func countBreakpoints(t *testing.T, c interface{}) int {
-	var bps []*api.Breakpoint
-	var err error
-	switch c := c.(type) {
-	case *rpc2.RPCClient:
-		bps, err = c.ListBreakpoints(false)
-	case *rpc1.RPCClient:
-		bps, err = c.ListBreakpoints()
-	}
+func countBreakpoints(t *testing.T, c service.Client) int {
+	bps, err := c.ListBreakpoints(false)
 	assertNoError(err, t, "ListBreakpoints()")
 	bpcount := 0
 	for _, bp := range bps {

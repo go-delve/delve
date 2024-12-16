@@ -24,7 +24,6 @@ import (
 	"github.com/go-delve/delve/service/dap"
 	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/internal/sameuser"
-	"github.com/go-delve/delve/service/rpc1"
 	"github.com/go-delve/delve/service/rpc2"
 )
 
@@ -39,8 +38,6 @@ type ServerImpl struct {
 	stopChan chan struct{}
 	// debugger is the debugger service.
 	debugger *debugger.Debugger
-	// s1 is APIv1 server.
-	s1 *rpc1.RPCServer
 	// s2 is APIv2 server.
 	s2 *rpc2.RPCServer
 	// maps of served methods, one for each supported API.
@@ -110,10 +107,11 @@ func (s *ServerImpl) Stop() error {
 func (s *ServerImpl) Run() error {
 	var err error
 
-	if s.config.APIVersion < 2 {
-		s.config.APIVersion = 1
+	if s.config.APIVersion == 0 {
+		s.config.APIVersion = 2
 	}
-	if s.config.APIVersion > 2 {
+
+	if s.config.APIVersion != 2 {
 		return errors.New("unknown API version")
 	}
 
@@ -123,17 +121,13 @@ func (s *ServerImpl) Run() error {
 		return err
 	}
 
-	s.s1 = rpc1.NewServer(s.config, s.debugger)
 	s.s2 = rpc2.NewServer(s.config, s.debugger)
 
 	rpcServer := &RPCServer{s}
 
 	s.methodMaps = make([]map[string]*methodType, 2)
 
-	s.methodMaps[0] = map[string]*methodType{}
 	s.methodMaps[1] = map[string]*methodType{}
-	suitableMethods(s.s1, s.methodMaps[0], s.log)
-	suitableMethods(rpcServer, s.methodMaps[0], s.log)
 	suitableMethods(s.s2, s.methodMaps[1], s.log)
 	suitableMethods(rpcServer, s.methodMaps[1], s.log)
 
@@ -452,10 +446,7 @@ func (s *RPCServer) GetVersion(args api.GetVersionIn, out *api.GetVersionOut) er
 
 // SetApiVersion changes version of the API being served.
 func (s *RPCServer) SetApiVersion(args api.SetAPIVersionIn, out *api.SetAPIVersionOut) error {
-	if args.APIVersion < 2 {
-		args.APIVersion = 1
-	}
-	if args.APIVersion > 2 {
+	if args.APIVersion != 2 {
 		return errors.New("unknown API version")
 	}
 	s.s.config.APIVersion = args.APIVersion
