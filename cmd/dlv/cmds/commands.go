@@ -150,7 +150,7 @@ func New(docCall bool) *cobra.Command {
 
 	rootCommand.PersistentFlags().BoolVarP(&headless, "headless", "", false, "Run debug server only, in headless mode. Server will accept both JSON-RPC or DAP client connections.")
 	rootCommand.PersistentFlags().BoolVarP(&acceptMulti, "accept-multiclient", "", false, "Allows a headless server to accept multiple client connections via JSON-RPC or DAP.")
-	rootCommand.PersistentFlags().IntVar(&apiVersion, "api-version", 1, "Selects JSON-RPC API version when headless. New clients should use v2. Can be reset via RPCServer.SetApiVersion. See Documentation/api/json-rpc/README.md.")
+	rootCommand.PersistentFlags().IntVar(&apiVersion, "api-version", 2, "Selects JSON-RPC API version when headless. The only valid value is 2. Can be reset via RPCServer.SetApiVersion. See Documentation/api/json-rpc/README.md.")
 	must(rootCommand.RegisterFlagCompletionFunc("api-version", cobra.FixedCompletions([]string{"1", "2"}, cobra.ShellCompDirectiveNoFileComp)))
 	rootCommand.PersistentFlags().StringVar(&initFile, "init", "", "Init file, executed by the terminal client.")
 	must(rootCommand.MarkPersistentFlagFilename("init"))
