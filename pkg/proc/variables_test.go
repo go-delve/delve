@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -450,23 +450,6 @@ func TestMultilineVariableEvaluation(t *testing.T) {
 	})
 }
 
-type varArray []*proc.Variable
-
-// Len is part of sort.Interface.
-func (s varArray) Len() int {
-	return len(s)
-}
-
-// Swap is part of sort.Interface.
-func (s varArray) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-
-// Less is part of sort.Interface. It is implemented by calling the "by" closure in the sorter.
-func (s varArray) Less(i, j int) bool {
-	return s[i].Name < s[j].Name
-}
-
 func TestLocalVariables(t *testing.T) {
 	testcases := []struct {
 		fn     func(*proc.EvalScope, proc.LoadConfig) ([]*proc.Variable, error)
@@ -534,7 +517,9 @@ func TestLocalVariables(t *testing.T) {
 			vars, err := tc.fn(scope, pnormalLoadConfig)
 			assertNoError(err, t, "LocalVariables() returned an error")
 
-			sort.Sort(varArray(vars))
+			slices.SortFunc(vars, func(a, b *proc.Variable) int {
+				return strings.Compare(a.Name, b.Name)
+			})
 
 			if len(tc.output) != len(vars) {
 				t.Fatalf("Invalid variable count. Expected %d got %d.", len(tc.output), len(vars))
