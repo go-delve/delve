@@ -1426,11 +1426,56 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int)
 			continue
 		}
 		f := parent.Func
-		text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
+		regs, err := t.CurrentThread().Registers()
+		if err != nil {
+			return nil, fmt.Errorf("Current thread returned nil registers\n")
+		}
+		text, err := proc.Disassemble(t.Memory(), regs, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
+
 		if err != nil {
 			return nil, fmt.Errorf("disassemble failed with error %w", err)
 		}
 		for _, instr := range text {
+			if f.Name == "runtime.deferreturn" {
+				fmt.Printf("encountered deferreturn\n")
+				if instr.IsCall() && instr.DestLoc == nil {
+					//sameGCond := proc.sameGoroutineCondition(t.Selected.BinInfo(), t.SelectedGoroutine(), t.CurrentThread().ThreadID())
+					deferbp, err := t.SetBreakpoint(0, instr.Loc.PC, proc.NextBreakpoint, nil)
+					if err != nil {
+						fmt.Printf("error setting breakpoint inside deferreturn\n")
+					}
+					deferbrklet := deferbp.Breaklets[len(deferbp.Breaklets)-1]
+					deferbrklet.Callback = func(th proc.Thread, _ *proc.Target) (bool, error) {
+						regs, err := th.Registers()
+						if err != nil {
+							fmt.Printf("registers inside callback returned err\n")
+
+						}
+						dregs := t.Group.Selected.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
+						dregs.Reg(^uint64(0))
+						for i := 0; i < dregs.CurrentSize(); i++ {
+							reg := dregs.Reg(uint64(i))
+							if reg == nil {
+								continue
+							}
+							name, _, value := t.Group.Selected.BinInfo().Arch.DwarfRegisterToString(i, reg)
+							fmt.Printf("%s = %s\n", name, value)
+							if name == "Rcx" {
+								addr, err := strconv.ParseUint(value, 0, 64)
+								if err != nil {
+									fmt.Printf("error parsing function address\n")
+								}
+								fn := t.Group.Selected.BinInfo().PCToFunc(addr)
+								fmt.Printf("Found function name %s\n", fn.Name)
+
+							}
+						}
+						return false, nil
+					}
+					//fmt.Printf("instr is call type but dest loc is nil PC %x\n", instr.Loc.PC)
+				}
+			}
+
 			if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
 				cf := instr.DestLoc.Fn
 				if (strings.HasPrefix(cf.Name, "runtime.") || strings.HasPrefix(cf.Name, "runtime/internal")) && cf.Name != "runtime.deferreturn" && cf.Name != "runtime.gorecover" && cf.Name != "runtime.gopanic" {

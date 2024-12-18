@@ -405,7 +405,7 @@ func (t *Target) createPluginOpenBreakpoint() {
 		if err != nil {
 			t.BinInfo().logger.Errorf("could not set plugin.Open breakpoint: %v", err)
 		} else {
-			bp.Breaklets[len(bp.Breaklets)-1].callback = t.pluginOpenCallback
+			bp.Breaklets[len(bp.Breaklets)-1].Callback = t.pluginOpenCallback
 		}
 	}
 }
