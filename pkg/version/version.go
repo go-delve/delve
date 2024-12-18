@@ -14,13 +14,11 @@ type Version struct {
 	Build    string
 }
 
-var (
-	// DelveVersion is the current version of Delve.
-	DelveVersion = Version{
-		Major: "1", Minor: "23", Patch: "1", Metadata: "",
-		Build: "$Id$",
-	}
-)
+// DelveVersion is the current version of Delve.
+var DelveVersion = Version{
+	Major: "1", Minor: "24", Patch: "0", Metadata: "",
+	Build: "$Id$",
+}
 
 func (v Version) String() string {
 	fixBuild(&v)
