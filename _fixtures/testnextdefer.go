@@ -2,9 +2,13 @@ package main
 
 import "fmt"
 
-func main() {
+func A() {
 	defer func() {
 		fmt.Println("hi")
 	}()
 	fmt.Println("bye")
+}
+
+func main() {
+	A()
 }
