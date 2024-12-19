@@ -74,11 +74,11 @@ func (xstate *AMD64Xstate) Decode() []proc.Register {
 }
 
 const (
-	_XSAVE_XMM_REGION_START      = 160
-	_XSAVE_HEADER_START          = 512
-	_XSAVE_HEADER_LEN            = 64
-	_XSAVE_EXTENDED_REGION_START = 576
-	_XSAVE_SSE_REGION_LEN        = 416
+	_XSAVE_XMM_REGION_START       = 160
+	_XSAVE_HEADER_START           = 512
+	_XSAVE_HEADER_LEN             = 64
+	_XSAVE_EXTENDED_REGION_START  = 576
+	_XSAVE_SSE_REGION_LEN         = 416
 	_I386_LINUX_XSAVE_XCR0_OFFSET = 464
 )
 
@@ -112,8 +112,6 @@ func AMD64XstateRead(xstateargs []byte, readLegacy bool, regset *AMD64Xstate, xs
 	xsaveheader := xstateargs[_XSAVE_HEADER_START : _XSAVE_HEADER_START+_XSAVE_HEADER_LEN]
 	xstate_bv := xstate_bv(binary.LittleEndian.Uint64(xsaveheader[0:8]))
 	xcomp_bv := binary.LittleEndian.Uint64(xsaveheader[8:16])
-
-	fmt.Printf("xcr0: %#x xstate_bv: %#x\n", xcr0, xstate_bv)
 
 	if xcomp_bv&(1<<63) != 0 {
 		// compact format not supported
