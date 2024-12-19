@@ -42,7 +42,7 @@ import (
 
 const (
 	dwarfGoLanguage    = 22   // DW_LANG_Go (from DWARF v5, section 7.12, page 231)
-	dwarfAttrAddrBase  = 0x74 // debug/dwarf.AttrAddrBase in Go 1.14, defined here for compatibility with Go < 1.14
+	dwarfAttrAddrBase  = 0x73 // debug/dwarf.AttrAddrBase in Go 1.14, defined here for compatibility with Go < 1.14
 	dwarfTreeCacheSize = 512  // size of the dwarfTree cache of each image
 )
 
