@@ -1035,7 +1035,7 @@ func Ancestors(p *Target, g *G, n int) ([]Ancestor, error) {
 	av = av.maybeDereference()
 	av.loadValue(LoadConfig{MaxArrayValues: n, MaxVariableRecurse: 1, MaxStructFields: -1})
 	if av.Unreadable != nil {
-		return nil, err
+		return nil, av.Unreadable
 	}
 	if av.Addr == 0 {
 		// no ancestors
