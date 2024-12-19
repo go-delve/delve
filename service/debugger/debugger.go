@@ -1388,13 +1388,14 @@ func (d *Debugger) Functions(filter string, followCalls int) ([]string, error) {
 	return funcs, nil
 }
 
+ type TraceFunc struct {
+                Func    *proc.Function
+                Depth   int
+                visited bool
+        }
+        type TraceFuncptr *TraceFunc
+
 func traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int) ([]string, error) {
-	type TraceFunc struct {
-		Func    *proc.Function
-		Depth   int
-		visited bool
-	}
-	type TraceFuncptr *TraceFunc
 
 	TraceMap := make(map[string]TraceFuncptr)
 	queue := make([]TraceFuncptr, 0, 40)
@@ -1459,13 +1460,15 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int)
 								continue
 							}
 							name, _, value := t.Group.Selected.BinInfo().Arch.DwarfRegisterToString(i, reg)
-							fmt.Printf("%s = %s\n", name, value)
+//`							fmt.Printf("%s = %s\n", name, value)
 							if name == "Rcx" {
 								addr, err := strconv.ParseUint(value, 0, 64)
 								if err != nil {
 									fmt.Printf("error parsing function address\n")
 								}
 								fn := t.Group.Selected.BinInfo().PCToFunc(addr)
+                                                                  addToDeferQ(fn, TraceMap, queue, parent.Depth+1)
+
 								fmt.Printf("Found function name %s\n", fn.Name)
 
 							}
@@ -1492,6 +1495,21 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int)
 		}
 	}
 	return funcs, nil
+}
+
+func addToDeferQ(deferF *proc.Function, TraceMap map[string]TraceFuncptr, q []TraceFuncptr, depth int) {
+                                   childnode := TraceMap[deferF.Name]
+                                if childnode == nil {
+                                        childnode = &TraceFunc{Func: nil, Depth: depth + 1, visited: false}
+                                        fmt.Printf("appending to Q %s\n", deferF.Name)
+                                        childnode.Func = deferF
+                                        TraceMap[deferF.Name] = childnode
+                                        q= append(q, childnode)
+                                } else {
+                                        fmt.Printf("childnode is nil so not adding %s\n", deferF.Name)
+                                }
+
+
 }
 
 // Types returns all type information in the binary.
