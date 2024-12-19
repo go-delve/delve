@@ -1058,7 +1058,7 @@ func rangeFuncStackTrace(tgt *Target, g *G) ([]Stackframe, error) {
 		return true
 	})
 	if it.Err() != nil {
-		return nil, err
+		return nil, it.Err()
 	}
 	if nonMonotonicSP {
 		return nil, errors.New("corrupted stack (SP not monotonically decreasing)")
