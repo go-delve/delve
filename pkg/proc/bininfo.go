@@ -2,6 +2,7 @@ package proc
 
 import (
 	"bytes"
+	"cmp"
 	"debug/dwarf"
 	"debug/elf"
 	"debug/macho"
@@ -2305,7 +2306,7 @@ func loadBinaryInfoGoRuntimeCommon(bi *BinaryInfo, image *Image, cu *compileUnit
 	for i := range inlFuncs {
 		bi.Functions = append(bi.Functions, *inlFuncs[i])
 	}
-	sort.Sort(functionsDebugInfoByEntry(bi.Functions))
+	slices.SortFunc(bi.Functions, func(a, b Function) int { return cmp.Compare(a.Entry, b.Entry) })
 	for f := range image.symTable.Files {
 		bi.Sources = append(bi.Sources, f)
 	}
@@ -2534,9 +2535,9 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 		}
 	}
 
-	sort.Sort(compileUnitsByOffset(image.compileUnits))
-	sort.Sort(functionsDebugInfoByEntry(bi.Functions))
-	sort.Sort(packageVarsByAddr(bi.packageVars))
+	slices.SortFunc(image.compileUnits, func(a, b *compileUnit) int { return cmp.Compare(a.offset, b.offset) })
+	slices.SortFunc(bi.Functions, func(a, b Function) int { return cmp.Compare(a.Entry, b.Entry) })
+	slices.SortFunc(bi.packageVars, func(a, b packageVar) int { return cmp.Compare(a.addr, b.addr) })
 
 	bi.lookupFunc = nil
 	bi.lookupGenericFunc = nil
