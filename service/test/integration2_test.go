@@ -3156,6 +3156,14 @@ func TestBreakpointVariablesWithoutG(t *testing.T) {
 
 func TestGuessSubstitutePath(t *testing.T) {
 	t.Setenv("NOCERT", "1")
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.IsDevelBuild() && os.Getenv("CI") != "" && runtime.GOOS == "linux" {
+		// The TeamCity builders for linux/amd64/tip and linux/arm64/tip end up
+		// with a broken .git directory which makes the 'go list' command used for
+		// GuessSubstitutePath fail.
+		t.Skip("does not work in TeamCity + tip + linux")
+	}
+
 	slashnorm := func(s string) string {
 		if runtime.GOOS != "windows" {
 			return s

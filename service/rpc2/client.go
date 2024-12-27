@@ -600,7 +600,7 @@ func MakeGuessSusbtitutePathIn() (*api.GuessSubstitutePathIn, error) {
 	cmd := exec.Command("go", "list", "--json", "all")
 	buf, err := cmd.Output()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error running go list %v: output %q", err, string(buf))
 	}
 	importPathOfMainPackage := ""
 	importPathOfMainPackageOk := true
