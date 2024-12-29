@@ -1,7 +1,3 @@
-// TODO: disassembler support should be compiled in unconditionally,
-// instead of being decided by the build-target architecture, and be
-// part of the Arch object instead.
-
 package proc
 
 import (
