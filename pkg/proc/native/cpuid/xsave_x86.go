@@ -8,7 +8,6 @@ import (
 
 const _XSTATE_MAX_KNOWN_SIZE = 2969
 
-
 var xstateMaxSize int
 var loadXstateMaxSizeOnce sync.Once
 

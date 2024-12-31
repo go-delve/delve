@@ -140,6 +140,8 @@ func (t *Target) Dump(out elfwriter.WriteCloserSeeker, flags DumpFlags, state *D
 		fhdr.Machine = elf.EM_PPC64
 	case "riscv64":
 		fhdr.Machine = elf.EM_RISCV
+	case "loong64":
+		fhdr.Machine = elf.EM_LOONGARCH
 	default:
 		panic("not implemented")
 	}
