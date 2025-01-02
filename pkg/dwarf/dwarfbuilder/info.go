@@ -241,7 +241,6 @@ func (b *Builder) makeAbbrevTable() []byte {
 			leb128.EncodeUnsigned(&abbrev, uint64(b.abbrevs[i].form[j]))
 		}
 		leb128.EncodeUnsigned(&abbrev, 0)
-		leb128.EncodeUnsigned(&abbrev, 0)
 	}
 
 	leb128.EncodeUnsigned(&abbrev, uint64(0))
