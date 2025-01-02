@@ -1163,7 +1163,6 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 		return 1
 	}
 
-	var status int
 	if headless {
 		if continueOnStart {
 			addr := listener.Addr().String()
@@ -1179,7 +1178,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 			fmt.Println(err)
 		}
 
-		return status
+		return 0
 	}
 
 	return connect(listener.Addr().String(), clientConn, conf)
