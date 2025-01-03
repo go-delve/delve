@@ -79,7 +79,7 @@ func (ctx *EBPFContext) AttachUprobe(pid int, name string, offset uint64) error 
 	if ctx.executable == nil {
 		return errors.New("no eBPF program loaded")
 	}
-	l, err := ctx.executable.Uprobe(name, ctx.objs.tracePrograms.UprobeDlvTrace, &link.UprobeOptions{PID: pid, Offset: offset})
+	l, err := ctx.executable.Uprobe(name, ctx.objs.tracePrograms.UprobeDlvTrace, &link.UprobeOptions{PID: pid, Address: offset})
 	ctx.links = append(ctx.links, l)
 	return err
 }
