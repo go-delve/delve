@@ -382,15 +382,31 @@ func (it *stackIterator) stacktrace(depth int) ([]Stackframe, error) {
 		return nil, errors.New("negative maximum stack depth")
 	}
 	frames := make([]Stackframe, 0, depth+1)
-	it.stacktraceFunc(func(frame Stackframe) bool {
+	f := func(frame Stackframe) bool {
 		frames = append(frames, frame)
 		return len(frames) < depth+1
-	})
+	}
+	it.stacktraceFunc(f)
+	if it.Err() != nil && len(frames) == 1 && it.g != nil && frames[0].SystemStack && (it.opts&StacktraceSimple == 0) {
+		// If we can't continue from the first frame, and it was on a system stack
+		// and we have a goroutine which we are allowed to switch to then switch
+		// to it and continue the stacktrace from there.
+		// This improves stacktraces produced on Windows by WER where the first
+		// thread will be executing a system function from which we can't continue
+		// to trace.
+		// See #3824.
+		it.err = nil
+		it.opts |= StacktraceG
+		it.stacktraceFunc(f)
+	}
+
 	if err := it.Err(); err != nil {
 		if len(frames) == 0 {
 			return nil, err
 		}
+
 		frames = append(frames, Stackframe{Err: err})
+
 	}
 	return frames, nil
 }
