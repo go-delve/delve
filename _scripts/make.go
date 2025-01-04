@@ -311,6 +311,9 @@ func tagFlags(isTest bool) string {
 		if runtime.GOOS == "linux" && runtime.GOARCH == "riscv64" {
 			tags = append(tags, "exp.linuxriscv64")
 		}
+		if runtime.GOOS == "linux" && runtime.GOARCH == "loong64" {
+			tags = append(tags, "exp.linuxloong64")
+		}
 	}
 	if Tags != nil && len(*Tags) > 0 {
 		tags = append(tags, *Tags...)

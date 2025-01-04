@@ -63,6 +63,9 @@ func TestDebugger_LaunchInvalidFormat(t *testing.T) {
 	if runtime.GOARCH == "riscv64" && runtime.GOOS == "linux" {
 		t.Setenv("GOARCH", "amd64")
 	}
+	if runtime.GOARCH == "loong64" && runtime.GOOS == "linux" {
+		t.Setenv("GOARCH", "amd64")
+	}
 	t.Setenv("GOOS", switchOS[runtime.GOOS])
 	exepath := filepath.Join(buildtestdir, debugname)
 	if err := gobuild.GoBuild(debugname, []string{buildtestdir}, fmt.Sprintf("-o %s", exepath)); err != nil {
@@ -115,7 +118,7 @@ func TestDebugger_LaunchCurrentDir(t *testing.T) {
 func guessSubstitutePathHelper(t *testing.T, args *api.GuessSubstitutePathIn, fnpaths [][2]string, tgt map[string]string) {
 	const base = 0x40000
 	t.Helper()
-	bins := [][]proc.Function{[]proc.Function{}}
+	bins := [][]proc.Function{{}}
 	for i, fnpath := range fnpaths {
 		bins[0] = append(bins[0], proc.Function{Name: fnpath[0], Entry: uint64(base + i)})
 	}
