@@ -1960,22 +1960,32 @@ func tracepoint(t *Term, ctx callContext, args string) error {
 	return err
 }
 
-func getEditorName() (string, error) {
+func getEditorName() (string, []string, error) {
 	var editor string
 	if editor = os.Getenv("DELVE_EDITOR"); editor == "" {
 		if editor = os.Getenv("EDITOR"); editor == "" {
-			return "", errors.New("Neither DELVE_EDITOR or EDITOR is set")
+			return "", nil, errors.New("Neither DELVE_EDITOR or EDITOR is set")
 		}
 	}
-	return editor, nil
+
+	editorParts := strings.Fields(editor)
+	editor = editorParts[0]
+
+	var userArgs []string
+	if len(editorParts) > 1 {
+		userArgs = editorParts[1:]
+	}
+
+	return editor, userArgs, nil
 }
 
 func runEditor(args ...string) error {
-	editor, err := getEditorName()
+	editor, userArgs, err := getEditorName()
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(editor, args...)
+	allArgs := append(userArgs, args...)
+	cmd := exec.Command(editor, allArgs...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -1987,13 +1997,15 @@ func edit(t *Term, ctx callContext, args string) error {
 	if err != nil {
 		return err
 	}
-	editor, err := getEditorName()
+	editor, _, err := getEditorName()
 	if err != nil {
 		return err
 	}
 	switch editor {
 	case "code":
 		return runEditor("--goto", fmt.Sprintf("%s:%d", file, lineno))
+	case "zed":
+		return runEditor(fmt.Sprintf("%s:%d:0", file, lineno))
 	case "hx":
 		return runEditor(fmt.Sprintf("%s:%d", file, lineno))
 	case "vi", "vim", "nvim":
