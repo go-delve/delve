@@ -17,6 +17,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"strconv"
 	"sync"
 	"time"
 
@@ -1372,7 +1373,7 @@ func (d *Debugger) Functions(filter string, followCalls int) ([]string, error) {
 		for _, f := range t.BinInfo().Functions {
 			if regex.MatchString(f.Name) {
 				if followCalls > 0 {
-					newfuncs, err := traverse(t, &f, 1, followCalls)
+					newfuncs, err := d.traverse(t, &f, 1, followCalls)
 					if err != nil {
 						return nil, fmt.Errorf("traverse failed with error %w", err)
 					}
@@ -1395,7 +1396,7 @@ func (d *Debugger) Functions(filter string, followCalls int) ([]string, error) {
         }
         type TraceFuncptr *TraceFunc
 
-func traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int) ([]string, error) {
+func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int) ([]string, error) {
 
 	TraceMap := make(map[string]TraceFuncptr)
 	queue := make([]TraceFuncptr, 0, 40)
@@ -1438,7 +1439,6 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int)
 		}
 		for _, instr := range text {
 			if f.Name == "runtime.deferreturn" {
-				fmt.Printf("encountered deferreturn\n")
 				if instr.IsCall() && instr.DestLoc == nil {
 					//sameGCond := proc.sameGoroutineCondition(t.Selected.BinInfo(), t.SelectedGoroutine(), t.CurrentThread().ThreadID())
 					deferbp, err := t.SetBreakpoint(0, instr.Loc.PC, proc.NextBreakpoint, nil)
@@ -1467,9 +1467,36 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int)
 									fmt.Printf("error parsing function address\n")
 								}
 								fn := t.Group.Selected.BinInfo().PCToFunc(addr)
-                                                                  addToDeferQ(fn, TraceMap, queue, parent.Depth+1)
+								               d.UnlockTarget()
 
-								fmt.Printf("Found function name %s\n", fn.Name)
+                                                                //addToDeferQ(fn, TraceMap, queue, parent.Depth+1)
+                                                                //tbp, _ := d.CreateBreakpoint(&api.Breakpoint{FunctionName: fn.Name, Tracepoint: true, TraceReturn: true}, "", nil, false)
+                                                                tbp, err1 := d.CreateBreakpoint(&api.Breakpoint{FunctionName: fn.Name, Tracepoint: true}, "", nil, false)
+                                                                if tbp == nil {
+                                                                        if err1 != nil && strings.Contains(err1.Error(), "Breakpoint exists") == true {
+                                                                                fmt.Printf("oops! breakpoint already exists at function %s\n", fn.Name)
+                                                                        } else {
+                                                                                fmt.Printf("error creating breakpoint at function %s\n", fn.Name)
+                                                                        }
+                                                                } /*else {
+                                                                        fmt.Printf(" success in creating breakpoint at function\n", fn.Name)
+                                                                }*/
+  raddrs, _ := d.FunctionReturnLocations(fn.Name)
+                                                                for i := range raddrs {
+                                                                        rtbp, err := d.CreateBreakpoint(&api.Breakpoint{Addr: raddrs[i], TraceReturn: true}, "", nil, false)
+                                                                        if rtbp == nil {
+                                                                                if err != nil && strings.Contains(err.Error(), "Breakpoint exists") ==true {
+                                                                                        fmt.Printf("oops! breakpoint already exists at function return %s\n", fn.Name)
+                                                                                } else {
+                                                                                        fmt.Printf("error creating breakpoint at function return %s\n", fn.Name)
+                                                                                }
+                                                                        } /*else {
+                                                                                fmt.Printf(" success in creating breakpoint at function return\n", fn.Name)
+                                                                        }*/
+
+                                                                }
+                                                                d.LockTarget()
+
 
 							}
 						}
