@@ -930,6 +930,10 @@ func (err *ErrCouldNotFindLine) Error() string {
 	return fmt.Sprintf("could not find file %s", err.filename)
 }
 
+func (err *ErrCouldNotFindLine) IsFileFound() bool {
+	return err.fileFound
+}
+
 // AllPCsForFileLines returns a map providing all PC addresses for filename and each line in linenos
 func (bi *BinaryInfo) AllPCsForFileLines(filename string, linenos []int) map[int][]uint64 {
 	r := make(map[int][]uint64)
