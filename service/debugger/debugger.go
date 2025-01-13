@@ -1467,35 +1467,21 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 									fmt.Printf("error parsing function address\n")
 								}
 								fn := t.Group.Selected.BinInfo().PCToFunc(addr)
-								               d.UnlockTarget()
-
-                                                                //addToDeferQ(fn, TraceMap, queue, parent.Depth+1)
-                                                                //tbp, _ := d.CreateBreakpoint(&api.Breakpoint{FunctionName: fn.Name, Tracepoint: true, TraceReturn: true}, "", nil, false)
-								tbp, err1 := d.CreateBreakpoint(&api.Breakpoint{FunctionName: fn.Name, Tracepoint: true, RootFuncName: rootstr, Stacktrace:20, TraceFollowCalls: followCalls}, "", nil, false)
-                                                                if tbp == nil {
-                                                                        if err1 != nil && strings.Contains(err1.Error(), "Breakpoint exists") == true {
-                                                                                fmt.Printf("oops! breakpoint already exists at function %s\n", fn.Name)
-                                                                        } else {
-                                                                                fmt.Printf("error creating breakpoint at function %s\n", fn.Name)
-                                                                        }
-                                                                } /*else {
-                                                                        fmt.Printf(" success in creating breakpoint at function\n", fn.Name)
-                                                                }*/
-  raddrs, _ := d.FunctionReturnLocations(fn.Name)
-                                                                for i := range raddrs {
-									rtbp, err := d.CreateBreakpoint(&api.Breakpoint{Addr: raddrs[i], TraceReturn: true, RootFuncName: rootstr, Stacktrace:20, TraceFollowCalls: followCalls}, "", nil, false)
-                                                                        if rtbp == nil {
-                                                                                if err != nil && strings.Contains(err.Error(), "Breakpoint exists") ==true {
-                                                                                        fmt.Printf("oops! breakpoint already exists at function return %s\n", fn.Name)
-                                                                                } else {
-                                                                                        fmt.Printf("error creating breakpoint at function return %s\n", fn.Name)
-                                                                                }
-                                                                        } /*else {
-                                                                                fmt.Printf(" success in creating breakpoint at function return\n", fn.Name)
-                                                                        }*/
-
-                                                                }
-                                                                d.LockTarget()
+								err=createFnTracepoint(d, fn.Name, rootstr, followCalls)
+								if err != nil {
+									fmt.Printf("error creating tracepoint in function %s\n", fn.Name)
+								}
+								deferchildren, err := d.traverse(t, fn, parent.Depth+1, followCalls, rootstr)
+								if err != nil {
+									fmt.Printf("error calling traverse on defer children\n")
+								}
+								for i := 0; i < len(deferchildren); i++ {
+									fmt.Printf("candidates for tracing %s\n", deferchildren[i])
+									err := createFnTracepoint(d, deferchildren[i], rootstr, followCalls)
+								if err != nil {
+									fmt.Printf("error creating tracepoint in function %s\n", deferchildren[i])
+								}
+								}
 
 
 							}
@@ -1524,21 +1510,34 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 	return funcs, nil
 }
 
-func addToDeferQ(deferF *proc.Function, TraceMap map[string]TraceFuncptr, q []TraceFuncptr, depth int) {
-                                   childnode := TraceMap[deferF.Name]
-                                if childnode == nil {
-                                        childnode = &TraceFunc{Func: nil, Depth: depth + 1, visited: false}
-                                        fmt.Printf("appending to Q %s\n", deferF.Name)
-                                        childnode.Func = deferF
-                                        TraceMap[deferF.Name] = childnode
-                                        q= append(q, childnode)
-                                } else {
-                                        fmt.Printf("childnode is nil so not adding %s\n", deferF.Name)
-                                }
+func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls int) error {
+	d.UnlockTarget()
 
+	tbp, err1 := d.CreateBreakpoint(&api.Breakpoint{FunctionName: fname, Tracepoint: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
+	fmt.Printf("creating breakpoint for %s depth %d\n", fname, followCalls)
+	if tbp == nil {
+		if err1 != nil && strings.Contains(err1.Error(), "Breakpoint exists") == true {
+			fmt.Printf("oops! breakpoint already exists at function %s\n", fname)
+		} else {
+			fmt.Printf("error creating breakpoint at function %s\n", fname)
+		}
+	}
 
+	raddrs, _ := d.FunctionReturnLocations(fname)
+	for i := range raddrs {
+		rtbp, err := d.CreateBreakpoint(&api.Breakpoint{Addr: raddrs[i], TraceReturn: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
+		fmt.Printf("creating breakpoint for %s depth %d\n", fname, followCalls)
+		if rtbp == nil {
+			if err != nil && strings.Contains(err.Error(), "Breakpoint exists") == true {
+				fmt.Printf("oops! breakpoint already exists at function return %s\n", fname)
+			} else {
+				fmt.Printf("error creating breakpoint at function return %s\n", fname)
+			}
+		}
+	}
+	d.LockTarget()
+	return nil
 }
-
 // Types returns all type information in the binary.
 func (d *Debugger) Types(filter string) ([]string, error) {
 	d.targetMutex.Lock()
