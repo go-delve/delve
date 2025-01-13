@@ -356,8 +356,8 @@ func WithPlugins(t *testing.T, flags BuildFlags, plugins ...string) []Fixture {
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 12) {
 		t.Skip("versions of Go before 1.12 do not include debug information in packages that import plugin (or they do but it's wrong)")
 	}
-	if runtime.GOOS != "linux" {
-		t.Skip("only supported on linux")
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" {
+		t.Skip("only supported on linux and darwin")
 	}
 
 	r := make([]Fixture, len(plugins))
