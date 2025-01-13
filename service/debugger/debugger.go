@@ -1373,7 +1373,7 @@ func (d *Debugger) Functions(filter string, followCalls int) ([]string, error) {
 		for _, f := range t.BinInfo().Functions {
 			if regex.MatchString(f.Name) {
 				if followCalls > 0 {
-					newfuncs, err := d.traverse(t, &f, 1, followCalls)
+					newfuncs, err := d.traverse(t, &f, 1, followCalls, filter)
 					if err != nil {
 						return nil, fmt.Errorf("traverse failed with error %w", err)
 					}
@@ -1396,7 +1396,7 @@ func (d *Debugger) Functions(filter string, followCalls int) ([]string, error) {
         }
         type TraceFuncptr *TraceFunc
 
-func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int) ([]string, error) {
+func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int, rootstr string) ([]string, error) {
 
 	TraceMap := make(map[string]TraceFuncptr)
 	queue := make([]TraceFuncptr, 0, 40)
@@ -1471,7 +1471,7 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 
                                                                 //addToDeferQ(fn, TraceMap, queue, parent.Depth+1)
                                                                 //tbp, _ := d.CreateBreakpoint(&api.Breakpoint{FunctionName: fn.Name, Tracepoint: true, TraceReturn: true}, "", nil, false)
-                                                                tbp, err1 := d.CreateBreakpoint(&api.Breakpoint{FunctionName: fn.Name, Tracepoint: true}, "", nil, false)
+								tbp, err1 := d.CreateBreakpoint(&api.Breakpoint{FunctionName: fn.Name, Tracepoint: true, RootFuncName: rootstr, Stacktrace:20, TraceFollowCalls: followCalls}, "", nil, false)
                                                                 if tbp == nil {
                                                                         if err1 != nil && strings.Contains(err1.Error(), "Breakpoint exists") == true {
                                                                                 fmt.Printf("oops! breakpoint already exists at function %s\n", fn.Name)
@@ -1483,7 +1483,7 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
                                                                 }*/
   raddrs, _ := d.FunctionReturnLocations(fn.Name)
                                                                 for i := range raddrs {
-                                                                        rtbp, err := d.CreateBreakpoint(&api.Breakpoint{Addr: raddrs[i], TraceReturn: true}, "", nil, false)
+									rtbp, err := d.CreateBreakpoint(&api.Breakpoint{Addr: raddrs[i], TraceReturn: true, RootFuncName: rootstr, Stacktrace:20, TraceFollowCalls: followCalls}, "", nil, false)
                                                                         if rtbp == nil {
                                                                                 if err != nil && strings.Contains(err.Error(), "Breakpoint exists") ==true {
                                                                                         fmt.Printf("oops! breakpoint already exists at function return %s\n", fn.Name)
