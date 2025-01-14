@@ -1154,6 +1154,18 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		s.mu.Lock()
 		defer s.mu.Unlock() // Make sure to unlock in case of panic that will become internal error
 		s.debugger, err = debugger.New(&s.config.Debugger, s.config.ProcessArgs)
+
+		if s.debugger != nil {
+			s.send(&dap.ProcessEvent{
+				Event: *newEvent("process"),
+				Body: dap.ProcessEventBody{
+					Name:            s.debugger.Target().CmdLine,
+					SystemProcessId: s.debugger.ProcessPid(),
+					IsLocalProcess:  true,
+					StartMethod:     "launch",
+				},
+			})
+		}
 	}()
 	if err != nil {
 		if s.binaryToRemove != "" {

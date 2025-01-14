@@ -218,6 +218,7 @@ func TestStopWithTarget(t *testing.T) {
 			client.ExpectInitializeResponseAndCapabilities(t)
 			fixture := protest.BuildFixture("increment", protest.AllNonOptimized)
 			client.LaunchRequest("debug", fixture.Source, stopOnEntry)
+			client.ExpectProcessEvent(t)
 			client.ExpectInitializedEvent(t)
 			client.ExpectLaunchResponse(t)
 			triggerStop(client, forceStop)
@@ -304,6 +305,7 @@ func TestSessionStop(t *testing.T) {
 			client.ExpectInitializeResponseAndCapabilities(t)
 			fixture := protest.BuildFixture("increment", protest.AllNonOptimized)
 			client.LaunchRequest("debug", fixture.Source, stopOnEntry)
+			client.ExpectProcessEvent(t)
 			client.ExpectInitializedEvent(t)
 			client.ExpectLaunchResponse(t)
 			stopSession(session, client, serveDAPCodecDone)
@@ -321,6 +323,7 @@ func TestForceStopWhileStopping(t *testing.T) {
 	client.ExpectInitializeResponseAndCapabilities(t)
 	fixture := protest.BuildFixture("increment", protest.AllNonOptimized)
 	client.LaunchRequest("exec", fixture.Path, stopOnEntry)
+	client.ExpectProcessEvent(t)
 	client.ExpectInitializedEvent(t)
 	client.Close() // depending on timing may trigger Stop()
 	time.Sleep(time.Microsecond)
@@ -335,6 +338,7 @@ func TestForceStopWhileStopping(t *testing.T) {
 //	User selects "Start Debugging":  1 >> initialize
 //	                              :  1 << initialize
 //	                              :  2 >> launch
+//	                              :    << process event
 //	                              :    << initialized event
 //	                              :  2 << launch
 //	                              :  3 >> setBreakpoints (empty)
@@ -375,8 +379,14 @@ func TestLaunchStopOnEntry(t *testing.T) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
 		}
 
-		// 2 >> launch, << initialized, << launch
+		// 2 >> launch, << process, << initialized, << launch
 		client.LaunchRequest("exec", fixture.Path, stopOnEntry)
+
+		processEvent := client.ExpectProcessEvent(t)
+		if processEvent.Seq != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0", processEvent)
+		}
+
 		initEvent := client.ExpectInitializedEvent(t)
 		if initEvent.Seq != 0 {
 			t.Errorf("\ngot %#v\nwant Seq=0", initEvent)
@@ -634,6 +644,7 @@ func TestContinueOnEntry(t *testing.T) {
 
 		// 2 >> launch, << initialized, << launch
 		client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+		client.ExpectProcessEvent(t)
 		client.ExpectInitializedEvent(t)
 		client.ExpectLaunchResponse(t)
 
@@ -682,6 +693,7 @@ func TestPreSetBreakpoint(t *testing.T) {
 		client.ExpectInitializeResponseAndCapabilities(t)
 
 		client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+		client.ExpectProcessEvent(t)
 		client.ExpectInitializedEvent(t)
 		client.ExpectLaunchResponse(t)
 
@@ -3594,6 +3606,7 @@ func TestConcurrentBreakpointsLogPoints(t *testing.T) {
 				client.ExpectInitializeResponseAndCapabilities(t)
 
 				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+				client.ExpectProcessEvent(t)
 				client.ExpectInitializedEvent(t)
 				client.ExpectLaunchResponse(t)
 
@@ -5281,6 +5294,11 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 	client.ExpectInitializeResponseAndCapabilities(t)
 
 	cmdRequest()
+
+	if cmd == "launch" {
+		client.ExpectProcessEvent(t)
+	}
+
 	client.ExpectInitializedEvent(t)
 	switch cmd {
 	case "launch":
@@ -5470,6 +5488,7 @@ func TestExitNonZeroStatus(t *testing.T) {
 		client.ExpectInitializeResponseAndCapabilities(t)
 
 		client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+		client.ExpectProcessEvent(t)
 		client.ExpectInitializedEvent(t)
 		client.ExpectLaunchResponse(t)
 
@@ -7586,13 +7605,17 @@ func TestRedirect(t *testing.T) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
 		}
 
-		// 2 >> launch, << initialized, << launch
+		// 2 >> launch, << process, << initialized, << launch
 		client.LaunchRequestWithArgs(map[string]interface{}{
 			"request":    "launch",
 			"mode":       "debug",
 			"program":    fixture.Source,
 			"outputMode": "remote",
 		})
+		processEvent := client.ExpectProcessEvent(t)
+		if processEvent.Seq != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0", processEvent)
+		}
 		initEvent := client.ExpectInitializedEvent(t)
 		if initEvent.Seq != 0 {
 			t.Errorf("\ngot %#v\nwant Seq=0", initEvent)
