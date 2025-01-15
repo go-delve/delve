@@ -1511,7 +1511,8 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 					// Create new breakpoints.
 					got, err = s.debugger.CreateBreakpoint(bp, "", nil, false)
 					if createBpError, isCouldNotFindLine := err.(*proc.ErrCouldNotFindLine); isCouldNotFindLine && !createBpError.IsFileFound() {
-						got, err = s.debugger.CreateBreakpoint(bp, "", nil, true)
+						// try to create a suspended breakpoint instead
+						got, _ = s.debugger.CreateBreakpoint(bp, "", nil, true)
 					}
 				}
 			}
