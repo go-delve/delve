@@ -204,7 +204,7 @@ func TestMultipleSequences(t *testing.T) {
 			StdOpLengths:   []uint8{0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1},
 		},
 		IncludeDirs:  []string{},
-		FileNames:    []*FileEntry{&FileEntry{Path: thefile}},
+		FileNames:    []*FileEntry{{Path: thefile}},
 		Instructions: instr.Bytes(),
 		ptrSize:      ptrSize,
 	}
