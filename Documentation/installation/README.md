@@ -35,6 +35,8 @@ found packages native (proc.go) and your_operating_system_and_architecture_combi
 
 It means that your combination of operating system and CPU architecture is not supported, check the output of `go version`.
 
+Also see "windows/arm64 considerations" below
+
 ## macOS considerations
 
 On macOS make sure you also install the command line developer tools:
@@ -65,3 +67,11 @@ You do not need the macOS native backend and it [has known problems](https://git
 4. Run `make install` in that directory (on some versions of macOS this requires being root, the first time you run it, to install a new certificate)
 
 The makefile will take care of creating and installing a self-signed certificate automatically.
+
+##  windows/arm64 considerations
+
+Windows Arm64 support is in experimental phase. Automated instalalaitons through an IDE fail. If you feel brave enough to use the experimental support and become part of the Devle community proceeed to installaiton using the following command:
+
+```
+go install -tags exp.winarm64 github.com/go-delve/delve/cmd/dlv@latest
+```
