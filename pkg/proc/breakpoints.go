@@ -12,6 +12,7 @@ import (
 	"go/token"
 	"reflect"
 
+	"github.com/go-delve/delve/pkg/astutil"
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
@@ -213,17 +214,17 @@ func (bp *Breakpoint) VerboseDescr() []string {
 	for _, breaklet := range bp.Breaklets {
 		switch breaklet.Kind {
 		case UserBreakpoint:
-			r = append(r, fmt.Sprintf("User Cond=%q HitCond=%v", exprToString(breaklet.Cond), lbp.hitCond))
+			r = append(r, fmt.Sprintf("User Cond=%q HitCond=%v", astutil.ExprToString(breaklet.Cond), lbp.HitCond()))
 		case NextBreakpoint:
-			r = append(r, fmt.Sprintf("Next Cond=%q", exprToString(breaklet.Cond)))
+			r = append(r, fmt.Sprintf("Next Cond=%q", astutil.ExprToString(breaklet.Cond)))
 		case NextDeferBreakpoint:
-			r = append(r, fmt.Sprintf("NextDefer Cond=%q DeferReturns=%#x", exprToString(breaklet.Cond), breaklet.DeferReturns))
+			r = append(r, fmt.Sprintf("NextDefer Cond=%q DeferReturns=%#x", astutil.ExprToString(breaklet.Cond), breaklet.DeferReturns))
 		case StepBreakpoint:
-			r = append(r, fmt.Sprintf("Step Cond=%q", exprToString(breaklet.Cond)))
+			r = append(r, fmt.Sprintf("Step Cond=%q", astutil.ExprToString(breaklet.Cond)))
 		case WatchOutOfScopeBreakpoint:
-			r = append(r, fmt.Sprintf("WatchOutOfScope Cond=%q checkPanicCall=%v", exprToString(breaklet.Cond), breaklet.checkPanicCall))
+			r = append(r, fmt.Sprintf("WatchOutOfScope Cond=%q checkPanicCall=%v", astutil.ExprToString(breaklet.Cond), breaklet.checkPanicCall))
 		case StackResizeBreakpoint:
-			r = append(r, fmt.Sprintf("StackResizeBreakpoint Cond=%q", exprToString(breaklet.Cond)))
+			r = append(r, fmt.Sprintf("StackResizeBreakpoint Cond=%q", astutil.ExprToString(breaklet.Cond)))
 		case PluginOpenBreakpoint:
 			r = append(r, "PluginOpenBreakpoint")
 		case StepIntoNewProcBreakpoint:
@@ -231,7 +232,7 @@ func (bp *Breakpoint) VerboseDescr() []string {
 		case NextInactivatedBreakpoint:
 			r = append(r, "NextInactivatedBreakpoint")
 		case StepIntoRangeOverFuncBodyBreakpoint:
-			r = append(r, "StepIntoRangeOverFuncBodyBreakpoint Cond=%q", exprToString(breaklet.Cond))
+			r = append(r, "StepIntoRangeOverFuncBodyBreakpoint Cond=%q", astutil.ExprToString(breaklet.Cond))
 		default:
 			r = append(r, fmt.Sprintf("Unknown %d", breaklet.Kind))
 		}

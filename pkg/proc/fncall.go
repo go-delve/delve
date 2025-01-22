@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-delve/delve/pkg/astutil"
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
@@ -505,7 +506,7 @@ func funcCallEvalFuncExpr(scope *EvalScope, stack *evalStack, fncall *functionCa
 
 	fnvar := stack.peek()
 	if fnvar.Kind != reflect.Func {
-		return fmt.Errorf("expression %q is not a function", exprToString(fncall.expr.Fun))
+		return fmt.Errorf("expression %q is not a function", astutil.ExprToString(fncall.expr.Fun))
 	}
 	fnvar.loadValue(LoadConfig{false, 0, 0, 0, 0, 0})
 	if fnvar.Unreadable != nil {
@@ -516,7 +517,7 @@ func funcCallEvalFuncExpr(scope *EvalScope, stack *evalStack, fncall *functionCa
 	}
 	fncall.fn = bi.PCToFunc(fnvar.Base)
 	if fncall.fn == nil {
-		return fmt.Errorf("could not find DIE for function %q", exprToString(fncall.expr.Fun))
+		return fmt.Errorf("could not find DIE for function %q", astutil.ExprToString(fncall.expr.Fun))
 	}
 	if !fncall.fn.cu.isgo {
 		return errNotAGoFunction
@@ -539,7 +540,7 @@ func funcCallEvalFuncExpr(scope *EvalScope, stack *evalStack, fncall *functionCa
 	if len(fnvar.Children) > 0 && argnum == (len(fncall.formalArgs)-1) {
 		argnum++
 		fncall.receiver = &fnvar.Children[0]
-		fncall.receiver.Name = exprToString(fncall.expr.Fun)
+		fncall.receiver.Name = astutil.ExprToString(fncall.expr.Fun)
 	}
 
 	if argnum > len(fncall.formalArgs) {
@@ -631,7 +632,7 @@ func funcCallArgs(fn *Function, bi *BinaryInfo, includeRet bool) (argFrameSize i
 		if err != nil {
 			return 0, nil, err
 		}
-		typ = resolveTypedef(typ)
+		typ = godwarf.ResolveTypedef(typ)
 
 		var formalArg *funcCallArg
 		if bi.regabi {
@@ -742,12 +743,12 @@ func allPointers(v *Variable, name string, f func(addr uint64, name string) erro
 		return f(v.Base, name)
 	case reflect.Map:
 		sv := v.clone()
-		sv.RealType = resolveTypedef(&(v.RealType.(*godwarf.MapType).TypedefType))
+		sv.RealType = godwarf.ResolveTypedef(&(v.RealType.(*godwarf.MapType).TypedefType))
 		sv = sv.maybeDereference()
 		return f(sv.Addr, name)
 	case reflect.Interface:
 		sv := v.clone()
-		sv.RealType = resolveTypedef(&(v.RealType.(*godwarf.InterfaceType).TypedefType))
+		sv.RealType = godwarf.ResolveTypedef(&(v.RealType.(*godwarf.InterfaceType).TypedefType))
 		sv = sv.maybeDereference()
 		sv.Kind = reflect.Struct
 		return allPointers(sv, name, f)

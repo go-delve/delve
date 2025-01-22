@@ -1,20 +1,19 @@
 package proc
 
 import (
-	"bytes"
 	"debug/dwarf"
 	"errors"
 	"fmt"
 	"go/ast"
 	"go/constant"
 	"go/parser"
-	"go/printer"
 	"go/token"
 	"reflect"
 	"runtime/debug"
 	"sort"
 	"strings"
 
+	"github.com/go-delve/delve/pkg/astutil"
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
@@ -1195,7 +1194,7 @@ func (stack *evalStack) executeOp() {
 		fncall := stack.fncallPeek()
 		actualArg := stack.pop()
 		if actualArg.Name == "" {
-			actualArg.Name = exprToString(op.ArgExpr)
+			actualArg.Name = astutil.ExprToString(op.ArgExpr)
 		}
 		stack.err = funcCallCopyOneArg(scope, fncall, actualArg, &fncall.formalArgs[op.ArgNum], curthread)
 
@@ -1232,7 +1231,7 @@ func (stack *evalStack) executeOp() {
 	case *evalop.SetValue:
 		lhv := stack.pop()
 		rhv := stack.pop()
-		stack.err = scope.setValue(lhv, rhv, exprToString(op.Rhe))
+		stack.err = scope.setValue(lhv, rhv, astutil.ExprToString(op.Rhe))
 
 	case *evalop.PushPinAddress:
 		debugPinCount++
@@ -1363,12 +1362,6 @@ func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {
 	return stack.result(nil)
 }
 
-func exprToString(t ast.Expr) string {
-	var buf bytes.Buffer
-	printer.Fprint(&buf, token.NewFileSet(), t)
-	return buf.String()
-}
-
 func (scope *EvalScope) evalJump(op *evalop.Jump, stack *evalStack) {
 	var x *Variable
 
@@ -1409,7 +1402,7 @@ func (scope *EvalScope) evalJump(op *evalop.Jump, stack *evalStack) {
 
 	if x.Kind != reflect.Bool {
 		if op.Node != nil {
-			stack.err = fmt.Errorf("expression %q should be boolean not %s", exprToString(op.Node), x.Kind)
+			stack.err = fmt.Errorf("expression %q should be boolean not %s", astutil.ExprToString(op.Node), x.Kind)
 		} else {
 			stack.err = errors.New("internal debugger error: expected boolean")
 		}
@@ -1429,9 +1422,9 @@ func (scope *EvalScope) evalJump(op *evalop.Jump, stack *evalStack) {
 func (scope *EvalScope) evalTypeCast(op *evalop.TypeCast, stack *evalStack) {
 	argv := stack.pop()
 
-	typ := resolveTypedef(op.DwarfType)
+	typ := godwarf.ResolveTypedef(op.DwarfType)
 
-	converr := fmt.Errorf("can not convert %q to %s", exprToString(op.Node.Args[0]), typ.String())
+	converr := fmt.Errorf("can not convert %q to %s", astutil.ExprToString(op.Node.Args[0]), typ.String())
 
 	// compatible underlying types
 	if typeCastCompatibleTypes(argv.RealType, typ) {
@@ -1722,7 +1715,7 @@ func typeCastCompatibleTypes(typ1, typ2 godwarf.Type) bool {
 				return true
 			}
 			// pointer types are compatible if their element types are compatible
-			return typeCastCompatibleTypes(resolveTypedef(ttyp1.Type), resolveTypedef(ttyp2.Type))
+			return typeCastCompatibleTypes(godwarf.ResolveTypedef(ttyp1.Type), godwarf.ResolveTypedef(ttyp2.Type))
 		}
 	case *godwarf.StringType:
 		if _, ok := typ2.(*godwarf.StringType); ok {
@@ -1798,7 +1791,7 @@ func capBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 	}
 
 	arg := args[0]
-	invalidArgErr := fmt.Errorf("invalid argument %s (type %s) for cap", exprToString(nodeargs[0]), arg.TypeString())
+	invalidArgErr := fmt.Errorf("invalid argument %s (type %s) for cap", astutil.ExprToString(nodeargs[0]), arg.TypeString())
 
 	switch arg.Kind {
 	case reflect.Ptr:
@@ -1830,7 +1823,7 @@ func lenBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 		return nil, fmt.Errorf("wrong number of arguments to len: %d", len(args))
 	}
 	arg := args[0]
-	invalidArgErr := fmt.Errorf("invalid argument %s (type %s) for len", exprToString(nodeargs[0]), arg.TypeString())
+	invalidArgErr := fmt.Errorf("invalid argument %s (type %s) for len", astutil.ExprToString(nodeargs[0]), arg.TypeString())
 
 	switch arg.Kind {
 	case reflect.Ptr:
@@ -1887,11 +1880,11 @@ func complexBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 	}
 
 	if realev.Value == nil || ((realev.Value.Kind() != constant.Int) && (realev.Value.Kind() != constant.Float)) {
-		return nil, fmt.Errorf("invalid argument 1 %s (type %s) to complex", exprToString(nodeargs[0]), realev.TypeString())
+		return nil, fmt.Errorf("invalid argument 1 %s (type %s) to complex", astutil.ExprToString(nodeargs[0]), realev.TypeString())
 	}
 
 	if imagev.Value == nil || ((imagev.Value.Kind() != constant.Int) && (imagev.Value.Kind() != constant.Float)) {
-		return nil, fmt.Errorf("invalid argument 2 %s (type %s) to complex", exprToString(nodeargs[1]), imagev.TypeString())
+		return nil, fmt.Errorf("invalid argument 2 %s (type %s) to complex", astutil.ExprToString(nodeargs[1]), imagev.TypeString())
 	}
 
 	sz := int64(0)
@@ -1929,7 +1922,7 @@ func imagBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 	}
 
 	if arg.Kind != reflect.Complex64 && arg.Kind != reflect.Complex128 {
-		return nil, fmt.Errorf("invalid argument %s (type %s) to imag", exprToString(nodeargs[0]), arg.TypeString())
+		return nil, fmt.Errorf("invalid argument %s (type %s) to imag", astutil.ExprToString(nodeargs[0]), arg.TypeString())
 	}
 
 	return newConstant(constant.Imag(arg.Value), arg.mem), nil
@@ -1948,7 +1941,7 @@ func realBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 	}
 
 	if arg.Value == nil || ((arg.Value.Kind() != constant.Int) && (arg.Value.Kind() != constant.Float) && (arg.Value.Kind() != constant.Complex)) {
-		return nil, fmt.Errorf("invalid argument %s (type %s) to real", exprToString(nodeargs[0]), arg.TypeString())
+		return nil, fmt.Errorf("invalid argument %s (type %s) to real", astutil.ExprToString(nodeargs[0]), arg.TypeString())
 	}
 
 	return newConstant(constant.Real(arg.Value), arg.mem), nil
@@ -1973,7 +1966,7 @@ func minmaxBuiltin(name string, op token.Token, args []*Variable, nodeargs []ast
 		}
 
 		if args[i].Unreadable != nil {
-			return nil, fmt.Errorf("could not load %q: %v", exprToString(nodeargs[i]), args[i].Unreadable)
+			return nil, fmt.Errorf("could not load %q: %v", astutil.ExprToString(nodeargs[i]), args[i].Unreadable)
 		}
 		if args[i].FloatSpecial != 0 {
 			return nil, errOperationOnSpecialFloat
@@ -2040,7 +2033,7 @@ func (scope *EvalScope) evalStructSelector(op *evalop.Select, stack *evalStack) 
 func (scope *EvalScope) evalTypeAssert(op *evalop.TypeAssert, stack *evalStack) {
 	xv := stack.pop()
 	if xv.Kind != reflect.Interface {
-		stack.err = fmt.Errorf("expression %q not an interface", exprToString(op.Node.X))
+		stack.err = fmt.Errorf("expression %q not an interface", astutil.ExprToString(op.Node.X))
 		return
 	}
 	xv.loadInterface(0, false, loadFullValue)
@@ -2053,7 +2046,7 @@ func (scope *EvalScope) evalTypeAssert(op *evalop.TypeAssert, stack *evalStack) 
 		return
 	}
 	if xv.Children[0].Addr == 0 {
-		stack.err = fmt.Errorf("interface conversion: %s is nil, not %s", xv.DwarfType.String(), exprToString(op.Node.Type))
+		stack.err = fmt.Errorf("interface conversion: %s is nil, not %s", xv.DwarfType.String(), astutil.ExprToString(op.Node.Type))
 		return
 	}
 	typ := op.DwarfType
@@ -2082,7 +2075,7 @@ func (scope *EvalScope) evalIndex(op *evalop.Index, stack *evalStack) {
 		xev = xev.maybeDereference()
 	}
 
-	cantindex := fmt.Errorf("expression %q (%s) does not support indexing", exprToString(op.Node.X), xev.TypeString())
+	cantindex := fmt.Errorf("expression %q (%s) does not support indexing", astutil.ExprToString(op.Node.X), xev.TypeString())
 
 	switch xev.Kind {
 	case reflect.Ptr:
@@ -2102,7 +2095,7 @@ func (scope *EvalScope) evalIndex(op *evalop.Index, stack *evalStack) {
 
 	case reflect.Slice, reflect.Array, reflect.String:
 		if xev.Base == 0 {
-			stack.err = fmt.Errorf("can not index %q", exprToString(op.Node.X))
+			stack.err = fmt.Errorf("can not index %q", astutil.ExprToString(op.Node.X))
 			return
 		}
 		n, err := idxev.asInt()
@@ -2155,7 +2148,7 @@ func (scope *EvalScope) evalReslice(op *evalop.Reslice, stack *evalStack) {
 	switch xev.Kind {
 	case reflect.Slice, reflect.Array, reflect.String:
 		if xev.Base == 0 {
-			stack.err = fmt.Errorf("can not slice %q", exprToString(op.Node.X))
+			stack.err = fmt.Errorf("can not slice %q", astutil.ExprToString(op.Node.X))
 			return
 		}
 		stack.pushErr(xev.reslice(low, high, op.TrustLen))
@@ -2180,7 +2173,7 @@ func (scope *EvalScope) evalReslice(op *evalop.Reslice, stack *evalStack) {
 		}
 		fallthrough
 	default:
-		stack.err = fmt.Errorf("can not slice %q (type %s)", exprToString(op.Node.X), xev.TypeString())
+		stack.err = fmt.Errorf("can not slice %q (type %s)", astutil.ExprToString(op.Node.X), xev.TypeString())
 		return
 	}
 }
@@ -2190,7 +2183,7 @@ func (scope *EvalScope) evalPointerDeref(op *evalop.PointerDeref, stack *evalSta
 	xev := stack.pop()
 
 	if xev.Kind != reflect.Ptr {
-		stack.err = fmt.Errorf("expression %q (%s) can not be dereferenced", exprToString(op.Node.X), xev.TypeString())
+		stack.err = fmt.Errorf("expression %q (%s) can not be dereferenced", astutil.ExprToString(op.Node.X), xev.TypeString())
 		return
 	}
 
@@ -2225,7 +2218,7 @@ func (scope *EvalScope) evalPointerDeref(op *evalop.PointerDeref, stack *evalSta
 func (scope *EvalScope) evalAddrOf(op *evalop.AddrOf, stack *evalStack) {
 	xev := stack.pop()
 	if xev.Addr == 0 || xev.DwarfType == nil {
-		stack.err = fmt.Errorf("can not take address of %q", exprToString(op.Node.X))
+		stack.err = fmt.Errorf("can not take address of %q", astutil.ExprToString(op.Node.X))
 		return
 	}
 
@@ -2235,8 +2228,7 @@ func (scope *EvalScope) evalAddrOf(op *evalop.AddrOf, stack *evalStack) {
 func (v *Variable) pointerToVariable() *Variable {
 	v.OnlyAddr = true
 
-	typename := "*" + v.DwarfType.Common().Name
-	rv := v.newVariable("", 0, &godwarf.PtrType{CommonType: godwarf.CommonType{ByteSize: int64(v.bi.Arch.PtrSize()), Name: typename}, Type: v.DwarfType}, v.mem)
+	rv := v.newVariable("", 0, godwarf.FakePointerType(v.DwarfType, int64(v.bi.Arch.PtrSize())), v.mem)
 	rv.Children = []Variable{*v}
 	rv.loaded = true
 
@@ -2293,7 +2285,7 @@ func (scope *EvalScope) evalUnary(op *evalop.Unary, stack *evalStack) {
 		return
 	}
 	if xv.Value == nil {
-		stack.err = fmt.Errorf("operator %s can not be applied to %q", op.Node.Op.String(), exprToString(op.Node.X))
+		stack.err = fmt.Errorf("operator %s can not be applied to %q", op.Node.Op.String(), astutil.ExprToString(op.Node.X))
 		return
 	}
 	rc, err := constantUnaryOp(op.Node.Op, xv.Value)
@@ -2448,12 +2440,12 @@ func (scope *EvalScope) evalBinary(binop *evalop.Binary, stack *evalStack) {
 			yv.loadValue(loadFullValueLongerStrings)
 		}
 		if xv.Value == nil {
-			stack.err = fmt.Errorf("operator %s can not be applied to %q", node.Op.String(), exprToString(node.X))
+			stack.err = fmt.Errorf("operator %s can not be applied to %q", node.Op.String(), astutil.ExprToString(node.X))
 			return
 		}
 
 		if yv.Value == nil {
-			stack.err = fmt.Errorf("operator %s can not be applied to %q", node.Op.String(), exprToString(node.Y))
+			stack.err = fmt.Errorf("operator %s can not be applied to %q", node.Op.String(), astutil.ExprToString(node.Y))
 			return
 		}
 
@@ -2714,8 +2706,8 @@ func sameType(t1, t2 godwarf.Type) bool {
 	// consistent, however we also synthesize some types ourselves
 	// (specifically pointers and slices) and we always use a reference through
 	// a typedef.
-	t1 = resolveTypedef(t1)
-	t2 = resolveTypedef(t2)
+	t1 = godwarf.ResolveTypedef(t1)
+	t2 = godwarf.ResolveTypedef(t2)
 
 	if tt1, isptr1 := t1.(*godwarf.PtrType); isptr1 {
 		tt2, isptr2 := t2.(*godwarf.PtrType)
