@@ -946,6 +946,20 @@ func (stack *evalStack) resume(g *G) {
 	}
 
 	// call injection protocol suspended or concluded, resume normal opcode execution
+	if len(stack.fncalls) == 0 && g.Thread != nil {
+		// The function call protocol concluded, recover the thread's registers so
+		// we can use them to evaluate variables.
+		so := scope.image()
+		if regs, err := g.Thread.Registers(); err == nil {
+			cfa := scope.Regs.CFA
+			frameBase := scope.Regs.FrameBase
+			dwarfRegs := *(scope.BinInfo.Arch.RegistersToDwarfRegisters(so.StaticBase, regs))
+			dwarfRegs.ChangeFunc = g.Thread.SetReg
+			scope.Regs = dwarfRegs
+			scope.Regs.CFA = cfa
+			scope.Regs.FrameBase = frameBase
+		}
+	}
 	stack.run()
 }
 
