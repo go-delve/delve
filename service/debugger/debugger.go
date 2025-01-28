@@ -1476,7 +1476,7 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 									fmt.Printf("error calling traverse on defer children\n")
 								}
 								for i := 0; i < len(deferchildren); i++ {
-									fmt.Printf("candidates for tracing %s\n", deferchildren[i])
+									//fmt.Printf("candidates for tracing %s\n", deferchildren[i])
 									err := createFnTracepoint(d, deferchildren[i], rootstr, followCalls)
 								if err != nil {
 									fmt.Printf("error creating tracepoint in function %s\n", deferchildren[i])
@@ -1514,10 +1514,10 @@ func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls i
 	d.UnlockTarget()
 
 	tbp, err1 := d.CreateBreakpoint(&api.Breakpoint{FunctionName: fname, Tracepoint: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
-	fmt.Printf("creating breakpoint for %s depth %d\n", fname, followCalls)
+	//fmt.Printf("creating breakpoint for %s depth %d\n", fname, followCalls)
 	if tbp == nil {
 		if err1 != nil && strings.Contains(err1.Error(), "Breakpoint exists") == true {
-			fmt.Printf("oops! breakpoint already exists at function %s\n", fname)
+	//		fmt.Printf("oops! breakpoint already exists at function %s\n", fname)
 		} else {
 			fmt.Printf("error creating breakpoint at function %s\n", fname)
 		}
@@ -1526,10 +1526,10 @@ func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls i
 	raddrs, _ := d.FunctionReturnLocations(fname)
 	for i := range raddrs {
 		rtbp, err := d.CreateBreakpoint(&api.Breakpoint{Addr: raddrs[i], TraceReturn: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
-		fmt.Printf("creating breakpoint for %s depth %d\n", fname, followCalls)
+	//	fmt.Printf("creating breakpoint for %s depth %d\n", fname, followCalls)
 		if rtbp == nil {
 			if err != nil && strings.Contains(err.Error(), "Breakpoint exists") == true {
-				fmt.Printf("oops! breakpoint already exists at function return %s\n", fname)
+	//			fmt.Printf("oops! breakpoint already exists at function return %s\n", fname)
 			} else {
 				fmt.Printf("error creating breakpoint at function return %s\n", fname)
 			}
