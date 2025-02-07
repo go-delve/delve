@@ -192,7 +192,14 @@ func FindFileLocation(p Process, filename string, lineno int) ([]uint64, error) 
 	}
 
 	if len(pcs) == 0 {
-		return nil, &ErrCouldNotFindLine{fileFound, filename, lineno}
+		stripped := false
+		for _, image := range bi.Images {
+			if image.Stripped() && image.symTable != nil && image.symTable.Files[filename] != nil {
+				stripped = true
+				break
+			}
+		}
+		return nil, &ErrCouldNotFindLine{fileFound, stripped, filename, lineno}
 	}
 
 	// 2. assign all occurrences of filename:lineno to their containing function
@@ -921,14 +928,20 @@ func (bi *BinaryInfo) PCToLine(pc uint64) (string, int, *Function) {
 }
 
 type ErrCouldNotFindLine struct {
-	fileFound bool
-	filename  string
-	lineno    int
+	fileFound, stripped bool
+	filename            string
+	lineno              int
 }
 
 func (err *ErrCouldNotFindLine) Error() string {
 	if err.fileFound {
+		if err.stripped {
+			return fmt.Sprintf("could not find statement at %s:%d, binary is stripped", err.filename, err.lineno)
+		}
 		return fmt.Sprintf("could not find statement at %s:%d, please use a line with a statement", err.filename, err.lineno)
+	}
+	if err.stripped {
+		return fmt.Sprintf("could not find file %s, binary is stripped", err.filename)
 	}
 	return fmt.Sprintf("could not find file %s", err.filename)
 }

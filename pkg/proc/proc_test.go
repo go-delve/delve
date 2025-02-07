@@ -2776,6 +2776,22 @@ func TestDebugStripped(t *testing.T) {
 	}
 	withTestProcessArgs("testnextprog", t, "", []string{}, protest.LinkStrip, func(p *proc.Target, grp *proc.TargetGroup, f protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
+
+		loc, err := proc.FindFunctionLocation(p, "main.main", 0)
+		assertNoError(err, t, "main.main")
+		filename, lineno, _ := p.BinInfo().PCToLine(loc[0])
+		_, err = proc.FindFileLocation(p, filename, lineno)
+		t.Logf("stripped breakpoint by line %s:%d: %v", filename, lineno, err)
+		if !strings.Contains(err.Error(), "binary is stripped") {
+			t.Errorf("wrong error, expected reference to binary being stripped")
+		}
+
+		_, err = proc.FindFunctionLocation(p, "main.main", 1)
+		t.Logf("stripped breakpoint by function and line main.main:1: %v", err)
+		if !strings.Contains(err.Error(), "binary is stripped") {
+			t.Errorf("wrong error, expected reference to binary being stripped")
+		}
+
 		assertNoError(grp.Continue(), t, "Continue")
 		assertCurrentLocationFunction(p, t, "main.main")
 		assertLineNumber(p, t, 37, "first continue")
