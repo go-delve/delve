@@ -16,8 +16,8 @@ import (
 	"runtime"
 	"slices"
 	"sort"
-	"strings"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -806,6 +806,136 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 	return createdBp, nil
 }
 
+// createInternalBreakpoint is the same as CreateBreakpoint except that it is called from only within the debugger process
+// when the lock is already been acquired so the step of acquiring and releasing the lock is skipped
+func (d *Debugger) createInternalBreakpoint(requestedBp *api.Breakpoint, locExpr string, substitutePathRules [][2]string, suspended bool) (*api.Breakpoint, error) {
+
+	var (
+		setbp proc.SetBreakpoint
+		err   error
+	)
+
+	if requestedBp.Name != "" {
+		if d.findBreakpointByName(requestedBp.Name) != nil {
+			return nil, errors.New("breakpoint name already exists")
+		}
+	}
+
+	if lbp := d.target.LogicalBreakpoints[requestedBp.ID]; lbp != nil {
+		abp := d.convertBreakpoint(lbp)
+		return abp, proc.BreakpointExistsError{File: lbp.File, Line: lbp.Line}
+	}
+
+	switch {
+	case requestedBp.TraceReturn:
+		if len(d.target.Targets()) != 1 {
+			return nil, ErrNotImplementedWithMultitarget
+		}
+		setbp.PidAddrs = []proc.PidAddr{{Pid: d.target.Selected.Pid(), Addr: requestedBp.Addr}}
+	case len(requestedBp.File) > 0:
+		fileName := requestedBp.File
+		if runtime.GOOS == "windows" {
+			// Accept fileName which is case-insensitive and slash-insensitive match
+			fileNameNormalized := strings.ToLower(filepath.ToSlash(fileName))
+			t := proc.ValidTargets{Group: d.target}
+		caseInsensitiveSearch:
+			for t.Next() {
+				for _, symFile := range t.BinInfo().Sources {
+					if fileNameNormalized == strings.ToLower(filepath.ToSlash(symFile)) {
+						fileName = symFile
+						break caseInsensitiveSearch
+					}
+				}
+			}
+		}
+		setbp.File = fileName
+		setbp.Line = requestedBp.Line
+	case len(requestedBp.FunctionName) > 0:
+		setbp.FunctionName = requestedBp.FunctionName
+		setbp.Line = requestedBp.Line
+	case len(requestedBp.Addrs) > 0:
+		setbp.PidAddrs = make([]proc.PidAddr, len(requestedBp.Addrs))
+		if len(d.target.Targets()) == 1 {
+			pid := d.target.Selected.Pid()
+			for i, addr := range requestedBp.Addrs {
+				setbp.PidAddrs[i] = proc.PidAddr{Pid: pid, Addr: addr}
+			}
+		} else {
+			if len(requestedBp.Addrs) != len(requestedBp.AddrPid) {
+				return nil, errors.New("mismatched length in addrs and addrpid")
+			}
+			for i, addr := range requestedBp.Addrs {
+				setbp.PidAddrs[i] = proc.PidAddr{Pid: requestedBp.AddrPid[i], Addr: addr}
+			}
+		}
+	default:
+		if requestedBp.Addr != 0 {
+			setbp.PidAddrs = []proc.PidAddr{{Pid: d.target.Selected.Pid(), Addr: requestedBp.Addr}}
+		}
+	}
+
+	if locExpr != "" {
+		loc, err := locspec.Parse(locExpr)
+		if err != nil {
+			return nil, err
+		}
+		setbp.Expr = func(t *proc.Target) []uint64 {
+			locs, _, err := loc.Find(t, d.processArgs, nil, locExpr, false, substitutePathRules)
+			if err != nil || len(locs) != 1 {
+				logflags.DebuggerLogger().Debugf("could not evaluate breakpoint expression %q: %v (number of results %d)", locExpr, err, len(locs))
+				return nil
+			}
+			return locs[0].PCs
+		}
+		setbp.ExprString = locExpr
+	}
+
+	id := requestedBp.ID
+
+	if id <= 0 {
+		d.breakpointIDCounter++
+		id = d.breakpointIDCounter
+	} else {
+		d.breakpointIDCounter = id
+	}
+
+	lbp := &proc.LogicalBreakpoint{LogicalID: id, HitCount: make(map[int64]uint64)}
+	d.target.LogicalBreakpoints[id] = lbp
+
+	err = d.copyLogicalBreakpointInfo(lbp, requestedBp)
+	if err != nil {
+		return nil, err
+	}
+
+	lbp.Set = setbp
+
+	if lbp.Set.Expr != nil {
+		addrs := lbp.Set.Expr(d.Target())
+		if len(addrs) > 0 {
+			f, l, fn := d.Target().BinInfo().PCToLine(addrs[0])
+			lbp.File = f
+			lbp.Line = l
+			if fn != nil {
+				lbp.FunctionName = fn.Name
+			}
+		}
+	}
+
+	err = d.target.SetBreakpointEnabled(lbp, true)
+	if err != nil {
+		if suspended {
+			logflags.DebuggerLogger().Debugf("could not enable new breakpoint: %v (breakpoint will be suspended)", err)
+		} else {
+			delete(d.target.LogicalBreakpoints, lbp.LogicalID)
+			return nil, err
+		}
+	}
+
+	createdBp := d.convertBreakpoint(lbp)
+	d.log.Infof("created breakpoint: %#v", createdBp)
+	return createdBp, nil
+}
+
 func (d *Debugger) convertBreakpoint(lbp *proc.LogicalBreakpoint) *api.Breakpoint {
 	abp := api.ConvertLogicalBreakpoint(lbp)
 	bps := []*proc.Breakpoint{}
@@ -1389,12 +1519,12 @@ func (d *Debugger) Functions(filter string, followCalls int) ([]string, error) {
 	return funcs, nil
 }
 
- type TraceFunc struct {
-                Func    *proc.Function
-                Depth   int
-                visited bool
-        }
-        type TraceFuncptr *TraceFunc
+type TraceFunc struct {
+	Func    *proc.Function
+	Depth   int
+	visited bool
+}
+type TraceFuncptr *TraceFunc
 
 func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int, rootstr string) ([]string, error) {
 
@@ -1460,29 +1590,28 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 								continue
 							}
 							name, _, value := t.Group.Selected.BinInfo().Arch.DwarfRegisterToString(i, reg)
-//`							fmt.Printf("%s = %s\n", name, value)
+							//`							fmt.Printf("%s = %s\n", name, value)
 							if name == "Rcx" {
 								addr, err := strconv.ParseUint(value, 0, 64)
 								if err != nil {
 									fmt.Printf("error parsing function address\n")
 								}
 								fn := t.Group.Selected.BinInfo().PCToFunc(addr)
-								err=createFnTracepoint(d, fn.Name, rootstr, followCalls)
+								err = createFnTracepoint(d, fn.Name, rootstr, followCalls)
 								if err != nil {
-									fmt.Printf("error creating tracepoint in function %s\n", fn.Name)
+									fmt.Printf("1469 error creating tracepoint in function %s\n", fn.Name)
 								}
 								deferchildren, err := d.traverse(t, fn, parent.Depth+1, followCalls, rootstr)
 								if err != nil {
 									fmt.Printf("error calling traverse on defer children\n")
 								}
 								for i := 0; i < len(deferchildren); i++ {
-									//fmt.Printf("candidates for tracing %s\n", deferchildren[i])
+									fmt.Printf("candidates for tracing %s\n", deferchildren[i])
 									err := createFnTracepoint(d, deferchildren[i], rootstr, followCalls)
-								if err != nil {
-									fmt.Printf("error creating tracepoint in function %s\n", deferchildren[i])
+									if err != nil {
+										fmt.Printf("1480 error creating tracepoint in function %s\n", deferchildren[i])
+									}
 								}
-								}
-
 
 							}
 						}
@@ -1513,11 +1642,11 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls int) error {
 	d.UnlockTarget()
 
-	tbp, err1 := d.CreateBreakpoint(&api.Breakpoint{FunctionName: fname, Tracepoint: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
+	tbp, err1 := d.createInternalBreakpoint(&api.Breakpoint{FunctionName: fname, Tracepoint: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
 	//fmt.Printf("creating breakpoint for %s depth %d\n", fname, followCalls)
 	if tbp == nil {
 		if err1 != nil && strings.Contains(err1.Error(), "Breakpoint exists") == true {
-	//		fmt.Printf("oops! breakpoint already exists at function %s\n", fname)
+			//		fmt.Printf("oops! breakpoint already exists at function %s\n", fname)
 		} else {
 			fmt.Printf("error creating breakpoint at function %s\n", fname)
 		}
@@ -1525,11 +1654,11 @@ func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls i
 
 	raddrs, _ := d.FunctionReturnLocations(fname)
 	for i := range raddrs {
-		rtbp, err := d.CreateBreakpoint(&api.Breakpoint{Addr: raddrs[i], TraceReturn: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
-	//	fmt.Printf("creating breakpoint for %s depth %d\n", fname, followCalls)
+		rtbp, err := d.createInternalBreakpoint(&api.Breakpoint{Addr: raddrs[i], TraceReturn: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
+		//	fmt.Printf("creating breakpoint for %s depth %d\n", fname, followCalls)
 		if rtbp == nil {
 			if err != nil && strings.Contains(err.Error(), "Breakpoint exists") == true {
-	//			fmt.Printf("oops! breakpoint already exists at function return %s\n", fname)
+				//			fmt.Printf("oops! breakpoint already exists at function return %s\n", fname)
 			} else {
 				fmt.Printf("error creating breakpoint at function return %s\n", fname)
 			}
@@ -1538,6 +1667,7 @@ func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls i
 	d.LockTarget()
 	return nil
 }
+
 // Types returns all type information in the binary.
 func (d *Debugger) Types(filter string) ([]string, error) {
 	d.targetMutex.Lock()
