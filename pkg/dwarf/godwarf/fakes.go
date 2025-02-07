@@ -53,3 +53,9 @@ func FakeBasicType(name string, bitSize int) Type {
 		panic("unsupported")
 	}
 }
+
+// FakePointerType synthesizes a pointer type
+func FakePointerType(typ Type, ptrSize int64) *PtrType {
+	typename := "*" + typ.Common().Name
+	return &PtrType{CommonType: CommonType{ByteSize: ptrSize, Name: typename}, Type: typ}
+}

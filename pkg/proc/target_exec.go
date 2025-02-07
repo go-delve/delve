@@ -1590,7 +1590,7 @@ type onNextGoroutineWalker struct {
 
 func (w *onNextGoroutineWalker) Visit(n ast.Node) ast.Visitor {
 	if binx, isbin := n.(*ast.BinaryExpr); isbin && binx.Op == token.EQL {
-		x := exprToString(binx.X)
+		x := astutil.ExprToString(binx.X)
 		if x == "runtime.curg.goid" || x == "runtime.threadid" {
 			w.ret, w.err = evalBreakpointCondition(w.tgt, w.thread, n.(ast.Expr))
 			return nil

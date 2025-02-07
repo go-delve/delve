@@ -1,18 +1,17 @@
 package evalop
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"go/ast"
 	"go/constant"
 	"go/parser"
-	"go/printer"
 	"go/scanner"
 	"go/token"
 	"strconv"
 	"strings"
 
+	"github.com/go-delve/delve/pkg/astutil"
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 )
@@ -447,7 +446,7 @@ func (ctx *compileCtx) compileTypeCast(node *ast.CallExpr, ambiguousErr error) e
 	// remove all enclosing parenthesis from the type name
 	fnnode = removeParen(fnnode)
 
-	targetTypeStr := exprToString(removeParen(node.Fun))
+	targetTypeStr := astutil.ExprToString(removeParen(node.Fun))
 	styp, err := ctx.FindTypeExpr(fnnode)
 	if err != nil {
 		switch targetTypeStr {
@@ -457,7 +456,7 @@ func (ctx *compileCtx) compileTypeCast(node *ast.CallExpr, ambiguousErr error) e
 			styp = godwarf.FakeSliceType(godwarf.FakeBasicType("int", 32))
 		default:
 			if ambiguousErr != nil && err == reader.ErrTypeNotFound {
-				return fmt.Errorf("could not evaluate function or type %s: %v", exprToString(node.Fun), ambiguousErr)
+				return fmt.Errorf("could not evaluate function or type %s: %v", astutil.ExprToString(node.Fun), ambiguousErr)
 			}
 			return err
 		}
@@ -622,7 +621,7 @@ func (ctx *compileCtx) compileFunctionCallNoPinning(node *ast.CallExpr, id int) 
 	for i, arg := range node.Args {
 		err := ctx.compileAST(arg)
 		if err != nil {
-			return fmt.Errorf("error evaluating %q as argument %d in function %s: %v", exprToString(arg), i+1, exprToString(node.Fun), err)
+			return fmt.Errorf("error evaluating %q as argument %d in function %s: %v", astutil.ExprToString(arg), i+1, astutil.ExprToString(node.Fun), err)
 		}
 		if isStringLiteral(arg) {
 			ctx.compileAllocLiteralString()
@@ -651,7 +650,7 @@ func (ctx *compileCtx) compileFunctionCallWithPinning(node *ast.CallExpr, id int
 			ctx.compileAllocLiteralString()
 		}
 		if err != nil {
-			return fmt.Errorf("error evaluating %q as argument %d in function %s: %v", exprToString(arg), i+1, exprToString(node.Fun), err)
+			return fmt.Errorf("error evaluating %q as argument %d in function %s: %v", astutil.ExprToString(arg), i+1, astutil.ExprToString(node.Fun), err)
 		}
 	}
 
@@ -724,10 +723,4 @@ func removeParen(n ast.Expr) ast.Expr {
 		n = p.X
 	}
 	return n
-}
-
-func exprToString(t ast.Expr) string {
-	var buf bytes.Buffer
-	printer.Fprint(&buf, token.NewFileSet(), t)
-	return buf.String()
 }

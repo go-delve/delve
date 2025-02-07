@@ -3,7 +3,9 @@
 package astutil
 
 import (
+	"bytes"
 	"go/ast"
+	"go/printer"
 	"go/token"
 	"strconv"
 )
@@ -42,4 +44,11 @@ func Or(x, y ast.Expr) ast.Expr {
 		return nil
 	}
 	return &ast.BinaryExpr{Op: token.LOR, X: x, Y: y}
+}
+
+// ExprToString uses go/printer to format an ast.Expr into a string.
+func ExprToString(t ast.Expr) string {
+	var buf bytes.Buffer
+	printer.Fprint(&buf, token.NewFileSet(), t)
+	return buf.String()
 }

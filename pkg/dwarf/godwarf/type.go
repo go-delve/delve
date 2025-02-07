@@ -1101,3 +1101,17 @@ func zeroArray(t Type) {
 		t = at.Type
 	}
 }
+
+// ResolveTypedef returns the underlying type of a typedef or qualified type.
+func ResolveTypedef(typ Type) Type {
+	for {
+		switch tt := typ.(type) {
+		case *TypedefType:
+			typ = tt.Type
+		case *QualType:
+			typ = tt.Type
+		default:
+			return typ
+		}
+	}
+}

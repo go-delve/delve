@@ -18,7 +18,7 @@ type mapIterator interface {
 func (v *Variable) mapIterator(maxNumBuckets uint64) mapIterator {
 	mt := v.RealType.(*godwarf.MapType)
 	sv := v.clone()
-	sv.RealType = resolveTypedef(&(sv.RealType.(*godwarf.MapType).TypedefType))
+	sv.RealType = godwarf.ResolveTypedef(&(sv.RealType.(*godwarf.MapType).TypedefType))
 	sv = sv.maybeDereference()
 	v.Base = sv.Addr
 
@@ -383,7 +383,7 @@ func (it *mapIteratorSwiss) loadTypes() {
 						it.groupsFieldData = field
 						typ, ok := field.Type.(*godwarf.PtrType)
 						if ok {
-							it.groupType, _ = resolveTypedef(typ.Type).(*godwarf.StructType)
+							it.groupType, _ = godwarf.ResolveTypedef(typ.Type).(*godwarf.StructType)
 						}
 					case "lengthMask":
 						it.groupsFieldLengthMask = field
@@ -409,7 +409,7 @@ func (it *mapIteratorSwiss) loadTypes() {
 		return
 	}
 
-	slotsType, ok := resolveTypedef(it.groupFieldSlots.Type).(*godwarf.ArrayType)
+	slotsType, ok := godwarf.ResolveTypedef(it.groupFieldSlots.Type).(*godwarf.ArrayType)
 	if !ok {
 		it.v.Unreadable = errSwissMapBadGroupTypeErr
 		return
