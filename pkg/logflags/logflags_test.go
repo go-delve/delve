@@ -3,11 +3,13 @@ package logflags
 import (
 	"bytes"
 	"io"
-	"reflect"
+	"log/slog"
 	"testing"
-
-	"github.com/sirupsen/logrus"
 )
+
+type dummyLogger struct {
+	Logger
+}
 
 func TestMakeLogger_usingLoggerFactory(t *testing.T) {
 	if loggerFactory != nil {
@@ -24,7 +26,7 @@ func TestMakeLogger_usingLoggerFactory(t *testing.T) {
 		logOut = nil
 	}()
 
-	expectedLogger := &logrusLogger{}
+	expectedLogger := &dummyLogger{}
 	SetLoggerFactory(func(flag bool, fields Fields, out io.Writer) Logger {
 		if flag != true {
 			t.Fatalf("expected flag to be <%v>; but was <%v>", true, flag)
@@ -38,7 +40,7 @@ func TestMakeLogger_usingLoggerFactory(t *testing.T) {
 		return expectedLogger
 	})
 
-	actual := makeLogger(true, Fields{"foo": "bar"})
+	actual := makeLogger(true, "foo", "bar")
 	if actual != expectedLogger {
 		t.Fatalf("expected actual to <%v>; but was <%v>", expectedLogger, actual)
 	}
@@ -56,23 +58,24 @@ func TestMakeLogger_usingDefaultBehavior(t *testing.T) {
 		logOut = nil
 	}()
 
-	actual := makeLogger(false, Fields{"foo": "bar"})
+	actual := makeLogger(false, "foo", "bar")
 
-	actualEntry, expectedType := actual.(*logrusLogger)
+	actualEntry, expectedType := actual.(slogLogger)
 	if !expectedType {
-		t.Fatalf("expected actual to be of type <%v>; but was <%v>", reflect.TypeOf((*logrus.Entry)(nil)), reflect.TypeOf(actualEntry))
+		t.Fatalf("expected actual to be of type slogLogger; but was %T", actual)
 	}
-	if actualEntry.Entry.Logger.Level != logrus.ErrorLevel {
-		t.Fatalf("expected actualEntry.Entry.Logger.Level to be <%v>; but was <%v>", logrus.ErrorLevel, actualEntry.Logger.Level)
+	h, ok := actualEntry.s.Handler().(*textHandler)
+	if !ok {
+		t.Fatalf("expected handler to be *textHandler; but was %T", actualEntry.s.Handler())
 	}
-	if actualEntry.Entry.Logger.Out != logOut {
-		t.Fatalf("expected actualEntry.Entry.Logger.Out to be <%v>; but was <%v>", logOut, actualEntry.Logger.Out)
+	if lvl := h.opts.Level.Level(); lvl != slog.LevelError {
+		t.Fatalf("expected level to be <%v>; but was <%v>", slog.LevelError, lvl)
 	}
-	if actualEntry.Entry.Logger.Formatter != textFormatterInstance {
-		t.Fatalf("expected actualEntry.Entry.Logger.Formatter to be <%v>; but was <%v>", textFormatterInstance, actualEntry.Logger.Formatter)
+	if h.out != logOut {
+		t.Fatalf("expected output to be <%v>; but was <%v>", logOut, h.out)
 	}
-	if len(actualEntry.Entry.Data) != 1 || actualEntry.Entry.Data["foo"] != "bar" {
-		t.Fatalf("expected actualEntry.Entry.Data to be {'foo':'bar'}; but was <%v>", actualEntry.Data)
+	if len(h.attrs) != 1 || h.attrs[0].Key != "foo" || h.attrs[0].Value.String() != "bar" {
+		t.Fatalf("expected attributes to be {'foo':'bar'}; but was <%v>", h.attrs)
 	}
 }
 
@@ -88,23 +91,24 @@ func TestMakeLogger_usingDefaultBehaviorAndFlagged(t *testing.T) {
 		logOut = nil
 	}()
 
-	actual := makeLogger(true, Fields{"foo": "bar"})
+	actual := makeLogger(true, "foo", "bar")
 
-	actualEntry, expectedType := actual.(*logrusLogger)
+	actualEntry, expectedType := actual.(slogLogger)
 	if !expectedType {
-		t.Fatalf("expected actual to be of type <%v>; but was <%v>", reflect.TypeOf((*logrus.Entry)(nil)), reflect.TypeOf(actualEntry))
+		t.Fatalf("expected actual to be of type slogLogger; but was %T", actual)
 	}
-	if actualEntry.Entry.Logger.Level != logrus.DebugLevel {
-		t.Fatalf("expected actualEntry.Entry.Logger.Level to be <%v>; but was <%v>", logrus.DebugLevel, actualEntry.Logger.Level)
+	h, ok := actualEntry.s.Handler().(*textHandler)
+	if !ok {
+		t.Fatalf("expected actualEntry.Entry.Logger.Formatter to be *textHandler; but was %T", actualEntry.s.Handler())
 	}
-	if actualEntry.Entry.Logger.Out != logOut {
-		t.Fatalf("expected actualEntry.Entry.Logger.Out to be <%v>; but was <%v>", logOut, actualEntry.Logger.Out)
+	if lvl := h.opts.Level.Level(); lvl != slog.LevelDebug {
+		t.Fatalf("expected actualEntry.Entry.Logger.Level to be <%v>; but was <%v>", slog.LevelError, lvl)
 	}
-	if actualEntry.Entry.Logger.Formatter != textFormatterInstance {
-		t.Fatalf("expected actualEntry.Entry.Logger.Formatter to be <%v>; but was <%v>", textFormatterInstance, actualEntry.Logger.Formatter)
+	if h.out != logOut {
+		t.Fatalf("expected actualEntry.Entry.Logger.Out to be <%v>; but was <%v>", logOut, h.out)
 	}
-	if len(actualEntry.Entry.Data) != 1 || actualEntry.Entry.Data["foo"] != "bar" {
-		t.Fatalf("expected actualEntry.Entry.Data to be {'foo':'bar'}; but was <%v>", actualEntry.Data)
+	if len(h.attrs) != 1 || h.attrs[0].Key != "foo" || h.attrs[0].Value.String() != "bar" {
+		t.Fatalf("expected actualEntry.Entry.Data to be {'foo':'bar'}; but was <%v>", h.attrs)
 	}
 }
 
