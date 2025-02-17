@@ -977,6 +977,8 @@ func waitForDisconnectSignal(disconnectChan chan struct{}) {
 		// On windows Ctrl-C sent to inferior process is delivered
 		// as SIGINT to delve. Ignore it instead of stopping the server
 		// in order to be able to debug signal handlers.
+
+		//TODO: One should be notified by the debugger here if the debuggee process exited and if it did, this should start capturing signals
 		go func() {
 			for range ch {
 			}
