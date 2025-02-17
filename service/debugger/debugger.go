@@ -18,7 +18,10 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
+
+	"github.com/snabb/tcxpgrp"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/gobuild"
@@ -1205,6 +1208,16 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 
 	if err != nil {
 		var errProcessExited proc.ErrProcessExited
+
+		// Process exited so we should "re-foreground" the main process, so that it can capture interrupts
+		if errors.As(err, &errProcessExited) && !tcxpgrp.IsForeground() {
+			pgid := syscall.Getpgrp()
+
+			if err := tcxpgrp.TcSetpgrp(int(os.Stdin.Fd()), pgid); err != nil {
+				d.log.Debug(temp_err)
+			}
+		}
+
 		if errors.As(err, &errProcessExited) && command.Name != api.SwitchGoroutine && command.Name != api.SwitchThread {
 			state := &api.DebuggerState{}
 			state.Pid = d.target.Selected.Pid()
@@ -1231,6 +1244,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 	}
 
 	d.maybePrintUnattendedStopWarning(d.target.Selected.StopReason, state.CurrentThread, clientStatusCh)
+
 	return state, err
 }
 

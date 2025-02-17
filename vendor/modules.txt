@@ -54,6 +54,9 @@ github.com/russross/blackfriday/v2
 # github.com/sirupsen/logrus v1.9.3
 ## explicit; go 1.13
 github.com/sirupsen/logrus
+# github.com/snabb/tcxpgrp v1.0.4
+## explicit; go 1.17
+github.com/snabb/tcxpgrp
 # github.com/spf13/cobra v1.7.0
 ## explicit; go 1.15
 github.com/spf13/cobra
