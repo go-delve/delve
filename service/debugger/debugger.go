@@ -1214,7 +1214,7 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 			pgid := syscall.Getpgrp()
 
 			if err := tcxpgrp.TcSetpgrp(int(os.Stdin.Fd()), pgid); err != nil {
-				d.log.Debug(temp_err)
+				d.log.Debug(err)
 			}
 		}
 
