@@ -2,7 +2,7 @@ env:
   GOFLAGS: -mod=vendor
 
 freebsd_instance:
-  image_family: freebsd-13-3
+  image_family: freebsd-14-2
 
 test_task:
   install_script: pkg install -y go gcc git
