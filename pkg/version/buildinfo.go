@@ -2,18 +2,13 @@ package version
 
 import (
 	"bytes"
+	"fmt"
 	"runtime/debug"
-	"text/template"
 )
 
 func init() {
 	buildInfo = moduleBuildInfo
 }
-
-var buildInfoTmpl = ` mod	{{.Main.Path}}	{{.Main.Version}}	{{.Main.Sum}}
-{{range .Deps}} dep	{{.Path}}	{{.Version}}	{{.Sum}}{{if .Replace}}
-	=> {{.Replace.Path}}	{{.Replace.Version}}	{{.Replace.Sum}}{{end}}
-{{end}}`
 
 func moduleBuildInfo() string {
 	info, ok := debug.ReadBuildInfo()
@@ -22,9 +17,13 @@ func moduleBuildInfo() string {
 	}
 
 	buf := new(bytes.Buffer)
-	err := template.Must(template.New("buildinfo").Parse(buildInfoTmpl)).Execute(buf, info)
-	if err != nil {
-		panic(err)
+	fmt.Fprintf(buf, " mod\t%s\t%s\t%s\n", info.Main.Path, info.Main.Version, info.Main.Sum)
+	for _, dep := range info.Deps {
+		fmt.Fprintf(buf, " dep\t%s\t%s\t%s", dep.Path, dep.Version, dep.Sum)
+		if dep.Replace != nil {
+			fmt.Fprintf(buf, "\t=> %s\t%s\t%s", dep.Replace.Path, dep.Replace.Version, dep.Replace.Sum)
+		}
+		fmt.Fprintf(buf, "\n")
 	}
 	return buf.String()
 }

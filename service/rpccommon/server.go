@@ -14,8 +14,6 @@ import (
 	"reflect"
 	"runtime"
 	"sync"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/version"
@@ -26,6 +24,8 @@ import (
 	"github.com/go-delve/delve/service/internal/sameuser"
 	"github.com/go-delve/delve/service/rpc2"
 )
+
+//go:generate go run ../../_scripts/gen-suitablemethods.go suitablemethods
 
 // ServerImpl implements a JSON-RPC server that can switch between two
 // versions of the API.
@@ -62,8 +62,7 @@ type RPCServer struct {
 }
 
 type methodType struct {
-	method      reflect.Method
-	Rcvr        reflect.Value
+	method      reflect.Value
 	ArgType     reflect.Type
 	ReplyType   reflect.Type
 	Synchronous bool
@@ -128,8 +127,10 @@ func (s *ServerImpl) Run() error {
 	s.methodMaps = make([]map[string]*methodType, 2)
 
 	s.methodMaps[1] = map[string]*methodType{}
-	suitableMethods(s.s2, s.methodMaps[1], s.log)
-	suitableMethods(rpcServer, s.methodMaps[1], s.log)
+
+	suitableMethods2(s.s2, s.methodMaps[1])
+	suitableMethodsCommon(rpcServer, s.methodMaps[1])
+	finishMethodsMapInit(s.methodMaps[1])
 
 	go func() {
 		defer s.listener.Close()
@@ -183,92 +184,15 @@ func (s *ServerImpl) serveConnectionDemux(c io.ReadWriteCloser) {
 	}
 }
 
-// Precompute the reflect type for error.  Can't use error directly
-// because Typeof takes an empty interface value.  This is annoying.
-var typeOfError = reflect.TypeOf((*error)(nil)).Elem()
-
-// Is this an exported - upper case - name?
-func isExported(name string) bool {
-	ch, _ := utf8.DecodeRuneInString(name)
-	return unicode.IsUpper(ch)
-}
-
-// Is this type exported or a builtin?
-func isExportedOrBuiltinType(t reflect.Type) bool {
-	for t.Kind() == reflect.Ptr {
-		t = t.Elem()
-	}
-	// PkgPath will be non-empty even for an exported type,
-	// so we need to check the type name as well.
-	return isExported(t.Name()) || t.PkgPath() == ""
-}
-
-// Fills methods map with the methods of receiver that should be made
-// available through the RPC interface.
-// These are all the public methods of rcvr that have one of those
-// two signatures:
-//
-//	func (rcvr ReceiverType) Method(in InputType, out *ReplyType) error
-//	func (rcvr ReceiverType) Method(in InputType, cb service.RPCCallback)
-func suitableMethods(rcvr interface{}, methods map[string]*methodType, log logflags.Logger) {
-	typ := reflect.TypeOf(rcvr)
-	rcvrv := reflect.ValueOf(rcvr)
-	sname := reflect.Indirect(rcvrv).Type().Name()
-	if sname == "" {
-		log.Debugf("rpc.Register: no service name for type %s", typ)
-		return
-	}
-	for m := 0; m < typ.NumMethod(); m++ {
-		method := typ.Method(m)
-		mname := method.Name
-		mtype := method.Type
-		// method must be exported
-		if method.PkgPath != "" {
-			continue
+func finishMethodsMapInit(methods map[string]*methodType) {
+	for name, method := range methods {
+		mtype := method.method.Type()
+		if mtype.NumIn() != 2 {
+			panic(fmt.Errorf("wrong number of inputs for method %s (%d)", name, mtype.NumIn()))
 		}
-		// Method needs three ins: (receive, *args, *reply) or (receiver, *args, *RPCCallback)
-		if mtype.NumIn() != 3 {
-			log.Warn("method", mname, "has wrong number of ins:", mtype.NumIn())
-			continue
-		}
-		// First arg need not be a pointer.
-		argType := mtype.In(1)
-		if !isExportedOrBuiltinType(argType) {
-			log.Warn(mname, "argument type not exported:", argType)
-			continue
-		}
-
-		replyType := mtype.In(2)
-		synchronous := replyType.String() != "service.RPCCallback"
-
-		if synchronous {
-			// Second arg must be a pointer.
-			if replyType.Kind() != reflect.Ptr {
-				log.Warn("method", mname, "reply type not a pointer:", replyType)
-				continue
-			}
-			// Reply type must be exported.
-			if !isExportedOrBuiltinType(replyType) {
-				log.Warn("method", mname, "reply type not exported:", replyType)
-				continue
-			}
-
-			// Method needs one out.
-			if mtype.NumOut() != 1 {
-				log.Warn("method", mname, "has wrong number of outs:", mtype.NumOut())
-				continue
-			}
-			// The return type of the method must be error.
-			if returnType := mtype.Out(0); returnType != typeOfError {
-				log.Warn("method", mname, "returns", returnType.String(), "not error")
-				continue
-			}
-		} else if mtype.NumOut() != 0 {
-			// Method needs zero outs.
-			log.Warn("method", mname, "has wrong number of outs:", mtype.NumOut())
-			continue
-		}
-		methods[sname+"."+mname] = &methodType{method: method, ArgType: argType, ReplyType: replyType, Synchronous: synchronous, Rcvr: rcvrv}
+		method.ArgType = mtype.In(0)
+		method.ReplyType = mtype.In(1)
+		method.Synchronous = method.ReplyType.String() != "service.RPCCallback"
 	}
 }
 
@@ -326,7 +250,7 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 				s.log.Debugf("<- %s(%T%s)", req.ServiceMethod, argv.Interface(), argvbytes)
 			}
 			replyv = reflect.New(mtype.ReplyType.Elem())
-			function := mtype.method.Func
+			function := mtype.method
 			var returnValues []reflect.Value
 			var errInter interface{}
 			func() {
@@ -335,7 +259,7 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 						errInter = newInternalError(ierr, 2)
 					}
 				}()
-				returnValues = function.Call([]reflect.Value{mtype.Rcvr, argv, replyv})
+				returnValues = function.Call([]reflect.Value{argv, replyv})
 				errInter = returnValues[0].Interface()
 			}()
 
@@ -358,7 +282,7 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 				argvbytes, _ := json.Marshal(argv.Interface())
 				s.log.Debugf("(async %d) <- %s(%T%s)", req.Seq, req.ServiceMethod, argv.Interface(), argvbytes)
 			}
-			function := mtype.method.Func
+			function := mtype.method
 			ctl := &RPCCallback{s, sending, codec, req, make(chan struct{}), clientDisconnectChan}
 			go func() {
 				defer func() {
@@ -366,7 +290,7 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 						ctl.Return(nil, newInternalError(ierr, 2))
 					}
 				}()
-				function.Call([]reflect.Value{mtype.Rcvr, argv, reflect.ValueOf(ctl)})
+				function.Call([]reflect.Value{argv, reflect.ValueOf(ctl)})
 			}()
 			<-ctl.setupDone
 		}
