@@ -4,8 +4,8 @@ import (
 	"os"
 
 	"github.com/go-delve/delve/cmd/dlv/cmds"
+	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/version"
-	"github.com/sirupsen/logrus"
 	"golang.org/x/telemetry"
 )
 
@@ -25,7 +25,7 @@ func main() {
 	if os.Getenv(cgoCflagsEnv) == "" {
 		os.Setenv(cgoCflagsEnv, "-O0 -g")
 	} else {
-		logrus.WithFields(logrus.Fields{"layer": "dlv"}).Warnln("CGO_CFLAGS already set, Cgo code could be optimized.")
+		logflags.WriteCgoFlagsWarning()
 	}
 
 	cmds.New(false).Execute()

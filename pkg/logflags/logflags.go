@@ -2,18 +2,18 @@ package logflags
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/sirupsen/logrus"
 )
 
 var any = false
@@ -29,20 +29,25 @@ var stack = false
 
 var logOut io.WriteCloser
 
-func makeLogger(flag bool, fields Fields) Logger {
+func makeLogger(flag bool, attrs ...interface{}) Logger {
 	if lf := loggerFactory; lf != nil {
+		fields := make(Fields)
+		for i := 0; i < len(attrs); i += 2 {
+			fields[attrs[i].(string)] = attrs[i+1]
+		}
 		return lf(flag, fields, logOut)
 	}
-	logger := logrus.New().WithFields(logrus.Fields(fields))
-	logger.Logger.Formatter = DefaultFormatter()
+
+	var out io.WriteCloser = os.Stderr
 	if logOut != nil {
-		logger.Logger.Out = logOut
+		out = logOut
 	}
-	logger.Logger.Level = logrus.ErrorLevel
+	level := slog.LevelError
 	if flag {
-		logger.Logger.Level = logrus.DebugLevel
+		level = slog.LevelDebug
 	}
-	return &logrusLogger{logger}
+	logger := slog.New(newTextHandler(out, &slog.HandlerOptions{Level: level})).With(attrs...)
+	return slogLogger{logger}
 }
 
 // Any returns true if any logging is enabled.
@@ -58,7 +63,7 @@ func GdbWire() bool {
 
 // GdbWireLogger returns a configured logger for the gdbserial wire protocol.
 func GdbWireLogger() Logger {
-	return makeLogger(gdbWire, Fields{"layer": "gdbconn"})
+	return makeLogger(gdbWire, "layer", "gdbconn")
 }
 
 // Debugger returns true if the debugger package should log.
@@ -68,7 +73,7 @@ func Debugger() bool {
 
 // DebuggerLogger returns a logger for the debugger package.
 func DebuggerLogger() Logger {
-	return makeLogger(debugger, Fields{"layer": "debugger"})
+	return makeLogger(debugger, "layer", "debugger")
 }
 
 // LLDBServerOutput returns true if the output of the LLDB server should be
@@ -85,7 +90,7 @@ func DebugLineErrors() bool {
 
 // DebugLineLogger returns a logger for the dwarf/line package.
 func DebugLineLogger() Logger {
-	return makeLogger(debugLineErrors, Fields{"layer": "dwarf-line"})
+	return makeLogger(debugLineErrors, "layer", "dwarf-line")
 }
 
 // RPC returns true if RPC messages should be logged.
@@ -100,7 +105,7 @@ func RPCLogger() Logger {
 
 // rpcLogger returns a logger for RPC messages set to a specific minimal log level.
 func rpcLogger(flag bool) Logger {
-	return makeLogger(flag, Fields{"layer": "rpc"})
+	return makeLogger(flag, "layer", "rpc")
 }
 
 // DAP returns true if dap package should log.
@@ -110,7 +115,7 @@ func DAP() bool {
 
 // DAPLogger returns a logger for dap package.
 func DAPLogger() Logger {
-	return makeLogger(dap, Fields{"layer": "dap"})
+	return makeLogger(dap, "layer", "dap")
 }
 
 // FnCall returns true if the function call protocol should be logged.
@@ -119,7 +124,7 @@ func FnCall() bool {
 }
 
 func FnCallLogger() Logger {
-	return makeLogger(fnCall, Fields{"layer": "proc", "kind": "fncall"})
+	return makeLogger(fnCall, "layer", "proc", "kind", "fncall")
 }
 
 // Minidump returns true if the minidump loader should be logged.
@@ -128,7 +133,7 @@ func Minidump() bool {
 }
 
 func MinidumpLogger() Logger {
-	return makeLogger(minidump, Fields{"layer": "core", "kind": "minidump"})
+	return makeLogger(minidump, "layer", "core", "kind", "minidump")
 }
 
 // Stack returns true if the stacktracer should be logged.
@@ -137,7 +142,7 @@ func Stack() bool {
 }
 
 func StackLogger() Logger {
-	return makeLogger(stack, Fields{"layer": "core", "kind": "stack"})
+	return makeLogger(stack, "layer", "core", "kind", "stack")
 }
 
 // WriteDAPListeningMessage writes the "DAP server listening" message in dap mode.
@@ -162,7 +167,7 @@ func writeListeningMessage(server string, addr net.Addr) {
 		return
 	}
 	logger := rpcLogger(true)
-	logger.Warn("Listening for remote connections (connections are not authenticated nor encrypted)")
+	logger.Warnf("Listening for remote connections (connections are not authenticated nor encrypted)")
 }
 
 func WriteError(msg string) {
@@ -171,6 +176,10 @@ func WriteError(msg string) {
 	} else {
 		fmt.Fprintln(os.Stderr, msg)
 	}
+}
+
+func WriteCgoFlagsWarning() {
+	makeLogger(true, "layer", "dlv").Warn("CGO_CFLAGS already set, Cgo code could be optimized.")
 }
 
 var errLogstrWithoutLog = errors.New("--log-output specified without --log")
@@ -240,59 +249,91 @@ func Close() {
 	}
 }
 
-// DefaultFormatter provides a simplified version of logrus.TextFormatter that
-// doesn't make logs unreadable when they are output to a text file or to a
-// terminal that doesn't support colors.
-func DefaultFormatter() logrus.Formatter {
-	return textFormatterInstance
+type textHandler struct {
+	out               io.WriteCloser
+	opts              slog.HandlerOptions
+	attrs             []slog.Attr
+	preformattedAttrs string // preformatted version of attrs for optimization purposes
 }
 
-type textFormatter struct{}
-
-var textFormatterInstance = &textFormatter{}
-
-func (f *textFormatter) Format(entry *logrus.Entry) ([]byte, error) {
-	var b *bytes.Buffer
-	if entry.Buffer != nil {
-		b = entry.Buffer
-	} else {
-		b = &bytes.Buffer{}
+func newTextHandler(out io.WriteCloser, opts *slog.HandlerOptions) *textHandler {
+	return &textHandler{
+		out:  out,
+		opts: *opts,
 	}
+}
 
-	keys := make([]string, 0, len(entry.Data))
-	for k := range entry.Data {
-		keys = append(keys, k)
+func (h *textHandler) Enabled(_ context.Context, l slog.Level) bool {
+	return l >= h.opts.Level.Level()
+}
+
+func (h *textHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	h2 := *h
+	h2.attrs = append(h2.attrs, attrs...)
+	m := map[string]slog.Value{}
+	keys := []string{}
+	for i := range attrs {
+		m[attrs[i].Key] = attrs[i].Value
+		keys = append(keys, attrs[i].Key)
 	}
 	sort.Strings(keys)
+	b := new(bytes.Buffer)
+	for _, key := range keys {
+		appendAttr(b, key, m[key])
+	}
+	b.Truncate(b.Len() - 1)
+	h2.preformattedAttrs = b.String()
+	return &h2
+}
+
+func appendAttr(b *bytes.Buffer, key string, val slog.Value) {
+	b.WriteString(key)
+	b.WriteByte('=')
+	stringVal := val.String()
+	if needsQuoting(stringVal) {
+		fmt.Fprintf(b, "%q", stringVal)
+	} else {
+		b.WriteString(stringVal)
+	}
+	b.WriteByte(',')
+}
+
+func (h *textHandler) WithGroup(group string) slog.Handler {
+	// group not handled
+	return h
+}
+
+func (h *textHandler) Handle(_ context.Context, entry slog.Record) error {
+	b := &bytes.Buffer{}
 
 	b.WriteString(entry.Time.Format(time.RFC3339))
 	b.WriteByte(' ')
-	b.WriteString(entry.Level.String())
+	b.WriteString(strings.ToLower(entry.Level.String()))
 	b.WriteByte(' ')
-	for i, key := range keys {
-		b.WriteString(key)
-		b.WriteByte('=')
-		stringVal, ok := entry.Data[key].(string)
-		if !ok {
-			stringVal = fmt.Sprint(entry.Data[key])
-		}
-		if f.needsQuoting(stringVal) {
-			fmt.Fprintf(b, "%q", stringVal)
-		} else {
-			b.WriteString(stringVal)
-		}
-		if i != len(keys)-1 {
-			b.WriteByte(',')
-		} else {
+	b.WriteString(h.preformattedAttrs)
+
+	if entry.NumAttrs() > 0 {
+		if len(h.preformattedAttrs) > 0 {
 			b.WriteByte(' ')
 		}
+		entry.Attrs(func(attr slog.Attr) bool {
+			appendAttr(b, attr.Key, attr.Value)
+			return true
+		})
+		b.Truncate(b.Len() - 1)
 	}
+
+	if len(h.preformattedAttrs) > 0 || entry.NumAttrs() > 0 {
+		b.WriteByte(' ')
+	}
+
 	b.WriteString(entry.Message)
 	b.WriteByte('\n')
-	return b.Bytes(), nil
+	_, err := h.out.Write(b.Bytes())
+	return err
 }
 
-func (f *textFormatter) needsQuoting(text string) bool {
+func needsQuoting(text string) bool {
 	for _, ch := range text {
 		if !((ch >= 'a' && ch <= 'z') ||
 			(ch >= 'A' && ch <= 'Z') ||
