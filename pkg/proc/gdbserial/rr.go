@@ -12,6 +12,8 @@ import (
 	"syscall"
 
 	"github.com/go-delve/delve/pkg/config"
+	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
 )
 
@@ -140,6 +142,8 @@ func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string,
 		return nil, err
 	}
 
+	rrVersion := getRRVersion()
+
 	args := []string{
 		"replay",
 		"--dbgport=0",
@@ -175,6 +179,7 @@ func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string,
 	p := newProcess(rrcmd.Process)
 	p.tracedir = tracedir
 	p.conn.useXcmd = true // 'rr' does not support the 'M' command which is what we would usually use to write memory, this is only important during function calls, in any other situation writing memory will fail anyway.
+	p.conn.newRRCmdStyle = rrVersion.AfterOrEqual(goversion.GoVersion{Major: 5, Minor: 8, Rev: 0})
 	if deleteOnDetach {
 		p.onDetach = func() {
 			safeRemoveAll(p.tracedir)
@@ -334,4 +339,31 @@ func safeRemoveAll(dir string) {
 		}
 	}
 	os.Remove(dir)
+}
+
+func getRRVersion() goversion.GoVersion {
+	const rrVersionStringPrefix = "rr version "
+	buf, err := exec.Command("rr", "--version").CombinedOutput()
+	if err != nil {
+		return goversion.GoVersion{}
+	}
+	rest, ok := strings.CutPrefix(string(buf), rrVersionStringPrefix)
+	if !ok {
+		logflags.GdbWireLogger().Errorf("error reading rr version, prefix not found in %q", string(buf))
+		return goversion.GoVersion{}
+	}
+	rest = strings.TrimSpace(rest)
+	v := strings.Split(rest, ".")
+	if len(v) < 3 {
+		logflags.GdbWireLogger().Errorf("error reading rr version, not long enough %q", string(buf))
+		return goversion.GoVersion{}
+	}
+	major, majorerr := strconv.Atoi(v[0])
+	minor, minorerr := strconv.Atoi(v[1])
+	patch, patcherr := strconv.Atoi(v[2])
+	if majorerr != nil || minorerr != nil || patcherr != nil {
+		logflags.GdbWireLogger().Errorf("error reading rr version %v %v %v", majorerr, minorerr, patcherr)
+		return goversion.GoVersion{}
+	}
+	return goversion.GoVersion{Major: major, Minor: minor, Rev: patch}
 }
