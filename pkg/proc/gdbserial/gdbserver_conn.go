@@ -47,7 +47,8 @@ type gdbConn struct {
 	goarch                string
 	goos                  string
 
-	useXcmd bool // forces writeMemory to use the 'X' command
+	useXcmd       bool // forces writeMemory to use the 'X' command
+	newRRCmdStyle bool // forces qRRCmd to use the post-5.8.0 style always
 
 	log logflags.Logger
 }
@@ -1194,7 +1195,7 @@ func (conn *gdbConn) qRRCmd(args ...string) (string, error) {
 	fmt.Fprint(&conn.outbuf, "$qRRCmd")
 	for i, arg := range args {
 		fmt.Fprint(&conn.outbuf, ":")
-		if i == 0 && conn.threadSuffixSupported {
+		if i == 0 && (conn.newRRCmdStyle || conn.threadSuffixSupported) {
 			// newer versions of RR require the command to be followed by a thread id
 			// and the command name to be unescaped.
 			fmt.Fprintf(&conn.outbuf, "%s:-1", arg)
