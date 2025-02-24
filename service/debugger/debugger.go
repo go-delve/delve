@@ -1577,6 +1577,10 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 					}
 					deferbrklet := deferbp.Breaklets[len(deferbp.Breaklets)-1]
 					deferbrklet.Callback = func(th proc.Thread, _ *proc.Target) (bool, error) {
+						fmt.Printf("parent depth inside callback %d followCalls %d\n", parent.Depth, followCalls)
+						if parent.Depth+1 > followCalls {
+							return false, nil
+						}
 						regs, err := th.Registers()
 						if err != nil {
 							fmt.Printf("registers inside callback returned err\n")
@@ -1601,7 +1605,7 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 								if err != nil {
 									fmt.Printf("1469 error creating tracepoint in function %s\n", fn.Name)
 								}
-								deferchildren, err := d.traverse(t, fn, parent.Depth+1, followCalls, rootstr)
+								deferchildren, err := d.traverse(t, fn, parent.Depth+2, followCalls, rootstr)
 								if err != nil {
 									fmt.Printf("error calling traverse on defer children\n")
 								}
