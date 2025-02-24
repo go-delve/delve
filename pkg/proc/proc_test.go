@@ -98,6 +98,17 @@ func withTestProcessArgs(name string, t testing.TB, wd string, args []string, bu
 		buildFlags |= protest.BuildModePIE
 	}
 	fixture := protest.BuildFixture(name, buildFlags)
+
+	grp := startTestProcessArgs(fixture, t, wd, args)
+
+	defer func() {
+		grp.Detach(true)
+	}()
+
+	fn(grp.Selected, grp, fixture)
+}
+
+func startTestProcessArgs(fixture protest.Fixture, t testing.TB, wd string, args []string) *proc.TargetGroup {
 	var grp *proc.TargetGroup
 	var err error
 	var tracedir string
@@ -118,12 +129,7 @@ func withTestProcessArgs(name string, t testing.TB, wd string, args []string, bu
 	if err != nil {
 		t.Fatal("Launch():", err)
 	}
-
-	defer func() {
-		grp.Detach(true)
-	}()
-
-	fn(grp.Selected, grp, fixture)
+	return grp
 }
 
 func getRegisters(p *proc.Target, t *testing.T) proc.Registers {
@@ -250,6 +256,7 @@ func setFunctionBreakpoint(p *proc.Target, t testing.TB, fname string) *proc.Bre
 	if err != nil {
 		t.Fatalf("FindFunctionLocation(%s): %v", fname, err)
 	}
+	bp.Logical.Set.FunctionName = fname
 	return bp
 }
 
@@ -5586,6 +5593,101 @@ func TestStackwatchClearBug(t *testing.T) {
 		showbps(bpsAfter)
 		if len(bpsBefore.M) != len(bpsAfter.M) {
 			t.Errorf("wrong number of breakpoints")
+		}
+	})
+}
+
+func TestChainedBreakpoint(t *testing.T) {
+	assertCallerLine := func(t *testing.T, p *proc.Target, pos string, tgt int) {
+		t.Helper()
+		frames, err := proc.ThreadStacktrace(p, p.CurrentThread(), 5)
+		assertNoError(err, t, "ThreadStacktrace")
+		t.Logf("%s: %s:%d", pos, frames[1].Call.File, frames[1].Call.Line)
+		if frames[1].Call.Line != tgt {
+			t.Fatalf("wrong line number, expected %d", tgt)
+		}
+	}
+
+	withTestProcess("bphitcountchain", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		numphys := func(lbp *proc.LogicalBreakpoint) int {
+			count := 0
+			for _, bp := range p.Breakpoints().M {
+				if bp.LogicalID() == lbp.LogicalID {
+					count++
+				}
+			}
+			return count
+		}
+
+		bp := setFunctionBreakpoint(p, t, "main.breakfunc3")
+		lbp3 := bp.Logical
+		bp = setFunctionBreakpoint(p, t, "main.breakfunc2")
+		lbp2 := bp.Logical
+		bp = setFunctionBreakpoint(p, t, "main.breakfunc1")
+		lbp1 := bp.Logical
+
+		assertPhysCount := func(lbp1cnt, lbp2cnt, lbp3cnt int) {
+			t.Helper()
+			t.Logf("lbp1: %d lbp2: %d lbp3: %d", numphys(lbp1), numphys(lbp2), numphys(lbp3))
+			if numphys(lbp1) != lbp1cnt || numphys(lbp2) != lbp2cnt || numphys(lbp3) != lbp3cnt {
+				t.Fatal("wrong number of physical breakpoints")
+			}
+		}
+
+		assertNoError(grp.ChangeBreakpointCondition(lbp1, "", "== 1", false), t, "ChangeBreakpointCondition")
+		assertNoError(grp.ChangeBreakpointCondition(lbp2, fmt.Sprintf("delve.bphitcount[%d] > 0", lbp1.LogicalID), "== 1", false), t, "ChangeBreakpointCondition")
+		assertNoError(grp.ChangeBreakpointCondition(lbp3, fmt.Sprintf("delve.bphitcount[%d] > 0", lbp2.LogicalID), "== 1", false), t, "ChangeBreakpointCondition")
+
+		assertPhysCount(1, 0, 0)
+
+		assertNoError(grp.Continue(), t, "Continue 1")
+		assertCallerLine(t, p, "continue 1", 21)
+
+		assertNoError(grp.Continue(), t, "Continue 2")
+		assertCallerLine(t, p, "continue 2", 25)
+
+		assertPhysCount(0, 1, 0)
+
+		assertNoError(grp.Continue(), t, "Continue 3")
+		assertCallerLine(t, p, "continue 3", 28)
+
+		assertPhysCount(0, 0, 1)
+
+		err := grp.Continue()
+		if !errors.As(err, &proc.ErrProcessExited{}) {
+			assertNoError(err, t, "Continue 4")
+		}
+
+		// === Restart ===
+
+		t.Logf("=== Restart ===")
+
+		grp2 := startTestProcessArgs(fixture, t, ".", []string{})
+		proc.Restart(grp2, grp, func(lbp *proc.LogicalBreakpoint, err error) {
+			t.Fatalf("discarded logical breakpoint %v: %v", lbp, err)
+		})
+
+		grp = grp2
+		p = grp.Selected
+
+		assertPhysCount(1, 0, 0)
+
+		assertNoError(grp.Continue(), t, "Continue 1")
+		assertCallerLine(t, p, "continue 1", 21)
+
+		assertNoError(grp.Continue(), t, "Continue 2")
+		assertCallerLine(t, p, "continue 2", 25)
+
+		assertPhysCount(0, 1, 0)
+
+		assertNoError(grp.Continue(), t, "Continue 3")
+		assertCallerLine(t, p, "continue 3", 28)
+
+		assertPhysCount(0, 0, 1)
+
+		err = grp.Continue()
+		if !errors.As(err, &proc.ErrProcessExited{}) {
+			assertNoError(err, t, "Continue 4")
 		}
 	})
 }
