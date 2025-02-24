@@ -942,6 +942,16 @@ continueLoop:
 		}
 	}
 
+	if p.BinInfo().GOOS == "darwin" && !p.BinInfo().IsMacOSDebugFrameBugWorkaroundApplied() {
+		images, err := p.conn.getLoadedDynamicLibraries()
+		if err != nil {
+			return nil, stopReason, fmt.Errorf("could not load dynamic libraries %s", err)
+		}
+		for _, image := range images {
+			p.bi.AddImage(image.Pathname, image.LoadAddress)
+		}
+	}
+
 	if err := p.setCurrentBreakpoints(); err != nil {
 		return nil, stopReason, err
 	}
