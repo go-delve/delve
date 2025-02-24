@@ -106,7 +106,7 @@ func newStateMachine(dbl *DebugLineInfo, instructions []byte, ptrSize int) *Stat
 	}
 	var file string
 	if len(dbl.FileNames) > 0 {
-		file = dbl.FileNames[0].Path
+		file = dbl.defaultFile()
 	}
 	dbl.endSeqIsValid = true
 	sm := &StateMachine{
@@ -121,6 +121,22 @@ func newStateMachine(dbl *DebugLineInfo, instructions []byte, ptrSize int) *Stat
 		ptrSize:     ptrSize,
 	}
 	return sm
+}
+
+func (dbl *DebugLineInfo) defaultFile() string {
+	// The default file is always file 1, however DWARFv5 starts numbering the
+	// entries of the files table from 0 but prior versions started with 1
+	// which means that for DWARFv4 and earlier the default file is the first
+	// entry of the table where in DWARFv5 the default is the second entry.
+	// See DWARFv4 and DWARFv5 section 6.2.4 at the end.
+	if dbl.Prologue.Version < 5 {
+		return dbl.FileNames[0].Path
+	}
+	if len(dbl.FileNames) == 1 {
+		// DWARFv5 doesn't say what should happen in this case.
+		return dbl.FileNames[0].Path
+	}
+	return dbl.FileNames[1].Path
 }
 
 // AllPCsForFileLines Adds all PCs for a given file and set (domain of map) of lines
@@ -390,7 +406,7 @@ func (sm *StateMachine) next() error {
 	}
 	if sm.endSeq {
 		sm.endSeq = false
-		sm.file = sm.dbl.FileNames[0].Path
+		sm.file = sm.dbl.defaultFile()
 		sm.line = 1
 		sm.column = 0
 		sm.isa = 0

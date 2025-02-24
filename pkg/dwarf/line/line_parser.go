@@ -116,7 +116,11 @@ func Parse(compdir string, buf *bytes.Buffer, debugLineStr []byte, logfn func(st
 	//   - dbl.Prologue.UnitLength is the length of the entire unit, not including the 4 bytes to represent that length.
 	//   - dbl.Prologue.Length is the length of the prologue not including unit length, version or prologue length itself.
 	//   - So you have UnitLength - PrologueLength - (version_length_bytes(2) + prologue_length_bytes(4)).
-	dbl.Instructions = buf.Next(int(dbl.Prologue.UnitLength - dbl.Prologue.Length - 6))
+	verDelta := uint32(6)
+	if dbl.Prologue.Version >= 5 {
+		verDelta = uint32(8)
+	}
+	dbl.Instructions = buf.Next(int(dbl.Prologue.UnitLength - dbl.Prologue.Length - verDelta))
 
 	return dbl
 }
