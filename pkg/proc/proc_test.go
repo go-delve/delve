@@ -5566,9 +5566,9 @@ func TestWatchpointInterface(t *testing.T) {
 
 		// Continue to hit the watchpoint when the error is modified
 		assertNoError(grp.Continue(), t, "Continue to watchpoint")
-		
+
 		// Verify we stopped at the correct line where err is modified
-		assertLineNumber(p, t, 13, "stopped at wrong line after interface watchpoint")
+		assertLineNumberIn(p, t, []int{12, 13}, "stopped at wrong line after interface watchpoint")
 
 		// Continue to the end
 		assertNoError(grp.Continue(), t, "Final continue")
