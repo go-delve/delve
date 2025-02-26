@@ -644,11 +644,31 @@ func (t *Target) SetWatchpoint(logicalID int, scope *EvalScope, expr string, wty
 	if xv.Kind == reflect.UnsafePointer || xv.Kind == reflect.Invalid {
 		return nil, fmt.Errorf("can not watch variable of type %s", xv.Kind.String())
 	}
+
+	// Special handling for interface types
+	if xv.Kind == reflect.Interface {
+		// For interfaces, we want to watch the data they point to
+		// Read the interface to get the data pointer
+		_, data, isnil := xv.readInterface()
+		if xv.Unreadable != nil {
+			return nil, fmt.Errorf("error reading interface %q: %v", expr, xv.Unreadable)
+		}
+		if isnil {
+			return nil, fmt.Errorf("can not watch nil interface %q", expr)
+		}
+		if data == nil {
+			return nil, fmt.Errorf("invalid interface %q", expr)
+		}
+
+		// Use the data field as our watch target
+		xv = data
+		expr = expr + " (interface data)"
+	}
+
 	sz := xv.DwarfType.Size()
 	if sz <= 0 || sz > int64(t.BinInfo().Arch.PtrSize()) {
 		//TODO(aarzilli): it is reasonable to expect to be able to watch string
-		//and interface variables and we could support it by watching certain
-		//member fields here.
+		//variables and we could support it by watching certain member fields here.
 		return nil, fmt.Errorf("can not watch variable of type %s", xv.DwarfType.String())
 	}
 
