@@ -1062,10 +1062,18 @@ func fakeFunctionEntryScope(scope *EvalScope, fn *Function, cfa int64, sp uint64
 }
 
 func (scope *EvalScope) callInjectionStartSpecial(stack *evalStack, op *evalop.CallInjectionStartSpecial, curthread Thread) bool {
+	if op.ComplainAboutStringAlloc && scope.callCtx == nil {
+		stack.err = errFuncCallNotAllowedStrAlloc
+		return false
+	}
 	fnv, err := scope.findGlobalInternal(op.FnName)
 	if fnv == nil {
 		if err == nil {
-			err = fmt.Errorf("function %s not found", op.FnName)
+			if op.ComplainAboutStringAlloc {
+				err = errFuncCallNotAllowedStrAlloc
+			} else {
+				err = fmt.Errorf("function %s not found", op.FnName)
+			}
 		}
 		stack.err = err
 		return false

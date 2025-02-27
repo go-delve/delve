@@ -1284,8 +1284,8 @@ func TestCallFunction(t *testing.T) {
 		{"call1(one+two, 4)", []string{":int:7"}, nil, 0},
 		{"callpanic()", []string{`~panic:interface {}:interface {}(string) "callpanic panicked"`}, nil, 0},
 		{`stringsJoin(nil, "")`, []string{`:string:""`}, nil, 0},
-		{`stringsJoin(stringslice, comma)`, []string{`:string:"one,two,three"`}, nil, 1},
-		{`stringsJoin(stringslice, "~~")`, []string{`:string:"one~~two~~three"`}, nil, 2},
+		{`stringsJoin(stringslice, comma)`, []string{`:string:"one,two,three"`}, nil, 0},
+		{`stringsJoin(stringslice, "~~")`, []string{`:string:"one~~two~~three"`}, nil, 1},
 		{`stringsJoin(s1, comma)`, nil, errors.New(`could not find symbol value for s1`), 1},
 		{`stringsJoin(intslice, comma)`, nil, errors.New("can not convert value of type []int to []string"), 1},
 		{`noreturncall(2)`, nil, nil, 0},
@@ -1299,15 +1299,15 @@ func TestCallFunction(t *testing.T) {
 		// Call types tests (methods, function pointers, etc.)
 		// The following set of calls was constructed using https://docs.google.com/document/d/1bMwCey-gmqZVTpRax-ESeVuZGmjwbocYs1iHplK-cjo/pub as a reference
 
-		{`a.VRcvr(1)`, []string{`:string:"1 + 3 = 4"`}, nil, 1}, // direct call of a method with value receiver / on a value
+		{`a.VRcvr(1)`, []string{`:string:"1 + 3 = 4"`}, nil, 0}, // direct call of a method with value receiver / on a value
 
-		{`a.PRcvr(2)`, []string{`:string:"2 - 3 = -1"`}, nil, 1},  // direct call of a method with pointer receiver / on a value
-		{`pa.VRcvr(3)`, []string{`:string:"3 + 6 = 9"`}, nil, 1},  // direct call of a method with value receiver / on a pointer
-		{`pa.PRcvr(4)`, []string{`:string:"4 - 6 = -2"`}, nil, 1}, // direct call of a method with pointer receiver / on a pointer
+		{`a.PRcvr(2)`, []string{`:string:"2 - 3 = -1"`}, nil, 0},  // direct call of a method with pointer receiver / on a value
+		{`pa.VRcvr(3)`, []string{`:string:"3 + 6 = 9"`}, nil, 0},  // direct call of a method with value receiver / on a pointer
+		{`pa.PRcvr(4)`, []string{`:string:"4 - 6 = -2"`}, nil, 0}, // direct call of a method with pointer receiver / on a pointer
 
-		{`vable_pa.VRcvr(6)`, []string{`:string:"6 + 6 = 12"`}, nil, 1}, // indirect call of method on interface / containing value with value method
-		{`pable_pa.PRcvr(7)`, []string{`:string:"7 - 6 = 1"`}, nil, 1},  // indirect call of method on interface / containing pointer with value method
-		{`vable_a.VRcvr(5)`, []string{`:string:"5 + 3 = 8"`}, nil, 1},   // indirect call of method on interface / containing pointer with pointer method
+		{`vable_pa.VRcvr(6)`, []string{`:string:"6 + 6 = 12"`}, nil, 0}, // indirect call of method on interface / containing value with value method
+		{`pable_pa.PRcvr(7)`, []string{`:string:"7 - 6 = 1"`}, nil, 0},  // indirect call of method on interface / containing pointer with value method
+		{`vable_a.VRcvr(5)`, []string{`:string:"5 + 3 = 8"`}, nil, 0},   // indirect call of method on interface / containing pointer with pointer method
 
 		{`pa.nonexistent()`, nil, errors.New("pa has no member nonexistent"), 0},
 		{`a.nonexistent()`, nil, errors.New("a has no member nonexistent"), 0},
@@ -1316,14 +1316,14 @@ func TestCallFunction(t *testing.T) {
 		{`pable_pa.nonexistent()`, nil, errors.New("pable_pa has no member nonexistent"), 0},
 
 		{`fn2glob(10, 20)`, []string{":int:30"}, nil, 0},               // indirect call of func value / set to top-level func
-		{`fn2clos(11)`, []string{`:string:"1 + 6 + 11 = 18"`}, nil, 1}, // indirect call of func value / set to func literal
-		{`fn2clos(12)`, []string{`:string:"2 + 6 + 12 = 20"`}, nil, 1},
-		{`fn2valmeth(13)`, []string{`:string:"13 + 6 = 19"`}, nil, 1}, // indirect call of func value / set to value method
-		{`fn2ptrmeth(14)`, []string{`:string:"14 - 6 = 8"`}, nil, 1},  // indirect call of func value / set to pointer method
+		{`fn2clos(11)`, []string{`:string:"1 + 6 + 11 = 18"`}, nil, 0}, // indirect call of func value / set to func literal
+		{`fn2clos(12)`, []string{`:string:"2 + 6 + 12 = 20"`}, nil, 0},
+		{`fn2valmeth(13)`, []string{`:string:"13 + 6 = 19"`}, nil, 0}, // indirect call of func value / set to value method
+		{`fn2ptrmeth(14)`, []string{`:string:"14 - 6 = 8"`}, nil, 0},  // indirect call of func value / set to pointer method
 
 		{"fn2nil()", nil, errors.New("nil pointer dereference"), 0},
 
-		{"ga.PRcvr(2)", []string{`:string:"2 - 0 = 2"`}, nil, 1},
+		{"ga.PRcvr(2)", []string{`:string:"2 - 0 = 2"`}, nil, 0},
 
 		{"x.CallMe()", nil, nil, 0},
 		{"x2.CallMe(5)", []string{":int:25"}, nil, 0},
@@ -1332,10 +1332,10 @@ func TestCallFunction(t *testing.T) {
 
 		// Nested function calls tests
 
-		{`onetwothree(intcallpanic(2))`, []string{`:[]int:[]int len: 3, cap: 3, [3,4,5]`}, nil, 1},
+		{`onetwothree(intcallpanic(2))`, []string{`:[]int:[]int len: 3, cap: 3, [3,4,5]`}, nil, 0},
 		{`onetwothree(intcallpanic(0))`, []string{`~panic:interface {}:interface {}(string) "panic requested"`}, nil, 0},
-		{`onetwothree(intcallpanic(2)+1)`, []string{`:[]int:[]int len: 3, cap: 3, [4,5,6]`}, nil, 1},
-		{`onetwothree(intcallpanic("not a number"))`, nil, errors.New("can not convert \"not a number\" constant to int"), 1},
+		{`onetwothree(intcallpanic(2)+1)`, []string{`:[]int:[]int len: 3, cap: 3, [4,5,6]`}, nil, 0},
+		{`onetwothree(intcallpanic("not a number"))`, nil, altErrors("can not convert \"not a number\" constant to int", "literal string can not be allocated because function calls are not allowed without using 'call'"), 1},
 
 		// Variable setting tests
 		{`pa2 = getAStructPtr(8); pa2`, []string{`pa2:*main.astruct:*main.astruct {X: 8}`}, nil, 1},
@@ -1355,14 +1355,14 @@ func TestCallFunction(t *testing.T) {
 
 	var testcases112 = []testCaseCallFunction{
 		// string allocation requires trusted argument order, which we don't have in Go 1.11
-		{`stringsJoin(stringslice, ",")`, []string{`:string:"one,two,three"`}, nil, 2},
+		{`stringsJoin(stringslice, ",")`, []string{`:string:"one,two,three"`}, nil, 1},
 		{`str = "a new string"; str`, []string{`str:string:"a new string"`}, nil, 1},
 
 		// support calling optimized functions
 		{`strings.Join(nil, "")`, []string{`:string:""`}, nil, 0},
-		{`strings.Join(stringslice, comma)`, []string{`:string:"one,two,three"`}, nil, 1},
+		{`strings.Join(stringslice, comma)`, []string{`:string:"one,two,three"`}, nil, 0},
 		{`strings.Join(intslice, comma)`, nil, errors.New("can not convert value of type []int to []string"), 1},
-		{`strings.Join(stringslice, ",")`, []string{`:string:"one,two,three"`}, nil, 2},
+		{`strings.Join(stringslice, ",")`, []string{`:string:"one,two,three"`}, nil, 1},
 		{`strings.LastIndexByte(stringslice[1], 'w')`, []string{":int:1"}, nil, 0},
 		{`strings.LastIndexByte(stringslice[1], 'o')`, []string{":int:2"}, nil, 0},
 		{`d.Base.Method()`, []string{`:int:4`}, nil, 0},
@@ -1374,15 +1374,15 @@ func TestCallFunction(t *testing.T) {
 
 		// Method calls on a value returned by a function
 
-		{`getAStruct(3).VRcvr(1)`, []string{`:string:"1 + 3 = 4"`}, nil, 1}, // direct call of a method with value receiver / on a value
+		{`getAStruct(3).VRcvr(1)`, []string{`:string:"1 + 3 = 4"`}, nil, 0}, // direct call of a method with value receiver / on a value
 
 		{`getAStruct(3).PRcvr(2)`, nil, errors.New("could not set call receiver: cannot use getAStruct(3).PRcvr as argument pa in function main.(*astruct).PRcvr: stack object passed to escaping pointer: pa"), 0}, // direct call of a method with pointer receiver / on a value
-		{`getAStructPtr(6).VRcvr(3)`, []string{`:string:"3 + 6 = 9"`}, nil, 2},  // direct call of a method with value receiver / on a pointer
-		{`getAStructPtr(6).PRcvr(4)`, []string{`:string:"4 - 6 = -2"`}, nil, 2}, // direct call of a method with pointer receiver / on a pointer
+		{`getAStructPtr(6).VRcvr(3)`, []string{`:string:"3 + 6 = 9"`}, nil, 1},  // direct call of a method with value receiver / on a pointer
+		{`getAStructPtr(6).PRcvr(4)`, []string{`:string:"4 - 6 = -2"`}, nil, 1}, // direct call of a method with pointer receiver / on a pointer
 
-		{`getVRcvrableFromAStruct(3).VRcvr(6)`, []string{`:string:"6 + 3 = 9"`}, nil, 3},     // indirect call of method on interface / containing value with value method
-		{`getPRcvrableFromAStructPtr(6).PRcvr(7)`, []string{`:string:"7 - 6 = 1"`}, nil, 3},  // indirect call of method on interface / containing pointer with value method
-		{`getVRcvrableFromAStructPtr(6).VRcvr(5)`, []string{`:string:"5 + 6 = 11"`}, nil, 3}, // indirect call of method on interface / containing pointer with pointer method
+		{`getVRcvrableFromAStruct(3).VRcvr(6)`, []string{`:string:"6 + 3 = 9"`}, nil, 2},     // indirect call of method on interface / containing value with value method
+		{`getPRcvrableFromAStructPtr(6).PRcvr(7)`, []string{`:string:"7 - 6 = 1"`}, nil, 2},  // indirect call of method on interface / containing pointer with value method
+		{`getVRcvrableFromAStructPtr(6).VRcvr(5)`, []string{`:string:"5 + 6 = 11"`}, nil, 2}, // indirect call of method on interface / containing pointer with pointer method
 	}
 
 	var testcasesBefore114After112 = []testCaseCallFunction{
@@ -1394,11 +1394,11 @@ func TestCallFunction(t *testing.T) {
 	}
 
 	var testcases117 = []testCaseCallFunction{
-		{`regabistacktest("one", "two", "three", "four", "five", 4)`, []string{`:string:"onetwo"`, `:string:"twothree"`, `:string:"threefour"`, `:string:"fourfive"`, `:string:"fiveone"`, ":uint8:8"}, nil, 10},
+		{`regabistacktest("one", "two", "three", "four", "five", 4)`, []string{`:string:"onetwo"`, `:string:"twothree"`, `:string:"threefour"`, `:string:"fourfive"`, `:string:"fiveone"`, ":uint8:8"}, nil, 5},
 		{`regabistacktest2(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)`, []string{":int:3", ":int:5", ":int:7", ":int:9", ":int:11", ":int:13", ":int:15", ":int:17", ":int:19", ":int:11"}, nil, 0},
-		{`issue2698.String()`, []string{`:string:"1 2 3 4"`}, nil, 1},
-		{`issue3364.String()`, []string{`:string:"1 2"`}, nil, 1},
-		{`regabistacktest3(rast3, 5)`, []string{`:[10]string:[10]string ["onetwo","twothree","threefour","fourfive","fivesix","sixseven","sevenheight","heightnine","nineten","tenone"]`, ":uint8:15"}, nil, 10},
+		{`issue2698.String()`, []string{`:string:"1 2 3 4"`}, nil, 0},
+		{`issue3364.String()`, []string{`:string:"1 2"`}, nil, 0},
+		{`regabistacktest3(rast3, 5)`, []string{`:[10]string:[10]string ["onetwo","twothree","threefour","fourfive","fivesix","sixseven","sevenheight","heightnine","nineten","tenone"]`, ":uint8:15"}, nil, 0},
 		{`floatsum(1, 2)`, []string{":float64:3"}, nil, 0},
 	}
 
@@ -1486,8 +1486,22 @@ func testCallFunctionIntl(t *testing.T, grp *proc.TargetGroup, p *proc.Target, t
 		if err == nil {
 			t.Fatalf("call %q: expected error %q, got no error", tc.expr, tc.err.Error())
 		}
-		if tc.err.Error() != err.Error() {
-			t.Fatalf("call %q: expected error %q, got %q", tc.expr, tc.err.Error(), err.Error())
+		switch e := tc.err.(type) {
+		case *altError:
+			ok := false
+			for _, tgtErr := range e.errs {
+				if tgtErr == err.Error() {
+					ok = true
+					break
+				}
+			}
+			if !ok {
+				t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+			}
+		default:
+			if tc.err.Error() != err.Error() {
+				t.Fatalf("call %q: expected error %q, got %q", tc.expr, tc.err.Error(), err.Error())
+			}
 		}
 		return
 	}
