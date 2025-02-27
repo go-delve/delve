@@ -5575,6 +5575,46 @@ func TestWatchpointInterface(t *testing.T) {
 	})
 }
 
+func TestWatchpointInterfaceNil(t *testing.T) {
+	skipOn(t, "not implemented", "freebsd")
+	skipOn(t, "not implemented", "386")
+	skipOn(t, "not implemented", "ppc64le")
+	skipOn(t, "not implemented", "riscv64")
+	skipOn(t, "not implemented", "loong64")
+	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
+	protest.AllowRecording(t)
+
+	withTestProcess("watchpointInterfaceNil", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		// Set breakpoint at line after error is created and printed
+		setFileBreakpoint(p, t, fixture.Source, 10)
+		assertNoError(grp.Continue(), t, "Continue()")
+		assertLineNumber(p, t, 10, "continued to wrong line")
+
+		// Get scope and set watchpoint on interface type
+		scope, err := proc.GoroutineScope(p, p.CurrentThread())
+		assertNoError(err, t, "GoroutineScope")
+
+		// Set watchpoint on the error interface
+		_, err = p.SetWatchpoint(0, scope, "err", proc.WatchWrite, nil)
+		assertNoError(err, t, "SetWatchpoint on interface type")
+
+		// Continue to hit the watchpoint when the error is modified
+		assertNoError(grp.Continue(), t, "Continue to watchpoint")
+
+		// Verify we stopped at the correct line where err is modified
+		assertLineNumberIn(p, t, []int{11, 12}, "stopped at wrong line after interface watchpoint")
+
+		// Continue to hit the watchpoint when the error is modified again
+		assertNoError(grp.Continue(), t, "Continue to watchpoint (2)")
+
+		// Verify we stopped at the correct line where err is modified
+		assertLineNumberIn(p, t, []int{13, 14}, "stopped at wrong line after interface watchpoint (2)")
+
+		// Continue to the end
+		assertNoError(grp.Continue(), t, "Final continue")
+	})
+}
+
 func TestStackwatchClearBug(t *testing.T) {
 	skipOn(t, "not implemented", "freebsd")
 	skipOn(t, "not implemented", "386")
