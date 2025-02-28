@@ -285,6 +285,8 @@ type CallInjectionStartSpecial struct {
 	id     int
 	FnName string
 	ArgAst []ast.Expr
+
+	ComplainAboutStringAlloc bool // if this call injection can not be made complain specifically about string allocation
 }
 
 func (*CallInjectionStartSpecial) depthCheck() (npop, npush int) { return 0, 1 }
