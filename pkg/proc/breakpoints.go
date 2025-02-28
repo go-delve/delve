@@ -649,12 +649,9 @@ func (t *Target) SetWatchpoint(logicalID int, scope *EvalScope, expr string, wty
 	if xv.Kind == reflect.Interface {
 		// For interfaces, we want to watch the data they point to
 		// Read the interface to get the data pointer
-		_, data, isnil := xv.readInterface()
+		_, data, _ := xv.readInterface()
 		if xv.Unreadable != nil {
 			return nil, fmt.Errorf("error reading interface %q: %v", expr, xv.Unreadable)
-		}
-		if isnil {
-			return nil, fmt.Errorf("can not watch nil interface %q", expr)
 		}
 		if data == nil {
 			return nil, fmt.Errorf("invalid interface %q", expr)

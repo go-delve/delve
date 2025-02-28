@@ -1,9 +1,9 @@
 Tests skipped by each supported backend:
 
-* 386 skipped = 10
+* 386 skipped = 11
 	* 1 broken
 	* 3 broken - cgo stacktraces
-	* 5 not implemented
+	* 6 not implemented
 	* 1 not working due to optimizations
 * arm64 skipped = 1
 	* 1 broken - global variable symbolication
@@ -14,10 +14,10 @@ Tests skipped by each supported backend:
 	* 1 broken - cgo stacktraces
 * darwin/lldb skipped = 1
 	* 1 upstream issue
-* freebsd skipped = 12
+* freebsd skipped = 13
 	* 2 flaky
 	* 2 follow exec not implemented on freebsd
-	* 6 not implemented
+	* 7 not implemented
 	* 2 not working on freebsd
 * linux/386 skipped = 2
 	* 2 not working on linux/386
@@ -36,24 +36,24 @@ Tests skipped by each supported backend:
 * linux/riscv64 skipped = 2
 	* 1 broken - cgo stacktraces
 	* 1 not working on linux/riscv64
-* loong64 skipped = 8
+* loong64 skipped = 9
+	* 2 broken
+	* 1 broken - global variable symbolication
+	* 6 not implemented
+* pie skipped = 2
+	* 2 upstream issue - https://github.com/golang/go/issues/29322
+* ppc64le skipped = 14
+	* 6 broken
+	* 1 broken - global variable symbolication
+	* 7 not implemented
+* riscv64 skipped = 8
 	* 2 broken
 	* 1 broken - global variable symbolication
 	* 5 not implemented
-* pie skipped = 2
-	* 2 upstream issue - https://github.com/golang/go/issues/29322
-* ppc64le skipped = 13
-	* 6 broken
-	* 1 broken - global variable symbolication
-	* 6 not implemented
-* riscv64 skipped = 7
-	* 2 broken
-	* 1 broken - global variable symbolication
-	* 4 not implemented
-* windows skipped = 8
+* windows skipped = 9
 	* 1 broken
 	* 2 not working on windows
-	* 5 see https://github.com/go-delve/delve/issues/2768
+	* 6 see https://github.com/go-delve/delve/issues/2768
 * windows/arm64 skipped = 5
 	* 3 broken
 	* 1 broken - cgo stacktraces
