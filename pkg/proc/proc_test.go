@@ -720,13 +720,13 @@ func TestStacktrace(t *testing.T) {
 			locations, err := proc.ThreadStacktrace(p, p.CurrentThread(), 40)
 			assertNoError(err, t, "Stacktrace()")
 
-			if len(locations) != len(stacks[i])+2 {
-				t.Fatalf("Wrong stack trace size %d %d\n", len(locations), len(stacks[i])+2)
-			}
-
 			t.Logf("Stacktrace %d:\n", i)
 			for i := range locations {
-				t.Logf("\t%s:%d\n", locations[i].Call.File, locations[i].Call.Line)
+				t.Logf("\t%s (%#x) %s:%d\n", locations[i].Call.Fn.Name, locations[i].Call.PC, locations[i].Call.File, locations[i].Call.Line)
+			}
+
+			if len(locations) != len(stacks[i])+2 {
+				t.Fatalf("Wrong stack trace size %d %d\n", len(locations), len(stacks[i])+2)
 			}
 
 			for j := range stacks[i] {
@@ -3193,6 +3193,7 @@ func testDeclLineCount(t *testing.T, p *proc.Target, lineno int, tgtvars []strin
 
 	assertLineNumber(p, t, lineno, "Program did not continue to correct next location")
 	scope, err := proc.GoroutineScope(p, p.CurrentThread())
+	t.Logf("scope PC: %#x\n", scope.PC)
 	assertNoError(err, t, fmt.Sprintf("GoroutineScope (:%d)", lineno))
 	vars, err := scope.Locals(0, "")
 	assertNoError(err, t, fmt.Sprintf("Locals (:%d)", lineno))
