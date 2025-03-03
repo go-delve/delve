@@ -63,6 +63,7 @@ const (
 	lineRangeGo18   uint8  = 10
 	versionGo14     uint16 = 2
 	versionGo111    uint16 = 3
+	versionGo125    uint16 = 5
 	opcodeBaseGo14  uint8  = 10
 	opcodeBaseGo111 uint8  = 11
 )
@@ -79,7 +80,7 @@ func testDebugLinePrologueParser(p string, t *testing.T) {
 	for _, dbl := range debugLines {
 		prologue := dbl.Prologue
 
-		if prologue.Version != versionGo14 && prologue.Version != versionGo111 {
+		if prologue.Version != versionGo14 && prologue.Version != versionGo111 && prologue.Version != versionGo125 {
 			t.Fatal("Version not parsed correctly", prologue.Version)
 		}
 

@@ -131,7 +131,7 @@ func ReadUnitVersions(data []byte) map[dwarf.Offset]uint8 {
 
 			switch unitType {
 			case _DW_UT_compile, _DW_UT_partial:
-				headerSize = 5 + secoffsz
+				headerSize = 4 + secoffsz
 
 			case _DW_UT_skeleton, _DW_UT_split_compile:
 				headerSize = 4 + secoffsz + 8
