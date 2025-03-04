@@ -2782,6 +2782,8 @@ func TestClientServer_SinglelineStringFormattedWithBigInts(t *testing.T) {
 			"9331634762088972288", "8180A06000000000",
 			"9259436018245828608", "8080200000000000",
 			"9259436018245828608", "8080200000000000",
+			"0", "0", "0", "0",
+			"0", "0", "0", "0",
 		}
 
 		for i := range xmm0var.Children {
