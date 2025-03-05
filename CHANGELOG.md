@@ -3,6 +3,33 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.24.1] 2025-03-05
+
+### Added
+
+- Support for linux/loong64 in native backend (#3892, @yelvens)
+- Support for watchpoints on interface values (#3922, #3924, @derekparker)
+- Improved support for DWARFv5 (#3893, @aarzilli)
+- Telemetry stack counters for internal errors (#3930, @aarzilli)
+- Support for zed editor and allow args in DELVE_EDITOR (#3899, @derekparker)
+
+### Fixed
+
+- Fix uprobe address in ebpf implementation (#3894, @3u13r)
+- Provide process events after launch in DAP (#3902, @shaunduncan)
+- Use rr version to determine style of qRRCmd (#3921, @aarzilli)
+- Better error message for breakpoints on stripped binaries (#3914, @aarzilli)
+- Switch to goroutine stack if no progress on thread stack (#3898, @aarzilli)
+- Handle wider registers in test (#3929, @derekparker)
+
+### Changed
+
+- Replace logrus with log/slog (#3918, @aarzilli)
+- Remove uses of reflect.MethodByName from all of Delve (#3916, @aarzilli)
+- Refactor sort.Sort to slices.SortFunc (#3880, @alexandear)
+- Allow access to thread registers after a function call (#3908, @aarzilli)
+- Remove riscv64 from TeamCity configuration (#3912, @aarzilli)
+
 ## [1.24.0] 2024-12-18
 
 ### Added
@@ -764,7 +791,7 @@ Deprecation notice: starting with the next version of Delve version 1 of the API
 - Ability to read goroutine ancestors if they are enabled by passing `GODEBUG="tracebackancestors=N"` (requires Go >= 1.11) (#1514, #1570, @aarzilli)
 - Breakpoint autocompletion for the command line client (#1612, @qingyunha)
 - Added reverse step-instruction command for rr backend (#1596, @dpapastamos)
-- Support debugging programs using plugins on Linux with Go 1.12 or later (#1413, #1414, @aarzilli) 
+- Support debugging programs using plugins on Linux with Go 1.12 or later (#1413, #1414, @aarzilli)
 - Improved function call injection (#1503, #1504, #1548, #1591, #1602, @aarzilli)
 - New variable flag to mark variables that have a fake or no-longer-valid address, because they are either stored in registers or in a stack frame that has been removed from the stack (#1619, @aarzilli)
 - Support relative file paths when specifying breakpoint locations (#1478, @chainhelen)
