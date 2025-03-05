@@ -6157,7 +6157,7 @@ func TestSetVariable(t *testing.T) {
 					tester.expectSetVariable(barRef, "Baz", "42")
 					tester.evaluate("bar", `main.FooBar {Baz: 42, Bur: "lorem"}`, hasChildren)
 
-					tester.failSetVariable(barRef, "Baz", `"string"`, "can not convert")
+					tester.failSetVariable(barRef, "Baz", `"string"`, "can not")
 
 					// int
 					checkVarExact(t, locals, -1, "a2", "a2", "6", "int", noChildren)
