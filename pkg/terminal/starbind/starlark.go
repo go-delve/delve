@@ -15,6 +15,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
+	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
 )
@@ -198,6 +199,7 @@ func (env *Env) printFunc() func(_ *starlark.Thread, msg string) {
 // After the file is executed if a function named mainFnName exists it will be called, passing args to it.
 func (env *Env) Execute(path string, source interface{}, mainFnName string, args []interface{}) (_ starlark.Value, _err error) {
 	defer func() {
+		logflags.Bug.Inc()
 		err := recover()
 		if err == nil {
 			return

@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/telemetry/counter"
 )
 
 var any = false
@@ -28,6 +30,8 @@ var minidump = false
 var stack = false
 
 var logOut io.WriteCloser
+
+var Bug = counter.NewStack("delve/bug", 16)
 
 func makeLogger(flag bool, attrs ...interface{}) Logger {
 	if lf := loggerFactory; lf != nil {
