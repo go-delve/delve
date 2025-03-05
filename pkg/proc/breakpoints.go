@@ -11,12 +11,14 @@ import (
 	"go/printer"
 	"go/token"
 	"reflect"
+	"strconv"
 
 	"github.com/go-delve/delve/pkg/astutil"
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/goversion"
+	"github.com/go-delve/delve/pkg/proc/evalop"
 	"github.com/go-delve/delve/pkg/proc/internal/ebpf"
 )
 
@@ -938,6 +940,24 @@ func (bpmap *BreakpointMap) HasHWBreakpoints() bool {
 	return false
 }
 
+func totalHitCountByName(lbpmap map[int]*LogicalBreakpoint, s string) (uint64, error) {
+	for _, bp := range lbpmap {
+		if bp.Name == s {
+			return bp.TotalHitCount, nil
+		}
+	}
+	return 0, fmt.Errorf("could not find breakpoint named %q", s)
+}
+
+func totalHitCountByID(lbpmap map[int]*LogicalBreakpoint, id int) (uint64, error) {
+	for _, bp := range lbpmap {
+		if bp.LogicalID == int(id) {
+			return bp.TotalHitCount, nil
+		}
+	}
+	return 0, fmt.Errorf("could not find breakpoint with ID = %d", id)
+}
+
 // BreakpointState describes the state of a breakpoint in a thread.
 type BreakpointState struct {
 	*Breakpoint
@@ -1081,6 +1101,8 @@ type LogicalBreakpoint struct {
 
 	// condSatisfiable is true when 'cond && hitCond' can potentially be true.
 	condSatisfiable bool
+	// condUsesHitCounts is true when 'cond' uses breakpoint hitcounts
+	condUsesHitCounts bool
 
 	UserData interface{} // Any additional information about the breakpoint
 	// Name of root function from where tracing needs to be done
@@ -1123,15 +1145,135 @@ func (lbp *LogicalBreakpoint) Cond() string {
 	return buf.String()
 }
 
-func breakpointConditionSatisfiable(lbp *LogicalBreakpoint) bool {
-	if lbp.hitCond == nil || lbp.HitCondPerG {
+func breakpointConditionSatisfiable(lbpmap map[int]*LogicalBreakpoint, lbp *LogicalBreakpoint) bool {
+	if lbp.hitCond != nil && !lbp.HitCondPerG {
+		switch lbp.hitCond.Op {
+		case token.EQL, token.LEQ:
+			if int(lbp.TotalHitCount) >= lbp.hitCond.Val {
+				return false
+			}
+		case token.LSS:
+			if int(lbp.TotalHitCount) >= lbp.hitCond.Val-1 {
+				return false
+			}
+		}
+	}
+	if !lbp.condUsesHitCounts {
 		return true
 	}
-	switch lbp.hitCond.Op {
-	case token.EQL, token.LEQ:
-		return int(lbp.TotalHitCount) < lbp.hitCond.Val
-	case token.LSS:
-		return int(lbp.TotalHitCount) < lbp.hitCond.Val-1
+
+	toint := func(x ast.Expr) (uint64, bool) {
+		lit, ok := x.(*ast.BasicLit)
+		if !ok || lit.Kind != token.INT {
+			return 0, false
+		}
+		n, err := strconv.Atoi(lit.Value)
+		return uint64(n), err == nil && n >= 0
 	}
-	return true
+
+	hitcountexpr := func(x ast.Expr) (uint64, bool) {
+		idx, ok := x.(*ast.IndexExpr)
+		if !ok {
+			return 0, false
+		}
+		selx, ok := idx.X.(*ast.SelectorExpr)
+		if !ok {
+			return 0, false
+		}
+		ident, ok := selx.X.(*ast.Ident)
+		if !ok || ident.Name != evalop.BreakpointHitCountVarNamePackage || selx.Sel.Name != evalop.BreakpointHitCountVarName {
+			return 0, false
+		}
+		lit, ok := idx.Index.(*ast.BasicLit)
+		if !ok {
+			return 0, false
+		}
+		switch lit.Kind {
+		case token.INT:
+			n, _ := strconv.Atoi(lit.Value)
+			thc, err := totalHitCountByID(lbpmap, n)
+			return thc, err == nil
+		case token.STRING:
+			v, _ := strconv.Unquote(lit.Value)
+			thc, err := totalHitCountByName(lbpmap, v)
+			return thc, err == nil
+		default:
+			return 0, false
+		}
+	}
+
+	var satisf func(n ast.Node) bool
+	satisf = func(n ast.Node) bool {
+		parexpr, ok := n.(*ast.ParenExpr)
+		if ok {
+			return satisf(parexpr.X)
+		}
+		binexpr, ok := n.(*ast.BinaryExpr)
+		if !ok {
+			return true
+		}
+		switch binexpr.Op {
+		case token.AND:
+			return satisf(binexpr.X) && satisf(binexpr.Y)
+		case token.OR:
+			if !satisf(binexpr.X) {
+				return false
+			}
+			if !satisf(binexpr.Y) {
+				return false
+			}
+			return true
+		case token.EQL, token.LEQ, token.LSS, token.NEQ, token.GTR, token.GEQ:
+		default:
+			return true
+		}
+
+		hitcount, ok1 := hitcountexpr(binexpr.X)
+		val, ok2 := toint(binexpr.Y)
+		if !ok1 || !ok2 {
+			return true
+		}
+
+		switch binexpr.Op {
+		case token.EQL:
+			return hitcount == val
+		case token.LEQ:
+			return hitcount <= val
+		case token.LSS:
+			return hitcount < val
+		case token.NEQ:
+			return hitcount != val
+		case token.GTR:
+			return hitcount > val
+		case token.GEQ:
+			return hitcount >= val
+		}
+		return true
+	}
+
+	return satisf(lbp.cond)
+}
+
+func breakpointConditionUsesHitCounts(lbp *LogicalBreakpoint) bool {
+	if lbp.cond == nil {
+		return false
+	}
+	r := false
+	ast.Inspect(lbp.cond, func(n ast.Node) bool {
+		if r {
+			return false
+		}
+		seln, ok := n.(*ast.SelectorExpr)
+		if ok {
+			ident, ok := seln.X.(*ast.Ident)
+			if ok {
+				if ident.Name == evalop.BreakpointHitCountVarNamePackage && seln.Sel.Name == evalop.BreakpointHitCountVarName {
+					r = true
+					return false
+				}
+			}
+		}
+		return true
+	})
+	return r
 }

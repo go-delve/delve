@@ -1254,6 +1254,9 @@ func (stack *evalStack) executeOp() {
 	case *evalop.PushDebugPinner:
 		stack.push(stack.debugPinner)
 
+	case *evalop.PushBreakpointHitCount:
+		stack.push(newVariable(evalop.BreakpointHitCountVarNameQualified, fakeAddressUnresolv, godwarf.FakeSliceType(godwarf.FakeBasicType("uint", 64)), scope.BinInfo, scope.Mem))
+
 	default:
 		stack.err = fmt.Errorf("internal debugger error: unknown eval opcode: %#v", op)
 	}
@@ -2069,6 +2072,33 @@ func (scope *EvalScope) evalIndex(op *evalop.Index, stack *evalStack) {
 	xev := stack.pop()
 	if xev.Unreadable != nil {
 		stack.err = xev.Unreadable
+		return
+	}
+
+	if xev.Name == evalop.BreakpointHitCountVarNameQualified {
+		if idxev.Kind == reflect.String {
+			s := constant.StringVal(idxev.Value)
+			thc, err := totalHitCountByName(scope.target.Breakpoints().Logical, s)
+			if err == nil {
+				stack.push(newConstant(constant.MakeUint64(thc), scope.Mem))
+			}
+			stack.err = err
+			return
+		}
+		n, err := idxev.asInt()
+		if err != nil {
+			n2, err := idxev.asUint()
+			if err != nil {
+				stack.err = fmt.Errorf("can not index %s with %s", xev.Name, astutil.ExprToString(op.Node.Index))
+				return
+			}
+			n = int64(n2)
+		}
+		thc, err := totalHitCountByID(scope.target.Breakpoints().Logical, int(n))
+		if err == nil {
+			stack.push(newConstant(constant.MakeUint64(thc), scope.Mem))
+		}
+		stack.err = err
 		return
 	}
 

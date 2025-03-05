@@ -211,7 +211,7 @@ Set breakpoint condition.
 
 Specifies that the breakpoint, tracepoint or watchpoint should break only if the boolean expression is true.
 
-See [Documentation/cli/expr.md](//github.com/go-delve/delve/tree/master/Documentation/cli/expr.md) for a description of supported expressions.
+See [Documentation/cli/expr.md](//github.com/go-delve/delve/tree/master/Documentation/cli/expr.md) for a description of supported expressions and [Documentation/cli/cond.md](//github.com/go-delve/delve/tree/master/Documentation/cli/cond.md) for a description of how breakpoint conditions are evaluated.
 
 With the -hitcount option a condition on the breakpoint hit count can be set, the following operators are supported
 
