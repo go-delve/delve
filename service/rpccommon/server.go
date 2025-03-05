@@ -390,6 +390,7 @@ type internalErrorFrame struct {
 }
 
 func newInternalError(ierr interface{}, skip int) *internalError {
+	logflags.Bug.Inc()
 	r := &internalError{ierr, nil}
 	for i := skip; ; i++ {
 		pc, file, line, ok := runtime.Caller(i)
