@@ -1541,7 +1541,7 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 		parent := queue[0]
 		queue = queue[1:]
 		if parent == nil {
-			panic("attempting to open file Delve cannot parse")
+			panic("Queue has a nil node, cannot traverse!")
 		}
 		if parent.Depth > followCalls {
 			continue
@@ -1570,15 +1570,36 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 		for _, instr := range text {
 			if f.Name == "runtime.deferreturn" {
 				if instr.IsCall() && instr.DestLoc == nil {
-					//sameGCond := proc.sameGoroutineCondition(t.Selected.BinInfo(), t.SelectedGoroutine(), t.CurrentThread().ThreadID())
 					deferbp, err := t.SetBreakpoint(0, instr.Loc.PC, proc.NextBreakpoint, nil)
+					deferbp.RootFuncName = rootstr
 					if err != nil {
 						fmt.Printf("error setting breakpoint inside deferreturn\n")
 					}
 					deferbrklet := deferbp.Breaklets[len(deferbp.Breaklets)-1]
 					deferbrklet.Callback = func(th proc.Thread, _ *proc.Target) (bool, error) {
-						fmt.Printf("parent depth inside callback %d followCalls %d\n", parent.Depth, followCalls)
-						if parent.Depth+1 > followCalls {
+						rawlocs, err := proc.ThreadStacktrace(t.Group.Selected, t.CurrentThread(), 20)
+						if err != nil {
+							fmt.Printf("Thread stack trace returned error\n")
+						}
+						bpi := &api.BreakpointInfo{}
+
+						bpi.Stacktrace, err = d.convertStacktrace(rawlocs, nil)
+						if err != nil {
+							fmt.Printf("convert stack trace returned error\n")
+						}
+						stack := bpi.Stacktrace
+						rootindex := -1
+						for i := len(stack) - 1; i >= 0; i-- {
+							if stack[i].Function.Name() == deferbp.RootFuncName {
+								if rootindex == -1 {
+									rootindex = i
+									break
+								}
+							}
+						}
+						sdepth := rootindex + 1
+
+						if sdepth+1 > followCalls {
 							return false, nil
 						}
 						regs, err := th.Registers()
@@ -1601,17 +1622,18 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 									fmt.Printf("error parsing function address\n")
 								}
 								fn := t.Group.Selected.BinInfo().PCToFunc(addr)
-								err = createFnTracepoint(d, fn.Name, rootstr, followCalls)
+								_, err = createFnTracepoint(d, fn.Name, rootstr, followCalls)
 								if err != nil {
 									fmt.Printf("1469 error creating tracepoint in function %s\n", fn.Name)
 								}
-								deferchildren, err := d.traverse(t, fn, parent.Depth+2, followCalls, rootstr)
+								fmt.Printf("calling traverse from call back fn %s depth %d followCalls %d\n", fn.Name, sdepth+1, followCalls)
+								deferchildren, err := d.traverse(t, fn, sdepth+1, followCalls, rootstr)
 								if err != nil {
 									fmt.Printf("error calling traverse on defer children\n")
 								}
 								for i := 0; i < len(deferchildren); i++ {
 									fmt.Printf("candidates for tracing %s\n", deferchildren[i])
-									err := createFnTracepoint(d, deferchildren[i], rootstr, followCalls)
+									_, err := createFnTracepoint(d, deferchildren[i], rootstr, followCalls)
 									if err != nil {
 										fmt.Printf("1480 error creating tracepoint in function %s\n", deferchildren[i])
 									}
@@ -1621,8 +1643,8 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 						}
 						return false, nil
 					}
-					//fmt.Printf("instr is call type but dest loc is nil PC %x\n", instr.Loc.PC)
 				}
+				//fmt.Printf("instr is call type but dest loc is nil PC %x\n", instr.Loc.PC)
 			}
 
 			if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
@@ -1636,14 +1658,15 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 					childnode.Func = cf
 					TraceMap[cf.Name] = childnode
 					queue = append(queue, childnode)
-				}
+				} 
 			}
 		}
 	}
 	return funcs, nil
 }
 
-func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls int) error {
+func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls int) (*api.Breakpoint, error) {
+
 	d.UnlockTarget()
 
 	tbp, err1 := d.createInternalBreakpoint(&api.Breakpoint{FunctionName: fname, Tracepoint: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
@@ -1669,7 +1692,7 @@ func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls i
 		}
 	}
 	d.LockTarget()
-	return nil
+	return tbp, nil
 }
 
 // Types returns all type information in the binary.
