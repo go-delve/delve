@@ -1943,7 +1943,7 @@ func (d *Debugger) findLocation(goid int64, frame, deferredCall int, locStr stri
 		if s1 != "" {
 			subst = s1
 		}
-		if err != nil {
+		if err != nil && !errors.As(err, new(*locspec.ErrLocationNotFound)) {
 			return nil, "", err
 		}
 		for i := range locs {
@@ -1960,6 +1960,9 @@ func (d *Debugger) findLocation(goid int64, frame, deferredCall int, locStr stri
 			}
 		}
 		locations = append(locations, locs...)
+	}
+	if len(locations) == 0 {
+		return locations, subst, &locspec.ErrLocationNotFound{Spec: locStr}
 	}
 	return locations, subst, nil
 }

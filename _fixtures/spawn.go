@@ -44,5 +44,11 @@ func main() {
 	case "child":
 		traceme2(os.Args[2])
 
+	case "spawn2":
+		cmd := exec.Command(os.Args[2])
+		cmd.Stdout = os.Stdout
+		cmd.Start()
+		cmd.Wait()
+
 	}
 }
