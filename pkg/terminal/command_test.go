@@ -1575,3 +1575,21 @@ func TestDisplay(t *testing.T) {
 		}
 	})
 }
+
+func TestBreakPointFailWithCond(t *testing.T) {
+	if runtime.GOOS == "freebsd" || runtime.GOOS == "darwin" {
+		t.Skip("follow exec not implemented")
+	}
+
+	withTestTerminal("spawn", t, func(term *FakeTerminal) {
+		assertNoError(t, term.client.FollowExec(true, ""), "FollowExec")
+		_, err := term.Exec("break spawnchild.go:11 if i == 1")
+		if err != nil {
+			t.Errorf("expect to set a suspened breakpoint")
+		}
+		bp, _ := term.client.GetBreakpoint(1)
+		if bp.Cond != "i == 1" {
+			t.Errorf("expected condition to be 'i == 1', got %s", bp.Cond)
+		}
+	})
+}
