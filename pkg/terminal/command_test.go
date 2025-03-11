@@ -25,6 +25,7 @@ import (
 	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/rpc2"
 	"github.com/go-delve/delve/service/rpccommon"
+	"github.com/go-delve/liner"
 )
 
 var testBackend, buildMode string
@@ -1579,6 +1580,13 @@ func TestDisplay(t *testing.T) {
 func TestBreakPointFailWithCond(t *testing.T) {
 	if runtime.GOOS == "freebsd" || runtime.GOOS == "darwin" {
 		t.Skip("follow exec not implemented")
+	}
+
+	oldYesNo := yesno
+	defer func() { yesno = oldYesNo }()
+	// always answer yes here
+	yesno = func(line *liner.State, question, defaultAnswer string) (bool, error) {
+		return true, nil
 	}
 
 	withTestTerminal("spawn", t, func(term *FakeTerminal) {
