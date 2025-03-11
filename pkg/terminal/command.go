@@ -1800,7 +1800,6 @@ func formatBreakpointAttrs(prefix string, bp *api.Breakpoint, includeTrace bool)
 
 func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]*api.Breakpoint, error) {
 	var (
-		cond string
 		spec string
 
 		requestedBp = &api.Breakpoint{}
@@ -1839,8 +1838,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 		r := regexp.MustCompile(`^if | if `)
 		if match := r.FindStringIndex(argstr); match != nil {
 			requestedBp.Name = ""
-			cond = argstr[match[1]:]
-			requestedBp.Cond = cond
+			requestedBp.Cond = argstr[match[1]:]
 			argstr = argstr[:match[0]]
 			args = config.Split2PartsBySpace(argstr)
 			if err := parseSpec(args); err != nil {
