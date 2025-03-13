@@ -106,7 +106,7 @@
                 "--listen=:2345", "--accept-multiclient",
                 "--log=true", "--log-output=debugger"
             ],
-            "cwd": "${workspaceFolder}/../multi_process_dbg",
+            "cwd": "${workspaceFolder}/../delve-dbg-child-proc",
             "console": "integratedTerminal",
             "preLaunchTask": "build dlv"
         }
