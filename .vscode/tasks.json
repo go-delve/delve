@@ -1,0 +1,14 @@
+{
+    "tasks": [
+        {
+            "label": "build make.go",
+            "type": "shell",
+            "command": "go build -gcflags='-N' _scripts/make.go",
+        },
+        {
+            "label": "build dlv",
+            "type": "shell",
+            "command": "make build",
+        }
+    ]
+}
