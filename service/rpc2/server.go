@@ -245,7 +245,10 @@ type CreateBreakpointIn struct {
 
 	LocExpr             string
 	SubstitutePathRules [][2]string
-	Suspended           bool
+
+	// Suspended decides whether the breakpoint is suspended when its location
+	// is not found when creating it
+	Suspended bool `json:"suspended"`
 }
 
 type CreateBreakpointOut struct {

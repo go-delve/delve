@@ -2269,6 +2269,7 @@ func (d *Debugger) GetBufferedTracepoints() []api.TracepointResult {
 func (d *Debugger) FollowExec(enabled bool, regex string) error {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
+	fmt.Fprintln(os.Stderr, "follow exec", enabled)
 	return d.target.FollowExec(enabled, regex)
 }
 
