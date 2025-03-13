@@ -96,7 +96,8 @@ func TempFile(name string) string {
 }
 
 // BuildFixture will compile the fixture 'name' using the provided build flags.
-func BuildFixture(name string, flags BuildFlags) Fixture {
+func BuildFixture(t testing.TB, name string, flags BuildFlags) Fixture {
+	t.Helper()
 	if !runningWithFixtures {
 		panic("RunTestsWithFixtures not called")
 	}
@@ -189,10 +190,12 @@ func BuildFixture(name string, flags BuildFlags) Fixture {
 	if flags&EnableDWZCompression != 0 {
 		cmd := exec.Command("dwz", tmpfile)
 		if out, err := cmd.CombinedOutput(); err != nil {
+			if strings.Contains(string(out), "Unknown debugging section .debug_addr") {
+				t.Skip("can not run dwz")
+				return Fixture{}
+			}
 			if regexp.MustCompile(`dwz: Section offsets in (.*?) not monotonically increasing`).FindString(string(out)) == "" {
-				fmt.Printf("Error running dwz on %s: %s\n", tmpfile, err)
-				fmt.Printf("%s\n", string(out))
-				os.Exit(1)
+				t.Fatalf("Error running dwz on %s: %s\n%s\n", tmpfile, err, string(out))
 			}
 		}
 	}
@@ -365,7 +368,7 @@ func WithPlugins(t *testing.T, flags BuildFlags, plugins ...string) []Fixture {
 
 	r := make([]Fixture, len(plugins))
 	for i := range plugins {
-		r[i] = BuildFixture(plugins[i], flags|BuildModePlugin)
+		r[i] = BuildFixture(t, plugins[i], flags|BuildModePlugin)
 	}
 	return r
 }

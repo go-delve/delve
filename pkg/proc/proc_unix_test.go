@@ -80,7 +80,7 @@ func TestSignalDeath(t *testing.T) {
 	if buildMode == "pie" {
 		buildFlags |= protest.BuildModePIE
 	}
-	fixture := protest.BuildFixture("loopprog", buildFlags)
+	fixture := protest.BuildFixture(t, "loopprog", buildFlags)
 	cmd := exec.Command(fixture.Path)
 	stdout, err := cmd.StdoutPipe()
 	assertNoError(err, t, "StdoutPipe")

@@ -770,7 +770,7 @@ func TestRemoteDAPClientAfterContinue(t *testing.T) {
 
 	dlvbin := protest.GetDlvBinary(t)
 
-	fixture := protest.BuildFixture("loopprog", 0)
+	fixture := protest.BuildFixture(t, "loopprog", 0)
 	cmd := exec.Command(dlvbin, "exec", fixture.Path, "--headless", "--continue", "--accept-multiclient", "--log-output=debugger,dap", "--log", "--listen", listenAddr)
 	stdout, err := cmd.StdoutPipe()
 	assertNoError(err, t, "stdout pipe")
@@ -1035,7 +1035,7 @@ func TestTracePid(t *testing.T) {
 	expected := []byte("goroutine(1): main.A()\n>> goroutine(1): main.A => ()\n")
 
 	// make process run
-	fix := protest.BuildFixture("issue2023", 0)
+	fix := protest.BuildFixture(t, "issue2023", 0)
 	targetCmd := exec.Command(fix.Path)
 	assertNoError(targetCmd.Start(), t, "execute issue2023")
 
