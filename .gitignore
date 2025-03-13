@@ -10,4 +10,5 @@ localtests
 .idea
 *.iml
 .teamcity/target
-.vscode
+.vscode/*
+!.vscode/launch.json
