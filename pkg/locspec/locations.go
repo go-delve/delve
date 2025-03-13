@@ -24,6 +24,15 @@ type LocationSpec interface {
 	Find(t *proc.Target, processArgs []string, scope *proc.EvalScope, locStr string, includeNonExecutableLines bool, substitutePathRules [][2]string) ([]api.Location, string, error)
 }
 
+// ErrLocationNotFound indicates that the location was not found.
+type ErrLocationNotFound struct {
+	Spec string
+}
+
+func (err *ErrLocationNotFound) Error() string {
+	return fmt.Sprintf("location %q not found", err.Spec)
+}
+
 // NormalLocationSpec represents a basic location spec.
 // This can be a file:line or func:line.
 type NormalLocationSpec struct {
@@ -394,7 +403,7 @@ func (loc *NormalLocationSpec) Find(t *proc.Target, processArgs []string, scope 
 
 	if matching := len(candidateFiles) + len(candidateFuncs); matching == 0 {
 		if scope == nil {
-			return nil, "", fmt.Errorf("location %q not found", locStr)
+			return nil, "", &ErrLocationNotFound{Spec: locStr}
 		}
 		// if no result was found this locations string could be an
 		// expression that the user forgot to prefix with '*', try treating it as
@@ -402,7 +411,7 @@ func (loc *NormalLocationSpec) Find(t *proc.Target, processArgs []string, scope 
 		addrSpec := &AddrLocationSpec{AddrExpr: locStr}
 		locs, subst, err := addrSpec.Find(t, processArgs, scope, locStr, includeNonExecutableLines, nil)
 		if err != nil {
-			return nil, "", fmt.Errorf("location %q not found", locStr)
+			return nil, "", &ErrLocationNotFound{Spec: locStr}
 		}
 		return locs, subst, nil
 	} else if matching > 1 {
