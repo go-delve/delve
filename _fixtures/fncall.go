@@ -57,6 +57,14 @@ func stringsJoin(v []string, sep string) string {
 	return strings.Join(v, sep)
 }
 
+func mul2(x a2struct) int {
+	return x.Y * 2
+}
+
+func mul2ptr(x *a2struct) int {
+	return x.Y * 2
+}
+
 type astruct struct {
 	X int
 }
@@ -208,6 +216,16 @@ func (i Issue3364) String() string {
 	return fmt.Sprintf("%d %d", i.a, i.b)
 }
 
+type intpair struct {
+	X, Y int
+}
+
+var m = map[intpair]string{
+	{1, 1}: "one,one",
+	{1, 2}: "one,two",
+	{3, 1}: "three,one",
+}
+
 func main() {
 	one, two := 1, 2
 	intslice := []int{1, 2, 3}
@@ -254,5 +272,5 @@ func main() {
 	d.Method()
 	d.Base.Method()
 	x.CallMe()
-	fmt.Println(one, two, zero, call, call0, call2, callexit, callpanic, callbreak, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr, pa2, noreturncall, str, d, x, x2.CallMe(5), longstrs, regabistacktest, regabistacktest2, issue2698.String(), issue3364.String(), regabistacktest3, rast3, floatsum, ref)
+	fmt.Println(one, two, zero, call, call0, call2, callexit, callpanic, callbreak, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr, pa2, noreturncall, str, d, x, x2.CallMe(5), longstrs, regabistacktest, regabistacktest2, issue2698.String(), issue3364.String(), regabistacktest3, rast3, floatsum, ref, mul2, mul2ptr, m)
 }
