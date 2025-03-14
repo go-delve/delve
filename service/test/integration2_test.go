@@ -3308,7 +3308,7 @@ func TestFollowExecFindLocation(t *testing.T) {
 	if buildMode == "pie" {
 		buildFlags |= protest.BuildModePIE
 	}
-	childFixture := protest.BuildFixture("spawnchild", buildFlags)
+	childFixture := protest.BuildFixture(t, "spawnchild", buildFlags)
 
 	withTestClient2Extended("spawn", t, 0, [3]string{}, []string{"spawn2", childFixture.Path}, func(c service.Client, fixture protest.Fixture) {
 		assertNoError(c.FollowExec(true, ""), t, "FollowExec")
