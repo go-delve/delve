@@ -205,7 +205,7 @@ func withCoreFile(t *testing.T, name, args string) *proc.TargetGroup {
 	if buildMode == "pie" {
 		buildFlags = test.BuildModePIE
 	}
-	fix := test.BuildFixture(name, buildFlags)
+	fix := test.BuildFixture(t, name, buildFlags)
 	bashCmd := fmt.Sprintf("cd %v && ulimit -c unlimited && GOTRACEBACK=crash %v %s", tempDir, fix.Path, args)
 	exec.Command("bash", "-c", bashCmd).Run()
 	cores, err := filepath.Glob(path.Join(tempDir, "core*"))
@@ -464,7 +464,7 @@ func TestMinidump(t *testing.T) {
 	if buildMode == "pie" {
 		buildFlags = test.BuildModePIE
 	}
-	fix := test.BuildFixture("sleep", buildFlags)
+	fix := test.BuildFixture(t, "sleep", buildFlags)
 	mdmpPath := procdump(t, fix.Path)
 
 	grp, err := OpenCore(mdmpPath, fix.Path, []string{})

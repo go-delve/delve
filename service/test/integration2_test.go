@@ -69,7 +69,7 @@ func startServer(name string, buildFlags protest.BuildFlags, t *testing.T, redir
 	if buildMode == "pie" {
 		buildFlags |= protest.BuildModePIE
 	}
-	fixture = protest.BuildFixture(name, buildFlags)
+	fixture = protest.BuildFixture(t, name, buildFlags)
 	for i := range redirects {
 		if redirects[i] != "" {
 			redirects[i] = filepath.Join(fixture.BuildDir, redirects[i])
@@ -2067,7 +2067,7 @@ func TestAcceptMulticlient(t *testing.T) {
 		disconnectChan := make(chan struct{})
 		server := rpccommon.NewServer(&service.Config{
 			Listener:       listener,
-			ProcessArgs:    []string{protest.BuildFixture("testvariables2", 0).Path},
+			ProcessArgs:    []string{protest.BuildFixture(t, "testvariables2", 0).Path},
 			AcceptMulti:    true,
 			DisconnectChan: disconnectChan,
 			Debugger: debugger.Config{
@@ -2105,7 +2105,7 @@ func TestForceStopWhileContinue(t *testing.T) {
 		defer listener.Close()
 		server := rpccommon.NewServer(&service.Config{
 			Listener:       listener,
-			ProcessArgs:    []string{protest.BuildFixture("http_server", protest.AllNonOptimized).Path},
+			ProcessArgs:    []string{protest.BuildFixture(t, "http_server", protest.AllNonOptimized).Path},
 			AcceptMulti:    true,
 			DisconnectChan: disconnectChan,
 			Debugger: debugger.Config{
@@ -2493,7 +2493,7 @@ func TestDetachLeaveRunning(t *testing.T) {
 	if buildMode == "pie" {
 		buildFlags |= protest.BuildModePIE
 	}
-	fixture := protest.BuildFixture("testnextnethttp", buildFlags)
+	fixture := protest.BuildFixture(t, "testnextnethttp", buildFlags)
 
 	cmd := exec.Command(fixture.Path)
 	cmd.Stdout = os.Stdout
@@ -2572,7 +2572,7 @@ func TestStopServerWithClosedListener(t *testing.T) {
 	}
 	listener, err := net.Listen("tcp", "localhost:0")
 	assertNoError(err, t, "listener")
-	fixture := protest.BuildFixture("math", 0)
+	fixture := protest.BuildFixture(t, "math", 0)
 	server := rpccommon.NewServer(&service.Config{
 		Listener:           listener,
 		AcceptMulti:        false,

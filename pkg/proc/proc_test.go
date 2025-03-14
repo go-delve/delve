@@ -94,10 +94,11 @@ func withTestProcess(name string, t testing.TB, fn func(p *proc.Target, grp *pro
 }
 
 func withTestProcessArgs(name string, t testing.TB, wd string, args []string, buildFlags protest.BuildFlags, fn func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture)) {
+	t.Helper()
 	if buildMode == "pie" {
 		buildFlags |= protest.BuildModePIE
 	}
-	fixture := protest.BuildFixture(name, buildFlags)
+	fixture := protest.BuildFixture(t, name, buildFlags)
 
 	grp := startTestProcessArgs(fixture, t, wd, args)
 
@@ -2487,7 +2488,7 @@ func TestAttachDetach(t *testing.T) {
 	if buildMode == "pie" {
 		buildFlags |= protest.BuildModePIE
 	}
-	fixture := protest.BuildFixture("testnextnethttp", buildFlags)
+	fixture := protest.BuildFixture(t, "testnextnethttp", buildFlags)
 	cmd := exec.Command(fixture.Path)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -4498,7 +4499,7 @@ func TestIssue2319(t *testing.T) {
 		t.Skip("test contains fixture that is specific to go 1.14+")
 	}
 
-	fixture := protest.BuildFixture("issue2319/", protest.BuildModeExternalLinker)
+	fixture := protest.BuildFixture(t, "issue2319/", protest.BuildModeExternalLinker)
 
 	// Load up the binary and make sure there are no crashes.
 	bi := proc.NewBinaryInfo("linux", "amd64")
@@ -5361,7 +5362,7 @@ func testWaitForSetup(t *testing.T, mu *sync.Mutex, started *bool) (*exec.Cmd, *
 	if buildMode == "pie" {
 		buildFlags |= protest.BuildModePIE
 	}
-	fixture := protest.BuildFixture("loopprog", buildFlags)
+	fixture := protest.BuildFixture(t, "loopprog", buildFlags)
 
 	cmd := exec.Command(fixture.Path)
 

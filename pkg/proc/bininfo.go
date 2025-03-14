@@ -1386,6 +1386,19 @@ func (bi *BinaryInfo) Producer() string {
 	return ""
 }
 
+// DwarfVersion returns the maximum DWARF version in the executable.
+func (bi *BinaryInfo) DwarfVersion() uint8 {
+	r := uint8(0)
+	for _, so := range bi.Images {
+		for _, cu := range so.compileUnits {
+			if cu.Version > r {
+				r = cu.Version
+			}
+		}
+	}
+	return r
+}
+
 // Type returns the Dwarf type entry at `offset`.
 func (image *Image) Type(offset dwarf.Offset) (godwarf.Type, error) {
 	return godwarf.ReadType(image.dwarf, image.index, offset, image.typeCache)

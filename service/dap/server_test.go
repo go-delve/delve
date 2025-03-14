@@ -64,7 +64,7 @@ func runTest(t *testing.T, name string, test func(c *daptest.Client, f protest.F
 
 // name is for _fixtures/<name>.go
 func runTestBuildFlags(t *testing.T, name string, test func(c *daptest.Client, f protest.Fixture), buildFlags protest.BuildFlags, defaultDebugInfoDirs bool) {
-	fixture := protest.BuildFixture(name, buildFlags)
+	fixture := protest.BuildFixture(t, name, buildFlags)
 
 	// Start the DAP server.
 	serverStopped := make(chan struct{})
@@ -216,7 +216,7 @@ func TestStopWithTarget(t *testing.T) {
 
 			client.InitializeRequest()
 			client.ExpectInitializeResponseAndCapabilities(t)
-			fixture := protest.BuildFixture("increment", protest.AllNonOptimized)
+			fixture := protest.BuildFixture(t, "increment", protest.AllNonOptimized)
 			client.LaunchRequest("debug", fixture.Source, stopOnEntry)
 			client.ExpectProcessEvent(t)
 			client.ExpectInitializedEvent(t)
@@ -303,7 +303,7 @@ func TestSessionStop(t *testing.T) {
 			time.Sleep(10 * time.Millisecond) // give time to start reading
 			client.InitializeRequest()
 			client.ExpectInitializeResponseAndCapabilities(t)
-			fixture := protest.BuildFixture("increment", protest.AllNonOptimized)
+			fixture := protest.BuildFixture(t, "increment", protest.AllNonOptimized)
 			client.LaunchRequest("debug", fixture.Source, stopOnEntry)
 			client.ExpectProcessEvent(t)
 			client.ExpectInitializedEvent(t)
@@ -321,7 +321,7 @@ func TestForceStopWhileStopping(t *testing.T) {
 
 	client.InitializeRequest()
 	client.ExpectInitializeResponseAndCapabilities(t)
-	fixture := protest.BuildFixture("increment", protest.AllNonOptimized)
+	fixture := protest.BuildFixture(t, "increment", protest.AllNonOptimized)
 	client.LaunchRequest("exec", fixture.Path, stopOnEntry)
 	client.ExpectProcessEvent(t)
 	client.ExpectInitializedEvent(t)
@@ -6771,7 +6771,7 @@ func launchDebuggerWithTargetRunning(t *testing.T, fixture string) (*protest.Fix
 
 func launchDebuggerWithTargetHalted(t *testing.T, fixture string) (*protest.Fixture, *debugger.Debugger) {
 	t.Helper()
-	fixbin := protest.BuildFixture(fixture, protest.AllNonOptimized)
+	fixbin := protest.BuildFixture(t, fixture, protest.AllNonOptimized)
 	cfg := service.Config{
 		ProcessArgs: []string{fixbin.Path},
 		Debugger:    debugger.Config{Backend: "default"},
@@ -6785,7 +6785,7 @@ func launchDebuggerWithTargetHalted(t *testing.T, fixture string) (*protest.Fixt
 
 func attachDebuggerWithTargetHalted(t *testing.T, fixture string) (*exec.Cmd, *debugger.Debugger) {
 	t.Helper()
-	fixbin := protest.BuildFixture(fixture, protest.AllNonOptimized)
+	fixbin := protest.BuildFixture(t, fixture, protest.AllNonOptimized)
 	cmd := execFixture(t, fixbin)
 	cfg := service.Config{Debugger: debugger.Config{Backend: "default", AttachPid: cmd.Process.Pid}}
 	dbg, err := debugger.New(&cfg.Debugger, nil) // debugger halts process on entry
