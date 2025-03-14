@@ -133,7 +133,7 @@ func withTestTerminalBuildFlags(name string, t testing.TB, buildFlags test.Build
 	}
 	server := rpccommon.NewServer(&service.Config{
 		Listener:    listener,
-		ProcessArgs: []string{test.BuildFixture(name, buildFlags).Path},
+		ProcessArgs: []string{test.BuildFixture(t, name, buildFlags).Path},
 		Debugger: debugger.Config{
 			Backend: testBackend,
 		},
@@ -1024,7 +1024,7 @@ func TestExamineMemoryCmd(t *testing.T) {
 			t.Fatalf("could convert %s into int64, err %s", addressStr, err)
 		}
 
-		res := term.MustExec("examinemem  -count 52 -fmt hex " + addressStr)
+		res := term.MustExec("examinemem  -count 51 -fmt hex " + addressStr)
 		t.Logf("the result of examining memory \n%s", res)
 		// check first line
 		firstLine := fmt.Sprintf("%#x:   0x0a   0x0b   0x0c   0x0d   0x0e   0x0f   0x10   0x11", address)
@@ -1033,7 +1033,7 @@ func TestExamineMemoryCmd(t *testing.T) {
 		}
 
 		// check last line
-		lastLine := fmt.Sprintf("%#x:   0x3a   0x3b   0x3c   0x00", address+6*8)
+		lastLine := fmt.Sprintf("%#x:   0x3a   0x3b   0x3c", address+6*8)
 		if !strings.Contains(res, lastLine) {
 			t.Fatalf("expected last line: %s", lastLine)
 		}

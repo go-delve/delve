@@ -262,7 +262,8 @@ func (d *Debugger) checkGoVersion() error {
 	if producer == "" {
 		return nil
 	}
-	return goversion.Compatible(producer, !d.config.CheckGoVersion)
+	dwarfVer := d.target.Selected.BinInfo().DwarfVersion()
+	return goversion.Compatible(dwarfVer, producer, !d.config.CheckGoVersion)
 }
 
 func (d *Debugger) TargetGoVersion() string {

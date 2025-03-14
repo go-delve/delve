@@ -24,7 +24,7 @@ func TestMain(m *testing.M) {
 }
 
 func withTestRecording(name string, t testing.TB, fn func(grp *proc.TargetGroup, fixture protest.Fixture)) {
-	fixture := protest.BuildFixture(name, 0)
+	fixture := protest.BuildFixture(t, name, 0)
 	protest.MustHaveRecordingAllowed(t)
 	if path, _ := exec.LookPath("rr"); path == "" {
 		t.Skip("test skipped, rr not found")
