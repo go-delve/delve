@@ -453,7 +453,7 @@ func (t *Term) promptForInput() (string, error) {
 	return l, nil
 }
 
-func yesno(line *liner.State, question, defaultAnswer string) (bool, error) {
+var yesno = func(line *liner.State, question, defaultAnswer string) (bool, error) {
 	for {
 		answer, err := line.Prompt(question)
 		if err != nil {

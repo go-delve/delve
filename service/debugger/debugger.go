@@ -159,6 +159,14 @@ type Config struct {
 	RrOnProcessPid int
 }
 
+type ErrSuspended struct {
+	inner error
+}
+
+func (e *ErrSuspended) Error() string {
+	return fmt.Sprintf("Suspended: %s", e.inner.Error())
+}
+
 // New creates a new Debugger. ProcessArgs specify the commandline arguments for the
 // new process.
 func New(config *Config, processArgs []string) (*Debugger, error) {
@@ -792,6 +800,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 	if err != nil {
 		if suspended {
 			logflags.DebuggerLogger().Debugf("could not enable new breakpoint: %v (breakpoint will be suspended)", err)
+			err = &ErrSuspended{err} // This is not used yet
 		} else {
 			delete(d.target.LogicalBreakpoints, lbp.LogicalID)
 			return nil, err
@@ -800,6 +809,20 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 
 	createdBp := d.convertBreakpoint(lbp)
 	d.log.Infof("created breakpoint: %#v", createdBp)
+
+	if suspended {
+		// Create a breakpoint with enough information although its location is not found to cheat the frontend
+		// Not completed yet.
+		// Possibly notifying the client through err is a better solution
+		// ErrSuspended can be a part of RPC interface
+		createdBp.FunctionName = setbp.FunctionName
+		createdBp.File = setbp.File
+		createdBp.Line = setbp.Line
+		createdBp.ExprString = setbp.ExprString
+	}
+
+	// err must be nil/*ErrSuspended here.
+	// currently ErrSuspended can't be returned here, which will cause the terminal mode of delve to be abnormal
 	return createdBp, nil
 }
 
@@ -2270,6 +2293,7 @@ func (d *Debugger) GetBufferedTracepoints() []api.TracepointResult {
 func (d *Debugger) FollowExec(enabled bool, regex string) error {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
+	fmt.Fprintln(os.Stderr, "follow exec", enabled)
 	return d.target.FollowExec(enabled, regex)
 }
 

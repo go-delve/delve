@@ -120,6 +120,8 @@ func (s *ServerImpl) Run() error {
 		return err
 	}
 
+	s.debugger.FollowExec(true, "")
+
 	s.s2 = rpc2.NewServer(s.config, s.debugger)
 
 	rpcServer := &RPCServer{s}
