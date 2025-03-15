@@ -25,6 +25,7 @@ import (
 	"github.com/go-delve/delve/service/debugger"
 	"github.com/go-delve/delve/service/rpc2"
 	"github.com/go-delve/delve/service/rpccommon"
+	"github.com/go-delve/liner"
 )
 
 var testBackend, buildMode string
@@ -1572,6 +1573,31 @@ func TestDisplay(t *testing.T) {
 				t.Errorf("wrong output for 'display -a %s':\n\tgot: %q\n\texpected: %q", tc.in, out, tc.tgt)
 			}
 			term.MustExec("display -d 0")
+		}
+	})
+}
+
+func TestBreakPointFailWithCond(t *testing.T) {
+	if runtime.GOOS == "freebsd" || runtime.GOOS == "darwin" {
+		t.Skip("follow exec not implemented")
+	}
+
+	oldYesNo := yesno
+	defer func() { yesno = oldYesNo }()
+	// always answer yes here
+	yesno = func(line *liner.State, question, defaultAnswer string) (bool, error) {
+		return true, nil
+	}
+
+	withTestTerminal("spawn", t, func(term *FakeTerminal) {
+		assertNoError(t, term.client.FollowExec(true, ""), "FollowExec")
+		_, err := term.Exec("break spawnchild.go:11 if i == 1")
+		if err != nil {
+			t.Errorf("expect to set a suspened breakpoint")
+		}
+		bp, _ := term.client.GetBreakpoint(1)
+		if bp.Cond != "i == 1" {
+			t.Errorf("expected condition to be 'i == 1', got %s", bp.Cond)
 		}
 	})
 }
