@@ -1858,13 +1858,22 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 			substSpec = substSpec2
 		}
 	}
-	if findLocErr != nil && shouldAskToSuspendBreakpoint(t) {
+
+	fns, _ := t.client.ListFunctions(`^plugin\.Open$`, 0)
+	_, err := t.client.GetState()
+	shouldAskToSuspendBreakpointQuestion := ""
+	switch {
+	case len(fns) > 0:
+		shouldAskToSuspendBreakpointQuestion = "Set a suspended breakpoint (Delve will try to set this breakpoint when a plugin is loaded) [Y/n]?"
+	case isErrProcessExited(err):
+		shouldAskToSuspendBreakpointQuestion = "Set a suspended breakpoint (Delve will try to set this breakpoint when process restarts) [Y/n]?"
+	case t.client.FollowExecEnabled():
+		shouldAskToSuspendBreakpointQuestion = "Set a suspended breakpoint (Delve will try to set this breakpoint when child processes are added) [Y/n]?"
+	}
+
+	if findLocErr != nil && shouldAskToSuspendBreakpointQuestion != "" {
 		fmt.Fprintf(os.Stderr, "Command failed: %s\n", findLocErr.Error())
-		question := "Set a suspended breakpoint (Delve will try to set this breakpoint when a plugin is loaded) [Y/n]?"
-		if isErrProcessExited(findLocErr) {
-			question = "Set a suspended breakpoint (Delve will try to set this breakpoint when the process is restarted) [Y/n]?"
-		}
-		answer, err := yesno(t.line, question, "yes")
+		answer, err := yesno(t.line, shouldAskToSuspendBreakpointQuestion, "yes")
 		if err != nil {
 			return nil, err
 		}
@@ -3564,10 +3573,4 @@ func (t *Term) formatBreakpointLocation(bp *api.Breakpoint) string {
 		fmt.Fprintf(&out, "%s:%d", p, bp.Line)
 	}
 	return out.String()
-}
-
-func shouldAskToSuspendBreakpoint(t *Term) bool {
-	fns, _ := t.client.ListFunctions(`^plugin\.Open$`, 0)
-	_, err := t.client.GetState()
-	return len(fns) > 0 || isErrProcessExited(err) || t.client.FollowExecEnabled()
 }
