@@ -410,6 +410,50 @@ func (d *Debugger) LastModified() time.Time {
 	return d.target.Selected.BinInfo().LastModified()
 }
 
+
+// functionReturnLocationsInternal is same as FunctionReturnLocations
+// except that it does not have a lock and unlock as its called from
+// within the callback which has already acquired a lock
+func (d *Debugger) functionReturnLocationsInternal(fnName string) ([]uint64, error) {
+
+	if len(d.target.Targets()) > 1 {
+		return nil, ErrNotImplementedWithMultitarget
+	}
+
+	var (
+		p = d.target.Selected
+		g = p.SelectedGoroutine()
+	)
+
+	fns, err := p.BinInfo().FindFunction(fnName)
+	if err != nil {
+		return nil, err
+	}
+
+	var addrs []uint64
+
+	for _, fn := range fns {
+		var regs proc.Registers
+		mem := p.Memory()
+		if g != nil && g.Thread != nil {
+			regs, _ = g.Thread.Registers()
+		}
+		instructions, err := proc.Disassemble(mem, regs, p.Breakpoints(), p.BinInfo(), fn.Entry, fn.End)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, instruction := range instructions {
+			if instruction.IsRet() {
+				addrs = append(addrs, instruction.Loc.PC)
+			}
+		}
+		addrs = append(addrs, proc.FindDeferReturnCalls(instructions)...)
+	}
+
+	return addrs, nil
+}
+
 // FunctionReturnLocations returns all return locations
 // for the given function, a list of addresses corresponding
 // to 'ret' or 'call runtime.deferreturn'.
@@ -1626,13 +1670,13 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 								if err != nil {
 									fmt.Printf("1469 error creating tracepoint in function %s\n", fn.Name)
 								}
-								fmt.Printf("calling traverse from call back fn %s depth %d followCalls %d\n", fn.Name, sdepth+1, followCalls)
+								//fmt.Printf("calling traverse from call back fn %s depth %d followCalls %d\n", fn.Name, sdepth+1, followCalls)
 								deferchildren, err := d.traverse(t, fn, sdepth+1, followCalls, rootstr)
 								if err != nil {
 									fmt.Printf("error calling traverse on defer children\n")
 								}
 								for i := 0; i < len(deferchildren); i++ {
-									fmt.Printf("candidates for tracing %s\n", deferchildren[i])
+									//fmt.Printf("candidates for tracing %s\n", deferchildren[i])
 									_, err := createFnTracepoint(d, deferchildren[i], rootstr, followCalls)
 									if err != nil {
 										fmt.Printf("1480 error creating tracepoint in function %s\n", deferchildren[i])
@@ -1667,7 +1711,6 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 
 func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls int) (*api.Breakpoint, error) {
 
-	d.UnlockTarget()
 
 	tbp, err1 := d.createInternalBreakpoint(&api.Breakpoint{FunctionName: fname, Tracepoint: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
 	//fmt.Printf("creating breakpoint for %s depth %d\n", fname, followCalls)
@@ -1679,7 +1722,7 @@ func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls i
 		}
 	}
 
-	raddrs, _ := d.FunctionReturnLocations(fname)
+	raddrs, _ := d.functionReturnLocationsInternal(fname)
 	for i := range raddrs {
 		rtbp, err := d.createInternalBreakpoint(&api.Breakpoint{Addr: raddrs[i], TraceReturn: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
 		//	fmt.Printf("creating breakpoint for %s depth %d\n", fname, followCalls)
@@ -1691,7 +1734,6 @@ func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls i
 			}
 		}
 	}
-	d.LockTarget()
 	return tbp, nil
 }
 
