@@ -69,6 +69,23 @@ func F4() {
 	panic("blah")
 }
 
+var intc, intd int
+func swap() {
+        defer func() {
+                intc+=100
+        }()
+        temp := intc
+        intc = intd
+        intd = temp
+}
+
+func unnamed_defer() {
+        intc =-100
+        intd = 100
+        swap()
+        fmt.Println(intc, intd)
+}
+
 func main() {
 	j := 0
 	j += A(2)
@@ -76,6 +93,7 @@ func main() {
 	j += first(6)
 	j += callme(2)
 	fmt.Println(j)
+	unnamed_defer()
 	F0()
 
 }

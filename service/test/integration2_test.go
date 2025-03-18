@@ -828,6 +828,12 @@ func TestTraceFollowCallsCommand(t *testing.T) {
 		assertNoError(err, t, "ListFunctions()")
 		expected = []string{"main.F0", "main.F0.func1", "main.F1", "main.F2", "main.F3", "main.F4", "runtime.deferreturn", "runtime.gopanic", "runtime.gorecover"}
 		matchFunctions(t, functions, expected, depth)
+
+		depth = 3
+		functions, err = c.ListFunctions("main.swap", depth)
+		assertNoError(err, t, "ListFunctions()")
+		expected = []string{"main.swap", "main.swap.func1", "runtime.deferreturn"}
+		matchFunctions(t, functions, expected, depth)
 	})
 }
 
