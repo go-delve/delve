@@ -1001,12 +1001,12 @@ func TestTraceDirRecursion(t *testing.T) {
 }
 
 func TestTraceNestDefer(t *testing.T) {
-        dlvbin := getDlvBin(t)
+        dlvbin := protest.GetDlvBinary(t)
 
-        expected := []byte("> goroutine(1):frame(1) main.A()\n>> goroutine(1):frame(1) main.A => ()\n > goroutine(1):frame(2) runtime.deferreturn()\n  > goroutine(1):frame(3) main.C()\n  >> goroutine(1):frame(3) main.C => ()\n   > goroutine(1):frame(4) runtime.deferreturn()\n    > goroutine(1):frame(5) main.D()\n     > goroutine(1):frame(6) main.B()\n     >> goroutine(1):frame(6) main.B => ()\n    >> goroutine(1):frame(5) main.D => ()\n   >> goroutine(1):frame(4) runtime.deferreturn => ()\n  >> goroutine(1):frame(3) main.C => ()\n >> goroutine(1):frame(2) runtime.deferreturn => ()\n>> goroutine(1):frame(1) main.A => ()")
+        expected := []byte("> goroutine(1):frame(1) main.A()\n>> goroutine(1):frame(1) main.A => ()\n > goroutine(1):frame(2) runtime.deferreturn()\n  > goroutine(1):frame(3) main.C()\n  >> goroutine(1):frame(3) main.C => ()\n   > goroutine(1):frame(4) runtime.deferreturn()\n    > goroutine(1):frame(5) main.D()\n     > goroutine(1):frame(6) main.B()\n     >> goroutine(1):frame(6) main.B => ()\n    >> goroutine(1):frame(5) main.D => ()\n   >> goroutine(1):frame(4) runtime.deferreturn => ()\n  >> goroutine(1):frame(3) main.C => ()\n >> goroutine(1):frame(2) runtime.deferreturn => ()\n>> goroutine(1):frame(1) main.A => ()\n")
 
         fixtures := protest.FindFixturesDir()
-        cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "nameddeferloop.go"), "main.main", "--follow-calls", "5")
+        cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "nestdefer.go"), "main.A", "--follow-calls", "6")
         rdr, err := cmd.StderrPipe()
         assertNoError(err, t, "stderr pipe")
         defer rdr.Close()
@@ -1025,10 +1025,10 @@ func TestTraceNestDefer(t *testing.T) {
 }
 
 func TestTraceUnnamedDeferLoop(t *testing.T) {
-        dlvbin := getDlvBin(t)
+        dlvbin := protest.GetDlvBinary(t)
 
         expected := []byte(
-"> goroutine(1):frame(1) main.main()\n > goroutine(1):frame(2) main.A(2)\n >> goroutine(1):frame(2) main.A => ()\n  > goroutine(1):frame(3) runtime.deferreturn()\n   >goroutine(1):frame(4) main.A.func1()\n   >> goroutine(1):frame(4) main.A.func1 => ()\n   > goroutine(1):frame(4) main.A.func1()\n   >> goroutine(1):frame(4) main.A.func1 => ()\n  >>goroutine(1):frame(3) runtime.deferreturn => ()\n >> goroutine(1):frame(2) main.A => ()\n>> goroutine(1):frame(1) main.main => ()")
+"> goroutine(1):frame(1) main.main()\n > goroutine(1):frame(2) main.A(2)\n >> goroutine(1):frame(2) main.A => ()\n  > goroutine(1):frame(3) runtime.deferreturn()\n   > goroutine(1):frame(4) main.A.func1()\n   >> goroutine(1):frame(4) main.A.func1 => ()\n   > goroutine(1):frame(4) main.A.func1()\n   >> goroutine(1):frame(4) main.A.func1 => ()\n  >> goroutine(1):frame(3) runtime.deferreturn => ()\n >> goroutine(1):frame(2) main.A => ()\n>> goroutine(1):frame(1) main.main => ()")
 
         fixtures := protest.FindFixturesDir()
         cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "deferloop.go"), "main.main", "--follow-calls", "5")
@@ -1049,13 +1049,13 @@ func TestTraceUnnamedDeferLoop(t *testing.T) {
         cmd.Wait()
 }
  func TestTraceNamedDeferLoop(t *testing.T) {
-        dlvbin := getDlvBin(t)
+        dlvbin := protest.GetDlvBinary(t)
 
         expected := []byte(
-"> goroutine(1):frame(1) main.main()\n > goroutine(1):frame(2) main.A(2)\n >> goroutine(1):frame(2) main.A => ()\n  > goroutine(1):frame(3) runtime.deferreturn()\n    >goroutine(1):frame(4) main.B()\n   >> goroutine(1):frame(4) main.B => ()\n   > goroutine(1):frame(4) main.B()\n   >> goroutine(1):frame(4) main.B => ()\n  >> goroutine(1):frame(3) runtime.deferreturn => ()\n >> goroutine(1):frame(2) main.A => ()\n>> goroutine(1):frame(1) main.main => ()")
+"> goroutine(1):frame(1) main.main()\n > goroutine(1):frame(2) main.A(2)\n >> goroutine(1):frame(2) main.A => ()\n  > goroutine(1):frame(3) runtime.deferreturn()\n   > goroutine(1):frame(4) main.B()\n   >> goroutine(1):frame(4) main.B => ()\n   > goroutine(1):frame(4) main.B()\n   >> goroutine(1):frame(4) main.B => ()\n  >> goroutine(1):frame(3) runtime.deferreturn => ()\n >> goroutine(1):frame(2) main.A => ()\n>> goroutine(1):frame(1) main.main => ()")
 
         fixtures := protest.FindFixturesDir()
-        cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "nameddeferloop.go"), "main.main", "--follow-calls", "5")
+        cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "namedeferloop.go"), "main.main", "--follow-calls", "5")
         rdr, err := cmd.StderrPipe()
         assertNoError(err, t, "stderr pipe")
         defer rdr.Close()
