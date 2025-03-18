@@ -1000,6 +1000,78 @@ func TestTraceDirRecursion(t *testing.T) {
 	assertNoError(cmd.Wait(), t, "cmd.Wait()")
 }
 
+func TestTraceNestDefer(t *testing.T) {
+        dlvbin := getDlvBin(t)
+
+        expected := []byte("> goroutine(1):frame(1) main.A()\n>> goroutine(1):frame(1) main.A => ()\n > goroutine(1):frame(2) runtime.deferreturn()\n  > goroutine(1):frame(3) main.C()\n  >> goroutine(1):frame(3) main.C => ()\n   > goroutine(1):frame(4) runtime.deferreturn()\n    > goroutine(1):frame(5) main.D()\n     > goroutine(1):frame(6) main.B()\n     >> goroutine(1):frame(6) main.B => ()\n    >> goroutine(1):frame(5) main.D => ()\n   >> goroutine(1):frame(4) runtime.deferreturn => ()\n  >> goroutine(1):frame(3) main.C => ()\n >> goroutine(1):frame(2) runtime.deferreturn => ()\n>> goroutine(1):frame(1) main.A => ()")
+
+        fixtures := protest.FindFixturesDir()
+        cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "nameddeferloop.go"), "main.main", "--follow-calls", "5")
+        rdr, err := cmd.StderrPipe()
+        assertNoError(err, t, "stderr pipe")
+        defer rdr.Close()
+
+        cmd.Dir = filepath.Join(fixtures, "buildtest")
+
+        assertNoError(cmd.Start(), t, "running trace")
+
+        output, err := io.ReadAll(rdr)
+        assertNoError(err, t, "ReadAll")
+
+        if !bytes.Contains(output, expected) {
+                t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
+        }
+        cmd.Wait()
+}
+
+func TestTraceUnnamedDeferLoop(t *testing.T) {
+        dlvbin := getDlvBin(t)
+
+        expected := []byte(
+"> goroutine(1):frame(1) main.main()\n > goroutine(1):frame(2) main.A(2)\n >> goroutine(1):frame(2) main.A => ()\n  > goroutine(1):frame(3) runtime.deferreturn()\n   >goroutine(1):frame(4) main.A.func1()\n   >> goroutine(1):frame(4) main.A.func1 => ()\n   > goroutine(1):frame(4) main.A.func1()\n   >> goroutine(1):frame(4) main.A.func1 => ()\n  >>goroutine(1):frame(3) runtime.deferreturn => ()\n >> goroutine(1):frame(2) main.A => ()\n>> goroutine(1):frame(1) main.main => ()")
+
+        fixtures := protest.FindFixturesDir()
+        cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "deferloop.go"), "main.main", "--follow-calls", "5")
+        rdr, err := cmd.StderrPipe()
+        assertNoError(err, t, "stderr pipe")
+        defer rdr.Close()
+
+        cmd.Dir = filepath.Join(fixtures, "buildtest")
+
+        assertNoError(cmd.Start(), t, "running trace")
+
+        output, err := io.ReadAll(rdr)
+        assertNoError(err, t, "ReadAll")
+
+        if !bytes.Contains(output, expected) {
+                t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
+        }
+        cmd.Wait()
+}
+ func TestTraceNamedDeferLoop(t *testing.T) {
+        dlvbin := getDlvBin(t)
+
+        expected := []byte(
+"> goroutine(1):frame(1) main.main()\n > goroutine(1):frame(2) main.A(2)\n >> goroutine(1):frame(2) main.A => ()\n  > goroutine(1):frame(3) runtime.deferreturn()\n    >goroutine(1):frame(4) main.B()\n   >> goroutine(1):frame(4) main.B => ()\n   > goroutine(1):frame(4) main.B()\n   >> goroutine(1):frame(4) main.B => ()\n  >> goroutine(1):frame(3) runtime.deferreturn => ()\n >> goroutine(1):frame(2) main.A => ()\n>> goroutine(1):frame(1) main.main => ()")
+
+        fixtures := protest.FindFixturesDir()
+        cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "nameddeferloop.go"), "main.main", "--follow-calls", "5")
+        rdr, err := cmd.StderrPipe()
+        assertNoError(err, t, "stderr pipe")
+        defer rdr.Close()
+
+        cmd.Dir = filepath.Join(fixtures, "buildtest")
+
+        assertNoError(cmd.Start(), t, "running trace")
+
+        output, err := io.ReadAll(rdr)
+        assertNoError(err, t, "ReadAll")
+
+        if !bytes.Contains(output, expected) {
+                t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
+        }
+        cmd.Wait()
+}
 func TestTraceMultipleGoroutines(t *testing.T) {
 	t.Parallel()
 	dlvbin := protest.GetDlvBinary(t)
