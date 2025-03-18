@@ -460,7 +460,13 @@ func (d *Debugger) functionReturnLocationsInternal(fnName string) ([]uint64, err
 func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-
+	raddrs, err := d.functionReturnLocationsInternal(fnName)
+	if err != nil {
+		return nil, err
+	} else {
+		return raddrs, nil
+	}
+	/*
 	if len(d.target.Targets()) > 1 {
 		return nil, ErrNotImplementedWithMultitarget
 	}
@@ -497,6 +503,7 @@ func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
 	}
 
 	return addrs, nil
+	*/
 }
 
 // Detach detaches from the target process.
@@ -724,6 +731,14 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
+	bp, err := d.createInternalBreakpoint(requestedBp, locExpr, substitutePathRules, suspended)
+	if err != nil {
+		return nil, err
+	} else {
+		return bp, nil
+	}
+
+	/*
 	var (
 		setbp proc.SetBreakpoint
 		err   error
@@ -848,6 +863,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 	createdBp := d.convertBreakpoint(lbp)
 	d.log.Infof("created breakpoint: %#v", createdBp)
 	return createdBp, nil
+	*/
 }
 
 // createInternalBreakpoint is the same as CreateBreakpoint except that it is called from only within the debugger process
