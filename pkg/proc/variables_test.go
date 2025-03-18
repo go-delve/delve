@@ -1402,6 +1402,14 @@ func TestCallFunction(t *testing.T) {
 		{`floatsum(1, 2)`, []string{":float64:3"}, nil, 0},
 	}
 
+	var testcases123 = []testCaseCallFunction{
+		{`mul2(main.a2struct{Y: 3})`, []string{":int:6"}, nil, 1},
+		{`mul2(main.a2struct{4})`, []string{":int:8"}, nil, 1},
+		{`mul2ptr(&main.a2struct{Y: 3})`, []string{":int:6"}, nil, 1},
+		{`mul2ptr(&main.a2struct{1})`, []string{":int:2"}, nil, 1},
+		{`m[main.intpair{3, 1}]`, []string{`:string:"three,one"`}, nil, 1},
+	}
+
 	withTestProcessArgs("fncall", t, ".", nil, protest.AllNonOptimized, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		testCallFunctionSetBreakpoint(t, p, grp, fixture)
 
@@ -1436,6 +1444,12 @@ func TestCallFunction(t *testing.T) {
 
 		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) {
 			for _, tc := range testcases117 {
+				testCallFunction(t, grp, p, tc)
+			}
+		}
+
+		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
+			for _, tc := range testcases123 {
 				testCallFunction(t, grp, p, tc)
 			}
 		}

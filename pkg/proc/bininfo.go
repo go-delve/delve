@@ -1445,6 +1445,17 @@ func (bi *BinaryInfo) parseDebugFrameGeneral(image *Image, debugFrameBytes []byt
 	}
 }
 
+func (bi *BinaryInfo) getModuleData(mem MemoryReadWriter) ([]ModuleData, error) {
+	if bi.moduleDataCache == nil {
+		var err error
+		bi.moduleDataCache, err = LoadModuleData(bi, mem)
+		if err != nil {
+			return nil, fmt.Errorf("error loading module data: %v", err)
+		}
+	}
+	return bi.moduleDataCache, nil
+}
+
 // ELF ///////////////////////////////////////////////////////////////
 
 // openSeparateDebugInfo searches for a file containing the separate
