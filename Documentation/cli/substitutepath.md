@@ -5,6 +5,7 @@ However, under [some circumstances](../faq.md#substpath), the paths that end up 
 
 This configuration is done by specifying a list of path substitution rules.
 
+The path substitution code is SubstitutePath in pkg/locspec/locations.go.
 
 ### Where are path substitution rules specified
 
@@ -22,6 +23,13 @@ substitute-path:
 
 If you are starting a headless instance of Delve and connecting to it through `dlv connect` the configuration file that is used is the one that runs `dlv connect`.
 
+When Delve needs to convert a path P found inside the executable file into a path in the local filesystem it will scan through the list of rules looking for the first one where P starts with the from-path and replace from-path with to-path.
+
+Empty paths in both from-path and to-path are special, they represent relative paths:
+
+- `(from="" to="/home/user/project/src")` converts all relative paths in the executable to absolute paths in `/home/user/project/src`
+- `(from="/build/dir" to="")` converts all paths in the executable that start with `/build/dir` into relative paths.
+
 The rules can also be modified while Delve is running by using the [config substitute-path command](./README.md#config):
 
 ```
@@ -37,30 +45,23 @@ Double quotes can be used to specify paths that contain spaces, or to specify em
 
 #### DAP server
 
-If you connect to Delve using the DAP protocol then the substitute path rules are specified using the substitutePath option in [launch.json](https://github.com/golang/vscode-go/blob/master/docs/debugging.md#launchjson-attributes).
+If you connect to Delve using the DAP protocol then the substitute path rules are specified using the substitutePath option in [launch.json](https://github.com/golang/vscode-go/blob/master/docs/debugging.md#launchjson-attributes). **Note that `from` and `to` have reversed meaning here.**
 
 ```
 	"substitutePath": [
-		{ "from": "/from/path", "to": "/to/path" }
+		{ "from": "/debugger/machine/directory", "to": "/compiler/machine/directory" }
 	]
 ```
+
+When Delve needs to convert a path P found in the local filesystem into a path inside the executable file it will scan through the list of rules looking for the first one where P starts with from-path and replace from-path with to-path.
+
+Empty paths in both from-path and to-path are special, they represent relative paths:
+
+- `(from="/home/user/project/src" to="")` converts all relative paths in the executable to absolute paths in `/home/user/project/src`
+- `(from="" to="/build/dir")` converts all paths in the executable that start with `/build/dir` into relative paths.
 
 The [debug console](https://github.com/golang/vscode-go/blob/master/docs/debugging.md#dlv-command-from-debug-console) can also be used to modify the path substitution list:
 
 ```
-dlv config substitutePath /from/path /to/path
+dlv config substitutePath /debugger/machine/directory /compiler/machine/directory
 ```
-
-This command works similarly to the `config substitute-path` command described above.
-
-### How are path substitution rules applied
-
-Regardless of how they are specified the path substitution rules are an ordered list of `(from-path, to-path)` pairs. When Delve needs to convert a path P found inside the executable file into a path in the local filesystem it will scan through the list of rules looking for the first one where P starts with from-path and replace from-path with to-path.
-
-Empty paths in both from-path and to-path are special, they represent relative paths: 
-
-- `(from="" to="/home/user/project/src")` converts all relative paths in the executable to absolute paths in `/home/user/project/src`
-- `(from="/build/dir" to="")` converts all paths in the executable that start with `/build/dir` into relative paths.
-
-The path substitution code is SubstitutePath in pkg/locspec/locations.go.
-
