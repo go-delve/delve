@@ -111,7 +111,10 @@ func CompileSet(lookup evalLookup, lhexpr, rhexpr string, flags Flags) ([]Op, er
 		return nil, err
 	}
 
-	ctx.maybeMaterialize(rhe)
+	err = ctx.maybeMaterialize(rhe)
+	if err != nil {
+		return nil, err
+	}
 
 	err = ctx.compileAST(lhe, false)
 	if err != nil {
@@ -419,21 +422,7 @@ func (ctx *compileCtx) compileAST(t ast.Expr, toplevel bool) error {
 				return errFuncCallNotAllowedLitAlloc
 			}
 
-			ctx.compileSpecialCall("runtime.mallocgc", []ast.Expr{
-				&ast.BasicLit{Kind: token.INT, Value: "1"},
-				node.Type,
-				&ast.Ident{Name: "true"},
-			}, []Op{
-				&PushConst{Value: constant.MakeInt64(1)},
-				&PushRuntimeType{dtyp},
-				&PushConst{Value: constant.MakeBool(true)},
-			}, specialCallDoPinning)
-			ctx.pushOp(&TypeCast{
-				DwarfType: godwarf.FakePointerType(dtyp, int64(ctx.PtrSize())),
-				Node: &ast.CallExpr{
-					Fun:  node.Type,
-					Args: []ast.Expr{&ast.Ident{Name: "new allocation"}}}})
-			ctx.pushOp(&PointerDeref{&ast.StarExpr{X: &ast.Ident{Name: "new allocation"}}})
+			ctx.pushOp(&PushNewFakeVariable{Type: dtyp})
 
 			for i, elt := range node.Elts {
 				ctx.pushOp(&Dup{})
@@ -447,7 +436,10 @@ func (ctx *compileCtx) compileAST(t ast.Expr, toplevel bool) error {
 					if err != nil {
 						return err
 					}
-					ctx.maybeMaterialize(elt.Value)
+					err = ctx.maybeMaterialize(elt.Value)
+					if err != nil {
+						return err
+					}
 				default:
 					ctx.pushOp(&Select{Name: typ.Field[i].Name})
 					rhe = elt
@@ -455,7 +447,10 @@ func (ctx *compileCtx) compileAST(t ast.Expr, toplevel bool) error {
 					if err != nil {
 						return err
 					}
-					ctx.maybeMaterialize(elt)
+					err = ctx.maybeMaterialize(elt)
+					if err != nil {
+						return err
+					}
 				}
 				ctx.pushOp(&Roll{1})
 				ctx.pushOp(&SetValue{Rhe: rhe})
@@ -736,7 +731,10 @@ func (ctx *compileCtx) compileFunctionCallNoPinning(node *ast.CallExpr, id int) 
 		if err != nil {
 			return fmt.Errorf("error evaluating %q as argument %d in function %s: %v", astutil.ExprToString(arg), i+1, astutil.ExprToString(node.Fun), err)
 		}
-		ctx.maybeMaterialize(arg)
+		err = ctx.maybeMaterialize(arg)
+		if err != nil {
+			return err
+		}
 		ctx.pushOp(&CallInjectionCopyArg{id: id, ArgNum: i, ArgExpr: arg})
 	}
 
@@ -760,11 +758,12 @@ func (ctx *compileCtx) compileFunctionCallWithPinning(node *ast.CallExpr, id int
 
 	for i, arg := range node.Args {
 		err := ctx.compileAST(arg, false)
-		if isStringLiteralThatNeedsAlloc(arg) {
-			ctx.compileAllocLiteralString()
-		}
 		if err != nil {
 			return fmt.Errorf("error evaluating %q as argument %d in function %s: %v", astutil.ExprToString(arg), i+1, astutil.ExprToString(node.Fun), err)
+		}
+		err = ctx.maybeMaterialize(arg)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -805,12 +804,67 @@ func (ctx *compileCtx) compilePinningLoop(id int) {
 	ctx.pushOp(&CallInjectionComplete2{id: id})
 }
 
-// If expr will produce a string literal allocate the string into the target
-// program's address space.
-func (ctx *compileCtx) maybeMaterialize(expr ast.Expr) {
+// If expr will produce a string literal or a pointer to a literal allocate
+// it into the target program's address space.
+func (ctx *compileCtx) maybeMaterialize(expr ast.Expr) error {
 	if isStringLiteralThatNeedsAlloc(expr) {
 		ctx.compileAllocLiteralString()
+		return nil
 	}
+
+	expr = removeParen(expr)
+	addrof, isunary := expr.(*ast.UnaryExpr)
+	if !isunary || addrof.Op != token.AND {
+		return nil
+	}
+	lit, iscomplit := addrof.X.(*ast.CompositeLit)
+	if !iscomplit {
+		return nil
+	}
+
+	dtyp, err := ctx.FindTypeExpr(lit.Type)
+	if err != nil {
+		return err
+	}
+
+	switch godwarf.ResolveTypedef(dtyp).(type) {
+	case *godwarf.StructType, *godwarf.ArrayType:
+		if _, isaddrof := ctx.ops[len(ctx.ops)-1].(*AddrOf); isaddrof {
+			ctx.ops = ctx.ops[:len(ctx.ops)-1]
+		} else {
+			ctx.pushOp(&PointerDeref{&ast.StarExpr{X: &ast.Ident{Name: "unallocated-literal"}}})
+		}
+
+		ctx.compileSpecialCall("runtime.mallocgc", []ast.Expr{
+			&ast.BasicLit{Kind: token.INT, Value: "1"},
+			lit.Type,
+			&ast.Ident{Name: "true"},
+		}, []Op{
+			&PushConst{Value: constant.MakeInt64(1)},
+			&PushRuntimeType{dtyp},
+			&PushConst{Value: constant.MakeBool(true)},
+		}, specialCallDoPinning)
+		ctx.pushOp(&TypeCast{
+			DwarfType: godwarf.FakePointerType(dtyp, int64(ctx.PtrSize())),
+			Node: &ast.CallExpr{
+				Fun:  lit.Type,
+				Args: []ast.Expr{&ast.Ident{Name: "new allocation"}}}})
+
+		xderef := &ast.StarExpr{X: &ast.Ident{Name: "new-allocation"}}
+		xset := &ast.Ident{Name: "literal-allocation"}
+
+		ctx.pushOp(&Dup{})                // stack after: [ ptrToRealLiteral, ptrToRealLiteral, fakeLiteral ]
+		ctx.pushOp(&PointerDeref{xderef}) // stack after: [ realLiteral, ptrToRealLiteral, fakeLiteral ]
+		ctx.pushOp(&Roll{2})              // stack after: [ fakeLiteral, realLiteral, ptrToRealLiteral ]
+		ctx.pushOp(&Roll{1})              // stack after: [ realLiteral, fakeLiteral, ptrToRealLiteral ]
+		ctx.pushOp(&SetValue{Rhe: xset})  // stack after: [ ptrToRealLiteral ]
+		return nil
+
+	default:
+		// either *godwarf.MapType, *godwarf.SliceType or *godwarf.FuncType
+		return fmt.Errorf("allocating a literal of type %s not implemented", dtyp.String())
+	}
+
 }
 
 func Listing(depth []int, ops []Op) string {

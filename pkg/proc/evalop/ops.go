@@ -347,3 +347,11 @@ type PushRuntimeType struct {
 }
 
 func (*PushRuntimeType) depthCheck() (npop, npush int) { return 0, 1 }
+
+// PushNewFakeVariable pushes a new debugger-allocated variable on to the
+// stack with the given type.
+type PushNewFakeVariable struct {
+	Type godwarf.Type
+}
+
+func (*PushNewFakeVariable) depthCheck() (npop, npush int) { return 0, 1 }
