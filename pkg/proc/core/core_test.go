@@ -249,15 +249,8 @@ func logRegisters(t *testing.T, regs proc.Registers, arch *proc.Arch) {
 }
 
 func TestCore(t *testing.T) {
-	if runtime.GOOS != "linux" || runtime.GOARCH == "386" {
-		t.Skip("unsupported")
-	}
-	if runtime.GOOS != "linux" || runtime.GOARCH == "loong64" {
-		t.Skip("could not read runtime.sigtrampgo context")
-	}
-	if runtime.GOOS == "linux" && os.Getenv("CI") == "true" && buildMode == "pie" {
-		t.Skip("disabled on linux, Github Actions, with PIE buildmode")
-	}
+	mustSupportCore(t)
+
 	grp := withCoreFile(t, "panic", "")
 	p := grp.Selected
 
@@ -412,15 +405,8 @@ func TestCoreFpRegisters(t *testing.T) {
 }
 
 func TestCoreWithEmptyString(t *testing.T) {
-	if runtime.GOOS != "linux" || runtime.GOARCH == "386" {
-		t.Skip("unsupported")
-	}
-	if runtime.GOOS != "linux" || runtime.GOARCH == "loong64" {
-		t.Skip("could not read runtime.sigtrampgo context")
-	}
-	if runtime.GOOS == "linux" && os.Getenv("CI") == "true" && buildMode == "pie" {
-		t.Skip("disabled on linux, Github Actions, with PIE buildmode")
-	}
+	mustSupportCore(t)
+
 	grp := withCoreFile(t, "coreemptystring", "")
 	p := grp.Selected
 
@@ -535,4 +521,23 @@ func procdump(t *testing.T, exePath string) string {
 
 	t.Fatalf("could not find dump file")
 	return ""
+}
+
+func mustSupportCore(t *testing.T) {
+	t.Helper()
+
+	if runtime.GOOS != "linux" {
+		t.Skip("test must be run on linux")
+	}
+
+	switch runtime.GOARCH {
+	case "386", "ppc64le":
+		t.Skip("unsupported")
+	case "loong64":
+		t.Skip("could not read runtime.sigtrampgo context")
+	}
+
+	if os.Getenv("CI") == "true" && buildMode == "pie" {
+		t.Skip("disabled on linux, Github Actions, with PIE buildmode")
+	}
 }
