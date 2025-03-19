@@ -392,6 +392,12 @@ func MustHaveCgo(t *testing.T) {
 	}
 }
 
+func MustHaveModules(t *testing.T) {
+	if os.Getenv("GO111MODULE") == "off" {
+		t.Skip("skipping test which requires go modules")
+	}
+}
+
 func RegabiSupported() bool {
 	// Tracks regabiSupported variable in ParseGOEXPERIMENT internal/buildcfg/exp.go
 	switch {
