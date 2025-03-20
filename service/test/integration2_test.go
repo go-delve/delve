@@ -3157,6 +3157,8 @@ func TestBreakpointVariablesWithoutG(t *testing.T) {
 }
 
 func TestGuessSubstitutePath(t *testing.T) {
+	protest.MustHaveModules(t)
+
 	t.Setenv("NOCERT", "1")
 	ver, _ := goversion.Parse(runtime.Version())
 	if ver.IsDevelBuild() && os.Getenv("CI") != "" && runtime.GOOS == "linux" {
