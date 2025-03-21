@@ -1586,6 +1586,25 @@ type TraceFunc struct {
 }
 type TraceFuncptr *TraceFunc
 
+func isDeferCallReg( t *proc.Target, name string) (bool) {
+	archName := t.BinInfo().Arch.Name
+	res := false
+	if archName == "amd64" {
+		if name == "Rcx" {
+			res = true
+		}
+	} else if archName == "ppc64le" {
+		if name == "LR" {
+			res = true
+		}
+	} else if archName == "arm64" {
+		if name == "X1" {
+			res = true
+		}
+	}
+	return res
+
+}
 func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int, rootstr string) ([]string, error) {
 
 	TraceMap := make(map[string]TraceFuncptr)
@@ -1676,7 +1695,8 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 							}
 							name, _, value := t.Group.Selected.BinInfo().Arch.DwarfRegisterToString(i, reg)
 							//`							fmt.Printf("%s = %s\n", name, value)
-							if name == "Rcx" {
+							if isDeferCallReg(t.Group.Selected, name) {
+							//if name == "Rcx" {
 								addr, err := strconv.ParseUint(value, 0, 64)
 								if err != nil {
 									fmt.Printf("error parsing function address\n")
