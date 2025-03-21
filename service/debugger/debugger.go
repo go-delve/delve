@@ -693,7 +693,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	bp, err := d.createInternalBreakpoint(requestedBp, locExpr, substitutePathRules, suspended)
+	bp, err := d.createBreakpointInternal(requestedBp, locExpr, substitutePathRules, suspended)
 	if err != nil {
 		return nil, err
 	} else {
@@ -704,7 +704,7 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 
 // createInternalBreakpoint is the same as CreateBreakpoint except that it is called from only within the debugger process
 // when the lock is already been acquired so the step of acquiring and releasing the lock is skipped
-func (d *Debugger) createInternalBreakpoint(requestedBp *api.Breakpoint, locExpr string, substitutePathRules [][2]string, suspended bool) (*api.Breakpoint, error) {
+func (d *Debugger) createBreakpointInternal(requestedBp *api.Breakpoint, locExpr string, substitutePathRules [][2]string, suspended bool) (*api.Breakpoint, error) {
 
 	var (
 		setbp proc.SetBreakpoint
@@ -1584,7 +1584,7 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls int) (*api.Breakpoint, error) {
 
 
-	tbp, err1 := d.createInternalBreakpoint(&api.Breakpoint{FunctionName: fname, Tracepoint: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
+	tbp, err1 := d.createBreakpointInternal(&api.Breakpoint{FunctionName: fname, Tracepoint: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
 	//fmt.Printf("creating breakpoint for %s depth %d\n", fname, followCalls)
 	if tbp == nil {
 		if err1 != nil && strings.Contains(err1.Error(), "Breakpoint exists") == true {
@@ -1596,7 +1596,7 @@ func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls i
 
 	raddrs, _ := d.functionReturnLocationsInternal(fname)
 	for i := range raddrs {
-		rtbp, err := d.createInternalBreakpoint(&api.Breakpoint{Addr: raddrs[i], TraceReturn: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
+		rtbp, err := d.createBreakpointInternal(&api.Breakpoint{Addr: raddrs[i], TraceReturn: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
 		//	fmt.Printf("creating breakpoint for %s depth %d\n", fname, followCalls)
 		if rtbp == nil {
 			if err != nil && strings.Contains(err.Error(), "Breakpoint exists") == true {
