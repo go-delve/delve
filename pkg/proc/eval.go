@@ -1279,6 +1279,9 @@ func (stack *evalStack) executeOp() {
 		v := newVariable("", typeAddr, rttyp, scope.BinInfo, scope.Mem)
 		stack.push(v.pointerToVariable())
 
+	case *evalop.PushNewFakeVariable:
+		stack.pushNewFakeVariable(scope, op.Type)
+
 	default:
 		stack.err = fmt.Errorf("internal debugger error: unknown eval opcode: %#v", op)
 	}
@@ -1376,6 +1379,17 @@ func (stack *evalStack) pushIdent(scope *EvalScope, name string) (found bool) {
 	v.reg = reg
 	stack.push(v)
 	return true
+}
+
+func (stack *evalStack) pushNewFakeVariable(scope *EvalScope, typ godwarf.Type) {
+	cm, err := CreateCompositeMemory(scope.Mem, scope.BinInfo.Arch, *new(op.DwarfRegisters), []op.Piece{{Kind: op.ImmPiece, Bytes: make([]byte, typ.Size()), Size: int(typ.Size())}}, typ.Size())
+	if err != nil {
+		stack.err = err
+		return
+	}
+	v := newVariable("", cm.base, typ, scope.BinInfo, cm)
+	v.Flags = VariableFakeAddress
+	stack.push(v)
 }
 
 func (scope *EvalScope) evalAST(t ast.Expr) (*Variable, error) {

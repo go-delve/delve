@@ -669,6 +669,9 @@ func getEvalExpressionTestCases() []varTest {
 		{"mnil[\"Malone\"]", false, "", "", "", errors.New("key not found")},
 		{"m1[80:]", false, "", "", "", errors.New("map index out of bounds")},
 		{"mlarge", false, "map[main.largestruct]main.largestruct [{name: \"one\", v: [256]uint8 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+192 more]}: {name: \"oneval\", v: [256]uint8 [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,...+192 more]}, ]", "map[main.largestruct]main.largestruct [...]", "map[main.largestruct]main.largestruct", nil},
+		{"m3[main.astruct{1,1}]", false, "42", "42", "int", nil},
+		{"m4[main.astruct{2,2}]", false, "main.astruct {A: 22, B: 22}", "main.astruct {A: 22, B: 22}", "main.astruct", nil},
+		{"m3[main.astruct{3,3}]", false, "", "", "", errors.New("key not found")},
 
 		// interfaces
 		{"err1", true, "error(*main.astruct) *{A: 1, B: 2}", "error(*main.astruct) 0x…", "error", nil},
@@ -981,6 +984,12 @@ func TestEvalExpression(t *testing.T) {
 				if err != nil && err.Error() == "evaluating methods not supported on this version of Go" {
 					// this type of eval is unsupported with the current version of Go.
 					return
+				}
+				if err != nil && err.Error() == "expression *ast.CompositeLit not implemented" {
+					if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) || runtime.GOARCH == "386" {
+						// composite literals not supported before 1.22
+						return
+					}
 				}
 				if tc.err == nil {
 					assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
@@ -1403,11 +1412,11 @@ func TestCallFunction(t *testing.T) {
 	}
 
 	var testcases123 = []testCaseCallFunction{
-		{`mul2(main.a2struct{Y: 3})`, []string{":int:6"}, nil, 1},
-		{`mul2(main.a2struct{4})`, []string{":int:8"}, nil, 1},
+		{`mul2(main.a2struct{Y: 3})`, []string{":int:6"}, nil, 0},
+		{`mul2(main.a2struct{4})`, []string{":int:8"}, nil, 0},
 		{`mul2ptr(&main.a2struct{Y: 3})`, []string{":int:6"}, nil, 1},
 		{`mul2ptr(&main.a2struct{1})`, []string{":int:2"}, nil, 1},
-		{`m[main.intpair{3, 1}]`, []string{`:string:"three,one"`}, nil, 1},
+		{`m[main.intpair{3, 1}]`, []string{`:string:"three,one"`}, nil, 0},
 	}
 
 	withTestProcessArgs("fncall", t, ".", nil, protest.AllNonOptimized, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
