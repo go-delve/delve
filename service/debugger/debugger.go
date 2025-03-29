@@ -2449,6 +2449,8 @@ func (d *Debugger) maybePrintUnattendedStopWarning(stopReason proc.StopReason, c
 // server paths to client paths by examining the executable file and a map
 // of module paths to client directories (clientMod2Dir) passed as input.
 func (d *Debugger) GuessSubstitutePath(args *api.GuessSubstitutePathIn) map[string]string {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 	bis := []*proc.BinaryInfo{}
 	bins := [][]proc.Function{}
 	tgt := proc.ValidTargets{Group: d.target}
