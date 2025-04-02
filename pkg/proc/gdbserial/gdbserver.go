@@ -1738,7 +1738,10 @@ func (t *gdbThread) reloadRegisters(regs map[uint64]uint64) error {
 				}
 			} else {
 				if err := t.p.conn.readRegister(t.strID, r.Regnum, t.regs.regs[r.Name].value); err != nil {
-					return err
+					logflags.DebuggerLogger().Errorf("Could not read register %s: %v\n", r.Name, err)
+					for i := range t.regs.regs[r.Name].value {
+						t.regs.regs[r.Name].value[i] = 0
+					}
 				}
 			}
 		}
