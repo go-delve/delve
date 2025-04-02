@@ -2239,8 +2239,8 @@ func loadBinaryInfoGoRuntimeElf(bi *BinaryInfo, image *Image, path string, elfFi
 	// recover all panics.
 	defer func() {
 		ierr := recover()
-		logflags.Bug.Inc()
 		if ierr != nil {
+			logflags.Bug.Inc()
 			err = fmt.Errorf("error loading binary info from Go runtime: %v", ierr)
 		}
 	}()
@@ -2282,8 +2282,8 @@ func loadBinaryInfoGoRuntimeMacho(bi *BinaryInfo, image *Image, path string, exe
 	// recover all panics.
 	defer func() {
 		ierr := recover()
-		logflags.Bug.Inc()
 		if ierr != nil {
+			logflags.Bug.Inc()
 			err = fmt.Errorf("error loading binary info from Go runtime: %v", ierr)
 		}
 	}()
