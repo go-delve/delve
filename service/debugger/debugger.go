@@ -1421,6 +1421,8 @@ type TraceFunc struct {
 }
 type TraceFuncptr *TraceFunc
 
+// isDeferCallReg returns true if the register under question matches the register name used to hold
+// the address of the function being deferred and this can be different on different arches
 func isDeferCallReg( t *proc.Target, name string) (bool) {
 	archName := t.BinInfo().Arch.Name
 	res := false
@@ -1483,6 +1485,9 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 		}
 		for _, instr := range text {
 			if f.Name == "runtime.deferreturn" {
+				// Defer functions are called in a special way wherein the destination location is nil
+				// Hence its required to put a breakpoint inorder to acquire the address of the function
+				// at runtime and we do this via a call back mechanism
 				if instr.IsCall() && instr.DestLoc == nil {
 					deferbp, err := t.SetBreakpoint(0, instr.Loc.PC, proc.NextBreakpoint, nil)
 					deferbp.RootFuncName = rootstr
@@ -1496,7 +1501,9 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 							fmt.Printf("Thread stack trace returned error\n")
 						}
 						bpi := &api.BreakpointInfo{}
-
+						// Since the defer function is known only at runtime, the depth is likewise
+						// calculated by referring to the stack and the mechanism is exactly the same
+						// as that used in pkg/terminal/command.go:printTraceOutput
 						bpi.Stacktrace, err = d.convertStacktrace(rawlocs, nil)
 						if err != nil {
 							fmt.Printf("convert stack trace returned error\n")
@@ -1529,9 +1536,7 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 								continue
 							}
 							name, _, value := t.Group.Selected.BinInfo().Arch.DwarfRegisterToString(i, reg)
-							//`							fmt.Printf("%s = %s\n", name, value)
 							if isDeferCallReg(t.Group.Selected, name) {
-							//if name == "Rcx" {
 								addr, err := strconv.ParseUint(value, 0, 64)
 								if err != nil {
 									fmt.Printf("error parsing function address\n")
@@ -1541,13 +1546,11 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 								if err != nil {
 									fmt.Printf("1469 error creating tracepoint in function %s\n", fn.Name)
 								}
-								//fmt.Printf("calling traverse from call back fn %s depth %d followCalls %d\n", fn.Name, sdepth+1, followCalls)
 								deferchildren, err := d.traverse(t, fn, sdepth+1, followCalls, rootstr)
 								if err != nil {
 									fmt.Printf("error calling traverse on defer children\n")
 								}
 								for i := 0; i < len(deferchildren); i++ {
-									//fmt.Printf("candidates for tracing %s\n", deferchildren[i])
 									_, err := createFnTracepoint(d, deferchildren[i], rootstr, followCalls)
 									if err != nil {
 										fmt.Printf("1480 error creating tracepoint in function %s\n", deferchildren[i])
@@ -1559,7 +1562,6 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 						return false, nil
 					}
 				}
-				//fmt.Printf("instr is call type but dest loc is nil PC %x\n", instr.Loc.PC)
 			}
 
 			if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
@@ -1580,14 +1582,15 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 	return funcs, nil
 }
 
+// For defer functions, since we get to know the functions that are being called from deferreturn quite late in execution
+// we need to create the trace point ourselves so that it can be included in the trace output just in time
 func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls int) (*api.Breakpoint, error) {
 
 
 	tbp, err1 := d.createBreakpointInternal(&api.Breakpoint{FunctionName: fname, Tracepoint: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
-	//fmt.Printf("creating breakpoint for %s depth %d\n", fname, followCalls)
 	if tbp == nil {
 		if err1 != nil && strings.Contains(err1.Error(), "Breakpoint exists") == true {
-			//		fmt.Printf("oops! breakpoint already exists at function %s\n", fname)
+			// This is expected
 		} else {
 			fmt.Printf("error creating breakpoint at function %s\n", fname)
 		}
@@ -1596,10 +1599,9 @@ func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls i
 	raddrs, _ := d.functionReturnLocationsInternal(fname)
 	for i := range raddrs {
 		rtbp, err := d.createBreakpointInternal(&api.Breakpoint{Addr: raddrs[i], TraceReturn: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
-		//	fmt.Printf("creating breakpoint for %s depth %d\n", fname, followCalls)
 		if rtbp == nil {
 			if err != nil && strings.Contains(err.Error(), "Breakpoint exists") == true {
-				//			fmt.Printf("oops! breakpoint already exists at function return %s\n", fname)
+				// This is expected
 			} else {
 				fmt.Printf("error creating breakpoint at function return %s\n", fname)
 			}
