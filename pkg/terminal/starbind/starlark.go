@@ -199,11 +199,11 @@ func (env *Env) printFunc() func(_ *starlark.Thread, msg string) {
 // After the file is executed if a function named mainFnName exists it will be called, passing args to it.
 func (env *Env) Execute(path string, source interface{}, mainFnName string, args []interface{}) (_ starlark.Value, _err error) {
 	defer func() {
-		logflags.Bug.Inc()
 		err := recover()
 		if err == nil {
 			return
 		}
+		logflags.Bug.Inc()
 		_err = fmt.Errorf("panic executing starlark script: %v", err)
 		fmt.Fprintf(env.out, "panic executing starlark script: %v\n", err)
 		for i := 0; ; i++ {
