@@ -591,6 +591,12 @@ func (g *G) Labels() map[string]string {
 							}
 							v.loadValue(loadFullValue)
 							if len(v.Children) == 2 {
+								// Skip invalid key-value pairs caused by corrupted or incompatible label structures
+								// (e.g., labels set by some libraries: https://github.com/timandy/routine/blob/v1.1.4/goid.go#L50).
+								// This prevents panics when converting nil values via constant.StringVal().
+								if v.Children[0].Value == nil || v.Children[1].Value == nil {
+									continue
+								}
 								labels[constant.StringVal(v.Children[0].Value)] = constant.StringVal(v.Children[1].Value)
 							}
 						}
