@@ -1391,7 +1391,7 @@ func (bi *BinaryInfo) DwarfVersion() uint8 {
 	r := uint8(0)
 	for _, so := range bi.Images {
 		for _, cu := range so.compileUnits {
-			if cu.Version > r {
+			if cu.isgo && cu.Version > r {
 				r = cu.Version
 			}
 		}
