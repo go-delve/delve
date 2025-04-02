@@ -1707,7 +1707,10 @@ func (t *gdbThread) reloadRegisters(regs map[uint64]uint64) error {
 		if !t.p.gcmdok {
 			for _, reginfo := range t.p.conn.regsInfo {
 				if err := t.p.conn.readRegister(t.strID, reginfo.Regnum, t.regs.regs[reginfo.Name].value); err != nil {
-					return err
+					logflags.DebuggerLogger().Errorf("Could not read register %s: %v\n", reginfo.Name, err)
+					for i := range t.regs.regs[reginfo.Name].value {
+						t.regs.regs[reginfo.Name].value[i] = 0
+					}
 				}
 			}
 		}
@@ -1722,7 +1725,10 @@ func (t *gdbThread) reloadRegisters(regs map[uint64]uint64) error {
 				}
 			} else {
 				if err := t.p.conn.readRegister(t.strID, r.Regnum, t.regs.regs[r.Name].value); err != nil {
-					return err
+					logflags.DebuggerLogger().Errorf("Could not read register %s: %v\n", r.Name, err)
+					for i := range t.regs.regs[r.Name].value {
+						t.regs.regs[r.Name].value[i] = 0
+					}
 				}
 			}
 		}
