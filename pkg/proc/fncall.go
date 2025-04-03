@@ -815,7 +815,7 @@ func funcCallStep(callScope *EvalScope, stack *evalStack, thread Thread) bool {
 	regval := bi.Arch.RegistersToDwarfRegisters(0, regs).Uint64Val(fncall.protocolReg)
 
 	if logflags.FnCall() {
-		loc, _ := thread.Location()
+		loc, _ := ThreadLocation(thread)
 		var pc uint64
 		var fnname string
 		if loc != nil {
@@ -1151,7 +1151,7 @@ func callInjectionProtocol(t *Target, trapthread Thread, threads []Thread) (done
 		t.currentThread = currentThread
 	}()
 	for _, thread := range threads {
-		loc, err := thread.Location()
+		loc, err := ThreadLocation(thread)
 		if err != nil {
 			continue
 		}

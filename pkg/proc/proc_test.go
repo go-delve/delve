@@ -1627,7 +1627,7 @@ func TestStepIntoFunction(t *testing.T) {
 		// Step into function
 		assertNoError(grp.Step(), t, "Step() returned an error")
 		// We should now be inside the function.
-		loc, err := p.CurrentThread().Location()
+		loc, err := proc.ThreadLocation(p.CurrentThread())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -2462,7 +2462,7 @@ func TestNextInDeferReturn(t *testing.T) {
 		// point where the target program panics.
 		setFunctionBreakpoint(p, t, "main.sampleFunction")
 		for i := 0; i < 20; i++ {
-			loc, err := p.CurrentThread().Location()
+			loc, err := proc.ThreadLocation(p.CurrentThread())
 			assertNoError(err, t, "CurrentThread().Location()")
 			t.Logf("at %#x %s:%d", loc.PC, loc.File, loc.Line)
 			if loc.Fn != nil && loc.Fn.Name == "main.sampleFunction" {
@@ -3184,7 +3184,7 @@ func TestIssue1008(t *testing.T) {
 	withTestProcess("cgostacktest/", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(grp.Continue(), t, "Continue()")
-		loc, err := p.CurrentThread().Location()
+		loc, err := proc.ThreadLocation(p.CurrentThread())
 		assertNoError(err, t, "CurrentThread().Location()")
 		t.Logf("location %v\n", loc)
 		if !strings.HasSuffix(loc.File, "/main.go") {
@@ -5176,7 +5176,7 @@ func TestFollowExec(t *testing.T) {
 				if grp.Selected.CurrentThread().Breakpoint().Breakpoint.LogicalID() != 1 {
 					t.Fatalf("wrong breakpoint %#v", grp.Selected.CurrentThread().Breakpoint().Breakpoint)
 				}
-				loc, err := grp.Selected.CurrentThread().Location()
+				loc, err := proc.ThreadLocation(grp.Selected.CurrentThread())
 				assertNoError(err, t, "Location")
 				if loc.Fn.Name != "main.traceme1" {
 					t.Fatalf("wrong stop location %#v", loc)
@@ -5188,7 +5188,7 @@ func TestFollowExec(t *testing.T) {
 				if p.CurrentThread().Breakpoint().Breakpoint.LogicalID() != 3 {
 					t.Fatalf("wrong breakpoint %#v", p.CurrentThread().Breakpoint().Breakpoint)
 				}
-				loc, err := p.CurrentThread().Location()
+				loc, err := proc.ThreadLocation(p.CurrentThread())
 				assertNoError(err, t, "Location")
 				if loc.Fn.Name != "main.traceme3" {
 					t.Fatalf("wrong stop location %#v", loc)
@@ -5208,7 +5208,7 @@ func TestFollowExec(t *testing.T) {
 						t.Fatalf("wrong breakpoint %#v", grp.Selected.CurrentThread().Breakpoint().Breakpoint)
 					}
 					pids[tgt.Pid()]++
-					loc, err := tgt.CurrentThread().Location()
+					loc, err := proc.ThreadLocation(tgt.CurrentThread())
 					assertNoError(err, t, "Location")
 					if loc.Fn.Name != "main.traceme2" {
 						t.Fatalf("wrong stop location %#v", loc)
@@ -5268,7 +5268,7 @@ func TestStepShadowConcurrentBreakpoint(t *testing.T) {
 		for {
 			t.Logf("stop (%d %d):", stacktraceme1calls, stacktraceme2calls)
 			for _, th := range p.ThreadList() {
-				loc, _ := th.Location()
+				loc, _ := proc.ThreadLocation(th)
 				t.Logf("\t%s:%d\n", loc.File, loc.Line)
 				bp := th.Breakpoint().Breakpoint
 				if bp != nil && bp.Addr == break2.Addr {

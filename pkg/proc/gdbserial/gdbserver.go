@@ -1523,22 +1523,6 @@ func (t *gdbThread) ProcessMemory() proc.MemoryReadWriter {
 	return t.p
 }
 
-// Location returns the current location of this thread.
-func (t *gdbThread) Location() (*proc.Location, error) {
-	regs, err := t.Registers()
-	if err != nil {
-		return nil, err
-	}
-	if pcreg, ok := regs.(*gdbRegisters).regs[regs.(*gdbRegisters).regnames.PC]; !ok {
-		t.p.conn.log.Errorf("thread %d could not find RIP register", t.ID)
-	} else if len(pcreg.value) < t.p.bi.Arch.PtrSize() {
-		t.p.conn.log.Errorf("thread %d bad length for RIP register: %d", t.ID, len(pcreg.value))
-	}
-	pc := regs.PC()
-	f, l, fn := t.p.bi.PCToLine(pc)
-	return &proc.Location{PC: pc, File: f, Line: l, Fn: fn}, nil
-}
-
 // Breakpoint returns the current active breakpoint for this thread.
 func (t *gdbThread) Breakpoint() *proc.BreakpointState {
 	return &t.CurrentBreakpoint
