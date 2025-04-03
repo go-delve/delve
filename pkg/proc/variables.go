@@ -43,6 +43,8 @@ const (
 	maxMapBucketsFactor = 100 // Maximum numbers of map buckets to read for every requested map entry when loading variables through (*EvalScope).LocalVariables and (*EvalScope).FunctionArguments.
 
 	maxGoroutineUserCurrentDepth = 30 // Maximum depth used by (*G).UserCurrent to search its location
+
+	maxGoroutinesLabelEntries = 1_000 // Maximum number of label entries for a goroutine's label map
 )
 
 type floatSpecial uint8
@@ -584,6 +586,13 @@ func (g *G) Labels() map[string]string {
 				case reflect.Struct:
 					labelMap, _ = labelMap.structMember("list")
 					if labelMap != nil {
+						// ensure the labelMap.Len is a valid value to prevent infinite loops
+						if labelMap.Len < 0 {
+							labelMap.Len = 0
+						}
+						if labelMap.Len > maxGoroutinesLabelEntries {
+							labelMap.Len = maxGoroutinesLabelEntries
+						}
 						for i := int64(0); i < labelMap.Len; i++ {
 							v, err := labelMap.sliceAccess(int(i))
 							if err != nil {
