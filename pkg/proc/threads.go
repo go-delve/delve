@@ -8,7 +8,6 @@ import (
 
 // Thread represents a thread.
 type Thread interface {
-	Location() (*Location, error)
 	// Breakpoint will return the breakpoint that this thread is stopped at or
 	// nil if the thread is not stopped at any breakpoint.
 	Breakpoint() *BreakpointState
@@ -102,4 +101,17 @@ func setClosureReg(thread Thread, newClosureReg uint64) error {
 
 func setLR(thread Thread, newLR uint64) error {
 	return thread.SetReg(thread.BinInfo().Arch.LRRegNum, op.DwarfRegisterFromUint64(newLR))
+}
+
+// ThreadLocation returns the threads location, including the file:line
+// of the corresponding source code, the function we're in
+// and the current instruction address.
+func ThreadLocation(thread Thread) (*Location, error) {
+	regs, err := thread.Registers()
+	if err != nil {
+		return nil, err
+	}
+	pc := regs.PC()
+	f, l, fn := thread.BinInfo().PCToLine(pc)
+	return &Location{PC: pc, File: f, Line: l, Fn: fn}, nil
 }

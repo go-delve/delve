@@ -444,7 +444,7 @@ func stepInstructionOut(grp *TargetGroup, dbp *Target, curthread Thread, fnname1
 		if err := grp.procgrp.StepInstruction(curthread.ThreadID()); err != nil {
 			return err
 		}
-		loc, err := curthread.Location()
+		loc, err := ThreadLocation(curthread)
 		var locFnName string
 		if loc.Fn != nil && !loc.Fn.cu.image.Stripped() {
 			locFnName = loc.Fn.Name
@@ -995,7 +995,7 @@ func stepIntoCallback(curthread Thread, p *Target) (bool, error) {
 	}
 
 	var fn *Function
-	if loc, _ := curthread.Location(); loc != nil {
+	if loc, _ := ThreadLocation(curthread); loc != nil {
 		fn = loc.Fn
 	}
 	g, _ := GetG(curthread)
@@ -1675,7 +1675,7 @@ func (t *Target) handleHardcodedBreakpoints(grp *TargetGroup, trapthread Thread,
 			continue
 		}
 
-		loc, err := thread.Location()
+		loc, err := ThreadLocation(thread)
 		if err != nil || loc.Fn == nil {
 			continue
 		}

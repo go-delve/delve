@@ -319,18 +319,6 @@ func (t *thread) ProcessMemory() proc.MemoryReadWriter {
 	return t.p
 }
 
-// Location returns the location of this thread based on
-// the value of the instruction pointer register.
-func (t *thread) Location() (*proc.Location, error) {
-	regs, err := t.Registers()
-	if err != nil {
-		return nil, err
-	}
-	pc := regs.PC()
-	f, l, fn := t.p.bi.PCToLine(pc)
-	return &proc.Location{PC: pc, File: f, Line: l, Fn: fn}, nil
-}
-
 // Breakpoint returns the current breakpoint this thread is stopped at.
 // For core files this always returns an empty BreakpointState struct, as
 // there are no breakpoints when debugging core files.

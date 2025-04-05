@@ -136,7 +136,7 @@ func doFuzzEvalExpressionSetup(f *testing.F) {
 	assertNoError(err, f, "Stacktrace")
 
 	mem := c.Memory()
-	loc, _ := c.CurrentThread().Location()
+	loc, _ := proc.ThreadLocation(c.CurrentThread())
 	tmem := &tracingMem{make(map[uint64]int), mem}
 
 	scope := &proc.EvalScope{Location: *loc, Regs: frames[0].Regs, Mem: tmem, BinInfo: c.BinInfo()}

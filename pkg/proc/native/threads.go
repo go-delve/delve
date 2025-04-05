@@ -77,18 +77,6 @@ func (procgrp *processGroup) stepInstruction(t *nativeThread) (err error) {
 	return nil
 }
 
-// Location returns the threads location, including the file:line
-// of the corresponding source code, the function we're in
-// and the current instruction address.
-func (t *nativeThread) Location() (*proc.Location, error) {
-	pc, err := t.PC()
-	if err != nil {
-		return nil, err
-	}
-	f, l, fn := t.dbp.bi.PCToLine(pc)
-	return &proc.Location{PC: pc, File: f, Line: l, Fn: fn}, nil
-}
-
 // BinInfo returns information on the binary.
 func (t *nativeThread) BinInfo() *proc.BinaryInfo {
 	return t.dbp.bi

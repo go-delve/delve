@@ -97,7 +97,7 @@ func ConvertThread(th proc.Thread, bp *Breakpoint) *Thread {
 		gid      int64
 	)
 
-	loc, err := th.Location()
+	loc, err := proc.ThreadLocation(th)
 	if err == nil {
 		pc = loc.PC
 		file = loc.File
