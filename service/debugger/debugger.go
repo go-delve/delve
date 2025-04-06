@@ -989,6 +989,9 @@ func (d *Debugger) findBreakpointByName(name string) *api.Breakpoint {
 
 // CreateWatchpoint creates a watchpoint on the specified expression.
 func (d *Debugger) CreateWatchpoint(goid int64, frame, deferredCall int, expr string, wtype api.WatchType) (*api.Breakpoint, error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+
 	p := d.target.Selected
 
 	s, err := proc.ConvertEvalScope(p, goid, frame, deferredCall)
