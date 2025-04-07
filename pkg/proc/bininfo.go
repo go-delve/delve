@@ -115,6 +115,7 @@ type BinaryInfo struct {
 
 	debugPinnerFn *Function
 	logger        logflags.Logger
+	eventsFn      func(*Event)
 }
 
 var (
@@ -1559,7 +1560,19 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 	// has debuginfod so that we can use that in order to find any relevant debug information.
 	if debugFilePath == "" {
 		var err error
-		debugFilePath, err = debuginfod.GetDebuginfo(image.BuildID)
+		var notify func(string)
+		if bi.eventsFn != nil {
+			notify = func(s string) {
+				bi.eventsFn(&Event{
+					Kind: EventBinaryInfoDownload,
+					BinaryInfoDownloadEventDetails: &BinaryInfoDownloadEventDetails{
+						ImagePath: image.Path,
+						Progress:  s,
+					},
+				})
+			}
+		}
+		debugFilePath, err = debuginfod.GetDebuginfo(notify, image.BuildID)
 		if err != nil {
 			return nil, nil, ErrNoDebugInfoFound
 		}

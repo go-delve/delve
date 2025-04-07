@@ -454,7 +454,7 @@ func findCallCall(fndecl *ast.FuncDecl) *ast.CallExpr {
 			continue
 		}
 		fun, issel := callx.Fun.(*ast.SelectorExpr)
-		if !issel || fun.Sel.Name != "call" {
+		if !issel || (fun.Sel.Name != "call" && fun.Sel.Name != "callWhileDrainingEvents") {
 			continue
 		}
 		return callx
@@ -467,9 +467,6 @@ func qf(*types.Package) string {
 }
 
 func TestTypecheckRPC(t *testing.T) {
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) {
-		t.Skip("disabled due to export format changes")
-	}
 	fset := &token.FileSet{}
 	cfg := &packages.Config{
 		Mode: packages.NeedSyntax | packages.NeedTypesInfo | packages.NeedName | packages.NeedCompiledGoFiles | packages.NeedTypes,
@@ -511,7 +508,7 @@ func TestTypecheckRPC(t *testing.T) {
 		case "Continue", "Rewind":
 			// wrappers over continueDir
 			continue
-		case "SetReturnValuesLoadConfig", "Disconnect":
+		case "SetReturnValuesLoadConfig", "Disconnect", "SetEventsFn":
 			// support functions
 			continue
 		}

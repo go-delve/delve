@@ -6819,7 +6819,7 @@ func launchDebuggerWithTargetRunning(t *testing.T, fixture string) (*protest.Fix
 	var err error
 	go func() {
 		t.Helper()
-		_, err = dbg.Command(&api.DebuggerCommand{Name: api.Continue}, running, nil)
+		_, err = dbg.Command(&api.DebuggerCommand{Name: api.Continue}, running, nil, nil)
 		select {
 		case <-running:
 		default:
@@ -7021,7 +7021,7 @@ func (s *MultiClientCloseServerMock) stop(t *testing.T) {
 	// they are part of dap.Session.
 	// We must take it down manually as if we are in rpccommon::ServerImpl::Stop.
 	if s.debugger.IsRunning() {
-		s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil, nil)
+		s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil, nil, nil)
 	}
 	s.debugger.Detach(true)
 }

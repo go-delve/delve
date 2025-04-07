@@ -1059,7 +1059,7 @@ func (d *Debugger) IsRunning() bool {
 }
 
 // Command handles commands which control the debugger lifecycle
-func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struct{}, clientStatusCh chan struct{}) (state *api.DebuggerState, err error) {
+func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struct{}, clientStatusCh chan struct{}, eventsFn func(*proc.Event)) (state *api.DebuggerState, err error) {
 	if command.Name == api.Halt {
 		// RequestManualStop does not invoke any ptrace syscalls, so it's safe to
 		// access the process directly.
@@ -1085,8 +1085,16 @@ func (d *Debugger) Command(command *api.DebuggerCommand, resumeNotify chan struc
 	d.setRunning(true)
 	defer d.setRunning(false)
 
+	d.target.SetEventsFn(nil)
 	if command.Name != api.SwitchGoroutine && command.Name != api.SwitchThread && command.Name != api.Halt {
 		d.target.ResumeNotify(resumeNotify)
+
+		if eventsFn != nil {
+			eventsFn(&proc.Event{Kind: proc.EventResumed})
+			defer eventsFn(&proc.Event{Kind: proc.EventStopped})
+		}
+
+		d.target.SetEventsFn(eventsFn)
 	} else if resumeNotify != nil {
 		close(resumeNotify)
 	}
