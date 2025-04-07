@@ -1157,10 +1157,14 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		s.debugger, err = debugger.New(&s.config.Debugger, s.config.ProcessArgs)
 
 		if s.debugger != nil {
+			s.debugger.LockTarget()
+			cmdline := s.debugger.Target().CmdLine
+			s.debugger.UnlockTarget()
+
 			s.send(&dap.ProcessEvent{
 				Event: *newEvent("process"),
 				Body: dap.ProcessEventBody{
-					Name:            s.debugger.Target().CmdLine,
+					Name:            cmdline,
 					SystemProcessId: s.debugger.ProcessPid(),
 					IsLocalProcess:  true,
 					StartMethod:     "launch",
