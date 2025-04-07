@@ -1893,7 +1893,7 @@ func (d *Debugger) CurrentPackage() (string, error) {
 	if _, err := d.target.Valid(); err != nil {
 		return "", err
 	}
-	loc, err := d.target.Selected.CurrentThread().Location()
+	loc, err := proc.ThreadLocation(d.target.Selected.CurrentThread())
 	if err != nil {
 		return "", err
 	}
@@ -2231,7 +2231,7 @@ func (d *Debugger) TargetGroup() *proc.TargetGroup {
 }
 
 func (d *Debugger) BuildID() string {
-	loc, err := d.target.Selected.CurrentThread().Location()
+	loc, err := proc.ThreadLocation(d.target.Selected.CurrentThread())
 	if err != nil {
 		return ""
 	}
