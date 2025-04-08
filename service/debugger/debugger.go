@@ -1415,13 +1415,6 @@ func (d *Debugger) Functions(filter string, followCalls int) ([]string, error) {
 	return funcs, nil
 }
 
-type TraceFunc struct {
-	Func    *proc.Function
-	Depth   int
-	visited bool
-}
-type TraceFuncptr *TraceFunc
-
 // isDeferCallReg returns true if the register under question matches the register name used to hold
 // the address of the function being deferred and this can be different on different arches
 func isDeferCallReg( t *proc.Target, name string) (bool) {
@@ -1444,6 +1437,14 @@ func isDeferCallReg( t *proc.Target, name string) (bool) {
 
 }
 func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int, rootstr string) ([]string, error) {
+
+	type TraceFunc struct {
+        	Func    *proc.Function
+        	Depth   int
+        	visited bool
+	}
+
+	type TraceFuncptr *TraceFunc
 
 	TraceMap := make(map[string]TraceFuncptr)
 	queue := make([]TraceFuncptr, 0, 40)
@@ -1475,11 +1476,7 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 			continue
 		}
 		f := parent.Func
-		regs, err := t.CurrentThread().Registers()
-		if err != nil {
-			return nil, fmt.Errorf("Current thread returned nil registers\n")
-		}
-		text, err := proc.Disassemble(t.Memory(), regs, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
+		text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
 
 		if err != nil {
 			return nil, fmt.Errorf("disassemble failed with error %w", err)
