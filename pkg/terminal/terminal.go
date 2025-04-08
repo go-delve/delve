@@ -80,6 +80,9 @@ type Term struct {
 	quitting      bool
 
 	traceNonInteractive bool
+
+	downloadsMu         sync.Mutex
+	downloadsInProgress bool
 }
 
 type displayEntry struct {
@@ -128,12 +131,18 @@ func New(client service.Client, conf *config.Config) *Term {
 			case api.EventResumed:
 				firstEventBinaryInfoDownload = true
 			case api.EventBinaryInfoDownload:
+				t.downloadsMu.Lock()
+				t.downloadsInProgress = true
+				t.downloadsMu.Unlock()
 				if !firstEventBinaryInfoDownload {
 					fmt.Fprintf(t.stdout, "\r")
 				}
-				fmt.Fprintf(t.stdout, "Downloading debug info for %s: %s", event.BinaryInfoDownloadEventDetails.ImagePath, event.BinaryInfoDownloadEventDetails.Progress)
+				fmt.Fprintf(t.stdout, "Downloading debug info for %s: %s (press ^C to cancel)", event.BinaryInfoDownloadEventDetails.ImagePath, event.BinaryInfoDownloadEventDetails.Progress)
 				firstEventBinaryInfoDownload = false
 			case api.EventStopped:
+				t.downloadsMu.Lock()
+				t.downloadsInProgress = false
+				t.downloadsMu.Unlock()
 				if !firstEventBinaryInfoDownload {
 					fmt.Fprintf(t.stdout, "\n")
 				}
@@ -215,6 +224,14 @@ func (t *Term) Close() {
 
 func (t *Term) sigintGuard(ch <-chan os.Signal, multiClient bool) {
 	for range ch {
+		t.downloadsMu.Lock()
+		downloadsInProgress := t.downloadsInProgress
+		t.downloadsMu.Unlock()
+		if downloadsInProgress {
+			t.client.CancelDownloads()
+			continue
+		}
+
 		t.longCommandCancel()
 		t.starlarkEnv.Cancel()
 		state, err := t.client.GetStateNonBlocking()

@@ -2140,6 +2140,9 @@ func (s *Session) stepUntilStopAndNotify(command string, threadId int, granulari
 // onPauseRequest handles 'pause' request.
 // This is a mandatory request to support.
 func (s *Session) onPauseRequest(request *dap.PauseRequest) {
+	if s.debugger.CancelDownloads() {
+		return
+	}
 	s.changeStateMu.Lock()
 	defer s.changeStateMu.Unlock()
 	s.setHaltRequested(true)
@@ -4059,7 +4062,7 @@ func (s *Session) convertDebuggerEvent(event *proc.Event) {
 		s.send(&dap.OutputEvent{
 			Event: *newEvent("output"),
 			Body: dap.OutputEventBody{
-				Output:   fmt.Sprintf("Download debug info for %s: %s\n", event.BinaryInfoDownloadEventDetails.ImagePath, event.BinaryInfoDownloadEventDetails.Progress),
+				Output:   fmt.Sprintf("Download debug info for %s: %s (pause again to cancel)\n", event.BinaryInfoDownloadEventDetails.ImagePath, event.BinaryInfoDownloadEventDetails.Progress),
 				Category: "console",
 			},
 		})

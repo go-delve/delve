@@ -543,6 +543,21 @@ func (grp *TargetGroup) SetEventsFn(eventsFn func(*Event)) {
 	grp.Selected.BinInfo().eventsFn = eventsFn
 }
 
+// CancelDownloads cancels ongoing downloads, if any.
+func (grp *TargetGroup) CancelDownloads() bool {
+	r := false
+	it := ValidTargets{Group: grp}
+	for it.Next() {
+		it.BinInfo().cancelDownloadsMu.Lock()
+		if it.BinInfo().cancelDownloads != nil {
+			it.BinInfo().cancelDownloads()
+			r = true
+		}
+		it.BinInfo().cancelDownloadsMu.Unlock()
+	}
+	return r
+}
+
 // ValidTargets iterates through all valid targets in Group.
 type ValidTargets struct {
 	*Target

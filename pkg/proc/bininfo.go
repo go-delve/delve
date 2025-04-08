@@ -3,6 +3,7 @@ package proc
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"debug/dwarf"
 	"debug/elf"
 	"debug/macho"
@@ -116,6 +117,10 @@ type BinaryInfo struct {
 	debugPinnerFn *Function
 	logger        logflags.Logger
 	eventsFn      func(*Event)
+
+	cancelDownloadsMu sync.Mutex
+	cancelDownloads   func()
+	downloadsCtx      context.Context
 }
 
 var (
@@ -1045,6 +1050,14 @@ func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
 		}
 	}
 
+	if len(bi.Images) > 0 {
+		bi.cancelDownloadsMu.Lock()
+		if bi.cancelDownloads == nil {
+			bi.downloadsCtx, bi.cancelDownloads = context.WithCancel(context.Background())
+		}
+		bi.cancelDownloadsMu.Unlock()
+	}
+
 	// Actually add the image.
 	image := &Image{Path: path, addr: addr, typeCache: make(map[dwarf.Offset]godwarf.Type)}
 	image.dwarfTreeCache, _ = simplelru.NewLRU(dwarfTreeCacheSize, nil)
@@ -1055,6 +1068,21 @@ func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
 	err := loadBinaryInfo(bi, image, path, addr)
 	if err != nil {
 		bi.Images[len(bi.Images)-1].loadErr = err
+	}
+	bi.macOSDebugFrameBugWorkaround()
+	return err
+}
+
+// LoadImageBinaryInfoAgain loads the n-th image debug symbols if they weren't already loaded.
+func (bi *BinaryInfo) LoadImageBinaryInfoAgain(n int) error {
+	if n < 0 || n >= len(bi.Images) || bi.Images[n].loadErr == nil {
+		return nil
+	}
+	image := bi.Images[n]
+	image.loadErr = nil
+	err := loadBinaryInfo(bi, image, image.Path, image.addr)
+	if err != nil {
+		image.loadErr = err
 	}
 	bi.macOSDebugFrameBugWorkaround()
 	return err
@@ -1566,7 +1594,7 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 				})
 			}
 		}
-		debugFilePath, err = debuginfod.GetDebuginfo(notify, image.BuildID)
+		debugFilePath, err = debuginfod.GetDebuginfo(bi.downloadsCtx, notify, image.BuildID)
 		if err != nil {
 			return nil, nil, ErrNoDebugInfoFound
 		}

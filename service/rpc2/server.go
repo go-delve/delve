@@ -1192,3 +1192,26 @@ func (s *RPCServer) GetEvents(arg GetEventsIn, cb service.RPCCallback) {
 	}
 	cb.Return(out, nil)
 }
+
+type CancelDownloadsIn struct {
+}
+
+type CancelDownloadsOut struct {
+}
+
+func (s *RPCServer) CancelDownloads(arg CancelDownloadsIn, cb service.RPCCallback) {
+	close(cb.SetupDoneChan())
+	s.debugger.CancelDownloads()
+	cb.Return(new(CancelDownloadsOut), nil)
+}
+
+type DownloadLibraryDebugInfoIn struct {
+	N int
+}
+
+type DownloadLibraryDebugInfoOut struct {
+}
+
+func (s *RPCServer) DownloadLibraryDebugInfo(arg DownloadLibraryDebugInfoIn, out DownloadLibraryDebugInfoOut) error {
+	return s.debugger.DownloadLibraryDebugInfo(arg.N)
+}
