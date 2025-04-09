@@ -3131,6 +3131,7 @@ func TestNextInstruction(t *testing.T) {
 	withTestClient2("testprog", t, func(c service.Client) {
 		fp := testProgPath(t, "testprog")
 		_, err := c.CreateBreakpoint(&api.Breakpoint{File: fp, Line: 19})
+		assertNoError(err, t, "CreateBreakpoint()")
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
 
