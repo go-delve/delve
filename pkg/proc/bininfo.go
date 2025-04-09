@@ -115,6 +115,7 @@ type BinaryInfo struct {
 
 	debugPinnerFn *Function
 	logger        logflags.Logger
+	eventsFn      func(*Event)
 }
 
 var (
@@ -852,13 +853,13 @@ func (bi *BinaryInfo) LoadBinaryInfo(path string, entryPoint uint64, debugInfoDi
 	return bi.AddImage(path, entryPoint)
 }
 
-func loadBinaryInfo(bi *BinaryInfo, image *Image, path string, entryPoint uint64) error {
+func loadBinaryInfo(bi *BinaryInfo, image *Image, path string, entryPoint uint64, eventsFn func(*Event)) error {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
 	switch bi.GOOS {
 	case "linux", "freebsd":
-		return loadBinaryInfoElf(bi, image, path, entryPoint, &wg)
+		return loadBinaryInfoElf(bi, image, path, entryPoint, eventsFn, &wg)
 	case "windows":
 		return loadBinaryInfoPE(bi, image, path, entryPoint, &wg)
 	case "darwin":
@@ -1057,7 +1058,7 @@ func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
 	// add Image regardless of error so that we don't attempt to re-add it every time we stop
 	image.index = len(bi.Images)
 	bi.Images = append(bi.Images, image)
-	err := loadBinaryInfo(bi, image, path, addr)
+	err := loadBinaryInfo(bi, image, path, addr, bi.eventsFn)
 	if err != nil {
 		bi.Images[len(bi.Images)-1].loadErr = err
 	}
@@ -1466,7 +1467,7 @@ func (bi *BinaryInfo) getModuleData(mem MemoryReadWriter) ([]ModuleData, error) 
 //
 // Alternatively, if the debug file cannot be found be the build-id, Delve
 // will look in directories specified by the debug-info-directories config value.
-func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugInfoDirectories []string) (*os.File, *elf.File, error) {
+func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugInfoDirectories []string, eventsFn func(*Event)) (*os.File, *elf.File, error) {
 	exePath := image.Path
 	exeName := filepath.Base(image.Path)
 	if strings.HasPrefix(image.Path, "/proc") {
@@ -1559,7 +1560,19 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 	// has debuginfod so that we can use that in order to find any relevant debug information.
 	if debugFilePath == "" {
 		var err error
-		debugFilePath, err = debuginfod.GetDebuginfo(image.BuildID)
+		var notify func(string)
+		if eventsFn != nil {
+			notify = func(s string) {
+				eventsFn(&Event{
+					Kind: EventBinaryInfoDownload,
+					BinaryInfoDownloadEventDetails: &BinaryInfoDownloadEventDetails{
+						ImagePath: image.Path,
+						Progress:  s,
+					},
+				})
+			}
+		}
+		debugFilePath, err = debuginfod.GetDebuginfo(notify, image.BuildID)
 		if err != nil {
 			return nil, nil, ErrNoDebugInfoFound
 		}
@@ -1585,7 +1598,7 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 }
 
 // loadBinaryInfoElf specifically loads information from an ELF binary.
-func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, wg *sync.WaitGroup) error {
+func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, eventsFn func(*Event), wg *sync.WaitGroup) error {
 	exe, err := os.OpenFile(path, 0, os.ModePerm)
 	if err != nil {
 		return err
@@ -1627,7 +1640,7 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 	if dwerr != nil {
 		var sepFile *os.File
 		var serr error
-		sepFile, dwarfFile, serr = bi.openSeparateDebugInfo(image, elfFile, bi.DebugInfoDirectories)
+		sepFile, dwarfFile, serr = bi.openSeparateDebugInfo(image, elfFile, bi.DebugInfoDirectories, eventsFn)
 		if serr != nil {
 			if len(bi.Images) <= 1 {
 				fmt.Fprintln(os.Stderr, "Warning: no debug info found, some functionality will be missing such as stack traces and variable evaluation.")

@@ -511,7 +511,7 @@ func TestTypecheckRPC(t *testing.T) {
 		case "Continue", "Rewind":
 			// wrappers over continueDir
 			continue
-		case "SetReturnValuesLoadConfig", "Disconnect":
+		case "SetReturnValuesLoadConfig", "Disconnect", "SetEventsFn":
 			// support functions
 			continue
 		}
