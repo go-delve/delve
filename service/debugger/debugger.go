@@ -1432,7 +1432,11 @@ func isDeferCallReg( t *proc.Target, name string) (bool) {
 		if name == "X1" {
 			res = true
 		}
-	}
+	} else if archName == "386" {
+                if name == "Eax" {
+                        res = true
+                }
+        }
 	return res
 
 }
