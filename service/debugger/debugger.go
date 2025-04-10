@@ -1587,7 +1587,7 @@ func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls i
 
 	tbp, err1 := d.createBreakpointInternal(&api.Breakpoint{FunctionName: fname, Tracepoint: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
 	if tbp == nil {
-		if err1 != nil && strings.Contains(err1.Error(), "Breakpoint exists") == true {
+		if err1 != nil && strings.Contains(err1.Error(), "Breakpoint exists") {
 			// This is expected
 		} else {
 			fmt.Printf("error creating breakpoint at function %s\n", fname)
@@ -1598,7 +1598,7 @@ func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls i
 	for i := range raddrs {
 		rtbp, err := d.createBreakpointInternal(&api.Breakpoint{Addr: raddrs[i], TraceReturn: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
 		if rtbp == nil {
-			if err != nil && strings.Contains(err.Error(), "Breakpoint exists") == true {
+			if err != nil && strings.Contains(err.Error(), "Breakpoint exists") {
 				// This is expected
 			} else {
 				fmt.Printf("error creating breakpoint at function return %s\n", fname)
