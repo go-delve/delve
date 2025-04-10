@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.24.2] 2025-04-10
+
+### Added
+
+- Support for struct literals in expression evaluator (#3935, #3953, @aarzilli)
+- Check to reject DWARFv5 executables if delve itself isn't built with 1.25 or later due to bugs in Go's standard library prior to 1.25 (#3943, #3961, @aarzilli)
+
+### Fixed
+
+- Support for macOS Sequoia 15.4 (#3966, @aarzilli)
+- Race conditions with rr backend (#3971, #3973, #3963, @BronzeDeer, @aarzilli)
+- Goroutine load with corrupted label maps (#3968, #3962, @hongyuh-hh)
+- Breakpoint conditions on suspended breakpoints (#3938, @Lslightly)
+
+### Changed
+
+- Miscellaneous test and documentation fixes (#3979, #3952, #3954, #3955, #3951, @alexandear, @codesoap, @derekparker)
+
 ## [1.24.1] 2025-03-05
 
 ### Added
