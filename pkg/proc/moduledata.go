@@ -77,15 +77,3 @@ func findModuleDataForType(mds []ModuleData, typeAddr uint64) *ModuleData {
 	}
 	return nil
 }
-
-func findModuleDataForImage(mds []ModuleData, so *Image) *ModuleData {
-	var md *ModuleData
-	for i := range mds {
-		if so == nil || mds[i].text > so.StaticBase {
-			if md == nil || mds[i].text < md.text {
-				md = &mds[i]
-			}
-		}
-	}
-	return md
-}

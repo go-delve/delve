@@ -1266,7 +1266,7 @@ func (stack *evalStack) executeOp() {
 		stack.push(newVariable(evalop.BreakpointHitCountVarNameQualified, fakeAddressUnresolv, godwarf.FakeSliceType(godwarf.FakeBasicType("uint", 64)), scope.BinInfo, scope.Mem))
 
 	case *evalop.PushRuntimeType:
-		typeAddr, err := dieToRuntimeType(scope.BinInfo, scope.Mem, op.Type)
+		typeAddr, _, _, err := dwarfToRuntimeType(scope.BinInfo, scope.Mem, op.Type)
 		if err != nil {
 			stack.err = err
 			break

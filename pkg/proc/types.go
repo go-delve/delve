@@ -191,22 +191,3 @@ func dwarfToRuntimeType(bi *BinaryInfo, mem MemoryReadWriter, typ godwarf.Type) 
 	typeKind, _ = constant.Uint64Val(kindv.Value)
 	return typeAddr, typeKind, true, nil
 }
-
-func dieToRuntimeType(bi *BinaryInfo, mem MemoryReadWriter, typ godwarf.Type) (uint64, error) {
-	typc := typ.Common()
-	so := bi.Images[typc.Index]
-	mds, err := bi.getModuleData(mem)
-	if err != nil {
-		return 0, err
-	}
-	md := findModuleDataForImage(mds, so)
-	if md == nil {
-		return 0, fmt.Errorf("could not allocate type %s", typ.String())
-	}
-	for off, rtdie := range so.runtimeTypeToDIE {
-		if rtdie.offset == typc.Offset {
-			return md.types + off, nil
-		}
-	}
-	return 0, fmt.Errorf("could not allocate type %s", typ.String())
-}
