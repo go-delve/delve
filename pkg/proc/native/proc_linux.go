@@ -231,7 +231,7 @@ func initialize(dbp *nativeProcess) (string, error) {
 		comm = bytes.TrimSuffix(comm, []byte("\n"))
 	}
 
-	if comm == nil || len(comm) <= 0 {
+	if len(comm) <= 0 {
 		stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", dbp.pid))
 		if err != nil {
 			return "", fmt.Errorf("could not read proc stat: %v", err)

@@ -1352,9 +1352,6 @@ func TestVersion(t *testing.T) {
 }
 
 func TestStaticcheck(t *testing.T) {
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) {
-		t.Skip("disabled due to export format changes")
-	}
 	_, err := exec.LookPath("staticcheck")
 	if err != nil {
 		t.Skip("staticcheck not installed")
