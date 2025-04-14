@@ -20,8 +20,8 @@ import (
 	"github.com/go-delve/delve/service/api"
 )
 
-//go:generate go run ../../../_scripts/gen-starlark-bindings.go go ./starlark_mapping.go
-//go:generate go run ../../../_scripts/gen-starlark-bindings.go doc ../../../Documentation/cli/starlark.md
+//go:generate go run github.com/go-delve/build-tools/cmd/gen-starlark-bindings@latest go ./starlark_mapping.go
+//go:generate go run github.com/go-delve/build-tools/cmd/gen-starlark-bindings@latest doc ../../../Documentation/cli/starlark.md
 
 const (
 	dlvCommandBuiltinName        = "dlv_command"

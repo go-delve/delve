@@ -25,7 +25,7 @@ import (
 	"github.com/go-delve/delve/service/rpc2"
 )
 
-//go:generate go run ../../_scripts/gen-suitablemethods.go suitablemethods
+//go:generate go run github.com/go-delve/build-tools/cmd/gen-suitablemethods@latest suitablemethods
 
 // ServerImpl implements a JSON-RPC server that can switch between two
 // versions of the API.

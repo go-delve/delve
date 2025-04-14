@@ -19,7 +19,6 @@ require (
 	golang.org/x/arch v0.11.0
 	golang.org/x/sys v0.26.0
 	golang.org/x/telemetry v0.0.0-20241106142447-58a1122356f5
-	golang.org/x/tools v0.26.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -30,6 +29,7 @@ require (
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	golang.org/x/exp v0.0.0-20230224173230-c95f2b4c22f2 // indirect
-	golang.org/x/mod v0.21.0 // indirect
 	golang.org/x/sync v0.8.0 // indirect
 )
+
+replace github.com/go-delve/build-tools@latest => ../build-tools-for-delve/
