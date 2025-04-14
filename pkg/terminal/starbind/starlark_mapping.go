@@ -1,4 +1,4 @@
-// DO NOT EDIT: auto-generated using _scripts/gen-starlark-bindings.go
+// DO NOT EDIT: auto-generated using github.com/go-delve/build-tools/cmd/gen-starlark-bindings
 
 package starbind
 
