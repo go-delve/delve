@@ -5,5 +5,10 @@ freebsd_instance:
   image_family: freebsd-14-2
 
 test_task:
-  install_script: pkg install -y go121  gcc git
+  install_script:
+    - pkg update -f
+    - pkg search ^go
+    - pkg search gcc
+    - pkg search git
+    - pkg install -y go121 gcc git
   test_script: make test
