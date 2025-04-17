@@ -18,11 +18,14 @@ type RPCServer struct {
 	// config is all the information necessary to start the debugger and server.
 	config *service.Config
 	// debugger is a debugger service.
-	debugger *debugger.Debugger
+	debugger   *debugger.Debugger
+	eventsChan chan *proc.Event
 }
 
+const eventBufferSize = 100
+
 func NewServer(config *service.Config, debugger *debugger.Debugger) *RPCServer {
-	return &RPCServer{config, debugger}
+	return &RPCServer{config, debugger, make(chan *proc.Event, eventBufferSize)}
 }
 
 type ProcessPidIn struct {
@@ -127,7 +130,7 @@ type CommandOut struct {
 
 // Command interrupts, continues and steps through the program.
 func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback) {
-	st, err := s.debugger.Command(&command, cb.SetupDoneChan(), cb.DisconnectChan())
+	st, err := s.debugger.Command(&command, cb.SetupDoneChan(), cb.DisconnectChan(), s.eventsFn)
 	if err != nil {
 		cb.Return(nil, err)
 		return
@@ -135,6 +138,10 @@ func (s *RPCServer) Command(command api.DebuggerCommand, cb service.RPCCallback)
 	var out CommandOut
 	out.State = *st
 	cb.Return(out, nil)
+}
+
+func (s *RPCServer) eventsFn(event *proc.Event) {
+	s.eventsChan <- event
 }
 
 type GetBufferedTracepointsIn struct {
@@ -1158,4 +1165,27 @@ func (s *RPCServer) GuessSubstitutePath(arg GuessSubstitutePathIn, out *GuessSub
 		out.List = append(out.List, [2]string{k, v})
 	}
 	return nil
+}
+
+type GetEventsIn struct {
+}
+
+type GetEventsOut struct {
+	Events []api.Event
+}
+
+func (s *RPCServer) GetEvents(arg GetEventsIn, cb service.RPCCallback) {
+	close(cb.SetupDoneChan())
+	out := new(GetEventsOut)
+	out.Events = append(out.Events, *api.ConvertEvent(<-s.eventsChan))
+	for len(out.Events) < eventBufferSize {
+		select {
+		case event := <-s.eventsChan:
+			out.Events = append(out.Events, *api.ConvertEvent(event))
+		default:
+			cb.Return(out, nil)
+			return
+		}
+	}
+	cb.Return(out, nil)
 }
