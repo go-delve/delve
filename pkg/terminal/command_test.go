@@ -1593,7 +1593,7 @@ func TestBreakPointFailWithCond(t *testing.T) {
 		assertNoError(t, term.client.FollowExec(true, ""), "FollowExec")
 		_, err := term.Exec("break spawnchild.go:11 if i == 1")
 		if err != nil {
-			t.Errorf("expect to set a suspened breakpoint")
+			t.Fatalf("expect to set a suspended breakpoint: %v", err)
 		}
 		bp, _ := term.client.GetBreakpoint(1)
 		if bp.Cond != "i == 1" {
