@@ -16,12 +16,12 @@ import (
 	"runtime"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/regnum"
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/locspec"
@@ -410,12 +410,10 @@ func (d *Debugger) LastModified() time.Time {
 	return d.target.Selected.BinInfo().LastModified()
 }
 
-
 // functionReturnLocationsInternal is same as FunctionReturnLocations
 // except that it does not have a lock and unlock as its called from
-// within the callback which has already acquired a lock
+// within the callback which has already acquired a lock.
 func (d *Debugger) functionReturnLocationsInternal(fnName string) ([]uint64, error) {
-
 	if len(d.target.Targets()) > 1 {
 		return nil, ErrNotImplementedWithMultitarget
 	}
@@ -460,12 +458,7 @@ func (d *Debugger) functionReturnLocationsInternal(fnName string) ([]uint64, err
 func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-	raddrs, err := d.functionReturnLocationsInternal(fnName)
-	if err != nil {
-		return nil, err
-	} else {
-		return raddrs, nil
-	}
+	return d.functionReturnLocationsInternal(fnName)
 }
 
 // Detach detaches from the target process.
@@ -693,19 +686,13 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
-	bp, err := d.createBreakpointInternal(requestedBp, locExpr, substitutePathRules, suspended)
-	if err != nil {
-		return nil, err
-	} else {
-		return bp, nil
-	}
+	return d.createBreakpointInternal(requestedBp, locExpr, substitutePathRules, suspended)
 
 }
 
 // createInternalBreakpoint is the same as CreateBreakpoint except that it is called from only within the debugger process
 // when the lock is already been acquired so the step of acquiring and releasing the lock is skipped
 func (d *Debugger) createBreakpointInternal(requestedBp *api.Breakpoint, locExpr string, substitutePathRules [][2]string, suspended bool) (*api.Breakpoint, error) {
-
 	var (
 		setbp proc.SetBreakpoint
 		err   error
@@ -1415,37 +1402,12 @@ func (d *Debugger) Functions(filter string, followCalls int) ([]string, error) {
 	return funcs, nil
 }
 
-// isDeferCallReg returns true if the register under question matches the register name used to hold
-// the address of the function being deferred and this can be different on different arches
-func isDeferCallReg( t *proc.Target, name string) (bool) {
-	archName := t.BinInfo().Arch.Name
-	res := false
-	if archName == "amd64" {
-		if name == "Rcx" {
-			res = true
-		}
-	} else if archName == "ppc64le" {
-		if name == "LR" {
-			res = true
-		}
-	} else if archName == "arm64" {
-		if name == "X1" {
-			res = true
-		}
-	} else if archName == "386" {
-                if name == "Eax" {
-                        res = true
-                }
-        }
-	return res
-
-}
 func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int, rootstr string) ([]string, error) {
 
 	type TraceFunc struct {
-        	Func    *proc.Function
-        	Depth   int
-        	visited bool
+		Func    *proc.Function
+		Depth   int
+		visited bool
 	}
 
 	type TraceFuncptr *TraceFunc
@@ -1494,23 +1456,21 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 					deferbp, err := t.SetBreakpoint(0, instr.Loc.PC, proc.NextBreakpoint, nil)
 					deferbp.RootFuncName = rootstr
 					if err != nil {
-						fmt.Printf("error setting breakpoint inside deferreturn\n")
+						return nil, fmt.Errorf("error setting breakpoint inside deferreturn")
 					}
 					deferbrklet := deferbp.Breaklets[len(deferbp.Breaklets)-1]
-					deferbrklet.Callback = func(th proc.Thread, _ *proc.Target) (bool, error) {
-						rawlocs, err := proc.ThreadStacktrace(t.Group.Selected, t.CurrentThread(), 20)
+					deferbrklet.Callback = func(th proc.Thread, tgt *proc.Target) (bool, error) {
+						rawlocs, err := proc.ThreadStacktrace(tgt, tgt.CurrentThread(), 20)
 						if err != nil {
-							fmt.Printf("Thread stack trace returned error\n")
+							return false, fmt.Errorf("thread stack trace returned error")
 						}
-						bpi := &api.BreakpointInfo{}
 						// Since the defer function is known only at runtime, the depth is likewise
 						// calculated by referring to the stack and the mechanism is exactly the same
 						// as that used in pkg/terminal/command.go:printTraceOutput
-						bpi.Stacktrace, err = d.convertStacktrace(rawlocs, nil)
+						stack, err := d.convertStacktrace(rawlocs, nil)
 						if err != nil {
-							fmt.Printf("convert stack trace returned error\n")
+							return false, fmt.Errorf("convert stack trace returned error")
 						}
-						stack := bpi.Stacktrace
 						rootindex := -1
 						for i := len(stack) - 1; i >= 0; i-- {
 							if stack[i].Function.Name() == deferbp.RootFuncName {
@@ -1527,38 +1487,38 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 						}
 						regs, err := th.Registers()
 						if err != nil {
-							fmt.Printf("registers inside callback returned err\n")
+							return false, fmt.Errorf("registers inside callback returned err")
 
 						}
-						dregs := t.Group.Selected.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
-						dregs.Reg(^uint64(0))
-						for i := 0; i < dregs.CurrentSize(); i++ {
-							reg := dregs.Reg(uint64(i))
-							if reg == nil {
-								continue
-							}
-							name, _, value := t.Group.Selected.BinInfo().Arch.DwarfRegisterToString(i, reg)
-							if isDeferCallReg(t.Group.Selected, name) {
-								addr, err := strconv.ParseUint(value, 0, 64)
-								if err != nil {
-									fmt.Printf("error parsing function address\n")
-								}
-								fn := t.Group.Selected.BinInfo().PCToFunc(addr)
-								_, err = createFnTracepoint(d, fn.Name, rootstr, followCalls)
-								if err != nil {
-									fmt.Printf("1469 error creating tracepoint in function %s\n", fn.Name)
-								}
-								deferchildren, err := d.traverse(t, fn, sdepth+1, followCalls, rootstr)
-								if err != nil {
-									fmt.Printf("error calling traverse on defer children\n")
-								}
-								for i := 0; i < len(deferchildren); i++ {
-									_, err := createFnTracepoint(d, deferchildren[i], rootstr, followCalls)
-									if err != nil {
-										fmt.Printf("1480 error creating tracepoint in function %s\n", deferchildren[i])
-									}
-								}
+						dregs := t.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
+						archName := t.BinInfo().Arch.Name
+						var addr uint64
+						// Get function address from the register used to call defer function from within 
+						// runtime.deferreturn
+        					if archName == "amd64" {
+							addr = dregs.Uint64Val(regnum.AMD64_Rcx)
+						} else if archName == "ppc64le" {
+							addr = dregs.Uint64Val(regnum.PPC64LE_LR)
+						} else if archName == "arm64" {
+							// ARM64_X1 is accessed via ARM64_X0
+							addr = dregs.Uint64Val(regnum.ARM64_X0+1)
+						} else if archName =="386" {
+							addr = dregs.Uint64Val(regnum.I386_Eax)
+						}
 
+						fn := tgt.BinInfo().PCToFunc(addr)
+						_, err = createFnTracepoint(d, fn.Name, rootstr, followCalls)
+						if err != nil {
+							return false, fmt.Errorf("error creating tracepoint in function %s", fn.Name)
+						}
+						deferchildren, err := d.traverse(t, fn, sdepth+1, followCalls, rootstr)
+						if err != nil {
+							return false, fmt.Errorf("error calling traverse on defer children")
+						}
+						for i := 0; i < len(deferchildren); i++ {
+							_, err := createFnTracepoint(d, deferchildren[i], rootstr, followCalls)
+							if err != nil {
+								return false, fmt.Errorf("error creating tracepoint in function %s", deferchildren[i])
 							}
 						}
 						return false, nil
@@ -1577,7 +1537,7 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 					childnode.Func = cf
 					TraceMap[cf.Name] = childnode
 					queue = append(queue, childnode)
-				} 
+				}
 			}
 		}
 	}
@@ -1588,13 +1548,12 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 // we need to create the trace point ourselves so that it can be included in the trace output just in time
 func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls int) (*api.Breakpoint, error) {
 
-
 	tbp, err1 := d.createBreakpointInternal(&api.Breakpoint{FunctionName: fname, Tracepoint: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
 	if tbp == nil {
 		if err1 != nil && strings.Contains(err1.Error(), "Breakpoint exists") {
 			// This is expected
 		} else {
-			fmt.Printf("error creating breakpoint at function %s\n", fname)
+			return nil, fmt.Errorf("error creating breakpoint at function %s", fname)
 		}
 	}
 
@@ -1605,7 +1564,7 @@ func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls i
 			if err != nil && strings.Contains(err.Error(), "Breakpoint exists") {
 				// This is expected
 			} else {
-				fmt.Printf("error creating breakpoint at function return %s\n", fname)
+				return nil, fmt.Errorf("error creating breakpoint at function return %s", fname)
 			}
 		}
 	}
