@@ -45,7 +45,7 @@ type Arch struct {
 	// DwarfRegisterToString returns the name and value representation of the
 	// given register, the register value can be nil in which case only the
 	// register name will be returned.
-	DwarfRegisterToString func(int, *op.DwarfRegister) (string, bool, string)
+	DwarfRegisterToString DwarfRegisterToStringFunc
 	// inhibitStepInto returns whether StepBreakpoint can be set at pc.
 	inhibitStepInto     func(bi *BinaryInfo, pc uint64) bool
 	RegisterNameToDwarf func(s string) (int, bool)
@@ -84,6 +84,8 @@ const (
 	mask16 = 0x0000ffff
 	mask32 = 0xffffffff
 )
+
+type DwarfRegisterToStringFunc func(int, *op.DwarfRegister) (string, bool, string)
 
 // PtrSize returns the size of a pointer for the architecture.
 func (a *Arch) PtrSize() int {
