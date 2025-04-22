@@ -1490,8 +1490,8 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 							return false, fmt.Errorf("registers inside callback returned err")
 
 						}
-						dregs := t.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
-						archName := t.BinInfo().Arch.Name
+						dregs := tgt.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
+						archName := tgt.BinInfo().Arch.Name
 						var addr uint64
 						// Get function address from the register used to call defer function from within 
 						// runtime.deferreturn

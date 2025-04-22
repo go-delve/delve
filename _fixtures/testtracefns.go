@@ -80,7 +80,7 @@ func swap() {
 	intd = temp
 }
 
-func UnnamedDefer() {
+func unnamedDefer() {
 	intc = -100
 	intd = 100
 	swap()
@@ -94,7 +94,7 @@ func main() {
 	j += first(6)
 	j += callme(2)
 	fmt.Println(j)
-	UnnamedDefer()
+	unnamedDefer()
 	F0()
 
 }
