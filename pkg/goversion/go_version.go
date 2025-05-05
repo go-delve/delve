@@ -50,7 +50,7 @@ func Parse(ver string) (GoVersion, bool) {
 			return GoVersion{-1, 0, 0, "", ""}, true
 		}
 
-		// new development build: devel goX.Y-COMMIT DATE ARCH
+		// go1.24 development build: devel goX.Y-COMMIT DATE ARCH
 		ver = strings.Split(ver[2:], "-")[0]
 		v := strings.SplitN(ver, ".", 2)
 		if len(v) != 2 {
@@ -70,40 +70,65 @@ func Parse(ver string) (GoVersion, bool) {
 		switch len(v) {
 		case 2:
 			r.Major, err1 = strconv.Atoi(v[0])
-			var vr []string
 
-			if vr = strings.SplitN(v[1], "beta", 2); len(vr) == 2 {
-				// old beta releases goX.YbetaZ
-				var beta int
-				beta, err3 = strconv.Atoi(vr[1])
-				r.Rev = betaRev(beta)
-			} else if vr = strings.SplitN(v[1], "b", 2); len(vr) == 2 {
-				// old boringcrypto version goX.YbZ
-				if _, err := strconv.Atoi(vr[1]); err != nil {
-					return GoVersion{}, false
-				}
-			} else {
-				vr = strings.SplitN(v[1], "rc", 2)
-				if len(vr) == 2 {
-					// rc release goX.YrcZ
-					var rc int
-					rc, err3 = strconv.Atoi(vr[1])
-					r.Rev = rcRev(rc)
-				} else {
-					r.Minor, err2 = strconv.Atoi(v[1])
-					if err2 != nil {
-						return GoVersion{}, false
-					}
-					return r, true
+			var minorstr, rest string
+			var found bool
+
+			for i, ch := range v[1] {
+				if ch < '0' || ch > '9' {
+					minorstr = v[1][:i]
+					rest = v[1][i:]
+					found = true
+					break
 				}
 			}
+			if !found {
+				minorstr = v[1]
+			}
 
-			// old major release (if none of the options above apply) goX.Y
-
-			r.Minor, err2 = strconv.Atoi(vr[0])
+			r.Minor, err2 = strconv.Atoi(minorstr)
 			r.Proposal = ""
 
-			if err1 != nil || err2 != nil || err3 != nil {
+			if err1 != nil || err2 != nil {
+				return GoVersion{}, false
+			}
+
+			if rest == "" {
+				// old major release: goX.Y
+				return r, true
+			}
+
+			hasPrefix := func(pfx string) bool {
+				if strings.HasPrefix(rest, pfx) {
+					rest = rest[len(pfx):]
+					return true
+				}
+				return false
+			}
+
+			switch {
+			case hasPrefix("-devel_"):
+				// go1.25 development version: go1.25-devel_COMMIT DATE ARCH
+				r.Rev = versionedDevel
+			case hasPrefix("beta"):
+				// old beta releases goX.YbetaZ
+				var beta int
+				beta, err3 = strconv.Atoi(rest)
+				r.Rev = betaRev(beta)
+			case hasPrefix("b"):
+				// old boringcrypto version goX.YbZ
+				_, err3 = strconv.Atoi(rest)
+			case hasPrefix("rc"):
+				// old rc release goX.YrcZ
+				var rc int
+				rc, err3 = strconv.Atoi(rest)
+				r.Rev = rcRev(rc)
+			default:
+				// what is this?
+				return GoVersion{}, false
+			}
+
+			if err3 != nil {
 				return GoVersion{}, false
 			}
 
