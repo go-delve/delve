@@ -1157,9 +1157,9 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		s.debugger, err = debugger.New(&s.config.Debugger, s.config.ProcessArgs)
 
 		if s.debugger != nil {
-			s.debugger.LockTarget()
-			cmdline := s.debugger.Target().CmdLine
-			s.debugger.UnlockTarget()
+			tgrp, unlock := s.debugger.LockTargetGroup()
+			cmdline := tgrp.Selected.CmdLine
+			unlock()
 
 			s.send(&dap.ProcessEvent{
 				Event: *newEvent("process"),
@@ -1701,7 +1701,9 @@ func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneReque
 		}
 		s.send(e)
 	}
-	s.debugger.TargetGroup().KeepSteppingBreakpoints = proc.HaltKeepsSteppingBreakpoints | proc.TracepointKeepsSteppingBreakpoints
+	tgrp, unlock := s.debugger.LockTargetGroup()
+	tgrp.KeepSteppingBreakpoints = proc.HaltKeepsSteppingBreakpoints | proc.TracepointKeepsSteppingBreakpoints
+	unlock()
 
 	s.logToConsole("Type 'dlv help' for list of commands.")
 	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
@@ -1831,8 +1833,8 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 		}
 
 		threads = make([]dap.Thread, len(gs))
-		s.debugger.LockTarget()
-		defer s.debugger.UnlockTarget()
+		_, unlock := s.debugger.LockTargetGroup()
+		defer unlock()
 
 		for i, g := range gs {
 			selected := ""
@@ -2174,7 +2176,9 @@ func (s *Session) onStackTraceRequest(request *dap.StackTraceRequest) {
 	// Determine if the goroutine is a system goroutine.
 	isSystemGoroutine := true
 	if g, _ := s.debugger.FindGoroutine(int64(goroutineID)); g != nil {
-		isSystemGoroutine = g.System(s.debugger.Target())
+		tgrp, unlock := s.debugger.LockTargetGroup()
+		isSystemGoroutine = g.System(tgrp.Selected)
+		unlock()
 	}
 
 	stackFrames := []dap.StackFrame{} // initialize to empty, since nil is not an accepted response.
@@ -2293,12 +2297,12 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 
 	if s.args.ShowRegisters {
 		// Retrieve registers
-		regs, err := s.debugger.ScopeRegisters(int64(goid), frame, 0)
+		regs, dwarfRegsiterToString, err := s.debugger.ScopeRegisters(int64(goid), frame, 0)
 		if err != nil {
 			s.sendErrorResponse(request.Request, UnableToListRegisters, "Unable to list registers", err.Error())
 			return
 		}
-		outRegs := api.ConvertRegisters(regs, s.debugger.DwarfRegisterToString, false)
+		outRegs := api.ConvertRegisters(regs, dwarfRegsiterToString, false)
 		regsVar := make([]proc.Variable, len(outRegs))
 		for i, r := range outRegs {
 			regsVar[i] = proc.Variable{
@@ -3217,22 +3221,29 @@ func (s *Session) onDisassembleRequest(request *dap.DisassembleRequest) {
 	}
 
 	start := addr
-	maxInstructionLength := s.debugger.Target().BinInfo().Arch.MaxInstructionLength()
-	byteOffset := request.Arguments.InstructionOffset * maxInstructionLength
-	// Adjust the offset to include instructions before the requested address.
-	if byteOffset < 0 {
-		start = uint64(int(addr) + byteOffset)
-	}
-	// Adjust the number of instructions to include enough instructions after
-	// the requested address.
-	count := request.Arguments.InstructionCount
-	if byteOffset > 0 {
-		count += byteOffset
-	}
-	end := uint64(int(addr) + count*maxInstructionLength)
+	var end uint64
 
-	// Make sure the PCs are lined up with instructions.
-	start, end = alignPCs(s.debugger.Target().BinInfo(), start, end)
+	{
+		tgrp, unlock := s.debugger.LockTargetGroup()
+		maxInstructionLength := tgrp.Selected.BinInfo().Arch.MaxInstructionLength()
+
+		byteOffset := request.Arguments.InstructionOffset * maxInstructionLength
+		// Adjust the offset to include instructions before the requested address.
+		if byteOffset < 0 {
+			start = uint64(int(addr) + byteOffset)
+		}
+		// Adjust the number of instructions to include enough instructions after
+		// the requested address.
+		count := request.Arguments.InstructionCount
+		if byteOffset > 0 {
+			count += byteOffset
+		}
+		end = uint64(int(addr) + count*maxInstructionLength)
+
+		// Make sure the PCs are lined up with instructions.
+		start, end = alignPCs(tgrp.Selected.BinInfo(), start, end)
+		unlock()
+	}
 
 	// Disassemble the instructions
 	procInstructions, err := s.debugger.Disassemble(-1, start, end)
