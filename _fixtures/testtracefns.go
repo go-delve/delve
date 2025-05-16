@@ -86,6 +86,41 @@ func unnamedDefer() {
 	swap()
 	fmt.Println(intc, intd)
 }
+func formula(op string) func (int, int) int {
+ var calc func(int, int) int
+ if op == "add" {
+         calc = func(m int, n int) int {
+                 res := m+n
+                 return res
+         }
+ } else if op == "mul" {
+         calc = func(m int, n int) int {
+                 res := m*n
+                 return res
+         }
+ }
+ return calc
+}
+
+func op() int {
+        calc := formula("add")
+        res := calc(10,20)
+        return res
+}
+
+func assign(bar func()) {
+        bar()
+}
+func testfunc() {
+        intc=10
+        intd=20
+}
+
+func dyn() {
+        intc=0
+        intd=0
+        assign(testfunc)
+}
 
 func main() {
 	j := 0
@@ -96,5 +131,8 @@ func main() {
 	fmt.Println(j)
 	unnamedDefer()
 	F0()
+	ans := op()
+	fmt.Println(ans)
+	dyn()
 
 }
