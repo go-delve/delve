@@ -1448,7 +1448,6 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 			return nil, fmt.Errorf("disassemble failed with error %w", err)
 		}
 		for _, instr := range text {
-			if f.Name == "runtime.deferreturn" {
 				// Defer functions are called in a special way wherein the destination location is nil
 				// Hence its required to put a breakpoint inorder to acquire the address of the function
 				// at runtime and we do this via a call back mechanism
@@ -1507,6 +1506,9 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 						}
 
 						fn := tgt.BinInfo().PCToFunc(addr)
+						if fn == nil {
+							return false, fmt.Errorf("PCToFunc returned nil")
+						}
 						_, err = createFnTracepoint(d, fn.Name, rootstr, followCalls)
 						if err != nil {
 							return false, fmt.Errorf("error creating tracepoint in function %s", fn.Name)
@@ -1524,7 +1526,6 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 						return false, nil
 					}
 				}
-			}
 
 			if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
 				cf := instr.DestLoc.Fn
