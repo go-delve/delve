@@ -1448,84 +1448,84 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 			return nil, fmt.Errorf("disassemble failed with error %w", err)
 		}
 		for _, instr := range text {
-				// Defer functions are called in a special way wherein the destination location is nil
-				// Hence its required to put a breakpoint inorder to acquire the address of the function
-				// at runtime and we do this via a call back mechanism
-				if instr.IsCall() && instr.DestLoc == nil {
-					deferbp, err := t.SetBreakpoint(0, instr.Loc.PC, proc.NextBreakpoint, nil)
-					deferbp.RootFuncName = rootstr
+			// Defer functions are called in a special way wherein the destination location is nil
+			// Hence its required to put a breakpoint inorder to acquire the address of the function
+			// at runtime and we do this via a call back mechanism
+			if instr.IsCall() && instr.DestLoc == nil {
+				deferbp, err := t.SetBreakpoint(0, instr.Loc.PC, proc.NextBreakpoint, nil)
+				deferbp.RootFuncName = rootstr
+				if err != nil {
+					return nil, fmt.Errorf("error setting breakpoint inside deferreturn")
+				}
+				deferbrklet := deferbp.Breaklets[len(deferbp.Breaklets)-1]
+				deferbrklet.Callback = func(th proc.Thread, tgt *proc.Target) (bool, error) {
+					rawlocs, err := proc.ThreadStacktrace(tgt, tgt.CurrentThread(), 20)
 					if err != nil {
-						return nil, fmt.Errorf("error setting breakpoint inside deferreturn")
+						return false, fmt.Errorf("thread stack trace returned error")
 					}
-					deferbrklet := deferbp.Breaklets[len(deferbp.Breaklets)-1]
-					deferbrklet.Callback = func(th proc.Thread, tgt *proc.Target) (bool, error) {
-						rawlocs, err := proc.ThreadStacktrace(tgt, tgt.CurrentThread(), 20)
-						if err != nil {
-							return false, fmt.Errorf("thread stack trace returned error")
-						}
-						// Since the defer function is known only at runtime, the depth is likewise
-						// calculated by referring to the stack and the mechanism is exactly the same
-						// as that used in pkg/terminal/command.go:printTraceOutput
-						stack, err := d.convertStacktrace(rawlocs, nil)
-						if err != nil {
-							return false, fmt.Errorf("convert stack trace returned error")
-						}
-						rootindex := -1
-						for i := len(stack) - 1; i >= 0; i-- {
-							if stack[i].Function.Name() == deferbp.RootFuncName {
-								if rootindex == -1 {
-									rootindex = i
-									break
-								}
+					// Since the defer function is known only at runtime, the depth is likewise
+					// calculated by referring to the stack and the mechanism is exactly the same
+					// as that used in pkg/terminal/command.go:printTraceOutput
+					stack, err := d.convertStacktrace(rawlocs, nil)
+					if err != nil {
+						return false, fmt.Errorf("convert stack trace returned error")
+					}
+					rootindex := -1
+					for i := len(stack) - 1; i >= 0; i-- {
+						if stack[i].Function.Name() == deferbp.RootFuncName {
+							if rootindex == -1 {
+								rootindex = i
+								break
 							}
 						}
-						sdepth := rootindex + 1
+					}
+					sdepth := rootindex + 1
 
-						if sdepth+1 > followCalls {
-							return false, nil
-						}
-						regs, err := th.Registers()
-						if err != nil {
-							return false, fmt.Errorf("registers inside callback returned err")
-
-						}
-						dregs := tgt.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
-						archName := tgt.BinInfo().Arch.Name
-						var addr uint64
-						// Get function address from the register used to call defer function from within 
-						// runtime.deferreturn
-        					if archName == "amd64" {
-							addr = dregs.Uint64Val(regnum.AMD64_Rcx)
-						} else if archName == "ppc64le" {
-							addr = dregs.Uint64Val(regnum.PPC64LE_LR)
-						} else if archName == "arm64" {
-							// ARM64_X1 is accessed via ARM64_X0
-							addr = dregs.Uint64Val(regnum.ARM64_X0+1)
-						} else if archName =="386" {
-							addr = dregs.Uint64Val(regnum.I386_Eax)
-						}
-
-						fn := tgt.BinInfo().PCToFunc(addr)
-						if fn == nil {
-							return false, fmt.Errorf("PCToFunc returned nil")
-						}
-						_, err = createFnTracepoint(d, fn.Name, rootstr, followCalls)
-						if err != nil {
-							return false, fmt.Errorf("error creating tracepoint in function %s", fn.Name)
-						}
-						deferchildren, err := d.traverse(t, fn, sdepth+1, followCalls, rootstr)
-						if err != nil {
-							return false, fmt.Errorf("error calling traverse on defer children")
-						}
-						for i := 0; i < len(deferchildren); i++ {
-							_, err := createFnTracepoint(d, deferchildren[i], rootstr, followCalls)
-							if err != nil {
-								return false, fmt.Errorf("error creating tracepoint in function %s", deferchildren[i])
-							}
-						}
+					if sdepth+1 > followCalls {
 						return false, nil
 					}
+					regs, err := th.Registers()
+					if err != nil {
+						return false, fmt.Errorf("registers inside callback returned err")
+
+					}
+					dregs := tgt.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
+					archName := tgt.BinInfo().Arch.Name
+					var addr uint64
+					// Get function address from the register used to call defer function from within
+					// runtime.deferreturn
+					if archName == "amd64" {
+						addr = dregs.Uint64Val(regnum.AMD64_Rcx)
+					} else if archName == "ppc64le" {
+						addr = dregs.Uint64Val(regnum.PPC64LE_LR)
+					} else if archName == "arm64" {
+						// ARM64_X1 is accessed via ARM64_X0
+						addr = dregs.Uint64Val(regnum.ARM64_X0 + 1)
+					} else if archName == "386" {
+						addr = dregs.Uint64Val(regnum.I386_Eax)
+					}
+
+					fn := tgt.BinInfo().PCToFunc(addr)
+					if fn == nil {
+						return false, fmt.Errorf("PCToFunc returned nil")
+					}
+					_, err = createFnTracepoint(d, fn.Name, rootstr, followCalls)
+					if err != nil {
+						return false, fmt.Errorf("error creating tracepoint in function %s", fn.Name)
+					}
+					deferchildren, err := d.traverse(t, fn, sdepth+1, followCalls, rootstr)
+					if err != nil {
+						return false, fmt.Errorf("error calling traverse on defer children")
+					}
+					for i := 0; i < len(deferchildren); i++ {
+						_, err := createFnTracepoint(d, deferchildren[i], rootstr, followCalls)
+						if err != nil {
+							return false, fmt.Errorf("error creating tracepoint in function %s", deferchildren[i])
+						}
+					}
+					return false, nil
 				}
+			}
 
 			if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
 				cf := instr.DestLoc.Fn
