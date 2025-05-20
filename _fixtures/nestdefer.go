@@ -1,10 +1,10 @@
 package main
 
+var varc int
 
-var varc int 
-func C()  {
+func C() {
 	defer D()
-varc += 10*10
+	varc += 10 * 10
 }
 func A() {
 	defer C()
@@ -12,7 +12,7 @@ func A() {
 }
 
 func D() {
-     B()
+	B()
 }
 
 func B() {
