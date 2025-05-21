@@ -777,9 +777,9 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 	lbp.Set = setbp
 
 	if lbp.Set.Expr != nil {
-		addrs := lbp.Set.Expr(d.Target())
+		addrs := lbp.Set.Expr(d.target.Selected)
 		if len(addrs) > 0 {
-			f, l, fn := d.Target().BinInfo().PCToLine(addrs[0])
+			f, l, fn := d.target.Selected.BinInfo().PCToLine(addrs[0])
 			lbp.File = f
 			lbp.Line = l
 			if fn != nil {
@@ -1493,36 +1493,31 @@ func (d *Debugger) PackageVariables(filter string, cfg proc.LoadConfig) ([]*proc
 }
 
 // ThreadRegisters returns registers of the specified thread.
-func (d *Debugger) ThreadRegisters(threadID int) (*op.DwarfRegisters, error) {
+func (d *Debugger) ThreadRegisters(threadID int) (*op.DwarfRegisters, proc.DwarfRegisterToStringFunc, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
 	thread, found := d.target.Selected.FindThread(threadID)
 	if !found {
-		return nil, fmt.Errorf("couldn't find thread %d", threadID)
+		return nil, nil, fmt.Errorf("couldn't find thread %d", threadID)
 	}
 	regs, err := thread.Registers()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return d.target.Selected.BinInfo().Arch.RegistersToDwarfRegisters(0, regs), nil
+	return d.target.Selected.BinInfo().Arch.RegistersToDwarfRegisters(0, regs), d.target.Selected.BinInfo().Arch.DwarfRegisterToString, nil
 }
 
 // ScopeRegisters returns registers for the specified scope.
-func (d *Debugger) ScopeRegisters(goid int64, frame, deferredCall int) (*op.DwarfRegisters, error) {
+func (d *Debugger) ScopeRegisters(goid int64, frame, deferredCall int) (*op.DwarfRegisters, proc.DwarfRegisterToStringFunc, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
 	s, err := proc.ConvertEvalScope(d.target.Selected, goid, frame, deferredCall)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &s.Regs, nil
-}
-
-// DwarfRegisterToString returns the name and value representation of the given register.
-func (d *Debugger) DwarfRegisterToString(i int, reg *op.DwarfRegister) (string, bool, string) {
-	return d.target.Selected.BinInfo().Arch.DwarfRegisterToString(i, reg)
+	return &s.Regs, d.target.Selected.BinInfo().Arch.DwarfRegisterToString, nil
 }
 
 // LocalVariables returns a list of the local variables.
@@ -2139,14 +2134,10 @@ func (d *Debugger) StopReason() proc.StopReason {
 	return d.target.Selected.StopReason
 }
 
-// LockTarget acquires the target mutex.
-func (d *Debugger) LockTarget() {
+// LockTargetGroup locks the target group and returns a function to unlock it.
+func (d *Debugger) LockTargetGroup() (*proc.TargetGroup, func()) {
 	d.targetMutex.Lock()
-}
-
-// UnlockTarget releases the target mutex.
-func (d *Debugger) UnlockTarget() {
-	d.targetMutex.Unlock()
+	return d.target, d.targetMutex.Unlock
 }
 
 // DumpStart starts a core dump to dest.
@@ -2222,15 +2213,9 @@ func (d *Debugger) DumpCancel() error {
 	return nil
 }
 
-func (d *Debugger) Target() *proc.Target {
-	return d.target.Selected
-}
-
-func (d *Debugger) TargetGroup() *proc.TargetGroup {
-	return d.target
-}
-
 func (d *Debugger) BuildID() string {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
 	loc, err := proc.ThreadLocation(d.target.Selected.CurrentThread())
 	if err != nil {
 		return ""
