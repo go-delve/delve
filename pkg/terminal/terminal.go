@@ -122,6 +122,23 @@ func New(client service.Client, conf *config.Config) *Term {
 		if state, err := client.GetState(); err == nil {
 			t.oldPid = state.Pid
 		}
+		firstEventBinaryInfoDownload := true
+		client.SetEventsFn(func(event *api.Event) {
+			switch event.Kind {
+			case api.EventResumed:
+				firstEventBinaryInfoDownload = true
+			case api.EventBinaryInfoDownload:
+				if !firstEventBinaryInfoDownload {
+					fmt.Fprintf(t.stdout, "\r")
+				}
+				fmt.Fprintf(t.stdout, "Downloading debug info for %s: %s", event.BinaryInfoDownloadEventDetails.ImagePath, event.BinaryInfoDownloadEventDetails.Progress)
+				firstEventBinaryInfoDownload = false
+			case api.EventStopped:
+				if !firstEventBinaryInfoDownload {
+					fmt.Fprintf(t.stdout, "\n")
+				}
+			}
+		})
 	}
 
 	t.starlarkEnv = starbind.New(starlarkContext{t}, t.stdout)
