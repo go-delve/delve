@@ -33,6 +33,10 @@ func (oor *openOnRead) Read(p []byte) (n int, err error) {
 func (oor *openOnRead) Close() error {
 	defer os.Remove(oor.path)
 
+	if oor.rd == nil {
+		return nil
+	}
+
 	fh, _ := os.OpenFile(oor.path, os.O_WRONLY|syscall.O_NONBLOCK, 0)
 	if fh != nil {
 		fh.Close()
