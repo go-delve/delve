@@ -2899,7 +2899,7 @@ func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 		ctxt := request.Arguments.Context
 		switch ctxt {
 		case "repl", "variables", "hover", "clipboard":
-			if exprVar.Kind == reflect.String {
+			if exprVar.Kind == reflect.String && exprVar.Unreadable == nil {
 				if strVal := constant.StringVal(exprVar.Value); exprVar.Len > int64(len(strVal)) {
 					// Reload the string value with a bigger limit.
 					loadCfg := DefaultLoadConfig
