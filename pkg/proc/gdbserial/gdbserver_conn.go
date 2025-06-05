@@ -534,6 +534,10 @@ func (conn *gdbConn) readRegister(threadID string, regnum int, data []byte) erro
 		return err
 	}
 
+	if len(resp) > len(data)*2 {
+		return fmt.Errorf("wrong response length, expected %d got %d", len(data)*2, len(resp))
+	}
+
 	for i := 0; i < len(resp); i += 2 {
 		n, _ := strconv.ParseUint(string(resp[i:i+2]), 16, 8)
 		data[i/2] = uint8(n)
