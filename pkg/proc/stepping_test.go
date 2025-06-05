@@ -695,6 +695,15 @@ func TestRangeOverFuncNext(t *testing.T) {
 		return seqTest{contNext, n}
 	}
 
+	nop := seqTest{contNothing, func(*proc.Target) {}}
+
+	ifcond := func(v bool, a seqTest, b seqTest) seqTest {
+		if v {
+			return a
+		}
+		return b
+	}
+
 	assertLocals := func(t *testing.T, varnames ...string) seqTest {
 		return seqTest{
 			contNothing,
@@ -767,7 +776,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
 				funcBreak(t, "main.TestTrickyIterAll"),
 				{contContinue, 24}, // TestTrickyIterAll
-				nx(25),
+				ifcond(runtime.GOARCH == "arm64" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 25), nop, nx(25)),
 				nx(26),
 				nx(27), // for _, x := range ...
 				assertLocals(t, "trickItAll", "i"),
@@ -796,7 +805,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
 				funcBreak(t, "main.TestTrickyIterAll2"),
 				{contContinue, 37}, // TestTrickyIterAll2
-				nx(38),
+				ifcond(runtime.GOARCH == "arm64" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 25), nop, nx(38)),
 				nx(39),
 				nx(40), // for _, x := range...
 				nx(41),
@@ -1218,7 +1227,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
 		t.Skip("N/A")
 	}
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) && !goversion.VersionAfterOrEqual(runtime.Version(), 1, 25) {
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) && !goversion.VersionAfterOrEqual(runtime.Version(), 1, 26) {
 		t.Skip("broken due to inlined symbol names")
 	}
 
