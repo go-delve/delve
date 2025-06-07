@@ -115,6 +115,8 @@ type BinaryInfo struct {
 
 	debugPinnerFn *Function
 	logger        logflags.Logger
+
+	appliedMacOSDebugFrameBugWorkaround bool
 }
 
 var (
@@ -2196,6 +2198,11 @@ func (bi *BinaryInfo) macOSDebugFrameBugWorkaround() {
 			bi.frameEntries[i].Translate(delta)
 		}
 	}
+	bi.appliedMacOSDebugFrameBugWorkaround = true
+}
+
+func (bi *BinaryInfo) IsMacOSDebugFrameBugWorkaroundApplied() bool {
+	return bi.appliedMacOSDebugFrameBugWorkaround
 }
 
 // macOSShortSectionNamesWorkaround works around a bug in Go 1.23 (and
