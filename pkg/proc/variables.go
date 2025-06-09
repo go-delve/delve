@@ -776,8 +776,8 @@ func newVariable(name string, addr uint64, dwarfType godwarf.Type, bi *BinaryInf
 
 var constantMaxInt64 = constant.MakeInt64(1<<63 - 1)
 
-func newConstant(val constant.Value, mem MemoryReadWriter) *Variable {
-	v := &Variable{Value: val, mem: mem, loaded: true}
+func newConstant(val constant.Value, bi *BinaryInfo, mem MemoryReadWriter) *Variable {
+	v := &Variable{Value: val, mem: mem, loaded: true, bi: bi}
 	switch val.Kind() {
 	case constant.Int:
 		v.Kind = reflect.Int
@@ -2197,47 +2197,47 @@ func (v *Variable) registerVariableTypeConv(newtyp string) (*Variable, error) {
 		var child *Variable
 		switch newtyp {
 		case "int8":
-			child = newConstant(constant.MakeInt64(int64(int8(v.reg.Bytes[i]))), v.mem)
+			child = newConstant(constant.MakeInt64(int64(int8(v.reg.Bytes[i]))), v.bi, v.mem)
 			child.Kind = reflect.Int8
 			n = 1
 		case "int16":
-			child = newConstant(constant.MakeInt64(int64(int16(binary.LittleEndian.Uint16(v.reg.Bytes[i:])))), v.mem)
+			child = newConstant(constant.MakeInt64(int64(int16(binary.LittleEndian.Uint16(v.reg.Bytes[i:])))), v.bi, v.mem)
 			child.Kind = reflect.Int16
 			n = 2
 		case "int32":
-			child = newConstant(constant.MakeInt64(int64(int32(binary.LittleEndian.Uint32(v.reg.Bytes[i:])))), v.mem)
+			child = newConstant(constant.MakeInt64(int64(int32(binary.LittleEndian.Uint32(v.reg.Bytes[i:])))), v.bi, v.mem)
 			child.Kind = reflect.Int32
 			n = 4
 		case "int64":
-			child = newConstant(constant.MakeInt64(int64(binary.LittleEndian.Uint64(v.reg.Bytes[i:]))), v.mem)
+			child = newConstant(constant.MakeInt64(int64(binary.LittleEndian.Uint64(v.reg.Bytes[i:]))), v.bi, v.mem)
 			child.Kind = reflect.Int64
 			n = 8
 		case "uint8":
-			child = newConstant(constant.MakeUint64(uint64(v.reg.Bytes[i])), v.mem)
+			child = newConstant(constant.MakeUint64(uint64(v.reg.Bytes[i])), v.bi, v.mem)
 			child.Kind = reflect.Uint8
 			n = 1
 		case "uint16":
-			child = newConstant(constant.MakeUint64(uint64(binary.LittleEndian.Uint16(v.reg.Bytes[i:]))), v.mem)
+			child = newConstant(constant.MakeUint64(uint64(binary.LittleEndian.Uint16(v.reg.Bytes[i:]))), v.bi, v.mem)
 			child.Kind = reflect.Uint16
 			n = 2
 		case "uint32":
-			child = newConstant(constant.MakeUint64(uint64(binary.LittleEndian.Uint32(v.reg.Bytes[i:]))), v.mem)
+			child = newConstant(constant.MakeUint64(uint64(binary.LittleEndian.Uint32(v.reg.Bytes[i:]))), v.bi, v.mem)
 			child.Kind = reflect.Uint32
 			n = 4
 		case "uint64":
-			child = newConstant(constant.MakeUint64(binary.LittleEndian.Uint64(v.reg.Bytes[i:])), v.mem)
+			child = newConstant(constant.MakeUint64(binary.LittleEndian.Uint64(v.reg.Bytes[i:])), v.bi, v.mem)
 			child.Kind = reflect.Uint64
 			n = 8
 		case "float32":
 			a := binary.LittleEndian.Uint32(v.reg.Bytes[i:])
 			x := *(*float32)(unsafe.Pointer(&a))
-			child = newConstant(constant.MakeFloat64(float64(x)), v.mem)
+			child = newConstant(constant.MakeFloat64(float64(x)), v.bi, v.mem)
 			child.Kind = reflect.Float32
 			n = 4
 		case "float64":
 			a := binary.LittleEndian.Uint64(v.reg.Bytes[i:])
 			x := *(*float64)(unsafe.Pointer(&a))
-			child = newConstant(constant.MakeFloat64(x), v.mem)
+			child = newConstant(constant.MakeFloat64(x), v.bi, v.mem)
 			child.Kind = reflect.Float64
 			n = 8
 		default:
@@ -2253,7 +2253,7 @@ func (v *Variable) registerVariableTypeConv(newtyp string) (*Variable, error) {
 				}
 				n = n / 8
 			}
-			child = newConstant(constant.MakeString(fmt.Sprintf("%x", v.reg.Bytes[i:][:n])), v.mem)
+			child = newConstant(constant.MakeString(fmt.Sprintf("%x", v.reg.Bytes[i:][:n])), v.bi, v.mem)
 		}
 		v.Children = append(v.Children, *child)
 	}
