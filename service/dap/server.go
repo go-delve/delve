@@ -143,6 +143,8 @@ type Session struct {
 	// to ensure that messages do not get interleaved
 	sendingMu sync.Mutex
 
+	disconnected bool // disconnect was called
+
 	// runningCmd tracks whether the server is running an asynchronous
 	// command that resumes execution, which may not correspond to the actual
 	// running state of the process (e.g. if a command is temporarily interrupted).
@@ -412,6 +414,8 @@ func (s *Session) Close() {
 		s.stopDebugSession(killProcess)
 	} else if s.noDebugProcess != nil {
 		s.stopNoDebugProcess()
+	} else {
+		s.disconnected = true
 	}
 	// The binary is no longer in use by the debugger. It is safe to remove it.
 	if s.binaryToRemove != "" {
@@ -1238,6 +1242,7 @@ func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd stri
 // onDisconnectRequest (run goroutine) and requires holding mu lock.
 func (s *Session) stopNoDebugProcess() {
 	if s.noDebugProcess == nil {
+		s.disconnected = true
 		// We already handled termination or there was never a process
 		return
 	}
@@ -1285,7 +1290,7 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
 		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
 		s.conn.Close()
-		s.debugger = nil
+		s.disconnected = true
 		// The target is left in whatever state it is already in - halted or running.
 		// The users therefore have the flexibility to choose the appropriate state
 		// for their case before disconnecting. This is also desirable in case of
@@ -1308,6 +1313,8 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 		err = s.stopDebugSession(killProcess)
 	} else if s.noDebugProcess != nil {
 		s.stopNoDebugProcess()
+	} else {
+		s.disconnected = true
 	}
 	if err != nil {
 		s.sendErrorResponse(request.Request, DisconnectError, "Error while disconnecting", err.Error())
@@ -1327,10 +1334,10 @@ func (s *Session) stopDebugSession(killProcess bool) error {
 	defer func() {
 		// Avoid running stop sequence twice.
 		// It's not fatal, but will result in duplicate logging.
-		s.debugger = nil
+		s.disconnected = true
 		s.changeStateMu.Unlock()
 	}()
-	if s.debugger == nil {
+	if s.debugger == nil || s.disconnected {
 		return nil
 	}
 	var exited error

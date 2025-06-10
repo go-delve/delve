@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/rand"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -145,8 +146,8 @@ func verifySessionStopped(t *testing.T, session *Session) {
 		t.Error("session must always have a set connection")
 	}
 	verifyConnStopped(t, session.conn)
-	if session.debugger != nil {
-		t.Error("session should have no pointer to debugger after shutdown")
+	if !session.disconnected {
+		t.Error("session should have disconnected set after shutdown")
 	}
 	if session.binaryToRemove != "" {
 		t.Error("session should have no binary to remove after shutdown")
@@ -234,8 +235,9 @@ func TestSessionStop(t *testing.T) {
 		if binaryToRemoveSet && s.binaryToRemove == "" || !binaryToRemoveSet && s.binaryToRemove != "" {
 			t.Errorf("binaryToRemove: got %s, want set=%v", s.binaryToRemove, binaryToRemoveSet)
 		}
-		if debuggerSet && s.debugger == nil || !debuggerSet && s.debugger != nil {
-			t.Errorf("debugger: got %v, want set=%v", s.debugger, debuggerSet)
+		connected := s.debugger != nil && !s.disconnected
+		if debuggerSet != connected {
+			t.Errorf("debugger: got debugger!=nil: %v disconnected: %v, want set=%v", s.debugger != nil, s.disconnected, debuggerSet)
 		}
 		if disconnectChanSet && s.config.DisconnectChan == nil || !disconnectChanSet && s.config.DisconnectChan != nil {
 			t.Errorf("disconnectChan: got %v, want set=%v", s.config.DisconnectChan, disconnectChanSet)
@@ -7692,6 +7694,74 @@ func TestRedirect(t *testing.T) {
 		}
 		client.ExpectTerminatedEvent(t)
 	})
+}
+
+func TestBreakpointAfterDisconnect(t *testing.T) {
+	fixture := protest.BuildFixture(t, "testnextnethttp", protest.AllNonOptimized)
+
+	cmd := exec.Command(fixture.Path)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	var server MultiClientCloseServerMock
+	server.stopped = make(chan struct{})
+	server.impl, server.forceStop = startDAPServer(t, false, server.stopped)
+
+	dbg, err := debugger.New(&debugger.Config{Backend: "default", AttachPid: cmd.Process.Pid}, nil)
+	if err != nil {
+		t.Fatalf("debugger.New: %v", err)
+	}
+
+	server.debugger = dbg
+
+	client := server.acceptNewClient(t)
+
+	client.InitializeRequest()
+	client.ExpectInitializeResponse(t)
+
+	client.SetBreakpointsRequestWithArgs(fixture.Source, []int{16}, nil, nil, map[int]string{16: "{w}"})
+	client.ExpectSetBreakpointsResponse(t)
+
+	client.ContinueRequest(1)
+	client.ExpectContinueResponse(t)
+
+	client.DisconnectRequestWithKillOption(false)
+	client.ExpectOutputEvent(t)
+	client.ExpectDisconnectResponse(t)
+	client.Close()
+
+	time.Sleep(200 * time.Millisecond)
+
+	server.impl.session.conn = &connection{ReadWriteCloser: discard{}} // fake a race condition between onDisconnectRequest and the runUntilStopAndNotify goroutine
+
+	httpClient := &http.Client{Timeout: time.Second}
+
+	_, err = httpClient.Get("http://127.0.0.1:9191/nobp")
+	if err != nil {
+		t.Fatalf("Page request after disconnect failed: %v", err)
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	cmd.Process.Kill()
+}
+
+type discard struct {
+}
+
+func (discard) Read([]byte) (int, error) {
+	return 0, nil
+}
+
+func (discard) Close() error {
+	return nil
+}
+
+func (discard) Write(buf []byte) (int, error) {
+	return len(buf), nil
 }
 
 // Helper functions for checking ErrorMessage field values.
