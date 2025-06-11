@@ -3768,7 +3768,12 @@ func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange *sy
 				if strings.HasPrefix(bp.Name, instructionBpPrefix) {
 					stopped.Body.Reason = "instruction breakpoint"
 				}
-				stopped.Body.HitBreakpointIds = []int{bp.ID}
+				// Filter out internal delve breakpoints (panic, fatal, hardcoded, etc.)
+				if bp.ID > 0 {
+					stopped.Body.HitBreakpointIds = []int{bp.ID}
+				} else {
+					stopped.Body.HitBreakpointIds = []int{}
+				}
 			}
 		}
 
