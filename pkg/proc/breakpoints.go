@@ -1014,11 +1014,11 @@ func (rbpi *returnBreakpointInfo) Collect(t *Target, thread Thread) []*Variable 
 
 	g, err := GetG(thread)
 	if err != nil {
-		return returnInfoError("could not get g", err, thread.ProcessMemory())
+		return returnInfoError("could not get g", err, thread.BinInfo(), thread.ProcessMemory())
 	}
 	scope, err := GoroutineScope(t, thread)
 	if err != nil {
-		return returnInfoError("could not get scope", err, thread.ProcessMemory())
+		return returnInfoError("could not get scope", err, thread.BinInfo(), thread.ProcessMemory())
 	}
 	v, err := scope.evalAST(rbpi.retFrameCond)
 	if err != nil || v.Unreadable != nil || v.Kind != reflect.Bool {
@@ -1036,12 +1036,12 @@ func (rbpi *returnBreakpointInfo) Collect(t *Target, thread Thread) []*Variable 
 	oldSP := uint64(rbpi.spOffset + int64(g.stack.hi))
 	err = fakeFunctionEntryScope(scope, rbpi.fn, oldFrameOffset, oldSP)
 	if err != nil {
-		return returnInfoError("could not read function entry", err, thread.ProcessMemory())
+		return returnInfoError("could not read function entry", err, thread.BinInfo(), thread.ProcessMemory())
 	}
 
 	vars, err := scope.Locals(0, "")
 	if err != nil {
-		return returnInfoError("could not evaluate return variables", err, thread.ProcessMemory())
+		return returnInfoError("could not evaluate return variables", err, thread.BinInfo(), thread.ProcessMemory())
 	}
 	vars = filterVariables(vars, func(v *Variable) bool {
 		return (v.Flags & VariableReturnArgument) != 0
@@ -1050,8 +1050,8 @@ func (rbpi *returnBreakpointInfo) Collect(t *Target, thread Thread) []*Variable 
 	return vars
 }
 
-func returnInfoError(descr string, err error, mem MemoryReadWriter) []*Variable {
-	v := newConstant(constant.MakeString(fmt.Sprintf("%s: %v", descr, err.Error())), mem)
+func returnInfoError(descr string, err error, bi *BinaryInfo, mem MemoryReadWriter) []*Variable {
+	v := newConstant(constant.MakeString(fmt.Sprintf("%s: %v", descr, err.Error())), bi, mem)
 	v.Name = "return value read error"
 	return []*Variable{v}
 }

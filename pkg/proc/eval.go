@@ -1068,29 +1068,29 @@ func (stack *evalStack) executeOp() {
 			gvar := newVariable("curg", fakeAddressUnresolv, typ, scope.BinInfo, scope.Mem)
 			gvar.loaded = true
 			gvar.Flags = VariableFakeAddress
-			gvar.Children = append(gvar.Children, *newConstant(constant.MakeInt64(0), scope.Mem))
+			gvar.Children = append(gvar.Children, *newConstant(constant.MakeInt64(0), scope.BinInfo, scope.Mem))
 			gvar.Children[0].Name = "goid"
 			stack.push(gvar)
 		}
 
 	case *evalop.PushFrameoff:
-		stack.push(newConstant(constant.MakeInt64(scope.frameOffset), scope.Mem))
+		stack.push(newConstant(constant.MakeInt64(scope.frameOffset), scope.BinInfo, scope.Mem))
 
 	case *evalop.PushRangeParentOffset:
 		if scope.rangeFrames == nil {
 			stack.err = scope.setupRangeFrames()
 		}
 		if len(scope.rangeFrames) > 0 {
-			stack.push(newConstant(constant.MakeInt64(scope.rangeFrames[len(scope.rangeFrames)-2].FrameOffset()), scope.Mem))
+			stack.push(newConstant(constant.MakeInt64(scope.rangeFrames[len(scope.rangeFrames)-2].FrameOffset()), scope.BinInfo, scope.Mem))
 		} else {
-			stack.push(newConstant(constant.MakeInt64(0), scope.Mem))
+			stack.push(newConstant(constant.MakeInt64(0), scope.BinInfo, scope.Mem))
 		}
 
 	case *evalop.PushThreadID:
-		stack.push(newConstant(constant.MakeInt64(int64(scope.threadID)), scope.Mem))
+		stack.push(newConstant(constant.MakeInt64(int64(scope.threadID)), scope.BinInfo, scope.Mem))
 
 	case *evalop.PushConst:
-		stack.push(newConstant(op.Value, scope.Mem))
+		stack.push(newConstant(op.Value, scope.BinInfo, scope.Mem))
 
 	case *evalop.PushLocal:
 		found := stack.pushLocal(scope, op.Name, op.Frame)
@@ -1133,7 +1133,7 @@ func (stack *evalStack) executeOp() {
 
 	case *evalop.PushLen:
 		v := stack.peek()
-		stack.push(newConstant(constant.MakeInt64(v.Len), scope.Mem))
+		stack.push(newConstant(constant.MakeInt64(v.Len), scope.BinInfo, scope.Mem))
 
 	case *evalop.Select:
 		scope.evalStructSelector(op, stack)
@@ -1172,7 +1172,7 @@ func (stack *evalStack) executeOp() {
 			return
 		}
 		x.loadValue(loadFullValue)
-		stack.push(newConstant(x.Value, scope.Mem))
+		stack.push(newConstant(x.Value, scope.BinInfo, scope.Mem))
 
 	case *evalop.Pop:
 		stack.pop()
@@ -1335,7 +1335,7 @@ func (stack *evalStack) pushIdent(scope *EvalScope, name string) (found bool) {
 
 	switch name {
 	case "true", "false":
-		stack.push(newConstant(constant.MakeBool(name == "true"), scope.Mem))
+		stack.push(newConstant(constant.MakeBool(name == "true"), scope.BinInfo, scope.Mem))
 		return true
 	case "nil":
 		stack.push(nilVariable)
@@ -1846,18 +1846,18 @@ func capBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 		}
 		fallthrough
 	case reflect.Array:
-		return newConstant(constant.MakeInt64(arg.Len), arg.mem), nil
+		return newConstant(constant.MakeInt64(arg.Len), arg.bi, arg.mem), nil
 	case reflect.Slice:
-		return newConstant(constant.MakeInt64(arg.Cap), arg.mem), nil
+		return newConstant(constant.MakeInt64(arg.Cap), arg.bi, arg.mem), nil
 	case reflect.Chan:
 		arg.loadValue(loadFullValue)
 		if arg.Unreadable != nil {
 			return nil, arg.Unreadable
 		}
 		if arg.Base == 0 {
-			return newConstant(constant.MakeInt64(0), arg.mem), nil
+			return newConstant(constant.MakeInt64(0), arg.bi, arg.mem), nil
 		}
-		return newConstant(arg.Children[1].Value, arg.mem), nil
+		return newConstant(arg.Children[1].Value, arg.bi, arg.mem), nil
 	default:
 		return nil, invalidArgErr
 	}
@@ -1881,25 +1881,25 @@ func lenBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 		if arg.Unreadable != nil {
 			return nil, arg.Unreadable
 		}
-		return newConstant(constant.MakeInt64(arg.Len), arg.mem), nil
+		return newConstant(constant.MakeInt64(arg.Len), arg.bi, arg.mem), nil
 	case reflect.Chan:
 		arg.loadValue(loadFullValue)
 		if arg.Unreadable != nil {
 			return nil, arg.Unreadable
 		}
 		if arg.Base == 0 {
-			return newConstant(constant.MakeInt64(0), arg.mem), nil
+			return newConstant(constant.MakeInt64(0), arg.bi, arg.mem), nil
 		}
-		return newConstant(arg.Children[0].Value, arg.mem), nil
+		return newConstant(arg.Children[0].Value, arg.bi, arg.mem), nil
 	case reflect.Map:
 		it := arg.mapIterator(0)
 		if arg.Unreadable != nil {
 			return nil, arg.Unreadable
 		}
 		if it == nil {
-			return newConstant(constant.MakeInt64(0), arg.mem), nil
+			return newConstant(constant.MakeInt64(0), arg.bi, arg.mem), nil
 		}
-		return newConstant(constant.MakeInt64(arg.Len), arg.mem), nil
+		return newConstant(constant.MakeInt64(arg.Len), arg.bi, arg.mem), nil
 	default:
 		return nil, invalidArgErr
 	}
@@ -1970,7 +1970,7 @@ func imagBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 		return nil, fmt.Errorf("invalid argument %s (type %s) to imag", astutil.ExprToString(nodeargs[0]), arg.TypeString())
 	}
 
-	return newConstant(constant.Imag(arg.Value), arg.mem), nil
+	return newConstant(constant.Imag(arg.Value), arg.bi, arg.mem), nil
 }
 
 func realBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
@@ -1989,7 +1989,7 @@ func realBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 		return nil, fmt.Errorf("invalid argument %s (type %s) to real", astutil.ExprToString(nodeargs[0]), arg.TypeString())
 	}
 
-	return newConstant(constant.Real(arg.Value), arg.mem), nil
+	return newConstant(constant.Real(arg.Value), arg.bi, arg.mem), nil
 }
 
 func minBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
@@ -2121,7 +2121,7 @@ func (scope *EvalScope) evalIndex(op *evalop.Index, stack *evalStack) {
 			s := constant.StringVal(idxev.Value)
 			thc, err := totalHitCountByName(scope.target.Breakpoints().Logical, s)
 			if err == nil {
-				stack.push(newConstant(constant.MakeUint64(thc), scope.Mem))
+				stack.push(newConstant(constant.MakeUint64(thc), scope.BinInfo, scope.Mem))
 			}
 			stack.err = err
 			return
@@ -2137,7 +2137,7 @@ func (scope *EvalScope) evalIndex(op *evalop.Index, stack *evalStack) {
 		}
 		thc, err := totalHitCountByID(scope.target.Breakpoints().Logical, int(n))
 		if err == nil {
-			stack.push(newConstant(constant.MakeUint64(thc), scope.Mem))
+			stack.push(newConstant(constant.MakeUint64(thc), scope.BinInfo, scope.Mem))
 		}
 		stack.err = err
 		return
@@ -2371,7 +2371,7 @@ func (scope *EvalScope) evalUnary(op *evalop.Unary, stack *evalStack) {
 		stack.push(r)
 		return
 	}
-	stack.push(newConstant(rc, xv.mem))
+	stack.push(newConstant(rc, xv.bi, xv.mem))
 }
 
 func negotiateType(op token.Token, xv, yv *Variable) (godwarf.Type, error) {
@@ -2502,7 +2502,7 @@ func (scope *EvalScope) evalBinary(binop *evalop.Binary, stack *evalStack) {
 			stack.err = err
 			return
 		}
-		stack.push(newConstant(constant.MakeBool(v), xv.mem))
+		stack.push(newConstant(constant.MakeBool(v), xv.bi, xv.mem))
 
 	default:
 		if xv.Kind == reflect.String {
@@ -2528,7 +2528,7 @@ func (scope *EvalScope) evalBinary(binop *evalop.Binary, stack *evalStack) {
 		}
 
 		if typ == nil {
-			stack.push(newConstant(rc, xv.mem))
+			stack.push(newConstant(rc, xv.bi, xv.mem))
 			return
 		}
 

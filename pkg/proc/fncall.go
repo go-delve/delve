@@ -390,7 +390,7 @@ func (scope *EvalScope) evalCallInjectionStart(op *evalop.CallInjectionStart, st
 	p.fncallForG[scope.g.ID].startThreadID = thread.ThreadID()
 
 	stack.fncallPush(&fncall)
-	stack.push(newConstant(constant.MakeBool(!fncall.hasDebugPinner && (fncall.fn == nil || fncall.receiver != nil || fncall.closureAddr != 0)), scope.Mem))
+	stack.push(newConstant(constant.MakeBool(!fncall.hasDebugPinner && (fncall.fn == nil || fncall.receiver != nil || fncall.closureAddr != 0)), scope.BinInfo, scope.Mem))
 	stack.callInjectionContinue = true
 }
 
