@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.25.0] 2025-04-16
+
+### Added
+- Go 1.25 support (#4014, @aarzilli) (more work went into the 1.24.2 and earlier releases)
+
+### Fixed
+- Fixed several panics found via telemetry (#4026, #4018, #4017, #4015 @aarzilli)
+- Fixed git hash in version output (#3987, @codeaucafe)
+- Fix development version parsing (#3999, @aarzilli)
+- Fix call injection in newer macOS versions (#3988, @aarzilli)
+- Fix typo in goroutines help output (#4024, @jersey1dev)
+
+### Changed
+- Internal breakpoints (panic, throw) are excluded from DAP response (#4027, @ConradIrwin)
+
 ## [1.24.2] 2025-04-10
 
 ### Added
