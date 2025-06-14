@@ -39,9 +39,10 @@ type TargetGroup struct {
 
 	LogicalBreakpoints map[int]*LogicalBreakpoint
 
-	cctx    *ContinueOnceContext
-	cfg     NewTargetGroupConfig
-	CanDump bool
+	cctx     *ContinueOnceContext
+	cfg      NewTargetGroupConfig
+	eventsFn func(*Event)
+	CanDump  bool
 }
 
 // NewTargetGroupConfig contains the configuration for a new TargetGroup object,
@@ -537,6 +538,13 @@ func (grp *TargetGroup) FollowExecEnabled() bool {
 	return grp.followExecEnabled
 }
 
+// SetEventsFn sets a function that is called to communicate events
+// happening while the target process is running.
+func (grp *TargetGroup) SetEventsFn(eventsFn func(*Event)) {
+	grp.eventsFn = eventsFn
+	grp.Selected.BinInfo().eventsFn = eventsFn
+}
+
 // ValidTargets iterates through all valid targets in Group.
 type ValidTargets struct {
 	*Target
@@ -563,4 +571,23 @@ func (it *ValidTargets) Next() bool {
 func (it *ValidTargets) Reset() {
 	it.Target = nil
 	it.start = 0
+}
+
+// Event represents an event that happened during execution.
+type Event struct {
+	Kind EventKind
+	*BinaryInfoDownloadEventDetails
+}
+
+type EventKind uint8
+
+const (
+	EventResumed EventKind = iota
+	EventStopped
+	EventBinaryInfoDownload
+)
+
+// BinaryInfoDownloadEventDetails details of a BinaryInfoDownload event.
+type BinaryInfoDownloadEventDetails struct {
+	ImagePath, Progress string
 }
