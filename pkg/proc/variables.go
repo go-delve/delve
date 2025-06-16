@@ -2135,14 +2135,14 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 		return
 	}
 
-	typ, kind, err := RuntimeTypeToDIE(_type, data.Addr, mds)
+	typ, directIface, err := RuntimeTypeToDIE(_type, data.Addr, mds)
 	if err != nil {
 		v.Unreadable = err
 		return
 	}
 
 	deref := false
-	if kind&kindDirectIface == 0 {
+	if !directIface {
 		realtyp := godwarf.ResolveTypedef(typ)
 		if _, isptr := realtyp.(*godwarf.PtrType); !isptr {
 			typ = pointerTo(typ, v.bi.Arch)
