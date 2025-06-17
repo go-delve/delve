@@ -67,10 +67,8 @@ const internal/runtime/maps.ctrlEmpty = 128
 
 const kindDirectIface|internal/abi.KindDirectIface = 32
 
-const kindGCProg|internal/abi.KindGCProg = 64
-
-const kindMask|internal/abi.KindMask = 31
-
 const minTopHash = 4
 or const minTopHash = 5
+
+const tflagDirectIface|internal/abi.TFlagDirectIface = 32
 

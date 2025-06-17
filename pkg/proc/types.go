@@ -13,17 +13,16 @@ import (
 
 // The kind field in runtime._type is a reflect.Kind value plus
 // some extra flags defined here.
-// See equivalent declaration in $GOROOT/src/reflect/type.go
+// See equivalent declaration in $GOROOT/src/internal/abi/type.go
 const (
+	// Go 1.25 and earlier
 	kindDirectIface = 1 << 5 // +rtype kindDirectIface|internal/abi.KindDirectIface
-	kindGCProg      = 1 << 6 // +rtype kindGCProg|internal/abi.KindGCProg
-	kindNoPointers  = 1 << 7
-	kindMask        = (1 << 5) - 1 // +rtype kindMask|internal/abi.KindMask
+	// Go 1.26 and later
+	tflagDirectIface = 1 << 5 // +rtype go1.26 tflagDirectIface|internal/abi.TFlagDirectIface
 )
 
 type runtimeTypeDIE struct {
 	offset dwarf.Offset
-	kind   int64
 }
 
 func pointerTo(typ godwarf.Type, arch *Arch) godwarf.Type {
@@ -80,7 +79,7 @@ func (ctxt *loadDebugInfoMapsContext) lookupAbstractOrigin(bi *BinaryInfo, off d
 //     debug_info
 //   - After go1.11 the runtimeTypeToDIE map is used to look up the address of
 //     the type and map it directly to a DIE.
-func RuntimeTypeToDIE(_type *Variable, dataAddr uint64, mds []ModuleData) (typ godwarf.Type, kind int64, err error) {
+func RuntimeTypeToDIE(_type *Variable, dataAddr uint64, mds []ModuleData) (typ godwarf.Type, directIface bool, err error) {
 	bi := _type.bi
 
 	_type = _type.maybeDereference()
@@ -94,21 +93,37 @@ func RuntimeTypeToDIE(_type *Variable, dataAddr uint64, mds []ModuleData) (typ g
 			if rtdie, ok := so.runtimeTypeToDIE[_type.Addr-md.types]; ok {
 				typ, err := godwarf.ReadType(so.dwarf, so.index, rtdie.offset, so.typeCache)
 				if err != nil {
-					return nil, 0, fmt.Errorf("invalid interface type: %v", err)
+					return nil, false, fmt.Errorf("invalid interface type: %v", err)
 				}
-				if rtdie.kind == -1 {
-					if kindField := _type.loadFieldNamed("kind"); kindField != nil && kindField.Value != nil {
-						rtdie.kind, _ = constant.Int64Val(kindField.Value)
-					} else if kindField := _type.loadFieldNamed("Kind_"); kindField != nil && kindField.Value != nil {
-						rtdie.kind, _ = constant.Int64Val(kindField.Value)
+				// Figure out whether interfaces with this concrete type are direct or not.
+				// Go 1.26 and beyond have this flag in the TFlag field.
+				// Go 1.25 and earlier have this flag in the Kind field.
+				// If either flag is set, consider it direct.
+				var direct bool
+				if tflagField := _type.loadFieldNamed("TFlag"); tflagField != nil && tflagField.Value != nil {
+					tflag, _ := constant.Int64Val(tflagField.Value)
+					if tflag&tflagDirectIface != 0 {
+						direct = true
 					}
 				}
-				return typ, rtdie.kind, nil
+				if kindField := _type.loadFieldNamed("kind"); kindField != nil && kindField.Value != nil {
+					kind, _ := constant.Int64Val(kindField.Value)
+					if kind&kindDirectIface != 0 {
+						direct = true
+					}
+				} else if kindField := _type.loadFieldNamed("Kind_"); kindField != nil && kindField.Value != nil {
+					kind, _ := constant.Int64Val(kindField.Value)
+					if kind&kindDirectIface != 0 {
+						direct = true
+					}
+				}
+
+				return typ, direct, nil
 			}
 		}
 	}
 
-	return nil, 0, errors.New("could not resolve interface type")
+	return nil, false, errors.New("could not resolve interface type")
 }
 
 // resolveParametricType returns the real type of t if t is a parametric
