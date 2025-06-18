@@ -91,7 +91,10 @@ func loong64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Bina
 func loong64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool {
 	if it.frame.Current.Fn == nil {
 		if it.systemstack && it.g != nil && it.top {
-			it.switchToGoroutineStack()
+			if err := it.switchToGoroutineStack(); err != nil {
+				it.err = err
+				return false
+			}
 			return true
 		}
 		return false
@@ -111,7 +114,10 @@ func loong64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) boo
 			// Since we are only interested in printing the system stack for cgo
 			// calls we switch directly to the goroutine stack if we detect that the
 			// function at the top of the stack is a runtime function.
-			it.switchToGoroutineStack()
+			if err := it.switchToGoroutineStack(); err != nil {
+				it.err = err
+				return false
+			}
 			return true
 		}
 	}

@@ -119,7 +119,10 @@ func i386FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *BinaryI
 func i386SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 	if it.frame.Current.Fn == nil {
 		if it.systemstack && it.g != nil && it.top {
-			it.switchToGoroutineStack()
+			if err := it.switchToGoroutineStack(); err != nil {
+				it.err = err
+				return false
+			}
 			return true
 		}
 		return false
@@ -134,7 +137,10 @@ func i386SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 
 	case "runtime.mcall":
 		if it.systemstack && it.g != nil {
-			it.switchToGoroutineStack()
+			if err := it.switchToGoroutineStack(); err != nil {
+				it.err = err
+				return false
+			}
 			return true
 		}
 		it.atend = true
@@ -157,12 +163,18 @@ func i386SwitchStack(it *stackIterator, _ *op.DwarfRegisters) bool {
 			return false
 		}
 
-		it.switchToGoroutineStack()
+		if err := it.switchToGoroutineStack(); err != nil {
+			it.err = err
+			return false
+		}
 		return true
 
 	case "runtime.newstack", "runtime.systemstack":
 		if it.systemstack && it.g != nil {
-			it.switchToGoroutineStack()
+			if err := it.switchToGoroutineStack(); err != nil {
+				it.err = err
+				return false
+			}
 			return true
 		}
 

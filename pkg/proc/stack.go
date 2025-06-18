@@ -293,15 +293,23 @@ func (it *stackIterator) Next() bool {
 	return true
 }
 
-func (it *stackIterator) switchToGoroutineStack() {
+func (it *stackIterator) switchToGoroutineStack() error {
+	if it.g == nil {
+		return fmt.Errorf("nil goroutine when attempting to switch to goroutine stack")
+	}
 	it.systemstack = false
 	it.top = false
 	it.pc = it.g.PC
 	it.regs.Reg(it.regs.SPRegNum).Uint64Val = it.g.SP
 	it.regs.AddReg(it.regs.BPRegNum, op.DwarfRegisterFromUint64(it.g.BP))
 	if it.bi.Arch.usesLR {
-		it.regs.Reg(it.regs.LRRegNum).Uint64Val = it.g.LR
+		lrReg := it.regs.Reg(it.regs.LRRegNum)
+		if lrReg == nil {
+			return fmt.Errorf("LR register is nil during stack switch")
+		}
+		lrReg.Uint64Val = it.g.LR
 	}
+	return nil
 }
 
 // Frame returns the frame the iterator is pointing at.
@@ -413,7 +421,10 @@ func (it *stackIterator) stacktrace(depth int) ([]Stackframe, error) {
 
 func (it *stackIterator) stacktraceFunc(callback func(Stackframe) bool) {
 	if it.opts&StacktraceG != 0 && it.g != nil {
-		it.switchToGoroutineStack()
+		if err := it.switchToGoroutineStack(); err != nil {
+			it.err = err
+			return
+		}
 		it.top = true
 	}
 	for it.Next() {

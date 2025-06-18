@@ -104,7 +104,10 @@ const ppc64prevG0schedSPOffsetSaveSlot = 40
 
 func ppc64leSwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool {
 	if it.frame.Current.Fn == nil && it.systemstack && it.g != nil && it.top {
-		it.switchToGoroutineStack()
+		if err := it.switchToGoroutineStack(); err != nil {
+			it.err = err
+			return false
+		}
 		return true
 	}
 	if it.frame.Current.Fn != nil {
@@ -117,7 +120,10 @@ func ppc64leSwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) boo
 			return true
 		case "runtime.mcall":
 			if it.systemstack && it.g != nil {
-				it.switchToGoroutineStack()
+				if err := it.switchToGoroutineStack(); err != nil {
+					it.err = err
+					return false
+				}
 				return true
 			}
 			it.atend = true
@@ -146,7 +152,10 @@ func ppc64leSwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) boo
 				// Since we are only interested in printing the system stack for cgo
 				// calls we switch directly to the goroutine stack if we detect that the
 				// function at the top of the stack is a runtime function.
-				it.switchToGoroutineStack()
+				if err := it.switchToGoroutineStack(); err != nil {
+					it.err = err
+					return false
+				}
 				return true
 			}
 		}
