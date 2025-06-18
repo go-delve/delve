@@ -141,7 +141,10 @@ const riscv64prevG0schedSPOffsetSaveSlot = 0x10
 func riscv64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool {
 	if it.frame.Current.Fn == nil {
 		if it.systemstack && it.g != nil && it.top {
-			it.switchToGoroutineStack()
+			if err := it.switchToGoroutineStack(); err != nil {
+				it.err = err
+				return false
+			}
 			return true
 		}
 		return false
@@ -172,7 +175,10 @@ func riscv64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) boo
 			return false
 		}
 
-		it.switchToGoroutineStack()
+		if err := it.switchToGoroutineStack(); err != nil {
+			it.err = err
+			return false
+		}
 		return true
 	default:
 		if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.throw" && it.frame.Current.Fn.Name != "runtime.fatalthrow" {
@@ -183,7 +189,10 @@ func riscv64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) boo
 			// Since we are only interested in printing the system stack for cgo
 			// calls we switch directly to the goroutine stack if we detect that the
 			// function at the top of the stack is a runtime function.
-			it.switchToGoroutineStack()
+			if err := it.switchToGoroutineStack(); err != nil {
+				it.err = err
+				return false
+			}
 			return true
 		}
 	}
