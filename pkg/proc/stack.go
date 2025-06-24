@@ -508,15 +508,19 @@ func (it *stackIterator) appendInlineCalls(callback func(Stackframe) bool, frame
 // it.regs.CFA; the caller has to eventually switch it.regs when the iterator
 // advances to the next frame.
 func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uint64, retaddr uint64) {
+	logger := logflags.StackLogger()
+
 	fde, err := it.bi.frameEntries.FDEForPC(it.pc)
 	var framectx *frame.FrameContext
 	if _, nofde := err.(*frame.ErrNoFDEForPC); nofde {
 		framectx = it.bi.Arch.fixFrameUnwindContext(nil, it.pc, it.bi)
 	} else {
-		framectx = it.bi.Arch.fixFrameUnwindContext(fde.EstablishFrame(it.pc), it.pc, it.bi)
+		fctxt, err := fde.EstablishFrame(it.pc)
+		if err != nil {
+			logger.Errorf("Error executing Frame Debug Entry for PC %x: %v", it.pc, err)
+		}
+		framectx = it.bi.Arch.fixFrameUnwindContext(fctxt, it.pc, it.bi)
 	}
-
-	logger := logflags.StackLogger()
 
 	logger.Debugf("advanceRegs at %#x", it.pc)
 

@@ -55,8 +55,12 @@ func (fde *FrameDescriptionEntry) Translate(delta uint64) {
 }
 
 // EstablishFrame set up frame for the given PC.
-func (fde *FrameDescriptionEntry) EstablishFrame(pc uint64) *FrameContext {
-	return executeDwarfProgramUntilPC(fde, pc)
+func (fde *FrameDescriptionEntry) EstablishFrame(pc uint64) (*FrameContext, error) {
+	fctxt := executeDwarfProgramUntilPC(fde, pc)
+	if fctxt.err != nil {
+		return nil, fctxt.err
+	}
+	return fctxt, nil
 }
 
 type FrameDescriptionEntries []*FrameDescriptionEntry

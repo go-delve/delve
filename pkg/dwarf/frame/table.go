@@ -30,6 +30,7 @@ type FrameContext struct {
 	codeAlignment   uint64
 	dataAlignment   int64
 	rememberedState *stateStack
+	err             error
 }
 
 type rowState struct {
@@ -179,7 +180,7 @@ func (frame *FrameContext) executeDwarfProgram() {
 }
 
 // ExecuteUntilPC execute dwarf instructions.
-func (frame *FrameContext) ExecuteUntilPC(instructions []byte) {
+func (frame *FrameContext) ExecuteUntilPC(instructions []byte) error {
 	frame.buf.Truncate(0)
 	frame.buf.Write(instructions)
 
@@ -189,9 +190,13 @@ func (frame *FrameContext) ExecuteUntilPC(instructions []byte) {
 	for frame.address >= frame.loc && frame.buf.Len() > 0 {
 		executeDwarfInstruction(frame)
 	}
+	return frame.err
 }
 
 func executeDwarfInstruction(frame *FrameContext) {
+	if frame.err != nil {
+		return
+	}
 	instruction, err := frame.buf.ReadByte()
 	if err != nil {
 		panic("Could not read from instruction buffer")
@@ -202,6 +207,11 @@ func executeDwarfInstruction(frame *FrameContext) {
 	}
 
 	fn := lookupFunc(instruction, frame.buf)
+
+	if fn == nil {
+		frame.err = fmt.Errorf("encountered an unexpected DWARF CFA opcode: %#v", instruction)
+		return
+	}
 
 	fn(frame)
 }
@@ -233,12 +243,7 @@ func lookupFunc(instruction byte, buf *bytes.Buffer) instruction {
 		}
 	}
 
-	fn, ok := fnlookup[instruction]
-	if !ok {
-		panic(fmt.Sprintf("Encountered an unexpected DWARF CFA opcode: %#v", instruction))
-	}
-
-	return fn
+	return fnlookup[instruction]
 }
 
 func advanceloc(frame *FrameContext) {
