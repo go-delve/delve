@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -1635,14 +1636,7 @@ func TestTypesCommand(t *testing.T) {
 		types, err := c.ListTypes("")
 		assertNoError(err, t, "ListTypes()")
 
-		found := false
-		for i := range types {
-			if types[i] == "main.astruct" {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !slices.Contains(types, "main.astruct") {
 			t.Fatal("Type astruct not found in ListTypes output")
 		}
 

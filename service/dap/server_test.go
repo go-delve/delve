@@ -16,6 +16,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -982,13 +983,7 @@ func checkStackFramesNamed(testName string, t *testing.T, got *dap.StackTraceRes
 				startLineOk = got.Body.StackFrames[0].Line == wantStartLine
 			}
 		case []int:
-			startLineOk = false
-			for _, ln := range wantStartLine {
-				if got.Body.StackFrames[0].Line == ln {
-					startLineOk = true
-					break
-				}
-			}
+			startLineOk = slices.Contains(wantStartLine, got.Body.StackFrames[0].Line)
 		}
 
 		if wantFrames > 0 && !startLineOk {
@@ -2720,22 +2715,13 @@ func TestRegistersScopeAndVariables(t *testing.T) {
 }
 
 func findPcReg(regs []dap.Variable) int {
+	pcRegNames := []string{"rip", "pc", "eip", "era"}
 	for i, reg := range regs {
-		if isPcReg(reg) {
+		if slices.Contains(pcRegNames, strings.TrimSpace(reg.Name)) {
 			return i
 		}
 	}
 	return -1
-}
-
-func isPcReg(reg dap.Variable) bool {
-	pcRegNames := []string{"rip", "pc", "eip", "era"}
-	for _, name := range pcRegNames {
-		if name == strings.TrimSpace(reg.Name) {
-			return true
-		}
-	}
-	return false
 }
 
 // TestShadowedVariables executes to a breakpoint and checks the shadowed
