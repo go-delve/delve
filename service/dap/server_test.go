@@ -7739,10 +7739,11 @@ func TestBreakpointAfterDisconnect(t *testing.T) {
 
 	httpClient := &http.Client{Timeout: time.Second}
 
-	_, err = httpClient.Get("http://127.0.0.1:9191/nobp")
+	resp, err := httpClient.Get("http://127.0.0.1:9191/nobp")
 	if err != nil {
 		t.Fatalf("Page request after disconnect failed: %v", err)
 	}
+	defer resp.Body.Close()
 
 	time.Sleep(200 * time.Millisecond)
 
