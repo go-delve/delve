@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -63,14 +64,7 @@ func TestMain(m *testing.M) {
 
 func matchSkipConditions(conditions ...string) bool {
 	for _, cond := range conditions {
-		condfound := false
-		for _, s := range []string{runtime.GOOS, runtime.GOARCH, testBackend, buildMode} {
-			if s == cond {
-				condfound = true
-				break
-			}
-		}
-		if !condfound {
+		if !slices.Contains([]string{runtime.GOOS, runtime.GOARCH, testBackend, buildMode}, cond) {
 			return false
 		}
 	}
@@ -183,14 +177,7 @@ func assertLineNumber(p *proc.Target, t *testing.T, lineno int, descr string) (s
 
 func assertLineNumberIn(p *proc.Target, t *testing.T, linenos []int, descr string) (string, int) {
 	f, l := currentLineNumber(p, t)
-	found := false
-	for _, lineno := range linenos {
-		if l == lineno {
-			found = true
-			break
-		}
-	}
-	if !found {
+	if !slices.Contains(linenos, l) {
 		_, callerFile, callerLine, _ := runtime.Caller(1)
 		t.Fatalf("%s expected lines :%#v got %s:%d\n\tat %s:%d", descr, linenos, f, l, callerFile, callerLine)
 	}
@@ -4012,21 +3999,12 @@ func TestDeadlockBreakpoint(t *testing.T) {
 	})
 }
 
-func findSource(source string, sources []string) bool {
-	for _, s := range sources {
-		if s == source {
-			return true
-		}
-	}
-	return false
-}
-
 func TestListImages(t *testing.T) {
 	protest.MustHaveCgo(t)
 	pluginFixtures := protest.WithPlugins(t, protest.AllNonOptimized, "plugin1/", "plugin2/")
 
 	withTestProcessArgs("plugintest", t, ".", []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, protest.AllNonOptimized, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		if !findSource(fixture.Source, p.BinInfo().Sources) {
+		if !slices.Contains(p.BinInfo().Sources, fixture.Source) {
 			t.Fatalf("could not find %s in sources: %q\n", fixture.Source, p.BinInfo().Sources)
 		}
 
@@ -4043,7 +4021,7 @@ func TestListImages(t *testing.T) {
 		if !plugin1Found {
 			t.Fatalf("Could not find plugin1")
 		}
-		if !findSource(fixture.Source, p.BinInfo().Sources) {
+		if !slices.Contains(p.BinInfo().Sources, fixture.Source) {
 			// Source files for the base program must be available even after a plugin is loaded. Issue #2074.
 			t.Fatalf("could not find %s in sources (after loading plugin): %q\n", fixture.Source, p.BinInfo().Sources)
 		}

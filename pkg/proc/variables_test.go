@@ -1003,14 +1003,7 @@ func TestEvalExpression(t *testing.T) {
 					}
 					switch e := tc.err.(type) {
 					case *altError:
-						ok := false
-						for _, tgtErr := range e.errs {
-							if tgtErr == err.Error() {
-								ok = true
-								break
-							}
-						}
-						if !ok {
+						if !slices.Contains(e.errs, err.Error()) {
 							t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
 						}
 					default:
@@ -1511,14 +1504,7 @@ func testCallFunctionIntl(t *testing.T, grp *proc.TargetGroup, p *proc.Target, t
 		}
 		switch e := tc.err.(type) {
 		case *altError:
-			ok := false
-			for _, tgtErr := range e.errs {
-				if tgtErr == err.Error() {
-					ok = true
-					break
-				}
-			}
-			if !ok {
+			if !slices.Contains(e.errs, err.Error()) {
 				t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
 			}
 		default:
@@ -1598,14 +1584,7 @@ func TestIssue1531(t *testing.T) {
 			for i := 0; i < len(mv.Children); i += 2 {
 				cv := &mv.Children[i]
 				s := constant.StringVal(cv.Value)
-				found := false
-				for j := range keys {
-					if keys[j] == s {
-						found = true
-						break
-					}
-				}
-				if !found {
+				if !slices.Contains(keys, s) {
 					t.Errorf("key %q not allowed", s)
 					return
 				}
@@ -1962,14 +1941,7 @@ func TestClassicMap(t *testing.T) {
 					}
 					switch e := tc.err.(type) {
 					case *altError:
-						ok := false
-						for _, tgtErr := range e.errs {
-							if tgtErr == err.Error() {
-								ok = true
-								break
-							}
-						}
-						if !ok {
+						if !slices.Contains(e.errs, err.Error()) {
 							t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
 						}
 					default:

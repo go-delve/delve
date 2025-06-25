@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -331,14 +332,7 @@ func TestDebugLineC(t *testing.T) {
 			t.Fatal("Parser could not parse Filenames")
 		}
 		for _, fn := range ln.FileNames {
-			found := false
-			for _, cmp := range file {
-				if filepath.ToSlash(fn.Path) == cmp {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !slices.Contains(file, filepath.ToSlash(fn.Path)) {
 				t.Fatalf("Found %s does not appear in the filelist\n", fn.Path)
 			}
 		}
