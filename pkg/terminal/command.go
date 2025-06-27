@@ -472,6 +472,11 @@ Executes the specified command (print, args, locals) in the context of the n-th 
 If path ends with the .star extension it will be interpreted as a starlark script. See Documentation/cli/starlark.md for the syntax.
 
 If path is a single '-' character an interactive starlark interpreter will start instead. Type 'exit' to exit.`},
+		{aliases: []string{"savestate"}, cmdFn: c.saveStateCommand, helpMsg: `Saves all current breakpoints to a file
+
+			savestate <path>
+
+This command writes the current state of all active breakpoints to the specified file. The file will contain a sequence of Delve 'break' commands that can be loaded later using the 'source' command to re-establish the breakpoints.`},
 		{aliases: []string{"disassemble", "disass"}, cmdFn: disassCommand, helpMsg: `Disassembler.
 
 	[goroutine <n>] [frame <m>] disassemble [-a <start> <end>] [-l <locspec>]
@@ -2588,6 +2593,48 @@ func (c *Commands) sourceCommand(t *Term, ctx callContext, args string) error {
 	}
 
 	return c.executeFile(t, args)
+}
+
+func (c *Commands) saveStateCommand(t *Term, ctx callContext, args string) error {
+	if len(args) == 0 {
+		return errors.New("wrong number of arguments: source <filename>")
+	}
+	breakPoints, err := t.client.ListBreakpoints(args == "-a")
+	if err != nil {
+		return err
+	}
+	var fileContent string
+	for _, bp := range breakPoints {
+		// We don't need to store these breakpoints
+		if bp.ID < 0 {
+			continue
+		}
+		fileContent += fmt.Sprintf("break %s:%d\n", bp.File, bp.Line)
+		if len(bp.Cond) > 0 {
+			fileContent += fmt.Sprintf("condition %d %s\n", bp.ID, bp.Cond)
+		}
+		if bp.Disabled {
+			fileContent += fmt.Sprintf("toggle %d\n", bp.ID)
+		}
+	}
+	filePath := args
+	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err != nil {
+		if os.IsExist(err) {
+			return fmt.Errorf("file '%s' already exists and cannot be overwritten", filePath)
+		}
+		return fmt.Errorf("failed to open file '%s': %w", filePath, err)
+	}
+	defer file.Close() // Ensure the file is closed.
+
+	// Write the collected content to the file.
+	_, err = file.WriteString(fileContent)
+	if err != nil {
+		return fmt.Errorf("failed to write to file '%s': %w", filePath, err)
+	}
+
+	fmt.Printf("Breakpoints successfully saved to '%s'\n", filePath)
+	return nil
 }
 
 var errDisasmUsage = errors.New("wrong number of arguments: disassemble [-a <start> <end>] [-l <locspec>]")
