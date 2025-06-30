@@ -34,6 +34,7 @@ func LOONG64Arch(goos string) *Arch {
 		usesLR:                           true,
 		PCRegNum:                         regnum.LOONG64_PC,
 		SPRegNum:                         regnum.LOONG64_SP,
+		ContextRegNum:                    regnum.LOONG64_R0 + 29,
 		asmRegisters:                     loong64AsmRegisters,
 		RegisterNameToDwarf:              nameToDwarfFunc(regnum.LOONG64NameToDwarf),
 		RegnumToString:                   regnum.LOONG64ToName,
