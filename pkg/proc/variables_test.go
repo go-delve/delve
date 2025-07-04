@@ -836,6 +836,7 @@ func getEvalExpressionTestCases() []varTest {
 		{"int8(i6)", false, "12", "12", "int8", nil},
 		{"string(byteslice[0])", false, `"t"`, `"t"`, "string", nil},
 		{"string(runeslice[0])", false, `"t"`, `"t"`, "string", nil},
+		{"[]uint8(messageVar)", false, `[]uint8 len: 5, cap: 5, [1,2,3,4,5]`, `[]uint8 len: 5, cap: 5, [...]`, "[]uint8", nil},
 
 		// misc
 		{"i1", true, "1", "1", "int", nil},

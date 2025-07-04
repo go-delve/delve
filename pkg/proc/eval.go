@@ -1779,6 +1779,10 @@ func typeCastCompatibleTypes(typ1, typ2 godwarf.Type) bool {
 			}
 			return true
 		}
+	case *godwarf.SliceType:
+		if ttyp2, ok := typ2.(*godwarf.SliceType); ok {
+			return ttyp1.ElemType.String() == ttyp2.ElemType.String()
+		}
 	case *godwarf.ComplexType:
 		if _, ok := typ2.(*godwarf.ComplexType); ok {
 			// size and alignment already checked above
