@@ -472,7 +472,7 @@ Executes the specified command (print, args, locals) in the context of the n-th 
 If path ends with the .star extension it will be interpreted as a starlark script. See Documentation/cli/starlark.md for the syntax.
 
 If path is a single '-' character an interactive starlark interpreter will start instead. Type 'exit' to exit.`},
-		{aliases: []string{"savestate"}, cmdFn: c.saveStateCommand, helpMsg: `Saves all current breakpoints to a file
+		{aliases: []string{"savestate"}, group: breakCmds, cmdFn: c.saveStateCommand, helpMsg: `Saves all current breakpoints to a file
 
 			savestate <path>
 
@@ -2603,20 +2603,7 @@ func (c *Commands) saveStateCommand(t *Term, ctx callContext, args string) error
 	if err != nil {
 		return err
 	}
-	var fileContent string
-	for _, bp := range breakPoints {
-		// We don't need to store these breakpoints
-		if bp.ID < 0 {
-			continue
-		}
-		fileContent += fmt.Sprintf("break %s:%d\n", bp.File, bp.Line)
-		if len(bp.Cond) > 0 {
-			fileContent += fmt.Sprintf("condition %d %s\n", bp.ID, bp.Cond)
-		}
-		if bp.Disabled {
-			fileContent += fmt.Sprintf("toggle %d\n", bp.ID)
-		}
-	}
+
 	filePath := args
 	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 	if err != nil {
@@ -2625,12 +2612,36 @@ func (c *Commands) saveStateCommand(t *Term, ctx callContext, args string) error
 		}
 		return fmt.Errorf("failed to open file '%s': %w", filePath, err)
 	}
-	defer file.Close() // Ensure the file is closed.
+	defer file.Close()
+	w := bufio.NewWriter(file)
+	defer w.Flush()
 
-	// Write the collected content to the file.
-	_, err = file.WriteString(fileContent)
-	if err != nil {
-		return fmt.Errorf("failed to write to file '%s': %w", filePath, err)
+	for _, bp := range breakPoints {
+		// We don't need to store these breakpoints
+		if bp.ID < 0 {
+			continue
+		}
+		var err error
+		if bp.Tracepoint {
+			_, err = fmt.Fprintf(w, "trace %s:%d\nt", bp.File, bp.Line)
+		} else {
+			_, err = fmt.Fprintf(w, "break %s:%d\nt", bp.File, bp.Line)
+		}
+		if err != nil {
+			return fmt.Errorf("failed to write breakpoint to file %s:%d\nt", bp.File, bp.Line)
+		}
+		if len(bp.Cond) > 0 {
+			_, err = fmt.Fprintf(w, "condition %d %s\n", bp.ID, bp.Cond)
+			if err != nil {
+				return fmt.Errorf("failed to write condition to file %d:%s\nt", bp.ID, bp.Cond)
+			}
+		}
+		if bp.Disabled {
+			_, err = fmt.Fprintf(w, "toggle %d\n", bp.ID)
+			if err != nil {
+				return fmt.Errorf("failed to write breakpoint status to file %d\nt", bp.ID)
+			}
+		}
 	}
 
 	fmt.Printf("Breakpoints successfully saved to '%s'\n", filePath)
