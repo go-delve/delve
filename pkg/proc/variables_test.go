@@ -1967,3 +1967,36 @@ func TestCallFunctionRegisterArg(t *testing.T) {
 		assertNoError(proc.EvalExpressionWithCalls(grp, p.SelectedGoroutine(), "value.Type()", pnormalLoadConfig, true), t, "EvalExpressionWithCalls")
 	})
 }
+
+func TestCapturedVarVisibleOnFirstLine(t *testing.T) {
+	// Checks that a variable captured by a closure is visible on the first
+	// line of the closure function.
+	// See issue #4000
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
+		t.Skip("not implemented")
+	}
+	skipOn(t, "broken", "linux", "386")
+	withTestProcess("issue4000", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		addrs, err := proc.FindFileLocation(p, fixture.Source, 7)
+		assertNoError(err, t, "FindFileLocation")
+		found := false
+		for _, addr := range addrs {
+			_, _, fn := p.BinInfo().PCToLine(addr)
+			if fn != nil && strings.HasPrefix(fn.Name, "main.main.") {
+				found = true
+				_, err := p.SetBreakpoint(int(addr), addr, proc.UserBreakpoint, nil)
+				assertNoError(err, t, "SetBreakpoint")
+			}
+		}
+		if !found {
+			t.Fatal("could not find main.main.func1 at :7")
+		}
+		assertNoError(grp.Continue(), t, "Continue()") // this stops inside main.main.func1
+		v := evalVariable(p, t, "test")
+		cv := api.ConvertVar(v)
+		t.Logf("test variable: %s", cv.SinglelineString())
+		if tgt, s := `"a string"`, cv.SinglelineString(); s != tgt {
+			t.Fatalf("test variable expected %q got %q", tgt, s)
+		}
+	})
+}
