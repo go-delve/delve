@@ -234,7 +234,7 @@ func (it *mapIteratorClassic) nextBucket() bool {
 		return false
 	}
 
-	if it.overflow.Kind != reflect.Struct {
+	if it.overflow != nil && it.overflow.Kind != reflect.Struct {
 		it.v.Unreadable = errMapBucketsNotStruct
 		return false
 	}
