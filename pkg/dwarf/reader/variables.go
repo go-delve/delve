@@ -60,12 +60,22 @@ func variablesInternal(v []Variable, root *godwarf.Tree, depth int, pc uint64, l
 		// they are declared on does not matter; they are considered to be
 		// visible throughout the function.
 		declLine, varHasDeclLine := root.Val(dwarf.AttrDeclLine).(int64)
+
 		checkDeclLine :=
 			root.Tag != dwarf.TagFormalParameter && // var is not a function argument
 				varHasDeclLine && // we know the DeclLine
 				(flags&VariablesNoDeclLineCheck == 0) // we were not explicitly instructed to ignore DeclLine
 
-		varVisible := !checkDeclLine || (line >= int(declLine)+1) // +1 because visibility starts on the line after DeclLine
+		varVisible := true
+		if checkDeclLine {
+			varIsCaptured := root.Val(godwarf.AttrGoClosureOffset) != nil
+			if varIsCaptured {
+				varVisible = line >= int(declLine)
+			} else {
+				varVisible = line >= int(declLine)+1 // +1 because visibility starts on the line after DeclLine
+			}
+		}
+
 		if varVisible {
 			return append(v, Variable{root, depth})
 		}
