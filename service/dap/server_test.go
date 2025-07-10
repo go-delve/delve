@@ -1755,7 +1755,7 @@ func TestScopesAndVariablesRequests(t *testing.T) {
 					// Frame ids get reset at each breakpoint.
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
-					checkStackFramesExact(t, stack, "main.barfoo", 27, 1000, 5, 5)
+					checkStackFramesExact(t, stack, "main.barfoo", -1, 1000, 5, 5)
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
@@ -1812,9 +1812,19 @@ func TestScopesAndVariablesRequests2(t *testing.T) {
 				disconnect: false,
 			}, {
 				execute: func() {
-					client.StackTraceRequest(1, 0, 20)
-					stack := client.ExpectStackTraceResponse(t)
-					checkStackFramesExact(t, stack, "main.main", -1, 1000, 3, 3)
+					for {
+						client.StackTraceRequest(1, 0, 20)
+						stack := client.ExpectStackTraceResponse(t)
+
+						// Workaround for go1.25 line numbering issue, see https://github.com/golang/go/issues/74576
+						ln := stack.Body.StackFrames[0].Line
+						if ln >= 431 {
+							break
+						}
+						client.NextRequest(1)
+						client.ExpectNextResponse(t)
+						client.ExpectStoppedEvent(t)
+					}
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
@@ -2083,7 +2093,7 @@ func TestScopesRequestsOptimized(t *testing.T) {
 					// Frame ids get reset at each breakpoint.
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
-					checkStackFramesExact(t, stack, "main.barfoo", 27, 1000, 5, 5)
+					checkStackFramesExact(t, stack, "main.barfoo", -1, 1000, 5, 5)
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
@@ -2124,8 +2134,19 @@ func TestVariablesLoading(t *testing.T) {
 						DefaultLoadConfig = saveDefaultConfig
 					}()
 
-					client.StackTraceRequest(1, 0, 0)
-					client.ExpectStackTraceResponse(t)
+					for {
+						client.StackTraceRequest(1, 0, 0)
+						stack := client.ExpectStackTraceResponse(t)
+
+						// Workaround for go1.25 line numbering issue, see https://github.com/golang/go/issues/74576
+						ln := stack.Body.StackFrames[0].Line
+						if ln >= 431 {
+							break
+						}
+						client.NextRequest(1)
+						client.ExpectNextResponse(t)
+						client.ExpectStoppedEvent(t)
+					}
 
 					client.ScopesRequest(1000)
 					client.ExpectScopesResponse(t)
@@ -2453,6 +2474,23 @@ func TestVariablesMetadata(t *testing.T) {
 				execute: func() {
 					checkStop(t, client, 1, "main.main", -1)
 
+					for {
+						client.StackTraceRequest(1, 0, 0)
+						stack := client.ExpectStackTraceResponse(t)
+
+						// Workaround for go1.25 line numbering issue, see https://github.com/golang/go/issues/74576
+						ln := stack.Body.StackFrames[0].Line
+						if ln >= 431 {
+							break
+						}
+						client.NextRequest(1)
+						client.ExpectNextResponse(t)
+						client.ExpectStoppedEvent(t)
+					}
+
+					client.ScopesRequest(1000)
+					client.ExpectScopesResponse(t)
+
 					client.VariablesRequest(localsScope)
 					locals := client.ExpectVariablesResponse(t)
 
@@ -2742,7 +2780,18 @@ func TestShadowedVariables(t *testing.T) {
 				execute: func() {
 					client.StackTraceRequest(1, 0, 20)
 					stack := client.ExpectStackTraceResponse(t)
-					checkStackFramesExact(t, stack, "main.main", 13, 1000, 3, 3)
+					checkStackFramesExact(t, stack, "main.main", -1, 1000, 3, 3)
+
+					if stack.Body.StackFrames[0].Line != 13 {
+						// Workaround for go1.25 line numbering issue, see https://github.com/golang/go/issues/74576
+						client.NextRequest(1)
+						client.ExpectNextResponse(t)
+						client.ExpectStoppedEvent(t)
+
+						client.StackTraceRequest(1, 0, 20)
+						stack = client.ExpectStackTraceResponse(t)
+						checkStackFramesExact(t, stack, "main.main", 13, 1000, 3, 3)
+					}
 
 					client.ScopesRequest(1000)
 					scopes := client.ExpectScopesResponse(t)
@@ -4080,7 +4129,7 @@ func TestEvaluateRequest(t *testing.T) {
 				disconnect: false,
 			}, { // Stop at second breakpoint
 				execute: func() {
-					checkStop(t, client, 1, "main.barfoo", 27)
+					checkStop(t, client, 1, "main.barfoo", -1)
 
 					// Top-most frame
 					client.EvaluateRequest("a1", 1000, "this context will be ignored")
