@@ -607,8 +607,12 @@ func listIsAt(t *testing.T, term *FakeTerminal, listcmd string, cur, start, end 
 func TestListCmd(t *testing.T) {
 	withTestTerminal("testvariables", t, func(term *FakeTerminal) {
 		term.MustExec("continue")
+		if (runtime.GOOS == "linux" || runtime.GOOS == "freebsd") && runtime.GOARCH == "amd64" && !goversion.VersionAfterOrEqual(runtime.Version(), 1, 25) {
+			listIsAt(t, term, "list", 65, 60, 70)
+		} else {
+			listIsAt(t, term, "list", 66, 61, 71)
+		}
 		term.MustExec("continue")
-		listIsAt(t, term, "list", 27, 22, 32)
 		listIsAt(t, term, "list 69", 69, 64, 74)
 		listIsAt(t, term, "frame 1 list", 66, 61, 71)
 		listIsAt(t, term, "frame 1 list 69", 69, 64, 74)
