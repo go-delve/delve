@@ -2437,8 +2437,10 @@ func (s *Session) childrenToDAPVariables(v *fullyQualifiedVariable) []dap.Variab
 				reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 				valexpr = fmt.Sprintf("%s[%s]", v.fullyQualifiedNameOrExpr, api.VariableValueAsString(keyv))
 			case reflect.String:
-				if key := constant.StringVal(keyv.Value); keyv.Len == int64(len(key)) { // fully loaded
-					valexpr = fmt.Sprintf("%s[%q]", v.fullyQualifiedNameOrExpr, key)
+				if keyv.Unreadable == nil {
+					if key := constant.StringVal(keyv.Value); keyv.Len == int64(len(key)) { // fully loaded
+						valexpr = fmt.Sprintf("%s[%q]", v.fullyQualifiedNameOrExpr, key)
+					}
 				}
 			}
 			key, keyref := s.convertVariable(keyv, keyexpr)
