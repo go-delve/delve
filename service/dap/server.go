@@ -874,7 +874,7 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportTerminateDebuggee = false
 	// TODO(polina): support these requests in addition to vscode-go feature parity
 	response.Body.SupportsTerminateRequest = false
-	response.Body.SupportsRestartRequest = false
+	response.Body.SupportsRestartRequest = true
 	response.Body.SupportsSetExpression = false
 	response.Body.SupportsLoadedSourcesRequest = false
 	response.Body.SupportsReadMemoryRequest = false
@@ -3042,10 +3042,76 @@ func (s *Session) onTerminateRequest(request *dap.TerminateRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onRestartRequest sends a not-yet-implemented error response
-// Capability 'supportsRestartRequest' is not set in 'initialize' response.
+// onRestartRequest handles 'restart' request.
+// Capability 'supportsRestartRequest' is set to true in 'initialize' response.
 func (s *Session) onRestartRequest(request *dap.RestartRequest) {
-	s.sendNotYetImplementedErrorResponse(request.Request)
+	s.changeStateMu.Lock()
+	defer s.changeStateMu.Unlock()
+
+	// Cannot restart in noDebug mode
+	if s.isNoDebug() {
+		s.sendErrorResponse(request.Request, FailedToLaunch, "Cannot restart", "cannot restart in noDebug mode")
+		return
+	}
+
+	if s.debugger == nil {
+		s.sendErrorResponse(request.Request, FailedToLaunch, "Cannot restart: debugger is not running", "Debugger is not running")
+		return
+	}
+
+	// Cannot restart attached processes
+	if s.debugger.AttachPid() != 0 {
+		s.sendErrorResponse(request.Request, FailedToLaunch, "Cannot restart", "cannot restart process Delve did not create")
+		return
+	}
+
+	var newArgs []string
+	var resetArgs bool
+
+	// Update launch/attach arguments if provided
+	if len(request.Arguments) > 0 {
+		// RestartArguments has an "arguments" field that contains launch/attach config
+		var restartArgs struct {
+			Arguments json.RawMessage `json:"arguments"`
+		}
+		if err := json.Unmarshal(request.Arguments, &restartArgs); err == nil && restartArgs.Arguments != nil {
+			// Try to determine if it's launch or attach
+			var requestType struct {
+				Request string `json:"request"`
+			}
+			if err := json.Unmarshal(restartArgs.Arguments, &requestType); err == nil {
+				if requestType.Request == "launch" {
+					var launchArgs LaunchConfig
+					if err := unmarshalLaunchAttachArgs(restartArgs.Arguments, &launchArgs); err == nil {
+						s.setLaunchAttachArgs(launchArgs.LaunchAttachCommonConfig)
+						// Extract new program arguments if provided
+						if launchArgs.Args != nil {
+							newArgs = launchArgs.Args
+							resetArgs = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Restart the debugger
+	// TODO(deparker) handle args from the launch regarding re-recording.
+	discardedBreakpoints, err := s.debugger.Restart(false, "", resetArgs, newArgs, [3]string{}, false)
+	if err != nil {
+		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to restart", err.Error())
+		return
+	}
+
+	s.config.log.Infof("Restart completed. Discarded breakpoints: %v", discardedBreakpoints)
+
+	// Send success response
+	s.send(&dap.RestartResponse{Response: *newResponse(request.Request)})
+
+	// Notify the client that the debugger is ready to start accepting
+	// configuration requests for setting breakpoints, etc. The client
+	// will end the configuration sequence with 'configurationDone'.
+	s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
 }
 
 // onStepBackRequest handles 'stepBack' request.

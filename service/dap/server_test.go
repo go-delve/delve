@@ -6001,6 +6001,40 @@ func TestPauseAndContinue(t *testing.T) {
 	})
 }
 
+func TestRestartRequest(t *testing.T) {
+	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{16}, // Set breakpoint at main.main
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 16)
+
+					// Now restart the program
+					client.RestartRequest()
+					client.ExpectRestartResponse(t)
+
+					// After restart, we need to go through initialization again
+					client.ExpectInitializedEvent(t)
+
+					// Configuration done
+					client.ConfigurationDoneRequest()
+					client.ExpectConfigurationDoneResponse(t)
+
+					// Ensure breakpoints are preserved
+					// Now we should hit the breakpoint again at main.main
+					client.ExpectStoppedEvent(t)
+					checkStop(t, client, 1, "main.main", 16)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
 func TestUnsupportedCommandResponses(t *testing.T) {
 	var got *dap.ErrorResponse
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
@@ -6408,9 +6442,6 @@ func TestOptionalNotYetImplementedResponses(t *testing.T) {
 
 		client.TerminateRequest()
 		expectNotYetImplemented("terminate")
-
-		client.RestartRequest()
-		expectNotYetImplemented("restart")
 
 		client.SetExpressionRequest()
 		expectNotYetImplemented("setExpression")

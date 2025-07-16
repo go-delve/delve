@@ -118,6 +118,7 @@ func (c *Client) ExpectInitializeResponseAndCapabilities(t *testing.T) *dap.Init
 		SupportsSteppingGranularity:      true,
 		SupportsLogPoints:                true,
 		SupportsDisassembleRequest:       true,
+		SupportsRestartRequest:           true,
 	}
 	if !reflect.DeepEqual(initResp.Body, wantCapabilities) {
 		t.Errorf("capabilities in initializeResponse: got %+v, want %v", pretty(initResp.Body), pretty(wantCapabilities))
