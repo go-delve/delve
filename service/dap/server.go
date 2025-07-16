@@ -3070,32 +3070,28 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 
 	// Update launch/attach arguments if provided
 	if len(request.Arguments) > 0 {
-		// RestartArguments has an "arguments" field that contains launch/attach config
 		var restartArgs struct {
-			Arguments json.RawMessage `json:"arguments"`
-		}
-		if err := json.Unmarshal(request.Arguments, &restartArgs); err == nil && restartArgs.Arguments != nil {
-			// Try to determine if it's launch or attach
-			var requestType struct {
+			Arguments struct {
 				Request string `json:"request"`
+				LaunchConfig
 			}
-			if err := json.Unmarshal(restartArgs.Arguments, &requestType); err == nil {
-				if requestType.Request == "launch" {
-					var launchArgs LaunchConfig
-					if err := unmarshalLaunchAttachArgs(restartArgs.Arguments, &launchArgs); err == nil {
-						s.setLaunchAttachArgs(launchArgs.LaunchAttachCommonConfig)
-						// Extract new program arguments if provided
-						if launchArgs.Args != nil {
-							newArgs = launchArgs.Args
-							resetArgs = true
-						}
-					}
-				}
+		}
+		err := json.Unmarshal(request.Arguments, &restartArgs)
+		if err != nil {
+			s.sendErrorResponse(request.Request, FailedToLaunch, "Cannot restart", "unable to unmarshal launch args")
+			return
+		}
+		if restartArgs.Arguments.Request == "launch" {
+			launchArgs := restartArgs.Arguments.LaunchConfig
+			s.setLaunchAttachArgs(launchArgs.LaunchAttachCommonConfig)
+			// Extract new program arguments if provided
+			if launchArgs.Args != nil {
+				newArgs = launchArgs.Args
+				resetArgs = true
 			}
 		}
 	}
 
-	// Restart the debugger
 	// TODO(deparker) handle args from the launch regarding re-recording.
 	discardedBreakpoints, err := s.debugger.Restart(false, "", resetArgs, newArgs, [3]string{}, false)
 	if err != nil {
@@ -3105,12 +3101,7 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 
 	s.config.log.Infof("Restart completed. Discarded breakpoints: %v", discardedBreakpoints)
 
-	// Send success response
 	s.send(&dap.RestartResponse{Response: *newResponse(request.Request)})
-
-	// Notify the client that the debugger is ready to start accepting
-	// configuration requests for setting breakpoints, etc. The client
-	// will end the configuration sequence with 'configurationDone'.
 	s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
 }
 

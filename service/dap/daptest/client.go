@@ -455,9 +455,13 @@ func (c *Client) TerminateRequest() {
 	c.send(&dap.TerminateRequest{Request: *c.newRequest("terminate")})
 }
 
-// RestartRequest sends a 'restart' request.
-func (c *Client) RestartRequest() {
-	c.send(&dap.RestartRequest{Request: *c.newRequest("restart")})
+// RestartRequest sends a 'restart' request with specified arguments, if provided.
+func (c *Client) RestartRequest(arguments map[string]any) {
+	request := &dap.RestartRequest{Request: *c.newRequest("restart")}
+	if arguments != nil {
+		request.Arguments = toRawMessage(arguments)
+	}
+	c.send(request)
 }
 
 // SetFunctionBreakpointsRequest sends a 'setFunctionBreakpoints' request.
