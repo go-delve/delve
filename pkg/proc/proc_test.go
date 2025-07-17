@@ -1380,6 +1380,9 @@ func BenchmarkGoroutinesInfo(b *testing.B) {
 func TestIssue262(t *testing.T) {
 	// Continue does not work when the current breakpoint is set on a NOP instruction
 	protest.AllowRecording(t)
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 25) {
+		skipOn(t, "test doesn't work due to compiler changes", "linux", "386")
+	}
 	withTestProcess("issue262", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, fixture.Source, 11)
 
@@ -2724,6 +2727,13 @@ func TestShadowedFlag(t *testing.T) {
 	}
 	withTestProcess("testshadow", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), t, "Continue")
+
+		_, n := currentLineNumber(p, t)
+		if n != 13 {
+			// Workaround for go1.25 line numbering issue, see https://github.com/golang/go/issues/74576
+			assertNoError(grp.Next(), t, "Next")
+		}
+
 		scope, err := proc.GoroutineScope(p, p.CurrentThread())
 		assertNoError(err, t, "GoroutineScope")
 		locals, err := scope.LocalVariables(normalLoadConfig)
