@@ -5560,7 +5560,7 @@ func TestNoDebug_AcceptNoRequestsButDisconnect(t *testing.T) {
 		ExpectNoDebugError("setFunctionBreakpoints")
 		client.PauseRequest(1)
 		ExpectNoDebugError("pause")
-		client.RestartRequest()
+		client.RestartRequest(nil)
 		client.ExpectUnsupportedCommandErrorResponse(t)
 
 		// Disconnect request is ok
@@ -6001,6 +6001,86 @@ func TestPauseAndContinue(t *testing.T) {
 	})
 }
 
+func TestRestartRequest(t *testing.T) {
+	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Set breakpoints
+			fixture.Source, []int{16}, // Set breakpoint at main.main
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 16)
+
+					client.RestartRequest(nil)
+					client.ExpectRestartResponse(t)
+
+					client.ExpectInitializedEvent(t)
+
+					client.ConfigurationDoneRequest()
+					client.ExpectConfigurationDoneResponse(t)
+
+					// Ensure breakpoints are preserved
+					// Now we should hit the breakpoint again at main.main
+					client.ExpectStoppedEvent(t)
+					checkStop(t, client, 1, "main.main", 16)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+// TestRestartRequestWithNewArgs tests that the restart request can accept new program arguments.
+func TestRestartRequestWithNewArgs(t *testing.T) {
+	runTest(t, "testargs", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			func() {
+				client.LaunchRequestWithArgs(map[string]any{
+					"mode":        "exec",
+					"program":     fixture.Path,
+					"stopOnEntry": false,
+					"args":        []string{"test"},
+				})
+			},
+			fixture.Source, []int{11},
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 11)
+
+					client.EvaluateRequest("os.Args", 1000, "repl")
+					evalResp := client.ExpectEvaluateResponse(t)
+					checkEvalRegex(t, evalResp, `\[\]string len: 2, cap: 2, \[".*testargs.*","test"\]`, hasChildren)
+
+					client.RestartRequest(map[string]any{
+						"arguments": map[string]any{
+							"request":     "launch",
+							"mode":        "exec",
+							"program":     fixture.Path,
+							"stopOnEntry": false,
+							"args":        []string{"test", "pass flag"},
+						},
+					})
+					client.ExpectRestartResponse(t)
+
+					client.ExpectInitializedEvent(t)
+
+					client.ConfigurationDoneRequest()
+					client.ExpectConfigurationDoneResponse(t)
+
+					client.ExpectStoppedEvent(t)
+					checkStop(t, client, 1, "main.main", 11)
+
+					client.EvaluateRequest("os.Args", 1000, "repl")
+					evalResp = client.ExpectEvaluateResponse(t)
+					checkEvalRegex(t, evalResp, `\[\]string len: 3, cap: 3, \[".*testargs.*","test","pass flag"\]`, hasChildren)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
 func TestUnsupportedCommandResponses(t *testing.T) {
 	var got *dap.ErrorResponse
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
@@ -6408,9 +6488,6 @@ func TestOptionalNotYetImplementedResponses(t *testing.T) {
 
 		client.TerminateRequest()
 		expectNotYetImplemented("terminate")
-
-		client.RestartRequest()
-		expectNotYetImplemented("restart")
 
 		client.SetExpressionRequest()
 		expectNotYetImplemented("setExpression")
