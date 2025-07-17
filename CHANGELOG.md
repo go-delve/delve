@@ -3,6 +3,25 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.25.1] 2025-07-18
+
+### Added
+- Implement restart request for DAP (#4057, @derekparker)
+
+### Fixed
+- Fixed panic when trying to stacktrace an unreadable goroutine in DAP (#4056, @aarzilli)
+- Fixed panic when trying to access value of unreadable string variables in DAP (#4055, @aarzilli)
+- Fixed type cast between slices with the same element type (#4048, @aarzilli)
+- Fixed closure captured variables visibility on closure's first line (#4049, @aarzilli)
+- Fixed unknown DWARF opcodes causing panics (#4037, @aarzilli)
+- Added missing response body close in DAP test (#4039, @alexandear)
+- Fix panic in switchToGoroutineStacktrace (#4043, @derekparker)
+
+### Changed
+- Handle moving of direct interface flag in Go 1.26 (#4032, @randall77)
+- Simplified tests using slices.Contains (#4040, @alexandear)
+- Updated Go max support minor version and update golang.org/x/tools (#4046, @derekparker)
+
 ## [1.25.0] 2025-04-16
 
 ### Added
