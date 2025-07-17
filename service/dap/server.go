@@ -1883,11 +1883,15 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 			} else {
 				writeLabelsForKeys(s.args.ShowPprofLabels)
 			}
-			// File name and line number are communicated via `stackTrace`
-			// so no need to include them here.
-			loc := g.UserCurrent()
-			threads[i].Name = fmt.Sprintf("%s[Go %d%s] %s%s", selected, g.ID, labels.String(), fnName(&loc), thread)
-			threads[i].Id = int(g.ID)
+			if g.Unreadable != nil {
+				threads[i].Name = fmt.Sprintf("%s Unreadable goroutine: %v", selected, g.Unreadable)
+			} else {
+				// File name and line number are communicated via `stackTrace`
+				// so no need to include them here.
+				loc := g.UserCurrent()
+				threads[i].Name = fmt.Sprintf("%s[Go %d%s] %s%s", selected, g.ID, labels.String(), fnName(&loc), thread)
+				threads[i].Id = int(g.ID)
+			}
 		}
 	}
 
