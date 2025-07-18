@@ -106,7 +106,7 @@ type Breaklet struct {
 	// the return value will determine if the breaklet should be considered
 	// active.
 	// The callback can have side-effects.
-	callback func(th Thread, p *Target) (bool, error)
+	Callback func(th Thread, p *Target) (bool, error)
 
 	// For WatchOutOfScopeBreakpoints and StackResizeBreakpoints the watchpoint
 	// field contains the watchpoint related to this out of scope sentinel.
@@ -339,9 +339,9 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 	}
 
 	if active {
-		if breaklet.callback != nil {
+		if breaklet.Callback != nil {
 			var err error
-			active, err = breaklet.callback(thread, tgt)
+			active, err = breaklet.Callback(thread, tgt)
 			if err != nil && bpstate.CondError == nil {
 				bpstate.CondError = err
 			}
