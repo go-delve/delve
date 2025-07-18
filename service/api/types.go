@@ -411,6 +411,10 @@ type DebuggerCommand struct {
 	// Expr is the expression argument for a Call command
 	Expr string `json:"expr,omitempty"`
 
+	// If WithEvents is set events are generated that should be read by calling
+	// GetEvents.
+	WithEvents bool
+
 	// UnsafeCall disables parameter escape checking for function calls.
 	// Go objects can be allocated on the stack or on the heap. Heap objects
 	// can be used by any goroutine; stack objects can only be used by the
@@ -683,4 +687,23 @@ type GuessSubstitutePathIn struct {
 	ImportPathOfMainPackage string
 	ClientGOROOT            string
 	ClientModuleDirectories map[string]string
+}
+
+// Event is an event that happened during execution of the debugged program.
+type Event struct {
+	Kind EventKind
+	*BinaryInfoDownloadEventDetails
+}
+
+type EventKind uint8
+
+const (
+	EventResumed EventKind = iota
+	EventStopped
+	EventBinaryInfoDownload
+)
+
+// BinaryInfoDownloadEventDetails describes the details of a BinaryInfoDownloadEvent
+type BinaryInfoDownloadEventDetails struct {
+	ImagePath, Progress string
 }
