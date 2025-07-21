@@ -7223,6 +7223,33 @@ func TestBadlyFormattedMessageToServer(t *testing.T) {
 	})
 }
 
+// TestConfigurationDoneWithoutDebugSession tests that sending ConfigurationDone
+// before Launch/Attach returns an error instead of panicing.
+// Reproduces issue #4060.
+func TestConfigurationDoneWithoutDebugSession(t *testing.T) {
+	serverStopped := make(chan struct{})
+	server, _ := startDAPServer(t, false, serverStopped)
+	defer server.Stop()
+
+	client := daptest.NewClient(server.listener.Addr().String())
+	defer client.Close()
+
+	// Initialize only, no launch/attach
+	client.InitializeRequest()
+	client.ExpectInitializeResponseAndCapabilities(t)
+
+	// Send ConfigurationDone before Launch/Attach
+	client.ConfigurationDoneRequest()
+
+	resp := client.ExpectVisibleErrorResponse(t)
+	if resp.Body.Error != nil {
+		expectedMsg := "No debug session started: Use launch or attach request first."
+		if resp.Body.Error.Format != expectedMsg {
+			t.Errorf("Expected error message %q, got %q", expectedMsg, resp.Body.Error.Format)
+		}
+	}
+}
+
 func TestParseLogPoint(t *testing.T) {
 	tests := []struct {
 		name           string
