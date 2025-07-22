@@ -533,8 +533,6 @@ func mustSupportCore(t *testing.T) {
 	switch runtime.GOARCH {
 	case "386", "ppc64le":
 		t.Skip("unsupported")
-	case "loong64":
-		t.Skip("could not read runtime.sigtrampgo context")
 	}
 
 	if os.Getenv("CI") == "true" && buildMode == "pie" {
