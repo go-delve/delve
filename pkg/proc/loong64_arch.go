@@ -35,11 +35,13 @@ func LOONG64Arch(goos string) *Arch {
 		PCRegNum:                         regnum.LOONG64_PC,
 		SPRegNum:                         regnum.LOONG64_SP,
 		ContextRegNum:                    regnum.LOONG64_R0 + 29,
+		LRRegNum:                         regnum.LOONG64_LR,
 		asmRegisters:                     loong64AsmRegisters,
 		RegisterNameToDwarf:              nameToDwarfFunc(regnum.LOONG64NameToDwarf),
 		RegnumToString:                   regnum.LOONG64ToName,
 		debugCallMinStackSize:            280,
 		maxRegArgBytes:                   16*8 + 16*8, // 16 int argument registers plus 16 float argument registers
+		argumentRegs:                     []int{regnum.LOONG64_R0 + 4, regnum.LOONG64_R0 + 5, regnum.LOONG64_R0 + 6},
 	}
 }
 
