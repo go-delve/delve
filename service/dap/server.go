@@ -1697,10 +1697,14 @@ func closeIfOpen(ch chan struct{}) {
 
 // onConfigurationDoneRequest handles 'configurationDone' request.
 // This is an optional request enabled by capability 'supportsConfigurationDoneRequest'.
-// It gets triggered after all the debug requests that follow initialized event,
-// so the s.debugger is guaranteed to be set. Expects the target to be halted.
+// It gets triggered after all the debug requests that follow initialized event.
+// The debugger should be set by a launch or attach request. Expects the target to be halted.
 func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest, allowNextStateChange *syncflag) {
 	defer allowNextStateChange.raise()
+	if s.debugger == nil {
+		s.sendShowUserErrorResponse(request.Request, NoDebugIsRunning, "No debug session started", "Use launch or attach request first.")
+		return
+	}
 	if s.args.stopOnEntry {
 		e := &dap.StoppedEvent{
 			Event: *newEvent("stopped"),
