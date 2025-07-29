@@ -212,7 +212,7 @@ func (it *mapIteratorClassic) nextBucket() bool {
 	}
 
 	// sanity checks
-	if it.tophashes == nil || it.keys == nil || it.values == nil {
+	if it.tophashes == nil || it.keys == nil || it.values == nil || it.overflow == nil {
 		it.v.Unreadable = errors.New("malformed map type")
 		return false
 	}
