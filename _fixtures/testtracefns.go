@@ -122,6 +122,22 @@ func dyn() {
 	assign(testfunc)
 }
 
+func outer() {
+	intc = 40
+        defer swap()
+}
+func nestDefer() {
+        defer outer()
+}
+
+func namedDeferLoop(n int) {
+        for i := 0; i < n; i++ {
+                defer testfunc()
+        }
+        temp := intc
+        intc = intd
+        intd = temp
+}
 func main() {
 	j := 0
 	j += A(2)
@@ -130,6 +146,8 @@ func main() {
 	j += callme(2)
 	fmt.Println(j)
 	unnamedDefer()
+	nestDefer()
+	namedDeferLoop(2)
 	F0()
 	ans := op()
 	fmt.Println(ans)
