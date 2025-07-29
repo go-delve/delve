@@ -54,6 +54,7 @@ func ARM64Arch(goos string) *Arch {
 		debugCallMinStackSize:            288,
 		maxRegArgBytes:                   16*8 + 16*8, // 16 int argument registers plus 16 float argument registers
 		argumentRegs:                     []int{regnum.ARM64_X0, regnum.ARM64_X0 + 1, regnum.ARM64_X0 + 2},
+		DynamicCallReg:			  regnum.ARM64_X0 + 1,
 	}
 }
 

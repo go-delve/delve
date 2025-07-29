@@ -834,6 +834,30 @@ func TestTraceFollowCallsCommand(t *testing.T) {
 		assertNoError(err, t, "ListFunctions()")
 		expected = []string{"main.swap", "main.swap.func1", "runtime.deferreturn"}
 		matchFunctions(t, functions, expected, depth)
+
+		depth = 7
+		functions, err = c.ListFunctions("main.nestDefer", depth)
+		assertNoError(err, t, "ListFunctions()")
+		expected = []string{"main.nestDefer", "runtime.deferreturn", "main.outer", "main.swap", "main.swap.func1"}
+		matchFunctions(t, functions, expected, depth)
+
+		depth = 3
+		functions, err = c.ListFunctions("main.namedDeferLoop", depth)
+		assertNoError(err, t, "ListFunctions()")
+		expected = []string{"main.namedDeferLoop", "runtime.deferreturn", "main.testfunc"}
+		matchFunctions(t, functions, expected, depth)
+
+		depth = 3
+		functions, err = c.ListFunctions("main.op", depth)
+		assertNoError(err, t, "ListFunctions()")
+		expected = []string{"main.formula", "main.op", "main.formula.func1"}
+		matchFunctions(t, functions, expected, depth)
+
+		depth = 3
+		functions, err = c.ListFunctions("main.dyn", depth)
+		assertNoError(err, t, "ListFunctions()")
+		expected = []string{"main.assign","main.dyn", "main.testfunc"}
+		matchFunctions(t, functions, expected, depth)
 	})
 }
 

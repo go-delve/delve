@@ -1,0 +1,1 @@
+-: /home/archanaravindar/Go/delve/follow-calls-backup/commit-feb1/delve/vendor/golang.org/x/sys/unix/vgetrandom_linux.go:7:9: file requires newer Go version go1.24 (application built with go1.23) (compile)

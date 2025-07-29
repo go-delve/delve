@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
-	"github.com/go-delve/delve/pkg/dwarf/regnum"
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/locspec"
@@ -1425,7 +1424,7 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 		parent := queue[0]
 		queue = queue[1:]
 		if parent == nil {
-			panic("Queue has a nil node, cannot traverse!")
+			panic("queue has a nil node, cannot traverse!")
 		}
 		if parent.Depth > followCalls {
 			continue
@@ -1448,31 +1447,27 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 			return nil, fmt.Errorf("disassemble failed with error %w", err)
 		}
 		for _, instr := range text {
-			// Defer functions are called in a special way wherein the destination location is nil
+			// Dynamic functions are called in a special way wherein the destination location is nil
 			// Hence its required to put a breakpoint inorder to acquire the address of the function
 			// at runtime and we do this via a call back mechanism
 			if instr.IsCall() && instr.DestLoc == nil {
-				deferbp, err := t.SetBreakpoint(0, instr.Loc.PC, proc.NextBreakpoint, nil)
-				deferbp.RootFuncName = rootstr
+				dynbp, err := t.SetBreakpoint(0, instr.Loc.PC, proc.NextBreakpoint, nil)
+				dynbp.RootFuncName = rootstr
 				if err != nil {
 					return nil, fmt.Errorf("error setting breakpoint inside deferreturn")
 				}
-				deferbrklet := deferbp.Breaklets[len(deferbp.Breaklets)-1]
-				deferbrklet.Callback = func(th proc.Thread, tgt *proc.Target) (bool, error) {
-					rawlocs, err := proc.ThreadStacktrace(tgt, tgt.CurrentThread(), 20)
+				dynbrklet := dynbp.Breaklets[len(dynbp.Breaklets)-1]
+				dynCallback := func(th proc.Thread, tgt *proc.Target) (bool, error) {
+					rawlocs, err := proc.ThreadStacktrace(tgt, tgt.CurrentThread(), followCalls+2)
 					if err != nil {
 						return false, fmt.Errorf("thread stack trace returned error")
 					}
-					// Since the defer function is known only at runtime, the depth is likewise
-					// calculated by referring to the stack and the mechanism is exactly the same
-					// as that used in pkg/terminal/command.go:printTraceOutput
-					stack, err := d.convertStacktrace(rawlocs, nil)
-					if err != nil {
-						return false, fmt.Errorf("convert stack trace returned error")
-					}
+					// Since the dynamic function is known only at runtime, the depth is likewise
+					// calculated by referring to the stack and the mechanism is similar to that
+					// used in pkg/terminal/command.go:printTraceOutput
 					rootindex := -1
-					for i := len(stack) - 1; i >= 0; i-- {
-						if stack[i].Function.Name() == deferbp.RootFuncName {
+					for i := len(rawlocs) - 1; i >= 0; i-- {
+						if rawlocs[i].Call.Fn.Name == dynbp.RootFuncName {
 							if rootindex == -1 {
 								rootindex = i
 								break
@@ -1490,21 +1485,7 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 
 					}
 					dregs := tgt.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
-					archName := tgt.BinInfo().Arch.Name
-					var addr uint64
-					// Get function address from the register used to call defer function from within
-					// runtime.deferreturn
-					if archName == "amd64" {
-						addr = dregs.Uint64Val(regnum.AMD64_Rcx)
-					} else if archName == "ppc64le" {
-						addr = dregs.Uint64Val(regnum.PPC64LE_LR)
-					} else if archName == "arm64" {
-						// ARM64_X1 is accessed via ARM64_X0
-						addr = dregs.Uint64Val(regnum.ARM64_X0 + 1)
-					} else if archName == "386" {
-						addr = dregs.Uint64Val(regnum.I386_Eax)
-					}
-
+					addr := dregs.Uint64Val(tgt.BinInfo().Arch.DynamicCallReg)
 					fn := tgt.BinInfo().PCToFunc(addr)
 					if fn == nil {
 						return false, fmt.Errorf("PCToFunc returned nil")
@@ -1513,18 +1494,19 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 					if err != nil {
 						return false, fmt.Errorf("error creating tracepoint in function %s", fn.Name)
 					}
-					deferchildren, err := d.traverse(t, fn, sdepth+1, followCalls, rootstr)
+					dynchildren, err := d.traverse(t, fn, sdepth+1, followCalls, rootstr)
 					if err != nil {
-						return false, fmt.Errorf("error calling traverse on defer children")
+						return false, fmt.Errorf("error calling traverse on dynamic children")
 					}
-					for i := 0; i < len(deferchildren); i++ {
-						_, err := createFnTracepoint(d, deferchildren[i], rootstr, followCalls)
+					for i := 0; i < len(dynchildren); i++ {
+						_, err := createFnTracepoint(d, dynchildren[i], rootstr, followCalls)
 						if err != nil {
-							return false, fmt.Errorf("error creating tracepoint in function %s", deferchildren[i])
+							return false, fmt.Errorf("error creating tracepoint in function %s", dynchildren[i])
 						}
 					}
 					return false, nil
 				}
+				dynbrklet.SetCallBack(dynCallback)
 			}
 
 			if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
@@ -1545,7 +1527,7 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 	return funcs, nil
 }
 
-// For defer functions, since we get to know the functions that are being called from deferreturn quite late in execution
+// For dynamic functions, since we get to know the functions that are being called from deferreturn quite late in execution
 // we need to create the trace point ourselves so that it can be included in the trace output just in time
 func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls int) (*api.Breakpoint, error) {
 
