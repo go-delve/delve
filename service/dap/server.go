@@ -630,7 +630,7 @@ func (s *Session) handleRequest(request dap.Message) {
 		/*TODO*/ s.onTerminateRequest(request) // not yet implemented
 		return
 	case *dap.RestartRequest: // Optional (capability 'supportsRestartRequest')
-		/*TODO*/ s.onRestartRequest(request) // not yet implemented
+		s.onRestartRequest(request)
 		return
 	}
 
@@ -3066,6 +3066,14 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 
 	if s.debugger == nil {
 		s.sendErrorResponse(request.Request, FailedToLaunch, "Cannot restart: debugger is not running", "Debugger is not running")
+		return
+	}
+
+	s.config.log.Debug("halting execution to restart")
+	s.setHaltRequested(true)
+	_, err := s.halt()
+	if err != nil {
+		s.sendErrorResponse(request.Request, FailedToLaunch, "Cannot restart", fmt.Sprintf("cannot restart process: %v", err))
 		return
 	}
 
