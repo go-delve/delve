@@ -95,30 +95,7 @@ func RuntimeTypeToDIE(_type *Variable, dataAddr uint64, mds []ModuleData) (typ g
 				if err != nil {
 					return nil, false, fmt.Errorf("invalid interface type: %v", err)
 				}
-				// Figure out whether interfaces with this concrete type are direct or not.
-				// Go 1.26 and beyond have this flag in the TFlag field.
-				// Go 1.25 and earlier have this flag in the Kind field.
-				// If either flag is set, consider it direct.
-				var direct bool
-				if tflagField := _type.loadFieldNamed("TFlag"); tflagField != nil && tflagField.Value != nil {
-					tflag, _ := constant.Int64Val(tflagField.Value)
-					if tflag&tflagDirectIface != 0 {
-						direct = true
-					}
-				}
-				if kindField := _type.loadFieldNamed("kind"); kindField != nil && kindField.Value != nil {
-					kind, _ := constant.Int64Val(kindField.Value)
-					if kind&kindDirectIface != 0 {
-						direct = true
-					}
-				} else if kindField := _type.loadFieldNamed("Kind_"); kindField != nil && kindField.Value != nil {
-					kind, _ := constant.Int64Val(kindField.Value)
-					if kind&kindDirectIface != 0 {
-						direct = true
-					}
-				}
-
-				return typ, direct, nil
+				return typ, getRuntimeTypeDirect(_type), nil
 			}
 		}
 	}
@@ -159,30 +136,30 @@ func resolveParametricType(bi *BinaryInfo, mem MemoryReadWriter, t godwarf.Type,
 	return typ, nil
 }
 
-func dwarfToRuntimeType(bi *BinaryInfo, mem MemoryReadWriter, typ godwarf.Type) (typeAddr uint64, typeKind uint64, found bool, err error) {
+func dwarfToRuntimeType(bi *BinaryInfo, mem MemoryReadWriter, typ godwarf.Type) (typeAddr uint64, direct, found bool, err error) {
 	so := bi.typeToImage(typ)
 	rdr := so.DwarfReader()
 	rdr.Seek(typ.Common().Offset)
 	e, err := rdr.Next()
 	if err != nil {
-		return 0, 0, false, err
+		return 0, false, false, err
 	}
 	off, ok := e.Val(godwarf.AttrGoRuntimeType).(uint64)
 	if !ok {
-		return 0, 0, false, nil
+		return 0, false, false, nil
 	}
 
 	mds, err := LoadModuleData(bi, mem)
 	if err != nil {
-		return 0, 0, false, err
+		return 0, false, false, err
 	}
 
 	md := bi.imageToModuleData(so, mds)
 	if md == nil {
 		if so.index > 0 {
-			return 0, 0, false, fmt.Errorf("could not find module data for type %s (shared object: %q)", typ, so.Path)
+			return 0, false, false, fmt.Errorf("could not find module data for type %s (shared object: %q)", typ, so.Path)
 		} else {
-			return 0, 0, false, fmt.Errorf("could not find module data for type %s", typ)
+			return 0, false, false, fmt.Errorf("could not find module data for type %s", typ)
 		}
 	}
 
@@ -190,19 +167,35 @@ func dwarfToRuntimeType(bi *BinaryInfo, mem MemoryReadWriter, typ godwarf.Type) 
 
 	rtyp, err := bi.findType(bi.runtimeTypeTypename())
 	if err != nil {
-		return 0, 0, false, err
+		return 0, false, false, err
 	}
 	_type := newVariable("", typeAddr, rtyp, bi, mem)
-	kindv := _type.loadFieldNamed("kind")
-	if kindv == nil || kindv.Unreadable != nil || kindv.Kind != reflect.Uint {
-		kindv = _type.loadFieldNamed("Kind_")
+
+	return typeAddr, getRuntimeTypeDirect(_type), true, nil
+}
+
+// getRuntimeTypeDirect returns a bool that says if the type in _type can be stored directly into an interface variable.
+func getRuntimeTypeDirect(_type *Variable) bool {
+	// Go 1.26 and beyond have this flag in the TFlag field.
+	// Go 1.25 and earlier have this flag in the Kind field.
+	// If either flag is set, consider it direct.
+	var direct bool
+	if tflagField := _type.loadFieldNamed("TFlag"); tflagField != nil && tflagField.Value != nil {
+		tflag, _ := constant.Int64Val(tflagField.Value)
+		if tflag&tflagDirectIface != 0 {
+			direct = true
+		}
 	}
-	if kindv == nil {
-		return 0, 0, false, fmt.Errorf("unreadable interface type (no kind field)")
+	if kindField := _type.loadFieldNamed("kind"); kindField != nil && kindField.Value != nil {
+		kind, _ := constant.Int64Val(kindField.Value)
+		if kind&kindDirectIface != 0 {
+			direct = true
+		}
+	} else if kindField := _type.loadFieldNamed("Kind_"); kindField != nil && kindField.Value != nil {
+		kind, _ := constant.Int64Val(kindField.Value)
+		if kind&kindDirectIface != 0 {
+			direct = true
+		}
 	}
-	if kindv.Unreadable != nil || kindv.Kind != reflect.Uint {
-		return 0, 0, false, fmt.Errorf("unreadable interface type: %v", kindv.Unreadable)
-	}
-	typeKind, _ = constant.Uint64Val(kindv.Value)
-	return typeAddr, typeKind, true, nil
+	return direct
 }

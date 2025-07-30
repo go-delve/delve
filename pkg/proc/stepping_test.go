@@ -1227,7 +1227,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
 		t.Skip("N/A")
 	}
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) && !goversion.VersionAfterOrEqual(runtime.Version(), 1, 26) {
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) && !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27) {
 		t.Skip("broken due to inlined symbol names")
 	}
 
