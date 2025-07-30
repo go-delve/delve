@@ -792,9 +792,9 @@ func (d *Debugger) createBreakpointInternal(requestedBp *api.Breakpoint, locExpr
 	lbp.Set = setbp
 
 	if lbp.Set.Expr != nil {
-		addrs := lbp.Set.Expr(d.Target())
+		addrs := lbp.Set.Expr(d.target.Selected)
 		if len(addrs) > 0 {
-			f, l, fn := d.Target().BinInfo().PCToLine(addrs[0])
+			f, l, fn := d.target.Selected.BinInfo().PCToLine(addrs[0])
 			lbp.File = f
 			lbp.Line = l
 			if fn != nil {
