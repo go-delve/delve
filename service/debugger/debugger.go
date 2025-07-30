@@ -1456,7 +1456,6 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 				if err != nil {
 					return nil, fmt.Errorf("error setting breakpoint inside deferreturn")
 				}
-				dynbrklet := dynbp.Breaklets[len(dynbp.Breaklets)-1]
 				dynCallback := func(th proc.Thread, tgt *proc.Target) (bool, error) {
 					rawlocs, err := proc.ThreadStacktrace(tgt, tgt.CurrentThread(), followCalls+2)
 					if err != nil {
@@ -1506,7 +1505,9 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 					}
 					return false, nil
 				}
-				dynbrklet.SetCallBack(dynCallback)
+		for _, dynbrklet_i := range dynbp.Breaklets {
+				dynbrklet_i.SetCallBack(dynCallback)
+			}
 			}
 
 			if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
