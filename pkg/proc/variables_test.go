@@ -1603,7 +1603,22 @@ func TestIssue4051(t *testing.T) {
 		}
 
 		v, err := evalVariableWithCfg(p, "main.Hello", pshortLoadConfig)
+		assertNoError(err, t, "eval of main.Hello returned an error")
 		assertVariable(t, v, varTest{"main.Hello", true, `"World"`, ``, `string`, nil})
+
+		// TODO(deparker): we *should* get an error here, but the one we expect in this test
+		// is not the ideal error. We should really improve type checking in the evaluator.
+		v, err = evalVariableWithCfg(p, "main.f.func1.i", pshortLoadConfig)
+		expectedError = `main.f has no member func1`
+		if err.Error() != expectedError {
+			t.Fatalf("expected error %q, got %q", expectedError, err)
+		}
+
+		_, err = evalVariableWithCfg(p, "main.f.func1.somethingthatdoesntexist", pshortLoadConfig)
+		expectedError = `main.f has no member func1`
+		if err.Error() != expectedError {
+			t.Fatalf("expected error %q, got %q", expectedError, err)
+		}
 	})
 }
 
