@@ -11,6 +11,12 @@ func Hello(name string) string {
 	return msg
 }
 
+func f(i int) func() {
+	return func() {
+		fmt.Println("Function f called with:", i)
+	}
+}
+
 func main() {
 	fmt.Println("Program started")
 	fmt.Println("Ready for Delve call")
@@ -23,5 +29,7 @@ func main() {
 		Hello: "World",
 	}
 	fmt.Println(main.Hello)
+	fn := f(42)
 	runtime.Breakpoint()
+	fn()
 }
