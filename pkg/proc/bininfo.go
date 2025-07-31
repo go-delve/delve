@@ -520,7 +520,6 @@ type Function struct {
 	cu         *compileUnit
 
 	trampoline bool // DW_AT_trampoline attribute set to true
-	closure    bool // DW_AT_go_closure attribute set to true on child variable
 
 	// InlinedCalls lists all inlined calls to this function
 	InlinedCalls         []InlinedCall
@@ -2742,11 +2741,6 @@ func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContex
 				inlined = inval >= 1
 			}
 
-			if err := setIsClosure(reader, *entry, ctxt, bi); err != nil {
-				image.setLoadError(bi.logger, "error reading debug_info: %v", err)
-				return
-			}
-
 			if inlined {
 				bi.addAbstractSubprogram(entry, ctxt, reader, image, cu)
 			} else {
@@ -2770,35 +2764,6 @@ func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContex
 // any closure variables.
 // Note: This only works for Go binaries build with 1.23+ when the
 // DW_AT_go_closure_offset attribute is set on the closure variables.
-func setIsClosure(r *reader.Reader, entry dwarf.Entry, ctxt *loadDebugInfoMapsContext, bi *BinaryInfo) error {
-	off := entry.Offset
-	defer func(off dwarf.Offset, reader *reader.Reader) {
-		reader.Seek(off)
-		reader.Next()
-	}(off, r)
-	for {
-		varentry, err := r.Next()
-		if err != nil {
-			return err
-		}
-		if varentry == nil {
-			return nil
-		}
-		switch varentry.Tag {
-		case dwarf.TagVariable:
-			if _, ok := varentry.Val(godwarf.AttrGoClosureOffset).(int64); ok {
-				originIdx := ctxt.lookupAbstractOrigin(bi, off)
-				fn := &bi.Functions[originIdx]
-				fn.closure = true
-				return nil
-			}
-		case dwarf.TagSubprogram:
-			return nil
-		default:
-			continue
-		}
-	}
-}
 
 // loadDebugInfoMapsImportedUnit loads entries into cu from the partial unit
 // referenced in a DW_TAG_imported_unit entry.
