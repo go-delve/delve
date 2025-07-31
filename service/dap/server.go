@@ -1398,7 +1398,7 @@ func (s *Session) halt() (*api.DebuggerState, error) {
 	s.config.log.Debug("halting")
 	// Only send a halt request if the debuggee is running.
 	if s.debugger.IsRunning() {
-		return s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil, nil)
+		return s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil, nil, nil)
 	}
 	s.config.log.Debug("process not running")
 	return s.debugger.State(false)
@@ -2102,7 +2102,7 @@ func (s *Session) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int6
 // due to an error, so the server is ready to receive new requests.
 func (s *Session) stepUntilStopAndNotify(command string, threadId int, granularity dap.SteppingGranularity, allowNextStateChange *syncflag) {
 	defer allowNextStateChange.raise()
-	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: int64(threadId)}, nil, s.conn.closedChan)
+	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: int64(threadId)}, nil, s.conn.closedChan, nil)
 	if err != nil {
 		s.config.log.Errorf("Error switching goroutines while stepping: %v", err)
 		// If we encounter an error, we will have to send a stopped event
@@ -2972,7 +2972,8 @@ func (s *Session) doCall(goid, frame int, expr string) (*api.DebuggerState, []*p
 		Expr:                 expr,
 		UnsafeCall:           false,
 		GoroutineID:          int64(goid),
-	}, nil, s.conn.closedChan)
+		WithEvents:           true,
+	}, nil, s.conn.closedChan, s.convertDebuggerEvent)
 	if processExited(state, err) {
 		s.preTerminatedWG.Wait()
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
@@ -3775,7 +3776,7 @@ func (s *Session) resumeOnce(command string, allowNextStateChange *syncflag) (bo
 		state, err := s.debugger.State(false)
 		return false, state, err
 	}
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone, s.conn.closedChan)
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command, WithEvents: true}, asyncSetupDone, s.conn.closedChan, s.convertDebuggerEvent)
 	return true, state, err
 }
 
@@ -4044,6 +4045,19 @@ func (s *Session) toServerPath(path string) string {
 		s.config.log.Debugf("client path=%s converted to server path=%s\n", path, serverPath)
 	}
 	return serverPath
+}
+
+func (s *Session) convertDebuggerEvent(event *proc.Event) {
+	switch event.Kind {
+	case proc.EventBinaryInfoDownload:
+		s.send(&dap.OutputEvent{
+			Event: *newEvent("output"),
+			Body: dap.OutputEventBody{
+				Output:   fmt.Sprintf("Download debug info for %s: %s\n", event.BinaryInfoDownloadEventDetails.ImagePath, event.BinaryInfoDownloadEventDetails.Progress),
+				Category: "console",
+			},
+		})
+	}
 }
 
 type logMessage struct {
