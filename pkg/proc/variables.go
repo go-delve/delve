@@ -1136,17 +1136,16 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 			v = &v.Children[0]
 		}
 	case reflect.Func:
+		fn := v.bi.PCToFunc(v.Base)
 		v.loadFunctionPtr(0, LoadConfig{MaxVariableRecurse: -1})
 		if v.Unreadable != nil {
 			return nil, v.Unreadable
 		}
-		if v.closureAddr != 0 {
-			fn := v.bi.PCToFunc(v.Base)
-			if fn != nil {
-				cst := fn.extra(v.bi).closureStructType
-				v = v.newVariable(v.Name, v.closureAddr, cst, v.mem)
-				closure = true
-			}
+		fn = v.bi.PCToFunc(v.Base)
+		if fn != nil {
+			cst := fn.extra(v.bi).closureStructType
+			v = v.newVariable(v.Name, v.closureAddr, cst, v.mem)
+			closure = true
 		}
 	}
 

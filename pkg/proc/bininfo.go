@@ -2747,6 +2747,11 @@ func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContex
 	}
 }
 
+// Looks through variable entries to find if the function contains
+// any closure variables.
+// Note: This only works for Go binaries build with 1.23+ when the
+// DW_AT_go_closure_offset attribute is set on the closure variables.
+
 // loadDebugInfoMapsImportedUnit loads entries into cu from the partial unit
 // referenced in a DW_TAG_imported_unit entry.
 func (bi *BinaryInfo) loadDebugInfoMapsImportedUnit(entry *dwarf.Entry, ctxt *loadDebugInfoMapsContext, image *Image, cu *compileUnit) {
