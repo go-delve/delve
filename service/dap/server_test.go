@@ -7229,7 +7229,6 @@ func TestBadlyFormattedMessageToServer(t *testing.T) {
 func TestConfigurationDoneWithoutDebugSession(t *testing.T) {
 	serverStopped := make(chan struct{})
 	server, _ := startDAPServer(t, false, serverStopped)
-	defer server.Stop()
 
 	client := daptest.NewClient(server.listener.Addr().String())
 	defer client.Close()
@@ -7248,6 +7247,11 @@ func TestConfigurationDoneWithoutDebugSession(t *testing.T) {
 			t.Errorf("Expected error message %q, got %q", expectedMsg, resp.Body.Error.Format)
 		}
 	}
+	client.DisconnectRequest()
+	client.ExpectDisconnectResponse(t)
+	client.ExpectTerminatedEvent(t)
+
+	<-serverStopped
 }
 
 func TestParseLogPoint(t *testing.T) {
