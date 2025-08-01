@@ -1452,7 +1452,6 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 			// at runtime and we do this via a call back mechanism
 			if instr.IsCall() && instr.DestLoc == nil {
 				dynbp, err := t.SetBreakpoint(0, instr.Loc.PC, proc.NextBreakpoint, nil)
-				dynbp.RootFuncName = rootstr
 				if err != nil {
 					return nil, fmt.Errorf("error setting breakpoint inside deferreturn")
 				}
@@ -1466,7 +1465,7 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 					// used in pkg/terminal/command.go:printTraceOutput
 					rootindex := -1
 					for i := len(rawlocs) - 1; i >= 0; i-- {
-						if rawlocs[i].Call.Fn.Name == dynbp.RootFuncName {
+						if rawlocs[i].Call.Fn.Name == rootstr {
 							if rootindex == -1 {
 								rootindex = i
 								break
