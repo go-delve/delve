@@ -1514,11 +1514,11 @@ func convertToEface(srcv, dstv *Variable) error {
 		dstv.writeEmptyInterface(_type.Addr, data)
 		return nil
 	}
-	typeAddr, typeKind, runtimeTypeFound, err := dwarfToRuntimeType(srcv.bi, srcv.mem, srcv.RealType)
+	typeAddr, direct, runtimeTypeFound, err := dwarfToRuntimeType(srcv.bi, srcv.mem, srcv.RealType)
 	if err != nil {
 		return fmt.Errorf("can not convert value of type %s to %s: %v", srcv.DwarfType.String(), dstv.DwarfType.String(), err)
 	}
-	if !runtimeTypeFound || typeKind&kindDirectIface == 0 {
+	if !runtimeTypeFound || !direct {
 		return &typeConvErr{srcv.DwarfType, dstv.RealType}
 	}
 	return dstv.writeEmptyInterface(typeAddr, srcv)
