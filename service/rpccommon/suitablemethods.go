@@ -34,6 +34,7 @@ func suitableMethods2(s *rpc2.RPCServer, methods map[string]*methodType) {
 	methods["RPCServer.FunctionReturnLocations"] = &methodType{method: reflect.ValueOf(s.FunctionReturnLocations)}
 	methods["RPCServer.GetBreakpoint"] = &methodType{method: reflect.ValueOf(s.GetBreakpoint)}
 	methods["RPCServer.GetBufferedTracepoints"] = &methodType{method: reflect.ValueOf(s.GetBufferedTracepoints)}
+	methods["RPCServer.GetEvents"] = &methodType{method: reflect.ValueOf(s.GetEvents)}
 	methods["RPCServer.GetThread"] = &methodType{method: reflect.ValueOf(s.GetThread)}
 	methods["RPCServer.GuessSubstitutePath"] = &methodType{method: reflect.ValueOf(s.GuessSubstitutePath)}
 	methods["RPCServer.IsMulticlient"] = &methodType{method: reflect.ValueOf(s.IsMulticlient)}

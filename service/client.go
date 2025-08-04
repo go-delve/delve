@@ -166,6 +166,9 @@ type Client interface {
 	// SetReturnValuesLoadConfig sets the load configuration for return values.
 	SetReturnValuesLoadConfig(*api.LoadConfig)
 
+	// SetEventsFn sets a function that will be called whenever a debugger event is received.
+	SetEventsFn(func(*api.Event))
+
 	// IsMulticlient returns true if the headless instance is multiclient.
 	IsMulticlient() bool
 
