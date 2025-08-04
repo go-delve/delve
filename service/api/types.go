@@ -2,11 +2,13 @@ package api
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/go-delve/delve/pkg/proc"
 )
@@ -326,6 +328,14 @@ type Variable struct {
 	// Function variables will store the name of the function in this field
 	Value string `json:"value"`
 
+	// StringValueBytes contains the Value for string variables that can not be
+	// represented in unicode.
+	// Specifically if v.Kind is reflect.String and v.Value is not a valid
+	// unicode string the JSON marshaller will convert it to a valid unicode
+	// string, altering its contents. This fields contains the unaltered string
+	// contents.
+	StringValueBytes []byte
+
 	// Number of elements in an array or a slice, number of keys for a map, number of struct members for a struct, length of strings, number of captured variables for functions
 	Len int64 `json:"len"`
 	// Cap value for slices
@@ -351,6 +361,36 @@ type Variable struct {
 	LocationExpr string
 	// DeclLine is the line number of this variable's declaration
 	DeclLine int64
+}
+
+type variableWithoutMarshaler Variable
+
+func (v *Variable) MarshalJSON() (text []byte, err error) {
+	var v2 *variableWithoutMarshaler = (*variableWithoutMarshaler)(v)
+	if v2.Kind == reflect.String && !utf8.ValidString(v2.Value) {
+		value := v2.Value
+		// Should we blot out the value with something obviously wrong? Like:
+		//
+		// 	v2.Value = "<invalid-utf8-string>"
+		// 	defer func() {
+		// 		v2.Value = value
+		// 	}()
+		v2.StringValueBytes = []byte(value)
+	}
+	return json.Marshal(v2)
+}
+
+func (v *Variable) UnmarshalJSON(buf []byte) error {
+	var v2 *variableWithoutMarshaler = (*variableWithoutMarshaler)(v)
+	err := json.Unmarshal(buf, v2)
+	if err != nil {
+		return err
+	}
+	if v.Kind == reflect.String && len(v.StringValueBytes) > 0 {
+		v.Value = string(v.StringValueBytes)
+		v.StringValueBytes = nil
+	}
+	return nil
 }
 
 // LoadConfig describes how to load values from target's memory

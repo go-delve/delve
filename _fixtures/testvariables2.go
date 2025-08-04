@@ -432,6 +432,7 @@ func main() {
 	var messageVar Message = Message{1, 2, 3, 4, 5}
 
 	var iface7 interface{} = OnlyUsedInInterface{"test"}
+	issue4072 := []byte{116, 121, 112, 101, 32, 84, 32, 115, 116, 114, 117, 99, 116, 32, 123, 12, 12, 9, 255, 102, 108, 100, 99, 111, 109, 255}
 
 	var amb1 = 1
 	runtime.Breakpoint()
@@ -443,5 +444,5 @@ func main() {
 	longslice := make([]int, 100, 100)
 
 	runtime.Breakpoint()
-	fmt.Println(i1, i2, i3, p1, pp1, amb1, s1, s3, a0, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, m4, m5, upnil, up1, i4, i5, i6, err1, err2, errnil, iface1, iface2, ifacenil, arr1, parr, cpx1, const1, iface3, iface4, recursive1, recursive1.x, iface5, iface2fn1, iface2fn2, bencharr, benchparr, mapinf, mainMenu, b, b2, sd, anonstruct1, anonstruct2, anoniface1, anonfunc, mapanonstruct1, ifacearr, efacearr, ni8, ni16, ni32, ni64, pinf, ninf, nan, zsvmap, zsslice, zsvar, tm, rettm, errtypednil, emptyslice, emptymap, byteslice, bytestypeslice, runeslice, bytearray, bytetypearray, runearray, longstr, nilstruct, as2, as2.NonPointerReceiverMethod, s4, iface2map, issue1578, ll, unread, w2, w3, w4, w5, longarr, longslice, val, m6, m7, cl, tim1, tim2, typedstringvar, namedA1, namedA2, astructName1(namedA2), badslice, tim3, int3chan, longbyteslice, enum1, enum2, enum3, enum4, enum5, enum6, zeropoint4, mlarge, messageVar, iface7)
+	fmt.Println(i1, i2, i3, p1, pp1, amb1, s1, s3, a0, a1, p2, p3, s2, as1, str1, f1, fn1, fn2, nilslice, nilptr, ch1, chnil, m1, mnil, m2, m3, m4, m5, upnil, up1, i4, i5, i6, err1, err2, errnil, iface1, iface2, ifacenil, arr1, parr, cpx1, const1, iface3, iface4, recursive1, recursive1.x, iface5, iface2fn1, iface2fn2, bencharr, benchparr, mapinf, mainMenu, b, b2, sd, anonstruct1, anonstruct2, anoniface1, anonfunc, mapanonstruct1, ifacearr, efacearr, ni8, ni16, ni32, ni64, pinf, ninf, nan, zsvmap, zsslice, zsvar, tm, rettm, errtypednil, emptyslice, emptymap, byteslice, bytestypeslice, runeslice, bytearray, bytetypearray, runearray, longstr, nilstruct, as2, as2.NonPointerReceiverMethod, s4, iface2map, issue1578, ll, unread, w2, w3, w4, w5, longarr, longslice, val, m6, m7, cl, tim1, tim2, typedstringvar, namedA1, namedA2, astructName1(namedA2), badslice, tim3, int3chan, longbyteslice, enum1, enum2, enum3, enum4, enum5, enum6, zeropoint4, mlarge, messageVar, iface7, issue4072)
 }
