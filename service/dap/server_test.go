@@ -4155,6 +4155,7 @@ func TestEvaluateCommandRequest(t *testing.T) {
     dlv help (alias: h) 	 Prints the help message.
     dlv config 	 Changes configuration parameters.
     dlv sources (alias: s) 	 Print list of source files.
+	dlv target 	 Manages child process debugging.
 
 Type 'dlv help' followed by a command for full documentation.
 `
