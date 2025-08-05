@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/go-delve/delve/pkg/config"
-	"github.com/go-delve/delve/pkg/proc"
 	"github.com/google/go-dap"
 )
 
@@ -219,7 +218,7 @@ func (s *Session) targetCmd(_, _ int, argstr string) (string, error) {
 			if regex != "" {
 				return fmt.Sprintf("Follow exec mode enabled with regex %q", regex), nil
 			}
-			return fmt.Sprintf("Follow exec mode enabled"), nil
+			return "Follow exec mode enabled", nil
 		case "-off":
 			if len(argv) > 1 {
 				return "", errors.New("too many arguments")
@@ -236,16 +235,14 @@ func (s *Session) targetCmd(_, _ int, argstr string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		t := proc.ValidTargets{Group: tgrp}
 		found := false
-		for t.Next() {
-			if _, ok := t.FindThread(pid); ok {
+		for _, tgt := range tgrp.Targets() {
+			if _, err = tgt.Valid(); err == nil && tgt.Pid() == pid {
 				found = true
-				tgrp.Selected = t.Target
-				break
+				tgrp.Selected = tgt
+				tgt.SwitchThread(pid)
 			}
 		}
-		err = tgrp.Selected.SwitchThread(pid)
 		if !found {
 			return "", fmt.Errorf("could not find target %d", pid)
 		}
