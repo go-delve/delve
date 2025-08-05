@@ -15,11 +15,11 @@ import (
 )
 
 func (s *Session) delveCmd(goid, frame int, cmdstr string) (string, error) {
-	vals := strings.Fields(cmdstr)
+	vals := strings.SplitN(strings.TrimSpace(cmdstr), " ", 2)
 	cmdname := vals[0]
 	var args string
 	if len(vals) > 1 {
-		args = strings.Join(vals[1:], " ")
+		args = strings.TrimSpace(vals[1])
 	}
 	for _, cmd := range debugCommands(s) {
 		if slices.Contains(cmd.aliases, cmdname) {
@@ -91,88 +91,6 @@ List currently attached processes.
 
 Switches to the specified process.`
 )
-
-type FollowExecMode int
-
-const (
-	FollowQuery   FollowExecMode = iota // 无参数，查询当前状态
-	FollowOnAll                         // -on
-	FollowOnRegex                       // -on "regex"
-	FollowOff                           // -off
-)
-
-type TargetCommand struct {
-	Subcommand  string
-	SwitchPID   int // valid if Subcommand == "switch"
-	FollowMode  FollowExecMode
-	FollowRegex string // only valid if FollowMode == FollowOnRegex
-}
-
-func parseTargetArgs(argstr string) (*TargetCommand, error) {
-	args := strings.Fields(argstr)
-	if len(args) < 1 {
-		return nil, errors.New("missing subcommand")
-	}
-
-	cmd := &TargetCommand{Subcommand: args[0]}
-
-	switch args[0] {
-	case "switch":
-		if len(args) < 2 {
-			return nil, errors.New("missing PID for switch")
-		}
-		pid, err := strconv.Atoi(args[1])
-		if err != nil {
-			return nil, fmt.Errorf("invalid PID: %v", err)
-		}
-		cmd.SwitchPID = pid
-		return cmd, nil
-
-	case "follow-exec":
-		var onSet, offSet bool
-		var onRegex string
-
-		for i := 1; i < len(args); i++ {
-			arg := args[i]
-			switch arg {
-			case "-on":
-				onSet = true
-				if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
-					onRegex = args[i+1]
-					i++
-				}
-			case "-off":
-				offSet = true
-			default:
-				return nil, fmt.Errorf("unknown flag: %s", arg)
-			}
-		}
-
-		switch {
-		case onSet && offSet:
-			return nil, errors.New("cannot use both -on and -off")
-		case offSet:
-			cmd.FollowMode = FollowOff
-		case onSet && onRegex != "":
-			cmd.FollowMode = FollowOnRegex
-			cmd.FollowRegex = onRegex
-		case onSet:
-			cmd.FollowMode = FollowOnAll
-		default:
-			cmd.FollowMode = FollowQuery
-		}
-		return cmd, nil
-
-	case "list":
-		if len(args) > 1 {
-			return nil, errors.New("list takes no arguments")
-		}
-		return cmd, nil
-
-	default:
-		return nil, fmt.Errorf("unknown subcommand: %s", args[0])
-	}
-}
 
 // debugCommands returns a list of commands with default commands defined.
 func debugCommands(s *Session) []command {
@@ -265,32 +183,8 @@ func (s *Session) sources(_, _ int, filter string) (string, error) {
 }
 
 func (s *Session) targetCmd(_, _ int, argstr string) (string, error) {
-	cmd, err := parseTargetArgs(argstr)
-	if err != nil {
-		return "", err
-	}
-	switch cmd.Subcommand {
-	case "follow-exec":
-		switch cmd.FollowMode {
-		case FollowQuery:
-			if s.debugger.FollowExecEnabled() {
-				return "Follow exec mode is enabled", nil
-			} else {
-				return "Follow exec mode is disabled", nil
-			}
-		case FollowOnAll, FollowOnRegex:
-			if err := s.debugger.FollowExec(true, cmd.FollowRegex); err != nil {
-				return "", fmt.Errorf("failed to enable follow exec: %v", err)
-			} else {
-				return "", nil
-			}
-		case FollowOff:
-			if err := s.debugger.FollowExec(false, ""); err != nil {
-				return "", fmt.Errorf("failed to disable follow exec: %v", err)
-			} else {
-				return "", nil
-			}
-		}
+	argv := config.Split2PartsBySpace(argstr)
+	switch argv[0] {
 	case "list":
 		tgrp, unlock := s.debugger.LockTargetGroup()
 		defer unlock()
@@ -306,24 +200,57 @@ func (s *Session) targetCmd(_, _ int, argstr string) (string, error) {
 			}
 		}
 		return tgtListStr, nil
-	case "switch": // TODO: This may cause inconsistency between debugger and frontend.
-		tgrp, unlock := s.debugger.LockTargetGroup()
-		t := proc.ValidTargets{Group: tgrp}
-		defer unlock()
-		found := false
-		for t.Next() {
-			if _, ok := t.FindThread(cmd.SwitchPID); ok {
-				found = true
-				tgrp.Selected = t.Target
+	case "follow-exec":
+		if len(argv) == 1 {
+			if s.debugger.FollowExecEnabled() {
+				return "Follow exec mode is enabled", nil
+			} else {
+				return "Follow exec mode is disabled", nil
 			}
 		}
-		err = tgrp.Selected.SwitchThread(cmd.SwitchPID)
-		if !found {
-			return "", fmt.Errorf("could not find target %d", cmd.SwitchPID)
+		argv = config.Split2PartsBySpace(argv[1])
+		switch argv[0] {
+		case "-on":
+			var regex string
+			if len(argv) == 2 {
+				regex = argv[1]
+			}
+			s.debugger.FollowExec(true, regex)
+			if regex != "" {
+				return fmt.Sprintf("Follow exec mode enabled with regex %q", regex), nil
+			}
+			return fmt.Sprintf("Follow exec mode enabled"), nil
+		case "-off":
+			if len(argv) > 1 {
+				return "", errors.New("too many arguments")
+			}
+			s.debugger.FollowExec(false, "")
+			return "Follow exec mode disabled", nil
+		default:
+			return "", fmt.Errorf("unknown argument %q to 'target follow-exec'", argv[0])
 		}
-		return fmt.Sprintf("Switched to process %d", cmd.SwitchPID), err
+	case "switch": // TODO: This may cause inconsistency between debugger and frontend.
+		tgrp, unlock := s.debugger.LockTargetGroup()
+		defer unlock()
+		pid, err := strconv.Atoi(argv[1])
+		if err != nil {
+			return "", err
+		}
+		t := proc.ValidTargets{Group: tgrp}
+		found := false
+		for t.Next() {
+			if _, ok := t.FindThread(pid); ok {
+				found = true
+				tgrp.Selected = t.Target
+				break
+			}
+		}
+		err = tgrp.Selected.SwitchThread(pid)
+		if !found {
+			return "", fmt.Errorf("could not find target %d", pid)
+		}
+		return fmt.Sprintf("Switched to process %d", pid), err
 	default:
 		return "", fmt.Errorf("unknown target command")
 	}
-	return "", nil
 }
