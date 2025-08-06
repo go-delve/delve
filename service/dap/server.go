@@ -1508,6 +1508,15 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 	// Any breakpoint that existed before this request but was not amended must be deleted.
 	s.clearBreakpoints(existingBps, createdBps)
 
+	// Check if the plugin package is present or follow-exec is enabled.
+	// Suspended breakpoints are only relevant when new executable code is
+	// loaded. That can happen when a new process is spawned - which requires
+	// follow-exec - or when new executable code is added to an existing binary.
+	// The only fully supported way of doing the latter is plugins, hence this
+	// check.
+	fns, _ := s.debugger.Functions(`^plugin\.Open$`, 0)
+	suspended := len(fns) > 0 || s.debugger.FollowExecEnabled()
+
 	// Add new breakpoints.
 	for i := 0; i < totalBps; i++ {
 		want := metadataFunc(i)
@@ -1533,7 +1542,7 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 				err = setLogMessage(bp, want.logMessage)
 				if err == nil {
 					// Create new breakpoints.
-					got, err = s.debugger.CreateBreakpoint(bp, "", nil, false)
+					got, err = s.debugger.CreateBreakpoint(bp, "", nil, suspended)
 				}
 			}
 		}
@@ -1556,12 +1565,27 @@ func setLogMessage(bp *api.Breakpoint, msg string) error {
 }
 
 func (s *Session) updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int, err error, got *api.Breakpoint) {
+	// TODO(@Lslightly): For DAP v1.68.0, Reason can be set to "pending" when a
+	// breakpoint is suspended. But it seems that nothing different happens.
+
+	// Is the breakpoint suspended?
+	if err == nil && len(got.Addrs) == 0 {
+		err = errors.New("unable to set breakpoint")
+	}
+
 	breakpoints[i].Verified = err == nil
 	if err != nil {
 		breakpoints[i].Message = err.Error()
-	} else {
-		path := s.toClientPath(got.File)
+	}
+
+	// If the error is connected to a specific breakpoint, tell the user.
+	if got != nil {
 		breakpoints[i].Id = got.ID
+	}
+
+	// If we have a file path, update the breakpoint.
+	if got != nil && got.File != "" {
+		path := s.toClientPath(got.File)
 		breakpoints[i].Line = got.Line
 		breakpoints[i].Source = &dap.Source{Name: filepath.Base(path), Path: path}
 	}
@@ -4055,6 +4079,21 @@ func (s *Session) convertDebuggerEvent(event *proc.Event) {
 			Body: dap.OutputEventBody{
 				Output:   fmt.Sprintf("Download debug info for %s: %s\n", event.BinaryInfoDownloadEventDetails.ImagePath, event.BinaryInfoDownloadEventDetails.Progress),
 				Category: "console",
+			},
+		})
+	case proc.EventBreakpointMaterialized:
+		bp := api.ConvertLogicalBreakpoint(event.Breakpoint)
+		path := s.toClientPath(bp.File)
+		s.send(&dap.BreakpointEvent{
+			Event: *newEvent("breakpoint"),
+			Body: dap.BreakpointEventBody{
+				Reason: "changed",
+				Breakpoint: dap.Breakpoint{
+					Verified: true,
+					Id:       bp.ID,
+					Line:     bp.Line,
+					Source:   &dap.Source{Name: filepath.Base(path), Path: path},
+				},
 			},
 		})
 	}

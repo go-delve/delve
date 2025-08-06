@@ -693,6 +693,7 @@ type GuessSubstitutePathIn struct {
 type Event struct {
 	Kind EventKind
 	*BinaryInfoDownloadEventDetails
+	*BreakpointMaterializedEventDetails
 }
 
 type EventKind uint8
@@ -701,9 +702,15 @@ const (
 	EventResumed EventKind = iota
 	EventStopped
 	EventBinaryInfoDownload
+	EventBreakpointMaterialized
 )
 
 // BinaryInfoDownloadEventDetails describes the details of a BinaryInfoDownloadEvent
 type BinaryInfoDownloadEventDetails struct {
 	ImagePath, Progress string
+}
+
+// BreakpointMaterializedEventDetails describes the details of a BreakpointMaterializedEvent
+type BreakpointMaterializedEventDetails struct {
+	Breakpoint *Breakpoint
 }
