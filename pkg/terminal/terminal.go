@@ -137,6 +137,8 @@ func New(client service.Client, conf *config.Config) *Term {
 				if !firstEventBinaryInfoDownload {
 					fmt.Fprintf(t.stdout, "\n")
 				}
+			case api.EventBreakpointMaterialized:
+				// Ignore
 			}
 		})
 	}
