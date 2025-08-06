@@ -18,14 +18,14 @@ func TestListConfig(t *testing.T) {
 			args: args{
 				args: &launchAttachArgs{},
 			},
-			want: formatConfig(0, false, false, "", []string{}, false, [][2]string{}),
+			want: formatConfig(0, false, false, "", []string{}, false, [][2]string{}, false, ""),
 		},
 		{
 			name: "default values",
 			args: args{
 				args: &defaultArgs,
 			},
-			want: formatConfig(50, false, false, "", []string{}, false, [][2]string{}),
+			want: formatConfig(50, false, false, "", []string{}, false, [][2]string{}, false, ""),
 		},
 		{
 			name: "custom values",
@@ -37,9 +37,11 @@ func TestListConfig(t *testing.T) {
 					ShowPprofLabels:              []string{"SomeLabel"},
 					substitutePathClientToServer: [][2]string{{"hello", "world"}},
 					substitutePathServerToClient: [][2]string{{"world", "hello"}},
+					followExec:                   true,
+					followExecRegex:              "a.b?",
 				},
 			},
-			want: formatConfig(35, true, false, "SomeFilter", []string{"SomeLabel"}, false, [][2]string{{"hello", "world"}}),
+			want: formatConfig(35, true, false, "SomeFilter", []string{"SomeLabel"}, false, [][2]string{{"hello", "world"}}, true, "a.b?"),
 		},
 	}
 	for _, tt := range tests {

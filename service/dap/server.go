@@ -219,11 +219,7 @@ type process struct {
 // impact handling of subsequent requests.
 // The fields with cfgName tag can be updated through an evaluation request.
 type launchAttachArgs struct {
-	// followExec enables or disables follow exec mode.
-	followExec bool `cfgName:"followExec"`
-	// followExecRegex is a regular expression. Only child processes with a command line matching the regular expression will be followed.
-	followExecRegex string `cfgName:"followExecRegex"`
-	// stopOnEntry
+	// stopOnEntry is set to automatically stop the debuggee after start.
 	stopOnEntry bool
 	// StackTraceDepth is the maximum length of the returned list of stack frames.
 	StackTraceDepth int `cfgName:"stackTraceDepth"`
@@ -245,6 +241,10 @@ type launchAttachArgs struct {
 	substitutePathClientToServer [][2]string `cfgName:"substitutePath"`
 	// substitutePathServerToClient indicates rules for converting file paths between debugger and client.
 	substitutePathServerToClient [][2]string
+	// followExec enables or disables follow exec mode.
+	followExec bool `cfgName:"followExec"`
+	// followExecRegex is a regular expression. Only child processes with a command line matching the regular expression will be followed.
+	followExecRegex string `cfgName:"followExecRegex"`
 }
 
 // defaultArgs borrows the defaults for the arguments from the original vscode-go adapter.
@@ -260,6 +260,8 @@ var defaultArgs = launchAttachArgs{
 	ShowPprofLabels:              []string{},
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
+	followExec:                   false,
+	followExecRegex:              "",
 }
 
 // dapClientCapabilities captures arguments from initialize request that
