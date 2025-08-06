@@ -241,6 +241,10 @@ type launchAttachArgs struct {
 	substitutePathClientToServer [][2]string `cfgName:"substitutePath"`
 	// substitutePathServerToClient indicates rules for converting file paths between debugger and client.
 	substitutePathServerToClient [][2]string
+	// followExec enables or disables follow exec mode.
+	followExec bool `cfgName:"followExec"`
+	// followExecRegex is a regular expression. Only child processes with a command line matching the regular expression will be followed.
+	followExecRegex string `cfgName:"followExecRegex"`
 }
 
 // defaultArgs borrows the defaults for the arguments from the original vscode-go adapter.
@@ -256,6 +260,8 @@ var defaultArgs = launchAttachArgs{
 	ShowPprofLabels:              []string{},
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
+	followExec:                   false,
+	followExecRegex:              "",
 }
 
 // dapClientCapabilities captures arguments from initialize request that
@@ -358,6 +364,8 @@ func NewSession(conn io.ReadWriteCloser, config *Config, debugger *debugger.Debu
 // If user-specified options are provided via Launch/AttachRequest,
 // we override the defaults for optional args.
 func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) {
+	s.args.followExec = args.FollowExec
+
 	s.args.stopOnEntry = args.StopOnEntry
 	if depth := args.StackTraceDepth; depth > 0 {
 		s.args.StackTraceDepth = depth
@@ -1191,6 +1199,15 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportsStepBack: true}}})
 	}
 
+	if s.args.followExec {
+		err = s.debugger.FollowExec(s.args.followExec, s.args.followExecRegex)
+		if err != nil {
+			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
+				fmt.Sprintf("Failed to follow exec: %v", err))
+			return
+		}
+	}
+
 	// Notify the client that the debugger is ready to start accepting
 	// configuration requests for setting breakpoints, etc. The client
 	// will end the configuration sequence with 'configurationDone'.
@@ -2018,6 +2035,15 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 		}
 		s.args.substitutePathClientToServer = clientToServer
 		s.args.substitutePathServerToClient = serverToClient
+	}
+
+	if s.args.followExec {
+		err := s.debugger.FollowExec(s.args.followExec, s.args.followExecRegex)
+		if err != nil {
+			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
+				fmt.Sprintf("Failed to follow exec: %v", err))
+			return
+		}
 	}
 
 	// Notify the client that the debugger is ready to start accepting

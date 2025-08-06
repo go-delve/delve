@@ -4126,7 +4126,7 @@ func TestEvaluateRequest(t *testing.T) {
 	})
 }
 
-func formatConfig(depth int, showGlobals, showRegisters bool, goroutineFilters string, showPprofLabels []string, hideSystemGoroutines bool, substitutePath [][2]string) string {
+func formatConfig(depth int, showGlobals, showRegisters bool, goroutineFilters string, showPprofLabels []string, hideSystemGoroutines bool, substitutePath [][2]string, followExec bool, followExecRegex string) string {
 	formatStr := `stackTraceDepth	%d
 showGlobalVariables	%v
 showRegisters	%v
@@ -4134,8 +4134,10 @@ goroutineFilters	%q
 showPprofLabels	%v
 hideSystemGoroutines	%v
 substitutePath	%v
+followExec	%v
+followExecRegex	%q
 `
-	return fmt.Sprintf(formatStr, depth, showGlobals, showRegisters, goroutineFilters, showPprofLabels, hideSystemGoroutines, substitutePath)
+	return fmt.Sprintf(formatStr, depth, showGlobals, showRegisters, goroutineFilters, showPprofLabels, hideSystemGoroutines, substitutePath, followExec, followExecRegex)
 }
 
 func TestEvaluateCommandRequest(t *testing.T) {
@@ -4173,7 +4175,7 @@ Type 'dlv help' followed by a command for full documentation.
 
 					client.EvaluateRequest("dlv config -list", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, formatConfig(50, false, false, "", []string{}, false, [][2]string{}), noChildren)
+					checkEval(t, got, formatConfig(50, false, false, "", []string{}, false, [][2]string{}, false, ""), noChildren)
 
 					// Read and modify showGlobalVariables.
 					client.EvaluateRequest("dlv config -list showGlobalVariables", 1000, "repl")
@@ -4194,7 +4196,7 @@ Type 'dlv help' followed by a command for full documentation.
 
 					client.EvaluateRequest("dlv config -list", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, formatConfig(50, true, false, "", []string{}, false, [][2]string{}), noChildren)
+					checkEval(t, got, formatConfig(50, true, false, "", []string{}, false, [][2]string{}, false, ""), noChildren)
 
 					client.ScopesRequest(1000)
 					scopes = client.ExpectScopesResponse(t)
