@@ -4157,7 +4157,7 @@ func TestEvaluateCommandRequest(t *testing.T) {
     dlv help (alias: h) 	 Prints the help message.
     dlv config 	 Changes configuration parameters.
     dlv sources (alias: s) 	 Print list of source files.
-	dlv target 	 Manages child process debugging.
+    dlv target 	 Manages child process debugging.
 
 Type 'dlv help' followed by a command for full documentation.
 `
@@ -4242,11 +4242,60 @@ Type 'dlv help' followed by a command for full documentation.
 						t.Errorf("\ngot: %#v, want sources=\"\"", got)
 					}
 
+					// Test target.
+					client.EvaluateRequest("dlv target list", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					if !strings.Contains(got.Body.Result, fixture.Path) {
+						t.Errorf("\ngot: %#v, want target list contains %s", got, fixture.Path)
+					}
+					// single target
+					if strings.Count(got.Body.Result, "\n") != 1 {
+						t.Errorf("\ngot: %#v, want target list has 1 line", got)
+					}
+
+					client.EvaluateRequest("dlv target follow-exec", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					if got.Body.Result != "Follow exec mode is disabled" {
+						t.Errorf("\ngot: %#v, want Follow exec mode is disabled", got)
+					}
+
+					client.EvaluateRequest("dlv target follow-exec -on", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					if got.Body.Result != "Follow exec mode enabled" {
+						t.Errorf("\ngot: %#v, want Follow exec mode enabled", got)
+					}
+
+					client.EvaluateRequest(fmt.Sprintf("dlv target follow-exec -on %s", fixture.Path), 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					if got.Body.Result != fmt.Sprintf("Follow exec mode enabled with regex %q", fixture.Path) {
+						t.Errorf("\ngot: %#v, want Follow exec mode enabled with regex %q", got, fixture.Path)
+					}
+
+					client.EvaluateRequest("dlv target follow-exec -off", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					if got.Body.Result != "Follow exec mode disabled" {
+						t.Errorf("\ngot: %#v, want Follow exec mode disabled", got)
+					}
+
+					// TODO: target switch
+
 					// Test bad inputs.
 					client.EvaluateRequest("dlv help bad", 1000, "repl")
 					client.ExpectErrorResponse(t)
 
 					client.EvaluateRequest("dlv bad", 1000, "repl")
+					client.ExpectErrorResponse(t)
+
+					// Test bad target off
+					client.EvaluateRequest("dlv target follow-exec -off path", 1000, "repl")
+					client.ExpectErrorResponse(t)
+
+					// Test bad target on regex
+					client.EvaluateRequest("dlv target follow-exec -on [", 1000, "repl")
+					client.ExpectErrorResponse(t)
+
+					// Test bad target subcommand
+					client.EvaluateRequest("dlv target bad", 1000, "repl")
 					client.ExpectErrorResponse(t)
 				},
 				disconnect: true,
