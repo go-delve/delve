@@ -638,6 +638,154 @@ func TestAttachStopOnEntry(t *testing.T) {
 	})
 }
 
+func TestLaunchWithFollowExec(t *testing.T) {
+	var buildFlags protest.BuildFlags
+	// TODO build mode, see TestFollowExecFindLocation in integration2_test.go
+	childFixture := protest.BuildFixture(t, "spawnchild", buildFlags)
+	runTest(t, "spawn", func(client *daptest.Client, fixture protest.Fixture) {
+		// 1 >> initialize, << initialize
+		client.InitializeRequest()
+		initResp := client.ExpectInitializeResponseAndCapabilities(t)
+		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
+		}
+
+		// 2 >> launch, << process, << initialized, << launch
+		client.LaunchRequestWithArgs(map[string]interface{}{
+			"request":     "launch",
+			"mode":        "exec",
+			"program":     fixture.Path,
+			"args":        []string{"spawn2", childFixture.Path}, // call spawnchild.go
+			"stopOnEntry": stopOnEntry,
+			"followExec":  true,
+		})
+
+		processEvent := client.ExpectProcessEvent(t)
+		if processEvent.Seq != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0", processEvent)
+		}
+
+		initEvent := client.ExpectInitializedEvent(t)
+		if initEvent.Seq != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0", initEvent)
+		}
+		launchResp := client.ExpectLaunchResponse(t)
+		if launchResp.Seq != 0 || launchResp.RequestSeq != 2 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=2", launchResp)
+		}
+
+		// 3 >> setBreakpoints, << setBreakpoints
+		client.SetBreakpointsRequest(childFixture.Source, []int{6})
+		sbpResp := client.ExpectSetBreakpointsResponse(t)
+		if sbpResp.Seq != 0 || sbpResp.RequestSeq != 3 || len(sbpResp.Body.Breakpoints) != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=3, len(Breakpoints)=1", sbpResp)
+		}
+		if sbpResp.Body.Breakpoints[0].Verified {
+			t.Errorf("got breakpoints[0].Verified=true, want false")
+		}
+
+		// 4 >> setExceptionBreakpoints, << setExceptionBreakpoints
+		client.SetExceptionBreakpointsRequest()
+		sebpResp := client.ExpectSetExceptionBreakpointsResponse(t)
+		if sebpResp.Seq != 0 || sebpResp.RequestSeq != 4 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=4", sebpResp)
+		}
+
+		// 5 >> configurationDone, << stopped, << configurationDone
+		client.ConfigurationDoneRequest()
+		stopEvent := client.ExpectStoppedEvent(t)
+		if stopEvent.Seq != 0 ||
+			stopEvent.Body.Reason != "entry" ||
+			stopEvent.Body.ThreadId != 1 ||
+			!stopEvent.Body.AllThreadsStopped {
+			t.Errorf("\ngot %#v\nwant Seq=0, Body={Reason=\"entry\", ThreadId=1, AllThreadsStopped=true}", stopEvent)
+		}
+		cdResp := client.ExpectConfigurationDoneResponse(t)
+		if cdResp.Seq != 0 || cdResp.RequestSeq != 5 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=5", cdResp)
+		}
+
+		// 6 >> threads, << threads
+		client.ThreadsRequest()
+		tResp := client.ExpectThreadsResponse(t)
+		if tResp.Seq != 0 || tResp.RequestSeq != 6 || len(tResp.Body.Threads) != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6 len(Threads)=1", tResp)
+		}
+		if tResp.Body.Threads[0].Id != 1 || tResp.Body.Threads[0].Name != "Dummy" {
+			t.Errorf("\ngot %#v\nwant Id=1, Name=\"Dummy\"", tResp)
+		}
+
+		// 7 >> continue, << continue << stopped
+		client.ContinueRequest(1)
+		contResp := client.ExpectContinueResponse(t)
+		if contResp.Seq != 0 || contResp.RequestSeq != 7 || !contResp.Body.AllThreadsContinued {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7 Body.AllThreadsContinued=true", contResp)
+		}
+		stopEvent = client.ExpectStoppedEvent(t)
+		if stopEvent.Seq != 0 ||
+			stopEvent.Body.Reason != "breakpoint" ||
+			stopEvent.Body.ThreadId != 1 ||
+			!stopEvent.Body.AllThreadsStopped ||
+			len(stopEvent.Body.HitBreakpointIds) != 1 ||
+			stopEvent.Body.HitBreakpointIds[0] != sbpResp.Body.Breakpoints[0].Id {
+			t.Errorf("\ngot %#v\nwant Seq=0, Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true, HitBreakpointIds=[1]}", stopEvent)
+		}
+
+		// 8 >> setBreakpoints, << setBreakpoints
+		client.SetBreakpointsRequest(fixture.Source, []int{54})
+		sbpResp = client.ExpectSetBreakpointsResponse(t)
+		if sbpResp.Seq != 0 || sbpResp.RequestSeq != 8 || len(sbpResp.Body.Breakpoints) != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8, len(Breakpoints)=1", sbpResp)
+		}
+		if !sbpResp.Body.Breakpoints[0].Verified {
+			t.Errorf("got breakpoints[0].Verified=true, want true")
+		}
+
+		// 9 >> continue, << continue << stopped
+		client.ContinueRequest(1)
+		contResp = client.ExpectContinueResponse(t)
+		if contResp.Seq != 0 || contResp.RequestSeq != 9 || !contResp.Body.AllThreadsContinued {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Body.AllThreadsContinued=true", contResp)
+		}
+		stopEvent = client.ExpectStoppedEvent(t)
+		if stopEvent.Seq != 0 ||
+			stopEvent.Body.Reason != "breakpoint" ||
+			stopEvent.Body.ThreadId != 1 ||
+			!stopEvent.Body.AllThreadsStopped ||
+			len(stopEvent.Body.HitBreakpointIds) != 1 ||
+			stopEvent.Body.HitBreakpointIds[0] != sbpResp.Body.Breakpoints[0].Id {
+			t.Errorf("\ngot %#v\nwant Seq=0, Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true, HitBreakpointIds=[1]}", stopEvent)
+		}
+
+		// 10 >> continue, << continue << terminated
+		client.ContinueRequest(1)
+		contResp = client.ExpectContinueResponse(t)
+		if contResp.Seq != 0 || contResp.RequestSeq != 10 || !contResp.Body.AllThreadsContinued {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Body.AllThreadsContinued=true", contResp)
+		}
+		termEvent := client.ExpectTerminatedEvent(t)
+		if termEvent.Seq != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0", termEvent)
+		}
+
+		// 11 >> disconnect, << disconnect
+		client.DisconnectRequest()
+		oep := client.ExpectOutputEventProcessExited(t, 0)
+		if oep.Seq != 0 || oep.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
+		}
+		oed := client.ExpectOutputEventDetaching(t)
+		if oed.Seq != 0 || oed.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+		}
+		dResp := client.ExpectDisconnectResponse(t)
+		if dResp.Seq != 0 || dResp.RequestSeq != 11 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=11", dResp)
+		}
+		client.ExpectTerminatedEvent(t)
+	})
+}
+
 // Like the test above, except the program is configured to continue on entry.
 func TestContinueOnEntry(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
