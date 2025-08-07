@@ -6871,7 +6871,7 @@ func launchDebuggerWithTargetRunning(t *testing.T, fixture string) (*protest.Fix
 	var err error
 	go func() {
 		t.Helper()
-		_, err = dbg.Command(&api.DebuggerCommand{Name: api.Continue}, running, nil)
+		_, err = dbg.Command(&api.DebuggerCommand{Name: api.Continue}, running, nil, nil)
 		select {
 		case <-running:
 		default:
@@ -7073,7 +7073,7 @@ func (s *MultiClientCloseServerMock) stop(t *testing.T) {
 	// they are part of dap.Session.
 	// We must take it down manually as if we are in rpccommon::ServerImpl::Stop.
 	if s.debugger.IsRunning() {
-		s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil, nil)
+		s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil, nil, nil)
 	}
 	s.debugger.Detach(true)
 }
@@ -7281,7 +7281,6 @@ func TestBadlyFormattedMessageToServer(t *testing.T) {
 func TestConfigurationDoneWithoutDebugSession(t *testing.T) {
 	serverStopped := make(chan struct{})
 	server, _ := startDAPServer(t, false, serverStopped)
-	defer server.Stop()
 
 	client := daptest.NewClient(server.listener.Addr().String())
 	defer client.Close()
@@ -7300,6 +7299,11 @@ func TestConfigurationDoneWithoutDebugSession(t *testing.T) {
 			t.Errorf("Expected error message %q, got %q", expectedMsg, resp.Body.Error.Format)
 		}
 	}
+	client.DisconnectRequest()
+	client.ExpectDisconnectResponse(t)
+	client.ExpectTerminatedEvent(t)
+
+	<-serverStopped
 }
 
 func TestParseLogPoint(t *testing.T) {

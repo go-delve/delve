@@ -462,3 +462,22 @@ func ConvertTarget(tgt *proc.Target, convertThreadBreakpoint func(proc.Thread) *
 		CurrentThread: ConvertThread(tgt.CurrentThread(), convertThreadBreakpoint(tgt.CurrentThread())),
 	}
 }
+
+func ConvertEvent(event *proc.Event) *Event {
+	r := &Event{Kind: EventKind(event.Kind)}
+
+	if event.BinaryInfoDownloadEventDetails != nil {
+		r.BinaryInfoDownloadEventDetails = &BinaryInfoDownloadEventDetails{
+			ImagePath: event.BinaryInfoDownloadEventDetails.ImagePath,
+			Progress:  event.BinaryInfoDownloadEventDetails.Progress,
+		}
+	}
+
+	if event.BreakpointMaterializedEventDetails != nil {
+		r.BreakpointMaterializedEventDetails = &BreakpointMaterializedEventDetails{
+			Breakpoint: ConvertLogicalBreakpoint(event.BreakpointMaterializedEventDetails.Breakpoint),
+		}
+	}
+
+	return r
+}

@@ -1415,7 +1415,7 @@ func (s *Session) halt() (*api.DebuggerState, error) {
 	s.config.log.Debug("halting")
 	// Only send a halt request if the debuggee is running.
 	if s.debugger.IsRunning() {
-		return s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil, nil)
+		return s.debugger.Command(&api.DebuggerCommand{Name: api.Halt}, nil, nil, nil)
 	}
 	s.config.log.Debug("process not running")
 	return s.debugger.State(false)
@@ -1525,6 +1525,15 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 	// Any breakpoint that existed before this request but was not amended must be deleted.
 	s.clearBreakpoints(existingBps, createdBps)
 
+	// Check if the plugin package is present or follow-exec is enabled.
+	// Suspended breakpoints are only relevant when new executable code is
+	// loaded. That can happen when a new process is spawned - which requires
+	// follow-exec - or when new executable code is added to an existing binary.
+	// The only fully supported way of doing the latter is plugins, hence this
+	// check.
+	fns, _ := s.debugger.Functions(`^plugin\.Open$`, 0)
+	suspended := len(fns) > 0 || s.debugger.FollowExecEnabled()
+
 	// Add new breakpoints.
 	for i := 0; i < totalBps; i++ {
 		want := metadataFunc(i)
@@ -1550,7 +1559,7 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 				err = setLogMessage(bp, want.logMessage)
 				if err == nil {
 					// Create new breakpoints.
-					got, err = s.debugger.CreateBreakpoint(bp, "", nil, false)
+					got, err = s.debugger.CreateBreakpoint(bp, "", nil, suspended)
 				}
 			}
 		}
@@ -1573,12 +1582,27 @@ func setLogMessage(bp *api.Breakpoint, msg string) error {
 }
 
 func (s *Session) updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int, err error, got *api.Breakpoint) {
+	// TODO(@Lslightly): For DAP v1.68.0, Reason can be set to "pending" when a
+	// breakpoint is suspended. But it seems that nothing different happens.
+
+	// Is the breakpoint suspended?
+	if err == nil && len(got.Addrs) == 0 {
+		err = errors.New("unable to set breakpoint")
+	}
+
 	breakpoints[i].Verified = err == nil
 	if err != nil {
 		breakpoints[i].Message = err.Error()
-	} else {
-		path := s.toClientPath(got.File)
+	}
+
+	// If the error is connected to a specific breakpoint, tell the user.
+	if got != nil {
 		breakpoints[i].Id = got.ID
+	}
+
+	// If we have a file path, update the breakpoint.
+	if got != nil && got.File != "" {
+		path := s.toClientPath(got.File)
 		breakpoints[i].Line = got.Line
 		breakpoints[i].Source = &dap.Source{Name: filepath.Base(path), Path: path}
 	}
@@ -2128,7 +2152,7 @@ func (s *Session) stoppedOnBreakpointGoroutineID(state *api.DebuggerState) (int6
 // due to an error, so the server is ready to receive new requests.
 func (s *Session) stepUntilStopAndNotify(command string, threadId int, granularity dap.SteppingGranularity, allowNextStateChange *syncflag) {
 	defer allowNextStateChange.raise()
-	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: int64(threadId)}, nil, s.conn.closedChan)
+	_, err := s.debugger.Command(&api.DebuggerCommand{Name: api.SwitchGoroutine, GoroutineID: int64(threadId)}, nil, s.conn.closedChan, nil)
 	if err != nil {
 		s.config.log.Errorf("Error switching goroutines while stepping: %v", err)
 		// If we encounter an error, we will have to send a stopped event
@@ -2998,7 +3022,8 @@ func (s *Session) doCall(goid, frame int, expr string) (*api.DebuggerState, []*p
 		Expr:                 expr,
 		UnsafeCall:           false,
 		GoroutineID:          int64(goid),
-	}, nil, s.conn.closedChan)
+		WithEvents:           true,
+	}, nil, s.conn.closedChan, s.convertDebuggerEvent)
 	if processExited(state, err) {
 		s.preTerminatedWG.Wait()
 		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
@@ -3801,7 +3826,7 @@ func (s *Session) resumeOnce(command string, allowNextStateChange *syncflag) (bo
 		state, err := s.debugger.State(false)
 		return false, state, err
 	}
-	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command}, asyncSetupDone, s.conn.closedChan)
+	state, err := s.debugger.Command(&api.DebuggerCommand{Name: command, WithEvents: true}, asyncSetupDone, s.conn.closedChan, s.convertDebuggerEvent)
 	return true, state, err
 }
 
@@ -4070,6 +4095,34 @@ func (s *Session) toServerPath(path string) string {
 		s.config.log.Debugf("client path=%s converted to server path=%s\n", path, serverPath)
 	}
 	return serverPath
+}
+
+func (s *Session) convertDebuggerEvent(event *proc.Event) {
+	switch event.Kind {
+	case proc.EventBinaryInfoDownload:
+		s.send(&dap.OutputEvent{
+			Event: *newEvent("output"),
+			Body: dap.OutputEventBody{
+				Output:   fmt.Sprintf("Download debug info for %s: %s\n", event.BinaryInfoDownloadEventDetails.ImagePath, event.BinaryInfoDownloadEventDetails.Progress),
+				Category: "console",
+			},
+		})
+	case proc.EventBreakpointMaterialized:
+		bp := api.ConvertLogicalBreakpoint(event.Breakpoint)
+		path := s.toClientPath(bp.File)
+		s.send(&dap.BreakpointEvent{
+			Event: *newEvent("breakpoint"),
+			Body: dap.BreakpointEventBody{
+				Reason: "changed",
+				Breakpoint: dap.Breakpoint{
+					Verified: true,
+					Id:       bp.ID,
+					Line:     bp.Line,
+					Source:   &dap.Source{Name: filepath.Base(path), Path: path},
+				},
+			},
+		})
+	}
 }
 
 type logMessage struct {
