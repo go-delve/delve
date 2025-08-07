@@ -214,7 +214,9 @@ func (s *Session) targetCmd(_, _ int, argstr string) (string, error) {
 			if len(argv) == 2 {
 				regex = argv[1]
 			}
-			s.debugger.FollowExec(true, regex)
+			if err := s.debugger.FollowExec(true, regex); err != nil {
+				return "", err
+			}
 			if regex != "" {
 				return fmt.Sprintf("Follow exec mode enabled with regex %q", regex), nil
 			}
@@ -223,7 +225,9 @@ func (s *Session) targetCmd(_, _ int, argstr string) (string, error) {
 			if len(argv) > 1 {
 				return "", errors.New("too many arguments")
 			}
-			s.debugger.FollowExec(false, "")
+			if err := s.debugger.FollowExec(false, ""); err != nil {
+				return "", err
+			}
 			return "Follow exec mode disabled", nil
 		default:
 			return "", fmt.Errorf("unknown argument %q to 'target follow-exec'", argv[0])
