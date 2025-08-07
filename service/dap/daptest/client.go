@@ -2,7 +2,7 @@
 // for DAP mode testing.
 package daptest
 
-//go:generate go run ./gen/main.go -o ./resp.go
+//go:generate go run github.com/go-delve/build-tools/cmd/gen-daptest@latest -o ./resp.go
 
 import (
 	"bufio"

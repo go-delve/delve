@@ -1,4 +1,4 @@
-// DO NOT EDIT: auto-generated using _scripts/gen-suitablemethods.go
+// DO NOT EDIT: auto-generated using github.com/go-delve/build-tools/cmd/gen-suitablemethods
 
 package rpccommon
 
