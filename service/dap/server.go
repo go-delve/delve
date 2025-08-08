@@ -11,6 +11,7 @@ package dap
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -104,6 +105,61 @@ type Server struct {
 	sessionMu sync.Mutex
 }
 
+// memRef describe address and its size to stream data from
+type memRef struct {
+	addr uint64
+	size int64
+}
+
+type referencesCollection struct {
+	mu   sync.Mutex
+	refs map[string]memRef
+	seq  uint64
+}
+
+func (r *referencesCollection) get(reference string) (memRef, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	ref, ok := r.refs[reference]
+
+	return ref, ok
+}
+
+func (r *referencesCollection) put(v *proc.Variable) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.refs == nil {
+		r.refs = make(map[string]memRef)
+	}
+
+	if v.Len < maxSingleStringLen {
+		return ""
+	}
+
+	if v.Unreadable == nil && v.Kind == reflect.String && v.Len > 0 && v.Base != 0 {
+		ref := fmt.Sprintf("go:0x%x:%d:%d", v.Base, v.Len, r.seq)
+		r.refs[ref] = memRef{addr: v.Base, size: v.Len}
+		r.seq++
+
+		return ref
+	}
+
+	return ""
+}
+
+func (r *referencesCollection) reset() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if len(r.refs) > 0 {
+		r.refs = make(map[string]memRef)
+	}
+
+	r.seq = 0
+}
+
 // Session is an abstraction for serving and shutting down
 // a DAP debug session with a pre-connected client.
 // TODO(polina): move this to a different file/package
@@ -119,6 +175,8 @@ type Session struct {
 	// Reset at every stop.
 	// See also comment for convertVariable.
 	variableHandles *handlesMap[*fullyQualifiedVariable]
+	// referencesCollection track references map for DAP client
+	referencesCollection referencesCollection
 	// args tracks special settings for handling debug session requests.
 	args launchAttachArgs
 	// exceptionErr tracks the runtime error that last occurred.
@@ -265,6 +323,7 @@ type dapClientCapabilities struct {
 	supportsVariablePaging       bool
 	supportsRunInTerminalRequest bool
 	supportsMemoryReferences     bool
+	supportsReadMemoryRequest    bool
 	supportsProgressReporting    bool
 }
 
@@ -877,8 +936,9 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsRestartRequest = true
 	response.Body.SupportsSetExpression = false
 	response.Body.SupportsLoadedSourcesRequest = false
-	response.Body.SupportsReadMemoryRequest = false
+	response.Body.SupportsReadMemoryRequest = true
 	response.Body.SupportsCancelRequest = false
+	response.Body.SupportsMemoryReferences = true
 	s.send(response)
 }
 
@@ -888,6 +948,7 @@ func (s *Session) setClientCapabilities(args dap.InitializeRequestArguments) {
 	s.clientCapabilities.supportsRunInTerminalRequest = args.SupportsRunInTerminalRequest
 	s.clientCapabilities.supportsVariablePaging = args.SupportsVariablePaging
 	s.clientCapabilities.supportsVariableType = args.SupportsVariableType
+	s.clientCapabilities.supportsReadMemoryRequest = args.SupportsReadMemoryRequest
 }
 
 func cleanExeName(name string) string {
@@ -2599,6 +2660,7 @@ func (s *Session) childrenToDAPVariables(v *fullyQualifiedVariable) []dap.Variab
 				VariablesReference: cvarref,
 				IndexedVariables:   getIndexedVariableCount(c),
 				NamedVariables:     getNamedVariableCount(c),
+				MemoryReference:    s.referencesCollection.put(c),
 			}
 		}
 	}
@@ -3295,10 +3357,138 @@ func (s *Session) onLoadedSourcesRequest(request *dap.LoadedSourcesRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
 
-// onReadMemoryRequest sends a not-yet-implemented error response.
-// Capability 'supportsReadMemoryRequest' is not set 'initialize' response.
+// onReadMemoryRequest handles DAP read memory requests
 func (s *Session) onReadMemoryRequest(request *dap.ReadMemoryRequest) {
-	s.sendNotYetImplementedErrorResponse(request.Request)
+	args := request.Arguments
+
+	if args.Count < 0 {
+		s.sendErrorResponse(request.Request, UnableToReadMemory, "Unable to read memory", "negative count")
+		return
+	}
+
+	ref, ok := s.referencesCollection.get(args.MemoryReference)
+	if !ok {
+		s.sendErrorResponse(request.Request, UnableToReadMemory, "Unable to read memory", "unknown memoryReference")
+		return
+	}
+
+	if args.Count == 0 {
+		s.send(makeReadMemoryResponse(request.Request, ref.addr, nil, 0))
+		return
+	}
+
+	plan := NewPlan(ref, int64(args.Offset), int64(args.Count))
+
+	if plan.readCount == 0 {
+		s.send(makeReadMemoryResponse(request.Request, plan.memAddr, nil, plan.unreadable))
+		return
+	}
+
+	data, n, err := s.readTargetMemory(plan.memAddr, plan.readCount)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToReadMemory, "Unable to read memory", err.Error())
+		return
+	}
+
+	unreadable := plan.unreadable
+	if n < int(plan.readCount) {
+		unreadable += int(plan.readCount) - n
+	}
+
+	s.send(makeReadMemoryResponse(request.Request, plan.memAddr, data, unreadable))
+}
+
+func (s *Session) readTargetMemory(addr uint64, count int64) (data []byte, n int, err error) {
+	if count <= 0 {
+		return nil, 0, nil
+	}
+
+	buf := make([]byte, count)
+
+	tgrp, unlock := s.debugger.LockTargetGroup()
+	defer unlock()
+
+	n, err = tgrp.Selected.Memory().ReadMemory(buf, addr)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if n > 0 {
+		data = buf[:n]
+	}
+
+	return data, n, nil
+}
+
+func makeReadMemoryResponse(req dap.Request, addr uint64, data []byte, unreadable int) *dap.ReadMemoryResponse {
+	var response string
+	if len(data) > 0 {
+		response = base64.StdEncoding.EncodeToString(data)
+	}
+
+	return &dap.ReadMemoryResponse{
+		Response: *newResponse(req),
+		Body: dap.ReadMemoryResponseBody{
+			Address:         fmt.Sprintf("%#x", addr),
+			Data:            response,
+			UnreadableBytes: unreadable,
+		},
+	}
+}
+
+type readPlan struct {
+	// requested
+	startReq int64
+	endReq   int64 // exclusive
+
+	// real
+	startRead int64
+	endRead   int64
+
+	readCount int64
+	unreadable int
+
+	// first read byte addr
+	memAddr uint64
+}
+
+func NewPlan(ref memRef, startReq, count int64) readPlan {
+	endReq := startReq + count
+
+	startRead := clamp(startReq, 0, ref.size)
+	endRead := clamp(endReq, 0, ref.size)
+
+	readCount := endRead - startRead
+	if readCount < 0 {
+		readCount = 0
+	}
+
+	unreadable := count - readCount
+	if unreadable < 0 {
+		unreadable = 0
+	}
+
+	return readPlan{
+		startReq:   startReq,
+		endReq:     endReq,
+		startRead:  startRead,
+		endRead:    endRead,
+		readCount:  readCount,
+		unreadable: int(unreadable),
+		memAddr:    ref.addr + uint64(startRead),
+	}
+}
+
+func clamp(x, lo, hi int64) int64 {
+	if x < lo {
+		return lo
+	}
+
+	if x > hi {
+		return hi
+	}
+
+	return x
 }
 
 var invalidInstruction = dap.DisassembledInstruction{
@@ -3754,6 +3944,7 @@ Use 'Continue' to resume the original step command.`
 func (s *Session) resetHandlesForStoppedEvent() {
 	s.stackFrameHandles.reset()
 	s.variableHandles.reset()
+	s.referencesCollection.reset()
 	s.exceptionErr = nil
 }
 
