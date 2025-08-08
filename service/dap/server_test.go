@@ -639,6 +639,10 @@ func TestAttachStopOnEntry(t *testing.T) {
 }
 
 func TestLaunchWithFollowExec(t *testing.T) {
+	if runtime.GOOS == "freebsd" || runtime.GOOS == "darwin" {
+		t.Skip("follow exec not implemented")
+	}
+
 	var buildFlags protest.BuildFlags
 	// TODO build mode, see TestFollowExecFindLocation in integration2_test.go
 	childFixture := protest.BuildFixture(t, "spawnchild", buildFlags)
@@ -4388,6 +4392,10 @@ Type 'dlv help' followed by a command for full documentation.
 					got = client.ExpectEvaluateResponse(t)
 					if got.Body.Result != "" {
 						t.Errorf("\ngot: %#v, want sources=\"\"", got)
+					}
+
+					if runtime.GOOS == "freebsd" || runtime.GOOS == "darwin" {
+						t.Skip("follow exec not implemented")
 					}
 
 					// Test target.
