@@ -365,6 +365,7 @@ func NewSession(conn io.ReadWriteCloser, config *Config, debugger *debugger.Debu
 // we override the defaults for optional args.
 func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) {
 	s.args.followExec = args.FollowExec
+	s.args.followExecRegex = args.FollowExecRegex
 
 	s.args.stopOnEntry = args.StopOnEntry
 	if depth := args.StackTraceDepth; depth > 0 {
