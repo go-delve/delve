@@ -1203,7 +1203,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		err = s.debugger.FollowExec(s.args.followExec, s.args.followExecRegex)
 		if err != nil {
 			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("Failed to follow exec: %v", err))
+				fmt.Sprintf("Failed to enable follow exec: %v", err))
 			return
 		}
 	}
@@ -2062,12 +2062,9 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 	}
 
 	if s.args.followExec {
-		err := s.debugger.FollowExec(s.args.followExec, s.args.followExecRegex)
-		if err != nil {
-			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("Failed to follow exec: %v", err))
-			return
-		}
+		s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach",
+			"Follow exec not supported in attach request yet.")
+		return
 	}
 
 	// Notify the client that the debugger is ready to start accepting

@@ -656,7 +656,6 @@ func TestLaunchWithFollowExec(t *testing.T) {
 
 		// 2 >> launch, << process, << initialized, << launch
 		client.LaunchRequestWithArgs(map[string]interface{}{
-			"request":     "launch",
 			"mode":        "exec",
 			"program":     fixture.Path,
 			"args":        []string{"spawn2", childFixture.Path}, // call spawnchild.go
@@ -788,6 +787,81 @@ func TestLaunchWithFollowExec(t *testing.T) {
 		}
 		client.ExpectTerminatedEvent(t)
 	})
+}
+
+func TestAttachWithFollowExec(t *testing.T) {
+	if runtime.GOOS == "freebsd" || runtime.GOOS == "darwin" {
+		t.Skip("follow exec not implemented")
+	}
+
+	runTest(t, "spawn", func(client *daptest.Client, fixture protest.Fixture) {
+		// Start the program to attach to
+		cmd := exec.Command(fixture.Path, "spawn", "10000000")
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		cmd.Stderr = os.Stderr
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		// Wait for output.
+		// This will give the target process time to initialize the runtime before we attach,
+		// so we can rely on having goroutines when they are requested on attach.
+		scanOut := bufio.NewScanner(stdout)
+		scanOut.Scan()
+		if scanOut.Text() != "parent starting" {
+			t.Errorf("expected spawn.go to output \"parent starting\"")
+		}
+
+		// 1 >> initialize, << initialize
+		client.InitializeRequest()
+		initResp := client.ExpectInitializeResponseAndCapabilities(t)
+		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
+		}
+
+		// 2 >> attach, << initialized, << attach
+		client.AttachRequest(map[string]interface{}{
+			"mode":        "local",
+			"processId":   cmd.Process.Pid,
+			"stopOnEntry": stopOnEntry,
+			"followExec":  true,
+			"backend":     "default",
+		})
+		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
+		errResp := client.ExpectErrorResponse(t)
+		if errResp.Seq != 0 ||
+			errResp.RequestSeq != 2 ||
+			errResp.Message != "Failed to attach" ||
+			errResp.Body.Error.Format != "Failed to attach: Follow exec not supported in attach request yet." {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=2 Message=\"Failed to attach\" Format=\"Follow exec not supported in attach request yet.\"", errResp)
+		}
+
+		// TODO(polina): once https://github.com/go-delve/delve/issues/2259 is
+		// fixed, test with kill=false.
+
+		// 3 >> disconnect, << disconnect
+		client.DisconnectRequestWithKillOption(true)
+		// Disconnect consists of Halt + Detach.
+		// Halt interrupts command in progress, which triggers
+		// a stopped event in parallel with the disconnect
+		// sequence. It might arrive before or during the sequence
+		// or never if the server exits before it is sent.
+		msg := expectMessageFilterStopped(t, client)
+		client.CheckOutputEvent(t, msg)
+		msg = expectMessageFilterStopped(t, client)
+		client.CheckDisconnectResponse(t, msg)
+		client.ExpectTerminatedEvent(t)
+
+		// If this call to KeepAlive isn't here there's a chance that stdout will
+		// be garbage collected (since it is no longer alive long before this
+		// point), when that happens, on unix-like OSes, the read end of the pipe
+		// will be closed by the finalizer and the target process will die by
+		// SIGPIPE, which the rest of this test does not expect.
+		runtime.KeepAlive(stdout)
+	})
+
 }
 
 // Like the test above, except the program is configured to continue on entry.
