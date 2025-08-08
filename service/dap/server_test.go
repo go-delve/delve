@@ -821,7 +821,7 @@ func TestAttachWithFollowExec(t *testing.T) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
 		}
 
-		// 2 >> attach, << initialized, << attach
+		// 2 >> attach, << error
 		client.AttachRequest(map[string]interface{}{
 			"mode":        "local",
 			"processId":   cmd.Process.Pid,
