@@ -3377,25 +3377,39 @@ func (s *Session) onReadMemoryRequest(request *dap.ReadMemoryRequest) {
 		return
 	}
 
-	plan := NewPlan(ref, int64(args.Offset), int64(args.Count))
+	endReq := int64(args.Offset + args.Count)
 
-	if plan.readCount == 0 {
-		s.send(makeReadMemoryResponse(request.Request, plan.memAddr, nil, plan.unreadable))
+	startRead := clamp(int64(args.Offset), 0, ref.size)
+	endRead := clamp(endReq, 0, ref.size)
+
+	readCount := endRead - startRead
+	if readCount < 0 {
+		readCount = 0
+	}
+
+	unreadable := int64(args.Count) - readCount
+	if unreadable < 0 {
+		unreadable = 0
+	}
+
+	memAddr := ref.addr + uint64(startRead)
+
+	if readCount == 0 {
+		s.send(makeReadMemoryResponse(request.Request, memAddr, nil, int(unreadable)))
 		return
 	}
 
-	data, n, err := s.readTargetMemory(plan.memAddr, plan.readCount)
+	data, n, err := s.readTargetMemory(memAddr, readCount)
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToReadMemory, "Unable to read memory", err.Error())
 		return
 	}
 
-	unreadable := plan.unreadable
-	if n < int(plan.readCount) {
-		unreadable += int(plan.readCount) - n
+	if int64(n) < readCount {
+		unreadable += readCount - int64(n)
 	}
 
-	s.send(makeReadMemoryResponse(request.Request, plan.memAddr, data, unreadable))
+	s.send(makeReadMemoryResponse(request.Request, memAddr, data, int(unreadable)))
 }
 
 func (s *Session) readTargetMemory(addr uint64, count int64) (data []byte, n int, err error) {
@@ -3433,49 +3447,6 @@ func makeReadMemoryResponse(req dap.Request, addr uint64, data []byte, unreadabl
 			Data:            response,
 			UnreadableBytes: unreadable,
 		},
-	}
-}
-
-type readPlan struct {
-	// requested
-	startReq int64
-	endReq   int64 // exclusive
-
-	// real
-	startRead int64
-	endRead   int64
-
-	readCount int64
-	unreadable int
-
-	// first read byte addr
-	memAddr uint64
-}
-
-func NewPlan(ref memRef, startReq, count int64) readPlan {
-	endReq := startReq + count
-
-	startRead := clamp(startReq, 0, ref.size)
-	endRead := clamp(endReq, 0, ref.size)
-
-	readCount := endRead - startRead
-	if readCount < 0 {
-		readCount = 0
-	}
-
-	unreadable := count - readCount
-	if unreadable < 0 {
-		unreadable = 0
-	}
-
-	return readPlan{
-		startReq:   startReq,
-		endReq:     endReq,
-		startRead:  startRead,
-		endRead:    endRead,
-		readCount:  readCount,
-		unreadable: int(unreadable),
-		memAddr:    ref.addr + uint64(startRead),
 	}
 }
 
