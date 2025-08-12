@@ -3382,21 +3382,22 @@ func (s *Session) onReadMemoryRequest(request *dap.ReadMemoryRequest) {
 	startRead := clamp(int64(args.Offset), 0, ref.size)
 	endRead := clamp(endReq, 0, ref.size)
 
+	memAddr := ref.addr + uint64(startRead)
+
 	readCount := endRead - startRead
-	if readCount < 0 {
-		readCount = 0
+	if readCount <= 0 {
+		unreadable := args.Count
+		if unreadable < 0 {
+			unreadable = 0
+		}
+
+		s.send(makeReadMemoryResponse(request.Request, memAddr, nil, unreadable))
+		return
 	}
 
 	unreadable := int64(args.Count) - readCount
 	if unreadable < 0 {
 		unreadable = 0
-	}
-
-	memAddr := ref.addr + uint64(startRead)
-
-	if readCount == 0 {
-		s.send(makeReadMemoryResponse(request.Request, memAddr, nil, int(unreadable)))
-		return
 	}
 
 	data, n, err := s.readTargetMemory(memAddr, readCount)
