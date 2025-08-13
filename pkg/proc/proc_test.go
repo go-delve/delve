@@ -116,7 +116,7 @@ func startTestProcessArgs(fixture protest.Fixture, t testing.TB, wd string, args
 	case "rr":
 		protest.MustHaveRecordingAllowed(t)
 		t.Log("recording")
-		grp, tracedir, err = gdbserial.RecordAndReplay(append([]string{fixture.Path}, args...), wd, true, []string{}, "", proc.OutputRedirect{}, proc.OutputRedirect{})
+		grp, tracedir, err = gdbserial.RecordAndReplay(append([]string{fixture.Path}, args...), wd, true, true, []string{}, "", proc.OutputRedirect{}, proc.OutputRedirect{})
 		t.Logf("replaying %q", tracedir)
 	default:
 		t.Fatal("unknown backend")
