@@ -809,7 +809,7 @@ func funcCallStep(callScope *EvalScope, stack *evalStack, thread Thread) bool {
 	regs, err := thread.Registers()
 	if err != nil {
 		fncall.err = err
-		return true
+		return false
 	}
 
 	regval := bi.Arch.RegistersToDwarfRegisters(0, regs).Uint64Val(fncall.protocolReg)
