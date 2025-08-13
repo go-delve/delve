@@ -99,6 +99,7 @@ var (
 	loadConfErr error
 
 	rrOnProcessPid int
+	rrDelOnDetach bool
 
 	attachWaitFor         string
 	attachWaitForInterval float64
@@ -268,6 +269,8 @@ session.`,
 	debugCommand.Flags().BoolVar(&continueOnStart, "continue", false, "Continue the debugged process on start.")
 	debugCommand.Flags().StringVar(&tty, "tty", "", "TTY to use for the target program")
 	must(debugCommand.MarkFlagFilename("tty"))
+	debugCommand.Flags().BoolVarP(&rrDelOnDetach, "delondetach", "d", true,
+		"Delete directory containing debug recording on detach.")
 	rootCommand.AddCommand(debugCommand)
 
 	// 'exec' subcommand.
@@ -300,6 +303,8 @@ or later, -gcflags="-N -l" on earlier versions of Go.`,
 	execCommand.Flags().StringVar(&tty, "tty", "", "TTY to use for the target program")
 	must(execCommand.MarkFlagFilename("tty"))
 	execCommand.Flags().BoolVar(&continueOnStart, "continue", false, "Continue the debugged process on start.")
+	execCommand.Flags().BoolVarP(&rrDelOnDetach, "delondetach", "d", true,
+		"Delete directory containing debug recording on detach.")
 	rootCommand.AddCommand(execCommand)
 
 	// Deprecated 'run' subcommand.
@@ -443,7 +448,6 @@ https://github.com/mozilla/rr
 		replayCommand.Flags().IntVarP(&rrOnProcessPid, "onprocess", "p", 0,
 			"Pass onprocess pid to rr.")
 		must(replayCommand.RegisterFlagCompletionFunc("onprocess", cobra.NoFileCompletions))
-
 		rootCommand.AddCommand(replayCommand)
 	}
 
@@ -1136,6 +1140,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 				Stderr:                proc.OutputRedirect{Path: redirects[2]},
 				DisableASLR:           disableASLR,
 				RrOnProcessPid:        rrOnProcessPid,
+				RrDelOnDetach:	       rrDelOnDetach,
 				AttachWaitFor:         attachWaitFor,
 				AttachWaitForInterval: attachWaitForInterval,
 				AttachWaitForDuration: attachWaitForDuration,

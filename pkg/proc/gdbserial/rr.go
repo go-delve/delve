@@ -141,7 +141,6 @@ func Replay(tracedir string, quiet, deleteOnDetach bool, debugInfoDirs []string,
 	if err := checkRRAvailable(); err != nil {
 		return nil, err
 	}
-
 	rrVersion := getRRVersion()
 
 	args := []string{
@@ -312,12 +311,13 @@ func rrParseGdbCommand(line string) rrInit {
 }
 
 // RecordAndReplay acts like calling Record and then Replay.
-func RecordAndReplay(cmd []string, wd string, quiet bool, debugInfoDirs []string, stdin string, stdout proc.OutputRedirect, stderr proc.OutputRedirect) (*proc.TargetGroup, string, error) {
+func RecordAndReplay(cmd []string, wd string, quiet bool, delOnDetach bool, debugInfoDirs []string, stdin string, stdout proc.OutputRedirect, stderr proc.OutputRedirect) (*proc.TargetGroup, string, error) {
 	tracedir, err := Record(cmd, wd, quiet, stdin, stdout, stderr)
 	if tracedir == "" {
+		fmt.Printf("tracedir is nil\n")
 		return nil, "", err
 	}
-	t, err := Replay(tracedir, quiet, true, debugInfoDirs, 0, strings.Join(cmd, " "))
+	t, err := Replay(tracedir, quiet, delOnDetach, debugInfoDirs, 0, strings.Join(cmd, " "))
 	return t, tracedir, err
 }
 
