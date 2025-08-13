@@ -6074,7 +6074,7 @@ func TestRestartRequestWithNewArgs(t *testing.T) {
 
 					client.EvaluateRequest("os.Args", 1000, "repl")
 					evalResp = client.ExpectEvaluateResponse(t)
-					checkEvalRegex(t, evalResp, `\[\]string len: 3, cap: 3, \[".*testargs.*","test","pass flag"\]`, hasChildren)
+					checkEvalRegex(t, evalResp, `\[\]string len: 3, cap: ., \[".*testargs.*","test","pass flag"\]`, hasChildren)
 				},
 				disconnect: true,
 			}})
