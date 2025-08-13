@@ -982,6 +982,11 @@ func (stack *evalStack) resume(g *G) {
 	if finished {
 		funcCallFinish(scope, stack)
 	}
+	if stack.err == nil && len(stack.fncalls) > 0 {
+		if fncall := stack.fncallPeek(); fncall.err != nil {
+			stack.err = fncall.err
+		}
+	}
 
 	if stack.callInjectionContinue {
 		// not done with call injection, stay in this mode
