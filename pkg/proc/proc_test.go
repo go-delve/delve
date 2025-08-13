@@ -1379,6 +1379,7 @@ func BenchmarkGoroutinesInfo(b *testing.B) {
 
 func TestIssue262(t *testing.T) {
 	// Continue does not work when the current breakpoint is set on a NOP instruction
+	skipOn(t, "N/A", "386")
 	protest.AllowRecording(t)
 	withTestProcess("issue262", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, fixture.Source, 11)
