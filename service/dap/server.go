@@ -241,6 +241,10 @@ type launchAttachArgs struct {
 	substitutePathClientToServer [][2]string `cfgName:"substitutePath"`
 	// substitutePathServerToClient indicates rules for converting file paths between debugger and client.
 	substitutePathServerToClient [][2]string
+	// followExec enables or disables follow exec mode.
+	followExec bool `cfgName:"followExec"`
+	// followExecRegex is a regular expression. Only child processes with a command line matching the regular expression will be followed.
+	followExecRegex string `cfgName:"followExecRegex"`
 }
 
 // defaultArgs borrows the defaults for the arguments from the original vscode-go adapter.
@@ -256,6 +260,8 @@ var defaultArgs = launchAttachArgs{
 	ShowPprofLabels:              []string{},
 	substitutePathClientToServer: [][2]string{},
 	substitutePathServerToClient: [][2]string{},
+	followExec:                   false,
+	followExecRegex:              "",
 }
 
 // dapClientCapabilities captures arguments from initialize request that
@@ -358,6 +364,9 @@ func NewSession(conn io.ReadWriteCloser, config *Config, debugger *debugger.Debu
 // If user-specified options are provided via Launch/AttachRequest,
 // we override the defaults for optional args.
 func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) {
+	s.args.followExec = args.FollowExec
+	s.args.followExecRegex = args.FollowExecRegex
+
 	s.args.stopOnEntry = args.StopOnEntry
 	if depth := args.StackTraceDepth; depth > 0 {
 		s.args.StackTraceDepth = depth
@@ -1191,6 +1200,15 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportsStepBack: true}}})
 	}
 
+	if s.args.followExec {
+		err = s.debugger.FollowExec(s.args.followExec, s.args.followExecRegex)
+		if err != nil {
+			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
+				fmt.Sprintf("Failed to enable follow exec: %v", err))
+			return
+		}
+	}
+
 	// Notify the client that the debugger is ready to start accepting
 	// configuration requests for setting breakpoints, etc. The client
 	// will end the configuration sequence with 'configurationDone'.
@@ -1508,6 +1526,15 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 	// Any breakpoint that existed before this request but was not amended must be deleted.
 	s.clearBreakpoints(existingBps, createdBps)
 
+	// Check if the plugin package is present or follow-exec is enabled.
+	// Suspended breakpoints are only relevant when new executable code is
+	// loaded. That can happen when a new process is spawned - which requires
+	// follow-exec - or when new executable code is added to an existing binary.
+	// The only fully supported way of doing the latter is plugins, hence this
+	// check.
+	fns, _ := s.debugger.Functions(`^plugin\.Open$`, 0)
+	suspended := len(fns) > 0 || s.debugger.FollowExecEnabled()
+
 	// Add new breakpoints.
 	for i := 0; i < totalBps; i++ {
 		want := metadataFunc(i)
@@ -1533,7 +1560,7 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 				err = setLogMessage(bp, want.logMessage)
 				if err == nil {
 					// Create new breakpoints.
-					got, err = s.debugger.CreateBreakpoint(bp, "", nil, false)
+					got, err = s.debugger.CreateBreakpoint(bp, "", nil, suspended)
 				}
 			}
 		}
@@ -1556,12 +1583,27 @@ func setLogMessage(bp *api.Breakpoint, msg string) error {
 }
 
 func (s *Session) updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int, err error, got *api.Breakpoint) {
+	// TODO(@Lslightly): For DAP v1.68.0, Reason can be set to "pending" when a
+	// breakpoint is suspended. But it seems that nothing different happens.
+
+	// Is the breakpoint suspended?
+	if err == nil && len(got.Addrs) == 0 {
+		err = errors.New("unable to set breakpoint")
+	}
+
 	breakpoints[i].Verified = err == nil
 	if err != nil {
 		breakpoints[i].Message = err.Error()
-	} else {
-		path := s.toClientPath(got.File)
+	}
+
+	// If the error is connected to a specific breakpoint, tell the user.
+	if got != nil {
 		breakpoints[i].Id = got.ID
+	}
+
+	// If we have a file path, update the breakpoint.
+	if got != nil && got.File != "" {
+		path := s.toClientPath(got.File)
 		breakpoints[i].Line = got.Line
 		breakpoints[i].Source = &dap.Source{Name: filepath.Base(path), Path: path}
 	}
@@ -2018,6 +2060,12 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 		}
 		s.args.substitutePathClientToServer = clientToServer
 		s.args.substitutePathServerToClient = serverToClient
+	}
+
+	if s.args.followExec {
+		s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach",
+			"Follow exec not supported in attach request yet.")
+		return
 	}
 
 	// Notify the client that the debugger is ready to start accepting
@@ -4055,6 +4103,21 @@ func (s *Session) convertDebuggerEvent(event *proc.Event) {
 			Body: dap.OutputEventBody{
 				Output:   fmt.Sprintf("Download debug info for %s: %s\n", event.BinaryInfoDownloadEventDetails.ImagePath, event.BinaryInfoDownloadEventDetails.Progress),
 				Category: "console",
+			},
+		})
+	case proc.EventBreakpointMaterialized:
+		bp := api.ConvertLogicalBreakpoint(event.Breakpoint)
+		path := s.toClientPath(bp.File)
+		s.send(&dap.BreakpointEvent{
+			Event: *newEvent("breakpoint"),
+			Body: dap.BreakpointEventBody{
+				Reason: "changed",
+				Breakpoint: dap.Breakpoint{
+					Verified: true,
+					Id:       bp.ID,
+					Line:     bp.Line,
+					Source:   &dap.Source{Name: filepath.Base(path), Path: path},
+				},
 			},
 		})
 	}
