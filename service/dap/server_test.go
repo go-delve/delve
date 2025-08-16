@@ -4468,10 +4468,6 @@ Type 'dlv help' followed by a command for full documentation.
 						t.Errorf("\ngot: %#v, want sources=\"\"", got)
 					}
 
-					if runtime.GOOS == "freebsd" || runtime.GOOS == "darwin" {
-						t.Skip("follow exec not implemented")
-					}
-
 					// Test target.
 					client.EvaluateRequest("dlv target list", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
@@ -4483,31 +4479,34 @@ Type 'dlv help' followed by a command for full documentation.
 						t.Errorf("\ngot: %#v, want target list has 1 line", got)
 					}
 
-					client.EvaluateRequest("dlv target follow-exec", 1000, "repl")
-					got = client.ExpectEvaluateResponse(t)
-					if got.Body.Result != "Follow exec mode is disabled" {
-						t.Errorf("\ngot: %#v, want Follow exec mode is disabled", got)
-					}
+					// target follow-exec
+					if runtime.GOOS != "freebsd" && runtime.GOOS != "darwin" {
+						client.EvaluateRequest("dlv target follow-exec", 1000, "repl")
+						got = client.ExpectEvaluateResponse(t)
+						if got.Body.Result != "Follow exec mode is disabled" {
+							t.Errorf("\ngot: %#v, want Follow exec mode is disabled", got)
+						}
 
-					client.EvaluateRequest("dlv target follow-exec -on", 1000, "repl")
-					got = client.ExpectEvaluateResponse(t)
-					if got.Body.Result != "Follow exec mode enabled" {
-						t.Errorf("\ngot: %#v, want Follow exec mode enabled", got)
-					}
+						client.EvaluateRequest("dlv target follow-exec -on", 1000, "repl")
+						got = client.ExpectEvaluateResponse(t)
+						if got.Body.Result != "Follow exec mode enabled" {
+							t.Errorf("\ngot: %#v, want Follow exec mode enabled", got)
+						}
 
-					client.EvaluateRequest(fmt.Sprintf("dlv target follow-exec -on %s", fixture.Path), 1000, "repl")
-					got = client.ExpectEvaluateResponse(t)
-					if got.Body.Result != fmt.Sprintf("Follow exec mode enabled with regex %q", fixture.Path) {
-						t.Errorf("\ngot: %#v, want Follow exec mode enabled with regex %q", got, fixture.Path)
-					}
+						client.EvaluateRequest(fmt.Sprintf("dlv target follow-exec -on %s", fixture.Path), 1000, "repl")
+						got = client.ExpectEvaluateResponse(t)
+						if got.Body.Result != fmt.Sprintf("Follow exec mode enabled with regex %q", fixture.Path) {
+							t.Errorf("\ngot: %#v, want Follow exec mode enabled with regex %q", got, fixture.Path)
+						}
 
-					client.EvaluateRequest("dlv target follow-exec -off", 1000, "repl")
-					got = client.ExpectEvaluateResponse(t)
-					if got.Body.Result != "Follow exec mode disabled" {
-						t.Errorf("\ngot: %#v, want Follow exec mode disabled", got)
-					}
+						client.EvaluateRequest("dlv target follow-exec -off", 1000, "repl")
+						got = client.ExpectEvaluateResponse(t)
+						if got.Body.Result != "Follow exec mode disabled" {
+							t.Errorf("\ngot: %#v, want Follow exec mode disabled", got)
+						}
 
-					// TODO: target switch
+						// TODO: target switch
+					}
 
 					// Test bad inputs.
 					client.EvaluateRequest("dlv help bad", 1000, "repl")
@@ -4516,13 +4515,15 @@ Type 'dlv help' followed by a command for full documentation.
 					client.EvaluateRequest("dlv bad", 1000, "repl")
 					client.ExpectErrorResponse(t)
 
-					// Test bad target off
-					client.EvaluateRequest("dlv target follow-exec -off path", 1000, "repl")
-					client.ExpectErrorResponse(t)
+					if runtime.GOOS != "freebsd" && runtime.GOOS != "darwin" {
+						// Test bad target off
+						client.EvaluateRequest("dlv target follow-exec -off path", 1000, "repl")
+						client.ExpectErrorResponse(t)
 
-					// Test bad target on regex
-					client.EvaluateRequest("dlv target follow-exec -on [", 1000, "repl")
-					client.ExpectErrorResponse(t)
+						// Test bad target on regex
+						client.EvaluateRequest("dlv target follow-exec -on [", 1000, "repl")
+						client.ExpectErrorResponse(t)
+					}
 
 					// Test bad target subcommand
 					client.EvaluateRequest("dlv target bad", 1000, "repl")
