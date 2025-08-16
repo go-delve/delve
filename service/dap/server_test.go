@@ -838,9 +838,6 @@ func TestAttachWithFollowExec(t *testing.T) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=2 Message=\"Failed to attach\" Format=\"Follow exec not supported in attach request yet.\"", errResp)
 		}
 
-		// TODO(polina): once https://github.com/go-delve/delve/issues/2259 is
-		// fixed, test with kill=false.
-
 		// 3 >> disconnect, << disconnect
 		client.DisconnectRequestWithKillOption(true)
 		// Disconnect consists of Halt + Detach.
