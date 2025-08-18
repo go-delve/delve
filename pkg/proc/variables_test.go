@@ -958,6 +958,11 @@ func getEvalExpressionTestCases() []varTest {
 		testcases = append(testcases, varTest{`**(**runtime.hmap)(uintptr(&m1))`, false, `…`, `…`, "runtime.hmap", nil})
 	}
 
+	if goversion.VersionAfterOrEqualRev(runtime.Version(), 1, 25, 2) {
+		testcases = append(testcases, varTest{"iface7", true, "interface {}(main.OnlyUsedInInterface) {s: \"test\"}", "interface {}(main.OnlyUsedInInterface) {s: \"test\"}", "interface {}", nil})
+
+	}
+
 	return testcases
 }
 
