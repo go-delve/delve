@@ -82,6 +82,8 @@ func (it *stackIterator) readSigtrampgoContext() (*op.DwarfRegisters, error) {
 			return sigtrampContextLinuxAMD64(it.mem, addr)
 		case "arm64":
 			return sigtrampContextLinuxARM64(it.mem, addr)
+		case "loong64":
+			return sigtrampContextLinuxLOONG64(it.mem, addr)
 		default:
 			return nil, errors.New("not implemented")
 		}
@@ -320,6 +322,50 @@ func sigtrampContextLinuxARM64(mem MemoryReader, addr uint64) (*op.DwarfRegister
 	dregs[regnum.ARM64_SP] = op.DwarfRegisterFromUint64(regs.sp)
 	dregs[regnum.ARM64_PC] = op.DwarfRegisterFromUint64(regs.pc)
 	return op.NewDwarfRegisters(0, dregs, binary.LittleEndian, regnum.ARM64_PC, regnum.ARM64_SP, regnum.ARM64_BP, regnum.ARM64_LR), nil
+}
+func sigtrampContextLinuxLOONG64(mem MemoryReader, addr uint64) (*op.DwarfRegisters, error) {
+	//The struct get from src/runtime/defs_linux_loong64.go
+	type usigset struct {
+		val [16]uint64
+	}
+
+	type stackt struct {
+		ss_sp     *byte
+		ss_flags  int32
+		pad_cgo_0 [4]byte
+		ss_size   uintptr
+	}
+
+	type sigcontext struct {
+		sc_pc         uint64
+		sc_regs       [32]uint64
+		sc_flags      uint32
+		sc_pad0       [1]uint32
+		sc_extcontext [0]uint64
+	}
+
+	type ucontext struct {
+		uc_flags     uint64
+		uc_link      *ucontext
+		uc_stack     stackt
+		uc_sigmask   usigset
+		uc_x_unused  [0]uint8
+		uc_pad_cgo_0 [8]byte
+		uc_mcontext  sigcontext
+	}
+
+	buf := make([]byte, unsafe.Sizeof(ucontext{}))
+	_, err := mem.ReadMemory(buf, addr)
+	if err != nil {
+		return nil, err
+	}
+	regs := &(((*ucontext)(unsafe.Pointer(&buf[0]))).uc_mcontext)
+	dregs := make([]*op.DwarfRegister, regnum.LOONG64MaxRegNum()+1)
+	for i := regnum.LOONG64_R0; i <= regnum.LOONG64_R31; i++ {
+		dregs[regnum.LOONG64_R0+i] = op.DwarfRegisterFromUint64(regs.sc_regs[i])
+	}
+	dregs[regnum.LOONG64_PC] = op.DwarfRegisterFromUint64(regs.sc_pc)
+	return op.NewDwarfRegisters(0, dregs, binary.LittleEndian, regnum.LOONG64_PC, regnum.LOONG64_SP, regnum.LOONG64_FP, regnum.LOONG64_LR), nil
 }
 
 func sigtrampContextFreebsdAMD64(mem MemoryReader, addr uint64) (*op.DwarfRegisters, error) {
