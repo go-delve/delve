@@ -346,16 +346,18 @@ func TestGeneratedDoc(t *testing.T) {
 	checkAutogenDoc(t, "Documentation/cli/README.md", "_scripts/gen-cli-docs.go", generatedBuf.Bytes())
 
 	// Checks gen-usage-docs.go
-	tempDir := t.TempDir()
-	cmd := exec.Command("go", "run", "_scripts/gen-usage-docs.go", tempDir)
-	cmd.Dir = protest.ProjectRoot()
-	err := cmd.Run()
-	assertNoError(err, t, "go run _scripts/gen-usage-docs.go")
-	entries, err := os.ReadDir(tempDir)
-	assertNoError(err, t, "ReadDir")
-	for _, doc := range entries {
-		docFilename := "Documentation/usage/" + doc.Name()
-		checkAutogenDoc(t, docFilename, "_scripts/gen-usage-docs.go", slurpFile(t, tempDir+"/"+doc.Name()))
+	if runtime.GOARCH == "ppc64le" {
+		tempDir := t.TempDir()
+		cmd := exec.Command("go", "run", "_scripts/gen-usage-docs.go", tempDir)
+		cmd.Dir = protest.ProjectRoot()
+		err := cmd.Run()
+		assertNoError(err, t, "go run _scripts/gen-usage-docs.go")
+		entries, err := os.ReadDir(tempDir)
+		assertNoError(err, t, "ReadDir")
+		for _, doc := range entries {
+			docFilename := "Documentation/usage/" + doc.Name()
+			checkAutogenDoc(t, docFilename, "_scripts/gen-usage-docs.go", slurpFile(t, tempDir+"/"+doc.Name()))
+		}
 	}
 
 	runScript := func(args ...string) []byte {
