@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"maps"
 
 	"github.com/go-delve/delve/pkg/dwarf/leb128"
 )
@@ -341,10 +342,7 @@ func register(frame *FrameContext) {
 }
 
 func rememberstate(frame *FrameContext) {
-	clonedRegs := make(map[uint64]DWRule, len(frame.Regs))
-	for k, v := range frame.Regs {
-		clonedRegs[k] = v
-	}
+	clonedRegs := maps.Clone(frame.Regs)
 	frame.rememberedState.push(rowState{cfa: frame.CFA, regs: clonedRegs})
 }
 
