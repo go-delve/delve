@@ -1136,7 +1136,6 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 			v = &v.Children[0]
 		}
 	case reflect.Func:
-		fmt.Printf("%#v\n", v)
 		fn := v.bi.PCToFunc(v.Base)
 		v.loadFunctionPtr(0, LoadConfig{MaxVariableRecurse: -1})
 		if v.Unreadable != nil {
@@ -1148,13 +1147,15 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 				}
 				return nil, fmt.Errorf("%s has no member %s", vname, memberName)
 			}
-			fmt.Println("GOT ", v.Unreadable, cst)
 			return nil, v.Unreadable
 		}
-		if fn != nil {
-			cst := fn.extra(v.bi).closureStructType
-			v = v.newVariable(v.Name, v.closureAddr, cst, v.mem)
-			closure = true
+		if v.closureAddr != 0 {
+			fn = v.bi.PCToFunc(v.Base)
+			if fn != nil {
+				cst := fn.extra(v.bi).closureStructType
+				v = v.newVariable(v.Name, v.closureAddr, cst, v.mem)
+				closure = true
+			}
 		}
 	}
 
