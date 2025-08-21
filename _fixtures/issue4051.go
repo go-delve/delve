@@ -5,6 +5,14 @@ import (
 	"runtime"
 )
 
+var os = func() func() {
+	a := 1
+	return func() {
+		fmt.Println(a)
+		a++
+	}
+}()
+
 func Hello(name string) string {
 	msg := "Hello, " + name
 	fmt.Println(msg)
@@ -32,4 +40,6 @@ func main() {
 	fn := f(42)
 	runtime.Breakpoint()
 	fn()
+
+	os()
 }

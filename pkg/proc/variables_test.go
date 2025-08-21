@@ -1606,6 +1606,10 @@ func TestIssue4051(t *testing.T) {
 		assertNoError(err, t, "eval of main.Hello returned an error")
 		assertVariable(t, v, varTest{"main.Hello", true, `"World"`, ``, `string`, nil})
 
+		v, err = evalVariableWithCfg(p, "os.a", pshortLoadConfig)
+		assertNoError(err, t, "eval of os.a returned an error")
+		assertVariable(t, v, varTest{"os.a", true, "1", ``, `int`, nil})
+
 		// TODO(deparker): we *should* get an error here, but the one we expect in this test
 		// is not the ideal error. We should really improve type checking in the evaluator.
 		v, err = evalVariableWithCfg(p, "main.f.func1.i", pshortLoadConfig)
