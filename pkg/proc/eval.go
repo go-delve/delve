@@ -1149,26 +1149,9 @@ func (stack *evalStack) executeOp() {
 
 	case *evalop.PushPackageVarOrSelect:
 		v, err := scope.findGlobal(op.Name, op.Sel)
-		if err != nil {
-			if isSymbolNotFound(err) {
-				if _, ok := scope.BinInfo.PackageMap[op.Name]; ok {
-					// We have a package with this name, ensure we don't also have a local variable with the same name.
-					vars, err := scope.Locals(0, op.Name)
-					if err != nil {
-						stack.err = fmt.Errorf("error retrieving local variables while trying to find symbol value for %s: %v", op.Name, err)
-						return
-					}
-					if len(vars) == 0 {
-						// This is not a local shadowing a package name so we can safely assume at this point the
-						// variable is not defined or has been optimized away by the compiler.
-						stack.err = &errCouldNotFindSymbol{name: fmt.Sprintf("%s.%s", op.Name, op.Sel)}
-						return
-					}
-				}
-			} else {
-				stack.err = err
-				return
-			}
+		if err != nil && !isSymbolNotFound(err) {
+			stack.err = err
+			return
 		}
 		if v != nil {
 			stack.push(v)
@@ -2138,14 +2121,6 @@ func (scope *EvalScope) evalStructSelector(op *evalop.Select, stack *evalStack) 
 		stack.push(rv)
 		return
 	}
-
-	switch xv.DwarfType.(type) {
-	case *godwarf.StructType, *godwarf.TypedefType, *godwarf.PtrType, *godwarf.ChanType: // ok
-	default:
-		stack.err = fmt.Errorf("%s (type %s) is not a struct", xv.Name, xv.DwarfType.String())
-		return
-	}
-
 	stack.pushErr(xv.structMember(op.Name))
 }
 

@@ -1137,6 +1137,13 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 		}
 	case reflect.Func:
 		fn := v.bi.PCToFunc(v.Base)
+		if fn != nil && !fn.closure {
+			// Not a closure, normal function
+			if _, ok := v.bi.PackageMap[vname]; ok {
+				return nil, fmt.Errorf("package %s has no function %s", vname, memberName)
+			}
+			return nil, fmt.Errorf("%s has no member %s", vname, memberName)
+		}
 		v.loadFunctionPtr(0, LoadConfig{MaxVariableRecurse: -1})
 		if v.Unreadable != nil {
 			return nil, v.Unreadable

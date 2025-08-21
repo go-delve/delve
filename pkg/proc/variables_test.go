@@ -1585,7 +1585,7 @@ func TestIssue4051(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		expectedError := "could not find symbol main.Hello"
+		expectedError := "package main has no function Hello"
 		if err.Error() != expectedError {
 			t.Fatalf("expected error %q, got %q", expectedError, err)
 		}
@@ -1609,13 +1609,13 @@ func TestIssue4051(t *testing.T) {
 		// TODO(deparker): we *should* get an error here, but the one we expect in this test
 		// is not the ideal error. We should really improve type checking in the evaluator.
 		v, err = evalVariableWithCfg(p, "main.f.func1.i", pshortLoadConfig)
-		expectedError = `main.f (type func()) is not a struct`
+		expectedError = `main.f has no member func1`
 		if err.Error() != expectedError {
 			t.Fatalf("expected error %q, got %q", expectedError, err)
 		}
 
 		_, err = evalVariableWithCfg(p, "main.f.func1.somethingthatdoesntexist", pshortLoadConfig)
-		expectedError = `main.f (type func()) is not a struct`
+		expectedError = `main.f has no member func1`
 		if err.Error() != expectedError {
 			t.Fatalf("expected error %q, got %q", expectedError, err)
 		}
