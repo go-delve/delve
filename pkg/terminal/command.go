@@ -335,9 +335,10 @@ Called with a single argument it will switch to the specified goroutine.
 Called with more arguments it will execute a command on the specified goroutine.`},
 		{aliases: []string{"breakpoints", "bp"}, group: breakCmds, cmdFn: breakpoints, helpMsg: `Print out info for active breakpoints.
 
-	breakpoints [-a]
+	breakpoints [-a] [-save <filename>]
 
-Specifying -a prints all physical breakpoint, including internal breakpoints.`},
+Specifying -a prints all physical breakpoint, including internal breakpoints.
+Specifying -save <filename> saves all breakpoints to the specified file in a format that can be loaded later using the 'source' command.`},
 		{aliases: []string{"print", "p"}, group: dataCmds, allowedPrefixes: onPrefix | deferredPrefix, cmdFn: c.printVar, helpMsg: `Evaluate an expression.
 
 	[goroutine <n>] [frame <m>] print [%format] <expression>
@@ -472,11 +473,6 @@ Executes the specified command (print, args, locals) in the context of the n-th 
 If path ends with the .star extension it will be interpreted as a starlark script. See Documentation/cli/starlark.md for the syntax.
 
 If path is a single '-' character an interactive starlark interpreter will start instead. Type 'exit' to exit.`},
-		{aliases: []string{"savestate"}, group: breakCmds, cmdFn: c.saveStateCommand, helpMsg: `Saves all current breakpoints to a file
-
-			savestate <path>
-
-This command writes the current state of all active breakpoints to the specified file. The file will contain a sequence of Delve 'break' commands that can be loaded later using the 'source' command to re-establish the breakpoints.`},
 		{aliases: []string{"disassemble", "disass"}, cmdFn: disassCommand, helpMsg: `Disassembler.
 
 	[goroutine <n>] [frame <m>] disassemble [-a <start> <end>] [-l <locspec>]
@@ -1688,10 +1684,77 @@ func toggle(t *Term, ctx callContext, args string) error {
 }
 
 func breakpoints(t *Term, ctx callContext, args string) error {
-	breakPoints, err := t.client.ListBreakpoints(args == "-a")
+	// Parse arguments
+	var showAll bool
+	var saveFile string
+	
+	if args != "" {
+		argv := strings.Fields(args)
+		for i, arg := range argv {
+			switch arg {
+			case "-a":
+				showAll = true
+			case "-save":
+				if i+1 >= len(argv) {
+					return errors.New("missing filename after -save flag")
+				}
+				saveFile = argv[i+1]
+				break // Exit loop since we found -save and its argument
+			}
+		}
+	}
+
+	breakPoints, err := t.client.ListBreakpoints(showAll)
 	if err != nil {
 		return err
 	}
+
+	// If -save flag is provided, save breakpoints to file
+	if saveFile != "" {
+		file, err := os.OpenFile(saveFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+		if err != nil {
+			if os.IsExist(err) {
+				return fmt.Errorf("file '%s' already exists and cannot be overwritten", saveFile)
+			}
+			return fmt.Errorf("failed to open file '%s': %w", saveFile, err)
+		}
+		defer file.Close()
+		w := bufio.NewWriter(file)
+		defer w.Flush()
+
+		for _, bp := range breakPoints {
+			// We don't need to store these breakpoints
+			if bp.ID < 0 {
+				continue
+			}
+			var err error
+			if bp.Tracepoint {
+				_, err = fmt.Fprintf(w, "trace %s:%d\n", bp.File, bp.Line)
+			} else {
+				_, err = fmt.Fprintf(w, "break %s:%d\n", bp.File, bp.Line)
+			}
+			if err != nil {
+				return fmt.Errorf("failed to write breakpoint to file %s:%d", bp.File, bp.Line)
+			}
+			if len(bp.Cond) > 0 {
+				_, err = fmt.Fprintf(w, "condition %d %s\n", bp.ID, bp.Cond)
+				if err != nil {
+					return fmt.Errorf("failed to write condition to file %d:%s", bp.ID, bp.Cond)
+				}
+			}
+			if bp.Disabled {
+				_, err = fmt.Fprintf(w, "toggle %d\n", bp.ID)
+				if err != nil {
+					return fmt.Errorf("failed to write breakpoint status to file %d", bp.ID)
+				}
+			}
+		}
+
+		fmt.Printf("Breakpoints successfully saved to '%s'\n", saveFile)
+		return nil
+	}
+
+	// Display breakpoints (original functionality)
 	slices.SortFunc(breakPoints, func(a, b *api.Breakpoint) int { return cmp.Compare(a.ID, b.ID) })
 	for _, bp := range breakPoints {
 		enabled := "(enabled)"
@@ -2595,58 +2658,6 @@ func (c *Commands) sourceCommand(t *Term, ctx callContext, args string) error {
 	return c.executeFile(t, args)
 }
 
-func (c *Commands) saveStateCommand(t *Term, ctx callContext, args string) error {
-	if len(args) == 0 {
-		return errors.New("wrong number of arguments: source <filename>")
-	}
-	breakPoints, err := t.client.ListBreakpoints(args == "-a")
-	if err != nil {
-		return err
-	}
-
-	filePath := args
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
-	if err != nil {
-		if os.IsExist(err) {
-			return fmt.Errorf("file '%s' already exists and cannot be overwritten", filePath)
-		}
-		return fmt.Errorf("failed to open file '%s': %w", filePath, err)
-	}
-	defer file.Close()
-	w := bufio.NewWriter(file)
-	defer w.Flush()
-
-	for _, bp := range breakPoints {
-		// We don't need to store these breakpoints
-		if bp.ID < 0 {
-			continue
-		}
-		var err error
-		if bp.Tracepoint {
-			_, err = fmt.Fprintf(w, "trace %s:%d\nt", bp.File, bp.Line)
-		} else {
-			_, err = fmt.Fprintf(w, "break %s:%d\nt", bp.File, bp.Line)
-		}
-		if err != nil {
-			return fmt.Errorf("failed to write breakpoint to file %s:%d\nt", bp.File, bp.Line)
-		}
-		if len(bp.Cond) > 0 {
-			_, err = fmt.Fprintf(w, "condition %d %s\n", bp.ID, bp.Cond)
-			if err != nil {
-				return fmt.Errorf("failed to write condition to file %d:%s\nt", bp.ID, bp.Cond)
-			}
-		}
-		if bp.Disabled {
-			_, err = fmt.Fprintf(w, "toggle %d\n", bp.ID)
-			if err != nil {
-				return fmt.Errorf("failed to write breakpoint status to file %d\nt", bp.ID)
-			}
-		}
-	}
-
-	fmt.Printf("Breakpoints successfully saved to '%s'\n", filePath)
-	return nil
-}
 
 var errDisasmUsage = errors.New("wrong number of arguments: disassemble [-a <start> <end>] [-l <locspec>]")
 
