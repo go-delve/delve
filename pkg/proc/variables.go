@@ -1136,19 +1136,21 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 			v = &v.Children[0]
 		}
 	case reflect.Func:
+		fmt.Printf("%#v\n", v)
 		fn := v.bi.PCToFunc(v.Base)
-		if fn != nil && !fn.closure {
-			// Not a closure, normal function
-			if _, ok := v.bi.PackageMap[vname]; ok {
-				return nil, fmt.Errorf("package %s has no function %s", vname, memberName)
-			}
-			return nil, fmt.Errorf("%s has no member %s", vname, memberName)
-		}
 		v.loadFunctionPtr(0, LoadConfig{MaxVariableRecurse: -1})
 		if v.Unreadable != nil {
+			cst := fn.extra(v.bi).closureStructType
+			if cst == nil || cst.ByteSize == 0 {
+				// Not a closure, normal function
+				if _, ok := v.bi.PackageMap[vname]; ok {
+					return nil, fmt.Errorf("package %s has no function %s", vname, memberName)
+				}
+				return nil, fmt.Errorf("%s has no member %s", vname, memberName)
+			}
+			fmt.Println("GOT ", v.Unreadable, cst)
 			return nil, v.Unreadable
 		}
-		fn = v.bi.PCToFunc(v.Base)
 		if fn != nil {
 			cst := fn.extra(v.bi).closureStructType
 			v = v.newVariable(v.Name, v.closureAddr, cst, v.mem)

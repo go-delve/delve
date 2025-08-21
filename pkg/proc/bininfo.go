@@ -520,7 +520,6 @@ type Function struct {
 	cu         *compileUnit
 
 	trampoline bool // DW_AT_trampoline attribute set to true
-	closure    bool // DW_AT_go_closure attribute set to true on child variable
 
 	// InlinedCalls lists all inlined calls to this function
 	InlinedCalls         []InlinedCall
@@ -743,7 +742,6 @@ func (fn *Function) extra(bi *BinaryInfo) *functionExtra {
 		for _, v := range vars {
 			off, ok := v.Val(godwarf.AttrGoClosureOffset).(int64)
 			if ok {
-				fn.closure = true
 				n, _ := v.Val(dwarf.AttrName).(string)
 				typ, err := v.Type(fn.cu.image.dwarf, fn.cu.image.index, fn.cu.image.typeCache)
 				if err == nil {
