@@ -2961,7 +2961,6 @@ func TestCgoStacktrace(t *testing.T) {
 	skipOn(t, "broken - cgo stacktraces", "windows", "arm64")
 	skipOn(t, "broken - cgo stacktraces", "linux", "ppc64le")
 	skipOn(t, "broken - cgo stacktraces", "linux", "riscv64")
-	skipOn(t, "broken - cgo stacktraces", "linux", "loong64")
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 21) {
 		skipOn(t, "broken - cgo stacktraces", "windows", "arm64")
 	}
@@ -4200,7 +4199,6 @@ func TestCgoStacktrace2(t *testing.T) {
 	skipOn(t, "broken - cgo stacktraces", "darwin", "arm64")
 	skipOn(t, "broken", "ppc64le")
 	skipOn(t, "broken", "riscv64")
-	skipOn(t, "broken", "loong64")
 	protest.MustHaveCgo(t)
 	// If a panic happens during cgo execution the stacktrace should show the C
 	// function that caused the problem.
