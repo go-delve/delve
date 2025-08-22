@@ -1003,8 +1003,12 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 
 		switch args.Mode {
 		case "debug":
+			s.config.Debugger.ExecuteKind = debugger.ExecutingGeneratedFile
+			s.config.Debugger.Packages = []string{args.Program}
 			cmd, out, err = gobuild.GoBuildCombinedOutput(args.Output, []string{args.Program}, args.BuildFlags.value)
 		case "test":
+			s.config.Debugger.ExecuteKind = debugger.ExecutingGeneratedTest
+			s.config.Debugger.Packages = []string{args.Program}
 			cmd, out, err = gobuild.GoTestBuildCombinedOutput(args.Output, []string{args.Program}, args.BuildFlags.value)
 		}
 		args.DlvCwd, _ = filepath.Abs(args.DlvCwd)
@@ -3086,6 +3090,7 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 
 	var newArgs []string
 	var resetArgs bool
+	var rebuild bool
 
 	// Update launch/attach arguments if provided
 	if len(request.Arguments) > 0 {
@@ -3093,6 +3098,7 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 			Arguments struct {
 				Request string `json:"request"`
 				LaunchConfig
+				Rebuild bool `json:"rebuild,omitempty"`
 			}
 		}
 		err := json.Unmarshal(request.Arguments, &restartArgs)
@@ -3101,6 +3107,7 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 			return
 		}
 		if restartArgs.Arguments.Request == "launch" {
+			rebuild = restartArgs.Arguments.Rebuild
 			launchArgs := restartArgs.Arguments.LaunchConfig
 			s.setLaunchAttachArgs(launchArgs.LaunchAttachCommonConfig)
 			// Extract new program arguments if provided
@@ -3112,7 +3119,7 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 	}
 
 	// TODO(deparker) handle args from the launch regarding re-recording.
-	discardedBreakpoints, err := s.debugger.Restart(false, "", resetArgs, newArgs, [3]string{}, false)
+	discardedBreakpoints, err := s.debugger.Restart(false, "", resetArgs, newArgs, [3]string{}, rebuild)
 	if err != nil {
 		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to restart", err.Error())
 		return
