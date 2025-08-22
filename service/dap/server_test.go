@@ -741,7 +741,7 @@ func TestLaunchWithFollowExec(t *testing.T) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8, len(Breakpoints)=1", sbpResp)
 		}
 		if !sbpResp.Body.Breakpoints[0].Verified {
-			t.Errorf("got breakpoints[0].Verified=true, want true")
+			t.Errorf("got breakpoints[0].Verified=false, want true")
 		}
 
 		// 9 >> continue, << continue << stopped
