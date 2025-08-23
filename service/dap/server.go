@@ -3090,7 +3090,7 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 
 	var newArgs []string
 	var resetArgs bool
-	var rebuild bool
+	rebuild := true
 
 	// Update launch/attach arguments if provided
 	if len(request.Arguments) > 0 {
@@ -3098,7 +3098,7 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 			Arguments struct {
 				Request string `json:"request"`
 				LaunchConfig
-				Rebuild bool `json:"rebuild,omitempty"`
+				Rebuild *bool `json:"rebuild,omitempty"`
 			}
 		}
 		err := json.Unmarshal(request.Arguments, &restartArgs)
@@ -3107,7 +3107,9 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 			return
 		}
 		if restartArgs.Arguments.Request == "launch" {
-			rebuild = restartArgs.Arguments.Rebuild
+			if restartArgs.Arguments.Rebuild != nil {
+				rebuild = *restartArgs.Arguments.Rebuild
+			}
 			launchArgs := restartArgs.Arguments.LaunchConfig
 			s.setLaunchAttachArgs(launchArgs.LaunchAttachCommonConfig)
 			// Extract new program arguments if provided

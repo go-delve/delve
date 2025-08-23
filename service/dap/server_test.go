@@ -6014,7 +6014,15 @@ func TestRestartRequest(t *testing.T) {
 				execute: func() {
 					checkStop(t, client, 1, "main.main", 16)
 
-					client.RestartRequest(nil)
+					client.RestartRequest(map[string]any{
+						"arguments": map[string]any{
+							"request":     "launch",
+							"mode":        "exec",
+							"program":     fixture.Path,
+							"stopOnEntry": false,
+							"rebuild":     false,
+						},
+					})
 					client.ExpectRestartResponse(t)
 
 					client.ExpectInitializedEvent(t)
@@ -6053,7 +6061,7 @@ func TestRestartRequestRebuild(t *testing.T) {
 							"mode":        "debug",
 							"program":     fixture.Source,
 							"stopOnEntry": false,
-							"rebuild":     true,
+							// "rebuild":     true, omitted as it should default to true
 						},
 					})
 					client.ExpectRestartResponse(t)
@@ -6101,6 +6109,7 @@ func TestRestartRequestWithNewArgs(t *testing.T) {
 							"program":     fixture.Path,
 							"stopOnEntry": false,
 							"args":        []string{"test", "pass flag"},
+							"rebuild":     false,
 						},
 					})
 					client.ExpectRestartResponse(t)
