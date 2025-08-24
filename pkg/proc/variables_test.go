@@ -1576,6 +1576,7 @@ func testCallFunctionIntl(t *testing.T, grp *proc.TargetGroup, p *proc.Target, t
 }
 
 func TestIssue4051(t *testing.T) {
+	protest.MustSupportFunctionCalls(t, testBackend)
 	protest.AllowRecording(t)
 	withTestProcess("issue4051", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		err := grp.Continue()
