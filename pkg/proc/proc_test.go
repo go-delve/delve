@@ -5479,7 +5479,7 @@ func TestReadClosure(t *testing.T) {
 	}
 	withTestProcess("closurecontents", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		avalues := []int64{0, 3, 9, 27}
-		for i := 0; i < 4; i++ {
+		for i := range 4 {
 			assertNoError(grp.Continue(), t, "Continue()")
 			accV := evalVariable(p, t, "acc")
 			t.Log(api.ConvertVar(accV).MultilineString("", ""))
