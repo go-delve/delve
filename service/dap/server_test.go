@@ -5383,7 +5383,7 @@ func TestLaunchDebugRequest(t *testing.T) {
 		// We reuse the harness that builds, but ignore the built binary,
 		// only relying on the source to be built in response to LaunchRequest.
 		runDebugSession(t, client, "launch", func() {
-			client.LaunchRequestWithArgs(map[string]interface{}{
+			client.LaunchRequestWithArgs(map[string]any{
 				"mode": "debug", "program": fixture.Source, "output": tmpBin,
 			})
 		})
@@ -6014,7 +6014,56 @@ func TestRestartRequest(t *testing.T) {
 				execute: func() {
 					checkStop(t, client, 1, "main.main", 16)
 
-					client.RestartRequest(nil)
+					client.RestartRequest(map[string]any{
+						"arguments": map[string]any{
+							"request":     "launch",
+							"mode":        "exec",
+							"program":     fixture.Path,
+							"stopOnEntry": false,
+							"rebuild":     false,
+						},
+					})
+					client.ExpectRestartResponse(t)
+
+					client.ExpectInitializedEvent(t)
+
+					client.ConfigurationDoneRequest()
+					client.ExpectConfigurationDoneResponse(t)
+
+					// Ensure breakpoints are preserved
+					// Now we should hit the breakpoint again at main.main
+					client.ExpectStoppedEvent(t)
+					checkStop(t, client, 1, "main.main", 16)
+				},
+				disconnect: true,
+			}})
+	})
+}
+
+func TestRestartRequestRebuild(t *testing.T) {
+	runTest(t, "loopprog", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]any{
+					"mode": "debug", "program": fixture.Source,
+				})
+			},
+			// Set breakpoints
+			fixture.Source, []int{16}, // Set breakpoint at main.main
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 16)
+
+					client.RestartRequest(map[string]any{
+						"arguments": map[string]any{
+							"request":     "launch",
+							"mode":        "debug",
+							"program":     fixture.Source,
+							"stopOnEntry": false,
+							// "rebuild":     true, omitted as it should default to true
+						},
+					})
 					client.ExpectRestartResponse(t)
 
 					client.ExpectInitializedEvent(t)
@@ -6060,6 +6109,7 @@ func TestRestartRequestWithNewArgs(t *testing.T) {
 							"program":     fixture.Path,
 							"stopOnEntry": false,
 							"args":        []string{"test", "pass flag"},
+							"rebuild":     false,
 						},
 					})
 					client.ExpectRestartResponse(t)
