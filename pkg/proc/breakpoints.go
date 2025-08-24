@@ -75,6 +75,8 @@ type Breakpoint struct {
 	TraceFollowCalls int
 }
 
+type DynCallFn func(th Thread, p *Target) (bool, error)
+
 // Breaklet represents one of multiple breakpoints that can overlap on a
 // single physical breakpoint.
 type Breaklet struct {
@@ -106,16 +108,22 @@ type Breaklet struct {
 	// the return value will determine if the breaklet should be considered
 	// active.
 	// The callback can have side-effects.
-	callback func(th Thread, p *Target) (bool, error)
+	Callback func(th Thread, p *Target) (bool, error)
 
 	// For WatchOutOfScopeBreakpoints and StackResizeBreakpoints the watchpoint
 	// field contains the watchpoint related to this out of scope sentinel.
 	watchpoint *Breakpoint
+
 }
 
+// SetCallBack sets the call back field, this was primarily added to prevent exporting callback field
+func (B *Breaklet) SetCallBack(callback DynCallFn) {
+	B.Callback = callback
+}
 // BreakpointKind determines the behavior of delve when the
 // breakpoint is reached.
 type BreakpointKind uint16
+
 
 const (
 	// UserBreakpoint is a user set breakpoint
@@ -339,9 +347,9 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 	}
 
 	if active {
-		if breaklet.callback != nil {
+		if breaklet.Callback != nil {
 			var err error
-			active, err = breaklet.callback(thread, tgt)
+			active, err = breaklet.Callback(thread, tgt)
 			if err != nil && bpstate.CondError == nil {
 				bpstate.CondError = err
 			}
