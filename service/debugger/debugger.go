@@ -157,7 +157,7 @@ type Config struct {
 	DisableASLR bool
 
 	RrOnProcessPid int
-	RrDelOnDetach bool
+	RrDelOnDetach  bool
 }
 
 // New creates a new Debugger. ProcessArgs specify the commandline arguments for the

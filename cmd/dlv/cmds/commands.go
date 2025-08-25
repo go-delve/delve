@@ -99,7 +99,7 @@ var (
 	loadConfErr error
 
 	rrOnProcessPid int
-	rrDelOnDetach bool
+	rrDelOnDetach  bool
 
 	attachWaitFor         string
 	attachWaitForInterval float64
@@ -1140,7 +1140,7 @@ func execute(attachPid int, processArgs []string, conf *config.Config, coreFile 
 				Stderr:                proc.OutputRedirect{Path: redirects[2]},
 				DisableASLR:           disableASLR,
 				RrOnProcessPid:        rrOnProcessPid,
-				RrDelOnDetach:	       rrDelOnDetach,
+				RrDelOnDetach:         rrDelOnDetach,
 				AttachWaitFor:         attachWaitFor,
 				AttachWaitForInterval: attachWaitForInterval,
 				AttachWaitForDuration: attachWaitForDuration,

@@ -314,7 +314,6 @@ func rrParseGdbCommand(line string) rrInit {
 func RecordAndReplay(cmd []string, wd string, quiet bool, delOnDetach bool, debugInfoDirs []string, stdin string, stdout proc.OutputRedirect, stderr proc.OutputRedirect) (*proc.TargetGroup, string, error) {
 	tracedir, err := Record(cmd, wd, quiet, stdin, stdout, stderr)
 	if tracedir == "" {
-		fmt.Printf("tracedir is nil\n")
 		return nil, "", err
 	}
 	t, err := Replay(tracedir, quiet, delOnDetach, debugInfoDirs, 0, strings.Join(cmd, " "))

@@ -4,11 +4,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"testing"
-	"os"
 
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc"
@@ -23,26 +23,27 @@ func TestMain(m *testing.M) {
 	logflags.Setup(logConf != "", logConf, "")
 	protest.RunTestsWithFixtures(m)
 }
-
+/*
 func withTestRetainRecording(name string, t testing.TB, fn func(grp *proc.TargetGroup, fixture protest.Fixture)) (string, error) {
-        fixture := protest.BuildFixture(t, name, 0)
-        protest.MustHaveRecordingAllowed(t)
-        if path, _ := exec.LookPath("rr"); path == "" {
-                t.Skip("test skipped, rr not found")
-        }
-        t.Log("recording")
-        grp, tracedir, err := gdbserial.RecordAndReplay([]string{fixture.Path}, ".", true, false, []string{}, "", proc.OutputRedirect{}, proc.OutputRedirect{})
-        if err != nil {
-                t.Fatal("Launch():", err)
-        }
-        t.Logf("replaying %q", tracedir)
+	fixture := protest.BuildFixture(t, name, 0)
+	protest.MustHaveRecordingAllowed(t)
+	if path, _ := exec.LookPath("rr"); path == "" {
+		t.Skip("test skipped, rr not found")
+	}
+	t.Log("recording")
+	grp, tracedir, err := gdbserial.RecordAndReplay([]string{fixture.Path}, ".", true, false, []string{}, "", proc.OutputRedirect{}, proc.OutputRedirect{})
+	if err != nil {
+		t.Fatal("Launch():", err)
+	}
+	t.Logf("replaying %q", tracedir)
 
-        defer grp.Detach(true)
-        fn(grp, fixture)
+	defer grp.Detach(true)
+	fn(grp, fixture)
 	return tracedir, err
 }
 
-func withTestRecording(name string, t testing.TB, fn func(grp *proc.TargetGroup, fixture protest.Fixture)) {
+*/
+func withTestRecording(name string, t testing.TB, delOnDetach bool, fn func(grp *proc.TargetGroup, fixture protest.Fixture)) {
 	fixture := protest.BuildFixture(t, name, 0)
 	protest.MustHaveRecordingAllowed(t)
 	if path, _ := exec.LookPath("rr"); path == "" {
@@ -86,51 +87,49 @@ func setFunctionBreakpoint(p *proc.Target, t *testing.T, fname string) *proc.Bre
 	return bp
 }
 func TestTraceDirCleanup(t *testing.T) {
-      protest.AllowRecording(t)
-      // Set the DELVE_RR_RECORD_FLAGS environment variable to pass --env to rr
-      oldFlags := os.Getenv("DELVE_RR_RECORD_FLAGS")
-      defer func() {
-          if oldFlags == "" {
-              os.Unsetenv("DELVE_RR_RECORD_FLAGS")
-          } else {
-              os.Setenv("DELVE_RR_RECORD_FLAGS", oldFlags)
-          }
-      }()
+	protest.AllowRecording(t)
+	// Set the DELVE_RR_RECORD_FLAGS environment variable to pass --output-trace-dir to rr
+	oldFlags := os.Getenv("DELVE_RR_RECORD_FLAGS")
+	defer func() {
+		if oldFlags == "" {
+			os.Unsetenv("DELVE_RR_RECORD_FLAGS")
+		} else {
+			os.Setenv("DELVE_RR_RECORD_FLAGS", oldFlags)
+		}
+	}()
 
-      homeDir, err := os.UserHomeDir()
-      if err != nil {
-          t.Fatal("Failed to get user home directory:", err)
-      }
-      dirname := fmt.Sprintf("--output-trace-dir %s/dlvrecord", homeDir)
-      // Set environment variable for the recorded program
-      os.Setenv("DELVE_RR_RECORD_FLAGS", dirname)
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal("Failed to get user home directory:", err)
+	}
+	dirname := fmt.Sprintf("--output-trace-dir %s/dlvrecord", homeDir)
+	// Set environment variable for the recorded program
+	os.Setenv("DELVE_RR_RECORD_FLAGS", dirname)
 
-      tracedir, err := withTestRetainRecording("testnextprog", t, func(grp *proc.TargetGroup, fixture protest.Fixture) {
-          p := grp.Selected
-          // Your test logic here - the recorded program will have MY_TEST_VAR=test_value
-          setFunctionBreakpoint(p, t, "main.main")
-          assertNoError(grp.Continue(), t, "Continue")
-          // ... rest of your test
-      })
-      if err != nil {
-                t.Fatal("withTestRetainRecording failed: ", err)
-      }
-        if _, err = os.ReadDir(tracedir); err !=nil {
-                t.Fatal("Trace directory does not exist! Flag delondetach failed: ", err)
-        }
+	tracedir, err := withTestRecording("testnextprog", t, false, func(grp *proc.TargetGroup, fixture protest.Fixture) {
+		p := grp.Selected
+		setFunctionBreakpoint(p, t, "main.main")
+		assertNoError(grp.Continue(), t, "Continue")
+	})
+	if err != nil {
+		t.Fatal("withTestRecording failed: ", err)
+	}
+	if _, err = os.ReadDir(tracedir); err != nil {
+		t.Fatal("Trace directory does not exist! Flag delondetach failed: ", err)
+	}
 
-        // Clean up the trace directory
-        defer func() {
-            if err := os.RemoveAll(tracedir); err != nil {
-                t.Logf("Failed to remove trace directory %s: %v", tracedir, err)
-            }
-        }()
+	// Clean up the trace directory
+	defer func() {
+		if err := os.SafeRemoveAll(tracedir); err != nil {
+			t.Logf("Failed to remove trace directory %s: %v", tracedir, err)
+		}
+	}()
 
-  }
+}
 
 func TestRestartAfterExit(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestRecording("testnextprog", t, func(grp *proc.TargetGroup, fixture protest.Fixture) {
+	withTestRecording("testnextprog", t, true, func(grp *proc.TargetGroup, fixture protest.Fixture) {
 		p := grp.Selected
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(grp.Continue(), t, "Continue")
@@ -158,7 +157,7 @@ func TestRestartAfterExit(t *testing.T) {
 
 func TestRestartDuringStop(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestRecording("testnextprog", t, func(grp *proc.TargetGroup, fixture protest.Fixture) {
+	withTestRecording("testnextprog", t, true, func(grp *proc.TargetGroup, fixture protest.Fixture) {
 		p := grp.Selected
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(grp.Continue(), t, "Continue")
@@ -200,7 +199,7 @@ func setFileBreakpoint(p *proc.Target, t *testing.T, fixture protest.Fixture, li
 
 func TestReverseBreakpointCounts(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestRecording("bpcountstest", t, func(grp *proc.TargetGroup, fixture protest.Fixture) {
+	withTestRecording("bpcountstest", t, true, func(grp *proc.TargetGroup, fixture protest.Fixture) {
 		p := grp.Selected
 		endbp := setFileBreakpoint(p, t, fixture, 28)
 		assertNoError(grp.Continue(), t, "Continue()")
@@ -256,7 +255,7 @@ func getPosition(grp *proc.TargetGroup, t *testing.T) (when string, loc *proc.Lo
 
 func TestCheckpoints(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestRecording("continuetestprog", t, func(grp *proc.TargetGroup, fixture protest.Fixture) {
+	withTestRecording("continuetestprog", t, true, func(grp *proc.TargetGroup, fixture protest.Fixture) {
 		p := grp.Selected
 		// Continues until start of main.main, record output of 'when'
 		bp := setFunctionBreakpoint(p, t, "main.main")
@@ -345,7 +344,7 @@ func TestCheckpoints(t *testing.T) {
 func TestIssue1376(t *testing.T) {
 	// Backward Continue should terminate when it encounters the start of the process.
 	protest.AllowRecording(t)
-	withTestRecording("continuetestprog", t, func(grp *proc.TargetGroup, fixture protest.Fixture) {
+	withTestRecording("continuetestprog", t, true, func(grp *proc.TargetGroup, fixture protest.Fixture) {
 		p := grp.Selected
 		bp := setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(grp.Continue(), t, "Continue (forward)")
