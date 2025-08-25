@@ -338,7 +338,7 @@ Called with more arguments it will execute a command on the specified goroutine.
 	breakpoints [-a] [-save <filename>]
 
 Specifying -a prints all physical breakpoint, including internal breakpoints.
-Specifying -save <filename> saves all breakpoints to the specified file in a format that can be loaded later using the 'source' command.`},
+Speciftying -save <filename> saves all breakpoints to the specified file in a format that can be loaded later using the 'source' command.`},
 		{aliases: []string{"print", "p"}, group: dataCmds, allowedPrefixes: onPrefix | deferredPrefix, cmdFn: c.printVar, helpMsg: `Evaluate an expression.
 
 	[goroutine <n>] [frame <m>] print [%format] <expression>
@@ -1687,9 +1687,10 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 	// Parse arguments
 	var showAll bool
 	var saveFile string
-	
+
 	if args != "" {
 		argv := strings.Fields(args)
+	argsLoop:
 		for i, arg := range argv {
 			switch arg {
 			case "-a":
@@ -1699,7 +1700,7 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 					return errors.New("missing filename after -save flag")
 				}
 				saveFile = argv[i+1]
-				break // Exit loop since we found -save and its argument
+				break argsLoop // Exit loop since we found -save and its argument
 			}
 		}
 	}
@@ -2657,7 +2658,6 @@ func (c *Commands) sourceCommand(t *Term, ctx callContext, args string) error {
 
 	return c.executeFile(t, args)
 }
-
 
 var errDisasmUsage = errors.New("wrong number of arguments: disassemble [-a <start> <end>] [-l <locspec>]")
 
