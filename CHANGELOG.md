@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.25.2] 2025-08-26
+
+### Added
+
+* Added notifications for debuginfod downloads (#3980, @aarzilli)
+
+### Fixed
+
+* Fixed restart behavior of DAP server (#4068, @derekparker)
+* Various fixes for loong64 backend (#4095, #4100, @yelvens)
+* Miscellaneous minor bug fixes (#4067, #4090, #4089, @aarzilli)
+
+### Changed
+
+* Miscellaneous code quality improvements (#4088, @cui)
+
 ## [1.25.1] 2025-07-18
 
 ### Added
