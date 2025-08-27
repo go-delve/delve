@@ -1372,6 +1372,21 @@ func TestStaticcheck(t *testing.T) {
 	checkAutogenDoc(t, "_scripts/staticcheck-out.txt", fmt.Sprintf("staticcheck %s > _scripts/staticcheck-out.txt", strings.Join(args, " ")), out)
 }
 
+func TestCapsLock(t *testing.T) {
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) {
+		t.Skip("requires at least Go 1.24 to run test (go mod tool directive is used)")
+	}
+	_, err := exec.LookPath("capslock")
+	if err != nil {
+		t.Skip("capslock not installed")
+	}
+	args := []string{"tool", "capslock", "-packages", "./cmd/dlv"}
+	cmd := exec.Command("go", args...)
+	cmd.Dir = protest.ProjectRoot()
+	out, _ := cmd.CombinedOutput()
+	checkAutogenDoc(t, "_scripts/capslock-out.txt", fmt.Sprintf("capslock %s > _scripts/capslock-out.txt", strings.Join(args, " ")), out)
+}
+
 func TestDefaultBinary(t *testing.T) {
 	// Check that when delve is run twice in the same directory simultaneously
 	// it will pick different default output binary paths.
