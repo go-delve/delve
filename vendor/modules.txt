@@ -21,9 +21,9 @@ github.com/cpuguy83/go-md2man/v2/md2man
 # github.com/creack/pty v1.1.20
 ## explicit; go 1.13
 github.com/creack/pty
-# github.com/derekparker/trie v0.0.0-20230829180723-39f4de51ef7d
-## explicit; go 1.19
-github.com/derekparker/trie
+# github.com/derekparker/trie/v3 v3.1.0
+## explicit; go 1.23.1
+github.com/derekparker/trie/v3
 # github.com/go-delve/liner v1.2.3-0.20231231155935-4726ab1d7f62
 ## explicit
 github.com/go-delve/liner
