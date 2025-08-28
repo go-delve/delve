@@ -2594,7 +2594,12 @@ func TestGoroutinesGrouping(t *testing.T) {
 	withTestClient2("goroutinegroup", t, func(c service.Client) {
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue")
-		_, ggrp, _, _, err := c.ListGoroutinesWithFilter(0, 0, nil, &api.GoroutineGroupingOptions{GroupBy: api.GoroutineLabel, GroupByKey: "name", MaxGroupMembers: 5, MaxGroups: 10}, nil)
+		_, ggrp, _, _, err := c.ListGoroutinesWithFilter(0, 0, nil, &api.GoroutineGroupingOptions{
+			GroupBy:         api.GoroutineLabel,
+			GroupByKey:      "name",
+			MaxGroupMembers: 5,
+			MaxGroups:       10,
+		}, nil)
 		assertNoError(err, t, "ListGoroutinesWithFilter (group by label)")
 		t.Logf("%#v\n", ggrp)
 		if len(ggrp) < 5 {
