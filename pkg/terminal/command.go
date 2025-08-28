@@ -152,9 +152,9 @@ A tracepoint is a breakpoint that does not stop the execution of the program, in
 
 See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"watch"}, group: breakCmds, cmdFn: watchpoint, helpMsg: `Set watchpoint.
-	
+
 	watch [-r|-w|-rw] <expr>
-	
+
 	-r	stops when the memory location is read
 	-w	stops when the memory location is written
 	-rw	stops when the memory location is read or written
@@ -176,7 +176,7 @@ For recorded targets the command takes the following forms:
 	restart					resets to the start of the recording
 	restart [checkpoint]			resets the recording to the given checkpoint
 	restart -r [newargv...]	[redirects...]	re-records the target process
-	
+
 For live targets the command takes the following forms:
 
 	restart [newargv...] [redirects...]	restarts the process
@@ -213,9 +213,9 @@ Optional [count] argument allows you to skip multiple lines.
 `},
 		{aliases: []string{"stepout", "so"}, group: runCmds, allowedPrefixes: revPrefix, cmdFn: c.stepout, helpMsg: "Step out of the current function."},
 		{aliases: []string{"call"}, group: runCmds, cmdFn: c.call, helpMsg: `Resumes process, injecting a function call (EXPERIMENTAL!!!)
-	
+
 	call [-unsafe] <function call expression>
-	
+
 Current limitations:
 - only pointers to stack-allocated objects can be passed as argument.
 - only some automatic type conversions are supported.
@@ -274,34 +274,34 @@ To only display goroutines where the specified location contains (or does not co
 	curloc: filter by the location of the topmost stackframe (including frames inside private runtime functions)
 	goloc: filter by the location of the go instruction that created the goroutine
 	startloc: filter by the location of the start function
-	
+
 To only display goroutines that have (or do not have) the specified label key and value, use:
 
 	goroutines -with label key=value
 	goroutines -without label key=value
-	
+
 To only display goroutines that have (or do not have) the specified label key, use:
 
 	goroutines -with label key
 	goroutines -without label key
-	
+
 To only display goroutines that are running (or are not running) on a OS thread, use:
 
 
 	goroutines -with running
 	goroutines -without running
-	
+
 To only display user (or runtime) goroutines, use:
 
 	goroutines -with user
 	goroutines -without user
 
 CHANNELS
-	
+
 To only show goroutines waiting to send to or receive from a specific channel use:
 
 	goroutines -chan expr
-	
+
 Note that 'expr' must not contain spaces.
 
 GROUPING
@@ -339,10 +339,11 @@ Called without arguments it will show information about the current goroutine.
 Called with a single argument it will switch to the specified goroutine.
 Called with more arguments it will execute a command on the specified goroutine.`},
 		{aliases: []string{"breakpoints", "bp"}, group: breakCmds, cmdFn: breakpoints, helpMsg: `Print out info for active breakpoints.
-	
-	breakpoints [-a]
 
-Specifying -a prints all physical breakpoint, including internal breakpoints.`},
+	breakpoints [-a] [-save <filename>]
+
+Specifying -a prints all physical breakpoint, including internal breakpoints.
+Speciftying -save <filename> saves all breakpoints to the specified file in a format that can be loaded later using the 'source' command.`},
 		{aliases: []string{"print", "p"}, group: dataCmds, allowedPrefixes: onPrefix | deferredPrefix, cmdFn: c.printVar, helpMsg: `Evaluate an expression.
 
 	[goroutine <n>] [frame <m>] print [%format] <expression>
@@ -401,9 +402,9 @@ If regex is specified only package variables with a name matching it will be ret
 
 Argument -a shows more registers. Individual registers can also be displayed by 'print' and 'display'. See Documentation/cli/expr.md.`},
 		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: `Exit the debugger.
-		
+
 	exit [-c]
-	
+
 When connected to a headless instance started with the --accept-multiclient, pass -c to resume the execution of the target process before disconnecting.`},
 		{aliases: []string{"list", "ls", "l"}, cmdFn: listCommand, helpMsg: `Show source code.
 
@@ -473,7 +474,7 @@ Executes the specified command (print, args, locals) in the context of the n-th 
 		{aliases: []string{"source"}, cmdFn: c.sourceCommand, helpMsg: `Executes a file containing a list of delve commands
 
 	source <path>
-	
+
 If path ends with the .star extension it will be interpreted as a starlark script. See Documentation/cli/starlark.md for the syntax.
 
 If path is a single '-' character an interactive starlark interpreter will start instead. Type 'exit' to exit.`},
@@ -489,11 +490,11 @@ If no argument is specified the function being executed in the selected stack fr
 
 	on <breakpoint name or id> <command>
 	on <breakpoint name or id> -edit
-	
 
-Supported commands: print, stack, goroutine, trace and cond. 
+
+Supported commands: print, stack, goroutine, trace and cond.
 To convert a breakpoint into a tracepoint use:
-	
+
 	on <breakpoint name or id> trace
 
 The command 'on <bp> cond <cond-arguments>' is equivalent to 'cond <bp> <cond-arguments>'.
@@ -523,7 +524,7 @@ With the -hitcount option a condition on the breakpoint hit count can be set, th
 The -per-g-hitcount option works like -hitcount, but use per goroutine hitcount to compare with n.
 
 With the -clear option a condition on the breakpoint can removed.
-	
+
 The '% n' form means we should stop at the breakpoint when the hitcount is a multiple of n.
 
 Examples:
@@ -572,7 +573,7 @@ Adds, removes or clears debug-info-directories.`},
 		{aliases: []string{"edit", "ed"}, cmdFn: edit, helpMsg: `Open where you are in $DELVE_EDITOR or $EDITOR
 
 	edit [locspec]
-	
+
 If locspec is omitted edit will open the current source file in the editor, otherwise it will open the specified location.`},
 		{aliases: []string{"libraries"}, cmdFn: libraries, helpMsg: `List loaded dynamic libraries`},
 
@@ -1726,10 +1727,78 @@ func toggle(t *Term, ctx callContext, args string) error {
 }
 
 func breakpoints(t *Term, ctx callContext, args string) error {
-	breakPoints, err := t.client.ListBreakpoints(args == "-a")
+	// Parse arguments
+	var showAll bool
+	var saveFile string
+
+	if args != "" {
+		argv := strings.Fields(args)
+	argsLoop:
+		for i, arg := range argv {
+			switch arg {
+			case "-a":
+				showAll = true
+			case "-save":
+				if i+1 >= len(argv) {
+					return errors.New("missing filename after -save flag")
+				}
+				saveFile = argv[i+1]
+				break argsLoop // Exit loop since we found -save and its argument
+			}
+		}
+	}
+
+	breakPoints, err := t.client.ListBreakpoints(showAll)
 	if err != nil {
 		return err
 	}
+
+	// If -save flag is provided, save breakpoints to file
+	if saveFile != "" {
+		file, err := os.OpenFile(saveFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+		if err != nil {
+			if os.IsExist(err) {
+				return fmt.Errorf("file '%s' already exists and cannot be overwritten", saveFile)
+			}
+			return fmt.Errorf("failed to open file '%s': %w", saveFile, err)
+		}
+		defer file.Close()
+		w := bufio.NewWriter(file)
+		defer w.Flush()
+
+		for _, bp := range breakPoints {
+			// We don't need to store these breakpoints
+			if bp.ID < 0 {
+				continue
+			}
+			var err error
+			if bp.Tracepoint {
+				_, err = fmt.Fprintf(w, "trace %s:%d\n", bp.File, bp.Line)
+			} else {
+				_, err = fmt.Fprintf(w, "break %s:%d\n", bp.File, bp.Line)
+			}
+			if err != nil {
+				return fmt.Errorf("failed to write breakpoint to file %s:%d", bp.File, bp.Line)
+			}
+			if len(bp.Cond) > 0 {
+				_, err = fmt.Fprintf(w, "condition %d %s\n", bp.ID, bp.Cond)
+				if err != nil {
+					return fmt.Errorf("failed to write condition to file %d:%s", bp.ID, bp.Cond)
+				}
+			}
+			if bp.Disabled {
+				_, err = fmt.Fprintf(w, "toggle %d\n", bp.ID)
+				if err != nil {
+					return fmt.Errorf("failed to write breakpoint status to file %d", bp.ID)
+				}
+			}
+		}
+
+		fmt.Printf("Breakpoints successfully saved to '%s'\n", saveFile)
+		return nil
+	}
+
+	// Display breakpoints (original functionality)
 	slices.SortFunc(breakPoints, func(a, b *api.Breakpoint) int { return cmp.Compare(a.ID, b.ID) })
 	for _, bp := range breakPoints {
 		enabled := "(enabled)"
