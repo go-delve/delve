@@ -131,7 +131,7 @@ func ConfigureSetSimple(rest string, cfgname string, field reflect.Value) error 
 	return nil
 }
 
-func ConfigureList(w io.Writer, config interface{}, tag string) {
+func ConfigureList(w io.Writer, config any, tag string) {
 	it := IterateConfiguration(config, tag)
 	for it.Next() {
 		fieldName, field := it.Field()
@@ -172,7 +172,7 @@ type configureIterator struct {
 	tag      string
 }
 
-func IterateConfiguration(conf interface{}, tag string) *configureIterator {
+func IterateConfiguration(conf any, tag string) *configureIterator {
 	cfgValue := reflect.ValueOf(conf).Elem()
 	cfgType := cfgValue.Type()
 
@@ -193,7 +193,7 @@ func (it *configureIterator) Field() (name string, field reflect.Value) {
 	return
 }
 
-func ConfigureListByName(conf interface{}, name, tag string) string {
+func ConfigureListByName(conf any, name, tag string) string {
 	if name == "" {
 		return ""
 	}
@@ -209,7 +209,7 @@ func ConfigureListByName(conf interface{}, name, tag string) string {
 	return ""
 }
 
-func ConfigureFindFieldByName(conf interface{}, name, tag string) reflect.Value {
+func ConfigureFindFieldByName(conf any, name, tag string) reflect.Value {
 	it := IterateConfiguration(conf, tag)
 	for it.Next() {
 		fieldName, field := it.Field()

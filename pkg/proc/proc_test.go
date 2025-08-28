@@ -307,7 +307,7 @@ func findFileLocation(p *proc.Target, t *testing.T, file string, lineno int) uin
 }
 
 func TestHalt(t *testing.T) {
-	stopChan := make(chan interface{}, 1)
+	stopChan := make(chan any, 1)
 	withTestProcess("loopprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.loop")
 		assertNoError(grp.Continue(), t, "Continue")
@@ -2371,7 +2371,7 @@ func TestNegativeIntEvaluation(t *testing.T) {
 	testcases := []struct {
 		name  string
 		typ   string
-		value interface{}
+		value any
 	}{
 		{"ni8", "int8", int64(-5)},
 		{"ni16", "int16", int64(-5)},
@@ -2398,7 +2398,7 @@ func TestIssue683(t *testing.T) {
 	withTestProcess("issue683", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(grp.Continue(), t, "First Continue()")
-		for i := 0; i < 20; i++ {
+		for range 20 {
 			// eventually an error about the source file not being found will be
 			// returned, the important thing is that we shouldn't panic
 			err := grp.Step()
@@ -2449,7 +2449,7 @@ func TestNextInDeferReturn(t *testing.T) {
 		// can not step out of the runtime.deferreturn and all the way to the
 		// point where the target program panics.
 		setFunctionBreakpoint(p, t, "main.sampleFunction")
-		for i := 0; i < 20; i++ {
+		for i := range 20 {
 			loc, err := proc.ThreadLocation(p.CurrentThread())
 			assertNoError(err, t, "CurrentThread().Location()")
 			t.Logf("at %#x %s:%d", loc.PC, loc.File, loc.Line)
@@ -4861,7 +4861,7 @@ func TestManualStopWhileStopped(t *testing.T) {
 			repeatsFast = 5
 		)
 
-		for i := 0; i < repeatsSlow; i++ {
+		for i := range repeatsSlow {
 			t.Logf("Continue %d (slow)", i)
 			done := make(chan struct{})
 			go asyncCont(done)
@@ -4872,7 +4872,7 @@ func TestManualStopWhileStopped(t *testing.T) {
 			time.Sleep(1 * time.Second)
 			<-done
 		}
-		for i := 0; i < repeatsFast; i++ {
+		for i := range repeatsFast {
 			t.Logf("Continue %d (fast)", i)
 			rch := make(chan struct{})
 			done := make(chan struct{})

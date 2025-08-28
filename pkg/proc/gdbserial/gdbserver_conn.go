@@ -394,7 +394,7 @@ func (conn *gdbConn) readAuxv() ([]byte, error) {
 func (conn *gdbConn) qXfer(kind, annex string, binary bool) ([]byte, error) {
 	out := []byte{}
 	for {
-		cmd := []byte(fmt.Sprintf("$qXfer:%s:read:%s:%x,fff", kind, annex, len(out)))
+		cmd := fmt.Appendf(nil, "$qXfer:%s:read:%s:%x,fff", kind, annex, len(out))
 		err := conn.send(cmd)
 		if err != nil {
 			return nil, err
@@ -1509,7 +1509,7 @@ func wiredecode(in, buf []byte) (newbuf, msg []byte) {
 			} else {
 				n := in[i+1] - 29
 				r := buf[len(buf)-1]
-				for j := uint8(0); j < n; j++ {
+				for range n {
 					buf = append(buf, r)
 				}
 				i++

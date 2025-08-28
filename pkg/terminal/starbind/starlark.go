@@ -197,7 +197,7 @@ func (env *Env) printFunc() func(_ *starlark.Thread, msg string) {
 // Source can be either a []byte, a string or a io.Reader. If source is nil
 // Execute will execute the file specified by 'path'.
 // After the file is executed if a function named mainFnName exists it will be called, passing args to it.
-func (env *Env) Execute(path string, source interface{}, mainFnName string, args []interface{}) (_ starlark.Value, _err error) {
+func (env *Env) Execute(path string, source any, mainFnName string, args []any) (_ starlark.Value, _err error) {
 	defer func() {
 		err := recover()
 		if err == nil {
@@ -321,7 +321,7 @@ func (env *Env) createCommand(name string, val starlark.Value) error {
 }
 
 // callMain calls the main function in globals, if one was defined.
-func (env *Env) callMain(thread *starlark.Thread, globals starlark.StringDict, mainFnName string, args []interface{}) (starlark.Value, error) {
+func (env *Env) callMain(thread *starlark.Thread, globals starlark.StringDict, mainFnName string, args []any) (starlark.Value, error) {
 	if mainFnName == "" {
 		return starlark.None, nil
 	}

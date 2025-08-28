@@ -265,7 +265,7 @@ type AttachConfig struct {
 // unmarshalLaunchAttachArgs wraps unmarshaling of launch/attach request's
 // arguments attribute. Upon unmarshal failure, it returns an error massaged
 // to be suitable for end-users.
-func unmarshalLaunchAttachArgs(input json.RawMessage, config interface{}) error {
+func unmarshalLaunchAttachArgs(input json.RawMessage, config any) error {
 	if err := json.Unmarshal(input, config); err != nil {
 		if uerr, ok := err.(*json.UnmarshalTypeError); ok {
 			// Format json.UnmarshalTypeError error string in our own way. E.g.,
@@ -284,7 +284,7 @@ func unmarshalLaunchAttachArgs(input json.RawMessage, config interface{}) error 
 	return nil
 }
 
-func prettyPrint(config interface{}) string {
+func prettyPrint(config any) string {
 	pretty, err := json.MarshalIndent(config, "", "\t")
 	if err != nil {
 		return fmt.Sprintf("%#v", config)
@@ -294,7 +294,7 @@ func prettyPrint(config interface{}) string {
 
 // BuildFlags is either string or []string.
 type BuildFlags struct {
-	value interface{}
+	value any
 }
 
 func (s *BuildFlags) UnmarshalJSON(b []byte) error {

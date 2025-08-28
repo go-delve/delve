@@ -57,7 +57,7 @@ var PathsToRemove []string
 func FindFixturesDir() string {
 	parent := ".."
 	fixturesDir := "_fixtures"
-	for depth := 0; depth < 10; depth++ {
+	for range 10 {
 		if _, err := os.Stat(fixturesDir); err == nil {
 			break
 		}

@@ -35,7 +35,7 @@ const (
 
 type seqTest struct {
 	cf  contFunc
-	pos interface{}
+	pos any
 }
 
 func testseq(program string, contFunc contFunc, testcases []nextTest, initialLocation string, t *testing.T) {

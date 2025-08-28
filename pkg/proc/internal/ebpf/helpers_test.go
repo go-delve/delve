@@ -9,7 +9,7 @@ import (
 	"github.com/go-delve/delve/pkg/proc/internal/ebpf/testhelper"
 )
 
-func compareStructTypes(t *testing.T, gostructVal, cstructVal interface{}) {
+func compareStructTypes(t *testing.T, gostructVal, cstructVal any) {
 	gostruct := reflect.ValueOf(gostructVal).Type()
 	cstruct := reflect.ValueOf(cstructVal).Type()
 	if gostruct.NumField() != cstruct.NumField() {

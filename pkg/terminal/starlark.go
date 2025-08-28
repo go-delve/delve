@@ -4,6 +4,7 @@ import (
 	"github.com/go-delve/delve/pkg/terminal/starbind"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
+	"slices"
 )
 
 type starlarkContext struct {
@@ -24,13 +25,10 @@ func (ctx starlarkContext) RegisterCommand(name, helpMsg string, fn func(args st
 	found := false
 	for i := range ctx.term.cmds.cmds {
 		cmd := &ctx.term.cmds.cmds[i]
-		for _, alias := range cmd.aliases {
-			if alias == name {
-				cmd.cmdFn = cmdfn
-				cmd.helpMsg = helpMsg
-				found = true
-				break
-			}
+		if slices.Contains(cmd.aliases, name) {
+			cmd.cmdFn = cmdfn
+			cmd.helpMsg = helpMsg
+			found = true
 		}
 		if found {
 			break

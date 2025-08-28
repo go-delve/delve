@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -19,10 +20,8 @@ func (s *Session) delveCmd(goid, frame int, cmdstr string) (string, error) {
 		args = strings.TrimSpace(vals[1])
 	}
 	for _, cmd := range debugCommands(s) {
-		for _, alias := range cmd.aliases {
-			if alias == cmdname {
-				return cmd.cmdFn(goid, frame, args)
-			}
+		if slices.Contains(cmd.aliases, cmdname) {
+			return cmd.cmdFn(goid, frame, args)
 		}
 	}
 	return "", errNoCmd
@@ -92,10 +91,8 @@ func (s *Session) helpMessage(_, _ int, args string) (string, error) {
 	var buf bytes.Buffer
 	if args != "" {
 		for _, cmd := range debugCommands(s) {
-			for _, alias := range cmd.aliases {
-				if alias == args {
-					return cmd.helpMsg, nil
-				}
+			if slices.Contains(cmd.aliases, args) {
+				return cmd.helpMsg, nil
 			}
 		}
 		return "", errNoCmd

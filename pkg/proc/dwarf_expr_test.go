@@ -54,7 +54,7 @@ type fakeMemory struct {
 	data []byte
 }
 
-func newFakeMemory(base uint64, contents ...interface{}) *fakeMemory {
+func newFakeMemory(base uint64, contents ...any) *fakeMemory {
 	mem := &fakeMemory{base: base}
 	var buf bytes.Buffer
 	for _, x := range contents {

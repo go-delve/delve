@@ -122,7 +122,7 @@ func (b *Builder) TagClose() {
 }
 
 // Attr adds an attribute to the current DIE.
-func (b *Builder) Attr(attr dwarf.Attr, val interface{}) dwarf.Offset {
+func (b *Builder) Attr(attr dwarf.Attr, val any) dwarf.Offset {
 	if len(b.tagStack) == 0 {
 		panic("Attr with no open tags")
 	}
@@ -269,7 +269,7 @@ func (b *Builder) AddSubprogram(fnname string, lowpc, highpc uint64) dwarf.Offse
 // AddVariable adds a new variable entry to debug_info.
 // Will write a DW_TAG_variable, followed by a DW_AT_type and a
 // DW_AT_location.
-func (b *Builder) AddVariable(varname string, typ dwarf.Offset, loc interface{}) dwarf.Offset {
+func (b *Builder) AddVariable(varname string, typ dwarf.Offset, loc any) dwarf.Offset {
 	r := b.TagOpen(dwarf.TagVariable, varname)
 	b.Attr(dwarf.AttrType, typ)
 	b.Attr(dwarf.AttrLocation, loc)

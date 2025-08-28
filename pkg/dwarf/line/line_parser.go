@@ -32,7 +32,7 @@ type DebugLineInfo struct {
 	Instructions []byte
 	Lookup       map[string]*FileEntry
 
-	Logf func(string, ...interface{})
+	Logf func(string, ...any)
 
 	// stateMachineCache[pc] is a state machine stopped at pc
 	stateMachineCache map[uint64]*StateMachine
@@ -63,7 +63,7 @@ type FileEntry struct {
 type DebugLines []*DebugLineInfo
 
 // ParseAll parses all debug_line segments found in data
-func ParseAll(data []byte, debugLineStr []byte, logfn func(string, ...interface{}), staticBase uint64, normalizeBackslash bool, ptrSize int) DebugLines {
+func ParseAll(data []byte, debugLineStr []byte, logfn func(string, ...any), staticBase uint64, normalizeBackslash bool, ptrSize int) DebugLines {
 	var (
 		lines = make(DebugLines, 0)
 		buf   = bytes.NewBuffer(data)
@@ -79,11 +79,11 @@ func ParseAll(data []byte, debugLineStr []byte, logfn func(string, ...interface{
 
 // Parse parses a single debug_line segment from buf. Compdir is the
 // DW_AT_comp_dir attribute of the associated compile unit.
-func Parse(compdir string, buf *bytes.Buffer, debugLineStr []byte, logfn func(string, ...interface{}), staticBase uint64, normalizeBackslash bool, ptrSize int) *DebugLineInfo {
+func Parse(compdir string, buf *bytes.Buffer, debugLineStr []byte, logfn func(string, ...any), staticBase uint64, normalizeBackslash bool, ptrSize int) *DebugLineInfo {
 	dbl := new(DebugLineInfo)
 	dbl.Logf = logfn
 	if logfn == nil {
-		dbl.Logf = func(string, ...interface{}) {}
+		dbl.Logf = func(string, ...any) {}
 	}
 	dbl.staticBase = staticBase
 	dbl.ptrSize = ptrSize
@@ -180,7 +180,7 @@ func parseIncludeDirs5(info *DebugLineInfo, buf *bytes.Buffer) bool {
 	}
 	dirCount, _ := leb128.DecodeUnsigned(buf)
 	info.IncludeDirs = make([]string, 0, dirCount)
-	for i := uint64(0); i < dirCount; i++ {
+	for range dirCount {
 		dirEntryFormReader.reset()
 		for dirEntryFormReader.next(buf) {
 			switch dirEntryFormReader.contentType {

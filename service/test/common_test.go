@@ -84,7 +84,7 @@ type locationFinder2 interface {
 	FindLocation(api.EvalScope, string, bool, [][2]string) ([]api.Location, string, error)
 }
 
-func findLocationHelper(t *testing.T, c interface{}, loc string, shouldErr bool, count int, checkAddr uint64) []uint64 {
+func findLocationHelper(t *testing.T, c any, loc string, shouldErr bool, count int, checkAddr uint64) []uint64 {
 	var locs []api.Location
 	var err error
 

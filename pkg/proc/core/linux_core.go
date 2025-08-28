@@ -255,7 +255,7 @@ func (t *linuxLOONG64Thread) ThreadID() int {
 type note struct {
 	Type elf.NType
 	Name string
-	Desc interface{} // Decoded Desc from the
+	Desc any // Decoded Desc from the
 }
 
 // readNotes reads all the notes from the notes prog in core.

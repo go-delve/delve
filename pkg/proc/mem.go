@@ -152,10 +152,7 @@ func newCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters
 		case op.ImmPiece:
 			buf := piece.Bytes
 			if buf == nil {
-				sz := 8
-				if piece.Size > sz {
-					sz = piece.Size
-				}
+				sz := max(piece.Size, 8)
 				if piece.Size == 0 && i == len(pieces)-1 {
 					piece.Size = arch.PtrSize() // DWARF doesn't say what this should be
 				}

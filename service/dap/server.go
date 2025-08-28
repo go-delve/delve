@@ -1137,7 +1137,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			outputRedirects [2]proc.OutputRedirect
 		)
 
-		for i := 0; i < 2; i++ {
+		for i := range 2 {
 			readers[i], outputRedirects[i], err = proc.Redirector()
 			if err != nil {
 				s.sendShowUserErrorResponse(request.Request, InternalError, "Internal Error",
@@ -1484,7 +1484,7 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 
 	breakpoints := make([]dap.Breakpoint, totalBps)
 	// Amend existing breakpoints.
-	for i := 0; i < totalBps; i++ {
+	for i := range totalBps {
 		want := metadataFunc(i)
 		got, ok := existingBps[want.name]
 		if got == nil || !ok {
@@ -1513,7 +1513,7 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 	s.clearBreakpoints(existingBps, createdBps)
 
 	// Add new breakpoints.
-	for i := 0; i < totalBps; i++ {
+	for i := range totalBps {
 		want := metadataFunc(i)
 		if _, ok := existingBps[want.name]; ok {
 			continue
@@ -2174,10 +2174,7 @@ func (s *Session) onStackTraceRequest(request *dap.StackTraceRequest) {
 	}
 
 	goroutineID := request.Arguments.ThreadId
-	start := request.Arguments.StartFrame
-	if start < 0 {
-		start = 0
-	}
+	start := max(request.Arguments.StartFrame, 0)
 	levels := s.args.StackTraceDepth
 	if request.Arguments.Levels > 0 {
 		levels = request.Arguments.Levels
@@ -4022,7 +4019,7 @@ func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int64) bool {
 }
 
 func (msg *logMessage) evaluate(s *Session, goid int64) string {
-	evaluated := make([]interface{}, len(msg.args))
+	evaluated := make([]any, len(msg.args))
 	for i := range msg.args {
 		exprVar, err := s.debugger.EvalVariableInScope(goid, 0, 0, msg.args[i], DefaultLoadConfig)
 		if err != nil {

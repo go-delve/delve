@@ -29,7 +29,7 @@ type linuxPrPsInfo struct {
 }
 
 func (p *nativeProcess) DumpProcessNotes(notes []elfwriter.Note, threadDone func()) (threadsDone bool, out []elfwriter.Note, err error) {
-	tobytes := func(x interface{}) []byte {
+	tobytes := func(x any) []byte {
 		out := new(bytes.Buffer)
 		_ = binary.Write(out, binary.LittleEndian, x)
 		return out.Bytes()

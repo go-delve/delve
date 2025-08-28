@@ -172,10 +172,7 @@ func (reg *DwarfRegister) FillBytes() {
 func (reg *DwarfRegister) Overwrite(reg2 *DwarfRegister) *DwarfRegister {
 	reg.FillBytes()
 	reg2.FillBytes()
-	width := len(reg.Bytes)
-	if len(reg2.Bytes) > len(reg.Bytes) {
-		width = len(reg2.Bytes)
-	}
+	width := max(len(reg2.Bytes), len(reg.Bytes))
 	b := make([]byte, width)
 	copy(b, reg.Bytes)
 	copy(b, reg2.Bytes)
