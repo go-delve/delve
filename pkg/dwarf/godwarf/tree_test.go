@@ -25,6 +25,7 @@ func assertRanges(t *testing.T, out, tgt [][2]uint64) {
 }
 
 func TestNormalizeRanges(t *testing.T) {
+	t.Parallel()
 	mr := makeRanges
 	//assertRanges(t, normalizeRanges(mr(105, 103, 90, 95, 25, 20, 20, 23)), mr(20, 23, 90, 95))
 	assertRanges(t, normalizeRanges(mr(10, 12, 12, 15)), mr(10, 15))
@@ -33,6 +34,7 @@ func TestNormalizeRanges(t *testing.T) {
 }
 
 func TestRangeContains(t *testing.T) {
+	t.Parallel()
 	mr := func(start, end uint64) [2]uint64 {
 		return [2]uint64{start, end}
 	}
@@ -59,6 +61,7 @@ func TestRangeContains(t *testing.T) {
 }
 
 func TestRangesContains(t *testing.T) {
+	t.Parallel()
 	mr := makeRanges
 	tcs := []struct {
 		rngs1, rngs2 [][2]uint64
@@ -90,6 +93,7 @@ func TestRangesContains(t *testing.T) {
 }
 
 func TestContainsPC(t *testing.T) {
+	t.Parallel()
 	mr := makeRanges
 
 	tcs := []struct {

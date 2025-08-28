@@ -17,11 +17,15 @@ func TestGoBuildArgsDashC(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		out := goBuildArgs("debug", []string{"pkg"}, tc.in, false)
-		tgt := config.SplitQuotedFields(tc.tgt, '\'')
-		t.Logf("%q -> %q", tc.in, out)
-		if !reflect.DeepEqual(out, tgt) {
-			t.Errorf("output mismatch input %q\noutput %q\ntarget %q", tc.in, out, tgt)
-		}
+		t.Run(tc.in, func(t *testing.T) {
+			t.Parallel()
+
+			out := goBuildArgs("debug", []string{"pkg"}, tc.in, false)
+			tgt := config.SplitQuotedFields(tc.tgt, '\'')
+			t.Logf("%q -> %q", tc.in, out)
+			if !reflect.DeepEqual(out, tgt) {
+				t.Errorf("output mismatch input %q\noutput %q\ntarget %q", tc.in, out, tgt)
+			}
+		})
 	}
 }

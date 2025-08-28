@@ -9,6 +9,7 @@ import (
 )
 
 func TestLoclist5(t *testing.T) {
+	t.Parallel()
 	buf := new(bytes.Buffer)
 
 	p32 := func(n uint32) { binary.Write(buf, binary.LittleEndian, n) }

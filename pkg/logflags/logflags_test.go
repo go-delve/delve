@@ -12,6 +12,7 @@ type dummyLogger struct {
 }
 
 func TestMakeLogger_usingLoggerFactory(t *testing.T) {
+	t.Parallel()
 	if loggerFactory != nil {
 		t.Fatalf("expected loggerFactory to be nil; but was <%v>", loggerFactory)
 	}
@@ -47,6 +48,7 @@ func TestMakeLogger_usingLoggerFactory(t *testing.T) {
 }
 
 func TestMakeLogger_usingDefaultBehavior(t *testing.T) {
+	t.Parallel()
 	if loggerFactory != nil {
 		t.Fatalf("expected loggerFactory to be nil; but was <%v>", loggerFactory)
 	}
@@ -80,6 +82,7 @@ func TestMakeLogger_usingDefaultBehavior(t *testing.T) {
 }
 
 func TestMakeLogger_usingDefaultBehaviorAndFlagged(t *testing.T) {
+	t.Parallel()
 	if loggerFactory != nil {
 		t.Fatalf("expected loggerFactory to be nil; but was <%v>", loggerFactory)
 	}

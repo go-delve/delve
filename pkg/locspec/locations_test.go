@@ -42,6 +42,7 @@ func assertNormalLocationSpec(t *testing.T, locstr string, tgt NormalLocationSpe
 }
 
 func TestFunctionLocationParsing(t *testing.T) {
+	t.Parallel()
 	// Function locations, simple package names, no line offset
 	assertNormalLocationSpec(t, "proc.(*Process).Continue", NormalLocationSpec{"proc.(*Process).Continue", &FuncLocationSpec{PackageName: "proc", ReceiverName: "Process", BaseName: "Continue"}, -1})
 	assertNormalLocationSpec(t, "proc.Process.Continue", NormalLocationSpec{"proc.Process.Continue", &FuncLocationSpec{PackageName: "proc", ReceiverName: "Process", BaseName: "Continue"}, -1})
@@ -75,6 +76,7 @@ func assertSubstitutePathEqual(t *testing.T, expected string, substituted string
 }
 
 func TestSubstitutePathUnix(t *testing.T) {
+	t.Parallel()
 	// Relative paths mapping
 	assertSubstitutePathEqual(t, "/my/asb/folder/relative/path", SubstitutePath("relative/path", [][2]string{{"", "/my/asb/folder/"}}))
 	assertSubstitutePathEqual(t, "/already/abs/path", SubstitutePath("/already/abs/path", [][2]string{{"", "/my/asb/folder/"}}))
@@ -95,6 +97,7 @@ func TestSubstitutePathUnix(t *testing.T) {
 }
 
 func TestSubstitutePathWindows(t *testing.T) {
+	t.Parallel()
 	// Relative paths mapping
 	assertSubstitutePathEqual(t, "c:\\my\\asb\\folder\\relative\\path", SubstitutePath("relative\\path", [][2]string{{"", "c:\\my\\asb\\folder\\"}}))
 	assertSubstitutePathEqual(t, "F:\\already\\abs\\path", SubstitutePath("F:\\already\\abs\\path", [][2]string{{"", "c:\\my\\asb\\folder\\"}}))
@@ -182,6 +185,7 @@ func platformCases() []tCase {
 }
 
 func TestSubstitutePath(t *testing.T) {
+	t.Parallel()
 	for _, c := range platformCases() {
 		subRules := [][2]string{}
 		for _, r := range c.rules {
