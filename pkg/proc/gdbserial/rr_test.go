@@ -23,7 +23,7 @@ func TestMain(m *testing.M) {
 	logflags.Setup(logConf != "", logConf, "")
 	protest.RunTestsWithFixtures(m)
 }
-/*
+
 func withTestRetainRecording(name string, t testing.TB, fn func(grp *proc.TargetGroup, fixture protest.Fixture)) (string, error) {
 	fixture := protest.BuildFixture(t, name, 0)
 	protest.MustHaveRecordingAllowed(t)
@@ -42,8 +42,8 @@ func withTestRetainRecording(name string, t testing.TB, fn func(grp *proc.Target
 	return tracedir, err
 }
 
-*/
-func withTestRecording(name string, t testing.TB, delOnDetach bool, fn func(grp *proc.TargetGroup, fixture protest.Fixture)) {
+
+func withTestRecording(name string, t testing.TB, fn func(grp *proc.TargetGroup, fixture protest.Fixture)) {
 	fixture := protest.BuildFixture(t, name, 0)
 	protest.MustHaveRecordingAllowed(t)
 	if path, _ := exec.LookPath("rr"); path == "" {
@@ -106,30 +106,36 @@ func TestTraceDirCleanup(t *testing.T) {
 	// Set environment variable for the recorded program
 	os.Setenv("DELVE_RR_RECORD_FLAGS", dirname)
 
-	tracedir, err := withTestRecording("testnextprog", t, false, func(grp *proc.TargetGroup, fixture protest.Fixture) {
-		p := grp.Selected
-		setFunctionBreakpoint(p, t, "main.main")
-		assertNoError(grp.Continue(), t, "Continue")
-	})
-	if err != nil {
-		t.Fatal("withTestRecording failed: ", err)
+	fixture := protest.BuildFixture(t, "testnextprog", 0)
+	protest.MustHaveRecordingAllowed(t)
+	if path, _ := exec.LookPath("rr"); path == "" {
+		t.Skip("test skipped, rr not found")
 	}
+	t.Log("recording")
+	grp, tracedir, err := gdbserial.RecordAndReplay([]string{fixture.Path}, ".", true, false, []string{}, "", proc.OutputRedirect{}, proc.OutputRedirect{})
+	if err != nil {
+		t.Fatal("Launch():", err)
+	}
+	t.Logf("replaying %q", tracedir)
+
+	defer grp.Detach(true)
+	p := grp.Selected
+	setFunctionBreakpoint(p, t, "main.main")
+	assertNoError(grp.Continue(), t, "Continue")
 	if _, err = os.ReadDir(tracedir); err != nil {
 		t.Fatal("Trace directory does not exist! Flag delondetach failed: ", err)
 	}
 
 	// Clean up the trace directory
 	defer func() {
-		if err := os.SafeRemoveAll(tracedir); err != nil {
-			t.Logf("Failed to remove trace directory %s: %v", tracedir, err)
-		}
+		protest.SafeRemoveAll(tracedir)
 	}()
 
 }
 
 func TestRestartAfterExit(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestRecording("testnextprog", t, true, func(grp *proc.TargetGroup, fixture protest.Fixture) {
+	withTestRecording("testnextprog", t, func(grp *proc.TargetGroup, fixture protest.Fixture) {
 		p := grp.Selected
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(grp.Continue(), t, "Continue")
@@ -157,7 +163,7 @@ func TestRestartAfterExit(t *testing.T) {
 
 func TestRestartDuringStop(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestRecording("testnextprog", t, true, func(grp *proc.TargetGroup, fixture protest.Fixture) {
+	withTestRecording("testnextprog", t, func(grp *proc.TargetGroup, fixture protest.Fixture) {
 		p := grp.Selected
 		setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(grp.Continue(), t, "Continue")
@@ -199,7 +205,7 @@ func setFileBreakpoint(p *proc.Target, t *testing.T, fixture protest.Fixture, li
 
 func TestReverseBreakpointCounts(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestRecording("bpcountstest", t, true, func(grp *proc.TargetGroup, fixture protest.Fixture) {
+	withTestRecording("bpcountstest", t, func(grp *proc.TargetGroup, fixture protest.Fixture) {
 		p := grp.Selected
 		endbp := setFileBreakpoint(p, t, fixture, 28)
 		assertNoError(grp.Continue(), t, "Continue()")
@@ -255,7 +261,7 @@ func getPosition(grp *proc.TargetGroup, t *testing.T) (when string, loc *proc.Lo
 
 func TestCheckpoints(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestRecording("continuetestprog", t, true, func(grp *proc.TargetGroup, fixture protest.Fixture) {
+	withTestRecording("continuetestprog", t, func(grp *proc.TargetGroup, fixture protest.Fixture) {
 		p := grp.Selected
 		// Continues until start of main.main, record output of 'when'
 		bp := setFunctionBreakpoint(p, t, "main.main")
@@ -344,7 +350,7 @@ func TestCheckpoints(t *testing.T) {
 func TestIssue1376(t *testing.T) {
 	// Backward Continue should terminate when it encounters the start of the process.
 	protest.AllowRecording(t)
-	withTestRecording("continuetestprog", t, true, func(grp *proc.TargetGroup, fixture protest.Fixture) {
+	withTestRecording("continuetestprog", t, func(grp *proc.TargetGroup, fixture protest.Fixture) {
 		p := grp.Selected
 		bp := setFunctionBreakpoint(p, t, "main.main")
 		assertNoError(grp.Continue(), t, "Continue (forward)")

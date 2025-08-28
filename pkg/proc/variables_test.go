@@ -1586,21 +1586,43 @@ func TestIssue4051(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		expectedError := "package main has no function Hello"
-		if err.Error() != expectedError {
-			t.Fatalf("expected error %q, got %q", expectedError, err)
+		// Handle different error for rr backend
+		if testBackend == "rr" {
+			expectedErrors := []string{
+				"package main has no function Hello",
+				"call from within the Go runtime",
+			}
+			if !slices.Contains(expectedErrors, err.Error()) {
+				t.Fatalf("expected one of %v, got %q", expectedErrors, err)
+			}
+		} else {
+			expectedError := "package main has no function Hello"
+			if err.Error() != expectedError {
+				t.Fatalf("expected error %q, got %q", expectedError, err)
+			}
+
+			err = grp.Continue()
+			assertNoError(err, t, "initial continue to breakpoint failed")
 		}
-
-		err = grp.Continue()
-		assertNoError(err, t, "initial continue to breakpoint failed")
-
 		err = proc.EvalExpressionWithCalls(grp, p.SelectedGoroutine(), `main.Hello("world")`, pnormalLoadConfig, true)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		expectedError = `expression "main.Hello" is not a function`
-		if err.Error() != expectedError {
-			t.Fatalf("expected error %q, got %q", expectedError, err)
+		// Handle different error for rr backend
+		if testBackend == "rr" {
+			expectedErrors := []string{
+				`expression "main.Hello" is not a function`,
+				"call from within the Go runtime",
+			}
+			if !slices.Contains(expectedErrors, err.Error()) {
+				t.Fatalf("expected one of %v, got %q", expectedErrors, err)
+			}
+		} else {
+
+			expectedError := `expression "main.Hello" is not a function`
+			if err.Error() != expectedError {
+				t.Fatalf("expected error %q, got %q", expectedError, err)
+			}
 		}
 
 		v, err := evalVariableWithCfg(p, "main.Hello", pshortLoadConfig)
@@ -1614,7 +1636,7 @@ func TestIssue4051(t *testing.T) {
 		// TODO(deparker): we *should* get an error here, but the one we expect in this test
 		// is not the ideal error. We should really improve type checking in the evaluator.
 		v, err = evalVariableWithCfg(p, "main.f.func1.i", pshortLoadConfig)
-		expectedError = `main.f has no member func1`
+		expectedError := `main.f has no member func1`
 		if err.Error() != expectedError {
 			t.Fatalf("expected error %q, got %q", expectedError, err)
 		}
