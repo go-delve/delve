@@ -89,7 +89,7 @@ func withTestProcess(name string, t testing.TB, fn func(p *proc.Target, grp *pro
 	withTestProcessArgs(name, t, ".", []string{}, 0, fn)
 }
 
-func startDelve(name string, t *testing.T) (*rpc2.RPCClient, func()) {
+func startDelve(name string, t *testing.T) (*rpc2.RPCClient, int, func()) {
 	t.Helper()
 
 	fixture := protest.BuildFixture(t, name, 0)
@@ -114,12 +114,16 @@ func startDelve(name string, t *testing.T) (*rpc2.RPCClient, func()) {
 	assertNoError(err, t, "stderr pipe")
 	assertNoError(cmd.Start(), t, "dlv exec")
 
+	var pid int
 	scan := bufio.NewScanner(stderr)
 	// wait for the debugger to start
 	for scan.Scan() {
 		text := scan.Text()
-		t.Log(text)
-		if strings.Contains(text, "API server pid = ") {
+		if strings.Contains(text, "Adding target") {
+			parts := strings.Split(text, "Adding target")
+			if len(parts) >= 2 {
+				fmt.Sscanf(parts[1], "%d", &pid)
+			}
 			break
 		}
 	}
@@ -133,7 +137,7 @@ func startDelve(name string, t *testing.T) (*rpc2.RPCClient, func()) {
 	assertNoError(err, t, "dialing")
 	rpcclient := rpc2.NewClientFromConn(conn)
 
-	return rpcclient, func() {
+	return rpcclient, pid, func() {
 		cmd.Process.Kill()
 		cmd.Wait()
 	}
@@ -248,9 +252,12 @@ func assertFunctionName(p *proc.Target, t *testing.T, fnname string, descr strin
 }
 
 func TestExit(t *testing.T) {
+	t.Parallel()
+
 	protest.AllowRecording(t)
-	client, stop := startDelve("continuetestprog", t)
+	client, pid, stop := startDelve("continuetestprog", t)
 	defer stop()
+	println("PID", pid)
 
 	state := <-client.Continue()
 	fmt.Printf("%+v\n", state)
@@ -260,25 +267,36 @@ func TestExit(t *testing.T) {
 	if state.ExitStatus != 0 {
 		t.Errorf("unexpected error status: %d", state.ExitStatus)
 	}
+	if state.Pid != pid {
+		t.Errorf("unexpected pid: %d, expected %d", state.Pid, pid)
+	}
 }
 
 func TestExitAfterContinue(t *testing.T) {
+	t.Parallel()
+
 	protest.AllowRecording(t)
-	withTestProcess("continuetestprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		setFunctionBreakpoint(p, t, "main.sayhi")
-		assertNoError(grp.Continue(), t, "First Continue()")
-		err := grp.Continue()
-		pe, ok := err.(proc.ErrProcessExited)
-		if !ok {
-			t.Fatalf("Continue() returned unexpected error type %s", pe)
-		}
-		if pe.Status != 0 {
-			t.Errorf("Unexpected error status: %d", pe.Status)
-		}
-		if pe.Pid != p.Pid() {
-			t.Errorf("Unexpected process id: %d", pe.Pid)
-		}
-	})
+	client, pid, stop := startDelve("continuetestprog", t)
+	defer stop()
+
+	_, err := client.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi"})
+	assertNoError(err, t, "CreateBreakpoint")
+
+	state := <-client.Continue()
+	if state.Exited {
+		t.Fatalf("process exited unexpectedly on first continue")
+	}
+
+	state = <-client.Continue()
+	if !state.Exited {
+		t.Fatalf("process did not exit as expected")
+	}
+	if state.ExitStatus != 0 {
+		t.Errorf("unexpected error status: %d", state.ExitStatus)
+	}
+	if state.Pid != pid {
+		t.Errorf("unexpected pid: %d", state.Pid)
+	}
 }
 
 func setFunctionBreakpoint(p *proc.Target, t testing.TB, fname string) *proc.Breakpoint {
