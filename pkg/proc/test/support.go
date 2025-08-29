@@ -431,11 +431,6 @@ func ProjectRoot() string {
 }
 
 func GetDlvBinary(t *testing.T) string {
-	// In case this was set in the environment
-	// from getDlvBinEBPF lets clear it here, so
-	// we can ensure we don't get build errors
-	// depending on the test ordering.
-	t.Setenv("CGO_LDFLAGS", ldFlags)
 	var tags []string
 	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
 		tags = []string{"-tags=exp.winarm64"}
