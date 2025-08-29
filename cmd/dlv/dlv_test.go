@@ -875,7 +875,7 @@ func TestDAPCmdWithClient(t *testing.T) {
 // TestDAPCmdWithUnixClient tests dlv dap --client-addr can be started with unix domain socket and shut down.
 func TestDAPCmdWithUnixClient(t *testing.T) {
 	t.Parallel()
-	tmpdir := os.TempDir()
+	tmpdir := t.TempDir()
 	if tmpdir == "" {
 		return
 	}
@@ -1466,7 +1466,7 @@ func TestDefaultBinary(t *testing.T) {
 
 func TestUnixDomainSocket(t *testing.T) {
 	t.Parallel()
-	tmpdir := os.TempDir()
+	tmpdir := t.TempDir()
 	if tmpdir == "" {
 		return
 	}
