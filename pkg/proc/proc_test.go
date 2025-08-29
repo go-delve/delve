@@ -1,6 +1,7 @@
 package proc_test
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"errors"
@@ -37,6 +38,7 @@ import (
 	"github.com/go-delve/delve/pkg/proc/native"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/service/api"
+	"github.com/go-delve/delve/service/rpc2"
 )
 
 var normalLoadConfig = proc.LoadConfig{true, 1, 64, 64, -1, 0}
@@ -85,6 +87,56 @@ func skipUnlessOn(t testing.TB, reason string, conditions ...string) {
 
 func withTestProcess(name string, t testing.TB, fn func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture)) {
 	withTestProcessArgs(name, t, ".", []string{}, 0, fn)
+}
+
+func startDelve(name string, t *testing.T) (*rpc2.RPCClient, func()) {
+	t.Helper()
+
+	fixture := protest.BuildFixture(t, name, 0)
+	dlvbin := protest.GetDlvBinary(t)
+
+	tmpdir := t.TempDir()
+	if tmpdir == "" {
+		t.Fatalf("cannot create temporary directory")
+	}
+
+	listenPath := filepath.Join(tmpdir, "dap_test")
+
+	cmd := exec.Command(dlvbin, "exec",
+		"--headless=true",
+		"--listen=unix:"+listenPath,
+		"--api-version=2",
+		"--backend="+testBackend,
+		"--log", "--log-output=debugger,rpc",
+		fixture.Path,
+	)
+	stderr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	assertNoError(cmd.Start(), t, "dlv exec")
+
+	scan := bufio.NewScanner(stderr)
+	// wait for the debugger to start
+	for scan.Scan() {
+		text := scan.Text()
+		t.Log(text)
+		if strings.Contains(text, "API server pid = ") {
+			break
+		}
+	}
+	go func() {
+		for scan.Scan() {
+			t.Log(scan.Text()) // keep pipe empty
+		}
+	}()
+
+	conn, err := net.Dial("unix", listenPath)
+	assertNoError(err, t, "dialing")
+	rpcclient := rpc2.NewClientFromConn(conn)
+
+	return rpcclient, func() {
+		cmd.Process.Kill()
+		cmd.Wait()
+	}
 }
 
 func withTestProcessArgs(name string, t testing.TB, wd string, args []string, buildFlags protest.BuildFlags, fn func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture)) {
@@ -197,19 +249,17 @@ func assertFunctionName(p *proc.Target, t *testing.T, fnname string, descr strin
 
 func TestExit(t *testing.T) {
 	protest.AllowRecording(t)
-	withTestProcess("continuetestprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		err := grp.Continue()
-		pe, ok := err.(proc.ErrProcessExited)
-		if !ok {
-			t.Fatalf("Continue() returned unexpected error type %s", err)
-		}
-		if pe.Status != 0 {
-			t.Errorf("Unexpected error status: %d", pe.Status)
-		}
-		if pe.Pid != p.Pid() {
-			t.Errorf("Unexpected process id: %d", pe.Pid)
-		}
-	})
+	client, stop := startDelve("continuetestprog", t)
+	defer stop()
+
+	state := <-client.Continue()
+	fmt.Printf("%+v\n", state)
+	if !state.Exited {
+		t.Fatalf("process did not exit as expected")
+	}
+	if state.ExitStatus != 0 {
+		t.Errorf("unexpected error status: %d", state.ExitStatus)
+	}
 }
 
 func TestExitAfterContinue(t *testing.T) {
