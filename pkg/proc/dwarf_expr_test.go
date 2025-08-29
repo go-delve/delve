@@ -134,6 +134,8 @@ func dwarfRegisters(bi *proc.BinaryInfo, regs *linutil.AMD64Registers) *op.Dwarf
 }
 
 func TestDwarfExprRegisters(t *testing.T) {
+	t.Parallel()
+
 	testCases := map[string]uint16{
 		"a": 0x1234,
 		"b": 0x4321,
@@ -163,6 +165,7 @@ func TestDwarfExprRegisters(t *testing.T) {
 }
 
 func TestDwarfExprComposite(t *testing.T) {
+	t.Parallel()
 	testCases := map[string]uint16{
 		"pair.k":  0x8765,
 		"pair.v":  0x5678,
@@ -273,6 +276,7 @@ func TestDwarfExprComposite(t *testing.T) {
 }
 
 func TestDwarfExprLoclist(t *testing.T) {
+	t.Parallel()
 	const before = 0x1234
 	const after = 0x4321
 
@@ -304,6 +308,7 @@ func TestDwarfExprLoclist(t *testing.T) {
 }
 
 func TestIssue1419(t *testing.T) {
+	t.Parallel()
 	// trying to read a slice variable with a location list that tries to read
 	// from registers we don't have should not cause a panic.
 
@@ -345,6 +350,7 @@ func TestIssue1419(t *testing.T) {
 }
 
 func TestLocationCovers(t *testing.T) {
+	t.Parallel()
 	dwb := dwarfbuilder.New()
 
 	uint16off := dwb.AddBaseType("uint16", dwarfbuilder.DW_ATE_unsigned, 2)
@@ -373,6 +379,7 @@ func TestLocationCovers(t *testing.T) {
 }
 
 func TestIssue1636_InlineWithoutOrigin(t *testing.T) {
+	t.Parallel()
 	// Gcc (specifically GNU C++11 6.3.0) will emit DW_TAG_inlined_subroutine
 	// without a DW_AT_abstract_origin or a name. What is an inlined subroutine
 	// without a reference to an abstract origin or even a name? Regardless,
@@ -388,6 +395,7 @@ func TestIssue1636_InlineWithoutOrigin(t *testing.T) {
 }
 
 func TestUnsupportedType(t *testing.T) {
+	t.Parallel()
 	// Tests that reading an unsupported type does not cause an error
 	dwb := dwarfbuilder.New()
 	dwb.AddCompileUnit("main", 0x0)
@@ -402,6 +410,7 @@ func TestUnsupportedType(t *testing.T) {
 }
 
 func TestNestedCompileUnts(t *testing.T) {
+	t.Parallel()
 	// Tests that a compile unit with a nested entry that we don't care about
 	// (such as a DW_TAG_namespace) is read fully.
 	dwb := dwarfbuilder.New()
@@ -418,6 +427,7 @@ func TestNestedCompileUnts(t *testing.T) {
 }
 
 func TestAbstractOriginDefinedAfterUse(t *testing.T) {
+	t.Parallel()
 	// Tests that an abstract origin entry can appear after its uses.
 	dwb := dwarfbuilder.New()
 	dwb.AddCompileUnit("main", 0x0)
