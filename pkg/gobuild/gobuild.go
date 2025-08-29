@@ -17,7 +17,7 @@ import (
 // This can be used to remove the temporary binary generated for the session.
 func Remove(path string) {
 	var err error
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		err = os.Remove(path)
 		// Open files can be removed on Unix, but not on Windows, where there also appears
 		// to be a delay in releasing the binary when the process exits.
@@ -41,7 +41,7 @@ func GoBuild(debugname string, pkgs []string, buildflags string) error {
 
 // GoBuildCombinedOutput builds non-test files in 'pkgs' with the specified 'buildflags'
 // and writes the output at 'debugname'.
-func GoBuildCombinedOutput(debugname string, pkgs []string, buildflags interface{}) (string, []byte, error) {
+func GoBuildCombinedOutput(debugname string, pkgs []string, buildflags any) (string, []byte, error) {
 	args, err := goBuildArgs2(debugname, pkgs, buildflags, false)
 	if err != nil {
 		return "", nil, err
@@ -58,7 +58,7 @@ func GoTestBuild(debugname string, pkgs []string, buildflags string) error {
 
 // GoTestBuildCombinedOutput builds test files 'pkgs' with the specified 'buildflags'
 // and writes the output at 'debugname'.
-func GoTestBuildCombinedOutput(debugname string, pkgs []string, buildflags interface{}) (string, []byte, error) {
+func GoTestBuildCombinedOutput(debugname string, pkgs []string, buildflags any) (string, []byte, error) {
 	args, err := goBuildArgs2(debugname, pkgs, buildflags, true)
 	if err != nil {
 		return "", nil, err
@@ -91,7 +91,7 @@ func goBuildArgs(debugname string, pkgs []string, buildflags string, isTest bool
 }
 
 // goBuildArgs2 is like goBuildArgs, but takes either string or []string.
-func goBuildArgs2(debugname string, pkgs []string, buildflags interface{}, isTest bool) ([]string, error) {
+func goBuildArgs2(debugname string, pkgs []string, buildflags any, isTest bool) ([]string, error) {
 	var args []string
 	switch buildflags := buildflags.(type) {
 	case string:

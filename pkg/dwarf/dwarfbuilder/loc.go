@@ -16,7 +16,7 @@ type LocEntry struct {
 
 // LocationBlock returns a DWARF expression corresponding to the list of
 // arguments.
-func LocationBlock(args ...interface{}) []byte {
+func LocationBlock(args ...any) []byte {
 	var buf bytes.Buffer
 	for _, arg := range args {
 		switch x := arg.(type) {

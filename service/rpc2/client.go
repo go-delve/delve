@@ -693,17 +693,17 @@ func (c *RPCClient) GuessSubstitutePath() ([][2]string, error) {
 	return out.List, err
 }
 
-func (c *RPCClient) call(method string, args, reply interface{}) error {
+func (c *RPCClient) call(method string, args, reply any) error {
 	return c.client.Call("RPCServer."+method, args, reply)
 }
 
-func (c *RPCClient) callWhileDrainingEvents(method string, args, reply interface{}) error {
+func (c *RPCClient) callWhileDrainingEvents(method string, args, reply any) error {
 	done := c.drainEvents()
 	err := c.call(method, args, reply)
 	<-done
 	return err
 }
 
-func (c *RPCClient) CallAPI(method string, args, reply interface{}) error {
+func (c *RPCClient) CallAPI(method string, args, reply any) error {
 	return c.call(method, args, reply)
 }

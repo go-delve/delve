@@ -2250,7 +2250,7 @@ func (c *brokenRPCClient) Detach(kill bool) error {
 	return c.call("Detach", rpc2.DetachIn{Kill: kill}, out)
 }
 
-func (c *brokenRPCClient) call(method string, args, reply interface{}) error {
+func (c *brokenRPCClient) call(method string, args, reply any) error {
 	return c.client.Call("RPCServer."+method, args, reply)
 }
 

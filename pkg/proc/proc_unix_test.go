@@ -56,7 +56,7 @@ func TestIssue419(t *testing.T) {
 		errChan <- grp.Continue()
 	})
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		err := <-errChan
 
 		t.Logf("error %T %#v\n", err, err)

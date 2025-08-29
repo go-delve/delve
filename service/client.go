@@ -212,5 +212,5 @@ type Client interface {
 	GuessSubstitutePath() ([][2]string, error)
 
 	// CallAPI allows calling an arbitrary rpc method (used by starlark bindings)
-	CallAPI(method string, args, reply interface{}) error
+	CallAPI(method string, args, reply any) error
 }

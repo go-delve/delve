@@ -252,7 +252,7 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 			replyv = reflect.New(mtype.ReplyType.Elem())
 			function := mtype.method
 			var returnValues []reflect.Value
-			var errInter interface{}
+			var errInter any
 			func() {
 				defer func() {
 					if ierr := recover(); ierr != nil {
@@ -303,7 +303,7 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 // contains an error when it is used.
 var invalidRequest = struct{}{}
 
-func (s *ServerImpl) sendResponse(sending *sync.Mutex, req *rpc.Request, resp *rpc.Response, reply interface{}, codec rpc.ServerCodec, errmsg string) {
+func (s *ServerImpl) sendResponse(sending *sync.Mutex, req *rpc.Request, resp *rpc.Response, reply any, codec rpc.ServerCodec, errmsg string) {
 	resp.ServiceMethod = req.ServiceMethod
 	if errmsg != "" {
 		resp.Error = errmsg
@@ -318,7 +318,7 @@ func (s *ServerImpl) sendResponse(sending *sync.Mutex, req *rpc.Request, resp *r
 	}
 }
 
-func (cb *RPCCallback) Return(out interface{}, err error) {
+func (cb *RPCCallback) Return(out any, err error) {
 	select {
 	case <-cb.setupDone:
 		// already closed
@@ -378,7 +378,7 @@ func (s *RPCServer) SetApiVersion(args api.SetAPIVersionIn, out *api.SetAPIVersi
 }
 
 type internalError struct {
-	Err   interface{}
+	Err   any
 	Stack []internalErrorFrame
 }
 
@@ -389,7 +389,7 @@ type internalErrorFrame struct {
 	Line int
 }
 
-func newInternalError(ierr interface{}, skip int) *internalError {
+func newInternalError(ierr any, skip int) *internalError {
 	logflags.Bug.Inc()
 	r := &internalError{ierr, nil}
 	for i := skip; ; i++ {

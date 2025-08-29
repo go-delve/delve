@@ -446,7 +446,7 @@ func getLdEnvVars() []string {
 	var result []string
 
 	environ := os.Environ()
-	for i := 0; i < len(environ); i++ {
+	for i := range environ {
 		if strings.HasPrefix(environ[i], "LD_") ||
 			strings.HasPrefix(environ[i], "DYLD_") {
 			result = append(result, "-e", environ[i])

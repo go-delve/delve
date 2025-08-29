@@ -114,7 +114,7 @@ func TestVariableEvaluation(t *testing.T) {
 	testcases := []struct {
 		name        string
 		st          reflect.Kind
-		value       interface{}
+		value       any
 		length, cap int64
 		childrenlen int
 	}{
@@ -1255,7 +1255,7 @@ func TestIssue1075(t *testing.T) {
 	withTestProcess("clientdo", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "net/http.(*Client).Do")
 		assertNoError(grp.Continue(), t, "Continue()")
-		for i := 0; i < 10; i++ {
+		for i := range 10 {
 			scope, err := proc.GoroutineScope(p, p.CurrentThread())
 			assertNoError(err, t, fmt.Sprintf("GoroutineScope (%d)", i))
 			vars, err := scope.LocalVariables(pnormalLoadConfig)

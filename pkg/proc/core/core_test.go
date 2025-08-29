@@ -42,7 +42,7 @@ func assertNoError(err error, t testing.TB, s string) {
 func TestSplicedReader(t *testing.T) {
 	data := []byte{}
 	data2 := []byte{}
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		data = append(data, byte(i))
 		data2 = append(data2, byte(i+100))
 	}

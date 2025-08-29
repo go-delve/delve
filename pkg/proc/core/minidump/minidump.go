@@ -317,7 +317,7 @@ const (
 )
 
 // Open reads the minidump file at path and returns it as a Minidump structure.
-func Open(path string, logfn func(fmt string, args ...interface{})) (*Minidump, error) {
+func Open(path string, logfn func(fmt string, args ...any)) (*Minidump, error) {
 	rawbuf, err := os.ReadFile(path) //TODO(aarzilli): mmap?
 	if err != nil {
 		return nil, err
@@ -598,14 +598,14 @@ func readModuleList(mdmp *Minidump, buf *minidumpBuf) {
 // the description of the process memory.
 // See: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_memory64_list
 // And: https://docs.microsoft.com/en-us/windows/win32/api/minidumpapiset/ns-minidumpapiset-minidump_memory_descriptor
-func readMemory64List(mdmp *Minidump, buf *minidumpBuf, logfn func(fmt string, args ...interface{})) {
+func readMemory64List(mdmp *Minidump, buf *minidumpBuf, logfn func(fmt string, args ...any)) {
 	rangesNum := buf.u64()
 	baseOff := int(buf.u64())
 	if buf.err != nil {
 		return
 	}
 
-	for i := uint64(0); i < rangesNum; i++ {
+	for i := range rangesNum {
 		addr := buf.u64()
 		sz := buf.u64()
 
@@ -625,7 +625,7 @@ func readMemory64List(mdmp *Minidump, buf *minidumpBuf, logfn func(fmt string, a
 	}
 }
 
-func readMemoryInfoList(mdmp *Minidump, buf *minidumpBuf, logfn func(fmt string, args ...interface{})) {
+func readMemoryInfoList(mdmp *Minidump, buf *minidumpBuf, logfn func(fmt string, args ...any)) {
 	startOff := buf.off
 	sizeOfHeader := int(buf.u32())
 	sizeOfEntry := int(buf.u32())

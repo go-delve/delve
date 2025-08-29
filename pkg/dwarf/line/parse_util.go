@@ -44,7 +44,7 @@ const (
 var ErrBufferUnderflow = errors.New("buffer underflow")
 
 type formReader struct {
-	logf         func(string, ...interface{})
+	logf         func(string, ...any)
 	contentTypes []uint64
 	formCodes    []uint64
 
@@ -60,7 +60,7 @@ type formReader struct {
 	nexti int
 }
 
-func readEntryFormat(buf *bytes.Buffer, logf func(string, ...interface{})) *formReader {
+func readEntryFormat(buf *bytes.Buffer, logf func(string, ...any)) *formReader {
 	if buf.Len() < 1 {
 		return nil
 	}

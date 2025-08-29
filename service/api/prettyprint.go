@@ -556,7 +556,7 @@ func byteArrayToUInt64(buf []byte, isLittleEndian bool) uint64 {
 			n = n<<8 + uint64(buf[i])
 		}
 	} else {
-		for i := 0; i < len(buf); i++ {
+		for i := range buf {
 			n = n<<8 + uint64(buf[i])
 		}
 	}

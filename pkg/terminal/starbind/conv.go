@@ -17,7 +17,7 @@ var autoLoadConfig = api.LoadConfig{MaxVariableRecurse: 1, MaxStringLen: 1024, M
 
 // interfaceToStarlarkValue converts an interface{} variable (produced by
 // decoding JSON) into a starlark.Value.
-func (env *Env) interfaceToStarlarkValue(v interface{}) starlark.Value {
+func (env *Env) interfaceToStarlarkValue(v any) starlark.Value {
 	switch v := v.(type) {
 	case bool:
 		return starlark.Bool(v)
@@ -652,7 +652,7 @@ func (it *mapVariableAsStarlarkValueIterator) Next(p *starlark.Value) bool {
 // This works similarly to encoding/json.Unmarshal and similar functions,
 // but instead of getting its input from a byte buffer, it uses a
 // starlark.Value.
-func unmarshalStarlarkValue(val starlark.Value, dst interface{}, path string) error {
+func unmarshalStarlarkValue(val starlark.Value, dst any, path string) error {
 	return unmarshalStarlarkValueIntl(val, reflect.ValueOf(dst), path)
 }
 

@@ -65,7 +65,7 @@ func threadsFromDelveNotes(p *process, notes []*note) (proc.Thread, error) {
 		th.regs = new(delveRegisters)
 
 		var readerr error
-		read := func(out interface{}) {
+		read := func(out any) {
 			if readerr != nil {
 				return
 			}

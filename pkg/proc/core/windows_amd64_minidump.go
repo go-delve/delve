@@ -8,7 +8,7 @@ import (
 )
 
 func readAMD64Minidump(minidumpPath, exePath string) (*process, proc.Thread, error) {
-	var logfn func(string, ...interface{})
+	var logfn func(string, ...any)
 	if logflags.Minidump() {
 		logfn = logflags.MinidumpLogger().Infof
 	}

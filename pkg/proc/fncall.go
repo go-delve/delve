@@ -450,7 +450,7 @@ func (err fncallPanicErr) Error() string {
 	return "panic calling a function"
 }
 
-func fncallLog(fmtstr string, args ...interface{}) {
+func fncallLog(fmtstr string, args ...any) {
 	logflags.FnCallLogger().Infof(fmtstr, args...)
 }
 

@@ -11,13 +11,13 @@ import (
 // When calling Val, if the entry does not have the specified attribute, the
 // entry specified by DW_AT_abstract_origin will be searched recursively.
 type Entry interface {
-	Val(dwarf.Attr) interface{}
+	Val(dwarf.Attr) any
 	AttrField(dwarf.Attr) *dwarf.Field
 }
 
 type compositeEntry []*dwarf.Entry
 
-func (ce compositeEntry) Val(attr dwarf.Attr) interface{} {
+func (ce compositeEntry) Val(attr dwarf.Attr) any {
 	if f := ce.AttrField(attr); f != nil {
 		return f.Val
 	}

@@ -484,13 +484,13 @@ func openRedirects(stdinPath string, stdoutOR proc.OutputRedirect, stderrOR proc
 type ptraceThread struct {
 	ptraceRefCnt   int
 	ptraceChan     chan func()
-	ptraceDoneChan chan interface{}
+	ptraceDoneChan chan any
 }
 
 func newPtraceThread() *ptraceThread {
 	pt := &ptraceThread{
 		ptraceChan:     make(chan func()),
-		ptraceDoneChan: make(chan interface{}),
+		ptraceDoneChan: make(chan any),
 		ptraceRefCnt:   1,
 	}
 	go pt.handlePtraceFuncs()

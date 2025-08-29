@@ -2562,7 +2562,7 @@ func guessSubstitutePath(args *api.GuessSubstitutePathIn, bins [][]proc.Function
 			if slashes(dir) < elems {
 				continue
 			}
-			for i := 0; i < elems; i++ {
+			for range elems {
 				dir = path.Dir(dir)
 			}
 

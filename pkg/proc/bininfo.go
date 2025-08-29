@@ -287,7 +287,7 @@ func FindFileLocation(p Process, filename string, lineno int) ([]uint64, error) 
 		}
 	}
 
-	sort.Slice(selectedPCs, func(i, j int) bool { return selectedPCs[i] < selectedPCs[j] })
+	slices.Sort(selectedPCs)
 
 	return selectedPCs, nil
 }
@@ -369,7 +369,7 @@ func FindFunctionLocation(p Process, funcName string, lineOffset int) ([]uint64,
 			return nil, &ErrFunctionNotFound{funcName}
 		}
 	}
-	sort.Slice(r, func(i, j int) bool { return r[i] < r[j] })
+	slices.Sort(r)
 	return r, nil
 }
 
@@ -574,10 +574,7 @@ func (fn *Function) PackageName() string {
 }
 
 func packageName(name string) string {
-	pathend := strings.LastIndex(name, "/")
-	if pathend < 0 {
-		pathend = 0
-	}
+	pathend := max(strings.LastIndex(name, "/"), 0)
 
 	if i := strings.Index(name[pathend:], "."); i != -1 {
 		return name[:pathend+i]
@@ -590,10 +587,7 @@ func packageName(name string) string {
 // Borrowed from $GOROOT/debug/gosym/symtab.go
 func (fn *Function) ReceiverName() string {
 	inst := fn.instRange()
-	pathend := strings.LastIndex(fn.Name[:inst[0]], "/")
-	if pathend < 0 {
-		pathend = 0
-	}
+	pathend := max(strings.LastIndex(fn.Name[:inst[0]], "/"), 0)
 	l := strings.Index(fn.Name[pathend:], ".")
 	if l == -1 {
 		return ""
@@ -1151,7 +1145,7 @@ func (image *Image) Close() error {
 	return err2
 }
 
-func (image *Image) setLoadError(logger logflags.Logger, fmtstr string, args ...interface{}) {
+func (image *Image) setLoadError(logger logflags.Logger, fmtstr string, args ...any) {
 	image.loadErrMu.Lock()
 	image.loadErr = fmt.Errorf(fmtstr, args...)
 	image.loadErrMu.Unlock()
@@ -2541,7 +2535,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 			}
 			lineInfoOffset, hasLineInfo := entry.Val(dwarf.AttrStmtList).(int64)
 			if hasLineInfo && lineInfoOffset >= 0 && lineInfoOffset < int64(len(debugLineBytes)) {
-				var logfn func(string, ...interface{})
+				var logfn func(string, ...any)
 				if logflags.DebugLineErrors() {
 					logfn = logflags.DebugLineLogger().Debugf
 				}
@@ -2985,10 +2979,7 @@ func (bi *BinaryInfo) expandPackagesInType(expr ast.Expr) {
 // elements of the path except the first one) like Go does in variable and
 // type names.
 func escapePackagePath(pkg string) string {
-	slash := strings.Index(pkg, "/")
-	if slash < 0 {
-		slash = 0
-	}
+	slash := max(strings.Index(pkg, "/"), 0)
 	return pkg[:slash] + strings.ReplaceAll(pkg[slash:], ".", "%2e")
 }
 

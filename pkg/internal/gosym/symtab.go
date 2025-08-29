@@ -64,10 +64,7 @@ func (s *Sym) PackageName() string {
 	if s.goVersion <= ver118 && (strings.HasPrefix(name, "go.") || strings.HasPrefix(name, "type.")) {
 		return ""
 	}
-	pathend := strings.LastIndex(name, "/")
-	if pathend < 0 {
-		pathend = 0
-	}
+	pathend := max(strings.LastIndex(name, "/"), 0)
 	if i := strings.Index(name[pathend:], "."); i != -1 {
 		return name[:pathend+i]
 	}
@@ -81,10 +78,7 @@ func (s *Sym) ReceiverName() string {
 	name := s.nameWithoutInst()
 	// If we find a slash in name, it should precede any bracketed expression
 	// that was removed, so pathend will apply correctly to name and s.Name.
-	pathend := strings.LastIndex(name, "/")
-	if pathend < 0 {
-		pathend = 0
-	}
+	pathend := max(strings.LastIndex(name, "/"), 0)
 	// Find the first dot after pathend (or from the beginning, if there was
 	// no slash in name).
 	l := strings.Index(name[pathend:], ".")

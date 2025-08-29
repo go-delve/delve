@@ -59,7 +59,7 @@ type Config struct {
 
 	// Source list line-number color, as a terminal escape sequence.
 	// For historic reasons, this can also be an integer color code.
-	SourceListLineColor interface{} `yaml:"source-list-line-color"`
+	SourceListLineColor any `yaml:"source-list-line-color"`
 
 	// Source list arrow color, as a terminal escape sequence.
 	SourceListArrowColor string `yaml:"source-list-arrow-color"`

@@ -1572,10 +1572,7 @@ func readStringValue(mem MemoryReadWriter, addr uint64, strlen int64, cfg LoadCo
 		return "", nil
 	}
 
-	count := strlen
-	if count > int64(cfg.MaxStringLen) {
-		count = int64(cfg.MaxStringLen)
-	}
+	count := min(strlen, int64(cfg.MaxStringLen))
 
 	val := make([]byte, int(count))
 	_, err := mem.ReadMemory(val, addr)
@@ -1600,10 +1597,7 @@ func readCStringValue(mem MemoryReadWriter, addr uint64, cfg LoadConfig) (string
 		// divisor for all architectures.
 		curaddr := addr + uint64(len(val))
 		maxsize := int(alignAddr(int64(curaddr+1), 1024) - int64(curaddr))
-		size := len(buf)
-		if size > maxsize {
-			size = maxsize
-		}
+		size := min(len(buf), maxsize)
 
 		_, err := mem.ReadMemory(buf[:size], curaddr)
 		if err != nil {

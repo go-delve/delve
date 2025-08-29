@@ -127,7 +127,7 @@ func testOutput(t *testing.T, dlvbin, output string, delveCmds []string) (stdout
 
 	// Give delve some time to compile and write the binary.
 	foundIt := false
-	for wait := 0; wait < 30; wait++ {
+	for range 30 {
 		_, err = os.Stat(debugbin)
 		if err == nil {
 			foundIt = true
@@ -632,7 +632,7 @@ func TestDAPCmd(t *testing.T) {
 
 func newDAPRemoteClient(t *testing.T, addr string, isDlvAttach bool, isMulti bool) *daptest.Client {
 	c := daptest.NewClient(addr)
-	c.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
+	c.AttachRequest(map[string]any{"mode": "remote", "stopOnEntry": true})
 	if isDlvAttach || isMulti {
 		c.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
 	}
@@ -726,7 +726,7 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 
 	// Client 0 connects but with the wrong attach request
 	dapclient0 := daptest.NewClient(listenAddr)
-	dapclient0.AttachRequest(map[string]interface{}{"mode": "local"})
+	dapclient0.AttachRequest(map[string]any{"mode": "local"})
 	dapclient0.ExpectErrorResponse(t)
 
 	// Client 1 connects and continues to main.main
@@ -749,7 +749,7 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 
 	// Attach to exited processes is an error
 	dapclient3 := daptest.NewClient(listenAddr)
-	dapclient3.AttachRequest(map[string]interface{}{"mode": "remote", "stopOnEntry": true})
+	dapclient3.AttachRequest(map[string]any{"mode": "remote", "stopOnEntry": true})
 	dapclient3.ExpectErrorResponseWith(t, dap.FailedToAttach, `Process \d+ has exited with status 0`, true)
 	closeDAPRemoteMultiClient(t, dapclient3, "exited")
 

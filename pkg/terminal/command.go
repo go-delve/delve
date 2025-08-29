@@ -78,12 +78,7 @@ type command struct {
 
 // Returns true if the command string matches one of the aliases for this command
 func (c command) match(cmdstr string) bool {
-	for _, v := range c.aliases {
-		if v == cmdstr {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(c.aliases, cmdstr)
 }
 
 // Commands represents the commands for Delve terminal process.
@@ -770,11 +765,9 @@ func nullCommand(t *Term, ctx callContext, args string) error {
 func (c *Commands) help(t *Term, ctx callContext, args string) error {
 	if args != "" {
 		for _, cmd := range c.cmds {
-			for _, alias := range cmd.aliases {
-				if alias == args {
-					fmt.Fprintln(t.stdout, cmd.helpMsg)
-					return nil
-				}
+			if slices.Contains(cmd.aliases, args) {
+				fmt.Fprintln(t.stdout, cmd.helpMsg)
+				return nil
 			}
 		}
 		return errNoCmd
@@ -1351,12 +1344,9 @@ func parseOneRedirect(w []string, redirs *[3]string) ([]string, bool, error) {
 	prefixes := []string{"<", ">", "2>"}
 	names := []string{"stdin", "stdout", "stderr"}
 	if len(w) >= 2 {
-		for _, prefix := range prefixes {
-			if w[len(w)-2] == prefix {
-				w[len(w)-2] += w[len(w)-1]
-				w = w[:len(w)-1]
-				break
-			}
+		if slices.Contains(prefixes, w[len(w)-2]) {
+			w[len(w)-2] += w[len(w)-1]
+			w = w[:len(w)-1]
 		}
 	}
 	for i, prefix := range prefixes {
@@ -2174,10 +2164,7 @@ loop:
 	remsz := int(count * size)
 
 	for remsz > 0 {
-		reqsz := rpc2.ExamineMemoryLengthLimit
-		if reqsz > remsz {
-			reqsz = remsz
-		}
+		reqsz := min(rpc2.ExamineMemoryLengthLimit, remsz)
 		memArea, isLittleEndian, err := t.client.ExamineMemory(start, reqsz)
 		if err != nil {
 			return err
@@ -3060,14 +3047,8 @@ func printdisass(t *Term, pc uint64) error {
 	showHeader := true
 	for i := range disasm {
 		if disasm[i].AtPC {
-			s := i - lineCount
-			if s < 0 {
-				s = 0
-			}
-			e := i + lineCount + 1
-			if e > len(disasm) {
-				e = len(disasm)
-			}
+			s := max(i-lineCount, 0)
+			e := min(i+lineCount+1, len(disasm))
 			showHeader = s == 0
 			disasm = disasm[s:e]
 			break

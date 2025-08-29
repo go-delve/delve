@@ -24,7 +24,7 @@ func TestPrettyExamineMemory(t *testing.T) {
 		t.Fatalf("wrong lines return, expected %d but got %d", len(display), len(res))
 	}
 
-	for i := 0; i < len(display); i++ {
+	for i := range display {
 		if display[i] != res[i] {
 			errInfo := fmt.Sprintf("wrong display return at line %d\n", i+1)
 			errInfo += fmt.Sprintf("expected:\n   %q\n", display[i])
