@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/go-delve/delve/pkg/config"
@@ -74,6 +75,20 @@ Type "help" followed by the name of a command for more information about it.`
 	dlv sources [<regex>]
 
 If regex is specified only the source files matching it will be returned.`
+
+	msgTarget = `Manages child process debugging.
+
+        target follow-exec [-on [regex]] [-off]
+
+Enables or disables follow exec mode. When follow exec mode Delve will automatically attach to new child processes executed by the target process. An optional regular expression can be passed to 'target follow-exec', only child processes with a command line matching the regular expression will be followed.
+
+        target list
+
+List currently attached processes.
+
+        target switch [pid]
+
+Switches to the specified process.`
 )
 
 // debugCommands returns a list of commands with default commands defined.
@@ -82,6 +97,7 @@ func debugCommands(s *Session) []command {
 		{aliases: []string{"help", "h"}, cmdFn: s.helpMessage, helpMsg: msgHelp},
 		{aliases: []string{"config"}, cmdFn: s.evaluateConfig, helpMsg: msgConfig},
 		{aliases: []string{"sources", "s"}, cmdFn: s.sources, helpMsg: msgSources},
+		{aliases: []string{"target"}, cmdFn: s.targetCmd, helpMsg: msgTarget},
 	}
 }
 
@@ -163,4 +179,79 @@ func (s *Session) sources(_, _ int, filter string) (string, error) {
 	}
 	sort.Strings(sources)
 	return strings.Join(sources, "\n"), nil
+}
+
+func (s *Session) targetCmd(_, _ int, argstr string) (string, error) {
+	argv := config.Split2PartsBySpace(argstr)
+	switch argv[0] {
+	case "list":
+		tgrp, unlock := s.debugger.LockTargetGroup()
+		defer unlock()
+		curpid := tgrp.Selected.Pid()
+		tgtListStr := ""
+		for _, tgt := range tgrp.Targets() {
+			if _, err := tgt.Valid(); err == nil {
+				selected := ""
+				if tgt.Pid() == curpid {
+					selected = "*"
+				}
+				tgtListStr += fmt.Sprintf("%s\t%d\t%s\n", selected, tgt.Pid(), tgt.CmdLine)
+			}
+		}
+		return tgtListStr, nil
+	case "follow-exec":
+		if len(argv) == 1 {
+			if s.debugger.FollowExecEnabled() {
+				return "Follow exec mode is enabled", nil
+			} else {
+				return "Follow exec mode is disabled", nil
+			}
+		}
+		argv = config.Split2PartsBySpace(argv[1])
+		switch argv[0] {
+		case "-on":
+			var regex string
+			if len(argv) == 2 {
+				regex = argv[1]
+			}
+			if err := s.debugger.FollowExec(true, regex); err != nil {
+				return "", err
+			}
+			if regex != "" {
+				return fmt.Sprintf("Follow exec mode enabled with regex %q", regex), nil
+			}
+			return "Follow exec mode enabled", nil
+		case "-off":
+			if len(argv) > 1 {
+				return "", errors.New("too many arguments")
+			}
+			if err := s.debugger.FollowExec(false, ""); err != nil {
+				return "", err
+			}
+			return "Follow exec mode disabled", nil
+		default:
+			return "", fmt.Errorf("unknown argument %q to 'target follow-exec'", argv[0])
+		}
+	case "switch": // TODO: This may cause inconsistency between debugger and frontend.
+		tgrp, unlock := s.debugger.LockTargetGroup()
+		defer unlock()
+		pid, err := strconv.Atoi(argv[1])
+		if err != nil {
+			return "", err
+		}
+		found := false
+		for _, tgt := range tgrp.Targets() {
+			if _, err = tgt.Valid(); err == nil && tgt.Pid() == pid {
+				found = true
+				tgrp.Selected = tgt
+				tgt.SwitchThread(pid)
+			}
+		}
+		if !found {
+			return "", fmt.Errorf("could not find target %d", pid)
+		}
+		return fmt.Sprintf("Switched to process %d", pid), err
+	default:
+		return "", fmt.Errorf("unknown target command")
+	}
 }
