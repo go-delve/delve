@@ -845,9 +845,6 @@ func TestDAPCmdWithClient(t *testing.T) {
 	dlvbin := protest.GetDlvBinary(t)
 
 	cmd := exec.Command(dlvbin, "dap", "--log-output=dap", "--log", "--client-addr", listener.Addr().String())
-	buf := &bytes.Buffer{}
-	cmd.Stdin = buf
-	cmd.Stdout = buf
 	assertNoError(cmd.Start(), t, "start dlv dap process with --client-addr flag")
 
 	// Wait for the connection.
@@ -871,7 +868,7 @@ func TestDAPCmdWithClient(t *testing.T) {
 	// Connection close should trigger dlv-reverse command's normal exit.
 	if err := cmd.Wait(); err != nil {
 		cmd.Process.Kill()
-		t.Fatalf("command failed: %v\n%s\n%v", err, buf.Bytes(), cmd.Process.Pid)
+		t.Fatalf("command failed: %v\n%v", err, cmd.Process.Pid)
 	}
 }
 
@@ -893,9 +890,6 @@ func TestDAPCmdWithUnixClient(t *testing.T) {
 	dlvbin := protest.GetDlvBinary(t)
 
 	cmd := exec.Command(dlvbin, "dap", "--log-output=dap", "--log", "--client-addr=unix:"+listener.Addr().String())
-	buf := &bytes.Buffer{}
-	cmd.Stdin = buf
-	cmd.Stdout = buf
 	assertNoError(cmd.Start(), t, "start dlv dap process with --client-addr flag")
 
 	// Wait for the connection.
@@ -919,7 +913,7 @@ func TestDAPCmdWithUnixClient(t *testing.T) {
 	// Connection close should trigger dlv-reverse command's normal exit.
 	if err := cmd.Wait(); err != nil {
 		cmd.Process.Kill()
-		t.Fatalf("command failed: %v\n%s\n%v", err, buf.Bytes(), cmd.Process.Pid)
+		t.Fatalf("command failed: %v\n%v", err, cmd.Process.Pid)
 	}
 }
 
@@ -1407,34 +1401,39 @@ func TestDefaultBinary(t *testing.T) {
 	dlvbin := protest.GetDlvBinary(t)
 	fixture := filepath.Join(protest.FindFixturesDir(), "testargs.go")
 
-	startOne := func() (io.WriteCloser, func() error, *bytes.Buffer) {
+	startOne := func() (io.WriteCloser, func() error, io.ReadCloser) {
 		cmd := exec.Command(dlvbin, "debug", "--allow-non-terminal-interactive=true", fixture, "--", "test")
 		stdin, _ := cmd.StdinPipe()
-		stdoutBuf := new(bytes.Buffer)
-		cmd.Stdout = stdoutBuf
+		stdout, err := cmd.StdoutPipe()
+		assertNoError(err, t, "cmd.StdoutPipe")
 
 		assertNoError(cmd.Start(), t, "dlv debug")
-		return stdin, cmd.Wait, stdoutBuf
+		return stdin, cmd.Wait, stdout
 	}
 
-	stdin1, wait1, stdoutBuf1 := startOne()
+	stdin1, wait1, stdout1 := startOne()
 	defer stdin1.Close()
+	defer stdout1.Close()
 
-	stdin2, wait2, stdoutBuf2 := startOne()
+	stdin2, wait2, stdout2 := startOne()
 	defer stdin2.Close()
+	defer stdout2.Close()
 
 	fmt.Fprintf(stdin1, "continue\nquit\n")
 	fmt.Fprintf(stdin2, "continue\nquit\n")
 
-	wait1()
-	wait2()
-
-	out1, out2 := stdoutBuf1.String(), stdoutBuf2.String()
-	t.Logf("%q", out1)
-	t.Logf("%q", out2)
-	if out1 == out2 {
+	out1, err := io.ReadAll(stdout1)
+	assertNoError(err, t, "io.ReadAll")
+	out2, err := io.ReadAll(stdout2)
+	assertNoError(err, t, "io.ReadAll")
+	t.Logf("%q", string(out1))
+	t.Logf("%q", string(out2))
+	if bytes.Equal(out1, out2) {
 		t.Errorf("outputs match")
 	}
+
+	wait1()
+	wait2()
 }
 
 func TestUnixDomainSocket(t *testing.T) {

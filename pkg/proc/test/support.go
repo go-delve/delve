@@ -24,7 +24,6 @@ var runningWithFixtures bool
 
 var ldFlags string
 
-
 // Fixture is a test binary.
 type Fixture struct {
 	// Name is the short name of the fixture.
@@ -45,9 +44,17 @@ type fixtureKey struct {
 
 // Fixtures is a map of fixtureKey{ Fixture.Name, buildFlags } to Fixture.
 var fixtures = make(map[fixtureKey]Fixture)
+var fixturesmu sync.Mutex
 
-// PathsToRemove is a list of files and directories to remove after running all the tests
-var PathsToRemove []string
+// pathsToRemove is a list of files and directories to remove after running all the tests
+var pathsToRemove []string
+var pathmu sync.Mutex
+
+func AddPathToRemove(path string) {
+	pathmu.Lock()
+	defer pathmu.Unlock()
+	pathsToRemove = append(pathsToRemove, path)
+}
 
 // FindFixturesDir will search for the directory holding all test fixtures
 // beginning with the current directory and searching up 10 directories.
@@ -208,6 +215,8 @@ func BuildFixture(t testing.TB, name string, flags BuildFlags) Fixture {
 
 	fixture := Fixture{Name: name, Path: tmpfile, Source: source, BuildDir: absdir}
 
+	fixturesmu.Lock()
+	defer fixturesmu.Unlock()
 	fixtures[fk] = fixture
 	return fixtures[fk]
 }
@@ -226,7 +235,7 @@ func RunTestsWithFixtures(m *testing.M) {
 		os.Remove(f.Path)
 	}
 
-	for _, p := range PathsToRemove {
+	for _, p := range pathsToRemove {
 		fi, err := os.Stat(p)
 		if err != nil {
 			panic(err)
