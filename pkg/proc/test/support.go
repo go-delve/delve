@@ -24,9 +24,6 @@ var runningWithFixtures bool
 
 var ldFlags string
 
-func init() {
-	ldFlags = os.Getenv("CGO_LDFLAGS")
-}
 
 // Fixture is a test binary.
 type Fixture struct {

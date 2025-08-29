@@ -1065,6 +1065,7 @@ func TestTracePid(t *testing.T) {
 
 	// dlv attach the process by pid
 	cmd := exec.Command(dlvbin, "trace", "-p", strconv.Itoa(targetCmd.Process.Pid), "main.A")
+	defer cmd.Wait()
 	rdr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
 	defer rdr.Close()
@@ -1077,8 +1078,6 @@ func TestTracePid(t *testing.T) {
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
 	}
-
-	cmd.Wait()
 }
 
 func TestTraceBreakpointExists(t *testing.T) {
