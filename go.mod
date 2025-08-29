@@ -1,12 +1,12 @@
 module github.com/go-delve/delve
 
-go 1.22.0
+go 1.23.1
 
 require (
 	github.com/cilium/ebpf v0.11.0
 	github.com/cosiner/argv v0.1.0
 	github.com/creack/pty v1.1.20
-	github.com/derekparker/trie v0.0.0-20230829180723-39f4de51ef7d
+	github.com/derekparker/trie/v3 v3.1.0
 	github.com/go-delve/liner v1.2.3-0.20231231155935-4726ab1d7f62
 	github.com/google/go-dap v0.12.0
 	github.com/hashicorp/golang-lru v1.0.2

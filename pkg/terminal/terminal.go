@@ -13,7 +13,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/derekparker/trie"
+	"github.com/derekparker/trie/v3"
 	"github.com/go-delve/liner"
 
 	"github.com/go-delve/delve/pkg/config"
@@ -281,8 +281,8 @@ func (t *Term) Run() (int, error) {
 	signal.Notify(ch, syscall.SIGINT)
 	go t.sigintGuard(ch, multiClient)
 
-	fns := trie.New()
-	cmds := trie.New()
+	fns := trie.New[any]()
+	cmds := trie.New[any]()
 	funcs, _ := t.client.ListFunctions("", 0)
 	for _, fn := range funcs {
 		fns.Add(fn, nil)
@@ -293,7 +293,7 @@ func (t *Term) Run() (int, error) {
 		}
 	}
 
-	var locs *trie.Trie
+	var locs *trie.Trie[any]
 
 	t.line.SetCompleter(func(line string) (c []string) {
 		cmd := t.cmds.Find(strings.Split(line, " ")[0], noPrefix)
@@ -320,7 +320,7 @@ func (t *Term) Run() (int, error) {
 					break
 				}
 
-				locs = trie.New()
+				locs = trie.New[any]()
 				for _, loc := range localVars {
 					locs.Add(loc.Name, nil)
 				}
