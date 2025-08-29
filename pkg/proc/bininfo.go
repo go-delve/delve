@@ -24,6 +24,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/derekparker/trie/v3"
+	"github.com/hashicorp/golang-lru/simplelru"
+
 	"github.com/go-delve/delve/pkg/astutil"
 	pdwarf "github.com/go-delve/delve/pkg/dwarf"
 	"github.com/go-delve/delve/pkg/dwarf/frame"
@@ -37,7 +40,6 @@ import (
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc/debuginfod"
 	"github.com/go-delve/delve/pkg/proc/evalop"
-	"github.com/hashicorp/golang-lru/simplelru"
 )
 
 const (
@@ -66,6 +68,8 @@ type BinaryInfo struct {
 	// lookupGenericFunc maps function names, with their type parameters removed, to functions.
 	// Functions that are not generic are not added to this map.
 	lookupGenericFunc map[string][]*Function
+	// lookupRangeBodyFunc maps function names to the range body functions.
+	lookupRangeBodyFunc *trie.Trie[*Function]
 
 	// SymNames maps addr to a description *elf.Symbol of this addr.
 	SymNames map[uint64]*elf.Symbol
@@ -766,10 +770,12 @@ func (fn *Function) extra(bi *BinaryInfo) *functionExtra {
 
 	// Find range-over-func bodies of this function
 	if fn.extraCache.rangeParent == nil {
-		for i := range bi.Functions {
-			fn2 := &bi.Functions[i]
-			if strings.HasPrefix(fn2.Name, fn.Name) && fn2.rangeParentName() == fn.Name {
-				fn.extraCache.rangeBodies = append(fn.extraCache.rangeBodies, fn2)
+		lookupFunc := bi.LookupRangeBodyFunc()
+		for _, key := range lookupFunc.PrefixSearch(fn.Name) {
+			if node, exist := lookupFunc.Find(key); exist {
+				if fn2 := node.Val(); fn2.rangeParentName() == fn.Name {
+					fn.extraCache.rangeBodies = append(fn.extraCache.rangeBodies, fn2)
+				}
 			}
 		}
 	}
@@ -2591,6 +2597,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 
 	bi.lookupFunc = nil
 	bi.lookupGenericFunc = nil
+	bi.lookupRangeBodyFunc = nil
 
 	for _, cu := range image.compileUnits {
 		if cu.lineInfo != nil {
@@ -2634,6 +2641,16 @@ func (bi *BinaryInfo) LookupFunc() map[string][]*Function {
 		}
 	}
 	return bi.lookupFunc
+}
+
+func (bi *BinaryInfo) LookupRangeBodyFunc() *trie.Trie[*Function] {
+	if bi.lookupRangeBodyFunc == nil {
+		bi.lookupRangeBodyFunc = trie.New[*Function]()
+		for i := range bi.Functions {
+			bi.lookupRangeBodyFunc.Add(bi.Functions[i].Name, &bi.Functions[i])
+		}
+	}
+	return bi.lookupRangeBodyFunc
 }
 
 func (bi *BinaryInfo) lookupOneFunc(name string) *Function {
