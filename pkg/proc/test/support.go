@@ -437,6 +437,8 @@ func ProjectRoot() string {
 }
 
 func GetDlvBinary(t *testing.T) string {
+	t.Helper()
+
 	var tags []string
 	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
 		tags = []string{"-tags=exp.winarm64"}
@@ -454,11 +456,28 @@ func GetDlvBinary(t *testing.T) string {
 }
 
 func GetDlvBinaryEBPF(t *testing.T) string {
+	t.Helper()
+
 	return getDlvBinInternal(t, "-tags", "ebpf")
 }
 
+// Fixtures is a map of fixtureKey{ Fixture.Name, buildFlags } to Fixture.
+var dlvbincache = make(map[string]string)
+var dlvbinmu sync.Mutex
+
 func getDlvBinInternal(t *testing.T, goflags ...string) string {
-	dlvbin := filepath.Join(t.TempDir(), "dlv.exe")
+	dlvbinmu.Lock()
+	defer dlvbinmu.Unlock()
+
+	strargs := strings.Join(goflags, "")
+	if path, ok := dlvbincache[strings.Join(goflags, "")]; ok {
+		return path
+	}
+
+	dlvbin := TempFile("dlv.exe")
+
+	dlvbincache[strargs] = dlvbin
+
 	args := append([]string{"build", "-o", dlvbin}, goflags...)
 	args = append(args, "github.com/go-delve/delve/cmd/dlv")
 
