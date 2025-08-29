@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -469,8 +470,14 @@ func getDlvBinInternal(t *testing.T, goflags ...string) string {
 	dlvbinmu.Lock()
 	defer dlvbinmu.Unlock()
 
+	// Parse GOFLAGS and filter out empty strings
+	goenvflags := os.Getenv("GOFLAGS")
+	if goenvflags != "" {
+		goflags = slices.Concat(goflags, strings.Split(os.Getenv("GOFLAGS"), " "))
+	}
+
 	strargs := strings.Join(goflags, "")
-	if path, ok := dlvbincache[strings.Join(goflags, "")]; ok {
+	if path, ok := dlvbincache[strargs]; ok {
 		return path
 	}
 
@@ -480,13 +487,9 @@ func getDlvBinInternal(t *testing.T, goflags ...string) string {
 
 	args := append([]string{"build", "-o", dlvbin}, goflags...)
 	args = append(args, "github.com/go-delve/delve/cmd/dlv")
-
-	wd, _ := os.Getwd()
-	fmt.Printf("at %s %s\n", wd, goflags)
-
 	out, err := exec.Command("go", args...).CombinedOutput()
 	if err != nil {
-		t.Fatalf("go build -o %v github.com/go-delve/delve/cmd/dlv: %v\n%s", dlvbin, err, string(out))
+		t.Fatalf("go %s: %v\n%s", strings.Join(args, " "), err, string(out))
 	}
 
 	return dlvbin
