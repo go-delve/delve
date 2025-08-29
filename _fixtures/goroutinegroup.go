@@ -59,7 +59,7 @@ func main() {
 
 	for _, lbl := range []string{"one", "two", "three", "four", "five"} {
 		for _, f := range []func(*sync.WaitGroup, string){startpoint1, startpoint2, startpoint3, startpoint4, startpoint5} {
-			for i := 0; i < 1000; i++ {
+			for i := 0; i < 10; i++ {
 				wg.Add(5)
 				gopoint1(&wg, lbl, f)
 				gopoint2(&wg, lbl, f)
@@ -69,7 +69,7 @@ func main() {
 			}
 		}
 	}
-	time.Sleep(2 * time.Second)
+	time.Sleep(10 * time.Millisecond)
 	runtime.Breakpoint()
 	wg.Wait()
 }
