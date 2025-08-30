@@ -93,6 +93,9 @@ Write-Host $env:GOROOT
 Write-Host $env:GOPATH
 
 Get-Command go
+
+go install github.com/google/capslock/cmd/capslock@latest
+
 go version
 go env
 go run _scripts/make.go test -v
