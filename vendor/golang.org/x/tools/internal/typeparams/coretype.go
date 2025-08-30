@@ -109,13 +109,8 @@ func CoreType(T types.Type) types.Type {
 //
 // NormalTerms makes no guarantees about the order of terms, except that it
 // is deterministic.
-func NormalTerms(T types.Type) ([]*types.Term, error) {
-	// typeSetOf(T) == typeSetOf(Unalias(T))
-	typ := types.Unalias(T)
-	if named, ok := typ.(*types.Named); ok {
-		typ = named.Underlying()
-	}
-	switch typ := typ.(type) {
+func NormalTerms(typ types.Type) ([]*types.Term, error) {
+	switch typ := typ.Underlying().(type) {
 	case *types.TypeParam:
 		return StructuralTerms(typ)
 	case *types.Union:
@@ -123,7 +118,7 @@ func NormalTerms(T types.Type) ([]*types.Term, error) {
 	case *types.Interface:
 		return InterfaceTermSet(typ)
 	default:
-		return []*types.Term{types.NewTerm(false, T)}, nil
+		return []*types.Term{types.NewTerm(false, typ)}, nil
 	}
 }
 

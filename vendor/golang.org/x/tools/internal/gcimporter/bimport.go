@@ -14,7 +14,7 @@ import (
 	"sync"
 )
 
-func errorf(format string, args ...any) {
+func errorf(format string, args ...interface{}) {
 	panic(fmt.Sprintf(format, args...))
 }
 

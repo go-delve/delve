@@ -120,7 +120,7 @@ type termSet struct {
 	terms    termlist
 }
 
-func indentf(depth int, format string, args ...any) {
+func indentf(depth int, format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, strings.Repeat(".", depth)+format+"\n", args...)
 }
 

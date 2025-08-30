@@ -13,7 +13,6 @@ package unix
 
 import (
 	"encoding/binary"
-	"slices"
 	"strconv"
 	"syscall"
 	"time"
@@ -418,7 +417,7 @@ func (sa *SockaddrUnix) sockaddr() (unsafe.Pointer, _Socklen, error) {
 		return nil, 0, EINVAL
 	}
 	sa.raw.Family = AF_UNIX
-	for i := range n {
+	for i := 0; i < n; i++ {
 		sa.raw.Path[i] = int8(name[i])
 	}
 	// length is family (uint16), name, NUL.
@@ -508,7 +507,7 @@ func (sa *SockaddrL2) sockaddr() (unsafe.Pointer, _Socklen, error) {
 	psm := (*[2]byte)(unsafe.Pointer(&sa.raw.Psm))
 	psm[0] = byte(sa.PSM)
 	psm[1] = byte(sa.PSM >> 8)
-	for i := range len(sa.Addr) {
+	for i := 0; i < len(sa.Addr); i++ {
 		sa.raw.Bdaddr[i] = sa.Addr[len(sa.Addr)-1-i]
 	}
 	cid := (*[2]byte)(unsafe.Pointer(&sa.raw.Cid))
@@ -590,11 +589,11 @@ func (sa *SockaddrCAN) sockaddr() (unsafe.Pointer, _Socklen, error) {
 	sa.raw.Family = AF_CAN
 	sa.raw.Ifindex = int32(sa.Ifindex)
 	rx := (*[4]byte)(unsafe.Pointer(&sa.RxID))
-	for i := range 4 {
+	for i := 0; i < 4; i++ {
 		sa.raw.Addr[i] = rx[i]
 	}
 	tx := (*[4]byte)(unsafe.Pointer(&sa.TxID))
-	for i := range 4 {
+	for i := 0; i < 4; i++ {
 		sa.raw.Addr[i+4] = tx[i]
 	}
 	return unsafe.Pointer(&sa.raw), SizeofSockaddrCAN, nil
@@ -619,11 +618,11 @@ func (sa *SockaddrCANJ1939) sockaddr() (unsafe.Pointer, _Socklen, error) {
 	sa.raw.Family = AF_CAN
 	sa.raw.Ifindex = int32(sa.Ifindex)
 	n := (*[8]byte)(unsafe.Pointer(&sa.Name))
-	for i := range 8 {
+	for i := 0; i < 8; i++ {
 		sa.raw.Addr[i] = n[i]
 	}
 	p := (*[4]byte)(unsafe.Pointer(&sa.PGN))
-	for i := range 4 {
+	for i := 0; i < 4; i++ {
 		sa.raw.Addr[i+8] = p[i]
 	}
 	sa.raw.Addr[12] = sa.Addr
@@ -912,7 +911,7 @@ func (sa *SockaddrIUCV) sockaddr() (unsafe.Pointer, _Socklen, error) {
 	// These are EBCDIC encoded by the kernel, but we still need to pad them
 	// with blanks. Initializing with blanks allows the caller to feed in either
 	// a padded or an unpadded string.
-	for i := range 8 {
+	for i := 0; i < 8; i++ {
 		sa.raw.Nodeid[i] = ' '
 		sa.raw.User_id[i] = ' '
 		sa.raw.Name[i] = ' '
@@ -1149,7 +1148,7 @@ func anyToSockaddr(fd int, rsa *RawSockaddrAny) (Sockaddr, error) {
 		var user [8]byte
 		var name [8]byte
 
-		for i := range 8 {
+		for i := 0; i < 8; i++ {
 			user[i] = byte(pp.User_id[i])
 			name[i] = byte(pp.Name[i])
 		}
@@ -1174,11 +1173,11 @@ func anyToSockaddr(fd int, rsa *RawSockaddrAny) (Sockaddr, error) {
 				Ifindex: int(pp.Ifindex),
 			}
 			name := (*[8]byte)(unsafe.Pointer(&sa.Name))
-			for i := range 8 {
+			for i := 0; i < 8; i++ {
 				name[i] = pp.Addr[i]
 			}
 			pgn := (*[4]byte)(unsafe.Pointer(&sa.PGN))
-			for i := range 4 {
+			for i := 0; i < 4; i++ {
 				pgn[i] = pp.Addr[i+8]
 			}
 			addr := (*[1]byte)(unsafe.Pointer(&sa.Addr))
@@ -1189,11 +1188,11 @@ func anyToSockaddr(fd int, rsa *RawSockaddrAny) (Sockaddr, error) {
 				Ifindex: int(pp.Ifindex),
 			}
 			rx := (*[4]byte)(unsafe.Pointer(&sa.RxID))
-			for i := range 4 {
+			for i := 0; i < 4; i++ {
 				rx[i] = pp.Addr[i]
 			}
 			tx := (*[4]byte)(unsafe.Pointer(&sa.TxID))
-			for i := range 4 {
+			for i := 0; i < 4; i++ {
 				tx[i] = pp.Addr[i+4]
 			}
 			return sa, nil
@@ -1861,7 +1860,6 @@ func Sendfile(outfd int, infd int, offset *int64, count int) (written int, err e
 //sys	ClockAdjtime(clockid int32, buf *Timex) (state int, err error)
 //sys	ClockGetres(clockid int32, res *Timespec) (err error)
 //sys	ClockGettime(clockid int32, time *Timespec) (err error)
-//sys	ClockSettime(clockid int32, time *Timespec) (err error)
 //sys	ClockNanosleep(clockid int32, flags int, request *Timespec, remain *Timespec) (err error)
 //sys	Close(fd int) (err error)
 //sys	CloseRange(first uint, last uint, flags uint) (err error)
@@ -2217,7 +2215,10 @@ func readvRacedetect(iovecs []Iovec, n int, err error) {
 		return
 	}
 	for i := 0; n > 0 && i < len(iovecs); i++ {
-		m := min(int(iovecs[i].Len), n)
+		m := int(iovecs[i].Len)
+		if m > n {
+			m = n
+		}
 		n -= m
 		if m > 0 {
 			raceWriteRange(unsafe.Pointer(iovecs[i].Base), m)
@@ -2268,7 +2269,10 @@ func writevRacedetect(iovecs []Iovec, n int) {
 		return
 	}
 	for i := 0; n > 0 && i < len(iovecs); i++ {
-		m := min(int(iovecs[i].Len), n)
+		m := int(iovecs[i].Len)
+		if m > n {
+			m = n
+		}
 		n -= m
 		if m > 0 {
 			raceReadRange(unsafe.Pointer(iovecs[i].Base), m)
@@ -2315,7 +2319,12 @@ func isGroupMember(gid int) bool {
 		return false
 	}
 
-	return slices.Contains(groups, gid)
+	for _, g := range groups {
+		if g == gid {
+			return true
+		}
+	}
+	return false
 }
 
 func isCapDacOverrideSet() bool {

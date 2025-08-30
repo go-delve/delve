@@ -5,6 +5,8 @@
 // Indexed package import.
 // See iexport.go for the export data format.
 
+// This file is a copy of $GOROOT/src/go/internal/gcimporter/iimport.go.
+
 package gcimporter
 
 import (
@@ -16,7 +18,6 @@ import (
 	"go/types"
 	"io"
 	"math/big"
-	"slices"
 	"sort"
 	"strings"
 
@@ -315,7 +316,7 @@ func iimportCommon(fset *token.FileSet, getPackages GetPackagesFunc, data []byte
 		pkgs = pkgList[:1]
 
 		// record all referenced packages as imports
-		list := slices.Clone(pkgList[1:])
+		list := append(([]*types.Package)(nil), pkgList[1:]...)
 		sort.Sort(byPath(list))
 		pkgs[0].SetImports(list)
 	}
@@ -401,7 +402,7 @@ type iimporter struct {
 	indent int // for tracing support
 }
 
-func (p *iimporter) trace(format string, args ...any) {
+func (p *iimporter) trace(format string, args ...interface{}) {
 	if !trace {
 		// Call sites should also be guarded, but having this check here allows
 		// easily enabling/disabling debug trace statements.
@@ -557,14 +558,6 @@ type importReader struct {
 	prevColumn int64
 }
 
-// markBlack is redefined in iimport_go123.go, to work around golang/go#69912.
-//
-// If TypeNames are not marked black (in the sense of go/types cycle
-// detection), they may be mutated when dot-imported. Fix this by punching a
-// hole through the type, when compiling with Go 1.23. (The bug has been fixed
-// for 1.24, but the fix was not worth back-porting).
-var markBlack = func(name *types.TypeName) {}
-
 func (r *importReader) obj(name string) {
 	tag := r.byte()
 	pos := r.pos()
@@ -577,7 +570,6 @@ func (r *importReader) obj(name string) {
 		}
 		typ := r.typ()
 		obj := aliases.NewAlias(r.p.aliases, pos, r.currPkg, name, typ, tparams)
-		markBlack(obj) // workaround for golang/go#69912
 		r.declare(obj)
 
 	case constTag:
@@ -598,9 +590,6 @@ func (r *importReader) obj(name string) {
 		// declaration before recursing.
 		obj := types.NewTypeName(pos, r.currPkg, name, nil)
 		named := types.NewNamed(obj, nil, nil)
-
-		markBlack(obj) // workaround for golang/go#69912
-
 		// Declare obj before calling r.tparamList, so the new type name is recognized
 		// if used in the constraint of one of its own typeparams (see #48280).
 		r.declare(obj)
@@ -672,9 +661,7 @@ func (r *importReader) obj(name string) {
 	case varTag:
 		typ := r.typ()
 
-		v := types.NewVar(pos, r.currPkg, name, typ)
-		typesinternal.SetVarKind(v, typesinternal.PackageVar)
-		r.declare(v)
+		r.declare(types.NewVar(pos, r.currPkg, name, typ))
 
 	default:
 		errorf("unexpected tag: %v", tag)
@@ -1112,9 +1099,3 @@ func (r *importReader) byte() byte {
 	}
 	return x
 }
-
-type byPath []*types.Package
-
-func (a byPath) Len() int           { return len(a) }
-func (a byPath) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a byPath) Less(i, j int) bool { return a[i].Path() < a[j].Path() }
