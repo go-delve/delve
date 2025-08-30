@@ -815,7 +815,7 @@ func getEvalExpressionTestCases() []varTest {
 		{"i2 << f1", false, "", "", "", errors.New("shift count type float64, must be unsigned integer")},
 		{"i2 << -1", false, "", "", "", errors.New("shift count must not be negative")},
 		{"*(i2 + i3)", false, "", "", "", errors.New("expression \"(i2 + i3)\" (int) can not be dereferenced")},
-		{"i2.member", false, "", "", "", errors.New("i2 (type int) is not a struct")},
+		{"i2.member", false, "", "", "", errors.New("i2 (type int) has no member member")},
 		{"fmt.Println(\"hello\")", false, "", "", "", errors.New("function calls not allowed without using 'call'")},
 		{"*nil", false, "", "", "", errors.New("nil can not be dereferenced")},
 		{"!nil", false, "", "", "", errors.New("operator ! can not be applied to \"nil\"")},
@@ -2050,6 +2050,60 @@ func TestCapturedVarVisibleOnFirstLine(t *testing.T) {
 		t.Logf("test variable: %s", cv.SinglelineString())
 		if tgt, s := `"a string"`, cv.SinglelineString(); s != tgt {
 			t.Fatalf("test variable expected %q got %q", tgt, s)
+		}
+	})
+}
+
+// See issue #4116
+func TestEmbeddedStructMethodsAndFieldLookup(t *testing.T) {
+	varTestcases := []varTest{
+		{"v.Model", true, "\"B\"", "", "string", nil},
+		{"v.A.Model", false, "main.(*A).Model", "", "func() string", nil},
+		{"v1.X", false, "main.(*B1).X", "", "func()", nil},
+		{"v1.A1.X", false, "0", "", "int", nil},
+		{"v2.X", false, "main.(*B2).X", "", "func()", nil},
+		{"v2.B2.X", false, "main.(*B2).X", "", "func()", nil},
+		{"v2.B2.A2.X", true, "0", "", "int", nil},
+		{"v2.A2.X", true, "0", "", "int", nil},
+		{"v7.X", false, "main.A7.X", "", "func()", nil},
+		{"x.X", false, "main.(*A7).X", "", "func()", nil},
+		{"x1.X", false, "", "", "", errors.New("x1 (type void) has no member X")},
+		{"x2.X", false, "main.(*A7).X", "", "func()", nil},
+		{"x3.X", false, "main.(*A7).X", "", "func()", nil},
+		{"v9.V.X", false, "main.(*B9).X", "", "func()", nil},
+		{"a.X", false, "main.A8.X", "", "func()", nil},
+		{"b.X", false, "", "", "", errors.New("b has no member X")},
+		{"c.X", false, "main.(*A8).X", "", "func()", nil},
+		{"d.X", true, "1", "", "int", nil},
+		{"v3.X", false, "main.(*B3).X", "", "func()", nil},
+		{"v3.B3.X", false, "main.(*B3).X", "", "func()", nil},
+		{"v4.X", false, "main.(*A4).X", "", "func()", nil},
+		{"v4.TestX.X", false, "main.(*A4).X", "", "func()", nil},
+		{"v5.X", true, "0", "", "int", nil},
+		{"v5.B5.X", false, "main.main.func1", "", "func() string", nil},
+		{"v5.B5.A5.X", false, "main.main.func1", "", "func() string", nil},
+		{"v5.A5.X", false, "main.main.func1", "", "func() string", nil},
+		{"*(ch.buf)", true, "[0]int []", "", "[0]int", nil},
+		{"*(v6.Chan.buf)", true, "[0]struct struct {} []", "", "[0]struct struct {}", nil},
+		{"*(v6.buf)", false, "", "", "", errors.New("v6 has no member buf")},
+	}
+
+	withTestProcess("issue4116", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), t, "Continue()")
+
+		for _, tc := range varTestcases {
+			variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
+			if tc.err == nil {
+				assertNoError(err, t, "EvalVariable() returned an error")
+				assertVariable(t, variable, tc)
+			} else {
+				if err == nil {
+					t.Fatalf("Expected error %s, got no error: %s\n", tc.err.Error(), api.ConvertVar(variable).SinglelineString())
+				}
+				if tc.err.Error() != err.Error() {
+					t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+				}
+			}
 		}
 	})
 }
