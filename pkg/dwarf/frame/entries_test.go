@@ -13,6 +13,7 @@ func ptrSizeByRuntimeArch() int {
 }
 
 func TestFDEForPC(t *testing.T) {
+	t.Parallel()
 	frames := newFrameIndex()
 	frames = append(frames,
 		&FrameDescriptionEntry{begin: 10, size: 40},
@@ -57,6 +58,7 @@ func TestFDEForPC(t *testing.T) {
 }
 
 func TestAppend(t *testing.T) {
+	t.Parallel()
 	equal := func(x, y FrameDescriptionEntries) bool {
 		if len(x) != len(y) {
 			return false

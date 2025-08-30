@@ -9,6 +9,7 @@ import (
 )
 
 func TestParseCIE(t *testing.T) {
+	t.Parallel()
 	ctx := &parseContext{
 		buf:    bytes.NewBuffer([]byte{3, 0, 1, 124, 16, 12, 7, 8, 5, 16, 2, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 16, 64, 0, 0, 0, 0, 0}),
 		common: &CommonInformationEntry{Length: 12},

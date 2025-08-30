@@ -8,6 +8,7 @@ import (
 )
 
 func TestReadString(t *testing.T) {
+	t.Parallel()
 	bstr := bytes.NewBuffer([]byte{'h', 'i', 0x0, 0xFF, 0xCC})
 	str, _ := dwarf.ReadString(bstr)
 

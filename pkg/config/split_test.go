@@ -5,6 +5,8 @@ import (
 )
 
 func TestSplitQuotedFields(t *testing.T) {
+	t.Parallel()
+
 	in := `field'A' 'fieldB' fie'l\'d'C fieldD 'another field' fieldE`
 	tgt := []string{"fieldA", "fieldB", "fiel'dC", "fieldD", "another field", "fieldE"}
 	out := SplitQuotedFields(in, '\'')
@@ -54,6 +56,8 @@ func TestSplitDoubleQuotedFields(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			in := tt.in
 			tgt := tt.expected
 			out := SplitQuotedFields(in, '"')
@@ -71,6 +75,8 @@ func TestSplitDoubleQuotedFields(t *testing.T) {
 }
 
 func TestConfigureListByName(t *testing.T) {
+	t.Parallel()
+
 	type testConfig struct {
 		boolArg bool     `cfgName:"bool-arg"`
 		listArg []string `cfgName:"list-arg"`

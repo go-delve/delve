@@ -133,6 +133,7 @@ func TestSplicedReader(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			mem := &SplicedMemory{}
 			for _, region := range test.regions {
 				r := bytes.NewReader(region.data)
@@ -219,7 +220,7 @@ func withCoreFile(t *testing.T, name, args string) *proc.TargetGroup {
 			t.Skipf("core file was not produced, could not run test, coredumpctl error: %v", err)
 			return nil
 		}
-		test.PathsToRemove = append(test.PathsToRemove, cores[0])
+		test.AddPathToRemove(cores[0])
 	}
 	corePath := cores[0]
 
@@ -249,6 +250,8 @@ func logRegisters(t *testing.T, regs proc.Registers, arch *proc.Arch) {
 }
 
 func TestCore(t *testing.T) {
+	t.Parallel()
+
 	mustSupportCore(t)
 
 	grp := withCoreFile(t, "panic", "")
@@ -315,6 +318,7 @@ func TestCore(t *testing.T) {
 }
 
 func TestCoreFpRegisters(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS != "linux" || runtime.GOARCH == "386" {
 		t.Skip("unsupported")
 	}
@@ -405,6 +409,7 @@ func TestCoreFpRegisters(t *testing.T) {
 }
 
 func TestCoreWithEmptyString(t *testing.T) {
+	t.Parallel()
 	mustSupportCore(t)
 
 	grp := withCoreFile(t, "coreemptystring", "")
@@ -443,6 +448,7 @@ mainSearch:
 }
 
 func TestMinidump(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
 		t.Skip("minidumps can only be produced on windows/amd64")
 	}
@@ -514,7 +520,7 @@ func procdump(t *testing.T, exePath string) string {
 		t.Logf("\t%s", name)
 		if strings.HasPrefix(name, exeName) && strings.HasSuffix(name, ".dmp") {
 			mdmpPath := filepath.Join(exeDir, name)
-			test.PathsToRemove = append(test.PathsToRemove, mdmpPath)
+			test.AddPathToRemove(mdmpPath)
 			return mdmpPath
 		}
 	}

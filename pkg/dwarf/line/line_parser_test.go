@@ -145,6 +145,7 @@ func testDebugLinePrologueParser(p string, t *testing.T) {
 }
 
 func TestUserFile(t *testing.T) {
+	t.Parallel()
 	if userTestFile == "" {
 		return
 	}
@@ -153,6 +154,7 @@ func TestUserFile(t *testing.T) {
 }
 
 func TestDebugLinePrologueParser(t *testing.T) {
+	t.Parallel()
 	// Test against known good values, from readelf --debug-dump=rawline _fixtures/testnextprog
 	p, err := filepath.Abs("../../../_fixtures/testnextprog")
 	if err != nil {
@@ -288,6 +290,7 @@ func runTestPCToLine(t testing.TB, lineInfos DebugLines, entries []pctolineEntry
 }
 
 func TestPCToLine(t *testing.T) {
+	t.Parallel()
 	lineInfos := loadBenchmarkData(t)
 
 	entries, basePCs := setupTestPCToLine(t, lineInfos)
@@ -307,6 +310,7 @@ func BenchmarkPCToLine(b *testing.B) {
 }
 
 func TestDebugLineC(t *testing.T) {
+	t.Parallel()
 	p, err := filepath.Abs("../../../_fixtures/debug_line_c_data")
 	if err != nil {
 		t.Fatal("Could not find test data", p, err)
@@ -340,6 +344,7 @@ func TestDebugLineC(t *testing.T) {
 }
 
 func TestDebugLineDwarf4(t *testing.T) {
+	t.Parallel()
 	p, err := filepath.Abs("../../../_fixtures/zdebug_line_dwarf4")
 	if err != nil {
 		t.Fatal("Could not find test data", p, err)

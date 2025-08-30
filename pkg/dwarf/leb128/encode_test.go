@@ -6,6 +6,7 @@ import (
 )
 
 func TestEncodeUnsigned(t *testing.T) {
+	t.Parallel()
 	tc := []uint64{0x00, 0x7f, 0x80, 0x8f, 0xffff, 0xfffffff7}
 	for i := range tc {
 		var buf bytes.Buffer
@@ -24,6 +25,7 @@ func TestEncodeUnsigned(t *testing.T) {
 }
 
 func TestEncodeSigned(t *testing.T) {
+	t.Parallel()
 	tc := []int64{2, -2, 127, -127, 128, -128, 129, -129}
 	for i := range tc {
 		var buf bytes.Buffer

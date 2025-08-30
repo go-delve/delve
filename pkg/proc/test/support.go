@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -21,12 +22,6 @@ import (
 var EnableRace = flag.Bool("racetarget", false, "Enables race detector on inferior process")
 
 var runningWithFixtures bool
-
-var ldFlags string
-
-func init() {
-	ldFlags = os.Getenv("CGO_LDFLAGS")
-}
 
 // Fixture is a test binary.
 type Fixture struct {
@@ -48,9 +43,17 @@ type fixtureKey struct {
 
 // Fixtures is a map of fixtureKey{ Fixture.Name, buildFlags } to Fixture.
 var fixtures = make(map[fixtureKey]Fixture)
+var fixturesmu sync.Mutex
 
-// PathsToRemove is a list of files and directories to remove after running all the tests
-var PathsToRemove []string
+// pathsToRemove is a list of files and directories to remove after running all the tests
+var pathsToRemove []string
+var pathmu sync.Mutex
+
+func AddPathToRemove(path string) {
+	pathmu.Lock()
+	defer pathmu.Unlock()
+	pathsToRemove = append(pathsToRemove, path)
+}
 
 // FindFixturesDir will search for the directory holding all test fixtures
 // beginning with the current directory and searching up 10 directories.
@@ -211,6 +214,8 @@ func BuildFixture(t testing.TB, name string, flags BuildFlags) Fixture {
 
 	fixture := Fixture{Name: name, Path: tmpfile, Source: source, BuildDir: absdir}
 
+	fixturesmu.Lock()
+	defer fixturesmu.Unlock()
 	fixtures[fk] = fixture
 	return fixtures[fk]
 }
@@ -229,7 +234,7 @@ func RunTestsWithFixtures(m *testing.M) {
 		os.Remove(f.Path)
 	}
 
-	for _, p := range PathsToRemove {
+	for _, p := range pathsToRemove {
 		fi, err := os.Stat(p)
 		if err != nil {
 			panic(err)
@@ -431,11 +436,8 @@ func ProjectRoot() string {
 }
 
 func GetDlvBinary(t *testing.T) string {
-	// In case this was set in the environment
-	// from getDlvBinEBPF lets clear it here, so
-	// we can ensure we don't get build errors
-	// depending on the test ordering.
-	t.Setenv("CGO_LDFLAGS", ldFlags)
+	t.Helper()
+
 	var tags []string
 	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
 		tags = []string{"-tags=exp.winarm64"}
@@ -453,20 +455,39 @@ func GetDlvBinary(t *testing.T) string {
 }
 
 func GetDlvBinaryEBPF(t *testing.T) string {
+	t.Helper()
+
 	return getDlvBinInternal(t, "-tags", "ebpf")
 }
 
+// Fixtures is a map of fixtureKey{ Fixture.Name, buildFlags } to Fixture.
+var dlvbincache = make(map[string]string)
+var dlvbinmu sync.Mutex
+
 func getDlvBinInternal(t *testing.T, goflags ...string) string {
-	dlvbin := filepath.Join(t.TempDir(), "dlv.exe")
+	dlvbinmu.Lock()
+	defer dlvbinmu.Unlock()
+
+	// Parse GOFLAGS and filter out empty strings
+	goenvflags := os.Getenv("GOFLAGS")
+	if goenvflags != "" {
+		goflags = slices.Concat(goflags, strings.Split(os.Getenv("GOFLAGS"), " "))
+	}
+
+	strargs := strings.Join(goflags, "")
+	if path, ok := dlvbincache[strargs]; ok {
+		return path
+	}
+
+	dlvbin := TempFile("dlv.exe")
+
+	dlvbincache[strargs] = dlvbin
+
 	args := append([]string{"build", "-o", dlvbin}, goflags...)
 	args = append(args, "github.com/go-delve/delve/cmd/dlv")
-
-	wd, _ := os.Getwd()
-	fmt.Printf("at %s %s\n", wd, goflags)
-
 	out, err := exec.Command("go", args...).CombinedOutput()
 	if err != nil {
-		t.Fatalf("go build -o %v github.com/go-delve/delve/cmd/dlv: %v\n%s", dlvbin, err, string(out))
+		t.Fatalf("go %s: %v\n%s", strings.Join(args, " "), err, string(out))
 	}
 
 	return dlvbin
