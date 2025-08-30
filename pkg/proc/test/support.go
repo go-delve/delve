@@ -23,8 +23,6 @@ var EnableRace = flag.Bool("racetarget", false, "Enables race detector on inferi
 
 var runningWithFixtures bool
 
-var ldFlags string
-
 // Fixture is a test binary.
 type Fixture struct {
 	// Name is the short name of the fixture.
