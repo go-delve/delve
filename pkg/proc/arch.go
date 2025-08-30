@@ -57,8 +57,6 @@ type Arch struct {
 	maxRegArgBytes int
 	// argumentRegs are function call injection registers for runtimeOptimizedWorkaround
 	argumentRegs []int
-	// dynamicCallReg is the register used for making dynamic calls
-	DynamicCallReg uint64
 
 	// asmRegisters maps assembly register numbers to dwarf registers.
 	asmRegisters map[int]asmRegister
