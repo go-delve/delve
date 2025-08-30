@@ -44,6 +44,7 @@ func AMD64Arch(goos string) *Arch {
 		debugCallMinStackSize:            256,
 		maxRegArgBytes:                   9*8 + 15*8,
 		argumentRegs:                     []int{regnum.AMD64_Rax, regnum.AMD64_Rbx, regnum.AMD64_Rcx},
+		DynamicCallReg:			  regnum.AMD64_Rcx,
 	}
 }
 
