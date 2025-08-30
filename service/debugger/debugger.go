@@ -1482,8 +1482,21 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 						return false, fmt.Errorf("registers inside callback returned err")
 
 					}
-					dregs := tgt.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
-					addr := dregs.Uint64Val(tgt.BinInfo().Arch.DynamicCallReg)
+					// Disassemble the instruction at the current PC to get the call destination
+					pc := instr.Loc.PC
+					maxInstLen := uint64(tgt.BinInfo().Arch.MaxInstructionLength())
+					disasm, err := proc.Disassemble(t.Memory(), regs, t.Breakpoints(), tgt.BinInfo(), pc, pc+maxInstLen)
+					if err != nil {
+						return false, fmt.Errorf("failed to disassemble instruction: %w", err)
+					}
+					
+					// Extract address from the decoded instruction's destination location
+					var addr uint64
+					if len(disasm) > 0 && disasm[0].DestLoc != nil {
+						addr = disasm[0].DestLoc.PC
+					} else {
+						return false, fmt.Errorf("failed to extract call destination from instruction at PC %#x", pc)
+					}
 					fn := tgt.BinInfo().PCToFunc(addr)
 					if fn == nil {
 						return false, fmt.Errorf("PCToFunc returned nil")
