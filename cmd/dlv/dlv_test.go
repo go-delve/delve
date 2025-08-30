@@ -1372,6 +1372,18 @@ func TestStaticcheck(t *testing.T) {
 	checkAutogenDoc(t, "_scripts/staticcheck-out.txt", fmt.Sprintf("staticcheck %s > _scripts/staticcheck-out.txt", strings.Join(args, " ")), out)
 }
 
+func TestCapsLock(t *testing.T) {
+	_, err := exec.LookPath("capslock")
+	if err != nil {
+		t.Skip("capslock not installed")
+	}
+	args := []string{"-packages", "./cmd/dlv"}
+	cmd := exec.Command("capslock", args...)
+	cmd.Dir = protest.ProjectRoot()
+	out, _ := cmd.CombinedOutput()
+	checkAutogenDoc(t, "_scripts/capslock-out.txt", fmt.Sprintf("capslock %s > _scripts/capslock-out.txt", strings.Join(args, " ")), out)
+}
+
 func TestDefaultBinary(t *testing.T) {
 	// Check that when delve is run twice in the same directory simultaneously
 	// it will pick different default output binary paths.
