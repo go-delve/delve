@@ -37,7 +37,6 @@ func I386Arch(goos string) *Arch {
 		asmRegisters:                     i386AsmRegisters,
 		RegisterNameToDwarf:              nameToDwarfFunc(regnum.I386NameToDwarf),
 		RegnumToString:                   regnum.I386ToName,
-		DynamicCallReg:			  regnum.I386_Eax,
 	}
 }
 

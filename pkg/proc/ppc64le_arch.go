@@ -43,7 +43,6 @@ func PPC64LEArch(goos string) *Arch {
 		debugCallMinStackSize:            320,
 		maxRegArgBytes:                   13*8 + 13*8,
 		argumentRegs:                     []int{regnum.PPC64LE_R0 + 3, regnum.PPC64LE_R0 + 4, regnum.PPC64LE_R0 + 5},
-		DynamicCallReg:			  regnum.PPC64LE_LR,
 	}
 }
 
