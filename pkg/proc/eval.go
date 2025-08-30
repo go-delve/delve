@@ -2118,10 +2118,15 @@ func (scope *EvalScope) evalStructSelector(op *evalop.Select, stack *evalStack) 
 		return
 	}
 	if rv != nil {
+		if mv, err := xv.structMember(op.Name); err == nil && mv != nil {
+			stack.push(mv)
+			return
+		}
 		stack.push(rv)
 		return
+	} else {
+		stack.pushErr(xv.structMember(op.Name))
 	}
-	stack.pushErr(xv.structMember(op.Name))
 }
 
 // Evaluates expressions <subexpr>.(<type>)

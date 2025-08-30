@@ -2053,3 +2053,41 @@ func TestCapturedVarVisibleOnFirstLine(t *testing.T) {
 		}
 	})
 }
+
+func TestIssue4116(t *testing.T) {
+	protest.MustSupportFunctionCalls(t, testBackend)
+	protest.AllowRecording(t)
+
+	varTestcases := []varTest{
+		{"v.Model", true, "\"B\"", "", "string", nil},
+		{"v.A.Model", false, "main.(*A).Model", "", "func() string", nil},
+	}
+	funcTestcases := []testCaseCallFunction{
+		{"v.A.Model()", []string{":string:\"A\""}, nil, 0},
+	}
+
+	withTestProcess("issue4116", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		testCallFunctionSetBreakpoint(t, p, grp, fixture)
+
+		assertNoError(grp.Continue(), t, "Continue()")
+
+		for _, tc := range varTestcases {
+			variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
+			if tc.err == nil {
+				assertNoError(err, t, "EvalVariable() returned an error")
+				assertVariable(t, variable, tc)
+			} else {
+				if err == nil {
+					t.Fatalf("Expected error %s, got no error: %s\n", tc.err.Error(), api.ConvertVar(variable).SinglelineString())
+				}
+				if tc.err.Error() != err.Error() {
+					t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+				}
+			}
+		}
+
+		for _, tc := range funcTestcases {
+			testCallFunction(t, grp, p, tc)
+		}
+	})
+}
