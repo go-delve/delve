@@ -2,8 +2,6 @@ module github.com/go-delve/delve
 
 go 1.23.3
 
-toolchain go1.24.6
-
 require (
 	github.com/cilium/ebpf v0.11.0
 	github.com/cosiner/argv v0.1.0
