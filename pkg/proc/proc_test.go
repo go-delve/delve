@@ -428,85 +428,128 @@ func TestStepInstruction(t *testing.T) {
 }
 
 func TestNextInstruction(t *testing.T) {
+	t.Parallel()
+
 	protest.AllowRecording(t)
-	withTestProcess("testprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		setFileBreakpoint(p, t, fixture.Source, 19)
-		assertNoError(grp.Continue(), t, "Continue()")
+	client, _, stop := startDelve("testprog", t)
+	defer stop()
 
-		err := grp.StepInstruction(true)
-		assertNoError(err, t, "Step()")
+	fixture := protest.BuildFixture(t, "testprog", 0)
 
-		assertLineNumber(p, t, 20, "next-instruction did not step over call")
-	})
+	_, err := client.CreateBreakpoint(&api.Breakpoint{File: fixture.Source, Line: 19})
+	assertNoError(err, t, "CreateBreakpoint")
+
+	state := <-client.Continue()
+	if state.Err != nil {
+		t.Fatalf("Continue failed: %v", state.Err)
+	}
+
+	state, err = client.StepInstruction(true)
+	assertNoError(err, t, "StepInstruction")
+
+	if state.CurrentThread.Line != 20 {
+		t.Errorf("next-instruction did not step over call: expected line 20, got %d", state.CurrentThread.Line)
+	}
 }
 
 func TestBreakpoint(t *testing.T) {
+	t.Parallel()
+
 	protest.AllowRecording(t)
-	withTestProcess("testprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		bp := setFunctionBreakpoint(p, t, "main.helloworld")
-		assertNoError(grp.Continue(), t, "Continue()")
+	client, _, stop := startDelve("testprog", t)
+	defer stop()
 
-		regs, err := p.CurrentThread().Registers()
-		assertNoError(err, t, "Registers")
-		pc := regs.PC()
+	bp, err := client.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.helloworld"})
+	assertNoError(err, t, "CreateBreakpoint")
 
-		if bp.Logical.TotalHitCount != 1 {
-			t.Fatalf("Breakpoint should be hit once, got %d\n", bp.Logical.TotalHitCount)
-		}
+	state := <-client.Continue()
+	if state.Err != nil {
+		t.Fatalf("Continue failed: %v", state.Err)
+	}
 
-		if pc-1 != bp.Addr && pc != bp.Addr {
-			f, l, _ := p.BinInfo().PCToLine(pc)
-			t.Fatalf("Break not respected:\nPC:%#v %s:%d\nFN:%#v \n", pc, f, l, bp.Addr)
-		}
-	})
+	pc := state.CurrentThread.PC
+
+	// The breakpoint info in state.CurrentThread.Breakpoint has the updated hit count
+	if state.CurrentThread.Breakpoint == nil {
+		t.Fatal("Expected breakpoint information in current thread")
+	}
+
+	if state.CurrentThread.Breakpoint.TotalHitCount != 1 {
+		t.Fatalf("Breakpoint should be hit once, got %d\n", state.CurrentThread.Breakpoint.TotalHitCount)
+	}
+
+	// Check if PC is at or just after the breakpoint address
+	if pc-1 != bp.Addr && pc != bp.Addr {
+		t.Fatalf("Break not respected:\nPC:%#v %s:%d\nFN:%#v \n", pc, state.CurrentThread.File, state.CurrentThread.Line, bp.Addr)
+	}
 }
 
 func TestBreakpointInSeparateGoRoutine(t *testing.T) {
+	t.Parallel()
+
 	protest.AllowRecording(t)
-	withTestProcess("testthreads", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		setFunctionBreakpoint(p, t, "main.anotherthread")
+	client, _, stop := startDelve("testthreads", t)
+	defer stop()
 
-		assertNoError(grp.Continue(), t, "Continue")
+	_, err := client.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.anotherthread"})
+	assertNoError(err, t, "CreateBreakpoint")
 
-		regs, err := p.CurrentThread().Registers()
-		assertNoError(err, t, "Registers")
-		pc := regs.PC()
+	state := <-client.Continue()
+	if state.Err != nil {
+		t.Fatalf("Continue failed: %v", state.Err)
+	}
 
-		f, l, _ := p.BinInfo().PCToLine(pc)
-		if f != "testthreads.go" && l != 8 {
-			t.Fatal("Program did not hit breakpoint")
-		}
-	})
+	if !strings.HasSuffix(state.CurrentThread.File, "testthreads.go") || state.CurrentThread.Line != 8 {
+		t.Fatalf("Program did not hit breakpoint, stopped at %s:%d", state.CurrentThread.File, state.CurrentThread.Line)
+	}
 }
 
 func TestBreakpointWithNonExistentFunction(t *testing.T) {
-	withTestProcess("testprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		_, err := p.SetBreakpoint(0, 0, proc.UserBreakpoint, nil)
-		if err == nil {
-			t.Fatal("Should not be able to break at non existent function")
-		}
-	})
+	t.Parallel()
+
+	client, _, stop := startDelve("testprog", t)
+	defer stop()
+
+	_, err := client.CreateBreakpoint(&api.Breakpoint{Addr: 0})
+	if err == nil {
+		t.Fatal("Should not be able to break at non existent function")
+	}
 }
 
 func TestClearBreakpointBreakpoint(t *testing.T) {
-	withTestProcess("testprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		bp := setFunctionBreakpoint(p, t, "main.sleepytime")
+	t.Parallel()
 
-		err := p.ClearBreakpoint(bp.Addr)
-		assertNoError(err, t, "ClearBreakpoint()")
+	client, _, stop := startDelve("testprog", t)
+	defer stop()
 
-		data, err := dataAtAddr(p.Memory(), bp.Addr)
-		assertNoError(err, t, "dataAtAddr")
+	bp, err := client.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sleepytime"})
+	assertNoError(err, t, "CreateBreakpoint")
 
-		int3 := []byte{0xcc}
-		if bytes.Equal(data, int3) {
-			t.Fatalf("Breakpoint was not cleared data: %#v, int3: %#v", data, int3)
+	_, err = client.ClearBreakpoint(bp.ID)
+	assertNoError(err, t, "ClearBreakpoint()")
+
+	data, _, err := client.ExamineMemory(bp.Addr, 1)
+	assertNoError(err, t, "ExamineMemory")
+
+	int3 := []byte{0xcc}
+	if bytes.Equal(data, int3) {
+		t.Fatalf("Breakpoint was not cleared data: %#v, int3: %#v", data, int3)
+	}
+
+	bps, err := client.ListBreakpoints(false)
+	assertNoError(err, t, "ListBreakpoints")
+
+	// Filter out internal breakpoints (those with negative IDs)
+	userBreakpoints := 0
+	for _, bp := range bps {
+		if bp.ID >= 0 {
+			userBreakpoints++
 		}
+	}
 
-		if countBreakpoints(p) != 0 {
-			t.Fatal("Breakpoint not removed internally")
-		}
-	})
+	if userBreakpoints != 0 {
+		t.Fatalf("Breakpoint not removed internally, found %d user breakpoints", userBreakpoints)
+	}
 }
 
 func countBreakpoints(p *proc.Target) int {
