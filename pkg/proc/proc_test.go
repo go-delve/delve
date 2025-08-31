@@ -403,22 +403,28 @@ func TestHalt(t *testing.T) {
 }
 
 func TestStepInstruction(t *testing.T) {
+	t.Parallel()
+
 	protest.AllowRecording(t)
-	withTestProcess("testprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		setFunctionBreakpoint(p, t, "main.helloworld")
-		assertNoError(grp.Continue(), t, "Continue()")
+	client, _, stop := startDelve("testprog", t)
+	defer stop()
 
-		regs := getRegisters(p, t)
-		rip := regs.PC()
+	_, err := client.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.helloworld"})
+	assertNoError(err, t, "CreateBreakpoint")
 
-		err := grp.StepInstruction(false)
-		assertNoError(err, t, "Step()")
+	state := <-client.Continue()
+	if state.Err != nil {
+		t.Fatalf("Continue failed: %v", state.Err)
+	}
 
-		regs = getRegisters(p, t)
-		if rip >= regs.PC() {
-			t.Errorf("Expected %#v to be greater than %#v", regs.PC(), rip)
-		}
-	})
+	rip := state.CurrentThread.PC
+
+	state, err = client.StepInstruction(false)
+	assertNoError(err, t, "StepInstruction")
+
+	if rip >= state.CurrentThread.PC {
+		t.Errorf("Expected %#v to be greater than %#v", state.CurrentThread.PC, rip)
+	}
 }
 
 func TestNextInstruction(t *testing.T) {
