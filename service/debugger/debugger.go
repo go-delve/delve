@@ -192,6 +192,7 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 			err = noDebugErrorWarning(err)
 			return nil, attachErrorMessage(d.config.AttachPid, err)
 		}
+		d.config.AttachPid = d.target.Selected.Pid()
 
 	case d.config.CoreFile != "":
 		var err error

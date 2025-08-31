@@ -731,9 +731,7 @@ type AttachedToExistingProcessOut struct {
 
 // AttachedToExistingProcess returns whether we attached to a running process or not
 func (s *RPCServer) AttachedToExistingProcess(arg AttachedToExistingProcessIn, out *AttachedToExistingProcessOut) error {
-	if s.config.Debugger.AttachPid != 0 {
-		out.Answer = true
-	}
+	out.Answer = s.debugger.AttachPid() != 0
 	return nil
 }
 
