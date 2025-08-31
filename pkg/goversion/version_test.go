@@ -41,6 +41,7 @@ func versionEqual(t *testing.T, verStr string, ver GoVersion) {
 }
 
 func TestParseVersionStringAfterOrEqual(t *testing.T) {
+	t.Parallel()
 	versionAfterOrEqual(t, "go1.4", GoVersion{1, 4, 0, "", ""})
 	versionAfterOrEqual(t, "go1.5.0", GoVersion{1, 5, 0, "", ""})
 	versionAfterOrEqual(t, "go1.4.2", GoVersion{1, 4, 2, "", ""})
@@ -66,6 +67,7 @@ func TestParseVersionStringAfterOrEqual(t *testing.T) {
 }
 
 func TestParseVersionStringEqual(t *testing.T) {
+	t.Parallel()
 	versionEqual(t, "go1.4", GoVersion{1, 4, 0, "", ""})
 	versionEqual(t, "go1.5.0", GoVersion{1, 5, 0, "", ""})
 	versionEqual(t, "go1.4.2", GoVersion{1, 4, 2, "", ""})
@@ -82,6 +84,7 @@ func TestParseVersionStringEqual(t *testing.T) {
 }
 
 func TestRoundtrip(t *testing.T) {
+	t.Parallel()
 	for _, verStr := range []string{
 		"go1.4",
 		"go1.4.2",
@@ -99,6 +102,7 @@ func TestRoundtrip(t *testing.T) {
 }
 
 func TestInstalled(t *testing.T) {
+	t.Parallel()
 	installedVersion, ok := Installed()
 	if !ok {
 		t.Fatalf("could not parse output of go version")

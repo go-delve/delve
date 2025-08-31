@@ -30,6 +30,7 @@ func slurpGzip(path string) ([]byte, error) {
 }
 
 func TestGrafana(t *testing.T) {
+	t.Parallel()
 	// Compares a full execution of our state machine on the debug_line section
 	// of grafana to the output generated using debug/dwarf.LineReader on the
 	// same section.
@@ -122,6 +123,7 @@ func checkCompileUnit(t *testing.T, cuname string, lnrdr *dwarf.LineReader, sm *
 }
 
 func TestMultipleSequences(t *testing.T) {
+	t.Parallel()
 	// Check that our state machine (specifically PCToLine and AllPCsBetween)
 	// are correct when dealing with units containing more than one sequence.
 

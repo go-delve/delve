@@ -19,10 +19,12 @@ func assertExprResult(t *testing.T, expected int64, instructions []byte) {
 }
 
 func TestExecuteStackProgram(t *testing.T) {
+	t.Parallel()
 	assertExprResult(t, 56, []byte{byte(DW_OP_consts), 0x1c, byte(DW_OP_consts), 0x1c, byte(DW_OP_plus)})
 }
 
 func TestSignExtension(t *testing.T) {
+	t.Parallel()
 	var tgt uint64 = 0xffffffffffffff88
 	assertExprResult(t, int64(tgt), []byte{byte(DW_OP_const1s), 0x88})
 	tgt = 0xffffffffffff8888
@@ -30,12 +32,14 @@ func TestSignExtension(t *testing.T) {
 }
 
 func TestStackOps(t *testing.T) {
+	t.Parallel()
 	assertExprResult(t, 1, []byte{byte(DW_OP_lit1), byte(DW_OP_lit2), byte(DW_OP_drop)})
 	assertExprResult(t, 0, []byte{byte(DW_OP_lit1), byte(DW_OP_lit0), byte(DW_OP_pick), 0})
 	assertExprResult(t, 1, []byte{byte(DW_OP_lit1), byte(DW_OP_lit0), byte(DW_OP_pick), 1})
 }
 
 func TestBra(t *testing.T) {
+	t.Parallel()
 	assertExprResult(t, 32, []byte{
 		byte(DW_OP_lit1),
 		byte(DW_OP_lit5),
