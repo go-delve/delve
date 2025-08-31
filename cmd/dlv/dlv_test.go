@@ -1394,6 +1394,34 @@ func TestStaticcheck(t *testing.T) {
 	checkAutogenDoc(t, "_scripts/staticcheck-out.txt", fmt.Sprintf("staticcheck %s > _scripts/staticcheck-out.txt", strings.Join(args, " ")), out)
 }
 
+func TestCapsLock(t *testing.T) {
+	_, err := exec.LookPath("capslock")
+	if err != nil {
+		t.Skip("capslock not installed")
+	}
+
+	// Determine the expected output file based on current GOOS and GOARCH
+	goos := runtime.GOOS
+	goarch := runtime.GOARCH
+
+	// Normalize darwin to match our file naming
+	expectedFile := fmt.Sprintf("_scripts/capslock_%s_%s-output.txt", goos, goarch)
+
+	args := []string{"-packages", "./cmd/dlv"}
+	if goos == "linux" && goarch == "ppc64le" {
+		args = append([]string{"-buildtags", "exp.linuxppc64le"}, args...)
+	}
+
+	cmd := exec.Command("capslock", args...)
+	cmd.Dir = protest.ProjectRoot()
+	cmd.Env = append(os.Environ(), fmt.Sprintf("GOOS=%s", goos), fmt.Sprintf("GOARCH=%s", goarch))
+	out, _ := cmd.CombinedOutput()
+
+	genCommand := fmt.Sprintf("capslock -goos %s -goarch %s %s > %s",
+		goos, goarch, strings.Join(args, " "), expectedFile)
+	checkAutogenDoc(t, expectedFile, genCommand, out)
+}
+
 func TestDefaultBinary(t *testing.T) {
 	t.Parallel()
 	// Check that when delve is run twice in the same directory simultaneously
