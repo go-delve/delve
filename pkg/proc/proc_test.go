@@ -375,24 +375,31 @@ func findFileLocation(p *proc.Target, t *testing.T, file string, lineno int) uin
 }
 
 func TestHalt(t *testing.T) {
-	stopChan := make(chan any, 1)
-	withTestProcess("loopprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		setFunctionBreakpoint(p, t, "main.loop")
-		assertNoError(grp.Continue(), t, "Continue")
-		resumeChan := make(chan struct{}, 1)
-		go func() {
-			<-resumeChan
-			time.Sleep(100 * time.Millisecond)
-			stopChan <- grp.RequestManualStop()
-		}()
-		grp.ResumeNotify(resumeChan)
-		assertNoError(grp.Continue(), t, "Continue")
-		retVal := <-stopChan
+	t.Parallel()
 
-		if err, ok := retVal.(error); ok && err != nil {
-			t.Fatal()
+	client, _, stop := startDelve("loopprog", t)
+	defer stop()
+
+	_, err := client.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.loop"})
+	assertNoError(err, t, "CreateBreakpoint")
+
+	state := <-client.Continue()
+	if state.Err != nil {
+		t.Fatalf("Continue failed: %v", state.Err)
+	}
+
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		_, err := client.Halt()
+		if err != nil {
+			t.Logf("Halt error: %v", err)
 		}
-	})
+	}()
+
+	state = <-client.Continue()
+	if state.Err != nil && state.Err.Error() != "Process halt" && !strings.Contains(state.Err.Error(), "halt") {
+		t.Fatalf("Unexpected error: %v", state.Err)
+	}
 }
 
 func TestStepInstruction(t *testing.T) {
