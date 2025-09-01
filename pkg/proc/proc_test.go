@@ -139,8 +139,7 @@ func startDelve(name string, t *testing.T) (*rpc2.RPCClient, int, func()) {
 	rpcclient := rpc2.NewClientFromConn(conn)
 
 	return rpcclient, pid, func() {
-		cmd.Process.Kill()
-		cmd.Wait()
+		rpcclient.Detach(true)
 	}
 }
 
