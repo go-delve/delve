@@ -592,7 +592,7 @@ func TestTypecheckRPC(t *testing.T) {
 // TestDAPCmd verifies that a dap server can be started and shut down.
 func TestDAPCmd(t *testing.T) {
 	t.Parallel()
-	const listenAddr = "127.0.0.1:40575"
+	const listenAddr = "127.0.0.1:40580"
 
 	dlvbin := protest.GetDlvBinary(t)
 
