@@ -53,7 +53,7 @@ Tests skipped by each supported backend:
 	* 1 broken
 	* 2 not working on windows
 	* 6 see https://github.com/go-delve/delve/issues/2768
-* windows/arm64 skipped = 5
-	* 3 broken
+* windows/arm64 skipped = 3
+	* 1 broken
 	* 1 broken - cgo stacktraces
 	* 1 broken - step concurrent
