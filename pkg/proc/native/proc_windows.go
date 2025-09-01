@@ -686,7 +686,7 @@ func (procgrp *processGroup) detachChild(dbp *nativeProcess) error {
 		}
 	}
 	err := _DebugActiveProcessStop(uint32(dbp.pid))
-	dbp.detached = true
+	dbp.detached.Store(true)
 	dbp.postExit()
 	return err
 }

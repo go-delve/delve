@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"runtime"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-delve/delve/pkg/proc"
@@ -38,7 +39,7 @@ type nativeProcess struct {
 
 	iscgo bool
 
-	exited, detached bool
+	exited, detached atomic.Bool
 }
 
 // newProcess returns an initialized Process struct. Before returning,
@@ -125,7 +126,7 @@ func (procgrp *processGroup) Detach(pid int, kill bool) (err error) {
 			err = killProcess(dbp.pid)
 		}
 	})
-	dbp.detached = true
+	dbp.detached.Store(true)
 	dbp.postExit()
 	return
 }
@@ -137,10 +138,10 @@ func (procgrp *processGroup) Close() error {
 // Valid returns whether the process is still attached to and
 // has not exited.
 func (dbp *nativeProcess) Valid() (bool, error) {
-	if dbp.detached {
+	if dbp.detached.Load() {
 		return false, proc.ErrProcessDetached
 	}
-	if dbp.exited {
+	if dbp.exited.Load() {
 		return false, proc.ErrProcessExited{Pid: dbp.pid}
 	}
 	return true, nil
@@ -304,7 +305,7 @@ func (procgrp *processGroup) ContinueOnce(cctx *proc.ContinueOnceContext) (proc.
 			dbp.memthread = trapthread
 			// refresh memthread for every other process
 			for _, p2 := range procgrp.procs {
-				if p2.exited || p2.detached || p2 == dbp {
+				if p2.exited.Load() || p2.detached.Load() || p2 == dbp {
 					continue
 				}
 				for _, th := range p2.threads {
@@ -418,7 +419,7 @@ func (dbp *nativeProcess) execPtraceFunc(fn func()) {
 }
 
 func (dbp *nativeProcess) postExit() {
-	dbp.exited = true
+	dbp.exited.Store(true)
 	dbp.ptraceThread.release()
 	dbp.bi.Close()
 	if dbp.ctty != nil {
