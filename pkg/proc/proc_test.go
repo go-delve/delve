@@ -563,8 +563,8 @@ func countBreakpoints(p *proc.Target) int {
 }
 
 func TestNextConcurrent(t *testing.T) {
-	t.Parallel()
 	skipOn(t, "broken", "windows", "arm64")
+	t.Parallel()
 	testcases := []nextTest{
 		{8, 9},
 		{9, 10},
@@ -620,8 +620,8 @@ func TestNextConcurrent(t *testing.T) {
 }
 
 func TestNextConcurrentVariant2(t *testing.T) {
-	t.Parallel()
 	skipOn(t, "broken", "windows", "arm64")
+	t.Parallel()
 	// Just like TestNextConcurrent but instead of removing the initial breakpoint we check that when it happens is for other goroutines
 	testcases := []nextTest{
 		{8, 9},
