@@ -35,14 +35,14 @@ fi
 
 mkdir -p $TMPDIR/gopath
 
-go install github.com/google/capslock/cmd/capslock@latest
-
 go env
 
 export GOPATH="$TMPDIR/gopath"
 export GOARCH="$ARCH"
 export PATH="$GOROOT/bin:$PATH"
 go version
+
+go install github.com/google/capslock/cmd/capslock@latest
 
 set +e
 make test
