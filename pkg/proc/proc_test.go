@@ -22,6 +22,7 @@ import (
 	"runtime"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -563,6 +564,7 @@ func countBreakpoints(p *proc.Target) int {
 }
 
 func TestNextConcurrent(t *testing.T) {
+	t.Parallel()
 	skipOn(t, "broken", "windows", "arm64")
 	testcases := []nextTest{
 		{8, 9},
@@ -570,35 +572,56 @@ func TestNextConcurrent(t *testing.T) {
 		{10, 11},
 	}
 	protest.AllowRecording(t)
-	withTestProcess("parallel_next", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		bp := setFunctionBreakpoint(p, t, "main.sayhi")
-		assertNoError(grp.Continue(), t, "Continue")
-		f, ln := currentLineNumber(p, t)
-		initV := evalVariable(p, t, "n")
-		initVval, _ := constant.Int64Val(initV.Value)
-		err := p.ClearBreakpoint(bp.Addr)
-		assertNoError(err, t, "ClearBreakpoint()")
-		for _, tc := range testcases {
-			g, err := proc.GetG(p.CurrentThread())
-			assertNoError(err, t, "GetG()")
-			if p.SelectedGoroutine().ID != g.ID {
-				t.Fatalf("SelectedGoroutine not CurrentThread's goroutine: %d %d", g.ID, p.SelectedGoroutine().ID)
-			}
-			if ln != tc.begin {
-				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
-			}
-			assertNoError(grp.Next(), t, "Next() returned an error")
-			f, ln = assertLineNumber(p, t, tc.end, "Program did not continue to the expected location")
-			v := evalVariable(p, t, "n")
-			vval, _ := constant.Int64Val(v.Value)
-			if vval != initVval {
-				t.Fatal("Did not end up on same goroutine")
-			}
+	client, _, stop := startDelve("parallel_next", t)
+	defer stop()
+
+	bp, err := client.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi"})
+	assertNoError(err, t, "CreateBreakpoint")
+
+	state := <-client.Continue()
+	if state.Err != nil {
+		t.Fatalf("Continue failed: %v", state.Err)
+	}
+
+	f := state.CurrentThread.File
+	ln := state.CurrentThread.Line
+	scope := api.EvalScope{GoroutineID: state.SelectedGoroutine.ID, Frame: 0}
+	initV, err := client.EvalVariable(scope, "n", api.LoadConfig{})
+	assertNoError(err, t, "EvalVariable")
+	initVval, _ := strconv.ParseInt(initV.Value, 10, 64)
+
+	_, err = client.ClearBreakpoint(bp.ID)
+	assertNoError(err, t, "ClearBreakpoint()")
+
+	for _, tc := range testcases {
+		if state.SelectedGoroutine.ID != state.CurrentThread.GoroutineID {
+			t.Fatalf("SelectedGoroutine not CurrentThread's goroutine: %d %d", state.CurrentThread.GoroutineID, state.SelectedGoroutine.ID)
 		}
-	})
+		if ln != tc.begin {
+			t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
+		}
+
+		state, err = client.Next()
+		assertNoError(err, t, "Next() returned an error")
+
+		f = state.CurrentThread.File
+		ln = state.CurrentThread.Line
+		if ln != tc.end {
+			t.Fatalf("Program did not continue to the expected location: expected %d was %s:%d", tc.end, filepath.Base(f), ln)
+		}
+
+		scope = api.EvalScope{GoroutineID: state.SelectedGoroutine.ID, Frame: 0}
+		v, err := client.EvalVariable(scope, "n", api.LoadConfig{})
+		assertNoError(err, t, "EvalVariable")
+		vval, _ := strconv.ParseInt(v.Value, 10, 64)
+		if vval != initVval {
+			t.Fatal("Did not end up on same goroutine")
+		}
+	}
 }
 
 func TestNextConcurrentVariant2(t *testing.T) {
+	t.Parallel()
 	skipOn(t, "broken", "windows", "arm64")
 	// Just like TestNextConcurrent but instead of removing the initial breakpoint we check that when it happens is for other goroutines
 	testcases := []nextTest{
@@ -607,98 +630,134 @@ func TestNextConcurrentVariant2(t *testing.T) {
 		{10, 11},
 	}
 	protest.AllowRecording(t)
-	withTestProcess("parallel_next", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		setFunctionBreakpoint(p, t, "main.sayhi")
-		assertNoError(grp.Continue(), t, "Continue")
-		f, ln := currentLineNumber(p, t)
-		initV := evalVariable(p, t, "n")
-		initVval, _ := constant.Int64Val(initV.Value)
-		for _, tc := range testcases {
-			t.Logf("test case %v", tc)
-			g, err := proc.GetG(p.CurrentThread())
-			assertNoError(err, t, "GetG()")
-			if p.SelectedGoroutine().ID != g.ID {
-				t.Fatalf("SelectedGoroutine not CurrentThread's goroutine: %d %d", g.ID, p.SelectedGoroutine().ID)
-			}
-			if ln != tc.begin {
-				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
-			}
-			assertNoError(grp.Next(), t, "Next() returned an error")
-			var vval int64
-			for {
-				v := evalVariable(p, t, "n")
-				for _, thread := range p.ThreadList() {
-					proc.GetG(thread)
-				}
-				vval, _ = constant.Int64Val(v.Value)
-				if bpstate := p.CurrentThread().Breakpoint(); bpstate.Breakpoint == nil {
-					if vval != initVval {
-						t.Fatal("Did not end up on same goroutine")
-					}
-					break
-				} else {
-					if vval == initVval {
-						t.Fatal("Initial breakpoint triggered twice for the same goroutine")
-					}
-					assertNoError(grp.Continue(), t, "Continue 2")
-				}
-			}
-			f, ln = assertLineNumber(p, t, tc.end, "Program did not continue to the expected location")
+	client, _, stop := startDelve("parallel_next", t)
+	defer stop()
+
+	_, err := client.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.sayhi"})
+	assertNoError(err, t, "CreateBreakpoint")
+
+	state := <-client.Continue()
+	if state.Err != nil {
+		t.Fatalf("Continue failed: %v", state.Err)
+	}
+
+	f := state.CurrentThread.File
+	ln := state.CurrentThread.Line
+	scope := api.EvalScope{GoroutineID: state.SelectedGoroutine.ID, Frame: 0}
+	initV, err := client.EvalVariable(scope, "n", api.LoadConfig{})
+	assertNoError(err, t, "EvalVariable")
+	initVval, _ := strconv.ParseInt(initV.Value, 10, 64)
+
+	for _, tc := range testcases {
+		t.Logf("test case %v", tc)
+		if state.SelectedGoroutine.ID != state.CurrentThread.GoroutineID {
+			t.Fatalf("SelectedGoroutine not CurrentThread's goroutine: %d %d", state.CurrentThread.GoroutineID, state.SelectedGoroutine.ID)
 		}
-	})
+		if ln != tc.begin {
+			t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
+		}
+
+		state, err = client.Next()
+		assertNoError(err, t, "Next() returned an error")
+
+		var vval int64
+		for {
+			scope = api.EvalScope{GoroutineID: state.SelectedGoroutine.ID, Frame: 0}
+			v, err := client.EvalVariable(scope, "n", api.LoadConfig{})
+			assertNoError(err, t, "EvalVariable")
+
+			// Trigger evaluation on all threads (similar to original test)
+			_, err = client.ListThreads()
+			assertNoError(err, t, "ListThreads")
+
+			vval, _ = strconv.ParseInt(v.Value, 10, 64)
+			if state.CurrentThread.Breakpoint == nil {
+				if vval != initVval {
+					t.Fatal("Did not end up on same goroutine")
+				}
+				break
+			} else {
+				if vval == initVval {
+					t.Fatal("Initial breakpoint triggered twice for the same goroutine")
+				}
+				state = <-client.Continue()
+				if state.Err != nil {
+					t.Fatalf("Continue 2 failed: %v", state.Err)
+				}
+			}
+		}
+		f = state.CurrentThread.File
+		ln = state.CurrentThread.Line
+		if ln != tc.end {
+			t.Fatalf("Program did not continue to the expected location: expected %d was %s:%d", tc.end, filepath.Base(f), ln)
+		}
+	}
 }
 
 func TestNextNetHTTP(t *testing.T) {
+	// Cannot run in parallel due to hardcoded port 9191 in test fixture
 	testcases := []nextTest{
 		{11, 12},
 		{12, 13},
 	}
-	withTestProcess("testnextnethttp", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		go func() {
-			// Wait for program to start listening.
-			for {
-				conn, err := net.Dial("tcp", "127.0.0.1:9191")
-				if err == nil {
-					conn.Close()
-					break
-				}
-				time.Sleep(50 * time.Millisecond)
-			}
-			resp, err := http.Get("http://127.0.0.1:9191")
+	client, _, stop := startDelve("testnextnethttp", t)
+	defer stop()
+
+	go func() {
+		// Wait for program to start listening.
+		for {
+			conn, err := net.Dial("tcp", "127.0.0.1:9191")
 			if err == nil {
-				resp.Body.Close()
+				conn.Close()
+				break
 			}
-		}()
-		if err := grp.Continue(); err != nil {
-			t.Fatal(err)
+			time.Sleep(50 * time.Millisecond)
 		}
-		f, ln := currentLineNumber(p, t)
-		for _, tc := range testcases {
-			if ln != tc.begin {
-				t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
-			}
-
-			assertNoError(grp.Next(), t, "Next() returned an error")
-
-			f, ln = assertLineNumber(p, t, tc.end, "Program did not continue to correct next location")
+		resp, err := http.Get("http://127.0.0.1:9191")
+		if err == nil {
+			resp.Body.Close()
 		}
-	})
+	}()
+
+	state := <-client.Continue()
+	if state.Err != nil {
+		t.Fatal(state.Err)
+	}
+
+	f := state.CurrentThread.File
+	ln := state.CurrentThread.Line
+	for _, tc := range testcases {
+		if ln != tc.begin {
+			t.Fatalf("Program not stopped at correct spot expected %d was %s:%d", tc.begin, filepath.Base(f), ln)
+		}
+
+		state, err := client.Next()
+		assertNoError(err, t, "Next() returned an error")
+
+		f = state.CurrentThread.File
+		ln = state.CurrentThread.Line
+		if ln != tc.end {
+			t.Fatalf("Program did not continue to correct next location: expected %d was %s:%d", tc.end, filepath.Base(f), ln)
+		}
+	}
 }
 
 func TestRuntimeBreakpoint(t *testing.T) {
-	withTestProcess("testruntimebreakpoint", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		err := grp.Continue()
-		if err != nil {
-			t.Fatal(err)
-		}
-		regs, err := p.CurrentThread().Registers()
-		assertNoError(err, t, "Registers")
-		pc := regs.PC()
-		f, l, _ := p.BinInfo().PCToLine(pc)
-		if l != 10 {
-			t.Fatalf("did not respect breakpoint %s:%d", f, l)
-		}
-	})
+	t.Parallel()
+
+	client, _, stop := startDelve("testruntimebreakpoint", t)
+	defer stop()
+
+	state := <-client.Continue()
+	if state.Err != nil {
+		t.Fatal(state.Err)
+	}
+
+	f := state.CurrentThread.File
+	l := state.CurrentThread.Line
+	if l != 10 {
+		t.Fatalf("did not respect breakpoint %s:%d", f, l)
+	}
 }
 
 func returnAddress(tgt *proc.Target, thread proc.Thread) (uint64, error) {
