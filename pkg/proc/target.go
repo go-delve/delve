@@ -585,6 +585,14 @@ func (t *Target) pluginOpenCallback(Thread, *Target) (bool, error) {
 			} else {
 				logger.Debugf("suspended breakpoint %d enabled", lbp.LogicalID)
 			}
+			if fn := t.BinInfo().eventsFn; fn != nil {
+				fn(&Event{
+					Kind: EventBreakpointMaterialized,
+					BreakpointMaterializedEventDetails: &BreakpointMaterializedEventDetails{
+						Breakpoint: lbp,
+					},
+				})
+			}
 		}
 	}
 	return false, nil
