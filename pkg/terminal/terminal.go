@@ -9,7 +9,6 @@ import (
 	"net/rpc"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -140,17 +139,7 @@ func New(client service.Client, conf *config.Config) *Term {
 				}
 			case api.EventBreakpointMaterialized:
 				bp := event.BreakpointMaterializedEventDetails.Breakpoint
-				file := bp.File
-
-				// Make the file path relative if possible.
-				if cwd, err := os.Getwd(); err == nil {
-					if rel, err := filepath.Rel(cwd, file); err == nil {
-						if !strings.HasPrefix(rel, "../") {
-							rel = "./" + rel
-						}
-						file = rel
-					}
-				}
+				file := t.formatPath(bp.File)
 
 				// Append the function name.
 				var extra string
