@@ -4165,6 +4165,49 @@ func TestPluginStepping(t *testing.T) {
 		{contNext, "plugintest2.go:42"}})
 }
 
+func TestBreakpointMaterializedEvent(t *testing.T) {
+	protest.MustHaveCgo(t)
+	pluginFixtures := protest.WithPlugins(t, protest.AllNonOptimized, "plugin1/", "plugin2/")
+
+	withTestProcessArgs("plugintest2", t, ".", []string{pluginFixtures[0].Path, pluginFixtures[1].Path}, protest.AllNonOptimized, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		path := filepath.Join(fixture.BuildDir, "plugin2", "plugin2.go")
+		const lineno = 23
+
+		// Set a suspended breakpoint.
+		bp2 := &proc.LogicalBreakpoint{
+			LogicalID: 2,
+			HitCount:  make(map[int64]uint64),
+			Set:       proc.SetBreakpoint{File: path, Line: lineno},
+		}
+		grp.LogicalBreakpoints[2] = bp2
+		err := grp.SetBreakpointEnabled(bp2, true)
+		if !errors.As(err, new(*proc.ErrCouldNotFindLine)) {
+			if err == nil {
+				t.Fatal("Expected not to be able to find the breakpoint")
+			} else {
+				t.Fatal(err)
+			}
+		}
+
+		// Collect events
+		var events []*proc.Event
+		grp.SetEventsFn(func(e *proc.Event) { events = append(events, e) })
+
+		// Continue past the plugin load.
+		setFileBreakpoint(p, t, fixture.Source, 35)
+		assertNoError(grp.Continue(), t, "Continue")
+
+		// The breakpoint should be enabled now
+		if !bp2.Enabled() || len(events) == 0 {
+			t.Fatal("Breakpoint did not materialize")
+		}
+		e := events[0]
+		if e.Kind != proc.EventBreakpointMaterialized {
+			t.Fatalf("Wrong event kind: want breakpoint materialized (%v), got %v", proc.EventBreakpointMaterialized, e.Kind)
+		}
+	})
+}
+
 func TestIssue1601(t *testing.T) {
 	protest.MustHaveCgo(t)
 	// Tests that recursive types involving C qualifiers and typedefs are parsed correctly

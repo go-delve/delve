@@ -137,6 +137,17 @@ func New(client service.Client, conf *config.Config) *Term {
 				if !firstEventBinaryInfoDownload {
 					fmt.Fprintf(t.stdout, "\n")
 				}
+			case api.EventBreakpointMaterialized:
+				bp := event.BreakpointMaterializedEventDetails.Breakpoint
+				file := t.formatPath(bp.File)
+
+				// Append the function name.
+				var extra string
+				if bp.FunctionName != "" {
+					extra = " (" + bp.FunctionName + ")"
+				}
+
+				fmt.Fprintf(t.stdout, "Breakpoint %d materialized at %s:%d%s\n", bp.ID, file, bp.Line, extra)
 			}
 		})
 	}
