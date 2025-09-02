@@ -9,6 +9,7 @@ import (
 	"net/rpc"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -138,7 +139,26 @@ func New(client service.Client, conf *config.Config) *Term {
 					fmt.Fprintf(t.stdout, "\n")
 				}
 			case api.EventBreakpointMaterialized:
-				// Ignore
+				bp := event.BreakpointMaterializedEventDetails.Breakpoint
+				file := bp.File
+
+				// Make the file path relative if possible.
+				if cwd, err := os.Getwd(); err == nil {
+					if rel, err := filepath.Rel(cwd, file); err == nil {
+						if !strings.HasPrefix(rel, "../") {
+							rel = "./" + rel
+						}
+						file = rel
+					}
+				}
+
+				// Append the function name.
+				var extra string
+				if bp.FunctionName != "" {
+					extra = " (" + bp.FunctionName + ")"
+				}
+
+				fmt.Fprintf(t.stdout, "Breakpoint %d materialized at %s:%d%s\n", bp.ID, file, bp.Line, extra)
 			}
 		})
 	}

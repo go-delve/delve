@@ -578,21 +578,27 @@ func (t *Target) dwrapUnwrap(fn *Function) *Function {
 func (t *Target) pluginOpenCallback(Thread, *Target) (bool, error) {
 	logger := logflags.DebuggerLogger()
 	for _, lbp := range t.Breakpoints().Logical {
-		if isSuspended(t, lbp) {
-			err := enableBreakpointOnTarget(t, lbp)
-			if err != nil {
-				logger.Debugf("could not enable breakpoint %d: %v", lbp.LogicalID, err)
-			} else {
-				logger.Debugf("suspended breakpoint %d enabled", lbp.LogicalID)
-			}
-			if fn := t.BinInfo().eventsFn; fn != nil {
-				fn(&Event{
-					Kind: EventBreakpointMaterialized,
-					BreakpointMaterializedEventDetails: &BreakpointMaterializedEventDetails{
-						Breakpoint: lbp,
-					},
-				})
-			}
+		// If the breakpoint is suspended, materialize it.
+		if !isSuspended(t, lbp) {
+			continue
+		}
+
+		err := enableBreakpointOnTarget(t, lbp)
+		if err != nil {
+			logger.Debugf("could not enable breakpoint %d: %v", lbp.LogicalID, err)
+			continue
+		}
+
+		logger.Debugf("suspended breakpoint %d enabled", lbp.LogicalID)
+
+		// Notify the client.
+		if fn := t.BinInfo().eventsFn; fn != nil {
+			fn(&Event{
+				Kind: EventBreakpointMaterialized,
+				BreakpointMaterializedEventDetails: &BreakpointMaterializedEventDetails{
+					Breakpoint: lbp,
+				},
+			})
 		}
 	}
 	return false, nil
