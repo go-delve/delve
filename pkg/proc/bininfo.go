@@ -771,11 +771,9 @@ func (fn *Function) extra(bi *BinaryInfo) *functionExtra {
 	// Find range-over-func bodies of this function
 	if fn.extraCache.rangeParent == nil {
 		lookupFunc := bi.LookupRangeBodyFunc()
-		for _, key := range lookupFunc.PrefixSearch(fn.Name) {
-			if node, exist := lookupFunc.Find(key); exist {
-				if fn2 := node.Val(); fn2.rangeParentName() == fn.Name {
-					fn.extraCache.rangeBodies = append(fn.extraCache.rangeBodies, fn2)
-				}
+		for _, fn2 := range lookupFunc.PrefixSearchIter(fn.Name) {
+			if fn2.rangeParentName() == fn.Name {
+				fn.extraCache.rangeBodies = append(fn.extraCache.rangeBodies, fn2)
 			}
 		}
 	}
