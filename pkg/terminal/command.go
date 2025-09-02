@@ -1915,12 +1915,12 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 	case *locspec.RegexLocationSpec:
 		shouldSetReturnBreakpoints = true
 	}
-	if tracepoint && shouldSetReturnBreakpoints && locs[0].Function != nil {
+	if tracepoint && shouldSetReturnBreakpoints {
 		for i := range locs {
 			if locs[i].Function == nil {
 				continue
 			}
-			addrs, err := t.client.(*rpc2.RPCClient).FunctionReturnLocations(locs[0].Function.Name())
+			addrs, err := t.client.(*rpc2.RPCClient).FunctionReturnLocations(locs[i].Function.Name())
 			if err != nil {
 				return nil, err
 			}

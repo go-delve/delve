@@ -1601,3 +1601,17 @@ func TestBreakPointFailWithCond(t *testing.T) {
 		}
 	})
 }
+
+func TestTraceRegexpReturn(t *testing.T) {
+	withTestTerminal("traceret", t, func(term *FakeTerminal) {
+		out, err := term.Exec(`trace /main\.fncall./`)
+		if err != nil {
+			t.Errorf("error executing trace command: %v", err)
+		}
+		out, _ = term.Exec("continue")
+		t.Logf("continue: %q", out)
+		if out != "> goroutine(1): main.fncall1()\n>> goroutine(1): main.fncall1 => (1)\n> goroutine(1): main.fncall2()\n>> goroutine(1): main.fncall2 => (2)\n" {
+			t.Errorf("wrong output for continue")
+		}
+	})
+}
