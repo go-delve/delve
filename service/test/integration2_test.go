@@ -2498,14 +2498,14 @@ func TestDetachLeaveRunning(t *testing.T) {
 	fixture := protest.BuildFixture(t, "testnextnethttp", buildFlags)
 
 	cmd := exec.Command(fixture.Path)
-	
+
 	// Capture stdout to read the port number
 	stdout, err := cmd.StdoutPipe()
 	assertNoError(err, t, "creating stdout pipe")
 	cmd.Stderr = os.Stderr
 	assertNoError(cmd.Start(), t, "starting fixture")
 	defer cmd.Process.Kill()
-	
+
 	// Read the port from stdout
 	var port int
 	var portLine string
@@ -3209,9 +3209,7 @@ func TestGuessSubstitutePath(t *testing.T) {
 	}
 
 	guess := func(t *testing.T, goflags string) [][2]string {
-		oldgoflags := os.Getenv("GOFLAGS")
-		os.Setenv("GOFLAGS", goflags)
-		defer os.Setenv("GOFLAGS", oldgoflags)
+		t.Setenv("GOFLAGS", goflags)
 
 		dlvbin := protest.GetDlvBinary(t)
 
@@ -3236,11 +3234,11 @@ func TestGuessSubstitutePath(t *testing.T) {
 
 		switch runtime.GOARCH {
 		case "ppc64le":
-			os.Setenv("GOFLAGS", "-tags=exp.linuxppc64le")
+			t.Setenv("GOFLAGS", "-tags=exp.linuxppc64le")
 		case "riscv64":
-			os.Setenv("GOFLAGS", "-tags=exp.linuxriscv64")
+			t.Setenv("GOFLAGS", "-tags=exp.linuxriscv64")
 		case "loong64":
-			os.Setenv("GOFLAGS", "-tags=exp.linuxloong64")
+			t.Setenv("GOFLAGS", "-tags=exp.linuxloong64")
 		}
 
 		gsp, err := client.GuessSubstitutePath()
