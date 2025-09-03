@@ -6,7 +6,7 @@ To get machine-readable full analysis output, use -output=json
 Analyzed packages:
   github.com/cosiner/argv v0.1.0
   github.com/cpuguy83/go-md2man/v2 v2.0.6
-  github.com/derekparker/trie/v3 v3.1.0
+  github.com/derekparker/trie/v3 v3.2.0
   github.com/go-delve/liner v1.2.3-0.20231231155935-4726ab1d7f62
   github.com/google/go-dap v0.12.0
   github.com/hashicorp/golang-lru v1.0.2

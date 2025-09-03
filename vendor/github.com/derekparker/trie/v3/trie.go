@@ -6,7 +6,7 @@
 package trie
 
 import (
-	"slices"
+	"iter"
 	"sort"
 	"sync"
 )
@@ -65,6 +65,23 @@ func New[T any]() *Trie[T] {
 		root: &node[T]{depth: 0}, // Lazy init children map
 		size: 0,
 	}
+}
+
+// AllKeyValuesIter returns a sequence of all key-value pairs in the trie.
+func (t *Trie[T]) AllKeyValuesIter() iter.Seq2[string, T] {
+	return collectIter(t.root)
+}
+
+// AllKeyValues returns a map of all key-value pairs in the trie.
+func (t *Trie[T]) AllKeyValues() map[string]T {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	result := make(map[string]T, t.size)
+	for key, value := range collectIter(t.root) {
+		result[key] = value
+	}
+	return result
 }
 
 // Add adds the key to the Trie, including meta data.
@@ -170,26 +187,54 @@ func (t *Trie[T]) Keys() []string {
 }
 
 // FuzzySearch performs a fuzzy search against the keys in the trie.
+// FuzzySearch performs a fuzzy search against the keys in the trie, returning all keys
+// with the given prefix. Results are returned sorted.
 func (t *Trie[T]) FuzzySearch(pre string) []string {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
-	keys := fuzzycollect(t.root, []rune(pre))
+	keys := make([]string, 0, t.size)
+	for key := range fuzzycollectIter(t.root, []rune(pre)) {
+		keys = append(keys, key)
+	}
 	sort.Sort(ByKeys(keys))
 	return keys
 }
 
+// FuzzySearchIter performs a fuzzy search and returns an iterator over matching keys.
+// Unlike FuzzySearch, the keys are not sorted - they are yielded as they are found.
+// This provides lazy evaluation and is more memory efficient for large result sets.
+func (t *Trie[T]) FuzzySearchIter(pre string) iter.Seq[string] {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	return fuzzycollectIter(t.root, []rune(pre))
+}
+
 // PrefixSearch performs a prefix search against the keys in the trie.
 func (t *Trie[T]) PrefixSearch(pre string) []string {
+	// Use PrefixSearchIter internally to avoid code duplication
+	var keys []string
+	for key := range t.PrefixSearchIter(pre) {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+// PrefixSearchIter performs a prefix search and returns an iterator over matching key-value pairs.
+// Unlike PrefixSearch, this returns an iterator that yields both keys and their associated values.
+// This provides lazy evaluation and is more memory efficient for large result sets.
+func (t *Trie[T]) PrefixSearchIter(pre string) iter.Seq2[string, T] {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
 	nd := findNode(t.root, []rune(pre))
 	if nd == nil {
-		return nil
+		// Return an empty iterator if no node is found
+		return func(yield func(string, T) bool) {}
 	}
 
-	return collect(nd)
+	return collectIter(nd)
 }
 
 // newChild creates and returns a pointer to a new child for the node.
@@ -330,28 +375,31 @@ func maskruneslice(rs []rune) uint64 {
 	return m0 | m1 | m2 | m3
 }
 
-func collect[T any](nd *node[T]) []string {
-	keys := make([]string, 0, nd.termCount)
-	childrenCount := 0
-	if nd.children != nil {
-		childrenCount = len(nd.children)
-	}
-	nodes := make([]*node[T], 1, childrenCount+1)
-	nodes[0] = nd
-	for len(nodes) > 0 {
-		i := len(nodes) - 1
-		n := nodes[i]
-		nodes = nodes[:i]
-		if n.children != nil {
-			for _, c := range n.children {
-				nodes = append(nodes, c)
+// collectIter returns an iterator over all key-value pairs starting from the given node
+func collectIter[T any](nd *node[T]) iter.Seq2[string, T] {
+	return func(yield func(string, T) bool) {
+		childrenCount := 0
+		if nd.children != nil {
+			childrenCount = len(nd.children)
+		}
+		nodes := make([]*node[T], 1, childrenCount+1)
+		nodes[0] = nd
+		for len(nodes) > 0 {
+			i := len(nodes) - 1
+			n := nodes[i]
+			nodes = nodes[:i]
+			if n.children != nil {
+				for _, c := range n.children {
+					nodes = append(nodes, c)
+				}
+			}
+			if n.path != nil {
+				if !yield(*n.path, n.meta) {
+					return
+				}
 			}
 		}
-		if n.path != nil {
-			keys = append(keys, *n.path)
-		}
 	}
-	return keys
 }
 
 type potentialSubtree[T any] struct {
@@ -359,75 +407,56 @@ type potentialSubtree[T any] struct {
 	node *node[T]
 }
 
-func fuzzycollect[T any](nd *node[T], partial []rune) []string {
-	if len(partial) == 0 {
-		return collect(nd)
-	}
-
-	// Get pooled slices to minimize allocations
-	keys := stringSlicePool.Get().([]string)
-	keys = keys[:0] // Reset length but keep capacity
-	defer stringSlicePool.Put(keys)
-
-	// Use a cast to work around generic pool limitations
-	potentialRaw := potentialSubtreePool.Get().([]potentialSubtree[any])
-	potential := make([]potentialSubtree[T], 1, cap(potentialRaw))
-	potential[0] = potentialSubtree[T]{node: nd, idx: 0}
-	defer func() {
-		// Clear and return the raw slice to pool
-		potentialRaw = potentialRaw[:0]
-		potentialSubtreePool.Put(potentialRaw)
-	}()
-
-	for len(potential) > 0 {
-		i := len(potential) - 1
-		p := potential[i]
-		potential = potential[:i]
-
-		m := maskruneslice(partial[p.idx:])
-		if (p.node.mask & m) != m {
-			continue
+// fuzzycollectIter performs a fuzzy search and yields matching keys as an iterator
+func fuzzycollectIter[T any](nd *node[T], partial []rune) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		if len(partial) == 0 {
+			// If no partial pattern, yield all keys from this node
+			for key := range collectIter(nd) {
+				if !yield(key) {
+					return
+				}
+			}
+			return
 		}
 
-		if p.node.val == partial[p.idx] {
-			p.idx++
-			if p.idx == len(partial) {
-				// Instead of calling collect(), do direct terminal collection
-				collectTerminalsDirectly(p.node, &keys)
+		// Use stack-based traversal for fuzzy matching
+		type potentialNode struct {
+			idx  int
+			node *node[T]
+		}
+
+		potential := make([]potentialNode, 1, 128)
+		potential[0] = potentialNode{node: nd, idx: 0}
+
+		for len(potential) > 0 {
+			i := len(potential) - 1
+			p := potential[i]
+			potential = potential[:i]
+
+			m := maskruneslice(partial[p.idx:])
+			if (p.node.mask & m) != m {
 				continue
 			}
-		}
 
-		if p.node.children != nil {
-			for _, c := range p.node.children {
-				potential = append(potential, potentialSubtree[T]{node: c, idx: p.idx})
+			if p.node.val == partial[p.idx] {
+				p.idx++
+				if p.idx == len(partial) {
+					// Found a match, yield all terminals from this subtree
+					for key := range collectIter(p.node) {
+						if !yield(key) {
+							return
+						}
+					}
+					continue
+				}
 			}
-		}
-	}
 
-	// Copy result to return since keys slice is from pool
-	return slices.Clone(keys)
-}
-
-// collectTerminalsDirectly collects terminal paths without allocating intermediate slices
-func collectTerminalsDirectly[T any](nd *node[T], keys *[]string) {
-	// Use stack-based traversal with pre-allocated node slice
-	nodes := make([]*node[T], 1, 32)
-	nodes[0] = nd
-
-	for len(nodes) > 0 {
-		i := len(nodes) - 1
-		n := nodes[i]
-		nodes = nodes[:i]
-
-		if n.children != nil {
-			for _, c := range n.children {
-				nodes = append(nodes, c)
+			if p.node.children != nil {
+				for _, c := range p.node.children {
+					potential = append(potential, potentialNode{node: c, idx: p.idx})
+				}
 			}
-		}
-
-		if n.path != nil {
-			*keys = append(*keys, *n.path)
 		}
 	}
 }
