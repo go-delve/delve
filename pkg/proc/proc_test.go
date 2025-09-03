@@ -1849,7 +1849,7 @@ func TestIssue462(t *testing.T) {
 				}
 				time.Sleep(50 * time.Millisecond)
 			}
-			
+
 			// Wait for program to start listening
 			for {
 				conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
@@ -2514,7 +2514,7 @@ func TestAttachDetach(t *testing.T) {
 	var port int
 	pid := cmd.Process.Pid
 	portFile := fmt.Sprintf("/tmp/testnextnethttp_port_%d", pid)
-	
+
 	// First wait for port file to be written
 	t0 := time.Now()
 	for {
@@ -2529,7 +2529,7 @@ func TestAttachDetach(t *testing.T) {
 			t.Fatal("fixture did not write port file")
 		}
 	}
-	
+
 	// Then wait for server to start listening
 	t0 = time.Now()
 	for {
