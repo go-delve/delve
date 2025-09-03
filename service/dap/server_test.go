@@ -7844,11 +7844,41 @@ func TestBreakpointAfterDisconnect(t *testing.T) {
 	fixture := protest.BuildFixture(t, "testnextnethttp", protest.AllNonOptimized)
 
 	cmd := exec.Command(fixture.Path)
-	cmd.Stdout = os.Stdout
+	
+	// Capture stdout to read the port number
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal("failed to create stdout pipe:", err)
+	}
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
+	
+	// Read the port from stdout in a goroutine
+	var port int
+	portChan := make(chan int, 1)
+	go func() {
+		var portLine string
+		buf := make([]byte, 256)
+		for {
+			n, err := stdout.Read(buf)
+			if err != nil {
+				return
+			}
+			portLine += string(buf[:n])
+			if strings.Contains(portLine, "LISTENING:") {
+				parts := strings.Split(portLine, "LISTENING:")
+				if len(parts) > 1 {
+					portStr := strings.TrimSpace(strings.Split(parts[1], "\n")[0])
+					if p, err := strconv.Atoi(portStr); err == nil {
+						portChan <- p
+						return
+					}
+				}
+			}
+		}
+	}()
 
 	var server MultiClientCloseServerMock
 	server.stopped = make(chan struct{})
@@ -7881,9 +7911,16 @@ func TestBreakpointAfterDisconnect(t *testing.T) {
 
 	server.impl.session.conn = &connection{ReadWriteCloser: discard{}} // fake a race condition between onDisconnectRequest and the runUntilStopAndNotify goroutine
 
+	// Wait for port to be available
+	select {
+	case port = <-portChan:
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for fixture to start listening")
+	}
+
 	httpClient := &http.Client{Timeout: time.Second}
 
-	resp, err := httpClient.Get("http://127.0.0.1:9191/nobp")
+	resp, err := httpClient.Get(fmt.Sprintf("http://127.0.0.1:%d/nobp", port))
 	if err != nil {
 		t.Fatalf("Page request after disconnect failed: %v", err)
 	}

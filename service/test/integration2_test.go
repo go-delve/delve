@@ -2498,15 +2498,39 @@ func TestDetachLeaveRunning(t *testing.T) {
 	fixture := protest.BuildFixture(t, "testnextnethttp", buildFlags)
 
 	cmd := exec.Command(fixture.Path)
-	cmd.Stdout = os.Stdout
+	
+	// Capture stdout to read the port number
+	stdout, err := cmd.StdoutPipe()
+	assertNoError(err, t, "creating stdout pipe")
 	cmd.Stderr = os.Stderr
 	assertNoError(cmd.Start(), t, "starting fixture")
 	defer cmd.Process.Kill()
+	
+	// Read the port from stdout
+	var port int
+	var portLine string
+	buf := make([]byte, 256)
+	for {
+		n, err := stdout.Read(buf)
+		if err != nil {
+			t.Fatal("failed to read port from fixture stdout:", err)
+		}
+		portLine += string(buf[:n])
+		if strings.Contains(portLine, "LISTENING:") {
+			parts := strings.Split(portLine, "LISTENING:")
+			if len(parts) > 1 {
+				portStr := strings.TrimSpace(strings.Split(parts[1], "\n")[0])
+				port, err = strconv.Atoi(portStr)
+				assertNoError(err, t, "parsing port number")
+				break
+			}
+		}
+	}
 
 	// wait for testnextnethttp to start listening
 	t0 := time.Now()
 	for {
-		conn, err := net.Dial("tcp", "127.0.0.1:9191")
+		conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err == nil {
 			conn.Close()
 			break
