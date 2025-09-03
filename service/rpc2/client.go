@@ -693,7 +693,17 @@ func (c *RPCClient) GuessSubstitutePath() ([][2]string, error) {
 	return out.List, err
 }
 
-func (c *RPCClient) call(method string, args, reply any) error {
+func (c *RPCClient) CancelDownloads() error {
+	out := &CancelDownloadsOut{}
+	return c.call("CancelDownloads", CancelDownloadsIn{}, out)
+}
+
+func (c *RPCClient) DownloadLibraryDebugInfo(n int) error {
+	out := DownloadLibraryDebugInfoOut{}
+	return c.call("DownloadLibraryDebugInfo", DownloadLibraryDebugInfoIn{n}, out)
+}
+
+func (c *RPCClient) call(method string, args, reply interface{}) error {
 	return c.client.Call("RPCServer."+method, args, reply)
 }
 

@@ -131,6 +131,11 @@ func (grp *TargetGroup) Continue() error {
 			if err != nil {
 				logflags.DebuggerLogger().Errorf("could not clear inactivated stepping breakpoints: %v", err)
 			}
+			bi := it.BinInfo()
+			bi.cancelDownloadsMu.Lock()
+			bi.downloadsCtx = nil
+			bi.cancelDownloads = nil
+			bi.cancelDownloadsMu.Unlock()
 		}
 
 		if contOnceErr != nil {

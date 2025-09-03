@@ -2462,6 +2462,21 @@ func (d *Debugger) GuessSubstitutePath(args *api.GuessSubstitutePathIn) map[stri
 	})
 }
 
+// CancelDownloads cancels ongoing downloads, if any.
+func (d *Debugger) CancelDownloads() bool {
+	if d.isRecording() {
+		return false
+	}
+	return d.target.CancelDownloads()
+}
+
+// DownloadLibraryDebugInfo attempts to download the specified library's debug info.
+func (d *Debugger) DownloadLibraryDebugInfo(n int) error {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+	return d.target.Selected.BinInfo().LoadImageBinaryInfoAgain(n)
+}
+
 func guessSubstitutePath(args *api.GuessSubstitutePathIn, bins [][]proc.Function, fileForFunc func(int, *proc.Function) string) map[string]string {
 	serverMod2Dir := map[string]string{}
 	serverMod2DirCandidate := map[string]map[string]int{}
