@@ -531,11 +531,18 @@ func TestNextNetHTTP(t *testing.T) {
 		{15, 16},
 	}
 	withTestProcess("testnextnethttp", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		pid := p.Pid()
+		portFile := fmt.Sprintf("/tmp/testnextnethttp_port_%d", pid)
+		
+		// Ensure cleanup of port file
+		defer func() {
+			os.Remove(portFile)
+		}()
+		
 		go func() {
-			// Wait for program to write the port to file
+			// Wait for program to write the port to file with timeout
 			var port int
-			pid := p.Pid()
-			portFile := fmt.Sprintf("/tmp/testnextnethttp_port_%d", pid)
+			t0 := time.Now()
 			for {
 				if data, err := os.ReadFile(portFile); err == nil {
 					if parsedPort, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil {
@@ -544,8 +551,14 @@ func TestNextNetHTTP(t *testing.T) {
 					}
 				}
 				time.Sleep(50 * time.Millisecond)
+				if time.Since(t0) > 10*time.Second {
+					t.Errorf("timeout waiting for port file")
+					return
+				}
 			}
-			// Wait for program to start listening
+			
+			// Wait for program to start listening with timeout
+			t0 = time.Now()
 			for {
 				conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 				if err == nil {
@@ -553,6 +566,10 @@ func TestNextNetHTTP(t *testing.T) {
 					break
 				}
 				time.Sleep(50 * time.Millisecond)
+				if time.Since(t0) > 10*time.Second {
+					t.Errorf("timeout waiting for server to start listening")
+					return
+				}
 			}
 			resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d", port))
 			if err == nil {
@@ -1835,11 +1852,18 @@ func TestCmdLineArgs(t *testing.T) {
 func TestIssue462(t *testing.T) {
 	skipOn(t, "broken", "windows") // Stacktrace of Goroutine 0 fails with an error
 	withTestProcess("testnextnethttp", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		pid := p.Pid()
+		portFile := fmt.Sprintf("/tmp/testnextnethttp_port_%d", pid)
+		
+		// Ensure cleanup of port file
+		defer func() {
+			os.Remove(portFile)
+		}()
+		
 		go func() {
-			// Wait for program to write the port to file and start listening
+			// Wait for program to write the port to file with timeout
 			var port int
-			pid := p.Pid()
-			portFile := fmt.Sprintf("/tmp/testnextnethttp_port_%d", pid)
+			t0 := time.Now()
 			for {
 				if data, err := os.ReadFile(portFile); err == nil {
 					if parsedPort, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil {
@@ -1848,9 +1872,14 @@ func TestIssue462(t *testing.T) {
 					}
 				}
 				time.Sleep(50 * time.Millisecond)
+				if time.Since(t0) > 10*time.Second {
+					t.Errorf("timeout waiting for port file")
+					return
+				}
 			}
 
-			// Wait for program to start listening
+			// Wait for program to start listening with timeout
+			t0 = time.Now()
 			for {
 				conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 				if err == nil {
@@ -1858,6 +1887,10 @@ func TestIssue462(t *testing.T) {
 					break
 				}
 				time.Sleep(50 * time.Millisecond)
+				if time.Since(t0) > 10*time.Second {
+					t.Errorf("timeout waiting for server to start listening")
+					return
+				}
 			}
 
 			grp.RequestManualStop()
@@ -2514,6 +2547,14 @@ func TestAttachDetach(t *testing.T) {
 	var port int
 	pid := cmd.Process.Pid
 	portFile := fmt.Sprintf("/tmp/testnextnethttp_port_%d", pid)
+	
+	// Ensure cleanup of port file
+	defer func() {
+		os.Remove(portFile)
+		if cmd.Process != nil {
+			cmd.Process.Kill()
+		}
+	}()
 
 	// First wait for port file to be written
 	t0 := time.Now()

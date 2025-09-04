@@ -29,7 +29,11 @@ func main() {
 	
 	// Also write port to a file for tests that can't capture stdout
 	// Include PID in filename to avoid conflicts when tests run in parallel
-	os.WriteFile(fmt.Sprintf("/tmp/testnextnethttp_port_%d", os.Getpid()), []byte(fmt.Sprintf("%d", port)), 0644)
+	portFile := fmt.Sprintf("/tmp/testnextnethttp_port_%d", os.Getpid())
+	os.WriteFile(portFile, []byte(fmt.Sprintf("%d", port)), 0644)
+	
+	// Clean up port file when program exits
+	defer os.Remove(portFile)
 	
 	err = http.Serve(listener, nil)
 	if err != nil {
