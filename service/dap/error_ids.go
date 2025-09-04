@@ -28,6 +28,7 @@ const (
 	UnableToDisassemble        = 2013
 	UnableToListRegisters      = 2014
 	UnableToRunDlvCommand      = 2015
+	UnableToReadMemory         = 2016
 
 	// Add more codes as we support more requests
 
