@@ -749,3 +749,41 @@ func unmarshalStarlarkValueIntl(val starlark.Value, dst reflect.Value, path stri
 	}
 	return nil
 }
+
+var _ starlark.HasAttrs = starlarkTargetObject{}
+
+type starlarkTargetObject struct {
+	env *Env
+}
+
+func (starlarkTargetObject) Freeze() {
+}
+
+func (starlarkTargetObject) Hash() (uint32, error) {
+	return 0, errors.New("not hashable")
+}
+
+func (starlarkTargetObject) String() string {
+	return "<target variables>"
+}
+
+func (starlarkTargetObject) Truth() starlark.Bool {
+	return true
+}
+
+func (starlarkTargetObject) Type() string {
+	return "<target variables>"
+}
+
+func (tgt starlarkTargetObject) AttrNames() []string {
+	return nil
+}
+
+func (tgt starlarkTargetObject) Attr(name string) (starlark.Value, error) {
+	env := tgt.env
+	v, err := env.ctx.Client().EvalVariable(env.ctx.Scope(), name, env.ctx.LoadConfig())
+	if err != nil {
+		return starlark.None, fmt.Errorf("could not find variable %q: %v", name, err)
+	}
+	return env.variableValueToStarlarkValue(v, true)
+}
