@@ -35,8 +35,7 @@ Tests skipped by each supported backend:
 * linux/riscv64 skipped = 2
 	* 1 broken - cgo stacktraces
 	* 1 not working on linux/riscv64
-* loong64 skipped = 8
-	* 1 broken
+* loong64 skipped = 7
 	* 1 broken - global variable symbolication
 	* 6 not implemented
 * pie skipped = 2

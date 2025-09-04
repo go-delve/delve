@@ -3644,7 +3644,6 @@ func TestIssue951(t *testing.T) {
 func TestDWZCompression(t *testing.T) {
 	skipOn(t, "broken", "ppc64le")
 	skipOn(t, "broken", "riscv64")
-	skipOn(t, "broken", "loong64")
 	// If dwz is not available in the system, skip this test
 	if _, err := exec.LookPath("dwz"); err != nil {
 		t.Skip("dwz not installed")
