@@ -1712,11 +1712,8 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 
 	// If -save flag is provided, save breakpoints to file
 	if saveFile != "" {
-		file, err := os.OpenFile(saveFile, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+		file, err := os.Create(saveFile)
 		if err != nil {
-			if os.IsExist(err) {
-				return fmt.Errorf("file '%s' already exists and cannot be overwritten", saveFile)
-			}
 			return fmt.Errorf("failed to open file '%s': %w", saveFile, err)
 		}
 		defer file.Close()
