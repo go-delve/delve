@@ -1725,6 +1725,10 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 			if bp.ID < 0 {
 				continue
 			}
+			// Skip watchpoints as they can't be reliably restored
+			if bp.WatchExpr != "" {
+				continue
+			}
 			var err error
 			if bp.Tracepoint {
 				_, err = fmt.Fprintf(w, "trace %s:%d\n", bp.File, bp.Line)
