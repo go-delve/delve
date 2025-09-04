@@ -102,6 +102,8 @@ If the command function has a doc string it will be used as a help message.
 
 Variables of the target program can be accessed using `local_vars`, `function_args` or the `eval` functions. Each variable will be returned as a [Variable](https://pkg.go.dev/github.com/go-delve/delve/service/api#Variable) struct, with one special field: `Value`.
 
+As a convenience a special global object exists, called `tgt`: evaluating `tgt.varname` is equivalent to evaluating `eval(None, "varname").Variable.Value`.
+
 ## Variable.Value
 
 The `Value` field will return the value of the target variable converted to a starlark value:

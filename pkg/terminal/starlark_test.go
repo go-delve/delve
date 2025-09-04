@@ -182,6 +182,12 @@ func TestStarlarkVariable(t *testing.T) {
 			{`v = eval(None, "s2").Variable; print(v.Value[1].A)`, "3"},
 			{`v = eval(None, "s2").Variable; print(v.Value[1].A + 10)`, "13"},
 			{`v = eval(None, "s2").Variable; print(v.Value[1]["B"])`, "4"},
+
+			// Using target object
+			{`print(tgt.i1)`, "1"},
+			{`print(tgt.m1["Malone"])`, "main.astruct {A: 2, B: 3}"},
+			{`print(tgt.c1.pb)`, "*main.bstruct {a: main.astruct {A: 1, B: 2}}"},
+			{`print(tgt.c1.pb.a.B)`, "2"},
 		} {
 			out := strings.TrimSpace(term.MustExecStarlark(tc.expr))
 			if out != tc.tgt {

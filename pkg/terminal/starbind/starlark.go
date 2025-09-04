@@ -31,6 +31,7 @@ const (
 	dlvContextName               = "dlv_context"
 	curScopeBuiltinName          = "cur_scope"
 	defaultLoadConfigBuiltinName = "default_load_config"
+	targetObjectName             = "tgt"
 	helpBuiltinName              = "help"
 )
 
@@ -139,6 +140,8 @@ func New(ctx Context, out EchoWriter) *Env {
 	})
 	builtindoc(defaultLoadConfigBuiltinName, "()", "returns the default load configuration.")
 
+	env.env[targetObjectName] = starlarkTargetObject{env}
+
 	env.env[helpBuiltinName] = starlark.NewBuiltin(helpBuiltinName, func(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		switch len(args) {
 		case 0:
@@ -154,6 +157,7 @@ func New(ctx Context, out EchoWriter) *Env {
 			for _, bin := range bins {
 				fmt.Fprintf(env.out, "\t%s\n", bin)
 			}
+			fmt.Fprintf(env.out, "\n\nUse tgt.varname to access the varname variable in the target process (it is equivalent to 'eval(None, \"varname\").Variable.Value').\n")
 		case 1:
 			switch x := args[0].(type) {
 			case *starlark.Builtin:
