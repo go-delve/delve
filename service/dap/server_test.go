@@ -87,6 +87,7 @@ func startDAPServerWithClient(t *testing.T, defaultDebugInfoDirs bool, serverSto
 // To mock a server created by dap.NewServer(config) or serving dap.NewSession(conn, config, debugger)
 // set those arg fields manually after the server creation.
 func startDAPServer(t *testing.T, defaultDebugInfoDirs bool, serverStopped chan struct{}) (server *Server, forceStop chan struct{}) {
+	t.Helper()
 	// Start the DAP server.
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -5421,14 +5422,14 @@ func TestLaunchRequestDefaults(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, "launch", func() {
 			client.LaunchRequestWithArgs(map[string]any{
-				"mode": "" /*"debug" by default*/, "program": fixture.Source, "output": "__mybin",
+				"mode": "" /*"debug" by default*/, "program": fixture.Source,
 			})
 		})
 	})
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSession(t, client, "launch", func() {
 			client.LaunchRequestWithArgs(map[string]any{
-				/*"mode":"debug" by default*/ "program": fixture.Source, "output": "__mybin",
+				/*"mode":"debug" by default*/ "program": fixture.Source,
 			})
 		})
 	})
@@ -5504,7 +5505,7 @@ func TestNoDebug_GoodExitStatus(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
 		runNoDebugSession(t, client, func() {
 			client.LaunchRequestWithArgs(map[string]any{
-				"noDebug": true, "mode": "debug", "program": fixture.Source, "output": "__mybin",
+				"noDebug": true, "mode": "debug", "program": fixture.Source,
 			})
 		}, 0)
 	})
@@ -5761,7 +5762,7 @@ func TestLaunchRequestWithBuildFlags(t *testing.T) {
 			// We reuse the harness that builds, but ignore the built binary,
 			// only relying on the source to be built in response to LaunchRequest.
 			client.LaunchRequestWithArgs(map[string]any{
-				"mode": "debug", "program": fixture.Source, "output": "__mybin",
+				"mode": "debug", "program": fixture.Source,
 				"buildFlags": "-ldflags '-X main.Hello=World'",
 			})
 		})
@@ -5774,7 +5775,7 @@ func TestLaunchRequestWithBuildFlags2(t *testing.T) {
 			// We reuse the harness that builds, but ignore the built binary,
 			// only relying on the source to be built in response to LaunchRequest.
 			client.LaunchRequestWithArgs(map[string]any{
-				"mode": "debug", "program": fixture.Source, "output": "__mybin",
+				"mode": "debug", "program": fixture.Source,
 				"buildFlags": []string{"-ldflags", "-X main.Hello=World"},
 			})
 		})
@@ -7844,7 +7845,7 @@ func TestBreakpointAfterDisconnect(t *testing.T) {
 	fixture := protest.BuildFixture(t, "testnextnethttp", protest.AllNonOptimized)
 
 	cmd := exec.Command(fixture.Path)
-	
+
 	// Capture stdout to read the port number
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -7854,7 +7855,7 @@ func TestBreakpointAfterDisconnect(t *testing.T) {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	
+
 	// Read the port from stdout in a goroutine
 	var port int
 	portChan := make(chan int, 1)
