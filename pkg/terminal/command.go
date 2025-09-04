@@ -1744,6 +1744,16 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 					return fmt.Errorf("failed to write condition to file %d:%s", bp.ID, bp.Cond)
 				}
 			}
+			if bp.HitCond != "" {
+				if bp.HitCondPerG {
+					_, err = fmt.Fprintf(w, "condition -per-g-hitcount %d %s\n", bp.ID, bp.HitCond)
+				} else {
+					_, err = fmt.Fprintf(w, "condition -hitcount %d %s\n", bp.ID, bp.HitCond)
+				}
+				if err != nil {
+					return fmt.Errorf("failed to write hit condition to file %d:%s", bp.ID, bp.HitCond)
+				}
+			}
 			if bp.Disabled {
 				_, err = fmt.Fprintf(w, "toggle %d\n", bp.ID)
 				if err != nil {
