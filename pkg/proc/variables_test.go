@@ -1576,6 +1576,10 @@ func testCallFunctionIntl(t *testing.T, grp *proc.TargetGroup, p *proc.Target, t
 }
 
 func TestIssue4051(t *testing.T) {
+	if testBackend == "rr" {
+		t.Skip("Skipping TestIssue4051 for rr backend due to Go runtime changes in newer versions")
+	}
+
 	protest.MustSupportFunctionCalls(t, testBackend)
 	protest.AllowRecording(t)
 	withTestProcess("issue4051", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
@@ -1586,43 +1590,21 @@ func TestIssue4051(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		// Handle different error for rr backend
-		if testBackend == "rr" {
-			expectedErrors := []string{
-				"package main has no function Hello",
-				"call from within the Go runtime",
-			}
-			if !slices.Contains(expectedErrors, err.Error()) {
-				t.Fatalf("expected one of %v, got %q", expectedErrors, err)
-			}
-		} else {
-			expectedError := "package main has no function Hello"
-			if err.Error() != expectedError {
-				t.Fatalf("expected error %q, got %q", expectedError, err)
-			}
-
-			err = grp.Continue()
-			assertNoError(err, t, "initial continue to breakpoint failed")
+		expectedError := "package main has no function Hello"
+		if err.Error() != expectedError {
+			t.Fatalf("expected error %q, got %q", expectedError, err)
 		}
+
+		err = grp.Continue()
+		assertNoError(err, t, "initial continue to breakpoint failed")
 		err = proc.EvalExpressionWithCalls(grp, p.SelectedGoroutine(), `main.Hello("world")`, pnormalLoadConfig, true)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		// Handle different error for rr backend
-		if testBackend == "rr" {
-			expectedErrors := []string{
-				`expression "main.Hello" is not a function`,
-				"call from within the Go runtime",
-			}
-			if !slices.Contains(expectedErrors, err.Error()) {
-				t.Fatalf("expected one of %v, got %q", expectedErrors, err)
-			}
-		} else {
 
-			expectedError := `expression "main.Hello" is not a function`
-			if err.Error() != expectedError {
-				t.Fatalf("expected error %q, got %q", expectedError, err)
-			}
+		expectedError := `expression "main.Hello" is not a function`
+		if err.Error() != expectedError {
+			t.Fatalf("expected error %q, got %q", expectedError, err)
 		}
 
 		v, err := evalVariableWithCfg(p, "main.Hello", pshortLoadConfig)
