@@ -269,7 +269,7 @@ session.`,
 	debugCommand.Flags().BoolVar(&continueOnStart, "continue", false, "Continue the debugged process on start.")
 	debugCommand.Flags().StringVar(&tty, "tty", "", "TTY to use for the target program")
 	must(debugCommand.MarkFlagFilename("tty"))
-	debugCommand.Flags().BoolVarP(&rrDelOnDetach, "delondetach", "d", true,
+	debugCommand.Flags().BoolVarP(&rrDelOnDetach, "rr-cleanup", "", true,
 		"Delete directory containing debug recording on detach.")
 	rootCommand.AddCommand(debugCommand)
 
@@ -303,7 +303,7 @@ or later, -gcflags="-N -l" on earlier versions of Go.`,
 	execCommand.Flags().StringVar(&tty, "tty", "", "TTY to use for the target program")
 	must(execCommand.MarkFlagFilename("tty"))
 	execCommand.Flags().BoolVar(&continueOnStart, "continue", false, "Continue the debugged process on start.")
-	execCommand.Flags().BoolVarP(&rrDelOnDetach, "delondetach", "d", true,
+	execCommand.Flags().BoolVarP(&rrDelOnDetach, "rr-cleanup", "", true,
 		"Delete directory containing debug recording on detach.")
 	rootCommand.AddCommand(execCommand)
 

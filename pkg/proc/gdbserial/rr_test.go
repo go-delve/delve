@@ -24,25 +24,6 @@ func TestMain(m *testing.M) {
 	protest.RunTestsWithFixtures(m)
 }
 
-func withTestRetainRecording(name string, t testing.TB, fn func(grp *proc.TargetGroup, fixture protest.Fixture)) (string, error) {
-	fixture := protest.BuildFixture(t, name, 0)
-	protest.MustHaveRecordingAllowed(t)
-	if path, _ := exec.LookPath("rr"); path == "" {
-		t.Skip("test skipped, rr not found")
-	}
-	t.Log("recording")
-	grp, tracedir, err := gdbserial.RecordAndReplay([]string{fixture.Path}, ".", true, false, []string{}, "", proc.OutputRedirect{}, proc.OutputRedirect{})
-	if err != nil {
-		t.Fatal("Launch():", err)
-	}
-	t.Logf("replaying %q", tracedir)
-
-	defer grp.Detach(true)
-	fn(grp, fixture)
-	return tracedir, err
-}
-
-
 func withTestRecording(name string, t testing.TB, fn func(grp *proc.TargetGroup, fixture protest.Fixture)) {
 	fixture := protest.BuildFixture(t, name, 0)
 	protest.MustHaveRecordingAllowed(t)
@@ -123,7 +104,7 @@ func TestTraceDirCleanup(t *testing.T) {
 	setFunctionBreakpoint(p, t, "main.main")
 	assertNoError(grp.Continue(), t, "Continue")
 	if _, err = os.ReadDir(tracedir); err != nil {
-		t.Fatal("Trace directory does not exist! Flag delondetach failed: ", err)
+		t.Fatal("Trace directory does not exist! Flag rr-cleanup failed: ", err)
 	}
 
 	// Clean up the trace directory
