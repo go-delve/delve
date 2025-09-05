@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -30,7 +31,7 @@ func withTestRecording(name string, t testing.TB, fn func(grp *proc.TargetGroup,
 		t.Skip("test skipped, rr not found")
 	}
 	t.Log("recording")
-	grp, tracedir, err := gdbserial.RecordAndReplay([]string{fixture.Path}, ".", true, []string{}, "", proc.OutputRedirect{}, proc.OutputRedirect{})
+	grp, tracedir, err := gdbserial.RecordAndReplay([]string{fixture.Path}, ".", true, true, []string{}, "", proc.OutputRedirect{}, proc.OutputRedirect{})
 	if err != nil {
 		t.Fatal("Launch():", err)
 	}
@@ -65,6 +66,52 @@ func setFunctionBreakpoint(p *proc.Target, t *testing.T, fname string) *proc.Bre
 		t.Fatalf("%s:%d: FindFunctionLocation(%s): %v", f, l, fname, err)
 	}
 	return bp
+}
+func TestTraceDirCleanup(t *testing.T) {
+	protest.AllowRecording(t)
+	// Set the DELVE_RR_RECORD_FLAGS environment variable to pass --output-trace-dir to rr
+	oldFlags := os.Getenv("DELVE_RR_RECORD_FLAGS")
+	defer func() {
+		if oldFlags == "" {
+			os.Unsetenv("DELVE_RR_RECORD_FLAGS")
+		} else {
+			os.Setenv("DELVE_RR_RECORD_FLAGS", oldFlags)
+		}
+	}()
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal("Failed to get user home directory:", err)
+	}
+	dirname := fmt.Sprintf("--output-trace-dir %s/dlvrecord", homeDir)
+	// Set environment variable for the recorded program
+	os.Setenv("DELVE_RR_RECORD_FLAGS", dirname)
+
+	fixture := protest.BuildFixture(t, "testnextprog", 0)
+	protest.MustHaveRecordingAllowed(t)
+	if path, _ := exec.LookPath("rr"); path == "" {
+		t.Skip("test skipped, rr not found")
+	}
+	t.Log("recording")
+	grp, tracedir, err := gdbserial.RecordAndReplay([]string{fixture.Path}, ".", true, false, []string{}, "", proc.OutputRedirect{}, proc.OutputRedirect{})
+	if err != nil {
+		t.Fatal("Launch():", err)
+	}
+	t.Logf("replaying %q", tracedir)
+
+	defer grp.Detach(true)
+	p := grp.Selected
+	setFunctionBreakpoint(p, t, "main.main")
+	assertNoError(grp.Continue(), t, "Continue")
+	if _, err = os.ReadDir(tracedir); err != nil {
+		t.Fatal("Trace directory does not exist! Flag rr-cleanup failed: ", err)
+	}
+
+	// Clean up the trace directory
+	defer func() {
+		protest.SafeRemoveAll(tracedir)
+	}()
+
 }
 
 func TestRestartAfterExit(t *testing.T) {
