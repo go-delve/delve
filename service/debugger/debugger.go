@@ -408,13 +408,10 @@ func (d *Debugger) LastModified() time.Time {
 	return d.target.Selected.BinInfo().LastModified()
 }
 
-// FunctionReturnLocations returns all return locations
-// for the given function, a list of addresses corresponding
-// to 'ret' or 'call runtime.deferreturn'.
-func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
-	d.targetMutex.Lock()
-	defer d.targetMutex.Unlock()
-
+// functionReturnLocationsInternal is same as FunctionReturnLocations
+// except that it does not have a lock and unlock as its called from
+// within the callback which has already acquired a lock.
+func (d *Debugger) functionReturnLocationsInternal(fnName string) ([]uint64, error) {
 	if len(d.target.Targets()) > 1 {
 		return nil, ErrNotImplementedWithMultitarget
 	}
@@ -451,6 +448,15 @@ func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
 	}
 
 	return addrs, nil
+}
+
+// FunctionReturnLocations returns all return locations
+// for the given function, a list of addresses corresponding
+// to 'ret' or 'call runtime.deferreturn'.
+func (d *Debugger) FunctionReturnLocations(fnName string) ([]uint64, error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+	return d.functionReturnLocationsInternal(fnName)
 }
 
 // Detach detaches from the target process.
@@ -678,6 +684,13 @@ func (d *Debugger) CreateBreakpoint(requestedBp *api.Breakpoint, locExpr string,
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
 
+	return d.createBreakpointInternal(requestedBp, locExpr, substitutePathRules, suspended)
+
+}
+
+// createInternalBreakpoint is the same as CreateBreakpoint except that it is called from only within the debugger process
+// when the lock is already been acquired so the step of acquiring and releasing the lock is skipped
+func (d *Debugger) createBreakpointInternal(requestedBp *api.Breakpoint, locExpr string, substitutePathRules [][2]string, suspended bool) (*api.Breakpoint, error) {
 	var (
 		setbp proc.SetBreakpoint
 		err   error
@@ -1364,7 +1377,7 @@ func (d *Debugger) Functions(filter string, followCalls int) ([]string, error) {
 		for _, f := range t.BinInfo().Functions {
 			if regex.MatchString(f.Name) {
 				if followCalls > 0 {
-					newfuncs, err := traverse(t, &f, 1, followCalls)
+					newfuncs, err := d.traverse(t, &f, 1, followCalls, filter)
 					if err != nil {
 						return nil, fmt.Errorf("traverse failed with error %w", err)
 					}
@@ -1380,12 +1393,14 @@ func (d *Debugger) Functions(filter string, followCalls int) ([]string, error) {
 	return funcs, nil
 }
 
-func traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int) ([]string, error) {
+func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int, rootstr string) ([]string, error) {
+
 	type TraceFunc struct {
 		Func    *proc.Function
 		Depth   int
 		visited bool
 	}
+
 	type TraceFuncptr *TraceFunc
 
 	TraceMap := make(map[string]TraceFuncptr)
@@ -1401,7 +1416,7 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int)
 		parent := queue[0]
 		queue = queue[1:]
 		if parent == nil {
-			panic("attempting to open file Delve cannot parse")
+			panic("queue has a nil node, cannot traverse!")
 		}
 		if parent.Depth > followCalls {
 			continue
@@ -1419,10 +1434,73 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int)
 		}
 		f := parent.Func
 		text, err := proc.Disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), f.Entry, f.End)
+
 		if err != nil {
 			return nil, fmt.Errorf("disassemble failed with error %w", err)
 		}
 		for _, instr := range text {
+			// Dynamic functions are called in a special way wherein the destination location is nil
+			// Hence its required to put a breakpoint inorder to acquire the address of the function
+			// at runtime and we do this via a call back mechanism
+			if instr.IsCall() && instr.DestLoc == nil {
+				dynbp, err := t.SetBreakpoint(0, instr.Loc.PC, proc.NextBreakpoint, nil)
+				if err != nil {
+					return nil, fmt.Errorf("error setting breakpoint inside deferreturn")
+				}
+				dynCallback := func(th proc.Thread, tgt *proc.Target) (bool, error) {
+					rawlocs, err := proc.ThreadStacktrace(tgt, tgt.CurrentThread(), followCalls+2)
+					if err != nil {
+						return false, fmt.Errorf("thread stack trace returned error")
+					}
+					// Since the dynamic function is known only at runtime, the depth is likewise
+					// calculated by referring to the stack and the mechanism is similar to that
+					// used in pkg/terminal/command.go:printTraceOutput
+					rootindex := -1
+					for i := len(rawlocs) - 1; i >= 0; i-- {
+						if rawlocs[i].Call.Fn.Name == rootstr {
+							if rootindex == -1 {
+								rootindex = i
+								break
+							}
+						}
+					}
+					sdepth := rootindex + 1
+
+					if sdepth+1 > followCalls {
+						return false, nil
+					}
+					regs, err := th.Registers()
+					if err != nil {
+						return false, fmt.Errorf("registers inside callback returned err")
+
+					}
+					dregs := tgt.BinInfo().Arch.RegistersToDwarfRegisters(0, regs)
+					addr := dregs.Uint64Val(tgt.BinInfo().Arch.DynamicCallReg)
+					fn := tgt.BinInfo().PCToFunc(addr)
+					if fn == nil {
+						return false, fmt.Errorf("PCToFunc returned nil")
+					}
+					_, err = createFnTracepoint(d, fn.Name, rootstr, followCalls)
+					if err != nil {
+						return false, fmt.Errorf("error creating tracepoint in function %s", fn.Name)
+					}
+					dynchildren, err := d.traverse(t, fn, sdepth+1, followCalls, rootstr)
+					if err != nil {
+						return false, fmt.Errorf("error calling traverse on dynamic children")
+					}
+					for i := 0; i < len(dynchildren); i++ {
+						_, err := createFnTracepoint(d, dynchildren[i], rootstr, followCalls)
+						if err != nil {
+							return false, fmt.Errorf("error creating tracepoint in function %s", dynchildren[i])
+						}
+					}
+					return false, nil
+				}
+		for _, dynbrklet_i := range dynbp.Breaklets {
+				dynbrklet_i.SetCallBack(dynCallback)
+			}
+			}
+
 			if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
 				cf := instr.DestLoc.Fn
 				if (strings.HasPrefix(cf.Name, "runtime.") || strings.HasPrefix(cf.Name, "runtime/internal")) && cf.Name != "runtime.deferreturn" && cf.Name != "runtime.gorecover" && cf.Name != "runtime.gopanic" {
@@ -1439,6 +1517,33 @@ func traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int)
 		}
 	}
 	return funcs, nil
+}
+
+// For dynamic functions, since we get to know the functions that are being called from deferreturn quite late in execution
+// we need to create the trace point ourselves so that it can be included in the trace output just in time
+func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls int) (*api.Breakpoint, error) {
+
+	tbp, err1 := d.createBreakpointInternal(&api.Breakpoint{FunctionName: fname, Tracepoint: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
+	if tbp == nil {
+		if err1 != nil && strings.Contains(err1.Error(), "Breakpoint exists") {
+			// This is expected
+		} else {
+			return nil, fmt.Errorf("error creating breakpoint at function %s", fname)
+		}
+	}
+
+	raddrs, _ := d.functionReturnLocationsInternal(fname)
+	for i := range raddrs {
+		rtbp, err := d.createBreakpointInternal(&api.Breakpoint{Addr: raddrs[i], TraceReturn: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
+		if rtbp == nil {
+			if err != nil && strings.Contains(err.Error(), "Breakpoint exists") {
+				// This is expected
+			} else {
+				return nil, fmt.Errorf("error creating breakpoint at function return %s", fname)
+			}
+		}
+	}
+	return tbp, nil
 }
 
 // Types returns all type information in the binary.
