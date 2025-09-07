@@ -1466,6 +1466,7 @@ type Capabilities struct {
 	SupportsTerminateRequest              bool                         `json:"supportsTerminateRequest,omitempty"`
 	SupportsDataBreakpoints               bool                         `json:"supportsDataBreakpoints,omitempty"`
 	SupportsReadMemoryRequest             bool                         `json:"supportsReadMemoryRequest,omitempty"`
+	SupportsWriteMemoryRequest            bool                         `json:"supportsWriteMemoryRequest,omitempty"`
 	SupportsDisassembleRequest            bool                         `json:"supportsDisassembleRequest,omitempty"`
 	SupportsCancelRequest                 bool                         `json:"supportsCancelRequest,omitempty"`
 	SupportsBreakpointLocationsRequest    bool                         `json:"supportsBreakpointLocationsRequest,omitempty"`

@@ -937,7 +937,6 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsLoadedSourcesRequest = false
 	response.Body.SupportsReadMemoryRequest = true
 	response.Body.SupportsCancelRequest = false
-	response.Body.SupportsReadMemoryRequest = true
 	s.send(response)
 }
 
