@@ -3376,8 +3376,8 @@ func (s *Session) onReadMemoryRequest(request *dap.ReadMemoryRequest) {
 
 	endReq := int64(args.Offset + args.Count)
 
-	startRead := clamp(int64(args.Offset), 0, ref.size)
-	endRead := clamp(endReq, 0, ref.size)
+	startRead := min(max(int64(args.Offset), 0), ref.size)
+	endRead := min(max(endReq, 0), ref.size)
 
 	memAddr := ref.addr + uint64(startRead)
 
@@ -3440,18 +3440,6 @@ func makeReadMemoryResponse(req dap.Request, addr uint64, data []byte, unreadabl
 			UnreadableBytes: unreadable,
 		},
 	}
-}
-
-func clamp(x, lo, hi int64) int64 {
-	if x < lo {
-		return lo
-	}
-
-	if x > hi {
-		return hi
-	}
-
-	return x
 }
 
 var invalidInstruction = dap.DisassembledInstruction{
