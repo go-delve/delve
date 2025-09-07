@@ -323,7 +323,6 @@ type dapClientCapabilities struct {
 	supportsVariablePaging       bool
 	supportsRunInTerminalRequest bool
 	supportsMemoryReferences     bool
-	supportsReadMemoryRequest    bool
 	supportsProgressReporting    bool
 }
 
@@ -938,7 +937,7 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsLoadedSourcesRequest = false
 	response.Body.SupportsReadMemoryRequest = true
 	response.Body.SupportsCancelRequest = false
-	response.Body.SupportsMemoryReferences = true
+	response.Body.SupportsReadMemoryRequest = true
 	s.send(response)
 }
 
@@ -948,7 +947,6 @@ func (s *Session) setClientCapabilities(args dap.InitializeRequestArguments) {
 	s.clientCapabilities.supportsRunInTerminalRequest = args.SupportsRunInTerminalRequest
 	s.clientCapabilities.supportsVariablePaging = args.SupportsVariablePaging
 	s.clientCapabilities.supportsVariableType = args.SupportsVariableType
-	s.clientCapabilities.supportsReadMemoryRequest = args.SupportsReadMemoryRequest
 }
 
 func cleanExeName(name string) string {
@@ -3386,19 +3384,13 @@ func (s *Session) onReadMemoryRequest(request *dap.ReadMemoryRequest) {
 
 	readCount := endRead - startRead
 	if readCount <= 0 {
-		unreadable := args.Count
-		if unreadable < 0 {
-			unreadable = 0
-		}
+		unreadable := max(args.Count, 0)
 
 		s.send(makeReadMemoryResponse(request.Request, memAddr, nil, unreadable))
 		return
 	}
 
-	unreadable := int64(args.Count) - readCount
-	if unreadable < 0 {
-		unreadable = 0
-	}
+	unreadable := max(int64(args.Count)-readCount, 0)
 
 	data, n, err := s.readTargetMemory(memAddr, readCount)
 	if err != nil {

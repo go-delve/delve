@@ -451,7 +451,6 @@ type InitializeRequestArguments struct {
 	SupportsVariablePaging              bool   `json:"supportsVariablePaging,omitempty"`
 	SupportsRunInTerminalRequest        bool   `json:"supportsRunInTerminalRequest,omitempty"`
 	SupportsMemoryReferences            bool   `json:"supportsMemoryReferences,omitempty"`
-	SupportsReadMemoryRequest           bool   `json:"supportsReadMemoryRequest,omitempty"`
 	SupportsProgressReporting           bool   `json:"supportsProgressReporting,omitempty"`
 	SupportsInvalidatedEvent            bool   `json:"supportsInvalidatedEvent,omitempty"`
 	SupportsMemoryEvent                 bool   `json:"supportsMemoryEvent,omitempty"`
@@ -1467,8 +1466,6 @@ type Capabilities struct {
 	SupportsTerminateRequest              bool                         `json:"supportsTerminateRequest,omitempty"`
 	SupportsDataBreakpoints               bool                         `json:"supportsDataBreakpoints,omitempty"`
 	SupportsReadMemoryRequest             bool                         `json:"supportsReadMemoryRequest,omitempty"`
-	SupportsMemoryReferences              bool                         `json:"supportsMemoryReferences,omitempty"`
-	SupportsWriteMemoryRequest            bool                         `json:"supportsWriteMemoryRequest,omitempty"`
 	SupportsDisassembleRequest            bool                         `json:"supportsDisassembleRequest,omitempty"`
 	SupportsCancelRequest                 bool                         `json:"supportsCancelRequest,omitempty"`
 	SupportsBreakpointLocationsRequest    bool                         `json:"supportsBreakpointLocationsRequest,omitempty"`
