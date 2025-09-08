@@ -1354,6 +1354,9 @@ func TestCallFunction(t *testing.T) {
 		// Issue 3176
 		{`ref.String()[0]`, []string{`:byte:98`}, nil, 1},
 		{`ref.String()[20]`, nil, errors.New("index out of bounds"), 1},
+
+		// Issue 4136
+		{`nilptrtostruct.VRcvr(0)`, []string{}, errors.New("nil pointer dereference"), 0},
 	}
 
 	var testcases112 = []testCaseCallFunction{
