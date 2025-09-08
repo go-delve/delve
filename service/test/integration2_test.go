@@ -495,6 +495,14 @@ func TestClientServer_clearBreakpoint(t *testing.T) {
 			t.Fatalf("Expected breakpoint count %d, got %d", e, a)
 		}
 
+		const nonExistentBreakpointId = 9999
+		if bp.ID != nonExistentBreakpointId {
+			_, err := c.ClearBreakpoint(nonExistentBreakpointId)
+			if err == nil {
+				t.Fatalf("Expected error, got none deleting non-existent breakpoint")
+			}
+		}
+
 		deleted, err := c.ClearBreakpoint(bp.ID)
 		if err != nil {
 			t.Fatalf("Unexpected error: %v", err)
