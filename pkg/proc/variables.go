@@ -898,9 +898,18 @@ func (v *Variable) parseG() (*G, error) {
 	if schedVar == nil {
 		return nil, ErrUnreadableG
 	}
-	pc, _ := constant.Int64Val(schedVar.fieldVariable("pc").Value) // +rtype uintptr
-	sp, _ := constant.Int64Val(schedVar.fieldVariable("sp").Value) // +rtype uintptr
-	var bp, lr int64
+
+	var pc, sp, bp, lr int64
+	if pcvar := schedVar.fieldVariable("pc"); /* +rtype uintptr */ pcvar != nil && pcvar.Value != nil {
+		pc, _ = constant.Int64Val(pcvar.Value)
+	} else {
+		return nil, ErrUnreadableG
+	}
+	if spvar := schedVar.fieldVariable("sp"); /* +rtype uintptr */ spvar != nil && spvar.Value != nil {
+		sp, _ = constant.Int64Val(spvar.Value)
+	} else {
+		return nil, ErrUnreadableG
+	}
 	if bpvar := schedVar.fieldVariable("bp"); /* +rtype -opt uintptr */ bpvar != nil && bpvar.Value != nil {
 		bp, _ = constant.Int64Val(bpvar.Value)
 	}
