@@ -240,6 +240,7 @@ func (c *Client) InitializeRequest() {
 		SupportsVariableType:         true,
 		SupportsVariablePaging:       true,
 		SupportsRunInTerminalRequest: true,
+		SupportsMemoryReferences:     true,
 		Locale:                       "en-us",
 	}
 	c.send(request)

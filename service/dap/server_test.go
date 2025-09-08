@@ -6545,8 +6545,8 @@ func TestOptionalNotYetImplementedResponses(t *testing.T) {
 		client.LoadedSourcesRequest()
 		expectNotYetImplemented("loadedSources")
 
-		client.ReadMemoryRequest()
-		expectNotYetImplemented("readMemory")
+		// client.ReadMemoryRequest()
+		// expectNotYetImplemented("readMemory")
 
 		client.CancelRequest()
 		expectNotYetImplemented("cancel")
