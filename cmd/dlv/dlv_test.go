@@ -189,7 +189,6 @@ func TestOutput(t *testing.T) {
 // TestUnattendedBreakpoint tests whether dlv will print a message to stderr when the client that sends continue is disconnected
 // or not.
 func TestUnattendedBreakpoint(t *testing.T) {
-	t.Parallel()
 	const listenAddr = "127.0.0.1:40575"
 
 	fixturePath := filepath.Join(protest.FindFixturesDir(), "panic.go")
