@@ -3352,3 +3352,33 @@ func TestFollowExecFindLocation(t *testing.T) {
 		assertNoError(err, t, "FindLocation(spawn.go:19)")
 	})
 }
+
+func TestCancelDownload(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("linux only")
+	}
+	fakedebuginfodDir, _ := filepath.Abs(filepath.Join(protest.FindFixturesDir(), "fake-debuginfod-find"))
+	t.Setenv("PATH", os.ExpandEnv(fakedebuginfodDir+":$PATH"))
+	withTestClient2("cgotest", t, func(c service.Client) {
+		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main"})
+		assertNoError(err, t, "CreateBreakpoint")
+		eventReceived := false
+		c.SetEventsFn(func(ev *api.Event) {
+			switch ev.Kind {
+			case api.EventBinaryInfoDownload:
+				eventReceived = true
+				t.Logf("download event: %q %q", ev.BinaryInfoDownloadEventDetails.ImagePath, ev.BinaryInfoDownloadEventDetails.Progress)
+				assertNoError(c.CancelDownloads(), t, "CancelDownloads")
+			}
+		})
+		t0 := time.Now()
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue")
+		if !eventReceived {
+			t.Errorf("Download event was not received")
+		}
+		if time.Since(t0) > 3*time.Second {
+			t.Errorf("Continue took to long, we probably couldn't cancel the download")
+		}
+	})
+}

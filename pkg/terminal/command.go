@@ -569,7 +569,11 @@ Adds, removes or clears debug-info-directories.`},
 	edit [locspec]
 	
 If locspec is omitted edit will open the current source file in the editor, otherwise it will open the specified location.`},
-		{aliases: []string{"libraries"}, cmdFn: libraries, helpMsg: `List loaded dynamic libraries`},
+		{aliases: []string{"libraries"}, cmdFn: libraries, helpMsg: `List loaded dynamic libraries.
+	
+	libraries [-d N]
+
+If used with the -d option it will re-attempt to download the debug symbols for library N, using debuginfod-find.`},
 
 		{aliases: []string{"examinemem", "x"}, group: dataCmds, cmdFn: examineMemoryCmd, helpMsg: `Examine raw memory at the given address.
 
@@ -2685,6 +2689,21 @@ func disassCommand(t *Term, ctx callContext, args string) error {
 }
 
 func libraries(t *Term, ctx callContext, args string) error {
+	argv := config.Split2PartsBySpace(args)
+	if len(argv) == 2 {
+		switch argv[0] {
+		case "-d":
+			n, err := strconv.Atoi(argv[1])
+			if err != nil {
+				return err
+			}
+			t.client.DownloadLibraryDebugInfo(n)
+		default:
+			return errors.New("wrong arguments")
+		}
+		return nil
+	}
+
 	libs, err := t.client.ListDynamicLibraries()
 	if err != nil {
 		return err

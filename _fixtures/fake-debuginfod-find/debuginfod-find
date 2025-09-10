@@ -1,0 +1,8 @@
+#!/bin/bash
+
+for i in $(seq 1 100000 1000000); do
+	echo "Downloading $i..." >&2
+	sleep 1
+done
+
+echo "i-dont-actually-have-a-path-im-a-fake-stub-sorry"

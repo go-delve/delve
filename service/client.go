@@ -211,6 +211,11 @@ type Client interface {
 	// GuessSubstitutePath tries to guess a substitute-path configuration for the client
 	GuessSubstitutePath() ([][2]string, error)
 
+	// CancelDownloads cancels binary info downloads, if any.
+	CancelDownloads() error
+	// DownloadLibraryDebugInfo attempts to download the specified library's debug info.
+	DownloadLibraryDebugInfo(n int) error
+
 	// CallAPI allows calling an arbitrary rpc method (used by starlark bindings)
 	CallAPI(method string, args, reply any) error
 }
