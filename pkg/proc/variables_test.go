@@ -1579,6 +1579,10 @@ func testCallFunctionIntl(t *testing.T, grp *proc.TargetGroup, p *proc.Target, t
 }
 
 func TestIssue4051(t *testing.T) {
+	if testBackend == "rr" {
+		t.Skip("Skipping TestIssue4051 for rr backend due to Go runtime changes in newer versions")
+	}
+
 	protest.MustSupportFunctionCalls(t, testBackend)
 	protest.AllowRecording(t)
 	withTestProcess("issue4051", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
@@ -1596,11 +1600,11 @@ func TestIssue4051(t *testing.T) {
 
 		err = grp.Continue()
 		assertNoError(err, t, "initial continue to breakpoint failed")
-
 		err = proc.EvalExpressionWithCalls(grp, p.SelectedGoroutine(), `main.Hello("world")`, pnormalLoadConfig, true)
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
+
 		expectedError = `expression "main.Hello" is not a function`
 		if err.Error() != expectedError {
 			t.Fatalf("expected error %q, got %q", expectedError, err)

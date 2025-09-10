@@ -157,6 +157,7 @@ type Config struct {
 	DisableASLR bool
 
 	RrOnProcessPid int
+	RrDelOnDetach  bool
 }
 
 // New creates a new Debugger. ProcessArgs specify the commandline arguments for the
@@ -199,7 +200,7 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		switch d.config.Backend {
 		case "rr":
 			d.log.Infof("opening trace %s", d.config.CoreFile)
-			d.target, err = gdbserial.Replay(d.config.CoreFile, false, false, d.config.DebugInfoDirectories, d.config.RrOnProcessPid, "")
+			d.target, err = gdbserial.Replay(d.config.CoreFile, false, d.config.RrDelOnDetach, d.config.DebugInfoDirectories, d.config.RrOnProcessPid, "")
 		default:
 			d.log.Infof("opening core file %s (executable %s)", d.config.CoreFile, d.processArgs[0])
 			d.target, err = core.OpenCore(d.config.CoreFile, d.processArgs[0], d.config.DebugInfoDirectories)
@@ -359,7 +360,7 @@ func (d *Debugger) recordingRun(run func() (string, error)) (*proc.TargetGroup, 
 		return nil, err
 	}
 
-	return gdbserial.Replay(tracedir, false, true, d.config.DebugInfoDirectories, 0, strings.Join(d.processArgs, " "))
+	return gdbserial.Replay(tracedir, false, d.config.RrDelOnDetach, d.config.DebugInfoDirectories, 0, strings.Join(d.processArgs, " "))
 }
 
 // Attach will attach to the process specified by 'pid'.
