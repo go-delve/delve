@@ -2112,16 +2112,7 @@ func (scope *EvalScope) evalStructSelector(op *evalop.Select, stack *evalStack) 
 		return
 	}
 
-	rv, err := xv.findMethod(op.Name)
-	if err != nil {
-		stack.err = err
-		return
-	}
-	if rv != nil {
-		stack.push(rv)
-		return
-	}
-	stack.pushErr(xv.structMember(op.Name))
+	stack.pushErr(xv.findStructMemberOrMethod(op.Name, true))
 }
 
 // Evaluates expressions <subexpr>.(<type>)
@@ -3005,18 +2996,60 @@ func (v *Variable) reslice(low int64, high int64, trustLen bool) (*Variable, err
 	return r, nil
 }
 
-// findMethod finds method mname in the type of variable v
-func (v *Variable) findMethod(mname string) (*Variable, error) {
-	if _, isiface := v.RealType.(*godwarf.InterfaceType); isiface {
-		v.loadInterface(0, false, loadFullValue)
+// findStructMemberOrMethod finds struct member or method name in the type of variable v
+func (v *Variable) findStructMemberOrMethod(name string, includeStructMember bool) (*Variable, error) {
+	if v.Unreadable != nil {
+		return v.clone(), nil
+	}
+	vname := v.Name
+	if v.Name == "" {
+		vname = v.DwarfType.String()
+	}
+	if v.loaded && (v.Flags&VariableFakeAddress) != 0 {
+		for i := range v.Children {
+			if v.Children[i].Name == name {
+				return &v.Children[i], nil
+			}
+		}
+		return nil, fmt.Errorf("%s has no member %s", vname, name)
+	}
+	closure := false
+	switch v.Kind {
+	case reflect.Chan:
+		v = v.clone()
+		v.RealType = godwarf.ResolveTypedef(&(v.RealType.(*godwarf.ChanType).TypedefType))
+	case reflect.Interface:
+		v.loadInterface(0, false, LoadConfig{})
+		if len(v.Children) > 0 {
+			v = &v.Children[0]
+		}
+	case reflect.Func:
+		fn := v.bi.PCToFunc(v.Base)
+		v.loadFunctionPtr(0, LoadConfig{MaxVariableRecurse: -1})
 		if v.Unreadable != nil {
+			cst := fn.extra(v.bi).closureStructType
+			if cst == nil || cst.ByteSize == 0 {
+				// Not a closure, normal function
+				if _, ok := v.bi.PackageMap[vname]; ok {
+					return nil, fmt.Errorf("package %s has no function %s", vname, name)
+				}
+				return nil, fmt.Errorf("%s has no member %s", vname, name)
+			}
 			return nil, v.Unreadable
 		}
-		return v.Children[0].findMethod(mname)
+		if v.closureAddr != 0 {
+			fn = v.bi.PCToFunc(v.Base)
+			if fn != nil {
+				cst := fn.extra(v.bi).closureStructType
+				v = v.newVariable(v.Name, v.closureAddr, cst, v.mem)
+				closure = true
+			}
+		}
 	}
 
 	queue := []*Variable{v}
 	seen := map[string]struct{}{}
+	first := true
 
 	for len(queue) > 0 {
 		v := queue[0]
@@ -3032,42 +3065,20 @@ func (v *Variable) findMethod(mname string) (*Variable, error) {
 			typ = ptyp.Type
 		}
 
+		var pkg, receiver string
 		typePath := typ.Common().Name
 		dot := strings.LastIndex(typePath, ".")
-		if dot < 0 {
-			// probably just a C type
-			continue
+		if dot >= 0 {
+			pkg, receiver = typePath[:dot], typePath[dot+1:]
 		}
 
-		pkg := typePath[:dot]
-		receiver := typePath[dot+1:]
-
-		//TODO(aarzilli): support generic functions?
-
-		if fns := v.bi.LookupFunc()[fmt.Sprintf("%s.%s.%s", pkg, receiver, mname)]; len(fns) == 1 {
-			r, err := functionToVariable(fns[0], v.bi, v.mem)
+		if len(pkg) > 0 && len(receiver) > 0 {
+			rv, err := lookupMethod(v, isptr, pkg, receiver, name)
 			if err != nil {
 				return nil, err
+			} else if rv != nil {
+				return rv, nil
 			}
-			if isptr {
-				r.Children = append(r.Children, *(v.maybeDereference()))
-			} else {
-				r.Children = append(r.Children, *v)
-			}
-			return r, nil
-		}
-
-		if fns := v.bi.LookupFunc()[fmt.Sprintf("%s.(*%s).%s", pkg, receiver, mname)]; len(fns) == 1 {
-			r, err := functionToVariable(fns[0], v.bi, v.mem)
-			if err != nil {
-				return nil, err
-			}
-			if isptr {
-				r.Children = append(r.Children, *v)
-			} else {
-				r.Children = append(r.Children, *(v.pointerToVariable()))
-			}
-			return r, nil
 		}
 
 		// queue embedded fields for search
@@ -3079,14 +3090,88 @@ func (v *Variable) findMethod(mname string) (*Variable, error) {
 		switch t := structVar.RealType.(type) {
 		case *godwarf.StructType:
 			for _, field := range t.Field {
-				if field.Embedded {
+				if !includeStructMember {
+					if !field.Embedded {
+						continue
+					}
 					embeddedVar, err := structVar.toField(field)
 					if err != nil {
 						return nil, err
 					}
 					queue = append(queue, embeddedVar)
+					continue
+				}
+
+				if field.Name == name {
+					return structVar.toField(field)
+				}
+				if len(queue) == 0 && field.Name == "&"+name && closure {
+					f, err := structVar.toField(field)
+					if err != nil {
+						return nil, err
+					}
+					return f.maybeDereference(), nil
+				}
+				if !field.Embedded {
+					continue
+				}
+				embeddedVar, err := structVar.toField(field)
+				if err != nil {
+					return nil, err
+				}
+				// Check for embedded field referenced by type name
+				parts := strings.Split(field.Name, ".")
+				if includeStructMember && len(parts) > 1 && parts[1] == name {
+					return embeddedVar, nil
+				}
+				embeddedVar.Name = structVar.Name
+				queue = append(queue, embeddedVar)
+			}
+		case *godwarf.InterfaceType:
+			v.loadInterface(0, false, LoadConfig{})
+			if len(v.Children) > 0 {
+				if rv, _ := v.Children[0].findStructMemberOrMethod(name, false); rv != nil {
+					return rv, nil
 				}
 			}
+		default:
+			if first {
+				return nil, fmt.Errorf("%s (type %s) has no member %s", vname, structVar.TypeString(), name)
+			}
+		}
+		first = false
+	}
+
+	return nil, fmt.Errorf("%s has no member %s", vname, name)
+}
+
+func lookupMethod(v *Variable, isptr bool, pkg, receiver, name string) (*Variable, error) {
+	checks := []struct {
+		fmt     string
+		ptrRecv bool
+	}{
+		{"%s.(*%s).%s", true},
+		{"%s.%s.%s", false},
+	}
+	if !isptr {
+		checks[0], checks[1] = checks[1], checks[0]
+	}
+
+	for _, check := range checks {
+		if fns := v.bi.LookupFunc()[fmt.Sprintf(check.fmt, pkg, receiver, name)]; len(fns) == 1 {
+			r, err := functionToVariable(fns[0], v.bi, v.mem)
+			if err != nil {
+				return nil, err
+			}
+			switch {
+			case isptr == check.ptrRecv:
+				r.Children = append(r.Children, *v)
+			case isptr && !check.ptrRecv:
+				r.Children = append(r.Children, *(v.maybeDereference()))
+			case !isptr && check.ptrRecv:
+				r.Children = append(r.Children, *(v.pointerToVariable()))
+			}
+			return r, nil
 		}
 	}
 
