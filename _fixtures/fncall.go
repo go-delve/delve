@@ -265,6 +265,8 @@ func main() {
 	var ref strings.Builder
 	fmt.Fprintf(&ref, "blah")
 
+	var nilptrtostruct *astruct
+
 	runtime.Breakpoint() // breakpoint here
 	call1(one, two)
 	fn2clos(2)
@@ -272,5 +274,5 @@ func main() {
 	d.Method()
 	d.Base.Method()
 	x.CallMe()
-	fmt.Println(one, two, zero, call, call0, call2, callexit, callpanic, callbreak, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr, pa2, noreturncall, str, d, x, x2.CallMe(5), longstrs, regabistacktest, regabistacktest2, issue2698.String(), issue3364.String(), regabistacktest3, rast3, floatsum, ref, mul2, mul2ptr, m)
+	fmt.Println(one, two, zero, call, call0, call2, callexit, callpanic, callbreak, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr, pa2, noreturncall, str, d, x, x2.CallMe(5), longstrs, regabistacktest, regabistacktest2, issue2698.String(), issue3364.String(), regabistacktest3, rast3, floatsum, ref, mul2, mul2ptr, m, nilptrtostruct)
 }

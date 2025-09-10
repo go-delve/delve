@@ -540,6 +540,10 @@ func funcCallEvalFuncExpr(scope *EvalScope, stack *evalStack, fncall *functionCa
 	if len(fnvar.Children) > 0 && argnum == (len(fncall.formalArgs)-1) {
 		argnum++
 		fncall.receiver = &fnvar.Children[0]
+		_, isptr := fncall.receiver.DwarfType.(*godwarf.PtrType)
+		if fncall.receiver.Addr == 0 && !isptr {
+			return errors.New("nil pointer dereference")
+		}
 		fncall.receiver.Name = astutil.ExprToString(fncall.expr.Fun)
 	}
 
