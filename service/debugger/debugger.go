@@ -915,10 +915,16 @@ func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint
 			return nil, ErrNotImplementedWithMultitarget
 		}
 		bp := d.target.Selected.Breakpoints().M[requestedBp.Addr]
+		if bp == nil {
+			return nil, fmt.Errorf("no breakpoint at address %#x", requestedBp.Addr)
+		}
 		requestedBp.ID = bp.LogicalID()
 	}
 
 	lbp := d.target.LogicalBreakpoints[requestedBp.ID]
+	if lbp == nil {
+		return nil, fmt.Errorf("no breakpoint with ID %d", requestedBp.ID)
+	}
 	clearedBp := d.convertBreakpoint(lbp)
 
 	err := d.target.SetBreakpointEnabled(lbp, false)
