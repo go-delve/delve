@@ -532,13 +532,11 @@ func TestNextNetHTTP(t *testing.T) {
 	}
 	withTestProcess("testnextnethttp", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		pid := p.Pid()
-		portFile := fmt.Sprintf("/tmp/testnextnethttp_port_%d", pid)
-		
-		// Ensure cleanup of port file
-		defer func() {
-			os.Remove(portFile)
-		}()
-		
+		tmpdir := os.TempDir()
+		portFile := filepath.Join(tmpdir, fmt.Sprintf("testnextnethttp_port_%d", pid))
+
+		defer os.Remove(portFile)
+
 		go func() {
 			// Wait for program to write the port to file with timeout
 			var port int
@@ -556,7 +554,7 @@ func TestNextNetHTTP(t *testing.T) {
 					return
 				}
 			}
-			
+
 			// Wait for program to start listening with timeout
 			t0 = time.Now()
 			for {
@@ -1854,12 +1852,12 @@ func TestIssue462(t *testing.T) {
 	withTestProcess("testnextnethttp", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		pid := p.Pid()
 		portFile := fmt.Sprintf("/tmp/testnextnethttp_port_%d", pid)
-		
+
 		// Ensure cleanup of port file
 		defer func() {
 			os.Remove(portFile)
 		}()
-		
+
 		go func() {
 			// Wait for program to write the port to file with timeout
 			var port int
@@ -2547,7 +2545,7 @@ func TestAttachDetach(t *testing.T) {
 	var port int
 	pid := cmd.Process.Pid
 	portFile := fmt.Sprintf("/tmp/testnextnethttp_port_%d", pid)
-	
+
 	// Ensure cleanup of port file
 	defer func() {
 		os.Remove(portFile)
