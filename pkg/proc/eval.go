@@ -1057,7 +1057,7 @@ func (stack *evalStack) run() {
 					regs, _ := curthread.Registers()
 					setSP(curthread, regs.SP()+uint64(scope.BinInfo.Arch.PtrSize()))
 					setPC(curthread, fncall.undoInjection.oldpc)
-				case "arm64", "ppc64le":
+				case "arm64", "ppc64le", "loong64":
 					setLR(curthread, fncall.undoInjection.oldlr)
 					setPC(curthread, fncall.undoInjection.oldpc)
 				default:

@@ -327,7 +327,9 @@ func MustSupportFunctionCalls(t *testing.T, testBackend string) {
 		t.Skip(fmt.Errorf("%s does not support FunctionCall for now", runtime.GOARCH))
 	}
 	if runtime.GOARCH == "loong64" {
-		t.Skip(fmt.Errorf("%s does not support FunctionCall for now", runtime.GOARCH))
+		if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) {
+			t.Skip("function calls not supported on loong64 with Go < 1.24")
+		}
 	}
 	if runtime.GOARCH == "arm64" {
 		if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 19) || runtime.GOOS == "windows" {
