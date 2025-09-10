@@ -25,7 +25,7 @@ import (
 	"time"
 
 	"github.com/derekparker/trie/v3"
-	"github.com/hashicorp/golang-lru/simplelru"
+	"github.com/hashicorp/golang-lru/v2"
 
 	"github.com/go-delve/delve/pkg/astutil"
 	pdwarf "github.com/go-delve/delve/pkg/dwarf"
@@ -1009,7 +1009,7 @@ type Image struct {
 
 	compileUnits []*compileUnit // compileUnits is sorted by increasing DWARF offset
 
-	dwarfTreeCache  *simplelru.LRU
+	dwarfTreeCache  *lru.Cache[dwarf.Offset, *godwarf.Tree]
 	workaroundCache map[dwarf.Offset]*godwarf.Tree
 
 	// runtimeTypeToDIE maps between the offset of a runtime._type in
@@ -1051,7 +1051,7 @@ func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
 
 	// Actually add the image.
 	image := &Image{Path: path, addr: addr, typeCache: make(map[dwarf.Offset]godwarf.Type)}
-	image.dwarfTreeCache, _ = simplelru.NewLRU(dwarfTreeCacheSize, nil)
+	image.dwarfTreeCache, _ = lru.New[dwarf.Offset, *godwarf.Tree](dwarfTreeCacheSize)
 
 	// add Image regardless of error so that we don't attempt to re-add it every time we stop
 	image.index = len(bi.Images)
@@ -1168,7 +1168,7 @@ func (image *Image) getDwarfTree(off dwarf.Offset) (*godwarf.Tree, error) {
 		return image.workaroundCache[off], nil
 	}
 	if r, ok := image.dwarfTreeCache.Get(off); ok {
-		return r.(*godwarf.Tree), nil
+		return r, nil
 	}
 	r, err := godwarf.LoadTree(off, image.dwarf, image.StaticBase)
 	if err != nil {
@@ -1190,7 +1190,7 @@ func (bi *BinaryInfo) LoadImageFromData(dwdata *dwarf.Data, debugFrameBytes, deb
 	image.sepDebugCloser = (*nilCloser)(nil)
 	image.dwarf = dwdata
 	image.typeCache = make(map[dwarf.Offset]godwarf.Type)
-	image.dwarfTreeCache, _ = simplelru.NewLRU(dwarfTreeCacheSize, nil)
+	image.dwarfTreeCache, _ = lru.New[dwarf.Offset, *godwarf.Tree](dwarfTreeCacheSize)
 
 	if debugFrameBytes != nil {
 		bi.frameEntries, _ = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugFrameBytes), 0, bi.Arch.PtrSize(), 0)
