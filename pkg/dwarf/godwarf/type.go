@@ -151,6 +151,12 @@ type BoolType struct {
 	BasicType
 }
 
+// A ConstStringType represents a const string type.
+type ConstStringType struct {
+	BasicType
+	Value string
+}
+
 // An AddrType represents a machine address type.
 type AddrType struct {
 	BasicType
@@ -1041,6 +1047,18 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 		typ = t
 		typeCache[off] = t
 		t.Name, _ = e.Val(dwarf.AttrName).(string)
+
+	case dwarf.TagStringType:
+		// String type (DWARF v3 §5.10)
+		// Attributes:
+		//      AttrName: name
+		//      AttrType: type of string [used by gdb to determine the size]
+		//      AttrConstValue: value of string
+		t := new(ConstStringType)
+		typ = t
+		typeCache[off] = t
+		t.Name, _ = e.Val(dwarf.AttrName).(string)
+		t.Value, _ = e.Val(dwarf.AttrConstValue).(string)
 
 	default:
 		// This is some other type DIE that we're currently not
