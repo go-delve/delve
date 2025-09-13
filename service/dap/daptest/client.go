@@ -577,8 +577,14 @@ func (c *Client) SetDataBreakpointsRequest() {
 }
 
 // ReadMemoryRequest sends a 'readMemory' request.
-func (c *Client) ReadMemoryRequest() {
-	c.send(&dap.ReadMemoryRequest{Request: *c.newRequest("readMemory")})
+func (c *Client) ReadMemoryRequest(ref string, offset, count int) {
+	c.send(&dap.ReadMemoryRequest{
+		Request: *c.newRequest("readMemory"),
+		Arguments: dap.ReadMemoryArguments{
+			MemoryReference: ref,
+			Offset:          offset,
+			Count:           count,
+		}})
 }
 
 // DisassembleRequest sends a 'disassemble' request.
