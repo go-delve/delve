@@ -48,7 +48,6 @@ else
 	getgo $version
 fi
 
-
 GOPATH=$(pwd)/go
 export GOPATH
 export PATH=$PATH:$GOROOT/bin:$GOPATH/bin
