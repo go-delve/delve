@@ -838,7 +838,7 @@ func (s *Session) handleRequest(request dap.Message) {
 	case *dap.LoadedSourcesRequest: // Optional (capability 'supportsLoadedSourcesRequest')
 		/*TODO*/ s.onLoadedSourcesRequest(request) // Not yet implemented
 	case *dap.ReadMemoryRequest: // Optional (capability 'supportsReadMemoryRequest')
-		/*TODO*/ s.onReadMemoryRequest(request) // Not yet implemented
+		s.onReadMemoryRequest(request)
 	case *dap.CancelRequest: // Optional (capability 'supportsCancelRequest')
 		/*TODO*/ s.onCancelRequest(request) // Not yet implemented (does this make sense?)
 	case *dap.ModulesRequest: // Optional (capability 'supportsModulesRequest')

@@ -3,6 +3,9 @@ package dap
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
@@ -6545,9 +6548,6 @@ func TestOptionalNotYetImplementedResponses(t *testing.T) {
 		client.LoadedSourcesRequest()
 		expectNotYetImplemented("loadedSources")
 
-		// client.ReadMemoryRequest()
-		// expectNotYetImplemented("readMemory")
-
 		client.CancelRequest()
 		expectNotYetImplemented("cancel")
 
@@ -7892,6 +7892,94 @@ func TestBreakpointAfterDisconnect(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	cmd.Process.Kill()
+}
+
+func TestReadMemory_StringPagination(t *testing.T) {
+	runTest(t, "readmem_json", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Breakpoints are set within the program
+			fixture.Source, []int{},
+			[]onBreakpoint{{
+				execute: func() {
+					client.StackTraceRequest(1, 0, 20)
+					_ = client.ExpectStackTraceResponse(t)
+
+					client.ScopesRequest(1000)
+					_ = client.ExpectScopesResponse(t)
+
+					client.VariablesRequest(localsScope)
+					locals := client.ExpectVariablesResponse(t)
+					if locals == nil {
+						t.Fatal("wanted local variables, got 0")
+					}
+
+					mustGetByName := func(vars []dap.Variable, names ...string) (map[string]dap.Variable, error) {
+						res := make(map[string]dap.Variable)
+
+						for _, n := range names {
+							idx := slices.IndexFunc(vars, func(v dap.Variable) bool {
+								return v.Name == n
+							})
+
+							if idx == -1 {
+								return nil, fmt.Errorf("%s not found", n)
+							}
+
+							res[n] = vars[idx]
+						}
+
+						return res, nil
+					}
+
+					varIdx, err := mustGetByName(locals.Body.Variables, "jsonString", "jsonHash")
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					longString := varIdx["jsonString"]
+					longHash := varIdx["jsonHash"]
+
+					var got bytes.Buffer
+					const chunk = 64
+
+					for off := 0; ; off += chunk {
+						count := chunk
+						client.ReadMemoryRequest(longString.MemoryReference, off, count)
+						rm := client.ExpectReadMemoryResponse(t)
+
+						if rm.Body.Data == "" {
+							break
+						}
+
+						data, err := base64.StdEncoding.DecodeString(rm.Body.Data)
+						if err != nil {
+							t.Fatalf("base64 decode failed: %v (offset=%d)", err, off)
+						}
+
+						if len(data) < count {
+							got.Write(data)
+
+							break
+						}
+
+						got.Write(data)
+					}
+
+					hashed := sha256.Sum256(got.Bytes())
+
+					hashString := hex.EncodeToString(hashed[:])
+
+					if strings.Trim(longHash.Value, `"`) != hashString {
+						t.Fatal()
+					}
+				},
+				disconnect: true,
+			}})
+	})
 }
 
 type discard struct {
