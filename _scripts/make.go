@@ -130,6 +130,9 @@ This option can only be specified if testset is basic or a single package.`)
 }
 
 func checkCert() bool {
+	if os.Getenv("CI") != "" {
+		return true
+	}
 	if os.Getenv("NOCERT") != "" {
 		return false
 	}
