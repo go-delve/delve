@@ -906,7 +906,7 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 			bp, err := dbp.SetBreakpoint(0, rangeFrames[1].Call.PC, NextBreakpoint, astutil.And(sameGCond, frameoffCondition(&rangeFrames[1])))
 			if err == nil {
 				bplet := bp.Breaklets[len(bp.Breaklets)-1]
-				bplet.Callback = func(th Thread, p *Target) (bool, error) {
+				bplet.callback = func(th Thread, p *Target) (bool, error) {
 					rangeFrameInactivateNextBreakpoints(p, rangeFrames[0].Call.Fn)
 					return false, nil
 				}
@@ -964,7 +964,7 @@ func setStepIntoBreakpoints(dbp *Target, curfn *Function, text []AsmInstruction,
 				return err
 			}
 			breaklet := bp.Breaklets[len(bp.Breaklets)-1]
-			breaklet.Callback = stepIntoCallback
+			breaklet.callback = stepIntoCallback
 		}
 	}
 	if gostmt {
@@ -1246,7 +1246,7 @@ func setStepIntoNewProcBreakpoint(p *Target, sameGCond ast.Expr) {
 		return
 	}
 	blet := bp.Breaklets[len(bp.Breaklets)-1]
-	blet.Callback = func(th Thread, p *Target) (bool, error) {
+	blet.callback = func(th Thread, p *Target) (bool, error) {
 		// Clear temp breakpoints that exist and set a new one for goroutine
 		// newg.goid on the go statement's target
 		scope, err := ThreadScope(p, th)
