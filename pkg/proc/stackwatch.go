@@ -60,7 +60,7 @@ func (t *Target) setStackWatchBreakpoints(scope *EvalScope, watchpoint *Breakpoi
 		deferbreaklet := deferbp.Breaklets[len(deferbp.Breaklets)-1]
 		deferbreaklet.checkPanicCall = true
 		deferbreaklet.watchpoint = watchpoint
-		deferbreaklet.Callback = woos
+		deferbreaklet.callback = woos
 	}
 
 	retbp, err := t.SetBreakpoint(0, retframe.Current.PC, WatchOutOfScopeBreakpoint, retFrameCond)
@@ -70,7 +70,7 @@ func (t *Target) setStackWatchBreakpoints(scope *EvalScope, watchpoint *Breakpoi
 
 	retbreaklet := retbp.Breaklets[len(retbp.Breaklets)-1]
 	retbreaklet.watchpoint = watchpoint
-	retbreaklet.Callback = woos
+	retbreaklet.callback = woos
 
 	if recorded, _ := t.recman.Recorded(); recorded && retframe.Current.Fn != nil {
 		// Must also set a breakpoint on the call instruction immediately
@@ -88,7 +88,7 @@ func (t *Target) setStackWatchBreakpoints(scope *EvalScope, watchpoint *Breakpoi
 				}
 				retbreaklet2 := retbp2.Breaklets[len(retbp.Breaklets)-1]
 				retbreaklet2.watchpoint = watchpoint
-				retbreaklet2.Callback = woos
+				retbreaklet2.callback = woos
 				break
 			}
 		}
@@ -111,7 +111,7 @@ func (t *Target) setStackWatchBreakpoints(scope *EvalScope, watchpoint *Breakpoi
 
 	rszbreaklet := rszbp.Breaklets[len(rszbp.Breaklets)-1]
 	rszbreaklet.watchpoint = watchpoint
-	rszbreaklet.Callback = func(th Thread, _ *Target) (bool, error) {
+	rszbreaklet.callback = func(th Thread, _ *Target) (bool, error) {
 		adjustStackWatchpoint(t, th, watchpoint)
 		return false, nil // we never want this breakpoint to be shown to the user
 	}

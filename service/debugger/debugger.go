@@ -1489,7 +1489,7 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 					if err != nil {
 						return false, fmt.Errorf("failed to disassemble instruction: %w", err)
 					}
-					
+
 					// Extract address from the decoded instruction's destination location
 					var addr uint64
 					if len(disasm) > 0 && disasm[0].DestLoc != nil {
@@ -1517,9 +1517,9 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 					}
 					return false, nil
 				}
-		for _, dynbrklet_i := range dynbp.Breaklets {
-				dynbrklet_i.SetCallBack(dynCallback)
-			}
+				for _, dynbrklet_i := range dynbp.Breaklets {
+					dynbrklet_i.SetCallBack(dynCallback)
+				}
 			}
 
 			if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil {
@@ -1546,9 +1546,9 @@ func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls i
 
 	tbp, err1 := d.createBreakpointInternal(&api.Breakpoint{FunctionName: fname, Tracepoint: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
 	if tbp == nil {
-		if err1 != nil && strings.Contains(err1.Error(), "Breakpoint exists") {
+		if _, exists := err1.(proc.BreakpointExistsError); exists {// ;err1 != nil && strings.Contains(err1.Error(), "Breakpoint exists") {
 			// This is expected
-		} else {
+		} else if err1 != nil {
 			return nil, fmt.Errorf("error creating breakpoint at function %s", fname)
 		}
 	}
@@ -1557,7 +1557,7 @@ func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls i
 	for i := range raddrs {
 		rtbp, err := d.createBreakpointInternal(&api.Breakpoint{Addr: raddrs[i], TraceReturn: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
 		if rtbp == nil {
-			if err != nil && strings.Contains(err.Error(), "Breakpoint exists") {
+			if _, exists := err.(proc.BreakpointExistsError); exists { // != nil && strings.Contains(err.Error(), "Breakpoint exists") {
 				// This is expected
 			} else {
 				return nil, fmt.Errorf("error creating breakpoint at function return %s", fname)

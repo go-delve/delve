@@ -108,22 +108,21 @@ type Breaklet struct {
 	// the return value will determine if the breaklet should be considered
 	// active.
 	// The callback can have side-effects.
-	Callback func(th Thread, p *Target) (bool, error)
+	callback func(th Thread, p *Target) (bool, error)
 
 	// For WatchOutOfScopeBreakpoints and StackResizeBreakpoints the watchpoint
 	// field contains the watchpoint related to this out of scope sentinel.
 	watchpoint *Breakpoint
-
 }
 
 // SetCallBack sets the call back field, this was primarily added to prevent exporting callback field
 func (B *Breaklet) SetCallBack(callback DynCallFn) {
-	B.Callback = callback
+	B.callback = callback
 }
+
 // BreakpointKind determines the behavior of delve when the
 // breakpoint is reached.
 type BreakpointKind uint16
-
 
 const (
 	// UserBreakpoint is a user set breakpoint
@@ -347,9 +346,9 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 	}
 
 	if active {
-		if breaklet.Callback != nil {
+		if breaklet.callback != nil {
 			var err error
-			active, err = breaklet.Callback(thread, tgt)
+			active, err = breaklet.callback(thread, tgt)
 			if err != nil && bpstate.CondError == nil {
 				bpstate.CondError = err
 			}
