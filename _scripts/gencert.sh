@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Check if the certificate is already present in keychains
-security find-certificate -Z -p -c "dlv-cert" > /dev/null 2>&1
+# Check if the certificate is already present in the system keychain
+security find-certificate -Z -p -c "dlv-cert" /Library/Keychains/System.keychain > /dev/null 2>&1
 EXIT_CODE=$?
 if [ $EXIT_CODE -eq 0 ]; then
   # Certificate has already been generated and installed
@@ -33,40 +33,27 @@ if [ $EXIT_CODE -ne 0 ]; then
   exit 1
 fi
 
-# Convert certificate to pkcs2 format
-openssl pkcs12 -export -legacy -inkey dlv-cert.key -in dlv-cert.cer -name "My Code Signing" -out dlv-cert.p12 -passout pass:dlv-cert
+# Install the certificate in the system keychain
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain $CERT.cer > /dev/null 2>&1
 EXIT_CODE=$?
 if [ $EXIT_CODE -ne 0 ]; then
   # Something went wrong when installing the certificate
   exit 1
 fi
 
-# Create new CI/CD keychain
-security create-keychain -p "cicd" cicd
+# Install the key for the certificate in the system keychain
+sudo security import $CERT.key -A -k /Library/Keychains/System.keychain > /dev/null 2>&1
 EXIT_CODE=$?
 if [ $EXIT_CODE -ne 0 ]; then
-  # Something went wrong when installing the certificate
+  # Something went wrong when installing the key
   exit 1
 fi
 
-# Unlock the keychain
-security unlock-keychain -p "cicd" cicd
-EXIT_CODE=$?
-if [ $EXIT_CODE -ne 0 ]; then
-  # Something went wrong when installing the certificate
-  exit 1
-fi
-
-# Import the certificate into the CI/CD keychain
-security import dlv-cert.p12 -P "dlv-cert" -k cicd -T /usr/bin/codesign
-EXIT_CODE=$?
-if [ $EXIT_CODE -ne 0 ]; then
-  # Something went wrong when installing the certificate
-  exit 1
-fi
+# Kill task_for_pid access control daemon
+sudo pkill -f /usr/libexec/taskgated > /dev/null 2>&1
 
 # Remove generated files
-rm $CERT.tmpl $CERT.cer $CERT.key $CERT.p12 > /dev/null 2>&1
+rm $CERT.tmpl $CERT.cer $CERT.key > /dev/null 2>&1
 
 # Exit indicating the certificate is now generated and installed
 exit 0
