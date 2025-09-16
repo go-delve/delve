@@ -37,14 +37,14 @@
 // 	all calls to:
 //		v.loadFieldNamed
 //		v.fieldVariable
-//		v.structMember
+//		v.structField
 //	and check that type T has the specified fields.
 //
 // v.loadFieldNamed("F") // +rtype T
 // v.loadFieldNamed("F") // +rtype -opt T
 //
 // 	checks that field F of the struct type declared for v has type T. Can
-// 	also be used for fieldVariable, structMember and, inside parseG,
+// 	also be used for fieldVariable, structField and, inside parseG,
 // 	loadInt64Maybe.
 // 	The -opt flag specifies that the field can be missing (but if it exists
 // 	it must have type T).
@@ -439,7 +439,7 @@ func processProcVariableUses(decl ast.Node, tinfo *types.Info, procVarIdent *ast
 		}
 
 		switch methodName {
-		case "loadFieldNamed", "fieldVariable", "loadInt64Maybe", "structMember":
+		case "loadFieldNamed", "fieldVariable", "loadInt64Maybe", "structField":
 			rtcmntIdx := -1
 			if cmntgrps := cmntmap[lastStmt]; len(cmntgrps) > 0 && len(cmntgrps[0].List) > 0 {
 				rtcmntIdx = findComment(cmntgrps[0].List[0].Slash, rtcmnts)

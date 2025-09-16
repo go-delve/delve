@@ -253,7 +253,7 @@ func (scope *EvalScope) ChanGoroutines(expr string, start, count int) ([]int64, 
 	structMemberMulti := func(v *Variable, names ...string) *Variable {
 		for _, name := range names {
 			var err error
-			v, err = v.structMember(name)
+			v, err = v.structField(name)
 			if err != nil {
 				return nil
 			}
@@ -297,7 +297,7 @@ func (scope *EvalScope) ChanGoroutines(expr string, start, count int) ([]int64, 
 				goids = append(goids, goid)
 			}
 
-			nextVar, err := qvar.structMember("next")
+			nextVar, err := qvar.structField("next")
 			if err != nil {
 				return err
 			}
