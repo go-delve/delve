@@ -83,6 +83,7 @@ project {
     }))
     params {
         param("teamcity.ui.settings.readOnly", "true")
+        param("env.CI", "true")
     }
 }
 
@@ -258,7 +259,6 @@ class TestBuild(val os: String, val arch: String, val version: String, buildId: 
                     name = "Test"
                     path = "_scripts/test_mac.sh"
                     arguments = "${"go$version"} $arch %system.teamcity.build.tempDir%"
-                    param("env.CI", "true")
                 }
             }
         }
