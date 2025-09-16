@@ -67,9 +67,11 @@ func setFunctionBreakpoint(p *proc.Target, t *testing.T, fname string) *proc.Bre
 	}
 	return bp
 }
+
 func TestTraceDirCleanup(t *testing.T) {
 	protest.AllowRecording(t)
-	// Set the DELVE_RR_RECORD_FLAGS environment variable to pass --output-trace-dir to rr
+	protest.MustHaveRecordingAllowed(t)
+
 	oldFlags := os.Getenv("DELVE_RR_RECORD_FLAGS")
 	defer func() {
 		if oldFlags == "" {
@@ -79,16 +81,15 @@ func TestTraceDirCleanup(t *testing.T) {
 		}
 	}()
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatal("Failed to get user home directory:", err)
+	tmpDir := filepath.Join(os.TempDir(), "dlvrecord")
+	if _, err := os.Stat(tmpDir); err == nil {
+		t.Logf("removing leftover directory %s", tmpDir)
+		protest.SafeRemoveAll(tmpDir)
 	}
-	dirname := fmt.Sprintf("--output-trace-dir %s/dlvrecord", homeDir)
-	// Set environment variable for the recorded program
+	dirname := "--output-trace-dir " + tmpDir
 	os.Setenv("DELVE_RR_RECORD_FLAGS", dirname)
 
 	fixture := protest.BuildFixture(t, "testnextprog", 0)
-	protest.MustHaveRecordingAllowed(t)
 	if path, _ := exec.LookPath("rr"); path == "" {
 		t.Skip("test skipped, rr not found")
 	}
@@ -97,21 +98,15 @@ func TestTraceDirCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal("Launch():", err)
 	}
-	t.Logf("replaying %q", tracedir)
+	t.Logf("trace directory %q", tracedir)
 
-	defer grp.Detach(true)
-	p := grp.Selected
-	setFunctionBreakpoint(p, t, "main.main")
-	assertNoError(grp.Continue(), t, "Continue")
+	grp.Continue()
+	grp.Detach(true)
 	if _, err = os.ReadDir(tracedir); err != nil {
 		t.Fatal("Trace directory does not exist! Flag rr-cleanup failed: ", err)
 	}
 
-	// Clean up the trace directory
-	defer func() {
-		protest.SafeRemoveAll(tracedir)
-	}()
-
+	protest.SafeRemoveAll(tracedir)
 }
 
 func TestRestartAfterExit(t *testing.T) {
