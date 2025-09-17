@@ -579,7 +579,7 @@ func (t *Target) pluginOpenCallback(Thread, *Target) (bool, error) {
 	logger := logflags.DebuggerLogger()
 	for _, lbp := range t.Breakpoints().Logical {
 		// If the breakpoint is suspended, materialize it.
-		if !isSuspended(t, lbp) {
+		if !lbp.isSuspendedOnTarget(t) {
 			continue
 		}
 
@@ -604,9 +604,19 @@ func (t *Target) pluginOpenCallback(Thread, *Target) (bool, error) {
 	return false, nil
 }
 
-func isSuspended(t *Target, lbp *LogicalBreakpoint) bool {
+func (lbp *LogicalBreakpoint) isSuspendedOnTarget(t *Target) bool {
 	for _, bp := range t.Breakpoints().M {
 		if bp.LogicalID() == lbp.LogicalID {
+			return false
+		}
+	}
+	return true
+}
+
+func (lbp *LogicalBreakpoint) isSuspendedOnGroup(grp *TargetGroup) bool {
+	it := ValidTargets{Group: grp}
+	for it.Next() {
+		if !lbp.isSuspendedOnTarget(it.Target) {
 			return false
 		}
 	}
