@@ -7974,7 +7974,7 @@ func TestReadMemory_StringPagination(t *testing.T) {
 					hashString := hex.EncodeToString(hashed[:])
 
 					if strings.Trim(longHash.Value, `"`) != hashString {
-						t.Fatal()
+						t.Fatal("we got wrong values")
 					}
 				},
 				disconnect: true,
