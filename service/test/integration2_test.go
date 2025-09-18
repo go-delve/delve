@@ -2825,6 +2825,7 @@ func TestNonGoDebug(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("Error compiling %s: %s\n%s", path, err, out)
 	}
+	protest.AddPathToRemove(path)
 
 	listener, clientConn := service.ListenerPipe()
 	defer listener.Close()
