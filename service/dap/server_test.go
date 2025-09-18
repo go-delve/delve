@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -22,6 +23,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -7895,6 +7897,8 @@ func TestBreakpointAfterDisconnect(t *testing.T) {
 }
 
 func TestReadMemory_StringPagination(t *testing.T) {
+	signal.Reset(syscall.SIGCHLD)
+
 	runTest(t, "readmem_json", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
