@@ -10,6 +10,8 @@ import (
 
 // Long json for MemoryReference
 func main() {
+	runtime.Breakpoint()
+
 	payload := strings.Repeat("AB", 2500)
 
 	b, _ := json.Marshal(struct {
