@@ -33,6 +33,8 @@ type Fixture struct {
 	Source string
 	// BuildDir is the directory where the build command was run.
 	BuildDir string
+	// buildDone is closed when the fixture is built
+	buildDone <-chan struct{}
 }
 
 // FixtureKey holds the name and builds flags used for a test fixture.
@@ -42,7 +44,7 @@ type fixtureKey struct {
 }
 
 // Fixtures is a map of fixtureKey{ Fixture.Name, buildFlags } to Fixture.
-var fixtures = make(map[fixtureKey]Fixture)
+var fixtures = make(map[fixtureKey]*Fixture)
 var fixturesmu sync.Mutex
 
 // pathsToRemove is a list of files and directories to remove after running all the tests
@@ -105,9 +107,16 @@ func BuildFixture(t testing.TB, name string, flags BuildFlags) Fixture {
 		panic("RunTestsWithFixtures not called")
 	}
 	fk := fixtureKey{name, flags}
+	fixturesmu.Lock()
 	if f, ok := fixtures[fk]; ok {
-		return f
+		fixturesmu.Unlock()
+		<-f.buildDone
+		return *f
 	}
+	buildDone := make(chan struct{})
+	fixture := Fixture{Name: name, buildDone: buildDone}
+	fixtures[fk] = &fixture
+	fixturesmu.Unlock()
 
 	if flags&EnableCGOOptimization == 0 {
 		if os.Getenv("CI") == "" || os.Getenv("CGO_CFLAGS") == "" {
@@ -190,6 +199,20 @@ func BuildFixture(t testing.TB, name string, flags BuildFlags) Fixture {
 		os.Exit(1)
 	}
 
+	source, _ := filepath.Abs(path)
+	source = filepath.ToSlash(source)
+	sympath, err := filepath.EvalSymlinks(source)
+	if err == nil {
+		source = strings.ReplaceAll(sympath, "\\", "/")
+	}
+
+	absdir, _ := filepath.Abs(dir)
+
+	fixture.Path = tmpfile
+	fixture.Source = source
+	fixture.BuildDir = absdir
+	close(buildDone)
+
 	if flags&EnableDWZCompression != 0 {
 		cmd := exec.Command("dwz", tmpfile)
 		if out, err := cmd.CombinedOutput(); err != nil {
@@ -203,21 +226,7 @@ func BuildFixture(t testing.TB, name string, flags BuildFlags) Fixture {
 		}
 	}
 
-	source, _ := filepath.Abs(path)
-	source = filepath.ToSlash(source)
-	sympath, err := filepath.EvalSymlinks(source)
-	if err == nil {
-		source = strings.ReplaceAll(sympath, "\\", "/")
-	}
-
-	absdir, _ := filepath.Abs(dir)
-
-	fixture := Fixture{Name: name, Path: tmpfile, Source: source, BuildDir: absdir}
-
-	fixturesmu.Lock()
-	defer fixturesmu.Unlock()
-	fixtures[fk] = fixture
-	return fixtures[fk]
+	return fixture
 }
 
 // RunTestsWithFixtures sets the flag runningWithFixtures to compile fixtures on demand and runs tests with m.Run().
@@ -484,6 +493,7 @@ func getDlvBinInternal(t *testing.T, goflags ...string) string {
 	dlvbin := TempFile("dlv.exe")
 
 	dlvbincache[strargs] = dlvbin
+	AddPathToRemove(dlvbin)
 
 	args := append([]string{"build", "-o", dlvbin}, goflags...)
 	args = append(args, "github.com/go-delve/delve/cmd/dlv")
