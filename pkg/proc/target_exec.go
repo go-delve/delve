@@ -1766,7 +1766,7 @@ func stepIntoCoroutineMaybe(curthread Thread, p *Target, text []AsmInstruction) 
 	// runtime.coro (it is normally iter.coro, which is an internal
 	// placeholder).
 
-	cvar, err := clos.structMember("c")
+	cvar, err := clos.structField("c")
 	if err != nil {
 		logflags.DebuggerLogger().Errorf("iter.Pull problems accessing captured 'c' variable in closure: %v", err)
 		return false, nil

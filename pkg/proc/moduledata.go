@@ -34,7 +34,7 @@ func LoadModuleData(bi *BinaryInfo, mem MemoryReadWriter) ([]ModuleData, error) 
 
 		for _, fieldName := range []string{typesField, etypesField, textField, etextField, nextField, typemapField} {
 			var err error
-			vars[fieldName], err = md.structMember(fieldName)
+			vars[fieldName], err = md.structField(fieldName)
 			if err != nil {
 				return nil, err
 			}

@@ -669,9 +669,9 @@ func (it *stackIterator) loadG0SchedSP() {
 	}
 	it.g0_sched_sp_loaded = true
 	if it.g != nil {
-		mvar, _ := it.g.variable.structMember("m")
+		mvar, _ := it.g.variable.structField("m")
 		if mvar != nil {
-			g0var, _ := mvar.structMember("g0")
+			g0var, _ := mvar.structField("g0")
 			if g0var != nil {
 				g0, _ := g0var.parseG()
 				if g0 != nil {
