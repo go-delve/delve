@@ -25,7 +25,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/derekparker/trie/v3"
 	"github.com/hashicorp/golang-lru/v2"
 
 	"github.com/go-delve/delve/pkg/astutil"
@@ -70,7 +69,7 @@ type BinaryInfo struct {
 	// Functions that are not generic are not added to this map.
 	lookupGenericFunc map[string][]*Function
 	// lookupRangeBodyFunc maps function names to the range body functions.
-	lookupRangeBodyFunc *trie.Trie[*Function]
+	lookupRangeBodyFunc map[string][]*Function
 
 	// SymNames maps addr to a description *elf.Symbol of this addr.
 	SymNames map[uint64]*elf.Symbol
@@ -775,12 +774,7 @@ func (fn *Function) extra(bi *BinaryInfo) *functionExtra {
 
 	// Find range-over-func bodies of this function
 	if fn.extraCache.rangeParent == nil {
-		lookupFunc := bi.LookupRangeBodyFunc()
-		for _, fn2 := range lookupFunc.PrefixSearchIter(fn.Name) {
-			if fn2.rangeParentName() == fn.Name {
-				fn.extraCache.rangeBodies = append(fn.extraCache.rangeBodies, fn2)
-			}
-		}
+		fn.extraCache.rangeBodies = bi.LookupRangeBodyFunc()[fn.Name]
 	}
 
 	return fn.extraCache
@@ -2669,11 +2663,15 @@ func (bi *BinaryInfo) LookupFunc() map[string][]*Function {
 	return bi.lookupFunc
 }
 
-func (bi *BinaryInfo) LookupRangeBodyFunc() *trie.Trie[*Function] {
+func (bi *BinaryInfo) LookupRangeBodyFunc() map[string][]*Function {
 	if bi.lookupRangeBodyFunc == nil {
-		bi.lookupRangeBodyFunc = trie.New[*Function]()
+		bi.lookupRangeBodyFunc = make(map[string][]*Function)
 		for i := range bi.Functions {
-			bi.lookupRangeBodyFunc.Add(bi.Functions[i].Name, &bi.Functions[i])
+			if rangeParentName := bi.Functions[i].rangeParentName(); rangeParentName != "" {
+				for _, fn2 := range bi.LookupFunc()[rangeParentName] {
+					bi.lookupRangeBodyFunc[fn2.Name] = append(bi.lookupRangeBodyFunc[fn2.Name], &bi.Functions[i])
+				}
+			}
 		}
 	}
 	return bi.lookupRangeBodyFunc
