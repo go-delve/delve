@@ -24,6 +24,7 @@ type TargetGroup struct {
 	Selected          *Target
 	followExecEnabled bool
 	followExecRegex   *regexp.Regexp
+	eventsFn          func(*Event)
 
 	RecordingManipulation
 	recman RecordingManipulationInternal
@@ -132,16 +133,32 @@ func (grp *TargetGroup) addTarget(p ProcessInternal, pid int, currentThread Thre
 	if grp.Selected == nil {
 		grp.Selected = t
 	}
+	t.BinInfo().eventsFn = grp.eventsFn
 	t.Breakpoints().Logical = grp.LogicalBreakpoints
 	for _, lbp := range grp.LogicalBreakpoints {
 		if lbp.LogicalID < 0 {
 			continue
+		}
+		var wasSuspended bool
+		if grp.eventsFn != nil {
+			wasSuspended = lbp.isSuspendedOnGroup(grp)
 		}
 		err := enableBreakpointOnTarget(t, lbp)
 		if err != nil {
 			logger.Debugf("could not enable breakpoint %d on new target %d: %v", lbp.LogicalID, t.Pid(), err)
 		} else {
 			logger.Debugf("breakpoint %d enabled on new target %d: %v", lbp.LogicalID, t.Pid(), err)
+			if grp.eventsFn != nil {
+				isSuspended := lbp.isSuspendedOnTarget(t)
+				if wasSuspended && !isSuspended {
+					grp.eventsFn(&Event{
+						Kind: EventBreakpointMaterialized,
+						BreakpointMaterializedEventDetails: &BreakpointMaterializedEventDetails{
+							Breakpoint: lbp,
+						},
+					})
+				}
+			}
 		}
 	}
 	grp.targets = append(grp.targets, t)
@@ -540,7 +557,11 @@ func (grp *TargetGroup) FollowExecEnabled() bool {
 // SetEventsFn sets a function that is called to communicate events
 // happening while the target process is running.
 func (grp *TargetGroup) SetEventsFn(eventsFn func(*Event)) {
-	grp.Selected.BinInfo().eventsFn = eventsFn
+	grp.eventsFn = eventsFn
+	it := ValidTargets{Group: grp}
+	for it.Next() {
+		it.BinInfo().eventsFn = eventsFn
+	}
 }
 
 // CancelDownloads cancels ongoing downloads, if any.
