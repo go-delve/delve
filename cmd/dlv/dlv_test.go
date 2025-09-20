@@ -1054,11 +1054,13 @@ func TestTracePid(t *testing.T) {
 	if targetCmd.Process == nil || targetCmd.Process.Pid == 0 {
 		t.Fatal("expected target process running")
 	}
+
 	defer targetCmd.Process.Kill()
 
 	// dlv attach the process by pid
 	cmd := exec.Command(dlvbin, "trace", "-p", strconv.Itoa(targetCmd.Process.Pid), "main.A")
 	defer cmd.Wait()
+
 	rdr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
 	defer rdr.Close()
@@ -1070,6 +1072,61 @@ func TestTracePid(t *testing.T) {
 
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
+	}
+}
+
+func TestTracePidNoKill(t *testing.T) {
+	if runtime.GOOS == "linux" {
+		bs, _ := os.ReadFile("/proc/sys/kernel/yama/ptrace_scope")
+		if bs == nil || strings.TrimSpace(string(bs)) != "0" {
+			t.Logf("can not run TestAttachDetach: %v\n", bs)
+			return
+		}
+	}
+
+	dlvbin := protest.GetDlvBinary(t)
+	expected := []byte("no breakpoints set")
+
+	// make process run
+	fix := protest.BuildFixture(t, "loopprog", 0)
+	targetCmd := exec.Command(fix.Path)
+	assertNoError(targetCmd.Start(), t, "execute loopprog")
+
+	if targetCmd.Process == nil || targetCmd.Process.Pid == 0 {
+		t.Fatal("expected target process running")
+	}
+
+	targetCmdDone := make(chan struct{})
+	go func() {
+		targetCmd.Process.Wait()
+		close(targetCmdDone)
+	}()
+
+	defer targetCmd.Process.Kill()
+
+	// attach to the process by pid and immediately exit
+	cmd := exec.Command(dlvbin, "trace", "-p", strconv.Itoa(targetCmd.Process.Pid), "invalidbreakpoint")
+
+	rdr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	assertNoError(cmd.Start(), t, "running trace")
+
+	output, err := io.ReadAll(rdr)
+	assertNoError(err, t, "ReadAll")
+
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
+	}
+
+	cmd.Wait()
+
+	select {
+	case <-targetCmdDone:
+		t.Fatalf("expected process running after detach")
+	case <-time.After(200 * time.Millisecond):
+
 	}
 }
 

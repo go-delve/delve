@@ -704,6 +704,8 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 		}
 
 		var debugname string
+
+		shouldKill := true
 		if traceAttachPid == 0 {
 			if dlvArgsLen >= 2 && traceExecFile != "" {
 				fmt.Fprintln(os.Stderr, "Cannot specify package when using --exec.")
@@ -721,6 +723,8 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 			}
 
 			processArgs = append([]string{debugname}, targetArgs...)
+		} else {
+			shouldKill = false
 		}
 		if dlvArgsLen >= 3 && traceFollowCalls <= 0 {
 			fmt.Fprintln(os.Stderr, "Need to specify a trace depth of at least 1")
@@ -753,7 +757,7 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 			return 1
 		}
 		client := rpc2.NewClientFromConn(clientConn)
-		defer client.Detach(true)
+		defer client.Detach(shouldKill)
 
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, syscall.SIGINT)
