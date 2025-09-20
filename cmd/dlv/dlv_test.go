@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -1070,6 +1071,11 @@ func TestTracePid(t *testing.T) {
 
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
+	}
+
+	err = targetCmd.Process.Signal(syscall.Signal(0))
+	if err != nil {
+		t.Fatalf("expected target process running after trace detached: %v", err)
 	}
 }
 
