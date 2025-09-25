@@ -2544,7 +2544,8 @@ func TestAttachDetach(t *testing.T) {
 	// Read port from PID-specific file and wait for testnextnethttp to start listening
 	var port int
 	pid := cmd.Process.Pid
-	portFile := fmt.Sprintf("/tmp/testnextnethttp_port_%d", pid)
+	tmpdir := os.TempDir()
+	portFile := filepath.Join(tmpdir, fmt.Sprintf("testnextnethttp_port_%d", pid))
 
 	// Ensure cleanup of port file
 	defer func() {
