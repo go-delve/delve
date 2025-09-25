@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -23,7 +22,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -7897,8 +7895,6 @@ func TestBreakpointAfterDisconnect(t *testing.T) {
 }
 
 func TestReadMemory_StringPagination(t *testing.T) {
-	signal.Reset(syscall.SIGCHLD)
-
 	runTest(t, "readmem_json", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
@@ -7944,13 +7940,17 @@ func TestReadMemory_StringPagination(t *testing.T) {
 							return res, nil
 						}
 
-						varIdx, err := mustGetByName(locals.Body.Variables, "jsonString", "jsonHash")
+						varIdx, err := mustGetByName(locals.Body.Variables, "jsonString", "jsonHash", "jsonAddr")
 						if err != nil {
 							t.Fatal(err)
 						}
 
 						longString := varIdx["jsonString"]
-						longHash := varIdx["jsonHash"]
+						addr := varIdx["jsonAddr"]
+
+						if strings.Trim(addr.Value, `"`) != longString.MemoryReference {
+							t.Fatal("bad memory address")
+						}
 
 						var got bytes.Buffer
 						const chunk = 64
@@ -7982,6 +7982,7 @@ func TestReadMemory_StringPagination(t *testing.T) {
 
 						hashString := hex.EncodeToString(hashed[:])
 
+						longHash := varIdx["jsonHash"]
 						if strings.Trim(longHash.Value, `"`) != hashString {
 							t.Fatal("we got wrong values")
 						}

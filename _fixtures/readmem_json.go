@@ -4,8 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"runtime"
 	"strings"
+	"unsafe"
 )
 
 // Long json for MemoryReference
@@ -21,10 +23,14 @@ func main() {
 	jsonString := string(b)
 
 	hashed := sha256.Sum256(b)
+	jsonHash := hex.EncodeToString(hashed[:]) // used to validate fullness of a string
 
-	jsonHash := hex.EncodeToString(hashed[:])
+	ptr := unsafe.StringData(jsonString)
+	jsonAddr := fmt.Sprintf("%p", ptr) // used to validate string address
 
 	runtime.Breakpoint()
-	_ = jsonString
-	_ = jsonHash
+
+	fmt.Println(jsonString)
+	fmt.Println(jsonHash)
+	fmt.Println(jsonAddr)
 }
