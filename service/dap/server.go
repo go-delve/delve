@@ -114,7 +114,6 @@ type memRef struct {
 type referencesCollection struct {
 	mu   sync.Mutex
 	refs map[string]memRef
-	seq  uint64
 }
 
 func (r *referencesCollection) get(reference string) (memRef, bool) {
@@ -125,7 +124,6 @@ func (r *referencesCollection) get(reference string) (memRef, bool) {
 
 	return ref, ok
 }
-
 func (r *referencesCollection) put(v *proc.Variable) string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -138,10 +136,14 @@ func (r *referencesCollection) put(v *proc.Variable) string {
 		return ""
 	}
 
-	if v.Unreadable == nil && v.Kind == reflect.String && v.Len > 0 && v.Base != 0 {
-		ref := fmt.Sprintf("go:0x%x:%d:%d", v.Base, v.Len, r.seq)
-		r.refs[ref] = memRef{addr: v.Base, size: v.Len}
-		r.seq++
+	if v.Unreadable == nil && v.Kind == reflect.String && v.Len > 0 {
+		addr := v.Addr
+		if v.Base != 0 {
+			addr = v.Base
+		}
+
+		ref := fmt.Sprintf("0x%x", addr)
+		r.refs[ref] = memRef{addr: addr, size: v.Len}
 
 		return ref
 	}
@@ -156,8 +158,6 @@ func (r *referencesCollection) reset() {
 	if len(r.refs) > 0 {
 		r.refs = make(map[string]memRef)
 	}
-
-	r.seq = 0
 }
 
 // Session is an abstraction for serving and shutting down
