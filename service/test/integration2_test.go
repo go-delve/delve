@@ -3326,8 +3326,20 @@ func TestFollowExecFindLocation(t *testing.T) {
 		_, err := c.CreateBreakpointWithExpr(&api.Breakpoint{File: childFixture.Source, Line: 9}, fmt.Sprintf("%s:%d", childFixture.Source, 9), nil, true)
 		assertNoError(err, t, "CreateBreakpoint(spawnchild.go:9)")
 
+		gotBreakpointMaterialized := false
+		c.SetEventsFn(func(ev *api.Event) {
+			t.Logf("event = %#v", ev)
+			if ev.Kind == api.EventBreakpointMaterialized {
+				gotBreakpointMaterialized = true
+			}
+		})
+
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
+
+		if !gotBreakpointMaterialized {
+			t.Error("did not get a breakpoint materialized event")
+		}
 
 		tgts, err := c.ListTargets()
 		assertNoError(err, t, "ListTargets")
