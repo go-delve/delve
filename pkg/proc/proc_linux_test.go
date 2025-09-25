@@ -85,6 +85,7 @@ func stripAndCopyDebugInfo(f protest.Fixture, t *testing.T) {
 	if err := copyCmd.Run(); err != nil {
 		t.Fatal(err)
 	}
+	protest.AddPathToRemove(f.Path + ".debug")
 
 	// Strip the original binary of the debug information.
 	stripCmd := exec.Command("strip", "--strip-debug", "--strip-unneeded", name)
