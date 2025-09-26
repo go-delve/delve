@@ -1851,7 +1851,8 @@ func TestIssue462(t *testing.T) {
 	skipOn(t, "broken", "windows") // Stacktrace of Goroutine 0 fails with an error
 	withTestProcess("testnextnethttp", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		pid := p.Pid()
-		portFile := fmt.Sprintf("/tmp/testnextnethttp_port_%d", pid)
+		tmpdir := os.TempDir()
+		portFile := filepath.Join(tmpdir, fmt.Sprintf("testnextnethttp_port_%d", pid))
 
 		// Ensure cleanup of port file
 		defer func() {
