@@ -125,6 +125,10 @@ func (r *referencesCollection) get(reference string) (memRef, bool) {
 	return ref, ok
 }
 func (r *referencesCollection) put(v *proc.Variable) string {
+	if v.Kind != reflect.String {
+		return ""
+	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -132,23 +136,20 @@ func (r *referencesCollection) put(v *proc.Variable) string {
 		r.refs = make(map[string]memRef)
 	}
 
-	if v.Len < maxSingleStringLen {
+	if v.Len < maxSingleStringLen || v.Unreadable != nil {
 		return ""
 	}
 
-	if v.Unreadable == nil && v.Kind == reflect.String && v.Len > 0 {
-		addr := v.Addr
-		if v.Base != 0 {
-			addr = v.Base
-		}
-
-		ref := fmt.Sprintf("0x%x", addr)
-		r.refs[ref] = memRef{addr: addr, size: v.Len}
-
-		return ref
+	addr := v.Addr
+	if v.Base != 0 {
+		addr = v.Base
 	}
 
-	return ""
+	ref := fmt.Sprintf("0x%x", addr)
+
+	r.refs[ref] = memRef{addr: addr, size: v.Len}
+
+	return ref
 }
 
 func (r *referencesCollection) reset() {
