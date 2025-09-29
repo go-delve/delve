@@ -1209,6 +1209,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		if err != nil {
 			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
 				fmt.Sprintf("Failed to enable follow exec: %v", err))
+			s.debugger.Detach(true)
 			return
 		}
 	}
