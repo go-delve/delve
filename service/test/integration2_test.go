@@ -233,7 +233,9 @@ func TestRestart_rebuild(t *testing.T) {
 	// In the original fixture file the env var tested for is SOMEVAR.
 	t.Setenv("SOMEVAR", "bah")
 
-	withTestClient2Extended("testenv", t, 0, [3]string{}, nil, func(c service.Client, f protest.Fixture) {
+	// This test must use `testenv2` and it should be the *only* test that uses it. This is because it will overwrite
+	// the fixture file with new source.
+	withTestClient2Extended("testenv2", t, 0, [3]string{}, nil, func(c service.Client, f protest.Fixture) {
 		<-c.Continue()
 
 		var1, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "x", normalLoadConfig)
@@ -2498,15 +2500,39 @@ func TestDetachLeaveRunning(t *testing.T) {
 	fixture := protest.BuildFixture(t, "testnextnethttp", buildFlags)
 
 	cmd := exec.Command(fixture.Path)
-	cmd.Stdout = os.Stdout
+
+	// Capture stdout to read the port number
+	stdout, err := cmd.StdoutPipe()
+	assertNoError(err, t, "creating stdout pipe")
 	cmd.Stderr = os.Stderr
 	assertNoError(cmd.Start(), t, "starting fixture")
 	defer cmd.Process.Kill()
 
+	// Read the port from stdout
+	var port int
+	var portLine string
+	buf := make([]byte, 256)
+	for {
+		n, err := stdout.Read(buf)
+		if err != nil {
+			t.Fatal("failed to read port from fixture stdout:", err)
+		}
+		portLine += string(buf[:n])
+		if strings.Contains(portLine, "LISTENING:") {
+			parts := strings.Split(portLine, "LISTENING:")
+			if len(parts) > 1 {
+				portStr := strings.TrimSpace(strings.Split(parts[1], "\n")[0])
+				port, err = strconv.Atoi(portStr)
+				assertNoError(err, t, "parsing port number")
+				break
+			}
+		}
+	}
+
 	// wait for testnextnethttp to start listening
 	t0 := time.Now()
 	for {
-		conn, err := net.Dial("tcp", "127.0.0.1:9191")
+		conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err == nil {
 			conn.Close()
 			break
@@ -3185,9 +3211,7 @@ func TestGuessSubstitutePath(t *testing.T) {
 	}
 
 	guess := func(t *testing.T, goflags string) [][2]string {
-		oldgoflags := os.Getenv("GOFLAGS")
-		os.Setenv("GOFLAGS", goflags)
-		defer os.Setenv("GOFLAGS", oldgoflags)
+		t.Setenv("GOFLAGS", goflags)
 
 		dlvbin := protest.GetDlvBinary(t)
 
@@ -3212,11 +3236,11 @@ func TestGuessSubstitutePath(t *testing.T) {
 
 		switch runtime.GOARCH {
 		case "ppc64le":
-			os.Setenv("GOFLAGS", "-tags=exp.linuxppc64le")
+			t.Setenv("GOFLAGS", "-tags=exp.linuxppc64le")
 		case "riscv64":
-			os.Setenv("GOFLAGS", "-tags=exp.linuxriscv64")
+			t.Setenv("GOFLAGS", "-tags=exp.linuxriscv64")
 		case "loong64":
-			os.Setenv("GOFLAGS", "-tags=exp.linuxloong64")
+			t.Setenv("GOFLAGS", "-tags=exp.linuxloong64")
 		}
 
 		gsp, err := client.GuessSubstitutePath()

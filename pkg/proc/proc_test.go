@@ -21,6 +21,7 @@ import (
 	"runtime"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -526,21 +527,49 @@ func TestNextConcurrentVariant2(t *testing.T) {
 
 func TestNextNetHTTP(t *testing.T) {
 	testcases := []nextTest{
-		{11, 12},
-		{12, 13},
+		{14, 15},
+		{15, 16},
 	}
 	withTestProcess("testnextnethttp", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		pid := p.Pid()
+		tmpdir := os.TempDir()
+		portFile := filepath.Join(tmpdir, fmt.Sprintf("testnextnethttp_port_%d", pid))
+
+		defer os.Remove(portFile)
+
 		go func() {
-			// Wait for program to start listening.
+			// Wait for program to write the port to file with timeout
+			var port int
+			t0 := time.Now()
 			for {
-				conn, err := net.Dial("tcp", "127.0.0.1:9191")
+				if data, err := os.ReadFile(portFile); err == nil {
+					if parsedPort, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil {
+						port = parsedPort
+						break
+					}
+				}
+				time.Sleep(50 * time.Millisecond)
+				if time.Since(t0) > 10*time.Second {
+					t.Errorf("timeout waiting for port file")
+					return
+				}
+			}
+
+			// Wait for program to start listening with timeout
+			t0 = time.Now()
+			for {
+				conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 				if err == nil {
 					conn.Close()
 					break
 				}
 				time.Sleep(50 * time.Millisecond)
+				if time.Since(t0) > 10*time.Second {
+					t.Errorf("timeout waiting for server to start listening")
+					return
+				}
 			}
-			resp, err := http.Get("http://127.0.0.1:9191")
+			resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d", port))
 			if err == nil {
 				resp.Body.Close()
 			}
@@ -1821,15 +1850,46 @@ func TestCmdLineArgs(t *testing.T) {
 func TestIssue462(t *testing.T) {
 	skipOn(t, "broken", "windows") // Stacktrace of Goroutine 0 fails with an error
 	withTestProcess("testnextnethttp", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		pid := p.Pid()
+		tmpdir := os.TempDir()
+		portFile := filepath.Join(tmpdir, fmt.Sprintf("testnextnethttp_port_%d", pid))
+
+		// Ensure cleanup of port file
+		defer func() {
+			os.Remove(portFile)
+		}()
+
 		go func() {
-			// Wait for program to start listening.
+			// Wait for program to write the port to file with timeout
+			var port int
+			t0 := time.Now()
 			for {
-				conn, err := net.Dial("tcp", "127.0.0.1:9191")
+				if data, err := os.ReadFile(portFile); err == nil {
+					if parsedPort, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil {
+						port = parsedPort
+						break
+					}
+				}
+				time.Sleep(50 * time.Millisecond)
+				if time.Since(t0) > 10*time.Second {
+					t.Errorf("timeout waiting for port file")
+					return
+				}
+			}
+
+			// Wait for program to start listening with timeout
+			t0 = time.Now()
+			for {
+				conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 				if err == nil {
 					conn.Close()
 					break
 				}
 				time.Sleep(50 * time.Millisecond)
+				if time.Since(t0) > 10*time.Second {
+					t.Errorf("timeout waiting for server to start listening")
+					return
+				}
 			}
 
 			grp.RequestManualStop()
@@ -2482,17 +2542,46 @@ func TestAttachDetach(t *testing.T) {
 	cmd.Stderr = os.Stderr
 	assertNoError(cmd.Start(), t, "starting fixture")
 
-	// wait for testnextnethttp to start listening
+	// Read port from PID-specific file and wait for testnextnethttp to start listening
+	var port int
+	pid := cmd.Process.Pid
+	tmpdir := os.TempDir()
+	portFile := filepath.Join(tmpdir, fmt.Sprintf("testnextnethttp_port_%d", pid))
+
+	// Ensure cleanup of port file
+	defer func() {
+		os.Remove(portFile)
+		if cmd.Process != nil {
+			cmd.Process.Kill()
+		}
+	}()
+
+	// First wait for port file to be written
 	t0 := time.Now()
 	for {
-		conn, err := net.Dial("tcp", "127.0.0.1:9191")
+		if data, err := os.ReadFile(portFile); err == nil {
+			if parsedPort, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil {
+				port = parsedPort
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+		if time.Since(t0) > 10*time.Second {
+			t.Fatal("fixture did not write port file")
+		}
+	}
+
+	// Then wait for server to start listening
+	t0 = time.Now()
+	for {
+		conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err == nil {
 			conn.Close()
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 		if time.Since(t0) > 10*time.Second {
-			t.Fatal("fixture did not start")
+			t.Fatal("fixture did not start listening")
 		}
 	}
 
@@ -2515,21 +2604,21 @@ func TestAttachDetach(t *testing.T) {
 	assertNoError(err, t, "Attach")
 	go func() {
 		time.Sleep(1 * time.Second)
-		resp, err := http.Get("http://127.0.0.1:9191")
+		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d", port))
 		if err == nil {
 			resp.Body.Close()
 		}
 	}()
 
 	assertNoError(p.Continue(), t, "Continue")
-	assertLineNumber(p.Selected, t, 11, "Did not continue to correct location,")
+	assertLineNumber(p.Selected, t, 14, "Did not continue to correct location,")
 
 	assertNoError(p.Detach(false), t, "Detach")
 
 	if runtime.GOOS != "darwin" {
 		// Debugserver sometimes will leave a zombie process after detaching, this
 		// seems to be a bug with debugserver.
-		resp, err := http.Get("http://127.0.0.1:9191/nobp")
+		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/nobp", port))
 		assertNoError(err, t, "Page request after detach")
 		bs, err := io.ReadAll(resp.Body)
 		assertNoError(err, t, "Reading /nobp page")

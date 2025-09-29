@@ -1,10 +1,13 @@
 package main
 
 import (
+	"fmt"
+	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
 )
-
 func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 		runtime.Breakpoint()
@@ -17,7 +20,23 @@ func main() {
 		header := w.Header().Get("Content-Type")
 		w.Write([]byte(msg + header))
 	})
-	err := http.ListenAndServe(":9191", nil)
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		panic(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	fmt.Printf("LISTENING:%d\n", port)
+
+	// Also write port to a file for tests that can't capture stdout
+	// Include PID in filename to avoid conflicts when tests run in parallel
+	tmpdir := os.TempDir()
+	portFile := filepath.Join(tmpdir, fmt.Sprintf("testnextnethttp_port_%d", os.Getpid()))
+	os.WriteFile(portFile, []byte(fmt.Sprintf("%d", port)), 0644)
+
+	// Clean up port file when program exits
+	defer os.Remove(portFile)
+
+	err = http.Serve(listener, nil)
 	if err != nil {
 		panic(err)
 	}
