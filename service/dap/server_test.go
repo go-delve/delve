@@ -858,7 +858,6 @@ func TestAttachWithFollowExec(t *testing.T) {
 		// SIGPIPE, which the rest of this test does not expect.
 		runtime.KeepAlive(stdout)
 	})
-
 }
 
 // Like the test above, except the program is configured to continue on entry.
