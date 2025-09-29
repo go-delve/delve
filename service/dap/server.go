@@ -1968,6 +1968,12 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 	}
 	s.config.log.Debug("parsed launch config: ", prettyPrint(args))
 
+	if s.args.followExec {
+		s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach",
+			"Follow exec not supported in attach request yet.")
+		return
+	}
+
 	switch args.Mode {
 	case "":
 		args.Mode = "local"
@@ -2064,12 +2070,6 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 		}
 		s.args.substitutePathClientToServer = clientToServer
 		s.args.substitutePathServerToClient = serverToClient
-	}
-
-	if s.args.followExec {
-		s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach",
-			"Follow exec not supported in attach request yet.")
-		return
 	}
 
 	// Notify the client that the debugger is ready to start accepting
