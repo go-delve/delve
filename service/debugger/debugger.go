@@ -911,7 +911,7 @@ func (d *Debugger) copyLogicalBreakpointInfo(lbp *proc.LogicalBreakpoint, reques
 func (d *Debugger) ClearBreakpoint(requestedBp *api.Breakpoint) (*api.Breakpoint, error) {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-	if requestedBp.ID <= 0 {
+	if requestedBp.ID == 0 {
 		if len(d.target.Targets()) != 1 {
 			return nil, ErrNotImplementedWithMultitarget
 		}
