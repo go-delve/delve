@@ -7987,6 +7987,10 @@ func TestBreakpointAfterDisconnect(t *testing.T) {
 }
 
 func TestReadMemory_StringPagination(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test skipped on freebsd")
+	}
+
 	runTest(t, "readmem_json", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
