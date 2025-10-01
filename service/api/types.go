@@ -118,6 +118,8 @@ type Breakpoint struct {
 	LoadArgs *LoadConfig
 	// LoadLocals requests loading function locals when the breakpoint is hit
 	LoadLocals *LoadConfig
+	// CustomCommands are custom starlark commands to execute when the breakpoint is hit
+	CustomCommands []string `json:"customCommands,omitempty"`
 
 	// WatchExpr is the expression used to create this watchpoint
 	WatchExpr string

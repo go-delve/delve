@@ -28,6 +28,7 @@ func ConvertLogicalBreakpoint(lbp *proc.LogicalBreakpoint) *Breakpoint {
 		Variables:        lbp.Variables,
 		LoadArgs:         LoadConfigFromProc(lbp.LoadArgs),
 		LoadLocals:       LoadConfigFromProc(lbp.LoadLocals),
+		CustomCommands:   lbp.CustomCommands,
 		TotalHitCount:    lbp.TotalHitCount,
 		Disabled:         !lbp.Enabled(),
 		UserData:         lbp.UserData,
