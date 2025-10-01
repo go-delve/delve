@@ -821,21 +821,29 @@ func TestAttachWithFollowExec(t *testing.T) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
 		}
 
-		// 2 >> attach, << error
-		client.AttachRequest(map[string]interface{}{
+		// 2 >> attach, << output, << initialized, << attach
+		client.AttachRequest(map[string]any{
 			"mode":        "local",
 			"processId":   cmd.Process.Pid,
 			"stopOnEntry": stopOnEntry,
 			"followExec":  true,
 			"backend":     "default",
 		})
+		outputEvent := client.ExpectOutputEvent(t)
+		if outputEvent.Seq != 0 ||
+			outputEvent.Body.Output != "Follow exec not supported in attach request yet." ||
+			outputEvent.Body.Category != "important" {
+			t.Errorf("\ngot %#v\nwant Seq=0, Body={Output=\"Follow exec not supported in attach request yet.\", Category=\"important\"}", outputEvent)
+		}
+
 		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
-		errResp := client.ExpectErrorResponse(t)
-		if errResp.Seq != 0 ||
-			errResp.RequestSeq != 2 ||
-			errResp.Message != "Failed to attach" ||
-			errResp.Body.Error.Format != "Failed to attach: Follow exec not supported in attach request yet." {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=2 Message=\"Failed to attach\" Format=\"Follow exec not supported in attach request yet.\"", errResp)
+		initEvent := client.ExpectInitializedEvent(t)
+		if initEvent.Seq != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0", initEvent)
+		}
+		attachResp := client.ExpectAttachResponse(t)
+		if attachResp.Seq != 0 || attachResp.RequestSeq != 2 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=2", attachResp)
 		}
 
 		// 3 >> disconnect, << disconnect
