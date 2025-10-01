@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -1612,6 +1613,104 @@ func TestTraceRegexpReturn(t *testing.T) {
 		t.Logf("continue: %q", out)
 		if out != "> goroutine(1): main.fncall1()\n>> goroutine(1): main.fncall1 => (1)\n> goroutine(1): main.fncall2()\n>> goroutine(1): main.fncall2 => (2)\n" {
 			t.Errorf("wrong output for continue")
+		}
+	})
+}
+
+func TestStarlarkOnPrefix(t *testing.T) {
+	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
+		term.MustExec("source " + findStarFile("test_allow_on"))
+
+		var cmdWithOn *command
+		var cmdWithoutOn *command
+
+		for i := range term.cmds.cmds {
+			cmd := &term.cmds.cmds[i]
+			if cmd.match("test_on_allowed") {
+				cmdWithOn = cmd
+			}
+			if cmd.match("test_on_not_allowed") {
+				cmdWithoutOn = cmd
+			}
+		}
+
+		if cmdWithOn == nil {
+			t.Fatal("test_on_allowed command not found")
+		}
+		if cmdWithoutOn == nil {
+			t.Fatal("test_on_not_allowed command not found")
+		}
+
+		if cmdWithOn.allowedPrefixes&onPrefix == 0 {
+			t.Errorf("test_on_allowed should have onPrefix set, got allowedPrefixes=%v", cmdWithOn.allowedPrefixes)
+		}
+
+		if cmdWithoutOn.allowedPrefixes&onPrefix != 0 {
+			t.Errorf("test_on_not_allowed should not have onPrefix set, got allowedPrefixes=%v", cmdWithoutOn.allowedPrefixes)
+		}
+
+		term.MustExec("break main.main")
+
+		bps1, _ := term.client.ListBreakpoints(false)
+		var targetBpID int
+		for _, bp := range bps1 {
+			if bp.FunctionName == "main.main" {
+				targetBpID = bp.ID
+				break
+			}
+		}
+		if targetBpID == 0 {
+			t.Fatal("Could not find breakpoint on main.main")
+		}
+
+		term.MustExec(fmt.Sprintf("on %d test_on_allowed", targetBpID))
+
+		bpListOutput := term.MustExec("breakpoints")
+		if !strings.Contains(bpListOutput, "test_on_allowed") {
+			t.Errorf("expected 'test_on_allowed' to appear in breakpoints output, got: %q", bpListOutput)
+		}
+
+		breakpoints, err := term.client.ListBreakpoints(false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(breakpoints) == 0 {
+			t.Fatal("no breakpoints found")
+		}
+
+		var bp *api.Breakpoint
+		for _, b := range breakpoints {
+			if b.ID == targetBpID {
+				bp = b
+				break
+			}
+		}
+		if bp == nil {
+			t.Fatalf("Could not find breakpoint with ID %d", targetBpID)
+		}
+
+		if len(bp.CustomCommands) == 0 {
+			t.Errorf("expected custom command to be registered on breakpoint, but CustomCommands is empty")
+		} else {
+			found := slices.Contains(bp.CustomCommands, "test_on_allowed")
+			if !found {
+				t.Errorf("expected 'test_on_allowed' to be in CustomCommands, got %v", bp.CustomCommands)
+			}
+		}
+
+		term.MustExec(fmt.Sprintf("on %d test_on_allowed hello world", targetBpID))
+
+		bpListOutput2 := term.MustExec("breakpoints")
+		if !strings.Contains(bpListOutput2, "test_on_allowed hello world") {
+			t.Errorf("expected 'test_on_allowed hello world' to appear in breakpoints output, got: %q", bpListOutput2)
+		}
+
+		out := term.MustExec("continue")
+		if !strings.Contains(out, "test_on_allowed called with:") {
+			t.Errorf("expected custom command to be executed when breakpoint is hit, but output was: %q", out)
+		}
+		if !strings.Contains(out, "test_on_allowed called with: hello world") {
+			t.Errorf("expected custom command with args to be executed, but output was: %q", out)
 		}
 	})
 }
