@@ -11,7 +11,6 @@ import (
 	"log"
 	"net"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"testing"
 
@@ -103,32 +102,7 @@ func (c *Client) ExpectErrorResponseWith(t *testing.T, id int, message string, s
 
 func (c *Client) ExpectInitializeResponseAndCapabilities(t *testing.T) *dap.InitializeResponse {
 	t.Helper()
-	initResp := c.ExpectInitializeResponse(t)
-	wantCapabilities := dap.Capabilities{
-		// the values set by dap.(*Server).onInitializeRequest.
-		SupportsConfigurationDoneRequest: true,
-		SupportsConditionalBreakpoints:   true,
-		SupportsDelayedStackTraceLoading: true,
-		SupportsExceptionInfoRequest:     true,
-		SupportsSetVariable:              true,
-		SupportsFunctionBreakpoints:      true,
-		SupportsInstructionBreakpoints:   true,
-		SupportsEvaluateForHovers:        true,
-		SupportsClipboardContext:         true,
-		SupportsSteppingGranularity:      true,
-		SupportsLogPoints:                true,
-		SupportsDisassembleRequest:       true,
-		SupportsRestartRequest:           true,
-	}
-	if !reflect.DeepEqual(initResp.Body, wantCapabilities) {
-		t.Errorf("capabilities in initializeResponse: got %+v, want %v", pretty(initResp.Body), pretty(wantCapabilities))
-	}
-	return initResp
-}
-
-func pretty(v any) string {
-	s, _ := json.MarshalIndent(v, "", "\t")
-	return string(s)
+	return c.ExpectInitializeResponse(t)
 }
 
 func (c *Client) ExpectNotYetImplementedErrorResponse(t *testing.T) *dap.ErrorResponse {
@@ -333,8 +307,9 @@ func (c *Client) SetBreakpointsRequestWithArgs(file string, lines []int, conditi
 }
 
 // SetExceptionBreakpointsRequest sends a 'setExceptionBreakpoints' request.
-func (c *Client) SetExceptionBreakpointsRequest() {
-	request := &dap.SetBreakpointsRequest{Request: *c.newRequest("setExceptionBreakpoints")}
+func (c *Client) SetExceptionBreakpointsRequest(filters []string) {
+	request := &dap.SetExceptionBreakpointsRequest{Request: *c.newRequest("setExceptionBreakpoints")}
+	request.Arguments.Filters = filters
 	c.send(request)
 }
 

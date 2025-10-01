@@ -3,6 +3,7 @@ package dap
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"flag"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -408,7 +410,7 @@ func TestLaunchStopOnEntry(t *testing.T) {
 		}
 
 		// 4 >> setExceptionBreakpoints, << setExceptionBreakpoints
-		client.SetExceptionBreakpointsRequest()
+		client.SetExceptionBreakpointsRequest(nil)
 		sebpResp := client.ExpectSetExceptionBreakpointsResponse(t)
 		if sebpResp.Seq != 0 || sebpResp.RequestSeq != 4 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=4", sebpResp)
@@ -552,7 +554,7 @@ func TestAttachStopOnEntry(t *testing.T) {
 		}
 
 		// 4 >> setExceptionBreakpoints, << setExceptionBreakpoints
-		client.SetExceptionBreakpointsRequest()
+		client.SetExceptionBreakpointsRequest(nil)
 		sebpResp := client.ExpectSetExceptionBreakpointsResponse(t)
 		if sebpResp.Seq != 0 || sebpResp.RequestSeq != 4 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=4", sebpResp)
@@ -657,7 +659,7 @@ func TestContinueOnEntry(t *testing.T) {
 		client.ExpectSetBreakpointsResponse(t)
 
 		// 4 >> setExceptionBreakpoints, << setExceptionBreakpoints
-		client.SetExceptionBreakpointsRequest()
+		client.SetExceptionBreakpointsRequest(nil)
 		client.ExpectSetExceptionBreakpointsResponse(t)
 
 		// 5 >> configurationDone, << configurationDone
@@ -711,7 +713,7 @@ func TestPreSetBreakpoint(t *testing.T) {
 			t.Errorf("got breakpoints[0] = %#v, want Verified=true, Line=8, Id=1, Path=%q", bkpt0, fixture.Source)
 		}
 
-		client.SetExceptionBreakpointsRequest()
+		client.SetExceptionBreakpointsRequest(nil)
 		client.ExpectSetExceptionBreakpointsResponse(t)
 
 		client.ConfigurationDoneRequest()
@@ -7744,6 +7746,58 @@ func TestDisassembleCgo(t *testing.T) {
 		)
 	},
 		protest.AllNonOptimized, true)
+}
+
+func checkExceptionBreakpoints(t *testing.T, resp *dap.SetExceptionBreakpointsResponse, ids ...int) {
+	t.Helper()
+	if len(resp.Body.Breakpoints) != len(ids) {
+		t.Errorf("want: %v got: %v", ids, resp.Body.Breakpoints)
+		return
+	}
+	slices.SortFunc(resp.Body.Breakpoints, func(a, b dap.Breakpoint) int {
+		return cmp.Compare(a.Id, b.Id)
+	})
+	sort.Ints(ids)
+	for i := range resp.Body.Breakpoints {
+		if resp.Body.Breakpoints[i].Id != ids[i] {
+			t.Errorf("want %v got %v", ids, resp.Body.Breakpoints)
+			return
+		}
+		if !resp.Body.Breakpoints[i].Verified {
+			t.Errorf("breakpoint %d not verified", resp.Body.Breakpoints[i].Id)
+		}
+	}
+}
+
+func TestSetExceptionBreakpoints(t *testing.T) {
+	runTestBuildFlags(t, "panic", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			fixture.Source, []int{3},
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 3)
+					client.SetExceptionBreakpointsRequest([]string{proc.UnrecoveredPanic, proc.FatalThrow})
+					checkExceptionBreakpoints(t, client.ExpectSetExceptionBreakpointsResponse(t), -1, -2)
+
+					client.SetExceptionBreakpointsRequest([]string{})
+					checkExceptionBreakpoints(t, client.ExpectSetExceptionBreakpointsResponse(t))
+
+					client.SetExceptionBreakpointsRequest([]string{proc.UnrecoveredPanic, proc.FatalThrow})
+					checkExceptionBreakpoints(t, client.ExpectSetExceptionBreakpointsResponse(t), -1, -2)
+
+					client.SetExceptionBreakpointsRequest([]string{proc.FatalThrow})
+					checkExceptionBreakpoints(t, client.ExpectSetExceptionBreakpointsResponse(t), -2)
+
+					// If disabling the predefined breakpoints doesn't work Delve will stop
+					// on the target's panic and runTestBuildFlags, which expects a
+					// terminated event, will fail the test.
+				},
+			}},
+		)
+	}, 0, true)
 }
 
 func TestRedirect(t *testing.T) {
