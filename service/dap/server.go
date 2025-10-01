@@ -1207,10 +1207,13 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	if s.args.followExec {
 		err = s.debugger.FollowExec(s.args.followExec, s.args.followExecRegex)
 		if err != nil {
-			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
-				fmt.Sprintf("Failed to enable follow exec: %v", err))
-			s.debugger.Detach(true)
-			return
+			s.send(&dap.OutputEvent{
+				Event: *newEvent("output"),
+				Body: dap.OutputEventBody{
+					Output:   fmt.Sprintf("Failed to enable follow exec: %v\n", err),
+					Category: "important",
+				},
+			})
 		}
 	}
 
@@ -1969,10 +1972,14 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 	}
 	s.config.log.Debug("parsed launch config: ", prettyPrint(args))
 
-	if s.args.followExec {
-		s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach",
-			"Follow exec not supported in attach request yet.")
-		return
+	if args.FollowExec {
+		s.send(&dap.OutputEvent{
+			Event: *newEvent("output"),
+			Body: dap.OutputEventBody{
+				Output:   "Follow exec not supported in attach request yet.",
+				Category: "important",
+			},
+		})
 	}
 
 	switch args.Mode {
