@@ -404,6 +404,7 @@ func (procgrp *processGroup) waitForDebugEvent(flags waitForDebugEventFlags) (th
 				}
 				tgt, err := procgrp.add(dbp, dbp.pid, dbp.memthread, exe, proc.StopLaunched, getCmdLine(dbp.os.hProcess))
 				if err != nil {
+					// TODO: Handle proc.ErrBadBinaryInfo
 					return 0, err
 				}
 				if tgt == nil {
