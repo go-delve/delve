@@ -185,6 +185,12 @@ func genMapping(bindings []binding) []byte {
 	for _, binding := range bindings {
 		fmt.Fprintf(buf, "r[%q] = starlark.NewBuiltin(%q, func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {", binding.name, binding.name)
 		fmt.Fprintf(buf, "if err := isCancelled(thread); err != nil { return starlark.None, decorateError(thread, err) }\n")
+		// Add invalidation check for raw_command (maps to Command RPC call)
+		if binding.name == "raw_command" {
+			fmt.Fprintf(buf, "// Check if this is a runCmd being executed during custom command execution\n")
+			fmt.Fprintf(buf, "// If so, set the invalidation flag to stop further custom commands from executing\n")
+			fmt.Fprintf(buf, "env.ctx.InvalidateCustomCommandsIfExecuting()\n")
+		}
 		fmt.Fprintf(buf, "var rpcArgs %s\n", removePackagePath(binding.argType))
 		fmt.Fprintf(buf, "var rpcRet %s\n", removePackagePath(binding.retType))
 

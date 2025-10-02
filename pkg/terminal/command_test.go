@@ -1714,3 +1714,48 @@ func TestStarlarkOnPrefix(t *testing.T) {
 		}
 	})
 }
+
+func TestCustomCommandStopsOnContinue(t *testing.T) {
+	// This test verifies that when a custom command triggers a runCmd (like continue),
+	// the execution of remaining custom commands is stopped because the process state
+	// has been invalidated.
+	withTestTerminal("break", t, func(term *FakeTerminal) {
+		term.MustExec("source " + findStarFile("test_custom_cmd_continue"))
+
+		term.MustExec("break break.go:7")
+
+		bps, _ := term.client.ListBreakpoints(false)
+		var targetBpID int
+		for _, bp := range bps {
+			if strings.Contains(bp.File, "break.go") && bp.Line == 7 {
+				targetBpID = bp.ID
+				break
+			}
+		}
+		if targetBpID == 0 {
+			t.Fatal("Could not find breakpoint on break.go:7")
+		}
+
+		// Add three custom commands to the breakpoint:
+		// 1. cmd before continue (should execute)
+		// 2. continue (should execute and invalidate state)
+		// 3. cmd after continue (should NOT execute because state is invalid)
+		term.MustExec(fmt.Sprintf("on %d test_cmd_before_continue", targetBpID))
+		term.MustExec(fmt.Sprintf("on %d test_continue_cmd", targetBpID))
+		term.MustExec(fmt.Sprintf("on %d test_cmd_after_continue", targetBpID))
+
+		out := term.MustExec("continue")
+
+		if !strings.Contains(out, "BEFORE_CONTINUE") {
+			t.Errorf("expected BEFORE_CONTINUE to be printed, got: %q", out)
+		}
+
+		if !strings.Contains(out, "CONTINUE_CMD") {
+			t.Errorf("expected CONTINUE_CMD to be printed, got: %q", out)
+		}
+
+		if strings.Contains(out, "AFTER_CONTINUE") {
+			t.Errorf("AFTER_CONTINUE was printed, which means the command ran after continue (bug!), got: %q", out)
+		}
+	})
+}
