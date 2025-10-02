@@ -654,6 +654,7 @@ func (t *Term) printDisplays() {
 
 func (t *Term) onStop() {
 	t.printDisplays()
+	t.cmds.executeBreakpointCustomCommands(t)
 }
 
 func (t *Term) longCommandCancel() {

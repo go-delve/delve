@@ -1498,8 +1498,6 @@ func stepInstruction(t *Term, ctx callContext, frame int, skipCalls bool) error 
 		return errNotOnFrameZero
 	}
 
-	defer t.onStop()
-
 	var fn func(bool) (*api.DebuggerState, error)
 	if ctx.Prefix == revPrefix {
 		fn = t.client.ReverseStepInstruction
@@ -1508,6 +1506,7 @@ func stepInstruction(t *Term, ctx callContext, frame int, skipCalls bool) error 
 	}
 
 	state, err := exitedToError(fn(skipCalls))
+	defer t.onStop()
 	if err != nil {
 		printcontextNoState(t)
 		return err
@@ -2851,6 +2850,25 @@ func printcontextThread(t *Term, th *api.Thread) {
 	printBreakpointInfo(t, th, false)
 }
 
+// executeBreakpointCustomCommands executes custom starlark commands
+// associated with a breakpoint.
+func (c *Commands) executeBreakpointCustomCommands(t *Term) {
+	state, err := t.client.GetState()
+	if err != nil || state == nil || state.CurrentThread == nil || state.CurrentThread.Breakpoint == nil {
+		return
+	}
+	bp := state.CurrentThread.Breakpoint
+	if len(bp.CustomCommands) == 0 {
+		return
+	}
+	for _, cmdName := range bp.CustomCommands {
+		err := c.Call(cmdName, t)
+		if err != nil {
+			fmt.Fprintf(t.stdout, "error executing custom command %s: %v\n", cmdName, err)
+		}
+	}
+}
+
 func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 	if th.BreakpointInfo == nil {
 		return
@@ -2905,14 +2923,6 @@ func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 		}
 	}
 
-	// Execute custom starlark commands
-	for _, cmdName := range bp.CustomCommands {
-		tracepointnl()
-		err := t.cmds.Call(cmdName, t)
-		if err != nil {
-			fmt.Fprintf(t.stdout, "\tError executing custom command %s: %v\n", cmdName, err)
-		}
-	}
 }
 
 func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, args string, hasReturnValue bool) {
