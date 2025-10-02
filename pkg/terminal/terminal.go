@@ -86,6 +86,10 @@ type Term struct {
 	downloadsInProgress bool
 
 	goVersionCache *goversion.GoVersion
+	// executingCustomCommands is true when we're currently executing breakpoint custom commands
+	executingCustomCommands bool
+	// customCommandsInvalidated is set when a runCmd is executed during custom command execution
+	customCommandsInvalidated bool
 }
 
 type displayEntry struct {
@@ -655,6 +659,14 @@ func (t *Term) printDisplays() {
 func (t *Term) onStop() {
 	t.printDisplays()
 	t.cmds.executeBreakpointCustomCommands(t)
+}
+
+// invalidateCustomCommandsIfExecuting sets the invalidation flag if we're currently
+// executing custom commands. This should be called at the start of any runCmds.
+func (t *Term) invalidateCustomCommandsIfExecuting() {
+	if t.executingCustomCommands {
+		t.customCommandsInvalidated = true
+	}
 }
 
 func (t *Term) longCommandCancel() {

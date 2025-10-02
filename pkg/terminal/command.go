@@ -736,7 +736,11 @@ func (c *Commands) CallWithContext(cmdstr string, t *Term, ctx callContext) erro
 	if len(vals) > 1 {
 		args = strings.TrimSpace(vals[1])
 	}
-	return c.Find(cmdname, ctx.Prefix).cmdFn(t, ctx, args)
+	cmd := c.Find(cmdname, ctx.Prefix)
+	if cmd.group == runCmds {
+		t.invalidateCustomCommandsIfExecuting()
+	}
+	return cmd.cmdFn(t, ctx, args)
 }
 
 // Call takes a command to execute.
@@ -2857,11 +2861,24 @@ func (c *Commands) executeBreakpointCustomCommands(t *Term) {
 	if err != nil || state == nil {
 		return
 	}
+
+	// Mark that we're executing custom commands and reset the invalidation flag
+	t.executingCustomCommands = true
+	t.customCommandsInvalidated = false
+	defer func() {
+		t.executingCustomCommands = false
+		t.customCommandsInvalidated = false
+	}()
+
 	for _, th := range state.Threads {
 		if th.Breakpoint == nil || len(th.Breakpoint.CustomCommands) == 0 {
 			continue
 		}
 		for _, cmdName := range th.Breakpoint.CustomCommands {
+			// Check if a previous custom command invalidated the state
+			if t.customCommandsInvalidated {
+				return
+			}
 			err := c.Call(cmdName, t)
 			if err != nil {
 				fmt.Fprintf(t.stdout, "Error executing custom command %s: %v\n", cmdName, err)
