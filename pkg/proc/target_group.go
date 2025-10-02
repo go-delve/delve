@@ -105,6 +105,21 @@ func Restart(grp, oldgrp *TargetGroup, discard func(*LogicalBreakpoint, error)) 
 }
 
 func (grp *TargetGroup) addTarget(p ProcessInternal, pid int, currentThread Thread, path string, stopReason StopReason, cmdline string) (*Target, error) {
+	// Notify listeners that a child process was spawned. Even if the child is
+	// not a Go process, listeners may want to be informed. Defer the call so
+	// that - if the process _can_ be debugged - listeners are notified after
+	// the new target is set up.
+	if fn := grp.Selected.BinInfo().eventsFn; fn != nil {
+		defer fn(&Event{
+			Kind: EventProcessSpawned,
+			ProcessSpawnedEventDetails: &ProcessSpawnedEventDetails{
+				PID:      pid,
+				ThreadID: currentThread.ThreadID(),
+				Cmdline:  cmdline,
+			},
+		})
+	}
+
 	logger := logflags.DebuggerLogger()
 	if len(grp.targets) > 0 {
 		if !grp.followExecEnabled {
@@ -612,6 +627,7 @@ type Event struct {
 	Kind EventKind
 	*BinaryInfoDownloadEventDetails
 	*BreakpointMaterializedEventDetails
+	*ProcessSpawnedEventDetails
 }
 
 type EventKind uint8
@@ -621,6 +637,7 @@ const (
 	EventStopped
 	EventBinaryInfoDownload
 	EventBreakpointMaterialized
+	EventProcessSpawned
 )
 
 // BinaryInfoDownloadEventDetails describes the details of a BinaryInfoDownloadEvent
@@ -631,4 +648,11 @@ type BinaryInfoDownloadEventDetails struct {
 // BreakpointMaterializedEventDetails describes the details of a BreakpointMaterializedEvent
 type BreakpointMaterializedEventDetails struct {
 	Breakpoint *LogicalBreakpoint
+}
+
+// ProcessSpawnedEventDetails describes the details of a ProcessSpawnedEvent
+type ProcessSpawnedEventDetails struct {
+	PID      int
+	ThreadID int
+	Cmdline  string
 }
