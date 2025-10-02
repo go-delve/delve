@@ -104,6 +104,21 @@ func Restart(grp, oldgrp *TargetGroup, discard func(*LogicalBreakpoint, error)) 
 }
 
 func (grp *TargetGroup) addTarget(p ProcessInternal, pid int, currentThread Thread, path string, stopReason StopReason, cmdline string) (*Target, error) {
+	// Notify listeners that a child process was spawned. Even if the child is
+	// not a Go process, listeners may want to be informed. Defer the call so
+	// that - if the process _can_ be debugged - listeners are notified after
+	// the new target is set up.
+	if fn := grp.Selected.BinInfo().eventsFn; fn != nil {
+		defer fn(&Event{
+			Kind: EventProcessSpawned,
+			ProcessSpawnedEventDetails: &ProcessSpawnedEventDetails{
+				PID:      pid,
+				ThreadID: currentThread.ThreadID(),
+				Cmdline:  cmdline,
+			},
+		})
+	}
+
 	logger := logflags.DebuggerLogger()
 	if len(grp.targets) > 0 {
 		if !grp.followExecEnabled {
@@ -117,9 +132,6 @@ func (grp *TargetGroup) addTarget(p ProcessInternal, pid int, currentThread Thre
 	}
 	t, err := grp.newTarget(p, pid, currentThread, path, cmdline)
 	if err != nil {
-		// Notify listeners that a child process was spawned even though we
-		// can't debug it - listeners may care about non-Go processes.
-		grp.notifyProcessSpawned(pid, currentThread.ThreadID(), cmdline)
 		return nil, err
 	}
 	t.StopReason = stopReason
@@ -148,27 +160,7 @@ func (grp *TargetGroup) addTarget(p ProcessInternal, pid int, currentThread Thre
 		}
 	}
 	grp.targets = append(grp.targets, t)
-
-	// Notify listeners that a child process was spawned. We do this after the
-	// new target has been set up.
-	grp.notifyProcessSpawned(pid, currentThread.ThreadID(), cmdline)
 	return t, nil
-}
-
-func (grp *TargetGroup) notifyProcessSpawned(pid, threadID int, cmdline string) {
-	fn := grp.Selected.BinInfo().eventsFn
-	if fn == nil {
-		return
-	}
-
-	fn(&Event{
-		Kind: EventProcessSpawned,
-		ProcessSpawnedEventDetails: &ProcessSpawnedEventDetails{
-			PID:      pid,
-			ThreadID: threadID,
-			Cmdline:  cmdline,
-		},
-	})
 }
 
 // Targets returns a slice of all targets in the group, including the
