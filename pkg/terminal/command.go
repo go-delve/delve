@@ -1545,6 +1545,7 @@ func stepInstruction(t *Term, ctx callContext, frame int, skipCalls bool) error 
 		return errNotOnFrameZero
 	}
 
+	defer t.onStop()
 	var fn func(bool) (*api.DebuggerState, error)
 	if ctx.Prefix == revPrefix {
 		fn = t.client.ReverseStepInstruction
@@ -1553,7 +1554,6 @@ func stepInstruction(t *Term, ctx callContext, frame int, skipCalls bool) error 
 	}
 
 	state, err := exitedToError(fn(skipCalls))
-	defer t.onStop()
 	if err != nil {
 		printcontextNoState(t)
 		return err
