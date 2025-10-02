@@ -2851,20 +2851,21 @@ func printcontextThread(t *Term, th *api.Thread) {
 }
 
 // executeBreakpointCustomCommands executes custom starlark commands
-// associated with a breakpoint.
+// associated with breakpoints for any thread stopped at a breakpoint.
 func (c *Commands) executeBreakpointCustomCommands(t *Term) {
 	state, err := t.client.GetState()
-	if err != nil || state == nil || state.CurrentThread == nil || state.CurrentThread.Breakpoint == nil {
+	if err != nil || state == nil {
 		return
 	}
-	bp := state.CurrentThread.Breakpoint
-	if len(bp.CustomCommands) == 0 {
-		return
-	}
-	for _, cmdName := range bp.CustomCommands {
-		err := c.Call(cmdName, t)
-		if err != nil {
-			fmt.Fprintf(t.stdout, "error executing custom command %s: %v\n", cmdName, err)
+	for _, th := range state.Threads {
+		if th.Breakpoint == nil || len(th.Breakpoint.CustomCommands) == 0 {
+			continue
+		}
+		for _, cmdName := range th.Breakpoint.CustomCommands {
+			err := c.Call(cmdName, t)
+			if err != nil {
+				fmt.Fprintf(t.stdout, "Error executing custom command %s: %v\n", cmdName, err)
+			}
 		}
 	}
 }
