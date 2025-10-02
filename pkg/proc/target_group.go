@@ -117,6 +117,9 @@ func (grp *TargetGroup) addTarget(p ProcessInternal, pid int, currentThread Thre
 	}
 	t, err := grp.newTarget(p, pid, currentThread, path, cmdline)
 	if err != nil {
+		// Notify listeners that a child process was spawned even though we
+		// can't debug it - listeners may care about non-Go processes.
+		grp.notifyProcessSpawned(pid, currentThread.ThreadID(), cmdline)
 		return nil, err
 	}
 	t.StopReason = stopReason
@@ -145,7 +148,27 @@ func (grp *TargetGroup) addTarget(p ProcessInternal, pid int, currentThread Thre
 		}
 	}
 	grp.targets = append(grp.targets, t)
+
+	// Notify listeners that a child process was spawned. We do this after the
+	// new target has been set up.
+	grp.notifyProcessSpawned(pid, currentThread.ThreadID(), cmdline)
 	return t, nil
+}
+
+func (grp *TargetGroup) notifyProcessSpawned(pid, threadID int, cmdline string) {
+	fn := grp.Selected.BinInfo().eventsFn
+	if fn == nil {
+		return
+	}
+
+	fn(&Event{
+		Kind: EventProcessSpawned,
+		ProcessSpawnedEventDetails: &ProcessSpawnedEventDetails{
+			PID:      pid,
+			ThreadID: threadID,
+			Cmdline:  cmdline,
+		},
+	})
 }
 
 // Targets returns a slice of all targets in the group, including the
@@ -576,6 +599,7 @@ type Event struct {
 	Kind EventKind
 	*BinaryInfoDownloadEventDetails
 	*BreakpointMaterializedEventDetails
+	*ProcessSpawnedEventDetails
 }
 
 type EventKind uint8
@@ -585,6 +609,7 @@ const (
 	EventStopped
 	EventBinaryInfoDownload
 	EventBreakpointMaterialized
+	EventProcessSpawned
 )
 
 // BinaryInfoDownloadEventDetails describes the details of a BinaryInfoDownloadEvent
@@ -595,4 +620,11 @@ type BinaryInfoDownloadEventDetails struct {
 // BreakpointMaterializedEventDetails describes the details of a BreakpointMaterializedEvent
 type BreakpointMaterializedEventDetails struct {
 	Breakpoint *LogicalBreakpoint
+}
+
+// ProcessSpawnedEventDetails describes the details of a ProcessSpawnedEvent
+type ProcessSpawnedEventDetails struct {
+	PID      int
+	ThreadID int
+	Cmdline  string
 }

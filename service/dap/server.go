@@ -4103,6 +4103,12 @@ func (s *Session) convertDebuggerEvent(event *proc.Event) {
 			},
 		})
 	}
+	s.send(&dap.ProcessEvent{
+		Event: *newEvent("process"),
+		Body: dap.ProcessEventBody{
+			
+		},
+	})
 }
 
 type logMessage struct {
