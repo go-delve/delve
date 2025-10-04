@@ -124,8 +124,22 @@ func (r *referencesCollection) get(reference string) (memRef, bool) {
 
 	return ref, ok
 }
+
+func isAddressable(v *proc.Variable) bool {
+	if v == nil || v.Unreadable != nil {
+		return false
+	}
+
+	switch v.Kind {
+	case reflect.Slice, reflect.String:
+		return true
+	}
+
+	return false
+}
+
 func (r *referencesCollection) put(v *proc.Variable) string {
-	if v.Kind != reflect.String {
+	if !isAddressable(v) {
 		return ""
 	}
 
@@ -136,17 +150,12 @@ func (r *referencesCollection) put(v *proc.Variable) string {
 		r.refs = make(map[string]memRef)
 	}
 
-	if v.Len < maxSingleStringLen || v.Unreadable != nil {
-		return ""
-	}
-
 	addr := v.Addr
 	if v.Base != 0 {
 		addr = v.Base
 	}
 
 	ref := fmt.Sprintf("0x%x", addr)
-
 	r.refs[ref] = memRef{addr: addr, size: v.Len}
 
 	return ref

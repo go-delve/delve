@@ -20,6 +20,10 @@ func main() {
 		Data string `json:"data"`
 	}{Data: payload})
 
+	bytesString := []byte("this\nis\nit")
+	nonprint := []byte{242, 243, 244, 245}
+	maps := map[string]string{"some": "non"}
+
 	jsonString := string(b)
 
 	hashed := sha256.Sum256(b)
@@ -33,4 +37,7 @@ func main() {
 	fmt.Println(jsonString)
 	fmt.Println(jsonHash)
 	fmt.Println(jsonAddr)
+	fmt.Println(bytesString)
+	fmt.Println(nonprint)
+	fmt.Println(maps)
 }

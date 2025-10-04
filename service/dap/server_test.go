@@ -7944,56 +7944,78 @@ func TestReadMemory_StringPagination(t *testing.T) {
 							return res, nil
 						}
 
-						varIdx, err := mustGetByName(locals.Body.Variables, "jsonString", "jsonHash", "jsonAddr")
+						varIdx, err := mustGetByName(locals.Body.Variables,
+							"jsonString",
+							"jsonHash",
+							"jsonAddr",
+							"bytesString",
+							"nonprint",
+						)
 						if err != nil {
 							t.Fatal(err)
 						}
 
 						longString := varIdx["jsonString"]
-						addr := varIdx["jsonAddr"]
 
-						if strings.Trim(addr.Value, `"`) != longString.MemoryReference {
+						if strings.Trim(varIdx["jsonAddr"].Value, `"`) != longString.MemoryReference {
 							t.Fatal("bad memory address")
 						}
 
-						var got bytes.Buffer
-						const chunk = 64
-
-						for off := 0; ; off += chunk {
-							count := chunk
-							client.ReadMemoryRequest(longString.MemoryReference, off, count)
-							rm := client.ExpectReadMemoryResponse(t)
-
-							if rm.Body.Data == "" {
-								break
-							}
-
-							data, err := base64.StdEncoding.DecodeString(rm.Body.Data)
-							if err != nil {
-								t.Fatalf("base64 decode failed: %v (offset=%d)", err, off)
-							}
-
-							if len(data) < count {
-								got.Write(data)
-
-								break
-							}
-
-							got.Write(data)
-						}
-
+						got := readVarByChunk(t, client, longString, 64)
 						hashed := sha256.Sum256(got.Bytes())
-
 						hashString := hex.EncodeToString(hashed[:])
 
-						longHash := varIdx["jsonHash"]
-						if strings.Trim(longHash.Value, `"`) != hashString {
+						if strings.Trim(varIdx["jsonHash"].Value, `"`) != hashString {
 							t.Fatal("we got wrong values")
+						}
+
+						bytes := readVarByChunk(t, client, varIdx["bytesString"], 1)
+
+						if bytes.String() != "this\nis\nit" {
+							t.Fail()
+						}
+
+						nonp := readVarByChunk(t, client, varIdx["nonprint"], 1)
+						want := []byte{242, 243, 244, 245}
+
+						for i, b := range nonp.Bytes() {
+							if want[i] != b {
+								t.Fail()
+							}
 						}
 					},
 					disconnect: true,
 				}})
 	})
+}
+
+func readVarByChunk(t *testing.T, client *daptest.Client, v dap.Variable, chunk int) bytes.Buffer {
+	t.Helper()
+
+	var got bytes.Buffer
+
+	for off := 0; ; off += chunk {
+		count := chunk
+		client.ReadMemoryRequest(v.MemoryReference, off, count)
+		rm := client.ExpectReadMemoryResponse(t)
+
+		if rm.Body.Data == "" {
+			break
+		}
+
+		data, err := base64.StdEncoding.DecodeString(rm.Body.Data)
+		if err != nil {
+			t.Fatalf("base64 decode failed: %v", err)
+		}
+
+		got.Write(data)
+
+		if len(data) < count {
+			break
+		}
+	}
+
+	return got
 }
 
 type discard struct {
