@@ -721,6 +721,9 @@ func (fn *Function) rangeParentName() string {
 // extra loads information about fn that is expensive to compute and we
 // only need for a minority of the functions.
 func (fn *Function) extra(bi *BinaryInfo) *functionExtra {
+	if fn == nil {
+		return &functionExtra{}
+	}
 	if fn.extraCache != nil {
 		return fn.extraCache
 	}
