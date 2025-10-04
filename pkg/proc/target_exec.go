@@ -855,7 +855,7 @@ func next(dbp *Target, stepInto, inlinedStepOut bool) error {
 			rpoff = rangeFrames[len(rangeFrames)-2].FrameOffset()
 		}
 		rpc := astutil.And(sameGCond, astutil.Eql(astutil.PkgVar("runtime", "rangeParentOffset"), astutil.Int(rpoff)))
-		for _, fn := range rangeParent.extra(bi).rangeBodies {
+		for _, fn := range rangeParent.rangeBodies(bi) {
 			if fn.Entry != 0 {
 				pc, err := FirstPCAfterPrologue(dbp, fn, false)
 				if err != nil {

@@ -25,9 +25,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/derekparker/trie/v3"
-	"github.com/hashicorp/golang-lru/v2"
-
 	"github.com/go-delve/delve/pkg/astutil"
 	pdwarf "github.com/go-delve/delve/pkg/dwarf"
 	"github.com/go-delve/delve/pkg/dwarf/frame"
@@ -41,6 +38,7 @@ import (
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc/debuginfod"
 	"github.com/go-delve/delve/pkg/proc/evalop"
+	"github.com/hashicorp/golang-lru/v2"
 )
 
 const (
@@ -69,8 +67,6 @@ type BinaryInfo struct {
 	// lookupGenericFunc maps function names, with their type parameters removed, to functions.
 	// Functions that are not generic are not added to this map.
 	lookupGenericFunc map[string][]*Function
-	// lookupRangeBodyFunc maps function names to the range body functions.
-	lookupRangeBodyFunc *trie.Trie[*Function]
 
 	// SymNames maps addr to a description *elf.Symbol of this addr.
 	SymNames map[uint64]*elf.Symbol
@@ -536,19 +532,18 @@ type Function struct {
 	// extraCache contains information about this function that is only needed for
 	// some operations and is expensive to compute or store for every function.
 	extraCache *functionExtra
+	// rangeBodiesCache caches the list of range-over-func body closures for
+	// this function. Only one of extraCache.rangeParent and rangeBodiesCache
+	// should be set at any given time.
+	rangeBodiesCache []*Function
 }
 
 type functionExtra struct {
 	// closureStructType is the cached struct type for closures for this function
 	closureStructType *godwarf.StructType
-
 	// rangeParent is set when this function is a range-over-func body closure
 	// and points to the function that the closure was generated from.
 	rangeParent *Function
-	// rangeBodies is the list of range-over-func body closures for this
-	// function. Only one between rangeParent and rangeBodies should be set at
-	// any given time.
-	rangeBodies []*Function
 }
 
 // instRange returns the indexes in fn.Name of the type parameter
@@ -773,17 +768,29 @@ func (fn *Function) extra(bi *BinaryInfo) *functionExtra {
 		fn.extraCache.rangeParent = bi.lookupOneFunc(rangeParentName)
 	}
 
-	// Find range-over-func bodies of this function
-	if fn.extraCache.rangeParent == nil {
-		lookupFunc := bi.LookupRangeBodyFunc()
-		for _, fn2 := range lookupFunc.PrefixSearchIter(fn.Name) {
-			if fn2.rangeParentName() == fn.Name {
-				fn.extraCache.rangeBodies = append(fn.extraCache.rangeBodies, fn2)
-			}
+	return fn.extraCache
+}
+
+// rangeBodies returns the list of range-over-func body closures for this
+// function.
+func (fn *Function) rangeBodies(bi *BinaryInfo) []*Function {
+	if fn == nil {
+		return nil
+	}
+	if fn.rangeBodiesCache != nil {
+		return fn.rangeBodiesCache
+	}
+	extra := fn.extra(bi)
+	if extra.rangeParent != nil {
+		return nil
+	}
+	for i := range bi.Functions {
+		fn2 := &bi.Functions[i]
+		if strings.HasPrefix(fn2.Name, fn.Name) && fn2.rangeParentName() == fn.Name {
+			fn.rangeBodiesCache = append(fn.rangeBodiesCache, fn2)
 		}
 	}
-
-	return fn.extraCache
+	return fn.rangeBodiesCache
 }
 
 type constantsMap map[dwarfRef]*constantType
@@ -2623,7 +2630,6 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 
 	bi.lookupFunc = nil
 	bi.lookupGenericFunc = nil
-	bi.lookupRangeBodyFunc = nil
 
 	for _, cu := range image.compileUnits {
 		if cu.lineInfo != nil {
@@ -2667,16 +2673,6 @@ func (bi *BinaryInfo) LookupFunc() map[string][]*Function {
 		}
 	}
 	return bi.lookupFunc
-}
-
-func (bi *BinaryInfo) LookupRangeBodyFunc() *trie.Trie[*Function] {
-	if bi.lookupRangeBodyFunc == nil {
-		bi.lookupRangeBodyFunc = trie.New[*Function]()
-		for i := range bi.Functions {
-			bi.lookupRangeBodyFunc.Add(bi.Functions[i].Name, &bi.Functions[i])
-		}
-	}
-	return bi.lookupRangeBodyFunc
 }
 
 func (bi *BinaryInfo) lookupOneFunc(name string) *Function {
