@@ -2141,7 +2141,7 @@ func (v *Variable) loadInterface(recurseLevel int, loadData bool, cfg LoadConfig
 		return
 	}
 
-	mds, err := _type.bi.getModuleData(_type.mem)
+	mds, err := LoadModuleData(_type.bi, _type.mem)
 	if err != nil {
 		v.Unreadable = fmt.Errorf("error loading module data: %v", err)
 		return

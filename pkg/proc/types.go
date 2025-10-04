@@ -149,7 +149,7 @@ func dwarfToRuntimeType(bi *BinaryInfo, mem MemoryReadWriter, typ godwarf.Type) 
 		return 0, false, false, nil
 	}
 
-	mds, err := bi.getModuleData(mem)
+	mds, err := LoadModuleData(bi, mem)
 	if err != nil {
 		return 0, false, false, err
 	}
