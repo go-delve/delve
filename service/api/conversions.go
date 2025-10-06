@@ -481,9 +481,10 @@ func ConvertEvent(event *proc.Event) *Event {
 
 	if event.ProcessSpawnedEventDetails != nil {
 		r.ProcessSpawnedEventDetails = &ProcessSpawnedEventDetails{
-			PID:      event.ProcessSpawnedEventDetails.PID,
-			ThreadID: event.ProcessSpawnedEventDetails.ThreadID,
-			Cmdline:  event.ProcessSpawnedEventDetails.Cmdline,
+			PID:        event.ProcessSpawnedEventDetails.PID,
+			ThreadID:   event.ProcessSpawnedEventDetails.ThreadID,
+			Cmdline:    event.ProcessSpawnedEventDetails.Cmdline,
+			WillFollow: event.ProcessSpawnedEventDetails.WillFollow,
 		}
 	}
 

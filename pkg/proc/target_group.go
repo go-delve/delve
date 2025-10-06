@@ -104,29 +104,42 @@ func Restart(grp, oldgrp *TargetGroup, discard func(*LogicalBreakpoint, error)) 
 }
 
 func (grp *TargetGroup) addTarget(p ProcessInternal, pid int, currentThread Thread, path string, stopReason StopReason, cmdline string) (*Target, error) {
-	// Notify listeners that a child process was spawned. Even if the child is
-	// not a Go process, listeners may want to be informed. Defer the call so
-	// that - if the process _can_ be debugged - listeners are notified after
-	// the new target is set up.
-	if fn := grp.Selected.BinInfo().eventsFn; fn != nil {
-		defer fn(&Event{
-			Kind: EventProcessSpawned,
-			ProcessSpawnedEventDetails: &ProcessSpawnedEventDetails{
-				PID:      pid,
-				ThreadID: currentThread.ThreadID(),
-				Cmdline:  cmdline,
-			},
-		})
-	}
-
 	logger := logflags.DebuggerLogger()
 	if len(grp.targets) > 0 {
+		willFollow := true
 		if !grp.followExecEnabled {
 			logger.Debugf("Detaching from child target (follow-exec disabled) %d %q", pid, cmdline)
-			return nil, nil
+			willFollow = false
 		}
 		if grp.followExecRegex != nil && !grp.followExecRegex.MatchString(cmdline) {
 			logger.Debugf("Detaching from child target (follow-exec regex not matched) %d %q", pid, cmdline)
+			willFollow = false
+		}
+
+		// Notify listeners that a child process was spawned.
+		//
+		// We do this regardless of whether the process is debuggable and
+		// regardless of whether follow-exec is enabled; when run by an IDE in
+		// DAP mode, we want to give the IDE a chance to handle the spawned
+		// process.
+		//
+		// Defer the call so that - if the process _can_ be debugged - listeners
+		// are notified after the new target is set up.
+		if grp.Selected != nil {
+			if fn := grp.Selected.BinInfo().eventsFn; fn != nil {
+				defer fn(&Event{
+					Kind: EventProcessSpawned,
+					ProcessSpawnedEventDetails: &ProcessSpawnedEventDetails{
+						PID:        pid,
+						ThreadID:   currentThread.ThreadID(),
+						Cmdline:    cmdline,
+						WillFollow: willFollow,
+					},
+				})
+			}
+		}
+
+		if !willFollow {
 			return nil, nil
 		}
 	}
@@ -616,7 +629,8 @@ type BreakpointMaterializedEventDetails struct {
 
 // ProcessSpawnedEventDetails describes the details of a ProcessSpawnedEvent
 type ProcessSpawnedEventDetails struct {
-	PID      int
-	ThreadID int
-	Cmdline  string
+	PID        int
+	ThreadID   int
+	Cmdline    string
+	WillFollow bool
 }

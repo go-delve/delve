@@ -719,7 +719,8 @@ type BreakpointMaterializedEventDetails struct {
 
 // ProcessSpawnedEventDetails describes the details of a ProcessSpawnedEvent
 type ProcessSpawnedEventDetails struct {
-	PID      int
-	ThreadID int
-	Cmdline  string
+	PID        int
+	ThreadID   int
+	Cmdline    string
+	WillFollow bool
 }
