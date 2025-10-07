@@ -246,6 +246,54 @@ func TestIssue411(t *testing.T) {
 	})
 }
 
+func TestCustomCommandNestedBreakpoint(t *testing.T) {
+	withTestTerminal("nestedbp", t, func(term *FakeTerminal) {
+		term.MustExec("source " + findStarFile("test_custom_cmd_nested"))
+
+		term.MustExec("break nestedbp.go:13") // BP 1
+		term.MustExec("break nestedbp.go:18") // BP 2
+		term.MustExec("break nestedbp.go:19") // BP 3
+
+		// Add custom commands to BP1:
+		// 1. cmd before continue (should execute)
+		// 2. continue cmd (should execute and hit BP2)
+		// 3. cmd after continue (should NOT execute)
+		term.MustExec("on 1 test_bp1_before_continue")
+		term.MustExec("on 1 test_bp1_continue_cmd")
+		term.MustExec("on 1 test_bp1_after_continue")
+
+		// Add custom commands to BP2 which should execute due to BP 1 custom command continue:
+		term.MustExec(fmt.Sprintf("on %d test_bp2_cmd", 2))
+		term.MustExec("on 2 test_bp1_continue_cmd")
+		term.MustExec("on 2 test_bp1_after_continue")
+
+		// Add command on BP3 which should execute due to BP 2 custom command continue:
+		term.MustExec("on 3 test_bp3_cmd")
+
+		out := term.MustExec("continue")
+
+		if !strings.Contains(out, "BP1_BEFORE_CONTINUE") {
+			t.Errorf("expected BP1_BEFORE_CONTINUE to be printed, got: %q", out)
+		}
+
+		if !strings.Contains(out, "BP1_CONTINUE_CMD") {
+			t.Errorf("expected BP1_CONTINUE_CMD to be printed, got: %q", out)
+		}
+
+		// Verify BP1 command after continue did NOT execute
+		if strings.Contains(out, "BP1_AFTER_CONTINUE") {
+			t.Errorf("BP1_AFTER_CONTINUE was printed, which means the command ran after continue, got: %q", out)
+		}
+
+		if !strings.Contains(out, "BP2_CMD_EXECUTED") {
+			t.Errorf("BP2's custom commands not executed")
+		}
+		if !strings.Contains(out, "BP3_CMD_EXECUTED") {
+			t.Errorf("BP3's custom commands not executed")
+		}
+	})
+}
+
 func TestTrace(t *testing.T) {
 	test.AllowRecording(t)
 	withTestTerminal("issue573", t, func(term *FakeTerminal) {
@@ -1755,7 +1803,7 @@ func TestCustomCommandStopsOnContinue(t *testing.T) {
 		}
 
 		if strings.Contains(out, "AFTER_CONTINUE") {
-			t.Errorf("AFTER_CONTINUE was printed, which means the command ran after continue (bug!), got: %q", out)
+			t.Errorf("AFTER_CONTINUE was printed, which means the command ran after continue, got: %q", out)
 		}
 	})
 }

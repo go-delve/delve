@@ -4,6 +4,7 @@ package starbind
 
 import (
 	"fmt"
+
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
 	"go.starlark.net/starlark"
@@ -235,9 +236,6 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 		if err := isCancelled(thread); err != nil {
 			return starlark.None, decorateError(thread, err)
 		}
-		// Check if this is a runCmd being executed during custom command execution
-		// If so, set the invalidation flag to stop further custom commands from executing
-		env.ctx.InvalidateCustomCommandsIfExecuting()
 		var rpcArgs api.DebuggerCommand
 		var rpcRet rpc2.CommandOut
 		if len(args) > 0 && args[0] != starlark.None {

@@ -11,7 +11,8 @@ def command_test_continue_cmd(args):
 	@on_prefix
 	"""
 	print("CONTINUE_CMD")
-	raw_command("continue")
+
+	dlv_command("continue")
 
 def command_test_cmd_after_continue(args):
 	"""Test command that runs after continue (should not run).

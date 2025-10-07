@@ -70,7 +70,3 @@ func (ctx starlarkContext) Scope() api.EvalScope {
 func (ctx starlarkContext) LoadConfig() api.LoadConfig {
 	return ctx.term.loadConfig()
 }
-
-func (ctx starlarkContext) InvalidateCustomCommandsIfExecuting() {
-	ctx.term.invalidateCustomCommandsIfExecuting()
-}

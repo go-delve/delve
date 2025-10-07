@@ -737,8 +737,8 @@ func (c *Commands) CallWithContext(cmdstr string, t *Term, ctx callContext) erro
 		args = strings.TrimSpace(vals[1])
 	}
 	cmd := c.Find(cmdname, ctx.Prefix)
-	if cmd.group == runCmds {
-		t.invalidateCustomCommandsIfExecuting()
+	if t != nil && len(t.customCommandsInvalidated) > 0 && cmd.group == runCmds {
+		t.customCommandsInvalidated[len(t.customCommandsInvalidated)-1] = true
 	}
 	return cmd.cmdFn(t, ctx, args)
 }
@@ -2862,26 +2862,20 @@ func (c *Commands) executeBreakpointCustomCommands(t *Term) {
 		return
 	}
 
-	// Mark that we're executing custom commands and reset the invalidation flag
-	t.executingCustomCommands = true
-	t.customCommandsInvalidated = false
-	defer func() {
-		t.executingCustomCommands = false
-		t.customCommandsInvalidated = false
-	}()
+	t.customCommandsInvalidated = append(t.customCommandsInvalidated, false)
+	defer func() { t.customCommandsInvalidated = t.customCommandsInvalidated[:len(t.customCommandsInvalidated)-1] }()
 
 	for _, th := range state.Threads {
 		if th.Breakpoint == nil || len(th.Breakpoint.CustomCommands) == 0 {
 			continue
 		}
 		for _, cmdName := range th.Breakpoint.CustomCommands {
-			// Check if a previous custom command invalidated the state
-			if t.customCommandsInvalidated {
-				return
-			}
 			err := c.Call(cmdName, t)
 			if err != nil {
 				fmt.Fprintf(t.stdout, "Error executing custom command %s: %v\n", cmdName, err)
+			}
+			if t.customCommandsInvalidated[len(t.customCommandsInvalidated)-1] {
+				return
 			}
 		}
 	}
