@@ -51,8 +51,6 @@ type Context interface {
 	CallCommand(cmdstr string) error
 	Scope() api.EvalScope
 	LoadConfig() api.LoadConfig
-	// InvalidateCustomCommandsIfExecuting sets the invalidation flag if we're currently executing custom commands
-	InvalidateCustomCommandsIfExecuting()
 }
 
 // Env is the environment used to evaluate starlark scripts.
