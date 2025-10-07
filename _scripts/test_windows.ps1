@@ -18,7 +18,7 @@ if ($arch -eq "amd64")
     #Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
     choco install -y mingw
 } elseif ($arch -eq "arm64") {
-    $llvmVersion = "20220906"
+    $llvmVersion = "20250924"
     $name = "llvm-mingw-$llvmVersion-ucrt-aarch64"
     if (-Not(Test-Path "$binDir\llvm-mingw\$name"))
     {

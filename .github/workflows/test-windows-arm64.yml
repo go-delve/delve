@@ -1,0 +1,30 @@
+name: Test Windows ARM64
+
+on:
+  push:
+  pull_request:
+    branches: [master]
+
+# Cancel existing runs if user makes another push.
+concurrency:
+  group: "${{ github.ref }}-${{ github.workflow}}"
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test-windows-arm64:
+    runs-on: windows-11-arm
+    timeout-minutes: 90
+
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ["1.24", "1.25"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Run tests
+        run: _scripts/test_windows.ps1 -version go${{ matrix.go-version }} -arch arm64 -binDir $env:RUNNER_TOOL_CACHE
+        # Allow tests to fail while Windows ARM64 support isn't fully stable
+        continue-on-error: true
