@@ -879,6 +879,10 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsLoadedSourcesRequest = false
 	response.Body.SupportsReadMemoryRequest = false
 	response.Body.SupportsCancelRequest = false
+	response.Body.ExceptionBreakpointFilters = []dap.ExceptionBreakpointsFilter{
+		{Filter: proc.UnrecoveredPanic, Label: "Unrecovered Panics", Default: true},
+		{Filter: proc.FatalThrow, Label: "Fatal Throws", Default: true},
+	}
 	s.send(response)
 }
 
@@ -1707,9 +1711,24 @@ func (s *Session) getMatchingBreakpoints(prefix string) map[string]*api.Breakpoi
 }
 
 func (s *Session) onSetExceptionBreakpointsRequest(request *dap.SetExceptionBreakpointsRequest) {
-	// Unlike what DAP documentation claims, this request is always sent
-	// even though we specified no filters at initialization. Handle as no-op.
-	s.send(&dap.SetExceptionBreakpointsResponse{Response: *newResponse(request.Request)})
+	enabled := make(map[string]bool)
+	for _, filter := range request.Arguments.Filters {
+		enabled[filter] = true
+	}
+	for _, bp := range s.debugger.Breakpoints(false) {
+		if bp.ID < 0 && enabled[bp.Name] != !bp.Disabled {
+			bp.Disabled = !enabled[bp.Name]
+			s.debugger.AmendBreakpoint(bp)
+		}
+	}
+	resp := &dap.SetExceptionBreakpointsResponse{Response: *newResponse(request.Request)}
+	for _, bp := range s.debugger.Breakpoints(false) {
+		if bp.ID < 0 && !bp.Disabled {
+			resp.Body.Breakpoints = append(resp.Body.Breakpoints, dap.Breakpoint{})
+			s.updateBreakpointsResponse(resp.Body.Breakpoints, len(resp.Body.Breakpoints)-1, nil, bp)
+		}
+	}
+	s.send(resp)
 }
 
 func closeIfOpen(ch chan struct{}) {
@@ -3885,7 +3904,7 @@ func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange *sy
 					stopped.Body.Reason = "instruction breakpoint"
 				}
 				// Filter out internal delve breakpoints (panic, fatal, hardcoded, etc.)
-				if bp.ID > 0 {
+				if bp.Name != proc.HardcodedBreakpoint {
 					stopped.Body.HitBreakpointIds = []int{bp.ID}
 				} else {
 					stopped.Body.HitBreakpointIds = []int{}
