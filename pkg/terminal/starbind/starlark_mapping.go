@@ -4,7 +4,6 @@ package starbind
 
 import (
 	"fmt"
-
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
 	"go.starlark.net/starlark"
