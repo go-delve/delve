@@ -145,11 +145,7 @@ func (grp *TargetGroup) addTarget(p ProcessInternal, pid int, currentThread Thre
 	}
 	t, err := grp.newTarget(p, pid, currentThread, path, cmdline)
 	if err != nil {
-		// If we are unable to load the binary info, log the error but don't
-		// return it. This allows the client to continue debugging the parent
-		// process.
-		logger.Warnf("Child target %d %q cannot be debugged: %v", pid, cmdline, err)
-		return nil, nil
+		return nil, err
 	}
 	t.StopReason = stopReason
 	logger.Debugf("Adding target %d %q", t.Pid(), t.CmdLine)
