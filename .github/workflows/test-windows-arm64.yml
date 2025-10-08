@@ -26,3 +26,4 @@ jobs:
 
       - name: Run tests
         run: _scripts/test_windows.ps1 -version go${{ matrix.go-version }} -arch arm64 -binDir $env:RUNNER_TOOL_CACHE
+        continue-on-error: ${{ matrix.go-version == 'tip' }}
