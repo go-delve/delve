@@ -44,6 +44,7 @@ $env:PATH = "$binDir\procdump;$env:PATH"
 
 function GetGo($version) {
     $env:GOROOT = "$binDir\go\$version"
+    Write-Host "Installing Go $version to $env:GOROOT"
     if (-Not(Test-Path $env:GOROOT))
     {
         $file = "$version.windows-$arch.zip"
