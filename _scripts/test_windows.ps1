@@ -18,7 +18,7 @@ if ($arch -eq "amd64")
     #Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
     choco install -y mingw
 } elseif ($arch -eq "arm64") {
-    $llvmVersion = "20220906"
+    $llvmVersion = "20250924"
     $name = "llvm-mingw-$llvmVersion-ucrt-aarch64"
     if (-Not(Test-Path "$binDir\llvm-mingw\$name"))
     {
@@ -44,6 +44,7 @@ $env:PATH = "$binDir\procdump;$env:PATH"
 
 function GetGo($version) {
     $env:GOROOT = "$binDir\go\$version"
+    Write-Host "Installing Go $version to $env:GOROOT"
     if (-Not(Test-Path $env:GOROOT))
     {
         $file = "$version.windows-$arch.zip"
@@ -57,7 +58,8 @@ function GetGo($version) {
 
 if ($version -eq "gotip") {
     #Exit 0
-    $latest = (Invoke-WebRequest -Uri "https://golang.org/VERSION?m=text" -UseBasicParsing | Select-Object -ExpandProperty Content -ErrorAction Stop).Split([Environment]::NewLine) | select -first 1
+    $versions = Invoke-WebRequest -Uri "https://go.dev/dl/?mode=json" -UseBasicParsing | foreach {$_.Content} | ConvertFrom-Json -ErrorAction Stop
+    $latest = $versions[0].version
     GetGo $latest
     $env:GOROOT_BOOTSTRAP = $env:GOROOT
     $env:GOROOT = "$binDir\go\go-tip"
