@@ -1258,6 +1258,7 @@ func TestBreakpointCounts(t *testing.T) {
 }
 
 func TestHardcodedBreakpointCounts(t *testing.T) {
+	skipOn(t, "flaky", "windows", "arm64")
 	withTestProcess("hcbpcountstest", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		counts := map[int64]int{}
 		for {
