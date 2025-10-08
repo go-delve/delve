@@ -5180,6 +5180,10 @@ func TestFollowExec(t *testing.T) {
 		pids := map[int]int{}
 		ns := map[string]int{}
 
+		// Collect events
+		var events []*proc.Event
+		grp.SetEventsFn(func(e *proc.Event) { events = append(events, e) })
+
 		for {
 			t.Log("Continuing")
 			err := grp.Continue()
@@ -5218,6 +5222,16 @@ func TestFollowExec(t *testing.T) {
 				if finished {
 					t.Fatalf("breakpoint hit after the last one in a child process")
 				}
+
+				spawned := map[int]*proc.ProcessSpawnedEventDetails{}
+				for _, event := range events {
+					if event.Kind != proc.EventProcessSpawned {
+						continue
+					}
+					details := event.ProcessSpawnedEventDetails
+					spawned[details.PID] = details
+				}
+
 				it := proc.ValidTargets{Group: grp}
 				for it.Next() {
 					tgt := it.Target
@@ -5239,6 +5253,10 @@ func TestFollowExec(t *testing.T) {
 					}
 					t.Logf("variable 'n' on target %d: %#v (%v)", tgt.Pid(), nvar, nvar.Value)
 					ns[constant.StringVal(nvar.Value)]++
+
+					if _, ok := spawned[tgt.Pid()]; !ok {
+						t.Errorf("Expected a process spawned event for target %d", tgt.Pid())
+					}
 				}
 			}
 		}

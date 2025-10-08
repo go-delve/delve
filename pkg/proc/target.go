@@ -99,6 +99,7 @@ func (pe ErrProcessExited) Error() string {
 	return fmt.Sprintf("Process %d has exited with status %d", pe.Pid, pe.Status)
 }
 
+// ErrBadBinaryInfo indicates that loading binary info for the process failed.
 type ErrBadBinaryInfo struct {
 	Err error
 }
