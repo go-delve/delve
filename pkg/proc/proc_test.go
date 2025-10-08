@@ -440,7 +440,6 @@ func countBreakpoints(p *proc.Target) int {
 }
 
 func TestNextConcurrent(t *testing.T) {
-	skipOn(t, "broken", "windows", "arm64")
 	testcases := []nextTest{
 		{8, 9},
 		{9, 10},
@@ -476,7 +475,6 @@ func TestNextConcurrent(t *testing.T) {
 }
 
 func TestNextConcurrentVariant2(t *testing.T) {
-	skipOn(t, "broken", "windows", "arm64")
 	// Just like TestNextConcurrent but instead of removing the initial breakpoint we check that when it happens is for other goroutines
 	testcases := []nextTest{
 		{8, 9},
@@ -1260,7 +1258,6 @@ func TestBreakpointCounts(t *testing.T) {
 }
 
 func TestHardcodedBreakpointCounts(t *testing.T) {
-	skipOn(t, "broken", "windows", "arm64")
 	withTestProcess("hcbpcountstest", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		counts := map[int64]int{}
 		for {
@@ -2108,7 +2105,6 @@ func TestStepOut(t *testing.T) {
 }
 
 func TestStepConcurrentDirect(t *testing.T) {
-	skipOn(t, "broken - step concurrent", "windows", "arm64")
 	protest.AllowRecording(t)
 	withTestProcess("teststepconcurrent", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		bp := setFileBreakpoint(p, t, fixture.Source, 37)
@@ -3050,9 +3046,6 @@ func TestCgoStacktrace(t *testing.T) {
 	skipOn(t, "broken - cgo stacktraces", "windows", "arm64")
 	skipOn(t, "broken - cgo stacktraces", "linux", "ppc64le")
 	skipOn(t, "broken - cgo stacktraces", "linux", "riscv64")
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 21) {
-		skipOn(t, "broken - cgo stacktraces", "windows", "arm64")
-	}
 	protest.MustHaveCgo(t)
 
 	// Tests that:
