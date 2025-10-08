@@ -281,11 +281,11 @@ func GetG(thread Thread) (*G, error) {
 		// For our purposes it's better if we always return the real goroutine
 		// since the rest of the code assumes the goroutine ID is univocal.
 		// The real 'current goroutine' is stored in g0.m.curg
-		mvar, err := g.variable.structMember("m")
+		mvar, err := g.variable.structField("m")
 		if err != nil {
 			return nil, err
 		}
-		curgvar, err := mvar.structMember("curg")
+		curgvar, err := mvar.structField("curg")
 		if err != nil {
 			return nil, err
 		}
@@ -491,7 +491,7 @@ func (g *G) Defer() *Defer {
 	if g.variable.Unreadable != nil {
 		return nil
 	}
-	dvar, _ := g.variable.structMember("_defer")
+	dvar, _ := g.variable.structField("_defer")
 	if dvar == nil {
 		return nil
 	}
@@ -585,7 +585,10 @@ func (g *G) Labels() map[string]string {
 						}
 					}
 				case reflect.Struct:
-					labelMap, _ = labelMap.structMember("list")
+					labelMap, _ = labelMap.structField("LabelSet")
+					if labelMap != nil {
+						labelMap, _ = labelMap.structField("list")
+					}
 					if labelMap != nil {
 						// ensure the labelMap.Len is a valid value to prevent infinite loops
 						if labelMap.Len < 0 {
@@ -1005,7 +1008,7 @@ func (v *Variable) parseG() (*G, error) {
 }
 
 func (v *Variable) loadFieldNamed(name string) *Variable {
-	v, err := v.structMember(name)
+	v, err := v.structField(name)
 	if err != nil {
 		return nil
 	}
@@ -1041,7 +1044,7 @@ func Ancestors(p *Target, g *G, n int) ([]Ancestor, error) {
 		}
 	}
 
-	av, err := g.variable.structMember("ancestors")
+	av, err := g.variable.structField("ancestors")
 	if err != nil {
 		return nil, err
 	}
@@ -1118,7 +1121,9 @@ func (a *Ancestor) Stack(n int) ([]Stackframe, error) {
 	return r, nil
 }
 
-func (v *Variable) structMember(memberName string) (*Variable, error) {
+// structField returns the field named memberName in v.
+// This function is meant for internal use, it does not support interfaces, embeds or member methods. For those cases findStructMemberOrMethod should be used instead.
+func (v *Variable) structField(memberName string) (*Variable, error) {
 	if v.Unreadable != nil {
 		return v.clone(), nil
 	}
@@ -1139,11 +1144,6 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 	case reflect.Chan:
 		v = v.clone()
 		v.RealType = godwarf.ResolveTypedef(&(v.RealType.(*godwarf.ChanType).TypedefType))
-	case reflect.Interface:
-		v.loadInterface(0, false, LoadConfig{})
-		if len(v.Children) > 0 {
-			v = &v.Children[0]
-		}
 	case reflect.Func:
 		fn := v.bi.PCToFunc(v.Base)
 		v.loadFunctionPtr(0, LoadConfig{MaxVariableRecurse: -1})
@@ -1168,64 +1168,28 @@ func (v *Variable) structMember(memberName string) (*Variable, error) {
 		}
 	}
 
-	queue := []*Variable{v}
-	seen := map[string]struct{}{} // prevent infinite loops
-	first := true
+	structVar := v.maybeDereference()
+	structVar.Name = v.Name
+	if structVar.Unreadable != nil {
+		return structVar, nil
+	}
 
-	for len(queue) > 0 {
-		v := queue[0]
-		queue = append(queue[:0], queue[1:]...)
-		if _, isseen := seen[v.RealType.String()]; isseen {
-			continue
+	t, isstruct := structVar.RealType.(*godwarf.StructType)
+	if !isstruct {
+		return nil, fmt.Errorf("%s (type %s) is not a struct", vname, structVar.TypeString())
+	}
+
+	for _, field := range t.Field {
+		if field.Name == memberName {
+			return structVar.toField(field)
 		}
-		seen[v.RealType.String()] = struct{}{}
-
-		structVar := v.maybeDereference()
-		structVar.Name = v.Name
-		if structVar.Unreadable != nil {
-			return structVar, nil
-		}
-
-		switch t := structVar.RealType.(type) {
-		case *godwarf.StructType:
-			for _, field := range t.Field {
-				if field.Name == memberName {
-					return structVar.toField(field)
-				}
-				if len(queue) == 0 && field.Name == "&"+memberName && closure {
-					f, err := structVar.toField(field)
-					if err != nil {
-						return nil, err
-					}
-					return f.maybeDereference(), nil
-				}
-				isEmbeddedStructMember :=
-					field.Embedded ||
-						(field.Type.Common().Name == field.Name) ||
-						(len(field.Name) > 1 &&
-							field.Name[0] == '*' &&
-							field.Type.Common().Name[1:] == field.Name[1:])
-				if !isEmbeddedStructMember {
-					continue
-				}
-				embeddedVar, err := structVar.toField(field)
-				if err != nil {
-					return nil, err
-				}
-				// Check for embedded field referenced by type name
-				parts := strings.Split(field.Name, ".")
-				if len(parts) > 1 && parts[1] == memberName {
-					return embeddedVar, nil
-				}
-				embeddedVar.Name = structVar.Name
-				queue = append(queue, embeddedVar)
+		if field.Name == "&"+memberName && closure {
+			f, err := structVar.toField(field)
+			if err != nil {
+				return nil, err
 			}
-		default:
-			if first {
-				return nil, fmt.Errorf("%s (type %s) is not a struct", vname, structVar.TypeString())
-			}
+			return f.maybeDereference(), nil
 		}
-		first = false
 	}
 
 	return nil, fmt.Errorf("%s has no member %s", vname, memberName)
@@ -2104,9 +2068,9 @@ func (v *Variable) readInterface() (_type, data *Variable, isnil bool) {
 			isnil = tab.Addr == 0
 			if !isnil {
 				var err error
-				_type, err = tab.structMember("Type") // +rtype *internal/abi.Type
+				_type, err = tab.structField("Type") // +rtype *internal/abi.Type
 				if err != nil {
-					_type, err = tab.structMember("_type") // +rtype *_type|*internal/abi.Type
+					_type, err = tab.structField("_type") // +rtype *_type|*internal/abi.Type
 					if err != nil {
 						v.Unreadable = fmt.Errorf("invalid interface type: %v", err)
 						return
