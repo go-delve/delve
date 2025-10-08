@@ -4328,6 +4328,7 @@ func TestCgoStacktrace2(t *testing.T) {
 	}
 	skipOn(t, "broken", "386")
 	skipOn(t, "broken - cgo stacktraces", "darwin", "arm64")
+	skipOn(t, "broken - cgo stacktraces", "windows", "arm64")
 	skipOn(t, "broken", "ppc64le")
 	skipOn(t, "broken", "riscv64")
 	protest.MustHaveCgo(t)
