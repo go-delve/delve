@@ -7795,6 +7795,7 @@ func TestSetExceptionBreakpoints(t *testing.T) {
 					// on the target's panic and runTestBuildFlags, which expects a
 					// terminated event, will fail the test.
 				},
+				disconnect: true,
 			}},
 		)
 	}, 0, true)
@@ -7896,6 +7897,10 @@ func TestRedirect(t *testing.T) {
 }
 
 func TestBreakpointAfterDisconnect(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		// This test when run on FreeBSD will cause subsequent tests to sometimes fail.
+		t.Skip("causes problems")
+	}
 	fixture := protest.BuildFixture(t, "testnextnethttp", protest.AllNonOptimized)
 
 	cmd := exec.Command(fixture.Path)
@@ -7984,6 +7989,69 @@ func TestBreakpointAfterDisconnect(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	cmd.Process.Kill()
+}
+
+func TestRedirects(t *testing.T) {
+	var (
+		infile  = "redirect-input.txt"
+		outfile = "redirect-output.txt"
+	)
+	runTest(t, "redirect", func(client *daptest.Client, fixture protest.Fixture) {
+		infile = filepath.Join(filepath.Dir(fixture.Source), infile)
+		outfile = filepath.Join(filepath.Dir(fixture.Source), outfile)
+		client.InitializeRequest()
+		client.ExpectInitializeResponseAndCapabilities(t)
+		client.LaunchRequestWithArgs(map[string]any{
+			"mode": "exec", "program": fixture.Path, "stdinFrom": infile, "stdoutTo": outfile,
+		})
+		client.ExpectProcessEvent(t)
+		client.ExpectInitializedEvent(t)
+		client.ExpectLaunchResponse(t)
+
+		client.ContinueRequest(1)
+		client.ExpectContinueResponse(t)
+		client.ExpectTerminatedEvent(t)
+
+		buf, err := os.ReadFile(outfile)
+		if err != nil {
+			t.Fatalf("error reading output file: %v", err)
+		}
+		t.Logf("output %q", buf)
+		if !strings.HasPrefix(string(buf), "Redirect test") {
+			t.Fatalf("Wrong output %q", string(buf))
+		}
+
+		client.RestartRequest(map[string]any{
+			"arguments": map[string]any{
+				"request": "launch",
+				"rebuild": false,
+			},
+		})
+		client.ExpectRestartResponse(t)
+		client.ExpectInitializedEvent(t)
+
+		client.ContinueRequest(1)
+		client.ExpectContinueResponse(t)
+		client.ExpectTerminatedEvent(t)
+
+		buf2, err := os.ReadFile(outfile)
+		if err != nil {
+			t.Fatalf("error reading output file (second time): %v", err)
+		}
+		t.Logf("output %q", buf2)
+		if !strings.HasPrefix(string(buf2), "Redirect test") {
+			t.Fatalf("Wrong output (second time) %q", string(buf))
+		}
+		if string(buf2) == string(buf) {
+			t.Fatalf("Expected output change got %q", string(buf))
+		}
+		os.Remove(outfile)
+
+		client.DisconnectRequest()
+		client.ExpectOutputEvent(t)
+		client.ExpectOutputEvent(t)
+		client.ExpectDisconnectResponse(t)
+	})
 }
 
 type discard struct {
