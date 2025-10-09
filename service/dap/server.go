@@ -951,7 +951,6 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 		{Filter: proc.UnrecoveredPanic, Label: "Unrecovered Panics", Default: true},
 		{Filter: proc.FatalThrow, Label: "Fatal Throws", Default: true},
 	}
-	response.Body.SupportsReadMemoryRequest = true
 	s.send(response)
 }
 
