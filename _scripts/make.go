@@ -305,9 +305,6 @@ func tagFlags(isTest bool) string {
 		tags = append(tags, mactags)
 	}
 	if isTest {
-		if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
-			tags = append(tags, "exp.winarm64")
-		}
 		if runtime.GOOS == "linux" && runtime.GOARCH == "ppc64le" {
 			tags = append(tags, "exp.linuxppc64le")
 		}

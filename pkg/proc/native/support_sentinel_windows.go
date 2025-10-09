@@ -1,4 +1,4 @@
-//go:build windows && !amd64 && !(arm64 && exp.winarm64)
+//go:build windows && !amd64 && !arm64
 
 // This file is used to detect build on unsupported GOOS/GOARCH combinations.
 

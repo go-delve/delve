@@ -17,6 +17,7 @@ Currently Delve supports (GOOS / GOARCH):
 * linux / arm64 (AARCH64)
 * linux / 386
 * windows / amd64
+* windows / arm64
 * darwin (macOS) / amd64
 
 There is no planned ETA for support of other architectures or operating systems. Bugs tracking requested support are:
