@@ -83,6 +83,8 @@ type Term struct {
 
 	downloadsMu         sync.Mutex
 	downloadsInProgress bool
+
+	customCommandsInvalidated []bool
 }
 
 type displayEntry struct {
@@ -648,6 +650,7 @@ func (t *Term) printDisplays() {
 
 func (t *Term) onStop() {
 	t.printDisplays()
+	t.cmds.executeBreakpointCustomCommands(t)
 }
 
 func (t *Term) longCommandCancel() {
