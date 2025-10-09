@@ -159,6 +159,10 @@ type LaunchConfig struct {
 	// The output mode specifies how to handle the program's output.
 	OutputMode string `json:"outputMode,omitempty"`
 
+	StdinFrom string `json:"stdinFrom,omitempty"` // Redirects stadard input to a file
+	StdoutTo  string `json:"stdoutTo,omitempty"`  // Redirects standard output to a file
+	StderrTo  string `json:"stderrTo,omitempty"`  // Redirects standard error to a file
+
 	LaunchAttachCommonConfig
 }
 

@@ -160,12 +160,6 @@ type Session struct {
 	// changing the state of the running process at the same time.
 	changeStateMu sync.Mutex
 
-	// stdoutReader the program's stdout.
-	stdoutReader io.ReadCloser
-
-	// stderrReader the program's stderr.
-	stderrReader io.ReadCloser
-
 	// preTerminatedWG the WaitGroup that needs to wait before sending a terminated event.
 	preTerminatedWG sync.WaitGroup
 }
@@ -1060,10 +1054,10 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	argsToLog.Cwd, _ = filepath.Abs(args.Cwd)
 	s.config.log.Debugf("launching binary '%s' with config: %s", debugbinary, prettyPrint(argsToLog))
 
-	redirected := false
+	remoteOut := false
 	switch args.OutputMode {
 	case "remote":
-		redirected = true
+		remoteOut = true
 	case "local", "":
 		// noting
 	default:
@@ -1072,7 +1066,13 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
-	redirectedFunc := func(stdoutReader io.ReadCloser, stderrReader io.ReadCloser) {
+	if remoteOut && (args.StdoutTo != "" || args.StderrTo != "") {
+		s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch",
+			"output == \"remote\" can not be used together with stdoutTo or stderrTo")
+		return
+	}
+
+	remoteOutFunc := func(stdoutReader io.ReadCloser, stderrReader io.ReadCloser) {
 		runReadFunc := func(reader io.ReadCloser, category string) {
 			defer s.preTerminatedWG.Done()
 			defer reader.Close()
@@ -1107,7 +1107,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 
 	if args.NoDebug {
 		s.mu.Lock()
-		cmd, err := s.newNoDebugProcess(debugbinary, args.Args, s.config.Debugger.WorkingDir, redirected)
+		cmd, stdoutReader, stderrReader, err := s.newNoDebugProcess(debugbinary, args.Args, s.config.Debugger.WorkingDir, remoteOut, args.StdinFrom, args.StdoutTo, args.StderrTo)
 		s.mu.Unlock()
 		if err != nil {
 			s.sendShowUserErrorResponse(request.Request, FailedToLaunch, "Failed to launch", err.Error())
@@ -1119,8 +1119,8 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 
 		// Start the program on a different goroutine, so we can listen for disconnect request.
 		go func() {
-			if redirected {
-				redirectedFunc(s.stdoutReader, s.stderrReader)
+			if remoteOut {
+				remoteOutFunc(stdoutReader, stderrReader)
 			}
 
 			if err := cmd.Wait(); err != nil {
@@ -1134,8 +1134,12 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		return
 	}
 
+	s.config.Debugger.Stdin = args.StdinFrom
+	s.config.Debugger.Stdout = proc.OutputRedirect{Path: args.StdoutTo}
+	s.config.Debugger.Stderr = proc.OutputRedirect{Path: args.StderrTo}
+
 	var closeAll func()
-	if redirected {
+	if remoteOut {
 		var (
 			readers         [2]io.ReadCloser
 			outputRedirects [2]proc.OutputRedirect
@@ -1153,7 +1157,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		s.config.Debugger.Stdout = outputRedirects[0]
 		s.config.Debugger.Stderr = outputRedirects[1]
 
-		redirectedFunc(readers[0], readers[1])
+		remoteOutFunc(readers[0], readers[1])
 		closeAll = func() {
 			for index := range readers {
 				if closeErr := readers[index].Close(); closeErr != nil {
@@ -1218,32 +1222,66 @@ func (s *Session) getPackageDir(pkg string) string {
 
 // newNoDebugProcess is called from onLaunchRequest (run goroutine) and
 // requires holding mu lock. It prepares process exec.Cmd to be started.
-func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd string, redirected bool) (cmd *exec.Cmd, err error) {
+func (s *Session) newNoDebugProcess(program string, targetArgs []string, wd string, remoteOut bool, stdinFrom, stdoutTo, stderrTo string) (cmd *exec.Cmd, stdoutReader, stderrReader io.ReadCloser, err error) {
 	if s.noDebugProcess != nil {
-		return nil, errors.New("another launch request is in progress")
+		return nil, nil, nil, errors.New("another launch request is in progress")
 	}
 
 	cmd = exec.Command(program, targetArgs...)
 	cmd.Stdin, cmd.Dir = os.Stdin, wd
 
-	if redirected {
-		if s.stderrReader, err = cmd.StderrPipe(); err != nil {
-			return nil, err
+	if stdinFrom != "" {
+		fh, err := os.Open(stdinFrom)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("could not open stdin file: %v", err)
+		}
+		cmd.Stdin = fh
+	}
+
+	if remoteOut {
+		if stderrReader, err = cmd.StderrPipe(); err != nil {
+			return nil, nil, nil, err
 		}
 
-		if s.stdoutReader, err = cmd.StdoutPipe(); err != nil {
-			return nil, err
+		if stdoutReader, err = cmd.StdoutPipe(); err != nil {
+			return nil, nil, nil, err
 		}
 	} else {
-		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+		var err error
+		toclose := []*os.File{}
+		create := func(redirect string, dflt *os.File) (f *os.File) {
+			if redirect != "" {
+				f, err = os.Create(redirect)
+				toclose = append(toclose, f)
+
+				return f
+			}
+
+			return dflt
+		}
+		defer func() {
+			for _, f := range toclose {
+				f.Close()
+			}
+		}()
+
+		cmd.Stdout = create(stdoutTo, os.Stdout)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("could not create stdout file: %v", err)
+		}
+
+		cmd.Stderr = create(stderrTo, os.Stderr)
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("could not create stderr file: %v", err)
+		}
 	}
 
 	if err = cmd.Start(); err != nil {
-		return nil, err
+		return nil, nil, nil, err
 	}
 
 	s.noDebugProcess = &process{Cmd: cmd, exited: make(chan struct{})}
-	return cmd, nil
+	return cmd, stdoutReader, stderrReader, nil
 }
 
 // stopNoDebugProcess is called from Stop (main goroutine) and
@@ -3121,8 +3159,11 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 	s.setHaltRequested(true)
 	_, err := s.halt()
 	if err != nil {
-		s.sendErrorResponse(request.Request, FailedToLaunch, "Cannot restart", fmt.Sprintf("cannot restart process: %v", err))
-		return
+		var errProcessExited proc.ErrProcessExited
+		if !errors.As(err, &errProcessExited) {
+			s.sendErrorResponse(request.Request, FailedToLaunch, "Cannot restart", fmt.Sprintf("cannot restart process: %v", err))
+			return
+		}
 	}
 
 	// Cannot restart attached processes
