@@ -5225,11 +5225,10 @@ func TestFollowExec(t *testing.T) {
 
 				spawned := map[int]*proc.ProcessSpawnedEventDetails{}
 				for _, event := range events {
-					if event.Kind != proc.EventProcessSpawned {
-						continue
+					if event.Kind == proc.EventProcessSpawned {
+						details := event.ProcessSpawnedEventDetails
+						spawned[details.PID] = details
 					}
-					details := event.ProcessSpawnedEventDetails
-					spawned[details.PID] = details
 				}
 
 				it := proc.ValidTargets{Group: grp}
@@ -5280,6 +5279,39 @@ func TestFollowExec(t *testing.T) {
 			if v != 1 {
 				t.Errorf("bad contents of pids: %#v", pids)
 			}
+		}
+	})
+}
+
+func TestFollowExecNonGo(t *testing.T) {
+	skipOn(t, "follow exec not implemented on freebsd", "freebsd")
+	skipOn(t, "follow exec not implemented on macOS", "darwin")
+	skipOn(t, "non-Go process handling not implemented on Windows", "windows")
+	withTestProcessArgs("nongochild/", t, "../../_fixtures/nongochild/", []string{}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.FollowExec(true, ""), t, "FollowExec")
+
+		// Collect events
+		var events []*proc.Event
+		grp.SetEventsFn(func(e *proc.Event) { events = append(events, e) })
+
+		// Execute the process
+		for {
+			t.Log("Continuing")
+			err := grp.Continue()
+			if errors.As(err, &proc.ErrProcessExited{}) {
+				break
+			}
+		}
+
+		// Verify that a child was spawned
+		var spawned *proc.ProcessSpawnedEventDetails
+		for _, event := range events {
+			if event.Kind == proc.EventProcessSpawned {
+				spawned = event.ProcessSpawnedEventDetails
+			}
+		}
+		if spawned == nil {
+			t.Fatal("Did not log an event for the child")
 		}
 	})
 }
