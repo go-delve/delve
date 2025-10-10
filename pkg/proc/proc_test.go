@@ -5263,6 +5263,10 @@ func TestFollowExec(t *testing.T) {
 		pids := map[int]int{}
 		ns := map[string]int{}
 
+		// Collect events
+		var events []*proc.Event
+		grp.SetEventsFn(func(e *proc.Event) { events = append(events, e) })
+
 		for {
 			t.Log("Continuing")
 			err := grp.Continue()
@@ -5301,6 +5305,15 @@ func TestFollowExec(t *testing.T) {
 				if finished {
 					t.Fatalf("breakpoint hit after the last one in a child process")
 				}
+
+				spawned := map[int]*proc.ProcessSpawnedEventDetails{}
+				for _, event := range events {
+					if event.Kind == proc.EventProcessSpawned {
+						details := event.ProcessSpawnedEventDetails
+						spawned[details.PID] = details
+					}
+				}
+
 				it := proc.ValidTargets{Group: grp}
 				for it.Next() {
 					tgt := it.Target
@@ -5322,6 +5335,10 @@ func TestFollowExec(t *testing.T) {
 					}
 					t.Logf("variable 'n' on target %d: %#v (%v)", tgt.Pid(), nvar, nvar.Value)
 					ns[constant.StringVal(nvar.Value)]++
+
+					if _, ok := spawned[tgt.Pid()]; !ok {
+						t.Errorf("Expected a process spawned event for target %d", tgt.Pid())
+					}
 				}
 			}
 		}
@@ -5345,6 +5362,39 @@ func TestFollowExec(t *testing.T) {
 			if v != 1 {
 				t.Errorf("bad contents of pids: %#v", pids)
 			}
+		}
+	})
+}
+
+func TestFollowExecNonGo(t *testing.T) {
+	skipOn(t, "follow exec not implemented on freebsd", "freebsd")
+	skipOn(t, "follow exec not implemented on macOS", "darwin")
+	skipOn(t, "non-Go process handling not implemented on Windows", "windows")
+	withTestProcessArgs("nongochild/", t, "../../_fixtures/nongochild/", []string{}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.FollowExec(true, ""), t, "FollowExec")
+
+		// Collect events
+		var events []*proc.Event
+		grp.SetEventsFn(func(e *proc.Event) { events = append(events, e) })
+
+		// Execute the process
+		for {
+			t.Log("Continuing")
+			err := grp.Continue()
+			if errors.As(err, &proc.ErrProcessExited{}) {
+				break
+			}
+		}
+
+		// Verify that a child was spawned
+		var spawned *proc.ProcessSpawnedEventDetails
+		for _, event := range events {
+			if event.Kind == proc.EventProcessSpawned {
+				spawned = event.ProcessSpawnedEventDetails
+			}
+		}
+		if spawned == nil {
+			t.Fatal("Did not log an event for the child")
 		}
 	})
 }
