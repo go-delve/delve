@@ -312,18 +312,14 @@ func (t *Term) Run() (int, error) {
 	signal.Notify(ch, syscall.SIGINT)
 	go t.sigintGuard(ch, multiClient)
 
-	fns := trie.New[any]()
 	cmds := trie.New[any]()
-	funcs, _ := t.client.ListFunctions("", 0)
-	for _, fn := range funcs {
-		fns.Add(fn, nil)
-	}
 	for _, cmd := range t.cmds.cmds {
 		for _, alias := range cmd.aliases {
 			cmds.Add(alias, nil)
 		}
 	}
 
+	var fns *trie.Trie[any]
 	var locs *trie.Trie[any]
 
 	t.line.SetCompleter(func(line string) (c []string) {
@@ -332,6 +328,13 @@ func (t *Term) Run() (int, error) {
 		case "break", "trace", "continue":
 			if spc := strings.LastIndex(line, " "); spc > 0 {
 				prefix := line[:spc] + " "
+				if fns == nil {
+					fns = trie.New[any]()
+					funcs, _ := t.client.ListFunctions("", 0)
+					for _, fn := range funcs {
+						fns.Add(fn, nil)
+					}
+				}
 				funcs := fns.FuzzySearch(line[spc+1:])
 				for _, f := range funcs {
 					c = append(c, prefix+f)
