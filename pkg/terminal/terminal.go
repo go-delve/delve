@@ -17,6 +17,7 @@ import (
 	"github.com/go-delve/liner"
 
 	"github.com/go-delve/delve/pkg/config"
+	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/locspec"
 	"github.com/go-delve/delve/pkg/terminal/colorize"
 	"github.com/go-delve/delve/pkg/terminal/starbind"
@@ -83,6 +84,8 @@ type Term struct {
 
 	downloadsMu         sync.Mutex
 	downloadsInProgress bool
+
+	goVersionCache *goversion.GoVersion
 }
 
 type displayEntry struct {
@@ -671,6 +674,16 @@ func (t *Term) longCommandCanceled() bool {
 // RedirectTo redirects the output of this terminal to the specified writer.
 func (t *Term) RedirectTo(w io.Writer) {
 	t.stdout.pw.w = w
+}
+
+func (t *Term) goVersion() *goversion.GoVersion {
+	if t.goVersionCache != nil {
+		return t.goVersionCache
+	}
+	vers := t.client.GetVersion()
+	v, _ := goversion.Parse(vers.TargetGoVersion)
+	t.goVersionCache = &v
+	return t.goVersionCache
 }
 
 // isErrProcessExited returns true if `err` is an RPC error equivalent of proc.ErrProcessExited

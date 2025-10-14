@@ -1128,13 +1128,7 @@ func (t *Term) formatGoroutine(g *api.Goroutine, fgl api.FormatGoroutineLoc) str
 	}
 
 	if (g.Status == api.GoroutineWaiting || g.Status == api.GoroutineSyscall) && g.WaitReason != 0 {
-		var wr string
-		if g.WaitReason > 0 && g.WaitReason < int64(len(waitReasonStrings)) {
-			wr = waitReasonStrings[g.WaitReason]
-		} else {
-			wr = fmt.Sprintf("unknown wait reason %d", g.WaitReason)
-		}
-		fmt.Fprintf(buf, " [%s", wr)
+		fmt.Fprintf(buf, " [%s", api.WaitReasonString(t.goVersion(), g.WaitReason))
 		if g.WaitSince > 0 {
 			fmt.Fprintf(buf, " %d", g.WaitSince)
 		}
@@ -1142,43 +1136,6 @@ func (t *Term) formatGoroutine(g *api.Goroutine, fgl api.FormatGoroutineLoc) str
 	}
 
 	return buf.String()
-}
-
-var waitReasonStrings = [...]string{
-	"",
-	"GC assist marking",
-	"IO wait",
-	"chan receive (nil chan)",
-	"chan send (nil chan)",
-	"dumping heap",
-	"garbage collection",
-	"garbage collection scan",
-	"panicwait",
-	"select",
-	"select (no cases)",
-	"GC assist wait",
-	"GC sweep wait",
-	"GC scavenge wait",
-	"chan receive",
-	"chan send",
-	"finalizer wait",
-	"force gc (idle)",
-	"semacquire",
-	"sleep",
-	"sync.Cond.Wait",
-	"timer goroutine (idle)",
-	"trace reader (blocked)",
-	"wait for GC cycle",
-	"GC worker (idle)",
-	"preempted",
-	"debug call",
-	"GC mark termination",
-	"stopping the world",
-	"flushing proc caches",
-	"trace goroutine status",
-	"trace proc status",
-	"page trace flush",
-	"coroutine",
 }
 
 func writeGoroutineLong(t *Term, w io.Writer, g *api.Goroutine, prefix string) {

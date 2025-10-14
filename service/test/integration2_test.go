@@ -3094,45 +3094,17 @@ func TestClientServer_breakpointOnFuncWithABIWrapper(t *testing.T) {
 	})
 }
 
-var waitReasonStrings = [...]string{
-	"",
-	"GC assist marking",
-	"IO wait",
-	"chan receive (nil chan)",
-	"chan send (nil chan)",
-	"dumping heap",
-	"garbage collection",
-	"garbage collection scan",
-	"panicwait",
-	"select",
-	"select (no cases)",
-	"GC assist wait",
-	"GC sweep wait",
-	"GC scavenge wait",
-	"chan receive",
-	"chan send",
-	"finalizer wait",
-	"force gc (idle)",
-	"semacquire",
-	"sleep",
-	"sync.Cond.Wait",
-	"timer goroutine (idle)",
-	"trace reader (blocked)",
-	"wait for GC cycle",
-	"GC worker (idle)",
-	"preempted",
-	"debug call",
-}
-
 func TestClientServer_chanGoroutines(t *testing.T) {
 	withTestClient2("changoroutines", t, func(c service.Client) {
+		ver := c.GetVersion()
+		goVer := goversion.ParseProducer(ver.TargetGoVersion)
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue()")
 
 		countRecvSend := func(gs []*api.Goroutine) (recvq, sendq int) {
 			for _, g := range gs {
-				t.Logf("\tID: %d WaitReason: %s\n", g.ID, waitReasonStrings[g.WaitReason])
-				switch waitReasonStrings[g.WaitReason] {
+				t.Logf("\tID: %d WaitReason: %s\n", g.ID, api.WaitReasonString(&goVer, g.WaitReason))
+				switch api.WaitReasonString(&goVer, g.WaitReason) {
 				case "chan send":
 					sendq++
 				case "chan receive":

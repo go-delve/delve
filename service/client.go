@@ -9,6 +9,9 @@ import (
 // Client represents a debugger service client. All client methods are
 // synchronous.
 type Client interface {
+	// GetVersion returns assorted version information.
+	GetVersion() *api.GetVersionOut
+
 	// ProcessPid returns the pid of the process we are debugging.
 	ProcessPid() int
 
