@@ -48,6 +48,12 @@ func NewClientFromConn(conn net.Conn) *RPCClient {
 	return newFromRPCClient(jsonrpc.NewClient(conn))
 }
 
+func (c *RPCClient) GetVersion() *api.GetVersionOut {
+	out := new(api.GetVersionOut)
+	c.call("GetVersion", api.GetVersionIn{}, out)
+	return out
+}
+
 func (c *RPCClient) ProcessPid() int {
 	out := new(ProcessPidOut)
 	c.call("ProcessPid", ProcessPidIn{}, out)
