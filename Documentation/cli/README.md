@@ -141,18 +141,19 @@ Aliases: b
 
 ## breakpoints
 Print out info for active breakpoints.
-	
-	breakpoints [-a]
+
+	breakpoints [-a] [-save <filename>]
 
 Specifying -a prints all physical breakpoint, including internal breakpoints.
+Speciftying -save &lt;filename> saves all breakpoints to the specified file in a format that can be loaded later using the 'source' command.
 
 Aliases: bp
 
 ## call
 Resumes process, injecting a function call (EXPERIMENTAL!!!)
-	
+
 	call [-unsafe] <function call expression>
-	
+
 Current limitations:
 - only pointers to stack-allocated objects can be passed as argument.
 - only some automatic type conversions are supported.
@@ -226,7 +227,7 @@ With the -hitcount option a condition on the breakpoint hit count can be set, th
 The -per-g-hitcount option works like -hitcount, but use per goroutine hitcount to compare with n.
 
 With the -clear option a condition on the breakpoint can removed.
-	
+
 The '% n' form means we should stop at the breakpoint when the hitcount is a multiple of n.
 
 Examples:
@@ -344,7 +345,7 @@ The core dump is always written in ELF, even on systems (windows, macOS) where t
 Open where you are in $DELVE_EDITOR or $EDITOR
 
 	edit [locspec]
-	
+
 If locspec is omitted edit will open the current source file in the editor, otherwise it will open the specified location.
 
 Aliases: ed
@@ -373,9 +374,9 @@ Aliases: x
 
 ## exit
 Exit the debugger.
-		
+
 	exit [-c]
-	
+
 When connected to a headless instance started with the --accept-multiclient, pass -c to resume the execution of the target process before disconnecting.
 
 Aliases: quit q
@@ -443,34 +444,34 @@ To only display goroutines where the specified location contains (or does not co
 	curloc: filter by the location of the topmost stackframe (including frames inside private runtime functions)
 	goloc: filter by the location of the go instruction that created the goroutine
 	startloc: filter by the location of the start function
-	
+
 To only display goroutines that have (or do not have) the specified label key and value, use:
 
 	goroutines -with label key=value
 	goroutines -without label key=value
-	
+
 To only display goroutines that have (or do not have) the specified label key, use:
 
 	goroutines -with label key
 	goroutines -without label key
-	
+
 To only display goroutines that are running (or are not running) on a OS thread, use:
 
 
 	goroutines -with running
 	goroutines -without running
-	
+
 To only display user (or runtime) goroutines, use:
 
 	goroutines -with user
 	goroutines -without user
 
 CHANNELS
-	
+
 To only show goroutines waiting to send to or receive from a specific channel use:
 
 	goroutines -chan expr
-	
+
 Note that 'expr' must not contain spaces.
 
 GROUPING
@@ -564,11 +565,11 @@ Executes a command when a breakpoint is hit.
 
 	on <breakpoint name or id> <command>
 	on <breakpoint name or id> -edit
-	
 
-Supported commands: print, stack, goroutine, trace and cond. 
+
+Supported commands: print, stack, goroutine, trace and cond.
 To convert a breakpoint into a tracepoint use:
-	
+
 	on <breakpoint name or id> trace
 
 The command 'on &lt;bp> cond &lt;cond-arguments>' is equivalent to 'cond &lt;bp> &lt;cond-arguments>'.
@@ -615,7 +616,7 @@ For recorded targets the command takes the following forms:
 	restart					resets to the start of the recording
 	restart [checkpoint]			resets the recording to the given checkpoint
 	restart -r [newargv...]	[redirects...]	re-records the target process
-	
+
 For live targets the command takes the following forms:
 
 	restart [newargv...] [redirects...]	restarts the process
@@ -654,7 +655,7 @@ See [Documentation/cli/expr.md](//github.com/go-delve/delve/tree/master/Document
 Executes a file containing a list of delve commands
 
 	source <path>
-	
+
 If path ends with the .star extension it will be interpreted as a starlark script. See [Documentation/cli/starlark.md](//github.com/go-delve/delve/tree/master/Documentation/cli/starlark.md) for the syntax.
 
 If path is a single '-' character an interactive starlark interpreter will start instead. Type 'exit' to exit.
@@ -783,9 +784,9 @@ If regex is specified only package variables with a name matching it will be ret
 
 ## watch
 Set watchpoint.
-	
+
 	watch [-r|-w|-rw] <expr>
-	
+
 	-r	stops when the memory location is read
 	-w	stops when the memory location is written
 	-rw	stops when the memory location is read or written
