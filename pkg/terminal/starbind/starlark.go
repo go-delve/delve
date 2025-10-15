@@ -298,17 +298,8 @@ func (env *Env) createCommand(name string, val starlark.Value) error {
 		helpMsg = "user defined"
 	}
 
-	// Parse docstring for @on_prefix directive
-	allowedPrefixes := 0
-	if helpMsg != "" {
-		for _, line := range strings.Split(helpMsg, "\n") {
-			trimmed := strings.TrimSpace(line)
-			if trimmed == "@on_prefix" {
-				allowedPrefixes |= 2 // onPrefix
-				break
-			}
-		}
-	}
+	// All custom starlark commands are allowed to use the on prefix
+	allowedPrefixes := 2 // onPrefix
 
 	if fnval.NumParams() == 1 {
 		if p0, _ := fnval.Param(0); p0 == "args" {

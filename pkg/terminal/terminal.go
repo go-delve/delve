@@ -86,8 +86,6 @@ type Term struct {
 	downloadsInProgress bool
 
 	goVersionCache *goversion.GoVersion
-	// executingCustomCommands is true when we're currently executing breakpoint custom commands
-	executingCustomCommands bool
 	// customCommandsInvalidated is set when a runCmd is executed during custom command execution
 	customCommandsInvalidated []bool
 }

@@ -488,11 +488,7 @@ If no argument is specified the function being executed in the selected stack fr
 
 Supported commands: print, stack, goroutine, trace and cond.
 
-You may also use custom starlark commands with the 'on' prefix by annotating the command with
-
-	@on_prefix
-
-on its own line in the doc string for the starlark command. See Documentation/cli/starlark.md for more information.
+All custom starlark commands can also be used with the 'on' prefix. See Documentation/cli/starlark.md for more information.
 
 To convert a breakpoint into a tracepoint use:
 

@@ -1669,32 +1669,22 @@ func TestStarlarkOnPrefix(t *testing.T) {
 	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
 		term.MustExec("source " + findStarFile("test_allow_on"))
 
-		var cmdWithOn *command
-		var cmdWithoutOn *command
-
+		var customCmd *command
 		for i := range term.cmds.cmds {
 			cmd := &term.cmds.cmds[i]
 			if cmd.match("test_on_allowed") {
-				cmdWithOn = cmd
-			}
-			if cmd.match("test_on_not_allowed") {
-				cmdWithoutOn = cmd
+				customCmd = cmd
+				break
 			}
 		}
 
-		if cmdWithOn == nil {
+		if customCmd == nil {
 			t.Fatal("test_on_allowed command not found")
 		}
-		if cmdWithoutOn == nil {
-			t.Fatal("test_on_not_allowed command not found")
-		}
 
-		if cmdWithOn.allowedPrefixes&onPrefix == 0 {
-			t.Errorf("test_on_allowed should have onPrefix set, got allowedPrefixes=%v", cmdWithOn.allowedPrefixes)
-		}
-
-		if cmdWithoutOn.allowedPrefixes&onPrefix != 0 {
-			t.Errorf("test_on_not_allowed should not have onPrefix set, got allowedPrefixes=%v", cmdWithoutOn.allowedPrefixes)
+		// All custom starlark commands should have onPrefix set
+		if customCmd.allowedPrefixes&onPrefix == 0 {
+			t.Errorf("custom starlark command should have onPrefix set, got allowedPrefixes=%v", customCmd.allowedPrefixes)
 		}
 
 		term.MustExec("break main.main")

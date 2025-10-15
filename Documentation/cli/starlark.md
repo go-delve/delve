@@ -98,22 +98,17 @@ Otherwise arguments passed on the command line are interpreted as starlark expre
 
 If the command function has a doc string it will be used as a help message.
 
-## Allowing commands with the `on` prefix
+## Using custom commands with the `on` prefix
 
-By default, custom starlark commands cannot be used with the `on` command (see `help on`). To make a custom command compatible with `on`, include `@on_prefix` on its own line in the command's doc string:
+All custom starlark commands can be used with the `on` command (see `help on`) to execute when a breakpoint is hit:
 
 ```python
 def command_my_trace(args):
-	"""Custom trace command.
-	
-	@on_prefix
-	
-	This command can be used with 'on' to execute when a breakpoint is hit.
-	"""
+	"""Custom trace command that executes when a breakpoint is hit."""
 	print("Tracing:", args)
 ```
 
-With the `@on_prefix` directive, you can use the command like this:
+You can use this command like this:
 
 ```
 (dlv) break main.go:10

@@ -1,12 +1,6 @@
-# Test fixture for @on_prefix directive
+# Test fixture for custom commands with on prefix
+# All custom starlark commands automatically allow the on prefix
 
 def command_test_on_allowed(args):
-	"""Test command that allows on prefix.
-
-	@on_prefix
-	"""
+	"""Test command for on prefix functionality."""
 	print("test_on_allowed called with:", args)
-
-def command_test_on_not_allowed(args):
-	"""Test command without on prefix."""
-	print("test_on_not_allowed called with:", args)
