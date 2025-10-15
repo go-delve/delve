@@ -26,7 +26,7 @@ var platforms = []Platform{
 	{GOOS: "darwin", GOARCH: "amd64"},
 	{GOOS: "darwin", GOARCH: "arm64"},
 	{GOOS: "windows", GOARCH: "amd64"},
-	{GOOS: "windows", GOARCH: "arm64", BuildTags: "exp.winarm64"},
+	{GOOS: "windows", GOARCH: "arm64"},
 }
 
 const (
