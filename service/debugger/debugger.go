@@ -900,6 +900,7 @@ func (d *Debugger) copyLogicalBreakpointInfo(lbp *proc.LogicalBreakpoint, reques
 	lbp.Variables = requested.Variables
 	lbp.LoadArgs = api.LoadConfigToProc(requested.LoadArgs)
 	lbp.LoadLocals = api.LoadConfigToProc(requested.LoadLocals)
+	lbp.CustomCommands = requested.CustomCommands
 	lbp.UserData = requested.UserData
 	lbp.RootFuncName = requested.RootFuncName
 	lbp.TraceFollowCalls = requested.TraceFollowCalls

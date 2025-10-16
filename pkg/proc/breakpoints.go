@@ -1085,6 +1085,8 @@ type LogicalBreakpoint struct {
 	LoadArgs    *LoadConfig
 	LoadLocals  *LoadConfig
 
+	CustomCommands []string // Custom starlark commands to execute when the breakpoint is hit
+
 	HitCount      map[int64]uint64 // Number of times a breakpoint has been reached in a certain goroutine
 	TotalHitCount uint64           // Number of times a breakpoint has been reached
 	HitCondPerG   bool             // Use per goroutine hitcount as HitCond operand, instead of total hitcount

@@ -147,9 +147,9 @@ A tracepoint is a breakpoint that does not stop the execution of the program, in
 
 See also: "help on", "help cond" and "help clear"`},
 		{aliases: []string{"watch"}, group: breakCmds, cmdFn: watchpoint, helpMsg: `Set watchpoint.
-	
+
 	watch [-r|-w|-rw] <expr>
-	
+
 	-r	stops when the memory location is read
 	-w	stops when the memory location is written
 	-rw	stops when the memory location is read or written
@@ -171,7 +171,7 @@ For recorded targets the command takes the following forms:
 	restart					resets to the start of the recording
 	restart [checkpoint]			resets the recording to the given checkpoint
 	restart -r [newargv...]	[redirects...]	re-records the target process
-	
+
 For live targets the command takes the following forms:
 
 	restart [newargv...] [redirects...]	restarts the process
@@ -208,9 +208,9 @@ Optional [count] argument allows you to skip multiple lines.
 `},
 		{aliases: []string{"stepout", "so"}, group: runCmds, allowedPrefixes: revPrefix, cmdFn: c.stepout, helpMsg: "Step out of the current function."},
 		{aliases: []string{"call"}, group: runCmds, cmdFn: c.call, helpMsg: `Resumes process, injecting a function call (EXPERIMENTAL!!!)
-	
+
 	call [-unsafe] <function call expression>
-	
+
 Current limitations:
 - only pointers to stack-allocated objects can be passed as argument.
 - only some automatic type conversions are supported.
@@ -269,34 +269,34 @@ To only display goroutines where the specified location contains (or does not co
 	curloc: filter by the location of the topmost stackframe (including frames inside private runtime functions)
 	goloc: filter by the location of the go instruction that created the goroutine
 	startloc: filter by the location of the start function
-	
+
 To only display goroutines that have (or do not have) the specified label key and value, use:
 
 	goroutines -with label key=value
 	goroutines -without label key=value
-	
+
 To only display goroutines that have (or do not have) the specified label key, use:
 
 	goroutines -with label key
 	goroutines -without label key
-	
+
 To only display goroutines that are running (or are not running) on a OS thread, use:
 
 
 	goroutines -with running
 	goroutines -without running
-	
+
 To only display user (or runtime) goroutines, use:
 
 	goroutines -with user
 	goroutines -without user
 
 CHANNELS
-	
+
 To only show goroutines waiting to send to or receive from a specific channel use:
 
 	goroutines -chan expr
-	
+
 Note that 'expr' must not contain spaces.
 
 GROUPING
@@ -334,7 +334,7 @@ Called without arguments it will show information about the current goroutine.
 Called with a single argument it will switch to the specified goroutine.
 Called with more arguments it will execute a command on the specified goroutine.`},
 		{aliases: []string{"breakpoints", "bp"}, group: breakCmds, cmdFn: breakpoints, helpMsg: `Print out info for active breakpoints.
-	
+
 	breakpoints [-a]
 
 Specifying -a prints all physical breakpoint, including internal breakpoints.`},
@@ -396,9 +396,9 @@ If regex is specified only package variables with a name matching it will be ret
 
 Argument -a shows more registers. Individual registers can also be displayed by 'print' and 'display'. See Documentation/cli/expr.md.`},
 		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: `Exit the debugger.
-		
+
 	exit [-c]
-	
+
 When connected to a headless instance started with the --accept-multiclient, pass -c to resume the execution of the target process before disconnecting.`},
 		{aliases: []string{"list", "ls", "l"}, cmdFn: listCommand, helpMsg: `Show source code.
 
@@ -468,7 +468,7 @@ Executes the specified command (print, args, locals) in the context of the n-th 
 		{aliases: []string{"source"}, cmdFn: c.sourceCommand, helpMsg: `Executes a file containing a list of delve commands
 
 	source <path>
-	
+
 If path ends with the .star extension it will be interpreted as a starlark script. See Documentation/cli/starlark.md for the syntax.
 
 If path is a single '-' character an interactive starlark interpreter will start instead. Type 'exit' to exit.`},
@@ -484,11 +484,14 @@ If no argument is specified the function being executed in the selected stack fr
 
 	on <breakpoint name or id> <command>
 	on <breakpoint name or id> -edit
-	
 
-Supported commands: print, stack, goroutine, trace and cond. 
+
+Supported commands: print, stack, goroutine, trace and cond.
+
+All custom starlark commands can also be used with the 'on' prefix. See Documentation/cli/starlark.md for more information.
+
 To convert a breakpoint into a tracepoint use:
-	
+
 	on <breakpoint name or id> trace
 
 The command 'on <bp> cond <cond-arguments>' is equivalent to 'cond <bp> <cond-arguments>'.
@@ -518,7 +521,7 @@ With the -hitcount option a condition on the breakpoint hit count can be set, th
 The -per-g-hitcount option works like -hitcount, but use per goroutine hitcount to compare with n.
 
 With the -clear option a condition on the breakpoint can removed.
-	
+
 The '% n' form means we should stop at the breakpoint when the hitcount is a multiple of n.
 
 Examples:
@@ -567,10 +570,10 @@ Adds, removes or clears debug-info-directories.`},
 		{aliases: []string{"edit", "ed"}, cmdFn: edit, helpMsg: `Open where you are in $DELVE_EDITOR or $EDITOR
 
 	edit [locspec]
-	
+
 If locspec is omitted edit will open the current source file in the editor, otherwise it will open the specified location.`},
 		{aliases: []string{"libraries"}, cmdFn: libraries, helpMsg: `List loaded dynamic libraries.
-	
+
 	libraries [-d N]
 
 If used with the -d option it will re-attempt to download the debug symbols for library N, using debuginfod-find.`},
@@ -729,7 +732,11 @@ func (c *Commands) CallWithContext(cmdstr string, t *Term, ctx callContext) erro
 	if len(vals) > 1 {
 		args = strings.TrimSpace(vals[1])
 	}
-	return c.Find(cmdname, ctx.Prefix).cmdFn(t, ctx, args)
+	cmd := c.Find(cmdname, ctx.Prefix)
+	if t != nil && len(t.customCommandsInvalidated) > 0 && cmd.group == runCmds {
+		t.customCommandsInvalidated[len(t.customCommandsInvalidated)-1] = true
+	}
+	return cmd.cmdFn(t, ctx, args)
 }
 
 // Call takes a command to execute.
@@ -1492,7 +1499,6 @@ func stepInstruction(t *Term, ctx callContext, frame int, skipCalls bool) error 
 	}
 
 	defer t.onStop()
-
 	var fn func(bool) (*api.DebuggerState, error)
 	if ctx.Prefix == revPrefix {
 		fn = t.client.ReverseStepInstruction
@@ -1739,6 +1745,9 @@ func formatBreakpointAttrs(prefix string, bp *api.Breakpoint, includeTrace bool)
 	}
 	for i := range bp.Variables {
 		attrs = append(attrs, fmt.Sprintf("%sprint %s", prefix, bp.Variables[i]))
+	}
+	for i := range bp.CustomCommands {
+		attrs = append(attrs, fmt.Sprintf("%s%s", prefix, bp.CustomCommands[i]))
 	}
 	if includeTrace && bp.Tracepoint {
 		attrs = append(attrs, fmt.Sprintf("%strace", prefix))
@@ -2841,6 +2850,33 @@ func printcontextThread(t *Term, th *api.Thread) {
 	printBreakpointInfo(t, th, false)
 }
 
+// executeBreakpointCustomCommands executes custom starlark commands
+// associated with breakpoints for any thread stopped at a breakpoint.
+func (c *Commands) executeBreakpointCustomCommands(t *Term) {
+	state, err := t.client.GetState()
+	if err != nil || state == nil {
+		return
+	}
+
+	t.customCommandsInvalidated = append(t.customCommandsInvalidated, false)
+	defer func() { t.customCommandsInvalidated = t.customCommandsInvalidated[:len(t.customCommandsInvalidated)-1] }()
+
+	for _, th := range state.Threads {
+		if th.Breakpoint == nil || len(th.Breakpoint.CustomCommands) == 0 {
+			continue
+		}
+		for _, cmdName := range th.Breakpoint.CustomCommands {
+			err := c.Call(cmdName, t)
+			if err != nil {
+				fmt.Fprintf(t.stdout, "Error executing custom command %s: %v\n", cmdName, err)
+			}
+			if t.customCommandsInvalidated[len(t.customCommandsInvalidated)-1] {
+				return
+			}
+		}
+	}
+}
+
 func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 	if th.BreakpointInfo == nil {
 		return
@@ -2894,6 +2930,7 @@ func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 			printStack(t, t.stdout, bpi.Stacktrace, "\t\t", false)
 		}
 	}
+
 }
 
 func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, args string, hasReturnValue bool) {

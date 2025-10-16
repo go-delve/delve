@@ -86,6 +86,8 @@ type Term struct {
 	downloadsInProgress bool
 
 	goVersionCache *goversion.GoVersion
+	// customCommandsInvalidated is set when a runCmd is executed during custom command execution
+	customCommandsInvalidated []bool
 }
 
 type displayEntry struct {
@@ -654,6 +656,7 @@ func (t *Term) printDisplays() {
 
 func (t *Term) onStop() {
 	t.printDisplays()
+	t.cmds.executeBreakpointCustomCommands(t)
 }
 
 func (t *Term) longCommandCancel() {

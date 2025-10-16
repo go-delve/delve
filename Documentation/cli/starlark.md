@@ -98,6 +98,23 @@ Otherwise arguments passed on the command line are interpreted as starlark expre
 
 If the command function has a doc string it will be used as a help message.
 
+## Using custom commands with the `on` prefix
+
+All custom starlark commands can be used with the `on` command (see `help on`) to execute when a breakpoint is hit:
+
+```python
+def command_my_trace(args):
+	"""Custom trace command that executes when a breakpoint is hit."""
+	print("Tracing:", args)
+```
+
+You can use this command like this:
+
+```
+(dlv) break main.go:10
+(dlv) on 1 my_trace
+```
+
 # Working with variables
 
 Variables of the target program can be accessed using `local_vars`, `function_args` or the `eval` functions. Each variable will be returned as a [Variable](https://pkg.go.dev/github.com/go-delve/delve/service/api#Variable) struct, with one special field: `Value`.

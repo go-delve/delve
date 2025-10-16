@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -241,6 +242,54 @@ func TestIssue411(t *testing.T) {
 		out := term.MustExec("next")
 		if !strings.HasPrefix(out, "> goroutine(1): main.main()") {
 			t.Fatalf("Wrong output for next: <%s>", out)
+		}
+	})
+}
+
+func TestCustomCommandNestedBreakpoint(t *testing.T) {
+	withTestTerminal("nestedbp", t, func(term *FakeTerminal) {
+		term.MustExec("source " + findStarFile("test_custom_cmd_nested"))
+
+		term.MustExec("break nestedbp.go:13") // BP 1
+		term.MustExec("break nestedbp.go:18") // BP 2
+		term.MustExec("break nestedbp.go:19") // BP 3
+
+		// Add custom commands to BP1:
+		// 1. cmd before continue (should execute)
+		// 2. continue cmd (should execute and hit BP2)
+		// 3. cmd after continue (should NOT execute)
+		term.MustExec("on 1 test_bp1_before_continue")
+		term.MustExec("on 1 test_bp1_continue_cmd")
+		term.MustExec("on 1 test_bp1_after_continue")
+
+		// Add custom commands to BP2 which should execute due to BP 1 custom command continue:
+		term.MustExec(fmt.Sprintf("on %d test_bp2_cmd", 2))
+		term.MustExec("on 2 test_bp1_continue_cmd")
+		term.MustExec("on 2 test_bp1_after_continue")
+
+		// Add command on BP3 which should execute due to BP 2 custom command continue:
+		term.MustExec("on 3 test_bp3_cmd")
+
+		out := term.MustExec("continue")
+
+		if !strings.Contains(out, "BP1_BEFORE_CONTINUE") {
+			t.Errorf("expected BP1_BEFORE_CONTINUE to be printed, got: %q", out)
+		}
+
+		if !strings.Contains(out, "BP1_CONTINUE_CMD") {
+			t.Errorf("expected BP1_CONTINUE_CMD to be printed, got: %q", out)
+		}
+
+		// Verify BP1 command after continue did NOT execute
+		if strings.Contains(out, "BP1_AFTER_CONTINUE") {
+			t.Errorf("BP1_AFTER_CONTINUE was printed, which means the command ran after continue, got: %q", out)
+		}
+
+		if !strings.Contains(out, "BP2_CMD_EXECUTED") {
+			t.Errorf("BP2's custom commands not executed")
+		}
+		if !strings.Contains(out, "BP3_CMD_EXECUTED") {
+			t.Errorf("BP3's custom commands not executed")
 		}
 	})
 }
@@ -1612,6 +1661,139 @@ func TestTraceRegexpReturn(t *testing.T) {
 		t.Logf("continue: %q", out)
 		if out != "> goroutine(1): main.fncall1()\n>> goroutine(1): main.fncall1 => (1)\n> goroutine(1): main.fncall2()\n>> goroutine(1): main.fncall2 => (2)\n" {
 			t.Errorf("wrong output for continue")
+		}
+	})
+}
+
+func TestStarlarkOnPrefix(t *testing.T) {
+	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
+		term.MustExec("source " + findStarFile("test_allow_on"))
+
+		var customCmd *command
+		for i := range term.cmds.cmds {
+			cmd := &term.cmds.cmds[i]
+			if cmd.match("test_on_allowed") {
+				customCmd = cmd
+				break
+			}
+		}
+
+		if customCmd == nil {
+			t.Fatal("test_on_allowed command not found")
+		}
+
+		// All custom starlark commands should have onPrefix set
+		if customCmd.allowedPrefixes&onPrefix == 0 {
+			t.Errorf("custom starlark command should have onPrefix set, got allowedPrefixes=%v", customCmd.allowedPrefixes)
+		}
+
+		term.MustExec("break main.main")
+
+		bps1, _ := term.client.ListBreakpoints(false)
+		var targetBpID int
+		for _, bp := range bps1 {
+			if bp.FunctionName == "main.main" {
+				targetBpID = bp.ID
+				break
+			}
+		}
+		if targetBpID == 0 {
+			t.Fatal("Could not find breakpoint on main.main")
+		}
+
+		term.MustExec(fmt.Sprintf("on %d test_on_allowed", targetBpID))
+
+		bpListOutput := term.MustExec("breakpoints")
+		if !strings.Contains(bpListOutput, "test_on_allowed") {
+			t.Errorf("expected 'test_on_allowed' to appear in breakpoints output, got: %q", bpListOutput)
+		}
+
+		breakpoints, err := term.client.ListBreakpoints(false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(breakpoints) == 0 {
+			t.Fatal("no breakpoints found")
+		}
+
+		var bp *api.Breakpoint
+		for _, b := range breakpoints {
+			if b.ID == targetBpID {
+				bp = b
+				break
+			}
+		}
+		if bp == nil {
+			t.Fatalf("Could not find breakpoint with ID %d", targetBpID)
+		}
+
+		if len(bp.CustomCommands) == 0 {
+			t.Errorf("expected custom command to be registered on breakpoint, but CustomCommands is empty")
+		} else {
+			found := slices.Contains(bp.CustomCommands, "test_on_allowed")
+			if !found {
+				t.Errorf("expected 'test_on_allowed' to be in CustomCommands, got %v", bp.CustomCommands)
+			}
+		}
+
+		term.MustExec(fmt.Sprintf("on %d test_on_allowed hello world", targetBpID))
+
+		bpListOutput2 := term.MustExec("breakpoints")
+		if !strings.Contains(bpListOutput2, "test_on_allowed hello world") {
+			t.Errorf("expected 'test_on_allowed hello world' to appear in breakpoints output, got: %q", bpListOutput2)
+		}
+
+		out := term.MustExec("continue")
+		if !strings.Contains(out, "test_on_allowed called with:") {
+			t.Errorf("expected custom command to be executed when breakpoint is hit, but output was: %q", out)
+		}
+		if !strings.Contains(out, "test_on_allowed called with: hello world") {
+			t.Errorf("expected custom command with args to be executed, but output was: %q", out)
+		}
+	})
+}
+
+func TestCustomCommandStopsOnContinue(t *testing.T) {
+	// This test verifies that when a custom command triggers a runCmd (like continue),
+	// the execution of remaining custom commands is stopped because the process state
+	// has been invalidated.
+	withTestTerminal("break", t, func(term *FakeTerminal) {
+		term.MustExec("source " + findStarFile("test_custom_cmd_continue"))
+
+		term.MustExec("break break.go:7")
+
+		bps, _ := term.client.ListBreakpoints(false)
+		var targetBpID int
+		for _, bp := range bps {
+			if strings.Contains(bp.File, "break.go") && bp.Line == 7 {
+				targetBpID = bp.ID
+				break
+			}
+		}
+		if targetBpID == 0 {
+			t.Fatal("Could not find breakpoint on break.go:7")
+		}
+
+		// Add three custom commands to the breakpoint:
+		// 1. cmd before continue (should execute)
+		// 2. continue (should execute and invalidate state)
+		// 3. cmd after continue (should NOT execute because state is invalid)
+		term.MustExec(fmt.Sprintf("on %d test_cmd_before_continue", targetBpID))
+		term.MustExec(fmt.Sprintf("on %d test_continue_cmd", targetBpID))
+		term.MustExec(fmt.Sprintf("on %d test_cmd_after_continue", targetBpID))
+
+		out := term.MustExec("continue")
+
+		if !strings.Contains(out, "BEFORE_CONTINUE") {
+			t.Errorf("expected BEFORE_CONTINUE to be printed, got: %q", out)
+		}
+
+		if !strings.Contains(out, "CONTINUE_CMD") {
+			t.Errorf("expected CONTINUE_CMD to be printed, got: %q", out)
+		}
+
+		if strings.Contains(out, "AFTER_CONTINUE") {
+			t.Errorf("AFTER_CONTINUE was printed, which means the command ran after continue, got: %q", out)
 		}
 	})
 }

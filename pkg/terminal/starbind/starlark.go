@@ -47,7 +47,7 @@ var defaultSyntaxFileOpts = &syntax.FileOptions{
 // It contains methods to call API functions, command line commands, etc.
 type Context interface {
 	Client() service.Client
-	RegisterCommand(name, helpMsg string, cmdfn func(args string) error)
+	RegisterCommand(name, helpMsg string, cmdfn func(args string) error, allowedPrefixes int)
 	CallCommand(cmdstr string) error
 	Scope() api.EvalScope
 	LoadConfig() api.LoadConfig
@@ -298,12 +298,15 @@ func (env *Env) createCommand(name string, val starlark.Value) error {
 		helpMsg = "user defined"
 	}
 
+	// All custom starlark commands are allowed to use the on prefix
+	allowedPrefixes := 2 // onPrefix
+
 	if fnval.NumParams() == 1 {
 		if p0, _ := fnval.Param(0); p0 == "args" {
 			env.ctx.RegisterCommand(name, helpMsg, func(args string) error {
 				_, err := starlark.Call(env.newThread(), fnval, starlark.Tuple{starlark.String(args)}, nil)
 				return err
-			})
+			}, allowedPrefixes)
 			return nil
 		}
 	}
@@ -320,7 +323,7 @@ func (env *Env) createCommand(name string, val starlark.Value) error {
 		}
 		_, err = starlark.Call(thread, fnval, argtuple, nil)
 		return err
-	})
+	}, allowedPrefixes)
 	return nil
 }
 
