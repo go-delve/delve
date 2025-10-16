@@ -75,8 +75,6 @@ type Breakpoint struct {
 	TraceFollowCalls int
 }
 
-type DynCallFn func(th Thread, p *Target) (bool, error)
-
 // Breaklet represents one of multiple breakpoints that can overlap on a
 // single physical breakpoint.
 type Breaklet struct {
@@ -116,8 +114,8 @@ type Breaklet struct {
 }
 
 // SetCallBack sets the call back field, this was primarily added to prevent exporting callback field
-func (B *Breaklet) SetCallBack(callback DynCallFn) {
-	B.callback = callback
+func (b *Breaklet) SetCallBack(callback func(th Thread, p *Target) (bool, error)) {
+	b.callback = callback
 }
 
 // BreakpointKind determines the behavior of delve when the

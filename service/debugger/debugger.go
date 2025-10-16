@@ -1402,7 +1402,6 @@ func (d *Debugger) Functions(filter string, followCalls int) ([]string, error) {
 }
 
 func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, followCalls int, rootstr string) ([]string, error) {
-
 	type TraceFunc struct {
 		Func    *proc.Function
 		Depth   int
@@ -1447,15 +1446,18 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 			return nil, fmt.Errorf("disassemble failed with error %w", err)
 		}
 		for _, instr := range text {
-			// Dynamic functions are called in a special way wherein the destination location is nil
-			// Hence its required to put a breakpoint inorder to acquire the address of the function
-			// at runtime and we do this via a call back mechanism
+			// Dynamic functions need to be handled specially as their destination location
+			// is not known statically, hence its required to put a breakpoint in order to
+			// acquire the address of the function at runtime and we do this via a
+			// call back mechanism
 			if instr.IsCall() && instr.DestLoc == nil {
 				dynbp, err := t.SetBreakpoint(0, instr.Loc.PC, proc.NextBreakpoint, nil)
 				if err != nil {
 					return nil, fmt.Errorf("error setting breakpoint inside deferreturn")
 				}
 				dynCallback := func(th proc.Thread, tgt *proc.Target) (bool, error) {
+					// TODO(optimization): Consider using an iterator to avoid materializing
+					// the full stack when we only need frames up to the root function
 					rawlocs, err := proc.ThreadStacktrace(tgt, tgt.CurrentThread(), followCalls+2)
 					if err != nil {
 						return false, fmt.Errorf("thread stack trace returned error")
@@ -1509,16 +1511,16 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 					if err != nil {
 						return false, fmt.Errorf("error calling traverse on dynamic children")
 					}
-					for i := 0; i < len(dynchildren); i++ {
-						_, err := createFnTracepoint(d, dynchildren[i], rootstr, followCalls)
+					for _, child := range dynchildren {
+						_, err := createFnTracepoint(d, child, rootstr, followCalls)
 						if err != nil {
-							return false, fmt.Errorf("error creating tracepoint in function %s", dynchildren[i])
+							return false, fmt.Errorf("error creating tracepoint in function %s", child)
 						}
 					}
 					return false, nil
 				}
-				for _, dynbrklet_i := range dynbp.Breaklets {
-					dynbrklet_i.SetCallBack(dynCallback)
+				for _, dynBrklet := range dynbp.Breaklets {
+					dynBrklet.SetCallBack(dynCallback)
 				}
 			}
 
@@ -1540,31 +1542,68 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 	return funcs, nil
 }
 
-// For dynamic functions, since we get to know the functions that are being called from deferreturn quite late in execution
-// we need to create the trace point ourselves so that it can be included in the trace output just in time
-func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls int) (*api.Breakpoint, error) {
-
-	tbp, err1 := d.createBreakpointInternal(&api.Breakpoint{FunctionName: fname, Tracepoint: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
-	if tbp == nil {
-		if _, exists := err1.(proc.BreakpointExistsError); exists {// ;err1 != nil && strings.Contains(err1.Error(), "Breakpoint exists") {
-			// This is expected
-		} else if err1 != nil {
-			return nil, fmt.Errorf("error creating breakpoint at function %s", fname)
+// createBreakpointForTracepoints creates a logical breakpoint specifically for tracepoints.
+// It handles the BreakpointExistsError by silently ignoring it, as duplicate tracepoints
+// are expected during dynamic function discovery.
+func (d *Debugger) createBreakpointForTracepoints(lbp *proc.LogicalBreakpoint) error {
+	d.breakpointIDCounter++
+	lbp.LogicalID = d.breakpointIDCounter
+	lbp.HitCount = make(map[int64]uint64)
+	d.target.LogicalBreakpoints[lbp.LogicalID] = lbp
+	err := d.target.SetBreakpointEnabled(lbp, true)
+	if err != nil {
+		delete(d.target.LogicalBreakpoints, lbp.LogicalID)
+		// Silently ignore BreakpointExistsError - this is expected when
+		// creating tracepoints for functions that may already have them
+		if _, exists := err.(proc.BreakpointExistsError); exists {
+			return nil
 		}
+		return err
+	}
+	return nil
+}
+
+// createFnTracepoint is a way to create a trace point late in the cycle but just in time that it can be
+// included in the trace output as in the case of dynamic functions, we get to know the functions that are
+// being called from deferreturn quite late in execution
+func createFnTracepoint(d *Debugger, fname string, rootstr string, followCalls int) (*api.Breakpoint, error) {
+	// Create tracepoint for function entry
+	lbp := &proc.LogicalBreakpoint{
+		Set: proc.SetBreakpoint{
+			FunctionName: fname,
+		},
+		Tracepoint:       true,
+		RootFuncName:     rootstr,
+		Stacktrace:       20,
+		TraceFollowCalls: followCalls,
 	}
 
+	err := d.createBreakpointForTracepoints(lbp)
+	if err != nil {
+		return nil, fmt.Errorf("error creating breakpoint at function %s: %w", fname, err)
+	}
+
+	// Create tracepoints for function return locations
 	raddrs, _ := d.functionReturnLocationsInternal(fname)
 	for i := range raddrs {
-		rtbp, err := d.createBreakpointInternal(&api.Breakpoint{Addr: raddrs[i], TraceReturn: true, RootFuncName: rootstr, Stacktrace: 20, TraceFollowCalls: followCalls}, "", nil, false)
-		if rtbp == nil {
-			if _, exists := err.(proc.BreakpointExistsError); exists { // != nil && strings.Contains(err.Error(), "Breakpoint exists") {
-				// This is expected
-			} else {
-				return nil, fmt.Errorf("error creating breakpoint at function return %s", fname)
-			}
+		retLbp := &proc.LogicalBreakpoint{
+			Set: proc.SetBreakpoint{
+				PidAddrs: []proc.PidAddr{{Pid: d.target.Selected.Pid(), Addr: raddrs[i]}},
+			},
+			TraceReturn:      true,
+			RootFuncName:     rootstr,
+			Stacktrace:       20,
+			TraceFollowCalls: followCalls,
+		}
+
+		err := d.createBreakpointForTracepoints(retLbp)
+		if err != nil {
+			return nil, fmt.Errorf("error creating breakpoint at function return %s: %w", fname, err)
 		}
 	}
-	return tbp, nil
+
+	// Return the created breakpoint (convert to api.Breakpoint for compatibility)
+	return d.convertBreakpoint(lbp), nil
 }
 
 // Types returns all type information in the binary.
