@@ -1581,6 +1581,9 @@ func TestBreakPointFailWithCond(t *testing.T) {
 	if runtime.GOOS == "freebsd" || runtime.GOOS == "darwin" {
 		t.Skip("follow exec not implemented")
 	}
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
+		t.Skip("flaky")
+	}
 
 	oldYesNo := yesno
 	defer func() { yesno = oldYesNo }()

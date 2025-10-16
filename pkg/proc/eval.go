@@ -916,7 +916,9 @@ func (s *evalStack) fncallPeek() *functionCallState {
 
 func (s *evalStack) pushErr(v *Variable, err error) {
 	s.err = err
-	s.stack = append(s.stack, v)
+	if err == nil {
+		s.stack = append(s.stack, v)
+	}
 }
 
 // eval evaluates ops. When it returns if callInjectionContinue is set the
@@ -1148,27 +1150,30 @@ func (stack *evalStack) executeOp() {
 		stack.push(nilVariable)
 
 	case *evalop.PushPackageVarOrSelect:
-		v, err := scope.findGlobal(op.Name, op.Sel)
-		if err != nil && !isSymbolNotFound(err) {
-			stack.err = err
-			return
-		}
-		if v != nil {
-			stack.push(v)
-		} else {
-			if op.NameIsString {
-				stack.err = fmt.Errorf("%q (type string) is not a struct", op.Name)
-				return
-			}
-			found := stack.pushIdent(scope, op.Name)
+		var savedErr error
+		found := false
+		if !op.NameIsString {
+			found = stack.pushIdent(scope, op.Name)
 			if stack.err != nil {
-				return
+				savedErr = stack.err
+				stack.err = nil
+				found = false
 			}
 			if found {
 				scope.evalStructSelector(&evalop.Select{Name: op.Sel}, stack)
-			} else {
-				stack.err = fmt.Errorf("could not find symbol value for %s", op.Name)
+				if stack.err != nil {
+					savedErr = stack.err
+					stack.err = nil
+					found = false
+				}
 			}
+		}
+		if !found {
+			v, err := scope.findGlobal(op.Name, op.Sel)
+			if err != nil && savedErr != nil {
+				err = savedErr
+			}
+			stack.pushErr(v, err)
 		}
 
 	case *evalop.PushIdent:
