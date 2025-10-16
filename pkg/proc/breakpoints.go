@@ -113,6 +113,11 @@ type Breaklet struct {
 	watchpoint *Breakpoint
 }
 
+// SetCallBack sets the call back field, this was primarily added to prevent exporting callback field
+func (b *Breaklet) SetCallBack(callback func(th Thread, p *Target) (bool, error)) {
+	b.callback = callback
+}
+
 // BreakpointKind determines the behavior of delve when the
 // breakpoint is reached.
 type BreakpointKind uint16
