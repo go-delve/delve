@@ -435,6 +435,7 @@ https://github.com/mozilla/rr
 			},
 			Run: func(cmd *cobra.Command, args []string) {
 				backend = "rr"
+				rrDelOnDetach = false
 				os.Exit(execute(0, []string{}, conf, args[0], debugger.ExecutingOther, args, buildFlags))
 			},
 			ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
