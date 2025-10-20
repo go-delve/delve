@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-delve/delve/pkg/config"
+	"github.com/go-delve/delve/pkg/logflags"
 )
 
 // Remove the file at path and issue a warning to stderr if this fails.
@@ -128,5 +129,6 @@ func gocommandExecCmd(command string, args ...string) (string, *exec.Cmd) {
 	allargs := []string{command}
 	allargs = append(allargs, args...)
 	goBuild := exec.Command("go", allargs...)
+	logflags.DebuggerLogger().Debugf("gobuild args: %v", allargs)
 	return strings.Join(append([]string{"go"}, allargs...), " "), goBuild
 }
