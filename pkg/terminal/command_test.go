@@ -1628,65 +1628,43 @@ func TestDisplay(t *testing.T) {
 
 func TestBreakpointSave(t *testing.T) {
 	test.AllowRecording(t)
-	withTestTerminal("break", t, func(term *FakeTerminal) {
-		tests := []struct {
-			name               string
-			breakpointCmds     []string
-			expectedBreakCount int // I don't think I need this, I think I can len breakpointCmds but maybe not if there are different stuff
-			expectedContains   []string
-			shouldContain      string
-		}{
-			{
-				name: "basic breakpoint save",
-				breakpointCmds: []string{
-					"break main.main",
-					"break _fixtures/break.go:4",
-				},
-				expectedBreakCount: 2,
-				expectedContains:   []string{"break.go:3", "break.go:4"},
-				shouldContain:      "break ",
+	tests := []struct {
+		name           string
+		breakpointCmds []string
+	}{
+		{
+			name: "basic breakpoint save",
+			breakpointCmds: []string{
+				"break main.main",
+				"break _fixtures/break.go:4",
 			},
-			{
-				name: "breakpoint with condition",
-				breakpointCmds: []string{
-					"break main.main:4 if i == 3",
-				},
-				expectedBreakCount: 1,
-				expectedContains:   []string{"i == 3"},
-				shouldContain:      "break ",
+		},
+		{
+			name: "breakpoint with condition",
+			breakpointCmds: []string{
+				"break main.main:4 if i == 3",
 			},
-			{
-				name: "disabled breakpoint",
-				breakpointCmds: []string{
-					"break main main.main",
-					"toggle main",
-				},
-				expectedBreakCount: 1,
-				expectedContains:   []string{"break.go:3"},
-				shouldContain:      "toggle ",
+		},
+		{
+			name: "disabled breakpoint",
+			breakpointCmds: []string{
+				"break main main.main",
+				"toggle main",
 			},
-			{
-				name: "tracepoint",
-				breakpointCmds: []string{
-					"trace main.main",
-				},
-				expectedBreakCount: 1,
-				expectedContains:   []string{"break.go:3", "break.go:11"},
-				shouldContain:      "trace ",
+		},
+		{
+			name: "tracepoint",
+			breakpointCmds: []string{
+				"trace main.main",
 			},
-			{
-				name:               "empty breakpoint list",
-				breakpointCmds:     []string{},
-				expectedBreakCount: 0,
-				expectedContains:   []string{},
-				shouldContain:      " ",
-			},
-		}
-
-		for _, tc := range tests {
-			// We need to clear all the breakpoints to avoid previous
-			// breakpoints
-			term.MustExec("clearall")
+		},
+		{
+			name:           "empty breakpoint list",
+			breakpointCmds: []string{},
+		},
+	}
+	for _, tc := range tests {
+		withTestTerminal("break", t, func(term *FakeTerminal) {
 			t.Run(tc.name, func(t *testing.T) {
 				for _, cmd := range tc.breakpointCmds {
 					term.MustExec(cmd)
@@ -1698,31 +1676,12 @@ func TestBreakpointSave(t *testing.T) {
 				f.Close()
 				defer os.Remove(f.Name())
 
-				term.MustExec(fmt.Sprintf("breakpoints -save %s", f.Name()))
-
-				content, err := os.ReadFile(f.Name())
-				if err != nil {
-					t.Fatalf("Failed to read temp file: %v", err)
-				}
-				contentStr := string(content)
-
-				// Verify break command count
-				breakCount := strings.Count(contentStr, tc.shouldContain)
-				if breakCount != tc.expectedBreakCount {
-					fmt.Println(contentStr)
-					// the lack of space between the %s and commands is not a typo
-					t.Errorf("Expected %d %scommands, got %d", tc.expectedBreakCount, tc.shouldContain, breakCount)
-				}
-				// Verify expected substrings
-				for _, str := range tc.expectedContains {
-					if !strings.Contains(contentStr, str) {
-						fmt.Println(contentStr)
-						t.Errorf("Unexpected string in saved file: %s", str)
-					}
-				}
+				term.MustExec("breakpoints -save " + f.Name())
+				term.MustExec("clearall")
+				term.MustExec("source " + f.Name())
 			})
-		}
-	})
+		})
+	}
 }
 
 func TestBreakPointFailWithCond(t *testing.T) {

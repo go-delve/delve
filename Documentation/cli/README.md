@@ -810,3 +810,5 @@ See also: "help print".
 Prints type of an expression.
 
 	whatis <expression>
+
+

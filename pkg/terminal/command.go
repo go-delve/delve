@@ -1720,6 +1720,15 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 		w := bufio.NewWriter(file)
 		defer w.Flush()
 
+		// Instead of storing the ID, we label the breakpoints to
+		// reference them properly in future executions
+		aliaser := func(bp *api.Breakpoint) string {
+			if bp.Name == "" {
+				return fmt.Sprintf("bp%d", bp.ID)
+			}
+			return bp.Name
+		}
+
 		for _, bp := range breakPoints {
 			// We don't need to store these breakpoints
 			if bp.ID < 0 {
@@ -1729,33 +1738,34 @@ func breakpoints(t *Term, ctx callContext, args string) error {
 			if bp.WatchExpr != "" {
 				continue
 			}
+
 			var err error
 			if bp.Tracepoint {
-				_, err = fmt.Fprintf(w, "trace %s:%d\n", bp.File, bp.Line)
+				_, err = fmt.Fprintf(w, "trace %s %s:%d\n", aliaser(bp), bp.File, bp.Line)
 			} else {
-				_, err = fmt.Fprintf(w, "break %s:%d\n", bp.File, bp.Line)
+				_, err = fmt.Fprintf(w, "break %s %s:%d\n", aliaser(bp), bp.File, bp.Line)
 			}
 			if err != nil {
 				return fmt.Errorf("failed to write breakpoint to file %s:%d", bp.File, bp.Line)
 			}
 			if len(bp.Cond) > 0 {
-				_, err = fmt.Fprintf(w, "condition %d %s\n", bp.ID, bp.Cond)
+				_, err = fmt.Fprintf(w, "condition %s %s\n", aliaser(bp), bp.Cond)
 				if err != nil {
 					return fmt.Errorf("failed to write condition to file %d:%s", bp.ID, bp.Cond)
 				}
 			}
 			if bp.HitCond != "" {
 				if bp.HitCondPerG {
-					_, err = fmt.Fprintf(w, "condition -per-g-hitcount %d %s\n", bp.ID, bp.HitCond)
+					_, err = fmt.Fprintf(w, "condition -per-g-hitcount %s %s\n", aliaser(bp), bp.HitCond)
 				} else {
-					_, err = fmt.Fprintf(w, "condition -hitcount %d %s\n", bp.ID, bp.HitCond)
+					_, err = fmt.Fprintf(w, "condition -hitcount %s %s\n", aliaser(bp), bp.HitCond)
 				}
 				if err != nil {
 					return fmt.Errorf("failed to write hit condition to file %d:%s", bp.ID, bp.HitCond)
 				}
 			}
 			if bp.Disabled {
-				_, err = fmt.Fprintf(w, "toggle %d\n", bp.ID)
+				_, err = fmt.Fprintf(w, "toggle %s\n", aliaser(bp))
 				if err != nil {
 					return fmt.Errorf("failed to write breakpoint status to file %d", bp.ID)
 				}
