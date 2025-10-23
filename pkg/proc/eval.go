@@ -881,6 +881,7 @@ type evalStack struct {
 	curthread           Thread
 	lastRetiredFncall   *functionCallState
 	debugPinner         *Variable
+	disabledErrors      bool
 }
 
 func (s *evalStack) push(v *Variable) {
@@ -1327,6 +1328,9 @@ func (stack *evalStack) executeOp() {
 
 	case *evalop.PushNewFakeVariable:
 		stack.pushNewFakeVariable(scope, op.Type)
+
+	case *evalop.DisableErrors:
+		stack.disabledErrors = true
 
 	default:
 		stack.err = fmt.Errorf("internal debugger error: unknown eval opcode: %#v", op)

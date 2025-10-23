@@ -17,14 +17,14 @@ import (
 )
 
 var (
-	ErrFuncCallNotAllowed = errors.New("function calls not allowed without using 'call'")
+	ErrFuncCallNotAllowed         = errors.New("function calls not allowed without using 'call'")
 	errFuncCallNotAllowedLitAlloc = errors.New("literal can not be allocated because function calls are not allowed without using 'call'")
 )
 
 const (
-	BreakpointHitCountVarNamePackage   = "delve"
+	DelvePackage                       = "delve"
 	BreakpointHitCountVarName          = "bphitcount"
-	BreakpointHitCountVarNameQualified = BreakpointHitCountVarNamePackage + "." + BreakpointHitCountVarName
+	BreakpointHitCountVarNameQualified = DelvePackage + "." + BreakpointHitCountVarName
 	DebugPinnerFunctionName            = "runtime.debugPinnerV1"
 )
 
@@ -48,8 +48,9 @@ type evalLookup interface {
 type Flags uint8
 
 const (
-	CanSet         Flags = 1 << iota // Assignment is allowed
-	HasDebugPinner                   // runtime.debugPinner is available
+	CanSet              Flags = 1 << iota // Assignment is allowed
+	HasDebugPinner                        // runtime.debugPinner is available
+	BreakpointCondition                   // This expression is used as a breakpoint condition
 )
 
 // CompileAST compiles the expression t into a list of instructions.
@@ -292,6 +293,19 @@ func (ctx *compileCtx) depthCheck(endDepth int) error {
 func (ctx *compileCtx) compileAST(t ast.Expr, toplevel bool) error {
 	switch node := t.(type) {
 	case *ast.CallExpr:
+		if f, ok := node.Fun.(*ast.SelectorExpr); ok && ctx.flags&BreakpointCondition != 0 {
+			const catch = "catch"
+			if ident, ok := f.X.(*ast.Ident); ok && ident.Name == DelvePackage && f.Sel.Name == catch {
+				if !toplevel {
+					return fmt.Errorf("%s.%s can only be used at toplevel", DelvePackage, catch)
+				}
+				if len(node.Args) != 1 {
+					return fmt.Errorf("wrong number of arguments for %s.%s", DelvePackage, catch)
+				}
+				ctx.pushOp(&DisableErrors{})
+				return ctx.compileAST(node.Args[0], false)
+			}
+		}
 		return ctx.compileTypeCastOrFuncCall(node, toplevel)
 
 	case *ast.Ident:
@@ -317,7 +331,7 @@ func (ctx *compileCtx) compileAST(t ast.Expr, toplevel bool) error {
 			case x.Name == "runtime" && node.Sel.Name == "rangeParentOffset":
 				ctx.pushOp(&PushRangeParentOffset{})
 
-			case x.Name == BreakpointHitCountVarNamePackage && node.Sel.Name == BreakpointHitCountVarName:
+			case x.Name == DelvePackage && node.Sel.Name == BreakpointHitCountVarName:
 				ctx.pushOp(&PushBreakpointHitCount{})
 
 			default:
@@ -329,6 +343,9 @@ func (ctx *compileCtx) compileAST(t ast.Expr, toplevel bool) error {
 			if ok {
 				f, ok := ident.X.(*ast.Ident)
 				if ok && f.Name == "runtime" && ident.Sel.Name == "frame" {
+					if len(x.Args) != 1 {
+						return fmt.Errorf("wrong number of arguments for runtime.frame")
+					}
 					switch arg := x.Args[0].(type) {
 					case *ast.BasicLit:
 						fr, err := strconv.ParseInt(arg.Value, 10, 8)
