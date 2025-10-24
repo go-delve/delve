@@ -38,7 +38,7 @@ import (
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc/debuginfod"
 	"github.com/go-delve/delve/pkg/proc/evalop"
-	"github.com/hashicorp/golang-lru/v2"
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 const (
@@ -405,7 +405,7 @@ func FirstPCAfterPrologue(p Process, fn *Function, sameline bool) (uint64, error
 		// Look for the first instruction with the stmt flag set, so that setting a
 		// breakpoint with file:line and with the function name always result on
 		// the same instruction being selected.
-		if pc2, _, _, ok := fn.cu.lineInfo.FirstStmtForLine(fn.Entry, fn.End); ok {
+		if pc2, _, _, ok := fn.cu.lineInfo.FirstStmt(fn.Entry, fn.End); ok {
 			return pc2, nil
 		}
 	}

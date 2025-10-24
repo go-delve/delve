@@ -977,6 +977,33 @@ func TestBreakpointOnFunctionEntry(t *testing.T) {
 	testseq2(t, "testprog", "main.main", []seqTest{{contContinue, 17}})
 }
 
+func TestFirstStmtOptimizedBinaries(t *testing.T) {
+	protest.AllowRecording(t)
+	withTestProcessArgs("multinamedreturns", t, ".", []string{}, protest.EnableOptimization, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		_ = setFunctionBreakpoint(p, t, "main.ManyArgsWithNamedReturns")
+
+		assertNoError(grp.Continue(), t, "Continue()")
+
+		pc := currentPC(p, t)
+
+		fn := p.BinInfo().PCToFunc(pc)
+		if fn == nil {
+			t.Fatal("Could not find function for current PC")
+		}
+		if fn.Name != "main.ManyArgsWithNamedReturns" {
+			t.Fatalf("Expected to be in main.ManyArgsWithNamedReturns, got %s", fn.Name)
+		}
+
+		_, f, l, _ := currentLocation(p, t)
+		if !strings.Contains(f, "multinamedreturns.go") || l != 7 {
+			t.Fatalf("Expected file name to be multinamedreturns.go and line number to be 7, got %s:%d", f, l)
+		}
+		if pc == fn.End-1 {
+			t.Fatalf("PC is at function end (0x%x), expected to be at function entry", pc)
+		}
+	})
+}
+
 func TestProcessReceivesSIGCHLD(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("sigchldprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
