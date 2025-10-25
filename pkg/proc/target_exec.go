@@ -168,7 +168,11 @@ func (grp *TargetGroup) Continue() error {
 				log.Debugf("callInjection protocol on:")
 				for _, th := range threads {
 					regs, _ := th.Registers()
-					log.Debugf("\t%d PC=%#x", th.ThreadID(), regs.PC())
+					if regs != nil {
+						log.Debugf("\t%d PC=%#x", th.ThreadID(), regs.PC())
+					} else {
+						log.Debugf("\t%d (no registers)", th.ThreadID())
+					}
 				}
 			}
 			callInjectionDoneThis, callErrThis := callInjectionProtocol(dbp, trapthread, threads)
