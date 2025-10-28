@@ -69,6 +69,75 @@ func F4() {
 	panic("blah")
 }
 
+var intc, intd int
+
+func swap() {
+	defer func() {
+		intc += 100
+	}()
+	temp := intc
+	intc = intd
+	intd = temp
+}
+
+func unnamedDefer() {
+	intc = -100
+	intd = 100
+	swap()
+	fmt.Println(intc, intd)
+}
+func formula(op string) func(int, int) int {
+	var calc func(int, int) int
+	if op == "add" {
+		calc = func(m int, n int) int {
+			res := m + n
+			return res
+		}
+	} else if op == "mul" {
+		calc = func(m int, n int) int {
+			res := m * n
+			return res
+		}
+	}
+	return calc
+}
+
+func op() int {
+	calc := formula("add")
+	res := calc(10, 20)
+	return res
+}
+
+func assign(bar func()) {
+	bar()
+}
+func testfunc() {
+	intc = 10
+	intd = 20
+}
+
+func dyn() {
+	intc = 0
+	intd = 0
+	assign(testfunc)
+}
+
+func outer() {
+	intc = 40
+        defer swap()
+}
+func nestDefer() {
+        defer outer()
+}
+
+func namedDeferLoop(n int) {
+        for i := 0; i < n; i++ {
+                defer testfunc()
+        }
+        temp := intc
+        intc = intd
+        intd = temp
+}
 func main() {
 	j := 0
 	j += A(2)
@@ -76,6 +145,12 @@ func main() {
 	j += first(6)
 	j += callme(2)
 	fmt.Println(j)
+	unnamedDefer()
+	nestDefer()
+	namedDeferLoop(2)
 	F0()
+	ans := op()
+	fmt.Println(ans)
+	dyn()
 
 }

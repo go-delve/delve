@@ -23,7 +23,7 @@ dlv trace [package] regexp [flags]
 ```
       --ebpf               Trace using eBPF (experimental).
   -e, --exec string        Binary file to exec and trace.
-      --follow-calls int   Trace all children of the function to the required depth
+      --follow-calls int   Trace all children of the function to the required depth. Trace also supports defer functions and cases where functions are dynamically returned and passed as parameters.
   -h, --help               help for trace
       --output string      Output path for the binary.
   -p, --pid int            Pid to attach to.

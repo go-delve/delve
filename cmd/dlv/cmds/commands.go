@@ -369,7 +369,7 @@ only see the output of the trace operations you can redirect stdout.`,
 	must(traceCommand.RegisterFlagCompletionFunc("stack", cobra.NoFileCompletions))
 	traceCommand.Flags().String("output", "", "Output path for the binary.")
 	must(traceCommand.MarkFlagFilename("output"))
-	traceCommand.Flags().IntVarP(&traceFollowCalls, "follow-calls", "", 0, "Trace all children of the function to the required depth")
+	traceCommand.Flags().IntVarP(&traceFollowCalls, "follow-calls", "", 0, "Trace all children of the function to the required depth. Trace also supports defer functions and cases where functions are dynamically returned and passed as parameters.")
 	rootCommand.AddCommand(traceCommand)
 
 	coreCommand := &cobra.Command{

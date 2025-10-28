@@ -806,28 +806,65 @@ func matchFunctions(t *testing.T, funcs []string, expected []string, depth int) 
 func TestTraceFollowCallsCommand(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestClient2("testtracefns", t, func(c service.Client) {
-		depth := 3
-		functions, err := c.ListFunctions("main.A", depth)
-		assertNoError(err, t, "ListFunctions()")
-		expected := []string{"main.A", "main.B", "main.C", "main.D"}
-		matchFunctions(t, functions, expected, depth)
+		testCases := []struct {
+			funcName string
+			depth    int
+			expected []string
+		}{
+			{
+				funcName: "main.A",
+				depth:    3,
+				expected: []string{"main.A", "main.B", "main.C", "main.D"},
+			},
+			{
+				funcName: "main.first",
+				depth:    3,
+				expected: []string{"main.first", "main.second"},
+			},
+			{
+				funcName: "main.callme",
+				depth:    4,
+				expected: []string{"main.callme", "main.callme2", "main.callmed", "main.callmee"},
+			},
+			{
+				funcName: "main.F0",
+				depth:    6,
+				expected: []string{"main.F0", "main.F0.func1", "main.F1", "main.F2", "main.F3", "main.F4", "runtime.deferreturn", "runtime.gopanic", "runtime.gorecover"},
+			},
+			{
+				funcName: "main.swap",
+				depth:    3,
+				expected: []string{"main.swap", "main.swap.func1", "runtime.deferreturn"},
+			},
+			{
+				funcName: "main.nestDefer",
+				depth:    7,
+				expected: []string{"main.nestDefer", "runtime.deferreturn", "main.outer", "main.swap", "main.swap.func1"},
+			},
+			{
+				funcName: "main.namedDeferLoop",
+				depth:    3,
+				expected: []string{"main.namedDeferLoop", "runtime.deferreturn", "main.testfunc"},
+			},
+			{
+				funcName: "main.op",
+				depth:    3,
+				expected: []string{"main.formula", "main.op", "main.formula.func1"},
+			},
+			{
+				funcName: "main.dyn",
+				depth:    3,
+				expected: []string{"main.assign", "main.dyn", "main.testfunc"},
+			},
+		}
 
-		functions, err = c.ListFunctions("main.first", depth)
-		assertNoError(err, t, "ListFunctions()")
-		expected = []string{"main.first", "main.second"}
-		matchFunctions(t, functions, expected, depth)
-
-		depth = 4
-		functions, err = c.ListFunctions("main.callme", depth)
-		assertNoError(err, t, "ListFunctions()")
-		expected = []string{"main.callme", "main.callme2", "main.callmed", "main.callmee"}
-		matchFunctions(t, functions, expected, depth)
-
-		depth = 6
-		functions, err = c.ListFunctions("main.F0", depth)
-		assertNoError(err, t, "ListFunctions()")
-		expected = []string{"main.F0", "main.F0.func1", "main.F1", "main.F2", "main.F3", "main.F4", "runtime.deferreturn", "runtime.gopanic", "runtime.gorecover"}
-		matchFunctions(t, functions, expected, depth)
+		for _, tc := range testCases {
+			t.Run(tc.funcName, func(t *testing.T) {
+				functions, err := c.ListFunctions(tc.funcName, tc.depth)
+				assertNoError(err, t, "ListFunctions()")
+				matchFunctions(t, functions, tc.expected, tc.depth)
+			})
+		}
 	})
 }
 
