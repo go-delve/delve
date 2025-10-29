@@ -53,7 +53,7 @@ val targets = arrayOf(
 
         "linux/ppc64le/1.25",
 
-        // "linux/riscv64/1.25", // needs agent
+        "linux/riscv64/1.25",
 
         "windows/amd64/1.25",
         "windows/amd64/tip",
@@ -224,11 +224,15 @@ class TestBuild(val os: String, val arch: String, val version: String, buildId: 
                         dockerArch
                     }
                 }
+                val ubuntuVersion = when (arch) {
+                    "riscv64" -> "24.04"
+                    else -> "20.04"
+                }
                 dockerCommand {
                     name = "Pull Ubuntu"
                     commandType = other {
                         subCommand = "pull"
-                        commandArgs = "$dockerArch/ubuntu:20.04"
+                        commandArgs = "$dockerArch/ubuntu:$ubuntuVersion"
                     }
                 }
                 dockerCommand {
@@ -241,7 +245,7 @@ class TestBuild(val os: String, val arch: String, val version: String, buildId: 
                         --env CI=true
                         --privileged
                         --platform linux/$dockerPlatformArch
-                        $dockerArch/ubuntu:20.04
+                        $dockerArch/ubuntu:$ubuntuVersion
                         /delve/_scripts/test_linux.sh ${"go$version"} $arch
                     """.trimIndent()
                     }

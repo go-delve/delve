@@ -84,6 +84,8 @@ func (it *stackIterator) readSigtrampgoContext() (*op.DwarfRegisters, error) {
 			return sigtrampContextLinuxARM64(it.mem, addr)
 		case "loong64":
 			return sigtrampContextLinuxLOONG64(it.mem, addr)
+		case "riscv64":
+			return sigtrampContextLinuxRISCV64(it.mem, addr)
 		default:
 			return nil, errors.New("not implemented")
 		}
@@ -323,6 +325,7 @@ func sigtrampContextLinuxARM64(mem MemoryReader, addr uint64) (*op.DwarfRegister
 	dregs[regnum.ARM64_PC] = op.DwarfRegisterFromUint64(regs.pc)
 	return op.NewDwarfRegisters(0, dregs, binary.LittleEndian, regnum.ARM64_PC, regnum.ARM64_SP, regnum.ARM64_BP, regnum.ARM64_LR), nil
 }
+
 func sigtrampContextLinuxLOONG64(mem MemoryReader, addr uint64) (*op.DwarfRegisters, error) {
 	//The struct get from src/runtime/defs_linux_loong64.go
 	type usigset struct {
@@ -366,6 +369,114 @@ func sigtrampContextLinuxLOONG64(mem MemoryReader, addr uint64) (*op.DwarfRegist
 	}
 	dregs[regnum.LOONG64_PC] = op.DwarfRegisterFromUint64(regs.sc_pc)
 	return op.NewDwarfRegisters(0, dregs, binary.LittleEndian, regnum.LOONG64_PC, regnum.LOONG64_SP, regnum.LOONG64_FP, regnum.LOONG64_LR), nil
+}
+
+func sigtrampContextLinuxRISCV64(mem MemoryReader, addr uint64) (*op.DwarfRegisters, error) {
+	// Structs come from src/runtime/defs_linux_riscv64.go
+	type user_regs_struct struct {
+		pc  uint64
+		ra  uint64
+		sp  uint64
+		gp  uint64
+		tp  uint64
+		t0  uint64
+		t1  uint64
+		t2  uint64
+		s0  uint64
+		s1  uint64
+		a0  uint64
+		a1  uint64
+		a2  uint64
+		a3  uint64
+		a4  uint64
+		a5  uint64
+		a6  uint64
+		a7  uint64
+		s2  uint64
+		s3  uint64
+		s4  uint64
+		s5  uint64
+		s6  uint64
+		s7  uint64
+		s8  uint64
+		s9  uint64
+		s10 uint64
+		s11 uint64
+		t3  uint64
+		t4  uint64
+		t5  uint64
+		t6  uint64
+	}
+
+	type user_fpregs_struct struct {
+		f [528]byte
+	}
+
+	type usigset struct {
+		us_x__val [16]uint64
+	}
+
+	type sigcontext struct {
+		sc_regs   user_regs_struct
+		sc_fpregs user_fpregs_struct
+	}
+
+	type stackt struct {
+		ss_sp    *byte
+		ss_flags int32
+		ss_size  uintptr
+	}
+
+	type ucontext struct {
+		uc_flags     uint64
+		uc_link      *ucontext
+		uc_stack     stackt
+		uc_sigmask   usigset
+		uc_x__unused [0]uint8
+		uc_pad_cgo_0 [8]byte
+		uc_mcontext  sigcontext
+	}
+
+	buf := make([]byte, unsafe.Sizeof(ucontext{}))
+	_, err := mem.ReadMemory(buf, addr)
+	if err != nil {
+		return nil, err
+	}
+	regs := &(((*ucontext)(unsafe.Pointer(&buf[0]))).uc_mcontext)
+	dregs := make([]*op.DwarfRegister, regnum.RISCV64MaxRegNum()+1)
+	dregs[regnum.RISCV64_PC] = op.DwarfRegisterFromUint64(regs.sc_regs.pc)
+	dregs[regnum.RISCV64_LR] = op.DwarfRegisterFromUint64(regs.sc_regs.ra)
+	dregs[regnum.RISCV64_SP] = op.DwarfRegisterFromUint64(regs.sc_regs.sp)
+	dregs[regnum.RISCV64_GP] = op.DwarfRegisterFromUint64(regs.sc_regs.gp)
+	dregs[regnum.RISCV64_TP] = op.DwarfRegisterFromUint64(regs.sc_regs.tp)
+	dregs[regnum.RISCV64_T0] = op.DwarfRegisterFromUint64(regs.sc_regs.t0)
+	dregs[regnum.RISCV64_T1] = op.DwarfRegisterFromUint64(regs.sc_regs.t1)
+	dregs[regnum.RISCV64_T2] = op.DwarfRegisterFromUint64(regs.sc_regs.t2)
+	dregs[regnum.RISCV64_FP] = op.DwarfRegisterFromUint64(regs.sc_regs.s0)
+	dregs[regnum.RISCV64_S1] = op.DwarfRegisterFromUint64(regs.sc_regs.s1)
+	dregs[regnum.RISCV64_A0] = op.DwarfRegisterFromUint64(regs.sc_regs.a0)
+	dregs[regnum.RISCV64_A1] = op.DwarfRegisterFromUint64(regs.sc_regs.a1)
+	dregs[regnum.RISCV64_A2] = op.DwarfRegisterFromUint64(regs.sc_regs.a2)
+	dregs[regnum.RISCV64_A3] = op.DwarfRegisterFromUint64(regs.sc_regs.a3)
+	dregs[regnum.RISCV64_A4] = op.DwarfRegisterFromUint64(regs.sc_regs.a4)
+	dregs[regnum.RISCV64_A5] = op.DwarfRegisterFromUint64(regs.sc_regs.a5)
+	dregs[regnum.RISCV64_A6] = op.DwarfRegisterFromUint64(regs.sc_regs.a6)
+	dregs[regnum.RISCV64_A7] = op.DwarfRegisterFromUint64(regs.sc_regs.a7)
+	dregs[regnum.RISCV64_S2] = op.DwarfRegisterFromUint64(regs.sc_regs.s2)
+	dregs[regnum.RISCV64_S3] = op.DwarfRegisterFromUint64(regs.sc_regs.s3)
+	dregs[regnum.RISCV64_S4] = op.DwarfRegisterFromUint64(regs.sc_regs.s4)
+	dregs[regnum.RISCV64_S5] = op.DwarfRegisterFromUint64(regs.sc_regs.s5)
+	dregs[regnum.RISCV64_S6] = op.DwarfRegisterFromUint64(regs.sc_regs.s6)
+	dregs[regnum.RISCV64_S7] = op.DwarfRegisterFromUint64(regs.sc_regs.s7)
+	dregs[regnum.RISCV64_S8] = op.DwarfRegisterFromUint64(regs.sc_regs.s8)
+	dregs[regnum.RISCV64_S9] = op.DwarfRegisterFromUint64(regs.sc_regs.s9)
+	dregs[regnum.RISCV64_S10] = op.DwarfRegisterFromUint64(regs.sc_regs.s10)
+	dregs[regnum.RISCV64_S11] = op.DwarfRegisterFromUint64(regs.sc_regs.s11)
+	dregs[regnum.RISCV64_T3] = op.DwarfRegisterFromUint64(regs.sc_regs.t3)
+	dregs[regnum.RISCV64_T4] = op.DwarfRegisterFromUint64(regs.sc_regs.t4)
+	dregs[regnum.RISCV64_T5] = op.DwarfRegisterFromUint64(regs.sc_regs.t5)
+	dregs[regnum.RISCV64_T6] = op.DwarfRegisterFromUint64(regs.sc_regs.t6)
+	return op.NewDwarfRegisters(0, dregs, binary.LittleEndian, regnum.RISCV64_PC, regnum.RISCV64_SP, regnum.RISCV64_FP, regnum.RISCV64_LR), nil
 }
 
 func sigtrampContextFreebsdAMD64(mem MemoryReader, addr uint64) (*op.DwarfRegisters, error) {

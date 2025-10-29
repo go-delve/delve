@@ -38,11 +38,13 @@ func RISCV64Arch(goos string) *Arch {
 		usesLR:                           true,
 		PCRegNum:                         regnum.RISCV64_PC,
 		SPRegNum:                         regnum.RISCV64_SP,
+		ContextRegNum:                    regnum.RISCV64_S10,
 		asmRegisters:                     riscv64AsmRegisters,
 		RegisterNameToDwarf:              nameToDwarfFunc(regnum.RISCV64NameToDwarf),
 		RegnumToString:                   regnum.RISCV64ToName,
 		debugCallMinStackSize:            288,         // TODO
 		maxRegArgBytes:                   16*8 + 16*8, // 16 int argument registers plus 16 float argument registers
+		argumentRegs:                     []int{regnum.RISCV64_A0, regnum.RISCV64_A1, regnum.RISCV64_A2},
 	}
 }
 
@@ -73,9 +75,9 @@ func riscv64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Bina
 		// here).
 
 		return &frame.FrameContext{
-			RetAddrReg: regnum.RISCV64_PC,
+			RetAddrReg: regnum.RISCV64_LR,
 			Regs: map[uint64]frame.DWRule{
-				regnum.RISCV64_PC: {
+				regnum.RISCV64_LR: {
 					Rule:   frame.RuleOffset,
 					Offset: int64(-a.PtrSize()),
 				},
@@ -112,15 +114,11 @@ func riscv64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Bina
 		fctxt.CFA = rule
 	}
 
-	// We assume that FP is the frame pointer and we want to keep it updated,
-	// so that we can use it to unwind the stack even when we encounter frames
-	// without descriptor entries.
-	// If there isn't a rule already we emit one.
-	if fctxt.Regs[regnum.RISCV64_FP].Rule == frame.RuleUndefined {
-		fctxt.Regs[regnum.RISCV64_FP] = frame.DWRule{
-			Rule:   frame.RuleFramePointer,
+	if fctxt.CFA.Rule == frame.RuleUndefined {
+		fctxt.CFA = frame.DWRule{
+			Rule:   frame.RuleCFA,
 			Reg:    regnum.RISCV64_FP,
-			Offset: 0,
+			Offset: int64(2 * a.PtrSize()),
 		}
 	}
 
@@ -136,7 +134,6 @@ func riscv64FixFrameUnwindContext(fctxt *frame.FrameContext, pc uint64, bi *Bina
 }
 
 const riscv64cgocallSPOffsetSaveSlot = 0x8
-const riscv64prevG0schedSPOffsetSaveSlot = 0x10
 
 func riscv64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) bool {
 	if it.frame.Current.Fn == nil {
@@ -150,12 +147,97 @@ func riscv64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) boo
 		return false
 	}
 	switch it.frame.Current.Fn.Name {
-	case "runtime.cgocallback_gofunc", "runtime.cgocallback", "runtime.asmcgocall", "crosscall2":
-		// cgostacktrace is broken on riscv64, so do nothing here.
-
-	case "runtime.goexit", "runtime.rt0_go", "runtime.mcall":
+	case "runtime.goexit", "runtime.rt0_go":
 		// Look for "top of stack" functions.
 		it.atend = true
+		return true
+
+	case "runtime.mcall":
+		if it.systemstack && it.g != nil {
+			if err := it.switchToGoroutineStack(); err != nil {
+				it.err = err
+				return false
+			}
+			return true
+		}
+		it.atend = true
+		return true
+
+	case "runtime.asmcgocall":
+		if !it.systemstack {
+			return false
+		}
+
+		// This function is called by a goroutine to execute a C function and
+		// switches from the goroutine stack to the system stack.
+		// Since we are unwinding the stack from callee to caller we have to switch
+		// from the system stack to the goroutine stack.
+		oldsp := it.regs.SP()
+		off, _ := readIntRaw(it.mem, uint64(oldsp+riscv64cgocallSPOffsetSaveSlot), int64(it.bi.Arch.PtrSize()))
+		newsp := uint64(int64(it.stackhi) - off)
+
+		// The runtime.asmcgocall prologue contains: addi sp, sp, -8,
+		// hence we require newsp + 8 at this point
+		it.regs.Reg(it.regs.SPRegNum).Uint64Val = newsp + 8
+
+		// runtime.asmcgocall can also be called from inside the system stack,
+		// in that case no stack switch actually happens
+		if it.regs.SP() == oldsp {
+			return false
+		}
+
+		it.top = false
+		it.systemstack = false
+		// The return value is stored in the LR register which is saved at -8(SP).
+		addrret := uint64(int64(it.regs.SP()) - int64(it.bi.Arch.PtrSize()))
+		it.frame.Ret, _ = readUintRaw(it.mem, addrret, int64(it.bi.Arch.PtrSize()))
+		it.pc = it.frame.Ret
+		return true
+
+	case "runtime.cgocallback_gofunc", "runtime.cgocallback":
+		// For a detailed description of how this works read the long comment at
+		// the start of $GOROOT/src/runtime/cgocall.go and the source code of
+		// runtime.cgocallback_gofunc in $GOROOT/src/runtime/asm_riscv64.s
+		//
+		// When a C functions calls back into go it will eventually call into
+		// runtime.cgocallback_gofunc which is the function that does the stack
+		// switch from the system stack back into the goroutine stack
+		// Since we are going backwards on the stack here we see the transition
+		// as goroutine stack -> system stack.
+		if it.top || it.systemstack {
+			return false
+		}
+
+		it.loadG0SchedSP()
+		if it.g0_sched_sp <= 0 {
+			return false
+		}
+		// entering the system stack
+		it.regs.Reg(it.regs.SPRegNum).Uint64Val = it.g0_sched_sp
+		// reads the previous value of g0.sched.sp that runtime.cgocallback_gofunc saved on the stack
+		it.g0_sched_sp, _ = readUintRaw(it.mem, it.regs.SP()+riscv64cgocallSPOffsetSaveSlot, int64(it.bi.Arch.PtrSize()))
+		it.top = false
+		callFrameRegs, ret, retaddr := it.advanceRegs()
+		frameOnSystemStack := it.newStackframe(ret, retaddr)
+		it.pc = frameOnSystemStack.Ret
+		it.regs = callFrameRegs
+		it.systemstack = true
+		return true
+
+	case "crosscall2":
+		// The offsets get from runtime/cgo/asm_riscv64.s
+		newsp, _ := readUintRaw(it.mem, it.regs.SP()+8*29, int64(it.bi.Arch.PtrSize()))
+		newbp, _ := readUintRaw(it.mem, it.regs.SP()+8*4, int64(it.bi.Arch.PtrSize()))
+		newlr, _ := readUintRaw(it.mem, it.regs.SP()+8*16, int64(it.bi.Arch.PtrSize()))
+		if it.regs.Reg(it.regs.BPRegNum) != nil {
+			it.regs.Reg(it.regs.BPRegNum).Uint64Val = newbp
+		} else {
+			reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+8*4)
+			it.regs.AddReg(it.regs.BPRegNum, reg)
+		}
+		it.regs.Reg(it.regs.LRRegNum).Uint64Val = newlr
+		it.regs.Reg(it.regs.SPRegNum).Uint64Val = newsp
+		it.pc = newlr
 		return true
 
 	case "runtime.mstart":
@@ -180,78 +262,15 @@ func riscv64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) boo
 			return false
 		}
 		return true
-	default:
-		if it.systemstack && it.top && it.g != nil && strings.HasPrefix(it.frame.Current.Fn.Name, "runtime.") && it.frame.Current.Fn.Name != "runtime.throw" && it.frame.Current.Fn.Name != "runtime.fatalthrow" {
-			// The runtime switches to the system stack in multiple places.
-			// This usually happens through a call to runtime.systemstack but there
-			// are functions that switch to the system stack manually (for example
-			// runtime.morestack).
-			// Since we are only interested in printing the system stack for cgo
-			// calls we switch directly to the goroutine stack if we detect that the
-			// function at the top of the stack is a runtime function.
+
+	case "runtime.newstack", "runtime.systemstack":
+		if it.systemstack && it.g != nil {
 			if err := it.switchToGoroutineStack(); err != nil {
 				it.err = err
 				return false
 			}
 			return true
 		}
-	}
-
-	fn := it.bi.PCToFunc(it.frame.Ret)
-	if fn == nil {
-		return false
-	}
-
-	switch fn.Name {
-	case "runtime.asmcgocall":
-		if !it.systemstack {
-			return false
-		}
-
-		// This function is called by a goroutine to execute a C function and
-		// switches from the goroutine stack to the system stack.
-		// Since we are unwinding the stack from callee to caller we have to switch
-		// from the system stack to the goroutine stack.
-		off, _ := readIntRaw(it.mem, uint64(callFrameRegs.SP()+riscv64cgocallSPOffsetSaveSlot), int64(it.bi.Arch.PtrSize()))
-		oldsp := callFrameRegs.SP()
-		newsp := uint64(int64(it.stackhi) - off)
-
-		// runtime.asmcgocall can also be called from inside the system stack,
-		// in that case no stack switch actually happens
-		if newsp == oldsp {
-			return false
-		}
-
-		it.systemstack = false
-		callFrameRegs.Reg(callFrameRegs.SPRegNum).Uint64Val = uint64(int64(newsp))
-
-		return false
-
-	case "runtime.cgocallback_gofunc":
-		// For a detailed description of how this works read the long comment at
-		// the start of $GOROOT/src/runtime/cgocall.go and the source code of
-		// runtime.cgocallback_gofunc in $GOROOT/src/runtime/asm_riscv64.s
-		//
-		// When a C functions calls back into go it will eventually call into
-		// runtime.cgocallback_gofunc which is the function that does the stack
-		// switch from the system stack back into the goroutine stack
-		// Since we are going backwards on the stack here we see the transition
-		// as goroutine stack -> system stack.
-		if it.systemstack {
-			return false
-		}
-
-		it.loadG0SchedSP()
-		if it.g0_sched_sp <= 0 {
-			return false
-		}
-
-		// entering the system stack
-		callFrameRegs.Reg(callFrameRegs.SPRegNum).Uint64Val = it.g0_sched_sp
-
-		// reads the previous value of g0.sched.sp that runtime.cgocallback_gofunc saved on the stack
-		it.g0_sched_sp, _ = readUintRaw(it.mem, uint64(callFrameRegs.SP()+riscv64prevG0schedSPOffsetSaveSlot), int64(it.bi.Arch.PtrSize()))
-		it.systemstack = true
 		return false
 	}
 

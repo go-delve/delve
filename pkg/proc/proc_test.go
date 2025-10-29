@@ -3073,7 +3073,6 @@ func TestCgoStacktrace(t *testing.T) {
 	skipOn(t, "broken - cgo stacktraces", "386")
 	skipOn(t, "broken - cgo stacktraces", "windows", "arm64")
 	skipOn(t, "broken - cgo stacktraces", "linux", "ppc64le")
-	skipOn(t, "broken - cgo stacktraces", "linux", "riscv64")
 	protest.MustHaveCgo(t)
 
 	// Tests that:
@@ -3753,7 +3752,6 @@ func TestIssue951(t *testing.T) {
 
 func TestDWZCompression(t *testing.T) {
 	skipOn(t, "broken", "ppc64le")
-	skipOn(t, "broken", "riscv64")
 	// If dwz is not available in the system, skip this test
 	if _, err := exec.LookPath("dwz"); err != nil {
 		t.Skip("dwz not installed")
@@ -4351,7 +4349,6 @@ func TestCgoStacktrace2(t *testing.T) {
 	skipOn(t, "broken - cgo stacktraces", "darwin", "arm64")
 	skipOn(t, "broken - cgo stacktraces", "windows", "arm64")
 	skipOn(t, "broken", "ppc64le")
-	skipOn(t, "broken", "riscv64")
 	protest.MustHaveCgo(t)
 	// If a panic happens during cgo execution the stacktrace should show the C
 	// function that caused the problem.

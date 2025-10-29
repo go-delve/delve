@@ -1295,6 +1295,10 @@ func TestCapsLock(t *testing.T) {
 		args = append([]string{"-buildtags", "exp.linuxppc64le"}, args...)
 	}
 
+	if goos == "linux" && goarch == "riscv64" {
+		args = append([]string{"-buildtags", "exp.linuxriscv64"}, args...)
+	}
+
 	cmd := exec.Command("capslock", args...)
 	cmd.Dir = protest.ProjectRoot()
 	cmd.Env = append(os.Environ(), fmt.Sprintf("GOOS=%s", goos), fmt.Sprintf("GOARCH=%s", goarch))
