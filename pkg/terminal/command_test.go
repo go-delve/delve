@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"bytes"
+	"cmp"
 	"flag"
 	"fmt"
 	"net"
@@ -1626,6 +1627,63 @@ func TestDisplay(t *testing.T) {
 	})
 }
 
+// compareBreakpoints compares two lists of breakpoints, considering only
+// the fields that are preserved during save/restore. It ignores runtime state like
+// IDs, names, addresses, and hit counts.
+func compareBreakpoints(t *testing.T, before, after []*api.Breakpoint) {
+	t.Helper()
+
+	// Sort both lists by File:Line for stable comparison
+	// We mainly need this function for Tracepoints.
+	sortBps := func(bps []*api.Breakpoint) []*api.Breakpoint {
+		sorted := make([]*api.Breakpoint, len(bps))
+		copy(sorted, bps)
+		slices.SortFunc(sorted, func(a, b *api.Breakpoint) int {
+			if a.File != b.File {
+				return strings.Compare(a.File, b.File)
+			}
+			return cmp.Compare(a.Line, b.Line)
+		})
+		return sorted
+	}
+
+	beforeSorted := sortBps(before)
+	afterSorted := sortBps(after)
+
+	if len(beforeSorted) != len(afterSorted) {
+		t.Errorf("Breakpoint count mismatch: before=%d, after=%d", len(beforeSorted), len(afterSorted))
+		return
+	}
+
+	for i := range beforeSorted {
+		b := beforeSorted[i]
+		a := afterSorted[i]
+
+		if b.File != a.File {
+			t.Errorf("Breakpoint %d: File mismatch: before=%q, after=%q", i, b.File, a.File)
+		}
+		if b.Line != a.Line {
+			t.Errorf("Breakpoint %d: Line mismatch: before=%d, after=%d", i, b.Line, a.Line)
+		}
+
+		if b.Tracepoint != a.Tracepoint {
+			t.Errorf("Breakpoint %d: Tracepoint mismatch: before=%v, after=%v", i, b.Tracepoint, a.Tracepoint)
+		}
+		if b.Cond != a.Cond {
+			t.Errorf("Breakpoint %d: Cond mismatch: before=%q, after=%q", i, b.Cond, a.Cond)
+		}
+		if b.HitCond != a.HitCond {
+			t.Errorf("Breakpoint %d: HitCond mismatch: before=%q, after=%q", i, b.HitCond, a.HitCond)
+		}
+		if b.HitCondPerG != a.HitCondPerG {
+			t.Errorf("Breakpoint %d: HitCondPerG mismatch: before=%v, after=%v", i, b.HitCondPerG, a.HitCondPerG)
+		}
+		if b.Disabled != a.Disabled {
+			t.Errorf("Breakpoint %d: Disabled mismatch: before=%v, after=%v", i, b.Disabled, a.Disabled)
+		}
+	}
+}
+
 func TestBreakpointSave(t *testing.T) {
 	test.AllowRecording(t)
 	tests := []struct {
@@ -1664,11 +1722,16 @@ func TestBreakpointSave(t *testing.T) {
 		},
 	}
 	for _, tc := range tests {
-		withTestTerminal("break", t, func(term *FakeTerminal) {
-			t.Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
+			withTestTerminal("break", t, func(term *FakeTerminal) {
 				for _, cmd := range tc.breakpointCmds {
 					term.MustExec(cmd)
 				}
+
+				// Capture breakpoints before save
+				bpsBefore, err := term.client.ListBreakpoints(false)
+				assertNoError(t, err, "ListBreakpoints before save")
+
 				f, err := os.CreateTemp("", "test*.txt")
 				if err != nil {
 					t.Fatalf("Failed to create temp file: %v", err)
@@ -1679,9 +1742,55 @@ func TestBreakpointSave(t *testing.T) {
 				term.MustExec("breakpoints -save " + f.Name())
 				term.MustExec("clearall")
 				term.MustExec("source " + f.Name())
+
+				// Capture breakpoints after restore
+				bpsAfter, err := term.client.ListBreakpoints(false)
+				assertNoError(t, err, "ListBreakpoints after restore")
+
+				// Compare breakpoints
+				compareBreakpoints(t, bpsBefore, bpsAfter)
 			})
 		})
 	}
+
+	// Test case for detecting modified/corrupted save files. It is the same
+	// idea as in the other tests but we add an additional breakpoint after
+	// sourcing the file
+	t.Run("detect additional breakpoint", func(t *testing.T) {
+		withTestTerminal("break", t, func(term *FakeTerminal) {
+			term.MustExec("break main.main")
+			term.MustExec("break _fixtures/break.go:4")
+
+			bpsBefore, err := term.client.ListBreakpoints(false)
+			assertNoError(t, err, "ListBreakpoints before save")
+
+			f, err := os.CreateTemp("", "test*.txt")
+			if err != nil {
+				t.Fatalf("Failed to create temp file: %v", err)
+			}
+			f.Close()
+			defer os.Remove(f.Name())
+
+			term.MustExec("breakpoints -save " + f.Name())
+			term.MustExec("clearall")
+			term.MustExec("source " + f.Name())
+
+			// Inject an extra breakpoint after sourcing
+			term.MustExec("break _fixtures/break.go:6")
+
+			bpsAfter, err := term.client.ListBreakpoints(false)
+			assertNoError(t, err, "ListBreakpoints after restore")
+
+			// Verify that we detected the injected breakpoint
+			// We expect 3 breakpoints (2 original + 1 injected) instead of 2
+			if len(bpsBefore) == len(bpsAfter) {
+				t.Errorf("Failed to detect injected breakpoint: before=%d, after=%d", len(bpsBefore), len(bpsAfter))
+			}
+			if len(bpsAfter) != len(bpsBefore)+1 {
+				t.Errorf("Unexpected breakpoint count after injection: expected=%d, got=%d", len(bpsBefore)+1, len(bpsAfter))
+			}
+		})
+	})
 }
 
 func TestBreakPointFailWithCond(t *testing.T) {
