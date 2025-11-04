@@ -3,6 +3,7 @@ package main_test
 import (
 	"bufio"
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -10,6 +11,7 @@ import (
 	"go/types"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/user"
@@ -1455,6 +1457,9 @@ func TestCapsLock(t *testing.T) {
 	if err != nil {
 		t.Skip("capslock not installed")
 	}
+	if !isLatestMinor(t) {
+		t.Skip("not on latest minor")
+	}
 
 	// Determine the expected output file based on current GOOS and GOARCH
 	goos := runtime.GOOS
@@ -1583,4 +1588,44 @@ func TestDeadcodeEliminated(t *testing.T) {
 	if strings.Contains(string(buf), "MethodByName") {
 		t.Fatal("output of go tool nm contains MethodByName")
 	}
+}
+
+func isLatestMinor(t *testing.T) bool {
+	t.Helper()
+	resp, err := http.Get("https://go.dev/dl/?mode=json&include=all")
+	if err != nil {
+		t.Logf("Error fetching versions: %v\n", err)
+		return false
+	}
+	defer resp.Body.Close()
+
+	var data []struct {
+		Version string `json:"version"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		t.Logf("Error decoding JSON: %v\n", err)
+		return false
+	}
+
+	maxMinor := 0
+	for _, item := range data {
+		ver, ok := goversion.Parse(item.Version)
+		if !ok {
+			continue
+		}
+		if ver.Major != 1 {
+			t.Fatalf("unsupported major version found: %s", item.Version)
+		}
+		if ver.Minor > maxMinor {
+			maxMinor = ver.Minor
+		}
+	}
+
+	ver, ok := goversion.Parse(runtime.Version())
+	if !ok {
+		return false
+	}
+
+	return ver.Minor == maxMinor
 }

@@ -685,7 +685,7 @@ func (it *stackIterator) loadG0SchedSP() {
 // Defer represents one deferred call
 type Defer struct {
 	DwrapPC uint64 // PC of the deferred function or, in Go 1.17+ a wrapper to it
-	DeferPC uint64 // PC address of instruction that added this defer
+	deferPC uint64 // PC address of instruction that added this defer
 	SP      uint64 // Value of SP register when this function was deferred (this field gets adjusted when the stack is moved to match the new stack space)
 	link    *Defer // Next deferred function
 	argSz   int64  // Always 0 in Go >=1.17
@@ -766,9 +766,12 @@ func (d *Defer) load(canrecur bool) {
 		}
 	}
 
-	d.DeferPC, _ = constant.Uint64Val(v.fieldVariable("pc").Value) // +rtype uintptr
-	d.SP, _ = constant.Uint64Val(v.fieldVariable("sp").Value)      // +rtype uintptr
-	sizVar := v.fieldVariable("siz")                               // +rtype -opt int32
+	const pcField = "pc"
+	if pcvar := v.fieldVariable(pcField); pcvar != nil {
+		d.deferPC, _ = constant.Uint64Val(pcvar.Value)
+	}
+	d.SP, _ = constant.Uint64Val(v.fieldVariable("sp").Value) // +rtype uintptr
+	sizVar := v.fieldVariable("siz")                          // +rtype -opt int32
 	if sizVar != nil {
 		// In Go <1.18, siz stores the number of bytes of
 		// defer arguments following the defer record. In Go
@@ -890,12 +893,25 @@ func (d *Defer) EvalScope(t *Target, thread Thread) (*EvalScope, error) {
 func (d *Defer) DeferredFunc(p *Target) (file string, line int, fn *Function) {
 	bi := p.BinInfo()
 	fn = bi.PCToFunc(d.DwrapPC)
-	fn = p.dwrapUnwrap(fn)
+	fn, _ = p.dwrapUnwrap(fn)
 	if fn == nil {
 		return "", 0, nil
 	}
 	file, line = bi.EntryLineForFunc(fn)
 	return file, line, fn
+}
+
+// DeferredFrom returns the location where the defer was created, on Go 1.26
+// and later it uses the wrapper function to determine this.
+func (d *Defer) DeferredFrom(p *Target) (file string, line int, fn *Function) {
+	bi := p.BinInfo()
+	if d.deferPC != 0 {
+		return bi.PCToLine(d.deferPC)
+	}
+	// Go 1.26 or later
+	dfn := bi.PCToFunc(d.DwrapPC)
+	_, loc := p.dwrapUnwrap(dfn)
+	return loc.File, loc.Line, nil
 }
 
 func ruleString(rule *frame.DWRule, regnumToString func(uint64) string) string {

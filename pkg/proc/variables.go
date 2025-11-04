@@ -541,7 +541,7 @@ func (g *G) Go() Location {
 // StartLoc returns the starting location of the goroutine.
 func (g *G) StartLoc(tgt *Target) Location {
 	fn := g.variable.bi.PCToFunc(g.StartPC)
-	fn = tgt.dwrapUnwrap(fn)
+	fn, _ = tgt.dwrapUnwrap(fn)
 	if fn == nil {
 		return Location{PC: g.StartPC}
 	}

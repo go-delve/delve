@@ -2015,12 +2015,12 @@ func (d *Debugger) convertDefers(defers []*proc.Defer) []api.Defer {
 	r := make([]api.Defer, len(defers))
 	for i := range defers {
 		ddf, ddl, ddfn := defers[i].DeferredFunc(d.target.Selected)
-		drf, drl, drfn := d.target.Selected.BinInfo().PCToLine(defers[i].DeferPC)
+		drf, drl, drfn := defers[i].DeferredFrom(d.target.Selected)
 
 		if defers[i].Unreadable != nil {
 			r[i].Unreadable = defers[i].Unreadable.Error()
 		} else {
-			var entry = defers[i].DeferPC
+			var entry uint64
 			if ddfn != nil {
 				entry = ddfn.Entry
 			}
@@ -2032,7 +2032,6 @@ func (d *Debugger) convertDefers(defers []*proc.Defer) []api.Defer {
 					Fn:   ddfn,
 				}),
 				DeferLoc: api.ConvertLocation(proc.Location{
-					PC:   defers[i].DeferPC,
 					File: drf,
 					Line: drl,
 					Fn:   drfn,
