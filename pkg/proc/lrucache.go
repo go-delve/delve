@@ -7,7 +7,7 @@ import (
 
 // lruCache is a simple LRU (Least Recently Used) cache implementation.
 type lruCache[K comparable, V any] struct {
-	mu        sync.RWMutex
+	mu        sync.Mutex
 	capacity  int
 	items     map[K]*list.Element
 	evictList *list.List
@@ -58,8 +58,8 @@ func (c *lruCache[K, V]) Add(key K, value V) {
 // to the front (marking it as recently used) and returns (value, true).
 // If not found, returns (zero value, false).
 func (c *lruCache[K, V]) Get(key K) (V, bool) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	if elem, ok := c.items[key]; ok {
 		c.evictList.MoveToFront(elem)
