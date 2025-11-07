@@ -168,6 +168,12 @@ type LaunchConfig struct {
 
 // LaunchAttachCommonConfig is the attributes common in both launch/attach requests.
 type LaunchAttachCommonConfig struct {
+	// FollowExec enables or disables follow exec mode.
+	FollowExec bool `json:"followExec,omitempty"`
+
+	// FollowExecRegex is a regular expression. Only child processes with a command line matching the regular expression will be followed.
+	FollowExecRegex string `json:"followExecRegex,omitempty"`
+
 	// Automatically stop program after launch or attach.
 	StopOnEntry bool `json:"stopOnEntry,omitempty"`
 

@@ -644,6 +644,236 @@ func TestAttachStopOnEntry(t *testing.T) {
 	})
 }
 
+func TestLaunchWithFollowExec(t *testing.T) {
+	if runtime.GOOS == "freebsd" || runtime.GOOS == "darwin" {
+		t.Skip("follow exec not implemented")
+	}
+
+	var buildFlags protest.BuildFlags
+	// TODO build mode, see TestFollowExecFindLocation in integration2_test.go
+	childFixture := protest.BuildFixture(t, "spawnchild", buildFlags)
+	runTest(t, "spawn", func(client *daptest.Client, fixture protest.Fixture) {
+		// 1 >> initialize, << initialize
+		client.InitializeRequest()
+		initResp := client.ExpectInitializeResponseAndCapabilities(t)
+		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
+		}
+
+		// 2 >> launch, << process, << initialized, << launch
+		client.LaunchRequestWithArgs(map[string]interface{}{
+			"mode":        "exec",
+			"program":     fixture.Path,
+			"args":        []string{"spawn2", childFixture.Path}, // call spawnchild.go
+			"stopOnEntry": stopOnEntry,
+			"followExec":  true,
+		})
+
+		processEvent := client.ExpectProcessEvent(t)
+		if processEvent.Seq != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0", processEvent)
+		}
+
+		initEvent := client.ExpectInitializedEvent(t)
+		if initEvent.Seq != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0", initEvent)
+		}
+		launchResp := client.ExpectLaunchResponse(t)
+		if launchResp.Seq != 0 || launchResp.RequestSeq != 2 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=2", launchResp)
+		}
+
+		// 3 >> setBreakpoints, << setBreakpoints
+		client.SetBreakpointsRequest(childFixture.Source, []int{6})
+		sbpResp := client.ExpectSetBreakpointsResponse(t)
+		if sbpResp.Seq != 0 || sbpResp.RequestSeq != 3 || len(sbpResp.Body.Breakpoints) != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=3, len(Breakpoints)=1", sbpResp)
+		}
+		if sbpResp.Body.Breakpoints[0].Verified {
+			t.Errorf("got breakpoints[0].Verified=true, want false")
+		}
+
+		// 4 >> setExceptionBreakpoints, << setExceptionBreakpoints
+		client.SetExceptionBreakpointsRequest()
+		sebpResp := client.ExpectSetExceptionBreakpointsResponse(t)
+		if sebpResp.Seq != 0 || sebpResp.RequestSeq != 4 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=4", sebpResp)
+		}
+
+		// 5 >> configurationDone, << stopped, << configurationDone
+		client.ConfigurationDoneRequest()
+		stopEvent := client.ExpectStoppedEvent(t)
+		if stopEvent.Seq != 0 ||
+			stopEvent.Body.Reason != "entry" ||
+			stopEvent.Body.ThreadId != 1 ||
+			!stopEvent.Body.AllThreadsStopped {
+			t.Errorf("\ngot %#v\nwant Seq=0, Body={Reason=\"entry\", ThreadId=1, AllThreadsStopped=true}", stopEvent)
+		}
+		cdResp := client.ExpectConfigurationDoneResponse(t)
+		if cdResp.Seq != 0 || cdResp.RequestSeq != 5 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=5", cdResp)
+		}
+
+		// 6 >> threads, << threads
+		client.ThreadsRequest()
+		tResp := client.ExpectThreadsResponse(t)
+		if tResp.Seq != 0 || tResp.RequestSeq != 6 || len(tResp.Body.Threads) != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6 len(Threads)=1", tResp)
+		}
+		if tResp.Body.Threads[0].Id != 1 || tResp.Body.Threads[0].Name != "Dummy" {
+			t.Errorf("\ngot %#v\nwant Id=1, Name=\"Dummy\"", tResp)
+		}
+
+		// 7 >> continue, << continue << stopped
+		client.ContinueRequest(1)
+		contResp := client.ExpectContinueResponse(t)
+		if contResp.Seq != 0 || contResp.RequestSeq != 7 || !contResp.Body.AllThreadsContinued {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7 Body.AllThreadsContinued=true", contResp)
+		}
+		stopEvent = client.ExpectStoppedEvent(t)
+		if stopEvent.Seq != 0 ||
+			stopEvent.Body.Reason != "breakpoint" ||
+			stopEvent.Body.ThreadId != 1 ||
+			!stopEvent.Body.AllThreadsStopped ||
+			len(stopEvent.Body.HitBreakpointIds) != 1 ||
+			stopEvent.Body.HitBreakpointIds[0] != sbpResp.Body.Breakpoints[0].Id {
+			t.Errorf("\ngot %#v\nwant Seq=0, Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true, HitBreakpointIds=[1]}", stopEvent)
+		}
+
+		// 8 >> setBreakpoints, << setBreakpoints
+		client.SetBreakpointsRequest(fixture.Source, []int{54})
+		sbpResp = client.ExpectSetBreakpointsResponse(t)
+		if sbpResp.Seq != 0 || sbpResp.RequestSeq != 8 || len(sbpResp.Body.Breakpoints) != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8, len(Breakpoints)=1", sbpResp)
+		}
+		if !sbpResp.Body.Breakpoints[0].Verified {
+			t.Errorf("got breakpoints[0].Verified=false, want true")
+		}
+
+		// 9 >> continue, << continue << stopped
+		client.ContinueRequest(1)
+		contResp = client.ExpectContinueResponse(t)
+		if contResp.Seq != 0 || contResp.RequestSeq != 9 || !contResp.Body.AllThreadsContinued {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Body.AllThreadsContinued=true", contResp)
+		}
+		stopEvent = client.ExpectStoppedEvent(t)
+		if stopEvent.Seq != 0 ||
+			stopEvent.Body.Reason != "breakpoint" ||
+			stopEvent.Body.ThreadId != 1 ||
+			!stopEvent.Body.AllThreadsStopped ||
+			len(stopEvent.Body.HitBreakpointIds) != 1 ||
+			stopEvent.Body.HitBreakpointIds[0] != sbpResp.Body.Breakpoints[0].Id {
+			t.Errorf("\ngot %#v\nwant Seq=0, Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true, HitBreakpointIds=[1]}", stopEvent)
+		}
+
+		// 10 >> continue, << continue << terminated
+		client.ContinueRequest(1)
+		contResp = client.ExpectContinueResponse(t)
+		if contResp.Seq != 0 || contResp.RequestSeq != 10 || !contResp.Body.AllThreadsContinued {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Body.AllThreadsContinued=true", contResp)
+		}
+		termEvent := client.ExpectTerminatedEvent(t)
+		if termEvent.Seq != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0", termEvent)
+		}
+
+		// 11 >> disconnect, << disconnect
+		client.DisconnectRequest()
+		oep := client.ExpectOutputEventProcessExited(t, 0)
+		if oep.Seq != 0 || oep.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
+		}
+		oed := client.ExpectOutputEventDetaching(t)
+		if oed.Seq != 0 || oed.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+		}
+		dResp := client.ExpectDisconnectResponse(t)
+		if dResp.Seq != 0 || dResp.RequestSeq != 11 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=11", dResp)
+		}
+		client.ExpectTerminatedEvent(t)
+	})
+}
+
+func TestAttachWithFollowExec(t *testing.T) {
+	if runtime.GOOS == "freebsd" || runtime.GOOS == "darwin" {
+		t.Skip("follow exec not implemented")
+	}
+
+	runTest(t, "spawn", func(client *daptest.Client, fixture protest.Fixture) {
+		// Start the program to attach to
+		cmd := exec.Command(fixture.Path, "spawn", "10000000")
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		cmd.Stderr = os.Stderr
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		// Wait for output.
+		// This will give the target process time to initialize the runtime before we attach,
+		// so we can rely on having goroutines when they are requested on attach.
+		scanOut := bufio.NewScanner(stdout)
+		scanOut.Scan()
+		if scanOut.Text() != "parent starting" {
+			t.Errorf("expected spawn.go to output \"parent starting\"")
+		}
+
+		// 1 >> initialize, << initialize
+		client.InitializeRequest()
+		initResp := client.ExpectInitializeResponseAndCapabilities(t)
+		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
+		}
+
+		// 2 >> attach, << output, << initialized, << attach
+		client.AttachRequest(map[string]any{
+			"mode":        "local",
+			"processId":   cmd.Process.Pid,
+			"stopOnEntry": stopOnEntry,
+			"followExec":  true,
+			"backend":     "default",
+		})
+		outputEvent := client.ExpectOutputEvent(t)
+		if outputEvent.Seq != 0 ||
+			outputEvent.Body.Output != "Follow exec not supported in attach request yet." ||
+			outputEvent.Body.Category != "important" {
+			t.Errorf("\ngot %#v\nwant Seq=0, Body={Output=\"Follow exec not supported in attach request yet.\", Category=\"important\"}", outputEvent)
+		}
+
+		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
+		initEvent := client.ExpectInitializedEvent(t)
+		if initEvent.Seq != 0 {
+			t.Errorf("\ngot %#v\nwant Seq=0", initEvent)
+		}
+		attachResp := client.ExpectAttachResponse(t)
+		if attachResp.Seq != 0 || attachResp.RequestSeq != 2 {
+			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=2", attachResp)
+		}
+
+		// 3 >> disconnect, << disconnect
+		client.DisconnectRequestWithKillOption(true)
+		// Disconnect consists of Halt + Detach.
+		// Halt interrupts command in progress, which triggers
+		// a stopped event in parallel with the disconnect
+		// sequence. It might arrive before or during the sequence
+		// or never if the server exits before it is sent.
+		msg := expectMessageFilterStopped(t, client)
+		client.CheckOutputEvent(t, msg)
+		msg = expectMessageFilterStopped(t, client)
+		client.CheckDisconnectResponse(t, msg)
+		client.ExpectTerminatedEvent(t)
+
+		// If this call to KeepAlive isn't here there's a chance that stdout will
+		// be garbage collected (since it is no longer alive long before this
+		// point), when that happens, on unix-like OSes, the read end of the pipe
+		// will be closed by the finalizer and the target process will die by
+		// SIGPIPE, which the rest of this test does not expect.
+		runtime.KeepAlive(stdout)
+	})
+}
+
 // Like the test above, except the program is configured to continue on entry.
 func TestContinueOnEntry(t *testing.T) {
 	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
@@ -4132,7 +4362,7 @@ func TestEvaluateRequest(t *testing.T) {
 	})
 }
 
-func formatConfig(depth int, showGlobals, showRegisters bool, goroutineFilters string, showPprofLabels []string, hideSystemGoroutines bool, substitutePath [][2]string) string {
+func formatConfig(depth int, showGlobals, showRegisters bool, goroutineFilters string, showPprofLabels []string, hideSystemGoroutines bool, substitutePath [][2]string, followExec bool, followExecRegex string) string {
 	formatStr := `stackTraceDepth	%d
 showGlobalVariables	%v
 showRegisters	%v
@@ -4140,8 +4370,10 @@ goroutineFilters	%q
 showPprofLabels	%v
 hideSystemGoroutines	%v
 substitutePath	%v
+followExec	%v
+followExecRegex	%q
 `
-	return fmt.Sprintf(formatStr, depth, showGlobals, showRegisters, goroutineFilters, showPprofLabels, hideSystemGoroutines, substitutePath)
+	return fmt.Sprintf(formatStr, depth, showGlobals, showRegisters, goroutineFilters, showPprofLabels, hideSystemGoroutines, substitutePath, followExec, followExecRegex)
 }
 
 func TestEvaluateCommandRequest(t *testing.T) {
@@ -4161,6 +4393,7 @@ func TestEvaluateCommandRequest(t *testing.T) {
     dlv help (alias: h) 	 Prints the help message.
     dlv config 	 Changes configuration parameters.
     dlv sources (alias: s) 	 Print list of source files.
+    dlv target 	 Manages child process debugging.
 
 Type 'dlv help' followed by a command for full documentation.
 `
@@ -4178,7 +4411,7 @@ Type 'dlv help' followed by a command for full documentation.
 
 					client.EvaluateRequest("dlv config -list", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, formatConfig(50, false, false, "", []string{}, false, [][2]string{}), noChildren)
+					checkEval(t, got, formatConfig(50, false, false, "", []string{}, false, [][2]string{}, false, ""), noChildren)
 
 					// Read and modify showGlobalVariables.
 					client.EvaluateRequest("dlv config -list showGlobalVariables", 1000, "repl")
@@ -4199,7 +4432,7 @@ Type 'dlv help' followed by a command for full documentation.
 
 					client.EvaluateRequest("dlv config -list", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
-					checkEval(t, got, formatConfig(50, true, false, "", []string{}, false, [][2]string{}), noChildren)
+					checkEval(t, got, formatConfig(50, true, false, "", []string{}, false, [][2]string{}, false, ""), noChildren)
 
 					client.ScopesRequest(1000)
 					scopes = client.ExpectScopesResponse(t)
@@ -4245,11 +4478,65 @@ Type 'dlv help' followed by a command for full documentation.
 						t.Errorf("\ngot: %#v, want sources=\"\"", got)
 					}
 
+					// Test target.
+					client.EvaluateRequest("dlv target list", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					if !strings.Contains(got.Body.Result, fixture.Path) {
+						t.Errorf("\ngot: %#v, want target list contains %s", got, fixture.Path)
+					}
+					// single target
+					if strings.Count(got.Body.Result, "\n") != 1 {
+						t.Errorf("\ngot: %#v, want target list has 1 line", got)
+					}
+
+					// target follow-exec
+					if runtime.GOOS != "freebsd" && runtime.GOOS != "darwin" {
+						client.EvaluateRequest("dlv target follow-exec", 1000, "repl")
+						got = client.ExpectEvaluateResponse(t)
+						if got.Body.Result != "Follow exec mode is disabled" {
+							t.Errorf("\ngot: %#v, want Follow exec mode is disabled", got)
+						}
+
+						client.EvaluateRequest("dlv target follow-exec -on", 1000, "repl")
+						got = client.ExpectEvaluateResponse(t)
+						if got.Body.Result != "Follow exec mode enabled" {
+							t.Errorf("\ngot: %#v, want Follow exec mode enabled", got)
+						}
+
+						client.EvaluateRequest(fmt.Sprintf("dlv target follow-exec -on %s", fixture.Path), 1000, "repl")
+						got = client.ExpectEvaluateResponse(t)
+						if got.Body.Result != fmt.Sprintf("Follow exec mode enabled with regex %q", fixture.Path) {
+							t.Errorf("\ngot: %#v, want Follow exec mode enabled with regex %q", got, fixture.Path)
+						}
+
+						client.EvaluateRequest("dlv target follow-exec -off", 1000, "repl")
+						got = client.ExpectEvaluateResponse(t)
+						if got.Body.Result != "Follow exec mode disabled" {
+							t.Errorf("\ngot: %#v, want Follow exec mode disabled", got)
+						}
+
+						// TODO: target switch
+					}
+
 					// Test bad inputs.
 					client.EvaluateRequest("dlv help bad", 1000, "repl")
 					client.ExpectErrorResponse(t)
 
 					client.EvaluateRequest("dlv bad", 1000, "repl")
+					client.ExpectErrorResponse(t)
+
+					if runtime.GOOS != "freebsd" && runtime.GOOS != "darwin" {
+						// Test bad target off
+						client.EvaluateRequest("dlv target follow-exec -off path", 1000, "repl")
+						client.ExpectErrorResponse(t)
+
+						// Test bad target on regex
+						client.EvaluateRequest("dlv target follow-exec -on [", 1000, "repl")
+						client.ExpectErrorResponse(t)
+					}
+
+					// Test bad target subcommand
+					client.EvaluateRequest("dlv target bad", 1000, "repl")
 					client.ExpectErrorResponse(t)
 				},
 				disconnect: true,
