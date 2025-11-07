@@ -3428,3 +3428,20 @@ func TestCancelDownload(t *testing.T) {
 		}
 	})
 }
+
+func TestEvalNonunicodeString(t *testing.T) {
+	// Non-unicode strings can not be sent through json encoding without being
+	// altered, check that our workaround works.
+	// See issue #4072.
+	withTestClient2("testvariables2", t, func(c service.Client) {
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue")
+		v, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "string(issue4072)", normalLoadConfig)
+		assertNoError(err, t, "EvalVariable")
+		t.Logf("%s", v.MultilineString("", ""))
+		tgt := string([]byte{116, 121, 112, 101, 32, 84, 32, 115, 116, 114, 117, 99, 116, 32, 123, 12, 12, 9, 255, 102, 108, 100, 99, 111, 109, 255})
+		if v.Value != tgt {
+			t.Errorf("wrong value for string issue4072 expected %q, got %q", tgt, v.Value)
+		}
+	})
+}
