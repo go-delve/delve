@@ -142,9 +142,10 @@ Aliases: b
 ## breakpoints
 Print out info for active breakpoints.
 
-	breakpoints [-a]
+	breakpoints [-a] [-save <filename>]
 
 Specifying -a prints all physical breakpoint, including internal breakpoints.
+Speciftying -save &lt;filename> saves all breakpoints to the specified file in a format that can be loaded later using the 'source' command.
 
 Aliases: bp
 

@@ -335,9 +335,10 @@ Called with a single argument it will switch to the specified goroutine.
 Called with more arguments it will execute a command on the specified goroutine.`},
 		{aliases: []string{"breakpoints", "bp"}, group: breakCmds, cmdFn: breakpoints, helpMsg: `Print out info for active breakpoints.
 
-	breakpoints [-a]
+	breakpoints [-a] [-save <filename>]
 
-Specifying -a prints all physical breakpoint, including internal breakpoints.`},
+Specifying -a prints all physical breakpoint, including internal breakpoints.
+Speciftying -save <filename> saves all breakpoints to the specified file in a format that can be loaded later using the 'source' command.`},
 		{aliases: []string{"print", "p"}, group: dataCmds, allowedPrefixes: onPrefix | deferredPrefix, cmdFn: c.printVar, helpMsg: `Evaluate an expression.
 
 	[goroutine <n>] [frame <m>] print [%format] <expression>
@@ -1683,10 +1684,99 @@ func toggle(t *Term, ctx callContext, args string) error {
 }
 
 func breakpoints(t *Term, ctx callContext, args string) error {
-	breakPoints, err := t.client.ListBreakpoints(args == "-a")
+	// Parse arguments
+	var showAll bool
+	var saveFile string
+
+	if args != "" {
+		argv := strings.Fields(args)
+	argsLoop:
+		for i, arg := range argv {
+			switch arg {
+			case "-a":
+				showAll = true
+			case "-save":
+				if i+1 >= len(argv) {
+					return errors.New("missing filename after -save flag")
+				}
+				saveFile = argv[i+1]
+				break argsLoop // Exit loop since we found -save and its argument
+			}
+		}
+	}
+
+	breakPoints, err := t.client.ListBreakpoints(showAll)
 	if err != nil {
 		return err
 	}
+
+	// If -save flag is provided, save breakpoints to file
+	if saveFile != "" {
+		file, err := os.Create(saveFile)
+		if err != nil {
+			return fmt.Errorf("failed to open file '%s': %w", saveFile, err)
+		}
+		defer file.Close()
+		w := bufio.NewWriter(file)
+		defer w.Flush()
+
+		// Instead of storing the ID, we label the breakpoints to
+		// reference them properly in future executions
+		aliaser := func(bp *api.Breakpoint) string {
+			if bp.Name == "" {
+				return fmt.Sprintf("bp%d", bp.ID)
+			}
+			return bp.Name
+		}
+
+		for _, bp := range breakPoints {
+			// We don't need to store these breakpoints
+			if bp.ID < 0 {
+				continue
+			}
+			// Skip watchpoints as they can't be reliably restored
+			if bp.WatchExpr != "" {
+				continue
+			}
+
+			var err error
+			if bp.Tracepoint {
+				_, err = fmt.Fprintf(w, "trace %s %s:%d\n", aliaser(bp), bp.File, bp.Line)
+			} else {
+				_, err = fmt.Fprintf(w, "break %s %s:%d\n", aliaser(bp), bp.File, bp.Line)
+			}
+			if err != nil {
+				return fmt.Errorf("failed to write breakpoint to file %s:%d", bp.File, bp.Line)
+			}
+			if len(bp.Cond) > 0 {
+				_, err = fmt.Fprintf(w, "condition %s %s\n", aliaser(bp), bp.Cond)
+				if err != nil {
+					return fmt.Errorf("failed to write condition to file %d:%s", bp.ID, bp.Cond)
+				}
+			}
+			if bp.HitCond != "" {
+				if bp.HitCondPerG {
+					_, err = fmt.Fprintf(w, "condition -per-g-hitcount %s %s\n", aliaser(bp), bp.HitCond)
+				} else {
+					_, err = fmt.Fprintf(w, "condition -hitcount %s %s\n", aliaser(bp), bp.HitCond)
+				}
+				if err != nil {
+					return fmt.Errorf("failed to write hit condition to file %d:%s", bp.ID, bp.HitCond)
+				}
+			}
+			if bp.Disabled {
+				_, err = fmt.Fprintf(w, "toggle %s\n", aliaser(bp))
+				if err != nil {
+					return fmt.Errorf("failed to write breakpoint status to file %d", bp.ID)
+				}
+			}
+		}
+
+		fmt.Printf("Breakpoints successfully saved to '%s'\n", saveFile)
+		return nil
+	}
+
+	// Display breakpoints (original functionality)
 	slices.SortFunc(breakPoints, func(a, b *api.Breakpoint) int { return cmp.Compare(a.ID, b.ID) })
 	for _, bp := range breakPoints {
 		enabled := "(enabled)"
