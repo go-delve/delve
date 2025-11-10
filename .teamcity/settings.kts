@@ -53,8 +53,7 @@ val targets = arrayOf(
 
         "linux/ppc64le/1.25",
 
-        "linux/riscv64/1.25",
-        "linux/riscv64/tip",
+        // "linux/riscv64/1.25", // needs agent
 
         "windows/amd64/1.25",
         "windows/amd64/tip",
