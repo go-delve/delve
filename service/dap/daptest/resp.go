@@ -264,6 +264,9 @@ func (c *Client) CheckEvaluateResponse(t *testing.T, m dap.Message) *dap.Evaluat
 	t.Helper()
 	r, ok := m.(*dap.EvaluateResponse)
 	if !ok {
+		if r, ok := m.(*dap.ErrorResponse); ok {
+			t.Fatalf("got %#v (error: %#v), want *dap.EvaluateResponse", r, r.Body.Error)
+		}
 		t.Fatalf("got %#v, want *dap.EvaluateResponse", m)
 	}
 	return r

@@ -694,7 +694,7 @@ func TestLaunchWithFollowExec(t *testing.T) {
 		}
 
 		// 4 >> setExceptionBreakpoints, << setExceptionBreakpoints
-		client.SetExceptionBreakpointsRequest()
+		client.SetExceptionBreakpointsRequest(nil)
 		sebpResp := client.ExpectSetExceptionBreakpointsResponse(t)
 		if sebpResp.Seq != 0 || sebpResp.RequestSeq != 4 {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=4", sebpResp)
@@ -730,6 +730,7 @@ func TestLaunchWithFollowExec(t *testing.T) {
 		if contResp.Seq != 0 || contResp.RequestSeq != 7 || !contResp.Body.AllThreadsContinued {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7 Body.AllThreadsContinued=true", contResp)
 		}
+		client.ExpectBreakpointEvent(t)
 		stopEvent = client.ExpectStoppedEvent(t)
 		if stopEvent.Seq != 0 ||
 			stopEvent.Body.Reason != "breakpoint" ||
@@ -4503,10 +4504,11 @@ Type 'dlv help' followed by a command for full documentation.
 							t.Errorf("\ngot: %#v, want Follow exec mode enabled", got)
 						}
 
-						client.EvaluateRequest(fmt.Sprintf("dlv target follow-exec -on %s", fixture.Path), 1000, "repl")
+						base := filepath.Base(fixture.Path)
+						client.EvaluateRequest(fmt.Sprintf("dlv target follow-exec -on %s", base), 1000, "repl")
 						got = client.ExpectEvaluateResponse(t)
-						if got.Body.Result != fmt.Sprintf("Follow exec mode enabled with regex %q", fixture.Path) {
-							t.Errorf("\ngot: %#v, want Follow exec mode enabled with regex %q", got, fixture.Path)
+						if got.Body.Result != fmt.Sprintf("Follow exec mode enabled with regex %q", base) {
+							t.Errorf("\ngot: %#v, want Follow exec mode enabled with regex %q", got, base)
 						}
 
 						client.EvaluateRequest("dlv target follow-exec -off", 1000, "repl")

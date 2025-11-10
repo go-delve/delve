@@ -23,16 +23,19 @@ Analyzed packages:
   golang.org/x/telemetry v0.0.0-20241106142447-58a1122356f5
   gopkg.in/yaml.v3 v3.0.1
 
-CAPABILITY_ARBITRARY_EXECUTION: 1 references
-CAPABILITY_EXEC: 2 references
-CAPABILITY_FILES: 2 references
-CAPABILITY_MODIFY_SYSTEM_STATE: 1 references
-CAPABILITY_NETWORK: 1 references
-CAPABILITY_OPERATING_SYSTEM: 1 references
-CAPABILITY_READ_SYSTEM_STATE: 2 references
-CAPABILITY_REFLECT: 2 references
-CAPABILITY_RUNTIME: 1 references
-CAPABILITY_SYSTEM_CALLS: 2 references
-CAPABILITY_UNANALYZED: 1 references
-CAPABILITY_UNSAFE_POINTER: 1 references
+ARBITRARY_EXECUTION: 1 references
+EXEC: 2 references
+FILES: 2 references
+MODIFY_SYSTEM_STATE/CHDIR: 1 references
+MODIFY_SYSTEM_STATE/ENV: 1 references
+MODIFY_SYSTEM_STATE/LOGGING: 1 references
+MODIFY_SYSTEM_STATE/SIGNALS: 1 references
+NETWORK: 1 references
+OPERATING_SYSTEM: 1 references
+READ_SYSTEM_STATE: 2 references
+REFLECT: 2 references
+RUNTIME: 1 references
+SYSTEM_CALLS: 2 references
+UNANALYZED: 1 references
+UNSAFE_POINTER: 1 references
 
