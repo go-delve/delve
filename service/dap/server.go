@@ -1080,10 +1080,12 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		case "debug":
 			s.config.Debugger.ExecuteKind = debugger.ExecutingGeneratedFile
 			s.config.Debugger.Packages = []string{args.Program}
+			s.config.Debugger.BuildFlags = args.BuildFlags.value
 			cmd, out, err = gobuild.GoBuildCombinedOutput(args.Output, []string{args.Program}, args.BuildFlags.value)
 		case "test":
 			s.config.Debugger.ExecuteKind = debugger.ExecutingGeneratedTest
 			s.config.Debugger.Packages = []string{args.Program}
+			s.config.Debugger.BuildFlags = args.BuildFlags.value
 			cmd, out, err = gobuild.GoTestBuildCombinedOutput(args.Output, []string{args.Program}, args.BuildFlags.value)
 		}
 		args.DlvCwd, _ = filepath.Abs(args.DlvCwd)
