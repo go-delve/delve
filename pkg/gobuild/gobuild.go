@@ -35,8 +35,8 @@ func Remove(path string) {
 
 // GoBuild builds non-test files in 'pkgs' with the specified 'buildflags'
 // and writes the output at 'debugname'.
-func GoBuild(debugname string, pkgs []string, buildflags string) error {
-	args := goBuildArgs(debugname, pkgs, buildflags, false)
+func GoBuild(debugname string, pkgs []string, buildflags any) error {
+	args, _ := goBuildArgs2(debugname, pkgs, buildflags, false)
 	return gocommandRun("build", args...)
 }
 
@@ -52,8 +52,8 @@ func GoBuildCombinedOutput(debugname string, pkgs []string, buildflags any) (str
 
 // GoTestBuild builds test files 'pkgs' with the specified 'buildflags'
 // and writes the output at 'debugname'.
-func GoTestBuild(debugname string, pkgs []string, buildflags string) error {
-	args := goBuildArgs(debugname, pkgs, buildflags, true)
+func GoTestBuild(debugname string, pkgs []string, buildflags any) error {
+	args, _ := goBuildArgs2(debugname, pkgs, buildflags, true)
 	return gocommandRun("test", args...)
 }
 

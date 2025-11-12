@@ -138,8 +138,9 @@ type Config struct {
 	// Packages contains the packages that we are debugging.
 	Packages []string
 
-	// BuildFlags contains the flags passed to the compiler.
-	BuildFlags string
+	// BuildFlags contains the flags passed to the compiler, it can either be a
+	// string, which will be processed by config.SplitQuotedFields or a []string
+	BuildFlags any
 
 	// ExecuteKind contains the kind of the executed program.
 	ExecuteKind ExecuteKind
