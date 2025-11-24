@@ -5897,3 +5897,13 @@ func TestChainedBreakpoint(t *testing.T) {
 		}
 	})
 }
+
+func TestDelveCatch(t *testing.T) {
+	withTestProcess("delvecatch", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		bp := setFileBreakpoint(p, t, fixture.Source, 7)
+		bp.UserBreaklet().Cond, _ = parser.ParseExpr(`delve.catch(iface.(data) == "hello")`)
+		assertNoError(grp.Continue(), t, "Continue")
+		assertLineNumber(p, t, 7, "continue")
+		assertVariable(t, evalVariable(p, t, "i"), varTest{name: "i", preserveName: true, value: "4", varType: "int"})
+	})
+}

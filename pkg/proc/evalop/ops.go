@@ -355,3 +355,9 @@ type PushNewFakeVariable struct {
 }
 
 func (*PushNewFakeVariable) depthCheck() (npop, npush int) { return 0, 1 }
+
+// DisableErrors disables error reporing for the rest of the execution
+type DisableErrors struct {
+}
+
+func (*DisableErrors) depthCheck() (npop, npush int) { return 0, 0 }

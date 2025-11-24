@@ -482,15 +482,32 @@ func evalBreakpointCondition(tgt *Target, thread Thread, cond ast.Expr) (bool, e
 			return true, err
 		}
 	}
-	v, err := scope.evalAST(cond)
+	flags := scope.evalopFlags()
+	flags |= evalop.BreakpointCondition
+	ops, err := evalop.CompileAST(scopeToEvalLookup{scope}, cond, flags)
 	if err != nil {
+		return true, err
+	}
+	stack := &evalStack{}
+	stack.eval(scope, ops)
+	v, err := stack.result(nil)
+	if err != nil {
+		if stack.disabledErrors {
+			return false, nil
+		}
 		return true, fmt.Errorf("error evaluating expression: %v", err)
 	}
 	if v.Kind != reflect.Bool {
+		if stack.disabledErrors {
+			return false, nil
+		}
 		return true, errors.New("condition expression not boolean")
 	}
 	v.loadValue(loadFullValue)
 	if v.Unreadable != nil {
+		if stack.disabledErrors {
+			return false, nil
+		}
 		return true, fmt.Errorf("condition expression unreadable: %v", v.Unreadable)
 	}
 	return constant.BoolVal(v.Value), nil
@@ -1188,7 +1205,7 @@ func breakpointConditionSatisfiable(lbpmap map[int]*LogicalBreakpoint, lbp *Logi
 			return 0, false
 		}
 		ident, ok := selx.X.(*ast.Ident)
-		if !ok || ident.Name != evalop.BreakpointHitCountVarNamePackage || selx.Sel.Name != evalop.BreakpointHitCountVarName {
+		if !ok || ident.Name != evalop.DelvePackage || selx.Sel.Name != evalop.BreakpointHitCountVarName {
 			return 0, false
 		}
 		lit, ok := idx.Index.(*ast.BasicLit)
@@ -1274,7 +1291,7 @@ func breakpointConditionUsesHitCounts(lbp *LogicalBreakpoint) bool {
 		if ok {
 			ident, ok := seln.X.(*ast.Ident)
 			if ok {
-				if ident.Name == evalop.BreakpointHitCountVarNamePackage && seln.Sel.Name == evalop.BreakpointHitCountVarName {
+				if ident.Name == evalop.DelvePackage && seln.Sel.Name == evalop.BreakpointHitCountVarName {
 					r = true
 					return false
 				}
