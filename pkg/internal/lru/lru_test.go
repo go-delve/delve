@@ -1,15 +1,14 @@
-package proc_test
+package lru_test
 
 import (
 	"sync"
 	"testing"
 
-	"github.com/go-delve/delve/pkg/proc"
+	"github.com/go-delve/delve/pkg/internal/lru"
 )
 
-func TestLRUCache_ZeroCapacity(t *testing.T) {
-	cache := proc.NewLRUCache[int, string](0)
-
+func TestCache_ZeroCapacity(t *testing.T) {
+	cache := lru.NewCache[int, string](0)
 	cache.Add(1, "one")
 
 	// With zero capacity, nothing should be stored
@@ -18,8 +17,8 @@ func TestLRUCache_ZeroCapacity(t *testing.T) {
 	}
 }
 
-func TestLRUCacheNoEviction(t *testing.T) {
-	cache := proc.NewLRUCache[int, string](2)
+func TestCacheNoEviction(t *testing.T) {
+	cache := lru.NewCache[int, string](2)
 
 	// Test adding items
 	cache.Add(1, "one")
@@ -39,8 +38,8 @@ func TestLRUCacheNoEviction(t *testing.T) {
 	}
 }
 
-func TestLRUCacheEviction(t *testing.T) {
-	cache := proc.NewLRUCache[int, string](2)
+func TestCacheEviction(t *testing.T) {
+	cache := lru.NewCache[int, string](2)
 
 	// Add items up to capacity
 	cache.Add(1, "one")
@@ -63,8 +62,8 @@ func TestLRUCacheEviction(t *testing.T) {
 	}
 }
 
-func TestLRUCacheUpdate(t *testing.T) {
-	cache := proc.NewLRUCache[int, string](2)
+func TestCacheUpdate(t *testing.T) {
+	cache := lru.NewCache[int, string](2)
 
 	cache.Add(1, "one")
 	cache.Add(1, "ONE") // Update existing key
@@ -74,8 +73,8 @@ func TestLRUCacheUpdate(t *testing.T) {
 	}
 }
 
-func TestLRUCacheOrder(t *testing.T) {
-	cache := proc.NewLRUCache[int, string](2)
+func TestCacheOrder(t *testing.T) {
+	cache := lru.NewCache[int, string](2)
 
 	// Add two items
 	cache.Add(1, "one")
@@ -101,9 +100,9 @@ func TestLRUCacheOrder(t *testing.T) {
 	}
 }
 
-func TestLRUCacheConcurrent(t *testing.T) {
+func TestCacheConcurrent(t *testing.T) {
 	// Test passes if no race conditions occur.
-	cache := proc.NewLRUCache[int, int](100)
+	cache := lru.NewCache[int, int](100)
 
 	var wg sync.WaitGroup
 

@@ -41,8 +41,3 @@ func (bi *BinaryInfo) HasDebugPinner() bool {
 func DebugPinCount() int {
 	return debugPinCount
 }
-
-// NewLRUCache creates a new LRU cache with the given capacity.
-func NewLRUCache[K comparable, V any](capacity int) *lruCache[K, V] {
-	return newLRUCache[K, V](capacity)
-}
