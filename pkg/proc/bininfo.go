@@ -35,10 +35,10 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/reader"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/internal/gosym"
+	"github.com/go-delve/delve/pkg/internal/lru"
 	"github.com/go-delve/delve/pkg/logflags"
 	"github.com/go-delve/delve/pkg/proc/debuginfod"
 	"github.com/go-delve/delve/pkg/proc/evalop"
-	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 const (
@@ -1074,7 +1074,7 @@ func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
 
 	// Actually add the image.
 	image := &Image{Path: path, addr: addr, typeCache: make(map[dwarf.Offset]godwarf.Type)}
-	image.dwarfTreeCache, _ = lru.New[dwarf.Offset, *godwarf.Tree](dwarfTreeCacheSize)
+	image.dwarfTreeCache = lru.NewCache[dwarf.Offset, *godwarf.Tree](dwarfTreeCacheSize)
 
 	// add Image regardless of error so that we don't attempt to re-add it every time we stop
 	image.index = len(bi.Images)
@@ -1228,7 +1228,7 @@ func (bi *BinaryInfo) LoadImageFromData(dwdata *dwarf.Data, debugFrameBytes, deb
 	image.sepDebugCloser = (*nilCloser)(nil)
 	image.dwarf = dwdata
 	image.typeCache = make(map[dwarf.Offset]godwarf.Type)
-	image.dwarfTreeCache, _ = lru.New[dwarf.Offset, *godwarf.Tree](dwarfTreeCacheSize)
+	image.dwarfTreeCache = lru.NewCache[dwarf.Offset, *godwarf.Tree](dwarfTreeCacheSize)
 
 	if debugFrameBytes != nil {
 		bi.frameEntries, _ = frame.Parse(debugFrameBytes, frame.DwarfEndian(debugFrameBytes), 0, bi.Arch.PtrSize(), 0)
