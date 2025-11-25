@@ -18,6 +18,11 @@ if [ "$arch" != "ppc64le" ]; then
 	dwz --version
 fi
 
+if [ "$arch" == "riscv64" ]; then
+	apt-get install -y git
+	git --version
+fi
+
 function getgo {
 	export GOROOT=/usr/local/go/$1
 	if [ ! -d "$GOROOT" ]; then
