@@ -5467,7 +5467,6 @@ func TestFollowExecRegex(t *testing.T) {
 func TestFollowExecNonGo(t *testing.T) {
 	skipOn(t, "follow exec not implemented on freebsd", "freebsd")
 	skipOn(t, "follow exec not implemented on macOS", "darwin")
-	skipOn(t, "non-Go process handling not implemented on Windows", "windows")
 	withTestProcessArgs("nongochild/", t, "../../_fixtures/nongochild/", []string{}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.FollowExec(true, ""), t, "FollowExec")
 
