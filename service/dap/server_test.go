@@ -731,6 +731,7 @@ func TestLaunchWithFollowExec(t *testing.T) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7 Body.AllThreadsContinued=true", contResp)
 		}
 		client.ExpectBreakpointEvent(t)
+		client.ExpectProcessEvent(t)
 		stopEvent = client.ExpectStoppedEvent(t)
 		if stopEvent.Seq != 0 ||
 			stopEvent.Body.Reason != "breakpoint" ||
