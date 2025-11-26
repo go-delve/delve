@@ -4351,6 +4351,15 @@ func (s *Session) convertDebuggerEvent(event *proc.Event) {
 				},
 			},
 		})
+	case proc.EventProcessSpawned:
+		s.send(&dap.ProcessEvent{
+			Event: *newEvent("process"),
+			Body: dap.ProcessEventBody{
+				Name:            event.Cmdline,
+				SystemProcessId: event.PID,
+				IsLocalProcess:  true,
+			},
+		})
 	}
 }
 

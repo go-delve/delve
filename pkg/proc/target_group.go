@@ -107,12 +107,38 @@ func Restart(grp, oldgrp *TargetGroup, discard func(*LogicalBreakpoint, error)) 
 func (grp *TargetGroup) addTarget(p ProcessInternal, pid int, currentThread Thread, path string, stopReason StopReason, cmdline string) (*Target, error) {
 	logger := logflags.DebuggerLogger()
 	if len(grp.targets) > 0 {
+		matchesPattern := grp.followExecRegex == nil || grp.followExecRegex.MatchString(cmdline)
 		if !grp.followExecEnabled {
 			logger.Debugf("Detaching from child target (follow-exec disabled) %d %q", pid, cmdline)
-			return nil, nil
-		}
-		if grp.followExecRegex != nil && !grp.followExecRegex.MatchString(cmdline) {
+		} else if !matchesPattern {
 			logger.Debugf("Detaching from child target (follow-exec regex not matched) %d %q", pid, cmdline)
+		}
+
+		// Notify listeners that a child process was spawned.
+		//
+		// We do this regardless of whether the process is debuggable and
+		// regardless of whether follow-exec is enabled; when run by an IDE in
+		// DAP mode, we want to give the IDE a chance to handle the spawned
+		// process.
+		//
+		// Defer the call so that - if the process _can_ be debugged - listeners
+		// are notified after the new target is set up.
+		willFollow := grp.followExecEnabled && matchesPattern
+		if grp.Selected != nil {
+			if fn := grp.Selected.BinInfo().eventsFn; fn != nil {
+				defer fn(&Event{
+					Kind: EventProcessSpawned,
+					ProcessSpawnedEventDetails: &ProcessSpawnedEventDetails{
+						PID:        pid,
+						ThreadID:   currentThread.ThreadID(),
+						Cmdline:    cmdline,
+						WillFollow: willFollow,
+					},
+				})
+			}
+		}
+
+		if !willFollow {
 			return nil, nil
 		}
 	}
@@ -612,6 +638,7 @@ type Event struct {
 	Kind EventKind
 	*BinaryInfoDownloadEventDetails
 	*BreakpointMaterializedEventDetails
+	*ProcessSpawnedEventDetails
 }
 
 type EventKind uint8
@@ -621,6 +648,7 @@ const (
 	EventStopped
 	EventBinaryInfoDownload
 	EventBreakpointMaterialized
+	EventProcessSpawned
 )
 
 // BinaryInfoDownloadEventDetails describes the details of a BinaryInfoDownloadEvent
@@ -631,4 +659,12 @@ type BinaryInfoDownloadEventDetails struct {
 // BreakpointMaterializedEventDetails describes the details of a BreakpointMaterializedEvent
 type BreakpointMaterializedEventDetails struct {
 	Breakpoint *LogicalBreakpoint
+}
+
+// ProcessSpawnedEventDetails describes the details of a ProcessSpawnedEvent
+type ProcessSpawnedEventDetails struct {
+	PID        int
+	ThreadID   int
+	Cmdline    string
+	WillFollow bool
 }

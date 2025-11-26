@@ -162,6 +162,8 @@ func New(client service.Client, conf *config.Config) *Term {
 				}
 
 				fmt.Fprintf(t.stdout, "Breakpoint %d materialized at %s:%d%s\n", bp.ID, file, bp.Line, extra)
+			case api.EventProcessSpawned:
+				fmt.Fprintf(t.stdout, "Spawned new process '%s' (%d)\n", event.Cmdline, event.ProcessSpawnedEventDetails.PID)
 			}
 		})
 	}
