@@ -97,4 +97,3 @@ golang.org/x/telemetry/internal/upload
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# github.com/go-delve/build-tools@latest => ../build-tools-for-delve/
