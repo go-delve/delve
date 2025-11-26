@@ -5374,20 +5374,17 @@ func TestFollowExec(t *testing.T) {
 			}
 		}
 
-		// ProcessSpawned events are not currently emitted on Windows
-		if !matchSkipConditions("windows") {
-			spawned := map[int]*proc.ProcessSpawnedEventDetails{}
-			for _, event := range events {
-				if event.Kind == proc.EventProcessSpawned {
-					details := event.ProcessSpawnedEventDetails
-					spawned[details.PID] = details
-				}
+		spawned := map[int]*proc.ProcessSpawnedEventDetails{}
+		for _, event := range events {
+			if event.Kind == proc.EventProcessSpawned {
+				details := event.ProcessSpawnedEventDetails
+				spawned[details.PID] = details
 			}
+		}
 
-			for pid := range pids {
-				if _, ok := spawned[pid]; !ok {
-					t.Errorf("Expected a process spawned event for target %d", pid)
-				}
+		for pid := range pids {
+			if _, ok := spawned[pid]; !ok {
+				t.Errorf("Expected a process spawned event for target %d", pid)
 			}
 		}
 	})
@@ -5453,11 +5450,6 @@ func TestFollowExecRegex(t *testing.T) {
 		for pid, cmdline := range cmdlines {
 			if !strings.Contains(cmdline, "child C2") {
 				t.Fatalf("bad contents of cmdline: want child C2, got %q", cmdline)
-			}
-
-			// ProcessSpawned events are not currently emitted on Windows
-			if !matchSkipConditions("windows") {
-				continue
 			}
 
 			event, ok := spawned[pid]
