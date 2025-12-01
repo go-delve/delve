@@ -730,9 +730,7 @@ func TestLaunchWithFollowExec(t *testing.T) {
 		if contResp.Seq != 0 || contResp.RequestSeq != 7 || !contResp.Body.AllThreadsContinued {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7 Body.AllThreadsContinued=true", contResp)
 		}
-		if runtime.GOOS != "windows" {
-			client.ExpectBreakpointEvent(t)
-		}
+		client.ExpectBreakpointEvent(t)
 		client.ExpectProcessEvent(t)
 		stopEvent = client.ExpectStoppedEvent(t)
 		if stopEvent.Seq != 0 ||
