@@ -1,0 +1,33 @@
+name: Bug Report
+description: File a bug report.
+body:
+  - type: input
+    id: delve_version
+    attributes:
+      label: What version of Delve are you using (`dlv version`)?
+    validations:
+      required: true
+  - type: input
+    id: go_version
+    attributes:
+      label: What version of Go are you using? (`go version`)?
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: What operating system and processor architecture are you using?
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: Description
+      value: |
+        If this is about source listing not showing up (or breakpoints not being accepted) while running in a container please read our [FAQ](https://github.com/go-delve/delve/blob/master/Documentation/faq.md#substpath) first.
+        
+        1. What did you do?
+        2. What did you expect to see?
+        3. What did you see instead?
+        
+        Note: Please include any substantial examples (debug session output, stacktraces, etc) as linked gists.
