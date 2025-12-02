@@ -1304,8 +1304,7 @@ func TestCapsLock(t *testing.T) {
 	cmd.Env = append(os.Environ(), fmt.Sprintf("GOOS=%s", goos), fmt.Sprintf("GOARCH=%s", goarch))
 	out, _ := cmd.CombinedOutput()
 
-	genCommand := fmt.Sprintf("capslock -goos %s -goarch %s %s > %s",
-		goos, goarch, strings.Join(args, " "), expectedFile)
+	genCommand := "go run _scripts/gen-capslock-all.go"
 	checkAutogenDoc(t, expectedFile, genCommand, out)
 }
 
