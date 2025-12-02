@@ -22,6 +22,7 @@ var platforms = []Platform{
 	{GOOS: "linux", GOARCH: "amd64"},
 	{GOOS: "linux", GOARCH: "386"},
 	{GOOS: "linux", GOARCH: "arm64"},
+	{GOOS: "linux", GOARCH: "riscv64"},
 	{GOOS: "linux", GOARCH: "ppc64le", BuildTags: "exp.linuxppc64le"},
 	{GOOS: "darwin", GOARCH: "amd64"},
 	{GOOS: "darwin", GOARCH: "arm64"},
