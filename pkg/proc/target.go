@@ -553,28 +553,33 @@ func (t *Target) clearFakeMemory() {
 	t.fakeMemoryRegistryMap = make(map[string]*compositeMemory)
 }
 
+type unwrapCacheEntry struct {
+	deferFn  *Function
+	deferLoc Location
+}
+
 // dwrapUnwrap checks if fn is a dwrap wrapper function and unwraps it if it is.
-func (t *Target) dwrapUnwrap(fn *Function) *Function {
+func (t *Target) dwrapUnwrap(fn *Function) (*Function, Location) {
 	if fn == nil {
-		return nil
+		return nil, Location{}
 	}
 	if !strings.Contains(fn.Name, "·dwrap·") && !fn.trampoline {
-		return fn
+		return fn, Location{}
 	}
-	if unwrap := t.BinInfo().dwrapUnwrapCache[fn.Entry]; unwrap != nil {
-		return unwrap
+	if unwrap, ok := t.BinInfo().dwrapUnwrapCache[fn.Entry]; ok {
+		return unwrap.deferFn, unwrap.deferLoc
 	}
 	text, err := disassemble(t.Memory(), nil, t.Breakpoints(), t.BinInfo(), fn.Entry, fn.End, false)
 	if err != nil {
-		return fn
+		return fn, Location{}
 	}
 	for _, instr := range text {
 		if instr.IsCall() && instr.DestLoc != nil && instr.DestLoc.Fn != nil && !instr.DestLoc.Fn.privateRuntime() {
-			t.BinInfo().dwrapUnwrapCache[fn.Entry] = instr.DestLoc.Fn
-			return instr.DestLoc.Fn
+			t.BinInfo().dwrapUnwrapCache[fn.Entry] = unwrapCacheEntry{instr.DestLoc.Fn, instr.Loc}
+			return instr.DestLoc.Fn, instr.Loc
 		}
 	}
-	return fn
+	return fn, Location{}
 }
 
 func (t *Target) pluginOpenCallback(Thread, *Target) (bool, error) {
