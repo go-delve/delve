@@ -770,6 +770,8 @@ func newVariable(name string, addr uint64, dwarfType godwarf.Type, bi *BinaryInf
 		v.Kind = reflect.Invalid
 	case *godwarf.UnspecifiedType:
 		v.Kind = reflect.Invalid
+	case *godwarf.ConstStringType:
+		v.Kind = reflect.String
 	default:
 		v.Unreadable = fmt.Errorf("unknown type: %T", t)
 	}
@@ -2283,11 +2285,11 @@ func (cm constantsMap) Get(typ godwarf.Type) *constantType {
 	if !ctyp.initialized {
 		ctyp.initialized = true
 		slices.SortFunc(ctyp.values, func(a, b constantValue) int {
-			return cmp.Compare(a.value, b.value)
+			return cmp.Compare(a.value.ExactString(), b.value.ExactString())
 		})
 		for i := range ctyp.values {
 			ctyp.values[i].name = strings.TrimPrefix(ctyp.values[i].name, typepkg)
-			if bits.OnesCount64(uint64(ctyp.values[i].value)) == 1 {
+			if v, ok := constant.Int64Val(ctyp.values[i].value); ok && bits.OnesCount64(uint64(v)) == 1 {
 				ctyp.values[i].singleBit = true
 			}
 		}
@@ -2297,7 +2299,7 @@ func (cm constantsMap) Get(typ godwarf.Type) *constantType {
 
 func (ctyp *constantType) describe(n int64) string {
 	for _, val := range ctyp.values {
-		if val.value == n {
+		if v, ok := constant.Int64Val(val.value); ok && v == n {
 			return val.name
 		}
 	}
@@ -2314,9 +2316,9 @@ func (ctyp *constantType) describe(n int64) string {
 		if !val.singleBit {
 			continue
 		}
-		if n&val.value != 0 {
+		if v, ok := constant.Int64Val(val.value); ok && n&v != 0 {
 			fields = append(fields, val.name)
-			n = n & ^val.value
+			n = n & ^v
 		}
 	}
 	if n == 0 {
