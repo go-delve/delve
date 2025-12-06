@@ -3211,6 +3211,9 @@ func TestGuessSubstitutePath(t *testing.T) {
 		// GuessSubstitutePath fail.
 		t.Skip("does not work in TeamCity + tip + linux")
 	}
+	if os.Getenv("CI") != "" && runtime.GOOS == "linux" && runtime.GOARCH == "riscv64" {
+		t.Skip("does not work on the riscv64 builder")
+	}
 
 	slashnorm := func(s string) string {
 		if runtime.GOOS != "windows" {
