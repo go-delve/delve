@@ -99,6 +99,15 @@ func (pe ErrProcessExited) Error() string {
 	return fmt.Sprintf("Process %d has exited with status %d", pe.Pid, pe.Status)
 }
 
+// ErrBadBinaryInfo indicates that loading binary info for the process failed.
+type ErrBadBinaryInfo struct {
+	Err error
+}
+
+func (e *ErrBadBinaryInfo) Error() string {
+	return e.Err.Error()
+}
+
 // StopReason describes the reason why the target process is stopped.
 // A process could be stopped for multiple simultaneous reasons, in which
 // case only one will be reported.
@@ -169,11 +178,11 @@ func (grp *TargetGroup) newTarget(p ProcessInternal, pid int, currentThread Thre
 
 	err = p.BinInfo().LoadBinaryInfo(path, entryPoint, grp.cfg.DebugInfoDirs)
 	if err != nil {
-		return nil, err
+		return nil, &ErrBadBinaryInfo{Err: err}
 	}
 	for _, image := range p.BinInfo().Images {
 		if image.loadErr != nil {
-			return nil, image.loadErr
+			return nil, &ErrBadBinaryInfo{Err: image.loadErr}
 		}
 	}
 
