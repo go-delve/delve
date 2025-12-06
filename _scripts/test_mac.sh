@@ -10,7 +10,7 @@ TMPDIR=$3
 if [ "$GOVERSION" = "gotip" ]; then
     bootstrapver=$(curl https://go.dev/VERSION?m=text | head -1)
     cd $TMPDIR
-    curl -sSL "https://storage.googleapis.com/golang/$bootstrapver.darwin-$ARCH.tar.gz" | tar -xz
+    curl -sSL "https://go.dev/dl/$bootstrapver.darwin-$ARCH.tar.gz" | tar -xz
     cd -
     if [ -x $TMPDIR/go-tip ]; then
     	cd $TMPDIR/go-tip
@@ -28,7 +28,7 @@ else
     GOVERSION=$(python3 _scripts/latestver.py $GOVERSION)
     echo Go $GOVERSION on $ARCH
     cd $TMPDIR
-    curl -sSL "https://storage.googleapis.com/golang/$GOVERSION.darwin-$ARCH.tar.gz" | tar -xz
+    curl -sSL "https://go.dev/dl/$GOVERSION.darwin-$ARCH.tar.gz" | tar -xz
     cd -
     export GOROOT="$TMPDIR/go"
 fi

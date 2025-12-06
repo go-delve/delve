@@ -76,6 +76,7 @@ type BinaryInfo struct {
 	Images []*Image
 
 	ElfDynamicSection ElfDynamicSection
+	moduleDataAddr    uint64
 
 	lastModified time.Time // Time the executable of this process was last modified
 
@@ -1663,6 +1664,9 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 			bi.ElfDynamicSection.Addr = dynsec.Addr + image.StaticBase
 			bi.ElfDynamicSection.Size = dynsec.Size
 		}
+		if moduleData := elfFile.Section(".go.module"); moduleData != nil {
+			bi.moduleDataAddr = moduleData.Addr + image.StaticBase
+		}
 	} else {
 		image.StaticBase = addr
 	}
@@ -1970,6 +1974,13 @@ func loadBinaryInfoPE(bi *BinaryInfo, image *Image, path string, entryPoint uint
 		}
 	}
 
+	if image.index == 0 {
+		// TODO(aarzilli): this doesn't work, see https://github.com/golang/go/issues/76731
+		if moduleData := peFile.Section(".go.module"); moduleData != nil {
+			bi.moduleDataAddr = uint64(moduleData.VirtualAddress) + image.StaticBase
+		}
+	}
+
 	image.dwarfReader = image.dwarf.Reader()
 
 	debugLineBytes, err := godwarf.GetDebugSectionPE(peFile, "line")
@@ -2077,6 +2088,12 @@ func loadBinaryInfoMacho(bi *BinaryInfo, image *Image, path string, entryPoint u
 		}
 		logflags.DebuggerLogger().Debugf("entryPoint %#x machoOff %#x", entryPoint, machoOff)
 		image.StaticBase = entryPoint - machoOff
+	}
+
+	if image.index == 0 {
+		if moduleData := exe.Section("__go_module"); moduleData != nil {
+			bi.moduleDataAddr = moduleData.Addr + image.StaticBase
+		}
 	}
 
 	image.closer = exe
