@@ -3247,6 +3247,9 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 	s.changeStateMu.Lock()
 	defer s.changeStateMu.Unlock()
 
+	// The response is just an acknowledgement, if we don't send it VSCode gets wedged
+	s.send(&dap.RestartResponse{Response: *newResponse(request.Request)})
+
 	// Cannot restart in noDebug mode
 	if s.isNoDebug() {
 		s.sendErrorResponse(request.Request, FailedToLaunch, "Cannot restart", "cannot restart in noDebug mode")
@@ -3307,16 +3310,23 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 		}
 	}
 
+	validBefore := true
+	if _, err := s.debugger.State(false); err != nil {
+		validBefore = false
+	}
+
 	// TODO(deparker) handle args from the launch regarding re-recording.
 	discardedBreakpoints, err := s.debugger.Restart(false, "", resetArgs, newArgs, [3]string{}, rebuild)
 	if err != nil {
 		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to restart", err.Error())
+		if _, err := s.debugger.State(false); validBefore && err != nil {
+			s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
+		}
 		return
 	}
 
 	s.config.log.Infof("Restart completed. Discarded breakpoints: %v", discardedBreakpoints)
 
-	s.send(&dap.RestartResponse{Response: *newResponse(request.Request)})
 	s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
 }
 
