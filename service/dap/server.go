@@ -2793,7 +2793,7 @@ func (s *Session) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 		})
 	}
 
-	if isListOfBytesOrRunes(v.Variable) {
+	if isListOfBytesOrRunes(v.Variable) && v.Addr != 0 && (v.Flags&proc.VariableFakeAddress == 0) {
 		// Return the string value of []byte or []rune.
 		typeName := api.PrettyTypeName(v.DwarfType)
 		loadExpr := fmt.Sprintf("string(*(*%q)(%#x))", typeName, v.Addr)
