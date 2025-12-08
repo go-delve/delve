@@ -585,9 +585,9 @@ func (g *G) Labels() map[string]string {
 						}
 					}
 				case reflect.Struct:
-					labelMap, _ = labelMap.structField("LabelSet")
+					labelMap = structFieldInList(labelMap, "LabelSet", "Set")
 					if labelMap != nil {
-						labelMap, _ = labelMap.structField("list")
+						labelMap = structFieldInList(labelMap, "list", "List")
 					}
 					if labelMap != nil {
 						// ensure the labelMap.Len is a valid value to prevent infinite loops
@@ -620,6 +620,16 @@ func (g *G) Labels() map[string]string {
 	}
 	g.labels = &labels
 	return *g.labels
+}
+
+func structFieldInList(v *Variable, fieldNames ...string) *Variable {
+	for _, fieldName := range fieldNames {
+		fieldv, _ := v.structField(fieldName)
+		if fieldv != nil {
+			return fieldv
+		}
+	}
+	return nil
 }
 
 type Ancestor struct {
