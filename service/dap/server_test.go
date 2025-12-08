@@ -6393,6 +6393,68 @@ func TestRestartRequestRebuild(t *testing.T) {
 	})
 }
 
+func TestRestartRequestRebuildFail(t *testing.T) {
+	const modifiedSource = `package main
+
+import "math"
+
+var f = 1.5
+
+func main() {
+	floatvar1 := math.Floor(f)
+	floatvar2 := float64(int(f))
+	_ = floatvar1
+	_ = floatvar2
+	the syntax error btw
+}
+`
+	runTest(t, "testRestartRequestRebuildFailFixture", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]any{
+					"mode": "debug", "program": fixture.Source,
+				})
+			},
+			// Set breakpoints
+			fixture.Source, []int{7}, // Set breakpoint at main.main
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 7)
+
+					fi, _ := os.Stat(fixture.Source)
+
+					originalSource, err := os.ReadFile(fixture.Source)
+					if err != nil {
+						t.Fatalf("could not read original source: %v", err)
+					}
+
+					// Ensure we write the original source code back after the test exits.
+					defer os.WriteFile(fixture.Source, originalSource, fi.Mode())
+
+					err = os.WriteFile(fixture.Source, []byte(modifiedSource), fi.Mode())
+					if err != nil {
+						t.Fatalf("could not modify source: %v", err)
+					}
+
+					client.RestartRequest(map[string]any{
+						"arguments": map[string]any{
+							"request":     "launch",
+							"mode":        "debug",
+							"program":     fixture.Source,
+							"stopOnEntry": false,
+							// "rebuild":     true, omitted as it should default to true
+						},
+					})
+					client.ExpectRestartResponse(t)
+					client.ExpectErrorResponse(t)
+					client.ExpectTerminatedEvent(t)
+				},
+				disconnect: false,
+			}})
+	})
+}
+
 // TestRestartRequestWithNewArgs tests that the restart request can accept new program arguments.
 func TestRestartRequestWithNewArgs(t *testing.T) {
 	runTest(t, "testargs", func(client *daptest.Client, fixture protest.Fixture) {
