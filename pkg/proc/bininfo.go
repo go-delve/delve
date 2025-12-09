@@ -107,7 +107,7 @@ type BinaryInfo struct {
 	inlinedCallLines map[fileLine][]uint64
 
 	// dwrapUnwrapCache caches unwrapping of defer wrapper functions (dwrap)
-	dwrapUnwrapCache map[uint64]*Function
+	dwrapUnwrapCache map[uint64]unwrapCacheEntry
 
 	moduleDataCache []ModuleData
 
@@ -2534,7 +2534,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 		bi.inlinedCallLines = make(map[fileLine][]uint64)
 	}
 	if bi.dwrapUnwrapCache == nil {
-		bi.dwrapUnwrapCache = make(map[uint64]*Function)
+		bi.dwrapUnwrapCache = make(map[uint64]unwrapCacheEntry)
 	}
 
 	image.runtimeTypeToDIE = make(map[uint64]runtimeTypeDIE)

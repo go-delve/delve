@@ -2990,7 +2990,17 @@ func logStacktrace(t *testing.T, p *proc.Target, frames []proc.Stackframe) {
 			if fn != nil {
 				fnname = fn.Name
 			}
-			defers += fmt.Sprintf("%d %#x %s |", deferIdx, _defer.DwrapPC, fnname)
+			defers += fmt.Sprintf("%d %#x %s", deferIdx, _defer.DwrapPC, fnname)
+
+			drf, drl, drfn := _defer.DeferredFrom(p)
+			drfnname := ""
+			if drfn != nil {
+				drfnname = drfn.Name
+			}
+			defers += fmt.Sprintf(" from:%s %s:%d", drfnname, filepath.Base(drf), drl)
+
+			defers += " | "
+
 		}
 
 		frame := frames[j]
@@ -3887,13 +3897,17 @@ func TestReadDefer(t *testing.T) {
 			defers       []string
 		}{
 			// main.call3 (defers nothing, topmost defer main.f2)
-			{0, "main.f2", []string{}},
+			{0, "main.f2 from: deferstack.go:22", []string{}},
 
 			// main.call2 (defers main.f2, main.f3, topmost defer main.f2)
-			{1, "main.f2", []string{"main.f2", "main.f3"}},
+			{1, "main.f2 from: deferstack.go:22", []string{
+				"main.f2 from: deferstack.go:22",
+				"main.f3 ..."}},
 
 			// main.call1 (defers main.f1, main.f2, topmost defer main.f1)
-			{2, "main.f1", []string{"main.f1", "main.f2"}},
+			{2, "main.f1 ...", []string{
+				"main.f1 ...",
+				"main.f2 from: deferstack.go:15"}},
 
 			// main.main (defers nothing)
 			{3, "", []string{}}}
@@ -3909,9 +3923,23 @@ func TestReadDefer(t *testing.T) {
 			if dfn == nil {
 				t.Fatalf("expected %q as %s of frame %d, got %#x", tgt, deferName, frameIdx, d.DwrapPC)
 			}
-			if dfn.Name != tgt {
-				t.Fatalf("expected %q as %s of frame %d, got %q", tgt, deferName, frameIdx, dfn.Name)
+
+			got := dfn.Name
+
+			const originUndetermined = " ..."
+
+			if strings.HasSuffix(tgt, originUndetermined) {
+				got += originUndetermined
+			} else {
+				drf, drl, _ := d.DeferredFrom(p)
+
+				got += fmt.Sprintf(" from: %s:%d", filepath.Base(drf), drl)
 			}
+
+			if got != tgt {
+				t.Fatalf("expected %q as %s of frame %d, got %q", tgt, deferName, frameIdx, got)
+			}
+
 		}
 
 		for _, example := range examples {
