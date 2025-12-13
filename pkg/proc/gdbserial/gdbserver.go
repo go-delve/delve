@@ -1095,13 +1095,13 @@ func (p *gdbProcess) Detach(_pid int, kill bool) error {
 		if err := p.conn.detach(); err != nil {
 			return err
 		}
+		p.detached = true
 	}
 	if p.process != nil {
 		p.process.Kill()
 		<-p.waitChan
 		p.process = nil
 	}
-	p.detached = true
 	return nil
 }
 
