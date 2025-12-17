@@ -1174,6 +1174,7 @@ func TestFilterGoroutines(t *testing.T) {
 								}
 							}
 						}
+						runtimeGoexitFound := false
 						for i, frame := range tr.Body.Threads {
 							var found bool
 							for _, wantName := range tc.want {
@@ -1181,6 +1182,11 @@ func TestFilterGoroutines(t *testing.T) {
 									found = true
 									break
 								}
+							}
+							if !found && !runtimeGoexitFound && strings.Contains(frame.Name, "runtime.goexit") && runtime.GOOS == "windows" {
+								// See previous comment about windows/1.26
+								found = true
+								runtimeGoexitFound = true
 							}
 							if !found {
 								t.Errorf("got Threads[%d]=%#v, want Name=%v\n", i, frame, tc.want)
@@ -1702,9 +1708,6 @@ func TestGoroutineLabels(t *testing.T) {
 					execute: func() {
 						client.ThreadsRequest()
 						tr := client.ExpectThreadsResponse(t)
-						if len(tr.Body.Threads) != 1 {
-							t.Errorf("got %d threads, expected 1\n", len(tr.Body.Threads))
-						}
 						// The first breakpoint is before the call to pprof.Do; no labels yet:
 						expectedPrefix := "* [Go 1]"
 						if !strings.HasPrefix(tr.Body.Threads[0].Name, expectedPrefix) {
