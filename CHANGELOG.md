@@ -3,6 +3,68 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.26.0] 2025-12-18
+
+### Added
+
+- Go 1.26 support (#4211, #4205, #4212, #4217, @aarzilli)
+- Savestate command for terminal (#4045, @alexsaezm)
+- DAP: Target command and follow-exec support (#4078, @Lslightly)
+- DAP: Read memory request handler (#4083, @MistaTwista)
+- DAP: Input/output redirection (#4178, @aarzilli)
+- DAP: Suspended breakpoints support (#4075, @firelizzard18)
+- DAP: Use exception breakpoints for predefined breakpoints (#4169, @aarzilli)
+- Custom starlark commands can be used with on prefix (#4170, @derekparker)
+- Shortcut syntax to access target variables in starlark (#4134, @aarzilli)
+- Support for tracing defer function calls with follow option (#3978, @archanaravindar)
+- Flag to retain trace directory after detach (#4091, @archanaravindar)
+- Ability to cancel debuginfod downloads (#4123, @aarzilli)
+- Process spawned event (#4171, @firelizzard18)
+- Materialized breakpoint event for follow-exec mode (#4161, @aarzilli)
+- Way to disable stop-on-error for breakpoint conditions (#4191, @aarzilli)
+- Function call support on loong64 (#4114, @yelvens)
+- Build argument logging (#4185, @pedia)
+- Capslock check (#4106, @derekparker)
+
+### Fixed
+
+- DAP: Restart handling when compilation fails (#4215, @aarzilli)
+- DAP: Disable string() field for address-less variables (#4214, @aarzilli)
+- DAP: Race condition in tests (#4121, @derekparker)
+- Gdbserial: Do not set detached if we kill the process (#4216, @aarzilli)
+- Prevent trace killing attached process (#4164, @alex-emery)
+- Trace /regexp/ should set ret breakpoints correctly (#4130, @aarzilli)
+- Replay subcommand must keep trace directory (#4184, @lwintermelon)
+- Nil pointer dereference when calling extra on a nil func (#4174, @aarzilli)
+- Check that breakpoint exists in ClearBreakpoint (#4141, @aarzilli)
+- Use address in ClearBreakpoint only when ID is 0 (#4168, @aarzilli)
+- Return error when calling a non-ptr receiver method on a nil ptr (#4139, @aarzilli)
+- Additional checks parsing g structs (#4140, @aarzilli)
+- Remember that we attached in WaitFor attach mode (#4120, @aarzilli)
+- Guard register logging from nil pointer dereferences (#4188, @aarzilli)
+- Do not insist stmt is same line as entry in DWARF (#4186, @derekparker)
+- Fix wait reason string table (#4182, @aarzilli)
+- Workaround for non-unicode strings in Variables (#4082, @aarzilli)
+- Fix ppc64le clause in support_sentinel_linux.go (#4129, @tshah14)
+- Improve frame unwind context handling on loong64 (#4133, @yelvens)
+
+### Changed
+
+- Replace hashicorp/golang-lru with custom lru cache (#4196, @qmuntal)
+- Update riscv64 support and add to test matrix (#4190, @lrzlin)
+- Update riscv64 capslock file (#4210, @derekparker)
+- Move things that use x/tools/go/packages to new repo (#3990, @aarzilli)
+- Remove experimental build tags for Windows ARM64 (#4176, @gdams)
+- Add Windows ARM64 workflow to CI (#4175, @gdams)
+- Add linux/loong64 to TeamCity configuration (#4154, @yelvens)
+- Set CI=true on a project level (#4156, @vietage)
+- Hierarchical search for structMember or method (#4118, @wenxuan70)
+- Update trie to v3.2.0 (#4131, @derekparker)
+- Parallelize tests where possible (#4115, @derekparker)
+- Modernize codebase with newer syntax and helpers (#4110, @derekparker)
+- Miscellaneous improvements to tests and build configuration (#4096, #4135, #4145, #4157, #4163, #4198, #4202, #4111, #4122, #4124, #4209, @derekparker, @aarzilli)
+- Miscellaneous code refactoring (#4159, #4173, #4201, @aarzilli)
+
 ## [1.25.2] 2025-08-26
 
 ### Added
