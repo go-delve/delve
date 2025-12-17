@@ -4,7 +4,6 @@ var debug anytype
 
 type _defer struct {
 	fn anytype
-	pc uintptr
 	sp uintptr
 	siz int32 (optional)
 	link *_defer

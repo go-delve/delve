@@ -41,3 +41,8 @@ func (bi *BinaryInfo) HasDebugPinner() bool {
 func DebugPinCount() int {
 	return debugPinCount
 }
+
+// DebugDeferPC returns deferPC for testing purposes.
+func (d *Defer) DebugDeferPC() uint64 {
+	return d.deferPC
+}
