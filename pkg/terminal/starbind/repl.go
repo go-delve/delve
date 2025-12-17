@@ -37,6 +37,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 
 	"go.starlark.net/starlark"
@@ -49,9 +50,7 @@ import (
 func (env *Env) REPL() error {
 	thread := env.newThread()
 	globals := starlark.StringDict{}
-	for k, v := range env.env {
-		globals[k] = v
-	}
+	maps.Copy(globals, env.env)
 
 	rl := liner.NewLiner()
 	defer rl.Close()
@@ -144,9 +143,7 @@ func rep(rl *liner.State, thread *starlark.Thread, globals starlark.StringDict, 
 		// The global names from the previous call become
 		// the predeclared names of this call.
 		// If execution failed, some globals may be undefined.
-		for k, v := range res {
-			globals[k] = v
-		}
+		maps.Copy(globals, res)
 	}
 
 	return nil

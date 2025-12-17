@@ -396,7 +396,7 @@ func TestScopePrefix(t *testing.T) {
 				curgid = gid
 			}
 
-			if idx := strings.Index(line, " main.agoroutine "); idx < 0 {
+			if found := strings.Contains(line, " main.agoroutine "); !found {
 				nonagoroutines = append(nonagoroutines, gid)
 				continue
 			}
@@ -411,8 +411,8 @@ func TestScopePrefix(t *testing.T) {
 		if len(agoroutines) < 10 {
 			extraAgoroutines := 0
 			for _, gid := range nonagoroutines {
-				stackOut := strings.Split(term.MustExec(fmt.Sprintf("goroutine %d stack", gid)), "\n")
-				for _, line := range stackOut {
+				stackOut := strings.SplitSeq(term.MustExec(fmt.Sprintf("goroutine %d stack", gid)), "\n")
+				for line := range stackOut {
 					if strings.HasSuffix(line, " main.agoroutine") {
 						extraAgoroutines++
 						break
@@ -434,16 +434,16 @@ func TestScopePrefix(t *testing.T) {
 			fid := -1
 			for _, line := range stackOut {
 				line = strings.TrimLeft(line, " ")
-				space := strings.Index(line, " ")
-				if space < 0 {
+				before, _, ok := strings.Cut(line, " ")
+				if !ok {
 					continue
 				}
-				curfid, err := strconv.Atoi(line[:space])
+				curfid, err := strconv.Atoi(before)
 				if err != nil {
 					continue
 				}
 
-				if idx := strings.Index(line, " main.agoroutine"); idx >= 0 {
+				if found := strings.Contains(line, " main.agoroutine"); found {
 					fid = curfid
 					break
 				}
@@ -1558,7 +1558,7 @@ func TestListPackages(t *testing.T) {
 		out := term.MustExec("packages")
 		t.Logf("> packages\n%s", out)
 		seen := map[string]bool{}
-		for _, p := range strings.Split(strings.TrimSpace(out), "\n") {
+		for p := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 			seen[p] = true
 		}
 		if !seen["main"] || !seen["runtime"] {
@@ -1568,7 +1568,7 @@ func TestListPackages(t *testing.T) {
 		out = term.MustExec("packages runtime")
 		t.Logf("> packages runtime\n%s", out)
 
-		for _, p := range strings.Split(strings.TrimSpace(out), "\n") {
+		for p := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 			if !strings.Contains(p, "runtime") {
 				t.Errorf("output includes unexpected %q", p)
 			}

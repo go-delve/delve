@@ -661,7 +661,7 @@ func TestLaunchWithFollowExec(t *testing.T) {
 		}
 
 		// 2 >> launch, << process, << initialized, << launch
-		client.LaunchRequestWithArgs(map[string]interface{}{
+		client.LaunchRequestWithArgs(map[string]any{
 			"mode":        "exec",
 			"program":     fixture.Path,
 			"args":        []string{"spawn2", childFixture.Path}, // call spawnchild.go

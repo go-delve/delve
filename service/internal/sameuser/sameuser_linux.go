@@ -31,7 +31,7 @@ func sameUserForHexLocalAddr(filename, localAddr, remoteAddr string) (bool, erro
 	if err != nil {
 		return false, err
 	}
-	for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(b)), "\n") {
 		// The format contains whitespace padding (%4d, %5u), so we use
 		// fmt.Sscanf instead of splitting on whitespace.
 		var (

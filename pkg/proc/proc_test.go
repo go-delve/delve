@@ -2983,20 +2983,20 @@ func logStacktrace(t *testing.T, p *proc.Target, frames []proc.Stackframe) {
 			topmostdefer = fmt.Sprintf("%#x %s", frames[j].TopmostDefer.DwrapPC, fnname)
 		}
 
-		defers := ""
+		var defers strings.Builder
 		for deferIdx, _defer := range frames[j].Defers {
 			_, _, fn := _defer.DeferredFunc(p)
 			fnname := ""
 			if fn != nil {
 				fnname = fn.Name
 			}
-			defers += fmt.Sprintf("%d %#x %s |", deferIdx, _defer.DwrapPC, fnname)
+			defers.WriteString(fmt.Sprintf("%d %#x %s |", deferIdx, _defer.DwrapPC, fnname))
 		}
 
 		frame := frames[j]
 		fmt.Fprintf(w, "%#x\t%#x\t%#x\t%#x\t%#x\t%s\t%s:%d\t%s\t%s\t\n",
 			frame.Call.PC, frame.FrameOffset(), frame.FramePointerOffset(), frame.Current.PC, frame.Ret,
-			name, filepath.Base(frame.Call.File), frame.Call.Line, topmostdefer, defers)
+			name, filepath.Base(frame.Call.File), frame.Call.Line, topmostdefer, defers.String())
 	}
 	w.Flush()
 }

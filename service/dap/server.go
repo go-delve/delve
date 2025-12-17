@@ -3085,12 +3085,12 @@ func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 			// that preserves their names.
 			retVarsAsVar := &proc.Variable{Children: slicePtrVarToSliceVar(retVars)}
 			// As a shortcut also express the return values as a single string.
-			retVarsAsStr := ""
+			var retVarsAsStr strings.Builder
 			for _, v := range retVars {
-				retVarsAsStr += s.convertVariableToString(v) + ", "
+				retVarsAsStr.WriteString(s.convertVariableToString(v) + ", ")
 			}
 			response.Body = dap.EvaluateResponseBody{
-				Result:             strings.TrimRight(retVarsAsStr, ", "),
+				Result:             strings.TrimRight(retVarsAsStr.String(), ", "),
 				VariablesReference: s.variableHandles.create(&fullyQualifiedVariable{retVarsAsVar, "", false /*not a scope*/, 0}),
 			}
 		}

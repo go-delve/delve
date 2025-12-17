@@ -53,8 +53,7 @@ func BenchmarkParse(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		Parse(data, binary.BigEndian, 0, ptrSizeByRuntimeArch(), 0)
 	}
 }

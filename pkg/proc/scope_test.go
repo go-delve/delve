@@ -180,12 +180,12 @@ func (check *scopeCheck) Parse(descr string, t *testing.T) {
 			decl = strings.TrimSpace(decl)
 		}
 
-		space := strings.Index(decl, " ")
-		if space < 0 {
+		before, after, ok := strings.Cut(decl, " ")
+		if !ok {
 			t.Fatalf("could not parse scope comment %q (%q)", descr, decl)
 		}
-		varcheck.name = strings.TrimSpace(decl[:space])
-		varcheck.typ = strings.TrimSpace(decl[space+1:])
+		varcheck.name = strings.TrimSpace(before)
+		varcheck.typ = strings.TrimSpace(after)
 		if strings.Contains(varcheck.typ, " ") {
 			t.Fatalf("could not parse scope comment %q (%q)", descr, decl)
 		}

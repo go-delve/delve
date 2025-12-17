@@ -111,7 +111,7 @@ func TestCacheConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for j := 0; j < 100; j++ {
+			for j := range 100 {
 				cache.Add(i*100+j, i)
 			}
 		}()
