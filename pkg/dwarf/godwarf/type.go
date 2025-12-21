@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
 )
@@ -396,19 +397,20 @@ type EnumValue struct {
 func (t *EnumType) String() string { return t.stringIntl(nil) }
 
 func (t *EnumType) stringIntl(recCheck recCheck) string {
-	s := "enum"
+	var s strings.Builder
+	s.WriteString("enum")
 	if t.EnumName != "" {
-		s += " " + t.EnumName
+		s.WriteString(" " + t.EnumName)
 	}
-	s += " {"
+	s.WriteString(" {")
 	for i, v := range t.Val {
 		if i > 0 {
-			s += "; "
+			s.WriteString("; ")
 		}
-		s += v.Name + "=" + strconv.FormatInt(v.Val, 10)
+		s.WriteString(v.Name + "=" + strconv.FormatInt(v.Val, 10))
 	}
-	s += "}"
-	return s
+	s.WriteString("}")
+	return s.String()
 }
 
 // A FuncType represents a function type.
@@ -426,18 +428,19 @@ func (t *FuncType) stringIntl(recCheck recCheck) string {
 		return cyclicalTypeStop
 	}
 	defer release()
-	s := "func("
+	var s strings.Builder
+	s.WriteString("func(")
 	for i, t := range t.ParamType {
 		if i > 0 {
-			s += ", "
+			s.WriteString(", ")
 		}
-		s += t.stringIntl(recCheck)
+		s.WriteString(t.stringIntl(recCheck))
 	}
-	s += ")"
+	s.WriteString(")")
 	if t.ReturnType != nil {
-		s += " " + t.ReturnType.stringIntl(recCheck)
+		s.WriteString(" " + t.ReturnType.stringIntl(recCheck))
 	}
-	return s
+	return s.String()
 }
 
 // A DotDotDotType represents the variadic ... function parameter.

@@ -462,18 +462,19 @@ func (e *ErrUnsupportedArch) Error() string {
 		}
 	}
 
-	errStr := "unsupported architecture of " + e.os + "/" + e.cpuArch.String()
-	errStr += " - only"
+	var errStr strings.Builder
+	errStr.WriteString("unsupported architecture of " + e.os + "/" + e.cpuArch.String())
+	errStr.WriteString(" - only")
 	for _, arch := range supportArchs {
-		errStr += " " + e.os + "/" + arch.String() + " "
+		errStr.WriteString(" " + e.os + "/" + arch.String() + " ")
 	}
 	if len(supportArchs) == 1 {
-		errStr += "is supported"
+		errStr.WriteString("is supported")
 	} else {
-		errStr += "are supported"
+		errStr.WriteString("are supported")
 	}
 
-	return errStr
+	return errStr.String()
 }
 
 type compileUnit struct {

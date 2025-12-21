@@ -1,5 +1,4 @@
 //go:build linux && loong64
-// +build linux,loong64
 
 package native
 

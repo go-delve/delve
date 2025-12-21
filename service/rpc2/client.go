@@ -709,7 +709,7 @@ func (c *RPCClient) DownloadLibraryDebugInfo(n int) error {
 	return c.call("DownloadLibraryDebugInfo", DownloadLibraryDebugInfoIn{n}, out)
 }
 
-func (c *RPCClient) call(method string, args, reply interface{}) error {
+func (c *RPCClient) call(method string, args, reply any) error {
 	return c.client.Call("RPCServer."+method, args, reply)
 }
 

@@ -188,17 +188,17 @@ func (s *Session) targetCmd(_, _ int, argstr string) (string, error) {
 		tgrp, unlock := s.debugger.LockTargetGroup()
 		defer unlock()
 		curpid := tgrp.Selected.Pid()
-		tgtListStr := ""
+		var tgtListStr strings.Builder
 		for _, tgt := range tgrp.Targets() {
 			if _, err := tgt.Valid(); err == nil {
 				selected := ""
 				if tgt.Pid() == curpid {
 					selected = "*"
 				}
-				tgtListStr += fmt.Sprintf("%s\t%d\t%s\n", selected, tgt.Pid(), tgt.CmdLine)
+				tgtListStr.WriteString(fmt.Sprintf("%s\t%d\t%s\n", selected, tgt.Pid(), tgt.CmdLine))
 			}
 		}
-		return tgtListStr, nil
+		return tgtListStr.String(), nil
 	case "follow-exec":
 		if len(argv) == 1 {
 			if s.debugger.FollowExecEnabled() {

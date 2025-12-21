@@ -204,9 +204,9 @@ func (conn *gdbConn) qSupported(multiprocess bool) (features map[string]bool, er
 	for _, stubfeature := range resp {
 		if len(stubfeature) == 0 {
 			continue
-		} else if equal := strings.Index(stubfeature, "="); equal >= 0 {
-			if stubfeature[:equal] == "PacketSize" {
-				if n, err := strconv.ParseInt(stubfeature[equal+1:], 16, 64); err == nil {
+		} else if before, after, ok := strings.Cut(stubfeature, "="); ok {
+			if before == "PacketSize" {
+				if n, err := strconv.ParseInt(after, 16, 64); err == nil {
 					conn.packetSize = int(n)
 				}
 			}
@@ -311,10 +311,10 @@ func (conn *gdbConn) readRegisterInfo(regFound map[string]bool) (err error) {
 				keyval = resp[:semicolon]
 			}
 
-			colon := strings.Index(keyval, ":")
-			if colon >= 0 {
-				name := keyval[:colon]
-				value := keyval[colon+1:]
+			before, after, ok := strings.Cut(keyval, ":")
+			if ok {
+				name := before
+				value := after
 
 				switch name {
 				case "name":
