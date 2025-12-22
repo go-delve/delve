@@ -909,7 +909,7 @@ func getEvalExpressionTestCases() []varTest {
 		{"(*afunc)(2)", false, "", "", "", errors.New("*")},
 		{"unknownthing(2)", false, "", "", "", altErrors("function calls not allowed without using 'call'", "could not find symbol value for unknownthing")},
 		{"(*unknownthing)(2)", false, "", "", "", altErrors("function calls not allowed without using 'call'", "could not find symbol value for unknownthing")},
-		{"(*strings.Split)(2)", false, "", "", "", altErrors("function calls not allowed without using 'call'", "could not find symbol value for strings")},
+		{"(*strings.Split)(2)", false, "", "", "", altErrors("function calls not allowed without using 'call'", "could not find symbol value for strings", "could not find symbol strings.Split")},
 
 		// pretty printing special types
 		{"tim1", false, `time.Time(1977-05-25T18:00:00Z)…`, `time.Time(1977-05-25T18:00:00Z)…`, "time.Time", nil},
@@ -946,6 +946,9 @@ func getEvalExpressionTestCases() []varTest {
 		{`*(*uint)(uintptr(&i1))`, false, `1`, `1`, "uint", nil},
 		{`*(*uint)(unsafe.Pointer(p1))`, false, `1`, `1`, "uint", nil},
 		{`*(*uint)(unsafe.Pointer(&i1))`, false, `1`, `1`, "uint", nil},
+
+		// issue #4179 local variable shadows package
+		{`issue4179helper.Test`, false, `*github.com/go-delve/delve/_fixtures/internal/issue4179helper.Test {Name: interface {} nil, Age: 0}`, `("*github.com/go-delve/delve/_fixtures/internal/issue4179helper.Test")(…`, "*github.com/go-delve/delve/_fixtures/internal/issue4179helper.Test", nil},
 
 		// Malformed values
 		{`badslice`, false, `(unreadable non-zero length array with nil base)`, `(unreadable non-zero length array with nil base)`, "[]int", nil},
@@ -1336,7 +1339,7 @@ func TestCallFunction(t *testing.T) {
 		{"x.CallMe()", nil, nil, 0},
 		{"x2.CallMe(5)", []string{":int:25"}, nil, 0},
 
-		{"\"delve\".CallMe()", nil, errors.New("\"delve\" (type string) is not a struct"), 0},
+		{"\"delve\".CallMe()", nil, altErrors("\"delve\" (type string) is not a struct", "could not find symbol delve.CallMe"), 0},
 
 		// Nested function calls tests
 
@@ -1362,6 +1365,9 @@ func TestCallFunction(t *testing.T) {
 
 		// Issue 4136
 		{`nilptrtostruct.VRcvr(0)`, []string{}, errors.New("nil pointer dereference"), 0},
+
+		// Issue 4181
+		{`issue4179helper.NonExistent("blah")`, []string{}, errors.New("issue4179helper (type int) has no member NonExistent"), 0},
 	}
 
 	var testcases112 = []testCaseCallFunction{
