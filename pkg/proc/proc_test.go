@@ -2883,6 +2883,9 @@ func TestDebugStripped(t *testing.T) {
 	if ver.IsDevelBuild() {
 		t.Skip("not supported")
 	}
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 26) {
+		t.Skip("not supported")
+	}
 	withTestProcessArgs("testnextprog", t, "", []string{}, protest.LinkStrip, func(p *proc.Target, grp *proc.TargetGroup, f protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.main")
 
@@ -2932,6 +2935,9 @@ func TestDebugStripped2(t *testing.T) {
 	}
 	if ver.Major > 0 && ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 22, Rev: -1}) {
 		skipOn(t, "not working on linux/arm64 with Go 1.22", "linux", "arm64")
+	}
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 26) {
+		t.Skip("not supported")
 	}
 	withTestProcessArgs("inlinestripped", t, "", []string{}, protest.EnableInlining|protest.LinkStrip|protest.LinkDisableDWARF, func(p *proc.Target, grp *proc.TargetGroup, f protest.Fixture) {
 		setFunctionBreakpointAll(p, t, "fmt.Println")
