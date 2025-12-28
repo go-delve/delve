@@ -2,12 +2,10 @@ package lru
 
 import (
 	"container/list"
-	"sync"
 )
 
 // Cache is a simple LRU (Least Recently Used) cache implementation.
 type Cache[K comparable, V any] struct {
-	mu        sync.Mutex
 	capacity  int
 	items     map[K]*list.Element
 	evictList *list.List
@@ -31,9 +29,6 @@ func NewCache[K comparable, V any](capacity int) *Cache[K, V] {
 // the value and moves it to the front. If the cache is at capacity,
 // it evicts the least recently used item.
 func (c *Cache[K, V]) Add(key K, value V) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	// Check if the key already exists.
 	if elem, ok := c.items[key]; ok {
 		c.evictList.MoveToFront(elem)
@@ -58,9 +53,6 @@ func (c *Cache[K, V]) Add(key K, value V) {
 // to the front (marking it as recently used) and returns (value, true).
 // If not found, returns (zero value, false).
 func (c *Cache[K, V]) Get(key K) (V, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if elem, ok := c.items[key]; ok {
 		c.evictList.MoveToFront(elem)
 		return elem.Value.(*entry[K, V]).value, true
