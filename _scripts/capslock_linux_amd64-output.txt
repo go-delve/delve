@@ -38,5 +38,5 @@ REFLECT: 2 references
 RUNTIME: 2 references
 SYSTEM_CALLS: 2 references
 UNANALYZED: 2 references
-UNSAFE_POINTER: 1 references
+UNSAFE_POINTER: 2 references
 
