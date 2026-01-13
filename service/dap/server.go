@@ -930,6 +930,7 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response := &dap.InitializeResponse{Response: *newResponse(request.Request)}
 	response.Body.SupportsConfigurationDoneRequest = true
 	response.Body.SupportsConditionalBreakpoints = true
+	response.Body.SupportsHitConditionalBreakpoints = true
 	response.Body.SupportsDelayedStackTraceLoading = true
 	response.Body.SupportsFunctionBreakpoints = true
 	response.Body.SupportsInstructionBreakpoints = true
