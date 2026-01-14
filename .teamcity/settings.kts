@@ -53,7 +53,7 @@ val targets = arrayOf(
 
         "linux/ppc64le/1.26",
 
-        "linux/riscv64/1.26",
+        // "linux/riscv64/1.26", // needs exp.linuxriscv64 build tag, disabled due to CI issues
 
         "windows/amd64/1.26",
         "windows/amd64/tip",
