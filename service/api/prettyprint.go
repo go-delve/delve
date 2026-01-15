@@ -146,7 +146,7 @@ func (v *Variable) writeTo(buf io.Writer, flags prettyFlags, indent, fmtstr stri
 					return
 				}
 			} else {
-				fmt.Fprintf(buf, "%s(%s) ", v.typeStr(flags), v.Children[0].Type)
+				fmt.Fprintf(buf, "%s(%s) ", v.typeStr(flags), v.Children[0].typeStr(flags))
 			}
 		}
 		data := v.Children[0]
@@ -357,7 +357,7 @@ func (v *Variable) writeMapTo(buf io.Writer, flags prettyFlags, indent, fmtstr s
 
 		key.writeTo(buf, 0, indent+indentString, fmtstr)
 		fmt.Fprint(buf, ": ")
-		value.writeTo(buf, prettyFlags(0).set(prettyNewlines, nl), indent+indentString, fmtstr)
+		value.writeTo(buf, flags.set(prettyNewlines, nl), indent+indentString, fmtstr)
 		if i != len(v.Children)-1 || nl {
 			fmt.Fprint(buf, ", ")
 		}
@@ -457,7 +457,7 @@ func (v *Variable) writeSliceOrArrayTo(buf io.Writer, flags prettyFlags, indent,
 		if nl {
 			fmt.Fprintf(buf, "\n%s%s", indent, indentString)
 		}
-		v.Children[i].writeTo(buf, prettyFlags(0).set(prettyNewlines, nl), indent+indentString, fmtstr)
+		v.Children[i].writeTo(buf, flags.set(prettyNewlines, nl), indent+indentString, fmtstr)
 		if i != len(v.Children)-1 || nl {
 			fmt.Fprint(buf, ",")
 		}
