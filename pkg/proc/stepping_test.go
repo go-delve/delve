@@ -1122,7 +1122,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 			})
 		})
 
-		if goversion.ProducerAfterOrEqual(p.BinInfo().Producer(), 1, 26) && runtime.GOARCH == "arm64" {
+		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 26) && runtime.GOARCH == "arm64" {
 			t.Run("TestGotoA1", func(t *testing.T) {
 				testseq2intl(t, fixture, grp, p, nil, []seqTest{
 					funcBreak(t, "main.TestGotoA1"),
