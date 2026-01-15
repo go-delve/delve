@@ -22,7 +22,7 @@ names selected from this list:
 	stack           Log stacktracer
 
 Additionally --log-dest can be used to specify where the logs should be
-written. 
+written.
 If the argument is a number it will be interpreted as a file descriptor,
 otherwise as a file path.
 This option will also redirect the "server listening at" message in headless

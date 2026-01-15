@@ -4,7 +4,7 @@ Help about file redirection.
 
 ### Synopsis
 
-The standard file descriptors of the target process can be controlled using the '-r' and '--tty' arguments. 
+The standard file descriptors of the target process can be controlled using the '-r' and '--tty' arguments.
 
 The --tty argument allows redirecting all standard descriptors to a terminal, specified as an argument to --tty.
 
