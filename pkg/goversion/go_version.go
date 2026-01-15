@@ -282,7 +282,7 @@ func ProducerAfterOrEqual(producer string, major, minor int) bool {
 	if ver.IsOldDevel() {
 		return true
 	}
-	return ver.AfterOrEqual(GoVersion{major, minor, 0, "", ""})
+	return ver.AfterOrEqual(GoVersion{major, minor, versionedDevel, "", ""})
 }
 
 func ParseProducer(producer string) GoVersion {
