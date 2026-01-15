@@ -313,7 +313,7 @@ func (v *Variable) writeStructTo(buf io.Writer, flags prettyFlags, indent, fmtst
 			fmt.Fprintf(buf, "\n%s%s", indent, indentString)
 		}
 		fmt.Fprintf(buf, "%s: ", v.Children[i].Name)
-		v.Children[i].writeTo(buf, prettyIncludeType.set(prettyNewlines, nl), indent+indentString, fmtstr)
+		v.Children[i].writeTo(buf, flags.set(prettyNewlines, nl), indent+indentString, fmtstr)
 		if i != len(v.Children)-1 || nl {
 			fmt.Fprint(buf, ",")
 			if !nl {
