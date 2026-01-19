@@ -763,6 +763,13 @@ func (s *Session) handleRequest(request dap.Message) {
 		return
 	}
 
+	// Reject all other requests if the target hasn't been launched
+	if s.debugger == nil {
+		r := request.(dap.RequestMessage).GetRequest()
+		s.sendShowUserErrorResponse(*r, NoDebugIsRunning, "No debug session started", "Use launch or attach request first.")
+		return
+	}
+
 	// Requests below can only be handled while target is stopped.
 	// Some of them are blocking and will be handled synchronously
 	// on this goroutine while non-blocking requests will be dispatched
@@ -1879,10 +1886,6 @@ func closeIfOpen(ch chan struct{}) {
 // The debugger should be set by a launch or attach request. Expects the target to be halted.
 func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneRequest, allowNextStateChange *syncflag) {
 	defer allowNextStateChange.raise()
-	if s.debugger == nil {
-		s.sendShowUserErrorResponse(request.Request, NoDebugIsRunning, "No debug session started", "Use launch or attach request first.")
-		return
-	}
 	if s.args.stopOnEntry {
 		e := &dap.StoppedEvent{
 			Event: *newEvent("stopped"),

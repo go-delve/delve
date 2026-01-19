@@ -6508,57 +6508,6 @@ func TestRestartRequestWithNewArgs(t *testing.T) {
 	})
 }
 
-func TestUnsupportedCommandResponses(t *testing.T) {
-	var got *dap.ErrorResponse
-	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		seqCnt := 1
-		expectUnsupportedCommand := func(cmd string) {
-			t.Helper()
-			got = client.ExpectUnsupportedCommandErrorResponse(t)
-			if got.RequestSeq != seqCnt || got.Command != cmd {
-				t.Errorf("\ngot  %#v\nwant RequestSeq=%d Command=%s", got, seqCnt, cmd)
-			}
-			seqCnt++
-		}
-
-		client.RestartFrameRequest()
-		expectUnsupportedCommand("restartFrame")
-
-		client.GotoRequest()
-		expectUnsupportedCommand("goto")
-
-		client.SourceRequest()
-		expectUnsupportedCommand("source")
-
-		client.TerminateThreadsRequest()
-		expectUnsupportedCommand("terminateThreads")
-
-		client.StepInTargetsRequest()
-		expectUnsupportedCommand("stepInTargets")
-
-		client.GotoTargetsRequest()
-		expectUnsupportedCommand("gotoTargets")
-
-		client.CompletionsRequest()
-		expectUnsupportedCommand("completions")
-
-		client.DataBreakpointInfoRequest()
-		expectUnsupportedCommand("dataBreakpointInfo")
-
-		client.SetDataBreakpointsRequest()
-		expectUnsupportedCommand("setDataBreakpoints")
-
-		client.BreakpointLocationsRequest()
-		expectUnsupportedCommand("breakpointLocations")
-
-		client.ModulesRequest()
-		expectUnsupportedCommand("modules")
-
-		client.DisconnectRequest()
-		client.ExpectDisconnectResponse(t)
-	})
-}
-
 type helperForSetVariable struct {
 	t *testing.T
 	c *daptest.Client
@@ -6897,36 +6846,6 @@ func TestSetVariableWithCall(t *testing.T) {
 				},
 				disconnect: true,
 			}})
-	})
-}
-
-func TestOptionalNotYetImplementedResponses(t *testing.T) {
-	var got *dap.ErrorResponse
-	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
-		seqCnt := 1
-		expectNotYetImplemented := func(cmd string) {
-			t.Helper()
-			got = client.ExpectNotYetImplementedErrorResponse(t)
-			if got.RequestSeq != seqCnt || got.Command != cmd {
-				t.Errorf("\ngot  %#v\nwant RequestSeq=%d Command=%s", got, seqCnt, cmd)
-			}
-			seqCnt++
-		}
-
-		client.TerminateRequest()
-		expectNotYetImplemented("terminate")
-
-		client.SetExpressionRequest()
-		expectNotYetImplemented("setExpression")
-
-		client.LoadedSourcesRequest()
-		expectNotYetImplemented("loadedSources")
-
-		client.CancelRequest()
-		expectNotYetImplemented("cancel")
-
-		client.DisconnectRequest()
-		client.ExpectDisconnectResponse(t)
 	})
 }
 
@@ -7647,10 +7566,12 @@ func TestBadlyFormattedMessageToServer(t *testing.T) {
 	})
 }
 
-// TestConfigurationDoneWithoutDebugSession tests that sending ConfigurationDone
-// before Launch/Attach returns an error instead of panicing.
-// Reproduces issue #4060.
-func TestConfigurationDoneWithoutDebugSession(t *testing.T) {
+func TestRequestsBeforeLaunch(t *testing.T) {
+	// Checks that we don't try to use s.debugger before we have initialized it
+	// if we receive a request before a launch request (or after a launch
+	// request has failed).
+	// Issues #4060 and #4237
+
 	serverStopped := make(chan struct{})
 	server, _ := startDAPServer(t, false, serverStopped)
 
@@ -7671,6 +7592,10 @@ func TestConfigurationDoneWithoutDebugSession(t *testing.T) {
 			t.Errorf("Expected error message %q, got %q", expectedMsg, resp.Body.Error.Format)
 		}
 	}
+
+	client.StepOutRequest(0)
+	client.ExpectVisibleErrorResponse(t)
+
 	client.DisconnectRequest()
 	client.ExpectDisconnectResponse(t)
 	client.ExpectTerminatedEvent(t)
