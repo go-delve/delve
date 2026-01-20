@@ -68,6 +68,24 @@ func (v *Variable) MultilineString(indent, fmtstr string) string {
 	return buf.String()
 }
 
+// FormatWithVerbosity formats a variable according to trace verbosity level
+func (v *Variable) FormatWithVerbosity(verbosity int) string {
+	if verbosity == 0 {
+		return "" // Level 0: no output
+	}
+
+	// Special case for level 1: type only (no value expansion)
+	if verbosity == 1 {
+		return fmt.Sprintf("<%s>", ShortenType(v.Type))
+	}
+
+	// For levels 2-4: use existing formatting infrastructure
+	var buf bytes.Buffer
+	flags := verbosityToFlags(verbosity)
+	v.writeTo(&buf, flags, "", "")
+	return buf.String()
+}
+
 func (v *Variable) typeStr(flags prettyFlags) string {
 	if flags.shortenType() {
 		return ShortenType(v.Type)

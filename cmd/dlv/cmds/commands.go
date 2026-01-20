@@ -89,6 +89,7 @@ var (
 	traceUseEBPF       bool
 	traceShowTimestamp bool
 	traceFollowCalls   int
+	traceVerbose       int
 
 	// redirect specifications for target process
 	redirects []string
@@ -370,6 +371,8 @@ only see the output of the trace operations you can redirect stdout.`,
 	traceCommand.Flags().String("output", "", "Output path for the binary.")
 	must(traceCommand.MarkFlagFilename("output"))
 	traceCommand.Flags().IntVarP(&traceFollowCalls, "follow-calls", "", 0, "Trace all children of the function to the required depth. Trace also supports defer functions and cases where functions are dynamically returned and passed as parameters.")
+	traceCommand.Flags().IntVarP(&traceVerbose, "trace-verbose", "V", 2, "Parameter verbosity: 0=none, 1=types, 2=inline, 3=expanded, 4=full (default 2)")
+	must(traceCommand.RegisterFlagCompletionFunc("trace-verbose", cobra.NoFileCompletions))
 	rootCommand.AddCommand(traceCommand)
 
 	coreCommand := &cobra.Command{
@@ -789,14 +792,17 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 				if traceFollowCalls > 0 && stackdepth == 0 {
 					stackdepth = 20
 				}
+				// Get LoadConfig based on verbosity level
+				loadCfg := api.GetLoadConfigForVerbosity(traceVerbose)
 				_, err = client.CreateBreakpoint(&api.Breakpoint{
 					FunctionName:     funcs[i],
 					Tracepoint:       true,
 					Line:             -1,
 					Stacktrace:       stackdepth,
-					LoadArgs:         &terminal.ShortLoadConfig,
+					LoadArgs:         &loadCfg,
 					TraceFollowCalls: traceFollowCalls,
 					RootFuncName:     regexp,
+					TraceVerbosity:   traceVerbose,
 				})
 
 				if err != nil && !isBreakpointExistsErr(err) {
@@ -816,9 +822,10 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 						TraceReturn:      true,
 						Stacktrace:       stackdepth,
 						Line:             -1,
-						LoadArgs:         &terminal.ShortLoadConfig,
+						LoadArgs:         &loadCfg,
 						TraceFollowCalls: traceFollowCalls,
 						RootFuncName:     regexp,
+						TraceVerbosity:   traceVerbose,
 					})
 					if err != nil && !isBreakpointExistsErr(err) {
 						fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)

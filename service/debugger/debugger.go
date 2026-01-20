@@ -911,6 +911,7 @@ func (d *Debugger) copyLogicalBreakpointInfo(lbp *proc.LogicalBreakpoint, reques
 	lbp.UserData = requested.UserData
 	lbp.RootFuncName = requested.RootFuncName
 	lbp.TraceFollowCalls = requested.TraceFollowCalls
+	lbp.TraceVerbosity = requested.TraceVerbosity
 
 	return d.target.ChangeBreakpointCondition(lbp, requested.Cond, requested.HitCond, requested.HitCondPerG)
 }
