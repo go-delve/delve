@@ -1953,6 +1953,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 		requestedBp.AddrPid = loc.PCPids
 		if tracepoint {
 			requestedBp.LoadArgs = &ShortLoadConfig
+			requestedBp.TraceVerbosity = 2 // Default to inline verbosity for terminal trace command
 		}
 
 		bp, err := t.client.CreateBreakpointWithExpr(requestedBp, spec, t.substitutePathRules(), false)
@@ -1986,10 +1987,11 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 			}
 			for j := range addrs {
 				_, err = t.client.CreateBreakpoint(&api.Breakpoint{
-					Addr:        addrs[j],
-					TraceReturn: true,
-					Line:        -1,
-					LoadArgs:    &ShortLoadConfig,
+					Addr:           addrs[j],
+					TraceReturn:    true,
+					Line:           -1,
+					LoadArgs:       &ShortLoadConfig,
+					TraceVerbosity: 2, // Default to inline verbosity for terminal trace command
 				})
 				if err != nil {
 					return nil, err
@@ -3025,18 +3027,8 @@ func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 
 // formatTraceParameters formats function parameters based on verbosity level
 func formatTraceParameters(th *api.Thread, verbosity int) string {
-	if verbosity == 0 {
+	if verbosity == 0 || th.BreakpointInfo == nil {
 		return ""
-	}
-
-	if th.BreakpointInfo == nil {
-		// DEBUG: This shouldn't happen if LoadArgs is set
-		return "(no breakpoint info)"
-	}
-
-	if len(th.BreakpointInfo.Arguments) == 0 {
-		// DEBUG: No arguments loaded
-		return "(no args loaded)"
 	}
 
 	var params []string
@@ -3133,10 +3125,8 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 			}
 		}
 
-		// Only print detailed breakpoint info at verbosity 0-1
-		if verbosity <= 1 {
-			printBreakpointInfo(t, th, !hasReturnValue)
-		}
+		// Always call printBreakpointInfo to execute custom commands (like "on" commands)
+		printBreakpointInfo(t, th, !hasReturnValue)
 	}
 	if th.Breakpoint.TraceReturn {
 		retVals := make([]string, 0, len(th.ReturnValues))
