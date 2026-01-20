@@ -1301,6 +1301,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	// will end the configuration sequence with 'configurationDone'.
 	s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
 	s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
+	s.warnAboutTrimpathMaybe()
 }
 
 func (s *Session) getPackageDir(pkg string) string {
@@ -2213,6 +2214,20 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 	// will end the configuration sequence with 'configurationDone'.
 	s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
 	s.send(&dap.AttachResponse{Response: *newResponse(request.Request)})
+	s.warnAboutTrimpathMaybe()
+}
+
+func (s *Session) warnAboutTrimpathMaybe() {
+	imgs := s.debugger.ListDynamicLibraries()
+	if imgs[0].TrimpathUsed() {
+		s.send(&dap.OutputEvent{
+			Event: *newEvent("output"),
+			Body: dap.OutputEventBody{
+				Category: "important",
+				Output:   "Warning: debugging executable built with trimpath",
+			},
+		})
+	}
 }
 
 // onNextRequest handles 'next' request.

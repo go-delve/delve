@@ -1050,6 +1050,15 @@ func (image *Image) Stripped() bool {
 	return image.dwarf == nil
 }
 
+func (image *Image) TrimpathUsed() bool {
+	for _, cu := range image.compileUnits {
+		if cu.lineInfo != nil && !cu.lineInfo.Trimpath {
+			return false
+		}
+	}
+	return true
+}
+
 // AddImage adds the specified image to bi, loading data asynchronously.
 // Addr is the relocated entry point for the executable and staticBase (i.e.
 // the relocation offset) for all other images.

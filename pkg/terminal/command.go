@@ -2760,7 +2760,7 @@ func libraries(t *Term, ctx callContext, args string) error {
 		return nil
 	}
 
-	libs, err := t.client.ListDynamicLibraries()
+	libs, _, err := t.client.ListDynamicLibraries()
 	if err != nil {
 		return err
 	}
