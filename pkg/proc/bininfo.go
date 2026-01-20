@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"debug/buildinfo"
 	"debug/dwarf"
 	"debug/elf"
 	"debug/macho"
@@ -1020,6 +1021,7 @@ type Image struct {
 	debugLineStr []byte
 
 	symTable *gosym.Table
+	Trimpath bool // trimpath used
 
 	typeCache map[dwarf.Offset]godwarf.Type
 
@@ -1085,6 +1087,18 @@ func (bi *BinaryInfo) AddImage(path string, addr uint64) error {
 		bi.Images[len(bi.Images)-1].loadErr = err
 	}
 	bi.macOSDebugFrameBugWorkaround()
+
+	// Detect trimpath
+	binfo, _ := buildinfo.ReadFile(path)
+	if binfo != nil {
+		for _, s := range binfo.Settings {
+			if s.Key == "-trimpath" && s.Value == "true" {
+				image.Trimpath = true
+				break
+			}
+		}
+	}
+
 	return err
 }
 

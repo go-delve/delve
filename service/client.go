@@ -176,7 +176,7 @@ type Client interface {
 	IsMulticlient() bool
 
 	// ListDynamicLibraries returns a list of loaded dynamic libraries.
-	ListDynamicLibraries() ([]api.Image, error)
+	ListDynamicLibraries() ([]api.Image, bool, error)
 
 	// ExamineMemory returns the raw memory stored at the given address.
 	// The amount of data to be read is specified by length which must be less than or equal to 1000.

@@ -2,6 +2,7 @@ package proc_test
 
 import (
 	"bytes"
+	"debug/buildinfo"
 	"encoding/binary"
 	"errors"
 	"flag"
@@ -6026,4 +6027,23 @@ func TestDelveCatch(t *testing.T) {
 		assertLineNumber(p, t, 7, "continue")
 		assertVariable(t, evalVariable(p, t, "i"), varTest{name: "i", preserveName: true, value: "4", varType: "int"})
 	})
+}
+
+func TestTrimpathDetection(t *testing.T) {
+	f1 := protest.BuildFixture(t, "math", 0)
+	bi1 := proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH)
+	assertNoError(bi1.LoadBinaryInfo(f1.Path, 0x10000, nil), t, "LoadBinaryInfo")
+	if bi1.Images[0].Trimpath {
+		t.Error("expected trimpath used to be false, was true")
+	}
+
+	f2 := protest.BuildFixture(t, "math", protest.Trimpath)
+	buildinfo, _ := buildinfo.ReadFile(f2.Path)
+	fmt.Printf("%#v\n", buildinfo)
+
+	b2 := proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH)
+	assertNoError(b2.LoadBinaryInfo(f2.Path, 0x10000, nil), t, "LoadBinaryInfo")
+	if !b2.Images[0].Trimpath {
+		t.Error("expected trimpath used to be true, was false")
+	}
 }

@@ -2223,7 +2223,7 @@ func (d *Debugger) ClearCheckpoint(id int) error {
 func (d *Debugger) ListDynamicLibraries() []*proc.Image {
 	d.targetMutex.Lock()
 	defer d.targetMutex.Unlock()
-	return d.target.Selected.BinInfo().Images[1:] // skips the first image because it's the executable file
+	return d.target.Selected.BinInfo().Images
 }
 
 // ExamineMemory returns the raw memory stored at the given address.
