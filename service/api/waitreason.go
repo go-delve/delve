@@ -271,7 +271,7 @@ func WaitReasonString(goVersion *goversion.GoVersion, waitReason int64) string {
 		waitReasonStrings = waitReasonStrings1dot24
 	case 25:
 		waitReasonStrings = waitReasonStrings1dot25
-	case 26:
+	case 26, 27:
 		waitReasonStrings = waitReasonStrings1dot26
 	}
 
