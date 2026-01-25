@@ -4411,6 +4411,7 @@ func TestEvaluateCommandRequest(t *testing.T) {
     dlv config 	 Changes configuration parameters.
     dlv sources (alias: s) 	 Print list of source files.
     dlv target 	 Manages child process debugging.
+    dlv types 	 Print list of types.
 
 Type 'dlv help' followed by a command for full documentation.
 `
