@@ -518,7 +518,14 @@ func trapWaitInternal(procgrp *processGroup, pid int, options trapWaitOptions) (
 			cmdline, _ := dbp.initializeBasic()
 			tgt, err := procgrp.add(dbp, dbp.pid, dbp.memthread, findExecutable("", dbp.pid), proc.StopLaunched, cmdline)
 			if err != nil {
-				return nil, err
+				if errors.As(err, new(*proc.ErrBadBinaryInfo)) {
+					// If we are unable to load the binary info, log the error
+					// but don't return it. This allows the client to continue
+					// debugging the parent process.
+					logflags.DebuggerLogger().Warnf("Child target %d %q cannot be debugged: %v", pid, cmdline, err)
+				} else {
+					return nil, err
+				}
 			}
 			if halt {
 				return nil, nil

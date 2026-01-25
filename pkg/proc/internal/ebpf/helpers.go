@@ -3,9 +3,11 @@
 package ebpf
 
 import (
+	"context"
 	"debug/elf"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"reflect"
 	"runtime"
 	"sync"
@@ -64,14 +66,29 @@ type EBPFContext struct {
 
 	parsedBpfEvents []RawUProbeParams
 	m               sync.Mutex
+
+	ctx    context.Context
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
 }
 
 func (ctx *EBPFContext) Close() {
-	if ctx.objs != nil {
-		ctx.objs.Close()
+	if ctx.cancel != nil {
+		ctx.cancel()
 	}
+
+	if ctx.bpfRingBuf != nil {
+		ctx.bpfRingBuf.Close()
+	}
+
+	ctx.wg.Wait()
+
 	for _, l := range ctx.links {
 		l.Close()
+	}
+
+	if ctx.objs != nil {
+		ctx.objs.Close()
 	}
 }
 
@@ -115,7 +132,7 @@ func LoadEBPFTracingProgram(path string) (*EBPFContext, error) {
 	)
 
 	if err = rlimit.RemoveMemlock(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to remove memlock limit (try running with CAP_SYS_RESOURCE or as root): %w", err)
 	}
 	ctx.executable, err = link.OpenExecutable(path)
 	if err != nil {
@@ -134,11 +151,26 @@ func LoadEBPFTracingProgram(path string) (*EBPFContext, error) {
 
 	ctx.bpfArgMap = objs.ArgMap
 
-	// TODO(derekparker): This should eventually be moved to a more generalized place.
-	go func() {
-		for {
+	ctx.ctx, ctx.cancel = context.WithCancel(context.Background())
+
+	ctx.wg.Add(1)
+	go ctx.pollEvents()
+
+	return &ctx, nil
+}
+
+// pollEvents reads events from the ring buffer and stores them for retrieval.
+// This goroutine runs until the context is cancelled.
+func (ctx *EBPFContext) pollEvents() {
+	defer ctx.wg.Done()
+
+	for {
+		select {
+		case <-ctx.ctx.Done():
+			return
+		default:
 			e, err := ctx.bpfRingBuf.Read()
-			if err != nil {
+			if err != nil || ctx.ctx.Err() != nil {
 				return
 			}
 
@@ -148,9 +180,7 @@ func LoadEBPFTracingProgram(path string) (*EBPFContext, error) {
 			ctx.parsedBpfEvents = append(ctx.parsedBpfEvents, parsed)
 			ctx.m.Unlock()
 		}
-	}()
-
-	return &ctx, nil
+	}
 }
 
 func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {

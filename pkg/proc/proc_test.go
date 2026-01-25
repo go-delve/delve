@@ -2983,20 +2983,20 @@ func logStacktrace(t *testing.T, p *proc.Target, frames []proc.Stackframe) {
 			topmostdefer = fmt.Sprintf("%#x %s", frames[j].TopmostDefer.DwrapPC, fnname)
 		}
 
-		defers := ""
+		var defers strings.Builder
 		for deferIdx, _defer := range frames[j].Defers {
 			_, _, fn := _defer.DeferredFunc(p)
 			fnname := ""
 			if fn != nil {
 				fnname = fn.Name
 			}
-			defers += fmt.Sprintf("%d %#x %s |", deferIdx, _defer.DwrapPC, fnname)
+			defers.WriteString(fmt.Sprintf("%d %#x %s |", deferIdx, _defer.DwrapPC, fnname))
 		}
 
 		frame := frames[j]
 		fmt.Fprintf(w, "%#x\t%#x\t%#x\t%#x\t%#x\t%s\t%s:%d\t%s\t%s\t\n",
 			frame.Call.PC, frame.FrameOffset(), frame.FramePointerOffset(), frame.Current.PC, frame.Ret,
-			name, filepath.Base(frame.Call.File), frame.Call.Line, topmostdefer, defers)
+			name, filepath.Base(frame.Call.File), frame.Call.Line, topmostdefer, defers.String())
 	}
 	w.Flush()
 }
@@ -5286,6 +5286,9 @@ func TestFollowExec(t *testing.T) {
 		finished := false
 		pids := map[int]int{}
 		ns := map[string]int{}
+		events := []*proc.Event{}
+
+		grp.SetEventsFn(func(e *proc.Event) { events = append(events, e) })
 
 		for {
 			t.Log("Continuing")
@@ -5369,6 +5372,126 @@ func TestFollowExec(t *testing.T) {
 			if v != 1 {
 				t.Errorf("bad contents of pids: %#v", pids)
 			}
+		}
+
+		spawned := map[int]*proc.ProcessSpawnedEventDetails{}
+		for _, event := range events {
+			if event.Kind == proc.EventProcessSpawned {
+				details := event.ProcessSpawnedEventDetails
+				spawned[details.PID] = details
+			}
+		}
+
+		for pid := range pids {
+			if _, ok := spawned[pid]; !ok {
+				t.Errorf("Expected a process spawned event for target %d", pid)
+			}
+		}
+	})
+}
+
+func TestFollowExecRegex(t *testing.T) {
+	skipOn(t, "follow exec not implemented on freebsd", "freebsd")
+	skipOn(t, "follow exec not implemented on macOS", "darwin")
+	withTestProcessArgs("spawn", t, ".", []string{"spawn", "3"}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		grp.LogicalBreakpoints[2] = &proc.LogicalBreakpoint{LogicalID: 2, Set: proc.SetBreakpoint{FunctionName: "main.traceme2"}, HitCount: make(map[int64]uint64)}
+
+		assertNoError(grp.SetBreakpointEnabled(grp.LogicalBreakpoints[2], true), t, "EnableBreakpoint(main.traceme2)")
+
+		assertNoError(grp.FollowExec(true, "child C2"), t, "FollowExec")
+
+		cmdlines := map[int]string{}
+		events := []*proc.Event{}
+
+		grp.SetEventsFn(func(e *proc.Event) { events = append(events, e) })
+
+		for {
+			t.Log("Continuing")
+			err := grp.Continue()
+			if errors.As(err, &proc.ErrProcessExited{}) {
+				break
+			}
+			assertNoError(err, t, "Continue")
+
+			if grp.Selected == p {
+				t.Fatalf("unexpected break in parent process")
+			}
+
+			it := proc.ValidTargets{Group: grp}
+			for it.Next() {
+				tgt := it.Target
+				if !tgt.CurrentThread().Breakpoint().Active {
+					continue
+				}
+				if tgt.CurrentThread().Breakpoint().Breakpoint.LogicalID() != 2 {
+					t.Fatalf("wrong breakpoint %#v", grp.Selected.CurrentThread().Breakpoint().Breakpoint)
+				}
+				cmdlines[tgt.Pid()] = tgt.CmdLine
+				loc, err := proc.ThreadLocation(tgt.CurrentThread())
+				assertNoError(err, t, "Location")
+				if loc.Fn.Name != "main.traceme2" {
+					t.Fatalf("wrong stop location %#v", loc)
+				}
+			}
+		}
+
+		spawned := map[int]*proc.ProcessSpawnedEventDetails{}
+		for _, event := range events {
+			if event.Kind == proc.EventProcessSpawned {
+				details := event.ProcessSpawnedEventDetails
+				spawned[details.PID] = details
+			}
+		}
+
+		if len(cmdlines) != 1 {
+			t.Fatalf("bad content of cmdlines: want len(cmdlines) == 1, got %d", len(cmdlines))
+		}
+
+		for pid, cmdline := range cmdlines {
+			if !strings.Contains(cmdline, "child C2") {
+				t.Fatalf("bad contents of cmdline: want child C2, got %q", cmdline)
+			}
+
+			event, ok := spawned[pid]
+			if !ok {
+				t.Fatalf("bad content of events: want an event for child, got %#v", spawned)
+			}
+
+			if event.Cmdline != cmdline {
+				t.Fatalf("cmdline does not match: %q != %q", event.Cmdline, cmdline)
+			}
+		}
+	})
+}
+
+func TestFollowExecNonGo(t *testing.T) {
+	skipOn(t, "follow exec not implemented on freebsd", "freebsd")
+	skipOn(t, "follow exec not implemented on macOS", "darwin")
+	withTestProcessArgs("nongochild/", t, "../../_fixtures/nongochild/", []string{}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.FollowExec(true, ""), t, "FollowExec")
+
+		// Collect events
+		var events []*proc.Event
+		grp.SetEventsFn(func(e *proc.Event) { events = append(events, e) })
+
+		// Execute the process
+		for {
+			t.Log("Continuing")
+			err := grp.Continue()
+			if errors.As(err, &proc.ErrProcessExited{}) {
+				break
+			}
+		}
+
+		// Verify that a child was spawned
+		var spawned *proc.ProcessSpawnedEventDetails
+		for _, event := range events {
+			if event.Kind == proc.EventProcessSpawned {
+				spawned = event.ProcessSpawnedEventDetails
+			}
+		}
+		if spawned == nil {
+			t.Fatal("Did not log an event for the child")
 		}
 	})
 }

@@ -462,18 +462,19 @@ func (e *ErrUnsupportedArch) Error() string {
 		}
 	}
 
-	errStr := "unsupported architecture of " + e.os + "/" + e.cpuArch.String()
-	errStr += " - only"
+	var errStr strings.Builder
+	errStr.WriteString("unsupported architecture of " + e.os + "/" + e.cpuArch.String())
+	errStr.WriteString(" - only")
 	for _, arch := range supportArchs {
-		errStr += " " + e.os + "/" + arch.String() + " "
+		errStr.WriteString(" " + e.os + "/" + arch.String() + " ")
 	}
 	if len(supportArchs) == 1 {
-		errStr += "is supported"
+		errStr.WriteString("is supported")
 	} else {
-		errStr += "are supported"
+		errStr.WriteString("are supported")
 	}
 
-	return errStr
+	return errStr.String()
 }
 
 type compileUnit struct {
@@ -2301,13 +2302,26 @@ func loadBinaryInfoGoRuntimeElf(bi *BinaryInfo, image *Image, path string, elfFi
 		return err
 	}
 	image.symTable = symTable
-	noPtrSectionData, err := elfFile.Section(".noptrdata").Data()
-	if err != nil {
-		return err
-	}
-	md, err := parseModuleData(noPtrSectionData, symTabAddr)
-	if err != nil {
-		return err
+
+	// In Go 1.26+, moduledata is in the .go.module section.
+	// In earlier versions, we need to search for it in .noptrdata.
+	var md []byte
+	if goModuleSec := elfFile.Section(".go.module"); goModuleSec != nil {
+		// Go 1.26+: .go.module section contains moduledata directly
+		md, err = goModuleSec.Data()
+		if err != nil {
+			return err
+		}
+	} else {
+		// Go 1.25 and earlier: search for moduledata in .noptrdata
+		noPtrSectionData, err := elfFile.Section(".noptrdata").Data()
+		if err != nil {
+			return err
+		}
+		md, err = parseModuleData(noPtrSectionData, symTabAddr)
+		if err != nil {
+			return err
+		}
 	}
 	roDataAddr := elfFile.Section(".rodata").Addr
 	goFuncVal, err := findGoFuncVal(md, roDataAddr, bi.Arch.ptrSize)
@@ -2344,13 +2358,26 @@ func loadBinaryInfoGoRuntimeMacho(bi *BinaryInfo, image *Image, path string, exe
 		return err
 	}
 	image.symTable = symTable
-	noPtrSectionData, err := exe.Section("__noptrdata").Data()
-	if err != nil {
-		return err
-	}
-	md, err := parseModuleData(noPtrSectionData, symTabAddr)
-	if err != nil {
-		return err
+
+	// In Go 1.26+, moduledata is in the __go_module section.
+	// In earlier versions, we need to search for it in __noptrdata.
+	var md []byte
+	if goModuleSec := exe.Section("__go_module"); goModuleSec != nil {
+		// Go 1.26+: __go_module section contains moduledata directly
+		md, err = goModuleSec.Data()
+		if err != nil {
+			return err
+		}
+	} else {
+		// Go 1.25 and earlier: search for moduledata in __noptrdata
+		noPtrSectionData, err := exe.Section("__noptrdata").Data()
+		if err != nil {
+			return err
+		}
+		md, err = parseModuleData(noPtrSectionData, symTabAddr)
+		if err != nil {
+			return err
+		}
 	}
 	roDataAddr := exe.Section("__rodata").Addr
 	goFuncVal, err := findGoFuncVal(md, roDataAddr, bi.Arch.ptrSize)

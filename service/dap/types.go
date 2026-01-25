@@ -112,7 +112,7 @@ type LaunchConfig struct {
 	// or
 	//    "buildFlags": ["-tags=integration", "-ldflags=-X main.Hello=World"]
 	// Using other types is an error.
-	BuildFlags BuildFlags `json:"buildFlags,omitempty"`
+	BuildFlags BuildFlags `json:"buildFlags"`
 
 	// Output path for the binary of the debuggee.
 	// Relative path is interpreted as the path relative to

@@ -808,15 +808,15 @@ func TestTraceDirRecursion(t *testing.T) {
 	// Parse output to ignore calls to morestack_noctxt for comparison
 	scan := bufio.NewScanner(rdr)
 	text := ""
-	outputtext := ""
+	var outputtext strings.Builder
 	for scan.Scan() {
 		text = scan.Text()
 		if !strings.Contains(text, "morestack_noctxt") {
-			outputtext += text
-			outputtext += "\n"
+			outputtext.WriteString(text)
+			outputtext.WriteString("\n")
 		}
 	}
-	output := []byte(outputtext)
+	output := []byte(outputtext.String())
 
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
@@ -1304,8 +1304,7 @@ func TestCapsLock(t *testing.T) {
 	cmd.Env = append(os.Environ(), fmt.Sprintf("GOOS=%s", goos), fmt.Sprintf("GOARCH=%s", goarch))
 	out, _ := cmd.CombinedOutput()
 
-	genCommand := fmt.Sprintf("capslock -goos %s -goarch %s %s > %s",
-		goos, goarch, strings.Join(args, " "), expectedFile)
+	genCommand := "go run _scripts/gen-capslock-all.go"
 	checkAutogenDoc(t, expectedFile, genCommand, out)
 }
 

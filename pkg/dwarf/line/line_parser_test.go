@@ -182,8 +182,7 @@ func BenchmarkLineParser(b *testing.B) {
 
 	data := grabDebugLineSection(p, nil)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = ParseAll(data, nil, nil, 0, true, ptrSizeByRuntimeArch())
 	}
 }
@@ -204,9 +203,8 @@ func loadBenchmarkData(tb testing.TB) DebugLines {
 
 func BenchmarkStateMachine(b *testing.B) {
 	lineInfos := loadBenchmarkData(b)
-	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		sm := newStateMachine(lineInfos[0], lineInfos[0].Instructions, ptrSizeByRuntimeArch())
 
 		for {
@@ -303,8 +301,8 @@ func BenchmarkPCToLine(b *testing.B) {
 	lineInfos := loadBenchmarkData(b)
 
 	entries, basePCs := setupTestPCToLine(b, lineInfos)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+
+	for b.Loop() {
 		runTestPCToLine(b, lineInfos, entries, basePCs, false, 0x10000)
 	}
 }

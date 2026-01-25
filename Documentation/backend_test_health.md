@@ -7,16 +7,16 @@ Tests skipped by each supported backend:
 	* 1 not working due to optimizations
 * arm64 skipped = 1
 	* 1 broken - global variable symbolication
-* darwin skipped = 3
-	* 2 follow exec not implemented on macOS
+* darwin skipped = 5
+	* 4 follow exec not implemented on macOS
 	* 1 waitfor implementation is delegated to debugserver
 * darwin/arm64 skipped = 1
 	* 1 broken - cgo stacktraces
 * darwin/lldb skipped = 1
 	* 1 upstream issue
-* freebsd skipped = 13
+* freebsd skipped = 15
 	* 2 flaky
-	* 2 follow exec not implemented on freebsd
+	* 4 follow exec not implemented on freebsd
 	* 7 not implemented
 	* 2 not working on freebsd
 * linux/386 skipped = 2

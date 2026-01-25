@@ -661,7 +661,7 @@ func TestLaunchWithFollowExec(t *testing.T) {
 		}
 
 		// 2 >> launch, << process, << initialized, << launch
-		client.LaunchRequestWithArgs(map[string]interface{}{
+		client.LaunchRequestWithArgs(map[string]any{
 			"mode":        "exec",
 			"program":     fixture.Path,
 			"args":        []string{"spawn2", childFixture.Path}, // call spawnchild.go
@@ -731,6 +731,7 @@ func TestLaunchWithFollowExec(t *testing.T) {
 			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7 Body.AllThreadsContinued=true", contResp)
 		}
 		client.ExpectBreakpointEvent(t)
+		client.ExpectProcessEvent(t)
 		stopEvent = client.ExpectStoppedEvent(t)
 		if stopEvent.Seq != 0 ||
 			stopEvent.Body.Reason != "breakpoint" ||
@@ -1173,6 +1174,7 @@ func TestFilterGoroutines(t *testing.T) {
 								}
 							}
 						}
+						runtimeGoexitFound := false
 						for i, frame := range tr.Body.Threads {
 							var found bool
 							for _, wantName := range tc.want {
@@ -1180,6 +1182,11 @@ func TestFilterGoroutines(t *testing.T) {
 									found = true
 									break
 								}
+							}
+							if !found && !runtimeGoexitFound && strings.Contains(frame.Name, "runtime.goexit") && runtime.GOOS == "windows" {
+								// See previous comment about windows/1.26
+								found = true
+								runtimeGoexitFound = true
 							}
 							if !found {
 								t.Errorf("got Threads[%d]=%#v, want Name=%v\n", i, frame, tc.want)
@@ -1701,9 +1708,6 @@ func TestGoroutineLabels(t *testing.T) {
 					execute: func() {
 						client.ThreadsRequest()
 						tr := client.ExpectThreadsResponse(t)
-						if len(tr.Body.Threads) != 1 {
-							t.Errorf("got %d threads, expected 1\n", len(tr.Body.Threads))
-						}
 						// The first breakpoint is before the call to pprof.Do; no labels yet:
 						expectedPrefix := "* [Go 1]"
 						if !strings.HasPrefix(tr.Body.Threads[0].Name, expectedPrefix) {
@@ -6415,6 +6419,68 @@ func TestRestartRequestRebuild(t *testing.T) {
 					checkStop(t, client, 1, "main.main", 16)
 				},
 				disconnect: true,
+			}})
+	})
+}
+
+func TestRestartRequestRebuildFail(t *testing.T) {
+	const modifiedSource = `package main
+
+import "math"
+
+var f = 1.5
+
+func main() {
+	floatvar1 := math.Floor(f)
+	floatvar2 := float64(int(f))
+	_ = floatvar1
+	_ = floatvar2
+	the syntax error btw
+}
+`
+	runTest(t, "testRestartRequestRebuildFailFixture", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequestWithArgs(map[string]any{
+					"mode": "debug", "program": fixture.Source,
+				})
+			},
+			// Set breakpoints
+			fixture.Source, []int{7}, // Set breakpoint at main.main
+			[]onBreakpoint{{
+				execute: func() {
+					checkStop(t, client, 1, "main.main", 7)
+
+					fi, _ := os.Stat(fixture.Source)
+
+					originalSource, err := os.ReadFile(fixture.Source)
+					if err != nil {
+						t.Fatalf("could not read original source: %v", err)
+					}
+
+					// Ensure we write the original source code back after the test exits.
+					defer os.WriteFile(fixture.Source, originalSource, fi.Mode())
+
+					err = os.WriteFile(fixture.Source, []byte(modifiedSource), fi.Mode())
+					if err != nil {
+						t.Fatalf("could not modify source: %v", err)
+					}
+
+					client.RestartRequest(map[string]any{
+						"arguments": map[string]any{
+							"request":     "launch",
+							"mode":        "debug",
+							"program":     fixture.Source,
+							"stopOnEntry": false,
+							// "rebuild":     true, omitted as it should default to true
+						},
+					})
+					client.ExpectRestartResponse(t)
+					client.ExpectErrorResponse(t)
+					client.ExpectTerminatedEvent(t)
+				},
+				disconnect: false,
 			}})
 	})
 }

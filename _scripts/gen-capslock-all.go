@@ -22,6 +22,7 @@ var platforms = []Platform{
 	{GOOS: "linux", GOARCH: "amd64"},
 	{GOOS: "linux", GOARCH: "386"},
 	{GOOS: "linux", GOARCH: "arm64"},
+	{GOOS: "linux", GOARCH: "riscv64"},
 	{GOOS: "linux", GOARCH: "ppc64le", BuildTags: "exp.linuxppc64le"},
 	{GOOS: "darwin", GOARCH: "amd64"},
 	{GOOS: "darwin", GOARCH: "arm64"},
@@ -46,19 +47,6 @@ func main() {
 	// Change to project root
 	if err := os.Chdir(projectRoot); err != nil {
 		log.Fatalf("Failed to change to project root: %v", err)
-	}
-
-	// Check if capslock is installed
-	if _, err := exec.LookPath("capslock"); err != nil {
-		fmt.Printf("%scapslock is not installed. Installing...%s\n", colorYellow, colorReset)
-		cmd := exec.Command("go", "install", "github.com/google/capslock/cmd/capslock@latest")
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			fmt.Printf("%sFailed to install capslock. Please install it manually:%s\n", colorRed, colorReset)
-			fmt.Println("go install github.com/google/capslock/cmd/capslock@latest")
-			os.Exit(1)
-		}
 	}
 
 	fmt.Println("Generating capslock output files for all supported platforms...")
@@ -118,13 +106,13 @@ func main() {
 func generateCapslock(platform Platform) error {
 	outputFile := fmt.Sprintf("_scripts/capslock_%s_%s-output.txt", platform.GOOS, platform.GOARCH)
 
-	args := []string{}
+	args := []string{"run", "github.com/google/capslock/cmd/capslock@latest"}
 	if platform.BuildTags != "" {
 		args = append(args, "-buildtags", platform.BuildTags)
 	}
 	args = append(args, "-packages", "./cmd/dlv")
 
-	cmd := exec.Command("capslock", args...)
+	cmd := exec.Command("go", args...)
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("GOOS=%s", platform.GOOS),
 		fmt.Sprintf("GOARCH=%s", platform.GOARCH),

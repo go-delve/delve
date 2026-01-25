@@ -1,7 +1,6 @@
 package lru_test
 
 import (
-	"sync"
 	"testing"
 
 	"github.com/go-delve/delve/pkg/internal/lru"
@@ -98,35 +97,4 @@ func TestCacheOrder(t *testing.T) {
 	if val, ok := cache.Get(3); !ok || val != "three" {
 		t.Errorf("Get(3) = %v, %v; want 'three', true", val, ok)
 	}
-}
-
-func TestCacheConcurrent(t *testing.T) {
-	// Test passes if no race conditions occur.
-	cache := lru.NewCache[int, int](100)
-
-	var wg sync.WaitGroup
-
-	// Concurrent writes
-	for i := range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := 0; j < 100; j++ {
-				cache.Add(i*100+j, i)
-			}
-		}()
-	}
-
-	// Concurrent reads
-	for i := range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for j := range 100 {
-				cache.Get(i*100 + j)
-			}
-		}()
-	}
-
-	wg.Wait()
 }

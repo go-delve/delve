@@ -736,6 +736,7 @@ type Event struct {
 	Kind EventKind
 	*BinaryInfoDownloadEventDetails
 	*BreakpointMaterializedEventDetails
+	*ProcessSpawnedEventDetails
 }
 
 type EventKind uint8
@@ -745,6 +746,7 @@ const (
 	EventStopped
 	EventBinaryInfoDownload
 	EventBreakpointMaterialized
+	EventProcessSpawned
 )
 
 // BinaryInfoDownloadEventDetails describes the details of a BinaryInfoDownloadEvent
@@ -755,4 +757,12 @@ type BinaryInfoDownloadEventDetails struct {
 // BreakpointMaterializedEventDetails describes the details of a BreakpointMaterializedEvent
 type BreakpointMaterializedEventDetails struct {
 	Breakpoint *Breakpoint
+}
+
+// ProcessSpawnedEventDetails describes the details of a ProcessSpawnedEvent
+type ProcessSpawnedEventDetails struct {
+	PID        int
+	ThreadID   int
+	Cmdline    string
+	WillFollow bool
 }

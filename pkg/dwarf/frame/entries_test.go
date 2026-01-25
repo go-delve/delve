@@ -154,7 +154,7 @@ func BenchmarkFDEForPC(b *testing.B) {
 	}
 	fdes, _ := Parse(data, binary.BigEndian, 0, ptrSizeByRuntimeArch(), 0)
 
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		// bench worst case, exhaustive search
 		_, _ = fdes.FDEForPC(0x455555555)
 	}

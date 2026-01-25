@@ -930,6 +930,7 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response := &dap.InitializeResponse{Response: *newResponse(request.Request)}
 	response.Body.SupportsConfigurationDoneRequest = true
 	response.Body.SupportsConditionalBreakpoints = true
+	response.Body.SupportsHitConditionalBreakpoints = true
 	response.Body.SupportsDelayedStackTraceLoading = true
 	response.Body.SupportsFunctionBreakpoints = true
 	response.Body.SupportsInstructionBreakpoints = true
@@ -2793,7 +2794,7 @@ func (s *Session) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 		})
 	}
 
-	if isListOfBytesOrRunes(v.Variable) {
+	if isListOfBytesOrRunes(v.Variable) && v.Addr != 0 && (v.Flags&proc.VariableFakeAddress == 0) {
 		// Return the string value of []byte or []rune.
 		typeName := api.PrettyTypeName(v.DwarfType)
 		loadExpr := fmt.Sprintf("string(*(*%q)(%#x))", typeName, v.Addr)
@@ -3085,12 +3086,12 @@ func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 			// that preserves their names.
 			retVarsAsVar := &proc.Variable{Children: slicePtrVarToSliceVar(retVars)}
 			// As a shortcut also express the return values as a single string.
-			retVarsAsStr := ""
+			var retVarsAsStr strings.Builder
 			for _, v := range retVars {
-				retVarsAsStr += s.convertVariableToString(v) + ", "
+				retVarsAsStr.WriteString(s.convertVariableToString(v) + ", ")
 			}
 			response.Body = dap.EvaluateResponseBody{
-				Result:             strings.TrimRight(retVarsAsStr, ", "),
+				Result:             strings.TrimRight(retVarsAsStr.String(), ", "),
 				VariablesReference: s.variableHandles.create(&fullyQualifiedVariable{retVarsAsVar, "", false /*not a scope*/, 0}),
 			}
 		}
@@ -3247,6 +3248,9 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 	s.changeStateMu.Lock()
 	defer s.changeStateMu.Unlock()
 
+	// The response is just an acknowledgement, if we don't send it VSCode gets wedged
+	s.send(&dap.RestartResponse{Response: *newResponse(request.Request)})
+
 	// Cannot restart in noDebug mode
 	if s.isNoDebug() {
 		s.sendErrorResponse(request.Request, FailedToLaunch, "Cannot restart", "cannot restart in noDebug mode")
@@ -3307,16 +3311,23 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 		}
 	}
 
+	validBefore := true
+	if _, err := s.debugger.State(false); err != nil {
+		validBefore = false
+	}
+
 	// TODO(deparker) handle args from the launch regarding re-recording.
 	discardedBreakpoints, err := s.debugger.Restart(false, "", resetArgs, newArgs, [3]string{}, rebuild)
 	if err != nil {
 		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to restart", err.Error())
+		if _, err := s.debugger.State(false); validBefore && err != nil {
+			s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
+		}
 		return
 	}
 
 	s.config.log.Infof("Restart completed. Discarded breakpoints: %v", discardedBreakpoints)
 
-	s.send(&dap.RestartResponse{Response: *newResponse(request.Request)})
 	s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
 }
 
@@ -4349,6 +4360,15 @@ func (s *Session) convertDebuggerEvent(event *proc.Event) {
 					Line:     bp.Line,
 					Source:   &dap.Source{Name: filepath.Base(path), Path: path},
 				},
+			},
+		})
+	case proc.EventProcessSpawned:
+		s.send(&dap.ProcessEvent{
+			Event: *newEvent("process"),
+			Body: dap.ProcessEventBody{
+				Name:            event.Cmdline,
+				SystemProcessId: event.PID,
+				IsLocalProcess:  true,
 			},
 		})
 	}
