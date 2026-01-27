@@ -238,7 +238,9 @@ func (s *ServerImpl) serveJSONCodec(conn io.ReadWriteCloser) {
 		}
 		// argv guaranteed to be a pointer now.
 		if err = codec.ReadRequestBody(argv.Interface()); err != nil {
-			return
+			s.log.Errorf("can't read request body: %v", err)
+			s.sendResponse(sending, &req, &rpc.Response{}, nil, codec, fmt.Sprintf("malformed request body: %v", err))
+			continue
 		}
 		if argIsValue {
 			argv = argv.Elem()
