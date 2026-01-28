@@ -89,6 +89,12 @@ List currently attached processes.
         target switch [pid]
 
 Switches to the specified process.`
+
+	msgTypes = `Print list of types.
+
+	dlv types [<regex>]
+
+If regex is specified only the types matching it will be returned.`
 )
 
 // debugCommands returns a list of commands with default commands defined.
@@ -98,6 +104,7 @@ func debugCommands(s *Session) []command {
 		{aliases: []string{"config"}, cmdFn: s.evaluateConfig, helpMsg: msgConfig},
 		{aliases: []string{"sources", "s"}, cmdFn: s.sources, helpMsg: msgSources},
 		{aliases: []string{"target"}, cmdFn: s.targetCmd, helpMsg: msgTarget},
+		{aliases: []string{"types"}, cmdFn: s.types, helpMsg: msgTypes},
 	}
 }
 
@@ -255,3 +262,14 @@ func (s *Session) targetCmd(_, _ int, argstr string) (string, error) {
 		return "", fmt.Errorf("unknown target command")
 	}
 }
+
+func (s *Session) types(_, _ int, args string) (string, error) {
+	types, err := s.debugger.Types(args)
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(types)
+	return strings.Join(types, "\n"), nil
+}
+
+

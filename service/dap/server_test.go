@@ -4415,6 +4415,7 @@ func TestEvaluateCommandRequest(t *testing.T) {
     dlv config 	 Changes configuration parameters.
     dlv sources (alias: s) 	 Print list of source files.
     dlv target 	 Manages child process debugging.
+    dlv types 	 Print list of types.
 
 Type 'dlv help' followed by a command for full documentation.
 `
@@ -4497,6 +4498,32 @@ Type 'dlv help' followed by a command for full documentation.
 					got = client.ExpectEvaluateResponse(t)
 					if got.Body.Result != "" {
 						t.Errorf("\ngot: %#v, want sources=\"\"", got)
+					}
+
+					// Test types.
+					client.EvaluateRequest("dlv help types", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkEval(t, got, msgTypes, noChildren)
+
+					client.EvaluateRequest("dlv types", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					if !strings.Contains(got.Body.Result, "main.FooBar") {
+						t.Errorf("\ngot: %#v, want types contains main.FooBar", got)
+					}
+
+					client.EvaluateRequest("dlv types FooBar", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					if !strings.Contains(got.Body.Result, "main.FooBar") {
+						t.Errorf("\ngot: %#v, want types contains main.FooBar", got)
+					}
+					if strings.Contains(got.Body.Result, "main.Nest") {
+						t.Errorf("\ngot: %#v, want types does not contain main.Nest", got)
+					}
+
+					client.EvaluateRequest("dlv types nonexistenttype", 1000, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					if got.Body.Result != "" {
+						t.Errorf("\ngot: %#v, want types=\"\"", got)
 					}
 
 					// Test target.
