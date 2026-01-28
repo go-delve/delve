@@ -21,12 +21,6 @@ test: vet
 vet:
 	@go vet -tags exp.linuxppc64le $$(go list -tags exp.linuxppc64le ./... | grep -v native)
 
-test-proc-run:
-	@go run _scripts/make.go test -s proc -r $(RUN)
-
-test-integration-run:
-	@go run _scripts/make.go test -s service/test -r $(RUN)
-
 vendor:
 	@go run _scripts/make.go vendor
 
