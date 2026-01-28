@@ -1025,7 +1025,7 @@ func TestTraceEBPF(t *testing.T) {
 
 	dlvbin := protest.GetDlvBinaryEBPF(t)
 
-	expected := []byte("> (1) main.foo(99, 9801)\n=> \"9900\"")
+	expected := []byte("> goroutine(1): main.foo(99, 9801)\n>> goroutine(1): main.foo => (9900)")
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "issue573.go"), "foo")
@@ -1065,28 +1065,28 @@ func TestTraceEBPF2(t *testing.T) {
 
 	dlvbin := protest.GetDlvBinaryEBPF(t)
 
-	expected := []byte(`> (1) main.callme(10)
-> (1) main.callme(9)
-> (1) main.callme(8)
-> (1) main.callme(7)
-> (1) main.callme(6)
-> (1) main.callme(5)
-> (1) main.callme(4)
-> (1) main.callme(3)
-> (1) main.callme(2)
-> (1) main.callme(1)
-> (1) main.callme(0)
-=> "100"
-=> "100"
-=> "100"
-=> "100"
-=> "100"
-=> "100"
-=> "100"
-=> "100"
-=> "100"
-=> "100"
-=> "100"`)
+	expected := []byte(`> goroutine(1): main.callme(10)
+> goroutine(1): main.callme(9)
+> goroutine(1): main.callme(8)
+> goroutine(1): main.callme(7)
+> goroutine(1): main.callme(6)
+> goroutine(1): main.callme(5)
+> goroutine(1): main.callme(4)
+> goroutine(1): main.callme(3)
+> goroutine(1): main.callme(2)
+> goroutine(1): main.callme(1)
+> goroutine(1): main.callme(0)
+>> goroutine(1): main.callme => (100)
+>> goroutine(1): main.callme => (100)
+>> goroutine(1): main.callme => (100)
+>> goroutine(1): main.callme => (100)
+>> goroutine(1): main.callme => (100)
+>> goroutine(1): main.callme => (100)
+>> goroutine(1): main.callme => (100)
+>> goroutine(1): main.callme => (100)
+>> goroutine(1): main.callme => (100)
+>> goroutine(1): main.callme => (100)
+>> goroutine(1): main.callme => (100)`)
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "ebpf_trace.go"), "main.callme")
@@ -1126,16 +1126,26 @@ func TestTraceEBPF3(t *testing.T) {
 
 	dlvbin := protest.GetDlvBinaryEBPF(t)
 
-	expected := []byte(`> (1) main.tracedFunction(0)
-> (1) main.tracedFunction(1)
-> (1) main.tracedFunction(2)
-> (1) main.tracedFunction(3)
-> (1) main.tracedFunction(4)
-> (1) main.tracedFunction(5)
-> (1) main.tracedFunction(6)
-> (1) main.tracedFunction(7)
-> (1) main.tracedFunction(8)
-> (1) main.tracedFunction(9)`)
+	expected := []byte(`> goroutine(1): main.tracedFunction(0)
+>> goroutine(1): main.tracedFunction => ()
+> goroutine(1): main.tracedFunction(1)
+>> goroutine(1): main.tracedFunction => ()
+> goroutine(1): main.tracedFunction(2)
+>> goroutine(1): main.tracedFunction => ()
+> goroutine(1): main.tracedFunction(3)
+>> goroutine(1): main.tracedFunction => ()
+> goroutine(1): main.tracedFunction(4)
+>> goroutine(1): main.tracedFunction => ()
+> goroutine(1): main.tracedFunction(5)
+>> goroutine(1): main.tracedFunction => ()
+> goroutine(1): main.tracedFunction(6)
+>> goroutine(1): main.tracedFunction => ()
+> goroutine(1): main.tracedFunction(7)
+>> goroutine(1): main.tracedFunction => ()
+> goroutine(1): main.tracedFunction(8)
+>> goroutine(1): main.tracedFunction => ()
+> goroutine(1): main.tracedFunction(9)
+>> goroutine(1): main.tracedFunction => ()`)
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "ebpf_trace2.go"), "main.traced")
@@ -1175,16 +1185,26 @@ func TestTraceEBPF4(t *testing.T) {
 
 	dlvbin := protest.GetDlvBinaryEBPF(t)
 
-	expected := []byte(`> (1) main.tracedFunction(0, true, 97)
-> (1) main.tracedFunction(1, false, 98)
-> (1) main.tracedFunction(2, false, 99)
-> (1) main.tracedFunction(3, false, 100)
-> (1) main.tracedFunction(4, false, 101)
-> (1) main.tracedFunction(5, true, 102)
-> (1) main.tracedFunction(6, false, 103)
-> (1) main.tracedFunction(7, false, 104)
-> (1) main.tracedFunction(8, false, 105)
-> (1) main.tracedFunction(9, false, 106)`)
+	expected := []byte(`> goroutine(1): main.tracedFunction(0, true, 97)
+>> goroutine(1): main.tracedFunction => ()
+> goroutine(1): main.tracedFunction(1, false, 98)
+>> goroutine(1): main.tracedFunction => ()
+> goroutine(1): main.tracedFunction(2, false, 99)
+>> goroutine(1): main.tracedFunction => ()
+> goroutine(1): main.tracedFunction(3, false, 100)
+>> goroutine(1): main.tracedFunction => ()
+> goroutine(1): main.tracedFunction(4, false, 101)
+>> goroutine(1): main.tracedFunction => ()
+> goroutine(1): main.tracedFunction(5, true, 102)
+>> goroutine(1): main.tracedFunction => ()
+> goroutine(1): main.tracedFunction(6, false, 103)
+>> goroutine(1): main.tracedFunction => ()
+> goroutine(1): main.tracedFunction(7, false, 104)
+>> goroutine(1): main.tracedFunction => ()
+> goroutine(1): main.tracedFunction(8, false, 105)
+>> goroutine(1): main.tracedFunction => ()
+> goroutine(1): main.tracedFunction(9, false, 106)
+>> goroutine(1): main.tracedFunction => ()`)
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "ebpf_trace3.go"), "main.traced")
@@ -1200,6 +1220,81 @@ func TestTraceEBPF4(t *testing.T) {
 	cmd.Wait()
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
+	}
+}
+
+func TestTraceBackendParity(t *testing.T) {
+	t.Parallel()
+	if os.Getenv("CI") == "true" {
+		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
+	}
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("not implemented on non linux/amd64 systems")
+	}
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+		t.Skip("requires at least Go 1.16 to run test")
+	}
+	usr, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usr.Uid != "0" {
+		t.Skip("test must be run as root")
+	}
+
+	dlvbin := protest.GetDlvBinaryEBPF(t)
+	fixtures := protest.FindFixturesDir()
+	fixturePath := filepath.Join(fixtures, "trace_backend_parity.go")
+	tmpDir := t.TempDir()
+
+	// Run trace with ptrace backend (default)
+	ptraceCmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(tmpDir, "__debug_ptrace"), fixturePath, "main.allTypes")
+	ptraceStderr, err := ptraceCmd.StderrPipe()
+	assertNoError(err, t, "ptrace stderr pipe")
+	defer ptraceStderr.Close()
+
+	assertNoError(ptraceCmd.Start(), t, "running ptrace trace")
+	ptraceOutput, err := io.ReadAll(ptraceStderr)
+	assertNoError(err, t, "reading ptrace output")
+	ptraceCmd.Wait()
+
+	if len(ptraceOutput) == 0 {
+		t.Fatal("ptrace backend produced no output")
+	}
+
+	// Run trace with eBPF backend
+	ebpfCmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(tmpDir, "__debug_ebpf"), fixturePath, "main.allTypes")
+	ebpfStderr, err := ebpfCmd.StderrPipe()
+	assertNoError(err, t, "ebpf stderr pipe")
+	defer ebpfStderr.Close()
+
+	assertNoError(ebpfCmd.Start(), t, "running ebpf trace")
+	ebpfOutput, err := io.ReadAll(ebpfStderr)
+	assertNoError(err, t, "reading ebpf output")
+	ebpfCmd.Wait()
+
+	if len(ebpfOutput) == 0 {
+		t.Fatal("ebpf backend produced no output")
+	}
+
+	// Filter out process exit messages which contain different PIDs
+	filterProcessExitLines := func(output []byte) []byte {
+		lines := bytes.Split(output, []byte("\n"))
+		var filtered [][]byte
+		for _, line := range lines {
+			if !bytes.HasPrefix(line, []byte("Process ")) || !bytes.Contains(line, []byte("has exited with status")) {
+				filtered = append(filtered, line)
+			}
+		}
+		return bytes.Join(filtered, []byte("\n"))
+	}
+
+	ptraceFiltered := filterProcessExitLines(ptraceOutput)
+	ebpfFiltered := filterProcessExitLines(ebpfOutput)
+
+	// Compare outputs byte-for-byte
+	if !bytes.Equal(ptraceFiltered, ebpfFiltered) {
+		t.Fatalf("Output mismatch between ptrace and ebpf backends:\n\nPtrace output:\n%s\n\neBPF output:\n%s", string(ptraceOutput), string(ebpfOutput))
 	}
 }
 

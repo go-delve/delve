@@ -872,11 +872,13 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 							}
 
 							if t.IsRet {
+								retVals := make([]string, 0, len(t.ReturnParams))
 								for _, p := range t.ReturnParams {
-									fmt.Fprintf(os.Stderr, "=> %#v\n", p.Value)
+									retVals = append(retVals, p.Value)
 								}
+								fmt.Fprintf(os.Stderr, ">> goroutine(%d): %s => (%s)\n", t.GoroutineID, t.FunctionName, strings.Join(retVals, ","))
 							} else {
-								fmt.Fprintf(os.Stderr, "> (%d) %s(%s)\n", t.GoroutineID, t.FunctionName, params.String())
+								fmt.Fprintf(os.Stderr, "> goroutine(%d): %s(%s)\n", t.GoroutineID, t.FunctionName, params.String())
 							}
 						}
 					}

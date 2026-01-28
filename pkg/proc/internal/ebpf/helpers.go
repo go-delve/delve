@@ -221,6 +221,16 @@ func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 			strLen := binary.LittleEndian.Uint64(val[8:])
 			iparam.Base = FakeAddressBase + 0x30
 			iparam.Len = int64(strLen)
+			// Create a minimal StringType so the variable can be loaded
+			iparam.RealType = &godwarf.StringType{
+				StructType: godwarf.StructType{
+					CommonType: godwarf.CommonType{
+						ByteSize:    16, // String header is 16 bytes (ptr + len)
+						ReflectKind: reflect.String,
+					},
+					Kind: "struct",
+				},
+			}
 		}
 		return iparam
 	}
