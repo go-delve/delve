@@ -923,11 +923,16 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 	}
 	fn := fns[0]
 
+	entryPC, err := proc.FirstPCAfterPrologue(dbp, fn, false)
+	if err != nil {
+		return err
+	}
+
 	offset, err := dbp.BinInfo().GStructOffset(dbp.Memory())
 	if err != nil {
 		return err
 	}
-	key := fn.Entry
+	key := entryPC
 	err = dbp.os.ebpf.UpdateArgMap(key, goidOffset, args, offset, false)
 	if err != nil {
 		return err
@@ -977,7 +982,7 @@ func (dbp *nativeProcess) SetUProbe(fnName string, goidOffset int64, args []ebpf
 		}
 	}
 
-	off, err := ebpf.AddressToOffset(f, fn.Entry)
+	off, err := ebpf.AddressToOffset(f, entryPC)
 	if err != nil {
 		return err
 	}
