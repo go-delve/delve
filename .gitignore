@@ -11,3 +11,4 @@ localtests
 *.iml
 .teamcity/target
 .vscode
+.claude
