@@ -150,10 +150,10 @@ Debugger (service/debugger) → High-level debugging operations
 Process Abstraction (pkg/proc) → TargetGroup, Target, ProcessInternal
     ↓
 Backend Implementations:
-  - native/        → Direct OS debugging (ptrace, Windows APIs)
-  - gdbserial/     → GDB remote protocol client
-  - core/          → Core dump analysis
-  - internal/ebpf/ → eBPF-based tracing (non-stop debugging)
+  - pkg/proc/native/        → Direct OS debugging (ptrace, Windows APIs)
+  - pkg/proc/gdbserial/     → GDB remote protocol client
+  - pkg/proc/core/          → Core dump analysis
+  - pkg/proc/internal/ebpf/ → eBPF-based tracing (non-stop debugging)
 ```
 
 ### Process Abstraction (`pkg/proc`)
@@ -192,6 +192,8 @@ Uses **filename-based conditional compilation**:
 - OS-specific: `*_linux.go`, `*_darwin.go`, `*_windows.go`, `*_freebsd.go`
 - Architecture-specific: `regs_amd64.go`, `regs_arm64.go`, etc.
 - **DO NOT put platform-specific code in generic files**
+- In most cases platform-specific code should only be added to the
+  `pkg/proc/native` and `pkg/proc/gdbserial` backends.
 
 Supported: amd64, arm64, 386, ppc64le, riscv64, loong64
 

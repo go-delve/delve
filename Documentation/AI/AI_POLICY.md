@@ -30,15 +30,6 @@ The Delve project has strict rules for AI usage:
   distracts from the main point. Humans must do their research and
   trim this down.
 
-- **No AI-generated media is allowed (art, images, videos, audio, etc.).**
-  Text and code are the only acceptable AI-generated content, per the
-  other rules in this policy.
-
-- **Bad AI drivers will be banned and ridiculed in public.** You've
-  been warned. We love to help junior developers learn and grow, but
-  if you're interested in that then don't use AI, and we'll help you.
-  I'm sorry that bad AI drivers have ruined this for you.
-
 These rules apply only to outside contributions to Delve. Maintainers
 are exempt from these rules and may use AI tools at their discretion;
 they've proven themselves trustworthy to apply good judgment.
@@ -61,13 +52,13 @@ strict rules to protect maintainers.
 
 ## AI is Welcome Here
 
-Delve is written with plenty of AI assistance, and many maintainers embrace
-AI tools as a productive tool in their workflow. As a project, we welcome
-AI as a tool!
+As a project, we welcome AI as a tool!
 
-**Our reason for the strict AI policy is not due to an anti-AI stance**, but
-instead due to the number of highly unqualified people using AI. It's the
-people, not the tools, that are the problem.
+**Our reason for the AI policy is not due to an anti-AI stance**, but
+instead intended to help produce high quality code and maintain code
+quality and overall standards when using AI coding assistance. This policy
+also gives a common framework to use and foster effective open source
+collaboration in the era of AI Agentic coding.
 
 I include this section to be transparent about the project's usage about
 AI for people who may disagree with it, and to address the misconception
