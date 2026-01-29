@@ -32,6 +32,8 @@ type DebugLineInfo struct {
 	Instructions []byte
 	Lookup       map[string]*FileEntry
 
+	Trimpath bool // if true trimpath the directory tables do not contain absolute entries and trimpath was probably used
+
 	Logf func(string, ...any)
 
 	// stateMachineCache[pc] is a state machine stopped at pc
@@ -111,6 +113,8 @@ func Parse(compdir string, buf *bytes.Buffer, debugLineStr []byte, logfn func(st
 			return nil
 		}
 	}
+
+	dbl.Trimpath = detectTrimpath(dbl.IncludeDirs)
 
 	// Instructions size calculation breakdown:
 	//   - dbl.Prologue.UnitLength is the length of the entire unit, not including the 4 bytes to represent that length.
@@ -333,6 +337,18 @@ func parseFileEntries5(info *DebugLineInfo, buf *bytes.Buffer) bool {
 		entry.Path = p
 		info.FileNames = append(info.FileNames, entry)
 		info.Lookup[entry.Path] = entry
+	}
+	return true
+}
+
+func detectTrimpath(dirs []string) bool {
+	for _, dir := range dirs {
+		if len(dir) > 0 && (dir[0] == '/' || dir[0] == '\\') {
+			return false
+		}
+		if len(dir) >= 3 && (dir[1] == ':') && (dir[2] == '\\' || dir[2] == '/') {
+			return false
+		}
 	}
 	return true
 }

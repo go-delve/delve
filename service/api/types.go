@@ -631,6 +631,7 @@ type Image struct {
 	Path      string
 	Address   uint64
 	LoadError string
+	Trimpath  bool
 }
 
 // Ancestor represents a goroutine ancestor
