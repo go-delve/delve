@@ -16,6 +16,7 @@ The GitHub issue tracker is for **bugs** only. Please use the [developer mailing
   - [Plugins and GUIs](Documentation/EditorIntegration.md)
   - [Frequently Asked Questions](Documentation/faq.md)
 - [Contributing](CONTRIBUTING.md)
+  - [AI Usage Policy](Documentation/AI/AI_POLICY.md)
   - [Internal Documentation](Documentation/internal)
   - [API documentation](Documentation/api)
   - [How to write a Delve client](Documentation/api/ClientHowto.md)
