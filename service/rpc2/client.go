@@ -548,10 +548,10 @@ func (c *RPCClient) Disconnect(cont bool) error {
 	return c.client.Close()
 }
 
-func (c *RPCClient) ListDynamicLibraries() ([]api.Image, error) {
+func (c *RPCClient) ListDynamicLibraries() ([]api.Image, bool, error) {
 	var out ListDynamicLibrariesOut
 	c.call("ListDynamicLibraries", ListDynamicLibrariesIn{}, &out)
-	return out.List, nil
+	return out.List, out.ExecutableTrimpath, nil
 }
 
 func (c *RPCClient) ExamineMemory(address uint64, count int) ([]byte, bool, error) {

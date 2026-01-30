@@ -910,14 +910,21 @@ type ListDynamicLibrariesIn struct {
 // ListDynamicLibrariesOut holds the return values of ListDynamicLibraries
 type ListDynamicLibrariesOut struct {
 	List []api.Image
+
+	ExecutableTrimpath bool
 }
 
 func (s *RPCServer) ListDynamicLibraries(in ListDynamicLibrariesIn, out *ListDynamicLibrariesOut) error {
 	imgs := s.debugger.ListDynamicLibraries()
-	out.List = make([]api.Image, 0, len(imgs))
-	for i := range imgs {
-		out.List = append(out.List, api.ConvertImage(imgs[i]))
+	_, unlock := s.debugger.LockTargetGroup()
+	defer unlock()
+	out.List = make([]api.Image, 0, len(imgs)-1)
+	for i := 1; i < len(imgs); i++ {
+		img := api.ConvertImage(imgs[i])
+		img.Trimpath = imgs[i].Trimpath
+		out.List = append(out.List, img)
 	}
+	out.ExecutableTrimpath = imgs[0].Trimpath
 	return nil
 }
 
