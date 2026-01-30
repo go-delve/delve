@@ -3129,18 +3129,19 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 		printBreakpointInfo(t, th, !hasReturnValue)
 	}
 	if th.Breakpoint.TraceReturn {
-		retVals := make([]string, 0, len(th.ReturnValues))
-		for _, v := range th.ReturnValues {
-			// Use verbosity-aware formatting for return values
-			if verbosity > 0 {
-				retVals = append(retVals, v.FormatWithVerbosity(verbosity))
-			} else {
-				retVals = append(retVals, v.SinglelineString())
-			}
-		}
 		// Print trace only if there was a match on the function while TraceFollowCalls is on or if it's a regular trace
 		if rootindex != -1 || th.Breakpoint.TraceFollowCalls <= 0 {
-			fmt.Fprintf(t.stdout, "%s>> %s %s => (%s)\n", depthPrefix, tracePrefix, fn.Name(), strings.Join(retVals, ","))
+			if verbosity > 0 {
+				// For verbosity > 0, show return values
+				retVals := make([]string, 0, len(th.ReturnValues))
+				for _, v := range th.ReturnValues {
+					retVals = append(retVals, v.FormatWithVerbosity(verbosity))
+				}
+				fmt.Fprintf(t.stdout, "%s>> %s %s => (%s)\n", depthPrefix, tracePrefix, fn.Name(), strings.Join(retVals, ","))
+			} else {
+				// For verbosity == 0, just show function name without return values
+				fmt.Fprintf(t.stdout, "%s>> %s %s\n", depthPrefix, tracePrefix, fn.Name())
+			}
 		}
 	}
 	if th.Breakpoint.TraceFollowCalls > 0 {
