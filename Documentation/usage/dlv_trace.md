@@ -21,15 +21,16 @@ dlv trace [package] regexp [flags]
 ### Options
 
 ```
-      --ebpf               Trace using eBPF (experimental).
-  -e, --exec string        Binary file to exec and trace.
-      --follow-calls int   Trace all children of the function to the required depth. Trace also supports defer functions and cases where functions are dynamically returned and passed as parameters.
-  -h, --help               help for trace
-      --output string      Output path for the binary.
-  -p, --pid int            Pid to attach to.
-  -s, --stack int          Show stack trace with given depth. (Ignored with --ebpf)
-  -t, --test               Trace a test binary.
-      --timestamp          Show timestamp in the output
+      --ebpf                Trace using eBPF (experimental).
+  -e, --exec string         Binary file to exec and trace.
+      --follow-calls int    Trace all children of the function to the required depth. Trace also supports defer functions and cases where functions are dynamically returned and passed as parameters.
+  -h, --help                help for trace
+      --output string       Output path for the binary.
+  -p, --pid int             Pid to attach to.
+  -s, --stack int           Show stack trace with given depth. (Ignored with --ebpf)
+  -t, --test                Trace a test binary.
+      --timestamp           Show timestamp in the output
+  -V, --trace-verbose int   Parameter verbosity: 0=none, 1=types, 2=inline, 3=expanded, 4=full (default 2) (default 2)
 ```
 
 ### Options inherited from parent commands
