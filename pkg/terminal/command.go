@@ -1953,6 +1953,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 		requestedBp.AddrPid = loc.PCPids
 		if tracepoint {
 			requestedBp.LoadArgs = &ShortLoadConfig
+			requestedBp.TraceVerbosity = 2 // Default to inline verbosity for terminal trace command
 		}
 
 		bp, err := t.client.CreateBreakpointWithExpr(requestedBp, spec, t.substitutePathRules(), false)
@@ -1986,10 +1987,11 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 			}
 			for j := range addrs {
 				_, err = t.client.CreateBreakpoint(&api.Breakpoint{
-					Addr:        addrs[j],
-					TraceReturn: true,
-					Line:        -1,
-					LoadArgs:    &ShortLoadConfig,
+					Addr:           addrs[j],
+					TraceReturn:    true,
+					Line:           -1,
+					LoadArgs:       &ShortLoadConfig,
+					TraceVerbosity: 2, // Default to inline verbosity for terminal trace command
 				})
 				if err != nil {
 					return nil, err
@@ -3023,6 +3025,46 @@ func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 
 }
 
+// formatTraceParameters formats function parameters based on verbosity level
+func formatTraceParameters(th *api.Thread, verbosity int) string {
+	if verbosity == 0 || th.BreakpointInfo == nil {
+		return ""
+	}
+
+	var params []string
+
+	// Filter to only actual function arguments (not return values)
+	for _, arg := range th.BreakpointInfo.Arguments {
+		if (arg.Flags & api.VariableArgument) == 0 {
+			continue
+		}
+
+		// Use FormatWithVerbosity from the Variable
+		formatted := arg.FormatWithVerbosity(verbosity)
+		if formatted == "" {
+			continue
+		}
+
+		// For levels 3-4: multi-line format
+		if verbosity >= 3 {
+			params = append(params, fmt.Sprintf("  %s: %s", arg.Name, formatted))
+		} else {
+			// For levels 1-2: inline format
+			params = append(params, fmt.Sprintf("%s: %s", arg.Name, formatted))
+		}
+	}
+
+	if len(params) == 0 {
+		return ""
+	}
+
+	// Join based on verbosity
+	if verbosity >= 3 {
+		return strings.Join(params, "\n")
+	}
+	return strings.Join(params, ", ")
+}
+
 func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, args string, hasReturnValue bool) {
 	if t.conf.TraceShowTimestamp {
 		fmt.Fprintf(t.stdout, "%s ", time.Now().Format(time.RFC3339Nano))
@@ -3056,21 +3098,50 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 		tracePrefix = fmt.Sprintf("goroutine(%d):", th.GoroutineID)
 	}
 
+	// Get verbosity level from breakpoint
+	verbosity := 0
+	if th.Breakpoint != nil {
+		verbosity = th.Breakpoint.TraceVerbosity
+	}
+
 	if th.Breakpoint.Tracepoint {
 		// Print trace only if there was a match on the function while TraceFollowCalls is on or if it's a regular trace
 		if rootindex != -1 || th.Breakpoint.TraceFollowCalls <= 0 {
-			fmt.Fprintf(t.stdout, "%s> %s %s%s(%s)\n", depthPrefix, tracePrefix, bpname, fn.Name(), args)
+			// Format parameters based on verbosity
+			paramStr := formatTraceParameters(th, verbosity)
+			if verbosity >= 3 && paramStr != "" {
+				// Levels 3-4: Multi-line format
+				fmt.Fprintf(t.stdout, "%s> %s %s%s\n%s\n",
+					depthPrefix, tracePrefix, bpname, fn.Name(), paramStr)
+			} else {
+				// Levels 0-2: Single-line format
+				if paramStr != "" {
+					fmt.Fprintf(t.stdout, "%s> %s %s%s(%s)\n",
+						depthPrefix, tracePrefix, bpname, fn.Name(), paramStr)
+				} else {
+					fmt.Fprintf(t.stdout, "%s> %s %s%s()\n",
+						depthPrefix, tracePrefix, bpname, fn.Name())
+				}
+			}
 		}
+
+		// Always call printBreakpointInfo to execute custom commands (like "on" commands)
 		printBreakpointInfo(t, th, !hasReturnValue)
 	}
 	if th.Breakpoint.TraceReturn {
-		retVals := make([]string, 0, len(th.ReturnValues))
-		for _, v := range th.ReturnValues {
-			retVals = append(retVals, v.SinglelineString())
-		}
 		// Print trace only if there was a match on the function while TraceFollowCalls is on or if it's a regular trace
 		if rootindex != -1 || th.Breakpoint.TraceFollowCalls <= 0 {
-			fmt.Fprintf(t.stdout, "%s>> %s %s => (%s)\n", depthPrefix, tracePrefix, fn.Name(), strings.Join(retVals, ","))
+			if verbosity > 0 {
+				// For verbosity > 0, show return values
+				retVals := make([]string, 0, len(th.ReturnValues))
+				for _, v := range th.ReturnValues {
+					retVals = append(retVals, v.FormatWithVerbosity(verbosity))
+				}
+				fmt.Fprintf(t.stdout, "%s>> %s %s => (%s)\n", depthPrefix, tracePrefix, fn.Name(), strings.Join(retVals, ","))
+			} else {
+				// For verbosity == 0, just show function name without return values
+				fmt.Fprintf(t.stdout, "%s>> %s %s\n", depthPrefix, tracePrefix, fn.Name())
+			}
 		}
 	}
 	if th.Breakpoint.TraceFollowCalls > 0 {
