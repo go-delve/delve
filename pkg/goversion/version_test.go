@@ -64,6 +64,7 @@ func TestParseVersionStringAfterOrEqual(t *testing.T) {
 	versionAfterOrEqual2(t, "go1.16rc1", "go1.16beta1")
 	versionAfterOrEqual2(t, "go1.16beta2", "go1.16beta1")
 	versionAfterOrEqual2(t, "go1.16rc10", "go1.16rc8")
+	versionAfterOrEqual(t, "go1.26rc1-X:nodwarf5 linux/amd64", GoVersion{1, 26, rcRev(1), "", ""})
 }
 
 func TestParseVersionStringEqual(t *testing.T) {
@@ -81,6 +82,7 @@ func TestParseVersionStringEqual(t *testing.T) {
 	versionEqual(t, "devel +17efbfc Tue Jul 28 17:39:19 2015 +0000 linux/amd64", GoVersion{Major: -1})
 	versionEqual(t, "devel go1.24-1bb6f19a25 Mon Oct 14 15:17:20 2024 -0400 linux/amd64", GoVersion{1, 24, versionedDevel, "", ""})
 	versionEqual(t, "go1.25-devel_6953ef86cd Mon May 5 04:05:18 2025 -0700 linux/amd64", GoVersion{1, 25, versionedDevel, "", ""})
+	versionEqual(t, "go1.26rc1-X:nodwarf5 linux/amd64", GoVersion{1, 26, rcRev(1), "", ""})
 }
 
 func TestRoundtrip(t *testing.T) {

@@ -119,9 +119,15 @@ func Parse(ver string) (GoVersion, bool) {
 				// old boringcrypto version goX.YbZ
 				_, err3 = strconv.Atoi(rest)
 			case hasPrefix("rc"):
-				// old rc release goX.YrcZ
+				i := 0
+				for i < len(rest) && rest[i] >= '0' && rest[i] <= '9' {
+					i++
+				}
 				var rc int
-				rc, err3 = strconv.Atoi(rest)
+				rc, err3 = strconv.Atoi(rest[:i])
+				if err3 != nil || i == 0 {
+					return GoVersion{}, false
+				}
 				r.Rev = rcRev(rc)
 			default:
 				// what is this?
