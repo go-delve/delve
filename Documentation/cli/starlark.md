@@ -71,7 +71,6 @@ toggle_breakpoint(Id, Name) | Equivalent to API call [ToggleBreakpoint](https://
 dlv_command(command) | Executes the specified command as if typed at the dlv_prompt
 read_file(path) | Reads the file as a string
 write_file(path, contents) | Writes string to a file
-append_file(path, contents) | Appends string to a file
 cur_scope() | Returns the current evaluation scope
 default_load_config() | Returns the current default load configuration
 <!-- END MAPPING TABLE -->
