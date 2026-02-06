@@ -131,16 +131,7 @@ func New(ctx Context, out EchoWriter) *Env {
 			return nil, decorateError(thread, err)
 		}
 		defer f.Close()
-		var data []byte
-		switch v := args[1].(type) {
-		case starlark.String:
-			data = []byte(string(v))
-		case starlark.Bytes:
-			data = []byte(v)
-		default:
-			data = []byte(args[1].String())
-		}
-		_, err = f.Write(data)
+		_, err = f.Write(toBytes(args[1]))
 		return starlark.None, decorateError(thread, err)
 	})
 	builtindoc(appendFileBuiltinName, "(Path, Text)", "append text to the specified file.")
@@ -153,7 +144,7 @@ func New(ctx Context, out EchoWriter) *Env {
 		if !ok {
 			return nil, decorateError(thread, errors.New("first argument of write_file was not a string"))
 		}
-		err := os.WriteFile(string(path), []byte(args[1].String()), 0o640)
+		err := os.WriteFile(string(path), toBytes(args[1]), 0o640)
 		return starlark.None, decorateError(thread, err)
 	})
 	builtindoc(writeFileBuiltinName, "(Path, Text)", "writes text to the specified file.")
@@ -431,4 +422,17 @@ func evalExprOptions(opts *syntax.FileOptions, thread *starlark.Thread, expr syn
 		opts = defaultSyntaxFileOpts
 	}
 	return starlark.EvalExprOptions(opts, thread, expr, globals)
+}
+
+func toBytes(arg starlark.Value) []byte {
+	var data []byte
+	switch v := arg.(type) {
+	case starlark.String:
+		data = []byte(string(v))
+	case starlark.Bytes:
+		data = []byte(v)
+	default:
+		data = []byte(arg.String())
+	}
+	return data
 }
