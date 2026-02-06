@@ -25,6 +25,7 @@ import (
 
 const (
 	dlvCommandBuiltinName        = "dlv_command"
+	appendFileBuiltinName        = "append_file"
 	readFileBuiltinName          = "read_file"
 	writeFileBuiltinName         = "write_file"
 	commandPrefix                = "command_"
@@ -116,6 +117,33 @@ func New(ctx Context, out EchoWriter) *Env {
 		return starlark.String(string(buf)), nil
 	})
 	builtindoc(readFileBuiltinName, "(Path)", "reads a file.")
+
+	env.env[appendFileBuiltinName] = starlark.NewBuiltin(appendFileBuiltinName, func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		if len(args) != 2 {
+			return nil, decorateError(thread, errors.New("wrong number of arguments"))
+		}
+		path, ok := args[0].(starlark.String)
+		if !ok {
+			return nil, decorateError(thread, errors.New("first argument of append_file was not a string"))
+		}
+		f, err := os.OpenFile(string(path), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o640)
+		if err != nil {
+			return nil, decorateError(thread, err)
+		}
+		defer f.Close()
+		var data []byte
+		switch v := args[1].(type) {
+		case starlark.String:
+			data = []byte(string(v))
+		case starlark.Bytes:
+			data = []byte(v)
+		default:
+			data = []byte(args[1].String())
+		}
+		_, err = f.Write(data)
+		return starlark.None, decorateError(thread, err)
+	})
+	builtindoc(appendFileBuiltinName, "(Path, Text)", "append text to the specified file.")
 
 	env.env[writeFileBuiltinName] = starlark.NewBuiltin(writeFileBuiltinName, func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if len(args) != 2 {
