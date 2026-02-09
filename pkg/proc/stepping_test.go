@@ -1122,74 +1122,39 @@ func TestRangeOverFuncNext(t *testing.T) {
 			})
 		})
 
-		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 26) && runtime.GOARCH == "arm64" {
-			t.Run("TestGotoA1", func(t *testing.T) {
-				testseq2intl(t, fixture, grp, p, nil, []seqTest{
-					funcBreak(t, "main.TestGotoA1"),
-					{contContinue, 192},
-					nx(194), // for _, x := range (x == -1)
-					nx(195), // result = append(result, x)
-					nx(196), // if x == -4
-					nx(199), // for _, y := range (y == 1)
-					nx(200), // if y == 3
-					nx(203), // result = append(result, y)
-					nx(204),
+		t.Run("TestGotoA1", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestGotoA1"),
+				{contContinue, 192},
+				nx(193),
+				nx(194), // for _, x := range (x == -1)
+				nx(195), // result = append(result, x)
+				nx(196), // if x == -4
+				nx(199), // for _, y := range (y == 1)
+				nx(200), // if y == 3
+				nx(203), // result = append(result, y)
+				nx(204),
 
-					nx(199), // for _, y := range (y == 2)
-					nx(200), // if y == 3
-					nx(203), // result = append(result, y)
-					nx(204),
+				nx(199), // for _, y := range (y == 2)
+				nx(200), // if y == 3
+				nx(203), // result = append(result, y)
+				nx(204),
 
-					nx(199), // for _, y := range (y == 3)
-					nx(200), // if y == 3
-					nx(201), // goto A
-					nx(204),
-					nx(206), // result = append(result, x)
-					nx(207),
+				nx(199), // for _, y := range (y == 3)
+				nx(200), // if y == 3
+				nx(201), // goto A
+				nx(204),
+				nx(206), // result = append(result, x)
+				nx(207),
 
-					nx(194), // for _, x := range (x == -4)
-					nx(195), // result = append(result, x)
-					nx(196), // if x == -4
-					nx(197), // break
-					nx(207),
-					nx(208), // fmt.Println
-				})
+				nx(194), // for _, x := range (x == -4)
+				nx(195), // result = append(result, x)
+				nx(196), // if x == -4
+				nx(197), // break
+				nx(207),
+				nx(208), // fmt.Println
 			})
-		} else {
-			t.Run("TestGotoA1", func(t *testing.T) {
-				testseq2intl(t, fixture, grp, p, nil, []seqTest{
-					funcBreak(t, "main.TestGotoA1"),
-					{contContinue, 192},
-					nx(193),
-					nx(194), // for _, x := range (x == -1)
-					nx(195), // result = append(result, x)
-					nx(196), // if x == -4
-					nx(199), // for _, y := range (y == 1)
-					nx(200), // if y == 3
-					nx(203), // result = append(result, y)
-					nx(204),
-
-					nx(199), // for _, y := range (y == 2)
-					nx(200), // if y == 3
-					nx(203), // result = append(result, y)
-					nx(204),
-
-					nx(199), // for _, y := range (y == 3)
-					nx(200), // if y == 3
-					nx(201), // goto A
-					nx(204),
-					nx(206), // result = append(result, x)
-					nx(207),
-
-					nx(194), // for _, x := range (x == -4)
-					nx(195), // result = append(result, x)
-					nx(196), // if x == -4
-					nx(197), // break
-					nx(207),
-					nx(208), // fmt.Println
-				})
-			})
-		}
+		})
 
 		t.Run("TestGotoB1", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
