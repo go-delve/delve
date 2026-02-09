@@ -121,6 +121,9 @@ make test
 - **Backend-specific tests**: Test each backend separately
 - **Test fixtures**: Source code in `_fixtures/` (compiled during tests,
   not pre-compiled binaries)
+- **Finding fixtures directory**: Use `protest.FindFixturesDir()` from
+  `github.com/go-delve/delve/pkg/proc/test` instead of writing custom
+  fixture directory lookup code
 
 ### Test Quality Standards
 
