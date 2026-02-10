@@ -1,5 +1,12 @@
 package debugdetect
 
+/*
+#include <sys/types.h>
+#include <sys/sysctl.h>
+#include <sys/user.h>
+#include <stdlib.h>
+*/
+import "C"
 import (
 	"bufio"
 	"fmt"
@@ -7,8 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"unsafe"
-
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -34,28 +39,16 @@ func detectDebuggerAttached() (bool, error) {
 }
 
 func detectFreeBSDSysctl() (bool, error) {
-	// Use sysctl similar to Darwin
-	var info unix.KinfoProc
-
-	mib := [4]int32{unix.CTL_KERN, unix.KERN_PROC, unix.KERN_PROC_PID, int32(os.Getpid())}
-
-	size := uintptr(unsafe.Sizeof(info))
-	_, _, errno := unix.Syscall6(
-		unix.SYS___SYSCTL,
-		uintptr(unsafe.Pointer(&mib[0])),
-		uintptr(len(mib)),
-		uintptr(unsafe.Pointer(&info)),
-		uintptr(unsafe.Pointer(&size)),
-		0,
-		0,
-	)
-
-	if errno != 0 {
-		return false, fmt.Errorf("sysctl failed: %w", errno)
+	// Use kinfo_getproc to get process information
+	kp, err := C.kinfo_getproc(C.int(os.Getpid()))
+	if err != nil {
+		return false, fmt.Errorf("kinfo_getproc failed: %v", err)
 	}
+	defer C.free(unsafe.Pointer(kp))
 
-	// Check if P_TRACED flag is set (ki_flag on FreeBSD)
-	return (info.Proc.P_flag & pTracedFlag) != 0, nil
+	// Check if P_TRACED flag is set in ki_flag
+	// ki_flag contains the process flags including P_TRACED
+	return (int(kp.ki_flag) & pTracedFlag) != 0, nil
 }
 
 func detectFreeBSDProcfs() (bool, error) {
