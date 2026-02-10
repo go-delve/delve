@@ -4,7 +4,9 @@ package debugdetect
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #include <sys/user.h>
+#include <libutil.h>
 #include <stdlib.h>
+#cgo LDFLAGS: -lutil
 */
 import "C"
 import (
