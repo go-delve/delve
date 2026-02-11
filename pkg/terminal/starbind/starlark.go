@@ -125,7 +125,17 @@ func New(ctx Context, out EchoWriter) *Env {
 		if !ok {
 			return nil, decorateError(thread, errors.New("first argument of write_file was not a string"))
 		}
-		err := os.WriteFile(string(path), []byte(args[1].String()), 0o640)
+		var data []byte
+		switch v := args[1].(type) {
+		case starlark.String:
+			data = []byte(string(v))
+		case starlark.Bytes:
+			data = []byte(v)
+		default:
+			err := fmt.Errorf("second argument of write_file must be a string or bytes, got %s", args[1].Type())
+			return starlark.None, decorateError(thread, err)
+		}
+		err := os.WriteFile(string(path), data, 0o640)
 		return starlark.None, decorateError(thread, err)
 	})
 	builtindoc(writeFileBuiltinName, "(Path, Text)", "writes text to the specified file.")
