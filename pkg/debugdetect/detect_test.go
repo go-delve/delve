@@ -17,6 +17,9 @@ func TestIntegration_NotAttached(t *testing.T) {
 	fixturesDir := protest.FindFixturesDir()
 	fixtureSrc := filepath.Join(fixturesDir, "debugdetect.go")
 	fixtureBin := filepath.Join(t.TempDir(), "debugdetect")
+	if runtime.GOOS == "windows" {
+		fixtureBin += ".exe"
+	}
 
 	cmd := exec.Command("go", "build", "-o", fixtureBin, fixtureSrc)
 	if out, err := cmd.CombinedOutput(); err != nil {
