@@ -3099,28 +3099,23 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 	}
 
 	// Get verbosity level from breakpoint
-	verbosity := 0
-	if th.Breakpoint != nil {
-		verbosity = th.Breakpoint.TraceVerbosity
-	}
-
+	verbosity := th.Breakpoint.TraceVerbosity
 	if th.Breakpoint.Tracepoint {
 		// Print trace only if there was a match on the function while TraceFollowCalls is on or if it's a regular trace
 		if rootindex != -1 || th.Breakpoint.TraceFollowCalls <= 0 {
 			// Format parameters based on verbosity
 			paramStr := formatTraceParameters(th, verbosity)
+			fmt.Fprintf(t.stdout, "%s> %s %s%s",
+					depthPrefix, tracePrefix, bpname, fn.Name())
 			if verbosity >= 3 && paramStr != "" {
 				// Levels 3-4: Multi-line format
-				fmt.Fprintf(t.stdout, "%s> %s %s%s\n%s\n",
-					depthPrefix, tracePrefix, bpname, fn.Name(), paramStr)
+				fmt.Fprintf(t.stdout, "\n%s\n", paramStr)
 			} else {
 				// Levels 0-2: Single-line format
 				if paramStr != "" {
-					fmt.Fprintf(t.stdout, "%s> %s %s%s(%s)\n",
-						depthPrefix, tracePrefix, bpname, fn.Name(), paramStr)
+					fmt.Fprintf(t.stdout, "(%s)\n", paramStr)
 				} else {
-					fmt.Fprintf(t.stdout, "%s> %s %s%s()\n",
-						depthPrefix, tracePrefix, bpname, fn.Name())
+					fmt.Fprintf(t.stdout, "()\n")
 				}
 			}
 		}
