@@ -793,7 +793,7 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 					stackdepth = 20
 				}
 				// Get LoadConfig based on verbosity level
-				loadCfg := api.GetLoadConfigForVerbosity(traceVerbose)
+				loadCfg := getLoadConfigForVerbosity(traceVerbose)
 				_, err = client.CreateBreakpoint(&api.Breakpoint{
 					FunctionName:     funcs[i],
 					Tracepoint:       true,
@@ -1267,5 +1267,58 @@ func netDial(addr string) net.Conn {
 func must(err error) {
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+// getLoadConfigForVerbosity returns the LoadConfig for a given verbosity level
+func getLoadConfigForVerbosity(verbosity int) api.LoadConfig {
+	switch api.VerbosityLevel(verbosity) {
+	case api.VerbosityNone:
+		return api.LoadConfig{
+			FollowPointers:     false,
+			MaxVariableRecurse: 0,
+			MaxStringLen:       0,
+			MaxArrayValues:     0,
+			MaxStructFields:    0,
+		}
+
+	case api.VerbosityTypes:
+		return api.LoadConfig{
+			FollowPointers:     false,
+			MaxVariableRecurse: 0,
+			MaxStringLen:       32,
+			MaxArrayValues:     0,
+			MaxStructFields:    0, // Load structure, but don't expand fields
+		}
+
+	case api.VerbosityInline:
+		return api.LoadConfig{
+			FollowPointers:     false,
+			MaxVariableRecurse: 1,
+			MaxStringLen:       64,
+			MaxArrayValues:     5,
+			MaxStructFields:    3,
+		}
+
+	case api.VerbosityExpanded:
+		return api.LoadConfig{
+			FollowPointers:     false,
+			MaxVariableRecurse: 2,
+			MaxStringLen:       128,
+			MaxArrayValues:     10,
+			MaxStructFields:    10,
+		}
+
+	case api.VerbosityFull:
+		return api.LoadConfig{
+			FollowPointers:     true,
+			MaxVariableRecurse: 3,
+			MaxStringLen:       256,
+			MaxArrayValues:     100,
+			MaxStructFields:    -1, // All fields
+		}
+
+	default:
+		return api.LoadConfig{} // Minimal config for invalid values
 	}
 }
