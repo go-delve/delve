@@ -11,13 +11,17 @@ import (
 const (
 	// P_TRACED flag from sys/proc.h
 	pTracedFlag = 0x00000800
+
+	// sysctl constants from sys/sysctl.h
+	kernProc    = 14 // KERN_PROC
+	kernProcPID = 1  // KERN_PROC_PID
 )
 
 func detectDebuggerAttached() (bool, error) {
 	// Use sysctl to get process info and check P_TRACED flag
 	var info unix.KinfoProc
 
-	mib := [4]int32{unix.CTL_KERN, unix.KERN_PROC, unix.KERN_PROC_PID, int32(os.Getpid())}
+	mib := [4]int32{unix.CTL_KERN, kernProc, kernProcPID, int32(os.Getpid())}
 
 	size := uintptr(unsafe.Sizeof(info))
 	_, _, errno := unix.Syscall6(
