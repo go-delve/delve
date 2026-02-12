@@ -1945,7 +1945,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 		requestedBp.AddrPid = loc.PCPids
 		if tracepoint {
 			requestedBp.LoadArgs = &ShortLoadConfig
-			requestedBp.TraceVerbosity = 2 // Default to inline verbosity for terminal trace command
+			requestedBp.TraceVerbosity = 0 // Default to values-only (master branch compatibility)
 		}
 
 		bp, err := t.client.CreateBreakpointWithExpr(requestedBp, spec, t.substitutePathRules(), false)
@@ -1983,7 +1983,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 					TraceReturn:    true,
 					Line:           -1,
 					LoadArgs:       &ShortLoadConfig,
-					TraceVerbosity: 2, // Default to inline verbosity for terminal trace command
+					TraceVerbosity: 0, // Default to values-only (master branch compatibility)
 				})
 				if err != nil {
 					return nil, err
@@ -2959,7 +2959,7 @@ func printBreakpointInfo(t *Term, th *api.Thread, tracepointOnNewline bool) {
 
 // formatTraceParameters formats function parameters based on verbosity level
 func formatTraceParameters(th *api.Thread, verbosity int) string {
-	if verbosity == 0 || th.BreakpointInfo == nil {
+	if th.BreakpointInfo == nil {
 		return ""
 	}
 
@@ -2977,11 +2977,14 @@ func formatTraceParameters(th *api.Thread, verbosity int) string {
 			continue
 		}
 
-		// For levels 3-4: multi-line format
-		if verbosity >= 3 {
+		// For level 0: just values (master branch compatibility)
+		if verbosity == 0 {
+			params = append(params, formatted)
+		} else if verbosity >= 3 {
+			// For levels 3-4: multi-line format with names
 			params = append(params, fmt.Sprintf("  %s: %s", arg.Name, formatted))
 		} else {
-			// For levels 1-2: inline format
+			// For levels 1-2: inline format with names
 			params = append(params, fmt.Sprintf("%s: %s", arg.Name, formatted))
 		}
 	}
@@ -3058,17 +3061,12 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 	if th.Breakpoint.TraceReturn {
 		// Print trace only if there was a match on the function while TraceFollowCalls is on or if it's a regular trace
 		if rootindex != -1 || th.Breakpoint.TraceFollowCalls <= 0 {
-			if verbosity > 0 {
-				// For verbosity > 0, show return values
-				retVals := make([]string, 0, len(th.ReturnValues))
-				for _, v := range th.ReturnValues {
-					retVals = append(retVals, v.FormatWithVerbosity(verbosity))
-				}
-				fmt.Fprintf(t.stdout, "%s>> %s %s => (%s)\n", depthPrefix, tracePrefix, fn.Name(), strings.Join(retVals, ","))
-			} else {
-				// For verbosity == 0, just show function name without return values
-				fmt.Fprintf(t.stdout, "%s>> %s %s\n", depthPrefix, tracePrefix, fn.Name())
+			// Format return values based on verbosity
+			retVals := make([]string, 0, len(th.ReturnValues))
+			for _, v := range th.ReturnValues {
+				retVals = append(retVals, v.FormatWithVerbosity(verbosity))
 			}
+			fmt.Fprintf(t.stdout, "%s>> %s %s => (%s)\n", depthPrefix, tracePrefix, fn.Name(), strings.Join(retVals, ","))
 		}
 	}
 	if th.Breakpoint.TraceFollowCalls > 0 {

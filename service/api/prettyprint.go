@@ -57,8 +57,31 @@ func (v *Variable) StringWithOptions(indent, fmtstr string, flags PrettyFlags) s
 
 // FormatWithVerbosity formats a variable according to trace verbosity level
 func (v *Variable) FormatWithVerbosity(verbosity int) string {
+	// Level 0: just the value (master branch compatibility)
 	if verbosity == 0 {
-		return "" // Level 0: no output
+		if v.Unreadable != "" {
+			return fmt.Sprintf("(unreadable %s)", v.Unreadable)
+		}
+
+		// For complex types (slices, maps, structs, etc.), use writeTo without type info
+		// This gives us the value representation without the type name prefix
+		var buf bytes.Buffer
+		switch v.Kind {
+		case reflect.Slice, reflect.Array, reflect.Map, reflect.Struct, reflect.Ptr, reflect.Interface, reflect.Chan:
+			// For complex types, format without type names
+			v.writeTo(&buf, 0, "", "")
+			return buf.String()
+		case reflect.String:
+			// For strings, use quoted format
+			s := v.Value
+			if len(s) != int(v.Len) {
+				s = fmt.Sprintf("%s...+%d more", s, int(v.Len)-len(s))
+			}
+			return fmt.Sprintf("%q", s)
+		default:
+			// For basic types, return just the value
+			return v.Value
+		}
 	}
 
 	// Special case for level 1: type only (no value expansion)
