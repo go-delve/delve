@@ -30,7 +30,7 @@ dlv trace [package] regexp [flags]
   -s, --stack int           Show stack trace with given depth. (Ignored with --ebpf)
   -t, --test                Trace a test binary.
       --timestamp           Show timestamp in the output
-  -V, --trace-verbose int   Parameter verbosity: 0=none, 1=types, 2=inline, 3=expanded, 4=full (default 2) (default 2)
+  -V, --trace-verbose int   Parameter verbosity: 0=values, 1=types, 2=inline, 3=expanded, 4=full (default 0)
 ```
 
 ### Options inherited from parent commands
