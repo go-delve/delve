@@ -4,9 +4,9 @@ package api
 type VerbosityLevel int
 
 const (
-	VerbosityNone     VerbosityLevel = 0 // No parameter output
+	VerbosityNone     VerbosityLevel = 0 // Values only (master branch default)
 	VerbosityTypes    VerbosityLevel = 1 // Type names only
-	VerbosityInline   VerbosityLevel = 2 // Inline values, limited depth
+	VerbosityInline   VerbosityLevel = 2 // Inline values with names, limited depth
 	VerbosityExpanded VerbosityLevel = 3 // Multi-line, more depth
 	VerbosityFull     VerbosityLevel = 4 // Maximum detail
 )
