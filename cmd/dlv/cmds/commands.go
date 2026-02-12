@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -371,7 +370,7 @@ only see the output of the trace operations you can redirect stdout.`,
 	traceCommand.Flags().String("output", "", "Output path for the binary.")
 	must(traceCommand.MarkFlagFilename("output"))
 	traceCommand.Flags().IntVarP(&traceFollowCalls, "follow-calls", "", 0, "Trace all children of the function to the required depth. Trace also supports defer functions and cases where functions are dynamically returned and passed as parameters.")
-	traceCommand.Flags().IntVarP(&traceVerbose, "trace-verbose", "V", 2, "Parameter verbosity: 0=none, 1=types, 2=inline, 3=expanded, 4=full (default 2)")
+	traceCommand.Flags().IntVarP(&traceVerbose, "trace-verbose", "V", 0, "Parameter verbosity: 0=values, 1=types, 2=inline, 3=expanded, 4=full (default 0)")
 	must(traceCommand.RegisterFlagCompletionFunc("trace-verbose", cobra.NoFileCompletions))
 	rootCommand.AddCommand(traceCommand)
 
@@ -867,11 +866,9 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 								if params.Len() > 0 {
 									params.WriteString(", ")
 								}
-								if p.Kind == reflect.String {
-									params.WriteString(fmt.Sprintf("%q", p.Value))
-								} else {
-									params.WriteString(p.Value)
-								}
+								// Use FormatWithVerbosity to handle all types correctly
+								formatted := p.FormatWithVerbosity(traceVerbose)
+								params.WriteString(formatted)
 							}
 
 							if traceShowTimestamp {
@@ -881,7 +878,8 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 							if t.IsRet {
 								retVals := make([]string, 0, len(t.ReturnParams))
 								for _, p := range t.ReturnParams {
-									retVals = append(retVals, p.Value)
+									// Use FormatWithVerbosity for return values too
+									retVals = append(retVals, p.FormatWithVerbosity(traceVerbose))
 								}
 								fmt.Fprintf(os.Stderr, ">> goroutine(%d): %s => (%s)\n", t.GoroutineID, t.FunctionName, strings.Join(retVals, ","))
 							} else {
@@ -1274,12 +1272,13 @@ func must(err error) {
 func getLoadConfigForVerbosity(verbosity int) api.LoadConfig {
 	switch api.VerbosityLevel(verbosity) {
 	case api.VerbosityNone:
+		// Level 0: Load and show values only, no names (master branch compatibility)
 		return api.LoadConfig{
 			FollowPointers:     false,
-			MaxVariableRecurse: 0,
-			MaxStringLen:       0,
-			MaxArrayValues:     0,
-			MaxStructFields:    0,
+			MaxVariableRecurse: 1,
+			MaxStringLen:       64,
+			MaxArrayValues:     64,
+			MaxStructFields:    -1,
 		}
 
 	case api.VerbosityTypes:
