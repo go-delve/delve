@@ -39,33 +39,6 @@ func TestIntegration_NotAttached(t *testing.T) {
 	}
 }
 
-func TestIsDebuggerAttached_NotAttached(t *testing.T) {
-	// This test should pass on all supported platforms when not debugging
-	attached, err := IsDebuggerAttached()
-
-	// On supported platforms, should not error
-	switch runtime.GOOS {
-	case "linux", "darwin", "windows", "freebsd":
-		if err != nil {
-			t.Fatalf("unexpected error on %s: %v", runtime.GOOS, err)
-		}
-		// We're running in normal test mode, should not be attached
-		// (unless someone is debugging the test itself, which is unlikely)
-		if attached {
-			t.Logf("WARNING: detected debugger attachment during test on %s", runtime.GOOS)
-			t.Logf("This is unusual but not necessarily wrong if you're debugging tests")
-		}
-	default:
-		// Unsupported platform - should return error
-		if err == nil {
-			t.Fatalf("expected error on unsupported platform %s", runtime.GOOS)
-		}
-		if attached {
-			t.Errorf("expected attached=false on unsupported platform, got true")
-		}
-	}
-}
-
 func TestIntegration_Attached(t *testing.T) {
 	// This test verifies that IsDebuggerAttached() returns true when
 	// the process is actually running under a debugger by using

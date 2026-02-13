@@ -18,7 +18,6 @@ const (
 )
 
 func detectDebuggerAttached() (bool, error) {
-	// Use sysctl to get process info and check P_TRACED flag
 	var info unix.KinfoProc
 
 	mib := [4]int32{unix.CTL_KERN, kernProc, kernProcPID, int32(os.Getpid())}
@@ -38,6 +37,5 @@ func detectDebuggerAttached() (bool, error) {
 		return false, fmt.Errorf("sysctl failed: %w", errno)
 	}
 
-	// Check if P_TRACED flag is set
 	return (info.Proc.P_flag & pTracedFlag) != 0, nil
 }
