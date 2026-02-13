@@ -25,6 +25,7 @@ import (
 
 const (
 	dlvCommandBuiltinName        = "dlv_command"
+	appendFileBuiltinName        = "append_file"
 	readFileBuiltinName          = "read_file"
 	writeFileBuiltinName         = "write_file"
 	commandPrefix                = "command_"
@@ -117,6 +118,24 @@ func New(ctx Context, out EchoWriter) *Env {
 	})
 	builtindoc(readFileBuiltinName, "(Path)", "reads a file.")
 
+	env.env[appendFileBuiltinName] = starlark.NewBuiltin(appendFileBuiltinName, func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		if len(args) != 2 {
+			return nil, decorateError(thread, errors.New("wrong number of arguments"))
+		}
+		path, ok := args[0].(starlark.String)
+		if !ok {
+			return nil, decorateError(thread, errors.New("first argument of append_file was not a string"))
+		}
+		f, err := os.OpenFile(string(path), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o640)
+		if err != nil {
+			return nil, decorateError(thread, err)
+		}
+		defer f.Close()
+		_, err = f.Write(toBytes(args[1]))
+		return starlark.None, decorateError(thread, err)
+	})
+	builtindoc(appendFileBuiltinName, "(Path, Text)", "append text to the specified file.")
+
 	env.env[writeFileBuiltinName] = starlark.NewBuiltin(writeFileBuiltinName, func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if len(args) != 2 {
 			return nil, decorateError(thread, errors.New("wrong number of arguments"))
@@ -125,7 +144,7 @@ func New(ctx Context, out EchoWriter) *Env {
 		if !ok {
 			return nil, decorateError(thread, errors.New("first argument of write_file was not a string"))
 		}
-		err := os.WriteFile(string(path), []byte(args[1].String()), 0o640)
+		err := os.WriteFile(string(path), toBytes(args[1]), 0o640)
 		return starlark.None, decorateError(thread, err)
 	})
 	builtindoc(writeFileBuiltinName, "(Path, Text)", "writes text to the specified file.")
@@ -403,4 +422,17 @@ func evalExprOptions(opts *syntax.FileOptions, thread *starlark.Thread, expr syn
 		opts = defaultSyntaxFileOpts
 	}
 	return starlark.EvalExprOptions(opts, thread, expr, globals)
+}
+
+func toBytes(arg starlark.Value) []byte {
+	var data []byte
+	switch v := arg.(type) {
+	case starlark.String:
+		data = []byte(string(v))
+	case starlark.Bytes:
+		data = []byte(v)
+	default:
+		data = []byte(arg.String())
+	}
+	return data
 }
