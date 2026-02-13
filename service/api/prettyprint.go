@@ -18,21 +18,22 @@ const (
 	indentString = "\t"
 )
 
-type prettyFlags uint8
+// PrettyFlags specifies how a variable should be formatted.
+type PrettyFlags uint8
 
 const (
-	prettyTop prettyFlags = 1 << iota
-	prettyNewlines
+	prettyTop PrettyFlags = 1 << iota
 	prettyIncludeType
-	prettyShortenType
+	PrettyNewlines    // pretty print variable on multiple lines
+	PrettyShortenType // pretty print variable shortening types when they are printed
 )
 
-func (flags prettyFlags) top() bool         { return flags&prettyTop != 0 }
-func (flags prettyFlags) includeType() bool { return flags&prettyIncludeType != 0 }
-func (flags prettyFlags) newlines() bool    { return flags&prettyNewlines != 0 }
-func (flags prettyFlags) shortenType() bool { return flags&prettyShortenType != 0 }
+func (flags PrettyFlags) top() bool         { return flags&prettyTop != 0 }
+func (flags PrettyFlags) includeType() bool { return flags&prettyIncludeType != 0 }
+func (flags PrettyFlags) newlines() bool    { return flags&PrettyNewlines != 0 }
+func (flags PrettyFlags) shortenType() bool { return flags&PrettyShortenType != 0 }
 
-func (flags prettyFlags) set(flag prettyFlags, v bool) prettyFlags {
+func (flags PrettyFlags) set(flag PrettyFlags, v bool) PrettyFlags {
 	if v {
 		return flags | flag
 	} else {
@@ -47,28 +48,14 @@ func (v *Variable) SinglelineString() string {
 	return buf.String()
 }
 
-// SinglelineStringWithShortTypes returns a representation of v on a single line, with types shortened.
-func (v *Variable) SinglelineStringWithShortTypes() string {
+// StringWithOptions formats v with the specified options.
+func (v *Variable) StringWithOptions(indent, fmtstr string, flags PrettyFlags) string {
 	var buf bytes.Buffer
-	v.writeTo(&buf, prettyTop|prettyIncludeType|prettyShortenType, "", "")
+	v.writeTo(&buf, prettyTop|prettyIncludeType|flags, indent, fmtstr)
 	return buf.String()
 }
 
-// SinglelineStringFormatted returns a representation of v on a single line, using the format specified by fmtstr.
-func (v *Variable) SinglelineStringFormatted(fmtstr string) string {
-	var buf bytes.Buffer
-	v.writeTo(&buf, prettyTop|prettyIncludeType, "", fmtstr)
-	return buf.String()
-}
-
-// MultilineString returns a representation of v on multiple lines.
-func (v *Variable) MultilineString(indent, fmtstr string) string {
-	var buf bytes.Buffer
-	v.writeTo(&buf, prettyTop|prettyNewlines|prettyIncludeType, indent, fmtstr)
-	return buf.String()
-}
-
-func (v *Variable) typeStr(flags prettyFlags) string {
+func (v *Variable) typeStr(flags PrettyFlags) string {
 	if flags.shortenType() {
 		return ShortenType(v.Type)
 	}
@@ -76,7 +63,7 @@ func (v *Variable) typeStr(flags prettyFlags) string {
 	return v.Type
 }
 
-func (v *Variable) writeTo(buf io.Writer, flags prettyFlags, indent, fmtstr string) {
+func (v *Variable) writeTo(buf io.Writer, flags PrettyFlags, indent, fmtstr string) {
 	if v.Unreadable != "" {
 		fmt.Fprintf(buf, "(unreadable %s)", v.Unreadable)
 		return
@@ -191,7 +178,7 @@ func (v *Variable) writeTo(buf io.Writer, flags prettyFlags, indent, fmtstr stri
 	}
 }
 
-func (v *Variable) writePointerTo(buf io.Writer, flags prettyFlags) {
+func (v *Variable) writePointerTo(buf io.Writer, flags PrettyFlags) {
 	if strings.Contains(v.Type, "/") {
 		fmt.Fprintf(buf, "(%q)(%#x)", v.typeStr(flags), v.Children[0].Addr)
 	} else {
@@ -272,7 +259,7 @@ func ExtractIntValue(s string) string {
 	return s[open+1 : len(s)-1]
 }
 
-func (v *Variable) writeSliceTo(buf io.Writer, flags prettyFlags, indent, fmtstr string) {
+func (v *Variable) writeSliceTo(buf io.Writer, flags PrettyFlags, indent, fmtstr string) {
 	if flags.includeType() {
 		fmt.Fprintf(buf, "%s len: %d, cap: %d, ", v.typeStr(flags), v.Len, v.Cap)
 	}
@@ -283,14 +270,14 @@ func (v *Variable) writeSliceTo(buf io.Writer, flags prettyFlags, indent, fmtstr
 	v.writeSliceOrArrayTo(buf, flags, indent, fmtstr)
 }
 
-func (v *Variable) writeArrayTo(buf io.Writer, flags prettyFlags, indent, fmtstr string) {
+func (v *Variable) writeArrayTo(buf io.Writer, flags PrettyFlags, indent, fmtstr string) {
 	if flags.includeType() {
 		fmt.Fprintf(buf, "%s ", v.typeStr(flags))
 	}
 	v.writeSliceOrArrayTo(buf, flags, indent, fmtstr)
 }
 
-func (v *Variable) writeStructTo(buf io.Writer, flags prettyFlags, indent, fmtstr string) {
+func (v *Variable) writeStructTo(buf io.Writer, flags PrettyFlags, indent, fmtstr string) {
 	if int(v.Len) != len(v.Children) && len(v.Children) == 0 {
 		if strings.Contains(v.Type, "/") {
 			fmt.Fprintf(buf, "(*%q)(%#x)", v.typeStr(flags), v.Addr)
@@ -313,7 +300,7 @@ func (v *Variable) writeStructTo(buf io.Writer, flags prettyFlags, indent, fmtst
 			fmt.Fprintf(buf, "\n%s%s", indent, indentString)
 		}
 		fmt.Fprintf(buf, "%s: ", v.Children[i].Name)
-		v.Children[i].writeTo(buf, prettyIncludeType.set(prettyShortenType, flags.shortenType()).set(prettyNewlines, nl), indent+indentString, fmtstr)
+		v.Children[i].writeTo(buf, prettyIncludeType.set(PrettyShortenType, flags.shortenType()).set(PrettyNewlines, nl), indent+indentString, fmtstr)
 		if i != len(v.Children)-1 || nl {
 			fmt.Fprint(buf, ",")
 			if !nl {
@@ -334,7 +321,7 @@ func (v *Variable) writeStructTo(buf io.Writer, flags prettyFlags, indent, fmtst
 	fmt.Fprint(buf, "}")
 }
 
-func (v *Variable) writeMapTo(buf io.Writer, flags prettyFlags, indent, fmtstr string) {
+func (v *Variable) writeMapTo(buf io.Writer, flags PrettyFlags, indent, fmtstr string) {
 	if flags.includeType() {
 		fmt.Fprintf(buf, "%s ", v.typeStr(flags))
 	}
@@ -357,7 +344,7 @@ func (v *Variable) writeMapTo(buf io.Writer, flags prettyFlags, indent, fmtstr s
 
 		key.writeTo(buf, 0, indent+indentString, fmtstr)
 		fmt.Fprint(buf, ": ")
-		value.writeTo(buf, prettyFlags(0).set(prettyShortenType, flags.shortenType()).set(prettyNewlines, nl), indent+indentString, fmtstr)
+		value.writeTo(buf, PrettyFlags(0).set(PrettyShortenType, flags.shortenType()).set(PrettyNewlines, nl), indent+indentString, fmtstr)
 		if i != len(v.Children)-1 || nl {
 			fmt.Fprint(buf, ", ")
 		}
@@ -449,7 +436,7 @@ func (v *Variable) shouldNewlineStruct(newlines bool) bool {
 	return false
 }
 
-func (v *Variable) writeSliceOrArrayTo(buf io.Writer, flags prettyFlags, indent, fmtstr string) {
+func (v *Variable) writeSliceOrArrayTo(buf io.Writer, flags PrettyFlags, indent, fmtstr string) {
 	nl := v.shouldNewlineArray(flags.newlines())
 	fmt.Fprint(buf, "[")
 
@@ -457,7 +444,7 @@ func (v *Variable) writeSliceOrArrayTo(buf io.Writer, flags prettyFlags, indent,
 		if nl {
 			fmt.Fprintf(buf, "\n%s%s", indent, indentString)
 		}
-		v.Children[i].writeTo(buf, prettyFlags(0).set(prettyShortenType, flags.shortenType()).set(prettyNewlines, nl), indent+indentString, fmtstr)
+		v.Children[i].writeTo(buf, PrettyFlags(0).set(PrettyShortenType, flags.shortenType()).set(PrettyNewlines, nl), indent+indentString, fmtstr)
 		if i != len(v.Children)-1 || nl {
 			fmt.Fprint(buf, ",")
 		}

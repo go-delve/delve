@@ -645,7 +645,7 @@ func (t *Term) printDisplay(i int) {
 		fmt.Fprintf(t.stdout, "%d: %s = error %v\n", i, expr, err)
 		return
 	}
-	fmt.Fprintf(t.stdout, "%d: %s = %s\n", i, val.Name, val.SinglelineStringFormatted(fmtstr))
+	fmt.Fprintf(t.stdout, "%d: %s = %s\n", i, val.Name, val.StringWithOptions("", fmtstr, 0))
 }
 
 func (t *Term) printDisplays() {

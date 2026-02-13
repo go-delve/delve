@@ -1707,7 +1707,7 @@ func TestIssue406(t *testing.T) {
 		assertNoError(state.Err, t, "Continue()")
 		v, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "cfgtree", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
-		vs := v.MultilineString("", "")
+		vs := v.StringWithOptions("", "", api.PrettyNewlines)
 		t.Logf("cfgtree formats to: %s\n", vs)
 	})
 }
@@ -2838,7 +2838,7 @@ func TestClientServer_SinglelineStringFormattedWithBigInts(t *testing.T) {
 
 		constvar, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "9331634762088972288", normalLoadConfig)
 		assertNoError(err, t, "ErrVariable(9331634762088972288)")
-		out := constvar.SinglelineStringFormatted("%X")
+		out := constvar.StringWithOptions("", "%X", 0)
 		t.Logf("constant: %q\n", out)
 		if out != "8180A06000000000" {
 			t.Errorf("expected \"8180A06000000000\" got %q when printing constant", out)
@@ -2862,7 +2862,7 @@ func TestClientServer_SinglelineStringFormattedWithBigInts(t *testing.T) {
 				t.Errorf("wrong kind for variable %s\n", child.Kind)
 			}
 			out1 := child.SinglelineString()
-			out2 := child.SinglelineStringFormatted("%X")
+			out2 := child.StringWithOptions("", "%X", 0)
 			t.Logf("%q %q\n", out1, out2)
 			if out1 != expected[i*2] {
 				t.Errorf("for child %d expected %s got %s (decimal)", i, expected[i*2], out1)
@@ -3441,7 +3441,7 @@ func TestEvalNonunicodeString(t *testing.T) {
 		assertNoError(state.Err, t, "Continue")
 		v, err := c.EvalVariable(api.EvalScope{GoroutineID: -1}, "string(issue4072)", normalLoadConfig)
 		assertNoError(err, t, "EvalVariable")
-		t.Logf("%s", v.MultilineString("", ""))
+		t.Logf("%s", v.StringWithOptions("", "", api.PrettyNewlines))
 		tgt := string([]byte{116, 121, 112, 101, 32, 84, 32, 115, 116, 114, 117, 99, 116, 32, 123, 12, 12, 9, 255, 102, 108, 100, 99, 111, 109, 255})
 		if v.Value != tgt {
 			t.Errorf("wrong value for string issue4072 expected %q, got %q", tgt, v.Value)
