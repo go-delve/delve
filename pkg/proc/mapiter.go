@@ -438,6 +438,10 @@ func (it *mapIteratorSwiss) loadTypes() {
 		it.dirPtr.DwarfType = pointerTo(fakeArrayType(1, it.groupType), it.v.bi.Arch)
 		it.dirPtr.RealType = it.dirPtr.DwarfType
 		it.dirPtr = it.dirPtr.maybeDereference()
+		if it.dirPtr.Addr == 0 || it.dirPtr.Unreadable != nil {
+			it.v.Unreadable = errSwissTableNilGroups
+			return
+		}
 		it.dirLen = 1
 		it.tab = &swissTable{groups: it.dirPtr} // so that we don't try to load this later on
 		return
@@ -448,6 +452,10 @@ func (it *mapIteratorSwiss) loadTypes() {
 	it.dirPtr.DwarfType = pointerTo(fakeArrayType(uint64(it.dirLen), tableptrtyp), it.v.bi.Arch)
 	it.dirPtr.RealType = it.dirPtr.DwarfType
 	it.dirPtr = it.dirPtr.maybeDereference()
+	if it.dirPtr.Addr == 0 || it.dirPtr.Unreadable != nil {
+		it.v.Unreadable = errSwissTableCouldNotLoad
+		return
+	}
 }
 
 // derived from $GOROOT/src/internal/runtime/maps/table.go and $GOROOT/src/runtime/runtime-gdb.py
@@ -542,20 +550,40 @@ func (it *mapIteratorSwiss) loadCurrentTable() {
 	}
 
 	tab = tab.maybeDereference()
+	if tab.Addr == 0 || tab.Unreadable != nil {
+		it.v.Unreadable = errSwissTableCouldNotLoad
+		return
+	}
 
 	r := &swissTable{}
 
-	field, _ := tab.toField(it.tableFieldIndex)
+	field, err2 := tab.toField(it.tableFieldIndex)
+	if err2 != nil {
+		it.v.Unreadable = fmt.Errorf("could not load swiss table index field: %v", err2)
+		return
+	}
 	r.index, err = field.asInt()
 	if err != nil {
 		it.v.Unreadable = fmt.Errorf("could not load swiss table index: %v", err)
 		return
 	}
 
-	groups, _ := tab.toField(it.tableFieldGroups)
-	r.groups, _ = groups.toField(it.groupsFieldData)
+	groups, err2 := tab.toField(it.tableFieldGroups)
+	if err2 != nil {
+		it.v.Unreadable = fmt.Errorf("could not load swiss table groups field: %v", err2)
+		return
+	}
+	r.groups, err2 = groups.toField(it.groupsFieldData)
+	if err2 != nil {
+		it.v.Unreadable = fmt.Errorf("could not load swiss table groups data: %v", err2)
+		return
+	}
 
-	field, _ = groups.toField(it.groupsFieldLengthMask)
+	field, err2 = groups.toField(it.groupsFieldLengthMask)
+	if err2 != nil {
+		it.v.Unreadable = fmt.Errorf("could not load swiss table groups lengthMask field: %v", err2)
+		return
+	}
 	groupsLengthMask, err := field.asUint()
 	if err != nil {
 		it.v.Unreadable = fmt.Errorf("could not load swiss table group lengthMask: %v", err)
@@ -567,7 +595,7 @@ func (it *mapIteratorSwiss) loadCurrentTable() {
 	r.groups.RealType = r.groups.DwarfType
 	r.groups = r.groups.maybeDereference()
 
-	if r.groups.Addr == 0 {
+	if r.groups.Addr == 0 || r.groups.Unreadable != nil {
 		it.v.Unreadable = errSwissTableNilGroups
 		return
 	}
@@ -583,8 +611,17 @@ func (it *mapIteratorSwiss) loadCurrentGroup() {
 		return
 	}
 	g := &swissGroup{}
-	g.slots, _ = group.toField(it.groupFieldSlots)
-	ctrl, _ := group.toField(it.groupFieldCtrl)
+	var err2 error
+	g.slots, err2 = group.toField(it.groupFieldSlots)
+	if err2 != nil {
+		it.v.Unreadable = fmt.Errorf("could not load swiss map group slots: %v", err2)
+		return
+	}
+	ctrl, err2 := group.toField(it.groupFieldCtrl)
+	if err2 != nil {
+		it.v.Unreadable = fmt.Errorf("could not load swiss map group ctrl: %v", err2)
+		return
+	}
 	g.ctrls = make([]byte, ctrl.DwarfType.Size())
 	_, err = ctrl.mem.ReadMemory(g.ctrls, ctrl.Addr)
 	if err != nil {
