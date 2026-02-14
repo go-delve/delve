@@ -122,9 +122,11 @@ type mapIteratorClassic struct {
 	hashMinTopHash      uint64 // minimum value of tophash for a cell that isn't either evacuated or empty
 }
 
-var errMapBucketContentsNotArray = errors.New("malformed map type: keys, values or tophash of a bucket is not an array")
-var errMapBucketContentsInconsistentLen = errors.New("malformed map type: inconsistent array length in bucket")
-var errMapBucketsNotStruct = errors.New("malformed map type: buckets, oldbuckets or overflow field not a struct")
+var (
+	errMapBucketContentsNotArray        = errors.New("malformed map type: keys, values or tophash of a bucket is not an array")
+	errMapBucketContentsInconsistentLen = errors.New("malformed map type: inconsistent array length in bucket")
+	errMapBucketsNotStruct              = errors.New("malformed map type: buckets, oldbuckets or overflow field not a struct")
+)
 
 func (it *mapIteratorClassic) nextBucket() bool {
 	if it.overflow != nil && it.overflow.Addr > 0 {
@@ -299,7 +301,7 @@ func (it *mapIteratorClassic) mapEvacuated(b *Variable) bool {
 		if err != nil {
 			return true
 		}
-		//TODO: this needs to be > hashTophashEmptyOne for go >= 1.12
+		// TODO: this needs to be > hashTophashEmptyOne for go >= 1.12
 		return tophash0 > it.hashTophashEmptyOne && tophash0 < it.hashMinTopHash
 	}
 	return true
@@ -345,11 +347,13 @@ type swissGroup struct {
 	ctrls []byte
 }
 
-var errSwissTableCouldNotLoad = errors.New("could not load one of the tables")
-var errSwissMapBadType = errors.New("swiss table type does not have some required fields")
-var errSwissMapBadTableField = errors.New("swiss table bad table field")
-var errSwissMapBadGroupTypeErr = errors.New("bad swiss map type, group type lacks some required fields")
-var errSwissTableNilGroups = errors.New("bad swiss map, groups pointer is nil")
+var (
+	errSwissTableCouldNotLoad  = errors.New("could not load one of the tables")
+	errSwissMapBadType         = errors.New("swiss table type does not have some required fields")
+	errSwissMapBadTableField   = errors.New("swiss table bad table field")
+	errSwissMapBadGroupTypeErr = errors.New("bad swiss map type, group type lacks some required fields")
+	errSwissTableNilGroups     = errors.New("bad swiss map, groups pointer is nil")
+)
 
 // loadTypes determines the correct type for it.dirPtr:  the linker records
 // this type as **table but in reality it is either *[dirLen]*table for
@@ -545,17 +549,33 @@ func (it *mapIteratorSwiss) loadCurrentTable() {
 
 	r := &swissTable{}
 
-	field, _ := tab.toField(it.tableFieldIndex)
+	field, err2 := tab.toField(it.tableFieldIndex)
+	if err2 != nil {
+		it.v.Unreadable = fmt.Errorf("could not load swiss table index field: %v", err2)
+		return
+	}
 	r.index, err = field.asInt()
 	if err != nil {
 		it.v.Unreadable = fmt.Errorf("could not load swiss table index: %v", err)
 		return
 	}
 
-	groups, _ := tab.toField(it.tableFieldGroups)
-	r.groups, _ = groups.toField(it.groupsFieldData)
+	groups, err2 := tab.toField(it.tableFieldGroups)
+	if err2 != nil {
+		it.v.Unreadable = fmt.Errorf("could not load swiss table groups field: %v", err2)
+		return
+	}
+	r.groups, err2 = groups.toField(it.groupsFieldData)
+	if err2 != nil {
+		it.v.Unreadable = fmt.Errorf("could not load swiss table groups data: %v", err2)
+		return
+	}
 
-	field, _ = groups.toField(it.groupsFieldLengthMask)
+	field, err2 = groups.toField(it.groupsFieldLengthMask)
+	if err2 != nil {
+		it.v.Unreadable = fmt.Errorf("could not load swiss table groups lengthMask field: %v", err2)
+		return
+	}
 	groupsLengthMask, err := field.asUint()
 	if err != nil {
 		it.v.Unreadable = fmt.Errorf("could not load swiss table group lengthMask: %v", err)
@@ -583,8 +603,17 @@ func (it *mapIteratorSwiss) loadCurrentGroup() {
 		return
 	}
 	g := &swissGroup{}
-	g.slots, _ = group.toField(it.groupFieldSlots)
-	ctrl, _ := group.toField(it.groupFieldCtrl)
+	var err2 error
+	g.slots, err2 = group.toField(it.groupFieldSlots)
+	if err2 != nil {
+		it.v.Unreadable = fmt.Errorf("could not load swiss map group slots: %v", err2)
+		return
+	}
+	ctrl, err2 := group.toField(it.groupFieldCtrl)
+	if err2 != nil {
+		it.v.Unreadable = fmt.Errorf("could not load swiss map group ctrl: %v", err2)
+		return
+	}
 	g.ctrls = make([]byte, ctrl.DwarfType.Size())
 	_, err = ctrl.mem.ReadMemory(g.ctrls, ctrl.Addr)
 	if err != nil {
@@ -603,6 +632,6 @@ func (it *mapIteratorSwiss) value() *Variable {
 }
 
 func (it *mapIteratorSwiss) slotIsEmptyOrDeleted(k uint32) bool {
-	//TODO: check that this hasn't changed after it's merged and the TODO is deleted
+	// TODO: check that this hasn't changed after it's merged and the TODO is deleted
 	return it.group.ctrls[k]&swissTableCtrlEmpty == swissTableCtrlEmpty
 }
