@@ -39,6 +39,50 @@ func TestIntegration_NotAttached(t *testing.T) {
 	}
 }
 
+func TestIntegration_WaitForDebugger(t *testing.T) {
+	// This test verifies that WaitForDebugger() blocks until a debugger
+	// attaches and then returns successfully by running the fixture
+	// under Delve.
+	protest.AllowRecording(t)
+
+	dlvbin := protest.GetDlvBinary(t)
+	fixturesDir := protest.FindFixturesDir()
+	fixtureSrc := filepath.Join(fixturesDir, "waitfordebugger.go")
+
+	const listenAddr = "127.0.0.1:40581"
+	cmd := exec.Command(dlvbin, "debug", fixtureSrc, "--headless", "--continue", "--accept-multiclient", "--listen", listenAddr)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stdout.Close()
+
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read stdout until we see the program output
+	scanner := bufio.NewScanner(stdout)
+	foundOutput := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		t.Log(line)
+		if strings.Contains(line, "DEBUGGER_FOUND") {
+			foundOutput = true
+			break
+		}
+	}
+
+	// Clean up - connect and detach
+	client := rpc2.NewClient(listenAddr)
+	client.Detach(true)
+	cmd.Wait()
+
+	if !foundOutput {
+		t.Error("expected 'DEBUGGER_FOUND' in output when running under debugger")
+	}
+}
+
 func TestIntegration_Attached(t *testing.T) {
 	// This test verifies that IsDebuggerAttached() returns true when
 	// the process is actually running under a debugger by using

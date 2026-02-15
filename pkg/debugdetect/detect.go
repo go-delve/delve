@@ -3,6 +3,7 @@ package debugdetect
 import (
 	"fmt"
 	"runtime"
+	"time"
 )
 
 // IsDebuggerAttached returns true if the current process is being debugged
@@ -16,5 +17,15 @@ func IsDebuggerAttached() (bool, error) {
 		return detectDebuggerAttached()
 	default:
 		return false, fmt.Errorf("debugger detection not supported on %s", runtime.GOOS)
+	}
+}
+
+func WaitForDebugger() error {
+	for {
+		attached, err := IsDebuggerAttached()
+		if attached || err != nil {
+			return err
+		}
+		time.Sleep(500 * time.Millisecond)
 	}
 }
