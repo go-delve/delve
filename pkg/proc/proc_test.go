@@ -5756,7 +5756,7 @@ func TestReadClosure(t *testing.T) {
 		for i := range 4 {
 			assertNoError(grp.Continue(), t, "Continue()")
 			accV := evalVariable(p, t, "acc")
-			t.Log(api.ConvertVar(accV).MultilineString("", ""))
+			t.Log(multiLineVar(accV))
 			if len(accV.Children) != 2 {
 				t.Fatal("wrong number of children")
 			}

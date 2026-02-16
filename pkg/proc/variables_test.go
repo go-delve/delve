@@ -109,6 +109,10 @@ func setVariable(p *proc.Target, symbol, value string) error {
 	return scope.SetVariable(symbol, value)
 }
 
+func multiLineVar(v *proc.Variable) string {
+	return api.ConvertVar(v).StringWithOptions("", "", api.PrettyNewlines)
+}
+
 func TestVariableEvaluation(t *testing.T) {
 	protest.AllowRecording(t)
 	testcases := []struct {
@@ -443,7 +447,7 @@ func TestMultilineVariableEvaluation(t *testing.T) {
 		for _, tc := range testcases {
 			variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
 			assertNoError(err, t, "EvalVariable() returned an error")
-			if ms := api.ConvertVar(variable).MultilineString("", ""); !matchStringOrPrefix(ms, tc.value) {
+			if ms := multiLineVar(variable); !matchStringOrPrefix(ms, tc.value) {
 				t.Fatalf("Expected %s got %q (variable %s)\n", tc.value, ms, variable.Name)
 			}
 		}
@@ -1057,7 +1061,7 @@ func TestMapEvaluation(t *testing.T) {
 		m1v, err := evalVariableWithCfg(p, "m1", pnormalLoadConfig)
 		assertNoError(err, t, "EvalVariable()")
 		m1 := api.ConvertVar(m1v)
-		t.Logf("m1 = %v", m1.MultilineString("", ""))
+		t.Logf("m1 = %v", multiLineVar(m1v))
 
 		if m1.Type != "map[string]main.astruct" {
 			t.Fatalf("Wrong type: %s", m1.Type)
@@ -1248,7 +1252,7 @@ func TestConstants(t *testing.T) {
 			assertNoError(err, t, fmt.Sprintf("EvalVariable(%s)", testcase.name))
 			assertVariable(t, variable, testcase)
 			cv := api.ConvertVar(variable)
-			str := cv.SinglelineStringFormatted("%#x")
+			str := cv.StringWithOptions("", "%#x", 0)
 			if str != testcase.alternate {
 				t.Errorf("for %s expected %q got %q when formatting in hexadecimal", testcase.name, testcase.alternate, str)
 			}
