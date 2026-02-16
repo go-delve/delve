@@ -9,7 +9,7 @@ import (
 	"runtime"
 
 	"github.com/go-delve/delve/service/api"
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 const (
