@@ -844,9 +844,20 @@ func (scope *EvalScope) findGlobalInternal(name string) (*Variable, error) {
 				v := newVariable(name, 0x0, t, scope.BinInfo, scope.Mem)
 				switch v.Kind {
 				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-					v.Value = constant.MakeInt64(cval.value)
+					if n, ok := constant.Int64Val(cval.value); ok {
+						v.Value = constant.MakeInt64(n)
+					} else {
+						return nil, fmt.Errorf("invalid integer constant %s", name)
+					}
 				case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-					v.Value = constant.MakeUint64(uint64(cval.value))
+					if n, ok := constant.Uint64Val(cval.value); ok {
+						v.Value = constant.MakeUint64(n)
+					} else {
+						return nil, fmt.Errorf("invalid unsigned constant %s", name)
+					}
+				case reflect.String:
+					v.Value = cval.value
+					v.Len = int64(len(constant.StringVal(cval.value)))
 				default:
 					return nil, fmt.Errorf("unsupported constant kind %v", v.Kind)
 				}

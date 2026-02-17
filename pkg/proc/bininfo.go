@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
+	"go/constant"
 	"go/token"
 	"hash/crc32"
 	"io"
@@ -808,7 +809,7 @@ type constantType struct {
 type constantValue struct {
 	name      string
 	fullName  string
-	value     int64
+	value     constant.Value
 	singleBit bool
 }
 
@@ -2798,17 +2799,25 @@ func (bi *BinaryInfo) loadDebugInfoMapsCompileUnit(ctxt *loadDebugInfoMapsContex
 		case dwarf.TagConstant:
 			name, okName := entry.Val(dwarf.AttrName).(string)
 			typ, okType := entry.Val(dwarf.AttrType).(dwarf.Offset)
-			val, okVal := entry.Val(dwarf.AttrConstValue).(int64)
-			if okName && okType && okVal {
-				if !cu.isgo {
-					name = "C." + name
+			if okName && okType {
+				var cval constant.Value
+				switch v := entry.Val(dwarf.AttrConstValue).(type) {
+				case int64:
+					cval = constant.MakeInt64(v)
+				case []byte:
+					cval = constant.MakeString(string(v))
 				}
-				ct := bi.consts[dwarfRef{image.index, typ}]
-				if ct == nil {
-					ct = &constantType{}
-					bi.consts[dwarfRef{image.index, typ}] = ct
+				if cval != nil {
+					if !cu.isgo {
+						name = "C." + name
+					}
+					ct := bi.consts[dwarfRef{image.index, typ}]
+					if ct == nil {
+						ct = &constantType{}
+						bi.consts[dwarfRef{image.index, typ}] = ct
+					}
+					ct.values = append(ct.values, constantValue{name: name, fullName: name, value: cval})
 				}
-				ct.values = append(ct.values, constantValue{name: name, fullName: name, value: val})
 			}
 			reader.SkipChildren()
 
