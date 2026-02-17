@@ -2480,7 +2480,7 @@ func (bi *BinaryInfo) findTypeExpr(expr ast.Expr) (godwarf.Type, error) {
 		}
 		return bi.findType(typn)
 	}
-	bi.expandPackagesInType(expr)
+	expr = bi.expandPackagesInType(expr)
 	if snode, ok := expr.(*ast.StarExpr); ok {
 		// Pointer types only appear in the dwarf information when
 		// a pointer to the type is used in the target program, here
@@ -3017,44 +3017,71 @@ func (bi *BinaryInfo) loadDebugInfoMapsInlinedCalls(ctxt *loadDebugInfoMapsConte
 	}
 }
 
-func (bi *BinaryInfo) expandPackagesInType(expr ast.Expr) {
+func (bi *BinaryInfo) expandPackagesInType(expr ast.Expr) ast.Expr {
 	switch e := expr.(type) {
 	case *ast.ArrayType:
-		bi.expandPackagesInType(e.Elt)
+		r := *e
+		r.Elt = bi.expandPackagesInType(e.Elt)
+		return &r
 	case *ast.ChanType:
-		bi.expandPackagesInType(e.Value)
+		r := *e
+		r.Value = bi.expandPackagesInType(e.Value)
+		return &r
 	case *ast.FuncType:
+		r := *e
+		params := *(r.Params)
+		params.List = make([]*ast.Field, len(params.List))
+		r.Params = &params
 		for i := range e.Params.List {
-			bi.expandPackagesInType(e.Params.List[i].Type)
+			field := *(e.Params.List[i])
+			params.List[i] = &field
+			field.Type = bi.expandPackagesInType(e.Params.List[i].Type)
 		}
+		results := *(r.Results)
+		results.List = make([]*ast.Field, len(results.List))
+		r.Results = &results
 		if e.Results != nil {
 			for i := range e.Results.List {
-				bi.expandPackagesInType(e.Results.List[i].Type)
+				field := *(e.Results.List[i])
+				results.List[i] = &field
+				field.Type = bi.expandPackagesInType(e.Results.List[i].Type)
 			}
 		}
+		return &r
 	case *ast.MapType:
-		bi.expandPackagesInType(e.Key)
-		bi.expandPackagesInType(e.Value)
+		r := *e
+		e.Key = bi.expandPackagesInType(e.Key)
+		e.Value = bi.expandPackagesInType(e.Value)
+		return &r
 	case *ast.ParenExpr:
-		bi.expandPackagesInType(e.X)
+		r := *e
+		r.X = bi.expandPackagesInType(e.X)
+		return &r
 	case *ast.SelectorExpr:
+		r := *e
 		switch x := e.X.(type) {
 		case *ast.Ident:
 			if len(bi.PackageMap[x.Name]) > 0 {
+				ident := *x
 				// There's no particular reason to expect the first entry to be the
 				// correct one if the package name is ambiguous, but trying all possible
 				// expansions of all types mentioned in the expression is complicated
 				// and, besides type assertions, users can always specify the type they
 				// want exactly, using a string.
-				x.Name = bi.PackageMap[x.Name][0]
+				ident.Name = bi.PackageMap[x.Name][0]
+				r.X = &ident
 			}
 		default:
-			bi.expandPackagesInType(e.X)
+			r.X = bi.expandPackagesInType(e.X)
 		}
+		return &r
 	case *ast.StarExpr:
-		bi.expandPackagesInType(e.X)
+		r := *e
+		r.X = bi.expandPackagesInType(e.X)
+		return &r
 	default:
 		// nothing to do
+		return expr
 	}
 }
 

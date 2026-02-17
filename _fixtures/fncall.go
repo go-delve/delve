@@ -5,6 +5,8 @@ import (
 	"os"
 	"runtime"
 	"strings"
+
+	"github.com/go-delve/delve/_fixtures/internal/issue4179helper"
 )
 
 var call = "this is a variable named `call`"
@@ -267,6 +269,10 @@ func main() {
 
 	var nilptrtostruct *astruct
 
+	var keepIssue4179HelperPackageAlive *issue4179helper.Test
+
+	issue4179helper := 0
+
 	runtime.Breakpoint() // breakpoint here
 	call1(one, two)
 	fn2clos(2)
@@ -274,5 +280,5 @@ func main() {
 	d.Method()
 	d.Base.Method()
 	x.CallMe()
-	fmt.Println(one, two, zero, call, call0, call2, callexit, callpanic, callbreak, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr, pa2, noreturncall, str, d, x, x2.CallMe(5), longstrs, regabistacktest, regabistacktest2, issue2698.String(), issue3364.String(), regabistacktest3, rast3, floatsum, ref, mul2, mul2ptr, m, nilptrtostruct)
+	fmt.Println(one, two, zero, call, call0, call2, callexit, callpanic, callbreak, callstacktrace, stringsJoin, intslice, stringslice, comma, a.VRcvr, a.PRcvr, pa, vable_a, vable_pa, pable_pa, fn2clos, fn2glob, fn2valmeth, fn2ptrmeth, fn2nil, ga, escapeArg, a2, square, intcallpanic, onetwothree, curriedAdd, getAStruct, getAStructPtr, getVRcvrableFromAStruct, getPRcvrableFromAStructPtr, getVRcvrableFromAStructPtr, pa2, noreturncall, str, d, x, x2.CallMe(5), longstrs, regabistacktest, regabistacktest2, issue2698.String(), issue3364.String(), regabistacktest3, rast3, floatsum, ref, mul2, mul2ptr, m, nilptrtostruct, keepIssue4179HelperPackageAlive, issue4179helper)
 }
