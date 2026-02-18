@@ -135,6 +135,7 @@ func Launch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs []str
 	if err != nil {
 		return nil, err
 	}
+	setupSharedLibBreakpoint(dbp, tgt)
 	return tgt, nil
 }
 
@@ -174,7 +175,48 @@ func Attach(pid int, waitFor *proc.WaitFor, debugInfoDirs []string) (*proc.Targe
 	if err != nil {
 		return nil, err
 	}
+	setupSharedLibBreakpoint(dbp, tgt)
 	return tgt, nil
+}
+
+// setupSharedLibBreakpoint sets up an r_brk breakpoint if the initial
+// binary is not a Go binary, so we can detect when Go shared objects are
+// loaded via dlopen.
+func setupSharedLibBreakpoint(dbp *nativeProcess, grp *proc.TargetGroup) {
+	if grp.Selected == nil {
+		return
+	}
+	bi := grp.Selected.BinInfo()
+	if len(bi.Images) == 0 || !bi.Images[0].IsNonGo {
+		return
+	}
+	rBrkAddr, err := linutil.ElfFindRBrk(grp.Selected)
+	if err != nil {
+		logflags.DebuggerLogger().Warnf("could not find r_brk: %v", err)
+		return
+	}
+	if rBrkAddr == 0 {
+		// At launch time the dynamic linker hasn't initialized r_debug yet,
+		// so DT_DEBUG is 0. Fall back to finding _dl_debug_state from the
+		// interpreter's ELF file on disk.
+		auxvbuf, err := os.ReadFile(fmt.Sprintf("/proc/%d/auxv", dbp.pid))
+		if err != nil {
+			logflags.DebuggerLogger().Warnf("could not read auxv for r_brk fallback: %v", err)
+			return
+		}
+		auxvBase := linutil.BaseFromAuxv(auxvbuf, bi.Arch.PtrSize())
+		execPath := bi.Images[0].Path
+		rBrkAddr, err = linutil.ElfFindRBrkFromInterp(execPath, auxvBase)
+		if err != nil {
+			logflags.DebuggerLogger().Warnf("could not find r_brk from interpreter: %v", err)
+			return
+		}
+		if rBrkAddr == 0 {
+			logflags.DebuggerLogger().Warnf("could not find _dl_debug_state in interpreter")
+			return
+		}
+	}
+	grp.Selected.CreateSharedLibBreakpoint(rBrkAddr)
 }
 
 func isProcDir(name string) bool {

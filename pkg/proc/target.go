@@ -136,6 +136,8 @@ func (sr StopReason) String() string {
 		return "call returned"
 	case StopWatchpoint:
 		return "watchpoint"
+	case StopSharedLibLoaded:
+		return "shared library loaded"
 	default:
 		return ""
 	}
@@ -152,6 +154,7 @@ const (
 	StopNextFinished                   // The next/step/stepout/stepInstruction command terminated
 	StopCallReturned                   // An injected call completed
 	StopWatchpoint                     // The target process hit one or more watchpoints
+	StopSharedLibLoaded                // A Go shared library was loaded
 )
 
 // DisableAsyncPreemptEnv returns a process environment (like os.Environ)
@@ -178,10 +181,16 @@ func (grp *TargetGroup) newTarget(p ProcessInternal, pid int, currentThread Thre
 
 	err = p.BinInfo().LoadBinaryInfo(path, entryPoint, grp.cfg.DebugInfoDirs)
 	if err != nil {
-		return nil, &ErrBadBinaryInfo{Err: err}
+		// If this is a non-Go binary, log a warning and continue.
+		// A Go shared object may be loaded later via dlopen.
+		if len(p.BinInfo().Images) > 0 && p.BinInfo().Images[0].IsNonGo {
+			logflags.DebuggerLogger().Warnf("Initial binary is not a Go binary: %v", err)
+		} else {
+			return nil, &ErrBadBinaryInfo{Err: err}
+		}
 	}
 	for _, image := range p.BinInfo().Images {
-		if image.loadErr != nil {
+		if image.loadErr != nil && !image.IsNonGo {
 			return nil, &ErrBadBinaryInfo{Err: image.loadErr}
 		}
 	}
@@ -417,6 +426,40 @@ func (t *Target) createPluginOpenBreakpoint() {
 			bp.Breaklets[len(bp.Breaklets)-1].callback = t.pluginOpenCallback
 		}
 	}
+}
+
+// CreateSharedLibBreakpoint sets a breakpoint at the given address (the
+// dynamic linker's r_brk notification function) to detect shared library
+// loading. When a new Go shared library is detected, Go-specific breakpoints
+// are set up.
+func (t *Target) CreateSharedLibBreakpoint(rBrkAddr uint64) {
+	if rBrkAddr == 0 {
+		return
+	}
+	bp, err := t.SetBreakpoint(0, rBrkAddr, SharedLibBreakpoint, nil)
+	if err != nil {
+		t.BinInfo().logger.Errorf("could not set shared lib breakpoint at %#x: %v", rBrkAddr, err)
+		return
+	}
+	bp.Breaklets[len(bp.Breaklets)-1].callback = t.sharedLibCallback
+}
+
+func (t *Target) sharedLibCallback(th Thread, tgt *Target) (bool, error) {
+	// Check if any newly loaded image is a Go binary.
+	// ElfUpdateSharedObjects has already run by this point (called in stop1
+	// before breakpoint callbacks), so new images are already in BinInfo.
+	if !tgt.BinInfo().HasGoImage() {
+		return false, nil
+	}
+
+	logger := logflags.DebuggerLogger()
+	logger.Info("Go shared library detected, setting up Go-specific breakpoints")
+
+	tgt.createUnrecoveredPanicBreakpoint()
+	tgt.createFatalThrowBreakpoint()
+	tgt.createPluginOpenBreakpoint()
+
+	return true, nil
 }
 
 // CurrentThread returns the currently selected thread which will be used

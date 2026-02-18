@@ -388,7 +388,9 @@ func (dbp *nativeProcess) initialize(path string, debugInfoDirs []string) (*proc
 		return nil, err
 	}
 	if dbp.bi.Arch.Name == "arm64" || dbp.bi.Arch.Name == "ppc64le" || dbp.bi.Arch.Name == "riscv64" || dbp.bi.Arch.Name == "loong64" {
-		dbp.iscgo = tgt.IsCgo()
+		if len(dbp.bi.Images) > 0 && !dbp.bi.Images[0].IsNonGo {
+			dbp.iscgo = tgt.IsCgo()
+		}
 	}
 	return grp, nil
 }

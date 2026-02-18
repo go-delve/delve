@@ -159,6 +159,10 @@ const (
 
 	StepIntoRangeOverFuncBodyBreakpoint
 
+	// SharedLibBreakpoint is a breakpoint set at the dynamic linker's r_brk
+	// notification function to detect shared library loading/unloading.
+	SharedLibBreakpoint
+
 	steppingMask = NextBreakpoint | NextDeferBreakpoint | StepBreakpoint | StepIntoNewProcBreakpoint | NextInactivatedBreakpoint | StepIntoRangeOverFuncBodyBreakpoint
 )
 
@@ -240,6 +244,8 @@ func (bp *Breakpoint) VerboseDescr() []string {
 			r = append(r, "NextInactivatedBreakpoint")
 		case StepIntoRangeOverFuncBodyBreakpoint:
 			r = append(r, "StepIntoRangeOverFuncBodyBreakpoint Cond=%q", astutil.ExprToString(breaklet.Cond))
+		case SharedLibBreakpoint:
+			r = append(r, "SharedLibBreakpoint")
 		default:
 			r = append(r, fmt.Sprintf("Unknown %d", breaklet.Kind))
 		}
@@ -333,7 +339,7 @@ func (bpstate *BreakpointState) checkCond(tgt *Target, breaklet *Breaklet, threa
 			}
 		}
 
-	case StackResizeBreakpoint, PluginOpenBreakpoint, StepIntoNewProcBreakpoint, StepIntoRangeOverFuncBodyBreakpoint:
+	case StackResizeBreakpoint, PluginOpenBreakpoint, StepIntoNewProcBreakpoint, StepIntoRangeOverFuncBodyBreakpoint, SharedLibBreakpoint:
 		// no further checks
 
 	case NextInactivatedBreakpoint:
@@ -454,6 +460,16 @@ func (bp *Breakpoint) IsStepping() bool {
 func (bp *Breakpoint) IsUser() bool {
 	for _, breaklet := range bp.Breaklets {
 		if breaklet.Kind == UserBreakpoint {
+			return true
+		}
+	}
+	return false
+}
+
+// IsSharedLibBreakpoint returns true if this breakpoint has a SharedLibBreakpoint breaklet.
+func (bp *Breakpoint) IsSharedLibBreakpoint() bool {
+	for _, breaklet := range bp.Breaklets {
+		if breaklet.Kind == SharedLibBreakpoint {
 			return true
 		}
 	}

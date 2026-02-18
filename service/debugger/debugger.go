@@ -645,6 +645,10 @@ func (d *Debugger) state(retLoadCfg *proc.LoadConfig, withBreakpointInfo bool) (
 		}
 	}
 
+	if sr := d.target.Selected.StopReason; sr != proc.StopUnknown {
+		state.StopReason = sr.String()
+	}
+
 	return state, nil
 }
 

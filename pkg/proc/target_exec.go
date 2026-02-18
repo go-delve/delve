@@ -270,6 +270,9 @@ func (grp *TargetGroup) Continue() error {
 			if curbp.Breakpoint.WatchType != 0 {
 				dbp.StopReason = StopWatchpoint
 			}
+			if curbp.Breakpoint.IsSharedLibBreakpoint() {
+				dbp.StopReason = StopSharedLibLoaded
+			}
 			return conditionErrors(grp)
 		case stopReason == StopLaunched:
 			return nil

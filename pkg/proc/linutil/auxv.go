@@ -7,8 +7,33 @@ import (
 
 const (
 	_AT_NULL  = 0
+	_AT_BASE  = 7
 	_AT_ENTRY = 9
 )
+
+// BaseFromAuxv searches the elf auxiliary vector for the AT_BASE value,
+// which is the base address of the dynamic linker (interpreter).
+func BaseFromAuxv(auxv []byte, ptrSize int) uint64 {
+	rd := bytes.NewBuffer(auxv)
+
+	for {
+		tag, err := readUintRaw(rd, binary.LittleEndian, ptrSize)
+		if err != nil {
+			return 0
+		}
+		val, err := readUintRaw(rd, binary.LittleEndian, ptrSize)
+		if err != nil {
+			return 0
+		}
+
+		switch tag {
+		case _AT_NULL:
+			return 0
+		case _AT_BASE:
+			return val
+		}
+	}
+}
 
 // EntryPointFromAuxv searches the elf auxiliary vector for the entry point
 // address.
