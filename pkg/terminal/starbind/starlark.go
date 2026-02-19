@@ -159,7 +159,7 @@ func New(ctx Context, out EchoWriter) *Env {
 	})
 	builtindoc(defaultLoadConfigBuiltinName, "()", "returns the default load configuration.")
 
-	env.env[targetObjectName] = starlarkTargetObject{env}
+	env.env[targetObjectName] = starlarkTargetObject{env: env}
 
 	env.env[helpBuiltinName] = starlark.NewBuiltin(helpBuiltinName, func(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		switch len(args) {
