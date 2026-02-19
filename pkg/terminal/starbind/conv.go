@@ -59,7 +59,7 @@ func (env *Env) interfaceToStarlarkValue(v any) starlark.Value {
 		return starlark.String(v.Error())
 	case reflect.Value:
 		if v.Type().Kind() == reflect.Struct {
-			return structAsStarlarkValue{v, env}
+			return structAsStarlarkValue{v: v, env: env}
 		}
 		return env.interfaceToStarlarkValue(v.Interface())
 	default:
@@ -71,12 +71,12 @@ func (env *Env) interfaceToStarlarkValue(v any) starlark.Value {
 			}
 			vval = vval.Elem()
 			if vval.Type().Kind() == reflect.Struct {
-				return structAsStarlarkValue{vval, env}
+				return structAsStarlarkValue{v: vval, env: env}
 			}
 		case reflect.Struct:
-			return structAsStarlarkValue{vval, env}
+			return structAsStarlarkValue{v: vval, env: env}
 		case reflect.Slice:
-			return sliceAsStarlarkValue{vval, env}
+			return sliceAsStarlarkValue{v: vval, env: env}
 		}
 		return starlark.String(fmt.Sprintf("%v", v))
 	}
@@ -87,19 +87,13 @@ func (env *Env) interfaceToStarlarkValue(v any) starlark.Value {
 // The public methods of sliceAsStarlarkValue implement the Indexable and
 // Sequence starlark interfaces.
 type sliceAsStarlarkValue struct {
+	starlarkUnhashable
 	v   reflect.Value
 	env *Env
 }
 
 var _ starlark.Indexable = sliceAsStarlarkValue{}
 var _ starlark.Sequence = sliceAsStarlarkValue{}
-
-func (v sliceAsStarlarkValue) Freeze() {
-}
-
-func (v sliceAsStarlarkValue) Hash() (uint32, error) {
-	return 0, errors.New("not hashable")
-}
 
 func (v sliceAsStarlarkValue) String() string {
 	if x, ok := v.v.Interface().([]byte); ok {
@@ -153,18 +147,12 @@ func (it *sliceAsStarlarkValueIterator) Next(p *starlark.Value) bool {
 // The public methods of structAsStarlarkValue implement the
 // starlark.HasAttrs interface.
 type structAsStarlarkValue struct {
+	starlarkUnhashable
 	v   reflect.Value
 	env *Env
 }
 
 var _ starlark.HasAttrs = structAsStarlarkValue{}
-
-func (v structAsStarlarkValue) Freeze() {
-}
-
-func (v structAsStarlarkValue) Hash() (uint32, error) {
-	return 0, errors.New("not hashable")
-}
 
 func (v structAsStarlarkValue) String() string {
 	if vv, ok := v.v.Interface().(api.Variable); ok {
@@ -261,17 +249,17 @@ func (env *Env) variableValueToStarlarkValue(v *api.Variable, top bool) (starlar
 		if v.Len != 0 && len(v.Children) == 0 {
 			return starlark.None, errors.New("value not loaded")
 		}
-		return structVariableAsStarlarkValue{v, env}, nil
+		return structVariableAsStarlarkValue{v: v, env: env}, nil
 	case reflect.Slice, reflect.Array:
 		if v.Len != 0 && len(v.Children) == 0 {
 			return starlark.None, errors.New("value not loaded")
 		}
-		return sliceVariableAsStarlarkValue{v, env}, nil
+		return sliceVariableAsStarlarkValue{v: v, env: env}, nil
 	case reflect.Map:
 		if v.Len != 0 && len(v.Children) == 0 {
 			return starlark.None, errors.New("value not loaded")
 		}
-		return mapVariableAsStarlarkValue{v, env}, nil
+		return mapVariableAsStarlarkValue{v: v, env: env}, nil
 	case reflect.String:
 		return starlark.String(v.Value), nil
 	case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int:
@@ -299,7 +287,7 @@ func (env *Env) variableValueToStarlarkValue(v *api.Variable, top bool) (starlar
 		if len(v.Children) > 0 {
 			v.Children[0] = *env.autoLoad(varAddrExpr(&v.Children[0]))
 		}
-		return ptrVariableAsStarlarkValue{v, env}, nil
+		return ptrVariableAsStarlarkValue{v: v, env: env}, nil
 	}
 	return nil, nil
 }
@@ -326,19 +314,13 @@ func (v structAsStarlarkValue) AttrNames() []string {
 // The public methods of structVariableAsStarlarkValue implement the
 // starlark.HasAttrs and starlark.Mapping interfaces.
 type structVariableAsStarlarkValue struct {
+	starlarkUnhashable
 	v   *api.Variable
 	env *Env
 }
 
 var _ starlark.HasAttrs = structVariableAsStarlarkValue{}
 var _ starlark.Mapping = structVariableAsStarlarkValue{}
-
-func (v structVariableAsStarlarkValue) Freeze() {
-}
-
-func (v structVariableAsStarlarkValue) Hash() (uint32, error) {
-	return 0, errors.New("not hashable")
-}
 
 func (v structVariableAsStarlarkValue) String() string {
 	return v.v.SinglelineString()
@@ -386,19 +368,13 @@ func (v structVariableAsStarlarkValue) Get(key starlark.Value) (starlark.Value, 
 }
 
 type sliceVariableAsStarlarkValue struct {
+	starlarkUnhashable
 	v   *api.Variable
 	env *Env
 }
 
 var _ starlark.Indexable = sliceVariableAsStarlarkValue{}
 var _ starlark.Sequence = sliceVariableAsStarlarkValue{}
-
-func (v sliceVariableAsStarlarkValue) Freeze() {
-}
-
-func (v sliceVariableAsStarlarkValue) Hash() (uint32, error) {
-	return 0, errors.New("not hashable")
-}
 
 func (v sliceVariableAsStarlarkValue) String() string {
 	return v.v.SinglelineString()
@@ -445,26 +421,20 @@ func (it *sliceVariableAsStarlarkValueIterator) Next(p *starlark.Value) bool {
 	if it.cur >= it.v.Len {
 		return false
 	}
-	s := sliceVariableAsStarlarkValue{it.v, it.env}
+	s := sliceVariableAsStarlarkValue{v: it.v, env: it.env}
 	*p = s.Index(int(it.cur))
 	it.cur++
 	return true
 }
 
 type ptrVariableAsStarlarkValue struct {
+	starlarkUnhashable
 	v   *api.Variable
 	env *Env
 }
 
 var _ starlark.HasAttrs = ptrVariableAsStarlarkValue{}
 var _ starlark.Mapping = ptrVariableAsStarlarkValue{}
-
-func (v ptrVariableAsStarlarkValue) Freeze() {
-}
-
-func (v ptrVariableAsStarlarkValue) Hash() (uint32, error) {
-	return 0, errors.New("not hashable")
-}
 
 func (v ptrVariableAsStarlarkValue) String() string {
 	return v.v.SinglelineString()
@@ -484,7 +454,7 @@ func (v ptrVariableAsStarlarkValue) Attr(name string) (starlark.Value, error) {
 	}
 	if v.v.Children[0].Kind == reflect.Struct {
 		// autodereference pointers to structs
-		x := structVariableAsStarlarkValue{&v.v.Children[0], v.env}
+		x := structVariableAsStarlarkValue{v: &v.v.Children[0], env: v.env}
 		return x.Attr(name)
 	} else if v.v.Kind == reflect.Interface && v.v.Children[0].Kind == reflect.Ptr {
 		// allow double-autodereference for iface to ptr to struct
@@ -492,7 +462,7 @@ func (v ptrVariableAsStarlarkValue) Attr(name string) (starlark.Value, error) {
 		if len(vchild.Children) > 0 {
 			vchild.Children[0] = *v.env.autoLoad(varAddrExpr(&vchild.Children[0]))
 		}
-		v2 := ptrVariableAsStarlarkValue{vchild, v.env}
+		v2 := ptrVariableAsStarlarkValue{v: vchild, env: v.env}
 		return v2.Attr(name)
 	}
 
@@ -509,7 +479,7 @@ func (v ptrVariableAsStarlarkValue) AttrNames() []string {
 	}
 	// autodereference: present the field names of the pointed-to struct as the
 	// fields of this pointer variable.
-	x := structVariableAsStarlarkValue{&v.v.Children[0], v.env}
+	x := structVariableAsStarlarkValue{v: &v.v.Children[0], env: v.env}
 	return x.AttrNames()
 }
 
@@ -532,23 +502,17 @@ func (v ptrVariableAsStarlarkValue) Get(key starlark.Value) (starlark.Value, boo
 		return starlark.None, false, nil
 	}
 	// autodereference
-	x := structVariableAsStarlarkValue{&v.v.Children[0], v.env}
+	x := structVariableAsStarlarkValue{v: &v.v.Children[0], env: v.env}
 	return x.Get(key)
 }
 
 type mapVariableAsStarlarkValue struct {
+	starlarkUnhashable
 	v   *api.Variable
 	env *Env
 }
 
 var _ starlark.IterableMapping = mapVariableAsStarlarkValue{}
-
-func (v mapVariableAsStarlarkValue) Freeze() {
-}
-
-func (v mapVariableAsStarlarkValue) Hash() (uint32, error) {
-	return 0, errors.New("not hashable")
-}
 
 func (v mapVariableAsStarlarkValue) String() string {
 	return v.v.SinglelineString()
@@ -753,14 +717,8 @@ func unmarshalStarlarkValueIntl(val starlark.Value, dst reflect.Value, path stri
 var _ starlark.HasAttrs = starlarkTargetObject{}
 
 type starlarkTargetObject struct {
+	starlarkUnhashable
 	env *Env
-}
-
-func (starlarkTargetObject) Freeze() {
-}
-
-func (starlarkTargetObject) Hash() (uint32, error) {
-	return 0, errors.New("not hashable")
 }
 
 func (starlarkTargetObject) String() string {
@@ -786,4 +744,14 @@ func (tgt starlarkTargetObject) Attr(name string) (starlark.Value, error) {
 		return starlark.None, fmt.Errorf("could not find variable %q: %v", name, err)
 	}
 	return env.variableValueToStarlarkValue(v, true)
+}
+
+type starlarkUnhashable struct {
+}
+
+func (starlarkUnhashable) Freeze() {
+}
+
+func (starlarkUnhashable) Hash() (uint32, error) {
+	return 0, errors.New("not hashable")
 }
