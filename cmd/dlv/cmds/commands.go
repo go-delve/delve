@@ -866,8 +866,8 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 								if params.Len() > 0 {
 									params.WriteString(", ")
 								}
-								// Use FormatWithVerbosity to handle all types correctly
-								formatted := p.FormatWithVerbosity(traceVerbose)
+								// Format based on verbosity level
+								formatted := api.FormatTraceVariable(p, traceVerbose)
 								params.WriteString(formatted)
 							}
 
@@ -878,8 +878,7 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 							if t.IsRet {
 								retVals := make([]string, 0, len(t.ReturnParams))
 								for _, p := range t.ReturnParams {
-									// Use FormatWithVerbosity for return values too
-									retVals = append(retVals, p.FormatWithVerbosity(traceVerbose))
+									retVals = append(retVals, api.FormatTraceVariable(p, traceVerbose))
 								}
 								fmt.Fprintf(os.Stderr, ">> goroutine(%d): %s => (%s)\n", t.GoroutineID, t.FunctionName, strings.Join(retVals, ","))
 							} else {
@@ -1270,8 +1269,8 @@ func must(err error) {
 
 // getLoadConfigForVerbosity returns the LoadConfig for a given verbosity level
 func getLoadConfigForVerbosity(verbosity int) api.LoadConfig {
-	switch api.VerbosityLevel(verbosity) {
-	case api.VerbosityNone:
+	switch verbosity {
+	case 0:
 		// Level 0: Load and show values only, no names (master branch compatibility)
 		return api.LoadConfig{
 			FollowPointers:     false,
@@ -1281,7 +1280,7 @@ func getLoadConfigForVerbosity(verbosity int) api.LoadConfig {
 			MaxStructFields:    -1,
 		}
 
-	case api.VerbosityTypes:
+	case 1:
 		return api.LoadConfig{
 			FollowPointers:     false,
 			MaxVariableRecurse: 0,
@@ -1290,7 +1289,7 @@ func getLoadConfigForVerbosity(verbosity int) api.LoadConfig {
 			MaxStructFields:    0, // Load structure, but don't expand fields
 		}
 
-	case api.VerbosityInline:
+	case 2:
 		return api.LoadConfig{
 			FollowPointers:     false,
 			MaxVariableRecurse: 1,
@@ -1299,7 +1298,7 @@ func getLoadConfigForVerbosity(verbosity int) api.LoadConfig {
 			MaxStructFields:    3,
 		}
 
-	case api.VerbosityExpanded:
+	case 3:
 		return api.LoadConfig{
 			FollowPointers:     false,
 			MaxVariableRecurse: 2,
@@ -1308,7 +1307,7 @@ func getLoadConfigForVerbosity(verbosity int) api.LoadConfig {
 			MaxStructFields:    10,
 		}
 
-	case api.VerbosityFull:
+	case 4:
 		return api.LoadConfig{
 			FollowPointers:     true,
 			MaxVariableRecurse: 3,
