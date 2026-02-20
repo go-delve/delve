@@ -1,2 +1,0 @@
--: /home/archanaravindar/Go/delve/mychanges2-feb1/delve/vendor/golang.org/x/sys/unix/vgetrandom_linux.go:7:9: file requires newer Go version go1.24 (application built with go1.23) (compile)
--: module requires at least go1.24, but Staticcheck was built with go1.23.8 (compile)
