@@ -142,6 +142,9 @@ type Breakpoint struct {
 	RootFuncName string
 	// TraceFollowCalls indicates the Depth of tracing
 	TraceFollowCalls int
+	// Verbosity level to print function parameters as part of the trace [0-4]
+	TraceVerbosity   int
+
 }
 
 // ValidBreakpointName returns an error if

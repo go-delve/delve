@@ -1953,6 +1953,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 		requestedBp.AddrPid = loc.PCPids
 		if tracepoint {
 			requestedBp.LoadArgs = &ShortLoadConfig
+			requestedBp.TraceVerbosity = 0 // Default to values-only (master branch compatibility)
 		}
 
 		bp, err := t.client.CreateBreakpointWithExpr(requestedBp, spec, t.substitutePathRules(), false)
@@ -1986,10 +1987,11 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 			}
 			for j := range addrs {
 				_, err = t.client.CreateBreakpoint(&api.Breakpoint{
-					Addr:        addrs[j],
-					TraceReturn: true,
-					Line:        -1,
-					LoadArgs:    &ShortLoadConfig,
+					Addr:           addrs[j],
+					TraceReturn:    true,
+					Line:           -1,
+					LoadArgs:       &ShortLoadConfig,
+					TraceVerbosity: 0, // Default to values-only (master branch compatibility)
 				})
 				if err != nil {
 					return nil, err
@@ -3056,20 +3058,61 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 		tracePrefix = fmt.Sprintf("goroutine(%d):", th.GoroutineID)
 	}
 
+	// Get verbosity level from breakpoint
+	verbosity := th.Breakpoint.TraceVerbosity
 	if th.Breakpoint.Tracepoint {
 		// Print trace only if there was a match on the function while TraceFollowCalls is on or if it's a regular trace
 		if rootindex != -1 || th.Breakpoint.TraceFollowCalls <= 0 {
-			fmt.Fprintf(t.stdout, "%s> %s %s%s(%s)\n", depthPrefix, tracePrefix, bpname, fn.Name(), args)
+			// Format parameters based on verbosity
+			var params []string
+			if th.BreakpointInfo != nil {
+				for _, arg := range th.BreakpointInfo.Arguments {
+					if (arg.Flags & api.VariableArgument) == 0 {
+						continue
+					}
+					formatted := api.FormatTraceVariable(arg, verbosity)
+					if formatted == "" {
+						continue
+					}
+					// For level 0: just values (master branch compatibility)
+					if verbosity == 0 {
+						params = append(params, formatted)
+					} else {
+						// For levels 1-4: format with names
+						prefix := ""
+						if verbosity >= 3 {
+							prefix = "  " // Indent for multi-line format
+						}
+						params = append(params, fmt.Sprintf("%s%s: %s", prefix, arg.Name, formatted))
+					}
+				}
+			}
+
+			// Join parameters
+			var paramStr string
+			if len(params) > 0 {
+				if verbosity >= 3 {
+					paramStr = strings.Join(params, "\n")
+				} else {
+					paramStr = strings.Join(params, ", ")
+				}
+			}
+
+			fmt.Fprintf(t.stdout, "%s> %s %s%s",
+				depthPrefix, tracePrefix, bpname, fn.Name())
+			fmt.Fprintf(t.stdout, "(%s)\n", paramStr)
 		}
+
 		printBreakpointInfo(t, th, !hasReturnValue)
 	}
 	if th.Breakpoint.TraceReturn {
-		retVals := make([]string, 0, len(th.ReturnValues))
-		for _, v := range th.ReturnValues {
-			retVals = append(retVals, v.SinglelineString())
-		}
 		// Print trace only if there was a match on the function while TraceFollowCalls is on or if it's a regular trace
 		if rootindex != -1 || th.Breakpoint.TraceFollowCalls <= 0 {
+			// Format return values based on verbosity
+			retVals := make([]string, 0, len(th.ReturnValues))
+			for _, v := range th.ReturnValues {
+				retVals = append(retVals, api.FormatTraceVariable(v, verbosity))
+			}
 			fmt.Fprintf(t.stdout, "%s>> %s %s => (%s)\n", depthPrefix, tracePrefix, fn.Name(), strings.Join(retVals, ","))
 		}
 	}
