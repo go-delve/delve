@@ -55,45 +55,88 @@ func (v *Variable) StringWithOptions(indent, fmtstr string, flags PrettyFlags) s
 	return buf.String()
 }
 
-// FormatWithVerbosity formats a variable according to trace verbosity level
-func (v *Variable) FormatWithVerbosity(verbosity int) string {
-	// Level 0: just the value (master branch compatibility)
-	if verbosity == 0 {
+// FormatTraceVariable formats a variable for trace output based on verbosity level.
+// This is a helper for trace clients (terminal, dlv command).
+func FormatTraceVariable(v Variable, verbosity int) string {
+	switch verbosity {
+	case 0:
+		// Level 0: values only (master branch compatibility)
 		if v.Unreadable != "" {
 			return fmt.Sprintf("(unreadable %s)", v.Unreadable)
 		}
-
-		// For complex types (slices, maps, structs, etc.), use writeTo without type info
-		// This gives us the value representation without the type name prefix
-		var buf bytes.Buffer
+		// For complex types, format value without type info
 		switch v.Kind {
 		case reflect.Slice, reflect.Array, reflect.Map, reflect.Struct, reflect.Ptr, reflect.Interface, reflect.Chan:
-			// For complex types, format without type names
-			v.writeTo(&buf, 0, "", "")
+			var buf bytes.Buffer
+			writeVarValueOnly(&buf, &v)
 			return buf.String()
 		case reflect.String:
-			// For strings, use quoted format
 			s := v.Value
 			if len(s) != int(v.Len) {
 				s = fmt.Sprintf("%s...+%d more", s, int(v.Len)-len(s))
 			}
 			return fmt.Sprintf("%q", s)
 		default:
-			// For basic types, return just the value
 			return v.Value
 		}
-	}
-
-	// Special case for level 1: type only (no value expansion)
-	if verbosity == 1 {
+	case 1:
+		// Level 1: type only
 		return fmt.Sprintf("<%s>", ShortenType(v.Type))
+	case 2:
+		// Level 2: inline with short types
+		return v.StringWithOptions("", "", PrettyShortenType)
+	case 3, 4:
+		// Levels 3-4: multi-line with short types
+		return v.StringWithOptions("", "", PrettyShortenType|PrettyNewlines)
+	default:
+		return v.Value
 	}
+}
 
-	// For levels 2-4: use existing formatting infrastructure
-	var buf bytes.Buffer
-	flags := verbosityToFlags(verbosity)
-	v.writeTo(&buf, flags, "", "")
-	return buf.String()
+// writeVarValueOnly writes just the value of a variable without type information (recursive helper)
+func writeVarValueOnly(buf *bytes.Buffer, v *Variable) {
+	switch v.Kind {
+	case reflect.Slice, reflect.Array:
+		fmt.Fprint(buf, "[")
+		for i := range v.Children {
+			if i > 0 {
+				fmt.Fprint(buf, ",")
+			}
+			writeVarValueOnly(buf, &v.Children[i])
+		}
+		if len(v.Children) != int(v.Len) {
+			if len(v.Children) > 0 {
+				fmt.Fprint(buf, ",")
+			}
+			fmt.Fprintf(buf, "...+%d more", int(v.Len)-len(v.Children))
+		}
+		fmt.Fprint(buf, "]")
+	case reflect.Map:
+		fmt.Fprint(buf, "[")
+		for i := 0; i < len(v.Children); i += 2 {
+			if i > 0 {
+				fmt.Fprint(buf, ", ")
+			}
+			writeVarValueOnly(buf, &v.Children[i])
+			fmt.Fprint(buf, ": ")
+			writeVarValueOnly(buf, &v.Children[i+1])
+		}
+		if len(v.Children)/2 != int(v.Len) {
+			if len(v.Children) > 0 {
+				fmt.Fprint(buf, ", ")
+			}
+			fmt.Fprintf(buf, "...+%d more", int(v.Len)-(len(v.Children)/2))
+		}
+		fmt.Fprint(buf, "]")
+	case reflect.String:
+		s := v.Value
+		if len(s) != int(v.Len) {
+			s = fmt.Sprintf("%s...+%d more", s, int(v.Len)-len(s))
+		}
+		fmt.Fprintf(buf, "%q", s)
+	default:
+		fmt.Fprint(buf, v.Value)
+	}
 }
 
 func (v *Variable) typeStr(flags PrettyFlags) string {

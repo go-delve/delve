@@ -303,7 +303,6 @@ func TestTrace(t *testing.T) {
 		t.Logf("output %q", out)
 		// The output here is a little strange, but we don't filter stdout vs stderr so it gets jumbled.
 		// Therefore we assert about the call and return values separately.
-		// Default verbosity=0 shows only values (master branch compatibility)
 		if !strings.Contains(out, "> goroutine(1): main.foo(99, 9801)") {
 			t.Fatalf("Wrong output for tracepoint: %s", out)
 		}
@@ -320,7 +319,6 @@ func TestTraceWithName(t *testing.T) {
 		out, _ := term.Exec("continue")
 		// The output here is a little strange, but we don't filter stdout vs stderr so it gets jumbled.
 		// Therefore we assert about the call and return values separately.
-		// Default verbosity=0 shows only values (master branch compatibility)
 		if !strings.Contains(out, "> goroutine(1): [foobar] main.foo(99, 9801)") {
 			t.Fatalf("Wrong output for tracepoint: %s", out)
 		}
@@ -335,7 +333,6 @@ func TestTraceOnNonFunctionEntry(t *testing.T) {
 	withTestTerminal("issue573", t, func(term *FakeTerminal) {
 		term.MustExec("trace foobar issue573.go:19")
 		out, _ := term.Exec("continue")
-		// Default verbosity=0 shows only values (master branch compatibility)
 		if !strings.Contains(out, "> goroutine(1): [foobar] main.foo(99, 9801)") {
 			t.Fatalf("Wrong output for tracepoint: %s", out)
 		}
