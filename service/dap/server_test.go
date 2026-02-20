@@ -6860,7 +6860,7 @@ func TestBadLaunchRequests(t *testing.T) {
 			if response.Command != "launch" {
 				t.Errorf("Command got %q, want \"launch\"", response.Command)
 			}
-			if response.Message != "Failed to launch" {
+			if !strings.HasPrefix(response.Message, "Failed to launch") {
 				t.Errorf("Message got %q, want \"Failed to launch\"", response.Message)
 			}
 			if !checkErrorMessageId(response.Body.Error, FailedToLaunch) {
@@ -6874,6 +6874,15 @@ func TestBadLaunchRequests(t *testing.T) {
 			checkFailedToLaunch(response)
 			if !checkErrorMessageFormat(response.Body.Error, errmsg) {
 				t.Errorf("\ngot  %v\nwant Format=%q", response.Body.Error, errmsg)
+			}
+		}
+
+		checkFailedToLaunchWithMessageRe := func(response *dap.ErrorResponse, errmsgre string) {
+			t.Helper()
+			checkFailedToLaunch(response)
+			re := regexp.MustCompile(errmsgre)
+			if !re.MatchString(response.Body.Error.Format) {
+				t.Errorf("\ngot  %v\nwant Regexp=%q", response.Body.Error, errmsgre)
 			}
 		}
 
@@ -6940,8 +6949,8 @@ func TestBadLaunchRequests(t *testing.T) {
 			"Failed to launch: invalid debug configuration - cannot unmarshal number …")
 
 		client.LaunchRequestWithArgs(map[string]any{"mode": "debug", "program": fixture.Source, "backend": "foo"})
-		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
-			"Failed to launch: could not launch process: unknown backend \"foo\"")
+		checkFailedToLaunchWithMessageRe(client.ExpectVisibleErrorResponse(t),
+			"Failed to launch .*: could not launch process: unknown backend \"foo\"")
 
 		// Bad "substitutePath"
 		client.LaunchRequestWithArgs(map[string]any{"mode": "debug", "program": fixture.Source, "substitutePath": 123})
@@ -7038,8 +7047,8 @@ func TestBadLaunchRequests(t *testing.T) {
 			"Failed to launch: The 'coreFilePath' attribute is missing in debug configuration.")
 		// These errors come from debugger layer
 		client.LaunchRequestWithArgs(map[string]any{"mode": "core", "backend": "ignored", "program": fixture.Source, "coreFilePath": fixture.Source})
-		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
-			"Failed to launch: unrecognized core format")
+		checkFailedToLaunchWithMessageRe(client.ExpectVisibleErrorResponse(t),
+			"Failed to launch .*: unrecognized core format")
 
 		// We failed to launch the program. Make sure shutdown still works.
 		client.DisconnectRequest()
