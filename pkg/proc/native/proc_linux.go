@@ -187,7 +187,7 @@ func setupSharedLibBreakpoint(dbp *nativeProcess, grp *proc.TargetGroup) {
 		return
 	}
 	bi := grp.Selected.BinInfo()
-	if len(bi.Images) == 0 || !bi.Images[0].IsNonGo {
+	if len(bi.Images) == 0 || bi.Images[0].IsGo {
 		return
 	}
 	rBrkAddr, err := linutil.ElfFindRBrk(grp.Selected)

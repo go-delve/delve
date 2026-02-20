@@ -6090,8 +6090,8 @@ func TestNonGoBinaryWithGoDlopen(t *testing.T) {
 	if len(p.BinInfo().Images) == 0 {
 		t.Fatal("no images loaded")
 	}
-	if !p.BinInfo().Images[0].IsNonGo {
-		t.Error("expected Images[0].IsNonGo to be true")
+	if p.BinInfo().Images[0].IsGo {
+		t.Error("expected Images[0].IsGo to be false")
 	}
 	if p.BinInfo().HasGoImage() {
 		t.Error("expected HasGoImage to be false before dlopen")

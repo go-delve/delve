@@ -183,14 +183,14 @@ func (grp *TargetGroup) newTarget(p ProcessInternal, pid int, currentThread Thre
 	if err != nil {
 		// If this is a non-Go binary, log a warning and continue.
 		// A Go shared object may be loaded later via dlopen.
-		if len(p.BinInfo().Images) > 0 && p.BinInfo().Images[0].IsNonGo {
+		if len(p.BinInfo().Images) > 0 && !p.BinInfo().Images[0].IsGo {
 			logflags.DebuggerLogger().Warnf("Initial binary is not a Go binary: %v", err)
 		} else {
 			return nil, &ErrBadBinaryInfo{Err: err}
 		}
 	}
 	for _, image := range p.BinInfo().Images {
-		if image.loadErr != nil && !image.IsNonGo {
+		if image.loadErr != nil && image.IsGo {
 			return nil, &ErrBadBinaryInfo{Err: image.loadErr}
 		}
 	}

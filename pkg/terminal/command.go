@@ -30,7 +30,6 @@ import (
 	"github.com/cosiner/argv"
 	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/locspec"
-	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/debuginfod"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
@@ -2798,7 +2797,7 @@ func printcontext(t *Term, state *api.DebuggerState) {
 		return
 	}
 
-	if state.StopReason == proc.StopSharedLibLoaded.String() {
+	if state.StopReason == "shared library loaded" {
 		fmt.Fprintln(t.stdout, "Go shared library loaded. You can now set breakpoints in Go code.")
 	}
 

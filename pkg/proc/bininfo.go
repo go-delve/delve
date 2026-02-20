@@ -1023,9 +1023,9 @@ type Image struct {
 	symTable *gosym.Table
 	Trimpath bool // trimpath used
 
-	// IsNonGo is true when the image has been confirmed to not be a Go binary.
-	// This is set when both DWARF loading and Go runtime symbol table loading fail.
-	IsNonGo bool
+	// IsGo is true when the image has been confirmed to be a Go binary,
+	// e.g. by checking for a Go producer string in DWARF compile units.
+	IsGo bool
 
 	typeCache map[dwarf.Offset]godwarf.Type
 
@@ -1060,7 +1060,7 @@ func (image *Image) Stripped() bool {
 // successfully loaded debug info.
 func (bi *BinaryInfo) HasGoImage() bool {
 	for _, image := range bi.Images {
-		if !image.IsNonGo && image.loadErr == nil {
+		if image.IsGo && image.loadErr == nil {
 			return true
 		}
 	}
@@ -1446,27 +1446,6 @@ func (bi *Image) findCompileUnitForOffset(off dwarf.Offset) *compileUnit {
 	return bi.compileUnits[i]
 }
 
-// hasGoProducer reports whether d contains any compilation unit with a Go
-// producer string (DW_AT_producer starting with "Go "). This is used during
-// image loading to distinguish Go binaries from non-Go binaries that happen
-// to have DWARF debug info.
-func hasGoProducer(d *dwarf.Data) bool {
-	reader := d.Reader()
-	for {
-		entry, err := reader.Next()
-		if err != nil || entry == nil {
-			return false
-		}
-		if entry.Tag == dwarf.TagCompileUnit {
-			producer, _ := entry.Val(dwarf.AttrProducer).(string)
-			if strings.HasPrefix(producer, "Go ") {
-				return true
-			}
-			reader.SkipChildren()
-		}
-	}
-}
-
 // Producer returns the value of DW_AT_producer.
 func (bi *BinaryInfo) Producer() string {
 	for _, cu := range bi.Images[0].compileUnits {
@@ -1737,9 +1716,9 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 			}
 			err := loadBinaryInfoGoRuntimeElf(bi, image, path, elfFile)
 			if err != nil {
-				image.IsNonGo = true
 				return fmt.Errorf("could not read debug info (%v) and could not read go symbol table (%v)", dwerr, err)
 			}
+			image.IsGo = true
 			return nil
 		}
 		image.sepDebugCloser = sepFile
@@ -1747,14 +1726,6 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 		if err != nil {
 			return err
 		}
-	}
-
-	// Mark images that have DWARF but no Go producer string as non-Go.
-	// Without this check, shared libraries that have DWARF debug info would
-	// be incorrectly treated as Go images by HasGoImage(), since IsNonGo is
-	// only set when both DWARF and Go symbol table loading fail.
-	if !hasGoProducer(image.dwarf) {
-		image.IsNonGo = true
 	}
 
 	debugInfoBytes, err = godwarf.GetDebugSectionElf(dwarfFile, "info")
@@ -2650,6 +2621,7 @@ func (bi *BinaryInfo) loadDebugInfoMaps(image *Image, debugInfoBytes, debugLineB
 			cu.Version = ctxt.offsetToVersion[cu.offset]
 			if lang, _ := entry.Val(dwarf.AttrLanguage).(int64); lang == dwarfGoLanguage {
 				cu.isgo = true
+				image.IsGo = true
 			}
 			cu.name, _ = entry.Val(dwarf.AttrName).(string)
 			compdir, _ := entry.Val(dwarf.AttrCompDir).(string)
