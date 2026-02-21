@@ -76,7 +76,7 @@ Not all of the configurations are supported by each of the two available DAP ser
 
 When used with `dlv dap` or `dlv --headless --accept-multiclient=false` (default), the DAP server will shut itself down at the end of the debug session, when the client sends a [disconnect request](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Disconnect). If the debuggee was launched, it will be taken down as well. If the debuggee was attached to, `terminateDebuggee` option will be respected.
 
-When the program terminates, we send a [terminated event](https://microsoft.github.io/debug-adapter-protocol/specification#Events_Terminated), which is expected to trigger a [disconnect request](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Disconnect) from the client for a session and a server shutdown. The [restart request](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Restart) is not yet supported. 
+When the program terminates, we send a [terminated event](https://microsoft.github.io/debug-adapter-protocol/specification#Events_Terminated), which is expected to trigger a [disconnect request](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Disconnect) from the client for a session and a server shutdown. The [restart request](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Restart) is supported. 
 
 The server also shuts down in case of a client connection error or SIGTERM signal, taking down a launched process, but letting an attached process continue. 
 
@@ -136,7 +136,7 @@ Debuggee's stdout and stderr are written to stdout and stderr respectfully and a
 
 ## Versions
 
-The initial DAP support was released in [v1.6.1](https://github.com/go-delve/delve/releases/tag/v1.6.1) with many additional improvements in subsequent versions. The [remote attach](https://github.com/go-delve/delve/issues/2328) support was added in [v1.7.3](https://github.com/go-delve/delve/releases/tag/v1.7.3).
+The initial DAP support was released in [v1.6.1](https://github.com/go-delve/delve/releases/tag/v1.6.1) with many additional improvements in subsequent versions. The [remote attach](https://github.com/go-delve/delve/issues/2328) support was added in [v1.7.3](https://github.com/go-delve/delve/releases/tag/v1.7.3). The [restart request](https://microsoft.github.io/debug-adapter-protocol/specification#Requests_Restart) support was added in [v1.25.1](https://github.com/go-delve/delve/releases/tag/v1.25.1).
 
 The DAP API changes are backward-compatible as all new features are opt-in only. To update to a new [DAP version](https://microsoft.github.io/debug-adapter-protocol/changelog) and import a new DAP feature into delve, 
 one must first update the [go-dap](https://github.com/google/go-dap) dependency.
