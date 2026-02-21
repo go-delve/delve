@@ -282,6 +282,10 @@ Fixes #1234
 4. **Memory safety** - Always handle errors when reading process memory.
    Process may die, memory may be unmapped, or addresses invalid.
 
+5. **Don't reparse DWARF sections** - `loadDebugInfoMaps` already
+   iterates all compile units. Add per-CU checks there instead of
+   making separate passes over `debug_info`.
+
 ## File Organization
 
 ```

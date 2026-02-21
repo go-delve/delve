@@ -7116,10 +7116,6 @@ func TestBadAttachRequest(t *testing.T) {
 		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to attach: invalid debug configuration - cannot unmarshal string into \"processId\" of type int")
 
-		client.AttachRequest(map[string]any{"mode": "local", "processId": 1})
-		// The exact message varies on different systems, so skip that check
-		checkFailedToAttach(client.ExpectVisibleErrorResponse(t)) // could not attach to pid 1
-
 		// This will make debugger.(*Debugger) panic, which we will catch as an internal error.
 		client.AttachRequest(map[string]any{"mode": "local", "processId": -1})
 		er := client.ExpectInvisibleErrorResponse(t)

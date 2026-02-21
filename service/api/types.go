@@ -51,6 +51,9 @@ type DebuggerState struct {
 	ExitStatus int  `json:"exitStatus"`
 	// When contains a description of the current position in a recording
 	When string
+	// StopReason describes why the process is stopped (e.g., "breakpoint",
+	// "shared library loaded"). Empty when the stop reason is unknown.
+	StopReason string `json:"stopReason,omitempty"`
 	// Filled by RPCClient.Continue, indicates an error
 	Err error `json:"-"`
 }

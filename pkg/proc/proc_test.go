@@ -6047,3 +6047,89 @@ func TestTrimpathDetection(t *testing.T) {
 		t.Error("expected trimpath used to be true, was false")
 	}
 }
+
+func TestNonGoBinaryWithGoDlopen(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("only supported on linux")
+	}
+	if testBackend != "native" {
+		t.Skip("only supported with native backend")
+	}
+	if objcopyPath, _ := exec.LookPath("cc"); objcopyPath == "" {
+		t.Skip("no C compiler in path")
+	}
+	protest.MustHaveCgo(t)
+
+	fixturesDir := protest.FindFixturesDir()
+	tmpdir := t.TempDir()
+	goSoPath := filepath.Join(tmpdir, "golib.so")
+
+	cmd := exec.Command("go", "build", "-buildmode=c-shared", "-o", goSoPath, ".")
+	cmd.Dir = filepath.Join(fixturesDir, "godlopen", "golib")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("failed to build Go shared object: %v\n%s", err, out)
+	}
+
+	cBinPath := filepath.Join(tmpdir, "godlopen")
+	cSrcPath := filepath.Join(fixturesDir, "godlopen", "main.c")
+	cmd = exec.Command("cc", "-g0", "-o", cBinPath, cSrcPath, "-ldl")
+	out, err = cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("failed to build C binary: %v\n%s", err, out)
+	}
+
+	grp, err := native.Launch([]string{cBinPath, goSoPath}, tmpdir, 0, []string{}, "", "", proc.OutputRedirect{}, proc.OutputRedirect{})
+	if err != nil {
+		t.Fatalf("Launch failed: %v", err)
+	}
+	defer grp.Detach(true)
+
+	p := grp.Selected
+
+	if len(p.BinInfo().Images) == 0 {
+		t.Fatal("no images loaded")
+	}
+	if p.BinInfo().Images[0].IsGo {
+		t.Error("expected Images[0].IsGo to be false")
+	}
+	if p.BinInfo().HasGoImage() {
+		t.Error("expected HasGoImage to be false before dlopen")
+	}
+
+	err = grp.Continue()
+	if err != nil {
+		t.Fatalf("Continue failed: %v", err)
+	}
+
+	if grp.Selected.StopReason != proc.StopSharedLibLoaded {
+		t.Fatalf("expected StopSharedLibLoaded stop reason, got %v", grp.Selected.StopReason)
+	}
+	if !p.BinInfo().HasGoImage() {
+		t.Fatal("expected HasGoImage to be true after shared library load")
+	}
+
+	expectedFuncs := map[string]bool{
+		"C.GoFunction": false,
+		"main.main":    false,
+	}
+	for _, fn := range p.BinInfo().Functions {
+		if _, ok := expectedFuncs[fn.Name]; ok {
+			expectedFuncs[fn.Name] = true
+		}
+	}
+	for name, found := range expectedFuncs {
+		if !found {
+			t.Errorf("could not find %s in loaded debug symbols", name)
+		}
+	}
+
+	// Continue again to let the process finish.
+	err = grp.Continue()
+	if err != nil {
+		var pe proc.ErrProcessExited
+		if !errors.As(err, &pe) {
+			t.Fatalf("second Continue failed: %v", err)
+		}
+	}
+}

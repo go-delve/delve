@@ -2,10 +2,12 @@ package linutil
 
 import (
 	"bytes"
+	"debug/elf"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/go-delve/delve/pkg/proc"
 )
@@ -133,6 +135,86 @@ func readCString(p proc.Process, addr uint64) (string, error) {
 		addr++
 	}
 	return string(r), nil
+}
+
+// ElfFindRBrk returns the address of the dynamic linker's r_brk notification
+// function from the r_debug struct. The dynamic linker calls this function
+// whenever shared objects are loaded or unloaded. Returns 0 if r_brk cannot
+// be found.
+func ElfFindRBrk(p proc.Process) (uint64, error) {
+	bi := p.BinInfo()
+	if bi.ElfDynamicSection.Addr == 0 {
+		return 0, nil
+	}
+	debugAddr, err := dynamicSearchDebug(p)
+	if err != nil {
+		return 0, err
+	}
+	if debugAddr == 0 {
+		return 0, nil
+	}
+
+	// r_brk is at offset 2*ptrSize in the r_debug struct:
+	//   int r_version;           // offset 0
+	//   struct link_map *r_map;  // offset ptrSize (aligned)
+	//   ElfW(Addr) r_brk;        // offset 2*ptrSize
+	rBrkOffset := uint64(2 * bi.Arch.PtrSize())
+	return readPtr(p, debugAddr+rBrkOffset)
+}
+
+// ElfFindRBrkFromInterp finds the address of the dynamic linker's
+// _dl_debug_state function by reading the ELF interpreter from disk.
+// This is used at launch time when the dynamic linker hasn't initialized
+// r_debug yet (DT_DEBUG is 0). The function reads the .interp section of
+// the executable to find the interpreter path, then finds _dl_debug_state
+// in the interpreter's dynamic symbol table.
+// execPath is the path to the executable, and auxvBase is the base address
+// of the interpreter in memory (AT_BASE from the auxiliary vector).
+func ElfFindRBrkFromInterp(execPath string, auxvBase uint64) (uint64, error) {
+	if auxvBase == 0 {
+		return 0, nil
+	}
+
+	execFile, err := elf.Open(execPath)
+	if err != nil {
+		return 0, fmt.Errorf("could not open executable: %v", err)
+	}
+	defer execFile.Close()
+
+	interpSec := execFile.Section(".interp")
+	if interpSec == nil {
+		return 0, nil
+	}
+	interpData, err := interpSec.Data()
+	if err != nil {
+		return 0, fmt.Errorf("could not read .interp section: %v", err)
+	}
+	interpPath := string(bytes.TrimRight(interpData, "\x00"))
+
+	interpFile, err := elf.Open(interpPath)
+	if err != nil {
+		realPath, rerr := os.Readlink(interpPath)
+		if rerr != nil {
+			return 0, fmt.Errorf("could not open interpreter %s: %v", interpPath, err)
+		}
+		interpFile, err = elf.Open(realPath)
+		if err != nil {
+			return 0, fmt.Errorf("could not open interpreter %s: %v", realPath, err)
+		}
+	}
+	defer interpFile.Close()
+
+	dynsyms, err := interpFile.DynamicSymbols()
+	if err != nil {
+		return 0, fmt.Errorf("could not read dynamic symbols: %v", err)
+	}
+	for _, sym := range dynsyms {
+		if sym.Name == "_dl_debug_state" {
+			return auxvBase + sym.Value, nil
+		}
+	}
+
+	return 0, nil
 }
 
 // ElfUpdateSharedObjects reads the list of dynamic libraries loaded by the

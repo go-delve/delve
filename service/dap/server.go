@@ -4138,6 +4138,9 @@ func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange *sy
 			stopped.Body.Reason = "unknown"
 		case proc.StopWatchpoint:
 			stopped.Body.Reason = "data breakpoint"
+		case proc.StopSharedLibLoaded:
+			stopped.Body.Reason = "breakpoint"
+			stopped.Body.Description = proc.StopSharedLibLoaded.String()
 		default:
 			stopped.Body.Reason = "breakpoint"
 			goid, bp := s.stoppedOnBreakpointGoroutineID(state)
