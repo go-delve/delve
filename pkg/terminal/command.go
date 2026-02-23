@@ -1945,7 +1945,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 		requestedBp.AddrPid = loc.PCPids
 		if tracepoint {
 			requestedBp.LoadArgs = &ShortLoadConfig
-			requestedBp.TraceVerbosity = 0 // Default to values-only (master branch compatibility)
+			requestedBp.TraceVerbosity = 0 // values-only (same as default)
 		}
 
 		bp, err := t.client.CreateBreakpointWithExpr(requestedBp, spec, t.substitutePathRules(), false)
@@ -1983,7 +1983,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 					TraceReturn:    true,
 					Line:           -1,
 					LoadArgs:       &ShortLoadConfig,
-					TraceVerbosity: 0, // Default to values-only (master branch compatibility)
+					TraceVerbosity: 0, // values-only (same as default)
 				})
 				if err != nil {
 					return nil, err
@@ -3006,7 +3006,7 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 					if formatted == "" {
 						continue
 					}
-					// For level 0: just values (master branch compatibility)
+					// For level 0: just values (same as default)
 					if verbosity == 0 {
 						params = append(params, formatted)
 					} else {
