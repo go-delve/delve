@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/goversion"
@@ -79,6 +80,10 @@ type Target struct {
 	fakeMemoryRegistryMap map[string]*compositeMemory
 
 	partOfGroup bool
+
+	// onInitialGoImage ensures that Go-specific breakpoints are only set up
+	// once when transitioning from no Go images to having a Go image.
+	onInitialGoImage sync.Once
 }
 
 type KeepSteppingBreakpoints uint8
@@ -452,14 +457,18 @@ func (t *Target) sharedLibCallback(th Thread, tgt *Target) (bool, error) {
 		return false, nil
 	}
 
-	logger := logflags.DebuggerLogger()
-	logger.Info("Go shared library detected, setting up Go-specific breakpoints")
+	didRun := false
+	tgt.onInitialGoImage.Do(func() {
+		didRun = true
+		logger := logflags.DebuggerLogger()
+		logger.Info("Go shared library detected, setting up Go-specific breakpoints")
 
-	tgt.createUnrecoveredPanicBreakpoint()
-	tgt.createFatalThrowBreakpoint()
-	tgt.createPluginOpenBreakpoint()
+		tgt.createUnrecoveredPanicBreakpoint()
+		tgt.createFatalThrowBreakpoint()
+		tgt.createPluginOpenBreakpoint()
+	})
 
-	return true, nil
+	return didRun, nil
 }
 
 // CurrentThread returns the currently selected thread which will be used
@@ -677,8 +686,7 @@ func (lbp *LogicalBreakpoint) isSuspendedOnGroup(grp *TargetGroup) bool {
 	return true
 }
 
-type dummyRecordingManipulation struct {
-}
+type dummyRecordingManipulation struct{}
 
 // Recorded always returns false for the native proc backend.
 func (*dummyRecordingManipulation) Recorded() (bool, string) { return false, "" }
