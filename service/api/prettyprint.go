@@ -64,21 +64,9 @@ func FormatTraceVariable(v Variable, verbosity int) string {
 		if v.Unreadable != "" {
 			return fmt.Sprintf("(unreadable %s)", v.Unreadable)
 		}
-		// For complex types, format value without type info
-		switch v.Kind {
-		case reflect.Slice, reflect.Array, reflect.Map, reflect.Struct, reflect.Ptr, reflect.Interface, reflect.Chan:
-			var buf bytes.Buffer
-			writeVarValueOnly(&buf, &v)
-			return buf.String()
-		case reflect.String:
-			s := v.Value
-			if len(s) != int(v.Len) {
-				s = fmt.Sprintf("%s...+%d more", s, int(v.Len)-len(s))
-			}
-			return fmt.Sprintf("%q", s)
-		default:
-			return v.Value
-		}
+		var buf bytes.Buffer
+		v.writeTo(&buf, prettyTop, "", "")
+		return buf.String()
 	case 1:
 		// Level 1: type only
 		return fmt.Sprintf("<%s>", ShortenType(v.Type))
@@ -90,52 +78,6 @@ func FormatTraceVariable(v Variable, verbosity int) string {
 		return v.StringWithOptions("", "", PrettyShortenType|PrettyNewlines)
 	default:
 		return v.Value
-	}
-}
-
-// writeVarValueOnly writes just the value of a variable without type information (recursive helper)
-func writeVarValueOnly(buf *bytes.Buffer, v *Variable) {
-	switch v.Kind {
-	case reflect.Slice, reflect.Array:
-		fmt.Fprint(buf, "[")
-		for i := range v.Children {
-			if i > 0 {
-				fmt.Fprint(buf, ",")
-			}
-			writeVarValueOnly(buf, &v.Children[i])
-		}
-		if len(v.Children) != int(v.Len) {
-			if len(v.Children) > 0 {
-				fmt.Fprint(buf, ",")
-			}
-			fmt.Fprintf(buf, "...+%d more", int(v.Len)-len(v.Children))
-		}
-		fmt.Fprint(buf, "]")
-	case reflect.Map:
-		fmt.Fprint(buf, "[")
-		for i := 0; i < len(v.Children); i += 2 {
-			if i > 0 {
-				fmt.Fprint(buf, ", ")
-			}
-			writeVarValueOnly(buf, &v.Children[i])
-			fmt.Fprint(buf, ": ")
-			writeVarValueOnly(buf, &v.Children[i+1])
-		}
-		if len(v.Children)/2 != int(v.Len) {
-			if len(v.Children) > 0 {
-				fmt.Fprint(buf, ", ")
-			}
-			fmt.Fprintf(buf, "...+%d more", int(v.Len)-(len(v.Children)/2))
-		}
-		fmt.Fprint(buf, "]")
-	case reflect.String:
-		s := v.Value
-		if len(s) != int(v.Len) {
-			s = fmt.Sprintf("%s...+%d more", s, int(v.Len)-len(s))
-		}
-		fmt.Fprintf(buf, "%q", s)
-	default:
-		fmt.Fprint(buf, v.Value)
 	}
 }
 
