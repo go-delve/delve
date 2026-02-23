@@ -60,7 +60,7 @@ func (v *Variable) StringWithOptions(indent, fmtstr string, flags PrettyFlags) s
 func FormatTraceVariable(v Variable, verbosity int) string {
 	switch verbosity {
 	case 0:
-		// Level 0: values only (master branch compatibility)
+		// Level 0: values only (to match default behavior)
 		if v.Unreadable != "" {
 			return fmt.Sprintf("(unreadable %s)", v.Unreadable)
 		}
