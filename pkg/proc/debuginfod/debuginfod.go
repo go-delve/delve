@@ -4,8 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 )
@@ -22,7 +22,7 @@ func execFind(ctx context.Context, notify func(string), args ...string) (string,
 	}
 	cmd := exec.CommandContext(ctx, debuginfodFind, args...)
 	if notify != nil {
-		cmd.Env = append(os.Environ(), "DEBUGINFOD_PROGRESS=yes")
+		cmd.Args = slices.Insert(cmd.Args, 1, "--verbose")
 		stderr, err := cmd.StderrPipe()
 		if err != nil {
 			return "", err
