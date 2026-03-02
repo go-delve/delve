@@ -659,10 +659,6 @@ func TestNextGenericMethodThroughInterface(t *testing.T) {
 }
 
 func TestRangeOverFuncNext(t *testing.T) {
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
-		t.Skip("N/A")
-	}
-
 	var bp *proc.Breakpoint
 
 	funcBreak := func(t *testing.T, fnname string) seqTest {
@@ -1213,10 +1209,6 @@ func TestRangeOverFuncNext(t *testing.T) {
 }
 
 func TestRangeOverFuncStepOut(t *testing.T) {
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
-		t.Skip("N/A")
-	}
-
 	testseq2(t, "rangeoverfunc", "", []seqTest{
 		{contContinue, 97},
 		{contStepout, 251},
@@ -1224,9 +1216,6 @@ func TestRangeOverFuncStepOut(t *testing.T) {
 }
 
 func TestRangeOverFuncNextInlined(t *testing.T) {
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
-		t.Skip("N/A")
-	}
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) && !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27) {
 		t.Skip("broken due to inlined symbol names")
 	}
@@ -1776,9 +1765,6 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 }
 
 func TestStepIntoCoroutine(t *testing.T) {
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
-		t.Skip("N/A")
-	}
 	skipOn(t, "not working due to optimizations", "386")
 	withTestProcessArgs("backwardsiter", t, ".", []string{}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		testseq2intl(t, fixture, grp, p, nil, []seqTest{

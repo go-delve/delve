@@ -5748,9 +5748,6 @@ func TestPanicLine(t *testing.T) {
 }
 
 func TestReadClosure(t *testing.T) {
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
-		t.Skip("not implemented")
-	}
 	withTestProcess("closurecontents", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		avalues := []int64{0, 3, 9, 27}
 		for i := range 4 {
