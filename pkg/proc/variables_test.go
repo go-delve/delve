@@ -996,8 +996,8 @@ func TestEvalExpression(t *testing.T) {
 					return
 				}
 				if err != nil && err.Error() == "expression *ast.CompositeLit not implemented" {
-					if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) || runtime.GOARCH == "386" {
-						// composite literals not supported before 1.22
+					if runtime.GOARCH == "386" {
+						// composite literals are currently unsupported on 386
 						return
 					}
 				}
@@ -1463,10 +1463,8 @@ func TestCallFunction(t *testing.T) {
 			}
 		}
 
-		if goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
-			for _, tc := range testcases123 {
-				testCallFunction(t, grp, p, tc)
-			}
+		for _, tc := range testcases123 {
+			testCallFunction(t, grp, p, tc)
 		}
 
 		// LEAVE THIS AS THE LAST ITEM, IT BREAKS THE TARGET PROCESS!!!
@@ -1941,10 +1939,6 @@ func TestCapturedVariable(t *testing.T) {
 
 func TestSetupRangeFramesCrash(t *testing.T) {
 	// See issue #3806
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
-		t.Skip("N/A")
-	}
-
 	for _, options := range []protest.BuildFlags{0, protest.EnableInlining | protest.EnableOptimization} {
 		withTestProcessArgs("setiterator", t, ".", []string{}, options, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 			setFileBreakpoint(p, t, fixture.Source, 48)
@@ -2027,9 +2021,6 @@ func TestClassicMap(t *testing.T) {
 
 func TestCallFunctionRegisterArg(t *testing.T) {
 	protest.MustSupportFunctionCalls(t, testBackend)
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
-		t.Skip("not supported")
-	}
 	withTestProcessArgs("issue3310", t, ".", []string{}, protest.AllNonOptimized, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, fixture.Source, 12)
 		assertNoError(grp.Continue(), t, "Continue()")
@@ -2041,9 +2032,6 @@ func TestCapturedVarVisibleOnFirstLine(t *testing.T) {
 	// Checks that a variable captured by a closure is visible on the first
 	// line of the closure function.
 	// See issue #4000
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 23) {
-		t.Skip("not implemented")
-	}
 	skipOn(t, "broken", "linux", "386")
 	withTestProcess("issue4000", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		addrs, err := proc.FindFileLocation(p, fixture.Source, 7)
