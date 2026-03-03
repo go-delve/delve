@@ -3,6 +3,39 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.26.1] 2026-03-03
+
+### Added
+
+- Support for debugging stripped non-Go binaries (#4263, @derekparker)
+- Package for detecting debugger attachment (#4258, @derekparker)
+- Starlark `append_file` built-in function (#4252, @sding3)
+- DAP: Hit conditional breakpoint capability (#4230, @DrSergei)
+- Detection and warning about trimpath (#4241, @aarzilli)
+
+### Fixed
+
+- Fix debuginfod download progress (#4270, @aarzilli)
+- Fix sigpanics in swiss map iterator (#4261, @derekparker)
+- Fix finding moduledata in Go 1.26+ (#4228, @derekparker)
+- Fix goroutine leak and shutdown sequence for eBPF backend (#4231, @derekparker)
+- Fix eBPF uprobe placement to skip function prologue (#4249, @derekparker)
+- Fix `ProducerAfterOrEqual` comparison for devel builds (#4234, @typesanitizer)
+- DAP: Better error messages when debugger can't be launched (#4264, @aarzilli)
+- DAP: Reject most requests before launch/attach (#4240, @aarzilli)
+- Propagate short type option when printing structs (#4235, @igadmg)
+- Better error if process is already being debugged (#4242, @aarzilli)
+- Print error when request body can't be decoded (#4247, @aarzilli)
+- Parse rc version with trailing suffix (#4255, @alexsaezm)
+
+### Changed
+
+- Migrate from gopkg.in/yaml.v3 to go.yaml.in/yaml/v3 (#4257, @scop)
+- Update waitReason switch for Go 1.27 (#4244, @typesanitizer)
+- Downgrade riscv64 support (#4232, @derekparker)
+- Miscellaneous code quality improvements (#4221, #4226, #4259, #4262, #4224, @derekparker, @aarzilli)
+- Miscellaneous improvements to tests, documentation, and build configuration (#4250, #4254, #4248, #4265, @derekparker, @aarzilli, @stack1ng)
+
 ## [1.26.0] 2025-12-18
 
 ### Added
