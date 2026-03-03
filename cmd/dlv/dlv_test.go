@@ -1348,6 +1348,9 @@ func TestVersion(t *testing.T) {
 
 func TestStaticcheck(t *testing.T) {
 	t.Parallel()
+	if ver, ok := goversion.Parse(runtime.Version()); ok && ver.IsDevelBuild() {
+		t.Skip("staticcheck output is not stable on development versions of Go")
+	}
 	_, err := exec.LookPath("staticcheck")
 	if err != nil {
 		t.Skip("staticcheck not installed")
