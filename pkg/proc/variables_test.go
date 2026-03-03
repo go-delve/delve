@@ -1965,7 +1965,7 @@ func TestClassicMap(t *testing.T) {
 		t.Skip("N/A")
 	}
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 27) {
-		panic("test expired, please remove")
+		t.Skip("noswissmap experiment removed in Go 1.27")
 	}
 	t.Setenv("GOEXPERIMENT", "noswissmap")
 
