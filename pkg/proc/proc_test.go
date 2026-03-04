@@ -1495,6 +1495,32 @@ func BenchmarkLocalVariables(b *testing.B) {
 	})
 }
 
+func BenchmarkStacktrace(b *testing.B) {
+	withTestProcess("deeprecursion", b, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), b, "Continue()")
+
+		for _, depth := range []int{100, 1000, 10000, 100000, 1000000} {
+			b.Run(fmt.Sprintf("depth=%d", depth), func(b *testing.B) {
+				b.ReportAllocs()
+				b.ResetTimer()
+
+				thread := p.CurrentThread()
+
+				for i := 0; i < b.N; i++ {
+					b.StopTimer()
+					p.ClearCaches()
+					b.StartTimer()
+
+					_, err := proc.ThreadStacktrace(p, thread, depth)
+					if err != nil {
+						b.Fatalf("ThreadStacktrace failed: %v", err)
+					}
+				}
+			})
+		}
+	})
+}
+
 func TestCondBreakpoint(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("parallel_next", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
