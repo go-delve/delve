@@ -12,6 +12,7 @@ import (
 	"net"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/google/go-dap"
@@ -62,11 +63,20 @@ func (c *Client) ReadMessage() (dap.Message, error) {
 
 func (c *Client) ExpectMessage(t *testing.T) dap.Message {
 	t.Helper()
-	m, err := dap.ReadProtocolMessage(c.reader)
-	if err != nil {
-		t.Fatal(err)
+	for {
+		m, err := dap.ReadProtocolMessage(c.reader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Skip debuginfod download progress output events. These are
+		// asynchronous and only appear when debuginfod is available on the
+		// system (not in CI), so tests must tolerate their presence or
+		// absence.
+		if oe, ok := m.(*dap.OutputEvent); ok && strings.HasPrefix(oe.Body.Output, "Download debug info for ") {
+			continue
+		}
+		return m
 	}
-	return m
 }
 
 func (c *Client) ExpectInvisibleErrorResponse(t *testing.T) *dap.ErrorResponse {

@@ -1216,7 +1216,9 @@ func TestRangeOverFuncStepOut(t *testing.T) {
 }
 
 func TestRangeOverFuncNextInlined(t *testing.T) {
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) && !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27) {
+	// See #3882: inlined range-over-func produces symbol names that Delve
+	// cannot correlate; requires a compiler fix that has not landed yet.
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) {
 		t.Skip("broken due to inlined symbol names")
 	}
 
