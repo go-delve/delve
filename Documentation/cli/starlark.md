@@ -65,7 +65,7 @@ process_pid() | Equivalent to API call [ProcessPid](https://pkg.go.dev/github.co
 recorded() | Equivalent to API call [Recorded](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.Recorded)
 restart(Position, ResetArgs, NewArgs, Rerecord, Rebuild, NewRedirects) | Equivalent to API call [Restart](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.Restart)
 set_expr(Scope, Symbol, Value) | Equivalent to API call [Set](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.Set)
-stacktrace(Id, Depth, Full, Defers, Opts, Cfg) | Equivalent to API call [Stacktrace](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.Stacktrace)
+stacktrace(Id, Depth, Full, Defers, Opts, Cfg, Skip) | Equivalent to API call [Stacktrace](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.Stacktrace)
 state(NonBlocking) | Equivalent to API call [State](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.State)
 toggle_breakpoint(Id, Name) | Equivalent to API call [ToggleBreakpoint](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.ToggleBreakpoint)
 dlv_command(command) | Executes the specified command as if typed at the dlv_prompt

@@ -128,7 +128,7 @@ type Client interface {
 	ListGoroutinesWithFilter(start, count int, filters []api.ListGoroutinesFilter, group *api.GoroutineGroupingOptions, scope *api.EvalScope) ([]*api.Goroutine, []api.GoroutineGroup, int, bool, error)
 
 	// Stacktrace returns stacktrace
-	Stacktrace(goroutineID int64, depth int, opts api.StacktraceOptions, cfg *api.LoadConfig) ([]api.Stackframe, error)
+	Stacktrace(goroutineID int64, depth, skip int, opts api.StacktraceOptions, cfg *api.LoadConfig) ([]api.Stackframe, error)
 
 	// Ancestors returns ancestor stacktraces
 	Ancestors(goroutineID int64, numAncestors int, depth int) ([]api.Ancestor, error)

@@ -1675,6 +1675,12 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 				return starlark.None, decorateError(thread, err)
 			}
 		}
+		if len(args) > 6 && args[6] != starlark.None {
+			err := unmarshalStarlarkValue(args[6], &rpcArgs.Skip, "Skip")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
 		for _, kv := range kwargs {
 			var err error
 			switch kv[0].(starlark.String) {
@@ -1690,6 +1696,8 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Opts, "Opts")
 			case "Cfg":
 				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Cfg, "Cfg")
+			case "Skip":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.Skip, "Skip")
 			default:
 				err = fmt.Errorf("unknown argument %q", kv[0])
 			}
@@ -1703,7 +1711,7 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 		}
 		return env.interfaceToStarlarkValue(&rpcRet), nil
 	})
-	doc["stacktrace"] = "builtin stacktrace(Id, Depth, Full, Defers, Opts, Cfg)\n\nstacktrace returns stacktrace of goroutine Id up to the specified Depth.\n\nIf Full is set it will also the variable of all local variables\nand function arguments of all stack frames."
+	doc["stacktrace"] = "builtin stacktrace(Id, Depth, Full, Defers, Opts, Cfg, Skip)\n\nstacktrace returns stacktrace of goroutine Id up to the specified Depth.\n\nIf Full is set it will also the variable of all local variables\nand function arguments of all stack frames."
 	r["state"] = starlark.NewBuiltin("state", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if err := isCancelled(thread); err != nil {
 			return starlark.None, decorateError(thread, err)
