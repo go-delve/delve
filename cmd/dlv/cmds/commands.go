@@ -1271,13 +1271,10 @@ func must(err error) {
 func getLoadConfigForVerbosity(verbosity int) api.LoadConfig {
 	switch verbosity {
 	case 0:
-		// Level 0: Load and show values only, no names (master branch compatibility)
+		// Level 0: default case(ShortLoadConfig)
 		return api.LoadConfig{
-			FollowPointers:     false,
-			MaxVariableRecurse: 1,
-			MaxStringLen:       64,
-			MaxArrayValues:     64,
-			MaxStructFields:    -1,
+			MaxStringLen:    64,
+			MaxStructFields: 3,
 		}
 
 	case 1:

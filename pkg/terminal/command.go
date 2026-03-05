@@ -3030,9 +3030,14 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 				}
 			}
 
-			fmt.Fprintf(t.stdout, "%s> %s %s%s",
+			fmt.Fprintf(t.stdout, "%s> %s %s%s(",
 				depthPrefix, tracePrefix, bpname, fn.Name())
-			fmt.Fprintf(t.stdout, "(%s)\n", paramStr)
+			if verbosity >= 3 {
+				// Levels 3-4: Multi-line format - params on separate lines
+				fmt.Fprintf(t.stdout, "\n")
+			}
+			fmt.Fprintf(t.stdout, "%s)\n", paramStr)
+
 		}
 
 		printBreakpointInfo(t, th, !hasReturnValue)

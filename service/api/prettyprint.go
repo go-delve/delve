@@ -60,12 +60,12 @@ func (v *Variable) StringWithOptions(indent, fmtstr string, flags PrettyFlags) s
 func FormatTraceVariable(v Variable, verbosity int) string {
 	switch verbosity {
 	case 0:
-		// Level 0: values only (to match default behavior)
+		// Level 0: include types but not parameter names (default case)
 		if v.Unreadable != "" {
 			return fmt.Sprintf("(unreadable %s)", v.Unreadable)
 		}
 		var buf bytes.Buffer
-		v.writeTo(&buf, prettyTop, "", "")
+		v.writeTo(&buf, prettyTop|prettyIncludeType, "", "")
 		return buf.String()
 	case 1:
 		// Level 1: type only
