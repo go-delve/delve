@@ -322,7 +322,32 @@ type mapIteratorSwiss struct {
 	keyTypeIsPtr, elemTypeIsPtr bool
 	tableType, groupType        *godwarf.StructType
 
-	tableFieldIndex, tableFieldGroups, groupsFieldLengthMask, groupsFieldData, groupFieldCtrl, groupFieldSlots, slotFieldKey, slotFieldElem *godwarf.StructField
+	tableFieldIndex, tableFieldGroups, groupsFieldLengthMask, groupsFieldData, groupFieldCtrl *godwarf.StructField
+
+	// GOEXPERIMENT=nomapsplitgroup
+	//
+	// Interleaved slot layout (KVKVKVKV):
+	//
+	// type group struct {
+	//     ctrl  uint64
+	//     slots [abi.MapGroupSlots]struct {
+	//         key  keyType
+	//         elem elemType
+	//     }
+	// }
+	groupFieldSlots, slotFieldKey, slotFieldElem *godwarf.StructField
+
+	// GOEXPERIMENT=mapsplitgroup
+	//
+	// Split layout (KKKKVVVV):
+	//
+	// type group struct {
+	//     ctrl  uint64
+	//     keys  [abi.MapGroupSlots]keyType
+	//     elems [abi.MapGroupSlots]elemType
+	// }
+	mapsplitgroup                   bool
+	groupFieldKeys, groupFieldElems *godwarf.StructField
 
 	dirIdx int64
 	tab    *swissTable
@@ -343,8 +368,13 @@ type swissTable struct {
 }
 
 type swissGroup struct {
-	slots *Variable
 	ctrls []byte
+
+	// GOEXPERIMENT=nomapsplitgroup
+	slots *Variable
+
+	// GOEXPERIMENT=mapsplitgroup
+	keys, elems *Variable
 }
 
 var (
@@ -405,36 +435,54 @@ func (it *mapIteratorSwiss) loadTypes() {
 		switch field.Name {
 		case "ctrl":
 			it.groupFieldCtrl = field
+		// GOEXPERIMENT=nomapsplitgroup
 		case "slots":
 			it.groupFieldSlots = field
+		// GOEXPERIMENT=mapsplitgroup
+		case "keys":
+			it.groupFieldKeys = field
+		case "elems":
+			it.groupFieldElems = field
 		}
 	}
-	if it.groupFieldCtrl == nil || it.groupFieldSlots == nil {
+	if it.groupFieldCtrl == nil {
+		it.v.Unreadable = errSwissMapBadGroupTypeErr
+		return
+	}
+	// Either slots or keys+elems must exist.
+	it.mapsplitgroup = it.groupFieldKeys != nil && it.groupFieldElems != nil
+	if !it.mapsplitgroup && it.groupFieldSlots == nil {
+		it.v.Unreadable = errSwissMapBadGroupTypeErr
+		return
+	}
+	if it.mapsplitgroup && it.groupFieldSlots != nil {
 		it.v.Unreadable = errSwissMapBadGroupTypeErr
 		return
 	}
 
-	slotsType, ok := godwarf.ResolveTypedef(it.groupFieldSlots.Type).(*godwarf.ArrayType)
-	if !ok {
-		it.v.Unreadable = errSwissMapBadGroupTypeErr
-		return
-	}
-	slotType, ok := slotsType.Type.(*godwarf.StructType)
-	if !ok {
-		it.v.Unreadable = errSwissMapBadGroupTypeErr
-		return
-	}
-	for _, field := range slotType.Field {
-		switch field.Name {
-		case "key":
-			it.slotFieldKey = field
-		case "elem":
-			it.slotFieldElem = field
+	if !it.mapsplitgroup {
+		slotsType, ok := godwarf.ResolveTypedef(it.groupFieldSlots.Type).(*godwarf.ArrayType)
+		if !ok {
+			it.v.Unreadable = errSwissMapBadGroupTypeErr
+			return
 		}
-	}
-	if it.slotFieldKey == nil || it.slotFieldElem == nil {
-		it.v.Unreadable = errSwissMapBadGroupTypeErr
-		return
+		slotType, ok := slotsType.Type.(*godwarf.StructType)
+		if !ok {
+			it.v.Unreadable = errSwissMapBadGroupTypeErr
+			return
+		}
+		for _, field := range slotType.Field {
+			switch field.Name {
+			case "key":
+				it.slotFieldKey = field
+			case "elem":
+				it.slotFieldElem = field
+			}
+		}
+		if it.slotFieldKey == nil || it.slotFieldElem == nil {
+			it.v.Unreadable = errSwissMapBadGroupTypeErr
+			return
+		}
 	}
 
 	if it.dirLen <= 0 {
@@ -482,23 +530,39 @@ func (it *mapIteratorSwiss) next() bool {
 				}
 			}
 
-			for ; it.slotIdx < uint32(it.group.slots.Len); it.slotIdx++ {
+			var slotsLen uint32
+			if it.mapsplitgroup {
+				slotsLen = uint32(it.group.keys.Len)
+			} else {
+				slotsLen = uint32(it.group.slots.Len)
+			}
+			for ; it.slotIdx < slotsLen; it.slotIdx++ {
 				if it.slotIsEmptyOrDeleted(it.slotIdx) {
 					continue
 				}
 
-				cur, err := it.group.slots.sliceAccess(int(it.slotIdx))
-				if err != nil {
-					it.v.Unreadable = fmt.Errorf("error accessing swiss map in table %d, group %d, slot %d", it.dirIdx, it.groupIdx, it.slotIdx)
-					return false
-				}
+				if it.mapsplitgroup {
+					var err1, err2 error
+					it.curKey, err1 = it.group.keys.sliceAccess(int(it.slotIdx))
+					it.curValue, err2 = it.group.elems.sliceAccess(int(it.slotIdx))
+					if err1 != nil || err2 != nil {
+						it.v.Unreadable = fmt.Errorf("error accessing swiss map slot: %v %v", err1, err2)
+						return false
+					}
+				} else {
+					cur, err := it.group.slots.sliceAccess(int(it.slotIdx))
+					if err != nil {
+						it.v.Unreadable = fmt.Errorf("error accessing swiss map in table %d, group %d, slot %d", it.dirIdx, it.groupIdx, it.slotIdx)
+						return false
+					}
 
-				var err1, err2 error
-				it.curKey, err1 = cur.toField(it.slotFieldKey)
-				it.curValue, err2 = cur.toField(it.slotFieldElem)
-				if err1 != nil || err2 != nil {
-					it.v.Unreadable = fmt.Errorf("error accessing swiss map slot: %v %v", err1, err2)
-					return false
+					var err1, err2 error
+					it.curKey, err1 = cur.toField(it.slotFieldKey)
+					it.curValue, err2 = cur.toField(it.slotFieldElem)
+					if err1 != nil || err2 != nil {
+						it.v.Unreadable = fmt.Errorf("error accessing swiss map slot: %v %v", err1, err2)
+						return false
+					}
 				}
 
 				// If the type we expect is non-pointer but we read a pointer type it
@@ -602,13 +666,10 @@ func (it *mapIteratorSwiss) loadCurrentGroup() {
 		it.v.Unreadable = fmt.Errorf("could not load swiss map group: %v", err)
 		return
 	}
+
 	g := &swissGroup{}
+
 	var err2 error
-	g.slots, err2 = group.toField(it.groupFieldSlots)
-	if err2 != nil {
-		it.v.Unreadable = fmt.Errorf("could not load swiss map group slots: %v", err2)
-		return
-	}
 	ctrl, err2 := group.toField(it.groupFieldCtrl)
 	if err2 != nil {
 		it.v.Unreadable = fmt.Errorf("could not load swiss map group ctrl: %v", err2)
@@ -620,6 +681,26 @@ func (it *mapIteratorSwiss) loadCurrentGroup() {
 		it.v.Unreadable = err
 		return
 	}
+
+	if it.mapsplitgroup {
+		g.keys, err2 = group.toField(it.groupFieldKeys)
+		if err2 != nil {
+			it.v.Unreadable = fmt.Errorf("could not load swiss map group keys: %v", err2)
+			return
+		}
+		g.elems, err2 = group.toField(it.groupFieldElems)
+		if err2 != nil {
+			it.v.Unreadable = fmt.Errorf("could not load swiss map group elems: %v", err2)
+			return
+		}
+	} else {
+		g.slots, err2 = group.toField(it.groupFieldSlots)
+		if err2 != nil {
+			it.v.Unreadable = fmt.Errorf("could not load swiss map group slots: %v", err2)
+			return
+		}
+	}
+
 	it.group = g
 }
 
