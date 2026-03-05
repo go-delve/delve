@@ -338,6 +338,9 @@ func (lineInfo *DebugLineInfo) PrologueEndPC(start, end uint64) (pc uint64, file
 			if sm.address >= end {
 				return 0, "", 0, false
 			}
+			if sm.address < start {
+				return 0, "", 0, false
+			}
 			if sm.prologueEnd {
 				return sm.address, sm.file, sm.line, true
 			}
@@ -358,6 +361,9 @@ func (lineInfo *DebugLineInfo) FirstStmt(start, end uint64) (pc uint64, file str
 	for {
 		if sm.valid {
 			if sm.address >= end {
+				return 0, "", 0, false
+			}
+			if sm.address < start {
 				return 0, "", 0, false
 			}
 			if sm.isStmt {

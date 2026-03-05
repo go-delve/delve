@@ -153,6 +153,10 @@ func TestMultipleSequences(t *testing.T) {
 		leb128.EncodeSigned(instr, off)
 	}
 
+	write_DW_LNS_prologue_end := func() {
+		instr.WriteByte(DW_LNS_prologue_end)
+	}
+
 	write_DW_LNE_end_sequence := func() {
 		instr.WriteByte(0)
 		leb128.EncodeUnsigned(instr, 1)
@@ -187,6 +191,7 @@ func TestMultipleSequences(t *testing.T) {
 	write_DW_LNS_copy() // thefile.go:21 0x500000
 	write_DW_LNS_advance_pc(0x2)
 	write_DW_LNS_advance_line(1)
+	write_DW_LNS_prologue_end()
 	write_DW_LNS_copy() // thefile.go:22 0x500002
 	write_DW_LNS_advance_pc(0x2)
 	write_DW_LNS_advance_line(1)
@@ -205,10 +210,11 @@ func TestMultipleSequences(t *testing.T) {
 			OpcodeBase:     13,
 			StdOpLengths:   []uint8{0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1},
 		},
-		IncludeDirs:  []string{},
-		FileNames:    []*FileEntry{{Path: thefile}},
-		Instructions: instr.Bytes(),
-		ptrSize:      ptrSize,
+		IncludeDirs:       []string{},
+		FileNames:         []*FileEntry{{Path: thefile}},
+		Instructions:      instr.Bytes(),
+		ptrSize:           ptrSize,
+		stateMachineCache: make(map[uint64]*StateMachine),
 	}
 
 	// Test that PCToLine is correct for all three sequences
@@ -259,5 +265,11 @@ func TestMultipleSequences(t *testing.T) {
 		if len(out) != len(testCase.tgt) {
 			t.Errorf("AllPCsBetween(%#x, %#x): expected: %#x got: %#x", testCase.start, testCase.end, testCase.tgt, out)
 		}
+	}
+
+	// Test that PrologueEndPC does not return a PC address before the start address (issue #4269)
+	pc, _, _, ok := lines.PrologueEndPC(0x600000, 0x600008)
+	if ok && pc < 0x600000 {
+		t.Errorf("PrologueEndPC failed %x", pc)
 	}
 }
