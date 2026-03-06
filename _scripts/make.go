@@ -43,17 +43,19 @@ func NewMakeCommands() *cobra.Command {
 		Use:   "build",
 		Short: "Build delve",
 		Run: func(cmd *cobra.Command, args []string) {
-			envflags := []string{}
-			if len(Architecture) > 0 {
-				envflags = append(envflags, "GOARCH="+Architecture)
-			}
-			if len(OS) > 0 {
-				envflags = append(envflags, "GOOS="+OS)
-			}
-			if len(envflags) > 0 {
+			if len(Architecture) > 0 || len(OS) > 0 {
+				// Explicit cross-compile target: fall back to direct go build.
+				envflags := []string{}
+				if len(Architecture) > 0 {
+					envflags = append(envflags, "GOARCH="+Architecture)
+				}
+				if len(OS) > 0 {
+					envflags = append(envflags, "GOOS="+OS)
+				}
 				executeEnv(envflags, "go", "build", "-ldflags", "-extldflags -static", tagFlags(false), buildFlags(), DelveMainPackagePath)
 			} else {
-				execute("go", "build", "-ldflags", "-extldflags -static", tagFlags(false), buildFlags(), DelveMainPackagePath)
+				// Default: goreleaser for consistent local/release builds.
+				execute("goreleaser", "build", "--single-target", "--snapshot", "--clean", "--output", "./dlv")
 			}
 			if runtime.GOOS == "darwin" && os.Getenv("CERT") != "" && canMacnative() && !isCodesigned("./dlv") {
 				codesign("./dlv")
@@ -528,12 +530,10 @@ func allPackages() []string {
 }
 
 // getBuildSHA will invoke git to return the current SHA of the commit at HEAD.
-// If invoking git has been disabled, it will return an empty string instead.
 func getBuildSHA() (string, error) {
 	if DisableGit {
 		return "", nil
 	}
-
 	buildSHA, err := exec.Command("git", "rev-parse", "HEAD").CombinedOutput()
 	if err != nil {
 		return "", err

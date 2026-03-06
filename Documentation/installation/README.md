@@ -17,6 +17,30 @@ $ go install github.com/go-delve/delve/cmd/dlv@v1.7.4-0.20211208103735-2f1367276
 
 See [Versions](https://go.dev/ref/mod#versions) and [Pseudo-versions](https://go.dev/ref/mod#pseudo-versions) for how to format the version suffixes.
 
+## Download a binary release
+
+Pre-built binaries for Linux, macOS, and Windows are available on the
+[GitHub Releases page](https://github.com/go-delve/delve/releases).
+
+Download the archive for your platform, extract it, and place `dlv` in
+your `$PATH`.
+
+To verify a release with cosign, verify the signed checksum file and then
+check your archive against it:
+
+```sh
+# Verify the signed checksum file (validates both signature and signer identity)
+cosign verify-blob \
+  --certificate checksums.txt.cert \
+  --signature checksums.txt.sig \
+  --certificate-identity-regexp "https://github.com/go-delve/delve/.github/workflows/release.yml@refs/tags/.*" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  checksums.txt
+
+# Verify your archive matches the checksum
+sha256sum -c --ignore-missing checksums.txt
+```
+
 Alternatively, clone the git repository and build:
 
 ```

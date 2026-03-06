@@ -1,0 +1,76 @@
+version: 2
+
+project_name: dlv
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - main: ./cmd/dlv
+    binary: dlv
+    # CGO is left at its default: enabled for native builds, automatically
+    # disabled by the Go toolchain when cross-compiling. This means linux/amd64
+    # release binaries are built with CGO on a linux/amd64 CI runner, while all
+    # cross-compiled targets (darwin, windows, linux/arm64, etc.) use pure Go.
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+      - "386"
+      - ppc64le
+    ignore:
+      # darwin and windows only support amd64 and arm64 in this release config.
+      # riscv64 and loong64 are supported by Delve but excluded here because
+      # goreleaser cross-compilation toolchains for those targets are not yet
+      # available in standard CI environments.
+      - goos: darwin
+        goarch: "386"
+      - goos: darwin
+        goarch: ppc64le
+      - goos: windows
+        goarch: "386"
+      - goos: windows
+        goarch: ppc64le
+    ldflags:
+      - -X main.Build={{.FullCommit}}
+
+archives:
+  - formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "dlv_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+# Cosign keyless signing via Sigstore. Signing runs automatically in GitHub
+# Actions with `id-token: write` permission — cosign v2 auto-detects the
+# GitHub Actions OIDC identity. No private key or secret is required.
+# To verify: cosign verify-blob --certificate <file>.cert --signature <file>.sig <file>
+signs:
+  - cmd: cosign
+    certificate: "${artifact}.cert"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - --yes
+    artifacts: checksum
+    output: true
+
+release:
+  github:
+    owner: go-delve
+    name: delve
+
+snapshot:
+  version_template: "{{ .Tag }}-next"
