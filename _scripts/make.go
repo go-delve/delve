@@ -23,9 +23,6 @@ var NOTimeout bool
 var TestIncludePIE bool
 var TestSet, TestRegex, TestBackend, TestBuildMode string
 var Tags *[]string
-var Architecture string
-var OS string
-var DisableGit bool
 
 func NewMakeCommands() *cobra.Command {
 	RootCommand := &cobra.Command{
@@ -43,27 +40,13 @@ func NewMakeCommands() *cobra.Command {
 		Use:   "build",
 		Short: "Build delve",
 		Run: func(cmd *cobra.Command, args []string) {
-			envflags := []string{}
-			if len(Architecture) > 0 {
-				envflags = append(envflags, "GOARCH="+Architecture)
-			}
-			if len(OS) > 0 {
-				envflags = append(envflags, "GOOS="+OS)
-			}
-			if len(envflags) > 0 {
-				executeEnv(envflags, "go", "build", "-ldflags", "-extldflags -static", tagFlags(false), buildFlags(), DelveMainPackagePath)
-			} else {
-				execute("go", "build", "-ldflags", "-extldflags -static", tagFlags(false), buildFlags(), DelveMainPackagePath)
-			}
+			execute("goreleaser", "build", "--single-target", "--snapshot", "--clean", "--output", "./dlv")
 			if runtime.GOOS == "darwin" && os.Getenv("CERT") != "" && canMacnative() && !isCodesigned("./dlv") {
 				codesign("./dlv")
 			}
 		},
 	}
 	Tags = buildCmd.PersistentFlags().StringArray("tags", []string{}, "Build tags")
-	buildCmd.PersistentFlags().BoolVarP(&DisableGit, "no-git", "G", false, "Do not use git")
-	buildCmd.PersistentFlags().StringVar(&Architecture, "GOARCH", "", "Architecture to build for")
-	buildCmd.PersistentFlags().StringVar(&OS, "GOOS", "", "OS to build for")
 	RootCommand.AddCommand(buildCmd)
 
 	RootCommand.AddCommand(&cobra.Command{
@@ -528,12 +511,7 @@ func allPackages() []string {
 }
 
 // getBuildSHA will invoke git to return the current SHA of the commit at HEAD.
-// If invoking git has been disabled, it will return an empty string instead.
 func getBuildSHA() (string, error) {
-	if DisableGit {
-		return "", nil
-	}
-
 	buildSHA, err := exec.Command("git", "rev-parse", "HEAD").CombinedOutput()
 	if err != nil {
 		return "", err

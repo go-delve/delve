@@ -19,6 +19,12 @@ When filing an issue, make sure to answer these six questions:
 
 Fork this repo and create your own feature branch. Install all dependencies as documented in the README.
 
+### Build prerequisites
+
+- Go (see `go.mod` for minimum version)
+- [goreleaser v2](https://goreleaser.com/install/) — required for `make build`
+  Install: `go install github.com/goreleaser/goreleaser/v2@latest`
+
 ### Guidelines
 
 Consider the following guidelines when preparing to submit a patch:

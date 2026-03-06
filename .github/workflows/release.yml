@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run only (snapshot build, not published to GitHub Releases)'
+        type: boolean
+        default: true
+
+# Cancel in-progress runs for the same ref.
+concurrency:
+  group: "${{ github.ref }}-release"
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # create GitHub Release and upload assets
+  id-token: write   # cosign OIDC for keyless signing
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history required for goreleaser release notes
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Run goreleaser (release)
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: ~> v2
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run goreleaser (snapshot)
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run == true
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: ~> v2
+          args: release --snapshot --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload snapshot artifacts
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshot-dist
+          path: dist/
+          retention-days: 7
