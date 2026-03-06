@@ -1945,7 +1945,7 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 		requestedBp.AddrPid = loc.PCPids
 		if tracepoint {
 			requestedBp.LoadArgs = &ShortLoadConfig
-			requestedBp.TraceVerbosity = 0 // values-only (same as default)
+			t.traceVerbosity = 0 // Default verbosity for terminal traces
 		}
 
 		bp, err := t.client.CreateBreakpointWithExpr(requestedBp, spec, t.substitutePathRules(), false)
@@ -1979,11 +1979,10 @@ func setBreakpoint(t *Term, ctx callContext, tracepoint bool, argstr string) ([]
 			}
 			for j := range addrs {
 				_, err = t.client.CreateBreakpoint(&api.Breakpoint{
-					Addr:           addrs[j],
-					TraceReturn:    true,
-					Line:           -1,
-					LoadArgs:       &ShortLoadConfig,
-					TraceVerbosity: 0, // values-only (same as default)
+					Addr:        addrs[j],
+					TraceReturn: true,
+					Line:        -1,
+					LoadArgs:    &ShortLoadConfig,
 				})
 				if err != nil {
 					return nil, err
@@ -2990,8 +2989,8 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 		tracePrefix = fmt.Sprintf("goroutine(%d):", th.GoroutineID)
 	}
 
-	// Get verbosity level from breakpoint
-	verbosity := th.Breakpoint.TraceVerbosity
+	// Get verbosity level from terminal
+	verbosity := t.traceVerbosity
 	if th.Breakpoint.Tracepoint {
 		// Print trace only if there was a match on the function while TraceFollowCalls is on or if it's a regular trace
 		if rootindex != -1 || th.Breakpoint.TraceFollowCalls <= 0 {
