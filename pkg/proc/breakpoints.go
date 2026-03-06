@@ -73,8 +73,6 @@ type Breakpoint struct {
 	RootFuncName string
 	// TraceFollowCalls indicates the depth of tracing
 	TraceFollowCalls int
-	// TraceVerbosity indicates the verbosity level for trace parameter output (0-4)
-	TraceVerbosity int
 }
 
 // Breaklet represents one of multiple breakpoints that can overlap on a
@@ -1151,8 +1149,6 @@ type LogicalBreakpoint struct {
 	RootFuncName string
 	// depth of tracing
 	TraceFollowCalls int
-	// TraceVerbosity indicates the verbosity level for trace parameter output (0-4)
-	TraceVerbosity int
 }
 
 // SetBreakpoint describes how a breakpoint should be set.

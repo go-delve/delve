@@ -801,7 +801,6 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 					LoadArgs:         &loadCfg,
 					TraceFollowCalls: traceFollowCalls,
 					RootFuncName:     regexp,
-					TraceVerbosity:   traceVerbose,
 				})
 
 				if err != nil && !isBreakpointExistsErr(err) {
@@ -824,7 +823,6 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 						LoadArgs:         &loadCfg,
 						TraceFollowCalls: traceFollowCalls,
 						RootFuncName:     regexp,
-						TraceVerbosity:   traceVerbose,
 					})
 					if err != nil && !isBreakpointExistsErr(err) {
 						fmt.Fprintf(os.Stderr, "unable to set tracepoint on function %s: %#v\n", funcs[i], err)
@@ -844,6 +842,7 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 		}
 		t := terminal.New(client, cfg)
 		t.SetTraceNonInteractive()
+		t.SetTraceVerbosity(traceVerbose)
 		t.RedirectTo(os.Stderr)
 		defer t.Close()
 		if traceUseEBPF {
@@ -861,14 +860,30 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 							return
 						}
 						for _, t := range tracepoints {
-							var params strings.Builder
+							var paramList []string
 							for _, p := range t.InputParams {
-								if params.Len() > 0 {
-									params.WriteString(", ")
-								}
 								// Format based on verbosity level
 								formatted := api.FormatTraceVariable(p, traceVerbose)
-								params.WriteString(formatted)
+								// Add parameter names for verbosity >= 1
+								if traceVerbose == 0 {
+									paramList = append(paramList, formatted)
+								} else {
+									prefix := ""
+									if traceVerbose >= 3 {
+										prefix = "  " // Indent for multi-line format
+									}
+									paramList = append(paramList, fmt.Sprintf("%s%s: %s", prefix, p.Name, formatted))
+								}
+							}
+
+							// Join parameters based on verbosity
+							var paramStr string
+							if len(paramList) > 0 {
+								if traceVerbose >= 3 {
+									paramStr = strings.Join(paramList, "\n")
+								} else {
+									paramStr = strings.Join(paramList, ", ")
+								}
 							}
 
 							if traceShowTimestamp {
@@ -882,7 +897,13 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 								}
 								fmt.Fprintf(os.Stderr, ">> goroutine(%d): %s => (%s)\n", t.GoroutineID, t.FunctionName, strings.Join(retVals, ","))
 							} else {
-								fmt.Fprintf(os.Stderr, "> goroutine(%d): %s(%s)\n", t.GoroutineID, t.FunctionName, params.String())
+								fmt.Fprintf(os.Stderr, "> goroutine(%d): %s(", t.GoroutineID, t.FunctionName)
+								if traceVerbose >= 3 {
+									// Levels 3-4: Multi-line format
+									fmt.Fprintf(os.Stderr, "\n")
+								}
+								fmt.Fprintf(os.Stderr, "\n%s)\n", paramStr)
+
 							}
 						}
 					}

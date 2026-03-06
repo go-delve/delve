@@ -34,7 +34,6 @@ func ConvertLogicalBreakpoint(lbp *proc.LogicalBreakpoint) *Breakpoint {
 		UserData:         lbp.UserData,
 		RootFuncName:     lbp.RootFuncName,
 		TraceFollowCalls: lbp.TraceFollowCalls,
-		TraceVerbosity:   lbp.TraceVerbosity,
 	}
 
 	b.HitCount = map[string]uint64{}
