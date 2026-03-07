@@ -1300,7 +1300,7 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 		assertNoError(err, t, "GoroutinesInfo()")
 		found := make([]bool, 10)
 		for _, g := range gs {
-			frames, err := c.Stacktrace(g.ID, 40, 0, &normalLoadConfig)
+			frames, err := c.Stacktrace(g.ID, 40, 0, 0, &normalLoadConfig)
 			assertNoError(err, t, fmt.Sprintf("Stacktrace(%d)", g.ID))
 			t.Logf("goroutine %d", g.ID)
 			for i, frame := range frames {
@@ -1341,7 +1341,7 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 			t.Fatalf("Continue(): %v\n", state.Err)
 		}
 
-		frames, err := c.Stacktrace(-1, 10, 0, &normalLoadConfig)
+		frames, err := c.Stacktrace(-1, 10, 0, 0, &normalLoadConfig)
 		assertNoError(err, t, "Stacktrace")
 
 		cur := 3
@@ -1362,6 +1362,12 @@ func TestClientServer_FullStacktrace(t *testing.T) {
 			if cur < 0 {
 				break
 			}
+		}
+
+		framesWithSkip, err := c.Stacktrace(-1, 10, len(frames)-1, 0, nil)
+		assertNoError(err, t, "Stacktrace")
+		if len(framesWithSkip) != 1 {
+			t.Errorf("wrong number of frames returned with skip parameter: %d\n", len(framesWithSkip))
 		}
 	})
 }
@@ -1424,7 +1430,7 @@ func TestIssue355(t *testing.T) {
 		assertError(err, t, "ListScopeRegisters()")
 		_, _, err = c.ListGoroutines(0, 0)
 		assertError(err, t, "ListGoroutines()")
-		_, err = c.Stacktrace(gid, 10, 0, &normalLoadConfig)
+		_, err = c.Stacktrace(gid, 10, 0, 0, &normalLoadConfig)
 		assertError(err, t, "Stacktrace()")
 		_, _, err = c.FindLocation(api.EvalScope{GoroutineID: gid}, "+1", false, nil)
 		assertError(err, t, "FindLocation()")
@@ -1560,7 +1566,7 @@ func TestNegativeStackDepthBug(t *testing.T) {
 		ch := c.Continue()
 		state := <-ch
 		assertNoError(state.Err, t, "Continue()")
-		_, err = c.Stacktrace(-1, -2, 0, &normalLoadConfig)
+		_, err = c.Stacktrace(-1, -2, 0, 0, &normalLoadConfig)
 		assertError(err, t, "Stacktrace()")
 	})
 }
@@ -2741,7 +2747,7 @@ func TestGenericsBreakpoint(t *testing.T) {
 		}
 
 		frame1Line := func() int {
-			frames, err := c.Stacktrace(-1, 10, 0, nil)
+			frames, err := c.Stacktrace(-1, 10, 0, 0, nil)
 			assertNoError(err, t, "Stacktrace")
 			return frames[1].Line
 		}

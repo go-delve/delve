@@ -889,7 +889,7 @@ func (c *Commands) printGoroutines(t *Term, ctx callContext, indent string, gs [
 			writeGoroutineLabels(t.stdout, g, indent+"\t")
 		}
 		if flags&api.PrintGoroutinesStack != 0 {
-			stack, err := t.client.Stacktrace(g.ID, depth, 0, nil)
+			stack, err := t.client.Stacktrace(g.ID, depth, 0, 0, nil)
 			if err != nil {
 				return err
 			}
@@ -1043,11 +1043,11 @@ func (c *Commands) frameCommand(t *Term, ctx callContext, argstr string, directi
 	if frame < 0 {
 		return fmt.Errorf("Invalid frame %d", frame)
 	}
-	stack, err := t.client.Stacktrace(ctx.Scope.GoroutineID, frame, 0, nil)
+	stack, err := t.client.Stacktrace(ctx.Scope.GoroutineID, frame, frame, 0, nil)
 	if err != nil {
 		return err
 	}
-	if frame >= len(stack) {
+	if len(stack) == 0 {
 		return fmt.Errorf("Invalid frame %d", frame)
 	}
 	c.frame = frame
@@ -1056,7 +1056,7 @@ func (c *Commands) frameCommand(t *Term, ctx callContext, argstr string, directi
 		return err
 	}
 	printcontext(t, state)
-	th := stack[frame]
+	th := stack[0]
 	fmt.Fprintf(t.stdout, "Frame %d: %s:%d (PC: %x)\n", frame, t.formatPath(th.File), th.Line, th.PC)
 	printfile(t, th.File, th.Line, true)
 	return nil
@@ -2484,7 +2484,7 @@ func stackCommand(t *Term, ctx callContext, args string) error {
 	if sa.full {
 		cfg = &ShortLoadConfig
 	}
-	stack, err := t.client.Stacktrace(ctx.Scope.GoroutineID, sa.depth, sa.opts, cfg)
+	stack, err := t.client.Stacktrace(ctx.Scope.GoroutineID, sa.depth, 0, sa.opts, cfg)
 	if err != nil {
 		return err
 	}
@@ -2605,14 +2605,14 @@ func getLocation(t *Term, ctx callContext, args string, showContext bool) (file 
 		return state.CurrentThread.File, state.CurrentThread.Line, true, nil
 
 	case len(args) == 0 && ctx.scoped():
-		locs, err := t.client.Stacktrace(ctx.Scope.GoroutineID, ctx.Scope.Frame, 0, nil)
+		locs, err := t.client.Stacktrace(ctx.Scope.GoroutineID, ctx.Scope.Frame, ctx.Scope.Frame, 0, nil)
 		if err != nil {
 			return "", 0, false, err
 		}
-		if ctx.Scope.Frame >= len(locs) {
+		if len(locs) == 0 {
 			return "", 0, false, fmt.Errorf("Frame %d does not exist in goroutine %d", ctx.Scope.Frame, ctx.Scope.GoroutineID)
 		}
-		loc := locs[ctx.Scope.Frame]
+		loc := locs[0]
 		gid := ctx.Scope.GoroutineID
 		if gid < 0 {
 			state, err := t.client.GetState()

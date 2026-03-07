@@ -447,9 +447,9 @@ func (c *RPCClient) ListGoroutinesWithFilter(start, count int, filters []api.Lis
 	return out.Goroutines, out.Groups, out.Nextg, out.TooManyGroups, err
 }
 
-func (c *RPCClient) Stacktrace(goroutineId int64, depth int, opts api.StacktraceOptions, cfg *api.LoadConfig) ([]api.Stackframe, error) {
+func (c *RPCClient) Stacktrace(goroutineId int64, depth, skip int, opts api.StacktraceOptions, cfg *api.LoadConfig) ([]api.Stackframe, error) {
 	var out StacktraceOut
-	err := c.call("Stacktrace", StacktraceIn{goroutineId, depth, false, false, opts, cfg}, &out)
+	err := c.call("Stacktrace", StacktraceIn{goroutineId, depth, false, false, opts, cfg, skip}, &out)
 	return out.Locations, err
 }
 
