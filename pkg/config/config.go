@@ -116,6 +116,10 @@ type Config struct {
 	// TraceShowTimestamp controls whether to show timestamp in the trace
 	// output.
 	TraceShowTimestamp bool `yaml:"trace-show-timestamp"`
+
+	// Prompt is the string printed before each command. If empty, the
+	// default prompt "(dlv) " is used.
+	Prompt string `yaml:"prompt,omitempty"`
 }
 
 var Documentation = map[string]string{
@@ -170,6 +174,16 @@ Adds, removes or clears debug-info-directories.
  - 'source': always show the current position in the source code.
  - 'disassembly': always show the current position in the program disassembly.
  - 'default': show the current position in the disassembly after 'step-instruction', otherwise in source code.
+`,
+
+	"prompt": `Changes Delve's prompt. This string can contain various escape codes:
+
+  $d		inserts the current time in RFC3339 format
+  $d{fmt}	inserts the current time formatted with fmt (using the time package syntax)
+  $f		inserts the current frame number
+  $g		inserts the current goroutine ID
+  $t		inserts the current thread ID
+  $p		inserts the current PID
 `,
 }
 
@@ -375,6 +389,15 @@ debug-info-directories: ["/usr/lib/debug/.build-id"]
 #  - 'disassembly' always show disassembly
 #  - 'default' show disassembly after step-instruction, source otherwise
 # position default
+
+# Uncomment to change Delve's default prompt.
+# The prompt string can contain various escape codes:
+#  $d		inserts the current time in RFC3339 format
+#  $d{fmt}	inserts the current time formatted with fmt (using the time package syntax)
+#  $f		inserts the current frame number
+#  $g		inserts the current goroutine ID
+#  $t		inserts the current thread ID
+#  $p		inserts the current PID
 `)
 	return err
 }
@@ -447,6 +470,8 @@ func WriteConfigDocumentation(w io.Writer) {
 			fmt.Fprint(w, "debug-info-directories | List of directories to use when searching for separate debug info files.\n")
 		case "position":
 			fmt.Fprint(w, "position | Controls how the current position in the program is displayed (source | disassembly | default).\n")
+		case "prompt":
+			fmt.Fprint(w, "prompt | Controls Delve's command line prompt. Use `help config prompt` for documentation on the available escape codes.\n")
 		default:
 			doc := Documentation[name]
 			if doc[len(doc)-1] == '\n' {
