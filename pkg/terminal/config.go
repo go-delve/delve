@@ -40,6 +40,10 @@ func configureList(t *Term) error {
 	return w.Flush()
 }
 
+func configureValidParameter(t *Term, cfgname string) bool {
+	return config.ConfigureFindFieldByName(t.conf, cfgname, "yaml") != (reflect.Value{})
+}
+
 func configureSet(t *Term, args string) error {
 	v := config.Split2PartsBySpace(args)
 

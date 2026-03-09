@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/goversion"
 	protest "github.com/go-delve/delve/pkg/proc/test"
 	"github.com/go-delve/delve/pkg/terminal"
@@ -338,6 +339,10 @@ func TestGeneratedDoc(t *testing.T) {
 	commands := terminal.DebugCommands(nil)
 	commands.WriteMarkdown(&generatedBuf)
 	checkAutogenDoc(t, "Documentation/cli/README.md", "_scripts/gen-cli-docs.go", generatedBuf.Bytes())
+
+	generatedBuf.Reset()
+	config.WriteConfigDocumentation(&generatedBuf)
+	checkAutogenDoc(t, "Documentation/cli/config.md", "_scripts/gen-cli-docs.go", generatedBuf.Bytes())
 
 	// Checks gen-usage-docs.go
 	if runtime.GOARCH != "ppc64le" {
