@@ -153,7 +153,7 @@ func (s *Session) evaluateConfig(_, _ int, expr string) (string, error) {
 		case "showGlobalVariables", "showRegisters":
 			// Variable data has become invalidated.
 			s.send(&dap.InvalidatedEvent{
-				Event: *newEvent("invalidated"),
+				Event: *s.newEvent("invalidated"),
 				Body: dap.InvalidatedEventBody{
 					Areas: []dap.InvalidatedAreas{"variables"},
 				},
@@ -161,7 +161,7 @@ func (s *Session) evaluateConfig(_, _ int, expr string) (string, error) {
 		case "goroutineFilters", "hideSystemGoroutines", "showPprofLabels":
 			// Thread related data has become invalidated.
 			s.send(&dap.InvalidatedEvent{
-				Event: *newEvent("invalidated"),
+				Event: *s.newEvent("invalidated"),
 				Body: dap.InvalidatedEventBody{
 					Areas: []dap.InvalidatedAreas{"threads"},
 				},

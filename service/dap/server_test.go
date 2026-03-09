@@ -384,60 +384,53 @@ func TestLaunchStopOnEntry(t *testing.T) {
 		// 1 >> initialize, << initialize
 		client.InitializeRequest()
 		initResp := client.ExpectInitializeResponseAndCapabilities(t)
-		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
+		if initResp.RequestSeq != 1 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=1", initResp)
 		}
 
 		// 2 >> launch, << process, << initialized, << launch
 		client.LaunchRequest("exec", fixture.Path, stopOnEntry)
 
-		processEvent := client.ExpectProcessEvent(t)
-		if processEvent.Seq != 0 {
-			t.Errorf("\ngot %#v\nwant Seq=0", processEvent)
-		}
+		client.ExpectProcessEvent(t)
 
-		initEvent := client.ExpectInitializedEvent(t)
-		if initEvent.Seq != 0 {
-			t.Errorf("\ngot %#v\nwant Seq=0", initEvent)
-		}
+		client.ExpectInitializedEvent(t)
 		launchResp := client.ExpectLaunchResponse(t)
-		if launchResp.Seq != 0 || launchResp.RequestSeq != 2 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=2", launchResp)
+		if launchResp.RequestSeq != 2 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=2", launchResp)
 		}
 
 		// 3 >> setBreakpoints, << setBreakpoints
 		client.SetBreakpointsRequest(fixture.Source, nil)
 		sbpResp := client.ExpectSetBreakpointsResponse(t)
-		if sbpResp.Seq != 0 || sbpResp.RequestSeq != 3 || len(sbpResp.Body.Breakpoints) != 0 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=3, len(Breakpoints)=0", sbpResp)
+		if sbpResp.RequestSeq != 3 || len(sbpResp.Body.Breakpoints) != 0 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=3, len(Breakpoints)=0", sbpResp)
 		}
 
 		// 4 >> setExceptionBreakpoints, << setExceptionBreakpoints
 		client.SetExceptionBreakpointsRequest(nil)
 		sebpResp := client.ExpectSetExceptionBreakpointsResponse(t)
-		if sebpResp.Seq != 0 || sebpResp.RequestSeq != 4 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=4", sebpResp)
+		if sebpResp.RequestSeq != 4 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=4", sebpResp)
 		}
 
 		// 5 >> configurationDone, << stopped, << configurationDone
 		client.ConfigurationDoneRequest()
 		stopEvent := client.ExpectStoppedEvent(t)
-		if stopEvent.Seq != 0 ||
-			stopEvent.Body.Reason != "entry" ||
+		if stopEvent.Body.Reason != "entry" ||
 			stopEvent.Body.ThreadId != 1 ||
 			!stopEvent.Body.AllThreadsStopped {
-			t.Errorf("\ngot %#v\nwant Seq=0, Body={Reason=\"entry\", ThreadId=1, AllThreadsStopped=true}", stopEvent)
+			t.Errorf("\ngot %#v\nwant Body={Reason=\"entry\", ThreadId=1, AllThreadsStopped=true}", stopEvent)
 		}
 		cdResp := client.ExpectConfigurationDoneResponse(t)
-		if cdResp.Seq != 0 || cdResp.RequestSeq != 5 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=5", cdResp)
+		if cdResp.RequestSeq != 5 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=5", cdResp)
 		}
 
 		// 6 >> threads, << threads
 		client.ThreadsRequest()
 		tResp := client.ExpectThreadsResponse(t)
-		if tResp.Seq != 0 || tResp.RequestSeq != 6 || len(tResp.Body.Threads) != 1 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6 len(Threads)=1", tResp)
+		if tResp.RequestSeq != 6 || len(tResp.Body.Threads) != 1 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=6 len(Threads)=1", tResp)
 		}
 		if tResp.Body.Threads[0].Id != 1 || tResp.Body.Threads[0].Name != "Dummy" {
 			t.Errorf("\ngot %#v\nwant Id=1, Name=\"Dummy\"", tResp)
@@ -446,62 +439,59 @@ func TestLaunchStopOnEntry(t *testing.T) {
 		// 7 >> threads, << threads
 		client.ThreadsRequest()
 		tResp = client.ExpectThreadsResponse(t)
-		if tResp.Seq != 0 || tResp.RequestSeq != 7 || len(tResp.Body.Threads) != 1 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7 len(Threads)=1", tResp)
+		if tResp.RequestSeq != 7 || len(tResp.Body.Threads) != 1 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=7 len(Threads)=1", tResp)
 		}
 
 		// 8 >> stackTrace, << error
 		client.StackTraceRequest(1, 0, 20)
 		stResp := client.ExpectInvisibleErrorResponse(t)
-		if stResp.Seq != 0 || stResp.RequestSeq != 8 || !checkErrorMessageFormat(stResp.Body.Error, "Unable to produce stack trace: unknown goroutine 1") {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8 Format=\"Unable to produce stack trace: unknown goroutine 1\"", stResp)
+		if stResp.RequestSeq != 8 || !checkErrorMessageFormat(stResp.Body.Error, "Unable to produce stack trace: unknown goroutine 1") {
+			t.Errorf("\ngot %#v\nwant RequestSeq=8 Format=\"Unable to produce stack trace: unknown goroutine 1\"", stResp)
 		}
 
 		// 9 >> stackTrace, << error
 		client.StackTraceRequest(1, 0, 20)
 		stResp = client.ExpectInvisibleErrorResponse(t)
-		if stResp.Seq != 0 || stResp.RequestSeq != 9 || !checkErrorMessageId(stResp.Body.Error, UnableToProduceStackTrace) {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Id=%d", stResp, UnableToProduceStackTrace)
+		if stResp.RequestSeq != 9 || !checkErrorMessageId(stResp.Body.Error, UnableToProduceStackTrace) {
+			t.Errorf("\ngot %#v\nwant RequestSeq=9 Id=%d", stResp, UnableToProduceStackTrace)
 		}
 
 		// 10 >> evaluate, << error
 		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
 		erResp := client.ExpectInvisibleErrorResponse(t)
-		if erResp.Seq != 0 || erResp.RequestSeq != 10 || !checkErrorMessageId(erResp.Body.Error, UnableToEvaluateExpression) {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=%d", erResp, UnableToEvaluateExpression)
+		if erResp.RequestSeq != 10 || !checkErrorMessageId(erResp.Body.Error, UnableToEvaluateExpression) {
+			t.Errorf("\ngot %#v\nwant RequestSeq=10 Id=%d", erResp, UnableToEvaluateExpression)
 		}
 
 		// 11 >> evaluate, << evaluate
 		client.EvaluateRequest("1+1", 0 /*no frame specified*/, "repl")
 		evResp := client.ExpectEvaluateResponse(t)
-		if evResp.Seq != 0 || evResp.RequestSeq != 11 || evResp.Body.Result != "2" {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Result=2", evResp)
+		if evResp.RequestSeq != 11 || evResp.Body.Result != "2" {
+			t.Errorf("\ngot %#v\nwant RequestSeq=10 Result=2", evResp)
 		}
 
 		// 12 >> continue, << continue, << terminated
 		client.ContinueRequest(1)
 		contResp := client.ExpectContinueResponse(t)
-		if contResp.Seq != 0 || contResp.RequestSeq != 12 || !contResp.Body.AllThreadsContinued {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=12 Body.AllThreadsContinued=true", contResp)
+		if contResp.RequestSeq != 12 || !contResp.Body.AllThreadsContinued {
+			t.Errorf("\ngot %#v\nwant RequestSeq=12 Body.AllThreadsContinued=true", contResp)
 		}
-		termEvent := client.ExpectTerminatedEvent(t)
-		if termEvent.Seq != 0 {
-			t.Errorf("\ngot %#v\nwant Seq=0", termEvent)
-		}
+		client.ExpectTerminatedEvent(t)
 
 		// 13 >> disconnect, << disconnect
 		client.DisconnectRequest()
 		oep := client.ExpectOutputEventProcessExited(t, 0)
-		if oep.Seq != 0 || oep.Body.Category != "console" {
-			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
+		if oep.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Category='console'", oep)
 		}
 		oed := client.ExpectOutputEventDetaching(t)
-		if oed.Seq != 0 || oed.Body.Category != "console" {
-			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+		if oed.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Category='console'", oed)
 		}
 		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.Seq != 0 || dResp.RequestSeq != 13 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=13", dResp)
+		if dResp.RequestSeq != 13 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=13", dResp)
 		}
 		client.ExpectTerminatedEvent(t)
 	})
@@ -532,57 +522,53 @@ func TestAttachStopOnEntry(t *testing.T) {
 		// 1 >> initialize, << initialize
 		client.InitializeRequest()
 		initResp := client.ExpectInitializeResponseAndCapabilities(t)
-		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
+		if initResp.RequestSeq != 1 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=1", initResp)
 		}
 
 		// 2 >> attach, << initialized, << attach
 		client.AttachRequest(
 			map[string]any{"mode": "local", "processId": cmd.Process.Pid, "stopOnEntry": true, "backend": "default"})
 		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
-		initEvent := client.ExpectInitializedEvent(t)
-		if initEvent.Seq != 0 {
-			t.Errorf("\ngot %#v\nwant Seq=0", initEvent)
-		}
+		client.ExpectInitializedEvent(t)
 		attachResp := client.ExpectAttachResponse(t)
-		if attachResp.Seq != 0 || attachResp.RequestSeq != 2 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=2", attachResp)
+		if attachResp.RequestSeq != 2 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=2", attachResp)
 		}
 
 		// 3 >> setBreakpoints, << setBreakpoints
 		client.SetBreakpointsRequest(fixture.Source, nil)
 		sbpResp := client.ExpectSetBreakpointsResponse(t)
-		if sbpResp.Seq != 0 || sbpResp.RequestSeq != 3 || len(sbpResp.Body.Breakpoints) != 0 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=3, len(Breakpoints)=0", sbpResp)
+		if sbpResp.RequestSeq != 3 || len(sbpResp.Body.Breakpoints) != 0 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=3, len(Breakpoints)=0", sbpResp)
 		}
 
 		// 4 >> setExceptionBreakpoints, << setExceptionBreakpoints
 		client.SetExceptionBreakpointsRequest(nil)
 		sebpResp := client.ExpectSetExceptionBreakpointsResponse(t)
-		if sebpResp.Seq != 0 || sebpResp.RequestSeq != 4 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=4", sebpResp)
+		if sebpResp.RequestSeq != 4 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=4", sebpResp)
 		}
 
 		// 5 >> configurationDone, << stopped, << configurationDone
 		client.ConfigurationDoneRequest()
 		stopEvent := client.ExpectStoppedEvent(t)
-		if stopEvent.Seq != 0 ||
-			stopEvent.Body.Reason != "entry" ||
+		if stopEvent.Body.Reason != "entry" ||
 			stopEvent.Body.ThreadId != 1 ||
 			!stopEvent.Body.AllThreadsStopped {
-			t.Errorf("\ngot %#v\nwant Seq=0, Body={Reason=\"entry\", ThreadId=1, AllThreadsStopped=true}", stopEvent)
+			t.Errorf("\ngot %#v\nwant Body={Reason=\"entry\", ThreadId=1, AllThreadsStopped=true}", stopEvent)
 		}
 		cdResp := client.ExpectConfigurationDoneResponse(t)
-		if cdResp.Seq != 0 || cdResp.RequestSeq != 5 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=5", cdResp)
+		if cdResp.RequestSeq != 5 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=5", cdResp)
 		}
 
 		// 6 >> threads, << threads
 		client.ThreadsRequest()
 		tResp := client.ExpectThreadsResponse(t)
 		// Expect main goroutine plus runtime at this point.
-		if tResp.Seq != 0 || tResp.RequestSeq != 6 || len(tResp.Body.Threads) < 2 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6 len(Threads)>1", tResp)
+		if tResp.RequestSeq != 6 || len(tResp.Body.Threads) < 2 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=6 len(Threads)>1", tResp)
 		}
 
 		// 7 >> threads, << threads
@@ -600,22 +586,22 @@ func TestAttachStopOnEntry(t *testing.T) {
 		// 10 >> evaluate, << error
 		client.EvaluateRequest("foo", 0 /*no frame specified*/, "repl")
 		erResp := client.ExpectInvisibleErrorResponse(t)
-		if erResp.Seq != 0 || erResp.RequestSeq != 10 || !checkErrorMessageId(erResp.Body.Error, UnableToEvaluateExpression) {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Id=%d", erResp, UnableToEvaluateExpression)
+		if erResp.RequestSeq != 10 || !checkErrorMessageId(erResp.Body.Error, UnableToEvaluateExpression) {
+			t.Errorf("\ngot %#v\nwant RequestSeq=10 Id=%d", erResp, UnableToEvaluateExpression)
 		}
 
 		// 11 >> evaluate, << evaluate
 		client.EvaluateRequest("1+1", 0 /*no frame specified*/, "repl")
 		evResp := client.ExpectEvaluateResponse(t)
-		if evResp.Seq != 0 || evResp.RequestSeq != 11 || evResp.Body.Result != "2" {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Result=2", evResp)
+		if evResp.RequestSeq != 11 || evResp.Body.Result != "2" {
+			t.Errorf("\ngot %#v\nwant RequestSeq=10 Result=2", evResp)
 		}
 
 		// 12 >> continue, << continue
 		client.ContinueRequest(1)
 		cResp := client.ExpectContinueResponse(t)
-		if cResp.Seq != 0 || cResp.RequestSeq != 12 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=12", cResp)
+		if cResp.RequestSeq != 12 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=12", cResp)
 		}
 
 		// TODO(polina): once https://github.com/go-delve/delve/issues/2259 is
@@ -656,8 +642,8 @@ func TestLaunchWithFollowExec(t *testing.T) {
 		// 1 >> initialize, << initialize
 		client.InitializeRequest()
 		initResp := client.ExpectInitializeResponseAndCapabilities(t)
-		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
+		if initResp.RequestSeq != 1 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=1", initResp)
 		}
 
 		// 2 >> launch, << process, << initialized, << launch
@@ -669,25 +655,19 @@ func TestLaunchWithFollowExec(t *testing.T) {
 			"followExec":  true,
 		})
 
-		processEvent := client.ExpectProcessEvent(t)
-		if processEvent.Seq != 0 {
-			t.Errorf("\ngot %#v\nwant Seq=0", processEvent)
-		}
+		client.ExpectProcessEvent(t)
 
-		initEvent := client.ExpectInitializedEvent(t)
-		if initEvent.Seq != 0 {
-			t.Errorf("\ngot %#v\nwant Seq=0", initEvent)
-		}
+		client.ExpectInitializedEvent(t)
 		launchResp := client.ExpectLaunchResponse(t)
-		if launchResp.Seq != 0 || launchResp.RequestSeq != 2 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=2", launchResp)
+		if launchResp.RequestSeq != 2 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=2", launchResp)
 		}
 
 		// 3 >> setBreakpoints, << setBreakpoints
 		client.SetBreakpointsRequest(childFixture.Source, []int{6})
 		sbpResp := client.ExpectSetBreakpointsResponse(t)
-		if sbpResp.Seq != 0 || sbpResp.RequestSeq != 3 || len(sbpResp.Body.Breakpoints) != 1 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=3, len(Breakpoints)=1", sbpResp)
+		if sbpResp.RequestSeq != 3 || len(sbpResp.Body.Breakpoints) != 1 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=3, len(Breakpoints)=1", sbpResp)
 		}
 		if sbpResp.Body.Breakpoints[0].Verified {
 			t.Errorf("got breakpoints[0].Verified=true, want false")
@@ -696,29 +676,28 @@ func TestLaunchWithFollowExec(t *testing.T) {
 		// 4 >> setExceptionBreakpoints, << setExceptionBreakpoints
 		client.SetExceptionBreakpointsRequest(nil)
 		sebpResp := client.ExpectSetExceptionBreakpointsResponse(t)
-		if sebpResp.Seq != 0 || sebpResp.RequestSeq != 4 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=4", sebpResp)
+		if sebpResp.RequestSeq != 4 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=4", sebpResp)
 		}
 
 		// 5 >> configurationDone, << stopped, << configurationDone
 		client.ConfigurationDoneRequest()
 		stopEvent := client.ExpectStoppedEvent(t)
-		if stopEvent.Seq != 0 ||
-			stopEvent.Body.Reason != "entry" ||
+		if stopEvent.Body.Reason != "entry" ||
 			stopEvent.Body.ThreadId != 1 ||
 			!stopEvent.Body.AllThreadsStopped {
-			t.Errorf("\ngot %#v\nwant Seq=0, Body={Reason=\"entry\", ThreadId=1, AllThreadsStopped=true}", stopEvent)
+			t.Errorf("\ngot %#v\nwant Body={Reason=\"entry\", ThreadId=1, AllThreadsStopped=true}", stopEvent)
 		}
 		cdResp := client.ExpectConfigurationDoneResponse(t)
-		if cdResp.Seq != 0 || cdResp.RequestSeq != 5 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=5", cdResp)
+		if cdResp.RequestSeq != 5 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=5", cdResp)
 		}
 
 		// 6 >> threads, << threads
 		client.ThreadsRequest()
 		tResp := client.ExpectThreadsResponse(t)
-		if tResp.Seq != 0 || tResp.RequestSeq != 6 || len(tResp.Body.Threads) != 1 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6 len(Threads)=1", tResp)
+		if tResp.RequestSeq != 6 || len(tResp.Body.Threads) != 1 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=6 len(Threads)=1", tResp)
 		}
 		if tResp.Body.Threads[0].Id != 1 || tResp.Body.Threads[0].Name != "Dummy" {
 			t.Errorf("\ngot %#v\nwant Id=1, Name=\"Dummy\"", tResp)
@@ -727,26 +706,25 @@ func TestLaunchWithFollowExec(t *testing.T) {
 		// 7 >> continue, << continue << stopped
 		client.ContinueRequest(1)
 		contResp := client.ExpectContinueResponse(t)
-		if contResp.Seq != 0 || contResp.RequestSeq != 7 || !contResp.Body.AllThreadsContinued {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7 Body.AllThreadsContinued=true", contResp)
+		if contResp.RequestSeq != 7 || !contResp.Body.AllThreadsContinued {
+			t.Errorf("\ngot %#v\nwant RequestSeq=7 Body.AllThreadsContinued=true", contResp)
 		}
 		client.ExpectBreakpointEvent(t)
 		client.ExpectProcessEvent(t)
 		stopEvent = client.ExpectStoppedEvent(t)
-		if stopEvent.Seq != 0 ||
-			stopEvent.Body.Reason != "breakpoint" ||
+		if stopEvent.Body.Reason != "breakpoint" ||
 			stopEvent.Body.ThreadId != 1 ||
 			!stopEvent.Body.AllThreadsStopped ||
 			len(stopEvent.Body.HitBreakpointIds) != 1 ||
 			stopEvent.Body.HitBreakpointIds[0] != sbpResp.Body.Breakpoints[0].Id {
-			t.Errorf("\ngot %#v\nwant Seq=0, Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true, HitBreakpointIds=[1]}", stopEvent)
+			t.Errorf("\ngot %#v\nwant Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true, HitBreakpointIds=[1]}", stopEvent)
 		}
 
 		// 8 >> setBreakpoints, << setBreakpoints
 		client.SetBreakpointsRequest(fixture.Source, []int{54})
 		sbpResp = client.ExpectSetBreakpointsResponse(t)
-		if sbpResp.Seq != 0 || sbpResp.RequestSeq != 8 || len(sbpResp.Body.Breakpoints) != 1 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=8, len(Breakpoints)=1", sbpResp)
+		if sbpResp.RequestSeq != 8 || len(sbpResp.Body.Breakpoints) != 1 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=8, len(Breakpoints)=1", sbpResp)
 		}
 		if !sbpResp.Body.Breakpoints[0].Verified {
 			t.Errorf("got breakpoints[0].Verified=false, want true")
@@ -755,43 +733,39 @@ func TestLaunchWithFollowExec(t *testing.T) {
 		// 9 >> continue, << continue << stopped
 		client.ContinueRequest(1)
 		contResp = client.ExpectContinueResponse(t)
-		if contResp.Seq != 0 || contResp.RequestSeq != 9 || !contResp.Body.AllThreadsContinued {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=9 Body.AllThreadsContinued=true", contResp)
+		if contResp.RequestSeq != 9 || !contResp.Body.AllThreadsContinued {
+			t.Errorf("\ngot %#v\nwant RequestSeq=9 Body.AllThreadsContinued=true", contResp)
 		}
 		stopEvent = client.ExpectStoppedEvent(t)
-		if stopEvent.Seq != 0 ||
-			stopEvent.Body.Reason != "breakpoint" ||
+		if stopEvent.Body.Reason != "breakpoint" ||
 			stopEvent.Body.ThreadId != 1 ||
 			!stopEvent.Body.AllThreadsStopped ||
 			len(stopEvent.Body.HitBreakpointIds) != 1 ||
 			stopEvent.Body.HitBreakpointIds[0] != sbpResp.Body.Breakpoints[0].Id {
-			t.Errorf("\ngot %#v\nwant Seq=0, Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true, HitBreakpointIds=[1]}", stopEvent)
+			t.Errorf("\ngot %#v\nwant Body={Reason=\"breakpoint\", ThreadId=1, AllThreadsStopped=true, HitBreakpointIds=[1]}", stopEvent)
 		}
 
 		// 10 >> continue, << continue << terminated
 		client.ContinueRequest(1)
 		contResp = client.ExpectContinueResponse(t)
-		if contResp.Seq != 0 || contResp.RequestSeq != 10 || !contResp.Body.AllThreadsContinued {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=10 Body.AllThreadsContinued=true", contResp)
+		if contResp.RequestSeq != 10 || !contResp.Body.AllThreadsContinued {
+			t.Errorf("\ngot %#v\nwant RequestSeq=10 Body.AllThreadsContinued=true", contResp)
 		}
-		termEvent := client.ExpectTerminatedEvent(t)
-		if termEvent.Seq != 0 {
-			t.Errorf("\ngot %#v\nwant Seq=0", termEvent)
-		}
+		client.ExpectTerminatedEvent(t)
 
 		// 11 >> disconnect, << disconnect
 		client.DisconnectRequest()
 		oep := client.ExpectOutputEventProcessExited(t, 0)
-		if oep.Seq != 0 || oep.Body.Category != "console" {
-			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
+		if oep.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Category='console'", oep)
 		}
 		oed := client.ExpectOutputEventDetaching(t)
-		if oed.Seq != 0 || oed.Body.Category != "console" {
-			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+		if oed.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Category='console'", oed)
 		}
 		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.Seq != 0 || dResp.RequestSeq != 11 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=11", dResp)
+		if dResp.RequestSeq != 11 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=11", dResp)
 		}
 		client.ExpectTerminatedEvent(t)
 	})
@@ -825,8 +799,8 @@ func TestAttachWithFollowExec(t *testing.T) {
 		// 1 >> initialize, << initialize
 		client.InitializeRequest()
 		initResp := client.ExpectInitializeResponseAndCapabilities(t)
-		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
+		if initResp.RequestSeq != 1 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=1", initResp)
 		}
 
 		// 2 >> attach, << output, << initialized, << attach
@@ -838,20 +812,16 @@ func TestAttachWithFollowExec(t *testing.T) {
 			"backend":     "default",
 		})
 		outputEvent := client.ExpectOutputEvent(t)
-		if outputEvent.Seq != 0 ||
-			outputEvent.Body.Output != "Follow exec not supported in attach request yet." ||
+		if outputEvent.Body.Output != "Follow exec not supported in attach request yet." ||
 			outputEvent.Body.Category != "important" {
-			t.Errorf("\ngot %#v\nwant Seq=0, Body={Output=\"Follow exec not supported in attach request yet.\", Category=\"important\"}", outputEvent)
+			t.Errorf("\ngot %#v\nwant Body={Output=\"Follow exec not supported in attach request yet.\", Category=\"important\"}", outputEvent)
 		}
 
 		client.ExpectCapabilitiesEventSupportTerminateDebuggee(t)
-		initEvent := client.ExpectInitializedEvent(t)
-		if initEvent.Seq != 0 {
-			t.Errorf("\ngot %#v\nwant Seq=0", initEvent)
-		}
+		client.ExpectInitializedEvent(t)
 		attachResp := client.ExpectAttachResponse(t)
-		if attachResp.Seq != 0 || attachResp.RequestSeq != 2 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=2", attachResp)
+		if attachResp.RequestSeq != 2 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=2", attachResp)
 		}
 
 		// 3 >> disconnect, << disconnect
@@ -907,8 +877,8 @@ func TestContinueOnEntry(t *testing.T) {
 		// 6 >> threads, << threads
 		client.ThreadsRequest()
 		tResp := client.ExpectThreadsResponse(t)
-		if tResp.Seq != 0 || tResp.RequestSeq != 6 || len(tResp.Body.Threads) != 1 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=6 len(Threads)=1", tResp)
+		if tResp.RequestSeq != 6 || len(tResp.Body.Threads) != 1 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=6 len(Threads)=1", tResp)
 		}
 		if tResp.Body.Threads[0].Id != 1 || tResp.Body.Threads[0].Name != "Dummy" {
 			t.Errorf("\ngot %#v\nwant Id=1, Name=\"Dummy\"", tResp)
@@ -919,8 +889,8 @@ func TestContinueOnEntry(t *testing.T) {
 		client.ExpectOutputEventProcessExited(t, 0)
 		client.ExpectOutputEventDetaching(t)
 		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.Seq != 0 || dResp.RequestSeq != 7 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=7", dResp)
+		if dResp.RequestSeq != 7 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=7", dResp)
 		}
 		client.ExpectTerminatedEvent(t)
 	})
@@ -5882,7 +5852,7 @@ func TestNoDebug_AcceptNoRequestsButDisconnect(t *testing.T) {
 		client.DisconnectRequestWithKillOption(true)
 		terminated, disconnectResp := false, false
 		for {
-			m, err := client.ReadMessage()
+			m, err := client.ReadMessage(t)
 			if err != nil {
 				break
 			}
@@ -7547,7 +7517,7 @@ func TestBadlyFormattedMessageToServer(t *testing.T) {
 		client.BadRequest()
 		time.Sleep(100 * time.Millisecond)
 
-		_, err := client.ReadMessage()
+		_, err := client.ReadMessage(t)
 
 		if err != io.EOF {
 			t.Errorf("got err=%v, want io.EOF", err)
@@ -8107,8 +8077,8 @@ func TestRedirect(t *testing.T) {
 		// 1 >> initialize, << initialize
 		client.InitializeRequest()
 		initResp := client.ExpectInitializeResponseAndCapabilities(t)
-		if initResp.Seq != 0 || initResp.RequestSeq != 1 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=1", initResp)
+		if initResp.RequestSeq != 1 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=1", initResp)
 		}
 
 		// 2 >> launch, << process, << initialized, << launch
@@ -8118,25 +8088,19 @@ func TestRedirect(t *testing.T) {
 			"program":    fixture.Source,
 			"outputMode": "remote",
 		})
-		processEvent := client.ExpectProcessEvent(t)
-		if processEvent.Seq != 0 {
-			t.Errorf("\ngot %#v\nwant Seq=0", processEvent)
-		}
-		initEvent := client.ExpectInitializedEvent(t)
-		if initEvent.Seq != 0 {
-			t.Errorf("\ngot %#v\nwant Seq=0", initEvent)
-		}
+		client.ExpectProcessEvent(t)
+		client.ExpectInitializedEvent(t)
 		launchResp := client.ExpectLaunchResponse(t)
-		if launchResp.Seq != 0 || launchResp.RequestSeq != 2 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=2", launchResp)
+		if launchResp.RequestSeq != 2 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=2", launchResp)
 		}
 
 		// 5 >> configurationDone, << stopped, << configurationDone
 		client.ConfigurationDoneRequest()
 
 		cdResp := client.ExpectConfigurationDoneResponse(t)
-		if cdResp.Seq != 0 || cdResp.RequestSeq != 3 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=5", cdResp)
+		if cdResp.RequestSeq != 3 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=5", cdResp)
 		}
 
 		// 6 << output, << terminated
@@ -8182,16 +8146,16 @@ func TestRedirect(t *testing.T) {
 		// 7 >> disconnect, << disconnect
 		client.DisconnectRequest()
 		oep := client.ExpectOutputEventProcessExited(t, 0)
-		if oep.Seq != 0 || oep.Body.Category != "console" {
-			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oep)
+		if oep.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Category='console'", oep)
 		}
 		oed := client.ExpectOutputEventDetaching(t)
-		if oed.Seq != 0 || oed.Body.Category != "console" {
-			t.Errorf("\ngot %#v\nwant Seq=0 Category='console'", oed)
+		if oed.Body.Category != "console" {
+			t.Errorf("\ngot %#v\nwant Category='console'", oed)
 		}
 		dResp := client.ExpectDisconnectResponse(t)
-		if dResp.Seq != 0 || dResp.RequestSeq != 4 {
-			t.Errorf("\ngot %#v\nwant Seq=0, RequestSeq=43", dResp)
+		if dResp.RequestSeq != 4 {
+			t.Errorf("\ngot %#v\nwant RequestSeq=43", dResp)
 		}
 		client.ExpectTerminatedEvent(t)
 	})
