@@ -194,6 +194,7 @@ type StacktraceIn struct {
 	Defers bool // read deferred functions (equivalent to passing StacktraceReadDefers in Opts)
 	Opts   api.StacktraceOptions
 	Cfg    *api.LoadConfig
+	Skip   int // number of frames to skip
 }
 
 type StacktraceOut struct {
@@ -215,6 +216,13 @@ func (s *RPCServer) Stacktrace(arg StacktraceIn, out *StacktraceOut) error {
 	rawlocs, err := s.debugger.Stacktrace(arg.Id, arg.Depth, arg.Opts)
 	if err != nil {
 		return err
+	}
+	if arg.Skip > 0 {
+		if arg.Skip >= len(rawlocs) {
+			rawlocs = nil
+		} else {
+			rawlocs = rawlocs[arg.Skip:]
+		}
 	}
 	out.Locations, err = s.debugger.ConvertStacktrace(rawlocs, api.LoadConfigToProc(cfg))
 	return err

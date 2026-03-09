@@ -67,7 +67,10 @@ type Target struct {
 	// have read and parsed from the targets memory.
 	// This must be cleared whenever the target is resumed.
 	gcache goroutineCache
-	iscgo  *bool
+	// scache is a cache for stack traces.
+	scache stackCache
+
+	iscgo *bool
 
 	// exitStatus is the exit status of the process we are debugging.
 	// Saved here to relay to any future commands.
@@ -224,6 +227,7 @@ func (grp *TargetGroup) newTarget(p ProcessInternal, pid int, currentThread Thre
 	t.createPluginOpenBreakpoint()
 
 	t.gcache.init(p.BinInfo())
+	t.scache.init()
 	t.fakeMemoryRegistryMap = make(map[string]*compositeMemory)
 
 	if grp.cfg.DisableAsyncPreempt {
@@ -282,6 +286,7 @@ func (t *Target) SupportsFunctionCalls() bool {
 // This should be called anytime the target process executes instructions.
 func (t *Target) ClearCaches() {
 	t.clearFakeMemory()
+	clear(t.scache.m)
 	t.gcache.Clear()
 	t.BinInfo().moduleDataCache = nil
 	for _, thread := range t.ThreadList() {
