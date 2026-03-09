@@ -6,6 +6,10 @@ on:
       - 'v*'
   workflow_dispatch:
     inputs:
+      tag:
+        description: 'Git tag to release (e.g. v1.24.0). Required for non-dry-run releases.'
+        type: string
+        required: false
       dry_run:
         description: 'Dry run only (snapshot build, not published to GitHub Releases)'
         type: boolean
@@ -24,10 +28,17 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      - name: Validate tag input
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run == false && inputs.tag == ''
+        run: |
+          echo "::error::A tag must be specified for non-dry-run releases"
+          exit 1
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # full history required for goreleaser release notes
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -45,6 +56,7 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ inputs.tag || github.ref_name }}
 
       - name: Run goreleaser (snapshot)
         if: github.event_name == 'workflow_dispatch' && inputs.dry_run == true
