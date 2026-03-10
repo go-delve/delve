@@ -3,10 +3,12 @@ package config
 import (
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/user"
 	"path"
 	"runtime"
+	"slices"
 
 	"github.com/go-delve/delve/service/api"
 	"go.yaml.in/yaml/v3"
@@ -114,6 +116,61 @@ type Config struct {
 	// TraceShowTimestamp controls whether to show timestamp in the trace
 	// output.
 	TraceShowTimestamp bool `yaml:"trace-show-timestamp"`
+}
+
+var Documentation = map[string]string{
+	"aliases": `Configures command aliases.
+	
+	config alias <command> <alias>
+	config alias <alias>
+
+Defines <alias> as an alias to <command> or removes an alias.
+`,
+
+	"substitute-path": `	config substitute-path <from> <to>
+	config substitute-path <from>
+	config substitute-path -clear
+	config substitute-path -guess
+
+Adds or removes a path substitution rule, if -clear is used all
+substitute-path rules are removed. Without arguments shows the current list
+of substitute-path rules.
+The -guess option causes Delve to try to guess your substitute-path
+configuration automatically.
+See also Documentation/cli/substitutepath.md for how the rules are applied.
+`,
+
+	"max-string-len":            "Maximum string length used when printing variables.\n",
+	"max-array-values":          "Maximum number of array values when printing variables.\n",
+	"max-variable-recurse":      "Maximum number of nested struct members when printing variables.\n",
+	"disassemble-flavor":        "Disassembler syntax. Can be 'intel', 'gun' or 'go'.\n",
+	"show-location-expr":        "If true the 'whatis' command will print the DWARF location expression of its argument.\n",
+	"source-list-line-color":    "Source list line-number color, as a terminal escape sequence.\n",
+	"source-list-arrow-color":   "Source list arrow color, as a terminal escape sequence.\n",
+	"source-list-keyword-color": "Source list keyword color, as a terminal escape sequence.\n",
+	"source-list-string-color":  "Source list string color, as a terminal escape sequence.\n",
+	"source-list-number-color":  "Source list number color, as a terminal escape sequence.\n",
+	"source-list-comment-color": "Source list comment color, as a terminal escape sequence.\n",
+	"prompt-color":              "Prompt color, as a terminal escape sequence.\n",
+	"source-list-tab-color":     "Source list tab color, as a terminal escape sequence.\n",
+	"stacktrace-function-color": "Color for function names in the stack trace, as a terminal escape sequence.\n",
+	"stacktrace-basename-color": "Color for the base name in paths in the stack trace, as a terminal escape sequence.\n",
+	"source-list-line-count":    "Number of lines to list above and below the cursor when printing source code.\n",
+	"tab":                       "Changes what is printed when a tab character is encountered in source code.\n",
+	"trace-show-timestamp":      "If true timestamps are shown in the trace output.\n",
+
+	"debug-info-directories": `	config debug-info-directories -add <path>
+	config debug-info-directories -rm <path>
+	config debug-info-directories -clear
+
+Adds, removes or clears debug-info-directories.
+`,
+
+	"position": `Controls how the current position in the program is displayed. The possible values are:
+ - 'source': always show the current position in the source code.
+ - 'disassembly': always show the current position in the program disassembly.
+ - 'default': show the current position in the disassembly after 'step-instruction', otherwise in source code.
+`,
 }
 
 func (c *Config) GetSourceListLineCount() int {
@@ -311,6 +368,13 @@ substitute-path:
 
 # List of directories to use when searching for separate debug info files.
 debug-info-directories: ["/usr/lib/debug/.build-id"]
+
+# Uncomment to change how the current program position is displayed.
+# Possible options
+#  - 'source' always shows source code 
+#  - 'disassembly' always show disassembly
+#  - 'default' show disassembly after step-instruction, source otherwise
+# position default
 `)
 	return err
 }
@@ -365,4 +429,31 @@ func getUserHomeDir() string {
 		userHomeDir = usr.HomeDir
 	}
 	return userHomeDir
+}
+
+func WriteConfigDocumentation(w io.Writer) {
+	fmt.Fprint(w, "# Configuration\n\n")
+	fmt.Fprint(w, "The configuration file `config.yml` is found in `$XDG_CONFIG_HOME/dlv` if `$XDG_CONFIG_HOME` is set, if it isn't set it will be in `$HOME/.config/dlv` on Linux and `$HOME/.dlv` in other operating systems.\n\n")
+	fmt.Fprint(w, "The following options are available:\n\n")
+	fmt.Fprint(w, "Option | Description\n")
+	fmt.Fprint(w, "-------|------------\n")
+	for _, name := range slices.Sorted(maps.Keys(Documentation)) {
+		switch name {
+		case "substitute-path":
+			fmt.Fprint(w, "substitute-path | Path substitution rules, a list of `{ from: path, to: path }` pairs.\n")
+		case "aliases":
+			fmt.Fprint(w, "aliases | Map fo command aliases `command: [ \"alias1\", \"alias2\" ]`.\n")
+		case "debug-info-directories":
+			fmt.Fprint(w, "debug-info-directories | List of directories to use when searching for separate debug info files.\n")
+		case "position":
+			fmt.Fprint(w, "position | Controls how the current position in the program is displayed (source | disassembly | default).\n")
+		default:
+			doc := Documentation[name]
+			if doc[len(doc)-1] == '\n' {
+				doc = doc[:len(doc)-1]
+			}
+			fmt.Fprintf(w, "%s | %s\n", name, doc)
+		}
+	}
+	fmt.Fprint(w, "\n")
 }

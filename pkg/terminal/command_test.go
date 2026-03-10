@@ -57,7 +57,9 @@ const logCommandOutput = false
 func (ft *FakeTerminal) Exec(cmdstr string) (outstr string, err error) {
 	var buf bytes.Buffer
 	ft.Term.stdout.pw.w = &buf
-	ft.Term.starlarkEnv.Redirect(ft.Term.stdout)
+	if ft.Term.starlarkEnv != nil {
+		ft.Term.starlarkEnv.Redirect(ft.Term.stdout)
+	}
 	err = ft.cmds.Call(cmdstr, ft.Term)
 	outstr = buf.String()
 	if logCommandOutput {
@@ -908,6 +910,13 @@ func TestConfig(t *testing.T) {
 	assertDebugInfoDirs(t, term.conf.DebugInfoDirectories, "a", "c")
 	assertNoErrorConfigureCmd(t, &term, "debug-info-directories -clear")
 	assertDebugInfoDirs(t, term.conf.DebugInfoDirectories)
+
+	ft := &FakeTerminal{&term, t}
+	_, err = ft.Exec("help config blah")
+	if err == nil {
+		t.Errorf("expected error executing help config for an unknown parameter")
+	}
+	ft.MustExec("help config substitute-path")
 }
 
 func TestIssue1090(t *testing.T) {

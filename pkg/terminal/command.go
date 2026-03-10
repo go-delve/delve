@@ -543,30 +543,10 @@ Saves the configuration file to disk, overwriting the current configuration file
 
 	config <parameter> <value>
 
-Changes the value of a configuration parameter.
+Changes the value of simple configuration parameters.
 
-	config substitute-path <from> <to>
-	config substitute-path <from>
-	config substitute-path -clear
-	config substitute-path -guess
-
-Adds or removes a path substitution rule, if -clear is used all
-substitute-path rules are removed. Without arguments shows the current list
-of substitute-path rules.
-The -guess option causes Delve to try to guess your substitute-path
-configuration automatically.
-See also Documentation/cli/substitutepath.md for how the rules are applied.
-
-	config alias <command> <alias>
-	config alias <alias>
-
-Defines <alias> as an alias to <command> or removes an alias.
-
-	config debug-info-directories -add <path>
-	config debug-info-directories -rm <path>
-	config debug-info-directories -clear
-
-Adds, removes or clears debug-info-directories.`},
+Use 'help config <parameter>' for more informations on specific configuration options.
+`},
 
 		{aliases: []string{"edit", "ed"}, cmdFn: edit, helpMsg: `Open where you are in $DELVE_EDITOR or $EDITOR
 
@@ -776,6 +756,17 @@ func nullCommand(t *Term, ctx callContext, args string) error {
 
 func (c *Commands) help(t *Term, ctx callContext, args string) error {
 	if args != "" {
+		if p1, p2, ok := strings.Cut(args, " "); ok && p1 == "config" {
+			if !configureValidParameter(t, p2) {
+				return errors.New("unknown config parameter")
+			}
+			if doc := config.Documentation[p2]; doc != "" {
+				fmt.Fprintln(t.stdout, doc)
+				return nil
+			}
+			return errors.New("not documented")
+		}
+
 		for _, cmd := range c.cmds {
 			if slices.Contains(cmd.aliases, args) {
 				fmt.Fprintln(t.stdout, cmd.helpMsg)

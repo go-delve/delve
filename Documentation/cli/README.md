@@ -2,7 +2,7 @@
 
 If `$XDG_CONFIG_HOME` is set, then configuration and command history files are located in `$XDG_CONFIG_HOME/dlv`. Otherwise, they are located in `$HOME/.config/dlv` on Linux and `$HOME/.dlv` on other systems.
 
-The configuration file `config.yml` contains all the configurable options and their default values. The command history is stored in `.dbg_history`.
+The configuration file `config.yml` contains all the configurable options and their default values ([config.yml documentation](./config.md)). The command history is stored in `.dbg_history`.
 
 # Commands
 
@@ -252,30 +252,10 @@ Saves the configuration file to disk, overwriting the current configuration file
 
 	config <parameter> <value>
 
-Changes the value of a configuration parameter.
+Changes the value of simple configuration parameters.
 
-	config substitute-path <from> <to>
-	config substitute-path <from>
-	config substitute-path -clear
-	config substitute-path -guess
+Use 'help config &lt;parameter>' for more informations on specific configuration options.
 
-Adds or removes a path substitution rule, if -clear is used all
-substitute-path rules are removed. Without arguments shows the current list
-of substitute-path rules.
-The -guess option causes Delve to try to guess your substitute-path
-configuration automatically.
-See also [Documentation/cli/substitutepath.md](//github.com/go-delve/delve/tree/master/Documentation/cli/substitutepath.md) for how the rules are applied.
-
-	config alias <command> <alias>
-	config alias <alias>
-
-Defines &lt;alias> as an alias to &lt;command> or removes an alias.
-
-	config debug-info-directories -add <path>
-	config debug-info-directories -rm <path>
-	config debug-info-directories -clear
-
-Adds, removes or clears debug-info-directories.
 
 
 ## continue
