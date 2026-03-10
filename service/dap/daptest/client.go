@@ -57,8 +57,12 @@ func (c *Client) send(request dap.Message) {
 	dap.WriteProtocolMessage(c.conn, request)
 }
 
-func (c *Client) ReadMessage() (dap.Message, error) {
-	return dap.ReadProtocolMessage(c.reader)
+func (c *Client) ReadMessage(t *testing.T) (dap.Message, error) {
+	m, err := dap.ReadProtocolMessage(c.reader)
+	if m != nil && m.GetSeq() == 0 {
+		t.Fatal("sequenceless message")
+	}
+	return m, err
 }
 
 func (c *Client) ExpectMessage(t *testing.T) dap.Message {
@@ -67,6 +71,9 @@ func (c *Client) ExpectMessage(t *testing.T) dap.Message {
 		m, err := dap.ReadProtocolMessage(c.reader)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if m.GetSeq() == 0 {
+			t.Fatal("sequenceless message")
 		}
 		// Skip debuginfod download progress output events. These are
 		// asynchronous and only appear when debuginfod is available on the

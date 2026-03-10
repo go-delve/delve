@@ -449,7 +449,7 @@ func TestDAPCmd(t *testing.T) {
 	client.DisconnectRequest()
 	client.ExpectDisconnectResponse(t)
 	client.ExpectTerminatedEvent(t)
-	_, err = client.ReadMessage()
+	_, err = client.ReadMessage(t)
 	if runtime.GOOS == "windows" {
 		if err == nil {
 			t.Errorf("got %q, want non-nil\n", err)
@@ -515,7 +515,7 @@ func TestRemoteDAPClient(t *testing.T) {
 	client.ExpectOutputEventDetaching(t)
 	client.ExpectDisconnectResponse(t)
 	client.ExpectTerminatedEvent(t)
-	if _, err := client.ReadMessage(); err == nil {
+	if _, err := client.ReadMessage(t); err == nil {
 		t.Error("expected read error upon shutdown")
 	}
 	client.Close()
@@ -649,7 +649,7 @@ func TestRemoteDAPClientAfterContinue(t *testing.T) {
 	c.ExpectOutputEventDetachingKill(t)
 	c.ExpectDisconnectResponse(t)
 	c.ExpectTerminatedEvent(t)
-	if _, err := c.ReadMessage(); err == nil {
+	if _, err := c.ReadMessage(t); err == nil {
 		t.Error("expected read error upon shutdown")
 	}
 	c.Close()

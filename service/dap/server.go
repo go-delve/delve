@@ -31,6 +31,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-delve/delve/pkg/gobuild"
@@ -230,6 +231,8 @@ type Session struct {
 
 	// preTerminatedWG the WaitGroup that needs to wait before sending a terminated event.
 	preTerminatedWG sync.WaitGroup
+
+	seq atomic.Uint64
 }
 
 // Config is all the information needed to start the debugger, handle
@@ -732,7 +735,7 @@ func (s *Session) handleRequest(request dap.Message) {
 			// from the user. We remedy this by sending back a placeholder thread id
 			// for the current goroutine.
 			response := &dap.ThreadsResponse{
-				Response: *newResponse(request.Request),
+				Response: *s.newResponse(request.Request),
 				Body:     dap.ThreadsResponseBody{Threads: []dap.Thread{{Id: -1, Name: "Current"}}},
 			}
 			s.send(response)
@@ -906,7 +909,7 @@ func (s *Session) send(message dap.Message) {
 
 func (s *Session) logToConsole(msg string) {
 	s.send(&dap.OutputEvent{
-		Event: *newEvent("output"),
+		Event: *s.newEvent("output"),
 		Body: dap.OutputEventBody{
 			Output:   msg + "\n",
 			Category: "console",
@@ -934,7 +937,7 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 
 	// TODO(polina): Respond with an error if debug session started
 	// with an initialize request is in progress?
-	response := &dap.InitializeResponse{Response: *newResponse(request.Request)}
+	response := &dap.InitializeResponse{Response: *s.newResponse(request.Request)}
 	response.Body.SupportsConfigurationDoneRequest = true
 	response.Body.SupportsConditionalBreakpoints = true
 	response.Body.SupportsHitConditionalBreakpoints = true
@@ -1108,7 +1111,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 				gobuild.Remove(args.Output)
 			}
 			s.send(&dap.OutputEvent{
-				Event: *newEvent("output"),
+				Event: *s.newEvent("output"),
 				Body: dap.OutputEventBody{
 					Output:   fmt.Sprintf("Build Error: %s\n%s (%s)\n", cmd, strings.TrimSpace(string(out)), err.Error()),
 					Category: "stderr",
@@ -1175,7 +1178,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 				if n > 0 {
 					outs := string(out[:n])
 					s.send(&dap.OutputEvent{
-						Event: *newEvent("output"),
+						Event: *s.newEvent("output"),
 						Body: dap.OutputEventBody{
 							Output:   outs,
 							Category: category,
@@ -1207,7 +1210,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 		}
 		// Skip 'initialized' event, which will prevent the client from sending
 		// debug-related requests.
-		s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
+		s.send(&dap.LaunchResponse{Response: *s.newResponse(request.Request)})
 
 		// Start the program on a different goroutine, so we can listen for disconnect request.
 		go func() {
@@ -1221,7 +1224,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 
 			close(s.noDebugProcess.exited)
 			s.logToConsole(proc.ErrProcessExited{Pid: cmd.ProcessState.Pid(), Status: cmd.ProcessState.ExitCode()}.Error())
-			s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
+			s.send(&dap.TerminatedEvent{Event: *s.newEvent("terminated")})
 		}()
 		return
 	}
@@ -1270,7 +1273,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			unlock()
 
 			s.send(&dap.ProcessEvent{
-				Event: *newEvent("process"),
+				Event: *s.newEvent("process"),
 				Body: dap.ProcessEventBody{
 					Name:            cmdline,
 					SystemProcessId: s.debugger.ProcessPid(),
@@ -1292,14 +1295,14 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	}
 	// Enable StepBack controls on supported backends
 	if s.config.Debugger.Backend == "rr" {
-		s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportsStepBack: true}}})
+		s.send(&dap.CapabilitiesEvent{Event: *s.newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportsStepBack: true}}})
 	}
 
 	if s.args.followExec {
 		err = s.debugger.FollowExec(s.args.followExec, s.args.followExecRegex)
 		if err != nil {
 			s.send(&dap.OutputEvent{
-				Event: *newEvent("output"),
+				Event: *s.newEvent("output"),
 				Body: dap.OutputEventBody{
 					Output:   fmt.Sprintf("Failed to enable follow exec: %v\n", err),
 					Category: "important",
@@ -1311,8 +1314,8 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 	// Notify the client that the debugger is ready to start accepting
 	// configuration requests for setting breakpoints, etc. The client
 	// will end the configuration sequence with 'configurationDone'.
-	s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
-	s.send(&dap.LaunchResponse{Response: *newResponse(request.Request)})
+	s.send(&dap.InitializedEvent{Event: *s.newEvent("initialized")})
+	s.send(&dap.LaunchResponse{Response: *s.newResponse(request.Request)})
 	s.warnAboutTrimpathMaybe()
 }
 
@@ -1439,8 +1442,8 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 		}
 
 		s.logToConsole(fmt.Sprintf("Closing client session, but leaving multi-client DAP server at %s with debuggee %s", s.config.Listener.Addr().String(), status))
-		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
-		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
+		s.send(&dap.DisconnectResponse{Response: *s.newResponse(request.Request)})
+		s.send(&dap.TerminatedEvent{Event: *s.newEvent("terminated")})
 		s.conn.Close()
 		s.disconnected = true
 		// The target is left in whatever state it is already in - halted or running.
@@ -1471,11 +1474,11 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 	if err != nil {
 		s.sendErrorResponse(request.Request, DisconnectError, "Error while disconnecting", err.Error())
 	} else {
-		s.send(&dap.DisconnectResponse{Response: *newResponse(request.Request)})
+		s.send(&dap.DisconnectResponse{Response: *s.newResponse(request.Request)})
 	}
 	s.preTerminatedWG.Wait()
 	// The debugging session has ended, so we send a terminated event.
-	s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
+	s.send(&dap.TerminatedEvent{Event: *s.newEvent("terminated")})
 }
 
 // stopDebugSession is called from Stop (main goroutine) and
@@ -1590,7 +1593,7 @@ func (s *Session) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 		}, nil
 	})
 
-	response := &dap.SetBreakpointsResponse{Response: *newResponse(request.Request)}
+	response := &dap.SetBreakpointsResponse{Response: *s.newResponse(request.Request)}
 	response.Body.Breakpoints = breakpoints
 
 	s.send(response)
@@ -1793,7 +1796,7 @@ func (s *Session) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakp
 		return &bpLocation{addr: loc.PC, addrs: loc.PCs}, nil
 	})
 
-	response := &dap.SetFunctionBreakpointsResponse{Response: *newResponse(request.Request)}
+	response := &dap.SetFunctionBreakpointsResponse{Response: *s.newResponse(request.Request)}
 	response.Body.Breakpoints = breakpoints
 
 	s.send(response)
@@ -1819,7 +1822,7 @@ func (s *Session) onSetInstructionBreakpointsRequest(request *dap.SetInstruction
 		return &bpLocation{addr: uint64(addr)}, nil
 	})
 
-	response := &dap.SetInstructionBreakpointsResponse{Response: *newResponse(request.Request)}
+	response := &dap.SetInstructionBreakpointsResponse{Response: *s.newResponse(request.Request)}
 	response.Body.Breakpoints = breakpoints
 	s.send(response)
 }
@@ -1865,7 +1868,7 @@ func (s *Session) onSetExceptionBreakpointsRequest(request *dap.SetExceptionBrea
 			s.debugger.AmendBreakpoint(bp)
 		}
 	}
-	resp := &dap.SetExceptionBreakpointsResponse{Response: *newResponse(request.Request)}
+	resp := &dap.SetExceptionBreakpointsResponse{Response: *s.newResponse(request.Request)}
 	for _, bp := range s.debugger.Breakpoints(false) {
 		if bp.ID < 0 && !bp.Disabled {
 			resp.Body.Breakpoints = append(resp.Body.Breakpoints, dap.Breakpoint{})
@@ -1894,7 +1897,7 @@ func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneReque
 	defer allowNextStateChange.raise()
 	if s.args.stopOnEntry {
 		e := &dap.StoppedEvent{
-			Event: *newEvent("stopped"),
+			Event: *s.newEvent("stopped"),
 			Body:  dap.StoppedEventBody{Reason: "entry", ThreadId: 1, AllThreadsStopped: true},
 		}
 		s.send(e)
@@ -1904,7 +1907,7 @@ func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneReque
 	unlock()
 
 	s.logToConsole("Type 'dlv help' for list of commands.")
-	s.send(&dap.ConfigurationDoneResponse{Response: *newResponse(request.Request)})
+	s.send(&dap.ConfigurationDoneResponse{Response: *s.newResponse(request.Request)})
 
 	if !s.args.stopOnEntry {
 		s.runUntilStopAndNotify(api.Continue, allowNextStateChange)
@@ -1915,7 +1918,7 @@ func (s *Session) onConfigurationDoneRequest(request *dap.ConfigurationDoneReque
 // This is a mandatory request to support.
 func (s *Session) onContinueRequest(request *dap.ContinueRequest, allowNextStateChange *syncflag) {
 	s.send(&dap.ContinueResponse{
-		Response: *newResponse(request.Request),
+		Response: *s.newResponse(request.Request),
 		Body:     dap.ContinueResponseBody{AllThreadsContinued: true},
 	})
 	s.runUntilStopAndNotify(api.Continue, allowNextStateChange)
@@ -1988,7 +1991,7 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 			s.config.log.Debug(errProcessExited)
 		default:
 			s.send(&dap.OutputEvent{
-				Event: *newEvent("output"),
+				Event: *s.newEvent("output"),
 				Body: dap.OutputEventBody{
 					Output:   fmt.Sprintf("Unable to retrieve goroutines: %s\n", err.Error()),
 					Category: "stderr",
@@ -2087,7 +2090,7 @@ func (s *Session) onThreadsRequest(request *dap.ThreadsRequest) {
 	}
 
 	response := &dap.ThreadsResponse{
-		Response: *newResponse(request.Request),
+		Response: *s.newResponse(request.Request),
 		Body:     dap.ThreadsResponseBody{Threads: threads},
 	}
 	s.send(response)
@@ -2111,7 +2114,7 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 
 	if args.FollowExec {
 		s.send(&dap.OutputEvent{
-			Event: *newEvent("output"),
+			Event: *s.newEvent("output"),
 			Body: dap.OutputEventBody{
 				Output:   "Follow exec not supported in attach request yet.",
 				Category: "important",
@@ -2169,7 +2172,7 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 			return
 		}
 		// Give the user an option to terminate debuggee when client disconnects (default is to leave it)
-		s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportTerminateDebuggee: true}}})
+		s.send(&dap.CapabilitiesEvent{Event: *s.newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportTerminateDebuggee: true}}})
 	case "remote":
 		if s.debugger == nil {
 			s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach", "no debugger found")
@@ -2186,16 +2189,16 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 		}
 		// Enable StepBack controls on supported backends
 		if s.config.Debugger.Backend == "rr" {
-			s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportsStepBack: true}}})
+			s.send(&dap.CapabilitiesEvent{Event: *s.newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportsStepBack: true}}})
 		}
 		// Customize termination options for debugger and debuggee
 		if s.config.AcceptMulti {
 			// User can stop debugger with process or leave it running
-			s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportTerminateDebuggee: true}}})
+			s.send(&dap.CapabilitiesEvent{Event: *s.newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportTerminateDebuggee: true}}})
 			// TODO(polina): support SupportSuspendDebuggee when available
 		} else if s.config.Debugger.AttachPid > 0 {
 			// User can stop debugger with process or leave the process running
-			s.send(&dap.CapabilitiesEvent{Event: *newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportTerminateDebuggee: true}}})
+			s.send(&dap.CapabilitiesEvent{Event: *s.newEvent("capabilities"), Body: dap.CapabilitiesEventBody{Capabilities: dap.Capabilities{SupportTerminateDebuggee: true}}})
 		} // else program was launched and the only option will be to stop both
 	default:
 		s.sendShowUserErrorResponse(request.Request, FailedToAttach, "Failed to attach",
@@ -2220,8 +2223,8 @@ func (s *Session) onAttachRequest(request *dap.AttachRequest) {
 	// Notify the client that the debugger is ready to start accepting
 	// configuration requests for setting breakpoints, etc. The client
 	// will end the configuration sequence with 'configurationDone'.
-	s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
-	s.send(&dap.AttachResponse{Response: *newResponse(request.Request)})
+	s.send(&dap.InitializedEvent{Event: *s.newEvent("initialized")})
+	s.send(&dap.AttachResponse{Response: *s.newResponse(request.Request)})
 	s.warnAboutTrimpathMaybe()
 }
 
@@ -2229,7 +2232,7 @@ func (s *Session) warnAboutTrimpathMaybe() {
 	imgs := s.debugger.ListDynamicLibraries()
 	if imgs[0].Trimpath {
 		s.send(&dap.OutputEvent{
-			Event: *newEvent("output"),
+			Event: *s.newEvent("output"),
 			Body: dap.OutputEventBody{
 				Category: "important",
 				Output:   "Warning: debugging executable built with trimpath",
@@ -2241,21 +2244,21 @@ func (s *Session) warnAboutTrimpathMaybe() {
 // onNextRequest handles 'next' request.
 // This is a mandatory request to support.
 func (s *Session) onNextRequest(request *dap.NextRequest, allowNextStateChange *syncflag) {
-	s.sendStepResponse(request.Arguments.ThreadId, &dap.NextResponse{Response: *newResponse(request.Request)})
+	s.sendStepResponse(request.Arguments.ThreadId, &dap.NextResponse{Response: *s.newResponse(request.Request)})
 	s.stepUntilStopAndNotify(api.Next, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
 
 // onStepInRequest handles 'stepIn' request
 // This is a mandatory request to support.
 func (s *Session) onStepInRequest(request *dap.StepInRequest, allowNextStateChange *syncflag) {
-	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepInResponse{Response: *newResponse(request.Request)})
+	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepInResponse{Response: *s.newResponse(request.Request)})
 	s.stepUntilStopAndNotify(api.Step, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
 
 // onStepOutRequest handles 'stepOut' request
 // This is a mandatory request to support.
 func (s *Session) onStepOutRequest(request *dap.StepOutRequest, allowNextStateChange *syncflag) {
-	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepOutResponse{Response: *newResponse(request.Request)})
+	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepOutResponse{Response: *s.newResponse(request.Request)})
 	s.stepUntilStopAndNotify(api.StepOut, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
 
@@ -2263,7 +2266,7 @@ func (s *Session) sendStepResponse(threadId int, message dap.Message) {
 	// All the threads will be continued by this request, so we need to send
 	// a continued event so the UI can properly reflect the current state.
 	s.send(&dap.ContinuedEvent{
-		Event: *newEvent("continued"),
+		Event: *s.newEvent("continued"),
 		Body: dap.ContinuedEventBody{
 			ThreadId:            threadId,
 			AllThreadsContinued: true,
@@ -2318,7 +2321,7 @@ func (s *Session) stepUntilStopAndNotify(command string, threadId int, granulari
 		s.config.log.Errorf("Error switching goroutines while stepping: %v", err)
 		// If we encounter an error, we will have to send a stopped event
 		// since we already sent the step response.
-		stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
+		stopped := &dap.StoppedEvent{Event: *s.newEvent("stopped")}
 		stopped.Body.AllThreadsStopped = true
 		if state, err := s.debugger.State(false); err != nil {
 			s.config.log.Errorf("Error retrieving state: %e", err)
@@ -2358,7 +2361,7 @@ func (s *Session) onPauseRequest(request *dap.PauseRequest) {
 		s.sendErrorResponse(request.Request, UnableToHalt, "Unable to halt execution", err.Error())
 		return
 	}
-	s.send(&dap.PauseResponse{Response: *newResponse(request.Request)})
+	s.send(&dap.PauseResponse{Response: *s.newResponse(request.Request)})
 	// No need to send any event here.
 	// If we received this request while stopped, there already was an event for the stop.
 	// If we received this while running, then doCommand will unblock and trigger the right
@@ -2434,7 +2437,7 @@ func (s *Session) onStackTraceRequest(request *dap.StackTraceRequest) {
 		totalFrames += s.args.StackTraceDepth
 	}
 	response := &dap.StackTraceResponse{
-		Response: *newResponse(request.Request),
+		Response: *s.newResponse(request.Request),
 		Body:     dap.StackTraceResponseBody{StackFrames: stackFrames, TotalFrames: totalFrames},
 	}
 	s.send(response)
@@ -2542,7 +2545,7 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 		scopes = append(scopes, scopeRegisters)
 	}
 	response := &dap.ScopesResponse{
-		Response: *newResponse(request.Request),
+		Response: *s.newResponse(request.Request),
 		Body:     dap.ScopesResponseBody{Scopes: scopes},
 	}
 	s.send(response)
@@ -2592,7 +2595,7 @@ func (s *Session) onVariablesRequest(request *dap.VariablesRequest) {
 		children = append(children, indexed...)
 	}
 	response := &dap.VariablesResponse{
-		Response: *newResponse(request.Request),
+		Response: *s.newResponse(request.Request),
 		Body:     dap.VariablesResponseBody{Variables: children},
 	}
 	s.send(response)
@@ -3083,7 +3086,7 @@ func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 		frame = sf.frameIndex
 	}
 
-	response := &dap.EvaluateResponse{Response: *newResponse(request.Request)}
+	response := &dap.EvaluateResponse{Response: *s.newResponse(request.Request)}
 	expr := request.Arguments.Expression
 
 	if isConfig, err := regexp.MatchString(`^\s*dlv\s+\S+`, expr); err == nil && isConfig { // dlv {command}
@@ -3188,7 +3191,7 @@ func (s *Session) doCall(goid, frame int, expr string) (*api.DebuggerState, []*p
 	}, nil, s.conn.closedChan, s.convertDebuggerEvent)
 	if processExited(state, err) {
 		s.preTerminatedWG.Wait()
-		e := &dap.TerminatedEvent{Event: *newEvent("terminated")}
+		e := &dap.TerminatedEvent{Event: *s.newEvent("terminated")}
 		s.send(e)
 		return nil, nil, errors.New("terminated")
 	}
@@ -3252,7 +3255,7 @@ func (s *Session) doCall(goid, frame int, expr string) (*api.DebuggerState, []*p
 }
 
 func (s *Session) sendStoppedEvent(state *api.DebuggerState) {
-	stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
+	stopped := &dap.StoppedEvent{Event: *s.newEvent("stopped")}
 	stopped.Body.AllThreadsStopped = true
 	stopped.Body.ThreadId = int(stoppedGoroutineID(state))
 	stopped.Body.Reason = s.debugger.StopReason().String()
@@ -3272,7 +3275,7 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 	defer s.changeStateMu.Unlock()
 
 	// The response is just an acknowledgement, if we don't send it VSCode gets wedged
-	s.send(&dap.RestartResponse{Response: *newResponse(request.Request)})
+	s.send(&dap.RestartResponse{Response: *s.newResponse(request.Request)})
 
 	// Cannot restart in noDebug mode
 	if s.isNoDebug() {
@@ -3344,20 +3347,20 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 	if err != nil {
 		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to restart", err.Error())
 		if _, err := s.debugger.State(false); validBefore && err != nil {
-			s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
+			s.send(&dap.TerminatedEvent{Event: *s.newEvent("terminated")})
 		}
 		return
 	}
 
 	s.config.log.Infof("Restart completed. Discarded breakpoints: %v", discardedBreakpoints)
 
-	s.send(&dap.InitializedEvent{Event: *newEvent("initialized")})
+	s.send(&dap.InitializedEvent{Event: *s.newEvent("initialized")})
 }
 
 // onStepBackRequest handles 'stepBack' request.
 // This is an optional request enabled by capability 'supportsStepBackRequest'.
 func (s *Session) onStepBackRequest(request *dap.StepBackRequest, allowNextStateChange *syncflag) {
-	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepBackResponse{Response: *newResponse(request.Request)})
+	s.sendStepResponse(request.Arguments.ThreadId, &dap.StepBackResponse{Response: *s.newResponse(request.Request)})
 	s.stepUntilStopAndNotify(api.ReverseNext, request.Arguments.ThreadId, request.Arguments.Granularity, allowNextStateChange)
 }
 
@@ -3366,7 +3369,7 @@ func (s *Session) onStepBackRequest(request *dap.StepBackRequest, allowNextState
 // This is an optional request enabled by capability 'supportsStepBackRequest'.
 func (s *Session) onReverseContinueRequest(request *dap.ReverseContinueRequest, allowNextStateChange *syncflag) {
 	s.send(&dap.ReverseContinueResponse{
-		Response: *newResponse(request.Request),
+		Response: *s.newResponse(request.Request),
 	})
 	s.runUntilStopAndNotify(api.Rewind, allowNextStateChange)
 }
@@ -3473,7 +3476,7 @@ func (s *Session) onSetVariableRequest(request *dap.SetVariableRequest) {
 	// invalidate this state hoping that the editors will refetch the state
 	// as soon as the user resumes debugging.
 
-	response := &dap.SetVariableResponse{Response: *newResponse(request.Request)}
+	response := &dap.SetVariableResponse{Response: *s.newResponse(request.Request)}
 	response.Body.Value = arg.Value
 	// TODO(hyangah): instead of arg.Value, reload the variable and return
 	// the presentation of the new value.
@@ -3508,7 +3511,7 @@ func (s *Session) onReadMemoryRequest(request *dap.ReadMemoryRequest) {
 	}
 
 	if args.Count == 0 {
-		s.send(makeReadMemoryResponse(request.Request, ref.addr, nil, 0))
+		s.send(s.makeReadMemoryResponse(request.Request, ref.addr, nil, 0))
 		return
 	}
 
@@ -3523,7 +3526,7 @@ func (s *Session) onReadMemoryRequest(request *dap.ReadMemoryRequest) {
 	if readCount <= 0 {
 		unreadable := max(args.Count, 0)
 
-		s.send(makeReadMemoryResponse(request.Request, memAddr, nil, unreadable))
+		s.send(s.makeReadMemoryResponse(request.Request, memAddr, nil, unreadable))
 		return
 	}
 
@@ -3539,7 +3542,7 @@ func (s *Session) onReadMemoryRequest(request *dap.ReadMemoryRequest) {
 		unreadable += readCount - int64(n)
 	}
 
-	s.send(makeReadMemoryResponse(request.Request, memAddr, data, int(unreadable)))
+	s.send(s.makeReadMemoryResponse(request.Request, memAddr, data, int(unreadable)))
 }
 
 func (s *Session) readTargetMemory(addr uint64, count int64) (data []byte, n int, err error) {
@@ -3564,14 +3567,14 @@ func (s *Session) readTargetMemory(addr uint64, count int64) (data []byte, n int
 	return data, n, nil
 }
 
-func makeReadMemoryResponse(req dap.Request, addr uint64, data []byte, unreadable int) *dap.ReadMemoryResponse {
+func (s *Session) makeReadMemoryResponse(req dap.Request, addr uint64, data []byte, unreadable int) *dap.ReadMemoryResponse {
 	var response string
 	if len(data) > 0 {
 		response = base64.StdEncoding.EncodeToString(data)
 	}
 
 	return &dap.ReadMemoryResponse{
-		Response: *newResponse(req),
+		Response: *s.newResponse(req),
 		Body: dap.ReadMemoryResponseBody{
 			Address:         fmt.Sprintf("%#x", addr),
 			Data:            response,
@@ -3606,7 +3609,7 @@ func (s *Session) onDisassembleRequest(request *dap.DisassembleRequest) {
 			instructions[i].Address = request.Arguments.MemoryReference
 		}
 		response := &dap.DisassembleResponse{
-			Response: *newResponse(request.Request),
+			Response: *s.newResponse(request.Request),
 			Body: dap.DisassembleResponseBody{
 				Instructions: instructions,
 			},
@@ -3687,7 +3690,7 @@ func (s *Session) onDisassembleRequest(request *dap.DisassembleRequest) {
 	}
 
 	response := &dap.DisassembleResponse{
-		Response: *newResponse(request.Request),
+		Response: *s.newResponse(request.Request),
 		Body: dap.DisassembleResponseBody{
 			Instructions: instructions,
 		},
@@ -3896,7 +3899,7 @@ func (s *Session) onExceptionInfoRequest(request *dap.ExceptionInfoRequest) {
 		}
 	}
 	response := &dap.ExceptionInfoResponse{
-		Response: *newResponse(request.Request),
+		Response: *s.newResponse(request.Request),
 		Body:     body,
 	}
 	s.send(response)
@@ -3950,10 +3953,7 @@ func (s *Session) getExprString(expr string, goroutineID int64, frame int) (stri
 //
 //	showUser - if true, the error will be shown to the user (e.g. via a visible pop-up)
 func (s *Session) sendErrorResponseWithOpts(request dap.Request, id int, summary, details string, showUser bool) {
-	er := &dap.ErrorResponse{}
-	er.Type = "response"
-	er.Command = request.Command
-	er.RequestSeq = request.Seq
+	er := &dap.ErrorResponse{Response: *s.newResponse(request)}
 	er.Success = false
 	er.Message = summary
 	er.Body.Error = &dap.ErrorMessage{
@@ -3981,6 +3981,7 @@ func (s *Session) sendShowUserErrorResponse(request dap.Request, id int, summary
 func (s *Session) sendInternalErrorResponse(seq int, details string) {
 	er := &dap.ErrorResponse{}
 	er.Type = "response"
+	er.Seq = s.getResponseSeq()
 	er.RequestSeq = seq
 	er.Success = false
 	er.Message = "Internal Error"
@@ -4002,10 +4003,14 @@ func (s *Session) sendNotYetImplementedErrorResponse(request dap.Request) {
 		fmt.Sprintf("cannot process %q request", request.Command))
 }
 
-func newResponse(request dap.Request) *dap.Response {
+func (s *Session) getResponseSeq() int {
+	return int(s.seq.Add(1))
+}
+
+func (s *Session) newResponse(request dap.Request) *dap.Response {
 	return &dap.Response{
 		ProtocolMessage: dap.ProtocolMessage{
-			Seq:  0,
+			Seq:  s.getResponseSeq(),
 			Type: "response",
 		},
 		Command:    request.Command,
@@ -4014,10 +4019,10 @@ func newResponse(request dap.Request) *dap.Response {
 	}
 }
 
-func newEvent(event string) *dap.Event {
+func (s *Session) newEvent(event string) *dap.Event {
 	return &dap.Event{
 		ProtocolMessage: dap.ProtocolMessage{
-			Seq:  0,
+			Seq:  s.getResponseSeq(),
 			Type: "event",
 		},
 		Event: event,
@@ -4109,7 +4114,7 @@ func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange *sy
 
 	if processExited(state, err) {
 		s.preTerminatedWG.Wait()
-		s.send(&dap.TerminatedEvent{Event: *newEvent("terminated")})
+		s.send(&dap.TerminatedEvent{Event: *s.newEvent("terminated")})
 		return
 	}
 
@@ -4121,7 +4126,7 @@ func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange *sy
 	s.config.log.Debugf("%q command stopped - reason %q, location %s:%d", command, stopReason, file, line)
 
 	s.resetHandlesForStoppedEvent()
-	stopped := &dap.StoppedEvent{Event: *newEvent("stopped")}
+	stopped := &dap.StoppedEvent{Event: *s.newEvent("stopped")}
 	stopped.Body.AllThreadsStopped = true
 
 	if err == nil {
@@ -4314,7 +4319,7 @@ func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int64) bool {
 	if lMsg, ok := bp.UserData.(logMessage); ok {
 		msg := lMsg.evaluate(s, goid)
 		s.send(&dap.OutputEvent{
-			Event: *newEvent("output"),
+			Event: *s.newEvent("output"),
 			Body: dap.OutputEventBody{
 				Category: "stdout",
 				Output:   fmt.Sprintf("> [Go %d]: %s\n", goid, msg),
@@ -4367,7 +4372,7 @@ func (s *Session) convertDebuggerEvent(event *proc.Event) {
 	switch event.Kind {
 	case proc.EventBinaryInfoDownload:
 		s.send(&dap.OutputEvent{
-			Event: *newEvent("output"),
+			Event: *s.newEvent("output"),
 			Body: dap.OutputEventBody{
 				Output:   fmt.Sprintf("Download debug info for %s: %s (pause again to cancel)\n", event.BinaryInfoDownloadEventDetails.ImagePath, event.BinaryInfoDownloadEventDetails.Progress),
 				Category: "console",
@@ -4377,7 +4382,7 @@ func (s *Session) convertDebuggerEvent(event *proc.Event) {
 		bp := api.ConvertLogicalBreakpoint(event.Breakpoint)
 		path := s.toClientPath(bp.File)
 		s.send(&dap.BreakpointEvent{
-			Event: *newEvent("breakpoint"),
+			Event: *s.newEvent("breakpoint"),
 			Body: dap.BreakpointEventBody{
 				Reason: "changed",
 				Breakpoint: dap.Breakpoint{
@@ -4390,7 +4395,7 @@ func (s *Session) convertDebuggerEvent(event *proc.Event) {
 		})
 	case proc.EventProcessSpawned:
 		s.send(&dap.ProcessEvent{
-			Event: *newEvent("process"),
+			Event: *s.newEvent("process"),
 			Body: dap.ProcessEventBody{
 				Name:            event.Cmdline,
 				SystemProcessId: event.PID,
