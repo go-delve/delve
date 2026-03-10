@@ -300,6 +300,7 @@ func TestTrace(t *testing.T) {
 	withTestTerminal("issue573", t, func(term *FakeTerminal) {
 		term.MustExec("trace foo")
 		out, _ := term.Exec("continue")
+		t.Logf("output %q", out)
 		// The output here is a little strange, but we don't filter stdout vs stderr so it gets jumbled.
 		// Therefore we assert about the call and return values separately.
 		if !strings.Contains(out, "> goroutine(1): main.foo(99, 9801)") {
