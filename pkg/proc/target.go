@@ -502,6 +502,10 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 		v.Addr = ip.Addr
 		v.Kind = ip.Kind
 
+		if ip.Unreadable != nil {
+			v.Unreadable = ip.Unreadable
+			return v
+		}
 		if v.RealType == nil {
 			v.Unreadable = errors.New("type not supported by ebpf")
 			return v
