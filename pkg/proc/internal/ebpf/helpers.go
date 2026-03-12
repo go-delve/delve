@@ -229,17 +229,17 @@ func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 				iparam.RealType = &godwarf.ComplexType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), ReflectKind: iparam.Kind}}}
 			}
 		case reflect.Ptr, reflect.UnsafePointer:
-			iparam.Base = FakeAddressBase + 0x30
-			elemType := &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 1, Name: "uint8"}}}
-			iparam.RealType = godwarf.FakePointerType(elemType, 8)
+			// Display the raw pointer address as a uintptr value.
+			// Full pointer dereferencing is not supported in eBPF tracing
+			// because loadValue's pointer path requires real memory access.
+			iparam.Kind = reflect.Uintptr
+			iparam.RealType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), ReflectKind: reflect.Uintptr}}}
 		case reflect.Slice:
-			if ret.size >= 16 {
-				sliceLen := binary.LittleEndian.Uint64(val[8:16])
-				iparam.Base = FakeAddressBase + 0x30
-				iparam.Len = int64(sliceLen)
-				elemType := &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 1, Name: "uint8"}}}
-				iparam.RealType = godwarf.FakeSliceType(elemType)
-			}
+			// Display the slice data pointer address as a uintptr value.
+			// Full slice element loading is not supported in eBPF tracing
+			// because loadValue's slice path requires real memory access.
+			iparam.Kind = reflect.Uintptr
+			iparam.RealType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 8, ReflectKind: reflect.Uintptr}}}
 		case reflect.String:
 			strLen := binary.LittleEndian.Uint64(val[8:])
 			iparam.Base = FakeAddressBase + 0x30
@@ -280,7 +280,10 @@ func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 }
 
 // usesXMMRegisters returns true if the parameter is passed in XMM/SSE
-// registers (DWARF regnum >= 17), which are not accessible from eBPF uprobes.
+// registers, which are not accessible from eBPF uprobes.
+// On amd64, XMM0-XMM15 correspond to DWARF register numbers 17-32.
+// This file is only built for amd64 (see build tag), so the threshold
+// is hardcoded to 17.
 func usesXMMRegisters(param function_parameter_t) bool {
 	if !param.in_reg {
 		return false

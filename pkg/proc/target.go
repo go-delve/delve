@@ -512,7 +512,11 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 		}
 
 		cachedMem := CreateLoadedCachedMemory(ip.Data)
-		compMem, _ := CreateCompositeMemory(cachedMem, t.BinInfo().Arch, op.DwarfRegisters{}, ip.Pieces, ip.RealType.Common().ByteSize)
+		compMem, compErr := CreateCompositeMemory(cachedMem, t.BinInfo().Arch, op.DwarfRegisters{}, ip.Pieces, ip.RealType.Common().ByteSize)
+		if compErr != nil {
+			v.Unreadable = fmt.Errorf("ebpf composite memory: %w", compErr)
+			return v
+		}
 		v.mem = compMem
 
 		// Load the value here so that we don't have to export

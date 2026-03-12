@@ -10,6 +10,8 @@ restore_vendor() {
 
 trap restore_vendor EXIT
 
+# Run as the current user to avoid root-owned output files that
+# would cause permission errors when restoring the vendor directory.
 docker run \
     --rm \
     -u "$(id -u):$(id -g)" \

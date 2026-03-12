@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -1327,6 +1328,7 @@ func TestTraceEBPFTypes(t *testing.T) {
 
 	// Test small integer types (int8, uint16, int32) to verify correct byte sizes
 	t.Run("SmallInts", func(t *testing.T) {
+		t.Parallel()
 		cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "ebpf_trace_types.go"), "main.tracedSmallInts")
 		rdr, err := cmd.StderrPipe()
 		assertNoError(err, t, "stderr pipe")
@@ -1345,6 +1347,7 @@ func TestTraceEBPFTypes(t *testing.T) {
 
 	// Test pointer types
 	t.Run("Pointers", func(t *testing.T) {
+		t.Parallel()
 		cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "ebpf_trace_types.go"), "main.tracedPointer")
 		rdr, err := cmd.StderrPipe()
 		assertNoError(err, t, "stderr pipe")
@@ -1359,14 +1362,16 @@ func TestTraceEBPFTypes(t *testing.T) {
 		if bytes.Contains(output, []byte("type not supported")) {
 			t.Fatalf("pointer type should be supported, got:\n%s", string(output))
 		}
-		// Should contain a pointer address (starts with *)
-		if !bytes.Contains(output, []byte("*")) {
-			t.Fatalf("expected pointer output, got:\n%s", string(output))
+		// Should contain a non-zero address value for the pointer
+		addrRe := regexp.MustCompile(`main\.tracedPointer\([1-9][0-9]*`)
+		if !addrRe.Match(output) {
+			t.Fatalf("expected pointer address values in output, got:\n%s", string(output))
 		}
 	})
 
 	// Test slice types
 	t.Run("Slices", func(t *testing.T) {
+		t.Parallel()
 		cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "ebpf_trace_types.go"), "main.tracedSlice")
 		rdr, err := cmd.StderrPipe()
 		assertNoError(err, t, "stderr pipe")
@@ -1380,6 +1385,11 @@ func TestTraceEBPFTypes(t *testing.T) {
 		// Verify slice params don't show "type not supported" errors
 		if bytes.Contains(output, []byte("type not supported")) {
 			t.Fatalf("slice type should be supported, got:\n%s", string(output))
+		}
+		// Should contain a non-zero address value for the slice data pointer
+		sliceRe := regexp.MustCompile(`main\.tracedSlice\([1-9][0-9]*`)
+		if !sliceRe.Match(output) {
+			t.Fatalf("expected slice address value in output, got:\n%s", string(output))
 		}
 	})
 }
