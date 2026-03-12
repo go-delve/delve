@@ -1,18 +1,22 @@
-FROM ubuntu:21.04
+FROM ubuntu:22.04
 
-ENV DEBIAN_FRONTEND noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     build-essential \
     gcc-multilib \
-    git \
+    clang-12 \
+    llvm-12 \
+    libbpf-dev \
     wget \
-    clang \
-    linux-headers-5.11.0-40 \
-    libbpf-dev
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/clang-12 /usr/bin/clang \
+    && ln -sf /usr/bin/llc-12 /usr/bin/llc \
+    && ln -sf /usr/bin/llvm-strip-12 /usr/bin/llvm-strip
 
-RUN wget https://golang.org/dl/go1.17.3.linux-amd64.tar.gz
-RUN tar -C /usr/local -xzf go1.17.3.linux-amd64.tar.gz
-RUN cp /usr/local/go/bin/go /usr/bin/go
+RUN wget -q https://go.dev/dl/go1.24.1.linux-amd64.tar.gz \
+    && tar -C /usr/local -xzf go1.24.1.linux-amd64.tar.gz \
+    && rm go1.24.1.linux-amd64.tar.gz
+ENV PATH="/usr/local/go/bin:${PATH}"
 
 WORKDIR /delve-bpf/pkg/proc/internal/ebpf/
 

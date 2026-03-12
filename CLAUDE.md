@@ -238,6 +238,30 @@ Modifying eBPF code:
 `FirstPCAfterPrologue`, not `fn.Entry` (unless explicitly requested). Go's
 stack-check prologue will re-trigger if set at `fn.Entry`.
 
+**eBPF Type Support Pipeline**:
+1. `breakpoints.go` reads DWARF info, creates `UProbeArgMap` with
+   `Kind` from `dt.Common().ReflectKind`
+2. `trace.bpf.c` eBPF program captures raw bytes from regs/stack into
+   `val[0x30]`, optionally dereferences into `deref_val[0x30]`
+3. `helpers.go:parseFunctionParameterList` decodes bytes and creates
+   `godwarf.*Type` based on `reflect.Kind`
+4. `target.go:GetBufferedTracepoints` wraps in `Variable` and calls
+   `loadValue`
+
+Currently supported types: int, uint (all sizes), bool, float, complex,
+string, pointer (as address), slice (as address). Float/complex in XMM
+registers (DWARF regnum >= 17) are marked unreadable since eBPF uprobes
+cannot access XMM/SSE registers. Unsupported types (map, chan, interface,
+func, struct, array) produce specific error messages.
+
+**eBPF Type Tests**: `TestTraceEBPFTypes` in `cmd/dlv/dlv_test.go` is the
+test for eBPF type handling. Add new type-specific subtests there when
+extending type support. The fixture is `_fixtures/ebpf_trace_types.go`.
+
+**eBPF Build Constraint**: The eBPF C code must be compiled with
+clang-12. Newer clang versions (14+) generate BPF bytecode that fails
+the kernel verifier. The Docker image pins clang-12 for this reason.
+
 ### Commit Message Format
 
 Use subsystem-based format from CONTRIBUTING.md:

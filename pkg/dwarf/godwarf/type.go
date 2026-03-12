@@ -794,6 +794,7 @@ func readType(d *dwarf.Data, name string, r *dwarf.Reader, off dwarf.Offset, typ
 			typ = slice
 			typeCache[off] = slice
 			slice.ElemType = typeOf(e, AttrGoElem)
+			slice.ReflectKind = reflect.Slice
 			t = &slice.StructType
 		case reflect.String:
 			str := new(StringType)
