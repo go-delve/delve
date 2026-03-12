@@ -1973,3 +1973,21 @@ func TestCustomCommandStopsOnContinue(t *testing.T) {
 		}
 	})
 }
+
+func TestCommandPromptExpansion(t *testing.T) {
+	withTestTerminal("testvariables2", t, func(term *FakeTerminal) {
+		term.MustExec("continue")
+		for _, e := range []struct{ in, tgt string }{
+			{"$u", "<malformed escape>"},
+			{"malformed at end $", "malformed at end <malformed escape>"},
+			{"$g", "1"},
+			{"$g:$f>", "1:0>"},
+			{"$$g", "$g"},
+		} {
+			out := term.expandPrompt(e.in)
+			if out != e.tgt {
+				t.Errorf("input %q expected %q got %q\n", e.in, e.tgt, out)
+			}
+		}
+	})
+}

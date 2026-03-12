@@ -9,9 +9,11 @@ import (
 	"net/rpc"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/derekparker/trie/v3"
 	"github.com/go-delve/liner"
@@ -29,6 +31,7 @@ const (
 	historyFile                 string = ".dbg_history"
 	terminalHighlightEscapeCode string = "\033[%2dm"
 	terminalResetEscapeCode     string = "\033[0m"
+	defaultPrompt                      = "(dlv) "
 )
 
 const (
@@ -54,7 +57,6 @@ const (
 type Term struct {
 	client   service.Client
 	conf     *config.Config
-	prompt   string
 	line     *liner.State
 	cmds     *Commands
 	stdout   *transcriptWriter
@@ -109,7 +111,6 @@ func New(client service.Client, conf *config.Config) *Term {
 	t := &Term{
 		client: client,
 		conf:   conf,
-		prompt: "(dlv) ",
 		line:   liner.NewLiner(),
 		cmds:   cmds,
 		stdout: &transcriptWriter{pw: &pagingWriter{w: os.Stdout}},
@@ -412,7 +413,12 @@ func (t *Term) Run() (int, error) {
 	for {
 		locs = nil
 
-		cmdstr, err := t.promptForInput()
+		prompt := defaultPrompt
+		if t.conf != nil && t.conf.Prompt != "" {
+			prompt = t.expandPrompt(t.conf.Prompt)
+		}
+
+		cmdstr, err := t.promptForInput(prompt)
 		if err != nil {
 			if err == io.EOF {
 				fmt.Fprintln(t.stdout, "exit")
@@ -420,7 +426,7 @@ func (t *Term) Run() (int, error) {
 			}
 			return 1, errors.New("Prompt for input failed.\n")
 		}
-		t.stdout.Echo(t.prompt + cmdstr + "\n")
+		t.stdout.Echo(prompt + cmdstr + "\n")
 
 		if strings.TrimSpace(cmdstr) == "" {
 			cmdstr = lastCmd
@@ -493,12 +499,12 @@ func (t *Term) formatPath(path string) string {
 	return strings.Replace(path, workingDir, ".", 1)
 }
 
-func (t *Term) promptForInput() (string, error) {
+func (t *Term) promptForInput(prompt string) (string, error) {
 	if t.stdout.colorEscapes != nil && t.conf.PromptColor != "" {
 		fmt.Fprint(os.Stdout, t.conf.PromptColor)
 		defer fmt.Fprint(os.Stdout, terminalResetEscapeCode)
 	}
-	l, err := t.line.Prompt(t.prompt)
+	l, err := t.line.Prompt(prompt)
 	if err != nil {
 		return "", err
 	}
@@ -695,6 +701,92 @@ func (t *Term) goVersion() *goversion.GoVersion {
 	v, _ := goversion.Parse(vers.TargetGoVersion)
 	t.goVersionCache = &v
 	return t.goVersionCache
+}
+
+func (t *Term) expandPrompt(prompt string) string {
+	const escape = '$'
+	var malformedEscape = []byte("<malformed escape>")
+
+	var hasState bool
+	var pid, tid int
+	var goid int64
+
+	getState := func() {
+		if hasState {
+			return
+		}
+		hasState = true
+		state, err := t.client.GetState()
+		if err != nil {
+			return
+		}
+		pid = state.Pid
+		if state.SelectedGoroutine != nil {
+			goid = state.SelectedGoroutine.ID
+		}
+		if state.CurrentThread != nil {
+			tid = state.CurrentThread.ID
+		}
+	}
+
+	var buf []byte
+	s := 0
+	flush := func(e int) {
+		if s >= len(prompt) {
+			return
+		}
+		if buf == nil {
+			buf = make([]byte, 0, len(prompt))
+		}
+		buf = append(buf, []byte(prompt[s:e])...)
+		s = e
+	}
+	for i := 0; i < len(prompt); i++ {
+		if prompt[i] == escape {
+			flush(i)
+			i++
+			s = i + 1
+			if i >= len(prompt) {
+				buf = append(buf, malformedEscape...)
+				break
+			}
+			switch prompt[i] {
+			case '$':
+				buf = append(buf, '$')
+			case 'd':
+				formatStr := time.RFC3339
+				if i+1 < len(prompt) && prompt[i] == '{' {
+					fs := i + 1
+					for ; i < len(prompt); i++ {
+						if prompt[i] == '}' {
+							break
+						}
+					}
+					formatStr = prompt[fs:i]
+					s = i + 1
+				}
+				buf = append(buf, []byte(time.Now().Format(formatStr))...)
+			case 'f':
+				buf = strconv.AppendInt(buf, int64(t.cmds.frame), 10)
+			case 'g':
+				getState()
+				buf = strconv.AppendInt(buf, goid, 10)
+			case 't':
+				getState()
+				buf = strconv.AppendInt(buf, int64(tid), 10)
+			case 'p':
+				getState()
+				buf = strconv.AppendInt(buf, int64(pid), 10)
+			default:
+				buf = append(buf, malformedEscape...)
+			}
+		}
+	}
+	if buf == nil {
+		return prompt
+	}
+	flush(len(prompt))
+	return string(buf)
 }
 
 // isErrProcessExited returns true if `err` is an RPC error equivalent of proc.ErrProcessExited
