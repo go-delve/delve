@@ -223,21 +223,25 @@ func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 			if !usesXMMRegisters(ret) {
 				iparam.RealType = &godwarf.FloatType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), ReflectKind: iparam.Kind}}}
 			}
-			// If in XMM registers, RealType stays nil → marked unreadable in target.go
+			// If in XMM registers, RealType stays nil, marked unreadable in target.go
 		case reflect.Complex64, reflect.Complex128:
 			if !usesXMMRegisters(ret) {
 				iparam.RealType = &godwarf.ComplexType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), ReflectKind: iparam.Kind}}}
 			}
 		case reflect.Ptr, reflect.UnsafePointer:
 			// Display the raw pointer address as a uintptr value.
-			// Full pointer dereferencing is not supported in eBPF tracing
-			// because loadValue's pointer path requires real memory access.
+			// The eBPF probe captures the dereferenced data into deref_val,
+			// but loadValue runs Go-side after the probe returns and tries
+			// to follow pointer chains through fake memory, which fails.
+			// Displaying the address is the safe fallback.
 			iparam.Kind = reflect.Uintptr
 			iparam.RealType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), ReflectKind: reflect.Uintptr}}}
 		case reflect.Slice:
 			// Display the slice data pointer address as a uintptr value.
-			// Full slice element loading is not supported in eBPF tracing
-			// because loadValue's slice path requires real memory access.
+			// The eBPF probe captures element data into deref_val, but
+			// loadValue runs Go-side after the probe and tries to load
+			// slice elements through fake memory, which fails.
+			// Displaying the data pointer address is the safe fallback.
 			iparam.Kind = reflect.Uintptr
 			iparam.RealType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 8, ReflectKind: reflect.Uintptr}}}
 		case reflect.String:
