@@ -243,6 +243,13 @@ type stackIterator struct {
 
 	count int
 
+	// useDWARF is true when the frame pointer is not yet stable for
+	// FP-based unwinding. This happens at the top of the stack where
+	// the topmost function may be frameless (BP inherited from caller).
+	// FP unwinding becomes safe when BP + 2*PtrSize == CFA, indicating
+	// that BP is the current frame's own frame pointer.
+	useDWARF bool
+
 	opts StacktraceOptions
 }
 
@@ -251,7 +258,7 @@ func newStackIterator(tgt *Target, bi *BinaryInfo, mem MemoryReadWriter, regs op
 	if g != nil {
 		systemstack = g.SystemStack
 	}
-	return &stackIterator{pc: regs.PC(), regs: regs, top: true, target: tgt, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, systemstack: systemstack, g: g, opts: opts}
+	return &stackIterator{pc: regs.PC(), regs: regs, top: true, target: tgt, bi: bi, mem: mem, err: nil, atend: false, stackhi: stackhi, systemstack: systemstack, g: g, opts: opts, useDWARF: true}
 }
 
 // Next points the iterator to the next stack frame.
@@ -537,15 +544,146 @@ func (it *stackIterator) appendInlineCalls(callback func(Stackframe) bool, frame
 }
 
 // advanceRegs calculates the DwarfRegisters for a next stack frame
-// (corresponding to it.pc).
-//
-// The computation uses the registers for the current stack frame (it.regs) and
-// the corresponding Frame Descriptor Entry (FDE) retrieved from the DWARF info.
-//
-// The new set of registers is returned. it.regs is not updated, except for
-// it.regs.CFA; the caller has to eventually switch it.regs when the iterator
-// advances to the next frame.
+// (corresponding to it.pc). It tries frame-pointer-based unwinding first
+// and falls back to DWARF CFI when frame pointers are unavailable.
 func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uint64, retaddr uint64) {
+	if callFrameRegs, ret, retaddr, ok := it.tryFramePointerUnwind(); ok {
+		return callFrameRegs, ret, retaddr
+	}
+	callFrameRegs, ret, retaddr = it.advanceRegsDWARF()
+	if it.useDWARF && it.err == nil {
+		ptrSize := uint64(it.bi.Arch.PtrSize())
+		stable := false
+
+		switch it.bi.Arch.Name {
+		case "amd64":
+			// AMD64: BP + 2*PtrSize == CFA
+			bp := it.regs.BP()
+			cfa := uint64(it.regs.CFA)
+			stable = (bp != 0 && bp+2*ptrSize == cfa)
+
+		case "arm64":
+			// ARM64: BP + 2*PtrSize == CFA, with fallback validation
+			bp := it.regs.BP()
+			cfa := uint64(it.regs.CFA)
+			stable = (bp != 0 && bp+2*ptrSize == cfa)
+
+			// ARM64 fallback: Go's DWARF CFA may not match BP+16; if the frame
+			// pointer chain looks valid (saved BP and ret at [bp]/[bp+8]), trust it.
+			if !stable && bp != 0 {
+				savedBP, err := readUintRaw(it.mem, bp, int64(ptrSize))
+				if err == nil && savedBP != 0 {
+					retVal, err := readUintRaw(it.mem, bp+ptrSize, int64(ptrSize))
+					if err == nil && retVal != 0 && it.bi.PCToFunc(retVal) != nil {
+						stable = true
+					}
+				}
+			}
+		}
+
+		if stable {
+			it.useDWARF = false
+			// AArch64: DWARF may omit X29 (BP) rules; inject savedBP when missing
+			if it.bi.Arch.Name == "arm64" {
+				bp := it.regs.BP()
+				if (callFrameRegs.Reg(callFrameRegs.BPRegNum) == nil || callFrameRegs.BP() == 0) && bp != 0 {
+					savedBP, err := readUintRaw(it.mem, bp, int64(ptrSize))
+					if err == nil {
+						callFrameRegs.AddReg(callFrameRegs.BPRegNum, op.DwarfRegisterFromUint64(savedBP))
+					}
+				}
+			}
+		}
+	}
+	return callFrameRegs, ret, retaddr
+}
+
+func (it *stackIterator) tryFramePointerUnwind() (callFrameRegs op.DwarfRegisters, ret uint64, retaddr uint64, ok bool) {
+	// Only enable frame pointer unwinding on tested architectures
+	if it.bi.Arch.Name != "amd64" && it.bi.Arch.Name != "arm64" {
+		// All other architectures (ppc64le, 386, riscv64, loong64) use DWARF only
+		return op.DwarfRegisters{}, 0, 0, false
+	}
+
+	bp := it.regs.BP()
+	if bp == 0 {
+		return op.DwarfRegisters{}, 0, 0, false
+	}
+
+	if it.g != nil && !it.systemstack {
+		if bp < it.g.stack.lo || bp >= it.g.stack.hi {
+			return op.DwarfRegisters{}, 0, 0, false
+		}
+	}
+
+	fn := it.bi.PCToFunc(it.pc)
+	if fn == nil {
+		return op.DwarfRegisters{}, 0, 0, false
+	}
+
+	switch fn.Name {
+	case "runtime.asmcgocall",
+		"runtime.cgocallback_gofunc", "runtime.cgocallback",
+		"runtime.goexit", "runtime.goexit0", "runtime.goexit1",
+		"runtime.mstart", "runtime.mstart0", "runtime.mstart1",
+		"runtime.systemstack_switch",
+		"runtime.sigreturn", "runtime.sigtrampgo",
+		"runtime.sigpanic",
+		"crosscall2":
+		return op.DwarfRegisters{}, 0, 0, false
+	}
+
+	if it.useDWARF {
+		return op.DwarfRegisters{}, 0, 0, false
+	}
+
+	ptrSize := uint64(it.bi.Arch.PtrSize())
+
+	savedBP, err := readUintRaw(it.mem, bp, int64(ptrSize))
+	if err != nil {
+		return op.DwarfRegisters{}, 0, 0, false
+	}
+
+	retaddr = bp + ptrSize
+	ret, err = readUintRaw(it.mem, retaddr, int64(ptrSize))
+	if err != nil {
+		return op.DwarfRegisters{}, 0, 0, false
+	}
+
+	cfa := int64(bp + 2*ptrSize)
+
+	if ret == 0 || it.bi.PCToFunc(ret) == nil {
+		return op.DwarfRegisters{}, 0, 0, false
+	}
+
+	it.regs.CFA = cfa
+
+	callimage := it.bi.PCToImage(it.pc)
+	callFrameRegs = op.DwarfRegisters{
+		StaticBase: callimage.StaticBase,
+		ByteOrder:  it.regs.ByteOrder,
+		PCRegNum:   it.regs.PCRegNum,
+		SPRegNum:   it.regs.SPRegNum,
+		BPRegNum:   it.regs.BPRegNum,
+		LRRegNum:   it.regs.LRRegNum,
+	}
+
+	callFrameRegs.AddReg(callFrameRegs.SPRegNum, op.DwarfRegisterFromUint64(uint64(cfa)))
+	callFrameRegs.AddReg(callFrameRegs.BPRegNum, op.DwarfRegisterFromUint64(savedBP))
+
+	if it.bi.Arch.usesLR {
+		callFrameRegs.AddReg(callFrameRegs.LRRegNum, op.DwarfRegisterFromUint64(ret))
+	}
+
+	if logflags.Stack() {
+		logflags.StackLogger().Debugf("advanceRegs (fp) at %#x: BP=%#x savedBP=%#x ret=%#x CFA=%#x", it.pc, bp, savedBP, ret, cfa)
+	}
+
+	return callFrameRegs, ret, retaddr, true
+}
+
+// advanceRegsDWARF unwinds the stack using DWARF Call Frame Information.
+func (it *stackIterator) advanceRegsDWARF() (callFrameRegs op.DwarfRegisters, ret uint64, retaddr uint64) {
 	logger := logflags.StackLogger()
 
 	fde, err := it.bi.frameEntries.FDEForPC(it.pc)
@@ -560,7 +698,7 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 		framectx = it.bi.Arch.fixFrameUnwindContext(fctxt, it.pc, it.bi)
 	}
 
-	logger.Debugf("advanceRegs at %#x", it.pc)
+	logger.Debugf("advanceRegs (DWARF) at %#x", it.pc)
 
 	cfareg, err := it.executeFrameRegRule(0, framectx.CFA, 0)
 	if cfareg == nil {
