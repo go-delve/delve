@@ -6919,6 +6919,7 @@ func TestBadLaunchRequests(t *testing.T) {
 			"Failed to launch: invalid debug configuration - cannot unmarshal number …")
 
 		client.LaunchRequestWithArgs(map[string]any{"mode": "debug", "program": fixture.Source, "backend": "foo"})
+		client.ExpectOutputEvent(t) // build message
 		checkFailedToLaunchWithMessageRe(client.ExpectVisibleErrorResponse(t),
 			"Failed to launch .*: could not launch process: unknown backend \"foo\"")
 
@@ -6948,6 +6949,7 @@ func TestBadLaunchRequests(t *testing.T) {
 		checkFailedToLaunch(client.ExpectVisibleErrorResponse(t)) // No such file or directory
 
 		client.LaunchRequest("debug", fixture.Path+"_does_not_exist", stopOnEntry)
+		client.ExpectOutputEvent(t) // build message
 		oe := client.ExpectOutputEvent(t)
 		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
 			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
@@ -6960,6 +6962,7 @@ func TestBadLaunchRequests(t *testing.T) {
 			"program":     fixture.Path + "_does_not_exist",
 			"stopOnEntry": stopOnEntry,
 		})
+		client.ExpectOutputEvent(t) // build message
 		oe = client.ExpectOutputEvent(t)
 		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
 			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
@@ -6970,12 +6973,14 @@ func TestBadLaunchRequests(t *testing.T) {
 		checkFailedToLaunch(client.ExpectVisibleErrorResponse(t)) // Not an executable
 
 		client.LaunchRequestWithArgs(map[string]any{"mode": "debug", "program": fixture.Source, "buildFlags": "-bad -flags"})
+		client.ExpectOutputEvent(t) // build message
 		oe = client.ExpectOutputEvent(t)
 		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
 			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
 		}
 		checkFailedToLaunchWithMessage(client.ExpectInvisibleErrorResponse(t), "Failed to launch: Build error: Check the debug console for details.")
 		client.LaunchRequestWithArgs(map[string]any{"mode": "debug", "program": fixture.Source, "noDebug": true, "buildFlags": "-bad -flags"})
+		client.ExpectOutputEvent(t) // build message
 		oe = client.ExpectOutputEvent(t)
 		if !strings.HasPrefix(oe.Body.Output, "Build Error: ") || oe.Body.Category != "stderr" {
 			t.Errorf("got %#v, want Category=\"stderr\" Output=\"Build Error: ...\"", oe)
@@ -6984,8 +6989,10 @@ func TestBadLaunchRequests(t *testing.T) {
 
 		// Bad "cwd"
 		client.LaunchRequestWithArgs(map[string]any{"mode": "debug", "program": fixture.Source, "noDebug": false, "cwd": "dir/invalid"})
+		client.ExpectOutputEvent(t)                               // build message
 		checkFailedToLaunch(client.ExpectVisibleErrorResponse(t)) // invalid directory, the error message is system-dependent.
 		client.LaunchRequestWithArgs(map[string]any{"mode": "debug", "program": fixture.Source, "noDebug": true, "cwd": "dir/invalid"})
+		client.ExpectOutputEvent(t)                               // build message
 		checkFailedToLaunch(client.ExpectVisibleErrorResponse(t)) // invalid directory, the error message is system-dependent.
 
 		// Bad "noDebug"
