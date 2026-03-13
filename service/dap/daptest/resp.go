@@ -4,6 +4,7 @@ package daptest
 // The code generator program is in ./gen directory.
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/go-dap"
@@ -403,6 +404,10 @@ func (c *Client) CheckInvalidatedEvent(t *testing.T, m dap.Message) *dap.Invalid
 func (c *Client) ExpectLaunchResponse(t *testing.T) *dap.LaunchResponse {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	if oev, isoutput := m.(*dap.OutputEvent); isoutput && strings.HasPrefix(oev.Body.Output, "Building") {
+		// skip this one, it's a the build message
+		m = c.ExpectMessage(t)
+	}
 	return c.CheckLaunchResponse(t, m)
 }
 
@@ -570,6 +575,10 @@ func (c *Client) CheckPauseResponse(t *testing.T, m dap.Message) *dap.PauseRespo
 func (c *Client) ExpectProcessEvent(t *testing.T) *dap.ProcessEvent {
 	t.Helper()
 	m := c.ExpectMessage(t)
+	if oev, isoutput := m.(*dap.OutputEvent); isoutput && strings.HasPrefix(oev.Body.Output, "Building") {
+		// skip this one, it's a the build message
+		m = c.ExpectMessage(t)
+	}
 	return c.CheckProcessEvent(t, m)
 }
 
