@@ -1497,27 +1497,29 @@ func BenchmarkLocalVariables(b *testing.B) {
 }
 
 func BenchmarkStacktrace(b *testing.B) {
-	withTestProcess("deeprecursion", b, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+	withTestProcess("deepstack", b, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), b, "Continue()")
 
-		for _, depth := range []int{100, 1000, 10000, 100000, 1000000} {
-			b.Run(fmt.Sprintf("depth=%d", depth), func(b *testing.B) {
-				b.ReportAllocs()
-				b.ResetTimer()
+		g, err := proc.GetG(p.CurrentThread())
+		assertNoError(err, b, "GetG()")
+		if g == nil {
+			b.Fatal("no current goroutine")
+		}
 
-				thread := p.CurrentThread()
+		frames, err := proc.GoroutineStacktrace(p, g, 600, 0)
+		assertNoError(err, b, "GoroutineStacktrace()")
+		if len(frames) < 500 {
+			b.Fatalf("expected at least 500 frames, got %d", len(frames))
+		}
+		b.Logf("stack depth: %d frames", len(frames))
 
-				for i := 0; i < b.N; i++ {
-					b.StopTimer()
-					p.ClearCaches()
-					b.StartTimer()
-
-					_, err := proc.ThreadStacktrace(p, thread, depth)
-					if err != nil {
-						b.Fatalf("ThreadStacktrace failed: %v", err)
-					}
-				}
-			})
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, err := proc.GoroutineStacktrace(p, g, 600, 0)
+			if err != nil {
+				b.Fatal(err)
+			}
 		}
 	})
 }
