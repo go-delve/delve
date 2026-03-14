@@ -2098,18 +2098,92 @@ func watchpoint(t *Term, ctx callContext, args string) error {
 
 func examineMemoryCmd(t *Term, ctx callContext, argstr string) error {
 	var (
+		args    ExamineMemoryArgs
 		address uint64
 		err     error
-		ok      bool
-		args    = strings.Split(argstr, " ")
 	)
 
-	// Default value
-	priFmt := byte('x')
-	count := int64(1)
-	size := int64(1)
-	isExpr := false
-	rawout := false
+	if err = ParseExamineMemoryArg(&args, argstr); err != nil {
+		return err
+	}
+
+	if args.IsExpr {
+		val, err := t.client.EvalVariable(ctx.Scope, args.Operand, t.loadConfig())
+		if err != nil {
+			return err
+		}
+
+		// "-x &myVar" or "-x myPtrVar"
+		if val.Kind == reflect.Ptr {
+			if len(val.Children) < 1 {
+				return fmt.Errorf("bug? invalid pointer: %#v", val)
+			}
+			address = val.Children[0].Addr
+			// "-x 0xc000079f20 + 8" or -x 824634220320 + 8
+		} else if val.Kind == reflect.Int && val.Value != "" {
+			address, err = strconv.ParseUint(val.Value, 0, 64)
+			if err != nil {
+				return fmt.Errorf("bad expression result: %q: %s", val.Value, err)
+			}
+		} else {
+			return fmt.Errorf("unsupported expression type: %s", val.Kind)
+		}
+	} else {
+		address, err = strconv.ParseUint(args.Operand, 0, 64)
+		if err != nil {
+			return fmt.Errorf("convert address into uintptr type failed, %s", err)
+		}
+	}
+
+	t.stdout.pw.PageMaybe(nil)
+
+	start := address
+	remsz := int(args.Count * args.Size)
+
+	for remsz > 0 {
+		reqsz := min(rpc2.ExamineMemoryLengthLimit, remsz)
+		memArea, isLittleEndian, err := t.client.ExamineMemory(start, reqsz)
+		if err != nil {
+			return err
+		}
+		if args.RawOut {
+			t.stdout.Write(memArea)
+		} else {
+			fmt.Fprint(t.stdout, api.PrettyExamineMemory(uintptr(start), memArea, isLittleEndian, args.Format, int(args.Size)))
+		}
+		start += uint64(reqsz)
+		remsz -= reqsz
+	}
+	return nil
+}
+
+type ExamineMemoryArgs struct {
+	Operand string
+	Count   int64
+	Size    int64
+	IsExpr  bool
+	Format  byte
+	RawOut  bool
+}
+
+func ParseExamineMemoryArg(out *ExamineMemoryArgs, argstr string) error {
+	if out == nil {
+		panic("out argument can not be nil")
+	}
+
+	// default args
+	*out = ExamineMemoryArgs{
+		Format: byte('x'),
+		Count:  int64(1),
+		Size:   int64(1),
+		IsExpr: false,
+		RawOut: false,
+	}
+
+	var (
+		ok   bool
+		args = strings.Split(argstr, " ")
+	)
 
 	// nextArg returns the next argument that is not an empty string, if any, and
 	// advances the args slice to the position after that.
@@ -2136,7 +2210,7 @@ loop:
 				return errors.New("expected argument after -fmt")
 			}
 			if arg == "raw" {
-				rawout = true
+				out.RawOut = true
 			} else {
 				fmtMapToPriFmt := map[string]byte{
 					"oct":         'o',
@@ -2148,7 +2222,7 @@ loop:
 					"bin":         'b',
 					"binary":      'b',
 				}
-				priFmt, ok = fmtMapToPriFmt[arg]
+				out.Format, ok = fmtMapToPriFmt[arg]
 				if !ok {
 					return fmt.Errorf("%q is not a valid format", arg)
 				}
@@ -2159,8 +2233,8 @@ loop:
 				return errors.New("expected argument after -count/-len")
 			}
 			var err error
-			count, err = strconv.ParseInt(arg, 0, 64)
-			if err != nil || count <= 0 {
+			out.Count, err = strconv.ParseInt(arg, 0, 64)
+			if err != nil || out.Count <= 0 {
 				return errors.New("count/len must be a positive integer")
 			}
 		case "-size":
@@ -2169,13 +2243,15 @@ loop:
 				return errors.New("expected argument after -size")
 			}
 			var err error
-			size, err = strconv.ParseInt(arg, 0, 64)
-			if err != nil || size <= 0 || size > 8 {
+			out.Size, err = strconv.ParseInt(arg, 0, 64)
+			if err != nil || out.Size <= 0 || out.Size > 8 {
 				return errors.New("size must be a positive integer (<=8)")
 			}
 		case "-x":
-			isExpr = true
-			break loop // remaining args are going to be interpreted as expression
+			out.IsExpr = true
+			// remaining args are going to be interpreted as expression
+			out.Operand = strings.Join(args, " ")
+			break loop
 		default:
 			if len(args) > 0 {
 				return fmt.Errorf("unknown option %q", args[0])
@@ -2189,55 +2265,10 @@ loop:
 		return errors.New("no address specified")
 	}
 
-	if isExpr {
-		expr := strings.Join(args, " ")
-		val, err := t.client.EvalVariable(ctx.Scope, expr, t.loadConfig())
-		if err != nil {
-			return err
-		}
+	out.Operand = args[0]
 
-		// "-x &myVar" or "-x myPtrVar"
-		if val.Kind == reflect.Ptr {
-			if len(val.Children) < 1 {
-				return fmt.Errorf("bug? invalid pointer: %#v", val)
-			}
-			address = val.Children[0].Addr
-			// "-x 0xc000079f20 + 8" or -x 824634220320 + 8
-		} else if val.Kind == reflect.Int && val.Value != "" {
-			address, err = strconv.ParseUint(val.Value, 0, 64)
-			if err != nil {
-				return fmt.Errorf("bad expression result: %q: %s", val.Value, err)
-			}
-		} else {
-			return fmt.Errorf("unsupported expression type: %s", val.Kind)
-		}
-	} else {
-		address, err = strconv.ParseUint(args[0], 0, 64)
-		if err != nil {
-			return fmt.Errorf("convert address into uintptr type failed, %s", err)
-		}
-	}
-
-	t.stdout.pw.PageMaybe(nil)
-
-	start := address
-	remsz := int(count * size)
-
-	for remsz > 0 {
-		reqsz := min(rpc2.ExamineMemoryLengthLimit, remsz)
-		memArea, isLittleEndian, err := t.client.ExamineMemory(start, reqsz)
-		if err != nil {
-			return err
-		}
-		if rawout {
-			t.stdout.Write(memArea)
-		} else {
-			fmt.Fprint(t.stdout, api.PrettyExamineMemory(uintptr(start), memArea, isLittleEndian, priFmt, int(size)))
-		}
-		start += uint64(reqsz)
-		remsz -= reqsz
-	}
 	return nil
+
 }
 
 func parseFormatArg(args string) (fmtstr, argsOut string) {
