@@ -13,6 +13,7 @@ max-array-values | Maximum number of array values when printing variables.
 max-string-len | Maximum string length used when printing variables.
 max-variable-recurse | Maximum number of nested struct members when printing variables.
 position | Controls how the current position in the program is displayed (source | disassembly | default).
+prompt | Controls Delve's command line prompt. Use `help config prompt` for documentation on the available escape codes.
 prompt-color | Prompt color, as a terminal escape sequence.
 show-location-expr | If true the 'whatis' command will print the DWARF location expression of its argument.
 source-list-arrow-color | Source list arrow color, as a terminal escape sequence.
