@@ -43,7 +43,8 @@ func NewMakeCommands() *cobra.Command {
 		Use:   "build",
 		Short: "Build delve",
 		Run: func(cmd *cobra.Command, args []string) {
-			if len(Architecture) > 0 || len(OS) > 0 {
+			goreleaserPath, _ := exec.LookPath("goreleaser")
+			if len(Architecture) > 0 || len(OS) > 0 || goreleaserPath == "" {
 				// Explicit cross-compile target: fall back to direct go build.
 				envflags := []string{}
 				if len(Architecture) > 0 {
