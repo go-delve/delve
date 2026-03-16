@@ -1096,12 +1096,24 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			s.config.Debugger.Packages = []string{args.Program}
 			whatWeAreLaunching = " " + args.Program
 			s.config.Debugger.BuildFlags = args.BuildFlags.value
+			s.send(&dap.OutputEvent{
+				Event: *s.newEvent("output"),
+				Body: dap.OutputEventBody{
+					Output:   fmt.Sprintf("Building %s", args.Program),
+					Category: "stdout",
+				}})
 			cmd, out, err = gobuild.GoBuildCombinedOutput(args.Output, []string{args.Program}, args.BuildFlags.value)
 		case "test":
 			s.config.Debugger.ExecuteKind = debugger.ExecutingGeneratedTest
 			s.config.Debugger.Packages = []string{args.Program}
 			whatWeAreLaunching = " tests of " + args.Program
 			s.config.Debugger.BuildFlags = args.BuildFlags.value
+			s.send(&dap.OutputEvent{
+				Event: *s.newEvent("output"),
+				Body: dap.OutputEventBody{
+					Output:   fmt.Sprintf("Building tests of %s", args.Program),
+					Category: "stdout",
+				}})
 			cmd, out, err = gobuild.GoTestBuildCombinedOutput(args.Output, []string{args.Program}, args.BuildFlags.value)
 		}
 		args.DlvCwd, _ = filepath.Abs(args.DlvCwd)
