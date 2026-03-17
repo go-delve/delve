@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/gobuild"
 	"github.com/go-delve/delve/pkg/goversion"
@@ -2774,4 +2775,46 @@ func guessSubstitutePath(args *api.GuessSubstitutePathIn, bins [][]proc.Function
 	}
 
 	return server2Client
+}
+
+// TypeInfo returns informations about a type.
+func (d *Debugger) TypeInfo(name string) (*api.TypeInfo, error) {
+	d.targetMutex.Lock()
+	defer d.targetMutex.Unlock()
+	bi := d.target.Selected.BinInfo()
+	typ, err := bi.FindType(name)
+	if err != nil {
+		return nil, err
+	}
+	ctyp := typ.Common()
+	r := &api.TypeInfo{
+		Kind: ctyp.ReflectKind,
+		Size: ctyp.Size(),
+	}
+
+	switch typ := typ.(type) {
+	case *godwarf.StructType:
+		for _, field := range typ.Field {
+			r.Fields = append(r.Fields, api.TypeInfoField{Name: field.Name, Type: field.Type.String()})
+		}
+	case *godwarf.TypedefType:
+		r.RealType = typ.Type.String()
+	}
+
+	plainRcvrPfx := name + "."
+	ptrRcvrPfx := ""
+	if dot := strings.LastIndex(name, "."); dot > 0 {
+		ptrRcvrPfx = name[:dot] + ".(*" + name[dot+1:] + ")."
+	}
+	for i := range bi.Functions {
+		fn := &bi.Functions[i]
+		if fn.Trampoline /*|| strings.HasSuffix(fn.Name, "-fm")*/ {
+			continue
+		}
+		if strings.HasPrefix(fn.Name, plainRcvrPfx) || (ptrRcvrPfx != "" && strings.HasPrefix(fn.Name, ptrRcvrPfx)) {
+			r.Methods = append(r.Methods, api.TypeInfoMethod{Name: fn.Name})
+		}
+	}
+
+	return r, nil
 }

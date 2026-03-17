@@ -3454,3 +3454,38 @@ func TestEvalNonunicodeString(t *testing.T) {
 		}
 	})
 }
+
+func TestTypeInfo(t *testing.T) {
+	withTestClient2("testvariables2", t, func(c service.Client) {
+		state := <-c.Continue()
+		assertNoError(state.Err, t, "Continue")
+
+		info, err := c.TypeInfo("*main.astruct")
+		assertNoError(err, t, "TypeInfo")
+		t.Logf("%#v", info)
+		t.Logf("kind %s size %d", info.Kind.String(), info.Size)
+		if info.Kind != reflect.Pointer {
+			t.Error("wrong kind")
+		}
+		if len(info.Fields) > 0 || len(info.Methods) > 0 {
+			t.Error("expected no fields or methods")
+		}
+
+		info, err = c.TypeInfo("main.astruct")
+		assertNoError(err, t, "TypeInfo")
+		t.Logf("%#v", info)
+		t.Logf("kind %s size %d", info.Kind.String(), info.Size)
+		if len(info.Fields) != 2 {
+			t.Error("wrong number of fields")
+		}
+		if len(info.Methods) < 2 {
+			t.Error("wrong number of methods")
+		}
+		if slices.Index(info.Methods, api.TypeInfoMethod{Name: "main.(*astruct).Error"}) < 0 {
+			t.Error("could not find Error method")
+		}
+		if slices.Index(info.Methods, api.TypeInfoMethod{Name: "main.astruct.NonPointerReceiverMethod"}) < 0 {
+			t.Error("could not find NonPointerReceiverMethod")
+		}
+	})
+}

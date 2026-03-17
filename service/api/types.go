@@ -770,3 +770,19 @@ type ProcessSpawnedEventDetails struct {
 	Cmdline    string
 	WillFollow bool
 }
+
+type TypeInfo struct {
+	Kind     reflect.Kind
+	Size     int64
+	RealType string
+	Fields   []TypeInfoField
+	Methods  []TypeInfoMethod
+}
+
+type TypeInfoField struct {
+	Name, Type string
+}
+
+type TypeInfoMethod struct {
+	Name string
+}

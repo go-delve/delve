@@ -1230,3 +1230,18 @@ type DownloadLibraryDebugInfoOut struct {
 func (s *RPCServer) DownloadLibraryDebugInfo(arg DownloadLibraryDebugInfoIn, out DownloadLibraryDebugInfoOut) error {
 	return s.debugger.DownloadLibraryDebugInfo(arg.N)
 }
+
+type TypeInfoIn struct {
+	Name string
+}
+
+type TypeInfoOut struct {
+	TypeInfo *api.TypeInfo
+}
+
+// TypeInfo returns informations about the specified type.
+func (s *RPCServer) TypeInfo(arg TypeInfoIn, out *TypeInfoOut) error {
+	var err error
+	out.TypeInfo, err = s.debugger.TypeInfo(arg.Name)
+	return err
+}

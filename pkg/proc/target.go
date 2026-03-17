@@ -624,7 +624,7 @@ func (t *Target) dwrapUnwrap(fn *Function) *Function {
 	if fn == nil {
 		return nil
 	}
-	if !strings.Contains(fn.Name, "·dwrap·") && !fn.trampoline {
+	if !strings.Contains(fn.Name, "·dwrap·") && !fn.Trampoline {
 		return fn
 	}
 	if unwrap := t.BinInfo().dwrapUnwrapCache[fn.Entry]; unwrap != nil {
