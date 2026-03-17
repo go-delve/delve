@@ -709,6 +709,15 @@ func (c *RPCClient) DownloadLibraryDebugInfo(n int) error {
 	return c.call("DownloadLibraryDebugInfo", DownloadLibraryDebugInfoIn{n}, out)
 }
 
+func (c *RPCClient) TypeInfo(name string) (*api.TypeInfo, error) {
+	var out TypeInfoOut
+	err := c.call("TypeInfo", TypeInfoIn{name}, &out)
+	if err != nil {
+		return nil, err
+	}
+	return out.TypeInfo, err
+}
+
 func (c *RPCClient) call(method string, args, reply any) error {
 	return c.client.Call("RPCServer."+method, args, reply)
 }

@@ -101,6 +101,8 @@ type Client interface {
 	ListPackageVariables(filter string, cfg api.LoadConfig) ([]api.Variable, error)
 	// EvalVariable returns a variable in the context of the current thread.
 	EvalVariable(scope api.EvalScope, symbol string, cfg api.LoadConfig) (*api.Variable, error)
+	// TypeInfo returns informations about a type.
+	TypeInfo(name string) (*api.TypeInfo, error)
 
 	// SetVariable sets the value of a variable
 	SetVariable(scope api.EvalScope, symbol, value string) error

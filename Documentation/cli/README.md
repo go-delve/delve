@@ -50,7 +50,7 @@ Command | Description
 [regs](#regs) | Print contents of CPU registers.
 [set](#set) | Changes the value of a variable.
 [vars](#vars) | Print package variables.
-[whatis](#whatis) | Prints type of an expression.
+[whatis](#whatis) | Prints type of an expression or a type.
 
 
 ## Listing and switching between threads and goroutines
@@ -787,8 +787,9 @@ See also: "help print".
 
 
 ## whatis
-Prints type of an expression.
+Prints type of an expression or a type.
 
 	whatis <expression>
+	whatis <type name>
 
 
