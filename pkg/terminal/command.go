@@ -2088,101 +2088,15 @@ func watchpoint(t *Term, ctx callContext, args string) error {
 }
 
 func examineMemoryCmd(t *Term, ctx callContext, argstr string) error {
-	var (
-		address uint64
-		err     error
-		ok      bool
-		args    = strings.Split(argstr, " ")
-	)
-
-	// Default value
-	priFmt := byte('x')
-	count := int64(1)
-	size := int64(1)
-	isExpr := false
-	rawout := false
-
-	// nextArg returns the next argument that is not an empty string, if any, and
-	// advances the args slice to the position after that.
-	nextArg := func() string {
-		for len(args) > 0 {
-			arg := args[0]
-			args = args[1:]
-			if arg != "" {
-				return arg
-			}
-		}
-		return ""
+	args, err := api.ParseExamineMemoryArg(argstr)
+	if err != nil {
+		return err
 	}
 
-loop:
-	for {
-		switch cmd := nextArg(); cmd {
-		case "":
-			// no more arguments
-			break loop
-		case "-fmt":
-			arg := nextArg()
-			if arg == "" {
-				return errors.New("expected argument after -fmt")
-			}
-			if arg == "raw" {
-				rawout = true
-			} else {
-				fmtMapToPriFmt := map[string]byte{
-					"oct":         'o',
-					"octal":       'o',
-					"hex":         'x',
-					"hexadecimal": 'x',
-					"dec":         'd',
-					"decimal":     'd',
-					"bin":         'b',
-					"binary":      'b',
-				}
-				priFmt, ok = fmtMapToPriFmt[arg]
-				if !ok {
-					return fmt.Errorf("%q is not a valid format", arg)
-				}
-			}
-		case "-count", "-len":
-			arg := nextArg()
-			if arg == "" {
-				return errors.New("expected argument after -count/-len")
-			}
-			var err error
-			count, err = strconv.ParseInt(arg, 0, 64)
-			if err != nil || count <= 0 {
-				return errors.New("count/len must be a positive integer")
-			}
-		case "-size":
-			arg := nextArg()
-			if arg == "" {
-				return errors.New("expected argument after -size")
-			}
-			var err error
-			size, err = strconv.ParseInt(arg, 0, 64)
-			if err != nil || size <= 0 || size > 8 {
-				return errors.New("size must be a positive integer (<=8)")
-			}
-		case "-x":
-			isExpr = true
-			break loop // remaining args are going to be interpreted as expression
-		default:
-			if len(args) > 0 {
-				return fmt.Errorf("unknown option %q", args[0])
-			}
-			args = []string{cmd}
-			break loop // only one arg left to be evaluated as a uint
-		}
-	}
+	var address uint64
 
-	if len(args) == 0 {
-		return errors.New("no address specified")
-	}
-
-	if isExpr {
-		expr := strings.Join(args, " ")
-		val, err := t.client.EvalVariable(ctx.Scope, expr, t.loadConfig())
+	if args.IsExpr {
+		val, err := t.client.EvalVariable(ctx.Scope, args.Operand, t.loadConfig())
 		if err != nil {
 			return err
 		}
@@ -2203,7 +2117,7 @@ loop:
 			return fmt.Errorf("unsupported expression type: %s", val.Kind)
 		}
 	} else {
-		address, err = strconv.ParseUint(args[0], 0, 64)
+		address, err = strconv.ParseUint(args.Operand, 0, 64)
 		if err != nil {
 			return fmt.Errorf("convert address into uintptr type failed, %s", err)
 		}
@@ -2212,7 +2126,7 @@ loop:
 	t.stdout.pw.PageMaybe(nil)
 
 	start := address
-	remsz := int(count * size)
+	remsz := int(args.Count * args.Size)
 
 	for remsz > 0 {
 		reqsz := min(rpc2.ExamineMemoryLengthLimit, remsz)
@@ -2220,10 +2134,10 @@ loop:
 		if err != nil {
 			return err
 		}
-		if rawout {
+		if args.RawOut {
 			t.stdout.Write(memArea)
 		} else {
-			fmt.Fprint(t.stdout, api.PrettyExamineMemory(uintptr(start), memArea, isLittleEndian, priFmt, int(size)))
+			fmt.Fprint(t.stdout, api.PrettyExamineMemory(uintptr(start), memArea, isLittleEndian, args.Format, int(args.Size)))
 		}
 		start += uint64(reqsz)
 		remsz -= reqsz
