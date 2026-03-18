@@ -11,24 +11,25 @@ const (
 	// Where applicable and for consistency only,
 	// values below are inspired the original vscode-go debug adaptor.
 
-	FailedToLaunch             = 3000
-	FailedToAttach             = 3001
-	FailedToInitialize         = 3002
-	UnableToSetBreakpoints     = 2002
-	UnableToDisplayThreads     = 2003
-	UnableToProduceStackTrace  = 2004
-	UnableToListLocals         = 2005
-	UnableToListArgs           = 2006
-	UnableToListGlobals        = 2007
-	UnableToLookupVariable     = 2008
-	UnableToEvaluateExpression = 2009
-	UnableToHalt               = 2010
-	UnableToGetExceptionInfo   = 2011
-	UnableToSetVariable        = 2012
-	UnableToDisassemble        = 2013
-	UnableToListRegisters      = 2014
-	UnableToRunDlvCommand      = 2015
-	UnableToReadMemory         = 2016
+	FailedToLaunch                = 3000
+	FailedToAttach                = 3001
+	FailedToInitialize            = 3002
+	UnableToSetBreakpoints        = 2002
+	UnableToDisplayThreads        = 2003
+	UnableToProduceStackTrace     = 2004
+	UnableToListLocals            = 2005
+	UnableToListArgs              = 2006
+	UnableToListGlobals           = 2007
+	UnableToLookupVariable        = 2008
+	UnableToEvaluateExpression    = 2009
+	UnableToHalt                  = 2010
+	UnableToGetExceptionInfo      = 2011
+	UnableToSetVariable           = 2012
+	UnableToDisassemble           = 2013
+	UnableToListRegisters         = 2014
+	UnableToRunDlvCommand         = 2015
+	UnableToReadMemory            = 2016
+	UnableToGetDataBreakpointInfo = 2017
 
 	// Add more codes as we support more requests
 

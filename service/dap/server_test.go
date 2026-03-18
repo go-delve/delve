@@ -8470,3 +8470,128 @@ func checkErrorMessageFormat(er *dap.ErrorMessage, fmt string) bool {
 	}
 	return er != nil && er.Format == fmt
 }
+
+func TestDataBreakpoints(t *testing.T) {
+	switch runtime.GOOS {
+	case "linux", "darwin":
+		// ok
+	default:
+		t.Skip("not implemented")
+	}
+	switch runtime.GOARCH {
+	case "amd64", "arm64":
+		// ok
+	default:
+		t.Skip("not implemented")
+	}
+
+	setup := func(client *daptest.Client, fixture protest.Fixture, bps []int) {
+		client.InitializeRequest()
+		client.ExpectInitializeResponseAndCapabilities(t)
+		client.LaunchRequestWithArgs(map[string]any{"mode": "exec", "program": fixture.Path})
+		client.ExpectProcessEvent(t)
+		client.ExpectInitializedEvent(t)
+		client.ExpectLaunchResponse(t)
+
+		client.SetBreakpointsRequest(fixture.Source, bps)
+		sbpr := client.ExpectSetBreakpointsResponse(t)
+		if len(sbpr.Body.Breakpoints) != len(bps) {
+			t.Fatalf("\ngot %#v\nwant %d breakpoints\n", sbpr, len(bps))
+		}
+		for _, bp := range sbpr.Body.Breakpoints {
+			if !bp.Verified {
+				t.Fatalf("\ngot %#v\nwant %d verified breakpoints\n", sbpr, len(bps))
+			}
+		}
+	}
+
+	cont := func(client *daptest.Client) *dap.StoppedEvent {
+		client.ContinueRequest(1)
+		client.ExpectContinueResponse(t)
+		return client.ExpectStoppedEvent(t)
+	}
+
+	contToBp := func(client *daptest.Client, hitBp int) {
+		se := cont(client)
+		if se.Event.Event != "stopped" || se.Body.Reason != "breakpoint" || len(se.Body.HitBreakpointIds) != 1 || se.Body.HitBreakpointIds[0] != hitBp {
+			t.Fatalf("\ngot %#v\nwant hit breakpoint %d\n", se, hitBp)
+		}
+
+	}
+
+	teardown := func(client *daptest.Client) {
+		client.DisconnectRequest()
+		client.ExpectOutputEvent(t)
+		client.ExpectDisconnectResponse(t)
+	}
+
+	setDataBp := func(client *daptest.Client, varRef int, expr string) {
+		client.DataBreakpointInfoRequest(varRef, expr)
+		dbi := client.ExpectDataBreakpointInfoResponse(t)
+
+		if dbi.Body.DataId == "" {
+			t.Fatalf("\ngot %#v\nwant some dataId\n", dbi)
+		}
+
+		client.SetDataBreakpointsRequest([]string{dbi.Body.DataId.(string)})
+		sdbpr := client.ExpectSetDataBreakpointsResponse(t)
+		if len(sdbpr.Body.Breakpoints) != 1 || !sdbpr.Body.Breakpoints[0].Verified {
+			t.Fatalf("\ngot %#v\nwant one verified data breakpoint\n", sdbpr)
+		}
+	}
+
+	curFrame := func(client *daptest.Client) dap.StackFrame {
+		client.StackTraceRequest(1, 0, 10)
+		stresp := client.ExpectStackTraceResponse(t)
+		return stresp.Body.StackFrames[0]
+	}
+
+	runTest(t, "databpeasy", func(client *daptest.Client, fixture protest.Fixture) {
+		setup(client, fixture, []int{13, 21})
+
+		contToBp(client, 1)
+
+		setDataBp(client, 0, "globalvar1")
+
+		se := cont(client)
+		if se.Body.Reason != "data breakpoint" || se.Event.Event != "stopped" {
+			t.Fatalf("\ngot %#v\nwant { Event: { Event: stopped, Body: { Reason: \"data breakpoint\" } } }\n", se)
+		}
+		frame := curFrame(client)
+		if frame.Line != 18 && frame.Line != 19 {
+			t.Fatalf("\ngot %#v\nwant line 18 or 19\n", frame)
+		}
+
+		client.SetDataBreakpointsRequest([]string{})
+		sdbpr := client.ExpectSetDataBreakpointsResponse(t)
+		if len(sdbpr.Body.Breakpoints) != 0 {
+			t.Fatalf("\ngot %#v\nwant no data breakpoints\n", sdbpr)
+		}
+
+		contToBp(client, 2)
+
+		teardown(client)
+	})
+
+	runTest(t, "databpstack", func(client *daptest.Client, fixture protest.Fixture) {
+		setup(client, fixture, []int{11})
+		contToBp(client, 1)
+
+		frame := curFrame(client)
+		client.ScopesRequest(frame.Id)
+		sresp := client.ExpectScopesResponse(t)
+		setDataBp(client, sresp.Body.Scopes[0].VariablesReference, "w")
+
+		se := cont(client)
+		if se.Body.Reason != "data breakpoint" || se.Event.Event != "stopped" {
+			t.Fatalf("\ngot %#v\nwant { Event: { Event: stopped, Body: { Reason: \"data breakpoint\" } } }\n", se)
+		}
+
+		frame = curFrame(client)
+		if frame.Line != 16 && frame.Line != 17 {
+			t.Fatalf("got %#v\nwant line 16 or 17\n", frame)
+		}
+
+		teardown(client)
+	})
+}
