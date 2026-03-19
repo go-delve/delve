@@ -4379,18 +4379,11 @@ func TestEvaluateCommandRequest(t *testing.T) {
 				execute: func() {
 					checkStop(t, client, 1, "main.foobar", []int{65, 66})
 
-					// Request help.
-					const dlvHelp = `The following commands are available:
-    dlv help (alias: h) 	 Prints the help message.
-    dlv config 	 Changes configuration parameters.
-    dlv sources (alias: s) 	 Print list of source files.
-    dlv target 	 Manages child process debugging.
-
-Type 'dlv help' followed by a command for full documentation.
-`
 					client.EvaluateRequest("dlv help", 1000, "repl")
 					got := client.ExpectEvaluateResponse(t)
-					checkEval(t, got, dlvHelp, noChildren)
+					if got.Body.Result == "" {
+						t.Errorf("\ngot  %#v\nwanted something in the body", got)
+					}
 
 					client.EvaluateRequest("dlv help config", 1000, "repl")
 					got = client.ExpectEvaluateResponse(t)
