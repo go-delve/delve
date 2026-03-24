@@ -26,6 +26,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
@@ -4527,6 +4528,63 @@ func TestEvaluateCommandRequest(t *testing.T) {
 				disconnect: true,
 			}})
 	})
+}
+
+func TestEvaluateExaminememCommand(t *testing.T) {
+	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			fixture.Source, []int{}, // Breakpoint set in the program
+			[]onBreakpoint{{ // Stop at first breakpoint
+				execute: func() {
+					checkStop(t, client, 1, "main.foobar", []int{65, 66})
+
+					client.EvaluateRequest("dlv x -fmt binary -x &b1", localsScope, "repl")
+					got := client.ExpectEvaluateResponse(t)
+					checkExaminememCommand(t, got, "00000001")
+
+					client.EvaluateRequest("dlv x -fmt oct -x &u8", localsScope, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkExaminememCommand(t, got, "0377")
+
+					client.EvaluateRequest("dlv x -fmt hex -x &u8", localsScope, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkExaminememCommand(t, got, "0xff")
+
+					var (
+						sizeOfInt = unsafe.Sizeof(int(0))
+						intArray  = "0x0000000000000001   0x0000000000000002"
+					)
+					if sizeOfInt == 4 {
+						// on GOARCH=386 int is 4 bytes
+						intArray = "0x00000001   0x00000002"
+					}
+					client.EvaluateRequest(fmt.Sprintf("dlv x -count 2 -size %d -fmt hex -x &a4", sizeOfInt), localsScope, "repl")
+					got = client.ExpectEvaluateResponse(t)
+					checkExaminememCommand(t, got, intArray)
+
+				},
+				disconnect: true,
+			}},
+		)
+	})
+}
+
+func checkExaminememCommand(t *testing.T, got *dap.EvaluateResponse, value string) {
+	t.Helper()
+
+	if got.Body.Result == "" {
+		t.Fatalf("result must not be empty")
+	}
+
+	want := fmt.Sprintf(":   %s   \n", value)
+
+	if !strings.HasSuffix(got.Body.Result, want) {
+		t.Errorf("\ngot:  %#q\nwant: %q\n", got.Body.Result, want)
+	}
 }
 
 // From testvariables2 fixture

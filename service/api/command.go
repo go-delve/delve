@@ -166,3 +166,110 @@ func readGoroutinesFilter(args []string, pi *int) (*ListGoroutinesFilter, error)
 
 	return r, nil
 }
+
+type ExamineMemoryArgs struct {
+	Operand string
+	Count   int64
+	Size    int64
+	IsExpr  bool
+	Format  byte
+	RawOut  bool
+}
+
+func ParseExamineMemoryArg(argstr string) (*ExamineMemoryArgs, error) {
+	// default args
+	out := ExamineMemoryArgs{
+		Format: byte('x'),
+		Count:  int64(1),
+		Size:   int64(1),
+		IsExpr: false,
+		RawOut: false,
+	}
+
+	var (
+		ok   bool
+		args = strings.Split(argstr, " ")
+	)
+
+	// nextArg returns the next argument that is not an empty string, if any, and
+	// advances the args slice to the position after that.
+	nextArg := func() string {
+		for len(args) > 0 {
+			arg := args[0]
+			args = args[1:]
+			if arg != "" {
+				return arg
+			}
+		}
+		return ""
+	}
+
+loop:
+	for {
+		switch cmd := nextArg(); cmd {
+		case "":
+			// no more arguments
+			break loop
+		case "-fmt":
+			arg := nextArg()
+			if arg == "" {
+				return nil, errors.New("expected argument after -fmt")
+			}
+			if arg == "raw" {
+				out.RawOut = true
+			} else {
+				fmtMapToPriFmt := map[string]byte{
+					"oct":         'o',
+					"octal":       'o',
+					"hex":         'x',
+					"hexadecimal": 'x',
+					"dec":         'd',
+					"decimal":     'd',
+					"bin":         'b',
+					"binary":      'b',
+				}
+				out.Format, ok = fmtMapToPriFmt[arg]
+				if !ok {
+					return nil, fmt.Errorf("%q is not a valid format", arg)
+				}
+			}
+		case "-count", "-len":
+			arg := nextArg()
+			if arg == "" {
+				return nil, errors.New("expected argument after -count/-len")
+			}
+			var err error
+			out.Count, err = strconv.ParseInt(arg, 0, 64)
+			if err != nil || out.Count <= 0 {
+				return nil, errors.New("count/len must be a positive integer")
+			}
+		case "-size":
+			arg := nextArg()
+			if arg == "" {
+				return nil, errors.New("expected argument after -size")
+			}
+			var err error
+			out.Size, err = strconv.ParseInt(arg, 0, 64)
+			if err != nil || out.Size <= 0 || out.Size > 8 {
+				return nil, errors.New("size must be a positive integer (<=8)")
+			}
+		case "-x":
+			out.IsExpr = true
+			// remaining args are going to be interpreted as expression
+			out.Operand = strings.Join(args, " ")
+			break loop
+		default:
+			if len(args) > 0 {
+				return nil, fmt.Errorf("unknown option %q", args[0])
+			}
+			out.Operand = cmd
+			break loop // only one arg left to be evaluated as a uint
+		}
+	}
+
+	if len(out.Operand) == 0 {
+		return nil, errors.New("no address specified")
+	}
+
+	return &out, nil
+}
