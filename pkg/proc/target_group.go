@@ -279,7 +279,9 @@ func (grp *TargetGroup) HasSteppingBreakpoints() bool {
 func (grp *TargetGroup) ClearSteppingBreakpoints() error {
 	for _, t := range grp.targets {
 		if t.Breakpoints().HasSteppingBreakpoints() {
-			return t.ClearSteppingBreakpoints()
+			if err := t.ClearSteppingBreakpoints(); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
