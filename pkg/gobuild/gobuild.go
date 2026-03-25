@@ -114,8 +114,8 @@ func goBuildArgs2(debugname string, pkgs []string, buildflags any, isTest bool) 
 
 func gocommandRun(command string, args ...string) error {
 	_, goBuild := gocommandExecCmd(command, args...)
-	goBuild.Stderr = os.Stdout
-	goBuild.Stdout = os.Stderr
+	goBuild.Stdout = os.Stdout
+	goBuild.Stderr = os.Stderr
 	return goBuild.Run()
 }
 
