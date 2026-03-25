@@ -558,13 +558,26 @@ func (c *Client) LoadedSourcesRequest() {
 }
 
 // DataBreakpointInfoRequest sends a 'dataBreakpointInfo' request.
-func (c *Client) DataBreakpointInfoRequest() {
-	c.send(&dap.DataBreakpointInfoRequest{Request: *c.newRequest("dataBreakpointInfo")})
+func (c *Client) DataBreakpointInfoRequest(varRef int, expr string) {
+	c.send(&dap.DataBreakpointInfoRequest{
+		Request: *c.newRequest("dataBreakpointInfo"),
+		Arguments: dap.DataBreakpointInfoArguments{
+			VariablesReference: varRef,
+			Name:               expr,
+		},
+	})
 }
 
 // SetDataBreakpointsRequest sends a 'setDataBreakpoints' request.
-func (c *Client) SetDataBreakpointsRequest() {
-	c.send(&dap.SetDataBreakpointsRequest{Request: *c.newRequest("setDataBreakpoints")})
+func (c *Client) SetDataBreakpointsRequest(dataIds []string) {
+	req := &dap.SetDataBreakpointsRequest{Request: *c.newRequest("setDataBreakpoints")}
+	for _, dataId := range dataIds {
+		req.Arguments.Breakpoints = append(req.Arguments.Breakpoints, dap.DataBreakpoint{
+			DataId:     dataId,
+			AccessType: "write",
+		})
+	}
+	c.send(req)
 }
 
 // ReadMemoryRequest sends a 'readMemory' request.

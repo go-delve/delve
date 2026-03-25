@@ -660,6 +660,8 @@ func (s *Session) recoverPanic(request dap.Message) {
 	}
 }
 
+const canNotSetDataBreakpointWhileRunning = "Can not set data breakpoints while the process is running"
+
 func (s *Session) handleRequest(request dap.Message) {
 	defer s.recoverPanic(request)
 	jsonmsg, _ := json.Marshal(request)
@@ -742,23 +744,22 @@ func (s *Session) handleRequest(request dap.Message) {
 		case *dap.SetBreakpointsRequest: // Required
 			s.changeStateMu.Lock()
 			defer s.changeStateMu.Unlock()
-			s.config.log.Debug("halting execution to set breakpoints")
-			_, err := s.halt()
-			if err != nil {
-				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
-				return
-			}
+			s.stopToSetBreakpoints(&request.Request)
 			s.onSetBreakpointsRequest(request)
 		case *dap.SetFunctionBreakpointsRequest: // Optional (capability 'supportsFunctionBreakpoints')
 			s.changeStateMu.Lock()
 			defer s.changeStateMu.Unlock()
-			s.config.log.Debug("halting execution to set breakpoints")
-			_, err := s.halt()
-			if err != nil {
-				s.sendErrorResponse(request.Request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
-				return
-			}
+			s.stopToSetBreakpoints(&request.Request)
 			s.onSetFunctionBreakpointsRequest(request)
+		case *dap.SetInstructionBreakpointsRequest:
+			s.changeStateMu.Lock()
+			defer s.changeStateMu.Unlock()
+			s.stopToSetBreakpoints(&request.Request)
+			s.onSetInstructionBreakpointsRequest(request)
+		case *dap.DataBreakpointInfoRequest:
+			s.sendErrorResponse(request.Request, UnableToSetBreakpoints, canNotSetDataBreakpointWhileRunning, canNotSetDataBreakpointWhileRunning)
+		case *dap.SetDataBreakpointsRequest:
+			s.sendErrorResponse(request.Request, UnableToSetBreakpoints, canNotSetDataBreakpointWhileRunning, canNotSetDataBreakpointWhileRunning)
 		default:
 			r := request.(dap.RequestMessage).GetRequest()
 			s.sendErrorResponse(*r, DebuggeeIsRunning, fmt.Sprintf("Unable to process `%s`", r.Command), "debuggee is running")
@@ -853,6 +854,12 @@ func (s *Session) handleRequest(request dap.Message) {
 		s.onExceptionInfoRequest(request)
 	case *dap.DisassembleRequest: // Optional (capability 'supportsDisassembleRequest')
 		s.onDisassembleRequest(request)
+	case *dap.ReadMemoryRequest: // Optional (capability 'supportsReadMemoryRequest')
+		s.onReadMemoryRequest(request)
+	case *dap.DataBreakpointInfoRequest: // Optional (capability 'supportsDataBreakpoints')
+		s.onDataBreakpointInfoRequest(request)
+	case *dap.SetDataBreakpointsRequest: // Optional (capability 'supportsDataBreakpoints')
+		s.onSetDataBreakpointRequest(request)
 	//--- Requests that we may want to support ---
 	case *dap.SourceRequest: // Required
 		/*TODO*/ s.sendUnsupportedErrorResponse(request.Request) // https://github.com/go-delve/delve/issues/2851
@@ -860,8 +867,6 @@ func (s *Session) handleRequest(request dap.Message) {
 		/*TODO*/ s.onSetExpressionRequest(request) // Not yet implemented
 	case *dap.LoadedSourcesRequest: // Optional (capability 'supportsLoadedSourcesRequest')
 		/*TODO*/ s.onLoadedSourcesRequest(request) // Not yet implemented
-	case *dap.ReadMemoryRequest: // Optional (capability 'supportsReadMemoryRequest')
-		s.onReadMemoryRequest(request)
 	case *dap.CancelRequest: // Optional (capability 'supportsCancelRequest')
 		/*TODO*/ s.onCancelRequest(request) // Not yet implemented (does this make sense?)
 	case *dap.ModulesRequest: // Optional (capability 'supportsModulesRequest')
@@ -879,10 +884,6 @@ func (s *Session) handleRequest(request dap.Message) {
 		s.sendUnsupportedErrorResponse(request.Request)
 	case *dap.CompletionsRequest: // Optional (capability 'supportsCompletionsRequest')
 		s.sendUnsupportedErrorResponse(request.Request)
-	case *dap.DataBreakpointInfoRequest: // Optional (capability 'supportsDataBreakpoints')
-		s.sendUnsupportedErrorResponse(request.Request)
-	case *dap.SetDataBreakpointsRequest: // Optional (capability 'supportsDataBreakpoints')
-		s.sendUnsupportedErrorResponse(request.Request)
 	case *dap.BreakpointLocationsRequest: // Optional (capability 'supportsBreakpointLocationsRequest')
 		s.sendUnsupportedErrorResponse(request.Request)
 	default:
@@ -890,6 +891,15 @@ func (s *Session) handleRequest(request dap.Message) {
 		// decoding succeeded, but this function does not know how
 		// to handle.
 		s.sendInternalErrorResponse(request.GetSeq(), fmt.Sprintf("Unable to process %#v\n", request))
+	}
+}
+
+func (s *Session) stopToSetBreakpoints(request *dap.Request) {
+	s.config.log.Debug("halting execution to set breakpoints")
+	_, err := s.halt()
+	if err != nil {
+		s.sendErrorResponse(*request, UnableToSetBreakpoints, "Unable to set or clear breakpoints", err.Error())
+		return
 	}
 }
 
@@ -964,6 +974,13 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.ExceptionBreakpointFilters = []dap.ExceptionBreakpointsFilter{
 		{Filter: proc.UnrecoveredPanic, Label: "Unrecovered Panics", Default: true},
 		{Filter: proc.FatalThrow, Label: "Fatal Throws", Default: true},
+	}
+	switch runtime.GOOS {
+	case "linux", "darwin":
+		switch runtime.GOARCH {
+		case "arm64", "amd64":
+			response.Body.SupportsDataBreakpoints = true
+		}
 	}
 	s.send(response)
 }
@@ -1589,7 +1606,7 @@ func (s *Session) onSetBreakpointsRequest(request *dap.SetBreakpointsRequest) {
 	// Get all existing breakpoints that match for this source.
 	sourceRequestPrefix := fmt.Sprintf("sourceBp Path=%q ", request.Arguments.Source.Path)
 
-	breakpoints := s.setBreakpoints(sourceRequestPrefix, len(request.Arguments.Breakpoints), func(i int) *bpMetadata {
+	breakpoints := s.setBreakpoints(s.getMatchingBreakpoints(sourceRequestPrefix), len(request.Arguments.Breakpoints), func(i int) *bpMetadata {
 		want := request.Arguments.Breakpoints[i]
 		return &bpMetadata{
 			name:         fmt.Sprintf("%s Line=%d Column=%d", sourceRequestPrefix, want.Line, want.Column),
@@ -1619,10 +1636,17 @@ type bpMetadata struct {
 }
 
 type bpLocation struct {
+	watchpoint bool
+	// for breakpoints
 	file  string
 	line  int
 	addr  uint64
 	addrs []uint64
+	// for watchpoints
+	goid  int64
+	frame int
+	expr  string
+	wtype api.WatchType
 }
 
 // setBreakpoints is a helper function for setting source, function and instruction
@@ -1630,14 +1654,11 @@ type bpLocation struct {
 // included, the total number of breakpoints, and functions for computing the metadata
 // and the location. The location is computed separately because this may be more
 // expensive to compute and may not always be necessary.
-func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(i int) *bpMetadata, locFunc func(i int) (*bpLocation, error)) []dap.Breakpoint {
+func (s *Session) setBreakpoints(existingBps map[string]*api.Breakpoint, totalBps int, metadataFunc func(i int) *bpMetadata, locFunc func(i int) (*bpLocation, error)) []dap.Breakpoint {
 	// If a breakpoint:
 	// -- exists and not in request => ClearBreakpoint
 	// -- exists and in request => AmendBreakpoint
 	// -- doesn't exist and in request => SetBreakpoint
-
-	// Get all existing breakpoints matching the prefix.
-	existingBps := s.getMatchingBreakpoints(prefix)
 
 	// createdBps is a set of breakpoint names that have been added
 	// during this request. This is used to catch duplicate set
@@ -1708,8 +1729,18 @@ func (s *Session) setBreakpoints(prefix string, totalBps int, metadataFunc func(
 				}
 				err = setLogMessage(bp, want.logMessage)
 				if err == nil {
-					// Create new breakpoints.
-					got, err = s.debugger.CreateBreakpoint(bp, "", nil, suspended)
+					if wantLoc.watchpoint {
+						got, err = s.debugger.CreateWatchpoint(wantLoc.goid, wantLoc.frame, 0, wantLoc.expr, wantLoc.wtype)
+						if err == nil {
+							got.Name = bp.Name
+							got.Cond = bp.Cond
+							got.HitCond = bp.HitCond
+							err = s.debugger.AmendBreakpoint(got)
+						}
+					} else {
+						// Create new breakpoints.
+						got, err = s.debugger.CreateBreakpoint(bp, "", nil, suspended)
+					}
 				}
 			}
 		}
@@ -1763,7 +1794,7 @@ func (s *Session) updateBreakpointsResponse(breakpoints []dap.Breakpoint, i int,
 const functionBpPrefix = "functionBreakpoint"
 
 func (s *Session) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakpointsRequest) {
-	breakpoints := s.setBreakpoints(functionBpPrefix, len(request.Arguments.Breakpoints), func(i int) *bpMetadata {
+	breakpoints := s.setBreakpoints(s.getMatchingBreakpoints(functionBpPrefix), len(request.Arguments.Breakpoints), func(i int) *bpMetadata {
 		want := request.Arguments.Breakpoints[i]
 		return &bpMetadata{
 			name:         fmt.Sprintf("%s Name=%s", functionBpPrefix, want.Name),
@@ -1817,7 +1848,7 @@ func (s *Session) onSetFunctionBreakpointsRequest(request *dap.SetFunctionBreakp
 const instructionBpPrefix = "instructionBreakpoint"
 
 func (s *Session) onSetInstructionBreakpointsRequest(request *dap.SetInstructionBreakpointsRequest) {
-	breakpoints := s.setBreakpoints(instructionBpPrefix, len(request.Arguments.Breakpoints), func(i int) *bpMetadata {
+	breakpoints := s.setBreakpoints(s.getMatchingBreakpoints(instructionBpPrefix), len(request.Arguments.Breakpoints), func(i int) *bpMetadata {
 		want := request.Arguments.Breakpoints[i]
 		return &bpMetadata{
 			name:         fmt.Sprintf("%s PC=%s", instructionBpPrefix, want.InstructionReference),
@@ -1835,6 +1866,102 @@ func (s *Session) onSetInstructionBreakpointsRequest(request *dap.SetInstruction
 	})
 
 	response := &dap.SetInstructionBreakpointsResponse{Response: *s.newResponse(request.Request)}
+	response.Body.Breakpoints = breakpoints
+	s.send(response)
+}
+
+// onDataBreakpointInfoRequest handles DataBreakpointInfo requests. If the
+// request can be satisfied the data ID in the response will be in the form:
+// <goid>,<frameidx>,<expression>.
+func (s *Session) onDataBreakpointInfoRequest(request *dap.DataBreakpointInfoRequest) {
+	var goid int64 = -1
+	var frame int
+	var expr, descr string
+	if v, ok := s.variableHandles.get(request.Arguments.VariablesReference); ok {
+		found := false
+		for _, child := range v.Children {
+			if child.Name == request.Arguments.Name {
+				if child.Unreadable != nil {
+					s.sendErrorResponse(request.Request, UnableToGetDataBreakpointInfo, "Could not get data breakpoint info", fmt.Sprintf("field %s is unreadable: %v", request.Arguments.Name, child.Unreadable))
+					return
+				}
+				expr = fmt.Sprintf("*(*[%d]byte)(%#x)", child.RealType.Size(), child.Addr)
+				descr = v.Name + "." + child.Name
+				found = true
+				break
+			}
+		}
+		if !found {
+			s.sendErrorResponse(request.Request, UnableToGetDataBreakpointInfo, "Could not get data breakpoint info", fmt.Sprintf("field %s not found", request.Arguments.Name))
+			return
+		}
+	} else {
+		if request.Arguments.VariablesReference != 0 {
+			s.sendErrorResponse(request.Request, UnableToGetDataBreakpointInfo, "Could not get data breakpoint info", fmt.Sprintf("variable reference %d unknown", request.Arguments.VariablesReference))
+		}
+		// No variable reference and it isn't an address, evaluate as name an expression
+		sf, ok := s.stackFrameHandles.get(request.Arguments.FrameId)
+		if ok {
+			goid = int64(sf.goroutineID)
+			frame = sf.frameIndex
+		}
+		expr = request.Arguments.Name
+		descr = expr
+	}
+	s.send(&dap.DataBreakpointInfoResponse{
+		Response: *s.newResponse(request.Request),
+		Body: dap.DataBreakpointInfoResponseBody{
+			DataId:      fmt.Sprintf("%d,%d,%s", goid, frame, expr),
+			AccessTypes: []dap.DataBreakpointAccessType{"read", "write", "readWrite"},
+			CanPersist:  false,
+			Description: descr,
+		},
+	})
+}
+
+const dataBpPrefix = "dataBreakpoint"
+
+func (s *Session) onSetDataBreakpointRequest(request *dap.SetDataBreakpointsRequest) {
+	breakpoints := s.setBreakpoints(s.getWatchpoints(), len(request.Arguments.Breakpoints), func(i int) *bpMetadata {
+		want := request.Arguments.Breakpoints[i]
+		return &bpMetadata{
+			name:         fmt.Sprintf("%s %s", dataBpPrefix, want.DataId),
+			condition:    want.Condition,
+			hitCondition: want.HitCondition,
+			logMessage:   "",
+		}
+	}, func(i int) (*bpLocation, error) {
+		want := request.Arguments.Breakpoints[i]
+		v := strings.SplitN(want.DataId, ",", 3)
+		if len(v) != 3 {
+			return nil, fmt.Errorf("malformed data ID: %q", want.DataId)
+		}
+		goid, err1 := strconv.ParseInt(v[0], 0, 64)
+		frame, err2 := strconv.ParseInt(v[1], 0, 64)
+		if err1 != nil || err2 != nil {
+			return nil, fmt.Errorf("malformed data ID: %q", want.DataId)
+		}
+		var wtype api.WatchType
+		switch want.AccessType {
+		case "read":
+			wtype = api.WatchRead
+		case "write":
+			wtype = api.WatchWrite
+		case "readWrite":
+			wtype = api.WatchRead | api.WatchWrite
+		default:
+			return nil, fmt.Errorf("unknown access type: %q", want.AccessType)
+		}
+		return &bpLocation{
+			watchpoint: true,
+			goid:       goid,
+			frame:      int(frame),
+			expr:       v[2],
+			wtype:      wtype,
+		}, nil
+	})
+
+	response := &dap.SetDataBreakpointsResponse{Response: *s.newResponse(request.Request)}
 	response.Body.Breakpoints = breakpoints
 	s.send(response)
 }
@@ -1865,6 +1992,21 @@ func (s *Session) getMatchingBreakpoints(prefix string) map[string]*api.Breakpoi
 			continue
 		}
 		matchingBps[bp.Name] = bp
+	}
+	return matchingBps
+}
+
+func (s *Session) getWatchpoints() map[string]*api.Breakpoint {
+	existing := s.debugger.Breakpoints(false)
+	matchingBps := make(map[string]*api.Breakpoint, len(existing))
+	for _, bp := range existing {
+		// Skip special breakpoints such as for panic.
+		if bp.ID < 0 {
+			continue
+		}
+		if bp.WatchExpr != "" {
+			matchingBps[bp.Name] = bp
+		}
 	}
 	return matchingBps
 }
