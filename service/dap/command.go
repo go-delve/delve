@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"go/constant"
 	"reflect"
 	"slices"
 	"sort"
@@ -165,25 +166,24 @@ func (s *Session) examineMemory(goid, frame int, argstr string) (string, error) 
 	var address uint64
 
 	if args.IsExpr {
-		pvar, err := s.debugger.EvalVariableInScope(int64(goid), frame, 0, args.Operand, DefaultLoadConfig)
+		val, err := s.debugger.EvalVariableInScope(int64(goid), frame, 0, args.Operand, DefaultLoadConfig)
 		if err != nil {
 			return "", err
 		}
-		val := api.ConvertVar(pvar)
 
-		// "-x &myVar" or "-x myPtrVar"
-		if val.Kind == reflect.Ptr {
+		switch val.Kind {
+		case reflect.Ptr: // "-x &myVar" or "-x myPtrVar"
 			if len(val.Children) < 1 {
 				return fmt.Errorf("bug? invalid pointer: %#v", val).Error(), nil
 			}
 			address = val.Children[0].Addr
-			// "-x 0xc000079f20 + 8" or -x 824634220320 + 8
-		} else if val.Kind == reflect.Int && val.Value != "" {
-			address, err = strconv.ParseUint(val.Value, 0, 64)
-			if err != nil {
-				return fmt.Errorf("bad expression result: %q: %s", val.Value, err).Error(), nil
-			}
-		} else {
+
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64: // "-x 0xc000079f20 + 8" or -x 824634220320 + 8
+			n, _ := constant.Int64Val(val.Value)
+			address = uint64(n)
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr: // "-x 0xc000079f20 + 8" or -x 824634220320 + 8
+			address, _ = constant.Uint64Val(val.Value)
+		default:
 			return fmt.Errorf("unsupported expression type: %s", val.Kind).Error(), nil
 		}
 	} else {
