@@ -444,9 +444,9 @@ func binaryop(opcode Opcode, ctxt *context) error {
 	case DW_OP_shl:
 		r = second << uint64(top)
 	case DW_OP_shr:
-		r = second >> uint64(top)
-	case DW_OP_shra:
 		r = int64(uint64(second) >> uint64(top))
+	case DW_OP_shra:
+		r = second >> uint64(top)
 	case DW_OP_xor:
 		r = second ^ top
 	case DW_OP_le:
