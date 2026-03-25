@@ -5211,15 +5211,6 @@ func TestWatchpointStackRecordedOutOfScopeBreakletIndex(t *testing.T) {
 	// returns), retbp accumulates an extra breaklet while retbp2 does not, and
 	// using len(retbp)-1 to index retbp2 panics.
 	skipUnlessOn(t, "only for recorded targets", "rr")
-	skipOn(t, "not implemented", "freebsd")
-	skipOn(t, "not implemented", "386")
-	skipOn(t, "not implemented", "ppc64le")
-	skipOn(t, "not implemented", "riscv64")
-	skipOn(t, "not implemented", "loong64")
-	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
-	if _, isTeamCityTest := os.LookupEnv("TEAMCITY_VERSION"); isTeamCityTest {
-		skipOn(t, "CI is running a version of macOS that is too old (11.2)", "darwin", "arm64")
-	}
 	protest.AllowRecording(t)
 
 	withTestProcess("databpstack", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
