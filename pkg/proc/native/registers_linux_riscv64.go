@@ -87,7 +87,7 @@ func (thread *nativeThread) setSP(sp uint64) (err error) {
 	r.Regs.Sp = sp
 	thread.dbp.execPtraceFunc(func() { err = ptraceSetGRegs(thread.ID, r.Regs) })
 
-	return nil
+	return err
 }
 
 func (thread *nativeThread) SetReg(regNum uint64, reg *op.DwarfRegister) error {
