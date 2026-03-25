@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
+	"github.com/go-delve/delve/pkg/dwarf/regnum"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -286,15 +287,12 @@ func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 
 // usesXMMRegisters returns true if the parameter is passed in XMM/SSE
 // registers, which are not accessible from eBPF uprobes.
-// On amd64, XMM0-XMM15 correspond to DWARF register numbers 17-32.
-// This file is only built for amd64 (see build tag), so the threshold
-// is hardcoded to 17.
 func usesXMMRegisters(param function_parameter_t) bool {
 	if !param.in_reg {
 		return false
 	}
 	for i := 0; i < int(param.n_pieces); i++ {
-		if param.reg_nums[i] >= 17 {
+		if param.reg_nums[i] >= regnum.AMD64_XMM0 {
 			return true
 		}
 	}
