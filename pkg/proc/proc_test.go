@@ -5203,6 +5203,31 @@ func TestWatchpointStackBackwardsOutOfScope(t *testing.T) {
 	})
 }
 
+func TestWatchpointStackRecordedOutOfScopeBreakletIndex(t *testing.T) {
+	// Regression: setStackWatchBreakpoints (recorded replay) adds a second
+	// WatchOutOfScope breakpoint at the CALL before the return PC. The last
+	// breaklet must be taken from retbp2, not indexed with len(retbp.Breaklets).
+	// If a user breakpoint already exists at the return PC (here: main after f()
+	// returns), retbp accumulates an extra breaklet while retbp2 does not, and
+	// using len(retbp)-1 to index retbp2 panics.
+	skipUnlessOn(t, "only for recorded targets", "rr")
+	protest.AllowRecording(t)
+
+	withTestProcess("databpstack", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		setFileBreakpoint(p, t, fixture.Source, 11) // stop in f() at g(1000, &w)
+		setFileBreakpoint(p, t, fixture.Source, 24) // same return PC as stack-watch OOS sentinel (after f returns to main)
+
+		assertNoError(grp.Continue(), t, "Continue 0")
+		assertLineNumber(p, t, 11, "Continue 0")
+
+		scope, err := proc.GoroutineScope(p, p.CurrentThread())
+		assertNoError(err, t, "GoroutineScope")
+
+		_, err = p.SetWatchpoint(0, scope, "w", proc.WatchWrite, nil)
+		assertNoError(err, t, "SetWatchpoint with stack watch (recorded extra OOS breaklet)")
+	})
+}
+
 func TestSetOnFunctions(t *testing.T) {
 	// The set command between function variables should fail with an error
 	// Issue #2691

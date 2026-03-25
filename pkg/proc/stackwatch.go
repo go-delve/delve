@@ -86,7 +86,7 @@ func (t *Target) setStackWatchBreakpoints(scope *EvalScope, watchpoint *Breakpoi
 				if err != nil {
 					return err
 				}
-				retbreaklet2 := retbp2.Breaklets[len(retbp.Breaklets)-1]
+				retbreaklet2 := retbp2.Breaklets[len(retbp2.Breaklets)-1]
 				retbreaklet2.watchpoint = watchpoint
 				retbreaklet2.callback = woos
 				break
