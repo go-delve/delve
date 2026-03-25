@@ -5646,7 +5646,10 @@ func testWaitForSetup(t *testing.T, mu *sync.Mutex, started *bool) (*exec.Cmd, *
 	}
 	fixture := protest.BuildFixture(t, "loopprog", buildFlags)
 
-	cmd := exec.Command(fixture.Path)
+	// Workaround to prevent WaitFor from trying to attach to old,
+	// already terminated, executions of loopprog on Windows, see #4292.
+	uniqueArg := fmt.Sprintf("%s-%d", t.Name(), time.Now().Unix())
+	cmd := exec.Command(fixture.Path, uniqueArg)
 
 	go func() {
 		time.Sleep(2 * time.Second)
@@ -5658,7 +5661,12 @@ func testWaitForSetup(t *testing.T, mu *sync.Mutex, started *bool) (*exec.Cmd, *
 		mu.Unlock()
 	}()
 
-	waitFor := &proc.WaitFor{Name: fixture.Path, Interval: 100 * time.Millisecond, Duration: 10 * time.Second}
+	waitFor := &proc.WaitFor{Name: fixture.Path + " " + uniqueArg, Interval: 100 * time.Millisecond, Duration: 10 * time.Second}
+	if runtime.GOOS == "darwin" && testBackend == "lldb" {
+		// LLDB/debugserver wait-for attach is by process name (or pid), not argv.
+		// See: https://lldb.llvm.org/man/lldb.html#cmdoption-lldb-wait-for
+		waitFor.Name = fixture.Path
+	}
 
 	return cmd, waitFor
 }
