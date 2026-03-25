@@ -2101,19 +2101,18 @@ func examineMemoryCmd(t *Term, ctx callContext, argstr string) error {
 			return err
 		}
 
-		// "-x &myVar" or "-x myPtrVar"
-		if val.Kind == reflect.Ptr {
+		switch val.Kind {
+		case reflect.Ptr: // "-x &myVar" or "-x myPtrVar"
 			if len(val.Children) < 1 {
 				return fmt.Errorf("bug? invalid pointer: %#v", val)
 			}
 			address = val.Children[0].Addr
-			// "-x 0xc000079f20 + 8" or -x 824634220320 + 8
-		} else if val.Kind == reflect.Int && val.Value != "" {
-			address, err = strconv.ParseUint(val.Value, 0, 64)
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr: // "-x 0xc000079f20 + 8" or -x 824634220320 + 8
+			address, err = strconv.ParseUint(api.ExtractIntValue(val.Value), 0, 64)
 			if err != nil {
 				return fmt.Errorf("bad expression result: %q: %s", val.Value, err)
 			}
-		} else {
+		default:
 			return fmt.Errorf("unsupported expression type: %s", val.Kind)
 		}
 	} else {
