@@ -1,5 +1,7 @@
 #include "include/trace.bpf.h"
 
+#define POINTER_KIND 22
+#define SLICE_KIND 23
 #define STRING_KIND 24
 
 // parse_string_param will parse a string parameter. The parsed value of the string
@@ -20,6 +22,38 @@ int parse_string_param(struct pt_regs *ctx, function_parameter_t *param) {
             str_len = 0x30;
         }
         int ret = bpf_probe_read_user(&param->deref_val, str_len, (void *)(str_addr));
+        if (ret < 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// parse_pointer_param reads the value pointed to by a pointer parameter.
+// The pointer address should already be in param->val.
+__always_inline
+int parse_pointer_param(struct pt_regs *ctx, function_parameter_t *param) {
+    size_t ptr_addr;
+    __builtin_memcpy(&ptr_addr, param->val, sizeof(ptr_addr));
+    param->daddr = ptr_addr;
+    if (ptr_addr != 0) {
+        int ret = bpf_probe_read_user(&param->deref_val, 0x30, (void *)(ptr_addr));
+        if (ret < 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// parse_slice_param reads element data from a slice.
+// The slice header (ptr + len + cap = 24 bytes) should already be in param->val.
+__always_inline
+int parse_slice_param(struct pt_regs *ctx, function_parameter_t *param) {
+    size_t data_ptr;
+    __builtin_memcpy(&data_ptr, param->val, sizeof(data_ptr));
+    param->daddr = data_ptr;
+    if (data_ptr != 0) {
+        int ret = bpf_probe_read_user(&param->deref_val, 0x30, (void *)(data_ptr));
         if (ret < 0) {
             return 1;
         }
@@ -132,6 +166,10 @@ int parse_param(struct pt_regs *ctx, function_parameter_t *param) {
     }
 
     switch (param->kind) {
+        case POINTER_KIND:
+            return parse_pointer_param(ctx, param);
+        case SLICE_KIND:
+            return parse_slice_param(ctx, param);
         case STRING_KIND:
             return parse_string_param(ctx, param);
     }

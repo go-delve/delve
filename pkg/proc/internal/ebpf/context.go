@@ -17,13 +17,14 @@ type UProbeArgMap struct {
 }
 
 type RawUProbeParam struct {
-	Pieces   []op.Piece
-	RealType godwarf.Type
-	Kind     reflect.Kind
-	Len      int64
-	Base     uint64
-	Addr     uint64
-	Data     []byte
+	Pieces     []op.Piece
+	RealType   godwarf.Type
+	Kind       reflect.Kind
+	Len        int64
+	Base       uint64
+	Addr       uint64
+	Data       []byte
+	Unreadable error // If set, the parameter could not be read (e.g., XMM register, unsupported type).
 }
 
 type RawUProbeParams struct {

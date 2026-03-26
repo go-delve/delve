@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -1301,6 +1302,78 @@ func TestTraceBackendParity(t *testing.T) {
 	if !bytes.Equal(ptraceFiltered, ebpfFiltered) {
 		t.Fatalf("Output mismatch between ptrace and ebpf backends:\n\nPtrace output:\n%s\n\neBPF output:\n%s", string(ptraceOutput), string(ebpfOutput))
 	}
+}
+
+func TestTraceEBPFTypes(t *testing.T) {
+	t.Parallel()
+	if os.Getenv("CI") == "true" {
+		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
+	}
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("not implemented on non linux/amd64 systems")
+	}
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+		t.Skip("requires at least Go 1.16 to run test")
+	}
+	usr, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usr.Uid != "0" {
+		t.Skip("test must be run as root")
+	}
+
+	dlvbin := protest.GetDlvBinaryEBPF(t)
+	fixtures := protest.FindFixturesDir()
+
+	runEBPFTrace := func(t *testing.T, funcName string) []byte {
+		t.Helper()
+		cmd := exec.Command(dlvbin, "trace", "--ebpf", "--output", filepath.Join(t.TempDir(), "__debug"), filepath.Join(fixtures, "ebpf_trace_types.go"), funcName)
+		rdr, err := cmd.StderrPipe()
+		assertNoError(err, t, "stderr pipe")
+		defer rdr.Close()
+
+		assertNoError(cmd.Start(), t, "running trace")
+		output, err := io.ReadAll(rdr)
+		assertNoError(err, t, "ReadAll")
+		cmd.Wait()
+		return output
+	}
+
+	// Test small integer types (int8, uint16, int32) to verify correct byte sizes
+	t.Run("SmallInts", func(t *testing.T) {
+		t.Parallel()
+		output := runEBPFTrace(t, "main.tracedSmallInts")
+		if !bytes.Contains(output, []byte("7")) || !bytes.Contains(output, []byte("1000")) || !bytes.Contains(output, []byte("-42")) {
+			t.Fatalf("expected small int values in output, got:\n%s", string(output))
+		}
+	})
+
+	// Test pointer types
+	t.Run("Pointers", func(t *testing.T) {
+		t.Parallel()
+		output := runEBPFTrace(t, "main.tracedPointer")
+		if bytes.Contains(output, []byte("type not supported")) {
+			t.Fatalf("pointer type should be supported, got:\n%s", string(output))
+		}
+		addrRe := regexp.MustCompile(`main\.tracedPointer\([1-9][0-9]*`)
+		if !addrRe.Match(output) {
+			t.Fatalf("expected pointer address values in output, got:\n%s", string(output))
+		}
+	})
+
+	// Test slice types
+	t.Run("Slices", func(t *testing.T) {
+		t.Parallel()
+		output := runEBPFTrace(t, "main.tracedSlice")
+		if bytes.Contains(output, []byte("type not supported")) {
+			t.Fatalf("slice type should be supported, got:\n%s", string(output))
+		}
+		sliceRe := regexp.MustCompile(`main\.tracedSlice\([1-9][0-9]*`)
+		if !sliceRe.Match(output) {
+			t.Fatalf("expected slice address value in output, got:\n%s", string(output))
+		}
+	})
 }
 
 func TestDlvTestChdir(t *testing.T) {
