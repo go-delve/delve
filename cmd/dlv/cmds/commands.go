@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -89,6 +88,7 @@ var (
 	traceUseEBPF       bool
 	traceShowTimestamp bool
 	traceFollowCalls   int
+	traceVerbose       int
 
 	// redirect specifications for target process
 	redirects []string
@@ -370,6 +370,8 @@ only see the output of the trace operations you can redirect stdout.`,
 	traceCommand.Flags().String("output", "", "Output path for the binary.")
 	must(traceCommand.MarkFlagFilename("output"))
 	traceCommand.Flags().IntVarP(&traceFollowCalls, "follow-calls", "", 0, "Trace all children of the function to the required depth. Trace also supports defer functions and cases where functions are dynamically returned and passed as parameters.")
+	traceCommand.Flags().IntVarP(&traceVerbose, "trace-verbose", "V", 0, "Parameter verbosity: 0=values, 1=types, 2=inline, 3=expanded, 4=full (default 0)")
+	must(traceCommand.RegisterFlagCompletionFunc("trace-verbose", cobra.NoFileCompletions))
 	rootCommand.AddCommand(traceCommand)
 
 	coreCommand := &cobra.Command{
@@ -789,12 +791,14 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 				if traceFollowCalls > 0 && stackdepth == 0 {
 					stackdepth = 20
 				}
+				// Get LoadConfig based on verbosity level
+				loadCfg := getLoadConfigForVerbosity(traceVerbose)
 				_, err = client.CreateBreakpoint(&api.Breakpoint{
 					FunctionName:     funcs[i],
 					Tracepoint:       true,
 					Line:             -1,
 					Stacktrace:       stackdepth,
-					LoadArgs:         &terminal.ShortLoadConfig,
+					LoadArgs:         &loadCfg,
 					TraceFollowCalls: traceFollowCalls,
 					RootFuncName:     regexp,
 				})
@@ -816,7 +820,7 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 						TraceReturn:      true,
 						Stacktrace:       stackdepth,
 						Line:             -1,
-						LoadArgs:         &terminal.ShortLoadConfig,
+						LoadArgs:         &loadCfg,
 						TraceFollowCalls: traceFollowCalls,
 						RootFuncName:     regexp,
 					})
@@ -838,6 +842,7 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 		}
 		t := terminal.New(client, cfg)
 		t.SetTraceNonInteractive()
+		t.SetTraceVerbosity(traceVerbose)
 		t.RedirectTo(os.Stderr)
 		defer t.Close()
 		if traceUseEBPF {
@@ -855,15 +860,29 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 							return
 						}
 						for _, t := range tracepoints {
-							var params strings.Builder
+							var paramList []string
 							for _, p := range t.InputParams {
-								if params.Len() > 0 {
-									params.WriteString(", ")
-								}
-								if p.Kind == reflect.String {
-									params.WriteString(fmt.Sprintf("%q", p.Value))
+								// Format based on verbosity level
+								formatted := api.FormatTraceVariable(p, traceVerbose)
+								// Add parameter names for verbosity >= 1
+								if traceVerbose == 0 {
+									paramList = append(paramList, formatted)
 								} else {
-									params.WriteString(p.Value)
+									prefix := ""
+									if traceVerbose >= 3 {
+										prefix = "  " // Indent for multi-line format
+									}
+									paramList = append(paramList, fmt.Sprintf("%s%s: %s", prefix, p.Name, formatted))
+								}
+							}
+
+							// Join parameters based on verbosity
+							var paramStr string
+							if len(paramList) > 0 {
+								if traceVerbose >= 3 {
+									paramStr = strings.Join(paramList, "\n")
+								} else {
+									paramStr = strings.Join(paramList, ", ")
 								}
 							}
 
@@ -874,11 +893,17 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 							if t.IsRet {
 								retVals := make([]string, 0, len(t.ReturnParams))
 								for _, p := range t.ReturnParams {
-									retVals = append(retVals, p.Value)
+									retVals = append(retVals, api.FormatTraceVariable(p, traceVerbose))
 								}
 								fmt.Fprintf(os.Stderr, ">> goroutine(%d): %s => (%s)\n", t.GoroutineID, t.FunctionName, strings.Join(retVals, ","))
 							} else {
-								fmt.Fprintf(os.Stderr, "> goroutine(%d): %s(%s)\n", t.GoroutineID, t.FunctionName, params.String())
+								fmt.Fprintf(os.Stderr, "> goroutine(%d): %s(", t.GoroutineID, t.FunctionName)
+								if traceVerbose >= 3 {
+									// Levels 3-4: Multi-line format
+									fmt.Fprintf(os.Stderr, "\n")
+								}
+								fmt.Fprintf(os.Stderr, "\n%s)\n", paramStr)
+
 							}
 						}
 					}
@@ -1260,5 +1285,56 @@ func netDial(addr string) net.Conn {
 func must(err error) {
 	if err != nil {
 		log.Fatal(err)
+	}
+}
+
+// getLoadConfigForVerbosity returns the LoadConfig for a given verbosity level
+func getLoadConfigForVerbosity(verbosity int) api.LoadConfig {
+	switch verbosity {
+	case 0:
+		// Level 0: default case(ShortLoadConfig)
+		return api.LoadConfig{
+			MaxStringLen:    64,
+			MaxStructFields: 3,
+		}
+
+	case 1:
+		return api.LoadConfig{
+			FollowPointers:     false,
+			MaxVariableRecurse: 0,
+			MaxStringLen:       32,
+			MaxArrayValues:     0,
+			MaxStructFields:    0, // Load structure, but don't expand fields
+		}
+
+	case 2:
+		return api.LoadConfig{
+			FollowPointers:     false,
+			MaxVariableRecurse: 1,
+			MaxStringLen:       64,
+			MaxArrayValues:     5,
+			MaxStructFields:    3,
+		}
+
+	case 3:
+		return api.LoadConfig{
+			FollowPointers:     false,
+			MaxVariableRecurse: 2,
+			MaxStringLen:       128,
+			MaxArrayValues:     10,
+			MaxStructFields:    10,
+		}
+
+	case 4:
+		return api.LoadConfig{
+			FollowPointers:     true,
+			MaxVariableRecurse: 3,
+			MaxStringLen:       256,
+			MaxArrayValues:     100,
+			MaxStructFields:    -1, // All fields
+		}
+
+	default:
+		return api.LoadConfig{} // Minimal config for invalid values
 	}
 }

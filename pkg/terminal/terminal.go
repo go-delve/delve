@@ -83,6 +83,7 @@ type Term struct {
 	quitting      bool
 
 	traceNonInteractive bool
+	traceVerbosity      int // Verbosity level for trace output (0-4)
 
 	downloadsMu         sync.Mutex
 	downloadsInProgress bool
@@ -234,6 +235,10 @@ func (t *Term) SetTraceNonInteractive() {
 
 func (t *Term) IsTraceNonInteractive() bool {
 	return t.traceNonInteractive
+}
+
+func (t *Term) SetTraceVerbosity(v int) {
+	t.traceVerbosity = v
 }
 
 // Close returns the terminal to its previous mode.

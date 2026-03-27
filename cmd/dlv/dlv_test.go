@@ -837,6 +837,7 @@ func TestTraceMultipleGoroutines(t *testing.T) {
 	// TODO(derekparker) this test has to be a bit vague to avoid flakiness.
 	// I think a future improvement could be to use regexp captures to match the
 	// goroutine IDs at function entry and exit.
+
 	expected := []byte("main.callme(0, \"five\")\n")
 	expected2 := []byte("main.callme => (0)\n")
 
@@ -860,6 +861,166 @@ func TestTraceMultipleGoroutines(t *testing.T) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
 	}
 	cmd.Wait()
+}
+
+// Test trace verbosity level 0 matches default behavior
+func TestTraceVerbosityLevel0Default(t *testing.T) {
+	t.Parallel()
+	dlvbin := protest.GetDlvBinary(t)
+	fixtures := protest.FindFixturesDir()
+
+	// Expected output: values only, no parameter names
+	expected := []byte("main.testPrimitives(42, 3.14159, \"Hello World\", true)")
+
+	// Test with explicit --trace-verbose=0
+	cmd1 := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug1"),
+		filepath.Join(fixtures, "traceverb.go"), "main.testPrimitives", "--trace-verbose", "0")
+	rdr1, err := cmd1.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr1.Close()
+	cmd1.Dir = filepath.Join(fixtures, "buildtest")
+	assertNoError(cmd1.Start(), t, "running trace with --trace-verbose=0")
+	output1, _ := io.ReadAll(rdr1)
+	assertNoError(cmd1.Wait(), t, "cmd1.Wait()")
+
+	// Test with no flag (default)
+	cmd2 := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug2"),
+		filepath.Join(fixtures, "traceverb.go"), "main.testPrimitives")
+	rdr2, err := cmd2.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr2.Close()
+	cmd2.Dir = filepath.Join(fixtures, "buildtest")
+	assertNoError(cmd2.Start(), t, "running trace with default")
+	output2, _ := io.ReadAll(rdr2)
+	assertNoError(cmd2.Wait(), t, "cmd2.Wait()")
+
+	// Both should contain the same values-only format
+	if !bytes.Contains(output1, expected) {
+		t.Fatalf("--trace-verbose=0 missing expected output:\n%s\ngot:\n%s", expected, output1)
+	}
+	if !bytes.Contains(output2, expected) {
+		t.Fatalf("default missing expected output:\n%s\ngot:\n%s", expected, output2)
+	}
+}
+
+// Test trace verbosity level 1 (types only)
+func TestTraceVerbosityLevel1(t *testing.T) {
+	t.Parallel()
+	dlvbin := protest.GetDlvBinary(t)
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"),
+		filepath.Join(fixtures, "traceverb.go"), "main.testPrimitives", "--trace-verbose", "1")
+	rdr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	cmd.Dir = filepath.Join(fixtures, "buildtest")
+
+	assertNoError(cmd.Start(), t, "running trace")
+	scan := bufio.NewScanner(rdr)
+	found := false
+	for scan.Scan() {
+		text := scan.Text()
+		// At verbosity 1, we expect type annotations like "i: <int>"
+		if strings.Contains(text, "main.testPrimitives") && strings.Contains(text, "<int>") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected to find type annotations at verbosity level 1")
+	}
+	assertNoError(cmd.Wait(), t, "cmd.Wait()")
+}
+
+// Test trace verbosity level 2 (inline with types)
+func TestTraceVerbosityLevel2(t *testing.T) {
+	t.Parallel()
+	dlvbin := protest.GetDlvBinary(t)
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"),
+		filepath.Join(fixtures, "traceverb.go"), "main.testStruct", "--trace-verbose", "2")
+	rdr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	cmd.Dir = filepath.Join(fixtures, "buildtest")
+
+	assertNoError(cmd.Start(), t, "running trace")
+	output, _ := io.ReadAll(rdr)
+
+	// For verbosity 2, expected inline format with parameter names, types, and values
+	expected := []byte(`main.testStruct(p: main.Point {X: 10}, r: main.Rectangle {Color: "red"})`)
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", expected, output)
+	}
+	assertNoError(cmd.Wait(), t, "cmd.Wait()")
+}
+
+// Test trace verbosity level 3 (multi-line expanded)
+func TestTraceVerbosityLevel3(t *testing.T) {
+	t.Parallel()
+	dlvbin := protest.GetDlvBinary(t)
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"),
+		filepath.Join(fixtures, "traceverb.go"), "main.testStruct", "--trace-verbose", "3")
+	rdr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	cmd.Dir = filepath.Join(fixtures, "buildtest")
+
+	assertNoError(cmd.Start(), t, "running trace")
+	output, _ := io.ReadAll(rdr)
+
+	// For verbosity 3, parameters should be multi-line with indentation
+	// Expected format: "> goroutine(1): main.testStruct(\n  p: ...\n  r: ...)"
+	if !strings.Contains(string(output), "main.testStruct") {
+		t.Fatal("expected to find testStruct call")
+	}
+	// Check for indented parameter on its own line (indicates multi-line format)
+	if !strings.Contains(string(output), "\n  r:") {
+		t.Fatal("expected to find multi-line format with indented parameters")
+	}
+	assertNoError(cmd.Wait(), t, "cmd.Wait()")
+}
+
+// Test trace verbosity level 4 (full verbose with nested structs)
+func TestTraceVerbosityLevel4(t *testing.T) {
+	t.Parallel()
+	dlvbin := protest.GetDlvBinary(t)
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"),
+		filepath.Join(fixtures, "traceverb.go"), "main.testNested", "--trace-verbose", "4")
+	rdr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	cmd.Dir = filepath.Join(fixtures, "buildtest")
+
+	assertNoError(cmd.Start(), t, "running trace")
+	output, _ := io.ReadAll(rdr)
+
+	// For verbosity 4, both first-level and nested structs should be fully expanded
+	if !strings.Contains(string(output), "main.testNested") {
+		t.Fatal("expected to find testNested call")
+	}
+	// Check nested Address pointer exists
+	if !strings.Contains(string(output), "Address: *main.Address") {
+		t.Fatal("expected to find nested Address pointer field")
+	}
+	// Check Person struct is expanded (Name field unique to Person)
+	if !strings.Contains(string(output), "\n\tName:") {
+		t.Fatal("expected to find Person.Name field on indented line")
+	}
+	// Check nested Address is actually expanded with fields on indented lines
+	if !strings.Contains(string(output), "\n\tStreet:") || !strings.Contains(string(output), "\n\tCity:") {
+		t.Fatal("expected to find Address fields (Street, City) on indented lines")
+	}
+	assertNoError(cmd.Wait(), t, "cmd.Wait()")
 }
 
 func TestTracePid(t *testing.T) {
