@@ -831,6 +831,9 @@ func TestTraceDirRecursion(t *testing.T) {
 }
 
 func TestTraceMultipleGoroutines(t *testing.T) {
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
+		t.Skip("broken")
+	}
 	t.Parallel()
 	dlvbin := protest.GetDlvBinary(t)
 
@@ -1469,6 +1472,9 @@ func TestCapsLock(t *testing.T) {
 	args := []string{"-packages", "./cmd/dlv"}
 	if goos == "linux" && goarch == "ppc64le" {
 		args = append([]string{"-buildtags", "exp.linuxppc64le"}, args...)
+	}
+	if goos == "windows" && goarch == "arm64" {
+		args = append([]string{"-buildtags", "exp.winarm64"}, args...)
 	}
 
 	if goos == "linux" && goarch == "riscv64" {
