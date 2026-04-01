@@ -543,9 +543,17 @@ func (it *stackIterator) appendInlineCalls(callback func(Stackframe) bool, frame
 	return callback(frame)
 }
 
-// advanceRegs calculates the DwarfRegisters for a next stack frame
-// (corresponding to it.pc). It tries frame-pointer-based unwinding first
-// and falls back to DWARF CFI when frame pointers are unavailable.
+// advanceRegs calculates the DwarfRegisters for the next stack frame
+// (corresponding to it.pc).
+//
+// The computation uses the registers for the current stack frame in it.regs.
+// When possible a simple frame pointer based unwinding is done, otherwise
+// the Frame Descriptor Entry (FDE) corresponding to the current frame,
+// retrieved from DWARF, is used.
+//
+// The new set of registers is returned. it.regs is not updated, except for
+// it.regs.CFA; the caller has to eventually switch it.regs when the iterator
+// advances to the next frame.
 func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uint64, retaddr uint64) {
 	if callFrameRegs, ret, retaddr, ok := it.tryFramePointerUnwind(); ok {
 		return callFrameRegs, ret, retaddr
