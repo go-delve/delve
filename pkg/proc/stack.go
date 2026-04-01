@@ -628,7 +628,8 @@ func (it *stackIterator) tryFramePointerUnwind() (callFrameRegs op.DwarfRegister
 	}
 
 	fn := it.bi.PCToFunc(it.pc)
-	if fn == nil {
+	// Frame pointer conventions are only guaranteed for Go code.
+	if fn == nil || !fn.cu.isgo {
 		return op.DwarfRegisters{}, 0, 0, false
 	}
 
