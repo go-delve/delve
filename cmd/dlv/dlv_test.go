@@ -869,8 +869,9 @@ func TestTraceVerbosityLevel0Default(t *testing.T) {
 	dlvbin := protest.GetDlvBinary(t)
 	fixtures := protest.FindFixturesDir()
 
-	// Expected output: values only, no parameter names
-	expected := []byte("main.testPrimitives(42, 3.14159, \"Hello World\", true)")
+	expected := []byte(`> goroutine(1): main.testPrimitives(42, 3.14159, "Hello World", true)
+>> goroutine(1): main.testPrimitives => (84)
+`)
 
 	// Test with explicit --trace-verbose=0
 	cmd1 := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug1"),
@@ -896,10 +897,10 @@ func TestTraceVerbosityLevel0Default(t *testing.T) {
 
 	// Both should contain the same values-only format
 	if !bytes.Contains(output1, expected) {
-		t.Fatalf("--trace-verbose=0 missing expected output:\n%s\ngot:\n%s", expected, output1)
+		t.Fatalf("--trace-verbose=0 expected:\n%s\ngot:\n%s", expected, output1)
 	}
 	if !bytes.Contains(output2, expected) {
-		t.Fatalf("default missing expected output:\n%s\ngot:\n%s", expected, output2)
+		t.Fatalf("default expected:\n%s\ngot:\n%s", expected, output2)
 	}
 }
 
@@ -907,6 +908,10 @@ func TestTraceVerbosityLevel0Default(t *testing.T) {
 func TestTraceVerbosityLevel1(t *testing.T) {
 	t.Parallel()
 	dlvbin := protest.GetDlvBinary(t)
+
+	expected := []byte(`> goroutine(1): main.testPrimitives(i: <int>, f: <float64>, s: <string>, b: <bool>)
+>> goroutine(1): main.testPrimitives => (<int>)
+`)
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"),
@@ -918,17 +923,10 @@ func TestTraceVerbosityLevel1(t *testing.T) {
 	cmd.Dir = filepath.Join(fixtures, "buildtest")
 
 	assertNoError(cmd.Start(), t, "running trace")
-	scan := bufio.NewScanner(rdr)
-	found := false
-	for scan.Scan() {
-		text := scan.Text()
-		// At verbosity 1, we expect type annotations like "i: <int>"
-		if strings.Contains(text, "main.testPrimitives") && strings.Contains(text, "<int>") {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("expected to find type annotations at verbosity level 1")
+	output, _ := io.ReadAll(rdr)
+
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", expected, output)
 	}
 	assertNoError(cmd.Wait(), t, "cmd.Wait()")
 }
@@ -937,6 +935,10 @@ func TestTraceVerbosityLevel1(t *testing.T) {
 func TestTraceVerbosityLevel2(t *testing.T) {
 	t.Parallel()
 	dlvbin := protest.GetDlvBinary(t)
+
+	expected := []byte(`> goroutine(1): main.testStruct(p: main.Point {X: 10}, r: main.Rectangle {Color: "red"})
+>> goroutine(1): main.testStruct => (main.Point {X: 20})
+`)
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"),
@@ -950,8 +952,6 @@ func TestTraceVerbosityLevel2(t *testing.T) {
 	assertNoError(cmd.Start(), t, "running trace")
 	output, _ := io.ReadAll(rdr)
 
-	// For verbosity 2, expected inline format with parameter names, types, and values
-	expected := []byte(`main.testStruct(p: main.Point {X: 10}, r: main.Rectangle {Color: "red"})`)
 	if !bytes.Contains(output, expected) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", expected, output)
 	}
@@ -962,6 +962,12 @@ func TestTraceVerbosityLevel2(t *testing.T) {
 func TestTraceVerbosityLevel3(t *testing.T) {
 	t.Parallel()
 	dlvbin := protest.GetDlvBinary(t)
+
+	expected := []byte(`> goroutine(1): main.testStruct(
+  p: main.Point {X: 10}
+  r: main.Rectangle {Color: "red"})
+>> goroutine(1): main.testStruct => (main.Point {X: 20})
+`)
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"),
@@ -975,14 +981,8 @@ func TestTraceVerbosityLevel3(t *testing.T) {
 	assertNoError(cmd.Start(), t, "running trace")
 	output, _ := io.ReadAll(rdr)
 
-	// For verbosity 3, parameters should be multi-line with indentation
-	// Expected format: "> goroutine(1): main.testStruct(\n  p: ...\n  r: ...)"
-	if !strings.Contains(string(output), "main.testStruct") {
-		t.Fatal("expected to find testStruct call")
-	}
-	// Check for indented parameter on its own line (indicates multi-line format)
-	if !strings.Contains(string(output), "\n  r:") {
-		t.Fatal("expected to find multi-line format with indented parameters")
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", expected, output)
 	}
 	assertNoError(cmd.Wait(), t, "cmd.Wait()")
 }
@@ -991,6 +991,18 @@ func TestTraceVerbosityLevel3(t *testing.T) {
 func TestTraceVerbosityLevel4(t *testing.T) {
 	t.Parallel()
 	dlvbin := protest.GetDlvBinary(t)
+
+	expected := []byte(`> goroutine(1): main.testNested(
+  addr: main.Address {
+	Street: "123 Main St",
+	City: "Springfield",}
+  person: main.Person {
+	Name: "Alice",
+	Address: *main.Address {
+		Street: "123 Main St",
+		City: "Springfield",},})
+>> goroutine(1): main.testNested => ("Alice")
+`)
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"),
@@ -1004,21 +1016,8 @@ func TestTraceVerbosityLevel4(t *testing.T) {
 	assertNoError(cmd.Start(), t, "running trace")
 	output, _ := io.ReadAll(rdr)
 
-	// For verbosity 4, both first-level and nested structs should be fully expanded
-	if !strings.Contains(string(output), "main.testNested") {
-		t.Fatal("expected to find testNested call")
-	}
-	// Check nested Address pointer exists
-	if !strings.Contains(string(output), "Address: *main.Address") {
-		t.Fatal("expected to find nested Address pointer field")
-	}
-	// Check Person struct is expanded (Name field unique to Person)
-	if !strings.Contains(string(output), "\n\tName:") {
-		t.Fatal("expected to find Person.Name field on indented line")
-	}
-	// Check nested Address is actually expanded with fields on indented lines
-	if !strings.Contains(string(output), "\n\tStreet:") || !strings.Contains(string(output), "\n\tCity:") {
-		t.Fatal("expected to find Address fields (Street, City) on indented lines")
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
 	}
 	assertNoError(cmd.Wait(), t, "cmd.Wait()")
 }
