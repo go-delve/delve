@@ -70,11 +70,11 @@ func peSectionData(sec *pe.Section) ([]byte, error) {
 // __debug_line, if __debug_line doesn't exist it will try to return the
 // decompressed contents of __zdebug_line.
 func GetDebugSectionMacho(f *macho.File, name string) ([]byte, error) {
-	sec := f.Section("__debug_" + name)
+	sec := getDebugSectionMachoHelper(f, "__debug_"+name)
 	if sec != nil {
 		return sec.Data()
 	}
-	sec = f.Section("__zdebug_" + name)
+	sec = getDebugSectionMachoHelper(f, "__zdebug_"+name)
 	if sec == nil {
 		return nil, fmt.Errorf("could not find .debug_%s section", name)
 	}
@@ -83,6 +83,19 @@ func GetDebugSectionMacho(f *macho.File, name string) ([]byte, error) {
 		return nil, err
 	}
 	return decompressMaybe(b)
+}
+
+// getDebugSectionMachoHelper does the same thing as
+// debug/macho.(*File).Section but works around the Mach-O section name
+// length limitation: the first section matching the first 16 characters of
+// name will be returned.
+// Because of what the valid names of DWARFv5 sections are (appendix B)
+// there are no risks of collision.
+func getDebugSectionMachoHelper(f *macho.File, name string) *macho.Section {
+	if len(name) > 16 {
+		name = name[:16]
+	}
+	return f.Section(name)
 }
 
 func decompressMaybe(b []byte) ([]byte, error) {
