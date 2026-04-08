@@ -1496,6 +1496,34 @@ func BenchmarkLocalVariables(b *testing.B) {
 	})
 }
 
+func BenchmarkStacktrace(b *testing.B) {
+	withTestProcess("deepstack", b, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		assertNoError(grp.Continue(), b, "Continue()")
+
+		g, err := proc.GetG(p.CurrentThread())
+		assertNoError(err, b, "GetG()")
+		if g == nil {
+			b.Fatal("no current goroutine")
+		}
+
+		frames, err := proc.GoroutineStacktrace(p, g, 600, 0)
+		assertNoError(err, b, "GoroutineStacktrace()")
+		if len(frames) < 500 {
+			b.Fatalf("expected at least 500 frames, got %d", len(frames))
+		}
+		b.Logf("stack depth: %d frames", len(frames))
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			_, err := proc.GoroutineStacktrace(p, g, 600, 0)
+			if err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+}
+
 func TestCondBreakpoint(t *testing.T) {
 	protest.AllowRecording(t)
 	withTestProcess("parallel_next", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
