@@ -83,6 +83,7 @@ type Term struct {
 	quitting      bool
 
 	traceNonInteractive bool
+	TraceVerbosity      int // Verbosity level for trace output (0-4)
 
 	downloadsMu         sync.Mutex
 	downloadsInProgress bool

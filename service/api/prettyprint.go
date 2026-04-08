@@ -55,6 +55,32 @@ func (v *Variable) StringWithOptions(indent, fmtstr string, flags PrettyFlags) s
 	return buf.String()
 }
 
+// FormatTraceVariable formats a variable for trace output based on verbosity level.
+// This is a helper for trace clients (terminal, dlv command).
+func FormatTraceVariable(v Variable, verbosity int) string {
+	switch verbosity {
+	case 0:
+		// Level 0: include types but not parameter names (default case)
+		if v.Unreadable != "" {
+			return fmt.Sprintf("(unreadable %s)", v.Unreadable)
+		}
+		var buf bytes.Buffer
+		v.writeTo(&buf, prettyTop|prettyIncludeType, "", "")
+		return buf.String()
+	case 1:
+		// Level 1: type only
+		return fmt.Sprintf("<%s>", ShortenType(v.Type))
+	case 2:
+		// Level 2: inline with short types
+		return v.StringWithOptions("", "", PrettyShortenType)
+	case 3, 4:
+		// Levels 3-4: multi-line with short types
+		return v.StringWithOptions("", "", PrettyShortenType|PrettyNewlines)
+	default:
+		return v.Value
+	}
+}
+
 func (v *Variable) typeStr(flags PrettyFlags) string {
 	if flags.shortenType() {
 		return ShortenType(v.Type)

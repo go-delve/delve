@@ -837,6 +837,7 @@ func TestTraceMultipleGoroutines(t *testing.T) {
 	// TODO(derekparker) this test has to be a bit vague to avoid flakiness.
 	// I think a future improvement could be to use regexp captures to match the
 	// goroutine IDs at function entry and exit.
+
 	expected := []byte("main.callme(0, \"five\")\n")
 	expected2 := []byte("main.callme => (0)\n")
 
@@ -860,6 +861,165 @@ func TestTraceMultipleGoroutines(t *testing.T) {
 		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
 	}
 	cmd.Wait()
+}
+
+// Test trace verbosity level 0 matches default behavior
+func TestTraceVerbosityLevel0Default(t *testing.T) {
+	t.Parallel()
+	dlvbin := protest.GetDlvBinary(t)
+	fixtures := protest.FindFixturesDir()
+
+	expected := []byte(`> goroutine(1): main.testPrimitives(42, 3.14159, "Hello World", true)
+>> goroutine(1): main.testPrimitives => (84)
+`)
+
+	// Test with explicit --verbose=0
+	cmd1 := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug1"),
+		filepath.Join(fixtures, "traceverb.go"), "main.testPrimitives", "--verbose", "0")
+	rdr1, err := cmd1.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr1.Close()
+	cmd1.Dir = filepath.Join(fixtures, "buildtest")
+	assertNoError(cmd1.Start(), t, "running trace with --verbose=0")
+	output1, _ := io.ReadAll(rdr1)
+	assertNoError(cmd1.Wait(), t, "cmd1.Wait()")
+
+	// Test with no flag (default)
+	cmd2 := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug2"),
+		filepath.Join(fixtures, "traceverb.go"), "main.testPrimitives")
+	rdr2, err := cmd2.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr2.Close()
+	cmd2.Dir = filepath.Join(fixtures, "buildtest")
+	assertNoError(cmd2.Start(), t, "running trace with default")
+	output2, _ := io.ReadAll(rdr2)
+	assertNoError(cmd2.Wait(), t, "cmd2.Wait()")
+
+	// Both should contain the same values-only format
+	if !bytes.Contains(output1, expected) {
+		t.Fatalf("--verbose=0 expected:\n%s\ngot:\n%s", expected, output1)
+	}
+	if !bytes.Contains(output2, expected) {
+		t.Fatalf("default expected:\n%s\ngot:\n%s", expected, output2)
+	}
+}
+
+// Test trace verbosity level 1 (types only)
+func TestTraceVerbosityLevel1(t *testing.T) {
+	t.Parallel()
+	dlvbin := protest.GetDlvBinary(t)
+
+	expected := []byte(`> goroutine(1): main.testPrimitives(i: <int>, f: <float64>, s: <string>, b: <bool>)
+>> goroutine(1): main.testPrimitives => (<int>)
+`)
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"),
+		filepath.Join(fixtures, "traceverb.go"), "main.testPrimitives", "--verbose", "1")
+	rdr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	cmd.Dir = filepath.Join(fixtures, "buildtest")
+
+	assertNoError(cmd.Start(), t, "running trace")
+	output, _ := io.ReadAll(rdr)
+
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", expected, output)
+	}
+	assertNoError(cmd.Wait(), t, "cmd.Wait()")
+}
+
+// Test trace verbosity level 2 (inline with types)
+func TestTraceVerbosityLevel2(t *testing.T) {
+	t.Parallel()
+	dlvbin := protest.GetDlvBinary(t)
+
+	expected := []byte(`> goroutine(1): main.testStruct(p: main.Point {X: 10}, r: main.Rectangle {Color: "red"})
+>> goroutine(1): main.testStruct => (main.Point {X: 20})
+`)
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"),
+		filepath.Join(fixtures, "traceverb.go"), "main.testStruct", "--verbose", "2")
+	rdr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	cmd.Dir = filepath.Join(fixtures, "buildtest")
+
+	assertNoError(cmd.Start(), t, "running trace")
+	output, _ := io.ReadAll(rdr)
+
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", expected, output)
+	}
+	assertNoError(cmd.Wait(), t, "cmd.Wait()")
+}
+
+// Test trace verbosity level 3 (multi-line expanded)
+func TestTraceVerbosityLevel3(t *testing.T) {
+	t.Parallel()
+	dlvbin := protest.GetDlvBinary(t)
+
+	expected := []byte(`> goroutine(1): main.testStruct(
+  p: main.Point {X: 10}
+  r: main.Rectangle {Color: "red"})
+>> goroutine(1): main.testStruct => (main.Point {X: 20})
+`)
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"),
+		filepath.Join(fixtures, "traceverb.go"), "main.testStruct", "--verbose", "3")
+	rdr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	cmd.Dir = filepath.Join(fixtures, "buildtest")
+
+	assertNoError(cmd.Start(), t, "running trace")
+	output, _ := io.ReadAll(rdr)
+
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", expected, output)
+	}
+	assertNoError(cmd.Wait(), t, "cmd.Wait()")
+}
+
+// Test trace verbosity level 4 (full verbose with nested structs)
+func TestTraceVerbosityLevel4(t *testing.T) {
+	t.Parallel()
+	dlvbin := protest.GetDlvBinary(t)
+
+	expected := []byte(`> goroutine(1): main.testNested(
+  addr: main.Address {
+	Street: "123 Main St",
+	City: "Springfield",}
+  person: main.Person {
+	Name: "Alice",
+	Address: *main.Address {
+		Street: "123 Main St",
+		City: "Springfield",},})
+>> goroutine(1): main.testNested => ("Alice")
+`)
+
+	fixtures := protest.FindFixturesDir()
+	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"),
+		filepath.Join(fixtures, "traceverb.go"), "main.testNested", "--verbose", "4")
+	rdr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
+	defer rdr.Close()
+
+	cmd.Dir = filepath.Join(fixtures, "buildtest")
+
+	assertNoError(cmd.Start(), t, "running trace")
+	output, _ := io.ReadAll(rdr)
+
+	if !bytes.Contains(output, expected) {
+		t.Fatalf("expected:\n%s\ngot:\n%s", string(expected), string(output))
+	}
+	assertNoError(cmd.Wait(), t, "cmd.Wait()")
 }
 
 func TestTracePid(t *testing.T) {
