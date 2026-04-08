@@ -370,8 +370,7 @@ only see the output of the trace operations you can redirect stdout.`,
 	traceCommand.Flags().String("output", "", "Output path for the binary.")
 	must(traceCommand.MarkFlagFilename("output"))
 	traceCommand.Flags().IntVarP(&traceFollowCalls, "follow-calls", "", 0, "Trace all children of the function to the required depth. Trace also supports defer functions and cases where functions are dynamically returned and passed as parameters.")
-	traceCommand.Flags().IntVarP(&traceVerbose, "trace-verbose", "V", 0, "Parameter verbosity: 0=values, 1=types, 2=inline, 3=expanded, 4=full (default 0)")
-	must(traceCommand.RegisterFlagCompletionFunc("trace-verbose", cobra.NoFileCompletions))
+	traceCommand.Flags().IntVarP(&traceVerbose, "verbose", "v", 0, "Parameter verbosity: 0=values, 1=types, 2=inline, 3=expanded, 4=full (default 0)")
 	rootCommand.AddCommand(traceCommand)
 
 	coreCommand := &cobra.Command{
@@ -842,7 +841,7 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 		}
 		t := terminal.New(client, cfg)
 		t.SetTraceNonInteractive()
-		t.SetTraceVerbosity(traceVerbose)
+		t.TraceVerbosity = traceVerbose
 		t.RedirectTo(os.Stderr)
 		defer t.Close()
 		if traceUseEBPF {
@@ -903,7 +902,6 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 									fmt.Fprintf(os.Stderr, "\n")
 								}
 								fmt.Fprintf(os.Stderr, "\n%s)\n", paramStr)
-
 							}
 						}
 					}

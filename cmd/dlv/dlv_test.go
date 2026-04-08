@@ -873,14 +873,14 @@ func TestTraceVerbosityLevel0Default(t *testing.T) {
 >> goroutine(1): main.testPrimitives => (84)
 `)
 
-	// Test with explicit --trace-verbose=0
+	// Test with explicit --verbose=0
 	cmd1 := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug1"),
-		filepath.Join(fixtures, "traceverb.go"), "main.testPrimitives", "--trace-verbose", "0")
+		filepath.Join(fixtures, "traceverb.go"), "main.testPrimitives", "--verbose", "0")
 	rdr1, err := cmd1.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
 	defer rdr1.Close()
 	cmd1.Dir = filepath.Join(fixtures, "buildtest")
-	assertNoError(cmd1.Start(), t, "running trace with --trace-verbose=0")
+	assertNoError(cmd1.Start(), t, "running trace with --verbose=0")
 	output1, _ := io.ReadAll(rdr1)
 	assertNoError(cmd1.Wait(), t, "cmd1.Wait()")
 
@@ -897,7 +897,7 @@ func TestTraceVerbosityLevel0Default(t *testing.T) {
 
 	// Both should contain the same values-only format
 	if !bytes.Contains(output1, expected) {
-		t.Fatalf("--trace-verbose=0 expected:\n%s\ngot:\n%s", expected, output1)
+		t.Fatalf("--verbose=0 expected:\n%s\ngot:\n%s", expected, output1)
 	}
 	if !bytes.Contains(output2, expected) {
 		t.Fatalf("default expected:\n%s\ngot:\n%s", expected, output2)
@@ -915,7 +915,7 @@ func TestTraceVerbosityLevel1(t *testing.T) {
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"),
-		filepath.Join(fixtures, "traceverb.go"), "main.testPrimitives", "--trace-verbose", "1")
+		filepath.Join(fixtures, "traceverb.go"), "main.testPrimitives", "--verbose", "1")
 	rdr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
 	defer rdr.Close()
@@ -942,7 +942,7 @@ func TestTraceVerbosityLevel2(t *testing.T) {
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"),
-		filepath.Join(fixtures, "traceverb.go"), "main.testStruct", "--trace-verbose", "2")
+		filepath.Join(fixtures, "traceverb.go"), "main.testStruct", "--verbose", "2")
 	rdr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
 	defer rdr.Close()
@@ -971,7 +971,7 @@ func TestTraceVerbosityLevel3(t *testing.T) {
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"),
-		filepath.Join(fixtures, "traceverb.go"), "main.testStruct", "--trace-verbose", "3")
+		filepath.Join(fixtures, "traceverb.go"), "main.testStruct", "--verbose", "3")
 	rdr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
 	defer rdr.Close()
@@ -1006,7 +1006,7 @@ func TestTraceVerbosityLevel4(t *testing.T) {
 
 	fixtures := protest.FindFixturesDir()
 	cmd := exec.Command(dlvbin, "trace", "--output", filepath.Join(t.TempDir(), "__debug"),
-		filepath.Join(fixtures, "traceverb.go"), "main.testNested", "--trace-verbose", "4")
+		filepath.Join(fixtures, "traceverb.go"), "main.testNested", "--verbose", "4")
 	rdr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
 	defer rdr.Close()
