@@ -627,7 +627,7 @@ func (t *Target) setEBPFTracepointOnFunc(fn *Function, goidOffset int64) error {
 	var args []ebpf.UProbeArgMap
 	varEntries := reader.Variables(dwarfTree, fn.Entry, l, variablesFlags)
 	for _, entry := range varEntries {
-		_, dt, err := readVarEntry(entry.Tree, fn.cu.image)
+		name, dt, err := readVarEntry(entry.Tree, fn.cu.image)
 		if err != nil {
 			return err
 		}
@@ -645,9 +645,11 @@ func (t *Target) setEBPFTracepointOnFunc(fn *Function, goidOffset int64) error {
 		isret, _ := entry.Val(dwarf.AttrVarParam).(bool)
 		offset += int64(t.BinInfo().Arch.PtrSize())
 		args = append(args, ebpf.UProbeArgMap{
+			Name: name,
 			Offset: offset,
 			Size:   dt.Size(),
 			Kind:   dt.Common().ReflectKind,
+			TypeName: dt.String(),
 			Pieces: paramPieces,
 			InReg:  len(pieces) > 0,
 			Ret:    isret,

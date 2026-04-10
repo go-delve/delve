@@ -496,6 +496,8 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 	tracepoints := t.proc.GetBufferedTracepoints()
 	convertInputParamToVariable := func(ip *ebpf.RawUProbeParam) *Variable {
 		v := &Variable{}
+		v.Name = ip.Name
+		v.DwarfType = ip.RealType
 		v.RealType = ip.RealType
 		v.Len = ip.Len
 		v.Base = ip.Base
