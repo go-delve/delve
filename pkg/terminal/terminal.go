@@ -699,7 +699,7 @@ func (t *Term) goVersion() *goversion.GoVersion {
 		return t.goVersionCache
 	}
 	vers := t.client.GetVersion()
-	v, _ := goversion.Parse(vers.TargetGoVersion)
+	v := goversion.ParseProducer(vers.TargetGoVersion)
 	t.goVersionCache = &v
 	return t.goVersionCache
 }
