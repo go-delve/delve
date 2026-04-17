@@ -13,6 +13,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
+	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
 )
 
@@ -571,20 +572,18 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 			stable = (bp != 0 && bp+2*ptrSize == cfa)
 
 		case "arm64":
-			// ARM64: BP + 2*PtrSize == CFA, with fallback validation
+			// ARM64: BP + 2*PtrSize == CFA
 			bp := it.regs.BP()
 			cfa := uint64(it.regs.CFA)
 			stable = (bp != 0 && bp+2*ptrSize == cfa)
 
-			// ARM64 fallback: Go's DWARF CFA may not match BP+16; if the frame
-			// pointer chain looks valid (saved BP and ret at [bp]/[bp+8]), trust it.
-			if !stable && bp != 0 {
-				savedBP, err := readUintRaw(it.mem, bp, int64(ptrSize))
-				if err == nil && savedBP != 0 {
-					retVal, err := readUintRaw(it.mem, bp+ptrSize, int64(ptrSize))
-					if err == nil && retVal != 0 && it.bi.PCToFunc(retVal) != nil {
-						stable = true
-					}
+			// Disable hybrid FP unwinding on Windows when DW_AT_producer is missing
+			// or unparsable (otherwise canUseFP could activate despite the Go 1.24/1.25
+			// guard), and for Go 1.24/1.25 due to test failures. See golang/go#63630.
+			if it.bi.GOOS == "windows" {
+				ver := goversion.ParseProducer(it.bi.Producer())
+				if ver.Major < 1 || !ver.IsDevelBuild() && ver.Major == 1 && (ver.Minor == 24 || ver.Minor == 25) {
+					stable = false
 				}
 			}
 		}
