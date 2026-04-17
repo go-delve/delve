@@ -13,6 +13,7 @@ import (
 	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
+	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
 )
 
@@ -585,6 +586,15 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 					if err == nil && retVal != 0 && it.bi.PCToFunc(retVal) != nil {
 						stable = true
 					}
+				}
+			}
+
+			// Disable frame pointer unwinding on Windows with Go 1.24/1.25 due to
+			// test failures. Might be related to https://github.com/golang/go/issues/63630
+			if it.bi.GOOS == "windows" {
+				ver := goversion.ParseProducer(it.bi.Producer())
+				if !ver.IsDevelBuild() && ver.Major == 1 && (ver.Minor == 24 || ver.Minor == 25) {
+					stable = false
 				}
 			}
 		}
