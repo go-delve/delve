@@ -150,6 +150,8 @@ func (v *Variable) writeTo(buf io.Writer, flags PrettyFlags, indent, fmtstr stri
 			// happen in normal code but can happen if the variable is out of scope.
 			fmt.Fprintf(buf, "nil")
 			return
+		}else{
+			fmt.Fprintf(buf， v.Addr)
 		}
 		if flags.includeType() {
 			if v.Children[0].Kind == reflect.Invalid {
