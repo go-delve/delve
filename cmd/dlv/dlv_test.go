@@ -56,6 +56,41 @@ func assertNoError(err error, t testing.TB, s string) {
 	}
 }
 
+// preCondEBPFTest skips the test if eBPF testing requirements are not met.
+// eBPF tests require: Linux/amd64, Go 1.16+, root privileges, and BTF kernel support.
+func preCondEBPFTest(t *testing.T) {
+	t.Helper()
+	if os.Getenv("CI") == "true" {
+		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
+	}
+	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
+		t.Skip("not implemented on non linux/amd64 systems")
+	}
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
+		t.Skip("requires at least Go 1.16 to run test")
+	}
+	usr, err := user.Current()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usr.Uid != "0" {
+		t.Skip("test must be run as root")
+	}
+}
+
+// filterProcessExitLines removes "Process <pid> has exited with status" lines from output.
+// This is useful when comparing trace outputs from different backends that use different PIDs.
+func filterProcessExitLines(output []byte) []byte {
+	lines := bytes.Split(output, []byte("\n"))
+	var filtered [][]byte
+	for _, line := range lines {
+		if !bytes.HasPrefix(line, []byte("Process ")) || !bytes.Contains(line, []byte("has exited with status")) {
+			filtered = append(filtered, line)
+		}
+	}
+	return bytes.Join(filtered, []byte("\n"))
+}
+
 func TestBuild(t *testing.T) {
 	t.Parallel()
 	const listenAddr = "127.0.0.1:40573"
@@ -1172,22 +1207,7 @@ func TestTracePrintStack(t *testing.T) {
 
 func TestTraceEBPF(t *testing.T) {
 	t.Parallel()
-	if os.Getenv("CI") == "true" {
-		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
-	}
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		t.Skip("not implemented on non linux/amd64 systems")
-	}
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
-		t.Skip("requires at least Go 1.16 to run test")
-	}
-	usr, err := user.Current()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if usr.Uid != "0" {
-		t.Skip("test must be run as root")
-	}
+	preCondEBPFTest(t)
 
 	dlvbin := protest.GetDlvBinaryEBPF(t)
 
@@ -1212,22 +1232,7 @@ func TestTraceEBPF(t *testing.T) {
 
 func TestTraceEBPF2(t *testing.T) {
 	t.Parallel()
-	if os.Getenv("CI") == "true" {
-		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
-	}
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		t.Skip("not implemented on non linux/amd64 systems")
-	}
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
-		t.Skip("requires at least Go 1.16 to run test")
-	}
-	usr, err := user.Current()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if usr.Uid != "0" {
-		t.Skip("test must be run as root")
-	}
+	preCondEBPFTest(t)
 
 	dlvbin := protest.GetDlvBinaryEBPF(t)
 
@@ -1273,22 +1278,7 @@ func TestTraceEBPF2(t *testing.T) {
 
 func TestTraceEBPF3(t *testing.T) {
 	t.Parallel()
-	if os.Getenv("CI") == "true" {
-		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
-	}
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		t.Skip("not implemented on non linux/amd64 systems")
-	}
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
-		t.Skip("requires at least Go 1.16 to run test")
-	}
-	usr, err := user.Current()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if usr.Uid != "0" {
-		t.Skip("test must be run as root")
-	}
+	preCondEBPFTest(t)
 
 	dlvbin := protest.GetDlvBinaryEBPF(t)
 
@@ -1332,22 +1322,7 @@ func TestTraceEBPF3(t *testing.T) {
 
 func TestTraceEBPF4(t *testing.T) {
 	t.Parallel()
-	if os.Getenv("CI") == "true" {
-		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
-	}
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		t.Skip("not implemented on non linux/amd64 systems")
-	}
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
-		t.Skip("requires at least Go 1.16 to run test")
-	}
-	usr, err := user.Current()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if usr.Uid != "0" {
-		t.Skip("test must be run as root")
-	}
+	preCondEBPFTest(t)
 
 	dlvbin := protest.GetDlvBinaryEBPF(t)
 
@@ -1391,22 +1366,7 @@ func TestTraceEBPF4(t *testing.T) {
 
 func TestTraceBackendParity(t *testing.T) {
 	t.Parallel()
-	if os.Getenv("CI") == "true" {
-		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
-	}
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		t.Skip("not implemented on non linux/amd64 systems")
-	}
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
-		t.Skip("requires at least Go 1.16 to run test")
-	}
-	usr, err := user.Current()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if usr.Uid != "0" {
-		t.Skip("test must be run as root")
-	}
+	preCondEBPFTest(t)
 
 	dlvbin := protest.GetDlvBinaryEBPF(t)
 	fixtures := protest.FindFixturesDir()
@@ -1444,17 +1404,6 @@ func TestTraceBackendParity(t *testing.T) {
 	}
 
 	// Filter out process exit messages which contain different PIDs
-	filterProcessExitLines := func(output []byte) []byte {
-		lines := bytes.Split(output, []byte("\n"))
-		var filtered [][]byte
-		for _, line := range lines {
-			if !bytes.HasPrefix(line, []byte("Process ")) || !bytes.Contains(line, []byte("has exited with status")) {
-				filtered = append(filtered, line)
-			}
-		}
-		return bytes.Join(filtered, []byte("\n"))
-	}
-
 	ptraceFiltered := filterProcessExitLines(ptraceOutput)
 	ebpfFiltered := filterProcessExitLines(ebpfOutput)
 
@@ -1466,22 +1415,7 @@ func TestTraceBackendParity(t *testing.T) {
 
 func TestTraceEBPFTypes(t *testing.T) {
 	t.Parallel()
-	if os.Getenv("CI") == "true" {
-		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
-	}
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		t.Skip("not implemented on non linux/amd64 systems")
-	}
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
-		t.Skip("requires at least Go 1.16 to run test")
-	}
-	usr, err := user.Current()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if usr.Uid != "0" {
-		t.Skip("test must be run as root")
-	}
+	preCondEBPFTest(t)
 
 	dlvbin := protest.GetDlvBinaryEBPF(t)
 	fixtures := protest.FindFixturesDir()
@@ -1538,22 +1472,7 @@ func TestTraceEBPFTypes(t *testing.T) {
 
 func TestTraceVerbosityBackendParityLevel0(t *testing.T) {
 	t.Parallel()
-	if os.Getenv("CI") == "true" {
-		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
-	}
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		t.Skip("not implemented on non linux/amd64 systems")
-	}
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
-		t.Skip("requires at least Go 1.16 to run test")
-	}
-	usr, err := user.Current()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if usr.Uid != "0" {
-		t.Skip("test must be run as root")
-	}
+	preCondEBPFTest(t)
 
 	dlvbin := protest.GetDlvBinaryEBPF(t)
 	fixtures := protest.FindFixturesDir()
@@ -1595,17 +1514,6 @@ func TestTraceVerbosityBackendParityLevel0(t *testing.T) {
 	}
 
 	// Filter out process exit messages which contain different PIDs
-	filterProcessExitLines := func(output []byte) []byte {
-		lines := bytes.Split(output, []byte("\n"))
-		var filtered [][]byte
-		for _, line := range lines {
-			if !bytes.HasPrefix(line, []byte("Process ")) || !bytes.Contains(line, []byte("has exited with status")) {
-				filtered = append(filtered, line)
-			}
-		}
-		return bytes.Join(filtered, []byte("\n"))
-	}
-
 	ptraceFiltered := filterProcessExitLines(ptraceOutput)
 	ebpfFiltered := filterProcessExitLines(ebpfOutput)
 
@@ -1618,22 +1526,7 @@ func TestTraceVerbosityBackendParityLevel0(t *testing.T) {
 
 func TestTraceVerbosityBackendParityLevel1(t *testing.T) {
 	t.Parallel()
-	if os.Getenv("CI") == "true" {
-		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
-	}
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		t.Skip("not implemented on non linux/amd64 systems")
-	}
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
-		t.Skip("requires at least Go 1.16 to run test")
-	}
-	usr, err := user.Current()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if usr.Uid != "0" {
-		t.Skip("test must be run as root")
-	}
+	preCondEBPFTest(t)
 
 	dlvbin := protest.GetDlvBinaryEBPF(t)
 	fixtures := protest.FindFixturesDir()
@@ -1675,17 +1568,6 @@ func TestTraceVerbosityBackendParityLevel1(t *testing.T) {
 	}
 
 	// Filter out process exit messages
-	filterProcessExitLines := func(output []byte) []byte {
-		lines := bytes.Split(output, []byte("\n"))
-		var filtered [][]byte
-		for _, line := range lines {
-			if !bytes.HasPrefix(line, []byte("Process ")) || !bytes.Contains(line, []byte("has exited with status")) {
-				filtered = append(filtered, line)
-			}
-		}
-		return bytes.Join(filtered, []byte("\n"))
-	}
-
 	ptraceFiltered := filterProcessExitLines(ptraceOutput)
 	ebpfFiltered := filterProcessExitLines(ebpfOutput)
 
@@ -1698,22 +1580,7 @@ func TestTraceVerbosityBackendParityLevel1(t *testing.T) {
 
 func TestTraceVerbosityBackendParityLevel2(t *testing.T) {
 	t.Parallel()
-	if os.Getenv("CI") == "true" {
-		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
-	}
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		t.Skip("not implemented on non linux/amd64 systems")
-	}
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
-		t.Skip("requires at least Go 1.16 to run test")
-	}
-	usr, err := user.Current()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if usr.Uid != "0" {
-		t.Skip("test must be run as root")
-	}
+	preCondEBPFTest(t)
 
 	dlvbin := protest.GetDlvBinaryEBPF(t)
 	fixtures := protest.FindFixturesDir()
@@ -1755,17 +1622,6 @@ func TestTraceVerbosityBackendParityLevel2(t *testing.T) {
 	}
 
 	// Filter out process exit messages
-	filterProcessExitLines := func(output []byte) []byte {
-		lines := bytes.Split(output, []byte("\n"))
-		var filtered [][]byte
-		for _, line := range lines {
-			if !bytes.HasPrefix(line, []byte("Process ")) || !bytes.Contains(line, []byte("has exited with status")) {
-				filtered = append(filtered, line)
-			}
-		}
-		return bytes.Join(filtered, []byte("\n"))
-	}
-
 	ptraceFiltered := filterProcessExitLines(ptraceOutput)
 	ebpfFiltered := filterProcessExitLines(ebpfOutput)
 
@@ -1785,22 +1641,7 @@ func TestTraceVerbosityBackendParityLevel2(t *testing.T) {
 // Both levels use PrettyShortenType|PrettyNewlines and differ only from level 2 by line breaks.
 func TestTraceVerbosityBackendParityLevel3(t *testing.T) {
 	t.Parallel()
-	if os.Getenv("CI") == "true" {
-		t.Skip("cannot run test in CI, requires kernel compiled with btf support")
-	}
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" {
-		t.Skip("not implemented on non linux/amd64 systems")
-	}
-	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 16) {
-		t.Skip("requires at least Go 1.16 to run test")
-	}
-	usr, err := user.Current()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if usr.Uid != "0" {
-		t.Skip("test must be run as root")
-	}
+	preCondEBPFTest(t)
 
 	dlvbin := protest.GetDlvBinaryEBPF(t)
 	fixtures := protest.FindFixturesDir()
@@ -1842,17 +1683,6 @@ func TestTraceVerbosityBackendParityLevel3(t *testing.T) {
 	}
 
 	// Filter out process exit messages
-	filterProcessExitLines := func(output []byte) []byte {
-		lines := bytes.Split(output, []byte("\n"))
-		var filtered [][]byte
-		for _, line := range lines {
-			if !bytes.HasPrefix(line, []byte("Process ")) || !bytes.Contains(line, []byte("has exited with status")) {
-				filtered = append(filtered, line)
-			}
-		}
-		return bytes.Join(filtered, []byte("\n"))
-	}
-
 	ptraceFiltered := filterProcessExitLines(ptraceOutput)
 	ebpfFiltered := filterProcessExitLines(ebpfOutput)
 
@@ -1862,7 +1692,6 @@ func TestTraceVerbosityBackendParityLevel3(t *testing.T) {
 			string(ptraceOutput), string(ebpfOutput))
 	}
 }
-
 
 func TestDlvTestChdir(t *testing.T) {
 	t.Parallel()

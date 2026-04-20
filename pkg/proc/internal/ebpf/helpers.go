@@ -236,23 +236,19 @@ func parseFunctionParameterList(ctx *EBPFContext, rawParamBytes []byte) RawUProb
 
 		switch iparam.Kind {
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-			typeName := iparam.Kind.String()
-			iparam.RealType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), Name: typeName, ReflectKind: iparam.Kind}}}
+			iparam.RealType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), Name: iparam.Kind.String(), ReflectKind: iparam.Kind}}}
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			typeName := iparam.Kind.String()
-			iparam.RealType = &godwarf.IntType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), Name: typeName, ReflectKind: iparam.Kind}}}
+			iparam.RealType = &godwarf.IntType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), Name: iparam.Kind.String(), ReflectKind: iparam.Kind}}}
 		case reflect.Bool:
 			iparam.RealType = &godwarf.BoolType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 1, Name: "bool", ReflectKind: reflect.Bool}}}
 		case reflect.Float32, reflect.Float64:
 			if !usesXMMRegisters(ret) {
-				typeName := iparam.Kind.String()
-				iparam.RealType = &godwarf.FloatType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), Name: typeName, ReflectKind: iparam.Kind}}}
+				iparam.RealType = &godwarf.FloatType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), Name: iparam.Kind.String(), ReflectKind: iparam.Kind}}}
 			}
 			// If in XMM registers, RealType stays nil, marked unreadable in target.go
 		case reflect.Complex64, reflect.Complex128:
 			if !usesXMMRegisters(ret) {
-				typeName := iparam.Kind.String()
-				iparam.RealType = &godwarf.ComplexType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), Name: typeName, ReflectKind: iparam.Kind}}}
+				iparam.RealType = &godwarf.ComplexType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), Name: iparam.Kind.String(), ReflectKind: iparam.Kind}}}
 			}
 		case reflect.Ptr, reflect.UnsafePointer:
 			// Display the raw pointer address as a uintptr value.
