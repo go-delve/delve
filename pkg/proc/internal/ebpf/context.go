@@ -8,19 +8,19 @@ import (
 )
 
 type UProbeArgMap struct {
-	Name string       // Parameter name from DWARF.
-	Offset int64        // Offset from the stackpointer.
-	Size   int64        // Size in bytes.
-	Kind   reflect.Kind // Kind of variable.
-	TypeName string     // Original type name from DWARF (e.g., "*int", "[]byte").
-	Pieces []int        // Pieces of the variables as stored in registers.
-	InReg  bool         // True if this param is contained in a register.
-	Ret    bool         // True if this param is a return value.
+	Name     string       // Parameter name from DWARF.
+	Offset   int64        // Offset from the stackpointer.
+	Size     int64        // Size in bytes.
+	Kind     reflect.Kind // Kind of variable.
+	TypeName string       // Original type name from DWARF (e.g., "*int", "[]byte").
+	Pieces   []int        // Pieces of the variables as stored in registers.
+	InReg    bool         // True if this param is contained in a register.
+	Ret      bool         // True if this param is a return value.
 }
 
 type RawUProbeParam struct {
-	Name string       // Parameter name from DWARF.
-	TypeName string   // Original type name from DWARF (e.g., "*int", "[]byte").
+	Name       string // Parameter name from DWARF.
+	TypeName   string // Original type name from DWARF (e.g., "*int", "[]byte").
 	Pieces     []op.Piece
 	RealType   godwarf.Type
 	Kind       reflect.Kind
