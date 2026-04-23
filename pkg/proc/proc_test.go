@@ -24,7 +24,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"text/tabwriter"
 	"time"
@@ -5639,7 +5638,15 @@ func TestReadTargetArguments(t *testing.T) {
 	})
 }
 
-func testWaitForSetup(t *testing.T, mu *sync.Mutex, started *bool) (*exec.Cmd, *proc.WaitFor) {
+type waitForFixture struct {
+	t        *testing.T
+	cmd      *exec.Cmd
+	waitFor  *proc.WaitFor
+	startedc chan struct{}
+	startErr error
+}
+
+func testWaitForSetup(t *testing.T) *waitForFixture {
 	var buildFlags protest.BuildFlags
 	if buildMode == "pie" {
 		buildFlags |= protest.BuildModePIE
@@ -5650,15 +5657,20 @@ func testWaitForSetup(t *testing.T, mu *sync.Mutex, started *bool) (*exec.Cmd, *
 	// already terminated, executions of loopprog on Windows, see #4292.
 	uniqueArg := fmt.Sprintf("%s-%d", t.Name(), time.Now().Unix())
 	cmd := exec.Command(fixture.Path, uniqueArg)
+	startedc := make(chan struct{})
+
+	fixtureState := &waitForFixture{
+		t:        t,
+		cmd:      cmd,
+		startedc: startedc,
+	}
 
 	go func() {
 		time.Sleep(2 * time.Second)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
-		assertNoError(cmd.Start(), t, "starting fixture")
-		mu.Lock()
-		*started = true
-		mu.Unlock()
+		fixtureState.startErr = cmd.Start()
+		close(startedc)
 	}()
 
 	waitFor := &proc.WaitFor{Name: fixture.Path + " " + uniqueArg, Interval: 100 * time.Millisecond, Duration: 10 * time.Second}
@@ -5667,27 +5679,42 @@ func testWaitForSetup(t *testing.T, mu *sync.Mutex, started *bool) (*exec.Cmd, *
 		// See: https://lldb.llvm.org/man/lldb.html#cmdoption-lldb-wait-for
 		waitFor.Name = fixture.Path
 	}
+	fixtureState.waitFor = waitFor
 
-	return cmd, waitFor
+	return fixtureState
+}
+
+func (fixtureState *waitForFixture) waitStarted() {
+	fixtureState.t.Helper()
+	<-fixtureState.startedc
+	assertNoError(fixtureState.startErr, fixtureState.t, "starting fixture")
+	if fixtureState.cmd.Process == nil {
+		fixtureState.t.Fatal("fixture start succeeded but cmd.Process is nil")
+	}
+}
+
+func (fixtureState *waitForFixture) cleanup() {
+	<-fixtureState.startedc
+	if fixtureState.startErr != nil || fixtureState.cmd.Process == nil {
+		return
+	}
+	_ = fixtureState.cmd.Process.Kill()
+	_ = fixtureState.cmd.Wait()
 }
 
 func TestWaitFor(t *testing.T) {
 	skipOn(t, "waitfor implementation is delegated to debugserver", "darwin")
 	skipOn(t, "flaky", "freebsd")
 
-	var mu sync.Mutex
-	started := false
+	fixtureState := testWaitForSetup(t)
+	t.Cleanup(fixtureState.cleanup)
 
-	cmd, waitFor := testWaitForSetup(t, &mu, &started)
-
-	pid, err := native.WaitFor(waitFor)
+	pid, err := native.WaitFor(fixtureState.waitFor)
 	assertNoError(err, t, "waitFor.Wait()")
-	if pid != cmd.Process.Pid {
-		t.Errorf("pid mismatch, expected %d got %d", pid, cmd.Process.Pid)
+	fixtureState.waitStarted()
+	if pid != fixtureState.cmd.Process.Pid {
+		t.Errorf("pid mismatch, expected %d got %d", pid, fixtureState.cmd.Process.Pid)
 	}
-
-	cmd.Process.Kill()
-	cmd.Wait()
 }
 
 func TestWaitForAttach(t *testing.T) {
@@ -5703,38 +5730,29 @@ func TestWaitForAttach(t *testing.T) {
 		return
 	}
 
-	var mu sync.Mutex
-	started := false
-
-	cmd, waitFor := testWaitForSetup(t, &mu, &started)
+	fixtureState := testWaitForSetup(t)
+	t.Cleanup(fixtureState.cleanup)
 
 	var p *proc.TargetGroup
 	var err error
 
 	switch testBackend {
 	case "native":
-		p, err = native.Attach(0, waitFor, []string{})
+		p, err = native.Attach(0, fixtureState.waitFor, []string{})
 	case "lldb":
 		path := ""
 		if runtime.GOOS == "darwin" {
-			path = waitFor.Name
+			path = fixtureState.waitFor.Name
 		}
-		p, err = gdbserial.LLDBAttach(0, path, waitFor, []string{})
+		p, err = gdbserial.LLDBAttach(0, path, fixtureState.waitFor, []string{})
 	default:
 		err = fmt.Errorf("unknown backend %q", testBackend)
 	}
 
 	assertNoError(err, t, "Attach")
-
-	mu.Lock()
-	if !started {
-		t.Fatalf("attach succeeded but started is false")
-	}
-	mu.Unlock()
+	fixtureState.waitStarted()
 
 	p.Detach(true)
-
-	cmd.Wait()
 }
 
 func TestIssue3545(t *testing.T) {
