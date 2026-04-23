@@ -92,6 +92,10 @@ func GetDebugSectionMacho(f *macho.File, name string) ([]byte, error) {
 // Because of what the valid names of DWARFv5 sections are (appendix B)
 // there are no risks of collision.
 func getDebugSectionMachoHelper(f *macho.File, name string) *macho.Section {
+	sec := f.Section(name)
+	if sec != nil {
+		return sec
+	}
 	if len(name) > 16 {
 		name = name[:16]
 	}
