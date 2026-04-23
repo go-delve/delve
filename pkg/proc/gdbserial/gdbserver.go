@@ -216,7 +216,7 @@ type gdbRegister struct {
 	ignoreOnWrite bool
 }
 
-// gdbRegname records names of important CPU registers
+// gdbRegnames records names of important CPU registers
 type gdbRegnames struct {
 	PC, SP, BP, CX, FsBase string
 }
