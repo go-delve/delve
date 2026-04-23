@@ -66,6 +66,7 @@ type EBPFContext struct {
 	links      []link.Link
 
 	parsedBpfEvents []RawUProbeParams
+	argTypeInfo     map[uint64][]UProbeArgMap // Maps function address to argument type information
 	m               sync.Mutex
 
 	ctx    context.Context
@@ -108,6 +109,15 @@ func (ctx *EBPFContext) UpdateArgMap(key uint64, goidOffset int64, args []UProbe
 	}
 	params := createFunctionParameterList(key, goidOffset, args, isret)
 	params.g_addr_offset = gAddrOffset
+
+	// Store argument type information for later use when parsing results
+	ctx.m.Lock()
+	if ctx.argTypeInfo == nil {
+		ctx.argTypeInfo = make(map[uint64][]UProbeArgMap)
+	}
+	ctx.argTypeInfo[key] = args
+	ctx.m.Unlock()
+
 	return ctx.bpfArgMap.Update(unsafe.Pointer(&key), unsafe.Pointer(&params), ebpf.UpdateAny)
 }
 
@@ -175,7 +185,7 @@ func (ctx *EBPFContext) pollEvents() {
 				return
 			}
 
-			parsed := parseFunctionParameterList(e.RawSample)
+			parsed := parseFunctionParameterList(ctx, e.RawSample)
 
 			ctx.m.Lock()
 			ctx.parsedBpfEvents = append(ctx.parsedBpfEvents, parsed)
@@ -184,7 +194,7 @@ func (ctx *EBPFContext) pollEvents() {
 	}
 }
 
-func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
+func parseFunctionParameterList(ctx *EBPFContext, rawParamBytes []byte) RawUProbeParams {
 	params := (*function_parameter_list_t)(unsafe.Pointer(&rawParamBytes[0]))
 
 	defer runtime.KeepAlive(params) // Ensure the param is not garbage collected.
@@ -194,11 +204,22 @@ func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 	rawParams.GoroutineID = int(params.goroutine_id)
 	rawParams.IsRet = params.is_ret
 
-	parseParam := func(param function_parameter_t) *RawUProbeParam {
+	// Look up original type information for this function
+	ctx.m.Lock()
+	argTypes := ctx.argTypeInfo[params.fn_addr]
+	ctx.m.Unlock()
+
+	parseParam := func(param function_parameter_t, paramIdx int) *RawUProbeParam {
 		iparam := &RawUProbeParam{}
 		data := make([]byte, 0x60)
 		ret := param
 		iparam.Kind = reflect.Kind(ret.kind)
+
+		// Populate name and type name from argTypes if available
+		if paramIdx < len(argTypes) {
+			iparam.Name = argTypes[paramIdx].Name
+			iparam.TypeName = argTypes[paramIdx].TypeName
+		}
 
 		val := ret.val[:ret.size]
 		rawDerefValue := ret.deref_val[:0x30]
@@ -215,19 +236,19 @@ func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 
 		switch iparam.Kind {
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-			iparam.RealType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size)}}}
+			iparam.RealType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), Name: iparam.Kind.String(), ReflectKind: iparam.Kind}}}
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			iparam.RealType = &godwarf.IntType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size)}}}
+			iparam.RealType = &godwarf.IntType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), Name: iparam.Kind.String(), ReflectKind: iparam.Kind}}}
 		case reflect.Bool:
-			iparam.RealType = &godwarf.BoolType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 1, ReflectKind: reflect.Bool}}}
+			iparam.RealType = &godwarf.BoolType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 1, Name: "bool", ReflectKind: reflect.Bool}}}
 		case reflect.Float32, reflect.Float64:
 			if !usesXMMRegisters(ret) {
-				iparam.RealType = &godwarf.FloatType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), ReflectKind: iparam.Kind}}}
+				iparam.RealType = &godwarf.FloatType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), Name: iparam.Kind.String(), ReflectKind: iparam.Kind}}}
 			}
 			// If in XMM registers, RealType stays nil, marked unreadable in target.go
 		case reflect.Complex64, reflect.Complex128:
 			if !usesXMMRegisters(ret) {
-				iparam.RealType = &godwarf.ComplexType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), ReflectKind: iparam.Kind}}}
+				iparam.RealType = &godwarf.ComplexType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), Name: iparam.Kind.String(), ReflectKind: iparam.Kind}}}
 			}
 		case reflect.Ptr, reflect.UnsafePointer:
 			// Display the raw pointer address as a uintptr value.
@@ -238,14 +259,14 @@ func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 			// 2) deref_val is limited to 48 bytes, insufficient for
 			//    nested or variable-length pointed-to types
 			iparam.Kind = reflect.Uintptr
-			iparam.RealType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), ReflectKind: reflect.Uintptr}}}
+			iparam.RealType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), Name: "uintptr", ReflectKind: reflect.Uintptr}}}
 		case reflect.Slice:
 			// Display the slice data pointer address as a uintptr value.
 			// Same limitations as pointers above: element type info is
 			// not available, and deref_val (48 bytes) can only hold a
 			// few elements.
 			iparam.Kind = reflect.Uintptr
-			iparam.RealType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 8, ReflectKind: reflect.Uintptr}}}
+			iparam.RealType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 8, Name: "uintptr", ReflectKind: reflect.Uintptr}}}
 		case reflect.String:
 			strLen := binary.LittleEndian.Uint64(val[8:])
 			iparam.Base = FakeAddressBase + 0x30
@@ -254,6 +275,7 @@ func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 				StructType: godwarf.StructType{
 					CommonType: godwarf.CommonType{
 						ByteSize:    16,
+						Name:        "string",
 						ReflectKind: reflect.String,
 					},
 					Kind: "struct",
@@ -276,10 +298,11 @@ func parseFunctionParameterList(rawParamBytes []byte) RawUProbeParams {
 	}
 
 	for i := 0; i < int(params.n_parameters); i++ {
-		rawParams.InputParams = append(rawParams.InputParams, parseParam(params.params[i]))
+		rawParams.InputParams = append(rawParams.InputParams, parseParam(params.params[i], i))
 	}
+	// Return parameters start after input parameters in argTypes
 	for i := 0; i < int(params.n_ret_parameters); i++ {
-		rawParams.ReturnParams = append(rawParams.ReturnParams, parseParam(params.ret_params[i]))
+		rawParams.ReturnParams = append(rawParams.ReturnParams, parseParam(params.ret_params[i], int(params.n_parameters)+i))
 	}
 
 	return rawParams
