@@ -312,8 +312,12 @@ func parseFileEntries5(info *DebugLineInfo, buf *bytes.Buffer) bool {
 				case _DW_FORM_string:
 					p = fileEntryFormReader.str
 				case _DW_FORM_line_strp:
-					buf := bytes.NewBuffer(info.debugLineStr[fileEntryFormReader.u64:])
-					p, _ = dwarf.ReadString(buf)
+					if info.debugLineStr == nil {
+						p = "<DW_FORM_line_strp without debug_line_str section>"
+					} else {
+						buf := bytes.NewBuffer(info.debugLineStr[fileEntryFormReader.u64:])
+						p, _ = dwarf.ReadString(buf)
+					}
 				default:
 					info.Logf("unsupported string form %#x", fileEntryFormReader.formCode)
 				}
