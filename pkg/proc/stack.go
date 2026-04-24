@@ -633,6 +633,14 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 		}
 	}
 
+	// Issue #3591: On LR architectures, runtime.sigpanic's DWARF CFA points to the
+	// signaled frame's SP, not the caller's SP. Add 2 words (saved FP + saved LR)
+	// to compute the correct caller SP.
+	if fn := it.bi.PCToFunc(it.pc); fn != nil && fn.Name == "runtime.sigpanic" && it.bi.Arch.usesLR {
+		callerSP := uint64(it.regs.CFA) + uint64(2*it.bi.Arch.PtrSize())
+		callFrameRegs.AddReg(callFrameRegs.SPRegNum, op.DwarfRegisterFromUint64(callerSP))
+	}
+
 	if it.bi.Arch.usesLR {
 		if ret == 0 && it.regs.Reg(it.regs.LRRegNum) != nil {
 			ret = it.regs.Reg(it.regs.LRRegNum).Uint64Val
