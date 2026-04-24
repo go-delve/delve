@@ -10,7 +10,9 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -543,5 +545,115 @@ func mustSupportCore(t *testing.T) {
 
 	if os.Getenv("CI") == "true" && buildMode == "pie" {
 		t.Skip("disabled on linux, Github Actions, with PIE buildmode")
+	}
+}
+
+// parseIssue3591RuntimeModMapSP parses runtime's SP for main.mod_map from panic output.
+func parseIssue3591RuntimeModMapSP(stderr []byte) (uint64, error) {
+	i := bytes.Index(stderr, []byte("main.mod_map("))
+	if i < 0 {
+		return 0, fmt.Errorf("main.mod_map not found in panic output:\n%s", stderr)
+	}
+	window := stderr[i:]
+	if len(window) > 2048 {
+		window = window[:2048]
+	}
+	m := regexp.MustCompile(`sp=(0x[0-9a-f]+)`).FindSubmatch(window)
+	if len(m) < 2 {
+		return 0, fmt.Errorf("sp= not found after main.mod_map in panic output:\n%s", window)
+	}
+	return strconv.ParseUint(string(m[1])[2:], 16, 64)
+}
+
+// TestIssue3591_CoreModMapFrameSP verifies Delve reports the same SP as the
+// Go runtime for sigpanic frames in linux/arm64 core dumps.
+func TestIssue3591_CoreModMapFrameSP(t *testing.T) {
+	if runtime.GOOS != "linux" || runtime.GOARCH != "arm64" {
+		t.Skip("issue #3591 reproduces on linux/arm64 ELF cores only")
+	}
+	mustSupportCore(t)
+
+	tempDir := t.TempDir()
+	var buildFlags test.BuildFlags
+	if buildMode == "pie" {
+		buildFlags = test.BuildModePIE
+	}
+	fix := test.BuildFixture(t, "issue3591", buildFlags)
+
+	panicPath := filepath.Join(tempDir, "panic.txt")
+	bashCmd := fmt.Sprintf("cd %q && ulimit -c unlimited && GOTRACEBACK=crash %q 2>%q",
+		tempDir, fix.Path, panicPath)
+	if out, err := exec.Command("bash", "-c", bashCmd).CombinedOutput(); len(out) > 0 {
+		t.Logf("crash run output: %s", out)
+		_ = err // process exits non-zero on crash
+	}
+
+	stderr, err := os.ReadFile(panicPath)
+	if err != nil || len(stderr) == 0 {
+		t.Fatalf("reading panic output: err=%v len=%d", err, len(stderr))
+	}
+	wantSP, err := parseIssue3591RuntimeModMapSP(stderr)
+	if err != nil {
+		t.Fatalf("%v\n--- panic.txt ---\n%s", err, stderr)
+	}
+
+	cores, err := filepath.Glob(path.Join(tempDir, "core*"))
+	switch {
+	case err != nil || len(cores) > 1:
+		t.Fatalf("core glob: err=%v cores=%v", err, cores)
+	case len(cores) == 0:
+		// Write outside t.TempDir(): global fixture cleanup runs after the temp
+		// directory is removed (see withCoreFile in this package).
+		cores = []string{fix.Path + ".issue3591.coredump"}
+		err := exec.Command("coredumpctl", "--output="+cores[0], "dump", fix.Path).Run()
+		if err != nil {
+			t.Skipf("no core in cwd and coredumpctl failed: %v", err)
+		}
+		test.AddPathToRemove(cores[0])
+	}
+	corePath := cores[0]
+
+	grp, err := OpenCore(corePath, fix.Path, []string{})
+	if err != nil {
+		t.Fatalf("OpenCore(%q): %v", corePath, err)
+	}
+	t.Cleanup(func() { grp.Detach(true) })
+	p := grp.Selected
+
+	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
+	if err != nil || len(gs) == 0 {
+		t.Fatalf("GoroutinesInfo: err=%v n=%d", err, len(gs))
+	}
+	var g *proc.G
+	for _, gi := range gs {
+		if gi.ID == 1 {
+			g = gi
+			break
+		}
+	}
+	if g == nil {
+		t.Fatalf("goroutine 1 not found among %d goroutines", len(gs))
+	}
+
+	stack, err := proc.GoroutineStacktrace(p, g, 80, 0)
+	if err != nil {
+		t.Fatalf("GoroutineStacktrace: %v", err)
+	}
+	var modMap *proc.Stackframe
+	for i := range stack {
+		fn := stack[i].Current.Fn
+		if fn != nil && fn.Name == "main.mod_map" {
+			modMap = &stack[i]
+			break
+		}
+	}
+	if modMap == nil {
+		t.Fatalf("main.mod_map not in stack (%d frames)", len(stack))
+	}
+
+	gotSP := uint64(modMap.Regs.SP())
+	if gotSP != wantSP {
+		t.Fatalf("issue #3591: main.mod_map frame SP mismatch: delve=%#x runtime=%#x (see panic.txt in test temp dir pattern)",
+			gotSP, wantSP)
 	}
 }
