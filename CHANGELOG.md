@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.26.3] 2026-04-27
+
+### Added
+
+- Print function arguments when using eBPF for tracing (#4305, @archanaravindar)
+
+### Fixed
+
+- Fix regression debugging DWARFv5 executables that use debug_line_str section on macOS (#4315, @aarzilli)
+- Fix printing wait reason of channels (#4307, @croepha)
+
+### Changed
+
+- Miscellaneous documentation and test improvements (#4316, #4306, @purelualight, @typesanitizer)
+
 ## [1.26.2] 2026-04-20
 
 ### Added
