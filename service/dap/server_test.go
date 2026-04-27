@@ -8292,7 +8292,15 @@ func TestBreakpointAfterDisconnect(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	server.impl.session.conn = &connection{ReadWriteCloser: discard{}} // fake a race condition between onDisconnectRequest and the runUntilStopAndNotify goroutine
+	sess := server.impl.session
+	conn := sess.conn
+	sess.sendingMu.Lock()
+	conn.mu.Lock()
+	conn.ReadWriteCloser = discard{}
+	conn.closed = false
+	conn.closedChan = nil
+	conn.mu.Unlock()
+	sess.sendingMu.Unlock()
 
 	// Wait for port to be available
 	select {
