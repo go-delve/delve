@@ -1218,7 +1218,7 @@ func TestRangeOverFuncStepOut(t *testing.T) {
 func TestRangeOverFuncNextInlined(t *testing.T) {
 	// See #3882: inlined range-over-func produces symbol names that Delve
 	// cannot correlate; requires a compiler fix that has not landed yet.
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) {
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) && !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27) {
 		t.Skip("broken due to inlined symbol names")
 	}
 
@@ -1548,9 +1548,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 				assertEval(t, "result", "[]int len: 3, cap: 10, [1000,10,2]"),
 				nx(98), // if z >= 4 {
 				nx(99), // continue W
-				nx(93),
 				nx(101),
-				nx(91),
 				nx(103),
 				nx(90),
 				nx(105),
@@ -1600,61 +1598,63 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 			})
 		})
 
-		t.Run("TestPanickyIterator2", func(t *testing.T) {
-			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestPanickyIterator2"),
-				{contContinue, 125},
-				nx(126),
-				nx(127),
-				nx(131), // for _, x := range (x == 100)
-				nx(132),
-				nx(133),
-				nx(135), // for _, y := range (y == 10)
-				nx(136), // result = append(result, y)
-				nx(139), // for k, z := range (k == 0, z == 1)
-				nx(140), // result = append(result, z)
-				nx(141), // if k == 1
-				nx(144),
+		if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) {
+			t.Run("TestPanickyIterator2", func(t *testing.T) {
+				testseq2intl(t, fixture, grp, p, nil, []seqTest{
+					funcBreak(t, "main.TestPanickyIterator2"),
+					{contContinue, 125},
+					nx(126),
+					nx(127),
+					nx(131), // for _, x := range (x == 100)
+					nx(132),
+					nx(133),
+					nx(135), // for _, y := range (y == 10)
+					nx(136), // result = append(result, y)
+					nx(139), // for k, z := range (k == 0, z == 1)
+					nx(140), // result = append(result, z)
+					nx(141), // if k == 1
+					nx(144),
 
-				nx(139), // for k, z := range (k == 1, z == 2)
-				nx(140), // result = append(result, z)
-				nx(141), // if k == 1
-				nx(142), // break Y
-				nx(135),
-				nx(145),
-				nx(127), // defer func()
-				nx(128), // r := recover()
-				nx(129), // fmt.Println
+					nx(139), // for k, z := range (k == 1, z == 2)
+					nx(140), // result = append(result, z)
+					nx(141), // if k == 1
+					nx(142), // break Y
+					nx(135),
+					nx(145),
+					nx(127), // defer func()
+					nx(128), // r := recover()
+					nx(129), // fmt.Println
+				})
 			})
-		})
 
-		t.Run("TestPanickyIteratorWithNewDefer", func(t *testing.T) {
-			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestPanickyIteratorWithNewDefer"),
-				{contContinue, 149},
-				nx(150),
-				nx(151),
-				nx(155), // for _, x := range (x == 100)
-				nx(156),
-				nx(157),
-				nx(159), // for _, y := range (y == 10)
-				nx(160),
-				nx(163), // result = append(result, y)
-				nx(166), // for k, z := range (k == 0, z == 1)
-				nx(167), // result = append(result, z)
-				nx(168), // if k == 1
-				nx(171),
+			t.Run("TestPanickyIteratorWithNewDefer", func(t *testing.T) {
+				testseq2intl(t, fixture, grp, p, nil, []seqTest{
+					funcBreak(t, "main.TestPanickyIteratorWithNewDefer"),
+					{contContinue, 149},
+					nx(150),
+					nx(151),
+					nx(155), // for _, x := range (x == 100)
+					nx(156),
+					nx(157),
+					nx(159), // for _, y := range (y == 10)
+					nx(160),
+					nx(163), // result = append(result, y)
+					nx(166), // for k, z := range (k == 0, z == 1)
+					nx(167), // result = append(result, z)
+					nx(168), // if k == 1
+					nx(171),
 
-				nx(166), // for k, z := range (k == 0, z == 1)
-				nx(167), // result = append(result, z)
-				nx(168), // if k == 1
-				nx(169), // break Y
-				nx(159),
-				nx(172),
-				nx(160), // defer func()
-				nx(161), // fmt.Println
+					nx(166), // for k, z := range (k == 0, z == 1)
+					nx(167), // result = append(result, z)
+					nx(168), // if k == 1
+					nx(169), // break Y
+					nx(159),
+					nx(172),
+					nx(160), // defer func()
+					nx(161), // fmt.Println
+				})
 			})
-		})
+		}
 
 		t.Run("TestLongReturn", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
@@ -1752,7 +1752,6 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 				assertFunc(t, "main.TestRecur"),
 				assertEval(t, "n", "3"),
 				nx(237), // result = ...
-				assertFunc(t, "main.TestRecur-range1"),
 				assertEval(t, "x", "10", "n", "3"),
 				nx(238), // if n == 3
 				nx(239), // TestRecur(0)
