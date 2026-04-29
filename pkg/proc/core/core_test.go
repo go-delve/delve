@@ -200,7 +200,7 @@ func TestSplicedReader(t *testing.T) {
 	}
 }
 
-func withCoreFile(t *testing.T, name, args string) *proc.TargetGroup {
+func withCoreFile(t *testing.T, name, args string) (*proc.TargetGroup, []byte) {
 	// This is all very fragile and won't work on hosts with non-default core patterns.
 	// Might be better to check in the binary and core?
 	tempDir := t.TempDir()
@@ -210,7 +210,7 @@ func withCoreFile(t *testing.T, name, args string) *proc.TargetGroup {
 	}
 	fix := test.BuildFixture(t, name, buildFlags)
 	bashCmd := fmt.Sprintf("cd %v && ulimit -c unlimited && GOTRACEBACK=crash %v %s", tempDir, fix.Path, args)
-	exec.Command("bash", "-c", bashCmd).Run()
+	output, _ := exec.Command("bash", "-c", bashCmd).CombinedOutput()
 	cores, err := filepath.Glob(path.Join(tempDir, "core*"))
 	switch {
 	case err != nil || len(cores) > 1:
@@ -220,7 +220,7 @@ func withCoreFile(t *testing.T, name, args string) *proc.TargetGroup {
 		err := exec.Command("coredumpctl", "--output="+cores[0], "dump", fix.Path).Run()
 		if err != nil {
 			t.Skipf("core file was not produced, could not run test, coredumpctl error: %v", err)
-			return nil
+			return nil, nil
 		}
 		test.AddPathToRemove(cores[0])
 	}
@@ -235,7 +235,7 @@ func withCoreFile(t *testing.T, name, args string) *proc.TargetGroup {
 		t.Errorf("read apport log: %q, %v", apport, err)
 		t.Fatalf("previous errors")
 	}
-	return p
+	return p, output
 }
 
 func logRegisters(t *testing.T, regs proc.Registers, arch *proc.Arch) {
@@ -256,7 +256,7 @@ func TestCore(t *testing.T) {
 
 	mustSupportCore(t)
 
-	grp := withCoreFile(t, "panic", "")
+	grp, _ := withCoreFile(t, "panic", "")
 	p := grp.Selected
 
 	recorded, _ := grp.Recorded()
@@ -333,7 +333,7 @@ func TestCoreFpRegisters(t *testing.T) {
 		t.Skip("not supported in go1.10 and later")
 	}
 
-	grp := withCoreFile(t, "fputest/", "panic")
+	grp, _ := withCoreFile(t, "fputest/", "panic")
 	p := grp.Selected
 
 	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
@@ -414,7 +414,7 @@ func TestCoreWithEmptyString(t *testing.T) {
 	t.Parallel()
 	mustSupportCore(t)
 
-	grp := withCoreFile(t, "coreemptystring", "")
+	grp, _ := withCoreFile(t, "coreemptystring", "")
 	p := grp.Selected
 
 	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
@@ -573,52 +573,13 @@ func TestIssue3591_CoreModMapFrameSP(t *testing.T) {
 	}
 	mustSupportCore(t)
 
-	tempDir := t.TempDir()
-	var buildFlags test.BuildFlags
-	if buildMode == "pie" {
-		buildFlags = test.BuildModePIE
-	}
-	fix := test.BuildFixture(t, "issue3591", buildFlags)
+	grp, stderr := withCoreFile(t, "issue3591", "")
+	p := grp.Selected
 
-	panicPath := filepath.Join(tempDir, "panic.txt")
-	bashCmd := fmt.Sprintf("cd %q && ulimit -c unlimited && GOTRACEBACK=crash %q 2>%q",
-		tempDir, fix.Path, panicPath)
-	if out, err := exec.Command("bash", "-c", bashCmd).CombinedOutput(); len(out) > 0 {
-		t.Logf("crash run output: %s", out)
-		_ = err // process exits non-zero on crash
-	}
-
-	stderr, err := os.ReadFile(panicPath)
-	if err != nil || len(stderr) == 0 {
-		t.Fatalf("reading panic output: err=%v len=%d", err, len(stderr))
-	}
 	wantSP, err := parseIssue3591RuntimeModMapSP(stderr)
 	if err != nil {
-		t.Fatalf("%v\n--- panic.txt ---\n%s", err, stderr)
+		t.Fatalf("%v\n--- crash output ---\n%s", err, stderr)
 	}
-
-	cores, err := filepath.Glob(path.Join(tempDir, "core*"))
-	switch {
-	case err != nil || len(cores) > 1:
-		t.Fatalf("core glob: err=%v cores=%v", err, cores)
-	case len(cores) == 0:
-		// Write outside t.TempDir(): global fixture cleanup runs after the temp
-		// directory is removed (see withCoreFile in this package).
-		cores = []string{fix.Path + ".issue3591.coredump"}
-		err := exec.Command("coredumpctl", "--output="+cores[0], "dump", fix.Path).Run()
-		if err != nil {
-			t.Skipf("no core in cwd and coredumpctl failed: %v", err)
-		}
-		test.AddPathToRemove(cores[0])
-	}
-	corePath := cores[0]
-
-	grp, err := OpenCore(corePath, fix.Path, []string{})
-	if err != nil {
-		t.Fatalf("OpenCore(%q): %v", corePath, err)
-	}
-	t.Cleanup(func() { grp.Detach(true) })
-	p := grp.Selected
 
 	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
 	if err != nil || len(gs) == 0 {
