@@ -39,6 +39,7 @@ func RISCV64Arch(goos string) *Arch {
 		PCRegNum:                         regnum.RISCV64_PC,
 		SPRegNum:                         regnum.RISCV64_SP,
 		ContextRegNum:                    regnum.RISCV64_S10,
+		LRRegNum:                         regnum.RISCV64_LR,
 		asmRegisters:                     riscv64AsmRegisters,
 		RegisterNameToDwarf:              nameToDwarfFunc(regnum.RISCV64NameToDwarf),
 		RegnumToString:                   regnum.RISCV64ToName,
