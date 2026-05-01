@@ -1542,7 +1542,7 @@ func (scope *EvalScope) evalTypeCast(op *evalop.TypeCast, stack *evalStack) {
 		switch argv.Kind {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			// ok
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
 			// ok
 		default:
 			stack.err = converr
