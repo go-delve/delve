@@ -109,9 +109,14 @@ func (reader *Reader) NextType() (*dwarf.Entry, error) {
 // can be used to walk all member data.
 func (reader *Reader) SeekToTypeNamed(name string) (*dwarf.Entry, error) {
 	// Walk the types to the base
-	for entry, err := reader.NextType(); entry != nil; entry, err = reader.NextType() {
+	for {
+		entry, err := reader.NextType()
 		if err != nil {
 			return nil, err
+		}
+
+		if entry == nil {
+			break
 		}
 
 		n, ok := entry.Val(dwarf.AttrName).(string)
@@ -130,9 +135,13 @@ func (reader *Reader) SeekToTypeNamed(name string) (*dwarf.Entry, error) {
 // FindEntryNamed finds the entry for 'name'.
 func (reader *Reader) FindEntryNamed(name string, member bool) (*dwarf.Entry, error) {
 	depth := 1
-	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
+	for {
+		entry, err := reader.Next()
 		if err != nil {
 			return nil, err
+		}
+		if entry == nil {
+			break
 		}
 
 		if entry.Children {
@@ -205,9 +214,13 @@ func (reader *Reader) InstructionsForEntry(entry *dwarf.Entry) ([]byte, error) {
 
 // NextMemberVariable moves the reader to the next debug entry that describes a member variable and returns the entry.
 func (reader *Reader) NextMemberVariable() (*dwarf.Entry, error) {
-	for entry, err := reader.Next(); entry != nil; entry, err = reader.Next() {
+	for {
+		entry, err := reader.Next()
 		if err != nil {
 			return nil, err
+		}
+		if entry == nil {
+			break
 		}
 
 		// All member variables will be at the same depth
