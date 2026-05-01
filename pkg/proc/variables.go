@@ -1735,6 +1735,7 @@ func (v *Variable) loadArrayValues(recurseLevel int, cfg LoadConfig) {
 	}
 	if v.Base+uint64(v.stride*count) < v.Base {
 		v.Unreadable = fmt.Errorf("bad array base address %#x", v.Base)
+		return
 	}
 
 	if v.stride < maxArrayStridePrefetch {
