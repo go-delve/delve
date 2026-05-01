@@ -22,6 +22,9 @@ func ptraceGetRegset(tid int) (regset amd64util.AMD64Xstate, err error) {
 		// ignore ENODEV, it just means this CPU doesn't have X87 registers (??)
 		err = nil
 	}
+	if err != nil {
+		return
+	}
 
 	xstateargs := make([]byte, cpuid.AMD64XstateMaxSize())
 	iov := sys.Iovec{Base: &xstateargs[0], Len: uint32(len(xstateargs))}
