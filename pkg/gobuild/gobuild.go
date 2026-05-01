@@ -36,7 +36,10 @@ func Remove(path string) {
 // GoBuild builds non-test files in 'pkgs' with the specified 'buildflags'
 // and writes the output at 'debugname'.
 func GoBuild(debugname string, pkgs []string, buildflags any) error {
-	args, _ := goBuildArgs2(debugname, pkgs, buildflags, false)
+	args, err := goBuildArgs2(debugname, pkgs, buildflags, false)
+	if err != nil {
+		return err
+	}
 	return gocommandRun("build", args...)
 }
 
