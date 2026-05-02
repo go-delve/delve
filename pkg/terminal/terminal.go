@@ -9,6 +9,7 @@ import (
 	"net/rpc"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -631,8 +632,8 @@ func (t *Term) removeDisplay(n int) error {
 		return fmt.Errorf("%d is out of range", n)
 	}
 	t.displays[n] = displayEntry{"", ""}
-	for i := len(t.displays) - 1; i >= 0; i-- {
-		if t.displays[i].expr != "" {
+	for i, t.display := range slices.Backward(t.displays) {
+		if t.display.expr != "" {
 			t.displays = t.displays[:i+1]
 			return nil
 		}

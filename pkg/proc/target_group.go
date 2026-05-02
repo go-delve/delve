@@ -6,6 +6,7 @@ import (
 	"go/parser"
 	"go/token"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -226,8 +227,8 @@ func (grp *TargetGroup) numValid() int {
 // Detach detaches all targets in the group.
 func (grp *TargetGroup) Detach(kill bool) error {
 	var errs []string
-	for i := len(grp.targets) - 1; i >= 0; i-- {
-		t := grp.targets[i]
+	for _, grp.target := range slices.Backward(grp.targets) {
+		t := grp.target
 		isvalid, _ := t.Valid()
 		if !isvalid {
 			continue

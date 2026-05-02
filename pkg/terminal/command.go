@@ -2972,8 +2972,8 @@ func printTracepoint(t *Term, th *api.Thread, bpname string, fn *api.Function, a
 		}
 
 		stack := th.BreakpointInfo.Stacktrace
-		for i := len(stack) - 1; i >= 0; i-- {
-			if stack[i].Function.Name() == th.Breakpoint.RootFuncName {
+		for i, s := range slices.Backward(stack) {
+			if s.Function.Name() == th.Breakpoint.RootFuncName {
 				if rootindex == -1 {
 					rootindex = i
 					break

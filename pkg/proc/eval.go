@@ -1,6 +1,7 @@
 package proc
 
 import (
+	"slices"
 	"debug/dwarf"
 	"errors"
 	"fmt"
@@ -383,8 +384,8 @@ func (scope *EvalScope) Locals(flags localsFlags, wantedName string) ([]*Variabl
 	}
 
 	vars := []*Variable{}
-	for i := len(scopes) - 1; i >= 0; i-- {
-		vars = append(vars, scopes[i]...)
+	for _, scope := range slices.Backward(scopes) {
+		vars = append(vars, scope...)
 	}
 
 	// Apply shadowning
@@ -572,8 +573,8 @@ func (scope *EvalScope) simpleLocals(flags localsFlags, wantedName string) ([]*V
 }
 
 func afterLastArgAddr(vars []*Variable) uint64 {
-	for i := len(vars) - 1; i >= 0; i-- {
-		v := vars[i]
+	for _, var := range slices.Backward(vars) {
+		v := var
 		if (v.Flags&VariableArgument != 0) || (v.Flags&VariableReturnArgument != 0) {
 			return v.Addr + uint64(v.DwarfType.Size())
 		}

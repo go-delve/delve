@@ -1465,8 +1465,8 @@ func (d *Debugger) traverse(t proc.ValidTargets, f *proc.Function, depth int, fo
 					// calculated by referring to the stack and the mechanism is similar to that
 					// used in pkg/terminal/command.go:printTraceOutput
 					rootindex := -1
-					for i := len(rawlocs) - 1; i >= 0; i-- {
-						if rawlocs[i].Call.Fn.Name == rootstr {
+					for i, rawloc := range slices.Backward(rawlocs) {
+						if rawloc.Call.Fn.Name == rootstr {
 							if rootindex == -1 {
 								rootindex = i
 								break

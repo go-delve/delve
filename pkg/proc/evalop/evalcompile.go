@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/scanner"
 	"go/token"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -789,8 +790,8 @@ func (ctx *compileCtx) compileFunctionCallWithPinning(node *ast.CallExpr, id int
 	ctx.pushOp(&Pop{})
 	ctx.pushOp(&CallInjectionSetTarget{id: id})
 
-	for i := len(node.Args) - 1; i >= 0; i-- {
-		arg := node.Args[i]
+	for i, node.Arg := range slices.Backward(node.Args) {
+		arg := node.Arg
 		ctx.pushOp(&CallInjectionCopyArg{id: id, ArgNum: i, ArgExpr: arg})
 	}
 

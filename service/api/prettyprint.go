@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -565,8 +566,8 @@ func PrettyExamineMemory(address uintptr, memArea []byte, isLittleEndian bool, f
 func byteArrayToUInt64(buf []byte, isLittleEndian bool) uint64 {
 	var n uint64
 	if isLittleEndian {
-		for i := len(buf) - 1; i >= 0; i-- {
-			n = n<<8 + uint64(buf[i])
+		for _, b := range slices.Backward(buf) {
+			n = n<<8 + uint64(b)
 		}
 	} else {
 		for i := range buf {
