@@ -2344,6 +2344,9 @@ func (t *Term) printFilteredVariables(varType string, vars []api.Variable, filte
 		if reg == nil || reg.Match([]byte(v.Name)) {
 			match = true
 			name := v.Name
+			if varType == "vars" {
+				name = quotePackagePath(name)
+			}
 			if v.Flags&api.VariableShadowed != 0 {
 				name = "(" + name + ")"
 			}
@@ -2358,6 +2361,29 @@ func (t *Term) printFilteredVariables(varType string, vars []api.Variable, filte
 		fmt.Fprintf(t.stdout, "(no %s)\n", varType)
 	}
 	return nil
+}
+
+// quotePackagePath quotes the package path portion of a fully qualified
+// variable name (e.g. "internal/bytealg.MaxLen") so that the output
+// matches the expression spec accepted by the 'print' command.
+// If the package path contains a '/', it is wrapped in double quotes:
+//
+//	internal/bytealg.MaxLen  →  "internal/bytealg".MaxLen
+//	main.x                  →  main.x  (unchanged)
+func quotePackagePath(name string) string {
+	// Find the last '.' that separates package path from symbol name.
+	// For receiver methods the name may look like "pkg/path.(*Type).Method",
+	// we want to quote only the package portion before the first '.'.
+	dot := strings.Index(name, ".")
+	if dot < 0 {
+		return name
+	}
+	pkg := name[:dot]
+	rest := name[dot:] // includes the leading '.'
+	if strings.Contains(pkg, "/") {
+		return `"` + pkg + `"` + rest
+	}
+	return name
 }
 
 func (t *Term) printSortedStrings(v []string, err error) error {
