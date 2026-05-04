@@ -17,7 +17,7 @@ const (
 )
 
 func ptraceGetGRegs(pid int, regs *linutil.PPC64LEPtraceRegs) (err error) {
-	sys.PtraceGetRegs(pid, (*sys.PtraceRegs)(regs))
+	err = sys.PtraceGetRegs(pid, (*sys.PtraceRegs)(regs))
 	if err == syscall.Errno(0) {
 		err = nil
 	}
