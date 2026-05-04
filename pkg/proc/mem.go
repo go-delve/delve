@@ -147,7 +147,9 @@ func newCompositeMemory(mem MemoryReadWriter, arch *Arch, regs op.DwarfRegisters
 			cmem.data = append(cmem.data, reg[:piece.Size]...)
 		case op.AddrPiece:
 			buf := make([]byte, piece.Size)
-			mem.ReadMemory(buf, piece.Val)
+			if _, err := mem.ReadMemory(buf, piece.Val); err != nil {
+				return nil, fmt.Errorf("could not read %d bytes from address %#x: %v", piece.Size, piece.Val, err)
+			}
 			cmem.data = append(cmem.data, buf...)
 		case op.ImmPiece:
 			buf := piece.Bytes
