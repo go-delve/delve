@@ -1258,13 +1258,7 @@ func breakpointConditionSatisfiable(lbpmap map[int]*LogicalBreakpoint, lbp *Logi
 		case token.AND:
 			return satisf(binexpr.X) && satisf(binexpr.Y)
 		case token.OR:
-			if !satisf(binexpr.X) {
-				return false
-			}
-			if !satisf(binexpr.Y) {
-				return false
-			}
-			return true
+			return satisf(binexpr.X) || satisf(binexpr.Y)
 		case token.EQL, token.LEQ, token.LSS, token.NEQ, token.GTR, token.GEQ:
 		default:
 			return true
