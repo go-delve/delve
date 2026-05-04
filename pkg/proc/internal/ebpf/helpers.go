@@ -369,7 +369,7 @@ func AddressToOffset(f *elf.File, addr uint64) (uint64, error) {
 	// Find what section the symbol is in by checking the executable section's
 	// addr space.
 	for m := range sectionsToSearchForSymbol {
-		if addr > sectionsToSearchForSymbol[m].Addr &&
+		if addr >= sectionsToSearchForSymbol[m].Addr &&
 			addr < sectionsToSearchForSymbol[m].Addr+sectionsToSearchForSymbol[m].Size {
 			executableSection = sectionsToSearchForSymbol[m]
 		}
