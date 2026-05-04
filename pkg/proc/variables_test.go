@@ -951,6 +951,12 @@ func getEvalExpressionTestCases() []varTest {
 		{`*(*uint)(unsafe.Pointer(p1))`, false, `1`, `1`, "uint", nil},
 		{`*(*uint)(unsafe.Pointer(&i1))`, false, `1`, `1`, "uint", nil},
 
+		// Regression: uintptr-typed operands use reflect.Uintptr — eval must permit
+		// the same casts as Go (combined with uintptr Kind in variables.go).
+		{`int(upConst)`, false, `123`, `123`, "int", nil},
+		{`uint(upConst)`, false, `123`, `123`, "uint", nil},
+		{`(*int)(upPtr)`, false, `(*int)(0x…`, `(*int)(0x…`, "*int", nil},
+
 		// Malformed values
 		{`badslice`, false, `(unreadable non-zero length array with nil base)`, `(unreadable non-zero length array with nil base)`, "[]int", nil},
 	}

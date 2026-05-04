@@ -764,7 +764,15 @@ func newVariable(name string, addr uint64, dwarfType godwarf.Type, bi *BinaryInf
 		v.RealType = &godwarf.IntType{BasicType: t.BasicType}
 		v.Kind = reflect.Int
 	case *godwarf.UintType:
-		v.Kind = reflect.Uint
+		// Most unsigned DWARF types are represented as reflect.Uint regardless of
+		// size; uintptr is special because eval and Go treat it as reflect.Uintptr.
+		if rk := t.Common().ReflectKind; rk == reflect.Uintptr {
+			v.Kind = reflect.Uintptr
+		} else if t.Name == "uintptr" {
+			v.Kind = reflect.Uintptr
+		} else {
+			v.Kind = reflect.Uint
+		}
 	case *godwarf.FloatType:
 		switch t.ByteSize {
 		case 4:
@@ -1109,7 +1117,10 @@ func (a *Ancestor) Stack(n int) ([]Stackframe, error) {
 			r[i] = Stackframe{Err: pcsVar.Children[i].Unreadable}
 			continue
 		}
-		if pcsVar.Children[i].Kind != reflect.Uint {
+		switch pcsVar.Children[i].Kind {
+		case reflect.Uint, reflect.Uintptr:
+			// ok — runtime ancestor PCs may be uintptr-typed.
+		default:
 			return nil, fmt.Errorf("wrong type for pcs item %d: %v", i, pcsVar.Children[i].Kind)
 		}
 		pc, _ := constant.Int64Val(pcsVar.Children[i].Value)
