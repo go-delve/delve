@@ -1116,7 +1116,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			s.send(&dap.OutputEvent{
 				Event: *s.newEvent("output"),
 				Body: dap.OutputEventBody{
-					Output:   fmt.Sprintf("Building %s", args.Program),
+					Output:   fmt.Sprintf("Building %s\n", args.Program),
 					Category: "stdout",
 				}})
 			cmd, out, err = gobuild.GoBuildCombinedOutput(args.Output, []string{args.Program}, args.BuildFlags.value)
@@ -1128,7 +1128,7 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 			s.send(&dap.OutputEvent{
 				Event: *s.newEvent("output"),
 				Body: dap.OutputEventBody{
-					Output:   fmt.Sprintf("Building tests of %s", args.Program),
+					Output:   fmt.Sprintf("Building tests of %s\n", args.Program),
 					Category: "stdout",
 				}})
 			cmd, out, err = gobuild.GoTestBuildCombinedOutput(args.Output, []string{args.Program}, args.BuildFlags.value)
