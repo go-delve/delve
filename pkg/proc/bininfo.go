@@ -685,7 +685,7 @@ func (fn *Function) CompilationUnitName() string {
 
 func rangeParentName(fnname string) int {
 	const rangeSuffix = "-range"
-	ridx := strings.Index(fnname, rangeSuffix)
+	ridx := strings.LastIndex(fnname, rangeSuffix)
 	if ridx <= 0 {
 		return -1
 	}
@@ -698,6 +698,9 @@ func rangeParentName(fnname string) int {
 	}
 	if !ok {
 		return -1
+	}
+	if ridx2 := rangeParentName(fnname[:ridx]); ridx2 > 0 {
+		return ridx2
 	}
 	return ridx
 }
