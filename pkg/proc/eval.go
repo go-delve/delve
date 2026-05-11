@@ -490,7 +490,7 @@ func (scope *EvalScope) simpleLocals(flags localsFlags, wantedName string) ([]*V
 
 		if isCapturedVar && int(val.DeclLine) == scope.Line && scope.Fn != nil && entry.Tag == dwarf.TagVariable && (flags&localsFakeFunctionEntryScope == 0) {
 			// For variables captured by closures if we are "early" in the function
-			// read  the value from the closure struct instead of their location.
+			// read the value from the closure struct instead of their location.
 			// First check that we are actually between the entry point of the
 			// function and the end of the prologue in case the code has not been
 			// gofmt'd.
