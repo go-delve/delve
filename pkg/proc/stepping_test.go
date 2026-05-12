@@ -1598,63 +1598,73 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 			})
 		})
 
-		if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) {
-			t.Run("TestPanickyIterator2", func(t *testing.T) {
-				testseq2intl(t, fixture, grp, p, nil, []seqTest{
-					funcBreak(t, "main.TestPanickyIterator2"),
-					{contContinue, 125},
-					nx(126),
-					nx(127),
-					nx(131), // for _, x := range (x == 100)
-					nx(132),
-					nx(133),
-					nx(135), // for _, y := range (y == 10)
-					nx(136), // result = append(result, y)
-					nx(139), // for k, z := range (k == 0, z == 1)
-					nx(140), // result = append(result, z)
-					nx(141), // if k == 1
-					nx(144),
+		t.Run("TestPanickyIterator2", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestPanickyIterator2"),
+				{contContinue, 125},
+				nx(126),
+				nx(127),
+				nx(131), // for _, x := range (x == 100)
+				nx(132),
+				nx(133),
+				nx(135), // for _, y := range (y == 10)
+				nx(136), // result = append(result, y)
+				nx(139), // for k, z := range (k == 0, z == 1)
+				nx(140), // result = append(result, z)
+				nx(141), // if k == 1
+				nx(144),
 
-					nx(139), // for k, z := range (k == 1, z == 2)
-					nx(140), // result = append(result, z)
-					nx(141), // if k == 1
-					nx(142), // break Y
-					nx(135),
-					nx(145),
-					nx(127), // defer func()
-					nx(128), // r := recover()
-					nx(129), // fmt.Println
-				})
+				nx(139), // for k, z := range (k == 1, z == 2)
+				nx(140), // result = append(result, z)
+				nx(141), // if k == 1
+				nx(142), // break Y
+				nx(135),
+				{contNothing, func(grp *proc.TargetGroup, p *proc.Target) {
+					if goversion.VersionAfterOrEqual(runtime.Version(), 1, 27) {
+						assertNoError(grp.Next(), t, "Next()")
+					}
+				}},
+				{contNothing, 135},
+				nx(145),
+				nx(127), // defer func()
+				nx(128), // r := recover()
+				nx(129), // fmt.Println
 			})
+		})
 
-			t.Run("TestPanickyIteratorWithNewDefer", func(t *testing.T) {
-				testseq2intl(t, fixture, grp, p, nil, []seqTest{
-					funcBreak(t, "main.TestPanickyIteratorWithNewDefer"),
-					{contContinue, 149},
-					nx(150),
-					nx(151),
-					nx(155), // for _, x := range (x == 100)
-					nx(156),
-					nx(157),
-					nx(159), // for _, y := range (y == 10)
-					nx(160),
-					nx(163), // result = append(result, y)
-					nx(166), // for k, z := range (k == 0, z == 1)
-					nx(167), // result = append(result, z)
-					nx(168), // if k == 1
-					nx(171),
+		t.Run("TestPanickyIteratorWithNewDefer", func(t *testing.T) {
+			testseq2intl(t, fixture, grp, p, nil, []seqTest{
+				funcBreak(t, "main.TestPanickyIteratorWithNewDefer"),
+				{contContinue, 149},
+				nx(150),
+				nx(151),
+				nx(155), // for _, x := range (x == 100)
+				nx(156),
+				nx(157),
+				nx(159), // for _, y := range (y == 10)
+				nx(160),
+				nx(163), // result = append(result, y)
+				nx(166), // for k, z := range (k == 0, z == 1)
+				nx(167), // result = append(result, z)
+				nx(168), // if k == 1
+				nx(171),
 
-					nx(166), // for k, z := range (k == 0, z == 1)
-					nx(167), // result = append(result, z)
-					nx(168), // if k == 1
-					nx(169), // break Y
-					nx(159),
-					nx(172),
-					nx(160), // defer func()
-					nx(161), // fmt.Println
-				})
+				nx(166), // for k, z := range (k == 0, z == 1)
+				nx(167), // result = append(result, z)
+				nx(168), // if k == 1
+				nx(169), // break Y
+				nx(159),
+				{contNothing, func(grp *proc.TargetGroup, p *proc.Target) {
+					if goversion.VersionAfterOrEqual(runtime.Version(), 1, 27) {
+						assertNoError(grp.Next(), t, "Next()")
+					}
+				}},
+				{contNothing, 159},
+				nx(172),
+				nx(160), // defer func()
+				nx(161), // fmt.Println
 			})
-		}
+		})
 
 		t.Run("TestLongReturn", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
