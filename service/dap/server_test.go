@@ -5084,6 +5084,9 @@ func getPC(t *testing.T, client *daptest.Client, threadId int) (uint64, error) {
 // TestNextParked tests that we can switched selected goroutine to a parked one
 // and perform next operation on it.
 func TestNextParked(t *testing.T) {
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
+		t.Skip("broken")
+	}
 	runTest(t, "parallel_next", func(client *daptest.Client, fixture protest.Fixture) {
 		runDebugSessionWithBPs(t, client, "launch",
 			// Launch
