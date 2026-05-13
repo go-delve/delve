@@ -1334,7 +1334,7 @@ func checkVarExact(t *testing.T, got *dap.VariablesResponse, i int, name, evalNa
 	return checkVarExactIndexed(t, got, i, name, evalName, value, typ, hasRef, -1, -1)
 }
 
-// checkVarExactIndexed is a helper like checkVar that matches value exactly.
+// checkVarExact is a helper like checkVar that matches value exactly.
 func checkVarExactIndexed(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, hasRef bool, indexed, named int) (ref int) {
 	t.Helper()
 	return checkVar(t, got, i, name, evalName, value, typ, true, hasRef, indexed, named)
@@ -1346,7 +1346,7 @@ func checkVarRegex(t *testing.T, got *dap.VariablesResponse, i int, name, evalNa
 	return checkVarRegexIndexed(t, got, i, name, evalName, value, typ, hasRef, -1, -1)
 }
 
-// checkVarRegexIndexed is a helper like checkVar that treats value, evalName or name as a regex.
+// checkVarRegex is a helper like checkVar that treats value, evalName or name as a regex.
 func checkVarRegexIndexed(t *testing.T, got *dap.VariablesResponse, i int, name, evalName, value, typ string, hasRef bool, indexed, named int) (ref int) {
 	t.Helper()
 	return checkVar(t, got, i, name, evalName, value, typ, false, hasRef, indexed, named)
@@ -8292,15 +8292,7 @@ func TestBreakpointAfterDisconnect(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	sess := server.impl.session
-	conn := sess.conn
-	sess.sendingMu.Lock()
-	conn.mu.Lock()
-	conn.ReadWriteCloser = discard{}
-	conn.closed = false
-	conn.closedChan = nil
-	conn.mu.Unlock()
-	sess.sendingMu.Unlock()
+	server.impl.session.conn = &connection{ReadWriteCloser: discard{}} // fake a race condition between onDisconnectRequest and the runUntilStopAndNotify goroutine
 
 	// Wait for port to be available
 	select {

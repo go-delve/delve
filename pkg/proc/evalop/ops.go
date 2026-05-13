@@ -356,7 +356,7 @@ type PushNewFakeVariable struct {
 
 func (*PushNewFakeVariable) depthCheck() (npop, npush int) { return 0, 1 }
 
-// DisableErrors disables error reporting for the rest of the execution
+// DisableErrors disables error reporing for the rest of the execution
 type DisableErrors struct {
 }
 

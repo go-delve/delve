@@ -5,7 +5,13 @@ package ebpf
 import (
 	"debug/elf"
 	"errors"
+
+	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 )
+
+func BuildDerefPlan(typ godwarf.Type) (derefs [8]DerefEntry, numDerefs uint32) {
+	return
+}
 
 type EBPFContext struct {
 }

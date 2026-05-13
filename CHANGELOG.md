@@ -3,46 +3,6 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
-## [1.26.3] 2026-04-27
-
-### Added
-
-- Print function arguments when using eBPF for tracing (#4305, @archanaravindar)
-
-### Fixed
-
-- Fix regression debugging DWARFv5 executables that use debug_line_str section on macOS (#4315, @aarzilli)
-- Fix printing wait reason of channels (#4307, @croepha)
-
-### Changed
-
-- Miscellaneous documentation and test improvements (#4316, #4306, @purelualight, @typesanitizer)
-
-## [1.26.2] 2026-04-20
-
-### Added
-
-- Gorelease release automation (#4278, #4286, @derekparker)
-- Configuration for the command line prompt (#4284, @aarzilli)
-- DAP console command port of `examinemem` (#4289, @BrotifyPacha)
-- Support for data breakpoints in DAP (#4294, @aarzilli)
-- Extended `whatis` command to types (#4291, @aarzilli)
-- Added verbosity level for trace command (#4251, @archanaravindar)
-
-### Fixed
-
-- Stacktraces are now cached for better performance (#4277, @aarzilli)
-- Evaluation of DW_OP_shr and DW_OP_shra (#4296, @cuiweixie)
-- Stack-out-of-scope breakpoint setting for reversed execution (#4295, @cuiweixie)
-- Miscellaneous fixes (#4298, #4297, #4292, #4304, @cuiweixie, @aarzilli, @typesanitizer)
-
-### Changed
-
-- DAP server now sets sequence numbers for responses (#4280, @aarzilli)
-- DAP server now prints message before building the target program (#4287, @aarzilli)
-- Extended eBPF tracing support to more types (#4285, @derekparker)
-- Better documentation (#4282, @aarzilli)
-
 ## [1.26.1] 2026-03-03
 
 ### Added

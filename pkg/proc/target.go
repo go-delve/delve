@@ -1,14 +1,17 @@
 package proc
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"go/constant"
 	"os"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
 
+	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/logflags"
@@ -491,18 +494,92 @@ type UProbeTraceResult struct {
 	ReturnParams []*Variable
 }
 
+// rewritePointersToFakeAddresses rewrites pointer values in the parameter's
+// Data to point to fake addresses that correspond to deref data regions.
+// This allows loadValueInternal to follow pointers into cached memory.
+//
+// Uses BuildDerefPlan as the single source of truth for pointer offsets
+// and deref sizes. This guarantees the rewriting matches what the eBPF
+// program captured, since both use the same plan.
+func rewritePointersToFakeAddresses(ip *ebpf.RawUProbeParam, fullData []byte) {
+	if ip.DwarfType == nil {
+		return
+	}
+
+	valSize := uint64(len(ip.Data))
+
+	// Use BuildDerefPlan to get the exact same offsets and sizes that were
+	// used to populate the eBPF arg map and execute the dereference plan.
+	derefs, numDerefs := ebpf.BuildDerefPlan(ip.DwarfType)
+
+	// Rewrite each pointer in the captured data to point to the
+	// corresponding fake address in the deref data region.
+	derefOffset := uint64(0)
+	for i := uint32(0); i < numDerefs; i++ {
+		de := derefs[i]
+
+		// Bounds check: ensure the pointer location is within ip.Data.
+		if uint64(de.Offset)+8 > uint64(len(ip.Data)) {
+			ip.Unreadable = fmt.Errorf("deref offset %d out of bounds (data size %d) - plan/eBPF mismatch", de.Offset, len(ip.Data))
+			return
+		}
+
+		// Bounds check: ensure we won't write past the end of fullData.
+		if uint64(de.Offset)+8 > uint64(len(fullData)) {
+			ip.Unreadable = fmt.Errorf("deref offset %d exceeds fullData size %d - buffer allocation error", de.Offset, len(fullData))
+			return
+		}
+
+		// Assign fake address pointing into the deref data region.
+		fakeAddr := fakeAddressUnresolv + valSize + derefOffset
+		binary.LittleEndian.PutUint64(fullData[de.Offset:de.Offset+8], fakeAddr)
+
+		derefSize := uint64(de.Size)
+		if derefSize > 2048 {
+			derefSize = 2048
+		}
+		derefOffset += derefSize
+	}
+
+	// Update the pieces to cover the full data range including deref data.
+	if len(ip.DerefData) > 0 {
+		ip.Pieces = []op.Piece{
+			{Size: int(valSize) + len(ip.DerefData), Kind: op.AddrPiece, Val: fakeAddressUnresolv},
+		}
+	}
+}
+
 func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 	var results []*UProbeTraceResult
 	tracepoints := t.proc.GetBufferedTracepoints()
 	convertInputParamToVariable := func(ip *ebpf.RawUProbeParam) *Variable {
 		v := &Variable{}
-		v.Name = ip.Name
-		v.DwarfType = ip.RealType
 		v.RealType = ip.RealType
+		v.DwarfType = ip.RealType // needed so ConstDescr doesn't panic when bi is set
 		v.Len = ip.Len
 		v.Base = ip.Base
 		v.Addr = ip.Addr
 		v.Kind = ip.Kind
+		v.bi = t.BinInfo()
+
+		if v.Kind == reflect.Array {
+			if at, ok := v.RealType.(*godwarf.ArrayType); ok {
+				v.Base = ip.Addr
+				v.Len = at.Count
+				v.stride = at.StrideBitSize / 8
+				v.fieldType = at.Type
+			}
+		}
+
+		if v.Kind == reflect.Slice {
+			if st, ok := v.RealType.(*godwarf.SliceType); ok && len(ip.Data) >= 24 {
+				v.Base = fakeAddressUnresolv + uint64(len(ip.Data))
+				v.Len = int64(binary.LittleEndian.Uint64(ip.Data[8:16]))
+				v.Cap = int64(binary.LittleEndian.Uint64(ip.Data[16:24]))
+				v.fieldType = st.ElemType
+				v.stride = st.ElemType.Size()
+			}
+		}
 
 		if ip.Unreadable != nil {
 			v.Unreadable = ip.Unreadable
@@ -513,7 +590,24 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 			return v
 		}
 
-		cachedMem := CreateLoadedCachedMemory(ip.Data)
+		// Build the cached memory from val data + deref data.
+		var fullData []byte
+		if len(ip.DerefData) > 0 {
+			fullData = make([]byte, len(ip.Data)+len(ip.DerefData))
+			copy(fullData, ip.Data)
+			copy(fullData[len(ip.Data):], ip.DerefData)
+		} else {
+			fullData = ip.Data
+		}
+
+		// If we have a DWARF type with pointer fields, rewrite pointer
+		// values in Data to point to fake addresses so that
+		// loadValueInternal can follow them into the deref data.
+		if ip.DwarfType != nil && len(ip.DerefData) > 0 {
+			rewritePointersToFakeAddresses(ip, fullData)
+		}
+
+		cachedMem := CreateLoadedCachedMemory(fullData)
 		compMem, compErr := CreateCompositeMemory(cachedMem, t.BinInfo().Arch, op.DwarfRegisters{}, ip.Pieces, ip.RealType.Common().ByteSize)
 		if compErr != nil {
 			v.Unreadable = fmt.Errorf("ebpf composite memory: %w", compErr)
@@ -521,8 +615,6 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 		}
 		v.mem = compMem
 
-		// Load the value here so that we don't have to export
-		// loadValue outside of proc.
 		v.loadValue(loadFullValue)
 
 		return v

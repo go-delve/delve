@@ -4,13 +4,21 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 
-#define BPF_MAX_VAR_SIZ	(1 << 29)
+#define BPF_MAX_VAR_SIZ (1 << 24)  // 16MB — sufficient for compact events
 
-// Ring buffer to handle communication of variable values back to userspace.
+// Ring buffer for HEADER and PARAM events to userspace.
 struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
     __uint(max_entries, BPF_MAX_VAR_SIZ);
 } events SEC(".maps");
+
+// Per-CPU scratch buffer for assembling one PARAM event before output.
+struct {
+    __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, u32);
+    __type(value, char[SCRATCH_SIZE]);
+} scratch SEC(".maps");
 
 // Map which uses instruction address as key and function parameter info as the value.
 struct {

@@ -55,11 +55,6 @@ type NewTargetGroupConfig struct {
 
 type AddTargetFunc func(ProcessInternal, int, Thread, string, StopReason, string) (*Target, error)
 
-// A hit condition can be in the following formats:
-// - "number"
-// - "OP number"
-var hitConditionRegex = regexp.MustCompile(`(([=><%!])+|)( |)((\d|_)+)`)
-
 // NewGroup creates a TargetGroup containing the specified Target.
 func NewGroup(procgrp ProcessGroup, cfg NewTargetGroupConfig) (*TargetGroup, AddTargetFunc) {
 	grp := &TargetGroup{
@@ -495,6 +490,11 @@ func (grp *TargetGroup) ChangeBreakpointCondition(lbp *LogicalBreakpoint, cond, 
 }
 
 func parseHitCondition(hitCond string) (token.Token, int, error) {
+	// A hit condition can be in the following formats:
+	// - "number"
+	// - "OP number"
+	hitConditionRegex := regexp.MustCompile(`(([=><%!])+|)( |)((\d|_)+)`)
+
 	match := hitConditionRegex.FindStringSubmatch(strings.TrimSpace(hitCond))
 	if match == nil || len(match) != 6 {
 		return 0, 0, fmt.Errorf("unable to parse breakpoint hit condition: %q\nhit conditions should be of the form \"number\" or \"OP number\"", hitCond)

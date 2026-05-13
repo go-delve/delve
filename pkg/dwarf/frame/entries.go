@@ -114,7 +114,7 @@ func (fdes FrameDescriptionEntries) Append(otherFDEs FrameDescriptionEntries) Fr
 
 // ptrEnc represents a pointer encoding value, used during eh_frame decoding
 // to determine how pointers were encoded.
-// Least significant 4 (0xf) bytes encode the size as well as its
+// Least significant 4 (0xf) bytes encode the size  as well as its
 // signed-ness,  most significant 4 bytes (0xf0 == ptrEncFlagsMask) are flags
 // describing how the value should be interpreted (absolute, relative...)
 // See https://www.airs.com/blog/archives/460.

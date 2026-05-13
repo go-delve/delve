@@ -83,7 +83,6 @@ type Term struct {
 	quitting      bool
 
 	traceNonInteractive bool
-	TraceVerbosity      int // Verbosity level for trace output (0-4)
 
 	downloadsMu         sync.Mutex
 	downloadsInProgress bool
@@ -699,7 +698,7 @@ func (t *Term) goVersion() *goversion.GoVersion {
 		return t.goVersionCache
 	}
 	vers := t.client.GetVersion()
-	v := goversion.ParseProducer(vers.TargetGoVersion)
+	v, _ := goversion.Parse(vers.TargetGoVersion)
 	t.goVersionCache = &v
 	return t.goVersionCache
 }

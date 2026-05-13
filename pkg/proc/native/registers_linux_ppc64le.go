@@ -17,7 +17,7 @@ const (
 )
 
 func ptraceGetGRegs(pid int, regs *linutil.PPC64LEPtraceRegs) (err error) {
-	err = sys.PtraceGetRegs(pid, (*sys.PtraceRegs)(regs))
+	sys.PtraceGetRegs(pid, (*sys.PtraceRegs)(regs))
 	if err == syscall.Errno(0) {
 		err = nil
 	}
@@ -25,7 +25,7 @@ func ptraceGetGRegs(pid int, regs *linutil.PPC64LEPtraceRegs) (err error) {
 }
 
 func ptraceSetGRegs(pid int, regs *linutil.PPC64LEPtraceRegs) (err error) {
-	err = sys.PtraceSetRegs(pid, (*sys.PtraceRegs)(regs))
+	sys.PtraceSetRegs(pid, (*sys.PtraceRegs)(regs))
 	if err == syscall.Errno(0) {
 		err = nil
 	}

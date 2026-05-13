@@ -40,6 +40,11 @@ The eBPF backend uses Docker to compile C code
 (`pkg/proc/internal/ebpf/bpf/trace.bpf.c`) in a controlled environment,
 producing architecture-specific `.o` files.
 
+The builder image (`pkg/proc/internal/ebpf/build/ebpf-Dockerfile`) is based
+on Ubuntu 26.04 with **clang-22**. The eBPF C code uses a per-CPU scratch
+buffer with `bpf_ringbuf_output` for variable-length events, which requires
+clang 14+ for correct bounded-offset codegen on `PTR_TO_MAP_VALUE`.
+
 #### eBPF Testing
 
 eBPF tests (TestTraceEBPF*) require elevated capabilities (CAP_BPF,
@@ -258,9 +263,9 @@ func, struct, array) produce specific error messages.
 test for eBPF type handling. Add new type-specific subtests there when
 extending type support. The fixture is `_fixtures/ebpf_trace_types.go`.
 
-**eBPF Build Constraint**: The eBPF C code must be compiled with
-clang-12. Newer clang versions (14+) generate BPF bytecode that fails
-the kernel verifier. The Docker image pins clang-12 for this reason.
+**eBPF Build Constraint**: The eBPF C code is compiled with clang-22
+(Ubuntu 26.04). The per-CPU scratch buffer pattern requires clang 14+
+for correct bounded-offset codegen on `PTR_TO_MAP_VALUE`.
 
 ### Commit Message Format
 

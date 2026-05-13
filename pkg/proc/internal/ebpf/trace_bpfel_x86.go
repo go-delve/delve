@@ -16,8 +16,6 @@ type traceFunctionParameterListT struct {
 	GoidOffset   uint32
 	_            [4]byte
 	G_addrOffset int64
-	GoroutineId  int32
-	_            [4]byte
 	FnAddr       uint64
 	IsRet        bool
 	_            [3]byte
@@ -30,13 +28,15 @@ type traceFunctionParameterListT struct {
 		_        [3]byte
 		N_pieces int32
 		RegNums  [6]int32
-		_        [4]byte
-		Daddr    uint64
-		Val      [48]int8
-		DerefVal [48]int8
+		N_derefs uint32
+		Derefs   [8]struct {
+			Offset uint32
+			Size   uint32
+		}
+		ValSize        uint32
+		TotalDerefSize uint32
 	}
 	N_retParameters uint32
-	_               [4]byte
 	RetParams       [6]struct {
 		Kind     uint32
 		Size     uint32
@@ -45,11 +45,15 @@ type traceFunctionParameterListT struct {
 		_        [3]byte
 		N_pieces int32
 		RegNums  [6]int32
-		_        [4]byte
-		Daddr    uint64
-		Val      [48]int8
-		DerefVal [48]int8
+		N_derefs uint32
+		Derefs   [8]struct {
+			Offset uint32
+			Size   uint32
+		}
+		ValSize        uint32
+		TotalDerefSize uint32
 	}
+	_ [4]byte
 }
 
 // loadTrace returns the embedded CollectionSpec for trace.
@@ -100,8 +104,9 @@ type traceProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type traceMapSpecs struct {
-	ArgMap *ebpf.MapSpec `ebpf:"arg_map"`
-	Events *ebpf.MapSpec `ebpf:"events"`
+	ArgMap  *ebpf.MapSpec `ebpf:"arg_map"`
+	Events  *ebpf.MapSpec `ebpf:"events"`
+	Scratch *ebpf.MapSpec `ebpf:"scratch"`
 }
 
 // traceObjects contains all objects after they have been loaded into the kernel.
@@ -123,14 +128,16 @@ func (o *traceObjects) Close() error {
 //
 // It can be passed to loadTraceObjects or ebpf.CollectionSpec.LoadAndAssign.
 type traceMaps struct {
-	ArgMap *ebpf.Map `ebpf:"arg_map"`
-	Events *ebpf.Map `ebpf:"events"`
+	ArgMap  *ebpf.Map `ebpf:"arg_map"`
+	Events  *ebpf.Map `ebpf:"events"`
+	Scratch *ebpf.Map `ebpf:"scratch"`
 }
 
 func (m *traceMaps) Close() error {
 	return _TraceClose(
 		m.ArgMap,
 		m.Events,
+		m.Scratch,
 	)
 }
 

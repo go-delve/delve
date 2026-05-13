@@ -14,6 +14,7 @@ import (
 	"strconv"
 
 	"github.com/go-delve/delve/pkg/astutil"
+	"github.com/go-delve/delve/pkg/dwarf/frame"
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/dwarf/reader"
@@ -624,17 +625,45 @@ func (t *Target) setEBPFTracepointOnFunc(fn *Function, goidOffset int64) error {
 	}
 	_, l := t.BinInfo().EntryLineForFunc(fn)
 
+	// Compute the uprobe PC and CFA offset once, before the parameter loop.
+	// Input params are captured at uprobePC (post-prologue, RSP adjusted),
+	// so we need the CFA at that PC to resolve DW_OP_call_frame_cfa locations.
+	// Return params are captured at RET (RSP restored to entry value), so
+	// they use fn.Entry with PtrSize offset (CFA at entry = RSP + PtrSize).
+	uprobePC, cfaOffset, err := uprobeEntryPointCFA(t, fn)
+	if err != nil {
+		return err
+	}
+	inputRegs := op.DwarfRegisters{}
+	inputRegs.CFA = cfaOffset
+
 	var args []ebpf.UProbeArgMap
 	varEntries := reader.Variables(dwarfTree, fn.Entry, l, variablesFlags)
 	for _, entry := range varEntries {
-		name, dt, err := readVarEntry(entry.Tree, fn.cu.image)
+		_, dt, err := readVarEntry(entry.Tree, fn.cu.image)
 		if err != nil {
 			return err
 		}
 
-		offset, pieces, _, err := t.BinInfo().Location(entry, dwarf.AttrLocation, fn.Entry, op.DwarfRegisters{}, nil)
-		if err != nil {
-			return err
+		isret, _ := entry.Val(dwarf.AttrVarParam).(bool)
+
+		var offset int64
+		var pieces []op.Piece
+		if isret {
+			// Return params: captured at RET where RSP = entry RSP.
+			// Evaluate at fn.Entry with empty regs; add PtrSize to
+			// convert from frame-relative to RSP-relative offset.
+			offset, pieces, _, err = t.BinInfo().Location(entry, dwarf.AttrLocation, fn.Entry, op.DwarfRegisters{}, nil)
+			if err != nil {
+				return err
+			}
+			offset += int64(t.BinInfo().Arch.PtrSize())
+		} else {
+			// Input params: captured at uprobePC (post-prologue RSP).
+			offset, pieces, _, err = t.BinInfo().Location(entry, dwarf.AttrLocation, uprobePC, inputRegs, nil)
+			if err != nil {
+				return err
+			}
 		}
 		paramPieces := make([]int, 0, len(pieces))
 		for _, piece := range pieces {
@@ -642,17 +671,20 @@ func (t *Target) setEBPFTracepointOnFunc(fn *Function, goidOffset int64) error {
 				paramPieces = append(paramPieces, int(piece.Val))
 			}
 		}
-		isret, _ := entry.Val(dwarf.AttrVarParam).(bool)
-		offset += int64(t.BinInfo().Arch.PtrSize())
+
+		// Build dereference plan from the DWARF type.
+		derefs, numDerefs := ebpf.BuildDerefPlan(dt)
+
 		args = append(args, ebpf.UProbeArgMap{
-			Name: name,
-			Offset: offset,
-			Size:   dt.Size(),
-			Kind:   dt.Common().ReflectKind,
-			TypeName: dt.String(),
-			Pieces: paramPieces,
-			InReg:  len(pieces) > 0,
-			Ret:    isret,
+			Offset:    offset,
+			Size:      dt.Size(),
+			Kind:      dt.Common().ReflectKind,
+			Pieces:    paramPieces,
+			InReg:     len(pieces) > 0,
+			Ret:       isret,
+			Derefs:    derefs,
+			NumDerefs: numDerefs,
+			DwarfType: dt,
 		})
 	}
 
@@ -660,6 +692,30 @@ func (t *Target) setEBPFTracepointOnFunc(fn *Function, goidOffset int64) error {
 
 	// Finally, set the uprobe on the function.
 	return t.proc.SetUProbe(fn.Name, goidOffset, args)
+}
+
+// uprobeEntryPointCFA returns the uprobe PC (FirstPCAfterPrologue) and
+// the CFA offset from RSP at that PC. The uprobe fires after the
+// prologue has adjusted RSP, so CFA = RSP + offset where offset
+// accounts for both the frame size and the return address.
+func uprobeEntryPointCFA(t *Target, fn *Function) (uint64, int64, error) {
+	uprobePC, err := FirstPCAfterPrologue(t, fn, false)
+	if err != nil {
+		return 0, 0, err
+	}
+	bi := t.BinInfo()
+	fde, err := bi.frameEntries.FDEForPC(uprobePC)
+	if err != nil {
+		return 0, 0, fmt.Errorf("no FDE for uprobe PC %#x: %w", uprobePC, err)
+	}
+	framectx, err := fde.EstablishFrame(uprobePC)
+	if err != nil {
+		return 0, 0, fmt.Errorf("cannot establish frame at uprobe PC %#x: %w", uprobePC, err)
+	}
+	if framectx.CFA.Rule != frame.RuleCFA {
+		return 0, 0, fmt.Errorf("unexpected CFA rule %d at uprobe PC %#x", framectx.CFA.Rule, uprobePC)
+	}
+	return uprobePC, framectx.CFA.Offset, nil
 }
 
 // SetWatchpoint sets a data breakpoint at addr and stores it in the
@@ -1258,7 +1314,13 @@ func breakpointConditionSatisfiable(lbpmap map[int]*LogicalBreakpoint, lbp *Logi
 		case token.AND:
 			return satisf(binexpr.X) && satisf(binexpr.Y)
 		case token.OR:
-			return satisf(binexpr.X) || satisf(binexpr.Y)
+			if !satisf(binexpr.X) {
+				return false
+			}
+			if !satisf(binexpr.Y) {
+				return false
+			}
+			return true
 		case token.EQL, token.LEQ, token.LSS, token.NEQ, token.GTR, token.GEQ:
 		default:
 			return true

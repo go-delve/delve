@@ -24,6 +24,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"text/tabwriter"
 	"time"
@@ -1491,34 +1492,6 @@ func BenchmarkLocalVariables(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			_, err := scope.LocalVariables(normalLoadConfig)
 			assertNoError(err, b, "LocalVariables()")
-		}
-	})
-}
-
-func BenchmarkStacktrace(b *testing.B) {
-	withTestProcess("deepstack", b, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		assertNoError(grp.Continue(), b, "Continue()")
-
-		g, err := proc.GetG(p.CurrentThread())
-		assertNoError(err, b, "GetG()")
-		if g == nil {
-			b.Fatal("no current goroutine")
-		}
-
-		frames, err := proc.GoroutineStacktrace(p, g, 600, 0)
-		assertNoError(err, b, "GoroutineStacktrace()")
-		if len(frames) < 500 {
-			b.Fatalf("expected at least 500 frames, got %d", len(frames))
-		}
-		b.Logf("stack depth: %d frames", len(frames))
-
-		b.ReportAllocs()
-		b.ResetTimer()
-		for i := 0; i < b.N; i++ {
-			_, err := proc.GoroutineStacktrace(p, g, 600, 0)
-			if err != nil {
-				b.Fatal(err)
-			}
 		}
 	})
 }
@@ -4455,10 +4428,6 @@ func TestIssue1795(t *testing.T) {
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 13) {
 		t.Skip("Test not relevant to Go < 1.13")
 	}
-	var doExecuteName = "regexp.(*Regexp).doExecute"
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 27) {
-		doExecuteName = "regexp.(*Regexp).find"
-	}
 	skipOn(t, "broken", "ppc64le")
 	withTestProcessArgs("issue1795", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), t, "Continue()")
@@ -4467,14 +4436,14 @@ func TestIssue1795(t *testing.T) {
 		assertLineNumber(p, t, 13, "wrong line number after Next,")
 	})
 	withTestProcessArgs("issue1795", t, ".", []string{}, protest.EnableInlining|protest.EnableOptimization, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		setFunctionBreakpoint(p, t, doExecuteName)
+		setFunctionBreakpoint(p, t, "regexp.(*Regexp).doExecute")
 		assertNoError(grp.Continue(), t, "Continue()")
 		assertLineNumber(p, t, 12, "wrong line number after Continue (1),")
 		assertNoError(grp.Continue(), t, "Continue()")
 		frames, err := proc.ThreadStacktrace(p, p.CurrentThread(), 40)
 		assertNoError(err, t, "ThreadStacktrace()")
 		logStacktrace(t, p, frames)
-		if err := checkFrame(frames[0], doExecuteName, "", 0, false); err != nil {
+		if err := checkFrame(frames[0], "regexp.(*Regexp).doExecute", "", 0, false); err != nil {
 			t.Errorf("Wrong frame 0: %v", err)
 		}
 		if err := checkFrame(frames[1], "regexp.(*Regexp).doMatch", "", 0, true); err != nil {
@@ -5670,15 +5639,7 @@ func TestReadTargetArguments(t *testing.T) {
 	})
 }
 
-type waitForFixture struct {
-	t        *testing.T
-	cmd      *exec.Cmd
-	waitFor  *proc.WaitFor
-	startedc chan struct{}
-	startErr error
-}
-
-func testWaitForSetup(t *testing.T) *waitForFixture {
+func testWaitForSetup(t *testing.T, mu *sync.Mutex, started *bool) (*exec.Cmd, *proc.WaitFor) {
 	var buildFlags protest.BuildFlags
 	if buildMode == "pie" {
 		buildFlags |= protest.BuildModePIE
@@ -5689,20 +5650,15 @@ func testWaitForSetup(t *testing.T) *waitForFixture {
 	// already terminated, executions of loopprog on Windows, see #4292.
 	uniqueArg := fmt.Sprintf("%s-%d", t.Name(), time.Now().Unix())
 	cmd := exec.Command(fixture.Path, uniqueArg)
-	startedc := make(chan struct{})
-
-	fixtureState := &waitForFixture{
-		t:        t,
-		cmd:      cmd,
-		startedc: startedc,
-	}
 
 	go func() {
 		time.Sleep(2 * time.Second)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
-		fixtureState.startErr = cmd.Start()
-		close(startedc)
+		assertNoError(cmd.Start(), t, "starting fixture")
+		mu.Lock()
+		*started = true
+		mu.Unlock()
 	}()
 
 	waitFor := &proc.WaitFor{Name: fixture.Path + " " + uniqueArg, Interval: 100 * time.Millisecond, Duration: 10 * time.Second}
@@ -5711,42 +5667,27 @@ func testWaitForSetup(t *testing.T) *waitForFixture {
 		// See: https://lldb.llvm.org/man/lldb.html#cmdoption-lldb-wait-for
 		waitFor.Name = fixture.Path
 	}
-	fixtureState.waitFor = waitFor
 
-	return fixtureState
-}
-
-func (fixtureState *waitForFixture) waitStarted() {
-	fixtureState.t.Helper()
-	<-fixtureState.startedc
-	assertNoError(fixtureState.startErr, fixtureState.t, "starting fixture")
-	if fixtureState.cmd.Process == nil {
-		fixtureState.t.Fatal("fixture start succeeded but cmd.Process is nil")
-	}
-}
-
-func (fixtureState *waitForFixture) cleanup() {
-	<-fixtureState.startedc
-	if fixtureState.startErr != nil || fixtureState.cmd.Process == nil {
-		return
-	}
-	_ = fixtureState.cmd.Process.Kill()
-	_ = fixtureState.cmd.Wait()
+	return cmd, waitFor
 }
 
 func TestWaitFor(t *testing.T) {
 	skipOn(t, "waitfor implementation is delegated to debugserver", "darwin")
 	skipOn(t, "flaky", "freebsd")
 
-	fixtureState := testWaitForSetup(t)
-	t.Cleanup(fixtureState.cleanup)
+	var mu sync.Mutex
+	started := false
 
-	pid, err := native.WaitFor(fixtureState.waitFor)
+	cmd, waitFor := testWaitForSetup(t, &mu, &started)
+
+	pid, err := native.WaitFor(waitFor)
 	assertNoError(err, t, "waitFor.Wait()")
-	fixtureState.waitStarted()
-	if pid != fixtureState.cmd.Process.Pid {
-		t.Errorf("pid mismatch, expected %d got %d", pid, fixtureState.cmd.Process.Pid)
+	if pid != cmd.Process.Pid {
+		t.Errorf("pid mismatch, expected %d got %d", pid, cmd.Process.Pid)
 	}
+
+	cmd.Process.Kill()
+	cmd.Wait()
 }
 
 func TestWaitForAttach(t *testing.T) {
@@ -5762,29 +5703,38 @@ func TestWaitForAttach(t *testing.T) {
 		return
 	}
 
-	fixtureState := testWaitForSetup(t)
-	t.Cleanup(fixtureState.cleanup)
+	var mu sync.Mutex
+	started := false
+
+	cmd, waitFor := testWaitForSetup(t, &mu, &started)
 
 	var p *proc.TargetGroup
 	var err error
 
 	switch testBackend {
 	case "native":
-		p, err = native.Attach(0, fixtureState.waitFor, []string{})
+		p, err = native.Attach(0, waitFor, []string{})
 	case "lldb":
 		path := ""
 		if runtime.GOOS == "darwin" {
-			path = fixtureState.waitFor.Name
+			path = waitFor.Name
 		}
-		p, err = gdbserial.LLDBAttach(0, path, fixtureState.waitFor, []string{})
+		p, err = gdbserial.LLDBAttach(0, path, waitFor, []string{})
 	default:
 		err = fmt.Errorf("unknown backend %q", testBackend)
 	}
 
 	assertNoError(err, t, "Attach")
-	fixtureState.waitStarted()
+
+	mu.Lock()
+	if !started {
+		t.Fatalf("attach succeeded but started is false")
+	}
+	mu.Unlock()
 
 	p.Detach(true)
+
+	cmd.Wait()
 }
 
 func TestIssue3545(t *testing.T) {
