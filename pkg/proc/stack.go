@@ -501,7 +501,7 @@ func (it *stackIterator) appendInlineCalls(callback func(Stackframe) bool, frame
 		return callback(frame)
 	}
 
-	for _, entry := range reader.InlineStack(dwarfTree, callpc) {
+	for i, entry := range reader.InlineStack(dwarfTree, callpc) {
 		frame.hasInlines = true
 		fnname, okname := entry.Val(dwarf.AttrName).(string)
 		fileidx, okfileidx := entry.Val(dwarf.AttrCallFile).(int64)
@@ -531,6 +531,7 @@ func (it *stackIterator) appendInlineCalls(callback func(Stackframe) bool, frame
 			Ret:         frame.Ret,
 			Err:         frame.Err,
 			SystemStack: frame.SystemStack,
+			hasInlines:  i > 0,
 			Inlined:     true,
 			lastpc:      frame.lastpc,
 			closurePtr:  frame.closurePtr,
