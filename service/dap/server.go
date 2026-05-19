@@ -3637,8 +3637,8 @@ func (s *Session) onSetVariableRequest(request *dap.SetVariableRequest) {
 	s.send(response)
 }
 
-// onSetExpression sends a not-yet-implemented error response.
-// Capability 'supportsSetExpression' is not set 'initialize' response.
+// onSetExpressionRequest sends a not-yet-implemented error response.
+// Capability 'supportsSetExpression' is set to false in the 'initialize' response.
 func (s *Session) onSetExpressionRequest(request *dap.SetExpressionRequest) {
 	s.sendNotYetImplementedErrorResponse(request.Request)
 }
