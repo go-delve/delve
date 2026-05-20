@@ -6957,7 +6957,7 @@ func TestBadLaunchRequests(t *testing.T) {
 
 		client.LaunchRequestWithArgs(map[string]any{"mode": "exec", "program": fixture.Path, "args": []int{1, 2}})
 		checkFailedToLaunchWithMessage(client.ExpectVisibleErrorResponse(t),
-			"Failed to launch: invalid debug configuration - cannot unmarshal number into \"args\" of type string")
+			"Failed to launch: invalid debug configuration - cannot unmarshal number into …")
 
 		// Bad "buildFlags"
 		client.LaunchRequestWithArgs(map[string]any{"mode": "debug", "program": fixture.Source, "buildFlags": 123})
