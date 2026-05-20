@@ -266,9 +266,9 @@ func (c *RPCClient) Halt() (*api.DebuggerState, error) {
 	return &out.State, err
 }
 
-func (c *RPCClient) GetBufferedTracepoints() ([]api.TracepointResult, error) {
+func (c *RPCClient) GetBufferedTracepoints(loadCfg *api.LoadConfig) ([]api.TracepointResult, error) {
 	var out GetBufferedTracepointsOut
-	err := c.call("GetBufferedTracepoints", GetBufferedTracepointsIn{}, &out)
+	err := c.call("GetBufferedTracepoints", GetBufferedTracepointsIn{LoadCfg: loadCfg}, &out)
 	return out.TracepointResults, err
 }
 

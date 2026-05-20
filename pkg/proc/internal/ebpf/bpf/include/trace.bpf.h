@@ -4,9 +4,9 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 
-#define BPF_MAX_VAR_SIZ	(1 << 29)
+#define BPF_MAX_VAR_SIZ	(1 << 24)
 
-// Ring buffer to handle communication of variable values back to userspace.
+// Ring buffer to handle communication of events back to userspace.
 struct {
     __uint(type, BPF_MAP_TYPE_RINGBUF);
     __uint(max_entries, BPF_MAX_VAR_SIZ);

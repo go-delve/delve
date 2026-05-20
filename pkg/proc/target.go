@@ -491,18 +491,19 @@ type UProbeTraceResult struct {
 	ReturnParams []*Variable
 }
 
-func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
+func (t *Target) GetBufferedTracepoints(cfg LoadConfig) []*UProbeTraceResult {
 	var results []*UProbeTraceResult
 	tracepoints := t.proc.GetBufferedTracepoints()
 	convertInputParamToVariable := func(ip *ebpf.RawUProbeParam) *Variable {
 		v := &Variable{}
 		v.Name = ip.Name
-		v.DwarfType = ip.RealType
 		v.RealType = ip.RealType
+		v.DwarfType = ip.RealType // needed so ConstDescr doesn't panic when bi is set
 		v.Len = ip.Len
 		v.Base = ip.Base
 		v.Addr = ip.Addr
 		v.Kind = ip.Kind
+		v.bi = t.BinInfo()
 
 		if ip.Unreadable != nil {
 			v.Unreadable = ip.Unreadable
@@ -521,9 +522,7 @@ func (t *Target) GetBufferedTracepoints() []*UProbeTraceResult {
 		}
 		v.mem = compMem
 
-		// Load the value here so that we don't have to export
-		// loadValue outside of proc.
-		v.loadValue(loadFullValue)
+		v.loadValue(cfg)
 
 		return v
 	}
@@ -560,8 +559,13 @@ func (grp *TargetGroup) RequestManualStop() error {
 }
 
 const (
-	FakeAddressBase     = 0xbeef000000000000
-	fakeAddressUnresolv = 0xbeed000000000000 // this address never resolves to memory
+	FakeAddressBase = 0xbeef000000000000
+	// fakeAddressUnresolv is a sentinel base address for variables that live in
+	// fake (non-process) memory: composite memory, CPU register variables, etc.
+	// It is chosen to never resolve to a real process address.
+	// The ebpf subpackage has its own copy (fakeAddressUnresolv in helpers.go);
+	// both must stay in sync.
+	fakeAddressUnresolv = 0xbeed000000000000
 )
 
 // newCompositeMemory creates a new compositeMemory object and registers it.

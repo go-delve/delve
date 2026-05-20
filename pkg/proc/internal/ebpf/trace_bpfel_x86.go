@@ -16,8 +16,6 @@ type traceFunctionParameterListT struct {
 	GoidOffset   uint32
 	_            [4]byte
 	G_addrOffset int64
-	GoroutineId  int32
-	_            [4]byte
 	FnAddr       uint64
 	IsRet        bool
 	_            [3]byte

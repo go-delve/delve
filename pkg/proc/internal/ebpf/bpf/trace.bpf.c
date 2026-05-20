@@ -4,10 +4,6 @@
 #define SLICE_KIND 23
 #define STRING_KIND 24
 
-// parse_string_param will parse a string parameter. The parsed value of the string
-// will be put into param->deref_val. This function expects the string struct
-// which contains a pointer to the string and the length of the string to have
-// already been read from memory and passed in as param->val.
 __always_inline
 int parse_string_param(struct pt_regs *ctx, function_parameter_t *param) {
     u64 str_len;
@@ -18,8 +14,8 @@ int parse_string_param(struct pt_regs *ctx, function_parameter_t *param) {
     param->daddr = str_addr;
 
     if (str_addr != 0) {
-        if (str_len > 0x30) {
-            str_len = 0x30;
+        if (str_len > MAX_VAL_SIZE) {
+            str_len = MAX_VAL_SIZE;
         }
         int ret = bpf_probe_read_user(&param->deref_val, str_len, (void *)(str_addr));
         if (ret < 0) {
@@ -29,15 +25,13 @@ int parse_string_param(struct pt_regs *ctx, function_parameter_t *param) {
     return 0;
 }
 
-// parse_pointer_param reads the value pointed to by a pointer parameter.
-// The pointer address should already be in param->val.
 __always_inline
 int parse_pointer_param(struct pt_regs *ctx, function_parameter_t *param) {
     size_t ptr_addr;
     __builtin_memcpy(&ptr_addr, param->val, sizeof(ptr_addr));
     param->daddr = ptr_addr;
     if (ptr_addr != 0) {
-        int ret = bpf_probe_read_user(&param->deref_val, 0x30, (void *)(ptr_addr));
+        int ret = bpf_probe_read_user(&param->deref_val, MAX_VAL_SIZE, (void *)(ptr_addr));
         if (ret < 0) {
             return 1;
         }
@@ -45,15 +39,13 @@ int parse_pointer_param(struct pt_regs *ctx, function_parameter_t *param) {
     return 0;
 }
 
-// parse_slice_param reads element data from a slice.
-// The slice header (ptr + len + cap = 24 bytes) should already be in param->val.
 __always_inline
 int parse_slice_param(struct pt_regs *ctx, function_parameter_t *param) {
     size_t data_ptr;
     __builtin_memcpy(&data_ptr, param->val, sizeof(data_ptr));
     param->daddr = data_ptr;
     if (data_ptr != 0) {
-        int ret = bpf_probe_read_user(&param->deref_val, 0x30, (void *)(data_ptr));
+        int ret = bpf_probe_read_user(&param->deref_val, MAX_VAL_SIZE, (void *)(data_ptr));
         if (ret < 0) {
             return 1;
         }
@@ -61,105 +53,84 @@ int parse_slice_param(struct pt_regs *ctx, function_parameter_t *param) {
     return 0;
 }
 
+// get_value_from_register copies a register value from the snapshotted regs[]
+// array into dest.
 __always_inline
-int parse_param_stack(struct pt_regs *ctx, function_parameter_t *param) {
-    long ret;
+void get_value_from_register(u64 *regs, void *dest, int reg_num) {
+    switch (reg_num) {
+    case 0:  __builtin_memcpy(dest, &regs[0],  8); break; // RAX
+    case 1:  __builtin_memcpy(dest, &regs[1],  8); break; // RDX
+    case 2:  __builtin_memcpy(dest, &regs[2],  8); break; // RCX
+    case 3:  __builtin_memcpy(dest, &regs[3],  8); break; // RBX
+    case 4:  __builtin_memcpy(dest, &regs[4],  8); break; // RSI
+    case 5:  __builtin_memcpy(dest, &regs[5],  8); break; // RDI
+    case 6:  __builtin_memcpy(dest, &regs[6],  8); break; // RBP
+    case 7:  __builtin_memcpy(dest, &regs[7],  8); break; // RSP
+    case 8:  __builtin_memcpy(dest, &regs[8],  8); break; // R8
+    case 9:  __builtin_memcpy(dest, &regs[9],  8); break; // R9
+    case 10: __builtin_memcpy(dest, &regs[10], 8); break; // R10
+    case 11: __builtin_memcpy(dest, &regs[11], 8); break; // R11
+    case 12: __builtin_memcpy(dest, &regs[12], 8); break; // R12
+    case 13: __builtin_memcpy(dest, &regs[13], 8); break; // R13
+    case 14: __builtin_memcpy(dest, &regs[14], 8); break; // R14
+    case 15: __builtin_memcpy(dest, &regs[15], 8); break; // R15
+    }
+}
+
+// read_register_value reads a parameter's value from snapshotted registers
+// into param->val using the fallthrough switch pattern.
+__always_inline
+int read_register_value(u64 *regs, function_parameter_t *param) {
+    switch (param->n_pieces) {
+    case 6:
+        get_value_from_register(regs, param->val+40, param->reg_nums[5]);
+        __attribute__((fallthrough));
+    case 5:
+        get_value_from_register(regs, param->val+32, param->reg_nums[4]);
+        __attribute__((fallthrough));
+    case 4:
+        get_value_from_register(regs, param->val+24, param->reg_nums[3]);
+        __attribute__((fallthrough));
+    case 3:
+        get_value_from_register(regs, param->val+16, param->reg_nums[2]);
+        __attribute__((fallthrough));
+    case 2:
+        get_value_from_register(regs, param->val+8, param->reg_nums[1]);
+        __attribute__((fallthrough));
+    case 1:
+        get_value_from_register(regs, param->val, param->reg_nums[0]);
+    }
+    return 0;
+}
+
+// read_stack_value reads a parameter's value from the user stack.
+__always_inline
+int read_stack_value(struct pt_regs *ctx, function_parameter_t *param) {
     size_t addr = ctx->sp + param->offset;
-    ret = bpf_probe_read_user(&param->val, param->size, (void *)(addr));
+    unsigned int sz = param->size;
+    if (sz > MAX_VAL_SIZE) {
+        sz = MAX_VAL_SIZE;
+    }
+    long ret = bpf_probe_read_user(&param->val, sz, (void *)(addr));
     if (ret < 0) {
         return 1;
     }
     return 0;
 }
 
+// parse_param reads the raw value (from registers or stack), then dispatches
+// to type-specific parsers for strings, pointers, and slices.
 __always_inline
-void get_value_from_register(struct pt_regs *ctx, void *dest, int reg_num) {
-    switch (reg_num) {
-    case 0: // RAX
-        __builtin_memcpy(dest, &ctx->ax, sizeof(ctx->ax));
-        break;
-    case 1: // RDX
-        __builtin_memcpy(dest, &ctx->dx, sizeof(ctx->dx));
-        break;
-    case 2: // RCX
-        __builtin_memcpy(dest, &ctx->cx, sizeof(ctx->cx));
-        break;
-    case 3: // RBX
-        __builtin_memcpy(dest, &ctx->bx, sizeof(ctx->bx));
-        break;
-    case 4: // RSI
-        __builtin_memcpy(dest, &ctx->si, sizeof(ctx->si));
-        break;
-    case 5: // RDI
-        __builtin_memcpy(dest, &ctx->di, sizeof(ctx->di));
-        break;
-    case 6: // RBP
-        __builtin_memcpy(dest, &ctx->bp, sizeof(ctx->bp));
-        break;
-    case 7: // RSP
-        __builtin_memcpy(dest, &ctx->sp, sizeof(ctx->sp));
-        break;
-    case 8: // R8
-        __builtin_memcpy(dest, &ctx->r8, sizeof(ctx->r8));
-        break;
-    case 9: // R9
-        __builtin_memcpy(dest, &ctx->r9, sizeof(ctx->r9));
-        break;
-    case 10: // R10
-        __builtin_memcpy(dest, &ctx->r10, sizeof(ctx->r10));
-        break;
-    case 11: // R11
-        __builtin_memcpy(dest, &ctx->r11, sizeof(ctx->r11));
-        break;
-    case 12: // R12
-        __builtin_memcpy(dest, &ctx->r12, sizeof(ctx->r12));
-        break;
-    case 13: // R13
-        __builtin_memcpy(dest, &ctx->r13, sizeof(ctx->r13));
-        break;
-    case 14: // R14
-        __builtin_memcpy(dest, &ctx->r14, sizeof(ctx->r14));
-        break;
-    case 15: // R15
-        __builtin_memcpy(dest, &ctx->r15, sizeof(ctx->r15));
-        break;
-    }
-}
-
-__always_inline
-int parse_param_registers(struct pt_regs *ctx, function_parameter_t *param) {
-    switch (param->n_pieces) {
-    case 6:
-        get_value_from_register(ctx, param->val+40, param->reg_nums[5]);
-    case 5:
-        get_value_from_register(ctx, param->val+32, param->reg_nums[4]);
-    case 4:
-        get_value_from_register(ctx, param->val+24, param->reg_nums[3]);
-    case 3:
-        get_value_from_register(ctx, param->val+16, param->reg_nums[2]);
-    case 2:
-        get_value_from_register(ctx, param->val+8, param->reg_nums[1]);
-    case 1:
-        get_value_from_register(ctx, param->val, param->reg_nums[0]);
-    }
-    return 0;
-}
-
-__always_inline
-int parse_param(struct pt_regs *ctx, function_parameter_t *param) {
-    if (param->size > 0x30) {
+int parse_param(u64 *regs, struct pt_regs *ctx, function_parameter_t *param) {
+    if (param->size > MAX_VAL_SIZE) {
         return 0;
     }
 
-    // Parse the initial value of the parameter.
-    // If the parameter is a basic type, we will be finished here.
-    // If the parameter is a more complex type such as a string or
-    // a slice we will need some further processing below.
     int ret = 0;
     if (param->in_reg) {
-        ret = parse_param_registers(ctx, param);
+        ret = read_register_value(regs, param);
     } else {
-        ret = parse_param_stack(ctx, param);
+        ret = read_stack_value(ctx, param);
     }
     if (ret != 0) {
         return ret;
@@ -177,46 +148,44 @@ int parse_param(struct pt_regs *ctx, function_parameter_t *param) {
     return 0;
 }
 
+// get_goroutine_id reads the goroutine ID from thread-local storage.
 __always_inline
-int get_goroutine_id(function_parameter_list_t *parsed_args) {
+long long get_goroutine_id(function_parameter_list_t *args) {
     struct task_struct *task;
     size_t g_addr;
-    __u64  goid;
+    __u64 goid;
 
-    // Get the current task.
     task = (struct task_struct *)bpf_get_current_task();
-    // Get the Goroutine ID which is stored in thread local storage.
-    bpf_probe_read_user(&g_addr, sizeof(void *), (void*)(BPF_CORE_READ(task, thread.fsbase)+parsed_args->g_addr_offset));
-    bpf_probe_read_user(&goid, sizeof(void *), (void*)(g_addr+parsed_args->goid_offset));
-    parsed_args->goroutine_id = goid;
-
-    return 1;
+    bpf_probe_read_user(&g_addr, sizeof(void *),
+        (void *)(BPF_CORE_READ(task, thread.fsbase) + args->g_addr_offset));
+    bpf_probe_read_user(&goid, sizeof(void *),
+        (void *)(g_addr + args->goid_offset));
+    return (long long)goid;
 }
 
-__always_inline
-void parse_params(struct pt_regs *ctx, unsigned int n_params, function_parameter_t params[6]) {
-    // Since we cannot loop in eBPF programs let's take advantage of the
-    // fact that in C switch cases will pass through automatically.
-    switch (n_params) {
-    case 6:
-        parse_param(ctx, &params[5]);
-    case 5:
-        parse_param(ctx, &params[4]);
-    case 4:
-        parse_param(ctx, &params[3]);
-    case 3:
-        parse_param(ctx, &params[2]);
-    case 2:
-        parse_param(ctx, &params[1]);
-    case 1:
-        parse_param(ctx, &params[0]);
-    }
-}
+// WRITE_AND_OUTPUT_PARAM: parse a single param, build a param_event_data_t,
+// and submit it to the ring buffer.
+#define WRITE_AND_OUTPUT_PARAM(regs, ctx, param, goid, fnaddr, idx, isret) \
+    do {                                                                   \
+        parse_param(regs, ctx, param);                                     \
+        param_event_data_t *pe = bpf_ringbuf_reserve(&events,             \
+            sizeof(param_event_data_t), 0);                                \
+        if (!pe) break;                                                    \
+        pe->hdr.type = EVENT_TYPE_PARAM;                                   \
+        pe->hdr.goroutine_id = (goid);                                     \
+        pe->hdr.fn_addr = (fnaddr);                                        \
+        pe->hdr.param_idx = (idx);                                         \
+        pe->hdr.is_ret = (isret);                                          \
+        pe->hdr.kind = (param)->kind;                                      \
+        pe->hdr.val_size = (param)->size;                                   \
+        __builtin_memcpy(pe->val, (param)->val, MAX_VAL_SIZE);              \
+        __builtin_memcpy(pe->deref_val, (param)->deref_val, MAX_VAL_SIZE); \
+        bpf_ringbuf_submit(pe, BPF_RB_FORCE_WAKEUP);                      \
+    } while (0)
 
 SEC("uprobe/dlv_trace")
 int uprobe__dlv_trace(struct pt_regs *ctx) {
     function_parameter_list_t *args;
-    function_parameter_list_t *parsed_args;
     uint64_t key = ctx->ip;
 
     args = bpf_map_lookup_elem(&arg_map, &key);
@@ -224,40 +193,77 @@ int uprobe__dlv_trace(struct pt_regs *ctx) {
         return 1;
     }
 
-    parsed_args = bpf_ringbuf_reserve(&events, sizeof(function_parameter_list_t), 0);
-    if (!parsed_args) {
-        return 1;
-    }
+    // Snapshot registers into a stack array so we can pass them around
+    // without re-reading ctx fields (helps BPF verifier).
+    u64 regs[16];
+    regs[0]  = ctx->ax;
+    regs[1]  = ctx->dx;
+    regs[2]  = ctx->cx;
+    regs[3]  = ctx->bx;
+    regs[4]  = ctx->si;
+    regs[5]  = ctx->di;
+    regs[6]  = ctx->bp;
+    regs[7]  = ctx->sp;
+    regs[8]  = ctx->r8;
+    regs[9]  = ctx->r9;
+    regs[10] = ctx->r10;
+    regs[11] = ctx->r11;
+    regs[12] = ctx->r12;
+    regs[13] = ctx->r13;
+    regs[14] = ctx->r14;
+    regs[15] = ctx->r15;
 
-    // Initialize the parsed_args struct.
-    parsed_args->goid_offset = args->goid_offset;
-    parsed_args->g_addr_offset = args->g_addr_offset;
-    parsed_args->goroutine_id = args->goroutine_id;
-    parsed_args->fn_addr = args->fn_addr;
-    parsed_args->n_parameters = args->n_parameters;
-    parsed_args->n_ret_parameters = args->n_ret_parameters;
-    parsed_args->is_ret = args->is_ret;
-    __builtin_memcpy(parsed_args->params, args->params, sizeof(args->params));
-    __builtin_memcpy(parsed_args->ret_params, args->ret_params, sizeof(args->ret_params));
+    // Get goroutine ID.
+    long long goid = get_goroutine_id(args);
 
-    if (!get_goroutine_id(parsed_args)) {
-        bpf_ringbuf_discard(parsed_args, 0);
-        return 1;
-    }
-
+    // Determine which parameter set to use.
+    unsigned int n_params;
+    function_parameter_t *params;
     if (!args->is_ret) {
-        // In uprobe at function entry.
-
-        // Parse input parameters.
-        parse_params(ctx, args->n_parameters, parsed_args->params);
+        n_params = args->n_parameters;
+        params = args->params;
     } else {
-        // We are now stopped at the RET instruction for this function.
-
-        // Parse output parameters.
-        parse_params(ctx, args->n_ret_parameters, parsed_args->ret_params);
+        n_params = args->n_ret_parameters;
+        params = args->ret_params;
+    }
+    if (n_params > MAX_PARAMS_PER_EVENT) {
+        n_params = MAX_PARAMS_PER_EVENT;
     }
 
-    bpf_ringbuf_submit(parsed_args, BPF_RB_FORCE_WAKEUP);
+    // Emit the event header.
+    event_header_t *hdr = bpf_ringbuf_reserve(&events, sizeof(event_header_t), 0);
+    if (!hdr) {
+        return 1;
+    }
+    hdr->type = EVENT_TYPE_HEADER;
+    hdr->goroutine_id = goid;
+    hdr->fn_addr = args->fn_addr;
+    hdr->is_ret = args->is_ret;
+    hdr->n_params = n_params;
+    bpf_ringbuf_submit(hdr, BPF_RB_FORCE_WAKEUP);
+
+    // Emit one param event per parameter (unrolled; BPF forbids loops).
+    // Unlike read_register_value above, a fallthrough switch doesn't work
+    // here because each guard is independent (param 1 doesn't depend on
+    // param 2), and fallthrough would reverse the emission order.
+    if (n_params >= 1) {
+        WRITE_AND_OUTPUT_PARAM(regs, ctx, &params[0], goid, args->fn_addr, 0, args->is_ret);
+    }
+    if (n_params >= 2) {
+        WRITE_AND_OUTPUT_PARAM(regs, ctx, &params[1], goid, args->fn_addr, 1, args->is_ret);
+    }
+    if (n_params >= 3) {
+        WRITE_AND_OUTPUT_PARAM(regs, ctx, &params[2], goid, args->fn_addr, 2, args->is_ret);
+    }
+    if (n_params >= 4) {
+        WRITE_AND_OUTPUT_PARAM(regs, ctx, &params[3], goid, args->fn_addr, 3, args->is_ret);
+    }
+    if (n_params >= 5) {
+        WRITE_AND_OUTPUT_PARAM(regs, ctx, &params[4], goid, args->fn_addr, 4, args->is_ret);
+    }
+    if (n_params >= 6) {
+        WRITE_AND_OUTPUT_PARAM(regs, ctx, &params[5], goid, args->fn_addr, 5, args->is_ret);
+    }
 
     return 0;
 }

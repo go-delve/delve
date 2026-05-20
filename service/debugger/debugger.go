@@ -2401,8 +2401,16 @@ func (d *Debugger) AttachPid() int {
 	return d.config.AttachPid
 }
 
-func (d *Debugger) GetBufferedTracepoints() []api.TracepointResult {
-	traces := d.target.Selected.GetBufferedTracepoints()
+func (d *Debugger) GetBufferedTracepoints(loadCfg *api.LoadConfig) []api.TracepointResult {
+	// Default matches ShortLoadConfig / ptrace verbosity-0 behaviour: pointers are
+	// not followed, arrays/slices show no elements, and structs are capped at 3
+	// fields.  This keeps the eBPF backend consistent with the ptrace terminal
+	// backend at the default verbosity level.
+	cfg := proc.LoadConfig{MaxStringLen: 64, MaxStructFields: 3}
+	if loadCfg != nil {
+		cfg = *api.LoadConfigToProc(loadCfg)
+	}
+	traces := d.target.Selected.GetBufferedTracepoints(cfg)
 	if traces == nil {
 		return nil
 	}
