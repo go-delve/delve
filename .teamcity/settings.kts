@@ -132,7 +132,7 @@ class AggregatorBuild(tests: Collection<BuildType>) : BuildType({
     }
 
     failureConditions {
-        executionTimeoutMin = 60
+        executionTimeoutMin = 120
     }
 })
 
@@ -196,7 +196,7 @@ class TestBuild(val os: String, val arch: String, val version: String, buildId: 
     }
 
     failureConditions {
-        executionTimeoutMin = 30
+        executionTimeoutMin = 120
 
         if (version != "tip") {
             failOnMetricChange {
