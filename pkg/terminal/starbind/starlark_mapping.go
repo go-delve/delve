@@ -926,13 +926,34 @@ func (env *Env) starlarkPredeclare() (starlark.StringDict, map[string]string) {
 		}
 		var rpcArgs rpc2.GetBufferedTracepointsIn
 		var rpcRet rpc2.GetBufferedTracepointsOut
+		if len(args) > 0 && args[0] != starlark.None {
+			err := unmarshalStarlarkValue(args[0], &rpcArgs.LoadCfg, "LoadCfg")
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		} else {
+			cfg := env.ctx.LoadConfig()
+			rpcArgs.LoadCfg = &cfg
+		}
+		for _, kv := range kwargs {
+			var err error
+			switch kv[0].(starlark.String) {
+			case "LoadCfg":
+				err = unmarshalStarlarkValue(kv[1], &rpcArgs.LoadCfg, "LoadCfg")
+			default:
+				err = fmt.Errorf("unknown argument %q", kv[0])
+			}
+			if err != nil {
+				return starlark.None, decorateError(thread, err)
+			}
+		}
 		err := env.ctx.Client().CallAPI("GetBufferedTracepoints", &rpcArgs, &rpcRet)
 		if err != nil {
 			return starlark.None, err
 		}
 		return env.interfaceToStarlarkValue(&rpcRet), nil
 	})
-	doc["get_buffered_tracepoints"] = "builtin get_buffered_tracepoints()"
+	doc["get_buffered_tracepoints"] = "builtin get_buffered_tracepoints(LoadCfg)"
 	r["get_thread"] = starlark.NewBuiltin("get_thread", func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if err := isCancelled(thread); err != nil {
 			return starlark.None, decorateError(thread, err)

@@ -42,7 +42,7 @@ follow_exec(Enable, Regex) | Equivalent to API call [FollowExec](https://pkg.go.
 follow_exec_enabled() | Equivalent to API call [FollowExecEnabled](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.FollowExecEnabled)
 function_return_locations(FnName) | Equivalent to API call [FunctionReturnLocations](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.FunctionReturnLocations)
 get_breakpoint(Id, Name) | Equivalent to API call [GetBreakpoint](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.GetBreakpoint)
-get_buffered_tracepoints() | Equivalent to API call [GetBufferedTracepoints](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.GetBufferedTracepoints)
+get_buffered_tracepoints(LoadCfg) | Equivalent to API call [GetBufferedTracepoints](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.GetBufferedTracepoints)
 get_thread(Id) | Equivalent to API call [GetThread](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.GetThread)
 guess_substitute_path(Args) | Equivalent to API call [GuessSubstitutePath](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.GuessSubstitutePath)
 is_multiclient() | Equivalent to API call [IsMulticlient](https://pkg.go.dev/github.com/go-delve/delve/service/rpc2#RPCServer.IsMulticlient)
