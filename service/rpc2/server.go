@@ -149,6 +149,7 @@ func (s *RPCServer) eventsFn(event *proc.Event) {
 }
 
 type GetBufferedTracepointsIn struct {
+	LoadCfg *api.LoadConfig
 }
 
 type GetBufferedTracepointsOut struct {
@@ -156,7 +157,7 @@ type GetBufferedTracepointsOut struct {
 }
 
 func (s *RPCServer) GetBufferedTracepoints(arg GetBufferedTracepointsIn, out *GetBufferedTracepointsOut) error {
-	out.TracepointResults = s.debugger.GetBufferedTracepoints()
+	out.TracepointResults = s.debugger.GetBufferedTracepoints(arg.LoadCfg)
 	return nil
 }
 

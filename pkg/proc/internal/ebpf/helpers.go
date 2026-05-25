@@ -8,14 +8,15 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
-	"runtime"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/go-delve/delve/pkg/dwarf/godwarf"
 	"github.com/go-delve/delve/pkg/dwarf/op"
-	"github.com/go-delve/delve/pkg/dwarf/regnum"
+	"github.com/go-delve/delve/pkg/logflags"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
@@ -24,6 +25,32 @@ import (
 )
 
 //lint:file-ignore U1000 some fields are used by the C program
+
+const (
+	// fakeAddressUnresolv is the sentinel base address used for eBPF-captured
+	// parameter values that live in a fake memory region. pkg/proc uses this
+	// same value (via its own fakeAddressUnresolv constant) for composite
+	// memory and CPU register variables; both must stay in sync.
+	fakeAddressUnresolv = 0xbeed000000000000
+
+	// Event type tags matching the BPF wire format.
+	eventTypeHeader = 0
+	eventTypeParam  = 1
+
+	// maxValSize is the maximum byte size for val and deref_val buffers,
+	// matching MAX_VAL_SIZE in trace.bpf.c.
+	maxValSize = 0x30
+
+	// Wire sizes of packed BPF ring buffer events.
+	// Fields: type(1) + goroutine_id(8) + fn_addr(8) + is_ret(1) + n_params(4)
+	eventHeaderWireSize = 1 + 8 + 8 + 1 + 4
+	// Fields: type(1) + goroutine_id(8) + fn_addr(8) + param_idx(1) + is_ret(1) + kind(4) + val_size(4)
+	paramEventWireSize = 1 + 8 + 8 + 1 + 1 + 4 + 4
+	// paramEventWireSize + val + deref_val
+	paramEventDataWireSize = paramEventWireSize + maxValSize + maxValSize
+
+	maxPendingEvents = 1000
+)
 
 // function_parameter_t tracks function_parameter_t from function_vals.bpf.h
 type function_parameter_t struct {
@@ -34,17 +61,19 @@ type function_parameter_t struct {
 	n_pieces  int32
 	reg_nums  [6]int32
 	daddr     uint64
-	val       [0x30]byte
-	deref_val [0x30]byte
+	val       [maxValSize]byte
+	deref_val [maxValSize]byte
 }
 
 // function_parameter_list_t tracks function_parameter_list_t from function_vals.bpf.h
 type function_parameter_list_t struct {
 	goid_offset   uint32
+	_             [4]byte
 	g_addr_offset uint64
-	goroutine_id  uint32
-	fn_addr       uint64
-	is_ret        bool
+
+	fn_addr uint64
+	is_ret  bool
+	_       [3]byte
 
 	n_parameters uint32
 	params       [6]function_parameter_t
@@ -53,9 +82,55 @@ type function_parameter_list_t struct {
 	ret_params       [6]function_parameter_t
 }
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -tags "go1.16" -target amd64 trace bpf/trace.bpf.c -- -I./bpf/include
+// event_header_t mirrors the packed C event_header_t.
+type event_header_t struct {
+	Type         uint8
+	Goroutine_id int64
+	Fn_addr      uint64
+	Is_ret       bool
+	N_params     uint32
+}
 
-const FakeAddressBase = 0xbeed000000000000
+// param_event_t is the packed wire format for PARAM events from the BPF ring buffer.
+type param_event_t struct {
+	Type         uint8
+	Goroutine_id int64
+	Fn_addr      uint64
+	Param_idx    uint8
+	Is_ret       bool
+	Kind         uint32
+	Val_size     uint32
+}
+
+// dwarfTypeKey identifies a parameter for DWARF type lookup using a global
+// index: input params are numbered 0..n-1, return params n..n+m-1.
+type dwarfTypeKey struct {
+	fnAddr   uint64
+	paramIdx int
+}
+
+// paramMeta holds DWARF metadata for a traced parameter, populated during
+// UpdateArgMap and looked up when parsing ring buffer PARAM events.
+type paramMeta struct {
+	dwarfType godwarf.Type
+	name      string
+}
+
+// pendingKey associates PARAM events with their HEADER in the ring buffer
+// protocol. Each uprobe hit produces one HEADER followed by N PARAM events;
+// this key groups them so params can be collected until the set is complete.
+type pendingKey struct {
+	goroutineID int64
+	fnAddr      uint64
+	isRet       bool
+}
+
+type pendingEvent struct {
+	header event_header_t
+	params []*RawUProbeParam
+}
+
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -tags "go1.16" -target amd64 trace bpf/trace.bpf.c -- -I./bpf/include
 
 type EBPFContext struct {
 	objs       *traceObjects
@@ -66,12 +141,19 @@ type EBPFContext struct {
 	links      []link.Link
 
 	parsedBpfEvents []RawUProbeParams
-	argTypeInfo     map[uint64][]UProbeArgMap // Maps function address to argument type information
 	m               sync.Mutex
 
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
+
+	// paramInfo maps a global param index to its DWARF type and name.
+	// Input params occupy indices 0..n-1; return params n..n+m-1.
+	// Populated during UpdateArgMap, read during ring buffer event parsing.
+	paramInfo    map[dwarfTypeKey]paramMeta
+	nInputParams map[uint64]int // fnAddr → number of input parameters
+
+	pendingEvents map[pendingKey]*pendingEvent
 }
 
 func (ctx *EBPFContext) Close() {
@@ -79,11 +161,20 @@ func (ctx *EBPFContext) Close() {
 		ctx.cancel()
 	}
 
+	// Wait for pollEvents to finish draining. pollEvents uses a 10ms periodic
+	// deadline so Read() unblocks naturally; no SetDeadline needed here.
+	ctx.wg.Wait()
+
+	ctx.m.Lock()
+	for k, pe := range ctx.pendingEvents {
+		ctx.emitParsedEvent(pe)
+		delete(ctx.pendingEvents, k)
+	}
+	ctx.m.Unlock()
+
 	if ctx.bpfRingBuf != nil {
 		ctx.bpfRingBuf.Close()
 	}
-
-	ctx.wg.Wait()
 
 	for _, l := range ctx.links {
 		l.Close()
@@ -107,17 +198,27 @@ func (ctx *EBPFContext) UpdateArgMap(key uint64, goidOffset int64, args []UProbe
 	if ctx.bpfArgMap == nil {
 		return errors.New("eBPF map not loaded")
 	}
-	params := createFunctionParameterList(key, goidOffset, args, isret)
-	params.g_addr_offset = gAddrOffset
 
-	// Store argument type information for later use when parsing results
+	// Store DWARF types and parameter names for later lookup during ring buffer
+	// event parsing. Uses a global index: input params at 0..n-1, return params
+	// at n..n+m-1. Held under ctx.m to prevent data race with pollEvents.
 	ctx.m.Lock()
-	if ctx.argTypeInfo == nil {
-		ctx.argTypeInfo = make(map[uint64][]UProbeArgMap)
+	if !isret {
+		ctx.nInputParams[key] = len(args)
 	}
-	ctx.argTypeInfo[key] = args
+	nInputs := ctx.nInputParams[key]
+	for i, arg := range args {
+		idx := i
+		if isret {
+			idx = nInputs + i
+		}
+		k := dwarfTypeKey{fnAddr: key, paramIdx: idx}
+		ctx.paramInfo[k] = paramMeta{dwarfType: arg.DwarfType, name: arg.Name}
+	}
 	ctx.m.Unlock()
 
+	params := createFunctionParameterList(key, goidOffset, args, isret)
+	params.g_addr_offset = gAddrOffset
 	return ctx.bpfArgMap.Update(unsafe.Pointer(&key), unsafe.Pointer(&params), ebpf.UpdateAny)
 }
 
@@ -161,6 +262,9 @@ func LoadEBPFTracingProgram(path string) (*EBPFContext, error) {
 	}
 
 	ctx.bpfArgMap = objs.ArgMap
+	ctx.paramInfo = make(map[dwarfTypeKey]paramMeta)
+	ctx.nInputParams = make(map[uint64]int)
+	ctx.pendingEvents = make(map[pendingKey]*pendingEvent)
 
 	ctx.ctx, ctx.cancel = context.WithCancel(context.Background())
 
@@ -171,155 +275,307 @@ func LoadEBPFTracingProgram(path string) (*EBPFContext, error) {
 }
 
 // pollEvents reads events from the ring buffer and stores them for retrieval.
-// This goroutine runs until the context is cancelled.
+// This goroutine runs until the context is cancelled, then drains any events
+// already buffered in the ring buffer before returning.
+//
+// A 10ms periodic deadline is set before each Read() call. This ensures
+// Read() unblocks periodically to check for context cancellation, without
+// requiring SetDeadline to be called from Close() while Read() holds r.mu
+// (which would deadlock since SetDeadline also acquires r.mu).
 func (ctx *EBPFContext) pollEvents() {
 	defer ctx.wg.Done()
 
 	for {
-		select {
-		case <-ctx.ctx.Done():
+		if ctx.ctx.Err() != nil {
+			ctx.drainRingBuf()
 			return
-		default:
-			e, err := ctx.bpfRingBuf.Read()
-			if err != nil || ctx.ctx.Err() != nil {
-				return
-			}
-
-			parsed := parseFunctionParameterList(ctx, e.RawSample)
-
-			ctx.m.Lock()
-			ctx.parsedBpfEvents = append(ctx.parsedBpfEvents, parsed)
-			ctx.m.Unlock()
 		}
+
+		// Set a short deadline before Read() so we unblock every 10ms to
+		// check context cancellation. SetDeadline is safe here because Read()
+		// is not yet running (both SetDeadline and Read() acquire r.mu).
+		ctx.bpfRingBuf.SetDeadline(time.Now().Add(10 * time.Millisecond))
+		e, err := ctx.bpfRingBuf.Read()
+		if err != nil {
+			if errors.Is(err, os.ErrDeadlineExceeded) {
+				// Deadline fired — loop back and check context.
+				continue
+			}
+			if ctx.ctx.Err() != nil {
+				ctx.drainRingBuf()
+			}
+			return
+		}
+
+		ctx.storeEvent(e.RawSample)
 	}
 }
 
-func parseFunctionParameterList(ctx *EBPFContext, rawParamBytes []byte) RawUProbeParams {
-	params := (*function_parameter_list_t)(unsafe.Pointer(&rawParamBytes[0]))
+// drainRingBuf reads and stores all events currently buffered in the ring
+// buffer. It sets a 50ms deadline so Read() returns quickly once the buffer
+// is empty, rather than blocking indefinitely.
+func (ctx *EBPFContext) drainRingBuf() {
+	ctx.bpfRingBuf.SetDeadline(time.Now().Add(50 * time.Millisecond))
+	for {
+		e, err := ctx.bpfRingBuf.Read()
+		if err != nil {
+			return
+		}
+		ctx.storeEvent(e.RawSample)
+	}
+}
 
-	defer runtime.KeepAlive(params) // Ensure the param is not garbage collected.
+// storeEvent dispatches a raw ring buffer sample by event type.
+func (ctx *EBPFContext) storeEvent(raw []byte) {
+	if len(raw) < 1 {
+		return
+	}
+	switch raw[0] {
+	case eventTypeHeader:
+		ctx.handleHeaderEvent(raw)
+	case eventTypeParam:
+		ctx.handleParamEvent(raw)
+	}
+}
 
-	var rawParams RawUProbeParams
-	rawParams.FnAddr = int(params.fn_addr)
-	rawParams.GoroutineID = int(params.goroutine_id)
-	rawParams.IsRet = params.is_ret
+func parseEventHeader(b []byte) (event_header_t, bool) {
+	if len(b) < eventHeaderWireSize {
+		return event_header_t{}, false
+	}
+	var h event_header_t
+	h.Type = b[0]
+	h.Goroutine_id = int64(binary.LittleEndian.Uint64(b[1:9]))
+	h.Fn_addr = binary.LittleEndian.Uint64(b[9:17])
+	h.Is_ret = b[17] != 0
+	h.N_params = binary.LittleEndian.Uint32(b[18:22])
+	return h, true
+}
 
-	// Look up original type information for this function
+func parseParamEvent(b []byte) (param_event_t, bool) {
+	if len(b) < paramEventWireSize {
+		return param_event_t{}, false
+	}
+	var p param_event_t
+	p.Type = b[0]
+	p.Goroutine_id = int64(binary.LittleEndian.Uint64(b[1:9]))
+	p.Fn_addr = binary.LittleEndian.Uint64(b[9:17])
+	p.Param_idx = b[17]
+	p.Is_ret = b[18] != 0
+	p.Kind = binary.LittleEndian.Uint32(b[19:23])
+	p.Val_size = binary.LittleEndian.Uint32(b[23:27])
+	return p, true
+}
+
+func (ctx *EBPFContext) handleHeaderEvent(raw []byte) {
+	hdr, ok := parseEventHeader(raw)
+	if !ok {
+		return
+	}
+	key := pendingKey{
+		goroutineID: hdr.Goroutine_id,
+		fnAddr:      hdr.Fn_addr,
+		isRet:       hdr.Is_ret,
+	}
+
 	ctx.m.Lock()
-	argTypes := ctx.argTypeInfo[params.fn_addr]
-	ctx.m.Unlock()
-
-	parseParam := func(param function_parameter_t, paramIdx int) *RawUProbeParam {
-		iparam := &RawUProbeParam{}
-		data := make([]byte, 0x60)
-		ret := param
-		iparam.Kind = reflect.Kind(ret.kind)
-
-		// Populate name and type name from argTypes if available
-		if paramIdx < len(argTypes) {
-			iparam.Name = argTypes[paramIdx].Name
-			iparam.TypeName = argTypes[paramIdx].TypeName
+	defer ctx.m.Unlock()
+	if old, exists := ctx.pendingEvents[key]; exists {
+		ctx.emitParsedEvent(old)
+		delete(ctx.pendingEvents, key)
+	}
+	if len(ctx.pendingEvents) >= maxPendingEvents {
+		for k, pe := range ctx.pendingEvents {
+			ctx.emitParsedEvent(pe)
+			delete(ctx.pendingEvents, k)
 		}
-
-		val := ret.val[:ret.size]
-		rawDerefValue := ret.deref_val[:0x30]
-		copy(data, val)
-		copy(data[0x30:], rawDerefValue)
-		iparam.Data = data
-
-		pieces := make([]op.Piece, 0, 2)
-		pieces = append(pieces, op.Piece{Size: 0x30, Kind: op.AddrPiece, Val: FakeAddressBase})
-		pieces = append(pieces, op.Piece{Size: 0x30, Kind: op.AddrPiece, Val: FakeAddressBase + 0x30})
-		iparam.Pieces = pieces
-
-		iparam.Addr = FakeAddressBase
-
-		switch iparam.Kind {
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-			iparam.RealType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), Name: iparam.Kind.String(), ReflectKind: iparam.Kind}}}
-		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			iparam.RealType = &godwarf.IntType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), Name: iparam.Kind.String(), ReflectKind: iparam.Kind}}}
-		case reflect.Bool:
-			iparam.RealType = &godwarf.BoolType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 1, Name: "bool", ReflectKind: reflect.Bool}}}
-		case reflect.Float32, reflect.Float64:
-			if !usesXMMRegisters(ret) {
-				iparam.RealType = &godwarf.FloatType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), Name: iparam.Kind.String(), ReflectKind: iparam.Kind}}}
-			}
-			// If in XMM registers, RealType stays nil, marked unreadable in target.go
-		case reflect.Complex64, reflect.Complex128:
-			if !usesXMMRegisters(ret) {
-				iparam.RealType = &godwarf.ComplexType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), Name: iparam.Kind.String(), ReflectKind: iparam.Kind}}}
-			}
-		case reflect.Ptr, reflect.UnsafePointer:
-			// Display the raw pointer address as a uintptr value.
-			// The eBPF probe captures dereferenced data into deref_val
-			// (up to 0x30 bytes), but we can't use it here because:
-			// 1) loadPtr needs the element type, which isn't propagated
-			//    through the eBPF pipeline (only Kind and Size are sent)
-			// 2) deref_val is limited to 48 bytes, insufficient for
-			//    nested or variable-length pointed-to types
-			iparam.Kind = reflect.Uintptr
-			iparam.RealType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: int64(ret.size), Name: "uintptr", ReflectKind: reflect.Uintptr}}}
-		case reflect.Slice:
-			// Display the slice data pointer address as a uintptr value.
-			// Same limitations as pointers above: element type info is
-			// not available, and deref_val (48 bytes) can only hold a
-			// few elements.
-			iparam.Kind = reflect.Uintptr
-			iparam.RealType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 8, Name: "uintptr", ReflectKind: reflect.Uintptr}}}
-		case reflect.String:
-			strLen := binary.LittleEndian.Uint64(val[8:])
-			iparam.Base = FakeAddressBase + 0x30
-			iparam.Len = int64(strLen)
-			iparam.RealType = &godwarf.StringType{
-				StructType: godwarf.StructType{
-					CommonType: godwarf.CommonType{
-						ByteSize:    16,
-						Name:        "string",
-						ReflectKind: reflect.String,
-					},
-					Kind: "struct",
-				},
-			}
-		case reflect.Map:
-			iparam.Unreadable = fmt.Errorf("map type not yet supported by ebpf tracing")
-		case reflect.Chan:
-			iparam.Unreadable = fmt.Errorf("chan type not yet supported by ebpf tracing")
-		case reflect.Interface:
-			iparam.Unreadable = fmt.Errorf("interface type not yet supported by ebpf tracing")
-		case reflect.Func:
-			iparam.Unreadable = fmt.Errorf("func type not yet supported by ebpf tracing")
-		case reflect.Struct:
-			iparam.Unreadable = fmt.Errorf("struct type not yet supported by ebpf tracing")
-		case reflect.Array:
-			iparam.Unreadable = fmt.Errorf("array type not yet supported by ebpf tracing")
+	}
+	if hdr.N_params == 0 {
+		ctx.parsedBpfEvents = append(ctx.parsedBpfEvents, RawUProbeParams{
+			FnAddr:      int(hdr.Fn_addr),
+			GoroutineID: int(hdr.Goroutine_id),
+			IsRet:       hdr.Is_ret,
+		})
+	} else {
+		if hdr.N_params > 6 { // BPF-side MAX_PARAMS_PER_EVENT
+			return
 		}
-		return iparam
+		ctx.pendingEvents[key] = &pendingEvent{
+			header: hdr,
+			params: make([]*RawUProbeParam, hdr.N_params),
+		}
 	}
-
-	for i := 0; i < int(params.n_parameters); i++ {
-		rawParams.InputParams = append(rawParams.InputParams, parseParam(params.params[i], i))
-	}
-	// Return parameters start after input parameters in argTypes
-	for i := 0; i < int(params.n_ret_parameters); i++ {
-		rawParams.ReturnParams = append(rawParams.ReturnParams, parseParam(params.ret_params[i], int(params.n_parameters)+i))
-	}
-
-	return rawParams
 }
 
-// usesXMMRegisters returns true if the parameter is passed in XMM/SSE
-// registers, which are not accessible from eBPF uprobes.
-func usesXMMRegisters(param function_parameter_t) bool {
-	if !param.in_reg {
-		return false
+func (ctx *EBPFContext) handleParamEvent(raw []byte) {
+	pe, ok := parseParamEvent(raw)
+	if !ok {
+		return
 	}
-	for i := 0; i < int(param.n_pieces); i++ {
-		if param.reg_nums[i] >= regnum.AMD64_XMM0 {
-			return true
+	key := pendingKey{
+		goroutineID: pe.Goroutine_id,
+		fnAddr:      pe.Fn_addr,
+		isRet:       pe.Is_ret,
+	}
+
+	ctx.m.Lock()
+	defer ctx.m.Unlock()
+
+	pending, exists := ctx.pendingEvents[key]
+	if !exists {
+		logflags.DebuggerLogger().Debugf("ebpf: dropped PARAM event for fn=%#x goroutine=%d is_ret=%v param_idx=%d: no matching HEADER (ring buffer loss?)", pe.Fn_addr, pe.Goroutine_id, pe.Is_ret, pe.Param_idx)
+		return
+	}
+
+	if int(pe.Param_idx) >= len(pending.params) {
+		logflags.DebuggerLogger().Debugf("ebpf: dropped PARAM event for fn=%#x goroutine=%d param_idx=%d: out of range (expected 0..%d)", pe.Fn_addr, pe.Goroutine_id, pe.Param_idx, len(pending.params)-1)
+		return
+	}
+
+	iparam := &RawUProbeParam{}
+	iparam.Kind = reflect.Kind(pe.Kind)
+	iparam.Addr = fakeAddressUnresolv
+
+	// Extract val and deref_val from fixed offsets after the param event header.
+	valStart := paramEventWireSize
+	derefValStart := paramEventWireSize + maxValSize
+
+	data := make([]byte, 2*maxValSize)
+	if valStart+maxValSize <= len(raw) {
+		copy(data[:maxValSize], raw[valStart:valStart+maxValSize])
+	}
+	if derefValStart+maxValSize <= len(raw) {
+		copy(data[maxValSize:], raw[derefValStart:derefValStart+maxValSize])
+	}
+	iparam.Data = data
+
+	valSize := int(pe.Val_size)
+	if valSize > maxValSize {
+		valSize = maxValSize
+	}
+
+	iparam.Pieces = []op.Piece{
+		{Size: valSize, Kind: op.AddrPiece, Val: fakeAddressUnresolv},
+		{Size: maxValSize, Kind: op.AddrPiece, Val: fakeAddressUnresolv + uint64(valSize)},
+	}
+
+	// Map BPF's per-direction param_idx to the global DWARF type index.
+	// Input params: 0..n-1, return params: n..n+m-1.
+	globalIdx := int(pe.Param_idx)
+	if pe.Is_ret {
+		globalIdx = ctx.nInputParams[pe.Fn_addr] + int(pe.Param_idx)
+	}
+	dtKey := dwarfTypeKey{fnAddr: pe.Fn_addr, paramIdx: globalIdx}
+	if meta, ok := ctx.paramInfo[dtKey]; ok {
+		iparam.DwarfType = meta.dwarfType
+		iparam.Name = meta.name
+	}
+
+	if iparam.DwarfType != nil {
+		resolvedType := godwarf.ResolveTypedef(iparam.DwarfType)
+		iparam.RealType = resolvedType
+		switch resolvedType.(type) {
+		case *godwarf.StructType:
+			iparam.Kind = reflect.Struct
+		case *godwarf.ArrayType:
+			iparam.Kind = reflect.Array
+		case *godwarf.SliceType:
+			iparam.Kind = reflect.Slice
+		default:
+			if k := resolvedType.Common().ReflectKind; k != reflect.Invalid {
+				iparam.Kind = k
+			}
+		}
+		if iparam.Kind == reflect.String && len(iparam.Data) >= 16 {
+			iparam.Base = fakeAddressUnresolv + uint64(valSize)
+			iparam.Len = int64(binary.LittleEndian.Uint64(iparam.Data[8:16]))
+		}
+	} else {
+		synthesizeTypeFromKind(iparam, pe.Val_size)
+	}
+
+	pending.params[pe.Param_idx] = iparam
+
+	complete := true
+	for _, p := range pending.params {
+		if p == nil {
+			complete = false
+			break
 		}
 	}
-	return false
+
+	if complete {
+		ctx.emitParsedEvent(pending)
+		delete(ctx.pendingEvents, key)
+	}
+}
+
+func (ctx *EBPFContext) emitParsedEvent(pe *pendingEvent) {
+	result := RawUProbeParams{
+		FnAddr:      int(pe.header.Fn_addr),
+		GoroutineID: int(pe.header.Goroutine_id),
+		IsRet:       pe.header.Is_ret,
+	}
+	for _, p := range pe.params {
+		if p == nil {
+			continue
+		}
+		if pe.header.Is_ret {
+			result.ReturnParams = append(result.ReturnParams, p)
+		} else {
+			result.InputParams = append(result.InputParams, p)
+		}
+	}
+	ctx.parsedBpfEvents = append(ctx.parsedBpfEvents, result)
+}
+
+// synthesizeTypeFromKind creates a godwarf.Type from a reflect.Kind
+// for parameters that don't have a full DWARF type (backward
+// compatibility with scalar types).
+func synthesizeTypeFromKind(iparam *RawUProbeParam, valSize uint32) {
+	vs := int64(valSize)
+	switch iparam.Kind {
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		iparam.RealType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: vs}}}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		iparam.RealType = &godwarf.IntType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: vs}}}
+	case reflect.Bool:
+		iparam.RealType = &godwarf.BoolType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 1, ReflectKind: reflect.Bool}}}
+	case reflect.Float32, reflect.Float64:
+		iparam.RealType = &godwarf.FloatType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: vs, ReflectKind: iparam.Kind}}}
+	case reflect.Complex64, reflect.Complex128:
+		iparam.RealType = &godwarf.ComplexType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: vs, ReflectKind: iparam.Kind}}}
+	case reflect.Pointer, reflect.UnsafePointer:
+		iparam.Kind = reflect.Uintptr
+		iparam.RealType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: vs, ReflectKind: reflect.Uintptr}}}
+	case reflect.Slice:
+		iparam.Kind = reflect.Uintptr
+		iparam.RealType = &godwarf.UintType{BasicType: godwarf.BasicType{CommonType: godwarf.CommonType{ByteSize: 8, ReflectKind: reflect.Uintptr}}}
+	case reflect.String:
+		if len(iparam.Data) >= 16 {
+			iparam.Base = fakeAddressUnresolv + uint64(valSize)
+			iparam.Len = int64(binary.LittleEndian.Uint64(iparam.Data[8:16]))
+		}
+		iparam.RealType = &godwarf.StringType{
+			StructType: godwarf.StructType{
+				CommonType: godwarf.CommonType{ByteSize: 16, ReflectKind: reflect.String},
+				Kind:       "struct",
+			},
+		}
+	case reflect.Map:
+		iparam.Unreadable = fmt.Errorf("map type not yet supported by ebpf tracing")
+	case reflect.Chan:
+		iparam.Unreadable = fmt.Errorf("chan type not yet supported by ebpf tracing")
+	case reflect.Interface:
+		iparam.Unreadable = fmt.Errorf("interface type not yet supported by ebpf tracing")
+	case reflect.Func:
+		iparam.Unreadable = fmt.Errorf("func type not yet supported by ebpf tracing")
+	case reflect.Struct:
+		iparam.Unreadable = fmt.Errorf("struct type not yet supported by ebpf tracing without DWARF type")
+	case reflect.Array:
+		iparam.Unreadable = fmt.Errorf("array type not yet supported by ebpf tracing without DWARF type")
+	default:
+		iparam.Unreadable = fmt.Errorf("unrecognized reflect.Kind %d from eBPF", iparam.Kind)
+	}
 }
 
 func createFunctionParameterList(entry uint64, goidOffset int64, args []UProbeArgMap, isret bool) function_parameter_list_t {

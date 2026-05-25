@@ -1,22 +1,33 @@
-FROM ubuntu:22.04
+FROM ubuntu:26.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     build-essential \
     gcc-multilib \
-    clang-12 \
-    llvm-12 \
+    clang-22 \
+    llvm-22 \
     libbpf-dev \
+    # bpftool: inspect/verify BPF programs and debug verifier errors
+    linux-tools-common \
+    linux-tools-generic \
+    # pahole: generates BTF type information from DWARF
+    pahole \
     wget \
     && rm -rf /var/lib/apt/lists/* \
-    && ln -sf /usr/bin/clang-12 /usr/bin/clang \
-    && ln -sf /usr/bin/llc-12 /usr/bin/llc \
-    && ln -sf /usr/bin/llvm-strip-12 /usr/bin/llvm-strip
+    && ln -sf /usr/bin/clang-22 /usr/bin/clang \
+    && ln -sf /usr/bin/llc-22 /usr/bin/llc \
+    && ln -sf /usr/bin/llvm-strip-22 /usr/bin/llvm-strip
 
 RUN wget -q https://go.dev/dl/go1.24.1.linux-amd64.tar.gz \
     && tar -C /usr/local -xzf go1.24.1.linux-amd64.tar.gz \
     && rm go1.24.1.linux-amd64.tar.gz
 ENV PATH="/usr/local/go/bin:${PATH}"
+
+# Use /tmp for Go caches so the container runs correctly as any non-root
+# uid:gid (the build script passes -u $(id -u):$(id -g) to avoid
+# creating root-owned output files in the host directory).
+ENV GOCACHE=/tmp/go-build
+ENV GOPATH=/tmp/go
 
 WORKDIR /delve-bpf/pkg/proc/internal/ebpf/
 

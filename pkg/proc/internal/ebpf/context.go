@@ -8,27 +8,27 @@ import (
 )
 
 type UProbeArgMap struct {
-	Name     string       // Parameter name from DWARF.
-	Offset   int64        // Offset from the stackpointer.
-	Size     int64        // Size in bytes.
-	Kind     reflect.Kind // Kind of variable.
-	TypeName string       // Original type name from DWARF (e.g., "*int", "[]byte").
-	Pieces   []int        // Pieces of the variables as stored in registers.
-	InReg    bool         // True if this param is contained in a register.
-	Ret      bool         // True if this param is a return value.
+	Offset    int64        // Offset from the stackpointer.
+	Size      int64        // Size in bytes.
+	Kind      reflect.Kind // Kind of variable.
+	Pieces    []int        // Pieces of the variables as stored in registers.
+	InReg     bool         // True if this param is contained in a register.
+	Ret       bool         // True if this param is a return value.
+	DwarfType godwarf.Type // Full DWARF type for Go-side decoding.
+	Name      string       // Parameter name from DWARF.
 }
 
 type RawUProbeParam struct {
-	Name       string // Parameter name from DWARF.
-	TypeName   string // Original type name from DWARF (e.g., "*int", "[]byte").
 	Pieces     []op.Piece
 	RealType   godwarf.Type
+	DwarfType  godwarf.Type // Full DWARF type from uprobe setup (for pointer rewriting).
 	Kind       reflect.Kind
 	Len        int64
 	Base       uint64
 	Addr       uint64
-	Data       []byte
-	Unreadable error // If set, the parameter could not be read (e.g., XMM register, unsupported type).
+	Name       string // Parameter name from DWARF.
+	Data       []byte // Raw parameter value bytes.
+	Unreadable error  // If set, the parameter could not be read.
 }
 
 type RawUProbeParams struct {

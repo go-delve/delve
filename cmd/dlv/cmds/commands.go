@@ -853,7 +853,8 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 					case <-done:
 						return
 					default:
-						tracepoints, err := client.GetBufferedTracepoints()
+						loadCfg := getLoadConfigForVerbosity(traceVerbose)
+						tracepoints, err := client.GetBufferedTracepoints(&loadCfg)
 						if err != nil {
 							fmt.Fprintf(os.Stderr, "Error retrieving buffered tracepoints: %v\n", err)
 							return
@@ -896,12 +897,11 @@ func traceCmd(cmd *cobra.Command, args []string, conf *config.Config) int {
 								}
 								fmt.Fprintf(os.Stderr, ">> goroutine(%d): %s => (%s)\n", t.GoroutineID, t.FunctionName, strings.Join(retVals, ","))
 							} else {
-								fmt.Fprintf(os.Stderr, "> goroutine(%d): %s(", t.GoroutineID, t.FunctionName)
 								if traceVerbose >= 3 {
-									// Levels 3-4: Multi-line format
-									fmt.Fprintf(os.Stderr, "\n")
+									fmt.Fprintf(os.Stderr, "> goroutine(%d): %s(\n%s)\n", t.GoroutineID, t.FunctionName, paramStr)
+								} else {
+									fmt.Fprintf(os.Stderr, "> goroutine(%d): %s(%s)\n", t.GoroutineID, t.FunctionName, paramStr)
 								}
-								fmt.Fprintf(os.Stderr, "\n%s)\n", paramStr)
 							}
 						}
 					}
