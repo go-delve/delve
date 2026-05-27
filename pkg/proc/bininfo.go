@@ -548,35 +548,106 @@ type functionExtra struct {
 	rangeParent *Function
 }
 
-// instRange returns the indexes in fn.Name of the type parameter
-// instantiation, which is the position of the outermost '[' and ']'.
-// If fn is not an instantiated function both returned values will be len(fn.Name)
-func (fn *Function) instRange() [2]int {
-	d := len(fn.Name)
-	inst := [2]int{d, d}
-	if strings.HasPrefix(fn.Name, "type..") {
-		return inst
+// parse parses the function's name and returns package, receiver and base
+// name as well as a flag indicating whether the name has generic type
+// parameters.
+func (fn *Function) parse() (pkg, rcv, base string, hasInst bool) {
+	if fn.cu != nil && !fn.cu.isgo {
+		if strings.HasPrefix(fn.Name, "C.") {
+			return "C", "", fn.Name[2:], false
+		}
+		return "", "", fn.Name, false
 	}
-	inst[0] = strings.Index(fn.Name, "[")
-	if inst[0] < 0 {
-		inst[0] = d
-		return inst
+	if strings.HasPrefix(fn.Name, "go:") || strings.HasPrefix(fn.Name, "type:") {
+		return "", "", fn.Name, false
 	}
-	inst[1] = strings.LastIndex(fn.Name, "]")
-	if inst[1] < 0 {
-		inst[0] = d
-		inst[1] = d
-		return inst
+
+	dot1 := -1 // first '.' after the last slash at depth == 0
+	dot2 := -1 // second '.' after the last slash at depth == 0
+	depth := 0 // depth within []
+
+	for i := range len(fn.Name) {
+		if depth == 0 {
+			switch fn.Name[i] {
+			case '[':
+				depth++
+				hasInst = true
+			case '/':
+				dot1 = -1
+				dot2 = -1
+			case '.':
+				if dot1 < 0 {
+					dot1 = i
+				} else if dot2 < 0 {
+					dot2 = i
+				}
+			}
+		} else {
+			switch fn.Name[i] {
+			case '[':
+				depth++
+			case ']':
+				depth--
+			}
+		}
 	}
-	return inst
+
+	if dot1 == -1 {
+		return "", "", fn.Name, hasInst
+	}
+
+	if dot2 == -1 {
+		return fn.Name[:dot1], "", fn.Name[dot1+1:], hasInst
+	}
+
+	return fn.Name[:dot1], fn.Name[dot1+1 : dot2], fn.Name[dot2+1:], hasInst
 }
 
 // PackageName returns the package part of the symbol name,
 // or the empty string if there is none.
 // Borrowed from $GOROOT/debug/gosym/symtab.go
 func (fn *Function) PackageName() string {
-	inst := fn.instRange()
-	return packageName(fn.Name[:inst[0]])
+	pkg, _, _, _ := fn.parse()
+	return pkg
+}
+
+// ReceiverName returns the receiver type name of this symbol,
+// or the empty string if there is none.
+func (fn *Function) ReceiverName() string {
+	_, rcv, _, _ := fn.parse()
+	return rcv
+}
+
+// BaseName returns the symbol name without the package or receiver name.
+func (fn *Function) BaseName() string {
+	_, _, base, _ := fn.parse()
+	return base
+}
+
+// NameWithoutTypeParams returns the function name without instantiation parameters
+func (fn *Function) NameWithoutTypeParams() string {
+	pkg, rcv, base, hasInst := fn.parse()
+	if !hasInst || pkg == "" {
+		return fn.Name
+	}
+	rcv = clearInstParams(rcv)
+	base = clearInstParams(base)
+	if rcv == "" {
+		return pkg + "." + base
+	}
+	return pkg + "." + rcv + "." + base
+}
+
+func clearInstParams(s string) string {
+	start := strings.Index(s, "[")
+	if start < 0 {
+		return s
+	}
+	end := strings.LastIndex(s, "]")
+	if start == end {
+		return s
+	}
+	return s[:start] + s[end+1:]
 }
 
 func packageName(name string) string {
@@ -586,45 +657,6 @@ func packageName(name string) string {
 		return name[:pathend+i]
 	}
 	return ""
-}
-
-// ReceiverName returns the receiver type name of this symbol,
-// or the empty string if there is none.
-// Borrowed from $GOROOT/debug/gosym/symtab.go
-func (fn *Function) ReceiverName() string {
-	inst := fn.instRange()
-	pathend := max(strings.LastIndex(fn.Name[:inst[0]], "/"), 0)
-	l := strings.Index(fn.Name[pathend:], ".")
-	if l == -1 {
-		return ""
-	}
-	if r := strings.LastIndex(fn.Name[inst[1]:], "."); r != -1 && pathend+l != inst[1]+r {
-		return fn.Name[pathend+l+1 : inst[1]+r]
-	} else if r := strings.LastIndex(fn.Name[pathend:inst[0]], "."); r != -1 && l != r {
-		return fn.Name[pathend+l+1 : pathend+r]
-	}
-	return ""
-}
-
-// BaseName returns the symbol name without the package or receiver name.
-// Borrowed from $GOROOT/debug/gosym/symtab.go
-func (fn *Function) BaseName() string {
-	inst := fn.instRange()
-	if i := strings.LastIndex(fn.Name[inst[1]:], "."); i != -1 {
-		return fn.Name[inst[1]+i+1:]
-	} else if i := strings.LastIndex(fn.Name[:inst[0]], "."); i != -1 {
-		return fn.Name[i+1:]
-	}
-	return fn.Name
-}
-
-// NameWithoutTypeParams returns the function name without instantiation parameters
-func (fn *Function) NameWithoutTypeParams() string {
-	inst := fn.instRange()
-	if inst[0] == inst[1] {
-		return fn.Name
-	}
-	return fn.Name[:inst[0]] + fn.Name[inst[1]+1:]
 }
 
 // Optimized returns true if the function was optimized by the compiler.
