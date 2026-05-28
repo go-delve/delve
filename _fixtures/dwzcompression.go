@@ -1,6 +1,7 @@
 package main
 
 // #include <stdio.h>
+// int globalvar = 10;
 // void fortytwo()
 // {
 //      fprintf(stdin, "42");
