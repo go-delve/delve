@@ -996,7 +996,7 @@ func TestEvalExpression(t *testing.T) {
 					return
 				}
 				if err != nil && err.Error() == "expression *ast.CompositeLit not implemented" {
-					if runtime.GOARCH == "386" {
+					if runtime.GOARCH == "386" || runtime.GOARCH == "riscv64" {
 						// composite literals are currently unsupported on 386
 						return
 					}
