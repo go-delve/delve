@@ -4,6 +4,7 @@ package gobuild
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"runtime"
@@ -18,15 +19,20 @@ import (
 // This can be used to remove the temporary binary generated for the session.
 func Remove(path string) {
 	var err error
-	for range 20 {
+	// Open files can be removed on Unix, but not on Windows, where there also appears
+	// to be a delay in releasing the binary when the process exits.
+	// Leaving temporary files behind can be annoying to users, so we try again.
+	//
+	// Does backoff exponentially starting at 1ms all the way to ~400ms for a
+	// total of 4.8s of wait time.
+	for i := range 66 {
+		if i != 0 {
+			time.Sleep(time.Millisecond * time.Duration(math.Pow(1.1, float64(i-1))))
+		}
 		err = os.Remove(path)
-		// Open files can be removed on Unix, but not on Windows, where there also appears
-		// to be a delay in releasing the binary when the process exits.
-		// Leaving temporary files behind can be annoying to users, so we try again.
 		if err == nil || runtime.GOOS != "windows" {
 			break
 		}
-		time.Sleep(1 * time.Millisecond)
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "could not remove %v: %v\n", path, err)
