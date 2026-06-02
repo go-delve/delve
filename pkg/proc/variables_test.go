@@ -2112,3 +2112,15 @@ func TestEmbeddedStructMethodsAndFieldLookup(t *testing.T) {
 		}
 	})
 }
+
+func TestCGlobal(t *testing.T) {
+	skipOn(t, "not working on freebsd", "freebsd")
+	withTestProcess("dwzcompression", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+		setFunctionBreakpoint(p, t, "C.fortytwo")
+		assertNoError(grp.Continue(), t, "first Continue()")
+		val := evalVariable(p, t, "globalvar")
+		if val.RealType == nil {
+			t.Errorf("Can't find type for \"stdin\" global variable")
+		}
+	})
+}
