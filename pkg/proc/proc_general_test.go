@@ -158,8 +158,6 @@ func TestRegabiFlagSentinel(t *testing.T) {
 }
 
 func TestGenericFunctionParser(t *testing.T) {
-	// Normal parsing
-
 	var testCases = []struct{ name, pkg, rcv, base string }{
 		{"github.com/go-delve/delve.afunc", "github.com/go-delve/delve", "", "afunc"},
 		{"github.com/go-delve/delve..afunc", "github.com/go-delve/delve", "", "afunc"}, // malformed
@@ -175,18 +173,136 @@ func TestGenericFunctionParser(t *testing.T) {
 		{"github.com/go-delve/delve.Receiver.afunc[.some/[thing].el se]", "github.com/go-delve/delve", "Receiver", "afunc[.some/[thing].el se]"}, // malformed
 		{"github.com/go-delve/delve.Receiver[.some/[thing].el se].afunc", "github.com/go-delve/delve", "Receiver[.some/[thing].el se]", "afunc"},
 		{"github.com/go-delve/delve.(*Receiver[.some/[thing].el se]).afunc", "github.com/go-delve/delve", "(*Receiver[.some/[thing].el se])", "afunc"},
+
+		{"stdlib.afunc", "stdlib", "", "afunc"},
+		{"stdlib/subpkg.afunc", "stdlib/subpkg", "", "afunc"},
+		{"stdlib.afunc[other[type]/para[meters]]", "stdlib", "", "afunc[other[type]/para[meters]]"},
+		{"stdlib/subpkg.afunc[other[type]/para[meters]]", "stdlib/subpkg", "", "afunc[other[type]/para[meters]]"},
+
+		{"stdlib.Receiver.afunc", "stdlib", "Receiver", "afunc"},
+		{"stdlib.(*Receiver).afunc", "stdlib", "(*Receiver)", "afunc"},
+		{"stdlib/subpkg.Receiver.afunc", "stdlib/subpkg", "Receiver", "afunc"},
+		{"stdlib/subpkg.(*Receiver).afunc", "stdlib/subpkg", "(*Receiver)", "afunc"},
+		{"stdlib.Receiver[some[thing].el/se].afunc", "stdlib", "Receiver[some[thing].el/se]", "afunc"},
+		{"stdlib.(*Receiver[some[thing].el/se]).afunc", "stdlib", "(*Receiver[some[thing].el/se])", "afunc"},
+		{"stdlib/subpkg.Receiver[some[thing].el/se].afunc", "stdlib/subpkg", "Receiver[some[thing].el/se]", "afunc"},
+		{"stdlib/subpkg.(*Receiver[some[thing].el/se]).afunc", "stdlib/subpkg", "(*Receiver[some[thing].el/se])", "afunc"},
+
+		{"stdlib.Receiver.afunc[other[type]/para[meters]]", "stdlib", "Receiver", "afunc[other[type]/para[meters]]"},
+		{"stdlib.(*Receiver).afunc[other[type]/para[meters]]", "stdlib", "(*Receiver)", "afunc[other[type]/para[meters]]"},
+		{"github.com/go-delve/delve.Receiver.afunc[other[type]/para[meters]]", "github.com/go-delve/delve", "Receiver", "afunc[other[type]/para[meters]]"},
+		{"github.com/go-delve/delve.(*Receiver).afunc[other[type]/para[meters]]", "github.com/go-delve/delve", "(*Receiver)", "afunc[other[type]/para[meters]]"},
+		{"stdlib.Receiver[some[thing].el/se].afunc[other[type]/para[meters]]", "stdlib", "Receiver[some[thing].el/se]", "afunc[other[type]/para[meters]]"},
+		{"stdlib.(*Receiver[some[thing].el/se]).afunc[other[type]/para[meters]]", "stdlib", "(*Receiver[some[thing].el/se])", "afunc[other[type]/para[meters]]"},
+		{"stdlib/subpkg.Receiver[some[thing].el/se].afunc[other[type]/para[meters]]", "stdlib/subpkg", "Receiver[some[thing].el/se]", "afunc[other[type]/para[meters]]"},
+		{"stdlib/subpkg.(*Receiver[some[thing].el/se]).afunc[other[type]/para[meters]]", "stdlib/subpkg", "(*Receiver[some[thing].el/se])", "afunc[other[type]/para[meters]]"},
+		{"github.com/go-delve/delve.Receiver[some[thing].el/se].afunc[other[type]/para[meters]]", "github.com/go-delve/delve", "Receiver[some[thing].el/se]", "afunc[other[type]/para[meters]]"},
+		{"github.com/go-delve/delve.(*Receiver[some[thing].el/se]).afunc[other[type]/para[meters]]", "github.com/go-delve/delve", "(*Receiver[some[thing].el/se])", "afunc[other[type]/para[meters]]"},
+
+		///// Tests from debug/gosym/symtab_test.go
+		// TestStandardLibPackage
+		{"io.(*LimitedReader).Read", "io", "(*LimitedReader)", "Read"},
+		{"io.NewSectionReader", "io", "", "NewSectionReader"},
+		// TestStandardLibPathPackage
+		{"debug/gosym.(*LineTable).PCToLine", "debug/gosym", "(*LineTable)", "PCToLine"},
+		{"debug/gosym.NewTable", "debug/gosym", "", "NewTable"},
+		// TestGenericNames
+		{"main.set[int]", "main", "", "set[int]"},
+		{"main.(*value[int]).get", "main", "(*value[int])", "get"},
+		{"a/b.absDifference[c/d.orderedAbs[float64]]", "a/b", "", "absDifference[c/d.orderedAbs[float64]]"},
+		{"main.testfunction[.shape.int]", "main", "", "testfunction[.shape.int]"},
+		// TestRemotePackage
+		{"github.com/docker/doc.ker/pkg/mflag.(*FlagSet).PrintDefaults", "github.com/docker/doc.ker/pkg/mflag", "(*FlagSet)", "PrintDefaults"},
+		{"github.com/docker/doc.ker/pkg/mflag.PrintDefaults", "github.com/docker/doc.ker/pkg/mflag", "", "PrintDefaults"},
+		// TestGenericMethods
+		{"main.T[go.shape.int].M[go.shape.bool]", "main", "T[go.shape.int]", "M[go.shape.bool]"},
+		{"main.(*T[go.shape.int]).M[go.shape.bool]", "main", "(*T[go.shape.int])", "M[go.shape.bool]"},
+		{"main.T.M[go.shape.bool]", "main", "T", "M[go.shape.bool]"},
+		{"main.(*T).M[go.shape.bool]", "main", "(*T)", "M[go.shape.bool]"},
 	}
 
 	for _, tc := range testCases {
 		fn := &Function{Name: tc.name}
 		if fn.PackageName() != tc.pkg {
-			t.Errorf("Package name mismatch: %q %q", tc.pkg, fn.PackageName())
+			t.Errorf("For %q Package name mismatch: %q %q", tc.name, tc.pkg, fn.PackageName())
 		}
 		if fn.ReceiverName() != tc.rcv {
-			t.Errorf("Receiver name mismatch: %q %q", tc.rcv, fn.ReceiverName())
+			t.Errorf("For %q Receiver name mismatch: %q %q", tc.name, tc.rcv, fn.ReceiverName())
 		}
 		if fn.BaseName() != tc.base {
-			t.Errorf("Base name mismatch: %q %q", tc.base, fn.BaseName())
+			t.Errorf("For %q Base name mismatch: %q %q", tc.name, tc.base, fn.BaseName())
+		}
+	}
+}
+
+func TestGenericFunctionNameWithoutParameters(t *testing.T) {
+	var testCases = []struct{ name, tgt string }{
+		{"github.com/go-delve/delve.afunc", "github.com/go-delve/delve.afunc"},
+		{"github.com/go-delve/delve..afunc", "github.com/go-delve/delve..afunc"}, // malformed
+		{"github.com/go-delve/delve.afunc[some/[thing].el se]", "github.com/go-delve/delve.afunc"},
+		{"github.com/go-delve/delve.Receiver.afunc", "github.com/go-delve/delve.Receiver.afunc"},
+		{"github.com/go-delve/delve.(*Receiver).afunc", "github.com/go-delve/delve.(*Receiver).afunc"},
+		{"github.com/go-delve/delve.Receiver.afunc[some/[thing].el se]", "github.com/go-delve/delve.Receiver.afunc"},       // malformed
+		{"github.com/go-delve/delve.(*Receiver).afunc[some/[thing].el se]", "github.com/go-delve/delve.(*Receiver).afunc"}, // malformed
+		{"github.com/go-delve/delve.Receiver[some/[thing].el se].afunc", "github.com/go-delve/delve.Receiver.afunc"},
+		{"github.com/go-delve/delve.(*Receiver[some/[thing].el se]).afunc", "github.com/go-delve/delve.(*Receiver).afunc"},
+
+		{"github.com/go-delve/delve.afunc[.some/[thing].el se]", "github.com/go-delve/delve.afunc"},
+		{"github.com/go-delve/delve.Receiver.afunc[.some/[thing].el se]", "github.com/go-delve/delve.Receiver.afunc"}, // malformed
+		{"github.com/go-delve/delve.Receiver[.some/[thing].el se].afunc", "github.com/go-delve/delve.Receiver.afunc"},
+		{"github.com/go-delve/delve.(*Receiver[.some/[thing].el se]).afunc", "github.com/go-delve/delve.(*Receiver).afunc"},
+
+		{"stdlib.afunc", "stdlib.afunc"},
+		{"stdlib/subpkg.afunc", "stdlib/subpkg.afunc"},
+		{"stdlib.afunc[other[type]/para[meters]]", "stdlib.afunc"},
+		{"stdlib/subpkg.afunc[other[type]/para[meters]]", "stdlib/subpkg.afunc"},
+
+		{"stdlib.Receiver.afunc", "stdlib.Receiver.afunc"},
+		{"stdlib.(*Receiver).afunc", "stdlib.(*Receiver).afunc"},
+		{"stdlib/subpkg.Receiver.afunc", "stdlib/subpkg.Receiver.afunc"},
+		{"stdlib/subpkg.(*Receiver).afunc", "stdlib/subpkg.(*Receiver).afunc"},
+		{"stdlib.Receiver[some[thing].el/se].afunc", "stdlib.Receiver.afunc"},
+		{"stdlib.(*Receiver[some[thing].el/se]).afunc", "stdlib.(*Receiver).afunc"},
+		{"stdlib/subpkg.Receiver[some[thing].el/se].afunc", "stdlib/subpkg.Receiver.afunc"},
+		{"stdlib/subpkg.(*Receiver[some[thing].el/se]).afunc", "stdlib/subpkg.(*Receiver).afunc"},
+
+		{"stdlib.Receiver.afunc[other[type]/para[meters]]", "stdlib.Receiver.afunc"},
+		{"stdlib.(*Receiver).afunc[other[type]/para[meters]]", "stdlib.(*Receiver).afunc"},
+		{"github.com/go-delve/delve.Receiver.afunc[other[type]/para[meters]]", "github.com/go-delve/delve.Receiver.afunc"},
+		{"github.com/go-delve/delve.(*Receiver).afunc[other[type]/para[meters]]", "github.com/go-delve/delve.(*Receiver).afunc"},
+		{"stdlib.Receiver[some[thing].el/se].afunc[other[type]/para[meters]]", "stdlib.Receiver.afunc"},
+		{"stdlib.(*Receiver[some[thing].el/se]).afunc[other[type]/para[meters]]", "stdlib.(*Receiver).afunc"},
+		{"stdlib/subpkg.Receiver[some[thing].el/se].afunc[other[type]/para[meters]]", "stdlib/subpkg.Receiver.afunc"},
+		{"stdlib/subpkg.(*Receiver[some[thing].el/se]).afunc[other[type]/para[meters]]", "stdlib/subpkg.(*Receiver).afunc"},
+		{"github.com/go-delve/delve.Receiver[some[thing].el/se].afunc[other[type]/para[meters]]", "github.com/go-delve/delve.Receiver.afunc"},
+		{"github.com/go-delve/delve.(*Receiver[some[thing].el/se]).afunc[other[type]/para[meters]]", "github.com/go-delve/delve.(*Receiver).afunc"},
+
+		///// Tests from debug/gosym/symtab_test.go
+		// TestStandardLibPackage
+		{"io.(*LimitedReader).Read", "io.(*LimitedReader).Read"},
+		{"io.NewSectionReader", "io.NewSectionReader"},
+		// TestStandardLibPathPackage
+		{"debug/gosym.(*LineTable).PCToLine", "debug/gosym.(*LineTable).PCToLine"},
+		{"debug/gosym.NewTable", "debug/gosym.NewTable"},
+		// TestGenericNames
+		{"main.set[int]", "main.set"},
+		{"main.(*value[int]).get", "main.(*value).get"},
+		{"a/b.absDifference[c/d.orderedAbs[float64]]", "a/b.absDifference"},
+		{"main.testfunction[.shape.int]", "main.testfunction"},
+		// TestRemotePackage
+		{"github.com/docker/doc.ker/pkg/mflag.(*FlagSet).PrintDefaults", "github.com/docker/doc.ker/pkg/mflag.(*FlagSet).PrintDefaults"},
+		{"github.com/docker/doc.ker/pkg/mflag.PrintDefaults", "github.com/docker/doc.ker/pkg/mflag.PrintDefaults"},
+		// TestGenericMethods
+		{"main.T[go.shape.int].M[go.shape.bool]", "main.T.M"},
+		{"main.(*T[go.shape.int]).M[go.shape.bool]", "main.(*T).M"},
+		{"main.T.M[go.shape.bool]", "main.T.M"},
+		{"main.(*T).M[go.shape.bool]", "main.(*T).M"},
+	}
+
+	for _, tc := range testCases {
+		fn := &Function{Name: tc.name}
+		if gn := fn.NameWithoutTypeParams(); gn != tc.tgt {
+			t.Errorf("For %q, name without parameters mismatch: %q %q", tc.name, tc.tgt, gn)
 		}
 	}
 }
