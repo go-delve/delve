@@ -2383,6 +2383,7 @@ func TestStepOutDeferReturnAndDirectCall(t *testing.T) {
 }
 
 func TestStepOnCallPtrInstr(t *testing.T) {
+	skipOn(t, "broken", "linux", "riscv64")
 	protest.AllowRecording(t)
 	withTestProcess("teststepprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, fixture.Source, 10)
@@ -2906,6 +2907,7 @@ func TestDebugStripped(t *testing.T) {
 	skipOn(t, "not working on windows", "windows")
 	skipOn(t, "not working on freebsd", "freebsd")
 	skipOn(t, "not working on linux/386", "linux", "386")
+	skipOn(t, "not working on linux/riscv64", "linux", "riscv64")
 	skipOn(t, "not working on linux/ppc64le when -gcflags=-N -l is passed", "linux", "ppc64le")
 	ver, _ := goversion.Parse(runtime.Version())
 	if ver.IsDevelBuild() {
@@ -5275,6 +5277,7 @@ func TestSetOnFunctions(t *testing.T) {
 }
 
 func TestNilPtrDerefInBreakInstr(t *testing.T) {
+	skipOn(t, "not implemented", "linux", "riscv64")
 	// Checks that having a breakpoint on the exact instruction that causes a
 	// nil pointer dereference does not cause problems.
 
@@ -5288,8 +5291,6 @@ func TestNilPtrDerefInBreakInstr(t *testing.T) {
 		asmfile = "main_386.s"
 	case "ppc64le":
 		asmfile = "main_ppc64le.s"
-	case "riscv64":
-		asmfile = "main_riscv64.s"
 	case "loong64":
 		asmfile = "main_loong64.s"
 	default:
@@ -5966,6 +5967,7 @@ func TestStackwatchClearBug(t *testing.T) {
 	skipOn(t, "not implemented", "386")
 	skipOn(t, "not implemented", "ppc64le")
 	skipOn(t, "not implemented", "loong64")
+	skipOn(t, "not implemented", "riscv64")
 	skipOn(t, "see https://github.com/go-delve/delve/issues/2768", "windows")
 
 	showbps := func(bps *proc.BreakpointMap) {

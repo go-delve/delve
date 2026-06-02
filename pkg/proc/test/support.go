@@ -333,10 +333,7 @@ func MustSupportFunctionCalls(t *testing.T, testBackend string) {
 		t.Skip("this backend does not support function calls")
 	}
 
-	if runtime.GOARCH == "386" {
-		t.Skip(fmt.Errorf("%s does not support FunctionCall for now", runtime.GOARCH))
-	}
-	if runtime.GOARCH == "riscv64" {
+	if runtime.GOARCH == "386" || runtime.GOARCH == "riscv64" {
 		t.Skip(fmt.Errorf("%s does not support FunctionCall for now", runtime.GOARCH))
 	}
 	if runtime.GOARCH == "loong64" {
