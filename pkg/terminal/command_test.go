@@ -572,6 +572,44 @@ func TestNoVars(t *testing.T) {
 	})
 }
 
+func TestQuotePackagePath(t *testing.T) {
+	testcases := []struct {
+		name string
+		in   string
+		out  string
+	}{
+		{
+			name: "quoted when package path contains slash",
+			in:   "internal/bytealg.MaxLen",
+			out:  `"internal/bytealg".MaxLen`,
+		},
+		{
+			name: "unchanged when package has no slash",
+			in:   "main.x",
+			out:  "main.x",
+		},
+		{
+			name: "unchanged when no selector",
+			in:   "MaxLen",
+			out:  "MaxLen",
+		},
+		{
+			name: "quotes package for method expression",
+			in:   "internal/abi.(*Type).Method",
+			out:  `"internal/abi".(*Type).Method`,
+		},
+	}
+
+	for _, tc := range testcases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := quotePackagePath(tc.in)
+			if got != tc.out {
+				t.Fatalf("quotePackagePath(%q) = %q, want %q", tc.in, got, tc.out)
+			}
+		})
+	}
+}
+
 func TestOnPrefixLocals(t *testing.T) {
 	const prefix = "\ti: "
 	test.AllowRecording(t)
