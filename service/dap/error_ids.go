@@ -30,6 +30,7 @@ const (
 	UnableToRunDlvCommand         = 2015
 	UnableToReadMemory            = 2016
 	UnableToGetDataBreakpointInfo = 2017
+	UnableToWriteMemory           = 2018
 
 	// Add more codes as we support more requests
 

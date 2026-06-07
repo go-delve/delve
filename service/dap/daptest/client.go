@@ -591,6 +591,17 @@ func (c *Client) ReadMemoryRequest(ref string, offset, count int) {
 		}})
 }
 
+// WriteMemoryRequest sends a 'writeMemory' request.
+func (c *Client) WriteMemoryRequest(ref string, offset int, data string) {
+	c.send(&dap.WriteMemoryRequest{
+		Request: *c.newRequest("writeMemory"),
+		Arguments: dap.WriteMemoryArguments{
+			MemoryReference: ref,
+			Offset:          offset,
+			Data:            data,
+		}})
+}
+
 // DisassembleRequest sends a 'disassemble' request.
 func (c *Client) DisassembleRequest(memoryReference string, instructionOffset, instructionCount int) {
 	c.send(&dap.DisassembleRequest{
