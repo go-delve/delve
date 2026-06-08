@@ -1122,7 +1122,11 @@ func TestRangeOverFuncNext(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
 				funcBreak(t, "main.TestGotoA1"),
 				{contContinue, 192},
-				nx(193),
+				{contNothing, func(grp *proc.TargetGroup, p *proc.Target) {
+					if runtime.GOARCH != "arm64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27) {
+						assertNoError(grp.Next(), t, "Next()")
+					}
+				}},
 				nx(194), // for _, x := range (x == -1)
 				nx(195), // result = append(result, x)
 				nx(196), // if x == -4
