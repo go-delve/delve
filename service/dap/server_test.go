@@ -8483,6 +8483,85 @@ func TestReadMemory_StringPagination(t *testing.T) {
 	})
 }
 
+func TestWriteMemory(t *testing.T) {
+	if runtime.GOOS == "freebsd" {
+		t.Skip("test skipped on freebsd")
+	}
+
+	runTest(t, "readmem_json", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			// Launch
+			func() {
+				client.LaunchRequest("exec", fixture.Path, !stopOnEntry)
+			},
+			// Breakpoints are set within the program
+			fixture.Source, []int{},
+			[]onBreakpoint{
+				{
+					execute:    func() {},
+					disconnect: false,
+				},
+				{
+					execute: func() {
+						client.StackTraceRequest(1, 0, 20)
+						_ = client.ExpectStackTraceResponse(t)
+
+						client.ScopesRequest(1000)
+						_ = client.ExpectScopesResponse(t)
+
+						client.VariablesRequest(localsScope)
+						locals := client.ExpectVariablesResponse(t)
+
+						var bytesVar dap.Variable
+						for _, v := range locals.Body.Variables {
+							if v.Name == "bytesString" {
+								bytesVar = v
+								break
+							}
+						}
+						if bytesVar.MemoryReference == "" {
+							t.Fatal("bytesString has no memory reference")
+						}
+
+						client.ReadMemoryRequest(bytesVar.MemoryReference, 0, 10)
+						rm := client.ExpectReadMemoryResponse(t)
+						origData, err := base64.StdEncoding.DecodeString(rm.Body.Data)
+						if err != nil {
+							t.Fatalf("failed to decode original data: %v", err)
+						}
+
+						newData := []byte("test\nwrite")
+						if len(newData) != len(origData) {
+							t.Fatalf("write payload length %d must match original length %d", len(newData), len(origData))
+						}
+						client.WriteMemoryRequest(bytesVar.MemoryReference, 0, base64.StdEncoding.EncodeToString(newData))
+						wr := client.ExpectWriteMemoryResponse(t)
+						if wr.Body.BytesWritten != len(newData) {
+							t.Fatalf("expected %d bytes written, got %d", len(newData), wr.Body.BytesWritten)
+						}
+
+						client.ReadMemoryRequest(bytesVar.MemoryReference, 0, len(newData))
+						rm = client.ExpectReadMemoryResponse(t)
+						got, err := base64.StdEncoding.DecodeString(rm.Body.Data)
+						if err != nil {
+							t.Fatalf("failed to decode read-back data: %v", err)
+						}
+						if !bytes.Equal(got, newData) {
+							t.Fatalf("expected %q, got %q", newData, got)
+						}
+
+						client.WriteMemoryRequest(bytesVar.MemoryReference, 0, base64.StdEncoding.EncodeToString(origData))
+						wr = client.ExpectWriteMemoryResponse(t)
+						if wr.Body.BytesWritten != len(origData) {
+							t.Fatalf("expected %d bytes written, got %d", len(newData), wr.Body.BytesWritten)
+						}
+					},
+					disconnect: true,
+				},
+			})
+	})
+}
+
 func readVarByChunk(t *testing.T, client *daptest.Client, v dap.Variable, chunk int) bytes.Buffer {
 	t.Helper()
 
