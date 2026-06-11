@@ -11,7 +11,9 @@ func arm64AsmDecode(asmInst *AsmInstruction, mem []byte, regs *op.DwarfRegisters
 	asmInst.Size = 4
 	asmInst.Bytes = mem[:asmInst.Size]
 
+	asmDecodeMu.Lock()
 	inst, err := arm64asm.Decode(mem)
+	asmDecodeMu.Unlock()
 	if err != nil {
 		asmInst.Inst = (*arm64ArchInst)(nil)
 		return err

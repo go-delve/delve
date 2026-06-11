@@ -10,7 +10,9 @@ func loong64AsmDecode(asmInst *AsmInstruction, mem []byte, regs *op.DwarfRegiste
 	asmInst.Size = 4
 	asmInst.Bytes = mem[:asmInst.Size]
 
+	asmDecodeMu.Lock()
 	inst, err := loong64asm.Decode(mem)
+	asmDecodeMu.Unlock()
 	if err != nil {
 		asmInst.Inst = (*loong64ArchInst)(nil)
 		return err

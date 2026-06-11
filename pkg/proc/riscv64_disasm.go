@@ -7,7 +7,9 @@ import (
 )
 
 func riscv64AsmDecode(asmInst *AsmInstruction, mem []byte, regs *op.DwarfRegisters, memrw MemoryReadWriter, bi *BinaryInfo) error {
+	asmDecodeMu.Lock()
 	inst, err := riscv64asm.Decode(mem)
+	asmDecodeMu.Unlock()
 	if err != nil {
 		asmInst.Inst = (*riscv64ArchInst)(nil)
 		return err

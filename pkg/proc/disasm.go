@@ -2,9 +2,17 @@ package proc
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
 )
+
+// asmDecodeMu protects calls into the golang.org/x/arch decoders that
+// unconditionally write to a package-level coverage bitmap (decoderCover)
+// on every Decode call: arm64asm, riscv64asm, loong64asm and ppc64asm.
+// The x86 decoder leaves the bitmap nil outside its own tests and does
+// not need the lock.
+var asmDecodeMu sync.Mutex
 
 // AsmInstruction represents one assembly instruction.
 type AsmInstruction struct {

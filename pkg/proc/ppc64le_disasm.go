@@ -42,7 +42,9 @@ func ppc64leAsmDecode(asmInst *AsmInstruction, mem []byte, regs *op.DwarfRegiste
 	asmInst.Size = 4
 	asmInst.Bytes = mem[:asmInst.Size]
 
+	asmDecodeMu.Lock()
 	inst, err := ppc64asm.Decode(mem, binary.LittleEndian)
+	asmDecodeMu.Unlock()
 	if err != nil {
 		asmInst.Inst = (*ppc64ArchInst)(nil)
 		return err
