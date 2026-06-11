@@ -136,15 +136,12 @@ type callInjection struct {
 	endCallInjection func()
 }
 
-//lint:ignore U1000 this variable is only used by tests
-var debugPinCount int
-
 // EvalExpressionWithCalls is like EvalExpression but allows function calls in 'expr'.
 // Because this can only be done in the current goroutine, unlike
 // EvalExpression, EvalExpressionWithCalls is not a method of EvalScope.
 func EvalExpressionWithCalls(grp *TargetGroup, g *G, expr string, retLoadCfg LoadConfig, checkEscape bool) error {
-	debugPinCount = 0
 	t := grp.Selected
+	t.debugPinCount = 0
 	bi := t.BinInfo()
 	if !t.SupportsFunctionCalls() {
 		return errFuncCallUnsupportedBackend

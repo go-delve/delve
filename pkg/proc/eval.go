@@ -1290,7 +1290,7 @@ func (stack *evalStack) executeOp() {
 		stack.err = scope.setValue(lhv, rhv, astutil.ExprToString(op.Rhe))
 
 	case *evalop.PushPinAddress:
-		debugPinCount++
+		scope.target.debugPinCount++
 		fncall := stack.fncallPeek()
 		addrToPin := fncall.addrsToPin[len(fncall.addrsToPin)-1]
 		fncall.addrsToPin = fncall.addrsToPin[:len(fncall.addrsToPin)-1]

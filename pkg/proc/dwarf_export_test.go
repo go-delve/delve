@@ -36,8 +36,8 @@ func (bi *BinaryInfo) HasDebugPinner() bool {
 	return bi.hasDebugPinner()
 }
 
-// DebugPinCount returns the number of addresses pinned during the last
-// function call injection.
-func DebugPinCount() int {
-	return debugPinCount
+// DebugPinCount returns the number of addresses pinned in p during the
+// last function call injection.
+func DebugPinCount(p *Target) int {
+	return p.debugPinCount
 }

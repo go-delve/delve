@@ -60,6 +60,10 @@ type Target struct {
 	// fncallForG stores a mapping of current active function calls.
 	fncallForG map[int64]*callInjection
 
+	// debugPinCount counts the addresses pinned during the last function
+	// call injection. It is only used by tests.
+	debugPinCount int
+
 	asyncPreemptChanged bool  // runtime/debug.asyncpreemptoff was changed
 	asyncPreemptOff     int64 // cached value of runtime/debug.asyncpreemptoff
 
