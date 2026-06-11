@@ -5,6 +5,7 @@ import (
 )
 
 func TestAlignAddr(t *testing.T) {
+	t.Parallel()
 	c := func(align, in, tgt int64) {
 		out := alignAddr(in, align)
 		if out != tgt {
@@ -75,6 +76,7 @@ func TestAlignAddr(t *testing.T) {
 }
 
 func TestConvertInt(t *testing.T) {
+	t.Parallel()
 	var testCases = []struct {
 		in     uint64
 		signed bool

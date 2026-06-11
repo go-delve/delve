@@ -8,6 +8,7 @@ import (
 )
 
 func TestStacktraceExtlinkMac(t *testing.T) {
+	t.Parallel()
 	// Tests stacktrace for programs built using external linker.
 	// See issue #3194
 	skipOn(t, "broken on darwin/amd64/pie", "darwin", "amd64", "pie")
@@ -24,6 +25,7 @@ func TestStacktraceExtlinkMac(t *testing.T) {
 }
 
 func TestRefreshCurThreadSelGAfterContinueOnceError(t *testing.T) {
+	t.Parallel()
 	// Issue #2078:
 	// Tests that on macOS/lldb the current thread/selected goroutine are
 	// refreshed after ContinueOnce returns an error due to a segmentation

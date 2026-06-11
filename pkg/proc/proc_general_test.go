@@ -15,6 +15,7 @@ func ptrSizeByRuntimeArch() int {
 }
 
 func TestIssue554(t *testing.T) {
+	t.Parallel()
 	// unsigned integer overflow in proc.(*memCache).contains was
 	// causing it to always return true for address 0xffffffffffffffff
 	mem := memCache{true, 0x20, make([]byte, 100), nil}
@@ -31,6 +32,7 @@ func TestIssue554(t *testing.T) {
 }
 
 func TestIssue3760(t *testing.T) {
+	t.Parallel()
 	// unsigned integer overflow if len(m.cache) < size
 	mem := memCache{true, 0x20, make([]byte, 100), nil}
 	if mem.contains(0x20, 200) {
@@ -81,6 +83,7 @@ func (dm *dummyMem) WriteMemory(uint64, []byte) (int, error) {
 }
 
 func TestReadCStringValue(t *testing.T) {
+	t.Parallel()
 	const tgt = "a test string"
 	const maxstrlen = 64
 
@@ -129,6 +132,7 @@ func assertNoError(err error, t testing.TB, s string) {
 }
 
 func TestDwarfVersion(t *testing.T) {
+	t.Parallel()
 	// Tests that we correctly read the version of compilation units
 	fixture := protest.BuildFixture(t, "math", 0)
 	bi := NewBinaryInfo(runtime.GOOS, runtime.GOARCH)
@@ -143,6 +147,7 @@ func TestDwarfVersion(t *testing.T) {
 }
 
 func TestRegabiFlagSentinel(t *testing.T) {
+	t.Parallel()
 	// Detect if the regabi flag in the producer string gets removed
 	if !protest.RegabiSupported() {
 		t.Skip("irrelevant before Go 1.17 or on non-amd64 architectures")
@@ -158,6 +163,7 @@ func TestRegabiFlagSentinel(t *testing.T) {
 }
 
 func TestGenericFunctionParser(t *testing.T) {
+	t.Parallel()
 	var testCases = []struct{ name, pkg, rcv, base string }{
 		{"github.com/go-delve/delve.afunc", "github.com/go-delve/delve", "", "afunc"},
 		{"github.com/go-delve/delve..afunc", "github.com/go-delve/delve", "", "afunc"}, // malformed
@@ -236,6 +242,7 @@ func TestGenericFunctionParser(t *testing.T) {
 }
 
 func TestGenericFunctionNameWithoutParameters(t *testing.T) {
+	t.Parallel()
 	var testCases = []struct{ name, tgt string }{
 		{"github.com/go-delve/delve.afunc", "github.com/go-delve/delve.afunc"},
 		{"github.com/go-delve/delve..afunc", "github.com/go-delve/delve..afunc"}, // malformed

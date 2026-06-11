@@ -20,6 +20,7 @@ import (
 )
 
 func TestScopeWithEscapedVariable(t *testing.T) {
+	t.Parallel()
 	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9}) {
 		return
 	}
@@ -64,6 +65,7 @@ func TestScopeWithEscapedVariable(t *testing.T) {
 //     every variable except the last one should be marked as shadowed
 //  2. EvalExpression should return the last one.
 func TestScope(t *testing.T) {
+	t.Parallel()
 	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
 		return
 	}

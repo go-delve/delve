@@ -22,6 +22,7 @@ func mustHaveObjcopy(t *testing.T) {
 }
 
 func TestLoadingExternalDebugInfo(t *testing.T) {
+	t.Parallel()
 	mustHaveObjcopy(t)
 	fixture := protest.BuildFixture(t, "locationsprog", 0)
 	defer os.Remove(fixture.Path)

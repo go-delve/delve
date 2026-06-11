@@ -13,6 +13,7 @@ import (
 )
 
 func TestStepInstructionOnBreakpoint(t *testing.T) {
+	t.Parallel()
 	// StepInstruction should step one instruction forward when
 	// PC is on a 1 byte instruction with a software breakpoint.
 	protest.AllowRecording(t)
@@ -30,6 +31,7 @@ func TestStepInstructionOnBreakpoint(t *testing.T) {
 }
 
 func TestNextUnknownInstr(t *testing.T) {
+	t.Parallel()
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 10) {
 		t.Skip("versions of Go before 1.10 can't assemble the instruction VPUNPCKLWD")
 	}
@@ -41,6 +43,7 @@ func TestNextUnknownInstr(t *testing.T) {
 }
 
 func TestIssue1656(t *testing.T) {
+	t.Parallel()
 	withTestProcess("issue1656/", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, filepath.ToSlash(filepath.Join(fixture.BuildDir, "main.s")), 5)
 		assertNoError(grp.Continue(), t, "Continue()")
@@ -54,6 +57,7 @@ func TestIssue1656(t *testing.T) {
 }
 
 func TestBreakpointConfusionOnResume(t *testing.T) {
+	t.Parallel()
 	// Checks that SetCurrentBreakpoint, (*Thread).StepInstruction and
 	// native.(*Thread).singleStep all agree on which breakpoint the thread is
 	// stopped at.
@@ -75,6 +79,7 @@ func TestBreakpointConfusionOnResume(t *testing.T) {
 }
 
 func TestCallInjectionFlagCorruption(t *testing.T) {
+	t.Parallel()
 	// debugCallV2 has a bug in amd64 where its tail corrupts the FLAGS register by running an ADD instruction.
 	// Since this problem exists in many versions of Go, instead of fixing
 	// debugCallV2, we work around this problem by restoring FLAGS, one extra

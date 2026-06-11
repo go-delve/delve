@@ -11,6 +11,7 @@ import (
 )
 
 func TestSetYMMRegister(t *testing.T) {
+	t.Parallel()
 	// Checks that setting a XMM register works. This checks that the
 	// workaround for a bug in debugserver works.
 	// See issue #2767.

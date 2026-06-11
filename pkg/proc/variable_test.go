@@ -9,6 +9,7 @@ import (
 )
 
 func TestGoroutineCreationLocation(t *testing.T) {
+	t.Parallel()
 	protest.AllowRecording(t)
 	withTestProcess("goroutinestackprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		bp := setFunctionBreakpoint(p, t, "main.agoroutine")

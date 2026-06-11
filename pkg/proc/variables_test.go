@@ -114,6 +114,7 @@ func multiLineVar(v *proc.Variable) string {
 }
 
 func TestVariableEvaluation(t *testing.T) {
+	t.Parallel()
 	protest.AllowRecording(t)
 	testcases := []struct {
 		name        string
@@ -199,6 +200,7 @@ func TestVariableEvaluation(t *testing.T) {
 }
 
 func TestVariableEvaluation2(t *testing.T) {
+	t.Parallel()
 	testcases := []varTest{
 		{"a1", true, "\"foofoofoofoofoofoo\"", "", "string", nil},
 		{"a11", true, "[3]main.FooBar [{Baz: 1, Bur: \"a\"},{Baz: 2, Bur: \"b\"},{Baz: 3, Bur: \"c\"}]", "", "[3]main.FooBar", nil},
@@ -278,6 +280,7 @@ func TestVariableEvaluation2(t *testing.T) {
 }
 
 func TestSetVariable(t *testing.T) {
+	t.Parallel()
 	const errorPrefix = "ERROR:"
 	var testcases = []struct {
 		name     string
@@ -339,6 +342,7 @@ func TestSetVariable(t *testing.T) {
 }
 
 func TestVariableEvaluationShort(t *testing.T) {
+	t.Parallel()
 	testcases := []varTest{
 		{"a1", true, "\"foofoofoofoofoofoo\"", "", "string", nil},
 		{"a11", true, "[3]main.FooBar [...]", "", "[3]main.FooBar", nil},
@@ -406,6 +410,7 @@ func TestVariableEvaluationShort(t *testing.T) {
 }
 
 func TestMultilineVariableEvaluation(t *testing.T) {
+	t.Parallel()
 	testcases := []varTest{
 		{"a1", true, "\"foofoofoofoofoofoo\"", "", "string", nil},
 		{"a11", true, `[3]main.FooBar [
@@ -455,6 +460,7 @@ func TestMultilineVariableEvaluation(t *testing.T) {
 }
 
 func TestLocalVariables(t *testing.T) {
+	t.Parallel()
 	testcases := []struct {
 		fn     func(*proc.EvalScope, proc.LoadConfig) ([]*proc.Variable, error)
 		output []varTest
@@ -537,6 +543,7 @@ func TestLocalVariables(t *testing.T) {
 }
 
 func TestEmbeddedStruct(t *testing.T) {
+	t.Parallel()
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		testcases := []varTest{
@@ -593,6 +600,7 @@ func TestEmbeddedStruct(t *testing.T) {
 }
 
 func TestComplexSetting(t *testing.T) {
+	t.Parallel()
 	withTestProcess("testvariables", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		err := grp.Continue()
 		assertNoError(err, t, "Continue() returned an error")
@@ -983,6 +991,7 @@ func (err *altError) Error() string {
 }
 
 func TestEvalExpression(t *testing.T) {
+	t.Parallel()
 	testcases := getEvalExpressionTestCases()
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
@@ -1028,6 +1037,7 @@ func TestEvalExpression(t *testing.T) {
 }
 
 func TestEvalAddrAndCast(t *testing.T) {
+	t.Parallel()
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), t, "Continue() returned an error")
@@ -1055,6 +1065,7 @@ func TestEvalAddrAndCast(t *testing.T) {
 }
 
 func TestMapEvaluation(t *testing.T) {
+	t.Parallel()
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), t, "Continue() returned an error")
@@ -1097,6 +1108,7 @@ func TestMapEvaluation(t *testing.T) {
 }
 
 func TestUnsafePointer(t *testing.T) {
+	t.Parallel()
 	protest.AllowRecording(t)
 	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), t, "Continue() returned an error")
@@ -1115,6 +1127,7 @@ type issue426TestCase struct {
 }
 
 func TestIssue426(t *testing.T) {
+	t.Parallel()
 	// type casts using quoted type names
 	testcases := []issue426TestCase{
 		{"iface1", `interface {}`},
@@ -1167,6 +1180,7 @@ func testPackageRenamesHelper(t *testing.T, p *proc.Target, testcases []varTest)
 }
 
 func TestPackageRenames(t *testing.T) {
+	t.Parallel()
 	// Tests that the concrete type of an interface variable is resolved
 	// correctly in a few edge cases, in particular:
 	// - in the presence of renamed imports
@@ -1228,6 +1242,7 @@ func TestPackageRenames(t *testing.T) {
 }
 
 func TestConstants(t *testing.T) {
+	t.Parallel()
 	testcases := []varTest{
 		{"a", true, "constTwo (2)", "0x2", "main.ConstType", nil},
 		{"b", true, "constThree (3)", "0x3", "main.ConstType", nil},
@@ -1261,6 +1276,7 @@ func TestConstants(t *testing.T) {
 }
 
 func TestIssue1075(t *testing.T) {
+	t.Parallel()
 	withTestProcess("clientdo", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "net/http.(*Client).Do")
 		assertNoError(grp.Continue(), t, "Continue()")
@@ -1284,6 +1300,7 @@ type testCaseCallFunction struct {
 }
 
 func TestCallFunction(t *testing.T) {
+	t.Parallel()
 	skipOn(t, "broken - pie mode", "linux", "ppc64le", "native", "pie")
 
 	protest.MustSupportFunctionCalls(t, testBackend)
@@ -1579,14 +1596,15 @@ func testCallFunctionIntl(t *testing.T, grp *proc.TargetGroup, p *proc.Target, t
 	}
 
 	if p.BinInfo().HasDebugPinner() {
-		t.Logf("\t(pins = %d)", proc.DebugPinCount())
-		if proc.DebugPinCount() != tc.pinCount {
-			t.Fatalf("call %q, expected pin count %d, got %d", tc.expr, tc.pinCount, proc.DebugPinCount())
+		t.Logf("\t(pins = %d)", proc.DebugPinCount(p))
+		if proc.DebugPinCount(p) != tc.pinCount {
+			t.Fatalf("call %q, expected pin count %d, got %d", tc.expr, tc.pinCount, proc.DebugPinCount(p))
 		}
 	}
 }
 
 func TestIssue4051(t *testing.T) {
+	t.Parallel()
 	if testBackend == "rr" {
 		t.Skip("Skipping TestIssue4051 for rr backend due to Go runtime changes in newer versions")
 	}
@@ -1643,6 +1661,7 @@ func TestIssue4051(t *testing.T) {
 }
 
 func TestIssue1531(t *testing.T) {
+	t.Parallel()
 	// Go 1.12 introduced a change to the map representation where empty cells can be marked with 1 instead of just 0.
 	withTestProcess("issue1531", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), t, "Continue()")
@@ -1698,6 +1717,7 @@ func assertCurrentLocationFunction(p *proc.Target, t *testing.T, fnname string) 
 }
 
 func TestPluginVariables(t *testing.T) {
+	t.Parallel()
 	skipOn(t, "broken", "ppc64le")
 	pluginFixtures := protest.WithPlugins(t, protest.AllNonOptimized, "plugin1/", "plugin2/")
 
@@ -1761,6 +1781,7 @@ func TestPluginVariables(t *testing.T) {
 }
 
 func TestCgoEval(t *testing.T) {
+	t.Parallel()
 	protest.MustHaveCgo(t)
 
 	testcases := []varTest{
@@ -1813,6 +1834,7 @@ func TestCgoEval(t *testing.T) {
 }
 
 func TestEvalExpressionGenerics(t *testing.T) {
+	t.Parallel()
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
 		t.Skip("generics not supported")
 	}
@@ -1856,6 +1878,7 @@ func TestEvalExpressionGenerics(t *testing.T) {
 
 // Test the behavior when reading dangling pointers produced by unsafe code.
 func TestBadUnsafePtr(t *testing.T) {
+	t.Parallel()
 	withTestProcess("testunsafepointers", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		assertNoError(grp.Continue(), t, "Continue()")
 
@@ -1918,6 +1941,7 @@ func TestBadUnsafePtr(t *testing.T) {
 }
 
 func TestCapturedVariable(t *testing.T) {
+	t.Parallel()
 	// Checks that variables captured by a closure (that are not pointers) are
 	// readable. See issue #3548.
 	// This was broken in Go 1.21 due to a compiler bug.
@@ -1939,6 +1963,7 @@ func TestCapturedVariable(t *testing.T) {
 }
 
 func TestSetupRangeFramesCrash(t *testing.T) {
+	t.Parallel()
 	// See issue #3806
 	for _, options := range []protest.BuildFlags{0, protest.EnableInlining | protest.EnableOptimization} {
 		withTestProcessArgs("setiterator", t, ".", []string{}, options, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
@@ -2025,6 +2050,7 @@ func TestClassicMap(t *testing.T) {
 }
 
 func TestCallFunctionRegisterArg(t *testing.T) {
+	t.Parallel()
 	protest.MustSupportFunctionCalls(t, testBackend)
 	withTestProcessArgs("issue3310", t, ".", []string{}, protest.AllNonOptimized, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFileBreakpoint(p, t, fixture.Source, 12)
@@ -2034,6 +2060,7 @@ func TestCallFunctionRegisterArg(t *testing.T) {
 }
 
 func TestCapturedVarVisibleOnFirstLine(t *testing.T) {
+	t.Parallel()
 	// Checks that a variable captured by a closure is visible on the first
 	// line of the closure function.
 	// See issue #4000
@@ -2065,6 +2092,7 @@ func TestCapturedVarVisibleOnFirstLine(t *testing.T) {
 
 // See issue #4116
 func TestEmbeddedStructMethodsAndFieldLookup(t *testing.T) {
+	t.Parallel()
 	varTestcases := []varTest{
 		{"v.Model", true, "\"B\"", "", "string", nil},
 		{"v.A.Model", false, "main.(*A).Model", "", "func() string", nil},
@@ -2118,6 +2146,7 @@ func TestEmbeddedStructMethodsAndFieldLookup(t *testing.T) {
 }
 
 func TestCGlobal(t *testing.T) {
+	t.Parallel()
 	skipOn(t, "not working on freebsd", "freebsd")
 	withTestProcess("dwzcompression", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "C.fortytwo")

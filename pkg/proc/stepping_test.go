@@ -188,6 +188,7 @@ func testseq2intl(t *testing.T, fixture protest.Fixture, grp *proc.TargetGroup, 
 }
 
 func TestNextGeneral(t *testing.T) {
+	t.Parallel()
 	var testcases []nextTest
 
 	ver, _ := goversion.Parse(runtime.Version())
@@ -235,6 +236,7 @@ func TestNextGeneral(t *testing.T) {
 }
 
 func TestNextFunctionReturn(t *testing.T) {
+	t.Parallel()
 	testcases := []nextTest{
 		{13, 14},
 		{14, 15},
@@ -245,6 +247,7 @@ func TestNextFunctionReturn(t *testing.T) {
 }
 
 func TestNextFunctionReturnDefer(t *testing.T) {
+	t.Parallel()
 	var testcases []nextTest
 
 	ver, _ := goversion.Parse(runtime.Version())
@@ -267,6 +270,7 @@ func TestNextFunctionReturnDefer(t *testing.T) {
 }
 
 func TestNextDeferReturnAndDirectCall(t *testing.T) {
+	t.Parallel()
 	// Next should not step into a deferred function if it is called
 	// directly, only if it is called through a panic or a deferreturn.
 	// Here we test the case where the function is called by a deferreturn
@@ -279,6 +283,7 @@ func TestNextDeferReturnAndDirectCall(t *testing.T) {
 }
 
 func TestNextPanicAndDirectCall(t *testing.T) {
+	t.Parallel()
 	// Next should not step into a deferred function if it is called
 	// directly, only if it is called through a panic or a deferreturn.
 	// Here we test the case where the function is called by a panic
@@ -290,12 +295,14 @@ func TestNextPanicAndDirectCall(t *testing.T) {
 }
 
 func TestStepCall(t *testing.T) {
+	t.Parallel()
 	testseq("testnextprog", contStep, []nextTest{
 		{34, 13},
 		{13, 14}}, "", t)
 }
 
 func TestStepCallPtr(t *testing.T) {
+	t.Parallel()
 	// Tests that Step works correctly when calling functions with a
 	// function pointer.
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 11) && !protest.RegabiSupported() {
@@ -325,6 +332,7 @@ func TestStepCallPtr(t *testing.T) {
 }
 
 func TestStepReturnAndPanic(t *testing.T) {
+	t.Parallel()
 	// Tests that Step works correctly when returning from functions
 	// and when a deferred function is called when panic'ing.
 	testseq("defercall", contStep, []nextTest{
@@ -336,6 +344,7 @@ func TestStepReturnAndPanic(t *testing.T) {
 }
 
 func TestStepDeferReturn(t *testing.T) {
+	t.Parallel()
 	// Tests that Step works correctly when a deferred function is
 	// called during a return.
 	testseq("defercall", contStep, []nextTest{
@@ -350,6 +359,7 @@ func TestStepDeferReturn(t *testing.T) {
 }
 
 func TestStepIgnorePrivateRuntime(t *testing.T) {
+	t.Parallel()
 	// Tests that Step will ignore calls to private runtime functions
 	// (such as runtime.convT2E in this case)
 	switch {
@@ -377,6 +387,7 @@ func TestStepIgnorePrivateRuntime(t *testing.T) {
 }
 
 func TestInlineStep(t *testing.T) {
+	t.Parallel()
 	skipOn(t, "broken", "ppc64le")
 	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		// Versions of go before 1.10 do not have DWARF information for inlined calls
@@ -395,6 +406,7 @@ func TestInlineStep(t *testing.T) {
 }
 
 func TestInlineNext(t *testing.T) {
+	t.Parallel()
 	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		// Versions of go before 1.10 do not have DWARF information for inlined calls
 		t.Skip("inlining not supported")
@@ -409,6 +421,7 @@ func TestInlineNext(t *testing.T) {
 }
 
 func TestInlineStepOver(t *testing.T) {
+	t.Parallel()
 	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		// Versions of go before 1.10 do not have DWARF information for inlined calls
 		t.Skip("inlining not supported")
@@ -421,6 +434,7 @@ func TestInlineStepOver(t *testing.T) {
 }
 
 func TestInlineStepOut(t *testing.T) {
+	t.Parallel()
 	if ver, _ := goversion.Parse(runtime.Version()); ver.Major >= 0 && !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 10, Rev: -1}) {
 		// Versions of go before 1.10 do not have DWARF information for inlined calls
 		t.Skip("inlining not supported")
@@ -433,6 +447,7 @@ func TestInlineStepOut(t *testing.T) {
 }
 
 func TestBackwardNextGeneral(t *testing.T) {
+	t.Parallel()
 	if testBackend != "rr" {
 		t.Skip("Reverse stepping test needs rr")
 	}
@@ -464,6 +479,7 @@ func TestBackwardNextGeneral(t *testing.T) {
 }
 
 func TestBackwardStepOutGeneral(t *testing.T) {
+	t.Parallel()
 	if testBackend != "rr" {
 		t.Skip("Reverse stepping test needs rr")
 	}
@@ -515,6 +531,7 @@ func TestBackwardStepGeneral(t *testing.T) {
 }
 
 func TestBackwardNextDeferPanic(t *testing.T) {
+	t.Parallel()
 	if testBackend != "rr" {
 		t.Skip("Reverse stepping test needs rr")
 	}
@@ -579,6 +596,7 @@ func TestBackwardNextDeferPanic(t *testing.T) {
 }
 
 func TestStepIntoWrapperForEmbeddedPointer(t *testing.T) {
+	t.Parallel()
 	skipOn(t, "N/A", "linux", "386", "pie") // skipping wrappers doesn't work on linux/386/PIE due to the use of get_pc_thunk
 	// Under some circumstances (when using an interface to call a method on an
 	// embedded field, see _fixtures/ifaceembcall.go) the compiler will
@@ -625,6 +643,7 @@ func TestStepIntoWrapperForEmbeddedPointer(t *testing.T) {
 }
 
 func TestNextGenericMethodThroughInterface(t *testing.T) {
+	t.Parallel()
 	// Tests that autogenerated wrappers for generic methods called through an
 	// interface are skipped.
 
@@ -659,6 +678,7 @@ func TestNextGenericMethodThroughInterface(t *testing.T) {
 }
 
 func TestRangeOverFuncNext(t *testing.T) {
+	t.Parallel()
 	var bp *proc.Breakpoint
 
 	funcBreak := func(t *testing.T, fnname string) seqTest {
@@ -1209,6 +1229,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 }
 
 func TestRangeOverFuncStepOut(t *testing.T) {
+	t.Parallel()
 	testseq2(t, "rangeoverfunc", "", []seqTest{
 		{contContinue, 97},
 		{contStepout, 251},
@@ -1216,6 +1237,7 @@ func TestRangeOverFuncStepOut(t *testing.T) {
 }
 
 func TestRangeOverFuncNextInlined(t *testing.T) {
+	t.Parallel()
 	// See #3882: inlined range-over-func produces symbol names that Delve
 	// cannot correlate; requires a compiler fix that has not landed yet.
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) && !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27) {
@@ -1776,6 +1798,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 }
 
 func TestStepIntoCoroutine(t *testing.T) {
+	t.Parallel()
 	skipOn(t, "not working due to optimizations", "386")
 	withTestProcessArgs("backwardsiter", t, ".", []string{}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		testseq2intl(t, fixture, grp, p, nil, []seqTest{
