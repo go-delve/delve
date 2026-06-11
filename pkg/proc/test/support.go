@@ -41,6 +41,10 @@ type Fixture struct {
 type fixtureKey struct {
 	Name  string
 	Flags BuildFlags
+	// GoExperiment is the value of GOEXPERIMENT during compilation.
+	//
+	// Track this as it some tests use different GOEXPERIMENT values.
+	GoExperiment string
 }
 
 // Fixtures is a map of fixtureKey{ Fixture.Name, buildFlags } to Fixture.
@@ -107,7 +111,7 @@ func BuildFixture(t testing.TB, name string, flags BuildFlags) Fixture {
 	if !runningWithFixtures {
 		panic("RunTestsWithFixtures not called")
 	}
-	fk := fixtureKey{name, flags}
+	fk := fixtureKey{Name: name, Flags: flags, GoExperiment: os.Getenv("GOEXPERIMENT")}
 	fixturesmu.Lock()
 	if f, ok := fixtures[fk]; ok {
 		fixturesmu.Unlock()
