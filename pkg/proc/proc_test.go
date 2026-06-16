@@ -2051,6 +2051,24 @@ func TestStepParked(t *testing.T) {
 	})
 }
 
+func TestBuildFixtureGoExperiment(t *testing.T) {
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) {
+		t.Skip("noswissmap experiment does not exist before Go 1.24")
+	}
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 27) {
+		t.Skip("noswissmap experiment removed in Go 1.27")
+	}
+
+	// Regression test: BuildFixture must not return a binary cached under a
+	// different GOEXPERIMENT, since the experiment changes the built binary.
+	defaultFixture := protest.BuildFixture(t, "testvariables2", 0)
+	t.Setenv("GOEXPERIMENT", "noswissmap")
+	experimentFixture := protest.BuildFixture(t, "testvariables2", 0)
+	if defaultFixture.Path == experimentFixture.Path {
+		t.Fatalf("BuildFixture returned the same binary %q for different GOEXPERIMENT values", defaultFixture.Path)
+	}
+}
+
 func TestUnsupportedArch(t *testing.T) {
 	ver, _ := goversion.Parse(runtime.Version())
 	if ver.Major < 0 || !ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 6, Rev: -1}) || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 7, Rev: -1}) {

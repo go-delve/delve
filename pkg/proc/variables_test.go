@@ -1984,6 +1984,10 @@ func TestClassicMap(t *testing.T) {
 		{"mnil == m1", false, "", "", "", errors.New("can not compare map variables")},
 		{"mnil == nil", false, "true", "true", "", nil},
 		{"m2", true, "map[int]*main.astruct [1: *{A: 10, B: 11}, ]", "map[int]*main.astruct [...]", "map[int]*main.astruct", nil},
+
+		// Check that the fixture binary actually uses the classic map
+		// implementation: runtime.hmap does not exist in swissmap binaries.
+		{`**(**runtime.hmap)(uintptr(&m1))`, false, `…`, `…`, "runtime.hmap", nil},
 	}
 
 	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
