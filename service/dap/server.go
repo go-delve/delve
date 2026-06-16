@@ -856,6 +856,8 @@ func (s *Session) handleRequest(request dap.Message) {
 		s.onDisassembleRequest(request)
 	case *dap.ReadMemoryRequest: // Optional (capability 'supportsReadMemoryRequest')
 		s.onReadMemoryRequest(request)
+	case *dap.WriteMemoryRequest: // Optional (capability 'supportsWriteMemoryRequest')
+		s.onWriteMemoryRequest(request)
 	case *dap.DataBreakpointInfoRequest: // Optional (capability 'supportsDataBreakpoints')
 		s.onDataBreakpointInfoRequest(request)
 	case *dap.SetDataBreakpointsRequest: // Optional (capability 'supportsDataBreakpoints')
@@ -970,6 +972,7 @@ func (s *Session) onInitializeRequest(request *dap.InitializeRequest) {
 	response.Body.SupportsSetExpression = false
 	response.Body.SupportsLoadedSourcesRequest = false
 	response.Body.SupportsReadMemoryRequest = true
+	response.Body.SupportsWriteMemoryRequest = true
 	response.Body.SupportsCancelRequest = false
 	response.Body.ExceptionBreakpointFilters = []dap.ExceptionBreakpointsFilter{
 		{Filter: proc.UnrecoveredPanic, Label: "Unrecovered Panics", Default: true},
@@ -3735,6 +3738,58 @@ func (s *Session) makeReadMemoryResponse(req dap.Request, addr uint64, data []by
 			UnreadableBytes: unreadable,
 		},
 	}
+}
+
+// onWriteMemoryRequest handles DAP write memory requests
+func (s *Session) onWriteMemoryRequest(request *dap.WriteMemoryRequest) {
+	args := request.Arguments
+
+	if args.Data == "" {
+		s.sendErrorResponse(request.Request, UnableToWriteMemory, "Unable to write memory", "empty data")
+		return
+	}
+
+	ref, ok := s.referencesCollection.get(args.MemoryReference)
+	if !ok {
+		s.sendErrorResponse(request.Request, UnableToWriteMemory, "Unable to write memory", "unknown memoryReference")
+		return
+	}
+
+	data, err := base64.StdEncoding.DecodeString(args.Data)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToWriteMemory, "Unable to write memory", err.Error())
+		return
+	}
+
+	addr := uint64(int(ref.addr) + args.Offset)
+	n, err := s.writeTargetMemory(addr, data)
+	if err != nil {
+		s.sendErrorResponse(request.Request, UnableToWriteMemory, "Unable to write memory", err.Error())
+		return
+	}
+
+	s.send(&dap.WriteMemoryResponse{
+		Response: *s.newResponse(request.Request),
+		Body: dap.WriteMemoryResponseBody{
+			BytesWritten: n,
+		},
+	})
+}
+
+func (s *Session) writeTargetMemory(addr uint64, data []byte) (int, error) {
+	if len(data) == 0 {
+		return 0, nil
+	}
+
+	tgrp, unlock := s.debugger.LockTargetGroup()
+	defer unlock()
+
+	n, err := tgrp.Selected.Memory().WriteMemory(addr, data)
+	if err != nil {
+		return 0, err
+	}
+
+	return n, nil
 }
 
 var invalidInstruction = dap.DisassembledInstruction{
