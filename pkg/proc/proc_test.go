@@ -2055,8 +2055,8 @@ func TestBuildFixtureGoExperiment(t *testing.T) {
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) {
 		t.Skip("noswissmap experiment does not exist before Go 1.24")
 	}
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 27) {
-		t.Skip("noswissmap experiment removed in Go 1.27")
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 26) {
+		t.Skip("noswissmap experiment removed in Go 1.26")
 	}
 
 	// Regression test: BuildFixture must not return a binary cached under a

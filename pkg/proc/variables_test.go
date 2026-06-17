@@ -1962,19 +1962,16 @@ func TestSetupRangeFramesCrash(t *testing.T) {
 	}
 }
 
-func TestClassicMap(t *testing.T) {
+func TestMapImplementationVariants(t *testing.T) {
 	// This test replicates some of the tests in TestEvalExpression to check
-	// that we still support non-swiss maps on versions of Go where the default
-	// map backend is swisstables.
+	// that we support other implementation variants for the standard library
+	// map, specifically the classic (non-swiss) implementation and the
+	// splitmap and nosplitmap experiments (one of those is the default).
 	protest.AllowRecording(t)
 
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 24) {
 		t.Skip("N/A")
 	}
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 27) {
-		t.Skip("noswissmap experiment removed in Go 1.27")
-	}
-	t.Setenv("GOEXPERIMENT", "noswissmap")
 
 	testcases := []varTest{
 		{"m1[\"Malone\"]", false, "main.astruct {A: 2, B: 3}", "main.astruct {A: 2, B: 3}", "main.astruct", nil},
@@ -1990,44 +1987,66 @@ func TestClassicMap(t *testing.T) {
 		{"mnil == m1", false, "", "", "", errors.New("can not compare map variables")},
 		{"mnil == nil", false, "true", "true", "", nil},
 		{"m2", true, "map[int]*main.astruct [1: *{A: 10, B: 11}, ]", "map[int]*main.astruct [...]", "map[int]*main.astruct", nil},
-
-		// Check that the fixture binary actually uses the classic map
-		// implementation: runtime.hmap does not exist in swissmap binaries.
-		{`**(**runtime.hmap)(uintptr(&m1))`, false, `…`, `…`, "runtime.hmap", nil},
+		{`zsvmap["testkey"]`, false, "struct {} {}", "struct {} {}", "struct {}", nil},
 	}
 
-	withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
-		assertNoError(grp.Continue(), t, "Continue() returned an error")
-		for _, tc := range testcases {
-			t.Run(tc.name, func(t *testing.T) {
-				t.Logf("%q", tc.name)
-				variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
-				if tc.err == nil {
-					assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
-					assertVariable(t, variable, tc)
-					variable, err := evalVariableWithCfg(p, tc.name, pshortLoadConfig)
-					assertNoError(err, t, fmt.Sprintf("EvalExpression(%s, pshortLoadConfig) returned an error", tc.name))
-					assertVariable(t, variable, tc.alternateVarTest())
-				} else {
+	helper := func(t *testing.T, testcases []varTest) {
+		t.Helper()
+		withTestProcess("testvariables2", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
+			assertNoError(grp.Continue(), t, "Continue() returned an error")
+			for _, tc := range testcases {
+				t.Run(tc.name, func(t *testing.T) {
+					t.Logf("%q", tc.name)
+					variable, err := evalVariableWithCfg(p, tc.name, pnormalLoadConfig)
+					if tc.err == nil {
+						assertNoError(err, t, fmt.Sprintf("EvalExpression(%s) returned an error", tc.name))
+						assertVariable(t, variable, tc)
+						variable, err := evalVariableWithCfg(p, tc.name, pshortLoadConfig)
+						assertNoError(err, t, fmt.Sprintf("EvalExpression(%s, pshortLoadConfig) returned an error", tc.name))
+						assertVariable(t, variable, tc.alternateVarTest())
+					} else {
 
-					if err == nil {
-						t.Fatalf("Expected error %s, got no error (%s)", tc.err.Error(), tc.name)
-					}
-					switch e := tc.err.(type) {
-					case *altError:
-						if !slices.Contains(e.errs, err.Error()) {
-							t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+						if err == nil {
+							t.Fatalf("Expected error %s, got no error (%s)", tc.err.Error(), tc.name)
 						}
-					default:
-						if tc.err.Error() != "*" && tc.err.Error() != err.Error() {
-							t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+						switch e := tc.err.(type) {
+						case *altError:
+							if !slices.Contains(e.errs, err.Error()) {
+								t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+							}
+						default:
+							if tc.err.Error() != "*" && tc.err.Error() != err.Error() {
+								t.Fatalf("Unexpected error. Expected %s got %s", tc.err.Error(), err.Error())
+							}
 						}
-					}
 
-				}
-			})
-		}
-	})
+					}
+				})
+			}
+		})
+	}
+
+	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 27) {
+		t.Run("MapSplitGroup", func(t *testing.T) {
+			t.Setenv("GOEXPERIMENT", "mapsplitgroup")
+			helper(t, testcases)
+		})
+		t.Run("NoMapSplitGroup", func(t *testing.T) {
+			t.Setenv("GOEXPERIMENT", "nomapsplitgroup")
+			helper(t, testcases)
+		})
+	}
+
+	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 26) {
+		t.Run("ClassicMaps", func(t *testing.T) {
+			t.Setenv("GOEXPERIMENT", "noswissmap")
+			helper(t, append(testcases,
+				// Check that the fixture binary actually uses the classic map
+				// implementation: runtime.hmap does not exist in swissmap binaries.
+				varTest{`**(**runtime.hmap)(uintptr(&m1))`, false, `…`, `…`, "runtime.hmap", nil}))
+		})
+	}
+
 }
 
 func TestCallFunctionRegisterArg(t *testing.T) {
