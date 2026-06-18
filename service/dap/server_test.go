@@ -213,6 +213,10 @@ func TestStopWithTarget(t *testing.T) {
 		"disconnect after  exit": func(c *daptest.Client, forceStop chan struct{}) {
 			c.ContinueRequest(1)
 			c.ExpectContinueResponse(t)
+			ee := c.ExpectExitedEvent(t)
+			if ee.Body.ExitCode != 0 {
+				t.Errorf("\ngot ExitCode=%d, want 0", ee.Body.ExitCode)
+			}
 			c.ExpectTerminatedEvent(t)
 			c.DisconnectRequest()
 		},
@@ -274,6 +278,10 @@ func TestSessionStop(t *testing.T) {
 		"disconnect after exit": func(s *Session, c *daptest.Client, serveDone chan struct{}) {
 			c.ContinueRequest(1)
 			c.ExpectContinueResponse(t)
+			ee := c.ExpectExitedEvent(t)
+			if ee.Body.ExitCode != 0 {
+				t.Errorf("\ngot ExitCode=%d, want 0", ee.Body.ExitCode)
+			}
 			c.ExpectTerminatedEvent(t)
 			c.DisconnectRequest()
 			<-serveDone
@@ -477,6 +485,10 @@ func TestLaunchStopOnEntry(t *testing.T) {
 		contResp := client.ExpectContinueResponse(t)
 		if contResp.RequestSeq != 12 || !contResp.Body.AllThreadsContinued {
 			t.Errorf("\ngot %#v\nwant RequestSeq=12 Body.AllThreadsContinued=true", contResp)
+		}
+		ee := client.ExpectExitedEvent(t)
+		if ee.Body.ExitCode != 0 {
+			t.Errorf("\ngot ExitCode=%d, want 0", ee.Body.ExitCode)
 		}
 		client.ExpectTerminatedEvent(t)
 
@@ -752,6 +764,10 @@ func TestLaunchWithFollowExec(t *testing.T) {
 		if contResp.RequestSeq != 10 || !contResp.Body.AllThreadsContinued {
 			t.Errorf("\ngot %#v\nwant RequestSeq=10 Body.AllThreadsContinued=true", contResp)
 		}
+		ee := client.ExpectExitedEvent(t)
+		if ee.Body.ExitCode != 0 {
+			t.Errorf("\ngot ExitCode=%d, want 0", ee.Body.ExitCode)
+		}
 		client.ExpectTerminatedEvent(t)
 
 		// 11 >> disconnect, << disconnect
@@ -873,6 +889,10 @@ func TestContinueOnEntry(t *testing.T) {
 		client.ExpectConfigurationDoneResponse(t)
 		// "Continue" happens behind the scenes on another goroutine
 
+		ee := client.ExpectExitedEvent(t)
+		if ee.Body.ExitCode != 0 {
+			t.Errorf("\ngot ExitCode=%d, want 0", ee.Body.ExitCode)
+		}
 		client.ExpectTerminatedEvent(t)
 
 		// 6 >> threads, << threads
@@ -1010,6 +1030,10 @@ func TestPreSetBreakpoint(t *testing.T) {
 		}
 		// "Continue" is triggered after the response is sent
 
+		ee := client.ExpectExitedEvent(t)
+		if ee.Body.ExitCode != 0 {
+			t.Errorf("\ngot ExitCode=%d, want 0", ee.Body.ExitCode)
+		}
 		client.ExpectTerminatedEvent(t)
 
 		// Pause request after termination should result in an error.
@@ -4025,6 +4049,10 @@ func TestHitConditionBreakpoints(t *testing.T) {
 					client.ContinueRequest(1)
 					client.ExpectContinueResponse(t)
 
+					ee := client.ExpectExitedEvent(t)
+					if ee.Body.ExitCode != 0 {
+						t.Errorf("\ngot ExitCode=%d, want 0", ee.Body.ExitCode)
+					}
 					client.ExpectTerminatedEvent(t)
 				},
 				disconnect: false,
@@ -4895,6 +4923,10 @@ func TestEvaluateCallRequest(t *testing.T) {
 
 					// Call can exit.
 					client.EvaluateRequest("call callexit()", 1000, "this context will be ignored")
+					ee := client.ExpectExitedEvent(t)
+					if ee.Body.ExitCode != 0 {
+						t.Errorf("\ngot ExitCode=%d, want 0", ee.Body.ExitCode)
+					}
 					client.ExpectTerminatedEvent(t)
 					if res := client.ExpectVisibleErrorResponse(t); res.Body.Error == nil || !strings.Contains(res.Body.Error.Format, "terminated") {
 						t.Errorf("\ngot %#v\nwant Format=.*terminated.*", res)
@@ -5680,6 +5712,7 @@ func runDebugSessionWithBPs(t *testing.T, client *daptest.Client, cmd string, cm
 	}
 
 	if cmd == "launch" { // Let the program run to completion
+		client.ExpectExitedEvent(t)
 		client.ExpectTerminatedEvent(t)
 	}
 	client.DisconnectRequestWithKillOption(true)
@@ -5819,6 +5852,10 @@ func TestExitNonZeroStatus(t *testing.T) {
 		client.ConfigurationDoneRequest()
 		client.ExpectConfigurationDoneResponse(t)
 
+		ee := client.ExpectExitedEvent(t)
+		if ee.Body.ExitCode != 2 {
+			t.Errorf("\ngot ExitCode=%d, want 2", ee.Body.ExitCode)
+		}
 		client.ExpectTerminatedEvent(t)
 
 		client.DisconnectRequest()
@@ -5868,6 +5905,10 @@ func runNoDebugSession(t *testing.T, client *daptest.Client, launchRequest func(
 	client.ExpectLaunchResponse(t)
 
 	client.ExpectOutputEventProcessExited(t, exitStatus)
+	ee := client.ExpectExitedEvent(t)
+	if ee.Body.ExitCode != exitStatus {
+		t.Errorf("\ngot ExitCode=%d, want %d", ee.Body.ExitCode, exitStatus)
+	}
 	client.ExpectTerminatedEvent(t)
 	client.DisconnectRequestWithKillOption(true)
 	client.ExpectDisconnectResponse(t)
@@ -5920,6 +5961,7 @@ func TestNoDebug_AcceptNoRequestsButDisconnect(t *testing.T) {
 				if !ok {
 					t.Errorf("\ngot %#v\nwant Output=%q\n", m, wants)
 				}
+			case *dap.ExitedEvent:
 			case *dap.TerminatedEvent:
 				terminated = true
 			case *dap.DisconnectResponse:
@@ -6472,6 +6514,7 @@ func main() {
 					})
 					client.ExpectRestartResponse(t)
 					client.ExpectErrorResponse(t)
+					client.ExpectExitedEvent(t)
 					client.ExpectTerminatedEvent(t)
 				},
 				disconnect: false,
@@ -8180,10 +8223,11 @@ func TestRedirect(t *testing.T) {
 				default:
 					t.Errorf("\ngot %#v\nwant Category='stdout' or 'stderr'", m)
 				}
+			case *dap.ExitedEvent:
 			case *dap.TerminatedEvent:
 				break terminatedPoint
 			default:
-				t.Errorf("\n got %#v, want *dap.OutputEvent or *dap.TerminateResponse", m)
+				t.Errorf("\n got %#v, want *dap.OutputEvent, *dap.ExitedEvent, or *dap.TerminatedEvent", m)
 			}
 		}
 
@@ -8242,16 +8286,16 @@ func TestBreakpointAfterDisconnect(t *testing.T) {
 	var port int
 	portChan := make(chan int, 1)
 	go func() {
-		var portLine string
+		var portLine strings.Builder
 		buf := make([]byte, 256)
 		for {
 			n, err := stdout.Read(buf)
 			if err != nil {
 				return
 			}
-			portLine += string(buf[:n])
-			if strings.Contains(portLine, "LISTENING:") {
-				parts := strings.Split(portLine, "LISTENING:")
+			portLine.WriteString(string(buf[:n]))
+			if strings.Contains(portLine.String(), "LISTENING:") {
+				parts := strings.Split(portLine.String(), "LISTENING:")
 				if len(parts) > 1 {
 					portStr := strings.TrimSpace(strings.Split(parts[1], "\n")[0])
 					if p, err := strconv.Atoi(portStr); err == nil {
@@ -8341,6 +8385,10 @@ func TestRedirects(t *testing.T) {
 
 		client.ContinueRequest(1)
 		client.ExpectContinueResponse(t)
+		ee := client.ExpectExitedEvent(t)
+		if ee.Body.ExitCode != 0 {
+			t.Errorf("\ngot ExitCode=%d, want 0", ee.Body.ExitCode)
+		}
 		client.ExpectTerminatedEvent(t)
 
 		buf, err := os.ReadFile(outfile)
@@ -8363,6 +8411,10 @@ func TestRedirects(t *testing.T) {
 
 		client.ContinueRequest(1)
 		client.ExpectContinueResponse(t)
+		ee = client.ExpectExitedEvent(t)
+		if ee.Body.ExitCode != 0 {
+			t.Errorf("\ngot ExitCode=%d, want 0", ee.Body.ExitCode)
+		}
 		client.ExpectTerminatedEvent(t)
 
 		buf2, err := os.ReadFile(outfile)

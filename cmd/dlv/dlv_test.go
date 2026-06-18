@@ -549,6 +549,10 @@ func TestRemoteDAPClient(t *testing.T) {
 	client := newDAPRemoteClient(t, listenAddr, false, false)
 	client.ContinueRequest(1)
 	client.ExpectContinueResponse(t)
+	ee := client.ExpectExitedEvent(t)
+	if ee.Body.ExitCode != 0 {
+		t.Errorf("\ngot ExitCode=%d, want 0", ee.Body.ExitCode)
+	}
 	client.ExpectTerminatedEvent(t)
 
 	client.DisconnectRequest()
@@ -567,6 +571,9 @@ func closeDAPRemoteMultiClient(t *testing.T, c *daptest.Client, expectStatus str
 	c.DisconnectRequest()
 	c.ExpectOutputEventClosingClient(t, expectStatus)
 	c.ExpectDisconnectResponse(t)
+	if expectStatus == "exited" {
+		c.ExpectExitedEvent(t)
+	}
 	c.ExpectTerminatedEvent(t)
 	c.Close()
 	time.Sleep(10 * time.Millisecond)
@@ -620,6 +627,10 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 	dapclient2.CheckStopLocation(t, 1, "main.main", 5)
 	dapclient2.ContinueRequest(1)
 	dapclient2.ExpectContinueResponse(t)
+	ee := dapclient2.ExpectExitedEvent(t)
+	if ee.Body.ExitCode != 0 {
+		t.Errorf("\ngot ExitCode=%d, want 0", ee.Body.ExitCode)
+	}
 	dapclient2.ExpectTerminatedEvent(t)
 	closeDAPRemoteMultiClient(t, dapclient2, "exited")
 
