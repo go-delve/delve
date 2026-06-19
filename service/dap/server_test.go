@@ -5273,10 +5273,13 @@ func TestStepOutPreservesGoroutine(t *testing.T) {
 						if e.Body.ThreadId != goroutineId {
 							t.Fatalf("StepOut did not continue on the selected goroutine, expected %d got %d", goroutineId, e.Body.ThreadId)
 						}
+					case *dap.ExitedEvent:
+						client.ExpectTerminatedEvent(t)
+						t.Logf("program exited")
 					case *dap.TerminatedEvent:
 						t.Logf("program terminated")
 					default:
-						t.Fatalf("Unexpected event type: expect stopped or terminated event, got %#v", e)
+						t.Fatalf("Unexpected event type: expect stopped, exited, or terminated event, got %#v", e)
 					}
 				},
 				disconnect: false,
