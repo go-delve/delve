@@ -1256,6 +1256,10 @@ func (s *Session) onLaunchRequest(request *dap.LaunchRequest) {
 
 			close(s.noDebugProcess.exited)
 			s.logToConsole(proc.ErrProcessExited{Pid: cmd.ProcessState.Pid(), Status: cmd.ProcessState.ExitCode()}.Error())
+			s.send(&dap.ExitedEvent{
+				Event: *s.newEvent("exited"),
+				Body:  dap.ExitedEventBody{ExitCode: cmd.ProcessState.ExitCode()},
+			})
 			s.send(&dap.TerminatedEvent{Event: *s.newEvent("terminated")})
 		}()
 		return
@@ -1466,15 +1470,22 @@ func (s *Session) onDisconnectRequest(request *dap.DisconnectRequest) {
 		// terminate the debuggee should clean up only the client connection and pointer to debugger,
 		// but not the entire server.
 		status := "halted"
+		var exitState *api.DebuggerState
+		var exitErr error
 		if s.isRunningCmd() {
 			status = "running"
 		} else if state, err := s.debugger.State(false); processExited(state, err) {
 			status = "exited"
+			exitState = state
+			exitErr = err
 			s.preTerminatedWG.Wait()
 		}
 
 		s.logToConsole(fmt.Sprintf("Closing client session, but leaving multi-client DAP server at %s with debuggee %s", s.config.Listener.Addr().String(), status))
 		s.send(&dap.DisconnectResponse{Response: *s.newResponse(request.Request)})
+		if status == "exited" {
+			s.sendExitedEvent(exitState, exitErr)
+		}
 		s.send(&dap.TerminatedEvent{Event: *s.newEvent("terminated")})
 		s.conn.Close()
 		s.disconnected = true
@@ -2907,7 +2918,7 @@ func (s *Session) childrenToDAPVariables(v *fullyQualifiedVariable) []dap.Variab
 				cfqname = ""
 			case v.Kind == reflect.Interface:
 				cfqname = fmt.Sprintf("%s.(%s)", v.fullyQualifiedNameOrExpr, c.Name) // c is data
-			case v.Kind == reflect.Ptr:
+			case v.Kind == reflect.Pointer:
 				cfqname = fmt.Sprintf("(*%v)", v.fullyQualifiedNameOrExpr) // c is the nameless pointer value
 			case v.Kind == reflect.Complex64 || v.Kind == reflect.Complex128:
 				cfqname = "" // complex children are not struct fields and can't be accessed directly
@@ -3112,7 +3123,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 		value = fmt.Sprintf("%s = %#x", value, n)
 	case reflect.UnsafePointer:
 		// Skip child reference
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if v.DwarfType != nil && len(v.Children) > 0 && v.Children[0].Addr != 0 && v.Children[0].Kind != reflect.Invalid {
 			if v.Children[0].OnlyAddr { // Not loaded
 				if v.Addr == 0 {
@@ -3348,8 +3359,8 @@ func (s *Session) doCall(goid, frame int, expr string) (*api.DebuggerState, []*p
 	}, nil, s.conn.closedChan, s.convertDebuggerEvent)
 	if processExited(state, err) {
 		s.preTerminatedWG.Wait()
-		e := &dap.TerminatedEvent{Event: *s.newEvent("terminated")}
-		s.send(e)
+		s.sendExitedEvent(state, err)
+		s.send(&dap.TerminatedEvent{Event: *s.newEvent("terminated")})
 		return nil, nil, errors.New("terminated")
 	}
 	if err != nil {
@@ -3503,7 +3514,10 @@ func (s *Session) onRestartRequest(request *dap.RestartRequest) {
 	discardedBreakpoints, err := s.debugger.Restart(false, "", resetArgs, newArgs, [3]string{}, rebuild)
 	if err != nil {
 		s.sendErrorResponse(request.Request, FailedToLaunch, "Failed to restart", err.Error())
-		if _, err := s.debugger.State(false); validBefore && err != nil {
+		if state, err := s.debugger.State(false); validBefore && err != nil {
+			if processExited(state, err) {
+				s.sendExitedEvent(state, err)
+			}
 			s.send(&dap.TerminatedEvent{Event: *s.newEvent("terminated")})
 		}
 		return
@@ -4257,6 +4271,24 @@ func processExited(state *api.DebuggerState, err error) bool {
 	return isexited || err == nil && state.Exited
 }
 
+func exitCode(state *api.DebuggerState, err error) int {
+	var errProcessExited proc.ErrProcessExited
+	if errors.As(err, &errProcessExited) {
+		return errProcessExited.Status
+	}
+	if state != nil {
+		return state.ExitStatus
+	}
+	return 0
+}
+
+func (s *Session) sendExitedEvent(state *api.DebuggerState, err error) {
+	s.send(&dap.ExitedEvent{
+		Event: *s.newEvent("exited"),
+		Body:  dap.ExitedEventBody{ExitCode: exitCode(state, err)},
+	})
+}
+
 func (s *Session) setRunningCmd(running bool) {
 	s.runningMu.Lock()
 	defer s.runningMu.Unlock()
@@ -4323,6 +4355,7 @@ func (s *Session) runUntilStopAndNotify(command string, allowNextStateChange *sy
 
 	if processExited(state, err) {
 		s.preTerminatedWG.Wait()
+		s.sendExitedEvent(state, err)
 		s.send(&dap.TerminatedEvent{Event: *s.newEvent("terminated")})
 		return
 	}

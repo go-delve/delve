@@ -172,7 +172,7 @@ func (s *Session) examineMemory(goid, frame int, argstr string) (string, error) 
 		}
 
 		switch val.Kind {
-		case reflect.Ptr: // "-x &myVar" or "-x myPtrVar"
+		case reflect.Pointer: // "-x &myVar" or "-x myPtrVar"
 			if len(val.Children) < 1 {
 				return fmt.Errorf("bug? invalid pointer: %#v", val).Error(), nil
 			}
