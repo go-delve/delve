@@ -3,6 +3,37 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.27.0] 2026-06-19
+
+### Added
+
+- Support for `GOEXPERIMENT=mapsplitgroup` (#4370, @prattmic, @aarzilli)
+- Support for generic methods (#4356, @aarzilli)
+- Frame pointer unwinding (#4288, @alexsaezm)
+- DAP: Write memory request handler (#4364, @DrSergei)
+
+### Fixed
+
+- Send `ExitedEvent` before `TerminatedEvent` in DAP (#4371, @derekparker)
+- Fix `hasInlines` in stacktrace, fix range step with inlining (#4345, @aarzilli)
+- Fix range over func stepping for go1.27 (#4343, @aarzilli)
+- Make `PushPackageVarOrSelect` check local variables first (#4181, @aarzilli)
+- Fix OR handling in `breakpointConditionSatisfiable` (#4325, @cuiweixie)
+- Fix SP calculation for sigpanic frames on arm64 (#4319, @alexsaezm)
+- Fix `AddressToOffset` off-by-one at eBPF section load (#4324, @cuiweixie)
+- Bail out of `loadArrayValues` after stride overflow (#4328, @cuiweixie)
+- Propagate errors during DWARF Reader entry iteration (#4327, @cuiweixie)
+- Propagate `AddrPiece` `ReadMemory` errors in composite memory (#4323, @cuiweixie)
+- Propagate ptrace register errors on linux/ppc64le (#4322, #4321, @cuiweixie)
+- Add newline to DAP build message (#4340, @sagg0t)
+
+### Changed
+
+- Switch to header+param event ring buffer protocol for eBPF tracing (#4352, @derekparker)
+- Revert removal of experimental build tags for windows/arm64 (#4281, @aarzilli)
+- Compile hit-condition regexp once (#4335, @cuiweixie)
+- Miscellaneous improvements to tests, build configuration, and code readability (#4317, #4339, #4344, #4346, #4350, #4351, #4354, #4358, #4359, #4361, #4362, #4365, #4367, @aarzilli, @alexsaezm, @box4wangjing, @cuoguojida, @typesanitizer, @vietage)
+
 ## [1.26.3] 2026-04-27
 
 ### Added
