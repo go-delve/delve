@@ -91,9 +91,18 @@ func filterProcessExitLines(output []byte) []byte {
 	return bytes.Join(filtered, []byte("\n"))
 }
 
+func parseListenAddr(t *testing.T, text string) string {
+	t.Helper()
+	const marker = " server listening at: "
+	if idx := strings.Index(text, marker); idx >= 0 {
+		return text[idx+len(marker):]
+	}
+	t.Fatalf("could not parse listen address from %q", text)
+	return ""
+}
+
 func TestBuild(t *testing.T) {
 	t.Parallel()
-	const listenAddr = "127.0.0.1:40573"
 
 	dlvbin := protest.GetDlvBinary(t)
 
@@ -101,13 +110,25 @@ func TestBuild(t *testing.T) {
 
 	buildtestdir := filepath.Join(fixtures, "buildtest")
 
-	cmd := exec.Command(dlvbin, "debug", "--headless=true", "--listen="+listenAddr, "--api-version=2", "--backend="+testBackend, "--log", "--log-output=debugger,rpc")
+	cmd := exec.Command(dlvbin, "debug", "--headless=true", "--listen=127.0.0.1:0", "--api-version=2", "--backend="+testBackend, "--log", "--log-output=debugger,rpc")
 	cmd.Dir = buildtestdir
+	stdout, err := cmd.StdoutPipe()
+	assertNoError(err, t, "stdout pipe")
+	defer stdout.Close()
 	stderr, err := cmd.StderrPipe()
 	assertNoError(err, t, "stderr pipe")
 	defer stderr.Close()
 
 	assertNoError(cmd.Start(), t, "dlv debug")
+
+	scanOut := bufio.NewScanner(stdout)
+	scanOut.Scan()
+	listenAddr := parseListenAddr(t, scanOut.Text())
+	go func() {
+		for scanOut.Scan() {
+			// drain stdout
+		}
+	}()
 
 	scan := bufio.NewScanner(stderr)
 	// wait for the debugger to start
@@ -224,15 +245,25 @@ func TestOutput(t *testing.T) {
 // TestUnattendedBreakpoint tests whether dlv will print a message to stderr when the client that sends continue is disconnected
 // or not.
 func TestUnattendedBreakpoint(t *testing.T) {
-	const listenAddr = "127.0.0.1:40575"
-
 	fixturePath := filepath.Join(protest.FindFixturesDir(), "panic.go")
-	cmd := exec.Command(protest.GetDlvBinary(t), "debug", "--continue", "--headless", "--accept-multiclient", "--listen", listenAddr, fixturePath)
-	stderr, err := cmd.StderrPipe()
+	cmd := exec.Command(protest.GetDlvBinary(t), "debug", "--continue", "--headless", "--accept-multiclient", "--listen", "127.0.0.1:0", fixturePath)
+	stdout, err := cmd.StdoutPipe()
 	assertNoError(err, t, "stdout pipe")
+	defer stdout.Close()
+	stderr, err := cmd.StderrPipe()
+	assertNoError(err, t, "stderr pipe")
 	defer stderr.Close()
 
 	assertNoError(cmd.Start(), t, "start headless instance")
+
+	scanOut := bufio.NewScanner(stdout)
+	scanOut.Scan()
+	listenAddr := parseListenAddr(t, scanOut.Text())
+	go func() {
+		for scanOut.Scan() {
+			// drain stdout
+		}
+	}()
 
 	scan := bufio.NewScanner(stderr)
 	for scan.Scan() {
@@ -253,12 +284,11 @@ func TestUnattendedBreakpoint(t *testing.T) {
 // TestContinue verifies that the debugged executable starts immediately with --continue
 func TestContinue(t *testing.T) {
 	t.Parallel()
-	const listenAddr = "127.0.0.1:40576"
 
 	dlvbin := protest.GetDlvBinary(t)
 
 	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
-	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--listen", listenAddr)
+	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--listen", "127.0.0.1:0")
 	cmd.Dir = buildtestdir
 	stdout, err := cmd.StdoutPipe()
 	assertNoError(err, t, "stdout pipe")
@@ -267,7 +297,9 @@ func TestContinue(t *testing.T) {
 	assertNoError(cmd.Start(), t, "start headless instance")
 
 	scan := bufio.NewScanner(stdout)
-	// wait for the debugger to start
+	scan.Scan()
+	listenAddr := parseListenAddr(t, scan.Text())
+	// wait for the program to finish
 	for scan.Scan() {
 		t.Log(scan.Text())
 		if scan.Text() == "hello world!" {
@@ -286,12 +318,11 @@ func TestContinue(t *testing.T) {
 // TestRedirect verifies that redirecting stdin works
 func TestRedirect(t *testing.T) {
 	t.Parallel()
-	const listenAddr = "127.0.0.1:40574"
 
 	dlvbin := protest.GetDlvBinary(t)
 
 	catfixture := filepath.Join(protest.FindFixturesDir(), "cat.go")
-	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--listen", listenAddr, "-r", catfixture, catfixture)
+	cmd := exec.Command(dlvbin, "debug", "--headless", "--continue", "--accept-multiclient", "--listen", "127.0.0.1:0", "-r", catfixture, catfixture)
 	stdout, err := cmd.StdoutPipe()
 	assertNoError(err, t, "stdout pipe")
 	defer stdout.Close()
@@ -299,7 +330,9 @@ func TestRedirect(t *testing.T) {
 	assertNoError(cmd.Start(), t, "start headless instance")
 
 	scan := bufio.NewScanner(stdout)
-	// wait for the debugger to start
+	scan.Scan()
+	listenAddr := parseListenAddr(t, scan.Text())
+	// wait for the program to finish
 	for scan.Scan() {
 		t.Log(scan.Text())
 		if scan.Text() == "read \"}\"" {
@@ -456,11 +489,10 @@ func TestTypecheckRPC(t *testing.T) {
 // TestDAPCmd verifies that a dap server can be started and shut down.
 func TestDAPCmd(t *testing.T) {
 	t.Parallel()
-	const listenAddr = "127.0.0.1:40580"
 
 	dlvbin := protest.GetDlvBinary(t)
 
-	cmd := exec.Command(dlvbin, "dap", "--log-output=dap", "--log", "--listen", listenAddr)
+	cmd := exec.Command(dlvbin, "dap", "--log-output=dap", "--log", "--listen", "127.0.0.1:0")
 	stdout, err := cmd.StdoutPipe()
 	assertNoError(err, t, "stdout pipe")
 	defer stdout.Close()
@@ -474,11 +506,11 @@ func TestDAPCmd(t *testing.T) {
 	scanErr := bufio.NewScanner(stderr)
 	// Wait for the debug server to start
 	scanOut.Scan()
-	listening := "DAP server listening at: " + listenAddr
-	if scanOut.Text() != listening {
+	if !strings.Contains(scanOut.Text(), "DAP server listening at: ") {
 		cmd.Process.Kill() // release the port
-		t.Fatalf("Unexpected stdout:\ngot  %q\nwant %q", scanOut.Text(), listening)
+		t.Fatalf("Unexpected stdout: %q", scanOut.Text())
 	}
+	listenAddr := parseListenAddr(t, scanOut.Text())
 	go func() {
 		for scanErr.Scan() {
 			t.Log(scanErr.Text())
@@ -520,12 +552,11 @@ func newDAPRemoteClient(t *testing.T, addr string, isDlvAttach bool, isMulti boo
 
 func TestRemoteDAPClient(t *testing.T) {
 	t.Parallel()
-	const listenAddr = "127.0.0.1:40577"
 
 	dlvbin := protest.GetDlvBinary(t)
 
 	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
-	cmd := exec.Command(dlvbin, "debug", "--headless", "--log-output=dap", "--log", "--listen", listenAddr)
+	cmd := exec.Command(dlvbin, "debug", "--headless", "--log-output=dap", "--log", "--listen", "127.0.0.1:0")
 	cmd.Dir = buildtestdir
 	stdout, err := cmd.StdoutPipe()
 	assertNoError(err, t, "stdout pipe")
@@ -539,7 +570,9 @@ func TestRemoteDAPClient(t *testing.T) {
 	scanErr := bufio.NewScanner(stderr)
 	// Wait for the debug server to start
 	scanOut.Scan()
-	t.Log(scanOut.Text())
+	firstLine := scanOut.Text()
+	t.Log(firstLine)
+	listenAddr := parseListenAddr(t, firstLine)
 	go func() { // Capture logging
 		for scanErr.Scan() {
 			t.Log(scanErr.Text())
@@ -581,12 +614,11 @@ func closeDAPRemoteMultiClient(t *testing.T, c *daptest.Client, expectStatus str
 
 func TestRemoteDAPClientMulti(t *testing.T) {
 	t.Parallel()
-	const listenAddr = "127.0.0.1:40578"
 
 	dlvbin := protest.GetDlvBinary(t)
 
 	buildtestdir := filepath.Join(protest.FindFixturesDir(), "buildtest")
-	cmd := exec.Command(dlvbin, "debug", "--headless", "--accept-multiclient", "--log-output=debugger", "--log", "--listen", listenAddr)
+	cmd := exec.Command(dlvbin, "debug", "--headless", "--accept-multiclient", "--log-output=debugger", "--log", "--listen", "127.0.0.1:0")
 	cmd.Dir = buildtestdir
 	stdout, err := cmd.StdoutPipe()
 	assertNoError(err, t, "stdout pipe")
@@ -600,7 +632,9 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 	scanErr := bufio.NewScanner(stderr)
 	// Wait for the debug server to start
 	scanOut.Scan()
-	t.Log(scanOut.Text())
+	firstLine := scanOut.Text()
+	t.Log(firstLine)
+	listenAddr := parseListenAddr(t, firstLine)
 	go func() { // Capture logging
 		for scanErr.Scan() {
 			t.Log(scanErr.Text())
@@ -653,12 +687,11 @@ func TestRemoteDAPClientMulti(t *testing.T) {
 
 func TestRemoteDAPClientAfterContinue(t *testing.T) {
 	t.Parallel()
-	const listenAddr = "127.0.0.1:40579"
 
 	dlvbin := protest.GetDlvBinary(t)
 
 	fixture := protest.BuildFixture(t, "loopprog", 0)
-	cmd := exec.Command(dlvbin, "exec", fixture.Path, "--headless", "--continue", "--accept-multiclient", "--log-output=debugger,dap", "--log", "--listen", listenAddr)
+	cmd := exec.Command(dlvbin, "exec", fixture.Path, "--headless", "--continue", "--accept-multiclient", "--log-output=debugger,dap", "--log", "--listen", "127.0.0.1:0")
 	stdout, err := cmd.StdoutPipe()
 	assertNoError(err, t, "stdout pipe")
 	defer stdout.Close()
@@ -670,8 +703,10 @@ func TestRemoteDAPClientAfterContinue(t *testing.T) {
 	scanOut := bufio.NewScanner(stdout)
 	scanErr := bufio.NewScanner(stderr)
 	// Wait for the debug server to start
-	scanOut.Scan() // "API server listening...""
-	t.Log(scanOut.Text())
+	scanOut.Scan()
+	firstLine := scanOut.Text()
+	t.Log(firstLine)
+	listenAddr := parseListenAddr(t, firstLine)
 	// Wait for the program to start
 	scanOut.Scan() // "past main"
 	t.Log(scanOut.Text())
