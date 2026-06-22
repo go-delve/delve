@@ -7,7 +7,7 @@ on:
 
 # Cancel existing runs if user makes another push.
 concurrency:
-  group: "${{ github.ref }}-${{ github.workflow}}"
+  group: '${{ github.ref }}-${{ github.workflow}}'
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: ["1.24", "1.25", "tip"]
+        go-version: ['1.26', '1.27', 'tip']
 
     steps:
       - name: Checkout code
