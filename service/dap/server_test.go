@@ -7216,22 +7216,10 @@ func TestBadAttachRequest(t *testing.T) {
 		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
 			"Failed to attach: invalid debug configuration - cannot unmarshal string into \"processId\" of type int")
 
-		// This will make debugger.(*Debugger) panic, which we will catch as an internal error.
+		// Invalid process ID should be rejected with a proper error
 		client.AttachRequest(map[string]any{"mode": "local", "processId": -1})
-		er := client.ExpectInvisibleErrorResponse(t)
-		if er.RequestSeq != seqCnt {
-			t.Errorf("RequestSeq got %d, want %d", seqCnt, er.RequestSeq)
-		}
-		seqCnt++
-		if er.Command != "" {
-			t.Errorf("Command got %q, want \"attach\"", er.Command)
-		}
-		if !checkErrorMessageFormat(er.Body.Error, "Internal Error: runtime error: index out of range [0] with length 0") {
-			t.Errorf("Message got %q, want \"Internal Error: runtime error: index out of range [0] with length 0\"", er.Message)
-		}
-		if !checkErrorMessageId(er.Body.Error, InternalError) {
-			t.Errorf("Id got %v, want Id=%d", er.Body.Error, InternalError)
-		}
+		checkFailedToAttachWithMessage(client.ExpectVisibleErrorResponse(t),
+			"Failed to attach: invalid process ID: -1")
 
 		// Bad "backend"
 		client.AttachRequest(map[string]any{"mode": "local", "processId": 1, "backend": 123})
