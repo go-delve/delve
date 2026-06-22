@@ -5162,6 +5162,13 @@ func testNextParkedHelper(t *testing.T, client *daptest.Client, fixture protest.
 		switch event.(type) {
 		case *dap.StoppedEvent:
 			// ok
+		case *dap.ExitedEvent:
+			client.ExpectTerminatedEvent(t)
+			// This is very unlikely to happen. But in theory if all sayhi
+			// goroutines are run serially, there will never be a second parked
+			// sayhi goroutine when another breaks and we will keep trying
+			// until process termination.
+			return -1
 		case *dap.TerminatedEvent:
 			// This is very unlikely to happen. But in theory if all sayhi
 			// goroutines are run serially, there will never be a second parked
