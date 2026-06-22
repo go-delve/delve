@@ -319,6 +319,58 @@ func TestCore(t *testing.T) {
 	logRegisters(t, regs, p.BinInfo().Arch)
 }
 
+// TestCoreCGOAssert verifies that C function frames appear in core dump backtraces.
+// Issue #3322: the crash frame (C.test1) is missing when assert() crashes in CGO code.
+func TestCoreCGOAssert(t *testing.T) {
+	t.Parallel()
+	mustSupportCore(t)
+
+	grp, _ := withCoreFile(t, "cgocoreassert", "")
+	p := grp.Selected
+
+	gs, _, err := proc.GoroutinesInfo(p, 0, 0)
+	if err != nil || len(gs) == 0 {
+		t.Fatalf("GoroutinesInfo() = %v, %v; wanted at least one goroutine", gs, err)
+	}
+
+	// Find the goroutine running main.main and check its stack for C frames.
+	var mainStack []proc.Stackframe
+	for _, g := range gs {
+		stack, err := proc.GoroutineStacktrace(p, g, 20, 0)
+		if err != nil {
+			t.Errorf("Stacktrace() on goroutine %v = %v", g, err)
+			continue
+		}
+		for _, frame := range stack {
+			if frame.Call.Fn != nil && frame.Call.Fn.Name == "main.main" {
+				mainStack = stack
+				break
+			}
+		}
+		if mainStack != nil {
+			break
+		}
+	}
+	if mainStack == nil {
+		t.Fatal("could not find main goroutine")
+	}
+
+	found := make(map[string]bool)
+	for _, frame := range mainStack {
+		if frame.Call.Fn != nil {
+			found[frame.Call.Fn.Name] = true
+		}
+	}
+
+	// Issue #3322: C.test1 (where assert(0) is called) is missing from the
+	// backtrace. C.test2 and C.test3 are resolved correctly.
+	for _, name := range []string{"C.test1", "C.test2", "C.test3"} {
+		if !found[name] {
+			t.Errorf("C function frame %q missing from backtrace (issue #3322)", name)
+		}
+	}
+}
+
 func TestCoreFpRegisters(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS != "linux" || runtime.GOARCH == "386" {
