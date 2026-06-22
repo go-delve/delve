@@ -172,6 +172,11 @@ func New(config *Config, processArgs []string) (*Debugger, error) {
 		log:         logger,
 	}
 
+	// Validate AttachPid if specified
+	if d.config.AttachPid != 0 && d.config.AttachPid < 0 {
+		return nil, fmt.Errorf("invalid process ID: %d", d.config.AttachPid)
+	}
+
 	// Create the process by either attaching or launching.
 	switch {
 	case d.config.AttachPid > 0 || d.config.AttachWaitFor != "":
