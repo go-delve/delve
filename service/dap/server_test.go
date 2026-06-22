@@ -1170,6 +1170,7 @@ func TestFilterGoroutines(t *testing.T) {
 							}
 						}
 						runtimeGoexitFound := false
+						runtimeMcallFound := false
 						for i, frame := range tr.Body.Threads {
 							var found bool
 							for _, wantName := range tc.want {
@@ -1182,6 +1183,12 @@ func TestFilterGoroutines(t *testing.T) {
 								// See previous comment about windows/1.26
 								found = true
 								runtimeGoexitFound = true
+							}
+							if !found && !runtimeMcallFound && strings.Contains(frame.Name, "runtime.mcall") && runtime.GOOS == "windows" {
+								// On windows there can be an extra runtime.mcall goroutine that we don't have
+								// a start location for, so the system filter doesn't work on it.
+								found = true
+								runtimeMcallFound = true
 							}
 							if !found {
 								t.Errorf("got Threads[%d]=%#v, want Name=%v\n", i, frame, tc.want)
