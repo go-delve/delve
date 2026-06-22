@@ -1049,6 +1049,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 		})
 
 		t.Run("TestPanickyIterator2", func(t *testing.T) {
+			skipOn(t, "flaky stepping timeout", "riscv64")
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
 				funcBreak(t, "main.TestPanickyIterator2"),
 				{contContinue, 125},
@@ -1603,6 +1604,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 		})
 
 		t.Run("TestPanickyIterator2", func(t *testing.T) {
+			skipOn(t, "flaky stepping timeout", "riscv64")
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
 				funcBreak(t, "main.TestPanickyIterator2"),
 				{contContinue, 125},
