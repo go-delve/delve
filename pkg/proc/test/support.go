@@ -187,6 +187,11 @@ func BuildFixture(t testing.TB, name string, flags BuildFlags) Fixture {
 			buildFlags = append(buildFlags, "-ldflags=-compressdwarf=false")
 		}
 	}
+	// Disable DWARF compression on riscv64 due to flate decompressor hangs
+	// in CI: https://delve.teamcity.com/buildConfiguration/Delve_AggregatorBuild/78674
+	if runtime.GOARCH == "riscv64" {
+		buildFlags = append(buildFlags, "-ldflags=-compressdwarf=false")
+	}
 	if flags&Trimpath != 0 {
 		buildFlags = append(buildFlags, "-trimpath")
 	}
