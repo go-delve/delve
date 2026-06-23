@@ -278,7 +278,6 @@ func TestVariableEvaluation2(t *testing.T) {
 }
 
 func TestSetVariable(t *testing.T) {
-	skipOn(t, "flaky timeout during process initialization", "riscv64")
 	const errorPrefix = "ERROR:"
 	var testcases = []struct {
 		name     string
