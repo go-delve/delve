@@ -114,7 +114,6 @@ func multiLineVar(v *proc.Variable) string {
 }
 
 func TestVariableEvaluation(t *testing.T) {
-	skipOn(t, "flaky timeout during process initialization", "riscv64")
 	protest.AllowRecording(t)
 	testcases := []struct {
 		name        string
