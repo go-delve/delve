@@ -12,9 +12,9 @@ import (
 
 var (
 	MinSupportedVersionOfGoMajor = 1
-	MinSupportedVersionOfGoMinor = 24
+	MinSupportedVersionOfGoMinor = 25
 	MaxSupportedVersionOfGoMajor = 1
-	MaxSupportedVersionOfGoMinor = 26
+	MaxSupportedVersionOfGoMinor = 27
 	goTooOldErr                  = fmt.Sprintf("Go version %%s is too old for this version of Delve (minimum supported version %d.%d, suppress this error with --check-go-version=false)", MinSupportedVersionOfGoMajor, MinSupportedVersionOfGoMinor)
 	goTooOldWarn                 = fmt.Sprintf("WARNING: undefined behavior - Go version %%s is too old for this version of Delve (minimum supported version %d.%d)", MinSupportedVersionOfGoMajor, MinSupportedVersionOfGoMinor)
 	dlvTooOldErr                 = fmt.Sprintf("Version of Delve is too old for Go version %%s (maximum supported version %d.%d, suppress this error with --check-go-version=false)", MaxSupportedVersionOfGoMajor, MaxSupportedVersionOfGoMinor)
