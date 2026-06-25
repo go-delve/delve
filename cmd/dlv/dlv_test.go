@@ -1822,6 +1822,9 @@ func TestStaticcheck(t *testing.T) {
 }
 
 func TestCapsLock(t *testing.T) {
+	if ver, ok := goversion.Parse(runtime.Version()); ok && ver.Major == 1 && ver.Minor >= 27 && ver.Rev < 0 {
+		t.Skip("capslock not compatible with Go 1.27 development/RC builds (golang.org/x/tools issue)")
+	}
 	_, err := exec.LookPath("capslock")
 	if err != nil {
 		t.Skip("capslock not installed")
