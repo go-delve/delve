@@ -1822,6 +1822,9 @@ func TestStaticcheck(t *testing.T) {
 }
 
 func TestCapsLock(t *testing.T) {
+	// TODO: Remove this skip once capslock supports Go 1.27+
+	// capslock v0.3.2 uses golang.org/x/tools v0.43.0 which panics on Go 1.27 syntax.
+	// The test will run on older stable Go versions in CI.
 	if ver, ok := goversion.Parse(runtime.Version()); ok && ver.Major == 1 && ver.Minor >= 27 && ver.Rev < 0 {
 		t.Skip("capslock not compatible with Go 1.27 development/RC builds (golang.org/x/tools issue)")
 	}
