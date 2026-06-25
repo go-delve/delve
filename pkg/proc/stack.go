@@ -283,6 +283,15 @@ func (it *stackIterator) Next() bool {
 		logger.Debugf("%s", w.String())
 	}
 
+	// Adjust return addresses that land on a C function entry due to noreturn calls (e.g. assert).
+	if !it.top && !it.sigret && it.pc > 0 {
+		if fn := it.bi.PCToFunc(it.pc); fn != nil && it.pc == fn.Entry && !fn.cu.isgo {
+			if pfn := it.bi.PCToFunc(it.pc - 1); pfn != nil && pfn != fn {
+				it.pc--
+			}
+		}
+	}
+
 	callFrameRegs, ret, retaddr := it.advanceRegs()
 	it.frame = it.newStackframe(ret, retaddr)
 
