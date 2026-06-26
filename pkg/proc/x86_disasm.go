@@ -21,7 +21,6 @@ func x86AsmDecode(asmInst *AsmInstruction, mem []byte, regs *op.DwarfRegisters, 
 
 	asmInst.Size = inst.Len
 	asmInst.Bytes = mem[:asmInst.Size]
-	patchPCRelX86(asmInst.Loc.PC, &inst)
 	asmInst.Inst = (*x86Inst)(&inst)
 	asmInst.Kind = OtherInstruction
 
@@ -38,16 +37,6 @@ func x86AsmDecode(asmInst *AsmInstruction, mem []byte, regs *op.DwarfRegisters, 
 
 	asmInst.DestLoc = resolveCallArgX86(&inst, asmInst.Loc.PC, asmInst.AtPC, regs, memrw, bi)
 	return nil
-}
-
-// converts PC relative arguments to absolute addresses
-func patchPCRelX86(pc uint64, inst *x86asm.Inst) {
-	for i := range inst.Args {
-		rel, isrel := inst.Args[i].(x86asm.Rel)
-		if isrel {
-			inst.Args[i] = x86asm.Imm(int64(pc) + int64(rel) + int64(inst.Len))
-		}
-	}
 }
 
 func (inst *x86Inst) Text(flavour AssemblyFlavour, pc uint64, symLookup func(uint64) (string, uint64)) string {
@@ -117,6 +106,8 @@ func resolveCallArgX86(inst *x86asm.Inst, instAddr uint64, currentGoroutine bool
 		if err != nil {
 			return nil
 		}
+	case x86asm.Rel:
+		pc = instAddr + uint64(arg) + uint64(inst.Len)
 	default:
 		return nil
 	}
