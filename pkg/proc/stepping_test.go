@@ -2,7 +2,6 @@ package proc_test
 
 import (
 	"fmt"
-	"go/constant"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -190,45 +189,23 @@ func testseq2intl(t *testing.T, fixture protest.Fixture, grp *proc.TargetGroup, 
 func TestNextGeneral(t *testing.T) {
 	var testcases []nextTest
 
-	ver, _ := goversion.Parse(runtime.Version())
-
-	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 7, Rev: -1}) {
-		testcases = []nextTest{
-			{17, 19},
-			{19, 20},
-			{20, 23},
-			{23, 24},
-			{24, 26},
-			{26, 31},
-			{31, 23},
-			{23, 24},
-			{24, 26},
-			{26, 31},
-			{31, 23},
-			{23, 24},
-			{24, 26},
-			{26, 27},
-			{27, 28},
-			{28, 34},
-		}
-	} else {
-		testcases = []nextTest{
-			{17, 19},
-			{19, 20},
-			{20, 23},
-			{23, 24},
-			{24, 26},
-			{26, 31},
-			{31, 23},
-			{23, 24},
-			{24, 26},
-			{26, 31},
-			{31, 23},
-			{23, 24},
-			{24, 26},
-			{26, 27},
-			{27, 34},
-		}
+	testcases = []nextTest{
+		{17, 19},
+		{19, 20},
+		{20, 23},
+		{23, 24},
+		{24, 26},
+		{26, 31},
+		{31, 23},
+		{23, 24},
+		{24, 26},
+		{26, 31},
+		{31, 23},
+		{23, 24},
+		{24, 26},
+		{26, 27},
+		{27, 28},
+		{28, 34},
 	}
 
 	testseq("testnextprog", contNext, testcases, "main.testnext", t)
@@ -247,20 +224,10 @@ func TestNextFunctionReturn(t *testing.T) {
 func TestNextFunctionReturnDefer(t *testing.T) {
 	var testcases []nextTest
 
-	ver, _ := goversion.Parse(runtime.Version())
-
-	if ver.Major < 0 || ver.AfterOrEqual(goversion.GoVersion{Major: 1, Minor: 9, Rev: -1}) {
-		testcases = []nextTest{
-			{5, 6},
-			{6, 9},
-			{9, 10},
-		}
-	} else {
-		testcases = []nextTest{
-			{5, 8},
-			{8, 9},
-			{9, 10},
-		}
+	testcases = []nextTest{
+		{5, 6},
+		{6, 9},
+		{9, 10},
 	}
 	protest.AllowRecording(t)
 	testseq("testnextdefer", contNext, testcases, "main.main", t)
@@ -352,27 +319,19 @@ func TestStepDeferReturn(t *testing.T) {
 func TestStepIgnorePrivateRuntime(t *testing.T) {
 	// Tests that Step will ignore calls to private runtime functions
 	// (such as runtime.convT2E in this case)
-	switch {
-	case goversion.VersionAfterOrEqual(runtime.Version(), 1, 17) && protest.RegabiSupported():
+	if protest.RegabiSupported() {
 		testseq("teststepprog", contStep, []nextTest{
 			{21, 13},
 			{13, 14},
 			{14, 15},
 			{15, 17},
 			{17, 22}}, "", t)
-	case goversion.VersionAfterOrEqual(runtime.Version(), 1, 17):
+	} else {
 		testseq("teststepprog", contStep, []nextTest{
 			{21, 14},
 			{14, 15},
 			{15, 17},
 			{17, 22}}, "", t)
-	case goversion.VersionAfterOrEqual(runtime.Version(), 1, 11):
-		testseq("teststepprog", contStep, []nextTest{
-			{21, 14},
-			{14, 15},
-			{15, 22}}, "", t)
-	default:
-		panic("too old")
 	}
 }
 
@@ -518,64 +477,34 @@ func TestBackwardNextDeferPanic(t *testing.T) {
 	if testBackend != "rr" {
 		t.Skip("Reverse stepping test needs rr")
 	}
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 18) {
-		testseq2(t, "defercall", "", []seqTest{
-			{contContinue, 12},
-			{contReverseNext, 11},
-			{contReverseNext, 10},
-			{contReverseNext, 9},
-			{contReverseNext, 27},
+	testseq2(t, "defercall", "", []seqTest{
+		{contContinue, 12},
+		{contReverseNext, 11},
+		{contReverseNext, 10},
+		{contReverseNext, 9},
+		{contReverseNext, 27},
 
-			{contContinueToBreakpoint, 12}, // skip first call to sampleFunction
-			{contContinueToBreakpoint, 6},  // go to call to sampleFunction through deferreturn
-			{contReverseNext, -1},          // runtime.deferreturn, maybe we should try to skip this
-			{contReverseStepout, 13},
-			{contReverseNext, 12},
-			{contReverseNext, 11},
-			{contReverseNext, 10},
-			{contReverseNext, 9},
-			{contReverseNext, 27},
+		{contContinueToBreakpoint, 12}, // skip first call to sampleFunction
+		{contContinueToBreakpoint, 6},  // go to call to sampleFunction through deferreturn
+		{contReverseNext, -1},          // runtime.deferreturn, maybe we should try to skip this
+		{contReverseStepout, 13},
+		{contReverseNext, 12},
+		{contReverseNext, 11},
+		{contReverseNext, 10},
+		{contReverseNext, 9},
+		{contReverseNext, 27},
 
-			{contContinueToBreakpoint, 18}, // go to panic call
-			{contNext, 6},                  // panic so the deferred call happens
-			{contReverseNext, 18},
-			{contReverseNext, 17},
-			{contReverseNext, 16},
-			{contReverseNext, 15},
-			{contReverseNext, 23},
-			{contReverseNext, 22},
-			{contReverseNext, 21},
-			{contReverseNext, 28},
-		})
-	} else {
-		testseq2(t, "defercall", "", []seqTest{
-			{contContinue, 12},
-			{contReverseNext, 11},
-			{contReverseNext, 10},
-			{contReverseNext, 9},
-			{contReverseNext, 27},
-
-			{contContinueToBreakpoint, 12}, // skip first call to sampleFunction
-			{contContinueToBreakpoint, 6},  // go to call to sampleFunction through deferreturn
-			{contReverseNext, 13},
-			{contReverseNext, 12},
-			{contReverseNext, 11},
-			{contReverseNext, 10},
-			{contReverseNext, 9},
-			{contReverseNext, 27},
-
-			{contContinueToBreakpoint, 18}, // go to panic call
-			{contNext, 6},                  // panic so the deferred call happens
-			{contReverseNext, 18},
-			{contReverseNext, 17},
-			{contReverseNext, 16},
-			{contReverseNext, 15},
-			{contReverseNext, 23},
-			{contReverseNext, 22},
-			{contReverseNext, 21},
-			{contReverseNext, 28},
-		})
-	}
+		{contContinueToBreakpoint, 18}, // go to panic call
+		{contNext, 6},                  // panic so the deferred call happens
+		{contReverseNext, 18},
+		{contReverseNext, 17},
+		{contReverseNext, 16},
+		{contReverseNext, 15},
+		{contReverseNext, 23},
+		{contReverseNext, 22},
+		{contReverseNext, 21},
+		{contReverseNext, 28},
+	})
 }
 
 func TestStepIntoWrapperForEmbeddedPointer(t *testing.T) {
@@ -596,52 +525,30 @@ func TestStepIntoWrapperForEmbeddedPointer(t *testing.T) {
 		{contStepout, 29}})
 
 	// same test but with next instead of stepout
-	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 14) && runtime.GOARCH != "386" && !goversion.VersionAfterOrEqualRev(runtime.Version(), 1, 15, 4) {
-		// Line numbers generated for versions 1.14 through 1.15.3 on any system except linux/386
-		testseq2(t, "ifaceembcall", "", []seqTest{
-			{contContinue, 28}, // main.main, the line calling iface.PtrReceiver()
-			{contStep, 18},     // main.(*A).PtrReceiver
-			{contNext, 19},
-			{contNext, 19},
-			{contNext, 28},
-			{contContinueToBreakpoint, 29}, // main.main, the line calling iface.NonPtrReceiver()
-			{contStep, 22},
-			{contNext, 23},
-			{contNext, 23},
-			{contNext, 29},
-		})
-	} else {
-		testseq2(t, "ifaceembcall", "", []seqTest{
-			{contContinue, 28}, // main.main, the line calling iface.PtrReceiver()
-			{contStep, 18},     // main.(*A).PtrReceiver
-			{contNext, 19},
-			{contNext, 28},
-			{contContinueToBreakpoint, 29}, // main.main, the line calling iface.NonPtrReceiver()
-			{contStep, 22},
-			{contNext, 23},
-			{contNext, 29},
-		})
-	}
+	testseq2(t, "ifaceembcall", "", []seqTest{
+		{contContinue, 28}, // main.main, the line calling iface.PtrReceiver()
+		{contStep, 18},     // main.(*A).PtrReceiver
+		{contNext, 19},
+		{contNext, 28},
+		{contContinueToBreakpoint, 29}, // main.main, the line calling iface.NonPtrReceiver()
+		{contStep, 22},
+		{contNext, 23},
+		{contNext, 29},
+	})
 }
 
 func TestNextGenericMethodThroughInterface(t *testing.T) {
 	// Tests that autogenerated wrappers for generic methods called through an
 	// interface are skipped.
 
-	varcheck := func(p *proc.Target) {
-		yvar := evalVariable(p, t, "y")
-		yval, _ := constant.Int64Val(yvar.Value)
-		if yval != 2 {
-			t.Errorf("expected 2 got %#v", yvar.Value)
-		}
-	}
+	h := makeTestseq2Helpers()
 
 	if runtime.GOOS == "linux" && runtime.GOARCH == "386" {
 		testseq2(t, "genericintoiface", "main.callf", []seqTest{
 			{contContinue, 17},
 			{contStep, 18},
 			{contStep, 10},
-			{contNothing, varcheck},
+			h.assertEval(t, "y", "2"),
 			{contNext, 11},
 			{contNext, 19},
 		})
@@ -651,128 +558,140 @@ func TestNextGenericMethodThroughInterface(t *testing.T) {
 			{contStep, 18},
 			{contStep, 9},
 			{contNext, 10},
-			{contNothing, varcheck},
+			h.assertEval(t, "y", "2"),
 			{contNext, 11},
 			{contNext, 19},
 		})
 	}
 }
 
-func TestRangeOverFuncNext(t *testing.T) {
-	var bp *proc.Breakpoint
+type testseq2Helpers struct {
+	bps map[string]*proc.Breakpoint
+	nop seqTest
+}
 
-	funcBreak := func(t *testing.T, fnname string) seqTest {
-		return seqTest{
-			contNothing,
-			func(p *proc.Target) {
-				bp = setFunctionBreakpoint(p, t, fnname)
-			}}
+func makeTestseq2Helpers() *testseq2Helpers {
+	return &testseq2Helpers{bps: make(map[string]*proc.Breakpoint), nop: seqTest{contNothing, func(*proc.Target) {}}}
+}
+
+func (h *testseq2Helpers) funcBreak(t *testing.T, fnname string) seqTest {
+	return seqTest{
+		contNothing,
+		func(p *proc.Target) {
+			h.bps[fnname] = setFunctionBreakpoint(p, t, fnname)
+		}}
+}
+
+func (h *testseq2Helpers) clearBreak(t *testing.T, fnname string) seqTest {
+	return seqTest{
+		contNothing,
+		func(p *proc.Target) {
+			assertNoError(p.ClearBreakpoint(h.bps[fnname].Addr), t, "ClearBreakpoint")
+		}}
+
+}
+
+func (h *testseq2Helpers) notAtEntryPoint(t *testing.T) seqTest {
+	return seqTest{contNothing, func(p *proc.Target) {
+		pc := currentPC(p, t)
+		fn := p.BinInfo().PCToFunc(pc)
+		if pc == fn.Entry {
+			t.Fatalf("current PC is entry point")
+		}
+	}}
+}
+
+func (h *testseq2Helpers) next(n int) seqTest {
+	return seqTest{contNext, n}
+}
+
+func (h *testseq2Helpers) ifcond(v bool, a seqTest, b seqTest) seqTest {
+	if v {
+		return a
 	}
+	return b
+}
 
-	clearBreak := func(t *testing.T) seqTest {
-		return seqTest{
-			contNothing,
-			func(p *proc.Target) {
-				assertNoError(p.ClearBreakpoint(bp.Addr), t, "ClearBreakpoint")
-			}}
+func (h *testseq2Helpers) assertLocals(t *testing.T, varnames ...string) seqTest {
+	return seqTest{
+		contNothing,
+		func(p *proc.Target) {
+			scope, err := proc.GoroutineScope(p, p.CurrentThread())
+			assertNoError(err, t, "GoroutineScope")
+			vars, err := scope.Locals(0, "")
+			assertNoError(err, t, "Locals")
+
+			gotnames := make([]string, len(vars))
+			for i := range vars {
+				gotnames[i] = vars[i].Name
+			}
+
+			ok := true
+			if len(vars) != len(varnames) {
+				ok = false
+			} else {
+				for i := range vars {
+					if vars[i].Name != varnames[i] {
+						ok = false
+						break
+					}
+				}
+			}
+			if !ok {
+				t.Errorf("Wrong variable names, expected %q, got %q", varnames, gotnames)
+			}
+		},
 	}
+}
 
-	notAtEntryPoint := func(t *testing.T) seqTest {
-		return seqTest{contNothing, func(p *proc.Target) {
+func (h *testseq2Helpers) assertEval(t *testing.T, exprvals ...string) seqTest {
+	return seqTest{
+		contNothing,
+		func(p *proc.Target) {
+			scope, err := proc.GoroutineScope(p, p.CurrentThread())
+			assertNoError(err, t, "GoroutineScope")
+			for i := 0; i < len(exprvals); i += 2 {
+				expr, tgt := exprvals[i], exprvals[i+1]
+				v, err := scope.EvalExpression(expr, normalLoadConfig)
+				if err != nil {
+					t.Errorf("Could not evaluate %q: %v", expr, err)
+				} else {
+					out := api.ConvertVar(v).SinglelineString()
+					if out != tgt {
+						t.Errorf("Wrong value for %q, got %q expected %q", expr, out, tgt)
+					}
+				}
+			}
+		},
+	}
+}
+
+func (h *testseq2Helpers) assertFunc(t *testing.T, fname string) seqTest {
+	return seqTest{
+		contNothing,
+		func(p *proc.Target) {
 			pc := currentPC(p, t)
 			fn := p.BinInfo().PCToFunc(pc)
-			if pc == fn.Entry {
-				t.Fatalf("current PC is entry point")
+			if fn.Name != fname {
+				t.Errorf("Wrong function name, expected %s got %s", fname, fn.Name)
 			}
-		}}
+		},
 	}
+}
 
-	nx := func(n int) seqTest {
-		return seqTest{contNext, n}
-	}
-
-	nop := seqTest{contNothing, func(*proc.Target) {}}
-
-	ifcond := func(v bool, a seqTest, b seqTest) seqTest {
-		if v {
-			return a
-		}
-		return b
-	}
-
-	assertLocals := func(t *testing.T, varnames ...string) seqTest {
-		return seqTest{
-			contNothing,
-			func(p *proc.Target) {
-				scope, err := proc.GoroutineScope(p, p.CurrentThread())
-				assertNoError(err, t, "GoroutineScope")
-				vars, err := scope.Locals(0, "")
-				assertNoError(err, t, "Locals")
-
-				gotnames := make([]string, len(vars))
-				for i := range vars {
-					gotnames[i] = vars[i].Name
-				}
-
-				ok := true
-				if len(vars) != len(varnames) {
-					ok = false
-				} else {
-					for i := range vars {
-						if vars[i].Name != varnames[i] {
-							ok = false
-							break
-						}
-					}
-				}
-				if !ok {
-					t.Errorf("Wrong variable names, expected %q, got %q", varnames, gotnames)
-				}
-			},
-		}
-	}
-
-	assertEval := func(t *testing.T, exprvals ...string) seqTest {
-		return seqTest{
-			contNothing,
-			func(p *proc.Target) {
-				scope, err := proc.GoroutineScope(p, p.CurrentThread())
-				assertNoError(err, t, "GoroutineScope")
-				for i := 0; i < len(exprvals); i += 2 {
-					expr, tgt := exprvals[i], exprvals[i+1]
-					v, err := scope.EvalExpression(expr, normalLoadConfig)
-					if err != nil {
-						t.Errorf("Could not evaluate %q: %v", expr, err)
-					} else {
-						out := api.ConvertVar(v).SinglelineString()
-						if out != tgt {
-							t.Errorf("Wrong value for %q, got %q expected %q", expr, out, tgt)
-						}
-					}
-				}
-			},
-		}
-	}
-
-	assertFunc := func(t *testing.T, fname string) seqTest {
-		return seqTest{
-			contNothing,
-			func(p *proc.Target) {
-				pc := currentPC(p, t)
-				fn := p.BinInfo().PCToFunc(pc)
-				if fn.Name != fname {
-					t.Errorf("Wrong function name, expected %s got %s", fname, fn.Name)
-				}
-			},
-		}
-	}
+func TestRangeOverFuncNext(t *testing.T) {
+	h := makeTestseq2Helpers()
+	nx := h.next
+	assertLocals := h.assertLocals
+	assertEval := h.assertEval
+	assertFunc := h.assertFunc
 
 	withTestProcessArgs("rangeoverfunc", t, ".", []string{}, 0, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		t.Run("TestTrickyIterAll1", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestTrickyIterAll"),
+				h.funcBreak(t, "main.TestTrickyIterAll"),
 				{contContinue, 24}, // TestTrickyIterAll
-				ifcond(runtime.GOARCH == "arm64" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 25), nop, nx(25)),
+				h.ifcond(runtime.GOARCH == "arm64" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 25), h.nop, nx(25)),
 				nx(26),
 				nx(27), // for _, x := range ...
 				assertLocals(t, "trickItAll", "i"),
@@ -785,7 +704,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(29), // if i >= 36 {
 				nx(32),
 				nx(27), // for _, x := range ...
-				notAtEntryPoint(t),
+				h.notAtEntryPoint(t),
 				nx(28), // i += x
 				assertEval(t,
 					"i", "30",
@@ -799,15 +718,15 @@ func TestRangeOverFuncNext(t *testing.T) {
 
 		t.Run("TestTrickyIterAll2", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestTrickyIterAll2"),
+				h.funcBreak(t, "main.TestTrickyIterAll2"),
 				{contContinue, 37}, // TestTrickyIterAll2
-				ifcond(runtime.GOARCH == "arm64" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 25), nop, nx(38)),
+				h.ifcond(runtime.GOARCH == "arm64" && goversion.VersionAfterOrEqual(runtime.Version(), 1, 25), h.nop, nx(38)),
 				nx(39),
 				nx(40), // for _, x := range...
 				nx(41),
 				nx(42),
 				nx(40),
-				notAtEntryPoint(t),
+				h.notAtEntryPoint(t),
 				nx(41),
 				nx(42),
 				nx(42), // different function from the one above...
@@ -817,7 +736,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 
 		t.Run("TestBreak1", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestBreak1"),
+				h.funcBreak(t, "main.TestBreak1"),
 				{contContinue, 46}, // TestBreak1
 				nx(47),
 				nx(48), // for _, x := range... (x == -1)
@@ -837,7 +756,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(56), // result = append(result, y)
 				nx(57),
 				nx(52), // for _, y := range... (y == 2)
-				notAtEntryPoint(t),
+				h.notAtEntryPoint(t),
 				nx(53), // if y == 3
 				assertEval(t,
 					"x", "-1",
@@ -855,7 +774,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(59),
 
 				nx(48), // for _, x := range... (x == -2)
-				notAtEntryPoint(t),
+				h.notAtEntryPoint(t),
 				nx(49), // if x == -4
 				assertEval(t,
 					"result", "[]int len: 3, cap: 4, [1,2,-1]",
@@ -865,7 +784,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 				nx(56), // result = append(result, y)
 				nx(57),
 				nx(52), // for _, y := range... (y == 2)
-				notAtEntryPoint(t),
+				h.notAtEntryPoint(t),
 				nx(53), // if y == 3
 				nx(56), // result = append(result, y)
 				nx(57),
@@ -890,7 +809,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 
 		t.Run("TestBreak2", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestBreak2"),
+				h.funcBreak(t, "main.TestBreak2"),
 
 				{contContinue, 63}, // TestBreak2
 				nx(64),
@@ -950,7 +869,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 
 		t.Run("TestMultiCont0", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestMultiCont0"),
+				h.funcBreak(t, "main.TestMultiCont0"),
 				{contContinue, 81},
 				nx(82),
 				nx(84),
@@ -1018,7 +937,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 
 		t.Run("TestPanickyIterator1", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestPanickyIterator1"),
+				h.funcBreak(t, "main.TestPanickyIterator1"),
 				{contContinue, 110},
 				nx(111),
 				nx(112),
@@ -1051,7 +970,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 		t.Run("TestPanickyIterator2", func(t *testing.T) {
 			skipOn(t, "flaky stepping timeout", "riscv64")
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestPanickyIterator2"),
+				h.funcBreak(t, "main.TestPanickyIterator2"),
 				{contContinue, 125},
 				nx(126),
 				nx(127),
@@ -1079,7 +998,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 
 		t.Run("TestPanickyIteratorWithNewDefer", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestPanickyIteratorWithNewDefer"),
+				h.funcBreak(t, "main.TestPanickyIteratorWithNewDefer"),
 				{contContinue, 149},
 				nx(150),
 				nx(151),
@@ -1107,7 +1026,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 
 		t.Run("TestLongReturn", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestLongReturn"),
+				h.funcBreak(t, "main.TestLongReturn"),
 				{contContinue, 181},
 				nx(182), // for _, x := range (x == 1)
 				nx(183), // for _, y := range (y == 10)
@@ -1121,9 +1040,9 @@ func TestRangeOverFuncNext(t *testing.T) {
 
 		t.Run("TestGotoA1", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestGotoA1"),
+				h.funcBreak(t, "main.TestGotoA1"),
 				{contContinue, 192},
-				ifcond(runtime.GOARCH != "arm64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(193), nop),
+				h.ifcond(runtime.GOARCH != "arm64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(193), h.nop),
 				nx(194), // for _, x := range (x == -1)
 				nx(195), // result = append(result, x)
 				nx(196), // if x == -4
@@ -1155,7 +1074,7 @@ func TestRangeOverFuncNext(t *testing.T) {
 
 		t.Run("TestGotoB1", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestGotoB1"),
+				h.funcBreak(t, "main.TestGotoB1"),
 				{contContinue, 211},
 				nx(212),
 				nx(213), // for _, x := range (x == -1)
@@ -1183,9 +1102,9 @@ func TestRangeOverFuncNext(t *testing.T) {
 
 		t.Run("TestRecur", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestRecur"),
+				h.funcBreak(t, "main.TestRecur"),
 				{contContinue, 231},
-				clearBreak(t),
+				h.clearBreak(t, "main.TestRecur"),
 				nx(232), // result := []int{}
 				assertEval(t, "n", "3"),
 				nx(233), // if n > 0 {
@@ -1223,110 +1142,17 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 		t.Skip("broken due to inlined symbol names")
 	}
 
-	var bp *proc.Breakpoint
-
-	funcBreak := func(t *testing.T, fnname string) seqTest {
-		return seqTest{
-			contNothing,
-			func(p *proc.Target) {
-				bp = setFunctionBreakpoint(p, t, fnname)
-			}}
-	}
-
-	clearBreak := func(t *testing.T) seqTest {
-		return seqTest{
-			contNothing,
-			func(p *proc.Target) {
-				assertNoError(p.ClearBreakpoint(bp.Addr), t, "ClearBreakpoint")
-			}}
-	}
-
-	nx := func(n int) seqTest {
-		return seqTest{contNext, n}
-	}
-
-	nop := seqTest{contNothing, func(*proc.Target) {}}
-
-	ifcond := func(v bool, a seqTest, b seqTest) seqTest {
-		if v {
-			return a
-		}
-		return b
-	}
-
-	assertLocals := func(t *testing.T, varnames ...string) seqTest {
-		return seqTest{
-			contNothing,
-			func(p *proc.Target) {
-				scope, err := proc.GoroutineScope(p, p.CurrentThread())
-				assertNoError(err, t, "GoroutineScope")
-				vars, err := scope.Locals(0, "")
-				assertNoError(err, t, "Locals")
-
-				gotnames := make([]string, len(vars))
-				for i := range vars {
-					gotnames[i] = vars[i].Name
-				}
-
-				ok := true
-				if len(vars) != len(varnames) {
-					ok = false
-				} else {
-					for i := range vars {
-						if vars[i].Name != varnames[i] {
-							ok = false
-							break
-						}
-					}
-				}
-				if !ok {
-					t.Errorf("Wrong variable names, expected %q, got %q", varnames, gotnames)
-				}
-			},
-		}
-	}
-
-	assertEval := func(t *testing.T, exprvals ...string) seqTest {
-		return seqTest{
-			contNothing,
-			func(p *proc.Target) {
-				scope, err := proc.GoroutineScope(p, p.CurrentThread())
-				assertNoError(err, t, "GoroutineScope")
-				for i := 0; i < len(exprvals); i += 2 {
-					expr, tgt := exprvals[i], exprvals[i+1]
-					v, err := scope.EvalExpression(expr, normalLoadConfig)
-					if err != nil {
-						t.Errorf("Could not evaluate %q: %v", expr, err)
-					} else {
-						out := api.ConvertVar(v).SinglelineString()
-						if out != tgt {
-							t.Errorf("Wrong value for %q, got %q expected %q", expr, out, tgt)
-						}
-					}
-				}
-			},
-		}
-	}
-
-	assertFunc := func(t *testing.T, fname string) seqTest {
-		return seqTest{
-			contNothing,
-			func(p *proc.Target) {
-				pc := currentPC(p, t)
-				fn := p.BinInfo().PCToFunc(pc)
-				if fn.Name != fname {
-					t.Errorf("Wrong function name, expected %s got %s", fname, fn.Name)
-				}
-			},
-		}
-	}
+	h := makeTestseq2Helpers()
+	nx := h.next
+	assertLocals := h.assertLocals
+	assertEval := h.assertEval
 
 	withTestProcessArgs("rangeoverfunc", t, ".", []string{}, protest.EnableInlining, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		t.Run("TestTrickyIterAll1", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestTrickyIterAll"),
+				h.funcBreak(t, "main.TestTrickyIterAll"),
 				{contContinue, 24}, // TestTrickyIterAll
-				ifcond(runtime.GOARCH != "arm64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(25), nop),
+				h.ifcond(runtime.GOARCH != "arm64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(25), h.nop),
 				nx(26),
 				nx(27), // for _, x := range ...
 				assertLocals(t, "trickItAll", "i"),
@@ -1353,9 +1179,9 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 
 		t.Run("TestTrickyIterAll2", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestTrickyIterAll2"),
+				h.funcBreak(t, "main.TestTrickyIterAll2"),
 				{contContinue, 37}, // TestTrickyIterAll2
-				ifcond(runtime.GOARCH != "arm64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(38), nop),
+				h.ifcond(runtime.GOARCH != "arm64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(38), h.nop),
 				nx(39),
 				nx(40), // for _, x := range...
 				nx(41),
@@ -1371,7 +1197,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 
 		t.Run("TestBreak1", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestBreak1"),
+				h.funcBreak(t, "main.TestBreak1"),
 				{contContinue, 46}, // TestBreak1
 				nx(47),
 				nx(48), // for _, x := range... (x == -1)
@@ -1444,7 +1270,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 
 		t.Run("TestBreak2", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestBreak2"),
+				h.funcBreak(t, "main.TestBreak2"),
 
 				{contContinue, 63}, // TestBreak2
 				nx(64),
@@ -1508,7 +1334,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 
 		t.Run("TestMultiCont0", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestMultiCont0"),
+				h.funcBreak(t, "main.TestMultiCont0"),
 				{contContinue, 81},
 				nx(82),
 				nx(84),
@@ -1578,7 +1404,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 
 		t.Run("TestPanickyIterator1", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestPanickyIterator1"),
+				h.funcBreak(t, "main.TestPanickyIterator1"),
 				{contContinue, 110},
 				nx(111),
 				nx(112),
@@ -1611,7 +1437,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 		t.Run("TestPanickyIterator2", func(t *testing.T) {
 			skipOn(t, "flaky stepping timeout", "riscv64")
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestPanickyIterator2"),
+				h.funcBreak(t, "main.TestPanickyIterator2"),
 				{contContinue, 125},
 				nx(126),
 				nx(127),
@@ -1645,7 +1471,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 
 		t.Run("TestPanickyIteratorWithNewDefer", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestPanickyIteratorWithNewDefer"),
+				h.funcBreak(t, "main.TestPanickyIteratorWithNewDefer"),
 				{contContinue, 149},
 				nx(150),
 				nx(151),
@@ -1679,7 +1505,7 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 
 		t.Run("TestLongReturn", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestLongReturn"),
+				h.funcBreak(t, "main.TestLongReturn"),
 				{contContinue, 181},
 				nx(182), // for _, x := range (x == 1)
 				nx(183), // for _, y := range (y == 10)
@@ -1695,9 +1521,9 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 
 		t.Run("TestGotoA1", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestGotoA1"),
+				h.funcBreak(t, "main.TestGotoA1"),
 				{contContinue, 192},
-				ifcond(runtime.GOARCH != "arm64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(193), nop),
+				h.ifcond(runtime.GOARCH != "arm64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(193), h.nop),
 				nx(194), // for _, x := range (x == -1)
 				nx(195), // result = append(result, x)
 				nx(196), // if x == -4
@@ -1731,9 +1557,9 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 
 		t.Run("TestGotoB1", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestGotoB1"),
+				h.funcBreak(t, "main.TestGotoB1"),
 				{contContinue, 211},
-				ifcond(runtime.GOARCH != "arm64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(212), nop),
+				h.ifcond(runtime.GOARCH != "arm64" || !goversion.VersionAfterOrEqual(runtime.Version(), 1, 27), nx(212), h.nop),
 				nx(213), // for _, x := range (x == -1)
 				nx(214), // result = append(result, x)
 				nx(215), // if x == -4
@@ -1761,16 +1587,16 @@ func TestRangeOverFuncNextInlined(t *testing.T) {
 
 		t.Run("TestRecur", func(t *testing.T) {
 			testseq2intl(t, fixture, grp, p, nil, []seqTest{
-				funcBreak(t, "main.TestRecur"),
+				h.funcBreak(t, "main.TestRecur"),
 				{contContinue, 231},
-				clearBreak(t),
+				h.clearBreak(t, "main.TestRecur"),
 				nx(232), // result := []int{}
 				assertEval(t, "n", "3"),
 				nx(233), // if n > 0 {
 				nx(234), // TestRecur
 
 				nx(236), // for _, x := range (x == 10)
-				assertFunc(t, "main.TestRecur"),
+				h.assertFunc(t, "main.TestRecur"),
 				assertEval(t, "n", "3"),
 				nx(237), // result = ...
 				assertEval(t, "x", "10", "n", "3"),
