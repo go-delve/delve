@@ -35,6 +35,9 @@ builds:
         goarch: "386"
       - goos: windows
         goarch: ppc64le
+      # windows/arm64 is not yet stable, enable once no longer gated by the exp.winarm64 build tag.
+      - goos: windows
+        goarch: arm64
     ldflags:
       - -X main.Build={{.FullCommit}}
 
