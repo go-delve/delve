@@ -13,7 +13,7 @@ import (
 	"github.com/go-delve/delve/service/rpc2"
 )
 
-func scanForListenAddr(t *testing.T, scanner *bufio.Scanner) string {
+func scanForListenAddr(t *testing.T, scanner *bufio.Scanner, stderr *bytes.Buffer) string {
 	t.Helper()
 	const marker = " server listening at: "
 	for scanner.Scan() {
@@ -22,7 +22,7 @@ func scanForListenAddr(t *testing.T, scanner *bufio.Scanner) string {
 			return line[idx+len(marker):]
 		}
 	}
-	t.Fatal("dlv exited without printing listen address")
+	t.Fatalf("dlv exited without printing listen address (stderr: %s)", stderr.String())
 	return ""
 }
 
@@ -77,7 +77,7 @@ func TestIntegration_WaitForDebugger(t *testing.T) {
 	}
 
 	scanner := bufio.NewScanner(stdout)
-	listenAddr := scanForListenAddr(t, scanner)
+	listenAddr := scanForListenAddr(t, scanner, &stderr)
 
 	foundOutput := false
 	for scanner.Scan() {
@@ -94,9 +94,6 @@ func TestIntegration_WaitForDebugger(t *testing.T) {
 	client.Detach(true)
 	cmd.Wait()
 
-	if s := stderr.String(); s != "" {
-		t.Logf("stderr: %s", s)
-	}
 	if !foundOutput {
 		t.Error("expected 'DEBUGGER_FOUND' in output when running under debugger")
 	}
@@ -128,7 +125,7 @@ func TestIntegration_Attached(t *testing.T) {
 	}
 
 	scanner := bufio.NewScanner(stdout)
-	listenAddr := scanForListenAddr(t, scanner)
+	listenAddr := scanForListenAddr(t, scanner, &stderr)
 
 	foundOutput := false
 	for scanner.Scan() {
@@ -145,9 +142,6 @@ func TestIntegration_Attached(t *testing.T) {
 	client.Detach(true)
 	cmd.Wait()
 
-	if s := stderr.String(); s != "" {
-		t.Logf("stderr: %s", s)
-	}
 	if !foundOutput {
 		t.Error("expected 'ATTACHED' in output when running under debugger")
 	}
