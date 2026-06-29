@@ -71,6 +71,7 @@ const (
 	CS8                              = 0x30
 	CSIZE                            = 0x30
 	CSTOPB                           = 0x40
+	DM_MPATH_PROBE_PATHS             = 0x2000fd12
 	ECCGETLAYOUT                     = 0x41484d11
 	ECCGETSTATS                      = 0x40104d12
 	ECHOCTL                          = 0x200
@@ -112,12 +113,17 @@ const (
 	HIDIOCGRAWINFO                   = 0x40084803
 	HIDIOCGRDESC                     = 0x50044802
 	HIDIOCGRDESCSIZE                 = 0x40044801
+	HIDIOCREVOKE                     = 0x8004480d
 	HUPCL                            = 0x400
 	ICANON                           = 0x2
 	IEXTEN                           = 0x8000
 	IN_CLOEXEC                       = 0x400000
 	IN_NONBLOCK                      = 0x4000
+	IOCTL_MEI_NOTIFY_GET             = 0x40044803
+	IOCTL_MEI_NOTIFY_SET             = 0x80044802
 	IOCTL_VM_SOCKETS_GET_LOCAL_CID   = 0x200007b9
+	IPV6_FLOWINFO_MASK               = 0xfffffff
+	IPV6_FLOWLABEL_MASK              = 0xfffff
 	ISIG                             = 0x1
 	IUCLC                            = 0x200
 	IXOFF                            = 0x1000
@@ -155,6 +161,7 @@ const (
 	NFDBITS                          = 0x40
 	NLDLY                            = 0x100
 	NOFLSH                           = 0x80
+	NS_GET_ID                        = 0x4008b70d
 	NS_GET_MNTNS_ID                  = 0x4008b705
 	NS_GET_NSTYPE                    = 0x2000b703
 	NS_GET_OWNER_UID                 = 0x2000b704
@@ -239,6 +246,20 @@ const (
 	PPPIOCUNBRIDGECHAN               = 0x20007434
 	PPPIOCXFERUNIT                   = 0x2000744e
 	PR_SET_PTRACER_ANY               = 0xffffffffffffffff
+	PTP_CLOCK_GETCAPS                = 0x40503d01
+	PTP_CLOCK_GETCAPS2               = 0x40503d0a
+	PTP_ENABLE_PPS                   = 0x80043d04
+	PTP_ENABLE_PPS2                  = 0x80043d0d
+	PTP_EXTTS_REQUEST                = 0x80103d02
+	PTP_EXTTS_REQUEST2               = 0x80103d0b
+	PTP_MASK_CLEAR_ALL               = 0x20003d13
+	PTP_MASK_EN_SINGLE               = 0x80043d14
+	PTP_PEROUT_REQUEST               = 0x80383d03
+	PTP_PEROUT_REQUEST2              = 0x80383d0c
+	PTP_PIN_SETFUNC                  = 0x80603d07
+	PTP_PIN_SETFUNC2                 = 0x80603d10
+	PTP_SYS_OFFSET                   = 0x83403d05
+	PTP_SYS_OFFSET2                  = 0x83403d0e
 	PTRACE_GETFPAREGS                = 0x14
 	PTRACE_GETFPREGS                 = 0xe
 	PTRACE_GETFPREGS64               = 0x19
@@ -336,10 +357,14 @@ const (
 	RTC_WIE_ON                       = 0x2000700f
 	RTC_WKALM_RD                     = 0x40287010
 	RTC_WKALM_SET                    = 0x8028700f
+	SCM_DEVMEM_DMABUF                = 0x58
+	SCM_DEVMEM_LINEAR                = 0x57
+	SCM_INQ                          = 0x5d
 	SCM_TIMESTAMPING                 = 0x23
 	SCM_TIMESTAMPING_OPT_STATS       = 0x38
 	SCM_TIMESTAMPING_PKTINFO         = 0x3c
 	SCM_TIMESTAMPNS                  = 0x21
+	SCM_TS_OPT_ID                    = 0x5a
 	SCM_TXTIME                       = 0x3f
 	SCM_WIFI_STATUS                  = 0x25
 	SECCOMP_IOCTL_NOTIF_ADDFD        = 0x80182103
@@ -422,11 +447,15 @@ const (
 	SO_CNX_ADVICE                    = 0x37
 	SO_COOKIE                        = 0x3b
 	SO_DETACH_REUSEPORT_BPF          = 0x47
+	SO_DEVMEM_DMABUF                 = 0x58
+	SO_DEVMEM_DONTNEED               = 0x59
+	SO_DEVMEM_LINEAR                 = 0x57
 	SO_DOMAIN                        = 0x1029
 	SO_DONTROUTE                     = 0x10
 	SO_ERROR                         = 0x1007
 	SO_INCOMING_CPU                  = 0x33
 	SO_INCOMING_NAPI_ID              = 0x3a
+	SO_INQ                           = 0x5d
 	SO_KEEPALIVE                     = 0x8
 	SO_LINGER                        = 0x80
 	SO_LOCK_FILTER                   = 0x28
@@ -438,6 +467,7 @@ const (
 	SO_OOBINLINE                     = 0x100
 	SO_PASSCRED                      = 0x2
 	SO_PASSPIDFD                     = 0x55
+	SO_PASSRIGHTS                    = 0x5c
 	SO_PASSSEC                       = 0x1f
 	SO_PEEK_OFF                      = 0x26
 	SO_PEERCRED                      = 0x40
@@ -450,6 +480,7 @@ const (
 	SO_RCVBUFFORCE                   = 0x100b
 	SO_RCVLOWAT                      = 0x800
 	SO_RCVMARK                       = 0x54
+	SO_RCVPRIORITY                   = 0x5b
 	SO_RCVTIMEO                      = 0x2000
 	SO_RCVTIMEO_NEW                  = 0x44
 	SO_RCVTIMEO_OLD                  = 0x2000
@@ -666,6 +697,8 @@ const (
 	EDESTADDRREQ    = syscall.Errno(0x27)
 	EDOTDOT         = syscall.Errno(0x58)
 	EDQUOT          = syscall.Errno(0x45)
+	EFSBADCRC       = syscall.Errno(0x4c)
+	EFSCORRUPTED    = syscall.Errno(0x75)
 	EHOSTDOWN       = syscall.Errno(0x40)
 	EHOSTUNREACH    = syscall.Errno(0x41)
 	EHWPOISON       = syscall.Errno(0x87)
@@ -893,7 +926,7 @@ var errorList = [...]struct {
 	{114, "ELIBACC", "can not access a needed shared library"},
 	{115, "ENOTUNIQ", "name not unique on network"},
 	{116, "ERESTART", "interrupted system call should be restarted"},
-	{117, "EUCLEAN", "structure needs cleaning"},
+	{117, "EFSCORRUPTED", "structure needs cleaning"},
 	{118, "ENOTNAM", "not a XENIX named type file"},
 	{119, "ENAVAIL", "no XENIX semaphores available"},
 	{120, "EISNAM", "is a named type file"},

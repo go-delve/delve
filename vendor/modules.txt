@@ -82,8 +82,8 @@ golang.org/x/exp/slices
 # golang.org/x/sync v0.8.0
 ## explicit; go 1.18
 golang.org/x/sync/errgroup
-# golang.org/x/sys v0.26.0
-## explicit; go 1.18
+# golang.org/x/sys v0.46.0
+## explicit; go 1.25.0
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 # golang.org/x/telemetry v0.0.0-20241106142447-58a1122356f5
