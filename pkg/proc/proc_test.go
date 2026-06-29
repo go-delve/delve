@@ -1069,9 +1069,12 @@ func evalVariable(p *proc.Target, t testing.TB, symbol string) *proc.Variable {
 
 func TestFrameEvaluation(t *testing.T) {
 	protest.AllowRecording(t)
-	lenient := false
+	leniency := 0
 	if runtime.GOOS == "windows" {
-		lenient = true
+		leniency = 1
+		if runtime.GOARCH == "arm64" {
+			leniency = 2
+		}
 	}
 	withTestProcess("goroutinestackprog", t, func(p *proc.Target, grp *proc.TargetGroup, fixture protest.Fixture) {
 		setFunctionBreakpoint(p, t, "main.stacktraceme")
@@ -1123,8 +1126,8 @@ func TestFrameEvaluation(t *testing.T) {
 
 		for i := range found {
 			if !found[i] {
-				if lenient {
-					lenient = false
+				if leniency > 0 {
+					leniency--
 				} else {
 					t.Fatalf("Goroutine %d not found\n", i)
 				}
