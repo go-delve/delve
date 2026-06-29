@@ -414,7 +414,7 @@ func TestGeneratedDoc(t *testing.T) {
 	checkAutogenDoc(t, "Documentation/cli/config.md", "_scripts/gen-cli-docs.go", generatedBuf.Bytes())
 
 	// Checks gen-usage-docs.go
-	if runtime.GOARCH != "ppc64le" && runtime.GOARCH != "riscv64" {
+	if runtime.GOARCH != "ppc64le" && runtime.GOARCH != "riscv64" && !(runtime.GOOS == "windows" && runtime.GOARCH == "arm64") {
 		tempDir := t.TempDir()
 		cmd := exec.Command("go", "run", "_scripts/gen-usage-docs.go", tempDir)
 		cmd.Dir = protest.ProjectRoot()

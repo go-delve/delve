@@ -1114,6 +1114,10 @@ func TestFrameEvaluation(t *testing.T) {
 				continue
 			}
 			vval, _ := constant.Int64Val(v.Value)
+			if vval < 0 || vval >= int64(len(found)) {
+				t.Logf("Goroutine %d: unexpected value of i: %d\n", g.ID, vval)
+				continue
+			}
 			found[vval] = true
 		}
 
