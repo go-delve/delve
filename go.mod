@@ -15,7 +15,7 @@ require (
 	github.com/spf13/pflag v1.0.9
 	go.starlark.net v0.0.0-20231101134539-556fd59b42f6
 	go.yaml.in/yaml/v3 v3.0.4
-	golang.org/x/arch v0.11.0
+	golang.org/x/arch v0.28.0
 	golang.org/x/sys v0.26.0
 	golang.org/x/telemetry v0.0.0-20241106142447-58a1122356f5
 )
