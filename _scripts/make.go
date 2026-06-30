@@ -355,6 +355,8 @@ func testFlags() []string {
 	}
 	if NOTimeout {
 		testFlags = append(testFlags, "-timeout", "0")
+	} else if runtime.GOARCH == "riscv64" {
+		testFlags = append(testFlags, "-timeout", "20m")
 	}
 	if len(os.Getenv("TEAMCITY_VERSION")) > 0 {
 		testFlags = append(testFlags, "-json")

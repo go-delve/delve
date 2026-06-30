@@ -1,6 +1,6 @@
 module github.com/go-delve/delve
 
-go 1.25
+go 1.25.0
 
 require (
 	github.com/cilium/ebpf v0.11.0
@@ -16,7 +16,7 @@ require (
 	go.starlark.net v0.0.0-20231101134539-556fd59b42f6
 	go.yaml.in/yaml/v3 v3.0.4
 	golang.org/x/arch v0.11.0
-	golang.org/x/sys v0.26.0
+	golang.org/x/sys v0.46.0
 	golang.org/x/telemetry v0.0.0-20241106142447-58a1122356f5
 )
 

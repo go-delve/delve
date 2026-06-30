@@ -442,4 +442,13 @@ const (
 	SYS_LSM_SET_SELF_ATTR            = 4460
 	SYS_LSM_LIST_MODULES             = 4461
 	SYS_MSEAL                        = 4462
+	SYS_SETXATTRAT                   = 4463
+	SYS_GETXATTRAT                   = 4464
+	SYS_LISTXATTRAT                  = 4465
+	SYS_REMOVEXATTRAT                = 4466
+	SYS_OPEN_TREE_ATTR               = 4467
+	SYS_FILE_GETATTR                 = 4468
+	SYS_FILE_SETATTR                 = 4469
+	SYS_LISTNS                       = 4470
+	SYS_RSEQ_SLICE_YIELD             = 4471
 )

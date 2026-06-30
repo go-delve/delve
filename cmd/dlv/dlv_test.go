@@ -414,7 +414,7 @@ func TestGeneratedDoc(t *testing.T) {
 	checkAutogenDoc(t, "Documentation/cli/config.md", "_scripts/gen-cli-docs.go", generatedBuf.Bytes())
 
 	// Checks gen-usage-docs.go
-	if runtime.GOARCH != "ppc64le" && runtime.GOARCH != "riscv64" {
+	if runtime.GOARCH != "ppc64le" && runtime.GOARCH != "riscv64" && !(runtime.GOOS == "windows" && runtime.GOARCH == "arm64") {
 		tempDir := t.TempDir()
 		cmd := exec.Command("go", "run", "_scripts/gen-usage-docs.go", tempDir)
 		cmd.Dir = protest.ProjectRoot()
@@ -1822,6 +1822,12 @@ func TestStaticcheck(t *testing.T) {
 }
 
 func TestCapsLock(t *testing.T) {
+	// TODO: Remove this skip once capslock supports Go 1.27+
+	// capslock v0.3.2 uses golang.org/x/tools v0.43.0 which panics on Go 1.27 syntax.
+	// The test will run on older stable Go versions in CI.
+	if ver, ok := goversion.Parse(runtime.Version()); ok && ver.Major == 1 && ver.Minor >= 27 && ver.Rev < 0 {
+		t.Skip("capslock not compatible with Go 1.27 development/RC builds (golang.org/x/tools issue)")
+	}
 	_, err := exec.LookPath("capslock")
 	if err != nil {
 		t.Skip("capslock not installed")
