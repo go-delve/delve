@@ -421,7 +421,9 @@ func (dbp *nativeProcess) execPtraceFunc(fn func()) {
 }
 
 func (dbp *nativeProcess) postExit() {
-	dbp.exited.Store(true)
+	if dbp.exited.Swap(true) {
+		return
+	}
 	dbp.ptraceThread.release()
 	dbp.bi.Close()
 	if dbp.ctty != nil {
