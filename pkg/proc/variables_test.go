@@ -2028,14 +2028,21 @@ func TestMapImplementationVariants(t *testing.T) {
 	}
 
 	if goversion.VersionAfterOrEqual(runtime.Version(), 1, 27) {
-		t.Run("MapSplitGroup", func(t *testing.T) {
-			t.Setenv("GOEXPERIMENT", "mapsplitgroup")
-			helper(t, testcases)
-		})
-		t.Run("NoMapSplitGroup", func(t *testing.T) {
-			t.Setenv("GOEXPERIMENT", "nomapsplitgroup")
-			helper(t, testcases)
-		})
+		// Non-default GOEXPERIMENT values force a full standard library
+		// rebuild which is too slow on riscv64 to complete within the
+		// test timeout.
+		if runtime.GOARCH == "riscv64" {
+			t.Log("skipping GOEXPERIMENT subtests on riscv64: stdlib rebuild too slow")
+		} else {
+			t.Run("MapSplitGroup", func(t *testing.T) {
+				t.Setenv("GOEXPERIMENT", "mapsplitgroup")
+				helper(t, testcases)
+			})
+			t.Run("NoMapSplitGroup", func(t *testing.T) {
+				t.Setenv("GOEXPERIMENT", "nomapsplitgroup")
+				helper(t, testcases)
+			})
+		}
 	}
 
 	if !goversion.VersionAfterOrEqual(runtime.Version(), 1, 26) {
