@@ -231,6 +231,8 @@ func (c *Client) InitializeRequest() {
 		SupportsVariablePaging:       true,
 		SupportsRunInTerminalRequest: true,
 		SupportsMemoryReferences:     true,
+		SupportsMemoryEvent:          true,
+		SupportsInvalidatedEvent:     true,
 		Locale:                       "en-us",
 	}
 	c.send(request)

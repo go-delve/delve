@@ -6636,6 +6636,10 @@ func (h *helperForSetVariable) expectSetVariable0(ref int, name, value string, w
 	if got, want := h.c.ExpectSetVariableResponse(h.t), value; got.Success != true || got.Body.Value != want {
 		h.t.Errorf("SetVariableRequest(%v, %v)=%#v, want {Success=true, Body.Value=%q", name, value, got, want)
 	}
+	ie := h.c.ExpectInvalidatedEvent(h.t)
+	if len(ie.Body.Areas) != 1 && ie.Body.Areas[0] != "all" {
+		h.t.Errorf("expected 'all' invalidated areas, got %v", ie.Body.Areas)
+	}
 }
 
 func (h *helperForSetVariable) failSetVariable0(ref int, name, value, wantErrInfo string, wantStop bool) {
@@ -8596,6 +8600,10 @@ func TestWriteMemory(t *testing.T) {
 						if wr.Body.BytesWritten != len(newData) {
 							t.Fatalf("expected %d bytes written, got %d", len(newData), wr.Body.BytesWritten)
 						}
+						ie := client.ExpectInvalidatedEvent(t)
+						if len(ie.Body.Areas) != 1 && ie.Body.Areas[0] != "variables" {
+							t.Fatalf("expected 'varianles' invalidated areas, got %v", ie.Body.Areas)
+						}
 
 						client.ReadMemoryRequest(bytesVar.MemoryReference, 0, len(newData))
 						rm = client.ExpectReadMemoryResponse(t)
@@ -8611,6 +8619,10 @@ func TestWriteMemory(t *testing.T) {
 						wr = client.ExpectWriteMemoryResponse(t)
 						if wr.Body.BytesWritten != len(origData) {
 							t.Fatalf("expected %d bytes written, got %d", len(newData), wr.Body.BytesWritten)
+						}
+						ie = client.ExpectInvalidatedEvent(t)
+						if len(ie.Body.Areas) != 1 && ie.Body.Areas[0] != "variables" {
+							t.Fatalf("expected 'variables' invalidated areas, got %v", ie.Body.Areas)
 						}
 					},
 					disconnect: true,

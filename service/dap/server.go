@@ -337,6 +337,8 @@ type dapClientCapabilities struct {
 	supportsRunInTerminalRequest bool
 	supportsMemoryReferences     bool
 	supportsProgressReporting    bool
+	supportsMemoryEvent          bool
+	supportsInvalidatedEvent     bool
 }
 
 // DefaultLoadConfig controls how variables are loaded from the target's memory.
@@ -994,6 +996,8 @@ func (s *Session) setClientCapabilities(args dap.InitializeRequestArguments) {
 	s.clientCapabilities.supportsRunInTerminalRequest = args.SupportsRunInTerminalRequest
 	s.clientCapabilities.supportsVariablePaging = args.SupportsVariablePaging
 	s.clientCapabilities.supportsVariableType = args.SupportsVariableType
+	s.clientCapabilities.supportsMemoryEvent = args.SupportsMemoryEvent
+	s.clientCapabilities.supportsInvalidatedEvent = args.SupportsInvalidatedEvent
 }
 
 func cleanExeName(name string) string {
@@ -3652,6 +3656,17 @@ func (s *Session) onSetVariableRequest(request *dap.SetVariableRequest) {
 	// TODO(hyangah): instead of arg.Value, reload the variable and return
 	// the presentation of the new value.
 	s.send(response)
+
+	if s.clientCapabilities.supportsInvalidatedEvent {
+		// Enforce editors to reload full state after successfull variable update
+		// to fix problem described above
+		s.send(&dap.InvalidatedEvent{
+			Event: *s.newEvent("invalidated"),
+			Body: dap.InvalidatedEventBody{
+				Areas: []dap.InvalidatedAreas{"all"},
+			},
+		})
+	}
 }
 
 // onSetExpressionRequest sends a not-yet-implemented error response.
@@ -3788,6 +3803,16 @@ func (s *Session) onWriteMemoryRequest(request *dap.WriteMemoryRequest) {
 			BytesWritten: n,
 		},
 	})
+
+	if s.clientCapabilities.supportsInvalidatedEvent {
+		// Inform editor to refetch variables after changes
+		s.send(&dap.InvalidatedEvent{
+			Event: *s.newEvent("invalidated"),
+			Body: dap.InvalidatedEventBody{
+				Areas: []dap.InvalidatedAreas{"variables"},
+			},
+		})
+	}
 }
 
 func (s *Session) writeTargetMemory(addr uint64, data []byte) (int, error) {
