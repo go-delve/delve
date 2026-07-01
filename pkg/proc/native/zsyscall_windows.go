@@ -48,6 +48,7 @@ var (
 	procResumeThread               = modkernel32.NewProc("ResumeThread")
 	procContinueDebugEvent         = modkernel32.NewProc("ContinueDebugEvent")
 	procWriteProcessMemory         = modkernel32.NewProc("WriteProcessMemory")
+	procFlushInstructionCache      = modkernel32.NewProc("FlushInstructionCache")
 	procReadProcessMemory          = modkernel32.NewProc("ReadProcessMemory")
 	procDebugBreakProcess          = modkernel32.NewProc("DebugBreakProcess")
 	procWaitForDebugEvent          = modkernel32.NewProc("WaitForDebugEvent")
@@ -128,6 +129,18 @@ func _ContinueDebugEvent(processid uint32, threadid uint32, continuestatus uint3
 
 func _WriteProcessMemory(process syscall.Handle, baseaddr uintptr, buffer *byte, size uintptr, byteswritten *uintptr) (err error) {
 	r1, _, e1 := syscall.Syscall6(procWriteProcessMemory.Addr(), 5, uintptr(process), uintptr(baseaddr), uintptr(unsafe.Pointer(buffer)), uintptr(size), uintptr(unsafe.Pointer(byteswritten)), 0)
+	if r1 == 0 {
+		if e1 != 0 {
+			err = errnoErr(e1)
+		} else {
+			err = syscall.EINVAL
+		}
+	}
+	return
+}
+
+func _FlushInstructionCache(process syscall.Handle, baseaddr uintptr, size uintptr) (err error) {
+	r1, _, e1 := syscall.Syscall(procFlushInstructionCache.Addr(), 3, uintptr(process), uintptr(baseaddr), uintptr(size))
 	if r1 == 0 {
 		if e1 != 0 {
 			err = errnoErr(e1)

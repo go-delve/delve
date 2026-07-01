@@ -115,6 +115,10 @@ func (t *nativeThread) WriteMemory(addr uint64, data []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	// On ARM64 the instruction and data caches are not coherent,
+	// WriteProcessMemory only updates the data cache so we must flush
+	// the instruction cache explicitly. On x86/amd64 this is a no-op.
+	_ = _FlushInstructionCache(t.dbp.os.hProcess, uintptr(addr), uintptr(len(data)))
 	return int(count), nil
 }
 
