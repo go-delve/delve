@@ -138,6 +138,7 @@ type _DEBUG_EVENT struct {
 //sys	_ResumeThread(threadid syscall.Handle) (prevsuspcount uint32, err error) [failretval==0xffffffff] = kernel32.ResumeThread
 //sys	_ContinueDebugEvent(processid uint32, threadid uint32, continuestatus uint32) (err error) = kernel32.ContinueDebugEvent
 //sys	_WriteProcessMemory(process syscall.Handle, baseaddr uintptr, buffer *byte, size uintptr, byteswritten *uintptr) (err error) = kernel32.WriteProcessMemory
+//sys	_FlushInstructionCache(process syscall.Handle, baseaddr uintptr, size uintptr) (err error) = kernel32.FlushInstructionCache
 //sys	_ReadProcessMemory(process syscall.Handle, baseaddr uintptr, buffer *byte, size uintptr, bytesread *uintptr) (err error) = kernel32.ReadProcessMemory
 //sys	_DebugBreakProcess(process syscall.Handle) (err error) = kernel32.DebugBreakProcess
 //sys	_WaitForDebugEvent(debugevent *_DEBUG_EVENT, milliseconds uint32) (err error) = kernel32.WaitForDebugEvent
