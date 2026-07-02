@@ -18,20 +18,22 @@ func TestListConfig(t *testing.T) {
 			args: args{
 				args: &launchAttachArgs{},
 			},
-			want: formatConfig(0, false, false, "", []string{}, false, [][2]string{}, false, ""),
+			want: formatConfig(0, 0, 0, false, false, "", []string{}, false, [][2]string{}, false, ""),
 		},
 		{
 			name: "default values",
 			args: args{
 				args: &defaultArgs,
 			},
-			want: formatConfig(50, false, false, "", []string{}, false, [][2]string{}, false, ""),
+			want: formatConfig(50, 0, 0, false, false, "", []string{}, false, [][2]string{}, false, ""),
 		},
 		{
 			name: "custom values",
 			args: args{
 				args: &launchAttachArgs{
 					StackTraceDepth:              35,
+					MaxStringLen:                 1024,
+					MaxArrayValues:               128,
 					ShowGlobalVariables:          true,
 					GoroutineFilters:             "SomeFilter",
 					ShowPprofLabels:              []string{"SomeLabel"},
@@ -41,7 +43,7 @@ func TestListConfig(t *testing.T) {
 					followExecRegex:              "a.b?",
 				},
 			},
-			want: formatConfig(35, true, false, "SomeFilter", []string{"SomeLabel"}, false, [][2]string{{"hello", "world"}}, true, "a.b?"),
+			want: formatConfig(35, 1024, 128, true, false, "SomeFilter", []string{"SomeLabel"}, false, [][2]string{{"hello", "world"}}, true, "a.b?"),
 		},
 	}
 	for _, tt := range tests {
@@ -338,5 +340,68 @@ func TestConfigureSetSubstitutePath(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestLoadConfig(t *testing.T) {
+	tests := []struct {
+		name               string
+		args               launchAttachArgs
+		wantMaxStringLen   int
+		wantMaxArrayValues int
+	}{
+		{
+			name:               "defaults",
+			args:               defaultArgs,
+			wantMaxStringLen:   512,
+			wantMaxArrayValues: 64,
+		},
+		{
+			name: "custom limits",
+			args: func() launchAttachArgs {
+				args := defaultArgs
+				args.MaxStringLen = 4096
+				args.MaxArrayValues = 512
+				return args
+			}(),
+			wantMaxStringLen:   4096,
+			wantMaxArrayValues: 512,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Session{args: tt.args}
+			got := s.loadConfig()
+			if got.MaxStringLen != tt.wantMaxStringLen {
+				t.Errorf("loadConfig().MaxStringLen = %d, want %d", got.MaxStringLen, tt.wantMaxStringLen)
+			}
+			if got.MaxArrayValues != tt.wantMaxArrayValues {
+				t.Errorf("loadConfig().MaxArrayValues = %d, want %d", got.MaxArrayValues, tt.wantMaxArrayValues)
+			}
+			// The remaining fields always follow DefaultLoadConfig.
+			if got.FollowPointers != DefaultLoadConfig.FollowPointers ||
+				got.MaxVariableRecurse != DefaultLoadConfig.MaxVariableRecurse ||
+				got.MaxStructFields != DefaultLoadConfig.MaxStructFields {
+				t.Errorf("loadConfig() = %+v, want non-limit fields from DefaultLoadConfig %+v", got, DefaultLoadConfig)
+			}
+		})
+	}
+}
+
+func TestConfigureSetLoadLimits(t *testing.T) {
+	args := defaultArgs
+	updated, _, err := configureSet(&args, "maxStringLen 2048")
+	if err != nil || !updated {
+		t.Fatalf("configureSet(maxStringLen) = %v, %v; want updated, nil", updated, err)
+	}
+	if args.MaxStringLen != 2048 {
+		t.Errorf("MaxStringLen = %d, want 2048", args.MaxStringLen)
+	}
+	updated, _, err = configureSet(&args, "maxArrayValues 256")
+	if err != nil || !updated {
+		t.Fatalf("configureSet(maxArrayValues) = %v, %v; want updated, nil", updated, err)
+	}
+	if args.MaxArrayValues != 256 {
+		t.Errorf("MaxArrayValues = %d, want 256", args.MaxArrayValues)
 	}
 }
