@@ -1,6 +1,6 @@
 module github.com/go-delve/delve
 
-go 1.24
+go 1.25.0
 
 require (
 	github.com/cilium/ebpf v0.11.0
@@ -29,3 +29,5 @@ require (
 	golang.org/x/exp v0.0.0-20230224173230-c95f2b4c22f2 // indirect
 	golang.org/x/sync v0.8.0 // indirect
 )
+
+replace golang.org/x/arch v0.11.0 => github.com/zte-riscv/arch v0.0.0-20260703020913-057d8d6177f6
