@@ -76,6 +76,10 @@ type Term struct {
 	// should be resumed before quitting.
 	quitContinue bool
 
+	// detachNoKill is set to true by exitCommand when passed -d to signal that
+	// the target process should be left running, without prompting.
+	detachNoKill bool
+
 	longCommandMu         sync.Mutex
 	longCommandCancelFlag bool
 
@@ -593,12 +597,15 @@ func (t *Term) handleExit() (int, error) {
 
 		if doDetach {
 			kill := true
-			if t.client.AttachedToExistingProcess() {
+			if t.client.AttachedToExistingProcess() && !t.detachNoKill {
 				answer, err := yesno(t.line, "Would you like to kill the process? [Y/n] ", "yes")
 				if err != nil {
 					return 2, io.EOF
 				}
 				kill = answer
+			}
+			if t.detachNoKill {
+				kill = false
 			}
 			if err := t.client.Detach(kill); err != nil {
 				return 1, err
