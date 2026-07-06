@@ -288,6 +288,10 @@ type launchAttachArgs struct {
 	stopOnEntry bool
 	// StackTraceDepth is the maximum length of the returned list of stack frames.
 	StackTraceDepth int `cfgName:"stackTraceDepth"`
+	// MaxStringLen is the maximum number of bytes loaded for strings.
+	MaxStringLen int `cfgName:"maxStringLen"`
+	// MaxArrayValues is the maximum number of array, slice and map elements loaded.
+	MaxArrayValues int `cfgName:"maxArrayValues"`
 	// ShowGlobalVariables indicates if global package variables should be loaded.
 	ShowGlobalVariables bool `cfgName:"showGlobalVariables"`
 	// ShowRegisters indicates if register values should be loaded.
@@ -316,8 +320,12 @@ type launchAttachArgs struct {
 // TODO(polinasok): clean up this and its reference (Server.args)
 // in favor of default*Config variables defined in types.go.
 var defaultArgs = launchAttachArgs{
-	stopOnEntry:                  false,
-	StackTraceDepth:              50,
+	stopOnEntry:     false,
+	StackTraceDepth: 50,
+	// A zero MaxStringLen or MaxArrayValues means the corresponding
+	// DefaultLoadConfig limit applies until the client sets one explicitly.
+	MaxStringLen:                 0,
+	MaxArrayValues:               0,
 	ShowGlobalVariables:          false,
 	HideSystemGoroutines:         false,
 	ShowRegisters:                false,
@@ -355,6 +363,20 @@ var DefaultLoadConfig = proc.LoadConfig{
 	MaxStringLen:    512,
 	MaxArrayValues:  64,
 	MaxStructFields: -1,
+}
+
+// loadConfig returns the load configuration for this session:
+// DefaultLoadConfig with the string and array limits configured through
+// the launch/attach request or a config evaluation request.
+func (s *Session) loadConfig() proc.LoadConfig {
+	cfg := DefaultLoadConfig
+	if n := s.args.MaxStringLen; n > 0 {
+		cfg.MaxStringLen = n
+	}
+	if n := s.args.MaxArrayValues; n > 0 {
+		cfg.MaxArrayValues = n
+	}
+	return cfg
 }
 
 const (
@@ -437,6 +459,12 @@ func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) {
 	s.args.stopOnEntry = args.StopOnEntry
 	if depth := args.StackTraceDepth; depth > 0 {
 		s.args.StackTraceDepth = depth
+	}
+	if n := args.MaxStringLen; n > 0 {
+		s.args.MaxStringLen = n
+	}
+	if n := args.MaxArrayValues; n > 0 {
+		s.args.MaxArrayValues = n
 	}
 	s.args.ShowGlobalVariables = args.ShowGlobalVariables
 	s.args.ShowRegisters = args.ShowRegisters
@@ -2645,14 +2673,14 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 		suffix = " (warning: optimized function)"
 	}
 	// Retrieve arguments
-	args, err := s.debugger.FunctionArguments(int64(goid), frame, 0, DefaultLoadConfig)
+	args, err := s.debugger.FunctionArguments(int64(goid), frame, 0, s.loadConfig())
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToListArgs, "Unable to list args", err.Error())
 		return
 	}
 
 	// Retrieve local variables
-	locals, err := s.debugger.LocalVariables(int64(goid), frame, 0, DefaultLoadConfig)
+	locals, err := s.debugger.LocalVariables(int64(goid), frame, 0, s.loadConfig())
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToListLocals, "Unable to list locals", err.Error())
 		return
@@ -2677,7 +2705,7 @@ func (s *Session) onScopesRequest(request *dap.ScopesRequest) {
 			return
 		}
 		currPkgFilter := fmt.Sprintf("^%s\\.", currPkg)
-		globals, err := s.debugger.PackageVariables(currPkgFilter, DefaultLoadConfig)
+		globals, err := s.debugger.PackageVariables(currPkgFilter, s.loadConfig())
 		if err != nil {
 			s.sendErrorResponse(request.Request, UnableToListGlobals, "Unable to list globals", err.Error())
 			return
@@ -2786,7 +2814,7 @@ func (s *Session) maybeLoadResliced(v *fullyQualifiedVariable, start, count int)
 			return v, nil
 		}
 	}
-	indexedLoadConfig := DefaultLoadConfig
+	indexedLoadConfig := s.loadConfig()
 	indexedLoadConfig.MaxArrayValues = count
 	newV, err := s.debugger.LoadResliced(v.Variable, start, indexedLoadConfig)
 	if err != nil {
@@ -2999,7 +3027,7 @@ func (s *Session) metadataToDAPVariables(v *fullyQualifiedVariable) ([]dap.Varia
 
 		s.config.log.Debugf("loading %s (type %s) with %s", v.fullyQualifiedNameOrExpr, typeName, loadExpr)
 		// We know that this is an array/slice of Uint8 or Int32, so we will load up to MaxStringLen.
-		config := DefaultLoadConfig
+		config := s.loadConfig()
 		config.MaxArrayValues = config.MaxStringLen
 		vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, loadExpr, config)
 		if err == nil {
@@ -3108,7 +3136,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 		s.config.log.Debugf("loading %s (type %s) with %s", qualifiedNameOrExpr, typeName, loadExpr)
 		// Make sure we can load the pointers directly, not by updating just the child
 		// This is not really necessary now because users have no way of setting FollowPointers to false.
-		config := DefaultLoadConfig
+		config := s.loadConfig()
 		config.FollowPointers = true
 		vLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, loadExpr, config)
 		if err != nil {
@@ -3142,7 +3170,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 					cTypeName := api.PrettyTypeName(v.Children[0].DwarfType)
 					cLoadExpr := fmt.Sprintf("*(*%q)(%#x)", cTypeName, v.Children[0].Addr)
 					s.config.log.Debugf("loading *(%s) (type %s) with %s", qualifiedNameOrExpr, cTypeName, cLoadExpr)
-					cLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, cLoadExpr, DefaultLoadConfig)
+					cLoaded, err := s.debugger.EvalVariableInScope(-1, 0, 0, cLoadExpr, s.loadConfig())
 					if err != nil {
 						value += fmt.Sprintf(" - FAILED TO LOAD: %s", err)
 					} else {
@@ -3294,7 +3322,7 @@ func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 			}
 		}
 	} else { // {expression}
-		exprVar, err := s.debugger.EvalVariableInScope(int64(goid), frame, 0, expr, DefaultLoadConfig)
+		exprVar, err := s.debugger.EvalVariableInScope(int64(goid), frame, 0, expr, s.loadConfig())
 		if err != nil {
 			s.sendErrorResponseWithOpts(request.Request, UnableToEvaluateExpression, "Unable to evaluate expression", err.Error(), showErrorToUser)
 			return
@@ -3306,7 +3334,7 @@ func (s *Session) onEvaluateRequest(request *dap.EvaluateRequest) {
 			if exprVar.Kind == reflect.String && exprVar.Unreadable == nil {
 				if strVal := constant.StringVal(exprVar.Value); exprVar.Len > int64(len(strVal)) {
 					// Reload the string value with a bigger limit.
-					loadCfg := DefaultLoadConfig
+					loadCfg := s.loadConfig()
 					loadCfg.MaxStringLen = maxSingleStringLen
 					if v, err := s.debugger.EvalVariableInScope(int64(goid), frame, 0, request.Arguments.Expression, loadCfg); err != nil {
 						s.config.log.Debugf("Failed to load more for %v: %v", request.Arguments.Expression, err)
@@ -3347,7 +3375,7 @@ func (s *Session) doCall(goid, frame int, expr string) (*api.DebuggerState, []*p
 	// TODO: investigate whether we need to increase other limits. For example,
 	// the return value is a pointer to a temporary object, which can become
 	// invalid by other injected function calls. Do we care about such use cases?
-	loadCfg := DefaultLoadConfig
+	loadCfg := s.loadConfig()
 	loadCfg.MaxStringLen = maxStringLenInCallRetVars
 
 	// TODO(polina): since call will resume execution of all goroutines,
@@ -3586,7 +3614,7 @@ func (s *Session) onSetVariableRequest(request *dap.SetVariableRequest) {
 	// trying to update is valid and accessible from the top most frame & the
 	// current goroutine.
 	goid, frame := -1, 0
-	evaluated, err := s.debugger.EvalVariableInScope(int64(goid), frame, 0, evaluateName, DefaultLoadConfig)
+	evaluated, err := s.debugger.EvalVariableInScope(int64(goid), frame, 0, evaluateName, s.loadConfig())
 	if err != nil {
 		s.sendErrorResponse(request.Request, UnableToSetVariable, "Unable to lookup variable", err.Error())
 		return
@@ -4187,7 +4215,7 @@ func (s *Session) panicReason(goroutineID int64) (string, error) {
 }
 
 func (s *Session) getExprString(expr string, goroutineID int64, frame int) (string, error) {
-	exprVar, err := s.debugger.EvalVariableInScope(goroutineID, frame, 0, expr, DefaultLoadConfig)
+	exprVar, err := s.debugger.EvalVariableInScope(goroutineID, frame, 0, expr, s.loadConfig())
 	if err != nil {
 		return "", err
 	}
@@ -4603,7 +4631,7 @@ func (s *Session) logBreakpointMessage(bp *api.Breakpoint, goid int64) bool {
 func (msg *logMessage) evaluate(s *Session, goid int64) string {
 	evaluated := make([]any, len(msg.args))
 	for i := range msg.args {
-		exprVar, err := s.debugger.EvalVariableInScope(goid, 0, 0, msg.args[i], DefaultLoadConfig)
+		exprVar, err := s.debugger.EvalVariableInScope(goid, 0, 0, msg.args[i], s.loadConfig())
 		if err != nil {
 			evaluated[i] = fmt.Sprintf("{eval err: %e}", err)
 			continue

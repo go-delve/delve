@@ -166,7 +166,7 @@ func (s *Session) examineMemory(goid, frame int, argstr string) (string, error) 
 	var address uint64
 
 	if args.IsExpr {
-		val, err := s.debugger.EvalVariableInScope(int64(goid), frame, 0, args.Operand, DefaultLoadConfig)
+		val, err := s.debugger.EvalVariableInScope(int64(goid), frame, 0, args.Operand, s.loadConfig())
 		if err != nil {
 			return "", err
 		}
