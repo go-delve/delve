@@ -463,6 +463,9 @@ func TestScopePrefix(t *testing.T) {
 			if err != nil {
 				t.Fatalf("could not parse value %q of i for goroutine %d frame %d: %v", out, gid, fid, err)
 			}
+			if ival < 0 || ival >= len(seen) {
+				t.Fatalf("value of i (%d) for goroutine %d frame %d out of expected range [0,%d); raw output %q; stack: %q; goroutines: %q", ival, gid, fid, len(seen), out, stackOut, goroutinesOut)
+			}
 			seen[ival] = true
 		}
 
