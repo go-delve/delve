@@ -399,9 +399,11 @@ If regex is specified only package variables with a name matching it will be ret
 Argument -a shows more registers. Individual registers can also be displayed by 'print' and 'display'. See Documentation/cli/expr.md.`},
 		{aliases: []string{"exit", "quit", "q"}, cmdFn: exitCommand, helpMsg: `Exit the debugger.
 
-	exit [-c]
+	exit [-c] [-d]
 
-When connected to a headless instance started with the --accept-multiclient, pass -c to resume the execution of the target process before disconnecting.`},
+When connected to a headless instance started with the --accept-multiclient, pass -c to resume the execution of the target process before disconnecting.
+
+Pass -d to detach from the target process, leaving it running, without being prompted whether to kill it.`},
 		{aliases: []string{"list", "ls", "l"}, cmdFn: listCommand, helpMsg: `Show source code.
 
 	[goroutine <n>] [frame <m>] list [<locspec>]
@@ -3148,7 +3150,8 @@ func (ere ExitRequestError) Error() string {
 }
 
 func exitCommand(t *Term, ctx callContext, args string) error {
-	if args == "-c" {
+	switch args {
+	case "-c":
 		if !t.client.IsMulticlient() {
 			return errors.New("not connected to an --accept-multiclient server")
 		}
@@ -3167,6 +3170,12 @@ func exitCommand(t *Term, ctx callContext, args string) error {
 			}
 		}
 		t.quitContinue = true
+	case "-d":
+		t.detachNoKill = true
+	case "":
+		// no arguments
+	default:
+		return fmt.Errorf("unknown argument %q to exit", args)
 	}
 	return ExitRequestError{}
 }

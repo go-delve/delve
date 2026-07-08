@@ -355,9 +355,11 @@ Aliases: x
 ## exit
 Exit the debugger.
 
-	exit [-c]
+	exit [-c] [-d]
 
 When connected to a headless instance started with the --accept-multiclient, pass -c to resume the execution of the target process before disconnecting.
+
+Pass -d to detach from the target process, leaving it running, without being prompted whether to kill it.
 
 Aliases: quit q
 
