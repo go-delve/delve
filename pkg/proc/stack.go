@@ -588,11 +588,13 @@ func (it *stackIterator) advanceRegs() (callFrameRegs op.DwarfRegisters, ret uin
 			stable = (bp != 0 && bp+2*ptrSize == cfa)
 
 			// Disable hybrid FP unwinding on Windows when DW_AT_producer is missing
-			// or unparsable (otherwise canUseFP could activate despite the Go 1.24/1.25
-			// guard), and for Go 1.24/1.25 due to test failures. See golang/go#63630.
+			// or unparsable (otherwise canUseFP could activate despite the Go 1.24+
+			// guard), and for Go 1.24 and later due to test failures. See
+			// golang/go#63630. Open-ended since the upstream issue is still
+			// unresolved as of Go 1.27.
 			if it.bi.GOOS == "windows" {
 				ver := goversion.ParseProducer(it.bi.Producer())
-				if ver.Major < 1 || !ver.IsDevelBuild() && ver.Major == 1 && (ver.Minor == 24 || ver.Minor == 25) {
+				if ver.Major < 1 || !ver.IsDevelBuild() && ver.Major == 1 && ver.Minor >= 24 {
 					stable = false
 				}
 			}
