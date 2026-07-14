@@ -88,6 +88,7 @@ const (
 	DW_CFA_val_offset_sf                   // op1: ULEB128, op2: SLEB128
 	DW_CFA_val_expression                  // op1: ULEB128, op2: BLOCK
 	DW_CFA_lo_user            = 0x1c       // op1: BLOCK
+	DW_CFA_GNU_args_size      = 0x2e       // op1: ULEB128
 	DW_CFA_hi_user            = 0x3f       // op1: ULEB128 register, op2: BLOCK
 	DW_CFA_advance_loc        = (0x1 << 6) // High 2 bits: 0x1, low 6: delta
 	DW_CFA_offset             = (0x2 << 6) // High 2 bits: 0x2, low 6: register
@@ -143,6 +144,7 @@ var fnlookup = map[byte]instruction{
 	DW_CFA_val_expression:     valexpression,
 	DW_CFA_lo_user:            louser,
 	DW_CFA_hi_user:            hiuser,
+	DW_CFA_GNU_args_size:      argssize,
 }
 
 func executeCIEInstructions(cie *CommonInformationEntry) *FrameContext {
@@ -461,4 +463,8 @@ func louser(frame *FrameContext) {
 
 func hiuser(frame *FrameContext) {
 	frame.buf.Next(1)
+}
+
+func argssize(frame *FrameContext) {
+	leb128.DecodeUnsigned(frame.buf)
 }
