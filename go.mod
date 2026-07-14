@@ -18,6 +18,7 @@ require (
 	golang.org/x/arch v0.28.0
 	golang.org/x/sys v0.46.0
 	golang.org/x/telemetry v0.0.0-20241106142447-58a1122356f5
+	golang.org/x/text v0.40.0
 )
 
 require (
@@ -27,5 +28,5 @@ require (
 	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	golang.org/x/exp v0.0.0-20230224173230-c95f2b4c22f2 // indirect
-	golang.org/x/sync v0.8.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
 )
