@@ -156,7 +156,7 @@ See also: "help on", "help cond" and "help clear"`},
 
 The memory location is specified with the same expression language used by 'print', for example:
 
-	watch v
+	watch -r v
 	watch -w *(*int)(0x1400007c018)
 
 will watch the address of variable 'v' and writes to an int at addr '0x1400007c018'.
