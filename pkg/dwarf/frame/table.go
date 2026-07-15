@@ -177,7 +177,7 @@ func executeDwarfProgramUntilPC(fde *FrameDescriptionEntry, pc uint64) *FrameCon
 }
 
 func (frame *FrameContext) executeDwarfProgram() {
-	for frame.buf.Len() > 0 {
+	for frame.buf.Len() > 0 && frame.err == nil {
 		executeDwarfInstruction(frame)
 	}
 }
@@ -190,7 +190,7 @@ func (frame *FrameContext) ExecuteUntilPC(instructions []byte) error {
 	// We only need to execute the instructions until
 	// ctx.loc > ctx.address (which is the address we
 	// are currently at in the traced process).
-	for frame.address >= frame.loc && frame.buf.Len() > 0 {
+	for frame.address >= frame.loc && frame.buf.Len() > 0 && frame.err == nil {
 		executeDwarfInstruction(frame)
 	}
 	return frame.err
