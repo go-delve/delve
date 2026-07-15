@@ -3138,6 +3138,10 @@ func TestClientServer_breakpointOnFuncWithABIWrapper(t *testing.T) {
 }
 
 func TestClientServer_chanGoroutines(t *testing.T) {
+	ver, _ := goversion.Parse(runtime.Version())
+	if ver.IsDevelBuild() {
+		t.Skip("skip on development version")
+	}
 	withTestClient2("changoroutines", t, func(c service.Client) {
 		ver := c.GetVersion()
 		goVer := goversion.ParseProducer(ver.TargetGoVersion)
