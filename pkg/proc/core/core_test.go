@@ -19,6 +19,7 @@ import (
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/test"
+	"golang.org/x/text/encoding/unicode"
 )
 
 var buildMode string
@@ -559,8 +560,9 @@ func procdump(t *testing.T, exePath string) string {
 	exeDir := filepath.Dir(exePath)
 	cmd := exec.Command("procdump64", "-accepteula", "-ma", "-n", "1", "-s", "3", "-x", exeDir, exePath, "quit")
 	out, err := cmd.CombinedOutput() // procdump exits with non-zero status on success, so we have to ignore the error here
-	if !strings.Contains(string(out), "Dump count reached.") {
-		t.Fatalf("possible error running procdump64, output: %q, error: %v", string(out), err)
+	outStr := decodeProcdumpOutput(out)
+	if !strings.Contains(outStr, "Dump count reached.") {
+		t.Fatalf("possible error running procdump64, output: %q, error: %v", outStr, err)
 	}
 
 	fis, err := os.ReadDir(exeDir)
@@ -581,6 +583,20 @@ func procdump(t *testing.T, exePath string) string {
 
 	t.Fatalf("could not find dump file")
 	return ""
+}
+
+// decodeProcdumpOutput handles procdump64 output which may be UTF-16LE encoded.
+func decodeProcdumpOutput(out []byte) string {
+	s := string(out)
+	if strings.Contains(s, "Dump count reached.") {
+		return s
+	}
+	// ProcDump v12.01+ may produce UTF-16LE output.
+	decoder := unicode.UTF16(unicode.LittleEndian, unicode.UseBOM).NewDecoder()
+	if decoded, err := decoder.Bytes(out); err == nil {
+		return string(decoded)
+	}
+	return s
 }
 
 func mustSupportCore(t *testing.T) {
