@@ -222,6 +222,13 @@ type LaunchAttachCommonConfig struct {
 	// The debug adapter will replace the local path with the remote path in all of the calls.
 	// See also Documentation/cli/substitutepath.md.
 	SubstitutePath []SubstitutePath `json:"substitutePath,omitempty"`
+
+	// ShowRawStrings indicates whether escape characters (newlines, tabs, etc.)
+	// in string values should be preserved as actual control characters rather
+	// than being displayed as escaped sequences like \n, \t. When enabled,
+	// multi-line strings will appear as multi-line in the debugger UI.
+	// Default is false.
+	ShowRawStrings bool `json:"showRawStrings,omitempty"`
 }
 
 // SubstitutePath defines a mapping from a local path to the remote path.

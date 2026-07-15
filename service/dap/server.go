@@ -314,6 +314,11 @@ type launchAttachArgs struct {
 	followExec bool `cfgName:"followExec"`
 	// followExecRegex is a regular expression. Only child processes with a command line matching the regular expression will be followed.
 	followExecRegex string `cfgName:"followExecRegex"`
+	// ShowRawStrings indicates whether escape characters (newlines, tabs, etc.)
+	// in string values should be preserved as actual control characters rather
+	// than being displayed as escaped sequences like \n, \t. When enabled,
+	// multi-line strings will appear as multi-line in the debugger UI.
+	ShowRawStrings bool `cfgName:"showRawStrings"`
 }
 
 // defaultArgs borrows the defaults for the arguments from the original vscode-go adapter.
@@ -335,6 +340,7 @@ var defaultArgs = launchAttachArgs{
 	substitutePathServerToClient: [][2]string{},
 	followExec:                   false,
 	followExecRegex:              "",
+	ShowRawStrings:               false, // default: keep current behavior
 }
 
 // dapClientCapabilities captures arguments from initialize request that
@@ -467,6 +473,7 @@ func (s *Session) setLaunchAttachArgs(args LaunchAttachCommonConfig) {
 		s.args.MaxArrayValues = n
 	}
 	s.args.ShowGlobalVariables = args.ShowGlobalVariables
+	s.args.ShowRawStrings = args.ShowRawStrings
 	s.args.ShowRegisters = args.ShowRegisters
 	s.args.HideSystemGoroutines = args.HideSystemGoroutines
 	s.args.GoroutineFilters = args.GoroutineFilters
@@ -3116,7 +3123,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 		}
 		return s.variableHandles.create(&fullyQualifiedVariable{v, qualifiedNameOrExpr, false /*not a scope*/, 0})
 	}
-	value = formatVar(v)
+	value = formatVar(v, s.args.ShowRawStrings)
 	if v.Unreadable != nil {
 		return value, 0
 	}
@@ -3130,7 +3137,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 		// TODO(polina): Get *proc.Variable object from debugger instead. Export a function to set v.loaded to false
 		// and call v.loadValue gain with a different load config. It's more efficient, and it's guaranteed to keep
 		// working with generics.
-		value = formatVar(v)
+		value = formatVar(v, s.args.ShowRawStrings)
 		typeName := api.PrettyTypeName(v.DwarfType)
 		loadExpr := fmt.Sprintf("*(*%q)(%#x)", typeName, v.Addr)
 		s.config.log.Debugf("loading %s (type %s) with %s", qualifiedNameOrExpr, typeName, loadExpr)
@@ -3144,7 +3151,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 		} else {
 			v.Children = vLoaded.Children
 			v.Value = vLoaded.Value
-			value = formatVar(v)
+			value = formatVar(v, s.args.ShowRawStrings)
 		}
 		return value
 	}
@@ -3176,7 +3183,7 @@ func (s *Session) convertVariableWithOpts(v *proc.Variable, qualifiedNameOrExpr 
 					} else {
 						cLoaded.Name = v.Children[0].Name // otherwise, this will be the pointer expression
 						v.Children = []proc.Variable{*cLoaded}
-						value = formatVar(v)
+						value = formatVar(v, s.args.ShowRawStrings)
 					}
 				} else {
 					value = reloadVariable(v, qualifiedNameOrExpr)
@@ -4791,6 +4798,10 @@ func (s *syncflag) raise() {
 	s.cond.Broadcast()
 }
 
-func formatVar(v *proc.Variable) string {
-	return api.ConvertVar(v).StringWithOptions("", "", api.PrettyShortenType)
+func formatVar(v *proc.Variable, rawString bool) string {
+	flags := api.PrettyShortenType
+	if rawString {
+		flags |= api.PrettyRawString
+	}
+	return api.ConvertVar(v).StringWithOptions("", "", flags)
 }
