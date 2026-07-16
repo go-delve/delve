@@ -4408,9 +4408,8 @@ showRawStrings	%v
 
 // TestEvaluateEscapeStrings reproduces https://github.com/go-delve/delve/issues/4245.
 // Tests both the default behavior (showRawStrings=false) where strings are
-// displayed with Go's %q escaping, and the expanded behavior
-// (showRawStrings=true) where escape characters are preserved as actual
-// control characters.
+// displayed with Go's %q (quoted and escaped), and the expanded behavior
+// (showRawStrings=true) where strings are printed as-is with %s.
 func TestEvaluateEscapeStrings(t *testing.T) {
 	type testCase struct {
 		showRawStrings bool
@@ -4433,12 +4432,12 @@ func TestEvaluateEscapeStrings(t *testing.T) {
 		},
 		{
 			showRawStrings: true,
-			multiline:      "\"hello\nworld\"",
-			withTabs:       "\"col1\tcol2\tcol3\"",
-			mixed:          "\"line1\nline2\tindented\nline3\"",
-			backslash:      "\"C:\\\\Users\\\\test\"",
-			carriageRet:    "\"line1\r\nline2\"",
-			withQuote:      "\"he said \\\"hello\\\"\"",
+			multiline:      "hello\nworld",
+			withTabs:       "col1\tcol2\tcol3",
+			mixed:          "line1\nline2\tindented\nline3",
+			backslash:      "C:\\Users\\test",
+			carriageRet:    "line1\r\nline2",
+			withQuote:      "he said \"hello\"",
 		},
 	}
 
@@ -4506,8 +4505,8 @@ func TestEvaluateEscapeStringsWithCall(t *testing.T) {
 		},
 		{
 			showRawStrings: true,
-			funcMultiline:  "\"func\nline1\nline2\"",
-			funcWithTabs:   "\"func\tcol1\tcol2\"",
+			funcMultiline:  "func\nline1\nline2",
+			funcWithTabs:   "func\tcol1\tcol2",
 		},
 	}
 

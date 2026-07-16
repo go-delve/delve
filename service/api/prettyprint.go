@@ -26,9 +26,7 @@ const (
 	prettyIncludeType
 	PrettyNewlines    // pretty print variable on multiple lines
 	PrettyShortenType // pretty print variable shortening types when they are printed
-	PrettyRawString   // when formatting strings, preserve raw escape characters (\n, \t, etc.)
-	                  // instead of using Go's %q escaping. Intended for DAP where multi-line
-	                  // values are supported by the protocol.
+	PrettyRawString   // print strings as-is without any modification, like %s
 )
 
 func (flags PrettyFlags) top() bool         { return flags&prettyTop != 0 }
@@ -272,11 +270,7 @@ func (v *Variable) writeBasicType(buf io.Writer, fmtstr string, flags PrettyFlag
 				s = fmt.Sprintf("%s...+%d more", s, int(v.Len)-len(s))
 			}
 			if flags.rawString() {
-				// Preserve raw escape characters (newlines, tabs, etc.) in the
-				// output. Only escape double-quotes and backslashes to keep the
-				// output valid as a quoted string. Intended for DAP where
-				// multi-line values are supported.
-				fmt.Fprintf(buf, "%s", quoteRawString(s))
+				fmt.Fprintf(buf, "%s", s)
 			} else {
 				fmt.Fprintf(buf, "%q", s)
 			}
@@ -284,27 +278,6 @@ func (v *Variable) writeBasicType(buf io.Writer, fmtstr string, flags PrettyFlag
 		}
 		fmt.Fprintf(buf, fmtstr, v.Value)
 	}
-}
-
-// quoteRawString produces a double-quoted Go string literal that preserves
-// raw escape characters (newlines, tabs, etc.) in the output. Only
-// double-quotes and backslashes are escaped. This is intended for DAP where
-// the protocol supports multi-line values in the Variable result field.
-func quoteRawString(s string) string {
-	var buf bytes.Buffer
-	buf.WriteByte('"')
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		case '"':
-			buf.WriteString(`\"`)
-		case '\\':
-			buf.WriteString(`\\`)
-		default:
-			buf.WriteByte(s[i])
-		}
-	}
-	buf.WriteByte('"')
-	return buf.String()
 }
 
 func ExtractIntValue(s string) string {

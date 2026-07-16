@@ -117,10 +117,8 @@ type Config struct {
 	// output.
 	TraceShowTimestamp bool `yaml:"trace-show-timestamp"`
 
-	// ShowRawStrings controls whether escape characters (newlines, tabs, etc.)
-	// in string values should be preserved as actual control characters when
-	// printing variables. When enabled, multi-line strings will appear as
-	// multi-line in the output.
+	// ShowRawStrings controls whether string values are printed as-is with %s
+	// (no quoting or escaping) rather than with Go's %q (quoted and escaped).
 	ShowRawStrings bool `yaml:"show-raw-strings"`
 
 	// Prompt is the string printed before each command. If empty, the
@@ -153,7 +151,7 @@ See also Documentation/cli/substitutepath.md for how the rules are applied.
 	"max-string-len":            "Maximum string length used when printing variables.\n",
 	"max-array-values":          "Maximum number of array values when printing variables.\n",
 	"max-variable-recurse":      "Maximum number of nested struct members when printing variables.\n",
-	"show-raw-strings":         "If true, escape characters (\\n, \\t, etc.) in string values are preserved as actual control characters when printing, displaying multi-line strings as multi-line.\n",
+	"show-raw-strings":         "If true, print string values as-is with %s (no quoting or escaping) rather than with Go's %q.\n",
 	"disassemble-flavor":        "Disassembler syntax. Can be 'intel', 'gun' or 'go'.\n",
 	"show-location-expr":        "If true the 'whatis' command will print the DWARF location expression of its argument.\n",
 	"source-list-line-color":    "Source list line-number color, as a terminal escape sequence.\n",
