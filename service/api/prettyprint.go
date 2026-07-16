@@ -26,12 +26,14 @@ const (
 	prettyIncludeType
 	PrettyNewlines    // pretty print variable on multiple lines
 	PrettyShortenType // pretty print variable shortening types when they are printed
+	PrettyRawString   // print strings as-is without any modification, like %s
 )
 
 func (flags PrettyFlags) top() bool         { return flags&prettyTop != 0 }
 func (flags PrettyFlags) includeType() bool { return flags&prettyIncludeType != 0 }
 func (flags PrettyFlags) newlines() bool    { return flags&PrettyNewlines != 0 }
 func (flags PrettyFlags) shortenType() bool { return flags&PrettyShortenType != 0 }
+func (flags PrettyFlags) rawString() bool   { return flags&PrettyRawString != 0 }
 
 func (flags PrettyFlags) set(flag PrettyFlags, v bool) PrettyFlags {
 	if v {
@@ -200,7 +202,7 @@ func (v *Variable) writeTo(buf io.Writer, flags PrettyFlags, indent, fmtstr stri
 			}
 		}
 	default:
-		v.writeBasicType(buf, fmtstr)
+		v.writeBasicType(buf, fmtstr, flags)
 	}
 }
 
@@ -212,7 +214,7 @@ func (v *Variable) writePointerTo(buf io.Writer, flags PrettyFlags) {
 	}
 }
 
-func (v *Variable) writeBasicType(buf io.Writer, fmtstr string) {
+func (v *Variable) writeBasicType(buf io.Writer, fmtstr string, flags PrettyFlags) {
 	if v.Value == "" && v.Kind != reflect.String {
 		fmt.Fprintf(buf, "(unknown %s)", v.Kind)
 		return
@@ -267,7 +269,11 @@ func (v *Variable) writeBasicType(buf io.Writer, fmtstr string) {
 			if len(s) != int(v.Len) {
 				s = fmt.Sprintf("%s...+%d more", s, int(v.Len)-len(s))
 			}
-			fmt.Fprintf(buf, "%q", s)
+			if flags.rawString() {
+				fmt.Fprintf(buf, "%s", s)
+			} else {
+				fmt.Fprintf(buf, "%q", s)
+			}
 			return
 		}
 		fmt.Fprintf(buf, fmtstr, v.Value)

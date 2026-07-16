@@ -652,6 +652,14 @@ func (t *Term) addDisplay(expr, fmtstr string) {
 	t.displays = append(t.displays, displayEntry{expr: expr, fmtstr: fmtstr})
 }
 
+// rawStringFlag returns the PrettyRawString flag if the config enables it.
+func (t *Term) rawStringFlag() api.PrettyFlags {
+	if t.conf.ShowRawStrings {
+		return api.PrettyRawString
+	}
+	return 0
+}
+
 func (t *Term) printDisplay(i int) {
 	expr, fmtstr := t.displays[i].expr, t.displays[i].fmtstr
 	val, err := t.client.EvalVariable(api.EvalScope{GoroutineID: -1}, expr, ShortLoadConfig)
@@ -662,7 +670,7 @@ func (t *Term) printDisplay(i int) {
 		fmt.Fprintf(t.stdout, "%d: %s = error %v\n", i, expr, err)
 		return
 	}
-	fmt.Fprintf(t.stdout, "%d: %s = %s\n", i, val.Name, val.StringWithOptions("", fmtstr, 0))
+	fmt.Fprintf(t.stdout, "%d: %s = %s\n", i, val.Name, val.StringWithOptions("", fmtstr, t.rawStringFlag()))
 }
 
 func (t *Term) printDisplays() {

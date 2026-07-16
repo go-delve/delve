@@ -1997,3 +1997,49 @@ func TestCommandPromptExpansion(t *testing.T) {
 		}
 	})
 }
+
+
+// TestPrintShowRawStrings tests the show-raw-strings config option that
+// controls whether escape characters in string values are displayed as
+// escaped sequences (\n, \t) or as actual control characters (newlines, tabs).
+func TestPrintShowRawStrings(t *testing.T) {
+	withTestTerminal("escapestrings", t, func(term *FakeTerminal) {
+		// Continue to runtime.Breakpoint() in main.
+		term.MustExec("continue")
+
+		// --- Default behavior (show-raw-strings=false): escaped ---
+		out := term.MustExec("print withTabs")
+		// Default: literal \t in output
+		if !strings.Contains(out, `\t`) {
+			t.Fatalf("default: expected escaped \\t in output, got %q", out)
+		}
+
+		out = term.MustExec("print multiline")
+		// Default: literal \n in output
+		if !strings.Contains(out, `\n`) {
+			t.Fatalf("default: expected escaped \\n in output, got %q", out)
+		}
+
+		// --- Enable show-raw-strings ---
+		term.MustExec("config show-raw-strings true")
+
+		out = term.MustExec("print withTabs")
+		// With raw strings: actual tabs, no literal \t
+		if strings.Contains(out, `\t`) {
+			t.Fatalf("raw: expected actual tabs, got escaped \\t in output: %q", out)
+		}
+		if !strings.Contains(out, "\t") {
+			t.Fatalf("raw: expected actual tab character, got %q", out)
+		}
+
+		out = term.MustExec("print multiline")
+		// With raw strings: actual newlines, no literal \n
+		if strings.Contains(out, `\n`) {
+			t.Fatalf("raw: expected actual newlines, got escaped \\n in output: %q", out)
+		}
+		lines := strings.Split(out, "\n")
+		if len(lines) < 3 { // at least: "hello, world", "" (empty trailing)
+			t.Fatalf("raw: expected multi-line output, got %q", out)
+		}
+	})
+}

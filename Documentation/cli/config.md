@@ -16,6 +16,7 @@ position | Controls how the current position in the program is displayed (source
 prompt | Controls Delve's command line prompt. Use `help config prompt` for documentation on the available escape codes.
 prompt-color | Prompt color, as a terminal escape sequence.
 show-location-expr | If true the 'whatis' command will print the DWARF location expression of its argument.
+show-raw-strings | If true, print string values as-is with %s (no quoting or escaping) rather than with Go's %q.
 source-list-arrow-color | Source list arrow color, as a terminal escape sequence.
 source-list-comment-color | Source list comment color, as a terminal escape sequence.
 source-list-keyword-color | Source list keyword color, as a terminal escape sequence.

@@ -18,14 +18,14 @@ func TestListConfig(t *testing.T) {
 			args: args{
 				args: &launchAttachArgs{},
 			},
-			want: formatConfig(0, 0, 0, false, false, "", []string{}, false, [][2]string{}, false, ""),
+			want: formatConfig(0, 0, 0, false, false, "", []string{}, false, [][2]string{}, false, "", false),
 		},
 		{
 			name: "default values",
 			args: args{
 				args: &defaultArgs,
 			},
-			want: formatConfig(50, 0, 0, false, false, "", []string{}, false, [][2]string{}, false, ""),
+			want: formatConfig(50, 0, 0, false, false, "", []string{}, false, [][2]string{}, false, "", false),
 		},
 		{
 			name: "custom values",
@@ -41,15 +41,18 @@ func TestListConfig(t *testing.T) {
 					substitutePathServerToClient: [][2]string{{"world", "hello"}},
 					followExec:                   true,
 					followExecRegex:              "a.b?",
+					ShowRawStrings:               true,
 				},
 			},
-			want: formatConfig(35, 1024, 128, true, false, "SomeFilter", []string{"SomeLabel"}, false, [][2]string{{"hello", "world"}}, true, "a.b?"),
+			want: formatConfig(35, 1024, 128, true, false, "SomeFilter", []string{"SomeLabel"}, false, [][2]string{{"hello", "world"}}, true, "a.b?", true),
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := listConfig(tt.args.args); got != tt.want {
 				t.Errorf("listConfig() = %v, want %v", got, tt.want)
+				t.Errorf("got  = %v", got)
+				t.Errorf("want %v", tt.want)
 			}
 		})
 	}
