@@ -226,7 +226,7 @@ class TestBuild(val os: String, val arch: String, val version: String, buildId: 
                 }
                 val ubuntuVersion = when (arch) {
                     "riscv64" -> "24.04"
-                    else -> "20.04"
+                    else -> "24.04"
                 }
                 dockerCommand {
                     name = "Pull Ubuntu"
