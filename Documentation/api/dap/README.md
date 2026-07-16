@@ -34,6 +34,7 @@ In addition to the general [DAP spec](https://microsoft.github.io/debug-adapter-
     showGlobalVariables<br>
     showRegisters<br>
     showPprofLabels<br>
+    showRawStrings<br>
     hideSystemGoroutines<br>
     goroutineFilters
     </tr>
