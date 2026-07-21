@@ -6745,6 +6745,22 @@ func (h *helperForSetVariable) expectSetVariable(ref int, name, value string) {
 	h.expectSetVariable0(ref, name, value, false)
 }
 
+func (h *helperForSetVariable) expectSetVariableWithType(ref int, name, value, wantType string) {
+	h.t.Helper()
+	h.c.SetVariableRequest(ref, name, value)
+	got := h.c.ExpectSetVariableResponse(h.t)
+	if got.Success != true || got.Body.Value != value {
+		h.t.Errorf("SetVariableRequest(%v, %v)=%#v, want {Success=true, Body.Value=%q}", name, value, got, value)
+	}
+	if got.Body.Type != wantType {
+		h.t.Errorf("SetVariableRequest(%v, %v) Body.Type=%q, want %q", name, value, got.Body.Type, wantType)
+	}
+	ie := h.c.ExpectInvalidatedEvent(h.t)
+	if len(ie.Body.Areas) != 1 && ie.Body.Areas[0] != "all" {
+		h.t.Errorf("expected 'all' invalidated areas, got %v", ie.Body.Areas)
+	}
+}
+
 func (h *helperForSetVariable) failSetVariable(ref int, name, value, wantErrInfo string) {
 	h.t.Helper()
 	h.failSetVariable0(ref, name, value, wantErrInfo, false)
@@ -6835,7 +6851,7 @@ func TestSetVariable(t *testing.T) {
 
 					// int
 					checkVarExact(t, locals, -1, "a2", "a2", "6", "int", noChildren)
-					tester.expectSetVariable(localsScope, "a2", "42")
+					tester.expectSetVariableWithType(localsScope, "a2", "42", "int")
 					tester.evaluate("a2", "42", noChildren)
 
 					tester.failSetVariable(localsScope, "a2", "false", "can not convert")

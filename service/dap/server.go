@@ -3688,6 +3688,7 @@ func (s *Session) onSetVariableRequest(request *dap.SetVariableRequest) {
 
 	response := &dap.SetVariableResponse{Response: *s.newResponse(request.Request)}
 	response.Body.Value = arg.Value
+	response.Body.Type = s.getTypeIfSupported(evaluated)
 	// TODO(hyangah): instead of arg.Value, reload the variable and return
 	// the presentation of the new value.
 	s.send(response)
