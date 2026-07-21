@@ -224,15 +224,18 @@ class TestBuild(val os: String, val arch: String, val version: String, buildId: 
                         dockerArch
                     }
                 }
-                val ubuntuVersion = when (arch) {
-                    "riscv64" -> "24.04"
-                    else -> "24.04"
+                // Ubuntu dropped i386 Docker images after 20.04 (no 22.04/24.04
+                // tags exist on docker.io/i386/ubuntu). Keep linux/386 on Debian,
+                // which still publishes maintained i386 images.
+                val dockerImage = when (arch) {
+                    "386" -> "i386/debian:bookworm"
+                    else -> "$dockerArch/ubuntu:24.04"
                 }
                 dockerCommand {
-                    name = "Pull Ubuntu"
+                    name = "Pull Linux Image"
                     commandType = other {
                         subCommand = "pull"
-                        commandArgs = "$dockerArch/ubuntu:$ubuntuVersion"
+                        commandArgs = dockerImage
                     }
                 }
                 dockerCommand {
@@ -245,7 +248,7 @@ class TestBuild(val os: String, val arch: String, val version: String, buildId: 
                         --env CI=true
                         --privileged
                         --platform linux/$dockerPlatformArch
-                        $dockerArch/ubuntu:$ubuntuVersion
+                        $dockerImage
                         /delve/_scripts/test_linux.sh ${"go$version"} $arch
                     """.trimIndent()
                     }
