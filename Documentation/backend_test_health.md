@@ -25,8 +25,7 @@ Tests skipped by each supported backend:
 	* 1 broken
 * linux/loong64 skipped = 1
 	* 1 not working on linux/loong64
-* linux/ppc64le skipped = 3
-	* 1 broken - cgo stacktraces
+* linux/ppc64le skipped = 2
 	* 2 not working on linux/ppc64le when -gcflags=-N -l is passed
 * linux/ppc64le/native skipped = 1
 	* 1 broken in linux ppc64le

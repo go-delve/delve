@@ -129,14 +129,22 @@ func ppc64leSwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) boo
 			it.atend = true
 			return true
 		case "crosscall2":
-			//The offsets get from runtime/cgo/asm_ppc64x.s:10
-			newsp, _ := readUintRaw(it.mem, it.regs.SP()+8*24, int64(it.bi.Arch.PtrSize()))
-			newbp, _ := readUintRaw(it.mem, it.regs.SP()+8*14, int64(it.bi.Arch.PtrSize()))
-			newlr, _ := readUintRaw(it.mem, it.regs.SP()+16, int64(it.bi.Arch.PtrSize()))
+			// Frame size from STACK_AND_SAVE_HOST_TO_GO_ABI(32) in
+			// runtime/cgo/abi_ppc64x.h: extra(32) + FIXED_FRAME(32) +
+			// SAVE_GPR(18*8) + SAVE_FPR(18*8) + SAVE_VR(12*16).
+			const frameSize = 32 + 32 + 18*8 + 18*8 + 12*16
+			newsp := it.regs.SP() + frameSize
+			// R31 (frame pointer) is the last GPR saved by SAVE_GPR at
+			// extra+FIXED_FRAME+8*17.
+			bpoff := uint64(32 + 32 + 8*17)
+			newbp, _ := readUintRaw(it.mem, it.regs.SP()+bpoff, int64(it.bi.Arch.PtrSize()))
+			// LR is saved into the caller's frame at 16(SP) before the stack
+			// allocation (host ELFv2 ABI).
+			newlr, _ := readUintRaw(it.mem, newsp+16, int64(it.bi.Arch.PtrSize()))
 			if it.regs.Reg(it.regs.BPRegNum) != nil {
 				it.regs.Reg(it.regs.BPRegNum).Uint64Val = newbp
 			} else {
-				reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+8*14)
+				reg, _ := it.readRegisterAt(it.regs.BPRegNum, it.regs.SP()+bpoff)
 				it.regs.AddReg(it.regs.BPRegNum, reg)
 			}
 			it.regs.Reg(it.regs.LRRegNum).Uint64Val = newlr
