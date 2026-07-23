@@ -202,8 +202,10 @@ func loong64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) boo
 		return true
 
 	case "crosscall2":
-		// The offsets get from runtime/cgo/asm_loong64.s:25
-		newsp, _ := readUintRaw(it.mem, it.regs.SP()+8*23, int64(it.bi.Arch.PtrSize()))
+		// The offsets get from runtime/cgo/asm_loong64.s
+		// crosscall2 does ADDV $(-23*8), R3 but does not spill SP. The caller's SP is
+		// therefore current SP + 23*8, not a value loaded from that address.
+		newsp := it.regs.SP() + 8*23
 		newbp, _ := readUintRaw(it.mem, it.regs.SP()+8*4, int64(it.bi.Arch.PtrSize()))
 		newlr, _ := readUintRaw(it.mem, it.regs.SP()+8*22, int64(it.bi.Arch.PtrSize()))
 		if it.regs.Reg(it.regs.BPRegNum) != nil {

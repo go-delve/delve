@@ -226,7 +226,9 @@ func riscv64SwitchStack(it *stackIterator, callFrameRegs *op.DwarfRegisters) boo
 
 	case "crosscall2":
 		// The offsets get from runtime/cgo/asm_riscv64.s
-		newsp, _ := readUintRaw(it.mem, it.regs.SP()+8*29, int64(it.bi.Arch.PtrSize()))
+		// crosscall2 does ADD $(-8*29), X2 but does not spill SP. The caller's SP is
+		// therefore current SP + 8*29, not a value loaded from that address.
+		newsp := it.regs.SP() + 8*29
 		newbp, _ := readUintRaw(it.mem, it.regs.SP()+8*4, int64(it.bi.Arch.PtrSize()))
 		newlr, _ := readUintRaw(it.mem, it.regs.SP()+8*16, int64(it.bi.Arch.PtrSize()))
 		if it.regs.Reg(it.regs.BPRegNum) != nil {
