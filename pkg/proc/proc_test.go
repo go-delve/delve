@@ -3127,6 +3127,10 @@ func TestCgoStacktrace(t *testing.T) {
 		}
 	}
 	skipOn(t, "broken - cgo stacktraces", "386")
+	// C frames on windows/arm64 use PE .pdata/.xdata (clang), not DWARF
+	// .debug_frame; Delve does not unwind via .pdata yet. Unrelated to the
+	// arm64 crosscall2 SP restore.
+	skipOn(t, "broken - cgo stacktraces", "windows", "arm64")
 	protest.MustHaveCgo(t)
 
 	// Tests that:
