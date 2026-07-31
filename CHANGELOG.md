@@ -3,6 +3,33 @@
 All notable changes to this project will be documented in this file.
 This project adheres to Semantic Versioning.
 
+## [1.27.1] 2026-07-31
+
+### Added
+
+- Option to display expanded/raw strings in DAP and terminal (#4395, @hitzhangjie)
+- `exit -d` to detach without killing the process (#4387, @larrasket)
+- Configurable variable load limits in DAP (#4385, @larrasket)
+- Support for `DW_CFA_GNU_args_size` CFA opcode (#4392, @minhbq-99)
+
+### Fixed
+
+- Fix arm64 crosscall2 SP restore for cgo stacktraces (#4399, @derekparker)
+- Set type in DAP SetVariable response (#4397, @larrasket)
+- Check error after executing CFA opcode (#4391, @minhbq-99)
+- Fix watch command documentation (#4390, @aarzilli)
+- Widen windows/arm64 frame-pointer unwinding guard (#4388, @derekparker)
+- Flush instruction cache after writing memory on Windows/ARM64 (#4383, @derekparker)
+- Fix panic on follow-exec process exit (#4383, @derekparker)
+- Send InvalidatedEvent after SetVariable and WriteMemory (#4384, @DrSergei)
+- Fix C frame attribution for noreturn calls in stack unwinding (#4374, @alexsaezm)
+
+### Changed
+
+- Update disassembler dependency (#4379, @aarzilli)
+- Ignore unsupported windows/arm64 architecture in goreleaser (#4381, @FranciscoPombal)
+- Miscellaneous improvements to tests and build configuration (#4400, #4396, #4394, #4393, #4382, #4378, #4377, @derekparker, @aarzilli)
+
 ## [1.27.0] 2026-06-19
 
 ### Added
