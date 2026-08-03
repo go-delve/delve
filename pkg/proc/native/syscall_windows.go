@@ -1,10 +1,15 @@
-//go:generate go run $GOROOT/src/syscall/mksyscall_windows.go -output zsyscall_windows.go syscall_windows.go
+//go:generate go run -mod=mod golang.org/x/sys/windows/mkwinsyscall -output zsyscall_windows.go syscall_windows.go
 
 package native
 
 import (
 	"syscall"
+
+	"golang.org/x/sys/windows"
 )
+
+// dbgUiRemoteBreakin is inspected by address but never called by Delve.
+var dbgUiRemoteBreakin = windows.NewLazySystemDLL("ntdll.dll").NewProc("DbgUiRemoteBreakin")
 
 type _NTSTATUS int32
 

@@ -19,6 +19,7 @@ const (
 
 var (
 	errERROR_IO_PENDING error = syscall.Errno(errnoERROR_IO_PENDING)
+	errERROR_EINVAL     error = syscall.EINVAL
 )
 
 // errnoErr returns common boxed Errno values, to prevent
@@ -26,7 +27,7 @@ var (
 func errnoErr(e syscall.Errno) error {
 	switch e {
 	case 0:
-		return nil
+		return errERROR_EINVAL
 	case errnoERROR_IO_PENDING:
 		return errERROR_IO_PENDING
 	}
@@ -37,200 +38,147 @@ func errnoErr(e syscall.Errno) error {
 }
 
 var (
-	modntdll    = windows.NewLazySystemDLL("ntdll.dll")
 	modkernel32 = windows.NewLazySystemDLL("kernel32.dll")
+	modntdll    = windows.NewLazySystemDLL("ntdll.dll")
 
-	procNtQueryInformationThread   = modntdll.NewProc("NtQueryInformationThread")
-	dbgUiRemoteBreakin             = modntdll.NewProc("DbgUiRemoteBreakin")
-	procGetThreadContext           = modkernel32.NewProc("GetThreadContext")
-	procSetThreadContext           = modkernel32.NewProc("SetThreadContext")
-	procSuspendThread              = modkernel32.NewProc("SuspendThread")
-	procResumeThread               = modkernel32.NewProc("ResumeThread")
 	procContinueDebugEvent         = modkernel32.NewProc("ContinueDebugEvent")
-	procWriteProcessMemory         = modkernel32.NewProc("WriteProcessMemory")
-	procFlushInstructionCache      = modkernel32.NewProc("FlushInstructionCache")
-	procReadProcessMemory          = modkernel32.NewProc("ReadProcessMemory")
-	procDebugBreakProcess          = modkernel32.NewProc("DebugBreakProcess")
-	procWaitForDebugEvent          = modkernel32.NewProc("WaitForDebugEvent")
 	procDebugActiveProcess         = modkernel32.NewProc("DebugActiveProcess")
 	procDebugActiveProcessStop     = modkernel32.NewProc("DebugActiveProcessStop")
-	procQueryFullProcessImageNameW = modkernel32.NewProc("QueryFullProcessImageNameW")
-	procVirtualQueryEx             = modkernel32.NewProc("VirtualQueryEx")
+	procDebugBreakProcess          = modkernel32.NewProc("DebugBreakProcess")
+	procFlushInstructionCache      = modkernel32.NewProc("FlushInstructionCache")
+	procGetThreadContext           = modkernel32.NewProc("GetThreadContext")
 	procIsWow64Process             = modkernel32.NewProc("IsWow64Process")
+	procQueryFullProcessImageNameW = modkernel32.NewProc("QueryFullProcessImageNameW")
+	procReadProcessMemory          = modkernel32.NewProc("ReadProcessMemory")
+	procResumeThread               = modkernel32.NewProc("ResumeThread")
+	procSetThreadContext           = modkernel32.NewProc("SetThreadContext")
+	procSuspendThread              = modkernel32.NewProc("SuspendThread")
+	procVirtualQueryEx             = modkernel32.NewProc("VirtualQueryEx")
+	procWaitForDebugEvent          = modkernel32.NewProc("WaitForDebugEvent")
+	procWriteProcessMemory         = modkernel32.NewProc("WriteProcessMemory")
+	procNtQueryInformationThread   = modntdll.NewProc("NtQueryInformationThread")
 )
 
-func _NtQueryInformationThread(threadHandle syscall.Handle, infoclass int32, info uintptr, infolen uint32, retlen *uint32) (status _NTSTATUS) {
-	r0, _, _ := syscall.Syscall6(procNtQueryInformationThread.Addr(), 5, uintptr(threadHandle), uintptr(infoclass), uintptr(info), uintptr(infolen), uintptr(unsafe.Pointer(retlen)), 0)
-	status = _NTSTATUS(r0)
-	return
-}
-
-func _GetThreadContext(thread syscall.Handle, context *_CONTEXT) (err error) {
-	r1, _, e1 := syscall.Syscall(procGetThreadContext.Addr(), 2, uintptr(thread), uintptr(unsafe.Pointer(context)), 0)
-	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
-func _SetThreadContext(thread syscall.Handle, context *_CONTEXT) (err error) {
-	r1, _, e1 := syscall.Syscall(procSetThreadContext.Addr(), 2, uintptr(thread), uintptr(unsafe.Pointer(context)), 0)
-	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
-func _SuspendThread(threadid syscall.Handle) (prevsuspcount uint32, err error) {
-	r0, _, e1 := syscall.Syscall(procSuspendThread.Addr(), 1, uintptr(threadid), 0, 0)
-	prevsuspcount = uint32(r0)
-	if prevsuspcount == 0xffffffff {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
-func _ResumeThread(threadid syscall.Handle) (prevsuspcount uint32, err error) {
-	r0, _, e1 := syscall.Syscall(procResumeThread.Addr(), 1, uintptr(threadid), 0, 0)
-	prevsuspcount = uint32(r0)
-	if prevsuspcount == 0xffffffff {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
 func _ContinueDebugEvent(processid uint32, threadid uint32, continuestatus uint32) (err error) {
-	r1, _, e1 := syscall.Syscall(procContinueDebugEvent.Addr(), 3, uintptr(processid), uintptr(threadid), uintptr(continuestatus))
+	r1, _, e1 := syscall.SyscallN(procContinueDebugEvent.Addr(), uintptr(processid), uintptr(threadid), uintptr(continuestatus))
 	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
-func _WriteProcessMemory(process syscall.Handle, baseaddr uintptr, buffer *byte, size uintptr, byteswritten *uintptr) (err error) {
-	r1, _, e1 := syscall.Syscall6(procWriteProcessMemory.Addr(), 5, uintptr(process), uintptr(baseaddr), uintptr(unsafe.Pointer(buffer)), uintptr(size), uintptr(unsafe.Pointer(byteswritten)), 0)
-	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
-func _FlushInstructionCache(process syscall.Handle, baseaddr uintptr, size uintptr) (err error) {
-	r1, _, e1 := syscall.Syscall(procFlushInstructionCache.Addr(), 3, uintptr(process), uintptr(baseaddr), uintptr(size))
-	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
-func _ReadProcessMemory(process syscall.Handle, baseaddr uintptr, buffer *byte, size uintptr, bytesread *uintptr) (err error) {
-	r1, _, e1 := syscall.Syscall6(procReadProcessMemory.Addr(), 5, uintptr(process), uintptr(baseaddr), uintptr(unsafe.Pointer(buffer)), uintptr(size), uintptr(unsafe.Pointer(bytesread)), 0)
-	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
-func _DebugBreakProcess(process syscall.Handle) (err error) {
-	r1, _, e1 := syscall.Syscall(procDebugBreakProcess.Addr(), 1, uintptr(process), 0, 0)
-	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
-	}
-	return
-}
-
-func _WaitForDebugEvent(debugevent *_DEBUG_EVENT, milliseconds uint32) (err error) {
-	r1, _, e1 := syscall.Syscall(procWaitForDebugEvent.Addr(), 2, uintptr(unsafe.Pointer(debugevent)), uintptr(milliseconds), 0)
-	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
+		err = errnoErr(e1)
 	}
 	return
 }
 
 func _DebugActiveProcess(processid uint32) (err error) {
-	r1, _, e1 := syscall.Syscall(procDebugActiveProcess.Addr(), 1, uintptr(processid), 0, 0)
+	r1, _, e1 := syscall.SyscallN(procDebugActiveProcess.Addr(), uintptr(processid))
 	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
+		err = errnoErr(e1)
 	}
 	return
 }
 
 func _DebugActiveProcessStop(processid uint32) (err error) {
-	r1, _, e1 := syscall.Syscall(procDebugActiveProcessStop.Addr(), 1, uintptr(processid), 0, 0)
+	r1, _, e1 := syscall.SyscallN(procDebugActiveProcessStop.Addr(), uintptr(processid))
 	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
+		err = errnoErr(e1)
 	}
 	return
 }
 
-func _QueryFullProcessImageName(process syscall.Handle, flags uint32, exename *uint16, size *uint32) (err error) {
-	r1, _, e1 := syscall.Syscall6(procQueryFullProcessImageNameW.Addr(), 4, uintptr(process), uintptr(flags), uintptr(unsafe.Pointer(exename)), uintptr(unsafe.Pointer(size)), 0, 0)
+func _DebugBreakProcess(process syscall.Handle) (err error) {
+	r1, _, e1 := syscall.SyscallN(procDebugBreakProcess.Addr(), uintptr(process))
 	if r1 == 0 {
-		if e1 != 0 {
-			err = errnoErr(e1)
-		} else {
-			err = syscall.EINVAL
-		}
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func _FlushInstructionCache(process syscall.Handle, baseaddr uintptr, size uintptr) (err error) {
+	r1, _, e1 := syscall.SyscallN(procFlushInstructionCache.Addr(), uintptr(process), uintptr(baseaddr), uintptr(size))
+	if r1 == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func _GetThreadContext(thread syscall.Handle, context *_CONTEXT) (err error) {
+	r1, _, e1 := syscall.SyscallN(procGetThreadContext.Addr(), uintptr(thread), uintptr(unsafe.Pointer(context)))
+	if r1 == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func _IsWow64Process(process syscall.Handle, wow64process *uint32) (ok uint32) {
+	r0, _, _ := syscall.SyscallN(procIsWow64Process.Addr(), uintptr(process), uintptr(unsafe.Pointer(wow64process)))
+	ok = uint32(r0)
+	return
+}
+
+func _QueryFullProcessImageName(process syscall.Handle, flags uint32, exename *uint16, size *uint32) (err error) {
+	r1, _, e1 := syscall.SyscallN(procQueryFullProcessImageNameW.Addr(), uintptr(process), uintptr(flags), uintptr(unsafe.Pointer(exename)), uintptr(unsafe.Pointer(size)))
+	if r1 == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func _ReadProcessMemory(process syscall.Handle, baseaddr uintptr, buffer *byte, size uintptr, bytesread *uintptr) (err error) {
+	r1, _, e1 := syscall.SyscallN(procReadProcessMemory.Addr(), uintptr(process), uintptr(baseaddr), uintptr(unsafe.Pointer(buffer)), uintptr(size), uintptr(unsafe.Pointer(bytesread)))
+	if r1 == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func _ResumeThread(threadid syscall.Handle) (prevsuspcount uint32, err error) {
+	r0, _, e1 := syscall.SyscallN(procResumeThread.Addr(), uintptr(threadid))
+	prevsuspcount = uint32(r0)
+	if prevsuspcount == 0xffffffff {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func _SetThreadContext(thread syscall.Handle, context *_CONTEXT) (err error) {
+	r1, _, e1 := syscall.SyscallN(procSetThreadContext.Addr(), uintptr(thread), uintptr(unsafe.Pointer(context)))
+	if r1 == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func _SuspendThread(threadid syscall.Handle) (prevsuspcount uint32, err error) {
+	r0, _, e1 := syscall.SyscallN(procSuspendThread.Addr(), uintptr(threadid))
+	prevsuspcount = uint32(r0)
+	if prevsuspcount == 0xffffffff {
+		err = errnoErr(e1)
 	}
 	return
 }
 
 func _VirtualQueryEx(process syscall.Handle, addr uintptr, buffer *_MEMORY_BASIC_INFORMATION, length uintptr) (lengthOut uintptr) {
-	r0, _, _ := syscall.Syscall6(procVirtualQueryEx.Addr(), 4, uintptr(process), uintptr(addr), uintptr(unsafe.Pointer(buffer)), uintptr(length), 0, 0)
+	r0, _, _ := syscall.SyscallN(procVirtualQueryEx.Addr(), uintptr(process), uintptr(addr), uintptr(unsafe.Pointer(buffer)), uintptr(length))
 	lengthOut = uintptr(r0)
 	return
 }
 
-func _IsWow64Process(process syscall.Handle, wow64process *uint32) (ok uint32) {
-	r0, _, _ := syscall.Syscall(procIsWow64Process.Addr(), 2, uintptr(process), uintptr(unsafe.Pointer(wow64process)), 0)
-	ok = uint32(r0)
+func _WaitForDebugEvent(debugevent *_DEBUG_EVENT, milliseconds uint32) (err error) {
+	r1, _, e1 := syscall.SyscallN(procWaitForDebugEvent.Addr(), uintptr(unsafe.Pointer(debugevent)), uintptr(milliseconds))
+	if r1 == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func _WriteProcessMemory(process syscall.Handle, baseaddr uintptr, buffer *byte, size uintptr, byteswritten *uintptr) (err error) {
+	r1, _, e1 := syscall.SyscallN(procWriteProcessMemory.Addr(), uintptr(process), uintptr(baseaddr), uintptr(unsafe.Pointer(buffer)), uintptr(size), uintptr(unsafe.Pointer(byteswritten)))
+	if r1 == 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+
+func _NtQueryInformationThread(threadHandle syscall.Handle, infoclass int32, info uintptr, infolen uint32, retlen *uint32) (status _NTSTATUS) {
+	r0, _, _ := syscall.SyscallN(procNtQueryInformationThread.Addr(), uintptr(threadHandle), uintptr(infoclass), uintptr(info), uintptr(infolen), uintptr(unsafe.Pointer(retlen)))
+	status = _NTSTATUS(r0)
 	return
 }
