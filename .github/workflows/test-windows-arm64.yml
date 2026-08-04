@@ -10,6 +10,9 @@ concurrency:
   group: '${{ github.ref }}-${{ github.workflow}}'
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+permissions:
+  contents: read
+
 jobs:
   test-windows-arm64:
     runs-on: windows-11-arm
