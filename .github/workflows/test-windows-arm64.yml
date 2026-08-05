@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Run tests
         run: _scripts/test_windows.ps1 -version go${{ matrix.go-version }} -arch arm64 -binDir $env:RUNNER_TOOL_CACHE
