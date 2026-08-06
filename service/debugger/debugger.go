@@ -1329,7 +1329,7 @@ func (d *Debugger) collectBreakpointInformation(apiThread *api.Thread, thread pr
 		bpi.Variables = make([]api.Variable, len(bp.Variables))
 	}
 	for i := range bp.Variables {
-		v, err := s.EvalExpression(bp.Variables[i], proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1})
+		v, err := s.EvalExpression(bp.Variables[i], proc.LoadFullValue())
 		if err != nil {
 			bpi.Variables[i] = api.Variable{Name: bp.Variables[i], Unreadable: fmt.Sprintf("eval error: %v", err)}
 		} else {

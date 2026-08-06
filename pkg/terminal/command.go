@@ -30,6 +30,7 @@ import (
 	"github.com/cosiner/argv"
 	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/locspec"
+	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/proc/debuginfod"
 	"github.com/go-delve/delve/service"
 	"github.com/go-delve/delve/service/api"
@@ -93,7 +94,10 @@ var (
 	// * Follows pointers
 	// * Loads more array values
 	// * Does not limit struct fields
-	longLoadConfig = api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
+	longLoadConfig = func() api.LoadConfig {
+		c := proc.LoadFullValue()
+		return *api.LoadConfigFromProc(&c)
+	}()
 	// ShortLoadConfig loads less information, not following pointers
 	// and limiting struct fields loaded to 3.
 	ShortLoadConfig = api.LoadConfig{MaxStringLen: 64, MaxStructFields: 3}

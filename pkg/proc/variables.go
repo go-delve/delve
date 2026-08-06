@@ -189,8 +189,13 @@ type LoadConfig struct {
 }
 
 var loadSingleValue = LoadConfig{false, 0, 64, 0, 0, 0}
-var loadFullValue = LoadConfig{true, 1, 64, 64, -1, 0}
 var loadFullValueLongerStrings = LoadConfig{true, 1, 1024 * 1024, 64, -1, 0}
+
+// LoadFullValue returns a LoadConfig that follows pointers and loads a
+// moderate amount of nested data (the default used throughout Delve).
+func LoadFullValue() LoadConfig {
+	return LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
+}
 
 // G status, from: src/runtime/runtime2.go
 const (
@@ -576,7 +581,7 @@ func (g *G) Labels() map[string]string {
 				labels = map[string]string{}
 				switch labelMap.Kind {
 				case reflect.Map:
-					labelMap.loadValue(loadFullValue)
+					labelMap.loadValue(LoadFullValue())
 					for i := range labelMap.Children {
 						if i%2 == 0 {
 							k := labelMap.Children[i]
@@ -602,7 +607,7 @@ func (g *G) Labels() map[string]string {
 							if err != nil {
 								break
 							}
-							v.loadValue(loadFullValue)
+							v.loadValue(LoadFullValue())
 							if len(v.Children) == 2 {
 								// Skip invalid key-value pairs caused by corrupted or incompatible label structures
 								// (e.g., labels set by some libraries: https://github.com/timandy/routine/blob/v1.1.4/goid.go#L50).
@@ -1022,7 +1027,7 @@ func (v *Variable) loadFieldNamed(name string) *Variable {
 	if err != nil {
 		return nil
 	}
-	v.loadValue(loadFullValue)
+	v.loadValue(LoadFullValue())
 	if v.Unreadable != nil {
 		return nil
 	}
@@ -1371,7 +1376,7 @@ func (v *Variable) loadValueInternal(recurseLevel int, cfg LoadConfig) {
 		sv := v.clone()
 		sv.RealType = godwarf.ResolveTypedef(&(sv.RealType.(*godwarf.ChanType).TypedefType))
 		sv = sv.maybeDereference()
-		sv.loadValueInternal(0, loadFullValue)
+		sv.loadValueInternal(0, LoadFullValue())
 		v.Children = sv.Children
 		v.Len = sv.Len
 		v.Base = sv.Addr

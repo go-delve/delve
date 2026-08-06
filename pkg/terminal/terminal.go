@@ -21,6 +21,7 @@ import (
 	"github.com/go-delve/delve/pkg/config"
 	"github.com/go-delve/delve/pkg/goversion"
 	"github.com/go-delve/delve/pkg/locspec"
+	"github.com/go-delve/delve/pkg/proc"
 	"github.com/go-delve/delve/pkg/terminal/colorize"
 	"github.com/go-delve/delve/pkg/terminal/starbind"
 	"github.com/go-delve/delve/service"
@@ -618,7 +619,8 @@ func (t *Term) handleExit() (int, error) {
 // loadConfig returns an api.LoadConfig with the parameters specified in
 // the configuration file.
 func (t *Term) loadConfig() api.LoadConfig {
-	r := api.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
+	full := proc.LoadFullValue()
+	r := *api.LoadConfigFromProc(&full)
 
 	if t.conf != nil && t.conf.MaxStringLen != nil {
 		r.MaxStringLen = *t.conf.MaxStringLen

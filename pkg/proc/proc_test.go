@@ -40,7 +40,7 @@ import (
 	"github.com/go-delve/delve/service/api"
 )
 
-var normalLoadConfig = proc.LoadConfig{true, 1, 64, 64, -1, 0}
+var normalLoadConfig = proc.LoadFullValue()
 var testBackend, buildMode string
 
 func init() {
