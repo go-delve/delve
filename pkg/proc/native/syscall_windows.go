@@ -136,7 +136,7 @@ type _DEBUG_EVENT struct {
 	U              [160]byte
 }
 
-//sys	_NtQueryInformationThread(threadHandle syscall.Handle, infoclass int32, info uintptr, infolen uint32, retlen *uint32) (status _NTSTATUS) = ntdll.NtQueryInformationThread
+//sys	_NtQueryInformationThread(threadHandle syscall.Handle, infoclass int32, info *_THREAD_BASIC_INFORMATION, infolen uint32, retlen *uint32) (status _NTSTATUS) = ntdll.NtQueryInformationThread
 //sys	_GetThreadContext(thread syscall.Handle, context *_CONTEXT) (err error) = kernel32.GetThreadContext
 //sys	_SetThreadContext(thread syscall.Handle, context *_CONTEXT) (err error) = kernel32.SetThreadContext
 //sys	_SuspendThread(threadid syscall.Handle) (prevsuspcount uint32, err error) [failretval==0xffffffff] = kernel32.SuspendThread
