@@ -1,0 +1,14 @@
+# Plumber overlay: inherits every control from the CLI's built-in
+# baseline, only the differences for this repo are written here.
+# Run 'plumber config resolve' to see the full effective config.
+extends: plumber:default
+version: "2.0"
+
+github:
+  controls:
+    # Off for now: the release job restores the Go build cache through
+    # setup-go on its tag trigger. Scoping the cache key to the release
+    # ref (or disabling the cache on release builds) is a good follow-up,
+    # but it is its own change.
+    releaseWorkflowsMustNotRestoreUntrustedCache:
+      enabled: false
