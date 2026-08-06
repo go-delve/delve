@@ -24,7 +24,7 @@ func registers(t *nativeThread) (proc.Registers, error) {
 	}
 
 	var threadInfo _THREAD_BASIC_INFORMATION
-	status := _NtQueryInformationThread(t.os.hThread, _ThreadBasicInformation, uintptr(unsafe.Pointer(&threadInfo)), uint32(unsafe.Sizeof(threadInfo)), nil)
+	status := _NtQueryInformationThread(t.os.hThread, _ThreadBasicInformation, &threadInfo, uint32(unsafe.Sizeof(threadInfo)), nil)
 	if !_NT_SUCCESS(status) {
 		return nil, fmt.Errorf("NtQueryInformationThread failed: it returns 0x%x", status)
 	}

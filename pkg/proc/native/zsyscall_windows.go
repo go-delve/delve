@@ -177,8 +177,8 @@ func _WriteProcessMemory(process syscall.Handle, baseaddr uintptr, buffer *byte,
 	return
 }
 
-func _NtQueryInformationThread(threadHandle syscall.Handle, infoclass int32, info uintptr, infolen uint32, retlen *uint32) (status _NTSTATUS) {
-	r0, _, _ := syscall.SyscallN(procNtQueryInformationThread.Addr(), uintptr(threadHandle), uintptr(infoclass), uintptr(info), uintptr(infolen), uintptr(unsafe.Pointer(retlen)))
+func _NtQueryInformationThread(threadHandle syscall.Handle, infoclass int32, info *_THREAD_BASIC_INFORMATION, infolen uint32, retlen *uint32) (status _NTSTATUS) {
+	r0, _, _ := syscall.SyscallN(procNtQueryInformationThread.Addr(), uintptr(threadHandle), uintptr(infoclass), uintptr(unsafe.Pointer(info)), uintptr(infolen), uintptr(unsafe.Pointer(retlen)))
 	status = _NTSTATUS(r0)
 	return
 }
