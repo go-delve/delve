@@ -87,8 +87,17 @@ fi
 set +e
 go run _scripts/make.go test
 x=$?
+
+fuzz_x=0
+if [ "$arch" = "amd64" ]; then
+	_scripts/fuzz_eval_expression.sh seed
+	fuzz_x=$?
+fi
+
 if [ "$version" = "gotip" ]; then
 	exit 0
+elif [ "$x" -ne 0 ]; then
+	exit "$x"
 else
-	exit $x
+	exit "$fuzz_x"
 fi
