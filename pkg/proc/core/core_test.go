@@ -491,7 +491,7 @@ mainSearch:
 	}
 
 	scope := proc.FrameToScope(p, p.Memory(), nil, p.CurrentThread().ThreadID(), *mainFrame)
-	loadConfig := proc.LoadConfig{FollowPointers: true, MaxVariableRecurse: 1, MaxStringLen: 64, MaxArrayValues: 64, MaxStructFields: -1}
+	loadConfig := proc.LoadFullValue()
 	v1, err := scope.EvalExpression("t", loadConfig)
 	assertNoError(err, t, "EvalVariable(t)")
 	assertNoError(v1.Unreadable, t, "unreadable variable 't'")

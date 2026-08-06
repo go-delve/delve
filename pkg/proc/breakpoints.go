@@ -520,7 +520,7 @@ func evalBreakpointCondition(tgt *Target, thread Thread, cond ast.Expr) (bool, e
 		}
 		return true, errors.New("condition expression not boolean")
 	}
-	v.loadValue(loadFullValue)
+	v.loadValue(LoadFullValue())
 	if v.Unreadable != nil {
 		if stack.disabledErrors {
 			return false, nil

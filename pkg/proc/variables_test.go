@@ -20,13 +20,7 @@ import (
 	protest "github.com/go-delve/delve/pkg/proc/test"
 )
 
-var pnormalLoadConfig = proc.LoadConfig{
-	FollowPointers:     true,
-	MaxVariableRecurse: 1,
-	MaxStringLen:       64,
-	MaxArrayValues:     64,
-	MaxStructFields:    -1,
-}
+var pnormalLoadConfig = proc.LoadFullValue()
 
 var pshortLoadConfig = proc.LoadConfig{
 	MaxStringLen:    64,

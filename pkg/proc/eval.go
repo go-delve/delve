@@ -1223,7 +1223,7 @@ func (stack *evalStack) executeOp() {
 			stack.err = errors.New("internal debugger error: expected boolean")
 			return
 		}
-		x.loadValue(loadFullValue)
+		x.loadValue(LoadFullValue())
 		stack.push(newConstant(x.Value, scope.BinInfo, scope.Mem))
 
 	case *evalop.Pop:
@@ -1503,7 +1503,7 @@ func (scope *EvalScope) evalJump(op *evalop.Jump, stack *evalStack) {
 		}
 		return
 	}
-	x.loadValue(loadFullValue)
+	x.loadValue(LoadFullValue())
 	if x.Unreadable != nil {
 		stack.err = x.Unreadable
 		return
@@ -1658,7 +1658,7 @@ func (scope *EvalScope) evalTypeCast(op *evalop.TypeCast, stack *evalStack) {
 		}
 	}
 
-	cfg := loadFullValue
+	cfg := LoadFullValue()
 	if scope.loadCfg != nil {
 		cfg = *scope.loadCfg
 	}
@@ -1909,7 +1909,7 @@ func capBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 	case reflect.Slice:
 		return newConstant(constant.MakeInt64(arg.Cap), arg.bi, arg.mem), nil
 	case reflect.Chan:
-		arg.loadValue(loadFullValue)
+		arg.loadValue(LoadFullValue())
 		if arg.Unreadable != nil {
 			return nil, arg.Unreadable
 		}
@@ -1942,7 +1942,7 @@ func lenBuiltin(args []*Variable, nodeargs []ast.Expr) (*Variable, error) {
 		}
 		return newConstant(constant.MakeInt64(arg.Len), arg.bi, arg.mem), nil
 	case reflect.Chan:
-		arg.loadValue(loadFullValue)
+		arg.loadValue(LoadFullValue())
 		if arg.Unreadable != nil {
 			return nil, arg.Unreadable
 		}
@@ -2066,7 +2066,7 @@ func minmaxBuiltin(name string, op token.Token, args []*Variable, nodeargs []ast
 		if args[i].Kind == reflect.String {
 			args[i].loadValue(loadFullValueLongerStrings)
 		} else {
-			args[i].loadValue(loadFullValue)
+			args[i].loadValue(LoadFullValue())
 		}
 
 		if args[i].Unreadable != nil {
@@ -2131,7 +2131,7 @@ func (scope *EvalScope) evalTypeAssert(op *evalop.TypeAssert, stack *evalStack) 
 		stack.err = fmt.Errorf("expression %q not an interface", astutil.ExprToString(op.Node.X))
 		return
 	}
-	xv.loadInterface(0, false, loadFullValue)
+	xv.loadInterface(0, false, LoadFullValue())
 	if xv.Unreadable != nil {
 		stack.err = xv.Unreadable
 		return
@@ -2229,7 +2229,7 @@ func (scope *EvalScope) evalIndex(op *evalop.Index, stack *evalStack) {
 		return
 
 	case reflect.Map:
-		idxev.loadValue(loadFullValue)
+		idxev.loadValue(LoadFullValue())
 		if idxev.Unreadable != nil {
 			stack.err = idxev.Unreadable
 			return
@@ -2495,14 +2495,14 @@ func (scope *EvalScope) evalBinary(binop *evalop.Binary, stack *evalStack) {
 	xv := stack.pop()
 
 	if xv.Kind != reflect.String { // delay loading strings until we use them
-		xv.loadValue(loadFullValue)
+		xv.loadValue(LoadFullValue())
 	}
 	if xv.Unreadable != nil {
 		stack.err = xv.Unreadable
 		return
 	}
 	if yv.Kind != reflect.String { // delay loading strings until we use them
-		yv.loadValue(loadFullValue)
+		yv.loadValue(LoadFullValue())
 	}
 	if yv.Unreadable != nil {
 		stack.err = yv.Unreadable
@@ -2888,7 +2888,7 @@ func (v *Variable) mapAccess(idx *Variable) (*Variable, error) {
 		return nil, fmt.Errorf("can not access unreadable map: %v", v.Unreadable)
 	}
 
-	lcfg := loadFullValue
+	lcfg := LoadFullValue()
 	if idx.Kind == reflect.String && int64(len(constant.StringVal(idx.Value))) == idx.Len && idx.Len > int64(lcfg.MaxStringLen) {
 		// If the index is a string load as much of the keys to at least match the length of the index.
 		//TODO(aarzilli): when struct literals are implemented this needs to be

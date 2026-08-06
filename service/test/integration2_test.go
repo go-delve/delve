@@ -30,13 +30,10 @@ import (
 	"github.com/go-delve/delve/service/rpccommon"
 )
 
-var normalLoadConfig = api.LoadConfig{
-	FollowPointers:     true,
-	MaxVariableRecurse: 1,
-	MaxStringLen:       64,
-	MaxArrayValues:     64,
-	MaxStructFields:    -1,
-}
+var normalLoadConfig = func() api.LoadConfig {
+	c := proc.LoadFullValue()
+	return *api.LoadConfigFromProc(&c)
+}()
 
 var testBackend, buildMode string
 

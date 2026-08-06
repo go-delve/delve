@@ -844,7 +844,7 @@ func funcCallStep(callScope *EvalScope, stack *evalStack, thread Thread) bool {
 			archoff = 40
 		}
 		// get error from top of the stack and return it to user
-		errvar, err := readStackVariable(p, thread, regs, archoff, "string", loadFullValue)
+		errvar, err := readStackVariable(p, thread, regs, archoff, "string", LoadFullValue())
 		if err != nil {
 			fncall.err = fmt.Errorf("could not get precheck error reason: %v", err)
 			break
@@ -1101,7 +1101,7 @@ func (scope *EvalScope) convertAllocToString(stack *evalStack) {
 	mallocv := stack.pop()
 	v := stack.pop()
 
-	mallocv.loadValue(loadFullValue)
+	mallocv.loadValue(LoadFullValue())
 
 	if mallocv.Unreadable != nil {
 		stack.err = mallocv.Unreadable
