@@ -54,7 +54,8 @@ var testBackend string
 
 func TestMain(m *testing.M) {
 	logOutputVal := ""
-	if _, isTeamCityTest := os.LookupEnv("TEAMCITY_VERSION"); isTeamCityTest {
+	_, isTeamCityTest := os.LookupEnv("TEAMCITY_VERSION")
+	if isTeamCityTest {
 		logOutputVal = "debugger,dap"
 	}
 	var logOutput string
@@ -63,6 +64,17 @@ func TestMain(m *testing.M) {
 	logflags.Setup(logOutput != "", logOutput, "")
 	protest.DefaultTestBackend(&testBackend)
 	protest.RunTestsWithFixtures(m)
+	if runtime.GOOS == "linux" && runtime.GOARCH == "386" && isTeamCityTest {
+		fmt.Printf("=== Output of ps aux ===\n")
+		cmd := exec.Command("ps", "aux")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		err := cmd.Run()
+		if err != nil {
+			fmt.Printf("error: %v\n", err)
+		}
+		fmt.Printf("=== Done ===\n")
+	}
 }
 
 // name is for _fixtures/<name>.go

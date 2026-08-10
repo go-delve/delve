@@ -9,7 +9,7 @@ apt-get -qq update
 if [ "$arch" = "ppc64le" ]; then
 	apt-get install --no-upgrade -y wget jq
 else
-	apt-get install --no-upgrade -y gcc wget jq lsof
+	apt-get install --no-upgrade -y gcc wget jq lsof procps
 fi
 
 
