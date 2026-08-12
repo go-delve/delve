@@ -100,22 +100,15 @@ func decodeEvalStackOps(buf []byte) []evalop.Op {
 				return ops
 			}
 			ops = append(ops, &evalop.Roll{N: int(b % 8)})
-		case 5, 6, 7: // Jump
+		case 5: // JumpAlways — conditional jumps need a typed bool; depthCheck
+			// cannot validate kinds, so the decoder only emits JumpAlways.
 			b, ok := readByte()
 			if !ok {
 				return ops
 			}
-			when := evalop.JumpAlways
-			if tag == 6 {
-				when = evalop.JumpIfTrue
-			} else if tag == 7 {
-				when = evalop.JumpIfFalse
-			}
-			ops = append(ops, &evalop.Jump{When: when, Target: int(b) % n})
-		case 8:
+			ops = append(ops, &evalop.Jump{When: evalop.JumpAlways, Target: int(b) % n})
+		case 6:
 			ops = append(ops, &evalop.PushLen{})
-		case 9:
-			ops = append(ops, &evalop.BoolToConst{})
 		default:
 			return ops
 		}
@@ -123,26 +116,10 @@ func decodeEvalStackOps(buf []byte) []evalop.Op {
 	return ops
 }
 
-func evalStackOpsWhitelisted(ops []evalop.Op) bool {
-	for _, op := range ops {
-		switch op.(type) {
-		case *evalop.PushConst, *evalop.PushNil, *evalop.Pop, *evalop.Dup, *evalop.Roll,
-			*evalop.Jump, *evalop.PushLen, *evalop.BoolToConst:
-			// ok — decoder only emits these; hand-written tests may not
-		default:
-			return false
-		}
-	}
-	return true
-}
-
 // evalStackOpsDepthOK reports whether ops pass the same stack-depth checks
 // Compile uses (evalop.DepthCheck), with either expression end-depth (1) or
 // assignment end-depth (0).
 func evalStackOpsDepthOK(ops []evalop.Op) bool {
-	if !evalStackOpsWhitelisted(ops) {
-		return false
-	}
 	return evalop.DepthCheck(ops, 1) == nil || evalop.DepthCheck(ops, 0) == nil
 }
 
@@ -227,8 +204,11 @@ func TestEvalStackOpsDepthOK(t *testing.T) {
 			wantOK: false,
 		},
 		{
-			name:   "NonWhitelistRejected",
-			ops:    []evalop.Op{&evalop.PushIdent{Name: "x"}},
+			name: "RollUnderflowRejected",
+			ops: []evalop.Op{
+				&evalop.PushNil{},
+				&evalop.Roll{N: 7},
+			},
 			wantOK: false,
 		},
 	}

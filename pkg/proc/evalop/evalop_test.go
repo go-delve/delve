@@ -46,6 +46,29 @@ func TestDepthCheck(t *testing.T) {
 			t.Fatal("expected out-of-range jump target error")
 		}
 	})
+
+	t.Run("RollUnderflow", func(t *testing.T) {
+		// Roll{N} needs N+1 stack entries (see executeOp). A lone PushNil
+		// followed by Roll{7} must fail DepthCheck rather than panic at runtime.
+		ops := []Op{
+			&PushNil{},
+			&Roll{N: 7},
+		}
+		if err := DepthCheck(ops, 1); err == nil {
+			t.Fatal("expected depth check to reject Roll with insufficient stack")
+		}
+	})
+
+	t.Run("RollOK", func(t *testing.T) {
+		ops := []Op{
+			&PushNil{},
+			&PushNil{},
+			&Roll{N: 1},
+		}
+		if err := DepthCheck(ops, 2); err != nil {
+			t.Fatalf("DepthCheck: %v", err)
+		}
+	})
 }
 
 func assertNoError(err error, t testing.TB, s string) {

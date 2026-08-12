@@ -212,7 +212,7 @@ type Roll struct {
 	N int
 }
 
-func (*Roll) depthCheck() (npop, npush int) { return 1, 1 }
+func (op *Roll) depthCheck() (npop, npush int) { return op.N + 1, op.N + 1 }
 
 // Dup duplicates the topmost stack entry
 type Dup struct {

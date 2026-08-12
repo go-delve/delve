@@ -39,10 +39,8 @@
 // execute for a second 0, so replaying it lands on a real, pre-existing
 // sanity check in eval.go's evalStack.run ("eval program finished without
 // error but N call injections still active") instead of a clean protocol
-// error. TestCallInjectionProtocol and FuzzCallInjectionProtocol deliberately
-// avoid generating more than one 0 per input for this reason; the
-// RepeatedCompleteCall subtest documents the excluded case so it isn't
-// silently forgotten.
+// error. decodeCallInjectionProtocolRegs and FuzzCallInjectionProtocol
+// deliberately map a second 0 to an exhausted/unknown register value.
 
 package proc
 
@@ -347,6 +345,9 @@ func runCallInjectionProtocolFuzz(regvals []uint64) (err error) {
 	th := newFuzzProtocolThread(bi, regvals)
 	stack, scope := setupPostStartCallInjection(th)
 
+	// len(regvals)+2: allow one funcCallStep per seeded register value, then
+	// enough iterations for stack.run to flush CallInjectionSetTarget /
+	// CallInjectionComplete after RestoreRegisters finishes the protocol.
 	for step := 0; step < len(regvals)+2; step++ {
 		th.step = step
 		finished := funcCallStep(scope, stack, th)
@@ -410,14 +411,10 @@ func TestCallInjectionProtocol(t *testing.T) {
 		{2},
 	}
 	for _, s := range seeds {
-		t.Run(fmt.Sprintf("seed/%v", s), func(t *testing.T) {
+		t.Run(fmt.Sprintf("seed/%#v", s), func(t *testing.T) {
 			failIfInternalDebuggerError(t, runCallInjectionProtocolFuzz(s))
 		})
 	}
-
-	t.Run("RepeatedCompleteCall", func(t *testing.T) {
-		t.Skip("more than one CompleteCall(0) hits eval.go sanity check; excluded from fuzzer mapping")
-	})
 }
 
 func decodeCallInjectionProtocolRegs(buf []byte) []uint64 {
@@ -450,30 +447,17 @@ func decodeCallInjectionProtocolRegs(buf []byte) []uint64 {
 	return regs
 }
 
-func encodeRegsForSeed(regs []uint64) []byte {
-	buf := make([]byte, len(regs))
-	for i, r := range regs {
-		switch r {
-		case 0:
-			buf[i] = 0
-		case 1:
-			buf[i] = 1
-		case 2:
-			buf[i] = 2
-		case 8:
-			buf[i] = 3
-		case 16:
-			buf[i] = 4
-		default:
-			buf[i] = 5
-		}
-	}
-	return buf
-}
-
 func FuzzCallInjectionProtocol(f *testing.F) {
-	for _, s := range [][]uint64{{16}, {8, 16}, {0, 1, 16}, {0x42, 16}} {
-		f.Add(encodeRegsForSeed(s))
+	// Byte values map through decodeCallInjectionProtocolRegs (b%6):
+	// 0→CompleteCall, 1→read-return, 2→read-panic, 3→precheck(8),
+	// 4→RestoreRegisters(16), 5→exhausted/unknown.
+	for _, seed := range [][]byte{
+		{4},       // {16}
+		{3, 4},    // {8, 16}
+		{0, 1, 4}, // {0, 1, 16}
+		{5, 4},    // {0x42, 16}
+	} {
+		f.Add(seed)
 	}
 	f.Fuzz(func(t *testing.T, buf []byte) {
 		failIfInternalDebuggerError(t, runCallInjectionProtocolFuzz(decodeCallInjectionProtocolRegs(buf)))
