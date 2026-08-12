@@ -888,7 +888,7 @@ type evalStack struct {
 // may execute. Legitimate programs either finish or suspend via call injection
 // (which returns from run and resets the budget on the next resume). Without
 // this limit, a depthCheck-valid JumpAlways cycle never suspends and hangs the
-// debugger (see TestEvalStack_JumpAlwaysToSelf_Terminates).
+// debugger (see TestRunEvalStackOps/JumpAlwaysToSelfTerminates).
 const maxEvalStepsPerRun = 100_000
 
 func (s *evalStack) push(v *Variable) {

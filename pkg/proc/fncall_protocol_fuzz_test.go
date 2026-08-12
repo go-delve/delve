@@ -39,10 +39,10 @@
 // execute for a second 0, so replaying it lands on a real, pre-existing
 // sanity check in eval.go's evalStack.run ("eval program finished without
 // error but N call injections still active") instead of a clean protocol
-// error. TestCallInjectionProtocolSeeds and FuzzCallInjectionProtocol
-// deliberately avoid generating more than one 0 per input for this reason;
-// TestCallInjectionProtocolSeeds_RepeatedCompleteCall documents the excluded
-// case so it isn't silently forgotten.
+// error. TestCallInjectionProtocol and FuzzCallInjectionProtocol deliberately
+// avoid generating more than one 0 per input for this reason; the
+// RepeatedCompleteCall subtest documents the excluded case so it isn't
+// silently forgotten.
 
 package proc
 
@@ -379,26 +379,25 @@ func runCallInjectionProtocolFuzz(regvals []uint64) (err error) {
 // Tests
 // ---------------------------------------------------------------------------
 
-func TestCallInjectionProtocol_PrematureRestore_NoPanic(t *testing.T) {
-	err := runCallInjectionProtocolFuzz([]uint64{16})
-	if err == nil {
-		t.Fatal("expected error for premature RestoreRegisters before SetTarget")
-	}
-	if strings.Contains(err.Error(), "no live target") {
-		t.Fatalf("stepInstructionOut should succeed in the mock; got harness short-circuit: %v", err)
-	}
-	failIfInternalDebuggerError(t, err)
-	if !strings.Contains(err.Error(), "terminated before target") {
-		t.Fatalf("expected clean terminated-before-target error, got: %v", err)
-	}
-}
+func TestCallInjectionProtocol(t *testing.T) {
+	t.Run("PrematureRestore", func(t *testing.T) {
+		err := runCallInjectionProtocolFuzz([]uint64{16})
+		if err == nil {
+			t.Fatal("expected error for premature RestoreRegisters before SetTarget")
+		}
+		if strings.Contains(err.Error(), "no live target") {
+			t.Fatalf("stepInstructionOut should succeed in the mock; got harness short-circuit: %v", err)
+		}
+		failIfInternalDebuggerError(t, err)
+		if !strings.Contains(err.Error(), "terminated before target") {
+			t.Fatalf("expected clean terminated-before-target error, got: %v", err)
+		}
+	})
 
-func TestCallInjectionProtocol_UnknownThenRestore_NoInternal(t *testing.T) {
-	err := runCallInjectionProtocolFuzz([]uint64{0x42, 16})
-	failIfInternalDebuggerError(t, err)
-}
+	t.Run("UnknownThenRestore", func(t *testing.T) {
+		failIfInternalDebuggerError(t, runCallInjectionProtocolFuzz([]uint64{0x42, 16}))
+	})
 
-func TestCallInjectionProtocolSeeds(t *testing.T) {
 	seeds := [][]uint64{
 		{0, 1, 16},
 		{8, 16},
@@ -411,15 +410,14 @@ func TestCallInjectionProtocolSeeds(t *testing.T) {
 		{2},
 	}
 	for _, s := range seeds {
-		t.Run(fmt.Sprintf("%v", s), func(t *testing.T) {
-			err := runCallInjectionProtocolFuzz(s)
-			failIfInternalDebuggerError(t, err)
+		t.Run(fmt.Sprintf("seed/%v", s), func(t *testing.T) {
+			failIfInternalDebuggerError(t, runCallInjectionProtocolFuzz(s))
 		})
 	}
-}
 
-func TestCallInjectionProtocolSeeds_RepeatedCompleteCall(t *testing.T) {
-	t.Skip("more than one CompleteCall(0) hits eval.go sanity check; excluded from fuzzer mapping")
+	t.Run("RepeatedCompleteCall", func(t *testing.T) {
+		t.Skip("more than one CompleteCall(0) hits eval.go sanity check; excluded from fuzzer mapping")
+	})
 }
 
 func decodeCallInjectionProtocolRegs(buf []byte) []uint64 {

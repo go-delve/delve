@@ -146,109 +146,99 @@ func evalStackOpsDepthOK(ops []evalop.Op) bool {
 	return evalop.DepthCheck(ops, 1) == nil || evalop.DepthCheck(ops, 0) == nil
 }
 
-func TestDecodeEvalStackOps_EmptyInput(t *testing.T) {
-	if ops := decodeEvalStackOps(nil); len(ops) != 0 {
-		t.Fatalf("got %d ops", len(ops))
-	}
+func TestDecodeEvalStackOps(t *testing.T) {
+	t.Run("EmptyInput", func(t *testing.T) {
+		if ops := decodeEvalStackOps(nil); len(ops) != 0 {
+			t.Fatalf("got %d ops", len(ops))
+		}
+	})
+
+	t.Run("PushPop", func(t *testing.T) {
+		// N=2, PushConst int 7, Pop
+		buf := []byte{1}        // N = 1%32+1 = 2
+		buf = append(buf, 0, 0) // PushConst kind int64
+		var b [8]byte
+		binary.LittleEndian.PutUint64(b[:], 7)
+		buf = append(buf, b[:]...)
+		buf = append(buf, 2) // Pop
+		ops := decodeEvalStackOps(buf)
+		if len(ops) != 2 {
+			t.Fatalf("len=%d", len(ops))
+		}
+	})
+
+	t.Run("TruncatedPayloadStops", func(t *testing.T) {
+		ops := decodeEvalStackOps([]byte{1, 1, 0, 0})
+		if len(ops) != 1 {
+			t.Fatalf("len=%d", len(ops))
+		}
+		if _, ok := ops[0].(*evalop.PushNil); !ok {
+			t.Fatalf("op type %T", ops[0])
+		}
+	})
+
+	t.Run("UnknownTagStops", func(t *testing.T) {
+		ops := decodeEvalStackOps([]byte{1, 1, 255})
+		if len(ops) != 1 {
+			t.Fatalf("len=%d", len(ops))
+		}
+		if _, ok := ops[0].(*evalop.PushNil); !ok {
+			t.Fatalf("op type %T", ops[0])
+		}
+	})
 }
 
-func TestDecodeEvalStackOps_PushPop(t *testing.T) {
-	// N=2, PushConst int 7, Pop  → tags/payloads as above
-	buf := []byte{1}        // N = 1%32+1 = 2
-	buf = append(buf, 0, 0) // PushConst kind int64
-	var b [8]byte
-	binary.LittleEndian.PutUint64(b[:], 7)
-	buf = append(buf, b[:]...)
-	buf = append(buf, 2) // Pop
-	ops := decodeEvalStackOps(buf)
-	if len(ops) != 2 {
-		t.Fatalf("len=%d", len(ops))
+func TestEvalStackOpsDepthOK(t *testing.T) {
+	cases := []struct {
+		name   string
+		ops    []evalop.Op
+		wantOK bool
+	}{
+		{
+			name:   "UnderflowRejected",
+			ops:    []evalop.Op{&evalop.Pop{}},
+			wantOK: false,
+		},
+		{
+			name: "PushPopOK",
+			ops: []evalop.Op{
+				&evalop.PushConst{Value: constant.MakeInt64(1)},
+				&evalop.Pop{},
+			},
+			wantOK: true,
+		},
+		{
+			name: "ConditionalJumpPopUnderflowRejected",
+			ops: []evalop.Op{
+				&evalop.PushConst{Value: constant.MakeBool(true)},
+				&evalop.Jump{When: evalop.JumpIfTrue, Pop: true, Target: 2},
+				&evalop.Pop{},
+			},
+			wantOK: false,
+		},
+		{
+			name: "InconsistentJoinRejected",
+			ops: []evalop.Op{
+				&evalop.PushNil{},
+				&evalop.Jump{When: evalop.JumpAlways, Target: 3},
+				&evalop.PushNil{},
+				&evalop.Pop{},
+			},
+			wantOK: false,
+		},
+		{
+			name:   "NonWhitelistRejected",
+			ops:    []evalop.Op{&evalop.PushIdent{Name: "x"}},
+			wantOK: false,
+		},
 	}
-}
-
-func TestDecodeEvalStackOps_TruncatedPayloadStops(t *testing.T) {
-	buf := []byte{1, 1, 0, 0}
-	ops := decodeEvalStackOps(buf)
-	if len(ops) != 1 {
-		t.Fatalf("len=%d", len(ops))
-	}
-	if _, ok := ops[0].(*evalop.PushNil); !ok {
-		t.Fatalf("op type %T", ops[0])
-	}
-}
-
-func TestDecodeEvalStackOps_UnknownTagStops(t *testing.T) {
-	buf := []byte{1, 1, 255}
-	ops := decodeEvalStackOps(buf)
-	if len(ops) != 1 {
-		t.Fatalf("len=%d", len(ops))
-	}
-	if _, ok := ops[0].(*evalop.PushNil); !ok {
-		t.Fatalf("op type %T", ops[0])
-	}
-}
-
-func TestEvalStackOpsDepthOK_UnderflowRejected(t *testing.T) {
-	ops := []evalop.Op{&evalop.Pop{}}
-	if evalStackOpsDepthOK(ops) {
-		t.Fatal("expected reject")
-	}
-}
-
-func TestEvalStackOpsDepthOK_PushPopOK(t *testing.T) {
-	ops := []evalop.Op{
-		&evalop.PushConst{Value: constant.MakeInt64(1)},
-		&evalop.Pop{},
-	}
-	if !evalStackOpsDepthOK(ops) {
-		t.Fatal("expected ok")
-	}
-}
-
-func TestEvalStackOpsDepthOK_ConditionalJumpPopUnderflowRejected(t *testing.T) {
-	ops := []evalop.Op{
-		&evalop.PushConst{Value: constant.MakeBool(true)},
-		&evalop.Jump{When: evalop.JumpIfTrue, Pop: true, Target: 2},
-		&evalop.Pop{},
-	}
-	if evalStackOpsDepthOK(ops) {
-		t.Fatal("expected reject")
-	}
-}
-
-func TestEvalStackOpsDepthOK_InconsistentJoinRejected(t *testing.T) {
-	ops := []evalop.Op{
-		&evalop.PushNil{},
-		&evalop.Jump{When: evalop.JumpAlways, Target: 3},
-		&evalop.PushNil{},
-		&evalop.Pop{},
-	}
-	if evalStackOpsDepthOK(ops) {
-		t.Fatal("expected reject")
-	}
-}
-
-func TestEvalStackOpsDepthOK_NonWhitelistRejected(t *testing.T) {
-	ops := []evalop.Op{&evalop.PushIdent{Name: "x"}}
-	if evalStackOpsDepthOK(ops) {
-		t.Fatal("expected reject")
-	}
-}
-
-func TestRunEvalStackOps_DepthValidPushPop(t *testing.T) {
-	ops := []evalop.Op{
-		&evalop.PushConst{Value: constant.MakeInt64(1)},
-		&evalop.Pop{},
-	}
-	err := runEvalStackOps(ops)
-	failIfInternalDebuggerError(t, err)
-}
-
-func TestRunEvalStackOps_EmptyPopIsInternalOrPanicRecovered(t *testing.T) {
-	err := runEvalStackOps([]evalop.Op{&evalop.Pop{}})
-	// Without depth filter this may be internal debugger error; harness must not unrecovered-panic.
-	if err == nil {
-		t.Fatal("expected error from empty pop")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := evalStackOpsDepthOK(tc.ops)
+			if got != tc.wantOK {
+				t.Fatalf("evalStackOpsDepthOK = %v, want %v", got, tc.wantOK)
+			}
+		})
 	}
 }
 
@@ -285,34 +275,50 @@ func runEvalStackOps(ops []evalop.Op) (err error) {
 	return stack.err
 }
 
-// TestEvalStack_JumpAlwaysToSelf_Terminates locks the production evalStack
-// interpreter against infinite JumpAlways cycles (depthCheck-valid programs
-// that never suspend via call injection). The fuzz seed {0,5,0} encodes the
-// same program.
-func TestEvalStack_JumpAlwaysToSelf_Terminates(t *testing.T) {
-	ops := []evalop.Op{
-		&evalop.Jump{When: evalop.JumpAlways, Target: 0},
-	}
-	done := make(chan error, 1)
-	go func() {
-		stack := &evalStack{}
-		stack.eval(stubEvalScopeForStackFuzz(), ops)
-		done <- stack.err
-	}()
-	select {
-	case err := <-done:
+func TestRunEvalStackOps(t *testing.T) {
+	t.Run("DepthValidPushPop", func(t *testing.T) {
+		ops := []evalop.Op{
+			&evalop.PushConst{Value: constant.MakeInt64(1)},
+			&evalop.Pop{},
+		}
+		failIfInternalDebuggerError(t, runEvalStackOps(ops))
+	})
+
+	t.Run("EmptyPopIsInternalOrPanicRecovered", func(t *testing.T) {
+		err := runEvalStackOps([]evalop.Op{&evalop.Pop{}})
+		// Without depth filter this may be internal debugger error; harness must not unrecovered-panic.
 		if err == nil {
-			t.Fatal("expected step-limit error from JumpAlways-to-self")
+			t.Fatal("expected error from empty pop")
 		}
-		if strings.Contains(err.Error(), "internal debugger error") {
-			t.Fatalf("step-limit error must not be an internal debugger error: %v", err)
+	})
+
+	// JumpAlways-to-self is depthCheck-valid but would hang without the
+	// production step limit. Fuzz seed {0,5,0} encodes the same program.
+	t.Run("JumpAlwaysToSelfTerminates", func(t *testing.T) {
+		ops := []evalop.Op{
+			&evalop.Jump{When: evalop.JumpAlways, Target: 0},
 		}
-		if !strings.Contains(err.Error(), "step limit") {
-			t.Fatalf("expected step limit error, got: %v", err)
+		done := make(chan error, 1)
+		go func() {
+			stack := &evalStack{}
+			stack.eval(stubEvalScopeForStackFuzz(), ops)
+			done <- stack.err
+		}()
+		select {
+		case err := <-done:
+			if err == nil {
+				t.Fatal("expected step-limit error from JumpAlways-to-self")
+			}
+			if strings.Contains(err.Error(), "internal debugger error") {
+				t.Fatalf("step-limit error must not be an internal debugger error: %v", err)
+			}
+			if !strings.Contains(err.Error(), "step limit") {
+				t.Fatalf("expected step limit error, got: %v", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("eval hung on JumpAlways-to-self; evalStack.run needs a step limit")
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("eval hung on JumpAlways-to-self; evalStack.run needs a step limit")
-	}
+	})
 }
 
 var fuzzEvalStackUnbounded = flag.Bool("fuzzevalstackunbounded", false, "run FuzzEvalStackOps without depthCheck filter")
