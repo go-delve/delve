@@ -111,71 +111,27 @@ func decodeEvalStackOps(buf []byte) []evalop.Op {
 	return ops
 }
 
-func evalStackOpsDepthOK(ops []evalop.Op) bool {
-	depth := make([]int, len(ops)+1)
-	for i := range depth {
-		depth[i] = -1
-	}
-	depth[0] = 0
-
-	setDepth := func(i, d int) bool {
-		if depth[i] < 0 {
-			depth[i] = d
-			return true
-		}
-		return depth[i] == d
-	}
-
-	for i, op := range ops {
-		if depth[i] < 0 {
+func evalStackOpsWhitelisted(ops []evalop.Op) bool {
+	for _, op := range ops {
+		switch op.(type) {
+		case *evalop.PushConst, *evalop.PushNil, *evalop.Pop, *evalop.Dup, *evalop.Roll,
+			*evalop.Jump, *evalop.PushLen, *evalop.BoolToConst:
+			// ok — decoder only emits these; hand-written tests may not
+		default:
 			return false
-		}
-		npop, npush, ok := fuzzEvalStackOpDepth(op)
-		if !ok || depth[i] < npop {
-			return false
-		}
-		d := depth[i] - npop + npush
-		if !setDepth(i+1, d) {
-			return false
-		}
-		if jmp, ok := op.(*evalop.Jump); ok {
-			if jmp.Target < 0 || jmp.Target >= len(ops) || !setDepth(jmp.Target, d) {
-				return false
-			}
 		}
 	}
 	return true
 }
 
-func fuzzEvalStackOpDepth(op evalop.Op) (npop, npush int, ok bool) {
-	switch op := op.(type) {
-	case *evalop.PushConst, *evalop.PushNil:
-		return 0, 1, true
-	case *evalop.Pop:
-		return 1, 0, true
-	case *evalop.Dup:
-		return 1, 2, true
-	case *evalop.Roll:
-		return 1, 1, true
-	case *evalop.Jump:
-		switch op.When {
-		case evalop.JumpIfTrue, evalop.JumpIfFalse:
-			if op.Pop {
-				return 1, 0, true
-			}
-			return 1, 1, true
-		case evalop.JumpAlways:
-			return 0, 0, true
-		default:
-			return 0, 0, false
-		}
-	case *evalop.PushLen:
-		return 1, 2, true
-	case *evalop.BoolToConst:
-		return 1, 1, true
-	default:
-		return 0, 0, false
+// evalStackOpsDepthOK reports whether ops pass the same stack-depth checks
+// Compile uses (evalop.DepthCheck), with either expression end-depth (1) or
+// assignment end-depth (0).
+func evalStackOpsDepthOK(ops []evalop.Op) bool {
+	if !evalStackOpsWhitelisted(ops) {
+		return false
 	}
+	return evalop.DepthCheck(ops, 1) == nil || evalop.DepthCheck(ops, 0) == nil
 }
 
 func TestDecodeEvalStackOps_EmptyInput(t *testing.T) {

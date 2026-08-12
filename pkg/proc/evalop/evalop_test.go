@@ -2,10 +2,50 @@ package evalop
 
 import (
 	"go/ast"
+	"go/constant"
 	"go/parser"
 	"go/token"
+	"strings"
 	"testing"
 )
+
+func TestDepthCheck_PushPop_EndDepth0(t *testing.T) {
+	ops := []Op{
+		&PushConst{Value: constant.MakeInt64(1)},
+		&Pop{},
+	}
+	if err := DepthCheck(ops, 0); err != nil {
+		t.Fatalf("DepthCheck: %v", err)
+	}
+	if err := DepthCheck(ops, 1); err == nil {
+		t.Fatal("expected end-depth mismatch for endDepth=1")
+	}
+}
+
+func TestDepthCheck_Underflow(t *testing.T) {
+	err := DepthCheck([]Op{&Pop{}}, 0)
+	if err == nil {
+		t.Fatal("expected underflow error")
+	}
+	if !strings.Contains(err.Error(), "depth check") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDepthCheck_JumpAlwaysSelf_EndDepth0(t *testing.T) {
+	ops := []Op{&Jump{When: JumpAlways, Target: 0}}
+	if err := DepthCheck(ops, 0); err != nil {
+		t.Fatalf("DepthCheck: %v", err)
+	}
+}
+
+func TestDepthCheck_OutOfRangeJumpTarget(t *testing.T) {
+	ops := []Op{&Jump{When: JumpAlways, Target: 99}}
+	err := DepthCheck(ops, 0)
+	if err == nil {
+		t.Fatal("expected out-of-range jump target error")
+	}
+}
 
 func assertNoError(err error, t testing.TB, s string) {
 	t.Helper()

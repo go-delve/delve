@@ -244,7 +244,14 @@ func (ctx *compileCtx) pushOp(op Op) {
 // Finally it checks that the stack depth after all instructions have
 // executed is equal to endDepth.
 func (ctx *compileCtx) depthCheck(endDepth int) error {
-	depth := make([]int, len(ctx.ops)+1) // depth[i] is the depth of the stack before i-th instruction
+	return DepthCheck(ctx.ops, endDepth)
+}
+
+// DepthCheck validates stack-depth consistency of ops. Compile, CompileAST,
+// and CompileSet call this after generating a program (with endDepth 1 for
+// expressions and 0 for assignments).
+func DepthCheck(ops []Op, endDepth int) error {
+	depth := make([]int, len(ops)+1) // depth[i] is the depth of the stack before i-th instruction
 	for i := range depth {
 		depth[i] = -1
 	}
@@ -256,21 +263,24 @@ func (ctx *compileCtx) depthCheck(endDepth int) error {
 			depth[j] = d
 		}
 		if d != depth[j] {
-			err = fmt.Errorf("internal debugger error: depth check error at instruction %d: expected depth %d have %d (jump target)\n%s", j, d, depth[j], Listing(depth, ctx.ops))
+			err = fmt.Errorf("internal debugger error: depth check error at instruction %d: expected depth %d have %d (jump target)\n%s", j, d, depth[j], Listing(depth, ops))
 		}
 	}
 
 	debugPinnerSeen := false
 
-	for i, op := range ctx.ops {
+	for i, op := range ops {
 		npop, npush := op.depthCheck()
 		if depth[i] < npop {
-			return fmt.Errorf("internal debugger error: depth check error at instruction %d: expected at least %d have %d\n%s", i, npop, depth[i], Listing(depth, ctx.ops))
+			return fmt.Errorf("internal debugger error: depth check error at instruction %d: expected at least %d have %d\n%s", i, npop, depth[i], Listing(depth, ops))
 		}
 		d := depth[i] - npop + npush
 		checkAndSet(i+1, d)
 		switch op := op.(type) {
 		case *Jump:
+			if op.Target < 0 || op.Target > len(ops) {
+				return fmt.Errorf("internal debugger error: depth check error at instruction %d: jump target %d out of range\n%s", i, op.Target, Listing(depth, ops))
+			}
 			checkAndSet(op.Target, d)
 		case *CallInjectionStartSpecial:
 			debugPinnerSeen = true
@@ -284,8 +294,8 @@ func (ctx *compileCtx) depthCheck(endDepth int) error {
 		}
 	}
 
-	if depth[len(ctx.ops)] != endDepth {
-		return fmt.Errorf("internal debugger error: depth check failed: depth at the end is not %d (got %d)\n%s", depth[len(ctx.ops)], endDepth, Listing(depth, ctx.ops))
+	if depth[len(ops)] != endDepth {
+		return fmt.Errorf("internal debugger error: depth check failed: depth at the end is not %d (got %d)\n%s", endDepth, depth[len(ops)], Listing(depth, ops))
 	}
 	return nil
 }
