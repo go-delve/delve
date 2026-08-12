@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/proc"
@@ -20,9 +21,10 @@ import (
 var fuzzEvalExpressionSetup = flag.Bool("fuzzevalexpressionsetup", false, "Performs setup for FuzzEvalExpression")
 
 const (
-	fuzzExecutable = "testdata/fuzzexe"
-	fuzzCoredump   = "testdata/fuzzcoredump"
-	fuzzInfoPath   = "testdata/fuzzinfo"
+	fuzzExecutable   = "testdata/fuzzexe"
+	fuzzCoredump     = "testdata/fuzzcoredump"
+	fuzzInfoPath     = "testdata/fuzzinfo"
+	fuzzMaxExprBytes = 128
 )
 
 type fuzzInfo struct {
@@ -33,6 +35,9 @@ type fuzzInfo struct {
 }
 
 // FuzzEvalExpression fuzzes the variables loader and expression evaluator of Delve.
+// Fuzz inputs are fuzzbuf (memory splice data) and exprBytes (optional UTF-8 expression).
+// Compile and evaluation errors are expected; only unrecovered panics and errors
+// containing "internal debugger error" fail the fuzz run.
 // To run it, execute the setup first:
 //
 //	go test -run FuzzEvalExpression -fuzzevalexpressionsetup
@@ -59,8 +64,8 @@ func FuzzEvalExpression(f *testing.F) {
 	fns, err := bi.FindFunction("main.main")
 	assertNoError(err, f, "FindFunction main.main")
 	fi.Loc.Fn = fns[0]
-	f.Add(fi.Fuzzbuf)
-	f.Fuzz(func(t *testing.T, fuzzbuf []byte) {
+	f.Add(fi.Fuzzbuf, []byte("i1"))
+	f.Fuzz(func(t *testing.T, fuzzbuf, exprBytes []byte) {
 		t.Log("fuzzbuf len", len(fuzzbuf))
 		mem := &core.SplicedMemory{}
 
@@ -87,11 +92,12 @@ func FuzzEvalExpression(f *testing.F) {
 		scope := &proc.EvalScope{Location: *fi.Loc, Regs: fi.Regs, Mem: memoryReaderWithFailingWrites{mem}, BinInfo: bi}
 		for _, tc := range getEvalExpressionTestCases() {
 			_, err := scope.EvalExpression(tc.name, pnormalLoadConfig)
-			if err != nil {
-				if strings.Contains(err.Error(), "internal debugger error") {
-					panic(err)
-				}
-			}
+			proc.FailIfInternalDebuggerError(t, err)
+		}
+
+		if len(exprBytes) > 0 && len(exprBytes) <= fuzzMaxExprBytes && utf8.Valid(exprBytes) {
+			_, err := scope.EvalExpression(string(exprBytes), pnormalLoadConfig)
+			proc.FailIfInternalDebuggerError(t, err)
 		}
 	})
 }

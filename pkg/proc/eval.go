@@ -884,6 +884,13 @@ type evalStack struct {
 	disabledErrors      bool
 }
 
+// maxEvalStepsPerRun bounds how many opcodes a single evalStack.run invocation
+// may execute. Legitimate programs either finish or suspend via call injection
+// (which returns from run and resets the budget on the next resume). Without
+// this limit, a depthCheck-valid JumpAlways cycle never suspends and hangs the
+// debugger (see TestEvalStack_JumpAlwaysToSelf_Terminates).
+const maxEvalStepsPerRun = 100_000
+
 func (s *evalStack) push(v *Variable) {
 	if v == nil {
 		panic(errors.New("internal debugger error, nil pushed onto variables stack"))
@@ -1017,7 +1024,11 @@ func (stack *evalStack) resume(g *G) {
 
 func (stack *evalStack) run() {
 	scope, curthread := stack.scope, stack.curthread
-	for stack.opidx < len(stack.ops) && stack.err == nil {
+	for steps := 0; stack.opidx < len(stack.ops) && stack.err == nil; steps++ {
+		if steps >= maxEvalStepsPerRun {
+			stack.err = fmt.Errorf("expression evaluation exceeded %d step limit", maxEvalStepsPerRun)
+			break
+		}
 		stack.callInjectionContinue = false
 		stack.executeOp()
 		// If the instruction we just executed requests the call injection

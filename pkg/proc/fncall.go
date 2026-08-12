@@ -987,6 +987,10 @@ func callInjectionComplete2(callScope *EvalScope, bi *BinaryInfo, fncall *functi
 }
 
 func (scope *EvalScope) evalCallInjectionSetTarget(op *evalop.CallInjectionSetTarget, stack *evalStack, thread Thread) {
+	if len(stack.fncalls) == 0 { // guard against premature RestoreRegisters (#4085/#4363)
+		stack.err = errors.New("call injection terminated before target was set")
+		return
+	}
 	fncall := stack.fncallPeek()
 	if !fncall.hasDebugPinner && (fncall.fn == nil || fncall.receiver != nil || fncall.closureAddr != 0) {
 		stack.err = funcCallEvalFuncExpr(scope, stack, fncall)
