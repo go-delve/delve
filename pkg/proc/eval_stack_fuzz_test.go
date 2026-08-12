@@ -11,11 +11,13 @@
 package proc
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"flag"
 	"fmt"
 	"go/constant"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -30,49 +32,59 @@ func decodeEvalStackOps(buf []byte) []evalop.Op {
 	if len(buf) == 0 {
 		return nil
 	}
-
-	n := int(buf[0])%fuzzEvalStackMaxOps + 1
-	buf = buf[1:]
+	r := bytes.NewReader(buf)
+	nByte, err := r.ReadByte()
+	if err != nil {
+		return nil
+	}
+	n := int(nByte)%fuzzEvalStackMaxOps + 1
 	ops := make([]evalop.Op, 0, n)
+
+	readByte := func() (byte, bool) {
+		b, err := r.ReadByte()
+		return b, err == nil
+	}
+	readFull := func(dst []byte) bool {
+		_, err := io.ReadFull(r, dst)
+		return err == nil
+	}
+
 	for len(ops) < n {
-		if len(buf) == 0 {
+		tag, ok := readByte()
+		if !ok {
 			return ops
 		}
-		tag := buf[0]
-		buf = buf[1:]
-
 		switch tag {
-		case 0:
-			if len(buf) == 0 {
+		case 0: // PushConst
+			kind, ok := readByte()
+			if !ok {
 				return ops
 			}
-			kind := buf[0]
-			buf = buf[1:]
 			switch kind {
-			case 0:
-				if len(buf) < 8 {
+			case 0: // int64
+				var raw [8]byte
+				if !readFull(raw[:]) {
 					return ops
 				}
-				v := int64(binary.LittleEndian.Uint64(buf[:8]))
-				buf = buf[8:]
+				v := int64(binary.LittleEndian.Uint64(raw[:]))
 				ops = append(ops, &evalop.PushConst{Value: constant.MakeInt64(v)})
-			case 1:
-				if len(buf) < 1 {
+			case 1: // bool
+				b, ok := readByte()
+				if !ok {
 					return ops
 				}
-				ops = append(ops, &evalop.PushConst{Value: constant.MakeBool(buf[0] != 0)})
-				buf = buf[1:]
-			case 2:
-				if len(buf) < 1 {
+				ops = append(ops, &evalop.PushConst{Value: constant.MakeBool(b != 0)})
+			case 2: // string
+				lByte, ok := readByte()
+				if !ok {
 					return ops
 				}
-				l := int(buf[0] % 8)
-				buf = buf[1:]
-				if len(buf) < l {
+				l := int(lByte % 8)
+				s := make([]byte, l)
+				if !readFull(s) {
 					return ops
 				}
-				ops = append(ops, &evalop.PushConst{Value: constant.MakeString(string(buf[:l]))})
-				buf = buf[l:]
+				ops = append(ops, &evalop.PushConst{Value: constant.MakeString(string(s))})
 			default:
 				return ops
 			}
@@ -82,14 +94,15 @@ func decodeEvalStackOps(buf []byte) []evalop.Op {
 			ops = append(ops, &evalop.Pop{})
 		case 3:
 			ops = append(ops, &evalop.Dup{})
-		case 4:
-			if len(buf) < 1 {
+		case 4: // Roll
+			b, ok := readByte()
+			if !ok {
 				return ops
 			}
-			ops = append(ops, &evalop.Roll{N: int(buf[0] % 8)})
-			buf = buf[1:]
-		case 5, 6, 7:
-			if len(buf) < 1 {
+			ops = append(ops, &evalop.Roll{N: int(b % 8)})
+		case 5, 6, 7: // Jump
+			b, ok := readByte()
+			if !ok {
 				return ops
 			}
 			when := evalop.JumpAlways
@@ -98,8 +111,7 @@ func decodeEvalStackOps(buf []byte) []evalop.Op {
 			} else if tag == 7 {
 				when = evalop.JumpIfFalse
 			}
-			ops = append(ops, &evalop.Jump{When: when, Target: int(buf[0]) % n})
-			buf = buf[1:]
+			ops = append(ops, &evalop.Jump{When: when, Target: int(b) % n})
 		case 8:
 			ops = append(ops, &evalop.PushLen{})
 		case 9:
