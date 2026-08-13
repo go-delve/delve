@@ -120,6 +120,16 @@ func TestReadCStringValue(t *testing.T) {
 	}
 }
 
+func TestMemCacheDoesNotNest(t *testing.T) {
+	const base = 0x5000
+	dm := &dummyMem{t: t, mem: make([]byte, 1000), base: base}
+	mem1 := cacheMemory(dm, base, 10)
+	mem2 := cacheMemory(mem1, base+20, 10)
+	if mem2.(*memCache).mem != dm {
+		t.Errorf("cacheMemory nested memCaches")
+	}
+}
+
 func assertNoError(err error, t testing.TB, s string) {
 	if err != nil {
 		_, file, line, _ := runtime.Caller(1)
