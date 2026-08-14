@@ -69,6 +69,29 @@ func TestDepthCheck(t *testing.T) {
 			t.Fatalf("DepthCheck: %v", err)
 		}
 	})
+
+	t.Run("ConditionalJumpPopUnderflow", func(t *testing.T) {
+		ops := []Op{
+			&PushConst{Value: constant.MakeBool(true)},
+			&Jump{When: JumpIfTrue, Pop: true, Target: 2},
+			&Pop{},
+		}
+		if err := DepthCheck(ops, 1); err == nil {
+			t.Fatal("expected underflow after conditional jump that pops")
+		}
+	})
+
+	t.Run("InconsistentJoin", func(t *testing.T) {
+		ops := []Op{
+			&PushNil{},
+			&Jump{When: JumpAlways, Target: 3},
+			&PushNil{},
+			&Pop{},
+		}
+		if err := DepthCheck(ops, 0); err == nil {
+			t.Fatal("expected reject for inconsistent stack depth at join")
+		}
+	})
 }
 
 func assertNoError(err error, t testing.TB, s string) {

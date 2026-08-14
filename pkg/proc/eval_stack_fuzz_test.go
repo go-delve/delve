@@ -165,63 +165,6 @@ func TestDecodeEvalStackOps(t *testing.T) {
 	})
 }
 
-func TestEvalStackOpsDepthOK(t *testing.T) {
-	cases := []struct {
-		name   string
-		ops    []evalop.Op
-		wantOK bool
-	}{
-		{
-			name:   "UnderflowRejected",
-			ops:    []evalop.Op{&evalop.Pop{}},
-			wantOK: false,
-		},
-		{
-			name: "PushPopOK",
-			ops: []evalop.Op{
-				&evalop.PushConst{Value: constant.MakeInt64(1)},
-				&evalop.Pop{},
-			},
-			wantOK: true,
-		},
-		{
-			name: "ConditionalJumpPopUnderflowRejected",
-			ops: []evalop.Op{
-				&evalop.PushConst{Value: constant.MakeBool(true)},
-				&evalop.Jump{When: evalop.JumpIfTrue, Pop: true, Target: 2},
-				&evalop.Pop{},
-			},
-			wantOK: false,
-		},
-		{
-			name: "InconsistentJoinRejected",
-			ops: []evalop.Op{
-				&evalop.PushNil{},
-				&evalop.Jump{When: evalop.JumpAlways, Target: 3},
-				&evalop.PushNil{},
-				&evalop.Pop{},
-			},
-			wantOK: false,
-		},
-		{
-			name: "RollUnderflowRejected",
-			ops: []evalop.Op{
-				&evalop.PushNil{},
-				&evalop.Roll{N: 7},
-			},
-			wantOK: false,
-		},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := evalStackOpsDepthOK(tc.ops)
-			if got != tc.wantOK {
-				t.Fatalf("evalStackOpsDepthOK = %v, want %v", got, tc.wantOK)
-			}
-		})
-	}
-}
-
 type zeroReaderStub struct{}
 
 func (*zeroReaderStub) ReadMemory(b []byte, addr uint64) (int, error) {
