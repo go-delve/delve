@@ -63,7 +63,7 @@ func CompileAST(lookup evalLookup, t ast.Expr, flags Flags) ([]Op, error) {
 
 	ctx.compileDebugPinnerSetupTeardown()
 
-	err = ctx.depthCheck(1)
+	err = DepthCheck(ctx.ops, 1)
 	if err != nil {
 		return ctx.ops, err
 	}
@@ -126,7 +126,7 @@ func CompileSet(lookup evalLookup, lhexpr, rhexpr string, flags Flags) ([]Op, er
 
 	ctx.compileDebugPinnerSetupTeardown()
 
-	err = ctx.depthCheck(0)
+	err = DepthCheck(ctx.ops, 0)
 	if err != nil {
 		return ctx.ops, err
 	}
@@ -233,18 +233,6 @@ func (ctx *compileCtx) compileDebugPinnerSetupTeardown() {
 
 func (ctx *compileCtx) pushOp(op Op) {
 	ctx.ops = append(ctx.ops, op)
-}
-
-// depthCheck validates the list of instructions produced by Compile and
-// CompileSet by performing a stack depth check.
-// It calculates the depth of the stack at every instruction in ctx.ops and
-// checks that they have enough arguments to execute. For instructions that
-// can be reached through multiple paths (because of a jump) it checks that
-// all paths reach the instruction with the same stack depth.
-// Finally it checks that the stack depth after all instructions have
-// executed is equal to endDepth.
-func (ctx *compileCtx) depthCheck(endDepth int) error {
-	return DepthCheck(ctx.ops, endDepth)
 }
 
 // DepthCheck validates stack-depth consistency of ops. Compile, CompileAST,
