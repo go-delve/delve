@@ -6832,6 +6832,47 @@ func (h *helperForSetVariable) variables(ref int) *dap.VariablesResponse {
 	return h.c.ExpectVariablesResponse(h.t)
 }
 
+// TestSetVariable_NonTopFrame verifies that SetVariable honors the frame and
+// goroutine of the scope named by variablesReference, so setting a local in a
+// non-top stack frame modifies that frame's variable (#3171).
+func TestSetVariable_NonTopFrame(t *testing.T) {
+	runTest(t, "increment", func(client *daptest.Client, fixture protest.Fixture) {
+		runDebugSessionWithBPs(t, client, "launch",
+			func() {
+				client.LaunchRequestWithArgs(map[string]any{"mode": "exec", "program": fixture.Path})
+			},
+			fixture.Source, []int{8}, // return 1, reached in Increment(0)
+			[]onBreakpoint{{
+				execute: func() {
+					// Stopped in Increment(0) (frame 0). Frame 1 is Increment(1),
+					// whose local y == 1. Setting y in frame 1 must modify that
+					// frame, not the top frame.
+					client.StackTraceRequest(1, 0, 20)
+					st := client.ExpectStackTraceResponse(t)
+					frame1 := st.Body.StackFrames[1].Id
+
+					client.ScopesRequest(frame1)
+					scopes := client.ExpectScopesResponse(t)
+					localsRef := scopes.Body.Scopes[0].VariablesReference
+
+					client.SetVariableRequest(localsRef, "y", "42")
+					setResp := client.ExpectSetVariableResponse(t)
+					if !setResp.Success {
+						t.Fatalf("SetVariableRequest failed: %#v", setResp)
+					}
+					client.ExpectInvalidatedEvent(t)
+
+					// y evaluated in frame 1 must now reflect the new value.
+					client.EvaluateRequest("y", frame1, "repl")
+					got := client.ExpectEvaluateResponse(t)
+					if !strings.HasPrefix(got.Body.Result, "42") {
+						t.Errorf("frame-1 y after SetVariable = %q, want it to reflect 42", got.Body.Result)
+					}
+				},
+			}})
+	})
+}
+
 // TestSetVariable tests SetVariable features that do not need function call support.
 func TestSetVariable(t *testing.T) {
 	runTest(t, "testvariables", func(client *daptest.Client, fixture protest.Fixture) {
