@@ -389,14 +389,14 @@ func TestCallInjectionProtocol(t *testing.T) {
 		if strings.Contains(err.Error(), "no live target") {
 			t.Fatalf("stepInstructionOut should succeed in the mock; got harness short-circuit: %v", err)
 		}
-		failIfInternalDebuggerError(t, err)
+		FailIfInternalDebuggerError(t, err)
 		if !strings.Contains(err.Error(), "terminated before target") {
 			t.Fatalf("expected clean terminated-before-target error, got: %v", err)
 		}
 	})
 
 	t.Run("UnknownThenRestore", func(t *testing.T) {
-		failIfInternalDebuggerError(t, runCallInjectionProtocolFuzz([]uint64{0x42, 16}))
+		FailIfInternalDebuggerError(t, runCallInjectionProtocolFuzz([]uint64{0x42, 16}))
 	})
 
 	seeds := [][]uint64{
@@ -412,7 +412,7 @@ func TestCallInjectionProtocol(t *testing.T) {
 	}
 	for _, s := range seeds {
 		t.Run(fmt.Sprintf("seed/%#v", s), func(t *testing.T) {
-			failIfInternalDebuggerError(t, runCallInjectionProtocolFuzz(s))
+			FailIfInternalDebuggerError(t, runCallInjectionProtocolFuzz(s))
 		})
 	}
 }
@@ -460,6 +460,6 @@ func FuzzCallInjectionProtocol(f *testing.F) {
 		f.Add(seed)
 	}
 	f.Fuzz(func(t *testing.T, buf []byte) {
-		failIfInternalDebuggerError(t, runCallInjectionProtocolFuzz(decodeCallInjectionProtocolRegs(buf)))
+		FailIfInternalDebuggerError(t, runCallInjectionProtocolFuzz(decodeCallInjectionProtocolRegs(buf)))
 	})
 }

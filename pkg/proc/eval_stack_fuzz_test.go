@@ -204,7 +204,7 @@ func TestRunEvalStackOps(t *testing.T) {
 			&evalop.PushConst{Value: constant.MakeInt64(1)},
 			&evalop.Pop{},
 		}
-		failIfInternalDebuggerError(t, runEvalStackOps(ops))
+		FailIfInternalDebuggerError(t, runEvalStackOps(ops))
 	})
 
 	t.Run("EmptyPopIsInternalOrPanicRecovered", func(t *testing.T) {
@@ -263,6 +263,6 @@ func FuzzEvalStackOps(f *testing.F) {
 		if !*fuzzEvalStackUnbounded && !evalStackOpsDepthOK(ops) {
 			return
 		}
-		failIfInternalDebuggerError(t, runEvalStackOps(ops))
+		FailIfInternalDebuggerError(t, runEvalStackOps(ops))
 	})
 }
