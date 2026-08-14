@@ -1,23 +1,21 @@
 package proc
 
-import (
-	"errors"
-	"strings"
-	"testing"
-)
-
-func FailIfInternalDebuggerError(t testing.TB, err error) {
-	t.Helper()
-	if err != nil && strings.Contains(err.Error(), "internal debugger error") {
-		t.Fatalf("unexpected internal debugger error: %v", err)
-	}
+// zeroFillMemory is a MemoryReadWriter that returns zeros on reads.
+// Writes succeed and discard bytes unless writeErr is set.
+type zeroFillMemory struct {
+	writeErr error
 }
 
-func TestFailIfInternalDebuggerError(t *testing.T) {
-	t.Run("nilOK", func(t *testing.T) {
-		FailIfInternalDebuggerError(t, nil)
-	})
-	t.Run("normalErrorOK", func(t *testing.T) {
-		FailIfInternalDebuggerError(t, errors.New("could not find symbol"))
-	})
+func (m *zeroFillMemory) ReadMemory(b []byte, addr uint64) (int, error) {
+	for i := range b {
+		b[i] = 0
+	}
+	return len(b), nil
+}
+
+func (m *zeroFillMemory) WriteMemory(_ uint64, b []byte) (int, error) {
+	if m.writeErr != nil {
+		return 0, m.writeErr
+	}
+	return len(b), nil
 }

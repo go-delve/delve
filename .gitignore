@@ -13,3 +13,7 @@ localtests
 .vscode
 .claude
 dist/
+pkg/proc/testdata/fuzzexe
+pkg/proc/testdata/fuzzcoredump
+pkg/proc/testdata/fuzzinfo
+pkg/proc/testdata/fuzz/

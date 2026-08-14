@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"github.com/go-delve/delve/pkg/dwarf/op"
 	"github.com/go-delve/delve/pkg/proc"
@@ -35,7 +34,7 @@ type fuzzInfo struct {
 }
 
 // FuzzEvalExpression fuzzes the variables loader and expression evaluator of Delve.
-// Fuzz inputs are fuzzbuf (memory splice data) and exprBytes (optional UTF-8 expression).
+// Fuzz inputs are fuzzbuf (memory splice data) and expr (optional expression).
 // Compile and evaluation errors are expected; only unrecovered panics and errors
 // containing "internal debugger error" fail the fuzz run.
 // To run it, execute the setup first:
@@ -64,8 +63,19 @@ func FuzzEvalExpression(f *testing.F) {
 	fns, err := bi.FindFunction("main.main")
 	assertNoError(err, f, "FindFunction main.main")
 	fi.Loc.Fn = fns[0]
-	f.Add(fi.Fuzzbuf, []byte("i1"))
-	f.Fuzz(func(t *testing.T, fuzzbuf, exprBytes []byte) {
+	f.Add(fi.Fuzzbuf, "i1")
+	for _, expr := range []string{
+		"s1[0]",
+		"a1[2:4]",
+		"str1[:3]",
+		"b1",
+		"1+",
+		"nil.(int)",
+		"call foo()",
+	} {
+		f.Add(fi.Fuzzbuf, expr)
+	}
+	f.Fuzz(func(t *testing.T, fuzzbuf []byte, expr string) {
 		t.Log("fuzzbuf len", len(fuzzbuf))
 		mem := &core.SplicedMemory{}
 
@@ -95,8 +105,8 @@ func FuzzEvalExpression(f *testing.F) {
 			proc.FailIfInternalDebuggerError(t, err)
 		}
 
-		if len(exprBytes) > 0 && len(exprBytes) <= fuzzMaxExprBytes && utf8.Valid(exprBytes) {
-			_, err := scope.EvalExpression(string(exprBytes), pnormalLoadConfig)
+		if expr != "" && len(expr) <= fuzzMaxExprBytes {
+			_, err := scope.EvalExpression(expr, pnormalLoadConfig)
 			proc.FailIfInternalDebuggerError(t, err)
 		}
 	})

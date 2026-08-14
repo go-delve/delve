@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run FuzzEvalExpression setup, then either the seed corpus (seed) or a
-# timed continuous fuzz (fuzz). Also runs 5s continuous smokes for
+# timed continuous fuzz (fuzz). Fuzz mode also runs 5s continuous smokes for
 # FuzzEvalStackOps and FuzzCallInjectionProtocol. Intended for CI;
 # linux/amd64 only.
 set -euo pipefail
@@ -31,13 +31,13 @@ fuzz)
 	echo "fuzz_eval_expression: fuzz (2m)"
 	go test ./pkg/proc -count=1 -run=NONE -fuzz=FuzzEvalExpression \
 		-fuzztime=2m -fuzzminimizetime=0 -v
+
+	echo "fuzz_eval_expression: FuzzEvalStackOps (5s)"
+	go test ./pkg/proc -count=1 -run=NONE -fuzz=FuzzEvalStackOps \
+		-fuzztime=5s -fuzzminimizetime=0
+
+	echo "fuzz_eval_expression: FuzzCallInjectionProtocol (5s)"
+	go test ./pkg/proc -count=1 -run=NONE -fuzz=FuzzCallInjectionProtocol \
+		-fuzztime=5s -fuzzminimizetime=0
 	;;
 esac
-
-echo "fuzz_eval_expression: FuzzEvalStackOps (5s)"
-go test ./pkg/proc -count=1 -run=NONE -fuzz=FuzzEvalStackOps \
-	-fuzztime=5s -fuzzminimizetime=0
-
-echo "fuzz_eval_expression: FuzzCallInjectionProtocol (5s)"
-go test ./pkg/proc -count=1 -run=NONE -fuzz=FuzzCallInjectionProtocol \
-	-fuzztime=5s -fuzzminimizetime=0

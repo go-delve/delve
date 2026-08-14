@@ -811,7 +811,10 @@ const (
 func funcCallStep(callScope *EvalScope, stack *evalStack, thread Thread) bool {
 	p := callScope.callCtx.p
 	bi := p.BinInfo()
-	fncall := stack.fncallPeek()
+	fncall := stack.requireFncall()
+	if fncall == nil {
+		return false
+	}
 
 	regs, err := thread.Registers()
 	if err != nil {
@@ -987,11 +990,10 @@ func callInjectionComplete2(callScope *EvalScope, bi *BinaryInfo, fncall *functi
 }
 
 func (scope *EvalScope) evalCallInjectionSetTarget(op *evalop.CallInjectionSetTarget, stack *evalStack, thread Thread) {
-	if len(stack.fncalls) == 0 { // guard against premature RestoreRegisters (#4085/#4363)
-		stack.err = errors.New("call injection terminated before target was set")
+	fncall := stack.requireFncall()
+	if fncall == nil {
 		return
 	}
-	fncall := stack.fncallPeek()
 	if !fncall.hasDebugPinner && (fncall.fn == nil || fncall.receiver != nil || fncall.closureAddr != 0) {
 		stack.err = funcCallEvalFuncExpr(scope, stack, fncall)
 		if stack.err != nil {

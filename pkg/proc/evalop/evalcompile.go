@@ -237,7 +237,9 @@ func (ctx *compileCtx) pushOp(op Op) {
 
 // DepthCheck validates stack-depth consistency of ops. Compile, CompileAST,
 // and CompileSet call this after generating a program (with endDepth 1 for
-// expressions and 0 for assignments).
+// expressions and 0 for assignments). If endDepth is negative the final
+// stack depth is not checked, so callers that only care about underflow and
+// consistent join depths (for example a fuzz filter) can pass -1.
 func DepthCheck(ops []Op, endDepth int) error {
 	depth := make([]int, len(ops)+1) // depth[i] is the depth of the stack before i-th instruction
 	for i := range depth {
@@ -282,7 +284,7 @@ func DepthCheck(ops []Op, endDepth int) error {
 		}
 	}
 
-	if depth[len(ops)] != endDepth {
+	if endDepth >= 0 && depth[len(ops)] != endDepth {
 		return fmt.Errorf("internal debugger error: depth check failed: depth at the end is not %d (got %d)\n%s", endDepth, depth[len(ops)], Listing(depth, ops))
 	}
 	return nil

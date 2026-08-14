@@ -70,6 +70,23 @@ func TestDepthCheck(t *testing.T) {
 		}
 	})
 
+	t.Run("NegativeEndDepthSkipsFinalCheck", func(t *testing.T) {
+		// Two PushNil + Roll{1} is underflow-safe but ends at depth 2.
+		// endDepth < 0 means "ignore final depth" so fuzz filters can accept
+		// stack-mechanics programs that would not be valid Compile output.
+		ops := []Op{
+			&PushNil{},
+			&PushNil{},
+			&Roll{N: 1},
+		}
+		if err := DepthCheck(ops, -1); err != nil {
+			t.Fatalf("DepthCheck(-1): %v", err)
+		}
+		if err := DepthCheck(ops, 1); err == nil {
+			t.Fatal("expected end-depth mismatch for endDepth=1")
+		}
+	})
+
 	t.Run("ConditionalJumpPopUnderflow", func(t *testing.T) {
 		ops := []Op{
 			&PushConst{Value: constant.MakeBool(true)},

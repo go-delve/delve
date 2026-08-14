@@ -71,23 +71,6 @@ const (
 const fuzzProtocolExhaustedRegval = 0xdead
 
 // ---------------------------------------------------------------------------
-// Mock MemoryReadWriter: reads return zeroes, writes are discarded.
-// ---------------------------------------------------------------------------
-
-type fuzzProtocolMemory struct{}
-
-func (*fuzzProtocolMemory) ReadMemory(b []byte, addr uint64) (int, error) {
-	for i := range b {
-		b[i] = 0
-	}
-	return len(b), nil
-}
-
-func (*fuzzProtocolMemory) WriteMemory(addr uint64, b []byte) (int, error) {
-	return len(b), nil
-}
-
-// ---------------------------------------------------------------------------
 // Mock Registers
 // ---------------------------------------------------------------------------
 
@@ -134,7 +117,7 @@ type fuzzProtocolThread struct {
 func newFuzzProtocolThread(bi *BinaryInfo, regvals []uint64) *fuzzProtocolThread {
 	return &fuzzProtocolThread{
 		bi:          bi,
-		mem:         &fuzzProtocolMemory{},
+		mem:         &zeroFillMemory{},
 		protocolReg: regnum.AMD64_R12,
 		regvals:     regvals,
 	}
@@ -205,21 +188,20 @@ func newFuzzProtocolImage() (*Image, dwarf.Offset) {
 	dwb.TagClose()
 
 	abbrev, _, _, info, _, _, _, _, _, err := dwb.Build()
-	img := &Image{
-		symTable:        &gosym.Table{},
-		dwarfTreeCache:  lru.NewCache[dwarf.Offset, *godwarf.Tree](dwarfTreeCacheSize),
-		workaroundCache: make(map[dwarf.Offset]*godwarf.Tree),
-	}
 	if err != nil {
-		return img, fnOff
+		panic(fmt.Errorf("fuzz protocol DWARF build: %w", err))
 	}
 	dw, err := dwarf.New(abbrev, nil, nil, info, nil, nil, nil, nil)
 	if err != nil || dw == nil {
-		return img, fnOff
+		panic(fmt.Errorf("fuzz protocol dwarf.New: %w", err))
 	}
-	img.dwarf = dw
-	img.dwarfReader = dw.Reader()
-	return img, fnOff
+	return &Image{
+		symTable:        &gosym.Table{},
+		dwarfTreeCache:  lru.NewCache[dwarf.Offset, *godwarf.Tree](dwarfTreeCacheSize),
+		workaroundCache: make(map[dwarf.Offset]*godwarf.Tree),
+		dwarf:           dw,
+		dwarfReader:     dw.Reader(),
+	}, fnOff
 }
 
 // ---------------------------------------------------------------------------
@@ -399,10 +381,29 @@ func TestCallInjectionProtocol(t *testing.T) {
 		FailIfInternalDebuggerError(t, runCallInjectionProtocolFuzz([]uint64{0x42, 16}))
 	})
 
+	t.Run("EmptyFncallStepDoesNotPanic", func(t *testing.T) {
+		bi := NewBinaryInfo("linux", "amd64")
+		th := newFuzzProtocolThread(bi, []uint64{16})
+		stack, scope := setupPostStartCallInjection(th)
+		stack.fncallPop()
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("funcCallStep panicked on empty fncalls: %v", r)
+			}
+		}()
+		if finished := funcCallStep(scope, stack, th); finished {
+			t.Fatal("expected not finished")
+		}
+		if stack.err == nil || !strings.Contains(stack.err.Error(), "terminated before target") {
+			t.Fatalf("expected terminated-before-target, got %v", stack.err)
+		}
+		FailIfInternalDebuggerError(t, stack.err)
+	})
+
 	seeds := [][]uint64{
+		{0},
 		{0, 1, 16},
 		{8, 16},
-		{16},
 		{0x42, 16},
 		{1, 16},
 		{2, 16},
@@ -452,6 +453,7 @@ func FuzzCallInjectionProtocol(f *testing.F) {
 	// 0→CompleteCall, 1→read-return, 2→read-panic, 3→precheck(8),
 	// 4→RestoreRegisters(16), 5→exhausted/unknown.
 	for _, seed := range [][]byte{
+		{0},       // {0} CompleteCall
 		{4},       // {16}
 		{3, 4},    // {8, 16}
 		{0, 1, 4}, // {0, 1, 16}
