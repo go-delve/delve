@@ -54,7 +54,7 @@ func newProcess(pid int) *nativeProcess {
 		firstStart:   true,
 		os:           new(osProcessDetails),
 		ptraceThread: newPtraceThread(),
-		bi:           proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
+		bi:           proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH, pid != 0),
 	}
 	return dbp
 }
@@ -68,7 +68,7 @@ func newChildProcess(dbp *nativeProcess, pid int) *nativeProcess {
 		firstStart:   true,
 		os:           new(osProcessDetails),
 		ptraceThread: dbp.ptraceThread.acquire(),
-		bi:           proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
+		bi:           proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH, false),
 	}
 }
 

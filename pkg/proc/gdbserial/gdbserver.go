@@ -225,7 +225,7 @@ type gdbRegnames struct {
 // If process is not nil it is the stub's process and will be killed after
 // Detach.
 // Use Listen, Dial or Connect to complete connection.
-func newProcess(process *os.Process) *gdbProcess {
+func newProcess(process *os.Process, attaching bool) *gdbProcess {
 	logger := logflags.GdbWireLogger()
 	p := &gdbProcess{
 		conn: gdbConn{
@@ -237,7 +237,7 @@ func newProcess(process *os.Process) *gdbProcess {
 			goos:                runtime.GOOS,
 		},
 		threads:        make(map[int]*gdbThread),
-		bi:             proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH),
+		bi:             proc.NewBinaryInfo(runtime.GOOS, runtime.GOARCH, attaching),
 		regnames:       new(gdbRegnames),
 		breakpoints:    proc.NewBreakpointMap(),
 		gcmdok:         true,
@@ -573,7 +573,7 @@ func LLDBLaunch(cmd []string, wd string, flags proc.LaunchFlags, debugInfoDirs [
 		return nil, err
 	}
 
-	p := newProcess(process.Process)
+	p := newProcess(process.Process, false)
 	p.conn.isDebugserver = isDebugserver
 
 	var grp *proc.TargetGroup
@@ -655,7 +655,7 @@ func LLDBAttach(pid int, path string, waitFor *proc.WaitFor, debugInfoDirs []str
 		return nil, err
 	}
 
-	p := newProcess(process.Process)
+	p := newProcess(process.Process, true)
 	p.conn.isDebugserver = isDebugserver
 
 	var grp *proc.TargetGroup

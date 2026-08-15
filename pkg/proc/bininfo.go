@@ -118,6 +118,7 @@ type BinaryInfo struct {
 	debugPinnerFn *Function
 	logger        logflags.Logger
 	eventsFn      func(*Event)
+	attaching     bool
 
 	cancelDownloadsMu sync.Mutex
 	cancelDownloads   func()
@@ -132,6 +133,8 @@ var (
 	// ErrNoDebugInfoFound is returned when Delve cannot open the debug_info
 	// section or find an external debug info file.
 	ErrNoDebugInfoFound = errors.New("could not open debug info")
+
+	ErrDebuginfodSkippedOnAttach = errors.New("debuginfod call skipped on attach")
 )
 
 var (
@@ -870,8 +873,8 @@ type ElfDynamicSection struct {
 }
 
 // NewBinaryInfo returns an initialized but unloaded BinaryInfo struct.
-func NewBinaryInfo(goos, goarch string) *BinaryInfo {
-	r := &BinaryInfo{GOOS: goos, logger: logflags.DebuggerLogger()}
+func NewBinaryInfo(goos, goarch string, attaching bool) *BinaryInfo {
+	r := &BinaryInfo{GOOS: goos, logger: logflags.DebuggerLogger(), attaching: attaching}
 
 	// TODO: find better way to determine proc arch (perhaps use executable file info).
 	switch goarch {
@@ -1676,6 +1679,9 @@ func (bi *BinaryInfo) openSeparateDebugInfo(image *Image, exe *elf.File, debugIn
 				})
 			}
 		}
+		if bi.attaching {
+			return nil, nil, ErrDebuginfodSkippedOnAttach
+		}
 		debugFilePath, err = debuginfod.GetDebuginfo(bi.downloadsCtx, notify, image.BuildID)
 		if err != nil {
 			return nil, nil, ErrNoDebugInfoFound
@@ -1751,6 +1757,9 @@ func loadBinaryInfoElf(bi *BinaryInfo, image *Image, path string, addr uint64, w
 			}
 			err := loadBinaryInfoGoRuntimeElf(bi, image, path, elfFile)
 			if err != nil {
+				if serr == ErrDebuginfodSkippedOnAttach {
+					return serr
+				}
 				return fmt.Errorf("could not read debug info (%v) and could not read go symbol table (%v)", dwerr, err)
 			}
 			image.IsGo = true
