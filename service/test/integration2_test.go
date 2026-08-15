@@ -3419,26 +3419,32 @@ func TestCancelDownload(t *testing.T) {
 	}
 	fakedebuginfodDir, _ := filepath.Abs(filepath.Join(protest.FindFixturesDir(), "fake-debuginfod-find"))
 	t.Setenv("PATH", os.ExpandEnv(fakedebuginfodDir+":$PATH"))
-	withTestClient2("cgotest", t, func(c service.Client) {
-		_, err := c.CreateBreakpoint(&api.Breakpoint{FunctionName: "main.main"})
-		assertNoError(err, t, "CreateBreakpoint")
-		eventReceived := false
+	withTestClient2Extended("cgotest", t, 0, [3]string{}, []string{"sleep"}, func(c service.Client, fixture protest.Fixture) {
+		eventReceivedCount := 0
+		const eventReceivedCountCancelThreshold = 3
 		c.SetEventsFn(func(ev *api.Event) {
 			switch ev.Kind {
 			case api.EventBinaryInfoDownload:
-				eventReceived = true
+				eventReceivedCount++
 				t.Logf("download event: %q %q", ev.BinaryInfoDownloadEventDetails.ImagePath, ev.BinaryInfoDownloadEventDetails.Progress)
-				assertNoError(c.CancelDownloads(), t, "CancelDownloads")
+				if eventReceivedCount >= eventReceivedCountCancelThreshold {
+					t.Logf("stop download\n")
+					assertNoError(c.CancelDownloads(), t, "CancelDownloads")
+				}
 			}
 		})
+		go func() {
+			time.Sleep(500 * time.Millisecond)
+			c.Halt()
+		}()
 		t0 := time.Now()
 		state := <-c.Continue()
 		assertNoError(state.Err, t, "Continue")
-		if !eventReceived {
-			t.Errorf("Download event was not received")
+		if eventReceivedCount < eventReceivedCountCancelThreshold {
+			t.Errorf("Too few download events received %d", eventReceivedCount)
 		}
 		if time.Since(t0) > 3*time.Second {
-			t.Errorf("Continue took to long, we probably couldn't cancel the download")
+			t.Errorf("Continue took to long, we probably couldn't cancel the download (%v)", time.Since(t0))
 		}
 	})
 }
