@@ -173,20 +173,19 @@ func waitForSearchProcess(pfx string, seen map[int]struct{}) (int, error) {
 	var cnt C.uint
 	procs := C.procstat_getprocs(ps, C.KERN_PROC_PROC, 0, &cnt)
 	defer C.procstat_freeprocs(ps, procs)
-	proc := procs
 	for i := 0; i < int(cnt); i++ {
-		if _, isseen := seen[int(proc.ki_pid)]; isseen {
+		proc := (*C.struct_kinfo_proc)(unsafe.Pointer(uintptr(unsafe.Pointer(procs)) + uintptr(i)*unsafe.Sizeof(*procs)))
+		pid := int(proc.ki_pid)
+		if _, isseen := seen[pid]; isseen {
 			continue
 		}
-		seen[int(proc.ki_pid)] = struct{}{}
+		seen[pid] = struct{}{}
 
 		argv := strings.Join(getCmdLineInternal(ps, proc), " ")
 		log.Debugf("waitfor: new process %q", argv)
 		if strings.HasPrefix(argv, pfx) {
-			return int(proc.ki_pid), nil
+			return pid, nil
 		}
-
-		proc = (*C.struct_kinfo_proc)(unsafe.Pointer(uintptr(unsafe.Pointer(proc)) + unsafe.Sizeof(*proc)))
 	}
 	return 0, nil
 }
